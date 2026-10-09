@@ -21,7 +21,7 @@ from typing import Annotated, Optional
 from dataclasses import asdict, dataclass
 
 from time_et import (ET, now_et, closed_since, ct_label, et_date_str_from_ts_utc, last_open,
-                     market_session_date, session_label)
+                     market_session_date, session, session_label)
 from math_exposure_core import bucket_metric, merge_exposure_books, overlay_streamed_contract_fields
 
 import json
@@ -159,7 +159,7 @@ import live_market_plane as lmp
 from numeric_contract import schwab_number
 from terrain_engine import (SCOPES, TerrainSnapshot, chain_ladder, compute_terrain, nearest_strike,
                             positioning_migration, strike_window)
-from terrain_atr import AtrPair, compute_atr_pair
+from terrain_atr import Atr, compute_atrs, roll_up
 
 from db import get_db
 
@@ -321,10 +321,9 @@ from calibration.complete_chain_capture import (
 #: reader reads this, never a database (docs/DATA_FLOW.md §2 D6).
 BARS_KEPT = 24_000
 _bars: "dict[str, list[Candle]]" = {}
-#: every ticker's 15-minute and daily candles as Schwab's /pricehistory sent them (the daemon asks
-#: in every chain rotation): series ("15m", "1d") -> ticker -> candles, oldest first. Owned by the
-#: bar writer; the ATR reads them.
-_candles: "dict[str, dict[str, list[Candle]]]" = {"15m": {}, "1d": {}}
+#: every ticker's daily candles as Schwab's /pricehistory sent them (the daemon asks once a day):
+#: ticker -> candles, oldest first. Owned by the bar writer; the ATR reads them (_atr).
+_daily: "dict[str, list[Candle]]" = {}
 _bars_lock = threading.Lock()
 #: where the bars come from, named in every level's provenance
 BAR_SOURCE = "Schwab /pricehistory 1-minute bars and CHART_EQUITY"
@@ -344,15 +343,15 @@ def _schwab_bar(start_ms, o, h, lo, c, volume) -> "Candle | None":
 def _write_price_history(msg: dict) -> "str | None":
     """One series of a ticker's price history as Schwab's /pricehistory answered it (pushed by the
     capture daemon): its 1-minute bars into the ticker's bars, each streamed bar standing over
-    Schwab's history of its minute; its 15-minute or daily candles replacing the held ones. A
-    candle without a valid field is not kept. The ticker when its 1-minute bars changed, else None."""
+    Schwab's history of its minute; its daily candles replacing the held ones. A candle without a
+    valid field is not kept. The ticker when its 1-minute bars changed, else None."""
     tk = ticker_storage_key(msg["symbol"])
     candles = [b for b in (_schwab_bar(c.get("datetime"), c.get("open"), c.get("high"), c.get("low"),
                                        c.get("close"), c.get("volume")) for c in msg["answer"]["candles"])
                if b is not None]
     with _bars_lock:
         if msg["series"] != "1m":
-            _candles[msg["series"]][tk] = candles
+            _daily[tk] = candles
             return None
         merged = {c.ts: c for c in candles}
         if tk in _bars:
@@ -423,7 +422,7 @@ def _write_streamed_bars(msgs: list, now: datetime) -> None:
 
 
 def _bar_writer() -> None:
-    """The bar writer, the one owner of the bars and candles in memory (_bars, _candles): every
+    """The bar writer, the one owner of the bars and candles in memory (_bars, _daily): every
     streamed bar and price history the capture daemon pushes, as it arrives, with those already
     waiting behind it. Ends at stop_bar_writer's None, once everything queued before it is
     written."""
@@ -1109,7 +1108,6 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
         "levels_source": LEVELS_SOURCE_WIDE_CHAIN,
         "chain_basis": capture["basis"] if capture is not None else CAPTURE_BASIS,
         "spot_source": spot_source, "spot_as_of_ts_utc": spot_ts,
-        **_atr_fields(tk),
         "_per_strike": snap.per_strike, "_gamma_surface": None,
         "_vanna_rows": _vanna_rows(snap), "_charm_rows": _charm_rows(snap),
         # every ticker keeps its chain and its heatmap, so a ticker put on screen shows at once
@@ -1404,21 +1402,27 @@ def stop_terrain_loop() -> None:
     _terrain_loop_running = False
 
 
-def _atr_pair(ticker: str) -> "AtrPair":
-    """The ticker's (daily, 15-minute) ATR from Schwab's daily and 15-minute candles as the bar
-    writer holds them (_candles; none from Schwab yet: none held). Too few reads as None with why."""
+def _atr(ticker: str, now: datetime) -> "Atr":
+    """The ticker's daily, weekly and monthly ATR at `now`: Schwab's daily candles as the bar
+    writer holds them (_daily; none from Schwab yet: none held) up to yesterday, and today's
+    candle rolled up live from today's 1-minute bars inside Schwab's regular session for today
+    (none before it opens). Too few reads as None with why."""
     tk = ticker_storage_key(ticker)
+    today = now.astimezone(ET).date()
+    s = session(today.isoformat())
     with _bars_lock:
-        return compute_atr_pair([*_candles["1d"][tk]] if tk in _candles["1d"] else [],
-                                [*_candles["15m"][tk]] if tk in _candles["15m"] else [])
+        daily = [c for c in _daily.get(tk, []) if datetime.fromtimestamp(c.ts, ET).date() < today]
+        bars = [b for b in _bars.get(tk, []) if s is not None
+                and any(start.timestamp() <= b.ts < end.timestamp() for start, end in s.regular)]
+    return compute_atrs(daily + roll_up(bars, lambda day: day))
 
 
-def _atr_fields(tk: str) -> dict:
-    """atr_daily / atr_15m for every publication of the ticker's levels, whatever the chain's
-    source (a live download or a stored capture)."""
-    pair = _atr_pair(tk)
-    return {"atr_daily": pair.daily, "atr_15m": pair.m15,
-            "atr_daily_reason": pair.daily_reason, "atr_15m_reason": pair.m15_reason}
+def _atr_fields(tk: str, now: datetime) -> dict:
+    """atr_daily / atr_weekly / atr_monthly at `now`, with the reason of each that is absent."""
+    a = _atr(tk, now)
+    return {"atr_daily": a.daily, "atr_weekly": a.weekly, "atr_monthly": a.monthly,
+            "atr_daily_reason": a.daily_reason, "atr_weekly_reason": a.weekly_reason,
+            "atr_monthly_reason": a.monthly_reason}
 
 
 #: WHICH producer computed a set of levels. The radar deliberately merges two of them, and an
@@ -2126,12 +2130,13 @@ def get_terrain(ticker: str = Query(...)):
         # internal fields (the kept chain, the heatmap grid, per-strike rows) have their own routes
         out = {k: v for k, v in cached.items() if not k.startswith("_")}
         out.update(terrain_staleness(cached.get("computed_ts_utc"), tk))
+        out.update(_atr_fields(tk, now_et()))     # live: today's candle from the bars held now
         return out
     spot, spot_source, spot_ts = resolve_spot(tk)
     _why = _terrain_refresh_last_error.get(tk)
     return compute_terrain(tk, None, spot, now=now_et()).to_dict() | {
         "spot_source": spot_source, "spot_as_of_ts_utc": spot_ts,
-        **_atr_fields(tk),              # from the bars, which do not wait for a chain
+        **_atr_fields(tk, now_et()),    # from the candles and bars, which do not wait for a chain
         # RC-126: not_ready carries its REASON when the producer has one — an eternal
         # unexplained shrug is how $SPX stayed dark for a session.
         "error": ("terrain_not_ready: no chain from the daemon yet for this ticker"

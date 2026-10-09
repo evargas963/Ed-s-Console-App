@@ -98,8 +98,8 @@ def test_every_ticker_is_published_with_the_same_fields_and_atr_served_with_its_
     (from the bars, none here) served absent with its reason."""
     t = server.get_terrain(ticker=tk)
     assert t["chain_basis"] == CAPTURE_BASIS
-    assert t["atr_daily"] is None and "0 trading days" in t["atr_daily_reason"]
-    assert t["atr_15m"] is None and "0 15-minute periods" in t["atr_15m_reason"]
+    for horizon, unit in (("daily", "days"), ("weekly", "weeks"), ("monthly", "months")):
+        assert t[f"atr_{horizon}"] is None and f"0 {unit}" in t[f"atr_{horizon}_reason"], horizon
     assert _call(tk)["available"] is True
 
 
@@ -108,7 +108,7 @@ def test_with_no_levels_the_atr_is_served_with_its_reason():
     (here absent, with its reason)."""
     import server
     t = server.get_terrain(ticker="ZZNOLEVELSATR")
-    assert t["atr_daily"] is None and "0 trading days" in t["atr_daily_reason"]
+    assert t["atr_daily"] is None and "0 days" in t["atr_daily_reason"]
 
 
 def test_fallback_is_labelled_not_live_never_intraday():

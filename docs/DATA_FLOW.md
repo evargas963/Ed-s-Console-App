@@ -135,7 +135,7 @@ from Schwab to the screen (daemon, console, page), are these:
 | From → to | Channel | What travels |
 |---|---|---|
 | Schwab → daemon | Schwab's streamer WebSocket | equity quotes, option quotes, both order books, 1-minute bars, news — the fields that changed |
-| Schwab → daemon | Schwab REST | full option chains, each with its contracts' quotes (their Greeks, §3.4 Option chain); each ticker's price history: 1-minute bars, 15-minute and daily candles (§3.4 1-minute bar) |
+| Schwab → daemon | Schwab REST | full option chains, each with its contracts' quotes (their Greeks, §3.4 Option chain); each ticker's price history: 1-minute bars and daily candles (§3.4 1-minute bar) |
 | daemon → console | local WebSocket 127.0.0.1:8799 | each topic's current record the moment it changes (a quote merged field by field with each field's times in `field_ts`; a book, bar or news item whole), on connect every current record; never an older value behind a newer one (§2 D1, D3); each ticker's newest whole chain, in parts of 500 contracts (`chain.TK`: part i of n, with its fetch time; a failed fetch with Schwab's answer) |
 | console → daemon | same socket | the clean stop (`{"op": "stop"}`, sent by `launch.py stop`); the contract selected on the Flow panel (`{"op": "flow_contract", "contract": symbol or null}`: only one Schwab listed in a chain the console holds, refused otherwise (409)), sent first on every connection and the moment it changes; the daemon holds it in memory only. And each add or removal of a watchlist ticker the operator makes (`{"op": "watchlist", "action", "ticker", "id"}`), answered by the daemon's `watchlist` record carrying the same id |
 | daemon → browser | local WebSocket :8800 | on each subscribe, what every asked-for symbol is (its key, e.g. `$SPX`, and display name `SPX`, from `instrument_identity`); then the finished price row per symbol, on every change, plus a heartbeat every second: the daemon's whole status (Schwab socket, why it is not connected, symbols held per service, the watchlist, the chain sweep's last round time, health). The page matches rows by that key and shows that name; the market-context symbols come in the page (meta `ed-market-context`, from `live_push.MARKET_CONTEXT`) |
@@ -148,7 +148,7 @@ from Schwab to the screen (daemon, console, page), are these:
 | Place | Owner | What it holds |
 |---|---|---|
 | Daemon memory | daemon | the message bus: each topic's current record (one per symbol and service; an unsubscribed symbol's is forgotten) and each ticker's newest chain; the watchlist; the option rule's inputs and pick, and the Flow panel's contract; the equity quotes the browser's price row is built from |
-| Console memory | console | the daemon's price rows as pushed (the price, bid/ask, MARK — never rebuilt); a second copy of the books, option quotes and the equity tape (fed from 8799, §3.5 item 1); the chains the daemon delivered; the computed levels; each ticker's 1-minute bars (`server._bars`, the newest 24,000: Schwab's price history pushed by the daemon, each streamed bar on top) and 15-minute and daily candles (`server._candles`); every other live screen's history, loaded from `ed_console.db` once at startup and then fed live (§2 D6): level crosses (`server._crosses`), each option contract's newest 500 trade prints (`history.TAPE`) and each equity book of the last 240 minutes, one per second (`history.BOOKS`, from the console's start) |
+| Console memory | console | the daemon's price rows as pushed (the price, bid/ask, MARK — never rebuilt); a second copy of the books, option quotes and the equity tape (fed from 8799, §3.5 item 1); the chains the daemon delivered; the computed levels; each ticker's 1-minute bars (`server._bars`, the newest 24,000: Schwab's price history pushed by the daemon, each streamed bar on top) and daily candles (`server._daily`); every other live screen's history, loaded from `ed_console.db` once at startup and then fed live (§2 D6): level crosses (`server._crosses`), each option contract's newest 500 trade prints (`history.TAPE`) and each equity book of the last 240 minutes, one per second (`history.BOOKS`, from the console's start) |
 | `stream_capture.db` | daemon's writer | every raw Schwab message: quotes, books, option quotes, bars, news, price history answers (`stream_pricehistory_raw`), subscription answers; every message a write refused, kept as sent with its error (`stream_write_failures`: the writer's refused rows, and each chain whose history write was refused); how far each spill file's write-back got (`stream_spill_progress`) |
 | `stream_capture.<ms>.spill` (beside `stream_capture.db`) | daemon's writer | while the database refuses writes, the held messages past the memory cap, in order; deleted once written back and verified, kept when the write-back does not verify or a stop leaves it (§2 D4) |
 | `ed_console.db` | console, and the daemon (the chain captures) | 1-minute bars, level crosses, the former ticker board (`logging_universe`, read by nothing since the watchlist replaced it; it moves with the databases' merge, step 8), chain captures and a morning chain per ticker — plus the tables of the deleted ML pipeline (dropped in P2-DB3) |
@@ -199,20 +199,17 @@ from Schwab to the screen (daemon, console, page), are these:
   streams: every cell keeps its value and the header says OFFLINE; the console forgets the live
   values of a contract the daemon stops holding (`streaming._drop_released_options`). Tests:
   `tests/test_option_contract_rule_v1.py`.
-- **1-minute bar, 15-minute and daily candles.** Schwab's price history: the daemon's chain sweep
-  asks `/pricehistory` for each ticker after its chain (`complete_chain_capture.PRICE_HISTORY`,
+- **1-minute bar and daily candles.** Schwab's price history: the daemon's chain sweep
+  asks `/pricehistory` for each ticker (`complete_chain_capture.PRICE_HISTORY`,
   per `docs/schwab/schwab_market_data_parameters_pricehistory_markets.txt`, each request ending
-  now, extended hours included): the 1-minute bars (10 days) once per ET date, the 15-minute (10
-  days) and daily (1 year) candles by the stock session (operator 2026-10-08,
-  `ChainSweep.candles_due`): again and again while the stock market is in a window Schwab's
-  /markets sent for today (pre-market through post-market), once more at its close, then not
-  until it reopens -- every watchlist ticker, options listed or not; each answer whole, as Schwab sent it →
+  now, extended hours included): the 1-minute bars (10 days) and the daily candles (2 years) once
+  per ET date (`ChainSweep.candles_due`) -- every watchlist ticker, options listed or not; each answer whole, as Schwab sent it →
   daemon bus (`pricehistory.TK.SERIES`) → the daemon's writer (`stream_capture.db`
   `stream_pricehistory_raw`, every answer, as sent: recorded like every stream message, §2 D4) and
   → console (8799) → the bar writer. Schwab CHART_EQUITY → daemon bus → the daemon's writer
   (`stream_capture.db` `stream_bars_raw`, every bar every hour Schwab sends it), and → the console's
   bar writer. Console memory: `_bars`, Schwab's 1-minute history with each streamed bar standing
-  over its minute; `_candles`, the 15-minute and daily candles (the console reads no database
+  over its minute; `_daily`, the daily candles (the console reads no database
   for them, and writes no bar) → a `liquidity` push on `/api/changes` → the browser reads
   `/api/bars1m`. Enforced by: `tests/test_data_path_pricehistory_v1.py`. Charts show completed Schwab bars only, exactly as Schwab sent them, with
   the newest bar's minute (`last_bar`). The live Schwab LAST_PRICE (the header's price row, with
@@ -341,10 +338,12 @@ from Schwab to the screen (daemon, console, page), are these:
   wall states and leans, wall distances, flip side, headline) is computed in that one publication
   at that publication's price; `/api/terrain` serves it as published and recomputes nothing.
   A publication carries the same fields whatever its chain's source (a live download or a stored
-  capture), the ATR pair (from Schwab's daily and 15-minute candles) included. The day-over-day
+  capture). `/api/terrain` adds the daily, weekly and monthly ATR(14) when it is read (`server._atr`):
+  Schwab's daily candles before today, today's candle rolled up live from today's 1-minute bars
+  inside Schwab's regular window, and the weeks and months those make. The day-over-day
   open-interest change has one producer: the forces, from the stored captures (`/api/forces`,
-  shown on the Trade Desk). An ATR leg that cannot be computed is served absent with its reason
-  (how many trading days or 15-minute periods of Schwab's candles are held; ATR(14) needs 15). None of these rules names a ticker; the
+  shown on the Trade Desk). An ATR that cannot be computed is served absent with its reason
+  (how many days, weeks or months of Schwab's daily candles are held; ATR(14) needs 15). None of these rules names a ticker; the
   watchlist decides which tickers are fetched and priced. A viewed
   ticker is one an open page shows (its `/api/changes` stream, on any workspace, open while the
   stream runs): every streamed tick queues a reprice on the pricing thread (the ticks that arrive

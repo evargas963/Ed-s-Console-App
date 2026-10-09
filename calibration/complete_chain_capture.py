@@ -33,8 +33,7 @@ from numeric_contract import schwab_number
 from schwab_client import (GREEK_FIELDS, QUOTES_BATCH_MAX, flatten_chain_contracts, option_expiries,
                            safe_get_chain, safe_get_quotes)
 from stream_spine import CaptureWriter
-from time_et import (CLOSED, ET, EQUITY_OPTIONS, INDEX_OPTIONS, closed_since, options_closed_at, options_open,
-                     record_markets, session, session_label)
+from time_et import ET, EQUITY_OPTIONS, INDEX_OPTIONS, options_closed_at, options_open, record_markets, session
 
 log = logging.getLogger("chain_history")
 
@@ -163,10 +162,10 @@ def chain_messages(ticker: str, contracts: list[dict], fetched_ts: float) -> lis
 #: Schwab's price history of every ticker (GET /pricehistory,
 #: docs/schwab/schwab_market_data_parameters_pricehistory_markets.txt): series -> (periodType,
 #: period, frequencyType, frequency). Each request ends now (endDate; without it Schwab ends at the
-#: previous business day's close), extended hours included. The 1-minute bars once per ET date
-#: (the stream's CHART_EQUITY bars carry them on from there); the 15-minute and daily candles in
-#: every rotation, so the current candle is Schwab's latest.
-PRICE_HISTORY = {"1m": ("day", 10, "minute", 1), "15m": ("day", 10, "minute", 15), "1d": ("year", 1, "daily", 1)}
+#: previous business day's close), extended hours included. Both once per ET date: the 1-minute
+#: bars (the stream's CHART_EQUITY bars carry them on from there) and two years of daily candles
+#: (monthly ATR(14) needs 15 months; today's candle the console rolls up from the bars).
+PRICE_HISTORY = {"1m": ("day", 10, "minute", 1), "1d": ("year", 2, "daily", 1)}
 
 
 def price_history_message(ticker: str, series: str, answer: dict, fetched_ts: float) -> tuple[str, dict]:
@@ -228,11 +227,8 @@ class ChainSweep:
     quote's quoteTime. A Greek Schwab does not send is absent (None). Each contract carries the
     time of its Greeks as `greeksTime` ({field: Schwab's time, ms}).
 
-    The price history (candles, fetch_price_history) follows the stock market, not the options:
-    each watchlist ticker's 15-minute and daily candles are asked while the stock market is in a
-    window Schwab's /markets sent for today (pre-market through post-market) or today's answer is
-    not known, once more after its newest close they were not asked since, then not until it
-    opens again (candles_due); its 1-minute bars once per ET date with them.
+    The price history (candles, fetch_price_history): each watchlist ticker's 1-minute bars and
+    daily candles once per ET date (candles_due).
 
     The market's sessions (fetch_markets): Schwab's /markets answer for today and the
     MARKETS_DAYS_BACK days before it, and for each expiry date of the chains, each date asked
@@ -261,7 +257,6 @@ class ChainSweep:
         self.streamed = streamed        # option symbol -> its bus current (topic, record) or None
         self.round_sec: float | None = None
         self._expiries: "dict[str, tuple[date, list[date]]]" = {}   # ticker -> (ET date, expiries)
-        self._minutes_day: "dict[str, date]" = {}          # ticker -> the ET date its 1-minute bars came
         self._markets_day: "dict[str, date]" = {}          # market date -> the ET date Schwab answered it
         self._product: "dict[str, str]" = {}               # ticker -> its option market (EQO, IND)
         self._fetched: "dict[str, float]" = {}             # ticker -> when its newest delivered chain began
@@ -294,13 +289,8 @@ class ChainSweep:
                 stop.wait(1.0)
 
     def candles_due(self, ticker: str, now: datetime) -> bool:
-        """Whether `ticker`'s price history is asked for at `now`: the stock market in a window
-        Schwab's /markets sent for today, or today's answer not held, or closed with its newest
-        close after the ticker's newest whole price history began."""
-        if session_label(now) != CLOSED:
-            return True
-        closed = closed_since(now)
-        return closed is not None and (ticker not in self._candled or self._candled[ticker] < closed.timestamp())
+        """Whether `ticker`'s price history is asked for at `now`: not yet whole on this ET date."""
+        return ticker not in self._candled or datetime.fromtimestamp(self._candled[ticker], ET).date() < now.date()
 
     def chain_due(self, ticker: str, now: datetime) -> bool:
         """Whether `ticker`'s chain is asked for at `now`: its option market open, or today's
@@ -373,11 +363,8 @@ class ChainSweep:
         candles; a series Schwab does not answer 200 is not published (log_request has the answer)
         and the ticker's candles are asked again the next time they are due (candles_due)."""
         now = self.clock()
-        today = datetime.fromtimestamp(now, ET).date()
         whole = True
         for series, (period_type, period, frequency_type, frequency) in PRICE_HISTORY.items():
-            if series == "1m" and self._minutes_day.get(ticker) == today:
-                continue
             try:
                 resp = schwab_client().get_price_history(
                     ticker, period_type=period_type, period=period, frequency_type=frequency_type,
@@ -392,8 +379,6 @@ class ChainSweep:
                 whole = False
                 continue
             self.publish(*price_history_message(ticker, series, answer, self.clock()))
-            if series == "1m":
-                self._minutes_day[ticker] = today
         if whole:
             self._candled[ticker] = now
 
