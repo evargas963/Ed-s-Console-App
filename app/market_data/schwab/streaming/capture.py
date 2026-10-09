@@ -26,7 +26,7 @@ It does four things, in one loop:
              or the picked contracts is asked once: UNSUBS what left, then SUBS (a service's first
              request) or ADD what came. Nothing asked is asked again on this connection, whatever
              Schwab answered. Requests are split so none exceeds Schwab's 64 KB message limit
-             (measured 2026-09-22: a 71 KB request closed the socket).
+             (a larger request closes the socket).
   2. ANSWERS Every Schwab answer is matched to its own request by its requestid, logged and
              recorded (stream_subscriptions) exactly as sent -- a refused ADD is answered twice
              (code 19, then code 24 "ADD command failed"), and both are its answers.
@@ -37,7 +37,7 @@ It does four things, in one loop:
              is alive. None for DEAD_SEC, or a request unanswered for REQUEST_TIMEOUT_SEC:
              reconnect with backoff and subscribe once again. There is nothing else to recover.
 
-What Schwab offers (probed live 2026-09-25): LEVELONE_EQUITIES, CHART_EQUITY, NYSE_BOOK
+What Schwab offers (its answers on the live connection): LEVELONE_EQUITIES, CHART_EQUITY, NYSE_BOOK
 (exchange book), NASDAQ_BOOK (market-maker quotes), LEVELONE_OPTIONS, OPTIONS_BOOK and
 NEWS_HEADLINE answer code 0; both books accepted 30 symbols. TIMESALE_* and ACTIVES_* answer
 code 11 (not available) -- there is no trade-by-trade tape and no trade side.
@@ -126,7 +126,7 @@ EQUITY_SERVICES = ("LEVELONE_EQUITIES", "CHART_EQUITY", "NEWS_HEADLINE", "NYSE_B
 #: the option contracts the option rule picks are streamed on these (OptionPick)
 OPTION_SERVICES = ("LEVELONE_OPTIONS", "OPTIONS_BOOK")
 #: Schwab's limit on each option service, as its own refusals on the daemon's connection state it
-#: (2026-10-07: "(LEVELONE_OPTIONS=3000, DISCARDED=1)", "(OPTIONS_BOOK=100, DISCARDED=1)")
+#: ("(LEVELONE_OPTIONS=3000, DISCARDED=1)", "(OPTIONS_BOOK=100, DISCARDED=1)")
 OPTION_LIMITS = {"LEVELONE_OPTIONS": 3000, "OPTIONS_BOOK": 100}
 #: the market context every page's header shows (live_push.MARKET_CONTEXT) is streamed on these,
 #: whatever the watchlist holds
@@ -141,7 +141,7 @@ LEVELONE_FIELDS = {"BID_PRICE": "bid", "ASK_PRICE": "ask", "LAST_PRICE": "last",
 CHART_FIELDS = {"OPEN_PRICE": "open", "HIGH_PRICE": "high", "LOW_PRICE": "low",
                 "CLOSE_PRICE": "close", "VOLUME": "volume", "CHART_TIME_MILLIS": "bar_start_ms"}
 #: NEWS_HEADLINE is not in the Streamer Guide and schwab-py has no helper for it; these are
-#: the fields it answered with on 2026-09-25 (time, id, ..., headline, ..., categories).
+#: the fields it answers with (time, id, ..., headline, ..., categories).
 NEWS_FIELDS = tuple(range(0, 11))
 
 
@@ -291,8 +291,8 @@ def _publisher(service: str, bus: MessageBus, health: HealthRegistry):
 
 class _RawHandler:
     """schwab-py handler shape for a service it has no helper for (NEWS_HEADLINE). schwab-py
-    calls label_message on every handler of every frame; without it the call raised and the rest
-    of the frame -- prices included -- was dropped ("skipped a frame", 2026-09-26)."""
+    calls label_message on every handler of every frame; without it the call raises and the rest
+    of the frame -- prices included -- is dropped ("skipped a frame")."""
 
     def __init__(self, fn) -> None:
         self.fn = fn
