@@ -161,9 +161,12 @@ a file that does not exist, or names an ENF item that is not in `ACTIVE_PROGRAM.
 - Stop for: the operator's STOP / PAUSE / HANG IT UP / DO NOT CONTINUE / NO; a task marked AUDIT
   ONLY or DO NOT MERGE; a destructive data action; a product decision code cannot settle; an
   operator setting (a count, a rate, a switch) is never changed without the operator's explicit
-  yes to that change. Enforced by: the agent hook `tools/operator_yes_guard.py` puts a start,
-  stop or restart of the daemon or console, a merge and a push to main to the operator as an
-  Allow/Deny prompt (`tests/test_operator_yes_guard_v1.py`); the rest — ENF-12.
+  yes to that change. Enforced by: the agent hook `tools/operator_yes_guard.py`: a start or a
+  clean stop of the daemon or console passes while the market is Closed (Schwab's /markets
+  answer, `time_et.session_label`) and is put to the operator as an Allow/Deny prompt while a
+  session is open or unknown; killing the daemon, the console or launch.py is refused; a stop or
+  restart of the machine and a merge are put to the operator; a push to main is refused
+  (`tests/test_operator_yes_guard_v1.py`); the rest — ENF-12.
 - Production checkout `EdWebConsole`: `main == origin/main`, changed only by `git pull --ff-only`.
   Work in a worktree; main itself moves only by a PR merged on GitHub. Enforced by: the agent hook
   `tools/process_lock_guard.py` refuses an edit, a shell write or a git verb that moves it off
@@ -190,5 +193,7 @@ a file that does not exist, or names an ENF item that is not in `ACTIVE_PROGRAM.
 Console: `start_ed_console.bat` (`uvicorn server:app`, port 8000). Capture daemon:
 `start_capture_daemon.bat`. Python 3.13, the project `.venv`. Offline: `ED_CI_OFFLINE=1`,
 placeholder `SCHWAB_API_KEY` / `SCHWAB_APP_SECRET`. Live: `schwab_token.json`
-(`python reauth_schwab.py`). Probe `127.0.0.1`, never `localhost`. The agent may restart the
-console and the capture daemon, and confirms both came back.
+(`python reauth_schwab.py`). Probe `127.0.0.1`, never `localhost`. Clean stop of both:
+`python launch.py stop` (the daemon writes what it holds, then exits and is not restarted; the
+console runs its shutdown). The agent may restart the console and the capture daemon this way
+while the market is Closed, says so in chat first, and confirms both came back.
