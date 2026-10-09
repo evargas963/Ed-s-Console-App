@@ -1,5 +1,5 @@
 """Production is never behind origin/main, the daemon says which commit it started from, and its
-log keeps the days the database keeps.
+log keeps a file a day for LOG_DAYS_KEPT days.
 
 STAND-INS: local git repositories for GitHub's origin and the production checkout; a free local
 port for the daemon's browser socket (8800).
@@ -63,12 +63,16 @@ def test_production_behind_origin_main_or_a_daemon_from_another_commit_is_report
         behind = check(prod, url)
         _git(prod, "pull", "-q", "--ff-only")
         old_daemon = check(prod, url)
+        daemon.start_commit = _git(prod, "rev-parse", "HEAD")
+        daemon.health = None        # its status raises: every beat carries no feed, and the wait ends
+        no_status = check(prod, url)
     finally:
         done.set()
         server.join(10)
     assert at == []
     assert len(behind) == 1 and behind[0].startswith(f"the checkout {prod} is at ")
-    assert len(old_daemon) == 1 and old_daemon[0].startswith(f"the capture daemon started from {daemon.start_commit}")
+    assert len(old_daemon) == 1 and old_daemon[0].startswith("the capture daemon started from ")
+    assert no_status == []
     assert capture.start_commit() == _git(Path(capture.ROOT), "rev-parse", "HEAD")
 
 

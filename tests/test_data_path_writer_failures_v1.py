@@ -489,6 +489,41 @@ def test_a_spill_whose_write_back_does_not_verify_is_kept(tmp_path):
     assert (found["path"], found["written_back"]) == (str(path), kept["messages"])
 
 
+def test_a_spill_file_is_resumed_after_its_committed_part_and_a_crash_cut_message_is_lost(tmp_path):
+    """INDUCED CONDITIONS: two spill files beside the database, as a kill leaves them, holding the
+    captured option quotes: the older's first 4 records committed (its progress row says 4) and
+    half a record after its last whole one; the newer fully committed. A new writer writes the
+    older's other records once, in order, deletes it, counts the cut message lost once, and lists
+    the newer without writing it again."""
+    db = tmp_path / "stream_capture.db"
+    CaptureWriter(db)
+    records = [json.dumps({"topic": f"optquote.{_CONTRACT}", "msg": options_quote_msg(   # DATA_FLOW §2 D4's format
+        symbol=_CONTRACT, content=e["content"], src="schwab_stream", ts_recv=1790863200.0 + i)}).encode()
+        for i, e in enumerate(_EVENTS)]
+    older, newer = db.with_name("stream_capture.1.spill"), db.with_name("stream_capture.2.spill")
+    older.write_bytes(b"".join(len(r).to_bytes(4, "big") + r for r in records) + b"\x00\x00\x01")
+    newer.write_bytes(b"".join(len(r).to_bytes(4, "big") + r for r in records[:2]))
+    with sqlite3.connect(db) as conn:
+        conn.executemany("INSERT INTO stream_spill_progress(spill, written_back) VALUES(?,?)",
+                         [(older.name, 4), (newer.name, 2)])
+
+    async def go():
+        bus, stop = MessageBus(), asyncio.Event()
+        writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01)
+        task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
+        await _until(lambda: writer.status()["spill"] is None)
+        stop.set()
+        await task
+        return writer.status()
+    after = asyncio.run(go())
+
+    with sqlite3.connect(db) as conn:
+        stored = [ts for (ts,) in conn.execute("SELECT ts_recv FROM stream_options_quotes_raw ORDER BY rowid")]
+    assert stored == [1790863200.0 + i for i in range(4, len(_EVENTS))], "not the uncommitted records once, in order"
+    assert not older.exists() and newer.exists() and after["lost"] == 1
+    assert [(Path(k["path"]).name, k["written_back"]) for k in after["left_on_disk"]] == [(newer.name, 2)]
+
+
 #: production's stream in its real proportions: every message received 2026-10-05 14:00:00-14:00:03
 #: CT, as Schwab sent it (7,420 option quotes, 152 equity quotes, 12 books; read-only from
 #: stream_capture.db, provenance in the file)
@@ -550,10 +585,9 @@ def _pages_for_the_mix(db, *, indexes: bool) -> int:
 
 
 def test_the_indexes_add_no_more_pages_than_the_rows_they_index(tmp_path):
-    """Production wrote 561 rows a second into its 70 GB file on 2026-10-06 while Schwab sent
-    about 2,200: each insert also wrote a page of the per-symbol index of its table, and each of
-    the mix's 3,000-odd option symbols sits on a different page. The pages the indexes of the mix's
-    tables add for one copy of production's mix are no more than the pages of the rows themselves."""
+    """The pages the indexes of the mix's tables add for one copy of production's mix are no more
+    than the pages of the rows themselves (an index by symbol puts each of the mix's 3,000-odd
+    option symbols on a page of its own, one written per row)."""
     rows = _pages_for_the_mix(tmp_path / "rows" / "stream_capture.db", indexes=False)
     indexed = _pages_for_the_mix(tmp_path / "indexed" / "stream_capture.db", indexes=True)
     assert indexed - rows <= rows, f"the indexes wrote {indexed - rows} pages for {rows} pages of rows"
@@ -679,7 +713,7 @@ def test_a_writer_that_dies_with_a_spill_file_lists_it_and_counts_its_messages(t
                                      "bytes": spilled["bytes"], "written_back": 0}]
     assert Path(spilled["path"]).exists() and dead["spill"] is None
     assert dead["unrecorded"] == held["waiting"], "messages still in the spill file counted not recorded"
-    assert (f"left on disk, not written back: {Path(spilled['path']).name} ({spilled['messages']} messages, "
+    assert (f"left on disk: {Path(spilled['path']).name} ({spilled['messages']} messages, "
             f"{spilled['bytes']:,} bytes, 0 written back)") in dead["line"]
 
 

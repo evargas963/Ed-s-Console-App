@@ -1,5 +1,4 @@
-"""The console's log file is bounded: rotated at 50 MB, one previous file kept. The plain file
-reached 1.3 GB (production logs/ed_server.log, measured 2026-09-27)."""
+"""The console's log file is bounded: rotated at 50 MB, one previous file kept."""
 import logging
 from logging.handlers import RotatingFileHandler
 

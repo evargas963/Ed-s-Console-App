@@ -55,8 +55,7 @@ CREATE TABLE IF NOT EXISTS stream_quotes_raw (
     native_json TEXT
 );
 -- Quotes, books and option quotes arrive in receipt order, thousands of symbols a second: indexed
--- by receipt time, which grows at one end; an index by symbol wrote a page of its own per row.
-DROP INDEX IF EXISTS idx_sqr_sym_ts;
+-- by receipt time, which grows at one end, so an insert writes few index pages.
 CREATE INDEX IF NOT EXISTS idx_sqr_ts ON stream_quotes_raw(ts_recv);
 CREATE TABLE IF NOT EXISTS stream_book_raw (
     ts_recv REAL NOT NULL,
@@ -65,7 +64,6 @@ CREATE TABLE IF NOT EXISTS stream_book_raw (
     native_json TEXT NOT NULL,
     src TEXT NOT NULL
 );
-DROP INDEX IF EXISTS idx_sbkr_sym_ts;
 CREATE INDEX IF NOT EXISTS idx_sbkr_ts ON stream_book_raw(ts_recv);
 CREATE TABLE IF NOT EXISTS stream_options_quotes_raw (
     ts_recv REAL NOT NULL,
@@ -73,7 +71,6 @@ CREATE TABLE IF NOT EXISTS stream_options_quotes_raw (
     native_json TEXT NOT NULL,
     src TEXT NOT NULL
 );
-DROP INDEX IF EXISTS idx_soqr_sym_ts;
 CREATE INDEX IF NOT EXISTS idx_soqr_ts ON stream_options_quotes_raw(ts_recv);
 CREATE TABLE IF NOT EXISTS stream_bars_raw (
     ts_recv REAL NOT NULL,
@@ -573,7 +570,7 @@ def _record_line(s: dict) -> "tuple[str, str]":
                   f"{Path(f['path']).name}, {f['written_back']} written back" for f in [spill, *s["spills_after"]]]
     parts += [f"spill kept: {k['reason']} ({Path(k['path']).name}, {k['written_back']} of "
               f"{k['messages']} written back)" for k in s["spills_kept"]]
-    parts += [f"left on disk, not written back: {Path(k['path']).name} ({k['messages']} messages, "
+    parts += [f"left on disk: {Path(k['path']).name} ({k['messages']} messages, "
               f"{k['bytes']:,} bytes, {k['written_back']} written back)" for k in s["left_on_disk"]]
     if s["lost"]:
         lost = f"LOST {s['lost']} messages"
@@ -659,11 +656,10 @@ class _Spill:
     """One append-only spill file: each record a 4-byte big-endian length and the record's JSON.
     Appended in arrival order; written back from the start, `read_at` advancing at each commit."""
 
-    def __init__(self, path: Path, *, append: bool = True):
+    def __init__(self, path: Path):
         self.path = path
-        self.out = open(path, "ab", buffering=0) if append else None   # a found file is only read
+        self.out = open(path, "ab", buffering=0)
         self.size = 0                  # bytes of whole records written
-        self.cut = 0                   # a found file: bytes after its last whole record (a crash cut them)
         self.messages = 0
         self.read_at = 0               # bytes written back and committed
         self.written_back = 0
@@ -717,11 +713,12 @@ class _Spill:
         self.read_at = end
 
     @classmethod
-    def found(cls, path: Path, written_back: int) -> "_Spill":
-        """A spill file an earlier writer left beside the database: its whole records, and where
-        its write-back resumes, after the `written_back` records its stream_spill_progress row
-        counts as committed (no row: none of it was)."""
-        spill = cls(path, append=False)
+    def found(cls, path: Path, written_back: int) -> "tuple[_Spill, int]":
+        """A spill file an earlier writer left beside the database: its whole records, where its
+        write-back resumes (after the `written_back` records its stream_spill_progress row counts
+        as committed; no row: none of it was), and the bytes a crash left after its last whole
+        record, cut from the file (the message they began is lost)."""
+        spill = cls(path)
         disk = path.stat().st_size
         with open(path, "rb") as f:
             while spill.size + 4 <= disk:
@@ -732,12 +729,13 @@ class _Spill:
                 spill.size, spill.messages = end, spill.messages + 1
                 if spill.messages == written_back:
                     spill.read_at = end
-        spill.written_back, spill.cut = written_back, disk - spill.size
-        return spill
+        spill.written_back = written_back
+        spill.out.truncate(spill.size)
+        return spill, disk - spill.size
 
     def left(self) -> dict:
-        """The spill file as listed when it is left on disk unwritten."""
-        return {"path": str(self.path), "messages": self.messages, "bytes": self.size + self.cut,
+        """The spill file as listed when it is left on disk."""
+        return {"path": str(self.path), "messages": self.messages, "bytes": self.size,
                 "written_back": self.written_back}
 
     def status(self) -> dict:
@@ -746,8 +744,7 @@ class _Spill:
                 "written_back": self.written_back}
 
     def close(self) -> None:
-        if self.out is not None:
-            self.out.close()
+        self.out.close()
         if self._in is not None:
             self._in.close()
 
@@ -847,14 +844,18 @@ class CaptureWriter:
             conn.close()
         # spill files an earlier writer left beside the database (each named for when it began, so
         # oldest first) hold the oldest messages there are: written back first, each from after
-        # its committed parts. One whose every record is committed is a write-back that did not
-        # verify, or ended between its last part and its deletion: listed, not written again.
+        # its committed parts; new messages go after the newest. One whose every record is
+        # committed is a write-back that did not verify, or ended between its last part and its
+        # deletion: listed, not written again.
         self.left_on_disk: list = []
         for f in sorted(p.parent.glob(f"{p.stem}.*.spill")):
-            spill = _Spill.found(f, progress[f.name] if f.name in progress else 0)
+            spill, cut = _Spill.found(f, progress[f.name] if f.name in progress else 0)
+            if cut:
+                self._lose(None, ValueError(f"{f.name}: {cut} bytes after its last whole record"))
             if spill.written_back < spill.messages:
                 self._spills.append(spill)
             else:
+                spill.close()
                 self.left_on_disk.append(spill.left())
 
     def insert(self, topic: str, msg: dict, *, conn: "sqlite3.Connection | None" = None):
@@ -1135,9 +1136,9 @@ class CaptureWriter:
                 self._lose(item, refused)
 
     def _tail(self) -> _Spill:
-        """The spill file new messages go to: the newest, when this writer opened it; else a new
-        one, named for now (a file found at start is only read). Raises the disk's refusal."""
-        if self._spills and self._spills[-1].out is not None:
+        """The spill file new messages go to: the newest; a new one, named for now, when there is
+        none. Raises the disk's refusal."""
+        if self._spills:
             return self._spills[-1]
         path = self.db_path.with_name(f"{self.db_path.stem}.{int(time.time() * 1000)}.spill")
         spill = _Spill(path)
@@ -1204,8 +1205,6 @@ class CaptureWriter:
         else:
             log.error("stream writer: %s kept, %d of its %d records written back: %s",
                       spill.path, spill.written_back, spill.messages, reason)
-        if spill.cut:                      # a message a crash cut off after the last whole record
-            self._lose(None, ValueError(f"{spill.path.name}: {spill.cut} bytes after its last whole record"))
         with self._lock:
             if reason is not None:
                 self.spills_kept.append({"path": str(spill.path), "reason": reason,

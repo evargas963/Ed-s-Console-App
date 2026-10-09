@@ -756,7 +756,7 @@ def release_owner_lock(fd: int, lock: Path) -> None:
         lock.unlink(missing_ok=True)
 
 
-#: days of the daemon's log kept, one file a day: the days the database keeps
+#: days of the daemon's log kept, one file a day (the operator's setting)
 LOG_DAYS_KEPT = 45
 
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 from websockets.exceptions import WebSocketException
@@ -18,6 +19,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from runtime_layout import RUNTIME_ROOT  # noqa: E402
 
 DAEMON = "ws://127.0.0.1:8800"
+#: the longest the daemon's heartbeat is waited for (it beats every second, live_ui.HEARTBEAT_SEC)
+BEAT_WAIT_SEC = 10.0
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -27,14 +30,19 @@ def _git(repo: Path, *args: str) -> str:
 
 def check(repo: Path, daemon: str) -> "list[str]":
     """Each way `repo` and the daemon at `daemon` are behind origin/main; none when neither is."""
-    _git(repo, "fetch", "--quiet", "origin", "main")
+    try:
+        _git(repo, "fetch", "--quiet", "origin", "main")
+    except subprocess.SubprocessError as e:
+        return [f"origin could not be fetched ({type(e).__name__}: {e})"]
     head, main = _git(repo, "rev-parse", "HEAD"), _git(repo, "rev-parse", "origin/main")
     behind = [] if head == main else [f"the checkout {repo} is at {head[:12]}, origin/main at {main[:12]}"]
+    deadline = time.monotonic() + BEAT_WAIT_SEC
     try:
-        with connect(daemon, open_timeout=5) as ws:   # it beats every second (live_ui.HEARTBEAT_SEC)
-            while (beat := json.loads(ws.recv(timeout=5))).get("type") != "feed" or beat["feed"] is None:
+        with connect(daemon, open_timeout=BEAT_WAIT_SEC) as ws:
+            while (beat := json.loads(ws.recv(timeout=deadline - time.monotonic()))).get("type") != "feed" \
+                    or beat["feed"] is None:
                 pass
-    except (OSError, TimeoutError, WebSocketException) as e:
+    except (OSError, TimeoutError, ValueError, WebSocketException) as e:
         print(f"capture daemon: no heartbeat at {daemon} ({type(e).__name__}: {e})")
         return behind
     if beat["feed"].get("start_commit") != head:
