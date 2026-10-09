@@ -11,7 +11,5 @@ if not exist "%VENV_PY%" (
     exit /b 1
 )
 
-REM launch.py stop ends the console (its process group alone) and launch.py with 0, and this window
-REM closes; it stays open on an error, so its message can be read.
 "%VENV_PY%" launch.py
-if errorlevel 1 pause
+pause

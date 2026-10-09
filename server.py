@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import ctypes
 import os
 import signal
 import sqlite3
@@ -252,10 +251,6 @@ def _install_signal_handlers() -> None:
     # the exit fell through to Python's default and waited on whatever background worker was
     # blocked. Ctrl+Break is the operator's second lever when Ctrl+C is being swallowed, so it
     # must reach the same bounded path. `getattr` because SIGBREAK is Windows-only.
-    # The launcher starts the console in a process group of its own (launch.start_console), which
-    # Windows starts with Ctrl+C switched off; switched back on, the operator's Ctrl+C stops it.
-    if sys.platform == "win32":
-        ctypes.windll.kernel32.SetConsoleCtrlHandler(None, False)
     _sigs = [signal.SIGINT, signal.SIGTERM]
     _sigbreak = getattr(signal, "SIGBREAK", None)
     if _sigbreak is not None:
