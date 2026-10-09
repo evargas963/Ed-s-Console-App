@@ -52,8 +52,9 @@ def in_use(port: int) -> bool:
 
 
 def running(mark: str) -> "list[psutil.Process]":
-    """The processes whose command line carries `mark`."""
-    return [p for p in psutil.process_iter(["cmdline"]) if mark in " ".join(p.info["cmdline"] or ())]
+    """The processes whose command line carries `mark` (one whose line cannot be read carries none)."""
+    return [p for p in psutil.process_iter(["cmdline"])
+            if p.info["cmdline"] is not None and mark in " ".join(p.info["cmdline"])]
 
 
 def ctrl_c(pid: int) -> None:
