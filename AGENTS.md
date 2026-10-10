@@ -55,7 +55,8 @@ a file that does not exist, or names an ENF item that is not in `ACTIVE_PROGRAM.
    Enforced by: `tests/test_live_quote_and_order_flow_no_fallbacks_v1.py`,
    `tests/test_gamma_exposure_honest_absence_v1.py`, and `docs/DATA_FLOW.md` §2 D5.
 6. **One path.** Schwab → daemon memory → pushed to the screen. The database is history: one
-   writer; read at startup, after the close and for research; never for a live screen.
+   writer, the traded options and every equity message, five trading sessions (DATA_FLOW D4);
+   read at startup, after the close and for research; never for a live screen.
    Enforced by: `docs/DATA_FLOW.md` §2 D1–D6, each with its own test.
 7. **Nothing without a job.** A change deletes what it replaces, in the same PR. A register, audit,
    report or check lives only while it has a job; once answered, it is deleted.

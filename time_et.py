@@ -153,6 +153,16 @@ def last_open(now: datetime) -> datetime | None:
     return max(begun) if begun else None
 
 
+def sessions_since(now: datetime, n: int) -> datetime | None:
+    """The start (00:00 ET) of the `n`th newest date Schwab's /markets says the market was open
+    whose regular session has begun by `now`, so the newest `n` sessions run from it; None when
+    fewer than `n` such dates are held."""
+    begun = sorted(s.day for s in _sessions.values() if s.is_open and any(start <= now for start, _end in s.regular))
+    if len(begun) < n:
+        return None
+    return datetime.combine(date.fromisoformat(begun[-n]), datetime.min.time(), ET)
+
+
 def prior_trading_day(day: date) -> date | None:
     """The newest date before `day` Schwab's /markets says the stock market was open; None when
     no answer held says so."""
