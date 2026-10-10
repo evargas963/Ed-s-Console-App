@@ -21,6 +21,12 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+      - id: fixture-provenance
+        name: a captured fixture equals the record it names
+        entry: python tools/run_with_repo_venv.py tools/check_fixture_provenance.py
+        language: system
+        pass_filenames: false
+        files: ^tests/fixtures/.*\.json$
       - id: ruff-correctness
         name: ruff (F401, F821, E9)
         entry: python -m ruff check . --select F401,F821,E9
