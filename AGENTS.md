@@ -173,8 +173,8 @@ a file that does not exist, or names an ENF item that is not in `ACTIVE_PROGRAM.
   writes `refs/heads/main` (`tests/test_hook_chain_v1.py`).
 - Never: `git reset`, `git checkout --`, `git stash`, force push. Enforced by: the agent hook
   `tools/process_lock_guard.py` (`tests/test_reset_guard_v1.py`).
-- Never: `--no-verify`, `git add -A` / `.`, deleting or moving anything under `data/` or
-  `backups/`. Enforced by: the agent hook `tools/operator_law_guard.py`
+- Never: `--no-verify`, `git add -A` / `.`, deleting or moving anything under `data/`.
+  Enforced by: the agent hook `tools/operator_law_guard.py`
   (`tests/test_operator_law_guard_action_bans_v1.py`, `tests/test_protected_paths_v1.py`).
 - Never edit source through a script: edits are made one at a time, as written; a block too long
   for one edit is removed in consecutive edits. Enforced by: the agent hook

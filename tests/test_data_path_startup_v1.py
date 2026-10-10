@@ -14,8 +14,10 @@ import sys
 import time
 from pathlib import Path
 
+import pytest
 from websockets.asyncio.client import connect
 
+import db
 import live_market_plane as lmp
 import server
 from app.market_data.schwab.streaming import capture
@@ -120,3 +122,11 @@ def test_a_module_that_fails_to_load_leaves_its_reason_in_the_daemons_log(tmp_pa
     assert done.returncode == 1
     assert "capture daemon loading (pid " in log
     assert "ModuleNotFoundError: No module named 'schwab'" in log, log
+
+
+def test_a_database_path_under_backups_is_refused_as_any_other_non_canonical_path(tmp_path):
+    """No database backups are kept (operator 2026-10-10): a path under backups/db/ is no class
+    of its own. The console's database (db.EdDB) refuses it as it refuses every path but the
+    canonical one, named unknown."""
+    with pytest.raises(ValueError, match=r"classification=unknown"):
+        db.EdDB(tmp_path / "backups" / "db" / "ed_console.db", allow_noncanonical=False)

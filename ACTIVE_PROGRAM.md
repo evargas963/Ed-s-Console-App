@@ -177,5 +177,4 @@ producer, with a behavior test that fails if the second one returns.
 
 | ID | Item |
 |---|---|
-| RECON-02 | `Trading/_disk_cleanup_quarantine_20260716` (53 GB): about 50 GB is old copies of the database (2026-05-27, 06-10, 06-11 and a 16 GB `db_backups` folder) and about 3 GB old report copies. They are the only database backups, so they are purged, on the operator's word, only after the P2-DB3 copy is made and verified. |
 | RUNTIME-SEPARATION | Move the runtime state (database, logs, token, diagnostics) out of the production checkout into a runtime folder. |

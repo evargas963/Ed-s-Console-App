@@ -29,16 +29,17 @@ def test_appdata_redirect_not_protected_tree():
 @pytest.mark.parametrize("cmd", [
     "rm data/ed_console.db",
     "> data/x.db",
-    "mv backups/a b",
+    "mv data/ed_console.db b",
 ])
 def test_real_protected_tree_targets_still_block(cmd):
     assert G._protected_path_violation(cmd) is True, cmd
 
 
 @pytest.mark.parametrize("cmd", [
-    "cp backups/db/x.db data/ed_console.db",          # a restore INTO the tree is legal
+    "cp /tmp/x.db data/ed_console.db",                # a restore INTO the tree is legal
     "git commit -m 'RC-273: refused rm data/ed_console.db'",   # a message describing it
     "ls data/",
+    "rm backups/db/x.db",                             # backups/ is no protected tree (no backups are kept)
 ])
 def test_protected_tree_permits_restores_messages_and_reads(cmd):
     assert G._protected_path_violation(cmd) is False, cmd
