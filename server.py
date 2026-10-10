@@ -404,7 +404,7 @@ def _write_streamed_bars(msgs: list, now: datetime) -> None:
     """Write streamed bars and price histories (a message with a `series`), then build the price
     levels of each ticker whose 1-minute bars were written, for the market's session at `now`:
     everything that arrived together is written before any level is built (a minute's bars for
-    the whole board arrive together)."""
+    the whole watchlist arrive together)."""
     written = []
     for msg in msgs:
         try:
@@ -616,16 +616,16 @@ _CROSS_WORD = {"up": "above", "down": "below"}
 
 
 #: every ticker's newest CROSSES_KEPT level crosses, newest last, as stored rows: loaded from
-#: level_crosses once the board is known (_load_crosses), then each cross as it is recorded
+#: level_crosses once the watchlist is known (_load_crosses), then each cross as it is recorded
 #: (_log_level_crosses). Every live reader reads this, never the database (DATA_FLOW §2 D6).
 CROSSES_KEPT = 1600
 _crosses: "dict[str, list[dict]]" = {}
 _crosses_lock = threading.Lock()
 
 
-def _load_crosses(board: "list[str]") -> None:
+def _load_crosses(watchlist: "list[str]") -> None:
     """The one database read of the level crosses, at startup."""
-    for tk in board:
+    for tk in watchlist:
         rows = get_db().get_recent_crosses(ticker=tk, n=CROSSES_KEPT)
         with _crosses_lock:
             held = _crosses.setdefault(tk, [])     # a cross recorded before the load stays newest
