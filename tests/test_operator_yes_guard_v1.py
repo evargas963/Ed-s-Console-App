@@ -1,4 +1,4 @@
-"""tools/operator_yes_guard.py (CLAUDE.md rule 6). A start or a clean stop of the daemon or the
+"""tools/operator_yes_guard.py (CLAUDE.md rule 5). A start or a clean stop of the daemon or the
 console is put to the operator (Allow/Deny) during regular market hours and while the session is
 unknown, and passes in Pre-Market, After-Hours and Closed; killing the daemon, the console or launch.py is refused, whatever its flags; a
 stop of any other process passes; a stop of the machine and a merge ask; a push to main is
