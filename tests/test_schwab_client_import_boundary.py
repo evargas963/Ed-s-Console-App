@@ -80,7 +80,7 @@ with TestClient(server.app) as client:
         # /api/changes is an open-ended event stream (it reads only the push's own state)
         if "GET" in (getattr(route, "methods", None) or ()) and "{" not in route.path and route.path != "/api/changes":
             client.get(route.path, params={"ticker": "SPY", "contract": "SPY   261120C00875000"})
-assert server.terrain_cache_get("SPY") is not None, "the daemon's chain was priced"
+assert server.terrain_cache_get("SPY", fx["capture_ts_utc"]) is not None, "the daemon's chain was priced"
 """
 
 

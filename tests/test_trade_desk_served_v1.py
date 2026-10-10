@@ -3,13 +3,13 @@ Schwab's SPY 1-minute bars (2026-09-24/25), SPY level crosses (2026-09-09..25), 
 and the SPY 0DTE and CRWD chains (tests/fixtures). Expected values are worked out here from the
 fixtures themselves."""
 import json
-import time
 from datetime import datetime
 from pathlib import Path
 
 import pytest
 
 import live_market_plane as lmp
+import live_price_rows
 import server
 import time_et
 from app.options.order_flow import streaming as ofs
@@ -18,7 +18,6 @@ from instrument_identity import ticker_storage_key
 from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS
 from micro_structure import Candle
 from terrain_engine import compute_terrain
-from tests.feed_live_helper import mark_feed_live, publish_daemon_rows
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 
@@ -214,15 +213,16 @@ def _priced(tk, chain, spot, ts_utc):
     server._publish_levels(tk, captures=[{"et_date": datetime.fromtimestamp(ts_utc, time_et.ET).date().isoformat(),
                                           "ts_utc": ts_utc, "spot": spot, "basis": CAPTURE_BASIS,
                                           "contracts": [dict(c) for c in chain]}])
-    return server.terrain_cache_get(tk)
+    return server.terrain_cache_get(tk, ts_utc)
 
 
 def _live_price(tk, last):
-    """Schwab's LAST_PRICE through the daemon's price row, its feed live (the daemon beats every
-    second, so each read is marked live again)."""
-    mark_feed_live(tk)
-    lmp.record_from_level_one_equity(tk, {"LAST_PRICE": last}, received_ts=time.time())
-    publish_daemon_rows(tk)
+    """Schwab's LAST_PRICE through the daemon's price row, its feed live at FRIDAY_CLOSE (the time
+    the levels are served at)."""
+    at = FRIDAY_CLOSE.timestamp()
+    lmp.record_feed_heartbeat({"ts": at, "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [tk]}})
+    lmp.record_from_level_one_equity(tk, {"LAST_PRICE": last}, received_ts=at)
+    ofs._price_rows[tk] = live_price_rows.price_row(tk, at)
 
 
 @pytest.fixture
@@ -361,10 +361,11 @@ def test_after_the_close_the_levels_are_measured_from_schwabs_last_trade(spy_lev
     schwab gives us and we display it"): the levels are ordered, and their distance measured, from
     it, carrying its trade time. Real SPY 1-minute bars (2026-10-01 and 02); the last trade is the
     one the daemon captured on Friday 10-02 (its newest SPY message that evening)."""
-    mark_feed_live(DESK)
+    at = FRIDAY_CLOSE.timestamp()
+    lmp.record_feed_heartbeat({"ts": at, "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [DESK]}})
     lmp.record_from_level_one_equity(DESK, {"LAST_PRICE": 769.5, "TRADE_TIME_MILLIS": 1790983830151},
-                                     received_ts=time.time())
-    publish_daemon_rows(DESK)
+                                     received_ts=at)
+    ofs._price_rows[DESK] = live_price_rows.price_row(DESK, at)
     body = server.levels_payload(DESK, "1", FRIDAY_CLOSE)
     priced = [r for r in body["levels"] if r["price"] is not None]
     assert len(priced) > 5 and body["spot"] == 769.5 and body["spot_as_of_ts_utc"] == 1790983830.151
