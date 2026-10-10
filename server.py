@@ -1533,7 +1533,9 @@ def get_terrain_strikes(ticker: str = Query(...), scope: ScopeQuery = "auto", ce
     # Reading it here costs ZERO additional vendor calls. The archive is demoted to the
     # prior-day ghost, which is the one thing it is genuinely correct for.
     try:
-        _snap = terrain_cache_get(tk, now) or {}
+        cached = terrain_cache_get(tk, now)
+        if cached is not None:
+            _snap = cached
         _ps = _snap.get("_per_strike") or {}
         # the terrain loop hands over FINISHED rows ({all,near,far} of
         # [strike, net_gex_1pct$, volume]); they are served as-is
@@ -1701,8 +1703,8 @@ def aggregate_bars(bars: list[dict], tf: str) -> list[dict]:
 def _strike_bar_payload(tk: str, key: str, scope: str, centre, shift: int, method: str, now: float):
     """A per-strike bar panel's answer at `now` (vanna, charm): the published rows `key`,
     windowed for the panel (_windowed), with the live price and the strike nearest it."""
-    payload = terrain_cache_get(tk, now) or {}
-    if key not in payload:
+    payload = terrain_cache_get(tk, now)
+    if payload is None or key not in payload:
         return JSONResponse({"ticker": tk, "available": False,
                              "reason": "no levels published for this ticker yet"})
     rows = payload[key]
@@ -1814,7 +1816,8 @@ def get_order_flow_book_heatmap(ticker: str = Query(...),
 def get_forces(ticker: str = Query(...)):
     """The ticker's forces, as the levels producer computed them from its chain captures."""
     tk = ticker_storage_key(_required_ticker(ticker))
-    forces = (terrain_cache_get(tk, time.time()) or {}).get("_forces")
+    cached = terrain_cache_get(tk, time.time())
+    forces = cached.get("_forces") if cached is not None else None
     return JSONResponse(forces if forces is not None else {
         "ticker": tk, "available": False, "reason": "no levels published for this ticker yet"})
 
@@ -2103,7 +2106,8 @@ def gamma_surface_payload(tk: str, scope: str, centre, shift: int, cols: "int | 
     _requested = _gamma_surface_wanted(tk)
     _watched = _watchlist(now.timestamp())     # None: the daemon's heartbeat is not current
     _warming = _watched is not None and tk in _watched
-    _levels_why = terrain_staleness((live or {}).get("computed_ts_utc"), tk, now=now.timestamp())["levels_stale_reason"]
+    _levels_why = terrain_staleness(live.get("computed_ts_utc") if live is not None else None, tk,
+                                    now=now.timestamp())["levels_stale_reason"]
     if _watched is None:     # the daemon not reporting is the cause of every other absence: first
         _why = ["the capture daemon is not reporting (no current heartbeat): its watchlist is unknown",
                 _levels_why]
@@ -2431,7 +2435,10 @@ def get_expiries(ticker: str = Query(...)):
     daysToExpiration, as sent); with none, the levels' own reason."""
     ticker = ticker_storage_key(_required_ticker(ticker))   # SPX -> $SPX: the cache's own key
     now = time.time()
-    t = terrain_cache_get(ticker, now) or {}
+    t = terrain_cache_get(ticker, now)
+    if t is None:
+        return JSONResponse({"expiries": [], "dte": {}, "labels": {},
+                             "reason": terrain_staleness(None, ticker, now=now)["levels_stale_reason"]})
     exps, dte = t.get("expiries") or [], t.get("expiry_dte") or {}
     labels = {e: f"{e[5:7]}/{e[8:10]}/{e[:4]}" + (f" · {dte[e]:g}DTE" if dte.get(e) is not None else "")
               for e in exps}
@@ -2439,6 +2446,10 @@ def get_expiries(ticker: str = Query(...)):
                          "reason": None if exps else (terrain_staleness(None, ticker, now=now)["levels_stale_reason"]
                                                       if not t else "no expiry listed in the published chain")})
 
+
+
+#: /api/chain's reason while no chain of the ticker is held and no chain error is recorded
+NO_CHAIN_YET = "the daemon has not delivered this ticker's chain yet"
 
 
 @app.get("/api/chain")
@@ -2451,8 +2462,10 @@ def get_chain(ticker: str = Query(...),
     Answers `status: unavailable` with a reason when no chain is held."""
     t = ticker_storage_key(_required_ticker(ticker))
     now = time.time()
-    held = terrain_cache_get(t, now) or {}
-    resolved_expiry = (expiry or "").strip()[:10] or (held.get("expiries") or [None])[0]
+    held = terrain_cache_get(t, now)
+    listed = held.get("expiries") if held is not None else None
+    requested = expiry.strip()[:10] if expiry else None
+    resolved_expiry = requested or (listed[0] if listed else None)
 
     def _unavailable(reason: str) -> JSONResponse:
         return JSONResponse({"ticker": t, "spot": None, "expiry": resolved_expiry,
@@ -2460,10 +2473,10 @@ def get_chain(ticker: str = Query(...),
                              "scope": {"kind": "unavailable", "requested_expiry": resolved_expiry,
                                        "reason": reason}})
 
-    chain = held.get("_chain")
+    chain = held.get("_chain") if held is not None else None
     if not chain:
-        return _unavailable(held.get("error") or _terrain_refresh_last_error.get(t)
-                            or "the daemon has not delivered this ticker's chain yet")
+        return _unavailable((held.get("error") if held is not None else None) or _terrain_refresh_last_error.get(t)
+                            or NO_CHAIN_YET)
     if resolved_expiry is None:
         return _unavailable("no listed expiry for this ticker")
     contracts = [c for c in chain if str(c.get("expirationDate") or "")[:10] == resolved_expiry]
@@ -2796,9 +2809,10 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict:
         }
         levels.append(row)
     # the gamma family, carried from the terrain (terrain_engine.compute_terrain's own values)
-    t = terrain_cache_get(tk, now.timestamp()) or {}
-    em = (t.get("implied_1d_move") or {}).get("points")
-    carried = [(gid, label, "gamma", t.get(gid)) for gid, label in GAMMA_LEVELS]
+    t = terrain_cache_get(tk, now.timestamp())
+    move = t.get("implied_1d_move") if t is not None else None
+    em = move.get("points") if move is not None else None
+    carried = [(gid, label, "gamma", t.get(gid) if t is not None else None) for gid, label in GAMMA_LEVELS]
     carried += [("em_up", "+1σ move", "expected_move", None if em is None or spot is None else spot + em),
                 ("em_dn", "−1σ move", "expected_move", None if em is None or spot is None else spot - em)]
     for gid, label, fam, price in carried:
