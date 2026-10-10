@@ -656,9 +656,9 @@ class _Spill:
     """One append-only spill file: each record a 4-byte big-endian length and the record's JSON.
     Appended in arrival order; written back from the start, `read_at` advancing at each commit."""
 
-    def __init__(self, path: Path, mode: str = "ab"):
+    def __init__(self, path: Path, mode: "str | None" = "ab"):
         self.path = path
-        self.out = open(path, mode, buffering=0)
+        self.out = open(path, mode, buffering=0) if mode is not None else None   # None: read only (found)
         self.size = 0                  # bytes of whole records written
         self.messages = 0
         self.read_at = 0               # bytes written back and committed
@@ -733,8 +733,9 @@ class _Spill:
         after the `written_back` records its stream_spill_progress row counts as committed (no row:
         none of it was; a count past its whole records: all of them). Bytes after its last whole
         record (a crash cut a record off, or a damaged length) are its last message, kept as sent
-        when the write-back reaches them (read). It reads the file only: nothing is written."""
-        spill = cls(path)
+        when the write-back reaches them (read). It is read only: nothing is appended to it, so no
+        new message lands behind bytes that frame nothing (new ones go to a new spill file)."""
+        spill = cls(path, None)
         disk, whole = path.stat().st_size, 0
         with open(path, "rb") as f:
             while whole + 4 <= disk:
@@ -745,8 +746,8 @@ class _Spill:
                 whole, spill.messages = end, spill.messages + 1
                 if spill.messages <= written_back:
                     spill.read_at = end
-        spill.size, spill.written_back = disk, written_back
         spill.messages += whole < disk
+        spill.size, spill.written_back = disk, min(written_back, spill.messages)
         return spill
 
     def left(self) -> dict:
@@ -760,7 +761,8 @@ class _Spill:
                 "written_back": self.written_back}
 
     def close(self) -> None:
-        self.out.close()
+        if self.out is not None:
+            self.out.close()
         if self._in is not None:
             self._in.close()
 
@@ -1121,10 +1123,10 @@ class CaptureWriter:
                 self._lose(item, refused)
 
     def _tail(self) -> _Spill:
-        """The spill file new messages go to: the newest; a new one, named for now and after the
-        file memory goes to at a stop (_leave_on_disk), when there is none. Raises the disk's
-        refusal."""
-        if self._spills:
+        """The spill file new messages go to: the newest, when this writer opened it; a new one,
+        named for now and after the file memory goes to at a stop (_leave_on_disk), when there is
+        none or the newest was found at start (read only). Raises the disk's refusal."""
+        if self._spills and self._spills[-1].out is not None:
             return self._spills[-1]
         spill = _Spill.new(self.db_path, int(time.time() * 1000), 1)
         with self._lock:

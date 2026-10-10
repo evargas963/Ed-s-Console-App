@@ -122,7 +122,8 @@ a file that does not exist, or names an ENF item that is not in `ACTIVE_PROGRAM.
   Enforced by: no machine check — ENF-12.
 - A runtime change is on disk only until the process restarts after it; say which. Merged is not
   deployed; deployed is production at the merge commit, both processes restarted, the real screen
-  checked during market hours. Enforced by: no machine check — ENF-12.
+  checked during market hours. A start brings production to origin/main first, so any start after
+  a merge deploys it. Enforced by: no machine check — ENF-12.
 
 ## Close the change (enforced)
 

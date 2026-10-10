@@ -580,6 +580,44 @@ def test_a_spill_file_is_resumed_after_its_committed_part_and_a_crash_cut_record
     assert (after["left_on_disk"], progress) == ([], 0)
 
 
+def test_what_arrives_while_a_found_spill_waits_is_never_written_behind_its_cut_bytes(tmp_path):
+    """INDUCED CONDITIONS: a spill file left beside the database holding one captured option quote
+    and 3 bytes a crash cut off after it; the database locked while the writer starts and the
+    other captured quotes arrive. Released: the found quote is written, its cut bytes kept as one
+    row, and every quote that arrived is written as its own row, in order (they went to a new
+    spill file, not behind the cut bytes)."""
+    db = tmp_path / "stream_capture.db"
+    CaptureWriter(db)
+    record = json.dumps({"topic": f"optquote.{_CONTRACT}", "msg": options_quote_msg(
+        symbol=_CONTRACT, content=_EVENTS[0]["content"], src="schwab_stream", ts_recv=1790863200.0)}).encode()
+    db.with_name("stream_capture.1.1.spill").write_bytes(len(record).to_bytes(4, "big") + record + b"\x00\x00\x01")
+    writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01, timeout_sec=0.2, retry_sec=0.1)
+    holder = sqlite3.connect(db, isolation_level=None, check_same_thread=False)
+    holder.execute("BEGIN IMMEDIATE")
+
+    async def go():
+        bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
+        task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
+        _publish_options(bus, health, _EVENTS[1:])
+        await _until(lambda: len(writer.status()["spills_after"]) == 1
+                     and writer.status()["spills_after"][0]["messages"] == len(_EVENTS) - 1)
+        holder.execute("COMMIT")
+        await _until(lambda: writer.status()["spill"] is None)
+        stop.set()
+        await task
+        return writer.status()
+    try:
+        after = asyncio.run(go())
+    finally:
+        holder.close()
+    with sqlite3.connect(db) as conn:
+        stored = [json.loads(r[0]) for r in conn.execute(
+            "SELECT native_json FROM stream_options_quotes_raw ORDER BY rowid")]
+        kept = conn.execute("SELECT COUNT(*) FROM stream_write_failures").fetchone()[0]
+    assert stored == [e["content"] for e in _EVENTS], "a quote that arrived was not written as its own row"
+    assert (kept, after["failures"], after["lost"]) == (1, 1, 0)
+
+
 def test_a_damaged_length_found_at_start_keeps_every_byte_after_it(tmp_path):
     """INDUCED CONDITION: a spill file left beside the database whose second record's length is
     damaged (0xFFFFFFFF; STAND-IN for a damaged disk), whole records after it. A new writer writes

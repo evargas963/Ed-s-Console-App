@@ -100,8 +100,9 @@ from Schwab to the screen (daemon, console, page), are these:
   is kept as its bytes in `stream_write_failures` with the file and byte it was at; its length
   places the next, so every record after it is written back and the file deleted as any other.
   Bytes that make no whole record (a crash cut a record off, or a damaged length, which places
-  nothing after it) are kept the same way, as one row, before the file is cut back to its whole
-  records: nothing in a spill file is cut away unrecorded. A file the disk will not
+  nothing after it) are kept the same way, as one row: nothing in a spill file is cut away
+  unrecorded. A file found at start is read only: what arrives during its write-back goes to a
+  new spill file behind it, never behind bytes that frame nothing. A file the disk will not
   delete (held open by another process) keeps its progress row, which counts every record
   committed: the next start deletes it without writing it again, and recording goes on. A message the
   spill file cannot take (a full disk) is lost: counted, with the window it was received in
