@@ -438,7 +438,8 @@
       c.querySelector('.tdm-rows').innerHTML =
         (im && im.dte_used != null ? row('Move from', 'first expiry ≥1 day out (' + num(im.dte_used, 0) + 'd)') : '') +
         row('ATR daily', t && t.atr_daily != null ? num(t.atr_daily) : esc((t && t.atr_daily_reason) || '—')) +
-        row('ATR 15m', t && t.atr_15m != null ? num(t.atr_15m) : esc((t && t.atr_15m_reason) || '—')) +
+        row('ATR weekly', t && t.atr_weekly != null ? num(t.atr_weekly) : esc((t && t.atr_weekly_reason) || '—')) +
+        row('ATR monthly', t && t.atr_monthly != null ? num(t.atr_monthly) : esc((t && t.atr_monthly_reason) || '—')) +
         row('VIX', vix && vix.spot != null ? num(vix.spot) + (vix.chg_pct != null ? ' (' + (vix.chg_pct >= 0 ? '+' : '') + num(vix.chg_pct) + '%)' : '') : 'waiting for the VIX stream');
     }
     paintCardCharts();
