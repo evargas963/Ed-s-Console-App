@@ -130,3 +130,14 @@ def test_a_database_path_under_backups_is_refused_as_any_other_non_canonical_pat
     canonical one, named unknown."""
     with pytest.raises(ValueError, match=r"classification=unknown"):
         db.EdDB(tmp_path / "backups" / "db" / "ed_console.db", allow_noncanonical=False)
+
+
+def test_the_console_database_starts_without_the_former_ticker_board(tmp_path):
+    """One watchlist, kept by the daemon (#486): the console's database (db.EdDB) creates only
+    the level crosses at its start, never the former ticker board's logging_universe."""
+    path = tmp_path / "ed_console.db"
+    db.EdDB(path, allow_noncanonical=True)
+    with sqlite3.connect(path) as conn:
+        tables = {name for (name,) in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    assert "level_crosses" in tables
+    assert "logging_universe" not in tables, "the console still creates the former ticker board"

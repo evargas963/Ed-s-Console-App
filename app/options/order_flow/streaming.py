@@ -283,7 +283,7 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
 
 def _rows_wanted() -> "list[str]":
     """The price rows this console holds: every equity the daemon streams (its heartbeat's held
-    LEVELONE_EQUITIES -- what the console asked for and the board, as Schwab accepted them)."""
+    LEVELONE_EQUITIES -- the watchlist and the market context, as Schwab accepted them)."""
     return sorted(((_lmp.daemon_status() or {}).get("held") or {}).get("LEVELONE_EQUITIES") or [])
 
 
