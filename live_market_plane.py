@@ -226,6 +226,15 @@ def daemon_status(now: float) -> dict[str, Any] | None:
     return status
 
 
+def held_by_daemon(service: str, now: float) -> frozenset[str]:
+    """The symbols the daemon holds on Schwab `service` at `now`, as its live heartbeat reports
+    them; none while its heartbeat is not live (unknown is never confirmation)."""
+    if daemon_status(now) is None:
+        return frozenset()
+    with _lock:
+        return _feed["held"].get(service, frozenset())
+
+
 def feed_live_for(symbol: str | None, service: str, now: float) -> bool:
     """THE live rule, for every streamed value: is Schwab `service` delivering `symbol` right
     now -- the daemon's heartbeat is live (daemon_status), it reports the Schwab socket open,

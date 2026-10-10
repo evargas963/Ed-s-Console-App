@@ -187,9 +187,11 @@ def _service_feed(symbol: "str | None", service: str, now: float) -> dict:
     """One Schwab service's feed for `symbol` at `now`, as the page shows it: LIVE by the one
     live rule (live_market_plane.feed_live_for), and how long ago the daemon last received
     anything on that service (its own report)."""
-    health = ((_lmp.daemon_status(now) or {}).get("health") or {}).get(service) or {}
+    status = _lmp.daemon_status(now)
+    reports = status.get("health") if status is not None else None
+    health = reports.get(service) if reports is not None else None
     return {"state": "LIVE" if _lmp.feed_live_for(symbol, service, now) else "NOT LIVE",
-            "age_sec": health.get("age_sec")}
+            "age_sec": health.get("age_sec") if health is not None else None}
 
 
 def _log_stream(phase: str, **kwargs: Any) -> None:
@@ -285,7 +287,7 @@ def _rows_wanted(now: float) -> "list[str]":
     """The price rows this console holds at `now`: every equity the daemon streams (its
     heartbeat's held LEVELONE_EQUITIES -- the watchlist and the market context, as Schwab
     accepted them)."""
-    return sorted(((_lmp.daemon_status(now) or {}).get("held") or {}).get("LEVELONE_EQUITIES") or [])
+    return sorted(_lmp.held_by_daemon("LEVELONE_EQUITIES", now))
 
 
 async def _rows_loop(ui_url: str, reconnect_sec: float) -> None:
@@ -394,8 +396,7 @@ OPTION_PRODUCER_SERVICES: tuple[str, ...] = ("LEVELONE_OPTIONS", "OPTIONS_BOOK")
 def _read_producer_option_contracts(now: float) -> dict[str, list[str]]:
     """What Schwab holds per option service, from the daemon's status at `now`; empty when that
     status is missing or stale (unknown is never confirmation)."""
-    held = (_lmp.daemon_status(now) or {}).get("held") or {}
-    return {s: sorted(held.get(s) or []) for s in OPTION_PRODUCER_SERVICES}
+    return {s: sorted(_lmp.held_by_daemon(s, now)) for s in OPTION_PRODUCER_SERVICES}
 
 
 #: the option contracts the daemon held at its last status (_drop_released_options)

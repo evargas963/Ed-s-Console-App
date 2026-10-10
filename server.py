@@ -763,10 +763,13 @@ def terrain_staleness(computed_ts_utc: float | None, ticker: str | None = None, 
         return {"levels_stale": stale, "levels_age_sec": age, "levels_stale_reason": reason,
                 "levels_failing": bool(stale and failure), **token}
     # judged against the round the daemon's chain sweep delivers (every watchlist ticker once)
-    round_sec = (lmp.daemon_status(now) or {}).get("chain_round_sec") or 0.0
+    status = lmp.daemon_status(now)
+    round_sec = status.get("chain_round_sec") if status is not None else None
     # Stale only past the floor *and* past two delivered rounds — one missed round is normal
-    # jitter, two is a real gap. The floor is retained so a fast sweep cannot hide staleness.
-    stale_after = max(float(TERRAIN_STALE_AFTER_SEC), 2.0 * float(round_sec))
+    # jitter, two is a real gap. The floor is retained so a fast sweep cannot hide staleness;
+    # with no round delivered (or no current status) the floor alone.
+    stale_after = (float(TERRAIN_STALE_AFTER_SEC) if round_sec is None
+                   else max(float(TERRAIN_STALE_AFTER_SEC), 2.0 * float(round_sec)))
     stale = age > stale_after
     reason = ""
     if stale:
