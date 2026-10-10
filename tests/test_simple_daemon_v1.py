@@ -73,22 +73,24 @@ def test_one_live_rule_every_reader_agrees_and_all_fail_closed_at_one_limit():
               "health": {"OPTIONS_BOOK": {"age_sec": 45.0}},
               "held": {"LEVELONE_EQUITIES": ["MU"], "LEVELONE_OPTIONS": ["B", "A"], "OPTIONS_BOOK": ["A"]}}
 
+    now = time.time()
+
     def diag(sym):     # the served option-contract diagnostics for `sym`
-        return ofs.get_option_contract_streaming_diagnostics(sym)
+        return ofs.get_option_contract_streaming_diagnostics(sym, now)
 
     def readers():
-        return (lmp.feed_live_for("MU", "LEVELONE_EQUITIES"), lmp.feed_live_for("A", "LEVELONE_OPTIONS"),
+        return (lmp.feed_live_for("MU", "LEVELONE_EQUITIES", now), lmp.feed_live_for("A", "LEVELONE_OPTIONS", now),
                 diag("A")["feed_health"]["book"]["state"], diag("B")["subscription_state"])
 
     lmp.record_feed_down()
     try:
         down = readers()
         limit = lmp.FEED_HEARTBEAT_MAX_AGE_SEC
-        lmp.record_feed_heartbeat({**status, "ts": time.time() - limit + 0.5})
-        live, book_age, b_book = readers(), diag("A")["feed_health"]["book"]["age_sec"], lmp.feed_live_for("B", "OPTIONS_BOOK")
-        lmp.record_feed_heartbeat({**status, "ts": time.time() - limit - 0.5})
+        lmp.record_feed_heartbeat({**status, "ts": now - limit + 0.5})
+        live, book_age, b_book = readers(), diag("A")["feed_health"]["book"]["age_sec"], lmp.feed_live_for("B", "OPTIONS_BOOK", now)
+        lmp.record_feed_heartbeat({**status, "ts": now - limit - 0.5})
         late = readers()
-        lmp.record_feed_heartbeat({**status, "schwab_socket_open": False, "ts": time.time()})
+        lmp.record_feed_heartbeat({**status, "schwab_socket_open": False, "ts": now})
         schwab_down = readers()
     finally:
         lmp.record_feed_down()

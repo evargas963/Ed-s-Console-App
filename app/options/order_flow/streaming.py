@@ -56,8 +56,8 @@ from time_et import record_markets
 
 log = logging.getLogger(__name__)
 
-#: The daemon's live push endpoint (app.market_data.schwab.streaming.live_push). Module
-#: attribute, read at connect time, so a test can point the feed at its own server.
+#: The daemon's live push endpoint (app.market_data.schwab.streaming.live_push), the feed's
+#: (start_order_flow_stream -> _feed_loop).
 from app.market_data.schwab.streaming.live_push import LIVE_PUSH_HOST, LIVE_PUSH_PORT
 from app.market_data.schwab.streaming.live_ui import LIVE_UI_PORT
 
@@ -183,12 +183,12 @@ def _tick(sym: str) -> None:
                         sym, _tick_callback_failures, e)
 
 
-def _service_feed(symbol: "str | None", service: str) -> dict:
-    """One Schwab service's feed for `symbol`, as the page shows it: LIVE by the one live rule
-    (live_market_plane.feed_live_for), and how long ago the daemon last received anything on
-    that service (its own report)."""
-    health = ((_lmp.daemon_status() or {}).get("health") or {}).get(service) or {}
-    return {"state": "LIVE" if _lmp.feed_live_for(symbol, service) else "NOT LIVE",
+def _service_feed(symbol: "str | None", service: str, now: float) -> dict:
+    """One Schwab service's feed for `symbol` at `now`, as the page shows it: LIVE by the one
+    live rule (live_market_plane.feed_live_for), and how long ago the daemon last received
+    anything on that service (its own report)."""
+    health = ((_lmp.daemon_status(now) or {}).get("health") or {}).get(service) or {}
+    return {"state": "LIVE" if _lmp.feed_live_for(symbol, service, now) else "NOT LIVE",
             "age_sec": health.get("age_sec")}
 
 
@@ -281,15 +281,16 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
     return None
 
 
-def _rows_wanted() -> "list[str]":
-    """The price rows this console holds: every equity the daemon streams (its heartbeat's held
-    LEVELONE_EQUITIES -- the watchlist and the market context, as Schwab accepted them)."""
-    return sorted(((_lmp.daemon_status() or {}).get("held") or {}).get("LEVELONE_EQUITIES") or [])
+def _rows_wanted(now: float) -> "list[str]":
+    """The price rows this console holds at `now`: every equity the daemon streams (its
+    heartbeat's held LEVELONE_EQUITIES -- the watchlist and the market context, as Schwab
+    accepted them)."""
+    return sorted(((_lmp.daemon_status(now) or {}).get("held") or {}).get("LEVELONE_EQUITIES") or [])
 
 
-async def _rows_loop() -> None:
+async def _rows_loop(ui_url: str, reconnect_sec: float) -> None:
     """Hold the daemon's price rows (_rows_wanted) and its status: one browser client of the
-    daemon's price push, resubscribed when what the daemon streams changes (checked on every
+    daemon's price push (`ui_url`, retried every `reconnect_sec`), resubscribed when what the daemon streams changes (checked on every
     frame). The daemon beats every second with its whole status (`feed`), the one record of
     whether the daemon and Schwab are live (live_market_plane.record_feed_heartbeat); this
     connection carries no chain, so a beat never waits behind one. Silence or a lost connection
@@ -298,10 +299,10 @@ async def _rows_loop() -> None:
 
     while _feed_running:
         try:
-            async with connect(LIVE_UI_URL, max_size=None, open_timeout=5) as ws:
+            async with connect(ui_url, max_size=None, open_timeout=5) as ws:
                 sent = None
                 while _feed_running:
-                    want = _rows_wanted()
+                    want = _rows_wanted(time.time())
                     if want != sent:
                         await ws.send(json.dumps({"op": "subscribe", "symbols": want}))
                         sent = want
@@ -314,7 +315,7 @@ async def _rows_loop() -> None:
                     msg = json.loads(frame)
                     if msg.get("type") == "feed":
                         _lmp.record_feed_heartbeat(msg.get("feed"))
-                        _drop_released_options()
+                        _drop_released_options(time.time())
                     for row in msg.get("rows") or []:
                         _price_rows[row["ticker"]] = row
                         if msg.get("type") == "quotes":
@@ -323,11 +324,11 @@ async def _rows_loop() -> None:
             raise
         except Exception as e:  # noqa: BLE001 -- daemon down/restarting: retry, never substitute
             log.info("price rows unavailable (%s: %s); retrying in %.1fs",
-                     type(e).__name__, e, PUSH_RECONNECT_SEC)
+                     type(e).__name__, e, reconnect_sec)
         _price_rows.clear()
         _lmp.record_feed_down()            # no daemon, no live price -- visible at once
         if _feed_running:
-            await asyncio.sleep(PUSH_RECONNECT_SEC)
+            await asyncio.sleep(reconnect_sec)
 
 
 async def serve_push(ws) -> None:
@@ -352,30 +353,31 @@ async def serve_push(ws) -> None:
         _push_ws = None
 
 
-async def _feed_loop() -> None:
-    """Consume the daemon's live push (LIVE_PUSH_URL) until the feed stops.
+async def _feed_loop(push_url: str, ui_url: str, reconnect_sec: float) -> None:
+    """Consume the daemon's live push (`push_url`) and its price rows (`ui_url`, _rows_loop)
+    until the feed stops.
 
     Each frame is one Schwab stream message; it is applied the moment it arrives
     (_ingest_pushed) -- no poll interval, no database read. A dropped connection is retried
-    every PUSH_RECONNECT_SEC; while it is down, the live values age out through their own
+    every `reconnect_sec`; while it is down, the live values age out through their own
     freshness checks and the screen shows them stale. There is no second source."""
     from websockets.asyncio.client import connect
 
-    rows = asyncio.create_task(_rows_loop(), name="daemon-price-rows")
+    rows = asyncio.create_task(_rows_loop(ui_url, reconnect_sec), name="daemon-price-rows")
     try:
         while _feed_running:
             try:
-                async with connect(LIVE_PUSH_URL, max_size=None, open_timeout=5,
+                async with connect(push_url, max_size=None, open_timeout=5,
                                    ping_interval=20, ping_timeout=20) as ws:
-                    _log_stream("PUSH_CONNECTED", url=LIVE_PUSH_URL)
+                    _log_stream("PUSH_CONNECTED", url=push_url)
                     await serve_push(ws)
             except asyncio.CancelledError:
                 raise
             except Exception as e:  # noqa: BLE001 -- daemon down/restarting: retry, never substitute
                 log.info("live push unavailable (%s: %s); retrying in %.1fs",
-                         type(e).__name__, e, PUSH_RECONNECT_SEC)
+                         type(e).__name__, e, reconnect_sec)
             if _feed_running:
-                await asyncio.sleep(PUSH_RECONNECT_SEC)
+                await asyncio.sleep(reconnect_sec)
     finally:
         rows.cancel()
         await asyncio.gather(rows, return_exceptions=True)
@@ -389,10 +391,10 @@ async def _feed_loop() -> None:
 OPTION_PRODUCER_SERVICES: tuple[str, ...] = ("LEVELONE_OPTIONS", "OPTIONS_BOOK")
 
 
-def _read_producer_option_contracts() -> dict[str, list[str]]:
-    """What Schwab holds per option service, from the daemon's status; empty when that status
-    is missing or stale (unknown is never confirmation)."""
-    held = (_lmp.daemon_status() or {}).get("held") or {}
+def _read_producer_option_contracts(now: float) -> dict[str, list[str]]:
+    """What Schwab holds per option service, from the daemon's status at `now`; empty when that
+    status is missing or stale (unknown is never confirmation)."""
+    held = (_lmp.daemon_status(now) or {}).get("held") or {}
     return {s: sorted(held.get(s) or []) for s in OPTION_PRODUCER_SERVICES}
 
 
@@ -400,11 +402,11 @@ def _read_producer_option_contracts() -> dict[str, list[str]]:
 _held_options: "set[str]" = set()
 
 
-def _drop_released_options() -> None:
-    """Forget the live state of each option contract the daemon stopped streaming (its option
-    rule moved off it), so no screen shows that contract's last message as current."""
+def _drop_released_options(now: float) -> None:
+    """Forget the live state of each option contract the daemon stopped streaming at `now` (its
+    option rule moved off it), so no screen shows that contract's last message as current."""
     global _held_options
-    held = set().union(*_read_producer_option_contracts().values())
+    held = set().union(*_read_producer_option_contracts(now).values())
     for sym in _held_options - held:
         clear_symbol(sym)
         _option_contract_last_update_ts.pop(sym, None)
@@ -417,20 +419,21 @@ def _drop_released_options() -> None:
 SUBSCRIBED, NOT_STREAMED = "SUBSCRIBED", "NOT STREAMED"
 
 
-def get_option_contract_streaming_diagnostics(for_contract: str) -> dict[str, Any]:
-    """Whether the daemon streams `for_contract` and is receiving it, distinct from the book's own
-    content ages (options_live_payload): its subscription (SUBSCRIBED / NOT STREAMED, from the
-    daemon's held contracts), and each feed by the one live rule (live_market_plane.feed_live_for)."""
+def get_option_contract_streaming_diagnostics(for_contract: str, now: float) -> dict[str, Any]:
+    """Whether the daemon streams `for_contract` and is receiving it at `now`, distinct from the
+    book's own content ages (options_live_payload): its subscription (SUBSCRIBED / NOT STREAMED,
+    from the daemon's held contracts), and each feed by the one live rule
+    (live_market_plane.feed_live_for)."""
     c = ticker_storage_key(for_contract)
-    held = _read_producer_option_contracts()
-    healthy = bool(_feed_running and _lmp.feed_live_for(c, "LEVELONE_OPTIONS"))
+    held = _read_producer_option_contracts(now)
+    healthy = bool(_feed_running and _lmp.feed_live_for(c, "LEVELONE_OPTIONS", now))
     return {
         "queried_contract": c,
         "subscription_state": SUBSCRIBED if c in held["LEVELONE_OPTIONS"] else NOT_STREAMED,
         "streaming_last_update_ts": _option_contract_last_update_ts.get(c),
         "feed_health": {"replay": "healthy" if healthy else "stale" if _feed_running else "not connected",
-                        "l1": _service_feed(c, "LEVELONE_OPTIONS"),
-                        "book": _service_feed(c, "OPTIONS_BOOK")},
+                        "l1": _service_feed(c, "LEVELONE_OPTIONS", now),
+                        "book": _service_feed(c, "OPTIONS_BOOK", now)},
     }
 
 
@@ -444,7 +447,8 @@ def start_order_flow_stream(on_tick_callback: Optional[Callable[[str], None]] = 
     _on_tick_callback = on_tick_callback
     _on_chain_callback = on_chain_callback
     _feed_running = True
-    _feed_task = asyncio.get_event_loop().create_task(_feed_loop(), name="daemon-plane-feed")
+    _feed_task = asyncio.get_event_loop().create_task(
+        _feed_loop(LIVE_PUSH_URL, LIVE_UI_URL, PUSH_RECONNECT_SEC), name="daemon-plane-feed")
     log.info("Live-plane feed started (source=capture daemon live push)")
     return True
 

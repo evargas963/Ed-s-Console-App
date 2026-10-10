@@ -322,7 +322,7 @@ def test_a_viewed_ticker_warms_only_on_the_watchlist_and_a_silent_daemon_says_so
         silent = json.loads(server.get_options_gamma_surface(off).body)
         assert (silent["warming"], silent["reason"]) == (
             False, "the capture daemon is not reporting (no current heartbeat): its watchlist is unknown")
-        assert "WATCHLIST UNKNOWN" in server._status_line()
+        assert "WATCHLIST UNKNOWN" in server._status_line(time.time())
     finally:
         for tk, page in zip((on, off), pages):
             push_changes.unsubscribe(tk, page)

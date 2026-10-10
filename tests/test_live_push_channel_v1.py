@@ -39,18 +39,23 @@ def _free_port() -> int:
 
 
 @pytest.fixture
-def feed(monkeypatch):
+def feed():
+    """The port of the daemon's live push in this test; the console's state cleared before and after."""
     port = _free_port()
-    monkeypatch.setattr(ofs, "LIVE_PUSH_URL", f"ws://127.0.0.1:{port}")
-    monkeypatch.setattr(ofs, "LIVE_UI_URL", f"ws://127.0.0.1:{_free_port()}")
-    monkeypatch.setattr(ofs, "PUSH_RECONNECT_SEC", 0.05)
     ofs._feed_running = False
     ofs._option_streaming_last_update_ts = None
     ofs._option_contract_last_update_ts.clear()
     ofls.clear_all_live_state()
-    monkeypatch.setattr(lmp, "_by_ticker", {})
+    lmp._by_ticker.clear()
     yield port
     ofs._feed_running = False
+    lmp._by_ticker.clear()
+
+
+def _console(push_port: int, ui_port: "int | None" = None):
+    """The console's real feed loop on the daemon's live push at `push_port` and its price rows
+    at `ui_port` (none given: a port nothing listens on), retried every 0.05 s."""
+    return ofs._feed_loop(f"ws://127.0.0.1:{push_port}", f"ws://127.0.0.1:{ui_port or _free_port()}", 0.05)
 
 
 def _spy_trade(last: float, ts: float) -> dict:
@@ -99,13 +104,14 @@ async def _serve_both(port, body, heartbeat_fn):
     stop = asyncio.Event()
     stats: dict = {}
     ui_stats: dict = {}
+    ui_port = _free_port()
     server = asyncio.create_task(live_push.serve_live_push(bus, stop, port=port, stats=stats))
     ui = asyncio.create_task(live_ui.serve_live_ui(
         bus, stop, heartbeat_fn=heartbeat_fn if heartbeat_fn is not None else _daemon_heartbeat(),
-        host="127.0.0.1", port=int(ofs.LIVE_UI_URL.rsplit(":", 1)[1]), stats=ui_stats))
+        host="127.0.0.1", port=ui_port, stats=ui_stats))
     assert await _until(lambda: stats.get("listening") and ui_stats.get("listening"))
     ofs._feed_running = True
-    client = asyncio.create_task(ofs._feed_loop())
+    client = asyncio.create_task(_console(port, ui_port))
     try:
         await body(bus, stats)
     finally:
@@ -132,21 +138,24 @@ def test_the_daemon_heartbeat_decides_liveness_end_to_end(feed):
         ts = time.time()
         bus.publish("quote.SPY", _spy_trade(501.0, ts))
         assert await _until(_received(ts))
-        assert await _until(lambda: lmp.feed_live_for("SPY", "LEVELONE_EQUITIES"))
-        assert not lmp.feed_live_for("QQQ", "LEVELONE_EQUITIES")   # not held by the daemon
-        assert not lmp.feed_live_for("SPY", "NYSE_BOOK")           # held on another service only
-        assert lmp.daemon_status() is not None
+        assert await _until(lambda: lmp.feed_live_for("SPY", "LEVELONE_EQUITIES", time.time()))
+        now = time.time()
+        assert not lmp.feed_live_for("QQQ", "LEVELONE_EQUITIES", now)   # not held by the daemon
+        assert not lmp.feed_live_for("SPY", "NYSE_BOOK", now)           # held on another service only
+        assert lmp.daemon_status(now) is not None
     asyncio.run(_run(feed, body))
-    assert not lmp.feed_live_for("SPY", "LEVELONE_EQUITIES")       # push ended -> feed down
-    assert lmp.daemon_status() is None
+    now = time.time()
+    assert not lmp.feed_live_for("SPY", "LEVELONE_EQUITIES", now)       # push ended -> feed down
+    assert lmp.daemon_status(now) is None
 
 
-def test_a_live_feed_stays_live_while_the_console_works_through_a_backlog_of_chains(feed, monkeypatch):
+def test_a_live_feed_stays_live_while_the_console_works_through_a_backlog_of_chains(feed):
     """Measured 2026-10-02 after the close: the console spent 79% of its event loop decoding
     chain parts and read 25 of 60 one-second samples of DELL as "feed down" on a healthy feed,
     the daemon's status waiting behind the chains. 300 chains arrive at once and each takes the
-    console 20 ms to apply (a named stand-in for the decode, time.sleep); the feed, live and
-    holding SPY, reads live at every sample a route thread takes while it works through them."""
+    console 20 ms to apply on its event loop (a named stand-in for pricing it: the console's chain
+    callback, as start_order_flow_stream sets it, sleeps); the feed, live and holding SPY, reads
+    live at every sample a route thread takes while it works through them."""
     import json as _json
     import threading
 
@@ -154,23 +163,16 @@ def test_a_live_feed_stays_live_while_the_console_works_through_a_backlog_of_cha
     from pathlib import Path
     contracts = _json.loads((Path(__file__).parent / "fixtures" / "real_spy_0dte_chain.json")
                             .read_text(encoding="utf-8"))["chain"][:1]
-    real_ingest = ofs._ingest_pushed
-
-    def slow_ingest(topic, msg):
-        if topic.startswith("chain."):
-            time.sleep(0.02)
-        real_ingest(topic, msg)
-    monkeypatch.setattr(ofs, "_ingest_pushed", slow_ingest)
     samples: list = []
 
     def sample(seconds):                   # a route, on its own thread, as the console serves them
         end = time.monotonic() + seconds
         while time.monotonic() < end:
-            samples.append(lmp.feed_live_for("SPY", "LEVELONE_EQUITIES"))
+            samples.append(lmp.feed_live_for("SPY", "LEVELONE_EQUITIES", time.time()))
             time.sleep(0.05)
 
     async def body(bus, stats):
-        assert await _until(lambda: lmp.feed_live_for("SPY", "LEVELONE_EQUITIES"))
+        assert await _until(lambda: lmp.feed_live_for("SPY", "LEVELONE_EQUITIES", time.time()))
         for i in range(300):
             for topic, msg in chain_messages(f"ZZ{i:03d}", contracts, time.time()):
                 bus.publish(topic, msg)
@@ -178,7 +180,11 @@ def test_a_live_feed_stays_live_while_the_console_works_through_a_backlog_of_cha
         sampler.start()
         while sampler.is_alive():
             await asyncio.sleep(0.05)
-    asyncio.run(_run(feed, body))
+    ofs._on_chain_callback = lambda *_chain: time.sleep(0.02)
+    try:
+        asyncio.run(_run(feed, body))
+    finally:
+        ofs._on_chain_callback = None
     assert samples and all(samples), f"read down in {samples.count(False)} of {len(samples)} samples"
 
 
@@ -189,7 +195,7 @@ def test_a_closed_schwab_socket_is_not_live(feed):
         bus.publish("quote.SPY", _spy_trade(501.0, ts))
         assert await _until(_received(ts))
         await asyncio.sleep(1.3)                            # at least one heartbeat arrived
-        assert not lmp.feed_live_for("SPY", "LEVELONE_EQUITIES")
+        assert not lmp.feed_live_for("SPY", "LEVELONE_EQUITIES", time.time())
     asyncio.run(_run(feed, body, heartbeat_fn=_daemon_heartbeat(socket_open=False)))
 
 
@@ -254,7 +260,7 @@ def test_the_live_loop_never_opens_the_capture_database(feed, monkeypatch):
 def test_push_down_serves_nothing_and_the_feed_recovers_when_it_returns(feed):
     async def run():
         ofs._feed_running = True
-        client = asyncio.create_task(ofs._feed_loop())
+        client = asyncio.create_task(_console(feed))
         await asyncio.sleep(0.3)                    # no server: several failed connects
         assert ofls.get_content_for_symbol("SPY") == []
         bus = MessageBus()
@@ -293,7 +299,7 @@ def test_daemon_shutdown_is_not_held_up_by_a_connected_console(feed):
         server = asyncio.create_task(live_push.serve_live_push(bus, stop, port=feed, stats=stats))
         assert await _until(lambda: stats.get("listening"))
         ofs._feed_running = True
-        client = asyncio.create_task(ofs._feed_loop())
+        client = asyncio.create_task(_console(feed))
         try:
             assert await _until(lambda: stats["clients"] == 1)
             stop.set()                                  # console still connected
@@ -330,7 +336,7 @@ def test_a_late_console_gets_the_current_record_with_each_fields_own_time(feed):
                                                    "ASK_PRICE": 505.1}))
         await asyncio.sleep(0.05)
         ofs._feed_running = True
-        client = asyncio.create_task(ofs._feed_loop())
+        client = asyncio.create_task(_console(feed))
         try:
             assert await _until(_received(t_trade))    # the trade, at its own receive time
             assert not _received(t_quote)(), "the trade was re-dated to the later bid/ask tick"

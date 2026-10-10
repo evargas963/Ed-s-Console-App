@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import logging
 import threading
-import time
 from datetime import datetime
 from typing import Any, Optional
 
@@ -216,17 +215,18 @@ def record_feed_down() -> None:
         _feed.update(rx=None, status=None, held={})
 
 
-def daemon_status() -> dict[str, Any] | None:
-    """The daemon's latest status while its heartbeat is live (FEED_HEARTBEAT_MAX_AGE_SEC),
-    else None: a daemon that stopped reporting holds nothing and streams nothing."""
+def daemon_status(now: float) -> dict[str, Any] | None:
+    """The daemon's latest status while its heartbeat is live at `now` (younger than
+    FEED_HEARTBEAT_MAX_AGE_SEC), else None: a daemon that stopped reporting holds nothing and
+    streams nothing."""
     with _lock:
         rx, status = _feed["rx"], _feed["status"]
-    if rx is None or not 0.0 <= time.time() - rx < FEED_HEARTBEAT_MAX_AGE_SEC:
+    if rx is None or not 0.0 <= now - rx < FEED_HEARTBEAT_MAX_AGE_SEC:
         return None
     return status
 
 
-def feed_live_for(symbol: str | None, service: str) -> bool:
+def feed_live_for(symbol: str | None, service: str, now: float) -> bool:
     """THE live rule, for every streamed value: is Schwab `service` delivering `symbol` right
     now -- the daemon's heartbeat is live (daemon_status), it reports the Schwab socket open,
     and it holds the symbol on that service.
@@ -236,7 +236,7 @@ def feed_live_for(symbol: str | None, service: str) -> bool:
     current value; judging by arrival age blanked quiet names on a healthy feed (2026-09-24
     08:44 CT, DELL) and kept a dead feed's prices "live" for 30 s."""
     t = ticker_storage_key(symbol or "")
-    status = daemon_status()
+    status = daemon_status(now)
     if not t or status is None or status.get("schwab_socket_open") is not True:
         return False
     with _lock:
@@ -249,7 +249,7 @@ def outage(symbol: str | None, service: str, now: float) -> str | None:
     current only while its feed delivers it; while Closed, the values as of the close stand,
     the feed up or down."""
     session = session_label(datetime.fromtimestamp(now, ET))
-    if session == "Closed" or feed_live_for(symbol, service):
+    if session == "Closed" or feed_live_for(symbol, service, now):
         return None
     return f"Schwab {service} feed down during {session}"
 

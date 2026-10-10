@@ -54,7 +54,7 @@ def publish_daemon_rows(*tickers: str) -> None:
     import live_price_rows
     from app.options.order_flow import streaming as ofs
     for tk in tickers:
-        row = live_price_rows.price_row(tk)
+        row = live_price_rows.price_row(tk, time.time())
         ofs._price_rows[row["ticker"]] = row
 
 
