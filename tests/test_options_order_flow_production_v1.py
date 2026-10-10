@@ -37,8 +37,6 @@ def build_flow_e2e_fixture_response() -> dict:
                   if c["symbol"] == FLOW_CONTRACT)["events"]
     ofls.clear_all_live_state()
     try:
-        lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True,
-                                   "held": {"LEVELONE_OPTIONS": [FLOW_CONTRACT], "OPTIONS_BOOK": [FLOW_CONTRACT]}})
         for e in sorted(events, key=lambda e: e["ts_recv"]):
             if e["kind"] == "book":
                 ofs._ingest_pushed(f"book.{FLOW_CONTRACT}", book_msg(
@@ -47,6 +45,9 @@ def build_flow_e2e_fixture_response() -> dict:
             else:
                 ofs._ingest_pushed(f"optquote.{FLOW_CONTRACT}", options_quote_msg(
                     symbol=FLOW_CONTRACT, content=e["content"], src="schwab_options_l1", ts_recv=e["ts_recv"]))
+        # the daemon's heartbeat, every second: its newest one, as the route reads
+        lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True,
+                                   "held": {"LEVELONE_OPTIONS": [FLOW_CONTRACT], "OPTIONS_BOOK": [FLOW_CONTRACT]}})
         return srv.options_microstructure(FLOW_CONTRACT, max(e["ts_recv"] for e in events))
     finally:
         lmp.record_feed_down()
