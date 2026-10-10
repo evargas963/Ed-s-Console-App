@@ -146,7 +146,7 @@ CHAIN_PART_CONTRACTS = 500
 
 def chain_messages(ticker: str, contracts: list[dict], fetched_ts: float) -> list[tuple[str, dict]]:
     """A fetched chain as its bus messages, each carrying its finished wire frame: part i of n,
-    CHAIN_PART_CONTRACTS contracts each, all with the fetch's time. The console assembles the
+    CHAIN_PART_CONTRACTS contracts each, all with the time the chain began. The console assembles the
     parts; a chain missing a part is never priced."""
     parts = [contracts[i:i + CHAIN_PART_CONTRACTS]
              for i in range(0, len(contracts), CHAIN_PART_CONTRACTS)] or [[]]
@@ -464,10 +464,12 @@ class ChainSweep:
             self.publish(*chain_failure_message(chain.ticker, reason, now))
 
     def deliver(self, chain: _Chain) -> None:
-        """The chain to the console, and to the chain history when it is the window's first."""
+        """The chain to the console, and to the chain history when it is the window's first, both
+        carrying the time the chain began (its as-of everywhere: a chain begun before the close is
+        not the close values, whenever it is delivered)."""
         now = self.clock()
         contracts = chain.contracts()
-        for topic, msg in chain_messages(chain.ticker, contracts, now):
+        for topic, msg in chain_messages(chain.ticker, contracts, chain.started):
             self.publish(topic, msg)
         self._delivered.add(chain.ticker)
         self._fetched[chain.ticker] = chain.started
@@ -476,18 +478,18 @@ class ChainSweep:
             log.warning("quotes for %s: no quote came back for %d of %d contracts; their Greeks are absent",
                         chain.ticker, missing, len(contracts))
         try:
-            self._write_history(chain, now)
+            self._write_history(chain)
         except Exception as e:  # noqa: BLE001 -- the chain is delivered; a failed history write is the writer's to keep and show
             log.warning("chain history for %s not written, kept as delivered: %s: %s",
                         chain.ticker, type(e).__name__, e)
             self.failures.keep_failure(f"chain_history.{chain.ticker}",
                                        {"spots": chain.spots, "contracts": contracts}, e, now)
 
-    def _write_history(self, chain: _Chain, now: float) -> None:
+    def _write_history(self, chain: _Chain) -> None:
         """The chain history: a chain begun inside a capture window of the ticker's option market,
         the first one of the window for this ticker (a chain begun before the close is not the
         close capture, whenever it ends), one row per expiry with the underlying price of that
-        expiry's answer."""
+        expiry's answer, at the time the chain began."""
         ticker = chain.ticker
         slot = capture_slot(chain.started)
         if slot is None:
@@ -502,7 +504,7 @@ class ChainSweep:
             for expiry, cts in chain.by_expiry.items():
                 persist_complete_chain_capture(self.db_path, ticker=ticker, expiry=expiry, contracts=cts,
                                                spot=chain.spots[expiry], completeness_basis=CAPTURE_BASIS,
-                                               ts_utc=now)
+                                               ts_utc=chain.started)
         except Exception:
             self._written[ticker] = before                 # unwritten: the window's next chain tries
             raise
