@@ -176,8 +176,9 @@ class LiveUiServer:
             for c in list(self.clients):
                 # one browser can neither stop the beat nor hold it: an error is logged and the
                 # next browser still gets its beat; a browser that does not take its beat within
-                # a beat is not reading and is closed (2026-09-26: the beat stopped for every
-                # browser and the whole screen read "no live feed" on a healthy Schwab socket)
+                # a beat is not reading and is closed, and gets no more beats while it closes
+                # (2026-09-26: the beat stopped for every browser and the whole screen read "no
+                # live feed" on a healthy Schwab socket)
                 try:
                     rows = [live_price_rows.price_row(s) for s in sorted(c.symbols)]
                     await asyncio.wait_for(
@@ -186,6 +187,7 @@ class LiveUiServer:
                 except asyncio.TimeoutError:
                     self.stats["beat_send_failures"] += 1
                     log.warning("live ui: a browser stopped reading; closing it")
+                    self.clients.discard(c)
                     asyncio.create_task(c.ws.close())
                 except Exception as e:  # noqa: BLE001 -- logged; the other browsers' beats go out
                     self.stats["beat_send_failures"] += 1
