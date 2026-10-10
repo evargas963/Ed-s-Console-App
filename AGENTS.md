@@ -54,15 +54,16 @@ a file that does not exist, or names an ENF item that is not in `ACTIVE_PROGRAM.
    reason, never a value from elsewhere.
    Enforced by: `tests/test_live_quote_and_order_flow_no_fallbacks_v1.py`,
    `tests/test_gamma_exposure_honest_absence_v1.py`, and `docs/DATA_FLOW.md` §2 D5.
-6. **One path.** Schwab → daemon memory → pushed to the screen. The database is history: one
-   writer, the traded options and every equity message, five trading sessions (DATA_FLOW D4);
-   read at startup, after the close and for research; never for a live screen.
+6. **One path.** Schwab → daemon memory → pushed to the screen. The databases are history:
+   `stream_capture.db` every equity message and the kept option contracts for five trading
+   sessions (DATA_FLOW D4); `ed_console.db` the chain captures and level crosses; read at
+   startup, after the close and for research; never for a live screen.
    Enforced by: `docs/DATA_FLOW.md` §2 D1–D6, each with its own test.
 7. **Nothing without a job.** A change deletes what it replaces, in the same PR. A register, audit,
    report or check lives only while it has a job; once answered, it is deleted.
    Enforced by: ruff F401 (unused imports) at commit and in the required `hardening` check; the
    rest — ENF-04.
-8. **All tickers.** Measure and report across the board, never one ticker.
+8. **All tickers.** Measure and report across every watchlist ticker, never one ticker.
    Enforced by: no machine check — ENF-05.
 9. **Clocks.** Market logic in ET; the UI shows Central Time. The market's sessions are Schwab's
    /markets answers; no session table is typed by hand.
