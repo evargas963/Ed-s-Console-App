@@ -113,9 +113,9 @@ a file that does not exist, or names an ENF item that is not in `ACTIVE_PROGRAM.
   request, a test result, data, the screen) is CONFIRMED only by command output shown in the
   same reply. Anything else is NOT VERIFIED, with when it was last checked. An earlier check
   is not current evidence; state changes. This applies to every part of a reply, including
-  summaries, "seen, not fixed" and next steps. Enforced by: no machine check — ENF-12.
-- Proof is reproducible: a committed test or a command anyone can re-run. A scratch script is
-  not proof. Enforced by: no machine check — ENF-12.
+  summaries, "seen, not fixed" and next steps. Each NOT VERIFIED and SEEN, NOT FIXED item is then
+  closed: verified, fixed at its source, or brought to the operator as a decision. Proof is
+  reproducible (a committed test or a command anyone can re-run, never a scratch script). Enforced by: no machine check — ENF-12.
 - A flaky-test fix reports the failure forced on demand before it, the cause as a sequence, that
   forced timing passing after it plus many runs under load, and what changed. App code with the test
   unchanged is a real fix; a test-only change keeping its assertions needs evidence the timing can't
