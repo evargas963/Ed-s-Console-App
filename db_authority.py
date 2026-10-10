@@ -8,7 +8,7 @@ Policy (encoded here and in db.EdDB / stream_spine):
   worktree's runtime root (RC-534).
 - **Ambient DB overrides:** never select a production authority. Recovery and tests pass
   explicit paths to the owning API, with explicit non-canonical acknowledgement.
-- **Harness / proof / backup:** Must never be targeted by mistake. CLI tools default
+- **Harness / proof:** Must never be targeted by mistake. CLI tools default
   to canonical; ``--allow-noncanonical-db`` opts in with explicit acknowledgement.
 - **Tests:** ``tests/conftest.py`` sets ``ED_CONSOLE_ALLOW_NONCANONICAL_DB`` so ``EdDB``
   against temp paths works without per-call flags.
@@ -20,7 +20,7 @@ import os
 from pathlib import Path
 from typing import Literal
 
-Classification = Literal["canonical", "harness", "proof", "backup", "unknown"]
+Classification = Literal["canonical", "harness", "proof", "unknown"]
 PermanentDatabaseIdentity = Literal["ed_console", "stream_capture"]
 
 
@@ -97,8 +97,6 @@ def classify_db_path(p: Path | str) -> Classification:
         return "harness"
     if "calibration_anchor_proof.db" in s:
         return "proof"
-    if "/data/backups/" in s or "/backups/db/" in s:
-        return "backup"
     return "unknown"
 
 
