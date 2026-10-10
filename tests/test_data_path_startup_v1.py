@@ -117,7 +117,8 @@ def test_a_module_that_fails_to_load_leaves_its_reason_in_the_daemons_log(tmp_pa
     else:
         cmd = ["sh", "-c", 'exec "$0" "$@" 2>&-', sys.executable, *module]
     done = subprocess.run(cmd, cwd=REPO, env=env, timeout=120)   # no handle passed: pythonw has none
-    log = (tmp_path / "logs" / "stream_capture.log").read_text(encoding="utf-8")
+    (path,) = (tmp_path / "logs").glob("stream_capture.*.log")
+    log = path.read_text(encoding="utf-8")
     assert done.returncode == 1
     assert "capture daemon loading (pid " in log
     assert "ModuleNotFoundError: No module named 'schwab'" in log, log

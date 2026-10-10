@@ -1,6 +1,6 @@
 """The capture daemon: the ONE Schwab streaming connection (Schwab allows one per account).
 
-    python -m app.market_data.schwab.streaming.capture          (start_capture_daemon.bat)
+    python -m app.market_data.schwab.streaming.capture   (launch.py -> start_capture_daemon.bat)
 
 It is the only part of Ed Console that talks to Schwab. Beside the loop below, its chain sweep
 (run_chains) fetches full option chains on its own thread, one request at a time, without end:
@@ -26,7 +26,7 @@ It does four things, in one loop:
              or the picked contracts is asked once: UNSUBS what left, then SUBS (a service's first
              request) or ADD what came. Nothing asked is asked again on this connection, whatever
              Schwab answered. Requests are split so none exceeds Schwab's 64 KB message limit
-             (measured 2026-09-22: a 71 KB request closed the socket).
+             (a larger request closes the socket).
   2. ANSWERS Every Schwab answer is matched to its own request by its requestid, logged and
              recorded (stream_subscriptions) exactly as sent -- a refused ADD is answered twice
              (code 19, then code 24 "ADD command failed"), and both are its answers.
@@ -37,7 +37,7 @@ It does four things, in one loop:
              is alive. None for DEAD_SEC, or a request unanswered for REQUEST_TIMEOUT_SEC:
              reconnect with backoff and subscribe once again. There is nothing else to recover.
 
-What Schwab offers (probed live 2026-09-25): LEVELONE_EQUITIES, CHART_EQUITY, NYSE_BOOK
+What Schwab offers (its answers on the live connection): LEVELONE_EQUITIES, CHART_EQUITY, NYSE_BOOK
 (exchange book), NASDAQ_BOOK (market-maker quotes), LEVELONE_OPTIONS, OPTIONS_BOOK and
 NEWS_HEADLINE answer code 0; both books accepted 30 symbols. TIMESALE_* and ACTIVES_* answer
 code 11 (not available) -- there is no trade-by-trade tape and no trade side.
@@ -53,8 +53,7 @@ import sys
 import threading
 import time
 from dataclasses import dataclass
-from datetime import datetime
-from logging.handlers import RotatingFileHandler
+from datetime import date, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -62,13 +61,19 @@ sys.path.insert(0, str(ROOT))
 
 import runtime_layout  # noqa: E402  (the standard library only)
 
+
+def log_path(folder: Path, day: date) -> Path:
+    """The daemon's log file for `day` (local date) in `folder`."""
+    return folder / f"stream_capture.{day:%Y-%m-%d}.log"
+
+
 #: Under pythonw there is no error output: from here until the log starts (_start_log) it is the
-#: log file, so a module below that fails to load leaves its reason there.
+#: day's log file, so a module below that fails to load leaves its reason there.
 _EARLY_ERRORS = None
 if sys.stderr is None:
-    _log_file = runtime_layout.logs_dir() / "stream_capture.log"
-    _log_file.parent.mkdir(parents=True, exist_ok=True)
-    _EARLY_ERRORS = sys.stderr = open(_log_file, "a", encoding="utf-8", buffering=1)
+    runtime_layout.logs_dir().mkdir(parents=True, exist_ok=True)
+    _EARLY_ERRORS = sys.stderr = open(log_path(runtime_layout.logs_dir(), date.today()), "a",
+                                      encoding="utf-8", buffering=1)
     print(f"{time.strftime('%Y-%m-%d %H:%M:%S')} capture daemon loading (pid {os.getpid()})", file=sys.stderr)
 
 from stream_spine import (  # noqa: E402
@@ -86,13 +91,19 @@ from stream_spine import (  # noqa: E402
     resolve_stream_db_path,
     subscription_msg,
 )
-from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT  # noqa: E402
+import psutil  # noqa: E402
+from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT, serve_live_push  # noqa: E402
+from app.market_data.schwab.streaming.live_ui import serve_live_ui  # noqa: E402
 from calibration.complete_chain_capture import ChainSweep  # noqa: E402
+from config import build_config, load_dotenv_file  # noqa: E402
+from db_authority import canonical_console_db_path  # noqa: E402
 from instrument_identity import ticker_storage_key  # noqa: E402
 from math_exposure_core import greek_reported  # noqa: E402
 from numeric_contract import schwab_number  # noqa: E402
-from schwab_client import safe_get_quotes  # noqa: E402
+from schwab.streaming import StreamClient  # noqa: E402
+from schwab_client import build_client_from_token, safe_get_quotes  # noqa: E402
 from time_et import ct_label  # noqa: E402
+from websockets.exceptions import ConnectionClosed  # noqa: E402
 
 log = logging.getLogger("capture")
 
@@ -115,7 +126,7 @@ EQUITY_SERVICES = ("LEVELONE_EQUITIES", "CHART_EQUITY", "NEWS_HEADLINE", "NYSE_B
 #: the option contracts the option rule picks are streamed on these (OptionPick)
 OPTION_SERVICES = ("LEVELONE_OPTIONS", "OPTIONS_BOOK")
 #: Schwab's limit on each option service, as its own refusals on the daemon's connection state it
-#: (2026-10-07: "(LEVELONE_OPTIONS=3000, DISCARDED=1)", "(OPTIONS_BOOK=100, DISCARDED=1)")
+#: ("(LEVELONE_OPTIONS=3000, DISCARDED=1)", "(OPTIONS_BOOK=100, DISCARDED=1)")
 OPTION_LIMITS = {"LEVELONE_OPTIONS": 3000, "OPTIONS_BOOK": 100}
 #: the market context every page's header shows (live_push.MARKET_CONTEXT) is streamed on these,
 #: whatever the watchlist holds
@@ -130,7 +141,7 @@ LEVELONE_FIELDS = {"BID_PRICE": "bid", "ASK_PRICE": "ask", "LAST_PRICE": "last",
 CHART_FIELDS = {"OPEN_PRICE": "open", "HIGH_PRICE": "high", "LOW_PRICE": "low",
                 "CLOSE_PRICE": "close", "VOLUME": "volume", "CHART_TIME_MILLIS": "bar_start_ms"}
 #: NEWS_HEADLINE is not in the Streamer Guide and schwab-py has no helper for it; these are
-#: the fields it answered with on 2026-09-25 (time, id, ..., headline, ..., categories).
+#: the fields it answers with (time, id, ..., headline, ..., categories).
 NEWS_FIELDS = tuple(range(0, 11))
 
 
@@ -280,8 +291,8 @@ def _publisher(service: str, bus: MessageBus, health: HealthRegistry):
 
 class _RawHandler:
     """schwab-py handler shape for a service it has no helper for (NEWS_HEADLINE). schwab-py
-    calls label_message on every handler of every frame; without it the call raised and the rest
-    of the frame -- prices included -- was dropped ("skipped a frame", 2026-09-26)."""
+    calls label_message on every handler of every frame; without it the call raises and the rest
+    of the frame -- prices included -- is dropped ("skipped a frame")."""
 
     def __init__(self, fn) -> None:
         self.fn = fn
@@ -296,7 +307,6 @@ class _RawHandler:
 def _open_stream(client):
     """schwab-py's StreamClient, recording the time of every frame Schwab sends -- data,
     responses and Schwab's heartbeats alike. That one timestamp is the liveness test."""
-    from schwab.streaming import StreamClient
     stream = StreamClient(client)
     stream.last_frame_ts = time.time()
     receive = stream._receive
@@ -349,7 +359,6 @@ def _request_ended(task: "asyncio.Future") -> None:
 
 def _connection_lost(e: BaseException) -> bool:
     """The socket itself is gone (as opposed to Schwab refusing one request)."""
-    from websockets.exceptions import ConnectionClosed
     return isinstance(e, (ConnectionClosed, ConnectionError, OSError, asyncio.IncompleteReadError))
 
 
@@ -734,7 +743,6 @@ EXIT_STOPPED = 5
 
 def acquire_owner_lock(db_path: "str | Path | None" = None) -> "tuple[int, Path]":
     """Exclusive pidfile: one daemon at a time; a lock left by a dead process is reclaimed."""
-    import psutil
     lock = owner_lock_path(db_path)
     lock.parent.mkdir(parents=True, exist_ok=True)
     for attempt in (1, 2):
@@ -762,19 +770,62 @@ def release_owner_lock(fd: int, lock: Path) -> None:
         lock.unlink(missing_ok=True)
 
 
+#: days of the daemon's log kept, one file a day (the operator's setting)
+LOG_DAYS_KEPT = 45
+
+
+class DailyLog(logging.StreamHandler):
+    """The daemon's log in `folder`, one file a day (log_path), by each line's own time: the first
+    line of a day opens that day's file, then the files past the newest LOG_DAYS_KEPT are deleted.
+    No file is renamed, so another process holding one open never stops a line; a file it cannot
+    delete (held open) is logged and tried again the next day. A day's file the disk will not open
+    goes to logging's own error report (handleError, as any failed line does), never to the code
+    that logged; the next line tries it again."""
+
+    def __init__(self, folder: Path):
+        super().__init__()
+        self.folder, self.day = folder, None
+
+    def emit(self, record: logging.LogRecord) -> None:
+        day = date.fromtimestamp(record.created)
+        if day != self.day:
+            try:
+                self._open(day)
+            except OSError:
+                self.handleError(record)
+                return
+        super().emit(record)
+
+    def _open(self, day: date) -> None:
+        stream = open(log_path(self.folder, day), "a", encoding="utf-8")
+        if self.day is not None:
+            self.stream.close()
+        self.day, self.stream = day, stream
+        for old in sorted(self.folder.glob("stream_capture.????-??-??.log"))[:-LOG_DAYS_KEPT]:
+            try:
+                old.unlink()
+            except OSError as e:
+                log.warning("log: %s not deleted, tried again the next day: %s: %s", old.name, type(e).__name__, e)
+
+    def close(self) -> None:
+        with self.lock:
+            if self.day is not None:
+                self.stream.close()
+        super().close()
+
+
 def _start_log() -> None:
-    """Every line, with its time to the millisecond, to <runtime>/logs/stream_capture.log, and to
-    the console if any. Under pythonw the log file held as the error output since the first line
-    (_EARLY_ERRORS) is closed first, so the log's handler holds the file alone and can rotate it;
-    from here an error reaches the log through the handler (main logs one that ends the daemon)."""
+    """Every line, with its time to the millisecond, to the day's log file (log_path) under
+    <runtime>/logs, and to the console if any. Under pythonw the log file held as the error output
+    since the first line (_EARLY_ERRORS) is closed first; from here an error reaches the log
+    through the handler (main logs one that ends the daemon)."""
     global _EARLY_ERRORS
     if _EARLY_ERRORS is not None:
         _EARLY_ERRORS.close()
         _EARLY_ERRORS = sys.stderr = None
-    path = runtime_layout.logs_dir() / "stream_capture.log"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    handlers: "list[logging.Handler]" = [
-        RotatingFileHandler(path, maxBytes=50 * 1024 * 1024, backupCount=1, encoding="utf-8")]
+    folder = runtime_layout.logs_dir()
+    folder.mkdir(parents=True, exist_ok=True)
+    handlers: "list[logging.Handler]" = [DailyLog(folder)]
     if sys.stderr is not None:
         handlers.append(logging.StreamHandler())
     logging.basicConfig(level=logging.INFO, handlers=handlers,
@@ -864,11 +915,6 @@ def one_schwab_client(build) -> "callable":
 async def run() -> int:
     """The whole daemon: writer, the two local sockets, the chain sweep and the Schwab
     connection."""
-    from app.market_data.schwab.streaming.live_push import serve_live_push
-    from app.market_data.schwab.streaming.live_ui import serve_live_ui
-    from config import build_config, load_dotenv_file
-    from db_authority import canonical_console_db_path
-    from schwab_client import build_client_from_token
     load_dotenv_file()
     cfg = build_config()
     schwab_client = one_schwab_client(lambda: build_client_from_token(

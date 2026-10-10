@@ -1,6 +1,12 @@
-"""Ed Console's launcher: start_ed_console.bat runs it with the project's .venv Python. Its start
-stops nothing.
+"""Ed Console's launcher, the one start of the console and the capture daemon:
+start_ed_console.bat runs it with the project's .venv Python. Its start stops nothing.
 
+0. With neither running, the checkout brought to origin/main (bring_to_origin_main), so both start
+   from the same commit, the newest merged: moved, it runs the new launch.py as its child and ends
+   with it. With local changes, not on main, split from origin/main or origin out of reach, both
+   start from the commit the checkout is at, the check not passed and why said: whether the app
+   starts is never the repository's to decide (RC-512). With either running it is not run: the
+   other starts from the commit the running one loaded.
 1. The capture daemon, in its own window (start_capture_daemon.bat restarts it), unless its price
    socket's port is in use. It reads its own .env (the Schwab credentials); its log, and
    /api/health from its heartbeat, say whether Schwab took them.
@@ -42,6 +48,39 @@ CONSOLE = [sys.executable, "-m", "uvicorn", "server:app", "--host", "0.0.0.0", "
 DAEMON_MARK, CONSOLE_MARK = "streaming.capture", "server:app"
 #: how long a clean stop waits for each process to end (the console's shutdown is bounded at 12 s)
 STOP_WAIT_SEC = 30.0
+#: what the commit check before a start found (bring_to_origin_main)
+COMMIT_CURRENT, COMMIT_MOVED, COMMIT_UNKNOWN, COMMIT_REFUSED = "current", "moved", "unknown", "refused"
+
+
+def bring_to_origin_main(root: Path) -> "tuple[str, str | None, str]":
+    """The checkout at `root` brought to origin/main: (what the check found, the commit it is at,
+    None when git could not say, why). It fetches origin and fast-forwards main. COMMIT_CURRENT: at origin/main. COMMIT_MOVED:
+    fast-forwarded. COMMIT_UNKNOWN: origin out of reach, or git itself not answering (absent, hung);
+    COMMIT_REFUSED: not on main, local changes, or a history split from origin/main; nothing is
+    moved."""
+    try:
+        return _bring(root)
+    except (OSError, subprocess.SubprocessError) as e:
+        return COMMIT_UNKNOWN, None, f"git did not answer: {type(e).__name__}: {e}"
+
+
+def _bring(root: Path) -> "tuple[str, str, str]":
+    def git(*args: str) -> subprocess.CompletedProcess:
+        return subprocess.run(["git", *args], cwd=root, capture_output=True, text=True, timeout=60)
+    head = git("rev-parse", "HEAD").stdout.strip()
+    fetched = git("fetch", "--quiet", "origin", "main")
+    if fetched.returncode != 0:
+        return COMMIT_UNKNOWN, head, f"origin could not be fetched: {fetched.stderr.strip()}"
+    if git("symbolic-ref", "--short", "-q", "HEAD").stdout.strip() != "main":
+        return COMMIT_REFUSED, head, "the checkout is not on main"
+    changed = git("status", "--porcelain", "--untracked-files=no").stdout.strip()
+    if changed:
+        return COMMIT_REFUSED, head, f"local changes: {changed}"
+    merged = git("merge", "--ff-only", "--quiet", "origin/main")
+    if merged.returncode != 0:
+        return COMMIT_REFUSED, head, f"main cannot fast-forward to origin/main: {merged.stderr.strip()}"
+    now = git("rev-parse", "HEAD").stdout.strip()
+    return (COMMIT_CURRENT, now, "at origin/main") if now == head else (COMMIT_MOVED, now, f"fast-forwarded from {head}")
 
 
 def in_use(port: int) -> bool:
@@ -121,6 +160,17 @@ def unhealthy_for(port: int, seconds: float) -> "str | None":
 
 
 def main() -> int:
+    up = [name for name, port in (("capture daemon", DAEMON_PORT), ("console", CONSOLE_PORT)) if in_use(port)]
+    if up:
+        print(f"Commit check: not run; the {' and the '.join(up)} already run from this checkout.")
+    else:
+        check, commit, why = bring_to_origin_main(ROOT)
+        print(f"Commit check: {check}: {why}")
+        if commit is not None:
+            print(f"Commit: {commit}")
+        if check == COMMIT_MOVED:                  # this process loaded the old code: the new one starts both
+            signal.signal(signal.SIGINT, signal.SIG_IGN)
+            return subprocess.call([sys.executable, str(ROOT / "launch.py")], cwd=ROOT)
     if in_use(DAEMON_PORT):
         print(f"Capture daemon: port {DAEMON_PORT} is already in use; not started.")
     else:

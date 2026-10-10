@@ -1,13 +1,20 @@
-"""The launcher (launch.py): whether a port is in use, against real local listeners on free ports,
-and the console's clean stop. The console runs in a process group of its own (launch.start_console)
-and launch.py stop sends that group Ctrl+Break (launch.ctrl_break): the console runs its shutdown
-and ends with 0, the window's cmd never gets an interrupt (it would ask "Terminate batch job
-(Y/N)?"), and the window closes. The operator's Ctrl+C on the window still stops the console.
+"""The launcher (launch.py): whether a port is in use, against real local listeners on free ports;
+the commit check before a start; and the console's clean stop.
 
-STAND-INS: a console window of its own (hidden) for each case; a batch file ending as
-start_ed_console.bat ends (launch.py, then a pause only on an error); a Python process with a
-Ctrl+Break handler for the console in the first case, and the real console (uvicorn server:app,
-offline, a runtime root of its own) in the second.
+Before it starts either process it brings the checkout to origin/main: local changes leave it
+where it is, the check refused; an origin out of reach, or a git that does not answer, leaves the
+check unknown, never passed. Both start either way (RC-512).
+
+The console runs in a process group of its own (launch.start_console) and launch.py stop sends
+that group Ctrl+Break (launch.ctrl_break): the console runs its shutdown and ends with 0, the
+window's cmd never gets an interrupt (it would ask "Terminate batch job (Y/N)?"), and the window
+closes. The operator's Ctrl+C on the window still stops the console.
+
+STAND-INS: local git repositories for GitHub's origin and the production checkout; a console
+window of its own (hidden) for each stop case; a batch file ending as start_ed_console.bat ends
+(launch.py, then a pause only on an error, then nothing more read); a Python process with a
+Ctrl+Break handler for the console in the first stop case, and the real console (uvicorn
+server:app, offline, a runtime root of its own) in the second.
 """
 from __future__ import annotations
 
@@ -34,6 +41,50 @@ def test_a_port_with_a_listener_is_in_use_and_a_free_one_is_not():
         port = held.getsockname()[1]
         assert launch.in_use(port) is True
     assert launch.in_use(port) is False
+
+
+def _git(cwd: Path, *args: str) -> str:
+    return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, check=True).stdout.strip()
+
+
+def _merge(work: Path, name: str) -> str:
+    """A commit merged on origin's main; its id."""
+    (work / name).write_text(name, encoding="utf-8")
+    _git(work, "add", name)
+    _git(work, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", name)
+    _git(work, "push", "-q", "origin", "HEAD:main")
+    return _git(work, "rev-parse", "HEAD")
+
+
+def test_each_start_brings_the_checkout_to_origin_main_or_says_why_it_cannot(tmp_path):
+    _git(tmp_path, "init", "-q", "--bare", "-b", "main", "origin.git")
+    _git(tmp_path, "clone", "-q", "origin.git", "work")
+    first = _merge(tmp_path / "work", "first")
+    _git(tmp_path, "clone", "-q", "origin.git", "prod")
+    prod = tmp_path / "prod"
+
+    assert launch.bring_to_origin_main(prod) == (launch.COMMIT_CURRENT, first, "at origin/main")
+
+    merged = _merge(tmp_path / "work", "merged")                      # production one commit behind
+    assert launch.bring_to_origin_main(prod) == (launch.COMMIT_MOVED, merged, f"fast-forwarded from {first}")
+    assert _git(prod, "rev-parse", "HEAD") == merged
+    assert launch.bring_to_origin_main(prod)[0] == launch.COMMIT_CURRENT     # the run after it starts
+
+    (prod / "first").write_text("edited in production", encoding="utf-8")
+    _merge(tmp_path / "work", "later")
+    check, at, why = launch.bring_to_origin_main(prod)
+    assert (check, at) == (launch.COMMIT_REFUSED, merged) and why.startswith("local changes")
+    assert _git(prod, "rev-parse", "HEAD") == merged, "a checkout with local changes was moved"
+
+    (prod / "first").write_text("first", encoding="utf-8")
+    _git(prod, "remote", "set-url", "origin", str(tmp_path / "unreachable.git"))
+    check, at, why = launch.bring_to_origin_main(prod)
+    assert (check, at) == (launch.COMMIT_UNKNOWN, merged) and why.startswith("origin could not be fetched")
+
+    # INDUCED CONDITION: git cannot run there (no such folder: the OSError an absent git gives)
+    check, at, why = launch.bring_to_origin_main(tmp_path / "gone")
+    assert (check, at) == (launch.COMMIT_UNKNOWN, None) and why.startswith("git did not answer: "), \
+        "the start ended on git"
 
 
 def _window(argv: "list[str]") -> subprocess.Popen:
@@ -63,7 +114,7 @@ def _batch(tmp_path: Path, console_argv: "list[str]", env: "dict | None" = None)
         "signal.signal(signal.SIGINT, signal.SIG_IGN)\n"
         "sys.exit(console.wait())\n", encoding="utf-8")
     bat = tmp_path / "start.bat"
-    bat.write_text(f'@echo off\r\n"{sys.executable}" "{launcher}"\r\nif errorlevel 1 pause\r\n', encoding="utf-8")
+    bat.write_text(f'@echo off\r\n"{sys.executable}" "{launcher}" || pause & exit /b\r\n', encoding="utf-8")
     return bat
 
 

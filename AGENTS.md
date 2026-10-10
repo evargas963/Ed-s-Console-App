@@ -122,7 +122,8 @@ a file that does not exist, or names an ENF item that is not in `ACTIVE_PROGRAM.
   Enforced by: no machine check — ENF-12.
 - A runtime change is on disk only until the process restarts after it; say which. Merged is not
   deployed; deployed is production at the merge commit, both processes restarted, the real screen
-  checked during market hours. Enforced by: no machine check — ENF-12.
+  checked during market hours. A start brings production to origin/main first, so any start after
+  a merge deploys it. Enforced by: no machine check — ENF-12.
 
 ## Close the change (enforced)
 
@@ -164,7 +165,8 @@ a file that does not exist, or names an ENF item that is not in `ACTIVE_PROGRAM.
   yes to that change. Enforced by: the agent hook `tools/operator_yes_guard.py` (Allow/Deny for a
   daemon/console start or clean stop in RTH or an unknown session, a machine restart, a merge;
   refused: killing production, a push to main; `tests/test_operator_yes_guard_v1.py`); the rest — ENF-12.
-- Production checkout `EdWebConsole`: `main == origin/main`, changed only by `git pull --ff-only`.
+- Production checkout `EdWebConsole`: `main == origin/main`, changed only by a fast-forward to it
+  (`git pull --ff-only`, or the start's own, `launch.bring_to_origin_main`).
   Work in a worktree; main itself moves only by a PR merged on GitHub. Enforced by: the agent hook
   `tools/process_lock_guard.py` refuses an edit, a shell write or a git verb that moves it off
   main (`tests/test_operating_process_lock_v1.py`), and a git command from any checkout that
@@ -187,8 +189,8 @@ a file that does not exist, or names an ENF item that is not in `ACTIVE_PROGRAM.
 
 ## Running it
 
-Console: `start_ed_console.bat` (`uvicorn server:app`, port 8000). Capture daemon:
-`start_capture_daemon.bat`. Python 3.13, the project `.venv`. Offline: `ED_CI_OFFLINE=1`,
+Both processes: `start_ed_console.bat` (`launch.py`: the checkout brought to origin/main, then the
+capture daemon in its own window and `uvicorn server:app`, port 8000). Python 3.13, the project `.venv`. Offline: `ED_CI_OFFLINE=1`,
 placeholder `SCHWAB_API_KEY` / `SCHWAB_APP_SECRET`. Live: `schwab_token.json`
 (`python reauth_schwab.py`). Probe `127.0.0.1`, never `localhost`. Clean stop of both: `python
 launch.py stop`; outside RTH the agent may restart both so, says so in chat first, and confirms both came back.

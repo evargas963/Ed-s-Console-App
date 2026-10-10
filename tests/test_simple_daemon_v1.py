@@ -1,7 +1,7 @@
-"""The simple capture daemon (operator 2026-09-25: "simple, simple, simple"): it publishes every
-Schwab message as sent, records every answer, and runs as one daemon at a time with its log on
-disk. Its subscriptions and its connection's life are held by tests/test_data_path_one_watchlist_v1.py
-on the local Schwab streamer."""
+"""The simple capture daemon: it publishes every Schwab message as sent, records every answer, and
+runs as one daemon at a time (its log: tests/test_daemon_log_v1.py). Its subscriptions and its
+connection's life are held by tests/test_data_path_one_watchlist_v1.py on the local Schwab
+streamer."""
 from __future__ import annotations
 
 import json
@@ -125,25 +125,3 @@ def test_a_checkout_that_may_not_run_live_refuses_before_opening_anything(monkey
     assert ran == [], "no lock, no Schwab socket, no stream database"
 
 
-def test_the_daemons_log_is_kept_on_disk_with_times(monkeypatch, tmp_path):
-    """Under pythonw there is no console: every line must reach logs/stream_capture.log with
-    its wall time (2026-09-23: 42 socket deaths, not one reason on disk)."""
-    import logging
-
-    import runtime_layout
-    monkeypatch.setattr(runtime_layout, "logs_dir", lambda: tmp_path)
-    monkeypatch.setattr(sys, "stderr", None)
-    root = logging.getLogger()
-    saved = root.handlers[:]
-    root.handlers = []
-    try:
-        cap._start_log()
-        cap.log.warning("schwab: connection ended (socket closed)")
-        for h in root.handlers:
-            h.flush()
-        text = (tmp_path / "stream_capture.log").read_text(encoding="utf-8")
-        assert "connection ended" in text and text[:4].isdigit()
-    finally:
-        for h in root.handlers:
-            h.close()
-        root.handlers = saved

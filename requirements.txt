@@ -10,3 +10,5 @@ cryptography==50.0.1
 websockets==17.1
 python-dotenv==1.2.3
 schwab-py==1.5.1
+# the time zones (America/New_York, America/Chicago) on Windows, which has no system zone database
+tzdata==2026.4
