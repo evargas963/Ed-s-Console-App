@@ -930,24 +930,25 @@ async def keep_sessions(daemon: "Daemon", stop: asyncio.Event) -> None:
     from Schwab's /markets answers; CaptureWriter.prune). While today's market is unknown or open,
     or fewer sessions are held, nothing is removed: never on a guess."""
     kept_for = warned_for = None
-    while True:
-        now = datetime.fromtimestamp(daemon.clock(), ET)
-        closed = options_closed_at(now) if options_open(now) is False else None
-        if closed is not None and closed != kept_for:
-            since = sessions_since(now, SESSIONS_KEPT)
-            if since is not None:
-                daemon.writer.prune(since.timestamp())
-                log.info("keep: removing rows received before %s (the newest %d sessions stay)", ct_label(since.timestamp()),
-                         SESSIONS_KEPT)
-                kept_for = closed
-            elif closed != warned_for:
-                log.warning("keep: fewer than %d sessions held from Schwab's /markets; nothing removed", SESSIONS_KEPT)
-                warned_for = closed
-        try:
-            await asyncio.wait_for(stop.wait(), timeout=KEEP_EVERY_SEC)
-            return
-        except asyncio.TimeoutError:
-            pass
+    stopped = asyncio.ensure_future(stop.wait())
+    try:
+        while not stopped.done():
+            now = datetime.fromtimestamp(daemon.clock(), ET)
+            closed = options_closed_at(now) if options_open(now) is False else None
+            if closed is not None and closed != kept_for:
+                since = sessions_since(now, SESSIONS_KEPT)
+                if since is not None:
+                    daemon.writer.prune(since.timestamp())
+                    log.info("keep: removing rows received before %s (the newest %d sessions stay)",
+                             ct_label(since.timestamp()), SESSIONS_KEPT)
+                    kept_for = closed
+                elif closed != warned_for:
+                    log.warning("keep: fewer than %d sessions held from Schwab's /markets; nothing removed",
+                                SESSIONS_KEPT)
+                    warned_for = closed
+            await asyncio.wait({stopped}, timeout=KEEP_EVERY_SEC)
+    finally:
+        stopped.cancel()
 
 
 def _worker_ended(worker: "asyncio.Future") -> None:
