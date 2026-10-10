@@ -618,6 +618,26 @@ def test_what_arrives_while_a_found_spill_waits_is_never_written_behind_its_cut_
     assert (kept, after["failures"], after["lost"]) == (1, 1, 0)
 
 
+def test_a_found_spill_whose_cut_bytes_were_kept_is_deleted_without_keeping_them_again(tmp_path):
+    """INDUCED CONDITION: a spill file left beside the database with one quote and 3 cut bytes
+    after it, its progress row counting both (written back, the cut bytes kept, then the disk
+    would not delete it, or a kill came between the commit and the delete). The next writer
+    deletes it and its row, writing nothing again."""
+    db = tmp_path / "stream_capture.db"
+    CaptureWriter(db)
+    record = json.dumps({"topic": f"optquote.{_CONTRACT}", "msg": options_quote_msg(
+        symbol=_CONTRACT, content=_EVENTS[0]["content"], src="schwab_stream", ts_recv=1790863200.0)}).encode()
+    spill = db.with_name("stream_capture.1.1.spill")
+    spill.write_bytes(len(record).to_bytes(4, "big") + record + b"\x00\x00\x01")
+    with sqlite3.connect(db) as conn:
+        conn.execute("INSERT INTO stream_spill_progress(spill, written_back) VALUES(?, 2)", (spill.name,))
+    _run_until_no_spill(CaptureWriter(db, batch_rows=1, batch_sec=0.01))
+    with sqlite3.connect(db) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM stream_spill_progress").fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM stream_write_failures").fetchone()[0] == 0, "the cut bytes were kept again"
+    assert not spill.exists() and _count(db, "stream_options_quotes_raw") == 0
+
+
 def test_a_damaged_length_found_at_start_keeps_every_byte_after_it(tmp_path):
     """INDUCED CONDITION: a spill file left beside the database whose second record's length is
     damaged (0xFFFFFFFF; STAND-IN for a damaged disk), whole records after it. A new writer writes

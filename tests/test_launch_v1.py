@@ -82,8 +82,9 @@ def test_each_start_brings_the_checkout_to_origin_main_or_says_why_it_cannot(tmp
     assert (check, at) == (launch.COMMIT_UNKNOWN, merged) and why.startswith("origin could not be fetched")
 
     # INDUCED CONDITION: git cannot run there (no such folder: the OSError an absent git gives)
-    check, _at, why = launch.bring_to_origin_main(tmp_path / "gone")
-    assert check == launch.COMMIT_UNKNOWN and why.startswith("git did not answer: "), "the start ended on git"
+    check, at, why = launch.bring_to_origin_main(tmp_path / "gone")
+    assert (check, at) == (launch.COMMIT_UNKNOWN, None) and why.startswith("git did not answer: "), \
+        "the start ended on git"
 
 
 def _window(argv: "list[str]") -> subprocess.Popen:

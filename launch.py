@@ -52,16 +52,16 @@ STOP_WAIT_SEC = 30.0
 COMMIT_CURRENT, COMMIT_MOVED, COMMIT_UNKNOWN, COMMIT_REFUSED = "current", "moved", "unknown", "refused"
 
 
-def bring_to_origin_main(root: Path) -> "tuple[str, str, str]":
+def bring_to_origin_main(root: Path) -> "tuple[str, str | None, str]":
     """The checkout at `root` brought to origin/main: (what the check found, the commit it is at,
-    why). It fetches origin and fast-forwards main. COMMIT_CURRENT: at origin/main. COMMIT_MOVED:
+    None when git could not say, why). It fetches origin and fast-forwards main. COMMIT_CURRENT: at origin/main. COMMIT_MOVED:
     fast-forwarded. COMMIT_UNKNOWN: origin out of reach, or git itself not answering (absent, hung);
     COMMIT_REFUSED: not on main, local changes, or a history split from origin/main; nothing is
     moved."""
     try:
         return _bring(root)
     except (OSError, subprocess.SubprocessError) as e:
-        return COMMIT_UNKNOWN, "an unknown commit", f"git did not answer: {type(e).__name__}: {e}"
+        return COMMIT_UNKNOWN, None, f"git did not answer: {type(e).__name__}: {e}"
 
 
 def _bring(root: Path) -> "tuple[str, str, str]":
@@ -165,7 +165,9 @@ def main() -> int:
         print(f"Commit check: not run; the {' and the '.join(up)} already run from this checkout.")
     else:
         check, commit, why = bring_to_origin_main(ROOT)
-        print(f"Commit check: {check} at {commit}: {why}")
+        print(f"Commit check: {check}: {why}")
+        if commit is not None:
+            print(f"Commit: {commit}")
         if check == COMMIT_MOVED:                  # this process loaded the old code: the new one starts both
             signal.signal(signal.SIGINT, signal.SIG_IGN)
             return subprocess.call([sys.executable, str(ROOT / "launch.py")], cwd=ROOT)

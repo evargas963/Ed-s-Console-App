@@ -748,6 +748,8 @@ class _Spill:
                     spill.read_at = end
         spill.messages += whole < disk
         spill.size, spill.written_back = disk, min(written_back, spill.messages)
+        if spill.written_back == spill.messages:       # its cut bytes, if any, were kept too
+            spill.read_at = disk
         return spill
 
     def left(self) -> dict:
