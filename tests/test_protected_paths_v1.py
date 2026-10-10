@@ -51,12 +51,12 @@ B = "b" + "ackups/"
     f"rm -rf {D}",
     f"del {D}ed_console.db",
     f"erase {D}ed_console.db",
-    f"Remove-Item {B}db/x.db",
-    f"Remove-Item -Recurse -Force {B}",
+    f"Remove-Item {D}x.db",
+    f"Remove-Item -Recurse -Force {D}",
     f"mv {D}ed_console.db /tmp/x",
     f"Move-Item {D}ed_console.db C:/temp/",
     f"python -c \"import os; os.remove('{D}ed_console.db')\"",
-    f"python -c \"import shutil; shutil.rmtree('{B}')\"",
+    f"python -c \"import shutil; shutil.rmtree('{D}')\"",
     f"echo x > {D}ed_console.db",
 ])
 def test_destruction_of_an_unrecoverable_tree_is_refused(cmd):
@@ -109,10 +109,11 @@ def test_the_commit_exemption_is_by_verb_not_by_heredoc():
         "a heredoc piped to a shell is a write channel and must stay watched")
 
 
-def test_every_protected_tree_is_guarded():
-    """Destructive is defined by the TARGET's recoverability, not by the verb."""
-    for tree in (D, B):
-        assert G._protected_path_violation(f"rm -rf {tree}x"), tree
+def test_the_protected_tree_is_guarded_and_backups_is_not():
+    """Destructive is defined by the TARGET's recoverability, not by the verb. No database
+    backups are kept (operator 2026-10-10), so backups/ is no protected tree."""
+    assert G._protected_path_violation(f"rm -rf {D}x")
+    assert not G._protected_path_violation(f"rm -rf {B}x")
 
 
 def test_empty_and_none_commands_do_not_crash():
@@ -138,14 +139,14 @@ def test_text_that_only_mentions_a_protected_path_passes(cmd):
 
 
 @pytest.mark.parametrize("cmd", [
-    f"python - <<'EOF'\nimport shutil\nshutil.rmtree('{B}db')\nEOF",
+    f"python - <<'EOF'\nimport shutil\nshutil.rmtree('{D}')\nEOF",
     f"python - <<'EOF'\nfrom pathlib import Path\nPath('{D}ed_console.db').unlink()\nEOF",
     f"python - <<'EOF'\nfrom pathlib import Path\nPath('{D}ed_console.db').write_bytes(b'')\nEOF",
     f"python - <<'EOF'\nopen('{D}ed_console.db', 'w').close()\nEOF",
     f"bash <<'EOF'\nrm -f {D}stream_capture.db\nEOF",
     f"icacls {D}ed_console.db /remove:d evarg",
     f"icacls C:/repo/{D} /reset",
-    f"cd /c/repo && rm -rf {B}db",
+    f"cd /c/repo && rm -rf {D}",
 ])
 def test_code_that_would_destroy_or_unprotect_is_refused(cmd):
     """Python run from a heredoc, a shell heredoc, and removing the OS protection all block."""
