@@ -136,14 +136,18 @@ const { mockPriceSocket, priceRow } = require('./fixtures/price_socket');
 const { routeWatchlist } = require('./fixtures/watchlist');
 
 // the console pushes one `levels` change for `ticker` after `delayMs`; reconnects get the session
-async function routeOneLevelsPush(page, delayMs, ticker = 'SPY') {
-  let pushes = 0;
+// One levels push on `ticker`'s change stream, held until the test calls the returned release():
+// the push lands where the test says, however long the page took to get there.
+async function routeOneLevelsPush(page, ticker = 'SPY') {
+  let pushes = 0, release;
+  const held = new Promise((r) => { release = r; });
   await page.route(`**/api/changes?ticker=${ticker}**`, async (route) => {
     pushes += 1;
-    await new Promise((r) => setTimeout(r, delayMs));
+    await (pushes === 1 ? held : new Promise((r) => setTimeout(r, 1000)));
     route.fulfill({ status: 200, contentType: 'text/event-stream',
       body: pushes === 1 ? `event: levels\ndata: ${ticker}\n\n` : 'event: session\ndata: RTH\n\n' });
   });
+  return release;
 }
 
 async function intercept(page) {
@@ -390,11 +394,12 @@ test.describe('Ed Console shell + gamma heatmap', () => {
         strikes: [583], expirations: [{ expiry: '2026-09-11', dte: 2 }],
         cells: [{ strike: 583, gex: [value], spot: true }], surface_seq: asked.length, view: view({ scope }) })) });
     });
-    await routeOneLevelsPush(page, 1500);              // after the scope switch below
+    const push = await routeOneLevelsPush(page);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect.poll(() => asked[0]).toBe('auto');
     await page.locator('#scopeCtl .scbtn', { hasText: 'Wider' }).click();
     await expect.poll(() => asked[1]).toBe('wider');
+    push();                                            // after the scope switch
     const cell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
     await expect(cell).toHaveText('$2.0K', { timeout: 5000 });   // the push's read landed
     expect(asked.slice(2)).toEqual(asked.slice(2).map(() => 'wider'));
@@ -1103,7 +1108,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.route('**/api/terrain?**', (route) => { terrainCalls += 1; return route.fallback(); });
     await page.route('**/api/options/tape**', (route) => { unrelated.tape += 1; return route.fallback(); });
     await page.route('**/api/chain**', (route) => { unrelated.chain += 1; return route.fallback(); });
-    await routeOneLevelsPush(page, 1000);   // lands after the baseline below
+    const push = await routeOneLevelsPush(page);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('.hcell').first()).toBeVisible();
     // clear the auto-selected strike (Strike Detail reads /api/chain on a levels push) and let
@@ -1112,10 +1117,10 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.waitForTimeout(650);
     const beforeUnrelated = Object.assign({}, unrelated);
     const gammaBefore = gammaCalls, strikesBefore = strikesCalls, terrainBefore = terrainCalls;
-    await page.waitForTimeout(600);   // past the push (1000 ms from page load)
-    expect(gammaCalls).toBeGreaterThan(gammaBefore);
-    expect(strikesCalls).toBeGreaterThan(strikesBefore);
-    expect(terrainCalls).toBeGreaterThan(terrainBefore);
+    push();                           // lands after the baseline
+    await expect.poll(() => gammaCalls).toBeGreaterThan(gammaBefore);
+    await expect.poll(() => strikesCalls).toBeGreaterThan(strikesBefore);
+    await expect.poll(() => terrainCalls).toBeGreaterThan(terrainBefore);
     expect(unrelated).toEqual(beforeUnrelated);
   });
 
@@ -1123,14 +1128,16 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // Chart view: the chart's GEX profile and the GEX-by-strike rail both read /api/terrain/strikes
     let strikesCalls = 0;
     await page.route('**/api/terrain/strikes**', (route) => { strikesCalls += 1; return route.fallback(); });
-    await routeOneLevelsPush(page, 1000);
+    const push = await routeOneLevelsPush(page);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('.hcell').first()).toBeVisible();
     await page.locator('.vtab[data-view="chart"]').click();
     await expect(page.locator('#chartBody .gchart-plot canvas').first()).toBeVisible();
     await page.waitForTimeout(200);   // let the view-switch's own hydration settle
     const before = strikesCalls;
-    await page.waitForTimeout(1100);   // past the push
+    push();
+    await expect.poll(() => strikesCalls - before).toBeGreaterThan(0);
+    await page.waitForTimeout(500);   // a second call would have been made by now
     expect(strikesCalls - before).toBe(1);
   });
 
@@ -1140,12 +1147,15 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.route('**/api/terrain/strikes**', (route) => { strikesCalls += 1; return route.fallback(); });
     await page.route('**/api/chain**', (route) => { chainCalls += 1; return route.fallback(); });
     await page.route('**/api/terrain?**', (route) => { terrainCalls += 1; return route.fallback(); });
-    await routeOneLevelsPush(page, 1000);
+    const push = await routeOneLevelsPush(page);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('.hcell').first()).toBeVisible();
     await page.waitForTimeout(200);   // let cold-start hydration (including auto-select) settle
     const before = { gamma: gammaCalls, strikes: strikesCalls, chain: chainCalls, terrain: terrainCalls };
-    await page.waitForTimeout(1100);   // past the push
+    push();
+    await expect.poll(() => Math.min(gammaCalls - before.gamma, strikesCalls - before.strikes,
+      chainCalls - before.chain, terrainCalls - before.terrain)).toBeGreaterThan(0);
+    await page.waitForTimeout(500);   // a second call would have been made by now
     expect(gammaCalls - before.gamma).toBe(1);
     expect(strikesCalls - before.strikes).toBe(1);
     expect(chainCalls - before.chain).toBe(1);
@@ -1178,11 +1188,11 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       status: 200, contentType: 'application/json',
       body: JSON.stringify(Object.assign({}, TERRAIN, { gamma_flip: terrainFlip })),
     }));
-    await routeOneLevelsPush(page, 1000);
+    const push = await routeOneLevelsPush(page);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#klFlip')).toHaveText('582.90');
     terrainFlip = 590.00;
-    await page.waitForTimeout(1100);   // past the push
+    push();
     await expect(page.locator('#klFlip')).toHaveText('590.00');
   });
 
@@ -1271,12 +1281,13 @@ test.describe('Ed Console shell + gamma heatmap', () => {
         })),
       });
     });
-    await routeOneLevelsPush(page, 400);   // SPY's connection, which the test is about to leave
+    const push = await routeOneLevelsPush(page);   // SPY's connection, which the test is about to leave
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const cell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
     await expect(cell).toHaveText('$1.0K');   // SPY's own value
     await page.evaluate(() => window.EdShell.setTicker('QQQ'));
     await expect(cell).toHaveText('$9.0K');   // QQQ's own value, before SPY's push lands
+    push();
     await page.waitForTimeout(500);
     await expect(cell).toHaveText('$9.0K');   // SPY's push on its closed connection changed nothing
   });

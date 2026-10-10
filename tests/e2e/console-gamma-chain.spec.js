@@ -8,6 +8,7 @@
  */
 const { test, expect } = require('@playwright/test');
 const { served } = require('./fixtures/served_chain');
+const { routeWatchlist } = require('./fixtures/watchlist');
 
 function ct(side, strike, sym, oi, vol, iv, delta, expDate) {
   return { putCall: side, strikePrice: strike, symbol: sym, openInterest: oi, totalVolume: vol,
@@ -53,6 +54,7 @@ async function intercept(page) {
     else if (url.includes('/api/terrain')) body = { spot: 100, gamma_flip: 99.5, regime: 'LONG_GAMMA_CHOP', levels_stale: false };
     else if (url.includes('/api/expiries')) body = { expiries: ['2026-09-11'] };    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
+  await routeWatchlist(page, ['SPY']);
 }
 
 async function toChain(page) {
@@ -316,6 +318,7 @@ test.describe('expiry dropdown (register P-03)', () => {
   // ignored the served reason when none is listed
   async function withExpiries(page, fulfil) {
     await page.route('**/api/**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: '{}' }));
+    await routeWatchlist(page, ['SPY']);
     await page.route('**/api/expiries*', fulfil);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
   }

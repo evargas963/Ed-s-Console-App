@@ -7,6 +7,7 @@
  * and the page is proved to ask with the scope, draw what it is sent and keep the choice.
  */
 const { test, expect } = require('@playwright/test');
+const { routeWatchlist } = require('./fixtures/watchlist');
 
 // spot 100, 41 strikes 80..120; the stand-in's window per scope, as the server serves it
 const ALL_ROWS = [];
@@ -41,6 +42,7 @@ async function intercept(page, asked) {
     else if (url.includes('/api/bars1m')) body = BARS;
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
+  await routeWatchlist(page, ['SPY']);
 }
 
 test.describe('the Gamma presentation scope', () => {
