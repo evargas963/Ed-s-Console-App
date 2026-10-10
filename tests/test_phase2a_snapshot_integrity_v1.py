@@ -32,6 +32,7 @@ from liquidity_value_engine import (  # noqa: E402
     PlaybookConfig,
     materialize_price_level_snapshot,
 )
+from micro_structure import Candle  # noqa: E402
 from time_et import ET  # noqa: E402
 
 from tests.conftest import most_recent_trading_day_et  # noqa: E402
@@ -59,7 +60,9 @@ def _fresh(monkeypatch):
 
 def _mat(session, bars):
     return materialize_price_level_snapshot(
-        "ZZRC324", session, LVE._bars_to_list(bars), bar_source="test_fixture", config=PlaybookConfig())
+        "ZZRC324", session, LVE.bars_from_candles(
+            [Candle(ts=b["timestamp"] / 1000, open=b["open"], high=b["high"], low=b["low"], close=b["close"],
+                    volume=b["volume"]) for b in bars]), bar_source="test_fixture", config=PlaybookConfig())
 
 
 def test_an_interior_bar_change_is_a_new_generation(monkeypatch):

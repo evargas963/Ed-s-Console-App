@@ -30,7 +30,7 @@ import schwab_client as sc
 import server
 from app.market_data.schwab.streaming import capture, live_push
 from calibration.complete_chain_capture import ChainSweep, chain_messages
-from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS
+from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS, bars_from_candles
 from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus, bar_msg
 from tests.feed_live_helper import daemon_bars, price_history, stream_daemon_bars
 from tests.schwab_rest_standin import LocalSchwab
@@ -756,7 +756,8 @@ def test_d6_only_schwabs_recorded_bars_reach_the_chart_and_the_levels_never_the_
             served = {b["t"]: (b["o"], b["h"], b["l"], b["c"], b["v"])
                       for b in _chart_bars(tk) if b["t"] in recorded or b["t"] in old}
             levels_input = {b["timestamp"] / 1000: (b["open"], b["high"], b["low"], b["close"], b["volume"])
-                            for b in server._liquidity_1m_bars(tk) if b["timestamp"] / 1000 in recorded or b["timestamp"] / 1000 in old}
+                            for b in bars_from_candles(server._bars_1m(tk, 2500))
+                            if b["timestamp"] / 1000 in recorded or b["timestamp"] / 1000 in old}
             assert served == recorded == levels_input, tk
             assert not set(old_only) & set(served), tk
     finally:
