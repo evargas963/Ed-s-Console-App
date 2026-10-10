@@ -45,6 +45,22 @@ def test_the_day_changes_while_another_process_holds_the_log_open(tmp_path):
         "a line after midnight did not reach the new day's file"
 
 
+def test_a_days_file_the_disk_will_not_open_never_raises_where_the_daemon_logs(tmp_path):
+    """INDUCED CONDITION: a folder where the new day's file would be, so the disk will not open it.
+    A line that day does not raise at the call that logged it (logging's own error report takes
+    it); once the folder is gone the next line opens the day's file."""
+    before = datetime(2026, 10, 8, 23, 59, 59)
+    handler = capture.DailyLog(tmp_path)
+    _line(handler, before, "before midnight")
+    capture.log_path(tmp_path, date(2026, 10, 9)).mkdir()
+    _line(handler, before + timedelta(seconds=2), "the file will not open")
+    capture.log_path(tmp_path, date(2026, 10, 9)).rmdir()
+    _line(handler, before + timedelta(seconds=3), "after midnight")
+    handler.close()
+    assert capture.log_path(tmp_path, before.date()).read_text(encoding="utf-8") == "before midnight\n"
+    assert capture.log_path(tmp_path, date(2026, 10, 9)).read_text(encoding="utf-8") == "after midnight\n"
+
+
 def test_the_newest_45_days_are_kept(tmp_path):
     """50 earlier days' files beside the log; at the next day's first line the 45 newest stay,
     the new day's among them."""

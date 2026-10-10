@@ -164,7 +164,8 @@ a file that does not exist, or names an ENF item that is not in `ACTIVE_PROGRAM.
   yes to that change. Enforced by: the agent hook `tools/operator_yes_guard.py` (Allow/Deny for a
   daemon/console start or clean stop in RTH or an unknown session, a machine restart, a merge;
   refused: killing production, a push to main; `tests/test_operator_yes_guard_v1.py`); the rest — ENF-12.
-- Production checkout `EdWebConsole`: `main == origin/main`, changed only by `git pull --ff-only`.
+- Production checkout `EdWebConsole`: `main == origin/main`, changed only by a fast-forward to it
+  (`git pull --ff-only`, or the start's own, `launch.bring_to_origin_main`).
   Work in a worktree; main itself moves only by a PR merged on GitHub. Enforced by: the agent hook
   `tools/process_lock_guard.py` refuses an edit, a shell write or a git verb that moves it off
   main (`tests/test_operating_process_lock_v1.py`), and a git command from any checkout that

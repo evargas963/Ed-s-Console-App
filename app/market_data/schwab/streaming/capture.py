@@ -778,7 +778,9 @@ class DailyLog(logging.StreamHandler):
     """The daemon's log in `folder`, one file a day (log_path), by each line's own time: the first
     line of a day opens that day's file, then the files past the newest LOG_DAYS_KEPT are deleted.
     No file is renamed, so another process holding one open never stops a line; a file it cannot
-    delete (held open) is logged and tried again the next day."""
+    delete (held open) is logged and tried again the next day. A day's file the disk will not open
+    goes to logging's own error report (handleError, as any failed line does), never to the code
+    that logged; the next line tries it again."""
 
     def __init__(self, folder: Path):
         super().__init__()
@@ -787,13 +789,18 @@ class DailyLog(logging.StreamHandler):
     def emit(self, record: logging.LogRecord) -> None:
         day = date.fromtimestamp(record.created)
         if day != self.day:
-            self._open(day)
+            try:
+                self._open(day)
+            except OSError:
+                self.handleError(record)
+                return
         super().emit(record)
 
     def _open(self, day: date) -> None:
+        stream = open(log_path(self.folder, day), "a", encoding="utf-8")
         if self.day is not None:
             self.stream.close()
-        self.day, self.stream = day, open(log_path(self.folder, day), "a", encoding="utf-8")
+        self.day, self.stream = day, stream
         for old in sorted(self.folder.glob("stream_capture.????-??-??.log"))[:-LOG_DAYS_KEPT]:
             try:
                 old.unlink()

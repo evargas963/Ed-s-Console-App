@@ -3,9 +3,10 @@ start_ed_console.bat runs it with the project's .venv Python. Its start stops no
 
 0. With neither running, the checkout brought to origin/main (bring_to_origin_main), so both start
    from the same commit, the newest merged: moved, it runs the new launch.py as its child and ends
-   with it; with local changes, not on main or split from origin/main, nothing starts;
-   with origin out of reach, both start, the check not passed. With either running it is not run:
-   the other starts from the commit the running one loaded.
+   with it. With local changes, not on main, split from origin/main or origin out of reach, both
+   start from the commit the checkout is at, the check not passed and why said: whether the app
+   starts is never the repository's to decide (RC-512). With either running it is not run: the
+   other starts from the commit the running one loaded.
 1. The capture daemon, in its own window (start_capture_daemon.bat restarts it), unless its price
    socket's port is in use. It reads its own .env (the Schwab credentials); its log, and
    /api/health from its heartbeat, say whether Schwab took them.
@@ -49,8 +50,6 @@ DAEMON_MARK, CONSOLE_MARK = "streaming.capture", "server:app"
 STOP_WAIT_SEC = 30.0
 #: what the commit check before a start found (bring_to_origin_main)
 COMMIT_CURRENT, COMMIT_MOVED, COMMIT_UNKNOWN, COMMIT_REFUSED = "current", "moved", "unknown", "refused"
-#: the exit code when the checkout cannot be brought to origin/main (nothing started)
-EXIT_NOT_CURRENT = 11
 
 
 def bring_to_origin_main(root: Path) -> "tuple[str, str, str]":
@@ -162,9 +161,6 @@ def main() -> int:
     else:
         check, commit, why = bring_to_origin_main(ROOT)
         print(f"Commit check: {check} at {commit}: {why}")
-        if check == COMMIT_REFUSED:
-            print("Not started: this checkout cannot be brought to origin/main.")
-            return EXIT_NOT_CURRENT
         if check == COMMIT_MOVED:                  # this process loaded the old code: the new one starts both
             signal.signal(signal.SIGINT, signal.SIG_IGN)
             return subprocess.call([sys.executable, str(ROOT / "launch.py")], cwd=ROOT)
