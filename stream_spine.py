@@ -25,6 +25,7 @@ import sqlite3
 import sys
 import threading
 import time
+from collections import Counter
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -487,6 +488,21 @@ _TABLES = {kind: (m.group(1), tuple(c.strip() for c in m.group(2).split(",")))
 HOLD_CAP_BYTES = 2 * 1024 ** 3
 #: spill records written back in one transaction
 SPILL_CHUNK = 5000
+#: the tables the daily keep (CaptureWriter.prune) removes old rows from, each by its receipt time
+#: (the newest stream_watchlist row always stays: the daemon reads it at its start)
+KEPT_BY_TIME = (("stream_quotes_raw", "ts_recv"), ("stream_book_raw", "ts_recv"),
+                ("stream_options_quotes_raw", "ts_recv"), ("stream_bars_raw", "ts_recv"),
+                ("stream_news_raw", "ts_recv"), ("stream_pricehistory_raw", "ts_recv"),
+                ("stream_markets_raw", "ts_recv"),
+                ("stream_watchlist", "ts_recv"), ("stream_subscriptions", "ts"),
+                ("stream_feed_status", "ts"), ("stream_write_failures", "ts"))
+#: rows removed in one transaction, so a live write never waits behind a long delete
+PRUNE_ROWS = 20000
+
+
+def _every_message(topic: str, msg: Any) -> bool:
+    """The writer's save rule when no one has set one (CaptureWriter.saves): every message."""
+    return True
 
 
 @dataclass(frozen=True)
@@ -823,6 +839,14 @@ class CaptureWriter:
         self.error: "str | None" = None
         self.error_ts: "float | None" = None
         self.left_on_disk: list = []
+        #: which bus messages are recorded (topic, message) -> bool; the daemon sets its own
+        #: (Daemon.saves: option quotes and option books of the contracts it keeps)
+        self.saves = _every_message
+        #: the daily keep in progress (prune): rows received before `_prune_before` leave each
+        #: table still in `_prune`, a part at a time; `_pruned` counts them per table
+        self._prune: "list[tuple[str, str]]" = []
+        self._prune_before: "float | None" = None
+        self._pruned: "Counter[str]" = Counter()
         conn = sqlite3.connect(str(p))
         try:
             conn.executescript("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;")
@@ -980,6 +1004,8 @@ class CaptureWriter:
             await asyncio.to_thread(thread.join)
 
     def _hand(self, item) -> None:
+        if not self.saves(*item):
+            return
         with self._lock:
             if self.state == WRITER_DEAD:
                 self.unrecorded += 1
@@ -1035,7 +1061,7 @@ class CaptureWriter:
         try:
             last_commit, stopping = time.monotonic(), False
             while not (stopping and not self._waiting and not self._spills):
-                unread = bool(self._spills) and self._spills[0].read_at < self._spills[0].size
+                unread = (bool(self._spills) and self._spills[0].read_at < self._spills[0].size) or bool(self._prune)
                 try:
                     item = q.get(timeout=0.001 if unread else
                                  max(self.batch_sec - (time.monotonic() - last_commit), 0.01))
@@ -1074,6 +1100,8 @@ class CaptureWriter:
                             self._waiting, self._waiting_bytes = [], 0
                     if self._spills and not self._waiting:
                         self._write_back(conn)
+                    if self._prune and not self._waiting and not self._spills and not self._batch:
+                        self._prune_part(conn)
                 except DATABASE_REFUSALS as e:
                     if conn is not None:
                         conn.close()       # its open transaction is rolled back
@@ -1155,6 +1183,30 @@ class CaptureWriter:
                 self.lost_last_ts = ts if self.lost_last_ts is None else max(self.lost_last_ts, ts)
         self._log_once_a_minute(("lost", type(error).__name__),
                                 "stream writer: a message is lost: %s: %s", type(error).__name__, error)
+
+    def prune(self, before: float) -> None:
+        """Remove every row received before `before` from the tables of KEPT_BY_TIME (the newest
+        stream_watchlist row stays), on the writer thread, one part of PRUNE_ROWS at a time between
+        live writes and only while nothing is held; a stop before it ends leaves the rest for the
+        next one."""
+        with self._lock:
+            self._prune_before, self._prune, self._pruned = before, list(KEPT_BY_TIME), Counter()
+
+    def _prune_part(self, conn: sqlite3.Connection) -> None:
+        """The next part of the keep in progress (prune), in one transaction."""
+        table, column = self._prune[0]
+        newest = f" AND rowid < (SELECT MAX(rowid) FROM {table})" if table == "stream_watchlist" else ""
+        removed = conn.execute(f"DELETE FROM {table} WHERE rowid IN (SELECT rowid FROM {table} "
+                               f"WHERE {column} < ?{newest} LIMIT ?)", (self._prune_before, PRUNE_ROWS)).rowcount
+        conn.commit()
+        with self._lock:
+            self._pruned[table] += removed
+            if removed < PRUNE_ROWS:
+                self._prune.pop(0)
+            done = not self._prune
+        if done:
+            log.info("stream writer: rows received before %s removed: %s", ct_label(self._prune_before),
+                     ", ".join(f"{t} {n}" for t, n in self._pruned.items()))
 
     def _write_back(self, conn: sqlite3.Connection) -> None:
         """The next part of the oldest spill file into the database, in one transaction with how

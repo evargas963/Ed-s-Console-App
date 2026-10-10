@@ -45,6 +45,7 @@ code 11 (not available) -- there is no trade-by-trade tape and no trade side.
 from __future__ import annotations
 
 import asyncio
+import bisect
 import json
 import logging
 import os
@@ -102,7 +103,7 @@ from math_exposure_core import greek_reported  # noqa: E402
 from numeric_contract import schwab_number  # noqa: E402
 from schwab.streaming import StreamClient  # noqa: E402
 from schwab_client import build_client_from_token, safe_get_quotes  # noqa: E402
-from time_et import ct_label  # noqa: E402
+from time_et import ET, ct_label, options_closed_at, options_open, sessions_since  # noqa: E402
 from websockets.exceptions import ConnectionClosed  # noqa: E402
 
 log = logging.getLogger("capture")
@@ -239,6 +240,36 @@ def by_gamma(contracts: "list[dict]", price: float, now: float) -> "tuple[str, .
             else:
                 without.append(row)
     return tuple(r[-1] for r in sorted(with_gamma)) + tuple(r[-1] for r in sorted(without))
+
+
+#: listed strikes each side of the one nearest the price whose option quotes and option books are
+#: recorded (the operator's setting; Daemon.saves)
+STRIKES_SAVED = 5
+
+
+def strike_ladders(contracts: "list[dict]") -> "list[tuple[float, list[float], dict[float, list[str]]]]":
+    """A chain's expirations, soonest first: (expiration time, its listed strikes ascending, each
+    strike's contract symbols). A contract whose strike or expiration is not a number is left out
+    (rule 2)."""
+    by: "dict[float, dict[float, list[str]]]" = {}
+    for ct in contracts:
+        strike, expires = schwab_number(ct.get("strikePrice")), expiration_ts(ct)
+        if strike is not None and expires is not None:
+            by.setdefault(expires, {}).setdefault(strike, []).append(ct["symbol"])
+    return [(expires, sorted(by_strike), by_strike) for expires, by_strike in sorted(by.items())]
+
+
+def saved_window(ladders: list, price: float, now: float) -> "frozenset[str]":
+    """The contracts recorded of one ticker: its soonest expiration not passed at `now` (today's
+    when one is listed, else the nearest), at the strike nearest `price` (the lower of two equally
+    near) and the STRIKES_SAVED listed strikes each side of it."""
+    for expires, strikes, symbols in ladders:
+        if expires > now:
+            i = bisect.bisect_left(strikes, price)
+            if i == len(strikes) or (i > 0 and price - strikes[i - 1] <= strikes[i] - price):
+                i -= 1
+            return frozenset(s for k in strikes[max(0, i - STRIKES_SAVED):i + STRIKES_SAVED + 1] for s in symbols[k])
+    return frozenset()
 
 
 # ---------------------------------------------------------------------------- Schwab messages
@@ -389,7 +420,12 @@ class Daemon:
         self._prices: "dict[str, float]" = {}
         self._chains: "dict[str, list[dict]]" = {}
         self._ranked: "dict[str, tuple[str, ...]]" = {}
-        self.chains = None                  # the ChainSweep: its round time, its tickers
+        #: each ticker's newest chain as its strikes per expiration (strike_ladders), and the option
+        #: contracts whose quotes and books the writer records (saves): each watchlist ticker's
+        #: saved_window at its newest price, and the Flow panel's contract
+        self._ladders: "dict[str, list]" = {}
+        self.saved_options: "frozenset[str]" = frozenset()
+        self.chains = None                 # the ChainSweep: its round time, its tickers
         self.writer = None                  # the CaptureWriter: its state rides the heartbeat
         self.stop: "asyncio.Event | None" = None   # the daemon's stop (run); a stop request sets it
         self.schwab_client = None           # the daemon's one Schwab client (run): the checks
@@ -454,6 +490,22 @@ class Daemon:
         self.options = new
         self.ask()
 
+    def _keep_options(self) -> None:
+        """The option contracts recorded (saved_options): each watchlist ticker's saved_window at
+        its newest price and the daemon's time, and the Flow panel's contract."""
+        now = self.clock()
+        kept = frozenset(c for c in [self.flow_contract] if c is not None)
+        for tk in self.watchlist:
+            if tk in self._ladders and tk in self._prices:
+                kept |= saved_window(self._ladders[tk], self._prices[tk], now)
+        self.saved_options = kept
+
+    def saves(self, topic: str, msg: dict) -> bool:
+        """Whether the writer records a bus message (CaptureWriter.saves): an option quote or an
+        option book only for a contract in saved_options; every other message."""
+        option = topic.startswith("optquote.") or (topic.startswith("book.") and msg["service"] == "OPTIONS_BOOK")
+        return not option or msg["symbol"] in self.saved_options
+
     def _rank(self, ticker: str) -> None:
         """`ticker`'s newest chain put in the rule's order (by_gamma) at its newest price and the
         daemon's time, and the pick redone."""
@@ -469,14 +521,17 @@ class Daemon:
             self._prices[ticker] = price
             if ticker in self._chains and ticker not in self._ranked:
                 self._rank(ticker)
+            self._keep_options()
 
     def _took_chain(self, ticker: str, record: list) -> None:
         """A ticker's newest whole chain on the bus (its parts), ordered once its price is held.
         A failed fetch carries no contracts and changes nothing."""
         if all("contracts" in part for part in record):
             self._chains[ticker] = [ct for part in record for ct in part["contracts"]]
+            self._ladders[ticker] = strike_ladders(self._chains[ticker])
             if ticker in self._prices:
                 self._rank(ticker)
+            self._keep_options()
 
     async def follow_market(self, stop: asyncio.Event) -> None:
         """The option rule's inputs, as the bus has them, until `stop`: each ticker's newest
@@ -512,6 +567,7 @@ class Daemon:
             self.flow_contract = req["contract"]
             log.info("flow contract: %s", self.flow_contract)
             self.pick_options()
+            self._keep_options()
         elif req["op"] == "stop":
             log.info("capture daemon: stop requested on its local socket")
             self.stop.set()
@@ -530,6 +586,8 @@ class Daemon:
             self.watchlist, op = [t for t in self.watchlist if t != ticker], REMOVED
             self._chains.pop(ticker, None)          # added again, it waits for its next chain
             self._ranked.pop(ticker, None)
+            self._ladders.pop(ticker, None)
+            self._keep_options()
         else:
             if ticker in self.watchlist:
                 return self.bus.publish(*watchlist_message(self.watchlist, op=ON_LIST, ticker=ticker, request_id=rid))
@@ -861,6 +919,37 @@ async def record_feed_status(daemon: "Daemon", stop: asyncio.Event) -> None:
             pass
 
 
+#: trading sessions stream_capture.db keeps (the operator's setting), and how often keep_sessions looks
+SESSIONS_KEPT = 5
+KEEP_EVERY_SEC = 60.0
+
+
+async def keep_sessions(daemon: "Daemon", stop: asyncio.Event) -> None:
+    """Once after each close of the last option market (time_et.options_closed_at), the writer
+    removes every row received before the newest SESSIONS_KEPT sessions began (time_et.sessions_since,
+    from Schwab's /markets answers; CaptureWriter.prune). While today's market is unknown or open,
+    or fewer sessions are held, nothing is removed: never on a guess."""
+    kept_for = warned_for = None
+    while True:
+        now = datetime.fromtimestamp(daemon.clock(), ET)
+        closed = options_closed_at(now) if options_open(now) is False else None
+        if closed is not None and closed != kept_for:
+            since = sessions_since(now, SESSIONS_KEPT)
+            if since is not None:
+                daemon.writer.prune(since.timestamp())
+                log.info("keep: removing rows received before %s (the newest %d sessions stay)", ct_label(since.timestamp()),
+                         SESSIONS_KEPT)
+                kept_for = closed
+            elif closed != warned_for:
+                log.warning("keep: fewer than %d sessions held from Schwab's /markets; nothing removed", SESSIONS_KEPT)
+                warned_for = closed
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=KEEP_EVERY_SEC)
+            return
+        except asyncio.TimeoutError:
+            pass
+
+
 def _worker_ended(worker: "asyncio.Future") -> None:
     """The chain sweep's end: one that ended on an error is logged with its traceback."""
     if not worker.cancelled() and worker.exception() is not None:
@@ -925,10 +1014,12 @@ async def run() -> int:
     db_path = canonical_console_db_path()
     daemon = Daemon(bus, health, stored_watchlist(writer.db_path))
     daemon.writer, daemon.stop = writer, stop
+    writer.saves = daemon.saves
     wsub = bus.subscribe("", policy=LOG)                # the record of every message
     tasks = [asyncio.create_task(writer.run(wsub, stop=stop)),
              asyncio.create_task(run_chains(daemon, db_path, schwab_client, stop, failures=writer)),
              asyncio.create_task(record_feed_status(daemon, stop)),
+             asyncio.create_task(keep_sessions(daemon, stop)),
              asyncio.create_task(daemon.follow_market(stop)),
              asyncio.create_task(serve_live_push(bus, stop, on_request=daemon.console_frame)),
              asyncio.create_task(serve_live_ui(bus, stop, heartbeat_fn=daemon.status))]
