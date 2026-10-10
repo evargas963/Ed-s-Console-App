@@ -105,12 +105,10 @@ a file that does not exist, or names an ENF item that is not in `ACTIVE_PROGRAM.
 
 - While working: the tests of the files touched. Before the PR is offered: `npm run test:all`
   (Playwright, then pytest) and `python -m ruff check . --select F401,F821,E9` on its final
-  commit. Enforced by: GitHub branch protection on `main` requires `pytest-full`
-  (`.github/workflows/pytest.yml`: Playwright, then pytest) and `hardening`
-  (`.github/workflows/hardening.yml`: ruff, compile) to pass on the branch's final commit, kept
-  current with `main`; the pre-commit hooks run ruff on every commit.
-- Never kill a commit hook mid-run; a long one runs in the background. Enforced by: no machine
-  check — ENF-12.
+  commit. Enforced by: branch protection on `main` requires `pytest-full` (`.github/workflows/pytest.yml`)
+  and `hardening` (`.github/workflows/hardening.yml`, ruff and compile) on the branch's final
+  commit, kept current with `main`; the pre-commit hooks run ruff on every commit.
+- Never kill a commit hook mid-run; a long one runs in the background. Enforced by: no machine check — ENF-12.
 - Claims. Every statement about how something is now (a process, a file, a branch, a pull
   request, a test result, data, the screen) is CONFIRMED only by command output shown in the
   same reply. Anything else is NOT VERIFIED, with when it was last checked. An earlier check
@@ -118,9 +116,12 @@ a file that does not exist, or names an ENF item that is not in `ACTIVE_PROGRAM.
   summaries, "seen, not fixed" and next steps. Enforced by: no machine check — ENF-12.
 - Proof is reproducible: a committed test or a command anyone can re-run. A scratch script is
   not proof. Enforced by: no machine check — ENF-12.
-- No hand-maintained counts, floors or lists that a check compares against; the check computes
-  them. Enforced by: no machine check — ENF-12.
-- Work another agent wrote is read in full by the agent offering the PR, as its own work.
+- A flaky-test fix reports the failure forced on demand before it, the cause as a sequence, that
+  forced timing passing after it plus many runs under load, and what changed. App code with the test
+  unchanged is a real fix; a test-only change keeping its assertions needs evidence the timing can't
+  occur in real use; loosened expectations, removed checks or retries are refused. Enforced by: no machine check — ENF-12.
+- No hand-maintained counts, floors or lists that a check compares against (the check computes
+  them); work another agent wrote is read in full by the agent offering the PR, as its own work.
   Enforced by: no machine check — ENF-12.
 - A runtime change is on disk only until the process restarts after it; say which. Merged is not
   deployed; deployed is production at the merge commit, both processes restarted, the real screen
