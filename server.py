@@ -156,7 +156,7 @@ from config import token_path
 
 from instrument_identity import display_symbol, ticker_storage_key   # RC-126: the ONE query-symbol authority
 import live_market_plane as lmp
-from numeric_contract import schwab_number
+from numeric_contract import schwab_count, schwab_number
 from terrain_engine import (SCOPES, TerrainSnapshot, chain_ladder, compute_terrain, nearest_strike,
                             positioning_migration, strike_window)
 from terrain_atr import Atr, compute_atrs, roll_up
@@ -333,11 +333,10 @@ def _schwab_bar(start_ms, o, h, lo, c, volume) -> "Candle | None":
     """One Schwab CHART_EQUITY bar as a Candle, each field as Schwab sent it; None when its start
     or a price is not a number (AGENTS.md rule 2: absent, -999, text, NaN or infinity). A volume
     that is not a number, or negative, is absent."""
-    from numeric_contract import schwab_count, schwab_number
-    o, h, lo, c = (schwab_number(v) for v in (o, h, lo, c))
-    if None in (o, h, lo, c) or schwab_number(start_ms) is None:
+    start, o, h, lo, c = schwab_number(start_ms), schwab_number(o), schwab_number(h), schwab_number(lo), schwab_number(c)
+    if None in (start, o, h, lo, c):
         return None
-    return Candle(ts=float(start_ms) / 1000.0, open=o, high=h, low=lo, close=c, volume=schwab_count(volume))
+    return Candle(ts=start / 1000.0, open=o, high=h, low=lo, close=c, volume=schwab_count(volume))
 
 
 def _write_price_history(msg: dict) -> "str | None":
@@ -2707,12 +2706,12 @@ def _publish_price_levels(ticker: str, now: datetime) -> None:
     a new session). The routes read what it published (canonical_price_level_snapshot). A failed
     build is logged; the routes serve the last published snapshot with its as-of time, or say
     the levels are absent."""
-    from liquidity_value_engine import PlaybookConfig, _bars_to_list, materialize_price_level_snapshot
+    from liquidity_value_engine import PlaybookConfig, bars_from_candles, materialize_price_level_snapshot
 
     tk = ticker_storage_key(_required_ticker(ticker))
     before = canonical_price_level_snapshot(tk, now)
     try:
-        snap = materialize_price_level_snapshot(tk, market_session_date(now), _bars_to_list(_liquidity_1m_bars(tk)),
+        snap = materialize_price_level_snapshot(tk, market_session_date(now), bars_from_candles(_bars_1m(tk, 2500)),
                                                 bar_source=BAR_SOURCE, config=PlaybookConfig())
     except Exception as e:  # noqa: BLE001 -- logged; the ticker's next bar builds them
         log.warning("price levels for %s not built: %s", tk, e)
@@ -2892,12 +2891,6 @@ def _build_raw_levels_used(raw_levels: dict) -> list:
         if raw_levels.get(k) is not None:
             items.append({"tag": tag_map[k], "value": float(raw_levels[k])})
     return sorted(items, key=lambda x: x["value"])
-
-
-def _liquidity_1m_bars(ticker: str) -> list[dict]:
-    """The ticker's completed Schwab 1-minute bars (_bars_1m), in the liquidity engine's shape."""
-    return [{"timestamp": int(float(c.ts) * 1000), "open": c.open, "high": c.high,
-             "low": c.low, "close": c.close, "volume": c.volume} for c in _bars_1m(ticker, 2500)]
 
 
 #: the terrain levels the liquidity zones are fused with, and the tag each carries

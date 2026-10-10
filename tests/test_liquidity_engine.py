@@ -14,14 +14,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from micro_structure import Candle
 from time_et import (
     ET,
 )
-def _mk_bar(dt: datetime, o: float, h: float, l: float, c: float, vol: float = 1000.0) -> dict:
-    return {
-        "timestamp": int(dt.timestamp() * 1000),
-        "open": o, "high": h, "low": l, "close": c, "volume": vol,
-    }
+def _mk_bar(dt: datetime, o: float, h: float, l: float, c: float, vol: float = 1000.0) -> Candle:
+    return Candle(ts=dt.timestamp(), open=o, high=h, low=l, close=c, volume=vol)
 
 
 
@@ -36,38 +34,13 @@ def test_imports():
     assert ZoneType.RESISTANCE_LIQUIDITY.value == "resistance_liquidity"
 
 
-def test_bars_normalization():
-    """Engine accepts list of dicts and produces correct internal format."""
-    from liquidity_value_engine import _bars_to_list
-    bars = [
-        {"timestamp": 1710000000000, "open": 500, "high": 501, "low": 499, "close": 500.5, "volume": 1000},
-    ]
-    norm = _bars_to_list(bars)
-    assert len(norm) == 1
-    assert norm[0]["open"] == 500.0
-    assert norm[0]["high"] == 501.0
-
-
-def test_bars_normalization_preserves_missing_volume_as_missing():
-    """S002: missing Schwab candle volume must not be silently converted to 0."""
-    from liquidity_value_engine import _bars_to_list
-    bars = [
-        {"timestamp": 1710000000000, "open": 500, "high": 501, "low": 499, "close": 500.5},
-    ]
-
-    norm = _bars_to_list(bars)
-
-    assert norm[0]["volume"] is None
-
-
-def test_bars_normalization_drops_missing_ohlc_bar():
-    """S003: incomplete Schwab OHLC bars must not become zero-price bars."""
-    from liquidity_value_engine import _bars_to_list
-    bars = [
-        {"timestamp": 1710000000000, "open": 500, "high": 501, "close": 500.5, "volume": 1000},
-    ]
-
-    assert _bars_to_list(bars) == []
+def test_the_engine_takes_the_bar_writers_candles_as_they_are():
+    """Each candle's fields as the bar writer checked them, an absent volume still absent."""
+    from liquidity_value_engine import bars_from_candles
+    (b,) = bars_from_candles([Candle(ts=1710000000.0, open=500.0, high=501.0, low=499.0, close=500.5, volume=None)])
+    assert (b["timestamp"], b["open"], b["high"], b["low"], b["close"], b["volume"]) == \
+        (1710000000000, 500.0, 501.0, 499.0, 500.5, None)
+    assert b["_dt"] == datetime.fromtimestamp(1710000000.0, ET)
 
 
 
@@ -182,21 +155,20 @@ def test_volume_profile_wide_bar_stays_bounded_and_still_distributed():
 
 
 def _bar(d: date, hh: int, mm: int, high: float, low: float, close: float = None,
-         volume: float = 1000.0) -> dict:
+         volume: float = 1000.0) -> Candle:
     """One 1m bar at an explicit ET wall-clock time."""
     from datetime import datetime as _dt
     from time_et import ET as _ET
     ts = _dt(d.year, d.month, d.day, hh, mm, tzinfo=_ET)
-    return {"timestamp": int(ts.timestamp() * 1000), "open": low,
-            "high": high, "low": low, "close": close if close is not None else high,
-            "volume": volume}
+    return Candle(ts=ts.timestamp(), open=low, high=high, low=low,
+                  close=close if close is not None else high, volume=volume)
 
 
 def _overnight(bars: list, session_date: date) -> dict:
     """The engine's overnight range as its producer gets it: bars normalized once, the prior
     session found once."""
-    from liquidity_value_engine import _bars_to_list, get_overnight_levels, prior_trading_session_date
-    norm = _bars_to_list(bars)
+    from liquidity_value_engine import bars_from_candles, get_overnight_levels, prior_trading_session_date
+    norm = bars_from_candles(bars)
     return get_overnight_levels(norm, session_date, prior_trading_session_date(norm, session_date))
 
 
@@ -241,7 +213,7 @@ def test_overnight_window_spans_a_holiday_gap_without_inventing_a_session():
     16:00 and include the Thursday bars in between — the interval is continuous, not two
     hand-picked calendar dates."""
     from liquidity_value_engine import prior_trading_session_date
-    from liquidity_value_engine import _bars_to_list
+    from liquidity_value_engine import bars_from_candles
     wed, thu, fri = date(2026, 11, 25), date(2026, 11, 26), date(2026, 11, 27)
     bars = [
         _bar(wed, 10, 0, 100.0, 99.0),         # Wednesday RTH — the real prior session
@@ -253,7 +225,7 @@ def test_overnight_window_spans_a_holiday_gap_without_inventing_a_session():
         _bar(fri, 8, 0, 97.0, 96.0),           # Friday pre-open
         _bar(fri, 10, 0, 200.0, 10.0),         # Friday RTH — excluded
     ]
-    assert prior_trading_session_date(_bars_to_list(bars), fri) == wed, (
+    assert prior_trading_session_date(bars_from_candles(bars), fri) == wed, (
         "a day with no RTH bars was treated as the prior trading session"
     )
     out = _overnight(bars, fri)
@@ -305,8 +277,8 @@ def _step3_bars(session_date: date) -> list:
 
 def _step3_zones(session_date: date):
     from liquidity_models import PlaybookConfig
-    from liquidity_value_engine import _bars_to_list, build_premarket_snapshot, build_price_level_snapshot
-    snap = build_price_level_snapshot("SPY", session_date, _bars_to_list(_step3_bars(session_date)), bar_source="test")
+    from liquidity_value_engine import bars_from_candles, build_premarket_snapshot, build_price_level_snapshot
+    snap = build_price_level_snapshot("SPY", session_date, bars_from_candles(_step3_bars(session_date)), bar_source="test")
     return build_premarket_snapshot("SPY", session_date, PlaybookConfig(), canonical=snap).zones
 
 
@@ -349,7 +321,7 @@ def test_cluster_price_levels():
 
 def test_no_lookahead_premarket():
     """Premarket snapshot does not use same-day RTH data."""
-    from liquidity_value_engine import _bars_to_list, build_premarket_snapshot, build_price_level_snapshot
+    from liquidity_value_engine import bars_from_candles, build_premarket_snapshot, build_price_level_snapshot
     from liquidity_models import PlaybookConfig
     session = date(2026, 10, 6)          # a Tuesday: its prior session is the day before
     # Only previous day bars
@@ -360,7 +332,7 @@ def test_no_lookahead_premarket():
         dt = datetime(prev_date.year, prev_date.month, prev_date.day, 10, 0 + i % 60, tzinfo=ET)
         bars.append(_mk_bar(dt, 500, 501, 499, 500, 1000))
     cfg = PlaybookConfig()
-    snap = build_price_level_snapshot("SPY", session, _bars_to_list(bars), bar_source="test", config=cfg)
+    snap = build_price_level_snapshot("SPY", session, bars_from_candles(bars), bar_source="test", config=cfg)
     out = build_premarket_snapshot("SPY", session, cfg, canonical=snap)
     assert out.raw_levels.get("prev_day")
     # No today POC/VAH/VAL in premarket raw: every "poc"-shaped key inside prev_day

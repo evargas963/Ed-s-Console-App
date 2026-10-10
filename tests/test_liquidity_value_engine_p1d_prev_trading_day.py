@@ -15,13 +15,14 @@ from __future__ import annotations
 from datetime import date, datetime, time as dtime
 from zoneinfo import ZoneInfo
 
-from liquidity_value_engine import PlaybookConfig, _bars_to_list
+from liquidity_value_engine import PlaybookConfig, bars_from_candles
 from liquidity_value_engine import get_previous_day_levels as _levels
+from micro_structure import Candle
 
 
 def get_previous_day_levels(bars, session_date, cfg):
-    """The engine's prior-day levels of bars normalized as its producer normalizes them."""
-    return _levels(_bars_to_list(bars), session_date, cfg)
+    """The engine's prior-day levels of the bar writer's candles, as its producer takes them."""
+    return _levels(bars_from_candles(bars), session_date, cfg)
 
 ET = ZoneInfo("America/New_York")
 
@@ -30,7 +31,7 @@ def _bar(d: date, hh: int, mm: int, o: float, h: float, l: float, c: float, v: i
     # institutional-synthetic-ok: each case places a bar exactly inside or outside a session
     # boundary Schwab's /markets sent
     ts = datetime.combine(d, dtime(hh, mm), tzinfo=ET).timestamp()
-    return {"timestamp": ts, "open": o, "high": h, "low": l, "close": c, "volume": v}
+    return Candle(ts=ts, open=o, high=h, low=l, close=c, volume=v)
 
 
 def _cfg() -> PlaybookConfig:
