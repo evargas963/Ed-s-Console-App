@@ -525,17 +525,19 @@ def test_d5_the_chain_is_asked_until_the_last_option_close_and_its_close_values_
     """SPY's options trade to 16:15 ET; Schwab's /markets sends EQO to 16:00 and IND to 16:15
     (2026-10-07). At 16:10 SPY's chain is asked again and again; at 16:20 once more (its close
     values), then not. Levels from that chain stand at 17:00 (After-Hours), not stale; levels
-    from 15:00 are stale at 16:10, while the options are open."""
+    from 15:00 are stale at 16:10, while the options are open. The clock moves with the sweep at
+    rest (_Swept.move): a request is counted by the clock it was made at, never by when it arrived
+    (CI 2026-10-10 counted a 16:10 request that landed after the clock moved as one at 16:20)."""
     chains = "/marketdata/v1/chains"
     swept = _Swept(tmp_path, "2026-10-07 16:10", ["SPY"])
     try:
-        open_end = _run_for(2.0)
-        swept.clock["now"] = _et("2026-10-07 16:20")
-        _run_for(2.0)
+        swept.until(3)                                   # delivered again and again at 16:10
+        closed = swept.move("2026-10-07 16:20")
+        swept.until(len(swept.chains) + 1)
     finally:
         swept.close()
-    before_close = [q["fromDate"] for p, q, s, *_ in swept.schwab.requests if p == chains and s <= open_end]
-    after_close = [q["fromDate"] for q in _asked_since(swept, chains, open_end)]
+    before_close = [q["fromDate"] for p, q, *_ in swept.schwab.requests[:closed] if p == chains]
+    after_close = [q["fromDate"] for p, q, *_ in swept.schwab.requests[closed:] if p == chains]
     assert before_close and all(before_close.count(e) > 1 for e in before_close), \
         "each expiry asked again and again while the last option market is open"
     assert sorted(after_close) == sorted(set(before_close)), "each expiry once more after the 16:15 close"
@@ -543,6 +545,44 @@ def test_d5_the_chain_is_asked_until_the_last_option_close_and_its_close_values_
     stands = server.terrain_staleness(_et("2026-10-07 16:20"), "SPY", now=_et("2026-10-07 17:00"))
     assert (stands["levels_stale"], stands["levels_stale_reason"]) == (False, "")
     assert server.terrain_staleness(_et("2026-10-07 15:00"), "SPY", now=_et("2026-10-07 16:10"))["levels_stale"] is True
+
+
+def test_d5_a_chain_in_flight_at_the_close_keeps_its_begin_time_and_the_close_chain_follows(tmp_path):
+    """Schwab's /markets 2026-10-07: the last option market (IND) closes 16:15 ET. SPY's chain is
+    begun at 16:10 and its request answered once the clock reads 16:20 (time passing during a
+    request). It carries 16:10 to the console and to the chain history (the 16:00 window), so it
+    is not the close values; one more chain, begun at 16:20, follows (the close capture), then no
+    more is asked. Both are stored, each at the time it began, and no history write fails."""
+    chains = "/marketdata/v1/chains"
+    schwab = LocalSchwab()
+    delivered: "list[float]" = []
+
+    def clock() -> float:
+        return _et("2026-10-07 16:20") if any(r[0] == chains for r in schwab.requests) else _et("2026-10-07 16:10")
+
+    def publish(topic, msg):
+        if "contracts" in msg and msg["part"] == 0:
+            delivered.append(msg["ts_recv"])
+    db = tmp_path / "ed_console.db"
+    writer = CaptureWriter(tmp_path / "stream_capture.db")
+    sweep = ChainSweep(db, ["SPY"], publish, clock=clock, failures=writer, streamed=lambda symbol: None)
+    client = schwab.client(tmp_path)
+    stop = threading.Event()
+    worker = threading.Thread(target=sweep.work, args=(lambda: client, stop), daemon=True)
+    worker.start()
+    deadline = time.monotonic() + 10
+    while len(delivered) < 2 and time.monotonic() < deadline:
+        time.sleep(0.02)
+    time.sleep(1.0)                                      # nothing more is asked
+    stop.set()
+    worker.join(10)
+    asked = [r[1]["fromDate"] for r in schwab.requests if r[0] == chains]
+    with sqlite3.connect(db) as conn:
+        stored = sorted({ts for (ts,) in conn.execute("SELECT ts_utc FROM complete_chain_captures WHERE ticker = 'SPY'")})
+    assert delivered == [_et("2026-10-07 16:10"), _et("2026-10-07 16:20")], "a chain carries the time it began"
+    assert asked and all(asked.count(e) == 2 for e in asked), "each expiry: the chain in flight, then the close chain"
+    assert stored == [_et("2026-10-07 16:10"), _et("2026-10-07 16:20")], "each chain stored at the time it began"
+    assert writer.status()["failures"] == 0, "a chain history write failed"
 
 
 def test_d5_a_ticker_with_no_listed_option_is_asked_once_a_day_whether_it_has_one(tmp_path):
