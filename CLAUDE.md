@@ -24,7 +24,7 @@ so a wrong number that looks right is worse than a blank with a reason.
    check is not current evidence; state changes. This applies to every part of a reply,
    including summaries, "seen, not fixed" and next steps.
    Definitions: "Done" = a test that failed before passes after, the full suite passes, and
-   the live screen shows it working. "Across the board" = every ticker on the board, not one.
+   the live screen shows it working. "Across the board" = every watchlist ticker, not one.
 9. If rules conflict: correctness of what I see > my explicit yes > speed.
 
 Rules 5, 6 and 8 are also enforced by machine. A hook (tools/operator_yes_guard.py) puts
