@@ -12,8 +12,8 @@ const HEAT = require(path.join(__dirname, 'fixtures', 'book_heatmap_payload.json
 
 test('the heatmap paints the served cells, and a click pins a readout, without a page error', async ({ page }) => {
   const errs = [];
-  page.on('pageerror', (e) => errs.push(e.message));
-  page.on('console', (m) => { if (m.type() === 'error' && !/WebSocket|EventSource|Failed to load resource/.test(m.text())) errs.push(m.text()); });
+  page.on('pageerror', (e) => errs.push(e.stack));                // where it was thrown, not only what
+  page.on('console', (m) => { if (m.type() === 'error' && !/WebSocket|EventSource|Failed to load resource/.test(m.text())) errs.push(`${m.text()} @ ${JSON.stringify(m.location())}`); });
   await page.route('**/api/**', (route) => {
     const url = route.request().url();
     const body = url.includes('/api/order-flow/book-heatmap') ? HEAT : { available: false };
