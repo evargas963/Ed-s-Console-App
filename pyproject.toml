@@ -4,7 +4,7 @@ target-version = "py313"
 extend-exclude = [".venv", "venv", "node_modules", "__pycache__"]
 
 [tool.ruff.lint]
-select = ["F", "E9"]
+select = ["F", "E9", "ERA001"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -15,4 +15,4 @@ omit = ["tests/*", "*/node_modules/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-norecursedirs = ["node_modules", ".venv"]
+norecursedirs = ["node_modules", ".venv", "ci_only"]

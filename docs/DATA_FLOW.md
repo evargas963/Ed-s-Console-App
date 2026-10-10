@@ -510,7 +510,8 @@ The work that closes these gaps, in order, is `ACTIVE_PROGRAM.md`.
 
 ## 5. Checks
 
-ruff (F401, F821, E9) at commit and in CI; a compile pass in CI; the behavior tests (`pytest`,
+ruff (the rules `pyproject.toml` selects) at commit and in CI; on a pull request, the stale-mention
+and dead-code checks; a compile pass in CI; the behavior tests (`pytest`,
 `tests/`) and the browser tests (Playwright, `tests/e2e/`) in CI; at commit, the secrets and
 private-path scan, the line-ending check and the virtualenv check; for agents, the hooks that
 block destructive git. A passing check proves only what its tests exercise; every rule beyond

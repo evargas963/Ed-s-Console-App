@@ -60,8 +60,8 @@ a file that does not exist, or names an ENF item that is not in `ACTIVE_PROGRAM.
    Enforced by: `docs/DATA_FLOW.md` §2 D1–D6, each with its own test.
 7. **Nothing without a job.** A change deletes what it replaces, in the same PR. A register, audit,
    report or check lives only while it has a job; once answered, it is deleted.
-   Enforced by: ruff F401 (unused imports) at commit and in the required `hardening` check; the
-   rest — ENF-04.
+   Enforced by: ruff (the rules `pyproject.toml` selects) at commit and in the required
+   `hardening` check, and the cleanup checks under "Before writing code"; the rest — ENF-04.
 8. **All tickers.** Measure and report across the board, never one ticker.
    Enforced by: no machine check — ENF-05.
 9. **Clocks.** Market logic in ET; the UI shows Central Time. The market's sessions are Schwab's
@@ -99,11 +99,16 @@ a file that does not exist, or names an ENF item that is not in `ACTIVE_PROGRAM.
   the existing ones are cleaned as their files are touched. Enforced by:
   `tools/check_no_new_patches.py` in the required `hardening` job
   (`tests/test_check_no_new_patches_v1.py`); the existing ones — TEST-PATCHES.
+- Cleanup: a change leaves no mention of a name it deleted and no code it made dead. Enforced by:
+  `tools/check_stale_references.py` (`hardening`) and `tools/check_dead_code.py` (vulture, in
+  `pytest-full` and at commit in pre-commit's own environment) refuse the PR
+  (`tests/test_check_stale_references_v1.py`,
+  `tests/ci_only/test_check_dead_code_v1.py`); fields no screen reads, dead CSS and JS — ENF-04.
 
 ## Before saying done (enforced)
 
 - While working: the tests of the files touched. Before the PR is offered: `npm run test:all`
-  (Playwright, then pytest) and `python -m ruff check . --select F401,F821,E9` on its final
+  (Playwright, then pytest) and `python -m ruff check .` on its final
   commit. Enforced by: GitHub branch protection on `main` requires `pytest-full`
   (`.github/workflows/pytest.yml`: Playwright, then pytest) and `hardening`
   (`.github/workflows/hardening.yml`: ruff, compile) to pass on the branch's final commit, kept
