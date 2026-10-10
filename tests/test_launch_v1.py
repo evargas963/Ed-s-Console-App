@@ -35,12 +35,13 @@ windows_only = pytest.mark.skipif(sys.platform != "win32", reason="console windo
 
 
 def test_a_port_with_a_listener_is_in_use_and_a_free_one_is_not():
+    """The port stays this test's own throughout (bound), so no other process can listen on it."""
     with socket.socket() as held:
         held.bind(("127.0.0.1", 0))
-        held.listen()
         port = held.getsockname()[1]
+        assert launch.in_use(port) is False
+        held.listen()
         assert launch.in_use(port) is True
-    assert launch.in_use(port) is False
 
 
 def _git(cwd: Path, *args: str) -> str:
