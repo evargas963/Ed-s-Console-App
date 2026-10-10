@@ -524,17 +524,19 @@ def test_d5_the_chain_is_asked_until_the_last_option_close_and_its_close_values_
     """SPY's options trade to 16:15 ET; Schwab's /markets sends EQO to 16:00 and IND to 16:15
     (2026-10-07). At 16:10 SPY's chain is asked again and again; at 16:20 once more (its close
     values), then not. Levels from that chain stand at 17:00 (After-Hours), not stale; levels
-    from 15:00 are stale at 16:10, while the options are open."""
+    from 15:00 are stale at 16:10, while the options are open. The clock moves with the sweep at
+    rest (_Swept.move): a request is counted by the clock it was made at, never by when it arrived
+    (CI 2026-10-10 counted a 16:10 request that landed after the clock moved as one at 16:20)."""
     chains = "/marketdata/v1/chains"
     swept = _Swept(tmp_path, "2026-10-07 16:10", ["SPY"])
     try:
-        open_end = _run_for(2.0)
-        swept.clock["now"] = _et("2026-10-07 16:20")
-        _run_for(2.0)
+        swept.until(3)                                   # delivered again and again at 16:10
+        closed = swept.move("2026-10-07 16:20")
+        swept.until(len(swept.chains) + 1)
     finally:
         swept.close()
-    before_close = [q["fromDate"] for p, q, s, *_ in swept.schwab.requests if p == chains and s <= open_end]
-    after_close = [q["fromDate"] for q in _asked_since(swept, chains, open_end)]
+    before_close = [q["fromDate"] for p, q, *_ in swept.schwab.requests[:closed] if p == chains]
+    after_close = [q["fromDate"] for p, q, *_ in swept.schwab.requests[closed:] if p == chains]
     assert before_close and all(before_close.count(e) > 1 for e in before_close), \
         "each expiry asked again and again while the last option market is open"
     assert sorted(after_close) == sorted(set(before_close)), "each expiry once more after the 16:15 close"
