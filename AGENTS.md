@@ -3,7 +3,7 @@
 Before writing a change, read the parts it touches of `docs/DATA_FLOW.md` (design), `ACTIVE_PROGRAM.md`
 (work order), `docs/ARCHITECTURE.md` (code map) and `docs/PRACTICES.md`. A pull request that breaks a
 rule names the rule. Rules for one area load with its files (`.claude/rules/`); procedures are skills
-(`.claude/skills/`): `before-done`, `flaky-test-fix`, `deploy`, `stream-db-switch`.
+(`.claude/skills/`): `before-done`, `flaky-test-fix`, `deploy`, `stream-db-switch`, `housekeeping`.
 
 Every requirement in a section marked (enforced), here, in `.claude/rules/` and in `docs/DATA_FLOW.md`,
 ends with "Enforced by:" naming the test, hook or required check that blocks a violation, or "no machine
