@@ -48,21 +48,21 @@ def test_protected_tree_permits_restores_messages_and_reads(cmd):
 # ── lock disable ───────────────────────────────────────────────────────────────────────
 def test_git_push_dry_run_not_lock_disable():
     for cmd in ("git push -n origin main", "git push --dry-run origin main"):
-        out = G.bash_violations(cmd, [], payload_cwd=str(REPO))
+        out = G.bash_violations(cmd)
         assert not any("disables a mechanical lock" in v for v in out), (cmd, out)
     for cmd in ("git commit -n -m x", "git push --no-verify", "SKIP=ruff-correctness git commit -m x",
                 "$env:SKIP='eol-style-invariant'; git commit -m x", "pre-commit uninstall",
                 "git -c core.hooksPath=/dev/null commit -m x"):
-        out = G.bash_violations(cmd, [], payload_cwd=str(REPO))
+        out = G.bash_violations(cmd)
         assert any("disables a mechanical lock" in v for v in out), (cmd, out)
 
 
 # ── blind staging ──────────────────────────────────────────────────────────────────────
 @pytest.mark.parametrize("cmd", ["git add -A", "git add --all", "git add .", "git add -u", "git add *"])
 def test_blind_staging_blocks(cmd):
-    assert any("blind staging" in v for v in G.bash_violations(cmd, [], "")), cmd
+    assert any("blind staging" in v for v in G.bash_violations(cmd)), cmd
 
 
 @pytest.mark.parametrize("cmd", ["git add tools/x.py", "git add -p", "git add tests/ tools/"])
 def test_explicit_staging_passes(cmd):
-    assert G.bash_violations(cmd, [], "") == [], cmd
+    assert G.bash_violations(cmd) == [], cmd

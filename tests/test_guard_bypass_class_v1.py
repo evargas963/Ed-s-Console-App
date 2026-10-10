@@ -21,7 +21,7 @@ import tools.operator_law_guard as G  # noqa: E402
 
 
 def test_git_commit_no_verify_blocks():
-    out = G.bash_violations("git commit --no-verify -m x", [], payload_cwd=str(ROOT))
+    out = G.bash_violations("git commit --no-verify -m x")
     assert any("disables a mechanical lock" in v for v in out), out
 
 
