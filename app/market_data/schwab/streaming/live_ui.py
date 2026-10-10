@@ -63,9 +63,11 @@ class _Client:
 
 
 class LiveUiServer:
-    def __init__(self, bus: MessageBus, heartbeat_fn, stats: dict) -> None:
+    def __init__(self, bus: MessageBus, heartbeat_fn, stats: dict,
+                 record_heartbeat=lmp.record_feed_heartbeat) -> None:
         self.bus = bus
         self.heartbeat_fn = heartbeat_fn
+        self.record_heartbeat = record_heartbeat     # where the daemon keeps its own record of each beat
         self.stats = stats
         self.clients: set[_Client] = set()
         stats.update(clients=0, rows_sent=0, frames_sent=0, ingest_failures=0,
@@ -99,7 +101,7 @@ class LiveUiServer:
         """The daemon's whole status (Schwab socket, symbols held and refused per service, the
         watchlist, health), recorded here and sent with every beat: the console's one record of it."""
         hb = self.heartbeat_fn()
-        lmp.record_feed_heartbeat(hb)
+        self.record_heartbeat(hb)
         return hb
 
     # -- browser side -----------------------------------------------------------------
@@ -197,13 +199,14 @@ class LiveUiServer:
 
 async def serve_live_ui(bus: MessageBus, stop: asyncio.Event, *, heartbeat_fn,
                         host: str = LIVE_UI_HOST, port: int = LIVE_UI_PORT,
-                        stats: "dict | None" = None) -> None:
+                        stats: "dict | None" = None, record_heartbeat=lmp.record_feed_heartbeat) -> None:
     """Run until `stop` is set. Start it BEFORE the Schwab connection so the plane sees the
-    first messages (Schwab sends each field once, then only changes)."""
+    first messages (Schwab sends each field once, then only changes). Each beat is recorded with
+    `record_heartbeat` (the daemon's own plane)."""
     from websockets.asyncio.server import serve
 
     stats = stats if stats is not None else {}
-    srv = LiveUiServer(bus, heartbeat_fn, stats)
+    srv = LiveUiServer(bus, heartbeat_fn, stats, record_heartbeat)
     sub = bus.subscribe("quote.", policy=LATEST)         # starts with every quote already held
     lmp.add_row_listener(srv.on_row)
 
@@ -215,9 +218,10 @@ async def serve_live_ui(bus: MessageBus, stop: asyncio.Event, *, heartbeat_fn,
     tasks = [asyncio.create_task(_track()), asyncio.create_task(srv.beat_loop())]
     try:
         async with serve(srv.serve_client, host, port, max_size=None, compression=None,
-                         ping_interval=20, ping_timeout=20):
-            stats["listening"] = f"ws://{host}:{port}"
-            log.info("live ui: serving price rows to browsers on ws://%s:%s", host, port)
+                         ping_interval=20, ping_timeout=20) as server:
+            bound = server.sockets[0].getsockname()[1]  # the port taken (port 0: the system's pick)
+            stats["listening"] = f"ws://{host}:{bound}"
+            log.info("live ui: serving price rows to browsers on ws://%s:%s", host, bound)
             await stop.wait()
     finally:
         for t in tasks:
