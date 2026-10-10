@@ -723,11 +723,15 @@ def test_a_spill_file_is_never_opened_over_another_file(tmp_path):
     the stop, a file for what memory held; beforehand every name a spill file could take in the
     1.5 s the quotes arrive in (a millisecond each, in every form) is already taken by a file of
     its own. The writer opens neither over any of them: each stays as it was, and the writer's two
-    files hold every quote, memory's file named first."""
+    files hold every quote, memory's file named first. The quotes arrive at least twice the time
+    taking the names is measured to need on this machine as it is loaded now, and never under 8 s."""
     db = tmp_path / "stream_capture.db"
     writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01, timeout_sec=0.2, retry_sec=0.1,
                            hold_cap_bytes=_SMALL_CAP)
-    begin = int(time.time() * 1000) + 8000
+    probe = time.perf_counter()
+    for n in range(300):
+        (tmp_path / f"probe.{n}").write_bytes(b"taken")
+    begin = int(time.time() * 1000) + max(8000, int((time.perf_counter() - probe) * 1000 * 4500 / 300 * 2))
     taken = [db.with_name(f"stream_capture.{ms}{n}.spill") for ms in range(begin, begin + 1500) for n in ("", ".0", ".1")]
     for path in taken:
         path.write_bytes(b"taken")
