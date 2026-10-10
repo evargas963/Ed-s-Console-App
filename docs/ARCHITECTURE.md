@@ -25,7 +25,7 @@ EdWebConsole/
 └── start_ed_console.bat (runs launch.py), start_capture_daemon.bat
 ```
 
-Outside the repository: the runtime folder (the one database, the token, logs) and worktrees.
+Outside the repository: the runtime folder (the two databases, the token, logs) and worktrees.
 
 ## 2. Where each file goes
 
@@ -52,9 +52,8 @@ Moves happen one change at a time. `delete` rows go with the change named in `AC
 Each step is one change: delete what has no job, move what remains, update §2, pass the full test
 suite and the browser suite, check the running app. Nothing is copied.
 
-**db.py.** Keep, and move to `daemon/`: bars, level crosses, enrollment (the ticker board), the
-connection. The console stops writing (DATA_FLOW decision 5); its writes go to the daemon's
-writer, into `ed_console.db`.
+**db.py.** Keep, and move to `daemon/`: level crosses and the connection (P2-5). The console
+writes only the level crosses (DATA_FLOW decision 5).
 
 **server.py.**
 - To `producer/`: the levels loop, `_publish_levels`, `_publish_price_levels`, the gamma-surface
