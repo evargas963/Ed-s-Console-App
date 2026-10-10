@@ -10,11 +10,13 @@ import pytest
 
 from liquidity_value_engine import (
     PHASE2A_LEVEL_IDS,
-    _bars_to_list,
+    bars_from_candles,
     build_price_level_snapshot,
     compute_session_vwap_series,
     materialize_price_level_snapshot,
 )
+from micro_structure import Candle
+from server import _schwab_bar
 from time_et import ET
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -25,8 +27,7 @@ SESSION = datetime(2026, 10, 5, 12, 0, tzinfo=ET).date()
 
 def _bar(y, mo, d, h, mi, o, hi, lo, c, v=1000.0):
     # institutional-synthetic-ok: window selection needs bars placed in known sessions
-    return {"timestamp": int(datetime(y, mo, d, h, mi, tzinfo=ET).timestamp() * 1000),
-            "open": o, "high": hi, "low": lo, "close": c, "volume": v}
+    return Candle(ts=datetime(y, mo, d, h, mi, tzinfo=ET).timestamp(), open=o, high=hi, low=lo, close=c, volume=v)
 
 
 def _tape():
@@ -45,13 +46,14 @@ def _tape():
 
 
 def _daemon_bars(name: str, tk: str) -> list:
-    """The capture daemon's newest receipt of each of `tk`'s minutes in fixture `name`, as bars."""
+    """The capture daemon's newest receipt of each of `tk`'s minutes in fixture `name`, taken in
+    by the bar writer's own check (server._schwab_bar)."""
     from tests.feed_live_helper import daemon_bars
     newest = {}
     for r in sorted(daemon_bars(name, tk), key=lambda r: r["ts_recv"]):
         newest[r["bar_start_ms"]] = r
-    return [{"timestamp": ms, "open": r["open"], "high": r["high"], "low": r["low"], "close": r["close"],
-             "volume": r["volume"]} for ms, r in sorted(newest.items())]
+    taken = [_schwab_bar(ms, r["open"], r["high"], r["low"], r["close"], r["volume"]) for ms, r in sorted(newest.items())]
+    return [b for b in taken if b is not None]
 
 
 @pytest.fixture(autouse=True)
@@ -69,7 +71,7 @@ def _clean_snapshots():
 
 def test_snapshot_carries_value_scope_generation_provenance_and_as_of():
     snap = build_price_level_snapshot(
-        "SPY", SESSION, _bars_to_list(_tape()), bar_source="unit_tape", generation=7)
+        "SPY", SESSION, bars_from_candles(_tape()), bar_source="unit_tape", generation=7)
     for lid, value in snap.levels.items():
         assert lid in PHASE2A_LEVEL_IDS, f"{lid} is not a declared Phase 2A id"
         assert value.generation == 7
@@ -86,13 +88,13 @@ def test_snapshot_carries_value_scope_generation_provenance_and_as_of():
 
 def test_one_materialization_per_generation_returns_the_same_object():
     """A new generation may invoke the producer once; re-asking is a READ."""
-    tape = _bars_to_list(_tape())
+    tape = bars_from_candles(_tape())
     a = materialize_price_level_snapshot("SPY", SESSION, tape, bar_source="unit_tape")
     b = materialize_price_level_snapshot("SPY", SESSION, tape, bar_source="unit_tape")
     assert a is b, "the same generation re-materialized — that is a second result"
     assert a.generation == 1
 
-    moved = _bars_to_list(_tape() + [_bar(2026, 8, 4, 11, 1, 107, 112, 106, 111)])
+    moved = bars_from_candles(_tape() + [_bar(2026, 8, 4, 11, 1, 107, 112, 106, 111)])
     c = materialize_price_level_snapshot("SPY", SESSION, moved, bar_source="unit_tape")
     assert c is not a and c.generation == 2, "a new bar input must bump the generation"
     assert all(v.generation == 2 for v in c.levels.values())
@@ -107,7 +109,7 @@ def test_an_index_has_no_volume_levels_and_says_so_an_etf_has_them():
     friday = datetime(2026, 10, 2, tzinfo=ET).date()
     for name, tk, has_volume in (("real_daemon_bars_spx_2026_10_01_02.json", "$SPX", False),
                                  ("real_daemon_bars_spy_tsla_2026_10_01_02.json", "SPY", True)):
-        snap = build_price_level_snapshot(tk, friday, _bars_to_list(_daemon_bars(name, tk)), bar_source=name)
+        snap = build_price_level_snapshot(tk, friday, bars_from_candles(_daemon_bars(name, tk)), bar_source=name)
         absent = {f["family"]: f["reason"] for f in snap.families_absent}
         assert snap.price("PDH") is not None and "prior_day" not in absent, tk
         if has_volume:
@@ -130,7 +132,7 @@ def test_absent_input_stays_absent_and_is_declared():
 
 def test_one_vwap_accumulation_feeds_the_scalar_and_the_curve():
     """The drawn line must END on the served level — one accumulation, one number."""
-    tape = _bars_to_list(_tape())
+    tape = bars_from_candles(_tape())
     assert compute_session_vwap_series(tape, SESSION), "no VWAP series for a session with RTH volume"
 
     snap = build_price_level_snapshot("SPY", SESSION, tape, bar_source="unit_tape")
@@ -150,12 +152,10 @@ def _published(tk: str, now: datetime) -> None:
     """The tape in the console's memory under stand-in ticker `tk`, published as the bar writer
     publishes it (its tiny prior session is stamped degraded, and still served)."""
     import server as srv
-    from micro_structure import Candle
 
     srv._bars.pop(tk, None)
     for b in _tape():
-        srv._keep_bar(tk, Candle(ts=b["timestamp"] / 1000, open=b["open"], high=b["high"], low=b["low"],
-                                 close=b["close"], volume=b["volume"]))
+        srv._keep_bar(tk, b)
     srv._publish_price_levels(tk, now)
 
 
