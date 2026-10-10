@@ -236,8 +236,9 @@ async def _chains_then_console(contracts, fetched) -> list[dict]:
 
 # ── D4. The database is the memory ──────────────────────────────────────────────────────────
 
-def test_d4_the_one_writer_records_every_message_schwab_sends(tmp_path):
-    """Every captured quote of the contract is written to the history database, each with every
+def test_d4_the_one_writer_records_every_message_it_is_handed_with_every_field(tmp_path):
+    """Every captured quote of the contract handed to the writer (no save rule set: the daemon's,
+    Daemon.saves, keeps the traded contracts) is written to the history database, each with every
     field Schwab sent."""
     db = tmp_path / "stream_capture.db"
 
