@@ -11,8 +11,7 @@ if not exist "%VENV_PY%" (
     exit /b 1
 )
 
-REM launch.py ends with 10 after it fast-forwarded the checkout: it is run again, on the new code.
-:launch
-"%VENV_PY%" launch.py
-if "%errorlevel%"=="10" goto launch
-pause
+REM launch.py stop ends the console (its process group alone) and launch.py with 0, and this window
+REM closes; it stays open on an error, so its message can be read. One line, read whole before it
+REM runs: a start that fast-forwards the checkout may rewrite this file, and nothing after it is read.
+"%VENV_PY%" launch.py || pause & exit /b

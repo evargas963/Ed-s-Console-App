@@ -113,19 +113,20 @@ def session_label(now: datetime) -> str:
     return CLOSED
 
 
-def options_open(now: datetime, product: str) -> bool | None:
-    """Whether option market `product` is in a regular window Schwab sent for today; None when
-    Schwab's answer for today is not held."""
+def options_open(now: datetime) -> bool | None:
+    """Whether any option market is in a regular window Schwab sent for today (the last, IND, runs
+    to 16:15 ET, when SPY's, QQQ's and IWM's options stop too); None when Schwab's answer for today
+    is not held."""
     s = session(now.astimezone(ET).date().isoformat())
     if s is None:
         return None
-    return any(start <= now < end for start, end in s.option_windows(product))
+    return any(start <= now < end for _p, windows in s.options for start, end in windows)
 
 
-def options_closed_at(now: datetime, product: str) -> datetime | None:
-    """The end of the newest regular window of option market `product` that has ended by `now`,
-    among the answers held; None when none has."""
-    ended = [end for s in _sessions.values() for _start, end in s.option_windows(product) if end <= now]
+def options_closed_at(now: datetime) -> datetime | None:
+    """The end of the newest regular window of any option market that has ended by `now`, among
+    the answers held; None when none has."""
+    ended = [end for s in _sessions.values() for _p, windows in s.options for _start, end in windows if end <= now]
     return max(ended) if ended else None
 
 
