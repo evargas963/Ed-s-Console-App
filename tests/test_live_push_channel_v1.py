@@ -31,12 +31,16 @@ from stream_spine import MessageBus, book_msg, options_quote_msg, quote_msg
 _CONTRACT = "SPY   260918C00500000"
 
 
-def _free_port() -> int:
+#: ports this test holds bound and not listening (every connect refused, no other process can
+#: take them); closed by the `feed` fixture
+_HELD: list = []
+
+
+def _held_port() -> int:
     s = socket.socket()
     s.bind(("127.0.0.1", 0))
-    port = s.getsockname()[1]
-    s.close()
-    return port
+    _HELD.append(s)
+    return s.getsockname()[1]
 
 
 @pytest.fixture
@@ -50,6 +54,8 @@ def feed():
     yield
     ofs._feed_running = False
     lmp._by_ticker.clear()
+    while _HELD:
+        _HELD.pop().close()
 
 
 def _port(stats: dict) -> int:
@@ -59,8 +65,9 @@ def _port(stats: dict) -> int:
 
 def _console(push_port: int, ui_port: "int | None" = None):
     """The console's real feed loop on the daemon's live push at `push_port` and its price rows
-    at `ui_port` (none given: a port nothing listens on), retried every 0.05 s."""
-    return ofs._feed_loop(f"ws://127.0.0.1:{push_port}", f"ws://127.0.0.1:{ui_port or _free_port()}", 0.05)
+    at `ui_port` (none given: a port this test holds, nothing listening), retried every 0.05 s."""
+    return ofs._feed_loop(f"ws://127.0.0.1:{push_port}",
+                          f"ws://127.0.0.1:{_held_port() if ui_port is None else ui_port}", 0.05)
 
 
 def _spy_trade(last: float, ts: float) -> dict:
