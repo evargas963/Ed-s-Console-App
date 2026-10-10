@@ -55,15 +55,20 @@ COMMIT_CURRENT, COMMIT_MOVED, COMMIT_UNKNOWN, COMMIT_REFUSED = "current", "moved
 def bring_to_origin_main(root: Path) -> "tuple[str, str, str]":
     """The checkout at `root` brought to origin/main: (what the check found, the commit it is at,
     why). It fetches origin and fast-forwards main. COMMIT_CURRENT: at origin/main. COMMIT_MOVED:
-    fast-forwarded. COMMIT_UNKNOWN: origin out of reach. COMMIT_REFUSED: not on main, local
-    changes, or a history split from origin/main; nothing is moved."""
+    fast-forwarded. COMMIT_UNKNOWN: origin out of reach, or git itself not answering (absent, hung);
+    COMMIT_REFUSED: not on main, local changes, or a history split from origin/main; nothing is
+    moved."""
+    try:
+        return _bring(root)
+    except (OSError, subprocess.SubprocessError) as e:
+        return COMMIT_UNKNOWN, "an unknown commit", f"git did not answer: {type(e).__name__}: {e}"
+
+
+def _bring(root: Path) -> "tuple[str, str, str]":
     def git(*args: str) -> subprocess.CompletedProcess:
         return subprocess.run(["git", *args], cwd=root, capture_output=True, text=True, timeout=60)
     head = git("rev-parse", "HEAD").stdout.strip()
-    try:
-        fetched = git("fetch", "--quiet", "origin", "main")
-    except subprocess.TimeoutExpired as e:
-        return COMMIT_UNKNOWN, head, f"origin did not answer: {e}"
+    fetched = git("fetch", "--quiet", "origin", "main")
     if fetched.returncode != 0:
         return COMMIT_UNKNOWN, head, f"origin could not be fetched: {fetched.stderr.strip()}"
     if git("symbolic-ref", "--short", "-q", "HEAD").stdout.strip() != "main":

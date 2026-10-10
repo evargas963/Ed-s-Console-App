@@ -1,8 +1,9 @@
 """The launcher (launch.py): whether a port is in use, against real local listeners on free ports;
 the commit check before a start; and the console's clean stop.
 
-Before it starts either process it brings the checkout to origin/main: local changes stop it; an
-origin out of reach starts it with the check unknown, never passed.
+Before it starts either process it brings the checkout to origin/main: local changes leave it
+where it is, the check refused; an origin out of reach, or a git that does not answer, leaves the
+check unknown, never passed. Both start either way (RC-512).
 
 The console runs in a process group of its own (launch.start_console) and launch.py stop sends
 that group Ctrl+Break (launch.ctrl_break): the console runs its shutdown and ends with 0, the
@@ -79,6 +80,10 @@ def test_each_start_brings_the_checkout_to_origin_main_or_says_why_it_cannot(tmp
     _git(prod, "remote", "set-url", "origin", str(tmp_path / "unreachable.git"))
     check, at, why = launch.bring_to_origin_main(prod)
     assert (check, at) == (launch.COMMIT_UNKNOWN, merged) and why.startswith("origin could not be fetched")
+
+    # INDUCED CONDITION: git cannot run there (no such folder: the OSError an absent git gives)
+    check, _at, why = launch.bring_to_origin_main(tmp_path / "gone")
+    assert check == launch.COMMIT_UNKNOWN and why.startswith("git did not answer: "), "the start ended on git"
 
 
 def _window(argv: "list[str]") -> subprocess.Popen:

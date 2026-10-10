@@ -693,22 +693,34 @@ class _Spill:
     def read(self, n: int) -> list:
         """Up to `n` records from `read_at`: (message, end offset) each. A record that does not
         decode (a damaged file) is its bytes as a KeptFailure with where and why, kept as sent in
-        stream_write_failures; its length still places the next record."""
+        stream_write_failures; its length still places the next record. A length that runs past
+        the file's whole records (a damaged length) places nothing: every byte from it to the end
+        is one KeptFailure (_unframed)."""
         if self._in is None:
             self._in = open(self.path, "rb")
         self._in.seek(self.read_at)
         out, at = [], self.read_at
         while len(out) < n and at < self.size:
             length = int.from_bytes(self._in.read(4), "big")
+            if at + 4 + length > self.size:
+                self._in.seek(at)
+                out.append((self._unframed(at, self._in.read(self.size - at)), self.size))
+                break
             raw = self._in.read(length)
             try:
                 item = _from_spill(raw)
             except (ValueError, KeyError, TypeError) as e:
-                item = KeptFailure("spill", raw.decode("utf-8", "replace"), f"{self.path.name}: the record at "
-                                   f"byte {at} does not decode: {type(e).__name__}: {e}", time.time())
+                item = KeptFailure("spill", raw.decode("latin-1"), f"{self.path.name}: the record at byte {at} "
+                                   f"does not decode, kept as its bytes (latin-1): {type(e).__name__}: {e}", time.time())
             at += 4 + length
             out.append((item, at))
         return out
+
+    def _unframed(self, at: int, raw: bytes) -> KeptFailure:
+        """Bytes from `at` that make no whole record (a damaged length, or a crash cut a record off),
+        as one KeptFailure: kept as sent, never cut away unrecorded."""
+        return KeptFailure("spill", raw.decode("latin-1"), f"{self.path.name}: the {len(raw)} bytes from byte "
+                           f"{at} make no whole record, kept as their bytes (latin-1)", time.time())
 
     def committed(self, records: int, end: int) -> None:
         """A written-back part of `records` records is in the database; the next starts at `end`."""
@@ -716,25 +728,26 @@ class _Spill:
         self.read_at = end
 
     @classmethod
-    def found(cls, path: Path, written_back: int) -> "tuple[_Spill, int]":
-        """A spill file an earlier writer left beside the database: its whole records, where its
-        write-back resumes (after the `written_back` records its stream_spill_progress row counts
-        as committed; no row: none of it was), and the bytes a crash left after its last whole
-        record, cut from the file (the message they began is lost)."""
+    def found(cls, path: Path, written_back: int) -> "_Spill":
+        """A spill file an earlier writer left beside the database, opened to be written back from
+        after the `written_back` records its stream_spill_progress row counts as committed (no row:
+        none of it was; a count past its whole records: all of them). Bytes after its last whole
+        record (a crash cut a record off, or a damaged length) are its last message, kept as sent
+        when the write-back reaches them (read). It reads the file only: nothing is written."""
         spill = cls(path)
-        disk = path.stat().st_size
+        disk, whole = path.stat().st_size, 0
         with open(path, "rb") as f:
-            while spill.size + 4 <= disk:
-                f.seek(spill.size)
-                end = spill.size + 4 + int.from_bytes(f.read(4), "big")
+            while whole + 4 <= disk:
+                f.seek(whole)
+                end = whole + 4 + int.from_bytes(f.read(4), "big")
                 if end > disk:
                     break
-                spill.size, spill.messages = end, spill.messages + 1
-                if spill.messages == written_back:
+                whole, spill.messages = end, spill.messages + 1
+                if spill.messages <= written_back:
                     spill.read_at = end
-        spill.written_back = written_back
-        spill.out.truncate(spill.size)
-        return spill, disk - spill.size
+        spill.size, spill.written_back = disk, written_back
+        spill.messages += whole < disk
+        return spill
 
     def left(self) -> dict:
         """The spill file as listed when it is left on disk."""
@@ -821,17 +834,13 @@ class CaptureWriter:
             conn.commit()
             progress = dict(conn.execute("SELECT spill, written_back FROM stream_spill_progress"))
             # spill files an earlier writer left beside the database (named in the order they
-            # began) hold the oldest messages there are: written back first, each from after its
-            # committed parts; new messages go after the newest. One whose every record is
-            # committed was ended between its last part and its deletion: it is deleted.
-            for f in sorted(p.parent.glob(f"{p.stem}.*.spill"), key=_spill_order):
-                spill, cut = _Spill.found(f, progress[f.name] if f.name in progress else 0)
-                if cut:
-                    self._lose(None, ValueError(f"{f.name}: {cut} bytes after its last whole record"))
-                if spill.written_back < spill.messages:
-                    self._spills.append(spill)
-                else:
-                    self._finish_spill(spill, conn)
+            # began) hold the oldest messages there are: the writer thread writes them back first,
+            # each from after its committed parts, and deletes one whose every record is committed
+            # (ended between its last part and its deletion) without writing it again; new messages
+            # go after the newest. Nothing is written here: a database that refuses writes at the
+            # start never stops the daemon starting.
+            self._spills = [_Spill.found(f, progress[f.name] if f.name in progress else 0)
+                            for f in sorted(p.parent.glob(f"{p.stem}.*.spill"), key=_spill_order)]
         finally:
             conn.close()
 
@@ -1133,8 +1142,8 @@ class CaptureWriter:
 
     def _lose(self, item, error: BaseException) -> None:
         """A message neither the database nor a spill file holds: counted, with when it was
-        received (`item` None: a message a crash cut off, its time unknown)."""
-        ts = _received(item) if item is not None else None
+        received."""
+        ts = _received(item)
         with self._lock:
             self.lost += 1
             if ts is not None:
@@ -1176,6 +1185,8 @@ class CaptureWriter:
         except OSError as e:
             log.error("stream writer: %s written back (%d messages), not deleted, deleted at the next start: %s: %s",
                       spill.path, spill.messages, type(e).__name__, e)
+            with self._lock:
+                self.left_on_disk.append(spill.left())
             return
         conn.execute("DELETE FROM stream_spill_progress WHERE spill = ?", (spill.path.name,))
         conn.commit()

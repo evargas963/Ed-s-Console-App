@@ -65,7 +65,7 @@ from Schwab to the screen (daemon, console, page), are these:
   else keeps old data, except the writer's own spill files below that hold Schwab's messages
   until they are written back: those that hold messages while the database refuses writes, those
   a stop, a kill or the writer's death left on disk (written back at the next start), and one
-  kept because a record in it does not decode. A message whose row is refused (a constraint, a value SQLite cannot
+  the disk would not delete once written back (deleted at the next start). A message whose row is refused (a constraint, a value SQLite cannot
   hold, a message without its table's shape) is kept as sent, with its error and time, in
   `stream_write_failures`, and the writer goes on. While the database refuses every write
   (locked past the writer's wait, full, read-only), the writer holds the messages in memory, in
@@ -96,10 +96,12 @@ from Schwab to the screen (daemon, console, page), are these:
   count. Spill files a stop, a death or a kill left beside the database are written back when the
   next writer runs, before what it receives, each from after its last committed part, with each
   message's own receipt time; one whose every record is committed (a kill between its last part
-  and its deletion) is deleted, not written again; a message a crash cut off after a file's last
-  whole record is counted lost. A record that does not decode (a damaged file) is kept as sent in
-  `stream_write_failures` with the file and byte it was at; its length places the next, so every
-  record after it is written back and the file deleted as any other. A file the disk will not
+  and its deletion) is deleted, not written again. A record that does not decode (a damaged file)
+  is kept as its bytes in `stream_write_failures` with the file and byte it was at; its length
+  places the next, so every record after it is written back and the file deleted as any other.
+  Bytes that make no whole record (a crash cut a record off, or a damaged length, which places
+  nothing after it) are kept the same way, as one row, before the file is cut back to its whole
+  records: nothing in a spill file is cut away unrecorded. A file the disk will not
   delete (held open by another process) keeps its progress row, which counts every record
   committed: the next start deletes it without writing it again, and recording goes on. A message the
   spill file cannot take (a full disk) is lost: counted, with the window it was received in
@@ -155,7 +157,7 @@ from Schwab to the screen (daemon, console, page), are these:
 | Daemon memory | daemon | the message bus: each topic's current record (one per symbol and service; an unsubscribed symbol's is forgotten) and each ticker's newest chain; the watchlist; the option rule's inputs and pick, and the Flow panel's contract; the equity quotes the browser's price row is built from |
 | Console memory | console | the daemon's price rows as pushed (the price, bid/ask, MARK — never rebuilt); a second copy of the books, option quotes and the equity tape (fed from 8799, §3.5 item 1); the chains the daemon delivered; the computed levels; each ticker's 1-minute bars (`server._bars`, the newest 24,000: Schwab's price history pushed by the daemon, each streamed bar on top) and daily candles (`server._daily`); every other live screen's history, loaded from `ed_console.db` once at startup and then fed live (§2 D6): level crosses (`server._crosses`), each option contract's newest 500 trade prints (`history.TAPE`) and each equity book of the last 240 minutes, one per second (`history.BOOKS`, from the console's start) |
 | `stream_capture.db` | daemon's writer | every raw Schwab message: quotes, books, option quotes, bars, news, price history answers (`stream_pricehistory_raw`), subscription answers; every message a write refused, kept as sent with its error (`stream_write_failures`: the writer's refused rows, and each chain whose history write was refused); how far each spill file's write-back got (`stream_spill_progress`). Quotes, books and option quotes are indexed by receipt time, the order they arrive in (an index by symbol wrote a page per row: `tests/test_data_path_writer_failures_v1.py::test_the_indexes_add_no_more_pages_than_the_rows_they_index`); bars by symbol and bar start. A new database gets those indexes with its tables (`stream_spine.RECEIPT_TIME_INDEXES`); a writer never changes an existing table's index at its start. Production's database (indexed by symbol) is reindexed by hand at the production step, with the daemon stopped: `DROP INDEX idx_sqr_sym_ts; DROP INDEX idx_sbkr_sym_ts; DROP INDEX idx_soqr_sym_ts;` then `CREATE INDEX idx_sqr_ts ON stream_quotes_raw(ts_recv); CREATE INDEX idx_sbkr_ts ON stream_book_raw(ts_recv); CREATE INDEX idx_soqr_ts ON stream_options_quotes_raw(ts_recv);` |
-| `stream_capture.<ms>.<n>.spill` (beside `stream_capture.db`) | daemon's writer | while the database refuses writes, the held messages past the memory cap, in order (n 1), and at a stop what memory held (n 0); deleted once every record is written back, kept when a record does not decode; one a stop, a death or a kill leaves is written back at the next start (§2 D4) |
+| `stream_capture.<ms>.<n>.spill` (beside `stream_capture.db`) | daemon's writer | while the database refuses writes, the held messages past the memory cap, in order (n 1), and at a stop what memory held (n 0); deleted once every record is written back (a record that does not decode or frame kept as its bytes in `stream_write_failures`); one a stop, a death or a kill leaves is written back at the next start (§2 D4) |
 | `ed_console.db` | console, and the daemon (the chain captures) | 1-minute bars, level crosses, the former ticker board (`logging_universe`, read by nothing since the watchlist replaced it; it moves with the databases' merge, step 8), chain captures and a morning chain per ticker — plus the tables of the deleted ML pipeline (dropped in P2-DB3) |
 
 ### 3.4 The journey of each kind of data

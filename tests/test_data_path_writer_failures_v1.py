@@ -448,6 +448,43 @@ def test_a_block_past_the_hold_cap_spills_to_disk_and_writes_back_in_arrival_ord
     assert (after["state"], after["spill"], after["rows_written"]) == ("recording", None, len(_EVENTS))
 
 
+def _run_until_no_spill(writer: CaptureWriter) -> dict:
+    """`writer` run until it holds no spill file, then stopped; its status."""
+    async def go():
+        stop = asyncio.Event()
+        task = asyncio.create_task(writer.run(MessageBus().subscribe("", policy=LOG), stop=stop))
+        await _until(lambda: writer.status()["spill"] is None)
+        stop.set()
+        await task
+    asyncio.run(go())
+    return writer.status()
+
+
+def test_a_database_refusing_writes_at_start_never_stops_the_writer_starting(tmp_path):
+    """INDUCED CONDITIONS: a fully written-back spill file left beside the database (its progress
+    row counts every record: a kill between its last part and its deletion), and the database
+    read-only. The writer starts; once the database takes writes it deletes the file and its row
+    without writing it again."""
+    db = tmp_path / "stream_capture.db"
+    CaptureWriter(db)
+    record = json.dumps({"topic": f"optquote.{_CONTRACT}", "msg": options_quote_msg(
+        symbol=_CONTRACT, content=_EVENTS[0]["content"], src="schwab_stream", ts_recv=1790863200.0)}).encode()
+    spill = db.with_name("stream_capture.1.spill")
+    spill.write_bytes(len(record).to_bytes(4, "big") + record)
+    with sqlite3.connect(db) as conn:
+        conn.execute("INSERT INTO stream_spill_progress(spill, written_back) VALUES(?, 1)", (spill.name,))
+    os.chmod(db, stat.S_IREAD)
+    try:
+        writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01, timeout_sec=0.2, retry_sec=0.1)
+    finally:
+        os.chmod(db, stat.S_IREAD | stat.S_IWRITE)
+    after = _run_until_no_spill(writer)
+    with sqlite3.connect(db) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM stream_spill_progress").fetchone()[0] == 0
+    assert not spill.exists() and _count(db, "stream_options_quotes_raw") == 0
+    assert after["state"] == "stopped"
+
+
 def _undeletable(path: Path):
     """INDUCED CONDITION: the disk refuses to delete `path`, as Windows does while another handle
     holds the file open (a viewer, a virus scan); elsewhere its folder read-only. Returns the
@@ -494,21 +531,21 @@ def test_a_written_back_spill_the_disk_will_not_delete_is_deleted_at_the_next_st
 
     path = Path(during["spill"]["path"])
     assert after["state"] == "recording", "the writer did not go on after the disk refused the delete"
-    assert path.exists()
-    CaptureWriter(db)
+    assert path.exists() and [Path(k["path"]) for k in after["left_on_disk"]] == [path]
+    _run_until_no_spill(CaptureWriter(db, batch_rows=1, batch_sec=0.01))
     with sqlite3.connect(db) as conn:
         assert conn.execute("SELECT COUNT(*) FROM stream_spill_progress").fetchone()[0] == 0
     assert not path.exists(), "the next start did not delete the written-back spill"
     assert _count(db, "stream_options_quotes_raw") == len(_EVENTS) + 1, "the next start wrote it again"
 
 
-def test_a_spill_file_is_resumed_after_its_committed_part_and_a_crash_cut_message_is_lost(tmp_path):
+def test_a_spill_file_is_resumed_after_its_committed_part_and_a_crash_cut_record_is_kept(tmp_path):
     """INDUCED CONDITIONS: two spill files beside the database, as a kill leaves them, holding the
     captured option quotes: the older's first 4 records committed (its progress row says 4) and
     half a record after its last whole one; the newer fully committed (killed between its last
     part and its deletion). A new writer writes the older's other records once, in order, deletes
-    it, counts the cut message lost once, and deletes the newer without writing it again; no
-    progress row is left."""
+    it, keeps the cut record's bytes as sent in stream_write_failures, and deletes the newer
+    without writing it again; no progress row is left."""
     db = tmp_path / "stream_capture.db"
     CaptureWriter(db)
     records = [json.dumps({"topic": f"optquote.{_CONTRACT}", "msg": options_quote_msg(   # DATA_FLOW §2 D4's format
@@ -534,9 +571,92 @@ def test_a_spill_file_is_resumed_after_its_committed_part_and_a_crash_cut_messag
     with sqlite3.connect(db) as conn:
         stored = [ts for (ts,) in conn.execute("SELECT ts_recv FROM stream_options_quotes_raw ORDER BY rowid")]
         progress = conn.execute("SELECT COUNT(*) FROM stream_spill_progress").fetchone()[0]
+        kept = conn.execute("SELECT topic, msg_json, error FROM stream_write_failures").fetchall()
     assert stored == [1790863200.0 + i for i in range(4, len(_EVENTS))], "not the uncommitted records once, in order"
-    assert not older.exists() and not newer.exists() and after["lost"] == 1
+    assert not older.exists() and not newer.exists() and after["lost"] == 0
+    assert [(t, json.loads(m).encode("latin-1")) for t, m, _e in kept] == [("spill", b"\x00\x00\x01")], \
+        "the cut record's bytes are not kept as sent"
+    assert kept[0][2].startswith(f"{older.name}: the 3 bytes from byte ")
     assert (after["left_on_disk"], progress) == ([], 0)
+
+
+def test_a_damaged_length_found_at_start_keeps_every_byte_after_it(tmp_path):
+    """INDUCED CONDITION: a spill file left beside the database whose second record's length is
+    damaged (0xFFFFFFFF; STAND-IN for a damaged disk), whole records after it. A new writer writes
+    the first record; every byte from the damaged length to the end is kept as sent, exactly, in
+    stream_write_failures (it places no record after it), never cut from the file unrecorded."""
+    db = tmp_path / "stream_capture.db"
+    CaptureWriter(db)
+    records = [json.dumps({"topic": f"optquote.{_CONTRACT}", "msg": options_quote_msg(
+        symbol=_CONTRACT, content=e["content"], src="schwab_stream", ts_recv=1790863200.0 + i)}).encode()
+        for i, e in enumerate(_EVENTS)]
+    framed = [len(r).to_bytes(4, "big") + r for r in records]
+    rest = b"\xff\xff\xff\xff" + framed[1][4:] + b"".join(framed[2:])
+    spill = db.with_name("stream_capture.1.spill")
+    spill.write_bytes(framed[0] + rest)
+
+    async def go():
+        bus, stop = MessageBus(), asyncio.Event()
+        writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01)
+        task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
+        await _until(lambda: writer.status()["spill"] is None)
+        stop.set()
+        await task
+        return writer.status()
+    after = asyncio.run(go())
+
+    with sqlite3.connect(db) as conn:
+        stored = [ts for (ts,) in conn.execute("SELECT ts_recv FROM stream_options_quotes_raw ORDER BY rowid")]
+        kept = [json.loads(m).encode("latin-1") for (m,) in conn.execute("SELECT msg_json FROM stream_write_failures")]
+    assert stored == [1790863200.0]
+    assert kept == [rest], "the bytes after the damaged length are not all kept, exactly"
+    assert not spill.exists() and (after["lost"], after["failures"]) == (0, 1)
+
+
+def test_a_damaged_length_in_a_live_write_back_keeps_the_rest_and_the_spill_finishes(tmp_path):
+    """INDUCED CONDITIONS: as in the spill tests, and, while the lock is held, the spill file's last
+    record's length damaged in place (0xFFFFFFFF). On release every record before it is written,
+    the bytes from the damaged length on are kept as one row, the spill finishes, and what arrives
+    after is written to the database."""
+    db = tmp_path / "stream_capture.db"
+    writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01, timeout_sec=0.2, retry_sec=0.1,
+                           hold_cap_bytes=_SMALL_CAP)
+    holder = sqlite3.connect(db, isolation_level=None, check_same_thread=False)
+    holder.execute("BEGIN IMMEDIATE")
+
+    async def go():
+        bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
+        daemon = capture.Daemon(bus, health)
+        daemon.writer = writer
+        task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
+        during = await _held_past_the_cap(writer, bus, health, daemon)
+        path = Path(during["spill"]["path"])
+        with open(path, "r+b") as f:            # where the last record starts
+            last, at = 0, 0
+            while at < during["spill"]["bytes"]:
+                last = at
+                f.seek(at)
+                at += 4 + int.from_bytes(f.read(4), "big")
+            f.seek(last)
+            f.write(b"\xff\xff\xff\xff")
+        holder.execute("COMMIT")
+        await _until(lambda: writer.status()["spill"] is None)
+        _publish_options(bus, health, _EVENTS[:1])
+        await _until(lambda: _count(db, "stream_options_quotes_raw") == len(_EVENTS))
+        after = _beat(daemon)["writer"]
+        stop.set()
+        await task
+        return after
+    try:
+        after = asyncio.run(go())
+    finally:
+        holder.close()
+    with sqlite3.connect(db) as conn:
+        stored = [json.loads(r[0]) for r in conn.execute(
+            "SELECT native_json FROM stream_options_quotes_raw ORDER BY rowid")]
+        kept = conn.execute("SELECT COUNT(*) FROM stream_write_failures").fetchone()[0]
+    assert stored == [e["content"] for e in _EVENTS[:-1]] + [_EVENTS[0]["content"]]
+    assert (kept, after["state"], after["spill"]) == (1, "recording", None)
 
 
 def test_a_spill_file_is_never_opened_over_another_file(tmp_path):
@@ -855,7 +975,7 @@ def test_a_damaged_spill_record_is_kept_as_sent_and_every_record_after_it_is_wri
     assert stored == [e["content"] for e in _EVENTS[:-1]] + [_EVENTS[0]["content"]], \
         "not every good record, in order, the one received after the damaged record included"
     assert [t for t, _e in kept] == ["spill"]
-    assert kept[0][1].startswith(f"{path.name}: the record at byte {last} does not decode: ")
+    assert kept[0][1].startswith(f"{path.name}: the record at byte {last} does not decode, kept as its bytes")
     assert not path.exists(), "the written-back spill file was kept"
     assert (after["state"], after["spill"], after["failures"]) == ("recording", None, 1)
 
