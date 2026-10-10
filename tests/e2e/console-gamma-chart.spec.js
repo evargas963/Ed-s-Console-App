@@ -31,6 +31,7 @@
  * and put -- is actually exercised end to end.
  */
 const { test, expect } = require('@playwright/test');
+const { routeWatchlist } = require('./fixtures/watchlist');
 
 const STRIKES = { spot: 100, spot_strike: 100, max_abs_row: [100, 958600, 50], today_source: 'terrain_live_cache', today_age_sec: 5, levels_stale: false,
   today: { all: [[98, -90000, 10], [100, 958600, 50], [102, -264500, 12]] },
@@ -64,6 +65,7 @@ async function intercept(page) {
     }
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
+  await routeWatchlist(page, ['SPY']);
   return { chainRequests };
 }
 

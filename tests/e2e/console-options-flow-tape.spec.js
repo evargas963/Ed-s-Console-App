@@ -9,6 +9,7 @@
  * fact of where a print landed relative to that same tick's own bid/ask.
  */
 const { test, expect } = require('@playwright/test');
+const { routeWatchlist } = require('./fixtures/watchlist');
 
 const TERRAIN = { ticker: 'SPY', spot: 100, gamma_flip: 99.5, call_wall: 106, put_wall: 94,
   absolute_gamma_strike: 100, net_gex_peak: 100, net_gex_at_spot: 5e8, regime: 'LONG_GAMMA_CHOP', levels_stale: false };
@@ -28,8 +29,8 @@ const TAPE_ROW = {
   multiplier: 100, classification: 'inside_spread',
 };
 
-function intercept(page, tapeBody) {
-  return page.route('**/api/**', (route) => {
+async function intercept(page, tapeBody) {
+  await page.route('**/api/**', (route) => {
     const url = route.request().url();
     let body = { available: false };
     if (url.includes('/api/options/tape')) body = tapeBody;
@@ -40,6 +41,7 @@ function intercept(page, tapeBody) {
     else if (url.includes('/api/chain')) body = { ticker: 'SPY', spot: 100, expiry: null, contracts: [], status: 'unavailable', scope: { kind: 'unavailable', requested_expiry: null, reason: 'no listed expiry for this ticker' } };
     else if (url.includes('/api/expiries')) body = { expiries: ['2026-09-18'] };    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
+  await routeWatchlist(page, ['SPY']);
 }
 
 test.describe('Options Flow tape (Gamma pane, native trade prints)', () => {

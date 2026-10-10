@@ -7,18 +7,20 @@
  */
 const { test, expect } = require('@playwright/test');
 const path = require('path');
+const { routeWatchlist } = require('./fixtures/watchlist');
 
 const HEAT = require(path.join(__dirname, 'fixtures', 'book_heatmap_payload.json'));
 
 test('the heatmap paints the served cells, and a click pins a readout, without a page error', async ({ page }) => {
   const errs = [];
-  page.on('pageerror', (e) => errs.push(e.stack));                // where it was thrown, not only what
-  page.on('console', (m) => { if (m.type() === 'error' && !/WebSocket|EventSource|Failed to load resource/.test(m.text())) errs.push(`${m.text()} @ ${JSON.stringify(m.location())}`); });
+  page.on('pageerror', (e) => errs.push(e.message));
+  page.on('console', (m) => { if (m.type() === 'error' && !/WebSocket|EventSource|Failed to load resource/.test(m.text())) errs.push(m.text()); });
   await page.route('**/api/**', (route) => {
     const url = route.request().url();
     const body = url.includes('/api/order-flow/book-heatmap') ? HEAT : { available: false };
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
+  await routeWatchlist(page, ['TSLA']);
   await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'TSLA'); localStorage.setItem('ed_ws', 'order-flow'); localStorage.setItem('ed_sub', 'heatmap'); } catch (e) {} });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   // drawn on the one shared chart (ed-tv-chart.js), every served cell handed to it
@@ -51,6 +53,7 @@ test('the Book panel shows each served wall candidate size', async ({ page }) =>
     const body = url.includes('/api/order-flow/microstructure') ? BOOK : { available: false };
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
+  await routeWatchlist(page, ['TSLA']);
   await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'TSLA'); localStorage.setItem('ed_ws', 'order-flow'); localStorage.setItem('ed_sub', 'book'); } catch (e) {} });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await expect(page.locator('#obBody')).toContainText('bid @ 440.50');
