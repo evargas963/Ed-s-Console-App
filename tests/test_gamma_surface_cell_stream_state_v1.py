@@ -14,7 +14,6 @@ status holding them.
 """
 from __future__ import annotations
 
-import time
 from datetime import datetime
 
 import pytest
@@ -52,7 +51,7 @@ def _publish(held, ticked, *, at=_AT, socket_open=True):
     """The daemon holding `held` on LEVELONE_OPTIONS, Schwab having sent a GAMMA for each of
     `ticked` a second before `at`, CRWD's chain published at `at`; the route's coverage of every
     strike, and the published surface."""
-    lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": socket_open,
+    lmp.record_feed_heartbeat({"ts": at.timestamp(), "schwab_socket_open": socket_open,
                                "held": {"LEVELONE_EQUITIES": [TK], "LEVELONE_OPTIONS": list(held)}})
     ofs._price_rows[TK] = {"ticker": TK, "spot": _SPOT, "trade_ts": at.timestamp()}
     for sym in ticked:

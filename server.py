@@ -776,7 +776,8 @@ def terrain_staleness(computed_ts_utc: float | None, ticker: str | None = None, 
         reason = (f"levels are {age:.0f}s old and every chain since has failed — {failure}"
                   if failure else
                   f"levels are {age:.0f}s old; the daemon's chain sweep has not delivered this "
-                  f"ticker in two of its rounds ({float(round_sec):.0f}s each)")
+                  + (f"ticker in two of its rounds ({float(round_sec):.0f}s each)" if round_sec is not None
+                     else f"ticker in {float(TERRAIN_STALE_AFTER_SEC):.0f}s (the daemon reports no round of its sweep)"))
     return {"levels_stale": stale, "levels_age_sec": age, "levels_stale_reason": reason,
             # actively FAILING is a different action (the chain fetch is erroring, the levels
             # will not come back on their own)

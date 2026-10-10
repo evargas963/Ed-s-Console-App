@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import copy
 import json
-import time
 from datetime import datetime
 from pathlib import Path
 
@@ -35,8 +34,9 @@ _AT = datetime(2026, 10, 1, 12, 0, tzinfo=ET)     # the captures' day, before ev
 
 
 def _price(spot):
-    """The daemon's status (Schwab's socket open, SPY held) and SPY's price row (None: no price)."""
-    lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True,
+    """The daemon's status at _AT (Schwab's socket open, SPY held) and SPY's price row (None: no
+    price)."""
+    lmp.record_feed_heartbeat({"ts": _AT.timestamp(), "schwab_socket_open": True,
                                "held": {"LEVELONE_EQUITIES": [TK]}})
     if spot is None:
         ofs._price_rows.pop(TK, None)
