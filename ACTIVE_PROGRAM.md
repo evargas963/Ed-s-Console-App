@@ -66,8 +66,7 @@ Status values: `NEXT` | `IN PROGRESS` | `QUEUED` | `BLOCKED` | `OPERATOR`.
 - M-28 `gsf_state` (model curve at spot) and `regime` (Schwab's book) judge gamma at spot from two sources; `gsf_state` is documented as the regime and carries no basis.
 
 **liquidity_value_engine.py, liquidity_models.py**
-- M-01 `_resolve_bar_timestamp` takes the first of `timestamp`/`date`/`ts`; `_bars_to_list` guesses the unit by size (`> 1e12`).
-- M-02 `_bars_to_list` and `volume_profile` drop bars (no time, non-number price, `hi < lo`) without counting them.
+- M-02 `volume_profile` drops bars (`hi < lo`) without counting them.
 - M-04 `compute_opening_range` hard-codes 9:30 instead of `RTH_OPEN_MINS`.
 - M-05 `compute_session_vwap_series` skips volume-less bars without disclosing the count.
 - M-08 truthiness drops a 0 price (`if prev.get("pdh")`, `if vah:`, `if poc:`, `p and p > 0`, …).

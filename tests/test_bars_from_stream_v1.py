@@ -62,6 +62,13 @@ def test_a_bar_missing_a_field_is_not_written():
     assert server._bars_1m(TK) == []
 
 
+def test_a_bar_without_its_volume_is_written_with_its_volume_absent():
+    """A missing volume is absent, never 0; the price levels take the bar as written."""
+    assert server._write_streamed_bar(dict(_bar(T0), volume=None))
+    (b,) = server._bars_1m(TK)
+    assert b.volume is None and (b.open, b.close) == (10.0, 10.5)
+
+
 def test_a_price_that_is_not_a_number_is_not_written():
     """AGENTS.md rule 2: -999, text, NaN and infinity are not numbers."""
     for bad in (-999, "10.0", float("nan"), float("inf")):
