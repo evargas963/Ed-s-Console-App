@@ -15,8 +15,8 @@ shell commands. Each command gets one answer, the strictest of its statements':
     command line cannot be read is put to the operator. A stop whose targets are chosen only when
     it runs (a variable, a pipe) is refused when the command names the daemon or the console, and
     put to the operator while either runs.
-  * A stop or restart of the machine and a merge are put to the operator; a push to main is
-    refused.
+  * A stop or restart of the machine and a `gh pr merge` or API merge (`_merges`) are put to the
+    operator; a push to main is refused.
 
 Limits: shell commands are judged on the program each statement runs, never on names it only
 mentions (a read, a diff or a search naming a launcher passes); code inside `python -c` or a

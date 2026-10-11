@@ -174,9 +174,10 @@ Hold EdWebConsole to how a financial institution handles systems with real money
   tests cover (`tests/test_operator_yes_guard_v1.py`); every other merge — ENF-13.
 - Stop for the operator's STOP / PAUSE / HANG IT UP / DO NOT CONTINUE / NO, a task marked AUDIT ONLY
   or DO NOT MERGE, a destructive data action, and a product decision code cannot settle. Say in chat
-  what a guarded action is for before running it. Enforced by: `tools/operator_yes_guard.py` asks Allow/Deny for a daemon or console start or stop
-  in regular hours or an unknown session, a machine restart and a merge, and refuses killing production
-  and a push to main (`tests/test_operator_yes_guard_v1.py`); the rest — ENF-12.
+  what a guarded action is for before running it. Enforced by: `tools/operator_yes_guard.py` asks Allow/Deny for
+  the daemon or console starts and stops (in regular hours or an unknown session), machine restarts and merges its
+  tests cover, and refuses the kills of production and pushes to main they cover (`tests/test_operator_yes_guard_v1.py`);
+  every other merge — ENF-13; the rest — ENF-12.
 - The production checkout `EdWebConsole` stays `main == origin/main` and moves only by a fast-forward
   (`git pull --ff-only`, or `launch.bring_to_origin_main` at a start); work happens in a worktree.
   Enforced by: `tools/process_lock_guard.py` (`tests/test_operating_process_lock_v1.py`,
