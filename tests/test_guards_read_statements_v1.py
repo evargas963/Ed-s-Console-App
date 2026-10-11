@@ -12,6 +12,7 @@ import pytest
 import time_et
 from tools import operating_process_lock as OPL
 from tools import operator_yes_guard as yes_guard
+from tools import process_lock_guard as PLG
 from tools.operator_law_guard import bash_violations
 from tools.sed_edit_guard import edits
 
@@ -126,6 +127,17 @@ def test_python_code_too_deep_to_parse_does_not_crash_a_guard(code):
 def test_a_python_behind_a_runner_with_valued_options_is_judged(runner):
     assert any(f"under {D}/" in b for b in bash_violations(
         f"{runner} python -c \"import shutil; shutil.rmtree('{D}/x')\""))
+
+
+def test_a_branch_listing_aimed_at_production_is_a_read_and_a_new_branch_is_refused():
+    """git branch --list / --contains aimed at production read (operator 2026-10-11)."""
+    primary = PLG._primary_worktree_root(PLG.REPO) or PLG.REPO
+    lock = "PROD_CHECKOUT_LOCK"
+    for cmd in (f'git -C "{primary}" branch --list fix/x', f'git -C "{primary}" branch --contains abc1234',
+                f'git -C "{primary}" branch -a --list "*decomp*"', f'git -C "{primary}" branch -r --contains abc1234'):
+        assert not any(lock in b for b in PLG.pretooluse_block("Bash", {"command": cmd})), cmd
+    for cmd in (f'git -C "{primary}" branch fix/x', f'git -C "{primary}" branch -D fix/x'):
+        assert any(lock in b for b in PLG.pretooluse_block("Bash", {"command": cmd})), cmd
 
 
 def test_a_heredoc_piped_into_python_is_judged_as_python():
