@@ -11,17 +11,20 @@ import server as srv
 from tests.feed_live_helper import feed_live_during
 
 
-def test_a_symbol_the_daemon_does_not_hold_is_absent_in_session_and_stands_while_closed(monkeypatch) -> None:
+def test_a_symbol_the_daemon_does_not_hold_is_absent_in_session_and_stands_while_closed() -> None:
     """The Schwab socket open but the symbol not held (docs/DATA_FLOW.md §2 D5): during RTH its
     row serves no values and says why; at 22:00 ET the values Schwab sent stand."""
-    for now, served in ((1790780400.0, (None, None)), (1790820000.0, (9.0, 8.9))):  # 11:00, 22:00 ET
-        monkeypatch.setattr(time, "time", lambda now=now: now)
-        feed_live_during(monkeypatch, "ZZHELD")
-        lmp.record_from_level_one_equity("ZZNOTHELD", {"LAST_PRICE": 9.0, "BID_PRICE": 8.9},
-                                         received_ts=now)
-        row = live_price_rows.price_row("ZZNOTHELD")
-        assert (row["spot"], row["bid"], row["feed_live"]) == (*served, False)
-        assert (row["outage"] is None) == (served[0] is not None)
+    try:
+        for now, served in ((1790780400.0, (None, None)), (1790820000.0, (9.0, 8.9))):  # 11:00, 22:00 ET
+            lmp.record_feed_heartbeat({"ts": now, "schwab_socket_open": True,
+                                       "held": {"LEVELONE_EQUITIES": ["ZZHELD"]}})
+            lmp.record_from_level_one_equity("ZZNOTHELD", {"LAST_PRICE": 9.0, "BID_PRICE": 8.9},
+                                             received_ts=now)
+            row = live_price_rows.price_row("ZZNOTHELD", now)
+            assert (row["spot"], row["bid"], row["feed_live"]) == (*served, False)
+            assert (row["outage"] is None) == (served[0] is not None)
+    finally:
+        lmp.record_feed_down()
 
 
 def test_the_console_spot_is_the_daemons_price_row_and_the_console_keeps_no_copy(monkeypatch) -> None:

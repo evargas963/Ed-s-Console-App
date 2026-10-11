@@ -49,14 +49,16 @@ def _clean():
 
 def _hold(tk, contracts, fetched_ts, price, streamed=()):
     """The daemon's status (Schwab's socket open, `tk` and the `streamed` contracts held), each
-    streamed (symbol, fields, receive time) pushed, and `tk`'s chain published."""
-    lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True,
-                               "held": {"LEVELONE_EQUITIES": [tk], "LEVELONE_OPTIONS": [s for s, _f, _t in streamed]}})
+    streamed (symbol, fields, receive time) pushed, and `tk`'s chain published at _AT; the status
+    beats at _AT (the publication's time) and again now (the routes' time)."""
+    held = {"LEVELONE_EQUITIES": [tk], "LEVELONE_OPTIONS": [s for s, _f, _t in streamed]}
+    lmp.record_feed_heartbeat({"ts": _AT.timestamp(), "schwab_socket_open": True, "held": held})
     ofs._price_rows[tk] = {"ticker": tk, "spot": price, "trade_ts": fetched_ts}
     for sym, fields, ts in streamed:
         ofs._ingest_pushed(f"optquote.{sym}", options_quote_msg(symbol=sym, content={"key": sym, **fields},
                                                                 src="schwab_options_l1", ts_recv=ts))
     srv._publish_levels(tk, [dict(c) for c in contracts], fetched_ts, now=_AT)
+    lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "held": held})
 
 
 def _get(**kw):

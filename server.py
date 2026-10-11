@@ -456,10 +456,10 @@ def stop_bar_writer(thread: "threading.Thread | None" = None) -> None:
     thread.join(timeout=10.0)
 
 
-def _watchlist() -> "list[str] | None":
+def _watchlist(now: float) -> "list[str] | None":
     """The watchlist: the tickers the capture daemon asks Schwab for, as its heartbeat carries
-    it; None while the daemon's status is not current."""
-    st = lmp.daemon_status()
+    it; None while the daemon's status is not current at `now`."""
+    st = lmp.daemon_status(now)
     if st is None or not isinstance(st.get("watchlist"), list):
         return None                 # no current heartbeat, or one that carries no list: unknown
     return list(st["watchlist"])
@@ -762,17 +762,21 @@ def terrain_staleness(computed_ts_utc: float | None, ticker: str | None = None, 
         return {"levels_stale": stale, "levels_age_sec": age, "levels_stale_reason": reason,
                 "levels_failing": bool(stale and failure), **token}
     # judged against the round the daemon's chain sweep delivers (every watchlist ticker once)
-    round_sec = (lmp.daemon_status() or {}).get("chain_round_sec") or 0.0
+    status = lmp.daemon_status(now)
+    round_sec = status.get("chain_round_sec") if status is not None else None
     # Stale only past the floor *and* past two delivered rounds — one missed round is normal
-    # jitter, two is a real gap. The floor is retained so a fast sweep cannot hide staleness.
-    stale_after = max(float(TERRAIN_STALE_AFTER_SEC), 2.0 * float(round_sec))
+    # jitter, two is a real gap. The floor is retained so a fast sweep cannot hide staleness;
+    # with no round delivered (or no current status) the floor alone.
+    stale_after = (float(TERRAIN_STALE_AFTER_SEC) if round_sec is None
+                   else max(float(TERRAIN_STALE_AFTER_SEC), 2.0 * float(round_sec)))
     stale = age > stale_after
     reason = ""
     if stale:
         reason = (f"levels are {age:.0f}s old and every chain since has failed — {failure}"
                   if failure else
                   f"levels are {age:.0f}s old; the daemon's chain sweep has not delivered this "
-                  f"ticker in two of its rounds ({float(round_sec):.0f}s each)")
+                  + (f"ticker in two of its rounds ({float(round_sec):.0f}s each)" if round_sec is not None
+                     else f"ticker in {float(TERRAIN_STALE_AFTER_SEC):.0f}s (the daemon reports no round of its sweep)"))
     return {"levels_stale": stale, "levels_age_sec": age, "levels_stale_reason": reason,
             # actively FAILING is a different action (the chain fetch is erroring, the levels
             # will not come back on their own)
@@ -800,13 +804,13 @@ def _next_gamma_surface_seq(tk: str) -> int:
     return n
 
 
-def _streamed_greeks_for_ticker(listed: frozenset) -> dict:
+def _streamed_greeks_for_ticker(listed: frozenset, now: float) -> dict:
     """The newest streamed GAMMA/DELTA/OPEN_INTEREST/VOLUME of every contract the daemon streams
-    of the ticker's chain (`listed`, the symbols Schwab listed in it), gathered whole on every
-    call."""
+    at `now` of the ticker's chain (`listed`, the symbols Schwab listed in it), gathered whole on
+    every call."""
     from app.options.order_flow.state import get_stream_greeks
     out: dict = {}
-    for sym in _held_option_symbols_for_ticker(listed):
+    for sym in _held_option_symbols_for_ticker(listed, now):
         greeks = get_stream_greeks(sym)
         if greeks:
             out[sym] = greeks
@@ -820,12 +824,12 @@ def _current_stream_greeks(streamed: dict, now: float) -> dict:
     return {s: g for s, g in streamed.items() if lmp.outage(s, "LEVELONE_OPTIONS", now) is None}
 
 
-def _held_option_symbols_for_ticker(listed: frozenset) -> "list[str]":
+def _held_option_symbols_for_ticker(listed: frozenset, now: float) -> "list[str]":
     """Every contract of the ticker's chain (`listed`, the symbols Schwab listed in it) the daemon
-    holds on LEVELONE_OPTIONS -- the option rule's pick, as its heartbeat carries it -- whether
-    or not a tick has landed for it yet (a held contract with no tick yet reads PENDING)."""
+    holds on LEVELONE_OPTIONS at `now` -- the option rule's pick, as its heartbeat carries it --
+    whether or not a tick has landed for it yet (a held contract with no tick yet reads PENDING)."""
     from app.options.order_flow.streaming import _read_producer_option_contracts
-    return [sym for sym in _read_producer_option_contracts()["LEVELONE_OPTIONS"] if sym in listed]
+    return [sym for sym in _read_producer_option_contracts(now)["LEVELONE_OPTIONS"] if sym in listed]
 
 
 def _overlaid_symbols(pre: list, post: list) -> list[str]:
@@ -1092,7 +1096,7 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
     if new_chain:       # the ticker's contracts are the ones Schwab listed in this chain
         payload.update(_contract_symbols=frozenset(c.get("symbol") for c in chain if c.get("symbol")))
     listed = payload.get("_contract_symbols") or frozenset()
-    streamed = _streamed_greeks_for_ticker(listed)
+    streamed = _streamed_greeks_for_ticker(listed, at.timestamp())
     # each field the newest Schwab sent: a current streamed value received after this chain, else
     # the chain's
     priced, n_live = overlay_streamed_contract_fields(
@@ -1128,8 +1132,8 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
                        stream_overlay_contracts=n_live, stream_overlay_symbols=live_syms,
                        stream_overlay_computed_ts_utc=at.timestamp())
         _stamp_gamma_surface_cell_stream_state(
-            surface, streamed, {s for s in streamed if lmp.feed_live_for(s, "LEVELONE_OPTIONS")},
-            set(_held_option_symbols_for_ticker(listed)), at.timestamp())
+            surface, streamed, {s for s in streamed if lmp.feed_live_for(s, "LEVELONE_OPTIONS", at.timestamp())},
+            set(_held_option_symbols_for_ticker(listed, at.timestamp())), at.timestamp())
         surface["surface_seq"] = _next_gamma_surface_seq(tk)
         payload["_gamma_surface"] = surface
     with _terrain_cache_lock:
@@ -1304,12 +1308,12 @@ def _feed_record_state() -> str:
             else f"FEED RECORD STALE: last written {age / 60:.0f} min ago")
 
 
-def _status_line() -> str:
-    """One line for the console window: is each part working right now, from its own check."""
-    st = lmp.daemon_status()
-    watchlist = _watchlist()
+def _status_line(now: float) -> str:
+    """One line for the console window: is each part working at `now`, from its own check."""
+    st = lmp.daemon_status(now)
+    watchlist = _watchlist(now)
     if watchlist is not None:
-        priced = sum(1 for tk in watchlist if resolve_spot(tk)[0] is not None)
+        priced = sum(1 for tk in watchlist if resolve_spot(tk, now=now)[0] is not None)
         prices = f"live prices: {priced} of {len(watchlist)} watchlist tickers"
     else:                                             # no current heartbeat: the list is unknown
         prices = "live prices: WATCHLIST UNKNOWN (no current daemon heartbeat)"
@@ -1319,7 +1323,7 @@ def _status_line() -> str:
     round_sec = (st or {}).get("chain_round_sec")
     return " | ".join([
         "alive",
-        f"session {session_label(now_et())}",
+        f"session {session_label(datetime.fromtimestamp(now, ET))}",
         "daemon link: " + ("connected" if st is not None else "NOT CONNECTED"),
         "Schwab socket: " + ("open" if st and st.get("schwab_socket_open") is True else "NOT OPEN"),
         prices,
@@ -1353,8 +1357,9 @@ def _terrain_loop() -> None:
     the delivered chains: _load_stored_levels); then every STATUS_EVERY_SEC the status line is logged
     and the price levels of a new session or a new ticker are published. The chains, and the bars
     each ticker's price levels are built from, arrive from the daemon (_on_chain, _bar_writer)."""
-    _wait_for("the capture daemon's heartbeat (it says what the watchlist is)", lambda: _watchlist() is not None)
-    watchlist = _watchlist()
+    _wait_for("the capture daemon's heartbeat (it says what the watchlist is)",
+              lambda: _watchlist(time.time()) is not None)
+    watchlist = _watchlist(time.time())
     _load_crosses(watchlist)
     _publish_missing_price_levels(watchlist, now_et())
     queued = _load_stored_levels(watchlist)
@@ -1366,8 +1371,9 @@ def _terrain_loop() -> None:
         try:
             if time.monotonic() >= next_status:
                 next_status = time.monotonic() + STATUS_EVERY_SEC
-                log.info(_status_line())
-                watchlist = _watchlist()
+                now = time.time()
+                log.info(_status_line(now))
+                watchlist = _watchlist(now)
                 if watchlist is not None:
                     _publish_missing_price_levels(watchlist, now_et())
         except Exception as e:  # noqa: BLE001 -- the status line says it failed, never silence
@@ -1760,7 +1766,7 @@ def get_options_tape(ticker: str = Query(...),
         if not held or "_contract_symbols" not in held:
             return JSONResponse({"ticker": tk, "available": False, "rows": [],
                                  "reason": "the console holds no chain of this ticker yet"})
-        symbols = _held_option_symbols_for_ticker(held["_contract_symbols"])
+        symbols = _held_option_symbols_for_ticker(held["_contract_symbols"], time.time())
 
     if not symbols:
         return JSONResponse({"ticker": tk, "available": False, "rows": [],
@@ -2096,7 +2102,7 @@ def gamma_surface_payload(tk: str, scope: str, centre, shift: int, cols: "int | 
     # watchlist (fetched in turn; while Closed, once, its close values). The reason is that
     # state's own.
     _requested = _gamma_surface_wanted(tk)
-    _watched = _watchlist()                    # None: the daemon's heartbeat is not current
+    _watched = _watchlist(now.timestamp())     # None: the daemon's heartbeat is not current
     _warming = _watched is not None and tk in _watched
     _levels_why = terrain_staleness((live or {}).get("computed_ts_utc"), tk)["levels_stale_reason"]
     if _watched is None:     # the daemon not reporting is the cause of every other absence: first
@@ -2218,7 +2224,7 @@ def desk_events_payload(tk: str, venue: str, tf: str, now: datetime) -> dict:
                       "src": "/api/terrain"})
     # the book's size walls, stamped with the book's own time (BOOK_TIME); a book that is not live
     # is a past observation and says so
-    micro = json.loads(api_order_flow_microstructure(ticker=tk, venue=venue).body)
+    micro = order_flow_microstructure(tk, venue, now.timestamp())
     book_ms = (micro.get("provenance") or {}).get("book_time_ms")
     live_book = (micro.get("ages") or {}).get("book_stale") is False
     for i, w in enumerate((micro.get("wall_candidates") or [])[:3]):
@@ -2284,7 +2290,11 @@ async def get_changes(ticker: str = Query(...)):
 @app.get("/api/order-flow/microstructure")
 def api_order_flow_microstructure(ticker: str = Query(...),
                                   venue: str = Query(..., pattern=r"^(NYSE_BOOK|NASDAQ_BOOK)$")):
-    """Canonical L2 book microstructure (ORDER_FLOW_MARKET_MICROSTRUCTURE_V1): top-of-book,
+    return JSONResponse(order_flow_microstructure(ticker, venue, time.time()))
+
+
+def order_flow_microstructure(ticker: str, venue: str, now: float) -> dict:
+    """Canonical L2 book microstructure at `now` (ORDER_FLOW_MARKET_MICROSTRUCTURE_V1): top-of-book,
     spread, microprice, Top 1/3/5 depth totals + imbalance, depth-pressure curve, book slope,
     liquidity concentration, wall_candidates, and ages — every field classified
     NATIVE/DERIVED/PROXY. SERIALIZER, not a second producer: it delegates to the ONE canonical
@@ -2305,14 +2315,13 @@ def api_order_flow_microstructure(ticker: str = Query(...),
     # top of book: the daemon's price row; absent with the outage reason when its feed is down
     # in an open session, the values as of the close while Closed (docs/DATA_FLOW.md §2 D5)
     from app.options.order_flow.streaming import price_row
-    now = time.time()
     top_outage = lmp.outage(t, "LEVELONE_EQUITIES", now)
     _row = price_row(t) if top_outage is None else None
     if _row and _row.get("quote_ts") is not None:
         data["exchange_quote_ts"] = _row["quote_ts"]
     data["top"] = ({k: _row.get(k) for k in ("bid", "ask", "bid_size", "ask_size", "mark")}
                    if _row and (_row.get("bid") is not None or _row.get("ask") is not None) else None)
-    data["book_live"] = lmp.feed_live_for(t, venue)
+    data["book_live"] = lmp.feed_live_for(t, venue, now)
     from app.options.order_flow.engine import compute_book_microstructure
     # ticker=t → serialize the canonical state carried per (ticker, BOOK_TIME); no independent recompute.
     payload = compute_book_microstructure(data, now_ts=now, ticker=t)
@@ -2328,7 +2337,7 @@ def api_order_flow_microstructure(ticker: str = Query(...),
         payload["flow"] = None
     payload["ticker"] = t
     payload["venue"] = venue
-    return JSONResponse(payload)
+    return payload
 
 
 @app.get("/api/order-flow/options-microstructure")
@@ -2359,7 +2368,7 @@ def options_microstructure(c: str, now: float) -> dict:
     payload["put_call"] = put_call_side(next((it.get("CONTRACT_TYPE") for it in get_content_for_symbol(c)  # external-key-ok: Schwab LEVELONE_OPTIONS
                                               if it.get("CONTRACT_TYPE")), None))
     # whether the daemon streams this contract (the option rule) and is receiving it
-    payload["streaming_plane"] = get_option_contract_streaming_diagnostics(c)
+    payload["streaming_plane"] = get_option_contract_streaming_diagnostics(c, now)
     return payload
 
 
@@ -2367,7 +2376,7 @@ def options_microstructure(c: str, now: float) -> dict:
 def get_watchlist():
     """The watchlist, the one list of tickers Schwab is asked for, as the capture daemon (its
     keeper) last reported it; 503 with the reason while its status is not current."""
-    tickers = _watchlist()
+    tickers = _watchlist(time.time())
     if tickers is None:
         return JSONResponse({"error": "the capture daemon is not reporting (no current heartbeat): "
                                       "its watchlist is unknown"}, status_code=503)
@@ -2460,9 +2469,10 @@ def get_chain(ticker: str = Query(...),
         return _unavailable(f"the chain lists no contracts for {resolved_expiry}")
     fetched_ts = held.get("_chain_fetched_ts")
     # each field the newest Schwab sent (the levels' own rule, _publish_levels)
+    now = time.time()
     response_contracts, overlay_n = overlay_streamed_contract_fields(
-        contracts, _current_stream_greeks(_streamed_greeks_for_ticker(held["_contract_symbols"]),
-                                          time.time()), fetched_ts)
+        contracts, _current_stream_greeks(_streamed_greeks_for_ticker(held["_contract_symbols"], now),
+                                          now), fetched_ts)
     live_spot, _src, _ts = resolve_spot(t)       # the one spot on every screen
     ladder, not_on_ladder = chain_ladder(response_contracts, live_spot)
     # this expiry's net GEX per strike, as the heatmap publishes it (its column of the surface):
@@ -2504,8 +2514,9 @@ def health():
     # vendor outage into it. Schwab is the capture daemon's: its heartbeat says whether its
     # Schwab socket is open and, when not, why (as its log says it); no current heartbeat is
     # UNAVAILABLE (unmeasurable is not ok).
-    st = lmp.daemon_status()
-    watchlist = _watchlist()
+    now = time.time()
+    st = lmp.daemon_status(now)
+    watchlist = _watchlist(now)
     capability: dict[str, object] = {
         "schwab": "AVAILABLE" if st is not None and st.get("schwab_socket_open") is True else "UNAVAILABLE"}
     if capability["schwab"] == "UNAVAILABLE":

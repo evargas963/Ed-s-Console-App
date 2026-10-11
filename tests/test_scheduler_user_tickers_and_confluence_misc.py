@@ -16,8 +16,9 @@ def test_the_console_and_the_daemon_hold_one_watchlist(tmp_path):
     writer.insert(*capture.watchlist_message(["SPY", "TSLA"], op=capture.ADDED, ticker="TSLA", request_id=1))
     writer.insert(*capture.watchlist_message(["SPY", "TSLA", "$SPX"], op=capture.ADDED, ticker="$SPX", request_id=2))
     d = capture.Daemon(MessageBus(), HealthRegistry(), capture.stored_watchlist(db))
-    lmp.record_feed_heartbeat(d.status())
-    assert d.watchlist == server._watchlist() == ["SPY", "TSLA", "$SPX"]
+    status = d.status()
+    lmp.record_feed_heartbeat(status)
+    assert d.watchlist == server._watchlist(status["ts"]) == ["SPY", "TSLA", "$SPX"]
 
 
 def test_a_first_run_with_no_database_starts_with_an_empty_watchlist(tmp_path):
@@ -34,5 +35,6 @@ def test_a_heartbeat_with_no_watchlist_is_an_unknown_watchlist_never_an_empty_on
 
     import live_market_plane as lmp
     import server
-    lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True})
-    assert server._watchlist() is None
+    now = time.time()
+    lmp.record_feed_heartbeat({"ts": now, "schwab_socket_open": True})
+    assert server._watchlist(now) is None

@@ -56,7 +56,7 @@ def _beat(daemon: capture.Daemon) -> dict:
     console records it (live_market_plane.daemon_status); the console's record is cleared after."""
     beat = LiveUiServer(daemon.bus, daemon.status, {}).beat()
     try:
-        assert lmp.daemon_status()["writer"] == beat["writer"]
+        assert lmp.daemon_status(time.time())["writer"] == beat["writer"]
     finally:
         lmp.record_feed_down()
     return beat
