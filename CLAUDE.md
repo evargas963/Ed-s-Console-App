@@ -21,8 +21,8 @@ so a wrong number that looks right is worse than a blank with a reason.
    undo (request rates, limits, settings) needs my yes to that specific action, because
    the app runs on my live Schwab account. A daemon or console start, stop or restart
    outside regular hours (the session tools/operator_yes_guard.py reads from Schwab's
-   /markets answer) needs no yes: post a notice in chat, stop cleanly, and confirm both
-   are back. During regular hours or an unknown session, it asks.
+   /markets answer) needs no yes: post a notice in chat, stop cleanly, and after a start
+   confirm both are back. During regular hours or an unknown session, it asks.
 6. After two failed attempts at the same thing, stop and report what you tried.
 7. If rules conflict: correctness of what I see > my explicit yes > speed.
 
