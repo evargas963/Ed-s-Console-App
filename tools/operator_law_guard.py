@@ -1,36 +1,19 @@
-"""OPERATOR LAW GUARD — three host-wide ACTION bans on shell commands (RC-93: ban the action,
-never the word). PreToolUse for the shell-command tools (`hook_chain.BASH_TOOLS`); exit 2 blocks.
-Each is judged on the statements the command runs, as tools/shell_parse.read reads them; text in
-quotes and a heredoc nothing runs are data.
+"""OPERATOR LAW GUARD — host-wide bans on what a shell command does (the action, never a word it
+mentions). PreToolUse for the shell-command tools (`hook_chain.BASH_TOOLS`); exit 2 blocks. Each is
+judged on the statements the command runs, as tools/shell_parse.read reads them; text in quotes and
+a heredoc nothing runs are data.
 
-What survives, and the concrete failure each prevents (KEEP/MERGE/DELETE, 2026-09-10):
-
-  * UNRECOVERABLE-TREE DESTRUCTION (RC-273). `.gitignore` excludes data/,
-    so the 27 GB database has no history at all. The agent destroyed it TWICE in ten minutes
-    (`mv` to exercise a missing-file branch, `rm -f` while testing the ACL meant to prevent the
-    first). The live database files carry an OS deny-delete (file) plus deny-delete-contents
-    (folder) -- measured 2026-09-26 with a canary in the real data/ folder: delete and rename
-    refused. This rule stops an attempt early, with a reason, judged on what the command RUNS.
-  * BLIND STAGING. `git add -A` / `-u` / `.` / `*` swept another agent's in-flight files into a
-    commit twice in one day (a 530 KB runtime log; audit scratch). A commit asserts authorship of
-    everything in it; stage explicit paths.
+  * THE DATA TREE. `.gitignore` excludes data/, so the database there has no history and no undo.
+    A command that deletes, moves, overwrites or unprotects a path under it is refused, judged on
+    what the command runs; a restore into it stays legal.
+  * BLIND STAGING. `git add -A` / `-u` / `.` / `*` sweeps another agent's in-flight files into a
+    commit; stage explicit paths.
   * LOCK DISABLE. `--no-verify`, `-n`, `core.hooksPath`, `SKIP=<hook>` and `pre-commit uninstall`
-    bypass the pre-commit battery the operator asked for. Required CI would still catch the
-    result, but only after the commit exists; refusing the bypass in session is cheap and blocks
-    nothing legitimate.
-
-What was DELETED, and why (nothing replaced it):
-  * the no-grep rule: it blocked read-only stdout filters three times in one session — governance
-    obstructing inspection; the rule's stated value (read files whole) is a working style, not a
-    protection.
-  * heredoc / redirect / `-c` payload / PowerShell source-write bans: they existed because shell
-    writes once mangled escapes; ruff and pytest at commit and in CI catch a mangled file, and the
-    retired mockup-approval registry they also guarded is gone.
-  * the CLOSE-a-row-needs-a-verification-this-turn rule and its transcript readers: every ledger
-    row a delta closes has its cited command EXECUTED by required CI (tools/check_delta_adds_no_debt.py);
-    a transcript-derived turn ledger was a second, weaker judge of the same fact — and the last
-    transcript reader on the PreToolUse path (RC-544 class).
-  * the `ED_*_GUARD=off` spellings in the lock-disable regex: no such switch exists (RC-450).
+    bypass the pre-commit checks; refusing the bypass in session blocks nothing legitimate.
+  * PYTHON FROM STDIN. On Windows an empty heredoc or </dev/null looks like a console to
+    `python -`, and Python 3.13's REPL retries forever on the invalid handle. A python that reads
+    its program from stdin (`-`, or no script, -c or -m) is refused wherever it runs; a script file
+    or `python -c` does the same job.
 """
 from __future__ import annotations
 
@@ -115,6 +98,27 @@ def _destroys_protected(st: Statement) -> bool:
     return False
 
 
+#: python options that read no program (versions, help, the py launcher's listings)
+_PY_INFO = frozenset({"-V", "-VV", "--version", "-h", "--help", "-0", "-0p", "--list", "--list-paths"})
+#: python options whose next argument is their value, not a script
+_PY_VALUE_OPTIONS = frozenset({"-W", "-X"})
+
+
+def _reads_program_from_stdin(st: Statement) -> bool:
+    """A python that takes its program from stdin: `-`, or no script, -c or -m."""
+    if not PYTHON.fullmatch(st.program):
+        return False
+    args, i = st.words[1:], 0
+    while i < len(args):
+        a = args[i]
+        if a == "-":
+            return True
+        if a.startswith(("-c", "-m")) or a in _PY_INFO or not a.startswith("-"):
+            return False
+        i += 2 if a in _PY_VALUE_OPTIONS else 1
+    return True
+
+
 #: Blind staging: `-A`, `--all`, `-u`, `--update`, `*`, `.` are the same action in other flags.
 _BLIND = frozenset({"-A", "--all", "-u", "--update", "*", "."})
 
@@ -147,18 +151,21 @@ def bash_violations(cmd: str, ledger=None, payload_cwd: str = "", powershell: bo
     statements = read(cmd or "", powershell=powershell)
     out: list[str] = []
     if any(_blind_stage(st) for st in statements):
-        out.append("ACTION BLOCKED: blind staging (git add -A/--all/.) swept another agent's "
-                   "in-flight files into a commit twice on 2026-07-28. Stage EXPLICIT paths — "
-                   "a commit asserts authorship of everything in it.")
+        out.append("ACTION BLOCKED: blind staging (git add -A/--all/.) sweeps another agent's "
+                   "in-flight files into a commit. Stage EXPLICIT paths — a commit asserts "
+                   "authorship of everything in it.")
     if any(_destroys_protected(st) for st in statements):
-        out.append("ACTION BLOCKED (RC-273): this deletes, moves or truncates something under "
-                   "data/. That tree is gitignored -- there is NO "
-                   "history and NO undo. The agent destroyed the 27GB database twice in ten "
-                   "minutes this way, both times while 'just testing'. Test destructive "
+        out.append("ACTION BLOCKED: this deletes, moves or truncates something under data/. That "
+                   "tree is gitignored -- there is NO history and NO undo. Test destructive "
                    "behaviour against a COPY in a temp directory, never the real artefact. "
                    "Restores INTO it stay legal; removal from it is operator-only.")
     if any(_disables_a_lock(st) for st in statements):
         out.append("ACTION BLOCKED: this disables a mechanical lock. Only the operator may.")
+    if any(_reads_program_from_stdin(st) for st in statements):
+        out.append("ACTION BLOCKED: this python reads its program from stdin (`python -`, a heredoc, "
+                   "a pipe or </dev/null). On Windows an empty heredoc or </dev/null looks like a "
+                   "console and Python 3.13's REPL retries forever. Put the code in a script file and "
+                   "run it, or use `python -c`.")
     return out
 
 
