@@ -77,6 +77,12 @@ def test_an_end_to_end_change_passes(tmp_path):
     assert _found(tmp_path, {"server.py": "def spot(row):\n    return row['last'] if row['live'] else None\n"}) == []
 
 
+def test_a_test_runner_config_change_alone_passes(tmp_path):
+    root = _repo(tmp_path, {**BASE, "playwright.config.mjs": "export default { use: { trace: 'on-first-retry' } };\n"})
+    _commit(root, {"playwright.config.mjs": "export default { use: { trace: 'retain-on-failure' } };\n"})
+    assert cee.violations(root, "main", BODY) == []
+
+
 def test_a_patch_already_on_main_is_not_counted_against_a_pr_that_does_not_touch_it(tmp_path):
     root = _repo(tmp_path, {**BASE, "server.py": "def spot(row):\n    return row.get('last', 0)\n"})
     _commit(root, {"server.py": "def spot(row):\n    return row.get('last', 0)\n\n\ndef bid(row):\n    return row['bid']\n",
