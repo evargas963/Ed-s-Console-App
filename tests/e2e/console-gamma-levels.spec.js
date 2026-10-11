@@ -6,6 +6,7 @@
  * proximity, and a level click drives the shared strike selection. Offline.
  */
 const { test, expect } = require('@playwright/test');
+const { routeWatchlist } = require('./fixtures/watchlist');
 
 const LEVELS = {
   ticker: 'SPY', schema_version: 1, served_ts_utc: 1757000100, spot: 100.0, spot_source: 'schwab_quote_last',
@@ -39,6 +40,7 @@ async function intercept(page) {
     else if (url.includes('/api/terrain')) body = { spot: 100, gamma_flip: 99.5, regime: 'LONG_GAMMA_CHOP', levels_stale: false };
     else if (url.includes('/api/expiries')) body = { expiries: ['2026-09-11'] };    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
+  await routeWatchlist(page, ['SPY']);
 }
 
 test.describe('D — Gamma Levels view', () => {
