@@ -39,7 +39,7 @@
             "type": "command",
             "command": ".venv/Scripts/python.exe tools/stop_gate.py",
             "timeout": 900,
-            "statusMessage": "ruff and the tests of the touched files"
+            "statusMessage": "ruff and the touched test files"
           }
         ]
       }

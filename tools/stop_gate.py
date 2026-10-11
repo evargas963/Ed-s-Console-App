@@ -1,10 +1,10 @@
-"""Stop hook: a turn ends only when ruff and the tests of the touched files pass.
+"""Stop hook: a turn ends only when ruff and the touched test files pass.
 
 Reads the hook's JSON on stdin. When `stop_hook_active` is true (this hook already kept the turn going
 once), it lets the turn end, so it cannot loop. The touched files: the working tree's changes and
 untracked files, and what the branch changed since it left origin/main. Ruff (the commit hook's
-selection) runs on the touched .py files; pytest on the touched test files and every test file that
-imports a touched module. A failure goes to stderr with exit 2: the turn goes on.
+selection) runs on the touched .py files; pytest on the touched test files. A failure goes to stderr
+with exit 2: the turn goes on.
 """
 from __future__ import annotations
 
@@ -32,24 +32,9 @@ def touched_python() -> list[str]:
     return sorted(n for n in names if n.endswith(".py") and (ROOT / n).is_file())
 
 
-def module_name(path: str) -> str:
-    return path[:-3].replace("/", ".")
-
-
 def tests_for(touched: list[str]) -> list[str]:
-    """The touched test files, and every test file that imports a touched module (by its dotted name,
-    or `from <package> import <name>`)."""
-    tests = [p for p in touched if p.startswith("tests/") and Path(p).name.startswith("test_")]
-    modules = [module_name(p) for p in touched if not p.startswith("tests/")]
-    for test in sorted((ROOT / "tests").glob("test_*.py")):
-        text = test.read_text(encoding="utf-8", errors="replace")
-        for mod in modules:
-            package, _, name = mod.rpartition(".")
-            if (f"import {mod}" in text or f"from {mod} import" in text
-                    or (package and f"from {package} import" in text and name in text)):
-                tests.append(test.relative_to(ROOT).as_posix())
-                break
-    return sorted(set(tests))
+    """The touched test files; the full suite is the before-done skill's and CI's."""
+    return sorted(p for p in touched if p.startswith("tests/") and Path(p).name.startswith("test_"))
 
 
 def failures(touched: list[str]) -> list[str]:
@@ -79,7 +64,7 @@ def main() -> int:
     failed = failures(touched)
     if not failed:
         return 0
-    sys.stderr.write("The turn goes on: ruff and the tests of the touched files must pass.\n\n" + "\n\n".join(failed))
+    sys.stderr.write("The turn goes on: ruff and the touched test files must pass.\n\n" + "\n\n".join(failed))
     return 2
 
 

@@ -1,25 +1,49 @@
 # Ed Console — rules for every change
 
-Before writing a change, read the parts it touches of `docs/DATA_FLOW.md` (design), `ACTIVE_PROGRAM.md`
-(work order), `docs/ARCHITECTURE.md` (code map) and `docs/PRACTICES.md`. A pull request that breaks a
-rule names the rule. Rules for one area load with its files (`.claude/rules/`); procedures are skills
-(`.claude/skills/`): `before-done`, `flaky-test-fix`, `deploy`, `stream-db-switch`, `housekeeping`.
+Before writing a change, read the parts it touches of `docs/DATA_FLOW.md` (design), `ACTIVE_PROGRAM.md` (work order),
+`docs/ARCHITECTURE.md` (code map) and `docs/PRACTICES.md`. A pull request that breaks a rule names the rule. Rules for
+one area load with its files (`.claude/rules/`); procedures are skills (`.claude/skills/`): `before-done`,
+`flaky-test-fix`, `deploy`, `stream-db-switch`, `housekeeping`.
 
-Every requirement in a section marked (enforced), here, in `.claude/rules/` and in `docs/DATA_FLOW.md`,
-ends with "Enforced by:" naming the test, hook or required check that blocks a violation, or "no machine
-check" and the ENF item in `ACTIVE_PROGRAM.md` that builds one.
-Enforced by: `tests/test_governing_docs_v1.py`.
+Every requirement in a section marked (enforced), here, in `.claude/rules/` and in `docs/DATA_FLOW.md`, ends with
+"Enforced by:" naming the test, hook or required check that blocks a violation, or "no machine check" and the ENF item in
+`ACTIVE_PROGRAM.md` that builds one. Enforced by: `tests/test_governing_docs_v1.py`.
 
-## First gate (enforced) (the operator's items 4 and 5, as written)
+## Shared rules (master copy: the operator's wording, identical to his project instructions; a change is proposed to him separately)
 
-4. For every problem, first answer why it happens, down to the code or data that causes it, with
-   evidence. Only then the fix. Never offer a choice about limits, settings or tests until the cause is
-   known.
-   Enforced by: no machine check — ENF-12.
-5. Every item labeled NOT VERIFIED gets verified, and every item labeled SEEN, NOT FIXED gets fixed at
-   the source, before the work is reported done. An item that can't be closed comes to Ed as a
-   decision, with its evidence and the reason.
-   Enforced by: no machine check — ENF-12.
+### First gate (EdWebConsole)
+Applies to every proposal: Ed's, the prompt builder's, and Claude's.
+EdWebConsole is a wiring job. Every value has exactly one producer and any number of consumers.
+- Schwab fields are wired straight to the screen. Schwab is the producer. Each is listed in the Schwab field list.
+- Derived values exist only where Schwab does not send the value. Each is computed once by its one canonical derived producer and listed in the canonical derived register, with its definition and why Schwab does not supply it.
+Check every request and every proposal:
+1. For each value it touches: which Schwab field, or which canonical derived producer?
+2. Would it compute something Schwab sends, create a second producer, or add a derived value not in the register?
+3. Would it add code, tests, checks, tables, or tools beyond what is needed to wire Schwab's values, run the canonical producers, and test and enforce both?
+If anything fails, report what failed and why, and leave the failing part out. Claude proposes the smallest, simplest path that passes, using the repo. That proposal is checked against this gate before it goes to Ed for approval.
+4. For every problem, first answer why it happens, down to the code or data that causes it, with evidence. Only then the fix. Never offer a choice about limits, settings or tests until the cause is known.
+5. Every item labeled NOT VERIFIED gets verified, and every item labeled SEEN, NOT FIXED gets fixed at the source, before the work is reported done. An item that can't be closed comes to Ed as a decision, with its evidence and the reason.
+
+### Standard of care
+Hold EdWebConsole to how a financial institution handles systems with real money on the line. These are judgments to apply to every proposal, not things to build:
+- System of record: Schwab is the statement. Our data matches it, and any difference is reported, never plugged.
+- Records stand: received data is never overwritten or deleted. A correction is a new, labeled entry.
+- Unknowns surface: an unknown shows as unknown, never estimated or filled in.
+- Change control: no change reaches production without Ed's approval, and one approval covers the change.
+- Four eyes: whoever builds a change is not the only one who verifies it. Two read-only reviewers check every change: an architecture reviewer, against the First gate, and a correctness reviewer, that the change does what it claims, with evidence. While the repo is being brought under control, this applies to every change. Once Ed decides it is stable, it narrows to changes touching stored data, money values, or production.
+
+### EdWebConsole requirements
+- Fix problems at the source, and remove what the fix replaces.
+- Clean up along the way in the area changed, listing each item. Behavior or data changes need approval.
+- Zero is a value; missing is unknown. Never treat one as the other.
+- Tests use only real captured data, with expected results from verified definitions. No fake data.
+- Every ticker is treated the same.
+- Treat existing code, tests, and documents as claims to challenge.
+- Display live values promptly and record everything completely. Measure performance; don't assume it.
+- Verify end to end, including the actual screen.
+- Run authorized inspection and testing without asking.
+- Protect credentials and unrelated work.
+- Label findings as confirmed evidence, induced test conditions, hypotheses, or NOT_PROVEN.
 
 ## Rules (enforced) (operator; a change that cannot meet one stops and goes to the operator)
 
@@ -43,13 +67,11 @@ Enforced by: `tests/test_governing_docs_v1.py`.
    expanded /chains and /quotes parameters) and `docs/schwab/schwab_streamer_api.pdf` (Streamer API), from
    Schwab's Developer Portal. A limit not stated there or in Schwab's own reply is our defect
    until shown otherwise.
-   Enforced by: `tests/test_schwab_as_sent_v1.py`, `tests/test_absence_is_not_zero_v1.py`; the
-   documentation authority — ENF-21.
+   Enforced by: `tests/test_schwab_as_sent_v1.py`, `tests/test_absence_is_not_zero_v1.py`; the documentation authority — ENF-21.
 3. **One authority.** Each value served, stored or shown has one computation authority.
    Consumers carry its result; they never select, compute, repair or relabel it. A second authority
    for the same value is banned whatever it is called: helper, parser, resolver or cache.
-   Enforced by: `tests/test_page_one_faucet_v1.py`, `tests/test_one_levels_producer_v1.py`; the rest
-   — ENF-02.
+   Enforced by: `tests/test_page_one_faucet_v1.py`, `tests/test_one_levels_producer_v1.py`; the rest — ENF-02.
 4. **The UI computes nothing.** Page code formats and draws. Every number, total, choice,
    comparison and date the page shows is served.
    Enforced by: no machine check — ENF-03.
@@ -104,7 +126,7 @@ Enforced by: `tests/test_governing_docs_v1.py`.
   is offered. Enforced by: branch protection on `main` requires `pytest-full`
   (`.github/workflows/pytest.yml`) and `hardening` (`.github/workflows/hardening.yml`) on the final
   commit, current with `main`; the commit hook and `tools/ruff_edited_file.py` run ruff; the Stop hook
-  `tools/stop_gate.py` holds the turn until ruff and the touched files' tests pass.
+  `tools/stop_gate.py` holds the turn until ruff and the touched test files pass.
 - Claims. Every statement about how something is now (a process, a file, a branch, a pull
   request, a test result, data, the screen) is CONFIRMED only by command output shown in
   the same reply. Anything else is NOT VERIFIED, with when it was last checked. An earlier
