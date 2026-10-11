@@ -19,7 +19,8 @@ What survives, and the concrete failure each prevents (KEEP/MERGE/DELETE, 2026-0
   * PYTHON FROM STDIN. On Windows an empty heredoc or </dev/null looks like a console to
     `python -`, and Python 3.13's REPL retries forever on the invalid handle. A python that reads
     its program from stdin (in the command, an `eval` string or a shell's -c payload) is refused;
-    a script file or `python -c` does the same job.
+    a script file or `python -c` does the same job. Known over-reach: `xargs python` (the wrapper
+    is skipped) and a multi-line quoted argument with a line that is only `python`.
 
 What was DELETED, and why (nothing replaced it):
   * the no-grep rule: it blocked read-only stdout filters three times in one session — governance
@@ -71,8 +72,12 @@ _HEREDOC = re.compile(r"^(?P<line>[^\n]*?)<<-?\s*(['\"]?)(?P<tag>\w+)\2(?P<rest>
 _PY_C = re.compile(r"(?:^|[\s;&|(])(?:python3?|py)(?:\.exe)?\b[^\n;&|]*?\s-c\s+"
                    r"(\"(?:\\.|[^\"])*\"|'[^']*')", re.I)
 _REDIRECT = re.compile(r"(?:^|[^<>&0-9])>{1,2}\s*(\"[^\"]*\"|'[^']*'|[^\s;&|]+)")
-_PY_INFO = frozenset({"-V", "-VV", "--version", "-h", "--help"})
-_PY_WORD = re.compile(r"\bpy(?:thon3?)?\b", re.I)
+#: python options that read no program (versions, help, the py launcher's listings)
+_PY_INFO = frozenset({"-V", "-VV", "--version", "-h", "--help", "-0", "-0p", "--list", "--list-paths"})
+#: python options whose next argument is their value, not a script
+_PY_VALUE_OPTIONS = frozenset({"-W", "-X"})
+_PY_WORD = re.compile(r"\bpy(?:thon[\d.]*)?\b", re.I)
+_PY_NAME = re.compile(r"python(?:\d+(?:\.\d+)*)?|py", re.I)
 _REDIR_TOKEN = re.compile(r"^\d*(?:&?[<>]+)(?P<target>.*)$")
 
 
@@ -160,16 +165,16 @@ def _reads_program_from_stdin(toks: list[str]) -> bool:
             continue
         if a == "-":
             return True
-        if a in ("-c", "-m") or a in _PY_INFO or not a.startswith("-"):
+        if a.startswith(("-c", "-m")) or a in _PY_INFO or not a.startswith("-"):
             return False
-        i += 1
+        i += 2 if a in _PY_VALUE_OPTIONS else 1
     return True
 
 
 def _stdin_python(raw: str) -> bool:
     """A python that reads its program from stdin, in the command or a script it hands a shell."""
     return bool(_PY_WORD.search(raw)) and any(
-        program_name(toks[0]) in _PY_HEADS and _reads_program_from_stdin(toks)
+        _PY_NAME.fullmatch(program_name(toks[0])) and _reads_program_from_stdin(toks)
         for script in executed_scripts(raw) for toks, _piped in statements(script))
 
 

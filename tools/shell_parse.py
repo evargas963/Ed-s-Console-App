@@ -241,17 +241,18 @@ def statements(cmd: str) -> "list[tuple[list[str], bool]]":
     return out
 
 
-#: a script handed to a shell or eval as one quoted payload: sh/bash/zsh/dash/pwsh -c (or -lc,
-#: -Command), cmd /c, eval '...'
-_PAYLOAD = re.compile(r"(?:^|[\s;&|(])(?:(?:bash|sh|zsh|dash|pwsh|powershell)(?:\.exe)?\s(?:[^\n;&|]*?\s)?"
-                      r"-(?:[a-z]*c|command)|cmd(?:\.exe)?\s(?:[^\n;&|]*?\s)?/c|eval)\s+"
-                      r"(\"(?:\\.|[^\"])*\"|'[^']*')", re.I)
+#: a script handed to a shell or eval: sh/bash/zsh/dash/pwsh -c (or -lc, -Command), cmd /c, eval,
+#: the shell named bare or by path, its script quoted or the rest of the statement
+_PAYLOAD = re.compile(r"(?:^|[\s;&|(])(?:[^\s;&|]*[\\/])?(?:(?:bash|sh|zsh|dash|pwsh|powershell)(?:\.exe)?\s"
+                      r"(?:[^\n;&|]*?\s)?-(?:[a-z]*c|command)|cmd(?:\.exe)?\s(?:[^\n;&|]*?\s)?/c|eval)\s+"
+                      r"(\"(?:\\.|[^\"])*\"|'[^']*'|[^\n;&|]+)", re.I)
 
 
 def executed_scripts(cmd: str):
-    """`cmd`, then (recursively) every script it hands a shell or eval as a quoted payload, which
-    shell_executed_part sets aside as data. Heredoc bodies are data and are not searched."""
+    """`cmd`, then (recursively) every script it hands a shell or eval, which shell_executed_part
+    sets aside as data. Heredoc bodies are data and are not searched."""
     yield cmd
     text = re.sub(r"<<-?\s*(['\"]?)(\w+)\1.*?^\s*\2\s*$", " ", cmd, flags=re.S | re.M)
     for m in _PAYLOAD.finditer(text):
-        yield from executed_scripts(m.group(1)[1:-1].replace('\\"', '"'))
+        script = m.group(1)
+        yield from executed_scripts(script[1:-1].replace('\\"', '"') if script[:1] in "\"'" else script)

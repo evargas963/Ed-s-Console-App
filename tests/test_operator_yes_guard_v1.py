@@ -192,11 +192,21 @@ def test_the_machine_a_merge_and_a_push(cmd, answer, markets):
     ("gh api graphql -f query='mutation { mergePullRequest(input: {pullRequestId: \"PR_x\"}) "
      "{ clientMutationId } }'", "Bash"),                                     # GraphQL through gh api
     ("curl -X PUT -H 'Accept: application/vnd.github+json' https://api.github.com/repos/o/r/pulls/5/merge", "Bash"),
+    ("curl -X POST https://api.github.com/graphql -d '{\"query\":\"mutation { mergePullRequest(input: "
+     "{pullRequestId: \\\"PR_x\\\"}) { clientMutationId } }\"}'", "Bash"),
+    ("Invoke-RestMethod -Method Post -Uri https://api.github.com/graphql -Body '{\"query\":\"mutation "
+     "{ mergePullRequest(input: {pullRequestId: \\\"PR_x\\\"}) { clientMutationId } }\"}'", "PowerShell"),
     ("Invoke-RestMethod -Method Put -Uri https://api.github.com/repos/o/r/pulls/5/merge", "PowerShell"),
     ("bash -c \"gh pr merge 5\"", "Bash"),                                  # wrapped in a shell
     ("bash -lc \"gh pr merge 5\"", "Bash"),
     ("cmd /c \"gh pr merge 5\"", "Bash"),
     ("pwsh -c \"gh pr merge 5 --merge\"", "PowerShell"),
+    ("cmd /c gh pr merge 5", "Bash"),                                        # unquoted payload
+    ("pwsh -c gh pr merge 5", "PowerShell"),
+    ("/usr/bin/bash -c \"gh pr merge 5\"", "Bash"),                         # a shell named by path
+    ("gh api graphql -f query='\nmutation {\n  mergePullRequest(input: {pullRequestId: \"PR_x\"}) "
+     "{ clientMutationId }\n}'", "Bash"),                                    # a multi-line query
+    ("gh api -X PUT repos/o/r/pulls/$PR/merge", "Bash"),                     # the number in a variable
 ])
 def test_every_merge_route_asks(cmd, tool, markets):
     assert _decide(cmd, CLOSED, markets, tool) == guard.ASK, cmd

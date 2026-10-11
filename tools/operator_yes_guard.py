@@ -65,13 +65,13 @@ MACHINE_STOPPERS = ("stop-computer", "restart-computer", "shutdown")
 #: process objects removed through WMI/CIM
 WMI_STOPS = ("remove-ciminstance", "remove-wmiobject")
 #: a merge through GitHub's REST API
-API_MERGE = re.compile(r"/pulls/(\d+)/merge\b", re.I)
+API_MERGE = re.compile(r"/pulls/([^/\s'\"]+)/merge\b", re.I)
 #: programs that send an HTTP request
 HTTP_CLIENTS = ("curl", "wget", "invoke-restmethod", "irm", "invoke-webrequest", "iwr")
-#: a GraphQL mergePullRequest sent by `gh api` or an HTTP client, judged on the whole line (a quoted
-#: query opened mid-word, `query='mutation { ... }'`, does not stay one token)
+#: a GraphQL mergePullRequest sent by `gh api` or an HTTP client, judged on the statement's text
+#: across lines (a quoted query opened mid-word, `query='mutation { ... }'`, does not stay one token)
 GRAPHQL_MERGE = re.compile(r"(?:^|[\s;&|(])(?:[^\s;&|]*[\\/])?(?:gh(?:\.exe)?\s[^\n;&|]*?\bapi\b|"
-                           + "|".join(HTTP_CLIENTS) + r")\b[^\n;&]*?\bmergePullRequest\b", re.I)
+                           + "|".join(HTTP_CLIENTS) + r")\b[^;&]*?\bmergePullRequest\b", re.I)
 #: gh options that take a value (the value is not a subcommand)
 GH_VALUE_OPTIONS = ("-R", "--repo", "--hostname", "-X", "--method", "-f", "-F", "--field", "--raw-field")
 #: process ids and image names a stop names (Stop-Process -Id, taskkill /PID, ProcessId=N;
@@ -250,9 +250,8 @@ def _line_merges(cmd: str) -> "list[str]":
     for depth, script in enumerate(executed_scripts(cmd)):
         if depth:
             out += [n for toks, _piped in statements(script) for n in [_merges(toks)] if n]
-        if "mergepullrequest" in script.lower():
-            out += ["a GraphQL mergePullRequest" for line in shell_executed_part(HERE_STRING.sub(" ", script)).splitlines()
-                    if GRAPHQL_MERGE.search(line)]
+        if "mergepullrequest" in script.lower() and GRAPHQL_MERGE.search(shell_executed_part(HERE_STRING.sub(" ", script))):
+            out.append("a GraphQL mergePullRequest")
     return out
 
 

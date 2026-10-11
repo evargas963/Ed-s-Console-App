@@ -170,14 +170,14 @@ Hold EdWebConsole to how a financial institution handles systems with real money
   Enforced by: no machine check — ENF-12.
 - A PR merges on the operator's yes after CI is green on its final commit; that yes also covers its deploy.
   Enforced by: branch protection on `main` requires `.github/workflows/pytest.yml` and `.github/workflows/hardening.yml`
-  to pass on a branch current with `main`; `tools/operator_yes_guard.py` asks Allow/Deny for every merge sent from
-  the agent's shell (`tests/test_operator_yes_guard_v1.py`); a merge on the GitHub page is the operator's own. No
-  CODEOWNERS file (operator's ruling).
+  to pass on a branch current with `main`; `tools/operator_yes_guard.py` asks Allow/Deny for the merge routes its
+  tests cover (`tests/test_operator_yes_guard_v1.py`); a merge from inside a heredoc body, `python -c`, a script file or
+  a query held in a variable — ENF-12. A merge on the GitHub page is the operator's own. No CODEOWNERS file.
 - Stop for the operator's STOP / PAUSE / HANG IT UP / DO NOT CONTINUE / NO, a task marked AUDIT ONLY
   or DO NOT MERGE, a destructive data action, and a product decision code cannot settle. Say in chat
   what a guarded action is for before running it. Enforced by: `tools/operator_yes_guard.py` asks Allow/Deny for
   the daemon or console starts and stops (in regular hours or an unknown session), machine restarts and merges, and
-  refuses the kills of production and pushes to main its tests cover (`tests/test_operator_yes_guard_v1.py`); the
+  refuses the kills of production and pushes to main, in the forms its tests cover (`tests/test_operator_yes_guard_v1.py`); the
   rest — ENF-12.
 - The production checkout `EdWebConsole` stays `main == origin/main` and moves only by a fast-forward
   (`git pull --ff-only`, or `launch.bring_to_origin_main` at a start); work happens in a worktree.

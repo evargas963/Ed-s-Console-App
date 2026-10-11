@@ -40,7 +40,7 @@ def test_lock_disable_routes_are_git_and_precommits_own():
 
 
 @pytest.mark.parametrize("cmd", [
-    # the command that hung for two hours (the stand-ins search), as the agent sent it
+    # an empty heredoc inside a longer search command
     "cd tests/fixtures && grep -oiE '.{120}(stand-?in|synthetic|edited).{120}' "
     "real_cde_complete_chain_half_dollar.json real_options_stream_history_samples.json | head -5; "
     "python - <<'EOF' 2>/dev/null || true\nEOF\nhead -c 900 real_spy_2026_11_20_chain_and_quotes.json; echo",
@@ -53,6 +53,10 @@ def test_lock_disable_routes_are_git_and_precommits_own():
     "bash -c \"python - </dev/null\"",
     "bash -lc \"python - </dev/null\"",
     "cmd /c \"python - <nul\"",
+    "cmd /c python - <nul",
+    "/usr/bin/bash -c \"python - </dev/null\"",
+    "python -W ignore - </dev/null",
+    "python3.13 - </dev/null",
     "@'\nprint(1)\n'@ | python -",
 ])
 def test_python_reading_its_program_from_stdin_is_refused(cmd):
@@ -67,6 +71,8 @@ def test_python_reading_its_program_from_stdin_is_refused(cmd):
     "cat > notes.txt <<'EOF'\npython - <<'X'\nEOF",
     # a quoted `|` is not a pipe: `py` inside a regex is not a program
     "git ls-files | grep -E '^[^/]+\\.(js|mjs|py|html)$'", "grep -E 'a|py|b' f",
+    # launcher listings and attached -m / -c read no program from stdin
+    "py -0", "py -0p", "py --list", "python -mpytest -q", "python -c\"print(1)\"",
 ])
 def test_python_with_a_script_or_c_or_m_still_runs(cmd):
     from tools.operator_law_guard import bash_violations
