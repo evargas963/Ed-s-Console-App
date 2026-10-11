@@ -20,3 +20,6 @@ paths:
 - An end-to-end spec answers each route it stands in for in the shape the server serves (a
   `/api/watchlist` answer carries `tickers`: `tests/e2e/fixtures/watchlist.js`). Enforced by: no
   machine check — ENF-07.
+- The price-history write test keeps its 1.0 s limit: the write takes 0.10 s idle, and a failure under
+  the flaky hunt's added CPU load is that load, not a defect. Enforced by:
+  `tests/test_bars_from_stream_v1.py`.

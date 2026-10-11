@@ -35,7 +35,7 @@ def test_the_stop_hook_lets_the_turn_end_once_it_has_kept_it_going():
 
 
 def test_the_stop_hook_runs_the_touched_test_files_only():
-    """Operator 2026-10-10: ruff and the touched test files; the full suite stays in before-done and CI."""
+    """Ruff and the touched test files; the full suite stays in before-done and CI."""
     touched = ["live_price_rows.py", "tests/test_watchlist_chg_pct_universality_v1.py", "tests/feed_live_helper.py"]
     assert stop_gate.tests_for(touched) == ["tests/test_watchlist_chg_pct_universality_v1.py"]
     assert stop_gate.tests_for(["live_price_rows.py", "app/options/order_flow/streaming.py"]) == []

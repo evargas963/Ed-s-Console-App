@@ -8,7 +8,8 @@ checkout to `origin/main`, starts the capture daemon in its own window and `uvic
 8000. Python 3.13, the project `.venv`; live needs `schwab_token.json` (`python reauth_schwab.py`). Probe
 `127.0.0.1`, never `localhost`.
 
-1. Read the session: `.venv/Scripts/python.exe -c "import time_et; print(time_et.session_label(time_et.now_et()))"`.
+1. Read the session the yes guard reads (Schwab's /markets answer, as the daemon recorded it):
+   `.venv/Scripts/python.exe -c "import sys; sys.path.insert(0, 'tools'); import operator_yes_guard as g, time_et; from db_authority import canonical_stream_db_path; print(g.market_session(time_et.now_et(), canonical_stream_db_path()))"`.
    In RTH or an unknown session a start or stop goes to Ed as an Allow/Deny prompt
    (`tools/operator_yes_guard.py`): say in chat what it is for first. In Pre-Market, After-Hours and
    Closed, post a notice in chat and go on.
