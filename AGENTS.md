@@ -180,8 +180,9 @@ Hold EdWebConsole to how a financial institution handles systems with real money
   (`git pull --ff-only`, or `launch.bring_to_origin_main` at a start); work happens in a worktree.
   Enforced by: `tools/process_lock_guard.py` (`tests/test_operating_process_lock_v1.py`,
   `tests/test_hook_chain_v1.py`).
-- Never `git reset`, `git checkout --`, `git stash` or a force push. Enforced by:
-  `tools/process_lock_guard.py` (`tests/test_reset_guard_v1.py`).
+- Never `git reset`, `git checkout --`, `git stash` or a force push. Enforced by: `tools/process_lock_guard.py`
+  (`tests/test_reset_guard_v1.py`) for `reset --hard`, `checkout -- <path>` and a force push anywhere, and the other
+  reset, restore and stash forms on product paths or the whole tree; the rest — ENF-12.
 - Never `--no-verify`, `git add -A` / `.`, or delete or move anything under `data/`. Enforced by:
   `tools/operator_law_guard.py` (`tests/test_operator_law_guard_action_bans_v1.py`,
   `tests/test_protected_paths_v1.py`).

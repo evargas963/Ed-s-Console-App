@@ -59,7 +59,7 @@ PROTECTED_PATHS: tuple[str, ...] = ENFORCEMENT_PATHS
 #: spelling was named; `git restore --staged x && git reset --mixed HEAD~1` passed because the
 #: safe list was searched across the WHOLE command, so one safe statement exempted everything
 #: chained after it; and `git reset --soft`, which moves HEAD and leaves index and worktree
-#: untouched, was refused although the repository's own merge authority runs it. The globals
+#: untouched, was refused. The globals
 #: prefix admits an option with its argument; the push clause admits flags after the refspec
 #: and the short `-f`; the class rule is judged PER SEGMENT (below); `--soft` is safe.
 _GIT_GLOBAL_WITH_ARG: tuple[str, ...] = (

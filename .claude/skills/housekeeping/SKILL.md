@@ -9,7 +9,6 @@ description: Use to clean up open pull requests, branches, worktrees, stashes an
    - `git branch -r --merged origin/main` and `git branch --merged origin/main` — branches whose work
      is on `main`.
    - `git worktree list` — each worktree, its branch, and whether its tree has uncommitted work.
-   - `git stash list` — each stash.
    - Disk: the largest files and folders outside `data/`, with size and last-modified time.
 2. Propose what to close or delete, one line each with its evidence. Wait for Ed's yes.
 3. On Ed's yes: close a PR with a comment naming what replaced it; delete merged branches (recoverable
