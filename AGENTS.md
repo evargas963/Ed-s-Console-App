@@ -170,7 +170,8 @@ Hold EdWebConsole to how a financial institution handles systems with real money
   Enforced by: no machine check — ENF-12.
 - A PR merges on the operator's yes after CI is green on its final commit; that yes also covers its deploy.
   Enforced by: branch protection on `main` requires `.github/workflows/pytest.yml` and `.github/workflows/hardening.yml`
-  to pass on a branch current with `main`; `tools/operator_yes_guard.py` asks Allow/Deny for every merge.
+  to pass on a branch current with `main`; `tools/operator_yes_guard.py` asks Allow/Deny for a `gh pr merge` or API
+  merge from the agent's shell.
 - Stop for the operator's STOP / PAUSE / HANG IT UP / DO NOT CONTINUE / NO, a task marked AUDIT ONLY
   or DO NOT MERGE, a destructive data action, and a product decision code cannot settle. Say in chat
   what a guarded action is for before running it. Enforced by: `tools/operator_yes_guard.py` asks Allow/Deny for a daemon or console start or stop
@@ -181,8 +182,9 @@ Hold EdWebConsole to how a financial institution handles systems with real money
   Enforced by: `tools/process_lock_guard.py` (`tests/test_operating_process_lock_v1.py`,
   `tests/test_hook_chain_v1.py`).
 - Never `git reset`, `git checkout --`, `git stash` or a force push. Enforced by: `tools/process_lock_guard.py`
-  (`tests/test_reset_guard_v1.py`) for `reset --hard`, `checkout -- <path>` and a force push anywhere, and the other
-  reset, restore and stash forms on product paths or the whole tree; the rest — ENF-12.
+  (`tests/test_reset_guard_v1.py`) for `reset --hard`, `checkout -- <path>` and `push --force` or `-f` anywhere, and
+  the other reset, restore, checkout and stash forms on product paths or the whole tree; the rest (`--force-with-lease`,
+  a `+refspec` push) — ENF-12.
 - Never `--no-verify`, `git add -A` / `.`, or delete or move anything under `data/`. Enforced by:
   `tools/operator_law_guard.py` (`tests/test_operator_law_guard_action_bans_v1.py`,
   `tests/test_protected_paths_v1.py`).
