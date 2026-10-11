@@ -121,6 +121,11 @@ class Statement:
     def text(self) -> str:
         return " ".join(self.raw)
 
+    @property
+    def writes(self) -> list[str]:
+        """The files its redirects write: `>`, `>>`, `N>`, `>|`, `&>` (not an fd dup like `2>&1`)."""
+        return [t for op, t in self.redirects if _WRITE_REDIRECT.fullmatch(op)]
+
 
 def read(cmd: str, cwd: str = "", powershell: bool = False) -> list[Statement]:
     """Every statement `cmd` runs, in order; `cwd` is the directory it starts in; `powershell`
@@ -136,6 +141,7 @@ _WORD_END = _SPACE + "\n;&|<>)}"
 _ESCAPED = set(_SPACE + "\"'\\$`;&|<>(){}#*?[]~!")
 _SEPARATORS = (("&&", "&&"), ("||", "||"), (";;", ";"), ("|&", "|"), (";", ";"), ("|", "|"), ("&", "&"))
 _REDIRECT = re.compile(r"\d*(?:<<<|<<-|<<|<>|<&|>>|>&|>\||<|>)|&>>|&>")
+_WRITE_REDIRECT = re.compile(r"\d*>>?\|?|&>>?")
 _HEREDOC_OP = re.compile(r"<<-?(?!<)\s*(['\"]?)(?P<tag>[\w.-]+)\1")
 _HERE_STRING = re.compile(r"@(['\"])\r?\n")
 
@@ -512,24 +518,29 @@ _GIT_GLOBAL_WITH_ARG = frozenset({"-C", "-c", "--git-dir", "--work-tree", "--nam
                                   "--exec-path", "--config-env"})
 
 
-def git_subcommand(words) -> tuple[str, list[str]]:
-    """(subcommand, its arguments) of a git statement's words, git's global options skipped
-    (`-C <path>` takes a separate value); ("", []) when the words run no git subcommand."""
+def git_parts(words) -> tuple[list[str], str, list[str]]:
+    """(global options, subcommand, its arguments) of a git statement's words (`-C <path>` takes
+    a separate value); ([], "", []) when the words run no git subcommand."""
     if not words or program_name(words[0]) != "git":
-        return "", []
+        return [], "", []
     rest = list(words[1:])
     i = 0
     while i < len(rest) and rest[i].startswith("-"):
         i += 2 if rest[i] in _GIT_GLOBAL_WITH_ARG else 1
-    return (rest[i], rest[i + 1:]) if i < len(rest) else ("", [])
+    return (rest[:i], rest[i], rest[i + 1:]) if i < len(rest) else ([], "", [])
+
+
+def git_subcommand(words) -> tuple[str, list[str]]:
+    """(subcommand, its arguments) of a git statement's words; ("", []) when there is none."""
+    _globals, sub, args = git_parts(words)
+    return sub, args
 
 
 def git_repo(st: Statement) -> str:
     """The repository a git statement acts on: its -C / --git-dir / --work-tree, else its cwd."""
-    w, target, i = st.words, "", 1
-    while i < len(w) and w[i].startswith("-"):
-        name, eq, val = w[i].partition("=")
+    g, target = git_parts(st.words)[0], ""
+    for i, a in enumerate(g):
+        name, eq, val = a.partition("=")
         if name in ("-C", "--git-dir", "--work-tree") and not target:
-            target = val if eq else (w[i + 1] if i + 1 < len(w) else "")
-        i += 2 if w[i] in _GIT_GLOBAL_WITH_ARG else 1
+            target = val if eq else (g[i + 1] if i + 1 < len(g) else "")
     return repo_root_of((target and _join_dir(st.cwd, target)) or st.cwd)

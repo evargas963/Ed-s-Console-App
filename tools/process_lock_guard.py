@@ -33,7 +33,7 @@ if str(REPO) not in sys.path:
 import tools.operating_process_lock as OPL  # noqa: E402
 from tools.shell_parse import (  # noqa: E402 — the ONE shell reader
     Statement,
-    _msys_to_windows,
+    _join_dir,
     git_repo,
     git_subcommand,
     normalize_repo,
@@ -170,16 +170,11 @@ def prod_checkout_git_move_violations(statements: list[Statement]) -> list[str]:
     worktrees are unconstrained. RC-350 caught this only at the next launch — this refuses it at
     the moment of the command. Not subject-disableable (RC-450)."""
     primary = _primary_worktree_root(REPO) or REPO
-    try:
-        primary_norm = normalize_repo(primary)
-    except (OSError, ValueError):
-        return []
+    primary_norm = normalize_repo(primary)
     out: list[str] = []
     for st in statements:
-        if st.program != "git" or git_repo(st) != primary_norm:
-            continue                     # this git invocation targets a dev worktree / elsewhere
         reason = _prod_forbidden_git_reason(st.words)
-        if reason:
+        if reason and git_repo(st) == primary_norm:    # a git aimed at a dev worktree is not refused
             out.append(
                 f"PROD_CHECKOUT_LOCK (live-checkout invariant / RC-350): {reason} in the "
                 f"PRODUCTION checkout {primary}. That checkout is production ONLY — always "
@@ -257,17 +252,13 @@ def production_checkout_app_edit_violations(tool_input: dict, repo: Path = REPO)
     return out
 
 
-#: a redirect that writes its target: `>`, `>>`, `N>`, `>|`, `&>` (not an fd dup like `2>&1`)
-_WRITE_REDIRECT = re.compile(r"\d*>>?\|?|&>>?")
-
-
 def _shell_write_dest_paths(st: Statement) -> list[str]:
     """Destination file operand(s) a shell statement WRITES: a `>` / `>>` redirect on ANY command
     (e.g. `printf x > static/index.html`, `echo x > static/app.js`), PLUS the material
     file-mutating verbs cp/mv/install/rsync/ln/tee/sed -i/perl -i/truncate/dd of=. The caller
     filters to app code inside the production primary, so a non-app operand (a sed script, a
     redirect to a .log) is harmlessly ignored."""
-    dests: list[str] = [t for op, t in st.redirects if _WRITE_REDIRECT.fullmatch(op)]
+    dests: list[str] = st.writes
     verb = st.program
     if not verb:
         return dests
@@ -352,26 +343,6 @@ def _ps_write_dest_paths(st: Statement) -> list[str]:
     return positionals[:1]
 
 
-def _shell_write_targets(statements: list[Statement], base_root: Path | None = None):
-    """Every resolved destination a shell command's statements write, each against its cwd.
-
-    The resolve-and-join loop exists ONCE (ONE FAUCET); `production_checkout_shell_app_write_violations`
-    applies its `relative_to(primary)` narrowing on top and never re-derives how a shell
-    command names a destination.
-    """
-    root = str(base_root) if base_root else str(REPO)
-    for st in statements:
-        base = _msys_to_windows(st.cwd) if st.cwd else root
-        for dest in _shell_write_dest_paths(st):
-            try:
-                p = Path(_msys_to_windows(dest))
-                if not p.is_absolute():
-                    p = Path(base) / p
-                yield p.resolve()
-            except (OSError, ValueError):
-                continue
-
-
 def production_checkout_shell_app_write_violations(statements: list[Statement]) -> list[str]:
     """PREVENT a materially-equivalent SHELL edit to app code in the PRODUCTION checkout — the
     Bash companion to production_checkout_app_edit_violations (Edit/Write) and to the universal
@@ -388,15 +359,15 @@ def production_checkout_shell_app_write_violations(statements: list[Statement]) 
     except (OSError, ValueError):
         return []
     out: list[str] = []
-    # ONE resolve loop, shared with the RC-498 mission latch; only the narrowing below is
-    # this rail's own — the destination must land INSIDE the production primary.
-    for resolved in _shell_write_targets(statements, base_root=primary_res):
-        try:
-            resolved.relative_to(primary_res)
-        except ValueError:
-            continue
-        if classify_path(str(resolved), repo=str(primary_res)).production:
-            out.append(
+    for st in statements:                # each destination against its statement's cwd
+        for dest in _shell_write_dest_paths(st):
+            try:
+                resolved = Path(_join_dir(st.cwd or str(primary_res), dest)).resolve()
+                resolved.relative_to(primary_res)
+            except (OSError, ValueError):
+                continue
+            if classify_path(str(resolved), repo=str(primary_res)).production:
+                out.append(
                     f"PROD_CHECKOUT_APP_EDIT (shell, live-checkout invariant): a shell command "
                     f"writes {resolved} — app code in the PRODUCTION checkout {primary}. "
                     f"Development does not modify the live checkout by ANY means; make the change "

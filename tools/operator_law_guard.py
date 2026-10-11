@@ -45,7 +45,7 @@ if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
 from tools.hook_chain import BASH_TOOLS  # noqa: E402 — the ONE shell-tool roster (RC-520)
-from tools.shell_parse import Statement, git_subcommand, read  # noqa: E402 — the ONE shell reader
+from tools.shell_parse import Statement, git_parts, git_subcommand, read  # noqa: E402 — the ONE shell reader
 
 #: RC-273 — the gitignored tree with no history. A path SEGMENT: `AppData/`, `mydata/`, `_data/`
 #: do not match; `data/x`, `./data/x`, `C:/repo/data/x` do.
@@ -62,8 +62,6 @@ _ACL_LOOSENERS = ("/remove", "/reset", "/grant", "/setowner", "/inheritance")
 _PY_REMOVERS = frozenset({"remove", "unlink", "rmtree", "rmdir", "removedirs", "rename", "replace",
                           "move", "truncate", "write_text", "write_bytes"})
 _PYTHON = re.compile(r"python[\d.]*|py")
-#: a redirect that writes its target
-_WRITE_REDIRECT = re.compile(r"\d*>>?\|?|&>>?")
 
 
 def _protected(arg: str) -> bool:
@@ -111,7 +109,7 @@ def _destroys_protected(st: Statement) -> bool:
     if name == "icacls" and any(_protected(a) for a in args) and \
             any(a.lower().startswith(_ACL_LOOSENERS) for a in args):
         return True
-    if any(_WRITE_REDIRECT.fullmatch(op) and _protected(t) for op, t in st.redirects):
+    if any(_protected(t) for t in st.writes):
         return True
     if _PYTHON.fullmatch(name):
         code = [args[i + 1] for i, a in enumerate(args[:-1]) if a == "-c"]
@@ -132,8 +130,7 @@ def _blind_stage(st: Statement) -> bool:
 def _disables_a_lock(st: Statement) -> bool:
     """Lock-disable routes: git's own (`--no-verify`, `-n` on commit, `core.hooksPath`) and
     pre-commit's own (`SKIP=<hook-id>`, `$env:SKIP=`, `pre-commit uninstall`) — RC-541."""
-    sub, args = git_subcommand(st.words)
-    git_globals = st.words[1:len(st.words) - len(args) - 1] if sub else ()
+    git_globals, sub, args = git_parts(st.words)
     skip = next((e.split("=", 1)[1] for e in st.env if re.match(r"(?:\$env:)?skip=", e, re.I)), None)
     if skip == "" and st.words:          # `$env:SKIP = 'x'`
         skip = st.words[0]

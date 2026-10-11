@@ -44,7 +44,7 @@ import runtime_layout  # noqa: E402
 import time_et  # noqa: E402
 from db_authority import canonical_stream_db_path  # noqa: E402
 from tools.hook_chain import BASH_TOOLS  # noqa: E402
-from tools.shell_parse import Statement, program_name, read  # noqa: E402
+from tools.shell_parse import Statement, git_subcommand, program_name, read  # noqa: E402
 
 PASS, ASK, DENY = "pass", "ask", "deny"
 #: the production processes and what starts them
@@ -220,8 +220,8 @@ def decide(payload: dict, now: datetime, db: Path) -> "tuple[str, list[str]]":
             if session in (time_et.RTH, time_et.UNKNOWN):
                 asks.append(f"starts or stops the daemon or the console while the market session is "
                             f"{session} (CLAUDE.md rule 5: production)")
-        elif _merges(st):
-            asks.append(f"merges pull request {_merges(st)} (AGENTS.md Authority)")
+        elif pr := _merges(st):
+            asks.append(f"merges pull request {pr} (AGENTS.md Authority)")
         elif _pushes_main(st):
             denies.append("pushes to main: main moves only by a pull request merged on GitHub")
     return (DENY, denies) if denies else (ASK, asks) if asks else (PASS, [])
@@ -239,8 +239,8 @@ def _merges(st: Statement) -> str:
 
 def _pushes_main(st: Statement) -> bool:
     """Whether the statement `st` is a git push whose refspec lands on main."""
-    args = st.words[1:]
-    return (st.program == "git" and "push" in args
+    sub, args = git_subcommand(st.words)
+    return (sub == "push"
             and any(a == "main" or a.endswith((":main", ":refs/heads/main")) or a == "+main" for a in args))
 
 
