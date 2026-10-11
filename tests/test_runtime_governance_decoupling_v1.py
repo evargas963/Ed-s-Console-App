@@ -106,10 +106,11 @@ def test_the_agent_seam_still_refuses_to_move_the_production_checkout():
         _primary_worktree_root,
         prod_checkout_git_move_violations,
     )
+    from tools.shell_parse import read
 
     primary = _primary_worktree_root(GUARD_REPO) or GUARD_REPO
     cmd = f'git -C "{primary}" checkout -b feature/should-never-land-here'
-    violations = prod_checkout_git_move_violations(cmd)
+    violations = prod_checkout_git_move_violations(read(cmd))
     assert violations, (
         "an agent can move the PRODUCTION checkout onto a feature branch — the lineage "
         "invariant has no enforcement left anywhere (RC-512)"
@@ -117,4 +118,4 @@ def test_the_agent_seam_still_refuses_to_move_the_production_checkout():
     assert any("PROD_CHECKOUT_LOCK" in v for v in violations), violations
 
     # negative half: the same verb aimed at a dev worktree is not the desk's business
-    assert prod_checkout_git_move_violations('git -C "/tmp/some-dev-worktree" checkout -b wip') == []
+    assert prod_checkout_git_move_violations(read('git -C "/tmp/some-dev-worktree" checkout -b wip')) == []

@@ -31,16 +31,13 @@ if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
 import tools.operating_process_lock as OPL  # noqa: E402
-from tools.shell_parse import (  # noqa: E402 — the ONE shell parser (BEDROCK 2026-09-06)
+from tools.shell_parse import (  # noqa: E402 — the ONE shell reader
+    Statement,
     _msys_to_windows,
-    _tokens,
-    iter_command_segments,
-    iter_git_invocations,
+    git_repo,
+    git_subcommand,
     normalize_repo,
-    program_name,
-    program_re,
-    segment_head,
-    shell_executed_part,
+    read,
 )
 from tools.pretooluse_guard import classify_path  # noqa: E402
 from tools.hook_chain import BASH_TOOLS, MUTATING_TOOLS  # noqa: E402 — the ONE roster of each class
@@ -120,61 +117,18 @@ _PROD_MOVE_SUBCOMMANDS = frozenset({
     "commit", "reset", "rebase", "cherry-pick", "revert", "am",
     "merge", "pull", "checkout", "switch", "branch",
 })
-_GIT_GLOBAL_WITH_ARG = frozenset({"-C", "-c", "--git-dir", "--work-tree", "--namespace",
-                                  "--super-prefix", "--exec-path"})
+#: `git branch` options that list branches: their values are patterns or commits, not new branches
+_BRANCH_LISTING = frozenset({"-l", "--list", "-a", "--all", "-r", "--remotes", "--contains", "--no-contains",
+                             "--merged", "--no-merged", "--points-at", "--show-current", "-v", "-vv", "--verbose"})
 
 
-#: A shell redirect operator token — `2>&1`, `>out.log`, `>>out.log`, `<in`, bare `>`/`<` — MEASURED
-#: 2026-09-11: `git merge --ff-only origin/main 2>&1` (the exact sanctioned production
-#: fast-forward, only with its own stderr redirected) was read as `refs = ["origin/main", "2>&1"]`
-#: by the naive "every non-flag token is a ref" rule, which does not match the allowed
-#: `["origin/main"]` shape and wrongly BLOCKS a legitimate operation the moment a caller redirects
-#: it — exactly the "obstructs normal development" failure mode this guard must not create.
-_REDIRECT_TOKEN_RE = re.compile(r"^[0-9]*(?:>{1,2}|<)")
-
-
-def git_subcommand(cmd: str) -> tuple[str, list[str]]:
-    """`(subcommand, its args)` for one git invocation — `("", [])` when there is no git call.
-
-    Stripping `git` and its GLOBAL options is the fiddly half: `-C <path>` and friends take a
-    SEPARATE value, so "the first non-flag token" reads that PATH as the subcommand. Extracted
-    from `_prod_forbidden_git_reason` (RC-512) so a second caller asking a different question
-    of the same syntax reuses this instead of re-deriving it — ONE FAUCET.
-    """
-    toks = [t.strip("\"'") for t in _tokens(shell_executed_part(cmd or ""))]
-    gi = next((i for i, t in enumerate(toks)
-               if program_name(t) == "git"), -1)
-    if gi < 0:
-        return "", []
-    rest = toks[gi + 1:]
-    for ri, t in enumerate(rest):            # shell redirection is not a git argument — stop
-        if _REDIRECT_TOKEN_RE.match(t):      # reading positional args at the first redirect token
-            rest = rest[:ri]
-            break
-    i = 0
-    while i < len(rest):                 # skip git GLOBAL options up to the subcommand
-        t = rest[i]
-        if any(t.startswith(p + "=") for p in _GIT_GLOBAL_WITH_ARG):
-            i += 1
-        elif t in _GIT_GLOBAL_WITH_ARG:
-            i += 2                       # option + its separate value (e.g. `-C <path>`)
-        elif t.startswith("-"):
-            i += 1                       # -P/--no-pager/--paginate/--bare/other no-arg globals
-        else:
-            break
-    if i >= len(rest):
-        return "", []                    # bare `git` with no subcommand
-    return rest[i], rest[i + 1:]
-
-
-def _prod_forbidden_git_reason(cmd: str) -> str | None:
-    """For a git command already known to TARGET the production primary, return WHY it is
-    forbidden there, or None if it is an allowed production operation. Parses one git
-    invocation: strip `git` + global options, then classify the subcommand and its args.
-    ALLOWED on production: reads/fetch; `git merge|pull --ff-only origin/main` (the
-    merge-then-fast-forward update, invariant #5); `git checkout|switch main` (return to main);
-    `git checkout -- <path>` file-restore (left to the destructive-git rail)."""
-    sub, args = git_subcommand(cmd)
+def _prod_forbidden_git_reason(words: tuple[str, ...]) -> str | None:
+    """For a git statement already known to TARGET the production primary, return WHY it is
+    forbidden there, or None if it is an allowed production operation (its subcommand and
+    arguments classified). ALLOWED on production: reads/fetch; `git merge|pull --ff-only
+    origin/main` (the merge-then-fast-forward update, invariant #5); `git checkout|switch main`
+    (return to main); `git checkout -- <path>` file-restore (left to the destructive-git rail)."""
+    sub, args = git_subcommand(words)
     if not sub:
         return None
     if sub not in _PROD_MOVE_SUBCOMMANDS:
@@ -198,12 +152,13 @@ def _prod_forbidden_git_reason(cmd: str) -> str | None:
     if sub == "branch":
         mutating = any(a in ("-m", "-M", "-c", "-C", "-d", "-D", "-f", "--force", "--move",
                              "--copy", "--delete", "--edit-description") for a in args)
-        creates = any(not a.startswith("-") for a in args)
+        lists = any(a.split("=")[0] in _BRANCH_LISTING for a in args)
+        creates = not lists and any(not a.startswith("-") for a in args)
         return "`git branch` creates/moves/deletes a branch" if (mutating or creates) else None
     return f"`git {sub}` writes history / moves HEAD in the checkout"
 
 
-def prod_checkout_git_move_violations(cmd: str, payload_cwd: str = "") -> list[str]:
+def prod_checkout_git_move_violations(statements: list[Statement]) -> list[str]:
     """PREVENT (not merely detect) an assigned agent MOVING or committing to the PRODUCTION
     checkout (live-checkout invariant #1/#4). The production checkout is the PRIMARY working
     tree of this repo (its `.git` is a directory; linked dev worktrees have a `.git` FILE).
@@ -220,10 +175,10 @@ def prod_checkout_git_move_violations(cmd: str, payload_cwd: str = "") -> list[s
     except (OSError, ValueError):
         return []
     out: list[str] = []
-    for target, seg in iter_git_invocations(cmd or "", payload_cwd or ""):
-        if not target or target != primary_norm:
+    for st in statements:
+        if st.program != "git" or git_repo(st) != primary_norm:
             continue                     # this git invocation targets a dev worktree / elsewhere
-        reason = _prod_forbidden_git_reason(seg)
+        reason = _prod_forbidden_git_reason(st.words)
         if reason:
             out.append(
                 f"PROD_CHECKOUT_LOCK (live-checkout invariant / RC-350): {reason} in the "
@@ -239,9 +194,9 @@ _BRANCH_WRITE_FLAGS = frozenset({"-f", "--force", "-d", "-D", "--delete", "-m", 
                                  "-c", "-C", "--copy"})
 
 
-def _writes_main(seg: str) -> bool:
-    """One git invocation writes refs/heads/main."""
-    sub, args = git_subcommand(seg)
+def _writes_main(words: tuple[str, ...]) -> bool:
+    """One git statement writes refs/heads/main."""
+    sub, args = git_subcommand(words)
     refs = [a for a in args if not a.startswith("-")]
     if sub == "update-ref":
         return bool(refs) and refs[0] == "refs/heads/main"
@@ -254,13 +209,13 @@ def _writes_main(seg: str) -> bool:
     return False
 
 
-def main_ref_write_violations(cmd: str, payload_cwd: str = "") -> list[str]:
+def main_ref_write_violations(statements: list[Statement]) -> list[str]:
     """A git command that writes refs/heads/main, from any checkout: every checkout shares the
     branch the production checkout runs, so the checkout a command runs in cannot protect it."""
-    return [f"MAIN_REF_LOCK: `{seg.strip()}` writes refs/heads/main, the branch the production "
+    return [f"MAIN_REF_LOCK: `{st.text}` writes refs/heads/main, the branch the production "
             f"checkout runs, shared by every checkout. main moves only by a PR merged on GitHub, "
             f"then `git pull --ff-only` in production."
-            for _target, seg in iter_git_invocations(cmd or "", payload_cwd or "") if _writes_main(seg)]
+            for st in statements if _writes_main(st.words)]
 
 
 def production_checkout_app_edit_violations(tool_input: dict, repo: Path = REPO) -> list[str]:
@@ -302,25 +257,21 @@ def production_checkout_app_edit_violations(tool_input: dict, repo: Path = REPO)
     return out
 
 
-#: A shell redirect destination — `> file` / `>> file` / `N> file` (the path after the operator);
-#: `2>&1`-style fd dups don't match (their "path" would start with `&`). The universal
-#: source-write ban (operator_law_guard) covers `> *.py` repo-wide but is .py-only; extracting
-#: the redirect destination here lets the caller close the static/*.html|*.js gap in production.
-_REDIRECT_DEST_RE = re.compile(r'(?:^|[^0-9&>])[0-9]*>>?\|?\s*("[^"]+"|\'[^\']+\'|[^\s;|&<>]+)')
+#: a redirect that writes its target: `>`, `>>`, `N>`, `>|`, `&>` (not an fd dup like `2>&1`)
+_WRITE_REDIRECT = re.compile(r"\d*>>?\|?|&>>?")
 
 
-def _shell_write_dest_paths(seg: str) -> list[str]:
-    """Destination file operand(s) a shell segment WRITES: a `>` / `>>` redirect on ANY command
+def _shell_write_dest_paths(st: Statement) -> list[str]:
+    """Destination file operand(s) a shell statement WRITES: a `>` / `>>` redirect on ANY command
     (e.g. `printf x > static/index.html`, `echo x > static/app.js`), PLUS the material
     file-mutating verbs cp/mv/install/rsync/ln/tee/sed -i/perl -i/truncate/dd of=. The caller
     filters to app code inside the production primary, so a non-app operand (a sed script, a
-    redirect to a .log) is harmlessly ignored. Heredocs and -c payloads stay with their
-    universal source-write bans in operator_law_guard."""
-    dests: list[str] = [m.group(1).strip("\"'") for m in _REDIRECT_DEST_RE.finditer(seg)]
-    verb, toks = segment_head(seg)
+    redirect to a .log) is harmlessly ignored."""
+    dests: list[str] = [t for op, t in st.redirects if _WRITE_REDIRECT.fullmatch(op)]
+    verb = st.program
     if not verb:
         return dests
-    args = [t.strip("\"'") for t in toks[1:]]
+    args = list(st.words[1:])
     positionals = [a for a in args if not a.startswith("-")]
     if verb in ("cp", "mv", "install", "rsync", "ln"):
         dests += positionals[-1:]                            # DEST is the last operand; sources are reads
@@ -354,7 +305,7 @@ def _shell_write_dest_paths(seg: str) -> list[str]:
             dests.append(inline)
         dests += [t for t in args[idx + 1:] if not t.startswith("-")]
         break
-    dests += _ps_write_dest_paths(seg)
+    dests += _ps_write_dest_paths(st)
     return dests
 
 
@@ -381,17 +332,17 @@ _PS_DEST_PARAM = {
 }
 
 
-def _ps_write_dest_paths(seg: str) -> list[str]:
-    """Destination path a PowerShell write cmdlet targets in one segment, named or positional.
+def _ps_write_dest_paths(st: Statement) -> list[str]:
+    """Destination path a PowerShell write cmdlet targets in one statement, named or positional.
 
     A residual, documented limit: a destination built from a bare `$variable` (no literal path
     token) is not resolvable by this or any static table — the same limit the retired universal
     ban carried."""
-    verb, toks = segment_head(seg)
+    verb = st.program
     dest_flag = _PS_DEST_PARAM.get(verb)
     if not dest_flag:
         return []
-    args = [t.strip("\"'") for t in toks[1:]]
+    args = list(st.words[1:])
     for i, a in enumerate(args):
         if a.lower() == dest_flag and i + 1 < len(args):
             return [args[i + 1]]
@@ -401,17 +352,17 @@ def _ps_write_dest_paths(seg: str) -> list[str]:
     return positionals[:1]
 
 
-def _shell_write_targets(cmd: str, payload_cwd: str = "", base_root: Path | None = None):
-    """Every resolved destination a shell command writes, cwd tracked across `cd` in a chain.
+def _shell_write_targets(statements: list[Statement], base_root: Path | None = None):
+    """Every resolved destination a shell command's statements write, each against its cwd.
 
     The resolve-and-join loop exists ONCE (ONE FAUCET); `production_checkout_shell_app_write_violations`
     applies its `relative_to(primary)` narrowing on top and never re-derives how a shell
     command names a destination.
     """
     root = str(base_root) if base_root else str(REPO)
-    for cwd, seg in iter_command_segments(cmd or "", payload_cwd or ""):
-        base = _msys_to_windows(cwd) if cwd else root
-        for dest in _shell_write_dest_paths(seg):
+    for st in statements:
+        base = _msys_to_windows(st.cwd) if st.cwd else root
+        for dest in _shell_write_dest_paths(st):
             try:
                 p = Path(_msys_to_windows(dest))
                 if not p.is_absolute():
@@ -421,7 +372,7 @@ def _shell_write_targets(cmd: str, payload_cwd: str = "", base_root: Path | None
                 continue
 
 
-def production_checkout_shell_app_write_violations(cmd: str, payload_cwd: str = "") -> list[str]:
+def production_checkout_shell_app_write_violations(statements: list[Statement]) -> list[str]:
     """PREVENT a materially-equivalent SHELL edit to app code in the PRODUCTION checkout — the
     Bash companion to production_checkout_app_edit_violations (Edit/Write) and to the universal
     shell source-write bans (redirect/heredoc/-c payload in operator_law_guard). For EACH segment
@@ -439,7 +390,7 @@ def production_checkout_shell_app_write_violations(cmd: str, payload_cwd: str = 
     out: list[str] = []
     # ONE resolve loop, shared with the RC-498 mission latch; only the narrowing below is
     # this rail's own — the destination must land INSIDE the production primary.
-    for resolved in _shell_write_targets(cmd, payload_cwd, base_root=primary_res):
+    for resolved in _shell_write_targets(statements, base_root=primary_res):
         try:
             resolved.relative_to(primary_res)
         except ValueError:
@@ -463,22 +414,21 @@ def pretooluse_block(tool: str, tool_input: dict, payload_cwd: str = "") -> list
         out.extend(production_checkout_app_edit_violations(tool_input))
     if tool in BASH_TOOLS:                # one roster (hook_chain.BASH_TOOLS, RC-520)
         cmd = tool_input.get("command") or ""
-        if re.search(program_re("git") + r"commit\b", cmd, re.I):
-            # RC-234: piped commits mask hook failures as exit 0 — block BEFORE it runs.
-            # (The index≠WT parity check that also ran here was a duplicate of the
-            # `operating-process` pre-commit hook in the target tree — deleted 2026-09-10.)
-            out.extend(OPL.commit_pipe_violations(cmd))
+        ps = tool == "PowerShell"
+        statements = read(cmd, payload_cwd or "", ps)
+        # RC-234: piped commits mask hook failures as exit 0 — block BEFORE it runs.
+        out.extend(OPL.commit_pipe_violations(cmd, ps))
         # LOCK-2 (RC-231): the tree-destructive git CLASS blocks BEFORE the tree is touched —
         # three 2026-08-03 wipes used soft forms the old --hard-literal ban never matched.
-        out.extend(OPL.reset_guard_violations(cmd))
+        out.extend(OPL.reset_guard_violations(cmd, ps))
         # Live-checkout invariant #1/#4: PREVENT a git branch-move/commit/reset/merge that
         # TARGETS the production checkout, at the moment of the command (not just at next launch).
         # Every git invocation in the chain is judged on its own — no laundering by a harmless first.
-        out.extend(prod_checkout_git_move_violations(cmd, payload_cwd))
-        out.extend(main_ref_write_violations(cmd, payload_cwd))
+        out.extend(prod_checkout_git_move_violations(statements))
+        out.extend(main_ref_write_violations(statements))
         # Live-checkout invariant #4: a materially-equivalent SHELL write to production app code
         # (cp/mv/sed -i/tee/...) is blocked too, not only Edit/Write tool calls.
-        out.extend(production_checkout_shell_app_write_violations(cmd, payload_cwd))
+        out.extend(production_checkout_shell_app_write_violations(statements))
         # BEDROCK 2026-09-06: the RC-498 shell-side mission latch is removed with its Edit-side
         # twin. Work identity is the branch and PR; defects get rows by doctrine; the Stop seam
         # and the CLOSE contract hold what a mutation seam cannot see.
