@@ -241,18 +241,28 @@ def statements(cmd: str) -> "list[tuple[list[str], bool]]":
     return out
 
 
-#: a script handed to a shell or eval: sh/bash/zsh/dash/pwsh -c (or -lc, -Command), cmd /c, eval,
-#: the shell named bare or by path, its script quoted or the rest of the statement
-_PAYLOAD = re.compile(r"(?:^|[\s;&|(])(?:[^\s;&|]*[\\/])?(?:(?:bash|sh|zsh|dash|pwsh|powershell)(?:\.exe)?\s"
+#: where a statement starts: the line start, a separator, `(`, `$(` or a backtick, then any
+#: VAR=val assignments and command wrappers. A shell or eval named anywhere else is text.
+_STATEMENT_START = (r"(?:^|[;&|(\n`]|\$\()\s*(?:\w+=[^\s;&|]*\s+|"
+                    r"(?:timeout\s+[^\s;&|]+|env|nohup|time|sudo|nice|stdbuf|xargs)\s+)*")
+#: a script handed to a shell or eval at the start of a statement: sh/bash/zsh/dash/pwsh -c (or
+#: -lc, -Command), cmd /c, eval; the shell named bare or by path, its script quoted or the rest of
+#: the statement
+_PAYLOAD = re.compile(_STATEMENT_START + r"(?:[^\s;&|]*[\\/])?(?:(?:bash|sh|zsh|dash|pwsh|powershell)(?:\.exe)?\s"
                       r"(?:[^\n;&|]*?\s)?-(?:[a-z]*c|command)|cmd(?:\.exe)?\s(?:[^\n;&|]*?\s)?/c|eval)\s+"
-                      r"(\"(?:\\.|[^\"])*\"|'[^']*'|[^\n;&|]+)", re.I)
+                      r"(\"(?:\\.|[^\"])*\"|'[^']*'|[^\n;&|]+)", re.I | re.M)
+#: a command substitution, $(...) or `...`
+_SUBSTITUTION = re.compile(r"\$\(([^()]*)\)|`([^`]*)`")
 
 
 def executed_scripts(cmd: str):
-    """`cmd`, then (recursively) every script it hands a shell or eval, which shell_executed_part
-    sets aside as data. Heredoc bodies are data and are not searched."""
+    """`cmd`, then (recursively) every script it runs that shell_executed_part sets aside as data:
+    a script handed to a shell or eval, and a command substitution outside single quotes. Heredoc
+    bodies are data and are not searched."""
     yield cmd
     text = re.sub(r"<<-?\s*(['\"]?)(\w+)\1.*?^\s*\2\s*$", " ", cmd, flags=re.S | re.M)
     for m in _PAYLOAD.finditer(text):
         script = m.group(1)
         yield from executed_scripts(script[1:-1].replace('\\"', '"') if script[:1] in "\"'" else script)
+    for m in _SUBSTITUTION.finditer(re.sub(r"'[^']*'", "''", text)):
+        yield from executed_scripts(m.group(1) or m.group(2) or "")

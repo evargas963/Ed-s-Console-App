@@ -214,7 +214,7 @@ def test_every_merge_route_asks(cmd, tool, markets):
 
 @pytest.mark.parametrize("cmd", ["gh pr view 515", "gh pr checks 515", "gh -R o/r pr list",
                                  "curl -s https://api.github.com/repos/o/r/pulls/5",
-                                 "bash -c \"gh pr view 5\""])
+                                 "bash -c \"gh pr view 5\"", "git commit -m \"asks for eval gh pr merge 5\""])
 def test_reading_a_pull_request_passes(cmd, markets):
     assert _decide(cmd, CLOSED, markets) == guard.PASS, cmd
 

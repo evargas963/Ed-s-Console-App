@@ -168,11 +168,11 @@ Hold EdWebConsole to how a financial institution handles systems with real money
 - At each milestone (a commit, a failed check, a finding that changes the plan), report to the operator
   what changed, what was deleted, each proof and its tier, and what is NOT_PROVEN, then continue.
   Enforced by: no machine check — ENF-12.
-- A PR merges on the operator's yes after CI is green on its final commit; that yes also covers its deploy.
-  Enforced by: branch protection on `main` requires `.github/workflows/pytest.yml` and `.github/workflows/hardening.yml`
-  to pass on a branch current with `main`; `tools/operator_yes_guard.py` asks Allow/Deny for the merge routes its
-  tests cover (`tests/test_operator_yes_guard_v1.py`); a merge from inside a heredoc body, `python -c`, a script file or
-  a query held in a variable — ENF-12. A merge on the GitHub page is the operator's own. No CODEOWNERS file.
+- A PR merges on the operator's yes after CI is green on its final commit; that yes also covers its deploy, and a
+  merge on the GitHub page is the operator's own. No CODEOWNERS file. Enforced by: branch protection on `main` requires
+  `.github/workflows/pytest.yml` and `.github/workflows/hardening.yml` to pass on a branch current with `main`;
+  `tools/operator_yes_guard.py` asks Allow/Deny for the merge routes its tests cover (`tests/test_operator_yes_guard_v1.py`);
+  a merge from inside a heredoc body, `python -c`, a script file or a query held in a variable, and no CODEOWNERS — ENF-12.
 - Stop for the operator's STOP / PAUSE / HANG IT UP / DO NOT CONTINUE / NO, a task marked AUDIT ONLY
   or DO NOT MERGE, a destructive data action, and a product decision code cannot settle. Say in chat
   what a guarded action is for before running it. Enforced by: `tools/operator_yes_guard.py` asks Allow/Deny for
@@ -187,8 +187,8 @@ Hold EdWebConsole to how a financial institution handles systems with real money
   the forms its test table refuses (`tests/test_reset_guard_v1.py`); every other form — ENF-12.
 - Never `--no-verify`, `git add -A` / `.`, delete or move anything under `data/`, or run a python that
   reads its program from stdin (`python -`, a heredoc, a pipe; use a script file or `python -c`).
-  Enforced by: `tools/operator_law_guard.py` (`tests/test_operator_law_guard_action_bans_v1.py`,
-  `tests/test_protected_paths_v1.py`).
+  Enforced by: `tools/operator_law_guard.py`, in the forms its tests cover (`tests/test_operator_law_guard_action_bans_v1.py`,
+  `tests/test_protected_paths_v1.py`); a python started inside a heredoc body, `python -c` or a script file — ENF-12.
 - Edit source one edit at a time, never through a script. Enforced by: `tools/sed_edit_guard.py`
   (`tests/test_sed_edit_guard_v1.py`); the other in-place editors — ENF-14.
 - A file keeps its line endings. Enforced by: `tools/check_eol_style_invariant.py`

@@ -1,39 +1,19 @@
-"""OPERATOR LAW GUARD — four host-wide ACTION bans on shell commands (RC-93: ban the action,
-never the word). PreToolUse for the shell-command tools (`hook_chain.BASH_TOOLS`); exit 2 blocks.
+"""OPERATOR LAW GUARD — four host-wide bans on what a shell command does (the action, never a word
+it mentions). PreToolUse for the shell-command tools (`hook_chain.BASH_TOOLS`); exit 2 blocks.
 
-What survives, and the concrete failure each prevents (KEEP/MERGE/DELETE, 2026-09-10):
-
-  * UNRECOVERABLE-TREE DESTRUCTION (RC-273). `.gitignore` excludes data/,
-    so the 27 GB database has no history at all. The agent destroyed it TWICE in ten minutes
-    (`mv` to exercise a missing-file branch, `rm -f` while testing the ACL meant to prevent the
-    first). The live database files carry an OS deny-delete (file) plus deny-delete-contents
-    (folder) -- measured 2026-09-26 with a canary in the real data/ folder: delete and rename
-    refused. This rule stops an attempt early, with a reason, judged on what the command RUNS.
-  * BLIND STAGING. `git add -A` / `-u` / `.` / `*` swept another agent's in-flight files into a
-    commit twice in one day (a 530 KB runtime log; audit scratch). A commit asserts authorship of
-    everything in it; stage explicit paths.
+  * THE DATA TREE. `.gitignore` excludes data/, so the database there has no history and no undo.
+    A command that deletes, moves, overwrites or unprotects a path under it is refused, judged on
+    what the command runs; a restore into it stays legal.
+  * BLIND STAGING. `git add -A` / `-u` / `.` / `*` sweeps another agent's in-flight files into a
+    commit; stage explicit paths.
   * LOCK DISABLE. `--no-verify`, `-n`, `core.hooksPath`, `SKIP=<hook>` and `pre-commit uninstall`
-    bypass the pre-commit battery the operator asked for. Required CI would still catch the
-    result, but only after the commit exists; refusing the bypass in session is cheap and blocks
-    nothing legitimate.
+    bypass the pre-commit checks; refusing the bypass in session blocks nothing legitimate.
   * PYTHON FROM STDIN. On Windows an empty heredoc or </dev/null looks like a console to
     `python -`, and Python 3.13's REPL retries forever on the invalid handle. A python that reads
     its program from stdin (in the command, an `eval` string or a shell's -c payload) is refused;
-    a script file or `python -c` does the same job. Known over-reach: `xargs python` (the wrapper
-    is skipped) and a multi-line quoted argument with a line that is only `python`.
-
-What was DELETED, and why (nothing replaced it):
-  * the no-grep rule: it blocked read-only stdout filters three times in one session — governance
-    obstructing inspection; the rule's stated value (read files whole) is a working style, not a
-    protection.
-  * heredoc / redirect / `-c` payload / PowerShell source-write bans: they existed because shell
-    writes once mangled escapes; ruff and pytest at commit and in CI catch a mangled file, and the
-    retired mockup-approval registry they also guarded is gone.
-  * the CLOSE-a-row-needs-a-verification-this-turn rule and its transcript readers: every ledger
-    row a delta closes has its cited command EXECUTED by required CI (tools/check_delta_adds_no_debt.py);
-    a transcript-derived turn ledger was a second, weaker judge of the same fact — and the last
-    transcript reader on the PreToolUse path (RC-544 class).
-  * the `ED_*_GUARD=off` spellings in the lock-disable regex: no such switch exists (RC-450).
+    a script file or `python -c` does the same job. Not seen: a python started inside a heredoc
+    body, `python -c` or a script file. Over-reach: `xargs python` (the wrapper is skipped) and a
+    multi-line quoted argument with a line that is only `python`.
 """
 from __future__ import annotations
 
