@@ -22,7 +22,7 @@ Check every request and every proposal:
 If anything fails, report what failed and why, and leave the failing part out. Claude proposes the smallest, simplest path that passes, using the repo. That proposal is checked against this gate before it goes to Ed for approval.
 4. For every problem, first answer why it happens, down to the code or data that causes it, with evidence. Only then the fix. Never offer a choice about limits, settings or tests until the cause is known.
 5. Every item labeled NOT VERIFIED gets verified, and every item labeled SEEN, NOT FIXED gets fixed at the source, before the work is reported done. An item that can't be closed comes to Ed as a decision, with its evidence and the reason.
-Enforced by (items 4 and 5): `.claude/skills/before-done/SKILL.md` (item 4 in its opening paragraph; item 5 in steps 7 and 8) and `.claude/skills/flaky-test-fix/SKILL.md`.
+Enforced by (items 4 and 5): no machine check — ENF-12; the procedure is `.claude/skills/before-done/SKILL.md` (item 4 in its opening paragraph; item 5 in steps 7 and 8) and `.claude/skills/flaky-test-fix/SKILL.md`.
 
 ### Standard of care
 Hold EdWebConsole to how a financial institution handles systems with real money on the line. These are judgments to apply to every proposal, not things to build:
