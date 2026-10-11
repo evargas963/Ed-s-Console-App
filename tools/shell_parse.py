@@ -24,15 +24,19 @@ command as bash or, for the PowerShell tool, as PowerShell:
 The lexer is written by hand, not on `shlex`: shlex (posix, punctuation_chars) glues a line break
 into a word, splits `$(` into `$` and `(`, gives `"$(x)"` (runs x) and `'$(x)'` (text) the same
 word, knows no backticks, heredocs or PowerShell, and drops the backslashes of a Windows path
-(`C:\\Git\\cmd\\git.exe` becomes `C:Gitcmdgit.exe`). In bash a backslash escapes only a quote, `$`,
-a backtick, a backslash, whitespace or a shell operator, and is a character before anything else;
-in PowerShell the backtick is the escape and a backslash is always a character.
+(`C:\\Git\\cmd\\git.exe` becomes `C:Gitcmdgit.exe`). In PowerShell the backtick is the escape and a
+backslash is always a character.
 
 Not seen into (the law guard refuses each, tools/operator_law_guard.py): a program built at run
-time (`$cmd`, a substitution, PowerShell `& $x`), text piped into a shell, python or node, a
-PowerShell -EncodedCommand, Invoke-Expression. Not seen and not refused: a script file a statement
-runs, a shell command a python program builds at run time, a PowerShell here-string's $( ), a
-`hatch run env:cmd` script name, and an alias or function defined earlier.
+time (a `$` or substitution in a bash program word, PowerShell `& $x` / `. $x` / `& (...)`, a script
+block made from text), text piped into a shell, cmd, python or node, a PowerShell -EncodedCommand,
+Invoke-Expression. Not seen and not refused: a script file a statement runs, a shell command a
+python program builds at run time, the command xargs builds from its input (`xargs sh -c`), a
+PowerShell here-string's $( ), a `hatch run env:cmd` script name, a `gh alias`, and an alias or
+function defined earlier.
+
+A bash backslash before an ordinary character is dropped by bash (`r\\m` runs rm) and kept in a
+Windows path (`C:\\Git\\cmd\\git.exe`): such a statement is read both ways and both are judged.
 """
 from __future__ import annotations
 
@@ -176,6 +180,9 @@ class _Word:
     value: str
     raw: str
     nested: list[str]
+    #: bash's reading when it differs: an unquoted backslash before an ordinary character is
+    #: dropped by bash (`r\m` runs rm) but kept in `value` (`C:\Git\cmd\git.exe` is a path)
+    bash: str | None = None
 
 
 def _heredoc_body(s: str, i: int, tag: str) -> tuple[str, int]:
@@ -321,8 +328,8 @@ class _Lexer:
                 elif nxt and (self.ps or nxt in _ESCAPED):
                     value.append(nxt)
                     i += 2
-                else:
-                    value.append(c)
+                else:                          # kept, but bash drops it: both readings are judged
+                    value.append("\0")
                     i += 1
             elif c == "`":
                 i = self.backtick(i, value, nested)
@@ -341,11 +348,12 @@ class _Lexer:
             else:
                 value.append(c)
                 i += 1
-        return _Word("".join(value), s[start:i], nested)
+        text = "".join(value)
+        return _Word(text.replace("\0", "\\"), s[start:i], nested, text.replace("\0", "") if "\0" in text else None)
 
     def tokens(self) -> list[list]:
         """["w", _Word], ["op", separator], ["redir", operator, _Word, heredoc body], ["group", text]."""
-        s, tokens, pending, fresh, called, i = self.s, [], [], True, False, 0
+        s, tokens, pending, fresh, called, i = self.s, [], [], True, "", 0
         while i < len(s):
             c = s[i]
             if c in _SPACE:
@@ -375,17 +383,18 @@ class _Lexer:
                     i = j + 1
                     continue
                 rest = self.word(j + 1)                          # a ( ) or { } inside a statement
-                raw = ("& " if called else "") + s[i:j + 1] + rest.raw
-                tokens.append(["w", _Word(s[i:j + 1] + rest.value, raw, [inner, *rest.nested])])
-                fresh, called = False, False
+                tokens.append(["w", _Word(s[i:j + 1] + rest.value, called + s[i:j + 1] + rest.raw, [inner, *rest.nested])])
+                fresh, called = False, ""
                 i = j + 1 + len(rest.raw)
-            elif self.ps and fresh and c == "&" and s[i + 1:i + 2] != "&":     # `& "C:\x y\gh" pr ...`
-                called = True
+            elif self.ps and (c == "&" and s[i + 1:i + 2] != "&" or c == "." and s[i + 1:i + 2] in _SPACE) and (
+                    fresh or [t[0] for t in tokens[-2:]] == ["w", "w"] and tokens[-1][1].value == "="
+                    and tokens[-2][1].value.startswith("$")):    # `& "C:\x y\gh" pr`, `$r = & $gh`, `. $f`
+                called = c + " "
                 i += 1
             elif sep := next(((t, op) for t, op in _SEPARATORS if s.startswith(t, i)
                               and not (t == "&" and s.startswith("&>", i))), None):
                 tokens.append(["op", sep[1]])
-                fresh = True
+                fresh, called = True, ""
                 i += len(sep[0])
             elif m := _REDIRECT.match(s, i):
                 op, j = m.group(0), m.end()
@@ -407,8 +416,8 @@ class _Lexer:
             else:
                 w = self.word(i)
                 i += len(w.raw) or 1
-                if called:                     # written `& word`: a program, not a printed string
-                    w, called = _Word(w.value, "& " + w.raw, w.nested), False
+                if called:                     # written `& word` / `. word`: a program, not a printed string
+                    w, called = _Word(w.value, called + w.raw, w.nested), ""
                 tokens.append(["w", w])
                 fresh = False
         return tokens
@@ -433,7 +442,9 @@ _RUNNERS = {
            "--package", "--extra", "--group", "--only-group", "--no-group", "--env-file", "--index",
            "--default-index", "-i", "--index-url", "--extra-index-url", "-f", "--find-links", "--python-platform",
            "--config-file", "--cache-dir", "--color", "--exclude-newer", "--resolution", "--prerelease",
-           "--link-mode", "-C", "--config-setting", "--keyring-provider", "--allow-insecure-host"},
+           "--link-mode", "-C", "--config-setting", "--keyring-provider", "--allow-insecure-host",
+           "--python-preference", "--index-strategy", "-P", "--upgrade-package", "--refresh-package",
+           "--reinstall-package", "--no-binary-package", "--no-build-package", "--exclude-newer-package"},
     "poetry": {"-C", "--directory", "-P", "--project"}, "pipenv": set(), "pdm": {"-p", "--project"},
     "hatch": set(),
 }
@@ -493,21 +504,30 @@ def _statement(words: list[_Word], redirs: list[list], ctx: dict, upstream: Stat
             out += _nested(text, ctx)
     heredoc = next((r[3] or "" for r in redirs if r[1] in ("<<", "<<-")), None)
     redirects = tuple((r[1], r[2].value) for r in redirs if r[1] not in ("<<", "<<-"))
-    return out + _command([w.value for w in words], [w.raw for w in words], redirects, heredoc, ctx, upstream)
+    raws = [w.raw for w in words]
+    if any(w.bash is not None for w in words):         # bash's reading too, its cd kept to itself
+        out += _command([w.value if w.bash is None else w.bash for w in words], raws, redirects, heredoc,
+                        {**ctx}, upstream)
+    return out + _command([w.value for w in words], raws, redirects, heredoc, ctx, upstream)
 
 
-def _skip_wrapper(vals: list[str], i: int) -> int:
-    """The index past wrapper `vals[i]` (a runner with its `run`) and its options (and timeout's
-    duration)."""
-    name = program_name(vals[i])
-    runner = name in _RUNNERS
-    takes = _RUNNERS[name] if runner else _WRAPPERS[name]
-    i += 2 if runner else 1
+def _skip_options(vals: list[str], i: int, takes) -> int:
+    """The index past the options starting at `i`, those in `takes` with their value."""
     while i < len(vals) and vals[i].startswith("-") and vals[i] != "-":
         if vals[i] == "--":
-            i += 1
-            break
+            return i + 1
         i += 2 if vals[i] in takes else 1
+    return i
+
+
+def _skip_wrapper(vals: list[str], i: int) -> int | None:
+    """The index past wrapper `vals[i]` and its options (timeout's duration too; a runner's options
+    on both sides of its `run`); None for a runner whose subcommand is not `run`."""
+    name = program_name(vals[i])
+    if name in _RUNNERS:
+        j = _skip_options(vals, i + 1, _RUNNERS[name])
+        return _skip_options(vals, j + 1, _RUNNERS[name]) if vals[j:j + 1] == ["run"] else None
+    i = _skip_options(vals, i + 1, _WRAPPERS[name])
     return i + 1 if name == "timeout" else i
 
 
@@ -531,8 +551,9 @@ def _command(vals: list[str], raws: list[str], redirects: tuple, heredoc: str | 
         elif program_name(vals[i]) == "env" and (split := next(
                 (j for j in range(i + 1, len(vals)) if vals[j] in ("-S", "--split-string")), None)) is not None:
             return _nested(" ".join(vals[split + 1:]), ctx)              # env -S 'cmd args'
-        elif program_name(vals[i]) in _WRAPPERS or (program_name(vals[i]) in _RUNNERS and vals[i + 1:i + 2] == ["run"]):
-            i = _skip_wrapper(vals, i)
+        elif (program_name(vals[i]) in _WRAPPERS or program_name(vals[i]) in _RUNNERS) and \
+                (past := _skip_wrapper(vals, i)) is not None:
+            i = past
         else:
             break
     vals, raws = vals[i:], raws[i:]
@@ -559,8 +580,7 @@ def _scripts(st: Statement) -> list[tuple[str, bool]]:
     if name in IEX:
         return [(" ".join(args) if args else st.stdin or "", True)]
     if PYTHON.fullmatch(name):
-        code = [args[i + 1] for i, a in enumerate(args[:-1]) if a == "-c"] + ([st.stdin] if st.stdin else [])
-        return [(script, False) for c in code for script in _python_shell_commands(c)]
+        return [(script, False) for c in python_code(st) for script in _python_shell_commands(c)]
     if name == "cmd":
         k = next((i for i, a in enumerate(args) if a.lower() in ("/c", "/k", "//c", "//k")), None)   # // in Git Bash
         return [(" ".join(args[k + 1:]), False)] if k is not None else []
@@ -570,7 +590,7 @@ def _scripts(st: Statement) -> list[tuple[str, bool]]:
         if k is not None:
             return [(a, False) for a in args[k + 1:k + 2]]
     elif ps:
-        k = pwsh_option(args, "-command")
+        k = _pwsh_command(args)
         if k is not None and args[k + 1:k + 2] != ["-"]:
             return [(" ".join(args[k + 1:]), True)]
     else:
@@ -582,30 +602,66 @@ def _scripts(st: Statement) -> list[tuple[str, bool]]:
 _PY_INFO = frozenset({"-V", "-VV", "--version", "-h", "--help", "-0", "-0p", "--list", "--list-paths"})
 #: python options whose next argument is their value, not a script
 _PY_VALUE_OPTIONS = frozenset({"-W", "-X"})
+#: node options whose next argument is their value, not a script
+_NODE_VALUE_OPTIONS = frozenset({"-r", "--require", "--import", "--loader", "--experimental-loader", "-C",
+                                 "--conditions", "--input-type"})
+#: a script file that is stdin
+_STDIN_FILES = ("-", "/dev/stdin")
+
+
+def _pwsh_command(args) -> int | None:
+    """The index of pwsh's command-string option: -Command (any prefix) or -CommandWithArgs / -cwa."""
+    k = pwsh_option(args, "-command")
+    return k if k is not None else next((i for i, a in enumerate(args) if a.lower() == "-cwa" or (
+        len(a) >= 9 and "-commandwithargs".startswith(a.lower()))), None)
+
+
+def python_code(st: Statement) -> list[str]:
+    """The program text a python statement runs: its -c code (`-c code`, `-ccode`, `-Ic code`),
+    or the stdin text it reads as its program."""
+    args, i = list(st.words[1:]), 0
+    while i < len(args):
+        a = args[i]
+        if re.fullmatch(r"-[A-Za-z]*c", a):
+            return args[i + 1:i + 2]
+        if a.startswith("-c"):
+            return [a[2:]]
+        if a.startswith("-m") or not a.startswith("-"):
+            break
+        i += 2 if a in _PY_VALUE_OPTIONS else 1
+    return [st.stdin] if st.stdin is not None and reads_stdin(st) else []
 
 
 def reads_stdin(st: Statement) -> bool:
-    """Whether a shell, PowerShell, python or node statement takes its program from stdin: no
-    command string (-c, -Command, -e) and no script file, or `-` in their place."""
+    """Whether a shell, cmd, PowerShell, python or node statement takes its program from stdin: no
+    command string (-c, /c, -Command, -e) and no script file, or `-` / `/dev/stdin` in its place."""
     name, args = st.program, list(st.words[1:])
     if PYTHON.fullmatch(name):
         i = 0
         while i < len(args):
             a = args[i]
-            if a == "-":
+            if a in _STDIN_FILES:
                 return True
             if a.startswith(("-c", "-m")) or a in _PY_INFO or not a.startswith("-"):
                 return False
             i += 2 if a in _PY_VALUE_OPTIONS else 1
         return True
     if name in _SH:
-        return not any(_SH_COMMAND.fullmatch(a) for a in args) and all(a.startswith("-") for a in args)
+        script = next((a for a in args if not a.startswith("-") or a == "-"), None)
+        return not any(_SH_COMMAND.fullmatch(a) for a in args) and (script is None or script in _STDIN_FILES)
+    if name == "cmd":
+        return not any(a.lower() in ("/c", "/k", "//c", "//k") for a in args)
     if name in PWSH:
-        k = pwsh_option(args, "-command")
-        return args[k + 1:k + 2] in ([], ["-"]) if k is not None else all(a.startswith("-") for a in args)
+        k = _pwsh_command(args)
+        if k is not None:
+            return args[k + 1:k + 2] in ([], ["-"])
+        f = pwsh_option(args, "-file")
+        return args[f + 1:f + 2] in ([], ["-"]) if f is not None else all(a.startswith("-") for a in args)
     if name == "node":
-        return all(a.startswith("-") for a in args) and not any(
-            a.split("=")[0] in ("-e", "--eval", "-p", "--print") for a in args)
+        if any(a.split("=")[0] in ("-e", "--eval", "-p", "--print") for a in args):
+            return False
+        j = _skip_options(args, 0, _NODE_VALUE_OPTIONS)
+        return j >= len(args) or args[j] in _STDIN_FILES
     return False
 
 

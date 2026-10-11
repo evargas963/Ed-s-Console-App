@@ -18,7 +18,8 @@ shell commands. Each command gets one answer, the strictest of its statements':
   * A stop or restart of the machine and a merge are put to the operator; a push to main is
     refused. A merge (`_merges`) is `gh pr merge` with options anywhere, or a REST merge or a
     GraphQL mergePullRequest sent by `gh api`, curl, wget or Invoke-RestMethod/WebRequest, in any
-    statement the command runs. A merge on the GitHub page is the operator's own.
+    statement the command runs; a GraphQL request whose body is read from a file asks too. A merge
+    on the GitHub page is not a shell command and is not seen (ENF-13).
 
 Limits: shell commands are judged on the statements they run, as tools/shell_parse.read reads them
 (behind a keyword, a wrapper or a subshell, inside a shell's command string), never on names
@@ -248,6 +249,8 @@ def _merges(st: Statement) -> str:
         return ""
     if any("mergepullrequest" in a.lower() for a in args):
         return "a GraphQL mergePullRequest"
+    if any("graphql" in a.lower() for a in args) and any(a.startswith("@") or "=@" in a or a == "--input" for a in args):
+        return "a GraphQL request whose body is read from a file"            # its query is unseen
     return next((m.group(1) for a in args for m in [API_MERGE.search(a)] if m), "")
 
 

@@ -168,11 +168,11 @@ Hold EdWebConsole to how a financial institution handles systems with real money
 - At each milestone (a commit, a failed check, a finding that changes the plan), report to the operator
   what changed, what was deleted, each proof and its tier, and what is NOT_PROVEN, then continue.
   Enforced by: no machine check — ENF-12.
-- A PR merges on the operator's yes after CI is green on its final commit; that yes also covers its deploy, and a
-  merge on the GitHub page is the operator's own. No CODEOWNERS file. Enforced by: branch protection on `main` requires
-  `.github/workflows/pytest.yml` and `.github/workflows/hardening.yml` to pass on a branch current with `main`;
-  `tools/operator_yes_guard.py` asks Allow/Deny for the merge routes its tests cover (`tests/test_operator_yes_guard_v1.py`);
-  a merge from inside a heredoc body, `python -c`, a script file or a query held in a variable, and no CODEOWNERS — ENF-12.
+- A PR merges on the operator's yes after CI is green on its final commit; that yes also covers its deploy. No
+  CODEOWNERS file. Enforced by: branch protection on `main` requires `.github/workflows/pytest.yml` and
+  `.github/workflows/hardening.yml` to pass on a branch current with `main`; `tools/operator_yes_guard.py` asks
+  Allow/Deny for the merge routes its tests cover (`tests/test_operator_yes_guard_v1.py`); a merge on the GitHub page
+  (a browser, an agent's browser tool included), a script file's, a variable-held query's — ENF-13; no CODEOWNERS — ENF-12.
 - Stop for the operator's STOP / PAUSE / HANG IT UP / DO NOT CONTINUE / NO, a task marked AUDIT ONLY
   or DO NOT MERGE, a destructive data action, and a product decision code cannot settle. Say in chat
   what a guarded action is for before running it. Enforced by: `tools/operator_yes_guard.py` asks Allow/Deny for

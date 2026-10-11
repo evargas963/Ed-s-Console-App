@@ -117,9 +117,8 @@ _PROD_MOVE_SUBCOMMANDS = frozenset({
     "commit", "reset", "rebase", "cherry-pick", "revert", "am",
     "merge", "pull", "checkout", "switch", "branch",
 })
-#: `git branch` options that list branches; aimed at production they are reads (operator 2026-10-11)
-_BRANCH_LISTING = frozenset({"-l", "--list", "-a", "--all", "-r", "--remotes", "--contains", "--no-contains",
-                             "--merged", "--no-merged", "--points-at", "--show-current", "-v", "-vv", "--verbose"})
+#: `git branch` listings that read, aimed at production: `--list` (`-l`) and `--contains`
+_BRANCH_LISTING = frozenset({"-l", "--list", "--contains"})
 
 
 def _prod_forbidden_git_reason(words: tuple[str, ...]) -> str | None:

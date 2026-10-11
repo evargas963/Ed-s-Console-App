@@ -14,10 +14,10 @@ a heredoc nothing runs are data.
     `python -`, and Python 3.13's REPL retries forever on the invalid handle. A python that reads
     its program from stdin (`-`, or no script, -c or -m) is refused wherever it runs; a script file
     or `python -c` does the same job.
-  * UNSEEN COMMANDS (operator 2026-10-11: fail closed). What the reader cannot see into is refused,
-    with a message to write it plainly: a program built at run time (`$cmd`, a substitution, a
-    PowerShell `& $x`), text piped into a shell or node, a PowerShell -EncodedCommand, and
-    Invoke-Expression.
+  * UNSEEN COMMANDS (the guards fail closed). What the reader cannot see into is refused, with a
+    message to write it plainly: a program built at run time (a `$` or substitution in a bash
+    program word, PowerShell `& $x` / `. $x` / `& (...)`, a script block made from text), text piped
+    into a shell, cmd or node, a PowerShell -EncodedCommand, and Invoke-Expression.
 """
 from __future__ import annotations
 
@@ -33,7 +33,7 @@ if str(REPO) not in sys.path:
 
 from tools.hook_chain import BASH_TOOLS  # noqa: E402 — the ONE shell-tool roster (RC-520)
 from tools.shell_parse import (  # noqa: E402 — the ONE shell reader
-    IEX, PWSH, PYTHON, Statement, git_parts, git_subcommand, parse_python, pwsh_option, read, reads_stdin)  # noqa: E402 — the ONE shell reader
+    IEX, PWSH, PYTHON, Statement, git_parts, git_subcommand, parse_python, pwsh_option, python_code, read, reads_stdin)
 
 #: RC-273 — the gitignored tree with no history. A path SEGMENT: `AppData/`, `mydata/`, `_data/`
 #: do not match; `data/x`, `./data/x`, `C:/repo/data/x` do.
@@ -98,15 +98,15 @@ def _destroys_protected(st: Statement) -> bool:
     if any(_protected(t) for t in st.writes):
         return True
     if PYTHON.fullmatch(name):
-        code = [args[i + 1] for i, a in enumerate(args[:-1]) if a == "-c"]
-        return any(_python_violation(c) for c in [*code, *([st.stdin] if st.stdin else [])])
+        return any(_python_violation(c) for c in python_code(st))
     return False
 
 
 def _unseen(st: Statement) -> str:
-    """What the reader cannot see into in this statement, or "": a program built at run time
-    (`$cmd`, `"$GH"`, `$(which gh)`; in PowerShell `& $x` / `& (...)`, where a bare `$x...` is an
-    expression), text piped into a shell or node (python has its own ban), a PowerShell
+    """What the reader cannot see into in this statement, or "": a program built at run time (a
+    `$` or substitution anywhere in a bash program word: `$cmd`, `./$cmd`, `g$(echo h)`; in
+    PowerShell `& $x`, `. $x`, `& (...)`, where a bare `$x...` is an expression, or a script block
+    made from text), text piped into a shell, cmd or node (python has its own ban), a PowerShell
     -EncodedCommand, Invoke-Expression."""
     if not st.words:                     # an assignment or a redirect alone runs no program
         return ""
@@ -115,11 +115,14 @@ def _unseen(st: Statement) -> str:
         return "Invoke-Expression runs text"
     if name in PWSH and (pwsh_option(args, "-encodedcommand") is not None or "-ec" in (a.lower() for a in args)):
         return "-EncodedCommand"
-    called = st.raw[0].startswith("& ")             # PowerShell's call operator, as written
+    called = st.raw[0].startswith(("& ", ". "))     # PowerShell's call or dot-source operator, as written
     if called and first.startswith(("$", "(")):
         return f"the program is built at run time ({first})"
-    if not called and not st.powershell and first.startswith(("$", "`")):
+    if not called and not st.powershell and ("$" in first or "`" in first):
         return f"the program is built at run time ({first})"
+    if st.powershell and any(t in r.lower() for r in st.raw if r[:1] not in "\"'@"
+                             for t in ("[scriptblock]::create", ".invokescript(")):
+        return "a script block made from text"
     if st.upstream is not None and not PYTHON.fullmatch(name) and reads_stdin(st):
         return f"text piped into {name}"
     return ""
