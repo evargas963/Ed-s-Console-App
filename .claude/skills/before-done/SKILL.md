@@ -22,8 +22,8 @@ First gate 4), then start again from step 1.
 7. Four eyes: run the `correctness-reviewer` and `requirements-reviewer` agents on the PR's final diff
    (`git diff origin/main...HEAD`, with the PR description, the operator's task and the output of
    steps 1–6). Show each verdict
-   (PASS / FAIL / NOT_PROVEN) and its findings, and put both verdicts in the PR description. A FAIL is
-   fixed or brought to Ed before the PR is offered.
+   (PASS / FAIL / NOT_PROVEN) and its findings, and put both verdicts in the PR description. A FAIL or
+   NOT_PROVEN is fixed or proven, or brought to Ed, before the PR is offered.
 8. End the report as CLAUDE.md shows: CONFIRMED (each step's output above), NOT VERIFIED, SEEN, NOT
    FIXED — each open item verified, fixed or brought to Ed as a decision (AGENTS.md First gate 5).
    These steps do not check the live screen, which AGENTS.md's "Done" needs: show it, or list it as
