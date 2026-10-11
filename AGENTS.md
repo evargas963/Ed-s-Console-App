@@ -2,7 +2,7 @@
 
 Before writing a change, read the parts it touches of `docs/DATA_FLOW.md` (design), `ACTIVE_PROGRAM.md` (work order),
 `docs/ARCHITECTURE.md` (code map) and `docs/PRACTICES.md`. Rules for one area load with its files (`.claude/rules/`);
-procedures are skills (`.claude/skills/`). A change that breaks a rule here stops and goes to the operator.
+procedures are skills (`.claude/skills/`). A change that breaks a rule stops and goes to the operator.
 
 Every requirement in a section marked (enforced), here, in `.claude/rules/` and in `docs/DATA_FLOW.md`, ends with
 "Enforced by:" naming the test, hook or required check that blocks a violation, or "no machine check" and the ENF item in

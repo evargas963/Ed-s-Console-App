@@ -10,9 +10,7 @@ checkout to `origin/main`, starts the capture daemon in its own window and `uvic
 
 1. Read the session the yes guard reads (Schwab's /markets answer, as the daemon recorded it):
    `.venv/Scripts/python.exe -c "import sys; sys.path.insert(0, 'tools'); import operator_yes_guard as g, time_et; from db_authority import canonical_stream_db_path; print(g.market_session(time_et.now_et(), canonical_stream_db_path()))"`.
-   In RTH or an unknown session a start or stop goes to Ed as an Allow/Deny prompt
-   (`tools/operator_yes_guard.py`): say in chat what it is for first. In Pre-Market, After-Hours and
-   Closed, post a notice in chat and go on.
+   Whether a start or stop needs Ed's yes in that session: CLAUDE.md item 5.
 2. Before: `git -C <production> log --oneline -1` and `git -C <production> fetch -q && git -C <production> log --oneline -1 origin/main` — what will deploy.
 3. Stop both: `.venv/Scripts/python.exe launch.py stop` in the production checkout; show its output.
 4. Start both from outside this session, so an app restart cannot end them:
