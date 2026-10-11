@@ -219,12 +219,11 @@ def test_every_merge_route_asks(cmd, tool, markets):
     assert _decide(cmd, CLOSED, markets, tool) == guard.ASK, cmd
 
 
-@pytest.mark.parametrize("cmd", ["gh pr merge --subject 2026 518", "gh pr merge -b 7 --squash 518",
-                                 "gh pr merge --body 7 518", "gh pr merge -A 7 518", "gh pr merge --author-email 7 518",
-                                 "gh pr merge --match-head-commit 1234567 518"])
-def test_the_merge_question_names_the_pull_request_not_an_option_value(cmd, markets):
-    assert guard.decide(_shell(cmd), CLOSED, markets)[1] == [
-        "merges pull request 518 (AGENTS.md Authority)"], cmd
+@pytest.mark.parametrize("cmd", ["gh pr merge -sb 7 518", "gh pr merge --body-file 7 518",
+                                 "gh pr merge --subject 2026 518", "gh pr merge 518"])
+def test_the_merge_question_shows_the_command_as_written(cmd, markets):
+    answer, reasons = guard.decide(_shell(cmd), CLOSED, markets)
+    assert answer == guard.ASK and len(reasons) == 1 and cmd in reasons[0], (cmd, reasons)
 
 
 @pytest.mark.parametrize("cmd", ["gh pr view 515", "gh pr checks 515", "gh -R o/r pr list",
@@ -292,7 +291,7 @@ def test_the_hook_chain_answers_ask_refuses_and_passes_ordinary_work():
     r = _chain(_shell("gh pr merge 99999"))
     out = json.loads(r.stdout)["hookSpecificOutput"]
     assert r.returncode == 0 and out["permissionDecision"] == "ask"
-    assert "merges pull request 99999" in out["permissionDecisionReason"]
+    assert "gh pr merge 99999" in out["permissionDecisionReason"]
     refused = _chain(_shell("git push origin main"))
     assert refused.returncode == 2 and "pushes to main" in refused.stderr
     quiet = _chain(_edit(str(REPO / EXISTING)))
