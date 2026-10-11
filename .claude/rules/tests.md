@@ -15,5 +15,3 @@ paths:
   unchanged and evidence the timing can't occur in real use; loosened expectations, removed checks and
   retries are refused. Its report follows the `flaky-test-fix` skill. Enforced by: no machine check —
   ENF-12.
-- The price-history write test (`tests/test_bars_from_stream_v1.py`) keeps its 1.0 s limit; a failure under the flaky hunt's added CPU load
-  is that load, not a defect. Enforced by: no machine check — ENF-12.

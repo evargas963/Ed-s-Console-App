@@ -2,7 +2,7 @@
 
 Before writing a change, read the parts it touches of `docs/DATA_FLOW.md` (design), `ACTIVE_PROGRAM.md` (work order),
 `docs/ARCHITECTURE.md` (code map) and `docs/PRACTICES.md`. Rules for one area load with its files (`.claude/rules/`);
-procedures are skills (`.claude/skills/`).
+procedures are skills (`.claude/skills/`). A change that breaks a rule here stops and goes to the operator.
 
 Every requirement in a section marked (enforced), here, in `.claude/rules/` and in `docs/DATA_FLOW.md`, ends with
 "Enforced by:" naming the test, hook or required check that blocks a violation, or "no machine check" and the ENF item in
@@ -22,7 +22,7 @@ Check every request and every proposal:
 If anything fails, report what failed and why, and leave the failing part out. Claude proposes the smallest, simplest path that passes, using the repo. That proposal is checked against this gate before it goes to Ed for approval.
 4. For every problem, first answer why it happens, down to the code or data that causes it, with evidence. Only then the fix. Never offer a choice about limits, settings or tests until the cause is known.
 5. Every item labeled NOT VERIFIED gets verified, and every item labeled SEEN, NOT FIXED gets fixed at the source, before the work is reported done. An item that can't be closed comes to Ed as a decision, with its evidence and the reason.
-Enforced by (items 4 and 5): no machine check — ENF-12; the procedure is `.claude/skills/before-done/SKILL.md` (item 4 in its opening paragraph; item 5 in steps 7 and 8) and `.claude/skills/flaky-test-fix/SKILL.md`.
+Enforced by (items 4 and 5): `.claude/skills/before-done/SKILL.md` step 7 and `.claude/skills/flaky-test-fix/SKILL.md`.
 
 ### Standard of care
 Hold EdWebConsole to how a financial institution handles systems with real money on the line. These are judgments to apply to every proposal, not things to build:
@@ -45,7 +45,7 @@ Hold EdWebConsole to how a financial institution handles systems with real money
 - Protect credentials and unrelated work.
 - Label findings as confirmed evidence, induced test conditions, hypotheses, or NOT_PROVEN.
 
-## Rules (enforced) (operator; a change that cannot meet one stops and goes to the operator)
+## Rules (enforced) (operator)
 
 1. **Simple.** Fewest files, functions and hops that do the job. No prose in code: history, incidents and dates go in
    the commit message. No patches: a defect is fixed where it is produced, by changing or deleting that code, never by a
@@ -171,7 +171,7 @@ Hold EdWebConsole to how a financial institution handles systems with real money
 - A PR merges on the operator's yes after CI is green on its final commit; that yes also covers its deploy.
   Enforced by: branch protection on `main` requires `.github/workflows/pytest.yml` and `.github/workflows/hardening.yml`
   to pass on a branch current with `main`; `tools/operator_yes_guard.py` asks Allow/Deny for a `gh pr merge` or API
-  merge from the agent's shell.
+  merge from the agent's shell; the rest (a web-page merge, `gh -R <repo> pr merge`) — ENF-13.
 - Stop for the operator's STOP / PAUSE / HANG IT UP / DO NOT CONTINUE / NO, a task marked AUDIT ONLY
   or DO NOT MERGE, a destructive data action, and a product decision code cannot settle. Say in chat
   what a guarded action is for before running it. Enforced by: `tools/operator_yes_guard.py` asks Allow/Deny for a daemon or console start or stop
