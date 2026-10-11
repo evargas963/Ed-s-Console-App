@@ -16,9 +16,11 @@ shell commands. Each command gets one answer, the strictest of its statements':
     it runs (a variable, a pipe) is refused when the command names the daemon or the console, and
     put to the operator while either runs.
   * A stop or restart of the machine and a merge are put to the operator; a push to main and
-    `gh alias set` (an alias could name a merge in other words) are refused. A merge (`_merges`) is `gh pr merge` with options anywhere, or a REST merge or a
-    GraphQL mergePullRequest sent by `gh api`, curl, wget or Invoke-RestMethod/WebRequest, in any
-    statement the command runs; a GraphQL request whose body is read from a file asks too. A merge
+    `gh alias set` / `gh alias import` (an alias could name a merge in other words) are refused.
+    A merge (`_merges`) is `gh pr merge` with options anywhere, or a REST merge (`/pulls/N/merge`,
+    `/merges`) or a GraphQL mergePullRequest, enablePullRequestAutoMerge or mergeBranch sent by
+    `gh api`, curl, wget or Invoke-RestMethod/WebRequest, in any statement the command runs; a
+    GraphQL request whose body is read from a file asks too. A merge
     clicked in a browser or run from a script file is not a shell command this guard sees
     (GITHUB-LOCK in ACTIVE_PROGRAM.md).
 

@@ -77,6 +77,8 @@ def test_shell_arithmetic_runs_only_its_substitutions():
     assert _words("(( $n > 5 )) && echo big") == [["echo", "big"]]
     assert _words("for (( i=0; i<$n; i++ )); do echo $i; done") == [["for"], ["echo", "$i"]]
     assert ["gh", "pr", "merge", "5"] in _words("(( $(gh pr merge 5) > 0 ))")
+    assert ["gh", "pr", "merge", "5"] in _words("(( ($(gh pr merge 5)) > 0 ))")   # inside ( ) in the arithmetic
+    assert _words("for((i=0; i<$n; i++)); do echo $i; done") == [["for"], ["echo", "$i"]]   # no space
     assert _words("((echo a); gh pr merge 5)") == [["echo", "a"], ["gh", "pr", "merge", "5"]]   # nested subshells
 
 

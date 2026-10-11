@@ -166,6 +166,8 @@ def read(cmd: str, cwd: str = "", powershell: bool = False) -> list[Statement]:
 _SPACE = " \t\r"
 #: what ends an unquoted word
 _WORD_END = _SPACE + "\n;&|<>)}"
+#: a keyword written against bash arithmetic, `for((`, `if((`
+_KEYWORD_ARITH = re.compile(r"(?:for|if|elif|while|until)(?=\(\()")
 #: what a backslash escapes outside quotes, in bash
 _ESCAPED = set(_SPACE + "\"'\\$`;&|<>(){}#*?[]~!")
 _SEPARATORS = (("&&", "&&"), ("||", "||"), (";;", ";"), ("|&", "|"), (";", ";"), ("|", "|"), ("&", "&"))
@@ -311,9 +313,17 @@ class _Lexer:
         return j + 1
 
     def substituted(self, text: str) -> list[str]:
-        """The commands substituted inside `text`, a ( ) or ${ } within a word (`a=($(x))`)."""
-        words = [t[1] if t[0] == "w" else t[2] for t in _Lexer(text, self.ps).tokens() if t[0] in ("w", "redir")]
-        return [n for w in words for n in w.nested]
+        """The commands substituted inside `text`, a ( ) or ${ } within a word (`a=($(x))`) or bash
+        arithmetic, its own ( ) included (`(( ($(x)) > 0 ))`)."""
+        out: list[str] = []
+        for t in _Lexer(text, self.ps).tokens():
+            if t[0] in ("w", "redir"):
+                out += (t[1] if t[0] == "w" else t[2]).nested
+            elif t[0] == "group":
+                out += self.substituted(t[1])
+            elif t[0] == "arith":
+                out += t[1]
+        return out
 
     def word(self, i: int) -> _Word:
         """The word starting at `i`: quotes removed, substitutions recorded in `nested`."""
@@ -389,6 +399,9 @@ class _Lexer:
                 tokens.append(["op", ";"])
                 fresh = True
                 i += 1
+            elif not self.ps and fresh and (m := _KEYWORD_ARITH.match(s, i)):   # `for((`, `if((`: no space
+                tokens.append(["w", _Word(m.group(0), m.group(0), [])])
+                i = m.end()
             elif (not self.ps and s.startswith("((", i)
                   and (fresh or (tokens[-1][0] == "w" and tokens[-1][1].value == "for"))
                   and (k := self.arith_end(i)) is not None):     # `(( ))`, `for (( ))`: arithmetic
@@ -488,9 +501,10 @@ def pwsh_option(args, name: str) -> int | None:
     (`-c`, `-com`, `-Command`); None when it is absent."""
     return next((i for i, a in enumerate(args) if len(a) > 1 and name.startswith(a.lower())), None)
 _SH_COMMAND = re.compile(r"-[A-Za-z]*c[A-Za-z]*")
-#: a shell's option that reads its commands from stdin, and its options that take a value
+#: a shell's option that reads its commands from stdin, and its options that take a value (`-o`
+#: alone or last in a combined flag, `-eo pipefail`)
 _SH_STDIN = re.compile(r"-[A-Za-z]*s[A-Za-z]*")
-_SH_VALUE_OPTIONS = frozenset({"-o", "-O", "--rcfile", "--init-file"})
+_SH_VALUED = re.compile(r"[-+][A-Za-z]*[oO]|--rcfile|--init-file")
 _PRINTERS = frozenset({"echo", "printf", "write-output"})
 _EXEC = frozenset({"-exec", "-execdir", "-ok", "-okdir"})
 
@@ -676,9 +690,14 @@ def reads_stdin(st: Statement) -> bool:
             i += 2 if a in _PY_VALUE_OPTIONS else 1
         return True
     if name in _SH:
-        if any(_SH_COMMAND.fullmatch(a) for a in args):
+        j = 0                            # past the options: `-x`, `+x` (off), `-o name`, `-eo name`, `--`
+        while j < len(args) and args[j][:1] in "-+" and args[j] not in ("-", "+"):
+            if args[j] == "--":
+                j += 1
+                break
+            j += 2 if _SH_VALUED.fullmatch(args[j]) else 1
+        if any(_SH_COMMAND.fullmatch(a) for a in args[:j]):
             return False
-        j = _skip_options(args, 0, _SH_VALUE_OPTIONS)
         return j >= len(args) or args[j] in _STDIN_FILES or any(_SH_STDIN.fullmatch(a) for a in args[:j])
     if name == "cmd":
         return not any(a.lower() in ("/c", "/k", "//c", "//k") for a in args)

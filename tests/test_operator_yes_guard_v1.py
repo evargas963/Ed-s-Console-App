@@ -213,6 +213,7 @@ def test_the_machine_a_merge_and_a_push(cmd, answer, markets):
      "head: \"x\"}) { clientMutationId } }'", "Bash"),                        # a branch merge
     ("gh api -X POST repos/o/r/merges -f base=main -f head=x", "Bash"),       # the REST branch merge
     ("curl -X POST https://api.github.com/repos/o/r/merges -d '{\"base\":\"main\",\"head\":\"x\"}'", "Bash"),
+    ("(( ($(gh pr merge 5)) > 0 ))", "Bash"),                               # inside ( ) in bash arithmetic
 ])
 def test_every_merge_route_asks(cmd, tool, markets):
     assert _decide(cmd, CLOSED, markets, tool) == guard.ASK, cmd
