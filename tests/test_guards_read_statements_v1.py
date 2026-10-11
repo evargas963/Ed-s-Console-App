@@ -82,6 +82,18 @@ def test_a_kill_named_in_a_message_or_a_here_string_passes(tool, cmd):
     assert yes_guard.decide({"tool_name": tool, "tool_input": {"command": cmd}}, CLOSED, NO_DB)[0] == yes_guard.PASS
 
 
+@pytest.mark.parametrize("cmd", ['"/c/Program Files/GitHub CLI/gh" pr merge 5', "'/opt/my tools/gh' pr merge 5"])
+def test_a_quoted_program_path_with_a_space_runs_in_bash(cmd):
+    """In bash a quoted program path runs that program; only PowerShell prints a quoted phrase."""
+    assert _yes(cmd) == yes_guard.ASK
+
+
+@pytest.mark.parametrize("code", ["-" * 100000 + "1", "1" + "+1" * 200000], ids=["deep-unary", "deep-sum"])
+def test_python_code_too_deep_to_parse_does_not_crash_a_guard(code):
+    cmd = f'python -c "{code}"'
+    assert bash_violations(cmd) == [] and _yes(cmd) == yes_guard.PASS
+
+
 @pytest.mark.parametrize("runner", ["uv run --with requests", "uv run -p 3.12", "uv run --python 3.12 --project .",
                                     "poetry run -C .", "pdm run -p ."])
 def test_a_python_behind_a_runner_with_valued_options_is_judged(runner):

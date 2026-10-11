@@ -199,6 +199,8 @@ class _Lexer:
             c = s[i]
             if c == self.escape:
                 i += 2
+            elif not self.ps and s.startswith("$'", i):
+                i = self.ansi(i + 2, [])
             elif c == "'":
                 i = self.single(i + 1, [])
             elif c == '"':
@@ -232,6 +234,15 @@ class _Lexer:
                 i = j + 2
             else:
                 return j + 1
+
+    def ansi(self, i: int, value: list[str]) -> int:
+        """The inside of bash's $'...' opened before `i`, where a backslash escapes; returns the
+        index past its close."""
+        s = self.s
+        while i < len(s) and s[i] != "'":
+            value.append(s[i + 1:i + 2] if s[i] == "\\" else s[i])
+            i += 2 if s[i] == "\\" else 1
+        return i + 1
 
     def double(self, i: int, value: list[str], nested: list[str]) -> int:
         """The inside of a double-quoted string opened before `i`; returns the index past its close."""
@@ -289,12 +300,8 @@ class _Lexer:
                 i = self.single(i + 1, value)
             elif c == '"':
                 i = self.double(i + 1, value, nested)
-            elif not self.ps and s.startswith("$'", i):          # $'...': a backslash escapes in it
-                i += 2
-                while i < len(s) and s[i] != "'":
-                    value.append(s[i + 1:i + 2] if s[i] == "\\" else s[i])
-                    i += 2 if s[i] == "\\" else 1
-                i += 1
+            elif not self.ps and s.startswith("$'", i):
+                i = self.ansi(i + 2, value)
             elif self.ps and (m := _HERE_STRING.match(s, i)):    # @' ... '@: data
                 end = s.find("\n" + m.group(1) + "@", m.end() - 1)
                 end = len(s) if end < 0 else end
@@ -558,12 +565,21 @@ def _scripts(st: Statement) -> list[tuple[str, bool]]:
     return [(st.stdin, ps)]                               # it reads its commands from stdin
 
 
+def parse_python(code: str) -> ast.Module | None:
+    """The syntax tree of python source, or None when Python could not compile it either: a
+    syntax error, a null byte or an unencodable character (ValueError), or nesting too deep for
+    the parser (MemoryError, RecursionError)."""
+    try:
+        return ast.parse(code)
+    except (SyntaxError, ValueError, MemoryError, RecursionError):
+        return None
+
+
 def _python_shell_commands(code: str) -> list[str]:
     """The literal commands a python program hands a shell (`os.system('git reset --hard')`,
     `subprocess.run(['git', 'reset', '--hard'])`); code that does not parse runs nothing."""
-    try:
-        tree = ast.parse(code)
-    except SyntaxError:
+    tree = parse_python(code)
+    if tree is None:
         return []
     out = []
     for n in ast.walk(tree):

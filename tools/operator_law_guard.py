@@ -45,7 +45,7 @@ if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
 from tools.hook_chain import BASH_TOOLS  # noqa: E402 — the ONE shell-tool roster (RC-520)
-from tools.shell_parse import PYTHON, Statement, git_parts, git_subcommand, read  # noqa: E402 — the ONE shell reader
+from tools.shell_parse import PYTHON, Statement, git_parts, git_subcommand, parse_python, read  # noqa: E402 — the ONE shell reader
 
 #: RC-273 — the gitignored tree with no history. A path SEGMENT: `AppData/`, `mydata/`, `_data/`
 #: do not match; `data/x`, `./data/x`, `C:/repo/data/x` do.
@@ -70,9 +70,8 @@ def _protected(arg: str) -> bool:
 def _python_violation(code: str) -> bool:
     """A call that deletes, moves or overwrites a path inside a protected tree. Code that does not
     parse cannot run, so it removes nothing."""
-    try:
-        tree = ast.parse(code)
-    except SyntaxError:
+    tree = parse_python(code)
+    if tree is None:
         return False
     for n in ast.walk(tree):
         if not isinstance(n, ast.Call):

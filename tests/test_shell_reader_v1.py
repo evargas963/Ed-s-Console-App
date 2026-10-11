@@ -43,6 +43,17 @@ def test_a_statement_after_or_inside_these_forms_is_read(cmd, ps):
     assert ["gh", "pr", "merge", "5"] in [list(st.words) for st in read(cmd, powershell=ps)]
 
 
+def test_an_escaped_quote_in_dollar_single_quotes_inside_a_substitution_hides_nothing():
+    assert ["gh", "pr", "merge", "5"] in [list(st.words) for st in read("x=$(echo $'it\\'s'); echo 'y)'; gh pr merge 5")]
+
+
+@pytest.mark.parametrize("code", ["-" * 100000 + "1", "1" + "+1" * 200000, "x = '\ud800'"],
+                         ids=["deep-unary", "deep-sum", "lone-surrogate"])
+def test_python_code_too_deep_or_unencodable_to_parse_runs_nothing(code):
+    """Python cannot compile it either (MemoryError, RecursionError, UnicodeEncodeError from the parser)."""
+    assert [list(st.words[:2]) for st in read(f'python -c "{code}"')] == [["python", "-c"]]
+
+
 def test_a_called_quoted_path_is_a_program_word():
     st = read('& "C:\\Program Files\\GitHub CLI\\gh" pr merge 5', powershell=True)[-1]
     assert st.program == "gh" and st.raw[0] == "C:\\Program Files\\GitHub CLI\\gh"
