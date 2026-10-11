@@ -2,8 +2,7 @@
 
 Before writing a change, read the parts it touches of `docs/DATA_FLOW.md` (design), `ACTIVE_PROGRAM.md` (work order),
 `docs/ARCHITECTURE.md` (code map) and `docs/PRACTICES.md`. A pull request that breaks a rule names the rule. Rules for
-one area load with its files (`.claude/rules/`); procedures are skills (`.claude/skills/`): `before-done`,
-`flaky-test-fix`, `deploy`, `stream-db-switch`, `housekeeping`.
+one area load with its files (`.claude/rules/`); procedures are skills (`.claude/skills/`).
 
 Every requirement in a section marked (enforced), here, in `.claude/rules/` and in `docs/DATA_FLOW.md`, ends with
 "Enforced by:" naming the test, hook or required check that blocks a violation, or "no machine check" and the ENF item in
@@ -167,8 +166,9 @@ Hold EdWebConsole to how a financial institution handles systems with real money
 
 ## Authority (enforced)
 
-- About every 15 minutes of work, report to the operator what changed, what was deleted, each proof
-  and its tier, and what is NOT_PROVEN, then continue. Enforced by: no machine check — ENF-12.
+- At each milestone (a commit, a failed check, a finding that changes the plan), report to the operator
+  what changed, what was deleted, each proof and its tier, and what is NOT_PROVEN, then continue.
+  Enforced by: no machine check — ENF-12.
 - A PR merges when its required proof on its final commit is complete and CI is green. Enforced by:
   branch protection on `main` requires `.github/workflows/pytest.yml` and
   `.github/workflows/hardening.yml` to pass on a branch current with `main`.
@@ -176,9 +176,8 @@ Hold EdWebConsole to how a financial institution handles systems with real money
   only by the operator. Enforced by: no machine check — ENF-13.
 - Stop for the operator's STOP / PAUSE / HANG IT UP / DO NOT CONTINUE / NO, a task marked AUDIT ONLY
   or DO NOT MERGE, a destructive data action, and a product decision code cannot settle. An operator
-  setting (a count, a rate, a switch) changes only on the operator's yes to that change. A test change,
-  a file fix or a new file needs no approval. Say in chat what a guarded action is for before running
-  it. Enforced by: `tools/operator_yes_guard.py` asks Allow/Deny for a daemon or console start or stop
+  setting (a count, a rate, a switch) changes only on the operator's yes to that change. A file fix or
+  a new file needs no approval. Say in chat what a guarded action is for before running it. Enforced by: `tools/operator_yes_guard.py` asks Allow/Deny for a daemon or console start or stop
   in regular hours or an unknown session, a machine restart and a merge, and refuses killing production
   and a push to main (`tests/test_operator_yes_guard_v1.py`); the rest — ENF-12.
 - The production checkout `EdWebConsole` stays `main == origin/main` and moves only by a fast-forward

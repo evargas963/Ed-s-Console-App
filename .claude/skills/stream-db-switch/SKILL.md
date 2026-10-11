@@ -8,8 +8,9 @@ copy tool is not built yet; build it as its own pull request first and delete it
 
 1. After hours, stop both processes (the `deploy` skill, steps 1–3); show that neither port answers.
 2. Run the copy tool against the production `stream_capture.db`: a new file with the writer's schema
-   and receipt-time indexes, the last 5 trading sessions, every equity message and every contract of
-   each ticker's soonest unexpired expiry. Show its counts per table and per session.
+   and receipt-time indexes, the last 5 trading sessions, every equity message and each session's 0DTE
+   option contracts (the nearest expiration for a ticker with none that day). Show its counts per table
+   and per session.
 3. Ed renames the old file aside and the new one into place (never the agent: nothing under `data/` is
    moved or deleted by an agent). Show `dir` of the folder after.
 4. Start both (the `deploy` skill, steps 4–5).

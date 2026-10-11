@@ -210,7 +210,7 @@ def decide(payload: dict, now: datetime, db: Path) -> "tuple[str, list[str]]":
               and not (i + 1 < len(statements) and statements[i + 1][1])}
     for i, (toks, piped) in enumerate(statements):
         if program_name(toks[0]) in MACHINE_STOPPERS:
-            asks.append("stops or restarts the machine, and the daemon and console with it (rule 6: production)")
+            asks.append("stops or restarts the machine, and the daemon and console with it (CLAUDE.md rule 5: production)")
         elif _kills(toks, piped):
             upstream = statements[i - 1][0] if piped and i else next(
                 (listed[v] for t in toks[1:] for v in [t.lower().split(".")[0]] if v in listed), None)
@@ -220,17 +220,17 @@ def decide(payload: dict, now: datetime, db: Path) -> "tuple[str, list[str]]":
                 denies.append("kills the daemon, the console or launch.py: on Windows that skips its shutdown "
                               "and loses what the daemon holds; stop them with `python launch.py stop`")
             elif None in seen:
-                asks.append("stops a process whose command line cannot be read (rule 6: production)")
+                asks.append("stops a process whose command line cannot be read (CLAUDE.md rule 5: production)")
             elif later and _production_running():
                 asks.append("stops processes chosen only when it runs while the daemon or the console runs "
-                            "(rule 6: production)")
+                            "(CLAUDE.md rule 5: production)")
         elif _starts(toks):
             session = market_session(now, db)
             if session in (time_et.RTH, time_et.UNKNOWN):
                 asks.append(f"starts or stops the daemon or the console while the market session is "
-                            f"{session} (rule 6: production)")
+                            f"{session} (CLAUDE.md rule 5: production)")
         elif _merges(toks):
-            asks.append(f"merges pull request {_merges(toks)} (rule 6: production)")
+            asks.append(f"merges pull request {_merges(toks)} (CLAUDE.md rule 5: production)")
         elif _pushes_main(toks):
             denies.append("pushes to main: main moves only by a pull request merged on GitHub")
     return (DENY, denies) if denies else (ASK, asks) if asks else (PASS, [])
