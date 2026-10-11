@@ -100,15 +100,15 @@ Drawn from python.org (PEP 20, PEP 8, PEP 484, the standard library docs, the CP
 
 ## D. Testing
 
-17. **Fakes from real data, not mocks.**
-    - Source: Cosmic Python ("writing your own fakes"; mocks are "brittle"; "Mock Hell"); Ed's three questions.
-    - Why: a fake Schwab built from captured answers, run through the real code.
-    - Repo today: `tests/schwab_rest_standin.py` and `tests/schwab_stream_standin.py` exist (CONFIRMED); patched tests remain.
-    - Lock: `TID251` bans patching tools; no-new-patches check (exists).
+17. **Real data through the real code, no stand-ins** (AGENTS.md rule 10, operator 2026-10-11).
+    - Source: Cosmic Python (mocks are "brittle"; "Mock Hell"); Ed's three questions; the operator's ruling.
+    - Why: a test on captured Schwab data through the real code proves what the app does with what Schwab sends.
+    - Repo today: stand-ins remain, including `tests/schwab_rest_standin.py` and `tests/schwab_stream_standin.py` (`ACTIVE_PROGRAM.md` STAND-INS).
+    - Lock: no-new-patches check (exists); ENF-07.
 
 18. **Contract tests against the real Schwab.**
     - Source: Cosmic Python ("lightweight, mostly read-only checks against the real API... to confirm that the fake matches reality").
-    - Why: proves our stand-ins still match Schwab, so the earlier subscription bug (each part replacing the last) can't recur unnoticed.
+    - Why: proves our captured data still matches what Schwab sends, so the earlier subscription bug (each part replacing the last) can't recur unnoticed.
     - Lock: a scheduled read-only contract test.
 
 19. **Deterministic tests.**

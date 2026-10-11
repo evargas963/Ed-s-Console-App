@@ -43,25 +43,14 @@ ENFORCEMENT_PATHS: tuple[str, ...] = (
 #: Wipe-protected paths (LOCK-2 reach).
 PROTECTED_PATHS: tuple[str, ...] = ENFORCEMENT_PATHS
 
-#: LOCK-2 (RC-231): the tree-destructive git CLASS, not just `reset --hard`. Three wipes on
-#: 2026-08-03 (RC-210 x2, RC-229) used soft forms the literal-match ban never saw. A command
-#: matching a destructive verb AND touching a protected/product path (or bare, whole-tree
-#: forms) BLOCKS at PreToolUse in EVERY session wired to process_lock_guard.
-#: BEDROCK 2026-09-06: ONE owner. The universal hard forms (reset --hard, checkout -- <any
-#: path>, clean -f, push --force without lease) used to live as a second regex in
-#: operator_law_guard, "deliberately split, both firing" — two rules answering one question.
-#: They are `_UNIVERSAL_DESTRUCTIVE_RE` below and refuse regardless of target; the class rule
-#: covers the full reset/restore/checkout--/clean/stash verb family on protected/bare targets.
-#:
-#: RC-525 (ported from #221's row 508, re-measured on ac3f78fb 2026-09-06): three holes and one
-#: over-block. `git -C <other> reset --hard` passed because the global-option skip admitted
-#: only flags, not a flag WITH its argument; `git push -f` passed because only the long
-#: spelling was named; `git restore --staged x && git reset --mixed HEAD~1` passed because the
-#: safe list was searched across the WHOLE command, so one safe statement exempted everything
-#: chained after it; and `git reset --soft`, which moves HEAD and leaves index and worktree
-#: untouched, was refused although the repository's own merge authority runs it. The globals
-#: prefix admits an option with its argument; the push clause admits flags after the refspec
-#: and the short `-f`; the class rule is judged PER SEGMENT (below); `--soft` is safe.
+#: LOCK-2: the tree-destructive git class, not just `reset --hard`. The hard forms (reset --hard,
+#: checkout -- <any path>, clean -f, push --force without lease, short -f included) are
+#: `_UNIVERSAL_DESTRUCTIVE_RE` below and refuse on any target. The class rule covers the
+#: reset/restore/checkout--/clean/stash family: a statement matching a destructive verb AND
+#: touching a protected/product path (or a bare, whole-tree form) is refused at PreToolUse in
+#: every session wired to process_lock_guard. The globals prefix admits an option with its
+#: argument (`git -C <other> ...`); the class rule is judged per statement, so a safe first
+#: statement exempts nothing chained after it; `git reset --soft` (HEAD only) is safe.
 _GIT_GLOBAL_WITH_ARG: tuple[str, ...] = (
     "-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--config-env")
 _GIT_GLOBALS = (

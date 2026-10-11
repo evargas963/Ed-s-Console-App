@@ -34,8 +34,7 @@ operator.
 - The databases are history, written in the background (two writers today, §3.5). Nothing on screen waits on them.
   Enforced by: D4 and D6 below.
 - At startup the in-memory state is loaded once from the latest stored values, so a restart, a
-  weekend or the close shows the values as of the close with their time, the session shown
-  Closed (§2 D5); no value is labeled past.
+  weekend or the close shows the last values with their time, marked not live (§2 D5).
   Enforced by: `tests/test_one_levels_producer_v1.py` (the stored load) and D5 below.
 
 ## 2. The rules
@@ -126,17 +125,16 @@ from Schwab to the screen (daemon, console, page), are these:
   on disk, not counted not recorded); what it held in memory and what reaches it after are
   counted not recorded until the daemon restarts.
   Enforced by: `tests/test_data_path_rules_v1.py`, `tests/test_data_path_writer_failures_v1.py`.
-- **D5. Live while the market is open; the close stands while it is closed.** Every value carries
-  Schwab's time and the newest by that time is the current one; a reconnect never replays an older
-  value as live. In an open session (Pre-Market, RTH, After-Hours: the windows Schwab's /markets
-  sent for the day, `time_et.session_label`) a value
-  is current only while its feed delivers it (`live_market_plane.feed_live_for`); a feed down in
-  session is an outage: the value is absent and the screen shows the reason
-  (`live_market_plane.outage`, the one rule; the price row's `outage`, the books' `top_outage`;
-  a contract's streamed Greeks stop pricing over the chain, `server._current_stream_greeks`).
-  While Closed, the values as of the close stand, the feed up or down, with the session shown as
-  Closed, until the next session opens. No value is labeled "past" (`AGENTS.md` rule 5).
-  Enforced by: `tests/test_data_path_rules_v1.py`.
+- **D5. The last value stands, marked** (`AGENTS.md` rule 5). Every value carries Schwab's time and
+  the newest by that time is the current one; a reconnect never replays an older value as live. A
+  value is live only while its feed delivers it (`live_market_plane.feed_live_for`). When it stops
+  updating, for any reason (feed down, market closed, an input missing), the last value stands,
+  marked not live with its time and age, and every value computed from it is marked not live too;
+  during a feed outage the header says OFFLINE. A value never received, or sent invalid, shows as
+  unknown with its reason. Calculations keep every digit and every contract; rounding is on screen
+  only. Where today's code differs: §3.5 item 5.
+  Enforced by: `tests/test_data_path_rules_v1.py` (newest by Schwab's time, no replay as live); the
+  rest — ENF-22.
 - **D6. No live screen reads the database.** Every live route serves from memory; the database
   is read at startup, after the close and for research only.
   Enforced by: `tests/test_data_path_rules_v1.py`.
@@ -410,8 +408,7 @@ from Schwab to the screen (daemon, console, page), are these:
   moving number is the signal). The page sends the scope, its pan and the columns it fits; it
   picks, counts and compares nothing.
 - **Live.** Every value is the last one Schwab sent, with Schwab's own time (the price with its
-  TRADE_TIME, `trade_time_ct`), under §2 D5: in an open session a feed down is an outage and the
-  values are absent with its reason; while Closed the values as of the close stand. Whether
+  TRADE_TIME, `trade_time_ct`), under §2 D5 (today's outage blanking: §3.5 item 5). Whether
   the feed is delivering a symbol now is stated beside its values: the
   daemon's heartbeat, sent every second, is under 3 s old
   (`live_market_plane.FEED_HEARTBEAT_MAX_AGE_SEC`), says the Schwab socket is open, and holds the
@@ -476,6 +473,15 @@ from Schwab to the screen (daemon, console, page), are these:
    waits behind that work.
 4. **The browser reads a route after each push** for bars, order flow, liquidity and the levels,
    instead of receiving the values; bars are not yet on the daemon's push.
+5. **Values blank when they stop** (D5, operator 2026-10-11): in an open session a feed down blanks
+   the value with its reason (`live_market_plane.outage`, the price row's `outage`, the books'
+   `top_outage`; a contract's streamed Greeks stop pricing, `server._current_stream_greeks`); the
+   console drops the daemon's price rows after 3 s with no frame and forgets a contract the daemon
+   stops holding; with no price the levels are absent; the closed market is handled apart from any
+   other stop (`live_market_plane.outage`, `server.terrain_staleness`); some calculations round or
+   drop contracts; the header says FEED DOWN where rule 5 says OFFLINE. The §3 descriptions of
+   these are today's behavior. Each place is listed in PR #515's description and fixed by
+   `ACTIVE_PROGRAM.md` NUMBERS.
 
 The work that closes these gaps, in order, is `ACTIVE_PROGRAM.md`.
 
