@@ -184,6 +184,10 @@ class _Word:
     #: dropped by bash (`r\m` runs rm) but kept in `value` (`C:\Git\cmd\git.exe` is a path)
     bash: str | None = None
 
+    @property
+    def as_bash(self) -> str:
+        return self.value if self.bash is None else self.bash
+
 
 def _heredoc_body(s: str, i: int, tag: str) -> tuple[str, int]:
     """The body starting at `i` up to the line that is `tag`, and the index of that line's end."""
@@ -512,8 +516,7 @@ def _statement(words: list[_Word], redirs: list[list], ctx: dict, upstream: Stat
     redirects = tuple((r[1], r[2].value) for r in kept)
     raws = [w.raw for w in words]
     if any(w.bash is not None for w in [*words, *(r[2] for r in kept)]):   # bash's reading too, its cd kept to itself
-        out += _command([w.value if w.bash is None else w.bash for w in words], raws,
-                        tuple((r[1], r[2].value if r[2].bash is None else r[2].bash) for r in kept), heredoc,
+        out += _command([w.as_bash for w in words], raws, tuple((r[1], r[2].as_bash) for r in kept), heredoc,
                         {**ctx}, upstream)
     return out + _command([w.value for w in words], raws, redirects, heredoc, ctx, upstream)
 

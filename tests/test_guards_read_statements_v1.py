@@ -153,8 +153,8 @@ def test_a_plain_command_is_not_refused_as_unseen(tool, cmd):
 
 def test_setting_a_gh_alias_is_refused_and_listing_them_passes():
     """An alias would name a merge in words the merge check does not know."""
-    assert yes_guard.decide({"tool_name": "Bash", "tool_input": {"command": "gh alias set co 'pr checkout'"}},
-                            CLOSED, NO_DB)[0] == yes_guard.DENY
+    assert _yes("gh alias set co 'pr checkout'") == yes_guard.DENY
+    assert _yes("gh -R o/r alias set co 'pr checkout'") == yes_guard.DENY
     assert _yes("gh alias list") == yes_guard.PASS
 
 
@@ -190,8 +190,11 @@ def test_a_branch_listing_aimed_at_production_is_a_read_and_a_new_branch_is_refu
         assert any(lock in b for b in PLG.pretooluse_block("Bash", {"command": cmd})), cmd
 
 
-@pytest.mark.parametrize("cmd", [f": > d\\{D[1:]}/ed_console.db", f"echo x >> d\\{D[1:]}/ed_console.db",
-                                 f"ls 2> d\\{D[1:]}/ed_console.db"])
+ESCAPED_D = f"d\\{D[1:]}"     # the tree's name with a backslash bash drops
+
+
+@pytest.mark.parametrize("cmd", [f": > {ESCAPED_D}/ed_console.db", f"echo x >> {ESCAPED_D}/ed_console.db",
+                                 f"ls 2> {ESCAPED_D}/ed_console.db"])
 def test_a_redirect_into_the_protected_tree_spelled_with_a_backslash_is_refused(cmd):
     """Bash drops the backslash: `d\\ata/x` is `data/x`."""
     assert any(f"under {D}/" in b for b in bash_violations(cmd)), cmd

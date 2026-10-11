@@ -233,9 +233,15 @@ def decide(payload: dict, now: datetime, db: Path) -> "tuple[str, list[str]]":
             asks.append(f"merges pull request {pr} (AGENTS.md Authority)")
         elif _pushes_main(st):
             denies.append("pushes to main: main moves only by a pull request merged on GitHub")
-        elif st.program == "gh" and [a for a in st.words[1:] if not a.startswith("-")][:2] == ["alias", "set"]:
+        elif st.program == "gh" and _gh_words(st)[:2] == ["alias", "set"]:
             denies.append("sets a gh alias: an alias can name a merge in words the merge check does not know")
     return (DENY, denies) if denies else (ASK, asks) if asks else (PASS, [])
+
+
+def _gh_words(st: Statement) -> "list[str]":
+    """A gh statement's subcommand words: its arguments without options and their values."""
+    args = list(st.words[1:])
+    return [a for i, a in enumerate(args) if not a.startswith("-") and not (i and args[i - 1] in GH_VALUE_OPTIONS)]
 
 
 def _merges(st: Statement) -> str:
@@ -243,7 +249,7 @@ def _merges(st: Statement) -> str:
     merge or GraphQL mergePullRequest sent by `gh api` or an HTTP client; "" if none."""
     name, args = st.program, list(st.words[1:])
     if name == "gh":
-        words = [a for i, a in enumerate(args) if not a.startswith("-") and not (i and args[i - 1] in GH_VALUE_OPTIONS)]
+        words = _gh_words(st)
         if words[:2] == ["pr", "merge"]:
             return next((a for a in words[2:] if a.isdigit()), "the current branch's")
         if words[:1] != ["api"]:
