@@ -109,7 +109,8 @@ class Statement:
     """One command the shell runs: its words unquoted, program first; the same words as written;
     its redirects as (operator, target); its heredoc body (None without one); its leading
     assignments; the directory it runs in ("" when unknown); the statement a pipe takes its input
-    from (None when it is not piped)."""
+    from (None when it is not piped); whether it was read as PowerShell (a `pwsh -Command` string
+    inside a bash command is)."""
     words: tuple[str, ...]
     raw: tuple[str, ...]
     redirects: tuple[tuple[str, str], ...] = ()
@@ -117,6 +118,7 @@ class Statement:
     env: tuple[str, ...] = ()
     cwd: str = ""
     upstream: Statement | None = None
+    powershell: bool = False
 
     @property
     def program(self) -> str:
@@ -539,7 +541,7 @@ def _command(vals: list[str], raws: list[str], redirects: tuple, heredoc: str | 
         target = next((v for v in vals[1:] if v.lower() != "/d" and not v.startswith("-")), "")
         ctx["cwd"] = _join_dir(ctx["cwd"], target) if target else ctx["cwd"]
         return []
-    st = Statement(tuple(vals), tuple(raws), redirects, heredoc, tuple(env), ctx["cwd"], upstream)
+    st = Statement(tuple(vals), tuple(raws), redirects, heredoc, tuple(env), ctx["cwd"], upstream, ctx["ps"])
     out: list[Statement] = []
     for script, ps in _scripts(st):
         out += _nested(script, ctx, ps)

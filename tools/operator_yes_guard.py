@@ -100,11 +100,11 @@ def _launcher(word: str) -> str:
     return program_name(word).removesuffix(".bat").removesuffix(".cmd")
 
 
-def _printed(st: Statement, ps: bool) -> bool:
+def _printed(st: Statement) -> bool:
     """Whether a PowerShell statement's program word is a quoted phrase or a here-string: a string
     PowerShell prints, not a program (bash runs a quoted program path)."""
     raw0 = st.raw[0]
-    return ps and (raw0[:2] in ("@'", '@"') or (raw0[:1] in "\"'" and " " in raw0
+    return st.powershell and (raw0[:2] in ("@'", '@"') or (raw0[:1] in "\"'" and " " in raw0
                                                 and not st.words[0].lower().endswith((".bat", ".cmd", ".exe"))))
 
 
@@ -200,8 +200,8 @@ def decide(payload: dict, now: datetime, db: Path) -> "tuple[str, list[str]]":
         return PASS, []
     cmd = str((payload.get("tool_input") or {}).get("command") or "")
     asks, denies = [], []
-    ps = payload.get("tool_name") == "PowerShell"
-    statements = [st for st in read(cmd, powershell=ps) if st.words and not _printed(st, ps)]
+    statements = [st for st in read(cmd, powershell=payload.get("tool_name") == "PowerShell")
+                  if st.words and not _printed(st)]
     # `$x = <listing>` with nothing piped after it: a kill naming $x reaches what the listing names
     listed = {st.env[-1][:-1].lower(): list(st.raw) for st in statements
               if st.env and st.env[-1].startswith("$") and st.env[-1].endswith("=")

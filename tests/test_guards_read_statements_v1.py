@@ -105,6 +105,9 @@ def test_a_command_the_reader_cannot_see_into_is_refused(tool, cmd):
     ("Bash", "X=$(date); echo $X"), ("Bash", "cat f | grep x"), ("PowerShell", "$p = Get-Process -Id 5"),
     ("PowerShell", "$p.WaitForExit(60000)"), ("PowerShell", "pwsh -File x.ps1"), ("PowerShell", 'powershell -Command "Get-Date"'),
     ("PowerShell", '& "C:\\Program Files\\GitHub CLI\\gh" pr view 5'), ("PowerShell", "& { Get-Date }"),
+    # PowerShell inside a bash command is read as PowerShell: `$_...` there is an expression
+    ("Bash", "powershell -NoProfile -Command \"Get-CimInstance Win32_Process | Where-Object { \\$_.CommandLine "
+             "-match 'uvicorn' } | Select-Object ProcessId\""),
 ])
 def test_a_plain_command_is_not_refused_as_unseen(tool, cmd):
     assert not any(UNSEEN in b for b in bash_violations(cmd, powershell=tool == "PowerShell")), cmd

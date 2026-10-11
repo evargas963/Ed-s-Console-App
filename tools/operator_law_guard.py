@@ -103,7 +103,7 @@ def _destroys_protected(st: Statement) -> bool:
     return False
 
 
-def _unseen(st: Statement, ps: bool) -> str:
+def _unseen(st: Statement) -> str:
     """What the reader cannot see into in this statement, or "": a program built at run time
     (`$cmd`, `"$GH"`, `$(which gh)`; in PowerShell `& $x` / `& (...)`, where a bare `$x...` is an
     expression), text piped into a shell or node (python has its own ban), a PowerShell
@@ -118,7 +118,7 @@ def _unseen(st: Statement, ps: bool) -> str:
     called = st.raw[0].startswith("& ")             # PowerShell's call operator, as written
     if called and first.startswith(("$", "(")):
         return f"the program is built at run time ({first})"
-    if not called and not ps and first.startswith(("$", "`")):
+    if not called and not st.powershell and first.startswith(("$", "`")):
         return f"the program is built at run time ({first})"
     if st.upstream is not None and not PYTHON.fullmatch(name) and reads_stdin(st):
         return f"text piped into {name}"
@@ -172,7 +172,7 @@ def bash_violations(cmd: str, ledger=None, payload_cwd: str = "", powershell: bo
                    "a pipe or </dev/null). On Windows an empty heredoc or </dev/null looks like a "
                    "console and Python 3.13's REPL retries forever. Put the code in a script file and "
                    "run it, or use `python -c`.")
-    unseen = list(filter(None, (_unseen(st, powershell) for st in statements)))
+    unseen = list(filter(None, (_unseen(st) for st in statements)))
     if unseen:
         out.append(f"ACTION BLOCKED: the guards cannot see what this runs ({'; '.join(unseen)}). Write the "
                    "command plainly: the program and its arguments as literal words — no $variable or "
