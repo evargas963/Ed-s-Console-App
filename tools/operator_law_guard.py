@@ -48,7 +48,7 @@ if str(REPO) not in sys.path:
 
 from tools.hook_chain import BASH_TOOLS  # noqa: E402 — the ONE shell-tool roster (RC-520)
 from tools.shell_parse import (  # noqa: E402 — the ONE shell parser
-    iter_command_segments, segment_head, shell_executed_part)
+    executed_scripts, iter_command_segments, program_name, segment_head, shell_executed_part, statements)
 
 #: RC-273 — the gitignored tree with no history. A path SEGMENT: `AppData/`, `mydata/`, `_data/`
 #: do not match; `data/x`, `./data/x`, `C:/repo/data/x` do.
@@ -71,10 +71,8 @@ _HEREDOC = re.compile(r"^(?P<line>[^\n]*?)<<-?\s*(['\"]?)(?P<tag>\w+)\2(?P<rest>
 _PY_C = re.compile(r"(?:^|[\s;&|(])(?:python3?|py)(?:\.exe)?\b[^\n;&|]*?\s-c\s+"
                    r"(\"(?:\\.|[^\"])*\"|'[^']*')", re.I)
 _REDIRECT = re.compile(r"(?:^|[^<>&0-9])>{1,2}\s*(\"[^\"]*\"|'[^']*'|[^\s;&|]+)")
-#: A shell given its script as a quoted -c / -Command payload.
-_SH_C = re.compile(r"(?:^|[\s;&|(])(?:bash|sh|zsh|pwsh|powershell)(?:\.exe)?\b[^\n;&|]*?\s-(?:c|command)\s+"
-                   r"(\"(?:\\.|[^\"])*\"|'[^']*')", re.I)
 _PY_INFO = frozenset({"-V", "-VV", "--version", "-h", "--help"})
+_PY_WORD = re.compile(r"\bpy(?:thon3?)?\b", re.I)
 _REDIR_TOKEN = re.compile(r"^\d*(?:&?[<>]+)(?P<target>.*)$")
 
 
@@ -168,17 +166,11 @@ def _reads_program_from_stdin(toks: list[str]) -> bool:
     return True
 
 
-def _stdin_python(script: str) -> bool:
-    """A python that reads its program from stdin, in the command, an `eval` string or a shell's
-    -c payload. On Windows an empty heredoc or </dev/null looks like a console to python.exe, and
-    Python 3.13's REPL retries forever on the invalid handle."""
-    for _cwd, seg in iter_command_segments(script):
-        head, toks = segment_head(seg)
-        if head in _PY_HEADS and _reads_program_from_stdin(toks):
-            return True
-        if head == "eval" and _stdin_python(" ".join(t.strip("\"'") for t in toks[1:])):
-            return True
-    return any(_stdin_python(m.group(1)[1:-1]) for m in _SH_C.finditer(script))
+def _stdin_python(raw: str) -> bool:
+    """A python that reads its program from stdin, in the command or a script it hands a shell."""
+    return bool(_PY_WORD.search(raw)) and any(
+        program_name(toks[0]) in _PY_HEADS and _reads_program_from_stdin(toks)
+        for script in executed_scripts(raw) for toks, _piped in statements(script))
 
 
 #: Blind staging: `-A`, `--all`, `-u`, `--update`, `*`, `.` are the same action in other flags.

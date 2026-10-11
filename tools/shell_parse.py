@@ -215,3 +215,43 @@ def shell_executed_part(cmd: str) -> str:
     # being misread as one.
     cmd = re.sub(r"\\\r?\n", " ", cmd)
     return cmd
+
+
+#: a quoted string (a backslash escapes inside double quotes), a word, or a statement separator
+_STMT_TOKEN = re.compile(r"\"(?:\\.|[^\"\\])*\"|'[^']*'|&&|\|\||[;&|]|[^\s;&|]+")
+#: a PowerShell here-string, data like a heredoc body
+HERE_STRING = re.compile(r"@(['\"])\r?\n.*?\r?\n\1@", re.S)
+
+
+def statements(cmd: str) -> "list[tuple[list[str], bool]]":
+    """Each statement the shell runs in `cmd`: its (program, args) tokens and whether a pipe hands
+    it its input. Split at ; & | && || and line ends OUTSIDE quotes (a `|` in a quoted regex is
+    not a pipe), leading VAR=val and wrappers skipped (segment_head)."""
+    out = []
+    for line in shell_executed_part(HERE_STRING.sub(" HERESTRING ", cmd)).splitlines():
+        stmt: "list[str]" = []
+        piped = False
+        for tok in [*_STMT_TOKEN.findall(line), ";"]:
+            if tok in (";", "&", "|", "&&", "||", "{", "}"):     # a script block's braces too
+                _name, toks = segment_head(" ".join(stmt))
+                out += [(toks, piped)] if toks else []
+                stmt, piped = [], tok == "|"
+            else:
+                stmt.append(tok)
+    return out
+
+
+#: a script handed to a shell or eval as one quoted payload: sh/bash/zsh/dash/pwsh -c (or -lc,
+#: -Command), cmd /c, eval '...'
+_PAYLOAD = re.compile(r"(?:^|[\s;&|(])(?:(?:bash|sh|zsh|dash|pwsh|powershell)(?:\.exe)?\s(?:[^\n;&|]*?\s)?"
+                      r"-(?:[a-z]*c|command)|cmd(?:\.exe)?\s(?:[^\n;&|]*?\s)?/c|eval)\s+"
+                      r"(\"(?:\\.|[^\"])*\"|'[^']*')", re.I)
+
+
+def executed_scripts(cmd: str):
+    """`cmd`, then (recursively) every script it hands a shell or eval as a quoted payload, which
+    shell_executed_part sets aside as data. Heredoc bodies are data and are not searched."""
+    yield cmd
+    text = re.sub(r"<<-?\s*(['\"]?)(\w+)\1.*?^\s*\2\s*$", " ", cmd, flags=re.S | re.M)
+    for m in _PAYLOAD.finditer(text):
+        yield from executed_scripts(m.group(1)[1:-1].replace('\\"', '"'))

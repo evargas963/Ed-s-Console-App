@@ -44,7 +44,8 @@ import runtime_layout  # noqa: E402
 import time_et  # noqa: E402
 from db_authority import canonical_stream_db_path  # noqa: E402
 from tools.hook_chain import BASH_TOOLS  # noqa: E402
-from tools.shell_parse import program_name, segment_head, shell_executed_part  # noqa: E402
+from tools.shell_parse import (  # noqa: E402
+    HERE_STRING, executed_scripts, program_name, shell_executed_part, statements)
 
 PASS, ASK, DENY = "pass", "ask", "deny"
 #: the production processes and what starts them
@@ -70,21 +71,14 @@ HTTP_CLIENTS = ("curl", "wget", "invoke-restmethod", "irm", "invoke-webrequest",
 #: a GraphQL mergePullRequest sent by `gh api` or an HTTP client, judged on the whole line (a quoted
 #: query opened mid-word, `query='mutation { ... }'`, does not stay one token)
 GRAPHQL_MERGE = re.compile(r"(?:^|[\s;&|(])(?:[^\s;&|]*[\\/])?(?:gh(?:\.exe)?\s[^\n;&|]*?\bapi\b|"
-                           + "|".join(HTTP_CLIENTS) + r")\b[^\n]*?\bmergePullRequest\b", re.I)
+                           + "|".join(HTTP_CLIENTS) + r")\b[^\n;&]*?\bmergePullRequest\b", re.I)
 #: gh options that take a value (the value is not a subcommand)
 GH_VALUE_OPTIONS = ("-R", "--repo", "--hostname", "-X", "--method", "-f", "-F", "--field", "--raw-field")
-#: a shell given its script as a quoted payload (bash -c, pwsh -c / -Command, cmd /c)
-SHELL_PAYLOAD = re.compile(r"(?:^|[\s;&|(])(?:bash|sh|zsh|pwsh|powershell|cmd)(?:\.exe)?\b[^\n;&|]*?"
-                           r"\s(?:-c|-command|/c)\s+(\"(?:\\.|[^\"])*\"|'[^']*')", re.I)
 #: process ids and image names a stop names (Stop-Process -Id, taskkill /PID, ProcessId=N;
 #: -Name, /IM, Get-Process <name>, Name='x.exe')
 _PIDS = re.compile(r"(?:-id|/pid|processid\s*=)\s*['\"]?(\d[\d,\s]*)", re.I)
 _NAMES = re.compile(r"(?:-name|-processname|/im|get-process)\s+['\"]?([\w.*]+)|\bname\s*(?:=|like)\s*['\"]([\w.*%]+)",
                     re.I)
-#: a quoted string (a backslash escapes inside double quotes), a word, or a statement separator
-_TOKEN = re.compile(r"\"(?:\\.|[^\"\\])*\"|'[^']*'|&&|\|\||[;&|]|[^\s;&|]+")
-#: a PowerShell here-string, data like a heredoc body
-_HERE_STRING = re.compile(r"@(['\"])\r?\n.*?\r?\n\1@", re.S)
 
 
 def market_session(now: datetime, db: Path) -> str:
@@ -105,24 +99,6 @@ def market_session(now: datetime, db: Path) -> str:
     return time_et.session_label(now)
 
 
-def _statements(cmd: str) -> "list[tuple[list[str], bool]]":
-    """Each statement the shell runs in `cmd`: its (program, args) tokens and whether a pipe hands
-    it its input. Split at ; & | && || and line ends outside quotes, leading VAR=val and wrappers
-    skipped (segment_head)."""
-    out = []
-    for line in shell_executed_part(_HERE_STRING.sub(" HERESTRING ", cmd)).splitlines():
-        stmt: "list[str]" = []
-        piped = False
-        for tok in [*_TOKEN.findall(line), ";"]:
-            if tok in (";", "&", "|", "&&", "||", "{", "}"):     # a script block's braces too
-                _name, toks = segment_head(" ".join(stmt))
-                out += [(toks, piped)] if toks else []
-                stmt, piped = [], tok == "|"
-            else:
-                stmt.append(tok)
-    return out
-
-
 def _starts(toks: "list[str]") -> bool:
     """Whether the statement `toks` (its program first) runs a launcher, launch.py (a start or its
     clean `stop`), the console's uvicorn or the capture daemon. A quoted phrase in the program's
@@ -138,7 +114,7 @@ def _starts(toks: "list[str]") -> bool:
         return bool(args) and (program_name(args[0]) == "launch.py"
                                or (args[0] == "-m" and len(args) > 1 and any(n in args[1] for n in PROCESS_NAMES)))
     if name in SHELLS:
-        return any(_starts(s) for s, _piped in _statements(" ".join(a for a in args if not a.startswith(("-", "/")))))
+        return any(_starts(s) for s, _piped in statements(" ".join(a for a in args if not a.startswith(("-", "/")))))
     if name == "schtasks":
         return "/run" in (a.lower() for a in args)
     # a starter, or .NET's Process.Start, given a launcher, launch.py or a production process
@@ -216,16 +192,16 @@ def decide(payload: dict, now: datetime, db: Path) -> "tuple[str, list[str]]":
         return PASS, []
     cmd = str((payload.get("tool_input") or {}).get("command") or "")
     asks, denies = [], []
-    statements = _statements(cmd)
+    stmts = statements(cmd)
     # `$x = <listing>` with nothing piped after it: a kill naming $x reaches what the listing names
-    listed = {toks[0].lower(): toks[2:] for i, (toks, _p) in enumerate(statements)
+    listed = {toks[0].lower(): toks[2:] for i, (toks, _p) in enumerate(stmts)
               if toks[0].startswith("$") and toks[1:2] == ["="] and len(toks) > 2
-              and not (i + 1 < len(statements) and statements[i + 1][1])}
-    for i, (toks, piped) in enumerate(statements):
+              and not (i + 1 < len(stmts) and stmts[i + 1][1])}
+    for i, (toks, piped) in enumerate(stmts):
         if program_name(toks[0]) in MACHINE_STOPPERS:
             asks.append("stops or restarts the machine, and the daemon and console with it (CLAUDE.md rule 5: production)")
         elif _kills(toks, piped):
-            upstream = statements[i - 1][0] if piped and i else next(
+            upstream = stmts[i - 1][0] if piped and i else next(
                 (listed[v] for t in toks[1:] for v in [t.lower().split(".")[0]] if v in listed), None)
             found, later = _targets(toks, upstream)
             seen = [_production(p) for p in found]
@@ -242,8 +218,8 @@ def decide(payload: dict, now: datetime, db: Path) -> "tuple[str, list[str]]":
             if session in (time_et.RTH, time_et.UNKNOWN):
                 asks.append(f"starts or stops the daemon or the console while the market session is "
                             f"{session} (CLAUDE.md rule 5: production)")
-        elif _merges(toks):
-            asks.append(f"merges pull request {_merges(toks)} (AGENTS.md Authority)")
+        elif merged := _merges(toks):
+            asks.append(f"merges pull request {merged} (AGENTS.md Authority)")
         elif _pushes_main(toks):
             denies.append("pushes to main: main moves only by a pull request merged on GitHub")
     asks += [f"merges pull request {n} (AGENTS.md Authority)" for n in _line_merges(cmd)]
@@ -254,25 +230,29 @@ def _merges(toks: "list[str]") -> str:
     """The pull request the statement `toks` merges: `gh pr merge` with options anywhere, or a REST
     merge sent by `gh api` or an HTTP client; "" if none."""
     name = program_name(toks[0])
+    if name != "gh" and name not in HTTP_CLIENTS:
+        return ""
     args = [t.strip("\"'") for t in toks[1:]]
-    api = next((m.group(1) for a in args for m in [API_MERGE.search(a)] if m), "")
     if name == "gh":
         words = [a for i, a in enumerate(args)
                  if not a.startswith("-") and not (i and args[i - 1] in GH_VALUE_OPTIONS)]
         if words[:2] == ["pr", "merge"]:
             return next((a for a in words[2:] if a.isdigit()), "the current branch's")
-        return api if words[:1] == ["api"] else ""
-    return api if name in HTTP_CLIENTS else ""
+        if words[:1] != ["api"]:
+            return ""
+    return next((m.group(1) for a in args for m in [API_MERGE.search(a)] if m), "")
 
 
 def _line_merges(cmd: str) -> "list[str]":
-    """The merges the statement split cannot see: a GraphQL mergePullRequest on a line the shell
-    runs, and any merge inside a shell's quoted payload (bash -c "...", pwsh -c "...")."""
-    out = ["a GraphQL mergePullRequest" for line in shell_executed_part(_HERE_STRING.sub(" ", cmd)).splitlines()
-           if GRAPHQL_MERGE.search(line)]
-    for m in SHELL_PAYLOAD.finditer(cmd):
-        inner = m.group(1)[1:-1].replace('\\"', '"')
-        out += [n for toks, _piped in _statements(inner) for n in [_merges(toks)] if n] + _line_merges(inner)
+    """The merges the statement split cannot see: any merge inside a script handed to a shell or
+    eval (shell_parse.executed_scripts), and a GraphQL mergePullRequest on a line the shell runs."""
+    out = []
+    for depth, script in enumerate(executed_scripts(cmd)):
+        if depth:
+            out += [n for toks, _piped in statements(script) for n in [_merges(toks)] if n]
+        if "mergepullrequest" in script.lower():
+            out += ["a GraphQL mergePullRequest" for line in shell_executed_part(HERE_STRING.sub(" ", script)).splitlines()
+                    if GRAPHQL_MERGE.search(line)]
     return out
 
 

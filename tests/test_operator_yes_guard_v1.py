@@ -194,6 +194,8 @@ def test_the_machine_a_merge_and_a_push(cmd, answer, markets):
     ("curl -X PUT -H 'Accept: application/vnd.github+json' https://api.github.com/repos/o/r/pulls/5/merge", "Bash"),
     ("Invoke-RestMethod -Method Put -Uri https://api.github.com/repos/o/r/pulls/5/merge", "PowerShell"),
     ("bash -c \"gh pr merge 5\"", "Bash"),                                  # wrapped in a shell
+    ("bash -lc \"gh pr merge 5\"", "Bash"),
+    ("cmd /c \"gh pr merge 5\"", "Bash"),
     ("pwsh -c \"gh pr merge 5 --merge\"", "PowerShell"),
 ])
 def test_every_merge_route_asks(cmd, tool, markets):

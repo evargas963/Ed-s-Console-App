@@ -16,8 +16,8 @@ checkout to `origin/main`, starts the capture daemon in its own window and `uvic
 4. Start both from outside this session, so an app restart cannot end them:
    `explorer.exe start_ed_console.bat` in the production checkout.
 5. Confirm both came back and run the merge commit: the processes
-   (`Get-CimInstance Win32_Process` with `capture` / `uvicorn` in the command line), port 8800 and 8000
-   answering (`launch.in_use`), `curl -s http://127.0.0.1:8000/api/health`, and
+   (`Get-CimInstance Win32_Process` with `capture` / `uvicorn` in the command line), `launch.DAEMON_PORT`
+   and `launch.CONSOLE_PORT` answering (`launch.in_use`), `curl -s http://127.0.0.1:8000/api/health`, and
    `git -C <production> rev-parse --short HEAD` equal to `origin/main`. Show each output.
 6. Deployed means step 5 passed and the screen was checked during market hours. Until then report the
    change as on disk, not deployed.
