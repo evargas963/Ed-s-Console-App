@@ -174,21 +174,19 @@ _SKIP_HOOKS = re.compile(
 
 
 def bash_violations(cmd: str, ledger=None, payload_cwd: str = "") -> list[str]:
-    """Every host-wide ban that fires on `cmd`. Applicability is per rule, never an early
-    return (RC-258: a foreign-repository target exempts nothing host-wide). `ledger` and
-    `payload_cwd` are accepted for the suites' call shape; no rule reads a repository."""
+    """Every host-wide ban that fires on `cmd`, each judged on its own (a command aimed at another
+    repository exempts nothing). `ledger` and `payload_cwd` are accepted for the suites' call
+    shape; no rule reads a repository."""
     raw = cmd or ""
     cmd = shell_executed_part(raw)
     out: list[str] = []
     if _BLIND_STAGE.search(cmd):
-        out.append("ACTION BLOCKED: blind staging (git add -A/--all/.) swept another agent's "
-                   "in-flight files into a commit twice on 2026-07-28. Stage EXPLICIT paths — "
-                   "a commit asserts authorship of everything in it.")
+        out.append("ACTION BLOCKED: blind staging (git add -A/--all/.) sweeps another agent's "
+                   "in-flight files into a commit. Stage EXPLICIT paths — a commit asserts "
+                   "authorship of everything in it.")
     if _protected_path_violation(raw):
-        out.append("ACTION BLOCKED (RC-273): this deletes, moves or truncates something under "
-                   "data/. That tree is gitignored -- there is NO "
-                   "history and NO undo. The agent destroyed the 27GB database twice in ten "
-                   "minutes this way, both times while 'just testing'. Test destructive "
+        out.append("ACTION BLOCKED: this deletes, moves or truncates something under data/. That "
+                   "tree is gitignored -- there is NO history and NO undo. Test destructive "
                    "behaviour against a COPY in a temp directory, never the real artefact. "
                    "Restores INTO it stay legal; removal from it is operator-only.")
     if _SKIP_HOOKS.search(cmd):

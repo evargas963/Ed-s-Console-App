@@ -9,19 +9,21 @@ from pathlib import Path
 
 import pytest
 
-from tools.operator_law_guard import _SKIP_HOOKS, bash_violations
+from tools.operator_law_guard import bash_violations
+
+LOCK = "disables a mechanical lock"
 
 
 def test_lock_disable_routes_are_git_and_precommits_own():
-    """The lock-disable ban names the routes that bypass the pre-commit checks: git's
+    """The lock-disable ban refuses the routes that bypass the pre-commit checks: git's
     (`--no-verify`, `-n`, `core.hooksPath`) and pre-commit's (`SKIP=`, uninstall)."""
     for cmd in ("git commit --no-verify -m x", "git commit -n -m x", "git -c core.hooksPath=/dev/null commit",
                 "SKIP=institutional-correctness git commit -m x", "$env:SKIP='ruff-correctness'; git commit -m x",
                 "pre-commit uninstall"):
-        assert _SKIP_HOOKS.search(cmd), cmd
+        assert any(LOCK in b for b in bash_violations(cmd)), cmd
     for cmd in ("git commit -m 'skip the typo'", "SKIPPED=1 python x.py", "echo pre-commit installed",
                 "git push -n origin main", "ED_UI_MOCKUP_LOCK=off git commit", "git commit -m 'normal'"):
-        assert _SKIP_HOOKS.search(cmd) is None, cmd
+        assert not any(LOCK in b for b in bash_violations(cmd)), cmd
 
 
 @pytest.mark.parametrize("cmd", [
