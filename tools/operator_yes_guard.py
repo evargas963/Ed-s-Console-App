@@ -17,11 +17,12 @@ shell commands. Each command gets one answer, the strictest of its statements':
     put to the operator while either runs.
   * A stop or restart of the machine and a merge spelled `gh pr merge N` or `gh api .../pulls/N/merge`
     (`_merges`) are put to the operator; a push to main is refused. Other merge routes (options
-    before `merge`, curl, GraphQL, a `-c` wrapper, the web page) are not seen: ENF-13.
+    before `merge`, curl, GraphQL, the web page) are not seen: ENF-13.
 
-Limits: shell commands are judged on the program each statement runs, never on names it only
-mentions (a read, a diff or a search naming a launcher passes); code inside `python -c` or a
-heredoc body is data to the shell parser and is not judged here.
+Limits: shell commands are judged on the statements they run, as tools/shell_parse.read reads them
+(behind a keyword, a wrapper or a subshell, inside a shell's command string), never on names
+they only mention (a read, a diff or a search naming a launcher passes); code inside `python -c`
+or a heredoc a python reads is not judged here.
 """
 from __future__ import annotations
 
@@ -43,7 +44,7 @@ import runtime_layout  # noqa: E402
 import time_et  # noqa: E402
 from db_authority import canonical_stream_db_path  # noqa: E402
 from tools.hook_chain import BASH_TOOLS  # noqa: E402
-from tools.shell_parse import program_name, segment_head, shell_executed_part  # noqa: E402
+from tools.shell_parse import Statement, git_subcommand, program_name, read  # noqa: E402
 
 PASS, ASK, DENY = "pass", "ask", "deny"
 #: the production processes and what starts them
@@ -52,10 +53,10 @@ LAUNCHERS = ("start_capture_daemon", "start_ed_console")
 #: a command line that carries one of these is production's (launch.py among them)
 PRODUCTION_MARKS = (*PROCESS_NAMES, *LAUNCHERS, "launch.py")
 #: programs that start or open what they are given (wmic and the CIM/WMI methods with Create), and
-#: shells that run the command they are given
+#: shells that run the script file given as their first argument
 STARTERS = ("start", "start-process", "saps", "invoke-item", "ii", "explorer", "wmic", "invoke-cimmethod",
             "invoke-wmimethod")
-SHELLS = ("cmd", "powershell", "pwsh", "bash", "sh", "call", "invoke-expression", "iex")
+SHELLS = ("powershell", "pwsh", "bash", "sh")
 #: programs that end a process from outside
 STOPPERS = ("stop-process", "spps", "taskkill", "kill", "tskill", "pskill")
 #: programs that stop or restart the machine
@@ -69,10 +70,6 @@ API_MERGE = re.compile(r"/pulls/(\d+)/merge\b", re.I)
 _PIDS = re.compile(r"(?:-id|/pid|processid\s*=)\s*['\"]?(\d[\d,\s]*)", re.I)
 _NAMES = re.compile(r"(?:-name|-processname|/im|get-process)\s+['\"]?([\w.*]+)|\bname\s*(?:=|like)\s*['\"]([\w.*%]+)",
                     re.I)
-#: a quoted string (a backslash escapes inside double quotes), a word, or a statement separator
-_TOKEN = re.compile(r"\"(?:\\.|[^\"\\])*\"|'[^']*'|&&|\|\||[;&|]|[^\s;&|]+")
-#: a PowerShell here-string, data like a heredoc body
-_HERE_STRING = re.compile(r"@(['\"])\r?\n.*?\r?\n\1@", re.S)
 
 
 def market_session(now: datetime, db: Path) -> str:
@@ -93,79 +90,72 @@ def market_session(now: datetime, db: Path) -> str:
     return time_et.session_label(now)
 
 
-def _statements(cmd: str) -> "list[tuple[list[str], bool]]":
-    """Each statement the shell runs in `cmd`: its (program, args) tokens and whether a pipe hands
-    it its input. Split at ; & | && || and line ends outside quotes, leading VAR=val and wrappers
-    skipped (segment_head)."""
-    out = []
-    for line in shell_executed_part(_HERE_STRING.sub(" HERESTRING ", cmd)).splitlines():
-        stmt: "list[str]" = []
-        piped = False
-        for tok in [*_TOKEN.findall(line), ";"]:
-            if tok in (";", "&", "|", "&&", "||", "{", "}"):     # a script block's braces too
-                _name, toks = segment_head(" ".join(stmt))
-                out += [(toks, piped)] if toks else []
-                stmt, piped = [], tok == "|"
-            else:
-                stmt.append(tok)
-    return out
+def _launcher(word: str) -> str:
+    return program_name(word).removesuffix(".bat").removesuffix(".cmd")
 
 
-def _starts(toks: "list[str]") -> bool:
-    """Whether the statement `toks` (its program first) runs a launcher, launch.py (a start or its
-    clean `stop`), the console's uvicorn or the capture daemon. A quoted phrase in the program's
-    place is a string the shell prints, not a program."""
-    if toks[0][:1] in "\"'" and " " in toks[0] and not toks[0].strip("\"'").lower().endswith((".bat", ".cmd", ".exe")):
-        return False
-    name = program_name(toks[0]).removesuffix(".bat").removesuffix(".cmd")
-    args = [t.strip("\"'") for t in toks[1:]]
-    named = any(n in " ".join(toks).lower() for n in PRODUCTION_MARKS)
+def _printed(st: Statement) -> bool:
+    """Whether the statement's program word is a quoted phrase or a here-string: a string the shell
+    prints, not a program."""
+    raw0 = st.raw[0]
+    return raw0[:2] in ("@'", '@"') or (raw0[:1] in "\"'" and " " in raw0
+                                        and not st.words[0].lower().endswith((".bat", ".cmd", ".exe")))
+
+
+def _starts(st: Statement) -> bool:
+    """Whether the statement `st` runs a launcher, launch.py (a start or its clean `stop`), the
+    console's uvicorn or the capture daemon."""
+    name = _launcher(st.words[0])
+    args = list(st.words[1:])
+    named = any(n in st.text.lower() for n in PRODUCTION_MARKS)
     if name in LAUNCHERS or name == "uvicorn":
         return True
     if name == "py" or name.startswith("python"):
         return bool(args) and (program_name(args[0]) == "launch.py"
                                or (args[0] == "-m" and len(args) > 1 and any(n in args[1] for n in PROCESS_NAMES)))
     if name in SHELLS:
-        return any(_starts(s) for s, _piped in _statements(" ".join(a for a in args if not a.startswith(("-", "/")))))
+        script = next((a for a in args if not a.startswith(("-", "/"))), "")
+        return _launcher(script) in LAUNCHERS
     if name == "schtasks":
         return "/run" in (a.lower() for a in args)
     # a starter, or .NET's Process.Start, given a launcher, launch.py or a production process
-    return named and (name in STARTERS or "::start(" in toks[0].lower())
+    return named and (name in STARTERS or "::start(" in st.words[0].lower())
 
 
-def _kills(toks: "list[str]", piped: bool) -> bool:
-    """Whether the statement `toks` ends a process from outside: a stopper, a .Kill() call, wmic's
+def _kills(st: Statement) -> bool:
+    """Whether the statement `st` ends a process from outside: a stopper, a .Kill() call, wmic's
     delete or terminate, CIM/WMI's Terminate, a removed process object."""
-    name = program_name(toks[0])
-    args = [t.strip("\"'").lower() for t in toks[1:]]
-    if name in STOPPERS or ".kill(" in " ".join(toks).lower():
+    name = st.program
+    args = [a.lower() for a in st.words[1:]]
+    if name in STOPPERS or any(".kill(" in r.lower() and not r.startswith(("'", '"', "@'", '@"'))
+                               for r in st.raw):                     # a quoted string or here-string is text
         return True
     if name == "wmic":
         return "process" in args and any(a in ("delete", "terminate") for a in args)
     if name in ("invoke-cimmethod", "invoke-wmimethod"):
         return "terminate" in args
-    return name in WMI_STOPS and (piped or "win32_process" in " ".join(args))
+    return name in WMI_STOPS and (st.upstream is not None or "win32_process" in " ".join(args))
 
 
 #: the listings whose output, piped straight into a kill, are its targets
 LISTINGS = ("get-process", "gps", "ps", "get-ciminstance", "gcim", "get-wmiobject", "gwmi")
 
 
-def _targets(toks: "list[str]", upstream: "list[str] | None") -> "tuple[list[psutil.Process], bool]":
-    """The running processes a kill statement `toks` reaches by the ids and image names it names
+def _targets(st: Statement, upstream: "list[str] | None") -> "tuple[list[psutil.Process], bool]":
+    """The running processes a kill statement `st` reaches by the ids and image names it names
     (a stopper's bare ids and names among them), or that the listing piped straight into it
-    names (`upstream`: Get-Process, Get-CimInstance ...); and whether it also reaches processes
-    chosen only when it runs: a target held in a variable ($ids, $_.ProcessId), a pipe from
-    anything but a listing (a filter), or none named at all."""
-    text = " ".join(toks)
-    later = (any(t.startswith("$") for t in toks[1:] if upstream is None)
+    names (`upstream`, its words as written: Get-Process, Get-CimInstance ...); and whether it
+    also reaches processes chosen only when it runs: a target held in a variable ($ids,
+    $_.ProcessId), a pipe from anything but a listing (a filter), or none named at all."""
+    text = st.text
+    later = (any(t.startswith("$") for t in st.words[1:] if upstream is None)
              or (upstream is not None and program_name(upstream[0]) not in LISTINGS))
     if upstream is not None and not later:
         text += " " + " ".join(upstream)
     pids = {int(p) for m in _PIDS.finditer(text) for p in re.split(r"[,\s]+", m.group(1)) if p}
     names = {(a or b).lower().removesuffix(".exe").replace("%", "*") for a, b in _NAMES.findall(text)}
-    if program_name(toks[0]) in STOPPERS:
-        for arg in (t.strip("\"'") for t in toks[1:] if not t.startswith(("-", "/", "$", "(", "@("))):
+    if st.program in STOPPERS:
+        for arg in (t for t in st.words[1:] if not t.startswith(("-", "/", "$", "(", "@("))):
             for part in arg.split(","):
                 pids.update([int(part)] if part.isdigit() else [])
                 names.update([part.lower().removesuffix(".exe")] if part and not part.isdigit() else [])
@@ -204,18 +194,19 @@ def decide(payload: dict, now: datetime, db: Path) -> "tuple[str, list[str]]":
         return PASS, []
     cmd = str((payload.get("tool_input") or {}).get("command") or "")
     asks, denies = [], []
-    statements = _statements(cmd)
+    statements = [st for st in read(cmd, powershell=payload.get("tool_name") == "PowerShell")
+                  if st.words and not _printed(st)]
     # `$x = <listing>` with nothing piped after it: a kill naming $x reaches what the listing names
-    listed = {toks[0].lower(): toks[2:] for i, (toks, _p) in enumerate(statements)
-              if toks[0].startswith("$") and toks[1:2] == ["="] and len(toks) > 2
-              and not (i + 1 < len(statements) and statements[i + 1][1])}
-    for i, (toks, piped) in enumerate(statements):
-        if program_name(toks[0]) in MACHINE_STOPPERS:
+    listed = {st.env[-1][:-1].lower(): list(st.raw) for st in statements
+              if st.env and st.env[-1].startswith("$") and st.env[-1].endswith("=")
+              and not any(s.upstream is st for s in statements)}
+    for st in statements:
+        if st.program in MACHINE_STOPPERS:
             asks.append("stops or restarts the machine, and the daemon and console with it (CLAUDE.md rule 5: production)")
-        elif _kills(toks, piped):
-            upstream = statements[i - 1][0] if piped and i else next(
-                (listed[v] for t in toks[1:] for v in [t.lower().split(".")[0]] if v in listed), None)
-            found, later = _targets(toks, upstream)
+        elif _kills(st):
+            upstream = list(st.upstream.raw) if st.upstream is not None and st.upstream.raw else next(
+                (listed[v] for t in st.words[1:] for v in [t.lower().split(".")[0]] if v in listed), None)
+            found, later = _targets(st, upstream)
             seen = [_production(p) for p in found]
             if any(seen) or (later and any(m in cmd.lower() for m in PRODUCTION_MARKS)):
                 denies.append("kills the daemon, the console or launch.py: on Windows that skips its shutdown "
@@ -225,32 +216,32 @@ def decide(payload: dict, now: datetime, db: Path) -> "tuple[str, list[str]]":
             elif later and _production_running():
                 asks.append("stops processes chosen only when it runs while the daemon or the console runs "
                             "(CLAUDE.md rule 5: production)")
-        elif _starts(toks):
+        elif _starts(st):
             session = market_session(now, db)
             if session in (time_et.RTH, time_et.UNKNOWN):
                 asks.append(f"starts or stops the daemon or the console while the market session is "
                             f"{session} (CLAUDE.md rule 5: production)")
-        elif _merges(toks):
-            asks.append(f"merges pull request {_merges(toks)} (AGENTS.md Authority)")
-        elif _pushes_main(toks):
+        elif pr := _merges(st):
+            asks.append(f"merges pull request {pr} (AGENTS.md Authority)")
+        elif _pushes_main(st):
             denies.append("pushes to main: main moves only by a pull request merged on GitHub")
     return (DENY, denies) if denies else (ASK, asks) if asks else (PASS, [])
 
 
-def _merges(toks: "list[str]") -> str:
-    """The pull request the statement `toks` merges (gh pr merge N, or GitHub's API); "" if none."""
-    args = [t.strip("\"'") for t in toks[1:]]
-    if program_name(toks[0]) != "gh":
+def _merges(st: Statement) -> str:
+    """The pull request the statement `st` merges (gh pr merge N, or GitHub's API); "" if none."""
+    args = list(st.words[1:])
+    if st.program != "gh":
         return ""
     if args[:2] == ["pr", "merge"]:
         return next((a for a in args[2:] if a.isdigit()), "the current branch's")
     return next((m.group(1) for a in args for m in [API_MERGE.search(a)] if m), "")
 
 
-def _pushes_main(toks: "list[str]") -> bool:
-    """Whether the statement `toks` is a git push whose refspec lands on main."""
-    args = [t.strip("\"'") for t in toks[1:]]
-    return (program_name(toks[0]) == "git" and "push" in args
+def _pushes_main(st: Statement) -> bool:
+    """Whether the statement `st` is a git push whose refspec lands on main."""
+    sub, args = git_subcommand(st.words)
+    return (sub == "push"
             and any(a == "main" or a.endswith((":main", ":refs/heads/main")) or a == "+main" for a in args))
 
 

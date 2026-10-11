@@ -1,5 +1,7 @@
 """OPERATOR LAW GUARD — three host-wide ACTION bans on shell commands (RC-93: ban the action,
 never the word). PreToolUse for the shell-command tools (`hook_chain.BASH_TOOLS`); exit 2 blocks.
+Each is judged on the statements the command runs, as tools/shell_parse.read reads them; text in
+quotes and a heredoc nothing runs are data.
 
 What survives, and the concrete failure each prevents (KEEP/MERGE/DELETE, 2026-09-10):
 
@@ -43,8 +45,7 @@ if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
 from tools.hook_chain import BASH_TOOLS  # noqa: E402 — the ONE shell-tool roster (RC-520)
-from tools.shell_parse import (  # noqa: E402 — the ONE shell parser
-    iter_command_segments, segment_head, shell_executed_part)
+from tools.shell_parse import PYTHON, Statement, git_parts, git_subcommand, read  # noqa: E402 — the ONE shell reader
 
 #: RC-273 — the gitignored tree with no history. A path SEGMENT: `AppData/`, `mydata/`, `_data/`
 #: do not match; `data/x`, `./data/x`, `C:/repo/data/x` do.
@@ -60,13 +61,6 @@ _ACL_LOOSENERS = ("/remove", "/reset", "/grant", "/setowner", "/inheritance")
 #: Python calls that delete, move, rename or overwrite a path.
 _PY_REMOVERS = frozenset({"remove", "unlink", "rmtree", "rmdir", "removedirs", "rename", "replace",
                           "move", "truncate", "write_text", "write_bytes"})
-_PY_HEADS = frozenset({"python", "python3", "py"})
-_SH_HEADS = frozenset({"bash", "sh", "zsh", "pwsh", "powershell"})
-_HEREDOC = re.compile(r"^(?P<line>[^\n]*?)<<-?\s*(['\"]?)(?P<tag>\w+)\2(?P<rest>[^\n]*)\n"
-                      r"(?P<body>.*?)^\s*(?P=tag)\s*$", re.S | re.M)
-_PY_C = re.compile(r"(?:^|[\s;&|(])(?:python3?|py)(?:\.exe)?\b[^\n;&|]*?\s-c\s+"
-                   r"(\"(?:\\.|[^\"])*\"|'[^']*')", re.I)
-_REDIRECT = re.compile(r"(?:^|[^<>&0-9])>{1,2}\s*(\"[^\"]*\"|'[^']*'|[^\s;&|]+)")
 
 
 def _protected(arg: str) -> bool:
@@ -94,87 +88,77 @@ def _python_violation(code: str) -> bool:
     return False
 
 
-def _shell_violation(script: str) -> bool:
-    """A command that runs and deletes, moves, overwrites or unprotects a protected-tree path."""
-    for _cwd, seg in iter_command_segments(script):
-        head, toks = segment_head(seg)
-        args = [t.strip("\"'") for t in toks[1:]]
-        paths = [a for a in args if not a.startswith("-")]
-        if head in _SHELL_REMOVERS and any(_protected(a) or _TREE_ROOT.search(a) for a in paths):
-            return True
-        if head == "find" and ("-delete" in args or "-exec" in args or "-execdir" in args) and any(
-                _protected(a) or _TREE_ROOT.search(a) for a in args[:next(
-                    (i for i, a in enumerate(args) if a.startswith("-")), len(args))]):
-            return True
-        if head == "cmd" and len(toks) > 2 and toks[1].lower() in ("/c", "/k") and \
-                _shell_violation(" ".join(toks[2:]).strip("\"")):
-            return True
-        if head == "icacls" and any(_protected(a) for a in args) and \
-                any(a.lower().startswith(_ACL_LOOSENERS) for a in args):
-            return True
-        if any(_protected(m.group(1)) for m in _REDIRECT.finditer(seg)):
-            return True
-    return False
+def _protected_path_violation(cmd: str) -> bool:
+    """`cmd` runs a statement that deletes, moves, overwrites or unprotects a file under data/."""
+    return any(_destroys_protected(st) for st in read(cmd or ""))
 
 
-def _protected_path_violation(raw: str) -> bool:
-    """True when a command would delete, move, overwrite or unprotect a file under data/ --
-    judged on what RUNS, never on text that only mentions those paths.
-
-    The shell command itself is parsed (heredoc bodies and quoted -c payloads are data there). A
-    heredoc body is judged by what receives it: a Python interpreter's is parsed as Python, a
-    shell's as shell; text a heredoc writes into a file is content. `python -c` code is parsed as
-    Python. A copy INTO a protected tree is a restore and stays legal."""
-    if not raw:
-        return False
-    if _shell_violation(raw):
+def _destroys_protected(st: Statement) -> bool:
+    """The statement deletes, moves, overwrites or unprotects a file under data/. A python's
+    `-c` code and the stdin text it reads are parsed as Python. A copy INTO a protected tree is a
+    restore and stays legal."""
+    name, args = st.program, list(st.words[1:])
+    paths = [a for a in args if not a.startswith("-")]
+    if name in _SHELL_REMOVERS and any(_protected(a) or _TREE_ROOT.search(a) for a in paths):
         return True
-    for m in _PY_C.finditer(raw):
-        if _python_violation(m.group(1)[1:-1].replace('\\"', '"')):
-            return True
-    for m in _HEREDOC.finditer(raw):
-        heads = {segment_head(part)[0] for part in (m.group("line") + m.group("rest")).split("|")}
-        if heads & _PY_HEADS and _python_violation(m.group("body")):
-            return True
-        if heads & _SH_HEADS and _protected_path_violation(m.group("body")):
-            return True
+    if name == "find" and ("-delete" in args or "-exec" in args or "-execdir" in args) and any(
+            _protected(a) or _TREE_ROOT.search(a) for a in args[:next(
+                (i for i, a in enumerate(args) if a.startswith("-")), len(args))]):
+        return True
+    if name == "icacls" and any(_protected(a) for a in args) and \
+            any(a.lower().startswith(_ACL_LOOSENERS) for a in args):
+        return True
+    if any(_protected(t) for t in st.writes):
+        return True
+    if PYTHON.fullmatch(name):
+        code = [args[i + 1] for i, a in enumerate(args[:-1]) if a == "-c"]
+        return any(_python_violation(c) for c in [*code, *([st.stdin] if st.stdin else [])])
     return False
 
 
 #: Blind staging: `-A`, `--all`, `-u`, `--update`, `*`, `.` are the same action in other flags.
-_BLIND_STAGE = re.compile(
-    r"\bgit\s+add\s+(?:--\s+)?(?:-A\b|--all\b|-u\b|--update\b|\*|\.(?:\s|$))")
-
-#: Lock-disable routes: git's own (`--no-verify`, `-n` on commit, `core.hooksPath`) and
-#: pre-commit's own (`SKIP=<hook-id>`, `$env:SKIP=`, `pre-commit uninstall`) — RC-541.
-_SKIP_HOOKS = re.compile(
-    r"--no-verify"
-    r"|hooksPath"
-    r"|\bgit\s+commit\b[^\n]*?(?:\s-n\b)"
-    r"|(?:^|[\s;&|(])(?:\$env:)?SKIP\s*=\s*['\"]?[A-Za-z0-9_,\-]"
-    r"|\bpre-commit\s+uninstall\b",
-    re.I)
+_BLIND = frozenset({"-A", "--all", "-u", "--update", "*", "."})
 
 
-def bash_violations(cmd: str, ledger=None, payload_cwd: str = "") -> list[str]:
-    """Every host-wide ban that fires on `cmd`. Applicability is per rule, never an early
-    return (RC-258: a foreign-repository target exempts nothing host-wide). `ledger` and
-    `payload_cwd` are accepted for the suites' call shape; no rule reads a repository."""
-    raw = cmd or ""
-    cmd = shell_executed_part(raw)
+def _blind_stage(st: Statement) -> bool:
+    sub, args = git_subcommand(st.words)
+    args = args[1:] if args[:1] == ["--"] else args
+    return sub == "add" and bool(args) and args[0] in _BLIND
+
+
+def _disables_a_lock(st: Statement) -> bool:
+    """Lock-disable routes: git's own (`--no-verify`, `-n` on commit, `core.hooksPath`) and
+    pre-commit's own (`SKIP=<hook-id>`, `$env:SKIP=`, `pre-commit uninstall`) — RC-541."""
+    git_globals, sub, args = git_parts(st.words)
+    skip = next((e.split("=", 1)[1] for e in st.env if re.match(r"(?:\$env:)?skip=", e, re.I)), None)
+    if skip == "" and st.words:          # `$env:SKIP = 'x'`
+        skip = st.words[0]
+    return ("--no-verify" in st.words
+            or any("hookspath" in w.lower() for w in (*git_globals, *(args if sub == "config" else ()), *st.env))
+            or (sub == "commit" and "-n" in args)
+            or bool(skip and re.match(r"[\w,\-]", skip))
+            or [w.lower() for w in st.words[:2]] == ["pre-commit", "uninstall"])
+
+
+def bash_violations(cmd: str, ledger=None, payload_cwd: str = "", powershell: bool = False) -> list[str]:
+    """Every host-wide ban that fires on `cmd` (a PowerShell command when `powershell`).
+    Applicability is per rule, never an early return (RC-258: a foreign-repository target
+    exempts nothing host-wide). `ledger` and `payload_cwd` are accepted for the suites' call
+    shape; no rule reads a repository."""
+    statements = read(cmd or "", powershell=powershell)
     out: list[str] = []
-    if _BLIND_STAGE.search(cmd):
+    if any(_blind_stage(st) for st in statements):
         out.append("ACTION BLOCKED: blind staging (git add -A/--all/.) swept another agent's "
                    "in-flight files into a commit twice on 2026-07-28. Stage EXPLICIT paths — "
                    "a commit asserts authorship of everything in it.")
-    if _protected_path_violation(raw):
+    if any(_destroys_protected(st) for st in statements):
         out.append("ACTION BLOCKED (RC-273): this deletes, moves or truncates something under "
                    "data/. That tree is gitignored -- there is NO "
                    "history and NO undo. The agent destroyed the 27GB database twice in ten "
                    "minutes this way, both times while 'just testing'. Test destructive "
                    "behaviour against a COPY in a temp directory, never the real artefact. "
                    "Restores INTO it stay legal; removal from it is operator-only.")
-    if _SKIP_HOOKS.search(cmd):
+    if any(_disables_a_lock(st) for st in statements):
         out.append("ACTION BLOCKED: this disables a mechanical lock. Only the operator may.")
     return out
 
@@ -191,7 +175,7 @@ def main() -> int:
     if payload.get("tool_name") not in BASH_TOOLS:
         return 0                          # file edits carry no shell action to judge
     cmd = (payload.get("tool_input") or {}).get("command") or ""
-    bad = bash_violations(cmd, [], str(payload.get("cwd") or ""))
+    bad = bash_violations(cmd, [], str(payload.get("cwd") or ""), payload.get("tool_name") == "PowerShell")
     if bad:
         sys.stderr.write("BLOCKED (RC-93) — OPERATOR LAW: ban the ACTION, not the word.\n\n"
                          + "\n".join(f"    {b}" for b in bad) + "\n")
