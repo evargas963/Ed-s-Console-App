@@ -14,7 +14,6 @@ from tools import operating_process_lock as OPL
 from tools import operator_yes_guard as yes_guard
 from tools.operator_law_guard import bash_violations
 from tools.sed_edit_guard import edits
-from tools.shell_parse import read
 
 #: Split so this file's own text is not read as the actions it names.
 D = "d" + "ata"
@@ -104,7 +103,10 @@ def test_a_wipe_run_by_another_program_is_refused(tool, cmd):
 
 
 def test_a_kill_written_as_an_argument_is_refused_and_an_empty_pipe_input_does_not_crash():
-    assert yes_guard._kills(read("Write-Output (Get-Process -Id 5).Kill()", powershell=True)[-1])
+    for kill in ("Write-Output (Get-Process | Where-Object { $_.Path -like '*launch.py*' }).Kill()",
+                 "@(Get-Process | Where-Object { $_.Path -like '*launch.py*' }).Kill()"):
+        assert yes_guard.decide({"tool_name": "PowerShell", "tool_input": {"command": kill}},
+                                CLOSED, NO_DB)[0] == yes_guard.DENY, kill
     assert yes_guard.decide({"tool_name": "Bash", "tool_input": {"command": ">/dev/null | kill 4194300"}},
                             CLOSED, NO_DB)[0] in (yes_guard.PASS, yes_guard.ASK)
 

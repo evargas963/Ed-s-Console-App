@@ -127,7 +127,8 @@ def _kills(st: Statement) -> bool:
     delete or terminate, CIM/WMI's Terminate, a removed process object."""
     name = st.program
     args = [a.lower() for a in st.words[1:]]
-    if name in STOPPERS or any(".kill(" in r.lower() and r[:1] not in "\"'@" for r in st.raw):   # not quoted text
+    if name in STOPPERS or any(".kill(" in r.lower() and not r.startswith(("'", '"', "@'", '@"'))
+                               for r in st.raw):                     # a quoted string or here-string is text
         return True
     if name == "wmic":
         return "process" in args and any(a in ("delete", "terminate") for a in args)
