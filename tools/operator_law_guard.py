@@ -32,7 +32,8 @@ if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
 from tools.hook_chain import BASH_TOOLS  # noqa: E402 — the ONE shell-tool roster (RC-520)
-from tools.shell_parse import PYTHON, Statement, git_parts, git_subcommand, parse_python, read, reads_stdin  # noqa: E402 — the ONE shell reader
+from tools.shell_parse import (  # noqa: E402 — the ONE shell reader
+    IEX, PWSH, PYTHON, Statement, git_parts, git_subcommand, parse_python, pwsh_option, read, reads_stdin)  # noqa: E402 — the ONE shell reader
 
 #: RC-273 — the gitignored tree with no history. A path SEGMENT: `AppData/`, `mydata/`, `_data/`
 #: do not match; `data/x`, `./data/x`, `C:/repo/data/x` do.
@@ -109,14 +110,15 @@ def _unseen(st: Statement, ps: bool) -> str:
     -EncodedCommand, Invoke-Expression."""
     if not st.words:                     # an assignment or a redirect alone runs no program
         return ""
-    name, args, first = st.program, [a.lower() for a in st.words[1:]], st.words[0]
-    if name in ("iex", "invoke-expression"):
+    name, args, first = st.program, st.words[1:], st.words[0]
+    if name in IEX:
         return "Invoke-Expression runs text"
-    if name in ("pwsh", "powershell") and any(
-            a in ("-e", "-ec") or (a.startswith("-en") and "-encodedcommand".startswith(a)) for a in args):
+    if name in PWSH and (pwsh_option(args, "-encodedcommand") is not None or "-ec" in (a.lower() for a in args)):
         return "-EncodedCommand"
-    called = st.raw[0].startswith("& ")
-    if first.startswith(("$", "(")) if called else (not ps and first.startswith(("$", "`"))):
+    called = st.raw[0].startswith("& ")             # PowerShell's call operator, as written
+    if called and first.startswith(("$", "(")):
+        return f"the program is built at run time ({first})"
+    if not called and not ps and first.startswith(("$", "`")):
         return f"the program is built at run time ({first})"
     if st.upstream is not None and not PYTHON.fullmatch(name) and reads_stdin(st):
         return f"text piped into {name}"
@@ -170,7 +172,7 @@ def bash_violations(cmd: str, ledger=None, payload_cwd: str = "", powershell: bo
                    "a pipe or </dev/null). On Windows an empty heredoc or </dev/null looks like a "
                    "console and Python 3.13's REPL retries forever. Put the code in a script file and "
                    "run it, or use `python -c`.")
-    unseen = [u for st in statements for u in [_unseen(st, powershell)] if u]
+    unseen = list(filter(None, (_unseen(st, powershell) for st in statements)))
     if unseen:
         out.append(f"ACTION BLOCKED: the guards cannot see what this runs ({'; '.join(unseen)}). Write the "
                    "command plainly: the program and its arguments as literal words — no $variable or "

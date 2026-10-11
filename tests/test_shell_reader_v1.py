@@ -54,6 +54,11 @@ def test_python_code_too_deep_or_unencodable_to_parse_runs_nothing(code):
     assert [list(st.words[:2]) for st in read(f'python -c "{code}"')] == [["python", "-c"]]
 
 
+@pytest.mark.parametrize("wrapper", ["command", "time", "nohup", "call", "exec"])
+def test_a_wrapper_without_valued_options_wraps(wrapper):
+    assert ["gh", "pr", "merge", "5"] in [list(st.words) for st in read(f"{wrapper} gh pr merge 5")]
+
+
 def test_a_called_quoted_path_is_a_program_word():
     st = read('& "C:\\Program Files\\GitHub CLI\\gh" pr merge 5', powershell=True)[-1]
     assert st.program == "gh" and st.raw[0] == '& "C:\\Program Files\\GitHub CLI\\gh"'

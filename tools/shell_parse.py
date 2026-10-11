@@ -442,7 +442,15 @@ _PY_SHELL_CALLS = frozenset({"system", "popen", "run", "call", "check_call", "ch
 PYTHON = re.compile(r"python[\d.]*w?|py")
 _CD = frozenset({"cd", "pushd", "chdir", "set-location", "sl"})
 _SH = frozenset({"bash", "sh", "zsh", "dash", "ksh"})
-_PWSH = frozenset({"pwsh", "powershell"})
+PWSH = frozenset({"pwsh", "powershell"})
+#: PowerShell's command that runs the text it is given
+IEX = frozenset({"iex", "invoke-expression"})
+
+
+def pwsh_option(args, name: str) -> int | None:
+    """The index of PowerShell option `name` among `args`, spelled as any prefix of it
+    (`-c`, `-com`, `-Command`); None when it is absent."""
+    return next((i for i, a in enumerate(args) if len(a) > 1 and name.startswith(a.lower())), None)
 _SH_COMMAND = re.compile(r"-[A-Za-z]*c[A-Za-z]*")
 _PRINTERS = frozenset({"echo", "printf", "write-output"})
 _EXEC = frozenset({"-exec", "-execdir", "-ok", "-okdir"})
@@ -489,8 +497,9 @@ def _skip_wrapper(vals: list[str], i: int) -> int:
     """The index past wrapper `vals[i]` (a runner with its `run`) and its options (and timeout's
     duration)."""
     name = program_name(vals[i])
-    takes = _WRAPPERS.get(name) or _RUNNERS[name]
-    i += 2 if name in _RUNNERS else 1
+    runner = name in _RUNNERS
+    takes = _RUNNERS[name] if runner else _WRAPPERS[name]
+    i += 2 if runner else 1
     while i < len(vals) and vals[i].startswith("-") and vals[i] != "-":
         if vals[i] == "--":
             i += 1
@@ -516,12 +525,10 @@ def _command(vals: list[str], raws: list[str], redirects: tuple, heredoc: str | 
             i += 1
             while i < len(vals) and vals[i].startswith("-"):
                 i += 1
-        elif program_name(vals[i]) in _RUNNERS and vals[i + 1:i + 2] == ["run"]:
-            i = _skip_wrapper(vals, i)
         elif program_name(vals[i]) == "env" and (split := next(
                 (j for j in range(i + 1, len(vals)) if vals[j] in ("-S", "--split-string")), None)) is not None:
             return _nested(" ".join(vals[split + 1:]), ctx)              # env -S 'cmd args'
-        elif program_name(vals[i]) in _WRAPPERS:
+        elif program_name(vals[i]) in _WRAPPERS or (program_name(vals[i]) in _RUNNERS and vals[i + 1:i + 2] == ["run"]):
             i = _skip_wrapper(vals, i)
         else:
             break
@@ -546,7 +553,7 @@ def _scripts(st: Statement) -> list[tuple[str, bool]]:
     name, args = st.program, list(st.words[1:])
     if name == "eval":
         return [(" ".join(args), False)]
-    if name in ("iex", "invoke-expression"):
+    if name in IEX:
         return [(" ".join(args) if args else st.stdin or "", True)]
     if PYTHON.fullmatch(name):
         code = [args[i + 1] for i, a in enumerate(args[:-1]) if a == "-c"] + ([st.stdin] if st.stdin else [])
@@ -554,13 +561,13 @@ def _scripts(st: Statement) -> list[tuple[str, bool]]:
     if name == "cmd":
         k = next((i for i, a in enumerate(args) if a.lower() in ("/c", "/k", "//c", "//k")), None)   # // in Git Bash
         return [(" ".join(args[k + 1:]), False)] if k is not None else []
-    ps = name in _PWSH
+    ps = name in PWSH
     if name in _SH:
         k = next((i for i, a in enumerate(args) if _SH_COMMAND.fullmatch(a)), None)
         if k is not None:
             return [(a, False) for a in args[k + 1:k + 2]]
     elif ps:
-        k = next((i for i, a in enumerate(args) if len(a) > 1 and "-command".startswith(a.lower())), None)
+        k = pwsh_option(args, "-command")
         if k is not None and args[k + 1:k + 2] != ["-"]:
             return [(" ".join(args[k + 1:]), True)]
     else:
@@ -590,8 +597,8 @@ def reads_stdin(st: Statement) -> bool:
         return True
     if name in _SH:
         return not any(_SH_COMMAND.fullmatch(a) for a in args) and all(a.startswith("-") for a in args)
-    if name in _PWSH:
-        k = next((i for i, a in enumerate(args) if len(a) > 1 and "-command".startswith(a.lower())), None)
+    if name in PWSH:
+        k = pwsh_option(args, "-command")
         return args[k + 1:k + 2] in ([], ["-"]) if k is not None else all(a.startswith("-") for a in args)
     if name == "node":
         return all(a.startswith("-") for a in args) and not any(
