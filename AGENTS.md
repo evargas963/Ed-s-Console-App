@@ -185,13 +185,11 @@ Hold EdWebConsole to how a financial institution handles systems with real money
   `tests/test_hook_chain_v1.py`).
 - Never `git reset`, `git checkout --`, `git stash` or a force push. Enforced by: `tools/process_lock_guard.py` for
   the forms its test table refuses (`tests/test_reset_guard_v1.py`); every other form — ENF-12.
-- Never `--no-verify`, `git add -A` / `.`, delete or move anything under `data/`, run a python that
-  reads its program from stdin (`python -`, a heredoc, a pipe; use a script file or `python -c`), or run a
-  command the guards cannot see into (a `$variable` or substitution as the program, text piped into a shell
-  or interpreter, `-EncodedCommand`, `Invoke-Expression`; write it plainly). Enforced by:
-  `tools/operator_law_guard.py`, in the forms its tests cover (`tests/test_operator_law_guard_action_bans_v1.py`,
-  `tests/test_protected_paths_v1.py`, `tests/test_guards_read_statements_v1.py`); a script file's contents and a
-  command a python program builds at run time — ENF-12.
+- Never `--no-verify`, `git add -A` / `.`, delete or move anything under `data/`, a python reading its program from
+  stdin (use a script file or `python -c`), or a command the guards cannot see into (a `$variable` as the program, text
+  piped into a shell or interpreter, `-EncodedCommand`, `Invoke-Expression`). Enforced by: `tools/operator_law_guard.py`,
+  in the forms its tests cover (`tests/test_operator_law_guard_action_bans_v1.py`, `tests/test_protected_paths_v1.py`,
+  `tests/test_guards_read_statements_v1.py`); a script file's contents — ENF-12.
 - Edit source one edit at a time, never through a script. Enforced by: `tools/sed_edit_guard.py`
   (`tests/test_sed_edit_guard_v1.py`); the other in-place editors — ENF-14.
 - A file keeps its line endings. Enforced by: `tools/check_eol_style_invariant.py`
