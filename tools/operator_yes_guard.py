@@ -230,7 +230,7 @@ def decide(payload: dict, now: datetime, db: Path) -> "tuple[str, list[str]]":
                 asks.append(f"starts or stops the daemon or the console while the market session is "
                             f"{session} (CLAUDE.md rule 5: production)")
         elif _merges(toks):
-            asks.append(f"merges pull request {_merges(toks)} (AGENTS.md Authority: the operator merges)")
+            asks.append(f"merges pull request {_merges(toks)} (AGENTS.md Authority: a merge asks)")
         elif _pushes_main(toks):
             denies.append("pushes to main: main moves only by a pull request merged on GitHub")
     return (DENY, denies) if denies else (ASK, asks) if asks else (PASS, [])
