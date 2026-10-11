@@ -103,6 +103,7 @@ jobs:
           fi
 
       - name: Run Playwright E2E then full pytest
+        id: run
         env:
           CI: "true"
           ED_CI_OFFLINE: "1"
@@ -137,6 +138,7 @@ jobs:
           set +e
           npm run test:e2e
           e2e_rc=$?
+          echo "e2e_rc=$e2e_rc" >> "$GITHUB_OUTPUT"
           python -m pytest -n "$(nproc)" --dist loadfile --durations=20 -rs
           pytest_rc=$?
           set -e
@@ -147,7 +149,7 @@ jobs:
           exit "$pytest_rc"
 
       - name: Upload each failing Playwright test's trace, screenshot and the full E2E log
-        if: failure()
+        if: failure() && steps.run.outputs.e2e_rc != '' && steps.run.outputs.e2e_rc != '0'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with:
           name: playwright-failures
