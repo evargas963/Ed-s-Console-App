@@ -7,13 +7,15 @@ command as bash or, for the PowerShell tool, as PowerShell:
 
   * statements end at ; & && || | ;; a line break, and the ( ) or { } of a group, outside quotes;
   * a statement behind a keyword (if, then, elif, else, do, while, until, !) or a wrapper (env,
-    time, nice, nohup, sudo, stdbuf, xargs, timeout N, command, exec, call) is the command it
-    wraps; leading VAR=val (PowerShell $env:VAR=val, $x = ) assignments are its `env`;
+    time, nice, nohup, sudo, stdbuf, xargs, timeout N, command, exec, call, wsl, uv/poetry/pipenv/
+    pdm/hatch run, each with its options' values) is the command it wraps; leading VAR=val
+    (export/declare too; PowerShell $env:VAR=val, $x = ) assignments are its `env`;
   * nested statements come before the statement that runs them: a command substitution $( ),
     `` (bash) and <( ), a ( ), @( ) or { } script block inside a statement, a shell's command
-    string (bash/sh/zsh/dash/ksh -c, pwsh/powershell -Command, cmd /c or /k, eval, iex), a heredoc
-    or <<< string fed to a shell, echo/printf/Write-Output text or a cat heredoc piped into one,
-    and find's -exec command;
+    string (bash/sh/zsh/dash/ksh -c, pwsh/powershell -Command, cmd /c or /k, eval, iex, env -S), a
+    heredoc or <<< string fed to a shell, echo/printf/Write-Output text or a cat heredoc piped into
+    one, the literal commands a python program hands os.system or subprocess, and find's -exec
+    command;
   * text in quotes is one word, never a statement; a heredoc body or a PowerShell here-string is
     data unless a shell reads it;
   * cd, pushd, chdir, Set-Location and sl set the `cwd` of the statements after them (a group or
@@ -26,9 +28,11 @@ word, knows no backticks, heredocs or PowerShell, and drops the backslashes of a
 a backtick, a backslash, whitespace or a shell operator, and is a character before anything else;
 in PowerShell the backtick is the escape and a backslash is always a character.
 
-Not seen: a command built at run time (a variable expanded into a command, `$cmd`), a script file
-a statement runs, a PowerShell -EncodedCommand, text piped into a shell from any other program, a
-PowerShell here-string's $( ) and an alias or function defined earlier.
+Not seen into (the law guard refuses each, tools/operator_law_guard.py): a program built at run
+time (`$cmd`, a substitution, PowerShell `& $x`), text piped into a shell, python or node, a
+PowerShell -EncodedCommand, Invoke-Expression. Not seen and not refused: a script file a statement
+runs, a shell command a python program builds at run time, a PowerShell here-string's $( ), a
+`hatch run env:cmd` script name, and an alias or function defined earlier.
 """
 from __future__ import annotations
 

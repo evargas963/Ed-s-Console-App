@@ -30,7 +30,7 @@ Status values: `NEXT` | `IN PROGRESS` | `QUEUED` | `BLOCKED` | `OPERATOR`.
 | ENF-10 | QUEUED | Typed records across module boundaries: a check of cross-module dict payloads. |
 | ENF-11 | QUEUED | Imports at the top (ruff E402) and one formatter per format. |
 | ENF-12 | QUEUED | The agent practices that no machine can see (claims cite output, proof reproducible, read another agent's work, checkpoints, stop words, deploy means restarted and checked in market hours, `&&` chains): listed in `AGENTS.md`, each enforced by the operator's review until a check exists. |
-| ENF-13 | QUEUED | Every PR merges on the operator's yes (AGENTS.md "Authority", operator 2026-10-11): the merges `tools/operator_yes_guard.py` does not see get a check (a web-page merge; `gh` with options before `merge`; a `curl`/`Invoke-RestMethod` PUT or a GraphQL `mergePullRequest`). No CODEOWNERS file (operator's ruling). |
+| ENF-13 | IN PROGRESS | Every PR merges on the operator's yes (AGENTS.md "Authority", operator 2026-10-11): `tools/operator_yes_guard.py` asks before `gh pr merge` with options anywhere and a REST or GraphQL merge sent by `gh api`, curl, wget or Invoke-RestMethod/WebRequest (`tests/test_operator_yes_guard_v1.py`, PR #518); a merge on the GitHub page is the operator's own. Done when both reviewers pass #518 (operator 2026-10-11). No CODEOWNERS file (operator's ruling). |
 | ENF-14 | QUEUED | No source edits through a script. sed is refused by `tools/sed_edit_guard.py` (#449). Open, a separate later change (operator 2026-10-04): the other in-place editors — `perl -i`, `awk`/`gawk -i inplace`, python/node scripts that write files, PowerShell `Set-Content`/`Out-File`/`Add-Content`, `tee`, `ed`/`ex`/`vim` batch edits, `truncate`, `dd`; and the sed guard's gap, sed's own `w` command. Exception (operator 2026-10-11): `unix2dos`/`dos2unix` are allowed for line endings only (restoring a file's endings after a Write), until P1-9's `.gitattributes` rule lands. And `git update-ref --stdin` is beyond the main-branch lock's reach (`tools/process_lock_guard.py`, #455): it reads the ref it writes from standard input, which the hook cannot see. |
 | ENF-15 | QUEUED | Pushed at every hop, nothing polls (`docs/DATA_FLOW.md` §1): the page draws pushed values instead of re-reading routes after a push (P2-3). |
 | ENF-16 | QUEUED | Operator decisions 2–6, 8, 9 in `docs/DATA_FLOW.md` §6: each gets a test when it is built. |
@@ -39,7 +39,11 @@ Status values: `NEXT` | `IN PROGRESS` | `QUEUED` | `BLOCKED` | `OPERATOR`.
 
 Command guards read commands through one quote-aware reader (operator 2026-10-11):
 `read` in `tools/shell_parse.py`; no guard splits, tokenizes or unquotes a command itself
-(`tests/test_shell_reader_v1.py`, `tests/test_guards_read_statements_v1.py`).
+(`tests/test_shell_reader_v1.py`, `tests/test_guards_read_statements_v1.py`). The guards fail closed
+(operator 2026-10-11): a command the reader cannot see into — a program built at run time, text piped
+into a shell or interpreter, a PowerShell -EncodedCommand, Invoke-Expression — is refused with a message
+to write it plainly. `git branch --list` and `--contains` aimed at production are reads (operator
+2026-10-11).
 
 ## Phase 1 — restore and stabilize
 
