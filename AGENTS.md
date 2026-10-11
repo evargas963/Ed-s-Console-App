@@ -162,9 +162,9 @@ Hold EdWebConsole to how a financial institution handles systems with real money
   proves only the paths it covers. Never PASS with a FAIL or NOT_PROVEN open. Both labels stay:
   NOT_PROVEN judges a change, NOT VERIFIED labels a statement ("Claims").
   Enforced by: no machine check — ENF-12.
-- The two reviewers (`.claude/agents/correctness-reviewer.md`, `.claude/agents/requirements-reviewer.md`)
-  flag only correctness problems and breaks of the stated requirements. Enforced by: no machine
-  check — ENF-12.
+- The two reviewers (`.claude/agents/correctness-reviewer.md`; `.claude/agents/requirements-reviewer.md`,
+  the architecture reviewer, which starts with the First gate) flag only correctness problems and
+  breaks of the stated requirements. Enforced by: no machine check — ENF-12.
 
 ## Authority (enforced)
 

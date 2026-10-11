@@ -21,4 +21,4 @@ paths:
   `/api/watchlist` answer carries `tickers`: `tests/e2e/fixtures/watchlist.js`). Enforced by: no
   machine check — ENF-07.
 - The price-history write test keeps its 1.0 s limit; a failure under the flaky hunt's added CPU load
-  is that load, not a defect. Enforced by: no machine check — ENF-08.
+  is that load, not a defect. Enforced by: no machine check — ENF-12.
