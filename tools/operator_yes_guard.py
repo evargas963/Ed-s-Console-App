@@ -78,7 +78,8 @@ GRAPHQL_MERGE = re.compile(r"mergePullRequest|enablePullRequestAutoMerge|mergeBr
 HTTP_CLIENTS = ("curl", "wget", "invoke-restmethod", "irm", "invoke-webrequest", "iwr")
 #: gh options that take a value (the value is not a subcommand)
 GH_VALUE_OPTIONS = ("-R", "--repo", "--hostname", "-X", "--method", "-f", "-F", "--field", "--raw-field",
-                    "-H", "--header", "--input", "-q", "--jq", "-t", "--template")
+                    "-H", "--header", "--input", "-q", "--jq", "-t", "--template", "-b", "--body", "--subject",
+                    "-A", "--author-email", "--match-head-commit")
 #: process ids and image names a stop names (Stop-Process -Id, taskkill /PID, ProcessId=N;
 #: -Name, /IM, Get-Process <name>, Name='x.exe')
 _PIDS = re.compile(r"(?:-id|/pid|processid\s*=)\s*['\"]?(\d[\d,\s]*)", re.I)

@@ -219,6 +219,14 @@ def test_every_merge_route_asks(cmd, tool, markets):
     assert _decide(cmd, CLOSED, markets, tool) == guard.ASK, cmd
 
 
+@pytest.mark.parametrize("cmd", ["gh pr merge --subject 2026 518", "gh pr merge -b 7 --squash 518",
+                                 "gh pr merge --body 7 518", "gh pr merge -A 7 518", "gh pr merge --author-email 7 518",
+                                 "gh pr merge --match-head-commit 1234567 518"])
+def test_the_merge_question_names_the_pull_request_not_an_option_value(cmd, markets):
+    assert guard.decide(_shell(cmd), CLOSED, markets)[1] == [
+        "merges pull request 518 (AGENTS.md Authority)"], cmd
+
+
 @pytest.mark.parametrize("cmd", ["gh pr view 515", "gh pr checks 515", "gh -R o/r pr list",
                                  "curl -s https://api.github.com/repos/o/r/pulls/5",
                                  "bash -c \"gh pr view 5\"", "git commit -m \"asks for eval gh pr merge 5\""])
