@@ -183,6 +183,13 @@ def test_a_branch_listing_aimed_at_production_is_a_read_and_a_new_branch_is_refu
         assert any(lock in b for b in PLG.pretooluse_block("Bash", {"command": cmd})), cmd
 
 
+@pytest.mark.parametrize("cmd", [f": > d\\{D[1:]}/ed_console.db", f"echo x >> d\\{D[1:]}/ed_console.db",
+                                 f"ls 2> d\\{D[1:]}/ed_console.db"])
+def test_a_redirect_into_the_protected_tree_spelled_with_a_backslash_is_refused(cmd):
+    """Bash drops the backslash: `d\\ata/x` is `data/x`."""
+    assert any(f"under {D}/" in b for b in bash_violations(cmd)), cmd
+
+
 def test_a_heredoc_piped_into_python_is_judged_as_python():
     assert any(f"under {D}/" in b for b in bash_violations(
         f"cat <<'EOF' | python -\nimport shutil; shutil.rmtree('{D}/x')\nEOF"))

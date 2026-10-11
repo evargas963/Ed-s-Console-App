@@ -508,10 +508,12 @@ def _statement(words: list[_Word], redirs: list[list], ctx: dict, upstream: Stat
         for text in w.nested:
             out += _nested(text, ctx)
     heredoc = next((r[3] or "" for r in redirs if r[1] in ("<<", "<<-")), None)
-    redirects = tuple((r[1], r[2].value) for r in redirs if r[1] not in ("<<", "<<-"))
+    kept = [r for r in redirs if r[1] not in ("<<", "<<-")]
+    redirects = tuple((r[1], r[2].value) for r in kept)
     raws = [w.raw for w in words]
-    if any(w.bash is not None for w in words):         # bash's reading too, its cd kept to itself
-        out += _command([w.value if w.bash is None else w.bash for w in words], raws, redirects, heredoc,
+    if any(w.bash is not None for w in [*words, *(r[2] for r in kept)]):   # bash's reading too, its cd kept to itself
+        out += _command([w.value if w.bash is None else w.bash for w in words], raws,
+                        tuple((r[1], r[2].value if r[2].bash is None else r[2].bash) for r in kept), heredoc,
                         {**ctx}, upstream)
     return out + _command([w.value for w in words], raws, redirects, heredoc, ctx, upstream)
 
