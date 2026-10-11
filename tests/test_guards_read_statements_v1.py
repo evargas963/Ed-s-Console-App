@@ -151,6 +151,13 @@ def test_a_plain_command_is_not_refused_as_unseen(tool, cmd):
     assert not any(UNSEEN in b for b in bash_violations(cmd, powershell=tool == "PowerShell")), cmd
 
 
+def test_setting_a_gh_alias_is_refused_and_listing_them_passes():
+    """An alias would name a merge in words the merge check does not know."""
+    assert yes_guard.decide({"tool_name": "Bash", "tool_input": {"command": "gh alias set co 'pr checkout'"}},
+                            CLOSED, NO_DB)[0] == yes_guard.DENY
+    assert _yes("gh alias list") == yes_guard.PASS
+
+
 @pytest.mark.parametrize("cmd", ['"/c/Program Files/GitHub CLI/gh" pr merge 5', "'/opt/my tools/gh' pr merge 5"])
 def test_a_quoted_program_path_with_a_space_runs_in_bash(cmd):
     """In bash a quoted program path runs that program; only PowerShell prints a quoted phrase."""

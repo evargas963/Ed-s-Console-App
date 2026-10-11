@@ -15,11 +15,12 @@ shell commands. Each command gets one answer, the strictest of its statements':
     command line cannot be read is put to the operator. A stop whose targets are chosen only when
     it runs (a variable, a pipe) is refused when the command names the daemon or the console, and
     put to the operator while either runs.
-  * A stop or restart of the machine and a merge are put to the operator; a push to main is
-    refused. A merge (`_merges`) is `gh pr merge` with options anywhere, or a REST merge or a
+  * A stop or restart of the machine and a merge are put to the operator; a push to main and
+    `gh alias set` (an alias could name a merge in other words) are refused. A merge (`_merges`) is `gh pr merge` with options anywhere, or a REST merge or a
     GraphQL mergePullRequest sent by `gh api`, curl, wget or Invoke-RestMethod/WebRequest, in any
     statement the command runs; a GraphQL request whose body is read from a file asks too. A merge
-    on the GitHub page is not a shell command and is not seen (ENF-13).
+    clicked in a browser or run from a script file is not a shell command this guard sees
+    (GITHUB-LOCK in ACTIVE_PROGRAM.md).
 
 Limits: shell commands are judged on the statements they run, as tools/shell_parse.read reads them
 (behind a keyword, a wrapper or a subshell, inside a shell's command string), never on names
@@ -232,6 +233,8 @@ def decide(payload: dict, now: datetime, db: Path) -> "tuple[str, list[str]]":
             asks.append(f"merges pull request {pr} (AGENTS.md Authority)")
         elif _pushes_main(st):
             denies.append("pushes to main: main moves only by a pull request merged on GitHub")
+        elif st.program == "gh" and [a for a in st.words[1:] if not a.startswith("-")][:2] == ["alias", "set"]:
+            denies.append("sets a gh alias: an alias can name a merge in words the merge check does not know")
     return (DENY, denies) if denies else (ASK, asks) if asks else (PASS, [])
 
 
