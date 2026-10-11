@@ -137,7 +137,8 @@ async def serve_live_push(bus: MessageBus, stop: asyncio.Event, *,
     async def handler(ws):
         await _serve_client(ws, bus, stats, on_request)
 
-    async with serve(handler, host, port, max_size=None, ping_interval=20, ping_timeout=20):
-        stats["listening"] = f"ws://{host}:{port}"
-        log.info("live push: serving Schwab stream messages on ws://%s:%s", host, port)
+    async with serve(handler, host, port, max_size=None, ping_interval=20, ping_timeout=20) as server:
+        bound = server.sockets[0].getsockname()[1]      # the port taken (port 0: the system's pick)
+        stats["listening"] = f"ws://{host}:{bound}"
+        log.info("live push: serving Schwab stream messages on ws://%s:%s", host, bound)
         await stop.wait()

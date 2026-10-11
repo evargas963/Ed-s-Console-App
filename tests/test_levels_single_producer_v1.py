@@ -114,21 +114,32 @@ def test_api_levels_b1_contract_single_session_prior_day():
 # ── RC-227: one-faucet closeout locks (mission one-faucet-closeout-v1) ────────────────
 
 
-def test_strikes_payload_carries_server_side_sums(monkeypatch):
+def test_strikes_payload_carries_server_side_sums():
     """STRIP server half: /api/terrain/strikes serves today_side_sums computed against the
-    payload's own spot — the one aggregator."""
+    payload's own spot — the one aggregator. Stand-ins: ZZSUMS's published rows in the console's
+    cache, its price row at 100 with the feed live; no capture of it is stored (no prior day)."""
     import json
+    import time
 
+    import live_market_plane as lmp
     import server as srv
+    from app.options.order_flow import streaming as ofs
 
-    monkeypatch.setattr(srv, "terrain_cache_get", lambda tk: {
-        "_per_strike": {"all": [[95.0, 10.0, 100], [105.0, -4.0, 50]],
-                        "near": [], "far": []},
-        "spot": 100.0, "computed_ts_utc": 1.0,
-    })
-    monkeypatch.setattr(srv, "resolve_spot", lambda tk, **kw: (100.0, "schwab_quote_last", 1.0))
-    monkeypatch.setattr(srv, "last_capture_per_day", lambda *a, **k: [])   # no prior day
-    resp = srv.get_terrain_strikes(ticker="SPY")
+    tk = "ZZSUMS"
+    with srv._terrain_cache_lock:
+        srv._terrain_cache[tk] = {"_per_strike": {"all": [[95.0, 10.0, 100], [105.0, -4.0, 50]],
+                                                  "near": [], "far": []},
+                                  "spot": 100.0, "computed_ts_utc": 1.0}
+    lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True,
+                               "held": {"LEVELONE_EQUITIES": [tk]}})
+    ofs._price_rows[tk] = {"ticker": tk, "spot": 100.0, "trade_ts": 1.0}
+    try:
+        resp = srv.get_terrain_strikes(ticker=tk)
+    finally:
+        with srv._terrain_cache_lock:
+            srv._terrain_cache.pop(tk, None)
+        ofs._price_rows.pop(tk, None)
+        lmp.record_feed_down()
     payload = json.loads(bytes(resp.body))
     ss = payload["today_side_sums"]
     assert ss["gex_below"] == 10.0 and ss["gex_above"] == -4.0

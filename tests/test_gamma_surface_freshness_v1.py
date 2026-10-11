@@ -70,7 +70,7 @@ def test_the_live_surface_is_served_with_the_live_price_and_its_own_price_named(
 
 
 def test_freshness_is_the_one_terrain_authority_not_a_second_policy(published):
-    live = server.terrain_cache_get(_ON)                          # the one authority
+    live = server.terrain_cache_get(_ON, time.time())             # the one authority
     d = _call(_ON)
     assert d["stale"] == bool(live.get("levels_stale"))
     assert d["age_sec"] == pytest.approx(live.get("levels_age_sec"), abs=5.0)

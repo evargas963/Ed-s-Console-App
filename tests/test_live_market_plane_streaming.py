@@ -108,10 +108,11 @@ def test_a_carried_last_price_is_the_current_price_on_a_live_feed():
     assert row["spot"] == 10.0 and row["spot_received_ts"] == t_trade
     mark_feed_live("CARRY")
     try:
-        price = live_price_rows.price_row("CARRY", time.time())
+        now = time.time()
+        price = live_price_rows.price_row("CARRY", now)
         assert (price["spot"], price["bid"], price["ask"], price["feed_live"]) == (10.0, 9.95, 10.05, True)
         publish_daemon_rows("CARRY")
-        assert server.resolve_spot("CARRY") == (10.0, server.SPOT_SOURCE_PLANE, price["trade_ts"])
+        assert server.resolve_spot("CARRY", now=now) == (10.0, server.SPOT_SOURCE_PLANE, price["trade_ts"])
     finally:
         ofs._price_rows.pop("CARRY", None)
         mark_feed_down()
