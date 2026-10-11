@@ -24,3 +24,5 @@ First gate 4), then start again from step 1.
    fixed or brought to Ed before the PR is offered.
 8. End the report as CLAUDE.md shows: CONFIRMED (each step's output above), NOT VERIFIED, SEEN, NOT
    FIXED — each open item verified, fixed or brought to Ed as a decision (AGENTS.md First gate 5).
+   These steps do not check the live screen, which AGENTS.md's "Done" needs: show it, or list it as
+   NOT VERIFIED.
