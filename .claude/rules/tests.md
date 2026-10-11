@@ -15,10 +15,5 @@ paths:
   unchanged and evidence the timing can't occur in real use; loosened expectations, removed checks and
   retries are refused. Its report follows the `flaky-test-fix` skill. Enforced by: no machine check —
   ENF-12.
-- A test that stands in a heartbeat, a price or a clock stamps it at the time the code under test
-  judges. Enforced by: no machine check — ENF-09.
-- An end-to-end spec answers each route it stands in for in the shape the server serves (a
-  `/api/watchlist` answer carries `tickers`: `tests/e2e/fixtures/watchlist.js`). Enforced by: no
-  machine check — ENF-07.
 - The price-history write test (`tests/test_bars_from_stream_v1.py`) keeps its 1.0 s limit; a failure under the flaky hunt's added CPU load
   is that load, not a defect. Enforced by: no machine check — ENF-12.

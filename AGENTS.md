@@ -1,8 +1,8 @@
 # Ed Console — rules for every change
 
 Before writing a change, read the parts it touches of `docs/DATA_FLOW.md` (design), `ACTIVE_PROGRAM.md` (work order),
-`docs/ARCHITECTURE.md` (code map) and `docs/PRACTICES.md`. A pull request that breaks a rule names the rule. Rules for
-one area load with its files (`.claude/rules/`); procedures are skills (`.claude/skills/`).
+`docs/ARCHITECTURE.md` (code map) and `docs/PRACTICES.md`. Rules for one area load with its files (`.claude/rules/`);
+procedures are skills (`.claude/skills/`).
 
 Every requirement in a section marked (enforced), here, in `.claude/rules/` and in `docs/DATA_FLOW.md`, ends with
 "Enforced by:" naming the test, hook or required check that blocks a violation, or "no machine check" and the ENF item in
@@ -22,11 +22,12 @@ Check every request and every proposal:
 If anything fails, report what failed and why, and leave the failing part out. Claude proposes the smallest, simplest path that passes, using the repo. That proposal is checked against this gate before it goes to Ed for approval.
 4. For every problem, first answer why it happens, down to the code or data that causes it, with evidence. Only then the fix. Never offer a choice about limits, settings or tests until the cause is known.
 5. Every item labeled NOT VERIFIED gets verified, and every item labeled SEEN, NOT FIXED gets fixed at the source, before the work is reported done. An item that can't be closed comes to Ed as a decision, with its evidence and the reason.
+Enforced by (items 4 and 5): `.claude/skills/before-done/SKILL.md` step 7 and `.claude/skills/flaky-test-fix/SKILL.md`.
 
 ### Standard of care
 Hold EdWebConsole to how a financial institution handles systems with real money on the line. These are judgments to apply to every proposal, not things to build:
 - System of record: Schwab is the statement. Our data matches it, and any difference is reported, never plugged.
-- Records stand: received data is never overwritten or deleted. A correction is a new, labeled entry.
+- Records stand: received data is never overwritten or deleted. A correction is a new, labeled entry. Data is deleted only by the keep rule Ed sets.
 - Unknowns surface: an unknown shows as unknown, never estimated or filled in.
 - Change control: no change reaches production without Ed's approval, and one approval covers the change.
 - Four eyes: whoever builds a change is not the only one who verifies it. Two read-only reviewers check every change: an architecture reviewer, against the First gate, and a correctness reviewer, that the change does what it claims, with evidence. While the repo is being brought under control, this applies to every change. Once Ed decides it is stable, it narrows to changes touching stored data, money values, or production.
@@ -46,26 +47,24 @@ Hold EdWebConsole to how a financial institution handles systems with real money
 
 ## Rules (enforced) (operator; a change that cannot meet one stops and goes to the operator)
 
-1. **Simple.** Fewest files, functions and hops that do the job. No prose in code: history,
-   incidents and dates go in the commit message. No patches: a defect is fixed where it is
-   produced, by changing or deleting that code, never by a guard, wrapper, flag, special case or
-   check around it. If that takes a restructure, the restructure is the fix. Every fix is end to
-   end: Schwab to the screen. Nothing new (process, cache, helper, file, check) without a job its
-   existing owner cannot do, shown in the PR; an existing piece that cannot show one is removed.
-   Enforced by: `tools/check_end_to_end.py` in the required `hardening` job
-   (`.github/workflows/hardening.yml`, `tests/test_check_end_to_end_v1.py`) refuses a pull request that
-   changes product code without a real line added to an end-to-end path test, that adds a patch shape
-   (a catch-all or swallowing except that does not log, `contextlib.suppress`, a literal standing in for a missing value),
-   or whose description lacks "Schwab → screen:", "Deleted:" or "End-to-end test:"; the path tests of
-   `docs/DATA_FLOW.md` §2 fail a broken path; a design-level patch — ENF-01.
-2. **Schwab fields as sent.** Not a number: absent, -999, text, NaN or infinity, and a value
-   Schwab's own field definition excludes (a negative volume or size). Everything else is taken
-   as sent; a reported 0 is 0. No other bounds, no substitution. What Schwab sends or accepts is
-   settled by Schwab's own documentation, cited by section: `docs/schwab/schwab_market_data_api_spec.pdf`
-   (Market Data API, with `docs/schwab/schwab_market_data_parameters_chains_quotes.txt` for the
-   expanded /chains and /quotes parameters) and `docs/schwab/schwab_streamer_api.pdf` (Streamer API), from
-   Schwab's Developer Portal. A limit not stated there or in Schwab's own reply is our defect
-   until shown otherwise.
+1. **Simple.** Fewest files, functions and hops that do the job. No prose in code: history, incidents and dates go in
+   the commit message. No patches: a defect is fixed where it is produced, by changing or deleting that code, never by a
+   guard, wrapper, flag, special case or check around it. If that takes a restructure, the restructure is the fix. Every
+   fix is end to end: Schwab to the screen. Nothing new (process, cache, helper, file, check) without a job its existing
+   owner cannot do, shown in the PR; an existing piece that cannot show one is removed.
+   Enforced by: `tools/check_end_to_end.py` in the required `hardening` job (`.github/workflows/hardening.yml`,
+   `tests/test_check_end_to_end_v1.py`) refuses a pull request that changes product code without a real line added to an
+   end-to-end path test, that adds a patch shape (a catch-all or swallowing except that does not log,
+   `contextlib.suppress`, a literal standing in for a missing value), or whose description lacks "Schwab → screen:",
+   "Deleted:" or "End-to-end test:"; the path tests of `docs/DATA_FLOW.md` §2 fail a broken path; a design-level patch —
+   ENF-01.
+2. **Schwab fields as sent.** Not a number: absent, -999, text, NaN or infinity, and a value Schwab's own field
+   definition excludes (a negative volume or size). Everything else is taken as sent; a reported 0 is 0. No other
+   bounds, no substitution. What Schwab sends or accepts is settled by Schwab's own documentation, cited by section:
+   `docs/schwab/schwab_market_data_api_spec.pdf` (Market Data API, with
+   `docs/schwab/schwab_market_data_parameters_chains_quotes.txt` for the expanded /chains and /quotes parameters) and
+   `docs/schwab/schwab_streamer_api.pdf` (Streamer API), from Schwab's Developer Portal. A limit not stated there or in
+   Schwab's own reply is our defect until shown otherwise.
    Enforced by: `tests/test_schwab_as_sent_v1.py`, `tests/test_absence_is_not_zero_v1.py`; the documentation authority — ENF-21.
 3. **One authority.** Each value served, stored or shown has one computation authority.
    Consumers carry its result; they never select, compute, repair or relabel it. A second authority
@@ -74,15 +73,15 @@ Hold EdWebConsole to how a financial institution handles systems with real money
 4. **The UI computes nothing.** Page code formats and draws. Every number, total, choice,
    comparison and date the page shows is served.
    Enforced by: no machine check — ENF-03.
-5. **No substitute paths.** Like a bank balance: live while the market is open, and the balance as
-   of the close while it is closed. In an open session a value whose feed is down, or whose input
-   is missing or invalid, has no current value: it is shown absent with its reason. While Closed,
-   the values as of the close stand until the next session. No value is labeled "past"; no
-   fallback, default, estimate, proxy, carry-forward, interpolation or synthetic value. Test: when
-   the source cannot produce the value now in an open session, the screen shows it absent with its
-   reason, never a value from elsewhere.
-   Enforced by: `tests/test_live_quote_and_order_flow_no_fallbacks_v1.py`,
-   `tests/test_gamma_exposure_honest_absence_v1.py`, and `docs/DATA_FLOW.md` §2 D5.
+5. **The numbers.** The Standard of care applies to every value the app shows or calculates, at all times. Every value
+   comes from its one producer (First gate) and matches what Schwab sent (System of record). Calculations keep every
+   digit and use every contract Schwab sends; rounding happens only on screen. Every value is shown with its time. While
+   it keeps updating, it is live. When it stops updating, for any reason (feed down, market closed, an input missing),
+   the last value stands, marked not live with its time and age, and every value computed from it is marked not live
+   too; during a feed outage the header says OFFLINE. A value never received, or sent by Schwab as invalid (such as
+   -999), shows as unknown with its reason. Never a fallback, default, estimate, proxy, interpolation or synthetic value.
+   Enforced by: `tests/test_live_quote_and_order_flow_no_fallbacks_v1.py`, `tests/test_gamma_exposure_honest_absence_v1.py`
+   and `tests/test_absence_is_not_zero_v1.py` (Schwab's value as sent, unknown when never sent); the rest — ENF-22.
 6. **One path.** Schwab → daemon memory → pushed to the screen. The databases are history:
    `stream_capture.db` every equity message and the kept option contracts for five trading
    sessions (DATA_FLOW D4); `ed_console.db` the chain captures and level crosses; read at
@@ -97,8 +96,7 @@ Hold EdWebConsole to how a financial institution handles systems with real money
    /markets answers; no session table is typed by hand.
    Enforced by: `tests/test_time_et_authority.py`, `tests/test_markets_sessions_v1.py`; the Central
    Time display — ENF-06.
-10. **Real data.** Tests run on captured Schwab data (`tests/fixtures/`) through the real code.
-    A stand-in (e.g. the live price) is named in the test.
+10. **Real data.** Tests run on captured Schwab data (`tests/fixtures/`) through the real code; no stand-ins.
     Enforced by: no machine check — ENF-07.
 
 ## Before writing code (enforced)
@@ -126,14 +124,12 @@ Hold EdWebConsole to how a financial institution handles systems with real money
   (`.github/workflows/pytest.yml`) and `hardening` (`.github/workflows/hardening.yml`) on the final
   commit, current with `main`; the commit hook and `tools/ruff_edited_file.py` run ruff; the Stop hook
   `tools/stop_gate.py` holds the turn until ruff and the touched test files pass.
-- Claims. Every statement about how something is now (a process, a file, a branch, a pull
-  request, a test result, data, the screen) is CONFIRMED only by command output shown in
-  the same reply. Anything else is NOT VERIFIED, with when it was last checked. An earlier
-  check is not current evidence; state changes. This applies to every part of a reply,
-  including summaries, "seen, not fixed" and next steps.
-  Definitions: "Done" = a test that failed before passes after, the full suite passes, and
-  the live screen shows it working. "Across the board" = every watchlist ticker, not one.
-  Enforced by: no machine check — ENF-12.
+- Claims. Every statement about how something is now (a process, a file, a branch, a pull request, a test result,
+  data, the screen) is CONFIRMED only by command output shown in the same reply. Anything else is NOT VERIFIED, with
+  when it was last checked. An earlier check is not current evidence; state changes. This applies to every part of a
+  reply, including summaries, "seen, not fixed" and next steps. Definitions: "Done" = a test that failed before passes
+  after, the full suite passes, and the live screen shows it working (a PR with no app code gets no screen check).
+  "Across the board" = every watchlist ticker, not one. Enforced by: no machine check — ENF-12.
 - Proof is a committed test or a command anyone can re-run. "Pre-existing", "out of scope" and
   "follow-up" are not dispositions. Enforced by: no machine check — ENF-12.
 - No hand-maintained count, floor or list that a check compares against; the check computes it.
@@ -159,23 +155,22 @@ Hold EdWebConsole to how a financial institution handles systems with real money
 - **PASS**: every required condition proven. **FAIL**: any condition violated. **NOT_PROVEN**: any
   condition without proof. A proof is CONFIRMED evidence on the final commit and names its tier (unit,
   integration, browser, deployed app, live market); one tier never stands in for another, and a check
-  proves only the paths it covers. Never PASS with a FAIL or NOT_PROVEN open. Both labels stay:
-  NOT_PROVEN judges a change, NOT VERIFIED labels a statement ("Claims"); `docs/PRACTICES.md` §H stays as written.
-  Enforced by: no machine check — ENF-12.
-- The two reviewers (`.claude/agents/correctness-reviewer.md`; `.claude/agents/requirements-reviewer.md`,
-  the architecture reviewer, which starts with the First gate) flag only correctness problems and
-  breaks of the stated requirements. Enforced by: no machine check — ENF-12.
+  proves only the paths it covers. Never PASS with a FAIL or NOT_PROVEN open. Both labels stay: NOT_PROVEN judges a
+  change, NOT VERIFIED labels a statement ("Claims"). `docs/PRACTICES.md` §H and the First gate's "the prompt builder"
+  stay as written. Enforced by: no machine check — ENF-12.
+- The two reviewers (`.claude/agents/correctness-reviewer.md`; `.claude/agents/requirements-reviewer.md`, the
+  architecture reviewer, which starts with the First gate) check every change, because the operator has not decided the
+  repo is stable, and flag only correctness problems and breaks of the stated requirements.
+  Enforced by: `.claude/skills/before-done/SKILL.md` step 7; the rest — ENF-12.
 
 ## Authority (enforced)
 
 - At each milestone (a commit, a failed check, a finding that changes the plan), report to the operator
   what changed, what was deleted, each proof and its tier, and what is NOT_PROVEN, then continue.
   Enforced by: no machine check — ENF-12.
-- A PR merges when its required proof on its final commit is complete and CI is green. Enforced by:
-  branch protection on `main` requires `.github/workflows/pytest.yml` and
-  `.github/workflows/hardening.yml` to pass on a branch current with `main`.
-- A change to AGENTS.md, CLAUDE.md, `docs/DATA_FLOW.md`, `.claude/`, CI, a hook or a check is merged
-  only by the operator. Enforced by: no machine check — ENF-13.
+- A PR merges on the operator's yes after CI is green on its final commit; that yes also covers its deploy.
+  Enforced by: branch protection on `main` requires `.github/workflows/pytest.yml` and `.github/workflows/hardening.yml`
+  to pass on a branch current with `main`; `tools/operator_yes_guard.py` asks Allow/Deny for every merge.
 - Stop for the operator's STOP / PAUSE / HANG IT UP / DO NOT CONTINUE / NO, a task marked AUDIT ONLY
   or DO NOT MERGE, a destructive data action, and a product decision code cannot settle. Say in chat
   what a guarded action is for before running it. Enforced by: `tools/operator_yes_guard.py` asks Allow/Deny for a daemon or console start or stop

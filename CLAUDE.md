@@ -13,15 +13,16 @@ so a wrong number that looks right is worse than a blank with a reason.
    My yes covers every file fix inside that task; ask again only for work outside the plan.
    A new file needs no approval.
    One small task per session.
-4. Tests verify correctness; they do not define it. Writing, changing or deleting a test
-   needs no approval, and every test rule still applies, including the flaky-test rule:
-   loosening, skipping or removing a check is a bypass and is refused.
+4. Tests verify correctness; they do not define it. Writing or changing a test needs no
+   approval, and neither does deleting a test together with the code it tests. Every test
+   rule still applies, including the flaky-test rule: loosening or skipping a check, or
+   removing one that still guards live code, is a bypass and is refused.
 5. Local, reversible steps are fine. Anything that changes production or is hard to
-   undo (request rates, limits, settings, deploys, deleting data) needs my yes to that
-   specific action, because the app runs on my live Schwab account. A daemon or console
-   start, stop or restart outside regular hours (the session tools/operator_yes_guard.py
-   reads from Schwab's /markets answer) needs no yes: post a notice in chat, stop cleanly,
-   and confirm both are back. During regular hours or an unknown session, it asks.
+   undo (request rates, limits, settings) needs my yes to that specific action, because
+   the app runs on my live Schwab account. A daemon or console start, stop or restart
+   outside regular hours (the session tools/operator_yes_guard.py reads from Schwab's
+   /markets answer) needs no yes: post a notice in chat, stop cleanly, and confirm both
+   are back. During regular hours or an unknown session, it asks.
 6. After two failed attempts at the same thing, stop and report what you tried.
 7. If rules conflict: correctness of what I see > my explicit yes > speed.
 

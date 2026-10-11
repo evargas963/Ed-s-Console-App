@@ -23,7 +23,9 @@ First gate 4), then start again from step 1.
    (`git diff origin/main...HEAD`, with the PR description, the operator's task and the output of
    steps 1–6). Show each verdict
    (PASS / FAIL / NOT_PROVEN) and its findings, and put both verdicts in the PR description. A FAIL or
-   NOT_PROVEN is fixed or proven, or brought to Ed, before the PR is offered.
+   NOT_PROVEN is fixed or proven, or brought to Ed, before the PR is offered. Before bringing Ed a
+   decision, check AGENTS.md, CLAUDE.md and ACTIVE_PROGRAM.md for a rule or recorded decision that
+   answers it; if one does, apply it and cite it. A decision goes to Ed only when none does.
 8. End the report as CLAUDE.md shows: CONFIRMED (each step's output above), NOT VERIFIED, SEEN, NOT
    FIXED — each open item verified, fixed or brought to Ed as a decision (AGENTS.md First gate 5).
    These steps do not check the live screen, which AGENTS.md's "Done" needs: show it, or list it as
