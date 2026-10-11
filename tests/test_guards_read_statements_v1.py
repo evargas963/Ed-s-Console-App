@@ -127,7 +127,8 @@ def test_the_reviewers_merge_forms_ask(tool, cmd):
                                  f"uv run --python-preference only-system python -c \"import shutil; shutil.rmtree('{D}/x')\"",
                                  f"python -c\"import shutil; shutil.rmtree('{D}/x')\"",
                                  f"python -Ic \"import shutil; shutil.rmtree('{D}/x')\"",
-                                 f"r\\m -rf {D}/x", f"rm -rf d\\ata/x"])
+                                 f"r\\m -rf {D}/x", f"rm -rf d\\ata/x",
+                                 f"wipe(){{ rm -rf {D}/x; }}; wipe", f"wipe() {{ rm -rf {D}/x; }}; wipe"])
 def test_the_reviewers_data_deletes_are_refused(cmd):
     assert any(f"under {D}/" in b for b in bash_violations(cmd)), cmd
 
@@ -138,6 +139,10 @@ def test_the_reviewers_data_deletes_are_refused(cmd):
     ("Bash", "X=$(date); echo $X"), ("Bash", "cat f | grep x"), ("PowerShell", "$p = Get-Process -Id 5"),
     ("PowerShell", "$p.WaitForExit(60000)"), ("PowerShell", "pwsh -File x.ps1"), ("PowerShell", 'powershell -Command "Get-Date"'),
     ("PowerShell", '& "C:\\Program Files\\GitHub CLI\\gh" pr view 5'), ("PowerShell", "& { Get-Date }"),
+    # a group after a keyword or `time`, and a bash function definition (shapes from the replay)
+    ("Bash", 'until { [ -s "$D/a.md" ] && [ -s "$D/b.md" ]; } || [ $(date +%s) -gt $end ]; do sleep 10; done'),
+    ("Bash", "time (echo '{}' | grep x)"), ("Bash", 'for w in a b; do (cd "$w" && echo "$(git rev-parse HEAD)"); done'),
+    ("Bash", 'show(){ f=$1; t=$2; n=$(grep -n "def $t" $f | cut -d: -f1); echo $n; }; show a.py t'),
     # PowerShell inside a bash command is read as PowerShell: `$_...` there is an expression
     ("Bash", "powershell -NoProfile -Command \"Get-CimInstance Win32_Process | Where-Object { \\$_.CommandLine "
              "-match 'uvicorn' } | Select-Object ProcessId\""),

@@ -342,8 +342,11 @@ class _Lexer:
                 i = j + 1
             elif c in "({":                    # inside a word: `.Kill()`, `::Start('x')`, `a=(x y)`
                 j = self.close(i + 1, c, ")" if c == "(" else "}")
-                nested += [s[i + 1:j]] if self.ps else self.substituted(s[i + 1:j])   # PowerShell runs ( )
-                value.append(s[i:j + 1])
+                if c == "{" and not self.ps and "".join(value).endswith("()"):   # bash `name(){ body }`
+                    nested.append(s[i + 1:j])
+                else:
+                    nested += [s[i + 1:j]] if self.ps else self.substituted(s[i + 1:j])   # PowerShell runs ( )
+                    value.append(s[i:j + 1])
                 i = j + 1
             else:
                 value.append(c)
@@ -419,12 +422,14 @@ class _Lexer:
                 if called:                     # written `& word` / `. word`: a program, not a printed string
                     w, called = _Word(w.value, called + w.raw, w.nested), ""
                 tokens.append(["w", w])
-                fresh = False
+                fresh = fresh and w.raw in _GROUP_PREFIX   # `until { ...; }`, `time ( ... )`: still a group
         return tokens
 
 
 # ── statements ───────────────────────────────────────────────────────────────────────────────
 _KEYWORDS = frozenset({"if", "then", "elif", "else", "do", "while", "until", "!", "fi", "done", "esac"})
+#: words after which a ( ) or { } still opens a group
+_GROUP_PREFIX = _KEYWORDS | {"time"}
 _ASSIGNMENT = re.compile(r"^(?:\$env:)?[A-Za-z_]\w*\+?=", re.I)
 #: programs that run the command they are given, and their options that take a separate value
 _WRAPPERS = {
