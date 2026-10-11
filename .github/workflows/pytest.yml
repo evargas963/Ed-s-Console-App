@@ -103,6 +103,7 @@ jobs:
           fi
 
       - name: Run Playwright E2E then full pytest
+        id: run
         env:
           CI: "true"
           ED_CI_OFFLINE: "1"
@@ -135,8 +136,9 @@ jobs:
           # was a proxy for the run this job already performs and reports exactly.
           # Local `npm run test:all` stays serial (unchanged by this).
           set +e
-          npm run test:e2e
+          npm run test:e2e -- --trace retain-on-failure
           e2e_rc=$?
+          echo "e2e_rc=$e2e_rc" >> "$GITHUB_OUTPUT"
           python -m pytest -n "$(nproc)" --dist loadfile --durations=20 -rs
           pytest_rc=$?
           set -e
@@ -145,6 +147,19 @@ jobs:
             exit "$e2e_rc"
           fi
           exit "$pytest_rc"
+
+      - name: Upload Playwright failure traces and the E2E log
+        if: failure() && steps.run.outputs.e2e_rc != '0'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: playwright-failures
+          path: |
+            test-results/**/trace.zip
+            test-results/**/error-context.md
+            logs/test_e2e_last.log
+          if-no-files-found: ignore
+          compression-level: 0
+          retention-days: 14
 
       - name: A changed test fails on the old code (AGENTS.md, Before writing code)
         if: github.event_name == 'pull_request'
