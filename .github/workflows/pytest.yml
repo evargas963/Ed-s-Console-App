@@ -136,7 +136,8 @@ jobs:
           # was a proxy for the run this job already performs and reports exactly.
           # Local `npm run test:all` stays serial (unchanged by this).
           set +e
-          npm run test:e2e
+          # a failing test keeps its trace (with its screenshots) for the upload step below
+          npm run test:e2e -- --trace retain-on-failure
           e2e_rc=$?
           echo "e2e_rc=$e2e_rc" >> "$GITHUB_OUTPUT"
           python -m pytest -n "$(nproc)" --dist loadfile --durations=20 -rs
@@ -148,7 +149,7 @@ jobs:
           fi
           exit "$pytest_rc"
 
-      - name: Upload each failing Playwright test's trace, screenshot and the full E2E log
+      - name: Upload each failing Playwright test's trace (with its screenshots) and the full E2E log
         if: failure() && steps.run.outputs.e2e_rc != '' && steps.run.outputs.e2e_rc != '0'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with:
