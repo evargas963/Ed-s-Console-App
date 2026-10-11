@@ -411,8 +411,17 @@ _WRAPPERS = {
     "timeout": {"-s", "--signal", "-k", "--kill-after"}, "command": set(), "exec": {"-a"}, "call": set(),
     "wsl": {"-d", "--distribution", "-u", "--user", "--cd"},
 }
-#: project runners whose `run` runs the command after it: `uv run python ...`
-_RUNNERS = frozenset({"uv", "poetry", "pipenv", "pdm", "hatch"})
+#: project runners whose `run` runs the command after it (`uv run python ...`), and their options
+#: that take a separate value
+_RUNNERS = {
+    "uv": {"--with", "--with-editable", "--with-requirements", "-p", "--python", "--project", "--directory",
+           "--package", "--extra", "--group", "--only-group", "--no-group", "--env-file", "--index",
+           "--default-index", "-i", "--index-url", "--extra-index-url", "-f", "--find-links", "--python-platform",
+           "--config-file", "--cache-dir", "--color", "--exclude-newer", "--resolution", "--prerelease",
+           "--link-mode", "-C", "--config-setting", "--keyring-provider", "--allow-insecure-host"},
+    "poetry": {"-C", "--directory", "-P", "--project"}, "pipenv": set(), "pdm": {"-p", "--project"},
+    "hatch": set(),
+}
 #: builtins whose VAR=val arguments set the environment
 _EXPORTS = frozenset({"export", "declare", "typeset", "readonly", "local"})
 #: what a python program can hand a shell: os.system / os.popen / subprocess's runners
@@ -465,10 +474,11 @@ def _statement(words: list[_Word], redirs: list[list], ctx: dict, upstream: Stat
 
 
 def _skip_wrapper(vals: list[str], i: int) -> int:
-    """The index past wrapper `vals[i]` and its options (and timeout's duration)."""
+    """The index past wrapper `vals[i]` (a runner with its `run`) and its options (and timeout's
+    duration)."""
     name = program_name(vals[i])
-    takes = _WRAPPERS[name]
-    i += 1
+    takes = _WRAPPERS.get(name) or _RUNNERS[name]
+    i += 2 if name in _RUNNERS else 1
     while i < len(vals) and vals[i].startswith("-") and vals[i] != "-":
         if vals[i] == "--":
             i += 1
@@ -495,9 +505,7 @@ def _command(vals: list[str], raws: list[str], redirects: tuple, heredoc: str | 
             while i < len(vals) and vals[i].startswith("-"):
                 i += 1
         elif program_name(vals[i]) in _RUNNERS and vals[i + 1:i + 2] == ["run"]:
-            i += 2
-            while i < len(vals) and vals[i].startswith("-"):
-                i += 1
+            i = _skip_wrapper(vals, i)
         elif program_name(vals[i]) == "env" and (split := next(
                 (j for j in range(i + 1, len(vals)) if vals[j] in ("-S", "--split-string")), None)) is not None:
             return _nested(" ".join(vals[split + 1:]), ctx)              # env -S 'cmd args'

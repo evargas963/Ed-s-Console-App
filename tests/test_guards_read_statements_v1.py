@@ -82,6 +82,13 @@ def test_a_kill_named_in_a_message_or_a_here_string_passes(tool, cmd):
     assert yes_guard.decide({"tool_name": tool, "tool_input": {"command": cmd}}, CLOSED, NO_DB)[0] == yes_guard.PASS
 
 
+@pytest.mark.parametrize("runner", ["uv run --with requests", "uv run -p 3.12", "uv run --python 3.12 --project .",
+                                    "poetry run -C .", "pdm run -p ."])
+def test_a_python_behind_a_runner_with_valued_options_is_judged(runner):
+    assert any(f"under {D}/" in b for b in bash_violations(
+        f"{runner} python -c \"import shutil; shutil.rmtree('{D}/x')\""))
+
+
 def test_a_heredoc_piped_into_python_is_judged_as_python():
     assert any(f"under {D}/" in b for b in bash_violations(
         f"cat <<'EOF' | python -\nimport shutil; shutil.rmtree('{D}/x')\nEOF"))
