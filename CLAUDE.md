@@ -11,6 +11,7 @@ so a wrong number that looks right is worse than a blank with a reason.
    a result that only looks finished costs me days.
 3. Keep the plan short (what changes and how you'll prove it), then wait for my yes.
    My yes covers every file fix inside that task; ask again only for work outside the plan.
+   A new file needs no approval.
    One small task per session.
 4. Tests verify correctness; they do not define it. Writing, changing or deleting a test
    needs no approval, and every test rule still applies, including the flaky-test rule:
