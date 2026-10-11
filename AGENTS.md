@@ -160,7 +160,7 @@ Hold EdWebConsole to how a financial institution handles systems with real money
   condition without proof. A proof is CONFIRMED evidence on the final commit and names its tier (unit,
   integration, browser, deployed app, live market); one tier never stands in for another, and a check
   proves only the paths it covers. Never PASS with a FAIL or NOT_PROVEN open. Both labels stay:
-  NOT_PROVEN judges a change, NOT VERIFIED labels a statement ("Claims").
+  NOT_PROVEN judges a change, NOT VERIFIED labels a statement ("Claims"); `docs/PRACTICES.md` §H stays as written.
   Enforced by: no machine check — ENF-12.
 - The two reviewers (`.claude/agents/correctness-reviewer.md`; `.claude/agents/requirements-reviewer.md`,
   the architecture reviewer, which starts with the First gate) flag only correctness problems and
