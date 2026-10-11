@@ -1,14 +1,25 @@
 # Ed Console — rules for every change
 
-Design: `docs/DATA_FLOW.md`. Work order: `ACTIVE_PROGRAM.md`. Code map: `docs/ARCHITECTURE.md`.
-Practices: docs/PRACTICES.md. A pull request that breaks one of its rules names the rule number.
-Read the parts a change touches before writing it.
+Before writing a change, read the parts it touches of `docs/DATA_FLOW.md` (design), `ACTIVE_PROGRAM.md`
+(work order), `docs/ARCHITECTURE.md` (code map) and `docs/PRACTICES.md`. A pull request that breaks a
+rule names the rule. Rules for one area load with its files (`.claude/rules/`); procedures are skills
+(`.claude/skills/`): `before-done`, `flaky-test-fix`, `deploy`, `stream-db-switch`, `housekeeping`.
 
-Every requirement in a section marked (enforced), in this file and in `docs/DATA_FLOW.md`, ends
-with "Enforced by:" naming the test, hook or required check that blocks a violation, or, where
-none exists yet, "no machine check" and the ENF work item in `ACTIVE_PROGRAM.md` that builds one.
-Enforced by: `tests/test_governing_docs_v1.py` fails CI when a requirement lacks the line, names
-a file that does not exist, or names an ENF item that is not in `ACTIVE_PROGRAM.md`.
+Every requirement in a section marked (enforced), here, in `.claude/rules/` and in `docs/DATA_FLOW.md`,
+ends with "Enforced by:" naming the test, hook or required check that blocks a violation, or "no machine
+check" and the ENF item in `ACTIVE_PROGRAM.md` that builds one.
+Enforced by: `tests/test_governing_docs_v1.py`.
+
+## First gate (enforced) (the operator's items 4 and 5, as written)
+
+4. For every problem, first answer why it happens, down to the code or data that causes it, with
+   evidence. Only then the fix. Never offer a choice about limits, settings or tests until the cause is
+   known.
+   Enforced by: no machine check — ENF-12.
+5. Every item labeled NOT VERIFIED gets verified, and every item labeled SEEN, NOT FIXED gets fixed at
+   the source, before the work is reported done. An item that can't be closed comes to Ed as a
+   decision, with its evidence and the reason.
+   Enforced by: no machine check — ENF-12.
 
 ## Rules (enforced) (operator; a change that cannot meet one stops and goes to the operator)
 
@@ -19,14 +30,11 @@ a file that does not exist, or names an ENF item that is not in `ACTIVE_PROGRAM.
    end: Schwab to the screen. Nothing new (process, cache, helper, file, check) without a job its
    existing owner cannot do, shown in the PR; an existing piece that cannot show one is removed.
    Enforced by: `tools/check_end_to_end.py` in the required `hardening` job
-   (`.github/workflows/hardening.yml`) refuses every pull request that changes product code
-   without adding a real line to an end-to-end path test, that adds a patch shape (a catch-all
-   or swallowing except, `contextlib.suppress`, a literal standing in for a missing value,
-   missing data repaired), or whose description lacks "Schwab → screen:", "Deleted:" or
-   "End-to-end test:" or leaves one empty (`tests/test_check_end_to_end_v1.py`). It checks code
-   shapes only. The path tests of `docs/DATA_FLOW.md` §2 fail any change that leaves the path
-   broken. What no machine can see (a design-level patch, a test that does not cover the change)
-   — ENF-01.
+   (`.github/workflows/hardening.yml`, `tests/test_check_end_to_end_v1.py`) refuses a pull request that
+   changes product code without a real line added to an end-to-end path test, that adds a patch shape
+   (a catch-all or swallowing except, `contextlib.suppress`, a literal standing in for a missing value),
+   or whose description lacks "Schwab → screen:", "Deleted:" or "End-to-end test:"; the path tests of
+   `docs/DATA_FLOW.md` §2 fail a broken path; a design-level patch — ENF-01.
 2. **Schwab fields as sent.** Not a number: absent, -999, text, NaN or infinity, and a value
    Schwab's own field definition excludes (a negative volume or size). Everything else is taken
    as sent; a reported 0 is 0. No other bounds, no substitution. What Schwab sends or accepts is
@@ -35,13 +43,13 @@ a file that does not exist, or names an ENF item that is not in `ACTIVE_PROGRAM.
    expanded /chains and /quotes parameters) and `docs/schwab/schwab_streamer_api.pdf` (Streamer API), from
    Schwab's Developer Portal. A limit not stated there or in Schwab's own reply is our defect
    until shown otherwise.
-   Enforced by: `tests/test_schwab_as_sent_v1.py`, `tests/test_absence_is_not_zero_v1.py` (fields as
-   sent); the documentation authority — no machine check, ENF-21.
+   Enforced by: `tests/test_schwab_as_sent_v1.py`, `tests/test_absence_is_not_zero_v1.py`; the
+   documentation authority — ENF-21.
 3. **One authority.** Each value served, stored or shown has one computation authority.
    Consumers carry its result; they never select, compute, repair or relabel it. A second authority
    for the same value is banned whatever it is called: helper, parser, resolver or cache.
-   Enforced by: `tests/test_page_one_faucet_v1.py`, `tests/test_one_levels_producer_v1.py` for
-   the values they drive; the second producers found 2026-10-02 — ENF-02.
+   Enforced by: `tests/test_page_one_faucet_v1.py`, `tests/test_one_levels_producer_v1.py`; the rest
+   — ENF-02.
 4. **The UI computes nothing.** Page code formats and draws. Every number, total, choice,
    comparison and date the page shows is served.
    Enforced by: no machine check — ENF-03.
@@ -61,14 +69,13 @@ a file that does not exist, or names an ENF item that is not in `ACTIVE_PROGRAM.
    Enforced by: `docs/DATA_FLOW.md` §2 D1–D6, each with its own test.
 7. **Nothing without a job.** A change deletes what it replaces, in the same PR. A register, audit,
    report or check lives only while it has a job; once answered, it is deleted.
-   Enforced by: ruff F401 (unused imports) at commit and in the required `hardening` check; the
-   rest — ENF-04.
+   Enforced by: ruff F401 at commit and in the required `hardening` job; the rest — ENF-04.
 8. **All tickers.** Measure and report across every watchlist ticker, never one ticker.
    Enforced by: no machine check — ENF-05.
 9. **Clocks.** Market logic in ET; the UI shows Central Time. The market's sessions are Schwab's
    /markets answers; no session table is typed by hand.
-   Enforced by: `tests/test_time_et_authority.py`, `tests/test_markets_sessions_v1.py`
-   (ET, Schwab's sessions); the Central Time display — ENF-06.
+   Enforced by: `tests/test_time_et_authority.py`, `tests/test_markets_sessions_v1.py`; the Central
+   Time display — ENF-06.
 10. **Real data.** Tests run on captured Schwab data (`tests/fixtures/`) through the real code.
     A stand-in (e.g. the live price) is named in the test.
     Enforced by: no machine check — ENF-07.
@@ -76,124 +83,95 @@ a file that does not exist, or names an ENF item that is not in `ACTIVE_PROGRAM.
 ## Before writing code (enforced)
 
 - Trace each value the change touches: its source, its one producer, its validity rule and time,
-  its live and stored consumers, and what each shows when the value is missing. A producer
-  exists: call it. None exists: write it once, on the server. Enforced by: no machine check — ENF-08.
-- For each responsibility the change touches, name its one lifecycle owner (what starts,
-  refreshes, retries and expires it) and what fails when that owner fails, in the affected
-  section of `docs/DATA_FLOW.md` and in the code. Enforced by: no machine check — ENF-08.
-- Page code: no arithmetic, sum, min/max, sort by value or date math on served data.
-  Enforced by: no machine check — ENF-03.
-- A new check is a test of behavior, for a failure that happened; it fails on the old code; it
-  starts with no exceptions. Enforced by: `tools/check_fails_before.py` in the required
-  `pytest-full` job refuses a PR that changes product code unless one of its changed tests fails
-  on the base (`tests/test_check_fails_before_v1.py`); the rest — ENF-08.
-- Time is an input: a function that depends on the clock takes `now`; only an entry point (a
-  route, a loop, a stream handler) reads the clock. Enforced by: no machine check — ENF-09.
-- A value that crosses a module boundary is a typed record (dataclass), not a dict of string keys;
-  its states are named constants, not free strings. Enforced by: no machine check — ENF-10.
-- Imports at the top of the module. One formatter per format (price, Central Time, dollars), on
-  the server. Enforced by: no machine check — ENF-11.
-- A test exercises behavior through the real code. It never reads source text or pins a private
-  helper; a test whose subject is deleted is deleted with it. Enforced by: no machine check — ENF-08.
-- A test, fixture or helper a pull request adds or changes never patches the code it tests
-  (monkeypatch, mock.patch, a fixture that does, or a patching autouse fixture in its file);
-  the existing ones are cleaned as their files are touched. Enforced by:
-  `tools/check_no_new_patches.py` in the required `hardening` job
-  (`tests/test_check_no_new_patches_v1.py`); the existing ones — TEST-PATCHES.
+  its live and stored consumers, and what each shows when it is missing. A producer exists: call it.
+  None exists: write it once, on the server. Enforced by: no machine check — ENF-08.
+- Name each touched responsibility's one lifecycle owner (what starts, refreshes, retries and expires
+  it) and what fails when that owner fails, in `docs/DATA_FLOW.md` and in the code.
+  Enforced by: no machine check — ENF-08.
+- A new check is a test of behavior for a failure that happened, fails on the old code, and starts
+  with no exceptions. Enforced by: `tools/check_fails_before.py` in the required `pytest-full` job
+  (`tests/test_check_fails_before_v1.py`); the rest — ENF-08.
+- A function that depends on the clock takes `now`; only an entry point (a route, a loop, a stream
+  handler) reads the clock. Enforced by: no machine check — ENF-09.
+- A value that crosses a module boundary is a typed record (dataclass) whose states are named
+  constants. Enforced by: no machine check — ENF-10.
+- Imports at the top of the module. One formatter per format (price, Central Time, dollars), on the
+  server. Enforced by: no machine check — ENF-11.
 
 ## Before saying done (enforced)
 
-- While working: the tests of the files touched. Before the PR is offered: `npm run test:all`
-  (Playwright, then pytest) and `python -m ruff check . --select F401,F821,E9` on its final
-  commit. Enforced by: branch protection on `main` requires `pytest-full` (`.github/workflows/pytest.yml`)
-  and `hardening` (`.github/workflows/hardening.yml`, ruff and compile) on the branch's final
-  commit, kept current with `main`; the pre-commit hooks run ruff on every commit.
-- Never kill a commit hook mid-run; a long one runs in the background. Enforced by: no machine check — ENF-12.
+- The `before-done` skill's checks pass on the PR's final commit, their output shown, before the PR
+  is offered. Enforced by: branch protection on `main` requires `pytest-full`
+  (`.github/workflows/pytest.yml`) and `hardening` (`.github/workflows/hardening.yml`) on the final
+  commit, current with `main`; the commit hook and `tools/ruff_edited_file.py` run ruff; the Stop hook
+  `tools/stop_gate.py` holds the turn until ruff and the touched files' tests pass.
 - Claims. Every statement about how something is now (a process, a file, a branch, a pull
-  request, a test result, data, the screen) is CONFIRMED only by command output shown in the
-  same reply. Anything else is NOT VERIFIED, with when it was last checked. An earlier check
-  is not current evidence; state changes. This applies to every part of a reply, including
-  summaries, "seen, not fixed" and next steps. Each NOT VERIFIED and SEEN, NOT FIXED item is then
-  closed: verified, fixed at its source, or brought to the operator as a decision. Proof is
-  reproducible (a committed test or a command anyone can re-run, never a scratch script). Enforced by: no machine check — ENF-12.
-- A flaky-test fix reports the failure forced on demand before it, the cause as a sequence, that
-  forced timing passing after it plus many runs under load, and what changed. App code with the test
-  unchanged is a real fix; a test-only change keeping its assertions needs evidence the timing can't
-  occur in real use; loosened expectations, removed checks or retries are refused. Enforced by: no machine check — ENF-12.
-- No hand-maintained counts, floors or lists that a check compares against (the check computes
-  them); work another agent wrote is read in full by the agent offering the PR, as its own work.
+  request, a test result, data, the screen) is CONFIRMED only by command output shown in
+  the same reply. Anything else is NOT VERIFIED, with when it was last checked. An earlier
+  check is not current evidence; state changes. This applies to every part of a reply,
+  including summaries, "seen, not fixed" and next steps.
+  Definitions: "Done" = a test that failed before passes after, the full suite passes, and
+  the live screen shows it working. "Across the board" = every watchlist ticker, not one.
   Enforced by: no machine check — ENF-12.
-- A runtime change is on disk only until the process restarts after it; say which. Merged is not
-  deployed; deployed is production at the merge commit, both processes restarted, the real screen
-  checked during market hours. A start brings production to origin/main first, so any start after
-  a merge deploys it. Enforced by: no machine check — ENF-12.
+- Proof is a committed test or a command anyone can re-run. "Pre-existing", "out of scope" and
+  "follow-up" are not dispositions. Enforced by: no machine check — ENF-12.
+- No hand-maintained count, floor or list that a check compares against; the check computes it.
+  Enforced by: no machine check — ENF-12.
+- Work another agent wrote is read in full by the agent offering the PR. Enforced by: no machine
+  check — ENF-12.
+- Say whether a runtime change is live or on disk until a restart. Deployed means production at the
+  merge commit, both processes restarted, and the screen checked during market hours (the `deploy`
+  skill). Enforced by: no machine check — ENF-12.
+- Never kill a commit hook mid-run. Enforced by: no machine check — ENF-12.
 
 ## Close the change (enforced)
 
-- A PR that changes code, a design, a plan or a sequence updates, in the same PR, every affected
-  instruction, design, work item, check, test and caller; removes superseded statements and
-  paths; and lists each affected path without proof as NOT_PROVEN. A finished work item
-  leaves `ACTIVE_PROGRAM.md` in the PR that finishes it. Enforced by:
-  `tests/test_governing_docs_v1.py` (every path the documents name exists); the rest — ENF-12.
+- A PR updates, in itself, every instruction, design, work item, check, test and caller its change
+  affects, removes what it supersedes, and lists each affected path without proof as NOT_PROVEN. A
+  finished work item leaves `ACTIVE_PROGRAM.md` in the PR that finishes it.
+  Enforced by: `tests/test_governing_docs_v1.py` (every path named exists); the rest — ENF-12.
+- Each decision the operator gives in chat is written into `ACTIVE_PROGRAM.md` or this file in the PR
+  that acts on it. Enforced by: no machine check — ENF-12.
 
 ## Review verdicts (enforced)
 
-- A verdict judges a change against its requirements; it is not a label on a statement (that is
-  "Claims", above). **PASS**: every required condition proven. **FAIL**: any condition violated.
-  **NOT_PROVEN**: any condition without proof. A proof is CONFIRMED evidence on the change's
-  final commit; evidence from an earlier commit or an earlier check proves nothing for it. Never
-  PASS with a FAIL or NOT_PROVEN open. Each proof names its tier: unit, integration, browser,
-  deployed app, live market; one tier never stands in for another. A check proves only the
-  paths it covers. Enforced by: no machine check — ENF-12.
-
-## Found broken → fix it (enforced)
-
-- Same session, at its source, end to end (rule 1), or name the exact blocker. "Pre-existing",
-  "out of scope" and "follow-up" are not dispositions. Enforced by: no machine check — ENF-12.
+- **PASS**: every required condition proven. **FAIL**: any condition violated. **NOT_PROVEN**: any
+  condition without proof. A proof is CONFIRMED evidence on the final commit and names its tier (unit,
+  integration, browser, deployed app, live market); one tier never stands in for another, and a check
+  proves only the paths it covers. Never PASS with a FAIL or NOT_PROVEN open.
+  Enforced by: no machine check — ENF-12.
+- The two reviewers flag only correctness problems and breaks of the stated requirements.
+  Enforced by: `.claude/agents/correctness-reviewer.md`, `.claude/agents/requirements-reviewer.md`.
 
 ## Authority (enforced)
 
-- Checkpoints: about every 15 minutes of work the agent reports to the operator what changed,
-  what was deleted, each proof and its tier, and which requirements are NOT_PROVEN, then continues.
-  Enforced by: no machine check — ENF-12.
-- A PR merges when its required proof on its final commit is complete and CI is green; green CI
-  alone is not proof. Enforced by: GitHub branch protection requires the `pytest-full` job of
-  `.github/workflows/pytest.yml` and the `hardening` job of `.github/workflows/hardening.yml`,
-  on a branch current with `main`.
-- A change to AGENTS.md, `docs/DATA_FLOW.md`, CI, a hook or a check is merged only by the
-  operator. Enforced by: no machine check — ENF-13.
-- Stop for: the operator's STOP / PAUSE / HANG IT UP / DO NOT CONTINUE / NO; a task marked AUDIT
-  ONLY or DO NOT MERGE; a destructive data action; a product decision code cannot settle; an
-  operator setting (a count, a rate, a switch) is never changed without the operator's explicit
-  yes to that change. Enforced by: the agent hook `tools/operator_yes_guard.py` (Allow/Deny for a
-  daemon/console start or clean stop in RTH or an unknown session, a machine restart, a merge;
-  refused: killing production, a push to main; `tests/test_operator_yes_guard_v1.py`); the rest — ENF-12.
-- Production checkout `EdWebConsole`: `main == origin/main`, changed only by a fast-forward to it
-  (`git pull --ff-only`, or the start's own, `launch.bring_to_origin_main`).
-  Work in a worktree; main itself moves only by a PR merged on GitHub. Enforced by: the agent hook
-  `tools/process_lock_guard.py` refuses an edit, a shell write or a git verb that moves it off
-  main (`tests/test_operating_process_lock_v1.py`), and a git command from any checkout that
-  writes `refs/heads/main` (`tests/test_hook_chain_v1.py`).
-- Never: `git reset`, `git checkout --`, `git stash`, force push. Enforced by: the agent hook
+- About every 15 minutes of work, report to the operator what changed, what was deleted, each proof
+  and its tier, and what is NOT_PROVEN, then continue. Enforced by: no machine check — ENF-12.
+- A PR merges when its required proof on its final commit is complete and CI is green. Enforced by:
+  branch protection on `main` requires `.github/workflows/pytest.yml` and
+  `.github/workflows/hardening.yml` to pass on a branch current with `main`.
+- A change to AGENTS.md, CLAUDE.md, `docs/DATA_FLOW.md`, `.claude/`, CI, a hook or a check is merged
+  only by the operator. Enforced by: no machine check — ENF-13.
+- Stop for the operator's STOP / PAUSE / HANG IT UP / DO NOT CONTINUE / NO, a task marked AUDIT ONLY
+  or DO NOT MERGE, a destructive data action, and a product decision code cannot settle. An operator
+  setting (a count, a rate, a switch) changes only on the operator's yes to that change. A test change,
+  a file fix or a new file needs no approval. Say in chat what a guarded action is for before running
+  it. Enforced by: `tools/operator_yes_guard.py` asks Allow/Deny for a daemon or console start or stop
+  in regular hours or an unknown session, a machine restart and a merge, and refuses killing production
+  and a push to main (`tests/test_operator_yes_guard_v1.py`); the rest — ENF-12.
+- The production checkout `EdWebConsole` stays `main == origin/main` and moves only by a fast-forward
+  (`git pull --ff-only`, or `launch.bring_to_origin_main` at a start); work happens in a worktree.
+  Enforced by: `tools/process_lock_guard.py` (`tests/test_operating_process_lock_v1.py`,
+  `tests/test_hook_chain_v1.py`).
+- Never `git reset`, `git checkout --`, `git stash` or a force push. Enforced by:
   `tools/process_lock_guard.py` (`tests/test_reset_guard_v1.py`).
-- Never: `--no-verify`, `git add -A` / `.`, deleting or moving anything under `data/`.
-  Enforced by: the agent hook `tools/operator_law_guard.py`
-  (`tests/test_operator_law_guard_action_bans_v1.py`, `tests/test_protected_paths_v1.py`).
-- Never edit source through a script: edits are made one at a time, as written; a block too long
-  for one edit is removed in consecutive edits. Enforced by: the agent hook
-  `tools/sed_edit_guard.py` refuses a sed that writes a file (`tests/test_sed_edit_guard_v1.py`);
-  the other in-place editors — ENF-14.
-- A file keeps its line endings (most are LF; some are CRLF). Enforced by: the commit hook
-  `tools/check_eol_style_invariant.py` (`tests/test_eol_style_invariant_v1.py`).
-- No credential or operator-home path is committed. Enforced by: the commit hook
-  `tools/check_credential_leak.py` (`tests/test_credential_leak_v1.py`).
-- Shell steps that depend on each other are joined with `&&`, so a failure stops the chain.
-  Enforced by: no machine check — ENF-12.
-
-## Running it
-
-Both processes: `start_ed_console.bat` (`launch.py`: the checkout brought to origin/main, then the
-capture daemon in its own window and `uvicorn server:app`, port 8000). Python 3.13, the project `.venv`. Offline: `ED_CI_OFFLINE=1`,
-placeholder `SCHWAB_API_KEY` / `SCHWAB_APP_SECRET`. Live: `schwab_token.json`
-(`python reauth_schwab.py`). Probe `127.0.0.1`, never `localhost`. Clean stop of both: `python
-launch.py stop`; outside RTH the agent may restart both so, says so in chat first, and confirms both came back.
+- Never `--no-verify`, `git add -A` / `.`, or delete or move anything under `data/`. Enforced by:
+  `tools/operator_law_guard.py` (`tests/test_operator_law_guard_action_bans_v1.py`,
+  `tests/test_protected_paths_v1.py`).
+- Edit source one edit at a time, never through a script. Enforced by: `tools/sed_edit_guard.py`
+  (`tests/test_sed_edit_guard_v1.py`); the other in-place editors — ENF-14.
+- A file keeps its line endings. Enforced by: `tools/check_eol_style_invariant.py`
+  (`tests/test_eol_style_invariant_v1.py`).
+- No credential or operator-home path is committed. Enforced by: `tools/check_credential_leak.py`
+  (`tests/test_credential_leak_v1.py`).
+- Shell steps that depend on each other are joined with `&&`. Enforced by: no machine check — ENF-12.

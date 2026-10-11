@@ -1,4 +1,4 @@
-"""OPERATOR YES GUARD: production actions and the operator's yes (CLAUDE.md rule 6). PreToolUse for
+"""OPERATOR YES GUARD: production actions and the operator's yes (CLAUDE.md rule 5). PreToolUse for
 shell commands. Each command gets one answer, the strictest of its statements':
 
   * A start or a clean stop of the capture daemon or the console (a launcher, launch.py, its

@@ -11,7 +11,10 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-DOCS = ("AGENTS.md", "docs/DATA_FLOW.md", "ACTIVE_PROGRAM.md", "docs/ARCHITECTURE.md")
+#: the agents' rules for one area, the skills and the reviewers (loaded on demand)
+AGENT_FILES = tuple(p.relative_to(ROOT).as_posix() for p in sorted(
+    [*ROOT.glob(".claude/rules/*.md"), *ROOT.glob(".claude/skills/*/SKILL.md"), *ROOT.glob(".claude/agents/*.md")]))
+DOCS = ("AGENTS.md", "CLAUDE.md", "docs/DATA_FLOW.md", "ACTIVE_PROGRAM.md", "docs/ARCHITECTURE.md", *AGENT_FILES)
 FILE_EXT = (".py", ".js", ".mjs", ".html", ".bat", ".md")
 
 
@@ -46,7 +49,8 @@ def test_the_check_catches_the_deleted_paths_the_old_charter_named():
 
 
 #: the documents whose sections marked "(enforced)" hold requirements
-ENFORCED_DOCS = ("AGENTS.md", "docs/DATA_FLOW.md")
+ENFORCED_DOCS = ("AGENTS.md", "docs/DATA_FLOW.md",
+                 *(p for p in AGENT_FILES if p.startswith(".claude/rules/")))
 ENFORCEMENT_ID = re.compile(r"\bENF-\d+\b")
 DATA_RULE_ID = re.compile(r"\bD\d\b")
 
