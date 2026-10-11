@@ -159,7 +159,8 @@ Hold EdWebConsole to how a financial institution handles systems with real money
 - **PASS**: every required condition proven. **FAIL**: any condition violated. **NOT_PROVEN**: any
   condition without proof. A proof is CONFIRMED evidence on the final commit and names its tier (unit,
   integration, browser, deployed app, live market); one tier never stands in for another, and a check
-  proves only the paths it covers. Never PASS with a FAIL or NOT_PROVEN open.
+  proves only the paths it covers. Never PASS with a FAIL or NOT_PROVEN open. Both labels stay:
+  NOT_PROVEN judges a change, NOT VERIFIED labels a statement ("Claims").
   Enforced by: no machine check — ENF-12.
 - The two reviewers (`.claude/agents/correctness-reviewer.md`, `.claude/agents/requirements-reviewer.md`)
   flag only correctness problems and breaks of the stated requirements. Enforced by: no machine
@@ -168,8 +169,7 @@ Hold EdWebConsole to how a financial institution handles systems with real money
 ## Authority (enforced)
 
 - At each milestone (a commit, a failed check, a finding that changes the plan), report to the operator
-  what changed, what was deleted, each proof and its tier, and what is NOT_PROVEN, then continue; two
-  failed attempts at the same thing still stop the work (CLAUDE.md rule 6).
+  what changed, what was deleted, each proof and its tier, and what is NOT_PROVEN, then continue.
   Enforced by: no machine check — ENF-12.
 - A PR merges when its required proof on its final commit is complete and CI is green. Enforced by:
   branch protection on `main` requires `.github/workflows/pytest.yml` and

@@ -24,8 +24,7 @@ so a wrong number that looks right is worse than a blank with a reason.
 6. After two failed attempts at the same thing, stop and report what you tried.
 7. If rules conflict: correctness of what I see > my explicit yes > speed.
 
-Every report ends like this example. An item you can check or fix is closed before the report;
-one that can't be closed comes to me as a decision, with its evidence and reason:
+Every report ends like this example:
   CONFIRMED: pytest tests/test_x.py -> 12 passed; every watchlist ticker's levels match the chain.
   NOT VERIFIED: behavior during market hours (Schwab's session reads Closed). Decision: check it
   at the next open.

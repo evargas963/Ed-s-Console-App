@@ -1,6 +1,6 @@
-"""The agent hooks the operator asked for (2026-10-10): ruff on each edited Python file
-(tools/ruff_edited_file.py, PostToolUse) and a Stop hook that keeps the turn going until ruff and the
-touched files' tests pass (tools/stop_gate.py), letting it end when it already did once."""
+"""The agent hooks: ruff on each edited Python file (tools/ruff_edited_file.py, PostToolUse) and a
+Stop hook that keeps the turn going until ruff and the touched test files pass (tools/stop_gate.py),
+letting it end when it already did once."""
 from __future__ import annotations
 
 import json
