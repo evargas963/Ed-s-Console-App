@@ -237,6 +237,12 @@ class _Lexer:
                 i += 1
         return len(s)
 
+    def arith_end(self, i: int) -> int | None:
+        """At `((` (i on the first): the index of the first `)` of the `))` closing bash
+        arithmetic; None when the parentheses are nested subshells, `((a); b)`."""
+        k = self.close(i + 2)
+        return k if self.s[k + 1:k + 2] == ")" else None
+
     def single(self, i: int, value: list[str]) -> int:
         """The inside of a single-quoted string opened before `i` (`''` is a quote in PowerShell);
         returns the index past its close."""
@@ -383,8 +389,9 @@ class _Lexer:
                 tokens.append(["op", ";"])
                 fresh = True
                 i += 1
-            elif not self.ps and s.startswith("((", i) and (fresh or tokens[-1][0] == "w" and tokens[-1][1].value == "for") and \
-                    s[(k := self.close(i + 2)) + 1:k + 2] == ")":   # `(( ))`, `for (( ))`: arithmetic
+            elif (not self.ps and s.startswith("((", i)
+                  and (fresh or (tokens[-1][0] == "w" and tokens[-1][1].value == "for"))
+                  and (k := self.arith_end(i)) is not None):     # `(( ))`, `for (( ))`: arithmetic
                 tokens.append(["arith", self.substituted(s[i + 2:k])])
                 fresh = False
                 i = k + 2

@@ -78,9 +78,10 @@ def _primary_worktree_root(repo: Path) -> Path | None:
 def cross_checkout_edit_violations(tool_input: dict, repo: Path = REPO) -> list[str]:
     """A session running in a LINKED worktree may not Edit/Write a file inside the PRIMARY
     working tree — that is the live/production checkout. This reads only the filesystem
-    topology (which checkout am I, where does the target resolve) and names no agent. The primary session editing a linked worktree is not blocked — that is
-    the operator-visible direction. Fail-open on unresolvable paths: this rail blocks only
-    on an affirmative cross-checkout hit."""
+    topology (which checkout am I, where does the target resolve) and names no agent. The
+    primary session editing a linked worktree is not blocked — that is the operator-visible
+    direction. Fail-open on unresolvable paths: this rail blocks only on an affirmative
+    cross-checkout hit."""
     primary = _primary_worktree_root(repo)
     if primary is None:
         return []

@@ -233,8 +233,8 @@ def decide(payload: dict, now: datetime, db: Path) -> "tuple[str, list[str]]":
             if session in (time_et.RTH, time_et.UNKNOWN):
                 asks.append(f"starts or stops the daemon or the console while the market session is "
                             f"{session} (CLAUDE.md rule 5: production)")
-        elif pr := _merges(st):
-            asks.append(f"merges pull request {pr} (AGENTS.md Authority)")
+        elif merged := _merges(st):
+            asks.append(f"merges {merged} (AGENTS.md Authority)")
         elif _pushes_main(st):
             denies.append("pushes to main: main moves only by a pull request merged on GitHub")
         elif st.program == "gh" and _gh_words(st)[:2] in (["alias", "set"], ["alias", "import"]):
@@ -249,24 +249,24 @@ def _gh_words(st: Statement) -> "list[str]":
 
 
 def _merges(st: Statement) -> str:
-    """The pull request or branch the statement `st` merges: `gh pr merge` with options anywhere, or
-    a REST merge or a GraphQL merge mutation sent by `gh api` or an HTTP client; "" if none."""
+    """What the statement `st` merges: `gh pr merge` with options anywhere, or a REST merge or a
+    GraphQL merge mutation sent by `gh api` or an HTTP client; "" if none."""
     name, args = st.program, list(st.words[1:])
     if name == "gh":
         words = _gh_words(st)
         if words[:2] == ["pr", "merge"]:
-            return next((a for a in words[2:] if a.isdigit()), "the current branch's")
+            return "pull request " + next((a for a in words[2:] if a.isdigit()), "of the current branch")
         if words[:1] != ["api"]:
             return ""
     elif name not in HTTP_CLIENTS:
         return ""
     if m := next((m for a in args for m in [GRAPHQL_MERGE.search(a)] if m), None):
-        return f"a GraphQL {m.group(0)}"
+        return f"by a GraphQL {m.group(0)}"
     if any("graphql" in a.lower() for a in args) and any(a.startswith("@") or "=@" in a or a == "--input" for a in args):
-        return "a GraphQL request whose body is read from a file"            # its query is unseen
+        return "by a GraphQL request whose body is read from a file"         # its query is unseen
     if any(API_BRANCH_MERGE.search(a) for a in args):
         return "a branch, by REST /merges"
-    return next((m.group(1) for a in args for m in [API_MERGE.search(a)] if m), "")
+    return next((f"pull request {m.group(1)}" for a in args for m in [API_MERGE.search(a)] if m), "")
 
 
 def _pushes_main(st: Statement) -> bool:
