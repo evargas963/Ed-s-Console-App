@@ -63,7 +63,7 @@ def test_a_python_argv_list_is_one_word_per_element():
     assert any(list(s.words[:2]) == ["powershell", "-Command"] for s in sts)
 
 
-@pytest.mark.parametrize("wrapper", ["command", "time", "nohup", "call", "exec"])
+@pytest.mark.parametrize("wrapper", ["command", "time", "nohup", "call", "exec", "time -f '$s: %es'", "time -o t.txt"])
 def test_a_wrapper_without_valued_options_wraps(wrapper):
     assert ["gh", "pr", "merge", "5"] in [list(st.words) for st in read(f"{wrapper} gh pr merge 5")]
 

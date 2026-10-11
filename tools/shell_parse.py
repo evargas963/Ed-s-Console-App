@@ -419,7 +419,7 @@ _KEYWORDS = frozenset({"if", "then", "elif", "else", "do", "while", "until", "!"
 _ASSIGNMENT = re.compile(r"^(?:\$env:)?[A-Za-z_]\w*\+?=", re.I)
 #: programs that run the command they are given, and their options that take a separate value
 _WRAPPERS = {
-    "env": {"-u", "--unset", "-C", "--chdir", "-S", "--split-string"}, "time": set(),
+    "env": {"-u", "--unset", "-C", "--chdir", "-S", "--split-string"}, "time": {"-f", "--format", "-o", "--output"},
     "nice": {"-n", "--adjustment"}, "nohup": set(), "stdbuf": {"-i", "-o", "-e"},
     "sudo": {"-u", "-g", "-h", "-p", "-C", "-D", "-U", "-r", "-t"},
     "xargs": {"-I", "-n", "-P", "-L", "-s", "-d", "-E", "-a", "--max-args", "--max-procs", "--delimiter"},
