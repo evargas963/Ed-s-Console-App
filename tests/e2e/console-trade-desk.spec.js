@@ -185,6 +185,7 @@ test.describe('Trade Desk renders served values', () => {
       else if (url.includes('/api/bars1m')) body = BARS;
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
     });
+    await routeWatchlist(page, ['SPY']);
     await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     expect(await page.evaluate(() => document.documentElement.getAttribute('data-theme'))).toBe('dark');
@@ -208,6 +209,7 @@ test.describe('Trade Desk renders served values', () => {
       else if (url.includes('/api/bars1m')) body = BARS;
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
     });
+    await routeWatchlist(page, ['SPY']);
     await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart.levelsShown)).toBeGreaterThan(0);
@@ -540,6 +542,7 @@ test.describe('Trade Desk renders served values', () => {
       else if (url.includes('/api/bars1m')) body = BARS;
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
     });
+    await routeWatchlist(page, ['SPY']);
     await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#tdmToolbar [data-tf="3"]')).toHaveText('3m');
@@ -570,6 +573,7 @@ test.describe('Trade Desk renders served values', () => {
         else if (url.includes('/api/bars1m')) body = BARS;
         return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
       });
+      await routeWatchlist(page, ['SPY']);
       await Promise.all([page.waitForResponse((r) => /\/api\/terrain\?/.test(r.url())),
         page.goto('/', { waitUntil: 'domcontentloaded' })]);
       await expect.poll(() => page.evaluate(() => (window.EdTradeDeskMap.state().chart || {}).bars || 0)).toBeGreaterThan(0);

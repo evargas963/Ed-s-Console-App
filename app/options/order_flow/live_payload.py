@@ -51,7 +51,7 @@ def options_live_payload(contract: str, now: float) -> dict[str, Any]:
     top_outage = lmp.outage(contract, "LEVELONE_OPTIONS", now)
     of = OrderFlowEngine().compute({"content": items,
                                     "top": option_top(contract) if top_outage is None else None,
-                                    "book_live": lmp.feed_live_for(contract, "OPTIONS_BOOK")},
+                                    "book_live": lmp.feed_live_for(contract, "OPTIONS_BOOK", now)},
                                    now=now, ticker=contract)
     book = dict(of["book_microstructure"])
     book["flow"] = flow_block(of)

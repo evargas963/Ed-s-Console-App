@@ -20,7 +20,7 @@ from websockets.asyncio.client import connect
 import db
 import live_market_plane as lmp
 import server
-from app.market_data.schwab.streaming import capture
+from app.market_data.schwab.streaming import capture, live_ui
 from app.market_data.schwab.streaming.live_ui import serve_live_ui
 from schwab_client import build_client_from_token
 from stream_spine import CaptureWriter, HealthRegistry, MessageBus
@@ -96,6 +96,44 @@ def test_why_schwab_is_not_connected_reaches_the_log_and_api_health(tmp_path, ca
     reason = server.health()["capabilities"]["schwab_reason"]
     assert re.fullmatch(r"NOT CONNECTED since \w{3} \d\d/\d\d \d\d:\d\d [AP]M CT: "
                         r"ConnectionError: no Schwab client \(Token file not found.*", reason, re.S), reason
+
+
+class _Browser:
+    """A browser on the daemon's price socket: one that stopped reading never takes a send."""
+
+    def __init__(self, reading: bool):
+        self.reading, self.sent, self.offered, self.closed = reading, [], 0, False
+
+    async def send(self, text):
+        self.offered += 1
+        if not self.reading:
+            await asyncio.sleep(3600)
+        self.sent.append(text)
+
+    async def close(self):
+        self.closed = True
+
+
+def test_a_browser_closed_for_not_reading_gets_no_more_beats_and_the_others_keep_theirs():
+    """The daemon's heartbeat on its price socket (LiveUiServer.beat_loop, every HEARTBEAT_SEC)
+    to two browsers, one that stopped reading: it is offered one beat, closed when it does not
+    take it within a beat, and offered none after, so every later beat reaches the reading
+    browser on time (each offer to it cost the others a whole beat)."""
+    daemon = capture.Daemon(MessageBus(), HealthRegistry(), ["SPY"])
+
+    async def go():
+        srv = live_ui.LiveUiServer(MessageBus(), daemon.status, {
+            "frames_sent": 0, "rows_sent": 0, "last_send_ms": 0.0, "beat_send_failures": 0})
+        stuck, reading = live_ui._Client(_Browser(False)), live_ui._Client(_Browser(True))
+        srv.clients.update({stuck, reading})
+        beat = asyncio.create_task(srv.beat_loop())
+        await asyncio.sleep(4.5 * live_ui.HEARTBEAT_SEC)
+        beat.cancel()
+        return stuck.ws, reading.ws, srv.stats
+    stuck, reading, stats = asyncio.run(go())
+    assert stuck.closed and stuck.offered == 1, f"the closed browser was offered {stuck.offered} beats"
+    assert len(reading.sent) >= 3 and json.loads(reading.sent[-1])["type"] == "feed"
+    assert stats["beat_send_failures"] == 1
 
 
 def test_a_module_that_fails_to_load_leaves_its_reason_in_the_daemons_log(tmp_path):

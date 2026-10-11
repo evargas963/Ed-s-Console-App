@@ -72,10 +72,11 @@ def _view(pages: list, tk: str = TK) -> None:
     pages.append((tk, push_changes.subscribe(tk)))
 
 
-def _daemon(held=(), *, socket_open=True, price: "float | None" = _SPOT) -> None:
-    """The daemon's status: Schwab's socket open, TK held on LEVELONE_EQUITIES and `held` on
-    LEVELONE_OPTIONS; and TK's price row as the daemon pushes it (None: no price)."""
-    lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": socket_open,
+def _daemon(held=(), *, socket_open=True, price: "float | None" = _SPOT, at: float = _T) -> None:
+    """The daemon's status at `at` (the chain's publication time unless given): Schwab's socket
+    open, TK held on LEVELONE_EQUITIES and `held` on LEVELONE_OPTIONS; and TK's price row as the
+    daemon pushes it (None: no price)."""
+    lmp.record_feed_heartbeat({"ts": at, "schwab_socket_open": socket_open,
                                "held": {"LEVELONE_EQUITIES": [TK], "LEVELONE_OPTIONS": list(held)}})
     if price is None:
         ofs._price_rows.pop(TK, None)
@@ -242,7 +243,7 @@ def test_a_streamed_value_whose_feed_is_down_in_session_never_reaches_the_levels
     out = {}
     for at in (datetime(2026, 10, 7, 11, 0, tzinfo=ET), datetime(2026, 10, 7, 22, 0, tzinfo=ET)):
         ofls.clear_all_live_state()
-        _daemon(held=[_A], socket_open=False)
+        _daemon(held=[_A], socket_open=False, at=at.timestamp())
         _streamed(_A, {"TOTAL_VOLUME": 999999}, at.timestamp() - 60.0)
         server._publish_levels(TK, _CONTRACTS, at.timestamp() - 120.0, now=at)
         out[at.hour] = _cached()
@@ -258,7 +259,7 @@ def test_a_foreign_tickers_contract_never_overlays_this_chain():
     _daemon(held=[foreign])
     _streamed(foreign, {"GAMMA": 0.99}, _T)
     _put_chain(fetched_ts=_T - 5.0)
-    assert server._streamed_greeks_for_ticker(_cached()["_contract_symbols"]) == {}
+    assert server._streamed_greeks_for_ticker(_cached()["_contract_symbols"], _T) == {}
     assert _cached()["_gamma_surface"]["stream_overlay_contracts"] == 0
 
 
@@ -304,8 +305,10 @@ def test_a_stored_capture_and_a_live_chain_publish_the_same_fields():
 def test_vanna_and_charm_by_strike_read_the_published_snapshot():
     """Valued in the chain's own session (2026-10-07 12:00 ET): its 2026-10-16 expiry still has
     time value, which charm needs."""
-    _daemon()
-    snap = server._publish_levels(TK, _CONTRACTS, _T, now=datetime(2026, 10, 7, 12, 0, tzinfo=ET))
+    valued = datetime(2026, 10, 7, 12, 0, tzinfo=ET)
+    _daemon(at=valued.timestamp())                       # live when the chain is published
+    snap = server._publish_levels(TK, _CONTRACTS, _T, now=valued)
+    _daemon(at=time.time())                              # live now, as the routes read it
     charm = json.loads(server.get_charm_by_strike(TK, scope="all").body)
     assert charm["available"] and charm["spot"] == snap.spot
     assert len(charm["rows"]) == sum(1 for b in snap.charm_by_strike.values() if b.get("net_charm") is not None)

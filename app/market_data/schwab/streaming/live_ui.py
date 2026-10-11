@@ -63,9 +63,11 @@ class _Client:
 
 
 class LiveUiServer:
-    def __init__(self, bus: MessageBus, heartbeat_fn, stats: dict) -> None:
+    def __init__(self, bus: MessageBus, heartbeat_fn, stats: dict,
+                 record_heartbeat=lmp.record_feed_heartbeat) -> None:
         self.bus = bus
         self.heartbeat_fn = heartbeat_fn
+        self.record_heartbeat = record_heartbeat     # where the daemon keeps its own record of each beat
         self.stats = stats
         self.clients: set[_Client] = set()
         stats.update(clients=0, rows_sent=0, frames_sent=0, ingest_failures=0,
@@ -99,7 +101,7 @@ class LiveUiServer:
         """The daemon's whole status (Schwab socket, symbols held and refused per service, the
         watchlist, health), recorded here and sent with every beat: the console's one record of it."""
         hb = self.heartbeat_fn()
-        lmp.record_feed_heartbeat(hb)
+        self.record_heartbeat(hb)
         return hb
 
     # -- browser side -----------------------------------------------------------------
@@ -119,7 +121,8 @@ class LiveUiServer:
                 identity, c.identity = c.identity, None
                 await self._send(c, {"type": "symbols", "symbols": identity})
             syms, c.pending = c.pending, set()
-            rows = [live_price_rows.price_row(s) for s in syms if s in c.symbols]
+            now = time.time()
+            rows = [live_price_rows.price_row(s, now) for s in syms if s in c.symbols]
             if rows:
                 await self._send(c, {"type": "quotes", "rows": rows})
 
@@ -173,19 +176,22 @@ class LiveUiServer:
             except Exception as e:  # noqa: BLE001 -- a failed beat leaves the feed unproven (it ages out)
                 log.warning("live ui heartbeat: %s: %s", type(e).__name__, e)
                 feed = None
+            now = time.time()
             for c in list(self.clients):
                 # one browser can neither stop the beat nor hold it: an error is logged and the
                 # next browser still gets its beat; a browser that does not take its beat within
-                # a beat is not reading and is closed (2026-09-26: the beat stopped for every
-                # browser and the whole screen read "no live feed" on a healthy Schwab socket)
+                # a beat is not reading and is closed, and gets no more beats while it closes
+                # (2026-09-26: the beat stopped for every browser and the whole screen read "no
+                # live feed" on a healthy Schwab socket)
                 try:
-                    rows = [live_price_rows.price_row(s) for s in sorted(c.symbols)]
+                    rows = [live_price_rows.price_row(s, now) for s in sorted(c.symbols)]
                     await asyncio.wait_for(
                         self._send(c, {"type": "feed", "feed": feed, "rows": rows}),
                         timeout=HEARTBEAT_SEC)
                 except asyncio.TimeoutError:
                     self.stats["beat_send_failures"] += 1
                     log.warning("live ui: a browser stopped reading; closing it")
+                    self.clients.discard(c)
                     asyncio.create_task(c.ws.close())
                 except Exception as e:  # noqa: BLE001 -- logged; the other browsers' beats go out
                     self.stats["beat_send_failures"] += 1
@@ -195,13 +201,14 @@ class LiveUiServer:
 
 async def serve_live_ui(bus: MessageBus, stop: asyncio.Event, *, heartbeat_fn,
                         host: str = LIVE_UI_HOST, port: int = LIVE_UI_PORT,
-                        stats: "dict | None" = None) -> None:
+                        stats: "dict | None" = None, record_heartbeat=lmp.record_feed_heartbeat) -> None:
     """Run until `stop` is set. Start it BEFORE the Schwab connection so the plane sees the
-    first messages (Schwab sends each field once, then only changes)."""
+    first messages (Schwab sends each field once, then only changes). Each beat is recorded with
+    `record_heartbeat` (the daemon's own plane)."""
     from websockets.asyncio.server import serve
 
     stats = stats if stats is not None else {}
-    srv = LiveUiServer(bus, heartbeat_fn, stats)
+    srv = LiveUiServer(bus, heartbeat_fn, stats, record_heartbeat)
     sub = bus.subscribe("quote.", policy=LATEST)         # starts with every quote already held
     lmp.add_row_listener(srv.on_row)
 
@@ -213,9 +220,10 @@ async def serve_live_ui(bus: MessageBus, stop: asyncio.Event, *, heartbeat_fn,
     tasks = [asyncio.create_task(_track()), asyncio.create_task(srv.beat_loop())]
     try:
         async with serve(srv.serve_client, host, port, max_size=None, compression=None,
-                         ping_interval=20, ping_timeout=20):
-            stats["listening"] = f"ws://{host}:{port}"
-            log.info("live ui: serving price rows to browsers on ws://%s:%s", host, port)
+                         ping_interval=20, ping_timeout=20) as server:
+            bound = server.sockets[0].getsockname()[1]  # the port taken (port 0: the system's pick)
+            stats["listening"] = f"ws://{host}:{bound}"
+            log.info("live ui: serving price rows to browsers on ws://%s:%s", host, bound)
             await stop.wait()
     finally:
         for t in tasks:

@@ -6,6 +6,7 @@
  * context. Esc restores; the choice persists. Offline.
  */
 const { test, expect } = require('@playwright/test');
+const { routeWatchlist } = require('./fixtures/watchlist');
 
 const SURFACE = { ticker: 'SPY', symbol: 'SPY', available: true, spot: 100, source: 'terrain_live_cache',
   live: true, stale: false, age_sec: 5, chain_basis: 'full', complete: false,
@@ -32,6 +33,7 @@ async function intercept(page) {
     else if (url.includes('/api/expiries')) body = { expiries: ['2026-09-11', '2026-09-18'] };
     else if (url.includes('/api/chain')) body = CHAIN;    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
+  await routeWatchlist(page, ['SPY']);
 }
 
 test.describe('#8 Gamma panel maximize', () => {

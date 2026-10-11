@@ -33,10 +33,10 @@ def _call(tk):
     return json.loads(get_options_gamma_surface(tk).body)
 
 
-def _daemon(price: float, *tickers) -> None:
-    """The daemon's status (Schwab's socket open, `tickers` held, the watchlist [_ON]) and each
-    ticker's price row."""
-    lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "watchlist": [_ON],
+def _daemon(price: float, at: float, *tickers) -> None:
+    """The daemon's status at `at` (Schwab's socket open, `tickers` held, the watchlist [_ON]) and
+    each ticker's price row."""
+    lmp.record_feed_heartbeat({"ts": at, "schwab_socket_open": True, "watchlist": [_ON],
                                "held": {"LEVELONE_EQUITIES": list(tickers)}})
     for tk in tickers:
         ofs._price_rows[tk] = {"ticker": tk, "spot": price, "trade_ts": _AT.timestamp()}
@@ -45,9 +45,10 @@ def _daemon(price: float, *tickers) -> None:
 @pytest.fixture
 def published():
     """CRWD's chain published at its capture under _ON and _OFF, at its own spot."""
-    _daemon(_CRWD["spot"], _ON, _OFF)
+    _daemon(_CRWD["spot"], _AT.timestamp(), _ON, _OFF)            # live when the chain is published
     for tk in (_ON, _OFF):
         server._publish_levels(tk, [dict(c) for c in _CRWD["chain"]], _AT.timestamp(), now=_AT)
+    _daemon(_CRWD["spot"], time.time(), _ON, _OFF)                # live now, as the routes read it
     yield
     with server._terrain_cache_lock:
         for tk in (_ON, _OFF):
@@ -57,7 +58,7 @@ def published():
 
 
 def test_the_live_surface_is_served_with_the_live_price_and_its_own_price_named(published):
-    _daemon(206.0, _ON)                                            # the price has moved since
+    _daemon(206.0, _AT.timestamp(), _ON)                           # the price has moved since
     d = server.gamma_surface_payload(_ON, "all", None, 0, None, None, _AT)
     with server._terrain_cache_lock:
         surface = server._terrain_cache[_ON]["_gamma_surface"]
@@ -69,7 +70,7 @@ def test_the_live_surface_is_served_with_the_live_price_and_its_own_price_named(
 
 
 def test_freshness_is_the_one_terrain_authority_not_a_second_policy(published):
-    live = server.terrain_cache_get(_ON)                          # the one authority
+    live = server.terrain_cache_get(_ON, time.time())             # the one authority
     d = _call(_ON)
     assert d["stale"] == bool(live.get("levels_stale"))
     assert d["age_sec"] == pytest.approx(live.get("levels_age_sec"), abs=5.0)

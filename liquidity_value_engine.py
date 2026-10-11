@@ -17,10 +17,10 @@ import logging
 import threading
 from collections import defaultdict
 from datetime import date, datetime
-from typing import Any, Optional
+from typing import Optional
 
 from instrument_identity import ticker_storage_key
-from numeric_contract import float_finite_or_none, float_positive_or_none, schwab_count, schwab_number
+from numeric_contract import float_finite_or_none, float_positive_or_none
 from liquidity_models import (
     PlaybookConfig,
     SnapshotOutput,
@@ -89,29 +89,12 @@ def liquidity_zone_tradeable_score(
     return 3.0 * n_tags + 2.5 * n_opt + (1.5 if inside else 0.0) - dist_pen
 
 
-def _resolve_bar_timestamp(d: dict) -> Optional[Any]:
-    """Bar time: the first of timestamp, date, ts present on the bar."""
-    for key in ("timestamp", "date", "ts"):
-        val = d.get(key)
-        if val is not None:
-            return val
-    return None
-
-
-def _bars_to_list(bars) -> list[dict]:
-    """The bars every level function takes, normalized once by the producer:
-    {timestamp, _dt (its ET time), open, high, low, close, volume} for each bar dict with a time
-    and four prices that are numbers (rule 2); a volume that is not a number stays None."""
-    out = []
-    for b in bars or []:
-        ts = _resolve_bar_timestamp(b)
-        o, h, lo, c = (schwab_number(b.get(k)) for k in ("open", "high", "low", "close"))
-        if ts is None or None in (o, h, lo, c):
-            continue
-        sec = ts.timestamp() if hasattr(ts, "timestamp") else (ts / 1000.0 if ts > 1e12 else ts)
-        out.append({"timestamp": ts, "_dt": datetime.fromtimestamp(sec, tz=ET), "open": o, "high": h,
-                    "low": lo, "close": c, "volume": schwab_count(b.get("volume"))})
-    return out
+def bars_from_candles(candles) -> list[dict]:
+    """The bars every level function takes, from the bar writer's Candles, each field already
+    checked once as Schwab sent it, where it came in (server._schwab_bar): {timestamp (ms), _dt
+    (its ET time), open, high, low, close, volume}."""
+    return [{"timestamp": int(c.ts * 1000), "_dt": datetime.fromtimestamp(c.ts, tz=ET), "open": c.open,
+             "high": c.high, "low": c.low, "close": c.close, "volume": c.volume} for c in candles]
 
 
 
@@ -149,7 +132,7 @@ def get_previous_day_levels(
     config: PlaybookConfig,
 ) -> dict:
     """The prior session (the most recent earlier date with RTH bars, prior_trading_session_date)
-    from normalized bars (_bars_to_list): its date, its RTH bar count, and its high, low, close,
+    from normalized bars (bars_from_candles): its date, its RTH bar count, and its high, low, close,
     POC, VAH and VAL from those RTH bars. No prior session: {} (never a calendar walk or other
     days' bars)."""
     prior = prior_trading_session_date(bars_norm, session_date)
@@ -169,7 +152,7 @@ def get_overnight_levels(
     session_date: date,
     prev_session: Optional[date],
 ) -> dict:
-    """Overnight range over normalized bars (_bars_to_list): the continuous interval from the
+    """Overnight range over normalized bars (bars_from_candles): the continuous interval from the
     prior session's (`prev_session`, prior_trading_session_date) regular close to this session's
     regular open, as Schwab's /markets sent them -- a weekend's or holiday's bars included. With
     no prior session the interval has no start, so only this session's pre-open bars are used.
@@ -211,7 +194,7 @@ def compute_opening_range(
     config: PlaybookConfig,
 ) -> dict:
     """
-    First N minutes of RTH (default 15), from normalized bars (_bars_to_list).
+    First N minutes of RTH (default 15), from normalized bars (bars_from_candles).
     """
     orb_min = config.opening_range_minutes
 
@@ -241,7 +224,7 @@ def compute_opening_range(
 def compute_session_vwap_series(
     bars_norm: list, session_date: date,
 ) -> list[tuple[float, float, float, float, float, float]]:
-    """Running session VWAP and σ bands after each RTH bar, from normalized bars (_bars_to_list).
+    """Running session VWAP and σ bands after each RTH bar, from normalized bars (bars_from_candles).
 
     Returns [(bar_epoch_sec, vwap, +1σ, -1σ, +2σ, -2σ), ...] using the standard
     cumulative moments VWAP_t = Σ(tp·v)/Σv and σ_t² = Σ(tp²·v)/Σv − VWAP_t².
@@ -290,7 +273,7 @@ def compute_volume_profile_levels(
     config: PlaybookConfig,
 ) -> Optional[VolumeProfile]:
     """The current day's volume profile with its POC, VAH, VAL, from normalized bars
-    (_bars_to_list). RTH only, no lookahead."""
+    (bars_from_candles). RTH only, no lookahead."""
     return volume_profile(_filter_rth_bars(bars_norm, session_date), config.value_area_percent,
                           config.tick_size, ndigits=4)
 
@@ -871,7 +854,7 @@ def build_price_level_snapshot(
     config: Optional[PlaybookConfig] = None,
     generation: int = 0,
 ) -> PriceLevelSnapshot:
-    """THE Phase 2A producer, from normalized bars (_bars_to_list). The only production caller
+    """THE Phase 2A producer, from normalized bars (bars_from_candles). The only production caller
     of the canonical helpers.
 
     Absent input stays absent: a family with no bars in its window is declared in
@@ -1019,7 +1002,7 @@ def materialize_price_level_snapshot(
     bar_source: str,
     config: Optional[PlaybookConfig] = None,
 ) -> PriceLevelSnapshot:
-    """Materialize once per generation from normalized bars (_bars_to_list); return the SAME
+    """Materialize once per generation from normalized bars (bars_from_candles); return the SAME
     object within a generation.
 
     A new market generation (the bar input changed) invokes the producer exactly once.

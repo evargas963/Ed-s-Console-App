@@ -15,7 +15,6 @@ Regenerate (from the repo root, project .venv):
 from __future__ import annotations
 
 import json
-import time
 from pathlib import Path
 
 import pytest
@@ -36,8 +35,9 @@ def build_flow_e2e_fixture_response() -> dict:
     events = next(c for c in json.loads(_HISTORY.read_text(encoding="utf-8"))["contracts"]
                   if c["symbol"] == FLOW_CONTRACT)["events"]
     ofls.clear_all_live_state()
+    at = max(e["ts_recv"] for e in events)
     try:
-        lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True,
+        lmp.record_feed_heartbeat({"ts": at, "schwab_socket_open": True,
                                    "held": {"LEVELONE_OPTIONS": [FLOW_CONTRACT], "OPTIONS_BOOK": [FLOW_CONTRACT]}})
         for e in sorted(events, key=lambda e: e["ts_recv"]):
             if e["kind"] == "book":
@@ -47,7 +47,7 @@ def build_flow_e2e_fixture_response() -> dict:
             else:
                 ofs._ingest_pushed(f"optquote.{FLOW_CONTRACT}", options_quote_msg(
                     symbol=FLOW_CONTRACT, content=e["content"], src="schwab_options_l1", ts_recv=e["ts_recv"]))
-        return srv.options_microstructure(FLOW_CONTRACT, max(e["ts_recv"] for e in events))
+        return srv.options_microstructure(FLOW_CONTRACT, at)
     finally:
         lmp.record_feed_down()
         ofls.clear_all_live_state()

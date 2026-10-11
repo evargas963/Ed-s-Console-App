@@ -34,8 +34,9 @@ LIVE = PUBLISHED + 1.0                     # stand-in for the stream's price
 _AT = datetime(2026, 9, 2, 10, 5, tzinfo=ET)
 
 
-def _daemon(price, held_options=()):
-    lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True,
+def _daemon(price, at: float, held_options=()):
+    """The daemon's heartbeat at `at` and its price row for TK."""
+    lmp.record_feed_heartbeat({"ts": at, "schwab_socket_open": True,
                                "held": {"LEVELONE_EQUITIES": [TK], "LEVELONE_OPTIONS": list(held_options)}})
     ofs._price_rows[TK] = {"ticker": TK, "spot": price, "trade_ts": _AT.timestamp()}
 
@@ -43,9 +44,9 @@ def _daemon(price, held_options=()):
 @pytest.fixture
 def held():
     """CRWD's chain published at its capture price, the live price since moved to LIVE."""
-    _daemon(PUBLISHED)
+    _daemon(PUBLISHED, _AT.timestamp())                  # live when the chain is published
     server._publish_levels(TK, [dict(c) for c in _CONTRACTS], _AT.timestamp(), now=_AT)
-    _daemon(LIVE)
+    _daemon(LIVE, time.time())                           # live now, as the routes read it
     with server._terrain_cache_lock:
         payload = server._terrain_cache[TK]
     yield payload
@@ -126,7 +127,7 @@ def test_days_to_expiry_are_schwabs_as_sent(held):
 
 def test_with_no_published_levels_the_expiries_carry_the_levels_reason():
     body = json.loads(server.get_expiries(ticker="ZZNOLEVELS").body)
-    assert body["expiries"] == [] and body["reason"] == server.terrain_staleness(None, "ZZNOLEVELS")["levels_stale_reason"]
+    assert body["expiries"] == [] and body["reason"] == server.terrain_staleness(None, "ZZNOLEVELS", now=time.time())["levels_stale_reason"]
 
 
 @pytest.mark.parametrize("route", [
@@ -154,7 +155,7 @@ def test_heatmap_column_state_cell_age_and_front_expiry_are_served():
     front column is the nearest unexpired expiry. One call streaming (its update 2 s before the
     publication): the column is partly streaming and the cell's age is 2 s."""
     sym = next(c["symbol"] for c in _CONTRACTS if c["putCall"] == "CALL")
-    _daemon(PUBLISHED, [sym])
+    _daemon(PUBLISHED, _AT.timestamp(), [sym])
     ofs._ingest_pushed(f"optquote.{sym}", options_quote_msg(symbol=sym, content={"key": sym, "GAMMA": 0.05},
                                                             src="schwab_options_l1", ts_recv=_AT.timestamp() - 2))
     try:
@@ -164,7 +165,7 @@ def test_heatmap_column_state_cell_age_and_front_expiry_are_served():
         with server._terrain_cache_lock:
             server._terrain_cache.pop(TK, None)
         ofs._price_rows.pop(TK, None)
-        ofs._drop_released_options()
+        ofs._drop_released_options(_AT.timestamp())
         lmp.record_feed_down()
     assert body["stream_by_expiry"][EXPIRY] == "partial"
     ages = [c["stream"][0]["age_sec"] for c in body["cells"] if c["stream"][0] and c["stream"][0]["age_sec"] is not None]
@@ -219,10 +220,10 @@ def test_at_any_hour_the_price_is_schwabs_last_trade_with_schwabs_trade_time():
     mark_feed_live("SPY")
     lmp.record_from_level_one_equity("SPY", {"LAST_PRICE": 772.04, "TRADE_TIME_MILLIS": 1790380799830},
                                      received_ts=time.time())
-    row = live_price_rows.price_row("SPY")
-    ofs._price_rows["SPY"] = row                     # the row as the daemon pushes it to the console
+    row = live_price_rows.price_row("SPY", time.time())
+    ofs._price_rows["SPY"] = row                    # the row as the daemon pushes it to the console
     try:
-        spot = server.resolve_spot("SPY")
+        spot = server.resolve_spot("SPY", now=time.time())
     finally:
         ofs._price_rows.pop("SPY", None)
         lmp.record_feed_down()

@@ -30,7 +30,7 @@ import schwab_client as sc
 import server
 from app.market_data.schwab.streaming import capture, live_push
 from calibration.complete_chain_capture import ChainSweep, chain_messages
-from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS
+from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS, bars_from_candles
 from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus, bar_msg
 from tests.feed_live_helper import daemon_bars, price_history, stream_daemon_bars
 from tests.schwab_rest_standin import LocalSchwab
@@ -268,18 +268,16 @@ _RTH = 1790780400.0
 _CLOSED = 1790820000.0
 
 
-def _served_at(monkeypatch, now: float, feed_live: bool) -> dict:
-    """At `now` (the clock pinned), SPY's last trade and a captured option quote of the contract
-    in the daemon's memory, the feed live or not (the daemon's heartbeat holding both symbols, or
-    none): what the header row, the console's one spot, the equity book's top and the option
-    book's top serve."""
+def _served_at(now: float, feed_live: bool) -> dict:
+    """At `now`, SPY's last trade and a captured option quote of the contract in the daemon's
+    memory, the feed live or not (the daemon's heartbeat holding both symbols, or none): what the
+    header row, the console's one spot, the equity book's top and the option book's top serve."""
     import live_market_plane as lmp
     import live_price_rows
     import server
     from app.options.order_flow import live_payload
     from app.options.order_flow import streaming as ofs
     from app.options.order_flow.state import push_option_top
-    monkeypatch.setattr(time, "time", lambda: now)
     then = now - 600
     lmp.record_from_level_one_equity("SPY", {"LAST_PRICE": 767.39, "BID_PRICE": 767.38, "ASK_PRICE": 767.40,
                                              "TRADE_TIME_MILLIS": int(then * 1000),
@@ -291,19 +289,19 @@ def _served_at(monkeypatch, now: float, feed_live: bool) -> dict:
     else:
         lmp.record_feed_down()
     try:
-        row = live_price_rows.price_row("SPY")
-        monkeypatch.setitem(ofs._price_rows, "SPY", row)
-        return {"row": row, "spot": server.resolve_spot("SPY"),
-                "equity_book": json.loads(server.api_order_flow_microstructure("SPY", "NYSE_BOOK").body),
+        row = ofs._price_rows["SPY"] = live_price_rows.price_row("SPY", now)
+        return {"row": row, "spot": server.resolve_spot("SPY", now=now),
+                "equity_book": server.order_flow_microstructure("SPY", "NYSE_BOOK", now),
                 "option_book": live_payload.options_live_payload(_CONTRACT, now)}
     finally:
+        ofs._price_rows.pop("SPY", None)
         lmp.record_feed_down()
 
 
-def test_d5_a_feed_down_in_an_open_session_is_an_outage_shown_absent_with_its_reason(monkeypatch):
+def test_d5_a_feed_down_in_an_open_session_is_an_outage_shown_absent_with_its_reason():
     """RTH, the feed down: the price, the equity top of book and the option top of book are
     absent, each with the outage reason; no last value stands in for a live one."""
-    s = _served_at(monkeypatch, _RTH, feed_live=False)
+    s = _served_at(_RTH, feed_live=False)
     assert s["row"]["spot"] is None and s["row"]["bid"] is None
     assert s["row"]["outage"] == "Schwab LEVELONE_EQUITIES feed down during RTH"
     assert s["spot"] == (None, "Schwab LEVELONE_EQUITIES feed down during RTH", None)
@@ -313,10 +311,10 @@ def test_d5_a_feed_down_in_an_open_session_is_an_outage_shown_absent_with_its_re
     assert s["option_book"]["top_outage"] == "Schwab LEVELONE_OPTIONS feed down during RTH"
 
 
-def test_d5_while_closed_the_values_as_of_the_close_stand_feed_up_or_down(monkeypatch):
+def test_d5_while_closed_the_values_as_of_the_close_stand_feed_up_or_down():
     """22:00 ET, the feed down: the last price and both tops of book Schwab sent are served,
     with no outage."""
-    s = _served_at(monkeypatch, _CLOSED, feed_live=False)
+    s = _served_at(_CLOSED, feed_live=False)
     assert s["row"]["spot"] == 767.39 and s["row"]["outage"] is None
     assert s["spot"][0] == 767.39
     assert s["equity_book"]["top_of_book"]["bid"] == 767.38 and s["equity_book"]["top_outage"] is None
@@ -324,9 +322,9 @@ def test_d5_while_closed_the_values_as_of_the_close_stand_feed_up_or_down(monkey
     assert s["option_book"]["top_outage"] is None
 
 
-def test_d5_a_live_feed_in_an_open_session_serves_the_newest_values(monkeypatch):
+def test_d5_a_live_feed_in_an_open_session_serves_the_newest_values():
     """RTH, the feed live: the newest price and tops of book Schwab sent are served."""
-    s = _served_at(monkeypatch, _RTH, feed_live=True)
+    s = _served_at(_RTH, feed_live=True)
     assert s["row"]["spot"] == 767.39 and s["row"]["outage"] is None
     assert s["spot"][0] == 767.39
     assert s["equity_book"]["top_of_book"]["bid"] == 767.38 and s["equity_book"]["top_outage"] is None
@@ -341,7 +339,7 @@ def test_d5_a_daemon_status_that_waited_in_a_queue_is_not_current():
     lmp.record_feed_heartbeat({"ts": old, "schwab_socket_open": True,         # arrives now
                                "held": {"LEVELONE_EQUITIES": ["SPY"]}})
     try:
-        assert lmp.daemon_status() is None, "a two-minute-old daemon status counted as live"
+        assert lmp.daemon_status(time.time()) is None, "a two-minute-old daemon status counted as live"
     finally:
         lmp.record_feed_down()
 
@@ -622,6 +620,32 @@ def test_d5_while_closed_levels_as_of_the_close_stand_and_older_ones_are_absent_
         "in session, an hour-old chain is a gap"
 
 
+def test_d5_the_levels_spot_is_judged_at_the_time_they_are_served_for():
+    """/api/levels served for Fri 2026-10-02 11:00 ET (RTH) with SPY's last trade in the daemon's
+    price row: with the daemon's heartbeat live then, that trade is the spot with its trade time;
+    with none, the spot is absent with the RTH outage reason -- whatever the machine's clock says
+    (judged by it, one of the two answers differs at every hour)."""
+    import live_market_plane as lmp
+    import live_price_rows
+    from app.options.order_flow import streaming as ofs
+    at = _et("2026-10-02 11:00")
+    served = {}
+    for live in (True, False):
+        if live:
+            lmp.record_feed_heartbeat({"ts": at, "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": ["SPY"]}})
+        lmp.record_from_level_one_equity("SPY", {"LAST_PRICE": 767.39, "TRADE_TIME_MILLIS": int(at * 1000)},
+                                         received_ts=at)
+        ofs._price_rows["SPY"] = live_price_rows.price_row("SPY", at)
+        try:
+            body = server.levels_payload("SPY", "1", datetime.fromtimestamp(at, ET))
+        finally:
+            ofs._price_rows.pop("SPY", None)
+            lmp.record_feed_down()
+        served[live] = (body["spot"], body["spot_source"], body["spot_as_of_ts_utc"])
+    assert served[True] == (767.39, server.SPOT_SOURCE_PLANE, at)
+    assert served[False] == (None, "Schwab LEVELONE_EQUITIES feed down during RTH", None)
+
+
 #: Schwab's SPY and TSLA bars as the capture daemon recorded them, Thu 2026-10-01 and Fri 10-02
 #: (sessions Schwab's /markets answers; tests/conftest.py)
 _DAEMON_BARS = daemon_bars("real_daemon_bars_spy_tsla_2026_10_01_02.json")
@@ -758,7 +782,8 @@ def test_d6_only_schwabs_recorded_bars_reach_the_chart_and_the_levels_never_the_
             served = {b["t"]: (b["o"], b["h"], b["l"], b["c"], b["v"])
                       for b in _chart_bars(tk) if b["t"] in recorded or b["t"] in old}
             levels_input = {b["timestamp"] / 1000: (b["open"], b["high"], b["low"], b["close"], b["volume"])
-                            for b in server._liquidity_1m_bars(tk) if b["timestamp"] / 1000 in recorded or b["timestamp"] / 1000 in old}
+                            for b in bars_from_candles(server._bars_1m(tk, 2500))
+                            if b["timestamp"] / 1000 in recorded or b["timestamp"] / 1000 in old}
             assert served == recorded == levels_input, tk
             assert not set(old_only) & set(served), tk
     finally:

@@ -253,8 +253,9 @@ from Schwab to the screen (daemon, console, page), are these:
   (`stop_bar_writer`). The console's old bar store (`ed_console.db` `price_bars_1m`: bars its
   quote accumulator built and price-history re-seeds before 2026-09-26, then Schwab's streamed
   bars to 2026-10-04) is neither written nor read. The levels loop builds nothing until that load is
-  done. If the load fails, no level is built and the console window shows the error. The bars
-  are normalized once (`_bars_to_list`); every level function takes them.
+  done. If the load fails, no level is built and the console window shows the error. Each bar
+  is checked once, where it comes in (`server._schwab_bar`); the levels take the bar writer's
+  bars as kept (`liquidity_value_engine.bars_from_candles`), every level function the same.
   The routes serve what it published and build nothing. `/api/levels` also serves the order the
   chart draws them in (`by_distance`): nearest the spot (Schwab's last trade under §2 D5, with
   its trade time `spot_as_of_ts_utc`), each level's distance and side from it,

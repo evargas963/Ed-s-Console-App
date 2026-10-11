@@ -43,16 +43,15 @@ def test_every_feed_gets_one_row_with_the_same_checked_at(tmp_path, monkeypatch)
     assert all(r[3] is None for r in rows if r[1] != "NEWS_HEADLINE"), "no data is None, not a time"
 
 
-def test_a_stopped_record_reads_stale_in_the_console(tmp_path, monkeypatch):
+def test_a_stopped_record_reads_stale_in_the_console(tmp_path):
     import time
-    import db_authority
     import server
     db = tmp_path / "stream_capture.db"
+    now = time.time()
     CaptureWriter(db).insert("feedstatus.NEWS_HEADLINE", {
-        "ts": time.time() - 600, "service": "NEWS_HEADLINE", "socket_open": True,
+        "ts": now - 600, "service": "NEWS_HEADLINE", "socket_open": True,
         "schwab_last_frame_ts": None, "held": 1, "last_data_ts": None})
-    monkeypatch.setattr(db_authority, "canonical_stream_db_path", lambda: db)
-    assert server._feed_record_state() == "FEED RECORD STALE: last written 10 min ago"
+    assert server._feed_record_state(db, now) == "FEED RECORD STALE: last written 10 min ago"
 
 
 def test_a_failed_round_is_logged_and_the_next_round_runs(tmp_path, monkeypatch, caplog):
