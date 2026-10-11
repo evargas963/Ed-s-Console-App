@@ -185,6 +185,28 @@ def test_the_machine_a_merge_and_a_push(cmd, answer, markets):
     assert _decide(cmd, CLOSED, markets) == answer
 
 
+@pytest.mark.parametrize("cmd, tool", [
+    ("gh -R evargas963/Ed-s-Console-App pr merge 515", "Bash"),            # options before merge
+    ("gh pr -R o/r merge 5 --squash", "Bash"),
+    ("gh api -X PUT repos/o/r/pulls/5/merge", "Bash"),                       # API PUT through gh api
+    ("gh api graphql -f query='mutation { mergePullRequest(input: {pullRequestId: \"PR_x\"}) "
+     "{ clientMutationId } }'", "Bash"),                                     # GraphQL through gh api
+    ("curl -X PUT -H 'Accept: application/vnd.github+json' https://api.github.com/repos/o/r/pulls/5/merge", "Bash"),
+    ("Invoke-RestMethod -Method Put -Uri https://api.github.com/repos/o/r/pulls/5/merge", "PowerShell"),
+    ("bash -c \"gh pr merge 5\"", "Bash"),                                  # wrapped in a shell
+    ("pwsh -c \"gh pr merge 5 --merge\"", "PowerShell"),
+])
+def test_every_merge_route_asks(cmd, tool, markets):
+    assert _decide(cmd, CLOSED, markets, tool) == guard.ASK, cmd
+
+
+@pytest.mark.parametrize("cmd", ["gh pr view 515", "gh pr checks 515", "gh -R o/r pr list",
+                                 "curl -s https://api.github.com/repos/o/r/pulls/5",
+                                 "bash -c \"gh pr view 5\""])
+def test_reading_a_pull_request_passes(cmd, markets):
+    assert _decide(cmd, CLOSED, markets) == guard.PASS, cmd
+
+
 def test_the_test_changed_below_is_on_main():
     assert subprocess.run(["git", "cat-file", "-e", f"origin/main:{EXISTING}"], cwd=REPO).returncode == 0
 

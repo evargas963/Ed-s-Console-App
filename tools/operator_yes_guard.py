@@ -15,9 +15,10 @@ shell commands. Each command gets one answer, the strictest of its statements':
     command line cannot be read is put to the operator. A stop whose targets are chosen only when
     it runs (a variable, a pipe) is refused when the command names the daemon or the console, and
     put to the operator while either runs.
-  * A stop or restart of the machine and a merge spelled `gh pr merge N` or `gh api .../pulls/N/merge`
-    (`_merges`) are put to the operator; a push to main is refused. Other merge routes (options
-    before `merge`, curl, GraphQL, a `-c` wrapper, the web page) are not seen: ENF-13.
+  * A stop or restart of the machine and a merge are put to the operator; a push to main is
+    refused. A merge is `gh pr merge` with options anywhere, a REST merge or a GraphQL
+    mergePullRequest sent by `gh api`, curl or Invoke-RestMethod, in the command or a `bash -c` /
+    `pwsh -c` payload (`_merges`, `_line_merges`). A merge on the GitHub page is the operator's own.
 
 Limits: shell commands are judged on the program each statement runs, never on names it only
 mentions (a read, a diff or a search naming a launcher passes); code inside `python -c` or a
@@ -62,8 +63,19 @@ STOPPERS = ("stop-process", "spps", "taskkill", "kill", "tskill", "pskill")
 MACHINE_STOPPERS = ("stop-computer", "restart-computer", "shutdown")
 #: process objects removed through WMI/CIM
 WMI_STOPS = ("remove-ciminstance", "remove-wmiobject")
-#: a merge through GitHub's API
+#: a merge through GitHub's REST API
 API_MERGE = re.compile(r"/pulls/(\d+)/merge\b", re.I)
+#: programs that send an HTTP request
+HTTP_CLIENTS = ("curl", "wget", "invoke-restmethod", "irm", "invoke-webrequest", "iwr")
+#: a GraphQL mergePullRequest sent by `gh api` or an HTTP client, judged on the whole line (a quoted
+#: query opened mid-word, `query='mutation { ... }'`, does not stay one token)
+GRAPHQL_MERGE = re.compile(r"(?:^|[\s;&|(])(?:[^\s;&|]*[\\/])?(?:gh(?:\.exe)?\s[^\n;&|]*?\bapi\b|"
+                           + "|".join(HTTP_CLIENTS) + r")\b[^\n]*?\bmergePullRequest\b", re.I)
+#: gh options that take a value (the value is not a subcommand)
+GH_VALUE_OPTIONS = ("-R", "--repo", "--hostname", "-X", "--method", "-f", "-F", "--field", "--raw-field")
+#: a shell given its script as a quoted payload (bash -c, pwsh -c / -Command, cmd /c)
+SHELL_PAYLOAD = re.compile(r"(?:^|[\s;&|(])(?:bash|sh|zsh|pwsh|powershell|cmd)(?:\.exe)?\b[^\n;&|]*?"
+                           r"\s(?:-c|-command|/c)\s+(\"(?:\\.|[^\"])*\"|'[^']*')", re.I)
 #: process ids and image names a stop names (Stop-Process -Id, taskkill /PID, ProcessId=N;
 #: -Name, /IM, Get-Process <name>, Name='x.exe')
 _PIDS = re.compile(r"(?:-id|/pid|processid\s*=)\s*['\"]?(\d[\d,\s]*)", re.I)
@@ -234,17 +246,34 @@ def decide(payload: dict, now: datetime, db: Path) -> "tuple[str, list[str]]":
             asks.append(f"merges pull request {_merges(toks)} (AGENTS.md Authority)")
         elif _pushes_main(toks):
             denies.append("pushes to main: main moves only by a pull request merged on GitHub")
+    asks += [f"merges pull request {n} (AGENTS.md Authority)" for n in _line_merges(cmd)]
     return (DENY, denies) if denies else (ASK, asks) if asks else (PASS, [])
 
 
 def _merges(toks: "list[str]") -> str:
-    """The pull request the statement `toks` merges (gh pr merge N, or GitHub's API); "" if none."""
+    """The pull request the statement `toks` merges: `gh pr merge` with options anywhere, or a REST
+    merge sent by `gh api` or an HTTP client; "" if none."""
+    name = program_name(toks[0])
     args = [t.strip("\"'") for t in toks[1:]]
-    if program_name(toks[0]) != "gh":
-        return ""
-    if args[:2] == ["pr", "merge"]:
-        return next((a for a in args[2:] if a.isdigit()), "the current branch's")
-    return next((m.group(1) for a in args for m in [API_MERGE.search(a)] if m), "")
+    api = next((m.group(1) for a in args for m in [API_MERGE.search(a)] if m), "")
+    if name == "gh":
+        words = [a for i, a in enumerate(args)
+                 if not a.startswith("-") and not (i and args[i - 1] in GH_VALUE_OPTIONS)]
+        if words[:2] == ["pr", "merge"]:
+            return next((a for a in words[2:] if a.isdigit()), "the current branch's")
+        return api if words[:1] == ["api"] else ""
+    return api if name in HTTP_CLIENTS else ""
+
+
+def _line_merges(cmd: str) -> "list[str]":
+    """The merges the statement split cannot see: a GraphQL mergePullRequest on a line the shell
+    runs, and any merge inside a shell's quoted payload (bash -c "...", pwsh -c "...")."""
+    out = ["a GraphQL mergePullRequest" for line in shell_executed_part(_HERE_STRING.sub(" ", cmd)).splitlines()
+           if GRAPHQL_MERGE.search(line)]
+    for m in SHELL_PAYLOAD.finditer(cmd):
+        inner = m.group(1)[1:-1].replace('\\"', '"')
+        out += [n for toks, _piped in _statements(inner) for n in [_merges(toks)] if n] + _line_merges(inner)
+    return out
 
 
 def _pushes_main(toks: "list[str]") -> bool:
