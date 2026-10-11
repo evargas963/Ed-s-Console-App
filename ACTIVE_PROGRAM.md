@@ -38,7 +38,7 @@ Status values: `NEXT` | `IN PROGRESS` | `QUEUED` | `BLOCKED` | `OPERATOR`.
 | ENF-22 | QUEUED | The numbers (rule 5, operator 2026-10-11): behavior tests on captured data that a value which stops updating, for any reason, stands marked not live with its time and age; that every value computed from it is marked too; that the header says OFFLINE during a feed outage; and that no calculation rounds or drops a contract Schwab sent. Built with NUMBERS. |
 
 Command guards read commands through one quote-aware reader (operator 2026-10-11):
-`tools/shell_parse.read`; no guard splits, tokenizes or unquotes a command itself
+`read` in `tools/shell_parse.py`; no guard splits, tokenizes or unquotes a command itself
 (`tests/test_shell_reader_v1.py`, `tests/test_guards_read_statements_v1.py`).
 
 ## Phase 1 — restore and stabilize
