@@ -146,6 +146,17 @@ jobs:
           fi
           exit "$pytest_rc"
 
+      - name: Upload each failing Playwright test's trace, screenshot and the full E2E log
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: playwright-failures
+          path: |
+            test-results/
+            logs/test_e2e_last.log
+          if-no-files-found: ignore
+          retention-days: 14
+
       - name: A changed test fails on the old code (AGENTS.md, Before writing code)
         if: github.event_name == 'pull_request'
         env:

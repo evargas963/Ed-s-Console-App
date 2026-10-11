@@ -26,7 +26,12 @@ First gate 4), then start again from step 1.
    NOT_PROVEN is fixed or proven, or brought to Ed, before the PR is offered. Before bringing Ed a
    decision, check AGENTS.md, CLAUDE.md and ACTIVE_PROGRAM.md for a rule or recorded decision that
    answers it; if one does, apply it and cite it. A decision goes to Ed only when none does.
-8. End the report as CLAUDE.md shows: CONFIRMED (each step's output above), NOT VERIFIED, SEEN, NOT
+8. Nothing left running: list every background shell, subagent and process this session started (the
+   session's background tasks, `ListAgents`, and the processes started since the session began, from
+   `Get-CimInstance Win32_Process`), finish or stop each one, and show the list with each one's end.
+   The production daemon and console are not on it: they stop only by `python launch.py stop`
+   (CLAUDE.md item 5).
+9. End the report as CLAUDE.md shows: CONFIRMED (each step's output above), NOT VERIFIED, SEEN, NOT
    FIXED — each open item verified, fixed or brought to Ed as a decision (AGENTS.md First gate 5).
    These steps do not check the live screen, which AGENTS.md's "Done" needs: show it, or list it as
    NOT VERIFIED.
