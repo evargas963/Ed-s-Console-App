@@ -22,7 +22,7 @@ Check every request and every proposal:
 If anything fails, report what failed and why, and leave the failing part out. Claude proposes the smallest, simplest path that passes, using the repo. That proposal is checked against this gate before it goes to Ed for approval.
 4. For every problem, first answer why it happens, down to the code or data that causes it, with evidence. Only then the fix. Never offer a choice about limits, settings or tests until the cause is known.
 5. Every item labeled NOT VERIFIED gets verified, and every item labeled SEEN, NOT FIXED gets fixed at the source, before the work is reported done. An item that can't be closed comes to Ed as a decision, with its evidence and the reason.
-Enforced by (items 4 and 5): `.claude/skills/before-done/SKILL.md` step 7 and `.claude/skills/flaky-test-fix/SKILL.md`.
+Enforced by (items 4 and 5): `.claude/skills/before-done/SKILL.md` (item 4 in its opening paragraph; item 5 in steps 7 and 8) and `.claude/skills/flaky-test-fix/SKILL.md`.
 
 ### Standard of care
 Hold EdWebConsole to how a financial institution handles systems with real money on the line. These are judgments to apply to every proposal, not things to build:
@@ -155,13 +155,13 @@ Hold EdWebConsole to how a financial institution handles systems with real money
 - **PASS**: every required condition proven. **FAIL**: any condition violated. **NOT_PROVEN**: any
   condition without proof. A proof is CONFIRMED evidence on the final commit and names its tier (unit,
   integration, browser, deployed app, live market); one tier never stands in for another, and a check
-  proves only the paths it covers. Never PASS with a FAIL or NOT_PROVEN open. Both labels stay: NOT_PROVEN judges a
-  change, NOT VERIFIED labels a statement ("Claims"). `docs/PRACTICES.md` §H and the First gate's "the prompt builder"
+  proves only the paths it covers. Never PASS with a FAIL or NOT_PROVEN open. NOT_PROVEN judges a change; NOT
+  VERIFIED labels a statement ("Claims"). `docs/PRACTICES.md` §H and the First gate's "the prompt builder"
   stay as written. Enforced by: no machine check — ENF-12.
 - The two reviewers (`.claude/agents/correctness-reviewer.md`; `.claude/agents/requirements-reviewer.md`, the
   architecture reviewer, which starts with the First gate) check every change, because the operator has not decided the
   repo is stable, and flag only correctness problems and breaks of the stated requirements.
-  Enforced by: `.claude/skills/before-done/SKILL.md` step 7; the rest — ENF-12.
+  `.claude/skills/before-done/SKILL.md` step 7 runs them. Enforced by: no machine check — ENF-12.
 
 ## Authority (enforced)
 

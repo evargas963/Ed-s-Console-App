@@ -475,9 +475,12 @@ from Schwab to the screen (daemon, console, page), are these:
    instead of receiving the values; bars are not yet on the daemon's push.
 5. **Values blank when they stop** (D5, operator 2026-10-11): in an open session a feed down blanks
    the value with its reason (`live_market_plane.outage`, the price row's `outage`, the books'
-   `top_outage`; a contract's streamed Greeks stop pricing, `server._current_stream_greeks`), the
-   closed market is handled apart from any other stop (`server.terrain_staleness`), and some
-   calculations round or drop contracts. Each place is listed in PR #515's description and fixed by
+   `top_outage`; a contract's streamed Greeks stop pricing, `server._current_stream_greeks`); the
+   console drops the daemon's price rows after 3 s with no frame and forgets a contract the daemon
+   stops holding; with no price the levels are absent; the closed market is handled apart from any
+   other stop (`live_market_plane.outage`, `server.terrain_staleness`); some calculations round or
+   drop contracts; the header says FEED DOWN where rule 5 says OFFLINE. The §3 descriptions of
+   these are today's behavior. Each place is listed in PR #515's description and fixed by
    `ACTIVE_PROGRAM.md` NUMBERS.
 
 The work that closes these gaps, in order, is `ACTIVE_PROGRAM.md`.
