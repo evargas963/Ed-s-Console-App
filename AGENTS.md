@@ -161,8 +161,9 @@ Hold EdWebConsole to how a financial institution handles systems with real money
   integration, browser, deployed app, live market); one tier never stands in for another, and a check
   proves only the paths it covers. Never PASS with a FAIL or NOT_PROVEN open.
   Enforced by: no machine check — ENF-12.
-- The two reviewers flag only correctness problems and breaks of the stated requirements.
-  Enforced by: `.claude/agents/correctness-reviewer.md`, `.claude/agents/requirements-reviewer.md`.
+- The two reviewers (`.claude/agents/correctness-reviewer.md`, `.claude/agents/requirements-reviewer.md`)
+  flag only correctness problems and breaks of the stated requirements. Enforced by: no machine
+  check — ENF-12.
 
 ## Authority (enforced)
 
