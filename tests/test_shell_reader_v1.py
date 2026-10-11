@@ -73,6 +73,13 @@ def test_a_called_quoted_path_is_a_program_word():
     assert st.program == "gh" and st.raw[0] == '& "C:\\Program Files\\GitHub CLI\\gh"'
 
 
+def test_shell_arithmetic_runs_only_its_substitutions():
+    assert _words("(( $n > 5 )) && echo big") == [["echo", "big"]]
+    assert _words("for (( i=0; i<$n; i++ )); do echo $i; done") == [["for"], ["echo", "$i"]]
+    assert ["gh", "pr", "merge", "5"] in _words("(( $(gh pr merge 5) > 0 ))")
+    assert _words("((echo a); gh pr merge 5)") == [["echo", "a"], ["gh", "pr", "merge", "5"]]   # nested subshells
+
+
 def test_a_line_break_and_a_pipe_each_end_a_statement():
     assert _words("gh api repos/o/r/pulls/5 --jq .title\ngrep -n mergePullRequest f") == [
         ["gh", "api", "repos/o/r/pulls/5", "--jq", ".title"], ["grep", "-n", "mergePullRequest", "f"]]

@@ -31,11 +31,11 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-from tools.hook_chain import BASH_TOOLS  # noqa: E402 — the ONE shell-tool roster (RC-520)
+from tools.hook_chain import BASH_TOOLS  # noqa: E402 — the ONE shell-tool roster
 from tools.shell_parse import (  # noqa: E402 — the ONE shell reader
     IEX, PWSH, PYTHON, Statement, git_parts, git_subcommand, parse_python, pwsh_option, python_code, read, reads_stdin)
 
-#: RC-273 — the gitignored tree with no history. A path SEGMENT: `AppData/`, `mydata/`, `_data/`
+#: The gitignored tree with no history. A path SEGMENT: `AppData/`, `mydata/`, `_data/`
 #: do not match; `data/x`, `./data/x`, `C:/repo/data/x` do.
 _PROTECTED_TREE = re.compile(r"(?:^|[\\/\"'=(,\s])data[\\/]", re.I)
 #: The tree itself as a shell argument: `data`, `./data`, `C:/repo/data`.
@@ -140,7 +140,7 @@ def _blind_stage(st: Statement) -> bool:
 
 def _disables_a_lock(st: Statement) -> bool:
     """Lock-disable routes: git's own (`--no-verify`, `-n` on commit, `core.hooksPath`) and
-    pre-commit's own (`SKIP=<hook-id>`, `$env:SKIP=`, `pre-commit uninstall`) — RC-541."""
+    pre-commit's own (`SKIP=<hook-id>`, `$env:SKIP=`, `pre-commit uninstall`)."""
     git_globals, sub, args = git_parts(st.words)
     skip = next((e.split("=", 1)[1] for e in st.env if re.match(r"(?:\$env:)?skip=", e, re.I)), None)
     if skip == "" and st.words:          # `$env:SKIP = 'x'`
@@ -154,7 +154,7 @@ def _disables_a_lock(st: Statement) -> bool:
 
 def bash_violations(cmd: str, ledger=None, payload_cwd: str = "", powershell: bool = False) -> list[str]:
     """Every host-wide ban that fires on `cmd` (a PowerShell command when `powershell`).
-    Applicability is per rule, never an early return (RC-258: a foreign-repository target
+    Applicability is per rule, never an early return (a foreign-repository target
     exempts nothing host-wide). `ledger` and `payload_cwd` are accepted for the suites' call
     shape; no rule reads a repository."""
     statements = read(cmd or "", powershell=powershell)
@@ -198,7 +198,7 @@ def main() -> int:
     cmd = (payload.get("tool_input") or {}).get("command") or ""
     bad = bash_violations(cmd, [], str(payload.get("cwd") or ""), payload.get("tool_name") == "PowerShell")
     if bad:
-        sys.stderr.write("BLOCKED (RC-93) — OPERATOR LAW: ban the ACTION, not the word.\n\n"
+        sys.stderr.write("BLOCKED — OPERATOR LAW: ban the ACTION, not the word.\n\n"
                          + "\n".join(f"    {b}" for b in bad) + "\n")
         return 2
     return 0

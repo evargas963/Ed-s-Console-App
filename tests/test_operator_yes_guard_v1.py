@@ -207,6 +207,12 @@ def test_the_machine_a_merge_and_a_push(cmd, answer, markets):
     ("gh api graphql -f query='\nmutation {\n  mergePullRequest(input: {pullRequestId: \"PR_x\"}) "
      "{ clientMutationId }\n}'", "Bash"),                                    # a multi-line query
     ("gh api -X PUT repos/o/r/pulls/$PR/merge", "Bash"),                     # the number in a variable
+    ("gh api graphql -f query='mutation { enablePullRequestAutoMerge(input: {pullRequestId: \"PR_x\"}) "
+     "{ clientMutationId } }'", "Bash"),                                     # merges once checks pass
+    ("gh api graphql -f query='mutation { mergeBranch(input: {repositoryId: \"R_x\", base: \"main\", "
+     "head: \"x\"}) { clientMutationId } }'", "Bash"),                        # a branch merge
+    ("gh api -X POST repos/o/r/merges -f base=main -f head=x", "Bash"),       # the REST branch merge
+    ("curl -X POST https://api.github.com/repos/o/r/merges -d '{\"base\":\"main\",\"head\":\"x\"}'", "Bash"),
 ])
 def test_every_merge_route_asks(cmd, tool, markets):
     assert _decide(cmd, CLOSED, markets, tool) == guard.ASK, cmd

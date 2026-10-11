@@ -86,7 +86,7 @@ Hold EdWebConsole to how a financial institution handles systems with real money
    `stream_capture.db` every equity message and the kept option contracts for five trading
    sessions (DATA_FLOW D4); `ed_console.db` the chain captures and level crosses; read at
    startup, after the close and for research; never for a live screen.
-   Enforced by: `docs/DATA_FLOW.md` §2 D1–D6, each with its own test.
+   Enforced by: the tests `docs/DATA_FLOW.md` §2 D1–D6 each name.
 7. **Nothing without a job.** A change deletes what it replaces, in the same PR. A register, audit,
    report or check lives only while it has a job; once answered, it is deleted.
    Enforced by: ruff F401 at commit and in the required `hardening` job; the rest — ENF-04.
@@ -171,8 +171,8 @@ Hold EdWebConsole to how a financial institution handles systems with real money
 - A PR merges on the operator's yes after CI is green on its final commit; that yes also covers its deploy. No
   CODEOWNERS file. Enforced by: branch protection on `main` requires `.github/workflows/pytest.yml` and
   `.github/workflows/hardening.yml` to pass on a branch current with `main`; `tools/operator_yes_guard.py` asks
-  Allow/Deny for the merge routes its tests cover (`tests/test_operator_yes_guard_v1.py`); a merge clicked in a browser
-  (an agent's browser tool included) or run from a script file — GITHUB-LOCK; the forms ENF-13 lists; no CODEOWNERS — ENF-12.
+  Allow/Deny for the merge routes its tests cover (`tests/test_operator_yes_guard_v1.py`); a merge in a browser or a script
+  file, and the forms ENF-13 lists — no machine check, ENF-13 (GITHUB-LOCK: the operator's host step); no CODEOWNERS — ENF-12.
 - Stop for the operator's STOP / PAUSE / HANG IT UP / DO NOT CONTINUE / NO, a task marked AUDIT ONLY
   or DO NOT MERGE, a destructive data action, and a product decision code cannot settle. Say in chat
   what a guarded action is for before running it. Enforced by: `tools/operator_yes_guard.py` asks Allow/Deny for

@@ -68,6 +68,10 @@ MACHINE_STOPPERS = ("stop-computer", "restart-computer", "shutdown")
 WMI_STOPS = ("remove-ciminstance", "remove-wmiobject")
 #: a merge through GitHub's API
 API_MERGE = re.compile(r"/pulls/([^/\s'\"]+)/merge\b", re.I)
+#: a branch merged through GitHub's REST API
+API_BRANCH_MERGE = re.compile(r"\brepos/[^/\s'\"]+/[^/\s'\"]+/merges\b", re.I)
+#: GraphQL mutations that merge, or turn on a merge once checks pass
+GRAPHQL_MERGE = re.compile(r"mergePullRequest|enablePullRequestAutoMerge|mergeBranch", re.I)
 #: programs that send an HTTP request
 HTTP_CLIENTS = ("curl", "wget", "invoke-restmethod", "irm", "invoke-webrequest", "iwr")
 #: gh options that take a value (the value is not a subcommand)
@@ -233,7 +237,7 @@ def decide(payload: dict, now: datetime, db: Path) -> "tuple[str, list[str]]":
             asks.append(f"merges pull request {pr} (AGENTS.md Authority)")
         elif _pushes_main(st):
             denies.append("pushes to main: main moves only by a pull request merged on GitHub")
-        elif st.program == "gh" and _gh_words(st)[:2] == ["alias", "set"]:
+        elif st.program == "gh" and _gh_words(st)[:2] in (["alias", "set"], ["alias", "import"]):
             denies.append("sets a gh alias: an alias can name a merge in words the merge check does not know")
     return (DENY, denies) if denies else (ASK, asks) if asks else (PASS, [])
 
@@ -245,8 +249,8 @@ def _gh_words(st: Statement) -> "list[str]":
 
 
 def _merges(st: Statement) -> str:
-    """The pull request the statement `st` merges: `gh pr merge` with options anywhere, or a REST
-    merge or GraphQL mergePullRequest sent by `gh api` or an HTTP client; "" if none."""
+    """The pull request or branch the statement `st` merges: `gh pr merge` with options anywhere, or
+    a REST merge or a GraphQL merge mutation sent by `gh api` or an HTTP client; "" if none."""
     name, args = st.program, list(st.words[1:])
     if name == "gh":
         words = _gh_words(st)
@@ -256,10 +260,12 @@ def _merges(st: Statement) -> str:
             return ""
     elif name not in HTTP_CLIENTS:
         return ""
-    if any("mergepullrequest" in a.lower() for a in args):
-        return "a GraphQL mergePullRequest"
+    if m := next((m for a in args for m in [GRAPHQL_MERGE.search(a)] if m), None):
+        return f"a GraphQL {m.group(0)}"
     if any("graphql" in a.lower() for a in args) and any(a.startswith("@") or "=@" in a or a == "--input" for a in args):
         return "a GraphQL request whose body is read from a file"            # its query is unseen
+    if any(API_BRANCH_MERGE.search(a) for a in args):
+        return "a branch, by REST /merges"
     return next((m.group(1) for a in args for m in [API_MERGE.search(a)] if m), "")
 
 

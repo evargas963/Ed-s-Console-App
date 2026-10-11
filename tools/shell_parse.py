@@ -359,7 +359,8 @@ class _Lexer:
         return _Word(text.replace("\0", "\\"), s[start:i], nested, text.replace("\0", "") if "\0" in text else None)
 
     def tokens(self) -> list[list]:
-        """["w", _Word], ["op", separator], ["redir", operator, _Word, heredoc body], ["group", text]."""
+        """["w", _Word], ["op", separator], ["redir", operator, _Word, heredoc body], ["group", text],
+        ["arith", the commands substituted in it]."""
         s, tokens, pending, fresh, called, i = self.s, [], [], True, "", 0
         while i < len(s):
             c = s[i]
@@ -382,6 +383,11 @@ class _Lexer:
                 tokens.append(["op", ";"])
                 fresh = True
                 i += 1
+            elif not self.ps and s.startswith("((", i) and (fresh or tokens[-1][0] == "w" and tokens[-1][1].value == "for") and \
+                    s[(k := self.close(i + 2)) + 1:k + 2] == ")":   # `(( ))`, `for (( ))`: arithmetic
+                tokens.append(["arith", self.substituted(s[i + 2:k])])
+                fresh = False
+                i = k + 2
             elif c in "({":
                 j = self.close(i + 1, c, ")" if c == "(" else "}")
                 inner, after = s[i + 1:j], s[j + 1:j + 2]
@@ -475,6 +481,9 @@ def pwsh_option(args, name: str) -> int | None:
     (`-c`, `-com`, `-Command`); None when it is absent."""
     return next((i for i, a in enumerate(args) if len(a) > 1 and name.startswith(a.lower())), None)
 _SH_COMMAND = re.compile(r"-[A-Za-z]*c[A-Za-z]*")
+#: a shell's option that reads its commands from stdin, and its options that take a value
+_SH_STDIN = re.compile(r"-[A-Za-z]*s[A-Za-z]*")
+_SH_VALUE_OPTIONS = frozenset({"-o", "-O", "--rcfile", "--init-file"})
 _PRINTERS = frozenset({"echo", "printf", "write-output"})
 _EXEC = frozenset({"-exec", "-execdir", "-ok", "-okdir"})
 
@@ -494,6 +503,9 @@ def _read(s: str, ctx: dict, upstream: Statement | None) -> list[Statement]:
             inner = _read(tok[1], {**ctx, "last": None}, upstream)
             out += inner
             ctx["last"] = inner[-1] if inner else ctx["last"]
+        elif tok[0] == "arith":            # runs no program; its substitutions run
+            for text in tok[1]:
+                out += _nested(text, ctx)
         else:
             out += _statement(words, redirs, ctx, upstream)
             upstream = ctx["last"] if tok[1] == "|" else None
@@ -657,8 +669,10 @@ def reads_stdin(st: Statement) -> bool:
             i += 2 if a in _PY_VALUE_OPTIONS else 1
         return True
     if name in _SH:
-        script = next((a for a in args if not a.startswith("-") or a == "-"), None)
-        return not any(_SH_COMMAND.fullmatch(a) for a in args) and (script is None or script in _STDIN_FILES)
+        if any(_SH_COMMAND.fullmatch(a) for a in args):
+            return False
+        j = _skip_options(args, 0, _SH_VALUE_OPTIONS)
+        return j >= len(args) or args[j] in _STDIN_FILES or any(_SH_STDIN.fullmatch(a) for a in args[:j])
     if name == "cmd":
         return not any(a.lower() in ("/c", "/k", "//c", "//k") for a in args)
     if name in PWSH:
