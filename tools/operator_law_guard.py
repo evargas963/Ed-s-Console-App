@@ -14,6 +14,10 @@ a heredoc nothing runs are data.
     `python -`, and Python 3.13's REPL retries forever on the invalid handle. A python that reads
     its program from stdin (`-`, or no script, -c or -m) is refused wherever it runs; a script file
     or `python -c` does the same job.
+  * UNSEEN COMMANDS (operator 2026-10-11: fail closed). What the reader cannot see into is refused,
+    with a message to write it plainly: a program built at run time (`$cmd`, a substitution, a
+    PowerShell `& $x`), text piped into a shell or node, a PowerShell -EncodedCommand, and
+    Invoke-Expression.
 """
 from __future__ import annotations
 
@@ -28,7 +32,7 @@ if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
 from tools.hook_chain import BASH_TOOLS  # noqa: E402 — the ONE shell-tool roster (RC-520)
-from tools.shell_parse import PYTHON, Statement, git_parts, git_subcommand, parse_python, read  # noqa: E402 — the ONE shell reader
+from tools.shell_parse import PYTHON, Statement, git_parts, git_subcommand, parse_python, read, reads_stdin  # noqa: E402 — the ONE shell reader
 
 #: RC-273 — the gitignored tree with no history. A path SEGMENT: `AppData/`, `mydata/`, `_data/`
 #: do not match; `data/x`, `./data/x`, `C:/repo/data/x` do.
@@ -98,25 +102,25 @@ def _destroys_protected(st: Statement) -> bool:
     return False
 
 
-#: python options that read no program (versions, help, the py launcher's listings)
-_PY_INFO = frozenset({"-V", "-VV", "--version", "-h", "--help", "-0", "-0p", "--list", "--list-paths"})
-#: python options whose next argument is their value, not a script
-_PY_VALUE_OPTIONS = frozenset({"-W", "-X"})
-
-
-def _reads_program_from_stdin(st: Statement) -> bool:
-    """A python that takes its program from stdin: `-`, or no script, -c or -m."""
-    if not PYTHON.fullmatch(st.program):
-        return False
-    args, i = st.words[1:], 0
-    while i < len(args):
-        a = args[i]
-        if a == "-":
-            return True
-        if a.startswith(("-c", "-m")) or a in _PY_INFO or not a.startswith("-"):
-            return False
-        i += 2 if a in _PY_VALUE_OPTIONS else 1
-    return True
+def _unseen(st: Statement, ps: bool) -> str:
+    """What the reader cannot see into in this statement, or "": a program built at run time
+    (`$cmd`, `"$GH"`, `$(which gh)`; in PowerShell `& $x` / `& (...)`, where a bare `$x...` is an
+    expression), text piped into a shell or node (python has its own ban), a PowerShell
+    -EncodedCommand, Invoke-Expression."""
+    if not st.words:                     # an assignment or a redirect alone runs no program
+        return ""
+    name, args, first = st.program, [a.lower() for a in st.words[1:]], st.words[0]
+    if name in ("iex", "invoke-expression"):
+        return "Invoke-Expression runs text"
+    if name in ("pwsh", "powershell") and any(
+            a in ("-e", "-ec") or (a.startswith("-en") and "-encodedcommand".startswith(a)) for a in args):
+        return "-EncodedCommand"
+    called = st.raw[0].startswith("& ")
+    if first.startswith(("$", "(")) if called else (not ps and first.startswith(("$", "`"))):
+        return f"the program is built at run time ({first})"
+    if st.upstream is not None and not PYTHON.fullmatch(name) and reads_stdin(st):
+        return f"text piped into {name}"
+    return ""
 
 
 #: Blind staging: `-A`, `--all`, `-u`, `--update`, `*`, `.` are the same action in other flags.
@@ -161,11 +165,17 @@ def bash_violations(cmd: str, ledger=None, payload_cwd: str = "", powershell: bo
                    "Restores INTO it stay legal; removal from it is operator-only.")
     if any(_disables_a_lock(st) for st in statements):
         out.append("ACTION BLOCKED: this disables a mechanical lock. Only the operator may.")
-    if any(_reads_program_from_stdin(st) for st in statements):
+    if any(PYTHON.fullmatch(st.program) and reads_stdin(st) for st in statements):
         out.append("ACTION BLOCKED: this python reads its program from stdin (`python -`, a heredoc, "
                    "a pipe or </dev/null). On Windows an empty heredoc or </dev/null looks like a "
                    "console and Python 3.13's REPL retries forever. Put the code in a script file and "
                    "run it, or use `python -c`.")
+    unseen = [u for st in statements for u in [_unseen(st, powershell)] if u]
+    if unseen:
+        out.append(f"ACTION BLOCKED: the guards cannot see what this runs ({'; '.join(unseen)}). Write the "
+                   "command plainly: the program and its arguments as literal words — no $variable or "
+                   "substitution as the program, no text piped into a shell or interpreter, no "
+                   "-EncodedCommand, no Invoke-Expression.")
     return out
 
 

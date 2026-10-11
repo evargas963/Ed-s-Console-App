@@ -363,13 +363,14 @@ class _Lexer:
             elif c in "({":
                 j = self.close(i + 1, c, ")" if c == "(" else "}")
                 inner, after = s[i + 1:j], s[j + 1:j + 2]
-                if fresh and (not after or after in _WORD_END):  # a group: ( ) subshell, { } block
+                if fresh and not called and (not after or after in _WORD_END):   # a group: ( ) subshell, { } block
                     tokens.append(["group", inner])
                     i = j + 1
                     continue
                 rest = self.word(j + 1)                          # a ( ) or { } inside a statement
-                tokens.append(["w", _Word(s[i:j + 1] + rest.value, s[i:j + 1] + rest.raw, [inner, *rest.nested])])
-                fresh = False
+                raw = ("& " if called else "") + s[i:j + 1] + rest.raw
+                tokens.append(["w", _Word(s[i:j + 1] + rest.value, raw, [inner, *rest.nested])])
+                fresh, called = False, False
                 i = j + 1 + len(rest.raw)
             elif self.ps and fresh and c == "&" and s[i + 1:i + 2] != "&":     # `& "C:\x y\gh" pr ...`
                 called = True
@@ -399,8 +400,8 @@ class _Lexer:
             else:
                 w = self.word(i)
                 i += len(w.raw) or 1
-                if called:                     # the called word is a program, not a printed string
-                    w, called = _Word(w.value, w.value, w.nested), False
+                if called:                     # written `& word`: a program, not a printed string
+                    w, called = _Word(w.value, "& " + w.raw, w.nested), False
                 tokens.append(["w", w])
                 fresh = False
         return tokens
@@ -556,13 +557,42 @@ def _scripts(st: Statement) -> list[tuple[str, bool]]:
             return [(a, False) for a in args[k + 1:k + 2]]
     elif ps:
         k = next((i for i, a in enumerate(args) if len(a) > 1 and "-command".startswith(a.lower())), None)
-        if k is not None:
+        if k is not None and args[k + 1:k + 2] != ["-"]:
             return [(" ".join(args[k + 1:]), True)]
     else:
         return []
-    if any(not a.startswith("-") for a in args) or st.stdin is None:     # a script file, or no known stdin
-        return []
-    return [(st.stdin, ps)]                               # it reads its commands from stdin
+    return [(st.stdin, ps)] if st.stdin is not None and reads_stdin(st) else []
+
+
+#: python options that read no program (versions, help, the py launcher's listings)
+_PY_INFO = frozenset({"-V", "-VV", "--version", "-h", "--help", "-0", "-0p", "--list", "--list-paths"})
+#: python options whose next argument is their value, not a script
+_PY_VALUE_OPTIONS = frozenset({"-W", "-X"})
+
+
+def reads_stdin(st: Statement) -> bool:
+    """Whether a shell, PowerShell, python or node statement takes its program from stdin: no
+    command string (-c, -Command, -e) and no script file, or `-` in their place."""
+    name, args = st.program, list(st.words[1:])
+    if PYTHON.fullmatch(name):
+        i = 0
+        while i < len(args):
+            a = args[i]
+            if a == "-":
+                return True
+            if a.startswith(("-c", "-m")) or a in _PY_INFO or not a.startswith("-"):
+                return False
+            i += 2 if a in _PY_VALUE_OPTIONS else 1
+        return True
+    if name in _SH:
+        return not any(_SH_COMMAND.fullmatch(a) for a in args) and all(a.startswith("-") for a in args)
+    if name in _PWSH:
+        k = next((i for i, a in enumerate(args) if len(a) > 1 and "-command".startswith(a.lower())), None)
+        return args[k + 1:k + 2] in ([], ["-"]) if k is not None else all(a.startswith("-") for a in args)
+    if name == "node":
+        return all(a.startswith("-") for a in args) and not any(
+            a.split("=")[0] in ("-e", "--eval", "-p", "--print") for a in args)
+    return False
 
 
 def parse_python(code: str) -> ast.Module | None:
