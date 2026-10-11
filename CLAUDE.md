@@ -24,10 +24,12 @@ so a wrong number that looks right is worse than a blank with a reason.
 6. After two failed attempts at the same thing, stop and report what you tried.
 7. If rules conflict: correctness of what I see > my explicit yes > speed.
 
-Every report ends like this example:
+Every report ends like this example. An item you can check or fix is closed before the report;
+one that can't be closed comes to me as a decision, with its evidence and reason:
   CONFIRMED: pytest tests/test_x.py -> 12 passed; every watchlist ticker's levels match the chain.
-  NOT VERIFIED: behavior during market hours (market closed); daemon running (last
-  checked 06:21).
-  SEEN, NOT FIXED: daemon log shows 429s from Schwab at 06:13 (CONFIRMED, log above).
+  NOT VERIFIED: behavior during market hours (Schwab's session reads Closed). Decision: check it
+  at the next open.
+  SEEN, NOT FIXED: daemon log shows 429s from Schwab at 06:13 (CONFIRMED, log above). Decision:
+  the fix changes a request rate, which needs your yes.
 
 @AGENTS.md

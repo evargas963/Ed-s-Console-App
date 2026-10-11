@@ -17,4 +17,5 @@ copy tool is not built yet; build it as its own pull request first and delete it
 5. Check: the writer writes to the new file (its newest rows' times), the daily keep runs after the
    last option close and leaves 5 sessions, and the kept option rows are the soonest expiry ±5 strikes
    and the Flow pick. Show each query and its result.
-6. On Ed's word, Ed deletes the old file. Remove the copy tool and the work item in the same PR.
+6. On Ed's word, Ed deletes the old file. Remove the copy tool, the work item and this skill in the same
+   PR.

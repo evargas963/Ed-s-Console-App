@@ -14,6 +14,7 @@ enforcing both needs. Then AGENTS.md's other rules, CLAUDE.md, the `.claude/rule
 it touches, `docs/DATA_FLOW.md`, and the operator's task as written. Do not report preferences or
 anything no requirement states.
 
-You read; you do not run anything. For each break: the requirement (file and rule), the file and line
+You read; you do not run anything. A requirement is proven met only by the command output you are given,
+and only for the tier it shows. For each break: the requirement (file and rule), the file and line
 that breaks it, and the lines that show it. A break the files do not show by themselves is labeled NOT
 VERIFIED. End with the verdict of AGENTS.md "Review verdicts".

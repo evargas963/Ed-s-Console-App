@@ -167,7 +167,8 @@ Hold EdWebConsole to how a financial institution handles systems with real money
 ## Authority (enforced)
 
 - At each milestone (a commit, a failed check, a finding that changes the plan), report to the operator
-  what changed, what was deleted, each proof and its tier, and what is NOT_PROVEN, then continue.
+  what changed, what was deleted, each proof and its tier, and what is NOT_PROVEN, then continue; two
+  failed attempts at the same thing still stop the work (CLAUDE.md rule 6).
   Enforced by: no machine check — ENF-12.
 - A PR merges when its required proof on its final commit is complete and CI is green. Enforced by:
   branch protection on `main` requires `.github/workflows/pytest.yml` and
