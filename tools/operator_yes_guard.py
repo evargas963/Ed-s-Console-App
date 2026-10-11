@@ -250,15 +250,11 @@ def _gh_words(st: Statement) -> "list[str]":
 
 
 def _merges(st: Statement) -> bool:
-    """Whether the statement `st` merges: `gh pr merge` with options anywhere, or a REST merge or
-    a GraphQL merge mutation sent by `gh api` or an HTTP client."""
+    """Whether the statement merges."""
     name, args = st.program, list(st.words[1:])
     if name == "gh":
-        words = _gh_words(st)
-        if words[:2] == ["pr", "merge"]:
+        if "pr" in args and "merge" in args[args.index("pr") + 1:]:     # whatever options come between
             return True
-        if words[:1] != ["api"]:
-            return False
     elif name not in HTTP_CLIENTS:
         return False
     if any(MERGE_ROUTE.search(a) for a in args):

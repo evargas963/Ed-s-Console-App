@@ -220,7 +220,9 @@ def test_every_merge_route_asks(cmd, tool, markets):
 
 
 @pytest.mark.parametrize("cmd", ["gh pr merge -sb 7 518", "gh pr merge --body-file 7 518",
-                                 "gh pr merge --subject 2026 518", "gh pr merge 518"])
+                                 "gh pr merge --subject 2026 518", "gh pr merge 518", "gh -b x pr merge 5",
+                                 "gh --subject x pr merge 5", "gh -R owner/repo pr merge 5",
+                                 "gh -b x api -X PUT repos/o/r/pulls/5/merge"])
 def test_the_merge_question_shows_the_command_as_written(cmd, markets):
     answer, reasons = guard.decide(_shell(cmd), CLOSED, markets)
     assert answer == guard.ASK and len(reasons) == 1 and cmd in reasons[0], (cmd, reasons)
