@@ -30,11 +30,16 @@ Status values: `NEXT` | `IN PROGRESS` | `QUEUED` | `BLOCKED` | `OPERATOR`.
 | ENF-10 | QUEUED | Typed records across module boundaries: a check of cross-module dict payloads. |
 | ENF-11 | QUEUED | Imports at the top (ruff E402) and one formatter per format. |
 | ENF-12 | QUEUED | The agent practices that no machine can see (claims cite output, proof reproducible, read another agent's work, checkpoints, stop words, deploy means restarted and checked in market hours, `&&` chains): listed in `AGENTS.md`, each enforced by the operator's review until a check exists. |
-| ENF-14 | QUEUED | No source edits through a script. sed is refused by `tools/sed_edit_guard.py` (#449). Open, a separate later change (operator 2026-10-04): the other in-place editors — `perl -i`, `awk`/`gawk -i inplace`, python/node scripts that write files, PowerShell `Set-Content`/`Out-File`/`Add-Content`, `tee`, `ed`/`ex`/`vim` batch edits, `truncate`, `dd`, `unix2dos`/`dos2unix` (used 2026-10-04 to restore a file's CRLF endings); and the sed guard's three gaps — a heredoc fed to a shell (`bash <<EOF`), sed's own `w` command, a backslash-escaped path (`Program\ Files/…/sed.exe`). And `git update-ref --stdin` is beyond the main-branch lock's reach (`tools/process_lock_guard.py`, #455): it reads the ref it writes from standard input, which the hook cannot see. |
+| ENF-13 | QUEUED | Every PR merges on the operator's yes (AGENTS.md "Authority", operator 2026-10-11): the merges `tools/operator_yes_guard.py` does not see get a check (a web-page merge; `gh` with options before `merge`; a `curl`/`Invoke-RestMethod` PUT or a GraphQL `mergePullRequest`). No CODEOWNERS file (operator's ruling). |
+| ENF-14 | QUEUED | No source edits through a script. sed is refused by `tools/sed_edit_guard.py` (#449). Open, a separate later change (operator 2026-10-04): the other in-place editors — `perl -i`, `awk`/`gawk -i inplace`, python/node scripts that write files, PowerShell `Set-Content`/`Out-File`/`Add-Content`, `tee`, `ed`/`ex`/`vim` batch edits, `truncate`, `dd`, `unix2dos`/`dos2unix` (used 2026-10-04 and 2026-10-11 to restore a file's CRLF endings after a Write); and the sed guard's gap, sed's own `w` command. And `git update-ref --stdin` is beyond the main-branch lock's reach (`tools/process_lock_guard.py`, #455): it reads the ref it writes from standard input, which the hook cannot see. |
 | ENF-15 | QUEUED | Pushed at every hop, nothing polls (`docs/DATA_FLOW.md` §1): the page draws pushed values instead of re-reading routes after a push (P2-3). |
 | ENF-16 | QUEUED | Operator decisions 2–6, 8, 9 in `docs/DATA_FLOW.md` §6: each gets a test when it is built. |
 | ENF-21 | QUEUED | AGENTS.md rule 2's documentation authority: a statement about what Schwab sends, accepts or limits cites `docs/schwab/` by section or Schwab's own reply. No machine check yet. |
 | ENF-22 | QUEUED | The numbers (rule 5, operator 2026-10-11): behavior tests on captured data that a value which stops updating, for any reason, stands marked not live with its time and age; that every value computed from it is marked too; that the header says OFFLINE during a feed outage; and that no calculation rounds or drops a contract Schwab sent. Built with NUMBERS. |
+
+Command guards read commands through one quote-aware reader (operator 2026-10-11):
+`read` in `tools/shell_parse.py`; no guard splits, tokenizes or unquotes a command itself
+(`tests/test_shell_reader_v1.py`, `tests/test_guards_read_statements_v1.py`).
 
 ## Phase 1 — restore and stabilize
 
