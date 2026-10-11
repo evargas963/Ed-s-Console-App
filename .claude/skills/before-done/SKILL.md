@@ -14,8 +14,8 @@ First gate 4), then start again from step 1.
    `.venv/Scripts/python.exe -m compileall -q -x '([\\/](\.venv|venv|node_modules|__pycache__|models)[\\/])' .`
    — exit 0 (both as the `hardening` job runs them).
 3. `npm run test:all` — Playwright, then the full pytest suite; both counts shown, no failure.
-4. `.venv/Scripts/python.exe tools/check_fails_before.py --base origin/main` — "proven", naming the
-   test that fails on the old code (a pull request that changes product code).
+4. `.venv/Scripts/python.exe tools/check_fails_before.py --base origin/main` — exit 0; for a pull
+   request that changes product code it prints "proven", naming the test that fails on the old code.
 5. `.venv/Scripts/python.exe tools/check_no_new_patches.py --base origin/main` — exit 0.
 6. Write the PR description to a file, then
    `.venv/Scripts/python.exe tools/check_end_to_end.py --base origin/main --body-file <file>` — exit 0.
@@ -29,7 +29,7 @@ First gate 4), then start again from step 1.
 8. Nothing left running: list each background shell, subagent (`ListAgents`) and process this session
    started (`Get-CimInstance Win32_Process`, newer than the session), and show each one finished or
    stopped. Production is what `tools/operator_yes_guard.py` `_production` says it is; it stops only
-   by `python launch.py stop` (CLAUDE.md item 5).
+   by `python launch.py stop` (`docs/DATA_FLOW.md` §3.1), with Ed's yes when CLAUDE.md item 5 says.
 9. End the report as CLAUDE.md shows: CONFIRMED (each step's output above), NOT VERIFIED, SEEN, NOT
    FIXED — each open item verified, fixed or brought to Ed as a decision (AGENTS.md First gate 5).
    These steps do not check the live screen, which AGENTS.md's "Done" needs: show it, or list it as
