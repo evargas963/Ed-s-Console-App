@@ -1,4 +1,4 @@
-"""OPERATOR LAW GUARD — three host-wide ACTION bans on shell commands (RC-93: ban the action,
+"""OPERATOR LAW GUARD — four host-wide ACTION bans on shell commands (RC-93: ban the action,
 never the word). PreToolUse for the shell-command tools (`hook_chain.BASH_TOOLS`); exit 2 blocks.
 
 What survives, and the concrete failure each prevents (KEEP/MERGE/DELETE, 2026-09-10):
@@ -16,6 +16,10 @@ What survives, and the concrete failure each prevents (KEEP/MERGE/DELETE, 2026-0
     bypass the pre-commit battery the operator asked for. Required CI would still catch the
     result, but only after the commit exists; refusing the bypass in session is cheap and blocks
     nothing legitimate.
+  * PYTHON FROM STDIN. On Windows an empty heredoc or </dev/null looks like a console to
+    `python -`, and Python 3.13's REPL retries forever on the invalid handle. A python that reads
+    its program from stdin (in the command, an `eval` string or a shell's -c payload) is refused;
+    a script file or `python -c` does the same job.
 
 What was DELETED, and why (nothing replaced it):
   * the no-grep rule: it blocked read-only stdout filters three times in one session — governance
@@ -67,6 +71,11 @@ _HEREDOC = re.compile(r"^(?P<line>[^\n]*?)<<-?\s*(['\"]?)(?P<tag>\w+)\2(?P<rest>
 _PY_C = re.compile(r"(?:^|[\s;&|(])(?:python3?|py)(?:\.exe)?\b[^\n;&|]*?\s-c\s+"
                    r"(\"(?:\\.|[^\"])*\"|'[^']*')", re.I)
 _REDIRECT = re.compile(r"(?:^|[^<>&0-9])>{1,2}\s*(\"[^\"]*\"|'[^']*'|[^\s;&|]+)")
+#: A shell given its script as a quoted -c / -Command payload.
+_SH_C = re.compile(r"(?:^|[\s;&|(])(?:bash|sh|zsh|pwsh|powershell)(?:\.exe)?\b[^\n;&|]*?\s-(?:c|command)\s+"
+                   r"(\"(?:\\.|[^\"])*\"|'[^']*')", re.I)
+_PY_INFO = frozenset({"-V", "-VV", "--version", "-h", "--help"})
+_REDIR_TOKEN = re.compile(r"^\d*(?:&?[<>]+)(?P<target>.*)$")
 
 
 def _protected(arg: str) -> bool:
@@ -141,6 +150,37 @@ def _protected_path_violation(raw: str) -> bool:
     return False
 
 
+def _reads_program_from_stdin(toks: list[str]) -> bool:
+    """Whether a python invocation takes its program from stdin: `-`, or no script, -c or -m."""
+    args = [t.strip("\"'") for t in toks[1:]]
+    i = 0
+    while i < len(args):
+        a = args[i]
+        redirect = _REDIR_TOKEN.match(a)
+        if redirect:
+            i += 1 if redirect.group("target") else 2      # `</dev/null` or `< /dev/null`
+            continue
+        if a == "-":
+            return True
+        if a in ("-c", "-m") or a in _PY_INFO or not a.startswith("-"):
+            return False
+        i += 1
+    return True
+
+
+def _stdin_python(script: str) -> bool:
+    """A python that reads its program from stdin, in the command, an `eval` string or a shell's
+    -c payload. On Windows an empty heredoc or </dev/null looks like a console to python.exe, and
+    Python 3.13's REPL retries forever on the invalid handle."""
+    for _cwd, seg in iter_command_segments(script):
+        head, toks = segment_head(seg)
+        if head in _PY_HEADS and _reads_program_from_stdin(toks):
+            return True
+        if head == "eval" and _stdin_python(" ".join(t.strip("\"'") for t in toks[1:])):
+            return True
+    return any(_stdin_python(m.group(1)[1:-1]) for m in _SH_C.finditer(script))
+
+
 #: Blind staging: `-A`, `--all`, `-u`, `--update`, `*`, `.` are the same action in other flags.
 _BLIND_STAGE = re.compile(
     r"\bgit\s+add\s+(?:--\s+)?(?:-A\b|--all\b|-u\b|--update\b|\*|\.(?:\s|$))")
@@ -176,6 +216,11 @@ def bash_violations(cmd: str, ledger=None, payload_cwd: str = "") -> list[str]:
                    "Restores INTO it stay legal; removal from it is operator-only.")
     if _SKIP_HOOKS.search(cmd):
         out.append("ACTION BLOCKED: this disables a mechanical lock. Only the operator may.")
+    if _stdin_python(raw):
+        out.append("ACTION BLOCKED: this python reads its program from stdin (`python -`, a heredoc, "
+                   "a pipe or </dev/null). On Windows an empty heredoc or </dev/null looks like a "
+                   "console and Python 3.13's REPL retries forever. Put the code in a script file and "
+                   "run it, or use `python -c`.")
     return out
 
 

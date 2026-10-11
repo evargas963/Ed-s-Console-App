@@ -37,6 +37,40 @@ def test_lock_disable_routes_are_git_and_precommits_own():
         assert _SKIP_HOOKS.search(cmd) is None, cmd
 
 
+#: The command that hung for two hours (the stand-ins search), as the agent sent it.
+HUNG_SEARCH = ("cd tests/fixtures && grep -oiE '.{120}(stand-?in|synthetic|edited).{120}' "
+               "real_cde_complete_chain_half_dollar.json real_options_stream_history_samples.json | head -5; "
+               "python - <<'EOF' 2>/dev/null || true\nEOF\n"
+               "head -c 900 real_spy_2026_11_20_chain_and_quotes.json; echo")
+
+
+def test_python_reading_its_program_from_stdin_is_refused():
+    """On Windows an empty heredoc or </dev/null makes `python -` take stdin for a console;
+    Python 3.13's REPL then retries forever on the invalid handle. Any `python` that reads its
+    program from stdin is refused, with the way out named."""
+    from tools.operator_law_guard import bash_violations
+    for cmd in (HUNG_SEARCH,
+                "python - <<'EOF'\nEOF\necho ok",
+                "python - </dev/null",
+                "eval 'python - <<'\"'\"'EOF'\"'\"' 2>/dev/null || true\nEOF\necho \"after python\"'",
+                ".venv/Scripts/python.exe - <<'EOF'\nprint(1)\nEOF",
+                "printf '' | python -",
+                "python <<'EOF'\nprint(1)\nEOF",
+                "bash -c \"python - </dev/null\"",
+                "@'\nprint(1)\n'@ | python -"):
+        found = bash_violations(cmd)
+        assert any("python -c" in b and "script file" in b for b in found), cmd
+
+
+def test_python_with_a_script_or_c_or_m_still_runs():
+    from tools.operator_law_guard import bash_violations
+    for cmd in ("python script.py", "python -c \"print(1)\"", "python -m pytest -q", "python --version",
+                ".venv/Scripts/python.exe tools/check_end_to_end.py --base origin/main",
+                "python script.py < input.txt", "echo 'python - reads stdin'",
+                "cat > notes.txt <<'EOF'\npython - <<'X'\nEOF"):
+        assert not any("python -c" in b for b in bash_violations(cmd)), cmd
+
+
 def test_operator_law_guard_wired_for_edit_tools():
     """RC-205: the Edit/Write branch of operator_law_guard was DEAD CODE because
     .claude/settings.json only routed Bash|PowerShell to it — the ledger never received
