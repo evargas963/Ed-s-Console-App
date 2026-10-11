@@ -39,6 +39,7 @@ from __future__ import annotations
 import ast
 import os
 import re
+import shlex
 from dataclasses import dataclass
 from pathlib import Path, PureWindowsPath
 
@@ -635,7 +636,7 @@ def _python_shell_commands(code: str) -> list[str]:
             out.append(arg.value)
         elif isinstance(arg, ast.List | ast.Tuple) and all(isinstance(e, ast.Constant) and isinstance(e.value, str)
                                                           for e in arg.elts):
-            out.append(" ".join(e.value for e in arg.elts))
+            out.append(shlex.join(e.value for e in arg.elts))      # an argv list: each element one word
     return out
 
 
