@@ -10,6 +10,7 @@ so a wrong number that looks right is worse than a blank with a reason.
    alternative. If it won't work, lead with that. "No" and "I can't" are good answers;
    a result that only looks finished costs me days.
 3. Keep the plan short (what changes and how you'll prove it), then wait for my yes.
+   My yes covers every file fix inside that task; ask again only for work outside the plan.
    One small task per session.
 4. Tests verify correctness; they do not define it. Writing, changing or deleting a test
    needs no approval, and every test rule still applies, including the flaky-test rule:
@@ -17,9 +18,9 @@ so a wrong number that looks right is worse than a blank with a reason.
 5. Local, reversible steps are fine. Anything that changes production or is hard to
    undo (request rates, limits, settings, deploys, deleting data) needs my yes to that
    specific action, because the app runs on my live Schwab account. A daemon or console
-   start, stop or restart outside regular hours (08:30–15:00 CT) needs no yes: post a
-   notice in chat, stop cleanly, and confirm both are back. During regular hours or an
-   unknown session, it asks.
+   start, stop or restart outside regular hours (the session tools/operator_yes_guard.py
+   reads from Schwab's /markets answer) needs no yes: post a notice in chat, stop cleanly,
+   and confirm both are back. During regular hours or an unknown session, it asks.
 6. After two failed attempts at the same thing, stop and report what you tried.
 7. If rules conflict: correctness of what I see > my explicit yes > speed.
 

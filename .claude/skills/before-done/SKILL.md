@@ -17,5 +17,9 @@ First gate 4), then start again from step 1.
 5. `.venv/Scripts/python.exe tools/check_no_new_patches.py --base origin/main` — exit 0.
 6. Write the PR description to a file, then
    `.venv/Scripts/python.exe tools/check_end_to_end.py --base origin/main --body-file <file>` — exit 0.
-7. End the report as CLAUDE.md shows: CONFIRMED (each step's output above), NOT VERIFIED, SEEN, NOT
+7. Four eyes: run the `correctness-reviewer` and `requirements-reviewer` agents on the PR's final diff
+   (`git diff origin/main...HEAD`, with the PR description and the operator's task). Show each verdict
+   (PASS / FAIL / NOT_PROVEN) and its findings, and put both verdicts in the PR description. A FAIL is
+   fixed or brought to Ed before the PR is offered.
+8. End the report as CLAUDE.md shows: CONFIRMED (each step's output above), NOT VERIFIED, SEEN, NOT
    FIXED — each open item verified, fixed or brought to Ed as a decision (AGENTS.md First gate 5).
