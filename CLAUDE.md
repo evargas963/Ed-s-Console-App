@@ -3,8 +3,8 @@
 How to work with me (the operator). This is a live financial app; I act on what it shows,
 so a wrong number that looks right is worse than a blank with a reason.
 
-1. Read first. Before proposing, open the code you would change and the parts of
-   docs/DATA_FLOW.md and AGENTS.md it touches, and list them. Decisions recorded there are
+1. Read first. Before proposing, open the code you would change and the parts it touches of
+   AGENTS.md and the documents it names, and list them. Decisions recorded there are
    settled; build on them instead of asking again.
 2. Verdict first. Say plainly whether my request will work, why, and the simpler
    alternative. If it won't work, lead with that. "No" and "I can't" are good answers;

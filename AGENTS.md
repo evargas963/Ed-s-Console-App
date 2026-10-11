@@ -55,7 +55,7 @@ Hold EdWebConsole to how a financial institution handles systems with real money
    Enforced by: `tools/check_end_to_end.py` in the required `hardening` job
    (`.github/workflows/hardening.yml`, `tests/test_check_end_to_end_v1.py`) refuses a pull request that
    changes product code without a real line added to an end-to-end path test, that adds a patch shape
-   (a catch-all or swallowing except, `contextlib.suppress`, a literal standing in for a missing value),
+   (a catch-all or swallowing except that does not log, `contextlib.suppress`, a literal standing in for a missing value),
    or whose description lacks "Schwab → screen:", "Deleted:" or "End-to-end test:"; the path tests of
    `docs/DATA_FLOW.md` §2 fail a broken path; a design-level patch — ENF-01.
 2. **Schwab fields as sent.** Not a number: absent, -999, text, NaN or infinity, and a value
