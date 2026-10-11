@@ -117,11 +117,6 @@ _PROD_MOVE_SUBCOMMANDS = frozenset({
     "commit", "reset", "rebase", "cherry-pick", "revert", "am",
     "merge", "pull", "checkout", "switch", "branch",
 })
-#: `git branch` options that list branches: their values are patterns or commits, not new branches
-_BRANCH_LISTING = frozenset({"-l", "--list", "-a", "--all", "-r", "--remotes", "--contains", "--no-contains",
-                             "--merged", "--no-merged", "--points-at", "--show-current", "-v", "-vv", "--verbose"})
-
-
 def _prod_forbidden_git_reason(words: tuple[str, ...]) -> str | None:
     """For a git statement already known to TARGET the production primary, return WHY it is
     forbidden there, or None if it is an allowed production operation (its subcommand and
@@ -152,8 +147,7 @@ def _prod_forbidden_git_reason(words: tuple[str, ...]) -> str | None:
     if sub == "branch":
         mutating = any(a in ("-m", "-M", "-c", "-C", "-d", "-D", "-f", "--force", "--move",
                              "--copy", "--delete", "--edit-description") for a in args)
-        lists = any(a.split("=")[0] in _BRANCH_LISTING for a in args)
-        creates = not lists and any(not a.startswith("-") for a in args)
+        creates = any(not a.startswith("-") for a in args)
         return "`git branch` creates/moves/deletes a branch" if (mutating or creates) else None
     return f"`git {sub}` writes history / moves HEAD in the checkout"
 

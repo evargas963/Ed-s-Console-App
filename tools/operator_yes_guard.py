@@ -127,7 +127,7 @@ def _kills(st: Statement) -> bool:
     delete or terminate, CIM/WMI's Terminate, a removed process object."""
     name = st.program
     args = [a.lower() for a in st.words[1:]]
-    if name in STOPPERS or ".kill(" in st.words[0].lower():          # `(Get-Process -Id 5).Kill()`
+    if name in STOPPERS or any(".kill(" in r.lower() and r[:1] not in "\"'@" for r in st.raw):   # not quoted text
         return True
     if name == "wmic":
         return "process" in args and any(a in ("delete", "terminate") for a in args)
@@ -203,7 +203,7 @@ def decide(payload: dict, now: datetime, db: Path) -> "tuple[str, list[str]]":
         if st.program in MACHINE_STOPPERS:
             asks.append("stops or restarts the machine, and the daemon and console with it (CLAUDE.md rule 5: production)")
         elif _kills(st):
-            upstream = list(st.upstream.raw) if st.upstream is not None else next(
+            upstream = list(st.upstream.raw) if st.upstream is not None and st.upstream.raw else next(
                 (listed[v] for t in st.words[1:] for v in [t.lower().split(".")[0]] if v in listed), None)
             found, later = _targets(st, upstream)
             seen = [_production(p) for p in found]

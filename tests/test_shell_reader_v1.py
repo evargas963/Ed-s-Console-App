@@ -30,6 +30,24 @@ def test_a_multi_line_quoted_argument_stays_in_its_statement():
     assert _words(query) == [["gh", "api", "graphql", "-f", "query=\nmutation {\n  mergePullRequest(input: {x: 1}) { y }\n}"]]
 
 
+@pytest.mark.parametrize("cmd, ps", [
+    ("echo $'don\\'t'; gh pr merge 5", False),                       # $'...' with an escaped quote
+    ("cat <<\\EOF > n.txt\nhi\nEOF\ngh pr merge 5", False),           # a backslash-quoted heredoc tag
+    ("a=($(gh pr merge 5))", False), ("echo ${X:-$(gh pr merge 5)}", False),   # $( ) inside ( ) or ${ }
+    ("$o.Invoke((gh pr merge 5))", True),                              # PowerShell ( ) in a word
+    ("python -c \"import os; os.system('gh pr merge 5')\"", False),   # a shell command python runs
+    ("@'\ngh pr merge 5\n'@ | iex", True),                             # a here-string piped into iex
+    ("env -S 'gh pr merge 5'", False), ("wsl gh pr merge 5", False), ("uv run gh pr merge 5", False),
+])
+def test_a_statement_after_or_inside_these_forms_is_read(cmd, ps):
+    assert ["gh", "pr", "merge", "5"] in [list(st.words) for st in read(cmd, powershell=ps)]
+
+
+def test_a_called_quoted_path_is_a_program_word():
+    st = read('& "C:\\Program Files\\GitHub CLI\\gh" pr merge 5', powershell=True)[-1]
+    assert st.program == "gh" and st.raw[0] == "C:\\Program Files\\GitHub CLI\\gh"
+
+
 def test_a_line_break_and_a_pipe_each_end_a_statement():
     assert _words("gh api repos/o/r/pulls/5 --jq .title\ngrep -n mergePullRequest f") == [
         ["gh", "api", "repos/o/r/pulls/5", "--jq", ".title"], ["grep", "-n", "mergePullRequest", "f"]]

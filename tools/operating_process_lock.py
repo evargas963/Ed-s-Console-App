@@ -25,7 +25,7 @@ if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
 # The ONE shell reader (tools/shell_parse.py, stdlib-only): the rules below judge each git
-# statement a command runs on its own words (RC-525).
+# statement a command runs on its own words.
 from tools.shell_parse import git_subcommand, read  # noqa: E402
 
 #: Paths where index≠WT is catastrophic: the one writer and the guards.
@@ -74,7 +74,7 @@ PRODUCT_WIPE_PROTECTED: tuple[str, ...] = (
 def _hard(sub: str, args: list[str]) -> bool:
     """A git subcommand that discards work whatever it names."""
     return ((sub == "reset" and "--hard" in args)
-            or (sub == "checkout" and args[:1] == ["--"])
+            or (sub == "checkout" and args[:1] == ["--"] and len(args) > 1)
             or (sub == "clean" and any(re.match(r"-[a-z]*f", a, re.I) for a in args))
             or (sub == "push" and any((a.startswith("--force") and not a.startswith("--force-with-lease"))
                                       or re.fullmatch(r"-[a-zA-Z]*f[a-zA-Z]*", a) for a in args)))
@@ -93,7 +93,7 @@ def _safe(sub: str, args: list[str]) -> bool:
 def _reset_class_violation(words: tuple[str, ...]) -> list[str]:
     """The CLASS rule for ONE statement (RC-525): a chain cannot launder a later wipe."""
     sub, args = git_subcommand(words)
-    if not (sub in ("reset", "restore", "clean", "stash") or (sub == "checkout" and "--" in args)) \
+    if not (sub in ("reset", "restore", "clean", "stash") or (sub == "checkout" and "--" in args[:-1])) \
             or _safe(sub, args):
         return []
     seg = " ".join(words)
@@ -122,7 +122,7 @@ def reset_guard_violations(command: str, powershell: bool = False) -> list[str]:
     Not subject-disableable (RC-450): no env token or repo file can authorize a wipe.
     `git reset --soft`, `git restore --staged` (index-only), `git stash list`,
     `git checkout -b` and `push --force-with-lease` stay legal. Text a command only carries (a
-    commit message, a heredoc nothing runs) is not a statement (RC-253).
+    commit message, a heredoc nothing runs) is not a statement.
     """
     gits = [st.words for st in read(command or "", powershell=powershell) if st.program == "git"]
     if any(_hard(*git_subcommand(words)) for words in gits):

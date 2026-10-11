@@ -45,7 +45,7 @@ if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
 from tools.hook_chain import BASH_TOOLS  # noqa: E402 — the ONE shell-tool roster (RC-520)
-from tools.shell_parse import Statement, git_parts, git_subcommand, read  # noqa: E402 — the ONE shell reader
+from tools.shell_parse import PYTHON, Statement, git_parts, git_subcommand, read  # noqa: E402 — the ONE shell reader
 
 #: RC-273 — the gitignored tree with no history. A path SEGMENT: `AppData/`, `mydata/`, `_data/`
 #: do not match; `data/x`, `./data/x`, `C:/repo/data/x` do.
@@ -61,7 +61,6 @@ _ACL_LOOSENERS = ("/remove", "/reset", "/grant", "/setowner", "/inheritance")
 #: Python calls that delete, move, rename or overwrite a path.
 _PY_REMOVERS = frozenset({"remove", "unlink", "rmtree", "rmdir", "removedirs", "rename", "replace",
                           "move", "truncate", "write_text", "write_bytes"})
-_PYTHON = re.compile(r"python[\d.]*|py")
 
 
 def _protected(arg: str) -> bool:
@@ -96,7 +95,7 @@ def _protected_path_violation(cmd: str) -> bool:
 
 def _destroys_protected(st: Statement) -> bool:
     """The statement deletes, moves, overwrites or unprotects a file under data/. A python's
-    `-c` code and the heredoc it reads are parsed as Python. A copy INTO a protected tree is a
+    `-c` code and the stdin text it reads are parsed as Python. A copy INTO a protected tree is a
     restore and stays legal."""
     name, args = st.program, list(st.words[1:])
     paths = [a for a in args if not a.startswith("-")]
@@ -111,9 +110,9 @@ def _destroys_protected(st: Statement) -> bool:
         return True
     if any(_protected(t) for t in st.writes):
         return True
-    if _PYTHON.fullmatch(name):
+    if PYTHON.fullmatch(name):
         code = [args[i + 1] for i, a in enumerate(args[:-1]) if a == "-c"]
-        return any(_python_violation(c) for c in [*code, *([st.heredoc] if st.heredoc else [])])
+        return any(_python_violation(c) for c in [*code, *([st.stdin] if st.stdin else [])])
     return False
 
 
@@ -135,7 +134,7 @@ def _disables_a_lock(st: Statement) -> bool:
     if skip == "" and st.words:          # `$env:SKIP = 'x'`
         skip = st.words[0]
     return ("--no-verify" in st.words
-            or any("hookspath" in w.lower() for w in (*git_globals, *(args if sub == "config" else ())))
+            or any("hookspath" in w.lower() for w in (*git_globals, *(args if sub == "config" else ()), *st.env))
             or (sub == "commit" and "-n" in args)
             or bool(skip and re.match(r"[\w,\-]", skip))
             or [w.lower() for w in st.words[:2]] == ["pre-commit", "uninstall"])

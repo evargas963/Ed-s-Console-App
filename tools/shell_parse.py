@@ -32,6 +32,7 @@ PowerShell here-string's $( ) and an alias or function defined earlier.
 """
 from __future__ import annotations
 
+import ast
 import os
 import re
 from dataclasses import dataclass
@@ -122,6 +123,23 @@ class Statement:
         return " ".join(self.raw)
 
     @property
+    def stdin(self) -> str | None:
+        """The text it reads on stdin when the command itself holds it: its heredoc or <<< string,
+        or what a pipe hands it from echo/printf/Write-Output, a printed PowerShell string or a
+        cat heredoc; None otherwise."""
+        if self.heredoc is not None:
+            return self.heredoc
+        strings = [t for op, t in self.redirects if op.endswith("<<<")]
+        up = self.upstream
+        if strings or up is None:
+            return strings[0] if strings else None
+        if up.program in _PRINTERS:
+            return " ".join(up.words[1:])
+        if len(up.raw) == 1 and up.raw[0][:1] in "\"'@":          # a PowerShell string printed into the pipe
+            return up.words[0]
+        return up.heredoc if up.program == "cat" else None
+
+    @property
     def writes(self) -> list[str]:
         """The files its redirects write: `>`, `>>`, `N>`, `>|`, `&>` (not an fd dup like `2>&1`)."""
         return [t for op, t in self.redirects if _WRITE_REDIRECT.fullmatch(op)]
@@ -142,7 +160,7 @@ _ESCAPED = set(_SPACE + "\"'\\$`;&|<>(){}#*?[]~!")
 _SEPARATORS = (("&&", "&&"), ("||", "||"), (";;", ";"), ("|&", "|"), (";", ";"), ("|", "|"), ("&", "&"))
 _REDIRECT = re.compile(r"\d*(?:<<<|<<-|<<|<>|<&|>>|>&|>\||<|>)|&>>|&>")
 _WRITE_REDIRECT = re.compile(r"\d*>>?\|?|&>>?")
-_HEREDOC_OP = re.compile(r"<<-?(?!<)\s*(['\"]?)(?P<tag>[\w.-]+)\1")
+_HEREDOC_OP = re.compile(r"<<-?(?!<)\s*(['\"]?)\\?(?P<tag>[\w.-]+)\1")
 _HERE_STRING = re.compile(r"@(['\"])\r?\n")
 
 
@@ -257,6 +275,11 @@ class _Lexer:
         value.append(self.s[i:j + 1])
         return j + 1
 
+    def substituted(self, text: str) -> list[str]:
+        """The commands substituted inside `text`, a ( ) or ${ } within a word (`a=($(x))`)."""
+        words = [t[1] if t[0] == "w" else t[2] for t in _Lexer(text, self.ps).tokens() if t[0] in ("w", "redir")]
+        return [n for w in words for n in w.nested]
+
     def word(self, i: int) -> _Word:
         """The word starting at `i`: quotes removed, substitutions recorded in `nested`."""
         s, start, value, nested = self.s, i, [], []
@@ -266,6 +289,12 @@ class _Lexer:
                 i = self.single(i + 1, value)
             elif c == '"':
                 i = self.double(i + 1, value, nested)
+            elif not self.ps and s.startswith("$'", i):          # $'...': a backslash escapes in it
+                i += 2
+                while i < len(s) and s[i] != "'":
+                    value.append(s[i + 1:i + 2] if s[i] == "\\" else s[i])
+                    i += 2 if s[i] == "\\" else 1
+                i += 1
             elif self.ps and (m := _HERE_STRING.match(s, i)):    # @' ... '@: data
                 end = s.find("\n" + m.group(1) + "@", m.end() - 1)
                 end = len(s) if end < 0 else end
@@ -287,10 +316,12 @@ class _Lexer:
                 i = self.substitution(i, value, nested)
             elif c in "$@" and s[i + 1:i + 2] == "{":           # ${var}, a PowerShell @{} table
                 j = self.close(i + 2, "{", "}")
+                nested += self.substituted(s[i + 2:j])
                 value.append(s[i:j + 1])
                 i = j + 1
             elif c in "({":                    # inside a word: `.Kill()`, `::Start('x')`, `a=(x y)`
                 j = self.close(i + 1, c, ")" if c == "(" else "}")
+                nested += [s[i + 1:j]] if self.ps else self.substituted(s[i + 1:j])   # PowerShell runs ( )
                 value.append(s[i:j + 1])
                 i = j + 1
             else:
@@ -300,7 +331,7 @@ class _Lexer:
 
     def tokens(self) -> list[list]:
         """["w", _Word], ["op", separator], ["redir", operator, _Word, heredoc body], ["group", text]."""
-        s, tokens, pending, fresh, i = self.s, [], [], True, 0
+        s, tokens, pending, fresh, called, i = self.s, [], [], True, False, 0
         while i < len(s):
             c = s[i]
             if c in _SPACE:
@@ -311,8 +342,8 @@ class _Lexer:
                 j = s.find("\n", i)
                 i = len(s) if j < 0 else j
             elif c == "\n":
-                for tok in pending:
-                    tok[3], i = _heredoc_body(s, i + 1, tok[2].value)
+                for tok in pending:                              # `<<\EOF` ends at EOF
+                    tok[3], i = _heredoc_body(s, i + 1, tok[2].value.replace("\\", ""))
                 pending = []
                 if not (tokens and tokens[-1][0] == "op" and tokens[-1][1] in ("|", "&&", "||")):
                     tokens.append(["op", ";"])
@@ -333,6 +364,9 @@ class _Lexer:
                 tokens.append(["w", _Word(s[i:j + 1] + rest.value, s[i:j + 1] + rest.raw, [inner, *rest.nested])])
                 fresh = False
                 i = j + 1 + len(rest.raw)
+            elif self.ps and fresh and c == "&" and s[i + 1:i + 2] != "&":     # `& "C:\x y\gh" pr ...`
+                called = True
+                i += 1
             elif sep := next(((t, op) for t, op in _SEPARATORS if s.startswith(t, i)
                               and not (t == "&" and s.startswith("&>", i))), None):
                 tokens.append(["op", sep[1]])
@@ -357,9 +391,11 @@ class _Lexer:
                 i = j + len(target.raw)
             else:
                 w = self.word(i)
+                i += len(w.raw) or 1
+                if called:                     # the called word is a program, not a printed string
+                    w, called = _Word(w.value, w.value, w.nested), False
                 tokens.append(["w", w])
                 fresh = False
-                i += len(w.raw) or 1
         return tokens
 
 
@@ -373,7 +409,16 @@ _WRAPPERS = {
     "sudo": {"-u", "-g", "-h", "-p", "-C", "-D", "-U", "-r", "-t"},
     "xargs": {"-I", "-n", "-P", "-L", "-s", "-d", "-E", "-a", "--max-args", "--max-procs", "--delimiter"},
     "timeout": {"-s", "--signal", "-k", "--kill-after"}, "command": set(), "exec": {"-a"}, "call": set(),
+    "wsl": {"-d", "--distribution", "-u", "--user", "--cd"},
 }
+#: project runners whose `run` runs the command after it: `uv run python ...`
+_RUNNERS = frozenset({"uv", "poetry", "pipenv", "pdm", "hatch"})
+#: builtins whose VAR=val arguments set the environment
+_EXPORTS = frozenset({"export", "declare", "typeset", "readonly", "local"})
+#: what a python program can hand a shell: os.system / os.popen / subprocess's runners
+_PY_SHELL_CALLS = frozenset({"system", "popen", "run", "call", "check_call", "check_output", "Popen",
+                             "getoutput", "getstatusoutput"})
+PYTHON = re.compile(r"python[\d.]*w?|py")
 _CD = frozenset({"cd", "pushd", "chdir", "set-location", "sl"})
 _SH = frozenset({"bash", "sh", "zsh", "dash", "ksh"})
 _PWSH = frozenset({"pwsh", "powershell"})
@@ -445,6 +490,17 @@ def _command(vals: list[str], raws: list[str], redirects: tuple, heredoc: str | 
         elif vals[i].startswith("$") and vals[i + 1:i + 2] == ["="]:     # PowerShell `$x = <command>`
             env.append(vals[i] + "=")
             i += 2
+        elif vals[i] in _EXPORTS:
+            i += 1
+            while i < len(vals) and vals[i].startswith("-"):
+                i += 1
+        elif program_name(vals[i]) in _RUNNERS and vals[i + 1:i + 2] == ["run"]:
+            i += 2
+            while i < len(vals) and vals[i].startswith("-"):
+                i += 1
+        elif program_name(vals[i]) == "env" and (split := next(
+                (j for j in range(i + 1, len(vals)) if vals[j] in ("-S", "--split-string")), None)) is not None:
+            return _nested(" ".join(vals[split + 1:]), ctx)              # env -S 'cmd args'
         elif program_name(vals[i]) in _WRAPPERS:
             i = _skip_wrapper(vals, i)
         else:
@@ -471,7 +527,10 @@ def _scripts(st: Statement) -> list[tuple[str, bool]]:
     if name == "eval":
         return [(" ".join(args), False)]
     if name in ("iex", "invoke-expression"):
-        return [(" ".join(args), True)]
+        return [(" ".join(args) if args else st.stdin or "", True)]
+    if PYTHON.fullmatch(name):
+        code = [args[i + 1] for i, a in enumerate(args[:-1]) if a == "-c"] + ([st.stdin] if st.stdin else [])
+        return [(script, False) for c in code for script in _python_shell_commands(c)]
     if name == "cmd":
         k = next((i for i, a in enumerate(args) if a.lower() in ("/c", "/k", "//c", "//k")), None)   # // in Git Bash
         return [(" ".join(args[k + 1:]), False)] if k is not None else []
@@ -486,17 +545,31 @@ def _scripts(st: Statement) -> list[tuple[str, bool]]:
             return [(" ".join(args[k + 1:]), True)]
     else:
         return []
-    if any(not a.startswith("-") for a in args):          # it runs a script file
+    if any(not a.startswith("-") for a in args) or st.stdin is None:     # a script file, or no known stdin
         return []
-    if st.heredoc is not None:                            # it reads its commands from stdin
-        return [(st.heredoc, ps)]
-    strings = [(t, ps) for op, t in st.redirects if op.endswith("<<<")]
-    if strings:
-        return strings
-    up = st.upstream
-    if up is not None and up.program in _PRINTERS:
-        return [(" ".join(up.words[1:]), ps)]
-    return [(up.heredoc, ps)] if up is not None and up.program == "cat" and up.heredoc is not None else []
+    return [(st.stdin, ps)]                               # it reads its commands from stdin
+
+
+def _python_shell_commands(code: str) -> list[str]:
+    """The literal commands a python program hands a shell (`os.system('git reset --hard')`,
+    `subprocess.run(['git', 'reset', '--hard'])`); code that does not parse runs nothing."""
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return []
+    out = []
+    for n in ast.walk(tree):
+        f = getattr(n, "func", None)
+        if not (isinstance(n, ast.Call) and n.args
+                and (f.attr if isinstance(f, ast.Attribute) else getattr(f, "id", "")) in _PY_SHELL_CALLS):
+            continue
+        arg = n.args[0]
+        if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+            out.append(arg.value)
+        elif isinstance(arg, ast.List | ast.Tuple) and all(isinstance(e, ast.Constant) and isinstance(e.value, str)
+                                                          for e in arg.elts):
+            out.append(" ".join(e.value for e in arg.elts))
+    return out
 
 
 def _exec_commands(st: Statement, ctx: dict) -> list[Statement]:

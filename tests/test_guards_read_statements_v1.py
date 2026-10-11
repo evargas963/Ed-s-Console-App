@@ -12,9 +12,9 @@ import pytest
 import time_et
 from tools import operating_process_lock as OPL
 from tools import operator_yes_guard as yes_guard
-from tools import process_lock_guard as PLG
 from tools.operator_law_guard import bash_violations
 from tools.sed_edit_guard import edits
+from tools.shell_parse import read
 
 #: Split so this file's own text is not read as the actions it names.
 D = "d" + "ata"
@@ -83,14 +83,36 @@ def test_a_kill_named_in_a_message_or_a_here_string_passes(tool, cmd):
     assert yes_guard.decide({"tool_name": tool, "tool_input": {"command": cmd}}, CLOSED, NO_DB)[0] == yes_guard.PASS
 
 
-def test_a_branch_listing_in_the_production_checkout_passes_and_a_new_branch_is_refused():
-    """The lock now reads a git inside a PowerShell ( ); a listing there is a read."""
-    primary = PLG._primary_worktree_root(PLG.REPO) or PLG.REPO
-    lock = "PROD_CHECKOUT_LOCK"
-    for cmd in (f'"branch kept: " + (git -C "{primary}" branch --list fix/x)',
-                f'git -C "{primary}" branch --contains abc1234'):
-        assert not any(lock in b for b in PLG.pretooluse_block("PowerShell", {"command": cmd})), cmd
-    assert any(lock in b for b in PLG.pretooluse_block("PowerShell", {"command": f'git -C "{primary}" branch fix/x'}))
+def test_a_heredoc_piped_into_python_is_judged_as_python():
+    assert any(f"under {D}/" in b for b in bash_violations(
+        f"cat <<'EOF' | python -\nimport shutil; shutil.rmtree('{D}/x')\nEOF"))
+
+
+@pytest.mark.parametrize("cmd", ["export SKIP=ruff-correctness; git commit -m x",
+                                 "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/dev/null "
+                                 "git commit -m x"])
+def test_a_lock_disable_through_the_environment_is_refused(cmd):
+    assert any("disables a mechanical lock" in b for b in bash_violations(cmd))
+
+
+@pytest.mark.parametrize("tool, cmd", [("Bash", "wsl git reset --hard"),
+                                       ("Bash", "python -c \"import os; os.system('git reset --hard')\""),
+                                       ("Bash", "a=($(git reset --hard))"),
+                                       ("PowerShell", "@'\ngit reset --hard\n'@ | iex")])
+def test_a_wipe_run_by_another_program_is_refused(tool, cmd):
+    assert OPL.reset_guard_violations(cmd, tool == "PowerShell")
+
+
+def test_a_kill_written_as_an_argument_is_refused_and_an_empty_pipe_input_does_not_crash():
+    assert yes_guard._kills(read("Write-Output (Get-Process -Id 5).Kill()", powershell=True)[-1])
+    assert yes_guard.decide({"tool_name": "Bash", "tool_input": {"command": ">/dev/null | kill 4194300"}},
+                            CLOSED, NO_DB)[0] in (yes_guard.PASS, yes_guard.ASK)
+
+
+def test_a_checkout_naming_no_path_passes_as_on_main():
+    """`git checkout -q --` checks out no path; with a path after `--` it is refused."""
+    assert not OPL.reset_guard_violations("git checkout -q -- 2>/dev/null")
+    assert OPL.reset_guard_violations("git checkout -q -- server.py")
 
 
 @pytest.mark.parametrize("quoted", ['git commit -m "{}"', 'gh pr create --title x --body "{}"', 'echo "{}"'])
