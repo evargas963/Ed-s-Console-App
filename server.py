@@ -1506,13 +1506,16 @@ def _windowed(rows: list, spot_strike, scope: str, centre, shift: int) -> "tuple
 @app.get("/api/terrain/strikes")
 def get_terrain_strikes(ticker: str = Query(...), scope: ScopeQuery = "auto", centre: CentreQuery = None,
                         shift: ShiftQuery = 0):
-    """The per-strike rows of the published levels, each list windowed for its panel (_windowed):
-    today's GEX and volume (all, near, far expiries), the Chart view's DEX and OI, with each
-    list's view; the side sums, the largest-GEX strike and the day-over-day migration are of every
-    strike."""
-    tk = ticker_storage_key(_required_ticker(ticker))   # RC-126: SPX -> $SPX etc., ONE authority
-    now = time.time()
+    """The per-strike panels' answer now (terrain_strikes_payload)."""
+    return JSONResponse(terrain_strikes_payload(ticker_storage_key(_required_ticker(ticker)), scope, centre,
+                                                shift, time.time()))
 
+
+def terrain_strikes_payload(tk: str, scope: str, centre, shift: int, now: float) -> dict:
+    """The per-strike rows of the published levels at `now`, each list windowed for its panel
+    (_windowed): today's GEX and volume (all, near, far expiries), the Chart view's DEX and OI,
+    with each list's view; the side sums, the largest-GEX strike and the day-over-day migration
+    are of every strike."""
     today_src, prior_src = None, None
     today, prior = None, None
     measures: dict = {"dex": [], "oi": []}
@@ -1544,7 +1547,7 @@ def get_terrain_strikes(ticker: str = Query(...), scope: ScopeQuery = "auto", ce
             today = {k: (_ps.get(k) or []) for k in ("all", "near", "far")}
             spot_used = _snap.get("spot")
             _cts_utc = _snap.get("computed_ts_utc")
-            today_age_sec = time.time() - float(_cts_utc) if _cts_utc else None
+            today_age_sec = now - float(_cts_utc) if _cts_utc else None
             today_src = "terrain_live_cache"
     except Exception as e:
         log.debug("terrain strikes live read failed %s: %s", tk, e)
@@ -1598,7 +1601,7 @@ def get_terrain_strikes(ticker: str = Query(...), scope: ScopeQuery = "auto", ce
                 for v in (r[1], r[2]) if v is not None]
         both += [windows[sc][1]["max_abs"]] if windows[sc][1]["max_abs"] is not None else []
         windows[sc][1]["max_abs_with_prior"] = max(both) if both else None
-    return JSONResponse({
+    return {
         "ticker": tk, "spot": live_spot,
         "spot_source": live_src,
         "priced_at_spot": spot_used,
@@ -1627,7 +1630,7 @@ def get_terrain_strikes(ticker: str = Query(...), scope: ScopeQuery = "auto", ce
         **terrain_staleness(_snap.get("computed_ts_utc") if isinstance(_snap, dict) else None, tk, now=now),
         "prior": prior or {"all": [], "near": [], "far": []},
         "prior_source": prior_src,
-    })
+    }
 
 
 # The console's charts read the 1-minute bars the console holds (_bars_1m) here; no database, no

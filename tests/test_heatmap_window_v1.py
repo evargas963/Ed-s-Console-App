@@ -63,6 +63,11 @@ def _heat(at=_AT, **kw):
                                         args["expiry"], at)
 
 
+def _strikes(scope, at=_AT):
+    """The per-strike panels' answer at `at`, centred on the price."""
+    return server.terrain_strikes_payload(TK, scope, None, 0, at.timestamp())
+
+
 def _every_strike():
     return _heat(scope="all")["strikes"]
 
@@ -139,7 +144,7 @@ def test_with_no_live_price_the_window_says_it_is_not_around_the_price():
     _price(None)
     d = _heat()
     assert d["view"]["note"] == server.WINDOW_NO_PRICE and not any(c["spot"] for c in d["cells"])
-    strikes = json.loads(server.get_terrain_strikes(TK, scope="auto", centre=None, shift=0).body)
+    strikes = _strikes("auto")
     assert {v["note"] for v in strikes["views"].values() if v["centre"] is not None} == {server.WINDOW_NO_PRICE}
     every = _every_strike()
     panned = _heat(centre=every[3])                                # the operator's pan: no reason needed
@@ -167,8 +172,8 @@ def test_every_per_strike_panel_is_served_its_window_and_scale():
     def lists(body):
         return {**{sc: body["today"][sc] for sc in ("all", "near", "far")},
                 **{m: body["measures"][m]["rows"] for m in ("dex", "oi")}}
-    body = json.loads(server.get_terrain_strikes(TK, scope="auto", centre=None, shift=0).body)
-    every = lists(json.loads(server.get_terrain_strikes(TK, scope="all", centre=None, shift=0).body))
+    body = _strikes("auto")
+    every = lists(_strikes("all"))
     assert every["all"] and every["dex"] and every["oi"]
     for name, rows in lists(body).items():
         view = body["views"][name]
