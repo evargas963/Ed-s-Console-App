@@ -60,25 +60,20 @@ def test_missing_inputs_fail_closed() -> None:
         assert r.posture == POSTURE_STAND_ASIDE
 
 
-def test_the_regime_is_read_by_one_rule_for_every_instrument(pin_clock):
+def test_the_regime_is_read_by_one_rule_for_every_instrument():
     """All tickers (operator 2026-09-23, "show for all tickers"): the regime is the sign of
     Schwab's gamma at spot wherever the chain covers spot well enough to know it, for an ETF and
     a single name alike; a single name's regime was once withheld (SIGN-DEMOTION) and the
-    argument that carried the ticker in stayed behind, dead. Real Schwab chains (tests/fixtures),
-    each valued at its own capture: SPY's 0DTE chain is too narrow for the sign (withheld, the
-    coverage rule); CRWD's complete chain is trusted (issued)."""
-    import json
-    from pathlib import Path
-
+    argument that carried the ticker in stayed behind, dead. Real Schwab chains
+    (tests/real_chains.py), each valued at its own capture: SPY's 0DTE chain is too narrow for the
+    sign (withheld, the coverage rule); CRWD's complete chain is trusted (issued)."""
     from math_levels import GAMMA_FLIP_NARROW
     from terrain_engine import compute_terrain
-    fx = Path(__file__).resolve().parent / "fixtures"
+    from tests.real_chains import CRWD, SPY_0DTE
     got = {}
-    for name, tk, at in (("real_spy_0dte_chain.json", "SPY", (2026, 9, 22, 12, 46)),
-                         ("real_crwd_complete_chain_quarter.json", "CRWD", (2026, 9, 2, 12, 0))):
-        pin_clock(*at)
-        d = json.loads((fx / name).read_text(encoding="utf-8"))
-        snap = compute_terrain(tk, [dict(c) for c in d["chain"]], float(d["spot"]))
+    for real in (SPY_0DTE, CRWD):
+        tk = real.ticker
+        snap = compute_terrain(tk, [dict(c) for c in real.chain], real.spot, now=real.now)
         g = snap.flip_diag.get("gamma_at_spot")
         got[tk] = (snap.confidence, snap.regime)
         if snap.confidence in (GAMMA_FLIP_NARROW, GAMMA_FLIP_UNAVAILABLE) or not g:

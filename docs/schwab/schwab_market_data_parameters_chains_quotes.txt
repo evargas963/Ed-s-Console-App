@@ -1,0 +1,35 @@
+Schwab Market Data API - documented parameters of GET /chains and GET /quotes
+
+Source: Schwab Developer Portal, Trader API - Individual > Market Data Production > Specifications
+(Market Data 1.0.0 OAS3, https://api.schwabapi.com/marketdata/v1), each operation expanded and its
+parameter list copied by the operator on 2026-10-05. Companion to schwab_market_data_api_spec.pdf,
+whose saved copy shows every operation collapsed. The portal's endpoint list has no POST /quotes
+operation. The spec's Schemas section does list a `QuoteRequest` schema, described as "Request one
+or more quote data in POST body" (cusips, fields, ssids, symbols, realtime, indicative); no
+operation that accepts it is listed, so it is not evidence of a POST quotes call.
+
+GET /chains - Get option chain for an optionable Symbol
+
+symbol* (string): Enter one symbol. Example: AAPL
+contractType (string): Contract Type. Available values: CALL, PUT, ALL
+strikeCount (integer): The Number of strikes to return above or below the at-the-money price
+includeUnderlyingQuote (boolean): Underlying quotes to be included
+strategy (string): OptionChain strategy. Default is SINGLE. ANALYTICAL allows the use of volatility, underlyingPrice, interestRate, and daysToExpiration params to calculate theoretical values. Available values: SINGLE, ANALYTICAL, COVERED, VERTICAL, CALENDAR, STRANGLE, STRADDLE, BUTTERFLY, CONDOR, DIAGONAL, COLLAR, ROLL
+interval (number): Strike interval for spread strategy chains
+strike (number): Strike Price
+range (string): Range(ITM/NTM/OTM etc.)
+fromDate (string, yyyy-MM-dd): From date
+toDate (string, yyyy-MM-dd): To date
+volatility (number): Volatility to use in calculations. Applies only to ANALYTICAL strategy chains
+underlyingPrice (number): Underlying price to use in calculations. Applies only to ANALYTICAL strategy chains
+interestRate (number): Interest rate to use in calculations. Applies only to ANALYTICAL strategy chains
+daysToExpiration (integer): Days to expiration to use in calculations. Applies only to ANALYTICAL strategy chains
+expMonth (string): Expiration month. Available values: JAN through DEC, ALL
+optionType (string): Option Type
+entitlement (string): Applicable only if its retail token. Available values: PN, NP, PP
+
+GET /quotes - Get Quotes by list of symbols
+
+symbols (string): Comma separated list of symbol(s) to look up a quote. Example: MRAD,EATOF,EBIZ,AAPL,BAC,AAAHX,AAAIX,$DJI,$SPX,MVEN,SOBS,TOITF,CNSWF,AMZN 230317C01360000,DJX 231215C00290000,/ESH23,./ADUF23C0.55,AUD/CAD
+fields (string): Request for subset of data by passing comma separated list of root nodes; possible root nodes are quote, fundamental, extended, reference, regular. Don't send this attribute for full response. Default value: all
+indicative (boolean): Include indicative symbol quotes for all ETF symbols in request. Available values: true, false

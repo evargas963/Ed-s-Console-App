@@ -100,14 +100,17 @@ def test_near_expiry_minutes_to_close_matches_finite_difference():
 
 
 
-def test_vanna_is_identical_for_calls_and_puts_in_the_bucket_path(pin_clock):
+def test_vanna_is_identical_for_calls_and_puts_in_the_bucket_path():
     """RC-211: put-call parity kills any call/put vanna split — same strike/expiry/IV must
     aggregate the SAME per-contract vanna into both bucket sides (splits come from OI only)."""
-    from math_exposure_core import compute_exposures_by_strike
+    from datetime import datetime
 
-    # valued at a pinned instant 30 days before a fixed expiry: the date never ages out, and
-    # never lands on a holiday (a rolling today+30 did on 2026-10-27, 11-25, ...)
-    pin_clock(2026, 9, 28, 12, 0)
+    from math_exposure_core import compute_exposures_by_strike
+    from time_et import ET
+
+    # valued 30 days before a fixed expiry Schwab's /markets answers (an input: the date never
+    # ages out)
+    now = datetime(2026, 9, 28, 12, 0, tzinfo=ET)
     expiry = "2026-10-28"
     base = {"strikePrice": 100.0, "expirationDate": expiry, "gamma": 0.05,
             "delta": 0.5, "volatility": 20.0, "openInterest": 100, "multiplier": 100,
@@ -117,7 +120,7 @@ def test_vanna_is_identical_for_calls_and_puts_in_the_bucket_path(pin_clock):
     # a captured chain cannot pin call_vanna == put_vanna at equal OI.
     call = dict(base, putCall="CALL")
     put = dict(base, putCall="PUT")
-    per, _ = compute_exposures_by_strike([call, put], spot=98.0)
+    per, _ = compute_exposures_by_strike([call, put], spot=98.0, now=now)
     b = per[100.0]
     assert b["call_vanna"] != 0.0, "call vanna did not compute"
     assert abs(b["call_vanna"] - b["put_vanna"]) < 1e-9, (
@@ -130,12 +133,18 @@ def test_vanna_uses_the_single_iv_conversion_authority_f7():
     """The per-strike vanna converts Schwab IV through schwab_iv_to_sigma, the ONE authority:
     Schwab's volatility is a PERCENT (measured 2026-09-27 on 49,244 contracts, min 7.967), so
     20.0 is sigma 0.20 -- equal to bs_vanna at sigma 0.20 -- and 0.20 is 0.2%, not 20%."""
+    from datetime import datetime
+
     from math_exposure_core import compute_exposures_by_strike
+    from time_et import ET
+
+    # valued a month before an expiry Schwab's /markets answers (an input)
+    now = datetime(2027, 6, 17, 12, 0, tzinfo=ET)
 
     def one(iv):
         # institutional-synthetic-ok: a units-flip discriminator needs the SAME contract with IV in
         # percent vs decimal form — a captured real chain cannot pin that controlled pair.
-        return {"strikePrice": 100.0, "expirationDate": "2030-01-18", "gamma": 0.05,
+        return {"strikePrice": 100.0, "expirationDate": "2027-07-16", "gamma": 0.05,
                 "delta": 0.5, "volatility": iv, "openInterest": 100, "multiplier": 100,
                 "daysToExpiration": 30, "vega": 0.11, "bidSize": 1, "askSize": 1,
                 "totalVolume": 10, "putCall": "CALL"}
@@ -143,11 +152,11 @@ def test_vanna_uses_the_single_iv_conversion_authority_f7():
     from math_exposure_core import schwab_iv_to_sigma
     from math_levels import bs_vanna
     from time_et import time_to_expiry_years
-    per_pct, _ = compute_exposures_by_strike([one(20.0)], spot=98.0)
+    per_pct, _ = compute_exposures_by_strike([one(20.0)], spot=98.0, now=now)
     v_pct = per_pct[100.0]["call_vanna"]
     assert v_pct not in (None, 0.0), "percent-form vanna did not compute"
     assert schwab_iv_to_sigma(20.0) == 0.20 and schwab_iv_to_sigma(0.20) == 0.002
-    v_dec = bs_vanna(98.0, 100.0, time_to_expiry_years("2030-01-18"), 0.20) * 0.01 * 100 * 100
+    v_dec = bs_vanna(98.0, 100.0, time_to_expiry_years("2027-07-16", now), 0.20) * 0.01 * 100 * 100
     # RELATIVE tolerance: these aggregates are ~1e3-1e4, where one float ULP is ~1e-12 relative but
     # ~1e-9 ABSOLUTE — an absolute 1e-9 bound is tighter than the arithmetic can hold and failed on
     # CI's platform while passing locally (got 4731.665262145597 vs 4731.665262144535). The claim

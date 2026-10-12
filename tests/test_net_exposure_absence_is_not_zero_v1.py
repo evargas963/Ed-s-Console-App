@@ -11,11 +11,16 @@ Audit M-01 / M-02 (2026-09-24, operator rule: no fallbacks):
 """
 from __future__ import annotations
 
+from datetime import datetime
+
 from math_exposure_core import (
     compute_exposures_by_strike,
 )
+from time_et import ET
 
 SPOT = 500.0
+#: the valuation instant (an input; these contracts carry no expiry, so no time to expiry)
+NOW = datetime(2026, 10, 7, 12, 0, tzinfo=ET)
 
 
 def _c(strike, typ, *, delta, gamma, oi=1000):
@@ -28,7 +33,7 @@ def _c(strike, typ, *, delta, gamma, oi=1000):
 
 
 def _book(contracts, spot=SPOT):
-    ex, _ = compute_exposures_by_strike(contracts, spot=spot)
+    ex, _ = compute_exposures_by_strike(contracts, spot=spot, now=NOW)
     return ex, sorted(ex)
 
 
@@ -74,7 +79,7 @@ def test_terrain_max_pain_uses_only_the_front_expiry():
              c(505.0, "CALL", 1000, 0)]
     # a later expiry with a very different distribution that would drag a POOLED max pain
     later = [c(520.0, "CALL", 90000, 30), c(530.0, "PUT", 90000, 30)]
-    snap = compute_terrain("SPY", front + later, SPOT)
+    snap = compute_terrain("SPY", front + later, SPOT, now=NOW)
     ex_front, _ = _book(front)
     assert snap.max_pain_dte == 0
     assert snap.max_pain == compute_max_pain(ex_front) == 500.0

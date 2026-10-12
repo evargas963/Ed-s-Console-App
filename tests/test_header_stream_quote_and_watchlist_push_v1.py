@@ -8,23 +8,25 @@ import time
 import live_market_plane as lmp
 import live_price_rows
 import server as srv
-from tests.feed_live_helper import feed_live_during
 
 
-def test_a_symbol_the_daemon_does_not_hold_is_absent_in_session_and_stands_while_closed(monkeypatch) -> None:
+def test_a_symbol_the_daemon_does_not_hold_is_absent_in_session_and_stands_while_closed() -> None:
     """The Schwab socket open but the symbol not held (docs/DATA_FLOW.md §2 D5): during RTH its
     row serves no values and says why; at 22:00 ET the values Schwab sent stand."""
-    for now, served in ((1790780400.0, (None, None)), (1790820000.0, (9.0, 8.9))):  # 11:00, 22:00 ET
-        monkeypatch.setattr(time, "time", lambda now=now: now)
-        feed_live_during(monkeypatch, "ZZHELD")
-        lmp.record_from_level_one_equity("ZZNOTHELD", {"LAST_PRICE": 9.0, "BID_PRICE": 8.9},
-                                         received_ts=now)
-        row = live_price_rows.price_row("ZZNOTHELD")
-        assert (row["spot"], row["bid"], row["feed_live"]) == (*served, False)
-        assert (row["outage"] is None) == (served[0] is not None)
+    try:
+        for now, served in ((1790780400.0, (None, None)), (1790820000.0, (9.0, 8.9))):  # 11:00, 22:00 ET
+            lmp.record_feed_heartbeat({"ts": now, "schwab_socket_open": True,
+                                       "held": {"LEVELONE_EQUITIES": ["ZZHELD"]}})
+            lmp.record_from_level_one_equity("ZZNOTHELD", {"LAST_PRICE": 9.0, "BID_PRICE": 8.9},
+                                             received_ts=now)
+            row = live_price_rows.price_row("ZZNOTHELD", now)
+            assert (row["spot"], row["bid"], row["feed_live"]) == (*served, False)
+            assert (row["outage"] is None) == (served[0] is not None)
+    finally:
+        lmp.record_feed_down()
 
 
-def test_the_console_spot_is_the_daemons_price_row_and_the_console_keeps_no_copy(monkeypatch) -> None:
+def test_the_console_spot_is_the_daemons_price_row_and_the_console_keeps_no_copy() -> None:
     """Measured 2026-09-28: the console's spot differed from the header's in 25 of 200
     same-moment checks -- the console rebuilt LAST_PRICE from the forwarded messages. Real TSLA
     quote as Schwab sent it (tests/fixtures/real_equity_book.json), received now."""
@@ -36,19 +38,23 @@ def test_the_console_spot_is_the_daemons_price_row_and_the_console_keeps_no_copy
 
     fx = json.loads((Path(__file__).parent / "fixtures" / "real_equity_book.json").read_text(encoding="utf-8"))
     tk, native, now = fx["ticker"], fx["quote"]["native"], time.time()
-    monkeypatch.setattr(lmp, "_by_ticker", {})
-    monkeypatch.setattr(lmp, "_fields_by_ticker", {})
-    monkeypatch.setattr(ofs, "_price_rows", {})
-    feed_live_during(monkeypatch, tk)
-    # the console receives Schwab's message (its order-flow tape) and keeps no price of its own
-    ofs._ingest_pushed(f"quote.{tk}", {"symbol": tk, "ts_recv": now, "native": native})
-    assert lmp.get_quote(tk) is None and srv.resolve_spot(tk)[0] is None
-    # the daemon builds its price row from the same message and pushes it
-    lmp.record_from_level_one_equity(tk, native, received_ts=now)
-    publish_daemon_rows(tk)
-    row = ofs.price_row(tk)
-    assert row["spot"] == native["LAST_PRICE"]
-    assert srv.resolve_spot(tk) == (row["spot"], srv.SPOT_SOURCE_PLANE, row["trade_ts"])
+    for kept in (lmp._by_ticker, lmp._fields_by_ticker, ofs._price_rows):
+        kept.pop(tk, None)
+    lmp.record_feed_heartbeat({"ts": now, "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [tk]}})
+    try:
+        # the console receives Schwab's message (its order-flow tape) and keeps no price of its own
+        ofs._ingest_pushed(f"quote.{tk}", {"symbol": tk, "ts_recv": now, "native": native})
+        assert lmp.get_quote(tk) is None and srv.resolve_spot(tk, now=now)[0] is None
+        # the daemon builds its price row from the same message and pushes it
+        lmp.record_from_level_one_equity(tk, native, received_ts=now)
+        publish_daemon_rows(tk)
+        row = ofs.price_row(tk)
+        assert row["spot"] == native["LAST_PRICE"]
+        assert srv.resolve_spot(tk, now=now) == (row["spot"], srv.SPOT_SOURCE_PLANE, row["trade_ts"])
+    finally:
+        for kept in (lmp._by_ticker, lmp._fields_by_ticker, ofs._price_rows):
+            kept.pop(tk, None)
+        lmp.record_feed_down()
 
 
 def test_pages_are_told_the_daemon_price_port(monkeypatch) -> None:

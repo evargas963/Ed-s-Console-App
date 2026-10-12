@@ -69,7 +69,7 @@
     var dup = d.has_duplicate_contracts === true;   // served
     // null/'' spot is ABSENT: Number(null) is 0, which drew 'spot 0.00' (audit P0, 2026-09-23)
     var spot = (d.spot == null || d.spot === '') ? NaN : Number(d.spot);
-    var desired = window.EdStream.getDesired();
+    var desired = window.EdFlow.selected();
     // B: /api/chain is a COMPLETE SINGLE-EXPIRY surface — say so, name the exact expiry returned, and
     // flag when the workspace filter was null (the server chose the default expiry).
     var filterNull = !(window.EdShell && window.EdShell.getExpiry && window.EdShell.getExpiry());
@@ -130,7 +130,7 @@
     host.innerHTML = h;
     // C: the CALL side selects the exact CALL vendor symbol, the PUT side the exact PUT symbol; the
     // centre Strike selects ONLY the shared strike. The symbol is the vendor's own, verbatim — never
-    // reconstructed. An explicit contract click routes through the ONE control owner (EdStream).
+    // reconstructed. A contract click selects it for Flow (EdFlow); it asks Schwab for nothing.
     host.querySelectorAll('tr[data-strike]').forEach(function (tr) {
       tr.addEventListener('click', function (e) {
         var k = Number(tr.getAttribute('data-strike'));
@@ -153,16 +153,11 @@
 
   function selectContract(symbol, strike, expiry) {
     if (window.EdShell) window.EdShell.setStrike(strike, expiry);      // exact strike + expiry = shared context
-    var det = { contract: symbol, strike: strike, expiry: expiry };
-    // ONE explicit control request; re-notify once it RESOLVES so Flow moves off REQUESTED to
-    // ACTIVE/PENDING/FAILED per the canonical ACK — a single request, not a re-POST.
-    window.EdStream.setActiveContract(symbol).then(function () {
-      document.dispatchEvent(new CustomEvent('ed:contract', { detail: det })); });
     var host = document.getElementById('chainBody'); if (host) {
       host.querySelectorAll('.chn-selc').forEach(function (n) { n.classList.remove('chn-selc'); });
       host.querySelectorAll('[data-sym="' + (window.CSS && CSS.escape ? CSS.escape(symbol) : symbol) + '"]').forEach(function (n) { n.classList.add('chn-selc'); });
     }
-    document.dispatchEvent(new CustomEvent('ed:contract', { detail: det }));   // immediate: shows REQUESTED
+    window.EdFlow.select(symbol);
   }
 
   if (typeof document !== 'undefined') {

@@ -8,6 +8,7 @@
 const { test, expect } = require('@playwright/test');
 const path = require('path');
 const { mockPriceSocket } = require('./fixtures/price_socket');
+const { routeWatchlist } = require('./fixtures/watchlist');
 
 const CROSSES = require(path.join(__dirname, '..', 'fixtures', 'real_spy_level_crosses.json')).rows.slice(0, 3);
 const EVENTS = {
@@ -62,6 +63,7 @@ async function intercept(page) {
     else if (url.includes('/api/order-flow/book-heatmap')) body = HEAT;
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
+  await routeWatchlist(page, ['SPY']);
 }
 const HEAT = require(path.join(__dirname, 'fixtures', 'book_heatmap_payload.json'));
 
@@ -183,6 +185,7 @@ test.describe('Trade Desk renders served values', () => {
       else if (url.includes('/api/bars1m')) body = BARS;
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
     });
+    await routeWatchlist(page, ['SPY']);
     await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     expect(await page.evaluate(() => document.documentElement.getAttribute('data-theme'))).toBe('dark');
@@ -206,6 +209,7 @@ test.describe('Trade Desk renders served values', () => {
       else if (url.includes('/api/bars1m')) body = BARS;
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
     });
+    await routeWatchlist(page, ['SPY']);
     await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart.levelsShown)).toBeGreaterThan(0);
@@ -280,7 +284,6 @@ test.describe('Trade Desk renders served values', () => {
     await expect.poll(() => opened).toContain('SPY');
     await page.evaluate(() => window.EdShell.setTicker('MU'));
     await expect.poll(() => opened).toContain('MU');
-    expect(await page.evaluate(() => window.EdStream.setActiveTicker)).toBeUndefined();   // no separate request
   });
 
   test('Market Map: the wheel over the price axis rescales price (as TradingView); over the plot it does not', async ({ page }) => {
@@ -440,9 +443,9 @@ test.describe('Trade Desk renders served values', () => {
   test('no panel stays marked busy once its read has landed', async ({ page }) => {
     await intercept(page);
     const CONTRACT = 'SPY   261002C00768000';
-    await page.route('**/api/streaming/active-option-contract', (route) => route.fulfill({ status: 200,
+    await page.route('**/api/flow-contract', (route) => route.fulfill({ status: 200,
       contentType: 'application/json', body: JSON.stringify({ ok: true, contract: CONTRACT }) }));
-    // each panel and the read it makes; Flow reads only once a contract is chosen and accepted
+    // each panel and the read it makes; Flow reads only once a contract is chosen
     const panels = [['trade-desk', 'right-now', '', '/api/order-flow/microstructure'],
       ['options', 'gamma', 'heatmap', '/api/options/gamma-surface'], ['options', 'gamma', 'levels', '/api/levels'],
       ['options', 'chain', '', '/api/chain'], ['options', 'flow', '', '/api/order-flow/options-microstructure'],
@@ -452,10 +455,7 @@ test.describe('Trade Desk renders served values', () => {
         localStorage.setItem('ed_sub', s); if (v) localStorage.setItem('ed_view', v); } catch (e) {} }, [ws, sub, view]);
       const landed = page.waitForResponse((r) => new URL(r.url()).pathname === read);
       await page.goto('/', { waitUntil: 'domcontentloaded' });
-      if (sub === 'flow') {
-        await page.evaluate((c) => window.EdStream.setActiveContract(c), CONTRACT);
-        await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:contract')));
-      }
+      if (sub === 'flow') await page.evaluate((c) => window.EdFlow.select(c), CONTRACT);
       await landed;                                                  // the read began, and so set its flag, before this
       expect(await page.locator('[aria-busy="true"]').count(), sub + ' ' + view).toBe(0);
     }
@@ -542,6 +542,7 @@ test.describe('Trade Desk renders served values', () => {
       else if (url.includes('/api/bars1m')) body = BARS;
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
     });
+    await routeWatchlist(page, ['SPY']);
     await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#tdmToolbar [data-tf="3"]')).toHaveText('3m');
@@ -572,6 +573,7 @@ test.describe('Trade Desk renders served values', () => {
         else if (url.includes('/api/bars1m')) body = BARS;
         return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
       });
+      await routeWatchlist(page, ['SPY']);
       await Promise.all([page.waitForResponse((r) => /\/api\/terrain\?/.test(r.url())),
         page.goto('/', { waitUntil: 'domcontentloaded' })]);
       await expect.poll(() => page.evaluate(() => (window.EdTradeDeskMap.state().chart || {}).bars || 0)).toBeGreaterThan(0);

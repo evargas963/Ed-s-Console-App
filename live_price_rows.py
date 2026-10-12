@@ -14,7 +14,6 @@ close stand (docs/DATA_FLOW.md §2 D5).
 """
 from __future__ import annotations
 
-import time
 from typing import Any, Optional
 
 import live_market_plane as lmp
@@ -40,12 +39,11 @@ def _trade_age_sec(trade_ts: Optional[float], now: float) -> Optional[float]:
     return max(0.0, now - float(trade_ts))
 
 
-def price_row(ticker: str) -> dict[str, Any]:
-    """The finished row the screen paints for one symbol, as it is this instant: each field the
+def price_row(ticker: str, now: float) -> dict[str, Any]:
+    """The finished row the screen paints for one symbol, as it is at `now`: each field the
     last value Schwab sent for it, unless its feed is down in an open session (`outage`, the
     reason the values are absent; docs/DATA_FLOW.md §2 D5)."""
     tk = ticker_storage_key(ticker)
-    now = time.time()
     outage = lmp.outage(tk, "LEVELONE_EQUITIES", now)
     row = lmp.get_quote(tk) if tk else None
     streamed = bool(row) and lmp.plane_row_is_streamed(row) and outage is None
@@ -61,7 +59,7 @@ def price_row(ticker: str) -> dict[str, Any]:
         "spot_disp": f"{spot:.2f}" if spot is not None else None,
         "spot_source": SPOT_SOURCE if spot is not None else None,
         # the feed itself (heartbeat, socket open, symbol held), and why the values are absent
-        "feed_live": lmp.feed_live_for(tk, "LEVELONE_EQUITIES"),
+        "feed_live": lmp.feed_live_for(tk, "LEVELONE_EQUITIES", now),
         "outage": outage,
         "bid": field("bid"),
         "ask": field("ask"),

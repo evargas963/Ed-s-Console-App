@@ -152,19 +152,6 @@ def test_a_subscribe_is_answered_with_what_each_symbol_is_before_its_rows():
     asyncio.run(_run(body))
 
 
-def test_pages_are_told_the_market_context_with_its_display_names() -> None:
-    """TICK-06: the page kept its own ['SPX','NDX','VIX'] beside streaming.MARKET_CONTEXT_SYMBOLS;
-    the console now serves the one list, each with its display name."""
-    import html as _html
-    import re
-    import server as srv
-    from app.options.order_flow.streaming import MARKET_CONTEXT_SYMBOLS
-    page = srv.root().body.decode("utf-8")
-    served = json.loads(_html.unescape(re.search(r'<meta name="ed-market-context" content="([^"]*)">', page).group(1)))
-    assert [c["key"] for c in served] == list(MARKET_CONTEXT_SYMBOLS)
-    assert [c["display"] for c in served] == [k.lstrip("$") for k in MARKET_CONTEXT_SYMBOLS]
-
-
 def test_an_index_typed_bare_is_served_under_its_storage_key():
     """The operator types "SPX"; Schwab keys "$SPX". The subscription goes through
     ticker_storage_key, so the typed form gets the index's rows."""

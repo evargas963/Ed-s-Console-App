@@ -1,75 +1,38 @@
-"""Contract -> underlying: a contract is the ticker's when Schwab listed it in the ticker's chain.
-One rule for every instrument, whatever the contract's root (TICK-02, 2026-09-28 audit: roots
-were compared by name, and $SPX's SPXW contracts went through a second path that read a stored
-capture from the database on the live path). Real chains: $SPX (SPX and SPXW roots, the same
-expiration), CDE (whose root starts with C) and TSLA."""
+"""Contract -> underlying: a contract is the ticker's when Schwab listed it in the ticker's chain, one
+rule for every instrument whatever the contract's root (TICK-02, 2026-09-28 audit: roots were
+compared by name). It decides which ticker an option's streamed values reprice, and that the Flow
+panel's contract is one Schwab listed (question 2: the screen shows the right values promptly).
+
+Real chains, published by the levels producer (server._publish_levels) at their capture: $SPX (SPX
+and SPXW roots, the same expiration), CDE (whose root starts with C) and TSLA."""
 from __future__ import annotations
 
 import json
-import time
+from datetime import datetime
 from pathlib import Path
 
-import pytest
-
-import app.options.order_flow.streaming as ofs
 import server
+from time_et import ET
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 _SPX = json.loads((_FX / "real_spx_chain_contracts_2026_09_28.json").read_text(encoding="utf-8"))
 _CDE = json.loads((_FX / "real_cde_complete_chain_half_dollar.json").read_text(encoding="utf-8"))
 _TSLA = json.loads((_FX / "real_tsla_complete_chain_strike_range_all.json").read_text(encoding="utf-8"))
-_CHAINS = {"$SPX": (_SPX["contracts"], _SPX["spot"]),
-           "CDE": (_CDE["chain"], 5.0),                  # stand-in: the CDE capture carries no spot
-           "TSLA": (_TSLA["chain"], 330.0)}              # stand-in: the TSLA capture carries no spot
+_CHAINS = {"$SPX": _SPX["contracts"], "CDE": _CDE["chain"], "TSLA": _TSLA["chain"]}
+#: before every fixture chain's expiry
+_VALUED = datetime(2026, 8, 30, 12, 0, tzinfo=ET)
 
 
-@pytest.fixture(autouse=True)
-def _published(monkeypatch, pin_clock):
-    pin_clock(2026, 8, 30, 12, 0)                        # before every fixture chain's expiry
-    spots = {tk: spot for tk, (_c, spot) in _CHAINS.items()}
-    monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (spots.get(tk), "stub", 1.0))
-    monkeypatch.setattr(server, "_desired_stream_greeks_for_ticker", lambda listed: {})
-    for tk, (chain, _spot) in _CHAINS.items():
-        server._publish_levels(tk, [dict(c) for c in chain], time.time())
-    yield
-    with server._terrain_cache_lock:
-        for tk in _CHAINS:
-            server._terrain_cache.pop(tk, None)
-    ofs._active_option_contract = None
-
-
-def test_every_contract_schwab_listed_for_a_ticker_is_that_tickers_whatever_its_root():
-    roots = {c["symbol"][:6].strip() for c in _SPX["contracts"]}
-    assert roots == {"SPX", "SPXW"}
-    for tk, (chain, _spot) in _CHAINS.items():
-        assert all(server._contract_is_for(c["symbol"], tk) for c in chain), tk
-        assert {server._contract_ticker(c["symbol"]) for c in chain} == {tk}
-
-
-def test_a_contract_is_no_other_tickers_and_a_ticker_with_no_chain_has_none():
-    cde = _CDE["chain"][0]["symbol"]
-    assert not server._contract_is_for(cde, "C")              # CDE's root starts with C
-    assert not server._contract_is_for(_TSLA["chain"][0]["symbol"], "$SPX")
-    assert not server._contract_is_for(_SPX["contracts"][0]["symbol"], "SPY")
-    assert server._contract_ticker("ZZZ   261016C00001000") is None
-    assert not server._contract_is_for(None, "$SPX")
-
-
-def test_the_streamed_contract_follows_the_ticker_by_the_same_rule(monkeypatch):
-    """The ticker on screen gets its front expiry's at-the-money call, for an index and a single
-    name alike; a contract already desired for the ticker is kept (an SPXW contract for $SPX)."""
-    chosen = []
-    monkeypatch.setattr(ofs, "set_active_option_contract", lambda sym, **kw: chosen.append(sym) or True)
-    monkeypatch.setattr(server.push_changes, "_open", [])
-    for tk in _CHAINS:
-        ofs._active_option_contract = None
-        server.push_changes.subscribe(tk)                 # a page opens on the ticker
+def test_every_contract_schwab_listed_for_a_ticker_is_that_tickers_and_no_others():
+    assert {c["symbol"][:6].strip() for c in _SPX["contracts"]} == {"SPX", "SPXW"}
+    try:
+        for tk, chain in _CHAINS.items():
+            server._publish_levels(tk, [dict(c) for c in chain], _VALUED.timestamp(), now=_VALUED)
+        owners = {tk: {server._contract_ticker(c["symbol"]) for c in chain} for tk, chain in _CHAINS.items()}
+        unlisted = server._contract_ticker("ZZZ   261016C00001000")
+    finally:
         with server._terrain_cache_lock:
-            want = server._terrain_cache[tk]["_default_contract"]
-        assert want and chosen[-1] == want and server._contract_is_for(want, tk)
-    weekly = next(c["symbol"] for c in _SPX["contracts"] if c["symbol"].startswith("SPXW"))
-    ofs._active_option_contract = weekly
-    n = len(chosen)
-    server.push_changes.subscribe("$SPX")
-    server._follow_screen_contract()
-    assert len(chosen) == n                               # kept: it is $SPX's
+            for tk in _CHAINS:
+                server._terrain_cache.pop(tk, None)
+    assert owners == {tk: {tk} for tk in _CHAINS}          # CDE's contracts are never C's, SPXW's are $SPX's
+    assert unlisted is None

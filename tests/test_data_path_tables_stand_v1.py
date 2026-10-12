@@ -2,10 +2,9 @@
 finds as it was, and every row of every table.
 
 The database here holds session_log, confluence_log and news_events (with their indexes), each
-with the schema it had when the console wrote it (the first commit, 4b3dce45), and a row each. news_events holds a NEWS_HEADLINE item as Schwab sent
-it (tests/fixtures/real_schwab_news_headline_spx_2026_10_05.json). STAND-INS: the session_log and
-confluence_log rows (the console's own derived values; no captured row of either exists, both
-tables are absent in production) are built from that item's symbol and time.
+with the schema it had when the console wrote it (the first commit, 4b3dce45). news_events holds a
+NEWS_HEADLINE item as Schwab sent it (tests/fixtures/real_schwab_news_headline_spx_2026_10_05.json);
+session_log and confluence_log are empty, since no captured row of either exists.
 """
 from __future__ import annotations
 
@@ -83,16 +82,12 @@ def test_starting_the_database_keeps_every_table_it_finds_with_its_rows(tmp_path
     item = _NEWS["content"]
     with sqlite3.connect(db) as conn:
         conn.executescript(_OLD_SCHEMA)
-        conn.execute("INSERT INTO session_log (ticker, started_at) VALUES (?, ?)",
-                     (_NEWS["symbol"], str(_NEWS["ts_recv"])))
-        conn.execute("INSERT INTO confluence_log (ts_utc, ts_et, primary_ticker) VALUES (?, ?, ?)",
-                     (_NEWS["ts_recv"], str(_NEWS["schwab_ts"]), _NEWS["symbol"]))
         conn.execute("INSERT INTO news_events (timestamp, source, ticker, headline, raw_json) "
                      "VALUES (?, ?, ?, ?, ?)",
                      (str(item["1"]), _NEWS["src"], item["key"], item["4"], json.dumps(item)))
     before = _schema(db)
     rows = _rows(db, before)
-    assert rows and all(rows.values())
+    assert {"session_log", "confluence_log", "news_events"} <= set(rows) and rows["news_events"]
 
     EdDB(db, allow_noncanonical=True)
 

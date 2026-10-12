@@ -1,12 +1,12 @@
 {
   "ages": {
-    "book_age_sec": 0.0,
+    "book_age_sec": 0.28710508346557617,
     "book_stale": false,
     "quote_age_sec": null
   },
   "book_slope": {
-    "ask": 10499.99999999999,
-    "bid": 9999.99999999999
+    "ask": 1006.6666666666665,
+    "bid": 10033.333333333361
   },
   "classification": {
     "ages.book_age_sec": "DERIVED",
@@ -32,7 +32,7 @@
     "top_of_book.bid_size": "NATIVE",
     "wall_candidates": "DERIVED-HEURISTIC (size-outlier convention; see wall_method)"
   },
-  "contract": "SPY   260911C00100000",
+  "contract": "TSLA  260831C00367500",
   "crossed": false,
   "deferred": [
     "aggressor_side (PROXY: needs trade-vs-quote classification history)",
@@ -42,57 +42,52 @@
   ],
   "depth": {
     "1": {
-      "ask_total": 55.0,
-      "bid_total": 40.0,
-      "imbalance": -0.15789473684210525,
-      "side": "ASK"
+      "ask_total": 44.0,
+      "bid_total": 289.0,
+      "imbalance": 0.7357357357357357,
+      "side": "BID"
     },
     "3": {
-      "ask_total": 210.0,
-      "bid_total": 200.0,
-      "imbalance": -0.024390243902439025,
-      "side": "ASK"
+      "ask_total": 151.0,
+      "bid_total": 301.0,
+      "imbalance": 0.33185840707964603,
+      "side": "BID"
     },
     "5": {
-      "ask_total": 210.0,
-      "bid_total": 200.0,
-      "imbalance": -0.024390243902439025,
-      "side": "ASK"
+      "ask_total": 151.0,
+      "bid_total": 301.0,
+      "imbalance": 0.33185840707964603,
+      "side": "BID"
     }
   },
   "depth_pressure": {
     "ask": [
       {
-        "cum": 55.0,
-        "price": 1.25,
-        "volume": 55.0
+        "cum": 44.0,
+        "price": 0.61,
+        "volume": 44.0
       },
       {
-        "cum": 140.0,
-        "price": 1.26,
-        "volume": 85.0
+        "cum": 149.0,
+        "price": 0.62,
+        "volume": 105.0
       },
       {
-        "cum": 210.0,
-        "price": 1.27,
-        "volume": 70.0
+        "cum": 151.0,
+        "price": 0.76,
+        "volume": 2.0
       }
     ],
     "bid": [
       {
-        "cum": 40.0,
-        "price": 1.2,
-        "volume": 40.0
+        "cum": 289.0,
+        "price": 0.58,
+        "volume": 289.0
       },
       {
-        "cum": 120.0,
-        "price": 1.19,
-        "volume": 80.0
-      },
-      {
-        "cum": 200.0,
-        "price": 1.18,
-        "volume": 80.0
+        "cum": 301.0,
+        "price": 0.55,
+        "volume": 12.0
       }
     ]
   },
@@ -105,38 +100,37 @@
       "tape_pressure_5m": "PROXY",
       "top_book_pressure": "DERIVED"
     },
-    "cum_delta_proxy": 35.0,
-    "cum_delta_slope": 1.499999970869977,
-    "cum_delta_window": "prints Wed 09/09 07:22 PM CT to Wed 09/09 07:26 PM CT",
+    "cum_delta_proxy": 1.0,
+    "cum_delta_slope": -0.211503310683235,
+    "cum_delta_window": "prints Mon 08/31 01:50 PM CT to Mon 08/31 01:50 PM CT",
     "native_aggressor_available": false,
     "tape_classification": "PROXY_RECONSTRUCTED_L1_TICK",
-    "tape_pressure_2m": 0.5384615384615384,
-    "tape_pressure_30s": 0.3333333333333333,
-    "tape_pressure_5m": 0.4666666666666667,
-    "top_book_pressure": -0.15789473684210525
+    "tape_pressure_2m": 0.07692307692307693,
+    "tape_pressure_30s": 0.07692307692307693,
+    "tape_pressure_5m": 0.07692307692307693,
+    "top_book_pressure": 0.5942028985507246
   },
   "liquidity_concentration": {
-    "ask": 0.2619047619047619,
-    "bid": 0.2
+    "ask": 0.2913907284768212,
+    "bid": 0.9601328903654485
   },
-  "microprice": 1.2210526315789474,
-  "mid": 1.225,
+  "microprice": 0.6039130434782608,
+  "mid": 0.595,
   "provenance": {
     "book_source": "OPTIONS_BOOK",
-    "book_time_ms": 1789000000000.0,
+    "book_time_ms": 1788202221430.0,
     "exchange_quote_ts": null,
     "n_ask_levels": 3,
-    "n_bid_levels": 3,
-    "server_received_ts": 1789000000.0,
+    "n_bid_levels": 2,
+    "server_received_ts": 1788202221.7171052,
     "top_of_book_ask_leaf": "streaming.ASK_PRICE",
     "top_of_book_bid_leaf": "streaming.BID_PRICE"
   },
   "put_call": null,
-  "spread_frac": null,
-  "spread_pts": 0.050000000000000044,
+  "spread_frac": 0.05042016806722694,
+  "spread_pts": 0.030000000000000027,
   "status": "ok",
   "streaming_plane": {
-    "contract_match": false,
     "feed_health": {
       "book": {
         "age_sec": null,
@@ -148,22 +142,15 @@
       },
       "replay": "not connected"
     },
-    "option_contract": null,
-    "producer_book_contract": "SPY   260911C00100000",
-    "producer_l1_contract": "SPY   260911C00100000",
-    "queried_contract": "SPY   260911C00100000",
-    "server_requested_contract": null,
-    "streaming_connected": false,
-    "streaming_healthy": false,
-    "streaming_last_update_ts": 1789000000.0,
-    "streaming_staleness_ms": 0.0,
-    "subscription_state": "PENDING"
+    "queried_contract": "TSLA  260831C00367500",
+    "streaming_last_update_ts": 1788202221.7171052,
+    "subscription_state": "SUBSCRIBED"
   },
   "top_of_book": {
-    "ask": 1.25,
-    "ask_size": 55,
-    "bid": 1.2,
-    "bid_size": 40
+    "ask": 0.61,
+    "ask_size": 14,
+    "bid": 0.58,
+    "bid_size": 55
   },
   "top_outage": null,
   "wall_candidates": [],

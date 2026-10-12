@@ -22,11 +22,11 @@ def _feed_live():
 
 
 
-def test_resolve_spot_rejects_mark_close_chain_and_snapshot(monkeypatch) -> None:
+def test_resolve_spot_rejects_mark_close_chain_and_snapshot() -> None:
     L._by_ticker.pop("SPY", None)
     from app.options.order_flow import streaming as ofs
-    monkeypatch.setattr(ofs, "_price_rows", {})   # no daemon price row: a chain, MARK or close is no spot
-    spot, source, _ts = server.resolve_spot("SPY")
+    ofs._price_rows.pop("SPY", None)   # no daemon price row: a chain, MARK or close is no spot
+    spot, source, _ts = server.resolve_spot("SPY", now=time.time())
     assert spot is None
     assert source == "none"
 
@@ -40,7 +40,7 @@ def test_plane_mark_only_tick_never_creates_current_spot() -> None:
     )
     assert ok is True                                   # the quote Schwab sent is published
     assert L.get_quote("MARKNEVER")["spot"] is None     # MARK never stands in for the spot
-    spot, source, _ts = server.resolve_spot("MARKNEVER")
+    spot, source, _ts = server.resolve_spot("MARKNEVER", now=time.time())
     assert spot is None
     assert source == "none"
 
@@ -74,6 +74,6 @@ def test_a_rest_written_plane_row_is_not_spot() -> None:
                         "quote_source_detail": {"spot": "LAST_PRICE"},
                         "quote_ingestion": "rest_anchor_lane_refresher"}
     try:
-        assert server.resolve_spot(tk) == (None, "none", None)
+        assert server.resolve_spot(tk, now=now) == (None, "none", None)
     finally:
         L._by_ticker.pop(tk, None)

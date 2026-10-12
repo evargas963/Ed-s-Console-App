@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import time as _time
 from dataclasses import asdict, dataclass, field, replace
+from datetime import datetime
 from typing import Any
 
 from math_exposure_core import (
@@ -140,6 +141,9 @@ class TerrainSnapshot:
     #: walls/flip decay into the close (0DTE gamma dies at 4pm); low = levels persist.
     #: None (fail-closed) when the book is empty, never a fabricated 0%.
     zero_dte_gamma_share_pct: float | None = None
+    #: absolute gamma (pick_pin_and_strength) of the same-day expiry's book alone, or None with why
+    zero_dte_abs_gamma_strike: float | None = None
+    zero_dte_abs_gamma_reason: str | None = None
 
     #: RC-358: 25Δ risk reversal — {rr_pts, call_iv_25d, put_iv_25d, dte} or None.
     #: Skew steepness on the front expiry; deterioration toward −6 = the put bid
@@ -460,7 +464,7 @@ def compute_wall_value_area(
     return {
         "lo": ks[li],
         "hi": ks[ri],
-        "coverage_pct": round(s / total * 100.0, 1),
+        "coverage_pct": s / total * 100.0,
         "method": "gamma value area: Market-Profile POC expansion on "
                   f"{side}-side GEX mass to 68.2pct (one sigma)",
     }
@@ -533,8 +537,8 @@ def compute_implied_one_day_move(contracts: list[dict], spot: float | None) -> d
     sigma = at_front[0]
     em = float(spot) * sigma * (1.0 / 252.0) ** 0.5
     return {
-        "points": round(em, 4),
-        "iv_pct_atm": round(sigma * 100.0, 4),
+        "points": em,
+        "iv_pct_atm": sigma * 100.0,
         "dte_used": front,
         "method": "S x sigma_ATM x sqrt(1/252), one standard deviation (68.3pct); "
                   "sigma = mean ATM call/put implied vol of the first expiry at least a day out",
@@ -712,16 +716,12 @@ def qualify_pin_candidate(
 
 
 def compute_terrain(ticker: str, contracts: list[dict] | None,
-                    spot: float | None, *, now=None) -> TerrainSnapshot:
+                    spot: float | None, *, now: datetime) -> TerrainSnapshot:
     """Full terrain for one ticker. Fails closed — never invents a level.
 
-    `now` (gamma audit 2026-08-26): the valuation instant for every time-to-expiry in this
-    snapshot. Live callers omit it and get now_et(). OFFLINE/REPLAY callers MUST pass the
-    SNAPSHOT's time — repricing a stored historical chain against today's clock silently drops
-    every contract whose expiry has since passed (time_to_expiry_years returns None past
-    settlement) and understates T for the rest, so the replay does not reproduce what the live
-    reprice saw. _contract_inputs already documented this contract; compute_terrain had no hook
-    to honor it, which is why tools/terrain_backtest_report_v1.py was scoring on the wrong clock.
+    `now`: the valuation instant for every time-to-expiry in this snapshot, read once by the
+    caller's entry point (the live reprice: its own instant; a replay of a stored chain: the
+    snapshot's time, so it reproduces what the live reprice saw).
 
     SINGLE SOURCE OF TRUTH (RC-33, 2026-07-24): this is the ONE terrain engine;
     /api/analytics/state no longer computes a competing terrain read. It must be
@@ -738,12 +738,8 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
     if spot is None or spot <= 0:
         return _unavailable(ticker, spot, "no spot price")
 
-    # ONE valuation instant for every book below (gamma audit: replay pins the snapshot
-    # instant). Resolved BEFORE the first exposure book -- it used to be read later, so the
-    # exposures (and the vanna aggregate built from them) priced T at the wall clock while
-    # the profile priced it at `now` (2026-09-25).
-    from time_et import now_et as _now_et
-    _terrain_now = now if now is not None else _now_et()
+    # ONE valuation instant for every book below
+    _terrain_now = now
     # One pricing pass: exposures per (expiry, DTE) group; every book below is a merge of them.
     books = exposure_books(contracts, spot=spot, now=_terrain_now)
     exposures, diag = merge_exposure_books(books.values())
@@ -800,6 +796,10 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
     # a contract with no readable DTE belongs to no expiry's book (it was counted as 0DTE)
     _exp_0dte, _ = merge_exposure_books(b for (_e, d), b in books.items() if d is not None and d <= 0)
     _zero_dte_share = compute_zero_dte_gamma_share(exposures, _exp_0dte)
+    _zero_dte_pin = pick_pin_and_strength(_exp_0dte, sorted(_exp_0dte))[0]
+    _zero_dte_pin_reason = (None if _zero_dte_pin is not None else
+                            "no same-day expiry in the chain" if not _exp_0dte else
+                            "the same-day expiry has no dollar gamma")
     # Max pain on the FRONT expiry only.
     _front_max_pain = None
     if _front_dte is not None:
@@ -864,6 +864,8 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         grc=_gsl["grc"],
         gsf_state=_gsl["state"],
         zero_dte_gamma_share_pct=_zero_dte_share,
+        zero_dte_abs_gamma_strike=_zero_dte_pin,
+        zero_dte_abs_gamma_reason=_zero_dte_pin_reason,
         rr_25d=_rr25,
         vanna_agg=compute_net_vanna(exposures, spot),     # RC-362: same book, one sum
         implied_1d_move=compute_implied_one_day_move(contracts, spot),   # RC-113
@@ -901,7 +903,7 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         books=books,
         charm_by_strike=charm_by_strike,
         pcr_by_expiry={e: put_call_oi_ratio(book) for (e, _d), (book, _diag) in sorted(books.items(), key=lambda kv: kv[0][0])},
-        atm_iv_pct_by_expiry={e: None if s is None else round(s * 100.0, 4)
+        atm_iv_pct_by_expiry={e: None if s is None else s * 100.0
                               for (e, _d), s in atm_sigma_by_expiry(contracts, spot).items() if e},
         pcr_volume_by_expiry={e: put_call_volume_ratio(book) for (e, _d), (book, _diag) in books.items()},
         pcr_all=put_call_oi_ratio(exposures),

@@ -76,9 +76,6 @@
     }
     return row[measure] || [];
   }
-  // the heatmap's streamed-contract demand is kept per ticker ('heatmap:<ticker>'), so one ticker's
-  // demand never replaces another's in EdStream's union
-  function _heatmapOwnerKey(tk) { return 'heatmap:' + (tk || ''); }
 
   // the words for each cell's and column's streaming state, served in the page (meta
   // ed-stream-words, server.STREAM_WORDS)
@@ -116,10 +113,7 @@
 
   // ---- render the window the server sent (no math on its values) ----
   function renderSurface(host, surface) {
-    var tk = _pendingTicker || (surface && surface.ticker);
     if (!surface || surface.available === false) {
-      // every exit states the heatmap's demand, "none" included
-      window.EdStream.setAdditionalContracts([], _heatmapOwnerKey(tk));
       _lastSurface = null; _lastRevision = null;
       paintChip(null);
       host.innerHTML = buildBanner(surface || { live: false }) + '<div class="placeholder"><div class="big">Gamma surface unavailable</div>' +
@@ -128,16 +122,13 @@
     }
     var view = surface.view;
     window.EdShell.panServed(_pan, view.centre);
-    if (view.missing_expiry) {   // the selected expiry is not in this surface: nothing is drawn or streamed
-      window.EdStream.setAdditionalContracts([], _heatmapOwnerKey(tk));
+    if (view.missing_expiry) {   // the selected expiry is not in this surface: nothing is drawn
       _lastSurface = surface; _lastRevision = null;
       paintChip(null);
       host.innerHTML = '<div class="placeholder"><div class="big">Expiry ' + escapeHtml(view.missing_expiry) +
         ' unavailable</div><div class="sm">not in this surface — choose another expiry, or All Expirations</div></div>';
       return;
     }
-    // stream every contract drawn (the served list); each cell's outcome comes back as its state
-    window.EdStream.setAdditionalContracts(view.demand, _heatmapOwnerKey(tk));
     var measure = (window.EdShell && window.EdShell.getMeasure) ? window.EdShell.getMeasure() : 'gex';
     _lastSurface = surface;
     // the table is rebuilt only for a new publication or a new window, else its status refreshes
@@ -169,8 +160,7 @@
       exps.forEach(function (e, j) {
         var v = mrow[j], st = cellStyle(v, maxAbs, heat);
         var cellState = (row.stream || [])[j], liveState = cellState ? cellState.state : null;
-        var reason = liveState === 'rejected' ? ((cellState.call || {}).rejected_reason || (cellState.put || {}).rejected_reason) : null;
-        var stateTitle = (words.cell[liveState] || '') + (reason ? ' (' + reason + ')' : '');
+        var stateTitle = words.cell[liveState];   // a live cell has no words: no title
         tbl += '<td class="hcell' + (e.front ? ' col-front' : '') + (e.expired ? ' expired' : '') +
           (liveState ? ' state-' + liveState : '') +
           '" style="background:' + st.bg + ';color:' + st.fg + '" ' +
@@ -274,15 +264,10 @@
     if (!host) return;
     var st = (window.EdShell && window.EdShell.getState()) || {};
     if (st.workspace !== 'options' || !_isGammaFamilySubview(st.subview) || st.view !== 'heatmap') {
-      // leaving the heatmap: its demand is cleared at once, never behind an in-flight read
-      window.EdStream.setAdditionalContracts([], _heatmapOwnerKey(_pendingTicker));
       _pendingTicker = null;
       return;
     }
     var nextTicker = st.ticker || '';
-    if (_pendingTicker && _pendingTicker !== nextTicker) {
-      window.EdStream.setAdditionalContracts([], _heatmapOwnerKey(_pendingTicker));   // the ticker just left
-    }
     if (_panTicker !== nextTicker) { _pan.centre = null; _pan.shift = 0; _panTicker = nextTicker; }
     _pendingTicker = nextTicker;
     _loader.trigger(_pendingTicker);

@@ -25,9 +25,8 @@ permits), not the population — so they stay valid whichever chains production 
 """
 from __future__ import annotations
 
-import pytest
-
 import sys
+from datetime import datetime
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -44,18 +43,16 @@ from math_levels import (
     compute_gamma_profile,
 )
 from terrain_read import build_terrain_read
+from time_et import ET
+
+#: the chain here expires 2027-07-16 (a date Schwab's /markets answers); valued a month before
+NOW = datetime(2027, 6, 16, 12, 0, tzinfo=ET)
 
 
 def _verdict(span: float) -> str:
     chain = _chain(span)
-    return compute_gamma_flip_v2(chain, 100.0, profile=compute_gamma_profile(chain, 100.0))[1]
+    return compute_gamma_flip_v2(chain, 100.0, profile=compute_gamma_profile(chain, 100.0, now=NOW))[1]
 
-
-
-@pytest.fixture(autouse=True)
-def _before_expiry(pin_clock):
-    """The chain here expires 2030-01-18; valued a month before, it never ages out."""
-    return pin_clock(2029, 12, 18, 12, 0)
 
 def _chain(span: float, spot: float = 100.0, n: int = 41):
     # institutional-synthetic-ok: a span-threshold discriminator needs chains built at EXACT
@@ -67,7 +64,7 @@ def _chain(span: float, spot: float = 100.0, n: int = 41):
         for side in ("CALL", "PUT"):
             out.append({"strikePrice": round(k, 2), "putCall": side, "openInterest": 100,
                         "multiplier": 100, "volatility": 20.0, "daysToExpiration": 30,
-                        "expirationDate": "2030-01-18T00:00:00.000+00:00"})
+                        "expirationDate": "2027-07-16T00:00:00.000+00:00"})
     return out
 
 

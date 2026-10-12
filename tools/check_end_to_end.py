@@ -39,7 +39,7 @@ import sys
 from pathlib import Path
 
 PRODUCT_SUFFIXES = (".py", ".js", ".mjs", ".html")
-NOT_PRODUCT = ("tests/", "tools/", ".github/", "docs/")
+NOT_PRODUCT = ("tests/", "tools/", ".github/", "docs/", "playwright.config.mjs")
 END_TO_END = (re.compile(r"^tests/test_data_path_[^/]+\.py$"),
               re.compile(r"^tests/e2e/[^/]+\.spec\.js$"))
 BODY_SECTIONS = ("Schwab → screen:", "Deleted:", "End-to-end test:")

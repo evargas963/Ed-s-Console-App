@@ -242,7 +242,7 @@ def book_heatmap_for_ticker(ticker: str, venue: str, *, minutes: float = 60.0,
     return {
         "ticker": sym, "venue": venue, "available": True,
         "since_ts": t0, "until_ts": rows[-1][0], "latest_captured_ts": rows[-1][0],
-        "n_buckets": n_buckets, "bucket_sec": round(bucket_sec, 2),
+        "n_buckets": n_buckets, "bucket_sec": bucket_sec,
         "price_min": min(prices_seen), "price_max": max(prices_seen),
         # the default price window, and the largest displayed size (the colour scale's top)
         "display_lo": display_lo, "display_hi": display_hi,

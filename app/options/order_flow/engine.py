@@ -331,7 +331,7 @@ def _book_wall_candidates(levels: list[tuple[float, float]], side: str, depth: i
     for price, vol in lv:
         if vol >= OF_BOOK_WALL_MEDIAN_MULT * median:
             out.append({"side": side, "price": price, "volume": vol,
-                        "median_mult": round(vol / median, 2)})
+                        "median_mult": vol / median})
     return out
 
 
@@ -459,10 +459,10 @@ def compute_book_microstructure(data: dict, *, now_ts: float,
     prov["server_received_ts"] = now                # DERIVED (server wall clock at serialization)
     payload.pop("provenance_structural", None)
     payload["provenance"] = prov
-    book_age_sec = round(now - book_time_ms / 1000.0, 3) if book_time_ms else None
+    book_age_sec = now - book_time_ms / 1000.0 if book_time_ms else None
     payload["ages"] = {
         "book_age_sec": book_age_sec,
-        "quote_age_sec": round(now - exch_ts, 3) if exch_ts else None,
+        "quote_age_sec": now - exch_ts if exch_ts else None,
         # the live rule (live_market_plane.feed_live_for on the book's service), which the caller
         # passes as data["book_live"]; None with no book
         "book_stale": None if book_age_sec is None else data.get("book_live") is not True,

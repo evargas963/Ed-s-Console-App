@@ -23,17 +23,17 @@ from urllib.parse import parse_qs, urlparse
 import httpx
 import pytest
 from fastapi.testclient import TestClient
-from schwab.client import Client
 from websockets.asyncio.client import connect
 
 import app.options.order_flow.streaming as ofs
 import schwab_client as sc
 import server
 from app.market_data.schwab.streaming import capture, live_push
-from calibration.complete_chain_capture import FAILED_PAUSE_SEC, ChainSweep, chain_messages
-from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS
+from calibration.complete_chain_capture import ChainSweep, chain_messages
+from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS, bars_from_candles
 from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus, bar_msg
-from tests.feed_live_helper import daemon_bars, forget_daemon_bars, record_daemon_bars
+from tests.feed_live_helper import daemon_bars, price_history, stream_daemon_bars
+from tests.schwab_rest_standin import LocalSchwab
 from time_et import ET, now_et
 
 FX = Path(__file__).resolve().parent / "fixtures"
@@ -145,7 +145,8 @@ def test_d1_a_quote_that_arrives_late_never_replaces_a_newer_one(connected):
 # ── D2. Everything Schwab sends is kept ─────────────────────────────────────────────────────
 
 def test_d2_every_field_and_schwabs_own_timestamp_reach_the_console():
-    """A CHART_EQUITY bar with every field Schwab's Streamer Guide lists (SEQUENCE, CHART_DAY
+    """A CHART_EQUITY bar with every field Schwab's Streamer API lists (docs/schwab/
+    schwab_streamer_api.pdf §5.1 CHART_EQUITY, fields 0-8: SEQUENCE, CHART_DAY
     included) and the frame's own timestamp: each reaches the console as sent. Stand-in: the
     bar's values are SPY's captured 1-minute bar; SEQUENCE and CHART_DAY are named stand-ins."""
     bars = json.loads((FX / "real_spy_1m_bars_2026_09_24_25.json").read_text(encoding="utf-8"))
@@ -235,8 +236,9 @@ async def _chains_then_console(contracts, fetched) -> list[dict]:
 
 # ── D4. The database is the memory ──────────────────────────────────────────────────────────
 
-def test_d4_the_one_writer_records_every_message_schwab_sends(tmp_path):
-    """Every captured quote of the contract is written to the history database, each with every
+def test_d4_the_one_writer_records_every_message_it_is_handed_with_every_field(tmp_path):
+    """Every captured quote of the contract handed to the writer (no save rule set: the daemon's,
+    Daemon.saves, keeps the traded contracts) is written to the history database, each with every
     field Schwab sent."""
     db = tmp_path / "stream_capture.db"
 
@@ -266,18 +268,16 @@ _RTH = 1790780400.0
 _CLOSED = 1790820000.0
 
 
-def _served_at(monkeypatch, now: float, feed_live: bool) -> dict:
-    """At `now` (the clock pinned), SPY's last trade and a captured option quote of the contract
-    in the daemon's memory, the feed live or not (the daemon's heartbeat holding both symbols, or
-    none): what the header row, the console's one spot, the equity book's top and the option
-    book's top serve."""
+def _served_at(now: float, feed_live: bool) -> dict:
+    """At `now`, SPY's last trade and a captured option quote of the contract in the daemon's
+    memory, the feed live or not (the daemon's heartbeat holding both symbols, or none): what the
+    header row, the console's one spot, the equity book's top and the option book's top serve."""
     import live_market_plane as lmp
     import live_price_rows
     import server
     from app.options.order_flow import live_payload
     from app.options.order_flow import streaming as ofs
     from app.options.order_flow.state import push_option_top
-    monkeypatch.setattr(time, "time", lambda: now)
     then = now - 600
     lmp.record_from_level_one_equity("SPY", {"LAST_PRICE": 767.39, "BID_PRICE": 767.38, "ASK_PRICE": 767.40,
                                              "TRADE_TIME_MILLIS": int(then * 1000),
@@ -289,19 +289,19 @@ def _served_at(monkeypatch, now: float, feed_live: bool) -> dict:
     else:
         lmp.record_feed_down()
     try:
-        row = live_price_rows.price_row("SPY")
-        monkeypatch.setitem(ofs._price_rows, "SPY", row)
-        return {"row": row, "spot": server.resolve_spot("SPY"),
-                "equity_book": json.loads(server.api_order_flow_microstructure("SPY", "NYSE_BOOK").body),
+        row = ofs._price_rows["SPY"] = live_price_rows.price_row("SPY", now)
+        return {"row": row, "spot": server.resolve_spot("SPY", now=now),
+                "equity_book": server.order_flow_microstructure("SPY", "NYSE_BOOK", now),
                 "option_book": live_payload.options_live_payload(_CONTRACT, now)}
     finally:
+        ofs._price_rows.pop("SPY", None)
         lmp.record_feed_down()
 
 
-def test_d5_a_feed_down_in_an_open_session_is_an_outage_shown_absent_with_its_reason(monkeypatch):
+def test_d5_a_feed_down_in_an_open_session_is_an_outage_shown_absent_with_its_reason():
     """RTH, the feed down: the price, the equity top of book and the option top of book are
     absent, each with the outage reason; no last value stands in for a live one."""
-    s = _served_at(monkeypatch, _RTH, feed_live=False)
+    s = _served_at(_RTH, feed_live=False)
     assert s["row"]["spot"] is None and s["row"]["bid"] is None
     assert s["row"]["outage"] == "Schwab LEVELONE_EQUITIES feed down during RTH"
     assert s["spot"] == (None, "Schwab LEVELONE_EQUITIES feed down during RTH", None)
@@ -311,10 +311,10 @@ def test_d5_a_feed_down_in_an_open_session_is_an_outage_shown_absent_with_its_re
     assert s["option_book"]["top_outage"] == "Schwab LEVELONE_OPTIONS feed down during RTH"
 
 
-def test_d5_while_closed_the_values_as_of_the_close_stand_feed_up_or_down(monkeypatch):
+def test_d5_while_closed_the_values_as_of_the_close_stand_feed_up_or_down():
     """22:00 ET, the feed down: the last price and both tops of book Schwab sent are served,
     with no outage."""
-    s = _served_at(monkeypatch, _CLOSED, feed_live=False)
+    s = _served_at(_CLOSED, feed_live=False)
     assert s["row"]["spot"] == 767.39 and s["row"]["outage"] is None
     assert s["spot"][0] == 767.39
     assert s["equity_book"]["top_of_book"]["bid"] == 767.38 and s["equity_book"]["top_outage"] is None
@@ -322,9 +322,9 @@ def test_d5_while_closed_the_values_as_of_the_close_stand_feed_up_or_down(monkey
     assert s["option_book"]["top_outage"] is None
 
 
-def test_d5_a_live_feed_in_an_open_session_serves_the_newest_values(monkeypatch):
+def test_d5_a_live_feed_in_an_open_session_serves_the_newest_values():
     """RTH, the feed live: the newest price and tops of book Schwab sent are served."""
-    s = _served_at(monkeypatch, _RTH, feed_live=True)
+    s = _served_at(_RTH, feed_live=True)
     assert s["row"]["spot"] == 767.39 and s["row"]["outage"] is None
     assert s["spot"][0] == 767.39
     assert s["equity_book"]["top_of_book"]["bid"] == 767.38 and s["equity_book"]["top_outage"] is None
@@ -339,76 +339,268 @@ def test_d5_a_daemon_status_that_waited_in_a_queue_is_not_current():
     lmp.record_feed_heartbeat({"ts": old, "schwab_socket_open": True,         # arrives now
                                "held": {"LEVELONE_EQUITIES": ["SPY"]}})
     try:
-        assert lmp.daemon_status() is None, "a two-minute-old daemon status counted as live"
+        assert lmp.daemon_status(time.time()) is None, "a two-minute-old daemon status counted as live"
     finally:
         lmp.record_feed_down()
 
 
-# ── D5 for the chains: the sweep paced by the session calendar ─────────────────────────────
-# The real ChainSweep, its clock an input; no network: each fetch the sweep hands out is ended
-# by the test (delivered or not), as a worker ends it.
+# ── D5 for the chains: the sweep by each ticker's option market, as Schwab's /markets sends it ──
+# The real ChainSweep on its thread (work), its clock an input, against the local stand-in for
+# Schwab's host (tests/schwab_rest_standin.py: SPY and TSLA, and Schwab's /markets answers
+# captured 2026-10-07; an expiry that has passed by the clock's date is not asked for, so a
+# ticker can deliver a chain with no contracts, and then its option market is not known).
 
 def _et(s: str) -> float:
     return datetime.fromisoformat(s).replace(tzinfo=ET).timestamp()
 
 
-def _paced(board: "list[str]", at: str) -> "tuple[ChainSweep, dict]":
-    clock = {"now": _et(at)}
-    return ChainSweep("unused.db", board, lambda topic, msg: None, clock=lambda: clock["now"]), clock
+class _Swept:
+    """The sweep (the watchlist `watchlist`) on its thread at `clock["now"]`; `chains` is each
+    ticker whose chain it delivered, in order, `delivered` the clock at each delivery."""
+
+    def __init__(self, tmp_path, at: str, watchlist: "list[str]"):
+        self.clock = {"now": _et(at)}
+        self.chains: "list[str]" = []
+        self.delivered: "list[float]" = []
+        self.schwab = LocalSchwab()
+
+        def publish(topic, msg):
+            if "contracts" in msg and msg["part"] == 0:
+                self.chains.append(msg["ticker"])
+                self.delivered.append(msg["ts_recv"])
+        self.sweep = ChainSweep(tmp_path / "ed_console.db", watchlist, publish,
+                                clock=lambda: self.clock["now"],
+                                failures=CaptureWriter(tmp_path / "stream_capture.db"),
+                                streamed=lambda symbol: None)
+        self.client = self.schwab.client(tmp_path)
+        self._start()
+
+    def _start(self) -> None:
+        self.stop = threading.Event()
+        self.worker = threading.Thread(target=self.sweep.work, args=(lambda: self.client, self.stop), daemon=True)
+        self.worker.start()
+
+    def move(self, at: str) -> int:
+        """The clock moved to `at` with the sweep's thread stopped (a request it was making lands
+        first), then the thread started again: the number of requests Schwab's host received
+        before the move. A request is counted by the clock it was made at, never by when it
+        arrived."""
+        self.stop.set()
+        self.worker.join(10)
+        before = len(self.schwab.requests)
+        self.clock["now"] = _et(at)
+        self._start()
+        return before
+
+    def until(self, n: int) -> "list[str]":
+        """The chains delivered once `n` are in (or 10 s have passed), and a second more."""
+        deadline = time.monotonic() + 10
+        while len(self.chains) < n and time.monotonic() < deadline:
+            time.sleep(0.02)
+        time.sleep(1.0)
+        return list(self.chains)
+
+    def close(self) -> None:
+        self.stop.set()
+        self.worker.join(10)
+        self.schwab.close()
 
 
-def _handed_out(sweep: ChainSweep, now: float, delivered: bool = True) -> "list[str]":
-    """Every ticker the sweep hands out at `now` until it hands out none; then each fetch ends."""
-    out = []
-    while (tk := sweep._next(now)) is not None:
-        out.append(tk)
-        assert len(out) < 50, "the sweep never stopped handing out tickers"
-    for tk in out:
-        sweep._done(tk, delivered)
-    return out
+@pytest.mark.parametrize("at", ["2026-10-01 10:00", "2026-11-20 15:30"], ids=["rth", "its-expiry-day"])
+def test_d5_while_its_option_market_is_open_a_ticker_is_fetched_without_end(tmp_path, at):
+    swept = _Swept(tmp_path, at, ["SPY"])
+    try:
+        chains = swept.until(3)
+    finally:
+        swept.close()
+    assert chains[:3] == ["SPY"] * 3, "fetched again and again while SPY's options (EQO) trade"
 
 
-@pytest.mark.parametrize("at", ["2026-10-01 05:00", "2026-10-01 10:00", "2026-10-01 17:00",
-                                "2026-11-27 14:00"],
-                         ids=["pre-market", "rth", "after-hours", "after-hours-of-an-early-close"])
-def test_d5_in_every_open_session_the_sweep_fetches_without_end(at):
-    sweep, clock = _paced(["AAA", "BBB"], at)
-    sweep.set_active("OFF")                              # on screen, off the board
-    assert _handed_out(sweep, clock["now"]) == ["OFF", "AAA", "BBB"]
-    assert _handed_out(sweep, clock["now"] + 1) == ["OFF", "AAA", "BBB"], "and again, without end"
+@pytest.mark.parametrize("at", ["2026-10-01 05:00", "2026-10-01 17:00", "2026-11-27 14:00", "2026-10-03 12:00",
+                                "2026-11-26 12:00", "2026-10-01 02:00"],
+                         ids=["stock-pre-market", "stock-after-hours", "after-an-early-close", "saturday",
+                              "thanksgiving", "a-weeknight"])
+def test_d5_outside_its_option_session_a_ticker_is_fetched_once_and_an_added_ticker_once(tmp_path, at):
+    """Outside the option market's regular session Schwab sent -- the stock market's pre-market
+    and after hours included -- each ticker's close values are fetched once, a ticker added to
+    the watchlist then too, and then nothing: the close values stand, and none is made up."""
+    swept = _Swept(tmp_path, at, ["SPY"])
+    try:
+        assert swept.until(1) == ["SPY"]
+        swept.sweep.watchlist = ["SPY", "TSLA"]                  # the daemon's list after an add
+        assert swept.until(2) == ["SPY", "TSLA"]
+        assert swept.until(3) == ["SPY", "TSLA"]
+    finally:
+        swept.close()
 
 
-def test_d5_once_closed_every_board_ticker_is_fetched_once_then_nothing_until_the_next_session():
-    sweep, _ = _paced(["AAA", "BBB", "CCC"], "2026-10-02 19:59")
-    sweep.set_active("OFF")
-    assert sweep._next(_et("2026-10-02 19:59")) == "OFF"        # in flight when the market closes
-    assert _handed_out(sweep, _et("2026-10-02 20:00")) == ["AAA", "BBB", "CCC"]   # the close values
-    sweep._done("OFF", True)
-    for later in ("2026-10-02 20:01", "2026-10-03 12:00", "2026-10-04 23:59", "2026-10-05 03:59"):
-        assert sweep._next(_et(later)) is None, later
-    assert _handed_out(sweep, _et("2026-10-05 04:00")) == ["OFF", "AAA", "BBB", "CCC"], "Monday pre-market"
+def test_d5_at_the_option_close_a_ticker_is_fetched_once_more_then_nothing_until_the_next_open(tmp_path):
+    """Friday 2026-10-02: fetched without end until the last option market's close (Schwab's IND,
+    16:15 ET), once more begun after it (the close values), nothing through the weekend and
+    Monday's stock pre-market, and
+    again from Monday's 09:30 open. Counted by the chain requests Schwab's host received after each
+    move of the clock, made with the sweep at rest (_Swept.move): CI 2026-10-08 counted a 15:59
+    request that arrived after the clock moved as one asked after the close."""
+    def chain_requests_since(mark: int) -> int:
+        return sum(1 for path, *_ in swept.schwab.requests[mark:] if path == "/marketdata/v1/chains")
+
+    swept = _Swept(tmp_path, "2026-10-02 16:14", ["SPY"])
+    try:
+        swept.until(2)
+        closed = swept.move("2026-10-02 16:15:30")
+        swept.until(len(swept.chains) + 2)
+        after_close = chain_requests_since(closed)
+        weekend = swept.move("2026-10-03 12:00")
+        swept.until(len(swept.chains) + 1)
+        swept.move("2026-10-05 09:29")
+        swept.until(len(swept.chains) + 1)
+        quiet = chain_requests_since(weekend)
+        opened = swept.move("2026-10-05 09:30")
+        swept.until(len(swept.chains) + 2)
+        reopened = chain_requests_since(opened)
+    finally:
+        swept.close()
+    assert after_close == 1, "one chain asked after the close: the close values"
+    assert quiet == 0, "nothing asked through the weekend and Monday's stock pre-market"
+    assert reopened >= 2, "asked again and again from Monday's open"
 
 
-@pytest.mark.parametrize("at", ["2026-10-03 12:00", "2026-11-26 12:00", "2026-10-01 02:00"],
-                         ids=["saturday", "thanksgiving", "a-weeknight"])
-def test_d5_a_daemon_started_while_closed_fetches_the_close_values_once_and_no_ticker_put_on_screen(at):
-    """A ticker put on screen while Closed is not fetched, whether its close values were fetched
-    (on the board) or not (off it): the close values stand, and none is made up."""
-    sweep, clock = _paced(["AAA", "BBB"], at)
-    assert _handed_out(sweep, clock["now"]) == ["AAA", "BBB"]
-    sweep.set_active("AAA")
-    assert sweep._next(clock["now"] + 60) is None
-    sweep.set_active("OFF")
-    assert sweep._next(clock["now"] + 120) is None
+def test_d5_a_close_fetch_that_fails_is_tried_again_at_once_until_it_lands(tmp_path):
+    swept = _Swept(tmp_path, "2026-10-03 12:00", ["SPY"])
+    swept.schwab.refuse_chain = {"SPY"}
+    try:
+        assert swept.until(1) == ["SPY"]
+    finally:
+        swept.close()
+    assert [q["symbol"] for q in swept.schwab.asked("/marketdata/v1/chains")] == ["SPY", "SPY"]
 
 
-def test_d5_a_close_fetch_that_fails_is_tried_again_after_the_pause_until_it_lands():
-    sweep, clock = _paced(["AAA", "BBB"], "2026-10-03 12:00")
-    sat = clock["now"]
-    assert _handed_out(sweep, sat, delivered=False) == ["AAA", "BBB"]
-    assert sweep._paused_until == sat + FAILED_PAUSE_SEC
-    assert _handed_out(sweep, sat + FAILED_PAUSE_SEC) == ["AAA", "BBB"]
-    assert sweep._next(sat + 60) is None
+def _asked_since(swept: "_Swept", path: str, mark: float) -> "list[dict]":
+    """The queries of the requests to `path` Schwab's host received after `mark` (monotonic)."""
+    return [q for p, q, started, *_ in swept.schwab.requests if p == path and started > mark]
+
+
+def _run_for(seconds: float) -> float:
+    """Let the sweep's thread run; the monotonic time it ended."""
+    time.sleep(seconds)
+    return time.monotonic()
+
+
+def test_d5_the_price_history_once_a_day_and_the_chain_the_options_session(tmp_path):
+    """The price history is asked once per ET date (today's candle is rolled up live from the
+    streamed bars); option chains follow each ticker's options session. Thursday 2026-10-01 at
+    17:00 ET (Schwab's /markets: stock options closed at 16:00): SPY's chain is asked once (its
+    close values) and its price history once; nothing more that day; on Friday's date, at 06:59,
+    the price history once again, and the chain waits for the 09:30 option open."""
+    chains = "/marketdata/v1/chains"
+    swept = _Swept(tmp_path, "2026-10-01 17:00", ["SPY"])
+    try:
+        after_hours = _run_for(2.0)
+        swept.clock["now"] = _et("2026-10-01 20:00:30")
+        _run_for(2.0)
+        swept.clock["now"] = _et("2026-10-02 06:59")
+        _run_for(1.5)
+        swept.clock["now"] = _et("2026-10-02 07:00")
+        _run_for(1.5)
+    finally:
+        swept.close()
+
+    def history_at(when: str) -> "list[str]":
+        """The series of the price-history requests begun at the clock `when` (each request's
+        endDate is the sweep's clock when it began)."""
+        return [q["frequencyType"] + q["frequency"] for q in swept.schwab.asked("/marketdata/v1/pricehistory")
+                if q["endDate"] == str(int(_et(when) * 1000))]
+    assert len([q for p, q, s, *_ in swept.schwab.requests if p == chains and s <= after_hours]) == 1, \
+        "the chain once after the option close"
+    assert history_at("2026-10-01 17:00") == ["minute1", "daily1"], "the price history once that day"
+    assert history_at("2026-10-01 20:00:30") == [], "not again the same day"
+    assert history_at("2026-10-02 06:59") == ["minute1", "daily1"], "once on the next ET date"
+    assert history_at("2026-10-02 07:00") == [], "not again that day"
+    assert _asked_since(swept, chains, after_hours) == [], "the chain waits for the option open"
+
+
+def test_d5_the_chain_is_asked_until_the_last_option_close_and_its_close_values_then_stand(tmp_path):
+    """SPY's options trade to 16:15 ET; Schwab's /markets sends EQO to 16:00 and IND to 16:15
+    (2026-10-07). At 16:10 SPY's chain is asked again and again; at 16:20 once more (its close
+    values), then not. Levels from that chain stand at 17:00 (After-Hours), not stale; levels
+    from 15:00 are stale at 16:10, while the options are open. The clock moves with the sweep at
+    rest (_Swept.move): a request is counted by the clock it was made at, never by when it arrived
+    (CI 2026-10-10 counted a 16:10 request that landed after the clock moved as one at 16:20)."""
+    chains = "/marketdata/v1/chains"
+    swept = _Swept(tmp_path, "2026-10-07 16:10", ["SPY"])
+    try:
+        swept.until(3)                                   # delivered again and again at 16:10
+        closed = swept.move("2026-10-07 16:20")
+        swept.until(len(swept.chains) + 1)
+    finally:
+        swept.close()
+    before_close = [q["fromDate"] for p, q, *_ in swept.schwab.requests[:closed] if p == chains]
+    after_close = [q["fromDate"] for p, q, *_ in swept.schwab.requests[closed:] if p == chains]
+    assert before_close and all(before_close.count(e) > 1 for e in before_close), \
+        "each expiry asked again and again while the last option market is open"
+    assert sorted(after_close) == sorted(set(before_close)), "each expiry once more after the 16:15 close"
+
+    stands = server.terrain_staleness(_et("2026-10-07 16:20"), "SPY", now=_et("2026-10-07 17:00"))
+    assert (stands["levels_stale"], stands["levels_stale_reason"]) == (False, "")
+    assert server.terrain_staleness(_et("2026-10-07 15:00"), "SPY", now=_et("2026-10-07 16:10"))["levels_stale"] is True
+
+
+def test_d5_a_chain_in_flight_at_the_close_keeps_its_begin_time_and_the_close_chain_follows(tmp_path):
+    """Schwab's /markets 2026-10-07: the last option market (IND) closes 16:15 ET. SPY's chain is
+    begun at 16:10 and its request answered once the clock reads 16:20 (time passing during a
+    request). It carries 16:10 to the console and to the chain history (the 16:00 window), so it
+    is not the close values; one more chain, begun at 16:20, follows (the close capture), then no
+    more is asked. Both are stored, each at the time it began, and no history write fails."""
+    chains = "/marketdata/v1/chains"
+    schwab = LocalSchwab()
+    delivered: "list[float]" = []
+
+    def clock() -> float:
+        return _et("2026-10-07 16:20") if any(r[0] == chains for r in schwab.requests) else _et("2026-10-07 16:10")
+
+    def publish(topic, msg):
+        if "contracts" in msg and msg["part"] == 0:
+            delivered.append(msg["ts_recv"])
+    db = tmp_path / "ed_console.db"
+    writer = CaptureWriter(tmp_path / "stream_capture.db")
+    sweep = ChainSweep(db, ["SPY"], publish, clock=clock, failures=writer, streamed=lambda symbol: None)
+    client = schwab.client(tmp_path)
+    stop = threading.Event()
+    worker = threading.Thread(target=sweep.work, args=(lambda: client, stop), daemon=True)
+    worker.start()
+    deadline = time.monotonic() + 10
+    while len(delivered) < 2 and time.monotonic() < deadline:
+        time.sleep(0.02)
+    time.sleep(1.0)                                      # nothing more is asked
+    stop.set()
+    worker.join(10)
+    asked = [r[1]["fromDate"] for r in schwab.requests if r[0] == chains]
+    with sqlite3.connect(db) as conn:
+        stored = sorted({ts for (ts,) in conn.execute("SELECT ts_utc FROM complete_chain_captures WHERE ticker = 'SPY'")})
+    assert delivered == [_et("2026-10-07 16:10"), _et("2026-10-07 16:20")], "a chain carries the time it began"
+    assert asked and all(asked.count(e) == 2 for e in asked), "each expiry: the chain in flight, then the close chain"
+    assert stored == [_et("2026-10-07 16:10"), _et("2026-10-07 16:20")], "each chain stored at the time it began"
+    assert writer.status()["failures"] == 0, "a chain history write failed"
+
+
+def test_d5_a_ticker_with_no_listed_option_is_asked_once_a_day_whether_it_has_one(tmp_path):
+    """Operator 2026-10-08: a watchlist ticker with no listed option has its chain asked once
+    per ET date, only to learn whether options are listed; its price history once per ET date.
+    Monday 2026-10-12 10:00 ET: the stand-in's TSLA expiries (2026-08-27, 2026-10-09) have both
+    passed, so Schwab lists none: one expiration-chain request that day and no chain request,
+    its price history once (two series); the next day, one more expiration-chain request."""
+    exps, chains, history = "/marketdata/v1/expirationchain", "/marketdata/v1/chains", "/marketdata/v1/pricehistory"
+    swept = _Swept(tmp_path, "2026-10-12 10:00", ["TSLA"])
+    try:
+        monday = _run_for(2.0)
+        swept.clock["now"] = _et("2026-10-13 10:00")
+        _run_for(1.5)
+    finally:
+        swept.close()
+    asked = [(p, q.get("symbol"), s) for p, q, s, *_ in swept.schwab.requests if p in (exps, chains)]
+    assert [(p, sym) for p, sym, s in asked if s <= monday] == [(exps, "TSLA")]
+    assert [(p, sym) for p, sym, s in asked if s > monday] == [(exps, "TSLA")]
+    assert len([q for p, q, s, *_ in swept.schwab.requests if p == history and s <= monday]) == 2
 
 
 def test_d5_while_closed_levels_as_of_the_close_stand_and_older_ones_are_absent_with_the_reason():
@@ -418,9 +610,9 @@ def test_d5_while_closed_levels_as_of_the_close_stand_and_older_ones_are_absent_
     for now in (sat, monday_early):
         st = server.terrain_staleness(_et("2026-10-02 20:00") + 30, "ZZCLOSED", now=now)
         assert st["levels_stale"] is False and st["levels_stale_reason"] == "", st
-        st = server.terrain_staleness(_et("2026-10-02 15:59"), "ZZCLOSED", now=now)
+        st = server.terrain_staleness(_et("2026-10-02 16:14"), "ZZCLOSED", now=now)
         assert st["levels_stale"] is True and st["levels_stale_reason"] == (
-            "the market is closed and this ticker's close values have not been fetched"), st
+            "the options are closed and this ticker's close values have not been fetched"), st
         st = server.terrain_staleness(None, "ZZCLOSED", now=now)
         assert st["levels_stale"] is True and st["levels_age_sec"] is None    # absent, not zero
     st = server.terrain_staleness(_et("2026-10-01 10:00"), "ZZCLOSED", now=_et("2026-10-01 11:00"))
@@ -428,8 +620,35 @@ def test_d5_while_closed_levels_as_of_the_close_stand_and_older_ones_are_absent_
         "in session, an hour-old chain is a gap"
 
 
-#: Schwab's SPY and TSLA bars as the capture daemon recorded them, Mon 2026-09-29 and Tue 09-30
-_DAEMON_0929 = daemon_bars("real_daemon_bars_spy_tsla_2026_09_29_30.json")
+def test_d5_the_levels_spot_is_judged_at_the_time_they_are_served_for():
+    """/api/levels served for Fri 2026-10-02 11:00 ET (RTH) with SPY's last trade in the daemon's
+    price row: with the daemon's heartbeat live then, that trade is the spot with its trade time;
+    with none, the spot is absent with the RTH outage reason -- whatever the machine's clock says
+    (judged by it, one of the two answers differs at every hour)."""
+    import live_market_plane as lmp
+    import live_price_rows
+    from app.options.order_flow import streaming as ofs
+    at = _et("2026-10-02 11:00")
+    served = {}
+    for live in (True, False):
+        if live:
+            lmp.record_feed_heartbeat({"ts": at, "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": ["SPY"]}})
+        lmp.record_from_level_one_equity("SPY", {"LAST_PRICE": 767.39, "TRADE_TIME_MILLIS": int(at * 1000)},
+                                         received_ts=at)
+        ofs._price_rows["SPY"] = live_price_rows.price_row("SPY", at)
+        try:
+            body = server.levels_payload("SPY", "1", datetime.fromtimestamp(at, ET))
+        finally:
+            ofs._price_rows.pop("SPY", None)
+            lmp.record_feed_down()
+        served[live] = (body["spot"], body["spot_source"], body["spot_as_of_ts_utc"])
+    assert served[True] == (767.39, server.SPOT_SOURCE_PLANE, at)
+    assert served[False] == (None, "Schwab LEVELONE_EQUITIES feed down during RTH", None)
+
+
+#: Schwab's SPY and TSLA bars as the capture daemon recorded them, Thu 2026-10-01 and Fri 10-02
+#: (sessions Schwab's /markets answers; tests/conftest.py)
+_DAEMON_BARS = daemon_bars("real_daemon_bars_spy_tsla_2026_10_01_02.json")
 _PAIR = ("SPY", "TSLA")
 
 
@@ -456,41 +675,47 @@ def _forget(*tickers: str) -> None:
 
 
 def test_d5_while_closed_the_price_levels_are_the_last_sessions():
-    """Schwab's SPY and TSLA bars of Mon 2026-09-29 and Tue 09-30 as the capture daemon recorded
-    them, loaded at the console's start, valued at Wed 10-01 03:00 ET (Closed): the levels served
-    are Tuesday's session's, its VWAP, value area and opening range, never an empty day's
+    """Schwab's SPY and TSLA bars of Thu 2026-10-01 and Fri 10-02 as the capture daemon recorded
+    them, streamed to the console, valued at Sat 10-03 12:00 ET (Closed): the levels served are
+    Friday's session's, its VWAP, value area and opening range, never an empty day's
     (2026-10-04: every ticker showed "no RTH volume" all weekend)."""
-    closed = datetime(2026, 10, 1, 3, 0, tzinfo=ET)
+    closed = datetime(2026, 10, 3, 12, 0, tzinfo=ET)
     _forget(*_PAIR)
-    record_daemon_bars(_DAEMON_0929)
     try:
-        server._load_bars()
+        stream_daemon_bars(_DAEMON_BARS)
         for tk in _PAIR:
             server._publish_price_levels(tk, closed)
             body = server.levels_payload(tk, "1", closed)
             served = {r["id"]: r["price"] for r in body["levels"]}
             assert {"VWAP", "TODAY_POC", "TODAY_VAH", "TODAY_VAL", "ORB_HIGH", "ORB_LOW"} <= set(served), (tk, body["families_absent"])
             assert not {"vwap", "value_area", "opening_range"} & {f["family"] for f in body["families_absent"]}, tk
-            assert body["snapshot_as_of_ts_utc"] == _newest(_DAEMON_0929, tk)[-1]["bar_start_ms"] / 1000, tk
-            assert served["PDH"] == max(r["high"] for r in _rth(_DAEMON_0929, tk, "2026-09-29")), tk
+            assert body["snapshot_as_of_ts_utc"] == _newest(_DAEMON_BARS, tk)[-1]["bar_start_ms"] / 1000, tk
+            assert served["PDH"] == max(r["high"] for r in _rth(_DAEMON_BARS, tk, "2026-10-01")), tk
     finally:
-        forget_daemon_bars(_DAEMON_0929)
         _forget(*_PAIR)
 
 
-def test_d6_a_bar_pushed_before_the_stored_bars_load_builds_levels_on_the_whole_history():
-    """The console's start: the daemon pushes each ticker's current bar the moment the console
-    connects, before the recorded bars are loaded. The bar writer loads them first, so the levels
-    built from that bar stand on the whole history (2026-10-04: 35 board tickers' levels were
-    built from their one pushed bar, every prior-day level absent). Schwab's SPY and TSLA bars of
-    2026-09-29/30 as the daemon recorded them; each ticker's newest receipt pushed, the rest loaded."""
-    pushed = [_newest(_DAEMON_0929, tk)[-1] for tk in _PAIR]
-    loaded = [r for r in _DAEMON_0929 if r not in pushed]
+def test_d6_the_price_history_and_a_pushed_bar_build_levels_on_the_whole_history():
+    """The console's start: the daemon pushes each ticker's Schwab 1-minute price history and its
+    streamed bars as they come (2026-10-04: 35 board tickers' levels were built from their one
+    pushed bar, every prior-day level absent). The bar writer writes everything that arrived
+    together before it builds a level, so the levels stand on the whole history, and a streamed
+    minute stands over Schwab's history of it. Real data: SPY's and TSLA's /pricehistory 1-minute
+    answers of 2026-10-07 09:57 UTC (10 days, through 05:59 ET), each pushed as the daemon builds
+    its message (complete_chain_capture.price_history_message), and each ticker's newest streamed
+    receipt of Fri 2026-10-02 as the daemon recorded it. The bar writer builds the levels of the
+    session at its own clock (an entry point), so they are read at now: the newest session in the
+    history before it is Tue 10-06."""
+    from calibration.complete_chain_capture import price_history_message
+    pushed = [_newest(_DAEMON_BARS, tk)[-1] for tk in _PAIR]
+    history = {tk: price_history(tk, "1m") for tk in _PAIR}
     _forget(*_PAIR)
     while not ofs.streamed_bars.empty():
         ofs.streamed_bars.get_nowait()
-    record_daemon_bars(loaded)
     try:
+        for tk, a in history.items():
+            topic, msg = price_history_message(tk, "1m", a["body"], a["answered_utc"])
+            ofs._ingest_pushed(topic, json.loads(msg["frame"])["msg"])          # as the console receives it
         for r in pushed:
             ofs._ingest_pushed(f"bar1m.{r['symbol']}", bar_msg(
                 symbol=r["symbol"], bar_start_ms=r["bar_start_ms"], open=r["open"], high=r["high"], low=r["low"],
@@ -502,14 +727,19 @@ def test_d6_a_bar_pushed_before_the_stored_bars_load_builds_levels_on_the_whole_
         assert not writer.is_alive()
         for r in pushed:
             tk = r["symbol"]
+            candles = history[tk]["body"]["candles"]
+            at = [(datetime.fromtimestamp(c["datetime"] / 1000, ET), c) for c in candles]
+            monday = [c for d, c in at if d.date().isoformat() == "2026-10-06" and 570 <= d.hour * 60 + d.minute < 960]
             snap = server.canonical_price_level_snapshot(tk, now_et())
-            tuesday = _rth(_DAEMON_0929, tk, "2026-09-30")
-            assert snap.as_of_ts_utc == r["bar_start_ms"] / 1000, tk
+            assert snap.as_of_ts_utc == candles[-1]["datetime"] / 1000, tk
             assert (snap.levels["PDL"].price, snap.levels["PDH"].price) == (
-                min(b["low"] for b in tuesday), max(b["high"] for b in tuesday)), tk
-            assert snap.degraded == [], tk
+                min(c["low"] for c in monday), max(c["high"] for c in monday)), tk
+            held = {b.ts: b for b in server._bars_1m(tk, server.BARS_KEPT)}
+            assert len(held) == len(candles), tk
+            minute = held[r["bar_start_ms"] / 1000]
+            assert (minute.open, minute.high, minute.low, minute.close, minute.volume) == (
+                r["open"], r["high"], r["low"], r["close"], r["volume"]), (tk, "the streamed minute stands")
     finally:
-        forget_daemon_bars(loaded)
         _forget(*_PAIR)
 
 
@@ -524,9 +754,9 @@ def test_d6_only_schwabs_recorded_bars_reach_the_chart_and_the_levels_never_the_
     """2026-10-04 audit: the console's old bar store holds bars our quote accumulator built (one
     sampled price a minute, no volume) and history re-seeds, and the console loaded them at its
     start. Real data from production for SPY and TSLA on 2026-09-24: the old store's rows (its
-    built rows included) beside the daemon's record of Schwab's bars. With both present, every
-    bar the chart and the levels read is Schwab's recorded bar; a minute only the old store holds
-    is absent."""
+    built rows included) beside the daemon's record of Schwab's bars, streamed to the console. With
+    both present, every bar the chart and the levels read is Schwab's; a minute only the old store
+    holds is absent (no code reads the old store)."""
     fx = json.loads((FX / "real_console_store_vs_daemon_spy_tsla_2026_09_24.json").read_text(encoding="utf-8"))
     store, daemon = fx["console_store"], fx["daemon"]
     con = sqlite3.connect(server.get_db().db_path)
@@ -539,9 +769,8 @@ def test_d6_only_schwabs_recorded_bars_reach_the_chart_and_the_levels_never_the_
     finally:
         con.close()
     _forget(*_PAIR)
-    record_daemon_bars(daemon)
     try:
-        server._load_bars()
+        stream_daemon_bars(daemon)
         for tk in _PAIR:
             recorded = {r["bar_start_ms"] / 1000: (r["open"], r["high"], r["low"], r["close"], r["volume"])
                         for r in _newest(daemon, tk)}
@@ -553,11 +782,11 @@ def test_d6_only_schwabs_recorded_bars_reach_the_chart_and_the_levels_never_the_
             served = {b["t"]: (b["o"], b["h"], b["l"], b["c"], b["v"])
                       for b in _chart_bars(tk) if b["t"] in recorded or b["t"] in old}
             levels_input = {b["timestamp"] / 1000: (b["open"], b["high"], b["low"], b["close"], b["volume"])
-                            for b in server._liquidity_1m_bars(tk) if b["timestamp"] / 1000 in recorded or b["timestamp"] / 1000 in old}
+                            for b in bars_from_candles(server._bars_1m(tk, 2500))
+                            if b["timestamp"] / 1000 in recorded or b["timestamp"] / 1000 in old}
             assert served == recorded == levels_input, tk
             assert not set(old_only) & set(served), tk
     finally:
-        forget_daemon_bars(daemon)
         _forget(*_PAIR)
         con = sqlite3.connect(server.get_db().db_path)
         con.execute("DROP TABLE IF EXISTS price_bars_1m")
@@ -614,9 +843,10 @@ def test_d6_no_live_route_opens_a_database(monkeypatch):
 
 
 def test_every_schwab_error_is_logged_as_sent_without_tokens(tmp_path, caplog):
-    """A Schwab error answer reaches the log with its status, body and headers, through the
-    client the daemon and the console build. Stand-ins: a local server answering as Schwab
-    does (the error body's shape is Schwab's documented {"errors": [...]}), and a token file."""
+    """Every request reaches the log once, with its endpoint, symbol, status and the times it was
+    sent and answered; an error answer with its body and headers. Through the client the daemon
+    builds. Stand-ins: a local server answering as Schwab does (the error body's shape is
+    Schwab's documented {"errors": [...]}), and a token file."""
     from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
     import threading
 
@@ -652,9 +882,9 @@ def test_every_schwab_error_is_logged_as_sent_without_tokens(tmp_path, caplog):
     finally:
         srv.shutdown()
     lines = [r.getMessage() for r in caplog.records]
-    chain = [m for m in lines if "/marketdata/v1/chains?symbol=SPY" in m]
-    assert len(chain) == 1, "one line a minute per status and path"
-    assert "-> 403" in chain[0] and '"title": "Forbidden"' in chain[0]
+    chain = [m for m in lines if m.startswith("REST GET /marketdata/v1/chains SPY -> 403 (sent ")]
+    assert len(chain) == 3, "each request once"
+    assert " CT, answered " in chain[0] and '"title": "Forbidden"' in chain[0]
     assert "corr-123" in chain[0]
     assert any("/trader/v1/accounts/(account)/orders" in m for m in lines)
     assert any("/v1/oauth/token -> 403" in m and "not logged" in m for m in lines)
@@ -701,11 +931,14 @@ class _ToLocal(httpx.BaseTransport):
 class _LocalSchwab:
     """Schwab's host, played by a local server. The token endpoint answers `token_answer`
     ("refreshed": _REFRESHED; "akamai": the captured 403 page); chains and quotes answer the
-    captured SPY chain and its quotes, or the captured 403 page while `refuse`. Every request is
+    captured SPY chain and its quotes (or `chain`, another captured chain as Schwab sent it,
+    whose quotes are not captured), or the captured 403 page while `refuse`. Every request is
     recorded: (time, method, path, Authorization)."""
 
-    def __init__(self, token_answer: str = "refreshed", refuse: bool = False):
+    def __init__(self, token_answer: str = "refreshed", refuse: bool = False,
+                 chain: "dict | None" = None):
         self.token_answer, self.refuse = token_answer, refuse
+        payload = json.dumps(_spy_chain_payload() if chain is None else chain).encode()
         self.requests: list = []
         outer = self
 
@@ -735,7 +968,7 @@ class _LocalSchwab:
                 if outer.refuse:
                     return self._akamai()
                 if url.path == "/marketdata/v1/chains":
-                    return self._send(200, "application/json", json.dumps(_spy_chain_payload()).encode())
+                    return self._send(200, "application/json", payload)
                 symbols = parse_qs(url.query).get("symbols", [""])[0].split(",")
                 reply = {s: _SPY_1120_QUOTES[s] for s in symbols if s in _SPY_1120_QUOTES}
                 self._send(200, "application/json", json.dumps(reply).encode())
@@ -784,10 +1017,9 @@ def test_twenty_requests_at_a_refresh_send_one_refresh_and_all_carry_the_new_tok
 
 
 def test_the_daemon_builds_one_schwab_client_and_a_refused_refresh_never_rebuilds_it(tmp_path):
-    """The stream and every chain worker ask one holder (capture.one_schwab_client). Schwab's
-    edge refuses the token refresh with its 403 page (as at 19:53:55 on 2026-10-03): the client
-    is never rebuilt, and after the first failures the sweep sends one refresh per
-    FAILED_PAUSE_SEC (the probe), not one per worker. Runs about 6.5 s."""
+    """The stream and the chain sweep ask one holder (capture.one_schwab_client). Schwab's edge
+    refuses the token refresh with its 403 page (as at 19:53:55 on 2026-10-03): every chain fails
+    with it, and the client is never rebuilt."""
     schwab = _LocalSchwab(token_answer="akamai")
     built = []
 
@@ -799,49 +1031,43 @@ def test_the_daemon_builds_one_schwab_client_and_a_refused_refresh_never_rebuild
 
     schwab_client = capture.one_schwab_client(build)
     assert schwab_client() is schwab_client(), "the stream and the chains are handed one client"
+    failed = []
     sweep = ChainSweep(tmp_path / "ed_console.db", ["AAA", "BBB", "CCC", "DDD", "EEE"],
-                       lambda topic, msg: None)
+                       lambda topic, msg: failed.append(msg["failed"]),
+                       failures=CaptureWriter(tmp_path / "stream_capture.db"), streamed=lambda symbol: None)
     halt = threading.Event()
-    workers = [threading.Thread(target=sweep.work, args=(schwab_client, halt), daemon=True)
-               for _ in range(4)]
+    worker = threading.Thread(target=sweep.work, args=(schwab_client, halt), daemon=True)
     try:
-        for w in workers:
-            w.start()
-        halt.wait(FAILED_PAUSE_SEC + 1.5)
+        worker.start()
+        halt.wait(0.5)
     finally:
         halt.set()
-        for w in workers:
-            w.join(10)
+        worker.join(10)
         schwab.close()
-    posts = schwab.posts()
     assert built == [1], f"the client was built {len(built)} times"
-    assert posts, "the refresh was never tried"
-    after_first = [t for t in posts if t - posts[0] > 1.0]
-    assert len(after_first) == 1, f"{len(after_first)} refreshes after the first failures, not one probe"
+    assert schwab.posts() and failed, "the refresh was tried and the chains failed with it"
 
 
-def test_a_403_from_schwabs_edge_pauses_the_sweep_then_one_chain_at_a_time_until_one_lands(tmp_path):
-    """Schwab's edge answers the captured 403 page: no chain request for FAILED_PAUSE_SEC, then
-    one chain alone; once it lands the sweep goes on. The clock is 2026-10-01 08:00 ET
-    (pre-market, outside every capture window, so nothing is written)."""
+def test_a_403_from_schwabs_edge_reaches_the_console_and_the_next_ticker_is_asked_at_once(tmp_path):
+    """Schwab's edge answers the captured 403 page: the ticker's chain fails with Schwab's status,
+    its price history is not published, and the sweep asks for the next request at once. The
+    clock is 2026-10-01 08:00 ET (pre-market, outside every capture window, so nothing is
+    written)."""
     schwab = _LocalSchwab(refuse=True)
     published = []
     now = 1790856000.0                                    # 2026-10-01 08:00 ET
-    sweep = ChainSweep(tmp_path / "ed_console.db", ["AAA", "BBB", "CCC", "DDD"],
-                       lambda topic, msg: published.append(msg), clock=lambda: now)
-    client = Client("k", httpx.Client(transport=schwab.transport), enforce_enums=False)   # as the daemon's
+    sweep = ChainSweep(tmp_path / "ed_console.db", ["AAA", "BBB"],
+                       lambda topic, msg: published.append(msg), clock=lambda: now,
+                       failures=CaptureWriter(tmp_path / "stream_capture.db"), streamed=lambda symbol: None)
+    client = sc.client_from_token_file_atomic(str(_token_file(tmp_path, 3600)), "k", "s",
+                                              transport=schwab.transport)
     try:
-        assert sweep._next(now) == "AAA"
-        sweep.fetch_one(client, "AAA")                    # the 403 page
-        sweep._fetching.discard("AAA")
-        assert sweep._paused_until == now + FAILED_PAUSE_SEC, "a 403 pauses every chain request"
-        assert "HTTP 403" in published[-1]["failed"]
-        assert sweep._next(now + FAILED_PAUSE_SEC) == "BBB"   # the probe
-        assert sweep._next(now + FAILED_PAUSE_SEC) is None, "nothing else while the probe is out"
-        schwab.refuse = False
-        sweep.fetch_one(client, "BBB")                    # the probe lands
-        sweep._fetching.discard("BBB")
-        assert [sweep._next(now + FAILED_PAUSE_SEC), sweep._next(now + FAILED_PAUSE_SEC)] == ["CCC", "DDD"], \
-            "two at once again"
+        assert sweep.rotation(lambda: client, ["AAA", "BBB"], threading.Event()) == set()
+        sweep.candles(lambda: client, ["AAA", "BBB"], threading.Event())      # the stock session's turn
     finally:
         schwab.close()
+    assert [(m["ticker"], m["failed"]) for m in published] == [
+        ("AAA", "expiration chain returned HTTP 403"), ("BBB", "expiration chain returned HTTP 403")]
+    gets = [(t, path) for t, method, path, _a in schwab.requests if method == "GET"]
+    assert [p for _t, p in gets] == ["/marketdata/v1/expirationchain"] * 2 + ["/marketdata/v1/pricehistory"] * 4
+    assert all(b[0] - a[0] < 1.0 for a, b in zip(gets, gets[1:])), "no pause after a 403"

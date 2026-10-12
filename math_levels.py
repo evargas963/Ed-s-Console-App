@@ -8,6 +8,7 @@ Phase 2 extraction from math_exposure.py per Extraction Blueprint v1.
 from __future__ import annotations
 
 import math
+from datetime import datetime
 from typing import Dict, List
 
 from numeric_contract import schwab_count, schwab_number
@@ -133,7 +134,7 @@ def bs_charm(spot: float, strike: float, t_years: float, sigma: float,
     return c if math.isfinite(c) else None
 
 
-def compute_charm_by_strike(contracts: List[dict], spot: float, now=None,
+def compute_charm_by_strike(contracts: List[dict], spot: float, *, now: datetime,
                             parsed: "list | None" = None) -> Dict[float, dict]:
     """Per-strike dealer CHARM exposure, in delta-shares per day.
 
@@ -175,11 +176,15 @@ def pick_charm_wall_strikes(charm_by_strike: Dict[float, dict]
     put_k = max(charm_by_strike, key=lambda k: abs(charm_by_strike[k]["put_charm"]))
     cw = call_k if abs(charm_by_strike[call_k]["call_charm"]) > 0 else None
     pw = put_k if abs(charm_by_strike[put_k]["put_charm"]) > 0 else None
-    return (round(cw, 2) if cw is not None else None,
-            round(pw, 2) if pw is not None else None)
+    return cw, pw
 
 
-def contract_inputs(contracts: List[dict], now=None) -> tuple[list, dict]:
+#: why an AM-settled contract has no time to expiry: Schwab's /markets answer for its expiry date
+#: is not held (beyond the year Schwab answers), so its settlement (the open) is not known
+NO_EXPIRY_SESSION = "no_markets_session_for_expiry"
+
+
+def contract_inputs(contracts: List[dict], now: datetime) -> tuple[list, dict]:
     """(priced, unpriced): _contract_inputs for every contract with open interest, parsed once
     and shared by the gamma profile and charm (compute_terrain); `unpriced` counts the
     contracts with open interest the profile could not price, by reason."""
@@ -193,17 +198,19 @@ def contract_inputs(contracts: List[dict], now=None) -> tuple[list, dict]:
     return priced, unpriced
 
 
-def _contract_inputs(ct: dict, now=None) -> tuple[float, float, float, float, float, int] | str:
+def _contract_inputs(ct: dict, now: datetime) -> tuple[float, float, float, float, float, int] | str:
     """(strike, oi, mult, t_years, sigma, sign), or the reason it cannot be priced.
 
     `t_years` is the canonical INTRADAY time-to-expiry (time_et.time_to_expiry_years): to the
-    contract's settlement (the session close, or the open for Schwab's settlementType "A"),
-    ACT/365, from `now` (defaults to now_et()). Replaces the old max(dte,0.5)/365 0.5-DAY floor, which over-stated T by up to
+    contract's settlement (the option market's regular close Schwab's /markets sent for its
+    expiry date, or its open for Schwab's settlementType "A"; Schwab's expirationDate for a
+    PM-settled contract on a date /markets does not answer), ACT/365, from `now` (the caller's
+    valuation instant). Replaces the old max(dte,0.5)/365 0.5-DAY floor, which over-stated T by up to
     24x near the close and flattened the real 1/sqrt(T) gamma/charm spike (RC-42; validated
     against Schwab-reported gamma). Offline/replay callers pass `now` = the snapshot time.
     """
     from math_exposure_core import schwab_iv_to_sigma
-    from time_et import time_to_expiry_years
+    from time_et import SETTLEMENT_AM, session, time_to_expiry_years
 
     strike = schwab_number(ct.get("strikePrice"))
     oi = schwab_count(ct.get("openInterest"))
@@ -221,8 +228,10 @@ def _contract_inputs(ct: dict, now=None) -> tuple[float, float, float, float, fl
         return "no_volatility"
     t_years = time_to_expiry_years(ct.get("expirationDate"), now=now,
                                    settlement_type=ct.get("settlementType"))
-    if t_years is None or t_years <= 0:
-        return "expired_or_no_expiry"
+    if t_years is None:
+        am_unanswered = (ct.get("settlementType") == SETTLEMENT_AM
+                         and session(str(ct.get("expirationDate"))[:10]) is None)
+        return NO_EXPIRY_SESSION if am_unanswered else "expired_or_no_expiry"
     return strike, oi, mult, t_years, sigma, (1 if side == "CALL" else -1)
 
 
@@ -231,7 +240,7 @@ GAMMA_PROFILE_SPAN_PCT = 0.15
 GAMMA_PROFILE_STEPS = 240
 
 
-def compute_gamma_profile(contracts: List[dict], spot: float, *, now=None,
+def compute_gamma_profile(contracts: List[dict], spot: float, *, now: datetime,
                           parsed: "list | None" = None) -> List[tuple[float, float]]:
     """Total dealer gamma exposure (per 1% move, dollars) at each candidate price.
 
@@ -248,7 +257,7 @@ def compute_gamma_profile(contracts: List[dict], spot: float, *, now=None,
     steps = GAMMA_PROFILE_STEPS
     grid = [lo + (hi - lo) * i / steps for i in range(steps + 1)]
     totals = _gamma_profile_totals(parsed, grid)
-    return [(round(s, 4), total) for s, total in zip(grid, totals)]
+    return list(zip(grid, totals))
 
 
 #: Candidate prices evaluated per numpy block in _gamma_profile_totals (bounds memory: a
@@ -307,9 +316,9 @@ def gamma_flip_from_profile(profile: List[tuple[float, float]], spot: float) -> 
         # so a zero-touching profile dropped its flip). The v1==0 side was already
         # handled: v0<0<=v1 / v0>0>=v1 interpolate to p1 when the segment ENDS at zero.
         if v0 == 0:
-            crossings.append(round(p0, 2))
+            crossings.append(p0)
         elif (v0 < 0 <= v1) or (v0 > 0 >= v1):
-            crossings.append(round(p0 + (p1 - p0) * (-v0) / (v1 - v0), 2))
+            crossings.append(p0 + (p1 - p0) * (-v0) / (v1 - v0))
     if not crossings:
         return None
     return min(crossings, key=lambda c: abs(c - spot))
@@ -413,7 +422,7 @@ def compute_gamma_support_levels(
     eps = eps_frac * max_abs if max_abs > 0 else 0.0
     if n_spot <= eps:
         return {"gsf": None, "grc": None, "state": GSF_STATE_BELOW_SUPPORT,
-                "n_at_spot": round(n_spot, 2)}
+                "n_at_spot": n_spot}
     target = phi * n_spot
 
     def _cross(p0: float, v0: float, p1: float, v1: float) -> float:
@@ -429,7 +438,7 @@ def compute_gamma_support_levels(
     prev_p, prev_v = float(spot), float(n_spot)
     for p, v in reversed(below):
         if v <= target < prev_v:
-            gsf = round(_cross(p, v, prev_p, prev_v), 2)
+            gsf = _cross(p, v, prev_p, prev_v)
             break
         prev_p, prev_v = p, v
     # walk UP from spot: the FIRST crossing above spot is the lowest such s
@@ -437,10 +446,10 @@ def compute_gamma_support_levels(
     prev_p, prev_v = float(spot), float(n_spot)
     for p, v in above:
         if v <= target < prev_v:
-            grc = round(_cross(prev_p, prev_v, p, v), 2)
+            grc = _cross(prev_p, prev_v, p, v)
             break
         prev_p, prev_v = p, v
-    return {"gsf": gsf, "grc": grc, "state": GSF_STATE_OK, "n_at_spot": round(n_spot, 2)}
+    return {"gsf": gsf, "grc": grc, "state": GSF_STATE_OK, "n_at_spot": n_spot}
 
 
 
@@ -653,8 +662,8 @@ def compute_gamma_flip_v2(
         "strike_lo": lo,
         "strike_hi": hi,
         "n_strikes": len(set(strikes)),
-        "span_below_pct": round((spot - lo) / spot, 4),
-        "span_above_pct": round((hi - spot) / spot, 4),
+        "span_below_pct": (spot - lo) / spot,
+        "span_above_pct": (hi - spot) / spot,
         "min_span_pct": GAMMA_FLIP_MIN_SPAN_PCT,
     }
     # Gamma audit 2026-08-26: TWO span tests, because they answer two different questions.
@@ -761,7 +770,7 @@ def compute_max_pain(exposures_by_strike: Dict[float, dict]) -> float | None:
         if best_pain is None or p < best_pain:
             best_pain = p
             best_s = s
-    return round(best_s, 2) if best_s is not None else None
+    return best_s
 
 
 

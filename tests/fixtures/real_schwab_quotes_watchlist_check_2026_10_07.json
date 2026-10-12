@@ -1,0 +1,329 @@
+{
+ "source": "Schwab GET /marketdata/v1/quotes?symbols=T&fields=quote, one request per ticker on a separate client, 2026-10-07; each answer as sent with its query, status and Date header.",
+ "answers": [
+  {
+   "ticker": "SPY",
+   "params": {
+    "symbols": "SPY",
+    "fields": "quote"
+   },
+   "status": 200,
+   "http_date": "Wed, 07 Oct 2026 13:41:12 GMT",
+   "sent_utc": 1791380471.9052203,
+   "answered_utc": 1791380472.4682224,
+   "body": {
+    "SPY": {
+     "assetMainType": "EQUITY",
+     "assetSubType": "ETF",
+     "quoteType": "NBBO",
+     "realtime": true,
+     "ssid": 1281357639,
+     "symbol": "SPY",
+     "quote": {
+      "52WeekHigh": 781.62,
+      "52WeekLow": 629.28,
+      "askMICId": "BATS",
+      "askPrice": 774.43,
+      "askSize": 120,
+      "askTime": 1791380472063,
+      "bidMICId": "XNAS",
+      "bidPrice": 774.42,
+      "bidSize": 280,
+      "bidTime": 1791380472110,
+      "closePrice": 779.09,
+      "highPrice": 776.15,
+      "lastMICId": "XADF",
+      "lastPrice": 774.4299,
+      "lastSize": 671,
+      "lowPrice": 774.2538,
+      "mark": 774.4299,
+      "markChange": -4.6601,
+      "markPercentChange": -0.59814656,
+      "netChange": -4.6601,
+      "netPercentChange": -0.59814656,
+      "openPrice": 775.77,
+      "postMarketChange": 0.0,
+      "postMarketPercentChange": 0.0,
+      "quoteTime": 1791380472110,
+      "securityStatus": "Normal",
+      "totalVolume": 3253431,
+      "tradeTime": 1791380472080
+     }
+    }
+   }
+  },
+  {
+   "ticker": "TSLA",
+   "params": {
+    "symbols": "TSLA",
+    "fields": "quote"
+   },
+   "status": 200,
+   "http_date": "Wed, 07 Oct 2026 13:41:12 GMT",
+   "sent_utc": 1791380472.4683208,
+   "answered_utc": 1791380472.7340252,
+   "body": {
+    "TSLA": {
+     "assetMainType": "EQUITY",
+     "assetSubType": "COE",
+     "quoteType": "NBBO",
+     "realtime": true,
+     "ssid": 1948561409,
+     "symbol": "TSLA",
+     "quote": {
+      "52WeekHigh": 498.83,
+      "52WeekLow": 297.38,
+      "askMICId": "BATS",
+      "askPrice": 378.8,
+      "askSize": 80,
+      "askTime": 1791380472266,
+      "bidMICId": "ARCX",
+      "bidPrice": 378.66,
+      "bidSize": 40,
+      "bidTime": 1791380472259,
+      "closePrice": 380.68,
+      "highPrice": 382.3499,
+      "lastMICId": "XADF",
+      "lastPrice": 378.76,
+      "lastSize": 100,
+      "lowPrice": 377.81,
+      "mark": 378.76,
+      "markChange": -1.92,
+      "markPercentChange": -0.50436062,
+      "netChange": -1.92,
+      "netPercentChange": -0.50436062,
+      "openPrice": 378.445,
+      "postMarketChange": 0.0,
+      "postMarketPercentChange": 0.0,
+      "quoteTime": 1791380472266,
+      "securityStatus": "Normal",
+      "totalVolume": 2951541,
+      "tradeTime": 1791380472371
+     }
+    }
+   }
+  },
+  {
+   "ticker": "SPCX",
+   "params": {
+    "symbols": "SPCX",
+    "fields": "quote"
+   },
+   "status": 200,
+   "http_date": "Wed, 07 Oct 2026 13:41:13 GMT",
+   "sent_utc": 1791380472.734114,
+   "answered_utc": 1791380473.0192785,
+   "body": {
+    "SPCX": {
+     "assetMainType": "EQUITY",
+     "assetSubType": "COE",
+     "quoteType": "NBBO",
+     "realtime": true,
+     "ssid": 138877839,
+     "symbol": "SPCX",
+     "quote": {
+      "52WeekHigh": 225.64,
+      "52WeekLow": 104.83,
+      "askMICId": "EDGX",
+      "askPrice": 169.38,
+      "askSize": 300,
+      "askTime": 1791380472472,
+      "bidMICId": "BATS",
+      "bidPrice": 169.31,
+      "bidSize": 300,
+      "bidTime": 1791380472535,
+      "closePrice": 171.92,
+      "highPrice": 171.31,
+      "lastMICId": "XADF",
+      "lastPrice": 169.345,
+      "lastSize": 100,
+      "lowPrice": 167.3,
+      "mark": 169.345,
+      "markChange": -2.575,
+      "markPercentChange": -1.49778967,
+      "netChange": -2.575,
+      "netPercentChange": -1.49778967,
+      "openPrice": 168.125,
+      "postMarketChange": 0.0,
+      "postMarketPercentChange": 0.0,
+      "quoteTime": 1791380472535,
+      "securityStatus": "Normal",
+      "totalVolume": 10180033,
+      "tradeTime": 1791380472399
+     }
+    }
+   }
+  },
+  {
+   "ticker": "META",
+   "params": {
+    "symbols": "META",
+    "fields": "quote"
+   },
+   "status": 200,
+   "http_date": "Wed, 07 Oct 2026 13:41:13 GMT",
+   "sent_utc": 1791380473.0193617,
+   "answered_utc": 1791380473.3022826,
+   "body": {
+    "META": {
+     "assetMainType": "EQUITY",
+     "assetSubType": "COE",
+     "quoteType": "NBBO",
+     "realtime": true,
+     "ssid": 1831567943,
+     "symbol": "META",
+     "quote": {
+      "52WeekHigh": 779.8192,
+      "52WeekLow": 520.26,
+      "askMICId": "XNAS",
+      "askPrice": 726.93,
+      "askSize": 80,
+      "askTime": 1791380473106,
+      "bidMICId": "XNAS",
+      "bidPrice": 726.56,
+      "bidSize": 120,
+      "bidTime": 1791380473110,
+      "closePrice": 738.88,
+      "highPrice": 738.29,
+      "lastMICId": "XADF",
+      "lastPrice": 726.8592,
+      "lastSize": 155,
+      "lowPrice": 725.26,
+      "mark": 726.8592,
+      "markChange": -12.0208,
+      "markPercentChange": -1.62689476,
+      "netChange": -12.0208,
+      "netPercentChange": -1.62689476,
+      "openPrice": 738.29,
+      "postMarketChange": 0.0,
+      "postMarketPercentChange": 0.0,
+      "quoteTime": 1791380473110,
+      "securityStatus": "Normal",
+      "totalVolume": 1288291,
+      "tradeTime": 1791380473032
+     }
+    }
+   }
+  },
+  {
+   "ticker": "QQQ",
+   "params": {
+    "symbols": "QQQ",
+    "fields": "quote"
+   },
+   "status": 200,
+   "http_date": "Wed, 07 Oct 2026 13:41:13 GMT",
+   "sent_utc": 1791380473.3023708,
+   "answered_utc": 1791380473.712098,
+   "body": {
+    "QQQ": {
+     "assetMainType": "EQUITY",
+     "assetSubType": "ETF",
+     "quoteType": "NBBO",
+     "realtime": true,
+     "ssid": 48644470,
+     "symbol": "QQQ",
+     "quote": {
+      "52WeekHigh": 762.86,
+      "52WeekLow": 555.6,
+      "askMICId": "XNAS",
+      "askPrice": 752.62,
+      "askSize": 920,
+      "askTime": 1791380473358,
+      "bidMICId": "BATS",
+      "bidPrice": 752.59,
+      "bidSize": 40,
+      "bidTime": 1791380473358,
+      "closePrice": 759.66,
+      "highPrice": 754.83,
+      "lastMICId": "XNAS",
+      "lastPrice": 752.61,
+      "lastSize": 50,
+      "lowPrice": 751.8205,
+      "mark": 752.61,
+      "markChange": -7.05,
+      "markPercentChange": -0.92804676,
+      "netChange": -7.05,
+      "netPercentChange": -0.92804676,
+      "openPrice": 753.79,
+      "postMarketChange": 0.0,
+      "postMarketPercentChange": 0.0,
+      "quoteTime": 1791380473358,
+      "securityStatus": "Normal",
+      "totalVolume": 3926292,
+      "tradeTime": 1791380473210
+     }
+    }
+   }
+  },
+  {
+   "ticker": "IWM",
+   "params": {
+    "symbols": "IWM",
+    "fields": "quote"
+   },
+   "status": 200,
+   "http_date": "Wed, 07 Oct 2026 13:41:13 GMT",
+   "sent_utc": 1791380473.7121873,
+   "answered_utc": 1791380473.9235864,
+   "body": {
+    "IWM": {
+     "assetMainType": "EQUITY",
+     "assetSubType": "ETF",
+     "quoteType": "NBBO",
+     "realtime": true,
+     "ssid": 1806917409,
+     "symbol": "IWM",
+     "quote": {
+      "52WeekHigh": 305.18,
+      "52WeekLow": 228.9,
+      "askMICId": "XNAS",
+      "askPrice": 278.15,
+      "askSize": 280,
+      "askTime": 1791380473734,
+      "bidMICId": "ARCX",
+      "bidPrice": 278.14,
+      "bidSize": 160,
+      "bidTime": 1791380473728,
+      "closePrice": 281.34,
+      "highPrice": 279.04,
+      "lastMICId": "XCHI",
+      "lastPrice": 278.15,
+      "lastSize": 42,
+      "lowPrice": 277.87,
+      "mark": 278.15,
+      "markChange": -3.19,
+      "markPercentChange": -1.13385939,
+      "netChange": -3.19,
+      "netPercentChange": -1.13385939,
+      "openPrice": 278.25,
+      "postMarketChange": 0.0,
+      "postMarketPercentChange": 0.0,
+      "quoteTime": 1791380473734,
+      "securityStatus": "Normal",
+      "totalVolume": 2721847,
+      "tradeTime": 1791380473492
+     }
+    }
+   }
+  },
+  {
+   "ticker": "ZQZQZ",
+   "params": {
+    "symbols": "ZQZQZ",
+    "fields": "quote"
+   },
+   "status": 200,
+   "http_date": "Wed, 07 Oct 2026 13:41:14 GMT",
+   "sent_utc": 1791380473.923666,
+   "answered_utc": 1791380474.3191807,
+   "body": {
+    "errors": {
+     "invalidSymbols": [
+      "ZQZQZ"
+     ]
+    }
+   }
+  }
+ ]
+}

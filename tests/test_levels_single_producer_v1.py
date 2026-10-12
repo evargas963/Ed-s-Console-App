@@ -3,19 +3,18 @@ from __future__ import annotations
 
 import asyncio
 import threading
-import time
 from datetime import datetime as _dt
 
-import live_market_plane as lmp
 import push_changes
 import server as srv
 from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS
 from micro_structure import Candle
-from tests.feed_live_helper import daemon_bars, forget_daemon_bars, record_daemon_bars
-from time_et import ET, now_et
+from tests.feed_live_helper import daemon_bars, stream_daemon_bars
+from time_et import ET
 
-#: Schwab's SPY and TSLA bars as the capture daemon recorded them, Mon 2026-09-29 and Tue 09-30
-_DAEMON_0929 = daemon_bars("real_daemon_bars_spy_tsla_2026_09_29_30.json")
+#: Schwab's SPY and TSLA bars as the capture daemon recorded them, Thu 2026-10-01 and Fri 10-02
+#: (sessions Schwab's /markets answers; tests/conftest.py)
+_DAEMON_BARS = daemon_bars("real_daemon_bars_spy_tsla_2026_10_01_02.json")
 _PAIR = ("SPY", "TSLA")
 
 
@@ -61,14 +60,14 @@ def test_api_levels_b1_contract_single_session_prior_day():
                 "open": o, "high": hi, "low": lo, "close": c, "volume": 1000.0}
 
     tape = [
-        _bar(2026, 7, 30, 10, 0, 100, 110, 90, 100),   # older prior session: both extremes
-        _bar(2026, 7, 30, 14, 0, 100, 101, 99, 100),
-        _bar(2026, 7, 31, 10, 0, 96, 105, 95, 97),     # most recent prior session
-        _bar(2026, 7, 31, 15, 59, 101, 103, 100, 102),
-        _bar(2026, 8, 3, 9, 35, 103, 104, 102, 103),   # today inside ORB window
-        _bar(2026, 8, 3, 9, 45, 103, 104, 102, 103),   # today post-ORB
+        _bar(2026, 10, 1, 10, 0, 100, 110, 90, 100),   # older prior session: both extremes
+        _bar(2026, 10, 1, 14, 0, 100, 101, 99, 100),
+        _bar(2026, 10, 2, 10, 0, 96, 105, 95, 97),     # most recent prior session (a Friday)
+        _bar(2026, 10, 2, 15, 59, 101, 103, 100, 102),
+        _bar(2026, 10, 5, 9, 35, 103, 104, 102, 103),  # today (Monday) inside ORB window
+        _bar(2026, 10, 5, 9, 45, 103, 104, 102, 103),  # today post-ORB
     ]
-    now = _dt(2026, 8, 3, 10, 0, tzinfo=ET)
+    now = _dt(2026, 10, 5, 10, 0, tzinfo=ET)
     _forget(tk)
     try:
         for b in tape:
@@ -93,7 +92,7 @@ def test_api_levels_b1_contract_single_session_prior_day():
         assert "as_of_ts_utc" in lv["staleness"] and "age_sec" in lv["staleness"]
         if lv["family"] == "prior_day":
             assert lv["provenance"]["session_scope"] == "RTH"
-            assert "2026-07-31" in lv["provenance"]["window"], (
+            assert "2026-10-02" in lv["provenance"]["window"], (
                 "provenance.window must name the literal session used (RC-153)"
             )
 
@@ -115,21 +114,32 @@ def test_api_levels_b1_contract_single_session_prior_day():
 # ── RC-227: one-faucet closeout locks (mission one-faucet-closeout-v1) ────────────────
 
 
-def test_strikes_payload_carries_server_side_sums(monkeypatch):
+def test_strikes_payload_carries_server_side_sums():
     """STRIP server half: /api/terrain/strikes serves today_side_sums computed against the
-    payload's own spot — the one aggregator."""
+    payload's own spot — the one aggregator. Stand-ins: ZZSUMS's published rows in the console's
+    cache, its price row at 100 with the feed live; no capture of it is stored (no prior day)."""
     import json
+    import time
 
+    import live_market_plane as lmp
     import server as srv
+    from app.options.order_flow import streaming as ofs
 
-    monkeypatch.setattr(srv, "terrain_cache_get", lambda tk: {
-        "_per_strike": {"all": [[95.0, 10.0, 100], [105.0, -4.0, 50]],
-                        "near": [], "far": []},
-        "spot": 100.0, "computed_ts_utc": 1.0,
-    })
-    monkeypatch.setattr(srv, "resolve_spot", lambda tk, **kw: (100.0, "schwab_quote_last", 1.0))
-    monkeypatch.setattr(srv, "last_capture_per_day", lambda *a, **k: [])   # no prior day
-    resp = srv.get_terrain_strikes(ticker="SPY")
+    tk = "ZZSUMS"
+    with srv._terrain_cache_lock:
+        srv._terrain_cache[tk] = {"_per_strike": {"all": [[95.0, 10.0, 100], [105.0, -4.0, 50]],
+                                                  "near": [], "far": []},
+                                  "spot": 100.0, "computed_ts_utc": 1.0}
+    lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True,
+                               "held": {"LEVELONE_EQUITIES": [tk]}})
+    ofs._price_rows[tk] = {"ticker": tk, "spot": 100.0, "trade_ts": 1.0}
+    try:
+        resp = srv.get_terrain_strikes(ticker=tk)
+    finally:
+        with srv._terrain_cache_lock:
+            srv._terrain_cache.pop(tk, None)
+        ofs._price_rows.pop(tk, None)
+        lmp.record_feed_down()
     payload = json.loads(bytes(resp.body))
     ss = payload["today_side_sums"]
     assert ss["gex_below"] == 10.0 and ss["gex_above"] == -4.0
@@ -140,24 +150,21 @@ def test_strikes_payload_carries_server_side_sums(monkeypatch):
 def test_api_levels_prior_day_is_the_whole_recorded_prior_session():
     """t12 (RC-227 residual): the PDL must be the min of the WHOLE prior session. Measured
     live: a truncated in-memory tape served PDL 756.84 vs the true 749.59 while PDH/PDC
-    matched. The capture daemon's record of Schwab's bars is the one bar history, loaded into
-    the console's memory at startup (server._load_bars), so the whole prior session there sets
-    every prior-day level. Schwab's SPY and TSLA bars of Mon 2026-09-29 as recorded, the levels
-    of Tue 09-30 at 10:00 ET."""
-    now = _dt(2026, 9, 30, 10, 0, tzinfo=ET)
+    matched. The console's 1-minute bars in memory are the one bar history, so the whole prior
+    session there sets every prior-day level. Schwab's SPY and TSLA bars of Thu 2026-10-01 as
+    recorded, streamed to the console, the levels of Fri 10-02 at 10:00 ET."""
+    now = _dt(2026, 10, 2, 10, 0, tzinfo=ET)
     _forget(*_PAIR)
-    record_daemon_bars(_DAEMON_0929)
     try:
-        srv._load_bars()                              # the console's start
+        stream_daemon_bars(_DAEMON_BARS)
         payloads = {}
         for tk in _PAIR:
             srv._publish_price_levels(tk, now)        # as the bar writer does
             payloads[tk] = srv.levels_payload(tk, "1", now)
     finally:
-        forget_daemon_bars(_DAEMON_0929)
         _forget(*_PAIR)
     for tk in _PAIR:
-        monday = _rth(_DAEMON_0929, tk, "2026-09-29")
+        monday = _rth(_DAEMON_BARS, tk, "2026-10-01")
         assert len(monday) == 390, tk
         by_id = {lv["id"]: lv for lv in payloads[tk]["levels"]}
         assert by_id["PDL"]["price"] == min(r["low"] for r in monday), (tk, "PDL is not the whole prior session's min")
@@ -170,51 +177,43 @@ def test_the_bar_writer_publishes_the_levels_and_the_route_only_serves_them():
     """The bar writer publishes a ticker's price levels after each of its bars -- every ticker,
     viewed or not, so a page switching to it finds them current; a new session is built by the
     levels loop; the route serves what was published and reads no bar. Schwab's SPY and TSLA
-    bars of 2026-09-29/30 as the capture daemon recorded them: each ticker's newest receipt
-    arrives as a pushed bar, valued at Tue 09-30 19:59:30 ET, the rest loaded at the start."""
+    bars of 2026-10-01/02 as the capture daemon recorded them: each ticker's newest receipt
+    arrives as a pushed bar, valued at Fri 10-02 19:59:30 ET, the rest streamed before it."""
     tk, other = _PAIR
-    now = _dt(2026, 9, 30, 19, 59, 30, tzinfo=ET)
-    pushed = {t: _newest(_DAEMON_0929, t)[-1] for t in _PAIR}
-    loaded = [r for r in _DAEMON_0929 if r not in pushed.values()]
+    now = _dt(2026, 10, 2, 19, 59, 30, tzinfo=ET)
+    pushed = {t: _newest(_DAEMON_BARS, t)[-1] for t in _PAIR}
+    loaded = [r for r in _DAEMON_BARS if r not in pushed.values()]
     _forget(*_PAIR)
-    record_daemon_bars(loaded)
     try:
-        srv._load_bars()                                                   # the console's start
+        stream_daemon_bars(loaded)
 
         # nothing published yet: the levels are absent with their reason
         none_yet = srv.levels_payload(tk, "1", now)
         assert none_yet["generation"] is None
         assert {"family": "price_levels", "reason": srv.NO_PRICE_LEVELS_REASON} in none_yet["families_absent"]
 
-        # a minute's bars arrive together (SPY and TSLA): every bar is kept first
-        # (each write is pushed as `liquidity`), then each ticker's levels are published from its
-        # bars (pushed as `levels`). The order is read from the push itself: its own listener,
-        # on a running event loop, with a page open on each ticker.
-        changes = []
-
-        def record(t, kind):
-            if t in (tk, other):
-                changes.append((kind, t))
+        # a minute's bars arrive together (SPY and TSLA): each write is pushed as `liquidity` and
+        # each ticker's levels published from its bars as `levels`, to the page open on it (the
+        # push itself, on a running event loop)
         loop = asyncio.new_event_loop()
         runner = threading.Thread(target=loop.run_forever, daemon=True)
         runner.start()
         push_changes.bind(loop)
-        push_changes.on_change(record)
         pages = [(t, push_changes.subscribe(t)) for t in (tk, other)]
         try:
             srv._write_streamed_bars([pushed[t] for t in (tk, other)], now)
             drained = threading.Event()
             loop.call_soon_threadsafe(drained.set)
             assert drained.wait(5)
+            told = {t: set(page.kinds) for t, page in pages}
         finally:
             for t, page in pages:
                 push_changes.unsubscribe(t, page)
-            del push_changes._change_listeners[f"{record.__module__}.{record.__qualname__}"]
             push_changes.bind(None)
             loop.call_soon_threadsafe(loop.stop)
             runner.join(5)
             loop.close()
-        assert changes == [("liquidity", tk), ("liquidity", other), ("levels", tk), ("levels", other)]
+        assert told == {tk: {"liquidity", "levels"}, other: {"liquidity", "levels"}}
         served = srv.levels_payload(tk, "1", now)
         assert served["generation"] is not None
         assert served["snapshot_as_of_ts_utc"] == pushed[tk]["bar_start_ms"] / 1000.0
@@ -226,54 +225,11 @@ def test_the_bar_writer_publishes_the_levels_and_the_route_only_serves_them():
         assert [(r["id"], r["price"]) for r in again["levels"]] == [(r["id"], r["price"]) for r in served["levels"]]
         srv._bars[tk] = kept
 
-        # a new session: the levels loop builds its levels (09-30's bars are its prior day)
-        wednesday = _dt(2026, 10, 1, 4, 30, tzinfo=ET)                    # pre-market
-        srv._publish_missing_price_levels([tk], wednesday)
-        nextday = srv.levels_payload(tk, "1", wednesday)
+        # a new session: the levels loop builds its levels (10-02's bars are its prior day)
+        monday = _dt(2026, 10, 5, 7, 30, tzinfo=ET)                       # pre-market (Schwab's: 07:00)
+        srv._publish_missing_price_levels([tk], monday)
+        nextday = srv.levels_payload(tk, "1", monday)
         assert {lv["id"]: lv["price"] for lv in nextday["levels"]}["PDH"] == max(
-            r["high"] for r in _rth(_DAEMON_0929, tk, "2026-09-30"))
+            r["high"] for r in _rth(_DAEMON_BARS, tk, "2026-10-02"))
     finally:
-        forget_daemon_bars(loaded)
-        _forget(*_PAIR)
-
-
-def test_the_console_serves_while_the_levels_loop_waits_for_the_stored_bars():
-    """2026-09-28, operator: the console window's start was "slow as molasses": the stored-levels
-    load ran before the app served its first request. The levels loop runs on its own thread and
-    builds nothing until the bar writer has loaded the stored bars; the console serves
-    meanwhile, and once the bars are loaded the loop publishes the board's levels. The real loop
-    and the real bar writer, on Schwab's SPY and TSLA bars of 2026-09-29/30 as the capture daemon
-    recorded them, the board SPY and TSLA. The loop is started as start_terrain_loop starts it (its
-    run flag set, then its thread; start_terrain_loop itself refuses to start under pytest) and
-    stopped by stop_terrain_loop."""
-    board = list(_PAIR)
-    _forget(*_PAIR)
-    srv._bars_loaded.clear()
-    record_daemon_bars(_DAEMON_0929)
-    srv._terrain_loop_running = True
-    loop = threading.Thread(target=srv._terrain_loop, daemon=True)
-    writer = threading.Thread(target=srv._bar_writer, daemon=True)
-    published = lambda: all(srv.canonical_price_level_snapshot(t, now_et()) is not None for t in board)
-    try:
-        lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "board": board})
-        loop.start()
-        time.sleep(0.6)
-        for t in board:                                      # the console serves while the loop waits
-            assert srv.levels_payload(t, "1", now_et())["generation"] is None, t
-        assert loop.is_alive()
-        writer.start()                                       # the bars load; the loop goes on
-        deadline = time.monotonic() + 10
-        while not published() and time.monotonic() < deadline:
-            lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "board": board})
-            time.sleep(0.1)
-        for t in board:
-            snap = srv.canonical_price_level_snapshot(t, now_et())
-            assert snap is not None and snap.levels["PDH"].price == max(
-                r["high"] for r in _rth(_DAEMON_0929, t, "2026-09-30")), t
-    finally:
-        srv.stop_terrain_loop()
-        if writer.is_alive():
-            srv.stop_bar_writer(writer)
-        loop.join(5)
-        forget_daemon_bars(_DAEMON_0929)
         _forget(*_PAIR)

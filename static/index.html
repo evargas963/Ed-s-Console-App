@@ -84,7 +84,7 @@
   .live .dot{width:8px;height:8px;border-radius:50%;background:var(--ed-live)}
   .live .dot.warn{background:var(--ed-warn)} .live .dot.stale{background:var(--ed-stale)}
   .sess{font-family:var(--ed-mono);font-size:11px;font-weight:600;letter-spacing:.06em}
-  .sess.rth{color:var(--ed-live)} .sess.pre{color:var(--ed-warn)} .sess.ah{color:var(--ed-accent-2)} .sess.closed{color:var(--ed-ink-3)}
+  .sess.rth{color:var(--ed-live)} .sess.pre{color:var(--ed-warn)} .sess.ah{color:var(--ed-accent-2)} .sess.closed{color:var(--ed-ink-3)} .sess.unknown{color:var(--ed-warn)}
   .search{margin-left:auto;display:flex;align-items:center;gap:7px;background:var(--ed-panel);
     border:1px solid var(--ed-edge);border-radius:var(--ed-r);padding:6px 11px;width:280px;color:var(--ed-ink-3)}
   .search input{flex:1;background:none;border:none;outline:none;color:var(--ed-ink);font-family:var(--ed-sans);font-size:12px}
@@ -475,10 +475,6 @@
      without the number itself ever being withheld, narrowed, or replaced with '—'. */
   .heat .hcell.state-partial{box-shadow:inset 0 0 0 1px var(--ed-warn)}
   .heat .hcell.state-stale,.heat .hcell.state-unavailable{box-shadow:inset 0 0 0 1px var(--ed-stale)}
-  /* Audit finding #6 (2026-09-16): a vendor-REJECTED contract is worse than merely
-     unconfirmed -- it failed visibly, in the same border-tint language as the states
-     above, not lumped into the same dashed-stale treatment as "not yet requested". */
-  .heat .hcell.state-rejected{box-shadow:inset 0 0 0 1px var(--ed-alert)}
 
   /* main-panel view switching (Heatmap / Chart / Levels / Multi-Map) */
   .mvwrap{padding:0;position:relative}
@@ -712,6 +708,8 @@
     <div class="hsep"></div>
     <div class="hkv"><span class="k">Data age</span><span class="v" id="hAge">—</span></div>
     <div class="hsep"></div>
+    <div class="hkv"><span class="k">Record</span><span class="v" id="hRecord" title="the capture daemon's database writer, from its heartbeat">—</span></div>
+    <div class="hsep"></div>
     <div class="hkv"><span class="k">Session</span><span class="sess" id="hSession">—</span></div>
     <div class="hsep"></div>
     <div class="hkv"><span class="k" id="hClockDate">—</span><span class="v" id="hClock">--:--:-- CT</span></div>
@@ -812,6 +810,7 @@
               <div class="kl-row"><span class="k">Call Wall</span><span class="v" id="klCall">—</span></div>
               <div class="kl-row"><span class="k">Put Wall</span><span class="v" id="klPut">—</span></div>
               <div class="kl-row"><span class="k">Absolute γ (pin)</span><span class="v" id="klAbs">—</span></div>
+              <div class="kl-row"><span class="k">0DTE γ pin</span><span class="v" id="klAbs0">—</span></div>
               <div class="kl-row"><span class="k">Net GEX peak</span><span class="v" id="klPeak">—</span></div>
               <div class="kl-row"><span class="k muted">Zero Gamma</span><span class="notproven">NOT PROVEN</span></div>
               <div class="kl-row"><span class="k muted">Volatility Trigger</span><span class="notproven">NOT PROVEN</span></div>
@@ -1029,14 +1028,12 @@
 </aside>
 
 <script src="/static/js/l1_sse_guards.js" defer></script>
-<script src="/static/js/options_subscription.js" defer></script>
 <script src="/static/js/ed-core.js" defer></script>
 <script src="/static/js/ed-gamma.js" defer></script>
 <script src="/static/js/ed-gamma-panels.js" defer></script>
 <script src="/static/js/ed-gamma-chart.js" defer></script>
 <script src="/static/js/ed-gamma-levels.js" defer></script>
 <script src="/static/js/ed-gamma-chain.js" defer></script>
-<script src="/static/js/ed-stream.js" defer></script>
 <script src="/static/js/ed-gamma-flow.js" defer></script>
 <script src="/static/js/ed-order-flow.js" defer></script>
 <script src="/static/js/ed-order-flow-heatmap.js" defer></script>

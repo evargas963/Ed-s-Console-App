@@ -1,0 +1,13 @@
+=== Schwab Trader API Support, email 1, 2026-10-06 ===
+1. NEWS_HEADLINE is not officially supported through our Streamer API. Only the services that are listed in the streamer documentation are the ones we officially support.
+2. We do not recommend going over 300 symbols, when you go above that number you may see certain symbols miss quote updates.
+3. 120 requests per minute for non-order endpoints.
+4. Similar guidance on restful Get Quotes endpoint where we do not recommend exceeding 300 symbols.
+5. You would need to break up the request by adding additional filters for symbol with large option chains.
+6. There is not a way to adjust the rounding unfortunately.
+
+=== Schwab Trader API Support, email 2, 2026-10-06 ===
+1. 300 symbol list would be per service that you subscribe to.
+2. The quotes will stream in 750 MS interval as long as the quote updates within that interval. If there was not a quote update in that period then you will not get a response.
+3. It is per account, each restful endpoint request counts as 1. The 800 is the total across all accounts per minute.
+4. You can filter by expiration, call / put, number of strikes.

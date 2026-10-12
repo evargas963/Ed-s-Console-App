@@ -7,13 +7,14 @@
  * badges. Stale server state -> stale badge styling. Offline.
  */
 const { test, expect } = require('@playwright/test');
+const { routeWatchlist } = require('./fixtures/watchlist');
 
 const SURFACE = { ticker: 'SPY', symbol: 'SPY', available: true, spot: 100, front_expiry: '2026-09-11', source: 'terrain_live_cache',
   live: true, stale: false, age_sec: 6, chain_basis: 'full', complete: false,
   expirations: [{ expiry: '2026-09-11', dte: 2, front: true }], strikes: [98, 100, 102],
   cells: [{ strike: 98, gex: [-90000], spot: false }, { strike: 100, gex: [958600], spot: true },
     { strike: 102, gex: [-264500], spot: false }],
-  view: { centre: 100, scope: 'auto', coverage: null, demand: [], max_abs: { gex: 958600 }, missing_expiry: null } };
+  view: { centre: 100, scope: 'auto', coverage: null, max_abs: { gex: 958600 }, missing_expiry: null } };
 const TERRAIN = { ticker: 'SPY', spot: 100, gamma_flip: 99.5, call_wall: 102, put_wall: 98,
   absolute_gamma_strike: 100, net_gex_peak: 100, net_gex_at_spot: 5e8, regime: 'LONG_GAMMA_CHOP',
   levels_stale: false, levels_age_sec: 21 };
@@ -40,6 +41,7 @@ function routes(over) {
       else if (url.includes('/api/bars1m')) body = BARS;
       else if (url.includes('/api/chain')) body = over.chain || CHAIN;      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
     });
+    await routeWatchlist(page, ['SPY']);
   };
 }
 

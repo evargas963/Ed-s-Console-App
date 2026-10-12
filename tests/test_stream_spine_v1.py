@@ -215,22 +215,25 @@ def test_writer_drains_full_queue_on_stop(tmp_path):
         con = sqlite3.connect(tmp_path / "s.db")
         n = con.execute("SELECT COUNT(*) FROM stream_quotes_raw").fetchone()[0]
         assert n == 50, f"drain lost rows: {n}/50"
-        assert w.insert_errors == 0
+        assert w.status()["failures"] == 0
     asyncio.run(go())
 
 
-def test_insert_failure_is_counted_never_kills_writer(tmp_path):
+def test_insert_failure_is_kept_as_sent_never_kills_writer(tmp_path):
     async def go():
         bus = MessageBus()
         sub = bus.subscribe("", policy=LOG)
         w = CaptureWriter(tmp_path / "s.db", batch_rows=10_000, batch_sec=60.0)
-        bus.publish("quote.SPY", object())      # not a dict -> insert raises inside
+        bad = object()
+        bus.publish("quote.SPY", bad)           # not a dict -> insert raises inside
         bus.publish("quote.SPY", quote_msg(symbol="SPY", bid=2.0, src="t"))
         stop = asyncio.Event(); stop.set()
         await w.run(sub, stop=stop)
-        assert w.insert_errors == 1
+        assert (w.status()["failures"], w.status()["state"]) == (1, "stopped")
         con = sqlite3.connect(tmp_path / "s.db")
         assert con.execute("SELECT COUNT(*) FROM stream_quotes_raw").fetchone()[0] == 1
+        assert con.execute("SELECT topic, msg_json FROM stream_write_failures").fetchall() == [
+            ("quote.SPY", json.dumps(repr(bad)))]
     asyncio.run(go())
 
 
