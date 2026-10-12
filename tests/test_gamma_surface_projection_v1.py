@@ -247,7 +247,7 @@ def test_K_oi_and_volume_cells_equal_the_same_canonical_faucets_call_and_put_tot
             row = [r for r in surface["cells"] if r["strike"] == float(k)][0]
             # the cell carries the one readers' answers: Schwab's values as sent, 0 a real zero
             for key, legs in (("oi", strike_oi_legs(bucket)), ("volume", strike_volume_legs(bucket))):
-                exp_cell = ({"call": None, "put": None, "total": None} if legs is None else
+                exp_cell = (None if legs is None else
                             {"call": round(legs[0]), "put": round(legs[1]), "total": round(legs[0] + legs[1])})
                 assert row[key][col] == exp_cell
             checked += 1
@@ -268,8 +268,8 @@ def test_K_a_strike_absent_from_one_expirys_own_slice_reports_null_there_not_zer
     assert row["gex"][e1_col] is None
     assert row["dex"][e1_col] is None
     assert row["vanna"][e1_col] is None
-    assert row["oi"][e1_col] == {"call": None, "put": None, "total": None}
-    assert row["volume"][e1_col] == {"call": None, "put": None, "total": None}
+    assert row["oi"][e1_col] is None
+    assert row["volume"][e1_col] is None
 
 
 # ---- the exposure books every view is shaped from merge back to the one full book ----

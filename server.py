@@ -1905,10 +1905,10 @@ def _forces_from_captures(tk: str, captures: list) -> dict:
     return payload
 
 
-def _legs(legs: "tuple | None") -> dict:
-    """A cell's call/put pair and their total; all None when not known."""
+def _legs(legs: "tuple | None") -> "dict | None":
+    """A cell's call/put pair and their total; None when not known."""
     if legs is None:
-        return {"call": None, "put": None, "total": None}
+        return None
     return {"call": legs[0], "put": legs[1], "total": legs[0] + legs[1]}
 
 
@@ -1920,7 +1920,7 @@ def _gamma_surface_cell_fields(bucket: "dict | None", syms: "dict | None"):
     syms = syms or {}
     contracts = {"call": syms.get("call"), "put": syms.get("put")}
     if bucket is None:
-        return None, None, None, _legs(None), _legs(None), contracts
+        return None, None, None, None, None, contracts
     return (bucket_metric(bucket, "net_gex_1pct"), bucket_metric(bucket, "net_dex_dollars"),
             bucket_metric(bucket, "net_vanna"), _legs(strike_oi_legs(bucket)),
             _legs(strike_volume_legs(bucket)), contracts)
