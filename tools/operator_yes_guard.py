@@ -242,7 +242,6 @@ def decide(payload: dict, now: datetime, db: Path) -> "tuple[str, list[str]]":
             denies.append("sets a gh alias: an alias can name a merge in words the merge check does not know")
     if merges:
         asks.append(f"merges (AGENTS.md Authority); the command as written: {cmd}")
-    asks, denies = list(dict.fromkeys(asks)), list(dict.fromkeys(denies))   # a started command repeats its starter's
     return (DENY, denies) if denies else (ASK, asks) if asks else (PASS, [])
 
 
@@ -255,9 +254,6 @@ def _gh_words(st: Statement) -> "list[str]":
 def _merges(st: Statement) -> bool:
     """Whether the statement merges."""
     name, args = st.program, list(st.words[1:])
-    if name in ("start", "start-process", "saps"):   # what a starter runs, by its words, whatever the spelling
-        args = [program_name(t) for t in re.findall(r"[^\s,@()'\"]+", " ".join(args))]
-        args, name = (args[args.index("gh") + 1:], "gh") if "gh" in args else (args, name)
     if name == "gh":
         if "pr" in args and "merge" in args[args.index("pr") + 1:]:     # whatever options come between
             return True

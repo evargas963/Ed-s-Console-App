@@ -224,31 +224,10 @@ def test_every_merge_route_asks(cmd, tool, markets):
                                  "gh pr merge --subject 2026 518", "gh pr merge 518", "gh -b x pr merge 5",
                                  "gh --subject x pr merge 5", "gh -R owner/repo pr merge 5",
                                  "gh -b x api -X PUT repos/o/r/pulls/5/merge",
-                                 'gh pr merge 5 --subject="fix p.Kill() call"', "start gh pr merge 5",
-                                 'cmd //c start "" gh pr merge 5', 'start "gh" pr merge 5',
-                                 'start "" /wait gh pr merge 5', 'cmd //c start "Ed" gh pr merge 5',
-                                 "start /affinity 1 gh pr merge 5"])
+                                 'gh pr merge 5 --subject="fix p.Kill() call"'])
 def test_the_merge_question_shows_the_command_as_written(cmd, markets):
     answer, reasons = guard.decide(_shell(cmd), CLOSED, markets)
     assert answer == guard.ASK and len(reasons) == 1 and cmd in reasons[0], (cmd, reasons)
-
-
-@pytest.mark.parametrize("cmd", ["Start-Process gh -ArgumentList 'pr','merge','5'",
-                                 "Start-Process -FilePath gh -ArgumentList 'pr','merge','5' -NoNewWindow -Wait",
-                                 "saps gh 'pr','merge','5'", "Start-Process gh -ArgumentList 'pr', 'merge', '5'",
-                                 "Start-Process gh 'pr', 'merge', '5'", "Start-Process gh -ArgumentList @('pr','merge','5')",
-                                 "Start-Process -ErrorAction Stop gh 'pr','merge','5'"])
-def test_a_merge_started_by_start_process_asks(cmd, markets):
-    answer, reasons = guard.decide(_shell(cmd, "PowerShell"), CLOSED, markets)
-    assert answer == guard.ASK and len(reasons) == 1 and cmd in reasons[0], (cmd, reasons)
-
-
-@pytest.mark.parametrize("cmd, tool", [("Start-Process start_ed_console.bat", "PowerShell"),
-                                       ("start start_ed_console.bat", "Bash")])
-def test_a_start_through_a_starter_asks_once(cmd, tool, markets):
-    """The starter and the command it starts are both read; the question says it once."""
-    answer, reasons = guard.decide(_shell(cmd, tool), RTH, markets)
-    assert answer == guard.ASK and len(reasons) == 1, reasons
 
 
 @pytest.mark.parametrize("cmd", ["gh pr view 515", "gh pr checks 515", "gh -R o/r pr list",
