@@ -1523,7 +1523,8 @@ def terrain_strikes_payload(tk: str, scope: str, centre, shift: int, now: float)
     today_age_sec = None
     # bound before the try: a failed cache read leaves the panels empty, never a 500
     _snap: dict = {}
-    # today's per-strike rows: the published levels' own (terrain_engine._per_strike_map)
+    # today's per-strike rows: the published levels' own (_publish_levels' `_per_strike`,
+    # terrain_engine.per_strike_view)
     try:
         cached = terrain_cache_get(tk, now)
         if cached is not None:

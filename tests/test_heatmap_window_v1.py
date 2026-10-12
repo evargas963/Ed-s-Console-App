@@ -3,8 +3,8 @@ correctly): the strike rows of the scope around the price (or the panned centre)
 page fits, the row at the price and each measure's colour scale.
 
 Through the real code: the daemon's status and price row as the console holds them, the levels
-producer (server._publish_levels), the heatmap's answer at a time (server.gamma_surface_payload)
-and the per-strike routes. Real data: three SPY chain captures, one expiry each (10-14, 10-15,
+producer (server._publish_levels), the heatmap's and the per-strike panels' answers at a time
+(server.gamma_surface_payload, terrain_strikes_payload, strike_bar_payload). Real data: three SPY chain captures, one expiry each (10-14, 10-15,
 11-20), published as one chain (no single capture spans three expiries), valued on the captures'
 day (2026-10-01 12:00 ET). STAND-IN (named): the live price, the 10-15 capture's spot.
 """
