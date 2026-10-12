@@ -12,7 +12,7 @@ no database. Proves:
     beat, with no message needed from Schwab; in session the values go absent with the outage
     reason, while Closed the values Schwab last sent stand (docs/DATA_FLOW.md §2 D5);
   * a slow browser gets the newest row per symbol, never a backlog of stale ones;
-  * shutdown is not held up by a connected browser.
+  * shutdown is not held up by a connected browser, nor by one that stopped reading (it is dropped).
 """
 from __future__ import annotations
 
@@ -219,6 +219,39 @@ def test_a_burst_is_conflated_to_the_newest_row_per_symbol():
         # 1000 messages, far fewer frames: the browser was never handed the backlog
         assert stats["rows_sent"] < 200, stats
     asyncio.run(_run(body))
+
+
+def test_a_browser_that_stopped_reading_is_dropped_and_holds_nothing():
+    """A browser that takes one beat and then reads nothing: its beats back up, it is dropped
+    within beats, its handler ends, and the daemon's stop is not held."""
+    from websockets.asyncio.client import connect
+
+    async def go():
+        port = _free_port()
+        stop = asyncio.Event()
+        stats: dict = {}
+        server = asyncio.create_task(live_ui.serve_live_ui(
+            MessageBus(), stop, heartbeat_fn=lambda: {"pad": "x" * 2_000_000}, host="127.0.0.1", port=port,
+            stats=stats, record_heartbeat=lambda _hb: None))
+        end = time.monotonic() + 5
+        while not stats.get("listening") and time.monotonic() < end:
+            await asyncio.sleep(0.01)
+        async with connect(f"ws://127.0.0.1:{port}", max_queue=1, max_size=None):   # takes a beat, then reads nothing
+            end = time.monotonic() + 10
+            while not stats.get("beat_send_failures") and time.monotonic() < end:
+                await asyncio.sleep(0.05)
+            assert stats.get("beat_send_failures"), "the browser's beats never backed up"
+            end = time.monotonic() + 3
+            while stats.get("clients") and time.monotonic() < end:
+                await asyncio.sleep(0.05)
+            dropped = stats.get("clients") == 0
+            stop.set()
+            await asyncio.wait_for(asyncio.gather(server, return_exceptions=True), 5)
+        return dropped
+
+    t0 = time.monotonic()
+    assert asyncio.run(asyncio.wait_for(go(), 20)), "the browser's handler was still running"
+    assert time.monotonic() - t0 < 15
 
 
 def test_shutdown_is_not_held_up_by_a_connected_browser():

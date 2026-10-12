@@ -180,7 +180,8 @@ class LiveUiServer:
             for c in list(self.clients):
                 # one browser can neither stop the beat nor hold it: an error is logged and the
                 # next browser still gets its beat; a browser that does not take its beat within
-                # a beat is not reading and is closed, and gets no more beats while it closes
+                # a beat is not reading and is dropped: its connection is aborted, because a close
+                # frame cannot be written to a browser that does not read
                 # (2026-09-26: the beat stopped for every browser and the whole screen read "no
                 # live feed" on a healthy Schwab socket)
                 try:
@@ -190,9 +191,9 @@ class LiveUiServer:
                         timeout=HEARTBEAT_SEC)
                 except asyncio.TimeoutError:
                     self.stats["beat_send_failures"] += 1
-                    log.warning("live ui: a browser stopped reading; closing it")
+                    log.warning("live ui: a browser stopped reading; dropping it")
                     self.clients.discard(c)
-                    asyncio.create_task(c.ws.close())
+                    c.ws.transport.abort()
                 except Exception as e:  # noqa: BLE001 -- logged; the other browsers' beats go out
                     self.stats["beat_send_failures"] += 1
                     log.warning("live ui beat to one browser: %s: %s", type(e).__name__, e)
