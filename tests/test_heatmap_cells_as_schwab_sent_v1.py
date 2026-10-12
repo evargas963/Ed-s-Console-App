@@ -15,6 +15,8 @@ Real data, one column each:
   interest 0 (the live surface at 08:59 drew all 30 "--").
 - SPY 2026-11-20 (tests/fixtures/real_spy_2026_11_20_chain_and_quotes.json, captured 2026-09-30).
 A strike listed in one column and not another is that column's "-" cell.
+- NFLX 2026-10-16, 2027-12-17 and 2028-01-21 (tests/fixtures/real_nflx_chain_2026_10_07_three_expiries.json):
+  8 contracts with open interest and Greeks Schwab sent as -999, whose cells have no GEX, drawn "-".
 """
 from __future__ import annotations
 
@@ -36,6 +38,7 @@ _OCT15 = json.loads((_FX / "real_spy_2026_10_15_chain_oi_zero.json").read_text(e
 _NOV20 = json.loads((_FX / "real_spy_2026_11_20_chain_and_quotes.json").read_text(encoding="utf-8"))
 _SPOT = float(_OCT14["priced_at_spot"])
 _AT = datetime.fromtimestamp(_OCT14["chain_as_of_ts_utc"], time_et.ET)
+_NFLX = json.loads((_FX / "real_nflx_chain_2026_10_07_three_expiries.json").read_text(encoding="utf-8"))
 _COLUMNS = {"2026-10-14": _OCT14["contracts"], "2026-10-15": _OCT15["contracts"], "2026-11-20": _NOV20["chain"]}
 
 
@@ -97,28 +100,51 @@ def test_a_strike_with_no_contract_listed_is_served_as_such():
             assert col[k][3] != server.CELL_NOT_LISTED, (expiry, k)
 
 
-def test_the_page_draws_zero_as_zero_and_an_unlisted_strike_as_a_dash(tmp_path):
-    """Through the page's own render (static/js/ed-gamma.js), the server's surface drawn: every
-    open-interest-zero strike of 10/14 and 10/15 reads "$0", every unlisted one "-", none "—"."""
+def _drawn(projected: dict, spot: float, as_of: float, tmp_path) -> "tuple[dict, dict]":
+    """What the route serves for every strike and column of `projected`, and each cell's text as
+    the page's own render (static/js/ed-gamma.js) draws it: (surface, {(strike, expiry): text})."""
     node = shutil.which("node")
     assert node, "Node.js is required on PATH (the same prerequisite as Playwright E2E)"
+    tk = projected["ticker"]
     with server._terrain_cache_lock:
-        server._terrain_cache["SPY"] = {"_gamma_surface": _surface(), "spot": _SPOT, "spot_source": "last",
-                                        "computed_ts_utc": _OCT14["chain_as_of_ts_utc"], "chain_basis": "full"}
-    try:   # what the route serves for every strike and column
+        server._terrain_cache[tk] = {"_gamma_surface": projected, "spot": spot, "spot_source": "last",
+                                     "computed_ts_utc": as_of, "chain_basis": "full"}
+    try:
         surface = json.loads(server.get_options_gamma_surface(
-            "SPY", scope="all", centre=None, shift=0, cols=None, expiry=None).body)
+            tk, scope="all", centre=None, shift=0, cols=None, expiry=None).body)
     finally:
         with server._terrain_cache_lock:
-            server._terrain_cache.pop("SPY", None)
+            server._terrain_cache.pop(tk, None)
     path = tmp_path / "surface.json"
     path.write_text(json.dumps(surface), encoding="utf-8")
     r = subprocess.run([node, str(Path(__file__).parent / "ed_gamma_cells_node.mjs"), str(path)],
                        capture_output=True, text=True, timeout=60)
     assert r.returncode == 0, r.stdout + r.stderr
-    drawn = {(c["strike"], c["expiry"]): c["text"] for c in map(json.loads, r.stdout.splitlines())}
+    return surface, {(c["strike"], c["expiry"]): c["text"] for c in map(json.loads, r.stdout.splitlines())}
+
+
+def test_the_page_draws_zero_as_zero_and_an_unlisted_strike_as_a_dash(tmp_path):
+    """Through the page's own render (static/js/ed-gamma.js), the server's surface drawn: every
+    open-interest-zero strike of 10/14 and 10/15 reads "$0", every unlisted one "-", none "—"."""
+    surface, drawn = _drawn(_surface(), _SPOT, _OCT14["chain_as_of_ts_utc"], tmp_path)
     for expiry in ("2026-10-14", "2026-10-15"):
         unlisted = set(surface["strikes"]) - set(_by_strike(_COLUMNS[expiry]))
         assert {drawn[(k, expiry)] for k in _open_interest_zero(expiry)} == {"$0"}, expiry
         assert {drawn[(k, expiry)] for k in unlisted} == {"-"}, expiry
     assert "—" not in drawn.values()
+
+
+def test_the_page_draws_every_cell_with_no_value_as_a_dash(tmp_path):
+    """Every cell with no value draws "-", whatever the served reason: on NFLX's 2027-12-17 and
+    2028-01-21, 8 contracts with open interest whose Greeks Schwab sent as -999 leave their cells
+    with no GEX (exposure_not_sent), drawn "-" like the strikes no contract is listed at."""
+    at = datetime.fromtimestamp(_NFLX["ts_utc"], time_et.ET)
+    contracts = _NFLX["chain"]
+    projected = dict(server.project_gamma_surface(contracts, exposure_books(contracts, spot=_NFLX["spot"], now=at)),
+                     ticker="NFLX", available=True, live=True, stale=False, spot=_NFLX["spot"])
+    surface, drawn = _drawn(projected, _NFLX["spot"], _NFLX["ts_utc"], tmp_path)
+    exps = [e["expiry"] for e in surface["expirations"]]
+    absent = {(r["strike"], exps[j]): code for r in surface["cells"] for j, code in enumerate(r["absent"]["gex"]) if code}
+    assert {code for code in absent.values()} == {server.CELL_NOT_LISTED, server.CELL_EXPOSURE_NOT_SENT}
+    assert {drawn[cell] for cell in absent} == {"-"}
+    assert set(surface["absent_reasons"].values()) == {"-"}

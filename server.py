@@ -1909,18 +1909,18 @@ def _forces_from_captures(tk: str, captures: list) -> dict:
 # fallback (operator rule 2026-09-23).
 
 #: Why a heatmap cell has no value for a measure: the code each cell carries (absent[measure])
-#: and the words the page draws for it (the surface's absent_reasons). A cell is absent only
-#: where Schwab sent nothing for it; a listed contract with open interest 0 is a computed 0.
+#: and what the page draws for it (the surface's absent_reasons): a dash, whatever the code. A
+#: cell is absent only where Schwab sent nothing for it; a listed contract with open interest 0
+#: is a computed 0.
 CELL_NOT_LISTED = "not_listed"
-CELL_EXPOSURE_NOT_SENT = "exposure_not_sent"
+CELL_EXPOSURE_NOT_SENT = "exposure_not_sent"    # no open interest or multiplier, or open interest and no Greek
 CELL_OI_NOT_SENT = "oi_not_sent"
 CELL_VOLUME_NOT_SENT = "volume_not_sent"
 CELL_ABSENT_REASONS = {
-    CELL_NOT_LISTED: "-",            # a dash, no words
-    # a contract here sent no open interest or multiplier, or has open interest and no Greek
-    CELL_EXPOSURE_NOT_SENT: "Schwab sent no Greek/OI",
-    CELL_OI_NOT_SENT: "Schwab sent no OI",
-    CELL_VOLUME_NOT_SENT: "Schwab sent no volume",
+    CELL_NOT_LISTED: "-",
+    CELL_EXPOSURE_NOT_SENT: "-",
+    CELL_OI_NOT_SENT: "-",
+    CELL_VOLUME_NOT_SENT: "-",
 }
 
 
