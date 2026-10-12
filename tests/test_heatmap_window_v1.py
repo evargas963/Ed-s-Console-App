@@ -3,8 +3,8 @@ correctly): the strike rows of the scope around the price (or the panned centre)
 page fits, the row at the price and each measure's colour scale.
 
 Through the real code: the daemon's status and price row as the console holds them, the levels
-producer (server._publish_levels), the heatmap's answer at a time (server.gamma_surface_payload)
-and the per-strike routes. Real data: three SPY chain captures, one expiry each (10-14, 10-15,
+producer (server._publish_levels), the heatmap's and the per-strike panels' answers at a time
+(server.gamma_surface_payload, terrain_strikes_payload, strike_bar_payload). Real data: three SPY chain captures, one expiry each (10-14, 10-15,
 11-20), published as one chain (no single capture spans three expiries), valued on the captures'
 day (2026-10-01 12:00 ET). STAND-IN (named): the live price, the 10-15 capture's spot.
 """
@@ -61,6 +61,11 @@ def _heat(at=_AT, **kw):
     args = {"scope": "auto", "centre": None, "shift": 0, "cols": None, "expiry": None, **kw}
     return server.gamma_surface_payload(TK, args["scope"], args["centre"], args["shift"], args["cols"],
                                         args["expiry"], at)
+
+
+def _strikes(scope):
+    """The per-strike panels' answer at the captures' day, centred on the price."""
+    return server.terrain_strikes_payload(TK, scope, None, 0, _AT.timestamp())
 
 
 def _every_strike():
@@ -139,7 +144,7 @@ def test_with_no_live_price_the_window_says_it_is_not_around_the_price():
     _price(None)
     d = _heat()
     assert d["view"]["note"] == server.WINDOW_NO_PRICE and not any(c["spot"] for c in d["cells"])
-    strikes = json.loads(server.get_terrain_strikes(TK, scope="auto", centre=None, shift=0).body)
+    strikes = _strikes("auto")
     assert {v["note"] for v in strikes["views"].values() if v["centre"] is not None} == {server.WINDOW_NO_PRICE}
     every = _every_strike()
     panned = _heat(centre=every[3])                                # the operator's pan: no reason needed
@@ -167,8 +172,8 @@ def test_every_per_strike_panel_is_served_its_window_and_scale():
     def lists(body):
         return {**{sc: body["today"][sc] for sc in ("all", "near", "far")},
                 **{m: body["measures"][m]["rows"] for m in ("dex", "oi")}}
-    body = json.loads(server.get_terrain_strikes(TK, scope="auto", centre=None, shift=0).body)
-    every = lists(json.loads(server.get_terrain_strikes(TK, scope="all", centre=None, shift=0).body))
+    body = _strikes("auto")
+    every = lists(_strikes("all"))
     assert every["all"] and every["dex"] and every["oi"]
     for name, rows in lists(body).items():
         view = body["views"][name]
@@ -181,10 +186,13 @@ def test_every_per_strike_panel_is_served_its_window_and_scale():
     assert body["views"]["all"]["max_abs_with_prior"] == body["views"]["all"]["max_abs"] is not None
     assert body["views"]["near"]["max_abs_with_prior"] is None                  # no near-term rows
     assert body["measures"]["dex"]["view"] == body["views"]["dex"]
-    for route in (server.get_vanna_by_strike, server.get_charm_by_strike):
-        d = json.loads(route(TK, scope="auto", centre=None, shift=0).body)
+    for key in server.STRIKE_BAR_METHODS:                       # vanna, charm
+        def bars(scope, centre=None, shift=0):
+            return server.strike_bar_payload(TK, key, scope, centre, shift, _AT.timestamp())
+        d = bars("auto")
         rows = [r[0] for r in d["rows"]]
-        panned = json.loads(route(TK, scope="auto", centre=d["view"]["centre"], shift=2).body)
-        every = [r[0] for r in json.loads(route(TK, scope="all", centre=None, shift=0).body)["rows"]]
+        assert d["spot_strike"] is not None                     # around the price
+        panned = bars("auto", centre=d["view"]["centre"], shift=2)
+        every = [r[0] for r in bars("all")["rows"]]
         assert panned["view"]["centre"] == every[every.index(d["view"]["centre"]) + 2]
         assert [r[0] for r in panned["rows"]] != rows and len(panned["rows"]) == len(rows)
