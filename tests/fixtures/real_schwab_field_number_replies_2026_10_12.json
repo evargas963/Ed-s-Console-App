@@ -1,0 +1,25 @@
+{
+ "source": "Schwab's streamer, 2026-10-12 12:26-12:40 CT, one connection logged in with the production account's token: SUBS per service asking field numbers in batches 0-300 and 301-600, a refused batch split in half down to single numbers. Each entry is [fields asked, Schwab's code, Schwab's msg] as Schwab answered. refused_each: every single field number in this range was asked alone and answered code 22 'SUBS command failed'.",
+ "replies": {
+  "LEVELONE_EQUITIES": [["0-150", 0, "SUBS command succeeded"], ["151-151", 22, "SUBS command failed"], ["600-600", 22, "SUBS command failed"]],
+  "LEVELONE_OPTIONS": [["0-150", 0, "SUBS command succeeded"], ["151-151", 22, "SUBS command failed"], ["600-600", 22, "SUBS command failed"]],
+  "LEVELONE_FUTURES": [["0-150", 0, "SUBS command succeeded"], ["151-151", 22, "SUBS command failed"], ["600-600", 22, "SUBS command failed"]],
+  "LEVELONE_FUTURES_OPTIONS": [["0-150", 0, "SUBS command succeeded"], ["151-151", 22, "SUBS command failed"], ["600-600", 22, "SUBS command failed"]],
+  "LEVELONE_FOREX": [["0-150", 0, "SUBS command succeeded"], ["151-151", 22, "SUBS command failed"], ["600-600", 22, "SUBS command failed"]],
+  "NYSE_BOOK": [["0-300", 0, "SUBS command succeeded"], ["301-301", 22, "SUBS command failed"], ["600-600", 22, "SUBS command failed"]],
+  "NASDAQ_BOOK": [["0-300", 0, "SUBS command succeeded"], ["301-301", 22, "SUBS command failed"], ["600-600", 22, "SUBS command failed"]],
+  "OPTIONS_BOOK": [["0-300", 0, "SUBS command succeeded"], ["301-301", 22, "SUBS command failed"], ["600-600", 22, "SUBS command failed"]],
+  "CHART_EQUITY": [["0-300", 0, "SUBS command succeeded"], ["301-301", 22, "SUBS command failed"], ["600-600", 22, "SUBS command failed"]],
+  "CHART_FUTURES": [["0-300", 0, "SUBS command succeeded"], ["301-301", 22, "SUBS command failed"], ["600-600", 22, "SUBS command failed"]],
+  "SCREENER_EQUITY": [["0-300", 0, "SUBS command succeeded"], ["301-301", 22, "SUBS command failed"], ["600-600", 22, "SUBS command failed"]],
+  "SCREENER_OPTION": [["0-300", 0, "SUBS command succeeded"], ["301-301", 22, "SUBS command failed"], ["600-600", 22, "SUBS command failed"]],
+  "ACCT_ACTIVITY": [["0-300", 0, "SUBS command succeeded"], ["301-301", 22, "SUBS command failed"], ["600-600", 22, "SUBS command failed"]],
+  "NEWS_HEADLINE": [["0-300", 0, "SUBS command succeeded"], ["301-301", 22, "SUBS command failed"], ["600-600", 22, "SUBS command failed"]]
+ },
+ "refused_each": {
+  "LEVELONE_EQUITIES": "151-600", "LEVELONE_OPTIONS": "151-600", "LEVELONE_FUTURES": "151-600",
+  "LEVELONE_FUTURES_OPTIONS": "151-600", "LEVELONE_FOREX": "151-600", "NYSE_BOOK": "301-600",
+  "NASDAQ_BOOK": "301-600", "OPTIONS_BOOK": "301-600", "CHART_EQUITY": "301-600", "CHART_FUTURES": "301-600",
+  "SCREENER_EQUITY": "301-600", "SCREENER_OPTION": "301-600", "ACCT_ACTIVITY": "301-600", "NEWS_HEADLINE": "301-600"
+ }
+}

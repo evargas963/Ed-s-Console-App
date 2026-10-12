@@ -141,9 +141,11 @@ LEVELONE_FIELDS = {"BID_PRICE": "bid", "ASK_PRICE": "ask", "LAST_PRICE": "last",
                    "QUOTE_TIME_MILLIS": "quote_time_ms", "TRADE_TIME_MILLIS": "trade_time_ms"}
 CHART_FIELDS = {"OPEN_PRICE": "open", "HIGH_PRICE": "high", "LOW_PRICE": "low",
                 "CLOSE_PRICE": "close", "VOLUME": "volume", "CHART_TIME_MILLIS": "bar_start_ms"}
-#: NEWS_HEADLINE is not in the Streamer Guide and schwab-py has no helper for it; these are
-#: the fields it answers with (time, id, ..., headline, ..., categories).
-NEWS_FIELDS = tuple(range(0, 11))
+#: The highest field number Schwab accepts on each service: every number above it, asked alone, is
+#: answered code 22 "SUBS command failed" (tests/fixtures/real_schwab_field_number_replies_2026_10_12.json).
+#: The daemon asks for every number up to it, so each field Schwab sends, documented or not, is kept.
+HIGHEST_FIELD = {"LEVELONE_EQUITIES": 150, "LEVELONE_OPTIONS": 150, "CHART_EQUITY": 300, "NYSE_BOOK": 300,
+                 "NASDAQ_BOOK": 300, "OPTIONS_BOOK": 300, "NEWS_HEADLINE": 300}
 
 
 # ---------------------------------------------------------------------------- the watchlist
@@ -350,13 +352,8 @@ def _open_stream(client):
     return stream
 
 
-def _fields(stream, service: str) -> str:
-    if service == "NEWS_HEADLINE":
-        return ",".join(str(f) for f in NEWS_FIELDS)
-    enum = {"LEVELONE_EQUITIES": stream.LevelOneEquityFields,
-            "CHART_EQUITY": stream.ChartEquityFields,
-            "LEVELONE_OPTIONS": stream.LevelOneOptionFields}.get(service, stream.BookFields)
-    return ",".join(str(f) for f in sorted(int(x.value) for x in enum))
+def _fields(service: str) -> str:
+    return ",".join(str(f) for f in range(HIGHEST_FIELD[service] + 1))
 
 
 def _dispatch(stream, msg: dict) -> None:
@@ -644,7 +641,7 @@ class Daemon:
                 cmd = "ADD" if first == "SUBS" and i else first
                 params = {"keys": ",".join(chunk)}
                 if cmd != "UNSUBS":
-                    params["fields"] = _fields(self.stream, svc)
+                    params["fields"] = _fields(svc)
                 req, rid = self.stream._make_request(service=svc, command=cmd, parameters=params)
                 self._sent[rid] = _Sent(svc, cmd, chunk, time.time())
                 await self.stream._send({"requests": [req]})

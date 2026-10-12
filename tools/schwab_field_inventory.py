@@ -3,8 +3,9 @@
 Each run calls every REST market-data and account endpoint (several asset types and request
 variants), reads the key names the capture daemon received on the stream (read-only from
 stream_capture.db) and schwab-py's field list for every streaming service. Rows already in the
-CSV and not seen this run are kept with their last_seen date; nothing is dropped. Field names
-and JSON types only, never values. Opens no streaming socket (Schwab allows one per user: the
+CSV and not seen this run are kept with their last_seen date; nothing is dropped. A run writes
+field names and JSON types, never values; it keeps the schwab_doc and sample columns, which are
+written from a probe's raw replies. Opens no streaming socket (Schwab allows one per user: the
 daemon's).
 
 Paths: `endpoint.key.key`; a list item and an option chain's expiry and strike keys are `*`;
@@ -33,7 +34,8 @@ OUT = REPO / "docs" / "schwab_fields.csv"
 COLUMNS = ["canonical_field", "endpoint", "type", "variants", "first_seen", "last_seen", "schwab_doc", "sample"]
 #: every asset type Schwab quotes, beside the roster: index, future, forex, mutual fund, a
 #: hard-to-borrow stock (its borrow fields)
-EXTRA_QUOTES = ["$SPX", "$VIX", "$NDX", "$DJI", "/ES", "/CL", "EUR/USD", "VFIAX", "GME", "BRK.B"]
+EXTRA_QUOTES = ["$SPX", "$VIX", "$NDX", "$DJI", "/ES", "/CL", "EUR/USD", "VFIAX", "GME", "BRK.B", "TOITF", "CNSWF",
+                "./ESZ26C6800"]
 #: underlyings whose full chains are read: ETF, index, stock, adjusted-deliverable candidates
 CHAIN_SYMBOLS = ["SPY", "$SPX", "AAPL", "GME", "TSLA"]
 TYPES = {bool: "bool", int: "number", float: "number", str: "string", dict: "object", list: "array"}
@@ -102,8 +104,13 @@ def rest_rows(c, roster: list[str]) -> tuple[dict[tuple[str, str], set[str]], di
             "SPY", strategy=c.Options.Strategy.ANALYTICAL, include_underlying_quote=True,
             strike_range=c.Options.StrikeRange.ALL, from_date=d, to_date=d)))
           for d in _expirations(c, "SPY")],
+        # the spread strategies answer with monthlyStrategyList instead of the expiry maps
+        *[("chains", f"SPY {st.value}", lambda st=st: _paced(lambda: c.get_option_chain(
+            "SPY", strategy=st, interval=5, strike_count=2, include_underlying_quote=True,
+            from_date=today, to_date=today + dt.timedelta(days=45))))
+          for st in c.Options.Strategy if st.name not in ("SINGLE", "ANALYTICAL")],
         *[("expirationchain", s, lambda s=s: c.get_option_expiration_chain(s)) for s in CHAIN_SYMBOLS],
-        *[("pricehistory", f.__name__, lambda f=f: f("SPY", need_extended_hours_data=True))
+        *[("pricehistory", f.__name__, lambda f=f: f("SPY", need_extended_hours_data=True, need_previous_close=True))
           for f in (c.get_price_history_every_minute, c.get_price_history_every_five_minutes,
                     c.get_price_history_every_ten_minutes, c.get_price_history_every_fifteen_minutes,
                     c.get_price_history_every_thirty_minutes, c.get_price_history_every_day,

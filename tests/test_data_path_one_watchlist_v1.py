@@ -29,7 +29,7 @@ from app.options.order_flow import streaming as ofs
 from calibration.complete_chain_capture import ChainSweep, chain_messages
 from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus, quote_msg
 from tests.schwab_rest_standin import CHECKS, QUOTES, LocalSchwab
-from tests.schwab_stream_standin import LocalStreamer, refusal
+from tests.schwab_stream_standin import LocalStreamer, highest_field, refusal
 
 #: SPY's 2026-11-20 contracts (442) and the price stored with them
 SPY_CHAIN = json.loads((Path(__file__).parent / "fixtures" / "real_spy_2026_11_20_chain_and_quotes.json")
@@ -128,6 +128,36 @@ def test_the_daemon_subscribes_once_and_each_of_schwabs_answers_reaches_its_own_
         ("LEVELONE_OPTIONS", "SUBS", 24, "SUBS command failed")], "both of Schwab's answers, as sent"
     assert all(code == 0 for svc, _c, code, _m in answers if svc != "LEVELONE_OPTIONS"), answers
     assert held["NYSE_BOOK"] == {"SPY", "TSLA"} and held["LEVELONE_OPTIONS"] == frozenset()
+
+
+def test_the_daemon_asks_each_service_for_every_field_number_schwab_accepts(tmp_path):
+    """2026-10-12: Schwab sends LEVELONE_EQUITIES fields 52-56, which its Streamer Guide does not
+    define, and the daemon asked only for schwab-py's lists (to 51), so they were never received.
+    Schwab answers code 0 to every field number up to 150 on LEVELONE_* and 300 on the others,
+    and code 22 to each number above (its replies, played by the stand-in). Each request the
+    daemon sends on every service asks for every number Schwab accepts, and Schwab accepts it."""
+    schwab = _Schwab(tmp_path)
+    bus = MessageBus()
+    log = bus.subscribe("sub.", policy=LOG)
+    daemon = capture.Daemon(bus, HealthRegistry(), ["SPY", "TSLA"], clock=lambda: SPY_CHAIN["capture_ts_utc"])
+
+    async def go():
+        stop = asyncio.Event()
+        tasks = [asyncio.create_task(daemon.run(lambda: schwab.client, stop)),
+                 asyncio.create_task(daemon.follow_market(stop))]
+        _market(bus, "SPY", SPY_CHAIN["chain"], SPY_CHAIN["spot"], SPY_CHAIN["capture_ts_utc"])
+        await _until(lambda: {r["service"] for r in schwab.streamer.requests} >= {*capture.SERVICES, "ADMIN"})
+        await asyncio.sleep(0.5)
+        stop.set()
+        await asyncio.wait_for(asyncio.gather(*tasks), 10)
+    try:
+        asyncio.run(go())
+    finally:
+        schwab.close()
+    asked = {(r["service"], r["parameters"]["fields"]) for r in schwab.streamer.requests
+             if r["command"] in ("SUBS", "ADD")}
+    assert asked == {(svc, ",".join(map(str, range(highest_field(svc) + 1)))) for svc in capture.SERVICES}
+    assert [a for a in _answers(log) if a[2] != 0] == [], "Schwab accepts every request"
 
 
 def test_a_subscription_split_under_schwabs_message_limit_keeps_every_part(tmp_path):
