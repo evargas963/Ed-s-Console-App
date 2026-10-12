@@ -133,8 +133,8 @@ def test_heatmap_per_strike_rows_and_levels_are_one_computation():
     for row in c["_gamma_surface"]["cells"]:        # every strike's cells sum to the levels' book
         total = bucket_metric(full[row["strike"]], "net_gex_1pct")
         if total is not None:
-            listed = [g for g, a in zip(row["gex"], row["absent"]["gex"]) if a != server.CELL_NOT_LISTED]
-            assert sum(listed) == pytest.approx(total, rel=1e-9, abs=1e-6)
+            valued = [g for g in row["gex"] if g is not None]
+            assert sum(valued) == pytest.approx(total, rel=1e-9, abs=1e-6)
             checked += 1
     assert checked
 

@@ -55,16 +55,16 @@ def fetched(tmp_path):
     return run
 
 
-def _column(contracts: "list[dict]") -> "tuple[dict, dict]":
+def _column(contracts: "list[dict]") -> dict:
     """The heatmap's 2026-11-20 column as the levels producer projects it: {strike: (cell's gex,
-    its contracts)}, and the surface."""
+    its contracts)}."""
     snap = compute_terrain("SPY", contracts, _SPOT, now=_CAPTURED)
     surface = server.project_gamma_surface(contracts, snap.books)
     j = [e["expiry"] for e in surface["expirations"]].index("2026-11-20")
     by_k = {}
     for ct in contracts:
         by_k.setdefault(float(ct["strikePrice"]), []).append(ct)
-    return {row["strike"]: (row["gex"][j], by_k[row["strike"]]) for row in surface["cells"]}, surface
+    return {row["strike"]: (row["gex"][j], by_k[row["strike"]]) for row in surface["cells"]}
 
 
 def test_the_875_call_cell_is_its_exact_quote_gamma_times_open_interest(fetched):
@@ -75,7 +75,7 @@ def test_the_875_call_cell_is_its_exact_quote_gamma_times_open_interest(fetched)
     assert chain_ct["gamma"] == 0.0 and chain_ct["openInterest"] == 23235      # what the chain sends
     gamma = _QUOTED[_CALL_875]["gamma"]
     assert gamma == 0.00037225                                                   # what the quote sends
-    cells, _surface = _column(fetched())
+    cells = _column(fetched())
     gex, contracts = cells[875.0]
     put = next(c for c in contracts if c["putCall"] == "PUT")
     assert put["openInterest"] == 0
@@ -97,7 +97,7 @@ def test_no_cell_with_open_interest_and_greeks_reads_zero_unless_its_exact_gamma
     """Across the whole column: on the chain's rounded gamma, cells with open interest read $0;
     on the quotes' gamma, a cell reads 0 only where its contracts' exact gamma x OI is 0."""
     def zero_cells(contracts):
-        cells, _s = _column(contracts)
+        cells = _column(contracts)
         oi = {k: sum(schwab_count(c["openInterest"]) or 0 for c in cts) for k, (_g, cts) in cells.items()}
         return cells, {k for k, (g, _cts) in cells.items() if oi[k] > 0 and g == 0}
 
@@ -112,15 +112,9 @@ def test_no_cell_with_open_interest_and_greeks_reads_zero_unless_its_exact_gamma
 
 
 def test_a_contract_whose_quote_did_not_come_back_has_no_greek_never_the_chains(fetched):
-    """The 875 call's quote withheld: its Greeks are absent and its cell has no GEX, served with
-    the reason (Schwab sent no Greek for a contract with open interest) -- never the chain's
-    rounded 0.0."""
+    """The 875 call's quote withheld: its Greeks are absent and its cell has no GEX -- never the
+    chain's rounded 0.0."""
     contracts = fetched(withheld={_CALL_875})
     call = next(c for c in contracts if c["symbol"] == _CALL_875)
     assert all(call[f] is None for f in sc.GREEK_FIELDS)
-    cells, surface = _column(contracts)
-    assert cells[875.0][0] is None
-    j = [e["expiry"] for e in surface["expirations"]].index("2026-11-20")
-    row = next(r for r in surface["cells"] if r["strike"] == 875.0)
-    assert row["absent"]["gex"][j] == server.CELL_EXPOSURE_NOT_SENT
-    assert surface["absent_reasons"][server.CELL_EXPOSURE_NOT_SENT] == "Schwab sent no Greek/OI"
+    assert _column(contracts)[875.0][0] is None

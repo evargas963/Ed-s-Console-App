@@ -131,8 +131,8 @@ from Schwab to the screen (daemon, console, page), are these:
   updating, for any reason (feed down, market closed, an input missing), the last value stands,
   marked not live with its time and age, and every value computed from it is marked not live too;
   during a feed outage the header says OFFLINE. A value never received, or sent invalid, shows as
-  unknown with its reason. Calculations keep every digit and every contract; rounding is on screen
-  only. Where today's code differs: §3.5 item 5.
+  "-". Calculations keep every digit and every contract; rounding is on screen
+  only. Where today's code differs: §3.5 items 5 and 6.
   Enforced by: `tests/test_data_path_rules_v1.py` (newest by Schwab's time, no replay as live); the
   rest — ENF-22.
 - **D6. No live screen reads the database.** Every live route serves from memory; the database
@@ -382,11 +382,10 @@ from Schwab to the screen (daemon, console, page), are these:
   price is the daemon's price row. With no price from Schwab the next publication has no levels,
   with its reason.
 - **Heatmap cells.** Every strike Schwab listed in any expiry is a row; a cell is the book's
-  value for its strike and expiry, exact. A cell with no value carries the code saying why
-  (`absent`, worded by the surface's `absent_reasons`, drawn by the page): "-" where no contract
-  is listed at that strike in that expiry, or that a contract there sent no open interest,
-  multiplier or (with open interest above 0) Greek, or no open interest or volume. The surface
-  is served whenever the levels projected one; no count of cells withholds it.
+  value for its strike and expiry, exact. A cell with no value (no contract listed at that strike
+  in that expiry, or Schwab sent nothing for it) is served as None, with no reason, and the page
+  draws "-" (operator 2026-10-12). The surface is served whenever the levels projected one; no
+  count of cells withholds it.
 - **Strike windows.** Every per-strike panel (the heatmap, GEX by strike, the chart's profiles,
   vanna, charm, the migration) shows the window the server sends: `terrain_engine.strike_window`
   picks the scope's strikes (Auto 11, Wider 23, All every one) around the strike nearest the
@@ -482,6 +481,10 @@ from Schwab to the screen (daemon, console, page), are these:
    drop contracts; the header says FEED DOWN where rule 5 says OFFLINE. The §3 descriptions of
    these are today's behavior. Each place is listed in PR #515's description and fixed by
    `ACTIVE_PROGRAM.md` NUMBERS.
+6. **Missing values served with a reason** (D5, operator 2026-10-12: a missing value shows "-"): an
+   ATR that cannot be computed, the levels with no price and the outage words are served with
+   their reason (§3 above), and a screen may draw it; each is fixed by `ACTIVE_PROGRAM.md` DASH.
+   The gamma heatmap's cells draw "-".
 
 The work that closes these gaps, in order, is `ACTIVE_PROGRAM.md`.
 

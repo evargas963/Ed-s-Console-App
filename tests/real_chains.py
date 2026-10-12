@@ -8,6 +8,8 @@ CRWD:     CRWD's 2026-10-16 expiry, every strike (strike_range=ALL), at 10:38:40
 TSLA:     TSLA's 2026-10-09 expiry, every strike (strike_range=ALL), at 12:32:15 ET.
 MRVL:     MRVL's full chain, all 20 expiries, every strike, at 10:31:20 ET (spot: the front
           expiry's answer).
+NFLX:     NFLX's 2026-10-16, 2027-12-17 and 2028-01-21 expiries at 10:32:20 ET; 8 contracts with
+          open interest carry Greeks Schwab sent as -999.
 """
 from __future__ import annotations
 
@@ -38,3 +40,4 @@ SPY_0DTE = _load("real_spy_0dte_chain_2026_10_07.json")
 CRWD = _load("real_crwd_complete_chain_2026_10_07.json")
 TSLA = _load("real_tsla_complete_chain_2026_10_07.json")
 MRVL = _load("real_mrvl_full_chain_2026_10_07.json")
+NFLX = _load("real_nflx_chain_2026_10_07_three_expiries.json")

@@ -22,7 +22,13 @@ from dataclasses import asdict, dataclass
 
 from time_et import (ET, now_et, ct_label, et_date_str_from_ts_utc, last_open,
                      market_session_date, options_closed_at, options_open, session, session_label)
-from math_exposure_core import bucket_metric, merge_exposure_books, overlay_streamed_contract_fields
+from math_exposure_core import (
+    bucket_metric,
+    merge_exposure_books,
+    overlay_streamed_contract_fields,
+    strike_oi_legs,
+    strike_volume_legs,
+)
 
 import json
 from html import escape as html_escape
@@ -988,7 +994,8 @@ def _stream_coverage(cells: list, cols: "list[int]", expired_only: bool) -> dict
             "state": state, "label": label, "title": title}
 
 
-#: the heatmap's measures: GEX and DEX are a value per cell, OI and volume {call, put, total}
+#: the heatmap's measures: GEX and DEX are a value per cell, OI and volume {call, put, total};
+#: each None where not known
 HEAT_MEASURES = ("gex", "dex", "oi", "volume")
 
 
@@ -1036,8 +1043,6 @@ def _surface_view(surf: dict, spot_strike, scope: str, centre, shift: int, cols:
     lo, hi, view = _window(surf.get("strikes"), spot_strike, scope, centre, shift)
 
     def pick(v):
-        if isinstance(v, dict):                      # absent: a column list per measure
-            return {m: pick(a) for m, a in v.items()}
         return [v[j] for j in picked if j < len(v)] if isinstance(v, list) else v
     cells = [{**{k: pick(v) for k, v in cell.items()}, "spot": cell.get("strike") == spot_strike}
              for cell in (surf.get("cells") or [])[lo:hi + 1]]
@@ -1889,59 +1894,25 @@ def _forces_from_captures(tk: str, captures: list) -> dict:
     return payload
 
 
-# RC-UI-1: strike × expiry GEX surface for the rebuilt Options→Gamma heatmap. A PROJECTION over the
-# one canonical exposure authority, not a second producer: it partitions a wide chain by native
-# expirationDate (via the existing _filter_contracts_by_selected_expiry slice) and invokes
-# math_exposure_core.compute_exposures_by_strike per slice, shaping net_gex_1pct cells into a grid.
-# No gamma/GEX/multiplier/OI/spot/sign/missingness math lives here.
-# SOURCE: the live terrain projection only — _publish_levels projects it from the full chain the
-# daemon delivers and the live spot (in-memory, zero extra vendor calls). No banked-morning
-# fallback (operator rule 2026-09-23).
-
-#: Why a heatmap cell has no value for a measure: the code each cell carries (absent[measure])
-#: and the words the page draws for it (the surface's absent_reasons). A cell is absent only
-#: where Schwab sent nothing for it; a listed contract with open interest 0 is a computed 0.
-CELL_NOT_LISTED = "not_listed"
-CELL_EXPOSURE_NOT_SENT = "exposure_not_sent"
-CELL_OI_NOT_SENT = "oi_not_sent"
-CELL_VOLUME_NOT_SENT = "volume_not_sent"
-CELL_ABSENT_REASONS = {
-    CELL_NOT_LISTED: "-",            # a dash, no words
-    # a contract here sent no open interest or multiplier, or has open interest and no Greek
-    CELL_EXPOSURE_NOT_SENT: "Schwab sent no Greek/OI",
-    CELL_OI_NOT_SENT: "Schwab sent no OI",
-    CELL_VOLUME_NOT_SENT: "Schwab sent no volume",
-}
+def _legs(legs: "tuple | None") -> "dict | None":
+    """A cell's call/put pair and their total; None when not known."""
+    if legs is None:
+        return None
+    return {"call": legs[0], "put": legs[1], "total": legs[0] + legs[1]}
 
 
 def _gamma_surface_cell_fields(bucket: "dict | None", syms: "dict | None"):
     """ONE (strike, expiry) cell's gex/dex/vanna/oi/volume/contracts fields from its exposure
-    bucket, Schwab's values and the book's computed values exact, and for each measure with no
-    value the CELL_* code saying why. Returns (gex, dex, vanna, oi, volume, contracts, absent)."""
-    from math_exposure_core import strike_oi_legs, strike_volume_legs
-
+    bucket, Schwab's values and the book's computed values exact; a value not known is None (no
+    contract listed there, or Schwab sent nothing for it). Returns (gex, dex, vanna, oi, volume,
+    contracts)."""
     syms = syms or {}
     contracts = {"call": syms.get("call"), "put": syms.get("put")}
     if bucket is None:
-        none = {"call": None, "put": None, "total": None}
-        return (None, None, None, none, none, contracts,
-                {m: CELL_NOT_LISTED for m in ("gex", "dex", "vanna", "oi", "volume")})
-    gex = bucket_metric(bucket, "net_gex_1pct")
-    dex = bucket_metric(bucket, "net_dex_dollars")
-    vanna = bucket_metric(bucket, "net_vanna")
-
-    def _legs(legs):
-        if legs is None:
-            return {"call": None, "put": None, "total": None}
-        return {"call": legs[0], "put": legs[1], "total": legs[0] + legs[1]}
-
-    oi = _legs(strike_oi_legs(bucket))
-    volume = _legs(strike_volume_legs(bucket))
-    absent = {m: (CELL_EXPOSURE_NOT_SENT if v is None else None)
-              for m, v in (("gex", gex), ("dex", dex), ("vanna", vanna))}
-    absent["oi"] = CELL_OI_NOT_SENT if oi["total"] is None else None
-    absent["volume"] = CELL_VOLUME_NOT_SENT if volume["total"] is None else None
-    return gex, dex, vanna, oi, volume, contracts, absent
+        return None, None, None, None, None, contracts
+    return (bucket_metric(bucket, "net_gex_1pct"), bucket_metric(bucket, "net_dex_dollars"),
+            bucket_metric(bucket, "net_vanna"), _legs(strike_oi_legs(bucket)),
+            _legs(strike_volume_legs(bucket)), contracts)
 
 
 def project_gamma_surface(chain: list, books: dict) -> dict:
@@ -1949,9 +1920,6 @@ def project_gamma_surface(chain: list, books: dict) -> dict:
     exposure_books compute_terrain priced `chain` into, so every cell is the number the levels
     and per-strike rows were computed from. No exposure math here. A contract with a missing
     or malformed expiry is counted, never given a column."""
-    from math_exposure_core import merge_exposure_books
-    from numeric_contract import schwab_number
-
     chain = chain if isinstance(chain, list) else []
     by_expiry: "dict[str, list]" = {}
     for (exp, _dte), book in (books or {}).items():
@@ -1985,31 +1953,26 @@ def project_gamma_surface(chain: list, books: dict) -> dict:
     expirations = [{"expiry": e, "dte": exp_dte.get(e)} for e in expiries]
     # Each cell carries every measure its bucket already holds -- GEX, DEX, vanna
     # (call - put, the dealer convention of compute_net_vanna), OI and volume -- so one grid
-    # serves every heatmap measure, and for a measure with no value the code saying why
-    # (_gamma_surface_cell_fields; absent_reasons words them).
+    # serves every heatmap measure; a measure with no value is None (_gamma_surface_cell_fields).
     cells = []
     for k in strikes:
         row, dex_row, vanna_row, oi_row, vol_row, contracts_row = [], [], [], [], [], []
-        absent_row: "dict[str, list]" = {m: [] for m in ("gex", "dex", "vanna", "oi", "volume")}
         for col in expirations:
             bucket = per_expiry.get(col["expiry"], {}).get(k)
             syms = symbols_by_expiry.get(col["expiry"], {}).get(k)
-            gex, dex, vanna, oi, volume, contracts, absent = _gamma_surface_cell_fields(bucket, syms)
+            gex, dex, vanna, oi, volume, contracts = _gamma_surface_cell_fields(bucket, syms)
             row.append(gex)
             dex_row.append(dex)
             vanna_row.append(vanna)
             oi_row.append(oi)
             vol_row.append(volume)
             contracts_row.append(contracts)
-            for m, code in absent.items():
-                absent_row[m].append(code)
         cells.append({
             "strike": k, "gex": row, "dex": dex_row, "vanna": vanna_row,
-            "oi": oi_row, "volume": vol_row, "contracts": contracts_row, "absent": absent_row,
+            "oi": oi_row, "volume": vol_row, "contracts": contracts_row,
         })
     return {
         "expirations": expirations, "strikes": strikes, "cells": cells,
-        "absent_reasons": CELL_ABSENT_REASONS,
         "contracts_total": total_contracts, "contracts_used": contracts_used,
         "contracts_excluded_malformed_expiry": excluded_malformed,
     }
@@ -2058,7 +2021,7 @@ def gamma_surface_payload(tk: str, scope: str, centre, shift: int, cols: "int | 
         # the view's coverage
         window, view = _surface_view(_stamp_columns(surf, now), spot_strike, scope, centre, shift, cols, expiry)
         return {
-            # every cell Schwab listed is drawn: a cell without a value says why (absent)
+            # every cell Schwab listed is drawn: a cell without a value is None, drawn "-"
             "ticker": tk, "symbol": tk, "available": True, "reason": None,
             "source": "terrain_live_cache", "live": True, "stale": stale,
             "degraded": live.get("levels_stale_reason") if stale else None,

@@ -33,11 +33,6 @@
   function formatMeasureValue(n, measure) {
     return (measure === 'oi' || measure === 'volume') ? formatCount(n) : formatUsd(n);
   }
-  // the served words for why a cell has no value for a measure (server CELL_ABSENT_REASONS)
-  function absentText(surface, row, measure, j) {
-    var code = ((row.absent || {})[measure] || [])[j];
-    return (surface.absent_reasons || {})[code];
-  }
 
   // ---- theme-aware colour: sign -> green/red, shade -> |value| against the served scale ----
   var DEFAULT_HEAT = { pos: [35, 192, 107], neg: [229, 72, 77], zero: [18, 26, 37] };  // dark defaults (node/test)
@@ -167,8 +162,7 @@
           (liveState ? 'data-cell-state="' + liveState + '" ' : '') +
           (stateTitle ? 'title="' + escapeHtml(stateTitle) + '" ' : '') +
           'data-strike="' + row.strike + '" data-expiry="' + escapeHtml(e.expiry) + '" data-gex="' + (v == null ? '' : v) + '">' +
-          // no value: the served word ("-" where no contract is listed, or what Schwab did not send)
-          (st.empty ? '<span class="absent">' + escapeHtml(absentText(surface, row, measure, j)) + '</span>'
+          (st.empty ? '<span class="absent">-</span>'
             : formatMeasureValue(v, measure)) + '</td>';
       });
       tbl += '</tr>';
