@@ -63,9 +63,9 @@ def _heat(at=_AT, **kw):
                                         args["expiry"], at)
 
 
-def _strikes(scope, at=_AT):
-    """The per-strike panels' answer at `at`, centred on the price."""
-    return server.terrain_strikes_payload(TK, scope, None, 0, at.timestamp())
+def _strikes(scope):
+    """The per-strike panels' answer at the captures' day, centred on the price."""
+    return server.terrain_strikes_payload(TK, scope, None, 0, _AT.timestamp())
 
 
 def _every_strike():
