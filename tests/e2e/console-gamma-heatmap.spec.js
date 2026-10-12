@@ -541,13 +541,9 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(cell).toHaveAttribute('title', 'not streaming');
   });
 
-  test('a cell with no value draws what the server serves for it, whatever its stream state', async ({ page }) => {
-    // a cell has no value only where Schwab sent nothing for it, and the page draws what the
-    // server serves for it ("-")
+  test('a cell with no value draws "-", whatever its stream state', async ({ page }) => {
     const surf = surfaceWithStreamState([{ call: 'live', put: 'live' }]);
     surf.cells[0].gex = [null];
-    surf.cells[0].absent = { gex: ['not_listed'] };
-    surf.absent_reasons = { not_listed: '-' };
     await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
       status: 200, contentType: 'application/json', body: JSON.stringify(surf),
     }));

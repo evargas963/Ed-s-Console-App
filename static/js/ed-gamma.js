@@ -33,11 +33,6 @@
   function formatMeasureValue(n, measure) {
     return (measure === 'oi' || measure === 'volume') ? formatCount(n) : formatUsd(n);
   }
-  // what the server serves for a cell with no value for a measure (server CELL_ABSENT_REASONS)
-  function absentText(surface, row, measure, j) {
-    var code = ((row.absent || {})[measure] || [])[j];
-    return (surface.absent_reasons || {})[code];
-  }
 
   // ---- theme-aware colour: sign -> green/red, shade -> |value| against the served scale ----
   var DEFAULT_HEAT = { pos: [35, 192, 107], neg: [229, 72, 77], zero: [18, 26, 37] };  // dark defaults (node/test)
@@ -167,8 +162,8 @@
           (liveState ? 'data-cell-state="' + liveState + '" ' : '') +
           (stateTitle ? 'title="' + escapeHtml(stateTitle) + '" ' : '') +
           'data-strike="' + row.strike + '" data-expiry="' + escapeHtml(e.expiry) + '" data-gex="' + (v == null ? '' : v) + '">' +
-          // no value: what the server serves for it ("-")
-          (st.empty ? '<span class="absent">' + escapeHtml(absentText(surface, row, measure, j)) + '</span>'
+          // no value: "-"
+          (st.empty ? '<span class="absent">-</span>'
             : formatMeasureValue(v, measure)) + '</td>';
       });
       tbl += '</tr>';

@@ -1,7 +1,7 @@
 # Ed Console
 
 How to work with me (the operator). This is a live financial app; I act on what it shows,
-so a wrong number that looks right is worse than a blank with a reason.
+so a wrong number that looks right is worse than a '-'.
 
 1. Read first. Before proposing, open the code you would change and the parts it touches of
    AGENTS.md and the documents it names, and list them. Decisions recorded there are

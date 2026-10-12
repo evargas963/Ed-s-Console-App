@@ -112,15 +112,10 @@ def test_no_cell_with_open_interest_and_greeks_reads_zero_unless_its_exact_gamma
 
 
 def test_a_contract_whose_quote_did_not_come_back_has_no_greek_never_the_chains(fetched):
-    """The 875 call's quote withheld: its Greeks are absent and its cell has no GEX, served with
-    its code (no Greek for a contract with open interest) and drawn "-" -- never the chain's
-    rounded 0.0."""
+    """The 875 call's quote withheld: its Greeks are absent and its cell has no GEX -- never the
+    chain's rounded 0.0."""
     contracts = fetched(withheld={_CALL_875})
     call = next(c for c in contracts if c["symbol"] == _CALL_875)
     assert all(call[f] is None for f in sc.GREEK_FIELDS)
-    cells, surface = _column(contracts)
+    cells, _surface = _column(contracts)
     assert cells[875.0][0] is None
-    j = [e["expiry"] for e in surface["expirations"]].index("2026-11-20")
-    row = next(r for r in surface["cells"] if r["strike"] == 875.0)
-    assert row["absent"]["gex"][j] == server.CELL_EXPOSURE_NOT_SENT
-    assert surface["absent_reasons"][server.CELL_EXPOSURE_NOT_SENT] == "-"

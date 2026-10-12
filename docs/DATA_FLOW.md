@@ -382,11 +382,10 @@ from Schwab to the screen (daemon, console, page), are these:
   price is the daemon's price row. With no price from Schwab the next publication has no levels,
   with its reason.
 - **Heatmap cells.** Every strike Schwab listed in any expiry is a row; a cell is the book's
-  value for its strike and expiry, exact. A cell with no value draws "-" (operator 2026-10-12): the
-  surface's `absent_reasons` serves "-" for each code a cell carries (`absent`: no contract listed
-  at that strike in that expiry; a contract there sent no open interest, multiplier or, with open
-  interest above 0, Greek; no open interest; no volume). The surface is served whenever the levels
-  projected one; no count of cells withholds it.
+  value for its strike and expiry, exact. A cell with no value (no contract listed at that strike
+  in that expiry, or Schwab sent nothing for it) is served as None, with no reason, and the page
+  draws "-" (operator 2026-10-12). The surface is served whenever the levels projected one; no
+  count of cells withholds it.
 - **Strike windows.** Every per-strike panel (the heatmap, GEX by strike, the chart's profiles,
   vanna, charm, the migration) shows the window the server sends: `terrain_engine.strike_window`
   picks the scope's strikes (Auto 11, Wider 23, All every one) around the strike nearest the
