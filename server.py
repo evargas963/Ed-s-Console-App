@@ -994,7 +994,8 @@ def _stream_coverage(cells: list, cols: "list[int]", expired_only: bool) -> dict
             "state": state, "label": label, "title": title}
 
 
-#: the heatmap's measures: GEX and DEX are a value per cell, OI and volume {call, put, total}
+#: the heatmap's measures: GEX and DEX are a value per cell, OI and volume {call, put, total};
+#: each None where not known
 HEAT_MEASURES = ("gex", "dex", "oi", "volume")
 
 
@@ -1042,8 +1043,6 @@ def _surface_view(surf: dict, spot_strike, scope: str, centre, shift: int, cols:
     lo, hi, view = _window(surf.get("strikes"), spot_strike, scope, centre, shift)
 
     def pick(v):
-        if isinstance(v, dict):                      # absent: a column list per measure
-            return {m: pick(a) for m, a in v.items()}
         return [v[j] for j in picked if j < len(v)] if isinstance(v, list) else v
     cells = [{**{k: pick(v) for k, v in cell.items()}, "spot": cell.get("strike") == spot_strike}
              for cell in (surf.get("cells") or [])[lo:hi + 1]]
@@ -1931,9 +1930,6 @@ def project_gamma_surface(chain: list, books: dict) -> dict:
     exposure_books compute_terrain priced `chain` into, so every cell is the number the levels
     and per-strike rows were computed from. No exposure math here. A contract with a missing
     or malformed expiry is counted, never given a column."""
-    from math_exposure_core import merge_exposure_books
-    from numeric_contract import schwab_number
-
     chain = chain if isinstance(chain, list) else []
     by_expiry: "dict[str, list]" = {}
     for (exp, _dte), book in (books or {}).items():
