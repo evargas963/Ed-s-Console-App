@@ -47,6 +47,7 @@ from math_exposure_core import (
 from math_levels import compute_charm_by_strike, contract_inputs, compute_gamma_flip_v2, compute_gamma_profile, compute_gamma_support_levels, compute_max_pain, pick_charm_wall_strikes
 from math_exposure_core import key_level_strikes_with_gamma
 from terrain_read import build_terrain_read
+from time_et import market_session_date
 
 #: Payload schema version — bump on any field change so the UI can fail closed.
 #: v2 (2026-07-21): + net_gex_at_spot, key_delta_strike, hvp, lvp.
@@ -141,9 +142,9 @@ class TerrainSnapshot:
     #: walls/flip decay into the close (0DTE gamma dies at 4pm); low = levels persist.
     #: None (fail-closed) when the book is empty, never a fabricated 0%.
     zero_dte_gamma_share_pct: float | None = None
-    #: absolute gamma (pick_pin_and_strength) of the same-day expiry's book alone, or None with why
+    #: absolute gamma (pick_pin_and_strength) of the book of the expiry dated the market's session
+    #: date; None when there is no such expiry or its inputs give no dollar gamma
     zero_dte_abs_gamma_strike: float | None = None
-    zero_dte_abs_gamma_reason: str | None = None
 
     #: RC-358: 25Δ risk reversal — {rr_pts, call_iv_25d, put_iv_25d, dte} or None.
     #: Skew steepness on the front expiry; deterioration toward −6 = the put bid
@@ -791,15 +792,12 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
     # Snap-to-shelf deliberately deferred until strike-GEX history is banked (theta wants a
     # trailing-60-session percentile; a session-local stand-in would be a fake calibration).
     _gsl = compute_gamma_support_levels(profile, spot)
-    # RC-357: the 0DTE book from the SAME producer with the dte filter — same parser,
-    # same sign model; the share is pure attribution, zero new math.
-    # a contract with no readable DTE belongs to no expiry's book (it was counted as 0DTE)
-    _exp_0dte, _ = merge_exposure_books(b for (_e, d), b in books.items() if d is not None and d <= 0)
+    # the same-day book: the expiry whose date is the market's session date at `now`
+    # (time_et.market_session_date), whatever day count the chain was fetched with
+    _today = market_session_date(_terrain_now).isoformat()
+    _exp_0dte, _ = merge_exposure_books(b for (e, _), b in books.items() if e == _today)
     _zero_dte_share = compute_zero_dte_gamma_share(exposures, _exp_0dte)
     _zero_dte_pin = pick_pin_and_strength(_exp_0dte, sorted(_exp_0dte))[0]
-    _zero_dte_pin_reason = (None if _zero_dte_pin is not None else
-                            "no same-day expiry in the chain" if not _exp_0dte else
-                            "the same-day expiry has no dollar gamma")
     # Max pain on the FRONT expiry only.
     _front_max_pain = None
     if _front_dte is not None:
@@ -865,7 +863,6 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         gsf_state=_gsl["state"],
         zero_dte_gamma_share_pct=_zero_dte_share,
         zero_dte_abs_gamma_strike=_zero_dte_pin,
-        zero_dte_abs_gamma_reason=_zero_dte_pin_reason,
         rr_25d=_rr25,
         vanna_agg=compute_net_vanna(exposures, spot),     # RC-362: same book, one sum
         implied_1d_move=compute_implied_one_day_move(contracts, spot),   # RC-113

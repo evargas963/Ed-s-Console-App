@@ -38,3 +38,14 @@ SPY_0DTE = _load("real_spy_0dte_chain_2026_10_07.json")
 CRWD = _load("real_crwd_complete_chain_2026_10_07.json")
 TSLA = _load("real_tsla_complete_chain_2026_10_07.json")
 MRVL = _load("real_mrvl_full_chain_2026_10_07.json")
+
+
+def _load_closes(name: str, expiry: str) -> "dict[str, RealChain]":
+    d = json.loads((_FX / name).read_text(encoding="utf-8"))["captures"]
+    return {tk: RealChain(tk, c["contracts"], float(c["spots"][expiry]), datetime.fromtimestamp(c["ts_utc"], ET))
+            for tk, c in d.items()}
+
+
+#: SPY's, QQQ's and IWM's last capture of 2026-10-08 (15:01-15:03 CT), expiries 2026-10-09 (stated
+#: daysToExpiration 1) and 2026-10-12: the chains the console holds into Friday 2026-10-09
+CLOSE_1008 = _load_closes("real_spy_qqq_iwm_chains_2026_10_08_close.json", "2026-10-09")
