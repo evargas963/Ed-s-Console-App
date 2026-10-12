@@ -73,10 +73,12 @@ class LocalStreamer:
         async for raw in ws:
             for req in json.loads(raw)["requests"]:
                 self.requests.append(req)
-                for frame in self.answer(req):
+                frames = self.answer(req)
+                for frame in frames:
                     self.answers.append(frame)
                     await ws.send(json.dumps(frame))
-                if req["service"] in self.data and frame["response"][0]["content"]["code"] == 0:
+                if req["command"] == "SUBS" and req["service"] in self.data \
+                        and frames[-1]["response"][0]["content"]["code"] == 0:
                     await ws.send(json.dumps({"data": [self.data[req["service"]]]}))
 
     def answer(self, req: dict) -> "list[dict]":
