@@ -186,10 +186,13 @@ def test_every_per_strike_panel_is_served_its_window_and_scale():
     assert body["views"]["all"]["max_abs_with_prior"] == body["views"]["all"]["max_abs"] is not None
     assert body["views"]["near"]["max_abs_with_prior"] is None                  # no near-term rows
     assert body["measures"]["dex"]["view"] == body["views"]["dex"]
-    for route in (server.get_vanna_by_strike, server.get_charm_by_strike):
-        d = json.loads(route(TK, scope="auto", centre=None, shift=0).body)
+    for key in server.STRIKE_BAR_METHODS:                       # vanna, charm
+        def bars(scope, centre=None, shift=0):
+            return server.strike_bar_payload(TK, key, scope, centre, shift, _AT.timestamp())
+        d = bars("auto")
         rows = [r[0] for r in d["rows"]]
-        panned = json.loads(route(TK, scope="auto", centre=d["view"]["centre"], shift=2).body)
-        every = [r[0] for r in json.loads(route(TK, scope="all", centre=None, shift=0).body)["rows"]]
+        assert d["spot_strike"] is not None                     # around the price
+        panned = bars("auto", centre=d["view"]["centre"], shift=2)
+        every = [r[0] for r in bars("all")["rows"]]
         assert panned["view"]["centre"] == every[every.index(d["view"]["centre"]) + 2]
         assert [r[0] for r in panned["rows"]] != rows and len(panned["rows"]) == len(rows)

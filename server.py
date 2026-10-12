@@ -1681,22 +1681,29 @@ def aggregate_bars(bars: list[dict], tf: str) -> list[dict]:
     return out
 
 
-def _strike_bar_payload(tk: str, key: str, scope: str, centre, shift: int, method: str, now: float):
+#: each per-strike bar panel's published rows and how they are made
+STRIKE_BAR_METHODS = {
+    "_vanna_rows": "the published levels' exposure book -> call_vanna - put_vanna",
+    "_charm_rows": "the published levels' charm map -> call_charm - put_charm",
+}
+
+
+def strike_bar_payload(tk: str, key: str, scope: str, centre, shift: int, now: float) -> dict:
     """A per-strike bar panel's answer at `now` (vanna, charm): the published rows `key`,
     windowed for the panel (_windowed), with the live price and the strike nearest it."""
+    method = STRIKE_BAR_METHODS[key]
     payload = terrain_cache_get(tk, now)
     if payload is None or key not in payload:
-        return JSONResponse({"ticker": tk, "available": False,
-                             "reason": "no levels published for this ticker yet"})
+        return {"ticker": tk, "available": False, "reason": "no levels published for this ticker yet"}
     rows = payload[key]
     spot = resolve_spot(tk, now=now)[0]
     spot_strike = nearest_strike([r[0] for r in rows], spot)
     win, view = _windowed(rows, spot_strike, scope, centre, shift)
-    return JSONResponse({"ticker": tk, "available": bool(rows), "spot": spot,
-                         "priced_at_spot": payload.get("spot"), "spot_strike": spot_strike,
-                         "rows": win, "view": view, "scope": scope,
-                         "reason": None if rows else "no usable strikes for this chain",
-                         "method": method})
+    return {"ticker": tk, "available": bool(rows), "spot": spot,
+            "priced_at_spot": payload.get("spot"), "spot_strike": spot_strike,
+            "rows": win, "view": view, "scope": scope,
+            "reason": None if rows else "no usable strikes for this chain",
+            "method": method}
 
 
 @app.get("/api/options/vanna-by-strike")
@@ -1704,8 +1711,8 @@ def get_vanna_by_strike(ticker: str = Query(...), scope: ScopeQuery = "auto", ce
                         shift: ShiftQuery = 0):
     """Per-strike dealer VANNA exposure from the published levels (net_vanna = call_vanna -
     put_vanna, aggregated across every expiry; no per-expiry surface yet)."""
-    return _strike_bar_payload(ticker_storage_key(_required_ticker(ticker)), "_vanna_rows", scope, centre,
-                               shift, "the published levels' exposure book -> call_vanna - put_vanna", time.time())
+    return JSONResponse(strike_bar_payload(ticker_storage_key(_required_ticker(ticker)), "_vanna_rows", scope,
+                                           centre, shift, time.time()))
 
 
 @app.get("/api/options/charm-by-strike")
@@ -1713,8 +1720,8 @@ def get_charm_by_strike(ticker: str = Query(...), scope: ScopeQuery = "auto", ce
                         shift: ShiftQuery = 0):
     """Per-strike dealer CHARM exposure from the published levels' charm map (the charm walls'
     own): net_charm = call_charm - put_charm per strike, delta-shares/day."""
-    return _strike_bar_payload(ticker_storage_key(_required_ticker(ticker)), "_charm_rows", scope, centre,
-                               shift, "the published levels' charm map -> call_charm - put_charm", time.time())
+    return JSONResponse(strike_bar_payload(ticker_storage_key(_required_ticker(ticker)), "_charm_rows", scope,
+                                           centre, shift, time.time()))
 
 
 @app.get("/api/options/tape")
