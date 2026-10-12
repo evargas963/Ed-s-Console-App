@@ -140,8 +140,8 @@ def _kills(st: Statement) -> bool:
     delete or terminate, CIM/WMI's Terminate, a removed process object."""
     name = st.program
     args = [a.lower() for a in st.words[1:]]
-    if name in STOPPERS or any(".kill(" in _QUOTED.sub("", r.lower())                  # quoted text is text
-                               and not r.startswith(("'", '"', "@'", '@"')) for r in st.raw):
+    if name in STOPPERS or any(".kill(" in r.lower() and not r.startswith(("'", '"', "@'", '@"'))
+                               for r in st.raw):                     # a quoted string or here-string is text
         return True
     if name == "wmic":
         return "process" in args and any(a in ("delete", "terminate") for a in args)
@@ -149,10 +149,6 @@ def _kills(st: Statement) -> bool:
         return "terminate" in args
     return name in WMI_STOPS and (st.upstream is not None or "win32_process" in " ".join(args))
 
-
-#: the parts of a word as written that run nothing: single-quoted (a here-string's body among
-#: them), or double-quoted with no `$` (PowerShell runs "$( … )" inside double quotes)
-_QUOTED = re.compile(r"'[^']*'|\"[^\"$]*\"")
 
 #: the listings whose output, piped straight into a kill, are its targets
 LISTINGS = ("get-process", "gps", "ps", "get-ciminstance", "gcim", "get-wmiobject", "gwmi")

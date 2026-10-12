@@ -176,11 +176,15 @@ def test_a_kill_inside_a_merge_is_judged_as_a_kill_too(procs, markets):
     later = "gh pr merge 5 --subject $p.Kill()"
     answer, reasons = guard.decide(_shell(later, "PowerShell"), CLOSED, markets)
     assert answer == guard.ASK and len(reasons) == 2 and any(later in r for r in reasons), reasons
-    text = 'gh pr merge 5 --subject="fix p.Kill() call"'                # quoted: text, not a kill
-    assert guard.decide(_shell(text), CLOSED, markets)[1] == [
-        f"merges (AGENTS.md Authority); the command as written: {text}"]
+    text = 'gh pr merge 5 --subject="fix p.Kill() call"'                # text, read as a kill: the safe side
+    assert guard.decide(_shell(text), CLOSED, markets) == (guard.ASK, [
+        "stops processes chosen only when it runs while the daemon or the console runs (CLAUDE.md rule 5: production)",
+        f"merges (AGENTS.md Authority); the command as written: {text}"])
     for run in ('gh pr merge 5 --subject="$((Get-Process python).Kill())"',   # PowerShell runs "$( )"
-                'echo a"$((Get-Process python).Kill())"'):
+                'echo a"$((Get-Process python).Kill())"',
+                "gh pr merge 5 --subject=\"'$((Get-Process python).Kill())'\"",
+                "echo a\"'$((Get-Process python).Kill())'\"",
+                'gh pr merge 5 --subject=$(("$x")+(Get-Process python).Kill()+"y")'):
         assert guard.decide(_shell(run, "PowerShell"), CLOSED, markets)[0] == guard.DENY, run
 
 
@@ -246,8 +250,7 @@ def test_every_merge_route_asks(cmd, tool, markets):
 @pytest.mark.parametrize("cmd", ["gh pr merge -sb 7 518", "gh pr merge --body-file 7 518",
                                  "gh pr merge --subject 2026 518", "gh pr merge 518", "gh -b x pr merge 5",
                                  "gh --subject x pr merge 5", "gh -R owner/repo pr merge 5",
-                                 "gh -b x api -X PUT repos/o/r/pulls/5/merge",
-                                 'gh pr merge 5 --subject="fix p.Kill() call"'])
+                                 "gh -b x api -X PUT repos/o/r/pulls/5/merge"])
 def test_the_merge_question_shows_the_command_as_written(cmd, markets):
     answer, reasons = guard.decide(_shell(cmd), CLOSED, markets)
     assert answer == guard.ASK and len(reasons) == 1 and cmd in reasons[0], (cmd, reasons)
