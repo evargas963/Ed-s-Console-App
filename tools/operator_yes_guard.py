@@ -140,8 +140,7 @@ def _kills(st: Statement) -> bool:
     delete or terminate, CIM/WMI's Terminate, a removed process object."""
     name = st.program
     args = [a.lower() for a in st.words[1:]]
-    if name in STOPPERS or any(".kill(" in r.lower() and not r.startswith(("'", '"', "@'", '@"'))
-                               for r in st.raw):                     # a quoted string or here-string is text
+    if name in STOPPERS or any(".kill(" in _QUOTED.sub("", r.lower()) for r in st.raw):   # quoted text is text
         return True
     if name == "wmic":
         return "process" in args and any(a in ("delete", "terminate") for a in args)
@@ -149,6 +148,9 @@ def _kills(st: Statement) -> bool:
         return "terminate" in args
     return name in WMI_STOPS and (st.upstream is not None or "win32_process" in " ".join(args))
 
+
+#: the quoted parts of a word as written (a here-string's body among them)
+_QUOTED = re.compile(r"'[^']*'|\"[^\"]*\"")
 
 #: the listings whose output, piped straight into a kill, are its targets
 LISTINGS = ("get-process", "gps", "ps", "get-ciminstance", "gcim", "get-wmiobject", "gwmi")
@@ -213,12 +215,12 @@ def decide(payload: dict, now: datetime, db: Path) -> "tuple[str, list[str]]":
     listed = {st.env[-1][:-1].lower(): list(st.raw) for st in statements
               if st.env and st.env[-1].startswith("$") and st.env[-1].endswith("=")
               and not any(s.upstream is st for s in statements)}
-    for st in statements:
+    for st in statements:                 # every check on every statement; the strictest answer wins
         if st.program in MACHINE_STOPPERS:
             asks.append("stops or restarts the machine, and the daemon and console with it (CLAUDE.md rule 5: production)")
-        elif _merges(st):                 # before the kill check: a merge's text may name a .Kill()
+        if _merges(st):
             merges = True
-        elif _kills(st):
+        if _kills(st):
             upstream = list(st.upstream.raw) if st.upstream is not None and st.upstream.raw else next(
                 (listed[v] for t in st.words[1:] for v in [t.lower().split(".")[0]] if v in listed), None)
             found, later = _targets(st, upstream)
@@ -231,14 +233,14 @@ def decide(payload: dict, now: datetime, db: Path) -> "tuple[str, list[str]]":
             elif later and _production_running():
                 asks.append("stops processes chosen only when it runs while the daemon or the console runs "
                             "(CLAUDE.md rule 5: production)")
-        elif _starts(st):
+        if _starts(st):
             session = market_session(now, db)
             if session in (time_et.RTH, time_et.UNKNOWN):
                 asks.append(f"starts or stops the daemon or the console while the market session is "
                             f"{session} (CLAUDE.md rule 5: production)")
-        elif _pushes_main(st):
+        if _pushes_main(st):
             denies.append("pushes to main: main moves only by a pull request merged on GitHub")
-        elif st.program == "gh" and _gh_words(st)[:2] in (["alias", "set"], ["alias", "import"]):
+        if st.program == "gh" and _gh_words(st)[:2] in (["alias", "set"], ["alias", "import"]):
             denies.append("sets a gh alias: an alias can name a merge in words the merge check does not know")
     if merges:
         asks.append(f"merges (AGENTS.md Authority); the command as written: {cmd}")

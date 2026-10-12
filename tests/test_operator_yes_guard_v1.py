@@ -168,6 +168,18 @@ def test_a_kill_whose_targets_are_chosen_when_it_runs_asks_while_production_runs
     assert _decide(cmd, CLOSED, markets) == guard.ASK
 
 
+def test_a_kill_inside_a_merge_is_judged_as_a_kill_too(procs, markets):
+    """Every check runs on every statement and the strictest answer wins."""
+    hidden = "gh pr merge 5 --subject (Get-Process python).Kill()"
+    assert guard.decide(_shell(hidden, "PowerShell"), CLOSED, markets)[0] == guard.DENY
+    later = "gh pr merge 5 --subject $p.Kill()"
+    answer, reasons = guard.decide(_shell(later, "PowerShell"), CLOSED, markets)
+    assert answer == guard.ASK and len(reasons) == 2 and any(later in r for r in reasons), reasons
+    text = 'gh pr merge 5 --subject="fix p.Kill() call"'                # quoted: text, not a kill
+    assert guard.decide(_shell(text), CLOSED, markets)[1] == [
+        f"merges (AGENTS.md Authority); the command as written: {text}"]
+
+
 def test_killing_the_pythonw_image_with_the_daemon_in_it_is_refused(procs, markets):
     if "daemon_w" not in procs:
         pytest.skip("no pythonw beside this Python (pythonw exists on Windows only)")
