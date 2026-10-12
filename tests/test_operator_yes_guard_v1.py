@@ -12,6 +12,7 @@ daemon's module, the console's app and launch.py (the guard reads command lines,
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import subprocess
 import sys
@@ -178,6 +179,16 @@ def test_a_kill_inside_a_merge_is_judged_as_a_kill_too(procs, markets):
     text = 'gh pr merge 5 --subject="fix p.Kill() call"'                # quoted: text, not a kill
     assert guard.decide(_shell(text), CLOSED, markets)[1] == [
         f"merges (AGENTS.md Authority); the command as written: {text}"]
+    for run in ('gh pr merge 5 --subject="$((Get-Process python).Kill())"',   # PowerShell runs "$( )"
+                'echo a"$((Get-Process python).Kill())"'):
+        assert guard.decide(_shell(run, "PowerShell"), CLOSED, markets)[0] == guard.DENY, run
+
+
+def test_a_kill_names_every_ask_reason_that_applies(procs, markets):
+    """A target whose command line cannot be read and one chosen when it runs: both reasons."""
+    unreadable = 4 if os.name == "nt" else 1                           # the System process; init
+    answer, reasons = guard.decide(_shell(f"Stop-Process -Id {unreadable} -Name $n", "PowerShell"), CLOSED, markets)
+    assert answer == guard.ASK and len(reasons) == 2, reasons
 
 
 def test_killing_the_pythonw_image_with_the_daemon_in_it_is_refused(procs, markets):

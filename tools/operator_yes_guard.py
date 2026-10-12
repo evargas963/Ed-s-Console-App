@@ -140,7 +140,8 @@ def _kills(st: Statement) -> bool:
     delete or terminate, CIM/WMI's Terminate, a removed process object."""
     name = st.program
     args = [a.lower() for a in st.words[1:]]
-    if name in STOPPERS or any(".kill(" in _QUOTED.sub("", r.lower()) for r in st.raw):   # quoted text is text
+    if name in STOPPERS or any(".kill(" in _QUOTED.sub("", r.lower())                  # quoted text is text
+                               and not r.startswith(("'", '"', "@'", '@"')) for r in st.raw):
         return True
     if name == "wmic":
         return "process" in args and any(a in ("delete", "terminate") for a in args)
@@ -149,8 +150,9 @@ def _kills(st: Statement) -> bool:
     return name in WMI_STOPS and (st.upstream is not None or "win32_process" in " ".join(args))
 
 
-#: the quoted parts of a word as written (a here-string's body among them)
-_QUOTED = re.compile(r"'[^']*'|\"[^\"]*\"")
+#: the parts of a word as written that run nothing: single-quoted (a here-string's body among
+#: them), or double-quoted with no `$` (PowerShell runs "$( … )" inside double quotes)
+_QUOTED = re.compile(r"'[^']*'|\"[^\"$]*\"")
 
 #: the listings whose output, piped straight into a kill, are its targets
 LISTINGS = ("get-process", "gps", "ps", "get-ciminstance", "gcim", "get-wmiobject", "gwmi")
@@ -228,11 +230,12 @@ def decide(payload: dict, now: datetime, db: Path) -> "tuple[str, list[str]]":
             if any(seen) or (later and any(m in cmd.lower() for m in PRODUCTION_MARKS)):
                 denies.append("kills the daemon, the console or launch.py: on Windows that skips its shutdown "
                               "and loses what the daemon holds; stop them with `python launch.py stop`")
-            elif None in seen:
-                asks.append("stops a process whose command line cannot be read (CLAUDE.md rule 5: production)")
-            elif later and _production_running():
-                asks.append("stops processes chosen only when it runs while the daemon or the console runs "
-                            "(CLAUDE.md rule 5: production)")
+            else:
+                if None in seen:
+                    asks.append("stops a process whose command line cannot be read (CLAUDE.md rule 5: production)")
+                if later and _production_running():
+                    asks.append("stops processes chosen only when it runs while the daemon or the console runs "
+                                "(CLAUDE.md rule 5: production)")
         if _starts(st):
             session = market_session(now, db)
             if session in (time_et.RTH, time_et.UNKNOWN):
