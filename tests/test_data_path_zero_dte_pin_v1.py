@@ -19,19 +19,20 @@ from tests.real_chains import CLOSE_1008, MRVL, SPY_0DTE
 from time_et import ET
 
 
-@pytest.mark.parametrize("tk", ["SPY", "QQQ", "IWM"])
-def test_fridays_0dte_pin_is_the_10_09_expirys_absolute_gamma_on_the_chain_held_from_thursday(tk):
-    """Friday 2026-10-09 08:00 ET (Pre-Market): the chain held is Thursday's last capture, whose
-    10-09 contracts say daysToExpiration 1. Today's expiry is 10-09 by the session date, so the
-    0DTE pin is the absolute-gamma strike of the 10-09 contracts alone, and the 0DTE share is of
-    that same book."""
+@pytest.mark.parametrize("tk,pin", [("SPY", 775.0), ("QQQ", 754.0), ("IWM", 279.0)])
+def test_fridays_0dte_pin_is_the_10_09_expirys_absolute_gamma_on_the_chain_held_from_thursday(tk, pin):
+    """Thursday's last real capture, whose 10-09 contracts say daysToExpiration 1, valued at Friday
+    2026-10-09 08:00 ET (Pre-Market; the instant is set by the test, as a reprice before the
+    daemon's first fetch would value it). Today's expiry is 10-09 by the session date, so the 0DTE
+    pin is the absolute-gamma strike of the 10-09 contracts alone, and the 0DTE share is of that
+    same book."""
     contracts, spot = CLOSE_1008[tk].chain, CLOSE_1008[tk].spot
     now = datetime(2026, 10, 9, 8, 0, tzinfo=ET)
     expiring = [c for c in contracts if c["expirationDate"].startswith("2026-10-09")]
     assert {c["daysToExpiration"] for c in expiring} == {1}
     today, _ = compute_exposures_by_strike(expiring, spot=spot, now=now)
     expected = pick_pin_and_strength(today, sorted(today))[0]
-    assert expected is not None
+    assert expected == pin
     snap = compute_terrain(tk, contracts, spot, now=now)
     assert snap.zero_dte_abs_gamma_strike == expected
     whole, _ = merge_exposure_books(exposure_books(contracts, spot=spot, now=now).values())
