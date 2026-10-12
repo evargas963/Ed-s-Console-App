@@ -611,6 +611,7 @@ def _command(vals: list[str], raws: list[str], redirects: tuple, heredoc: str | 
     for script, ps in _scripts(st):
         out += _nested(script, ctx, ps)
     out += _exec_commands(st, ctx)
+    out += _started_commands(st, ctx)
     ctx["last"] = st
     return [*out, st]
 
@@ -757,6 +758,41 @@ def _exec_commands(st: Statement, ctx: dict) -> list[Statement]:
             j = next((k for k in range(i + 1, len(w)) if w[k] in (";", "+")), len(w))
             out += _command(list(w[i + 1:j]), list(r[i + 1:j]), (), None, {**ctx, "last": None}, None)
     return out
+
+
+def _started_commands(st: Statement, ctx: dict) -> list[Statement]:
+    """The command cmd's `start` or PowerShell's Start-Process (`start`, `saps`) runs, read as a
+    statement of its own; the start statement stays too."""
+    w, r = list(st.words[1:]), list(st.raw[1:])
+    if st.program == "start" and not st.powershell:     # cmd: /options (/d takes a path), a quoted title
+        i = 0
+        while i < len(w) and w[i].startswith("/"):
+            i += 2 if w[i].lower() == "/d" else 1
+        vals = w[i + 1:] if i < len(r) and r[i][:1] in "\"'" else w[i:]
+    elif st.program in ("start", "start-process", "saps"):  # [-FilePath] f [-ArgumentList] a,b
+        named, positional, i = {}, [], 0
+        while i < len(w):
+            o = w[i].lower()
+            if o.startswith("-") and len(o) > 1:
+                key = next((k for k in ("-filepath", "-argumentlist", "-args") if k.startswith(o)), None)
+                if key or any(k.startswith(o) for k in _START_PROCESS_VALUED):
+                    named[key or o] = w[i + 1] if i + 1 < len(w) else ""
+                    i += 2
+                    continue
+            else:
+                positional.append(w[i])
+            i += 1
+        program = named.get("-filepath") or (positional.pop(0) if positional else "")
+        arglist = named.get("-argumentlist") or named.get("-args") or (positional[0] if positional else "")
+        vals = [program, *(a for part in arglist.split(",") for a in part.split())] if program else []
+    else:
+        return []
+    return _command(vals, vals, (), None, {**ctx, "last": None, "ps": False}, None) if vals else []
+
+
+#: Start-Process's options that take a value, besides -FilePath and -ArgumentList
+_START_PROCESS_VALUED = ("-workingdirectory", "-verb", "-windowstyle", "-redirectstandardinput",
+                         "-redirectstandardoutput", "-redirectstandarderror", "-credential", "-environment")
 
 
 # ── git ──────────────────────────────────────────────────────────────────────────────────────

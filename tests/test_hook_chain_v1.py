@@ -250,7 +250,8 @@ def test_6b_a_linked_worktree_cannot_write_main_the_branch_production_runs(tmp_p
                     "git branch -f main HEAD", "git branch --force main HEAD", "git branch -D main",
                     "git branch -d main", "git branch -m main old", "git branch -M dev main",
                     "git branch -c dev main", "git fetch origin +dev:main", "git fetch . dev:refs/heads/main",
-                    "git push . HEAD:main", 'git -C "%s" update-ref refs/heads/main HEAD' % primary):
+                    "git push . HEAD:main", "git push . HEAD:heads/main", "git fetch . dev:heads/main",
+                    'git -C "%s" update-ref refs/heads/main HEAD' % primary):
         r = _chain(bash(command, cwd=linked), root=linked)
         assert r.returncode == 2 and "MAIN_REF_LOCK" in r.stderr, (command, r.stderr)
 

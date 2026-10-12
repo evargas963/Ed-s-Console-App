@@ -65,6 +65,8 @@ SHELLS = ("powershell", "pwsh", "bash", "sh")
 STOPPERS = ("stop-process", "spps", "taskkill", "kill", "tskill", "pskill")
 #: programs that stop or restart the machine
 MACHINE_STOPPERS = ("stop-computer", "restart-computer", "shutdown")
+#: a push destination git resolves to refs/heads/main (`heads/main` included: git tries refs/<name>)
+_MAIN_DESTINATIONS = frozenset({"main", "heads/main", "refs/heads/main"})
 #: process objects removed through WMI/CIM
 WMI_STOPS = ("remove-ciminstance", "remove-wmiobject")
 #: a merge through GitHub's API: a pull request or a branch by REST, or a GraphQL mutation that
@@ -214,6 +216,8 @@ def decide(payload: dict, now: datetime, db: Path) -> "tuple[str, list[str]]":
     for st in statements:
         if st.program in MACHINE_STOPPERS:
             asks.append("stops or restarts the machine, and the daemon and console with it (CLAUDE.md rule 5: production)")
+        elif _merges(st):                 # before the kill check: a merge's text may name a .Kill()
+            merges = True
         elif _kills(st):
             upstream = list(st.upstream.raw) if st.upstream is not None and st.upstream.raw else next(
                 (listed[v] for t in st.words[1:] for v in [t.lower().split(".")[0]] if v in listed), None)
@@ -232,14 +236,13 @@ def decide(payload: dict, now: datetime, db: Path) -> "tuple[str, list[str]]":
             if session in (time_et.RTH, time_et.UNKNOWN):
                 asks.append(f"starts or stops the daemon or the console while the market session is "
                             f"{session} (CLAUDE.md rule 5: production)")
-        elif _merges(st):
-            merges = True
         elif _pushes_main(st):
             denies.append("pushes to main: main moves only by a pull request merged on GitHub")
         elif st.program == "gh" and _gh_words(st)[:2] in (["alias", "set"], ["alias", "import"]):
             denies.append("sets a gh alias: an alias can name a merge in words the merge check does not know")
     if merges:
         asks.append(f"merges (AGENTS.md Authority); the command as written: {cmd}")
+    asks, denies = list(dict.fromkeys(asks)), list(dict.fromkeys(denies))   # a started command repeats its starter's
     return (DENY, denies) if denies else (ASK, asks) if asks else (PASS, [])
 
 
@@ -266,8 +269,7 @@ def _merges(st: Statement) -> bool:
 def _pushes_main(st: Statement) -> bool:
     """Whether the statement `st` is a git push whose refspec lands on main."""
     sub, args = git_subcommand(st.words)
-    return (sub == "push"
-            and any(a == "main" or a.endswith((":main", ":refs/heads/main")) or a == "+main" for a in args))
+    return sub == "push" and any(a.split(":")[-1].lstrip("+") in _MAIN_DESTINATIONS for a in args)
 
 
 def main() -> int:

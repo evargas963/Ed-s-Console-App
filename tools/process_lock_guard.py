@@ -179,7 +179,7 @@ def prod_checkout_git_move_violations(statements: list[Statement]) -> list[str]:
     return out
 
 
-_MAIN_REFS = ("main", "refs/heads/main")
+_MAIN_REFS = ("main", "heads/main", "refs/heads/main")   # git resolves a destination `heads/main` to refs/heads/main
 _BRANCH_WRITE_FLAGS = frozenset({"-f", "--force", "-d", "-D", "--delete", "-m", "-M", "--move",
                                  "-c", "-C", "--copy"})
 
