@@ -225,7 +225,9 @@ def test_every_merge_route_asks(cmd, tool, markets):
                                  "gh --subject x pr merge 5", "gh -R owner/repo pr merge 5",
                                  "gh -b x api -X PUT repos/o/r/pulls/5/merge",
                                  'gh pr merge 5 --subject="fix p.Kill() call"', "start gh pr merge 5",
-                                 'cmd //c start "" gh pr merge 5'])
+                                 'cmd //c start "" gh pr merge 5', 'start "gh" pr merge 5',
+                                 'start "" /wait gh pr merge 5', 'cmd //c start "Ed" gh pr merge 5',
+                                 "start /affinity 1 gh pr merge 5"])
 def test_the_merge_question_shows_the_command_as_written(cmd, markets):
     answer, reasons = guard.decide(_shell(cmd), CLOSED, markets)
     assert answer == guard.ASK and len(reasons) == 1 and cmd in reasons[0], (cmd, reasons)
@@ -233,7 +235,9 @@ def test_the_merge_question_shows_the_command_as_written(cmd, markets):
 
 @pytest.mark.parametrize("cmd", ["Start-Process gh -ArgumentList 'pr','merge','5'",
                                  "Start-Process -FilePath gh -ArgumentList 'pr','merge','5' -NoNewWindow -Wait",
-                                 "saps gh 'pr','merge','5'"])
+                                 "saps gh 'pr','merge','5'", "Start-Process gh -ArgumentList 'pr', 'merge', '5'",
+                                 "Start-Process gh 'pr', 'merge', '5'", "Start-Process gh -ArgumentList @('pr','merge','5')",
+                                 "Start-Process -ErrorAction Stop gh 'pr','merge','5'"])
 def test_a_merge_started_by_start_process_asks(cmd, markets):
     answer, reasons = guard.decide(_shell(cmd, "PowerShell"), CLOSED, markets)
     assert answer == guard.ASK and len(reasons) == 1 and cmd in reasons[0], (cmd, reasons)

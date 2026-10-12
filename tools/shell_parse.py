@@ -764,30 +764,34 @@ def _started_commands(st: Statement, ctx: dict) -> list[Statement]:
     """The command cmd's `start` or PowerShell's Start-Process (`start`, `saps`) runs, read as a
     statement of its own; the start statement stays too."""
     w, r = list(st.words[1:]), list(st.raw[1:])
-    if st.program == "start" and not st.powershell:     # cmd: /options (/d takes a path), a quoted title
+    if st.program == "start" and not st.powershell:     # cmd: /options (/d takes a path), then the command
         i = 0
         while i < len(w) and w[i].startswith("/"):
             i += 2 if w[i].lower() == "/d" else 1
-        vals = w[i + 1:] if i < len(r) and r[i][:1] in "\"'" else w[i:]
-    elif st.program in ("start", "start-process", "saps"):  # [-FilePath] f [-ArgumentList] a,b
+        # a quoted first word is cmd's window title or, its quotes gone on the way, the program: read both
+        runs = [w[i:], w[i + 1:]] if i < len(r) and r[i][:1] in "\"'" else [w[i:]]
+    elif st.program in ("start", "start-process", "saps"):  # [-FilePath] f [-ArgumentList] a, b
         named, positional, i = {}, [], 0
         while i < len(w):
             o = w[i].lower()
-            if o.startswith("-") and len(o) > 1:
-                key = next((k for k in ("-filepath", "-argumentlist", "-args") if k.startswith(o)), None)
-                if key or any(k.startswith(o) for k in _START_PROCESS_VALUED):
-                    named[key or o] = w[i + 1] if i + 1 < len(w) else ""
-                    i += 2
-                    continue
+            key = next((k for k in ("-filepath", "-argumentlist", "-args") if k.startswith(o)), None) \
+                if o.startswith("-") and len(o) > 1 else None
+            if key or (o.startswith("-") and len(o) > 1 and any(k.startswith(o) for k in _START_PROCESS_VALUED)):
+                j = i + 2
+                while j <= len(w) and w[j - 1].endswith(","):         # a list goes on past `a, b`
+                    j += 1
+                named[key or o] = " ".join(w[i + 1:j])
+                i = j
             else:
                 positional.append(w[i])
-            i += 1
+                i += 1
         program = named.get("-filepath") or (positional.pop(0) if positional else "")
-        arglist = named.get("-argumentlist") or named.get("-args") or (positional[0] if positional else "")
-        vals = [program, *(a for part in arglist.split(",") for a in part.split())] if program else []
+        arglist = named.get("-argumentlist") or named.get("-args") or " ".join(positional)
+        runs = [[program, *(a for part in arglist.split(",") for a in part.split())]] if program else []
     else:
         return []
-    return _command(vals, vals, (), None, {**ctx, "last": None, "ps": False}, None) if vals else []
+    sub = {**ctx, "last": None, "ps": False}
+    return [s for vals in runs if vals for s in _command(vals, vals, (), None, dict(sub), None)]
 
 
 #: Start-Process's options that take a value, besides -FilePath and -ArgumentList
