@@ -1,19 +1,8 @@
-"""RC-324 — the canonical producer must not serve stale values, nor two results per generation.
+"""The price-level producer (materialize_price_level_snapshot) serves one result per generation:
 
-Cursor's adversarial review of 5609617d proved both defects by execution, and these are
-those two proofs, kept as controls:
-
-(a) STALE. `_snapshot_input_fingerprint` identified a bar set by
-    (ticker, date, source, len, first_ts, last_ts, last_close) — a SAMPLE, not a cover.
-    Changing PDH from 105 to 999 leaves the length, both endpoints and the last close
-    untouched, so the fingerprint matched, the cached object came back, and the stale 105
-    was served under generation 1.
-
-(b) RACE. `materialize_price_level_snapshot` read the cache, decided the generation, built
-    and wrote back with no mutual exclusion. Two concurrent callers both saw
-    `existing is None`, both computed generation 1, and produced two different objects
-    carrying PDH 105 and 205 — two results under one generation, which is the half of the
-    invariant this producer exists to guarantee.
+(a) a change to any bar field, an interior one included, is a new generation with new levels;
+    the same input is the same object;
+(b) concurrent callers with one input get one object and one generation.
 """
 
 from __future__ import annotations
@@ -39,8 +28,7 @@ from tests.conftest import most_recent_trading_day_et  # noqa: E402
 
 
 def _bars(session, high_of_interior: float = 105.0) -> list:
-    """The prior session (the newest earlier day Schwab's /markets answers say was open) plus
-    this one. The interior bar's HIGH is the mutation target."""
+    """The prior trading session plus this one; the interior bar's HIGH is the mutation target."""
     prior = most_recent_trading_day_et(on_or_before=session - timedelta(days=1))
     out = []
     for d in (prior, session):
@@ -69,7 +57,7 @@ def _mat(session, bars):
 
 
 def test_an_interior_bar_change_is_a_new_generation():
-    """(a) Cursor's stale proof: mutate PDH 105 -> 999 and require the cache to notice."""
+    """(a) The prior session's high moved from 105 to 999: a new generation with the new PDH."""
     _fresh()
     session = most_recent_trading_day_et()
 
@@ -93,7 +81,7 @@ def test_an_interior_bar_change_is_a_new_generation():
 
 
 def test_concurrent_materialization_yields_one_object_and_one_generation():
-    """(b) Cursor's race proof: N threads, one result."""
+    """(b) Eight concurrent callers, one input: one object, one generation."""
     _fresh()
     session = most_recent_trading_day_et()
     bars = _bars(session, 105.0)
