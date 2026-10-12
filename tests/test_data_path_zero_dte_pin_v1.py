@@ -2,26 +2,21 @@
 whole-book Abs Γ on every ticker's terrain and drawn among its key levels. The same day is the
 market's session date (time_et.market_session_date), never the chain's day count.
 
-Real data: SPY's, QQQ's and IWM's last capture of 2026-10-08
-(tests/fixtures/real_spy_qqq_iwm_chains_2026_10_08_close.json), the chain the console holds into
-Friday 2026-10-09 until the daemon's first fetch: its 10-09 contracts say daysToExpiration 1."""
+Real data: SPY's, QQQ's and IWM's last capture of 2026-10-08 (tests/real_chains.py CLOSE_1008),
+the chain the console holds into Friday 2026-10-09 until the daemon's first fetch: its 10-09
+contracts say daysToExpiration 1."""
 from __future__ import annotations
 
-import json
 from datetime import datetime
-from pathlib import Path
 
 import pytest
 
 import server
-from math_exposure_core import compute_exposures_by_strike, compute_zero_dte_gamma_share, exposure_books
-from math_exposure_core import merge_exposure_books, pick_pin_and_strength
+from math_exposure_core import (compute_exposures_by_strike, compute_zero_dte_gamma_share, exposure_books,
+                                merge_exposure_books, pick_pin_and_strength)
 from terrain_engine import compute_terrain
-from tests.real_chains import MRVL, SPY_0DTE
+from tests.real_chains import CLOSE_1008, MRVL, SPY_0DTE
 from time_et import ET
-
-_CLOSE_0108 = json.loads((Path(__file__).parent / "fixtures" / "real_spy_qqq_iwm_chains_2026_10_08_close.json")
-                         .read_text(encoding="utf-8"))["captures"]
 
 
 @pytest.mark.parametrize("tk", ["SPY", "QQQ", "IWM"])
@@ -30,12 +25,11 @@ def test_fridays_0dte_pin_is_the_10_09_expirys_absolute_gamma_on_the_chain_held_
     10-09 contracts say daysToExpiration 1. Today's expiry is 10-09 by the session date, so the
     0DTE pin is the absolute-gamma strike of the 10-09 contracts alone, and the 0DTE share is of
     that same book."""
-    cap = _CLOSE_0108[tk]
-    contracts, spot = cap["contracts"], cap["spots"]["2026-10-09"]
+    contracts, spot = CLOSE_1008[tk].chain, CLOSE_1008[tk].spot
     now = datetime(2026, 10, 9, 8, 0, tzinfo=ET)
-    assert {c["daysToExpiration"] for c in contracts if c["expirationDate"].startswith("2026-10-09")} == {1}
-    today, _ = compute_exposures_by_strike([c for c in contracts if c["expirationDate"].startswith("2026-10-09")],
-                                           spot=spot, now=now)
+    expiring = [c for c in contracts if c["expirationDate"].startswith("2026-10-09")]
+    assert {c["daysToExpiration"] for c in expiring} == {1}
+    today, _ = compute_exposures_by_strike(expiring, spot=spot, now=now)
     expected = pick_pin_and_strength(today, sorted(today))[0]
     assert expected is not None
     snap = compute_terrain(tk, contracts, spot, now=now)
@@ -62,8 +56,7 @@ def test_the_0dte_pin_is_the_same_day_books_absolute_gamma_and_absent_without_on
 def test_on_thursdays_own_close_the_held_chain_has_no_0dte_pin():
     """At Thursday's capture instant the session is 2026-10-08; the chain holds no 10-08 expiry, so
     there is no 0DTE pin and no 0DTE share, while the whole-book Abs Γ stands."""
-    cap = _CLOSE_0108["SPY"]
-    snap = compute_terrain("SPY", cap["contracts"], cap["spots"]["2026-10-09"],
-                           now=datetime.fromtimestamp(cap["ts_utc"], ET))
+    spy = CLOSE_1008["SPY"]
+    snap = compute_terrain("SPY", spy.chain, spy.spot, now=spy.now)
     assert snap.absolute_gamma_strike is not None
     assert snap.zero_dte_abs_gamma_strike is None and snap.zero_dte_gamma_share_pct == 0.0

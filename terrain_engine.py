@@ -795,7 +795,7 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
     # the same-day book: the expiry whose date is the market's session date at `now`
     # (time_et.market_session_date), whatever day count the chain was fetched with
     _today = market_session_date(_terrain_now).isoformat()
-    _exp_0dte, _ = merge_exposure_books(b for (e, _d), b in books.items() if e == _today)
+    _exp_0dte, _ = merge_exposure_books(b for (e, _), b in books.items() if e == _today)
     _zero_dte_share = compute_zero_dte_gamma_share(exposures, _exp_0dte)
     _zero_dte_pin = pick_pin_and_strength(_exp_0dte, sorted(_exp_0dte))[0]
     # Max pain on the FRONT expiry only.
