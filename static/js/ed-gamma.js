@@ -162,7 +162,6 @@
           (liveState ? 'data-cell-state="' + liveState + '" ' : '') +
           (stateTitle ? 'title="' + escapeHtml(stateTitle) + '" ' : '') +
           'data-strike="' + row.strike + '" data-expiry="' + escapeHtml(e.expiry) + '" data-gex="' + (v == null ? '' : v) + '">' +
-          // no value: "-"
           (st.empty ? '<span class="absent">-</span>'
             : formatMeasureValue(v, measure)) + '</td>';
       });

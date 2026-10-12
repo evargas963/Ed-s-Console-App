@@ -25,7 +25,7 @@ from pathlib import Path
 import server
 import time_et
 from math_exposure_core import exposure_books
-from tests.test_data_path_heatmap_absent_v1 import _drawn
+from tests.gamma_render_helper import drawn as render
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 _OCT14 = json.loads((_FX / "real_spy_2026_10_14_chain_oi_zero.json").read_text(encoding="utf-8"))
@@ -36,10 +36,11 @@ _AT = datetime.fromtimestamp(_OCT14["chain_as_of_ts_utc"], time_et.ET)
 _COLUMNS = {"2026-10-14": _OCT14["contracts"], "2026-10-15": _OCT15["contracts"], "2026-11-20": _NOV20["chain"]}
 
 
+_CONTRACTS = [c for cs in _COLUMNS.values() for c in cs]
+
+
 def _surface() -> dict:
-    contracts = [c for cs in _COLUMNS.values() for c in cs]
-    surface = server.project_gamma_surface(contracts, exposure_books(contracts, spot=_SPOT, now=_AT))
-    return dict(surface, ticker="SPY", available=True, live=True, stale=False, spot=_SPOT)
+    return server.project_gamma_surface(_CONTRACTS, exposure_books(_CONTRACTS, spot=_SPOT, now=_AT))
 
 
 def _by_strike(contracts) -> "dict[float, list]":
@@ -90,7 +91,7 @@ def test_a_strike_with_no_contract_listed_has_no_value():
 def test_the_page_draws_zero_as_zero_and_an_unlisted_strike_as_a_dash(tmp_path):
     """Through the page's own render (static/js/ed-gamma.js), the server's surface drawn: every
     open-interest-zero strike of 10/14 and 10/15 reads "$0", every unlisted one "-", none "—"."""
-    surface, drawn = _drawn(_surface(), _SPOT, _OCT14["chain_as_of_ts_utc"], tmp_path)
+    surface, drawn = render("SPY", _CONTRACTS, _SPOT, _AT, tmp_path)
     for expiry in ("2026-10-14", "2026-10-15"):
         unlisted = set(surface["strikes"]) - set(_by_strike(_COLUMNS[expiry]))
         assert {drawn[(k, expiry)] for k in _open_interest_zero(expiry)} == {"$0"}, expiry

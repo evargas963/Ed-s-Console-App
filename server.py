@@ -22,7 +22,13 @@ from dataclasses import asdict, dataclass
 
 from time_et import (ET, now_et, ct_label, et_date_str_from_ts_utc, last_open,
                      market_session_date, options_closed_at, options_open, session, session_label)
-from math_exposure_core import bucket_metric, merge_exposure_books, overlay_streamed_contract_fields
+from math_exposure_core import (
+    bucket_metric,
+    merge_exposure_books,
+    overlay_streamed_contract_fields,
+    strike_oi_legs,
+    strike_volume_legs,
+)
 
 import json
 from html import escape as html_escape
@@ -1899,28 +1905,25 @@ def _forces_from_captures(tk: str, captures: list) -> dict:
     return payload
 
 
+def _legs(legs: "tuple | None") -> dict:
+    """A cell's call/put pair and their total; all None when not known."""
+    if legs is None:
+        return {"call": None, "put": None, "total": None}
+    return {"call": legs[0], "put": legs[1], "total": legs[0] + legs[1]}
+
+
 def _gamma_surface_cell_fields(bucket: "dict | None", syms: "dict | None"):
     """ONE (strike, expiry) cell's gex/dex/vanna/oi/volume/contracts fields from its exposure
     bucket, Schwab's values and the book's computed values exact; a value not known is None (no
     contract listed there, or Schwab sent nothing for it). Returns (gex, dex, vanna, oi, volume,
     contracts)."""
-    from math_exposure_core import strike_oi_legs, strike_volume_legs
-
     syms = syms or {}
     contracts = {"call": syms.get("call"), "put": syms.get("put")}
     if bucket is None:
-        none = {"call": None, "put": None, "total": None}
-        return None, None, None, none, none, contracts
-    gex = bucket_metric(bucket, "net_gex_1pct")
-    dex = bucket_metric(bucket, "net_dex_dollars")
-    vanna = bucket_metric(bucket, "net_vanna")
-
-    def _legs(legs):
-        if legs is None:
-            return {"call": None, "put": None, "total": None}
-        return {"call": legs[0], "put": legs[1], "total": legs[0] + legs[1]}
-
-    return gex, dex, vanna, _legs(strike_oi_legs(bucket)), _legs(strike_volume_legs(bucket)), contracts
+        return None, None, None, _legs(None), _legs(None), contracts
+    return (bucket_metric(bucket, "net_gex_1pct"), bucket_metric(bucket, "net_dex_dollars"),
+            bucket_metric(bucket, "net_vanna"), _legs(strike_oi_legs(bucket)),
+            _legs(strike_volume_legs(bucket)), contracts)
 
 
 def project_gamma_surface(chain: list, books: dict) -> dict:
