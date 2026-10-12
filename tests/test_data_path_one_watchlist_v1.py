@@ -29,7 +29,7 @@ from app.options.order_flow import streaming as ofs
 from calibration.complete_chain_capture import ChainSweep, chain_messages
 from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus, quote_msg
 from tests.schwab_rest_standin import CHECKS, QUOTES, LocalSchwab
-from tests.schwab_stream_standin import LocalStreamer, highest_field, refusal
+from tests.schwab_stream_standin import FIELD_REPLIES, HIGHEST_FIELD, LocalStreamer, refusal
 
 #: SPY's 2026-11-20 contracts (442) and the price stored with them
 SPY_CHAIN = json.loads((Path(__file__).parent / "fixtures" / "real_spy_2026_11_20_chain_and_quotes.json")
@@ -53,8 +53,8 @@ def _free_port() -> int:
 class _Schwab:
     """The local streamer and REST host, and the daemon's client of them as the daemon builds it."""
 
-    def __init__(self, tmp_path, limits=None):
-        self.streamer = LocalStreamer(limits)
+    def __init__(self, tmp_path, limits=None, data=None):
+        self.streamer = LocalStreamer(limits, data)
         self.rest = LocalSchwab(self.streamer.url)
         self.client = self.rest.client(tmp_path)
 
@@ -90,9 +90,11 @@ def test_the_daemon_subscribes_once_and_each_of_schwabs_answers_reaches_its_own_
     market context on quotes, bars and news, in one request per service; SPY's 442 2026-11-20
     contracts on LEVELONE_OPTIONS past a limit of 2 (a stand-in limit) get Schwab's refusal, both
     answers recorded as sent, and nothing is asked again."""
-    schwab = _Schwab(tmp_path, limits={"LEVELONE_OPTIONS": 2})
+    schwab = _Schwab(tmp_path, limits={"LEVELONE_OPTIONS": 2},
+                     data={"LEVELONE_EQUITIES": FIELD_REPLIES["level_one_equities_data"]})
     bus = MessageBus()
     log = bus.subscribe("sub.", policy=LOG)
+    quotes = bus.subscribe("quote.SPY", policy=LOG)
     daemon = capture.Daemon(bus, HealthRegistry(), ["SPY", "TSLA"], clock=lambda: SPY_CHAIN["capture_ts_utc"])
     symbols = sorted(c["symbol"] for c in SPY_CHAIN["chain"])
 
@@ -128,11 +130,17 @@ def test_the_daemon_subscribes_once_and_each_of_schwabs_answers_reaches_its_own_
         ("LEVELONE_OPTIONS", "SUBS", 24, "SUBS command failed")], "both of Schwab's answers, as sent"
     assert all(code == 0 for svc, _c, code, _m in answers if svc != "LEVELONE_OPTIONS"), answers
     assert held["NYSE_BOOK"] == {"SPY", "TSLA"} and held["LEVELONE_OPTIONS"] == frozenset()
-    # 2026-10-12: Schwab sends LEVELONE_EQUITIES fields 52-56, which its Streamer Guide does not
-    # define, and the daemon asked only for schwab-py's lists (to 51). Each request asks for every
-    # field number Schwab accepts on its service (code 22 past it, the stand-in's replies).
+    # each request asks for every field number Schwab accepts on its service (code 22 past it), and
+    # the fields Schwab sends past its Streamer Guide (LEVELONE_EQUITIES 52-56) reach SPY's record as sent
     assert {(r["service"], r["parameters"]["fields"]) for r in schwab.streamer.requests if r["service"] != "ADMIN"} \
-        == {(svc, ",".join(map(str, range(highest_field(svc) + 1)))) for svc in capture.SERVICES}
+        == {(svc, ",".join(map(str, range(HIGHEST_FIELD[svc] + 1)))) for svc in capture.SERVICES}
+    sent = next(i for i in FIELD_REPLIES["level_one_equities_data"]["content"] if i["key"] == "SPY")
+    published = []
+    while not quotes.queue.empty():
+        published.append(quotes.queue.get_nowait()[1])
+    frame_ts = FIELD_REPLIES["level_one_equities_data"]["timestamp"]
+    [native] = [m["native"] for m in published if m["schwab_ts"] == frame_ts]           # Schwab's frame
+    assert {k: native.get(k) for k in ("52", "53", "54", "55", "56")} == {k: sent[k] for k in ("52", "53", "54", "55", "56")}
 
 
 def test_a_subscription_split_under_schwabs_message_limit_keeps_every_part(tmp_path):

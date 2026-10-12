@@ -204,7 +204,7 @@ These come from how banks and trading firms govern systems with money on the lin
 
 ## H. The Schwab field dictionary (the First gate's "Schwab field list", made complete)
 
-- `docs/schwab_fields.csv` lists 4,512 field names and types that our own tool and probes observed. It holds **no definitions**: `schwab_doc` says only where Schwab's docs define a field, or "not in Schwab's doc", and `sample` holds values Schwab sent.
+- `docs/schwab_fields.csv` lists 4,512 field paths (768 distinct field names) and their types that our own tool and probes observed. It holds **no definitions**: `schwab_doc` says only where Schwab's docs define a field, or "not in Schwab's doc", and `sample` holds values Schwab sent.
 - Schwab's definitions exist in two places:
   - **The Streamer guide** (`docs/schwab/schwab_streamer_api.pdf`) has a definition table for every stream field, including whether it updates in regular and AM/PM hours and when it resets. Examples for LEVELONE_OPTIONS: "Volatility is reset to 0 at 3:30am ET"; "Total Volume ... set to zero at 3:30am ET"; open interest, bid, ask and volatility "Update AM/PM Hours: No"; field 14 "Digits: Number of decimal places".
   - **The developer portal's REST schemas** (OptionContract, QuoteOption and others). In our saved copy every description is collapsed to `[...]`, so these must be expanded and pasted from the portal, or requested from Schwab.

@@ -10,7 +10,9 @@ symbols allowed.  (LEVELONE_OPTIONS=3000, DISCARDED=2181)", then code 24 "ADD co
 Schwab's answers to SUBS asking field numbers past what each service accepts (code 22 "SUBS command
 failed", tests/fixtures/real_schwab_field_number_replies_2026_10_12.json).
 STAND-INS: the login and a code-0 answer's message (Schwab's were not logged); the limit (`limits`,
-per service) a test sets; which symbols of a request past the limit Schwab keeps (the first ones).
+per service) a test sets; which symbols of a request past the limit Schwab keeps (the first ones);
+a SUBS whose highest field number is past the service's range refused whole (Schwab's refusals
+were of ranges and of single numbers); a data entry (`data`) sent once after an accepted SUBS.
 """
 from __future__ import annotations
 
@@ -30,12 +32,8 @@ FIELD_REPLIES = json.loads((Path(__file__).parent / "fixtures" / "real_schwab_fi
 
 
 #: the top of the field range Schwab answered code 0 for, per service ("0-150" -> 150)
-HIGHEST = {svc: int(f.split("-")[1]) for svc, replies in FIELD_REPLIES["replies"].items()
-           for f, code, _m in replies if code == 0}
-
-
-def highest_field(service: str) -> int:
-    return HIGHEST[service]
+HIGHEST_FIELD = {svc: int(f.split("-")[1]) for svc, replies in FIELD_REPLIES["replies"].items()
+                 for f, code, _m in replies if code == 0}
 
 
 def refusal(service: str, limit: int, discarded: int) -> str:
@@ -49,8 +47,10 @@ class LocalStreamer:
     past it, the request is answered twice: code 19 (refusal) and then code 24
     ("<COMMAND> command failed"), as Schwab answered on 2026-10-07. UNSUBS releases them."""
 
-    def __init__(self, limits: "dict[str, int] | None" = None):
+    def __init__(self, limits: "dict[str, int] | None" = None, data: "dict[str, dict] | None" = None):
         self.limits = dict(limits or {})
+        #: per service, a data entry Schwab sent, streamed once a SUBS on that service is accepted
+        self.data = dict(data or {})
         self.requests: list = []
         self.answers: list = []
         self.held: "dict[str, list[str]]" = defaultdict(list)
@@ -76,6 +76,8 @@ class LocalStreamer:
                 for frame in self.answer(req):
                     self.answers.append(frame)
                     await ws.send(json.dumps(frame))
+                if req["service"] in self.data and frame["response"][0]["content"]["code"] == 0:
+                    await ws.send(json.dumps({"data": [self.data[req["service"]]]}))
 
     def answer(self, req: dict) -> "list[dict]":
         service, command = req["service"], req["command"]
@@ -88,7 +90,7 @@ class LocalStreamer:
             return [response(0, f"{command} command succeeded")]
         keys = req["parameters"]["keys"].split(",")
         fields = req["parameters"].get("fields")
-        if command == "SUBS" and fields and max(map(int, fields.split(","))) > highest_field(service):
+        if command == "SUBS" and fields and max(map(int, fields.split(","))) > HIGHEST_FIELD[service]:
             return [response(22, "SUBS command failed")]
         held = self.held[service]
         if command == "UNSUBS":
