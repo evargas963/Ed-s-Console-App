@@ -132,7 +132,7 @@ from Schwab to the screen (daemon, console, page), are these:
   marked not live with its time and age, and every value computed from it is marked not live too;
   during a feed outage the header says OFFLINE. A value never received, or sent invalid, shows as
   "-". Calculations keep every digit and every contract; rounding is on screen
-  only. Where today's code differs: §3.5 item 5.
+  only. Where today's code differs: §3.5 items 5 and 6.
   Enforced by: `tests/test_data_path_rules_v1.py` (newest by Schwab's time, no replay as live); the
   rest — ENF-22.
 - **D6. No live screen reads the database.** Every live route serves from memory; the database
@@ -482,6 +482,10 @@ from Schwab to the screen (daemon, console, page), are these:
    drop contracts; the header says FEED DOWN where rule 5 says OFFLINE. The §3 descriptions of
    these are today's behavior. Each place is listed in PR #515's description and fixed by
    `ACTIVE_PROGRAM.md` NUMBERS.
+6. **Missing values served with a reason** (D5, operator 2026-10-12: a missing value shows "-"): an
+   ATR that cannot be computed, the levels with no price and the outage words are served with
+   their reason (§3 above), and a screen may draw it; each is fixed by `ACTIVE_PROGRAM.md` DASH.
+   The gamma heatmap's cells draw "-".
 
 The work that closes these gaps, in order, is `ACTIVE_PROGRAM.md`.
 
