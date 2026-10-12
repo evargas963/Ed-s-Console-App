@@ -1,0 +1,26 @@
+{
+ "source": "Schwab's streamer, 2026-10-12 12:26-12:40 CT, one connection logged in with the production account's token: SUBS per service asking field numbers in batches 0-300 and 301-600, a refused batch split in half down to single numbers. Each entry is [fields asked, Schwab's code, Schwab's msg] as Schwab answered. refused_each: every single field number in this range was asked alone and answered code 22 'SUBS command failed'. level_one_equities_data: one LEVELONE_EQUITIES data entry of a frame Schwab sent on that connection at 12:35:15 CT (fields 0-150 asked), as sent.",
+ "replies": {
+  "LEVELONE_EQUITIES": [["0-150", 0, "SUBS command succeeded"], ["151-151", 22, "SUBS command failed"], ["600-600", 22, "SUBS command failed"]],
+  "LEVELONE_OPTIONS": [["0-150", 0, "SUBS command succeeded"], ["151-151", 22, "SUBS command failed"], ["600-600", 22, "SUBS command failed"]],
+  "LEVELONE_FUTURES": [["0-150", 0, "SUBS command succeeded"], ["151-151", 22, "SUBS command failed"], ["600-600", 22, "SUBS command failed"]],
+  "LEVELONE_FUTURES_OPTIONS": [["0-150", 0, "SUBS command succeeded"], ["151-151", 22, "SUBS command failed"], ["600-600", 22, "SUBS command failed"]],
+  "LEVELONE_FOREX": [["0-150", 0, "SUBS command succeeded"], ["151-151", 22, "SUBS command failed"], ["600-600", 22, "SUBS command failed"]],
+  "NYSE_BOOK": [["0-300", 0, "SUBS command succeeded"], ["301-301", 22, "SUBS command failed"], ["600-600", 22, "SUBS command failed"]],
+  "NASDAQ_BOOK": [["0-300", 0, "SUBS command succeeded"], ["301-301", 22, "SUBS command failed"], ["600-600", 22, "SUBS command failed"]],
+  "OPTIONS_BOOK": [["0-300", 0, "SUBS command succeeded"], ["301-301", 22, "SUBS command failed"], ["600-600", 22, "SUBS command failed"]],
+  "CHART_EQUITY": [["0-300", 0, "SUBS command succeeded"], ["301-301", 22, "SUBS command failed"], ["600-600", 22, "SUBS command failed"]],
+  "CHART_FUTURES": [["0-300", 0, "SUBS command succeeded"], ["301-301", 22, "SUBS command failed"], ["600-600", 22, "SUBS command failed"]],
+  "SCREENER_EQUITY": [["0-300", 0, "SUBS command succeeded"], ["301-301", 22, "SUBS command failed"], ["600-600", 22, "SUBS command failed"]],
+  "SCREENER_OPTION": [["0-300", 0, "SUBS command succeeded"], ["301-301", 22, "SUBS command failed"], ["600-600", 22, "SUBS command failed"]],
+  "ACCT_ACTIVITY": [["0-300", 0, "SUBS command succeeded"], ["301-301", 22, "SUBS command failed"], ["600-600", 22, "SUBS command failed"]],
+  "NEWS_HEADLINE": [["0-300", 0, "SUBS command succeeded"], ["301-301", 22, "SUBS command failed"], ["600-600", 22, "SUBS command failed"]]
+ },
+ "level_one_equities_data": {"service": "LEVELONE_EQUITIES", "timestamp": 1791826515402, "command": "SUBS", "content": [{"key": "QQQ", "2": 745.64, "5": 200, "6": "Q", "8": 13912131, "34": 1791826515202, "37": 1791826514679, "38": 1791826515202, "39": "XNAS", "54": 13912131.004142, "56": 200}, {"key": "AAPL", "8": 13203374, "54": 13203374.550343}, {"key": "$SPX", "1": 7800.39, "34": 1791826515057, "35": 1791826515057, "36": 1791826515057}, {"key": "BRK/B", "8": 1526531, "54": 1526531.013505}, {"key": "SPY", "2": 777.5, "3": 777.495, "4": 80, "5": 80, "8": 8904364, "9": 41, "16": "D", "18": -1.075, "29": 777.495, "30": 41, "31": -1.075, "33": 777.495, "34": 1791826515309, "35": 1791826515034, "36": 1791826515034, "37": 1791826515269, "38": 1791826515309, "41": "XADF", "42": -0.138074, "43": -0.138074, "44": -1.075, "45": -0.138074, "52": 41, "53": 41, "54": 8904364.596741, "55": 80, "56": 80}, {"key": "GME", "8": 4497708, "54": 4497708.232409}, {"key": "$DJI", "2": 51859.76, "3": 51845.34, "8": 157713370, "18": 190.39, "29": 51845.34, "31": 190.39, "33": 51845.34, "34": 1791826515040, "35": 1791826515040, "36": 1791826515040, "42": 0.36858, "43": 0.36858, "44": 190.39, "45": 0.36858, "54": 157713370}]},
+ "refused_each": {
+  "LEVELONE_EQUITIES": "151-600", "LEVELONE_OPTIONS": "151-600", "LEVELONE_FUTURES": "151-600",
+  "LEVELONE_FUTURES_OPTIONS": "151-600", "LEVELONE_FOREX": "151-600", "NYSE_BOOK": "301-600",
+  "NASDAQ_BOOK": "301-600", "OPTIONS_BOOK": "301-600", "CHART_EQUITY": "301-600", "CHART_FUTURES": "301-600",
+  "SCREENER_EQUITY": "301-600", "SCREENER_OPTION": "301-600", "ACCT_ACTIVITY": "301-600", "NEWS_HEADLINE": "301-600"
+ }
+}
