@@ -12,6 +12,7 @@ daemon's module, the console's app and launch.py (the guard reads command lines,
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import subprocess
 import sys
@@ -168,6 +169,32 @@ def test_a_kill_whose_targets_are_chosen_when_it_runs_asks_while_production_runs
     assert _decide(cmd, CLOSED, markets) == guard.ASK
 
 
+def test_a_kill_inside_a_merge_is_judged_as_a_kill_too(procs, markets):
+    """Every check runs on every statement and the strictest answer wins."""
+    hidden = "gh pr merge 5 --subject (Get-Process python).Kill()"
+    assert guard.decide(_shell(hidden, "PowerShell"), CLOSED, markets)[0] == guard.DENY
+    later = "gh pr merge 5 --subject $p.Kill()"
+    answer, reasons = guard.decide(_shell(later, "PowerShell"), CLOSED, markets)
+    assert answer == guard.ASK and len(reasons) == 2 and any(later in r for r in reasons), reasons
+    text = 'gh pr merge 5 --subject="fix p.Kill() call"'                # text, read as a kill: the safe side
+    assert guard.decide(_shell(text), CLOSED, markets) == (guard.ASK, [
+        "stops processes chosen only when it runs while the daemon or the console runs (CLAUDE.md rule 5: production)",
+        f"merges (AGENTS.md Authority); the command as written: {text}"])
+    for run in ('gh pr merge 5 --subject="$((Get-Process python).Kill())"',   # PowerShell runs "$( )"
+                'echo a"$((Get-Process python).Kill())"',
+                "gh pr merge 5 --subject=\"'$((Get-Process python).Kill())'\"",
+                "echo a\"'$((Get-Process python).Kill())'\"",
+                'gh pr merge 5 --subject=$(("$x")+(Get-Process python).Kill()+"y")'):
+        assert guard.decide(_shell(run, "PowerShell"), CLOSED, markets)[0] == guard.DENY, run
+
+
+def test_a_kill_names_every_ask_reason_that_applies(procs, markets):
+    """A target whose command line cannot be read and one chosen when it runs: both reasons."""
+    unreadable = 4 if os.name == "nt" else 1                           # the System process; init
+    answer, reasons = guard.decide(_shell(f"Stop-Process -Id {unreadable} -Name $n", "PowerShell"), CLOSED, markets)
+    assert answer == guard.ASK and len(reasons) == 2, reasons
+
+
 def test_killing_the_pythonw_image_with_the_daemon_in_it_is_refused(procs, markets):
     if "daemon_w" not in procs:
         pytest.skip("no pythonw beside this Python (pythonw exists on Windows only)")
@@ -179,6 +206,7 @@ def test_killing_the_pythonw_image_with_the_daemon_in_it_is_refused(procs, marke
     ("Stop-Computer", guard.ASK), ("Restart-Computer -Force", guard.ASK), ("shutdown /r /t 0", guard.ASK),
     ("gh pr merge 445 --merge", guard.ASK), ("gh api -X PUT repos/o/r/pulls/445/merge", guard.ASK),
     ("git push origin main", guard.DENY), ("git push origin HEAD:main", guard.DENY),
+    ("git push origin HEAD:heads/main", guard.DENY),                         # git resolves it to refs/heads/main
     ("git push -q -u origin fix/some-branch", guard.PASS),
 ])
 def test_the_machine_a_merge_and_a_push(cmd, answer, markets):

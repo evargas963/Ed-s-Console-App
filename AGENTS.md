@@ -189,7 +189,7 @@ Hold EdWebConsole to how a financial institution handles systems with real money
   stdin (use a script file or `python -c`), or a command the guards cannot see into. Enforced by:
   `tools/operator_law_guard.py`, in the forms the tests in `tests/test_operator_law_guard_action_bans_v1.py`,
   `tests/test_protected_paths_v1.py` and `tests/test_guards_read_statements_v1.py` check (the tests are the list); the
-  forms ENF-13 lists as known open — no machine check, ENF-13; a script file's contents — ENF-12.
+  forms ENF-13 lists as known open, a script file's contents among them — no machine check, ENF-13.
 - Edit source one edit at a time, never through a script. Enforced by: `tools/sed_edit_guard.py`
   (`tests/test_sed_edit_guard_v1.py`); the other in-place editors — ENF-14.
 - A file keeps its line endings. Enforced by: `tools/check_eol_style_invariant.py`
