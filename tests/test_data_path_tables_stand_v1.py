@@ -2,7 +2,7 @@
 finds as it was, and every row of every table.
 
 The database here holds session_log, confluence_log and news_events (with their indexes), each
-with the schema it had when the console wrote it (the first commit, 4b3dce45). news_events holds a
+with the schema it had when the console wrote it. news_events holds a
 NEWS_HEADLINE item as Schwab sent it (tests/fixtures/real_schwab_news_headline_spx_2026_10_05.json);
 session_log and confluence_log are empty, since no captured row of either exists.
 """
