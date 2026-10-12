@@ -1,7 +1,7 @@
 /**
  * Render one served gamma surface through static/js/ed-gamma.js (its own load path) and print
- * each drawn cell as JSON lines: {strike, expiry, text}. Run by
- * tests/test_heatmap_cells_as_schwab_sent_v1.py with the surface the server projected.
+ * each drawn cell as JSON lines: {strike, expiry, text}. Run by `_drawn` in
+ * tests/test_data_path_heatmap_absent_v1.py with the surface the server projected.
  * Usage: node tests/ed_gamma_cells_node.mjs <surface.json>
  */
 import { readFileSync } from 'fs';

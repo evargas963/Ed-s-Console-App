@@ -541,9 +541,9 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(cell).toHaveAttribute('title', 'not streaming');
   });
 
-  test('a cell with no value draws the served reason, whatever its stream state', async ({ page }) => {
-    // operator 2026-10-01: "From Schwab's mouth to our UI's ears. Period." -- a cell has no value
-    // only where Schwab sent nothing for it, and the page draws the server's words for why
+  test('a cell with no value draws what the server serves for it, whatever its stream state', async ({ page }) => {
+    // a cell has no value only where Schwab sent nothing for it, and the page draws what the
+    // server serves for it ("-")
     const surf = surfaceWithStreamState([{ call: 'live', put: 'live' }]);
     surf.cells[0].gex = [null];
     surf.cells[0].absent = { gex: ['not_listed'] };

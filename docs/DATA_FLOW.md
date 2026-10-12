@@ -131,7 +131,7 @@ from Schwab to the screen (daemon, console, page), are these:
   updating, for any reason (feed down, market closed, an input missing), the last value stands,
   marked not live with its time and age, and every value computed from it is marked not live too;
   during a feed outage the header says OFFLINE. A value never received, or sent invalid, shows as
-  unknown with its reason. Calculations keep every digit and every contract; rounding is on screen
+  "-". Calculations keep every digit and every contract; rounding is on screen
   only. Where today's code differs: §3.5 item 5.
   Enforced by: `tests/test_data_path_rules_v1.py` (newest by Schwab's time, no replay as live); the
   rest — ENF-22.
@@ -382,11 +382,11 @@ from Schwab to the screen (daemon, console, page), are these:
   price is the daemon's price row. With no price from Schwab the next publication has no levels,
   with its reason.
 - **Heatmap cells.** Every strike Schwab listed in any expiry is a row; a cell is the book's
-  value for its strike and expiry, exact. A cell with no value carries the code saying why
-  (`absent`, worded by the surface's `absent_reasons`, drawn by the page): "-" where no contract
-  is listed at that strike in that expiry, or that a contract there sent no open interest,
-  multiplier or (with open interest above 0) Greek, or no open interest or volume. The surface
-  is served whenever the levels projected one; no count of cells withholds it.
+  value for its strike and expiry, exact. A cell with no value draws "-" (operator 2026-10-12): the
+  surface's `absent_reasons` serves "-" for each code a cell carries (`absent`: no contract listed
+  at that strike in that expiry; a contract there sent no open interest, multiplier or, with open
+  interest above 0, Greek; no open interest; no volume). The surface is served whenever the levels
+  projected one; no count of cells withholds it.
 - **Strike windows.** Every per-strike panel (the heatmap, GEX by strike, the chart's profiles,
   vanna, charm, the migration) shows the window the server sends: `terrain_engine.strike_window`
   picks the scope's strikes (Auto 11, Wider 23, All every one) around the strike nearest the

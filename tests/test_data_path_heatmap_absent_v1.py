@@ -1,5 +1,5 @@
-"""The gamma heatmap, Schwab to the screen: a cell with no value draws "-", whatever the reason the
-server serves for it (operator, 2026-10-11).
+"""The gamma heatmap, Schwab to the screen: a cell with no value draws "-", whatever the code the
+server serves for it (AGENTS.md rule 5).
 
 Real data: NFLX's chain as production's complete_chain_captures held it
 (tests/fixtures/real_nflx_chain_2026_10_07_three_expiries.json): on 2027-12-17 and 2028-01-21, 8

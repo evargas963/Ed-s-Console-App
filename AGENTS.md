@@ -79,9 +79,9 @@ Hold EdWebConsole to how a financial institution handles systems with real money
    it keeps updating, it is live. When it stops updating, for any reason (feed down, market closed, an input missing),
    the last value stands, marked not live with its time and age, and every value computed from it is marked not live
    too; during a feed outage the header says OFFLINE. A value never received, or sent by Schwab as invalid (such as
-   -999), shows as unknown with its reason. Never a fallback, default, estimate, proxy, interpolation or synthetic value.
-   Enforced by: `tests/test_live_quote_and_order_flow_no_fallbacks_v1.py`, `tests/test_gamma_exposure_honest_absence_v1.py`
-   and `tests/test_absence_is_not_zero_v1.py` (Schwab's value as sent, unknown when never sent); the rest — ENF-22.
+   -999), shows as "-". Never a fallback, default, estimate, proxy, interpolation or synthetic value.
+   Enforced by: `tests/test_live_quote_and_order_flow_no_fallbacks_v1.py`, `tests/test_gamma_exposure_honest_absence_v1.py`,
+   `tests/test_absence_is_not_zero_v1.py` (absent when never sent), `tests/test_data_path_heatmap_absent_v1.py` (the heatmap's "-"); the rest — ENF-22.
 6. **One path.** Schwab → daemon memory → pushed to the screen. The databases are history:
    `stream_capture.db` every equity message and the kept option contracts for five trading
    sessions (DATA_FLOW D4); `ed_console.db` the chain captures and level crosses; read at

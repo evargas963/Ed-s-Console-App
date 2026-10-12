@@ -1996,7 +1996,7 @@ def project_gamma_surface(chain: list, books: dict) -> dict:
     # Each cell carries every measure its bucket already holds -- GEX, DEX, vanna
     # (call - put, the dealer convention of compute_net_vanna), OI and volume -- so one grid
     # serves every heatmap measure, and for a measure with no value the code saying why
-    # (_gamma_surface_cell_fields; absent_reasons words them).
+    # (_gamma_surface_cell_fields; absent_reasons draws each "-").
     cells = []
     for k in strikes:
         row, dex_row, vanna_row, oi_row, vol_row, contracts_row = [], [], [], [], [], []
