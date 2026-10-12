@@ -26,8 +26,6 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 
-import pytest
-
 import server
 import time_et
 from math_exposure_core import exposure_books
@@ -40,12 +38,6 @@ _SPOT = float(_OCT14["priced_at_spot"])
 _AT = datetime.fromtimestamp(_OCT14["chain_as_of_ts_utc"], time_et.ET)
 _NFLX = json.loads((_FX / "real_nflx_chain_2026_10_07_three_expiries.json").read_text(encoding="utf-8"))
 _COLUMNS = {"2026-10-14": _OCT14["contracts"], "2026-10-15": _OCT15["contracts"], "2026-11-20": _NOV20["chain"]}
-
-
-@pytest.fixture(autouse=True)
-def _at_capture(monkeypatch):
-    """Valued at the 10/14 chain's own time."""
-    monkeypatch.setattr(time_et, "now_et", lambda: _AT)
 
 
 def _surface() -> dict:
@@ -101,8 +93,9 @@ def test_a_strike_with_no_contract_listed_is_served_as_such():
 
 
 def _drawn(projected: dict, spot: float, as_of: float, tmp_path) -> "tuple[dict, dict]":
-    """What the route serves for every strike and column of `projected`, and each cell's text as
-    the page's own render (static/js/ed-gamma.js) draws it: (surface, {(strike, expiry): text})."""
+    """What the route serves at `as_of` for every strike and column of `projected`, and each
+    cell's text as the page's own render (static/js/ed-gamma.js) draws it:
+    (surface, {(strike, expiry): text})."""
     node = shutil.which("node")
     assert node, "Node.js is required on PATH (the same prerequisite as Playwright E2E)"
     tk = projected["ticker"]
@@ -110,8 +103,8 @@ def _drawn(projected: dict, spot: float, as_of: float, tmp_path) -> "tuple[dict,
         server._terrain_cache[tk] = {"_gamma_surface": projected, "spot": spot, "spot_source": "last",
                                      "computed_ts_utc": as_of, "chain_basis": "full"}
     try:
-        surface = json.loads(server.get_options_gamma_surface(
-            tk, scope="all", centre=None, shift=0, cols=None, expiry=None).body)
+        surface = server.gamma_surface_payload(tk, "all", None, 0, None, None,
+                                               datetime.fromtimestamp(as_of, time_et.ET))
     finally:
         with server._terrain_cache_lock:
             server._terrain_cache.pop(tk, None)
