@@ -185,6 +185,56 @@ def test_the_machine_a_merge_and_a_push(cmd, answer, markets):
     assert _decide(cmd, CLOSED, markets) == answer
 
 
+@pytest.mark.parametrize("cmd, tool", [
+    ("gh -R evargas963/Ed-s-Console-App pr merge 515", "Bash"),            # options before merge
+    ("gh pr -R o/r merge 5 --squash", "Bash"),
+    ("gh api -X PUT repos/o/r/pulls/5/merge", "Bash"),                       # API PUT through gh api
+    ("gh api graphql -f query='mutation { mergePullRequest(input: {pullRequestId: \"PR_x\"}) "
+     "{ clientMutationId } }'", "Bash"),                                     # GraphQL through gh api
+    ("curl -X PUT -H 'Accept: application/vnd.github+json' https://api.github.com/repos/o/r/pulls/5/merge", "Bash"),
+    ("curl -X POST https://api.github.com/graphql -d '{\"query\":\"mutation { mergePullRequest(input: "
+     "{pullRequestId: \\\"PR_x\\\"}) { clientMutationId } }\"}'", "Bash"),
+    ("Invoke-RestMethod -Method Post -Uri https://api.github.com/graphql -Body '{\"query\":\"mutation "
+     "{ mergePullRequest(input: {pullRequestId: \\\"PR_x\\\"}) { clientMutationId } }\"}'", "PowerShell"),
+    ("Invoke-RestMethod -Method Put -Uri https://api.github.com/repos/o/r/pulls/5/merge", "PowerShell"),
+    ("bash -c \"gh pr merge 5\"", "Bash"),                                  # wrapped in a shell
+    ("bash -lc \"gh pr merge 5\"", "Bash"),
+    ("cmd /c \"gh pr merge 5\"", "Bash"),
+    ("pwsh -c \"gh pr merge 5 --merge\"", "PowerShell"),
+    ("cmd /c gh pr merge 5", "Bash"),                                        # unquoted payload
+    ("pwsh -c gh pr merge 5", "PowerShell"),
+    ("/usr/bin/bash -c \"gh pr merge 5\"", "Bash"),                         # a shell named by path
+    ("gh api graphql -f query='\nmutation {\n  mergePullRequest(input: {pullRequestId: \"PR_x\"}) "
+     "{ clientMutationId }\n}'", "Bash"),                                    # a multi-line query
+    ("gh api -X PUT repos/o/r/pulls/$PR/merge", "Bash"),                     # the number in a variable
+    ("gh api graphql -f query='mutation { enablePullRequestAutoMerge(input: {pullRequestId: \"PR_x\"}) "
+     "{ clientMutationId } }'", "Bash"),                                     # merges once checks pass
+    ("gh api graphql -f query='mutation { mergeBranch(input: {repositoryId: \"R_x\", base: \"main\", "
+     "head: \"x\"}) { clientMutationId } }'", "Bash"),                        # a branch merge
+    ("gh api -X POST repos/o/r/merges -f base=main -f head=x", "Bash"),       # the REST branch merge
+    ("curl -X POST https://api.github.com/repos/o/r/merges -d '{\"base\":\"main\",\"head\":\"x\"}'", "Bash"),
+    ("(( ($(gh pr merge 5)) > 0 ))", "Bash"),                               # inside ( ) in bash arithmetic
+])
+def test_every_merge_route_asks(cmd, tool, markets):
+    assert _decide(cmd, CLOSED, markets, tool) == guard.ASK, cmd
+
+
+@pytest.mark.parametrize("cmd", ["gh pr merge -sb 7 518", "gh pr merge --body-file 7 518",
+                                 "gh pr merge --subject 2026 518", "gh pr merge 518", "gh -b x pr merge 5",
+                                 "gh --subject x pr merge 5", "gh -R owner/repo pr merge 5",
+                                 "gh -b x api -X PUT repos/o/r/pulls/5/merge"])
+def test_the_merge_question_shows_the_command_as_written(cmd, markets):
+    answer, reasons = guard.decide(_shell(cmd), CLOSED, markets)
+    assert answer == guard.ASK and len(reasons) == 1 and cmd in reasons[0], (cmd, reasons)
+
+
+@pytest.mark.parametrize("cmd", ["gh pr view 515", "gh pr checks 515", "gh -R o/r pr list",
+                                 "curl -s https://api.github.com/repos/o/r/pulls/5",
+                                 "bash -c \"gh pr view 5\"", "git commit -m \"asks for eval gh pr merge 5\""])
+def test_reading_a_pull_request_passes(cmd, markets):
+    assert _decide(cmd, CLOSED, markets) == guard.PASS, cmd
+
+
 def test_the_test_changed_below_is_on_main():
     assert subprocess.run(["git", "cat-file", "-e", f"origin/main:{EXISTING}"], cwd=REPO).returncode == 0
 
@@ -243,7 +293,7 @@ def test_the_hook_chain_answers_ask_refuses_and_passes_ordinary_work():
     r = _chain(_shell("gh pr merge 99999"))
     out = json.loads(r.stdout)["hookSpecificOutput"]
     assert r.returncode == 0 and out["permissionDecision"] == "ask"
-    assert "merges pull request 99999" in out["permissionDecisionReason"]
+    assert "gh pr merge 99999" in out["permissionDecisionReason"]
     refused = _chain(_shell("git push origin main"))
     assert refused.returncode == 2 and "pushes to main" in refused.stderr
     quiet = _chain(_edit(str(REPO / EXISTING)))

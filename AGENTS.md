@@ -86,7 +86,7 @@ Hold EdWebConsole to how a financial institution handles systems with real money
    `stream_capture.db` every equity message and the kept option contracts for five trading
    sessions (DATA_FLOW D4); `ed_console.db` the chain captures and level crosses; read at
    startup, after the close and for research; never for a live screen.
-   Enforced by: `docs/DATA_FLOW.md` §2 D1–D6, each with its own test.
+   Enforced by: the tests `docs/DATA_FLOW.md` §2 D1–D6 each name.
 7. **Nothing without a job.** A change deletes what it replaces, in the same PR. A register, audit,
    report or check lives only while it has a job; once answered, it is deleted.
    Enforced by: ruff F401 at commit and in the required `hardening` job; the rest — ENF-04.
@@ -168,25 +168,28 @@ Hold EdWebConsole to how a financial institution handles systems with real money
 - At each milestone (a commit, a failed check, a finding that changes the plan), report to the operator
   what changed, what was deleted, each proof and its tier, and what is NOT_PROVEN, then continue.
   Enforced by: no machine check — ENF-12.
-- A PR merges on the operator's yes after CI is green on its final commit; that yes also covers its deploy.
-  Enforced by: branch protection on `main` requires `.github/workflows/pytest.yml` and `.github/workflows/hardening.yml`
-  to pass on a branch current with `main`; `tools/operator_yes_guard.py` asks Allow/Deny for the merge commands its
-  tests cover (`tests/test_operator_yes_guard_v1.py`); every other merge — ENF-13.
+- A PR merges on the operator's yes after CI is green on its final commit; that yes also covers its deploy. No
+  CODEOWNERS file. Enforced by: branch protection on `main` requires `.github/workflows/pytest.yml` and
+  `.github/workflows/hardening.yml` to pass on a branch current with `main`; `tools/operator_yes_guard.py` asks
+  Allow/Deny for the merges its tests check (`tests/test_operator_yes_guard_v1.py`, `tests/test_guards_read_statements_v1.py`); a merge in a browser or a script
+  file, and the forms ENF-13 lists — no machine check, ENF-13 (GITHUB-LOCK: the operator's host step); no CODEOWNERS — ENF-12.
 - Stop for the operator's STOP / PAUSE / HANG IT UP / DO NOT CONTINUE / NO, a task marked AUDIT ONLY
   or DO NOT MERGE, a destructive data action, and a product decision code cannot settle. Say in chat
   what a guarded action is for before running it. Enforced by: `tools/operator_yes_guard.py` asks Allow/Deny for
-  the daemon or console starts and stops (in regular hours or an unknown session), machine restarts and merges its
-  tests cover, and refuses the kills of production and pushes to main they cover (`tests/test_operator_yes_guard_v1.py`);
-  every other merge — ENF-13; the rest — ENF-12.
+  the daemon or console starts and stops (in regular hours or an unknown session), machine restarts and merges, and
+  refuses the kills of production and pushes to main, in the forms its tests cover (`tests/test_operator_yes_guard_v1.py`); the
+  rest — ENF-12.
 - The production checkout `EdWebConsole` stays `main == origin/main` and moves only by a fast-forward
   (`git pull --ff-only`, or `launch.bring_to_origin_main` at a start); work happens in a worktree.
   Enforced by: `tools/process_lock_guard.py` (`tests/test_operating_process_lock_v1.py`,
   `tests/test_hook_chain_v1.py`).
 - Never `git reset`, `git checkout --`, `git stash` or a force push. Enforced by: `tools/process_lock_guard.py` for
   the forms its test table refuses (`tests/test_reset_guard_v1.py`); every other form — ENF-12.
-- Never `--no-verify`, `git add -A` / `.`, or delete or move anything under `data/`. Enforced by:
-  `tools/operator_law_guard.py` (`tests/test_operator_law_guard_action_bans_v1.py`,
-  `tests/test_protected_paths_v1.py`).
+- Never `--no-verify`, `git add -A` / `.`, delete or move anything under `data/`, a python reading its program from
+  stdin (use a script file or `python -c`), or a command the guards cannot see into. Enforced by:
+  `tools/operator_law_guard.py`, in the forms the tests in `tests/test_operator_law_guard_action_bans_v1.py`,
+  `tests/test_protected_paths_v1.py` and `tests/test_guards_read_statements_v1.py` check (the tests are the list); the
+  forms ENF-13 lists as known open — no machine check, ENF-13; a script file's contents — ENF-12.
 - Edit source one edit at a time, never through a script. Enforced by: `tools/sed_edit_guard.py`
   (`tests/test_sed_edit_guard_v1.py`); the other in-place editors — ENF-14.
 - A file keeps its line endings. Enforced by: `tools/check_eol_style_invariant.py`

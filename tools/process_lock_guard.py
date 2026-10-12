@@ -1,10 +1,9 @@
-"""PreToolUse guard for the two things git cannot refuse by itself (RC-217 / RC-350 / RC-231).
+"""PreToolUse guard for the two things git cannot refuse by itself.
 
   * LIVE-CHECKOUT PROTECTION: the production primary (`EdWebConsole`, `.git` a directory)
     is `main == origin/main` and never edited in place. An Edit/Write of app code inside it,
     a shell write (`cp`/`sed -i`/`tee`/redirect) into it, a linked worktree reaching into it,
-    and any git verb that moves it off main are refused at the moment of the command
-    (RC-350: the desk went down on a feature branch; RC-442: a side checkout edited the desk).
+    and any git verb that moves it off main are refused at the moment of the command.
   * MAIN REF: main is the branch the production checkout runs, and every checkout of the
     repository shares it, so a git command that writes `refs/heads/main` is refused from ANY
     checkout (`update-ref`, `branch -f/-d/-D/-m/-M/-c/-C` naming main, a fetch refspec into
@@ -13,11 +12,11 @@
     (operator_yes_guard).
   * TREE-DESTRUCTIVE GIT (`operating_process_lock.reset_guard_violations`, the ONE owner):
     `reset --hard`, `checkout -- <path>`, `clean -f`, `push --force` on any target, and the
-    restore/stash class on product paths — three wipes on 2026-08-03 used exactly these.
-  * PIPED COMMITS (RC-234): `git commit | tail` reports the filter's exit code and hides a
+    restore/stash class on product paths.
+  * PIPED COMMITS: `git commit | tail` reports the filter's exit code and hides a
     failed hook; refused before it runs.
 
-Exit 2 BLOCKS. No env kill-switch (RC-450). No Stop path. Reads nothing but the payload.
+Exit 2 BLOCKS. No env kill-switch. No Stop path. Reads nothing but the payload.
 """
 from __future__ import annotations
 
@@ -43,7 +42,7 @@ from tools.pretooluse_guard import classify_path  # noqa: E402
 from tools.hook_chain import BASH_TOOLS, MUTATING_TOOLS  # noqa: E402 — the ONE roster of each class
 
 #: The file-mutating tool class is decided ONCE (tools.hook_chain.MUTATING_TOOLS, Cursor's
-#: StrReplace/Delete included — RC-226) and imported here; no private copy.
+#: StrReplace/Delete included) and imported here; no private copy.
 _EDIT_TOOLS = MUTATING_TOOLS
 
 
@@ -77,14 +76,12 @@ def _primary_worktree_root(repo: Path) -> Path | None:
 
 
 def cross_checkout_edit_violations(tool_input: dict, repo: Path = REPO) -> list[str]:
-    """RC-442(a), restored role-free (RC-477): a session running in a LINKED worktree may not
-    Edit/Write a file inside the PRIMARY working tree — that is the live/production checkout,
-    and endangering it from a side checkout is the exact 2026-08-20 hazard. The 2026-08-24
-    teardown removed the role-based form of this rail with Architecture A; this form reads
-    only the filesystem topology (which checkout am I, where does the target resolve) and
-    names no agent. The primary session editing a linked worktree is not blocked — that is
-    the operator-visible direction. Fail-open on unresolvable paths: this rail blocks only
-    on an affirmative cross-checkout hit."""
+    """A session running in a LINKED worktree may not Edit/Write a file inside the PRIMARY
+    working tree — that is the live/production checkout. This reads only the filesystem
+    topology (which checkout am I, where does the target resolve) and names no agent. The
+    primary session editing a linked worktree is not blocked — that is the operator-visible
+    direction. Fail-open on unresolvable paths: this rail blocks only on an affirmative
+    cross-checkout hit."""
     primary = _primary_worktree_root(repo)
     if primary is None:
         return []
@@ -102,7 +99,7 @@ def cross_checkout_edit_violations(tool_input: dict, repo: Path = REPO) -> list[
         except (OSError, ValueError):
             continue
         out.append(
-            f"CROSS_CHECKOUT_EDIT (RC-442/RC-477): this session runs in the linked worktree "
+            f"CROSS_CHECKOUT_EDIT: this session runs in the linked worktree "
             f"{repo} but targets {resolved} inside the PRIMARY working tree {primary} — the "
             f"live checkout. Edit it from its own session, or hand the change over via "
             f"branch/PR."
@@ -117,6 +114,10 @@ _PROD_MOVE_SUBCOMMANDS = frozenset({
     "commit", "reset", "rebase", "cherry-pick", "revert", "am",
     "merge", "pull", "checkout", "switch", "branch",
 })
+#: `git branch` listings that read, aimed at production: `--list` (`-l`) and `--contains`
+_BRANCH_LISTING = frozenset({"-l", "--list", "--contains"})
+
+
 def _prod_forbidden_git_reason(words: tuple[str, ...]) -> str | None:
     """For a git statement already known to TARGET the production primary, return WHY it is
     forbidden there, or None if it is an allowed production operation (its subcommand and
@@ -147,7 +148,8 @@ def _prod_forbidden_git_reason(words: tuple[str, ...]) -> str | None:
     if sub == "branch":
         mutating = any(a in ("-m", "-M", "-c", "-C", "-d", "-D", "-f", "--force", "--move",
                              "--copy", "--delete", "--edit-description") for a in args)
-        creates = any(not a.startswith("-") for a in args)
+        lists = any(a.split("=")[0] in _BRANCH_LISTING for a in args)   # a pattern or a commit, not a name
+        creates = not lists and any(not a.startswith("-") for a in args)
         return "`git branch` creates/moves/deletes a branch" if (mutating or creates) else None
     return f"`git {sub}` writes history / moves HEAD in the checkout"
 
@@ -161,8 +163,7 @@ def prod_checkout_git_move_violations(statements: list[Statement]) -> list[str]:
     primary: a harmless leading `git status` (or a `git -C <dev-worktree>`) cannot launder a
     later checkout/switch/branch/commit/merge/reset aimed at the primary. A verb that would move
     HEAD off main, create/re-point a branch, or write history in the primary BLOCKs; dev
-    worktrees are unconstrained. RC-350 caught this only at the next launch — this refuses it at
-    the moment of the command. Not subject-disableable (RC-450)."""
+    worktrees are unconstrained. Refused at the moment of the command. Not subject-disableable."""
     primary = _primary_worktree_root(REPO) or REPO
     primary_norm = normalize_repo(primary)
     out: list[str] = []
@@ -170,7 +171,7 @@ def prod_checkout_git_move_violations(statements: list[Statement]) -> list[str]:
         reason = _prod_forbidden_git_reason(st.words)
         if reason and git_repo(st) == primary_norm:    # a git aimed at a dev worktree is not refused
             out.append(
-                f"PROD_CHECKOUT_LOCK (live-checkout invariant / RC-350): {reason} in the "
+                f"PROD_CHECKOUT_LOCK (live-checkout invariant): {reason} in the "
                 f"PRODUCTION checkout {primary}. That checkout is production ONLY — always "
                 f"main == origin/main. Do this in the separate dev worktree and land via PR; "
                 f"production updates by fast-forward to origin/main. See "
@@ -216,7 +217,7 @@ def production_checkout_app_edit_violations(tool_input: dict, repo: Path = REPO)
     (`_primary_worktree_root` is None) and the Edit/Write target resolves INSIDE it AND is a
     production path (server.py, *.py, static/*.html|*.js — governance/docs/reports/tests are not
     app code). A dev-worktree file edited from the primary session resolves OUTSIDE the primary
-    and is not blocked. Not subject-disableable (RC-450)."""
+    and is not blocked. Not subject-disableable."""
     if _primary_worktree_root(repo) is not None:
         return []                        # this session is a linked dev worktree — unconstrained
     try:
@@ -297,20 +298,9 @@ def _shell_write_dest_paths(st: Statement) -> list[str]:
 #: PowerShell write-cmdlet destination parameter, keyed by cmdlet name (lower-case). Copy-Item
 #: and Move-Item read their first positional (the source, `-Path`) and write their SECOND
 #: (`-Destination`); Set-Content/Add-Content/Out-File write their only positional (`-Path` /
-#: `-FilePath`). RC-close-2026-09-11: this table used to be unnecessary — operator_law_guard's
-#: `_PS_WRITE_BAD` banned these same five cmdlets against a production-suffix destination
-#: universally. That mechanism was retired 2026-09-10 for a sound reason that does not transfer
-#: here: it existed to catch a shell write that MANGLES a file before it reaches ruff/pytest at
-#: commit and in CI, and a write that goes through commit/CI gets caught there regardless. A
-#: write landing directly in the PRODUCTION checkout never reaches a commit or CI at all — that
-#: is the entire point of the live-checkout invariant this file enforces — so the retirement
-#: left this table's five cmdlets as the one write path with no surviving guard. MEASURED
-#: 2026-09-11: `Set-Content`/`Add-Content`/`Out-File`/`Copy-Item`/`Move-Item` each wrote an
-#: unguarded `.py` canary in the actual production primary with no block from any layer,
-#: while the equivalent Edit/Write tool call on the same path was refused. This table closes
-#: exactly that gap, scoped to the production-checkout rail only — it does not resurrect a
-#: universal PowerShell-write ban, which stays retired for dev worktrees on the same reasoning
-#: that retired it (ruff/pytest catch a mangled write once it is committed).
+#: `-FilePath`). A write landing directly in the PRODUCTION checkout never reaches a commit or
+#: CI, so this rail is its only guard; in a dev worktree ruff and pytest catch a mangled write
+#: once it is committed.
 _PS_DEST_PARAM = {
     "set-content": "-path", "add-content": "-path", "out-file": "-filepath",
     "copy-item": "-destination", "move-item": "-destination",
@@ -346,7 +336,7 @@ def production_checkout_shell_app_write_violations(statements: list[Statement]) 
     to a production app file (server.py, *.py, static/*.html|*.js, ...) INSIDE the production
     primary — whichever session runs it. This closes the redirect-to-static gap the universal
     .py-only redirect ban misses. Dev-worktree paths resolve outside and stay free. Not
-    subject-disableable (RC-450)."""
+    subject-disableable."""
     primary = _primary_worktree_root(REPO) or REPO
     try:
         primary_res = primary.resolve()
@@ -377,14 +367,13 @@ def pretooluse_block(tool: str, tool_input: dict, payload_cwd: str = "") -> list
         # Live-checkout invariant #4: the primary SESSION may not edit app code in the production
         # checkout (the symmetric companion to the linked->primary rail above).
         out.extend(production_checkout_app_edit_violations(tool_input))
-    if tool in BASH_TOOLS:                # one roster (hook_chain.BASH_TOOLS, RC-520)
+    if tool in BASH_TOOLS:                # one roster (hook_chain.BASH_TOOLS)
         cmd = tool_input.get("command") or ""
         ps = tool == "PowerShell"
         statements = read(cmd, payload_cwd or "", ps)
-        # RC-234: piped commits mask hook failures as exit 0 — block BEFORE it runs.
+        # piped commits mask hook failures as exit 0 — block BEFORE it runs.
         out.extend(OPL.commit_pipe_violations(cmd, ps))
-        # LOCK-2 (RC-231): the tree-destructive git CLASS blocks BEFORE the tree is touched —
-        # three 2026-08-03 wipes used soft forms the old --hard-literal ban never matched.
+        # the tree-destructive git CLASS, soft forms included, blocks BEFORE the tree is touched.
         out.extend(OPL.reset_guard_violations(cmd, ps))
         # Live-checkout invariant #1/#4: PREVENT a git branch-move/commit/reset/merge that
         # TARGETS the production checkout, at the moment of the command (not just at next launch).
@@ -394,9 +383,6 @@ def pretooluse_block(tool: str, tool_input: dict, payload_cwd: str = "") -> list
         # Live-checkout invariant #4: a materially-equivalent SHELL write to production app code
         # (cp/mv/sed -i/tee/...) is blocked too, not only Edit/Write tool calls.
         out.extend(production_checkout_shell_app_write_violations(statements))
-        # BEDROCK 2026-09-06: the RC-498 shell-side mission latch is removed with its Edit-side
-        # twin. Work identity is the branch and PR; defects get rows by doctrine; the Stop seam
-        # and the CLOSE contract hold what a mutation seam cannot see.
     return out
 
 
@@ -418,12 +404,12 @@ def main() -> int:
     if tool in _EDIT_TOOLS or tool in BASH_TOOLS:
         bad = pretooluse_block(tool, ti, payload_cwd)
     else:
-        return 0                          # no Stop path (BEDROCK 2026-09-06, docstring)
+        return 0                          # no Stop path
 
     if not bad:
         return 0
     sys.stderr.write(
-        "BLOCKED by operating process lock (RC-217).\n\n"
+        "BLOCKED by operating process lock.\n\n"
         + "".join(f"  {b}\n" for b in bad)
         + "\nSee AGENTS.md, "
         + "tools/operating_process_lock.py --measure\n"

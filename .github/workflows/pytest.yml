@@ -136,7 +136,7 @@ jobs:
           # was a proxy for the run this job already performs and reports exactly.
           # Local `npm run test:all` stays serial (unchanged by this).
           set +e
-          npm run test:e2e -- --trace retain-on-failure
+          npm run test:e2e
           e2e_rc=$?
           echo "e2e_rc=$e2e_rc" >> "$GITHUB_OUTPUT"
           python -m pytest -n "$(nproc)" --dist loadfile --durations=20 -rs

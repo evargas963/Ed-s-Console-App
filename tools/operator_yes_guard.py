@@ -15,9 +15,13 @@ shell commands. Each command gets one answer, the strictest of its statements':
     command line cannot be read is put to the operator. A stop whose targets are chosen only when
     it runs (a variable, a pipe) is refused when the command names the daemon or the console, and
     put to the operator while either runs.
-  * A stop or restart of the machine and a merge spelled `gh pr merge N` or `gh api .../pulls/N/merge`
-    (`_merges`) are put to the operator; a push to main is refused. Other merge routes (options
-    before `merge`, curl, GraphQL, the web page) are not seen: ENF-13.
+  * A stop or restart of the machine and a merge are put to the operator; a push to main and
+    `gh alias set` / `gh alias import` (an alias could name a merge in other words) are refused.
+    What counts as a merge is `_merges`; the forms it is proven on are the tests' (ENF-13 lists the
+    known open ones). The question shows the command as written, whole; the guard does not say
+    what it merges. A merge
+    clicked in a browser or run from a script file is not a shell command this guard sees
+    (GITHUB-LOCK in ACTIVE_PROGRAM.md).
 
 Limits: shell commands are judged on the statements they run, as tools/shell_parse.read reads them
 (behind a keyword, a wrapper or a subshell, inside a shell's command string), never on names
@@ -63,8 +67,15 @@ STOPPERS = ("stop-process", "spps", "taskkill", "kill", "tskill", "pskill")
 MACHINE_STOPPERS = ("stop-computer", "restart-computer", "shutdown")
 #: process objects removed through WMI/CIM
 WMI_STOPS = ("remove-ciminstance", "remove-wmiobject")
-#: a merge through GitHub's API
-API_MERGE = re.compile(r"/pulls/(\d+)/merge\b", re.I)
+#: a merge through GitHub's API: a pull request or a branch by REST, or a GraphQL mutation that
+#: merges or turns on a merge once checks pass
+MERGE_ROUTE = re.compile(r"/pulls/[^/\s'\"]+/merge\b|\brepos/[^/\s'\"]+/[^/\s'\"]+/merges\b"
+                         r"|mergePullRequest|enablePullRequestAutoMerge|mergeBranch", re.I)
+#: programs that send an HTTP request
+HTTP_CLIENTS = ("curl", "wget", "invoke-restmethod", "irm", "invoke-webrequest", "iwr")
+#: gh options that take a value (the value is not a subcommand)
+GH_VALUE_OPTIONS = ("-R", "--repo", "--hostname", "-X", "--method", "-f", "-F", "--field", "--raw-field",
+                    "-H", "--header", "--input", "-q", "--jq", "-t", "--template")
 #: process ids and image names a stop names (Stop-Process -Id, taskkill /PID, ProcessId=N;
 #: -Name, /IM, Get-Process <name>, Name='x.exe')
 _PIDS = re.compile(r"(?:-id|/pid|processid\s*=)\s*['\"]?(\d[\d,\s]*)", re.I)
@@ -95,11 +106,11 @@ def _launcher(word: str) -> str:
 
 
 def _printed(st: Statement) -> bool:
-    """Whether the statement's program word is a quoted phrase or a here-string: a string the shell
-    prints, not a program."""
+    """Whether a PowerShell statement's program word is a quoted phrase or a here-string: a string
+    PowerShell prints, not a program (bash runs a quoted program path)."""
     raw0 = st.raw[0]
-    return raw0[:2] in ("@'", '@"') or (raw0[:1] in "\"'" and " " in raw0
-                                        and not st.words[0].lower().endswith((".bat", ".cmd", ".exe")))
+    return st.powershell and (raw0[:2] in ("@'", '@"') or (raw0[:1] in "\"'" and " " in raw0
+                                                and not st.words[0].lower().endswith((".bat", ".cmd", ".exe"))))
 
 
 def _starts(st: Statement) -> bool:
@@ -193,7 +204,7 @@ def decide(payload: dict, now: datetime, db: Path) -> "tuple[str, list[str]]":
     if payload.get("tool_name") not in BASH_TOOLS:
         return PASS, []
     cmd = str((payload.get("tool_input") or {}).get("command") or "")
-    asks, denies = [], []
+    asks, denies, merges = [], [], False
     statements = [st for st in read(cmd, powershell=payload.get("tool_name") == "PowerShell")
                   if st.words and not _printed(st)]
     # `$x = <listing>` with nothing piped after it: a kill naming $x reaches what the listing names
@@ -221,21 +232,35 @@ def decide(payload: dict, now: datetime, db: Path) -> "tuple[str, list[str]]":
             if session in (time_et.RTH, time_et.UNKNOWN):
                 asks.append(f"starts or stops the daemon or the console while the market session is "
                             f"{session} (CLAUDE.md rule 5: production)")
-        elif pr := _merges(st):
-            asks.append(f"merges pull request {pr} (AGENTS.md Authority)")
+        elif _merges(st):
+            merges = True
         elif _pushes_main(st):
             denies.append("pushes to main: main moves only by a pull request merged on GitHub")
+        elif st.program == "gh" and _gh_words(st)[:2] in (["alias", "set"], ["alias", "import"]):
+            denies.append("sets a gh alias: an alias can name a merge in words the merge check does not know")
+    if merges:
+        asks.append(f"merges (AGENTS.md Authority); the command as written: {cmd}")
     return (DENY, denies) if denies else (ASK, asks) if asks else (PASS, [])
 
 
-def _merges(st: Statement) -> str:
-    """The pull request the statement `st` merges (gh pr merge N, or GitHub's API); "" if none."""
+def _gh_words(st: Statement) -> "list[str]":
+    """A gh statement's subcommand words: its arguments without options and their values."""
     args = list(st.words[1:])
-    if st.program != "gh":
-        return ""
-    if args[:2] == ["pr", "merge"]:
-        return next((a for a in args[2:] if a.isdigit()), "the current branch's")
-    return next((m.group(1) for a in args for m in [API_MERGE.search(a)] if m), "")
+    return [a for i, a in enumerate(args) if not a.startswith("-") and not (i and args[i - 1] in GH_VALUE_OPTIONS)]
+
+
+def _merges(st: Statement) -> bool:
+    """Whether the statement merges."""
+    name, args = st.program, list(st.words[1:])
+    if name == "gh":
+        if "pr" in args and "merge" in args[args.index("pr") + 1:]:     # whatever options come between
+            return True
+    elif name not in HTTP_CLIENTS:
+        return False
+    if any(MERGE_ROUTE.search(a) for a in args):
+        return True
+    # a GraphQL body read from a file: its query is unseen
+    return any("graphql" in a.lower() for a in args) and any(a.startswith("@") or "=@" in a or a == "--input" for a in args)
 
 
 def _pushes_main(st: Statement) -> bool:
