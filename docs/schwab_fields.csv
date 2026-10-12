@@ -1,4 +1,4 @@
-canonical_field,endpoint,type,variants,first_seen,last_seen
+canonical_field,endpoint,type,variants,first_seen,last_seen,schwab_doc,sample
 accountnumbers,accountnumbers,array,,2026-09-28,2026-09-28
 accountnumbers.*,accountnumbers,object,,2026-09-28,2026-09-28
 accountnumbers.*.accountNumber,accountnumbers,string,,2026-09-28,2026-09-28
@@ -3794,6 +3794,8 @@ pricehistory.candles.*.low,pricehistory,number,get_price_history_every_day;get_p
 pricehistory.candles.*.open,pricehistory,number,get_price_history_every_day;get_price_history_every_fifteen_minutes;get_price_history_every_five_minutes;get_price_history_every_minute;get_price_history_every_ten_minutes;get_price_history_every_thirty_minutes;get_price_history_every_week,2026-09-28,2026-09-28
 pricehistory.candles.*.volume,pricehistory,number,get_price_history_every_day;get_price_history_every_fifteen_minutes;get_price_history_every_five_minutes;get_price_history_every_minute;get_price_history_every_ten_minutes;get_price_history_every_thirty_minutes;get_price_history_every_week,2026-09-28,2026-09-28
 pricehistory.empty,pricehistory,bool,get_price_history_every_day;get_price_history_every_fifteen_minutes;get_price_history_every_five_minutes;get_price_history_every_minute;get_price_history_every_ten_minutes;get_price_history_every_thirty_minutes;get_price_history_every_week,2026-09-28,2026-09-28
+pricehistory.previousClose,pricehistory,number,needPreviousClose=true,2026-10-12,2026-10-12,Market Data API GET /pricehistory,340.42; 1.9; 7765.36
+pricehistory.previousCloseDate,pricehistory,number,needPreviousClose=true,2026-10-12,2026-10-12,Market Data API GET /pricehistory,1791435600000.0; 1791522000000.0
 pricehistory.symbol,pricehistory,string,get_price_history_every_day;get_price_history_every_fifteen_minutes;get_price_history_every_five_minutes;get_price_history_every_minute;get_price_history_every_ten_minutes;get_price_history_every_thirty_minutes;get_price_history_every_week,2026-08-15,2026-09-28
 quotes,quotes,object,EQUITY;FOREX;FUTURE;INDEX;MUTUAL_FUND;OPTION,2026-09-28,2026-09-28
 quotes.,quotes,,,,2026-08-15
@@ -3957,6 +3959,11 @@ streaming.ChartFutures.LOW_PRICE,streaming,,schwab-py list,2026-09-28,2026-09-28
 streaming.ChartFutures.OPEN_PRICE,streaming,,schwab-py list,2026-09-28,2026-09-28
 streaming.ChartFutures.SYMBOL,streaming,,schwab-py list,2026-09-28,
 streaming.ChartFutures.VOLUME,streaming,,schwab-py list,2026-09-28,
+streaming.LevelOneEquity.52,streaming,number,LEVELONE_EQUITIES,2026-10-12,2026-10-12,not in Schwab's doc,225; 100; 40
+streaming.LevelOneEquity.53,streaming,number,LEVELONE_EQUITIES,2026-10-12,2026-10-12,not in Schwab's doc,225; 100; 40
+streaming.LevelOneEquity.54,streaming,number,LEVELONE_EQUITIES,2026-10-12,2026-10-12,not in Schwab's doc,3467930.514646; 3473354.75113; 3473430.775499
+streaming.LevelOneEquity.55,streaming,number,LEVELONE_EQUITIES,2026-10-12,2026-10-12,not in Schwab's doc,160; 320; 40
+streaming.LevelOneEquity.56,streaming,number,LEVELONE_EQUITIES,2026-10-12,2026-10-12,not in Schwab's doc,80; 160; 120
 streaming.LevelOneEquity.ASK_ID,streaming,,schwab-py list,2026-09-28,2026-09-28
 streaming.LevelOneEquity.ASK_MIC_ID,streaming,,schwab-py list,2026-09-28,2026-09-28
 streaming.LevelOneEquity.ASK_PRICE,streaming,,schwab-py list,2026-09-28,2026-09-28
@@ -4176,6 +4183,15 @@ streaming.PerExchangeBid.EXCHANGE,streaming,,schwab-py list,2026-09-28,2026-09-2
 streaming.PerExchangeBid.SEQUENCE,streaming,,schwab-py list,2026-09-28,2026-09-28
 streaming.Screener.FREQUENCY,streaming,,schwab-py list,2026-09-28,
 streaming.Screener.ITEMS,streaming,,schwab-py list,2026-09-28,
+streaming.Screener.ITEMS.*.description,streaming,string,SCREENER_EQUITY;SCREENER_OPTION,2026-10-12,2026-10-12,Streamer API 6 SCREENER (Items),INTEL CORP; NVIDIA CORP; AT&T INC
+streaming.Screener.ITEMS.*.lastPrice,streaming,number,SCREENER_EQUITY;SCREENER_OPTION,2026-10-12,2026-10-12,Streamer API 6 SCREENER (Items),100.94; 225.31; 22.39
+streaming.Screener.ITEMS.*.marketShare,streaming,number,SCREENER_EQUITY;SCREENER_OPTION,2026-10-12,2026-10-12,Streamer API 6 SCREENER (Items),5.145803; 4.903622; 2.5542
+streaming.Screener.ITEMS.*.netChange,streaming,number,SCREENER_EQUITY;SCREENER_OPTION,2026-10-12,2026-10-12,Streamer API 6 SCREENER (Items),-3.76; -3.97; 0.21
+streaming.Screener.ITEMS.*.netPercentChange,streaming,number,SCREENER_EQUITY;SCREENER_OPTION,2026-10-12,2026-10-12,Streamer API 6 SCREENER (Items),-0.035912; -0.017315; 0.009468
+streaming.Screener.ITEMS.*.symbol,streaming,string,SCREENER_EQUITY;SCREENER_OPTION,2026-10-12,2026-10-12,Streamer API 6 SCREENER (Items),INTC; NVDA; T
+streaming.Screener.ITEMS.*.totalVolume,streaming,number,SCREENER_EQUITY;SCREENER_OPTION,2026-10-12,2026-10-12,Streamer API 6 SCREENER (Items),427162075; 14477316; 428334042
+streaming.Screener.ITEMS.*.trades,streaming,number,SCREENER_EQUITY;SCREENER_OPTION,2026-10-12,2026-10-12,Streamer API 6 SCREENER (Items),200236; 300801; 37801
+streaming.Screener.ITEMS.*.volume,streaming,number,SCREENER_EQUITY;SCREENER_OPTION,2026-10-12,2026-10-12,Streamer API 6 SCREENER (Items),21980921; 20946415; 10910572
 streaming.Screener.SORT_FIELD,streaming,,schwab-py list,2026-09-28,
 streaming.Screener.SYMBOL,streaming,,schwab-py list,2026-09-28,
 streaming.Screener.TIMESTAMP,streaming,,schwab-py list,2026-09-28,

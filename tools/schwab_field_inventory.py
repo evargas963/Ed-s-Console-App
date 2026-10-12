@@ -28,7 +28,9 @@ REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
 OUT = REPO / "docs" / "schwab_fields.csv"
-COLUMNS = ["canonical_field", "endpoint", "type", "variants", "first_seen", "last_seen"]
+#: schwab_doc: where Schwab's docs define the field, or "not in Schwab's doc"; sample: values Schwab
+#: sent. Both are written by hand from a probe's raw replies; this tool keeps them.
+COLUMNS = ["canonical_field", "endpoint", "type", "variants", "first_seen", "last_seen", "schwab_doc", "sample"]
 #: every asset type Schwab quotes, beside the roster: index, future, forex, mutual fund, a
 #: hard-to-borrow stock (its borrow fields)
 EXTRA_QUOTES = ["$SPX", "$VIX", "$NDX", "$DJI", "/ES", "/CL", "EUR/USD", "VFIAX", "GME", "BRK.B"]
