@@ -146,6 +146,7 @@ CHART_FIELDS = {"OPEN_PRICE": "open", "HIGH_PRICE": "high", "LOW_PRICE": "low",
 #: The daemon asks for every number up to it, so each field Schwab sends, documented or not, is kept.
 HIGHEST_FIELD = {"LEVELONE_EQUITIES": 150, "LEVELONE_OPTIONS": 150, "CHART_EQUITY": 300, "NYSE_BOOK": 300,
                  "NASDAQ_BOOK": 300, "OPTIONS_BOOK": 300, "NEWS_HEADLINE": 300}
+FIELDS = {svc: ",".join(str(f) for f in range(top + 1)) for svc, top in HIGHEST_FIELD.items()}
 
 
 # ---------------------------------------------------------------------------- the watchlist
@@ -350,10 +351,6 @@ def _open_stream(client):
         return msg
     stream._receive = timed_receive
     return stream
-
-
-def _fields(service: str) -> str:
-    return ",".join(str(f) for f in range(HIGHEST_FIELD[service] + 1))
 
 
 def _dispatch(stream, msg: dict) -> None:
@@ -641,7 +638,7 @@ class Daemon:
                 cmd = "ADD" if first == "SUBS" and i else first
                 params = {"keys": ",".join(chunk)}
                 if cmd != "UNSUBS":
-                    params["fields"] = _fields(svc)
+                    params["fields"] = FIELDS[svc]
                 req, rid = self.stream._make_request(service=svc, command=cmd, parameters=params)
                 self._sent[rid] = _Sent(svc, cmd, chunk, time.time())
                 await self.stream._send({"requests": [req]})

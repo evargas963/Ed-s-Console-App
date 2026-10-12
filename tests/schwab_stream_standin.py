@@ -29,9 +29,13 @@ FIELD_REPLIES = json.loads((Path(__file__).parent / "fixtures" / "real_schwab_fi
                            .read_text(encoding="utf-8"))
 
 
+#: the top of the field range Schwab answered code 0 for, per service ("0-150" -> 150)
+HIGHEST = {svc: int(f.split("-")[1]) for svc, replies in FIELD_REPLIES["replies"].items()
+           for f, code, _m in replies if code == 0}
+
+
 def highest_field(service: str) -> int:
-    """The top of the field range Schwab answered code 0 for on `service` ("0-150" -> 150)."""
-    return next(int(f.split("-")[1]) for f, code, _m in FIELD_REPLIES["replies"][service] if code == 0)
+    return HIGHEST[service]
 
 
 def refusal(service: str, limit: int, discarded: int) -> str:

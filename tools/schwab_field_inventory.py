@@ -181,7 +181,7 @@ def captured_stream_paths(db: Path) -> dict[tuple[str, str], set[str]]:
     """Every path the daemon received (the newest 20,000 messages of each table), as
     streaming.content.*.<path>, the form the stream's content items take."""
     tables = {"stream_quotes_raw": "LEVELONE_EQUITIES", "stream_options_quotes_raw": "LEVELONE_OPTIONS",
-              "stream_book_raw": "BOOK", "stream_news_raw": "NEWS"}
+              "stream_book_raw": "BOOK", "stream_news_raw": "NEWS", "stream_bars_raw": "CHART_EQUITY"}
     rows: dict[tuple[str, str], set[str]] = {}
     con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     try:

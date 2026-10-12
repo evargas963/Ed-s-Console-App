@@ -4068,11 +4068,6 @@ streaming.ChartFutures.LOW_PRICE,streaming,,schwab-py list,2026-09-28,2026-09-28
 streaming.ChartFutures.OPEN_PRICE,streaming,,schwab-py list,2026-09-28,2026-09-28
 streaming.ChartFutures.SYMBOL,streaming,,schwab-py list,2026-09-28,
 streaming.ChartFutures.VOLUME,streaming,,schwab-py list,2026-09-28,
-streaming.LevelOneEquity.52,streaming,number,LEVELONE_EQUITIES,2026-10-12,2026-10-12,not in Schwab's doc,225; 100; 40
-streaming.LevelOneEquity.53,streaming,number,LEVELONE_EQUITIES,2026-10-12,2026-10-12,not in Schwab's doc,225; 100; 40
-streaming.LevelOneEquity.54,streaming,number,LEVELONE_EQUITIES,2026-10-12,2026-10-12,not in Schwab's doc,3467930.514646; 3473354.75113; 3473430.775499
-streaming.LevelOneEquity.55,streaming,number,LEVELONE_EQUITIES,2026-10-12,2026-10-12,not in Schwab's doc,160; 320; 40
-streaming.LevelOneEquity.56,streaming,number,LEVELONE_EQUITIES,2026-10-12,2026-10-12,not in Schwab's doc,80; 160; 120
 streaming.LevelOneEquity.ASK_ID,streaming,,schwab-py list,2026-09-28,2026-09-28
 streaming.LevelOneEquity.ASK_MIC_ID,streaming,,schwab-py list,2026-09-28,2026-09-28
 streaming.LevelOneEquity.ASK_PRICE,streaming,,schwab-py list,2026-09-28,2026-09-28
@@ -4313,6 +4308,11 @@ streaming.content.*.2,streaming,string,NEWS,2026-09-28,2026-09-28
 streaming.content.*.3,streaming,string,NEWS,2026-09-28,2026-09-28
 streaming.content.*.4,streaming,string,NEWS,2026-09-28,2026-09-28
 streaming.content.*.5,streaming,string,NEWS,2026-09-28,2026-09-28
+streaming.content.*.52,streaming,number,LEVELONE_EQUITIES,2026-10-12,2026-10-12,not in Schwab's doc,50; 40; 727
+streaming.content.*.53,streaming,number,LEVELONE_EQUITIES,2026-10-12,2026-10-12,not in Schwab's doc,50; 40; 727
+streaming.content.*.54,streaming,number,LEVELONE_EQUITIES,2026-10-12,2026-10-12,not in Schwab's doc,8661888.577396; 8661929.615971; 12989166.562714
+streaming.content.*.55,streaming,number,LEVELONE_EQUITIES,2026-10-12,2026-10-12,not in Schwab's doc,200; 640; 40
+streaming.content.*.56,streaming,number,LEVELONE_EQUITIES,2026-10-12,2026-10-12,not in Schwab's doc,80; 40; 840
 streaming.content.*.6,streaming,array,NEWS,2026-09-28,2026-09-28
 streaming.content.*.6.*,streaming,string,NEWS,2026-09-28,2026-09-28
 streaming.content.*.7,streaming,array,NEWS,2026-09-28,2026-09-28
