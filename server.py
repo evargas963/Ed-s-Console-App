@@ -157,7 +157,7 @@ from db_authority import canonical_stream_db_path
 
 from instrument_identity import display_symbol, ticker_storage_key   # RC-126: the ONE query-symbol authority
 import live_market_plane as lmp
-from numeric_contract import schwab_count, schwab_number
+from numeric_contract import float_finite_or_none, schwab_count, schwab_number
 from terrain_engine import (SCOPES, TerrainSnapshot, chain_ladder, compute_terrain, nearest_strike,
                             positioning_migration, strike_window)
 from terrain_atr import Atr, compute_atrs, roll_up
@@ -1506,31 +1506,25 @@ def _windowed(rows: list, spot_strike, scope: str, centre, shift: int) -> "tuple
 @app.get("/api/terrain/strikes")
 def get_terrain_strikes(ticker: str = Query(...), scope: ScopeQuery = "auto", centre: CentreQuery = None,
                         shift: ShiftQuery = 0):
-    """The per-strike rows of the published levels, each list windowed for its panel (_windowed):
-    today's GEX and volume (all, near, far expiries), the Chart view's DEX and OI, with each
-    list's view; the side sums, the largest-GEX strike and the day-over-day migration are of every
-    strike."""
-    tk = ticker_storage_key(_required_ticker(ticker))   # RC-126: SPX -> $SPX etc., ONE authority
-    now = time.time()
+    """The per-strike panels' answer now (terrain_strikes_payload)."""
+    return JSONResponse(terrain_strikes_payload(ticker_storage_key(_required_ticker(ticker)), scope, centre,
+                                                shift, time.time()))
 
-    today_src, prior_src = None, None
-    today, prior = None, None
+
+def terrain_strikes_payload(tk: str, scope: str, centre, shift: int, now: float) -> dict:
+    """The per-strike rows of the published levels at `now`, each list windowed for its panel
+    (_windowed): today's GEX and volume (all, near, far expiries), the Chart view's DEX and OI,
+    with each list's view; the side sums, the largest-GEX strike and the day-over-day migration
+    are of every strike."""
+    today_src = None
+    today = None
     measures: dict = {"dex": [], "oi": []}
     spot_used = None
     today_age_sec = None
-    # RC-146: bound BEFORE the try. `_snap` was assigned only inside the try body yet read
-    # unconditionally in the response dict below — a raising terrain_cache_get took the
-    # logged-and-swallowed path and then killed the endpoint with NameError on the way out,
-    # turning a degraded panel into a 500. Absence must degrade, never explode.
+    # bound before the try: a failed cache read leaves the panels empty, never a 500
     _snap: dict = {}
-    # RC-68 SINGLE SOURCE FOR TODAY'S PER-STRIKE DATA: the LIVE terrain snapshot.
-    # This panel used to render from option_chain_morning_full — MEASURED 2026-07-27 11:31 ET:
-    # a 09:47 capture served at 11:31 understated session volume by 281 percent (1,095,874 shown
-    # vs 4,176,672 live), ~500K missing on strike 740 alone, while the walls beside it moved on
-    # the 60s loop. Two clocks, one story. The terrain loop already computes this exact map from
-    # a live wide chain every cycle (terrain_engine._per_strike_map) — it was simply discarded.
-    # Reading it here costs ZERO additional vendor calls. The archive is demoted to the
-    # prior-day ghost, which is the one thing it is genuinely correct for.
+    # today's per-strike rows: the published levels' own (_publish_levels' `_per_strike`,
+    # terrain_engine.per_strike_view)
     try:
         cached = terrain_cache_get(tk, now)
         if cached is not None:
@@ -1544,26 +1538,20 @@ def get_terrain_strikes(ticker: str = Query(...), scope: ScopeQuery = "auto", ce
             today = {k: (_ps.get(k) or []) for k in ("all", "near", "far")}
             spot_used = _snap.get("spot")
             _cts_utc = _snap.get("computed_ts_utc")
-            today_age_sec = time.time() - float(_cts_utc) if _cts_utc else None
+            today_age_sec = now - float(_cts_utc) if _cts_utc else None
             today_src = "terrain_live_cache"
     except Exception as e:
         log.debug("terrain strikes live read failed %s: %s", tk, e)
     prior, prior_src = _snap.get("_prior_strikes") or (None, None)
 
-    # STRIP kill (one-faucet-closeout-v1): per-side GEX/OV sums are computed HERE, against
-    # the exact spot this payload serves — the chart strip used to re-derive them in the
-    # browser from the same rows (a second aggregation site that breaks silently when the
-    # payload changes, and can straddle a different spot than the server's). One aggregator.
+    # the per-side GEX and volume sums, against the spot this payload serves (the one aggregator)
     def _side_sums(rows, s):
-        from numeric_contract import float_finite_or_none
         if not rows or s is None:
             return None
         gb = ga = vb = va = 0.0
         for r in rows:
-            # RC-276: the third copy. A row with no gamma used to add 0.0 to a side sum, which
-            # is not neutral -- it drags the below/above comparison toward whichever side holds
-            # the unmeasured strikes. Absence is dropped, not counted as flat.
-            # A row's GEX and its volume are summed each on its own: one never hides the other.
+            # a row with no gamma is left out of a side's sum, never counted as 0; a row's GEX
+            # and its volume are summed each on its own
             k = float_finite_or_none(r[0])
             g = float_finite_or_none(r[1])
             v = float_finite_or_none(r[2])
@@ -1598,7 +1586,7 @@ def get_terrain_strikes(ticker: str = Query(...), scope: ScopeQuery = "auto", ce
                 for v in (r[1], r[2]) if v is not None]
         both += [windows[sc][1]["max_abs"]] if windows[sc][1]["max_abs"] is not None else []
         windows[sc][1]["max_abs_with_prior"] = max(both) if both else None
-    return JSONResponse({
+    return {
         "ticker": tk, "spot": live_spot,
         "spot_source": live_src,
         "priced_at_spot": spot_used,
@@ -1616,18 +1604,13 @@ def get_terrain_strikes(ticker: str = Query(...), scope: ScopeQuery = "auto", ce
         "max_abs_row": _max_abs_row(today.get("all")),
         "migration": migration,
         "today_source": today_src,
-        # RC-68: every consumer must be able to render an AGE on the panel's face. A number with
-        # no age is how a 2.1-hour-old volume histogram sat under the label "TODAY'S OPTION VOLUME".
+        # the age of today's rows, for the panel's face
         "today_age_sec": today_age_sec,
-        # RC-91: PROVENANCE IS NOT FRESHNESS. single_faucet_provenance passes here — one declared
-        # source, no fallback — while the panel served levels 90 MINUTES old under a
-        # `terrain_live_cache` label, because the terrain loop stops at the background-logging
-        # window (16:30 ET) and nothing said so. Naming the right source proves only that the
-        # right tap was opened, never that anything is still coming out of it.
+        # whether the levels are still being published (a source is not freshness)
         **terrain_staleness(_snap.get("computed_ts_utc") if isinstance(_snap, dict) else None, tk, now=now),
         "prior": prior or {"all": [], "near": [], "far": []},
         "prior_source": prior_src,
-    })
+    }
 
 
 # The console's charts read the 1-minute bars the console holds (_bars_1m) here; no database, no
@@ -1699,22 +1682,29 @@ def aggregate_bars(bars: list[dict], tf: str) -> list[dict]:
     return out
 
 
-def _strike_bar_payload(tk: str, key: str, scope: str, centre, shift: int, method: str, now: float):
+#: each per-strike bar panel's published rows and how they are made
+STRIKE_BAR_METHODS = {
+    "_vanna_rows": "the published levels' exposure book -> call_vanna - put_vanna",
+    "_charm_rows": "the published levels' charm map -> call_charm - put_charm",
+}
+
+
+def strike_bar_payload(tk: str, key: str, scope: str, centre, shift: int, now: float) -> dict:
     """A per-strike bar panel's answer at `now` (vanna, charm): the published rows `key`,
     windowed for the panel (_windowed), with the live price and the strike nearest it."""
+    method = STRIKE_BAR_METHODS[key]
     payload = terrain_cache_get(tk, now)
     if payload is None or key not in payload:
-        return JSONResponse({"ticker": tk, "available": False,
-                             "reason": "no levels published for this ticker yet"})
+        return {"ticker": tk, "available": False, "reason": "no levels published for this ticker yet"}
     rows = payload[key]
     spot = resolve_spot(tk, now=now)[0]
     spot_strike = nearest_strike([r[0] for r in rows], spot)
     win, view = _windowed(rows, spot_strike, scope, centre, shift)
-    return JSONResponse({"ticker": tk, "available": bool(rows), "spot": spot,
-                         "priced_at_spot": payload.get("spot"), "spot_strike": spot_strike,
-                         "rows": win, "view": view, "scope": scope,
-                         "reason": None if rows else "no usable strikes for this chain",
-                         "method": method})
+    return {"ticker": tk, "available": bool(rows), "spot": spot,
+            "priced_at_spot": payload.get("spot"), "spot_strike": spot_strike,
+            "rows": win, "view": view, "scope": scope,
+            "reason": None if rows else "no usable strikes for this chain",
+            "method": method}
 
 
 @app.get("/api/options/vanna-by-strike")
@@ -1722,8 +1712,8 @@ def get_vanna_by_strike(ticker: str = Query(...), scope: ScopeQuery = "auto", ce
                         shift: ShiftQuery = 0):
     """Per-strike dealer VANNA exposure from the published levels (net_vanna = call_vanna -
     put_vanna, aggregated across every expiry; no per-expiry surface yet)."""
-    return _strike_bar_payload(ticker_storage_key(_required_ticker(ticker)), "_vanna_rows", scope, centre,
-                               shift, "the published levels' exposure book -> call_vanna - put_vanna", time.time())
+    return JSONResponse(strike_bar_payload(ticker_storage_key(_required_ticker(ticker)), "_vanna_rows", scope,
+                                           centre, shift, time.time()))
 
 
 @app.get("/api/options/charm-by-strike")
@@ -1731,8 +1721,8 @@ def get_charm_by_strike(ticker: str = Query(...), scope: ScopeQuery = "auto", ce
                         shift: ShiftQuery = 0):
     """Per-strike dealer CHARM exposure from the published levels' charm map (the charm walls'
     own): net_charm = call_charm - put_charm per strike, delta-shares/day."""
-    return _strike_bar_payload(ticker_storage_key(_required_ticker(ticker)), "_charm_rows", scope, centre,
-                               shift, "the published levels' charm map -> call_charm - put_charm", time.time())
+    return JSONResponse(strike_bar_payload(ticker_storage_key(_required_ticker(ticker)), "_charm_rows", scope,
+                                           centre, shift, time.time()))
 
 
 @app.get("/api/options/tape")
