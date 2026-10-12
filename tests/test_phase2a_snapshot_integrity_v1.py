@@ -1,19 +1,8 @@
-"""RC-324 — the canonical producer must not serve stale values, nor two results per generation.
+"""The price-level producer (materialize_price_level_snapshot) serves one result per generation:
 
-Cursor's adversarial review of 5609617d proved both defects by execution, and these are
-those two proofs, kept as controls:
-
-(a) STALE. `_snapshot_input_fingerprint` identified a bar set by
-    (ticker, date, source, len, first_ts, last_ts, last_close) — a SAMPLE, not a cover.
-    Changing PDH from 105 to 999 leaves the length, both endpoints and the last close
-    untouched, so the fingerprint matched, the cached object came back, and the stale 105
-    was served under generation 1.
-
-(b) RACE. `materialize_price_level_snapshot` read the cache, decided the generation, built
-    and wrote back with no mutual exclusion. Two concurrent callers both saw
-    `existing is None`, both computed generation 1, and produced two different objects
-    carrying PDH 105 and 205 — two results under one generation, which is the half of the
-    invariant this producer exists to guarantee.
+(a) a change to any bar field, an interior one included, is a new generation with new levels;
+    the same input is the same object;
+(b) concurrent callers with one input get one object and one generation.
 """
 
 from __future__ import annotations
@@ -39,23 +28,25 @@ from tests.conftest import most_recent_trading_day_et  # noqa: E402
 
 
 def _bars(session, high_of_interior: float = 105.0) -> list:
-    """A prior session plus this one. The interior bar's HIGH is the mutation target."""
+    """The prior trading session plus this one; the interior bar's HIGH is the mutation target."""
+    prior = most_recent_trading_day_et(on_or_before=session - timedelta(days=1))
     out = []
-    for off in (1, 0):
-        d = session - timedelta(days=off)
+    for d in (prior, session):
         for i in range(60):
             ts = datetime(d.year, d.month, d.day, 9, 30, tzinfo=ET) + timedelta(minutes=i)
             px = 100.0 + (i % 11) * 0.10
             hi = px + 0.05
-            if off == 1 and i == 30:            # interior bar of the PRIOR session -> PDH
+            if d == prior and i == 30:          # interior bar of the PRIOR session -> PDH
                 hi = high_of_interior
             out.append({"timestamp": int(ts.timestamp() * 1000), "open": px, "high": hi,
                         "low": px - 0.05, "close": px, "volume": 1000.0 + i})
     return out
 
 
-def _fresh(monkeypatch):
-    monkeypatch.setattr(LVE, "_MATERIALIZED_SNAPSHOTS", {}, raising=False)
+def _fresh():
+    """This test ticker's snapshots leave the producer's cache: the next one is generation 1."""
+    for key in [k for k in LVE._MATERIALIZED_SNAPSHOTS if k[0] == "ZZRC324"]:
+        del LVE._MATERIALIZED_SNAPSHOTS[key]
 
 
 def _mat(session, bars):
@@ -65,9 +56,9 @@ def _mat(session, bars):
                     volume=b["volume"]) for b in bars]), bar_source="test_fixture", config=PlaybookConfig())
 
 
-def test_an_interior_bar_change_is_a_new_generation(monkeypatch):
-    """(a) Cursor's stale proof: mutate PDH 105 -> 999 and require the cache to notice."""
-    _fresh(monkeypatch)
+def test_an_interior_bar_change_is_a_new_generation():
+    """(a) The prior session's high moved from 105 to 999: a new generation with the new PDH."""
+    _fresh()
     session = most_recent_trading_day_et()
 
     first = _mat(session, _bars(session, 105.0))
@@ -89,9 +80,9 @@ def test_an_interior_bar_change_is_a_new_generation(monkeypatch):
     assert again is second, "an unchanged input minted a new object — one result per generation"
 
 
-def test_concurrent_materialization_yields_one_object_and_one_generation(monkeypatch):
-    """(b) Cursor's race proof: N threads, one result."""
-    _fresh(monkeypatch)
+def test_concurrent_materialization_yields_one_object_and_one_generation():
+    """(b) Eight concurrent callers, one input: one object, one generation."""
+    _fresh()
     session = most_recent_trading_day_et()
     bars = _bars(session, 105.0)
 
@@ -122,7 +113,7 @@ def test_concurrent_materialization_yields_one_object_and_one_generation(monkeyp
     assert results[0].generation == 1
 
 
-def test_the_fingerprint_covers_every_bar_field(monkeypatch):
+def test_the_fingerprint_covers_every_bar_field():
     """Each field that can move a level must move the key — checked field by field."""
     session = most_recent_trading_day_et()
     base = _bars(session, 105.0)
