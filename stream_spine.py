@@ -785,14 +785,11 @@ class _Spill:
             self._in.close()
 
 
-def _first_kept_rowid(conn: sqlite3.Connection, table: str, column: str, before: float) -> int:
-    """The first rowid of `table` whose row was received at `before` or later. Rows are appended as
-    they are received, so a binary search on rowid finds it in a few dozen key lookups. A row
-    written out of order (held, then written back) below it is still checked by its own time, and
-    one above it waits for the next keep."""
-    lo, hi = conn.execute(f"SELECT MIN(rowid), MAX(rowid) FROM {table}").fetchone()
-    if lo is None:
-        return 0
+def _first_kept_rowid(conn: sqlite3.Connection, table: str, column: str, before: float, lo: int, hi: int) -> int:
+    """The first rowid of `table` (its rows run from rowid `lo` to `hi`) whose row was received at
+    `before` or later. Rows are appended as they are received, so a binary search on rowid finds it
+    in a few dozen key lookups. A row written out of order (held, then written back) below it is
+    still checked by its own time, and one above it waits for the next keep."""
     hi += 1
     while lo < hi:
         mid = (lo + hi) // 2
@@ -1217,11 +1214,14 @@ class CaptureWriter:
         first rowid received at or after the keep's time (_first_kept_rowid), so a part reads a
         range of the table's own key, whatever indexes the file holds."""
         table, column = self._prune[0]
-        upto = _first_kept_rowid(conn, table, column, self._prune_before)
-        newest = f" AND rowid < (SELECT MAX(rowid) FROM {table})" if table == "stream_watchlist" else ""
-        removed = conn.execute(f"DELETE FROM {table} WHERE rowid IN (SELECT rowid FROM {table} WHERE rowid < ? "
-                               f"AND {column} < ?{newest} ORDER BY rowid LIMIT ?)",
-                               (upto, self._prune_before, PRUNE_ROWS)).rowcount
+        first, last = conn.execute(f"SELECT MIN(rowid), MAX(rowid) FROM {table}").fetchone()
+        removed = 0                                    # an empty table has nothing to remove
+        if first is not None:
+            upto = _first_kept_rowid(conn, table, column, self._prune_before, first, last)
+            newest = f" AND rowid < {last}" if table == "stream_watchlist" else ""
+            removed = conn.execute(f"DELETE FROM {table} WHERE rowid IN (SELECT rowid FROM {table} WHERE rowid < ? "
+                                   f"AND {column} < ?{newest} ORDER BY rowid LIMIT ?)",
+                                   (upto, self._prune_before, PRUNE_ROWS)).rowcount
         conn.commit()
         with self._lock:
             self._pruned[table] += removed
