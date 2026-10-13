@@ -450,23 +450,25 @@ def test_an_equity_l1_quote_is_not_stored_a_second_time_in_order_flow_state():
         ofls.clear_symbol("O01EQ")
 
 
-def test_size_g_the_live_push_seam_threads_each_messages_receive_time_into_push_level_one(monkeypatch):
+def test_size_g_the_live_push_seam_threads_each_messages_receive_time_into_the_tape():
     """The production seam (order_flow_streaming._ingest_pushed, fed by the daemon's live
-    push) must hand the trade tape the MESSAGE's own ts_recv for both equity
-    (LEVELONE_EQUITIES, push_level_one) and option (LEVELONE_OPTIONS, the contract's record:
-    push_trade) messages -- never the time the console processed it."""
+    push) must put on the trade tape the MESSAGE's own ts_recv for both equity
+    (LEVELONE_EQUITIES) and option (LEVELONE_OPTIONS, the contract's record) messages -- never
+    the time the console processed it."""
+    import app.options.order_flow.state as ofls
     import app.options.order_flow.streaming as ofs
     from stream_spine import MessageBus, quote_msg
 
-    seen = []
-    monkeypatch.setattr(ofs, "push_level_one",
-                        lambda sym, item, *, ts_recv, field_received: seen.append((sym, ts_recv)))
-    monkeypatch.setattr(ofs, "push_trade", lambda sym, price, size, trade_ms, received_ts:
-                        seen.append((sym, received_ts)))
-    ofs._ingest_pushed("quote.SIZEG", quote_msg(
-        symbol="SIZEG", src="schwab_l1", ts_recv=1234.5, native={"LAST_PRICE": 1.0}))
-    through_the_daemons_bus(MessageBus(), "SIZEG  260918C00001000",
-                            [{"LAST_PRICE": 1.0, "LAST_SIZE": 1, "TRADE_TIME_MILLIS": 2345000}], [2345.5])
+    ofls.clear_all_live_state()
+    try:
+        ofs._ingest_pushed("quote.SIZEG", quote_msg(
+            symbol="SIZEG", src="schwab_l1", ts_recv=1234.5, native={"LAST_PRICE": 1.0}))
+        through_the_daemons_bus(MessageBus(), "SIZEG  260918C00001000",
+                                [{"LAST_PRICE": 1.0, "LAST_SIZE": 1, "TRADE_TIME_MILLIS": 2345000}], [2345.5])
+        seen = [(sym, item["server_received_ts"]) for sym in ("SIZEG", "SIZEG  260918C00001000")
+                for item in ofls.get_content_for_symbol(sym) if "LAST_PRICE" in item]
+    finally:
+        ofls.clear_all_live_state()
     assert seen == [("SIZEG", 1234.5), ("SIZEG  260918C00001000", 2345.5)]
 
 
