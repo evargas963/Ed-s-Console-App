@@ -43,8 +43,8 @@ PROTECTED_PATHS: tuple[str, ...] = ENFORCEMENT_PATHS
 
 #: LOCK-2: the tree-destructive git class, not just `reset --hard`. The hard forms (reset --hard,
 #: checkout -- <any path>, clean -f, push --force without lease, short -f included, and every git
-#: stash but its reads `list` and `show`) are `_hard` below and refuse on any target. The class
-#: rule covers the reset/restore/checkout--/clean/stash
+#: stash but `stash list`) are `_hard` below and refuse on any target. The class rule covers the
+#: reset/restore/checkout--/clean
 #: family: a statement running a destructive verb AND touching a protected/product path (or a
 #: bare, whole-tree form) is refused at PreToolUse in every session wired to process_lock_guard.
 #: git's global options (`git -C <other> ...`) are skipped; the class rule is judged per
@@ -77,7 +77,7 @@ def _hard(sub: str, args: list[str]) -> bool:
     return ((sub == "reset" and "--hard" in args)
             or (sub == "checkout" and args[:1] == ["--"] and len(args) > 1)
             or (sub == "clean" and any(re.match(r"-[a-z]*f", a, re.I) for a in args))
-            or (sub == "stash" and args[:1] not in (["list"], ["show"]))
+            or (sub == "stash" and args[:1] != ["list"])
             or (sub == "push" and any((a.startswith("--force") and not a.startswith("--force-with-lease"))
                                       or re.fullmatch(r"-[a-zA-Z]*f[a-zA-Z]*", a) for a in args)))
 
@@ -87,7 +87,6 @@ def _safe(sub: str, args: list[str]) -> bool:
     first = args[0] if args else ""
     return ((sub == "reset" and first == "--soft")
             or (sub == "restore" and first == "--staged" and "--worktree" not in args)
-            or (sub == "stash" and first in ("list", "show"))
             or (sub == "checkout" and first == "-b")
             or (sub == "clean" and bool(re.match(r"-\S*n", first))))
 
@@ -95,7 +94,7 @@ def _safe(sub: str, args: list[str]) -> bool:
 def _reset_class_violation(words: tuple[str, ...]) -> list[str]:
     """The CLASS rule for ONE statement (RC-525): a chain cannot launder a later wipe."""
     sub, args = git_subcommand(words)
-    if not (sub in ("reset", "restore", "clean", "stash") or (sub == "checkout" and "--" in args[:-1])) \
+    if not (sub in ("reset", "restore", "clean") or (sub == "checkout" and "--" in args[:-1])) \
             or _safe(sub, args):
         return []
     seg = " ".join(words)
@@ -115,10 +114,10 @@ def reset_guard_violations(command: str, powershell: bool = False) -> list[str]:
     """LOCK-2: BLOCK tree-destructive git — the ONE owner of that question (RC-231/RC-252).
 
     Two clauses, one predicate. The HARD forms (`reset --hard`, `checkout -- <any path>`,
-    `clean -f`, `push --force`/`-f`) discard work whatever they name, so they refuse on sight,
-    on ANY target (host-wide; the checkout in front of the command is irrelevant — RC-258 kept
-    these unscoped on purpose). The CLASS forms (the wider reset/restore/checkout--/clean/stash
-    family) refuse when they touch a protected/product path or take a bare whole-tree shape,
+    `clean -f`, `push --force`/`-f`, every `stash` but `stash list`) discard work whatever they
+    name, so they refuse on sight, on ANY target (host-wide; the checkout in front of the command
+    is irrelevant — RC-258 kept these unscoped on purpose). The CLASS forms (the wider
+    reset/restore/checkout--/clean family) refuse when they touch a protected/product path or take a bare whole-tree shape,
     judged PER STATEMENT (RC-525) so a safe first statement cannot launder a later one.
 
     Not subject-disableable (RC-450): no env token or repo file can authorize a wipe.
