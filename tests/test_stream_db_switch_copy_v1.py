@@ -1,13 +1,14 @@
 """STREAM-DB-SWITCH's one-time copy (tools/stream_db_switch_copy.py): from a file made the way production's
-stream_capture.db was (its quote, book and option tables indexed by symbol, not by receipt time), a new file
-with the writer's schema and receipt-time indexes holding the newest five sessions: every equity row, and
-of the option quotes and option books only each day's 0DTE contracts (a ticker with none that day: its
-nearest expiration). The old file is not changed.
+stream_capture.db was (its quote, book and option tables indexed by symbol and time, not by receipt time
+alone), a new file with the writer's schema and receipt-time indexes holding the newest five sessions: every
+equity row, and of the option quotes and option books only each day's 0DTE contracts. The old file is not
+changed, and a file already at the new path, or a spill file beside the old one, stops the copy.
 
-Real data: Schwab's /markets answers asked on 2026-10-07 (tests/fixtures/real_schwab_markets_2026_10_07.json,
-in the old file's stream_markets_raw as the daemon records them) and the option chains the daemon captured
-2026-10-07 (tests/real_chains.py: SPY with a same-day expiration, MRVL with none). STAND-INS: the messages'
-contents (only their table, symbol and receipt time are what this proves).
+Real data: three seconds of production's stream as stored (tests/fixtures/real_stream_mix_2026_10_05_1400ct.json:
+2026-10-05 14:00:00-14:00:03 CT, every equity quote, book and SPY option quote, with their receipt and Schwab
+times), written through the daemon's message builder and the writer's insert; Schwab's /markets answers asked
+on 2026-10-07 (tests/fixtures/real_schwab_markets_2026_10_07.json, in the old file as the daemon records them).
+STAND-INS: the receipt times of the two watchlist rows.
 """
 from __future__ import annotations
 
@@ -16,54 +17,42 @@ import sqlite3
 from datetime import datetime
 from pathlib import Path
 
+from app.market_data.schwab.streaming import capture
 from stream_spine import RECEIPT_TIME_INDEXES, CaptureWriter
-from tests.real_chains import MRVL, SPY_0DTE
 from time_et import ET
 from tools.stream_db_switch_copy import copy
 
-MARKETS = Path(__file__).parent / "fixtures" / "real_schwab_markets_2026_10_07.json"
+FIXTURES = Path(__file__).parent / "fixtures"
+MIX = json.loads((FIXTURES / "real_stream_mix_2026_10_05_1400ct.json").read_text(encoding="utf-8"))["messages"]
+MARKETS = json.loads((FIXTURES / "real_schwab_markets_2026_10_07.json").read_text(encoding="utf-8"))["answers"]
 #: production's file: its three big tables indexed by symbol and time (PRAGMA index_list on it)
 SYMBOL_INDEXES = ("CREATE INDEX idx_sqr_sym_ts ON stream_quotes_raw(symbol, ts_recv)",
                   "CREATE INDEX idx_sbkr_sym_ts ON stream_book_raw(symbol, ts_recv)",
                   "CREATE INDEX idx_soqr_sym_ts ON stream_options_quotes_raw(symbol, ts_recv)")
+OPTIONS = ("LEVELONE_OPTIONS", "OPTIONS_BOOK")
 
 
 def _et(text: str) -> float:
     return datetime.fromisoformat(text).replace(tzinfo=ET).timestamp()
 
 
-def _old_file(path: Path) -> "dict[str, list[str]]":
-    """The old file and the option symbols written to it on 2026-10-07, by kind."""
-    CaptureWriter(path)
-    spy_today = sorted({c["symbol"] for c in SPY_0DTE.chain if c["expirationDate"].startswith("2026-10-07")})
-    spy_later = sorted({c["symbol"] for c in SPY_0DTE.chain if not c["expirationDate"].startswith("2026-10-07")})
-    mrvl_near = sorted({c["symbol"] for c in MRVL.chain if c["expirationDate"].startswith("2026-10-09")})
-    mrvl_later = sorted({c["symbol"] for c in MRVL.chain if c["expirationDate"][:10] > "2026-10-09"})
+def _old_file(path: Path) -> None:
+    writer = CaptureWriter(path)
     with sqlite3.connect(path) as conn:
-        for index in RECEIPT_TIME_INDEXES:
-            conn.execute(f"DROP INDEX {RECEIPT_TIME_INDEXES[index].split()[2]}")
+        for sql in RECEIPT_TIME_INDEXES.values():
+            conn.execute(f"DROP INDEX {sql.split()[2]}")
         for sql in SYMBOL_INDEXES:
             conn.execute(sql)
-        for day, a in json.loads(MARKETS.read_text(encoding="utf-8"))["answers"].items():
+        for day, a in MARKETS.items():
             conn.execute("INSERT INTO stream_markets_raw(ts_recv,date,status,native_json,src) VALUES(?,?,?,?,?)",
-                         (_et("2026-10-07 08:00"), day, a["status"], a["body"], "schwab_markets"))
-        for when in ("2026-09-29 12:00", "2026-10-07 12:00"):
-            conn.execute("INSERT INTO stream_quotes_raw(ts_recv,symbol,last,src,native_json) VALUES(?,?,?,?,?)",
-                         (_et(when), "SPY", 776.61, "schwab_l1", '{"key":"SPY"}'))
-            for service in ("NYSE_BOOK", "OPTIONS_BOOK"):
-                symbol = "SPY" if service == "NYSE_BOOK" else spy_today[0]
-                conn.execute("INSERT INTO stream_book_raw(ts_recv,symbol,service,native_json,src) VALUES(?,?,?,?,?)",
-                             (_et(when), symbol, service, "{}", "schwab_book"))
-        for i, symbol in enumerate(spy_today + spy_later + mrvl_near + mrvl_later):
-            for when in ("2026-09-29 12:00", "2026-10-07 12:00"):
-                conn.execute("INSERT INTO stream_options_quotes_raw(ts_recv,symbol,native_json,src) VALUES(?,?,?,?)",
-                             (_et(when) + i / 1000, symbol, "{}", "schwab_options_l1"))
-        conn.execute("INSERT INTO stream_book_raw(ts_recv,symbol,service,native_json,src) VALUES(?,?,?,?,?)",
-                     (_et("2026-10-07 12:30"), mrvl_later[0], "OPTIONS_BOOK", "{}", "schwab_book"))
-        for when in ("2026-09-28 12:00", "2026-09-29 12:00"):              # both before; the newest stays
-            conn.execute("INSERT INTO stream_watchlist(ts_recv,symbol,op,tickers_json,status,native_json,src) "
-                         "VALUES(?,?,?,?,?,?,?)", (_et(when), "SPY", "added", '["SPY"]', None, None, "daemon_watchlist"))
-    return {"spy_today": spy_today, "spy_later": spy_later, "mrvl_near": mrvl_near, "mrvl_later": mrvl_later}
+                         (_et("2026-10-05 08:00"), day, a["status"], a["body"], "schwab_markets"))
+    with sqlite3.connect(path) as conn:
+        for m in MIX:
+            kind, msg = capture._message(m["service"], m["item"]["key"], m["item"], m["schwab_ts"])
+            writer.insert(f"{kind}.{m['item']['key']}", {**msg, "ts_recv": m["ts_recv"]}, conn=conn)
+        for when in ("2026-09-28 12:00", "2026-09-29 12:00"):
+            topic, msg = capture.watchlist_message(["SPY"], op="added", ticker="SPY", request_id=when)
+            writer.insert(topic, {**msg, "ts_recv": _et(when)}, conn=conn)
 
 
 def _rows(path: Path, sql: str) -> list:
@@ -71,42 +60,50 @@ def _rows(path: Path, sql: str) -> list:
         return conn.execute(sql).fetchall()
 
 
-def test_the_new_file_holds_five_sessions_and_each_days_0dte_contracts(tmp_path):
-    """2026-10-07 17:00 ET: Schwab's /markets says the newest five sessions began 2026-10-01 00:00 ET. The new
-    file holds every equity row received since then, SPY's contracts expiring 10-07 and MRVL's expiring
-    10-09 (it lists none on 10-07), nothing received before 10-01 but the newest watchlist row, and the
-    writer's receipt-time indexes; the old file is as it was."""
+def test_within_five_sessions_every_equity_row_and_that_days_0dte_contracts_are_copied(tmp_path):
+    """2026-10-06 17:00 ET: Schwab's /markets says the newest five sessions began 2026-09-30. Every equity
+    quote and equity book of 10-05's stream is copied, of the SPY option rows only those expiring 2026-10-05
+    (each a 0DTE that day), of the watchlist rows (both before 09-30) only the newest, which the daemon
+    reads at its start, and the new file has the writer's receipt-time indexes; the old file is as it was."""
     old, new = tmp_path / "old.db", tmp_path / "new.db"
-    sym = _old_file(old)
-    before = {t: _rows(old, f"SELECT COUNT(*) FROM {t}")[0][0]
-              for t in ("stream_quotes_raw", "stream_book_raw", "stream_options_quotes_raw", "stream_watchlist")}
-    counts = copy(old, new, datetime(2026, 10, 7, 17, 0, tzinfo=ET))
+    _old_file(old)
+    before = {t: _rows(old, f"SELECT COUNT(*) FROM {t}") for t, _c in capture_tables()}
+    counts = copy(old, new, datetime(2026, 10, 6, 17, 0, tzinfo=ET))
 
-    assert {s for (s,) in _rows(new, "SELECT symbol FROM stream_options_quotes_raw")} == \
-        set(sym["spy_today"]) | set(sym["mrvl_near"])
-    assert min(t for (t,) in _rows(new, "SELECT ts_recv FROM stream_options_quotes_raw")) >= _et("2026-10-01 00:00")
-    assert _rows(new, "SELECT symbol, service FROM stream_book_raw ORDER BY rowid") == \
-        [("SPY", "NYSE_BOOK"), (sym["spy_today"][0], "OPTIONS_BOOK")]
-    assert _rows(new, "SELECT COUNT(*) FROM stream_quotes_raw") == [(1,)]
+    zero_dte = {m["item"]["key"] for m in MIX if m["service"] in OPTIONS and m["item"]["key"][6:12] == "261005"}
+    assert zero_dte, "the stream holds 10-05's 0DTE contracts"
+    copied = {s for (s,) in _rows(new, "SELECT symbol FROM stream_options_quotes_raw")} | \
+        {s for (s,) in _rows(new, "SELECT symbol FROM stream_book_raw WHERE service = 'OPTIONS_BOOK'")}
+    assert copied == zero_dte
+    equity = [m for m in MIX if m["service"] not in OPTIONS]
+    assert _rows(new, "SELECT COUNT(*) FROM stream_quotes_raw")[0][0] + \
+        _rows(new, "SELECT COUNT(*) FROM stream_book_raw WHERE service != 'OPTIONS_BOOK'")[0][0] == len(equity)
     assert [datetime.fromtimestamp(t, ET).strftime("%m-%d") for (t,) in _rows(new, "SELECT ts_recv FROM stream_watchlist")] \
         == ["09-29"]
+    assert counts["stream_options_quotes_raw"]["2026-10-05"][0] == sum(m["service"] == "LEVELONE_OPTIONS" for m in MIX)
     indexes = {r[1] for t in RECEIPT_TIME_INDEXES for r in _rows(new, f"PRAGMA index_list({t})")}
     assert indexes >= {sql.split()[2] for sql in RECEIPT_TIME_INDEXES.values()}
-    assert counts["stream_options_quotes_raw"]["2026-10-07"] == \
-        (len(sym["spy_today"] + sym["spy_later"] + sym["mrvl_near"] + sym["mrvl_later"]),
-         len(sym["spy_today"] + sym["mrvl_near"]))
-    assert {t: _rows(old, f"SELECT COUNT(*) FROM {t}")[0][0] for t in before} == before
+    assert {t: _rows(old, f"SELECT COUNT(*) FROM {t}") for t, _c in capture_tables()} == before
 
 
-def test_the_copy_never_writes_over_a_file(tmp_path):
-    """The new file must not exist: the copy writes a new file only."""
+def test_the_copy_never_writes_over_a_file_nor_runs_beside_a_spill(tmp_path):
+    """A file at the new path, or a spill file beside the old one (messages the old file does not hold),
+    stops the copy before anything is written."""
     old, new = tmp_path / "old.db", tmp_path / "new.db"
     _old_file(old)
     new.write_bytes(b"")
-    try:
-        copy(old, new, datetime(2026, 10, 7, 17, 0, tzinfo=ET))
-    except SystemExit as e:
-        assert "exists" in str(e)
-    else:
-        raise AssertionError("the copy wrote over an existing file")
-    assert new.read_bytes() == b""
+    for setup, word in ((lambda: None, "exists"),
+                        (lambda: (new.unlink(), (tmp_path / "old.1.1.spill").write_bytes(b"")), "spill")):
+        setup()
+        try:
+            copy(old, new, datetime(2026, 10, 6, 17, 0, tzinfo=ET))
+        except SystemExit as e:
+            assert word in str(e)
+        else:
+            raise AssertionError(f"the copy ran ({word})")
+    assert not new.exists()
+
+
+def capture_tables():
+    from stream_spine import KEPT_BY_TIME
+    return KEPT_BY_TIME
