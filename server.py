@@ -696,7 +696,7 @@ def terrain_cache_get(ticker: str, now: float) -> dict | None:
     if raw is None:
         return None
     out = dict(raw)
-    out.update(terrain_staleness(raw, ticker, now=now))
+    out.update(terrain_staleness(out.get("computed_ts_utc"), ticker, now=now))
     return out
 
 
@@ -739,9 +739,8 @@ def _schwab_token_creation_ts() -> float | None:
         return None
 
 
-def terrain_staleness(published: dict | None, ticker: str | None = None, *, now: float) -> dict:
-    """Whether the levels `published` (the producer's publication, None when there is none) are
-    current at `now`, and WHY NOT when they
+def terrain_staleness(computed_ts_utc: float | None, ticker: str | None = None, *, now: float) -> dict:
+    """Whether the levels are current at `now`, and WHY NOT when they
     are not: the daemon's last answer for the ticker's chain (a failed fetch, an incomplete
     delivery) outranks its age. While an option market is open the daemon fetches every watchlist
     ticker's chain without end, so age past two of its delivered rounds is a gap, never a
@@ -751,17 +750,12 @@ def terrain_staleness(published: dict | None, ticker: str | None = None, *, now:
     token = schwab_token_countdown(_schwab_token_creation_ts(), now)   # RC-108: warn BEFORE death
     failure = str(_terrain_refresh_last_error.get(
         ticker_storage_key(ticker) if ticker else "", "") or "")
-    computed_ts_utc = published.get("computed_ts_utc") if published is not None else None
     if computed_ts_utc is None:
         return {"levels_stale": True, "levels_age_sec": None,
                 "levels_stale_reason": (f"no terrain snapshot has been computed yet — {failure}"
                                         if failure else "no terrain snapshot has been computed yet"),
                 "levels_failing": bool(failure), **token}
     age = now - float(computed_ts_utc)
-    awaiting = published.get("_awaiting_stream")
-    if awaiting:
-        return {"levels_stale": True, "levels_age_sec": age, "levels_failing": False, **token,
-                "levels_stale_reason": f"{awaiting} streamed contracts have not sent their values yet"}
     at = datetime.fromtimestamp(now, ET)
     closed = options_closed_at(at) if options_open(at) is False else None
     if closed is not None:
@@ -824,11 +818,11 @@ def _stream_records(listed: frozenset) -> dict:
 
 
 def _stream_priced_chain(chain: list, records: dict) -> list:
-    """The chain with each streamed contract (`records`) priced from its stream alone
-    (math_exposure_core.stream_priced; one with no record yet has none of the stream's values),
-    every other contract as Schwab sent it."""
-    return [stream_priced(ct, rec.content if (rec := records[ct["symbol"]]) else {})
-            if ct.get("symbol") in records else ct for ct in chain]
+    """The chain with each streamed contract (`records`) as its one record: Schwab's REST answer
+    with each field the stream has sent in its place (math_exposure_core.stream_priced); every
+    other contract as Schwab sent it."""
+    return [stream_priced(ct, rec.content) if (rec := records.get(ct.get("symbol"))) else ct
+            for ct in chain]
 
 
 _STREAM_STATE_ORDER = ("stale", "pending")
@@ -1060,7 +1054,7 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
         payload.update(_contract_symbols=frozenset(c.get("symbol") for c in chain if c.get("symbol")))
     listed = payload.get("_contract_symbols") or frozenset()
     records = _stream_records(listed)
-    # a streamed contract's values are its stream's alone; every other contract's the chain's
+    # a streamed contract's record: the REST answer, each field the stream has sent in its place
     priced = _stream_priced_chain(chain, records)
     snap = compute_terrain(tk, priced, spot, now=(
         datetime.fromtimestamp(fetched_ts, ET) if capture is not None else at))
@@ -1078,8 +1072,6 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
         "_chain": chain, "_chain_fetched_ts": fetched_ts,
         # the contracts as these levels were priced from them (/api/chain serves them)
         "_priced_chain": priced,
-        # the streamed contracts that have not sent their values yet: the levels are not live
-        "_awaiting_stream": sum(1 for rec in records.values() if rec is None),
     })
     # the values read from the stored chain captures (forces, the prior day's per-strike rows)
     # change only with a new capture or a new chain day: computed then, once, for all readers
@@ -1568,7 +1560,7 @@ def terrain_strikes_payload(tk: str, scope: str, centre, shift: int, now: float)
         # the age of today's rows, for the panel's face
         "today_age_sec": today_age_sec,
         # whether the levels are still being published (a source is not freshness)
-        **terrain_staleness(_snap if isinstance(_snap, dict) else None, tk, now=now),
+        **terrain_staleness(_snap.get("computed_ts_utc") if isinstance(_snap, dict) else None, tk, now=now),
         "prior": prior or {"all": [], "near": [], "far": []},
         "prior_source": prior_src,
     }
@@ -2013,7 +2005,8 @@ def gamma_surface_payload(tk: str, scope: str, centre, shift: int, cols: "int | 
     _requested = _gamma_surface_wanted(tk)
     _watched = _watchlist(now.timestamp())     # None: the daemon's heartbeat is not current
     _warming = _watched is not None and tk in _watched
-    _levels_why = terrain_staleness(live, tk, now=now.timestamp())["levels_stale_reason"]
+    _levels_why = terrain_staleness(live.get("computed_ts_utc") if live is not None else None, tk,
+                                    now=now.timestamp())["levels_stale_reason"]
     if _watched is None:     # the daemon not reporting is the cause of every other absence: first
         _why = ["the capture daemon is not reporting (no current heartbeat): its watchlist is unknown",
                 _levels_why]
@@ -2046,7 +2039,7 @@ def get_terrain(ticker: str = Query(...)):
         # spot_as_of_ts_utc, never called live (the live price is the daemon's price row);
         # internal fields (the kept chain, the heatmap grid, per-strike rows) have their own routes
         out = {k: v for k, v in cached.items() if not k.startswith("_")}
-        out.update(terrain_staleness(cached, tk, now=at.timestamp()))
+        out.update(terrain_staleness(cached.get("computed_ts_utc"), tk, now=at.timestamp()))
         out.update(_atr_fields(tk, at))     # live: today's candle from the bars held now
         return out
     spot, spot_source, spot_ts = resolve_spot(tk, now=at.timestamp())

@@ -27,7 +27,7 @@ import app.options.order_flow.streaming as ofs
 import push_changes
 import server
 from calibration.complete_chain_capture import CAPTURE_BASIS, persist_complete_chain_capture
-from math_exposure_core import STREAMED_CHAIN_FIELDS, bucket_metric, merge_exposure_books, stream_priced
+from math_exposure_core import bucket_metric, merge_exposure_books
 from stream_spine import MessageBus, options_quote_msg
 from terrain_engine import compute_terrain
 from tests.feed_live_helper import daemon_holds, no_daemon, through_the_daemons_bus
@@ -164,32 +164,47 @@ def test_the_terrain_endpoint_serves_a_published_ticker_as_json_without_internal
     assert not [k for k in body if k.startswith("_")]
 
 
-# ── a streamed contract is priced from its stream alone (Streamer API §1.1: Change) ─────────────
+# ── a held contract's one record: the REST answer, each field the stream sends in its place ────
 
-#: STAND-IN: the record A's first LEVELONE_OPTIONS message would carry (Schwab sends every field
-#: first, then changes), its values the chain's
-_A_RECORD = {field: _CONTRACTS[0][key] for key, field in STREAMED_CHAIN_FIELDS if _CONTRACTS[0].get(key) is not None}
-
-
-def _stream_priced(*streamed: "tuple[str, dict]") -> list:
-    """TK's chain with each (symbol, content) contract priced from its stream."""
-    by_sym = dict(streamed)
-    return [stream_priced(ct, by_sym[ct["symbol"]]) if ct["symbol"] in by_sym else ct
-            for ct in _CONTRACTS]
+def _served() -> "dict[str, dict]":
+    """TK's contracts as /api/chain serves them (CRWD's chain has one expiration), by symbol."""
+    body = json.loads(server.get_chain(ticker=TK, expiry=None).body)
+    return {ct["symbol"]: ct for ct in body["contracts"]}
 
 
-def test_a_streamed_contract_is_priced_from_its_stream_whatever_the_chains_time():
-    """The stream is the source of a held contract's values: a gamma streamed a minute before the
-    chain was fetched is still the contract's gamma, and a field it has not sent is absent, never
-    the chain's."""
+def test_a_held_contract_starts_from_the_rest_answer_and_takes_each_field_the_stream_sends():
+    """Operator 2026-10-13: each held contract's record starts from Schwab's REST answer and each
+    field is replaced when the stream sends it. A gamma streamed a minute before the chain was
+    fetched is the contract's gamma; its delta, never streamed, is the chain's as sent."""
     _daemon(held=[_A])
     _streamed(_A, {"GAMMA": 0.9}, _T - 60.0)
     _put_chain(fetched_ts=_T - 30.0)
-    c = _cached()
-    priced = _stream_priced((_A, {"GAMMA": 0.9}))
-    assert c["_priced_chain"] == priced and priced[0]["gamma"] == 0.9 and priced[0]["delta"] is None
-    assert c["_per_strike"] == compute_terrain(TK, priced, _SPOT, now=_AT).per_strike
-    assert c["_awaiting_stream"] == 0
+    served = _served()
+    assert served[_A]["gamma"] == 0.9 and served[_A]["delta"] == _CONTRACTS[0]["delta"]
+    assert {k: v for k, v in served[_A].items() if k != "gamma"} == {
+        k: v for k, v in _CONTRACTS[0].items() if k != "gamma"}
+    priced = [dict(_CONTRACTS[0], gamma=0.9)] + _CONTRACTS[1:]
+    assert _cached()["_per_strike"] == compute_terrain(TK, priced, _SPOT, now=_AT).per_strike
+
+
+def test_a_held_contract_with_no_message_yet_is_its_rest_answer():
+    _daemon(held=[_A])
+    _put_chain()
+    assert _served()[_A] == _CONTRACTS[0]
+
+
+def test_a_streamed_minus_999_greek_is_absent_never_the_old_value():
+    """CARRIED-PRS (#424), rule 2: Schwab's -999 replaces the value it held, as sent, and every
+    reader takes it as no number: the contract's gamma leaves the book."""
+    _daemon(held=[_A])
+    _streamed(_A, {"GAMMA": 0.9}, _T - 60.0)
+    _streamed(_A, {"GAMMA": -999}, _T - 30.0)
+    _put_chain(fetched_ts=_T - 10.0)
+    assert _served()[_A]["gamma"] == -999
+    priced = [dict(_CONTRACTS[0], gamma=-999)] + _CONTRACTS[1:]
+    assert _cached()["_per_strike"] == compute_terrain(TK, priced, _SPOT, now=_AT).per_strike
+    assert _cached()["_per_strike"] != compute_terrain(TK, [dict(_CONTRACTS[0], gamma=0.9)] + _CONTRACTS[1:],
+                                                       _SPOT, now=_AT).per_strike
 
 
 def test_a_new_chain_does_not_turn_a_live_contracts_leg_stale():
@@ -211,21 +226,8 @@ def test_every_streamed_contract_is_priced_not_only_the_one_that_ticked():
     _streamed(_A, {"GAMMA": 0.9}, _T)
     _streamed(_B, {"GAMMA": 0.8}, _T)
     _put_chain(fetched_ts=_T - 5.0)
-    assert _cached()["_priced_chain"] == _stream_priced((_A, {"GAMMA": 0.9}), (_B, {"GAMMA": 0.8}))
-
-
-def test_a_held_contract_with_no_record_yet_marks_the_levels_not_live():
-    """Until a held contract sends its first message its values are unknown: the levels say so."""
-    _daemon(held=[_A])
-    _put_chain()
-    c = _cached()
-    assert c["_awaiting_stream"] == 1 and c["_priced_chain"][0]["gamma"] is None
-    why = server.terrain_staleness(c, TK, now=_T)
-    assert why["levels_stale"] and why["levels_stale_reason"] == "1 streamed contracts have not sent their values yet"
-    _streamed(_A, {"GAMMA": 0.9}, _T)
-    _publish()
-    assert _cached()["_awaiting_stream"] == 0
-    assert not server.terrain_staleness(_cached(), TK, now=_T)["levels_stale"]
+    served = _served()
+    assert (served[_A]["gamma"], served[_B]["gamma"]) == (0.9, 0.8)
 
 
 def test_a_released_contract_is_priced_from_the_chain_again():
@@ -236,13 +238,13 @@ def test_a_released_contract_is_priced_from_the_chain_again():
     _publish()
     c = _cached()
     assert c["_chain"] is _CONTRACTS and _CONTRACTS[0].get("gamma") != 0.9
-    assert c["_priced_chain"] == _CONTRACTS
+    assert _served()[_A] == _CONTRACTS[0]
     assert c["_per_strike"] == compute_terrain(TK, _CONTRACTS, _SPOT, now=_AT).per_strike
 
 
 def test_a_volume_only_tick_reaches_the_per_strike_volume_column():
     _daemon(held=[_A])
-    _streamed(_A, {**_A_RECORD, "TOTAL_VOLUME": 999999}, _T)
+    _streamed(_A, {"TOTAL_VOLUME": 999999}, _T)
     _put_chain(fetched_ts=_T - 5.0)
     strike = round(_CONTRACTS[0]["strikePrice"], 2)
     row = next(r for r in _cached()["_per_strike"]["all"] if r[0] == strike)
@@ -260,7 +262,7 @@ def test_a_streamed_value_whose_feed_is_down_in_session_never_reaches_the_levels
     for at in (datetime(2026, 10, 7, 11, 0, tzinfo=ET), datetime(2026, 10, 7, 22, 0, tzinfo=ET)):
         ofls.clear_all_live_state()
         _daemon(held=[_A], socket_open=False, at=at.timestamp())
-        _streamed(_A, {**_A_RECORD, "TOTAL_VOLUME": 999999}, at.timestamp() - 60.0)
+        _streamed(_A, {"TOTAL_VOLUME": 999999}, at.timestamp() - 60.0)
         server._publish_levels(TK, _CONTRACTS, at.timestamp() - 120.0, now=at)
         out[at.hour] = _cached()
     rth, closed = out[11], out[22]
@@ -275,7 +277,7 @@ def test_a_foreign_tickers_contract_never_prices_this_chain():
     _daemon(held=[foreign])
     _streamed(foreign, {"GAMMA": 0.99}, _T)
     _put_chain(fetched_ts=_T - 5.0)
-    assert _cached()["_priced_chain"] == _CONTRACTS and _cached()["_awaiting_stream"] == 0
+    assert list(_served().values()) == _CONTRACTS
 
 
 # ── spot ─────────────────────────────────────────────────────────────────────────────────────

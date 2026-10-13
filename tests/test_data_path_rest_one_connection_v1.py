@@ -111,10 +111,11 @@ def test_a_rotation_asks_schwab_as_documented_one_request_at_a_time_with_exact_g
                     ("TSLA", "2026-10-09", TSLA["spot"], len(TSLA["chain"]))]
 
 
-def test_a_held_contract_is_never_asked_for_on_quotes_before_its_stream_sends_its_greeks(tmp_path):
-    """The stream is a held contract's source (Streamer API §1.1, LEVELONE_OPTIONS: Change): its
-    first message carried no Greek (SPY 260904C00772000's, as captured), so its Greeks are
-    absent until the stream sends them, never the quotes endpoint's."""
+def test_a_held_contract_whose_stream_has_sent_no_greek_starts_from_its_quote(tmp_path):
+    """A held contract's record starts from Schwab's REST answer until the stream sends its
+    Greeks (operator 2026-10-13): its stream record so far, a captured change message of SPY
+    260904C00772000, carries none, so the contract is asked for on the quotes endpoint and takes
+    the quote's Greeks with the quote's time."""
     schwab = LocalSchwab()
     _daemon, sweep, client, published = _setup(tmp_path, schwab, _et("2026-10-01 10:15"), events=1)
     try:
@@ -123,9 +124,10 @@ def test_a_held_contract_is_never_asked_for_on_quotes_before_its_stream_sends_it
         schwab.close()
     assert not {f.upper() for f in GREEKS} & set(_STREAM["events"][0]["content"])
     quoted = {s for path, q, *_ in schwab.requests if path == QUOTES for s in q["symbols"].split(",")}
-    held = delivered(published, "SPY")[HELD]
-    assert HELD not in quoted
-    assert {f: held[f] for f in GREEKS} == dict.fromkeys(GREEKS) and held["greeksTime"] == dict.fromkeys(GREEKS)
+    held, quote = delivered(published, "SPY")[HELD], SPY_QUOTES[HELD]["quote"]
+    assert HELD in quoted
+    assert {f: held[f] for f in GREEKS} == {f: quote[f] for f in GREEKS}
+    assert held["greeksTime"] == dict.fromkeys(GREEKS, quote["quoteTime"])
 
 
 def test_a_refused_quotes_request_fails_each_ticker_in_it_and_the_next_request_goes_at_once(tmp_path):

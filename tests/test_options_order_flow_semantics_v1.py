@@ -100,7 +100,7 @@ def test_a_contract_the_daemon_stops_streaming_no_longer_shows_as_current():
         daemon_holds(time.time(), {"LEVELONE_OPTIONS": [sym], "OPTIONS_BOOK": []})
         ofs._ingest_pushed(*_message(m))
         held = ofls.option_top(sym)
-        ofs._apply_heartbeat({"schwab_socket_open": True,            # a status without its time is not applied
+        ofs.apply_heartbeat({"schwab_socket_open": True,            # a status without its time is not applied
                               "held": {"LEVELONE_OPTIONS": [], "OPTIONS_BOOK": []}})
         lmp.record_feed_down()                                       # nor does a feed down release anything
         unapplied = ofls.option_top(sym)

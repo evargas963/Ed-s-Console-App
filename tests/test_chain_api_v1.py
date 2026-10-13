@@ -21,7 +21,6 @@ import pytest
 import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 import server as srv
-from math_exposure_core import stream_priced
 from schwab_client import flatten_chain_contracts
 from stream_spine import options_quote_msg
 from tests.feed_live_helper import daemon_holds, no_daemon
@@ -94,11 +93,11 @@ def test_only_the_requested_expiry_is_served():
     assert missing["status"] == "unavailable" and "2031-01-17" in missing["scope"]["reason"]
 
 
-def test_a_streamed_contract_is_served_as_its_stream_sent_it_every_other_as_the_chain():
-    """The levels' priced chain is what the route serves, never a second pricing: a streamed
-    contract's STREAMED_CHAIN_FIELDS are its record's, whenever the chain was fetched (a volume
-    streamed before it included), one the stream has not sent is absent, open interest is the
-    chain's; every other contract is the chain's as Schwab sent it."""
+def test_a_held_contract_is_served_as_its_one_record_every_other_as_the_chain():
+    """One record per held contract (operator 2026-10-13): Schwab's REST answer, each field the
+    stream has sent in its place, whenever the chain was fetched (a volume streamed before it
+    included); a field the stream has not sent, and open interest, are the chain's as sent; every
+    other contract is the chain's as Schwab sent it. The route serves what the levels priced."""
     now = _AT.timestamp()
     target = _TSLA_CONTRACTS[0]
     volume, gamma = (target["totalVolume"] or 0) + 4321, (target["gamma"] or 0) + 0.05
@@ -106,13 +105,8 @@ def test_a_streamed_contract_is_served_as_its_stream_sent_it_every_other_as_the_
           [(target["symbol"], {"TOTAL_VOLUME": volume, "GAMMA": gamma}, now - 8)])
     body = _get(ticker="TSLA")
     served = next(c for c in body["contracts"] if c["symbol"] == target["symbol"])
-    assert served == stream_priced(target, {"TOTAL_VOLUME": volume, "GAMMA": gamma})
-    assert served["totalVolume"] == volume and served["gamma"] == gamma and served["delta"] is None
-    assert served["openInterest"] == target["openInterest"]
+    assert served == {**target, "totalVolume": volume, "gamma": gamma}
     assert [c for c in body["contracts"] if c["symbol"] != target["symbol"]] == _TSLA_CONTRACTS[1:]
-    with srv._terrain_cache_lock:
-        priced = srv._terrain_cache["TSLA"]["_priced_chain"]
-    assert body["contracts"] == [c for c in priced if c["expirationDate"].startswith(_TSLA_EXPIRY)]
 
 
 def test_the_route_answers_over_real_http():

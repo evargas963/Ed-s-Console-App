@@ -221,8 +221,8 @@ class ChainSweep:
     next rotation, a removed one is asked for no more). For each ticker, Schwab's expiration chain once per ET
     date, then one chain request per expiry (strike_range=ALL), as Schwab says to break up a
     large chain. The chain's own Greeks (GREEK_FIELDS, rounded by Schwab) are never kept: a
-    contract the stream holds (`streamed`) takes its LEVELONE_OPTIONS record's, each with its
-    field's Schwab time (one not sent yet is absent); every other contract is asked for on the quotes endpoint,
+    contract whose LEVELONE_OPTIONS record (`streamed`) carries all of them takes the stream's,
+    each with its field's Schwab time; every other contract is asked for on the quotes endpoint,
     QUOTES_BATCH_MAX symbols to a request across tickers, and takes its quote's, with the
     quote's quoteTime. A Greek Schwab does not send is absent (None). Each contract carries the
     time of its Greeks as `greeksTime` ({field: Schwab's time, ms}).
@@ -408,11 +408,10 @@ class ChainSweep:
             return self.fail([chain], f"{type(e).__name__}: {e}")
         for ct in chain.contracts():
             record = self.streamed(ct["symbol"])
-            if record is not None:
+            if record is not None and all(f.upper() in record[0] for f in GREEK_FIELDS):
                 content, field_ts = record
-                ct.update({f: content.get(f.upper()) for f in GREEK_FIELDS})
-                ct["greeksTime"] = {f: field_ts[f.upper()][0] if f.upper() in field_ts else None
-                                    for f in GREEK_FIELDS}
+                ct.update({f: content[f.upper()] for f in GREEK_FIELDS})
+                ct["greeksTime"] = {f: field_ts[f.upper()][0] for f in GREEK_FIELDS}
             else:
                 ct.update(dict.fromkeys(GREEK_FIELDS))
                 ct["greeksTime"] = None

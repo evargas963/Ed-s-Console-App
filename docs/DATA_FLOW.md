@@ -187,16 +187,16 @@ from Schwab to the screen (daemon, console, page), are these:
   `flow` push on `/api/changes` → the browser reads the order-flow and heatmap routes. An equity
   has two Schwab books, NYSE_BOOK (exchanges) and NASDAQ_BOOK (market makers); each is stored
   under its service and served for the `venue` the screen's venue switch names, never combined.
-  The books streamed are every watchlist ticker's. Each service is wired by its delivery type
-  (Streamer API §1.1): LEVELONE_* are Change (the bus and the console keep each field Schwab last
-  sent), the BOOKs Whole (each message replaces the book), CHART_EQUITY All Sequence. For each
-  option contract the daemon holds (the option rule, below) the stream is the source: its prices,
-  sizes, volume, Greeks and IV are its LEVELONE_OPTIONS record's
-  (`math_exposure_core.STREAMED_CHAIN_FIELDS`, `server._stream_priced_chain`), a field not sent
-  yet is absent (open interest is the chain's: Schwab's 10/12 reply, item 5), and the levels are recalculated when one of them arrives or changes; while a held
-  contract has sent no record the levels are not live (`server.terrain_staleness`). The chain
-  sweep never asks /quotes for a held contract. Every other contract is the chain's, its Greeks
-  from Schwab's quotes (Option chain, below). A book message is the book Schwab sent, a
+  The books streamed are every watchlist ticker's. LEVELONE_OPTIONS is wired by its delivery
+  type (Streamer API §1.1, Change): the daemon's bus keeps each field Schwab last sent and the
+  console holds that record whole; the BOOKs are Whole (each message replaces the book); the
+  other services' wiring is work item WIRE-AS-DELIVERED. Each option contract the daemon holds
+  (the option rule, below) has one record (operator 2026-10-13): Schwab's REST answer (the chain,
+  its Greeks from Schwab's quotes until the stream has sent them), each live field the stream
+  sends replacing it, as sent (`math_exposure_core.STREAMED_CHAIN_FIELDS`, `stream_priced`);
+  its terms and open interest are the chain's (Schwab's 10/12 reply, item 5). Every option
+  message recalculates the levels. Every other contract is the chain's, its Greeks from
+  Schwab's quotes (Option chain, below). A book message is the book Schwab sent, a
   side with no levels included (empty, never replaced by an older two-sided book); a side Schwab
   sent no level for at a price is absent in the book heatmap, never a 0 size. The book heatmap and
   the options tape serve from the console's memory (§3.3), never the database. Mid and microprice
@@ -223,7 +223,7 @@ from Schwab to the screen (daemon, console, page), are these:
   change is one UNSUBS and one ADD of only the difference (`Daemon.ask`). The levels use every
   contract of the full chain, streamed or not. When the owner fails (the daemon down), nothing
   streams: every cell keeps its value and the header says OFFLINE; the console forgets the live
-  values of a contract a heartbeat no longer reports holding (`streaming._apply_heartbeat`); a
+  values of a contract a heartbeat no longer reports holding (`streaming.apply_heartbeat`); a
   feed down releases nothing (`live_market_plane.held_reported`: the last values stand, not
   live). Tests:
   `tests/test_option_contract_rule_v1.py`.

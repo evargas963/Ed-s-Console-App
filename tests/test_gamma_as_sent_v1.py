@@ -1,7 +1,9 @@
 """One gamma source: the regime's gamma at spot is Schwab's gamma as sent, summed over the same
 book the walls use (2026-09-27: it was a recomputed gamma, and on Friday's SPY chain the two
 disagreed in sign). The chain's rate and dividend travel with each contract as sent; a streamed
-contract takes its IV beside its gamma from the stream."""
+contract takes its IV beside its gamma from the stream.
+STAND-IN (named): the streamed GAMMA and VOLATILITY of SPY_0DTE's first contract (no captured
+stream of a contract in a captured chain carries its Greeks)."""
 from __future__ import annotations
 
 import pytest

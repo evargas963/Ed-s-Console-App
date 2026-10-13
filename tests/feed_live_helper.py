@@ -49,9 +49,9 @@ def mark_feed_down() -> None:
 
 def daemon_holds(at: float, held: dict, *, socket_open: bool = True) -> None:
     """The daemon's heartbeat stamped `at`, holding `held` ({Schwab service: [symbols]}), as the
-    console's feed loop applies it (streaming._apply_heartbeat)."""
+    console's feed loop applies it (streaming.apply_heartbeat)."""
     from app.options.order_flow import streaming as ofs
-    ofs._apply_heartbeat({"ts": at, "schwab_socket_open": socket_open, "held": held})
+    ofs.apply_heartbeat({"ts": at, "schwab_socket_open": socket_open, "held": held})
 
 
 def through_the_daemons_bus(bus, sym: str, ticks: list, ts: "list[float] | None" = None) -> None:

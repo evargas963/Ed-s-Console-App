@@ -14,6 +14,7 @@ status holding them.
 """
 from __future__ import annotations
 
+import json
 from datetime import datetime
 
 import pytest
@@ -104,9 +105,8 @@ def test_a_contract_that_streamed_reads_stale_while_schwabs_socket_is_closed():
     sym = CALLS[0]
     cov, surface = _publish([sym], [sym], at=_CLOSED, socket_open=False)
     assert [leg["state"] for leg in _legs(surface, sym)] == ["stale"]
-    with server._terrain_cache_lock:
-        priced = server._terrain_cache[TK]["_priced_chain"]
-    assert next(ct["gamma"] for ct in priced if ct["symbol"] == sym) == 0.05
+    served = json.loads(server.get_chain(ticker=TK, expiry=None).body)["contracts"]
+    assert next(ct["gamma"] for ct in served if ct["symbol"] == sym) == 0.05
     assert cov["stale"] == 1 and cov["live"] == 0
 
 

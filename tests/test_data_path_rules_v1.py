@@ -541,10 +541,9 @@ def test_d5_the_chain_is_asked_until_the_last_option_close_and_its_close_values_
         "each expiry asked again and again while the last option market is open"
     assert sorted(after_close) == sorted(set(before_close)), "each expiry once more after the 16:15 close"
 
-    stands = server.terrain_staleness({"computed_ts_utc": _et("2026-10-07 16:20")}, "SPY", now=_et("2026-10-07 17:00"))
+    stands = server.terrain_staleness(_et("2026-10-07 16:20"), "SPY", now=_et("2026-10-07 17:00"))
     assert (stands["levels_stale"], stands["levels_stale_reason"]) == (False, "")
-    assert server.terrain_staleness({"computed_ts_utc": _et("2026-10-07 15:00")}, "SPY",
-                                    now=_et("2026-10-07 16:10"))["levels_stale"] is True
+    assert server.terrain_staleness(_et("2026-10-07 15:00"), "SPY", now=_et("2026-10-07 16:10"))["levels_stale"] is True
 
 
 def test_d5_a_chain_in_flight_at_the_close_keeps_its_begin_time_and_the_close_chain_follows(tmp_path):
@@ -610,14 +609,14 @@ def test_d5_while_closed_levels_as_of_the_close_stand_and_older_ones_are_absent_
     no chain failure recorded."""
     sat, monday_early = _et("2026-10-03 12:00"), _et("2026-10-05 03:00")
     for now in (sat, monday_early):
-        st = server.terrain_staleness({"computed_ts_utc": _et("2026-10-02 20:00") + 30}, "ZZCLOSED", now=now)
+        st = server.terrain_staleness(_et("2026-10-02 20:00") + 30, "ZZCLOSED", now=now)
         assert st["levels_stale"] is False and st["levels_stale_reason"] == "", st
-        st = server.terrain_staleness({"computed_ts_utc": _et("2026-10-02 16:14")}, "ZZCLOSED", now=now)
+        st = server.terrain_staleness(_et("2026-10-02 16:14"), "ZZCLOSED", now=now)
         assert st["levels_stale"] is True and st["levels_stale_reason"] == (
             "the options are closed and this ticker's close values have not been fetched"), st
         st = server.terrain_staleness(None, "ZZCLOSED", now=now)
         assert st["levels_stale"] is True and st["levels_age_sec"] is None    # absent, not zero
-    st = server.terrain_staleness({"computed_ts_utc": _et("2026-10-01 10:00")}, "ZZCLOSED", now=_et("2026-10-01 11:00"))
+    st = server.terrain_staleness(_et("2026-10-01 10:00"), "ZZCLOSED", now=_et("2026-10-01 11:00"))
     assert st["levels_stale"] is True and "has not delivered this ticker" in st["levels_stale_reason"], \
         "in session, an hour-old chain is a gap"
 

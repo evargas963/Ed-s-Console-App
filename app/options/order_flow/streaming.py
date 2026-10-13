@@ -309,7 +309,7 @@ async def _rows_loop(ui_url: str, reconnect_sec: float) -> None:
                         continue
                     msg = json.loads(frame)
                     if msg.get("type") == "feed":
-                        _apply_heartbeat(msg.get("feed"))
+                        apply_heartbeat(msg.get("feed"))
                     for row in msg.get("rows") or []:
                         _price_rows[row["ticker"]] = row
                         if msg.get("type") == "quotes":
@@ -384,7 +384,7 @@ async def _feed_loop(push_url: str, ui_url: str, reconnect_sec: float) -> None:
 OPTION_PRODUCER_SERVICES: tuple[str, ...] = ("LEVELONE_OPTIONS", "OPTIONS_BOOK")
 
 
-def _apply_heartbeat(feed: Any) -> None:
+def apply_heartbeat(feed: Any) -> None:
     """Apply the daemon's status (`feed`, live_market_plane.record_feed_heartbeat) and forget the
     live state of each option contract it held before and no longer reports holding (its option
     rule moved off it), so no screen shows that contract's last message as current. A status not

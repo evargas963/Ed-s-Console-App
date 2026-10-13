@@ -335,23 +335,30 @@ _BUCKET_FLAGS = frozenset({"dollarized"})
 
 
 #: Each chain contract field and the LEVELONE_OPTIONS field that is its one source while the
-#: contract streams (Schwab's Change delivery, docs/schwab/schwab_streamer_api.pdf 1.1): its price,
-#: bid/ask, last, volume and Greeks, with the stream's own quote and trade times. Open interest is
-#: the chain's (Schwab's is the prior day's, docs/schwab/schwab_support_emails_2026_10_12.txt 5).
+#: contract streams (Schwab's Change delivery, docs/schwab/schwab_streamer_api.pdf 1.1; each pair is
+#: one quantity by the LEVELONE_OPTIONS field table): every live value the chain also carries, with
+#: the stream's own quote and trade times. The contract's terms are the chain's, and so is open
+#: interest (Schwab's is the prior day's, docs/schwab/schwab_support_emails_2026_10_12.txt 5).
 STREAMED_CHAIN_FIELDS: tuple[tuple[str, str], ...] = (
     ("bid", "BID_PRICE"), ("ask", "ASK_PRICE"), ("last", "LAST_PRICE"), ("mark", "MARK"),
-    ("bidSize", "BID_SIZE"), ("askSize", "ASK_SIZE"), ("totalVolume", "TOTAL_VOLUME"),
+    ("bidSize", "BID_SIZE"), ("askSize", "ASK_SIZE"), ("lastSize", "LAST_SIZE"),
+    ("totalVolume", "TOTAL_VOLUME"),
+    ("highPrice", "HIGH_PRICE"), ("lowPrice", "LOW_PRICE"), ("openPrice", "OPEN_PRICE"),
+    ("closePrice", "CLOSE_PRICE"), ("high52Week", "HIGH_PRICE_52_WEEK"), ("low52Week", "LOW_PRICE_52_WEEK"),
+    ("netChange", "NET_CHANGE"), ("percentChange", "NET_PERCENT_CHANGE"),
+    ("markChange", "MARK_CHANGE"), ("markPercentChange", "MARK_CHANGE_PERCENT"),
     ("delta", "DELTA"), ("gamma", "GAMMA"), ("theta", "THETA"), ("vega", "VEGA"), ("rho", "RHO"),
-    ("volatility", "VOLATILITY"),
+    ("volatility", "VOLATILITY"), ("theoreticalOptionValue", "THEORETICAL_OPTION_VALUE"),
+    ("timeValue", "TIME_VALUE"), ("intrinsicValue", "MONEY_INTRINSIC_VALUE"),
     ("quoteTimeInLong", "QUOTE_TIME_MILLIS"), ("tradeTimeInLong", "TRADE_TIME_MILLIS"),
 )
 
 
 def stream_priced(ct: dict, content: dict) -> dict:
-    """A streamed contract: `ct` (the chain's, as Schwab sent it) with every STREAMED_CHAIN_FIELDS
-    value from its stream record `content`, as sent; one the stream has not sent is absent, never
-    the chain's. `ct` is not changed."""
-    return {**ct, **{key: content.get(field) for key, field in STREAMED_CHAIN_FIELDS}}
+    """A streamed contract's one record: `ct`, Schwab's REST answer (the chain, its Greeks from
+    /quotes), with each STREAMED_CHAIN_FIELDS field its stream record `content` has sent in its
+    place, as sent (operator 2026-10-13). `ct` is not changed."""
+    return {**ct, **{key: content[field] for key, field in STREAMED_CHAIN_FIELDS if field in content}}
 
 
 # ── Strike selection helpers ─────────────────────────────────────────────────

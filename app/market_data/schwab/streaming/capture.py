@@ -609,13 +609,13 @@ class Daemon:
 
     def option_record(self, symbol: str) -> "tuple[dict, dict] | None":
         """`symbol`'s LEVELONE_OPTIONS record while this connection holds it, (content, field_ts):
-        every field Schwab has sent and each one's (Schwab time, receive time); empty before its
-        first message. None when it is not held (a record left from a connection that ended is
-        not held): the chain sweep asks the quotes endpoint for that contract."""
-        if symbol not in self.held["LEVELONE_OPTIONS"]:
-            return None
+        every field Schwab has sent and each one's (Schwab time, receive time). None when it is not
+        held (a record left from a connection that ended is not held) or has sent nothing yet: the
+        chain sweep asks the quotes endpoint for that contract."""
         entry = self.bus.current.get(_current_key("LEVELONE_OPTIONS", symbol))
-        return (entry[1]["content"], entry[1]["field_ts"]) if entry is not None else ({}, {})
+        if symbol not in self.held["LEVELONE_OPTIONS"] or entry is None:
+            return None
+        return entry[1]["content"], entry[1]["field_ts"]
 
     def status(self) -> dict:
         """What the console and browsers are told every second (live_push / live_ui)."""
