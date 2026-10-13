@@ -146,11 +146,11 @@ def test_after_the_last_option_close_rows_before_the_newest_five_sessions_are_re
 
 def test_every_message_arriving_during_the_keep_is_written_while_old_rows_are_still_being_removed(tmp_path):
     """Production's stream_capture.db was made before the receipt-time indexes: its tables hold only
-    their per-symbol index. 200,000 option quotes received before the newest five sessions began
-    (ten parts of the keep), and 2,000 equity quotes arriving while the keep runs: each one is
+    their per-symbol index. 400,000 option quotes received before the newest five sessions began
+    (twenty parts of the keep), and 2,000 equity quotes arriving while the keep runs: each one is
     written while old rows remain, and the keep then removes every old row and nothing else."""
     db = tmp_path / "stream_capture.db"
-    writer = CaptureWriter(db)
+    writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01)
     with sqlite3.connect(db) as conn:
         for index in ("idx_sqr_ts", "idx_sbkr_ts", "idx_soqr_ts"):            # as production's file
             conn.execute(f"DROP INDEX {index}")
@@ -158,7 +158,7 @@ def test_every_message_arriving_during_the_keep_is_written_while_old_rows_are_st
         old = _et("2026-09-30 15:00")
         conn.executemany("INSERT INTO stream_options_quotes_raw(ts_recv,symbol,native_json,src,schwab_ts) "
                          "VALUES(?,?,?,?,?)", ((old + i / 1000, contract, '{"key":"' + contract + '"}',
-                                                "schwab_options_l1", None) for i in range(200_000)))
+                                                "schwab_options_l1", None) for i in range(400_000)))
     bus = MessageBus()
     now = _et("2026-10-07 17:00")
 
