@@ -184,7 +184,8 @@ Hold EdWebConsole to how a financial institution handles systems with real money
   Enforced by: `tools/process_lock_guard.py` (`tests/test_operating_process_lock_v1.py`,
   `tests/test_hook_chain_v1.py`).
 - Never `git reset`, `git checkout --`, `git stash` or a force push. Enforced by: `tools/process_lock_guard.py` for
-  the forms its test table refuses (`tests/test_reset_guard_v1.py`); every other form — ENF-12.
+  the forms its test table refuses (`tests/test_reset_guard_v1.py`); the known open forms (a git alias) — ENF-13;
+  every other form — ENF-12.
 - Never `--no-verify`, `git add -A` / `.`, delete or move anything under `data/`, a python reading its program from
   stdin (use a script file or `python -c`), or a command the guards cannot see into. Enforced by:
   `tools/operator_law_guard.py`, in the forms the tests in `tests/test_operator_law_guard_action_bans_v1.py`,
