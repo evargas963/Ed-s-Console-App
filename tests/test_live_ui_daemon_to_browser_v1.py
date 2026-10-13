@@ -56,7 +56,9 @@ def _frame(bus, service: str, item: dict, schwab_ts) -> None:
     capture._publisher(service, bus, HealthRegistry())({"timestamp": schwab_ts, "content": [item]})
 
 
-async def _run(body, feed=None, clock=time.time, record_heartbeat=lambda _beat: None):
+async def _run(body, feed=None, record_heartbeat=lambda _beat: None, **clock):
+    """The daemon's server and a client on it; `clock` (clock=...) is the beats' time, when the
+    test judges a session."""
     from websockets.asyncio.client import connect
 
     port = _free_port()
@@ -66,7 +68,7 @@ async def _run(body, feed=None, clock=time.time, record_heartbeat=lambda _beat: 
     feed = feed if feed is not None else _Feed()
     server = asyncio.create_task(live_ui.serve_live_ui(
         bus, stop, heartbeat_fn=feed, host="127.0.0.1", port=port, stats=stats,
-        record_heartbeat=record_heartbeat, clock=clock))
+        record_heartbeat=record_heartbeat, **clock))
     end = time.monotonic() + 5
     while not stats.get("listening") and time.monotonic() < end:
         await asyncio.sleep(0.01)
