@@ -1,6 +1,8 @@
-"""The console's push: which of a ticker's served values changed (the page reloads what changed).
+"""The console's push: which of a ticker's served values changed (the routes they move are pushed
+again, then the kind).
 
-Every open page holds one connection (/api/changes) on its ticker, kept in the order they opened.
+Every open page holds one connection (/api/live, server.live_values) on its ticker, kept in the
+order they opened.
 A changed value (`changed`) reaches the pages open on its ticker on the event loop.
 """
 from __future__ import annotations

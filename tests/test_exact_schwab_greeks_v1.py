@@ -44,7 +44,7 @@ def fetched(tmp_path):
         schwab.withheld = set(withheld)
         published: list = []
         sweep = ChainSweep(["SPY"], lambda t, m: published.append((t, m)), clock=lambda: _SWEEP_AT,
-                           held=frozenset, connection=lambda: 1)
+                           held=frozenset)
         client = schwab.client(tmp_path)
         try:
             assert sweep.rotation(lambda: client, ["SPY"], threading.Event()) == {"SPY"}

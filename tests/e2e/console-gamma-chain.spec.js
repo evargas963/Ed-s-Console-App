@@ -6,7 +6,7 @@
  * (D), and the centre strike selects only the shared strike. Symbols are the vendor's own, never
  * reconstructed.
  */
-const { test, expect } = require('@playwright/test');
+const { test, expect, pushChange } = require('./fixtures/live_socket');
 const { served } = require('./fixtures/served_chain');
 const { routeWatchlist } = require('./fixtures/watchlist');
 
@@ -148,7 +148,7 @@ test.describe('D — Gamma Chain subview', () => {
     // Fire a background refresh (same context) WHILE scrolled, with genuinely changed data,
     // and confirm both the new value lands AND the header still has not moved at all.
     vol = 25;
-    await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'chain' } })));
+    await pushChange(page, 'chain');
     await expect(page.locator('#chainBody tbody tr').first().locator('td').nth(1)).toHaveText('25');
     const afterRefresh = await headBox();
 
@@ -203,7 +203,7 @@ test.describe('D — Gamma Chain subview', () => {
     // The NEXT chain fetch carries a genuinely different value -- proof a refresh actually
     // completed comes from the DOM showing THIS new value, not merely from time having passed.
     vol = 25;
-    await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'chain' } })));
+    await pushChange(page, 'chain');
     await expect(page.locator('#chainBody tbody tr').first().locator('td').nth(1)).toHaveText('25');
 
     // A routine background refresh (same ticker/expiry context) must not recentre the ladder,

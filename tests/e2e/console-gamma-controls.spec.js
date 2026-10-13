@@ -6,7 +6,7 @@
  * expiry filters the heatmap to that column; an old expiry invalid for a new ticker fails safe to All;
  * terrain Key Levels stay disclosed as all-exp when a single expiry is filtered. Offline.
  */
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./fixtures/live_socket');
 const { routeWatchlist } = require('./fixtures/watchlist');
 
 const EXPS = ['2026-09-11', '2026-09-12', '2026-09-18'];

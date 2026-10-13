@@ -5,7 +5,7 @@
  * and the positioning migration are served fields. Level crosses are real SPY rows
  * (tests/fixtures/real_spy_level_crosses.json). Any page error fails the test.
  */
-const { test, expect } = require('@playwright/test');
+const { test, expect, pushChange } = require('./fixtures/live_socket');
 const path = require('path');
 const { mockPriceSocket } = require('./fixtures/price_socket');
 const { routeWatchlist } = require('./fixtures/watchlist');
@@ -332,7 +332,7 @@ test.describe('Trade Desk renders served values', () => {
     await expect.poll(async () => (await chartState()).livePrice).toBeNull();   // Schwab sent no price: no line
     await page.waitForTimeout(1500);
     expect(barReads.length).toBe(before);
-    await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'liquidity' } })));
+    await pushChange(page, 'liquidity');
     await expect.poll(() => barReads.length).toBeGreaterThan(before);
     expect(errs).toEqual([]);
   });
@@ -408,7 +408,7 @@ test.describe('Trade Desk renders served values', () => {
     const push = async (kind) => {
       await page.waitForTimeout(300);                    // the first read has settled
       reads.length = 0;
-      await page.evaluate((k) => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: k } })), kind);
+      await pushChange(page, kind);
       await expect.poll(() => reads.length).toBeGreaterThan(0);
       await page.waitForTimeout(300);                    // every read that push makes has gone out
       return [...new Set(reads)].sort();
@@ -435,7 +435,7 @@ test.describe('Trade Desk renders served values', () => {
     await expect(strikes).toHaveText(['772', '771', '770']);
     await page.evaluate(() => window.EdShell.setScope('wider'));
     await expect(strikes).toHaveText(['792', '791', '790']);
-    await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'flow' } })));
+    await pushChange(page, 'flow');
     await page.waitForTimeout(600);                                   // the push's reads have landed
     await expect(strikes).toHaveText(['792', '791', '790']);          // the window asked for, not the old one
   });
@@ -480,12 +480,17 @@ test.describe('Trade Desk renders served values', () => {
         .observe(document.getElementById('tdBody'), { childList: true });
     });
     slow = true;
-    await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'flow' } })));
+    const pushed = pushChange(page, 'flow');                         // the console's answers are slow ...
     await expect.poll(() => inFlight).toBe(1);
     await page.evaluate(() => document.querySelector('.bookvenue [data-venue="NASDAQ_BOOK"]').click());   // ... cut short
     await expect(body).toContainText('(NASDAQ_BOOK, depth 5)');
-    await page.waitForTimeout(1200);                                 // the cut-short read would have landed
-    expect(await page.evaluate(() => window.__draws)).toEqual(['(NASDAQ_BOOK']);
+    await pushed;                                                    // the slow NYSE answer has landed
+    await page.waitForTimeout(400);
+    const draws = await page.evaluate(() => window.__draws);
+    // every draw is the venue on screen; the old venue's late answer never draws (the push's
+    // change kind redraws the venue on screen from its newest answer)
+    expect(draws.length).toBeGreaterThan(0);
+    expect(draws.filter((d) => d !== '(NASDAQ_BOOK')).toEqual([]);
   });
 
   test('Right Now: a read cut short by a scope change never draws', async ({ page }) => {
@@ -514,13 +519,17 @@ test.describe('Trade Desk renders served values', () => {
       }).observe(document.getElementById('tdBody'), { childList: true });
     });
     slow = true;
-    await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'flow' } })));
+    const pushed = pushChange(page, 'flow');                         // the console's answers are slow ...
     await expect.poll(() => inFlight).toBe(1);
     slow = false;
     await page.evaluate(() => window.EdShell.setScope('wider'));     // ... and the scope change cuts it short
     await expect(page.locator('#tdMigration .gbs-k')).toHaveText(['792', '791', '790']);
-    await page.waitForTimeout(1200);                                 // the cut-short read would have landed
-    expect(await page.evaluate(() => window.__draws)).toEqual(['792,791,790 | spot 771.30']);
+    await pushed;                                                    // the slow answer has landed
+    await page.waitForTimeout(400);
+    const draws = await page.evaluate(() => window.__draws);
+    // every draw is the scope on screen; the old scope's late answer never draws
+    expect(draws.length).toBeGreaterThan(0);
+    expect(draws.filter((d) => d !== '792,791,790 | spot 771.30')).toEqual([]);
   });
 
   test('Market Map: 3m, line mode, a level beyond the visible range pinned at the edge, and the FORCES split', async ({ page }) => {

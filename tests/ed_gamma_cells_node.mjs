@@ -23,13 +23,14 @@ const ctx = {
     addEventListener: (ev, fn) => { (listeners[ev] = listeners[ev] || []).push(fn); },
   },
   getComputedStyle: () => ({ getPropertyValue: () => '' }),
-  fetch: () => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(surface) }),
   AbortController, Promise, JSON, Math, Number, String, Object, Array, Date, isNaN, URL, console,
 };
 ctx.window = ctx;
 ctx.globalThis = ctx;
-// the shell (ed-core.js) as the heatmap uses it: the view, no pan, no expiry selected
+// the shell (ed-core.js) as the heatmap uses it: the view, no pan, no expiry selected, and the
+// console's pushed answer of the surface route (EdShell.live)
 ctx.EdShell = {
+  live: () => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(surface) }),
   getState: () => ({ workspace: 'options', subview: 'gamma', view: 'heatmap', ticker: surface.ticker }),
   getMeasure: () => 'gex', getExpiry: () => null, setStrike: () => {},
   newPan: () => ({ centre: null, shift: 0, served: null }), panServed: (pan, c) => { pan.served = c; },

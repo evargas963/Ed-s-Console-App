@@ -111,6 +111,15 @@ CREATE TABLE IF NOT EXISTS stream_chains_raw (
     src TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_schr_sym_ts ON stream_chains_raw(symbol, expiry, ts_recv);
+-- Schwab's /expirationchain answers, verbatim: one row per ticker asked, its status and the answer.
+CREATE TABLE IF NOT EXISTS stream_expirations_raw (
+    ts_recv REAL NOT NULL,
+    symbol TEXT NOT NULL,
+    status INTEGER NOT NULL,
+    native_json TEXT NOT NULL,
+    src TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_sexr_sym_ts ON stream_expirations_raw(symbol, ts_recv);
 -- Schwab's /quotes answers for option contracts, verbatim: one row per request, the symbols asked,
 -- its status and the whole answer.
 CREATE TABLE IF NOT EXISTS stream_option_quotes_rest_raw (
@@ -259,7 +268,7 @@ _FIELD_DELTA = {"quote": "native", "contract": "fields"}
 #: the topics only the journal (LOG) takes: each message as Schwab sent it, which posts to a
 #: record elsewhere (an option message, a chain or quotes answer posts to its contracts' records)
 #: and is never a current record of its own
-_JOURNAL_ONLY = ("optquote.", "chainanswer.", "quotesanswer.")
+_JOURNAL_ONLY = ("optquote.", "chainanswer.", "quotesanswer.", "expirationanswer.")
 
 
 def current_key(topic: str, msg: Any) -> str:
@@ -443,6 +452,9 @@ _INSERTS = {
                     "VALUES(?,?,?,?,?,?)",
                     lambda m: (m["ts_recv"], m["symbol"], m["expiry"], m["status"], json.dumps(m["answer"]),
                                m["src"])),
+    "expirationanswer": ("INSERT INTO stream_expirations_raw(ts_recv,symbol,status,native_json,src) "
+                         "VALUES(?,?,?,?,?)",
+                         lambda m: (m["ts_recv"], m["symbol"], m["status"], json.dumps(m["answer"]), m["src"])),
     "quotesanswer": ("INSERT INTO stream_option_quotes_rest_raw(ts_recv,symbols_json,status,native_json,src) "
                      "VALUES(?,?,?,?,?)",
                      lambda m: (m["ts_recv"], json.dumps(m["symbols"]), m["status"], json.dumps(m["answer"]),
@@ -505,16 +517,12 @@ KEPT_BY_TIME = (("stream_quotes_raw", "ts_recv"), ("stream_book_raw", "ts_recv")
                 ("stream_options_quotes_raw", "ts_recv"), ("stream_bars_raw", "ts_recv"),
                 ("stream_news_raw", "ts_recv"), ("stream_pricehistory_raw", "ts_recv"),
                 ("stream_markets_raw", "ts_recv"), ("stream_chains_raw", "ts_recv"),
+                ("stream_expirations_raw", "ts_recv"),
                 ("stream_option_quotes_rest_raw", "ts_recv"),
                 ("stream_watchlist", "ts_recv"), ("stream_subscriptions", "ts"),
                 ("stream_feed_status", "ts"), ("stream_write_failures", "ts"))
 #: rows removed in one transaction, so a live write never waits behind a long delete
 PRUNE_ROWS = 20000
-
-
-def _every_message(topic: str, msg: Any) -> bool:
-    """The writer's save rule when no one has set one (CaptureWriter.saves): every message."""
-    return True
 
 
 @dataclass(frozen=True)
@@ -851,9 +859,6 @@ class CaptureWriter:
         self.error: "str | None" = None
         self.error_ts: "float | None" = None
         self.left_on_disk: list = []
-        #: which bus messages are recorded (topic, message) -> bool; the daemon sets its own
-        #: (Daemon.saves: option quotes and option books of the contracts it keeps)
-        self.saves = _every_message
         #: the daily keep in progress (prune): rows received before `_prune_before` leave each
         #: table still in `_prune`, a part at a time; `_pruned` counts them per table
         self._prune: "list[tuple[str, str]]" = []
@@ -1016,7 +1021,7 @@ class CaptureWriter:
             await asyncio.to_thread(thread.join)
 
     def _hand(self, item) -> None:
-        if item[0].split(".", 1)[0] not in _INSERTS or not self.saves(*item):   # no table: not recorded
+        if item[0].split(".", 1)[0] not in _INSERTS:     # not a Schwab message (no table): not recorded
             return
         with self._lock:
             if self.state == WRITER_DEAD:

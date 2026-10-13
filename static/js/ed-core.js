@@ -478,7 +478,8 @@
     return fetch(url, opts).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); });
   }
   function refreshWL() {
-    wlFetch('/api/watchlist', { cache: 'no-store' })
+    live('/api/watchlist', 'watchlist')
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j || {} }; }); })
       .then(function (a) {
         if (!a.ok) { wlNotify(a.j.error); return; }
         _wl = a.j.tickers; renderWatchlist();
@@ -622,7 +623,7 @@
   // each new chain the console pushes for the ticker
   function loadExpiries(tk) {
     var sel = document.getElementById('expSel'); if (!sel) return;
-    live('/api/expiries?ticker=' + encodeURIComponent(tk), ['chain'])
+    live('/api/expiries?ticker=' + encodeURIComponent(tk), 'expiries')
       .then(function (r) { if (!r.ok) throw new Error('expiries unavailable: HTTP ' + r.status); return r.json(); })
       .then(function (d) {
         if (state.ticker !== tk) return;   // a newer ticker switch superseded this request
@@ -890,26 +891,46 @@
   // ---- the console's push (/api/live, one WebSocket): each route a panel shows, answered over
   // the socket at once and again whenever a kind of change it follows happens for the ticker
   // (levels, chain, flow, liquidity), then the kind itself, and the session label. The page
-  // fetches no value: a panel asks EdShell.live(url, kinds) where it would fetch(url), and each
+  // fetches no value: a panel asks EdShell.live(url, key) where it would fetch(url), and each
   // panel redraws on `ed:changed` for the kinds it shows, from the answer already pushed. ----
   var _live = null, _liveTicker = null, _liveRetry = 0;
-  var _answers = {}, _follows = {}, _waiting = {};
+  var _answers = {}, _asked = {}, _waiting = {};
   function liveSend(req) { if (_live && _live.readyState === 1) { try { _live.send(JSON.stringify(req)); } catch (e) {} } }
   // A Response-like answer of `url` (ok, status, json()), from the console's push.
   function asResponse(a) {
     return { ok: a.status >= 200 && a.status < 300, status: a.status,
              json: function () { return Promise.resolve(a.body); } };
   }
-  function live(url, kinds) {
-    _follows[url] = kinds || [];
+  // `url`'s answer as the console pushes it: where a panel would fetch(url). The console sends
+  // it again on each change that moves it, before the `ed:changed` the panel redraws on. `key`
+  // names the panel's place: a new URL there releases the one it showed before.
+  var _byKey = {};
+  function live(url, key) {
+    if (key) {
+      var before = _byKey[key];
+      _byKey[key] = url;
+      if (before && before !== url) release(before);
+    }
     if (_answers[url]) return Promise.resolve(asResponse(_answers[url]));
     var p = new Promise(function (resolve) { (_waiting[url] = _waiting[url] || []).push(resolve); });
-    liveSend({ op: 'route', url: url, kinds: _follows[url] });
+    if (!_asked[url]) { _asked[url] = true; liveSend({ op: 'route', url: url }); }
     return p;
+  }
+  // The console stops pushing `url` once no panel shows it.
+  function release(url) {
+    for (var k in _byKey) if (_byKey[k] === url) return;
+    delete _answers[url]; delete _asked[url]; delete _waiting[url];   // a reopened push asks it no more
+    liveSend({ op: 'drop', url: url });
+  }
+  // The panel at `key` shows nothing now.
+  function drop(key) {
+    var url = _byKey[key];
+    delete _byKey[key];
+    if (url) release(url);
   }
   function openChangeStream(tk) {
     _liveTicker = tk;
-    _answers = {}; _follows = {};
+    _answers = {}; _asked = {}; _byKey = {};
     if (_live && _live.readyState === 1) { liveSend({ op: 'ticker', ticker: tk }); return; }
     if (_live || typeof WebSocket === 'undefined') return;
     var ws;
@@ -919,8 +940,12 @@
     ws.onopen = function () {
       _liveRetry = 0;
       liveSend({ op: 'ticker', ticker: _liveTicker });
-      Object.keys(_follows).forEach(function (url) { liveSend({ op: 'route', url: url, kinds: _follows[url] }); });
-      Object.keys(_waiting).forEach(function (url) { if (!_follows[url]) liveSend({ op: 'route', url: url, kinds: [] }); });
+      // every route asked again: an answer held from before the push dropped is not current
+      var urls = Object.keys(_answers).concat(Object.keys(_waiting));
+      _asked = {}; _answers = {};
+      urls.forEach(function (url) {
+        if (!_asked[url]) { _asked[url] = true; liveSend({ op: 'route', url: url }); }
+      });
       refreshWL();     // the list as the daemon keeps it, again after the push reopens
     };
     ws.onmessage = function (ev) {
@@ -928,6 +953,7 @@
       if (!msg) return;
       if (msg.type === 'session') { paintSession(msg.label); return; }
       if (msg.type === 'route') {
+        if (!_asked[msg.url]) return;   // released before its answer came: nothing shows it
         _answers[msg.url] = msg;
         (_waiting[msg.url] || []).forEach(function (resolve) { resolve(asResponse(msg)); });
         delete _waiting[msg.url];
@@ -1091,7 +1117,7 @@
   else document.addEventListener('DOMContentLoaded', init);
 
   // expose for view modules + tests (no trading logic here)
-  window.EdShell = { getState: function () { return Object.assign({}, state); }, setTicker: setTicker, live: live,
+  window.EdShell = { getState: function () { return Object.assign({}, state); }, setTicker: setTicker, live: live, drop: drop,
     addSymbol: addSymbol, setWorkspace: setWorkspace, setStrike: setStrike,
     setTheme: applyTheme,
     marketContext: function () { return MARKET_CONTEXT.slice(); },   // served [{key, display}]

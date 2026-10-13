@@ -5,7 +5,7 @@
  * touching the shared ticker / strike / expiry / scope state — so Restore returns to the exact same
  * context. Esc restores; the choice persists. Offline.
  */
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./fixtures/live_socket');
 const { routeWatchlist } = require('./fixtures/watchlist');
 
 const SURFACE = { ticker: 'SPY', symbol: 'SPY', available: true, spot: 100, source: 'terrain_live_cache',

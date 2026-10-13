@@ -51,7 +51,7 @@
     if (!host || !stillChain(tk, exp)) return;
     var mySeq = ++_reqSeq;
     function current() { return mySeq === _reqSeq && stillChain(tk, exp); }
-    return fetch('/api/chain?ticker=' + encodeURIComponent(tk) + (exp ? '&expiry=' + encodeURIComponent(exp) : ''), { cache: 'no-store', signal: signal })
+    return window.EdShell.live('/api/chain?ticker=' + encodeURIComponent(tk) + (exp ? '&expiry=' + encodeURIComponent(exp) : ''), 'chain')
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
       .then(function (d) { if (current()) render(host, d); })
       .catch(function (e) {

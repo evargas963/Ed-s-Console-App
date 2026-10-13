@@ -356,7 +356,7 @@ def test_a_chain_whose_history_write_fails_is_kept_as_sent_and_is_never_a_chain_
         def publish(topic, msg):                     # from the sweep's thread, as run_chains publishes
             published.append(msg)
             loop.call_soon_threadsafe(bus.publish, topic, msg)
-        sweep = ChainSweep(["SPY"], publish, clock=lambda: _IN_WINDOW, held=frozenset, connection=lambda: 1)
+        sweep = ChainSweep(["SPY"], publish, clock=lambda: _IN_WINDOW, held=frozenset)
         schwab = LocalSchwab()
         client = schwab.client(tmp_path)
         def chains() -> int:

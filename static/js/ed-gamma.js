@@ -244,7 +244,7 @@
   function loadImpl(ticker, signal) {
     var host = document.getElementById('heatBody');
     if (!host || !stillCurrent(ticker)) return;
-    return fetch(surfaceUrl(ticker, host), { cache: 'no-store', signal: signal })
+    return window.EdShell.live(surfaceUrl(ticker, host), 'surface:' + (host && host.id || ''))
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
       .then(function (d) { if (stillCurrent(ticker)) renderSurface(host, d); })
       .catch(function (e) {

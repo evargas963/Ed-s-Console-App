@@ -144,7 +144,7 @@ def test_the_price_row_carries_feed_state_and_trade_age_and_no_bar():
 
 
 def test_spot_gamma_reprice_runs_only_for_a_viewed_heatmap():
-    """A page open on ZZVIEW (its /api/changes connection, push_changes.subscribe) and none on
+    """A page open on ZZVIEW (its /api/live connection, push_changes.subscribe) and none on
     ZZNOTVIEWED: a streamed tick of each queues a reprice for the viewed one only. The pricing
     thread is held meanwhile, so what waits for it is read as queued."""
     import threading

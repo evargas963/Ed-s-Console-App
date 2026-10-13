@@ -5,7 +5,7 @@
  * Proves the table renders the contract, discloses VWAP/absent/degraded honestly, marks no
  * proximity, and a level click drives the shared strike selection. Offline.
  */
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./fixtures/live_socket');
 const { routeWatchlist } = require('./fixtures/watchlist');
 
 const LEVELS = {

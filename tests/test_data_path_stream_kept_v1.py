@@ -1,25 +1,22 @@
-"""stream_capture.db holds what the operator trades, for the newest five trading sessions
-(docs/DATA_FLOW.md §2 D4): the daemon's writer records an option quote or option book only for a
-contract the daemon keeps (Daemon.saves: each watchlist ticker's soonest expiration, the 5 listed
-strikes each side of the price, and the Flow panel's contract), every equity message, and once
-after each close of the last option market removes the rows received before the newest five
-sessions began (keep_sessions, CaptureWriter.prune). The live stream and the levels are untouched.
+"""stream_capture.db holds everything Schwab sends, as sent, for the newest five trading sessions
+(docs/DATA_FLOW.md §2 D4): the daemon's writer records every message, and once after each close of
+the last option market removes the rows received before the newest five sessions began
+(keep_sessions, CaptureWriter.prune). The live stream and the levels are untouched.
 
-Real data: the option chains the daemon captured 2026-10-07 (tests/real_chains.py) and Schwab's
-/markets answers held by tests/conftest.py. STAND-INS: the messages' contents (only their topic,
-symbol and receipt time are what this proves) and the daemon's clock.
+Real data: the messages Schwab sent 2026-10-05 14:00:00-14:00:03 CT and Schwab's /markets answers
+held by tests/conftest.py. STAND-INS (the keep's tests): the messages' contents (only their topic,
+symbol and receipt time are what the keep reads) and the daemon's clock.
 """
 from __future__ import annotations
 
 import asyncio
+import json
 import sqlite3
 from datetime import datetime
+from pathlib import Path
 
-import option_ledger
 from app.market_data.schwab.streaming import capture
-from calibration.complete_chain_capture import chain_round_message
-from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus, book_msg, options_quote_msg, quote_msg
-from tests.real_chains import MRVL, SPY_0DTE
+from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus, options_quote_msg, quote_msg
 from time_et import ET
 
 
@@ -39,57 +36,37 @@ def _et(text: str) -> float:
     return datetime.fromisoformat(text).replace(tzinfo=ET).timestamp()
 
 
-def test_only_the_option_contracts_traded_are_recorded_and_every_equity_message(tmp_path):
-    """SPY 2026-10-07 12:32 ET at 776.61, its same-day expiration listed: strikes 772 to 782 (777
-    nearest, 5 listed each side), calls and puts. MRVL at 283.73, no same-day expiration: its
-    nearest, 2026-10-09, strikes 270 to 295 (282.5 nearest). The contract selected on the Flow panel
-    is recorded wherever it is. No other option quote or option book is recorded; both tickers'
-    equity quotes are."""
+def test_every_message_schwab_sends_is_recorded_as_sent(tmp_path):
+    """Operator 2026-10-13: "Save everything Schwab sends, as sent." Every message Schwab sent
+    2026-10-05 14:00:00-14:00:03 CT (tests/fixtures/real_stream_mix_2026_10_05_1400ct.json: 7,420
+    LEVELONE_OPTIONS of 2,755 contracts, 152 LEVELONE_EQUITIES, 12 book messages), through the
+    daemon's own handler and its writer: each is a row, its item as Schwab sent it -- every option
+    contract's, not a kept few."""
+    mix = json.loads((Path(__file__).parent / "fixtures" / "real_stream_mix_2026_10_05_1400ct.json")
+                     .read_text(encoding="utf-8"))["messages"]
     db = tmp_path / "stream_capture.db"
-    writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01)
+    writer = CaptureWriter(db, batch_rows=500, batch_sec=0.01)
     bus = MessageBus()
-    daemon = capture.Daemon(bus, HealthRegistry(), ["SPY", "MRVL"], clock=lambda: SPY_0DTE.now.timestamp())
-    daemon.writer = writer
-    writer.saves = daemon.saves
-    flow = next(c["symbol"] for c in MRVL.chain if c["expirationDate"].startswith("2026-11-20"))
-    spy_kept = {c["symbol"] for c in SPY_0DTE.chain if 772 <= c["strikePrice"] <= 782}
-    mrvl_kept = {c["symbol"] for c in MRVL.chain
-                 if c["expirationDate"].startswith("2026-10-09") and 270 <= c["strikePrice"] <= 295}
-    every = [c["symbol"] for c in SPY_0DTE.chain + MRVL.chain]
-    near, far = sorted(spy_kept)[0], next(s for s in every if s not in spy_kept | mrvl_kept | {flow})
 
     async def go():
         stop = asyncio.Event()
-        tasks = [asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop)),
-                 asyncio.create_task(daemon.follow_market(stop))]
+        task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
         await asyncio.sleep(0)
-        for rc in (SPY_0DTE, MRVL):
-            for ct in rc.chain:                              # each contract's record opened, the round in
-                bus.publish(*option_ledger.posting(ct["symbol"], option_ledger.opening(ct, rc.ticker),
-                                                   ct.get("quoteTimeInLong")))
-            bus.publish(*chain_round_message(rc.ticker, rc.now.timestamp()))
-            bus.publish(f"quote.{rc.ticker}", quote_msg(symbol=rc.ticker, last=rc.spot, src="schwab_l1",
-                                                        native={"key": rc.ticker, "LAST_PRICE": rc.spot}))
-        await _until(lambda: daemon.saved_options == frozenset(spy_kept | mrvl_kept))
-        daemon.console_frame({"op": "flow_contract", "contract": flow}, None)
-        for sym in every:
-            bus.publish(f"optquote.{sym}", options_quote_msg(symbol=sym, content={"key": sym, "MARK": 1.0},
-                                                             src="schwab_options_l1"))
-        for sym in (near, far):
-            bus.publish(f"book.{sym}", book_msg(symbol=sym, service="OPTIONS_BOOK", content={"key": sym},
-                                                src="schwab_book"))
-        bus.publish("quote.SPY", quote_msg(symbol="SPY", last=776.62, src="schwab_l1",
-                                           native={"key": "SPY", "LAST_PRICE": 776.62}))
-        await _until(lambda: writer.status()["rows_written"] == len(spy_kept | mrvl_kept) + 1 + 1 + 3)
+        for m in mix:
+            capture._publisher(m["service"], bus, HealthRegistry())({"timestamp": m["schwab_ts"], "content": [m["item"]]})
+        await _until(lambda: writer.status()["rows_written"] == len(mix))
         stop.set()
-        await asyncio.gather(*tasks)
+        await task
     asyncio.run(go())
 
-    assert len(spy_kept) == len(mrvl_kept) == 22                 # 11 strikes, a call and a put each
-    options = {s for (s,) in _rows(db, "SELECT symbol FROM stream_options_quotes_raw")}
-    assert options == spy_kept | mrvl_kept | {flow}, "not exactly the kept contracts and the Flow panel's"
-    assert [s for (s,) in _rows(db, "SELECT symbol FROM stream_book_raw")] == [near]
-    assert sorted(s for (s,) in _rows(db, "SELECT symbol FROM stream_quotes_raw")) == ["MRVL", "SPY", "SPY"]
+    def sent(*services):
+        return sorted(json.dumps(m["item"], sort_keys=True) for m in mix if m["service"] in services)
+
+    def rows(table):
+        return sorted(json.dumps(json.loads(j), sort_keys=True) for (j,) in _rows(db, f"SELECT native_json FROM {table}"))
+    assert rows("stream_options_quotes_raw") == sent("LEVELONE_OPTIONS")
+    assert rows("stream_quotes_raw") == sent("LEVELONE_EQUITIES")
+    assert rows("stream_book_raw") == sent("NYSE_BOOK", "NASDAQ_BOOK", "OPTIONS_BOOK")
 
 
 def _recorded(bus) -> None:

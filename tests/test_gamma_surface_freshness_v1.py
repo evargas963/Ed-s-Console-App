@@ -87,7 +87,7 @@ def test_a_ticker_open_on_a_page_is_viewed_until_the_page_leaves_it(published, t
     stays viewed for as long as the page has it open."""
     _call(tk)                                       # a route read alone: not viewed
     assert not server._gamma_surface_wanted(tk)
-    client = push_changes.subscribe(tk)             # /api/changes open on this ticker
+    client = push_changes.subscribe(tk)             # /api/live open on this ticker
     try:
         assert server._gamma_surface_wanted(tk)
     finally:

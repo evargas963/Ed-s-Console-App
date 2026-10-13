@@ -172,7 +172,7 @@ def pin_clock(monkeypatch):
 
 @pytest.fixture
 def view(monkeypatch):
-    """Open the page on tickers: `view("SPY")` opens its /api/changes connection (the one viewing
+    """Open the page on tickers: `view("SPY")` opens its /api/live connection (the one viewing
     signal) as the page does; the test starts with no page open and ends with them closed. No
     event loop is bound, so a change is recorded for the page but not delivered (another test's
     loop may be closed)."""

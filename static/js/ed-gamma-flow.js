@@ -45,7 +45,7 @@
   function loadImpl(desired, signal) {
     var h = host();
     if (!h || !stillFlow(desired)) return;
-    return fetch('/api/order-flow/options-microstructure?contract=' + encodeURIComponent(desired), { cache: 'no-store', signal: signal })
+    return window.EdShell.live('/api/order-flow/options-microstructure?contract=' + encodeURIComponent(desired), 'flow-contract')
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
       .then(function (d) { if (stillFlow(desired)) render(h, desired, d); })
       .catch(function (e) {

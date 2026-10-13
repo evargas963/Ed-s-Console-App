@@ -34,7 +34,7 @@ from html import escape as html_escape
 
 
 import httpx
-from fastapi import Body, FastAPI, Query, HTTPException, WebSocket
+from fastapi import Body, FastAPI, Query, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
@@ -787,7 +787,7 @@ def terrain_staleness(computed_ts_utc: float | None, ticker: str | None = None, 
 
 
 def _gamma_surface_wanted(tk: str) -> bool:
-    """Viewed: a page has the ticker open (its /api/changes connection), on any workspace, for
+    """Viewed: a page has the ticker open (its /api/live connection), on any workspace, for
     as long as it stays open. It decides only which tickers are repriced on every streamed tick;
     every watchlist ticker's chain is fetched and priced alike."""
     return tk in push_changes.watched()
@@ -2146,6 +2146,23 @@ DESK_MARKERS = 6
 CHANGES_SESSION_SEC = 5.0
 
 
+#: The kinds of change that move each route's answer (push_changes): the levels publication
+#: (_publish_levels), a new round of a ticker's chain, the books and option prints, the bars and
+#: the price levels built from them. A route that serves values derived from the live price at
+#: its answer's time (the spot, each level's distance, the chain's staleness) moves with every kind.
+_EVERY_KIND = {"levels", "chain", "flow", "liquidity"}
+_ROUTE_KINDS = {
+    "/api/terrain": _EVERY_KIND, "/api/terrain/strikes": _EVERY_KIND, "/api/forces": {"levels"},
+    "/api/options/gamma-surface": {"levels"}, "/api/options/vanna-by-strike": {"levels"},
+    "/api/options/charm-by-strike": {"levels"}, "/api/chain": {"levels", "chain"},
+    "/api/expiries": {"levels", "chain"}, "/api/levels": _EVERY_KIND,
+    "/api/liquidity-snapshot": _EVERY_KIND, "/api/bars1m": {"liquidity"},
+    "/api/desk/events": _EVERY_KIND,
+    "/api/order-flow/microstructure": _EVERY_KIND, "/api/order-flow/book-heatmap": {"flow"},
+    "/api/order-flow/options-microstructure": {"levels", "flow"}, "/api/options/tape": {"flow"},
+}
+
+
 async def _route_answer(url: str) -> dict:
     """`url`'s answer as its route serves it (the route's own handler, in this process): its
     status and body. Only the console's own GET routes under /api/ are served."""
@@ -2163,10 +2180,11 @@ async def _route_answer(url: str) -> dict:
 @app.websocket("/api/live")
 async def live_values(ws: WebSocket):
     """The console's push to the page, one WebSocket: the page names its ticker
-    ({"op": "ticker", "ticker"}) and each route a panel shows, with the kinds of change that move it
-    ({"op": "route", "url", "kinds": [levels | chain | flow | liquidity]}). The console sends each
-    route's answer at once ({"type": "route", "url", "status", "body"}), and again whenever one of
-    its kinds changes for the ticker, then the kind itself ({"type": "changed", "kind"}); the
+    ({"op": "ticker", "ticker"}) and each route a panel shows ({"op": "route", "url"}), until the
+    panel stops showing it ({"op": "drop", "url"}). The console sends each route's answer at once
+    ({"type": "route", "url", "kinds", "status", "body"}), and again whenever a kind of change that
+    moves it (_ROUTE_KINDS) happens for the ticker, then the kind itself ({"type": "changed",
+    "kind"}); the
     market session label at the start and when nothing changed for CHANGES_SESSION_SEC
     ({"type": "session", "label"}). The page fetches nothing. The open connection is the page: a
     ticker an open page shows is repriced on its ticks (push_changes.watched). Every page
@@ -2182,7 +2200,10 @@ async def live_values(ws: WebSocket):
 
     async def read() -> None:
         while True:
-            req = json.loads(await ws.receive_text())
+            try:
+                req = json.loads(await ws.receive_text())
+            except WebSocketDisconnect:
+                return                                   # the page closed: the push ends with it
             if req.get("op") == "ticker":
                 if state["ticker"] is not None:
                     push_changes.unsubscribe(state["ticker"], client)
@@ -2191,8 +2212,11 @@ async def live_values(ws: WebSocket):
                 push_changes.subscribe(state["ticker"], client)
                 await send({"type": "session", "label": session_label(now_et())})
             elif req.get("op") == "route" and isinstance(req.get("url"), str):
-                state["routes"][req["url"]] = set(req.get("kinds") or ())
-                await send({"type": "route", **await _route_answer(req["url"])})
+                follows = _ROUTE_KINDS.get(req["url"].split("?", 1)[0], set())
+                state["routes"][req["url"]] = follows
+                await send({"type": "route", "kinds": sorted(follows), **await _route_answer(req["url"])})
+            elif req.get("op") == "drop" and isinstance(req.get("url"), str):
+                state["routes"].pop(req["url"], None)
 
     async def push() -> None:
         while True:
@@ -2202,7 +2226,7 @@ async def live_values(ws: WebSocket):
                 continue
             for url, follows in list(state["routes"].items()):
                 if follows & kinds:
-                    await send({"type": "route", **await _route_answer(url)})
+                    await send({"type": "route", "kinds": sorted(follows), **await _route_answer(url)})
             for k in sorted(kinds):
                 await send({"type": "changed", "kind": k})
 

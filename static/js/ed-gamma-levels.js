@@ -27,7 +27,7 @@
     var hostId = activeHostId();
     var host = hostId && document.getElementById(hostId);
     if (!host || !stillLevels(tk)) return;
-    return fetch('/api/levels?ticker=' + encodeURIComponent(tk), { cache: 'no-store', signal: signal })
+    return window.EdShell.live('/api/levels?ticker=' + encodeURIComponent(tk), 'gamma-levels')
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
       .then(function (d) { if (stillLevels(tk)) render(host, d); })
       .catch(function (e) {

@@ -22,7 +22,7 @@
  * Endpoints are intercepted with synthetic payloads so the proof is deterministic and offline —
  * it exercises the real shell HTML/JS, not stubbed rendering.
  */
-const { test, expect } = require('@playwright/test');
+const { test, expect, pushChange } = require('./fixtures/live_socket');
 const path = require('path');
 
 // The served window (server.py _surface_view): the cells to draw, each with `spot` (the row at
@@ -245,8 +245,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // way to actually distinguish "frozen through the whole burst" from "kept converging".
     for (let i = 0; i < 6; i++) {
       await page.waitForTimeout(500);
-      await page.evaluate(() => document.dispatchEvent(
-        new CustomEvent('ed:changed', { detail: { kind: 'levels' } })));
+      await pushChange(page, 'levels');
       if (i === 2) {
         // Traffic is still actively arriving here (3 more pushes still queued below) --
         // the pre-fix code stayed at $1.0K through the entire burst, discarding every
@@ -305,7 +304,10 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   });
 
   test('Strike Detail keeps following the workspace expiry filter after a selection, never reverting on refresh (2026-09-13, independent-review finding)', async ({ page }) => {
-    // select under Sept 18, filter to Sept 25, then a levels push: chain reads 18 -> 25 -> 25
+    // select under Sept 18, filter to Sept 25, then a levels push: chain reads 18 -> 25 -> 25.
+    // Sept 25 is listed: the page clears an unlisted filter whenever the list lands (loadExpiries).
+    await page.route('**/api/expiries**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify({ expiries: ['2026-09-11', '2026-09-18', '2026-09-25'] }) }));
     const chainExpiryRequests = [];
     await page.route('**/api/chain**', (route) => {
       const url = new URL(route.request().url());
@@ -317,9 +319,33 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect.poll(() => chainExpiryRequests[chainExpiryRequests.length - 1]).toBe('2026-09-18');
     await page.evaluate(() => window.EdShell.setExpiry('2026-09-25'));
     await expect.poll(() => chainExpiryRequests[chainExpiryRequests.length - 1]).toBe('2026-09-25');
-    await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'levels' } })));
+    await pushChange(page, 'levels');
     await page.waitForTimeout(200);
     expect(chainExpiryRequests[chainExpiryRequests.length - 1]).toBe('2026-09-25');
+  });
+
+  test('a chain answered after Strike Detail moved on is not kept: going back asks the console again', async ({ page }) => {
+    // Sept 18's answer is held until Strike Detail has moved to Sept 25 (the console answers a
+    // route it was asked even when the drop follows). Back on Sept 18, the page asks again, so
+    // the console pushes it again; a kept answer would be shown and never move.
+    let hold18 = true, release18;
+    const held = new Promise((r) => { release18 = r; });
+    const chainExpiryRequests = [];
+    await page.route('**/api/chain**', async (route) => {
+      const exp = new URL(route.request().url()).searchParams.get('expiry');
+      chainExpiryRequests.push(exp);
+      if (exp === '2026-09-18' && hold18) { hold18 = false; await held; }
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(CHAIN) });
+    });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.evaluate(() => window.EdShell.setStrike(583, '2026-09-18'));
+    await expect.poll(() => chainExpiryRequests.length).toBe(1);
+    await page.evaluate(() => window.EdShell.setStrike(583, '2026-09-25'));
+    await expect.poll(() => chainExpiryRequests.join()).toBe('2026-09-18,2026-09-25');
+    release18();
+    await page.waitForTimeout(300);              // Sept 18's late answer reaches the page
+    await page.evaluate(() => window.EdShell.setStrike(583, '2026-09-18'));
+    await expect.poll(() => chainExpiryRequests.join()).toBe('2026-09-18,2026-09-25,2026-09-18');
   });
 
   test('an unavailable heatmap surface is not resurrected by a later theme/expiry/scope event (2026-09-13, independent-review finding)', async ({ page }) => {
@@ -338,7 +364,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(cell).toHaveText('$1.0K');
 
     available = false;
-    await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'levels' } })));
+    await pushChange(page, 'levels');
     await expect(page.locator('#heatBody .placeholder .big')).toHaveText('Gamma surface unavailable');
 
     // a theme toggle must not repaint the old cell: one non-retrying DOM snapshot
@@ -445,7 +471,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     const callsBeforeRefresh = chainCalls;
     updated = true;   // the NEXT /api/chain fetch (whenever it happens) must answer with this
 
-    await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'levels' } })));
+    await pushChange(page, 'levels');
     await expect(callVolCell).toHaveText('999999');
     expect(chainCalls).toBeGreaterThan(callsBeforeRefresh);
   });
@@ -589,7 +615,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(cell).toHaveAttribute('data-cell-state', 'live');
 
     live = false; seq = 2;   // the stream goes quiet -- no reload, no navigation, just the next push
-    await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'levels' } })));
+    await pushChange(page, 'levels');
     await expect(cell).toHaveAttribute('data-cell-state', 'stale');
     await expect(cell).toHaveText('$12.3K');   // the same valid value -- never blanked
     await expect(cell).toHaveAttribute('title', 'this cell has stopped streaming');   // relabelled, not kept as live
@@ -905,15 +931,22 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       expirations: exps, strikes, cells, view: view({ centre: 600, scope: 'all', max_abs: { gex: 50000 } }) };   // 200 strikes x 20 expiries
     // the page's own reload (a levels push); the time runs from the push to the drawn table
     const before = await page.locator('#heatBody .hcell').count();
-    const r = await page.evaluate((n0) => new Promise((resolve) => {
-      const t0 = performance.now();
-      document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'levels' } }));
-      (function wait() {
-        const n = document.querySelectorAll('#heatBody .hcell').length;
-        if (n > n0) resolve({ ms: performance.now() - t0, cells: n });
-        else requestAnimationFrame(wait);
-      })();
-    }), before);
+    // timed from the push's change kind (its new answer already in) to the drawn table
+    await page.evaluate((n0) => {
+      window.__perf = new Promise((resolve) => {
+        document.addEventListener('ed:changed', function onChange() {
+          document.removeEventListener('ed:changed', onChange);
+          const t0 = performance.now();
+          (function wait() {
+            const n = document.querySelectorAll('#heatBody .hcell').length;
+            if (n > n0) resolve({ ms: performance.now() - t0, cells: n });
+            else requestAnimationFrame(wait);
+          })();
+        });
+      });
+    }, before);
+    await pushChange(page, 'levels');
+    const r = await page.evaluate(() => window.__perf);
     const ms = r.ms;
     console.log('[#1 perf] heatmap load + render:', Math.round(ms), 'ms,', r.cells, 'cells');
     // no arbitrary tight SLA — a generous ceiling that only fails on pathological render behaviour
@@ -928,7 +961,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     const served = { cov: { state: 'partial', label: '50% STREAMING', title: '1 of 2 cells streaming · 1 stale' } };
     served.s = live(3);
     await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(served.s) }));
-    const reload = () => page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'levels' } })));
+    const reload = () => pushChange(page, 'levels');
     const mark = () => page.evaluate(() => document.querySelector('#heatBody .hcell').setAttribute('data-marker', '1'));
     const marked = () => page.locator('#heatBody .hcell[data-marker="1"]');
     await page.goto('/', { waitUntil: 'domcontentloaded' });
@@ -982,23 +1015,20 @@ test.describe('Ed Console shell + gamma heatmap', () => {
           expirationDate: '2026-09-11' },
       ];
     }
+    // Strike Detail's chain is one answer per ticker and expiry (the console pushes it, the page
+    // asks once): its first answer for SPY is the one held in flight
     await page.route('**/api/chain**', async (route) => {
       chainCalls += 1;
-      const strike = chainCalls === 1 ? 583 : 586;   // first select resolves immediately; second is delayed
-      if (chainCalls > 1) await new Promise((resolve) => { releaseChain = resolve; });
+      if (chainCalls === 1) await new Promise((resolve) => { releaseChain = resolve; });
       route.fulfill({
         status: 200, contentType: 'application/json',
         body: JSON.stringify({ ticker: 'SPY', spot: 583.41, expiry: '2026-09-11', status: 'ok',
-          contracts: contractsFor(strike) }),
+          contracts: contractsFor(586) }),
       });
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
 
-    // select strike 583 on SPY -- resolves immediately
-    await page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]').click();
-    await expect(page.locator('#sdCtx')).toContainText('583');
-
-    // select strike 586 -- fires the SECOND (delayed) /api/chain fetch, nothing resolves yet
+    // select strike 586 -- its chain answer is in flight, nothing resolves yet
     await page.locator('.hcell[data-strike="586"][data-expiry="2026-09-11"]').click();
     await expect.poll(() => releaseChain !== null).toBe(true);
 
@@ -1056,7 +1086,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       expirations: [{ expiry: '2026-09-25', dte: 16 }],
       cells: SURFACE.cells.map((c) => Object.assign({}, c, { gex: [777000] })), surface_seq: 2,
     });
-    await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'levels' } })));
+    await pushChange(page, 'levels');
     await expect(page.locator('#heatBody .hexp')).toHaveCount(1);
     await expect(page.locator('#heatBody')).not.toContainText('unavailable');
     await expect(page.locator('#heatBody .hexp .d')).toHaveText('09-25');
@@ -1218,7 +1248,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.evaluate(() => window.EdShell.setStrike(null));
     const afterLoad = chainCalls;
     for (let i = 0; i < 4; i++) {
-      await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'levels' } })));
+      await pushChange(page, 'levels');
     }
     await page.waitForTimeout(200);
     expect(chainCalls).toBe(afterLoad);   // zero extra chain fetches while Chain was never viewed

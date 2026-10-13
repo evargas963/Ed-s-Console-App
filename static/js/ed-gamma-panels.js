@@ -261,7 +261,7 @@
     if (!host || !stillStrikeCtx(ticker(), strike, expiry)) return;
     var tk = ticker();
     var q = '/api/chain?ticker=' + encodeURIComponent(tk) + (expiry ? '&expiry=' + encodeURIComponent(expiry) : '');
-    return fetch(q, { cache: 'no-store', signal: signal })
+    return window.EdShell.live(q, 'strike-detail')
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
       .then(function (d) { if (stillStrikeCtx(tk, strike, expiry)) renderStrike(host, d, strike, expiry); })
       .catch(function (e) {
@@ -368,7 +368,7 @@
       var host = document.getElementById(hostId);
       if (!stillCtx(tk)) return;
       if (panTicker !== tk) { pan.centre = null; pan.shift = 0; panTicker = tk; }
-      return fetch(endpoint + '?ticker=' + encodeURIComponent(tk) + window.EdShell.windowQuery(pan), { cache: 'no-store', signal: signal })
+      return window.EdShell.live(endpoint + '?ticker=' + encodeURIComponent(tk) + window.EdShell.windowQuery(pan), hostId)
         .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
         .then(function (d) { if (stillCtx(tk)) renderIt(host, d); })
         .catch(function (e) {
@@ -440,7 +440,7 @@
     var host = document.getElementById('stBody');
     if (!stillStructuresCtx(tk, exp)) return;
     var url = '/api/chain?ticker=' + encodeURIComponent(tk) + (exp ? '&expiry=' + encodeURIComponent(exp) : '');
-    return fetch(url, { cache: 'no-store', signal: signal })
+    return window.EdShell.live(url, 'structures')
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
       .then(function (d) { if (stillStructuresCtx(tk, exp)) renderStructures(host, d, tk); })
       .catch(function (e) {
@@ -511,7 +511,7 @@
   function loadOfImpl(tk, signal) {
     var host = document.getElementById('ofBody');
     if (!stillOfCtx(tk)) return;
-    return fetch('/api/options/tape?ticker=' + encodeURIComponent(tk), { cache: 'no-store', signal: signal })
+    return window.EdShell.live('/api/options/tape?ticker=' + encodeURIComponent(tk), 'tape')
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
       .then(function (d) { if (stillOfCtx(tk)) renderOf(host, d); })
       .catch(function (e) {
@@ -547,6 +547,7 @@
     var det = e.detail || {};
     applyGbsHighlight();                       // A: sync the GEX-by-strike highlight
     if (det.strike != null) loadStrike(det.strike, det.expiry);
+    else window.EdShell.drop('strike-detail');   // no strike selected: the console stops pushing its chain
   });
   document.addEventListener('ed:expiry', function () {   // #5: expiry filter -> Strike Detail uses it; Levels/GBS stay aggregate + disclose
     loadLevels(); loadGbs(); loadStructures();   // Structures is expiry-scoped, same as Chain/Strike Detail

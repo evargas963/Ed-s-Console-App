@@ -6,7 +6,7 @@
  * chain scope and the chart shows the price-bars clock AND the GEX levels clock as two separate
  * badges. Stale server state -> stale badge styling. Offline.
  */
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./fixtures/live_socket');
 const { routeWatchlist } = require('./fixtures/watchlist');
 
 const SURFACE = { ticker: 'SPY', symbol: 'SPY', available: true, spot: 100, front_expiry: '2026-09-11', source: 'terrain_live_cache',

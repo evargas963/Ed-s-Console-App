@@ -368,7 +368,7 @@ class _Swept:
                 self.chains.append(msg["ticker"])
                 self.delivered.append(msg["ts_recv"])
         self.sweep = ChainSweep(watchlist, publish, clock=lambda: self.clock["now"],
-                                held=frozenset, connection=lambda: 1)
+                                held=frozenset)
         self.client = self.schwab.client(tmp_path)
         self._start()
 
@@ -571,7 +571,7 @@ def test_d5_a_chain_in_flight_at_the_close_keeps_its_begin_time_and_the_close_ch
         if topic.startswith("chain.") and "failed" not in msg:
             delivered.append(msg["ts_recv"])
             rounds.append(msg)
-    sweep = ChainSweep(["SPY"], publish, clock=clock, held=frozenset, connection=lambda: 1)
+    sweep = ChainSweep(["SPY"], publish, clock=clock, held=frozenset)
     client = schwab.client(tmp_path)
     stop = threading.Event()
     worker = threading.Thread(target=sweep.work, args=(lambda: client, stop), daemon=True)
@@ -819,7 +819,7 @@ def test_d6_no_live_route_opens_a_database(monkeypatch):
     """Every live GET route of the console, with both databases present and holding SPY's data
     (the stream database written by the real writer: a captured SPY book and the captured option
     quote; the console database), then SQLite made to refuse: none opens a database. The routes
-    are read from the app itself; /api/changes is the push stream (it never ends)."""
+    are read from the app itself (the push, /api/live, is a WebSocket, not a GET route)."""
     from fastapi.routing import APIRoute
     from fastapi.testclient import TestClient
     import server
@@ -841,7 +841,7 @@ def test_d6_no_live_route_opens_a_database(monkeypatch):
     monkeypatch.setattr(sqlite3, "connect", refuse)
     client = TestClient(server.app, raise_server_exceptions=False)
     routes = [r.path for r in server.app.routes if isinstance(r, APIRoute) and "GET" in r.methods
-              and r.path.startswith("/api/") and "{" not in r.path and r.path != "/api/changes"]
+              and r.path.startswith("/api/") and "{" not in r.path]
     assert routes
     # what the page sends: every route must run, not answer "invalid request"
     params = {"ticker": "SPY", "contract": _CONTRACT, "venue": "NYSE_BOOK", "tf": "5", "minutes": "60"}
@@ -1047,7 +1047,7 @@ def test_the_daemon_builds_one_schwab_client_and_a_refused_refresh_never_rebuild
     assert schwab_client() is schwab_client(), "the stream and the chains are handed one client"
     failed = []
     sweep = ChainSweep(["AAA", "BBB", "CCC", "DDD", "EEE"], lambda topic, msg: failed.append(msg["failed"]),
-                       held=frozenset, connection=lambda: 1)
+                       held=frozenset)
     halt = threading.Event()
     worker = threading.Thread(target=sweep.work, args=(schwab_client, halt), daemon=True)
     try:
@@ -1070,7 +1070,7 @@ def test_a_403_from_schwabs_edge_reaches_the_console_and_the_next_ticker_is_aske
     published = []
     now = 1790856000.0                                    # 2026-10-01 08:00 ET
     sweep = ChainSweep(["AAA", "BBB"], lambda topic, msg: published.append(msg), clock=lambda: now,
-                       held=frozenset, connection=lambda: 1)
+                       held=frozenset)
     client = sc.client_from_token_file_atomic(str(_token_file(tmp_path, 3600)), "k", "s",
                                               transport=schwab.transport)
     try:
@@ -1078,8 +1078,11 @@ def test_a_403_from_schwabs_edge_reaches_the_console_and_the_next_ticker_is_aske
         sweep.candles(lambda: client, ["AAA", "BBB"], threading.Event())      # the stock session's turn
     finally:
         schwab.close()
-    assert [(m["ticker"], m["failed"]) for m in published] == [
+    assert [(m["ticker"], m["failed"]) for m in published if "failed" in m] == [
         ("AAA", "expiration chain returned HTTP 403"), ("BBB", "expiration chain returned HTTP 403")]
+    # besides the failures, only Schwab's two 403 answers, saved as sent: no price history
+    assert [(m["src"], m["symbol"], m["status"]) for m in published if "failed" not in m] == [
+        ("schwab_expirations", "AAA", 403), ("schwab_expirations", "BBB", 403)]
     gets = [(t, path) for t, method, path, _a in schwab.requests if method == "GET"]
     assert [p for _t, p in gets] == ["/marketdata/v1/expirationchain"] * 2 + ["/marketdata/v1/pricehistory"] * 4
     assert all(b[0] - a[0] < 1.0 for a, b in zip(gets, gets[1:])), "no pause after a 403"

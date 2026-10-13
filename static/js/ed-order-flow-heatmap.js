@@ -41,7 +41,7 @@
   function loadImpl(tk, signal) {
     var h = host();
     if (!h || !stillHeatmap(tk)) return;
-    return fetch('/api/order-flow/book-heatmap?ticker=' + encodeURIComponent(tk) + '&venue=' + st().bookVenue + '&minutes=' + _minutes, { cache: 'no-store', signal: signal })
+    return window.EdShell.live('/api/order-flow/book-heatmap?ticker=' + encodeURIComponent(tk) + '&venue=' + st().bookVenue + '&minutes=' + _minutes, 'book-heatmap')
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
       .then(function (d) { if (stillHeatmap(tk)) render(h, tk, d); })
       .catch(function (e) {

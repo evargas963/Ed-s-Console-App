@@ -73,7 +73,7 @@ def _clean():
 
 
 def _view(pages: list, tk: str = TK) -> None:
-    """A page opens on `tk` (its /api/changes connection)."""
+    """A page opens on `tk` (its /api/live connection)."""
     pages.append((tk, push_changes.subscribe(tk)))
 
 

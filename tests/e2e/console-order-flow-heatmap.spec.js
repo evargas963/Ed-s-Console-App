@@ -5,7 +5,7 @@
  * is the real producer's output over real TSLA book rows (tests/e2e/fixtures/book_heatmap_payload.json,
  * generated from tests/fixtures/real_tsla_book_rows.json). Any page error fails the test.
  */
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./fixtures/live_socket');
 const path = require('path');
 const { routeWatchlist } = require('./fixtures/watchlist');
 

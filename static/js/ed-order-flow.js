@@ -6,7 +6,7 @@
    view's exact .fl-* CSS grammar so a book reads the same whether it's an option contract's
    or the ticker's own -- one visual language, not a second one invented here.
 
-   The console streams the books of the ticker whose /api/changes connection is open (the page
+   The console streams the books of the ticker whose /api/live connection is open (the page
    opens it for its ticker); a book not yet arrived reads "No <venue> for <ticker>". */
 (function () {
   'use strict';
@@ -24,7 +24,7 @@
   function loadImpl(tk, signal) {
     var h = host();
     if (!h || !stillBook(tk)) return;
-    return fetch('/api/order-flow/microstructure?ticker=' + encodeURIComponent(tk) + '&venue=' + st().bookVenue, { cache: 'no-store', signal: signal })
+    return window.EdShell.live('/api/order-flow/microstructure?ticker=' + encodeURIComponent(tk) + '&venue=' + st().bookVenue, 'order-flow')
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
       .then(function (d) { if (stillBook(tk)) render(h, tk, d); })
       .catch(function (e) {

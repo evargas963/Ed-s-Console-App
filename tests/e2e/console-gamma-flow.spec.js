@@ -13,7 +13,7 @@
  * overlaid per test. The flow fields live under `flow` — never flattened — so a green run here proves
  * compatibility with the REAL API shape.
  */
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./fixtures/live_socket');
 const FIXTURE = require('./fixtures/options_microstructure_payload.json');
 const { served } = require('./fixtures/served_chain');
 const { routeWatchlist } = require('./fixtures/watchlist');

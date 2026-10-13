@@ -33,7 +33,7 @@ def _et(s: str) -> float:
 def _sweep(tmp_path, clock, publish):
     daemon = capture.Daemon(MessageBus(), HealthRegistry(), ["SPY"])
     return ChainSweep(["SPY"], publish, clock=lambda: clock["now"],
-                      held=lambda: daemon.held["LEVELONE_OPTIONS"], connection=lambda: daemon.connection)
+                      held=lambda: daemon.held["LEVELONE_OPTIONS"])
 
 
 def test_the_daemon_asks_each_series_as_schwab_documents_it_and_publishes_it_as_sent(tmp_path):

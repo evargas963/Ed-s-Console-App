@@ -144,6 +144,12 @@ def chain_answer_message(ticker: str, expiry: str, status: int, answer, fetched_
                                      "status": status, "ts_recv": fetched_ts, "answer": answer}
 
 
+def expiration_answer_message(ticker: str, status: int, answer, fetched_ts: float) -> tuple[str, dict]:
+    """Schwab's /expirationchain answer for `ticker`, as sent, with its status: for the journal."""
+    return f"expirationanswer.{ticker}", {"src": "schwab_expirations", "symbol": ticker, "status": status,
+                                          "ts_recv": fetched_ts, "answer": answer}
+
+
 def quotes_answer_message(symbols: "list[str]", status: int, answer, fetched_ts: float) -> tuple[str, dict]:
     """Schwab's /quotes answer for option contracts, as sent, with its status and the symbols
     asked: for the journal (each quote posts to its contract's record, option_ledger.from_quote)."""
@@ -159,10 +165,11 @@ def _answer(resp) -> "tuple[Any, str | None]":
         return resp.text, f"{type(e).__name__}: {e}"
 
 
-def chain_round_message(ticker: str, started: float) -> tuple[str, dict]:
+def chain_round_message(ticker: str, started: float, opening: bool = False) -> tuple[str, dict]:
     """`ticker`'s round is in: each of its contracts' records holds Schwab's answers asked in the
-    round begun at `started` (the levels' as-of time)."""
-    msg = {"src": "schwab_chain", "ticker": ticker, "ts_recv": started}
+    round begun at `started` (the levels' as-of time). An `opening` round posted every contract
+    Schwab lists for the ticker today: a record it did not post is of a contract no longer listed."""
+    msg = {"src": "schwab_chain", "ticker": ticker, "ts_recv": started, "opening": opening}
     return f"chain.{ticker}", msg
 
 
@@ -212,6 +219,7 @@ class _Round:
     ticker: str
     started: float                                                 # its first request
     unquoted: "set[str]" = field(default_factory=set)              # contracts whose quote is not in
+    opening: bool = False                                          # the day's opening: Schwab's whole listing
 
 
 class ChainSweep:
@@ -224,11 +232,11 @@ class ChainSweep:
         (strike_range=ALL), as Schwab says to break up a large chain; each answer is published as
         sent (chain_answer_message, the journal), and each contract it lists opens its record
         (option_ledger.opening: every field as sent but the rounded Greeks);
-      - Schwab's quotes for each contract, QUOTES_BATCH_MAX symbols to a request across tickers:
-        every contract at the opening; then, each round, every contract the stream does not hold
-        (`held`) and each one it holds that has not been asked for since the daemon's connection to
-        Schwab began (`connection`). Each answer is published as sent (quotes_answer_message), and
-        each quote posts to its contract's record (option_ledger.from_quote).
+      - Schwab's quotes, QUOTES_BATCH_MAX symbols to a request across tickers, only for what no
+        stream carries (operator 2026-10-13: "REST only for what no stream carries"): each round,
+        every listed contract the stream does not hold (`held`). Each answer is published as sent
+        (quotes_answer_message), and each quote posts to its contract's record
+        (option_ledger.from_quote), unless the stream took the contract meanwhile.
     A round is in when the last of its quotes is (chain_round_message).
 
     The price history (candles, fetch_price_history): each watchlist ticker's 1-minute bars and
@@ -248,12 +256,11 @@ class ChainSweep:
     rotation goes on."""
 
     def __init__(self, watchlist: "list[str]", publish: "callable", clock: "callable" = time.time, *,
-                 held: "callable", connection: "callable") -> None:
+                 held: "callable") -> None:
         self.watchlist = list(watchlist)  # the daemon's list, replaced whole on each change
         self.publish = publish          # (topic, msg) -> None, safe from any thread
         self.clock = clock              # when a request begins
         self.held = held                # () -> the option contracts the stream holds now
-        self.connection = connection    # () -> the number of the daemon's connection to Schwab
         self.round_sec: float | None = None
         self._expiries: "dict[str, tuple[date, list[date]]]" = {}   # ticker -> (ET date, expiries)
         self._markets_day: "dict[str, date]" = {}          # market date -> the ET date Schwab answered it
@@ -261,7 +268,6 @@ class ChainSweep:
         self._fetched: "dict[str, float]" = {}             # ticker -> when its newest round began
         self._candled: "dict[str, float]" = {}             # ticker -> when its newest whole price history began
         self._opened: "dict[str, tuple[date, list[str]]]" = {}   # ticker -> (ET date, the contracts its chain listed)
-        self._asked: "dict[str, int]" = {}                 # contract -> the connection its newest quote was asked on
         self._queue: "list[tuple[_Round, str]]" = []      # contracts whose quote is not asked for
         self._delivered: "set[str]" = set()                # the tickers this rotation delivered
 
@@ -390,10 +396,9 @@ class ChainSweep:
         if opened is None or opened[0] != today:
             if not self.open(schwab_client, rnd, today):
                 return
-            listed = self._opened[ticker][1]
-        else:
-            held, connection = self.held(), self.connection()
-            listed = [s for s in opened[1] if s not in held or self._asked.get(s) != connection]
+            rnd.opening = True
+        held = self.held()
+        listed = [s for s in self._opened[ticker][1] if s not in held]
         rnd.unquoted.update(listed)
         self._queue.extend((rnd, s) for s in listed)
         if not rnd.unquoted:
@@ -409,6 +414,7 @@ class ChainSweep:
             listed = self._expiries.get(ticker)
             if listed is None or listed[0] != today:
                 expiries, resp = option_expiries(client, ticker, today)
+                self.publish(*expiration_answer_message(ticker, resp.status_code, _answer(resp)[0], self.clock()))
                 if expiries is None:
                     self.fail([rnd], f"expiration chain returned HTTP {resp.status_code}")
                     return False
@@ -428,7 +434,7 @@ class ChainSweep:
                 self._optioned.add(ticker)
                 for ct in flatten_chain_contracts(answer):
                     self.publish(*option_ledger.posting(ct["symbol"], option_ledger.opening(ct, ticker),
-                                                        ct.get("quoteTimeInLong")))
+                                                        ct.get("quoteTimeInLong"), self.clock()))
                     symbols.append(ct["symbol"])
         except Exception as e:  # noqa: BLE001 -- that ticker's answer is the failure; the rotation goes on
             log.warning("chain %s failed: %s: %s", ticker, type(e).__name__, e)
@@ -449,7 +455,6 @@ class ChainSweep:
         batch, self._queue = self._queue[:QUOTES_BATCH_MAX], self._queue[QUOTES_BATCH_MAX:]
         rounds = list({id(rnd): rnd for rnd, _s in batch}.values())
         symbols = [s for _rnd, s in batch]
-        connection = self.connection()
         try:
             resp = safe_get_quotes(schwab_client(), symbols)
         except Exception as e:  # noqa: BLE001 -- those tickers' answer is the failure; the rotation goes on
@@ -466,11 +471,12 @@ class ChainSweep:
         if errors:
             log.warning("quotes for %d contracts: Schwab named symbols it does not know, which have no quote: %s",
                         len(batch), json.dumps(errors))
+        held = self.held()                # a contract the stream took since it was asked: the stream's
         for rnd, s in batch:
-            if s in answer and s != "errors":
+            if s in answer and s != "errors" and s not in held:
                 quote = answer[s]["quote"]
-                self.publish(*option_ledger.posting(s, option_ledger.from_quote(quote), quote.get("quoteTime")))
-                self._asked[s] = connection
+                self.publish(*option_ledger.posting(s, option_ledger.from_quote(quote), quote.get("quoteTime"),
+                                                    self.clock()))
             rnd.unquoted.discard(s)
         for rnd in rounds:
             if not rnd.unquoted:
@@ -487,7 +493,7 @@ class ChainSweep:
     def round_in(self, rnd: _Round) -> None:
         """The ticker's round is in: published with the time it began (its as-of everywhere: a
         round begun before the close is not the close values, whenever it is in)."""
-        self.publish(*chain_round_message(rnd.ticker, rnd.started))
+        self.publish(*chain_round_message(rnd.ticker, rnd.started, rnd.opening))
         self._delivered.add(rnd.ticker)
         self._fetched[rnd.ticker] = rnd.started
 

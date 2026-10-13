@@ -46,7 +46,7 @@ from app.options.order_flow import history as recent
 from app.options.order_flow.state import (
     ContractRecord,
     clear_all_live_state,
-    clear_contracts,
+    drop_unlisted,
     clear_symbol,
     push_book,
     push_contract,
@@ -184,8 +184,11 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
     if not isinstance(msg, dict):
         return None
     if topic.startswith("chain."):
-        if _on_chain_callback is not None and msg.get("ticker") and isinstance(msg.get("ts_recv"), (int, float)):
-            _on_chain_callback(msg["ticker"], float(msg["ts_recv"]), msg.get("failed"))
+        if msg.get("ticker") and isinstance(msg.get("ts_recv"), (int, float)):
+            if msg.get("opening"):
+                drop_unlisted(msg["ticker"], float(msg["ts_recv"]))
+            if _on_chain_callback is not None:
+                _on_chain_callback(msg["ticker"], float(msg["ts_recv"]), msg.get("failed"))
         return None
     if topic.startswith("markets."):
         if msg["status"] == 200:
@@ -288,7 +291,8 @@ async def serve_push(ws) -> None:
     (select_flow_contract), the watchlist requests sent on it (watchlist_request), and every
     frame applied the moment it arrives (_ingest_pushed)."""
     global _push_ws
-    clear_contracts()           # the daemon pushes every record again on a new connection
+    # the daemon replays every record on a new connection, each in place of the one held: the
+    # mirror is never emptied, so no calculation reads part of a ticker's contracts
     await ws.send(json.dumps({"op": "flow_contract", "contract": _flow_contract}))
     _push_ws = ws
     try:

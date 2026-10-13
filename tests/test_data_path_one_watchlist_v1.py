@@ -236,7 +236,7 @@ def test_an_added_ticker_is_checked_once_asked_for_everywhere_and_a_removed_one_
     bus = MessageBus()
     daemon = capture.Daemon(bus, HealthRegistry(), ["SPY"])
     daemon.chains = ChainSweep(daemon.watchlist, lambda t, m: None,
-                               held=lambda: daemon.held["LEVELONE_OPTIONS"], connection=lambda: daemon.connection)
+                               held=lambda: daemon.held["LEVELONE_OPTIONS"])
     port = _free_port()
 
     def asked(svc):
@@ -296,7 +296,7 @@ def test_with_the_watchlist_empty_the_sweep_asks_for_nothing_and_waits(tmp_path,
     from time_et import ET
     schwab = LocalSchwab()
     sweep = ChainSweep([], lambda t, m: None, clock=lambda: datetime(2026, 10, 7, 10, 0, tzinfo=ET).timestamp(),
-                       held=lambda: frozenset(), connection=lambda: 0)
+                       held=lambda: frozenset())
     client = schwab.client(tmp_path)
     stop = threading.Event()
     worker = threading.Thread(target=sweep.work, args=(lambda: client, stop), daemon=True)

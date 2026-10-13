@@ -71,7 +71,7 @@
   function shown() { return st().display || S.ticker; }
   function $(id) { return document.getElementById(id); }
   function fetchJson(url) {
-    return fetch(url, { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; });
+    return window.EdShell.live(url).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; });
   }
   function sget(k, d) { try { var v = window.localStorage.getItem(k); return v == null ? d : v; } catch (e) { return d; } }
   function sset(k, v) { try { window.localStorage.setItem(k, v); } catch (e) { /* per-viewer only */ } }

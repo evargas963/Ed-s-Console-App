@@ -32,7 +32,7 @@
   }
   // a read that failed is absent (null); a read cut short by a newer one rejects, so it never draws
   function fetchJson(url, signal) {
-    return fetch(url, { cache: 'no-store', signal: signal })
+    return window.EdShell.live(url)
       .then(function (r) { return r.ok ? r.json() : null; })
       .catch(function (e) { if (e && e.name === 'AbortError') throw e; return null; });
   }

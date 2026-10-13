@@ -206,11 +206,16 @@ class OrderFlowState:
             if ticker:
                 self._by_ticker.setdefault(ticker, {})[sym] = None
 
-    def clear_contracts(self) -> None:
-        """Forget the mirror: a new connection to the daemon pushes every record again."""
+    def drop_unlisted(self, ticker: str, opened_at: float) -> None:
+        """After `ticker`'s day's opening (begun at `opened_at`, the daemon's receive time), forget
+        each of its records the opening did not post: a contract Schwab no longer lists, as the
+        daemon forgot it (capture.Daemon._took_chain)."""
         with self._lock:
-            self._contracts.clear()
-            self._by_ticker.clear()
+            listed = self._by_ticker.get(ticker, {})
+            for sym in [s for s in listed
+                        if max(stamp[1] for stamp in self._contracts[s].times.values()) < opened_at]:
+                del listed[sym]
+                del self._contracts[sym]
 
     def contracts_of(self, ticker: str) -> "dict[str, ContractRecord]":
         """`ticker`'s contracts and their records (none when the daemon has pushed none)."""
@@ -241,8 +246,8 @@ def push_contract(symbol: str, record: ContractRecord) -> None:
     _LIVE_STATE.push_contract(symbol, record)
 
 
-def clear_contracts() -> None:
-    _LIVE_STATE.clear_contracts()
+def drop_unlisted(ticker: str, opened_at: float) -> None:
+    _LIVE_STATE.drop_unlisted(ticker, opened_at)
 
 
 def contracts_of(ticker: str) -> "dict[str, ContractRecord]":

@@ -65,7 +65,7 @@
   var _sharedFetchInFlight = Object.create(null);
   function sharedFetchJson(url) {
     if (_sharedFetchInFlight[url]) return _sharedFetchInFlight[url];
-    var p = fetch(url, { cache: 'no-store' })
+    var p = window.EdShell.live(url)
       .then(function (r) { if (!r.ok) throw new Error(String(r.status)); return r.json(); });
     p.then(function () { delete _sharedFetchInFlight[url]; },
            function () { delete _sharedFetchInFlight[url]; });

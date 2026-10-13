@@ -6,7 +6,7 @@
  * stand-in serves the window per scope -- 11, 23 or all 41 strikes of 80..120 around spot 100 --
  * and the page is proved to ask with the scope, draw what it is sent and keep the choice.
  */
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./fixtures/live_socket');
 const { routeWatchlist } = require('./fixtures/watchlist');
 
 // spot 100, 41 strikes 80..120; the stand-in's window per scope, as the server serves it

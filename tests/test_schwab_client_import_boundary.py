@@ -87,8 +87,8 @@ with TestClient(server.app) as client:
     ofs._ingest_pushed(*chain_round_message("SPY", fx["capture_ts_utc"]))
     server._chain_pricing.submit(lambda: None).result(timeout=120)   # the chain is priced
     for route in server.app.routes:
-        # /api/changes is an open-ended event stream (it reads only the push's own state)
-        if "GET" in (getattr(route, "methods", None) or ()) and "{" not in route.path and route.path != "/api/changes":
+        # every GET route (the push, /api/live, is a WebSocket: its answers are these routes')
+        if "GET" in (getattr(route, "methods", None) or ()) and "{" not in route.path:
             client.get(route.path, params={"ticker": "SPY", "contract": "SPY   261120C00875000"})
 assert server.terrain_cache_get("SPY", fx["capture_ts_utc"]) is not None, "the daemon's chain was priced"
 """

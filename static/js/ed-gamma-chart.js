@@ -64,10 +64,10 @@
   function loadImpl(tk, signal) {
     if (!isChart() || ticker() !== tk || !ensureChart()) return;
     return Promise.all([
-      fetch('/api/bars1m?ticker=' + encodeURIComponent(tk) + '&tf=' + _tf + '&limit=' + window.EdTvChart.BARS_LIMIT[_tf],
-        { cache: 'no-store', signal: signal }).then(okJson).catch(nullp),
-      fetch(strikesUrl(tk), { cache: 'no-store', signal: signal }).then(okJson).catch(nullp),
-      fetch('/api/terrain?ticker=' + encodeURIComponent(tk), { cache: 'no-store', signal: signal }).then(okJson).catch(nullp)
+      window.EdShell.live('/api/bars1m?ticker=' + encodeURIComponent(tk) + '&tf=' + _tf + '&limit=' + window.EdTvChart.BARS_LIMIT[_tf], 'chart-bars')
+        .then(okJson).catch(nullp),
+      window.EdShell.live(strikesUrl(tk), 'chart-strikes').then(okJson).catch(nullp),
+      window.EdShell.live('/api/terrain?ticker=' + encodeURIComponent(tk), 'chart-terrain').then(okJson).catch(nullp)
     ]).then(function (r) {
       if (!isChart() || ticker() !== tk) return;
       _last = { bars: r[0], strikes: r[1], terrain: r[2] };

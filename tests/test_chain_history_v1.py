@@ -90,7 +90,7 @@ def _sweep(tmp_path, schwab, clock):
     def publish(topic, msg):
         published.append((topic, msg))
         daemon.bus.publish(topic, msg)
-    sweep = cch.ChainSweep(["SPY"], publish, clock=clock, held=lambda: frozenset(), connection=lambda: 0)
+    sweep = cch.ChainSweep(["SPY"], publish, clock=clock, held=lambda: frozenset())
     client = schwab.client(tmp_path)
     return daemon, sweep, published, (lambda: client)
 

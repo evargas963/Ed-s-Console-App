@@ -16,7 +16,7 @@
   function host() { return document.getElementById('liqmBody'); }
   function stillMap(tk) { return isMap() && ticker() === tk; }
   function fetchJson(url, signal) {
-    return fetch(url, { cache: 'no-store', signal: signal }).then(function (r) { return r.ok ? r.json() : null; });
+    return window.EdShell.live(url).then(function (r) { return r.ok ? r.json() : null; });
   }
   // the reference levels this map draws, by their served family
   var REF_FAMILIES = { prior_day: 1, overnight: 1 };
