@@ -1,13 +1,13 @@
 """GET /api/chain: one expiry of the full chain the daemon delivered (strike_range=ALL), every Schwab
-field as sent, with streamed option values newer than the chain overlaid (question 1: everything
-Schwab sent, exactly as sent; question 2: the screen shows the newest).
+field as sent, a contract the daemon streams with its stream's values alone (question 1: everything
+Schwab sent, exactly as sent; question 2: one source per value).
 
 Through the real code: the levels producer holds the chain (server._publish_levels), the daemon's
 status and pushed option messages reach the console (live_market_plane.record_feed_heartbeat,
 streaming._ingest_pushed), the route. Real data: TSLA's complete 2026-08-31 chain (236 contracts,
 tests/fixtures/real_tsla_complete_chain_strike_range_all.json) and MRVL's full chain, 21 expirations
 (tests/fixtures/real_mrvl_full_chain_vs_strike_window.json). STAND-INS (named): TSLA's price (the
-capture carries none: 330.0) and each streamed value.
+capture carries none: 330.0) and the streamed record (a real SPY contract's, tests/real_option_record.py).
 """
 from __future__ import annotations
 
@@ -24,6 +24,7 @@ import live_market_plane as lmp
 import server as srv
 from schwab_client import flatten_chain_contracts
 from stream_spine import options_quote_msg
+from tests.real_option_record import RECORD, stream_priced
 from time_et import ET
 
 _FIXTURES = Path(__file__).parent / "fixtures"
@@ -92,32 +93,18 @@ def test_only_the_requested_expiry_is_served():
     assert missing["status"] == "unavailable" and "2031-01-17" in missing["scope"]["reason"]
 
 
-def test_a_streamed_volume_newer_than_the_chain_is_overlaid():
-    fetched = _AT.timestamp() - 20.0
-    target = _TSLA_CONTRACTS[0]
-    streamed = (target["totalVolume"] or 0) + 4321
-    _hold("TSLA", _TSLA_CONTRACTS, fetched, 330.0, [(target["symbol"], {"TOTAL_VOLUME": streamed}, _AT.timestamp())])
-    body = _get(ticker="TSLA")
-    overlaid = next(c for c in body["contracts"] if c["symbol"] == target["symbol"])
-    assert overlaid["totalVolume"] == streamed and body["stream_overlay_contracts"] == 1
-    assert all(overlaid[k] == v for k, v in target.items() if k != "totalVolume")
-    assert [c for c in body["contracts"] if c["symbol"] != target["symbol"]] == _TSLA_CONTRACTS[1:]
-
-
-def test_each_field_is_the_newest_schwab_sent_streamed_or_chain():
-    """Coordinator review of #433/#434 (2026-10-01): per field the newest Schwab value wins, by
-    receive time. A volume streamed before the chain was fetched keeps the chain's volume; a gamma
-    streamed after it is applied; a field the stream never sent keeps the chain's."""
+def test_a_streamed_contract_is_served_with_its_streams_values_alone():
+    """The chain fetched after the contract's record: its price, bid/ask, last, volume and Greeks
+    are the record's (one the stream has not sent absent, never the chain's), its open interest
+    the chain's; every other contract as Schwab sent it."""
     now = _AT.timestamp()
     target = _TSLA_CONTRACTS[0]
-    volume, gamma = (target["totalVolume"] or 0) + 4321, (target["gamma"] or 0) + 0.05
-    _hold("TSLA", _TSLA_CONTRACTS, now, 330.0, [(target["symbol"], {"TOTAL_VOLUME": volume}, now - 8),
-                                                 (target["symbol"], {"GAMMA": gamma}, now + 1)])
+    _hold("TSLA", _TSLA_CONTRACTS, now, 330.0, [(target["symbol"], RECORD, now - 8)])
     body = _get(ticker="TSLA")
-    overlaid = next(c for c in body["contracts"] if c["symbol"] == target["symbol"])
-    assert overlaid["totalVolume"] == target["totalVolume"] and overlaid["gamma"] == gamma
-    assert overlaid["openInterest"] == target["openInterest"]          # never streamed: the chain's
-    assert body["stream_overlay_contracts"] == 1
+    served = next(c for c in body["contracts"] if c["symbol"] == target["symbol"])
+    assert served == stream_priced(target) and served["bid"] is None and target["bid"] is not None
+    assert served["openInterest"] == target["openInterest"] and body["stream_overlay_contracts"] == 1
+    assert [c for c in body["contracts"] if c["symbol"] != target["symbol"]] == _TSLA_CONTRACTS[1:]
 
 
 def test_the_route_answers_over_real_http():

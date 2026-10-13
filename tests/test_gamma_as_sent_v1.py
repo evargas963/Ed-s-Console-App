@@ -31,15 +31,6 @@ def test_each_contract_carries_the_chains_rate_and_dividend_as_sent():
     assert ct["interestRate"] == 4.07 and ct["dividendYield"] == 0.979
 
 
-def test_the_option_stream_keeps_iv_beside_gamma():
-    from app.options.order_flow.state import OrderFlowState
-    st = OrderFlowState()
-    sym = "SPY   301231C00700000"
-    st.push_level_one(sym, {"key": sym, "GAMMA": 0.01, "VOLATILITY": 18.5}, ts_recv=1000.0)
-    g = st.get_stream_greeks(sym)
-    assert g["gamma"] == 0.01 and g["volatility"] == 18.5 and g["volatility_ts_recv"] == 1000.0
-
-
 def test_a_flip_whose_curve_disagrees_with_schwab_says_so():
     from terrain_read import FLIP_CURVE_DISAGREES, GAMMA_FLIP_TRUSTED, build_terrain_read
     kw = dict(spot=100.0, flip=99.0, flip_confidence=GAMMA_FLIP_TRUSTED, gamma_at_spot=-5.0)

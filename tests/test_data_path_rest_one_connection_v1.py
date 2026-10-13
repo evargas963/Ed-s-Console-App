@@ -38,15 +38,17 @@ def _et(s: str) -> float:
     return datetime.fromisoformat(s).replace(tzinfo=ET).timestamp()
 
 
-def _setup(tmp_path, schwab: LocalSchwab, now: float):
-    """The daemon's bus holding HELD's stream record, its sweep on a fixed clock, and the client."""
+def _setup(tmp_path, schwab: LocalSchwab, now: float, unsent: "frozenset[str]" = frozenset()):
+    """The daemon's bus holding HELD's stream record (without the `unsent` fields), its sweep on a
+    fixed clock, and the client."""
     client = schwab.client(tmp_path)
     daemon = capture.Daemon(MessageBus(), HealthRegistry(), ["SPY", "TSLA"])
     daemon.held["LEVELONE_OPTIONS"] = frozenset({HELD})          # Schwab accepted it on this connection
     for e in _STREAM["events"]:
         if e["kind"] == "l1":
+            content = {k: v for k, v in e["content"].items() if k not in unsent}
             daemon.bus.publish(f"optquote.{HELD}", options_quote_msg(
-                symbol=HELD, content={**e["content"], "key": HELD}, src="schwab_options_l1",
+                symbol=HELD, content={**content, "key": HELD}, src="schwab_options_l1",
                 ts_recv=e["ts_recv"], schwab_ts=int(e["ts_recv"] * 1000)))
     published: list = []
     sweep = ChainSweep(tmp_path / "ed_console.db", daemon.watchlist, lambda topic, msg: published.append((topic, msg)),
@@ -108,6 +110,22 @@ def test_a_rotation_asks_schwab_as_documented_one_request_at_a_time_with_exact_g
                             "ORDER BY ticker").fetchall()
     assert rows == [("SPY", "2026-11-20", SPY["spot"], len(SPY["chain"])),
                     ("TSLA", "2026-10-09", TSLA["spot"], len(TSLA["chain"]))]
+
+
+def test_a_streamed_contract_is_never_asked_on_the_quotes_endpoint_even_before_every_greek_arrived(tmp_path):
+    """HELD streams but its record has no RHO yet: its Greeks are the stream's (RHO absent), and
+    it is not asked for on the quotes endpoint, so no REST Greek reaches a streamed contract."""
+    schwab = LocalSchwab()
+    daemon, sweep, client, published = _setup(tmp_path, schwab, _et("2026-10-01 10:15"), frozenset({"RHO"}))
+    try:
+        sweep.rotation(client, ["SPY"], threading.Event())
+    finally:
+        schwab.close()
+    quoted = [s for path, q, *_ in schwab.requests if path == QUOTES for s in q["symbols"].split(",")]
+    assert quoted and HELD not in quoted
+    held, record = delivered(published, "SPY")[HELD], daemon.option_record(HELD)[1]
+    assert held["rho"] is None and "rho" not in held["greeksTime"]
+    assert {f: held[f] for f in GREEKS if f != "rho"} == {f: record["content"][f.upper()] for f in GREEKS if f != "rho"}
 
 
 def test_a_refused_quotes_request_fails_each_ticker_in_it_and_the_next_request_goes_at_once(tmp_path):

@@ -203,8 +203,9 @@ def _log_stream(phase: str, **kwargs: Any) -> None:
         log.info("STREAM_DIAG %s", phase)
 
 
-#: the option quote fields the levels are priced from: a message carrying one reprices
-_REPRICE_FIELDS = ("GAMMA", "DELTA", "OPEN_INTEREST", "TOTAL_VOLUME", "VOLUME")
+#: the option quote fields the levels are priced from (open interest is the chain's): a message
+#: carrying one reprices
+_REPRICE_FIELDS = ("GAMMA", "DELTA", "TOTAL_VOLUME", "VOLATILITY")
 
 
 def _ingest_pushed(topic: str, msg: Any) -> None:
