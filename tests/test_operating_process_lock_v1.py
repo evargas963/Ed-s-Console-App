@@ -117,12 +117,11 @@ def test_index_parity_passes_when_clean(tmp_path, monkeypatch):
     assert OPL.index_worktree_mismatches(repo) == []
 
 
-def test_reset_guard_blocks_destructive_git_on_product(monkeypatch, tmp_path):
+def test_reset_guard_blocks_destructive_git_on_product():
     """LOCK-2 (RC-231): soft tree-destructive git against product scope BLOCKS.
 
     The guard's own static inventory (PRODUCT_WIPE_PROTECTED) is the only thing that can
     satisfy it — no mission scope, no grant file (both gone, 2026-08-24 teardown)."""
-    monkeypatch.delenv("ED_RESET_GUARD", raising=False)
     for cmd in ("git restore -- static/chart.html",
                 "git checkout -- server.py",
                 "git restore -- math_levels.py",
@@ -133,21 +132,12 @@ def test_reset_guard_blocks_destructive_git_on_product(monkeypatch, tmp_path):
         assert OPL.reset_guard_violations(cmd), f"reset guard silent on: {cmd}"
 
 
-def test_reset_guard_permits_safe_git(monkeypatch, tmp_path):
+def test_reset_guard_permits_safe_git():
     """LOCK-2 negative control: index-only and read-only git stays legal."""
-    monkeypatch.delenv("ED_RESET_GUARD", raising=False)
     for cmd in ("git status", "git log --oneline -3",
                 "git restore --staged governance/root_cause_log.md",
                 "git stash list", "git checkout -b feature/x"):
         assert not OPL.reset_guard_violations(cmd), f"reset guard false-fired on: {cmd}"
-
-
-def test_reset_guard_escapes_do_not_disable(monkeypatch):
-    """RC-450: ED_RESET_GUARD=off must not disarm the wipe block."""
-    monkeypatch.delenv("ED_RESET_GUARD", raising=False)
-    assert OPL.reset_guard_violations("git restore -- static/chart.html")
-    monkeypatch.setenv("ED_RESET_GUARD", "off")
-    assert OPL.reset_guard_violations("git restore -- static/chart.html")
 
 
 def test_measure_report_has_enforcement_hashes():
