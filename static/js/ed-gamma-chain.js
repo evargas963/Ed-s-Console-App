@@ -11,7 +11,6 @@
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
     return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
   function st() { return (window.EdShell && window.EdShell.getState()) || {}; }
-  function isChain() { var s = st(); return s.workspace === 'options' && s.subview === 'chain'; }
 
   var SCOPE = {
     complete_single_expiry: { t: 'complete (ALL)', live: true },
@@ -30,53 +29,27 @@
   // auto-scroll to spot only the first time a ticker+expiry is rendered
   var _lastScrollContext = null;
 
-  function curExpiry() { return (window.EdShell && window.EdShell.getExpiry && window.EdShell.getExpiry()) || null; }
-  function stillChain(tk, exp) { return isChain() && (st().ticker || '') === tk && curExpiry() === exp; }
-  // Independent-review finding (2026-09-13), REPRODUCED: A -> B -> A can still let the FIRST
-  // A request's response paint over the THIRD (fresh) A request's response. `stillChain`
-  // proves the identity (ticker, expiry) still matches NOW, but two different requests issued
-  // at different times for the identical identity are indistinguishable to it -- whichever
-  // resolves LAST wins, not whichever was issued last. The loader's own AbortController
-  // SHOULD prevent the stale first request from ever resolving normally, but does not
-  // guarantee it (an abort raced against an already-buffered response can still resolve).
-  // Fixed with an explicit monotonic request sequence, independent of AbortController
-  // reliability: only the response whose sequence number is still the LATEST ISSUED one may
-  // paint, so an old, superseded request for the SAME identity can never win a race against a
-  // newer one for that identity, not merely against a DIFFERENT identity.
-  var _reqSeq = 0;
-  // ROUND 8 (2026-09-13): keyed on ticker+expiry so a held/slow fetch for an ABANDONED
-  // context is aborted immediately once a different one is selected, instead of blocking it.
-  function loadImpl(tk, exp, signal) {
+  // the chain the console pushes for the view's ticker and expiry (only ever the current view's)
+  window.EdShell.onPanel('chain', function (a) {
     var host = document.getElementById('chainBody');
-    if (!host || !stillChain(tk, exp)) return;
-    var mySeq = ++_reqSeq;
-    function current() { return mySeq === _reqSeq && stillChain(tk, exp); }
-    return window.EdShell.live('/api/chain?ticker=' + encodeURIComponent(tk) + (exp ? '&expiry=' + encodeURIComponent(exp) : ''), 'chain')
-      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-      .then(function (d) { if (current()) render(host, d); })
-      .catch(function (e) {
-        if (e && e.name === 'AbortError') return;
-        if (current()) host.innerHTML = '<div class="placeholder"><div class="sm">no console serving /api/chain</div></div>';
-      });
-  }
-  var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(st().ticker || '', curExpiry(), signal); });
-  function load() { _loader.trigger((st().ticker || '') + '|' + (curExpiry() || '')); }
+    if (!host || a.waiting) return;
+    if (!a.ok) { host.innerHTML = '<div class="placeholder"><div class="sm">/api/chain answered HTTP ' + a.status + '</div></div>'; return; }
+    render(host, a.body);
+  });
 
   function render(host, d) {
     setSrc(d);
     var rows = (d && d.ladder) || [];   // served: strikes high to low, one row per listed contract
     if (!rows.length) { host.innerHTML = '<div class="placeholder"><div class="sm">' + esc(window.EdShell.chainEmptyText(d)) + '</div></div>'; return; }
     var dup = d.has_duplicate_contracts === true;   // served
-    // null/'' spot is ABSENT: Number(null) is 0, which drew 'spot 0.00' (audit P0, 2026-09-23)
-    var spot = (d.spot == null || d.spot === '') ? NaN : Number(d.spot);
-    var desired = window.EdFlow.selected();
+    var desired = st().contract;
     // B: /api/chain is a COMPLETE SINGLE-EXPIRY surface — say so, name the exact expiry returned, and
     // flag when the workspace filter was null (the server chose the default expiry).
     var filterNull = !(window.EdShell && window.EdShell.getExpiry && window.EdShell.getExpiry());
     var head = '<div class="chn-head"><span>SINGLE EXPIRY · ' + esc(d.expiry || '—') +
       (filterNull ? ' <span class="chn-default">(server default)</span>' : '') + ' · ' + esc(d.n_strikes) + ' strikes' +
       (dup ? ' · <span class="chn-dup">duplicate contracts retained</span>' : '') + '</span>' +
-      '<span>spot ' + (isFinite(spot) ? spot.toFixed(2) : '—') + (d.spot_source ? ' · ' + esc(d.spot_source) : '') + '</span></div>';
+      '<span>spot <span class="chn-spot">' + esc(_spotDisp) + '</span></span></div>';
     // dg: decimals, or AS_SENT: every digit Schwab sent (its Greeks)
     function cell(c, k, dg) { var v = c ? c[k] : null; return (v == null) ? '—' : (typeof v === 'number' ? (dg === AS_SENT ? String(v) : v.toFixed(dg == null ? 2 : dg)) : esc(v)); }
     function sym(c) { return c && c.symbol ? String(c.symbol) : ''; }
@@ -151,6 +124,16 @@
     }
   }
 
+  // the spot is the header's price row (the daemon's Schwab LAST_PRICE), painted on every row
+  var _spotDisp = '—';
+  window.addEventListener('ed:quote_tick', function (e) {
+    var q = e.detail;
+    if (!q || q.ticker !== st().key) return;
+    _spotDisp = q.spot_disp != null ? q.spot_disp : '—';
+    document.querySelectorAll('#chainBody .chn-spot').forEach(function (el) { el.textContent = _spotDisp; });
+  });
+  document.addEventListener('ed:ticker', function () { _spotDisp = '—'; });   // until the new ticker's row
+
   function selectContract(symbol, strike, expiry) {
     if (window.EdShell) window.EdShell.setStrike(strike, expiry);      // exact strike + expiry = shared context
     var host = document.getElementById('chainBody'); if (host) {
@@ -158,12 +141,5 @@
       host.querySelectorAll('[data-sym="' + (window.CSS && CSS.escape ? CSS.escape(symbol) : symbol) + '"]').forEach(function (n) { n.classList.add('chn-selc'); });
     }
     window.EdFlow.select(symbol);
-  }
-
-  if (typeof document !== 'undefined') {
-    document.addEventListener('ed:view', load);       // fires on subview change too
-    document.addEventListener('ed:ticker', load);
-    document.addEventListener('ed:expiry', load);
-    document.addEventListener('ed:changed', function (e) { if (e.detail.kind === 'chain' && isChain()) load(); });
   }
 })();

@@ -9,6 +9,7 @@ import time
 import live_market_plane as lmp
 import live_price_rows
 import server as srv
+from stream_spine import MessageBus, current_key
 
 
 def test_a_symbol_the_daemon_does_not_hold_is_absent_in_session_and_stands_while_closed() -> None:
@@ -47,7 +48,10 @@ def test_the_console_spot_is_its_price_record_and_the_console_keeps_no_other_cop
     lmp.record_feed_heartbeat({"ts": now, "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [tk]}})
     try:
         # the console receives Schwab's message on its order-flow tape: that is no price
-        ofs._ingest_pushed(f"quote.{tk}", {"symbol": tk, "ts_recv": now, "native": native})
+        bus = MessageBus()                  # the record as the daemon's bus holds and pushes it
+        sent = {"symbol": tk, "ts_recv": now, "native": native}
+        bus.publish(f"quote.{tk}", sent)
+        ofs._ingest_pushed(f"quote.{tk}", bus.current[current_key(f"quote.{tk}", sent)][1])
         assert lmp.get_quote(tk) is None and srv.resolve_spot(tk, now=now)[0] is None
         # the same fields, as the daemon pushes them, taken into the console's price record
         lmp.record_from_level_one_equity(tk, native, received_ts=now)

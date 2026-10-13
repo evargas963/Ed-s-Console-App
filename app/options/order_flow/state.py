@@ -1,7 +1,7 @@
 """
 app/options/order_flow/state.py — In-memory live order flow state from streaming.
-Stores recent book snapshots, tape prints, and each option contract's record from Schwab streaming.
-Feeds OrderFlowEngine with content.* structure for book_imbalance_5 and cum_delta_proxy.
+Stores recent book snapshots and each option contract's record from Schwab streaming; the trade
+prints are the one tape's (history.TAPE). Feeds OrderFlowEngine with the books (content.*).
 """
 
 from __future__ import annotations
@@ -14,15 +14,9 @@ from typing import Optional
 from app.options.order_flow import history
 from instrument_identity import ticker_storage_key
 from numeric_contract import schwab_count, schwab_number
-from l1_trade_observation import (
-    TAPE_COMPLETENESS,
-    is_adjacent_restatement,
-    vendor_triple,
-)
 
 # Limits to prevent unbounded growth
 MAX_BOOK_SNAPSHOTS = 20
-MAX_TAPE_PRINTS = 500
 
 log = logging.getLogger(__name__)
 
@@ -49,9 +43,6 @@ class OrderFlowState:
         # RLock: get_content_for_symbol holds the lock and calls the deque accessors.
         self._lock = threading.RLock()
         self._book: dict[str, deque] = {}
-        self._tape: dict[str, deque] = {}
-        self._prev_trade: dict[str, dict] = {}
-        self._receive_seq: dict[str, int] = {}
         #: the daemon's contract records, mirrored (push_contract): contract -> its record, and
         #: each watchlist ticker's contracts, in the order Schwab listed them
         self._contracts: dict[str, ContractRecord] = {}
@@ -62,12 +53,6 @@ class OrderFlowState:
             if symbol not in self._book:
                 self._book[symbol] = deque(maxlen=MAX_BOOK_SNAPSHOTS)
             return self._book[symbol]
-
-    def _get_tape(self, symbol: str) -> deque:
-        with self._lock:
-            if symbol not in self._tape:
-                self._tape[symbol] = deque(maxlen=MAX_TAPE_PRINTS)
-            return self._tape[symbol]
 
     def push_book(self, symbol: str, content_item: dict, service: str) -> None:
         """Apply one Schwab book observation (from `service`: NYSE_BOOK, NASDAQ_BOOK or
@@ -94,94 +79,23 @@ class OrderFlowState:
         with self._lock:
             self._get_book(sym).append(item)
 
-    def push_level_one(
-        self, symbol: str, content_item: dict, ts_recv: Optional[float] = None,
-        field_received: Optional[dict] = None,
-    ) -> None:
-        """Apply one Schwab L1 observation with canonical merge/freshness/tape semantics. A
-        current record merged from several messages (the daemon's bus) carries each field's own
-        receive time in `field_received`; each value is stamped with it."""
-        if not content_item or not isinstance(content_item, dict):
-            return
-        sym = ticker_storage_key(symbol or content_item.get("key"))
-        if not sym:
-            return
-        if ts_recv is None:
-            # the daemon's receive time is REQUIRED -- stamping "now" made a replayed or
-            # delayed message read as live (same P0 as the live plane, 2026-09-23)
-            raise TypeError("push_level_one: ts_recv (the daemon receive time) is required")
-
-        if content_item.get("LAST_PRICE") is None:
-            return
-        # the daemon's receive time of the message that carried the trade, not the console's
-        # clock, and not a later tick merged into the same record
-        self.push_trade(sym, content_item["LAST_PRICE"], content_item.get("LAST_SIZE"),
-                        content_item.get("TRADE_TIME_MILLIS"),
-                        float(ts_recv if field_received is None else field_received["LAST_PRICE"]))
-
-    def push_trade(self, sym: str, last_price, last_size, trade_ms, received_ts: float) -> None:
-        """One trade as Schwab sent it (price, size, trade time in ms) into the symbol's tape,
-        never a restatement of the trade before it."""
-        curr_key = vendor_triple(trade_ms, last_price, last_size)
-        with self._lock:
-            seq = self._receive_seq.get(sym, 0) + 1
-            self._receive_seq[sym] = seq
-            prev = self._prev_trade.get(sym)
-            prev_key = None
-            if prev:
-                prev_key = vendor_triple(
-                    prev.get("time_millis"), prev.get("price"), prev.get("size")
-                )
-            restatement = is_adjacent_restatement(prev_key, curr_key)
-            receipt = {
-                "LAST_PRICE": last_price,
-                "LAST_SIZE": last_size,
-                "TRADE_TIME_MILLIS": trade_ms,
-                "receive_seq": seq,
-                "server_received_ts": received_ts,
-                "is_restatement": restatement,
-                "completeness": TAPE_COMPLETENESS,
-                "native_event_id": False,
-            }
-            if restatement:
-                return
-            self._prev_trade[sym] = {
-                "price": last_price,
-                "size": last_size,
-                "time_millis": trade_ms,
-            }
-            self._get_tape(sym).append(receipt)
-
     def get_content_for_symbol(self, symbol: str, venue: Optional[str] = None) -> list[dict]:
-        """Return the canonical engine-facing state for one symbol; with `venue`, only that
-        Schwab book service's books (an equity has two: NYSE_BOOK and NASDAQ_BOOK)."""
+        """The symbol's books, the engine's content; with `venue`, only that Schwab book
+        service's (an equity has two: NYSE_BOOK and NASDAQ_BOOK)."""
         sym = ticker_storage_key(symbol)
         if not sym:
             return []
-        out: list[dict] = []
         with self._lock:
-            out.extend(dict(item) for item in self._get_book(sym)
-                       if venue is None or item["SERVICE"] == venue)
-            out.extend(dict(item) for item in self._get_tape(sym))
-        return out
-
+            return [dict(item) for item in self._get_book(sym) if venue is None or item["SERVICE"] == venue]
 
     def clear_all(self) -> None:
-        """Drop tape/book/option records/prev-print identity for every symbol."""
+        """Drop the books, the prints and the option records of every symbol (the stream stopped)."""
+        history.TAPE.forget_all()
         with self._lock:
-            self._clear_all_session_state_unlocked()
-
-    def _clear_all_session_state_unlocked(self) -> None:
-        """Drop session state. Caller holds ``self._lock``."""
-        for values in self._tape.values():
-            values.clear()
-        for values in self._book.values():
-            values.clear()
-        self._prev_trade.clear()
-        self._receive_seq.clear()
-        self._contracts.clear()
-        self._by_ticker.clear()
-
+            for values in self._book.values():
+                values.clear()
+            self._contracts.clear()
+            self._by_ticker.clear()
 
     def clear_symbol(self, symbol: str) -> None:
         """Clear one symbol's streamed state, its recent prints and books included (a contract's
@@ -192,10 +106,6 @@ class OrderFlowState:
         with self._lock:
             if sym in self._book:
                 self._book[sym].clear()
-            if sym in self._tape:
-                self._tape[sym].clear()
-            self._prev_trade.pop(sym, None)
-            self._receive_seq.pop(sym, None)
 
     def push_contract(self, symbol: str, record: ContractRecord) -> None:
         """Mirror `symbol`'s record as the daemon pushed it, whole, in place of the one held."""
@@ -267,18 +177,6 @@ def push_book(symbol: str, content_item: dict, service: str) -> None:
     _LIVE_STATE.push_book(symbol, content_item, service)
 
 
-def push_level_one(
-    symbol: str, content_item: dict, ts_recv: Optional[float] = None,
-    field_received: Optional[dict] = None,
-) -> None:
-    """Apply an L1 observation to the live singleton."""
-    _LIVE_STATE.push_level_one(symbol, content_item, ts_recv=ts_recv, field_received=field_received)
-
-
-def push_trade(sym: str, last_price, last_size, trade_ms, received_ts: float) -> None:
-    _LIVE_STATE.push_trade(sym, last_price, last_size, trade_ms, received_ts)
-
-
 def get_content_for_symbol(symbol: str, venue: Optional[str] = None) -> list[dict]:
     """Return canonical engine content from the live singleton."""
     return _LIVE_STATE.get_content_for_symbol(symbol, venue)
@@ -287,11 +185,8 @@ def get_content_for_symbol(symbol: str, venue: Optional[str] = None) -> list[dic
 
 
 def clear_all_live_state() -> None:
-    """Drop tape/book/option records/prev-print identity for every symbol.
-
-    Required on stream disconnect/reconnect. Leaving the last window resident
-    mixes pre-disconnect restatements with the new session.
-    """
+    """Drop the books, the prints and the option records of every symbol, when the stream stops:
+    the last window left resident would mix pre-disconnect restatements with the new session."""
     _LIVE_STATE.clear_all()
 
 

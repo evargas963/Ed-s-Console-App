@@ -11,7 +11,7 @@ from pathlib import Path
 import app.options.order_flow.streaming as ofs
 import push_changes
 import server
-from stream_spine import bar_msg
+from stream_spine import MessageBus, bar_msg, current_key
 from tests.feed_live_helper import daemon_bars
 from time_et import ET
 
@@ -46,8 +46,10 @@ def test_a_streamed_equity_quote_and_book_mark_flow(monkeypatch):
     # marks levels); this test is about the flow mark alone
     monkeypatch.setattr(server, "_on_stream_tick", lambda sym: None)
     q, b = _FX["quote"], _FX["book"]
-    assert _run(lambda: ofs._ingest_pushed(f"quote.{TK}", {"symbol": TK, "ts_recv": q["ts_recv"],
-                                                            "native": q["native"]}))[0] == {"flow"}
+    bus = MessageBus()                      # the quote as the daemon's bus holds and pushes it
+    sent = {"symbol": TK, "ts_recv": q["ts_recv"], "native": q["native"]}
+    bus.publish(f"quote.{TK}", sent)
+    assert _run(lambda: ofs._ingest_pushed(f"quote.{TK}", bus.current[current_key(f"quote.{TK}", sent)][1]))[0] == {"flow"}
     assert _run(lambda: ofs._ingest_pushed(f"book.{TK}", {"symbol": TK, "ts_recv": b["ts_recv"],
                                                            "service": b["service"],
                                                            "content": b["native"]}))[0] == {"flow"}

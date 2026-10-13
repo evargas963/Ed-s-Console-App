@@ -31,10 +31,11 @@ from math_exposure_core import (
 
 import json
 from html import escape as html_escape
+from urllib.parse import urlencode
 
 
 import httpx
-from fastapi import Body, FastAPI, Query, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import Body, FastAPI, Query, HTTPException, WebSocket
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
@@ -172,6 +173,10 @@ from db import get_db
 
 import live_price_rows as _lpr        # with_change: the bar-change computation
 import push_changes
+from app.options.order_flow.engine import OrderFlowEngine
+from app.options.order_flow.history import TAPE
+from app.options.order_flow.live_payload import flow_block
+from app.options.order_flow.state import get_content_for_symbol
 
 #: the Schwab token file, whose age is shown (the console holds no Schwab credential and makes no
 #: Schwab call)
@@ -1684,9 +1689,7 @@ def get_options_tape(ticker: str = Query(...),
     `contract`, when given, scopes to exactly that vendor symbol. Otherwise scopes to every
     contract of `ticker` the daemon streams (its option rule's pick, of the ticker's _ledger), merged
     newest-first and capped at `limit` across the whole merge, not per-contract."""
-    from app.options.order_flow.history import TAPE
-
-    tk = ticker_storage_key(_required_ticker(ticker))
+    tk =ticker_storage_key(_required_ticker(ticker))
     try:
         bounded_limit = max(1, min(500, int(limit)))
     except (TypeError, ValueError):
@@ -2104,7 +2107,8 @@ def desk_events_payload(tk: str, venue: str, tf: str, now: datetime) -> dict:
     newest_at = {it["price"]: it for it in items}
     for it in sorted(newest_at.values(), key=lambda it: it["ts"])[-DESK_MARKERS:]:
         it["marker"] = True
-    t = get_terrain(ticker=tk)                       # the same payload the terrain route serves
+    # the one terrain publication (_publish_levels), or with none its staleness verdict
+    t = terrain_cache_get(tk, now.timestamp()) or terrain_staleness(None, tk, now=now.timestamp())
     tts = t.get("computed_ts_utc")
     for side, word, key in (("call", "call", "cw"), ("put", "put", "pw")):
         if t.get(f"{side}_wall_state") == "breached":
@@ -2160,85 +2164,189 @@ _ROUTE_KINDS = {
     "/api/desk/events": _EVERY_KIND,
     "/api/order-flow/microstructure": _EVERY_KIND, "/api/order-flow/book-heatmap": {"flow"},
     "/api/order-flow/options-microstructure": {"levels", "flow"}, "/api/options/tape": {"flow"},
+    "/api/watchlist": set(),
 }
+
+#: the 1-minute bars each chart reads, per timeframe
+CHART_BARS = {"1": 1200, "3": 2000, "5": 3000, "15": 6000, "30": 9000, "60": 12000, "D": 12000}
+#: the Desk's Order Flow card: the newest hour of 1-minute bars
+DESK_FLOW_BARS = 60
+#: the Options subviews that show the strike x expiry grid and its panels
+_GAMMA_FAMILY = {"gamma", "dex", "oi"}
+
+
+def _route(path: str, **params) -> str:
+    """`path` with the parameters that have a value, in the order given: a route and its inputs
+    are always written the same way, so every panel showing them shares one answer."""
+    return path + "?" + urlencode({k: v for k, v in params.items() if v is not None})
+
+
+def _panels(v: dict) -> dict[str, str]:
+    """The panels on screen for a page's view `v` (the operator's selections: ticker, workspace,
+    subview, view, expiry, the selected strike and contract, scope, book venue, each chart's
+    timeframe, the heatmap's columns and minutes, each strike panel's pan) and the route whose
+    answer each shows. Panels that show the same value read the same route."""
+    tk, ws, sub, scope, venue, pans = v["ticker"], v["workspace"], v["subview"], v["scope"], v["venue"], v["pans"]
+
+    def window(name: Optional[str]) -> dict:
+        p = pans[name] if name else {"centre": None}
+        return {"scope": scope, "centre": p["centre"], "shift": None if p["centre"] is None else p["shift"]}
+
+    def bars(tf: str, limit: int) -> str:
+        return _route("/api/bars1m", ticker=tk, tf=tf, limit=limit)
+
+    terrain = _route("/api/terrain", ticker=tk)
+    strikes = _route("/api/terrain/strikes", ticker=tk, **window(None))
+    levels = _route("/api/levels", ticker=tk, tf="1")
+    liquidity = _route("/api/liquidity-snapshot", ticker=tk)
+    book = _route("/api/order-flow/microstructure", ticker=tk, venue=venue)
+    out = {"watchlist": "/api/watchlist", "expiries": _route("/api/expiries", ticker=tk)}
+    if ws == "options" and sub in _GAMMA_FAMILY:
+        out.update({"gamma.terrain": terrain, "gamma.tape": _route("/api/options/tape", ticker=tk),
+                    "gamma.strikes": _route("/api/terrain/strikes", ticker=tk, **window("gbs"))})
+        if v["strike"] is not None:
+            out["gamma.strike"] = _route("/api/chain", ticker=tk, expiry=v["expiry"] or v["strike_expiry"])
+        if v["view"] == "heatmap":
+            out["gamma.surface"] = _route("/api/options/gamma-surface", ticker=tk, **window("heatmap"),
+                                          cols=v["cols"], expiry=v["expiry"])
+        elif v["view"] == "chart":
+            out.update({"gamma.chart.bars": bars(v["tfs"]["chart"], CHART_BARS[v["tfs"]["chart"]]),
+                        "gamma.chart.strikes": strikes, "gamma.chart.terrain": terrain})
+        elif v["view"] == "levels" and sub == "gamma":
+            out["gamma.levels"] = levels
+    elif ws == "options" and sub in ("vanna", "charm"):
+        out[sub] = _route(f"/api/options/{sub}-by-strike", ticker=tk, **window(sub))
+    elif ws == "options" and sub in ("chain", "structures"):
+        out[sub] = _route("/api/chain", ticker=tk, expiry=v["expiry"])
+    elif ws == "options" and sub == "flow" and v["contract"] is not None:
+        out["flow"] = _route("/api/order-flow/options-microstructure", contract=v["contract"])
+    elif ws == "liquidity" and sub == "map":
+        out.update({"liquidity.map.zones": liquidity, "liquidity.map.levels": levels,
+                    "liquidity.map.bars": bars(v["tfs"]["liquidity"], CHART_BARS[v["tfs"]["liquidity"]])})
+    elif ws == "liquidity" and sub == "levels":
+        out["liquidity.levels"] = levels
+    elif ws == "order-flow" and sub == "book":
+        out["book"] = book
+    elif ws == "order-flow" and sub == "heatmap":
+        out["book.heatmap"] = _route("/api/order-flow/book-heatmap", ticker=tk, venue=venue, minutes=v["book_minutes"])
+    elif ws == "trade-desk" and sub == "right-now":
+        out.update({"rightnow.book": book, "rightnow.levels": levels, "rightnow.terrain": terrain,
+                    "rightnow.zones": liquidity,
+                    "rightnow.strikes": _route("/api/terrain/strikes", ticker=tk, **window("migration"))})
+    elif ws == "trade-desk" and sub == "desk":
+        tf = v["tfs"]["desk"]
+        out.update({"desk.bars": bars(tf, CHART_BARS[tf]), "desk.levels": _route("/api/levels", ticker=tk, tf=tf),
+                    "desk.events": _route("/api/desk/events", ticker=tk, venue=venue, tf=tf),
+                    "desk.terrain": terrain, "desk.zones": liquidity, "desk.strikes": strikes,
+                    "desk.forces": _route("/api/forces", ticker=tk), "desk.flow_bars": bars("1", DESK_FLOW_BARS),
+                    "desk.book": book})
+    return out
 
 
 async def _route_answer(url: str) -> dict:
-    """`url`'s answer as its route serves it (the route's own handler, in this process): its
-    status and body. Only the console's own GET routes under /api/ are served."""
-    if not url.startswith("/api/") or url.startswith("/api/live"):
-        return {"url": url, "status": 404, "body": None}
+    """`url`'s answer as its route serves it (the route's own handler, in this process). A route
+    that raises answers 500 with no body, as its GET does, and its error is logged: one panel's
+    failure never ends the push of the others."""
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://console") as c:
-        r = await c.get(url)
-    try:
-        body = r.json()
-    except ValueError:
-        body = None
-    return {"url": url, "status": r.status_code, "body": body}
+        try:
+            r = await c.get(url)
+        except Exception:
+            log.exception("the route %s raised", url)
+            return {"status": 500, "body": None}
+    return {"status": r.status_code, "body": r.json()}
+
+
+#: Each route an open page shows: its answer's computation, and the count of changes it was
+#: computed at (push_changes.generation). One computation per route and count, however many
+#: panels and pages show it; computed again only when a change that moves it happened.
+_answers: dict[str, tuple[tuple, asyncio.Future]] = {}
+
+
+async def _answer(url: str, tk: str) -> dict:
+    """`url`'s current answer: the one already computed since the last change that moves it, else
+    a new computation that every page asking meanwhile shares."""
+    count = push_changes.generation(tk, _ROUTE_KINDS[url.split("?", 1)[0]])
+    held = _answers.get(url)
+    if held is None or held[0] != count:
+        held = _answers[url] = (count, asyncio.ensure_future(_route_answer(url)))
+    return await asyncio.shield(held[1])
 
 
 @app.websocket("/api/live")
 async def live_values(ws: WebSocket):
-    """The console's push to the page, one WebSocket: the page names its ticker
-    ({"op": "ticker", "ticker"}) and each route a panel shows ({"op": "route", "url"}), until the
-    panel stops showing it ({"op": "drop", "url"}). The console sends each route's answer at once
-    ({"type": "route", "url", "kinds", "status", "body"}), and again whenever a kind of change that
-    moves it (_ROUTE_KINDS) happens for the ticker, then the kind itself ({"type": "changed",
-    "kind"}); the
-    market session label at the start and when nothing changed for CHANGES_SESSION_SEC
-    ({"type": "session", "label"}). The page fetches nothing. The open connection is the page: a
-    ticker an open page shows is repriced on its ticks (push_changes.watched). Every page
-    reconnects after a console restart."""
+    """The console's push to the page, one WebSocket. The page sends its view, the operator's
+    selections, whenever one changes ({"op": "view", "view"}); it names no route. The console
+    decides the panels on screen for it (_panels) and pushes each one's answer by name
+    ({"type": "panel", "panel", "seq" (the view it is for), "source" (the route that computed
+    it), "kinds", "status", "body"}): at once for each panel the view moved (named first, in the
+    console's answer to the view: {"type": "view", "seq", "moved", "shown" (every panel on screen)}),
+    and again whenever a kind of
+    change that moves it (_ROUTE_KINDS) happens for the ticker. An answer the view moved on from
+    is never sent. The market session label at the start and when nothing changed for CHANGES_SESSION_SEC
+    ({"type": "session", "label"}). The open connection is the page: a ticker an open page shows
+    is repriced on its ticks (push_changes.watched). Every page reconnects after a console
+    restart."""
     await ws.accept()
     client = push_changes.Client()
-    state: dict = {"ticker": None, "routes": {}}
+    page: dict = {"ticker": None, "seq": None}
     send_lock = asyncio.Lock()
 
-    async def send(payload: dict) -> None:
-        async with send_lock:
-            await ws.send_text(json.dumps(payload, separators=(",", ":"), default=str))
+    async def text(payload: dict) -> None:   # the caller holds send_lock
+        await ws.send_text(json.dumps(payload, separators=(",", ":"), default=str))
 
-    async def read() -> None:
-        while True:
-            try:
-                req = json.loads(await ws.receive_text())
-            except WebSocketDisconnect:
-                return                                   # the page closed: the push ends with it
-            if req.get("op") == "ticker":
-                if state["ticker"] is not None:
-                    push_changes.unsubscribe(state["ticker"], client)
-                state["ticker"] = ticker_storage_key(_required_ticker(req.get("ticker")))
-                state["routes"] = {}
-                push_changes.subscribe(state["ticker"], client)
-                await send({"type": "session", "label": session_label(now_et())})
-            elif req.get("op") == "route" and isinstance(req.get("url"), str):
-                follows = _ROUTE_KINDS.get(req["url"].split("?", 1)[0], set())
-                state["routes"][req["url"]] = follows
-                await send({"type": "route", "kinds": sorted(follows), **await _route_answer(req["url"])})
-            elif req.get("op") == "drop" and isinstance(req.get("url"), str):
-                state["routes"].pop(req["url"], None)
+    async def show(names: list[str]) -> None:
+        for name in names:
+            url = client.panels.get(name)
+            if url is None:
+                continue
+            a = await _answer(url, page["ticker"])
+            async with send_lock:
+                if client.panels.get(name) == url:       # still on screen for the page's view
+                    await text({"type": "panel", "panel": name, "seq": page["seq"], "source": url,
+                                "kinds": sorted(_ROUTE_KINDS[url.split("?", 1)[0]]), **a})
 
     async def push() -> None:
         while True:
             kinds = await push_changes.next_changes(client, CHANGES_SESSION_SEC)
             if not kinds:
-                await send({"type": "session", "label": session_label(now_et())})
+                async with send_lock:
+                    await text({"type": "session", "label": session_label(now_et())})
                 continue
-            for url, follows in list(state["routes"].items()):
-                if follows & kinds:
-                    await send({"type": "route", "kinds": sorted(follows), **await _route_answer(url)})
-            for k in sorted(kinds):
-                await send({"type": "changed", "kind": k})
+            await show([n for n, u in client.panels.items() if _ROUTE_KINDS[u.split("?", 1)[0]] & kinds])
 
-    tasks = [asyncio.create_task(read()), asyncio.create_task(push())]
+    jobs: set[asyncio.Task] = set()
     try:
-        await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        async with asyncio.TaskGroup() as tg:
+            jobs.add(tg.create_task(push()))
+            async for message in ws.iter_text():          # ends when the page closes
+                view = json.loads(message)["view"]
+                # no ticker chosen yet: the watchlist alone
+                view["ticker"] = ticker_storage_key(_required_ticker(view["ticker"])) if view["ticker"] else None
+                panels = _panels(view) if view["ticker"] else {"watchlist": "/api/watchlist"}
+                async with send_lock:
+                    if view["ticker"] != page["ticker"]:
+                        if page["ticker"] is not None:
+                            push_changes.unsubscribe(page["ticker"], client)
+                        push_changes.subscribe(view["ticker"], client)
+                        page["ticker"] = view["ticker"]
+                        await text({"type": "session", "label": session_label(now_et())})
+                    moved = [n for n, u in panels.items() if client.panels.get(n) != u]
+                    client.panels, page["seq"] = panels, view["seq"]
+                    await text({"type": "view", "seq": view["seq"], "moved": moved, "shown": sorted(panels)})
+                _forget_unshown()
+                jobs.add(tg.create_task(show(moved)))
+            for t in jobs:
+                t.cancel()
     finally:
-        for t in tasks:
-            t.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
-        if state["ticker"] is not None:
-            push_changes.unsubscribe(state["ticker"], client)
+        if page["ticker"] is not None:
+            push_changes.unsubscribe(page["ticker"], client)
+        _forget_unshown()
+
+
+def _forget_unshown() -> None:
+    """Drop the answers no open page shows."""
+    for url in set(_answers) - push_changes.shown():
+        del _answers[url]
 
 
 @app.get("/api/order-flow/microstructure")
@@ -2258,14 +2366,8 @@ def order_flow_microstructure(ticker: str, venue: str, now: float) -> dict:
     renders, never recomputes. `venue` is the one Schwab book shown: NYSE_BOOK (exchanges) or
     NASDAQ_BOOK (market makers); the two are never combined."""
     t = ticker_storage_key(_required_ticker(ticker))
-    data: dict = {}
-    try:
-        from app.options.order_flow.state import get_content_for_symbol
-        _content = get_content_for_symbol(t, venue)
-        if _content:
-            data["content"] = _content
-    except Exception as e:  # streaming state optional — fail closed to 'no_book', never fabricate
-        log.debug("microstructure content build failed for %s: %s", t, e)
+    # the venue's books (none held: 'no_book') and the one tape's prints
+    data: dict = {"content": get_content_for_symbol(t, venue), "prints": TAPE.prints(t)}
     # top of book: the daemon's price row; absent with the outage reason when its feed is down
     # in an open session, the values as of the close while Closed (docs/DATA_FLOW.md §2 D5)
     top_outage = lmp.outage(t, "LEVELONE_EQUITIES", now)
@@ -2275,19 +2377,12 @@ def order_flow_microstructure(ticker: str, venue: str, now: float) -> dict:
     data["top"] = ({k: _row.get(k) for k in ("bid", "ask", "bid_size", "ask_size", "mark")}
                    if _row and (_row.get("bid") is not None or _row.get("ask") is not None) else None)
     data["book_live"] = lmp.feed_live_for(t, venue, now)
-    from app.options.order_flow.engine import compute_book_microstructure
-    # ticker=t → serialize the canonical state carried per (ticker, BOOK_TIME); no independent recompute.
-    payload = compute_book_microstructure(data, now_ts=now, ticker=t)
+    # The engine computes the book (carried per ticker and book) and the trade-side read the Trade
+    # Desk's Order Flow card shows: tick-rule PROXY flow, the same engine the option book uses
+    of = OrderFlowEngine().compute(data, now=now, ticker=t)
+    payload = dict(of["book_microstructure"])
     payload["top_outage"] = top_outage
-    # The trade-side read the Trade Desk's Order Flow card shows: tick-rule PROXY flow from the
-    # same OrderFlowEngine the option book uses (no second classifier).
-    try:
-        from app.options.order_flow.engine import OrderFlowEngine
-        from app.options.order_flow.live_payload import flow_block
-        payload["flow"] = flow_block(OrderFlowEngine().compute(data, now=now, ticker=t))
-    except Exception as e:  # flow is additive -- the book payload stands without it
-        log.debug("microstructure flow failed for %s: %s", t, e)
-        payload["flow"] = None
+    payload["flow"] = flow_block(of)
     payload["ticker"] = t
     payload["venue"] = venue
     return payload
@@ -2374,6 +2469,8 @@ async def post_flow_contract(payload: dict = Body(...)):
         return JSONResponse({"ok": False, "contract": c,
                              "error": "not a contract in a chain the console holds"}, status_code=409)
     await select_flow_contract(c)
+    if c is not None:                       # its subscription state moved: the Flow panel again
+        push_changes.changed(_contract_ticker(c), push_changes.FLOW)
     return {"ok": True, "contract": c}
 
 

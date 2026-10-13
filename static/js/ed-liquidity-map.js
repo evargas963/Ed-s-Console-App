@@ -11,27 +11,22 @@
     return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
   function num(n, d) { return (n == null || isNaN(n)) ? '—' : Number(n).toFixed(d == null ? 2 : d); }
   function st() { return (window.EdShell && window.EdShell.getState()) || {}; }
-  function isMap() { var s = st(); return s.workspace === 'liquidity' && s.subview === 'map'; }
   function ticker() { return (st().ticker || ''); }
   function host() { return document.getElementById('liqmBody'); }
-  function stillMap(tk) { return isMap() && ticker() === tk; }
-  function fetchJson(url, signal) {
-    return window.EdShell.live(url).then(function (r) { return r.ok ? r.json() : null; });
-  }
   // the reference levels this map draws, by their served family
   var REF_FAMILIES = { prior_day: 1, overnight: 1 };
 
   var _chart = null;
-  // the map's timeframe (the toolbar's), kept per viewer
-  var _tf = (function () { try { return window.localStorage.getItem('ed.liqm.tf') || '5'; } catch (e) { return '5'; } })();
+  // the zones, the levels and the bars at the map's timeframe, as the console pushes each
+  var _last = { zones: undefined, levels: undefined, bars: undefined };
   function ensureChart(h) {
     if (_chart && h.querySelector('.liqm-plot')) return _chart;
     if (!window.EdTvChart || !window.LightweightCharts) return null;
     h.innerHTML = '<div class="liqm-tb"></div><div class="liqm-plot"></div><div class="liqm-empty" hidden></div><div class="liqm-zones"></div>' +
-      '<div class="fl-foot">Zones from /api/liquidity-snapshot; prior-day and overnight levels and the price from /api/levels and /api/bars1m. The map arranges them; it computes nothing.</div>';
+      '<div class="fl-foot">Zones from /api/liquidity-snapshot; prior-day and overnight levels from /api/levels, the bars from /api/bars1m, the price from the header\'s price row. The map arranges them; it computes nothing.</div>';
     _chart = window.EdTvChart.create(h.querySelector('.liqm-plot'), { nearestN: 99 });
-    window.EdTvChart.toolbar(h.querySelector('.liqm-tb'), _chart, { tf: _tf, styleKey: 'ed.liqm.style',
-      onTf: function (tf) { _tf = tf; try { window.localStorage.setItem('ed.liqm.tf', tf); } catch (e) { /* per-viewer only */ } load(); } });
+    window.EdTvChart.toolbar(h.querySelector('.liqm-tb'), _chart, { tf: st().tfs.liquidity, styleKey: 'ed.liqm.style',
+      onTf: function (tf) { window.EdShell.setTf('liquidity', tf); } });
     return _chart;
   }
 
@@ -47,13 +42,13 @@
     var P = c.palette();
     var side = { support: P.up, resistance: P.down, value: P.ink3 };
     var zones = (snap && snap.zones) || [];
-    c.setBars((barsD && barsD.bars) || [], (barsD && barsD.tf) || _tf, st().display || tk, barsD && barsD.last_bar && barsD.last_bar.label);
+    c.setBars(barsD ? barsD.bars : [], barsD ? barsD.tf : st().tfs.liquidity, st().display || tk, barsD && barsD.last_bar && barsD.last_bar.label);
     c.setZones(zones.map(function (z) {
       return { lo: z.zone_low, hi: z.zone_high, color: side[z.zone_side] || P.ink3, label: z.zone_label + ' · ' + z.confluence_score + '×' };
     }));
     c.setLevels(((levels && levels.levels) || []).filter(function (l) { return REF_FAMILIES[l.family] && l.price != null; })
       .map(function (l) { return { id: l.id, price: Number(l.price), label: l.short, color: P.stale, style: 2, width: 1 }; }));
-    c.setLivePrice(levels && levels.spot != null ? Number(levels.spot) : null, null);
+    c.setLivePrice(_spot, null);
     var empty = h.querySelector('.liqm-empty');
     empty.hidden = !!(snap && snap.zones !== undefined);
     empty.textContent = empty.hidden ? '' : 'the liquidity snapshot request failed for ' + tk;
@@ -61,28 +56,26 @@
       (zones.length ? zones.map(zoneRow).join('') : '<div class="sm">no zones for this session yet</div>') + '</div>';
   }
 
-  function loadImpl(tk, signal) {
-    var h = host();
-    if (!h || !stillMap(tk)) return;
-    return Promise.all([
-      fetchJson('/api/liquidity-snapshot?ticker=' + encodeURIComponent(tk), signal),
-      fetchJson('/api/levels?ticker=' + encodeURIComponent(tk), signal),
-      fetchJson('/api/bars1m?ticker=' + encodeURIComponent(tk) + '&tf=' + _tf + '&limit=' + window.EdTvChart.BARS_LIMIT[_tf], signal)
-    ]).then(function (r) {
-      if (stillMap(tk)) render(h, tk, r[0], r[1], r[2]);
-    }).catch(function (e) {
-      if (e && e.name === 'AbortError') return;
-      if (stillMap(tk)) render(h, tk, null, null, null);
+  // drawn once all three are pushed for the view; a failed one is absent (null), one on its way
+  // for a new view is not drawn from the old one
+  [['liquidity.map.zones', 'zones'], ['liquidity.map.levels', 'levels'], ['liquidity.map.bars', 'bars']].forEach(function (p) {
+    window.EdShell.onPanel(p[0], function (a) {
+      _last[p[1]] = a.waiting ? undefined : a.ok ? a.body : null;
+      var h = host();
+      if (h && _last.zones !== undefined && _last.levels !== undefined && _last.bars !== undefined) {
+        render(h, ticker(), _last.zones, _last.levels, _last.bars);
+      }
     });
-  }
-  var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(ticker(), signal); });
-  function load() { if (isMap()) _loader.trigger(ticker()); }
-
-  if (typeof document !== 'undefined') {
-    document.addEventListener('ed:view', load);
-    document.addEventListener('ed:ticker', load);
-    document.addEventListener('ed:changed', function (e) { if (e.detail.kind === 'levels' || e.detail.kind === 'liquidity') load(); });
-  }
+  });
+  // the live price is the header's price row (the daemon's Schwab LAST_PRICE)
+  var _spot = null;
+  window.addEventListener('ed:quote_tick', function (e) {
+    var q = e.detail;
+    if (!q || q.ticker !== st().key) return;
+    _spot = q.spot;
+    if (_chart) _chart.setLivePrice(_spot, null);
+  });
+  document.addEventListener('ed:ticker', function () { _spot = null; if (_chart) _chart.setLivePrice(null, null); });
   // read-only view for tests (e2e) -- never a control surface
   window.EdLiquidityMap = { state: function () { return _chart ? _chart.state() : null; } };
 })();

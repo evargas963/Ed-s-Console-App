@@ -3,8 +3,9 @@ app/options/order_flow/engine.py — Order Flow Engine
 ========================================
 The book microstructure and the tape flow of one symbol, from Schwab streaming fields.
 
-Input: dict `data` with ``content`` (the streamed book and tape items), ``top`` (the top of
-book as Schwab last sent it) and ``book_live`` (whether the feed delivers the book now).
+Input: dict `data` with ``content`` (the streamed books), ``prints`` (the symbol's trade prints in
+the order received: the one tape's, history.TAPE.prints), ``top`` (the top of book as Schwab last
+sent it) and ``book_live`` (whether the feed delivers the book now).
 """
 
 from __future__ import annotations
@@ -15,7 +16,6 @@ import numpy as np
 
 from numeric_contract import float_finite_or_none, schwab_count, schwab_number
 from l1_trade_observation import (
-    canonical_tape_prints,
     compute_cum_delta_proxy as _canonical_cum_delta,
     compute_tape_pressure as _canonical_tape_pressure,
     cum_delta_window,
@@ -476,7 +476,7 @@ def compute_book_microstructure(data: dict, *, now_ts: float,
 
 def _compute_tape_pressure(data: dict, window_sec: float, now: float) -> Optional[float]:
     """PROXY reconstructed L1 tick-rule pressure. ONE FAUCET: l1_trade_observation."""
-    return _canonical_tape_pressure(canonical_tape_prints(_iter_content(data)), window_sec, now * 1000.0)
+    return _canonical_tape_pressure(data["prints"], window_sec, now * 1000.0)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -485,12 +485,12 @@ def _compute_tape_pressure(data: dict, window_sec: float, now: float) -> Optiona
 
 def _compute_cum_delta_proxy(data: dict) -> Optional[float]:
     """PROXY reconstructed L1 tick-rule signed size sum. ONE FAUCET: l1_trade_observation."""
-    return _canonical_cum_delta(canonical_tape_prints(_iter_content(data)))
+    return _canonical_cum_delta(data["prints"])
 
 
 def _compute_cum_delta_slope(data: dict, now: float, window_sec: float = 60.0) -> Optional[float]:
     """Slope of PROXY cum-delta in receive order. ONE signed-size walk: l1_trade_observation."""
-    points = iter_signed_cum_points(canonical_tape_prints(_iter_content(data)), window_sec, now * 1000.0)
+    points = iter_signed_cum_points(data["prints"], window_sec, now * 1000.0)
     if len(points) < 2:
         return None
     xs = np.array([p[0] for p in points])
@@ -524,7 +524,7 @@ class OrderFlowEngine:
 
         # Cumulative delta
         cum_delta_proxy = _compute_cum_delta_proxy(data)
-        cum_first, cum_last = cum_delta_window(canonical_tape_prints(_iter_content(data)))
+        cum_first, cum_last = cum_delta_window(data["prints"])
         cum_delta_slope = _compute_cum_delta_slope(data, now)
 
         return {

@@ -18,16 +18,11 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from numeric_contract import float_finite_or_none, schwab_count, schwab_number
+from numeric_contract import schwab_count, schwab_number
 
 # Source classification — mechanical, not aspirational.
 NATIVE_AGGRESSOR_AVAILABLE = False
 TAPE_CLASSIFICATION = "PROXY_RECONSTRUCTED_L1_TICK"
-TAPE_COMPLETENESS = "INCOMPLETE_OBSERVATION"
-
-VENDOR_TRADE_TIME = "TRADE_TIME_MILLIS"
-VENDOR_LAST_PRICE = "LAST_PRICE"
-VENDOR_LAST_SIZE = "LAST_SIZE"
 
 
 def _schwab_int(val: Any) -> Optional[int]:
@@ -48,62 +43,6 @@ def is_adjacent_restatement(
 ) -> bool:
     """True only when the immediately previous observation equals this vendor triple."""
     return prev is not None and prev == curr
-
-
-def extract_vendor_print(item: dict[str, Any]) -> Optional[dict[str, Any]]:
-    """Pull LEVELONE last-print fields. Missing LAST_PRICE is not a trade observation."""
-    if not isinstance(item, dict):
-        return None
-    price = schwab_number(item.get(VENDOR_LAST_PRICE))
-    if price is None:
-        return None
-    size = schwab_count(item.get(VENDOR_LAST_SIZE))
-    trade_ms = _schwab_int(item.get(VENDOR_TRADE_TIME))
-    seq = float_finite_or_none(item.get("receive_seq"))
-    receive_seq = int(seq) if seq is not None else None
-    received_ts = float_finite_or_none(item.get("server_received_ts"))
-    return {
-        "price": price,
-        "size": int(size) if size is not None else None,
-        "time_millis": trade_ms,
-        "receive_seq": receive_seq,
-        "server_received_ts": received_ts,
-        "classification": TAPE_CLASSIFICATION,
-        "completeness": TAPE_COMPLETENESS,
-        "native_event_id": False,
-    }
-
-
-def iter_content_prints(content_items: list) -> list[dict[str, Any]]:
-    """Extract prints in the given list order (receive order). Does not sort."""
-    out: list[dict[str, Any]] = []
-    for item in content_items:
-        p = extract_vendor_print(item) if isinstance(item, dict) else None
-        if p is not None:
-            out.append(p)
-    return out
-
-
-def filter_adjacent_restatements(prints: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Keep distinct observations; drop only adjacent identical vendor triples."""
-    out: list[dict[str, Any]] = []
-    prev: Optional[tuple[Any, ...]] = None
-    for p in prints:
-        key = vendor_triple(p.get("time_millis"), p.get("price"), p.get("size"))
-        if is_adjacent_restatement(prev, key):
-            continue
-        prev = key
-        out.append(p)
-    return out
-
-
-def canonical_tape_prints(content_items: list) -> list[dict[str, Any]]:
-    """ONE computation: receive-order prints with adjacent restatements removed.
-
-    Never sorts by TRADE_TIME_MILLIS. Out-of-order vendor clocks stay in
-    receive order. List order is the receive sequence when receive_seq is absent.
-    """
-    return filter_adjacent_restatements(iter_content_prints(content_items))
 
 
 def tick_rule_signed_size(

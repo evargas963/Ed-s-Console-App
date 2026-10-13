@@ -31,7 +31,7 @@ def _tape(rows: list[tuple[float, dict]], sym: str = SYM) -> RecentTape:
         topic, msg = option_ledger.posting(sym, option_ledger.from_stream(item, ms), ms, ts_recv)
         bus.publish(topic, msg)
         record = bus.current[current_key(topic, msg)][1]
-        tape.record(sym, record["fields"], record["field_ts"], ts_recv)
+        tape.record_option(sym, record["fields"], record["field_ts"], ts_recv)
     return tape
 
 
@@ -52,7 +52,7 @@ def test_a_genuine_trade_print_is_shaped_to_the_operators_exact_schema():
     assert r["expiry"] == "2026-09-18" and r["type"] == "CALL" and r["strike"] == 600
     assert r["bid"] == 1.17 and r["bid_size"] == 187
     assert r["ask"] == 1.19 and r["ask_size"] == 180
-    assert r["trade"] == 1.18 and r["size"] == 1
+    assert r["price"] == 1.18 and r["size"] == 1
     assert r["premium"] == 1.18 * 1 * 100
     assert r["volume"] == 70984 and r["oi"] == 901 and r["iv"] == 7.16 and r["delta"] == 0.357
     assert r["classification"] == "inside_spread"
@@ -85,7 +85,7 @@ def test_a_partial_update_with_size_but_no_price_never_produces_a_null_trade_row
     ])
     rows = tape.rows(SYM, 50)
     assert len(rows) == 1, "the size-only partial must not be counted as a second trade print"
-    assert all(r["trade"] is not None for r in rows), "no row may ever report trade=None"
+    assert all(r["price"] is not None for r in rows), "no row may ever report price=None"
 
 
 def test_context_is_carried_forward_from_the_most_recent_full_tick():
@@ -103,7 +103,7 @@ def test_context_is_carried_forward_from_the_most_recent_full_tick():
     rows = tape.rows(SYM, 50)
     assert len(rows) == 2
     newest = rows[0]   # newest-first
-    assert newest["trade"] == 1.25 and newest["size"] == 3
+    assert newest["price"] == 1.25 and newest["size"] == 3
     assert newest["expiry"] == "2026-09-18" and newest["type"] == "CALL" and newest["strike"] == 600
 
 
@@ -114,7 +114,7 @@ def test_classification_at_bid_at_ask_and_outside_spread_are_mechanical_not_aggr
         (1002.0, _full_context(TRADE_TIME_MILLIS=1002, LAST_PRICE=1.20, LAST_SIZE=1, BID_PRICE=1.17, ASK_PRICE=1.19)),
         (1003.0, _full_context(TRADE_TIME_MILLIS=1003, LAST_PRICE=1.10, LAST_SIZE=1, BID_PRICE=1.17, ASK_PRICE=1.19)),
     ])
-    by_trade = {r["trade"]: r["classification"] for r in tape.rows(SYM, 50)}
+    by_trade = {r["price"]: r["classification"] for r in tape.rows(SYM, 50)}
     assert by_trade[1.17] == "at_bid"
     assert by_trade[1.19] == "at_ask"
     assert by_trade[1.20] == "outside_spread_high"
@@ -130,7 +130,7 @@ def test_newest_first_ordering_and_limit_bound():
     rows = tape.rows(SYM, 3)
     assert len(rows) == 3
     assert [r["ts_recv"] for r in rows] == [1004.0, 1003.0, 1002.0]
-    assert rows[0]["trade"] == 1.04   # the LAST (newest) genuine trade recorded
+    assert rows[0]["price"] == 1.04   # the LAST (newest) genuine trade recorded
 
 
 def test_each_message_carrying_a_trade_time_is_a_print_at_the_records_price_and_size():
@@ -147,7 +147,7 @@ def test_each_message_carrying_a_trade_time_is_a_print_at_the_records_price_and_
     l1 = sorted((e for e in events if e["kind"] != "book"), key=lambda e: e["ts_recv"])
     sym = "TSLA  260831C00367500"
     tape = _tape([(e["ts_recv"], e["content"]) for e in l1], sym)
-    prints = [(r["trade"], r["size"]) for r in tape.rows(sym, 50)][::-1]
+    prints = [(r["price"], r["size"]) for r in tape.rows(sym, 50)][::-1]
     assert sum(1 for e in l1 if "TRADE_TIME_MILLIS" in e["content"]) == len(prints) == 9
     assert prints == [(0.58, 2), (0.57, 2), (0.59, 1), (0.58, 2), (0.57, 2), (0.56, 3), (0.61, 1), (0.61, 1),
                       (0.62, 4)]
@@ -156,7 +156,7 @@ def test_each_message_carrying_a_trade_time_is_a_print_at_the_records_price_and_
 def test_a_contract_never_recorded_and_a_blank_symbol_serve_no_prints():
     tape = _tape([(1000.0, _full_context(TRADE_TIME_MILLIS=1000, LAST_PRICE=1.17, LAST_SIZE=1))])
     stamp = (2_000_000, 2000.0)
-    tape.record("", {**_TERMS, "last": 1.5, "lastSize": 1, "tradeTimeInLong": 2000},
+    tape.record_option("", {**_TERMS, "last": 1.5, "lastSize": 1, "tradeTimeInLong": 2000},
                 {"last": stamp, "lastSize": stamp, "tradeTimeInLong": stamp, "streamTime": stamp}, 2000.0)
     assert tape.rows("SPY   260918P00600000", 50) == []
     assert tape.rows("", 50) == []

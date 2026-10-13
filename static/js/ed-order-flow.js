@@ -16,28 +16,16 @@
   function num(n, d) { return (n == null || isNaN(n)) ? '—' : Number(n).toFixed(d == null ? 2 : d); }
   function int(n) { return (n == null || isNaN(n)) ? '—' : String(Math.round(Number(n))); }
   function st() { return (window.EdShell && window.EdShell.getState()) || {}; }
-  function isBook() { var s = st(); return s.workspace === 'order-flow' && s.subview === 'book'; }
   function ticker() { return (st().ticker || ''); }
   function host() { return document.getElementById('obBody'); }
-  function stillBook(tk) { return isBook() && ticker() === tk; }
 
-  function loadImpl(tk, signal) {
-    var h = host();
-    if (!h || !stillBook(tk)) return;
-    return window.EdShell.live('/api/order-flow/microstructure?ticker=' + encodeURIComponent(tk) + '&venue=' + st().bookVenue, 'order-flow')
-      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-      .then(function (d) { if (stillBook(tk)) render(h, tk, d); })
-      .catch(function (e) {
-        if (e && e.name === 'AbortError') return;
-        if (stillBook(tk)) h.innerHTML = '<div class="placeholder"><div class="sm">no console serving /api/order-flow/microstructure</div></div>';
-      });
-  }
-  var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(ticker(), signal); });
-  function load() {
-    if (!isBook()) return;
-    var tk = ticker();
-    _loader.trigger(tk);
-  }
+  // the book as the console pushes it for the view's ticker and venue (the same answer Right Now
+  // and the Desk read)
+  window.EdShell.onPanel('book', function (a) {
+    var h = host(); if (!h || a.waiting) return;
+    if (!a.ok) { h.innerHTML = '<div class="placeholder"><div class="sm">/api/order-flow/microstructure answered HTTP ' + a.status + '</div></div>'; return; }
+    render(h, ticker(), a.body);
+  });
 
   function classOf(map, key) { var v = map ? map[key] : null; return (typeof v === 'string' && v) ? v : null; }
   function tag(c) {
@@ -134,14 +122,5 @@
       '<div class="fl-sec" style="margin-top:14px;"><div class="fl-sec-h">Wall candidates (size-outlier heuristic, displayed book only)</div>' + wallsHtml + '</div>' +
       '<div class="fl-foot">' + (deferred ? esc(deferred) + ' — ' : '') +
       'no signed buys/sells, CVD, or bull/bear verdict is canonical for the underlying; Schwab exposes no native aggressor field.</div>';
-  }
-
-  if (typeof document !== 'undefined') {
-    document.addEventListener('ed:view', load);
-    document.addEventListener('ed:ticker', load);
-    document.addEventListener('ed:book_venue', load);
-    document.addEventListener('ed:changed', function (e) { if (e.detail.kind === 'flow') load(); });
-    // Audit finding #4 (2026-09-16): initial hydration now comes SOLELY from ed-core.js's
-    // deferred ed:ticker/ed:view dispatch -- see that file's init() comment.
   }
 })();

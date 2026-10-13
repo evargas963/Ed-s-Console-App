@@ -360,7 +360,7 @@ def test_engine_and_route_read_the_same_canonical_state():
     faucet, not two producers."""
     from app.options.order_flow.engine import OrderFlowEngine
     ofe._MICRO_STRUCTURAL_CACHE.pop("SAME", None)
-    data = _data()
+    data = {**_data(), "prints": []}       # the engine's input carries the tape's prints: none here
     out = OrderFlowEngine().compute(data, now=1787233772.0, ticker="SAME")
     route = ofe.compute_book_microstructure(data, now_ts=1787233772.0, ticker="SAME")
     assert out["book_microstructure"]["depth"] == route["depth"]
@@ -435,17 +435,28 @@ def test_an_option_top_is_the_daemons_record_of_real_partial_ticks():
 
 
 def test_an_equity_l1_quote_is_not_stored_a_second_time_in_order_flow_state():
-    """O-01: an equity's Level-1 quote lives in live_market_plane only. push_level_one no longer
-    writes a top-of-book item beside the book and tape. Stand-in (named): a hand-built
-    LEVELONE_EQUITIES tick."""
+    """O-01: an equity's Level-1 quote lives in live_market_plane only, and its trade in the one
+    tape (history.TAPE) only: the console's intake writes no top-of-book item and no print into
+    the order-flow state beside the books, and a re-sent copy of the same message is one print.
+    Stand-in (named): a hand-built LEVELONE_EQUITIES tick."""
     import app.options.order_flow.state as ofls
+    import app.options.order_flow.streaming as ofs
+    from app.options.order_flow import history
+    from stream_spine import MessageBus, current_key, quote_msg
     ofls.clear_symbol("O01EQ")
     try:
-        ofls.push_level_one("O01EQ", {"key": "O01EQ", "BID_PRICE": 100.0, "ASK_PRICE": 100.02,
-                                      "BID_SIZE": 3, "ASK_SIZE": 4, "MARK": 100.01}, ts_recv=1_000.0)
+        native = {"key": "O01EQ", "BID_PRICE": 100.0, "ASK_PRICE": 100.02, "BID_SIZE": 3, "ASK_SIZE": 4,
+                  "MARK": 100.01, "LAST_PRICE": 100.01, "LAST_SIZE": 2, "TRADE_TIME_MILLIS": 1_000_000}
+        bus = MessageBus()                  # the record as the daemon's bus holds and pushes it
+        for _ in range(2):
+            msg = quote_msg(symbol="O01EQ", src="schwab_l1", ts_recv=1_000.0, native=native)
+            bus.publish("quote.O01EQ", msg)
+            ofs._ingest_pushed("quote.O01EQ", bus.current[current_key("quote.O01EQ", msg)][1])
         content = ofls.get_content_for_symbol("O01EQ")
-        assert not any("BID_PRICE" in row or "ASK_PRICE" in row for row in content)
+        assert not any("BID_PRICE" in row or "ASK_PRICE" in row or "LAST_PRICE" in row for row in content)
         assert ofls.option_top("O01EQ") is None
+        assert [(p["price"], p["size"], p["bid"], p["ask"]) for p in history.TAPE.prints("O01EQ")] \
+            == [(100.01, 2, 100.0, 100.02)]
     finally:
         ofls.clear_symbol("O01EQ")
 
@@ -457,16 +468,19 @@ def test_size_g_the_live_push_seam_threads_each_messages_receive_time_into_the_t
     the time the console processed it."""
     import app.options.order_flow.state as ofls
     import app.options.order_flow.streaming as ofs
-    from stream_spine import MessageBus, quote_msg
+    from app.options.order_flow import history
+    from stream_spine import MessageBus, current_key, quote_msg
 
     ofls.clear_all_live_state()
     try:
-        ofs._ingest_pushed("quote.SIZEG", quote_msg(
-            symbol="SIZEG", src="schwab_l1", ts_recv=1234.5, native={"LAST_PRICE": 1.0}))
+        bus = MessageBus()                  # the record as the daemon's bus holds and pushes it
+        msg = quote_msg(symbol="SIZEG", src="schwab_l1", ts_recv=1234.5, native={"LAST_PRICE": 1.0})
+        bus.publish("quote.SIZEG", msg)
+        ofs._ingest_pushed("quote.SIZEG", bus.current[current_key("quote.SIZEG", msg)][1])
         through_the_daemons_bus(MessageBus(), "SIZEG  260918C00001000",
                                 [{"LAST_PRICE": 1.0, "LAST_SIZE": 1, "TRADE_TIME_MILLIS": 2345000}], [2345.5])
-        seen = [(sym, item["server_received_ts"]) for sym in ("SIZEG", "SIZEG  260918C00001000")
-                for item in ofls.get_content_for_symbol(sym) if "LAST_PRICE" in item]
+        seen = [(sym, p["ts_recv"]) for sym in ("SIZEG", "SIZEG  260918C00001000")
+                for p in history.TAPE.prints(sym)]
     finally:
         ofls.clear_all_live_state()
     assert seen == [("SIZEG", 1234.5), ("SIZEG  260918C00001000", 2345.5)]

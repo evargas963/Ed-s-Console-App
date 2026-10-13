@@ -6,6 +6,7 @@
  * generated from tests/fixtures/real_tsla_book_rows.json). Any page error fails the test.
  */
 const { test, expect } = require('./fixtures/live_socket');
+const { expiriesAnswer } = require('./fixtures/expiries');
 const path = require('path');
 const { routeWatchlist } = require('./fixtures/watchlist');
 
@@ -17,7 +18,8 @@ test('the heatmap paints the served cells, and a click pins a readout, without a
   page.on('console', (m) => { if (m.type() === 'error' && !/WebSocket|EventSource|Failed to load resource/.test(m.text())) errs.push(m.text()); });
   await page.route('**/api/**', (route) => {
     const url = route.request().url();
-    const body = url.includes('/api/order-flow/book-heatmap') ? HEAT : { available: false };
+    const body = url.includes('/api/order-flow/book-heatmap') ? HEAT
+      : url.includes('/api/expiries') ? expiriesAnswer([]) : { available: false };
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
   await routeWatchlist(page, ['TSLA']);

@@ -741,7 +741,7 @@
         return b.v == null ? { time: b.t } : { time: b.t, value: b.v, color: alpha(b.chg >= 0 ? P.up : P.down, 0.7) };
       },
       setVolume: function (bars) { volume.setData((bars || []).map(api._volPoint)); },
-      // VWAP + bands, one point per bar, served for the chart's timeframe (/api/levels?tf=:
+      // VWAP + bands, one point per bar, served for the chart's timeframe (/api/levels, its tf:
       // the value as of the bar's last minute, stamped with the bar's t). Rows are
       // [t, vwap, +1, -1, +2, -2].
       setVwap: function (rows) {
@@ -850,11 +850,9 @@
     return api;
   }
 
-  // The timeframes every chart offers, and the 1-minute bars each asks /api/bars1m for (the server
-  // rolls them up to the timeframe).
+  // The timeframes every chart offers (the console reads each chart's bars: server.CHART_BARS).
   var TFS = [{ id: '1', lbl: '1m' }, { id: '3', lbl: '3m' }, { id: '5', lbl: '5m' }, { id: '15', lbl: '15m' },
     { id: '30', lbl: '30m' }, { id: '60', lbl: '1h' }, { id: 'D', lbl: 'D' }];
-  var BARS_LIMIT = { '1': 1200, '3': 2000, '5': 3000, '15': 6000, '30': 9000, '60': 12000, 'D': 12000 };
 
   function lsGet(k, d) { try { var v = window.localStorage.getItem(k); return v == null ? d : v; } catch (e) { return d; } }
   function lsSet(k, v) { try { window.localStorage.setItem(k, v); } catch (e) { /* per-viewer only */ } }
@@ -899,5 +897,5 @@
     return { setTf: setTf, slot: el.querySelector('.tvc-slot') };
   }
 
-  window.EdTvChart = { create: create, toolbar: toolbar, TFS: TFS, BARS_LIMIT: BARS_LIMIT, alpha: alpha };
+  window.EdTvChart = { create: create, toolbar: toolbar, TFS: TFS, alpha: alpha };
 })();

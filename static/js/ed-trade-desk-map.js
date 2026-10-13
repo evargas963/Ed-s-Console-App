@@ -15,12 +15,8 @@
 (function () {
   'use strict';
 
-  // the chart's timeframes and 1m rows per timeframe (ed-tv-chart, every chart's), and the tail
-  // re-read on each new completed bar: two whole buckets.
-  var TFS = window.EdTvChart.TFS, FULL_LIMIT = window.EdTvChart.BARS_LIMIT;
-  // the Order Flow card's bars: the newest hour of 1-minute bars
-  var FLOW_BARS = 60;
-  var TAIL_LIMIT = { '1': 5, '3': 9, '5': 15, '15': 35, '30': 65, '60': 125, 'D': 2000 };
+  // the chart's timeframes (ed-tv-chart, every chart's)
+  var TFS = window.EdTvChart.TFS;
   // The ONE global timeframe also sets how far back the queue and the event markers reach.
   // the event window and its words are the server's (/api/desk/events window_label), for this timeframe
   function windowLabel() { return S.events && S.events.tf === S.tf ? S.events.window_label : '—'; }
@@ -70,14 +66,11 @@
   // until it arrives
   function shown() { return st().display || S.ticker; }
   function $(id) { return document.getElementById(id); }
-  function fetchJson(url) {
-    return window.EdShell.live(url).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; });
-  }
   function sget(k, d) { try { var v = window.localStorage.getItem(k); return v == null ? d : v; } catch (e) { return d; } }
   function sset(k, v) { try { window.localStorage.setItem(k, v); } catch (e) { /* per-viewer only */ } }
 
   var S = {
-    tf: sget('ed.desk.tf', '5'), nearest: Number(sget('ed.desk.nearest', '6')) || 6,
+    tf: st().tfs.desk, nearest: Number(sget('ed.desk.nearest', '6')) || 6,
     fam: (function () { try { return JSON.parse(sget('ed.desk.fam', 'null')) || null; } catch (e) { return null; } })() ||
       { value_area: 1, vwap: 1, gamma: 1, expected_move: 1, prior_day: 1, opening_range: 1, overnight: 1 },
     ticker: null, tb: null, gen: 0, chart: null, bars: [], levels: null, terrain: null, micro: null, crosses: null,
@@ -138,14 +131,14 @@
     });
     return S.chart;
   }
-  // A new timeframe asks only for what depends on it: its bars, its levels (VWAP per bar) and its
-  // event window. Until they arrive the chart and queue say what is loading, never the old view.
+  // A new timeframe is a new view: its bars, its levels (VWAP per bar) and its event window are
+  // pushed for it. Until they arrive the chart and queue say what is loading, never the old view.
   function setTf(tf) {
     if (tf === S.tf) return;
-    S.tf = tf; sset('ed.desk.tf', tf); paintTfButtons();
-    S.bars = []; S.levels = S.events = undefined;   // answers for another timeframe are dropped (tf check)
+    S.tf = tf; paintTfButtons();
+    S.bars = []; S.levels = S.events = undefined;
     clearChart(); paintQueue(); paintCards();
-    loadBars(true); loadPerTf();
+    window.EdShell.setTf('desk', tf);
   }
   function clearChart() {
     if (!S.chart) return;
@@ -156,72 +149,42 @@
     $('tdmChartEmpty').textContent = 'Loading ' + shown() + ' · ' + (TFS.filter(function (x) { return x.id === S.tf; })[0] || {}).lbl + '…';
   }
 
-  // ------------------------------------------------------------------ data
-  function loadBars(full) {
-    var tk = S.ticker, tf = S.tf, gen = S.gen;
-    var lim = full ? FULL_LIMIT[tf] : TAIL_LIMIT[tf];
-    return fetchJson('/api/bars1m?ticker=' + encodeURIComponent(tk) + '&tf=' + tf + '&limit=' + lim).then(function (d) {
-      if (gen !== S.gen || tf !== S.tf || !S.chart) return;
-      var bars = (d && d.bars) || [];
-      if (full) {
-        S.bars = bars; S.barsAnswered = gen;
-        S.chart.setBars(bars, tf, shown(), d.last_bar && d.last_bar.label);
-        $('tdmChartEmpty').hidden = bars.length > 0;
-        $('tdmChartEmpty').textContent = bars.length ? '' : (!d ? 'The bars request failed for ' + shown() + ' (' + (TFS.filter(function (x) { return x.id === tf; })[0] || {}).lbl + ').'
-          : 'No bars for ' + shown() + (d.error ? ' — ' + d.error : ' — nothing banked or streamed for this symbol yet.'));
-        paintChartOverlays(); paintQueue(); openView();
-        var src = $('tdmBarsSrc'); if (src) src.textContent = 'streamed 1m bars';
-      } else if (bars.length) {
-        S.chart.updateTail(bars.slice(-2), d.last_bar && d.last_bar.label);
-      }
-    });
-  }
-  function loadSlow() { return Promise.all([loadPerTf(), loadPerTicker()]); }
-  // the timeframe's levels (VWAP per chart bar) and event window, each drawn as it arrives
-  function loadPerTf() {
-    var gen = S.gen, tf = S.tf, q = encodeURIComponent(S.ticker);
-    function take(key) {
-      return function (d) {
-        if (gen !== S.gen || tf !== S.tf) return;
-        S[key] = d;
-        paintTfButtons(); paintChartOverlays(); paintQueue(); paintCards(); paintTrust(); paintAgreement(); paintFooter();
-        openView();
-      };
+  // ------------------------------------------------------------------ data: as the console pushes it
+  // (the terrain, zones, strikes and book are the same answers the Gamma, Liquidity and Order Flow
+  // panels read). A failed answer is absent (null); one on its way for a new view is undefined.
+  // The bars: the whole series after a new view, then each push's newest two buckets.
+  window.EdShell.onPanel('desk.bars', function (a) {
+    if (a.waiting) { S.barsWhole = false; return; }
+    if (!S.chart) return;
+    var d = a.ok ? a.body : null, bars = d ? d.bars : [];
+    if (!S.barsWhole) {
+      S.barsWhole = true;
+      S.bars = bars; S.barsAnswered = S.gen;
+      S.chart.setBars(bars, S.tf, shown(), d && d.last_bar && d.last_bar.label);
+      $('tdmChartEmpty').hidden = bars.length > 0;
+      $('tdmChartEmpty').textContent = bars.length ? '' : (!d ? 'The bars request answered HTTP ' + a.status + ' for ' + shown() + ' (' + (TFS.filter(function (x) { return x.id === S.tf; })[0] || {}).lbl + ').'
+        : 'No bars for ' + shown() + (d.error ? ' — ' + d.error : ' — nothing banked or streamed for this symbol yet.'));
+      paintChartOverlays(); paintQueue(); openView();
+      var src = $('tdmBarsSrc'); if (src) src.textContent = 'streamed 1m bars';
+    } else if (bars.length) {
+      S.chart.updateTail(bars.slice(-2), d.last_bar && d.last_bar.label);
     }
-    return Promise.all([
-      fetchJson('/api/levels?ticker=' + q + '&tf=' + encodeURIComponent(tf)).then(take('levels')),
-      fetchJson('/api/desk/events?ticker=' + q + '&venue=' + st().bookVenue + '&tf=' + encodeURIComponent(tf)).then(take('events'))
-    ]);
-  }
-  // the symbol's option terrain, zones, strikes, forces and the Order Flow card's hour of bars
-  function loadPerTicker() {
-    var gen = S.gen, q = encodeURIComponent(S.ticker);
-    return Promise.all([
-      fetchJson('/api/terrain?ticker=' + q),
-      fetchJson('/api/liquidity-snapshot?ticker=' + q),
-      fetchJson('/api/terrain/strikes?ticker=' + q),
-      fetchJson('/api/forces?ticker=' + q),
-      fetchJson('/api/bars1m?ticker=' + q + '&tf=1&limit=' + FLOW_BARS)
-    ]).then(function (r) {
-      if (gen !== S.gen) return;
-      S.terrain = r[0]; S.liq = r[1]; S.strikes = r[2]; S.forces = r[3];
-      S.flowBars = r[4] ? r[4].bars || [] : null;
-      paintChartOverlays(); paintCards(); paintTrust(); paintAgreement(); paintFooter();
+  });
+  [['desk.levels', 'levels'], ['desk.events', 'events'], ['desk.terrain', 'terrain'], ['desk.zones', 'liq'],
+   ['desk.strikes', 'strikes'], ['desk.forces', 'forces'], ['desk.flow_bars', 'flowBars'], ['desk.book', 'micro']].forEach(function (p) {
+    window.EdShell.onPanel(p[0], function (a) {
+      var d = a.waiting ? undefined : a.ok ? a.body : null;
+      S[p[1]] = p[1] === 'flowBars' && d ? d.bars : d;
+      paintTfButtons(); paintChartOverlays(); paintQueue(); paintCards(); paintTrust(); paintAgreement(); paintFooter();
+      openView();
     });
-  }
+  });
   // the chart opens on the served event window (5m/30m: the session), once per symbol and timeframe
   function openView() {
     var vk = S.ticker + '|' + S.tf;
     if (S.chart && S.bars.length && S.events && S.events.tf === S.tf && S.viewKey !== vk) {
       S.viewKey = vk; S.chart.setViewFrom(S.events.window_start_ts_utc);
     }
-  }
-  function loadFast() {
-    var tk = S.ticker, gen = S.gen;
-    return fetchJson('/api/order-flow/microstructure?ticker=' + encodeURIComponent(tk) + '&venue=' + st().bookVenue).then(function (d) {
-      if (gen !== S.gen) return;
-      S.micro = d; paintCards(); paintTrust(); paintQueue(); paintAgreement(); paintFooter();
-    });
   }
 
   // ------------------------------------------------------------------ chart overlays
@@ -541,24 +504,12 @@
       S.ticker = tk; S.gen++; S.bars = []; // undefined = not answered YET (loading); null = the request failed
       S.levels = S.terrain = S.micro = S.events = S.liq = S.strikes = S.forces = S.flowBars = undefined; S.sel = null;
       clearChart(); paintHeader(); paintQueue(); paintCards(); paintTrust(); paintAgreement(); paintFooter();
-      loadBars(true); loadSlow(); loadFast();
-    } else if (!S.bars.length && S.barsAnswered === S.gen) {
-      // back on the desk after an answer with no bars: ask again (never while the first ask is in flight)
-      loadBars(true); loadSlow(); loadFast();
     }
   }
   function init() {
     if (!$('tdmMap')) return;
     document.addEventListener('ed:view', start);
     document.addEventListener('ed:ticker', start);
-    document.addEventListener('ed:book_venue', function () { if (onDesk() && S.ticker) { loadFast(); loadSlow(); } });
-    document.addEventListener('ed:changed', function (e) {
-      if (!onDesk() || !S.ticker) return;
-      var k = e.detail.kind;
-      if (k === 'flow') loadFast();
-      if (k === 'levels' || k === 'liquidity') loadSlow();
-      if (k === 'liquidity') loadBars(false);   // a completed Schwab bar was written
-    });
     // Every streamed price row: header + indices. The chart moves only on a completed bar.
     window.addEventListener('ed:quote_tick', function (e) {
       var q = e.detail; if (!q || !q.ticker) return;

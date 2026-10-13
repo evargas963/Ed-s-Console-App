@@ -82,6 +82,8 @@
   function _lsScope() { var v = _ls('ed_scope', SCOPE_MODES[0]); return SCOPE_MODES.indexOf(v) !== -1 ? v : SCOPE_MODES[0]; }
   // every asked-for symbol's served identity, {requested: {requested, key, display}} (ingestIdentity)
   var _served = {};
+  // each panel's drawers (onPanel), by the panel's name in the console's push
+  var _panelFns = {};
   var state = {
     ticker: (_ls(TICKER_KEY, '') || '').toUpperCase(),
     // the selected instrument's identity as the daemon's price socket serves it (ingestIdentity):
@@ -95,6 +97,14 @@
     bookVenue: _ls('ed_book_venue', 'NYSE_BOOK') === 'NASDAQ_BOOK' ? 'NASDAQ_BOOK' : 'NYSE_BOOK',
     expiryFilter: null,   // null = All Expirations; else a single 'YYYY-MM-DD' from /api/expiries
     selStrike: null, selExpiry: null,
+    // the option contract Flow observes (a Chain click; cleared by a new ticker or expiry)
+    contract: null,
+    // each chart's timeframe (its toolbar's), kept per viewer
+    tfs: { chart: _ls('ed.gchart.tf', '1'), liquidity: _ls('ed.liqm.tf', '5'), desk: _ls('ed.desk.tf', '5') },
+    // the expiry columns the heatmap fits (a measurement of the page) and the book heatmap's minutes
+    cols: null, bookMinutes: 60,
+    // each strike panel's pan: {centre, shift, served}; none: follow the price
+    pans: { heatmap: newPan(), gbs: newPan(), vanna: newPan(), charm: newPan(), migration: newPan() },
     // Operator field-inventory audit (2026-09-13): the Gamma heatmap grid, Strike Detail's
     // native fields, and the strike x expiry PROJECTION (server.py project_gamma_surface)
     // already carry dex/vanna/oi/volume per cell alongside gex -- one canonical faucet, four
@@ -386,21 +396,14 @@
     state.bookVenue = v; _lsSet('ed_book_venue', v); reflectBookVenue();
     emit('ed:book_venue', { venue: v });
   }
-  // The strikes a per-strike panel shows are the server's choice (terrain_engine.strike_window):
-  // every panel sends this with its read -- the scope, and while the operator has panned, the
-  // centre strike the drag began on and the rows it moved from there.
-  function windowQuery(pan) {
-    return '&scope=' + encodeURIComponent(state.scope) +
-      (pan && pan.centre != null ? '&centre=' + encodeURIComponent(pan.centre) + '&shift=' + (pan.shift | 0) : '');
-  }
-  // A panel's pan state: {centre, shift, served}. `served` is the centre of the window on screen
-  // (the view the server sent); `centre`/`shift` are what the next read asks for (none: follow
-  // the price).
+  // The strikes a per-strike panel shows are the server's choice (terrain_engine.strike_window),
+  // for the scope and the panel's pan (the view carries both). A pan: {centre, shift, served}.
+  // `served` is the centre of the window on screen (the answer the server sent); `centre`/`shift`
+  // are what the view asks for (none: follow the price).
   function newPan() { return { centre: null, shift: 0, served: null }; }
   // The strike axis of a per-strike panel: dragging the strike labels pans (rows of movement
   // become `shift` from the centre the drag began on), a double-click follows the price again,
-  // ctrl/cmd+wheel over `wheelEl` steps the scope (Auto -> Wider -> All). `reload` re-reads the
-  // panel with the pan state as it now is.
+  // ctrl/cmd+wheel over `wheelEl` steps the scope (Auto -> Wider -> All). Each is a new view.
   var _axisDrag = null;
   if (typeof document !== 'undefined') {
     document.addEventListener('mousemove', function (e) {
@@ -408,25 +411,24 @@
       var rows = Math.round((e.clientY - d.startY) / d.rowPx);
       if (rows === d.pan.shift && d.pan.centre === d.base) return;
       d.pan.centre = d.base; d.pan.shift = rows;
-      d.reload();
+      sendView();
     });
     document.addEventListener('mouseup', function () { _axisDrag = null; });
   }
-  // A read's view arrived: its centre is the window on screen (the next drag starts from it). The
-  // pan the operator asked for (`centre`, `shift`) is kept as asked, so a read still held behind a
-  // drag asks for where the drag ended.
+  // An answer's window arrived: its centre is the window on screen (the next drag starts from it).
+  // The pan the operator asked for (`centre`, `shift`) is kept as asked.
   function panServed(pan, centre) { pan.served = centre; }
-  function wireStrikeAxis(axisEls, wheelEl, pan, rowPx, reload) {
+  function wireStrikeAxis(axisEls, wheelEl, pan, rowPx) {
     Array.prototype.forEach.call(axisEls, function (el) {
       el.style.cursor = 'ns-resize';
       el.setAttribute('draggable', 'false');
       el.addEventListener('dragstart', function (e) { e.preventDefault(); });
       el.addEventListener('mousedown', function (e) {
-        _axisDrag = { startY: e.clientY, rowPx: rowPx, pan: pan, base: pan.served, reload: reload };
+        _axisDrag = { startY: e.clientY, rowPx: rowPx, pan: pan, base: pan.served };
         e.preventDefault(); e.stopPropagation();
       });
       el.addEventListener('dblclick', function (e) {
-        pan.centre = null; pan.shift = 0; reload(); e.stopPropagation();
+        pan.centre = null; pan.shift = 0; sendView(); e.stopPropagation();
       });
     });
     if (wheelEl) wheelEl.addEventListener('wheel', function (e) {
@@ -477,15 +479,12 @@
   function wlFetch(url, opts) {
     return fetch(url, opts).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); });
   }
-  function refreshWL() {
-    live('/api/watchlist', 'watchlist')
-      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j || {} }; }); })
-      .then(function (a) {
-        if (!a.ok) { wlNotify(a.j.error); return; }
-        _wl = a.j.tickers; renderWatchlist();
-      })
-      .catch(function (e) { wlNotify('The watchlist could not be read: ' + e); });
-  }
+  // the list as the console pushes it
+  onPanel('watchlist', function (a) {
+    if (a.waiting) return;
+    if (!a.ok) { wlNotify(a.body ? a.body.error : 'The watchlist could not be read: HTTP ' + a.status); return; }
+    _wl = a.body.tickers; renderWatchlist();
+  });
   // the daemon's answer to an add or a removal: the new list, or what happened instead
   function wlAnswer(a) {
     if (a.j.tickers) { _wl = a.j.tickers; renderWatchlist(); }
@@ -563,11 +562,12 @@
       .catch(function (e) { wlNotify(sym + ' is not removed: ' + e); });
   }
 
-  // Every view event goes through emit(): with no ticker chosen, no panel is asked to load
-  // (each would otherwise fetch for an empty symbol).
+  // Every selection goes through emit(): its event, then the view to the console (once, after
+  // every listener has set what the event changes). With no ticker chosen, nothing is shown.
   function emit(name, detail) {
     if (!state.ticker) return;
     document.dispatchEvent(new CustomEvent(name, { detail: detail }));
+    sendView();
   }
   function paintNoTicker() {
     var px = document.getElementById('hPx'); if (px) px.textContent = 'CHOOSE A SYMBOL';
@@ -593,8 +593,8 @@
     paintIdentity(state.ticker);
     var si = document.getElementById('symInput'); if (si) { si.value = state.ticker; buildSymList(); }   // the control reflects the ONE state
     state.selStrike = null; state.selExpiry = null;   // a new ticker clears the shared selection
-    openChangeStream(state.ticker);      // the console's push for the new ticker, before any panel asks
-    loadExpiries(state.ticker);       // refresh the expiry dropdown from /api/expiries for the new ticker
+    Object.keys(state.pans).forEach(function (k) { state.pans[k].centre = null; state.pans[k].shift = 0; });   // and follows the price
+    openPush();                          // the console's push (the view goes with ed:ticker)
     _priceSubTs = Date.now();
     subscribePrices();                   // the daemon answers with this ticker's row at once
     markHeaderPushDown();                // WAITING until that row lands (milliseconds)
@@ -619,30 +619,24 @@
   }
 
   // ---- expiry dropdown: populated ONLY from the canonical /api/expiries (never hard-coded) ----
-  // each option's label is served (MM/DD/YYYY and Schwab's daysToExpiration); asked again on
-  // each new chain the console pushes for the ticker
-  function loadExpiries(tk) {
-    var sel = document.getElementById('expSel'); if (!sel) return;
-    live('/api/expiries?ticker=' + encodeURIComponent(tk), 'expiries')
-      .then(function (r) { if (!r.ok) throw new Error('expiries unavailable: HTTP ' + r.status); return r.json(); })
-      .then(function (d) {
-        if (state.ticker !== tk) return;   // a newer ticker switch superseded this request
-        var exps = d.expiries || [], labels = d.labels || {};
-        var opts = '<option value="">All Expirations</option>';
-        exps.forEach(function (e) { opts += '<option value="' + e + '">' + _escBadge(labels[e]) + '</option>'; });
-        if (!exps.length && d.reason) opts += '<option value="" disabled>' + _escBadge(d.reason) + '</option>';
-        sel.innerHTML = opts;
-        var cur = state.expiryFilter;   // CURRENT selection, not one captured before this fetch started
-        if (cur && exps.indexOf(cur) !== -1) { sel.value = cur; }   // keep a still-valid selection
-        else { sel.value = ''; if (state.expiryFilter !== null) setExpiry(''); }   // invalid current expiry -> All (honest)
-        relabelExpiryDefault();
-      })
-      .catch(function (e) {
-        if (state.ticker !== tk) return;
-        sel.innerHTML = '<option value="">All Expirations</option><option value="" disabled>' +
-          _escBadge((e && e.message) || 'expiries unavailable') + '</option>';
-      });
-  }
+  // each option's label is served (MM/DD/YYYY and Schwab's daysToExpiration); pushed again on
+  // each new chain for the ticker
+  onPanel('expiries', function (a) {
+    var sel = document.getElementById('expSel'); if (!sel || a.waiting) return;
+    if (!a.ok) {
+      sel.innerHTML = '<option value="">All Expirations</option><option value="" disabled>expiries unavailable: HTTP ' + a.status + '</option>';
+      return;
+    }
+    var d = a.body, exps = d.expiries, labels = d.labels;
+    var opts = '<option value="">All Expirations</option>';
+    exps.forEach(function (e) { opts += '<option value="' + e + '">' + _escBadge(labels[e]) + '</option>'; });
+    if (!exps.length && d.reason) opts += '<option value="" disabled>' + _escBadge(d.reason) + '</option>';
+    sel.innerHTML = opts;
+    var cur = state.expiryFilter;
+    if (cur && exps.indexOf(cur) !== -1) { sel.value = cur; }   // keep a still-valid selection
+    else { sel.value = ''; if (state.expiryFilter !== null) setExpiry(''); }   // invalid current expiry -> All (honest)
+    relabelExpiryDefault();
+  });
   function setExpiry(v) {
     var nv = v || null;
     if (nv === state.expiryFilter) return;
@@ -888,89 +882,68 @@
     if (!(wlHost && wlHost.classList.contains('wl-degraded'))) markWlDegraded('live push down');
   }
 
-  // ---- the console's push (/api/live, one WebSocket): each route a panel shows, answered over
-  // the socket at once and again whenever a kind of change it follows happens for the ticker
-  // (levels, chain, flow, liquidity), then the kind itself, and the session label. The page
-  // fetches no value: a panel asks EdShell.live(url, key) where it would fetch(url), and each
-  // panel redraws on `ed:changed` for the kinds it shows, from the answer already pushed. ----
-  var _live = null, _liveTicker = null, _liveRetry = 0;
-  var _answers = {}, _asked = {}, _waiting = {};
-  function liveSend(req) { if (_live && _live.readyState === 1) { try { _live.send(JSON.stringify(req)); } catch (e) {} } }
-  // A Response-like answer of `url` (ok, status, json()), from the console's push.
-  function asResponse(a) {
-    return { ok: a.status >= 200 && a.status < 300, status: a.status,
-             json: function () { return Promise.resolve(a.body); } };
+  // ---- the console's push (/api/live, one WebSocket). The page sends its view, the operator's
+  // selections (viewOf), whenever one changes; it names no route. The console decides the panels
+  // on screen for it and pushes each one's answer by name, at once and again on every change that
+  // moves it, and the session label. A panel draws what is pushed under its name (onPanel). ----
+  var _live = null, _liveRetry = 0;
+  // the newest view sent (its number), and the answers that came under an older one, each held
+  // until the console has taken the newer view: dropped if the view moved that panel, else drawn
+  var _viewSeq = 0, _viewQueued = false, _held = {};
+  function viewOf() {
+    var pans = {};
+    Object.keys(state.pans).forEach(function (k) { pans[k] = { centre: state.pans[k].centre, shift: state.pans[k].shift }; });
+    return { seq: _viewSeq, ticker: state.ticker, workspace: state.workspace, subview: state.subview, view: state.view,
+      expiry: state.expiryFilter, strike: state.selStrike, strike_expiry: state.selExpiry, contract: state.contract,
+      scope: state.scope, venue: state.bookVenue, cols: state.cols, book_minutes: state.bookMinutes,
+      tfs: state.tfs, pans: pans };
   }
-  // `url`'s answer as the console pushes it: where a panel would fetch(url). The console sends
-  // it again on each change that moves it, before the `ed:changed` the panel redraws on. `key`
-  // names the panel's place: a new URL there releases the one it showed before.
-  var _byKey = {};
-  function live(url, key) {
-    if (key) {
-      var before = _byKey[key];
-      _byKey[key] = url;
-      if (before && before !== url) release(before);
-    }
-    if (_answers[url]) return Promise.resolve(asResponse(_answers[url]));
-    var p = new Promise(function (resolve) { (_waiting[url] = _waiting[url] || []).push(resolve); });
-    if (!_asked[url]) { _asked[url] = true; liveSend({ op: 'route', url: url }); }
-    return p;
+  // once per turn of the page, after every listener of the event has set its part
+  function sendView() {
+    if (_viewQueued) return;
+    _viewQueued = true;
+    Promise.resolve().then(function () {
+      _viewQueued = false;
+      if (!_live || _live.readyState !== 1) return;   // sent on open
+      _viewSeq += 1;
+      _live.send(JSON.stringify({ op: 'view', view: viewOf() }));
+    });
   }
-  // The console stops pushing `url` once no panel shows it.
-  function release(url) {
-    for (var k in _byKey) if (_byKey[k] === url) return;
-    delete _answers[url]; delete _asked[url]; delete _waiting[url];   // a reopened push asks it no more
-    liveSend({ op: 'drop', url: url });
+  // `fn(answer)` draws panel `name`: {ok, status, body} as pushed, or {waiting: true} while the
+  // console computes its value for a new view
+  function onPanel(name, fn) {
+    if (!_panelFns[name]) _panelFns[name] = [];
+    _panelFns[name].push(fn);
   }
-  // The panel at `key` shows nothing now.
-  function drop(key) {
-    var url = _byKey[key];
-    delete _byKey[key];
-    if (url) release(url);
-  }
-  function openChangeStream(tk) {
-    _liveTicker = tk;
-    _answers = {}; _asked = {}; _byKey = {};
-    if (_live && _live.readyState === 1) { liveSend({ op: 'ticker', ticker: tk }); return; }
+  function deliver(name, a) { (_panelFns[name] || []).forEach(function (fn) { fn(a); }); }
+  function answerOf(msg) { return { ok: msg.status >= 200 && msg.status < 300, status: msg.status, body: msg.body }; }
+  function openPush() {
     if (_live || typeof WebSocket === 'undefined') return;
-    var ws;
-    try { ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/api/live'); }
-    catch (e) { return; }
+    var ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/api/live');
     _live = ws;
-    ws.onopen = function () {
-      _liveRetry = 0;
-      liveSend({ op: 'ticker', ticker: _liveTicker });
-      // every route asked again: an answer held from before the push dropped is not current
-      var urls = Object.keys(_answers).concat(Object.keys(_waiting));
-      _asked = {}; _answers = {};
-      urls.forEach(function (url) {
-        if (!_asked[url]) { _asked[url] = true; liveSend({ op: 'route', url: url }); }
-      });
-      refreshWL();     // the list as the daemon keeps it, again after the push reopens
-    };
+    ws.onopen = function () { _liveRetry = 0; _held = {}; sendView(); };
     ws.onmessage = function (ev) {
-      var msg; try { msg = JSON.parse(ev.data); } catch (e) { return; }
-      if (!msg) return;
+      var msg = JSON.parse(ev.data);
       if (msg.type === 'session') { paintSession(msg.label); return; }
-      if (msg.type === 'route') {
-        if (!_asked[msg.url]) return;   // released before its answer came: nothing shows it
-        _answers[msg.url] = msg;
-        (_waiting[msg.url] || []).forEach(function (resolve) { resolve(asResponse(msg)); });
-        delete _waiting[msg.url];
+      if (msg.type === 'view') {                   // the console took view `msg.seq`; `moved`: its new panels
+        Object.keys(_held).forEach(function (n) { if (msg.shown.indexOf(n) === -1) delete _held[n]; });   // off screen
+        msg.moved.forEach(function (n) { delete _held[n]; deliver(n, { waiting: true }); });
+        if (msg.seq !== _viewSeq) return;          // a newer view is on its way: it decides the rest
+        var held = _held; _held = {};
+        Object.keys(held).forEach(function (n) { deliver(n, held[n]); });
         return;
       }
-      if (msg.type === 'changed') {
-        if (msg.kind === 'chain') loadExpiries(state.ticker);
-        emit('ed:changed', { kind: msg.kind });
-      }
+      if (msg.type !== 'panel') return;
+      if (msg.seq < _viewSeq) { _held[msg.panel] = answerOf(msg); return; }   // under a view the page has left
+      deliver(msg.panel, answerOf(msg));
     };
     ws.onclose = function () {
       if (_live !== ws) return;
       _live = null;
       paintSession(null, 'session unknown: the console push is down');
-      setTimeout(function () { if (!_live) openChangeStream(_liveTicker); }, Math.min(2000, 250 * Math.pow(2, _liveRetry++)));
+      setTimeout(openPush, Math.min(2000, 250 * Math.pow(2, _liveRetry++)));
     };
-    ws.onerror = function () { try { ws.close(); } catch (e) {} };
+    ws.onerror = function () { ws.close(); };
   }
 
   // market session (RTH / Pre-Market / After-Hours / Closed, or Unknown while Schwab's /markets
@@ -1073,7 +1046,7 @@
     // subnav/view tabs already in HTML are re-bound by renderSubnav/renderViewbar
     // watchlist
     renderWatchlist();
-    refreshWL();
+    openPush();                          // the console's push: the watchlist, and the ticker's panels once chosen
     document.getElementById('wlAdd').addEventListener('click', function () {   // EXPLICIT watchlist add
       var s = window.prompt('Add symbol to watchlist', state.ticker); if (s) addSymbol(s);
     });
@@ -1117,12 +1090,24 @@
   else document.addEventListener('DOMContentLoaded', init);
 
   // expose for view modules + tests (no trading logic here)
-  window.EdShell = { getState: function () { return Object.assign({}, state); }, setTicker: setTicker, live: live, drop: drop,
+  // the page's own inputs of a panel's view: the Flow contract, the heatmap's columns, the book
+  // heatmap's minutes; and each chart's timeframe (kept per viewer)
+  function setInput(key, v) {
+    if (state[key] === v) return;
+    state[key] = v; sendView();
+  }
+  var TF_KEY = { chart: 'ed.gchart.tf', liquidity: 'ed.liqm.tf', desk: 'ed.desk.tf' };
+  function setTf(chart, tf) {
+    if (state.tfs[chart] === tf) return;
+    state.tfs[chart] = tf; _lsSet(TF_KEY[chart], tf); sendView();
+  }
+  window.EdShell = { getState: function () { return Object.assign({}, state); }, setTicker: setTicker,
+    onPanel: onPanel, setInput: setInput, setTf: setTf, pan: function (name) { return state.pans[name]; },
     addSymbol: addSymbol, setWorkspace: setWorkspace, setStrike: setStrike,
     setTheme: applyTheme,
     marketContext: function () { return MARKET_CONTEXT.slice(); },   // served [{key, display}]
     setScope: setScope, getScope: function () { return state.scope; },
-    windowQuery: windowQuery, newPan: newPan, panServed: panServed, wireStrikeAxis: wireStrikeAxis, asOfBadge: asOfBadge, fmtAge: fmtAge, chainEmptyText: chainEmptyText,
+    panServed: panServed, wireStrikeAxis: wireStrikeAxis, asOfBadge: asOfBadge, fmtAge: fmtAge, chainEmptyText: chainEmptyText,
     setExpiry: setExpiry, getExpiry: function () { return state.expiryFilter; },
     getMeasure: function () { return state.measure; },
     setSubview: setSubview };

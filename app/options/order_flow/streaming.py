@@ -50,8 +50,6 @@ from app.options.order_flow.state import (
     clear_symbol,
     push_book,
     push_contract,
-    push_level_one,
-    push_trade,
 )
 
 import live_market_plane as _lmp
@@ -160,6 +158,10 @@ def _log_stream(phase: str, **kwargs: Any) -> None:
         log.info("STREAM_DIAG %s", phase)
 
 
+#: the LEVELONE_EQUITIES fields of a trade
+_TRADE_FIELDS = ("LAST_PRICE", "LAST_SIZE", "TRADE_TIME_MILLIS")
+
+
 def _ingest_pushed(topic: str, msg: Any) -> None:
     """Apply ONE daemon-pushed Schwab stream message to the live planes.
 
@@ -168,12 +170,12 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
     time for it -- never the time this console processed it (a delayed message must not
     read as fresh; 2026-09-23 audit P0).
 
-      quote.SYM    LEVELONE_EQUITIES -> order-flow state (the tape); the live price is the
-                   daemon's price row (_rows_loop), never rebuilt here
+      quote.SYM    LEVELONE_EQUITIES -> its trade into the one tape (history.TAPE); the live
+                   price is the daemon's price row (_rows_loop), never rebuilt here
       book.SYM     NASDAQ_BOOK / NYSE_BOOK -> order-flow book; OPTIONS_BOOK -> the option
                    contract's book
       contract.SYM an option contract's one record (option_ledger) -> the mirror (push_contract),
-                   its trade into the tapes
+                   its trade into the one tape
       chain.TK     a ticker's round is in, or why it failed -> the levels (server._on_chain)
       markets.DATE Schwab's /markets answer -> that date's sessions (time_et), when it is a 200
 
@@ -207,12 +209,15 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
     if kind in ("bar1m", "pricehistory"):          # the bar writer's: a streamed bar, a price history
         streamed_bars.put(msg)
         return None
-    received = {f: stamp[1] for f, stamp in msg["field_ts"].items()} if "field_ts" in msg else None
     if kind == "quote":
         item = msg.get("native")
         if not isinstance(item, dict):
             return None
-        push_level_one(sym, item, ts_recv=ts, field_received=received)
+        # the trade's receive time: the message that carried it (its fields' own stamps), not a
+        # later tick merged into the same current record
+        trade_at = [stamp[1] for f, stamp in msg["field_ts"].items() if f in _TRADE_FIELDS]
+        if trade_at:
+            recent.TAPE.record_equity(sym, item, max(trade_at))
         push_changes.changed(sym, push_changes.FLOW)
         return None
     if kind == "book":
@@ -230,9 +235,7 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
             return None
         record = ContractRecord(fields, msg["field_ts"])
         push_contract(sym, record)
-        if recent.TAPE.record(sym, fields, record.times, ts):
-            push_trade(sym, fields["last"], fields.get("lastSize"), fields.get("tradeTimeInLong"),
-                       float(record.times["last"][1]))
+        recent.TAPE.record_option(sym, fields, record.times, ts)
         _tick(sym)          # a record changes only when Schwab sent it something new
     return None
 

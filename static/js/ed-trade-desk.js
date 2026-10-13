@@ -19,22 +19,14 @@
     return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
   function num(n, d) { return (n == null || isNaN(n)) ? '—' : Number(n).toFixed(d == null ? 2 : d); }
   function st() { return (window.EdShell && window.EdShell.getState()) || {}; }
-  function isRightNow() { var s = st(); return s.workspace === 'trade-desk' && s.subview === 'right-now'; }
   function ticker() { return (st().ticker || ''); }
   function host() { return document.getElementById('tdBody'); }
-  function stillRightNow(tk) { return isRightNow() && ticker() === tk; }
 
   function classOf(map, key) { var v = map ? map[key] : null; return (typeof v === 'string' && v) ? v : null; }
   function tag(c) {
     if (c === undefined || c == null) return '';
     var hook = (String(c).toLowerCase().match(/^[a-z0-9-]+/) || ['unknown'])[0];
     return '<span class="fl-tag ' + hook + '" data-cls="' + esc(c) + '">' + esc(c) + '</span>';
-  }
-  // a read that failed is absent (null); a read cut short by a newer one rejects, so it never draws
-  function fetchJson(url, signal) {
-    return window.EdShell.live(url)
-      .then(function (r) { return r.ok ? r.json() : null; })
-      .catch(function (e) { if (e && e.name === 'AbortError') throw e; return null; });
   }
   var usd = function (n) {
     if (n == null || isNaN(n)) return '—';
@@ -126,7 +118,7 @@
 
   // ---- Context Summary: plain-English arrangement of the SAME 4 responses. Classifies
   // (inside a zone / between two zones), never invents a value. ----
-  function contextSummary(terrain, snap, spot) {
+  function contextSummary(terrain, snap) {
     var lines = [];
     if (terrain) {
       lines.push(['Regime', (terrain.regime || '—') + (terrain.posture ? ' · ' + terrain.posture : '')]);
@@ -194,25 +186,16 @@
 
 
   // The migration panel's strikes are the window the server sends (the Gamma scope, and the
-  // operator's pan on its strike labels: EdShell.wireStrikeAxis). A pan or a new scope is a new
-  // read of the page (its key carries both), so no push redraws an older window.
-  var _migPan = window.EdShell.newPan(), _migPanTicker = null;
-  function migPan(tk) {   // the pan is the ticker's: a new ticker follows the price
-    if (_migPanTicker !== tk) { _migPan.centre = null; _migPan.shift = 0; _migPanTicker = tk; }
-    return _migPan;
-  }
-  function migStrikesUrl(tk) {
-    migPan(tk);
-    return '/api/terrain/strikes?ticker=' + encodeURIComponent(tk) + window.EdShell.windowQuery(_migPan);
-  }
-  function wireMigration(panel, tk) {
-    wireMigrationChips(panel, tk);
+  // operator's pan on its strike labels: EdShell.wireStrikeAxis), both in the view.
+  var _migPan = window.EdShell.pan('migration');
+  function wireMigration(panel) {
+    wireMigrationChips(panel);
     var firstRow = panel.querySelector('.gbs-row');
     window.EdShell.wireStrikeAxis(panel.querySelectorAll('.gbs-k'), panel.querySelector('.gbs-scroll'), _migPan,
-      firstRow ? firstRow.getBoundingClientRect().height : 0, load);
+      firstRow ? firstRow.getBoundingClientRect().height : 0);
   }
 
-  function migrationSection(strikesD, terrain, spot, tk) {
+  function migrationSection(strikesD, terrain) {
     if (!strikesD) return '<div class="td-panel" id="tdMigration"><h4>Positioning migration &amp; volume</h4>' +
       '<div class="placeholder"><div class="sm">no per-strike gamma for this symbol yet</div></div></div>';
     var todayAll = (strikesD.today && strikesD.today[_migScope]) || [];
@@ -285,69 +268,50 @@
       '</div>';
   }
 
-  // a chip click is a new read through the page's one loader, never a second fetch beside the
-  // one in flight (whichever landed last would draw)
-  function wireMigrationChips(h, tk) {
+  // a chip picks which served rows to draw: the answers on screen, drawn again
+  function wireMigrationChips(h) {
     h.querySelectorAll('[data-mig-scope]').forEach(function (b) {
       b.addEventListener('click', function () {
         var s = b.getAttribute('data-mig-scope'); if (s === _migScope) return;
-        _migScope = s; load();
+        _migScope = s; render();
       });
     });
     var gh = h.querySelector('[data-mig-ghost]');
-    if (gh) gh.addEventListener('click', function () { _migGhost = !_migGhost; load(); });
+    if (gh) gh.addEventListener('click', function () { _migGhost = !_migGhost; render(); });
   }
 
-  function loadImpl(tk, signal) {
-    var h = host();
-    if (!h || !stillRightNow(tk)) return;
-    return Promise.all([
-      fetchJson('/api/order-flow/microstructure?ticker=' + encodeURIComponent(tk) + '&venue=' + st().bookVenue, signal),
-      fetchJson('/api/levels?ticker=' + encodeURIComponent(tk), signal),
-      fetchJson('/api/terrain?ticker=' + encodeURIComponent(tk), signal),
-      fetchJson('/api/liquidity-snapshot?ticker=' + encodeURIComponent(tk), signal),
-      // the migration/volume section's window of the per-strike rows
-      fetchJson(migStrikesUrl(tk), signal),
-    ]).then(function (results) {
-      if (!stillRightNow(tk)) return;
-      var detect = results[0], levelsD = results[1], terrain = results[2], snap = results[3], strikesD = results[4];
-      // the spot is /api/levels' alone; a failed read or a null/'' spot is absent, never 0
-      var spot = (levelsD && levelsD.spot != null && levelsD.spot !== '') ? Number(levelsD.spot) : NaN;
-      h.innerHTML =
-        '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Right now</span><span class="fl-sym">' + esc(tk) +
-        '</span><span class="fl-meta">' + (isFinite(spot) ? 'spot ' + num(spot) : '') + '</span></div></div>' +
-        '<div class="td-grid">' + detectStage(detect) + frameStage(levelsD) + confirmStage(terrain) + '</div>' +
-        contextSummary(terrain, snap, spot) +
-        migrationSection(strikesD, terrain, spot, tk) +
-        '<div class="notproven" style="margin-top:14px;">HOME PRESERVED — DECISION AUTHORITY NOT_PROVEN. ' +
-        'This page assembles already-canonical Detect/Frame/Confirm signals and classifies them in plain English; it computes no new value and renders no Execute step. ' +
-        'THE CALL and 1m/5m/15m/60m horizons remain excluded until ticker-universal evidence earns them.</div>';
-      var migEl = document.getElementById('tdMigration');
-      if (migEl) wireMigration(migEl, tk);
-    }).catch(function (e) {
-      if (e && e.name === 'AbortError') return;   // the newer read draws
-      if (stillRightNow(tk)) h.innerHTML = '<div class="placeholder"><div class="sm">no console serving Right Now — one of its endpoints failed to render</div></div>';
+  // the five answers as the console pushes them for the view (the book, levels, terrain and zones
+  // are the same answers the Book, Levels, Gamma and Liquidity panels read); a failed one is
+  // absent (null), one on its way for a new view (undefined) holds the page until it lands
+  var R = { book: undefined, levels: undefined, terrain: undefined, zones: undefined, strikes: undefined };
+  Object.keys(R).forEach(function (k) {
+    window.EdShell.onPanel('rightnow.' + k, function (a) {
+      R[k] = a.waiting ? undefined : a.ok ? a.body : null;
+      if (!a.waiting) render();
     });
+  });
+  function render() {
+    var h = host(), tk = ticker();
+    if (!h || Object.keys(R).some(function (k) { return R[k] === undefined; })) return;
+    h.innerHTML =
+      '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Right now</span><span class="fl-sym">' + esc(tk) +
+      '</span><span class="fl-meta">spot <span class="td-spot">' + esc(_spotDisp) + '</span></span></div></div>' +
+      '<div class="td-grid">' + detectStage(R.book) + frameStage(R.levels) + confirmStage(R.terrain) + '</div>' +
+      contextSummary(R.terrain, R.zones) +
+      migrationSection(R.strikes, R.terrain) +
+      '<div class="notproven" style="margin-top:14px;">HOME PRESERVED — DECISION AUTHORITY NOT_PROVEN. ' +
+      'This page assembles already-canonical Detect/Frame/Confirm signals and classifies them in plain English; it computes no new value and renders no Execute step. ' +
+      'THE CALL and 1m/5m/15m/60m horizons remain excluded until ticker-universal evidence earns them.</div>';
+    var migEl = document.getElementById('tdMigration');
+    if (migEl) wireMigration(migEl);
   }
-  var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(ticker(), signal); });
-  // every input of the read is in its key, so a change aborts the read in flight instead of
-  // queueing behind it: the ticker, the venue, the migration chips, the Gamma scope and the pan
-  function _loadKey() {
-    var tk = ticker(), pan = migPan(tk);
-    return tk + '|venue=' + st().bookVenue + '|mig=' + _migScope + '|ghost=' + (_migGhost ? 1 : 0) +
-      '|scope=' + st().scope + '|pan=' + pan.centre + ',' + pan.shift;
-  }
-  function load() {
-    if (!isRightNow()) return;
-    _loader.trigger(_loadKey());
-  }
-
-  if (typeof document !== 'undefined') {
-    document.addEventListener('ed:view', load);
-    document.addEventListener('ed:ticker', load);
-    document.addEventListener('ed:book_venue', load);
-    document.addEventListener('ed:changed', load);
-    document.addEventListener('ed:scope', load);   // a new scope is a new window
-    // the first read comes from ed-core.js's ed:ticker/ed:view dispatch at init
-  }
+  // the spot is the header's price row (the daemon's Schwab LAST_PRICE), painted on every row
+  var _spotDisp = '—';
+  window.addEventListener('ed:quote_tick', function (e) {
+    var q = e.detail;
+    if (!q || q.ticker !== st().key) return;
+    _spotDisp = q.spot_disp != null ? q.spot_disp : '—';
+    document.querySelectorAll('#tdBody .td-spot').forEach(function (el) { el.textContent = _spotDisp; });
+  });
+  document.addEventListener('ed:ticker', function () { _spotDisp = '—'; });   // until the new ticker's row
 })();

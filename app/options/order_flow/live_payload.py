@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 from l1_trade_observation import NATIVE_AGGRESSOR_AVAILABLE, TAPE_CLASSIFICATION
+from app.options.order_flow import history
 from app.options.order_flow.engine import OrderFlowEngine
 import live_market_plane as lmp
 from app.options.order_flow.state import get_content_for_symbol, option_top
@@ -49,7 +50,7 @@ def options_live_payload(contract: str, now: float) -> dict[str, Any]:
     # session, the values as of the close while Closed (docs/DATA_FLOW.md §2 D5); whether the
     # book feed delivers now is book_live
     top_outage = lmp.outage(contract, "LEVELONE_OPTIONS", now)
-    of = OrderFlowEngine().compute({"content": items,
+    of = OrderFlowEngine().compute({"content": items, "prints": history.TAPE.prints(contract),
                                     "top": option_top(contract) if top_outage is None else None,
                                     "book_live": lmp.feed_live_for(contract, "OPTIONS_BOOK", now)},
                                    now=now, ticker=contract)

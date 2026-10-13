@@ -23,6 +23,7 @@
  * it exercises the real shell HTML/JS, not stubbed rendering.
  */
 const { test, expect, pushChange } = require('./fixtures/live_socket');
+const { expiriesAnswer } = require('./fixtures/expiries');
 const path = require('path');
 
 // The served window (server.py _surface_view): the cells to draw, each with `spot` (the row at
@@ -160,7 +161,7 @@ async function intercept(page) {
     else if (url.includes('/api/terrain')) body = TERRAIN;
     else if (url.includes('/api/bars1m')) body = BARS;
     else if (url.includes('/api/chain')) body = CHAIN;
-    else if (url.includes('/api/expiries')) body = { expiries: ['2026-09-11', '2026-09-18'] };    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    else if (url.includes('/api/expiries')) body = expiriesAnswer(['2026-09-11', '2026-09-18']);    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
   await routeWatchlist(page, ['SPY']);
 }
@@ -307,7 +308,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // select under Sept 18, filter to Sept 25, then a levels push: chain reads 18 -> 25 -> 25.
     // Sept 25 is listed: the page clears an unlisted filter whenever the list lands (loadExpiries).
     await page.route('**/api/expiries**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
-      body: JSON.stringify({ expiries: ['2026-09-11', '2026-09-18', '2026-09-25'] }) }));
+      body: JSON.stringify(expiriesAnswer(['2026-09-11', '2026-09-18', '2026-09-25'])) }));
     const chainExpiryRequests = [];
     await page.route('**/api/chain**', (route) => {
       const url = new URL(route.request().url());
@@ -925,28 +926,34 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     const served = { s: SURFACE };
     await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(served.s) }));
     await page.addInitScript(() => { try { localStorage.setItem('ed_scope', 'all'); } catch (e) {} });   // every strike on screen
+    // the moment each pushed surface reaches the page's socket (heard before the page's own handler)
+    await page.addInitScript(() => {
+      const WS = window.WebSocket;
+      window.WebSocket = function (url, p) {
+        const ws = new WS(url, p);
+        if (/\/api\/live$/.test(url)) ws.addEventListener('message', (ev) => {
+          if (String(ev.data).indexOf('"panel":"gamma.surface"') !== -1) window.__surfaceAt = performance.now();
+        });
+        return ws;
+      };
+      window.WebSocket.prototype = WS.prototype;
+    });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#heatBody .hcell').first()).toBeVisible();
     served.s = { available: true, source: 'terrain_live_cache', live: true, spot: 600, complete: false,
       expirations: exps, strikes, cells, view: view({ centre: 600, scope: 'all', max_abs: { gex: 50000 } }) };   // 200 strikes x 20 expiries
     // the page's own reload (a levels push); the time runs from the push to the drawn table
     const before = await page.locator('#heatBody .hcell').count();
-    // timed from the push's change kind (its new answer already in) to the drawn table
-    await page.evaluate((n0) => {
-      window.__perf = new Promise((resolve) => {
-        document.addEventListener('ed:changed', function onChange() {
-          document.removeEventListener('ed:changed', onChange);
-          const t0 = performance.now();
-          (function wait() {
-            const n = document.querySelectorAll('#heatBody .hcell').length;
-            if (n > n0) resolve({ ms: performance.now() - t0, cells: n });
-            else requestAnimationFrame(wait);
-          })();
-        });
-      });
-    }, before);
+    // timed from the pushed surface reaching the page to the drawn table
+    await page.evaluate(() => { window.__surfaceAt = null; });
     await pushChange(page, 'levels');
-    const r = await page.evaluate(() => window.__perf);
+    const r = await page.evaluate((n0) => new Promise((resolve) => {
+      (function wait() {
+        const n = document.querySelectorAll('#heatBody .hcell').length;
+        if (window.__surfaceAt != null && n > n0) resolve({ ms: performance.now() - window.__surfaceAt, cells: n });
+        else requestAnimationFrame(wait);
+      })();
+    }), before);
     const ms = r.ms;
     console.log('[#1 perf] heatmap load + render:', Math.round(ms), 'ms,', r.cells, 'cells');
     // no arbitrary tight SLA — a generous ceiling that only fails on pathological render behaviour
@@ -1057,7 +1064,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     cells: SURFACE.cells.map((c) => Object.assign({}, c, { gex: [] })), view: view({ missing_expiry: '2026-09-25' }) });
   test('a selected expiry absent from the surface reads unavailable (no substitute expiries)', async ({ page }) => {
     await page.route('**/api/expiries*', (r) => r.fulfill({ status: 200, contentType: 'application/json',
-      body: JSON.stringify({ expiries: ['2026-09-11', '2026-09-18', '2026-09-25'] }) }));
+      body: JSON.stringify(expiriesAnswer(['2026-09-11', '2026-09-18', '2026-09-25'])) }));
     await page.route('**/api/options/gamma-surface*', (route) => route.fulfill({ status: 200, contentType: 'application/json',
       body: JSON.stringify(new URL(route.request().url()).searchParams.get('expiry') === '2026-09-25' ? MISSING_0925 : SURFACE) }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
@@ -1072,7 +1079,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   test('recovers automatically once the requested expiry appears in a later surface poll', async ({ page }) => {
     let missing = MISSING_0925;   // SURFACE only has 2026-09-11/2026-09-18 -- 09-25 is initially missing
     await page.route('**/api/expiries*', (r) => r.fulfill({ status: 200, contentType: 'application/json',
-      body: JSON.stringify({ expiries: ['2026-09-11', '2026-09-18', '2026-09-25'] }) }));
+      body: JSON.stringify(expiriesAnswer(['2026-09-11', '2026-09-18', '2026-09-25'])) }));
     await page.route('**/api/options/gamma-surface*', (route) => route.fulfill({ status: 200, contentType: 'application/json',
       body: JSON.stringify(new URL(route.request().url()).searchParams.get('expiry') === '2026-09-25' ? missing : SURFACE) }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });

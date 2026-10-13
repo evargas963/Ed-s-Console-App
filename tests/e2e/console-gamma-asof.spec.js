@@ -7,6 +7,7 @@
  * badges. Stale server state -> stale badge styling. Offline.
  */
 const { test, expect } = require('./fixtures/live_socket');
+const { expiriesAnswer } = require('./fixtures/expiries');
 const { routeWatchlist } = require('./fixtures/watchlist');
 
 const SURFACE = { ticker: 'SPY', symbol: 'SPY', available: true, spot: 100, front_expiry: '2026-09-11', source: 'terrain_live_cache',
@@ -34,7 +35,7 @@ function routes(over) {
   return async (page) => {
     await page.route('**/api/**', (route) => {
       const url = route.request().url();
-      let body = { available: false };
+      let body = url.includes('/api/expiries') ? expiriesAnswer([]) : { available: false };
       if (url.includes('/api/options/gamma-surface')) body = over.surface || SURFACE;
       else if (url.includes('/api/terrain/strikes')) body = over.strikes || STRIKES;
       else if (url.includes('/api/terrain')) body = over.terrain || TERRAIN;

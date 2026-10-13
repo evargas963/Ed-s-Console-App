@@ -26,6 +26,7 @@ import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 from app.market_data.schwab.streaming import live_push, live_ui
+from app.options.order_flow import history
 from stream_spine import MessageBus, book_msg, quote_msg
 
 _CONTRACT = "SPY   260918C00500000"
@@ -119,7 +120,7 @@ async def _run(body, heartbeat_fn=None):
 def _received(ts):
     """The console applied SPY's trade that the daemon received at `ts`: it is on SPY's tape
     with that receive time."""
-    return lambda: any(r.get("server_received_ts") == ts for r in ofls.get_content_for_symbol("SPY"))
+    return lambda: any(p["ts_recv"] == ts for p in history.TAPE.prints("SPY"))
 
 
 
@@ -281,7 +282,7 @@ def test_push_down_serves_nothing_and_the_feed_recovers_when_it_returns(feed):
         ofs._feed_running = True
         client = asyncio.create_task(_console(port))
         await asyncio.sleep(0.3)                    # no server: several failed connects
-        assert ofls.get_content_for_symbol("SPY") == []
+        assert ofls.get_content_for_symbol("SPY") == [] and history.TAPE.prints("SPY") == []
         bus = MessageBus()
         stop = asyncio.Event()
         stats: dict = {}
@@ -307,6 +308,7 @@ def test_a_message_missing_its_receive_time_is_dropped_whole(monkeypatch):
     del msg["ts_recv"]
     ofs._ingest_pushed("quote.ZZZNOPE", msg)
     assert ofls.get_content_for_symbol("ZZZNOTS") == [] and ofls.get_content_for_symbol("ZZZNOPE") == []
+    assert history.TAPE.prints("ZZZNOTS") == [] and history.TAPE.prints("ZZZNOPE") == []
 
 
 def test_daemon_shutdown_is_not_held_up_by_a_connected_console(feed):

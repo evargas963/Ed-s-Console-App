@@ -18,25 +18,15 @@
     if (s.workspace === 'liquidity' && s.subview === 'levels') return 'lvlBody';
     return null;
   }
-  function ticker() { return ((window.EdShell && window.EdShell.getState()) || {}).ticker || ''; }
-
-  function stillLevels(tk) { return !!activeHostId() && ticker() === tk; }
-  // ROUND 8 (2026-09-13): keyed on ticker so a held/slow fetch for an ABANDONED ticker is
-  // aborted immediately once a different ticker is selected, instead of blocking it.
-  function loadImpl(tk, signal) {
-    var hostId = activeHostId();
-    var host = hostId && document.getElementById(hostId);
-    if (!host || !stillLevels(tk)) return;
-    return window.EdShell.live('/api/levels?ticker=' + encodeURIComponent(tk), 'gamma-levels')
-      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-      .then(function (d) { if (stillLevels(tk)) render(host, d); })
-      .catch(function (e) {
-        if (e && e.name === 'AbortError') return;
-        if (stillLevels(tk)) host.innerHTML = '<div class="placeholder"><div class="sm">no console serving /api/levels</div></div>';
-      });
-  }
-  var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(ticker(), signal); });
-  function load() { _loader.trigger(ticker()); }
+  // the levels the console pushes, in whichever home is on screen (one answer for both)
+  ['gamma.levels', 'liquidity.levels'].forEach(function (name) {
+    window.EdShell.onPanel(name, function (a) {
+      var hostId = activeHostId(), host = hostId && document.getElementById(hostId);
+      if (!host || a.waiting) return;
+      if (!a.ok) { host.innerHTML = '<div class="placeholder"><div class="sm">/api/levels answered HTTP ' + a.status + '</div></div>'; return; }
+      render(host, a.body);
+    });
+  });
 
   function render(host, d) {
     var levels = (d && d.levels) || [];
@@ -47,11 +37,8 @@
     }
     // served in ladder order (price, highest first)
     var rows = levels;
-    // null/'' spot is ABSENT: Number(null) is 0, which drew 'spot 0.00' (audit P0, 2026-09-23)
-    var spot = (d.spot == null || d.spot === '') ? NaN : Number(d.spot);
     var head = '<div class="lv-head"><span>Canonical levels · gen ' + esc(d.generation) + '</span>' +
-      '<span class="lv-spot">spot ' + (isFinite(spot) ? spot.toFixed(2) : '—') +
-      (d.spot_source ? ' · ' + esc(d.spot_source) : '') + '</span></div>';
+      '<span class="lv-spot">spot <span class="lv-spot-v">' + esc(_spotDisp) + '</span></span></div>';
     var body = '<table class="lv"><thead><tr><th>Family</th><th>Level</th><th>Price</th>' +
       '<th>Evidence</th><th>Source</th><th>As-of</th></tr></thead><tbody>';
     rows.forEach(function (r) {
@@ -87,11 +74,13 @@
     });
   }
 
-  if (typeof document !== 'undefined') {
-    document.addEventListener('ed:view', load);
-    document.addEventListener('ed:ticker', load);
-    document.addEventListener('ed:changed', function (e) { if (e.detail.kind === 'levels') load(); });
-    // Audit finding #4 (2026-09-16): initial hydration now comes SOLELY from ed-core.js's
-    // deferred ed:ticker/ed:view dispatch -- see that file's init() comment.
-  }
+  // the spot is the header's price row (the daemon's Schwab LAST_PRICE), painted on every row
+  var _spotDisp = '—';
+  window.addEventListener('ed:quote_tick', function (e) {
+    var q = e.detail, s = (window.EdShell && window.EdShell.getState()) || {};
+    if (!q || q.ticker !== s.key) return;
+    _spotDisp = q.spot_disp != null ? q.spot_disp : '—';
+    document.querySelectorAll('.lv-spot-v').forEach(function (el) { el.textContent = _spotDisp; });
+  });
+  document.addEventListener('ed:ticker', function () { _spotDisp = '—'; });   // until the new ticker's row
 })();

@@ -26,18 +26,15 @@
     return { rows: (sd && sd.today && sd.today.all) || [], scale: sd && sd.views && sd.views.all && sd.views.all.max_abs,
       max_abs_row: sd && sd.max_abs_row, name: 'GEX', signed: true };
   }
-  function strikesUrl(tk) {   // the same window GEX by Strike reads unpanned: one shared read
-    return '/api/terrain/strikes?ticker=' + encodeURIComponent(tk) + window.EdShell.windowQuery(null);
-  }
   function ticker() { return st().ticker || ''; }
 
   var _mode = 'profile';          // 'profile' (bars) | 'dotmap' (dots)
   var _chart = null;
   var _liveQuote = null;          // the header's price row (ed:quote_tick), the one displayed price
   var _last = { bars: undefined, strikes: undefined, terrain: undefined };
-  // the chart's timeframe (the toolbar's), kept per viewer
-  var _tf = (function () { try { return window.localStorage.getItem('ed.gchart.tf') || '1'; } catch (e) { return '1'; } })();
-  function tfLabel() { return (window.EdTvChart.TFS.filter(function (t) { return t.id === _tf; })[0] || {}).lbl || _tf; }
+  // the chart's timeframe (the toolbar's), kept per viewer in the shell's view
+  function tf() { return st().tfs.chart; }
+  function tfLabel() { return (window.EdTvChart.TFS.filter(function (t) { return t.id === tf(); })[0] || {}).lbl || tf(); }
 
   function liveSpot() {   // the row whose served key is the selected instrument's (EdShell state.key)
     var q = _liveQuote;
@@ -54,41 +51,21 @@
         var exp = window.EdShell.getExpiry ? window.EdShell.getExpiry() : null;   // the workspace's expiry filter carries through
         window.EdShell.setStrike(row.price, exp || null);
       } });
-    window.EdTvChart.toolbar(host.querySelector('.gchart-tb'), _chart, { tf: _tf, styleKey: 'ed.gchart.style',
-      onTf: function (tf) { _tf = tf; try { window.localStorage.setItem('ed.gchart.tf', tf); } catch (e) { /* per-viewer only */ } load(); } });
+    window.EdTvChart.toolbar(host.querySelector('.gchart-tb'), _chart, { tf: tf(), styleKey: 'ed.gchart.style',
+      onTf: function (t) { window.EdShell.setTf('chart', t); } });
     return _chart;
   }
 
-  function okJson(r) { if (!r.ok) throw new Error(r.status); return r.json(); }
-  function nullp() { return null; }
-  function loadImpl(tk, signal) {
-    if (!isChart() || ticker() !== tk || !ensureChart()) return;
-    return Promise.all([
-      window.EdShell.live('/api/bars1m?ticker=' + encodeURIComponent(tk) + '&tf=' + _tf + '&limit=' + window.EdTvChart.BARS_LIMIT[_tf], 'chart-bars')
-        .then(okJson).catch(nullp),
-      window.EdShell.live(strikesUrl(tk), 'chart-strikes').then(okJson).catch(nullp),
-      window.EdShell.live('/api/terrain?ticker=' + encodeURIComponent(tk), 'chart-terrain').then(okJson).catch(nullp)
-    ]).then(function (r) {
-      if (!isChart() || ticker() !== tk) return;
-      _last = { bars: r[0], strikes: r[1], terrain: r[2] };
-      render();
+  // each part as the console pushes it for the view (the bars at the chart's timeframe, the
+  // window of per-strike rows GEX by Strike shows unpanned, the terrain Key Levels shows); a
+  // failed answer is absent (null); a part on its way for a new view is not drawn from the old one
+  [['gamma.chart.bars', 'bars'], ['gamma.chart.strikes', 'strikes'], ['gamma.chart.terrain', 'terrain']].forEach(function (p) {
+    window.EdShell.onPanel(p[0], function (a) {
+      _last[p[1]] = a.waiting ? undefined : a.ok ? a.body : null;
+      if (isChart() && ready()) render();
     });
-  }
-  var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(ticker(), signal); });
-  function load() { _loader.trigger(ticker()); }
-
-  // the profile and the levels only (a levels push): the bars are unchanged
-  function loadLevelsImpl(tk) {
-    if (!isChart() || ticker() !== tk || !_chart) return;
-    var get = window.EdL1SseGuards.sharedFetchJson;
-    return Promise.all([get(strikesUrl(tk)).catch(nullp),
-      get('/api/terrain?ticker=' + encodeURIComponent(tk)).catch(nullp)]).then(function (r) {
-      if (!isChart() || ticker() !== tk || r[0] == null || r[1] == null) return;
-      _last.strikes = r[0]; _last.terrain = r[1];
-      render();
-    });
-  }
-  var _levelsLoader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadLevelsImpl(ticker(), signal); });
+  });
+  function ready() { return _last.bars !== undefined && _last.strikes !== undefined && _last.terrain !== undefined; }
 
   function render() {
     var c = ensureChart(); if (!c) return;
@@ -97,7 +74,7 @@
     var bars = (barsD && barsD.bars) || [];
     var prof = served(sd);
     var win = prof.rows.filter(function (r) { return r[1] != null; });   // the served window; unknown: nothing drawn
-    c.setBars(bars, (barsD && barsD.tf) || _tf, st().display || ticker(), barsD && barsD.last_bar && barsD.last_bar.label);
+    c.setBars(bars, barsD ? barsD.tf : tf(), st().display || ticker(), barsD && barsD.last_bar && barsD.last_bar.label);
     c.setProfile(win.map(function (r) {
       return { price: Number(r[0]), value: Number(r[1]), color: !prof.signed ? P.accent : r[1] >= 0 ? P.up : P.down }; }),
       prof.scale, _mode === 'dotmap' ? 'dots' : 'bars');
@@ -153,15 +130,9 @@
     var q = (ev && ev.detail) || {};
     if (q.ticker !== st().key) return;
     _liveQuote = q;
-    if (isChart() && _chart && _last.strikes !== undefined) render();
+    if (isChart() && _chart && ready()) render();
   });
-  document.addEventListener('ed:view', load);
-  document.addEventListener('ed:ticker', function () { _last = { bars: undefined, strikes: undefined, terrain: undefined }; load(); });
-  document.addEventListener('ed:scope', function () { if (isChart()) load(); });   // a new window: re-read it
-  document.addEventListener('ed:measure', function () { if (_chart && isChart() && _last.strikes !== undefined) render(); });
-  document.addEventListener('ed:changed', function (e) {   // a new bar reloads all; new levels reload the levels
-    if (e.detail.kind === 'liquidity') load(); else if (e.detail.kind === 'levels') _levelsLoader.trigger(ticker());
-  });
+  document.addEventListener('ed:measure', function () { if (_chart && isChart() && ready()) render(); });
   document.addEventListener('ed:strike', function () { if (_chart && isChart()) _chart.selectProfile(st().selStrike == null ? null : Number(st().selStrike)); });
   bindModes();
   // read-only view for tests (e2e) -- never a control surface

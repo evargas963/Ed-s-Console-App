@@ -164,14 +164,14 @@ from Schwab to the screen (daemon, console, page), are these:
 | daemon → browser | local WebSocket :8800 (`live_ui`) | on each subscribe, what every asked-for symbol is (its key, e.g. `$SPX`, and display name `SPX`, from `instrument_identity`) and each one's current record; then every Schwab stream message of an asked-for symbol, as Schwab sent it, by its delivery type (Streamer API §1.1, §1.5): LEVELONE_EQUITIES and LEVELONE_OPTIONS, Change (the fields that changed; a client behind gets each field's newest, none lost); NYSE_BOOK, NASDAQ_BOOK and OPTIONS_BOOK, Whole (the whole book); CHART_EQUITY, All Sequence (each bar with its SEQUENCE, every one, in order); NEWS_HEADLINE (not in Schwab's Streamer document; Schwab answers it, code 0), each headline as sent. A heartbeat every second: the daemon's whole status (Schwab socket, why it is not connected, symbols held per service, the watchlist, the chain sweep's last round time, health) and, for each asked-for symbol, whether each of its services is delivering now and why not (`live`, `outage`). The page matches messages by that key and shows that name; it formats Schwab's fields and computes nothing; the market-context symbols come in the page (meta `ed-market-context`, from `live_push.MARKET_CONTEXT`). Enforced by: `tests/test_live_ui_daemon_to_browser_v1.py` |
 | daemon → console | the same :8800 push | the same LEVELONE_EQUITIES messages, for every equity the daemon holds on Schwab (`streaming._rows_wanted`: the heartbeat's held LEVELONE_EQUITIES, the watchlist and the market context as Schwab accepted them), taken into the console's price record (`live_market_plane`, which `live_price_rows.price_row` reads): the console's only live price; and the daemon's heartbeat, the console's one record of the daemon's status. It carries no chain, so a beat never waits behind one (measured 2026-10-02 on the 8799 push: DELL read feed down in 25 of 60 samples on a healthy feed while the console worked through chain parts) |
 | console → browser | HTTP `/api/*` | everything else, on request |
-| console → browser | WebSocket `/api/live` (`server.live_values`) | each route a panel shows, its answer pushed at once and again whenever a kind of change that moves it happens for the ticker (`server._ROUTE_KINDS`: `levels`, `chain`, `flow`, `liquidity`; a route serving values derived from the live price at answer time moves with every kind), then the kind; the session label. The page fetches no value (`EdShell.live` where it would fetch); what it sends over HTTP is a command (a watchlist add or removal, the Flow panel's contract). Enforced by: `tests/test_live_values_push_v1.py`, `tests/test_page_fetches_no_values_v1.py` |
+| console → browser | WebSocket `/api/live` (`server.live_values`) | the page sends its view, the operator's selections (ticker, workspace, subview, view, expiry, strike, contract, scope, venue, each chart's timeframe, the heatmap's columns and minutes, each strike panel's pan); it names no route. The console decides the panels on screen (`server._panels`) and pushes each one's answer by name, at once for each panel the view moved and again whenever a kind of change that moves its route happens for the ticker (`server._ROUTE_KINDS`: `levels`, `chain`, `flow`, `liquidity`; a route serving values derived from the live price at answer time moves with every kind); an answer the view moved on from is never sent. Each route's answer is computed once per change that moves it, however many panels and pages show it (`server._answers`): two panels showing the same value (Key Levels' and the Gamma chart's call wall) get one computation. The session label. What the page sends over HTTP is a command (a watchlist add or removal, the Flow panel's contract). Enforced by: `tests/test_live_values_push_v1.py`, `tests/test_page_fetches_no_values_v1.py` |
 
 ### 3.3 Where data lives
 
 | Place | Owner | What it holds |
 |---|---|---|
 | Daemon memory | daemon | the message bus: each topic's current record (one per symbol and service; an unsubscribed symbol's is forgotten), each option contract's one record (the ledger, §3.4); the watchlist; the option rule's inputs and pick, and the Flow panel's contract |
-| Console memory | console | each equity's LEVELONE_EQUITIES fields as the daemon pushed them (`live_market_plane`: the price, bid/ask, MARK); a second copy of the books and the equity tape (fed from 8799, §3.5 item 1); a read-only mirror of the option ledger's records (`state.ContractRecord`); the computed levels; each ticker's 1-minute bars (`server._bars`, the newest 24,000: Schwab's price history pushed by the daemon, each streamed bar on top) and daily candles (`server._daily`); the level crosses (`server._crosses`), loaded from `ed_console.db` once at startup and then fed live (§2 D6); each option contract's newest 500 trade prints (`history.TAPE`) and each equity book of the last 240 minutes, one per second (`history.BOOKS`), held in memory from the console's start (no database read) |
+| Console memory | console | each equity's LEVELONE_EQUITIES fields as the daemon pushed them (`live_market_plane`: the price, bid/ask, MARK); a second copy of the books (fed from 8799, §3.5 item 1); a read-only mirror of the option ledger's records (`state.ContractRecord`); the computed levels; each ticker's 1-minute bars (`server._bars`, the newest 24,000: Schwab's price history pushed by the daemon, each streamed bar on top) and daily candles (`server._daily`); the level crosses (`server._crosses`), loaded from `ed_console.db` once at startup and then fed live (§2 D6); the one store of trade prints, each equity's and option contract's newest 500 (`history.TAPE`: the Options Flow tape and the order-flow engine both read it); the answer of each route an open page shows, computed once per change that moves it (`server._answers`) and each equity book of the last 240 minutes, one per second (`history.BOOKS`), held in memory from the console's start (no database read) |
 | `stream_capture.db` | daemon's writer | the newest five trading sessions (§2 D4): every raw Schwab message: quotes, books, option quotes and option books of every contract, bars, news, price history answers (`stream_pricehistory_raw`), chain, expiration-chain and option quotes answers (`stream_chains_raw`, `stream_expirations_raw`, `stream_option_quotes_rest_raw`), subscription answers; every message a write refused, kept as sent with its error (`stream_write_failures`: the writer's refused rows, and each chain whose history write was refused); how far each spill file's write-back got (`stream_spill_progress`). Quotes, books and option quotes are indexed by receipt time, the order they arrive in (an index by symbol wrote a page per row: `tests/test_data_path_writer_failures_v1.py::test_the_indexes_add_no_more_pages_than_the_rows_they_index`); bars by symbol and bar start. A new database gets those indexes with its tables (`stream_spine.RECEIPT_TIME_INDEXES`); a writer never changes an existing table's index at its start. Production's old database (indexed by symbol) is not reindexed: it is replaced by a new one holding the last five sessions, with these indexes (`ACTIVE_PROGRAM.md` STREAM-DB-SWITCH). The tables the daily keep trims are `stream_spine.KEPT_BY_TIME`, the watchlist, markets, feed-status and subscription tables among them. |
 | `stream_capture.<ms>.<n>.spill` (beside `stream_capture.db`) | daemon's writer | while the database refuses writes, the held messages past the memory cap, in order (n 1), and at a stop what memory held (n 0); deleted once every record is written back (a record that does not decode or frame kept as its bytes in `stream_write_failures`); one a stop, a death or a kill leaves is written back at the next start (§2 D4) |
 | `ed_console.db` | console (level crosses), and the daemon (the chain captures) | level crosses (`level_crosses`) and the chain captures (`complete_chain_captures`, decision 7), kept beyond five sessions — plus tables nothing writes or reads, dropped in P2-DB3: the old bars (`price_bars_1m*`), the former ticker board (`logging_universe*`), the morning chains (`option_chain_morning_full`), the ML pipeline's tables |
@@ -181,7 +181,7 @@ from Schwab to the screen (daemon, console, page), are these:
 - **Equity quote.** Schwab → daemon bus → (a) daemon writer → `stream_capture.db`; (b) the
   fields Schwab changed → browser socket → header and watchlist, and the same fields → the
   console's price record → the spot the levels and top of book use (`live_price_rows.price_row`);
-  (c) the raw message → the console's order-flow tape. Pushed end to end, as Schwab sent it.
+  (c) its trade → the console's one tape (`history.TAPE`). Pushed end to end, as Schwab sent it.
 - **Option quote and order book.** Schwab → daemon bus → writer, and → console memory → the
   order-flow and heatmap routes' answers pushed on `/api/live` with a `flow` change. An equity
   has two Schwab books, NYSE_BOOK (exchanges) and NASDAQ_BOOK (market makers); each is stored
@@ -200,9 +200,9 @@ from Schwab to the screen (daemon, console, page), are these:
   its 10/12 reply, item 5). The console holds a read-only mirror of the records
   (`state.ContractRecord`, rebuilt from the daemon's replay on each connection), and every screen
   and calculation reads only it (`server._ledger`): the levels, `/api/chain` (each field with its
-  Schwab time, `fieldTimes`), the Flow panel, the options tape (`history.TAPE`: a print is a
-  message carrying a trade time, its price and size the record's, since Schwab sends only what
-  changed). When Schwab's connection ends, the daemon drops the equity and book records it held
+  Schwab time, `fieldTimes`), the Flow panel, the one tape (`history.TAPE`: an option's print is
+  a posting carrying a trade time, its price and size the record's, since Schwab sends only what
+  changed; an equity's is each new trade on its LEVELONE_EQUITIES record). When Schwab's connection ends, the daemon drops the equity and book records it held
   (`capture.Daemon._release_held`); an option contract's record stands with its last values, not
   live, until the stream's first message after it resubscribes (Schwab's first message is the
   whole record) -- its terms are the day's opening's, which no stream carries (operator
@@ -490,20 +490,23 @@ from Schwab to the screen (daemon, console, page), are these:
   `tests/test_markets_sessions_v1.py`.
 - **Lifecycle.** `/api/live` (console, `server.live_values`, `push_changes.py`): the levels
   producer, the stream handler (equity quote and book) and the bar writer mark a ticker's kind
-  changed; each page connection gets, the moment it is marked, the answer of each route it shows
-  that the kind moves, then the kind (changes marked while one is sent go in the next). A panel
-  names its place (`EdShell.live(url, key)`): a new URL there, or a panel that shows nothing
-  (`EdShell.drop`), stops the console pushing the old one. The console down: the page's session
-  label reads `—` and no panel redraws until the page's socket reconnects; it then asks every
-  route again and draws nothing from before the drop. A Trade Desk timeframe switch asks only for
-  that timeframe's bars, levels and event window. Right Now's five routes move with every kind,
+  changed; each page connection gets, the moment it is marked, the answer of each panel on
+  screen that the kind moves (changes marked while one is sent go in the next). A new view moves
+  the panels whose inputs changed: the console names them in its answer to the view
+  ({"type": "view", "seq", "moved", "shown"}) and pushes each; an answer under an older view the
+  page has left is held by the page until the console has taken the newer one, then drawn or,
+  for a panel the newer view moved or took off screen, dropped. The console down: the page's
+  session label reads `—` and no panel redraws until the page's socket reconnects; it then sends
+  its view again and every panel is pushed anew. A Trade Desk timeframe switch moves only that
+  timeframe's bars, levels and event window. Right Now's five routes move with every kind,
   because each serves values derived at answer time (the live price, each level's distance, the
   chain's staleness), and a pan or scope change in its migration panel is a new route.
 
 ### 3.5 Where today breaks the design
 
-1. **Two copies of live state** (daemon memory and console memory) for books, option quotes and
-   the equity tape; the live price is one row (the daemon's). Each remaining copy and duplicate
+1. **Two copies of live state** (daemon memory and console memory) for books and option quotes;
+   the live price is one row (the daemon's), the trade prints one store (the console's
+   `history.TAPE`). Each remaining copy and duplicate
    computation is a row in `ACTIVE_PROGRAM.md` (ONE-*), with its behavior test when fixed.
 2. **Two writers and two databases** (the daemon's and the console's).
 3. **The console computes the levels** in the same process that serves the page, so a request

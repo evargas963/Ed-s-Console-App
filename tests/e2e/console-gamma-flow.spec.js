@@ -14,6 +14,7 @@
  * compatibility with the REAL API shape.
  */
 const { test, expect } = require('./fixtures/live_socket');
+const { expiriesAnswer } = require('./fixtures/expiries');
 const FIXTURE = require('./fixtures/options_microstructure_payload.json');
 const { served } = require('./fixtures/served_chain');
 const { routeWatchlist } = require('./fixtures/watchlist');
@@ -77,7 +78,7 @@ async function setup(page, ctx) {
     else if (url.includes('/api/terrain/strikes')) body = { spot: 367, today_source: 'terrain_live_cache', today_age_sec: 5, levels_stale: false, today: { all: [[367.5, 1, 1]] },
       views: { all: { centre: 367.5, note: null, max_abs: 1 } } };
     else if (url.includes('/api/terrain')) body = { spot: 367, gamma_flip: 366, levels_stale: false };
-    else if (url.includes('/api/expiries')) body = { expiries: ['2026-08-31'] };
+    else if (url.includes('/api/expiries')) body = expiriesAnswer(['2026-08-31']);
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
   await routeWatchlist(page, ['TSLA']);

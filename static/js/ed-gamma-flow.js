@@ -24,42 +24,29 @@
 
   function host() { return document.getElementById('flowBody'); }
 
-  // the selected contract (a Chain click), cleared by a ticker or expiry change; the daemon streams
-  // it on both option services on top of its rule (POST /api/flow-contract)
-  var _selected = null;
+  // the selected contract (a Chain click; in the shell's view), cleared by a ticker or expiry
+  // change; the daemon streams it on both option services on top of its rule (POST /api/flow-contract)
   function setSelected(symbol) {
-    _selected = symbol;
+    window.EdShell.setInput('contract', symbol);
     fetch('/api/flow-contract', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contract: symbol }) }).then(load, load);
-    document.dispatchEvent(new CustomEvent('ed:contract', { detail: { contract: symbol } }));
+      body: JSON.stringify({ contract: symbol }) });
+    none();
   }
   window.EdFlow = {
-    selected: function () { return _selected; },
+    selected: function () { return st().contract; },
     select: setSelected,
   };
 
-  // a response is current only while Flow is on screen and its contract is still the selected one
-  function stillFlow(desired) { return isFlow() && _selected === desired; }
-  // Only the microstructure fetch is coalesced, keyed on the contract: the NONE render runs at
-  // once, and a held fetch for a contract no longer selected is aborted.
-  function loadImpl(desired, signal) {
+  // the selected contract's microstructure as the console pushes it (only ever the current contract's)
+  window.EdShell.onPanel('flow', function (a) {
+    var h = host(); if (!h || a.waiting) return;
+    if (!a.ok) { shell(h, st().contract, 'DEGRADED', '/api/order-flow/options-microstructure answered HTTP ' + a.status, null); return; }
+    render(h, st().contract, a.body);
+  });
+  // no contract selected: nothing to observe
+  function none() {
     var h = host();
-    if (!h || !stillFlow(desired)) return;
-    return window.EdShell.live('/api/order-flow/options-microstructure?contract=' + encodeURIComponent(desired), 'flow-contract')
-      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-      .then(function (d) { if (stillFlow(desired)) render(h, desired, d); })
-      .catch(function (e) {
-        if (e && e.name === 'AbortError') return;   // superseded by a newer contract -- that load renders instead
-        if (stillFlow(desired)) shell(h, desired, 'DEGRADED', 'no console serving options-microstructure', null);
-      });
-  }
-  var _pendingDesired = null;
-  var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(_pendingDesired, signal); });
-  function load() {
-    var h = host(); if (!h || !isFlow()) return;
-    if (!_selected) { return shell(h, null, 'NONE', 'Select a Call or Put contract in Chain.', null); }
-    _pendingDesired = _selected;
-    _loader.trigger(_selected);
+    if (h && isFlow() && !st().contract) shell(h, null, 'NONE', 'Select a Call or Put contract in Chain.', null);
   }
 
   // the queried contract's subscription, served (streaming_plane.subscription_state): the
@@ -170,15 +157,11 @@
   }
 
   if (typeof document !== 'undefined') {
-    document.addEventListener('ed:view', load);           // fires on subview change too
-    document.addEventListener('ed:contract', load);       // an explicit Chain selection
-    document.addEventListener('ed:changed', function (e) { if (e.detail.kind === 'levels' || e.detail.kind === 'flow') load(); });
+    document.addEventListener('ed:view', none);
     // a ticker or expiry change clears the selection; a fresh Chain click observes again
     // a page that selected nothing releases nothing (another tab's selection stands)
-    function clearSelected() { if (_selected) setSelected(null); else load(); }
+    function clearSelected() { if (st().contract) setSelected(null); else none(); }
     document.addEventListener('ed:ticker', clearSelected);
     document.addEventListener('ed:expiry', clearSelected);
-    // Audit finding #4 (2026-09-16): initial hydration now comes SOLELY from ed-core.js's
-    // deferred ed:ticker/ed:view dispatch -- see that file's init() comment.
   }
 })();

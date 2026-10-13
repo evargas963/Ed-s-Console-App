@@ -17,7 +17,8 @@ import pytest
 import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
-from stream_spine import book_msg, quote_msg
+from app.options.order_flow import history
+from stream_spine import MessageBus, book_msg, current_key, quote_msg
 
 
 @pytest.fixture(autouse=True)
@@ -32,9 +33,11 @@ def _reset(tmp_path):
 
 
 def _push_l1(symbol, native, ts_recv):
-    ofs._ingest_pushed(f"quote.{symbol}", quote_msg(
-        symbol=symbol, bid=native.get("BID_PRICE"), src="schwab_l1", ts_recv=ts_recv,
-        native=native))
+    """The quote as the daemon pushes it: its bus's current record (each field's times in field_ts)."""
+    msg = quote_msg(symbol=symbol, bid=native.get("BID_PRICE"), src="schwab_l1", ts_recv=ts_recv, native=native)
+    bus = MessageBus()
+    bus.publish(f"quote.{symbol}", msg)
+    ofs._ingest_pushed(f"quote.{symbol}", bus.current[current_key(f"quote.{symbol}", msg)][1])
 
 
 def _push_book(symbol, content, ts_recv):
@@ -50,8 +53,8 @@ def test_l1_message_lands_in_the_tape_and_the_console_keeps_no_price(tmp_path, m
               "LAST_SIZE": 100, "TRADE_TIME_MILLIS": 1000, "TOTAL_VOLUME": 5000}
     _push_l1("SPY", native, ts_recv=time.time())
 
-    top = ofls.get_content_for_symbol("SPY")
-    assert any(item.get("LAST_PRICE") == 450.0 for item in top)
+    assert [(p["price"], p["size"], p["time_millis"]) for p in history.TAPE.prints("SPY")] == [(450.0, 100, 1000)]
+    assert not any("LAST_PRICE" in item for item in ofls.get_content_for_symbol("SPY"))   # one store
     assert lmp.get_quote("SPY") is None          # the price is the daemon's row, not a copy here
 
 
@@ -121,5 +124,5 @@ def test_each_symbol_lands_in_its_own_state_only(tmp_path, monkeypatch):
     monkeypatch.setattr(lmp, "_by_ticker", {})
     _push_l1("QQQ", {"key": "QQQ", "LAST_PRICE": 380.0}, ts_recv=time.time())
 
-    assert not any(i.get("LAST_PRICE") == 380.0 for i in ofls.get_content_for_symbol("SPY"))
-    assert any(i.get("LAST_PRICE") == 380.0 for i in ofls.get_content_for_symbol("QQQ"))
+    assert not any(p["price"] == 380.0 for p in history.TAPE.prints("SPY"))
+    assert any(p["price"] == 380.0 for p in history.TAPE.prints("QQQ"))

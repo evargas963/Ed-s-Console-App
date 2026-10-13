@@ -28,19 +28,18 @@ const ctx = {
 ctx.window = ctx;
 ctx.globalThis = ctx;
 // the shell (ed-core.js) as the heatmap uses it: the view, no pan, no expiry selected, and the
-// console's pushed answer of the surface route (EdShell.live)
+// panel the console pushes (EdShell.onPanel)
+const panels = {};
 ctx.EdShell = {
-  live: () => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(surface) }),
+  onPanel: (name, fn) => { panels[name] = fn; }, setInput: () => {},
   getState: () => ({ workspace: 'options', subview: 'gamma', view: 'heatmap', ticker: surface.ticker }),
   getMeasure: () => 'gex', getExpiry: () => null, setStrike: () => {},
-  newPan: () => ({ centre: null, shift: 0, served: null }), panServed: (pan, c) => { pan.served = c; },
-  windowQuery: () => '&scope=all', wireStrikeAxis: () => {},
+  pan: () => ({ centre: null, shift: 0, served: null }), panServed: (pan, c) => { pan.served = c; },
+  wireStrikeAxis: () => {},
 };
 vm.createContext(ctx);
-vm.runInContext(readFileSync(join(ROOT, 'static/js/l1_sse_guards.js'), 'utf8'), ctx, { filename: 'l1_sse_guards.js' });
 vm.runInContext(readFileSync(join(ROOT, 'static/js/ed-gamma.js'), 'utf8'), ctx, { filename: 'ed-gamma.js' });
-(listeners['ed:view'] || []).forEach((fn) => fn({ detail: {} }));
-await new Promise((r) => setTimeout(r, 50));
+panels['gamma.surface']({ ok: true, status: 200, body: surface });
 const cell = /<td class="hcell[^"]*"[^>]*data-strike="([^"]*)" data-expiry="([^"]*)"[^>]*>(.*?)<\/td>/g;
 let m;
 while ((m = cell.exec(host.innerHTML)) !== null) {

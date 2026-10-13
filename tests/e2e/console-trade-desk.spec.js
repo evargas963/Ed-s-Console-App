@@ -6,8 +6,9 @@
  * (tests/fixtures/real_spy_level_crosses.json). Any page error fails the test.
  */
 const { test, expect, pushChange } = require('./fixtures/live_socket');
+const { expiriesAnswer } = require('./fixtures/expiries');
 const path = require('path');
-const { mockPriceSocket } = require('./fixtures/price_socket');
+const { mockPriceSocket, schwabQuote } = require('./fixtures/price_socket');
 const { routeWatchlist } = require('./fixtures/watchlist');
 
 const CROSSES = require(path.join(__dirname, '..', 'fixtures', 'real_spy_level_crosses.json')).rows.slice(0, 3);
@@ -52,7 +53,7 @@ const BARS = { ticker: 'SPY', tf: '30', bars: [{ t: 1790343000, o: 770, h: 772, 
 async function intercept(page) {
   await page.route('**/api/**', (route) => {
     const url = route.request().url();
-    let body = { available: false };
+    let body = url.includes('/api/expiries') ? expiriesAnswer([]) : { available: false };
     if (url.includes('/api/desk/events')) body = Object.assign({}, EVENTS, { tf: new URL(url).searchParams.get('tf') });
     else if (url.includes('/api/terrain/strikes')) body = STRIKES;
     else if (url.includes('/api/terrain')) body = TERRAIN;
@@ -180,7 +181,7 @@ test.describe('Trade Desk renders served values', () => {
     const errs = watchErrors(page);
     await page.route('**/api/**', (route) => {
       const url = route.request().url();
-      let body = { available: false };
+      let body = url.includes('/api/expiries') ? expiriesAnswer([]) : { available: false };
       if (url.includes('/api/levels')) body = LEVELS;
       else if (url.includes('/api/bars1m')) body = BARS;
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
@@ -204,7 +205,7 @@ test.describe('Trade Desk renders served values', () => {
     await page.route('**/api/**', (route) => {
       const url = route.request().url();
       if (url.includes('/api/desk/events')) return;               // the event queue has not answered
-      let body = { available: false };
+      let body = url.includes('/api/expiries') ? expiriesAnswer([]) : { available: false };
       if (url.includes('/api/levels')) body = LEVELS;
       else if (url.includes('/api/bars1m')) body = BARS;
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
@@ -474,9 +475,10 @@ test.describe('Trade Desk renders served values', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const body = page.locator('#tdBody');
     await expect(body).toContainText('(NYSE_BOOK, depth 5)');
-    await page.evaluate(() => {          // the venue each draw from here on shows
+    await page.evaluate(() => {          // the venue each draw from here on shows, and the venue then on screen
       window.__draws = [];
-      new MutationObserver(() => window.__draws.push((document.getElementById('tdBody').textContent.match(/\((NYSE|NASDAQ)_BOOK/) || [''])[0]))
+      new MutationObserver(() => window.__draws.push([(document.getElementById('tdBody').textContent.match(/\((NYSE|NASDAQ)_BOOK/) || [''])[0],
+        '(' + window.EdShell.getState().bookVenue]))
         .observe(document.getElementById('tdBody'), { childList: true });
     });
     slow = true;
@@ -487,10 +489,10 @@ test.describe('Trade Desk renders served values', () => {
     await pushed;                                                    // the slow NYSE answer has landed
     await page.waitForTimeout(400);
     const draws = await page.evaluate(() => window.__draws);
-    // every draw is the venue on screen; the old venue's late answer never draws (the push's
-    // change kind redraws the venue on screen from its newest answer)
-    expect(draws.length).toBeGreaterThan(0);
-    expect(draws.filter((d) => d !== '(NASDAQ_BOOK')).toEqual([]);
+    // every draw is the venue on screen at that draw; the old venue's late answer never draws
+    // after the switch (each panel's answer is drawn as it is pushed)
+    expect(draws.filter((d) => d[1] === '(NASDAQ_BOOK').length).toBeGreaterThan(0);
+    expect(draws.filter((d) => d[0] !== d[1])).toEqual([]);
   });
 
   test('Right Now: a read cut short by a scope change never draws', async ({ page }) => {
@@ -506,16 +508,18 @@ test.describe('Trade Desk renders served values', () => {
       if (slow) { inFlight += 1; await new Promise((r) => setTimeout(r, 800)); }   // the push's read is in flight ...
       route.fallback();
     });
+    await mockPriceSocket(page, [schwabQuote('SPY', SPOT)]);      // the spot: the header's price row
     await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
       localStorage.setItem('ed_sub', 'right-now'); localStorage.setItem('ed_scope', 'auto'); } catch (e) {} });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#tdMigration .gbs-k')).toHaveText(['772', '771', '770']);
-    await page.evaluate(() => {          // every draw of the page from here on: its strikes and its spot
+    await expect(page.locator('#tdBody .fl-meta')).toHaveText('spot 771.30');
+    await page.evaluate(() => {          // every draw of the page from here on: its strikes and its spot, and the scope then on screen
       window.__draws = [];
       new MutationObserver(() => {
         const ks = [...document.querySelectorAll('#tdMigration .gbs-k')].map((e) => e.textContent).join(',');
         const meta = document.querySelector('#tdBody .fl-meta');
-        window.__draws.push(ks + ' | ' + (meta ? meta.textContent : ''));
+        window.__draws.push([ks + ' | ' + (meta ? meta.textContent : ''), window.EdShell.getState().scope]);
       }).observe(document.getElementById('tdBody'), { childList: true });
     });
     slow = true;
@@ -527,9 +531,11 @@ test.describe('Trade Desk renders served values', () => {
     await pushed;                                                    // the slow answer has landed
     await page.waitForTimeout(400);
     const draws = await page.evaluate(() => window.__draws);
-    // every draw is the scope on screen; the old scope's late answer never draws
-    expect(draws.length).toBeGreaterThan(0);
-    expect(draws.filter((d) => d !== '792,791,790 | spot 771.30')).toEqual([]);
+    // every draw is the scope on screen at that draw; the old scope's late answer never draws
+    // after the change
+    const drawn = { auto: '772,771,770 | spot 771.30', wider: '792,791,790 | spot 771.30' };
+    expect(draws.filter((d) => d[1] === 'wider').length).toBeGreaterThan(0);
+    expect(draws.filter((d) => d[0] !== drawn[d[1]])).toEqual([]);
   });
 
   test('Market Map: 3m, line mode, a level beyond the visible range pinned at the edge, and the FORCES split', async ({ page }) => {
@@ -538,7 +544,7 @@ test.describe('Trade Desk renders served values', () => {
     const wall = { id: 'call_wall', price: 772, family: 'gamma', label: 'Call wall', evidence_tier: 'DERIVED', distance: 0.7, side: 'ABOVE', };
     await page.route('**/api/**', (route) => {
       const url = route.request().url();
-      let body = { available: false };
+      let body = url.includes('/api/expiries') ? expiriesAnswer([]) : { available: false };
       if (url.includes('/api/desk/events')) body = EVENTS;
       else if (url.includes('/api/terrain/strikes')) body = Object.assign({}, STRIKES, { today_side_sums: { gex_below: -1.2e9, gex_above: 8e8 } });
       else if (url.includes('/api/forces')) body = { ticker: 'SPY', available: true, doi_below: 1200, doi_above: -300,
@@ -572,7 +578,7 @@ test.describe('Trade Desk renders served values', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
       await page.route('**/api/**', (route) => {
         const url = route.request().url();
-        let body = { available: false };
+        let body = url.includes('/api/expiries') ? expiriesAnswer([]) : { available: false };
         if (url.includes('/api/desk/events')) body = EVENTS;
         else if (url.includes('/api/terrain/strikes')) body = STRIKES;
         else if (url.includes('/api/terrain')) body = terrain;
