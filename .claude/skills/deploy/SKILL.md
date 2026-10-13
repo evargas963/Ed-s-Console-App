@@ -6,7 +6,10 @@ description: Use to start, stop, restart or deploy the production capture daemon
 Production is the `EdWebConsole` checkout: `start_ed_console.bat` runs `launch.py`, which brings the
 checkout to `origin/main`, starts the capture daemon in its own window and `uvicorn server:app` on port
 8000. Python 3.13, the project `.venv`; live needs `schwab_token.json` (`python reauth_schwab.py`). Probe
-`127.0.0.1`, never `localhost` (Windows tries IPv6 first, about 2 s per probe).
+`127.0.0.1`, never `localhost` (Windows tries IPv6 first, about 2 s per probe). Files under `data/` are
+delete-protected (`evarg:(DENY)(DE)` on `ed_console.db` and `stream_capture.db`, `(DENY)(DC)` on `data/`); the agent never lifts it
+(`tools/operator_law_guard.py`). To move one aside, Ed runs `icacls <file> /remove:d evarg`, moves it,
+then `icacls <file> /deny "evarg:(DE)"` on both the moved file and its replacement.
 
 1. Read the session the yes guard reads (Schwab's /markets answer, as the daemon recorded it):
    `.venv/Scripts/python.exe -c "import sys; sys.path.insert(0, 'tools'); import operator_yes_guard as g, time_et; from db_authority import canonical_stream_db_path; print(g.market_session(time_et.now_et(), canonical_stream_db_path()))"`.
