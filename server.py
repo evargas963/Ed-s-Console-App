@@ -875,16 +875,16 @@ def _stamp_gamma_surface_cell_stream_state(surface: dict, records: dict, now: fl
                 if not sym:
                     continue
                 record = records.get(sym)
-                if record is not None and lmp.feed_live_for(sym, "LEVELONE_OPTIONS", now):
-                    leg_state = "live"
-                elif record is not None:
-                    leg_state = "stale"
-                elif sym in records:
-                    leg_state = "pending"
-                else:
+                if sym not in records:
                     leg_state = "unavailable"
+                elif not record:
+                    leg_state = "pending"
+                elif lmp.feed_live_for(sym, "LEVELONE_OPTIONS", now):
+                    leg_state = "live"
+                else:
+                    leg_state = "stale"
                 leg_states.append(leg_state)
-                ts_recv = record.ts_recv if record is not None else None
+                ts_recv = record.ts_recv if record else None
                 legs[side] = {
                     "symbol": sym, "state": leg_state, "ts_recv": ts_recv,
                     "age_sec": (now - ts_recv if ts_recv is not None else None),
@@ -2385,12 +2385,12 @@ def get_chain(ticker: str = Query(...),
                             or NO_CHAIN_YET)
     if resolved_expiry is None:
         return _unavailable("no listed expiry for this ticker")
-    response_contracts = [c for c in chain if str(c.get("expirationDate") or "")[:10] == resolved_expiry]
-    if not response_contracts:
+    contracts = [c for c in chain if str(c.get("expirationDate") or "")[:10] == resolved_expiry]
+    if not contracts:
         return _unavailable(f"the chain lists no contracts for {resolved_expiry}")
     fetched_ts = held.get("_chain_fetched_ts")
     live_spot, _src, _ts = resolve_spot(t, now=now)       # the one spot on every screen
-    ladder, not_on_ladder = chain_ladder(response_contracts, live_spot)
+    ladder, not_on_ladder = chain_ladder(contracts, live_spot)
     # this expiry's net GEX per strike, as the heatmap publishes it (its column of the surface):
     # Strike Detail shows it beside this expiry's contracts -- one value, one producer
     surf = held.get("_gamma_surface") or {}
@@ -2402,16 +2402,16 @@ def get_chain(ticker: str = Query(...),
         "ticker": t, "spot": live_spot, "priced_at_spot": held.get("spot"),
         "expiry": resolved_expiry,
         "net_gex_by_strike": net_gex_by_strike,
-        "spot_strike": nearest_strike({k for c in response_contracts
+        "spot_strike": nearest_strike({k for c in contracts
                                        if (k := schwab_number(c.get("strikePrice"))) is not None}, live_spot),
         # Schwab's own flag for a non-standard (adjusted) deliverable, as sent
-        "adjusted_deliverable_symbols": [c.get("symbol") for c in response_contracts
+        "adjusted_deliverable_symbols": [c.get("symbol") for c in contracts
                                          if c.get("nonStandard") is True],   # external-key-ok: Schwab option chain contract
         # two contracts listed at one (strike, side): the chain is not strike-unique
-        "has_duplicate_contracts": len({(schwab_number(c.get("strikePrice")), c.get("putCall")) for c in response_contracts})
-                                   < len(response_contracts),
+        "has_duplicate_contracts": len({(schwab_number(c.get("strikePrice")), c.get("putCall")) for c in contracts})
+                                   < len(contracts),
         "chain_as_of_ts_utc": fetched_ts,
-        "contracts": response_contracts, "status": "ok",
+        "contracts": contracts, "status": "ok",
         "ladder": ladder, "n_strikes": len({r["strike"] for r in ladder}),
         "contracts_not_on_ladder": not_on_ladder,   # no strike, or a putCall other than CALL/PUT
         "scope": {"kind": "complete_single_expiry", "requested_expiry": resolved_expiry,

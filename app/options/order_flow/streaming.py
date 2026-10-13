@@ -392,7 +392,7 @@ def _apply_heartbeat(feed: Any) -> None:
     previous = _lmp.record_feed_heartbeat(feed)
     if previous is None:
         return
-    before = set().union(*(previous.get(s, ()) for s in OPTION_PRODUCER_SERVICES))
+    before = set().union(*(previous[s] for s in OPTION_PRODUCER_SERVICES if s in previous))
     for sym in before.difference(*(_lmp.held_reported(s) for s in OPTION_PRODUCER_SERVICES)):
         clear_symbol(sym)
         _option_contract_last_update_ts.pop(sym, None)
