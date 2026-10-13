@@ -144,6 +144,43 @@ def test_after_the_last_option_close_rows_before_the_newest_five_sessions_are_re
         "quotes:1 options:1 feed:1 watchlist:1 newest-watchlist:09-30 12:00"
 
 
+def test_every_message_arriving_during_the_keep_is_written_while_old_rows_are_still_being_removed(tmp_path):
+    """Production's stream_capture.db was made before the receipt-time indexes: its tables hold only
+    their per-symbol index. 200,000 option quotes received before the newest five sessions began
+    (ten parts of the keep), and 2,000 equity quotes arriving while the keep runs: each one is
+    written while old rows remain, and the keep then removes every old row and nothing else."""
+    db = tmp_path / "stream_capture.db"
+    writer = CaptureWriter(db)
+    with sqlite3.connect(db) as conn:
+        for index in ("idx_sqr_ts", "idx_sbkr_ts", "idx_soqr_ts"):            # as production's file
+            conn.execute(f"DROP INDEX {index}")
+        contract = SPY_0DTE.chain[0]["symbol"]
+        old = _et("2026-09-30 15:00")
+        conn.executemany("INSERT INTO stream_options_quotes_raw(ts_recv,symbol,native_json,src,schwab_ts) "
+                         "VALUES(?,?,?,?,?)", ((old + i / 1000, contract, '{"key":"' + contract + '"}',
+                                                "schwab_options_l1", None) for i in range(200_000)))
+    bus = MessageBus()
+    now = _et("2026-10-07 17:00")
+
+    async def go():
+        stop = asyncio.Event()
+        task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
+        await asyncio.sleep(0)
+        writer.prune(_et("2026-10-01 00:00"))
+        for i in range(2_000):
+            bus.publish("quote.SPY", quote_msg(symbol="SPY", last=776.61, src="schwab_l1", ts_recv=now + i / 1000,
+                                               native={"key": "SPY"}))
+        await _until(lambda: writer.status()["rows_written"] >= 2_000)
+        old_left = _rows(db, "SELECT COUNT(*) FROM stream_options_quotes_raw")[0][0]
+        await _until(lambda: _rows(db, "SELECT COUNT(*) FROM stream_options_quotes_raw")[0][0] == 0, 60)
+        stop.set()
+        await task
+        return old_left
+    old_left = asyncio.run(go())
+    assert old_left > 0, "the keep had finished before the messages that arrived during it were written"
+    assert _rows(db, "SELECT COUNT(*) FROM stream_quotes_raw")[0][0] == 2_000
+
+
 def test_nothing_is_removed_while_the_options_trade_or_the_market_is_unknown(tmp_path):
     """2026-10-07 12:00 ET, the options open; and 2027-10-12, a date Schwab's held answers do not
     reach: no row is removed (never on a guess)."""

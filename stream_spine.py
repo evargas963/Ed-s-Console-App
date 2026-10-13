@@ -785,6 +785,25 @@ class _Spill:
             self._in.close()
 
 
+def _first_kept_rowid(conn: sqlite3.Connection, table: str, column: str, before: float) -> int:
+    """The first rowid of `table` whose row was received at `before` or later. Rows are appended as
+    they are received, so a binary search on rowid finds it in a few dozen key lookups. A row
+    written out of order (held, then written back) below it is still checked by its own time, and
+    one above it waits for the next keep."""
+    lo, hi = conn.execute(f"SELECT MIN(rowid), MAX(rowid) FROM {table}").fetchone()
+    if lo is None:
+        return 0
+    hi += 1
+    while lo < hi:
+        row = conn.execute(f"SELECT rowid, {column} FROM {table} WHERE rowid >= ? ORDER BY rowid LIMIT 1",
+                           ((lo + hi) // 2,)).fetchone()
+        if row is None or row[1] >= before:
+            hi = (lo + hi) // 2
+        else:
+            lo = row[0] + 1
+    return lo
+
+
 class CaptureWriter:
     """Writes every bus message to stream_capture.db from its own thread, in batches
     (commit every `batch_rows` rows or `batch_sec`). Never points at ed_console.db. A message
@@ -1069,15 +1088,15 @@ class CaptureWriter:
                     item = False
                 stopping = stopping or item is None
                 incoming = [item] if item else []
+                while not stopping:        # every message already queued is taken in this round
+                    try:
+                        item = q.get_nowait()
+                    except queue.Empty:
+                        break
+                    stopping = item is None
+                    incoming += [item] if item else []
                 holding = bool(self._waiting) or bool(self._spills)
                 if holding:                # every queued message joins the held ones, in order
-                    while not stopping:
-                        try:
-                            item = q.get_nowait()
-                        except queue.Empty:
-                            break
-                        stopping = item is None
-                        incoming += [item] if item else []
                     self._admit(incoming)
                     del incoming           # what was spilled is held on disk only
                     items = self._waiting
@@ -1100,7 +1119,9 @@ class CaptureWriter:
                             self._waiting, self._waiting_bytes = [], 0
                     if self._spills and not self._waiting:
                         self._write_back(conn)
-                    if self._prune and not self._waiting and not self._spills and not self._batch:
+                    # the keep takes a part only while nothing waits to be written and no stop is asked
+                    if self._prune and not stopping and q.empty() and not self._waiting and not self._spills \
+                            and not self._batch:
                         self._prune_part(conn)
                 except DATABASE_REFUSALS as e:
                     if conn is not None:
@@ -1193,11 +1214,15 @@ class CaptureWriter:
             self._prune_before, self._prune, self._pruned = before, list(KEPT_BY_TIME), Counter()
 
     def _prune_part(self, conn: sqlite3.Connection) -> None:
-        """The next part of the keep in progress (prune), in one transaction."""
+        """The next part of the keep in progress (prune), in one transaction: rows below the table's
+        first rowid received at or after the keep's time (_first_kept_rowid), so a part reads a
+        range of the table's own key, whatever indexes the file holds."""
         table, column = self._prune[0]
+        upto = _first_kept_rowid(conn, table, column, self._prune_before)
         newest = f" AND rowid < (SELECT MAX(rowid) FROM {table})" if table == "stream_watchlist" else ""
-        removed = conn.execute(f"DELETE FROM {table} WHERE rowid IN (SELECT rowid FROM {table} "
-                               f"WHERE {column} < ?{newest} LIMIT ?)", (self._prune_before, PRUNE_ROWS)).rowcount
+        removed = conn.execute(f"DELETE FROM {table} WHERE rowid IN (SELECT rowid FROM {table} WHERE rowid < ? "
+                               f"AND {column} < ?{newest} ORDER BY rowid LIMIT ?)",
+                               (upto, self._prune_before, PRUNE_ROWS)).rowcount
         conn.commit()
         with self._lock:
             self._pruned[table] += removed
