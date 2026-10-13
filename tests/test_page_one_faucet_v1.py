@@ -22,6 +22,7 @@ import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 import server
 from stream_spine import options_quote_msg
+from tests.feed_live_helper import no_daemon
 from time_et import ET
 
 _REAL = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_crwd_complete_chain_quarter.json")
@@ -165,8 +166,7 @@ def test_heatmap_column_state_cell_age_and_front_expiry_are_served():
         with server._terrain_cache_lock:
             server._terrain_cache.pop(TK, None)
         ofs._price_rows.pop(TK, None)
-        ofs._drop_released_options(_AT.timestamp())
-        lmp.record_feed_down()
+        no_daemon()
     assert body["stream_by_expiry"][EXPIRY] == "partial"
     ages = [c["stream"][0]["age_sec"] for c in body["cells"] if c["stream"][0] and c["stream"][0]["age_sec"] is not None]
     assert ages == [pytest.approx(2.0)]

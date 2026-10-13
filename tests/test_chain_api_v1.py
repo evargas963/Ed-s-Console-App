@@ -1,5 +1,5 @@
 """GET /api/chain: one expiry of the full chain the daemon delivered (strike_range=ALL), every Schwab
-field as sent, with streamed option values newer than the chain overlaid (question 1: everything
+field as sent, each contract the daemon streams priced from its stream (question 1: everything
 Schwab sent, exactly as sent; question 2: the screen shows the newest).
 
 Through the real code: the levels producer holds the chain (server._publish_levels), the daemon's
@@ -20,10 +20,11 @@ import pytest
 
 import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
-import live_market_plane as lmp
 import server as srv
+from math_exposure_core import stream_priced
 from schwab_client import flatten_chain_contracts
 from stream_spine import options_quote_msg
+from tests.feed_live_helper import daemon_holds, no_daemon
 from time_et import ET
 
 _FIXTURES = Path(__file__).parent / "fixtures"
@@ -38,9 +39,10 @@ _AT = datetime(2026, 8, 30, 12, 0, tzinfo=ET)          # before every expiry of 
 @pytest.fixture(autouse=True)
 def _clean():
     ofls.clear_all_live_state()
+    no_daemon()
     yield
     ofls.clear_all_live_state()
-    lmp.record_feed_down()
+    no_daemon()
     with srv._terrain_cache_lock:
         for tk in ("TSLA", "MRVL"):
             srv._terrain_cache.pop(tk, None)
@@ -52,13 +54,13 @@ def _hold(tk, contracts, fetched_ts, price, streamed=()):
     streamed (symbol, fields, receive time) pushed, and `tk`'s chain published at _AT; the status
     beats at _AT (the publication's time) and again now (the routes' time)."""
     held = {"LEVELONE_EQUITIES": [tk], "LEVELONE_OPTIONS": [s for s, _f, _t in streamed]}
-    lmp.record_feed_heartbeat({"ts": _AT.timestamp(), "schwab_socket_open": True, "held": held})
+    daemon_holds(_AT.timestamp(), held)
     ofs._price_rows[tk] = {"ticker": tk, "spot": price, "trade_ts": fetched_ts}
     for sym, fields, ts in streamed:
         ofs._ingest_pushed(f"optquote.{sym}", options_quote_msg(symbol=sym, content={"key": sym, **fields},
                                                                 src="schwab_options_l1", ts_recv=ts))
     srv._publish_levels(tk, [dict(c) for c in contracts], fetched_ts, now=_AT)
-    lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "held": held})
+    daemon_holds(time.time(), held)
 
 
 def _get(**kw):
@@ -92,32 +94,25 @@ def test_only_the_requested_expiry_is_served():
     assert missing["status"] == "unavailable" and "2031-01-17" in missing["scope"]["reason"]
 
 
-def test_a_streamed_volume_newer_than_the_chain_is_overlaid():
-    fetched = _AT.timestamp() - 20.0
-    target = _TSLA_CONTRACTS[0]
-    streamed = (target["totalVolume"] or 0) + 4321
-    _hold("TSLA", _TSLA_CONTRACTS, fetched, 330.0, [(target["symbol"], {"TOTAL_VOLUME": streamed}, _AT.timestamp())])
-    body = _get(ticker="TSLA")
-    overlaid = next(c for c in body["contracts"] if c["symbol"] == target["symbol"])
-    assert overlaid["totalVolume"] == streamed and body["stream_overlay_contracts"] == 1
-    assert all(overlaid[k] == v for k, v in target.items() if k != "totalVolume")
-    assert [c for c in body["contracts"] if c["symbol"] != target["symbol"]] == _TSLA_CONTRACTS[1:]
-
-
-def test_each_field_is_the_newest_schwab_sent_streamed_or_chain():
-    """Coordinator review of #433/#434 (2026-10-01): per field the newest Schwab value wins, by
-    receive time. A volume streamed before the chain was fetched keeps the chain's volume; a gamma
-    streamed after it is applied; a field the stream never sent keeps the chain's."""
+def test_a_streamed_contract_is_served_as_its_stream_sent_it_every_other_as_the_chain():
+    """The levels' priced chain is what the route serves, never a second pricing: a streamed
+    contract's STREAMED_CHAIN_FIELDS are its record's, whenever the chain was fetched (a volume
+    streamed before it included), one the stream has not sent is absent, open interest is the
+    chain's; every other contract is the chain's as Schwab sent it."""
     now = _AT.timestamp()
     target = _TSLA_CONTRACTS[0]
     volume, gamma = (target["totalVolume"] or 0) + 4321, (target["gamma"] or 0) + 0.05
-    _hold("TSLA", _TSLA_CONTRACTS, now, 330.0, [(target["symbol"], {"TOTAL_VOLUME": volume}, now - 8),
-                                                 (target["symbol"], {"GAMMA": gamma}, now + 1)])
+    _hold("TSLA", _TSLA_CONTRACTS, now, 330.0,
+          [(target["symbol"], {"TOTAL_VOLUME": volume, "GAMMA": gamma}, now - 8)])
     body = _get(ticker="TSLA")
-    overlaid = next(c for c in body["contracts"] if c["symbol"] == target["symbol"])
-    assert overlaid["totalVolume"] == target["totalVolume"] and overlaid["gamma"] == gamma
-    assert overlaid["openInterest"] == target["openInterest"]          # never streamed: the chain's
-    assert body["stream_overlay_contracts"] == 1
+    served = next(c for c in body["contracts"] if c["symbol"] == target["symbol"])
+    assert served == stream_priced(target, {"TOTAL_VOLUME": volume, "GAMMA": gamma})
+    assert served["totalVolume"] == volume and served["gamma"] == gamma and served["delta"] is None
+    assert served["openInterest"] == target["openInterest"]
+    assert [c for c in body["contracts"] if c["symbol"] != target["symbol"]] == _TSLA_CONTRACTS[1:]
+    with srv._terrain_cache_lock:
+        priced = srv._terrain_cache["TSLA"]["_priced_chain"]
+    assert body["contracts"] == [c for c in priced if c["expirationDate"].startswith(_TSLA_EXPIRY)]
 
 
 def test_the_route_answers_over_real_http():

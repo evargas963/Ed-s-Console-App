@@ -38,12 +38,13 @@ def _et(s: str) -> float:
     return datetime.fromisoformat(s).replace(tzinfo=ET).timestamp()
 
 
-def _setup(tmp_path, schwab: LocalSchwab, now: float):
-    """The daemon's bus holding HELD's stream record, its sweep on a fixed clock, and the client."""
+def _setup(tmp_path, schwab: LocalSchwab, now: float, events: "int | None" = None):
+    """The daemon's bus holding HELD's stream record (its first `events` messages, all when None),
+    its sweep on a fixed clock, and the client."""
     client = schwab.client(tmp_path)
     daemon = capture.Daemon(MessageBus(), HealthRegistry(), ["SPY", "TSLA"])
     daemon.held["LEVELONE_OPTIONS"] = frozenset({HELD})          # Schwab accepted it on this connection
-    for e in _STREAM["events"]:
+    for e in _STREAM["events"][:events]:
         if e["kind"] == "l1":
             daemon.bus.publish(f"optquote.{HELD}", options_quote_msg(
                 symbol=HELD, content={**e["content"], "key": HELD}, src="schwab_options_l1",
@@ -90,9 +91,9 @@ def test_a_rotation_asks_schwab_as_documented_one_request_at_a_time_with_exact_g
 
     spy, tsla = delivered(published, "SPY"), delivered(published, "TSLA")
     assert len(spy) == len(SPY["chain"]) and len(tsla) == len(TSLA["chain"])
-    record = daemon.option_record(HELD)[1]
-    assert {f: spy[HELD][f] for f in GREEKS} == {f: record["content"][f.upper()] for f in GREEKS}
-    assert spy[HELD]["greeksTime"] == {f: record["field_ts"][f.upper()][0] for f in GREEKS}
+    content, field_ts = daemon.option_record(HELD)
+    assert {f: spy[HELD][f] for f in GREEKS} == {f: content[f.upper()] for f in GREEKS}
+    assert spy[HELD]["greeksTime"] == {f: field_ts[f.upper()][0] for f in GREEKS}
     rounded = {ct["symbol"]: ct["gamma"] for ct in SPY["chain"]}
     for sym, ct in spy.items():
         if sym != HELD:
@@ -108,6 +109,23 @@ def test_a_rotation_asks_schwab_as_documented_one_request_at_a_time_with_exact_g
                             "ORDER BY ticker").fetchall()
     assert rows == [("SPY", "2026-11-20", SPY["spot"], len(SPY["chain"])),
                     ("TSLA", "2026-10-09", TSLA["spot"], len(TSLA["chain"]))]
+
+
+def test_a_held_contract_is_never_asked_for_on_quotes_before_its_stream_sends_its_greeks(tmp_path):
+    """The stream is a held contract's source (Streamer API §1.1, LEVELONE_OPTIONS: Change): its
+    first message carried no Greek (SPY 260904C00772000's, as captured), so its Greeks are
+    absent until the stream sends them, never the quotes endpoint's."""
+    schwab = LocalSchwab()
+    _daemon, sweep, client, published = _setup(tmp_path, schwab, _et("2026-10-01 10:15"), events=1)
+    try:
+        sweep.rotation(client, ["SPY", "TSLA"], threading.Event())
+    finally:
+        schwab.close()
+    assert not {f.upper() for f in GREEKS} & set(_STREAM["events"][0]["content"])
+    quoted = {s for path, q, *_ in schwab.requests if path == QUOTES for s in q["symbols"].split(",")}
+    held = delivered(published, "SPY")[HELD]
+    assert HELD not in quoted
+    assert {f: held[f] for f in GREEKS} == dict.fromkeys(GREEKS) and held["greeksTime"] == dict.fromkeys(GREEKS)
 
 
 def test_a_refused_quotes_request_fails_each_ticker_in_it_and_the_next_request_goes_at_once(tmp_path):

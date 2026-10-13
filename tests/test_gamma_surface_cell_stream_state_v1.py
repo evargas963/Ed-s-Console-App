@@ -20,9 +20,9 @@ import pytest
 
 import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
-import live_market_plane as lmp
 import server
 from stream_spine import options_quote_msg
+from tests.feed_live_helper import daemon_holds, no_daemon
 from tests.real_chains import CRWD
 from time_et import ET
 
@@ -38,10 +38,10 @@ PUTS = [c["symbol"] for c in _CONTRACTS if c["putCall"] == "PUT"]
 @pytest.fixture(autouse=True)
 def _clean():
     ofls.clear_all_live_state()
-    lmp.record_feed_down()
+    no_daemon()
     yield
     ofls.clear_all_live_state()
-    lmp.record_feed_down()
+    no_daemon()
     ofs._price_rows.pop(TK, None)
     with server._terrain_cache_lock:
         server._terrain_cache.pop(TK, None)
@@ -51,8 +51,8 @@ def _publish(held, ticked, *, at=_AT, socket_open=True):
     """The daemon holding `held` on LEVELONE_OPTIONS, Schwab having sent a GAMMA for each of
     `ticked` a second before `at`, CRWD's chain published at `at`; the route's coverage of every
     strike, and the published surface."""
-    lmp.record_feed_heartbeat({"ts": at.timestamp(), "schwab_socket_open": socket_open,
-                               "held": {"LEVELONE_EQUITIES": [TK], "LEVELONE_OPTIONS": list(held)}})
+    daemon_holds(at.timestamp(), {"LEVELONE_EQUITIES": [TK], "LEVELONE_OPTIONS": list(held)},
+                 socket_open=socket_open)
     ofs._price_rows[TK] = {"ticker": TK, "spot": _SPOT, "trade_ts": at.timestamp()}
     for sym in ticked:
         ofs._ingest_pushed(f"optquote.{sym}", options_quote_msg(
@@ -104,7 +104,9 @@ def test_a_contract_that_streamed_reads_stale_while_schwabs_socket_is_closed():
     sym = CALLS[0]
     cov, surface = _publish([sym], [sym], at=_CLOSED, socket_open=False)
     assert [leg["state"] for leg in _legs(surface, sym)] == ["stale"]
-    assert surface["stream_overlay_symbols"] == [sym]
+    with server._terrain_cache_lock:
+        priced = server._terrain_cache[TK]["_priced_chain"]
+    assert next(ct["gamma"] for ct in priced if ct["symbol"] == sym) == 0.05
     assert cov["stale"] == 1 and cov["live"] == 0
 
 

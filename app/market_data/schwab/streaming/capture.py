@@ -607,13 +607,15 @@ class Daemon:
         self.bus.publish(*watchlist_message(self.watchlist, op=op, ticker=ticker, request_id=rid, status=status,
                                             answer=answer))
 
-    def option_record(self, symbol: str) -> "tuple[str, dict] | None":
-        """`symbol`'s current LEVELONE_OPTIONS record on the bus, (topic, record), while this
-        connection holds it on LEVELONE_OPTIONS; None otherwise (the chain sweep reads each
-        contract's Greeks from it, and asks the quotes endpoint for every contract it returns None
-        for: a record left from a connection that ended is not held)."""
-        held = symbol in self.held["LEVELONE_OPTIONS"]
-        return self.bus.current.get(_current_key("LEVELONE_OPTIONS", symbol)) if held else None
+    def option_record(self, symbol: str) -> "tuple[dict, dict] | None":
+        """`symbol`'s LEVELONE_OPTIONS record while this connection holds it, (content, field_ts):
+        every field Schwab has sent and each one's (Schwab time, receive time); empty before its
+        first message. None when it is not held (a record left from a connection that ended is
+        not held): the chain sweep asks the quotes endpoint for that contract."""
+        if symbol not in self.held["LEVELONE_OPTIONS"]:
+            return None
+        entry = self.bus.current.get(_current_key("LEVELONE_OPTIONS", symbol))
+        return (entry[1]["content"], entry[1]["field_ts"]) if entry is not None else ({}, {})
 
     def status(self) -> dict:
         """What the console and browsers are told every second (live_push / live_ui)."""

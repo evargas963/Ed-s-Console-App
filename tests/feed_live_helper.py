@@ -47,6 +47,33 @@ def mark_feed_down() -> None:
     lmp.record_feed_down()
 
 
+def daemon_holds(at: float, held: dict, *, socket_open: bool = True) -> None:
+    """The daemon's heartbeat stamped `at`, holding `held` ({Schwab service: [symbols]}), as the
+    console's feed loop applies it (streaming._apply_heartbeat)."""
+    from app.options.order_flow import streaming as ofs
+    ofs._apply_heartbeat({"ts": at, "schwab_socket_open": socket_open, "held": held})
+
+
+def through_the_daemons_bus(bus, sym: str, ticks: list, ts: "list[float] | None" = None) -> None:
+    """Each LEVELONE_OPTIONS tick of `sym` (received at `ts`, else 1000 s on) published on the
+    daemon's bus (stream_spine.MessageBus), and its current record (every field Schwab has sent,
+    the last of each: Streamer API §1.1, Change) pushed to the console as the daemon pushes it."""
+    from app.options.order_flow import streaming as ofs
+    from stream_spine import current_key, options_quote_msg
+    for i, tick in enumerate(ticks):
+        topic, msg = f"optquote.{sym}", options_quote_msg(
+            symbol=sym, content={"key": sym, **tick}, src="schwab_options_l1",
+            ts_recv=ts[i] if ts is not None else 1000.0 + i)
+        bus.publish(topic, msg)
+        ofs._ingest_pushed(topic, bus.current[current_key(topic, msg)][1])
+
+
+def no_daemon() -> None:
+    """No daemon: it holds nothing (every contract it held released) and nothing is live."""
+    daemon_holds(0.0, {})
+    lmp.record_feed_down()
+
+
 def publish_daemon_rows(*tickers: str) -> None:
     """What the daemon's price push hands the console: its price row per ticker, built by the
     daemon's own function from the daemon's plane (the test's live_market_plane stands in for

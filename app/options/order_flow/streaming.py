@@ -44,11 +44,12 @@ import push_changes
 from app.options.order_flow import history as recent
 
 from app.options.order_flow.state import (
+    OptionRecord,
     clear_all_live_state,
     clear_symbol,
     push_book,
     push_level_one,
-    push_option_top,
+    push_option_record,
 )
 
 import live_market_plane as _lmp
@@ -125,9 +126,8 @@ _feed_running = False
 #: by ticker_storage_key.
 _option_contract_last_update_ts: dict[str, float] = {}
 
-#: Called with the symbol of every streamed equity quote and every option quote carrying
-#: GAMMA/DELTA/OPEN_INTEREST/TOTAL_VOLUME/VOLUME (server._on_stream_tick: reprices a viewed
-#: ticker). Runs on the event loop, so it must return at once.
+#: Called with the symbol of every streamed equity quote and option message
+#: (server._on_stream_tick: reprices a viewed ticker). Runs on the event loop, so it must return at once.
 _on_tick_callback: Optional[Callable[[str], None]] = None
 _tick_callback_failures = 0
 #: Every streamed 1-minute bar (bar1m.SYM, Schwab CHART_EQUITY), for server._bar_writer to write.
@@ -202,10 +202,6 @@ def _log_stream(phase: str, **kwargs: Any) -> None:
         log.info("STREAM_DIAG %s", phase)
 
 
-#: the option quote fields the levels are priced from: a message carrying one reprices
-_REPRICE_FIELDS = ("GAMMA", "DELTA", "OPEN_INTEREST", "TOTAL_VOLUME", "VOLUME")
-
-
 def _ingest_pushed(topic: str, msg: Any) -> None:
     """Apply ONE daemon-pushed Schwab stream message to the live planes.
 
@@ -221,8 +217,8 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
       optquote.SYM LEVELONE_OPTIONS -> order-flow state for the contract
       markets.DATE Schwab's /markets answer -> that date's sessions (time_et), when it is a 200
 
-    Every option quote carrying GAMMA/DELTA/OPEN_INTEREST/TOTAL_VOLUME/VOLUME is passed to the
-    tick callback (an equity's tick is its price row's arrival). A message missing its symbol, its
+    Every option message is passed to the tick callback (an equity's tick is its price row's
+    arrival). A message missing its symbol, its
     receive time or its Schwab payload is dropped whole: nothing is applied with a guessed
     part."""
     if not isinstance(msg, dict):
@@ -273,13 +269,10 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
         if not isinstance(content, dict):
             return None
         push_level_one(sym, content, ts_recv=ts, field_received=received)
-        push_option_top(sym, content)
+        push_option_record(sym, OptionRecord(content, ts))
         recent.TAPE.record(sym, content, ts)
         _option_contract_last_update_ts[sym] = ts
-        # a tick when the newest message carried a value the levels use (a merged record holds
-        # the last of each field; only one this message brought is new)
-        if any(f in content and (received is None or received[f] == ts) for f in _REPRICE_FIELDS):
-            _tick(sym)
+        _tick(sym)          # Schwab sends a Change message only when a field changed
     return None
 
 
@@ -316,8 +309,7 @@ async def _rows_loop(ui_url: str, reconnect_sec: float) -> None:
                         continue
                     msg = json.loads(frame)
                     if msg.get("type") == "feed":
-                        _lmp.record_feed_heartbeat(msg.get("feed"))
-                        _drop_released_options(time.time())
+                        _apply_heartbeat(msg.get("feed"))
                     for row in msg.get("rows") or []:
                         _price_rows[row["ticker"]] = row
                         if msg.get("type") == "quotes":
@@ -388,30 +380,22 @@ async def _feed_loop(push_url: str, ui_url: str, reconnect_sec: float) -> None:
         _log_stream("FEED_LOOP_STOP_DONE")
 
 
-#: The two Schwab option services whose durable open coverage epochs constitute
-#: PRODUCER-side subscription identity (as opposed to the server's desired state).
+#: The two Schwab option services a contract streams on.
 OPTION_PRODUCER_SERVICES: tuple[str, ...] = ("LEVELONE_OPTIONS", "OPTIONS_BOOK")
 
 
-def _read_producer_option_contracts(now: float) -> dict[str, list[str]]:
-    """What Schwab holds per option service, from the daemon's status at `now`; empty when that
-    status is missing or stale (unknown is never confirmation)."""
-    return {s: sorted(_lmp.held_by_daemon(s, now)) for s in OPTION_PRODUCER_SERVICES}
-
-
-#: the option contracts the daemon held at its last status (_drop_released_options)
-_held_options: "set[str]" = set()
-
-
-def _drop_released_options(now: float) -> None:
-    """Forget the live state of each option contract the daemon stopped streaming at `now` (its
-    option rule moved off it), so no screen shows that contract's last message as current."""
-    global _held_options
-    held = set().union(*_read_producer_option_contracts(now).values())
-    for sym in _held_options - held:
+def _apply_heartbeat(feed: Any) -> None:
+    """Apply the daemon's status (`feed`, live_market_plane.record_feed_heartbeat) and forget the
+    live state of each option contract it held before and no longer reports holding (its option
+    rule moved off it), so no screen shows that contract's last message as current. A status not
+    applied releases nothing: the last values stand, marked not live."""
+    previous = _lmp.record_feed_heartbeat(feed)
+    if previous is None:
+        return
+    before = set().union(*(previous.get(s, ()) for s in OPTION_PRODUCER_SERVICES))
+    for sym in before.difference(*(_lmp.held_reported(s) for s in OPTION_PRODUCER_SERVICES)):
         clear_symbol(sym)
         _option_contract_last_update_ts.pop(sym, None)
-    _held_options = held
 
 
 #: a contract's subscription, as the Flow panel shows it: the daemon's option rule holds it on
@@ -423,14 +407,13 @@ SUBSCRIBED, NOT_STREAMED = "SUBSCRIBED", "NOT STREAMED"
 def get_option_contract_streaming_diagnostics(for_contract: str, now: float) -> dict[str, Any]:
     """Whether the daemon streams `for_contract` and is receiving it at `now`, distinct from the
     book's own content ages (options_live_payload): its subscription (SUBSCRIBED / NOT STREAMED,
-    from the daemon's held contracts), and each feed by the one live rule
+    from the daemon's last report of what it holds), and each feed by the one live rule
     (live_market_plane.feed_live_for)."""
     c = ticker_storage_key(for_contract)
-    held = _read_producer_option_contracts(now)
     healthy = bool(_feed_running and _lmp.feed_live_for(c, "LEVELONE_OPTIONS", now))
     return {
         "queried_contract": c,
-        "subscription_state": SUBSCRIBED if c in held["LEVELONE_OPTIONS"] else NOT_STREAMED,
+        "subscription_state": SUBSCRIBED if c in _lmp.held_reported("LEVELONE_OPTIONS") else NOT_STREAMED,
         "streaming_last_update_ts": _option_contract_last_update_ts.get(c),
         "feed_health": {"replay": "healthy" if healthy else "stale" if _feed_running else "not connected",
                         "l1": _service_feed(c, "LEVELONE_OPTIONS", now),

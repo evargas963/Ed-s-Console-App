@@ -1,5 +1,5 @@
 """One producer for a ticker's levels, per-strike rows and gamma-surface grid: _publish_levels
-prices the chain once (overlaid with the streamed values Schwab sent after it, at the current spot)
+prices the chain once (each contract the daemon streams priced from its stream, at the current spot)
 and publishes all three together, so no second producer can show a different number (question 2:
 the screen shows it correctly and promptly; question 3: each value is the one computation's).
 
@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import threading
+from collections import Counter
 import time
 from datetime import datetime
 from pathlib import Path
@@ -23,13 +24,13 @@ import pytest
 
 import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
-import live_market_plane as lmp
 import push_changes
 import server
 from calibration.complete_chain_capture import CAPTURE_BASIS, persist_complete_chain_capture
-from math_exposure_core import bucket_metric, merge_exposure_books
-from stream_spine import options_quote_msg
+from math_exposure_core import STREAMED_CHAIN_FIELDS, bucket_metric, merge_exposure_books, stream_priced
+from stream_spine import MessageBus, options_quote_msg
 from terrain_engine import compute_terrain
+from tests.feed_live_helper import daemon_holds, no_daemon, through_the_daemons_bus
 from tests.real_chains import CRWD
 from time_et import ET
 
@@ -52,7 +53,7 @@ def _clean():
     pages: list = []
     push_changes.bind(None)
     ofls.clear_all_live_state()
-    lmp.record_feed_down()
+    no_daemon()
     with server._terrain_cache_lock:
         server._terrain_cache.pop(TK, None)
     with server._chains_waiting_lock:
@@ -61,7 +62,7 @@ def _clean():
     for tk, page in pages:
         push_changes.unsubscribe(tk, page)
     ofls.clear_all_live_state()
-    lmp.record_feed_down()
+    no_daemon()
     ofs._price_rows.pop(TK, None)
     with server._terrain_cache_lock:
         server._terrain_cache.pop(TK, None)
@@ -76,8 +77,7 @@ def _daemon(held=(), *, socket_open=True, price: "float | None" = _SPOT, at: flo
     """The daemon's status at `at` (the chain's publication time unless given): Schwab's socket
     open, TK held on LEVELONE_EQUITIES and `held` on LEVELONE_OPTIONS; and TK's price row as the
     daemon pushes it (None: no price)."""
-    lmp.record_feed_heartbeat({"ts": at, "schwab_socket_open": socket_open,
-                               "held": {"LEVELONE_EQUITIES": [TK], "LEVELONE_OPTIONS": list(held)}})
+    daemon_holds(at, {"LEVELONE_EQUITIES": [TK], "LEVELONE_OPTIONS": list(held)}, socket_open=socket_open)
     if price is None:
         ofs._price_rows.pop(TK, None)
     else:
@@ -164,55 +164,71 @@ def test_the_terrain_endpoint_serves_a_published_ticker_as_json_without_internal
     assert not [k for k in body if k.startswith("_")]
 
 
-# ── streamed values: the newest Schwab sent wins, an older or a stopped one never does ──────────
+# ── a streamed contract is priced from its stream alone (Streamer API §1.1: Change) ─────────────
 
-def test_a_fresh_streamed_greek_reprices_levels_heatmap_and_rows():
+#: STAND-IN: the record A's first LEVELONE_OPTIONS message would carry (Schwab sends every field
+#: first, then changes), its values the chain's
+_A_RECORD = {field: _CONTRACTS[0][key] for key, field in STREAMED_CHAIN_FIELDS if _CONTRACTS[0].get(key) is not None}
+
+
+def _stream_priced(*streamed: "tuple[str, dict]") -> list:
+    """TK's chain with each (symbol, content) contract priced from its stream."""
+    by_sym = dict(streamed)
+    return [stream_priced(ct, by_sym[ct["symbol"]]) if ct["symbol"] in by_sym else ct
+            for ct in _CONTRACTS]
+
+
+def test_a_streamed_contract_is_priced_from_its_stream_whatever_the_chains_time():
+    """The stream is the source of a held contract's values: a gamma streamed a minute before the
+    chain was fetched is still the contract's gamma, and a field it has not sent is absent, never
+    the chain's."""
     _daemon(held=[_A])
-    _streamed(_A, {"GAMMA": 0.9}, _T)
-    _put_chain(fetched_ts=_T - 5.0)
+    _streamed(_A, {"GAMMA": 0.9}, _T - 60.0)
+    _put_chain(fetched_ts=_T - 30.0)
     c = _cached()
-    assert c["_gamma_surface"]["stream_overlay_contracts"] == 1
-    assert c["_gamma_surface"]["stream_overlay_symbols"] == [_A]
-    overlaid = [dict(_CONTRACTS[0], gamma=0.9)] + _CONTRACTS[1:]
-    assert c["_per_strike"] == compute_terrain(TK, overlaid, _SPOT, now=_AT).per_strike
+    priced = _stream_priced((_A, {"GAMMA": 0.9}))
+    assert c["_priced_chain"] == priced and priced[0]["gamma"] == 0.9 and priced[0]["delta"] is None
+    assert c["_per_strike"] == compute_terrain(TK, priced, _SPOT, now=_AT).per_strike
+    assert c["_awaiting_stream"] == 0
 
 
 def test_a_new_chain_does_not_turn_a_live_contracts_leg_stale():
     """ONE-05 (measured live 2026-09-28, MU 15:46 ET): each chain download made all 200 heatmap
     legs flip between live and stale while the feed stayed live. A leg's state is the feed's
-    (live while the daemon holds the contract); its value is the newest Schwab sent: the chain's,
-    fetched after the contract's last streamed change."""
+    (live while the daemon holds the contract and delivers it), whatever the chain's time."""
     chain = [dict(_CONTRACTS[0], quoteTimeInLong=int(_T * 1000))] + _CONTRACTS[1:]   # a fresh chain
     _daemon(held=[_A])
     _streamed(_A, {"GAMMA": 0.9}, _T - 60.0)                                       # a minute ago
     _publish(chain, _T)
     surface = _cached()["_gamma_surface"]
-    assert surface["stream_overlay_symbols"] == []                                   # the chain is newer
     legs = [col[side] for cell in surface["cells"] for col, pair in zip(cell["stream"], cell["contracts"])
             for side in ("call", "put") if pair.get(side) == _A and col]
     assert legs and all(leg["state"] == "live" for leg in legs)
 
 
-def test_a_streamed_value_applies_by_its_time():
-    """A streamed gamma received after the chain is the newest Schwab sent: it reprices the
-    levels; one received before the chain does not."""
-    _daemon(held=[_A])
-    _streamed(_A, {"GAMMA": 0.9}, _T - 60.0)
-    _put_chain(fetched_ts=_T - 120.0)
-    assert _cached()["_gamma_surface"]["stream_overlay_symbols"] == [_A]
-    _put_chain(fetched_ts=_T - 30.0)
-    assert _cached()["_gamma_surface"]["stream_overlay_contracts"] == 0
-
-
-def test_every_streamed_contract_is_overlaid_not_only_the_one_that_ticked():
+def test_every_streamed_contract_is_priced_not_only_the_one_that_ticked():
     _daemon(held=[_A, _B])
     _streamed(_A, {"GAMMA": 0.9}, _T)
     _streamed(_B, {"GAMMA": 0.8}, _T)
     _put_chain(fetched_ts=_T - 5.0)
-    assert sorted(_cached()["_gamma_surface"]["stream_overlay_symbols"]) == sorted([_A, _B])
+    assert _cached()["_priced_chain"] == _stream_priced((_A, {"GAMMA": 0.9}), (_B, {"GAMMA": 0.8}))
 
 
-def test_repeated_reprices_start_from_the_raw_chain_never_a_prior_overlay():
+def test_a_held_contract_with_no_record_yet_marks_the_levels_not_live():
+    """Until a held contract sends its first message its values are unknown: the levels say so."""
+    _daemon(held=[_A])
+    _put_chain()
+    c = _cached()
+    assert c["_awaiting_stream"] == 1 and c["_priced_chain"][0]["gamma"] is None
+    why = server.terrain_staleness(c, TK, now=_T)
+    assert why["levels_stale"] and why["levels_stale_reason"] == "1 streamed contracts have not sent their values yet"
+    _streamed(_A, {"GAMMA": 0.9}, _T)
+    _publish()
+    assert _cached()["_awaiting_stream"] == 0
+    assert not server.terrain_staleness(_cached(), TK, now=_T)["levels_stale"]
+
+
+def test_a_released_contract_is_priced_from_the_chain_again():
     _daemon(held=[_A])
     _streamed(_A, {"GAMMA": 0.9}, _T)
     _put_chain(fetched_ts=_T - 5.0)
@@ -220,13 +236,13 @@ def test_repeated_reprices_start_from_the_raw_chain_never_a_prior_overlay():
     _publish()
     c = _cached()
     assert c["_chain"] is _CONTRACTS and _CONTRACTS[0].get("gamma") != 0.9
-    assert c["_gamma_surface"]["stream_overlay_contracts"] == 0
+    assert c["_priced_chain"] == _CONTRACTS
     assert c["_per_strike"] == compute_terrain(TK, _CONTRACTS, _SPOT, now=_AT).per_strike
 
 
 def test_a_volume_only_tick_reaches_the_per_strike_volume_column():
     _daemon(held=[_A])
-    _streamed(_A, {"TOTAL_VOLUME": 999999}, _T)
+    _streamed(_A, {**_A_RECORD, "TOTAL_VOLUME": 999999}, _T)
     _put_chain(fetched_ts=_T - 5.0)
     strike = round(_CONTRACTS[0]["strikePrice"], 2)
     row = next(r for r in _cached()["_per_strike"]["all"] if r[0] == strike)
@@ -244,7 +260,7 @@ def test_a_streamed_value_whose_feed_is_down_in_session_never_reaches_the_levels
     for at in (datetime(2026, 10, 7, 11, 0, tzinfo=ET), datetime(2026, 10, 7, 22, 0, tzinfo=ET)):
         ofls.clear_all_live_state()
         _daemon(held=[_A], socket_open=False, at=at.timestamp())
-        _streamed(_A, {"TOTAL_VOLUME": 999999}, at.timestamp() - 60.0)
+        _streamed(_A, {**_A_RECORD, "TOTAL_VOLUME": 999999}, at.timestamp() - 60.0)
         server._publish_levels(TK, _CONTRACTS, at.timestamp() - 120.0, now=at)
         out[at.hour] = _cached()
     rth, closed = out[11], out[22]
@@ -254,13 +270,12 @@ def test_a_streamed_value_whose_feed_is_down_in_session_never_reaches_the_levels
     assert closed["spot"] == _SPOT and row[2] >= 999999
 
 
-def test_a_foreign_tickers_contract_never_overlays_this_chain():
+def test_a_foreign_tickers_contract_never_prices_this_chain():
     foreign = "SPY   260911C00583000"
     _daemon(held=[foreign])
     _streamed(foreign, {"GAMMA": 0.99}, _T)
     _put_chain(fetched_ts=_T - 5.0)
-    assert server._streamed_greeks_for_ticker(_cached()["_contract_symbols"], _T) == {}
-    assert _cached()["_gamma_surface"]["stream_overlay_contracts"] == 0
+    assert _cached()["_priced_chain"] == _CONTRACTS and _cached()["_awaiting_stream"] == 0
 
 
 # ── spot ─────────────────────────────────────────────────────────────────────────────────────
@@ -486,22 +501,23 @@ def test_a_delivered_chain_is_priced_before_the_stored_ones_waiting():
 
 # ── the feed calls the one callback for exactly the ticks that move the math ────────────────
 
-def _real_option(with_greek: bool) -> dict:
-    """A real LEVELONE_OPTIONS message (2026-10-05 14:00 CT) carrying a value the levels use
-    (GAMMA, DELTA, OPEN_INTEREST, TOTAL_VOLUME, VOLUME), or none of them."""
-    used = {"GAMMA", "DELTA", "OPEN_INTEREST", "TOTAL_VOLUME", "VOLUME"}
-    return next(m for m in _MIX if m["service"] == "LEVELONE_OPTIONS"
-                and bool(used & set(m["item"])) is with_greek and "BID_PRICE" in m["item"])
-
-
-@pytest.mark.parametrize("with_greek", [True, False])
-def test_an_option_quote_reaches_the_callback_only_when_it_moves_the_math(with_greek):
-    m = _real_option(with_greek)
+def test_every_option_message_recalculates_and_the_levels_price_the_daemons_record():
+    """Real LEVELONE_OPTIONS messages (2026-10-05 14:00 CT) of one contract through the daemon's
+    bus: Schwab sends a Change message only when a field changed (Streamer API §1.1), so each
+    reaches the callback once, and the console holds the bus's record (every field Schwab has
+    sent, the last of each)."""
+    options = [m for m in _MIX if m["service"] == "LEVELONE_OPTIONS"]
+    sym = Counter(m["item"]["key"] for m in options).most_common(1)[0][0]
+    mine = [m for m in options if m["item"]["key"] == sym]
+    bus = MessageBus()
     hits: list = []
     ofs._on_tick_callback = hits.append                        # the console's callback, as start_order_flow_stream sets it
     try:
-        ofs._ingest_pushed(f"optquote.{m['item']['key']}", options_quote_msg(
-            symbol=m["item"]["key"], content=m["item"], src="schwab_options_l1", ts_recv=m["ts_recv"]))
+        through_the_daemons_bus(bus, sym, [m["item"] for m in mine], [m["ts_recv"] for m in mine])
     finally:
         ofs._on_tick_callback = None
-    assert hits == ([m["item"]["key"]] if with_greek else [])
+    assert len(mine) > 1 and hits == [sym] * len(mine)
+    merged: dict = {}
+    for m in mine:
+        merged.update(m["item"])
+    assert ofls.option_records([sym])[sym].content == merged

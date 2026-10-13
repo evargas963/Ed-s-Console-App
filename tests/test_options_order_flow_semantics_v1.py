@@ -20,6 +20,7 @@ import live_market_plane as lmp
 from app.market_data.schwab.streaming import live_push
 from app.options.order_flow import streaming as ofs
 from stream_spine import MessageBus, book_msg, options_quote_msg, quote_msg
+from tests.feed_live_helper import daemon_holds, no_daemon
 
 _MIX = json.loads((Path(__file__).parent / "fixtures" / "real_stream_mix_2026_10_05_1400ct.json")
                   .read_text(encoding="utf-8"))["messages"]
@@ -96,17 +97,17 @@ def test_a_contract_the_daemon_stops_streaming_no_longer_shows_as_current():
     sym = m["item"]["key"]
     ofls.clear_all_live_state()
     try:
-        lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True,
-                                   "held": {"LEVELONE_OPTIONS": [sym], "OPTIONS_BOOK": []}})
-        ofs._drop_released_options(time.time())
+        daemon_holds(time.time(), {"LEVELONE_OPTIONS": [sym], "OPTIONS_BOOK": []})
         ofs._ingest_pushed(*_message(m))
         held = ofls.option_top(sym)
-        lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True,
-                                   "held": {"LEVELONE_OPTIONS": [], "OPTIONS_BOOK": []}})
-        ofs._drop_released_options(time.time())
+        ofs._apply_heartbeat({"schwab_socket_open": True,            # a status without its time is not applied
+                              "held": {"LEVELONE_OPTIONS": [], "OPTIONS_BOOK": []}})
+        lmp.record_feed_down()                                       # nor does a feed down release anything
+        unapplied = ofls.option_top(sym)
+        daemon_holds(time.time(), {"LEVELONE_OPTIONS": [], "OPTIONS_BOOK": []})
         released = ofls.option_top(sym)
     finally:
         ofls.clear_all_live_state()
-        lmp.record_feed_down()
-    assert held["bid"] == m["item"]["BID_PRICE"]
+        no_daemon()
+    assert held["bid"] == m["item"]["BID_PRICE"] and unapplied == held
     assert released is None

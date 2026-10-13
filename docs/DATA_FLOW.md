@@ -187,14 +187,16 @@ from Schwab to the screen (daemon, console, page), are these:
   `flow` push on `/api/changes` → the browser reads the order-flow and heatmap routes. An equity
   has two Schwab books, NYSE_BOOK (exchanges) and NASDAQ_BOOK (market makers); each is stored
   under its service and served for the `venue` the screen's venue switch names, never combined.
-  The books streamed are every watchlist ticker's. For each option contract the daemon holds
-  (the option rule, below), each field the stream carries (gamma, delta, open interest, volume,
-  IV) is the newest value Schwab sent (`math_exposure_core.overlay_streamed_contract_fields`):
-  neither source carries a Schwab time for these fields, so the receive times decide -- a field
-  streamed after the chain was fetched replaces the chain's, one streamed before it (yesterday's
-  open interest under today's chain) does not (the feed's state labels the heatmap leg, it never
-  picks the value). Every other field is the chain's, its
-  Greeks from Schwab's quotes (Option chain, below). A book message is the book Schwab sent, a
+  The books streamed are every watchlist ticker's. Each service is wired by its delivery type
+  (Streamer API §1.1): LEVELONE_* are Change (the bus and the console keep each field Schwab last
+  sent), the BOOKs Whole (each message replaces the book), CHART_EQUITY All Sequence. For each
+  option contract the daemon holds (the option rule, below) the stream is the source: its prices,
+  sizes, volume, Greeks and IV are its LEVELONE_OPTIONS record's
+  (`math_exposure_core.STREAMED_CHAIN_FIELDS`, `server._stream_priced_chain`), a field not sent
+  yet is absent (open interest is the chain's: Schwab's 10/12 reply, item 5), and the levels are recalculated when one of them arrives or changes; while a held
+  contract has sent no record the levels are not live (`server.terrain_staleness`). The chain
+  sweep never asks /quotes for a held contract. Every other contract is the chain's, its Greeks
+  from Schwab's quotes (Option chain, below). A book message is the book Schwab sent, a
   side with no levels included (empty, never replaced by an older two-sided book); a side Schwab
   sent no level for at a price is absent in the book heatmap, never a 0 size. The book heatmap and
   the options tape serve from the console's memory (§3.3), never the database. Mid and microprice
@@ -221,7 +223,9 @@ from Schwab to the screen (daemon, console, page), are these:
   change is one UNSUBS and one ADD of only the difference (`Daemon.ask`). The levels use every
   contract of the full chain, streamed or not. When the owner fails (the daemon down), nothing
   streams: every cell keeps its value and the header says OFFLINE; the console forgets the live
-  values of a contract the daemon stops holding (`streaming._drop_released_options`). Tests:
+  values of a contract a heartbeat no longer reports holding (`streaming._apply_heartbeat`); a
+  feed down releases nothing (`live_market_plane.held_reported`: the last values stand, not
+  live). Tests:
   `tests/test_option_contract_rule_v1.py`.
 - **1-minute bar and daily candles.** Schwab's price history: the daemon's chain sweep
   asks `/pricehistory` for each ticker (`complete_chain_capture.PRICE_HISTORY`,
@@ -479,7 +483,7 @@ from Schwab to the screen (daemon, console, page), are these:
    instead of receiving the values; bars are not yet on the daemon's push.
 5. **Values blank when they stop** (D5, operator 2026-10-11): in an open session a feed down blanks
    the value with its reason (`live_market_plane.outage`, the price row's `outage`, the books'
-   `top_outage`; a contract's streamed Greeks stop pricing, `server._current_stream_greeks`); the
+   `top_outage`); the
    console drops the daemon's price rows after 3 s with no frame and forgets a contract the daemon
    stops holding; with no price the levels are absent; the closed market is handled apart from any
    other stop (`live_market_plane.outage`, `server.terrain_staleness`); some calculations round or
