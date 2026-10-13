@@ -16,12 +16,12 @@ after the switch (step 6).
    If it stops with an error, the old file is untouched (read-only) and the new file is partial: report
    the error to Ed, start both again on the old file (step 4), and Ed deletes the partial file before a
    second run.
-3. Show `dir data` with no `stream_capture_new.db-wal` left. Ed renames the old file aside and the new
-   one into place (never the agent: nothing under `data/` is moved or deleted by an agent). Show `dir`
-   of the folder after.
+3. Show `dir data` with no `stream_capture_new.db-wal` left. Ed renames the old file aside (with its
+   `-wal` and `-shm`, if any), not deleting it, and the new one into place (operator 2026-10-12; never
+   the agent: nothing under `data/` is moved or deleted by an agent). Show `dir` of the folder after.
 4. Start both (the `deploy` skill, steps 4–5).
 5. Check: the writer writes to the new file (its newest rows' times), the daily keep runs after the
    last option close and leaves 5 sessions, and the kept option rows are the soonest expiry ±5 strikes
    and the Flow pick. Show each query and its result.
-6. On Ed's word, Ed deletes the old file. Remove the copy tool, the work item and this skill in the same
-   PR.
+6. On Ed's word, Ed deletes the old file. Remove the copy tool, its test
+   (`tests/test_stream_db_switch_copy_v1.py`), the work item and this skill in the same PR.

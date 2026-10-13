@@ -12,7 +12,8 @@ times), written through the daemon's message builder and the writer's insert; Sc
 on 2026-10-07 (tests/fixtures/real_schwab_markets_2026_10_07.json, in the old file as the daemon records them;
 the tool's process holds no other answers, so its sessions come from the old file alone); the watchlist rows
 carry Schwab's /quotes answer to the daemon's SPY check (tests/fixtures/real_schwab_quotes_watchlist_check_2026_10_07.json).
-STAND-INS: the receipt times of the two watchlist rows and of the /markets rows.
+STAND-INS: the receipt times of the two watchlist rows and of the /markets rows (each placed before or
+within the five sessions, which is what the copy reads them for), and the console's request ids 1 and 2.
 """
 from __future__ import annotations
 
@@ -61,8 +62,8 @@ def _old_file(path: Path, services=None, markets=MARKETS) -> None:
             if services is None or m["service"] in services:
                 kind, msg = capture._message(m["service"], m["item"]["key"], m["item"], m["schwab_ts"])
                 writer.insert(f"{kind}.{m['item']['key']}", {**msg, "ts_recv": m["ts_recv"]}, conn=conn)
-        for when in ("2026-09-28 12:00", "2026-09-29 12:00"):
-            topic, msg = capture.watchlist_message(["SPY"], op="added", ticker="SPY", request_id=when,
+        for request_id, when in enumerate(("2026-09-28 12:00", "2026-09-29 12:00"), start=1):
+            topic, msg = capture.watchlist_message(["SPY"], op="added", ticker="SPY", request_id=request_id,
                                                    status=CHECK["status"], answer=CHECK["body"])
             writer.insert(topic, {**msg, "ts_recv": _et(when)}, conn=conn)
 

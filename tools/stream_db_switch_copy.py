@@ -68,17 +68,15 @@ def _zero_dte(pairs: "dict[tuple[str, int], int]", starts: "list[float]") -> "se
     return {(s, d) for (d, _root), expiries in by.items() for s in expiries[min(expiries)]}
 
 
-def _copy(old, new, table: str, cols: "list[str]", rowids: np.ndarray) -> int:
-    """The old rows `rowids` (ascending) into the new table, in that order."""
+def _copy(new, table: str, cols: "list[str]", rowids: np.ndarray) -> int:
+    """The old rows `rowids` (ascending) into the new table, in that order, by SQLite from the attached
+    old file (no row passes through Python: a /pricehistory answer can be 1.5 MB)."""
     names, n = ",".join(cols), 0
-    insert = f"INSERT INTO {table}({names}) VALUES({','.join('?' * len(cols))})"
     for i in range(0, len(rowids), COPY_ROWS):
         part = [int(r) for r in rowids[i:i + COPY_ROWS]]
-        rows = old.execute(f"SELECT {names} FROM {table} WHERE rowid IN ({','.join('?' * len(part))}) "
-                           "ORDER BY rowid", part).fetchall()
-        new.executemany(insert, rows)
+        n += new.execute(f"INSERT INTO main.{table}({names}) SELECT {names} FROM old.{table} "
+                         f"WHERE rowid IN ({','.join('?' * len(part))}) ORDER BY rowid", part).rowcount
         new.commit()
-        n += len(rows)
     return n
 
 
@@ -102,7 +100,8 @@ def copy(old_path: Path, new_path: Path, now: datetime) -> "dict[str, dict[str, 
         "GROUP BY symbol, d", (since.timestamp(),))} for table, option in OPTION_ROWS.items()}
     kept = _zero_dte({p: 0 for table in pairs.values() for p in table}, starts)   # one choice for both tables
     CaptureWriter(new_path)                                    # the writer's schema and receipt-time indexes
-    new = sqlite3.connect(new_path)
+    new = sqlite3.connect(f"file:{new_path}", uri=True)        # so the old file attaches read-only
+    new.execute("ATTACH DATABASE ? AS old", (f"file:{old_path}?mode=ro",))
     counts: "dict[str, dict[str, tuple[int, int]]]" = {}
     for table, column in KEPT_BY_TIME:
         have = {r[1] for r in old.execute(f"PRAGMA table_info({table})")}
@@ -135,7 +134,8 @@ def copy(old_path: Path, new_path: Path, now: datetime) -> "dict[str, dict[str, 
                 parts.append(np.array([newest[0]], dtype=np.int64))
                 extra["before"] = (0, 1)
         rowids = np.unique(np.concatenate(parts))               # ascending: the order they were written
-        copied = _copy(old, new, table, cols, rowids)
+        copied = _copy(new, table, cols, rowids)
+        print(f"copied {table}: {copied} rows at {datetime.now(ET):%H:%M:%S} ET", file=sys.stderr, flush=True)
         counts[table] = {**extra, **{label[d]: (old_n[d], new_n[d]) for d in range(len(starts)) if old_n[d]}}
         if not copied == len(rowids) == sum(n for _o, n in counts[table].values()):
             raise SystemExit(f"{table}: {copied} rows copied of {len(rowids)} chosen, "
