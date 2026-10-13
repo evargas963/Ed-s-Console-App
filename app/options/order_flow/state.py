@@ -35,9 +35,11 @@ _OPTION_TOP_FIELDS = (("BID_PRICE", "bid", schwab_number), ("ASK_PRICE", "ask", 
 @dataclass(frozen=True)
 class OptionRecord:
     """An option contract's LEVELONE_OPTIONS record as the daemon pushes it: every field Schwab has
-    sent, the last of each (Schwab sends changes only), and when the newest message arrived."""
+    sent, the last of each (Schwab sends changes only), when the newest message arrived, and each
+    field's Schwab time (ms; None when its frame carried none)."""
     content: dict
     ts_recv: float
+    times: dict
 
 
 class OrderFlowState:

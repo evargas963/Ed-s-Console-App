@@ -269,7 +269,8 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
         if not isinstance(content, dict):
             return None
         push_level_one(sym, content, ts_recv=ts, field_received=received)
-        push_option_record(sym, OptionRecord(content, ts))
+        push_option_record(sym, OptionRecord(content, ts, {f: stamp[0] for f, stamp in msg["field_ts"].items()}
+                                                       if "field_ts" in msg else {}))
         recent.TAPE.record(sym, content, ts)
         _option_contract_last_update_ts[sym] = ts
         _tick(sym)          # Schwab sends a Change message only when a field changed

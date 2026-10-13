@@ -21,6 +21,7 @@ import pytest
 
 import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
+import live_market_plane as lmp
 import server
 from stream_spine import options_quote_msg
 from tests.feed_live_helper import daemon_holds, no_daemon
@@ -108,6 +109,19 @@ def test_a_contract_that_streamed_reads_stale_while_schwabs_socket_is_closed():
     served = json.loads(server.get_chain(ticker=TK, expiry=None).body)["contracts"]
     assert next(ct["gamma"] for ct in served if ct["symbol"] == sym) == 0.05
     assert cov["stale"] == 1 and cov["live"] == 0
+
+
+def test_a_held_contract_with_no_tick_is_pending_only_while_the_daemon_says_it_holds_it():
+    """ONE-15: unknown is never confirmation. While the daemon's heartbeat is live and holds the
+    contract it is pending; once the daemon stops reporting, its holding is unknown: unavailable."""
+    sym = CALLS[0]
+    _cov, surface = _publish([sym], [], at=_CLOSED)
+    pending = [leg["state"] for leg in _legs(surface, sym)]
+    lmp.record_feed_down()
+    server._publish_levels(TK, _CONTRACTS, _CLOSED.timestamp() - 10.0, now=_CLOSED)
+    with server._terrain_cache_lock:
+        down = [leg["state"] for leg in _legs(server._terrain_cache[TK]["_gamma_surface"], sym)]
+    assert pending == ["pending"] and down == ["unavailable"]
 
 
 def test_a_contract_the_daemon_does_not_stream_is_not_streaming():

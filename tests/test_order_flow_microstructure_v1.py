@@ -226,7 +226,7 @@ def test_invalid_sizes_are_rejected():
     The L1 size is read where it is stored (OrderFlowState.option_top)."""
     l1 = OrderFlowState()
     l1.push_option_record("BADSIZE", OptionRecord(
-        {"BID_PRICE": 712.47, "ASK_PRICE": 712.49, "BID_SIZE": -5, "ASK_SIZE": 500}, 1.0))
+        {"BID_PRICE": 712.47, "ASK_PRICE": 712.49, "BID_SIZE": -5, "ASK_SIZE": 500}, 1.0, {}))
     bad = {"content": [
         {"BIDS": [{"BID_PRICE": 712.47, "TOTAL_VOLUME": 1000},
                   {"BID_PRICE": 712.46, "TOTAL_VOLUME": -40},          # negative -> dropped

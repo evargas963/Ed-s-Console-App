@@ -29,9 +29,10 @@ from schwab.client import Client
 
 from instrument_identity import ticker_storage_key
 from json_blob_codec import decode_json_blob, encode_json_blob
+from math_exposure_core import GREEK_FIELDS
 from numeric_contract import schwab_number
-from schwab_client import (GREEK_FIELDS, QUOTES_BATCH_MAX, flatten_chain_contracts, option_expiries,
-                           safe_get_chain, safe_get_quotes)
+from schwab_client import (QUOTES_BATCH_MAX, flatten_chain_contracts, option_expiries, safe_get_chain,
+                           safe_get_quotes)
 from stream_spine import CaptureWriter
 from time_et import ET, options_closed_at, options_open, record_markets, session
 

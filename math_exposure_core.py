@@ -334,6 +334,11 @@ def merge_exposure_books(books) -> "tuple[Dict[float, dict], ExposureDiagnostics
 _BUCKET_FLAGS = frozenset({"dollarized"})
 
 
+#: The contract fields Schwab's chain sends rounded, which it cannot change (Schwab Trader API
+#: Support, 2026-10-06, item 6; docs/schwab/schwab_support_emails_2026_10_06.txt), and its quotes
+#: and its LEVELONE_OPTIONS stream send as computed; `greeksTime` holds each one's Schwab time.
+GREEK_FIELDS = ("gamma", "delta", "theta", "vega", "rho", "volatility")
+
 #: Each chain contract field and the LEVELONE_OPTIONS field that is its one source while the
 #: contract streams (Schwab's Change delivery, docs/schwab/schwab_streamer_api.pdf 1.1; each pair is
 #: one quantity by the LEVELONE_OPTIONS field table): every live value the chain also carries, with
@@ -354,11 +359,17 @@ STREAMED_CHAIN_FIELDS: tuple[tuple[str, str], ...] = (
 )
 
 
-def stream_priced(ct: dict, content: dict) -> dict:
+def stream_priced(ct: dict, content: dict, times: dict) -> dict:
     """A streamed contract's one record: `ct`, Schwab's REST answer (the chain, its Greeks from
     /quotes), with each STREAMED_CHAIN_FIELDS field its stream record `content` has sent in its
-    place, as sent (operator 2026-10-13). `ct` is not changed."""
-    return {**ct, **{key: content[field] for key, field in STREAMED_CHAIN_FIELDS if field in content}}
+    place, as sent, each Greek with its Schwab time from `times` in `greeksTime`. `ct` is not
+    changed."""
+    sent = {key: content[field] for key, field in STREAMED_CHAIN_FIELDS if field in content}
+    greek_times = {key: times.get(field) for key, field in STREAMED_CHAIN_FIELDS
+                   if key in GREEK_FIELDS and field in content}
+    if not greek_times:
+        return {**ct, **sent}
+    return {**ct, **sent, "greeksTime": {**(ct.get("greeksTime") or dict.fromkeys(GREEK_FIELDS)), **greek_times}}
 
 
 # ── Strike selection helpers ─────────────────────────────────────────────────

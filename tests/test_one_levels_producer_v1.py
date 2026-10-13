@@ -27,7 +27,7 @@ import app.options.order_flow.streaming as ofs
 import push_changes
 import server
 from calibration.complete_chain_capture import CAPTURE_BASIS, persist_complete_chain_capture
-from math_exposure_core import bucket_metric, merge_exposure_books
+from math_exposure_core import GREEK_FIELDS, bucket_metric, merge_exposure_books
 from stream_spine import MessageBus, options_quote_msg
 from terrain_engine import compute_terrain
 from tests.feed_live_helper import daemon_holds, no_daemon, through_the_daemons_bus
@@ -166,6 +166,15 @@ def test_the_terrain_endpoint_serves_a_published_ticker_as_json_without_internal
 
 # ── a held contract's one record: the REST answer, each field the stream sends in its place ────
 
+def _strike_rows(priced: "list | None" = None) -> list:
+    """Every strike's row as /api/terrain/strikes serves it now; with `priced`, as it serves those
+    contracts published as Schwab's chain with nothing streamed (the expected answer)."""
+    if priced is not None:
+        _daemon(held=[])
+        _publish(priced, _T - 30.0)
+    return json.loads(server.get_terrain_strikes(ticker=TK, scope="all").body)["today"]["all"]
+
+
 def _served() -> "dict[str, dict]":
     """TK's contracts as /api/chain serves them (CRWD's chain has one expiration), by symbol."""
     body = json.loads(server.get_chain(ticker=TK, expiry=None).body)
@@ -175,16 +184,17 @@ def _served() -> "dict[str, dict]":
 def test_a_held_contract_starts_from_the_rest_answer_and_takes_each_field_the_stream_sends():
     """Operator 2026-10-13: each held contract's record starts from Schwab's REST answer and each
     field is replaced when the stream sends it. A gamma streamed a minute before the chain was
-    fetched is the contract's gamma; its delta, never streamed, is the chain's as sent."""
+    fetched is the contract's gamma, with the stream's time for it; its delta, never streamed, is
+    the chain's as sent."""
     _daemon(held=[_A])
-    _streamed(_A, {"GAMMA": 0.9}, _T - 60.0)
+    through_the_daemons_bus(MessageBus(), _A, [{"GAMMA": 0.9}], [_T - 60.0])
     _put_chain(fetched_ts=_T - 30.0)
     served = _served()
-    assert served[_A]["gamma"] == 0.9 and served[_A]["delta"] == _CONTRACTS[0]["delta"]
-    assert {k: v for k, v in served[_A].items() if k != "gamma"} == {
-        k: v for k, v in _CONTRACTS[0].items() if k != "gamma"}
-    priced = [dict(_CONTRACTS[0], gamma=0.9)] + _CONTRACTS[1:]
-    assert _cached()["_per_strike"] == compute_terrain(TK, priced, _SPOT, now=_AT).per_strike
+    assert served[_A] == {**_CONTRACTS[0], "gamma": 0.9,
+                          "greeksTime": {**(_CONTRACTS[0].get("greeksTime") or dict.fromkeys(GREEK_FIELDS)),
+                                         "gamma": int((_T - 60.0) * 1000)}}
+    rows = _strike_rows()
+    assert rows and rows == _strike_rows([served[_A]] + _CONTRACTS[1:])
 
 
 def test_a_held_contract_with_no_message_yet_is_its_rest_answer():
@@ -201,10 +211,9 @@ def test_a_streamed_minus_999_greek_is_absent_never_the_old_value():
     _streamed(_A, {"GAMMA": -999}, _T - 30.0)
     _put_chain(fetched_ts=_T - 10.0)
     assert _served()[_A]["gamma"] == -999
-    priced = [dict(_CONTRACTS[0], gamma=-999)] + _CONTRACTS[1:]
-    assert _cached()["_per_strike"] == compute_terrain(TK, priced, _SPOT, now=_AT).per_strike
-    assert _cached()["_per_strike"] != compute_terrain(TK, [dict(_CONTRACTS[0], gamma=0.9)] + _CONTRACTS[1:],
-                                                       _SPOT, now=_AT).per_strike
+    rows = _strike_rows()
+    assert rows == _strike_rows([dict(_CONTRACTS[0], gamma=-999)] + _CONTRACTS[1:])
+    assert rows != _strike_rows([dict(_CONTRACTS[0], gamma=0.9)] + _CONTRACTS[1:])
 
 
 def test_a_new_chain_does_not_turn_a_live_contracts_leg_stale():

@@ -14,6 +14,7 @@ SPY 261120C00875000, each with its receive time as Schwab's frame time (no captu
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import sqlite3
 import threading
@@ -128,6 +129,35 @@ def test_a_held_contract_whose_stream_has_sent_no_greek_starts_from_its_quote(tm
     assert HELD in quoted
     assert {f: held[f] for f in GREEKS} == {f: quote[f] for f in GREEKS}
     assert held["greeksTime"] == dict.fromkeys(GREEKS, quote["quoteTime"])
+
+
+def test_an_ended_connections_record_never_carries_into_the_next(tmp_path):
+    """Operator 2026-10-13: when a connection ends, the records it held are dropped; on the next
+    connection each starts again from Schwab's REST answer, then the stream updates it field by
+    field. HELD's record (its captured stream, Greeks and volume included) ends with the
+    connection; held again, its first message (a captured one carrying ASK_SIZE and
+    QUOTE_TIME_MILLIS) is its whole record, so the sweep asks /quotes for its Greeks."""
+    schwab = LocalSchwab()
+    daemon, sweep, client, published = _setup(tmp_path, schwab, _et("2026-10-01 10:15"))
+    try:
+        assert daemon.option_record(HELD) is not None
+        asyncio.run(daemon.disconnect())
+        ended = daemon.option_record(HELD)
+        daemon.held["LEVELONE_OPTIONS"] = frozenset({HELD})        # held again on the next connection
+        first = _STREAM["events"][4]
+        daemon.bus.publish(f"optquote.{HELD}", options_quote_msg(
+            symbol=HELD, content={**first["content"], "key": HELD}, src="schwab_options_l1",
+            ts_recv=first["ts_recv"], schwab_ts=int(first["ts_recv"] * 1000)))
+        record = daemon.option_record(HELD)
+        sweep.rotation(client, ["SPY", "TSLA"], threading.Event())
+    finally:
+        schwab.close()
+    assert ended is None
+    assert record[0] == {**first["content"], "key": HELD} and "TOTAL_VOLUME" not in record[0]
+    quoted = {s for path, q, *_ in schwab.requests if path == QUOTES for s in q["symbols"].split(",")}
+    quote = SPY_QUOTES[HELD]["quote"]
+    assert HELD in quoted
+    assert {f: delivered(published, "SPY")[HELD][f] for f in GREEKS} == {f: quote[f] for f in GREEKS}
 
 
 def test_a_refused_quotes_request_fails_each_ticker_in_it_and_the_next_request_goes_at_once(tmp_path):

@@ -5,6 +5,7 @@ reports the Schwab socket open and holds the symbol. Tests that exercise a live 
 exactly the symbols the daemon would hold -- through the production entry point."""
 from __future__ import annotations
 
+import itertools
 import json
 import time
 from pathlib import Path
@@ -54,16 +55,22 @@ def daemon_holds(at: float, held: dict, *, socket_open: bool = True) -> None:
     ofs.apply_heartbeat({"ts": at, "schwab_socket_open": socket_open, "held": held})
 
 
+#: the receive time of a tick given none, one second after the last
+_RECEIVED = itertools.count(1000)
+
+
 def through_the_daemons_bus(bus, sym: str, ticks: list, ts: "list[float] | None" = None) -> None:
-    """Each LEVELONE_OPTIONS tick of `sym` (received at `ts`, else 1000 s on) published on the
-    daemon's bus (stream_spine.MessageBus), and its current record (every field Schwab has sent,
-    the last of each: Streamer API §1.1, Change) pushed to the console as the daemon pushes it."""
+    """Each LEVELONE_OPTIONS tick of `sym` (received at `ts`, else a second after the last; STAND-IN: its Schwab
+    frame time is its receive time, in ms) published on the daemon's bus (stream_spine.MessageBus),
+    and its current record (every field Schwab has sent, the last of each, each with its time:
+    Streamer API §1.1, Change) pushed to the console as the daemon pushes it."""
     from app.options.order_flow import streaming as ofs
     from stream_spine import current_key, options_quote_msg
     for i, tick in enumerate(ticks):
+        rx = ts[i] if ts is not None else float(next(_RECEIVED))
         topic, msg = f"optquote.{sym}", options_quote_msg(
-            symbol=sym, content={"key": sym, **tick}, src="schwab_options_l1",
-            ts_recv=ts[i] if ts is not None else 1000.0 + i)
+            symbol=sym, content={"key": sym, **tick}, src="schwab_options_l1", ts_recv=rx,
+            schwab_ts=int(rx * 1000))
         bus.publish(topic, msg)
         ofs._ingest_pushed(topic, bus.current[current_key(topic, msg)][1])
 

@@ -194,7 +194,10 @@ from Schwab to the screen (daemon, console, page), are these:
   (the option rule, below) has one record (operator 2026-10-13): Schwab's REST answer (the chain,
   its Greeks from Schwab's quotes until the stream has sent them), each live field the stream
   sends replacing it, as sent (`math_exposure_core.STREAMED_CHAIN_FIELDS`, `stream_priced`);
-  its terms and open interest are the chain's (Schwab's 10/12 reply, item 5). Every option
+  its terms and open interest are the chain's (Schwab's 10/12 reply, item 5). When Schwab's
+  connection ends, the daemon drops every record it held, on every service
+  (`capture.Daemon._release_held`, operator 2026-10-13); on the next connection each starts again
+  from Schwab's answers, never from an ended connection's fields. Every option
   message recalculates the levels. Every other contract is the chain's, its Greeks from
   Schwab's quotes (Option chain, below). A book message is the book Schwab sent, a
   side with no levels included (empty, never replaced by an older two-sided book); a side Schwab

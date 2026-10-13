@@ -36,8 +36,11 @@ def test_each_contract_carries_the_chains_rate_and_dividend_as_sent():
 def test_a_streamed_contract_takes_iv_beside_gamma_from_its_stream():
     from math_exposure_core import stream_priced
     ct = SPY_0DTE.chain[0]
-    priced = stream_priced(ct, {"key": ct["symbol"], "GAMMA": 0.01, "VOLATILITY": 18.5})
+    priced = stream_priced(ct, {"key": ct["symbol"], "GAMMA": 0.01, "VOLATILITY": 18.5},
+                           {"GAMMA": 1791400000000, "VOLATILITY": 1791400001000})
     assert priced["gamma"] == 0.01 and priced["volatility"] == 18.5
+    assert priced["greeksTime"] == {**(ct.get("greeksTime") or dict.fromkeys(("gamma", "delta", "theta", "vega", "rho", "volatility"))),
+                                    "gamma": 1791400000000, "volatility": 1791400001000}
     assert priced["openInterest"] == ct["openInterest"] and priced["strikePrice"] == ct["strikePrice"]
 
 

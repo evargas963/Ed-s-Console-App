@@ -22,8 +22,9 @@ import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 import server as srv
 from schwab_client import flatten_chain_contracts
-from stream_spine import options_quote_msg
-from tests.feed_live_helper import daemon_holds, no_daemon
+from math_exposure_core import GREEK_FIELDS
+from stream_spine import MessageBus
+from tests.feed_live_helper import daemon_holds, no_daemon, through_the_daemons_bus
 from time_et import ET
 
 _FIXTURES = Path(__file__).parent / "fixtures"
@@ -56,8 +57,7 @@ def _hold(tk, contracts, fetched_ts, price, streamed=()):
     daemon_holds(_AT.timestamp(), held)
     ofs._price_rows[tk] = {"ticker": tk, "spot": price, "trade_ts": fetched_ts}
     for sym, fields, ts in streamed:
-        ofs._ingest_pushed(f"optquote.{sym}", options_quote_msg(symbol=sym, content={"key": sym, **fields},
-                                                                src="schwab_options_l1", ts_recv=ts))
+        through_the_daemons_bus(MessageBus(), sym, [fields], [ts])
     srv._publish_levels(tk, [dict(c) for c in contracts], fetched_ts, now=_AT)
     daemon_holds(time.time(), held)
 
@@ -105,7 +105,9 @@ def test_a_held_contract_is_served_as_its_one_record_every_other_as_the_chain():
           [(target["symbol"], {"TOTAL_VOLUME": volume, "GAMMA": gamma}, now - 8)])
     body = _get(ticker="TSLA")
     served = next(c for c in body["contracts"] if c["symbol"] == target["symbol"])
-    assert served == {**target, "totalVolume": volume, "gamma": gamma}
+    assert served == {**target, "totalVolume": volume, "gamma": gamma,
+                      "greeksTime": {**(target.get("greeksTime") or dict.fromkeys(GREEK_FIELDS)),
+                                     "gamma": int((now - 8) * 1000)}}
     assert [c for c in body["contracts"] if c["symbol"] != target["symbol"]] == _TSLA_CONTRACTS[1:]
 
 

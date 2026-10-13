@@ -821,7 +821,7 @@ def _stream_priced_chain(chain: list, records: dict) -> list:
     """The chain with each streamed contract (`records`) as its one record: Schwab's REST answer
     with each field the stream has sent in its place (math_exposure_core.stream_priced); every
     other contract as Schwab sent it."""
-    return [stream_priced(ct, rec.content) if (rec := records.get(ct.get("symbol"))) else ct
+    return [stream_priced(ct, rec.content, rec.times) if (rec := records.get(ct.get("symbol"))) else ct
             for ct in chain]
 
 
@@ -850,11 +850,13 @@ def _stamp_gamma_surface_cell_stream_state(surface: dict, records: dict, now: fl
     live_market_plane.feed_live_for, the one live rule. Each leg's age is at `now`.
       'live'         — the feed is delivering this symbol now.
       'stale'        — the symbol has streamed but the feed is not delivering it now.
-      'pending'      — the daemon holds the symbol and no tick has landed yet.
-      'unavailable'  — a symbol the daemon does not stream.
+      'pending'      — the daemon's live heartbeat holds the symbol and no tick has landed yet.
+      'unavailable'  — a symbol the daemon does not stream, or whose holding is unknown (no live
+                       heartbeat) before its first tick.
 
     Cell aggregate, over the legs that exist for this strike/expiry: live when all are live,
     partial when some are, else the first of stale > pending present, else unavailable."""
+    held_now = lmp.held_by_daemon("LEVELONE_OPTIONS", now)
     for cell in (surface.get("cells") or []):
         contracts_row = cell.get("contracts") or []
         state_row = []
@@ -872,7 +874,7 @@ def _stamp_gamma_surface_cell_stream_state(surface: dict, records: dict, now: fl
                 if sym not in records:
                     leg_state = "unavailable"
                 elif not record:
-                    leg_state = "pending"
+                    leg_state = "pending" if sym in held_now else "unavailable"
                 elif lmp.feed_live_for(sym, "LEVELONE_OPTIONS", now):
                     leg_state = "live"
                 else:
@@ -1149,7 +1151,7 @@ def _tick_ticker(sym: str) -> "str | None":
 
 def _on_stream_tick(sym: str) -> None:
     """Called by the live feed, on the event loop, for every streamed equity quote and every
-    option quote carrying greeks, open interest or volume. Queues a reprice of the symbol's
+    option message. Queues a reprice of the symbol's
     ticker when someone is viewing it, and returns at once."""
     tk = _tick_ticker(sym)
     if tk and _gamma_surface_wanted(tk):

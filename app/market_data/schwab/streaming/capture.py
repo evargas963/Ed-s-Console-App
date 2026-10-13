@@ -672,6 +672,16 @@ class Daemon:
             for sym in sent.symbols:
                 self.bus.forget(_current_key(sent.service, sym))
 
+    def _release_held(self) -> None:
+        """The connection ended: each record it held is no longer current (the bus forgets it, as
+        on an UNSUBS), so the next connection's records start from Schwab's first answer, never
+        from an ended connection's fields; nothing is asked for or held."""
+        for svc, syms in self.held.items():
+            for sym in syms:
+                self.bus.forget(_current_key(svc, sym))
+        self.asked = {s: frozenset() for s in SERVICES}
+        self.held = {s: frozenset() for s in SERVICES}
+
     async def connect(self, client) -> None:
         stream = _open_stream(client)
         # every message Schwab sends, whatever its size: the websockets library caps a received
@@ -686,17 +696,14 @@ class Daemon:
             add(_publisher(svc, self.bus, self.health))
         stream._handlers["NEWS_HEADLINE"].append(_RawHandler(_publisher("NEWS_HEADLINE", self.bus, self.health)))
         self.stream = stream
-        # a new connection has asked for nothing and holds nothing
-        self.asked = {s: frozenset() for s in SERVICES}
-        self.held = {s: frozenset() for s in SERVICES}
+        self._release_held()            # a new connection has asked for nothing and holds nothing
         self._requests, self._sent = [], {}
         self.schwab_down, self._down_since = SCHWAB_CONNECTING, None
         log.info("schwab: connected")
 
     async def disconnect(self) -> None:
         s, self.stream = self.stream, None
-        self.asked = {k: frozenset() for k in SERVICES}
-        self.held = {k: frozenset() for k in SERVICES}
+        self._release_held()
         if s is not None:
             try:
                 await asyncio.wait_for(s.logout(), timeout=5)
