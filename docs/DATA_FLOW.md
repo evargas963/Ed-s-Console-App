@@ -74,8 +74,9 @@ from Schwab to the screen (daemon, console, page), are these:
   panel. What the daemon streams and pushes, and the levels, are unchanged. Once after each close
   of the last option market the daemon has the writer remove every row received before the newest
   five sessions in Schwab's /markets answers began (`capture.keep_sessions`,
-  `time_et.sessions_since`, `CaptureWriter.prune`: `PRUNE_ROWS` rows a transaction, between live
-  writes, the newest watchlist row always kept); while today's market is unknown or open, or fewer
+  `time_et.sessions_since`, `CaptureWriter.prune`: `PRUNE_ROWS` rows a transaction, one between
+  rounds of live writes, each round writing every message queued; none after a stop is asked; the
+  newest watchlist row always kept); while today's market is unknown or open, or fewer
   sessions are held, nothing is removed. The freed pages are reused (no VACUUM), so the file stays
   about one week's size. Enforced by: `tests/test_data_path_stream_kept_v1.py`. Nothing
   else in `stream_capture.db` keeps old data (`ed_console.db` keeps the chain captures and level
