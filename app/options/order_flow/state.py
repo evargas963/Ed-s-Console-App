@@ -213,9 +213,11 @@ class OrderFlowState:
             self._by_ticker.clear()
 
     def contracts_of(self, ticker: str) -> "dict[str, ContractRecord]":
-        """`ticker`'s contracts and their records."""
+        """`ticker`'s contracts and their records (none when the daemon has pushed none)."""
         with self._lock:
-            return {s: self._contracts[s] for s in self._by_ticker.get(ticker, ())}
+            if ticker not in self._by_ticker:
+                return {}
+            return {s: self._contracts[s] for s in self._by_ticker[ticker]}
 
     def contract(self, symbol: str) -> Optional[ContractRecord]:
         with self._lock:

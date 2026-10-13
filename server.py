@@ -1039,10 +1039,10 @@ def _publish_levels(tk: str, round_ts: "float | None" = None,
     with _terrain_cache_lock:
         payload = dict(_terrain_cache.get(tk) or {})
     capture = captures[0] if captures else None
-    records = {} if capture is not None else _ledger(tk)
-    if capture is not None:
-        chain, fetched_ts = capture["contracts"], capture["ts_utc"]
+    if capture is not None:            # a stored capture: no stream record backs its values
+        chain, fetched_ts, records = capture["contracts"], capture["ts_utc"], {}
     else:
+        records = _ledger(tk)
         chain = [rec.fields for rec in records.values()]
         fetched_ts = round_ts if round_ts is not None else payload.get("_round_ts")
         if not chain or fetched_ts is None:

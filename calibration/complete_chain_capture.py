@@ -464,8 +464,8 @@ class ChainSweep:
             return self.fail(rounds, unreadable)
         errors = answer["errors"] if "errors" in answer else {}
         if errors:
-            log.warning("quotes for %d contracts: Schwab named %d invalid, which have no quote: %s",
-                        len(batch), len(errors.get("invalidSymbols") or []), json.dumps(errors))
+            log.warning("quotes for %d contracts: Schwab named symbols it does not know, which have no quote: %s",
+                        len(batch), json.dumps(errors))
         for rnd, s in batch:
             if s in answer and s != "errors":
                 quote = answer[s]["quote"]
@@ -498,7 +498,7 @@ def write_capture(db_path: Path | str, ticker: str, contracts: "list[dict]", spo
     one row per expiry, with the ticker's price and the time its round began."""
     by_expiry: "dict[str, list[dict]]" = {}
     for ct in contracts:
-        by_expiry.setdefault(str(ct.get("expirationDate") or "")[:10], []).append(ct)
+        by_expiry.setdefault(str(ct["expirationDate"])[:10], []).append(ct)   # each opened from the chain
     for expiry, cts in by_expiry.items():
         persist_complete_chain_capture(db_path, ticker=ticker, expiry=expiry, contracts=cts, spot=spot,
                                        completeness_basis=CAPTURE_BASIS, ts_utc=ts_utc)

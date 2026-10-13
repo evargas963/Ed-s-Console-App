@@ -244,6 +244,6 @@ def test_contracts_schwab_names_invalid_get_no_quote_and_every_ticker_in_the_req
     in_request = [[s for s in symbols if s in named] for symbols in answered]
     assert sum(len(n) for n in in_request) == len(named) == 8
     assert [m for m in logged if "named" in m] == [
-        f"quotes for {len(symbols)} contracts: Schwab named {len(n)} invalid, which have no "
+        f"quotes for {len(symbols)} contracts: Schwab named symbols it does not know, which have no "
         f"quote: {json.dumps({'invalidSymbols': n})}" for symbols, n in zip(answered, in_request)], \
-        "each request's named contracts logged once, with their count"
+        "each request's named contracts logged once, as Schwab named them"
