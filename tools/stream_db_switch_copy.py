@@ -36,7 +36,10 @@ COPY_ROWS = 5000
 
 
 def _expiry(symbol: str) -> "date | None":
-    """A contract's expiration from its 21-character Schwab symbol (root, YYMMDD, C/P, strike)."""
+    """A contract's expiration as its Schwab symbol states it: Schwab's option key is
+    RRRRRRYYMMDDsWWWWWddd, YY/MM/DD its expiration (docs/schwab/schwab_streamer_api.pdf, LEVELONE_OPTIONS
+    keys). The key is read, not EXPIRATION_YEAR/MONTH/DAY: OPTIONS_BOOK rows have no such fields, and
+    one choice covers both option tables."""
     if not vendor_option_root(symbol):
         return None
     return date(2000 + int(symbol[6:8]), int(symbol[8:10]), int(symbol[10:12]))
@@ -132,10 +135,11 @@ def copy(old_path: Path, new_path: Path, now: datetime) -> "dict[str, dict[str, 
             newest = old.execute("SELECT MAX(rowid), MAX(ts_recv) FROM stream_watchlist").fetchone()
             if newest[0] is not None and newest[1] < since.timestamp():
                 parts.append(np.array([newest[0]], dtype=np.int64))
-                extra["before"] = (0, 1)
+                extra["before"] = (old.execute("SELECT COUNT(*) FROM stream_watchlist WHERE ts_recv < ?",
+                                               (since.timestamp(),)).fetchone()[0], 1)
         rowids = np.unique(np.concatenate(parts))               # ascending: the order they were written
         copied = _copy(new, table, cols, rowids)
-        print(f"copied {table}: {copied} rows at {datetime.now(ET):%H:%M:%S} ET", file=sys.stderr, flush=True)
+        print(f"copied {table}: {copied} rows", file=sys.stderr, flush=True)
         counts[table] = {**extra, **{label[d]: (old_n[d], new_n[d]) for d in range(len(starts)) if old_n[d]}}
         if not copied == len(rowids) == sum(n for _o, n in counts[table].values()):
             raise SystemExit(f"{table}: {copied} rows copied of {len(rowids)} chosen, "

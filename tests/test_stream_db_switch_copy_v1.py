@@ -102,6 +102,7 @@ def test_within_five_sessions_every_equity_row_and_that_days_0dte_contracts_are_
         == ["09-29"]
     printed = {t: (int(o), int(n)) for t, o, n in re.findall(r"^(\w+): old (\d+) -> new (\d+)$", run.stdout, re.M)}
     assert printed["stream_options_quotes_raw"][0] == sum(m["service"] == "LEVELONE_OPTIONS" for m in MIX)
+    assert printed["stream_watchlist"] == (2, 1)            # both old rows counted, the newest copied
     assert {t: n for t, (_o, n) in printed.items()} == \
         {t: _rows(new, f"SELECT COUNT(*) FROM {t}")[0][0] for t, _c in KEPT_BY_TIME}
     indexes = {r[1] for t in RECEIPT_TIME_INDEXES for r in _rows(new, f"PRAGMA index_list({t})")}
