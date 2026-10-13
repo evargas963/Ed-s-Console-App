@@ -42,8 +42,9 @@ ENFORCEMENT_PATHS: tuple[str, ...] = (
 PROTECTED_PATHS: tuple[str, ...] = ENFORCEMENT_PATHS
 
 #: LOCK-2: the tree-destructive git class, not just `reset --hard`. The hard forms (reset --hard,
-#: checkout -- <any path>, clean -f, push --force without lease, short -f included) are `_hard`
-#: below and refuse on any target. The class rule covers the reset/restore/checkout--/clean/stash
+#: checkout -- <any path>, clean -f, push --force without lease, short -f included, and every git
+#: stash but its reads `list` and `show`) are `_hard` below and refuse on any target. The class
+#: rule covers the reset/restore/checkout--/clean/stash
 #: family: a statement running a destructive verb AND touching a protected/product path (or a
 #: bare, whole-tree form) is refused at PreToolUse in every session wired to process_lock_guard.
 #: git's global options (`git -C <other> ...`) are skipped; the class rule is judged per
@@ -76,6 +77,7 @@ def _hard(sub: str, args: list[str]) -> bool:
     return ((sub == "reset" and "--hard" in args)
             or (sub == "checkout" and args[:1] == ["--"] and len(args) > 1)
             or (sub == "clean" and any(re.match(r"-[a-z]*f", a, re.I) for a in args))
+            or (sub == "stash" and args[:1] not in (["list"], ["show"]))
             or (sub == "push" and any((a.startswith("--force") and not a.startswith("--force-with-lease"))
                                       or re.fullmatch(r"-[a-zA-Z]*f[a-zA-Z]*", a) for a in args)))
 
@@ -85,7 +87,7 @@ def _safe(sub: str, args: list[str]) -> bool:
     first = args[0] if args else ""
     return ((sub == "reset" and first == "--soft")
             or (sub == "restore" and first == "--staged" and "--worktree" not in args)
-            or (sub == "stash" and first == "list")
+            or (sub == "stash" and first in ("list", "show"))
             or (sub == "checkout" and first == "-b")
             or (sub == "clean" and bool(re.match(r"-\S*n", first))))
 
@@ -128,7 +130,7 @@ def reset_guard_violations(command: str, powershell: bool = False) -> list[str]:
     if any(_hard(*git_subcommand(words)) for words in gits):
         return [
             "RESET_GUARD (LOCK-2/RC-231): destructive git can discard operator work — "
-            "reset --hard / checkout -- <path> / clean -f / push --force or -f are refused on "
+            "reset --hard / checkout -- <path> / clean -f / push --force or -f / stash are refused on "
             "any target (`--force-with-lease` is the safe form). Hand it to the operator. Not "
             "subject-disableable (RC-450)."
         ]
