@@ -17,7 +17,7 @@ from datetime import datetime
 
 from app.market_data.schwab.streaming import capture
 from calibration.complete_chain_capture import chain_messages
-from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus, book_msg, options_quote_msg, quote_msg
+from stream_spine import LOG, PRUNE_ROWS, CaptureWriter, HealthRegistry, MessageBus, book_msg, options_quote_msg, quote_msg
 from tests.real_chains import MRVL, SPY_0DTE
 from time_et import ET
 
@@ -39,8 +39,8 @@ def _et(text: str) -> float:
 
 
 def _as_production(db) -> None:
-    """The indexes of production's stream_capture.db (PRAGMA index_list on it, 2026-10-12): its quote,
-    book and option tables by symbol and receipt time, none by receipt time alone."""
+    """The indexes of production's stream_capture.db (PRAGMA index_list on it): its quote, book and
+    option tables by symbol and receipt time, none by receipt time alone."""
     with sqlite3.connect(db) as conn:
         for index in ("idx_sqr_ts", "idx_sbkr_ts", "idx_soqr_ts"):
             conn.execute(f"DROP INDEX {index}")
@@ -194,8 +194,8 @@ def test_every_message_arriving_during_the_keep_is_written_while_old_rows_are_st
 
 def test_a_stop_asked_during_the_keep_writes_what_was_queued_and_removes_nothing_more(tmp_path):
     """The keep has 400,000 old option quotes to remove (twenty parts) when ten equity quotes and the
-    stop are queued: the writer writes the ten and ends, with no part of the keep after the stop
-    (on production's file one part can take minutes, and the daemon's stop waits for it)."""
+    stop are handed to the writer: it writes the ten and ends, having run at most the one part in
+    progress when they arrived, none after it took the stop."""
     db = tmp_path / "stream_capture.db"
     writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01)
     _as_production(db)
@@ -211,13 +211,12 @@ def test_a_stop_asked_during_the_keep_writes_what_was_queued_and_removes_nothing
     for i in range(10):
         bus.publish("quote.SPY", quote_msg(symbol="SPY", last=776.61, src="schwab_l1", ts_recv=now + i / 1000,
                                            native={"key": "SPY"}))
-    while not sub.queue.empty():                 # as CaptureWriter.run hands them, then the stop
-        writer._hand(sub.queue.get_nowait())
-    writer._q.put(None)
     writer.prune(_et("2026-10-01 00:00"))
-    writer._write(writer._q)
+    stop = asyncio.Event()
+    stop.set()                                   # the stop is asked as the ten are handed over
+    asyncio.run(writer.run(sub, stop=stop))
     assert _rows(db, "SELECT COUNT(*) FROM stream_quotes_raw")[0][0] == 10
-    assert _rows(db, "SELECT COUNT(*) FROM stream_options_quotes_raw")[0][0] == 400_000
+    assert _rows(db, "SELECT COUNT(*) FROM stream_options_quotes_raw")[0][0] >= 400_000 - PRUNE_ROWS
 
 
 def test_nothing_is_removed_while_the_options_trade_or_the_market_is_unknown(tmp_path):

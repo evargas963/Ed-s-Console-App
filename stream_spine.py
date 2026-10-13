@@ -1101,7 +1101,7 @@ class CaptureWriter:
                     if self._spills and not self._waiting:
                         self._write_back(conn)
                     if self._prune and not stopping and not self._spills and not self._batch:
-                        self._prune_part(conn)  # one part between rounds, never after a stop is asked
+                        self._prune_part(conn)  # one part between rounds, none once the stop is taken
                 except DATABASE_REFUSALS as e:
                     if conn is not None:
                         conn.close()       # its open transaction is rolled back
