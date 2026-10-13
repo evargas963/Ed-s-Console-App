@@ -102,18 +102,16 @@ def test_rail_fails_open_on_unreadable_topology(tmp_path):
         {"file_path": str(tmp_path / "anything.py")}, repo=wt) == []
 
 
-def test_index_worktree_mismatch_detected(tmp_path, monkeypatch):
+def test_index_worktree_mismatch_detected(tmp_path):
     repo = _init_repo(tmp_path)
     db = repo / "db.py"
     db.write_text(db.read_text(encoding="utf-8") + "\n# wt delta\n", encoding="utf-8")
-    monkeypatch.chdir(repo)
     mism = OPL.index_worktree_mismatches(repo)
     assert any("index≠WT" in m or "worktree=" in m for m in mism)
 
 
-def test_index_parity_passes_when_clean(tmp_path, monkeypatch):
+def test_index_parity_passes_when_clean(tmp_path):
     repo = _init_repo(tmp_path)
-    monkeypatch.chdir(repo)
     assert OPL.index_worktree_mismatches(repo) == []
 
 
@@ -149,12 +147,9 @@ def test_measure_report_has_enforcement_hashes():
     assert "operator_go" not in rep
 
 
-def test_main_precommit_exits_zero_on_clean_repo(tmp_path, monkeypatch):
-    repo = _init_repo(tmp_path)
-    monkeypatch.chdir(repo)
-    monkeypatch.setattr(OPL, "REPO", repo)
-    rc = OPL.main(["--pre-commit"])
-    assert rc == 0
+def test_precommit_finds_nothing_on_a_clean_repo(tmp_path):
+    """What `main --pre-commit` judges (all_precommit_violations), on a clean repo."""
+    assert OPL.all_precommit_violations(_init_repo(tmp_path)) == []
 
 
 # ---------------------------------------------------------------------------

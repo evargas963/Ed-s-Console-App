@@ -116,9 +116,9 @@ def reset_guard_violations(command: str, powershell: bool = False) -> list[str]:
     Two clauses, one predicate. The HARD forms (`reset --hard`, `checkout -- <any path>`,
     `clean -f`, `push --force`/`-f`, every `stash` but `stash list`) discard work whatever they
     name, so they refuse on sight, on ANY target (host-wide; the checkout in front of the command
-    is irrelevant — RC-258 kept these unscoped on purpose). The CLASS forms (the wider
-    reset/restore/checkout--/clean family) refuse when they touch a protected/product path or take a bare whole-tree shape,
-    judged PER STATEMENT (RC-525) so a safe first statement cannot launder a later one.
+    is irrelevant). The CLASS forms (the wider reset/restore/checkout--/clean family) refuse when
+    they touch a protected/product path or take a bare whole-tree shape, judged PER STATEMENT so a
+    safe first statement cannot launder a later one.
 
     Not subject-disableable (RC-450): no env token or repo file can authorize a wipe.
     `git reset --soft`, `git restore --staged` (index-only), `git stash list`,
