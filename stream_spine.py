@@ -795,12 +795,13 @@ def _first_kept_rowid(conn: sqlite3.Connection, table: str, column: str, before:
         return 0
     hi += 1
     while lo < hi:
-        row = conn.execute(f"SELECT rowid, {column} FROM {table} WHERE rowid >= ? ORDER BY rowid LIMIT 1",
-                           ((lo + hi) // 2,)).fetchone()
-        if row is None or row[1] >= before:
-            hi = (lo + hi) // 2
+        mid = (lo + hi) // 2
+        rowid, received = conn.execute(f"SELECT rowid, {column} FROM {table} WHERE rowid >= ? ORDER BY rowid "
+                                       "LIMIT 1", (mid,)).fetchone()
+        if received >= before:
+            hi = mid
         else:
-            lo = row[0] + 1
+            lo = rowid + 1
     return lo
 
 
@@ -1096,7 +1097,7 @@ class CaptureWriter:
                     stopping = item is None
                     incoming += [item] if item else []
                 holding = bool(self._waiting) or bool(self._spills)
-                if holding:                # every queued message joins the held ones, in order
+                if holding:                # the round's messages join the held ones, in order
                     self._admit(incoming)
                     del incoming           # what was spilled is held on disk only
                     items = self._waiting
@@ -1119,10 +1120,8 @@ class CaptureWriter:
                             self._waiting, self._waiting_bytes = [], 0
                     if self._spills and not self._waiting:
                         self._write_back(conn)
-                    # the keep takes a part only while nothing waits to be written and no stop is asked
-                    if self._prune and not stopping and q.empty() and not self._waiting and not self._spills \
-                            and not self._batch:
-                        self._prune_part(conn)
+                    if self._prune and not stopping and not self._spills and not self._batch:
+                        self._prune_part(conn)  # one part between rounds, never after a stop is asked
                 except DATABASE_REFUSALS as e:
                     if conn is not None:
                         conn.close()       # its open transaction is rolled back
@@ -1208,8 +1207,8 @@ class CaptureWriter:
     def prune(self, before: float) -> None:
         """Remove every row received before `before` from the tables of KEPT_BY_TIME (the newest
         stream_watchlist row stays), on the writer thread, one part of PRUNE_ROWS at a time between
-        live writes and only while nothing is held; a stop before it ends leaves the rest for the
-        next one."""
+        rounds of live writes (each round takes every message queued) while nothing is held on disk;
+        a stop before it ends leaves the rest for the next one."""
         with self._lock:
             self._prune_before, self._prune, self._pruned = before, list(KEPT_BY_TIME), Counter()
 
