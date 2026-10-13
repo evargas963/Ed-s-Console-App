@@ -191,7 +191,9 @@ from Schwab to the screen (daemon, console, page), are these:
   option rule, below) takes its price, bid/ask, last, volume and Greeks from its stream alone
   (`math_exposure_core.STREAMED_CHAIN_FIELDS`, `overlay_streamed_contract_fields`): the console
   keeps each contract's LEVELONE_OPTIONS record as the daemon pushes it
-  (`app.options.order_flow.state.option_record`); a field the stream has not sent is absent, never
+  (`app.options.order_flow.state.option_records`), and the daemon's chain sweep applies the same
+  rule where the chain enters (`math_exposure_core.stream_priced`), values as sent; a stored capture
+  is valued at its own time, never with today's stream; a field the stream has not sent is absent, never
   the chain's; when the feed stops, the last values stand, marked not live (the heatmap leg's
   state). Open interest is the chain's (Schwab's is the prior day's,
   `docs/schwab/schwab_support_emails_2026_10_12.txt`). A contract not held takes the chain's values,
@@ -332,8 +334,9 @@ from Schwab to the screen (daemon, console, page), are these:
   gamma 0.00037225; on SPY's 2026-11-20 column 86 of 221 cells with open interest read $0 GEX on
   the chain's gamma; stream and quotes Greeks measured equal). Operator, 2026-10-01: "use what
   schwab gives us... no rounding, use the exact data that schwab gives us everywhere". A
-  contract the daemon streams (`Daemon.option_record`) takes the stream's, a Greek not sent yet
-  absent, and is never asked for on `/quotes`; every other contract is, comma-separated, 300 to
+  contract the daemon streams (`Daemon.option_record`) takes its price, bid/ask, last, volume and
+  Greeks from its stream record (`math_exposure_core.stream_priced`), one not sent yet absent, and is
+  never asked for on `/quotes`; every other contract is, comma-separated, 300 to
   a request across tickers (`QUOTES_BATCH_MAX`, Schwab Trader API Support 2026-10-06: not more
   than 300), and takes its quote's, as sent. Each contract carries the time of its Greeks as
   Schwab sent it, `greeksTime` ({field: ms}: the stream field's frame time, or the quote's
