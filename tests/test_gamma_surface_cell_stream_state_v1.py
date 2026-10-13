@@ -99,12 +99,11 @@ def test_one_live_cell_of_many_reads_under_one_percent_never_zero():
 
 
 def test_a_contract_that_streamed_reads_stale_while_schwabs_socket_is_closed():
-    """Closed (22:00 ET), Schwab's socket closed: the values as of the close stand (the streamed
-    gamma prices the cell) and its legs say they are not streaming now."""
+    """Closed (22:00 ET), Schwab's socket closed: the contract's legs say they are not streaming
+    now (its last streamed values stand: test_one_levels_producer_v1's feed-down test)."""
     sym = CALLS[0]
     cov, surface = _publish([sym], [sym], at=_CLOSED, socket_open=False)
     assert [leg["state"] for leg in _legs(surface, sym)] == ["stale"]
-    assert surface["stream_overlay_symbols"] == [sym]
     assert cov["stale"] == 1 and cov["live"] == 0
 
 

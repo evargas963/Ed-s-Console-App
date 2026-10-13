@@ -103,7 +103,7 @@ def test_a_streamed_contract_is_served_with_its_streams_values_alone():
     body = _get(ticker="TSLA")
     served = next(c for c in body["contracts"] if c["symbol"] == target["symbol"])
     assert served == stream_priced(target) and served["bid"] is None and target["bid"] is not None
-    assert served["openInterest"] == target["openInterest"] and body["stream_overlay_contracts"] == 1
+    assert served["openInterest"] == target["openInterest"]
     assert [c for c in body["contracts"] if c["symbol"] != target["symbol"]] == _TSLA_CONTRACTS[1:]
 
 

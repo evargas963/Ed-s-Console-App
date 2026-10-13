@@ -1,32 +1,38 @@
-"""A real LEVELONE_OPTIONS record as the daemon holds and pushes it: SPY 261030C00910000's messages in
-the 2026-10-05 14:00 CT stream mix (tests/fixtures/real_stream_mix_2026_10_05_1400ct.json), merged on
-the daemon's own bus. It carries the six Greeks and IV; in those three seconds the contract sent no
-bid, ask, last, mark or volume. Tests that price another contract with it name it a STAND-IN."""
+"""Real LEVELONE_OPTIONS records as the daemon holds and pushes them: a contract's messages in the
+2026-10-05 14:00 CT stream mix (tests/fixtures/real_stream_mix_2026_10_05_1400ct.json) merged on the
+daemon's own bus. RECORD is SPY 261030C00910000's: it carries the six Greeks and IV; in those three
+seconds the contract sent no bid, ask, last, mark or volume. Tests that price another contract with
+it name it a STAND-IN."""
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
 from app.market_data.schwab.streaming import capture
-from math_exposure_core import STREAMED_CHAIN_FIELDS
 from stream_spine import MessageBus
 
-SYMBOL = "SPY   261030C00910000"
+_MIX = json.loads((Path(__file__).parent / "fixtures" / "real_stream_mix_2026_10_05_1400ct.json")
+                  .read_text(encoding="utf-8"))["messages"]
 
 
-def _record() -> dict:
+def bus_records(symbol: str):
+    """Each of `symbol`'s messages merged on the daemon's bus: (topic, its current record) after each."""
     bus = MessageBus()
-    for m in json.loads((Path(__file__).parent / "fixtures" / "real_stream_mix_2026_10_05_1400ct.json")
-                        .read_text(encoding="utf-8"))["messages"]:
-        if m["item"]["key"] == SYMBOL:
-            kind, msg = capture._message(m["service"], SYMBOL, m["item"], m["schwab_ts"])
-            bus.publish(f"{kind}.{SYMBOL}", {**msg, "ts_recv": m["ts_recv"]})
-    return {k: v for k, v in next(iter(bus.current.values()))[1]["content"].items() if k != "key"}
+    for m in _MIX:
+        if m["item"]["key"] == symbol:
+            kind, msg = capture._message(m["service"], symbol, m["item"], m["schwab_ts"])
+            topic = f"{kind}.{symbol}"
+            bus.publish(topic, {**msg, "ts_recv": m["ts_recv"]})
+            yield topic, next(iter(bus.current.values()))[1]
 
 
-RECORD = _record()
+RECORD = {k: v for k, v in list(bus_records("SPY   261030C00910000"))[-1][1]["content"].items() if k != "key"}
 
 
 def stream_priced(ct: dict, content: dict = RECORD) -> dict:
-    """`ct` priced from its stream alone: every STREAMED_CHAIN_FIELDS value from `content`."""
-    return {**ct, **{key: read(content.get(field)) for key, field, read in STREAMED_CHAIN_FIELDS}}
+    """`ct` as the one-source rule prices it from its stream record, written out field by field."""
+    return {**ct, "bid": content.get("BID_PRICE"), "ask": content.get("ASK_PRICE"),
+            "last": content.get("LAST_PRICE"), "mark": content.get("MARK"),
+            "totalVolume": content.get("TOTAL_VOLUME"), "delta": content.get("DELTA"),
+            "gamma": content.get("GAMMA"), "theta": content.get("THETA"), "vega": content.get("VEGA"),
+            "rho": content.get("RHO"), "volatility": content.get("VOLATILITY")}

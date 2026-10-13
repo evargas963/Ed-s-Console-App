@@ -26,7 +26,7 @@ import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 import push_changes
 import server
-from calibration.complete_chain_capture import CAPTURE_BASIS, persist_complete_chain_capture
+from calibration.complete_chain_capture import CAPTURE_BASIS, last_capture_per_day, persist_complete_chain_capture
 from math_exposure_core import bucket_metric, merge_exposure_books
 from stream_spine import options_quote_msg
 from terrain_engine import compute_terrain
@@ -176,7 +176,6 @@ def test_a_held_contract_is_priced_from_its_stream_alone_whatever_the_chains_tim
     _streamed(_A, _RECORD, _T - 60.0)
     _put_chain(fetched_ts=_T)
     c = _cached()
-    assert c["_gamma_surface"]["stream_overlay_symbols"] == [_A]
     priced = [_stream_priced(_CONTRACTS[0], _RECORD)] + _CONTRACTS[1:]
     assert priced[0]["openInterest"] == _CONTRACTS[0]["openInterest"] and priced[0]["bid"] is None
     assert c["_per_strike"] == compute_terrain(TK, priced, _SPOT, now=_AT).per_strike
@@ -191,7 +190,8 @@ def test_a_new_chain_does_not_turn_a_live_contracts_leg_stale():
     _streamed(_A, _RECORD, _T - 60.0)                                               # a minute ago
     _publish(chain, _T)
     surface = _cached()["_gamma_surface"]
-    assert surface["stream_overlay_symbols"] == [_A]
+    assert _cached()["_per_strike"] == compute_terrain(
+        TK, [_stream_priced(chain[0], _RECORD)] + chain[1:], _SPOT, now=_AT).per_strike
     legs = [col[side] for cell in surface["cells"] for col, pair in zip(cell["stream"], cell["contracts"])
             for side in ("call", "put") if pair.get(side) == _A and col]
     assert legs and all(leg["state"] == "live" for leg in legs)
@@ -202,7 +202,8 @@ def test_every_streamed_contract_is_overlaid_not_only_the_one_that_ticked():
     _streamed(_A, _RECORD, _T)
     _streamed(_B, _RECORD, _T)
     _put_chain(fetched_ts=_T - 5.0)
-    assert sorted(_cached()["_gamma_surface"]["stream_overlay_symbols"]) == sorted([_A, _B])
+    priced = [_stream_priced(ct, _RECORD) for ct in _CONTRACTS[:2]] + _CONTRACTS[2:]
+    assert _cached()["_per_strike"] == compute_terrain(TK, priced, _SPOT, now=_AT).per_strike
 
 
 def test_repeated_reprices_start_from_the_raw_chain_never_a_prior_overlay():
@@ -213,7 +214,6 @@ def test_repeated_reprices_start_from_the_raw_chain_never_a_prior_overlay():
     _publish()
     c = _cached()
     assert c["_chain"] is _CONTRACTS and _CONTRACTS[0].get("gamma") != _RECORD["GAMMA"]
-    assert c["_gamma_surface"]["stream_overlay_contracts"] == 0
     assert c["_per_strike"] == compute_terrain(TK, _CONTRACTS, _SPOT, now=_AT).per_strike
 
 
@@ -244,7 +244,7 @@ def test_a_foreign_tickers_contract_never_overlays_this_chain():
     _streamed(foreign, _RECORD, _T)
     _put_chain(fetched_ts=_T - 5.0)
     assert server._stream_records_for_ticker(_cached()["_contract_symbols"], _T) == {}
-    assert _cached()["_gamma_surface"]["stream_overlay_contracts"] == 0
+    assert _cached()["_per_strike"] == compute_terrain(TK, _CONTRACTS, _SPOT, now=_AT).per_strike
 
 
 # ── spot ─────────────────────────────────────────────────────────────────────────────────────
@@ -391,6 +391,23 @@ def _forget(*tickers):
     with server._terrain_cache_lock:
         for tk in tickers:
             server._terrain_cache.pop(tk, None)
+
+
+def test_a_stored_capture_is_valued_at_its_own_time_never_with_the_stream():
+    """A contract the daemon streams, its record held: the stored capture (startup, a closed
+    market) is priced from the capture's own values, as of its time, never today's stream."""
+    tk = "ZZCAPSTREAM"
+    _store(tk, _T - 3600.0)
+    _daemon(held=[_A])
+    _streamed(_A, _RECORD, _T)
+    try:
+        server._publish_levels(tk, captures=last_capture_per_day(server.get_db().db_path, tk, 2), now=_AT)
+        with server._terrain_cache_lock:
+            published = dict(server._terrain_cache[tk])
+    finally:
+        _forget(tk)
+    capture_time = datetime.fromtimestamp(_T - 3600.0, ET)
+    assert published["_per_strike"] == compute_terrain(tk, _CONTRACTS, _SPOT, now=capture_time).per_strike
 
 
 def test_startup_prices_the_newest_capture_with_its_own_price_and_time():

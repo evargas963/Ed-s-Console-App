@@ -42,7 +42,7 @@ class OrderFlowState:
         self._top: dict[str, dict] = {}
         self._prev_trade: dict[str, dict] = {}
         self._receive_seq: dict[str, int] = {}
-        self._option_records: dict[str, tuple[dict, dict]] = {}
+        self._option_records: dict[str, tuple[dict, float]] = {}
 
     def _get_book(self, symbol: str) -> deque:
         with self._lock:
@@ -210,19 +210,19 @@ class OrderFlowState:
             t = self._top.get(sym)
             return dict(t) if t else None
 
-    def push_option_record(self, symbol: str, content: dict, received: dict) -> None:
-        """An option contract's LEVELONE_OPTIONS record as the daemon holds it (every field
-        Schwab has sent, the last of each: Schwab sends changes only), with each field's
-        receive time; it replaces the one held."""
+    def push_option_record(self, symbol: str, content: dict, ts_recv: float) -> None:
+        """An option contract's LEVELONE_OPTIONS record as the daemon pushes it (every field
+        Schwab has sent, the last of each: Schwab sends changes only) and when its newest field
+        arrived; it replaces the one held, never changed in place."""
         sym = ticker_storage_key(symbol)
         if sym:
             with self._lock:
-                self._option_records[sym] = (dict(content), dict(received))
+                self._option_records[sym] = (content, ts_recv)
 
-    def option_record(self, symbol: str) -> "Optional[tuple[dict, dict]]":
-        """The contract's record (fields, each field's receive time), or None if none came."""
+    def option_records(self, symbols) -> "dict[str, Optional[tuple[dict, float]]]":
+        """Each symbol's record (fields, newest receive time), None if none came."""
         with self._lock:
-            return self._option_records.get(ticker_storage_key(symbol))
+            return {s: self._option_records.get(ticker_storage_key(s)) for s in symbols}
 
 
 
@@ -276,12 +276,12 @@ def clear_symbol(symbol: str) -> None:
 
 
 
-def push_option_record(symbol: str, content: dict, received: dict) -> None:
-    _LIVE_STATE.push_option_record(symbol, content, received)
+def push_option_record(symbol: str, content: dict, ts_recv: float) -> None:
+    _LIVE_STATE.push_option_record(symbol, content, ts_recv)
 
 
-def option_record(symbol: str) -> "Optional[tuple[dict, dict]]":
-    return _LIVE_STATE.option_record(symbol)
+def option_records(symbols) -> "dict[str, Optional[tuple[dict, float]]]":
+    return _LIVE_STATE.option_records(symbols)
 
 
 

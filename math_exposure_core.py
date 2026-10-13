@@ -337,32 +337,25 @@ _BUCKET_FLAGS = frozenset({"dollarized"})
 #: Each chain contract field and the LEVELONE_OPTIONS field that is its one source while the
 #: contract streams (Schwab's price, bid/ask, last, volume and Greeks). Open interest is the
 #: chain's: Schwab's is the prior day's (docs/schwab/schwab_support_emails_2026_10_12.txt, 5).
-STREAMED_CHAIN_FIELDS: tuple[tuple[str, str, object], ...] = (
-    ("bid", "BID_PRICE", schwab_number), ("ask", "ASK_PRICE", schwab_number),
-    ("last", "LAST_PRICE", schwab_number), ("mark", "MARK", schwab_number),
-    ("totalVolume", "TOTAL_VOLUME", schwab_count),
-    ("delta", "DELTA", schwab_number), ("gamma", "GAMMA", schwab_number),
-    ("theta", "THETA", schwab_number), ("vega", "VEGA", schwab_number),
-    ("rho", "RHO", schwab_number), ("volatility", "VOLATILITY", schwab_number),
+STREAMED_CHAIN_FIELDS: tuple[tuple[str, str], ...] = (
+    ("bid", "BID_PRICE"), ("ask", "ASK_PRICE"), ("last", "LAST_PRICE"), ("mark", "MARK"),
+    ("totalVolume", "TOTAL_VOLUME"), ("delta", "DELTA"), ("gamma", "GAMMA"), ("theta", "THETA"),
+    ("vega", "VEGA"), ("rho", "RHO"), ("volatility", "VOLATILITY"),
 )
 
 
-def overlay_streamed_contract_fields(contracts: List[dict], streamed_by_symbol: Dict[str, dict]
-                                     ) -> tuple[List[dict], int]:
-    """Each contract that streams (its `symbol` in `streamed_by_symbol`: the fields of its
-    LEVELONE_OPTIONS record, empty before one arrives) takes every STREAMED_CHAIN_FIELDS value
-    from the stream alone; one the stream has not sent is None, never the chain's. A contract that
-    does not stream keeps the chain's values.
+def stream_priced(ct: dict, content: dict) -> dict:
+    """`ct` with every STREAMED_CHAIN_FIELDS value its stream record's, as sent (one the stream
+    has not sent absent, never the chain's)."""
+    return {**ct, **{key: content.get(field) for key, field in STREAMED_CHAIN_FIELDS}}
 
-    Pure: `contracts` and its dicts are never mutated; a streamed contract is copied. Returns
-    (new_contracts, streamed_count).
-    """
-    out: List[dict] = []
-    for ct in contracts:
-        content = streamed_by_symbol.get(ct.get("symbol"))
-        out.append(ct if content is None else
-                   {**ct, **{key: read(content.get(field)) for key, field, read in STREAMED_CHAIN_FIELDS}})
-    return out, sum(1 for ct in contracts if ct.get("symbol") in streamed_by_symbol)
+
+def overlay_streamed_contract_fields(contracts: List[dict], streamed_by_symbol: Dict[str, dict]) -> List[dict]:
+    """Each contract that streams (its `symbol` in `streamed_by_symbol`: the fields of its
+    LEVELONE_OPTIONS record, empty before one arrives) priced from its stream alone
+    (stream_priced); a contract that does not stream is the chain's own. Pure: nothing mutated."""
+    return [ct if ct.get("symbol") not in streamed_by_symbol else
+            stream_priced(ct, streamed_by_symbol[ct["symbol"]]) for ct in contracts]
 
 
 # ── Strike selection helpers ─────────────────────────────────────────────────

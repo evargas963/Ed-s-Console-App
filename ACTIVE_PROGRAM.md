@@ -115,7 +115,6 @@ to write it plainly, in the forms `test_a_command_the_reader_cannot_see_into_is_
 - M-37 `time_to_expiry_years` floors T at 10 minutes.
 
 **app/options/order_flow/, live_price_rows.py, live_market_plane.py**
-- O-02 equity TOTAL_VOLUME is written into `_stream_greeks` (read only for options).
 - O-04 a 0 MARK, BOOK_TIME or quote time reads as missing (truthiness / `> 0`).
 - O-09 the price display (`spot_disp`) is formatted in three places.
 - O-13 malformed push messages and bad frames are dropped uncounted.

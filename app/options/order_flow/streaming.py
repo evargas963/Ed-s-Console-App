@@ -126,8 +126,8 @@ _feed_running = False
 #: by ticker_storage_key.
 _option_contract_last_update_ts: dict[str, float] = {}
 
-#: Called with the symbol of every streamed equity quote and every option quote carrying
-#: GAMMA/DELTA/OPEN_INTEREST/TOTAL_VOLUME/VOLUME (server._on_stream_tick: reprices a viewed
+#: Called with the symbol of every streamed equity quote and every option quote carrying one of
+#: _REPRICE_FIELDS (server._on_stream_tick: reprices a viewed
 #: ticker). Runs on the event loop, so it must return at once.
 _on_tick_callback: Optional[Callable[[str], None]] = None
 _tick_callback_failures = 0
@@ -223,7 +223,7 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
       optquote.SYM LEVELONE_OPTIONS -> order-flow state for the contract
       markets.DATE Schwab's /markets answer -> that date's sessions (time_et), when it is a 200
 
-    Every option quote carrying GAMMA/DELTA/OPEN_INTEREST/TOTAL_VOLUME/VOLUME is passed to the
+    Every option quote carrying one of _REPRICE_FIELDS is passed to the
     tick callback (an equity's tick is its price row's arrival). A message missing its symbol, its
     receive time or its Schwab payload is dropped whole: nothing is applied with a guessed
     part."""
@@ -275,7 +275,7 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
         if not isinstance(content, dict):
             return None
         push_level_one(sym, content, ts_recv=ts, field_received=received)
-        push_option_record(sym, content, received if received is not None else dict.fromkeys(content, ts))
+        push_option_record(sym, content, ts)
         push_option_top(sym, content)
         recent.TAPE.record(sym, content, ts)
         _option_contract_last_update_ts[sym] = ts
