@@ -11,7 +11,9 @@ import json
 from datetime import datetime
 from pathlib import Path
 
+import app.options.order_flow.state as ofls
 import server
+from tests.feed_live_helper import ledger_round
 from time_et import ET
 
 _FX = Path(__file__).resolve().parent / "fixtures"
@@ -27,12 +29,13 @@ def test_every_contract_schwab_listed_for_a_ticker_is_that_tickers_and_no_others
     assert {c["symbol"][:6].strip() for c in _SPX["contracts"]} == {"SPX", "SPXW"}
     try:
         for tk, chain in _CHAINS.items():
-            server._publish_levels(tk, [dict(c) for c in chain], _VALUED.timestamp(), now=_VALUED)
+            ledger_round(tk, chain, _VALUED.timestamp(), now=_VALUED)
         owners = {tk: {server._contract_ticker(c["symbol"]) for c in chain} for tk, chain in _CHAINS.items()}
         unlisted = server._contract_ticker("ZZZ   261016C00001000")
     finally:
         with server._terrain_cache_lock:
             for tk in _CHAINS:
                 server._terrain_cache.pop(tk, None)
+        ofls.clear_all_live_state()
     assert owners == {tk: {tk} for tk in _CHAINS}          # CDE's contracts are never C's, SPXW's are $SPX's
     assert unlisted is None

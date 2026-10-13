@@ -169,22 +169,34 @@ FEED_HEARTBEAT_MAX_AGE_SEC: float = 3.0
 _feed: dict[str, Any] = {"rx": None, "status": None, "held": {}}
 
 
-def record_feed_heartbeat(msg: dict[str, Any]) -> None:
+def record_feed_heartbeat(msg: dict[str, Any]) -> "dict[str, frozenset[str]] | None":
     """Apply one daemon heartbeat (live_ui's ``feed`` beat), judged by the time the daemon
     stamped it (`ts`), never by when it arrived: a status that waited is as old as it is
-    (docs/DATA_FLOW.md §2 D5). A status without its time is not applied."""
+    (docs/DATA_FLOW.md §2 D5). A status without its time is not applied. Returns what the daemon
+    reported holding per service before this beat, or None when nothing was applied."""
     if not isinstance(msg, dict) or not isinstance(msg.get("ts"), (int, float)):
-        return
+        return None
     held = {svc: frozenset(ticker_storage_key(s) for s in syms)
             for svc, syms in (msg.get("held") or {}).items() if isinstance(syms, list)}
     with _lock:
+        previous = _feed["held"]
         _feed.update(rx=float(msg["ts"]), status=msg, held=held)
+    return previous
 
 
 def record_feed_down() -> None:
-    """The connection to the daemon ended: nothing is live until a heartbeat arrives."""
+    """The connection to the daemon ended: nothing is live until a heartbeat arrives. What it
+    last reported holding stands (held_reported) until a heartbeat replaces it."""
     with _lock:
-        _feed.update(rx=None, status=None, held={})
+        _feed.update(rx=None, status=None)
+
+
+def held_reported(service: str) -> frozenset[str]:
+    """The symbols the daemon last reported holding on Schwab `service`, its heartbeat live or
+    not: their last values stand, marked not live (feed_live_for), until a heartbeat releases
+    them (D5)."""
+    with _lock:
+        return _feed["held"].get(service, frozenset())
 
 
 def daemon_status(now: float) -> dict[str, Any] | None:

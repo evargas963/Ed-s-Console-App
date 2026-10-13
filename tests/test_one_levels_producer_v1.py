@@ -1,20 +1,22 @@
 """One producer for a ticker's levels, per-strike rows and gamma-surface grid: _publish_levels
-prices the chain once (overlaid with the streamed values Schwab sent after it, at the current spot)
-and publishes all three together, so no second producer can show a different number (question 2:
-the screen shows it correctly and promptly; question 3: each value is the one computation's).
+prices the ticker's contract records once (the daemon's ledger, option_ledger: each opened from
+Schwab's REST answer and posted to by every message, at the current spot) and publishes all three
+together, so no second producer can show a different number (question 2: the screen shows it
+correctly and promptly; question 3: each value is the one computation's).
 
-Through the real code: the daemon's status (live_market_plane.record_feed_heartbeat), its pushed
-option messages applied by the console (streaming._ingest_pushed), the price as the console
-holds it (its live_market_plane record), the console's pages (push_changes), the pricing thread, the
-chain captures in the console's database. Real data: CRWD's 2026-10-16 chain captured 2026-10-07
-10:38:40 ET (tests/real_chains.py), valued at its capture.
+Through the real code: the daemon's status (live_market_plane.record_feed_heartbeat), the ledger's
+records on the daemon's bus pushed to the console (streaming._ingest_pushed), the price as the
+console holds it (its live_market_plane record), the console's pages (push_changes), the pricing
+thread, the chain captures in the console's database. Real data: CRWD's 2026-10-16 chain captured
+2026-10-07 10:38:40 ET (tests/real_chains.py), valued at its capture.
 STAND-INS (named): each streamed value of a CRWD contract (no CRWD contract was streamed in a
-capture), and the daemon's status holding them.
+capture), each with its Schwab time a second after the capture, and the daemon's status holding them.
 """
 from __future__ import annotations
 
 import json
 import threading
+from collections import Counter
 import time
 from datetime import datetime
 from pathlib import Path
@@ -22,15 +24,16 @@ from pathlib import Path
 import pytest
 
 import app.options.order_flow.state as ofls
+import option_ledger
 import app.options.order_flow.streaming as ofs
-import live_market_plane as lmp
 import push_changes
 import server
 from calibration.complete_chain_capture import CAPTURE_BASIS, persist_complete_chain_capture
 from math_exposure_core import bucket_metric, merge_exposure_books
-from stream_spine import options_quote_msg
+from stream_spine import MessageBus
 from terrain_engine import compute_terrain
-from tests.feed_live_helper import forget_price, price_sent
+from tests.feed_live_helper import (daemon_holds, forget_price, ledger_open, no_daemon, price_sent,
+                                    through_the_daemons_bus)
 from tests.real_chains import CRWD
 from time_et import ET
 
@@ -52,8 +55,9 @@ def _clean():
     price row, no levels of TK; the console's push delivers to no event loop."""
     pages: list = []
     push_changes.bind(None)
+    _LEDGER.clear()
     ofls.clear_all_live_state()
-    lmp.record_feed_down()
+    no_daemon()
     with server._terrain_cache_lock:
         server._terrain_cache.pop(TK, None)
     with server._chains_waiting_lock:
@@ -62,7 +66,7 @@ def _clean():
     for tk, page in pages:
         push_changes.unsubscribe(tk, page)
     ofls.clear_all_live_state()
-    lmp.record_feed_down()
+    no_daemon()
     forget_price(TK)
     with server._terrain_cache_lock:
         server._terrain_cache.pop(TK, None)
@@ -77,26 +81,39 @@ def _daemon(held=(), *, socket_open=True, price: "float | None" = _SPOT, at: flo
     """The daemon's status at `at` (the chain's publication time unless given): Schwab's socket
     open, TK held on LEVELONE_EQUITIES and `held` on LEVELONE_OPTIONS; and TK's last trade as
     Schwab sends it (None: no price)."""
-    lmp.record_feed_heartbeat({"ts": at, "schwab_socket_open": socket_open,
-                               "held": {"LEVELONE_EQUITIES": [TK], "LEVELONE_OPTIONS": list(held)}})
+    daemon_holds(at, {"LEVELONE_EQUITIES": [TK], "LEVELONE_OPTIONS": list(held)}, socket_open=socket_open)
     if price is None:
         forget_price(TK)
     else:
         price_sent(TK, price, _T)
 
 
+#: this test's ledger: the daemon's bus, holding each contract's one record
+_LEDGER: list = []
+
+
+def _bus() -> MessageBus:
+    if not _LEDGER:
+        _LEDGER.append(MessageBus())
+    return _LEDGER[0]
+
+
 def _streamed(sym: str, content: dict, ts: float) -> None:
-    """One LEVELONE_OPTIONS message for `sym`, as the daemon pushes it."""
-    ofs._ingest_pushed(f"optquote.{sym}", options_quote_msg(
-        symbol=sym, content={"key": sym, **content}, src="schwab_options_l1", ts_recv=ts))
+    """One LEVELONE_OPTIONS message for `sym`, Schwab's time `ts`, posted to its record and pushed
+    as the daemon pushes it."""
+    through_the_daemons_bus(_bus(), sym, [content], [ts])
 
 
 def _publish(chain=None, fetched_ts=None, **kw):
-    return server._publish_levels(TK, chain, fetched_ts, now=_AT, **kw)
+    """A round of TK (its contracts' records opened from `chain`, Schwab's answer) priced, or with
+    no chain the records repriced as they are."""
+    if chain is not None:
+        ledger_open(TK, chain, fetched_ts, _bus())
+    return server._publish_levels(TK, fetched_ts, now=_AT, **kw)
 
 
 def _put_chain(fetched_ts=_T):
-    """TK's chain as the console holds it after the daemon delivered it."""
+    """TK's round as the console holds it after the daemon delivered it."""
     return _publish(_CONTRACTS, fetched_ts)
 
 
@@ -165,70 +182,119 @@ def test_the_terrain_endpoint_serves_a_published_ticker_as_json_without_internal
     assert not [k for k in body if k.startswith("_")]
 
 
-# ── streamed values: the newest Schwab sent wins, an older or a stopped one never does ──────────
+# ── a held contract's one record: the REST answer, each field the stream sends in its place ────
 
-def test_a_fresh_streamed_greek_reprices_levels_heatmap_and_rows():
+def _strike_rows(priced: "list | None" = None) -> list:
+    """Every strike's row as /api/terrain/strikes serves it now; with `priced`, as it serves those
+    contracts in a fresh ledger with nothing streamed (the expected answer)."""
+    if priced is not None:
+        _LEDGER.clear()
+        ofls.clear_all_live_state()
+        _daemon(held=[])
+        _publish(priced, _T - 30.0)
+    return json.loads(server.get_terrain_strikes(ticker=TK, scope="all").body)["today"]["all"]
+
+
+def _served() -> "dict[str, dict]":
+    """TK's contracts as /api/chain serves them (CRWD's chain has one expiration), by symbol,
+    each with its fields' Schwab times."""
+    body = json.loads(server.get_chain(ticker=TK, expiry=None).body)
+    return {ct["symbol"]: ct for ct in body["contracts"]}
+
+
+def _as_sent(ct: dict) -> dict:
+    """A served contract's Schwab fields: without its record's ticker, stream time and field times."""
+    return {k: v for k, v in ct.items() if k not in ("ticker", "streamTime", "fieldTimes")}
+
+
+def test_a_held_contract_starts_from_the_rest_answer_and_takes_each_field_the_stream_sends():
+    """Operator 2026-10-13: each held contract's record starts from Schwab's REST answer and each
+    field is replaced when the stream sends it, with the stream's time for it; its delta, never
+    streamed, is the REST answer's as sent, with its time."""
     _daemon(held=[_A])
-    _streamed(_A, {"GAMMA": 0.9}, _T)
-    _put_chain(fetched_ts=_T - 5.0)
-    c = _cached()
-    assert c["_gamma_surface"]["stream_overlay_contracts"] == 1
-    assert c["_gamma_surface"]["stream_overlay_symbols"] == [_A]
-    overlaid = [dict(_CONTRACTS[0], gamma=0.9)] + _CONTRACTS[1:]
-    assert c["_per_strike"] == compute_terrain(TK, overlaid, _SPOT, now=_AT).per_strike
+    _put_chain(fetched_ts=_T - 30.0)
+    _streamed(_A, {"GAMMA": 0.9}, _T + 1)
+    _publish()
+    served = _served()
+    assert _as_sent(served[_A]) == {**_CONTRACTS[0], "gamma": 0.9}
+    assert served[_A]["fieldTimes"]["gamma"] == int((_T + 1) * 1000)
+    assert served[_A]["fieldTimes"]["delta"] == _CONTRACTS[0]["quoteTimeInLong"]
+    rows = _strike_rows()
+    assert rows and rows == _strike_rows([_as_sent(served[_A])] + _CONTRACTS[1:])
 
 
-def test_a_new_chain_does_not_turn_a_live_contracts_leg_stale():
+def test_a_held_contract_with_no_message_yet_is_its_rest_answer():
+    _daemon(held=[_A])
+    _put_chain()
+    assert _as_sent(_served()[_A]) == _CONTRACTS[0]
+
+
+def test_a_stream_message_older_than_the_rest_answer_never_replaces_it():
+    """Each field is the newest Schwab sent, by Schwab's own time: a stream message a minute older
+    than the contract's REST answer changes nothing."""
+    _daemon(held=[_A])
+    _put_chain()
+    _streamed(_A, {"GAMMA": 0.9}, _CONTRACTS[0]["quoteTimeInLong"] / 1000 - 60)
+    _publish()
+    assert _served()[_A]["gamma"] == _CONTRACTS[0]["gamma"]
+
+
+def test_a_streamed_minus_999_greek_is_absent_never_the_old_value():
+    """CARRIED-PRS (#424), rule 2: Schwab's -999 replaces the value it held, as sent, and every
+    reader takes it as no number: the contract's gamma leaves the book."""
+    _daemon(held=[_A])
+    _put_chain(fetched_ts=_T - 10.0)
+    _streamed(_A, {"GAMMA": 0.9}, _T + 1)
+    _streamed(_A, {"GAMMA": -999}, _T + 2)
+    _publish()
+    assert _served()[_A]["gamma"] == -999
+    rows = _strike_rows()
+    assert rows == _strike_rows([dict(_CONTRACTS[0], gamma=-999)] + _CONTRACTS[1:])
+    assert rows != _strike_rows([dict(_CONTRACTS[0], gamma=0.9)] + _CONTRACTS[1:])
+
+
+def test_a_new_round_does_not_turn_a_live_contracts_leg_stale():
     """ONE-05 (measured live 2026-09-28, MU 15:46 ET): each chain download made all 200 heatmap
     legs flip between live and stale while the feed stayed live. A leg's state is the feed's
-    (live while the daemon holds the contract); its value is the newest Schwab sent: the chain's,
-    fetched after the contract's last streamed change."""
-    chain = [dict(_CONTRACTS[0], quoteTimeInLong=int(_T * 1000))] + _CONTRACTS[1:]   # a fresh chain
+    (live while the daemon holds the contract and the stream delivers it), whatever round came in."""
     _daemon(held=[_A])
-    _streamed(_A, {"GAMMA": 0.9}, _T - 60.0)                                       # a minute ago
-    _publish(chain, _T)
+    _put_chain(fetched_ts=_T - 60.0)
+    _streamed(_A, {"GAMMA": 0.9}, _T + 1)
+    _put_chain(fetched_ts=_T)                                        # the next round
     surface = _cached()["_gamma_surface"]
-    assert surface["stream_overlay_symbols"] == []                                   # the chain is newer
     legs = [col[side] for cell in surface["cells"] for col, pair in zip(cell["stream"], cell["contracts"])
             for side in ("call", "put") if pair.get(side) == _A and col]
     assert legs and all(leg["state"] == "live" for leg in legs)
 
 
-def test_a_streamed_value_applies_by_its_time():
-    """A streamed gamma received after the chain is the newest Schwab sent: it reprices the
-    levels; one received before the chain does not."""
-    _daemon(held=[_A])
-    _streamed(_A, {"GAMMA": 0.9}, _T - 60.0)
-    _put_chain(fetched_ts=_T - 120.0)
-    assert _cached()["_gamma_surface"]["stream_overlay_symbols"] == [_A]
-    _put_chain(fetched_ts=_T - 30.0)
-    assert _cached()["_gamma_surface"]["stream_overlay_contracts"] == 0
-
-
-def test_every_streamed_contract_is_overlaid_not_only_the_one_that_ticked():
+def test_every_streamed_contract_is_priced_not_only_the_one_that_ticked():
     _daemon(held=[_A, _B])
-    _streamed(_A, {"GAMMA": 0.9}, _T)
-    _streamed(_B, {"GAMMA": 0.8}, _T)
     _put_chain(fetched_ts=_T - 5.0)
-    assert sorted(_cached()["_gamma_surface"]["stream_overlay_symbols"]) == sorted([_A, _B])
-
-
-def test_repeated_reprices_start_from_the_raw_chain_never_a_prior_overlay():
-    _daemon(held=[_A])
-    _streamed(_A, {"GAMMA": 0.9}, _T)
-    _put_chain(fetched_ts=_T - 5.0)
-    _daemon(held=[])                                   # the daemon no longer streams A
+    _streamed(_A, {"GAMMA": 0.9}, _T + 1)
+    _streamed(_B, {"GAMMA": 0.8}, _T + 1)
     _publish()
-    c = _cached()
-    assert c["_chain"] is _CONTRACTS and _CONTRACTS[0].get("gamma") != 0.9
-    assert c["_gamma_surface"]["stream_overlay_contracts"] == 0
-    assert c["_per_strike"] == compute_terrain(TK, _CONTRACTS, _SPOT, now=_AT).per_strike
+    served = _served()
+    assert (served[_A]["gamma"], served[_B]["gamma"]) == (0.9, 0.8)
+
+
+def test_a_released_contract_takes_its_next_rest_answer():
+    """A contract the daemon stops streaming keeps its record; the sweep asks for it again, and
+    Schwab's newer answer replaces what the stream had sent."""
+    _daemon(held=[_A])
+    _put_chain(fetched_ts=_T - 5.0)
+    _streamed(_A, {"GAMMA": 0.9}, _T + 1)
+    _daemon(held=[])                                   # the daemon no longer streams A
+    requoted = dict(_CONTRACTS[0], quoteTimeInLong=int((_T + 2) * 1000))     # its next answer
+    _publish([requoted], _T + 2)
+    assert _as_sent(_served()[_A]) == requoted
+    assert _cached()["_per_strike"] == compute_terrain(TK, [requoted] + _CONTRACTS[1:], _SPOT, now=_AT).per_strike
 
 
 def test_a_volume_only_tick_reaches_the_per_strike_volume_column():
     _daemon(held=[_A])
-    _streamed(_A, {"TOTAL_VOLUME": 999999}, _T)
     _put_chain(fetched_ts=_T - 5.0)
+    _streamed(_A, {"TOTAL_VOLUME": 999999}, _T + 1)
+    _publish()
     strike = round(_CONTRACTS[0]["strikePrice"], 2)
     row = next(r for r in _cached()["_per_strike"]["all"] if r[0] == strike)
     assert row[2] >= 999999
@@ -243,10 +309,12 @@ def test_a_streamed_value_whose_feed_is_down_in_session_never_reaches_the_levels
     strike = round(_CONTRACTS[0]["strikePrice"], 2)
     out = {}
     for at in (datetime(2026, 10, 7, 11, 0, tzinfo=ET), datetime(2026, 10, 7, 22, 0, tzinfo=ET)):
+        _LEDGER.clear()
         ofls.clear_all_live_state()
         _daemon(held=[_A], socket_open=False, at=at.timestamp())
+        ledger_open(TK, _CONTRACTS, at.timestamp() - 120.0, _bus())
         _streamed(_A, {"TOTAL_VOLUME": 999999}, at.timestamp() - 60.0)
-        server._publish_levels(TK, _CONTRACTS, at.timestamp() - 120.0, now=at)
+        server._publish_levels(TK, at.timestamp() - 120.0, now=at)
         out[at.hour] = _cached()
     rth, closed = out[11], out[22]
     assert rth["spot"] is None and rth["spot_source"] == "Schwab LEVELONE_EQUITIES feed down during RTH"
@@ -255,13 +323,13 @@ def test_a_streamed_value_whose_feed_is_down_in_session_never_reaches_the_levels
     assert closed["spot"] == _SPOT and row[2] >= 999999
 
 
-def test_a_foreign_tickers_contract_never_overlays_this_chain():
+def test_a_foreign_tickers_contract_never_prices_this_chain():
     foreign = "SPY   260911C00583000"
     _daemon(held=[foreign])
-    _streamed(foreign, {"GAMMA": 0.99}, _T)
     _put_chain(fetched_ts=_T - 5.0)
-    assert server._streamed_greeks_for_ticker(_cached()["_contract_symbols"], _T) == {}
-    assert _cached()["_gamma_surface"]["stream_overlay_contracts"] == 0
+    _streamed(foreign, {"GAMMA": 0.99}, _T + 1)
+    _publish()
+    assert [_as_sent(c) for c in _served().values()] == _CONTRACTS
 
 
 # ── spot ─────────────────────────────────────────────────────────────────────────────────────
@@ -282,12 +350,11 @@ def test_a_moved_spot_reprices_every_view_at_the_new_spot():
 
 def test_every_ticker_keeps_its_chain_and_heatmap_so_a_switch_shows_at_once():
     """2026-10-01, operator: "when i switch tickers the heatmap doesnt render right away". Every
-    ticker's publication keeps its chain and its heatmap, viewed or not."""
+    ticker's publication keeps its heatmap, viewed or not, and its records stay to reprice."""
     _daemon()
     _put_chain()                                                        # published while not viewed
-    c = _cached()
-    assert c["_chain"] and c["_gamma_surface"]["cells"]
-    assert _publish() is not None                                       # repriced from its kept chain
+    assert _cached()["_gamma_surface"]["cells"]
+    assert _publish() is not None                                       # repriced from its records
 
 
 def test_a_stored_capture_and_a_live_chain_publish_the_same_fields():
@@ -308,7 +375,8 @@ def test_vanna_and_charm_by_strike_read_the_published_snapshot():
     time value, which charm needs."""
     valued = datetime(2026, 10, 7, 12, 0, tzinfo=ET)
     _daemon(at=valued.timestamp())                       # live when the chain is published
-    snap = server._publish_levels(TK, _CONTRACTS, _T, now=valued)
+    ledger_open(TK, _CONTRACTS, _T, _bus())
+    snap = server._publish_levels(TK, _T, now=valued)
     _daemon(at=time.time())                              # live now, as the routes read it
     charm = json.loads(server.get_charm_by_strike(TK, scope="all").body)
     assert charm["available"] and charm["spot"] == snap.spot
@@ -373,22 +441,23 @@ def test_a_ticker_on_screen_reprices_on_its_ticks_its_options_included_and_a_bur
     finally:
         gate.set()
         _drain()
-    assert waiting == {TK: (server.REPRICE, None, None)}
+    assert waiting == {TK: (server.REPRICE, None)}
 
 
-def test_chains_waiting_to_be_priced_keep_only_the_newest_of_each_ticker():
+def test_rounds_waiting_to_be_priced_keep_only_the_newest_of_each_ticker():
     """2026-10-01 audit: the pricing queue had no bound -- a sweep faster than pricing grew it
-    without end. One chain per ticker waits; a newer one replaces it."""
+    without end. One round per ticker waits; a newer one replaces it."""
+    ledger_open(TK, _CONTRACTS, _T, _bus())
     gate = _busy()
     try:
         for i in range(3):
-            server._on_chain(TK, _CONTRACTS, _T + i)
+            server._on_chain(TK, _T + i)
         with server._chains_waiting_lock:
             waiting = server._chains_waiting[TK]
     finally:
         gate.set()
         _drain()
-    assert waiting[0] == server.DELIVERED and waiting[2] == _T + 2
+    assert waiting == (server.DELIVERED, _T + 2)
     assert _cached()["computed_ts_utc"] == _T + 2
 
 
@@ -441,14 +510,15 @@ def test_a_stored_capture_never_replaces_a_delivered_chain(delivered_first):
     delivered chain replaces it. Either way the delivered chain is what is held."""
     tk = f"ZZCAPDELIV{int(delivered_first)}"
     _store(tk, _T - 86400)
+    ledger_open(tk, _CONTRACTS, _T, _bus())
     gate = _busy()
     try:
         if delivered_first:
-            server._on_chain(tk, _CONTRACTS, _T)
+            server._on_chain(tk, _T)
             queued = server._load_stored_levels([tk])
         else:
             queued = server._load_stored_levels([tk])
-            server._on_chain(tk, _CONTRACTS, _T)                 # arrives while the capture waits
+            server._on_chain(tk, _T)                             # arrives while the capture waits
     finally:
         gate.set()
         _drain()
@@ -460,7 +530,7 @@ def test_a_stored_capture_never_replaces_a_delivered_chain(delivered_first):
         with server._chains_waiting_lock:
             server._chains_delivered.discard(tk)
     assert queued == (0 if delivered_first else 1)
-    assert held["_chain_fetched_ts"] == held["computed_ts_utc"] == _T
+    assert held["_round_ts"] == held["computed_ts_utc"] == _T
 
 
 def test_a_delivered_chain_is_priced_before_the_stored_ones_waiting():
@@ -470,10 +540,11 @@ def test_a_delivered_chain_is_priced_before_the_stored_ones_waiting():
     for tk in stored:
         _store(tk, _T)
     _forget(TK, *stored)
+    ledger_open(TK, _CONTRACTS, _T, _bus())
     gate = _busy()
     try:
         assert server._load_stored_levels(list(stored)) == 2
-        server._on_chain(TK, _CONTRACTS, _T)
+        server._on_chain(TK, _T)
     finally:
         gate.set()
         _drain()
@@ -487,22 +558,23 @@ def test_a_delivered_chain_is_priced_before_the_stored_ones_waiting():
 
 # ── the feed calls the one callback for exactly the ticks that move the math ────────────────
 
-def _real_option(with_greek: bool) -> dict:
-    """A real LEVELONE_OPTIONS message (2026-10-05 14:00 CT) carrying a value the levels use
-    (GAMMA, DELTA, OPEN_INTEREST, TOTAL_VOLUME, VOLUME), or none of them."""
-    used = {"GAMMA", "DELTA", "OPEN_INTEREST", "TOTAL_VOLUME", "VOLUME"}
-    return next(m for m in _MIX if m["service"] == "LEVELONE_OPTIONS"
-                and bool(used & set(m["item"])) is with_greek and "BID_PRICE" in m["item"])
-
-
-@pytest.mark.parametrize("with_greek", [True, False])
-def test_an_option_quote_reaches_the_callback_only_when_it_moves_the_math(with_greek):
-    m = _real_option(with_greek)
+def test_every_option_message_recalculates_and_the_levels_price_the_daemons_record():
+    """Real LEVELONE_OPTIONS messages (2026-10-05 14:00 CT) of one contract through the daemon's
+    bus: Schwab sends a Change message only when a field changed (Streamer API §1.1), so each
+    reaches the callback once, and the console holds the contract's one record (every field
+    Schwab has sent, the last of each, named once: option_ledger.STREAM_FIELDS)."""
+    options = [m for m in _MIX if m["service"] == "LEVELONE_OPTIONS"]
+    sym = Counter(m["item"]["key"] for m in options).most_common(1)[0][0]
+    mine = [m for m in options if m["item"]["key"] == sym]
+    bus = MessageBus()
     hits: list = []
     ofs._on_tick_callback = hits.append                        # the console's callback, as start_order_flow_stream sets it
     try:
-        ofs._ingest_pushed(f"optquote.{m['item']['key']}", options_quote_msg(
-            symbol=m["item"]["key"], content=m["item"], src="schwab_options_l1", ts_recv=m["ts_recv"]))
+        through_the_daemons_bus(bus, sym, [m["item"] for m in mine], [m["ts_recv"] for m in mine])
     finally:
         ofs._on_tick_callback = None
-    assert hits == ([m["item"]["key"]] if with_greek else [])
+    assert len(mine) > 1 and hits == [sym] * len(mine)
+    merged: dict = {}
+    for m in mine:
+        merged.update(m["item"])
+    assert ofls.contract(sym).fields == option_ledger.from_stream(merged, int(mine[-1]["ts_recv"] * 1000))

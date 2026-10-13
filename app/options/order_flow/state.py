@@ -1,6 +1,6 @@
 """
 app/options/order_flow/state.py — In-memory live order flow state from streaming.
-Stores recent book snapshots, tape prints, and top-of-book from Schwab streaming.
+Stores recent book snapshots, tape prints, and each option contract's record from Schwab streaming.
 Feeds OrderFlowEngine with content.* structure for book_imbalance_5 and cum_delta_proxy.
 """
 
@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import threading
 from collections import deque
+from dataclasses import dataclass
 from typing import Optional
 from app.options.order_flow import history
 from instrument_identity import ticker_storage_key
@@ -26,9 +27,19 @@ MAX_TAPE_PRINTS = 500
 log = logging.getLogger(__name__)
 
 
-_OPTION_TOP_FIELDS = (("BID_PRICE", "bid", schwab_number), ("ASK_PRICE", "ask", schwab_number),
-                      ("BID_SIZE", "bid_size", schwab_count), ("ASK_SIZE", "ask_size", schwab_count),
-                      ("MARK", "mark", schwab_number))
+#: a contract record's top of book, as the order-flow engine names it: (record field, name, reader)
+_OPTION_TOP_FIELDS = (("bid", "bid", schwab_number), ("ask", "ask", schwab_number),
+                      ("bidSize", "bid_size", schwab_count), ("askSize", "ask_size", schwab_count),
+                      ("mark", "mark", schwab_number))
+
+
+@dataclass(frozen=True)
+class ContractRecord:
+    """An option contract's one record as the daemon's ledger holds it (option_ledger), mirrored
+    here read-only: its fields, named as the chain names them, and each field's (Schwab time in
+    ms, the daemon's receive time)."""
+    fields: dict
+    times: dict
 
 
 class OrderFlowState:
@@ -39,10 +50,12 @@ class OrderFlowState:
         self._lock = threading.RLock()
         self._book: dict[str, deque] = {}
         self._tape: dict[str, deque] = {}
-        self._top: dict[str, dict] = {}
         self._prev_trade: dict[str, dict] = {}
         self._receive_seq: dict[str, int] = {}
-        self._stream_greeks: dict[str, dict] = {}
+        #: the daemon's contract records, mirrored (push_contract): contract -> its record, and
+        #: each watchlist ticker's contracts, in the order Schwab listed them
+        self._contracts: dict[str, ContractRecord] = {}
+        self._by_ticker: dict[str, dict[str, None]] = {}
 
     def _get_book(self, symbol: str) -> deque:
         with self._lock:
@@ -98,63 +111,18 @@ class OrderFlowState:
             # delayed message read as live (same P0 as the live plane, 2026-09-23)
             raise TypeError("push_level_one: ts_recv (the daemon receive time) is required")
 
-        # TOTAL_VOLUME as sent; a reported 0 is 0 (AGENTS.md rule 2).
-        vf = schwab_count(content_item.get("TOTAL_VOLUME"))
-
-        # (change percent lives on the live plane only: NET_CHANGE_PERCENT, one store. This
-        # held REGULAR_MARKET_CHANGE_PERCENT with a CHANGE_PERCENT fallback -- a field Schwab
-        # never sends, measured 2026-09-24.)
-
-        # GAMMA/DELTA/OPEN_INTEREST/TOTAL_VOLUME: native Schwab LEVELONE_OPTIONS fields
-        # (confirmed in the installed SDK's field enum, schwab/streaming.py
-        # LevelOneOptionFields) that this state class never captured before -- every option L1
-        # tick discarded exactly the fields a live GEX recompute (and the per-strike volume
-        # column, which reads a contract's OWN totalVolume, not this symbol's ticker-level
-        # _stream_volume above) needs, keeping the heatmap and volume displays bound to the
-        # ~60s wide-chain REST cadence even for the one contract already streaming. Each field
-        # is merged independently (not as a group) and stamped with ITS OWN receive time: a
-        # quote tick that carries BID_PRICE/ASK_PRICE but not GAMMA this update must not blank
-        # out (or misdate) an OPEN_INTEREST value observed on an earlier tick -- the same
-        # explicit-presence discipline as chg_pct/volume above, extended per-field because
-        # these genuinely arrive independently of each other and of the last-trade fields
-        # below. `vf` is the SAME TOTAL_VOLUME/VOLUME value already resolved above -- stored a
-        # second time, per-field-stamped, so the overlay used by the exposure/per-strike faucet
-        # (which reads a contract's OWN totalVolume) can apply the SAME newer-than-REST
-        # precedence rule already used for gamma/delta/open_interest, instead of a bare
-        # ticker-level number with no freshness of its own.
-        gamma = schwab_number(content_item.get("GAMMA"))
-        delta = schwab_number(content_item.get("DELTA"))
-        oi = schwab_count(content_item.get("OPEN_INTEREST"))
-        # VOLATILITY too: the model's input must be as fresh as the gamma beside it
-        iv = schwab_number(content_item.get("VOLATILITY"))
-        def received(field: str) -> float:
-            return ts_recv if field_received is None else field_received[field]
-
-        if gamma is not None or delta is not None or oi is not None or vf is not None or iv is not None:
-            with self._lock:
-                g = self._stream_greeks.setdefault(sym, {})
-                if gamma is not None:
-                    g["gamma"], g["gamma_ts_recv"] = gamma, received("GAMMA")
-                if delta is not None:
-                    g["delta"], g["delta_ts_recv"] = delta, received("DELTA")
-                if oi is not None:
-                    g["open_interest"], g["open_interest_ts_recv"] = oi, received("OPEN_INTEREST")
-                if vf is not None:
-                    g["total_volume"], g["total_volume_ts_recv"] = vf, received("TOTAL_VOLUME")
-                if iv is not None:
-                    g["volatility"], g["volatility_ts_recv"] = iv, received("VOLATILITY")
-
-
-        trade_ms = content_item.get("TRADE_TIME_MILLIS")
-        last_price = content_item.get("LAST_PRICE")
-        last_size = content_item.get("LAST_SIZE")
-        if last_price is None:
+        if content_item.get("LAST_PRICE") is None:
             return
-
-        curr_key = vendor_triple(trade_ms, last_price, last_size)
         # the daemon's receive time of the message that carried the trade, not the console's
         # clock, and not a later tick merged into the same record
-        received_ts = float(received("LAST_PRICE"))
+        self.push_trade(sym, content_item["LAST_PRICE"], content_item.get("LAST_SIZE"),
+                        content_item.get("TRADE_TIME_MILLIS"),
+                        float(ts_recv if field_received is None else field_received["LAST_PRICE"]))
+
+    def push_trade(self, sym: str, last_price, last_size, trade_ms, received_ts: float) -> None:
+        """One trade as Schwab sent it (price, size, trade time in ms) into the symbol's tape,
+        never a restatement of the trade before it."""
+        curr_key = vendor_triple(trade_ms, last_price, last_size)
         with self._lock:
             seq = self._receive_seq.get(sym, 0) + 1
             self._receive_seq[sym] = seq
@@ -199,7 +167,7 @@ class OrderFlowState:
 
 
     def clear_all(self) -> None:
-        """Drop tape/book/top/prev-print identity for every symbol."""
+        """Drop tape/book/option records/prev-print identity for every symbol."""
         with self._lock:
             self._clear_all_session_state_unlocked()
 
@@ -207,17 +175,17 @@ class OrderFlowState:
         """Drop session state. Caller holds ``self._lock``."""
         for values in self._tape.values():
             values.clear()
-        for key in list(self._top):
-            self._top[key] = {}
         for values in self._book.values():
             values.clear()
         self._prev_trade.clear()
         self._receive_seq.clear()
-        self._stream_greeks.clear()
+        self._contracts.clear()
+        self._by_ticker.clear()
 
 
     def clear_symbol(self, symbol: str) -> None:
-        """Clear all state for one symbol, its recent prints and books included."""
+        """Clear one symbol's streamed state, its recent prints and books included (a contract's
+        record stays: the ledger's, which REST keeps posting to)."""
         sym = ticker_storage_key(symbol)
         history.TAPE.forget(sym)
         history.BOOKS.forget(sym)
@@ -226,56 +194,63 @@ class OrderFlowState:
                 self._book[sym].clear()
             if sym in self._tape:
                 self._tape[sym].clear()
-            self._top.pop(sym, None)
             self._prev_trade.pop(sym, None)
             self._receive_seq.pop(sym, None)
-            self._stream_greeks.pop(sym, None)
 
-
-    def push_option_top(self, symbol: str, content_item: dict) -> None:
-        """An option contract's top of book (LEVELONE_OPTIONS BID/ASK price and size, MARK),
-        merged per field as Schwab sends changes only; not a number clears the field."""
+    def push_contract(self, symbol: str, record: ContractRecord) -> None:
+        """Mirror `symbol`'s record as the daemon pushed it, whole, in place of the one held."""
         sym = ticker_storage_key(symbol)
-        if not sym:
-            return
         with self._lock:
-            top = self._top.setdefault(sym, {})
-            for field, name, read in _OPTION_TOP_FIELDS:
-                if field in content_item:
-                    v = read(content_item[field])
-                    if v is None:
-                        top.pop(name, None)
-                    else:
-                        top[name] = v
+            self._contracts[sym] = record
+            ticker = record.fields.get("ticker")
+            if ticker:
+                self._by_ticker.setdefault(ticker, {})[sym] = None
+
+    def clear_contracts(self) -> None:
+        """Forget the mirror: a new connection to the daemon pushes every record again."""
+        with self._lock:
+            self._contracts.clear()
+            self._by_ticker.clear()
+
+    def contracts_of(self, ticker: str) -> "dict[str, ContractRecord]":
+        """`ticker`'s contracts and their records (none when the daemon has pushed none)."""
+        with self._lock:
+            if ticker not in self._by_ticker:
+                return {}
+            return {s: self._contracts[s] for s in self._by_ticker[ticker]}
+
+    def contract(self, symbol: str) -> Optional[ContractRecord]:
+        with self._lock:
+            return self._contracts.get(ticker_storage_key(symbol))
 
     def option_top(self, symbol: str) -> Optional[dict]:
-        sym = ticker_storage_key(symbol)
-        with self._lock:
-            t = self._top.get(sym)
-            return dict(t) if t else None
-
-    def get_stream_greeks(self, symbol: str) -> Optional[dict]:
-        """Return the latest streamed GAMMA/DELTA/OPEN_INTEREST/TOTAL_VOLUME for one OPTION
-        contract symbol, each field paired with its own ``_ts_recv`` (the field's own
-        last-update wall-clock receive time, not merely this call's time) -- a per-field
-        freshness stamp is what lets a caller judge one field newer than a same-tick sibling
-        that was absent this update, per the sparse-overlay pattern below. Returns None when
-        nothing has ever been observed for this symbol (never a dict of Nones)."""
-        sym = ticker_storage_key(symbol)
-        if not sym:
+        """An option contract's top of book (bid/ask price and size, mark) from its record; a
+        field that is not a number is absent."""
+        record = self.contract(symbol)
+        if record is None:
             return None
-        with self._lock:
-            g = self._stream_greeks.get(sym)
-            return dict(g) if g else None
-
-
+        top = {name: v for field, name, read in _OPTION_TOP_FIELDS
+               if field in record.fields and (v := read(record.fields[field])) is not None}
+        return top or None
 
 
 _LIVE_STATE = OrderFlowState()
 
 
-def push_option_top(symbol: str, content_item: dict) -> None:
-    _LIVE_STATE.push_option_top(symbol, content_item)
+def push_contract(symbol: str, record: ContractRecord) -> None:
+    _LIVE_STATE.push_contract(symbol, record)
+
+
+def clear_contracts() -> None:
+    _LIVE_STATE.clear_contracts()
+
+
+def contracts_of(ticker: str) -> "dict[str, ContractRecord]":
+    return _LIVE_STATE.contracts_of(ticker)
+
+
+def contract(symbol: str) -> Optional[ContractRecord]:
+    return _LIVE_STATE.contract(symbol)
 
 
 def option_top(symbol: str) -> Optional[dict]:
@@ -295,6 +270,10 @@ def push_level_one(
     _LIVE_STATE.push_level_one(symbol, content_item, ts_recv=ts_recv, field_received=field_received)
 
 
+def push_trade(sym: str, last_price, last_size, trade_ms, received_ts: float) -> None:
+    _LIVE_STATE.push_trade(sym, last_price, last_size, trade_ms, received_ts)
+
+
 def get_content_for_symbol(symbol: str, venue: Optional[str] = None) -> list[dict]:
     """Return canonical engine content from the live singleton."""
     return _LIVE_STATE.get_content_for_symbol(symbol, venue)
@@ -303,7 +282,7 @@ def get_content_for_symbol(symbol: str, venue: Optional[str] = None) -> list[dic
 
 
 def clear_all_live_state() -> None:
-    """Drop tape/book/top/prev-print identity for every symbol.
+    """Drop tape/book/option records/prev-print identity for every symbol.
 
     Required on stream disconnect/reconnect. Leaving the last window resident
     mixes pre-disconnect restatements with the new session.
@@ -320,10 +299,6 @@ def clear_symbol(symbol: str) -> None:
 
 
 
-def get_stream_greeks(symbol: str) -> Optional[dict]:
-    """Return the live singleton's latest streamed GAMMA/DELTA/OPEN_INTEREST for one option
-    contract symbol (each paired with its own `_ts_recv`), or None if never observed."""
-    return _LIVE_STATE.get_stream_greeks(symbol)
 
 
 

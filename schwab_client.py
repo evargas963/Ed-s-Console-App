@@ -557,12 +557,11 @@ def safe_get_quotes(client, symbols: "list[str]"):
         raise
 
 
-#: The most symbols one quotes request carries: Schwab Trader API Support, 2026-10-06 (email 1,
-#: item 4: not more than 300 on the quotes endpoint; docs/schwab/schwab_support_emails_2026_10_06.txt).
-QUOTES_BATCH_MAX = 300
-#: The contract fields Schwab's chain sends rounded, which it cannot change (the same email,
-#: item 6), and its quotes and its LEVELONE_OPTIONS stream send as computed.
-GREEK_FIELDS = ("gamma", "delta", "theta", "vega", "rho", "volatility")
+#: The most symbols one quotes request carries: Schwab Trader API Support, 2026-10-07 (up to 500
+#: symbols a request, more is an error; the operator's record of that email, ACTIVE_PROGRAM.md
+#: WIRE-AS-DELIVERED; the 2026-10-06 email, docs/schwab/schwab_support_emails_2026_10_06.txt item 4,
+#: had said 300).
+QUOTES_BATCH_MAX = 500
 
 
 def flatten_chain_contracts(c_json: dict) -> list[dict]:

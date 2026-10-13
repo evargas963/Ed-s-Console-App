@@ -23,7 +23,7 @@ import server
 from app.market_data.schwab.streaming import capture, live_ui
 from app.market_data.schwab.streaming.live_ui import serve_live_ui
 from schwab_client import build_client_from_token
-from stream_spine import CaptureWriter, HealthRegistry, MessageBus
+from stream_spine import HealthRegistry, MessageBus
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -49,8 +49,7 @@ def test_a_chain_sweep_that_ends_on_an_error_is_logged(tmp_path, caplog):
 
     async def go():
         stop = asyncio.Event()
-        task = asyncio.create_task(capture.run_chains(daemon, tmp_path / "ed_console.db", client, stop,
-                                                      failures=CaptureWriter(tmp_path / "stream_capture.db")))
+        task = asyncio.create_task(capture.run_chains(daemon, tmp_path / "ed_console.db", client, stop))
         await _until(lambda: any("chain sweep: ended" in r.getMessage() for r in caplog.records))
         stop.set()
         await asyncio.wait_for(task, timeout=30)

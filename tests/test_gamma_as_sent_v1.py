@@ -1,7 +1,9 @@
 """One gamma source: the regime's gamma at spot is Schwab's gamma as sent, summed over the same
 book the walls use (2026-09-27: it was a recomputed gamma, and on Friday's SPY chain the two
-disagreed in sign). The chain's rate and dividend travel with each contract as sent; the option
-stream keeps IV beside the gamma it overlays."""
+disagreed in sign). The chain's rate and dividend travel with each contract as sent; a streamed
+contract takes its IV beside its gamma from the stream.
+STAND-IN (named): the streamed GAMMA and VOLATILITY of SPY_0DTE's first contract (no captured
+stream of a contract in a captured chain carries its Greeks)."""
 from __future__ import annotations
 
 import pytest
@@ -31,13 +33,24 @@ def test_each_contract_carries_the_chains_rate_and_dividend_as_sent():
     assert ct["interestRate"] == 4.07 and ct["dividendYield"] == 0.979
 
 
-def test_the_option_stream_keeps_iv_beside_gamma():
-    from app.options.order_flow.state import OrderFlowState
-    st = OrderFlowState()
-    sym = "SPY   301231C00700000"
-    st.push_level_one(sym, {"key": sym, "GAMMA": 0.01, "VOLATILITY": 18.5}, ts_recv=1000.0)
-    g = st.get_stream_greeks(sym)
-    assert g["gamma"] == 0.01 and g["volatility"] == 18.5 and g["volatility_ts_recv"] == 1000.0
+def test_a_streamed_contract_takes_iv_beside_gamma_from_its_stream():
+    """The contract's record (option_ledger) opened from the chain, then one LEVELONE_OPTIONS
+    message: its gamma and IV are the stream's, each with that message's Schwab time; its terms
+    and open interest stay the chain's."""
+    import option_ledger
+    from stream_spine import MessageBus, current_key
+    ct = SPY_0DTE.chain[0]
+    bus = MessageBus()
+    bus.publish(*option_ledger.posting(ct["symbol"], option_ledger.opening(ct, "SPY"), ct["quoteTimeInLong"]))
+    streamed = ct["quoteTimeInLong"] + 1000
+    topic, msg = option_ledger.posting(ct["symbol"], option_ledger.from_stream(
+        {"key": ct["symbol"], "GAMMA": 0.01, "VOLATILITY": 18.5}, streamed), streamed)
+    bus.publish(topic, msg)
+    record = bus.current[current_key(topic, msg)][1]
+    assert record["fields"]["gamma"] == 0.01 and record["fields"]["volatility"] == 18.5
+    assert record["field_ts"]["gamma"][0] == record["field_ts"]["volatility"][0] == streamed
+    assert record["fields"]["openInterest"] == ct["openInterest"]
+    assert record["fields"]["strikePrice"] == ct["strikePrice"]
 
 
 def test_a_flip_whose_curve_disagrees_with_schwab_says_so():

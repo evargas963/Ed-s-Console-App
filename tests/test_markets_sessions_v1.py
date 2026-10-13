@@ -64,8 +64,7 @@ def test_the_daemon_asks_each_date_once_and_records_every_answer_as_sent(tmp_pat
         daemon = capture.Daemon(bus, health, ["SPY", "TSLA"])
         writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01)
         written = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
-        sweep = asyncio.create_task(capture.run_chains(daemon, tmp_path / "ed_console.db", lambda: client, stop,
-                                                       failures=writer))
+        sweep = asyncio.create_task(capture.run_chains(daemon, tmp_path / "ed_console.db", lambda: client, stop))
         deadline = asyncio.get_running_loop().time() + 30
         while {r[0] for r in rows()} < wanted and asyncio.get_running_loop().time() < deadline:
             await asyncio.sleep(0.1)

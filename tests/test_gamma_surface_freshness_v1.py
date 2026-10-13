@@ -15,12 +15,13 @@ from pathlib import Path
 
 import pytest
 
+import app.options.order_flow.state as ofls
 import live_market_plane as lmp
 import push_changes
 import server
 from calibration.complete_chain_capture import CAPTURE_BASIS
 from server import get_options_gamma_surface, ticker_storage_key
-from tests.feed_live_helper import forget_price, price_sent
+from tests.feed_live_helper import forget_price, ledger_round, price_sent
 from time_et import ET
 
 _CRWD = json.loads((Path(__file__).parent / "fixtures" / "real_crwd_complete_chain_quarter.json")
@@ -47,13 +48,14 @@ def published():
     """CRWD's chain published at its capture under _ON and _OFF, at its own spot."""
     _daemon(_CRWD["spot"], _AT.timestamp(), _ON, _OFF)            # live when the chain is published
     for tk in (_ON, _OFF):
-        server._publish_levels(tk, [dict(c) for c in _CRWD["chain"]], _AT.timestamp(), now=_AT)
+        ledger_round(tk, _CRWD["chain"], _AT.timestamp(), now=_AT)
     _daemon(_CRWD["spot"], time.time(), _ON, _OFF)                # live now, as the routes read it
     yield
     with server._terrain_cache_lock:
         for tk in (_ON, _OFF):
             server._terrain_cache.pop(tk, None)
             forget_price(tk)
+    ofls.clear_all_live_state()
     lmp.record_feed_down()
 
 

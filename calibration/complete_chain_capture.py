@@ -27,12 +27,11 @@ from typing import Any
 
 from schwab.client import Client
 
+import option_ledger
 from instrument_identity import ticker_storage_key
 from json_blob_codec import decode_json_blob, encode_json_blob
-from numeric_contract import schwab_number
-from schwab_client import (GREEK_FIELDS, QUOTES_BATCH_MAX, flatten_chain_contracts, option_expiries,
-                           safe_get_chain, safe_get_quotes)
-from stream_spine import CaptureWriter
+from schwab_client import (QUOTES_BATCH_MAX, flatten_chain_contracts, option_expiries, safe_get_chain,
+                           safe_get_quotes)
 from time_et import ET, options_closed_at, options_open, record_markets, session
 
 log = logging.getLogger("chain_history")
@@ -138,25 +137,33 @@ def capture_slot(now_ts: float) -> float | None:
     return past[-1]
 
 
-#: contracts per chain message to the console: one message is encoded and decoded whole, so a
-#: whole chain in one ($SPX, 29,394 contracts: 40.7 MB, 924 ms to encode, measured 2026-10-01)
-#: would hold the daemon's event loop; 500 contracts take tens of milliseconds
-CHAIN_PART_CONTRACTS = 500
+def chain_answer_message(ticker: str, expiry: str, status: int, answer, fetched_ts: float) -> tuple[str, dict]:
+    """Schwab's /chains answer for one expiry of `ticker`, as sent, with its status: for the
+    journal (it posts to its contracts' records, option_ledger.opening)."""
+    return f"chainanswer.{ticker}", {"src": "schwab_chains", "symbol": ticker, "expiry": expiry,
+                                     "status": status, "ts_recv": fetched_ts, "answer": answer}
 
 
-def chain_messages(ticker: str, contracts: list[dict], fetched_ts: float) -> list[tuple[str, dict]]:
-    """A fetched chain as its bus messages, each carrying its finished wire frame: part i of n,
-    CHAIN_PART_CONTRACTS contracts each, all with the time the chain began. The console assembles the
-    parts; a chain missing a part is never priced."""
-    parts = [contracts[i:i + CHAIN_PART_CONTRACTS]
-             for i in range(0, len(contracts), CHAIN_PART_CONTRACTS)] or [[]]
-    out = []
-    for i, part in enumerate(parts):
-        msg = {"src": "schwab_chain", "ticker": ticker, "ts_recv": fetched_ts,
-               "part": i, "parts": len(parts), "contracts": part}
-        out.append((f"chain.{ticker}", {**msg, "frame": json.dumps(
-            {"topic": f"chain.{ticker}", "msg": msg}, separators=(",", ":"))}))
-    return out
+def quotes_answer_message(symbols: "list[str]", status: int, answer, fetched_ts: float) -> tuple[str, dict]:
+    """Schwab's /quotes answer for option contracts, as sent, with its status and the symbols
+    asked: for the journal (each quote posts to its contract's record, option_ledger.from_quote)."""
+    return "quotesanswer.options", {"src": "schwab_quotes", "symbols": list(symbols), "status": status,
+                                    "ts_recv": fetched_ts, "answer": answer}
+
+
+def _answer(resp) -> "tuple[Any, str | None]":
+    """Schwab's answer as sent: its JSON, or its text with why it is not JSON."""
+    try:
+        return resp.json(), None
+    except ValueError as e:
+        return resp.text, f"{type(e).__name__}: {e}"
+
+
+def chain_round_message(ticker: str, started: float) -> tuple[str, dict]:
+    """`ticker`'s round is in: each of its contracts' records holds Schwab's answers asked in the
+    round begun at `started` (the levels' as-of time)."""
+    msg = {"src": "schwab_chain", "ticker": ticker, "ts_recv": started}
+    return f"chain.{ticker}", msg
 
 
 #: Schwab's price history of every ticker (GET /pricehistory,
@@ -196,36 +203,33 @@ def markets_message(day: str, status: int, answer: dict, fetched_ts: float) -> t
 
 def chain_failure_message(ticker: str, reason: str, ts: float) -> tuple[str, dict]:
     msg = {"src": "schwab_chain", "ticker": ticker, "ts_recv": ts, "failed": reason}
-    return f"chain.{ticker}", {**msg, "frame": json.dumps(
-        {"topic": f"chain.{ticker}", "msg": msg}, separators=(",", ":"))}
+    return f"chain.{ticker}", msg
 
 
 @dataclass(eq=False)
-class _Chain:
-    """A ticker's chain from its first request until its last quote is in."""
+class _Round:
+    """A ticker's round from its first request until its last quote is in."""
     ticker: str
     started: float                                                 # its first request
-    spots: "dict[str, float | None]" = field(default_factory=dict)  # expiry -> Schwab's underlyingPrice in its answer
-    by_expiry: "dict[str, list[dict]]" = field(default_factory=dict)
     unquoted: "set[str]" = field(default_factory=set)              # contracts whose quote is not in
-    named_invalid: "set[str]" = field(default_factory=set)         # contracts Schwab's quotes named invalid
-
-    def contracts(self) -> "list[dict]":
-        return [ct for cts in self.by_expiry.values() for ct in cts]
 
 
 class ChainSweep:
     """The one fetcher of option chains: one thread, one request at a time on the daemon's one
     Schwab client, every ticker the same, in one rotation (sorted): every watchlist ticker
     (`watchlist`, which the daemon replaces on each add or removal: an added ticker is in the
-    next rotation, a removed one is asked for no more). For each ticker, Schwab's expiration chain once per ET
-    date, then one chain request per expiry (strike_range=ALL), as Schwab says to break up a
-    large chain. The chain's own Greeks (GREEK_FIELDS, rounded by Schwab) are never kept: a
-    contract whose LEVELONE_OPTIONS record (`streamed`) carries all of them takes the stream's,
-    each with its field's Schwab time; every other contract is asked for on the quotes endpoint,
-    QUOTES_BATCH_MAX symbols to a request across tickers, and takes its quote's, with the
-    quote's quoteTime. A Greek Schwab does not send is absent (None). Each contract carries the
-    time of its Greeks as `greeksTime` ({field: Schwab's time, ms}).
+    next rotation, a removed one is asked for no more). Each thing is asked for once, and again
+    only for what the stream does not carry (option_ledger, the option ledger):
+      - the opening, once per ET date: Schwab's expiration chain, then one chain request per expiry
+        (strike_range=ALL), as Schwab says to break up a large chain; each answer is published as
+        sent (chain_answer_message, the journal), and each contract it lists opens its record
+        (option_ledger.opening: every field as sent but the rounded Greeks);
+      - Schwab's quotes for each contract, QUOTES_BATCH_MAX symbols to a request across tickers:
+        every contract at the opening; then, each round, every contract the stream does not hold
+        (`held`) and each one it holds that has not been asked for since the daemon's connection to
+        Schwab began (`connection`). Each answer is published as sent (quotes_answer_message), and
+        each quote posts to its contract's record (option_ledger.from_quote).
+    A round is in when the last of its quotes is (chain_round_message).
 
     The price history (candles, fetch_price_history): each watchlist ticker's 1-minute bars and
     daily candles once per ET date (candles_due).
@@ -239,31 +243,27 @@ class ChainSweep:
     while that answer is not known yet, and once more after the newest close it has not been
     fetched since (its close values; a failed one again in the next pass); otherwise not, until
     the next session. A ticker whose expiration chain lists no option (or none asked yet) has
-    its chain asked once per ET date, to learn whether options are listed. A chain is published to the console in parts (chain_messages) once
-    all its quotes are in; a ticker whose request fails (an answer other than 200, or none) is
-    published as failed with the reason, and the rotation goes on. The first chain of a ticker
-    begun inside a capture window (capture_slot) is also written to the chain history; a history
-    write that fails is a write failure, never the chain's: the chain as delivered is handed to
-    `failures` (the daemon's writer) to keep."""
+    its chain asked once per ET date, to learn whether options are listed. A ticker whose request
+    fails (an answer other than 200, or none) is published as failed with the reason, and the
+    rotation goes on."""
 
-    def __init__(self, db_path: Path | str, watchlist: "list[str]", publish: "callable",
-                 clock: "callable" = time.time, *, failures: "CaptureWriter",
-                 streamed: "callable") -> None:
-        self.db_path = db_path
+    def __init__(self, watchlist: "list[str]", publish: "callable", clock: "callable" = time.time, *,
+                 held: "callable", connection: "callable") -> None:
         self.watchlist = list(watchlist)  # the daemon's list, replaced whole on each change
         self.publish = publish          # (topic, msg) -> None, safe from any thread
-        self.clock = clock              # when a request begins, and when a chain is delivered
-        self.failures = failures        # the daemon's writer: keeps a failed history write
-        self.streamed = streamed        # option symbol -> its bus current (topic, record) or None
+        self.clock = clock              # when a request begins
+        self.held = held                # () -> the option contracts the stream holds now
+        self.connection = connection    # () -> the number of the daemon's connection to Schwab
         self.round_sec: float | None = None
         self._expiries: "dict[str, tuple[date, list[date]]]" = {}   # ticker -> (ET date, expiries)
         self._markets_day: "dict[str, date]" = {}          # market date -> the ET date Schwab answered it
         self._optioned: "set[str]" = set()                 # tickers Schwab has answered a chain for
-        self._fetched: "dict[str, float]" = {}             # ticker -> when its newest delivered chain began
+        self._fetched: "dict[str, float]" = {}             # ticker -> when its newest round began
         self._candled: "dict[str, float]" = {}             # ticker -> when its newest whole price history began
-        self._queue: "list[tuple[_Chain, dict]]" = []     # contracts whose quote is not asked for
+        self._opened: "dict[str, tuple[date, list[str]]]" = {}   # ticker -> (ET date, the contracts its chain listed)
+        self._asked: "dict[str, int]" = {}                 # contract -> the connection its newest quote was asked on
+        self._queue: "list[tuple[_Round, str]]" = []      # contracts whose quote is not asked for
         self._delivered: "set[str]" = set()                # the tickers this rotation delivered
-        self._written: "dict[str, float | None]" = {}       # ticker -> its newest history capture
 
     def work(self, schwab_client, stop: threading.Event) -> None:
         """The thread's life, until `stop`: on the daemon's client (`schwab_client()`), the
@@ -382,132 +382,126 @@ class ChainSweep:
             self._candled[ticker] = now
 
     def fetch_chain(self, schwab_client, ticker: str) -> None:
-        """`ticker`'s chain, every expiry: each contract's Greeks from the stream, or the contract
-        queued for its quote; delivered at once when none is queued."""
-        chain = _Chain(ticker, self.clock())
+        """`ticker`'s round: its opening when it has none on this ET date (open), then each of its
+        contracts the stream does not carry queued for its quote; in at once when none is."""
+        rnd = _Round(ticker, self.clock())
+        today = datetime.fromtimestamp(rnd.started, ET).date()
+        opened = self._opened.get(ticker)
+        if opened is None or opened[0] != today:
+            if not self.open(schwab_client, rnd, today):
+                return
+            listed = self._opened[ticker][1]
+        else:
+            held, connection = self.held(), self.connection()
+            listed = [s for s in opened[1] if s not in held or self._asked.get(s) != connection]
+        rnd.unquoted.update(listed)
+        self._queue.extend((rnd, s) for s in listed)
+        if not rnd.unquoted:
+            self.round_in(rnd)
+
+    def open(self, schwab_client, rnd: _Round, today: date) -> bool:
+        """The ticker's opening: its expiration chain once per ET date, then each expiry's chain,
+        each answer published as sent and each contract it lists opening its record; whether it
+        came in (a failure is published with its reason)."""
+        ticker = rnd.ticker
         try:
             client = schwab_client()
-            today = datetime.fromtimestamp(chain.started, ET).date()
             listed = self._expiries.get(ticker)
             if listed is None or listed[0] != today:
                 expiries, resp = option_expiries(client, ticker, today)
                 if expiries is None:
-                    return self.fail([chain], f"expiration chain returned HTTP {resp.status_code}")
+                    self.fail([rnd], f"expiration chain returned HTTP {resp.status_code}")
+                    return False
                 listed = self._expiries[ticker] = (today, expiries)
             self.fetch_markets(schwab_client, [expiry.isoformat() for expiry in listed[1]])
+            symbols: "list[str]" = []
             for expiry in listed[1]:
                 resp = safe_get_chain(client, ticker, strike_range="ALL", from_date=expiry, to_date=expiry)
+                answer, unreadable = _answer(resp)
+                self.publish(*chain_answer_message(ticker, expiry.isoformat(), resp.status_code, answer, self.clock()))
                 if resp.status_code != 200:
-                    return self.fail([chain], f"chain for {expiry} returned HTTP {resp.status_code}")
-                payload = resp.json()
+                    self.fail([rnd], f"chain for {expiry} returned HTTP {resp.status_code}")
+                    return False
+                if unreadable is not None:
+                    self.fail([rnd], unreadable)
+                    return False
                 self._optioned.add(ticker)
-                chain.spots[expiry.isoformat()] = schwab_number(payload.get("underlyingPrice"))
-                chain.by_expiry[expiry.isoformat()] = flatten_chain_contracts(payload)
+                for ct in flatten_chain_contracts(answer):
+                    self.publish(*option_ledger.posting(ct["symbol"], option_ledger.opening(ct, ticker),
+                                                        ct.get("quoteTimeInLong")))
+                    symbols.append(ct["symbol"])
         except Exception as e:  # noqa: BLE001 -- that ticker's answer is the failure; the rotation goes on
             log.warning("chain %s failed: %s: %s", ticker, type(e).__name__, e)
-            return self.fail([chain], f"{type(e).__name__}: {e}")
-        for ct in chain.contracts():
-            entry = self.streamed(ct["symbol"])
-            if entry is not None and all(f.upper() in entry[1]["content"] for f in GREEK_FIELDS):
-                ct.update({f: entry[1]["content"][f.upper()] for f in GREEK_FIELDS})
-                ct["greeksTime"] = {f: entry[1]["field_ts"][f.upper()][0] for f in GREEK_FIELDS}
-            else:
-                ct.update(dict.fromkeys(GREEK_FIELDS))
-                ct["greeksTime"] = None
-                chain.unquoted.add(ct["symbol"])
-                self._queue.append((chain, ct))
-        if not chain.unquoted:
-            self.deliver(chain)
+            self.fail([rnd], f"{type(e).__name__}: {e}")
+            return False
+        self._opened[ticker] = (today, symbols)
+        return True
 
     def send_quotes(self, schwab_client) -> None:
-        """One quotes request for the next QUOTES_BATCH_MAX queued contracts, which take their
-        quote's Greeks; each chain it completes is delivered. A request that fails fails every
-        ticker in it. Schwab's answer carries a quote per symbol it knows and, beside them, an
-        `errors` entry naming the symbols it does not (`invalidSymbols`; measured 2026-10-07: 8
-        SPY contracts its own chain lists, every one never quoted or traded): those contracts get
-        no Greeks, logged once with their count, and the rest of the request is delivered."""
-        self._queue = [(chain, ct) for chain, ct in self._queue if chain.ticker in self.watchlist]  # removed: not asked
+        """One quotes request for the next QUOTES_BATCH_MAX queued contracts: Schwab's answer
+        published as sent, and each quote posted to its contract's record; each round it completes
+        is in. A request that fails fails every ticker in it. Schwab's answer carries a quote per
+        symbol it knows and, beside them, an `errors` entry naming the symbols it does not
+        (`invalidSymbols`; measured 2026-10-07: 8 SPY contracts its own chain lists, every one
+        never quoted or traded): those records get no quote, logged once with their count, and the
+        rest of the request is in."""
+        self._queue = [(rnd, s) for rnd, s in self._queue if rnd.ticker in self.watchlist]  # removed: not asked
         batch, self._queue = self._queue[:QUOTES_BATCH_MAX], self._queue[QUOTES_BATCH_MAX:]
-        chains = list({id(chain): chain for chain, _ct in batch}.values())
+        rounds = list({id(rnd): rnd for rnd, _s in batch}.values())
+        symbols = [s for _rnd, s in batch]
+        connection = self.connection()
         try:
-            resp = safe_get_quotes(schwab_client(), [ct["symbol"] for _chain, ct in batch])
-            if resp.status_code != 200:
-                return self.fail(chains, f"quotes for {len(batch)} contracts returned HTTP {resp.status_code}")
-            answer = resp.json()
-            errors = answer.pop("errors") if "errors" in answer else {}
-            named = set(errors["invalidSymbols"]) if "invalidSymbols" in errors else set()
-            quoted = {s: e["quote"] for s, e in answer.items()}
+            resp = safe_get_quotes(schwab_client(), symbols)
         except Exception as e:  # noqa: BLE001 -- those tickers' answer is the failure; the rotation goes on
             log.warning("quotes for %d contracts failed: %s: %s", len(batch), type(e).__name__, e)
-            return self.fail(chains, f"{type(e).__name__}: {e}")
+            return self.fail(rounds, f"{type(e).__name__}: {e}")
+        answer, unreadable = _answer(resp)
+        self.publish(*quotes_answer_message(symbols, resp.status_code, answer, self.clock()))
+        if resp.status_code != 200:
+            return self.fail(rounds, f"quotes for {len(batch)} contracts returned HTTP {resp.status_code}")
+        if unreadable is not None:
+            log.warning("quotes for %d contracts: the answer is not JSON: %s", len(batch), unreadable)
+            return self.fail(rounds, unreadable)
+        errors = answer["errors"] if "errors" in answer else {}
         if errors:
-            log.warning("quotes for %d contracts: Schwab named %d invalid, which have no Greeks: %s",
-                        len(batch), len(named), json.dumps(errors))
-        for chain, ct in batch:
-            quote = quoted.get(ct["symbol"])
-            if quote is not None:
-                ct.update({f: quote.get(f) for f in GREEK_FIELDS})
-                ct["greeksTime"] = dict.fromkeys(GREEK_FIELDS, quote.get("quoteTime"))
-            elif ct["symbol"] in named:
-                chain.named_invalid.add(ct["symbol"])
-            chain.unquoted.discard(ct["symbol"])
-        for chain in chains:
-            if not chain.unquoted:
-                self.deliver(chain)
+            log.warning("quotes for %d contracts: Schwab named symbols it does not know, which have no quote: %s",
+                        len(batch), json.dumps(errors))
+        for rnd, s in batch:
+            if s in answer and s != "errors":
+                quote = answer[s]["quote"]
+                self.publish(*option_ledger.posting(s, option_ledger.from_quote(quote), quote.get("quoteTime")))
+                self._asked[s] = connection
+            rnd.unquoted.discard(s)
+        for rnd in rounds:
+            if not rnd.unquoted:
+                self.round_in(rnd)
 
-    def fail(self, chains: "list[_Chain]", reason: str) -> None:
-        """Each chain's ticker is published as failed with `reason`; its contracts leave the queue.
+    def fail(self, rounds: "list[_Round]", reason: str) -> None:
+        """Each round's ticker is published as failed with `reason`; its contracts leave the queue.
         The log has the cause already: Schwab's answer (schwab_client.log_request) or the error."""
         now = self.clock()
-        self._queue = [(chain, ct) for chain, ct in self._queue if chain not in chains]
-        for chain in chains:
-            self.publish(*chain_failure_message(chain.ticker, reason, now))
+        self._queue = [(rnd, s) for rnd, s in self._queue if rnd not in rounds]
+        for rnd in rounds:
+            self.publish(*chain_failure_message(rnd.ticker, reason, now))
 
-    def deliver(self, chain: _Chain) -> None:
-        """The chain to the console, and to the chain history when it is the window's first, both
-        carrying the time the chain began (its as-of everywhere: a chain begun before the close is
-        not the close values, whenever it is delivered)."""
-        now = self.clock()
-        contracts = chain.contracts()
-        for topic, msg in chain_messages(chain.ticker, contracts, chain.started):
-            self.publish(topic, msg)
-        self._delivered.add(chain.ticker)
-        self._fetched[chain.ticker] = chain.started
-        missing = sum(1 for ct in contracts if ct["greeksTime"] is None and ct["symbol"] not in chain.named_invalid)
-        if missing:
-            log.warning("quotes for %s: no quote came back for %d of %d contracts; their Greeks are absent",
-                        chain.ticker, missing, len(contracts))
-        try:
-            self._write_history(chain)
-        except Exception as e:  # noqa: BLE001 -- the chain is delivered; a failed history write is the writer's to keep and show
-            log.warning("chain history for %s not written, kept as delivered: %s: %s",
-                        chain.ticker, type(e).__name__, e)
-            self.failures.keep_failure(f"chain_history.{chain.ticker}",
-                                       {"spots": chain.spots, "contracts": contracts}, e, now)
+    def round_in(self, rnd: _Round) -> None:
+        """The ticker's round is in: published with the time it began (its as-of everywhere: a
+        round begun before the close is not the close values, whenever it is in)."""
+        self.publish(*chain_round_message(rnd.ticker, rnd.started))
+        self._delivered.add(rnd.ticker)
+        self._fetched[rnd.ticker] = rnd.started
 
-    def _write_history(self, chain: _Chain) -> None:
-        """The chain history: a chain begun inside a capture window of the ticker's option market,
-        the first one of the window for this ticker (a chain begun before the close is not the
-        close capture, whenever it ends), one row per expiry with the underlying price of that
-        expiry's answer, at the time the chain began."""
-        ticker = chain.ticker
-        slot = capture_slot(chain.started)
-        if slot is None:
-            return
-        if ticker not in self._written:
-            self._written[ticker] = newest_capture_ts(self.db_path, ticker)
-        before = self._written[ticker]
-        if before is not None and before >= slot:
-            return
-        self._written[ticker] = slot                       # claim the window for this ticker
-        try:
-            for expiry, cts in chain.by_expiry.items():
-                persist_complete_chain_capture(self.db_path, ticker=ticker, expiry=expiry, contracts=cts,
-                                               spot=chain.spots[expiry], completeness_basis=CAPTURE_BASIS,
-                                               ts_utc=chain.started)
-        except Exception:
-            self._written[ticker] = before                 # unwritten: the window's next chain tries
-            raise
+
+def write_capture(db_path: Path | str, ticker: str, contracts: "list[dict]", spot: "float | None",
+                  ts_utc: float) -> None:
+    """The chain history of one window: the ticker's contract records as the ledger holds them,
+    one row per expiry, with the ticker's price and the time its round began."""
+    by_expiry: "dict[str, list[dict]]" = {}
+    for ct in contracts:
+        by_expiry.setdefault(str(ct["expirationDate"])[:10], []).append(ct)   # each opened from the chain
+    for expiry, cts in by_expiry.items():
+        persist_complete_chain_capture(db_path, ticker=ticker, expiry=expiry, contracts=cts, spot=spot,
+                                       completeness_basis=CAPTURE_BASIS, ts_utc=ts_utc)
 
 
 def newest_capture_ts(db_path: Path | str, ticker: str) -> float | None:

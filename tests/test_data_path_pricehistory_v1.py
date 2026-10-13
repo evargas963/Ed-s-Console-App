@@ -32,8 +32,8 @@ def _et(s: str) -> float:
 
 def _sweep(tmp_path, clock, publish):
     daemon = capture.Daemon(MessageBus(), HealthRegistry(), ["SPY"])
-    return ChainSweep(tmp_path / "ed_console.db", ["SPY"], publish, clock=lambda: clock["now"],
-                      failures=CaptureWriter(tmp_path / "stream_capture.db"), streamed=daemon.option_record)
+    return ChainSweep(["SPY"], publish, clock=lambda: clock["now"],
+                      held=lambda: daemon.held["LEVELONE_OPTIONS"], connection=lambda: daemon.connection)
 
 
 def test_the_daemon_asks_each_series_as_schwab_documents_it_and_publishes_it_as_sent(tmp_path):
@@ -213,8 +213,7 @@ def test_the_daemons_writer_records_every_answer_as_schwab_sent_it(tmp_path):
         daemon = capture.Daemon(bus, health, ["SPY"])
         writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01)
         written = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
-        sweep = asyncio.create_task(capture.run_chains(daemon, tmp_path / "ed_console.db", lambda: client, stop,
-                                                       failures=writer))
+        sweep = asyncio.create_task(capture.run_chains(daemon, tmp_path / "ed_console.db", lambda: client, stop))
         deadline = asyncio.get_running_loop().time() + 30
         while len(rows()) < 2 and asyncio.get_running_loop().time() < deadline:
             await asyncio.sleep(0.1)

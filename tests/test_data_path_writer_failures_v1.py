@@ -30,7 +30,7 @@ from app.market_data.schwab.streaming.live_push import serve_live_push
 from app.market_data.schwab.streaming.live_ui import LiveUiServer
 from calibration.complete_chain_capture import ChainSweep
 from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus, options_quote_msg, quote_msg
-from tests.schwab_rest_standin import CHAIN, LocalSchwab
+from tests.schwab_rest_standin import QUOTES, LocalSchwab
 from tests.test_data_path_rules_v1 import _CONTRACT, _EVENTS, _frame
 
 _IN_WINDOW = 1790863205.0          # 2026-10-01 10:00:05 ET, inside the 10:00 capture window
@@ -330,9 +330,10 @@ def test_a_row_only_the_database_refuses_is_kept_and_the_writer_is_not_blocked(t
 def test_a_chain_whose_history_write_fails_is_kept_as_sent_and_is_never_a_chain_failure(tmp_path):
     """INDUCED CONDITION: the chain history table carries an extra NOT NULL column the writer
     does not fill, so SQLite refuses each row with IntegrityError, standing in for the refusal of
-    a repeated capture key (PR #465). The chain is delivered and never published as failed, the
-    sweep fetches the next chain at once (no pause: a second chain request reaches the host), and
-    the daemon's writer keeps the chain as delivered."""
+    a repeated capture key (PR #465). The round is in and never published as failed, the sweep
+    asks the next round at once (no pause: a second quotes request reaches the host), and the
+    daemon's writer keeps the history it could not write: every contract's record as the ledger
+    holds it, at SPY's price."""
     db = tmp_path / "ed_console.db"
     with sqlite3.connect(db) as conn:
         conn.execute("CREATE TABLE complete_chain_captures (ticker TEXT NOT NULL, expiry TEXT NOT NULL, "
@@ -346,13 +347,20 @@ def test_a_chain_whose_history_write_fails_is_kept_as_sent_and_is_never_a_chain_
         bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
         daemon = capture.Daemon(bus, health, ["SPY"])
         daemon.writer = CaptureWriter(failures_db, batch_rows=1, batch_sec=0.01)
-        task = asyncio.create_task(daemon.writer.run(bus.subscribe("", policy=LOG), stop=stop))
-        sweep = ChainSweep(db, ["SPY"], lambda topic, msg: published.append(msg),
-                           clock=lambda: _IN_WINDOW, failures=daemon.writer, streamed=daemon.option_record)
+        daemon.history_db = db
+        daemon._took_price("SPY", {"native": {"LAST_PRICE": 766.31}})
+        tasks = [asyncio.create_task(daemon.writer.run(bus.subscribe("", policy=LOG), stop=stop)),
+                 asyncio.create_task(daemon.follow_market(stop))]
+        loop = asyncio.get_running_loop()
+
+        def publish(topic, msg):                     # from the sweep's thread, as run_chains publishes
+            published.append(msg)
+            loop.call_soon_threadsafe(bus.publish, topic, msg)
+        sweep = ChainSweep(["SPY"], publish, clock=lambda: _IN_WINDOW, held=frozenset, connection=lambda: 1)
         schwab = LocalSchwab()
         client = schwab.client(tmp_path)
         def chains() -> int:
-            return len(schwab.asked(CHAIN))
+            return len(schwab.asked(QUOTES))
         halt = threading.Event()
         worker = threading.Thread(target=sweep.work, args=(lambda: client, halt), daemon=True)
         try:
@@ -362,13 +370,21 @@ def test_a_chain_whose_history_write_fails_is_kept_as_sent_and_is_never_a_chain_
             halt.set()
             await asyncio.to_thread(worker.join, 10)
             schwab.close()
+        # the rounds the sweep published before it stopped are taken by the daemon (on its loop,
+        # each history write off it): the beat is read once the writer has kept every failure
+        settled, deadline = None, time.monotonic() + 10
+        while settled != (daemon.writer.status()["failures"], len(_failures(failures_db))):
+            assert time.monotonic() < deadline, "the daemon's history writes never settled"
+            settled = (daemon.writer.status()["failures"], len(_failures(failures_db)))
+            await asyncio.sleep(0.5)
         writer = _beat(daemon)["writer"]
+        ledger = [fields for fields, _times in daemon.contracts("SPY")]
         stop.set()
-        await task
-        return chains(), writer
-    fetched, writer = asyncio.run(go())
+        await asyncio.gather(*tasks)
+        return chains(), writer, ledger
+    fetched, writer, ledger = asyncio.run(go())
 
-    assert published and all("failed" not in m for m in published), "a delivered chain read failed"
+    assert published and all("failed" not in m for m in published), "a delivered round read failed"
     assert fetched >= 2, "the sweep paused after a history write failed"
     failures = _failures(failures_db)          # each fetch of the window tries the history again
     assert len(failures) == writer["failures"] >= 2
@@ -376,10 +392,10 @@ def test_a_chain_whose_history_write_fails_is_kept_as_sent_and_is_never_a_chain_
     (topic, kept, error) = failures[0]
     assert error.startswith("IntegrityError: NOT NULL constraint failed: complete_chain_captures.refused")
     kept = json.loads(kept)
-    parts = [m for m in published if m["src"] == "schwab_chain"]          # the chain's, not its price history
-    received = [ct for msg in parts[:parts[0]["parts"]] for ct in msg["contracts"]]
-    assert kept["spots"] == {"2026-11-20": 766.31}
-    assert kept["contracts"] == received, "kept as the sweep delivered it"
+    assert kept["spot"] == 766.31
+    assert len(kept["contracts"]) == len(ledger) == 442
+    assert [{k: v for k, v in ct.items() if k != "fieldTimes"} for ct in kept["contracts"]] == ledger, \
+        "kept as the ledger holds it"
     assert writer["last_failure"] == f"chain_history.SPY: {failures[-1][2]}"
 
 

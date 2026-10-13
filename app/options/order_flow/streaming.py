@@ -44,11 +44,14 @@ import push_changes
 from app.options.order_flow import history as recent
 
 from app.options.order_flow.state import (
+    ContractRecord,
     clear_all_live_state,
+    clear_contracts,
     clear_symbol,
     push_book,
+    push_contract,
     push_level_one,
-    push_option_top,
+    push_trade,
 )
 
 import live_market_plane as _lmp
@@ -113,53 +116,16 @@ async def select_flow_contract(contract: "str | None") -> None:
 _feed_task: Optional[asyncio.Task] = None
 _feed_running = False
 
-#: Each option contract's last streamed message time (LEVELONE_OPTIONS or OPTIONS_BOOK), keyed
-#: by ticker_storage_key.
-_option_contract_last_update_ts: dict[str, float] = {}
-
-#: Called with the symbol of every streamed equity quote and every option quote carrying
-#: GAMMA/DELTA/OPEN_INTEREST/TOTAL_VOLUME/VOLUME (server._on_stream_tick: reprices a viewed
-#: ticker). Runs on the event loop, so it must return at once.
+#: Called with the symbol of every streamed equity quote and option message
+#: (server._on_stream_tick: reprices a viewed ticker). Runs on the event loop, so it must return at once.
 _on_tick_callback: Optional[Callable[[str], None]] = None
 _tick_callback_failures = 0
 #: Every streamed 1-minute bar (bar1m.SYM, Schwab CHART_EQUITY), for server._bar_writer to write.
 streamed_bars: "queue.SimpleQueue[dict]" = queue.SimpleQueue()
-#: Called on the event loop with (ticker, contracts, fetched_ts, None) for each whole chain the
-#: daemon fetched, and with (ticker, None, ts, reason) for one it could not deliver
-#: (server._on_chain).
+#: Called on the event loop with (ticker, round's start, None) when the daemon's round of a
+#: ticker is in (its contracts' records hold its answers), and with (ticker, ts, reason) for one
+#: that failed (server._on_chain).
 _on_chain_callback: Optional[Callable[..., None]] = None
-#: ticker -> the chain being received: {"ts", "parts", "got": {part: contracts}}
-_chain_parts: "dict[str, dict]" = {}
-
-
-def assemble_chain_part(msg: dict) -> "list[tuple[str, list | None, float, str | None]]":
-    """One chain message from the daemon (complete_chain_capture.chain_messages) -> what it
-    settles, in order: a chain whose parts did not all arrive before the next one began
-    (ticker, None, ts, reason); a fetch that failed (ticker, None, ts, Schwab's answer); the whole
-    chain once its last part is in (ticker, contracts, fetched_ts, None). A chain missing a part
-    is never returned."""
-    tk, ts = msg.get("ticker"), msg.get("ts_recv")
-    if not tk or not isinstance(ts, (int, float)):
-        return []
-    out = []
-    cur = _chain_parts.get(tk)
-    if cur is not None and cur["ts"] != ts:
-        out.append((tk, None, float(ts), f"the daemon's chain of {tk} arrived with "
-                    f"{len(cur['got'])} of its {cur['parts']} parts"))
-        del _chain_parts[tk]
-        cur = None
-    if "failed" in msg:
-        _chain_parts.pop(tk, None)
-        return [*out, (tk, None, float(ts), str(msg["failed"]))]
-    if cur is None:
-        if int(msg["part"]) != 0:
-            return out              # a chain begun before this console connected: not its chain
-        cur = _chain_parts[tk] = {"ts": ts, "parts": int(msg["parts"]), "got": {}}
-    cur["got"][int(msg["part"])] = msg.get("contracts") or []
-    if len(cur["got"]) == cur["parts"]:
-        del _chain_parts[tk]
-        out.append((tk, [c for i in range(cur["parts"]) for c in cur["got"][i]], float(ts), None))
-    return out
 
 
 def _tick(sym: str) -> None:
@@ -194,10 +160,6 @@ def _log_stream(phase: str, **kwargs: Any) -> None:
         log.info("STREAM_DIAG %s", phase)
 
 
-#: the option quote fields the levels are priced from: a message carrying one reprices
-_REPRICE_FIELDS = ("GAMMA", "DELTA", "OPEN_INTEREST", "TOTAL_VOLUME", "VOLUME")
-
-
 def _ingest_pushed(topic: str, msg: Any) -> None:
     """Apply ONE daemon-pushed Schwab stream message to the live planes.
 
@@ -210,19 +172,20 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
                    daemon's price row (_rows_loop), never rebuilt here
       book.SYM     NASDAQ_BOOK / NYSE_BOOK -> order-flow book; OPTIONS_BOOK -> the option
                    contract's book
-      optquote.SYM LEVELONE_OPTIONS -> order-flow state for the contract
+      contract.SYM an option contract's one record (option_ledger) -> the mirror (push_contract),
+                   its trade into the tapes
+      chain.TK     a ticker's round is in, or why it failed -> the levels (server._on_chain)
       markets.DATE Schwab's /markets answer -> that date's sessions (time_et), when it is a 200
 
-    Every option quote carrying GAMMA/DELTA/OPEN_INTEREST/TOTAL_VOLUME/VOLUME is passed to the
-    tick callback (an equity's tick is its price row's arrival). A message missing its symbol, its
+    Every option message is passed to the tick callback (an equity's tick is its price row's
+    arrival). A message missing its symbol, its
     receive time or its Schwab payload is dropped whole: nothing is applied with a guessed
     part."""
     if not isinstance(msg, dict):
         return None
     if topic.startswith("chain."):
-        for done in assemble_chain_part(msg):
-            if _on_chain_callback is not None:
-                _on_chain_callback(*done)
+        if _on_chain_callback is not None and msg.get("ticker") and isinstance(msg.get("ts_recv"), (int, float)):
+            _on_chain_callback(msg["ticker"], float(msg["ts_recv"]), msg.get("failed"))
         return None
     if topic.startswith("markets."):
         if msg["status"] == 200:
@@ -254,24 +217,20 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
         if not isinstance(content, dict):
             return None
         push_book(sym, content, msg["service"])
-        if msg.get("service") == "OPTIONS_BOOK":
-            _option_contract_last_update_ts[sym] = ts
-        else:
+        if msg.get("service") != "OPTIONS_BOOK":
             recent.BOOKS.record(sym, msg["service"], content, ts)
             push_changes.changed(sym, push_changes.FLOW)
         return None
-    if kind == "optquote":
-        content = msg.get("content")
-        if not isinstance(content, dict):
+    if kind == "contract":
+        fields = msg.get("fields")
+        if not isinstance(fields, dict):
             return None
-        push_level_one(sym, content, ts_recv=ts, field_received=received)
-        push_option_top(sym, content)
-        recent.TAPE.record(sym, content, ts)
-        _option_contract_last_update_ts[sym] = ts
-        # a tick when the newest message carried a value the levels use (a merged record holds
-        # the last of each field; only one this message brought is new)
-        if any(f in content and (received is None or received[f] == ts) for f in _REPRICE_FIELDS):
-            _tick(sym)
+        record = ContractRecord(fields, msg["field_ts"])
+        push_contract(sym, record)
+        if recent.TAPE.record(sym, fields, record.times, ts):
+            push_trade(sym, fields["last"], fields.get("lastSize"), fields.get("tradeTimeInLong"),
+                       float(record.times["last"][1]))
+        _tick(sym)          # a record changes only when Schwab sent it something new
     return None
 
 
@@ -309,8 +268,7 @@ async def _rows_loop(ui_url: str, reconnect_sec: float) -> None:
                         continue
                     msg = json.loads(frame)
                     if msg.get("type") == "feed":
-                        _lmp.record_feed_heartbeat(msg.get("feed"))
-                        _drop_released_options(time.time())
+                        apply_heartbeat(msg.get("feed"))
                     for m in msg.get("messages") or []:
                         if m["service"] == "LEVELONE_EQUITIES":   # Change: the fields Schwab changed
                             _lmp.record_from_level_one_equity(m["key"], m["content"], received_ts=float(m["ts_recv"]))
@@ -330,6 +288,7 @@ async def serve_push(ws) -> None:
     (select_flow_contract), the watchlist requests sent on it (watchlist_request), and every
     frame applied the moment it arrives (_ingest_pushed)."""
     global _push_ws
+    clear_contracts()           # the daemon pushes every record again on a new connection
     await ws.send(json.dumps({"op": "flow_contract", "contract": _flow_contract}))
     _push_ws = ws
     try:
@@ -379,30 +338,21 @@ async def _feed_loop(push_url: str, ui_url: str, reconnect_sec: float) -> None:
         _log_stream("FEED_LOOP_STOP_DONE")
 
 
-#: The two Schwab option services whose durable open coverage epochs constitute
-#: PRODUCER-side subscription identity (as opposed to the server's desired state).
+#: The two Schwab option services a contract streams on.
 OPTION_PRODUCER_SERVICES: tuple[str, ...] = ("LEVELONE_OPTIONS", "OPTIONS_BOOK")
 
 
-def _read_producer_option_contracts(now: float) -> dict[str, list[str]]:
-    """What Schwab holds per option service, from the daemon's status at `now`; empty when that
-    status is missing or stale (unknown is never confirmation)."""
-    return {s: sorted(_lmp.held_by_daemon(s, now)) for s in OPTION_PRODUCER_SERVICES}
-
-
-#: the option contracts the daemon held at its last status (_drop_released_options)
-_held_options: "set[str]" = set()
-
-
-def _drop_released_options(now: float) -> None:
-    """Forget the live state of each option contract the daemon stopped streaming at `now` (its
-    option rule moved off it), so no screen shows that contract's last message as current."""
-    global _held_options
-    held = set().union(*_read_producer_option_contracts(now).values())
-    for sym in _held_options - held:
+def apply_heartbeat(feed: Any) -> None:
+    """Apply the daemon's status (`feed`, live_market_plane.record_feed_heartbeat) and forget the
+    live state of each option contract it held before and no longer reports holding (its option
+    rule moved off it), so no screen shows that contract's last message as current. A status not
+    applied releases nothing: the last values stand, marked not live."""
+    previous = _lmp.record_feed_heartbeat(feed)
+    if previous is None:
+        return
+    before = set().union(*(previous[s] for s in OPTION_PRODUCER_SERVICES if s in previous))
+    for sym in before.difference(*(_lmp.held_reported(s) for s in OPTION_PRODUCER_SERVICES)):
         clear_symbol(sym)
-        _option_contract_last_update_ts.pop(sym, None)
-    _held_options = held
 
 
 #: a contract's subscription, as the Flow panel shows it: the daemon's option rule holds it on
@@ -414,15 +364,13 @@ SUBSCRIBED, NOT_STREAMED = "SUBSCRIBED", "NOT STREAMED"
 def get_option_contract_streaming_diagnostics(for_contract: str, now: float) -> dict[str, Any]:
     """Whether the daemon streams `for_contract` and is receiving it at `now`, distinct from the
     book's own content ages (options_live_payload): its subscription (SUBSCRIBED / NOT STREAMED,
-    from the daemon's held contracts), and each feed by the one live rule
+    from the daemon's live heartbeat: unknown is never confirmation), and each feed by the one live rule
     (live_market_plane.feed_live_for)."""
     c = ticker_storage_key(for_contract)
-    held = _read_producer_option_contracts(now)
     healthy = bool(_feed_running and _lmp.feed_live_for(c, "LEVELONE_OPTIONS", now))
     return {
         "queried_contract": c,
-        "subscription_state": SUBSCRIBED if c in held["LEVELONE_OPTIONS"] else NOT_STREAMED,
-        "streaming_last_update_ts": _option_contract_last_update_ts.get(c),
+        "subscription_state": SUBSCRIBED if c in _lmp.held_by_daemon("LEVELONE_OPTIONS", now) else NOT_STREAMED,
         "feed_health": {"replay": "healthy" if healthy else "stale" if _feed_running else "not connected",
                         "l1": _service_feed(c, "LEVELONE_OPTIONS", now),
                         "book": _service_feed(c, "OPTIONS_BOOK", now)},
@@ -452,7 +400,6 @@ def stop_order_flow_stream(*, join_timeout: float = STREAM_THREAD_JOIN_TIMEOUT_S
     global _feed_running, _feed_task
     _log_stream("STREAM_THREAD_JOIN_START", join_timeout_sec=join_timeout)
     _feed_running = False
-    _option_contract_last_update_ts.clear()
     clear_all_live_state()
     task = _feed_task
     if task is not None and not task.done():

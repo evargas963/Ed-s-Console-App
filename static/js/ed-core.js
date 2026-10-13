@@ -592,8 +592,8 @@
     paintIdentity(state.ticker);
     var si = document.getElementById('symInput'); if (si) { si.value = state.ticker; buildSymList(); }   // the control reflects the ONE state
     state.selStrike = null; state.selExpiry = null;   // a new ticker clears the shared selection
+    openChangeStream(state.ticker);      // the console's push for the new ticker, before any panel asks
     loadExpiries(state.ticker);       // refresh the expiry dropdown from /api/expiries for the new ticker
-    openChangeStream(state.ticker);      // levels / flow / liquidity changes and the session
     _priceSubTs = Date.now();
     subscribePrices();                   // the daemon answers with this ticker's row at once
     markHeaderPushDown();                // WAITING until that row lands (milliseconds)
@@ -622,7 +622,7 @@
   // each new chain the console pushes for the ticker
   function loadExpiries(tk) {
     var sel = document.getElementById('expSel'); if (!sel) return;
-    fetch('/api/expiries?ticker=' + encodeURIComponent(tk), { cache: 'no-store' })
+    live('/api/expiries?ticker=' + encodeURIComponent(tk), ['chain'])
       .then(function (r) { if (!r.ok) throw new Error('expiries unavailable: HTTP ' + r.status); return r.json(); })
       .then(function (d) {
         if (state.ticker !== tk) return;   // a newer ticker switch superseded this request
@@ -887,24 +887,64 @@
     if (!(wlHost && wlHost.classList.contains('wl-degraded'))) markWlDegraded('live push down');
   }
 
-  // ---- the console's push: which of this ticker's values changed, and the session label.
-  // Each panel reloads on `ed:changed` for the kinds it shows: levels, flow, liquidity. ----
-  var _changes = null;
+  // ---- the console's push (/api/live, one WebSocket): each route a panel shows, answered over
+  // the socket at once and again whenever a kind of change it follows happens for the ticker
+  // (levels, chain, flow, liquidity), then the kind itself, and the session label. The page
+  // fetches no value: a panel asks EdShell.live(url, kinds) where it would fetch(url), and each
+  // panel redraws on `ed:changed` for the kinds it shows, from the answer already pushed. ----
+  var _live = null, _liveTicker = null, _liveRetry = 0;
+  var _answers = {}, _follows = {}, _waiting = {};
+  function liveSend(req) { if (_live && _live.readyState === 1) { try { _live.send(JSON.stringify(req)); } catch (e) {} } }
+  // A Response-like answer of `url` (ok, status, json()), from the console's push.
+  function asResponse(a) {
+    return { ok: a.status >= 200 && a.status < 300, status: a.status,
+             json: function () { return Promise.resolve(a.body); } };
+  }
+  function live(url, kinds) {
+    _follows[url] = kinds || [];
+    if (_answers[url]) return Promise.resolve(asResponse(_answers[url]));
+    var p = new Promise(function (resolve) { (_waiting[url] = _waiting[url] || []).push(resolve); });
+    liveSend({ op: 'route', url: url, kinds: _follows[url] });
+    return p;
+  }
   function openChangeStream(tk) {
-    if (_changes) { try { _changes.close(); } catch (e) {} }
-    _changes = null;
-    if (typeof EventSource === 'undefined') return;
-    try { _changes = new EventSource('/api/changes?ticker=' + encodeURIComponent(tk)); }
+    _liveTicker = tk;
+    _answers = {}; _follows = {};
+    if (_live && _live.readyState === 1) { liveSend({ op: 'ticker', ticker: tk }); return; }
+    if (_live || typeof WebSocket === 'undefined') return;
+    var ws;
+    try { ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/api/live'); }
     catch (e) { return; }
-    _changes.onopen = refreshWL;     // the list as the daemon keeps it, again after the push reopens
-    _changes.onerror = function () { paintSession(null, 'session unknown: the console push is down'); };
-    _changes.addEventListener('session', function (ev) { paintSession(ev.data); });
-    ['levels', 'chain', 'flow', 'liquidity'].forEach(function (kind) {
-      _changes.addEventListener(kind, function () {
-        if (kind === 'chain') loadExpiries(state.ticker);
-        emit('ed:changed', { kind: kind });
-      });
-    });
+    _live = ws;
+    ws.onopen = function () {
+      _liveRetry = 0;
+      liveSend({ op: 'ticker', ticker: _liveTicker });
+      Object.keys(_follows).forEach(function (url) { liveSend({ op: 'route', url: url, kinds: _follows[url] }); });
+      Object.keys(_waiting).forEach(function (url) { if (!_follows[url]) liveSend({ op: 'route', url: url, kinds: [] }); });
+      refreshWL();     // the list as the daemon keeps it, again after the push reopens
+    };
+    ws.onmessage = function (ev) {
+      var msg; try { msg = JSON.parse(ev.data); } catch (e) { return; }
+      if (!msg) return;
+      if (msg.type === 'session') { paintSession(msg.label); return; }
+      if (msg.type === 'route') {
+        _answers[msg.url] = msg;
+        (_waiting[msg.url] || []).forEach(function (resolve) { resolve(asResponse(msg)); });
+        delete _waiting[msg.url];
+        return;
+      }
+      if (msg.type === 'changed') {
+        if (msg.kind === 'chain') loadExpiries(state.ticker);
+        emit('ed:changed', { kind: msg.kind });
+      }
+    };
+    ws.onclose = function () {
+      if (_live !== ws) return;
+      _live = null;
+      paintSession(null, 'session unknown: the console push is down');
+      setTimeout(function () { if (!_live) openChangeStream(_liveTicker); }, Math.min(2000, 250 * Math.pow(2, _liveRetry++)));
+    };
+    ws.onerror = function () { try { ws.close(); } catch (e) {} };
   }
 
   // market session (RTH / Pre-Market / After-Hours / Closed, or Unknown while Schwab's /markets
@@ -1051,7 +1091,7 @@
   else document.addEventListener('DOMContentLoaded', init);
 
   // expose for view modules + tests (no trading logic here)
-  window.EdShell = { getState: function () { return Object.assign({}, state); }, setTicker: setTicker,
+  window.EdShell = { getState: function () { return Object.assign({}, state); }, setTicker: setTicker, live: live,
     addSymbol: addSymbol, setWorkspace: setWorkspace, setStrike: setStrike,
     setTheme: applyTheme,
     marketContext: function () { return MARKET_CONTEXT.slice(); },   // served [{key, display}]
