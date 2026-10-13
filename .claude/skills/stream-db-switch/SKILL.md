@@ -13,6 +13,9 @@ after the switch (step 6).
    option contracts (the nearest expiration for a ticker with none that day):
    `python tools/stream_db_switch_copy.py data/stream_capture.db data/stream_capture_new.db` (it refuses
    an existing new file and spill files beside the old one). Show its counts per table and per session.
+   If it stops with an error, the old file is untouched (read-only) and the new file is partial: report
+   the error to Ed, start both again on the old file (step 4), and Ed deletes the partial file before a
+   second run.
 3. Show `dir data` with no `stream_capture_new.db-wal` left. Ed renames the old file aside and the new
    one into place (never the agent: nothing under `data/` is moved or deleted by an agent). Show `dir`
    of the folder after.

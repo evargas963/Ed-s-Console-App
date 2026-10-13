@@ -136,9 +136,10 @@ def copy(old_path: Path, new_path: Path, now: datetime) -> "dict[str, dict[str, 
                 extra["before"] = (0, 1)
         rowids = np.unique(np.concatenate(parts))               # ascending: the order they were written
         copied = _copy(old, new, table, cols, rowids)
-        if copied != len(rowids):
-            raise SystemExit(f"{table}: {copied} of {len(rowids)} rows copied")
         counts[table] = {**extra, **{label[d]: (old_n[d], new_n[d]) for d in range(len(starts)) if old_n[d]}}
+        if not copied == len(rowids) == sum(n for _o, n in counts[table].values()):
+            raise SystemExit(f"{table}: {copied} rows copied of {len(rowids)} chosen, "
+                             f"{sum(n for _o, n in counts[table].values())} counted")
     new.close()
     old.close()
     return counts
