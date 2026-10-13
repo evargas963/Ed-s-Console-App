@@ -18,7 +18,7 @@ if str(ROOT) not in sys.path:
 
 import app.options.order_flow.engine as ofe
 from app.options.order_flow.state import OptionRecord, OrderFlowState
-from tests.feed_live_helper import through_the_daemons_bus
+from tests.feed_live_helper import no_daemon, through_the_daemons_bus
 
 FIXTURE = ROOT / "tests" / "fixtures" / "real_options_stream_history_samples.json"
 
@@ -501,7 +501,7 @@ def test_an_option_contracts_top_is_what_schwab_sent_on_a_live_feed():
         payload = options_live_payload(sym, time.time())
         assert payload["flow"]["top_book_pressure"] is not None and payload["top_outage"] is None
     finally:
-        lmp.record_feed_down()
+        no_daemon()
         state.clear_all_live_state()
 
 

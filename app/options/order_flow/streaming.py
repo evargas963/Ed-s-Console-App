@@ -407,13 +407,13 @@ SUBSCRIBED, NOT_STREAMED = "SUBSCRIBED", "NOT STREAMED"
 def get_option_contract_streaming_diagnostics(for_contract: str, now: float) -> dict[str, Any]:
     """Whether the daemon streams `for_contract` and is receiving it at `now`, distinct from the
     book's own content ages (options_live_payload): its subscription (SUBSCRIBED / NOT STREAMED,
-    from the daemon's last report of what it holds), and each feed by the one live rule
+    from the daemon's live heartbeat: unknown is never confirmation), and each feed by the one live rule
     (live_market_plane.feed_live_for)."""
     c = ticker_storage_key(for_contract)
     healthy = bool(_feed_running and _lmp.feed_live_for(c, "LEVELONE_OPTIONS", now))
     return {
         "queried_contract": c,
-        "subscription_state": SUBSCRIBED if c in _lmp.held_reported("LEVELONE_OPTIONS") else NOT_STREAMED,
+        "subscription_state": SUBSCRIBED if c in _lmp.held_by_daemon("LEVELONE_OPTIONS", now) else NOT_STREAMED,
         "streaming_last_update_ts": _option_contract_last_update_ts.get(c),
         "feed_health": {"replay": "healthy" if healthy else "stale" if _feed_running else "not connected",
                         "l1": _service_feed(c, "LEVELONE_OPTIONS", now),

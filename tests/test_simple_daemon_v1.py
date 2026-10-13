@@ -13,6 +13,7 @@ import pytest
 
 import stream_spine as ss
 from app.market_data.schwab.streaming import capture as cap
+from tests.feed_live_helper import no_daemon
 
 
 def test_requests_are_split_under_schwabs_message_limit():
@@ -93,7 +94,7 @@ def test_one_live_rule_every_reader_agrees_and_all_fail_closed_at_one_limit():
         lmp.record_feed_heartbeat({**status, "schwab_socket_open": False, "ts": now})
         schwab_down = readers()
     finally:
-        lmp.record_feed_down()
+        no_daemon()
     assert down == late == (False, False, "NOT LIVE", "NOT STREAMED")
     assert live == (True, True, "LIVE", "SUBSCRIBED") and book_age == 45.0
     assert b_book is False                                            # B held on L1 only

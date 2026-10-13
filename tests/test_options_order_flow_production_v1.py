@@ -28,6 +28,7 @@ def build_flow_e2e_fixture_response() -> dict:
     """The route's payload for FLOW_CONTRACT after its real messages, at the newest one's time."""
     import app.options.order_flow.state as ofls
     import live_market_plane as lmp
+    from tests.feed_live_helper import no_daemon
     import server as srv
     from app.options.order_flow import streaming as ofs
     from stream_spine import book_msg, options_quote_msg
@@ -49,7 +50,7 @@ def build_flow_e2e_fixture_response() -> dict:
                     symbol=FLOW_CONTRACT, content=e["content"], src="schwab_options_l1", ts_recv=e["ts_recv"]))
         return srv.options_microstructure(FLOW_CONTRACT, at)
     finally:
-        lmp.record_feed_down()
+        no_daemon()
         ofls.clear_all_live_state()
 
 
