@@ -195,7 +195,8 @@ def test_every_message_arriving_during_the_keep_is_written_while_old_rows_are_st
 def test_a_stop_asked_during_the_keep_writes_what_was_queued_and_removes_nothing_more(tmp_path):
     """The keep has 400,000 old option quotes to remove (twenty parts) when ten equity quotes and the
     stop are handed to the writer: it writes the ten and ends, having run at most the one part in
-    progress when they arrived, none after it took the stop."""
+    progress when they arrived, none after it took the stop. The bound holds while run() hands the
+    ten (microseconds) within one part's time (a 20,000-row delete); on main one part ran per message."""
     db = tmp_path / "stream_capture.db"
     writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01)
     _as_production(db)
