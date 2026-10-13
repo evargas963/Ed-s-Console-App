@@ -809,24 +809,18 @@ def _next_gamma_surface_seq(tk: str) -> int:
     return n
 
 
-def _streamed_greeks_for_ticker(listed: frozenset, now: float) -> dict:
-    """The newest streamed GAMMA/DELTA/OPEN_INTEREST/VOLUME of every contract the daemon streams
-    at `now` of the ticker's chain (`listed`, the symbols Schwab listed in it), gathered whole on
-    every call."""
-    from app.options.order_flow.state import get_stream_greeks
-    out: dict = {}
-    for sym in _held_option_symbols_for_ticker(listed, now):
-        greeks = get_stream_greeks(sym)
-        if greeks:
-            out[sym] = greeks
-    return out
+def _stream_records_for_ticker(listed: frozenset, now: float) -> dict:
+    """Every contract of the ticker's chain (`listed`, the symbols Schwab listed in it) the daemon
+    holds on LEVELONE_OPTIONS at `now`, with its record (fields, each field's receive time), or
+    None before one has arrived. A held contract's values are the stream's alone; when the feed
+    stops they stand, marked not live (_stamp_gamma_surface_cell_stream_state)."""
+    from app.options.order_flow.state import option_record
+    return {sym: option_record(sym) for sym in _held_option_symbols_for_ticker(listed, now)}
 
 
-def _current_stream_greeks(streamed: dict, now: float) -> dict:
-    """The streamed values that are current at `now`, the ones that may price over the chain: a
-    contract whose LEVELONE_OPTIONS feed is down in an open session has none, and the chain's own
-    values stand (docs/DATA_FLOW.md §2 D5)."""
-    return {s: g for s, g in streamed.items() if lmp.outage(s, "LEVELONE_OPTIONS", now) is None}
+def _stream_fields(records: dict) -> dict:
+    """The stream's fields of each held contract, empty before its record arrives."""
+    return {sym: rec[0] if rec else {} for sym, rec in records.items()}
 
 
 def _held_option_symbols_for_ticker(listed: frozenset, now: float) -> "list[str]":
@@ -855,17 +849,9 @@ def _overlaid_symbols(pre: list, post: list) -> list[str]:
             if new is not orig and isinstance(new, dict) and new.get("symbol")]
 
 
-def _leg_stream_ts_recv(greeks: dict | None) -> float | None:
-    """The freshest of a streamed contract's own per-field `_ts_recv` stamps (get_stream_greeks'
-    shape, app.options.order_flow.state), or None if `greeks` is absent/empty. Any one of these
-    fields ticking is evidence the contract is actively producing observations right now, so the
-    MAX (not a single hardcoded field) is the contract's own last-observed instant."""
-    if not greeks:
-        return None
-    candidates = [greeks.get(k) for k in
-                  ("gamma_ts_recv", "open_interest_ts_recv", "delta_ts_recv", "total_volume_ts_recv")]
-    candidates = [c for c in candidates if isinstance(c, (int, float))]
-    return max(candidates) if candidates else None
+def _leg_stream_ts_recv(record: "tuple[dict, dict] | None") -> float | None:
+    """When a streamed contract's newest field arrived (its record's receive times), or None."""
+    return max(record[1].values()) if record and record[1] else None
 
 
 _STREAM_STATE_ORDER = ("stale", "pending")
@@ -889,8 +875,8 @@ def _stamp_gamma_surface_cell_stream_state(surface: dict, streamed: dict, overla
     in place. It never touches a cell's computed value (project_gamma_surface is the one
     exposure computation); it says whether a streamed Schwab value backs it now.
 
-    `streamed`: the streamed values of the contracts the daemon holds of this ticker
-    (_streamed_greeks_for_ticker); `overlay_symbols`: those the feed is delivering now
+    `streamed`: the records of the contracts the daemon holds of this ticker that have streamed
+    (_stream_records_for_ticker); `overlay_symbols`: those the feed is delivering now
     (live_market_plane.feed_live_for, the one live rule); `held_symbols`: every contract the
     daemon holds of this ticker, ticked or not (_held_option_symbols_for_ticker). A daemon
     that is down holds nothing: its cells keep their values and the header says OFFLINE. Each
@@ -1100,11 +1086,10 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
     if new_chain:       # the ticker's contracts are the ones Schwab listed in this chain
         payload.update(_contract_symbols=frozenset(c.get("symbol") for c in chain if c.get("symbol")))
     listed = payload.get("_contract_symbols") or frozenset()
-    streamed = _streamed_greeks_for_ticker(listed, at.timestamp())
-    # each field the newest Schwab sent: a current streamed value received after this chain, else
-    # the chain's
-    priced, n_live = overlay_streamed_contract_fields(
-        chain, _current_stream_greeks(streamed, at.timestamp()), fetched_ts)
+    records = _stream_records_for_ticker(listed, at.timestamp())
+    streamed = {s: rec for s, rec in records.items() if rec}
+    # a held contract's values are the stream's alone; every other contract's are the chain's
+    priced, n_live = overlay_streamed_contract_fields(chain, _stream_fields(records))
     live_syms = _overlaid_symbols(chain, priced)
     snap = compute_terrain(tk, priced, spot, now=(
         datetime.fromtimestamp(fetched_ts, ET) if capture is not None else at))
@@ -2435,10 +2420,9 @@ def get_chain(ticker: str = Query(...),
     if not contracts:
         return _unavailable(f"the chain lists no contracts for {resolved_expiry}")
     fetched_ts = held.get("_chain_fetched_ts")
-    # each field the newest Schwab sent (the levels' own rule, _publish_levels)
+    # a held contract's values are the stream's alone (the levels' own rule, _publish_levels)
     response_contracts, overlay_n = overlay_streamed_contract_fields(
-        contracts, _current_stream_greeks(_streamed_greeks_for_ticker(held["_contract_symbols"], now),
-                                          now), fetched_ts)
+        contracts, _stream_fields(_stream_records_for_ticker(held["_contract_symbols"], now)))
     live_spot, _src, _ts = resolve_spot(t, now=now)       # the one spot on every screen
     ladder, not_on_ladder = chain_ladder(response_contracts, live_spot)
     # this expiry's net GEX per strike, as the heatmap publishes it (its column of the surface):

@@ -334,69 +334,35 @@ def merge_exposure_books(books) -> "tuple[Dict[float, dict], ExposureDiagnostics
 _BUCKET_FLAGS = frozenset({"dollarized"})
 
 
-#: streamed-state key -> (chain contract field it overlays, that field's own freshness key).
-#: Native Schwab LEVELONE_OPTIONS fields (schwab-py's LevelOneOptionFields: DELTA=28, GAMMA=29,
-#: OPEN_INTEREST=9, TOTAL_VOLUME=8) map onto the SAME field names compute_exposures_by_strike
-#: already reads from a REST chain contract (`gamma`, `delta`, `openInterest`, `totalVolume`)
-#: -- this overlay changes no formula and adds no second computation path; it only lets these
-#: inputs be fresher than the chain snapshot they arrived in, for whichever contract is
-#: actively streaming. `total_volume` closes the "near-instant options volume" requirement:
-#: without it, a volume-only tick (no Greeks/OI change) never reached ANY display, since
-#: _per_strike's volume column and compute_exposures_by_strike's own call/put volume both read
-#: a contract's `totalVolume` directly, not the ticker-level ``_stream_volume`` cache.
-_STREAMED_GREEK_FIELDS: tuple[tuple[str, str], ...] = (
-    ("gamma", "gamma"),
-    ("delta", "delta"),
-    ("open_interest", "openInterest"),
-    ("total_volume", "totalVolume"),
-    ("volatility", "volatility"),
+#: Each chain contract field and the LEVELONE_OPTIONS field that is its one source while the
+#: contract streams (Schwab's price, bid/ask, last, volume and Greeks). Open interest is the
+#: chain's: Schwab's is the prior day's (docs/schwab/schwab_support_emails_2026_10_12.txt, 5).
+STREAMED_CHAIN_FIELDS: tuple[tuple[str, str, object], ...] = (
+    ("bid", "BID_PRICE", schwab_number), ("ask", "ASK_PRICE", schwab_number),
+    ("last", "LAST_PRICE", schwab_number), ("mark", "MARK", schwab_number),
+    ("totalVolume", "TOTAL_VOLUME", schwab_count),
+    ("delta", "DELTA", schwab_number), ("gamma", "GAMMA", schwab_number),
+    ("theta", "THETA", schwab_number), ("vega", "VEGA", schwab_number),
+    ("rho", "RHO", schwab_number), ("volatility", "VOLATILITY", schwab_number),
 )
 
 
-def overlay_streamed_contract_fields(
-    contracts: List[dict],
-    streamed_by_symbol: Dict[str, dict],
-    chain_received_ts: float | None,
-) -> tuple[List[dict], int]:
-    """A contract's streamed GAMMA/DELTA/OPEN_INTEREST/TOTAL_VOLUME/VOLATILITY onto the REST
-    chain, matched by each contract's own `symbol` field: for each field the newest value Schwab
-    sent wins. Neither source carries a Schwab time for these fields, so the receive times decide:
-    a streamed field (its own `<field>_ts_recv`) received after the chain (`chain_received_ts`)
-    replaces the chain's; one received before it -- yesterday's OPEN_INTEREST under a chain
-    fetched today -- does not. A chain with no receive time is replaced by every streamed field.
+def overlay_streamed_contract_fields(contracts: List[dict], streamed_by_symbol: Dict[str, dict]
+                                     ) -> tuple[List[dict], int]:
+    """Each contract that streams (its `symbol` in `streamed_by_symbol`: the fields of its
+    LEVELONE_OPTIONS record, empty before one arrives) takes every STREAMED_CHAIN_FIELDS value
+    from the stream alone; one the stream has not sent is None, never the chain's. A contract that
+    does not stream keeps the chain's values.
 
-    Pure: `contracts` and its dicts are never mutated; only a contract that gets a field is
-    copied. Returns (new_contracts, overlaid_count).
+    Pure: `contracts` and its dicts are never mutated; a streamed contract is copied. Returns
+    (new_contracts, streamed_count).
     """
-    if not contracts:
-        return [], 0
-    if not streamed_by_symbol:
-        return list(contracts), 0
     out: List[dict] = []
-    overlaid = 0
     for ct in contracts:
-        sym = ct.get("symbol") if isinstance(ct, dict) else None
-        streamed = streamed_by_symbol.get(sym) if sym else None
-        if not streamed:
-            out.append(ct)
-            continue
-        new_ct = None
-        for streamed_key, chain_key in _STREAMED_GREEK_FIELDS:
-            val = streamed.get(streamed_key)
-            if val is None:
-                continue
-            rx = streamed.get(f"{streamed_key}_ts_recv")
-            if chain_received_ts is not None and (rx is None or rx <= chain_received_ts):
-                continue
-            if new_ct is None:
-                new_ct = dict(ct)
-            new_ct[chain_key] = val
-        if new_ct is not None:
-            overlaid += 1
-            out.append(new_ct)
-        else:
-            out.append(ct)
-    return out, overlaid
+        content = streamed_by_symbol.get(ct.get("symbol"))
+        out.append(ct if content is None else
+                   {**ct, **{key: read(content.get(field)) for key, field, read in STREAMED_CHAIN_FIELDS}})
+    return out, sum(1 for ct in contracts if ct.get("symbol") in streamed_by_symbol)
 
 
 # ── Strike selection helpers ─────────────────────────────────────────────────

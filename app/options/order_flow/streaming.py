@@ -48,6 +48,7 @@ from app.options.order_flow.state import (
     clear_symbol,
     push_book,
     push_level_one,
+    push_option_record,
     push_option_top,
 )
 
@@ -273,6 +274,7 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
         if not isinstance(content, dict):
             return None
         push_level_one(sym, content, ts_recv=ts, field_received=received)
+        push_option_record(sym, content, received if received is not None else dict.fromkeys(content, ts))
         push_option_top(sym, content)
         recent.TAPE.record(sym, content, ts)
         _option_contract_last_update_ts[sym] = ts
