@@ -2,7 +2,7 @@
 price and the price its cells were computed at each named, and a ticker open on a page is
 repriced for as long as the page has it (question 2: the screen shows it correctly and promptly).
 
-Through the real code: the daemon's status and price row as the console holds them, the console's
+Through the real code: the daemon's status and the price as the console holds them, the console's
 pages (push_changes), the levels producer, the routes. Real data: CRWD's captured chain
 (tests/fixtures/real_crwd_complete_chain_quarter.json, 2026-09-02, spot 205.4), valued at its
 capture. STAND-INS (named): the live price after the capture (206.0), and the CRWD chain published
@@ -15,12 +15,12 @@ from pathlib import Path
 
 import pytest
 
-import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 import push_changes
 import server
 from calibration.complete_chain_capture import CAPTURE_BASIS
 from server import get_options_gamma_surface, ticker_storage_key
+from tests.feed_live_helper import forget_price, price_sent
 from time_et import ET
 
 _CRWD = json.loads((Path(__file__).parent / "fixtures" / "real_crwd_complete_chain_quarter.json")
@@ -35,11 +35,11 @@ def _call(tk):
 
 def _daemon(price: float, at: float, *tickers) -> None:
     """The daemon's status at `at` (Schwab's socket open, `tickers` held, the watchlist [_ON]) and
-    each ticker's price row."""
+    each ticker's last trade as Schwab sends it."""
     lmp.record_feed_heartbeat({"ts": at, "schwab_socket_open": True, "watchlist": [_ON],
                                "held": {"LEVELONE_EQUITIES": list(tickers)}})
     for tk in tickers:
-        ofs._price_rows[tk] = {"ticker": tk, "spot": price, "trade_ts": _AT.timestamp()}
+        price_sent(tk, price, _AT.timestamp())
 
 
 @pytest.fixture
@@ -53,7 +53,7 @@ def published():
     with server._terrain_cache_lock:
         for tk in (_ON, _OFF):
             server._terrain_cache.pop(tk, None)
-            ofs._price_rows.pop(tk, None)
+            forget_price(tk)
     lmp.record_feed_down()
 
 

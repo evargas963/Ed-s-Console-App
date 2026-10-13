@@ -6,7 +6,7 @@ One spot on every screen: each route that serves `spot` serves the live price at
 price `priced_at_spot`. Strike Detail's Net GEX is the heatmap's own cell, and OI/volume cell
 totals are served, not summed in the browser.
 
-Through the real code: the daemon's status and price row as the console holds them, the levels
+Through the real code: the daemon's status and the price as the console holds them, the levels
 producer (server._publish_levels), the routes. Real data: Schwab's CRWD chain as captured
 2026-09-02 (tests/fixtures/real_crwd_complete_chain_quarter.json), published at its capture price
 (205.4). STAND-IN (named): the live price after the capture, LIVE (206.4).
@@ -22,6 +22,7 @@ import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 import server
 from stream_spine import options_quote_msg
+from tests.feed_live_helper import forget_price, price_sent
 from time_et import ET
 
 _REAL = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_crwd_complete_chain_quarter.json")
@@ -35,10 +36,10 @@ _AT = datetime(2026, 9, 2, 10, 5, tzinfo=ET)
 
 
 def _daemon(price, at: float, held_options=()):
-    """The daemon's heartbeat at `at` and its price row for TK."""
+    """The daemon's heartbeat at `at` and TK's last trade as Schwab sends it."""
     lmp.record_feed_heartbeat({"ts": at, "schwab_socket_open": True,
                                "held": {"LEVELONE_EQUITIES": [TK], "LEVELONE_OPTIONS": list(held_options)}})
-    ofs._price_rows[TK] = {"ticker": TK, "spot": price, "trade_ts": _AT.timestamp()}
+    price_sent(TK, price, _AT.timestamp())
 
 
 @pytest.fixture
@@ -52,7 +53,7 @@ def held():
     yield payload
     with server._terrain_cache_lock:
         server._terrain_cache.pop(TK, None)
-    ofs._price_rows.pop(TK, None)
+    forget_price(TK)
     lmp.record_feed_down()
 
 
@@ -164,7 +165,7 @@ def test_heatmap_column_state_cell_age_and_front_expiry_are_served():
     finally:
         with server._terrain_cache_lock:
             server._terrain_cache.pop(TK, None)
-        ofs._price_rows.pop(TK, None)
+        forget_price(TK)
         ofs._drop_released_options(_AT.timestamp())
         lmp.record_feed_down()
     assert body["stream_by_expiry"][EXPIRY] == "partial"
@@ -191,14 +192,14 @@ def test_an_index_option_is_not_flagged_adjusted_only_schwabs_nonstandard_would_
                     .read_text(encoding="utf-8"))
     at = datetime.fromtimestamp(fx["ts_utc"], ET)
     lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": ["$SPX"]}})
-    ofs._price_rows["$SPX"] = {"ticker": "$SPX", "spot": fx["spot"], "trade_ts": fx["ts_utc"]}
+    price_sent("$SPX", fx["spot"], fx["ts_utc"])
     try:
         server._publish_levels("$SPX", [dict(c) for c in fx["contracts"]], fx["ts_utc"], now=at)
         body = json.loads(server.get_chain(ticker="$SPX", expiry="2026-10-16").body)
     finally:
         with server._terrain_cache_lock:
             server._terrain_cache.pop("$SPX", None)
-        ofs._price_rows.pop("$SPX", None)
+        forget_price("$SPX")
         lmp.record_feed_down()
     assert {c["nonStandard"] for c in fx["contracts"]} == {False}
     assert len(body["contracts"]) == len(fx["contracts"]) and body["adjusted_deliverable_symbols"] == []
@@ -221,11 +222,10 @@ def test_at_any_hour_the_price_is_schwabs_last_trade_with_schwabs_trade_time():
     lmp.record_from_level_one_equity("SPY", {"LAST_PRICE": 772.04, "TRADE_TIME_MILLIS": 1790380799830},
                                      received_ts=time.time())
     row = live_price_rows.price_row("SPY", time.time())
-    ofs._price_rows["SPY"] = row                    # the row as the daemon pushes it to the console
     try:
         spot = server.resolve_spot("SPY", now=time.time())
     finally:
-        ofs._price_rows.pop("SPY", None)
+        forget_price("SPY")
         lmp.record_feed_down()
     assert (row["spot"], row["spot_disp"], row["trade_time_ct"]) == (772.04, "772.04", "Fri 09/25 06:59 PM CT")
     assert "spot_state" not in row and "closed_last" not in row

@@ -783,11 +783,24 @@
     ws.onopen = function () { _priceRetry = 0; subscribePrices(); };
     ws.onmessage = function (ev) {
       var msg; try { msg = JSON.parse(ev.data); } catch (e) { return; }
-      if (msg && msg.type === 'symbols' && Array.isArray(msg.symbols)) { ingestIdentity(msg.symbols); return; }
-      if (msg && msg.type === 'feed') paintRecord(msg.feed && msg.feed.writer);
-      if (!msg || !Array.isArray(msg.rows)) return;
+      if (!msg) return;
+      if (msg.type === 'symbols' && Array.isArray(msg.symbols)) { ingestIdentity(msg.symbols); return; }
       _priceUp = true; _lastPriceTs = Date.now();
-      msg.rows.forEach(ingestPriceRow);
+      if (msg.type === 'feed') {
+        paintRecord(msg.feed && msg.feed.writer);
+        _feedState = msg.state || {};
+        Object.keys(_feedState).forEach(function (k) { ingestPriceRow(priceRow(k)); });
+        return;
+      }
+      if (msg.type !== 'schwab' || !Array.isArray(msg.messages)) return;
+      msg.messages.forEach(function (m) {
+        if (m.service === 'LEVELONE_EQUITIES') {      // Change: the fields Schwab changed
+          var f = _l1[m.key] || (_l1[m.key] = {});
+          Object.keys(m.content || {}).forEach(function (k) { f[k] = m.content[k]; });
+          ingestPriceRow(priceRow(m.key));
+        }
+        try { window.dispatchEvent(new CustomEvent('ed:schwab', { detail: m })); } catch (e) {}
+      });
     };
     ws.onclose = function () {
       if (_priceWs === ws) { _priceWs = null; _priceUp = false; schedulePriceReconnect(); }
@@ -798,6 +811,37 @@
     // 0.25 s, 0.5 s, 1 s, then every 2 s: the daemon restarting is seen and recovered at once
     var ms = Math.min(2000, 250 * Math.pow(2, _priceRetry++));
     setTimeout(function () { if (!_priceWs) openPriceSocket(); }, ms);
+  }
+  // Each symbol's LEVELONE_EQUITIES fields as Schwab sent them (each the last one sent: Schwab
+  // sends only what changed), and each symbol's feed state as the daemon's heartbeat serves it
+  // ({service: {live, outage}}).
+  var _l1 = {}, _feedState = {};
+  // A Schwab number as sent, or null where Schwab's definition says it is not one (absent,
+  // text, -999, not finite): shown "—".
+  function schwabNum(v) { return (typeof v === 'number' && isFinite(v) && v !== -999) ? v : null; }
+  // The time an instant is shown at, as the server's time_et.ct_label: "Fri 09/25 06:59 PM CT".
+  function ctLabel(ms) {
+    var d = new Date(ms), o = { timeZone: 'America/Chicago' };
+    var wd = d.toLocaleDateString('en-US', Object.assign({ weekday: 'short' }, o));
+    var md = d.toLocaleDateString('en-US', Object.assign({ month: '2-digit', day: '2-digit' }, o));
+    var tm = d.toLocaleTimeString('en-US', Object.assign({ hour: '2-digit', minute: '2-digit', hour12: true }, o));
+    return wd + ' ' + md + ' ' + tm + ' CT';
+  }
+  // One symbol's row as the screen paints it: Schwab's fields renamed for the painters, and the
+  // daemon's feed state. In an open session with the feed down the values are absent with the
+  // outage reason; otherwise each is the last value Schwab sent (docs/DATA_FLOW.md §2 D5).
+  function priceRow(key) {
+    var f = _l1[key] || {}, s = ((_feedState[key] || {}).LEVELONE_EQUITIES) || {};
+    var shown = !s.outage;
+    function v(name) { return shown ? schwabNum(f[name]) : null; }
+    var spot = v('LAST_PRICE'), trade = v('TRADE_TIME_MILLIS');
+    return { ticker: key, spot: spot, spot_disp: spot == null ? null : spot.toFixed(2),
+      bid: v('BID_PRICE'), ask: v('ASK_PRICE'), bid_size: v('BID_SIZE'), ask_size: v('ASK_SIZE'), mark: v('MARK'),
+      chg_pct: v('NET_CHANGE_PERCENT'), chg_pct_regular: v('REGULAR_MARKET_CHANGE_PERCENT'),
+      total_volume: v('TOTAL_VOLUME'), trade_ts: trade == null ? null : trade / 1000,
+      trade_time_ct: trade == null ? null : ctLabel(trade),
+      trade_age_sec: trade == null ? null : Math.max(0, (Date.now() - trade) / 1000),
+      feed_live: !!s.live, outage: s.outage || null, quote_ingestion: 'schwab_streaming_level_one' };
   }
   // What each symbol the page asked for is, as the daemon answers the subscribe: the key its rows
   // carry ("$SPX") and its display name ("SPX"). Rows are matched to what was asked by that key.

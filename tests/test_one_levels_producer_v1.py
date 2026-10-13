@@ -4,8 +4,8 @@ and publishes all three together, so no second producer can show a different num
 the screen shows it correctly and promptly; question 3: each value is the one computation's).
 
 Through the real code: the daemon's status (live_market_plane.record_feed_heartbeat), its pushed
-option messages applied by the console (streaming._ingest_pushed), its price row as the console
-holds it (streaming._price_rows), the console's pages (push_changes), the pricing thread, the
+option messages applied by the console (streaming._ingest_pushed), the price as the console
+holds it (its live_market_plane record), the console's pages (push_changes), the pricing thread, the
 chain captures in the console's database. Real data: CRWD's 2026-10-16 chain captured 2026-10-07
 10:38:40 ET (tests/real_chains.py), valued at its capture.
 STAND-INS (named): each streamed value of a CRWD contract (no CRWD contract was streamed in a
@@ -30,6 +30,7 @@ from calibration.complete_chain_capture import CAPTURE_BASIS, persist_complete_c
 from math_exposure_core import bucket_metric, merge_exposure_books
 from stream_spine import options_quote_msg
 from terrain_engine import compute_terrain
+from tests.feed_live_helper import forget_price, price_sent
 from tests.real_chains import CRWD
 from time_et import ET
 
@@ -62,7 +63,7 @@ def _clean():
         push_changes.unsubscribe(tk, page)
     ofls.clear_all_live_state()
     lmp.record_feed_down()
-    ofs._price_rows.pop(TK, None)
+    forget_price(TK)
     with server._terrain_cache_lock:
         server._terrain_cache.pop(TK, None)
 
@@ -74,14 +75,14 @@ def _view(pages: list, tk: str = TK) -> None:
 
 def _daemon(held=(), *, socket_open=True, price: "float | None" = _SPOT, at: float = _T) -> None:
     """The daemon's status at `at` (the chain's publication time unless given): Schwab's socket
-    open, TK held on LEVELONE_EQUITIES and `held` on LEVELONE_OPTIONS; and TK's price row as the
-    daemon pushes it (None: no price)."""
+    open, TK held on LEVELONE_EQUITIES and `held` on LEVELONE_OPTIONS; and TK's last trade as
+    Schwab sends it (None: no price)."""
     lmp.record_feed_heartbeat({"ts": at, "schwab_socket_open": socket_open,
                                "held": {"LEVELONE_EQUITIES": [TK], "LEVELONE_OPTIONS": list(held)}})
     if price is None:
-        ofs._price_rows.pop(TK, None)
+        forget_price(TK)
     else:
-        ofs._price_rows[TK] = {"ticker": TK, "spot": price, "trade_ts": _T}
+        price_sent(TK, price, _T)
 
 
 def _streamed(sym: str, content: dict, ts: float) -> None:
@@ -337,7 +338,7 @@ def test_the_route_serves_the_publication_and_no_live_price_publishes_no_levels(
     for k in ("spot", "regime", "net_gex_at_spot", "call_wall", "call_wall_state", "call_wall_lean",
               "dist_to_call_wall", "flip_relation", "headline"):
         assert out[k] == published[k], k
-    assert "spot_state" not in out and out["spot_as_of_ts_utc"] == _T
+    assert "spot_state" not in out and out["spot_as_of_ts_utc"] == int(_T * 1000) / 1000   # Schwab's TRADE_TIME, in ms
     assert out["spot_source"] == server.SPOT_SOURCE_PLANE
     _put_chain()                                                # the next chain: no live price
     out = server.get_terrain(ticker=TK)

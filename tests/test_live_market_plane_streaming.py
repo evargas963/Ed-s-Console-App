@@ -98,8 +98,7 @@ def test_a_carried_last_price_is_the_current_price_on_a_live_feed():
     docs/DATA_FLOW.md §2 D5, tests/test_data_path_rules_v1.py.)"""
     import live_price_rows
     import server
-    from app.options.order_flow import streaming as ofs
-    from tests.feed_live_helper import mark_feed_down, mark_feed_live, publish_daemon_rows
+    from tests.feed_live_helper import forget_price, mark_feed_down, mark_feed_live
     t_trade = time.time() - 45.0
     _rec("CARRY", {"key": "CARRY", "LAST_PRICE": 10.0, "BID_PRICE": 9.9, "ASK_PRICE": 10.1},
          received_ts=t_trade)
@@ -111,10 +110,9 @@ def test_a_carried_last_price_is_the_current_price_on_a_live_feed():
         now = time.time()
         price = live_price_rows.price_row("CARRY", now)
         assert (price["spot"], price["bid"], price["ask"], price["feed_live"]) == (10.0, 9.95, 10.05, True)
-        publish_daemon_rows("CARRY")
         assert server.resolve_spot("CARRY", now=now) == (10.0, server.SPOT_SOURCE_PLANE, price["trade_ts"])
     finally:
-        ofs._price_rows.pop("CARRY", None)
+        forget_price("CARRY")
         mark_feed_down()
 
 

@@ -9,10 +9,10 @@ from pathlib import Path
 
 import pytest
 
-import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 import time_et
 from terrain_engine import MIGRATION_DRIFT_STRIKES, compute_terrain, positioning_migration
+from tests.feed_live_helper import forget_price, price_sent
 
 _FX = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_pcg_two_day_chain.json")
                  .read_text(encoding="utf-8"))
@@ -62,7 +62,7 @@ def test_on_a_closed_market_the_prior_day_is_the_day_before_the_chains_own():
     wall clock's date, so it was that same Friday capture: every change 0, served as `compared`
     (2026-09-27). It is the capture before the day of the chain the rows came from; and a new
     market day's first chain makes Friday's capture the prior day. Real PCG chains, stored as the
-    daemon writes them in the console's database. STAND-IN (named): Monday's price row, Friday's
+    daemon writes them in the console's database. STAND-IN (named): Monday's last trade, Friday's
     capture price."""
     import server
     from calibration.complete_chain_capture import CAPTURE_BASIS, last_capture_per_day, persist_complete_chain_capture
@@ -86,13 +86,13 @@ def test_on_a_closed_market_the_prior_day_is_the_day_before_the_chains_own():
         # capture: the prior day is recomputed against the new day
         monday = datetime(2026, 9, 28, 10, 0, tzinfo=time_et.ET)
         lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": ["PCG"]}})
-        ofs._price_rows["PCG"] = {"ticker": "PCG", "spot": newest["spot"], "trade_ts": monday.timestamp()}
+        price_sent("PCG", newest["spot"], monday.timestamp())
         server._publish_levels("PCG", newest["contracts"], monday.timestamp(), now=monday)
         monday_body = json.loads(server.get_terrain_strikes(ticker="PCG").body)
     finally:
         with server._terrain_cache_lock:
             server._terrain_cache.pop("PCG", None)
-        ofs._price_rows.pop("PCG", None)
+        forget_price("PCG")
         lmp.record_feed_down()
     assert body["prior_source"] == "chain_capture:2026-09-24"
     m = body["migration"]["all"]

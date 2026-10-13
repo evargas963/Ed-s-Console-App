@@ -2,7 +2,7 @@
 correctly): the strike rows of the scope around the price (or the panned centre), the columns the
 page fits, the row at the price and each measure's colour scale.
 
-Through the real code: the daemon's status and price row as the console holds them, the levels
+Through the real code: the daemon's status and the price as the console holds them, the levels
 producer (server._publish_levels), the heatmap's and the per-strike panels' answers at a time
 (server.gamma_surface_payload, terrain_strikes_payload, strike_bar_payload). Real data: three SPY chain captures, one expiry each (10-14, 10-15,
 11-20), published as one chain (no single capture spans three expiries), valued on the captures'
@@ -17,10 +17,10 @@ from pathlib import Path
 
 import pytest
 
-import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 import server
 from terrain_engine import SCOPE_ROWS, strike_window
+from tests.feed_live_helper import forget_price, price_sent
 from time_et import ET
 
 _FX = Path(__file__).resolve().parent / "fixtures"
@@ -34,14 +34,14 @@ _AT = datetime(2026, 10, 1, 12, 0, tzinfo=ET)     # the captures' day, before ev
 
 
 def _price(spot):
-    """The daemon's status at _AT (Schwab's socket open, SPY held) and SPY's price row (None: no
+    """The daemon's status at _AT (Schwab's socket open, SPY held) and SPY's last trade (None: no
     price)."""
     lmp.record_feed_heartbeat({"ts": _AT.timestamp(), "schwab_socket_open": True,
                                "held": {"LEVELONE_EQUITIES": [TK]}})
     if spot is None:
-        ofs._price_rows.pop(TK, None)
+        forget_price(TK)
     else:
-        ofs._price_rows[TK] = {"ticker": TK, "spot": spot, "trade_ts": _AT.timestamp()}
+        price_sent(TK, spot, _AT.timestamp())
 
 
 @pytest.fixture(autouse=True)
@@ -53,7 +53,7 @@ def _published():
     yield
     with server._terrain_cache_lock:
         server._terrain_cache.pop(TK, None)
-    ofs._price_rows.pop(TK, None)
+    forget_price(TK)
     lmp.record_feed_down()
 
 

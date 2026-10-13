@@ -1,32 +1,26 @@
-"""Prices straight from the capture daemon to the browser over WebSocket.
+"""Schwab's messages straight from the capture daemon to the browser (and the console) over
+WebSocket, each pushed by its Schwab delivery type (Streamer API §1.1, §1.5).
 
-The daemon owns the Schwab connection. This server keeps the latest value of every
-LEVELONE_EQUITIES field (live_market_plane, fed here in the daemon's own process), knows
-whether the feed is alive (the daemon's own heartbeat, applied every HEARTBEAT_SEC), and
-pushes the FINISHED displayed row (live_price_rows.price_row -- the one producer) to every
-browser that asked for the symbol, the moment a Schwab message changes it.
+The daemon owns the Schwab connection. This server takes every Schwab stream message from the
+daemon's bus as Schwab sent it and pushes it to every client that asked for its symbol:
+  LEVELONE_EQUITIES, LEVELONE_OPTIONS  Change: only the fields that changed (a client behind
+                                       gets each field's newest value, merged; none lost)
+  NYSE_BOOK, NASDAQ_BOOK, OPTIONS_BOOK Whole: the whole book (a client behind gets the newest)
+  CHART_EQUITY                         All Sequence: each bar with its SEQUENCE, every one, in order
+  NEWS_HEADLINE                        each headline as sent, every one, in order (not in
+                                       Schwab's Streamer document; Schwab answers it, code 0)
+On subscribe a client gets each symbol's current record: every field Schwab has sent on this
+connection for a Change service, the newest book, the newest bar and headline.
 
 No web server sits in this path, so no analytics load can delay a price.
 
 Protocol (JSON text frames):
-  browser -> {"op": "subscribe", "symbols": ["SPY", "AAPL", ...]}   (replaces the set)
-  server  -> {"type": "symbols", "symbols": [{requested, key, display}, ...]}  (on subscribe:
-                                                                     what each asked-for symbol
-                                                                     is -- "SPX" is key "$SPX",
-                                                                     shown "SPX")
-  server  -> {"type": "quotes", "rows": [price_row, ...]}            (snapshot on subscribe,
-                                                                     then every change)
-  server  -> {"type": "feed", "feed": {...}, "rows": [...]}           (every HEARTBEAT_SEC:
-                                                                     the daemon's whole status
-                                                                     and a fresh row per symbol,
-                                                                     so a dead feed reads dead
-                                                                     within FEED_HEARTBEAT_
-                                                                     MAX_AGE_SEC; the console
-                                                                     takes its status from here)
-
-Delivery is latest-value-per-symbol per client (conflation, as Lightstreamer MERGE /
-LSEG conflated feeds do): a slow browser gets the newest row for each symbol it is behind
-on, never a queue of stale ones, and never loses a symbol's only update.
+  client -> {"op": "subscribe", "symbols": ["SPY", "SPY   261120C00700000", ...]}  (replaces the set)
+  server -> {"type": "symbols", "symbols": [{requested, key, display}, ...]}  (on subscribe)
+  server -> {"type": "schwab", "messages": [{service, key, schwab_ts, ts_recv, content}, ...]}
+  server -> {"type": "feed", "feed": {...}, "state": {key: {service: {live, outage}}}}  (every
+            HEARTBEAT_SEC: the daemon's whole status, and for each symbol the client asked for,
+            whether each of its services is delivering now and why not)
 """
 from __future__ import annotations
 
@@ -37,9 +31,8 @@ import os
 import time
 
 import live_market_plane as lmp
-import live_price_rows
 from instrument_identity import display_symbol, ticker_storage_key
-from stream_spine import LATEST, MessageBus
+from stream_spine import LOG, MessageBus
 
 log = logging.getLogger(__name__)
 
@@ -47,55 +40,105 @@ log = logging.getLogger(__name__)
 #: (0.0.0.0): the page is served to whatever address the operator opened it on.
 LIVE_UI_HOST = os.environ.get("ED_LIVE_UI_HOST", "0.0.0.0")  # caps-ok: operator bind config with its declared default, not market data
 LIVE_UI_PORT = int(os.environ.get("ED_LIVE_UI_PORT", "8800"))  # caps-ok: operator port config with its declared default, not market data
-#: feed verdict + row beat cadence (the heartbeat that keeps "live" honest)
+#: feed verdict beat cadence (the heartbeat that keeps "live" honest)
 HEARTBEAT_SEC = 1.0
+
+#: Schwab's delivery type of each stream service (Streamer API §1.1; NEWS_HEADLINE is not listed
+#: there and is pushed as sent, every one), and the bus topic kind and Schwab item key it rides
+CHANGE, WHOLE, SEQUENCE = "Change", "Whole", "All Sequence"
+DELIVERY = {"LEVELONE_EQUITIES": CHANGE, "LEVELONE_OPTIONS": CHANGE,
+            "NYSE_BOOK": WHOLE, "NASDAQ_BOOK": WHOLE, "OPTIONS_BOOK": WHOLE,
+            "CHART_EQUITY": SEQUENCE, "NEWS_HEADLINE": SEQUENCE}
+_TOPIC_SERVICE = {"quote": ("LEVELONE_EQUITIES", "native"), "optquote": ("LEVELONE_OPTIONS", "content"),
+                  "bar1m": ("CHART_EQUITY", "native"), "news": ("NEWS_HEADLINE", "content"),
+                  "book": (None, "content")}
+#: the services a symbol's feed state is reported for, by kind of symbol
+EQUITY_SERVICES = ("LEVELONE_EQUITIES", "NYSE_BOOK", "NASDAQ_BOOK", "CHART_EQUITY")
+OPTION_SERVICES = ("LEVELONE_OPTIONS", "OPTIONS_BOOK")
+
+
+def schwab_message(topic: str, msg: dict) -> "dict | None":
+    """A bus message as the client gets it: its Schwab service, symbol, Schwab's frame time, the
+    daemon's receive time and Schwab's item as sent; None for a topic that is not a stream service."""
+    kind = topic.split(".", 1)[0]
+    if kind not in _TOPIC_SERVICE or not isinstance(msg, dict) or not msg.get("symbol"):
+        return None
+    service, item_key = _TOPIC_SERVICE[kind]
+    content = msg.get(item_key)
+    if not isinstance(content, dict):
+        return None
+    return {"service": service or msg.get("service"), "key": msg["symbol"],
+            "schwab_ts": msg.get("schwab_ts"), "ts_recv": msg.get("ts_recv"), "content": content}
+
+
+def _services(key: str) -> tuple:
+    """The services a symbol is streamed on: an option contract's (Schwab's 21-character
+    contract symbol) or an equity's."""
+    return OPTION_SERVICES if len(key) == 21 and " " in key else EQUITY_SERVICES
 
 
 class _Client:
-    __slots__ = ("ws", "symbols", "pending", "identity", "wake")
+    __slots__ = ("ws", "symbols", "change", "whole", "sequence", "identity", "wake")
 
     def __init__(self, ws) -> None:
         self.ws = ws
         self.symbols: frozenset[str] = frozenset()
-        self.pending: set[str] = set()      # symbols changed since the last send
+        self.change: dict[tuple, dict] = {}       # (service, key) -> the changed fields not yet sent
+        self.whole: dict[tuple, dict] = {}        # (service, key) -> the newest book not yet sent
+        self.sequence: list[dict] = []            # every bar and headline not yet sent, in order
         self.identity: list[dict] | None = None   # the last subscribe's answer, not yet sent
         self.wake = asyncio.Event()
+
+    def take(self, m: dict) -> None:
+        """One Schwab message for this client, held by its delivery type until the next send."""
+        kind = DELIVERY.get(m["service"])
+        k = (m["service"], m["key"])
+        if kind == CHANGE:
+            held = self.change.get(k)
+            if held is None:
+                self.change[k] = {**m, "content": dict(m["content"])}
+            else:                     # newest value of each field; Schwab's newest frame time
+                held["content"].update(m["content"])
+                held["schwab_ts"], held["ts_recv"] = m["schwab_ts"], m["ts_recv"]
+        elif kind == WHOLE:
+            self.whole[k] = m
+        else:
+            self.sequence.append(m)
+        self.wake.set()
+
+    def drain(self) -> list[dict]:
+        out = [*self.change.values(), *self.whole.values(), *self.sequence]
+        self.change, self.whole, self.sequence = {}, {}, []
+        return out
 
 
 class LiveUiServer:
     def __init__(self, bus: MessageBus, heartbeat_fn, stats: dict,
-                 record_heartbeat=lmp.record_feed_heartbeat) -> None:
+                 record_heartbeat=lmp.record_feed_heartbeat, clock=time.time) -> None:
         self.bus = bus
+        self.clock = clock                           # each beat's time (the session it is judged in)
         self.heartbeat_fn = heartbeat_fn
         self.record_heartbeat = record_heartbeat     # where the daemon keeps its own record of each beat
         self.stats = stats
         self.clients: set[_Client] = set()
-        stats.update(clients=0, rows_sent=0, frames_sent=0, ingest_failures=0,
-                     beat_send_failures=0, listening=None, last_send_ms=None)
+        stats.update(clients=0, messages_sent=0, frames_sent=0, beat_send_failures=0, listening=None,
+                     last_send_ms=None)
 
-    # -- plane side -------------------------------------------------------------------
-
-    def ingest(self, msg) -> None:
-        """One quote's current record -> the plane (each field with the daemon's receive time of
-        the message that carried it)."""
-        if not isinstance(msg, dict):
+    def route(self, topic: str, msg) -> None:
+        """One Schwab message from the bus to every client that asked for its symbol."""
+        m = schwab_message(topic, msg)
+        if m is None:
             return
-        sym, ts, item = msg.get("symbol"), msg.get("ts_recv"), msg.get("native")
-        if not sym or not isinstance(ts, (int, float)) or not isinstance(item, dict):
-            return
-        received = {f: stamp[1] for f, stamp in msg["field_ts"].items()}
-        try:
-            lmp.record_from_level_one_equity(sym, item, received_ts=float(ts), field_received=received)
-        except Exception as e:  # noqa: BLE001 -- counted; one malformed item never ends the feed
-            self.stats["ingest_failures"] += 1
-            log.warning("live ui ingest %s: %s: %s", sym, type(e).__name__, e)
-
-    def on_row(self, ticker: str) -> None:
-        """Plane row listener: mark the symbol changed for every browser watching it."""
         for c in self.clients:
-            if ticker in c.symbols:
-                c.pending.add(ticker)
-                c.wake.set()
+            if m["key"] in c.symbols:
+                c.take(m)
+
+    def snapshot(self, c: _Client, keys: "list[str]") -> None:
+        """Each symbol's current record on the bus, for a client that just asked for it."""
+        for topic, record in list(self.bus.current.values()):
+            m = schwab_message(topic, record)
+            if m is not None and m["key"] in keys:
+                c.take(m)
 
     def beat(self) -> dict:
         """The daemon's whole status (Schwab socket, symbols held and refused per service, the
@@ -104,13 +147,13 @@ class LiveUiServer:
         self.record_heartbeat(hb)
         return hb
 
-    # -- browser side -----------------------------------------------------------------
+    # -- client side ------------------------------------------------------------------
 
     async def _send(self, c: _Client, payload: dict) -> None:
         t0 = time.perf_counter()
         await c.ws.send(json.dumps(payload, separators=(",", ":"), default=str))
         self.stats["frames_sent"] += 1
-        self.stats["rows_sent"] += len(payload.get("rows") or ())
+        self.stats["messages_sent"] += len(payload.get("messages") or ())
         self.stats["last_send_ms"] = (time.perf_counter() - t0) * 1000.0
 
     async def _pump(self, c: _Client) -> None:
@@ -120,11 +163,9 @@ class LiveUiServer:
             if c.identity is not None:
                 identity, c.identity = c.identity, None
                 await self._send(c, {"type": "symbols", "symbols": identity})
-            syms, c.pending = c.pending, set()
-            now = time.time()
-            rows = [live_price_rows.price_row(s, now) for s in syms if s in c.symbols]
-            if rows:
-                await self._send(c, {"type": "quotes", "rows": rows})
+            messages = c.drain()
+            if messages:
+                await self._send(c, {"type": "schwab", "messages": messages})
 
     async def _read(self, c: _Client) -> None:
         async for frame in c.ws:
@@ -145,9 +186,10 @@ class LiveUiServer:
                 identity.append({"requested": s, "key": k, "display": display_symbol(k)})
                 if k not in keys:
                     keys.append(k)
+            added = [k for k in keys if k not in c.symbols]
             c.symbols = frozenset(keys)
-            c.identity = identity            # what each asked-for symbol is, before its rows
-            c.pending = set(keys)            # snapshot: the current row for each, now
+            c.identity = identity            # what each asked-for symbol is, before its messages
+            self.snapshot(c, added)
             c.wake.set()
 
     async def serve_client(self, ws) -> None:
@@ -169,6 +211,13 @@ class LiveUiServer:
             self.clients.discard(c)
             self.stats["clients"] = len(self.clients)
 
+    @staticmethod
+    def state(c: _Client, now: float) -> dict:
+        """For each symbol the client asked for, whether each of its services is delivering it
+        now and, when not, why its values are absent (live_market_plane: the one live rule)."""
+        return {k: {svc: {"live": lmp.feed_live_for(k, svc, now), "outage": lmp.outage(k, svc, now)}
+                    for svc in _services(k)} for k in sorted(c.symbols)}
+
     async def beat_loop(self) -> None:
         while True:
             try:
@@ -176,58 +225,55 @@ class LiveUiServer:
             except Exception as e:  # noqa: BLE001 -- a failed beat leaves the feed unproven (it ages out)
                 log.warning("live ui heartbeat: %s: %s", type(e).__name__, e)
                 feed = None
-            now = time.time()
+            now = self.clock()
             for c in list(self.clients):
-                # one browser can neither stop the beat nor hold it: an error is logged and the
-                # next browser still gets its beat; a browser that does not take its beat within
+                # one client can neither stop the beat nor hold it: an error is logged and the
+                # next client still gets its beat; a client that does not take its beat within
                 # a beat is not reading and is closed, and gets no more beats while it closes
                 # (2026-09-26: the beat stopped for every browser and the whole screen read "no
                 # live feed" on a healthy Schwab socket)
                 try:
-                    rows = [live_price_rows.price_row(s, now) for s in sorted(c.symbols)]
                     await asyncio.wait_for(
-                        self._send(c, {"type": "feed", "feed": feed, "rows": rows}),
+                        self._send(c, {"type": "feed", "feed": feed, "state": self.state(c, now)}),
                         timeout=HEARTBEAT_SEC)
                 except asyncio.TimeoutError:
                     self.stats["beat_send_failures"] += 1
-                    log.warning("live ui: a browser stopped reading; closing it")
+                    log.warning("live ui: a client stopped reading; closing it")
                     self.clients.discard(c)
                     asyncio.create_task(c.ws.close())
-                except Exception as e:  # noqa: BLE001 -- logged; the other browsers' beats go out
+                except Exception as e:  # noqa: BLE001 -- logged; the other clients' beats go out
                     self.stats["beat_send_failures"] += 1
-                    log.warning("live ui beat to one browser: %s: %s", type(e).__name__, e)
+                    log.warning("live ui beat to one client: %s: %s", type(e).__name__, e)
             await asyncio.sleep(HEARTBEAT_SEC)
 
 
 async def serve_live_ui(bus: MessageBus, stop: asyncio.Event, *, heartbeat_fn,
                         host: str = LIVE_UI_HOST, port: int = LIVE_UI_PORT,
-                        stats: "dict | None" = None, record_heartbeat=lmp.record_feed_heartbeat) -> None:
-    """Run until `stop` is set. Start it BEFORE the Schwab connection so the plane sees the
-    first messages (Schwab sends each field once, then only changes). Each beat is recorded with
-    `record_heartbeat` (the daemon's own plane)."""
+                        stats: "dict | None" = None, record_heartbeat=lmp.record_feed_heartbeat,
+                        clock=time.time) -> None:
+    """Run until `stop` is set. Start it BEFORE the Schwab connection so no message is missed.
+    Each beat is recorded with `record_heartbeat` (the daemon's own plane) and judged at `clock()`."""
     from websockets.asyncio.server import serve
 
     stats = stats if stats is not None else {}
-    srv = LiveUiServer(bus, heartbeat_fn, stats, record_heartbeat)
-    sub = bus.subscribe("quote.", policy=LATEST)         # starts with every quote already held
-    lmp.add_row_listener(srv.on_row)
+    srv = LiveUiServer(bus, heartbeat_fn, stats, record_heartbeat, clock)
+    sub = bus.subscribe("", policy=LOG)                 # every message, as published
 
-    async def _track() -> None:
+    async def _route() -> None:
         while True:
-            _topic, msg = await sub.get()
-            srv.ingest(msg)
+            topic, msg = await sub.get()
+            srv.route(topic, msg)
 
-    tasks = [asyncio.create_task(_track()), asyncio.create_task(srv.beat_loop())]
+    tasks = [asyncio.create_task(_route()), asyncio.create_task(srv.beat_loop())]
     try:
         async with serve(srv.serve_client, host, port, max_size=None, compression=None,
                          ping_interval=20, ping_timeout=20) as server:
             bound = server.sockets[0].getsockname()[1]  # the port taken (port 0: the system's pick)
             stats["listening"] = f"ws://{host}:{bound}"
-            log.info("live ui: serving price rows to browsers on ws://%s:%s", host, bound)
+            log.info("live ui: serving Schwab's messages to clients on ws://%s:%s", host, bound)
             await stop.wait()
     finally:
         for t in tasks:
             t.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
-        lmp.remove_row_listener(srv.on_row)
         bus.unsubscribe(sub)

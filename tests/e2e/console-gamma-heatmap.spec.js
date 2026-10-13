@@ -130,8 +130,8 @@ const CHAIN = {
   ],
 };
 
-// The capture daemon's price socket, stood in for (tests/e2e/fixtures/price_socket.js).
-const { mockPriceSocket, priceRow } = require('./fixtures/price_socket');
+// The capture daemon's Schwab socket, stood in for (tests/e2e/fixtures/price_socket.js).
+const { mockPriceSocket, schwabQuote } = require('./fixtures/price_socket');
 // The console's watchlist routes, stood in for (tests/e2e/fixtures/watchlist.js).
 const { routeWatchlist } = require('./fixtures/watchlist');
 
@@ -719,7 +719,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   test('chart view: Price + GEX Profile and Dot Map render from canonical inputs', async ({ page }) => {
     // The chart's spot is the header's price row (audit of #280 removed the /api/terrain copy,
     // a second producer): the daemon's price socket delivers it.
-    await mockPriceSocket(page, [priceRow('SPY', 583.41)]);
+    await mockPriceSocket(page, [schwabQuote('SPY', 583.41)]);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.locator('.vtab[data-view="chart"]').click();
     await expect(page.locator('#view-chart')).toHaveClass(/on/);
@@ -753,11 +753,11 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#hSession')).toHaveText('UNKNOWN');
   });
 
-  test('header paints the daemon price row the moment it arrives', async ({ page }) => {
-    // Stage 1 of the live-UI architecture: the capture daemon pushes the finished row
-    // (live_price_rows.price_row) straight to the page; the console is not in the path.
-    await mockPriceSocket(page, [priceRow('SPY', 601.23, { bid: 601.20, ask: 601.25, chg_pct: 0.5,
-      chg_pct_regular: 0.4, quote_ingestion: 'schwab_streaming_level_one' })]);
+  test('header paints Schwab\'s fields the moment they arrive', async ({ page }) => {
+    // The capture daemon pushes each LEVELONE_EQUITIES message's fields as Schwab sent them
+    // (Change) straight to the page; the console is not in the path.
+    await mockPriceSocket(page, [schwabQuote('SPY', 601.23, { BID_PRICE: 601.20, ASK_PRICE: 601.25,
+      NET_CHANGE_PERCENT: 0.5, REGULAR_MARKET_CHANGE_PERCENT: 0.4 })]);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#hPx')).toHaveText('601.23');
     await expect(page.locator('#hFeed')).toContainText('LIVE');
@@ -768,21 +768,21 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   });
 
   test('before the session the regular-session percent reads absent, the extended one live', async ({ page }) => {
-    await mockPriceSocket(page, [priceRow('SPY', 601.23, { chg_pct: -0.495313, chg_pct_regular: null })]);
+    await mockPriceSocket(page, [schwabQuote('SPY', 601.23, { NET_CHANGE_PERCENT: -0.495313 })]);   // no regular-session percent sent
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#hChg')).toHaveText('EXT -0.50%');
     await expect(page.locator('#hChgReg')).toHaveText('REG —');
   });
 
   test('a price that stops arriving is withdrawn within seconds (the daemon beats every 1 s)', async ({ page }) => {
-    await mockPriceSocket(page, [priceRow('SPY', 601.23)]);   // one row, then silence
+    await mockPriceSocket(page, [schwabQuote('SPY', 601.23)]);   // one message, then silence
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#hPx')).toHaveText('601.23');
     await expect(page.locator('#hPx')).toHaveText('UNAVAILABLE', { timeout: 6000 });
   });
 
   test('a watchlist symbol paints from its own row on the same socket', async ({ page }) => {
-    await mockPriceSocket(page, [priceRow('SPY', 601.23), priceRow('AMD', 150.5, { chg_pct: -1.25 })]);
+    await mockPriceSocket(page, [schwabQuote('SPY', 601.23), schwabQuote('AMD', 150.5, { NET_CHANGE_PERCENT: -1.25 })]);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.evaluate(() => window.EdShell.addSymbol('AMD'));
     await expect(page.locator('.wl-px[data-wlpx="AMD"]')).toHaveText('150.50');
@@ -1166,8 +1166,8 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // push refetched it. Audit of #280: that was a second producer that could show a different
     // price than the header. Required now: the chart's spot line/label IS the header's price
     // row and follows every tick; /api/terrain carries flip/walls only.
-    const rows = [priceRow('SPY', 583.41)];
-    for (let i = 0; i < 20; i++) rows.push(priceRow('SPY', 601.23));   // the next ticks
+    const rows = [schwabQuote('SPY', 583.41)];
+    for (let i = 0; i < 20; i++) rows.push(schwabQuote('SPY', 601.23));   // the next ticks
     await mockPriceSocket(page, rows);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.locator('.vtab[data-view="chart"]').click();
@@ -1197,7 +1197,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       status: 200, contentType: 'application/json',
       body: JSON.stringify(Object.assign({}, TERRAIN, { spot: 583.41 })),   // the fetch's copy
     }));
-    await mockPriceSocket(page, [priceRow('SPY', 601.23)]);                    // the pushed price
+    await mockPriceSocket(page, [schwabQuote('SPY', 601.23)]);                 // the pushed price
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#hPx')).toHaveText('601.23');
     await expect(page.locator('#klSpot')).toHaveText('601.23');

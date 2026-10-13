@@ -62,16 +62,8 @@ from app.market_data.schwab.streaming.live_push import LIVE_PUSH_HOST, LIVE_PUSH
 from app.market_data.schwab.streaming.live_ui import LIVE_UI_PORT
 
 LIVE_PUSH_URL = f"ws://{LIVE_PUSH_HOST}:{LIVE_PUSH_PORT}"
-#: The daemon's price-row push (live_ui), the one the browser reads.
+#: The daemon's Schwab push (live_ui), the one the browser reads.
 LIVE_UI_URL = f"ws://127.0.0.1:{LIVE_UI_PORT}"
-#: The daemon's finished price row per ticker (live_price_rows.price_row), exactly as it pushes
-#: it to the browser. The console keeps no other copy of a live price; the rows are dropped when
-#: the push is gone or silent for the live limit (live_market_plane.FEED_HEARTBEAT_MAX_AGE_SEC).
-_price_rows: "dict[str, dict]" = {}
-
-
-def price_row(ticker: str) -> "dict | None":
-    return _price_rows.get(ticker_storage_key(ticker) or "")
 #: Wait between reconnect attempts when the daemon's push server is down. While it is down
 #: no live value is refreshed -- the freshness checks turn them stale; nothing substitutes.
 PUSH_RECONNECT_SEC = 1.0
@@ -291,12 +283,14 @@ def _rows_wanted(now: float) -> "list[str]":
 
 
 async def _rows_loop(ui_url: str, reconnect_sec: float) -> None:
-    """Hold the daemon's price rows (_rows_wanted) and its status: one browser client of the
-    daemon's price push (`ui_url`, retried every `reconnect_sec`), resubscribed when what the daemon streams changes (checked on every
-    frame). The daemon beats every second with its whole status (`feed`), the one record of
-    whether the daemon and Schwab are live (live_market_plane.record_feed_heartbeat); this
-    connection carries no chain, so a beat never waits behind one. Silence or a lost connection
-    is a feed down. Each row's arrival is the equity's tick."""
+    """Take Schwab's LEVELONE_EQUITIES fields (_rows_wanted) and the daemon's status: one client
+    of the daemon's Schwab push (`ui_url`, retried every `reconnect_sec`), resubscribed when what
+    the daemon streams changes (checked on every frame). Each message's changed fields go to the
+    console's price record (live_market_plane, which live_price_rows.price_row reads). The daemon
+    beats every second with its whole status (`feed`), the one record of whether the daemon and
+    Schwab are live (live_market_plane.record_feed_heartbeat); this connection carries no chain,
+    so a beat never waits behind one. Silence or a lost connection is a feed down: the last values
+    stand, not live. Each message is the equity's tick."""
     from websockets.asyncio.client import connect
 
     while _feed_running:
@@ -311,23 +305,21 @@ async def _rows_loop(ui_url: str, reconnect_sec: float) -> None:
                     try:
                         frame = await asyncio.wait_for(ws.recv(), _lmp.FEED_HEARTBEAT_MAX_AGE_SEC)
                     except asyncio.TimeoutError:
-                        _price_rows.clear()          # the daemon beats every second: silence
-                        _lmp.record_feed_down()
+                        _lmp.record_feed_down()      # the daemon beats every second: silence
                         continue
                     msg = json.loads(frame)
                     if msg.get("type") == "feed":
                         _lmp.record_feed_heartbeat(msg.get("feed"))
                         _drop_released_options(time.time())
-                    for row in msg.get("rows") or []:
-                        _price_rows[row["ticker"]] = row
-                        if msg.get("type") == "quotes":
-                            _tick(row["ticker"])
+                    for m in msg.get("messages") or []:
+                        if m["service"] == "LEVELONE_EQUITIES":   # Change: the fields Schwab changed
+                            _lmp.record_from_level_one_equity(m["key"], m["content"], received_ts=float(m["ts_recv"]))
+                            _tick(m["key"])
         except asyncio.CancelledError:
             raise
         except Exception as e:  # noqa: BLE001 -- daemon down/restarting: retry, never substitute
             log.info("price rows unavailable (%s: %s); retrying in %.1fs",
                      type(e).__name__, e, reconnect_sec)
-        _price_rows.clear()
         _lmp.record_feed_down()            # no daemon, no live price -- visible at once
         if _feed_running:
             await asyncio.sleep(reconnect_sec)
@@ -383,7 +375,6 @@ async def _feed_loop(push_url: str, ui_url: str, reconnect_sec: float) -> None:
     finally:
         rows.cancel()
         await asyncio.gather(rows, return_exceptions=True)
-        _price_rows.clear()
         _lmp.record_feed_down()
         _log_stream("FEED_LOOP_STOP_DONE")
 

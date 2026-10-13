@@ -24,7 +24,7 @@ import time_et
 from app.market_data.schwab.streaming import capture
 from app.options.order_flow import streaming as ofs
 from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus
-from tests.feed_live_helper import mark_feed_live, publish_daemon_rows
+from tests.feed_live_helper import forget_price, mark_feed_live
 from tests.schwab_rest_standin import CHAINS, MARKETS, MARKETS_ANSWERS, LocalSchwab
 from time_et import ET
 
@@ -168,11 +168,8 @@ def test_a_stock_quote_before_schwabs_pre_market_is_shown():
     try:
         lmp.record_from_level_one_equity(tk, native, received_ts=time.time())
         mark_feed_live(tk)
-        publish_daemon_rows(tk)
         assert time_et.session_label(_et("2026-10-07 05:00")) == time_et.CLOSED
         assert lmp.outage(tk, "LEVELONE_EQUITIES", _et("2026-10-07 05:00").timestamp()) is None
         assert server.resolve_spot(tk, now=_et("2026-10-07 05:00").timestamp())[0] == native["LAST_PRICE"]
     finally:
-        ofs._price_rows.pop(tk, None)
-        lmp._by_ticker.pop(tk, None)
-        lmp._fields_by_ticker.pop(tk, None)
+        forget_price(tk)

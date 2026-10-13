@@ -24,6 +24,7 @@ import live_market_plane as lmp
 import server as srv
 from schwab_client import flatten_chain_contracts
 from stream_spine import options_quote_msg
+from tests.feed_live_helper import forget_price, price_sent
 from time_et import ET
 
 _FIXTURES = Path(__file__).parent / "fixtures"
@@ -44,7 +45,7 @@ def _clean():
     with srv._terrain_cache_lock:
         for tk in ("TSLA", "MRVL"):
             srv._terrain_cache.pop(tk, None)
-            ofs._price_rows.pop(tk, None)
+            forget_price(tk)
 
 
 def _hold(tk, contracts, fetched_ts, price, streamed=()):
@@ -53,7 +54,7 @@ def _hold(tk, contracts, fetched_ts, price, streamed=()):
     beats at _AT (the publication's time) and again now (the routes' time)."""
     held = {"LEVELONE_EQUITIES": [tk], "LEVELONE_OPTIONS": [s for s, _f, _t in streamed]}
     lmp.record_feed_heartbeat({"ts": _AT.timestamp(), "schwab_socket_open": True, "held": held})
-    ofs._price_rows[tk] = {"ticker": tk, "spot": price, "trade_ts": fetched_ts}
+    price_sent(tk, price, fetched_ts)
     for sym, fields, ts in streamed:
         ofs._ingest_pushed(f"optquote.{sym}", options_quote_msg(symbol=sym, content={"key": sym, **fields},
                                                                 src="schwab_options_l1", ts_recv=ts))

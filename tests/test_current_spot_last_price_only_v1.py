@@ -9,7 +9,7 @@ import pytest
 
 import live_market_plane as L
 import server
-from tests.feed_live_helper import mark_feed_down, mark_feed_live
+from tests.feed_live_helper import forget_price, mark_feed_down, mark_feed_live
 
 
 @pytest.fixture(autouse=True)
@@ -24,8 +24,7 @@ def _feed_live():
 
 def test_resolve_spot_rejects_mark_close_chain_and_snapshot() -> None:
     L._by_ticker.pop("SPY", None)
-    from app.options.order_flow import streaming as ofs
-    ofs._price_rows.pop("SPY", None)   # no daemon price row: a chain, MARK or close is no spot
+    forget_price("SPY")   # no price record: a chain, MARK or close is no spot
     spot, source, _ts = server.resolve_spot("SPY", now=time.time())
     assert spot is None
     assert source == "none"

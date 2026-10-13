@@ -47,15 +47,18 @@ def mark_feed_down() -> None:
     lmp.record_feed_down()
 
 
-def publish_daemon_rows(*tickers: str) -> None:
-    """What the daemon's price push hands the console: its price row per ticker, built by the
-    daemon's own function from the daemon's plane (the test's live_market_plane stands in for
-    the daemon's)."""
-    import live_price_rows
-    from app.options.order_flow import streaming as ofs
-    for tk in tickers:
-        row = live_price_rows.price_row(tk, time.time())
-        ofs._price_rows[row["ticker"]] = row
+def price_sent(ticker: str, price: float, trade_ts: float) -> None:
+    """The LEVELONE_EQUITIES fields the daemon's Schwab push hands the console for `ticker` (its
+    last trade and trade time), taken into the console's price record as _rows_loop takes them.
+    STAND-IN: the price and trade time are the test's."""
+    lmp.record_from_level_one_equity(ticker, {"LAST_PRICE": price, "TRADE_TIME_MILLIS": int(trade_ts * 1000)},
+                                     received_ts=trade_ts)
+
+
+def forget_price(ticker: str) -> None:
+    """The console holds no price for `ticker`."""
+    lmp._by_ticker.pop(ticker, None)
+    lmp._fields_by_ticker.pop(ticker, None)
 
 
 def feed_live_during(monkeypatch, *tickers: str) -> None:

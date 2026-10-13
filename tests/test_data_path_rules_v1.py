@@ -32,7 +32,7 @@ from app.market_data.schwab.streaming import capture, live_push
 from calibration.complete_chain_capture import ChainSweep, chain_messages
 from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS, bars_from_candles
 from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus, bar_msg
-from tests.feed_live_helper import daemon_bars, price_history, stream_daemon_bars
+from tests.feed_live_helper import daemon_bars, forget_price, price_history, stream_daemon_bars
 from tests.schwab_rest_standin import LocalSchwab
 from time_et import ET, now_et
 
@@ -276,7 +276,6 @@ def _served_at(now: float, feed_live: bool) -> dict:
     import live_price_rows
     import server
     from app.options.order_flow import live_payload
-    from app.options.order_flow import streaming as ofs
     from app.options.order_flow.state import push_option_top
     then = now - 600
     lmp.record_from_level_one_equity("SPY", {"LAST_PRICE": 767.39, "BID_PRICE": 767.38, "ASK_PRICE": 767.40,
@@ -289,12 +288,12 @@ def _served_at(now: float, feed_live: bool) -> dict:
     else:
         lmp.record_feed_down()
     try:
-        row = ofs._price_rows["SPY"] = live_price_rows.price_row("SPY", now)
+        row = live_price_rows.price_row("SPY", now)
         return {"row": row, "spot": server.resolve_spot("SPY", now=now),
                 "equity_book": server.order_flow_microstructure("SPY", "NYSE_BOOK", now),
                 "option_book": live_payload.options_live_payload(_CONTRACT, now)}
     finally:
-        ofs._price_rows.pop("SPY", None)
+        forget_price("SPY")
         lmp.record_feed_down()
 
 
@@ -621,13 +620,11 @@ def test_d5_while_closed_levels_as_of_the_close_stand_and_older_ones_are_absent_
 
 
 def test_d5_the_levels_spot_is_judged_at_the_time_they_are_served_for():
-    """/api/levels served for Fri 2026-10-02 11:00 ET (RTH) with SPY's last trade in the daemon's
-    price row: with the daemon's heartbeat live then, that trade is the spot with its trade time;
+    """/api/levels served for Fri 2026-10-02 11:00 ET (RTH) with SPY's last trade in the console's
+    price record: with the daemon's heartbeat live then, that trade is the spot with its trade time;
     with none, the spot is absent with the RTH outage reason -- whatever the machine's clock says
     (judged by it, one of the two answers differs at every hour)."""
     import live_market_plane as lmp
-    import live_price_rows
-    from app.options.order_flow import streaming as ofs
     at = _et("2026-10-02 11:00")
     served = {}
     for live in (True, False):
@@ -635,11 +632,10 @@ def test_d5_the_levels_spot_is_judged_at_the_time_they_are_served_for():
             lmp.record_feed_heartbeat({"ts": at, "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": ["SPY"]}})
         lmp.record_from_level_one_equity("SPY", {"LAST_PRICE": 767.39, "TRADE_TIME_MILLIS": int(at * 1000)},
                                          received_ts=at)
-        ofs._price_rows["SPY"] = live_price_rows.price_row("SPY", at)
         try:
             body = server.levels_payload("SPY", "1", datetime.fromtimestamp(at, ET))
         finally:
-            ofs._price_rows.pop("SPY", None)
+            forget_price("SPY")
             lmp.record_feed_down()
         served[live] = (body["spot"], body["spot_source"], body["spot_as_of_ts_utc"])
     assert served[True] == (767.39, server.SPOT_SOURCE_PLANE, at)
