@@ -25,7 +25,6 @@ from time_et import (ET, now_et, ct_label, et_date_str_from_ts_utc, last_open,
 from math_exposure_core import (
     bucket_metric,
     merge_exposure_books,
-    stream_priced,
     strike_oi_legs,
     strike_volume_legs,
 )
@@ -809,20 +808,12 @@ def _next_gamma_surface_seq(tk: str) -> int:
     return n
 
 
-def _stream_records(listed: frozenset) -> dict:
-    """Every contract of the ticker's chain (`listed`, the symbols Schwab listed in it) the daemon
-    last reported holding on LEVELONE_OPTIONS -- the option rule's pick -- with its record, or None
-    before its first message."""
-    from app.options.order_flow.state import option_records
-    return option_records(lmp.held_reported("LEVELONE_OPTIONS") & listed)
-
-
-def _stream_priced_chain(chain: list, records: dict) -> list:
-    """The chain with each streamed contract (`records`) as its one record: Schwab's REST answer
-    with each field the stream has sent in its place (math_exposure_core.stream_priced); every
-    other contract as Schwab sent it."""
-    return [stream_priced(ct, rec.content, rec.times) if (rec := records.get(ct.get("symbol"))) else ct
-            for ct in chain]
+def _ledger(tk: str) -> dict:
+    """`tk`'s option contracts and their records, as the daemon's ledger holds them
+    (option_ledger; mirrored by app.options.order_flow.state): every calculation and every screen
+    of the ticker's options reads these, nothing else."""
+    from app.options.order_flow.state import contracts_of
+    return contracts_of(tk)
 
 
 _STREAM_STATE_ORDER = ("stale", "pending")
@@ -845,18 +836,22 @@ def _stamp_gamma_surface_cell_stream_state(surface: dict, records: dict, now: fl
     in place. It never touches a cell's computed value (project_gamma_surface is the one
     exposure computation); it says whether a streamed Schwab value backs it now.
 
-    `records`: every contract of this ticker the daemon last reported holding, with its record or
-    None before its first message (_stream_records); whether the feed is delivering each now is
+    `records`: the ticker's contract records (_ledger); a leg's stream is its record's
+    `streamTime` (the Schwab time of the stream's newest message for it), on the daemon's current
+    connection to Schwab or before it; whether the feed is delivering it now is
     live_market_plane.feed_live_for, the one live rule. Each leg's age is at `now`.
-      'live'         — the feed is delivering this symbol now.
-      'stale'        — the symbol has streamed but the feed is not delivering it now.
-      'pending'      — the daemon's live heartbeat holds the symbol and no tick has landed yet.
+      'live'         — the stream sent it on this connection and the feed is delivering it now.
+      'stale'        — the stream sent it, but not on this connection or not now.
+      'pending'      — the daemon's live heartbeat holds the symbol and no message has come yet.
       'unavailable'  — a symbol the daemon does not stream, or whose holding is unknown (no live
-                       heartbeat) before its first tick.
+                       heartbeat) before its first message.
 
     Cell aggregate, over the legs that exist for this strike/expiry: live when all are live,
     partial when some are, else the first of stale > pending present, else unavailable."""
+    held = lmp.held_reported("LEVELONE_OPTIONS")
     held_now = lmp.held_by_daemon("LEVELONE_OPTIONS", now)
+    status = lmp.daemon_status(now)
+    since = status.get("connected_at") if status is not None else None
     for cell in (surface.get("cells") or []):
         contracts_row = cell.get("contracts") or []
         state_row = []
@@ -871,16 +866,18 @@ def _stamp_gamma_surface_cell_stream_state(surface: dict, records: dict, now: fl
                 if not sym:
                     continue
                 record = records.get(sym)
-                if sym not in records:
+                streamed = record is not None and record.fields.get("streamTime") is not None
+                if sym not in held:
                     leg_state = "unavailable"
-                elif not record:
+                elif not streamed:
                     leg_state = "pending" if sym in held_now else "unavailable"
-                elif lmp.feed_live_for(sym, "LEVELONE_OPTIONS", now):
+                elif (since is not None and record.fields["streamTime"] >= since * 1000
+                      and lmp.feed_live_for(sym, "LEVELONE_OPTIONS", now)):
                     leg_state = "live"
                 else:
                     leg_state = "stale"
                 leg_states.append(leg_state)
-                ts_recv = record.ts_recv if record else None
+                ts_recv = record.times["streamTime"][1] if streamed else None
                 legs[side] = {
                     "symbol": sym, "state": leg_state, "ts_recv": ts_recv,
                     "age_sec": (now - ts_recv if ts_recv is not None else None),
@@ -1013,21 +1010,23 @@ def _surface_view(surf: dict, spot_strike, scope: str, centre, shift: int, cols:
 
 
 def _contract_ticker(sym: str) -> "str | None":
-    """The ticker whose chain Schwab listed `sym` in, or None -- the same rule for every
-    instrument, whatever the contract's root (SPXW and SPX are both $SPX's)."""
-    with _terrain_cache_lock:
-        return next((tk for tk, p in _terrain_cache.items() if sym in (p.get("_contract_symbols") or ())), None)
+    """The ticker whose chain Schwab listed `sym` in (its record's), or None -- the same rule for
+    every instrument, whatever the contract's root (SPXW and SPX are both $SPX's)."""
+    from app.options.order_flow.state import contract
+    record = contract(sym)
+    return record.fields.get("ticker") if record is not None else None
 
 
-def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | None" = None,
+def _publish_levels(tk: str, round_ts: "float | None" = None,
                     *, captures: "list | None" = None,
                     now: "datetime | None" = None) -> "TerrainSnapshot | None":
     """THE producer of a ticker's levels, per-strike rows and gamma-surface grid.
 
-    Prices the ticker's chain once -- each contract the daemon streams priced from its stream, at
-    the current spot -- and publishes all three together, so the heatmap, Strike Detail and Key
-    Levels always show one computation. A delivered chain is passed in; a tick on a viewed ticker
-    passes none and the kept chain is repriced. Called only on the one pricing thread
+    Prices the ticker's contracts once -- their records as the ledger holds them (_ledger), at the
+    current spot -- and publishes all three together, so the heatmap, Strike Detail and Key
+    Levels always show one computation. `round_ts`: a round of the ticker came in, begun then
+    (the levels' as-of); without it (a tick on a viewed ticker) the records are repriced as of the
+    last round. Called only on the one pricing thread
     (_price_chain), so each publication is computed from inputs read after the one it replaces.
     `captures` (startup
     and a closed market, DATA_FLOW decision 7) are the two newest market days' stored captures,
@@ -1040,25 +1039,21 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
     with _terrain_cache_lock:
         payload = dict(_terrain_cache.get(tk) or {})
     capture = captures[0] if captures else None
+    records = {} if capture is not None else _ledger(tk)
     if capture is not None:
         chain, fetched_ts = capture["contracts"], capture["ts_utc"]
-    new_chain = chain is not None
-    if chain is None:
-        chain, fetched_ts = payload.get("_chain"), payload.get("_chain_fetched_ts")
-        if not chain:
+    else:
+        chain = [rec.fields for rec in records.values()]
+        fetched_ts = round_ts if round_ts is not None else payload.get("_round_ts")
+        if not chain or fetched_ts is None:
             return None
+    new_chain = capture is not None or round_ts is not None
     if capture is not None:
         spot, spot_source, spot_ts = capture["spot"], SPOT_SOURCE_CAPTURE, capture["ts_utc"]
     else:
         spot, spot_source, spot_ts = resolve_spot(tk, now=at.timestamp())
     prev_spot = payload.get("spot")
-    if new_chain:       # the ticker's contracts are the ones Schwab listed in this chain
-        payload.update(_contract_symbols=frozenset(c.get("symbol") for c in chain if c.get("symbol")))
-    listed = payload.get("_contract_symbols") or frozenset()
-    records = _stream_records(listed)
-    # a streamed contract's record: the REST answer, each field the stream has sent in its place
-    priced = _stream_priced_chain(chain, records)
-    snap = compute_terrain(tk, priced, spot, now=(
+    snap = compute_terrain(tk, chain, spot, now=(
         datetime.fromtimestamp(fetched_ts, ET) if capture is not None else at))
     payload.update(snap.to_dict())
     payload.update({
@@ -1070,10 +1065,8 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
         "spot_source": spot_source, "spot_as_of_ts_utc": spot_ts,
         "_per_strike": snap.per_strike, "_gamma_surface": None,
         "_vanna_rows": _vanna_rows(snap), "_charm_rows": _charm_rows(snap),
-        # every ticker keeps its chain and its heatmap, so a ticker put on screen shows at once
-        "_chain": chain, "_chain_fetched_ts": fetched_ts,
-        # the contracts as these levels were priced from them (/api/chain serves them)
-        "_priced_chain": priced,
+        # the round these levels are as of (a capture's: its own time)
+        "_round_ts": fetched_ts,
     })
     # the values read from the stored chain captures (forces, the prior day's per-strike rows)
     # change only with a new capture or a new chain day: computed then, once, for all readers
@@ -1085,7 +1078,7 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
                            _prior_strikes=_prior_strikes(stored, fetched_ts),
                            _captures_key=captures_key)
     if spot is not None and snap.books:
-        surface = project_gamma_surface(priced, snap.books)
+        surface = project_gamma_surface(chain, snap.books)
         surface.update(spot=float(spot), spot_source=spot_source, spot_as_of_ts_utc=spot_ts)
         _stamp_gamma_surface_cell_stream_state(surface, records, at.timestamp())
         surface["surface_seq"] = _next_gamma_surface_seq(tk)
@@ -1160,35 +1153,34 @@ def _on_stream_tick(sym: str) -> None:
 
 #: prices every ticker's levels, off the event loop, one at a time
 _chain_pricing = ThreadPoolExecutor(max_workers=1, thread_name_prefix="chain-pricing")
-#: what waits to be priced for a ticker: a chain the daemon DELIVERED, the ticker's STORED
-#: captures (startup, for a ticker the daemon has not delivered yet), or a REPRICE of its held
-#: chain (a streamed tick on a viewed ticker)
+#: what waits to be priced for a ticker: a round the daemon DELIVERED, the ticker's STORED
+#: captures (startup, for a ticker the daemon has not delivered yet), or a REPRICE of its
+#: records (a streamed tick on a viewed ticker)
 DELIVERED, STORED, REPRICE = "delivered", "stored", "reprice"
-#: ticker -> (what, contracts, fetched time): at most one per ticker however far pricing falls
-#: behind; a delivered chain replaces what waits, and whatever waits already prices the newest
-#: ticks. Every pricing runs on the one pricing thread, so each ticker's chains are priced in the
-#: order they were fetched.
-_chains_waiting: "dict[str, tuple[str, list | None, float | None]]" = {}
+#: ticker -> (what, the round's start): at most one per ticker however far pricing falls behind;
+#: a delivered round replaces what waits, and whatever waits already prices the newest records.
+#: Every pricing runs on the one pricing thread, so each ticker's rounds are priced in order.
+_chains_waiting: "dict[str, tuple[str, float | None]]" = {}
 _chains_waiting_lock = threading.Lock()
-#: the tickers the daemon has delivered a chain for since the console started: their stored
+#: the tickers the daemon has delivered a round for since the console started: their stored
 #: capture is older and is never priced
 _chains_delivered: "set[str]" = set()
 
 
-def _on_chain(ticker: str, contracts: "list | None", ts: float, reason: "str | None" = None) -> None:
-    """The feed's chain callback (streaming.assemble_chain_part), on the event loop: a whole
-    chain the daemon fetched is priced on a pricing thread; a chain it could not deliver keeps
-    the ticker's last levels, which then say why no newer chain came."""
+def _on_chain(ticker: str, ts: float, reason: "str | None" = None) -> None:
+    """The feed's round callback, on the event loop: a round the daemon's sweep finished (its
+    contracts' records hold its answers) is priced on the pricing thread; one that failed keeps
+    the ticker's last levels, which then say why no newer round came."""
     tk = ticker_storage_key(ticker)
-    if contracts is None:
+    if reason is not None:
         _terrain_refresh_last_error[tk] = f"chain fetch failed ({reason})"
         return
-    _wait_to_price(tk, DELIVERED, contracts, ts)
+    _wait_to_price(tk, DELIVERED, ts)
 
 
-def _wait_to_price(tk: str, what: str, contracts: "list | None" = None, ts: "float | None" = None) -> bool:
+def _wait_to_price(tk: str, what: str, ts: "float | None" = None) -> bool:
     """Queue a ticker's pricing (DELIVERED, STORED or REPRICE) for the pricing thread: a delivered
-    chain replaces whatever waits for the ticker; anything else waits only for a ticker with
+    round replaces whatever waits for the ticker; anything else waits only for a ticker with
     nothing waiting, and stored captures only for one with nothing delivered. Returns whether it
     was queued."""
     with _chains_waiting_lock:
@@ -1197,7 +1189,7 @@ def _wait_to_price(tk: str, what: str, contracts: "list | None" = None, ts: "flo
             return False
         if what == DELIVERED:
             _chains_delivered.add(tk)
-        _chains_waiting[tk] = (what, contracts, ts)
+        _chains_waiting[tk] = (what, ts)
     if held is None:
         _chain_pricing.submit(_price_waiting_chain)
     return True
@@ -1208,15 +1200,14 @@ def _price_waiting_chain() -> None:
     with _chains_waiting_lock:
         waiting = list(_chains_waiting)
         tk = next((t for t in waiting if _chains_waiting[t][0] != STORED), waiting[0])
-        what, contracts, ts = _chains_waiting.pop(tk)
-    _price_chain(tk, what, contracts, ts)
+        what, ts = _chains_waiting.pop(tk)
+    _price_chain(tk, what, ts)
 
 
-def _price_chain(tk: str, what: str, contracts: "list | None", fetched_ts: "float | None") -> None:
-    """THE producer of a ticker's levels (_publish_levels): from a newly fetched chain, with the
-    chain's own fetch time as its as-of (an older streamed value never overrides it); from the
-    held chain with the newest streamed values (REPRICE); or from the ticker's newest stored
-    captures (STORED, DATA_FLOW decision 7)."""
+def _price_chain(tk: str, what: str, round_ts: "float | None") -> None:
+    """THE producer of a ticker's levels (_publish_levels): from its records when a round of it
+    is in, as of the round's start; from its records as they are (REPRICE); or from the ticker's
+    newest stored captures (STORED, DATA_FLOW decision 7)."""
     if what == REPRICE:     # the held chain: the ticker's reason stays the chain's own
         try:
             _publish_levels(tk)
@@ -1229,7 +1220,7 @@ def _price_chain(tk: str, what: str, contracts: "list | None", fetched_ts: "floa
             if captures:
                 _publish_levels(tk, captures=captures)
             return
-        _publish_levels(tk, contracts, fetched_ts)
+        _publish_levels(tk, round_ts)
         _terrain_refresh_last_error.pop(tk, None)
     except Exception as e:  # noqa: BLE001 -- kept as the ticker's reason, and logged
         _terrain_refresh_last_error[tk] = f"pricing the chain failed: {type(e).__name__}: {e}"
@@ -1692,7 +1683,7 @@ def get_options_tape(ticker: str = Query(...),
     fabricated buy/sell aggressor side.
 
     `contract`, when given, scopes to exactly that vendor symbol. Otherwise scopes to every
-    contract of `ticker` the daemon streams (its option rule's pick, `_stream_records`), merged
+    contract of `ticker` the daemon streams (its option rule's pick, of the ticker's _ledger), merged
     newest-first and capped at `limit` across the whole merge, not per-contract."""
     from app.options.order_flow.history import TAPE
 
@@ -1705,12 +1696,11 @@ def get_options_tape(ticker: str = Query(...),
     if contract:
         symbols = [contract]
     else:
-        with _terrain_cache_lock:
-            held = _terrain_cache.get(tk)
-        if not held or "_contract_symbols" not in held:
+        listed = _ledger(tk)
+        if not listed:
             return JSONResponse({"ticker": tk, "available": False, "rows": [],
                                  "reason": "the console holds no chain of this ticker yet"})
-        symbols = sorted(_stream_records(held["_contract_symbols"]))
+        symbols = sorted(lmp.held_reported("LEVELONE_OPTIONS") & set(listed))
 
     if not symbols:
         return JSONResponse({"ticker": tk, "available": False, "rows": [],
@@ -2268,10 +2258,9 @@ def options_microstructure(c: str, now: float) -> dict:
     from app.options.order_flow.streaming import get_option_contract_streaming_diagnostics
     payload = options_live_payload(ticker_storage_key(c), now)
     payload["contract"] = c
-    from app.options.order_flow.history import put_call_side
-    from app.options.order_flow.state import get_content_for_symbol
-    payload["put_call"] = put_call_side(next((it.get("CONTRACT_TYPE") for it in get_content_for_symbol(c)  # external-key-ok: Schwab LEVELONE_OPTIONS
-                                              if it.get("CONTRACT_TYPE")), None))
+    from app.options.order_flow.state import contract
+    record = contract(c)
+    payload["put_call"] = record.fields.get("putCall") if record is not None else None  # external-key-ok: Schwab option chain contract
     # whether the daemon streams this contract (the option rule) and is receiving it
     payload["streaming_plane"] = get_option_contract_streaming_diagnostics(c, now)
     return payload
@@ -2356,10 +2345,10 @@ NO_CHAIN_YET = "the daemon has not delivered this ticker's chain yet"
 @app.get("/api/chain")
 def get_chain(ticker: str = Query(...),
               expiry: Optional[str] = Query(default=None)):
-    """One expiry of the ticker's full chain -- every contract Schwab listed -- as the levels' one
-    producer priced it (_publish_levels: a streamed contract's values its stream's, every other
-    contract's as Schwab sent them). Every watchlist ticker's chain is kept. Answers
-    `status: unavailable` with a reason when no chain is held."""
+    """One expiry of the ticker's full chain -- every contract Schwab listed -- as each contract's
+    record holds it (_ledger: the fields every calculation reads), each with its fields' Schwab
+    times (`fieldTimes`). Every watchlist ticker's chain is kept. Answers `status: unavailable`
+    with a reason when no chain is held."""
     t = ticker_storage_key(_required_ticker(ticker))
     now = time.time()
     held = terrain_cache_get(t, now)
@@ -2373,9 +2362,9 @@ def get_chain(ticker: str = Query(...),
                              "scope": {"kind": "unavailable", "requested_expiry": resolved_expiry,
                                        "reason": reason}})
 
-    # the contracts as the levels' one producer priced them (_publish_levels)
-    chain = held.get("_priced_chain") if held is not None else None
-    if not chain:
+    chain = [{**rec.fields, "fieldTimes": {f: stamp[0] for f, stamp in rec.times.items()}}
+             for rec in _ledger(t).values()]
+    if not chain or held is None:
         return _unavailable((held.get("error") if held is not None else None) or _terrain_refresh_last_error.get(t)
                             or NO_CHAIN_YET)
     if resolved_expiry is None:
@@ -2383,7 +2372,7 @@ def get_chain(ticker: str = Query(...),
     contracts = [c for c in chain if str(c.get("expirationDate") or "")[:10] == resolved_expiry]
     if not contracts:
         return _unavailable(f"the chain lists no contracts for {resolved_expiry}")
-    fetched_ts = held.get("_chain_fetched_ts")
+    fetched_ts = held.get("_round_ts")
     live_spot, _src, _ts = resolve_spot(t, now=now)       # the one spot on every screen
     ladder, not_on_ladder = chain_ladder(contracts, live_spot)
     # this expiry's net GEX per strike, as the heatmap publishes it (its column of the surface):

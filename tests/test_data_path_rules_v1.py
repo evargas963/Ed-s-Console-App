@@ -26,10 +26,11 @@ from fastapi.testclient import TestClient
 from websockets.asyncio.client import connect
 
 import app.options.order_flow.streaming as ofs
+import option_ledger
 import schwab_client as sc
 import server
 from app.market_data.schwab.streaming import capture, live_push
-from calibration.complete_chain_capture import ChainSweep, chain_messages
+from calibration.complete_chain_capture import ChainSweep, chain_round_message
 from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS, bars_from_candles
 from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus, bar_msg
 from tests.feed_live_helper import daemon_bars, price_history, stream_daemon_bars
@@ -124,7 +125,8 @@ def test_d1_a_quote_that_arrives_late_never_replaces_a_newer_one(connected):
     older, newer = (e["content"] for e in _EVENTS[:2])
     assert older["QUOTE_TIME_MILLIS"] < newer.get("QUOTE_TIME_MILLIS", older["QUOTE_TIME_MILLIS"] + 1)
     newer = {**newer, "QUOTE_TIME_MILLIS": newer.get("QUOTE_TIME_MILLIS", older["QUOTE_TIME_MILLIS"] + 1000)}
-    shared = [k for k in newer if k in older and k != "key" and older[k] != newer[k]]
+    record_key = {field: key for key, field in option_ledger.STREAM_FIELDS}
+    shared = [k for k in newer if k in older and k in record_key and older[k] != newer[k]]
     assert shared, "the two captured quotes share a field with different values"
 
     def publish(handler_for):
@@ -134,11 +136,10 @@ def test_d1_a_quote_that_arrives_late_never_replaces_a_newer_one(connected):
     got = asyncio.run(_daemon_then_console(publish, connected=connected))
     current: dict = {}
     for m in got:
-        if m["topic"] == f"optquote.{_CONTRACT}":
+        if m["topic"] == f"contract.{_CONTRACT}":
             for k in shared:
-                for key, v in _values(m["msg"]):
-                    if key == k:
-                        current[k] = v
+                if record_key[k] in m["msg"]["fields"]:
+                    current[k] = m["msg"]["fields"][record_key[k]]
     assert current == {k: newer[k] for k in shared}, "the late, older quote replaced the newer one"
 
 
@@ -181,19 +182,17 @@ def test_d3_a_burst_leaves_one_current_record_per_symbol_not_every_message():
             h(_frame("LEVELONE_OPTIONS", [{**base, "key": k, "QUOTE_TIME_MILLIS": t0 + n, "MARK": n}
                                           for k in keys], t0 + n))
     got = asyncio.run(_daemon_then_console(publish, read_for=3.0, connected=True))
-    quotes = [m for m in got if m["topic"].startswith("optquote.")]
-    assert len(quotes) <= 2 * len(keys), f"{len(quotes)} quote messages for {len(keys)} symbols"
-    last = {}
-    for m in quotes:
-        for k, v in _values(m["msg"]):
-            if k == "MARK":
-                last[m["topic"]] = v
-    assert set(last.values()) == {199}, "a contract's current record is not its newest quote"
+    quotes = [m for m in got if m["topic"].startswith("contract.")]
+    assert len(quotes) <= 2 * len(keys), f"{len(quotes)} record messages for {len(keys)} symbols"
+    last = {m["topic"]: m["msg"]["fields"]["mark"] for m in quotes}
+    assert len(last) == len(keys) and set(last.values()) == {199}, \
+        "a contract's current record is not its newest quote"
 
 
 def test_d3_an_older_chain_never_waits_behind_a_newer_one():
-    """Ten SPY chains fetched (the captured SPY 0DTE chain, ten fetch times) before the console
-    reads: only the newest chain is sent; an older one never queues ahead of it."""
+    """Ten SPY rounds in (the captured SPY 0DTE chain's contracts posted to their records, ten
+    round times) before the console reads: only the newest round is sent; an older one never
+    queues ahead of it."""
     contracts = _CHAIN["chain"]
     fetched = [1790346600.0 + 10 * i for i in range(10)]
     got = asyncio.run(_chains_then_console(contracts, fetched))
@@ -202,9 +201,9 @@ def test_d3_an_older_chain_never_waits_behind_a_newer_one():
 
 
 async def _chains_then_console(contracts, fetched) -> list[dict]:
-    """A connected console, then the daemon's chain sweep publishing `fetched` chains on the
-    daemon's bus as it does (capture.run_chains: chain_messages, each part published) before the
-    console reads."""
+    """A connected console, then the daemon's chain sweep publishing `fetched` rounds on the
+    daemon's bus as it does (ChainSweep.open: each contract's opening posted; round_in: the round
+    is in) before the console reads."""
     bus, stop, stats, port = MessageBus(), asyncio.Event(), {}, _port()
     server = asyncio.create_task(live_push.serve_live_push(bus, stop, port=port, stats=stats))
     try:
@@ -218,8 +217,10 @@ async def _chains_then_console(contracts, fetched) -> list[dict]:
                     break
                 await asyncio.sleep(0.01)
             for ts in fetched:
-                for topic, msg in chain_messages("SPY", contracts, ts):
-                    bus.publish(topic, msg)
+                for ct in contracts:
+                    bus.publish(*option_ledger.posting(ct["symbol"], option_ledger.opening(ct, "SPY"),
+                                                       ct.get("quoteTimeInLong"), ts))
+                bus.publish(*chain_round_message("SPY", ts))
             got = []
             end = time.monotonic() + 3.0
             while time.monotonic() < end:
@@ -277,14 +278,12 @@ def _served_at(now: float, feed_live: bool) -> dict:
     import server
     from app.options.order_flow import live_payload
     from app.options.order_flow import streaming as ofs
-    from stream_spine import options_quote_msg
-    from tests.feed_live_helper import daemon_holds, no_daemon
+    from tests.feed_live_helper import daemon_holds, no_daemon, through_the_daemons_bus
     then = now - 600
     lmp.record_from_level_one_equity("SPY", {"LAST_PRICE": 767.39, "BID_PRICE": 767.38, "ASK_PRICE": 767.40,
                                              "TRADE_TIME_MILLIS": int(then * 1000),
                                              "QUOTE_TIME_MILLIS": int(then * 1000)}, received_ts=then)
-    ofs._ingest_pushed(f"optquote.{_CONTRACT}", options_quote_msg(
-        symbol=_CONTRACT, content=_EVENTS[0]["content"], src="schwab_options_l1", ts_recv=then))
+    through_the_daemons_bus(MessageBus(), _CONTRACT, [_EVENTS[0]["content"]], [then])
     if feed_live:
         daemon_holds(now, {"LEVELONE_EQUITIES": ["SPY"], "LEVELONE_OPTIONS": [_CONTRACT]})
     else:
@@ -366,13 +365,11 @@ class _Swept:
         self.schwab = LocalSchwab()
 
         def publish(topic, msg):
-            if "contracts" in msg and msg["part"] == 0:
+            if topic.startswith("chain.") and "failed" not in msg:      # a round in
                 self.chains.append(msg["ticker"])
                 self.delivered.append(msg["ts_recv"])
-        self.sweep = ChainSweep(tmp_path / "ed_console.db", watchlist, publish,
-                                clock=lambda: self.clock["now"],
-                                failures=CaptureWriter(tmp_path / "stream_capture.db"),
-                                streamed=lambda symbol: None)
+        self.sweep = ChainSweep(watchlist, publish, clock=lambda: self.clock["now"],
+                                held=frozenset, connection=lambda: 1)
         self.client = self.schwab.client(tmp_path)
         self._start()
 
@@ -439,11 +436,12 @@ def test_d5_at_the_option_close_a_ticker_is_fetched_once_more_then_nothing_until
     """Friday 2026-10-02: fetched without end until the last option market's close (Schwab's IND,
     16:15 ET), once more begun after it (the close values), nothing through the weekend and
     Monday's stock pre-market, and
-    again from Monday's 09:30 open. Counted by the chain requests Schwab's host received after each
-    move of the clock, made with the sweep at rest (_Swept.move): CI 2026-10-08 counted a 15:59
-    request that arrived after the clock moved as one asked after the close."""
+    again from Monday's 09:30 open. Counted by the rounds' quotes requests Schwab's host received
+    after each move of the clock (the stand-in's SPY contracts are one request; the chain itself is
+    the opening, once a day), made with the sweep at rest (_Swept.move): CI 2026-10-08 counted a
+    15:59 request that arrived after the clock moved as one asked after the close."""
     def chain_requests_since(mark: int) -> int:
-        return sum(1 for path, *_ in swept.schwab.requests[mark:] if path == "/marketdata/v1/chains")
+        return sum(1 for path, *_ in swept.schwab.requests[mark:] if path == "/marketdata/v1/quotes")
 
     swept = _Swept(tmp_path, "2026-10-02 16:14", ["SPY"])
     try:
@@ -522,12 +520,13 @@ def test_d5_the_price_history_once_a_day_and_the_chain_the_options_session(tmp_p
 
 def test_d5_the_chain_is_asked_until_the_last_option_close_and_its_close_values_then_stand(tmp_path):
     """SPY's options trade to 16:15 ET; Schwab's /markets sends EQO to 16:00 and IND to 16:15
-    (2026-10-07). At 16:10 SPY's chain is asked again and again; at 16:20 once more (its close
-    values), then not. Levels from that chain stand at 17:00 (After-Hours), not stale; levels
-    from 15:00 are stale at 16:10, while the options are open. The clock moves with the sweep at
-    rest (_Swept.move): a request is counted by the clock it was made at, never by when it arrived
-    (CI 2026-10-10 counted a 16:10 request that landed after the clock moved as one at 16:20)."""
-    chains = "/marketdata/v1/chains"
+    (2026-10-07). At 16:10 SPY's round is in again and again (its chain once, the opening; its
+    quotes each round); at 16:20 once more (its close values), then not. Levels from that round
+    stand at 17:00 (After-Hours), not stale; levels from 15:00 are stale at 16:10, while the
+    options are open. The clock moves with the sweep at rest (_Swept.move): a request is counted
+    by the clock it was made at, never by when it arrived (CI 2026-10-10 counted a 16:10 request
+    that landed after the clock moved as one at 16:20)."""
+    chains, quotes = "/marketdata/v1/chains", "/marketdata/v1/quotes"
     swept = _Swept(tmp_path, "2026-10-07 16:10", ["SPY"])
     try:
         swept.until(3)                                   # delivered again and again at 16:10
@@ -536,10 +535,11 @@ def test_d5_the_chain_is_asked_until_the_last_option_close_and_its_close_values_
     finally:
         swept.close()
     before_close = [q["fromDate"] for p, q, *_ in swept.schwab.requests[:closed] if p == chains]
-    after_close = [q["fromDate"] for p, q, *_ in swept.schwab.requests[closed:] if p == chains]
-    assert before_close and all(before_close.count(e) > 1 for e in before_close), \
-        "each expiry asked again and again while the last option market is open"
-    assert sorted(after_close) == sorted(set(before_close)), "each expiry once more after the 16:15 close"
+    assert before_close and len(before_close) == len(set(before_close)), "each expiry's chain once, the opening"
+    assert sum(1 for p, *_ in swept.schwab.requests[:closed] if p == quotes) >= 3, \
+        "the quotes asked each round while the last option market is open"
+    after_close = [p for p, *_ in swept.schwab.requests[closed:] if p in (chains, quotes)]
+    assert after_close == [quotes], "one round after the 16:15 close, its quotes; the chain not again"
 
     stands = server.terrain_staleness(_et("2026-10-07 16:20"), "SPY", now=_et("2026-10-07 17:00"))
     assert (stands["levels_stale"], stands["levels_stale_reason"]) == (False, "")
@@ -559,12 +559,20 @@ def test_d5_a_chain_in_flight_at_the_close_keeps_its_begin_time_and_the_close_ch
     def clock() -> float:
         return _et("2026-10-07 16:20") if any(r[0] == chains for r in schwab.requests) else _et("2026-10-07 16:10")
 
-    def publish(topic, msg):
-        if "contracts" in msg and msg["part"] == 0:
-            delivered.append(msg["ts_recv"])
     db = tmp_path / "ed_console.db"
+    sqlite3.connect(db).close()                          # the daemon's database exists
     writer = CaptureWriter(tmp_path / "stream_capture.db")
-    sweep = ChainSweep(db, ["SPY"], publish, clock=clock, failures=writer, streamed=lambda symbol: None)
+    daemon = capture.Daemon(MessageBus(), HealthRegistry(), ["SPY"])
+    daemon.history_db, daemon.writer = db, writer
+    daemon._took_price("SPY", {"native": {"LAST_PRICE": 766.31}})
+    rounds: list = []
+
+    def publish(topic, msg):
+        daemon.bus.publish(topic, msg)
+        if topic.startswith("chain.") and "failed" not in msg:
+            delivered.append(msg["ts_recv"])
+            rounds.append(msg)
+    sweep = ChainSweep(["SPY"], publish, clock=clock, held=frozenset, connection=lambda: 1)
     client = schwab.client(tmp_path)
     stop = threading.Event()
     worker = threading.Thread(target=sweep.work, args=(lambda: client, stop), daemon=True)
@@ -575,11 +583,20 @@ def test_d5_a_chain_in_flight_at_the_close_keeps_its_begin_time_and_the_close_ch
     time.sleep(1.0)                                      # nothing more is asked
     stop.set()
     worker.join(10)
+
+    async def took() -> None:                            # each round taken by the daemon, its history written
+        for msg in rounds:
+            write = daemon._took_chain("SPY", msg)
+            if write is not None:
+                await write
+    asyncio.run(took())
     asked = [r[1]["fromDate"] for r in schwab.requests if r[0] == chains]
     with sqlite3.connect(db) as conn:
         stored = sorted({ts for (ts,) in conn.execute("SELECT ts_utc FROM complete_chain_captures WHERE ticker = 'SPY'")})
     assert delivered == [_et("2026-10-07 16:10"), _et("2026-10-07 16:20")], "a chain carries the time it began"
-    assert asked and all(asked.count(e) == 2 for e in asked), "each expiry: the chain in flight, then the close chain"
+    assert asked and len(asked) == len(set(asked)), "each expiry's chain once, the opening"
+    assert sum(1 for r in schwab.requests if r[0] == "/marketdata/v1/quotes") == 2, \
+        "the quotes of the round in flight, then the close round's"
     assert stored == [_et("2026-10-07 16:10"), _et("2026-10-07 16:20")], "each chain stored at the time it began"
     assert writer.status()["failures"] == 0, "a chain history write failed"
 
@@ -1033,9 +1050,8 @@ def test_the_daemon_builds_one_schwab_client_and_a_refused_refresh_never_rebuild
     schwab_client = capture.one_schwab_client(build)
     assert schwab_client() is schwab_client(), "the stream and the chains are handed one client"
     failed = []
-    sweep = ChainSweep(tmp_path / "ed_console.db", ["AAA", "BBB", "CCC", "DDD", "EEE"],
-                       lambda topic, msg: failed.append(msg["failed"]),
-                       failures=CaptureWriter(tmp_path / "stream_capture.db"), streamed=lambda symbol: None)
+    sweep = ChainSweep(["AAA", "BBB", "CCC", "DDD", "EEE"], lambda topic, msg: failed.append(msg["failed"]),
+                       held=frozenset, connection=lambda: 1)
     halt = threading.Event()
     worker = threading.Thread(target=sweep.work, args=(schwab_client, halt), daemon=True)
     try:
@@ -1057,9 +1073,8 @@ def test_a_403_from_schwabs_edge_reaches_the_console_and_the_next_ticker_is_aske
     schwab = _LocalSchwab(refuse=True)
     published = []
     now = 1790856000.0                                    # 2026-10-01 08:00 ET
-    sweep = ChainSweep(tmp_path / "ed_console.db", ["AAA", "BBB"],
-                       lambda topic, msg: published.append(msg), clock=lambda: now,
-                       failures=CaptureWriter(tmp_path / "stream_capture.db"), streamed=lambda symbol: None)
+    sweep = ChainSweep(["AAA", "BBB"], lambda topic, msg: published.append(msg), clock=lambda: now,
+                       held=frozenset, connection=lambda: 1)
     client = sc.client_from_token_file_atomic(str(_token_file(tmp_path, 3600)), "k", "s",
                                               transport=schwab.transport)
     try:

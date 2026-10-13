@@ -44,12 +44,14 @@ import push_changes
 from app.options.order_flow import history as recent
 
 from app.options.order_flow.state import (
-    OptionRecord,
+    ContractRecord,
     clear_all_live_state,
+    clear_contracts,
     clear_symbol,
     push_book,
+    push_contract,
     push_level_one,
-    push_option_record,
+    push_trade,
 )
 
 import live_market_plane as _lmp
@@ -122,52 +124,16 @@ async def select_flow_contract(contract: "str | None") -> None:
 _feed_task: Optional[asyncio.Task] = None
 _feed_running = False
 
-#: Each option contract's last streamed message time (LEVELONE_OPTIONS or OPTIONS_BOOK), keyed
-#: by ticker_storage_key.
-_option_contract_last_update_ts: dict[str, float] = {}
-
 #: Called with the symbol of every streamed equity quote and option message
 #: (server._on_stream_tick: reprices a viewed ticker). Runs on the event loop, so it must return at once.
 _on_tick_callback: Optional[Callable[[str], None]] = None
 _tick_callback_failures = 0
 #: Every streamed 1-minute bar (bar1m.SYM, Schwab CHART_EQUITY), for server._bar_writer to write.
 streamed_bars: "queue.SimpleQueue[dict]" = queue.SimpleQueue()
-#: Called on the event loop with (ticker, contracts, fetched_ts, None) for each whole chain the
-#: daemon fetched, and with (ticker, None, ts, reason) for one it could not deliver
-#: (server._on_chain).
+#: Called on the event loop with (ticker, round's start, None) when the daemon's round of a
+#: ticker is in (its contracts' records hold its answers), and with (ticker, ts, reason) for one
+#: that failed (server._on_chain).
 _on_chain_callback: Optional[Callable[..., None]] = None
-#: ticker -> the chain being received: {"ts", "parts", "got": {part: contracts}}
-_chain_parts: "dict[str, dict]" = {}
-
-
-def assemble_chain_part(msg: dict) -> "list[tuple[str, list | None, float, str | None]]":
-    """One chain message from the daemon (complete_chain_capture.chain_messages) -> what it
-    settles, in order: a chain whose parts did not all arrive before the next one began
-    (ticker, None, ts, reason); a fetch that failed (ticker, None, ts, Schwab's answer); the whole
-    chain once its last part is in (ticker, contracts, fetched_ts, None). A chain missing a part
-    is never returned."""
-    tk, ts = msg.get("ticker"), msg.get("ts_recv")
-    if not tk or not isinstance(ts, (int, float)):
-        return []
-    out = []
-    cur = _chain_parts.get(tk)
-    if cur is not None and cur["ts"] != ts:
-        out.append((tk, None, float(ts), f"the daemon's chain of {tk} arrived with "
-                    f"{len(cur['got'])} of its {cur['parts']} parts"))
-        del _chain_parts[tk]
-        cur = None
-    if "failed" in msg:
-        _chain_parts.pop(tk, None)
-        return [*out, (tk, None, float(ts), str(msg["failed"]))]
-    if cur is None:
-        if int(msg["part"]) != 0:
-            return out              # a chain begun before this console connected: not its chain
-        cur = _chain_parts[tk] = {"ts": ts, "parts": int(msg["parts"]), "got": {}}
-    cur["got"][int(msg["part"])] = msg.get("contracts") or []
-    if len(cur["got"]) == cur["parts"]:
-        del _chain_parts[tk]
-        out.append((tk, [c for i in range(cur["parts"]) for c in cur["got"][i]], float(ts), None))
-    return out
 
 
 def _tick(sym: str) -> None:
@@ -214,7 +180,9 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
                    daemon's price row (_rows_loop), never rebuilt here
       book.SYM     NASDAQ_BOOK / NYSE_BOOK -> order-flow book; OPTIONS_BOOK -> the option
                    contract's book
-      optquote.SYM LEVELONE_OPTIONS -> order-flow state for the contract
+      contract.SYM an option contract's one record (option_ledger) -> the mirror (push_contract),
+                   its trade into the tapes
+      chain.TK     a ticker's round is in, or why it failed -> the levels (server._on_chain)
       markets.DATE Schwab's /markets answer -> that date's sessions (time_et), when it is a 200
 
     Every option message is passed to the tick callback (an equity's tick is its price row's
@@ -224,9 +192,8 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
     if not isinstance(msg, dict):
         return None
     if topic.startswith("chain."):
-        for done in assemble_chain_part(msg):
-            if _on_chain_callback is not None:
-                _on_chain_callback(*done)
+        if _on_chain_callback is not None and msg.get("ticker") and isinstance(msg.get("ts_recv"), (int, float)):
+            _on_chain_callback(msg["ticker"], float(msg["ts_recv"]), msg.get("failed"))
         return None
     if topic.startswith("markets."):
         if msg["status"] == 200:
@@ -258,22 +225,20 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
         if not isinstance(content, dict):
             return None
         push_book(sym, content, msg["service"])
-        if msg.get("service") == "OPTIONS_BOOK":
-            _option_contract_last_update_ts[sym] = ts
-        else:
+        if msg.get("service") != "OPTIONS_BOOK":
             recent.BOOKS.record(sym, msg["service"], content, ts)
             push_changes.changed(sym, push_changes.FLOW)
         return None
-    if kind == "optquote":
-        content = msg.get("content")
-        if not isinstance(content, dict):
+    if kind == "contract":
+        fields = msg.get("fields")
+        if not isinstance(fields, dict):
             return None
-        push_level_one(sym, content, ts_recv=ts, field_received=received)
-        push_option_record(sym, OptionRecord(content, ts, {f: stamp[0] for f, stamp in msg["field_ts"].items()}
-                                                       if "field_ts" in msg else {}))
-        recent.TAPE.record(sym, content, ts)
-        _option_contract_last_update_ts[sym] = ts
-        _tick(sym)          # Schwab sends a Change message only when a field changed
+        record = ContractRecord(fields, msg["field_ts"])
+        push_contract(sym, record)
+        if recent.TAPE.record(sym, fields, record.times, ts):
+            push_trade(sym, fields["last"], fields.get("lastSize"), fields.get("tradeTimeInLong"),
+                       float(record.times["last"][1]))
+        _tick(sym)          # a record changes only when Schwab sent it something new
     return None
 
 
@@ -331,6 +296,7 @@ async def serve_push(ws) -> None:
     (select_flow_contract), the watchlist requests sent on it (watchlist_request), and every
     frame applied the moment it arrives (_ingest_pushed)."""
     global _push_ws
+    clear_contracts()           # the daemon pushes every record again on a new connection
     await ws.send(json.dumps({"op": "flow_contract", "contract": _flow_contract}))
     _push_ws = ws
     try:
@@ -396,7 +362,6 @@ def apply_heartbeat(feed: Any) -> None:
     before = set().union(*(previous[s] for s in OPTION_PRODUCER_SERVICES if s in previous))
     for sym in before.difference(*(_lmp.held_reported(s) for s in OPTION_PRODUCER_SERVICES)):
         clear_symbol(sym)
-        _option_contract_last_update_ts.pop(sym, None)
 
 
 #: a contract's subscription, as the Flow panel shows it: the daemon's option rule holds it on
@@ -415,7 +380,6 @@ def get_option_contract_streaming_diagnostics(for_contract: str, now: float) -> 
     return {
         "queried_contract": c,
         "subscription_state": SUBSCRIBED if c in _lmp.held_by_daemon("LEVELONE_OPTIONS", now) else NOT_STREAMED,
-        "streaming_last_update_ts": _option_contract_last_update_ts.get(c),
         "feed_health": {"replay": "healthy" if healthy else "stale" if _feed_running else "not connected",
                         "l1": _service_feed(c, "LEVELONE_OPTIONS", now),
                         "book": _service_feed(c, "OPTIONS_BOOK", now)},
@@ -445,7 +409,6 @@ def stop_order_flow_stream(*, join_timeout: float = STREAM_THREAD_JOIN_TIMEOUT_S
     global _feed_running, _feed_task
     _log_stream("STREAM_THREAD_JOIN_START", join_timeout_sec=join_timeout)
     _feed_running = False
-    _option_contract_last_update_ts.clear()
     clear_all_live_state()
     task = _feed_task
     if task is not None and not task.done():

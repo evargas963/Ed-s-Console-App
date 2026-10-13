@@ -15,8 +15,9 @@ import asyncio
 import sqlite3
 from datetime import datetime
 
+import option_ledger
 from app.market_data.schwab.streaming import capture
-from calibration.complete_chain_capture import chain_messages
+from calibration.complete_chain_capture import chain_round_message
 from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus, book_msg, options_quote_msg, quote_msg
 from tests.real_chains import MRVL, SPY_0DTE
 from time_et import ET
@@ -63,8 +64,10 @@ def test_only_the_option_contracts_traded_are_recorded_and_every_equity_message(
                  asyncio.create_task(daemon.follow_market(stop))]
         await asyncio.sleep(0)
         for rc in (SPY_0DTE, MRVL):
-            for topic, msg in chain_messages(rc.ticker, rc.chain, rc.now.timestamp()):
-                bus.publish(topic, msg)
+            for ct in rc.chain:                              # each contract's record opened, the round in
+                bus.publish(*option_ledger.posting(ct["symbol"], option_ledger.opening(ct, rc.ticker),
+                                                   ct.get("quoteTimeInLong")))
+            bus.publish(*chain_round_message(rc.ticker, rc.now.timestamp()))
             bus.publish(f"quote.{rc.ticker}", quote_msg(symbol=rc.ticker, last=rc.spot, src="schwab_l1",
                                                         native={"key": rc.ticker, "LAST_PRICE": rc.spot}))
         await _until(lambda: daemon.saved_options == frozenset(spy_kept | mrvl_kept))

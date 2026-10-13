@@ -101,6 +101,26 @@ CREATE TABLE IF NOT EXISTS stream_markets_raw (
     src TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_smkr_date_ts ON stream_markets_raw(date, ts_recv);
+-- Schwab's /chains answers, verbatim: one row per expiry asked, its status and the whole answer.
+CREATE TABLE IF NOT EXISTS stream_chains_raw (
+    ts_recv REAL NOT NULL,
+    symbol TEXT NOT NULL,
+    expiry TEXT NOT NULL,
+    status INTEGER NOT NULL,
+    native_json TEXT NOT NULL,
+    src TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_schr_sym_ts ON stream_chains_raw(symbol, expiry, ts_recv);
+-- Schwab's /quotes answers for option contracts, verbatim: one row per request, the symbols asked,
+-- its status and the whole answer.
+CREATE TABLE IF NOT EXISTS stream_option_quotes_rest_raw (
+    ts_recv REAL NOT NULL,
+    symbols_json TEXT NOT NULL,
+    status INTEGER NOT NULL,
+    native_json TEXT NOT NULL,
+    src TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_soqrest_ts ON stream_option_quotes_rest_raw(ts_recv);
 -- The watchlist, the one list of tickers Schwab is asked for (written only by the daemon): one row
 -- per add or removal the console asked for -- the whole list after it, what happened to the
 -- ticker, and Schwab's /quotes answer to an add's check, as sent. The newest row is the list.
@@ -232,9 +252,14 @@ def subscription_msg(*, service: str, command: str, symbols: "list[str]", code: 
 #: older one at once, nothing old waits, and what a reader holds is bounded by the number of
 #: topics, never by how fast Schwab sends (D3).
 LOG, LATEST = "log", "latest"
-#: the topics whose messages carry only the fields that changed (Schwab's LEVELONE services),
-#: by the key of the Schwab item in the message: their current record merges field by field
-_FIELD_DELTA = {"quote": "native", "optquote": "content"}
+#: the topics whose messages carry only the fields that changed (Schwab's LEVELONE_EQUITIES, and
+#: each option contract's one record, option_ledger), by the key of the fields in the message:
+#: their current record merges field by field, each field the newest by Schwab's time
+_FIELD_DELTA = {"quote": "native", "contract": "fields"}
+#: the topics only the journal (LOG) takes: each message as Schwab sent it, which posts to a
+#: record elsewhere (an option message, a chain or quotes answer posts to its contracts' records)
+#: and is never a current record of its own
+_JOURNAL_ONLY = ("optquote.", "chainanswer.", "quotesanswer.")
 
 
 def current_key(topic: str, msg: Any) -> str:
@@ -270,8 +295,7 @@ class Subscription:
             self.wake.set()
 
     async def get(self) -> tuple[str, Any]:
-        """LOG: the next message. LATEST: (topic, current record) of the next changed topic; a
-        chain's record is its parts, in order."""
+        """LOG: the next message. LATEST: (topic, current record) of the next changed topic."""
         if self.policy == LOG:
             return await self.queue.get()
         while True:
@@ -286,17 +310,15 @@ class Subscription:
 
 
 class MessageBus:
-    """Every Schwab message is published once. It becomes its topic's current record -- the
-    newest by Schwab's time (`schwab_ts`, the frame's timestamp; a chain by its fetch time):
-    a LEVELONE message merged field by field, a book, bar or news item whole, a chain whole once
-    all its parts are in -- and each reader takes it by its policy (LOG or LATEST)."""
+    """Every Schwab message is published once. The journal (LOG) takes each as sent; one that is
+    a record of its own becomes its topic's current record -- the newest by Schwab's time
+    (`schwab_ts`): an equity quote and an option contract's record (option_ledger) merged field
+    by field, a book, bar or news item whole -- which each live reader (LATEST) takes."""
 
     def __init__(self) -> None:
         self._subs: list[Subscription] = []
         #: key (current_key) -> (topic, record)
         self.current: dict[str, tuple[str, Any]] = {}
-        #: chain topic -> (fetch time, {part: message}, parts): the newest fetch, filling
-        self._chains: dict[str, tuple[float, dict, int]] = {}
 
     def subscribe(self, prefix: str, *, policy: str = LATEST) -> Subscription:
         """A LATEST reader starts with every current record under `prefix` to read."""
@@ -314,13 +336,10 @@ class MessageBus:
 
     def publish(self, topic: str, msg: Any) -> None:
         key = current_key(topic, msg)
-        chain = topic.startswith("chain.")
-        changed = self._chain(key, topic, msg) if chain else self._newest(key, topic, msg)
+        journal = topic.startswith(_JOURNAL_ONLY)
+        changed = not journal and self._newest(key, topic, msg)
         for sub in self._subs:
-            if not topic.startswith(sub.prefix):
-                continue
-            # a chain's record is its own history (the chain sweep writes it), never the log's
-            if (sub.policy == LOG and not chain) or (sub.policy == LATEST and changed):
+            if topic.startswith(sub.prefix) and (sub.policy == LOG or changed):
                 sub.deliver(key, topic, msg)
 
     def forget(self, key: str) -> None:
@@ -353,22 +372,6 @@ class MessageBus:
             merged[f], stamps[f] = body[f], stamp
         top = rec if _older(t, rec.get("schwab_ts")) else msg   # the record's own time: its newest
         self.current[key] = (topic, {**top, body_key: merged, "field_ts": stamps})
-        return True
-
-    def _chain(self, key: str, topic: str, msg: dict) -> bool:
-        """A chain part (or a failed fetch, which has no parts): the newest fetch of the ticker
-        is kept; once all its parts are in it replaces the current chain whole."""
-        ts, part = msg.get("ts_recv"), msg.get("part")
-        held = self._chains.get(key)
-        if held is not None and ts < held[0]:
-            return False                                      # an older fetch: never current
-        if held is None or ts > held[0]:
-            held = (ts, {}, msg.get("parts") if part is not None else 1)
-            self._chains[key] = held
-        held[1][part if part is not None else 0] = msg
-        if len(held[1]) < held[2]:
-            return False
-        self.current[key] = (topic, [held[1][i] for i in sorted(held[1])])
         return True
 
 
@@ -436,6 +439,14 @@ _INSERTS = {
                      lambda m: (m["ts_recv"], m["symbol"], m["series"], json.dumps(m["answer"]), m["src"])),
     "markets": ("INSERT INTO stream_markets_raw(ts_recv,date,status,native_json,src) VALUES(?,?,?,?,?)",
                 lambda m: (m["ts_recv"], m["date"], m["status"], json.dumps(m["answer"]), m["src"])),
+    "chainanswer": ("INSERT INTO stream_chains_raw(ts_recv,symbol,expiry,status,native_json,src) "
+                    "VALUES(?,?,?,?,?,?)",
+                    lambda m: (m["ts_recv"], m["symbol"], m["expiry"], m["status"], json.dumps(m["answer"]),
+                               m["src"])),
+    "quotesanswer": ("INSERT INTO stream_option_quotes_rest_raw(ts_recv,symbols_json,status,native_json,src) "
+                     "VALUES(?,?,?,?,?)",
+                     lambda m: (m["ts_recv"], json.dumps(m["symbols"]), m["status"], json.dumps(m["answer"]),
+                                m["src"])),
     "watchlist": ("INSERT INTO stream_watchlist(ts_recv,symbol,op,tickers_json,status,native_json,src) "
                   "VALUES(?,?,?,?,?,?,?)",
                   lambda m: (m["ts_recv"], m["ticker"], m["op"], json.dumps(m["tickers"]), m["status"],
@@ -493,7 +504,8 @@ SPILL_CHUNK = 5000
 KEPT_BY_TIME = (("stream_quotes_raw", "ts_recv"), ("stream_book_raw", "ts_recv"),
                 ("stream_options_quotes_raw", "ts_recv"), ("stream_bars_raw", "ts_recv"),
                 ("stream_news_raw", "ts_recv"), ("stream_pricehistory_raw", "ts_recv"),
-                ("stream_markets_raw", "ts_recv"),
+                ("stream_markets_raw", "ts_recv"), ("stream_chains_raw", "ts_recv"),
+                ("stream_option_quotes_rest_raw", "ts_recv"),
                 ("stream_watchlist", "ts_recv"), ("stream_subscriptions", "ts"),
                 ("stream_feed_status", "ts"), ("stream_write_failures", "ts"))
 #: rows removed in one transaction, so a live write never waits behind a long delete
@@ -1004,7 +1016,7 @@ class CaptureWriter:
             await asyncio.to_thread(thread.join)
 
     def _hand(self, item) -> None:
-        if not self.saves(*item):
+        if item[0].split(".", 1)[0] not in _INSERTS or not self.saves(*item):   # no table: not recorded
             return
         with self._lock:
             if self.state == WRITER_DEAD:

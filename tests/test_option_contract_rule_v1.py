@@ -29,8 +29,9 @@ import server
 from app.market_data.schwab.streaming import capture
 from app.market_data.schwab.streaming.live_push import serve_live_push
 from app.options.order_flow import streaming as ofs
-from calibration.complete_chain_capture import chain_messages
+from app.options.order_flow.state import clear_all_live_state
 from schwab_client import flatten_chain_contracts
+from tests.feed_live_helper import daemon_round
 from stream_spine import HealthRegistry, MessageBus, quote_msg
 from tests.schwab_rest_standin import LocalSchwab
 from tests.schwab_stream_standin import LocalStreamer
@@ -98,8 +99,7 @@ class _Market:
         self.daemon = capture.Daemon(self.bus, HealthRegistry(), watchlist, clock=clock)
 
     def chain(self, tk: str, ts: float = CAPTURED, contracts: "list[dict] | None" = None) -> None:
-        for topic, msg in chain_messages(tk, CHAINS[tk] if contracts is None else contracts, ts):
-            self.bus.publish(topic, msg)
+        daemon_round(self.bus, tk, CHAINS[tk] if contracts is None else contracts, ts)
 
     def price(self, tk: str, last: float) -> None:
         self.bus.publish(f"quote.{tk}", quote_msg(symbol=tk, last=last, src="schwab_l1",
@@ -224,8 +224,6 @@ def test_the_flow_panels_contract_streams_on_both_services_on_top_of_the_rule(tm
     far = max(CHAINS["MRVL"], key=lambda c: _order(c, PRICES["MRVL"]))["symbol"]
     want = _rule(CHAINS, PRICES, CAPTURED, ["MRVL", "SPY"], flow=far)
     market = _Market(tmp_path, ["MRVL", "SPY"], lambda: CAPTURED)
-    with server._terrain_cache_lock:                              # the console holds MRVL's chain
-        server._terrain_cache["MRVL"] = {"_contract_symbols": frozenset(c["symbol"] for c in CHAINS["MRVL"])}
     restarted = capture.Daemon(MessageBus(), HealthRegistry(), ["MRVL"])
     held: dict = {}
 
@@ -241,7 +239,7 @@ def test_the_flow_panels_contract_streams_on_both_services_on_top_of_the_rule(tm
                                                        on_request=restarted.console_frame))]
         ws = await _connect(connect, ports[0])
         console = asyncio.create_task(ofs.serve_push(ws))
-        await _until(lambda: ofs._push_ws is ws)
+        await _until(lambda: ofs._push_ws is ws and server._contract_ticker(far) == "MRVL")   # its record pushed
         answer = await server.post_flow_contract({"contract": far})
         await _until(lambda: m.holds(want))
         held.update({s: set(m.daemon.held[s]) for s in (L1, BOOK)})
@@ -262,6 +260,7 @@ def test_the_flow_panels_contract_streams_on_both_services_on_top_of_the_rule(tm
     finally:
         with server._terrain_cache_lock:
             server._terrain_cache.pop("MRVL", None)
+        clear_all_live_state()
     assert far in held[L1] and far in held[BOOK]
     assert far not in by_definition(CHAINS["MRVL"], PRICES["MRVL"], 1500, CAPTURED)
 

@@ -180,6 +180,11 @@ class _ToLocal(httpx.BaseTransport):
 
 
 def delivered(published: list, ticker: str) -> "dict[str, dict]":
-    """The ticker's contracts in the chain the sweep published, by symbol."""
-    return {ct["symbol"]: ct for topic, msg in published if topic == f"chain.{ticker}" and "contracts" in msg
-            for ct in msg["contracts"]}
+    """The ticker's contract records as the ledger holds them after what the sweep published
+    (each posting applied to the daemon's bus, stream_spine.MessageBus): symbol -> its fields."""
+    from stream_spine import MessageBus
+    bus = MessageBus()
+    for topic, msg in published:
+        bus.publish(topic, msg)
+    return {rec["symbol"]: rec["fields"] for topic, rec in bus.current.values()
+            if topic.startswith("contract.") and rec["fields"].get("ticker") == ticker}

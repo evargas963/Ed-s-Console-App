@@ -19,7 +19,8 @@ import app.options.order_flow.state as ofls
 import live_market_plane as lmp
 from app.market_data.schwab.streaming import live_push
 from app.options.order_flow import streaming as ofs
-from stream_spine import MessageBus, book_msg, options_quote_msg, quote_msg
+import option_ledger
+from stream_spine import MessageBus, book_msg, current_key, quote_msg
 from tests.feed_live_helper import daemon_holds, no_daemon
 
 _MIX = json.loads((Path(__file__).parent / "fixtures" / "real_stream_mix_2026_10_05_1400ct.json")
@@ -28,10 +29,11 @@ BOOK_CONTRACT = "SPY   261005C00774000"
 
 
 def _message(m: dict) -> "tuple[str, dict]":
-    """One fixture row as the daemon publishes it on its bus."""
+    """One fixture row as the daemon publishes it on its bus (an option message: posted to its
+    contract's record, capture._publisher)."""
     sym, svc, ts = m["item"]["key"], m["service"], m["ts_recv"]
     if svc == "LEVELONE_OPTIONS":
-        return f"optquote.{sym}", options_quote_msg(symbol=sym, content=m["item"], src="schwab_options_l1", ts_recv=ts)
+        return option_ledger.posting(sym, option_ledger.from_stream(m["item"], m["schwab_ts"]), m["schwab_ts"], ts)
     if svc == "LEVELONE_EQUITIES":
         return f"quote.{sym}", quote_msg(symbol=sym, src="schwab_l1", ts_recv=ts, native=m["item"])
     return f"book.{sym}", book_msg(symbol=sym, service=svc, content=m["item"], src="schwab_book", ts_recv=ts)
@@ -91,23 +93,25 @@ def test_every_option_and_equity_message_on_the_one_push_reaches_the_console():
 
 
 def test_a_contract_the_daemon_stops_streaming_no_longer_shows_as_current():
-    """The option rule moves off a contract (the daemon's status no longer holds it): the
-    console forgets its live values, so no screen shows its last message as current."""
+    """The option rule moves off a contract (the daemon's status no longer holds it): its record
+    stands (the ledger's: its last values, which the quotes keep posting to), and its feed reads
+    not live, so no screen shows its last message as current."""
     m = next(m for m in _MIX if m["service"] == "LEVELONE_OPTIONS" and "BID_PRICE" in m["item"])
     sym = m["item"]["key"]
+    bus = MessageBus()
     ofls.clear_all_live_state()
     try:
         daemon_holds(time.time(), {"LEVELONE_OPTIONS": [sym], "OPTIONS_BOOK": []})
-        ofs._ingest_pushed(*_message(m))
+        topic, msg = _message(m)
+        bus.publish(topic, msg)
+        ofs._ingest_pushed(topic, bus.current[current_key(topic, msg)][1])
         held = ofls.option_top(sym)
-        ofs.apply_heartbeat({"schwab_socket_open": True,            # a status without its time is not applied
-                              "held": {"LEVELONE_OPTIONS": [], "OPTIONS_BOOK": []}})
-        lmp.record_feed_down()                                       # nor does a feed down release anything
-        unapplied = ofls.option_top(sym)
+        live = lmp.feed_live_for(sym, "LEVELONE_OPTIONS", time.time())
         daemon_holds(time.time(), {"LEVELONE_OPTIONS": [], "OPTIONS_BOOK": []})
-        released = ofls.option_top(sym)
+        stands = ofls.option_top(sym)
+        moved_off = lmp.feed_live_for(sym, "LEVELONE_OPTIONS", time.time())
     finally:
         ofls.clear_all_live_state()
         no_daemon()
-    assert held["bid"] == m["item"]["BID_PRICE"] and unapplied == held
-    assert released is None
+    assert held["bid"] == m["item"]["BID_PRICE"] and live is True
+    assert stands == held and moved_off is False

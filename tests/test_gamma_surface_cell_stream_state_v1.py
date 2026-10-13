@@ -23,8 +23,7 @@ import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 import server
-from stream_spine import options_quote_msg
-from tests.feed_live_helper import daemon_holds, no_daemon
+from tests.feed_live_helper import daemon_holds, ledger_open, no_daemon, through_the_daemons_bus
 from tests.real_chains import CRWD
 from time_et import ET
 
@@ -56,10 +55,10 @@ def _publish(held, ticked, *, at=_AT, socket_open=True):
     daemon_holds(at.timestamp(), {"LEVELONE_EQUITIES": [TK], "LEVELONE_OPTIONS": list(held)},
                  socket_open=socket_open)
     ofs._price_rows[TK] = {"ticker": TK, "spot": _SPOT, "trade_ts": at.timestamp()}
+    bus = ledger_open(TK, _CONTRACTS, at.timestamp() - 10.0)
     for sym in ticked:
-        ofs._ingest_pushed(f"optquote.{sym}", options_quote_msg(
-            symbol=sym, content={"key": sym, "GAMMA": 0.05}, src="schwab_options_l1", ts_recv=at.timestamp() - 1))
-    server._publish_levels(TK, _CONTRACTS, at.timestamp() - 10.0, now=at)
+        through_the_daemons_bus(bus, sym, [{"GAMMA": 0.05}], [at.timestamp() - 1])
+    server._publish_levels(TK, at.timestamp() - 10.0, now=at)
     body = server.gamma_surface_payload(TK, "all", None, 0, None, None, at)
     with server._terrain_cache_lock:
         surface = server._terrain_cache[TK]["_gamma_surface"]
@@ -118,7 +117,7 @@ def test_a_held_contract_with_no_tick_is_pending_only_while_the_daemon_says_it_h
     _cov, surface = _publish([sym], [], at=_CLOSED)
     pending = [leg["state"] for leg in _legs(surface, sym)]
     lmp.record_feed_down()
-    server._publish_levels(TK, _CONTRACTS, _CLOSED.timestamp() - 10.0, now=_CLOSED)
+    server._publish_levels(TK, _CLOSED.timestamp() - 10.0, now=_CLOSED)
     with server._terrain_cache_lock:
         down = [leg["state"] for leg in _legs(server._terrain_cache[TK]["_gamma_surface"], sym)]
     assert pending == ["pending"] and down == ["unavailable"]

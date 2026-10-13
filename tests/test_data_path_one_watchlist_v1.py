@@ -26,8 +26,9 @@ import server
 from app.market_data.schwab.streaming import capture
 from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT, serve_live_push
 from app.options.order_flow import streaming as ofs
-from calibration.complete_chain_capture import ChainSweep, chain_messages
+from calibration.complete_chain_capture import ChainSweep
 from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus, quote_msg
+from tests.feed_live_helper import daemon_round
 from tests.schwab_rest_standin import CHECKS, QUOTES, LocalSchwab
 from tests.schwab_stream_standin import FIELD_REPLIES, HIGHEST_FIELD, LocalStreamer, refusal
 
@@ -74,10 +75,9 @@ def _answers(log) -> "list[tuple[str, str, int, str]]":
 
 
 def _market(bus, ticker: str, contracts: "list[dict]", price: float, ts: float) -> None:
-    """`ticker`'s chain and price on the daemon's bus, as the chain sweep and the stream publish
+    """`ticker`'s round and price on the daemon's bus, as the chain sweep and the stream publish
     them: the option rule's inputs."""
-    for topic, msg in chain_messages(ticker, contracts, ts):
-        bus.publish(topic, msg)
+    daemon_round(bus, ticker, contracts, ts)
     bus.publish(f"quote.{ticker}", quote_msg(symbol=ticker, last=price, src="schwab_l1",
                                              native={"key": ticker, "LAST_PRICE": price}))
 
@@ -235,8 +235,8 @@ def test_an_added_ticker_is_checked_once_asked_for_everywhere_and_a_removed_one_
     db = tmp_path / "stream_capture.db"
     bus = MessageBus()
     daemon = capture.Daemon(bus, HealthRegistry(), ["SPY"])
-    daemon.chains = ChainSweep(tmp_path / "ed_console.db", daemon.watchlist, lambda t, m: None,
-                               failures=CaptureWriter(db), streamed=daemon.option_record)
+    daemon.chains = ChainSweep(daemon.watchlist, lambda t, m: None,
+                               held=lambda: daemon.held["LEVELONE_OPTIONS"], connection=lambda: daemon.connection)
     port = _free_port()
 
     def asked(svc):
@@ -295,9 +295,8 @@ def test_with_the_watchlist_empty_the_sweep_asks_for_nothing_and_waits(tmp_path,
 
     from time_et import ET
     schwab = LocalSchwab()
-    sweep = ChainSweep(tmp_path / "ed_console.db", [], lambda t, m: None,
-                       clock=lambda: datetime(2026, 10, 7, 10, 0, tzinfo=ET).timestamp(),
-                       failures=CaptureWriter(tmp_path / "stream_capture.db"), streamed=lambda s: None)
+    sweep = ChainSweep([], lambda t, m: None, clock=lambda: datetime(2026, 10, 7, 10, 0, tzinfo=ET).timestamp(),
+                       held=lambda: frozenset(), connection=lambda: 0)
     client = schwab.client(tmp_path)
     stop = threading.Event()
     worker = threading.Thread(target=sweep.work, args=(lambda: client, stop), daemon=True)
@@ -328,7 +327,7 @@ def test_a_viewed_ticker_warms_only_on_the_watchlist_and_a_silent_daemon_says_so
         assert (d_on["warming"], d_on["reason"]) == (True, "no terrain snapshot has been computed yet")
         assert (d_off["warming"], d_off["reason"]) == (False, "no chain is fetched for this ticker: it is not on "
                                                               "the watchlist")
-        server._on_chain(on, None, time.time(), "full chain returned HTTP 400")
+        server._on_chain(on, time.time(), "full chain returned HTTP 400")
         assert json.loads(server.get_options_gamma_surface(on).body)["reason"] == (
             "no terrain snapshot has been computed yet — chain fetch failed (full chain returned HTTP 400)")
         lmp.record_feed_heartbeat({"ts": time.time() - 100, "schwab_socket_open": True, "watchlist": [on]})

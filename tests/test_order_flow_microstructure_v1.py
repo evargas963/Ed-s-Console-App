@@ -17,7 +17,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import app.options.order_flow.engine as ofe
-from app.options.order_flow.state import OptionRecord, OrderFlowState
+from app.options.order_flow.state import ContractRecord, OrderFlowState
 from tests.feed_live_helper import no_daemon, through_the_daemons_bus
 
 FIXTURE = ROOT / "tests" / "fixtures" / "real_options_stream_history_samples.json"
@@ -225,8 +225,8 @@ def test_invalid_sizes_are_rejected():
     from level totals, and an invalid L1 size must not be published as a real top-of-book size.
     The L1 size is read where it is stored (OrderFlowState.option_top)."""
     l1 = OrderFlowState()
-    l1.push_option_record("BADSIZE", OptionRecord(
-        {"BID_PRICE": 712.47, "ASK_PRICE": 712.49, "BID_SIZE": -5, "ASK_SIZE": 500}, 1.0, {}))
+    l1.push_contract("BADSIZE", ContractRecord(
+        {"bid": 712.47, "ask": 712.49, "bidSize": -5, "askSize": 500}, {}))
     bad = {"content": [
         {"BIDS": [{"BID_PRICE": 712.47, "TOTAL_VOLUME": 1000},
                   {"BID_PRICE": 712.46, "TOTAL_VOLUME": -40},          # negative -> dropped
@@ -452,20 +452,21 @@ def test_an_equity_l1_quote_is_not_stored_a_second_time_in_order_flow_state():
 
 def test_size_g_the_live_push_seam_threads_each_messages_receive_time_into_push_level_one(monkeypatch):
     """The production seam (order_flow_streaming._ingest_pushed, fed by the daemon's live
-    push) must hand push_level_one the MESSAGE's own ts_recv for both equity
-    (LEVELONE_EQUITIES) and option (LEVELONE_OPTIONS) messages -- never the time the console
-    processed it."""
+    push) must hand the trade tape the MESSAGE's own ts_recv for both equity
+    (LEVELONE_EQUITIES, push_level_one) and option (LEVELONE_OPTIONS, the contract's record:
+    push_trade) messages -- never the time the console processed it."""
     import app.options.order_flow.streaming as ofs
-    from stream_spine import options_quote_msg, quote_msg
+    from stream_spine import MessageBus, quote_msg
 
     seen = []
     monkeypatch.setattr(ofs, "push_level_one",
                         lambda sym, item, *, ts_recv, field_received: seen.append((sym, ts_recv)))
+    monkeypatch.setattr(ofs, "push_trade", lambda sym, price, size, trade_ms, received_ts:
+                        seen.append((sym, received_ts)))
     ofs._ingest_pushed("quote.SIZEG", quote_msg(
         symbol="SIZEG", src="schwab_l1", ts_recv=1234.5, native={"LAST_PRICE": 1.0}))
-    ofs._ingest_pushed("optquote.SIZEG  260918C00001000", options_quote_msg(
-        symbol="SIZEG  260918C00001000", content={"BID_PRICE": 1.0}, src="schwab_options_l1",
-        ts_recv=2345.5))
+    through_the_daemons_bus(MessageBus(), "SIZEG  260918C00001000",
+                            [{"LAST_PRICE": 1.0, "LAST_SIZE": 1, "TRADE_TIME_MILLIS": 2345000}], [2345.5])
     assert seen == [("SIZEG", 1234.5), ("SIZEG  260918C00001000", 2345.5)]
 
 

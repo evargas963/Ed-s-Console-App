@@ -34,14 +34,23 @@ def test_each_contract_carries_the_chains_rate_and_dividend_as_sent():
 
 
 def test_a_streamed_contract_takes_iv_beside_gamma_from_its_stream():
-    from math_exposure_core import stream_priced
+    """The contract's record (option_ledger) opened from the chain, then one LEVELONE_OPTIONS
+    message: its gamma and IV are the stream's, each with that message's Schwab time; its terms
+    and open interest stay the chain's."""
+    import option_ledger
+    from stream_spine import MessageBus, current_key
     ct = SPY_0DTE.chain[0]
-    priced = stream_priced(ct, {"key": ct["symbol"], "GAMMA": 0.01, "VOLATILITY": 18.5},
-                           {"GAMMA": 1791400000000, "VOLATILITY": 1791400001000})
-    assert priced["gamma"] == 0.01 and priced["volatility"] == 18.5
-    assert priced["greeksTime"] == {**(ct.get("greeksTime") or dict.fromkeys(("gamma", "delta", "theta", "vega", "rho", "volatility"))),
-                                    "gamma": 1791400000000, "volatility": 1791400001000}
-    assert priced["openInterest"] == ct["openInterest"] and priced["strikePrice"] == ct["strikePrice"]
+    bus = MessageBus()
+    bus.publish(*option_ledger.posting(ct["symbol"], option_ledger.opening(ct, "SPY"), ct["quoteTimeInLong"]))
+    streamed = ct["quoteTimeInLong"] + 1000
+    topic, msg = option_ledger.posting(ct["symbol"], option_ledger.from_stream(
+        {"key": ct["symbol"], "GAMMA": 0.01, "VOLATILITY": 18.5}, streamed), streamed)
+    bus.publish(topic, msg)
+    record = bus.current[current_key(topic, msg)][1]
+    assert record["fields"]["gamma"] == 0.01 and record["fields"]["volatility"] == 18.5
+    assert record["field_ts"]["gamma"][0] == record["field_ts"]["volatility"][0] == streamed
+    assert record["fields"]["openInterest"] == ct["openInterest"]
+    assert record["fields"]["strikePrice"] == ct["strikePrice"]
 
 
 def test_a_flip_whose_curve_disagrees_with_schwab_says_so():

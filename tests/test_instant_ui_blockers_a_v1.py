@@ -146,7 +146,7 @@ def test_the_price_row_carries_feed_state_and_trade_age_and_no_bar():
 def test_spot_gamma_reprice_runs_only_for_a_viewed_heatmap(monkeypatch, view):
     import server as srv
     ran = []
-    monkeypatch.setattr(srv, "_price_chain", lambda tk, what, c, ts: ran.append((tk, what)))
+    monkeypatch.setattr(srv, "_price_chain", lambda tk, what, round_ts: ran.append((tk, what)))
     view("ZZVIEW")
     srv._on_stream_tick("ZZNOTVIEWED")
     srv._on_stream_tick("ZZVIEW")

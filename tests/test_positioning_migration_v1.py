@@ -9,9 +9,11 @@ from pathlib import Path
 
 import pytest
 
+import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 import time_et
+from tests.feed_live_helper import ledger_round
 from terrain_engine import MIGRATION_DRIFT_STRIKES, compute_terrain, positioning_migration
 
 _FX = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_pcg_two_day_chain.json")
@@ -87,12 +89,13 @@ def test_on_a_closed_market_the_prior_day_is_the_day_before_the_chains_own():
         monday = datetime(2026, 9, 28, 10, 0, tzinfo=time_et.ET)
         lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": ["PCG"]}})
         ofs._price_rows["PCG"] = {"ticker": "PCG", "spot": newest["spot"], "trade_ts": monday.timestamp()}
-        server._publish_levels("PCG", newest["contracts"], monday.timestamp(), now=monday)
+        ledger_round("PCG", newest["contracts"], monday.timestamp(), now=monday)
         monday_body = json.loads(server.get_terrain_strikes(ticker="PCG").body)
     finally:
         with server._terrain_cache_lock:
             server._terrain_cache.pop("PCG", None)
         ofs._price_rows.pop("PCG", None)
+        ofls.clear_all_live_state()
         lmp.record_feed_down()
     assert body["prior_source"] == "chain_capture:2026-09-24"
     m = body["migration"]["all"]

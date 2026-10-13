@@ -18,11 +18,11 @@ from pathlib import Path
 
 import pytest
 
+import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 import server
-from stream_spine import options_quote_msg
-from tests.feed_live_helper import no_daemon
+from tests.feed_live_helper import ledger_open, ledger_round, no_daemon, through_the_daemons_bus
 from time_et import ET
 
 _REAL = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_crwd_complete_chain_quarter.json")
@@ -36,8 +36,9 @@ _AT = datetime(2026, 9, 2, 10, 5, tzinfo=ET)
 
 
 def _daemon(price, at: float, held_options=()):
-    """The daemon's heartbeat at `at` and its price row for TK."""
-    lmp.record_feed_heartbeat({"ts": at, "schwab_socket_open": True,
+    """The daemon's heartbeat at `at` (its connection to Schwab begun an hour before) and its
+    price row for TK."""
+    lmp.record_feed_heartbeat({"ts": at, "schwab_socket_open": True, "connected_at": at - 3600,
                                "held": {"LEVELONE_EQUITIES": [TK], "LEVELONE_OPTIONS": list(held_options)}})
     ofs._price_rows[TK] = {"ticker": TK, "spot": price, "trade_ts": _AT.timestamp()}
 
@@ -46,7 +47,7 @@ def _daemon(price, at: float, held_options=()):
 def held():
     """CRWD's chain published at its capture price, the live price since moved to LIVE."""
     _daemon(PUBLISHED, _AT.timestamp())                  # live when the chain is published
-    server._publish_levels(TK, [dict(c) for c in _CONTRACTS], _AT.timestamp(), now=_AT)
+    ledger_round(TK, _CONTRACTS, _AT.timestamp(), now=_AT)
     _daemon(LIVE, time.time())                           # live now, as the routes read it
     with server._terrain_cache_lock:
         payload = server._terrain_cache[TK]
@@ -54,6 +55,7 @@ def held():
     with server._terrain_cache_lock:
         server._terrain_cache.pop(TK, None)
     ofs._price_rows.pop(TK, None)
+    ofls.clear_all_live_state()
     lmp.record_feed_down()
 
 
@@ -157,15 +159,16 @@ def test_heatmap_column_state_cell_age_and_front_expiry_are_served():
     publication): the column is partly streaming and the cell's age is 2 s."""
     sym = next(c["symbol"] for c in _CONTRACTS if c["putCall"] == "CALL")
     _daemon(PUBLISHED, _AT.timestamp(), [sym])
-    ofs._ingest_pushed(f"optquote.{sym}", options_quote_msg(symbol=sym, content={"key": sym, "GAMMA": 0.05},
-                                                            src="schwab_options_l1", ts_recv=_AT.timestamp() - 2))
+    bus = ledger_open(TK, _CONTRACTS, _AT.timestamp() - 10)
+    through_the_daemons_bus(bus, sym, [{"GAMMA": 0.05}], [_AT.timestamp() - 2])
     try:
-        server._publish_levels(TK, [dict(c) for c in _CONTRACTS], _AT.timestamp() - 10, now=_AT)
+        server._publish_levels(TK, _AT.timestamp() - 10, now=_AT)
         body = server.gamma_surface_payload(TK, "all", None, 0, None, None, _AT)
     finally:
         with server._terrain_cache_lock:
             server._terrain_cache.pop(TK, None)
         ofs._price_rows.pop(TK, None)
+        ofls.clear_all_live_state()
         no_daemon()
     assert body["stream_by_expiry"][EXPIRY] == "partial"
     ages = [c["stream"][0]["age_sec"] for c in body["cells"] if c["stream"][0] and c["stream"][0]["age_sec"] is not None]
@@ -193,12 +196,13 @@ def test_an_index_option_is_not_flagged_adjusted_only_schwabs_nonstandard_would_
     lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": ["$SPX"]}})
     ofs._price_rows["$SPX"] = {"ticker": "$SPX", "spot": fx["spot"], "trade_ts": fx["ts_utc"]}
     try:
-        server._publish_levels("$SPX", [dict(c) for c in fx["contracts"]], fx["ts_utc"], now=at)
+        ledger_round("$SPX", fx["contracts"], fx["ts_utc"], now=at)
         body = json.loads(server.get_chain(ticker="$SPX", expiry="2026-10-16").body)
     finally:
         with server._terrain_cache_lock:
             server._terrain_cache.pop("$SPX", None)
         ofs._price_rows.pop("$SPX", None)
+        ofls.clear_all_live_state()
         lmp.record_feed_down()
     assert {c["nonStandard"] for c in fx["contracts"]} == {False}
     assert len(body["contracts"]) == len(fx["contracts"]) and body["adjusted_deliverable_symbols"] == []

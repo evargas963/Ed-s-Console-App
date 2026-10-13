@@ -92,10 +92,11 @@ from stream_spine import (  # noqa: E402
     resolve_stream_db_path,
     subscription_msg,
 )
+import option_ledger  # noqa: E402
 import psutil  # noqa: E402
 from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT, serve_live_push  # noqa: E402
 from app.market_data.schwab.streaming.live_ui import serve_live_ui  # noqa: E402
-from calibration.complete_chain_capture import ChainSweep  # noqa: E402
+from calibration.complete_chain_capture import ChainSweep, capture_slot, newest_capture_ts, write_capture  # noqa: E402
 from config import build_config, load_dotenv_file  # noqa: E402
 from db_authority import canonical_console_db_path  # noqa: E402
 from instrument_identity import ticker_storage_key  # noqa: E402
@@ -308,7 +309,8 @@ def _message(service: str, sym: str, item: dict, schwab_ts: "int | None") -> "tu
 
 def _publisher(service: str, bus: MessageBus, health: HealthRegistry):
     """schwab-py handler for one service: every item -> the bus, with the timestamp Schwab put on
-    the frame. The service counts as alive only when a frame delivered data, not merely arrived."""
+    the frame; an option message also posts to its contract's record (option_ledger). The
+    service counts as alive only when a frame delivered data, not merely arrived."""
     def handler(msg: dict) -> None:
         published = False
         schwab_ts = msg.get("timestamp")
@@ -317,6 +319,9 @@ def _publisher(service: str, bus: MessageBus, health: HealthRegistry):
             if sym:
                 kind, out = _message(service, sym, item, schwab_ts)
                 bus.publish(f"{kind}.{sym}", out)
+                if service == "LEVELONE_OPTIONS":
+                    bus.publish(*option_ledger.posting(sym, option_ledger.from_stream(item, schwab_ts),
+                                                       schwab_ts, out["ts_recv"]))
                 published = True
         if published:
             health.beat(service)
@@ -420,6 +425,8 @@ class Daemon:
         self._ladders: "dict[str, list]" = {}
         self.saved_options: "frozenset[str]" = frozenset()
         self.chains = None                 # the ChainSweep: its round time, its tickers
+        self.history_db = None              # the console's database, where the chain history is written
+        self._written: "dict[str, float | None]" = {}       # ticker -> its newest chain history capture
         self.writer = None                  # the CaptureWriter: its state rides the heartbeat
         self.stop: "asyncio.Event | None" = None   # the daemon's stop (run); a stop request sets it
         self.schwab_client = None           # the daemon's one Schwab client (run): the checks
@@ -431,6 +438,8 @@ class Daemon:
         self._sent: "dict[int, _Sent]" = {}
         self.wake = asyncio.Event()         # a request is waiting: the connection sends it now
         self.stream = None
+        #: the number of the connection to Schwab (each one begun counts) and when it began
+        self.connection, self.connected_at = 0, None
         #: why Schwab is not connected, for /api/health (status()["schwab_down"], read while the
         #: socket is not open): SCHWAB_CONNECTING, or NOT CONNECTED since the first failure in a
         #: row (_down_since) with the last one's reason, as the log has it
@@ -517,15 +526,49 @@ class Daemon:
                 self._rank(ticker)
             self._keep_options()
 
-    def _took_chain(self, ticker: str, record: list) -> None:
-        """A ticker's newest whole chain on the bus (its parts), ordered once its price is held.
-        A failed fetch carries no contracts and changes nothing."""
-        if all("contracts" in part for part in record):
-            self._chains[ticker] = [ct for part in record for ct in part["contracts"]]
-            self._ladders[ticker] = strike_ladders(self._chains[ticker])
-            if ticker in self._prices:
-                self._rank(ticker)
-            self._keep_options()
+    def _took_chain(self, ticker: str, record: dict) -> "asyncio.Future | None":
+        """A ticker's round is in (the chain sweep's): its contracts as the ledger holds them,
+        ordered once its price is held, and the window's chain history written (the write begun,
+        or None). A failed round changes nothing."""
+        if "failed" in record:
+            return None
+        held = self.contracts(ticker)
+        self._chains[ticker] = [fields for fields, _ts in held]
+        self._ladders[ticker] = strike_ladders(self._chains[ticker])
+        if ticker in self._prices:
+            self._rank(ticker)
+        self._keep_options()
+        return self._write_history(ticker, held, record["ts_recv"])
+
+    def _write_history(self, ticker: str, held: "list[tuple[dict, dict]]", started: float) -> "asyncio.Future | None":
+        """The chain history (calibration.complete_chain_capture.write_capture), off the event loop:
+        a round begun inside a capture window of the ticker's option market, the first one of the
+        window for this ticker (a round begun before the close is not the close capture, whenever it
+        is in), each contract's record with each field's Schwab time (`fieldTimes`), at the
+        ticker's newest price and the time the round began. A write that fails is kept by the
+        daemon's writer (its failures ride the heartbeat) and the window's next round tries."""
+        slot = capture_slot(started)
+        if self.history_db is None or slot is None:
+            return None
+        if ticker not in self._written:
+            self._written[ticker] = newest_capture_ts(self.history_db, ticker)
+        before = self._written[ticker]
+        if before is not None and before >= slot:
+            return None
+        self._written[ticker] = slot                       # claim the window for this ticker
+        contracts = [{**fields, "fieldTimes": {f: stamp[0] for f, stamp in times.items()}} for fields, times in held]
+        spot = self._prices.get(ticker)
+
+        def write() -> None:
+            try:
+                write_capture(self.history_db, ticker, contracts, spot, started)
+            except Exception as e:  # noqa: BLE001 -- kept by the writer, shown on the heartbeat; the next round tries
+                log.warning("chain history for %s not written, kept: %s: %s", ticker, type(e).__name__, e)
+                self._written[ticker] = before
+                if self.writer is not None:
+                    self.writer.keep_failure(f"chain_history.{ticker}", {"spot": spot, "contracts": contracts},
+                                             e, time.time())
+        return asyncio.get_running_loop().run_in_executor(None, write)
 
     async def follow_market(self, stop: asyncio.Event) -> None:
         """The option rule's inputs, as the bus has them, until `stop`: each ticker's newest
@@ -607,15 +650,11 @@ class Daemon:
         self.bus.publish(*watchlist_message(self.watchlist, op=op, ticker=ticker, request_id=rid, status=status,
                                             answer=answer))
 
-    def option_record(self, symbol: str) -> "tuple[dict, dict] | None":
-        """`symbol`'s LEVELONE_OPTIONS record while this connection holds it, (content, field_ts):
-        every field Schwab has sent and each one's (Schwab time, receive time). None when it is not
-        held (a record left from a connection that ended is not held) or has sent nothing yet: the
-        chain sweep asks the quotes endpoint for that contract."""
-        entry = self.bus.current.get(_current_key("LEVELONE_OPTIONS", symbol))
-        if symbol not in self.held["LEVELONE_OPTIONS"] or entry is None:
-            return None
-        return entry[1]["content"], entry[1]["field_ts"]
+    def contracts(self, ticker: str) -> "list[tuple[dict, dict]]":
+        """`ticker`'s option contract records as the ledger holds them (option_ledger): each
+        record's fields and each field's (Schwab time, receive time)."""
+        return [(rec["fields"], rec["field_ts"]) for topic, rec in list(self.bus.current.values())
+                if topic.startswith("contract.") and rec["fields"].get("ticker") == ticker]
 
     def status(self) -> dict:
         """What the console and browsers are told every second (live_push / live_ui)."""
@@ -626,6 +665,8 @@ class Daemon:
                 "schwab_down": self.schwab_down,
                 "watchlist": list(self.watchlist),
                 "chain_round_sec": self.chains.round_sec if self.chains is not None else None,
+                # this connection to Schwab: a value the stream sent before it began is not live
+                "connection": self.connection, "connected_at": self.connected_at,
                 "held": {k: sorted(v) for k, v in self.held.items()},
                 "health": self.health.report(now),
                 "writer": self.writer.status() if self.writer is not None else None}
@@ -697,6 +738,7 @@ class Daemon:
         stream._handlers["NEWS_HEADLINE"].append(_RawHandler(_publisher("NEWS_HEADLINE", self.bus, self.health)))
         self.stream = stream
         self._release_held()            # a new connection has asked for nothing and holds nothing
+        self.connection, self.connected_at = self.connection + 1, time.time()
         self._requests, self._sent = [], {}
         self.schwab_down, self._down_since = SCHWAB_CONNECTING, None
         log.info("schwab: connected")
@@ -961,20 +1003,19 @@ def _worker_ended(worker: "asyncio.Future") -> None:
         log.error("chain sweep: ended on %s: %s", type(e).__name__, e, exc_info=e)
 
 
-async def run_chains(daemon: "Daemon", db_path, schwab_client, stop: asyncio.Event, *,
-                     failures: "CaptureWriter") -> None:
+async def run_chains(daemon: "Daemon", db_path, schwab_client, stop: asyncio.Event) -> None:
     """The chain sweep (calibration.complete_chain_capture.ChainSweep) on its own thread, so the
-    stream never waits on a chain; each chain part is published on the event loop, and the bus
-    keeps each ticker's newest whole chain (stream_spine.MessageBus._chain). The sweep reads each
-    option's LEVELONE_OPTIONS record from the bus for its Greeks. A chain whose history write
-    fails is kept by `failures`, the daemon's writer (its failures ride the heartbeat). A sweep
-    that ends on an error is logged with it (_worker_ended): its thread has no error output of
-    its own to reach."""
+    stream never waits on a chain; each answer and each posting to a contract's record is
+    published on the event loop. The sweep asks again only for the contracts the stream does not
+    hold, and once more for each it holds after a new connection to Schwab. Each round's chain
+    history is written to `db_path` (Daemon._write_history). A sweep that ends on an error is
+    logged with it (_worker_ended): its thread has no error output of its own to reach."""
     loop = asyncio.get_running_loop()
     halt = threading.Event()
-    sweep = ChainSweep(db_path, daemon.watchlist,
+    daemon.history_db = db_path
+    sweep = ChainSweep(daemon.watchlist,
                        lambda topic, msg: loop.call_soon_threadsafe(daemon.bus.publish, topic, msg),
-                       failures=failures, streamed=daemon.option_record)
+                       held=lambda: daemon.held["LEVELONE_OPTIONS"], connection=lambda: daemon.connection)
     daemon.chains = sweep
     worker = loop.run_in_executor(None, sweep.work, schwab_client, halt)
     worker.add_done_callback(_worker_ended)
@@ -1021,7 +1062,7 @@ async def run() -> int:
     writer.saves = daemon.saves
     wsub = bus.subscribe("", policy=LOG)                # the record of every message
     tasks = [asyncio.create_task(writer.run(wsub, stop=stop)),
-             asyncio.create_task(run_chains(daemon, db_path, schwab_client, stop, failures=writer)),
+             asyncio.create_task(run_chains(daemon, db_path, schwab_client, stop)),
              asyncio.create_task(record_feed_status(daemon, stop)),
              asyncio.create_task(keep_sessions(daemon, stop)),
              asyncio.create_task(daemon.follow_market(stop)),

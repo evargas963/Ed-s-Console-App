@@ -1,10 +1,11 @@
 """The daemon's chain sweep (DATA_FLOW decisions 1 and 7): the one fetcher of every watchlist ticker's
-chain, what it hands the console, and the chain history it writes.
+chain, the records it posts to the ledger that the console takes, and the chain history the daemon
+writes from them.
 
 Real data: SPY's 2026-11-20 contracts from the capture daemon's full-chain capture of 2026-09-30
 15:31:57 ET and Schwab's quotes for every one of them, served by Schwab's host as a local server
 (tests/schwab_rest_standin.py) to the real sweep and client; MRVL's full chain as Schwab sent it
-(tests/fixtures/real_mrvl_full_chain_vs_strike_window.json, 2,432 contracts, several parts)."""
+(tests/fixtures/real_mrvl_full_chain_vs_strike_window.json, 2,432 contracts)."""
 from __future__ import annotations
 
 import asyncio
@@ -20,9 +21,9 @@ import pytest
 import calibration.complete_chain_capture as cch
 import schwab_client as sc
 from app.market_data.schwab.streaming import capture
-from app.options.order_flow import streaming as ofs
 from json_blob_codec import decode_json_blob
-from stream_spine import LATEST, CaptureWriter, HealthRegistry, MessageBus
+from stream_spine import LATEST, HealthRegistry, MessageBus
+from tests.feed_live_helper import daemon_round
 from tests.schwab_rest_standin import CHAIN, SPY_QUOTES, LocalSchwab
 from time_et import ET
 
@@ -77,83 +78,56 @@ def schwab():
 
 
 def _sweep(tmp_path, schwab, clock):
-    """The daemon's sweep over SPY on `clock`, with the daemon's client of the stand-in host."""
+    """The daemon's sweep over SPY on `clock`, posting to the daemon's ledger, with the daemon's
+    client of the stand-in host; the daemon writes the chain history to its database, and holds
+    SPY's price as Schwab sent it at the capture (the chain answer's underlyingPrice, 766.31)."""
     sqlite3.connect(tmp_path / "ed_console.db").close()          # the daemon's database exists
+    daemon = capture.Daemon(MessageBus(), HealthRegistry(), ["SPY"])
+    daemon.history_db = tmp_path / "ed_console.db"
+    daemon._took_price("SPY", {"native": {"LAST_PRICE": 766.31}})
     published: list = []
-    sweep = cch.ChainSweep(tmp_path / "ed_console.db", ["SPY"],
-                           lambda topic, msg: published.append((topic, msg)), clock=clock,
-                           failures=CaptureWriter(tmp_path / "stream_capture.db"),
-                           streamed=lambda symbol: None)
+
+    def publish(topic, msg):
+        published.append((topic, msg))
+        daemon.bus.publish(topic, msg)
+    sweep = cch.ChainSweep(["SPY"], publish, clock=clock, held=lambda: frozenset(), connection=lambda: 0)
     client = schwab.client(tmp_path)
-    return sweep, published, (lambda: client)
+    return daemon, sweep, published, (lambda: client)
 
 
-def _rotate(sweep, client) -> "set[str]":
-    return sweep.rotation(client, ["SPY"], threading.Event())
-
-
-def _assembled(published):
-    ofs._chain_parts.clear()
-    return [o for _t, msg in published for o in ofs.assemble_chain_part(json.loads(msg["frame"])["msg"])]
-
-
-def _parts(ts: float):
-    """MRVL's chain as the sweep publishes it: 5 parts of CHAIN_PART_CONTRACTS."""
-    return cch.chain_messages("MRVL", _MRVL, ts)
-
-
-def test_a_chain_reaches_the_console_whole_in_parts():
-    published = _parts(_ts("2026-09-30 15:31:57"))
-    assert [m["part"] for _t, m in published] == [0, 1, 2, 3, 4]           # 2,432 contracts
-    (tk, contracts, ts, reason), = _assembled(published)
-    assert (tk, ts, reason) == ("MRVL", _ts("2026-09-30 15:31:57"), None)
-    assert sorted(c["symbol"] for c in contracts) == sorted(c["symbol"] for c in _MRVL)
-
-
-def test_a_chain_missing_a_part_is_never_priced_and_says_why():
-    published = _parts(_ts("2026-09-30 15:31:57"))
-    del published[2]                                     # one part lost on the way
-    published += _parts(_ts("2026-09-30 15:35:57"))      # the next chain begins
-    first, second = _assembled(published)
-    assert first[1] is None and "arrived with 4 of its 5 parts" in first[3]
-    assert second[1] is not None and second[3] is None
-
-
-def test_a_chain_missing_a_part_is_reported_even_when_the_next_chain_is_one_part():
-    """2026-10-01 audit: when the next chain completed in its first part, the report of the
-    incomplete one before it was lost."""
-    early = _parts(_ts("2026-09-30 15:31:57"))[:2]       # two of five parts arrived
-    one_part = cch.chain_messages("MRVL", _MRVL[:cch.CHAIN_PART_CONTRACTS], _ts("2026-09-30 15:35:57"))
-    first, second = _assembled(early + one_part)
-    assert first[1] is None and "arrived with 2 of its 5 parts" in first[3]
-    assert second[1] is not None and len(second[1]) == cch.CHAIN_PART_CONTRACTS
-
-
-def test_a_chain_begun_before_the_console_connected_is_no_failure():
-    """2026-10-01 audit: a console connecting mid-chain got its last parts only and reported the
-    chain as arriving incomplete."""
-    published = _parts(_ts("2026-09-30 15:31:57"))[2:]  # the console connected after part 1
-    published += _parts(_ts("2026-09-30 15:35:57"))
-    (tk, contracts, _ts_, reason), = _assembled(published)
-    assert contracts is not None and reason is None and len(contracts) == len(_MRVL)
+def _rotate(daemon, sweep, published, client) -> "set[str]":
+    """One rotation, and each round it delivers taken by the daemon (Daemon._took_chain), its
+    history write waited for."""
+    async def go():
+        before = len(published)
+        delivered = sweep.rotation(client, ["SPY"], threading.Event())
+        for topic, msg in published[before:]:
+            if topic.startswith("chain."):
+                write = daemon._took_chain(topic.split(".", 1)[1], msg)
+                if write is not None:
+                    await write
+        return delivered
+    return asyncio.run(go())
 
 
 def test_a_refused_chain_reaches_the_console_as_schwabs_answer(tmp_path, schwab):
     schwab.refuse_chain = {"SPY"}
-    sweep, published, client = _sweep(tmp_path, schwab, lambda: _ts("2026-09-30 15:31:57"))
-    assert _rotate(sweep, client) == set()
-    (tk, contracts, _ts_, reason), = _assembled(published)
-    assert tk == "SPY" and contracts is None and reason == "chain for 2026-11-20 returned HTTP 502"
+    daemon, sweep, published, client = _sweep(tmp_path, schwab, lambda: _ts("2026-09-30 15:31:57"))
+    assert _rotate(daemon, sweep, published, client) == set()
+    assert [(t, m["failed"]) for t, m in published if "failed" in m] == [
+        ("chain.SPY", "chain for 2026-11-20 returned HTTP 502")]
 
 
 def test_the_history_is_written_once_per_capture_window_and_never_outside_one(tmp_path, schwab):
+    """Each window's first round is written from the daemon's ledger: every contract's record, its
+    Greeks the quote's, at SPY's price and the time the round began."""
     clock = {"now": 0.0}
-    sweep, _published, client = _sweep(tmp_path, schwab, lambda: clock["now"])
+    daemon, sweep, published, client = _sweep(tmp_path, schwab, lambda: clock["now"])
     for at in ("2026-09-30 15:31:57", "2026-09-30 15:35:00",      # the 15:30 window, twice
                "2026-09-30 16:01:00",                             # the 16:00 window
                "2026-09-30 17:00:00"):                            # after the close capture's window
         clock["now"] = _ts(at)
-        assert _rotate(sweep, client) == {"SPY"}
+        assert _rotate(daemon, sweep, published, client) == {"SPY"}
     with sqlite3.connect(tmp_path / "ed_console.db") as c:
         rows = c.execute("SELECT ts_utc, expiry, spot, n_contracts, chain_json FROM complete_chain_captures "
                          "ORDER BY ts_utc").fetchall()
@@ -162,12 +136,13 @@ def test_the_history_is_written_once_per_capture_window_and_never_outside_one(tm
     assert isinstance(rows[0][4], bytes), "stored compressed"
     stored = {c["symbol"]: c for c in decode_json_blob(rows[0][4])}
     assert all(stored[s]["gamma"] == q["gamma"] for s, q in _QUOTED.items()), "the quote's gamma is stored"
+    assert all(stored[s]["fieldTimes"]["gamma"] == q["quoteTime"] for s, q in _QUOTED.items()), "with its time"
 
 
 def test_an_added_ticker_joins_the_rotation_in_its_turn(tmp_path, schwab):
     """Operator 2026-10-06: every ticker the same, in one rotation; none has priority. TSLA added
     to the watchlist beside SPY: SPY first, then TSLA, in sorted order."""
-    sweep, published, client = _sweep(tmp_path, schwab, lambda: _ts("2026-08-28 09:05"))
+    _daemon, sweep, published, client = _sweep(tmp_path, schwab, lambda: _ts("2026-08-28 09:05"))
     sweep.watchlist = ["TSLA", "SPY"]                      # the daemon's list after an add
     stop = threading.Event()
     worker = threading.Thread(target=sweep.work, args=(client, stop), daemon=True)
@@ -182,14 +157,14 @@ def test_an_added_ticker_joins_the_rotation_in_its_turn(tmp_path, schwab):
 def test_a_fetch_begun_before_the_close_capture_is_not_the_close_capture(tmp_path, schwab):
     """2026-10-01 audit: the capture window was judged by when a fetch finished, so an $SPX
     fetch begun at 16:14:30 (options still trading) and finished at 16:15:10 became the 16:15
-    close capture. A chain is written for the window it began in."""
+    close capture. A round is written for the window it began in."""
     clock = {"times": iter([])}
-    sweep, _published, client = _sweep(tmp_path, schwab, lambda: next(clock["times"]))
+    daemon, sweep, published, client = _sweep(tmp_path, schwab, lambda: next(clock["times"]))
     clock["times"] = itertools.repeat(_ts("2026-09-30 16:00:30"))
-    _rotate(sweep, client)                                 # the 16:00 window's capture
-    clock["times"] = itertools.chain([_ts("2026-09-30 16:14:30")] * 2,      # the rotation and chain begin
+    _rotate(daemon, sweep, published, client)              # the 16:00 window's capture
+    clock["times"] = itertools.chain([_ts("2026-09-30 16:14:30")] * 2,      # the rotation and round begin
                                      itertools.repeat(_ts("2026-09-30 16:15:10")))
-    _rotate(sweep, client)                                 # begun 16:14:30, delivered 16:15:10
+    _rotate(daemon, sweep, published, client)              # begun 16:14:30, in at 16:15:10
     with sqlite3.connect(tmp_path / "ed_console.db") as c:
         assert [_et(r[0]) for r in c.execute("SELECT DISTINCT ts_utc FROM complete_chain_captures")] \
             == ["2026-09-30 16:00"]
@@ -206,15 +181,13 @@ def test_a_failed_history_write_is_not_a_failed_chain_and_the_window_tries_again
                      "completeness_basis TEXT NOT NULL, chain_json TEXT NOT NULL, source TEXT NOT NULL, "
                      "created_at TEXT, refused TEXT NOT NULL, PRIMARY KEY (ticker, expiry, ts_utc))")
     clock = {"now": _ts("2026-09-30 15:31:57")}
-    sweep, published, client = _sweep(tmp_path, schwab, lambda: clock["now"])
-    assert _rotate(sweep, client) == {"SPY"}
+    daemon, sweep, published, client = _sweep(tmp_path, schwab, lambda: clock["now"])
+    assert _rotate(daemon, sweep, published, client) == {"SPY"}
     assert all("failed" not in m for _t, m in published)
-    (tk, contracts, _t, reason), = _assembled(published)
-    assert contracts is not None and reason is None
     with sqlite3.connect(db) as conn:
         conn.execute("DROP TABLE complete_chain_captures")
-    clock["now"] += 120                                    # the same window's next chain
-    _rotate(sweep, client)
+    clock["now"] += 120                                    # the same window's next round
+    _rotate(daemon, sweep, published, client)
     with sqlite3.connect(db) as c:
         assert c.execute("SELECT COUNT(DISTINCT ts_utc) FROM complete_chain_captures").fetchone()[0] == 1
 
@@ -224,9 +197,7 @@ def test_the_daemon_task_stops_when_told(tmp_path):
 
     async def go():
         stop = asyncio.Event()
-        task = asyncio.create_task(capture.run_chains(
-            daemon, "unused.db", lambda: None, stop,
-            failures=CaptureWriter(tmp_path / "stream_capture.db")))
+        task = asyncio.create_task(capture.run_chains(daemon, "unused.db", lambda: None, stop))
         await asyncio.sleep(0)
         stop.set()
         await asyncio.wait_for(task, timeout=5)
@@ -235,29 +206,24 @@ def test_the_daemon_task_stops_when_told(tmp_path):
     assert task.done() and task.exception() is None
 
 
-def test_the_daemons_chain_is_the_current_record_whole_once_all_parts_are_in():
-    """The sweep publishes a chain in parts on the daemon's bus; the chain becomes the ticker's
-    current record only once every part is in, and a console that connects later starts with that
-    whole chain (docs/DATA_FLOW.md §2 D3), every part in order -- never a partial one."""
+def test_a_console_that_connects_later_starts_with_every_contracts_record():
+    """MRVL's round on the daemon's bus (2,432 contracts): a reader that subscribes after it
+    (docs/DATA_FLOW.md §2 D3, a console connecting) starts with every contract's one record, then
+    the round, never part of it."""
     bus = MessageBus()
+    daemon_round(bus, "MRVL", _MRVL, _ts("2026-09-30 15:31:57"))
 
     async def go():
-        sub = bus.subscribe("chain.", policy=LATEST)
-        parts = _parts(_ts("2026-09-30 15:31:57"))
-        for topic, msg in parts[:-1]:
-            bus.publish(topic, msg)
-        assert not sub.changed, "a partial chain is never current"
-        bus.publish(*parts[-1])
-        topic, record = await asyncio.wait_for(sub.get(), timeout=5)
-        late = bus.subscribe("chain.", policy=LATEST)
-        return topic, record, await asyncio.wait_for(late.get(), timeout=5)
-    topic, record, (late_topic, late_record) = asyncio.run(go())
-    assert topic == late_topic == "chain.MRVL"
-    assert [m["part"] for m in record] == list(range(record[0]["parts"])) and len(record) > 1
-    assert [m["part"] for m in late_record] == list(range(late_record[0]["parts"]))
-    (tk, contracts, _ts_, reason), = _assembled([(late_topic, m) for m in late_record])
-    assert tk == "MRVL" and reason is None
-    assert sorted(c["symbol"] for c in contracts) == sorted(c["symbol"] for c in _MRVL)
+        late = bus.subscribe("", policy=LATEST)
+        got = []
+        while len(got) < len(_MRVL) + 1:
+            got.append(await asyncio.wait_for(late.get(), timeout=5))
+        return got
+    got = asyncio.run(go())
+    records = {rec["symbol"]: rec["fields"] for topic, rec in got if topic.startswith("contract.")}
+    assert sorted(records) == sorted(c["symbol"] for c in _MRVL)
+    assert all(records[c["symbol"]]["strikePrice"] == c["strikePrice"] for c in _MRVL)
+    assert got[-1][0] == "chain.MRVL", "the round after its records"
 
 
 def test_the_reader_gives_the_last_full_capture_of_each_day(tmp_path):

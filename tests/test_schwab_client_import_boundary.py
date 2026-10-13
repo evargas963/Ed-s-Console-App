@@ -67,14 +67,24 @@ def test_server_import_does_not_build_client_or_run_login_flow() -> None:
 _CONSOLE_WALK = """
 import json, sys
 from pathlib import Path
+import option_ledger
 import server
 from app.options.order_flow import streaming as ofs
+from calibration.complete_chain_capture import chain_round_message
 from fastapi.testclient import TestClient
+from stream_spine import MessageBus, current_key
 fx = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+quotes = {s: e["quote"] for q in fx["quotes"] for s, e in q["reply"].items()}
+bus = MessageBus()
 with TestClient(server.app) as client:
     ofs._on_chain_callback = server._on_chain
-    ofs._ingest_pushed("chain.SPY", {"src": "schwab_chain", "ticker": "SPY", "ts_recv": fx["capture_ts_utc"],
-                                     "part": 0, "parts": 1, "contracts": fx["chain"]})
+    for ct in fx["chain"]:              # each record as the daemon pushes it: the chain's opening, its quote
+        for fields, at in ((option_ledger.opening(ct, "SPY"), ct.get("quoteTimeInLong")),
+                           (option_ledger.from_quote(quotes[ct["symbol"]]), quotes[ct["symbol"]].get("quoteTime"))):
+            topic, msg = option_ledger.posting(ct["symbol"], fields, at, fx["capture_ts_utc"])
+            bus.publish(topic, msg)
+        ofs._ingest_pushed(topic, bus.current[current_key(topic, msg)][1])
+    ofs._ingest_pushed(*chain_round_message("SPY", fx["capture_ts_utc"]))
     server._chain_pricing.submit(lambda: None).result(timeout=120)   # the chain is priced
     for route in server.app.routes:
         # /api/changes is an open-ended event stream (it reads only the push's own state)

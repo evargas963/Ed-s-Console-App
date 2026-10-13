@@ -49,10 +49,11 @@ def mark_feed_down() -> None:
 
 
 def daemon_holds(at: float, held: dict, *, socket_open: bool = True) -> None:
-    """The daemon's heartbeat stamped `at`, holding `held` ({Schwab service: [symbols]}), as the
-    console's feed loop applies it (streaming.apply_heartbeat)."""
+    """The daemon's heartbeat stamped `at`, holding `held` ({Schwab service: [symbols]}), its
+    connection to Schwab begun an hour before, as the console's feed loop applies it
+    (streaming.apply_heartbeat)."""
     from app.options.order_flow import streaming as ofs
-    ofs.apply_heartbeat({"ts": at, "schwab_socket_open": socket_open, "held": held})
+    ofs.apply_heartbeat({"ts": at, "schwab_socket_open": socket_open, "connected_at": at - 3600, "held": held})
 
 
 #: the receive time of a tick given none, one second after the last
@@ -60,19 +61,60 @@ _RECEIVED = itertools.count(1000)
 
 
 def through_the_daemons_bus(bus, sym: str, ticks: list, ts: "list[float] | None" = None) -> None:
-    """Each LEVELONE_OPTIONS tick of `sym` (received at `ts`, else a second after the last; STAND-IN: its Schwab
-    frame time is its receive time, in ms) published on the daemon's bus (stream_spine.MessageBus),
-    and its current record (every field Schwab has sent, the last of each, each with its time:
-    Streamer API §1.1, Change) pushed to the console as the daemon pushes it."""
+    """Each LEVELONE_OPTIONS tick of `sym` (received at `ts`, else a second after the last; STAND-IN:
+    its Schwab frame time is its receive time, in ms) posted to the contract's record on `bus` as
+    the daemon's handler posts it (option_ledger.from_stream, capture._publisher), and the record
+    pushed to the console as the daemon pushes it."""
+    import option_ledger
     from app.options.order_flow import streaming as ofs
-    from stream_spine import current_key, options_quote_msg
+    from stream_spine import current_key
     for i, tick in enumerate(ticks):
         rx = ts[i] if ts is not None else float(next(_RECEIVED))
-        topic, msg = f"optquote.{sym}", options_quote_msg(
-            symbol=sym, content={"key": sym, **tick}, src="schwab_options_l1", ts_recv=rx,
-            schwab_ts=int(rx * 1000))
+        ms = int(rx * 1000)
+        topic, msg = option_ledger.posting(sym, option_ledger.from_stream({"key": sym, **tick}, ms), ms, rx)
         bus.publish(topic, msg)
         ofs._ingest_pushed(topic, bus.current[current_key(topic, msg)][1])
+
+
+def daemon_round(bus, ticker: str, contracts: list, round_ts: float) -> None:
+    """`ticker`'s round as the chain sweep posts it to the daemon's bus: each captured contract's
+    record opened from the chain and its Greeks posted as its /quotes answer posts them, then the
+    round's message (calibration.complete_chain_capture.chain_round_message). STAND-IN (named):
+    the quote's Greeks are the capture's own (Schwab's quotes' in a daemon capture, the chain's
+    rounded ones in a raw chain answer)."""
+    import option_ledger
+    from calibration.complete_chain_capture import chain_round_message
+    for ct in contracts:
+        greeks = {g: ct[g] for g in option_ledger.GREEK_FIELDS if g in ct}
+        for fields in (option_ledger.opening(ct, ticker), greeks):
+            bus.publish(*option_ledger.posting(ct["symbol"], fields, ct.get("quoteTimeInLong"), round_ts))
+    bus.publish(*chain_round_message(ticker, round_ts))
+
+
+def ledger_open(ticker: str, contracts: list, round_ts: float, bus=None):
+    """The daemon's ledger (`bus`, a new one when None) holding `ticker`'s captured contracts:
+    each record opened from the chain (option_ledger.opening) and its Greeks posted as the sweep's
+    /quotes answer posts them, each record pushed to the console as the daemon pushes it. Returns
+    the bus. STAND-IN (named): the quote's Greeks are the capture's own (Schwab's quotes' in a
+    daemon capture, the chain's rounded ones in a raw chain answer)."""
+    import option_ledger
+    from app.options.order_flow import streaming as ofs
+    from stream_spine import MessageBus, current_key
+    bus = bus if bus is not None else MessageBus()
+    for ct in contracts:
+        greeks = {g: ct[g] for g in option_ledger.GREEK_FIELDS if g in ct}
+        for fields in (option_ledger.opening(ct, ticker), greeks):
+            topic, msg = option_ledger.posting(ct["symbol"], fields, ct.get("quoteTimeInLong"), round_ts)
+            bus.publish(topic, msg)
+        ofs._ingest_pushed(topic, bus.current[current_key(topic, msg)][1])
+    return bus
+
+
+def ledger_round(ticker: str, contracts: list, round_ts: float, *, now):
+    """`ticker`'s round as the daemon delivers it (ledger_open), priced (server._publish_levels)."""
+    import server
+    ledger_open(ticker, contracts, round_ts)
+    return server._publish_levels(ticker, round_ts, now=now)
 
 
 def no_daemon() -> None:

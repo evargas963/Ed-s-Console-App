@@ -22,9 +22,7 @@ import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 import server as srv
 from schwab_client import flatten_chain_contracts
-from math_exposure_core import GREEK_FIELDS
-from stream_spine import MessageBus
-from tests.feed_live_helper import daemon_holds, no_daemon, through_the_daemons_bus
+from tests.feed_live_helper import daemon_holds, ledger_open, no_daemon, through_the_daemons_bus
 from time_et import ET
 
 _FIXTURES = Path(__file__).parent / "fixtures"
@@ -50,20 +48,28 @@ def _clean():
 
 
 def _hold(tk, contracts, fetched_ts, price, streamed=()):
-    """The daemon's status (Schwab's socket open, `tk` and the `streamed` contracts held), each
-    streamed (symbol, fields, receive time) pushed, and `tk`'s chain published at _AT; the status
-    beats at _AT (the publication's time) and again now (the routes' time)."""
+    """The daemon's status (Schwab's socket open, `tk` and the `streamed` contracts held), `tk`'s
+    contracts' records opened (feed_live_helper.ledger_open), each streamed (symbol, fields,
+    receive time) posted to its record, and the round published at _AT; the status beats at _AT
+    (the publication's time) and again now (the routes' time)."""
     held = {"LEVELONE_EQUITIES": [tk], "LEVELONE_OPTIONS": [s for s, _f, _t in streamed]}
     daemon_holds(_AT.timestamp(), held)
     ofs._price_rows[tk] = {"ticker": tk, "spot": price, "trade_ts": fetched_ts}
+    bus = ledger_open(tk, contracts, fetched_ts)
     for sym, fields, ts in streamed:
-        through_the_daemons_bus(MessageBus(), sym, [fields], [ts])
-    srv._publish_levels(tk, [dict(c) for c in contracts], fetched_ts, now=_AT)
+        through_the_daemons_bus(bus, sym, [fields], [ts])
+    srv._publish_levels(tk, fetched_ts, now=_AT)
     daemon_holds(time.time(), held)
 
 
 def _get(**kw):
     return json.loads(srv.get_chain(**{"expiry": None, **kw}).body)
+
+
+def _as_sent(served: list) -> list:
+    """The served contracts' Schwab fields: each without its record's ticker, stream time and
+    field times."""
+    return [{k: v for k, v in c.items() if k not in ("ticker", "streamTime", "fieldTimes")} for c in served]
 
 
 def test_no_held_chain_is_unavailable_with_its_reason():
@@ -77,7 +83,8 @@ def test_every_contract_of_the_expiry_is_served_exactly_as_schwab_sent_it():
     body = _get(ticker="tsla")
     assert body["status"] == "ok" and body["expiry"] == _TSLA_EXPIRY
     assert body["scope"]["kind"] == "complete_single_expiry"
-    assert body["contracts"] == _TSLA_CONTRACTS
+    assert _as_sent(body["contracts"]) == _TSLA_CONTRACTS
+    assert all(c["ticker"] == "TSLA" and set(c["fieldTimes"]) == set(c) - {"fieldTimes"} for c in body["contracts"])
     fractional = [c for c in body["contracts"] if c["strikePrice"] != int(c["strikePrice"])]
     assert len(fractional) == _TSLA["n_fractional_strikes"]
 
@@ -89,26 +96,28 @@ def test_only_the_requested_expiry_is_served():
     missing = _get(ticker="MRVL", expiry="2031-01-17")
     assert len(expiries) == 21 and first["expiry"] == expiries[0]
     for body, expiry in ((first, expiries[0]), (last, expiries[-1])):
-        assert body["contracts"] == [c for c in _MRVL_CONTRACTS if c["expirationDate"].startswith(expiry)]
+        assert _as_sent(body["contracts"]) == [c for c in _MRVL_CONTRACTS if c["expirationDate"].startswith(expiry)]
     assert missing["status"] == "unavailable" and "2031-01-17" in missing["scope"]["reason"]
 
 
 def test_a_held_contract_is_served_as_its_one_record_every_other_as_the_chain():
-    """One record per held contract (operator 2026-10-13): Schwab's REST answer, each field the
-    stream has sent in its place, whenever the chain was fetched (a volume streamed before it
-    included); a field the stream has not sent, and open interest, are the chain's as sent; every
-    other contract is the chain's as Schwab sent it. The route serves what the levels priced."""
+    """One record per held contract (operator 2026-10-13): Schwab's REST answer, each field a
+    newer stream message sent in its place, with that message's Schwab time; a field the stream has
+    not sent, and open interest, are the REST answer's as sent; every other contract is the
+    chain's as Schwab sent it. STAND-IN (named): the streamed volume and gamma."""
     now = _AT.timestamp()
     target = _TSLA_CONTRACTS[0]
+    streamed_at = target["quoteTimeInLong"] / 1000 + 60          # a minute after the chain's quote
     volume, gamma = (target["totalVolume"] or 0) + 4321, (target["gamma"] or 0) + 0.05
     _hold("TSLA", _TSLA_CONTRACTS, now, 330.0,
-          [(target["symbol"], {"TOTAL_VOLUME": volume, "GAMMA": gamma}, now - 8)])
+          [(target["symbol"], {"TOTAL_VOLUME": volume, "GAMMA": gamma}, streamed_at)])
     body = _get(ticker="TSLA")
     served = next(c for c in body["contracts"] if c["symbol"] == target["symbol"])
-    assert served == {**target, "totalVolume": volume, "gamma": gamma,
-                      "greeksTime": {**(target.get("greeksTime") or dict.fromkeys(GREEK_FIELDS)),
-                                     "gamma": int((now - 8) * 1000)}}
-    assert [c for c in body["contracts"] if c["symbol"] != target["symbol"]] == _TSLA_CONTRACTS[1:]
+    assert _as_sent([served]) == [{**target, "totalVolume": volume, "gamma": gamma}]
+    ms = int(streamed_at * 1000)
+    assert (served["fieldTimes"]["gamma"], served["fieldTimes"]["totalVolume"], served["streamTime"]) == (ms, ms, ms)
+    assert served["fieldTimes"]["openInterest"] == target["quoteTimeInLong"]
+    assert _as_sent([c for c in body["contracts"] if c["symbol"] != target["symbol"]]) == _TSLA_CONTRACTS[1:]
 
 
 def test_the_route_answers_over_real_http():
