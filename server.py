@@ -2595,9 +2595,7 @@ def options_microstructure(c: str, now: float) -> dict:
     record = contract(c)
     payload["put_call"] = record.fields.get("putCall") if record is not None else None  # external-key-ok: Schwab option chain contract
     # whether the daemon streams this contract (the option rule) and is receiving it
-    payload["streaming_plane"] = plane = get_option_contract_streaming_diagnostics(c, now)
-    fh = plane["feed_health"]
-    payload["as_of"] = {**payload["as_of"], "l1_feed": fh["l1"]["last_ts"], "book_feed": fh["book"]["last_ts"]}
+    payload["streaming_plane"] = get_option_contract_streaming_diagnostics(c, now)
     return payload
 
 

@@ -126,9 +126,7 @@
         'flow.cum_delta_proxy', fk('cum_delta_proxy')],
       ['Cum Δ slope (proxy)', num(flow.cum_delta_slope, 3), 'flow.cum_delta_slope', fk('cum_delta_slope')],
     ];
-    var fh = plane.feed_health || {};   // served: the selected contract's three feeds
-    // a feed's state and the served age of what it last received (`kind`: the answer's as_of)
-    function svc(x, kind) { return !x ? '—' : x.last_ts != null ? { pre: x.state + ' · ', ageOf: kind } : x.state; }
+    var fh = plane.feed_health || {};   // served: the console's replay of the daemon's push
     var dim = ss.label === 'ACTIVE' ? '' : ' fl-dim';   // not-active data recedes (never presented as live)
     // Book/quote ages are the payload's own `ages` block (engine-stamped, classified); feed health
     // is the streaming plane — a binding/health fact with no classification (key undefined = no tag).
@@ -136,8 +134,6 @@
       ['Book age', d.as_of && d.as_of.book != null ? { pre: '', ageOf: 'book' } : '—', 'as_of.book', bk('as_of.book')],
       ['Quote age', d.as_of && d.as_of.quote != null ? { pre: '', ageOf: 'quote' } : '—', 'as_of.quote', bk('as_of.quote')],
       ['Replay', fh.replay || '—', 'streaming_plane.feed_health.replay', undefined],
-      ['L1 upstream', svc(fh.l1, 'l1_feed'), 'streaming_plane.feed_health.l1', undefined],
-      ['Book upstream', svc(fh.book, 'book_feed'), 'streaming_plane.feed_health.book', undefined],
     ];
     h.innerHTML = header(desired, ss, d && d.put_call) +
       '<div class="fl-grid">' +

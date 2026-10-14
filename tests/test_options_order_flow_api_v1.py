@@ -60,9 +60,9 @@ def test_with_no_book_from_schwab_the_flow_panel_says_so():
 
 def test_the_flow_panel_says_whether_the_daemon_streams_the_contract():
     """SUBSCRIBED while the daemon holds the contract on LEVELONE_OPTIONS; NOT STREAMED when it
-    does not, and when its status is gone (a daemon that stopped reporting holds nothing). Each
-    feed is LIVE once Schwab has posted to the contract on the connection (the one live rule),
-    not before. STAND-IN (named): an L1 tick of the contract; its book is Schwab's (BOOKS)."""
+    does not, and when its status is gone (a daemon that stopped reporting holds nothing); each
+    feed's LIVE is the daemon's verdict (tests/test_live_ui_daemon_to_browser_v1.py), not served
+    here. STAND-IN (named): an L1 tick of the contract; its book is Schwab's (BOOKS)."""
     from stream_spine import MessageBus
     from tests.feed_live_helper import through_the_daemons_bus
     try:
@@ -80,7 +80,4 @@ def test_the_flow_panel_says_whether_the_daemon_streams_the_contract():
         lmp.record_feed_down()
         ofls.clear_all_live_state()
     assert unposted["subscription_state"] == held["subscription_state"] == "SUBSCRIBED"
-    assert (unposted["feed_health"]["l1"]["state"], unposted["feed_health"]["book"]["state"]) == ("NOT LIVE", "NOT LIVE")
-    assert (held["feed_health"]["l1"]["state"], held["feed_health"]["book"]["state"]) == ("LIVE", "LIVE")
     assert not_held["subscription_state"] == down["subscription_state"] == "NOT STREAMED"
-    assert not_held["feed_health"]["l1"]["state"] == "NOT LIVE"

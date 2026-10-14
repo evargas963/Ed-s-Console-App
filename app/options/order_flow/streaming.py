@@ -140,17 +140,6 @@ def _tick(sym: str) -> None:
                         sym, _tick_callback_failures, e)
 
 
-def _service_feed(symbol: "str | None", service: str, now: float) -> dict:
-    """One Schwab service's feed for `symbol` at `now`, as the page shows it: LIVE by the one
-    live rule (live_market_plane.feed_live_for), and when the daemon last received anything on
-    that service (its own report; its age is labelled by the console's push)."""
-    status = _lmp.daemon_status(now)
-    reports = status.get("health") if status is not None else None
-    health = reports.get(service) if reports is not None else None
-    return {"state": "LIVE" if _lmp.feed_live_for(symbol, service, now) else "NOT LIVE",
-            "last_ts": health.get("last_ts") if health is not None else None}
-
-
 def _log_stream(phase: str, **kwargs: Any) -> None:
     if kwargs:
         extra = " ".join(f"{k}={v!r}" for k, v in sorted(kwargs.items()))
@@ -446,9 +435,7 @@ def get_option_contract_streaming_diagnostics(for_contract: str, now: float) -> 
     return {
         "queried_contract": c,
         "subscription_state": SUBSCRIBED if c in _lmp.held_by_daemon("LEVELONE_OPTIONS", now) else NOT_STREAMED,
-        "feed_health": {"replay": "healthy" if healthy else "stale" if _feed_running else "not connected",
-                        "l1": _service_feed(c, "LEVELONE_OPTIONS", now),
-                        "book": _service_feed(c, "OPTIONS_BOOK", now)},
+        "feed_health": {"replay": "healthy" if healthy else "stale" if _feed_running else "not connected"},
     }
 
 

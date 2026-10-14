@@ -83,24 +83,24 @@ def test_one_live_rule_every_reader_agrees_and_all_fail_closed_at_one_limit():
 
     def readers():
         return (lmp.feed_live_for("MU", "LEVELONE_EQUITIES", now), lmp.feed_live_for("A", "LEVELONE_OPTIONS", now),
-                diag("A")["feed_health"]["book"]["state"], diag("B")["subscription_state"])
+                lmp.feed_live_for("A", "OPTIONS_BOOK", now), diag("B")["subscription_state"])
 
     lmp.record_feed_down()
     try:
         down = readers()
         limit = lmp.FEED_HEARTBEAT_MAX_AGE_SEC
         lmp.record_feed_heartbeat({**status, "ts": now - limit + 0.5})
-        live, book_heard, b_book = readers(), diag("A")["feed_health"]["book"]["last_ts"], lmp.feed_live_for("B", "OPTIONS_BOOK", now)
+        live, b_book = readers(), lmp.feed_live_for("B", "OPTIONS_BOOK", now)
         lmp.record_feed_heartbeat({**status, "ts": now - limit - 0.5})
         late = readers()
         lmp.record_feed_heartbeat({**status, "schwab_socket_open": False, "ts": now})
         schwab_down = readers()
     finally:
         no_daemon()
-    assert down == late == (False, False, "NOT LIVE", "NOT STREAMED")
-    assert live == (True, True, "LIVE", "SUBSCRIBED") and book_heard == now - 45.0   # its report, as sent
+    assert down == late == (False, False, False, "NOT STREAMED")
+    assert live == (True, True, True, "SUBSCRIBED")
     assert b_book is False                                            # B held on L1 only
-    assert schwab_down == (False, False, "NOT LIVE", "SUBSCRIBED")    # the daemon is up, Schwab is not
+    assert schwab_down == (False, False, False, "SUBSCRIBED")         # the daemon is up, Schwab is not
 
 
 # ------------------------------------------------------------------ the process

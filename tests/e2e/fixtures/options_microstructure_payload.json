@@ -4,8 +4,6 @@
   },
   "as_of": {
     "book": 1788202221.43,
-    "book_feed": null,
-    "l1_feed": null,
     "quote": null
   },
   "book_slope": {
@@ -136,14 +134,6 @@
   "status": "ok",
   "streaming_plane": {
     "feed_health": {
-      "book": {
-        "last_ts": null,
-        "state": "LIVE"
-      },
-      "l1": {
-        "last_ts": null,
-        "state": "LIVE"
-      },
       "replay": "not connected"
     },
     "queried_contract": "TSLA  260831C00367500",
