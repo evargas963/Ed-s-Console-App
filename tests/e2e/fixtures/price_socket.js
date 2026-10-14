@@ -58,7 +58,15 @@ async function mockPriceSocket(page, messages) {
     }
     const timer = setInterval(beat, 1000);
     ws.onClose(() => { closed = true; clearInterval(timer); });
-    _daemons.set(page, { beat: (labels) => { Object.assign(override, labels); beat(); }, close: () => ws.close() });
+    // one Schwab message to the page, as the daemon sends it, then a beat
+    function deliver(q) {
+      if (q.content.TRADE_TIME_MILLIS != null) trade[q.key] = q.content.TRADE_TIME_MILLIS;
+      if ('feed_live' in q) verdict[q.key + '|' + q.service] = { live: q.feed_live, outage: q.outage };
+      send({ type: 'schwab', messages: [{ service: q.service, key: q.key, schwab_ts: q.schwab_ts, ts_recv: q.ts_recv,
+        content: q.content, bar: q.bar, time_ct: q.time_ct }] });
+      beat();
+    }
+    _daemons.set(page, { beat: (labels) => { Object.assign(override, labels); beat(); }, close: () => ws.close(), deliver: deliver });
     let sent = false;
     ws.onMessage((m) => {
       let req; try { req = JSON.parse(String(m)); } catch (e) { return; }
@@ -69,13 +77,7 @@ async function mockPriceSocket(page, messages) {
       beat();
       if (sent) return;                       // each spec message is Schwab's, sent once
       sent = true;
-      (messages || []).forEach((q, i) => setTimeout(() => {
-        if (q.content.TRADE_TIME_MILLIS != null) trade[q.key] = q.content.TRADE_TIME_MILLIS;
-        if ('feed_live' in q) verdict[q.key + '|' + q.service] = { live: q.feed_live, outage: q.outage };
-        send({ type: 'schwab', messages: [{ service: q.service, key: q.key, schwab_ts: q.schwab_ts, ts_recv: q.ts_recv,
-          content: q.content, bar: q.bar, time_ct: q.time_ct }] });
-        beat();
-      }, 300 * i));
+      (messages || []).forEach((q, i) => setTimeout(() => deliver(q), 300 * i));
     });
   });
 }
@@ -94,4 +96,10 @@ function daemonDown(page) {
   if (d) d.close();
 }
 
-module.exports = { mockPriceSocket, schwabQuote, daemonBeat, daemonDown };
+// Schwab messages the daemon sends now, in order (a spec's later messages)
+function daemonSend(page, messages) {
+  const d = _daemons.get(page);
+  if (d) messages.forEach(d.deliver);
+}
+
+module.exports = { mockPriceSocket, schwabQuote, daemonBeat, daemonDown, daemonSend };

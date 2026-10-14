@@ -8,7 +8,7 @@
 const { test, expect, pushBeat, pushChange, pushDown, setNotLive } = require('./fixtures/live_socket');
 const { expiriesAnswer } = require('./fixtures/expiries');
 const path = require('path');
-const { mockPriceSocket, schwabQuote, daemonDown } = require('./fixtures/price_socket');
+const { mockPriceSocket, schwabQuote, daemonDown, daemonBeat, daemonSend } = require('./fixtures/price_socket');
 const { routeWatchlist } = require('./fixtures/watchlist');
 
 const CROSSES = require(path.join(__dirname, '..', 'fixtures', 'real_spy_level_crosses.json')).rows.slice(0, 3);
@@ -367,16 +367,14 @@ test.describe('Trade Desk renders served values', () => {
     const legend = page.locator('#tdmChart .tvc-legend');
     await expect(legend).toContainText('Last completed bar Fri 09/25 09:21 AM CT');
     const before = barReads.length;
-    await page.evaluate((spot) => {
-      for (let i = 0; i < 3; i++) window.dispatchEvent(new CustomEvent('ed:quote_tick', { detail: { ticker: 'SPY', spot: spot + i / 100,
-        spot_disp: (spot + i / 100).toFixed(2), feed_live: true, trade_time_ct: 'Fri 09/25 09:21 AM CT', trade_age: '4s' } }));
-    }, SPOT);
+    // three of Schwab's LEVELONE_EQUITIES messages from the daemon, its trade labels as it words them
+    daemonBeat(page, { SPY: { time_ct: 'Fri 09/25 09:21 AM CT', age: '4s' } });
+    daemonSend(page, [0, 1, 2].map((i) => schwabQuote('SPY', SPOT + i / 100)));
     const chartState = () => page.evaluate(() => window.EdTradeDeskMap.state().chart);
     await expect.poll(async () => (await chartState()).livePrice).toBeCloseTo(SPOT + 0.02, 6);
-    expect((await chartState()).liveTitle).toBe('LAST · Fri 09/25 09:21 AM CT · 4s ago');   // Schwab's trade time, its served age
+    await expect.poll(async () => (await chartState()).liveTitle).toBe('LAST · Fri 09/25 09:21 AM CT · 4s ago');   // Schwab's trade time, its served age
     expect((await chartState()).bars).toBe(BARS.bars.length);          // the candles are untouched
-    await page.evaluate(() => window.dispatchEvent(new CustomEvent('ed:quote_tick', { detail: { ticker: 'SPY', spot: null,
-      spot_disp: null, feed_live: false, trade_time_ct: null } })));
+    daemonSend(page, [schwabQuote('SPY', -999)]);                      // Schwab's own "no value" (AGENTS rule 2)
     await expect.poll(async () => (await chartState()).livePrice).toBeNull();   // Schwab sent no price: no line
     await page.waitForTimeout(1500);
     expect(barReads.length).toBe(before);
