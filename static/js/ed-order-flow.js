@@ -98,8 +98,11 @@
     var wallSet = {};
     if (walls) walls.forEach(function (w) { wallSet[w.side + '@' + w.price] = w; });
 
+    // the console's reads, labelled with the top of book they were priced at (the engine's input)
+    var pricedAt = got('top_of_book');
     var midHtml = '<div class="dom-mid"><span>mid ' + num(got('mid')) + '</span><span>spread ' + num(got('spread_pts')) +
-      '</span><span>microprice ' + num(got('microprice')) + '</span></div>';
+      '</span><span>microprice ' + num(got('microprice')) + '</span><span class="sm">priced at ' +
+      (pricedAt ? num(pricedAt.bid) + ' × ' + num(pricedAt.ask) : '-') + '</span></div>';
 
     // Schwab's last top of book; with its feed down, marked not live with the served reason
     var rowsTob = [

@@ -114,6 +114,8 @@ test.describe('D — Gamma Flow subview', () => {
     await expect(page.locator('#flowBody .fl-badge')).toHaveText('ACTIVE');
     await expect(page.locator('#flowBody .fl-sym')).toHaveText(SELECTED);
     await expect(rowV(page, 'top_of_book.bid')).toHaveText(fmt(FIXTURE.top_of_book.bid, 2));   // Schwab's bid as sent
+    // the console's reads say the top of book they were priced at
+    await expect(rowV(page, 'top_of_book')).toHaveText(fmt(FIXTURE.top_of_book.bid, 2) + ' × ' + fmt(FIXTURE.top_of_book.ask, 2));
     await expect(page.locator('#flowBody .fl-tag.native').first()).toBeVisible();  // NATIVE/DERIVED/PROXY labels
     await expect(page.locator('#flowBody .fl-tag.derived').first()).toBeVisible();
     await expect(page.locator('#flowBody .fl-tag.proxy').first()).toBeVisible();

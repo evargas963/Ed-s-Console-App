@@ -108,7 +108,9 @@
       ['Bid size', int(tob.bid_size), 'top_of_book.bid_size', undefined],
       ['Ask size', int(tob.ask_size), 'top_of_book.ask_size', undefined],
     ].concat(!topLive ? [['Top of book', 'NOT LIVE' + (l1v && l1v.outage ? ' · ' + l1v.outage : ''), 'top_outage', undefined]] : []);
+    var pricedAt = d.top_of_book;                  // the top of book the console priced these at (the engine's input)
     var rowsBook = [
+      ['Priced at', pricedAt ? num(pricedAt.bid) + ' × ' + num(pricedAt.ask) : '-', 'top_of_book', undefined],
       ['Mid', num(d.mid), 'mid', bk('mid')], ['Microprice', num(d.microprice), 'microprice', bk('microprice')],
       ['Spread (pts)', num(d.spread_pts), 'spread_pts', bk('spread_pts')],
       ['Depth 1 · imbalance', num(dep(1, 'imbalance'), 3), 'depth.1.imbalance', bk('depth.*.imbalance')],
