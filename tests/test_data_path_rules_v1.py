@@ -299,16 +299,16 @@ def _served_at(now: float, feed_live: bool) -> dict:
 
 def test_d5_a_feed_down_in_an_open_session_stands_marked_not_live_with_its_reason():
     """RTH, the feed down (operator 2026-10-14: "the last values stand, marked not live"): the
-    price, the equity top of book and the option top of book Schwab last sent stand, each marked
-    by the one judgment with the outage reason. Before, each was blanked."""
+    price, the equity top of book and the option top of book Schwab last sent stand (the books'
+    computed reads priced at them), the price marked by the one judgment with the outage reason.
+    Before, each was blanked. The screen's top of book is the daemon's, marked by the daemon's
+    verdict (tests/e2e/console-order-flow-heatmap.spec.js)."""
     s = _served_at(_RTH, feed_live=False)
     assert s["row"]["spot"] == 767.39 and s["row"]["feed_live"] is False
     assert s["row"]["outage"] == "Schwab LEVELONE_EQUITIES feed down during RTH"
     assert s["spot"][0] == 767.39
     assert s["equity_book"]["top_of_book"]["bid"] == 767.38
-    assert s["equity_book"]["top_outage"] == "Schwab LEVELONE_EQUITIES feed down during RTH"
     assert s["option_book"]["top_of_book"]["ask"] == _EVENTS[0]["content"]["ASK_PRICE"]
-    assert s["option_book"]["top_outage"] == "Schwab LEVELONE_OPTIONS feed down during RTH"
 
 
 def test_d5_while_closed_the_values_as_of_the_close_stand_feed_up_or_down():
@@ -317,9 +317,8 @@ def test_d5_while_closed_the_values_as_of_the_close_stand_feed_up_or_down():
     s = _served_at(_CLOSED, feed_live=False)
     assert s["row"]["spot"] == 767.39 and s["row"]["outage"] is None
     assert s["spot"][0] == 767.39
-    assert s["equity_book"]["top_of_book"]["bid"] == 767.38 and s["equity_book"]["top_outage"] is None
+    assert s["equity_book"]["top_of_book"]["bid"] == 767.38
     assert s["option_book"]["top_of_book"]["ask"] == _EVENTS[0]["content"]["ASK_PRICE"]
-    assert s["option_book"]["top_outage"] is None
 
 
 def test_d5_a_live_feed_in_an_open_session_serves_the_newest_values():
@@ -327,7 +326,7 @@ def test_d5_a_live_feed_in_an_open_session_serves_the_newest_values():
     s = _served_at(_RTH, feed_live=True)
     assert s["row"]["spot"] == 767.39 and s["row"]["outage"] is None
     assert s["spot"][0] == 767.39
-    assert s["equity_book"]["top_of_book"]["bid"] == 767.38 and s["equity_book"]["top_outage"] is None
+    assert s["equity_book"]["top_of_book"]["bid"] == 767.38
     assert s["option_book"]["top_of_book"]["ask"] == _EVENTS[0]["content"]["ASK_PRICE"]
 
 

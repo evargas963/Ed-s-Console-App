@@ -2552,9 +2552,8 @@ def order_flow_microstructure(ticker: str, venue: str, now: float) -> dict:
     t = ticker_storage_key(_required_ticker(ticker))
     # the venue's books (none held: 'no_book') and the one tape's prints
     data: dict = {"content": get_content_for_symbol(t, venue), "prints": TAPE.prints(t)}
-    # top of book: the daemon's price row, the change's one; with its feed down in an open
-    # session its last values stand, marked not live with the reason (docs/DATA_FLOW.md §2 D5)
-    top_outage = lmp.outage(t, "LEVELONE_EQUITIES", now)
+    # top of book: the daemon's price row, the change's one (the input the engine prices the
+    # book's mid and microprice at; the screen shows Schwab's top of book from the daemon's socket)
     _row = price_row(t, now)
     if _row and _row.get("quote_ts") is not None:
         data["exchange_quote_ts"] = _row["quote_ts"]
@@ -2565,7 +2564,6 @@ def order_flow_microstructure(ticker: str, venue: str, now: float) -> dict:
     # Desk's Order Flow card shows: tick-rule PROXY flow, the same engine the option book uses
     of = OrderFlowEngine().compute(data, now=now, ticker=t)
     payload = dict(of["book_microstructure"])
-    payload["top_outage"] = top_outage
     payload["flow"] = flow_block(of)
     payload["ticker"] = t
     payload["venue"] = venue

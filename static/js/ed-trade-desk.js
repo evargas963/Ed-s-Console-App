@@ -65,13 +65,15 @@
     if (!d || d.status === 'no_book') {
       return stage(1, 'td-accent-blue', 'Detect — book microstructure', 'No book yet', '', 0, [], 'NO BOOK', 'warn');
     }
-    var tob = d.top_of_book || {}, depth = d.depth || {}, cls = d.classification || {};
+    var depth = d.depth || {}, cls = d.classification || {};
     function dep(n, side) { var x = depth[String(n)] || {}; return x[side]; }
     var imb = dep(5, 'imbalance');
     var ages = d.ages || {};
+    // Schwab's top of book: the daemon's LEVELONE_EQUITIES row, as the header shows it
+    var tob = window.EdShell.priceRow(window.EdShell.getState().key);
     var rows = [
-      ['Bid × Ask', num(tob.bid) + ' × ' + num(tob.ask), classOf(cls, 'top_of_book.bid')],
-    ].concat(d.top_outage ? [['Top of book', 'NOT LIVE · ' + d.top_outage, null]] : []).concat([
+      ['Bid × Ask', num(tob.bid) + ' × ' + num(tob.ask), undefined],
+    ].concat(!tob.feed_live ? [['Top of book', 'NOT LIVE · ' + (tob.outage || 'the daemon has not reported this symbol'), null]] : []).concat([
       ['Spread (pts)', num(d.spread_pts), classOf(cls, 'spread_pts')],
       ['Depth 1 imbalance', num(dep(1, 'imbalance'), 3), classOf(cls, 'depth.*.imbalance')],
       ['Book age', d.as_of.book != null ? { ageOf: 'book' } : '—', classOf(cls, 'as_of.book')],
@@ -316,6 +318,8 @@
     if (!q || q.ticker !== st().key) return;
     _spotDisp = q.spot_disp != null ? q.spot_disp : '—';
     document.querySelectorAll('#tdBody .td-spot').forEach(function (el) { el.textContent = _spotDisp; });
+    var det = document.getElementById('tdDetect');          // its top of book is this row's too
+    if (det && R.book !== undefined) det.innerHTML = detectStage(R.book);
   });
   document.addEventListener('ed:ticker', function () { _spotDisp = '—'; });   // until the new ticker's row
   document.addEventListener('ed:push', render);   // the push went down or came back: the LIVE badge says so

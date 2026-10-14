@@ -368,7 +368,7 @@
     // book and the level crosses. Schwab sends no trade side, so none is claimed.
     c = $('tdmCardFlow');
     if (c) {
-      var q = S.quotes[st().key], tob = m && m.top_of_book;
+      var q = S.quotes[st().key];                 // the daemon's LEVELONE_EQUITIES row (its top of book too)
       var cc = (S.events && S.events.cross_counts) || null;   // served for the window
       // Schwab's last values with Schwab's trade time; with the feed down, marked not live with
       // the served reason; the feed state beside them
@@ -378,8 +378,8 @@
         + (q.outage ? ' · NOT LIVE · ' + esc(q.outage) : '')));
       c.querySelector('.tdm-rows').innerHTML =
         row('Last trade size', q && q.last_size != null ? fmtVol(q.last_size) : '—') +
-        row('Top of book', (tob ? (tob.bid_size != null ? fmtVol(tob.bid_size) : '—') + ' × ' + (tob.ask_size != null ? fmtVol(tob.ask_size) : '—') : '—')
-          + (m && m.top_outage ? ' · NOT LIVE' : '')) +
+        row('Top of book', (q ? (q.bid_size != null ? fmtVol(q.bid_size) : '—') + ' × ' + (q.ask_size != null ? fmtVol(q.ask_size) : '—') : '—')
+          + (q && !q.feed_live ? ' · NOT LIVE' : '')) +
         row('Crosses (' + esc(windowLabel()) + ')', cc ? cc.up + ' up · ' + cc.down + ' down' : '—');
     }
     // OPTIONS POSITIONING — full-chain terrain

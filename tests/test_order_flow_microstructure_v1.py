@@ -512,7 +512,7 @@ def test_an_option_contracts_top_is_what_schwab_sent_on_a_live_feed():
         lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "connected_at": CONNECTED_AT,
                                    "held": {"LEVELONE_OPTIONS": [sym]}})
         payload = options_live_payload(sym, time.time())
-        assert payload["flow"]["top_book_pressure"] is not None and payload["top_outage"] is None
+        assert payload["flow"]["top_book_pressure"] is not None
     finally:
         no_daemon()
         state.clear_all_live_state()
@@ -531,6 +531,6 @@ def test_the_equity_book_reads_the_daemons_price_row_for_its_top_of_book():
         lmp.record_from_level_one_equity("ZZTB", {"LAST_PRICE": 10.01, "BID_PRICE": 10.0, "ASK_PRICE": 10.02,
                                                   "BID_SIZE": 3, "ASK_SIZE": 5, "MARK": 10.01}, received_ts=time.time())
         body = json.loads(server.api_order_flow_microstructure(ticker="ZZTB", venue="NYSE_BOOK").body)
-        assert body["flow"]["top_book_pressure"] == (3 - 5) / 8 and body["top_outage"] is None
+        assert body["flow"]["top_book_pressure"] == (3 - 5) / 8
     finally:
         lmp.record_feed_down()

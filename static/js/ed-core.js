@@ -1219,6 +1219,8 @@
     setExpiry: setExpiry, getExpiry: function () { return state.expiryFilter; },
     getMeasure: function () { return state.measure; },
     feedVerdict: feedVerdict,
-    schwabFields: function (key) { return _l1[key] ? Object.assign({}, _l1[key]) : null; },   // LEVELONE_EQUITIES / _OPTIONS as sent
+    priceRow: priceRow,                                    // an equity's row, from the daemon's fields
+    // a LEVELONE_EQUITIES / LEVELONE_OPTIONS field as Schwab last sent it, null where it is not a number
+    schwabNumber: function (key, name) { return schwabNum((_l1[key] || {})[name]); },
     setSubview: setSubview };
 })();

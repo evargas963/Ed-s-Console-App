@@ -81,8 +81,9 @@
     var plane = d.streaming_plane || {};
     var ss = subState(plane);
     // Schwab's top of book for the contract: LEVELONE_OPTIONS as the daemon pushes it, and its verdict
-    var l1 = window.EdShell.schwabFields(desired) || {}, l1v = window.EdShell.feedVerdict(desired, 'LEVELONE_OPTIONS');
-    var tob = { bid: l1.BID_PRICE, ask: l1.ASK_PRICE, bid_size: l1.BID_SIZE, ask_size: l1.ASK_SIZE };
+    var f = function (name) { return window.EdShell.schwabNumber(desired, name); };
+    var l1v = window.EdShell.feedVerdict(desired, 'LEVELONE_OPTIONS');
+    var tob = { bid: f('BID_PRICE'), ask: f('ASK_PRICE'), bid_size: f('BID_SIZE'), ask_size: f('ASK_SIZE') };
     var topOutage = l1v && !l1v.live ? l1v.outage : l1v ? null : 'the daemon has not reported this contract';
     var ob = _optBook[desired], obv = window.EdShell.feedVerdict(desired, 'OPTIONS_BOOK');
     var rowsOb = !ob ? [['Book', 'no OPTIONS_BOOK from Schwab since the page opened', 'OPTIONS_BOOK', undefined]]

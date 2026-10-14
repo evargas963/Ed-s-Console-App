@@ -88,9 +88,8 @@
     var bidLevels = sb ? levels(sb.content.BIDS, 'BID_PRICE') : [], askLevels = sb ? levels(sb.content.ASKS, 'ASK_PRICE') : [];
     var verdict = window.EdShell.feedVerdict(st().key, st().bookVenue);
     // Schwab's top of book: LEVELONE_EQUITIES as the daemon pushes it, and its verdict
-    var l1 = window.EdShell.schwabFields(st().key) || {}, l1v = window.EdShell.feedVerdict(st().key, 'LEVELONE_EQUITIES');
-    var tob = { bid: l1.BID_PRICE, ask: l1.ASK_PRICE, bid_size: l1.BID_SIZE, ask_size: l1.ASK_SIZE };
-    var topOutage = l1v && !l1v.live ? l1v.outage : null;
+    var tob = window.EdShell.priceRow(st().key);
+    var topOutage = tob.feed_live ? null : tob.outage || 'the daemon has not reported this symbol';
     function dep(n, side) { var x = depth[String(n)] || {}; return x[side]; }
     function bk(k) { return classOf(cls, k); }
     var walls = d.wall_candidates || [];

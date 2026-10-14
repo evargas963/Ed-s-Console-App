@@ -155,7 +155,6 @@
     "bid": 0.58,
     "bid_size": 55
   },
-  "top_outage": null,
   "wall_candidates": [],
   "wall_method": {
     "basis": "displayed level TOTAL_VOLUME >= mult x median top-N level size",
