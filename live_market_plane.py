@@ -275,7 +275,10 @@ def feed_live_for(symbol: str | None, service: str, now: float) -> bool:
     if not t or status is None or status.get("schwab_socket_open") is not True:
         return False
     with _lock:
-        return t in _feed["held"].get(service, ()) and (service != "LEVELONE_EQUITIES" or _posted_since(t, _connected_at()))
+        held = _feed["held"]                 # a service the status does not report holds nothing
+        if service not in held or t not in held[service]:
+            return False
+        return service != "LEVELONE_EQUITIES" or _posted_since(t, _connected_at())
 
 
 def _posted_since(t: str, since: Optional[float]) -> bool:
