@@ -901,12 +901,16 @@
     // just asked for this ticker (page load or a ticker change): the row is on its way
     // (WAITING); otherwise the push itself is down (OFFLINE)
     var connecting = Date.now() - _priceSubTs <= PRICE_SILENCE_MS;
-    var q = _rows[state.key] || {};
-    paintQuote({ spot: q.spot, spot_disp: q.spot_disp, bid: q.bid, ask: q.ask, chgPct: q.chg_pct,
-      chgPctRegular: q.chg_pct_regular, quoteIngestion: q.quote_ingestion,
-      feedCls: 'stale',
-      feedLabel: connecting ? 'WAITING' : 'OFFLINE',
-      ageLabel: q.trade_time_ct != null ? ('last trade ' + q.trade_time_ct) : (connecting ? 'no push yet' : 'live push down') });
+    var feedLabel = connecting ? 'WAITING' : 'OFFLINE';
+    var q = _rows[state.key];
+    if (q === undefined) {             // never pushed: absent
+      paintQuote({ spot: null, spot_disp: null, bid: null, ask: null, chgPct: null, chgPctRegular: null,
+        feedCls: 'stale', feedLabel: feedLabel, ageLabel: connecting ? 'no push yet' : 'live push down' });
+    } else {
+      paintQuote({ spot: q.spot, spot_disp: q.spot_disp, bid: q.bid, ask: q.ask, chgPct: q.chg_pct,
+        chgPctRegular: q.chg_pct_regular, quoteIngestion: q.quote_ingestion, feedCls: 'stale', feedLabel: feedLabel,
+        ageLabel: q.trade_time_ct == null ? 'no trade sent' : 'last trade ' + q.trade_time_ct });
+    }
     paintRecord(null);
   }
 

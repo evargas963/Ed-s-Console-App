@@ -1608,9 +1608,10 @@ def bars_payload(tk: str, limit: int, tf: str) -> dict:
     up to `tf` by aggregate_bars. `last_bar`: the newest completed minute and its label."""
     bars = [_bar_dict(c) for c in _bars_1m(tk, int(limit))]
     out = [_lpr.with_change(b) for b in aggregate_bars(bars, tf)]
-    last = bars[-1]["t"] if bars else None
-    return {"ticker": tk, "bars": out, "tf": tf, "n": len(out),
-            "last_bar": {"t": last, "label": ct_label(last)} if last is not None else None}
+    last_bar = None                                    # no bar held: none
+    if bars:
+        last_bar = {"t": bars[-1]["t"], "label": ct_label(bars[-1]["t"])}
+    return {"ticker": tk, "bars": out, "tf": tf, "n": len(out), "last_bar": last_bar}
 
 
 def _tf_bucket_key(t: float, tf: str):
@@ -1790,9 +1791,9 @@ def get_forces(ticker: str = Query(...)):
 def forces_payload(tk: str, now: float) -> dict:
     """The ticker's forces, as the levels producer computed them from its chain captures."""
     cached = terrain_cache_get(tk, now)
-    forces = cached.get("_forces") if cached is not None else None
-    return forces if forces is not None else {
-        "ticker": tk, "available": False, "reason": "no levels published for this ticker yet"}
+    if cached is not None and "_forces" in cached:
+        return cached["_forces"]
+    return {"ticker": tk, "available": False, "reason": "no levels published for this ticker yet"}
 
 
 def _forces_from_captures(tk: str, captures: list) -> dict:
@@ -2241,13 +2242,19 @@ def _panels(v: dict) -> "dict[str, _Panel]":
     tk, ws, sub, scope, venue, pans = v["ticker"], v["workspace"], v["subview"], v["scope"], v["venue"], v["pans"]
 
     def window(name: Optional[str]) -> dict:
-        p = pans[name] if name else {"centre": None}
-        return {"scope": scope, "centre": p["centre"], "shift": None if p["centre"] is None else p["shift"]}
+        """A strike panel's window: its route key (no shift while it follows the price) and the
+        pan as the page sent it (a panel with no pan follows the price, unshifted)."""
+        p = pans[name] if name else {"centre": None, "shift": 0}
+        return {"scope": scope, "centre": p["centre"], "shift": None if p["centre"] is None else p["shift"],
+                "pan_shift": p["shift"]}
+
+    def key(w: dict) -> dict:
+        return {k: w[k] for k in ("scope", "centre", "shift")}
 
     def strikes(name: Optional[str]) -> _Panel:
         w = window(name)
-        return _Panel(_route("/api/terrain/strikes", ticker=tk, **w),
-                      lambda: terrain_strikes_payload(tk, scope, w["centre"], w["shift"] or 0, time.time()))
+        return _Panel(_route("/api/terrain/strikes", ticker=tk, **key(w)),
+                      lambda: terrain_strikes_payload(tk, scope, w["centre"], w["pan_shift"], time.time()))
 
     def bars(tf: str, limit: int) -> _Panel:
         return _Panel(_route("/api/bars1m", ticker=tk, tf=tf, limit=limit), lambda: bars_payload(tk, limit, tf))
@@ -2260,8 +2267,8 @@ def _panels(v: dict) -> "dict[str, _Panel]":
 
     def strike_bars(kind: str) -> _Panel:
         w = window(kind)
-        return _Panel(_route(f"/api/options/{kind}-by-strike", ticker=tk, **w),
-                      lambda: strike_bar_payload(tk, f"_{kind}_rows", scope, w["centre"], w["shift"] or 0, time.time()))
+        return _Panel(_route(f"/api/options/{kind}-by-strike", ticker=tk, **key(w)),
+                      lambda: strike_bar_payload(tk, f"_{kind}_rows", scope, w["centre"], w["pan_shift"], time.time()))
 
     terrain = _Panel(_route("/api/terrain", ticker=tk), lambda: get_terrain(ticker=tk))
     zones = _Panel(_route("/api/liquidity-snapshot", ticker=tk), lambda: liquidity_snapshot(tk, now_et()))
@@ -2277,8 +2284,8 @@ def _panels(v: dict) -> "dict[str, _Panel]":
         if v["view"] == "heatmap":
             w, cols, expiry = window("heatmap"), v["cols"], v["expiry"]
             out["gamma.surface"] = _Panel(
-                _route("/api/options/gamma-surface", ticker=tk, **w, cols=cols, expiry=expiry),
-                lambda: gamma_surface_payload(tk, scope, w["centre"], w["shift"] or 0, cols, expiry, now_et()))
+                _route("/api/options/gamma-surface", ticker=tk, **key(w), cols=cols, expiry=expiry),
+                lambda: gamma_surface_payload(tk, scope, w["centre"], w["pan_shift"], cols, expiry, now_et()))
         elif v["view"] == "chart":
             out.update({"gamma.chart.bars": bars(v["tfs"]["chart"], CHART_BARS[v["tfs"]["chart"]]),
                         "gamma.chart.strikes": strikes(None), "gamma.chart.terrain": terrain})
@@ -2324,6 +2331,7 @@ async def _produce(p: _Panel) -> dict:
     try:
         return {"status": 200, "body": await asyncio.to_thread(p.produce)}
     except HTTPException as e:
+        log.info("the panel value %s answered %d: %s", p.source, e.status_code, e.detail)
         return {"status": e.status_code, "body": {"detail": e.detail}}
     except Exception:
         log.exception("the panel value %s raised", p.source)
