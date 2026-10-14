@@ -20,7 +20,9 @@ own status and on what Schwab posted to the symbol on the current connection) an
 last trade time and age as the screen shows them (time_et.ct_label, age_label).
 
 Protocol (JSON text frames):
-  client -> {"op": "subscribe", "symbols": ["SPY", "SPY   261120C00700000", ...]}  (replaces the set)
+  client -> {"op": "subscribe", "symbols": ["SPY", "SPY   261120C00700000", ...],
+             "since": {service: {symbol: ts_recv}}}  (replaces the set; `since`: the last bar and
+             headline it received of each, so a reconnect is sent only those after them)
   server -> {"type": "symbols", "symbols": [{requested, key, display}, ...]}  (on subscribe)
   server -> {"type": "schwab", "messages": [{service, key, schwab_ts, ts_recv, content}, ...]}
   server -> {"type": "feed", "feed": {...}, "state": {key: {service: {live, outage}}},
@@ -29,6 +31,7 @@ Protocol (JSON text frames):
 from __future__ import annotations
 
 import asyncio
+import collections
 import json
 import logging
 import os
@@ -60,6 +63,9 @@ DELIVERY = {"LEVELONE_EQUITIES": CHANGE, "LEVELONE_OPTIONS": CHANGE,
 _TOPIC_SERVICE = {"quote": ("LEVELONE_EQUITIES", "native"), "optquote": ("LEVELONE_OPTIONS", "content"),
                   "bar1m": ("CHART_EQUITY", "native"), "news": ("NEWS_HEADLINE", "content"),
                   "book": (None, "content")}
+#: the bars and headlines held per symbol and service for a client that (re)connects: a whole
+#: day's 1-minute bars, 04:00-20:00 ET, is 960
+SEQUENCE_KEPT = 1000
 #: a NEWS_HEADLINE item's time field (epoch ms), as measured from Schwab's own items (the service is
 #: not in Schwab's Streamer document; its items carry 1 = time, 2 = id, 4 = headline, 9 = source)
 NEWS_TIME = "1"
@@ -143,6 +149,9 @@ class LiveUiServer:
         self.clients: set[_Client] = set()
         #: each equity's last trade time (Schwab's TRADE_TIME_MILLIS, as sent)
         self.trade_ms: dict[str, float] = {}
+        #: every bar and headline sent, in order, per (service, symbol), the newest SEQUENCE_KEPT:
+        #: what a client that connects or reconnects is sent after the last one it received
+        self.sequence: dict[tuple, collections.deque] = {}
         stats.update(clients=0, messages_sent=0, frames_sent=0, beat_send_failures=0, listening=None,
                      last_send_ms=None)
 
@@ -157,16 +166,27 @@ class LiveUiServer:
         trade = schwab_number(m["content"].get("TRADE_TIME_MILLIS")) if m["service"] == "LEVELONE_EQUITIES" else None
         if trade is not None:
             self.trade_ms[m["key"]] = trade
+        if DELIVERY[m["service"]] == SEQUENCE:
+            k = (m["service"], m["key"])
+            self.sequence.setdefault(k, collections.deque(maxlen=SEQUENCE_KEPT)).append(m)
         for c in self.clients:
             if m["key"] in c.symbols:
                 c.take(m)
 
-    def snapshot(self, c: _Client, keys: "list[str]") -> None:
-        """Each symbol's current record on the bus, for a client that just asked for it."""
+    def snapshot(self, c: _Client, keys: "list[str]", since: dict) -> None:
+        """For a client that just asked for `keys`: each one's current record on the bus (a quote
+        or a book), and every bar and headline sent after the last the client received (`since`:
+        {service: {symbol: ts_recv}}; none: every one held), in order, each once."""
         for topic, record in list(self.bus.current.values()):
             m = schwab_message(topic, record)
-            if m is not None and m["key"] in keys:
+            if m is not None and m["key"] in keys and DELIVERY[m["service"]] != SEQUENCE:
                 c.take(m)
+        for (service, key), held in self.sequence.items():
+            if key in keys:
+                after = schwab_number((since.get(service) or {}).get(key)) if isinstance(since.get(service), dict) else None
+                for m in list(held):
+                    if after is None or (isinstance(m["ts_recv"], (int, float)) and m["ts_recv"] > after):
+                        c.take(m)
 
     def beat(self) -> dict:
         """The daemon's whole status (Schwab socket, symbols held and refused per service, the
@@ -230,7 +250,7 @@ class LiveUiServer:
             added = [k for k in keys if k not in c.symbols]
             c.symbols = frozenset(keys)
             c.identity = identity            # what each asked-for symbol is, before its messages
-            self.snapshot(c, added)
+            self.snapshot(c, added, req["since"] if isinstance(req.get("since"), dict) else {})
             c.wake.set()
 
     async def serve_client(self, ws) -> None:

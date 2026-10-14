@@ -413,6 +413,22 @@ test.describe('Trade Desk renders served values', () => {
     expect(errs).toEqual([]);
   });
 
+  test('Desk News: a headline held for another ticker is listed when that ticker is shown', async ({ page }) => {
+    // Real data: a NEWS_HEADLINE item as Schwab sent it (tests/fixtures/real_schwab_news_headline_spx_2026_10_05.json);
+    // STAND-IN: its key, QQQ. Before, the list painted only on a new headline for the shown key.
+    const errs = watchErrors(page);
+    await intercept(page);
+    const news = require(path.join(__dirname, '..', 'fixtures', 'real_schwab_news_headline_spx_2026_10_05.json'));
+    await mockPriceSocket(page, [{ service: 'NEWS_HEADLINE', key: 'QQQ', schwab_ts: news.schwab_ts, ts_recv: news.ts_recv,
+      content: Object.assign({}, news.content, { key: 'QQQ' }), time_ct: 'Mon 10/05 09:00 AM CT' }]);
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#tdmNews')).toContainText('No headline from Schwab for SPY');
+    await page.evaluate(() => window.EdShell.setTicker('QQQ'));
+    await expect(page.locator('#tdmNews')).toContainText(news.content['4']);
+    expect(errs).toEqual([]);
+  });
+
   test('Market Map: a pinned bar shows its served change (the chart kept the bar without it)', async ({ page }) => {
     // 2026-09-28 (ONE-16): the chart copied each served bar without chg/chg_pct, so the pinned
     // readout's "Bar change" always read "—" while the legend recomputed close - open.

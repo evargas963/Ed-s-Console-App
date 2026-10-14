@@ -529,8 +529,9 @@
     if (tk !== S.ticker) {
       S.ticker = tk; S.gen++; S.bars = []; // undefined = not answered YET (loading); null = the request failed
       S.levels = S.terrain = S.micro = S.events = S.liq = S.strikes = S.forces = S.flowBars = undefined; S.sel = null;
-      clearChart(); paintHeader(); paintQueue(); paintNews(); paintCards(); paintTrust(); paintAgreement(); paintFooter();
+      clearChart(); paintHeader(); paintQueue(); paintCards(); paintTrust(); paintAgreement(); paintFooter();
     }
+    paintNews();                                // what is held for the ticker, each time the Desk is shown
   }
   function init() {
     if (!$('tdmMap')) return;
@@ -545,6 +546,7 @@
       paintHeader();
       if (q.ticker === st().key) {
         paintTrust();
+        paintNews();                            // the ticker's key is known: its headlines
         if (S.chart) S.chart.setLivePrice(q.spot, window.EdShell.tradeLabel(q));
         paintCards();   // the Order Flow card's Schwab fields, on every row
       }

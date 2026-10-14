@@ -144,6 +144,43 @@ def test_every_service_reaches_the_screen_by_its_delivery_type():
     asyncio.run(_run(body))
 
 
+def test_a_page_that_reconnects_gets_every_bar_and_headline_it_missed_once_in_order():
+    """All Sequence across a dropped connection: the real bars, the first half received, the
+    connection drops, the second half and a real headline sent meanwhile; the page reconnects
+    saying the last bar and headline it received (`since`) and gets every one it missed, each
+    once, in order, and none twice (before: only the newest bar, and the newest headline again)."""
+    from websockets.asyncio.client import connect
+
+    bars = [(r["native"], r["schwab_ts"]) for r in _BARS if r["native"]["key"] == "SPY"]
+    half = len(bars) // 2
+
+    async def body(bus, ws, stats):
+        await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"]}))
+        while json.loads(await asyncio.wait_for(ws.recv(), 3))["type"] != "symbols":
+            pass
+        for item, ts in bars[:half]:
+            _frame(bus, "CHART_EQUITY", item, ts)
+        first, _beats = await _received(ws)
+        assert [m["content"] for m in first] == [b for b, _ts in bars[:half]]
+        since = {"CHART_EQUITY": {"SPY": first[-1]["ts_recv"]}}
+        await ws.close()                                   # the page's connection drops
+        for item, ts in bars[half:]:
+            _frame(bus, "CHART_EQUITY", item, ts)
+        _frame(bus, "NEWS_HEADLINE", {**_NEWS["content"], "key": "SPY"}, _NEWS["schwab_ts"])
+        async with connect(stats["listening"], max_size=None) as again:
+            await again.send(json.dumps({"op": "subscribe", "symbols": ["SPY"], "since": since}))
+            missed, _beats = await _received(again)
+            assert [m["content"] for m in missed if m["service"] == "CHART_EQUITY"] == [b for b, _ts in bars[half:]]
+            assert [m["content"]["2"] for m in missed if m["service"] == "NEWS_HEADLINE"] == [_NEWS["content"]["2"]]
+            since = {svc: {"SPY": max(m["ts_recv"] for m in missed if m["service"] == svc)}
+                     for svc in ("CHART_EQUITY", "NEWS_HEADLINE")}
+        async with connect(stats["listening"], max_size=None) as third:   # nothing new: nothing again
+            await third.send(json.dumps({"op": "subscribe", "symbols": ["SPY"], "since": since}))
+            again_none, _beats = await _received(third, quiet=0.4)
+            assert [m for m in again_none if m["service"] in ("CHART_EQUITY", "NEWS_HEADLINE")] == []
+    asyncio.run(_run(body))
+
+
 def test_a_headline_carries_its_time_as_the_screen_shows_it():
     """Schwab's headline time (field 1, epoch ms) labelled once, by the daemon, in Central Time."""
     from time_et import ct_label

@@ -786,8 +786,12 @@
   }
   function subscribePrices() {
     if (!_daemon || _daemon.readyState !== 1) return;   // sent on open
-    _daemon.send(JSON.stringify({ op: 'subscribe', symbols: priceSymbols().concat(state.contract ? [state.contract] : []) }));
+    _daemon.send(JSON.stringify({ op: 'subscribe', symbols: priceSymbols().concat(state.contract ? [state.contract] : []),
+      since: _seqSeen }));
   }
+  // the daemon's receive time of the last bar and headline received of each symbol, so a
+  // reconnect is sent only those after them, each once ({service: {key: ts_recv}})
+  var _seqSeen = {};
   // Each symbol's LEVELONE_EQUITIES fields as Schwab sent them (Change: each the last one sent),
   // each symbol's verdict per service and its last trade's time and age, as the daemon's beat
   // serves them ({service: {live, outage}}, {time_ct, age})
@@ -814,6 +818,10 @@
           var f = _l1[m.key] || (_l1[m.key] = {});
           Object.keys(m.content).forEach(function (k) { f[k] = m.content[k]; });
           if (m.service === 'LEVELONE_EQUITIES') ingestPriceRow(priceRow(m.key));
+        }
+        if (m.service === 'CHART_EQUITY' || m.service === 'NEWS_HEADLINE') {   // All Sequence: each once, in order
+          var seen = _seqSeen[m.service] || (_seqSeen[m.service] = {});
+          if (typeof m.ts_recv === 'number') seen[m.key] = m.ts_recv;
         }
         // every Schwab message, by its service, to the screens that draw it (books, bars,
         // headlines, option quotes)
