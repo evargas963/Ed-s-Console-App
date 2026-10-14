@@ -65,15 +65,15 @@
     if (!d || d.status === 'no_book') {
       return stage(1, 'td-accent-blue', 'Detect — book microstructure', 'No book yet', '', 0, [], 'NO BOOK', 'warn');
     }
-    var depth = d.depth || {}, cls = d.classification || {};
-    function dep(n, side) { var x = depth[String(n)] || {}; return x[side]; }
+    var depth = d.depth, cls = d.classification;    // absent when the console served none
+    function dep(n, side) { var x = depth && depth[String(n)]; return x ? x[side] : undefined; }
     var imb = dep(5, 'imbalance');
     var ages = d.ages || {};
     // Schwab's top of book: the daemon's LEVELONE_EQUITIES row, as the header shows it
     var tob = window.EdShell.priceRow(window.EdShell.getState().key);
     var rows = [
       ['Bid × Ask', num(tob.bid) + ' × ' + num(tob.ask), undefined],
-    ].concat(!tob.feed_live ? [['Top of book', 'NOT LIVE · ' + (tob.outage || 'the daemon has not reported this symbol'), null]] : []).concat([
+    ].concat(!tob.feed_live ? [['Top of book', 'NOT LIVE' + (tob.outage ? ' · ' + tob.outage : ''), null]] : []).concat([
       ['Spread (pts)', num(d.spread_pts), classOf(cls, 'spread_pts')],
       ['Depth 1 imbalance', num(dep(1, 'imbalance'), 3), classOf(cls, 'depth.*.imbalance')],
       ['Book age', d.as_of.book != null ? { ageOf: 'book' } : '—', classOf(cls, 'as_of.book')],

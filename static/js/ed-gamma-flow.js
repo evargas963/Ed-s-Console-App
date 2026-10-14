@@ -56,7 +56,8 @@
   });
   // a Schwab book's side as rows: each level's price × total size, as sent
   function bookRows(side, priceField, label) {
-    return (side || []).map(function (l, i) { return [label + ' ' + (i + 1), num(l[priceField]) + ' × ' + int(l.TOTAL_VOLUME), 'OPTIONS_BOOK', undefined]; });
+    if (!side) return [];                       // Schwab sent no levels on this side: no rows
+    return side.map(function (l, i) { return [label + ' ' + (i + 1), num(l[priceField]) + ' × ' + int(l.TOTAL_VOLUME), 'OPTIONS_BOOK', undefined]; });
   }
   // no contract selected: nothing to observe
   function none() {
@@ -84,7 +85,7 @@
     var f = function (name) { return window.EdShell.schwabNumber(desired, name); };
     var l1v = window.EdShell.feedVerdict(desired, 'LEVELONE_OPTIONS');
     var tob = { bid: f('BID_PRICE'), ask: f('ASK_PRICE'), bid_size: f('BID_SIZE'), ask_size: f('ASK_SIZE') };
-    var topOutage = l1v && !l1v.live ? l1v.outage : l1v ? null : 'the daemon has not reported this contract';
+    var topLive = !!l1v && l1v.live === true;      // the daemon's verdict; not reported: not live
     var ob = _optBook[desired], obv = window.EdShell.feedVerdict(desired, 'OPTIONS_BOOK');
     var rowsOb = !ob ? [['Book', 'no OPTIONS_BOOK from Schwab since the page opened', 'OPTIONS_BOOK', undefined]]
       : [['Book time', ob.time_ct == null ? '-' : ob.time_ct, 'OPTIONS_BOOK', undefined]]
@@ -106,7 +107,7 @@
       ['Ask', num(tob.ask), 'top_of_book.ask', undefined],
       ['Bid size', int(tob.bid_size), 'top_of_book.bid_size', undefined],
       ['Ask size', int(tob.ask_size), 'top_of_book.ask_size', undefined],
-    ].concat(topOutage ? [['Top of book', 'NOT LIVE · ' + topOutage, 'top_outage', undefined]] : []);
+    ].concat(!topLive ? [['Top of book', 'NOT LIVE' + (l1v && l1v.outage ? ' · ' + l1v.outage : ''), 'top_outage', undefined]] : []);
     var rowsBook = [
       ['Mid', num(d.mid), 'mid', bk('mid')], ['Microprice', num(d.microprice), 'microprice', bk('microprice')],
       ['Spread (pts)', num(d.spread_pts), 'spread_pts', bk('spread_pts')],
@@ -132,8 +133,8 @@
     // Book/quote ages are the payload's own `ages` block (engine-stamped, classified); feed health
     // is the streaming plane — a binding/health fact with no classification (key undefined = no tag).
     var fresh = [
-      ['Book age', (d.as_of || {}).book != null ? { pre: '', ageOf: 'book' } : '—', 'as_of.book', bk('as_of.book')],
-      ['Quote age', (d.as_of || {}).quote != null ? { pre: '', ageOf: 'quote' } : '—', 'as_of.quote', bk('as_of.quote')],
+      ['Book age', d.as_of && d.as_of.book != null ? { pre: '', ageOf: 'book' } : '—', 'as_of.book', bk('as_of.book')],
+      ['Quote age', d.as_of && d.as_of.quote != null ? { pre: '', ageOf: 'quote' } : '—', 'as_of.quote', bk('as_of.quote')],
       ['Replay', fh.replay || '—', 'streaming_plane.feed_health.replay', undefined],
       ['L1 upstream', svc(fh.l1, 'l1_feed'), 'streaming_plane.feed_health.l1', undefined],
       ['Book upstream', svc(fh.book, 'book_feed'), 'streaming_plane.feed_health.book', undefined],

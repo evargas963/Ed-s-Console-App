@@ -41,7 +41,8 @@
   });
   // a Schwab book's side as the ladder draws it: each level's price and total size, as sent
   function levels(side, priceField) {
-    return (side || []).map(function (l) { return { price: l[priceField], volume: l.TOTAL_VOLUME }; });
+    if (!side) return [];                       // Schwab sent no levels on this side
+    return side.map(function (l) { return { price: l[priceField], volume: l.TOTAL_VOLUME }; });
   }
 
   function classOf(map, key) { var v = map ? map[key] : null; return (typeof v === 'string' && v) ? v : null; }
@@ -83,27 +84,28 @@
 
   function render(h, tk, d) {
     var sb = _schwabBook[st().bookVenue + '|' + st().key];
-    d = d || {};                                  // the console's reads of the book, when it has priced them
-    var depth = d.depth || {}, cls = d.classification || {}, asOf = d.as_of || {};
+    // the console's reads of the book, absent until it has priced one (then each reads '—')
+    var priced = d && d.status !== 'no_book' ? d : null;
+    function got(k) { return priced ? priced[k] : undefined; }
+    var depth = got('depth'), cls = got('classification'), asOf = got('as_of');
     var bidLevels = sb ? levels(sb.content.BIDS, 'BID_PRICE') : [], askLevels = sb ? levels(sb.content.ASKS, 'ASK_PRICE') : [];
     var verdict = window.EdShell.feedVerdict(st().key, st().bookVenue);
     // Schwab's top of book: LEVELONE_EQUITIES as the daemon pushes it, and its verdict
     var tob = window.EdShell.priceRow(st().key);
-    var topOutage = tob.feed_live ? null : tob.outage || 'the daemon has not reported this symbol';
-    function dep(n, side) { var x = depth[String(n)] || {}; return x[side]; }
+    function dep(n, side) { var x = depth && depth[String(n)]; return x ? x[side] : undefined; }
     function bk(k) { return classOf(cls, k); }
-    var walls = d.wall_candidates || [];
+    var walls = got('wall_candidates');
     var wallSet = {};
-    walls.forEach(function (w) { wallSet[w.side + '@' + w.price] = w; });
+    if (walls) walls.forEach(function (w) { wallSet[w.side + '@' + w.price] = w; });
 
-    var midHtml = '<div class="dom-mid"><span>mid ' + num(d.mid) + '</span><span>spread ' + num(d.spread_pts) +
-      '</span><span>microprice ' + num(d.microprice) + '</span></div>';
+    var midHtml = '<div class="dom-mid"><span>mid ' + num(got('mid')) + '</span><span>spread ' + num(got('spread_pts')) +
+      '</span><span>microprice ' + num(got('microprice')) + '</span></div>';
 
     // Schwab's last top of book; with its feed down, marked not live with the served reason
     var rowsTob = [
       ['Bid × size', num(tob.bid) + ' × ' + int(tob.bid_size), bk('top_of_book.bid')],
       ['Ask × size', num(tob.ask) + ' × ' + int(tob.ask_size), bk('top_of_book.ask')],
-    ].concat(topOutage ? [['Top of book', 'NOT LIVE · ' + topOutage, null]] : []);
+    ].concat(!tob.feed_live ? [['Top of book', 'NOT LIVE' + (tob.outage ? ' · ' + tob.outage : ''), null]] : []);
     var rowsImb = [
       ['Depth 1 imbalance', num(dep(1, 'imbalance'), 3), bk('depth.*.imbalance')],
       ['Depth 3 imbalance', num(dep(3, 'imbalance'), 3), bk('depth.*.imbalance')],
@@ -112,14 +114,14 @@
       ['Ask total (5)', int(dep(5, 'ask_total')), bk('depth.*.ask_total')],
     ];
     var fresh = [
-      ['Book age', asOf.book != null ? { ageOf: 'book' } : '—', bk('as_of.book')],
-      ['Quote age', asOf.quote != null ? { ageOf: 'quote' } : '—', bk('as_of.quote')],
+      ['Book age', asOf && asOf.book != null ? { ageOf: 'book' } : '—', bk('as_of.book')],
+      ['Quote age', asOf && asOf.quote != null ? { ageOf: 'quote' } : '—', bk('as_of.quote')],
     ];
-    var wallsHtml = walls.length
+    var wallsHtml = walls && walls.length
       ? walls.map(function (w) { return '<div class="fl-row"><span class="k">' + esc(w.side || '—') + ' @ ' + num(w.price) +
           '</span><span class="v">' + int(w.volume) + ' <span class="sm">(' + num(w.median_mult, 1) + '× median)</span></span></div>'; }).join('')
       : '<div class="sm" style="padding:4px 0;">no size-outlier candidates in the current displayed book</div>';
-    var deferred = (d.deferred || []).join(' · ');
+    var deferred = got('deferred') ? got('deferred').join(' · ') : '';
 
     // the book's verdict is the daemon's (the one live rule), on Schwab's book for this venue
     var live = !!(verdict && verdict.live);

@@ -264,8 +264,8 @@
   // the time is the daemon's label of Schwab's field 1
   function paintNews() {
     var host = $('tdmNews'); if (!host) return;
-    var items = S.news[st().key] || [];
-    if (!items.length) { host.innerHTML = '<div class="tdm-empty">No headline from Schwab for ' + esc(shown()) + ' since the page opened.</div>'; return; }
+    var items = S.news[st().key];               // absent: none since the page opened
+    if (!items) { host.innerHTML = '<div class="tdm-empty">No headline from Schwab for ' + esc(shown()) + ' since the page opened.</div>'; return; }
     host.innerHTML = items.map(function (m) {
       var c = m.content;
       return '<div class="tdm-q"><span class="tdm-q-b"><span class="tdm-q-t">' + esc(c['4'] == null ? '-' : c['4']) + '</span>' +

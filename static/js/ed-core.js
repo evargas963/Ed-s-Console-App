@@ -835,18 +835,18 @@
   // them. Not live, the values stand, marked (AGENTS.md rule 5).
   var DAEMON_DOWN = "the daemon's socket is down";
   function priceRow(key) {
-    var f = _l1[key] || {}, s = (_feedState[key] || {}).LEVELONE_EQUITIES || {}, t = _trades[key] || {};
-    if (!pricePushHealthy()) s = { live: false, outage: DAEMON_DOWN };   // no beat comes: nothing is live
-    function v(name) { return schwabNum(f[name]); }
+    // each absent until the daemon has sent it: Schwab's fields, the verdict, the trade's labels
+    var f = _l1[key], s = feedVerdict(key, 'LEVELONE_EQUITIES'), t = _trades[key];
+    function v(name) { return f ? schwabNum(f[name]) : null; }
     var spot = v('LAST_PRICE'), trade = v('TRADE_TIME_MILLIS');
     return { ticker: key, spot: spot, spot_disp: spot == null ? null : spot.toFixed(2),
       bid: v('BID_PRICE'), ask: v('ASK_PRICE'), bid_size: v('BID_SIZE'), ask_size: v('ASK_SIZE'), mark: v('MARK'),
       last_size: v('LAST_SIZE'), total_volume: v('TOTAL_VOLUME'), net_change: v('NET_CHANGE'),
       chg_pct: v('NET_CHANGE_PERCENT'), chg_pct_regular: v('REGULAR_MARKET_CHANGE_PERCENT'),
       open_price: v('OPEN_PRICE'), high_price: v('HIGH_PRICE'), low_price: v('LOW_PRICE'), prior_close: v('CLOSE_PRICE'),
-      trade_ts: trade == null ? null : trade / 1000, trade_time_ct: t.time_ct == null ? null : t.time_ct,
-      trade_age: t.age == null ? null : t.age,
-      feed_live: s.live === true, outage: s.outage == null ? null : s.outage, quote_ingestion: 'schwab_streaming_level_one' };
+      trade_ts: trade == null ? null : trade / 1000, trade_time_ct: t && t.time_ct != null ? t.time_ct : null,
+      trade_age: t && t.age != null ? t.age : null,
+      feed_live: !!s && s.live === true, outage: s && s.outage != null ? s.outage : null, quote_ingestion: 'schwab_streaming_level_one' };
   }
   // What each symbol the page asked for is, as the daemon answers the subscribe: the key its
   // messages carry ("$SPX") and its display name ("SPX").
@@ -887,7 +887,8 @@
   // down, not live with that reason; null when the daemon has not reported the symbol
   function feedVerdict(key, service) {
     if (!pricePushHealthy()) return { live: false, outage: DAEMON_DOWN };
-    return ((_feedState || {})[key] || {})[service] || null;
+    var held = _feedState && _feedState[key];
+    return held && held[service] ? held[service] : null;
   }
   function pricePushHealthy() { return _priceUp && (Date.now() - _lastPriceTs <= PRICE_SILENCE_MS); }
   // 1 s watchdog: a silent daemon withdraws every price within PRICE_SILENCE_MS + 1 s
@@ -1221,6 +1222,6 @@
     feedVerdict: feedVerdict,
     priceRow: priceRow,                                    // an equity's row, from the daemon's fields
     // a LEVELONE_EQUITIES / LEVELONE_OPTIONS field as Schwab last sent it, null where it is not a number
-    schwabNumber: function (key, name) { return schwabNum((_l1[key] || {})[name]); },
+    schwabNumber: function (key, name) { return _l1[key] ? schwabNum(_l1[key][name]) : null; },
     setSubview: setSubview };
 })();
