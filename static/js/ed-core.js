@@ -520,13 +520,16 @@
         setTicker(sym);
       });
       host.insertBefore(row, add);
+      // its values as the console last pushed them: a row pushed once is only re-sent where it changed
+      var q = _served[sym] && _rows[_served[sym].key];
+      if (q) setWlRow(sym, q.spot, q.chg_pct);
     });
     host.querySelectorAll('[data-rm]').forEach(function (b) {
       b.addEventListener('click', function (e) { e.stopPropagation(); removeSymbol(b.getAttribute('data-rm')); });
     });
     buildSymList();   // the watchlist is only a SUGGESTION list for the instrument control
-    // the open price socket is told the new set; nothing reconnects, nothing blanks
-    subscribePrices();
+    // the console is told the new set with the view; nothing reconnects, nothing blanks
+    sendView();
   }
   var _wlMsgTimer = null;
   function wlNotify(msg) {   // understandable feedback for invalid/duplicate add — aria-live, self-clearing
@@ -595,8 +598,7 @@
     state.selStrike = null; state.selExpiry = null;   // a new ticker clears the shared selection
     Object.keys(state.pans).forEach(function (k) { state.pans[k].centre = null; state.pans[k].shift = 0; });   // and follows the price
     openPush();                          // the console's push (the view goes with ed:ticker)
-    _priceSubTs = Date.now();
-    subscribePrices();                   // the daemon answers with this ticker's row at once
+    _priceSubTs = Date.now();            // the console answers the view with this ticker's row at once
     markHeaderPushDown();                // WAITING until that row lands (milliseconds)
     emit('ed:ticker', { ticker: state.ticker });
   }
@@ -672,12 +674,9 @@
     if (a) a.textContent = age;
     var fresh = document.getElementById('aiCtxFresh'); if (fresh) fresh.textContent = label + (age && age !== '—' ? ' · ' + age : '');
   }
-  // ---- header quote + watchlist: PUSHED BY THE CAPTURE DAEMON over WebSocket (port 8800,
-  //      app/market_data/schwab/streaming/live_ui.py) -- the finished row (live_price_rows.
-  //      price_row) the instant a Schwab message changes it, plus a feed verdict every second.
-  //      No web server is in this path, so no analytics load can delay a price. It is the
-  //      ONLY source of the header quote and the watchlist rows (operator rule 2026-09-23: no
-  //      fallbacks): when it is not delivering, the header says so -- nothing polls a quote. ----
+  // ---- header quote + watchlist: the console's price rows on its push (/api/live) -- the
+  //      ONLY source of the header quote and the watchlist rows: when it is not delivering,
+  //      the header says so -- nothing polls a quote. ----
   // Operator directive (2026-09-14, spot 360 audit): the source that answered THIS number
   // was already on every payload (quote_ingestion / _quote_authority) but never surfaced —
   // a hover tooltip, not new chrome, so the next divergence (if the plane/REST hierarchy
@@ -720,32 +719,24 @@
       else { ce.textContent = '—'; ce.className = 'wl-chg'; }
     }
   }
-  // A silent price push withdraws every row to UNAVAILABLE and marks the list degraded with
-  // the reason, until a row arrives again.
+  // A silent price push marks the list not live with the reason; each row's last pushed values
+  // stand until a row arrives again (AGENTS.md rule 5).
   function markWlDegraded(reason) {
     var host = document.getElementById('watchlist');
     if (host) host.classList.add('wl-degraded');
-    loadWL().forEach(function (sym) { setWlRow(sym, null, null); });
     wlNotify(reason);
   }
   function markWlHealthy() {
     var host = document.getElementById('watchlist');
     if (host) host.classList.remove('wl-degraded');
   }
-  // ---- the price socket (daemon -> browser) ----
-  var PRICE_SILENCE_MS = 3000;   // the daemon beats every 1 s; 3 s of nothing = the push is down
-  var _priceWs = null, _priceUp = false, _lastPriceTs = 0, _priceSubTs = 0, _priceRetry = 0;
-  // the port comes from the console (meta ed-live-ui-port = the daemon's ED_LIVE_UI_PORT);
-  // an unfilled page opens no socket and its prices read UNAVAILABLE
-  function priceSocketUrl() {
-    var m = document.querySelector('meta[name="ed-live-ui-port"]');
-    var port = m ? String(m.getAttribute('content') || '') : '';
-    if (!/^\d+$/.test(port)) return null;
-    return (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.hostname + ':' + port + '/';
-  }
+  // ---- the prices: each symbol's price row as the console pushes it (live_price_rows.price_row,
+  //      the one row every screen and calculation reads), only the fields that changed ----
+  var PRICE_SILENCE_MS = 3000;   // the console beats every 1 s; 3 s of nothing = the push is down
+  var _priceUp = false, _lastPriceTs = 0, _priceSubTs = 0;
   // The market context the server always streams, served in the page (meta ed-market-context,
-  // from live_push.MARKET_CONTEXT): [{key, display}]. The socket pushes only what a page
-  // subscribes to, so every page asks for it.
+  // from live_push.MARKET_CONTEXT): [{key, display}]. The push sends only the rows a page's view
+  // names, so every page names it.
   var MARKET_CONTEXT = (function () {
     var m = document.querySelector('meta[name="ed-market-context"]');
     try { return JSON.parse(m ? m.getAttribute('content') : '[]') || []; } catch (e) { return []; }
@@ -757,10 +748,6 @@
     loadWL().forEach(function (s) { s = String(s).toUpperCase(); if (out.indexOf(s) === -1) out.push(s); });
     return out;
   }
-  function subscribePrices() {
-    if (!_priceWs || _priceWs.readyState !== 1) return;   // sent on open
-    try { _priceWs.send(JSON.stringify({ op: 'subscribe', symbols: priceSymbols() })); } catch (e) {}
-  }
   // The daemon's database writer, as each heartbeat carries it: the line and its class are the
   // daemon's (stream_spine.WriterStatus line / cls). No writer status served: '—'.
   function paintRecord(w) {
@@ -768,78 +755,18 @@
     el.textContent = w ? w.line : '—';
     el.className = w ? 'v ' + w.cls : 'v';
   }
-  function openPriceSocket() {
-    var url = priceSocketUrl();
-    if (typeof WebSocket === 'undefined' || !url) return;
-    var ws;
-    try { ws = new WebSocket(url); } catch (e) { schedulePriceReconnect(); return; }
-    _priceWs = ws;   // (_priceSubTs is set by a ticker change only: a reconnect during an
-                     //  outage keeps reading OFFLINE, not WAITING)
-    ws.onopen = function () { _priceRetry = 0; subscribePrices(); };
-    ws.onmessage = function (ev) {
-      var msg; try { msg = JSON.parse(ev.data); } catch (e) { return; }
-      if (!msg) return;
-      if (msg.type === 'symbols' && Array.isArray(msg.symbols)) { ingestIdentity(msg.symbols); return; }
-      _priceUp = true; _lastPriceTs = Date.now();
-      if (msg.type === 'feed') {
-        paintRecord(msg.feed && msg.feed.writer);
-        _feedState = msg.state;
-        Object.keys(_feedState).forEach(function (k) { ingestPriceRow(priceRow(k)); });
-        return;
-      }
-      if (msg.type !== 'schwab' || !Array.isArray(msg.messages)) return;
-      msg.messages.forEach(function (m) {
-        if (m.service === 'LEVELONE_EQUITIES') {      // Change: the fields Schwab changed
-          var f = _l1[m.key] || (_l1[m.key] = {});
-          Object.keys(m.content).forEach(function (k) { f[k] = m.content[k]; });
-          ingestPriceRow(priceRow(m.key));
-        }
-        window.dispatchEvent(new CustomEvent('ed:schwab', { detail: m }));
-      });
-    };
-    ws.onclose = function () {
-      if (_priceWs === ws) { _priceWs = null; _priceUp = false; schedulePriceReconnect(); }
-    };
-    ws.onerror = function () { try { ws.close(); } catch (e) {} };
+  // each symbol's price row as the console last pushed it (the fields that changed, merged)
+  var _rows = {};
+  function ingestRows(rows) {
+    Object.keys(rows).forEach(function (key) {
+      if (!_rows[key]) _rows[key] = {};
+      var row = _rows[key];
+      Object.keys(rows[key]).forEach(function (f) { row[f] = rows[key][f]; });
+      ingestPriceRow(row);
+    });
   }
-  function schedulePriceReconnect() {
-    // 0.25 s, 0.5 s, 1 s, then every 2 s: the daemon restarting is seen and recovered at once
-    var ms = Math.min(2000, 250 * Math.pow(2, _priceRetry++));
-    setTimeout(function () { if (!_priceWs) openPriceSocket(); }, ms);
-  }
-  // Each symbol's LEVELONE_EQUITIES fields as Schwab sent them (each the last one sent: Schwab
-  // sends only what changed), and each symbol's feed state as the daemon's heartbeat serves it
-  // ({service: {live, outage}}).
-  var _l1 = {}, _feedState = {};
-  // A Schwab number as sent, or null where Schwab's definition says it is not one (absent,
-  // text, -999, not finite): shown "—".
-  function schwabNum(v) { return (typeof v === 'number' && isFinite(v) && v !== -999) ? v : null; }
-  // The time an instant is shown at, as the server's time_et.ct_label: "Fri 09/25 06:59 PM CT".
-  function ctLabel(ms) {
-    var d = new Date(ms), o = { timeZone: 'America/Chicago' };
-    var wd = d.toLocaleDateString('en-US', Object.assign({ weekday: 'short' }, o));
-    var md = d.toLocaleDateString('en-US', Object.assign({ month: '2-digit', day: '2-digit' }, o));
-    var tm = d.toLocaleTimeString('en-US', Object.assign({ hour: '2-digit', minute: '2-digit', hour12: true }, o));
-    return wd + ' ' + md + ' ' + tm + ' CT';
-  }
-  // One symbol's row as the screen paints it: Schwab's fields renamed for the painters, and the
-  // daemon's feed state. In an open session with the feed down the values are absent with the
-  // outage reason; otherwise each is the last value Schwab sent (docs/DATA_FLOW.md §2 D5).
-  function priceRow(key) {
-    // f: no field sent yet; s: no feed state served yet -- each absent, never an empty stand-in
-    var f = _l1[key], fs = _feedState[key], s = fs ? fs.LEVELONE_EQUITIES : undefined;
-    var outage = s && s.outage ? s.outage : null, shown = !outage;
-    function v(name) { return shown && f ? schwabNum(f[name]) : null; }
-    var spot = v('LAST_PRICE'), trade = v('TRADE_TIME_MILLIS');
-    return { ticker: key, spot: spot, spot_disp: spot == null ? null : spot.toFixed(2),
-      bid: v('BID_PRICE'), ask: v('ASK_PRICE'), bid_size: v('BID_SIZE'), ask_size: v('ASK_SIZE'), mark: v('MARK'),
-      chg_pct: v('NET_CHANGE_PERCENT'), chg_pct_regular: v('REGULAR_MARKET_CHANGE_PERCENT'),
-      total_volume: v('TOTAL_VOLUME'), last_size: v('LAST_SIZE'), trade_ts: trade == null ? null : trade / 1000,
-      trade_time_ct: trade == null ? null : ctLabel(trade),
-      feed_live: !!(s && s.live), outage: outage, quote_ingestion: 'schwab_streaming_level_one' };
-  }
-  // What each symbol the page asked for is, as the daemon answers the subscribe: the key its rows
-  // carry ("$SPX") and its display name ("SPX"). Rows are matched to what was asked by that key.
+  // What each symbol the page names is, as the console answers the view: the key its rows carry
+  // ("$SPX") and its display name ("SPX"). Rows are matched to what was asked by that key.
   function ingestIdentity(list) {
     list.forEach(function (s) {
       if (!s || !s.key) return;
@@ -847,18 +774,19 @@
       if (s.requested === state.ticker && state.key !== s.key) {
         state.key = s.key; state.display = s.display;
         paintIdentity(s.display);
+        if (_rows[s.key]) ingestPriceRow(_rows[s.key]);   // its row as last pushed, until it changes
       }
     });
   }
-  // ONE row in (the daemon's price_row), every surface painted from it. Every number and
+  // ONE row in (the console's price_row), every surface painted from it. Every number and
   // verdict is the server's; the browser only picks the words.
   function ingestPriceRow(q) {
     if (!q || !q.ticker) return;
     if (q.ticker === state.key) {
       // painted NOW, not on requestAnimationFrame: the browser slows or pauses rAF for a
       // window it considers covered (measured 2026-09-24: row in at 6 ms, rAF paint at 773 ms).
-      // The daemon already conflates to the newest row per symbol, so there is no burst to
-      // throttle -- a few text writes per second. The price is Schwab's last trade with Schwab's
+      // Only the fields that changed arrive, so there is no burst to throttle -- a few text
+      // writes per second. The price is Schwab's last trade with Schwab's
       // trade time, or absent with the served outage reason; the feed state is stated beside it.
       paintQuote({ spot_disp: q.spot_disp, spot: q.spot, bid: q.bid, ask: q.ask,
         chgPct: q.chg_pct, chgPctRegular: q.chg_pct_regular, quoteIngestion: q.quote_ingestion,
@@ -896,7 +824,7 @@
     return { seq: _viewSeq, ticker: state.ticker, workspace: state.workspace, subview: state.subview, view: state.view,
       expiry: state.expiryFilter, strike: state.selStrike, strike_expiry: state.selExpiry, contract: state.contract,
       scope: state.scope, venue: state.bookVenue, cols: state.cols, book_minutes: state.bookMinutes,
-      tfs: state.tfs, pans: pans };
+      tfs: state.tfs, pans: pans, symbols: priceSymbols() };
   }
   // once per turn of the page, after every listener of the event has set its part
   function sendView() {
@@ -930,7 +858,10 @@
     ws.onopen = function () { _liveRetry = 0; _held = {}; sendView(); };
     ws.onmessage = function (ev) {
       var msg = JSON.parse(ev.data);
-      if (msg.type === 'session') { paintSession(msg.label); return; }
+      _priceUp = true; _lastPriceTs = Date.now();   // the push is alive (it beats every second)
+      if (msg.type === 'feed') { paintSession(msg.session); paintRecord(msg.writer); return; }
+      if (msg.type === 'symbols') { ingestIdentity(msg.symbols); return; }
+      if (msg.type === 'rows') { ingestRows(msg.rows); return; }
       if (msg.type === 'view') {                   // the console took view `msg.seq`; `moved`: its new panels
         Object.keys(_held).forEach(function (n) { if (msg.shown.indexOf(n) === -1) delete _held[n]; });   // off screen
         msg.moved.forEach(function (n) { delete _held[n]; deliver(n, { waiting: true }); });
@@ -947,8 +878,8 @@
     };
     ws.onclose = function () {
       if (_live !== ws) return;
-      _live = null;
-      paintSession(null, 'session unknown: the console push is down');
+      _live = null; _priceUp = false;
+      paintSession('Unknown', 'session unknown: the console push is down');
       setTimeout(openPush, Math.min(2000, 250 * Math.pow(2, _liveRetry++)));
     };
     ws.onerror = function () { ws.close(); };
@@ -964,17 +895,18 @@
     el.textContent = v[0]; el.className = 'sess ' + v[1]; el.title = why || '';
   }
 
-  // The push is not delivering: withdraw the quote instead of leaving the last one on screen
-  // (and instead of polling for it -- operator rule 2026-09-23: no fallbacks). The session
-  // label is not a live quote and keeps its own slow read.
+  // The push is not delivering: the last row pushed stands, marked not live with its trade
+  // time (AGENTS.md rule 5); a row never pushed reads absent. Nothing polls for it.
   function markHeaderPushDown() {
     // just asked for this ticker (page load or a ticker change): the row is on its way
     // (WAITING); otherwise the push itself is down (OFFLINE)
     var connecting = Date.now() - _priceSubTs <= PRICE_SILENCE_MS;
-    paintQuote({ spot: null, spot_disp: null, bid: null, ask: null, chgPct: null, chgPctRegular: null,
+    var q = _rows[state.key] || {};
+    paintQuote({ spot: q.spot, spot_disp: q.spot_disp, bid: q.bid, ask: q.ask, chgPct: q.chg_pct,
+      chgPctRegular: q.chg_pct_regular, quoteIngestion: q.quote_ingestion,
       feedCls: 'stale',
       feedLabel: connecting ? 'WAITING' : 'OFFLINE',
-      ageLabel: connecting ? 'no push yet' : 'live push down' });
+      ageLabel: q.trade_time_ct != null ? ('last trade ' + q.trade_time_ct) : (connecting ? 'no push yet' : 'live push down') });
     paintRecord(null);
   }
 
@@ -1074,7 +1006,6 @@
     if (state.ticker) setTicker(state.ticker); else paintNoTicker();
     _booting = false;   // every REAL subsequent view/ticker change dispatches both events normally
     tickClock(); setInterval(tickClock, 1000);
-    openPriceSocket();                   // prices: daemon -> browser, one socket for the page
     setInterval(checkPriceSilence, 1000);
   }
 

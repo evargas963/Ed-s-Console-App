@@ -1,7 +1,8 @@
 // The console's push to the page (/api/live, server.live_values), with each panel's value from the
 // spec's own stubs. The page's view ({op:'view'}) goes to the real test server, which answers as
-// the console does: which panels are on screen ({type:'view', seq, moved, shown}) and each one's
-// answer by name, one change's together ({type:'panels', seq, panels: [{panel, source, kinds, ...}]}).
+// the console does: what each price symbol is ({type:'symbols'}), its price row ({type:'rows'}),
+// which panels are on screen ({type:'view', seq, moved, shown}), each one's answer by name
+// ({type:'panels', seq, panels: [{panel, source, kinds, ...}]}) and the beat ({type:'feed'}).
 // Each answer is replaced by what
 // the spec's stubs serve for its `source` (page.route), as the console serves its route's own
 // answer, and stamped with the view the console holds when it is sent, as the console stamps it.
@@ -25,6 +26,15 @@ async function answer(page, url) {
 
 //: each page's open push, for pushChange
 const _push = new WeakMap();
+//: each page's stand-in price rows (tests/e2e/fixtures/price_socket.js), in the order pushed
+const _prices = new WeakMap();
+
+// The console's price rows for `page`, stood in for: the test server's own rows (no Schwab feed
+// under e2e) are dropped, and these are pushed in their place, 300 ms apart, once the console has
+// answered what their symbols are.
+function setPrices(page, rows) {
+  _prices.set(page, rows);
+}
 
 // The console pushes a change of `kind` for the page's ticker: every panel on screen that it
 // moves, answered again (through the spec's stubs).
@@ -33,8 +43,22 @@ async function pushChange(page, kind) {
   if (p) await p(kind);
 }
 
+//: each page's open push, for pushDown; the pages whose console push is down
+const _socket = new WeakMap();
+const _down = new WeakSet();
+
+// The console's push to `page` goes down and stays down: the open socket closes and every
+// reconnect is closed at once, as when the console has stopped.
+function pushDown(page) {
+  _down.add(page);
+  const ws = _socket.get(page);
+  if (ws) ws.close();
+}
+
 async function installLive(page) {
   await page.routeWebSocket(/\/api\/live$/, (ws) => {
+    if (_down.has(page)) { ws.close(); return; }
+    _socket.set(page, ws);
     //: each panel on screen -> the console's newest message for it (its source and kinds)
     const shown = new Map();
     //: each route's answer from the stubs while it is being read: one read per route, however
@@ -43,7 +67,9 @@ async function installLive(page) {
     //: the console's answers under a view older than the page's newest: held until the console
     //: takes the newest, then read or dropped as the page draws or drops them
     let held = [];
-    let seq = null, pageSeq = null, ticker = null, closed = false;
+    let seq = null, pageSeq = null, ticker = null, closed = false, writer = null;
+    //: the stand-in rows' symbols already pushed
+    const priced = new Set();
     const send = (m) => { if (!closed) { try { ws.send(JSON.stringify(m)); } catch (e) { closed = true; } } };
     ws.onClose(() => { closed = true; });
     function read(source) {
@@ -84,7 +110,7 @@ async function installLive(page) {
         for (const block of r.text.split('\n\n')) {
           const ev = (block.match(/^event: (.+)$/m) || [])[1], data = (block.match(/^data: (.*)$/m) || [])[1];
           if (!ev) continue;
-          if (ev === 'session') { send({ type: 'session', label: data }); continue; }
+          if (ev === 'session') { send({ type: 'feed', session: data, writer: writer }); continue; }
           await moved(ev);
         }
       }
@@ -103,6 +129,17 @@ async function installLive(page) {
           const changes = waiting; waiting = [];
           changes.forEach((run) => run());
         }
+        return;
+      }
+      const prices = _prices.get(page);
+      if (msg.type === 'rows' && prices) return;       // the stand-in rows replace the server's
+      if (msg.type === 'feed') writer = msg.writer;
+      if (msg.type === 'symbols' && prices) {
+        send(msg);
+        const keys = new Set(msg.symbols.map((s) => s.key).filter((k) => !priced.has(k)));
+        keys.forEach((k) => priced.add(k));
+        prices.filter((r) => keys.has(r.ticker))
+          .forEach((r, i) => setTimeout(() => send({ type: 'rows', rows: { [r.ticker]: r } }), 300 * i));
         return;
       }
       if (msg.type === 'panels') {
@@ -130,4 +167,4 @@ const test = base.test.extend({
   },
 });
 
-module.exports = { test, expect: base.expect, pushChange };
+module.exports = { test, expect: base.expect, pushChange, pushDown, setPrices };

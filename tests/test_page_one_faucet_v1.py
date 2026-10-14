@@ -219,12 +219,11 @@ def test_at_any_hour_the_price_is_schwabs_last_trade_with_schwabs_trade_time():
     captured it (stream_quotes_raw). Operator, 2026-10-01: "From Schwab's mouth to our UI's ears.
     Period." -- no live/closed verdict by our clock: the row serves Schwab's last price as the
     spot with Schwab's trade time, and every consumer reads it."""
-    import live_price_rows
     from tests.feed_live_helper import mark_feed_live
     mark_feed_live("SPY")
     lmp.record_from_level_one_equity("SPY", {"LAST_PRICE": 772.04, "TRADE_TIME_MILLIS": 1790380799830},
                                      received_ts=time.time())
-    row = live_price_rows.price_row("SPY", time.time())
+    row = server.price_row("SPY", time.time())
     try:
         spot = server.resolve_spot("SPY", now=time.time())
     finally:

@@ -1,13 +1,12 @@
 """THE displayed price row -- one producer for every price the operator sees.
 
 Built only from live_market_plane (the per-field Schwab LEVELONE_EQUITIES state) and its feed
-state (feed_live_for). Imported by the capture daemon, which pushes these rows straight to
-the browser (app/market_data/schwab/streaming/live_ui.py), and by the console, whose analytics
-read the same function -- so a price on screen and a price in a calculation can never come
-from two different rules.
+state (feed_live_for). The console pushes these rows to the page (server.live_values) and its
+analytics read the same row of the same change -- so a price on screen and a price in a
+calculation are one read.
 
 Nothing here computes a market value: every number is a Schwab field or its receive time, with
-Schwab's own trade time; the only derivations are the trade age and its label. Whether the feed
+Schwab's own trade time; the only derivation is the trade time's label. Whether the feed
 is delivering the symbol now (`feed_live`) is stated beside the values; in an open session a
 down feed leaves them absent with the reason (`outage`), and while Closed the values as of the
 close stand (docs/DATA_FLOW.md §2 D5).
@@ -32,20 +31,13 @@ def with_change(bar: dict[str, Any]) -> dict[str, Any]:
     return bar
 
 
-def _trade_age_sec(trade_ts: Optional[float], now: float) -> Optional[float]:
-    """Seconds since the Schwab trade time; None when no trade is known (never a 0)."""
-    if trade_ts is None:
-        return None
-    return max(0.0, now - float(trade_ts))
-
-
-def price_row(ticker: str, now: float) -> dict[str, Any]:
-    """The finished row the screen paints for one symbol, as it is at `now`: each field the
-    last value Schwab sent for it, unless its feed is down in an open session (`outage`, the
-    reason the values are absent; docs/DATA_FLOW.md §2 D5)."""
+def price_row(ticker: str, now: float, row: Optional[dict[str, Any]]) -> dict[str, Any]:
+    """The finished row the screen paints for one symbol, as it is at `now`, from `row` (its
+    LEVELONE_EQUITIES record, live_market_plane.get_quote, read once for the change it is shown
+    for): each field the last value Schwab sent for it, unless its feed is down in an open session
+    (`outage`, the reason the values are absent; docs/DATA_FLOW.md §2 D5)."""
     tk = ticker_storage_key(ticker)
     outage = lmp.outage(tk, "LEVELONE_EQUITIES", now)
-    row = lmp.get_quote(tk) if tk else None
     streamed = bool(row) and lmp.plane_row_is_streamed(row) and outage is None
     spot = float(row["spot"]) if streamed and lmp.plane_spot_is_last_price(row) else None
 
@@ -80,8 +72,6 @@ def price_row(ticker: str, now: float) -> dict[str, Any]:
         "prior_close": field("prior_close"),
         "trade_ts": trade_ts,                          # Schwab TRADE_TIME (epoch s)
         "trade_time_ct": ct_label(trade_ts) if trade_ts is not None else None,
-        "trade_age_sec": _trade_age_sec(trade_ts, now),
         "ts_recv": row.get("server_received_ts") if row else None,
         "quote_ingestion": row.get("quote_ingestion") if row else None,
-        "server_ts": now,
     }

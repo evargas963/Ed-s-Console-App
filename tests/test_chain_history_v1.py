@@ -120,7 +120,9 @@ def test_a_refused_chain_reaches_the_console_as_schwabs_answer(tmp_path, schwab)
 
 def test_the_history_is_written_once_per_capture_window_and_never_outside_one(tmp_path, schwab):
     """Each window's first round is written from the daemon's ledger: every contract's record, its
-    Greeks the quote's, at SPY's price and the time the round began."""
+    Greeks the quote's, and the time the round began, at Schwab's underlyingPrice as sent -- the
+    newest by Schwab's time: the quotes' 762.63 (every one of the 442, each newer than the chain
+    answer's 766.31), never the daemon's last trade (766.31 here)."""
     clock = {"now": 0.0}
     daemon, sweep, published, client = _sweep(tmp_path, schwab, lambda: clock["now"])
     for at in ("2026-09-30 15:31:57", "2026-09-30 15:35:00",      # the 15:30 window, twice
@@ -132,7 +134,8 @@ def test_the_history_is_written_once_per_capture_window_and_never_outside_one(tm
         rows = c.execute("SELECT ts_utc, expiry, spot, n_contracts, chain_json FROM complete_chain_captures "
                          "ORDER BY ts_utc").fetchall()
     assert [(_et(r[0]), r[1], r[2], r[3]) for r in rows] == [
-        ("2026-09-30 15:31", "2026-11-20", 766.31, 442), ("2026-09-30 16:01", "2026-11-20", 766.31, 442)]
+        ("2026-09-30 15:31", "2026-11-20", 762.63, 442), ("2026-09-30 16:01", "2026-11-20", 762.63, 442)]
+    assert {q["underlyingPrice"] for q in _QUOTED.values()} == {762.63}
     assert isinstance(rows[0][4], bytes), "stored compressed"
     stored = {c["symbol"]: c for c in decode_json_blob(rows[0][4])}
     assert all(stored[s]["gamma"] == q["gamma"] for s, q in _QUOTED.items()), "the quote's gamma is stored"

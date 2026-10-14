@@ -328,6 +328,9 @@ class MessageBus:
         self._subs: list[Subscription] = []
         #: key (current_key) -> (topic, record)
         self.current: dict[str, tuple[str, Any]] = {}
+        #: the keys whose record is of a connection that ended (stand): kept, until the next
+        #: message replaces it whole
+        self._standing: set[str] = set()
 
     def subscribe(self, prefix: str, *, policy: str = LATEST) -> Subscription:
         """A LATEST reader starts with every current record under `prefix` to read."""
@@ -355,11 +358,20 @@ class MessageBus:
         """The daemon stopped holding what `key` (current_key) names: its record is no longer
         current and is never handed out again (D5)."""
         self.current.pop(key, None)
+        self._standing.discard(key)
+
+    def stand(self, key: str) -> None:
+        """The connection that sent `key`'s record ended: the record stands as the last values
+        sent (D5), and the next connection's first message for it replaces it whole, so no field
+        of the ended connection is merged into the new one's."""
+        if key in self.current:
+            self._standing.add(key)
 
     def _newest(self, key: str, topic: str, msg: Any) -> bool:
         """Make `msg` part of its topic's current record where it is the newest by Schwab's
-        time. Returns whether the record changed."""
-        held = self.current.get(key)
+        time; a record that stands (stand) is replaced whole. Returns whether the record changed."""
+        held = None if key in self._standing else self.current.get(key)
+        self._standing.discard(key)
         t = msg.get("schwab_ts") if isinstance(msg, dict) else None
         body_key = _FIELD_DELTA.get(topic.split(".", 1)[0])
         body = msg.get(body_key) if body_key is not None and isinstance(msg, dict) else None

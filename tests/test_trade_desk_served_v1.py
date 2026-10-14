@@ -128,6 +128,8 @@ def test_the_desk_event_feed_numbers_orders_and_counts_the_real_crosses():
             events.setdefault((r["ts_utc"], r["level_value"], r["direction"]), r)
     crosses = [it for it in body["items"] if it["dom"] == "LEVELS"]
     assert len(crosses) == len(events) > 0
+    # each time served as the screen shows it: the page reads no clock to judge a day
+    assert [it["time_ct"] for it in crosses] == [time_et.ct_label(it["ts"]) for it in crosses]
     assert sorted(it["n"] for it in crosses) == list(range(1, len(events) + 1))
     oldest = min(events)[0]
     assert next(it for it in crosses if it["n"] == 1)["ts"] == oldest

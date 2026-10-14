@@ -42,6 +42,7 @@ def published():
     with server._terrain_cache_lock:
         server._terrain_cache.pop(TK, None)
     forget_price(TK)
+    server._rounds.pop(TK, None)
     ofls.clear_all_live_state()
     no_daemon()
     push_changes.bind(None)
@@ -77,7 +78,7 @@ def _console(body) -> None:
 
 
 async def _next(ws, *types):
-    """The next message of one of `types` (the session label rides along with the rest)."""
+    """The next message of one of `types` (the beat, the symbols and the rows ride along)."""
     while True:
         msg = json.loads(await asyncio.wait_for(ws.recv(), 10))
         if msg["type"] in types:
@@ -86,12 +87,12 @@ async def _next(ws, *types):
 
 def _view(seq, **over):
     """A page's view as ed-core.js viewOf sends it: CRWD on Options > Gamma > Heatmap, nothing
-    selected, every pan following the price."""
+    selected, every pan following the price, CRWD's price row shown."""
     pan = {"centre": None, "shift": 0}
     v = {"seq": seq, "ticker": "CRWD", "workspace": "options", "subview": "gamma", "view": "heatmap",
          "expiry": None, "strike": None, "strike_expiry": None, "contract": None, "scope": "auto",
          "venue": "NYSE_BOOK", "cols": 6, "book_minutes": 60, "tfs": {"chart": "1", "liquidity": "5", "desk": "5"},
-         "pans": {k: dict(pan) for k in ("heatmap", "gbs", "vanna", "charm", "migration")}}
+         "pans": {k: dict(pan) for k in ("heatmap", "gbs", "vanna", "charm", "migration")}, "symbols": ["CRWD"]}
     v.update(over)
     return json.dumps({"op": "view", "view": v})
 
@@ -105,8 +106,19 @@ async def _panels(ws, names):
 
 
 def _by_name(frame):
-    """One change's answers ({"type": "panels"}), each with the view it is for, by panel name."""
+    """A frame's answers ({"type": "panels"}), each with the view it is for, by panel name."""
     return {p["panel"]: {**p, "seq": frame["seq"]} for p in frame["panels"]}
+
+
+async def _quiet(ws, sec):
+    """Every message the console sends in the next `sec` seconds."""
+    out, end = [], asyncio.get_running_loop().time() + sec
+    while (left := end - asyncio.get_running_loop().time()) > 0:
+        try:
+            out.append(json.loads(await asyncio.wait_for(ws.recv(), left)))
+        except TimeoutError:
+            break
+    return out
 
 
 def test_the_view_gets_each_panel_on_screen_with_its_routes_own_answer_and_again_on_a_change_that_moves_it(published):
@@ -124,13 +136,17 @@ def test_the_view_gets_each_panel_on_screen_with_its_routes_own_answer_and_again
                     served = (await http.get(m["source"])).json()
                     assert _at_answer_time(m["body"]) == _at_answer_time(served), f"{name} is not its route's own answer"
             # a levels publication moves both again; so does the live price (`flow`): every panel
-            # with a value derived from it, in one frame -- but not the expiry list
+            # with a value derived from it, each as it is ready -- but not the expiry list
             push_changes.changed(TK, push_changes.LEVELS)
             assert {"gamma.surface", "gamma.terrain"} <= set(await _panels(ws, ["gamma.surface", "gamma.terrain"]))
+            await _quiet(ws, 0.5)
             push_changes.changed(TK, push_changes.FLOW)
-            frame = _by_name(await _next(ws, "panels"))
-            assert {"gamma.surface", "gamma.terrain", "gamma.strikes", "gamma.tape"} <= set(frame)
-            assert "expiries" not in frame
+            pushed = {}
+            for m in await _quiet(ws, 2.0):
+                if m["type"] == "panels":
+                    pushed.update(_by_name(m))
+            assert {"gamma.surface", "gamma.terrain", "gamma.strikes", "gamma.tape"} <= set(pushed)
+            assert "expiries" not in pushed
     _console(body)
 
 
@@ -196,3 +212,100 @@ def test_an_answer_the_view_moved_on_from_is_never_sent(published):
             assert after["chain"]["seq"] == 2
             assert set(after) <= {"chain", "expiries", "watchlist"}, f"a panel off screen was pushed: {sorted(after)}"
     _console(body)
+
+
+def test_each_panel_is_pushed_when_its_value_is_ready_never_waiting_for_another(published, monkeypatch):
+    """Ed, design A item 1: panels don't wait for each other. The Desk's event queue is held
+    unanswered (2026-09-29 14:52 CT, deployed: it took 1.34 s while the levels took 28 ms): every
+    other Desk panel arrives meanwhile, and the queue when it is ready."""
+    import threading
+
+    release = threading.Event()
+    produce = server.desk_events_payload
+
+    def held(*a, **k):
+        release.wait(30)
+        return produce(*a, **k)
+    monkeypatch.setattr(server, "desk_events_payload", held)
+
+    async def body(host):
+        async with connect(f"ws://{host}/api/live", max_size=None) as ws:
+            await ws.send(_view(1, workspace="trade-desk", subview="desk", view=""))
+            ack = await _next(ws, "view")
+            got = await _panels(ws, [n for n in ack["moved"] if n != "desk.events"])
+            assert "desk.levels" in got and "desk.events" not in got
+            release.set()
+            assert "desk.events" in await _panels(ws, ["desk.events"])
+    try:
+        _console(body)
+    finally:
+        release.set()
+
+
+def test_the_page_is_sent_what_each_symbol_is_its_row_then_only_the_fields_a_change_moved(published, monkeypatch):
+    """One delivery (Ed, design A): the page's price rows come on the console's push. CRWD's
+    identity and its whole row (live_price_rows.price_row, read as every panel reads it) when the
+    view names it; after a new trade, only the fields that changed."""
+    import time
+
+    from tests.feed_live_helper import feed_live_during
+    feed_live_during(monkeypatch, TK)
+
+    def traded(price):                     # a trade as the console's stream takes it (_rows_loop)
+        price_sent(TK, price, time.time())
+        push_changes.changed(TK, push_changes.FLOW)
+
+    async def body(host):
+        traded(CRWD.spot)
+        await asyncio.sleep(0.05)
+        async with connect(f"ws://{host}/api/live", max_size=None) as ws:
+            await ws.send(_view(1))
+            assert (await _next(ws, "symbols"))["symbols"] == [{"requested": "CRWD", "key": TK, "display": "CRWD"}]
+            first = (await _next(ws, "rows"))["rows"][TK]
+            assert first == server.price_row(TK, time.time()) and first["spot"] == CRWD.spot
+            traded(CRWD.spot + 1.25)
+            while "spot" not in (moved := (await _next(ws, "rows"))["rows"][TK]):
+                pass
+            assert moved["spot"] == CRWD.spot + 1.25 and "ticker" not in moved
+            assert set(moved) < set(first), "only what changed"
+    _console(body)
+
+
+def test_a_change_no_page_shows_begins_a_new_round(published, monkeypatch):
+    """Every change is counted, shown or not: a round is current only until the next change of its
+    symbol. A new trade while no page shows CRWD, then a page: it reads the new trade, never the
+    old round's."""
+    import time
+
+    from tests.feed_live_helper import feed_live_during
+    feed_live_during(monkeypatch, TK)
+
+    async def go():
+        push_changes.bind(asyncio.get_running_loop())
+        _change, rnd = server._round(TK)
+        assert server._row(TK, time.time())["spot"] == CRWD.spot
+        price_sent(TK, CRWD.spot + 2.0, time.time())
+        assert server._row(TK, time.time())["spot"] == CRWD.spot, "a round reads its quote once"
+        push_changes.changed(TK, push_changes.FLOW)            # no page is open on CRWD
+        await asyncio.sleep(0.05)
+        assert server._round(TK)[1] is not rnd
+        assert server._row(TK, time.time())["spot"] == CRWD.spot + 2.0
+    try:
+        asyncio.run(go())
+    finally:
+        server._rounds.pop(TK, None)
+
+
+def test_a_heartbeat_received_after_a_round_began_reads_live(published):
+    """The clock is read fresh, never pinned to the round: the daemon's heartbeat received after
+    a round began (its receive time after the round's start) is live in that round."""
+    import time
+
+    _change, rnd = server._round(TK)
+    time.sleep(0.05)
+    daemon_holds(time.time(), {"LEVELONE_EQUITIES": [TK]})
+    try:
+        assert server._round(TK)[1] is rnd
+        assert server._row(TK, time.time())["feed_live"] is True
+    finally:
+        server._rounds.pop(TK, None)

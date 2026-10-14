@@ -7,7 +7,6 @@ from __future__ import annotations
 import time
 
 import live_market_plane as lmp
-import live_price_rows
 import server as srv
 from stream_spine import MessageBus, current_key
 
@@ -21,7 +20,7 @@ def test_a_symbol_the_daemon_does_not_hold_is_absent_in_session_and_stands_while
                                        "held": {"LEVELONE_EQUITIES": ["ZZHELD"]}})
             lmp.record_from_level_one_equity("ZZNOTHELD", {"LAST_PRICE": 9.0, "BID_PRICE": 8.9},
                                              received_ts=now)
-            row = live_price_rows.price_row("ZZNOTHELD", now)
+            row = srv.price_row("ZZNOTHELD", now)
             assert (row["spot"], row["bid"], row["feed_live"]) == (*served, False)
             assert (row["outage"] is None) == (served[0] is not None)
     finally:
@@ -55,7 +54,7 @@ def test_the_console_spot_is_its_price_record_and_the_console_keeps_no_other_cop
         assert lmp.get_quote(tk) is None and srv.resolve_spot(tk, now=now)[0] is None
         # the same fields, as the daemon pushes them, taken into the console's price record
         lmp.record_from_level_one_equity(tk, native, received_ts=now)
-        row = live_price_rows.price_row(tk, now)
+        row = srv.price_row(tk, now)
         assert row["spot"] == native["LAST_PRICE"]
         assert srv.resolve_spot(tk, now=now) == (row["spot"], srv.SPOT_SOURCE_PLANE, row["trade_ts"])
         # the record is the console's only copy: without it, the console has no price
@@ -67,14 +66,15 @@ def test_the_console_spot_is_its_price_record_and_the_console_keeps_no_other_cop
         lmp.record_feed_down()
 
 
-def test_pages_are_told_the_daemon_price_port(monkeypatch) -> None:
-    """The console fills the page's price-socket port from the daemon's own setting; e2e
-    points it at a dead port so no test page can ever reach the real daemon."""
-    from app.market_data.schwab.streaming import live_ui
-    monkeypatch.setattr(live_ui, "LIVE_UI_PORT", 8811)
+def test_the_page_reaches_no_price_socket_but_the_consoles_push() -> None:
+    """One delivery (Ed, design A): the console's push (/api/live) is the page's only path. The
+    page is told no daemon port, and its code opens no other socket."""
+    from pathlib import Path
+
     html = srv.root().body.decode("utf-8")
-    assert '<meta name="ed-live-ui-port" content="8811">' in html
-    assert 'content="">' not in html.split("ed-live-ui-port", 1)[1][:12]
+    assert "ed-live-ui-port" not in html
+    js = (Path(__file__).resolve().parents[1] / "static" / "js" / "ed-core.js").read_text(encoding="utf-8")
+    assert js.count("new WebSocket(") == 1 and "'/api/live'" in js
 
 
 

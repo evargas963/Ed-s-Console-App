@@ -96,7 +96,6 @@ def test_a_carried_last_price_is_the_current_price_on_a_live_feed():
     """The unchanged LAST_PRICE keeps its own receive time; with the feed live the price row
     carries it and the quote as Schwab last sent them, and it is the console's spot. (A feed down:
     docs/DATA_FLOW.md §2 D5, tests/test_data_path_rules_v1.py.)"""
-    import live_price_rows
     import server
     from tests.feed_live_helper import forget_price, mark_feed_down, mark_feed_live
     t_trade = time.time() - 45.0
@@ -108,7 +107,7 @@ def test_a_carried_last_price_is_the_current_price_on_a_live_feed():
     mark_feed_live("CARRY")
     try:
         now = time.time()
-        price = live_price_rows.price_row("CARRY", now)
+        price = server.price_row("CARRY", now)
         assert (price["spot"], price["bid"], price["ask"], price["feed_live"]) == (10.0, 9.95, 10.05, True)
         assert server.resolve_spot("CARRY", now=now) == (10.0, server.SPOT_SOURCE_PLANE, price["trade_ts"])
     finally:

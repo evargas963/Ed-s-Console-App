@@ -17,7 +17,9 @@ const EVENTS = {
   // the served shape (server.get_desk_events): each cross as recorded, at its level's price
   items: CROSSES.map((c, i) => ({ key: 'x' + c.cross_id, n: 3 - i, ts: c.ts_utc, dom: 'LEVELS', dir: c.direction, marker: true,
     price: c.level_value, title: 'Crossed ' + (c.direction === 'up' ? 'above ' : 'below ') + c.level_name,
-    detail: c.level_value.toFixed(2), src: 'level_crosses' })),
+    detail: c.level_value.toFixed(2), src: 'level_crosses',
+    // time_et.ct_label of each cross's ts_utc, as served
+    time_ct: ['Fri 09/25 04:25 PM CT', 'Fri 09/25 04:18 PM CT', 'Fri 09/25 04:18 PM CT'][i] })),
   cross_counts: { up: CROSSES.filter((c) => c.direction === 'up').length, down: CROSSES.filter((c) => c.direction !== 'up').length },
 };
 const SPOT = 771.3;
@@ -198,19 +200,14 @@ test.describe('Trade Desk renders served values', () => {
     expect(errs).toEqual([]);
   });
 
-  test('Desk: the levels and the event queue of one change are drawn together', async ({ page }) => {
-    // operator 2026-10-13: one producer, read once per change, every consumer the same value --
-    // a change's answers are drawn together, never one change's levels beside another's queue.
-    // (2026-09-29 14:52 CT, deployed: /api/desk/events took 1.34 s; its speed is the SPEED item.)
+  test('Desk: the levels are drawn when they arrive, not held for the event queue', async ({ page }) => {
+    // 2026-09-29 14:52 CT, deployed: QQQ's levels answered in 28 ms and were drawn after 1.34 s,
+    // when /api/desk/events answered. Each panel is pushed the moment its value is ready (Ed,
+    // design A item 1: panels don't wait for each other).
     const errs = watchErrors(page);
-    let answerEvents;
-    const events = new Promise((r) => { answerEvents = r; });
-    await page.route('**/api/**', async (route) => {
+    await page.route('**/api/**', (route) => {
       const url = route.request().url();
-      if (url.includes('/api/desk/events')) {
-        await events;                                             // the event queue answers late
-        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(Object.assign({}, EVENTS, { tf: '5' })) });
-      }
+      if (url.includes('/api/desk/events')) return;               // the event queue has not answered
       let body = url.includes('/api/expiries') ? expiriesAnswer([]) : { available: false };
       if (url.includes('/api/levels')) body = LEVELS;
       else if (url.includes('/api/bars1m')) body = BARS;
@@ -219,12 +216,8 @@ test.describe('Trade Desk renders served values', () => {
     await routeWatchlist(page, ['SPY']);
     await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('#tdmQueue')).toContainText('Loading');
-    await page.waitForTimeout(500);
-    expect(await page.evaluate(() => window.EdTradeDeskMap.state().chart.levelsShown)).toBe(0);   // held with the queue
-    answerEvents();
     await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart.levelsShown)).toBeGreaterThan(0);
-    await expect(page.locator('#tdmQueue .tdm-q')).toHaveCount(EVENTS.items.length);
+    await expect(page.locator('#tdmQueue')).toContainText('Loading');
     expect(errs).toEqual([]);
   });
 
@@ -235,6 +228,8 @@ test.describe('Trade Desk renders served values', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#tdmQueue .tdm-q')).toHaveCount(3);
     await expect(page.locator('#tdmQueueCount')).toHaveText('3');
+    // each item's time as served: the page judges no day by its own clock
+    await expect(page.locator('#tdmQueue .tdm-q-m')).toHaveText(EVENTS.items.map((it) => 'level_crosses · ' + it.time_ct));
     await expect(page.locator('#tdmCardLiq')).toContainText('BID HEAVY');
     // Schwab sends no trade side: the Order Flow card claims none (operator 2026-09-29)
     await expect(page.locator('#tdmCardFlow')).not.toContainText(/NET BUYING|NET SELLING|tick rule|PROXY|delta/i);
@@ -323,7 +318,7 @@ test.describe('Trade Desk renders served values', () => {
     await intercept(page);
     const barReads = [];
     page.on('request', (r) => { if (r.url().includes('/api/bars1m')) barReads.push(r.url()); });
-    await mockPriceSocket(page, []);            // the daemon answers what SPY is (its served key)
+    await mockPriceSocket(page, []);            // no price row; the console answers what SPY is (its served key)
     await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect.poll(() => page.evaluate(() => window.EdShell.getState().key)).toBe('SPY');

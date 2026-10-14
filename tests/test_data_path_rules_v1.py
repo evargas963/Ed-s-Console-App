@@ -275,7 +275,6 @@ def _served_at(now: float, feed_live: bool) -> dict:
     memory, the feed live or not (the daemon's heartbeat holding both symbols, or none): what the
     header row, the console's one spot, the equity book's top and the option book's top serve."""
     import live_market_plane as lmp
-    import live_price_rows
     import server
     from app.options.order_flow import live_payload
     from tests.feed_live_helper import daemon_holds, no_daemon, through_the_daemons_bus
@@ -289,7 +288,7 @@ def _served_at(now: float, feed_live: bool) -> dict:
     else:
         lmp.record_feed_down()
     try:
-        row = live_price_rows.price_row("SPY", now)
+        row = server.price_row("SPY", now)
         return {"row": row, "spot": server.resolve_spot("SPY", now=now),
                 "equity_book": server.order_flow_microstructure("SPY", "NYSE_BOOK", now),
                 "option_book": live_payload.options_live_payload(_CONTRACT, now)}

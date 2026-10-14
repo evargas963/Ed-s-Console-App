@@ -392,7 +392,8 @@ def test_a_chain_whose_history_write_fails_is_kept_as_sent_and_is_never_a_chain_
     (topic, kept, error) = failures[0]
     assert error.startswith("IntegrityError: NOT NULL constraint failed: complete_chain_captures.refused")
     kept = json.loads(kept)
-    assert kept["spot"] == 766.31
+    assert set(kept) == {"contracts"}, "the records alone: Schwab's underlyingPrice is in each, as sent"
+    assert {ct["underlyingPrice"] for ct in kept["contracts"]} == {762.63}
     assert len(kept["contracts"]) == len(ledger) == 442
     assert [{k: v for k, v in ct.items() if k != "fieldTimes"} for ct in kept["contracts"]] == ledger, \
         "kept as the ledger holds it"

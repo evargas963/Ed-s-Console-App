@@ -27,17 +27,18 @@ _EXPIRY = "2026-10-16"
 
 
 async def _newest(ws, answers: dict, quiet: float) -> None:
-    """Take every panel answer that arrives until `quiet` seconds pass with none (one change's
-    frame, or one answer per frame), the newest of each panel kept."""
-    while True:
+    """Take every panel answer that arrives until `quiet` seconds pass with none (the beat, the
+    symbols and the rows come meanwhile), the newest of each panel kept."""
+    loop = asyncio.get_running_loop()
+    end = loop.time() + quiet
+    while (left := end - loop.time()) > 0:
         try:
-            msg = json.loads(await asyncio.wait_for(ws.recv(), quiet))
+            msg = json.loads(await asyncio.wait_for(ws.recv(), left))
         except TimeoutError:
             return
         if msg["type"] == "panels":
             answers.update({p["panel"]: p["body"] for p in msg["panels"]})
-        elif msg["type"] == "panel" and "body" in msg:
-            answers[msg["panel"]] = msg["body"]
+            end = loop.time() + quiet
 
 
 def _consumers(gamma: dict, desk: dict) -> dict:

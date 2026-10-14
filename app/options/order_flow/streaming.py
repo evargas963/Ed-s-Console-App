@@ -63,7 +63,7 @@ from app.market_data.schwab.streaming.live_push import LIVE_PUSH_HOST, LIVE_PUSH
 from app.market_data.schwab.streaming.live_ui import LIVE_UI_PORT
 
 LIVE_PUSH_URL = f"ws://{LIVE_PUSH_HOST}:{LIVE_PUSH_PORT}"
-#: The daemon's Schwab push (live_ui), the one the browser reads.
+#: The daemon's Schwab push (live_ui): the console's price rows (_rows_loop).
 LIVE_UI_URL = f"ws://127.0.0.1:{LIVE_UI_PORT}"
 #: Wait between reconnect attempts when the daemon's push server is down. While it is down
 #: no live value is refreshed -- the freshness checks turn them stale; nothing substitutes.
@@ -271,14 +271,17 @@ async def _rows_loop(ui_url: str, reconnect_sec: float) -> None:
                         frame = await asyncio.wait_for(ws.recv(), _lmp.FEED_HEARTBEAT_MAX_AGE_SEC)
                     except asyncio.TimeoutError:
                         _lmp.record_feed_down()      # the daemon beats every second: silence
+                        _mark_liveness(time.time())
                         continue
                     msg = json.loads(frame)
                     if msg["type"] == "feed":
                         apply_heartbeat(msg["feed"])
+                        _mark_liveness(time.time())
                     elif msg["type"] == "schwab":
                         for m in msg["messages"]:
                             if m["service"] == "LEVELONE_EQUITIES":   # Change: the fields Schwab changed
                                 _lmp.record_from_level_one_equity(m["key"], m["content"], received_ts=float(m["ts_recv"]))
+                                push_changes.changed(m["key"], push_changes.FLOW)   # its price record moved
                                 _tick(m["key"])
         except asyncio.CancelledError:
             raise
@@ -286,6 +289,7 @@ async def _rows_loop(ui_url: str, reconnect_sec: float) -> None:
             log.info("price rows unavailable (%s: %s); retrying in %.1fs",
                      type(e).__name__, e, reconnect_sec)
         _lmp.record_feed_down()            # no daemon, no live price -- visible at once
+        _mark_liveness(time.time())
         if _feed_running:
             await asyncio.sleep(reconnect_sec)
 
@@ -348,6 +352,20 @@ async def _feed_loop(push_url: str, ui_url: str, reconnect_sec: float) -> None:
 
 #: The two Schwab option services a contract streams on.
 OPTION_PRODUCER_SERVICES: tuple[str, ...] = ("LEVELONE_OPTIONS", "OPTIONS_BOOK")
+
+
+#: each shown symbol's LEVELONE_EQUITIES feed verdict (live, outage) when last marked
+_verdicts: dict[str, tuple] = {}
+
+
+def _mark_liveness(now: float) -> None:
+    """A symbol an open page shows whose feed went down or came back changed: its price row and
+    every value read from it (push_changes.changed)."""
+    for s in push_changes.symbols() | set(push_changes.watched()):
+        verdict = (_lmp.feed_live_for(s, "LEVELONE_EQUITIES", now), _lmp.outage(s, "LEVELONE_EQUITIES", now))
+        if s not in _verdicts or _verdicts[s] != verdict:
+            _verdicts[s] = verdict
+            push_changes.changed(s, push_changes.FLOW)
 
 
 def apply_heartbeat(feed: Any) -> None:

@@ -27,9 +27,6 @@
     { id: 'overnight', lbl: 'Overnight' }];
   var DRILL = { liquidity: ['order-flow', 'heatmap'], flow: ['order-flow', 'book'],
     options: ['options', 'gamma'], vol: ['options', 'chain'] };
-  var CT_HM = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', hour: '2-digit', minute: '2-digit', hour12: false });
-  var CT_DAYKEY = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago' });
-  var CT_MD = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', month: 'short', day: 'numeric' });
 
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
     return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
@@ -55,10 +52,6 @@
     if (sec < 5400) return Math.round(sec / 60) + 'm';
     if (sec < 172800) return (sec / 3600).toFixed(1) + 'h';
     return Math.round(sec / 86400) + 'd';
-  }
-  function whenCT(ts) {
-    var d = new Date(ts * 1000);
-    return (CT_DAYKEY.format(d) === CT_DAYKEY.format(new Date()) ? '' : CT_MD.format(d) + ' ') + CT_HM.format(d);
   }
   function st() { return (window.EdShell && window.EdShell.getState()) || {}; }
   function onDesk() { var s = st(); return s.workspace === 'trade-desk' && s.subview === 'desk'; }
@@ -258,7 +251,7 @@
         '<span class="tdm-q-n">' + (q.n || '•') + '</span>' +
         '<span class="tdm-q-b"><span class="tdm-dom">' + esc(q.dom) + '</span><span class="tdm-q-t">' + esc(q.title) + '</span>' +
         '<span class="tdm-q-d">' + esc(q.detail) + '</span>' +
-        '<span class="tdm-q-m">' + esc(q.src) + ' · ' + (q.ts == null ? 'time not reported' : esc(whenCT(q.ts)) + ' CT') + '</span></span></button>';
+        '<span class="tdm-q-m">' + esc(q.src) + ' · ' + (q.time_ct == null ? 'time not reported' : esc(q.time_ct)) + '</span></span></button>';
     }).join('');
   }
   function selectItem(key, scroll) {

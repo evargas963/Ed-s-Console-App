@@ -30,6 +30,7 @@ from schwab.client import Client
 import option_ledger
 from instrument_identity import ticker_storage_key
 from json_blob_codec import decode_json_blob, encode_json_blob
+from numeric_contract import schwab_number
 from schwab_client import (QUOTES_BATCH_MAX, flatten_chain_contracts, option_expiries, safe_get_chain,
                            safe_get_quotes)
 from time_et import ET, options_closed_at, options_open, record_markets, session
@@ -433,7 +434,7 @@ class ChainSweep:
                     return False
                 self._optioned.add(ticker)
                 for ct in flatten_chain_contracts(answer):
-                    self.publish(*option_ledger.posting(ct["symbol"], option_ledger.opening(ct, ticker),
+                    self.publish(*option_ledger.posting(ct["symbol"], option_ledger.opening(ct, ticker, answer),
                                                         ct.get("quoteTimeInLong"), self.clock()))
                     symbols.append(ct["symbol"])
         except Exception as e:  # noqa: BLE001 -- that ticker's answer is the failure; the rotation goes on
@@ -498,14 +499,19 @@ class ChainSweep:
         self._fetched[rnd.ticker] = rnd.started
 
 
-def write_capture(db_path: Path | str, ticker: str, contracts: "list[dict]", spot: "float | None",
-                  ts_utc: float) -> None:
-    """The chain history of one window: the ticker's contract records as the ledger holds them,
-    one row per expiry, with the ticker's price and the time its round began."""
+def write_capture(db_path: Path | str, ticker: str, contracts: "list[dict]", ts_utc: float) -> None:
+    """The chain history of one window: the ticker's contract records as the ledger holds them
+    (each field with its Schwab time, `fieldTimes`), one row per expiry, with the time its round
+    began and Schwab's underlyingPrice as sent: the newest by Schwab's time of the expiry's
+    records (each posted by the chain answer, a quote or the stream; Market Data API, Option
+    Chains and Quotes; Streamer API LEVELONE_OPTIONS field 35). None sent with a time: none."""
     by_expiry: "dict[str, list[dict]]" = {}
     for ct in contracts:
         by_expiry.setdefault(str(ct["expirationDate"])[:10], []).append(ct)   # each opened from the chain
     for expiry, cts in by_expiry.items():
+        sent = [(ct["fieldTimes"]["underlyingPrice"], ct["underlyingPrice"]) for ct in cts
+                if "underlyingPrice" in ct and ct["fieldTimes"].get("underlyingPrice") is not None]
+        spot = schwab_number(max(sent, key=lambda s: s[0])[1]) if sent else None
         persist_complete_chain_capture(db_path, ticker=ticker, expiry=expiry, contracts=cts, spot=spot,
                                        completeness_basis=CAPTURE_BASIS, ts_utc=ts_utc)
 

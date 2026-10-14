@@ -27,6 +27,7 @@ STREAM_FIELDS: tuple[tuple[str, str], ...] = (
     ("volatility", "VOLATILITY"), ("theoreticalOptionValue", "THEORETICAL_OPTION_VALUE"),
     ("timeValue", "TIME_VALUE"), ("intrinsicValue", "MONEY_INTRINSIC_VALUE"),
     ("quoteTimeInLong", "QUOTE_TIME_MILLIS"), ("tradeTimeInLong", "TRADE_TIME_MILLIS"),
+    ("underlyingPrice", "UNDERLYING_PRICE"),
 )
 
 #: Each record field and the field of Schwab's /quotes answer for an option ("quote") that posts
@@ -44,16 +45,19 @@ QUOTE_FIELDS: tuple[tuple[str, str], ...] = (
     ("volatility", "volatility"), ("theoreticalOptionValue", "theoreticalOptionValue"),
     ("timeValue", "timeValue"), ("intrinsicValue", "moneyIntrinsicValue"),
     ("quoteTimeInLong", "quoteTime"), ("tradeTimeInLong", "tradeTime"),
+    ("underlyingPrice", "underlyingPrice"),
 )
 
 #: the source of every contract record: one record per contract, whichever Schwab answer posts
 LEDGER_SRC = "ledger"
 
 
-def opening(contract: dict, ticker: str) -> dict:
-    """A contract of Schwab's chain answer as the fields that open its record: every field as
-    sent but the rounded Greeks, and the watchlist ticker it is listed under."""
-    return {**{k: v for k, v in contract.items() if k not in GREEK_FIELDS}, "ticker": ticker}
+def opening(contract: dict, ticker: str, chain: "dict | None" = None) -> dict:
+    """A contract of Schwab's chain answer (`chain`) as the fields that open its record: every
+    field as sent but the rounded Greeks, the answer's underlyingPrice when it sent one (the
+    chain sends it once, beside the contracts), and the watchlist ticker it is listed under."""
+    sent = {"underlyingPrice": chain["underlyingPrice"]} if chain is not None and "underlyingPrice" in chain else {}
+    return {**{k: v for k, v in contract.items() if k not in GREEK_FIELDS}, **sent, "ticker": ticker}
 
 
 def from_quote(quote: dict) -> dict:

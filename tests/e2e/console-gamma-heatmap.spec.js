@@ -22,7 +22,7 @@
  * Endpoints are intercepted with synthetic payloads so the proof is deterministic and offline —
  * it exercises the real shell HTML/JS, not stubbed rendering.
  */
-const { test, expect, pushChange } = require('./fixtures/live_socket');
+const { test, expect, pushChange, pushDown } = require('./fixtures/live_socket');
 const { expiriesAnswer } = require('./fixtures/expiries');
 const path = require('path');
 
@@ -131,7 +131,7 @@ const CHAIN = {
   ],
 };
 
-// The capture daemon's Schwab socket, stood in for (tests/e2e/fixtures/price_socket.js).
+// The console's price rows, stood in for (tests/e2e/fixtures/price_socket.js).
 const { mockPriceSocket, schwabQuote } = require('./fixtures/price_socket');
 // The console's watchlist routes, stood in for (tests/e2e/fixtures/watchlist.js).
 const { routeWatchlist } = require('./fixtures/watchlist');
@@ -745,7 +745,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
 
   test('chart view: Price + GEX Profile and Dot Map render from canonical inputs', async ({ page }) => {
     // The chart's spot is the header's price row (audit of #280 removed the /api/terrain copy,
-    // a second producer): the daemon's price socket delivers it.
+    // a second producer): the console's push delivers it.
     await mockPriceSocket(page, [schwabQuote('SPY', 583.41)]);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.locator('.vtab[data-view="chart"]').click();
@@ -769,20 +769,37 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   });
 
   test('header never paints a quote from a poll: no push -> UNAVAILABLE, not a fallback', async ({ page }) => {
-    // the price comes only from the daemon's push; the session label from the console's
-    await page.routeWebSocket(/:1\/$/, (ws) => ws.close());          // the daemon is down
+    // the price and the session label come only from the console's push
+    pushDown(page);                                                  // the console's push is down
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#hPx')).toHaveText('UNAVAILABLE');
     await expect(page.locator('#hFeed')).toHaveText(/WAITING|OFFLINE/);
     await page.waitForTimeout(3500);
     await expect(page.locator('#hPx')).toHaveText('UNAVAILABLE');
-    // the daemon is down, so Schwab's /markets answer is not held: the session says UNKNOWN
+    // no push, so Schwab's /markets answer is not held: the session says UNKNOWN
     await expect(page.locator('#hSession')).toHaveText('UNKNOWN');
   });
 
+  test('when the push goes down the last price stands, marked OFFLINE with its trade time', async ({ page }) => {
+    await mockPriceSocket(page, [schwabQuote('SPY', 601.23), schwabQuote('AMD', 150.5, { NET_CHANGE_PERCENT: -1.25 })]);
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#hPx')).toHaveText('601.23');
+    await expect(page.locator('#hFeed')).toHaveText('LIVE');
+    await page.evaluate(() => window.EdShell.addSymbol('AMD'));               // AMD becomes the ticker
+    await expect(page.locator('.wl-px[data-wlpx="AMD"]')).toHaveText('150.50');
+    await expect(page.locator('#hPx')).toHaveText('150.50');
+    pushDown(page);
+    await expect(page.locator('#hFeed')).toHaveText('OFFLINE', { timeout: 6000 });
+    await expect(page.locator('#hPx')).toHaveText('150.50');                 // the last value stands
+    await expect(page.locator('#hAge')).toContainText('last trade ');        // with its time
+    await expect(page.locator('#watchlist')).toHaveClass(/wl-degraded/);
+    await expect(page.locator('.wl-px[data-wlpx="AMD"]')).toHaveText('150.50');
+    await expect(page.locator('.wl-chg[data-wlchg="AMD"]')).toHaveText('-1.25%');
+  });
+
   test('header paints Schwab\'s fields the moment they arrive', async ({ page }) => {
-    // The capture daemon pushes each LEVELONE_EQUITIES message's fields as Schwab sent them
-    // (Change) straight to the page; the console is not in the path.
+    // The console pushes the price row built from each LEVELONE_EQUITIES message's fields as
+    // Schwab sent them (Change).
     await mockPriceSocket(page, [schwabQuote('SPY', 601.23, { BID_PRICE: 601.20, ASK_PRICE: 601.25,
       NET_CHANGE_PERCENT: 0.5, REGULAR_MARKET_CHANGE_PERCENT: 0.4 })]);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
@@ -799,13 +816,6 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#hChg')).toHaveText('EXT -0.50%');
     await expect(page.locator('#hChgReg')).toHaveText('REG —');
-  });
-
-  test('a price that stops arriving is withdrawn within seconds (the daemon beats every 1 s)', async ({ page }) => {
-    await mockPriceSocket(page, [schwabQuote('SPY', 601.23)]);   // one message, then silence
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('#hPx')).toHaveText('601.23');
-    await expect(page.locator('#hPx')).toHaveText('UNAVAILABLE', { timeout: 6000 });
   });
 
   test('a watchlist symbol paints from its own row on the same socket', async ({ page }) => {

@@ -495,9 +495,9 @@ class Daemon:
         """The chain history (calibration.complete_chain_capture.write_capture), off the event loop:
         a round begun inside a capture window of the ticker's option market, the first one of the
         window for this ticker (a round begun before the close is not the close capture, whenever it
-        is in), each contract's record with each field's Schwab time (`fieldTimes`), at the
-        ticker's newest price and the time the round began. A write that fails is kept by the
-        daemon's writer (its failures ride the heartbeat) and the window's next round tries."""
+        is in), each contract's record with each field's Schwab time (`fieldTimes`) and the time
+        the round began. A write that fails is kept by the daemon's writer (its failures ride the
+        heartbeat) and the window's next round tries."""
         slot = capture_slot(started)
         if self.history_db is None or slot is None:
             return None
@@ -508,16 +508,15 @@ class Daemon:
             return None
         self._written[ticker] = slot                       # claim the window for this ticker
         contracts = [{**fields, "fieldTimes": {f: stamp[0] for f, stamp in times.items()}} for fields, times in held]
-        spot = self._prices.get(ticker)
 
         def write() -> None:
             try:
-                write_capture(self.history_db, ticker, contracts, spot, started)
+                write_capture(self.history_db, ticker, contracts, started)
             except Exception as e:  # noqa: BLE001 -- kept by the writer, shown on the heartbeat; the next round tries
                 log.warning("chain history for %s not written, kept: %s: %s", ticker, type(e).__name__, e)
                 self._written[ticker] = before
                 if self.writer is not None:
-                    self.writer.keep_failure(f"chain_history.{ticker}", {"spot": spot, "contracts": contracts},
+                    self.writer.keep_failure(f"chain_history.{ticker}", {"contracts": contracts},
                                              e, time.time())
         return asyncio.get_running_loop().run_in_executor(None, write)
 
@@ -605,7 +604,7 @@ class Daemon:
                 if topic.startswith("contract.") and rec["fields"].get("ticker") == ticker]
 
     def status(self) -> dict:
-        """What the console and browsers are told every second (live_push / live_ui)."""
+        """What the console is told every second (live_push / live_ui)."""
         now = time.time()
         last = self.stream.last_frame_ts if self.stream is not None else 0.0
         return {"ts": now,
@@ -662,12 +661,13 @@ class Daemon:
                 self.bus.forget(_current_key(sent.service, sym))
 
     def _release_held(self) -> None:
-        """The connection ended: each record it held is no longer current (the bus forgets it, as
-        on an UNSUBS), so the next connection's records start from Schwab's first answer, never
-        from an ended connection's fields; nothing is asked for or held."""
+        """The connection ended: each record it held stands as the last values Schwab sent, not
+        live (nothing is held, which the heartbeat reports), and the next connection's first
+        message for it replaces it whole (MessageBus.stand), never merged with the ended
+        connection's fields; nothing is asked for or held."""
         for svc, syms in self.held.items():
             for sym in syms:
-                self.bus.forget(_current_key(svc, sym))
+                self.bus.stand(_current_key(svc, sym))
         self.asked = {s: frozenset() for s in SERVICES}
         self.held = {s: frozenset() for s in SERVICES}
 
