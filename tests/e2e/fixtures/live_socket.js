@@ -71,9 +71,11 @@ async function installLive(page) {
     _socket.set(page, ws);
     //: each panel on screen -> the console's newest message for it (its source and kinds)
     const shown = new Map();
-    //: each route's answer from the stubs while it is being read: one read per route, however
-    //: many panels show it, as the console computes each route once (server._answers)
+    //: each route's answer from the stubs while it is being read, by change: one read per route
+    //: and change, however many panels show it, as the console computes each route once per
+    //: change (server._answers); a new change reads afresh, never the old change's read
     const reading = new Map();
+    let change = 0;
     //: the console's answers under a view older than the page's newest: held until the console
     //: takes the newest, then read or dropped as the page draws or drops them
     let held = [];
@@ -83,10 +85,11 @@ async function installLive(page) {
     const send = (m) => { if (!closed) { try { ws.send(JSON.stringify(m)); } catch (e) { closed = true; } } };
     ws.onClose(() => { closed = true; });
     function read(source) {
-      if (!reading.has(source)) {
-        reading.set(source, answer(page, source).finally(() => reading.delete(source)));
+      const key = change + ' ' + source;
+      if (!reading.has(key)) {
+        reading.set(key, answer(page, source).finally(() => reading.delete(key)));
       }
-      return reading.get(source);
+      return reading.get(key);
     }
     // panels' answers from the stubs, sent together (as the console sends one change's), each
     // that is still the newest for its panel
@@ -103,6 +106,7 @@ async function installLive(page) {
         await new Promise((resolve) => waiting.push(() => moved(kind).then(resolve)));
         return;
       }
+      change += 1;
       await reply([...shown.values()].filter((m) => m.kinds.includes(kind)));
     }
     _push.set(page, moved);
