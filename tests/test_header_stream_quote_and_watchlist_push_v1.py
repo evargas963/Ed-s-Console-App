@@ -66,11 +66,13 @@ def test_the_console_spot_is_its_price_record_and_the_console_keeps_no_other_cop
         lmp.record_feed_down()
 
 
-def test_the_page_is_told_no_daemon_port() -> None:
-    """One delivery (Ed, design A): the console's push (/api/live) is the page's only path; the
-    page served carries no daemon port (the browser test that it opens no other socket:
-    tests/e2e/console-gamma-heatmap.spec.js)."""
-    assert "ed-live-ui-port" not in srv.root().body.decode("utf-8")
+def test_the_page_is_told_the_daemons_port() -> None:
+    """Operator 2026-10-14, reversing design A: Schwab -> daemon -> the screen. The page served
+    carries the port of the daemon's socket (live_ui), which it opens for every Schwab value."""
+    from app.market_data.schwab.streaming.live_ui import LIVE_UI_PORT
+
+    body = srv.root().body.decode("utf-8")
+    assert f'<meta name="ed-live-ui-port" content="{int(LIVE_UI_PORT)}">' in body
 
 
 

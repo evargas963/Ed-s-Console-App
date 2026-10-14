@@ -248,39 +248,15 @@ class _Page:
         return m
 
 
-def test_the_page_is_sent_what_each_symbol_is_its_row_then_only_the_fields_a_change_moved(published):
-    """One delivery (Ed, design A): the page's price rows come on the console's push. CRWD's
-    identity and its whole row (live_price_rows.price_row, read as every panel reads it) when the
-    view names it; after a new trade, only the fields that changed."""
-    import time
-
-    def traded(price):                     # a trade as the console's stream takes it (_rows_loop)
-        price_sent(TK, price, time.time())
-        push_changes.changed(TK, push_changes.FLOW)
-
-    async def go():
-        push_changes.bind(asyncio.get_running_loop())
-        daemon_holds(time.time(), {"LEVELONE_EQUITIES": [TK]})
-        traded(CRWD.spot)
-        await asyncio.sleep(0.05)
-        page = _Page()
-        console = asyncio.create_task(server.live_values(page))
-        try:
-            await page.inbox.put(_view(1))
-            assert (await page.next("symbols"))["symbols"] == [{"requested": "CRWD", "key": TK, "display": "CRWD"}]
-            first = (await page.next("rows"))["rows"][TK]
-            age = first.pop("trade_age")                    # the trade's age as sent with it
-            assert first == server.price_row(TK, time.time()) and first["spot"] == CRWD.spot
-            assert first["feed_live"] is True and age == "0s"
-            traded(CRWD.spot + 1.25)
-            moved = (await page.next("rows"))["rows"][TK]
-            assert moved["spot"] == CRWD.spot + 1.25 and "ticker" not in moved
-            assert set(moved) < set(first) | {"trade_age"}, "only what changed"
-            assert moved["trade_age"] == "0s", "a new trade comes with its own age"
-        finally:
-            await page.inbox.put(None)                 # the page closes
-            await asyncio.wait_for(console, 10)
-    asyncio.run(go())
+def _row(symbol: str, now: float) -> dict:
+    """`symbol`'s price row at `now`, read in its current change's round (as every panel of the
+    change reads its spot)."""
+    _change, rnd = server._round(symbol)
+    token = server._ROUND.set(rnd)
+    try:
+        return server.price_row(symbol, now)
+    finally:
+        server._ROUND.reset(token)
 
 
 def test_a_change_no_page_shows_begins_a_new_round(published):
@@ -293,13 +269,13 @@ def test_a_change_no_page_shows_begins_a_new_round(published):
         push_changes.bind(asyncio.get_running_loop())
         daemon_holds(time.time(), {"LEVELONE_EQUITIES": [TK]})
         _change, rnd = server._round(TK)
-        assert server._row(TK, time.time())["spot"] == CRWD.spot
+        assert _row(TK, time.time())["spot"] == CRWD.spot
         price_sent(TK, CRWD.spot + 2.0, time.time())
-        assert server._row(TK, time.time())["spot"] == CRWD.spot, "a round reads its quote once"
+        assert _row(TK, time.time())["spot"] == CRWD.spot, "a round reads its quote once"
         push_changes.changed(TK, push_changes.FLOW)            # no page is open on CRWD
         await asyncio.sleep(0.05)
         assert server._round(TK)[1] is not rnd
-        assert server._row(TK, time.time())["spot"] == CRWD.spot + 2.0
+        assert _row(TK, time.time())["spot"] == CRWD.spot + 2.0
     try:
         asyncio.run(go())
     finally:
@@ -316,7 +292,7 @@ def test_a_heartbeat_received_after_a_round_began_reads_live(published):
     daemon_holds(time.time(), {"LEVELONE_EQUITIES": [TK]})
     try:
         assert server._round(TK)[1] is rnd
-        assert server._row(TK, time.time())["feed_live"] is True
+        assert _row(TK, time.time())["feed_live"] is True
     finally:
         server._rounds.pop(TK, None)
 
@@ -348,28 +324,6 @@ def test_a_symbol_a_page_begins_to_show_is_not_pushed_again_by_the_next_liveness
             await page.inbox.put(None)
             await asyncio.wait_for(console, 10)
             ofs._verdicts.clear()
-    asyncio.run(go())
-
-
-def test_the_page_is_told_what_each_symbol_it_names_is():
-    """ONE-14 (2026-09-28 audit): the page stripped "$" in eight places to match a row to what it
-    asked for. The console answers each view with each named symbol's key (what its rows carry)
-    and display name, from instrument_identity, for an index typed bare or with "$", an ETF in
-    lower case and a single name alike."""
-    async def go():
-        page = _Page()
-        console = asyncio.create_task(server.live_values(page))
-        try:
-            await page.inbox.put(json.dumps({"op": "view", "view": {**json.loads(_view(1))["view"], "ticker": None,
-                                                                    "symbols": ["SPX", "$VIX", "spy", "MU"]}}))
-            assert (await page.next("symbols"))["symbols"] == [
-                {"requested": "SPX", "key": "$SPX", "display": "SPX"},
-                {"requested": "$VIX", "key": "$VIX", "display": "VIX"},
-                {"requested": "spy", "key": "SPY", "display": "SPY"},
-                {"requested": "MU", "key": "MU", "display": "MU"}]
-        finally:
-            await page.inbox.put(None)
-            await asyncio.wait_for(console, 10)
     asyncio.run(go())
 
 

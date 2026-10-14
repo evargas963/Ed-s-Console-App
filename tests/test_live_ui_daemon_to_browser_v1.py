@@ -203,6 +203,23 @@ def test_a_contract_opened_after_its_messages_gets_every_field_schwab_streamed()
     asyncio.run(_run(body))
 
 
+def test_the_page_is_told_what_each_symbol_it_names_is():
+    """ONE-14 (2026-09-28 audit): the page stripped "$" in eight places to match a row to what it
+    asked for. The daemon answers each subscribe with each named symbol's key (what its messages
+    carry) and display name, from instrument_identity, for an index typed bare or with "$", an ETF
+    in lower case and a single name alike."""
+    async def body(bus, ws, stats):
+        await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPX", "$VIX", "spy", "MU"]}))
+        while (frame := json.loads(await asyncio.wait_for(ws.recv(), 3)))["type"] != "symbols":
+            pass
+        assert frame["symbols"] == [
+            {"requested": "SPX", "key": "$SPX", "display": "SPX"},
+            {"requested": "$VIX", "key": "$VIX", "display": "VIX"},
+            {"requested": "spy", "key": "SPY", "display": "SPY"},
+            {"requested": "MU", "key": "MU", "display": "MU"}]
+    asyncio.run(_run(body))
+
+
 def test_each_beat_is_the_daemons_whole_status():
     async def body(bus, ws, stats):
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"]}))
