@@ -89,7 +89,7 @@ def schwab_message(topic: str, msg: dict) -> "dict | None":
            "schwab_ts": msg.get("schwab_ts"), "ts_recv": msg.get("ts_recv"), "content": content}
     if DELIVERY.get(out["service"]) == CHANGE:          # each field Schwab sent that is not a number: '-'
         out["absent"] = sorted(k for k, v in content.items() if k != "key" and lmp.read_stream_field(k, v) is None)
-    elif DELIVERY.get(out["service"]) == WHOLE:         # the book's levels as every reader of it takes them
+    elif DELIVERY.get(out["service"]) == WHOLE:         # the book's levels as the ladder shows them
         bids, asks = book_levels(content)
         out["levels"] = {"bids": [list(lv) for lv in bids], "asks": [list(lv) for lv in asks]}
     sent = schwab_number(content.get(NEWS_TIME) if out["service"] == "NEWS_HEADLINE"
@@ -190,6 +190,8 @@ class LiveUiServer:
         for topic, record in list(self.bus.current.values()):
             m = schwab_message(topic, record)
             if m is not None and m["key"] in keys and DELIVERY[m["service"]] != SEQUENCE:
+                if m["service"] == "LEVELONE_EQUITIES" and m["key"] in self.trade_ms:
+                    m["trade"] = self.trade_label(m["key"], self.clock())   # its last trade, with its price
                 c.take(m)
         for (service, key), held in self.sequence.items():
             if key in keys:

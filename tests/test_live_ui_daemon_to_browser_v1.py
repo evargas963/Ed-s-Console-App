@@ -21,6 +21,7 @@ import pytest
 
 from app.market_data.schwab.streaming import capture, live_ui
 from stream_spine import HealthRegistry, MessageBus
+from time_et import age_label, ct_label
 
 FX = Path(__file__).resolve().parent / "fixtures"
 _MIX = json.loads((FX / "real_stream_mix_2026_10_05_1400ct.json").read_text(encoding="utf-8"))["messages"]
@@ -86,14 +87,17 @@ async def _run(body, feed=None, clock=time.time):
         await asyncio.wait_for(asyncio.gather(server, return_exceptions=True), 5)
 
 
-async def _received(ws, quiet: float = 0.5, timeout: float = 20.0) -> "tuple[list[dict], list[dict]]":
-    """(every Schwab message, every beat) the client receives until `quiet` s pass with no
-    Schwab message."""
+async def _received(ws, quiet: float = 0.5, timeout: float = 20.0, until=None) -> "tuple[list[dict], list[dict]]":
+    """(every Schwab message, every beat) the client receives: until `until(messages)` holds, when
+    the test knows what it waits for (a loaded machine may pause longer than `quiet` mid-delivery),
+    else until `quiet` s pass with no Schwab message; never past `timeout`."""
     messages, beats = [], []
     end, last = time.monotonic() + timeout, time.monotonic()
-    while time.monotonic() < end and time.monotonic() - last < quiet:
+    while time.monotonic() < end and (until is not None or time.monotonic() - last < quiet):
+        if until is not None and until(messages):
+            break
         try:
-            frame = json.loads(await asyncio.wait_for(ws.recv(), quiet))
+            frame = json.loads(await asyncio.wait_for(ws.recv(), max(0.01, end - time.monotonic()) if until else quiet))
         except (asyncio.TimeoutError, TimeoutError):
             break
         if frame["type"] == "schwab":
@@ -122,7 +126,9 @@ def test_every_service_reaches_the_screen_by_its_delivery_type():
         for item, ts in bars:
             _frame(bus, "CHART_EQUITY", item, ts)
         _frame(bus, "NEWS_HEADLINE", _NEWS["content"], _NEWS["schwab_ts"])
-        got, _beats = await _received(ws)
+        # sent last, in order: once every bar and the headline are in, everything sent before is
+        got, _beats = await _received(ws, until=lambda ms: sum(m["service"] == "CHART_EQUITY" for m in ms) == len(bars)
+                                      and any(m["service"] == "NEWS_HEADLINE" for m in ms))
         by = lambda svc: [m for m in got if m["service"] == svc]   # noqa: E731
         sent = lambda svc: [m for m in _MIX if m["service"] == svc]   # noqa: E731
         assert {m["service"] for m in got} == set(live_ui.DELIVERY)
@@ -161,7 +167,7 @@ def test_a_page_that_reconnects_gets_every_bar_and_headline_it_missed_once_in_or
             pass
         for item, ts in bars[:half]:
             _frame(bus, "CHART_EQUITY", item, ts)
-        first, _beats = await _received(ws)
+        first, _beats = await _received(ws, until=lambda ms: len(ms) == half)
         assert [m["content"] for m in first] == [b for b, _ts in bars[:half]]
         since = {"CHART_EQUITY": {"SPY": first[-1]["ts_recv"]}}
         await ws.close()                                   # the page's connection drops
@@ -170,7 +176,8 @@ def test_a_page_that_reconnects_gets_every_bar_and_headline_it_missed_once_in_or
         _frame(bus, "NEWS_HEADLINE", {**_NEWS["content"], "key": "SPY"}, _NEWS["schwab_ts"])
         async with connect(stats["listening"], max_size=None) as again:
             await again.send(json.dumps({"op": "subscribe", "symbols": ["SPY"], "since": since}))
-            missed, _beats = await _received(again)
+            missed, _beats = await _received(again, until=lambda ms: any(m["service"] == "NEWS_HEADLINE" for m in ms)
+                                             and sum(m["service"] == "CHART_EQUITY" for m in ms) >= len(bars) - half)
             assert [m["content"] for m in missed if m["service"] == "CHART_EQUITY"] == [b for b, _ts in bars[half:]]
             assert [m["content"]["2"] for m in missed if m["service"] == "NEWS_HEADLINE"] == [_NEWS["content"]["2"]]
             since = {svc: {"SPY": max(m["ts_recv"] for m in missed if m["service"] == svc)}
@@ -184,8 +191,6 @@ def test_a_page_that_reconnects_gets_every_bar_and_headline_it_missed_once_in_or
 
 def test_a_headline_carries_its_time_as_the_screen_shows_it():
     """Schwab's headline time (field 1, epoch ms) labelled once, by the daemon, in Central Time."""
-    from time_et import ct_label
-
     m = live_ui.schwab_message("news." + _NEWS["symbol"], {"symbol": _NEWS["symbol"], "content": _NEWS["content"],
                                                            "schwab_ts": _NEWS["schwab_ts"], "ts_recv": _NEWS["ts_recv"]})
     assert m["content"] == _NEWS["content"] and m["time_ct"] == ct_label(_NEWS["content"]["1"] / 1000.0)
@@ -215,6 +220,8 @@ def test_a_new_subscription_gets_each_symbols_current_record_at_once():
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["AAPL"]}))
         got, _beats = await _received(ws, quiet=0.3)
         assert [m["content"] for m in got] == [want]
+        # its last trade's time comes with it, not a beat later
+        assert got[0]["trade"]["time_ct"] == ct_label(want["TRADE_TIME_MILLIS"] / 1000.0)
     asyncio.run(_run(body))
 
 
@@ -222,8 +229,6 @@ def test_each_bar_carries_schwabs_fields_as_the_chart_draws_them():
     """Every real CHART_EQUITY bar: its start (CHART_TIME_MILLIS, s), open, high, low, close and
     volume as Schwab sent them, the change over the bar (close - open, and its percent of the open)
     and its start labelled in Central Time, each by its one producer."""
-    from time_et import ct_label
-
     for r in _BARS:
         n = r["native"]
         m = live_ui.schwab_message("bar1m." + n["key"], {"symbol": n["key"], "native": n, "schwab_ts": r["schwab_ts"],
@@ -257,9 +262,9 @@ def test_a_time_schwab_sent_as_no_value_is_not_labelled_and_replaces_no_held_tim
 
 def test_each_book_carries_its_levels_and_each_quote_marks_the_fields_that_are_not_numbers():
     """One reader per Schwab value, in the daemon, for the screen (AGENTS.md rules 2 and 3): a
-    real book's levels as every reader takes them (engine.book_levels: each level's price and
-    TOTAL_VOLUME, in Schwab's order for a real book), a level sent as -999 dropped and the book
-    otherwise as sent; a real quote's field sent as -999, or a negative size, marked absent
+    real book's levels as the ladder shows them (engine.book_levels: each level's price and
+    TOTAL_VOLUME, in Schwab's order for a real book), a level whose price is -999 dropped (it has no
+    place), one whose size is -999 kept with its size absent, the book otherwise as sent; a real quote's field sent as -999, or a negative size, marked absent
     (live_market_plane.read_stream_field), its other fields not; a client behind gets the newest
     mark of each field. STAND-IN (named): the -999 and the negative size."""
     books = [m for m in _MIX if live_ui.DELIVERY[m["service"]] == live_ui.WHOLE]
@@ -275,6 +280,10 @@ def test_each_book_carries_its_levels_and_each_quote_marks_the_fields_that_are_n
     bad = {**it, "BIDS": [{**it["BIDS"][0], "BID_PRICE": -999}, *it["BIDS"][1:]]}
     m = live_ui.schwab_message("book." + it["key"], {"symbol": it["key"], "service": books[0]["service"], "content": bad})
     assert m["content"] == bad and m["levels"]["bids"] == [[lv["BID_PRICE"], lv["TOTAL_VOLUME"]] for lv in it["BIDS"][1:]]
+    # a level with Schwab's price and a size sent as -999: shown at its price, its size absent ('-')
+    no_size = {**it, "BIDS": [{**it["BIDS"][0], "TOTAL_VOLUME": -999}, *it["BIDS"][1:]]}
+    m = live_ui.schwab_message("book." + it["key"], {"symbol": it["key"], "service": books[0]["service"], "content": no_size})
+    assert m["levels"]["bids"][0] == [it["BIDS"][0]["BID_PRICE"], None]
     q = next(m["item"] for m in _MIX if m["service"] == "LEVELONE_EQUITIES" and "BID_SIZE" in m["item"]
              and "LAST_PRICE" in m["item"])
     sent = {**q, "LAST_PRICE": -999, "BID_SIZE": -5}
@@ -292,8 +301,6 @@ def test_a_new_trade_reaches_the_screen_with_its_own_time_and_age():
     """AGENTS.md rule 5, every value with its time: a real quote with a new trade carries that
     trade's time and age as the daemon labels them, so the screen never shows the new price
     with the previous trade's time until the next beat (before: up to a second)."""
-    from time_et import age_label, ct_label
-
     q = next(m for m in _MIX if m["service"] == "LEVELONE_EQUITIES" and "TRADE_TIME_MILLIS" in m["item"])
     at = q["item"]["TRADE_TIME_MILLIS"] / 1000.0 + 2.0
     srv = live_ui.LiveUiServer(MessageBus(), _Feed(), {}, clock=lambda: at)

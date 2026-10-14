@@ -133,9 +133,6 @@
   "spread_pts": 0.030000000000000027,
   "status": "ok",
   "streaming_plane": {
-    "feed_health": {
-      "replay": "not connected"
-    },
     "queried_contract": "TSLA  260831C00367500",
     "subscription_state": "SUBSCRIBED"
   },

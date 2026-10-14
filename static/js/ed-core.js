@@ -690,8 +690,8 @@
     if (a) a.textContent = age;
     var fresh = document.getElementById('aiCtxFresh'); if (fresh) fresh.textContent = label + (age && age !== '—' ? ' · ' + age : '');
   }
-  // ---- header quote + watchlist: the console's price rows on its push (/api/live) -- the
-  //      ONLY source of the header quote and the watchlist rows: when it is not delivering,
+  // ---- header quote + watchlist: Schwab's LEVELONE_EQUITIES from the daemon's socket (8800) --
+  //      the ONLY source of the header quote and the watchlist rows: when it is not delivering,
   //      the header says so -- nothing polls a quote. ----
   // Operator directive (2026-09-14, spot 360 audit): the source that answered THIS number
   // was already on every payload (quote_ingestion / _quote_authority) but never surfaced —
@@ -795,6 +795,9 @@
   // every CHART_EQUITY bar the daemon has sent this page, per symbol, in order: what each chart at
   // 1 minute draws on the console's history when it is drawn (EdTvChart setBars)
   var _live1m = {};
+  //: the bars held per symbol: as many as the daemon holds for a page that reconnects
+  //: (live_ui.SEQUENCE_KEPT, a day's 1-minute bars 04:00-20:00 ET is 960)
+  var LIVE_BARS_KEPT = 1000;
   // Each symbol's LEVELONE_EQUITIES fields as Schwab sent them (Change: each the last one sent),
   // each symbol's verdict per service and its last trade's time and age, as the daemon's beat
   // serves them ({service: {live, outage}}, {time_ct, age})
@@ -830,7 +833,11 @@
           var seen = _seqSeen[m.service] || (_seqSeen[m.service] = {});
           if (typeof m.ts_recv === 'number') seen[m.key] = m.ts_recv;
         }
-        if (m.service === 'CHART_EQUITY' && m.bar) (_live1m[m.key] || (_live1m[m.key] = [])).push(m);
+        if (m.service === 'CHART_EQUITY' && m.bar) {
+          var held = _live1m[m.key] || (_live1m[m.key] = []);
+          held.push(m);
+          if (held.length > LIVE_BARS_KEPT) held.shift();   // older minutes: the console's history
+        }
         // every Schwab message, by its service, to the screens that draw it (books, bars,
         // headlines, option quotes)
         try { window.dispatchEvent(new CustomEvent('ed:schwab', { detail: m })); } catch (e) { console.error(e); }

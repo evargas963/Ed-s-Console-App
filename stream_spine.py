@@ -256,10 +256,12 @@ def subscription_msg(*, service: str, command: str, symbols: "list[str]", code: 
 # ---------------------------------------------------------------------------- the bus
 
 #: How a reader takes the bus. LOG: every message, in order -- the database writer, the record of
-#: everything Schwab sent (docs/DATA_FLOW.md §2 D4). LATEST: for each topic that changed since
-#: its last read, that topic's current record -- every live reader: a newer value replaces an
-#: older one at once, nothing old waits, and what a reader holds is bounded by the number of
-#: topics, never by how fast Schwab sends (D3).
+#: everything Schwab sent (docs/DATA_FLOW.md §2 D4); the daemon's socket to the screen (live_ui),
+#: which routes each at once and holds per page what its delivery type keeps; and the console's
+#: every 1-minute bar (live_push). LATEST: for each topic that changed since its last read, that
+#: topic's current record -- every other live reader: a newer value replaces an older one at once,
+#: nothing old waits, and what a reader holds is bounded by the number of topics, never by how
+#: fast Schwab sends (D3).
 LOG, LATEST = "log", "latest"
 #: the topics whose messages carry only the fields that changed (Schwab's LEVELONE_EQUITIES and
 #: LEVELONE_OPTIONS, Streamer API §1.1: Change; and each option contract's one record for the

@@ -489,6 +489,26 @@ test.describe('Trade Desk renders served values', () => {
     expect(errs).toEqual([]);
   });
 
+  test('Right Now: Schwab\'s top of book shows from the daemon before the console\'s answers have landed', async ({ page }) => {
+    // Operator 2026-10-14: "nothing should ever be in the way of the straight path from schwab to
+    // the ui". The levels answer is held; Detect shows the daemon's bid × ask; the rest once it lands.
+    const errs = watchErrors(page);
+    await intercept(page);
+    let release;
+    const held = new Promise((r) => { release = r; });
+    await page.route('**/api/levels**', async (route) => { await held;
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(LEVELS) }); });
+    await mockPriceSocket(page, [schwabQuote('SPY', SPOT, { BID_PRICE: 771.29, ASK_PRICE: 771.31 })]);
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'right-now'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#tdDetect')).toContainText('771.29 × 771.31');
+    await expect(page.locator('#tdFrame')).toHaveCount(0);            // the console's levels: not yet
+    release();
+    await expect(page.locator('#tdFrame')).toHaveCount(1);
+    await expect(page.locator('#tdDetect')).toContainText('771.29 × 771.31');
+    expect(errs).toEqual([]);
+  });
+
   test('Right Now: detect, frame, context and the migration read the served fields', async ({ page }) => {
     const errs = watchErrors(page);
     await intercept(page);

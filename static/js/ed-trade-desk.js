@@ -67,8 +67,8 @@
     var tob = window.EdShell.priceRow(window.EdShell.getState().key);
     var tobRows = [['Bid × Ask', num(tob.bid) + ' × ' + num(tob.ask), undefined]]
       .concat(!tob.feed_live ? [['Top of book', 'NOT LIVE' + (tob.outage ? ' · ' + tob.outage : ''), null]] : []);
-    if (!d || d.status === 'no_book') {
-      return stage(1, 'td-accent-blue', 'Detect — book microstructure', '-', '', 0, tobRows, 'NO BOOK', 'warn');
+    if (!d || d.status === 'no_book') {           // on its way (undefined): no badge yet
+      return stage(1, 'td-accent-blue', 'Detect — book microstructure', '-', '', 0, tobRows, d === undefined ? null : 'NO BOOK', 'warn');
     }
     var depth = d.depth, cls = d.classification;    // absent when the console served none
     function dep(n, side) { var x = depth && depth[String(n)]; return x ? x[side] : undefined; }
@@ -297,10 +297,16 @@
   });
   function render() {
     var h = host(), tk = ticker();
-    if (!h || Object.keys(R).some(function (k) { return R[k] === undefined; })) return;
-    h.innerHTML =
-      '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Right now</span><span class="fl-sym">' + esc(tk) +
-      '</span><span class="fl-meta">spot <span class="td-spot">' + esc(_spotDisp) + '</span></span></div></div>' +
+    if (!h) return;
+    var head = '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Right now</span><span class="fl-sym">' + esc(tk) +
+      '</span><span class="fl-meta">spot <span class="td-spot">' + esc(_spotDisp) + '</span></span></div></div>';
+    // the console's answers for the view on their way: Schwab's values from the daemon now (the
+    // spot and Detect's top of book), the console's reads once all five have landed
+    if (Object.keys(R).some(function (k) { return R[k] === undefined; })) {
+      h.innerHTML = head + '<div class="td-grid"><div id="tdDetect">' + detectStage(R.book) + '</div></div>';
+      return;
+    }
+    h.innerHTML = head +
       // each section its own element, marked by the panels it is drawn from (ed-core PANEL_HOSTS)
       '<div class="td-grid"><div id="tdDetect">' + detectStage(R.book) + '</div><div id="tdFrame">' + frameStage(R.levels) +
       '</div><div id="tdConfirm">' + confirmStage(R.terrain) + '</div></div>' +
@@ -320,7 +326,7 @@
     _spotDisp = q.spot_disp != null ? q.spot_disp : '—';
     document.querySelectorAll('#tdBody .td-spot').forEach(function (el) { el.textContent = _spotDisp; });
     var det = document.getElementById('tdDetect');          // its top of book is this row's too
-    if (det && R.book !== undefined) det.innerHTML = detectStage(R.book);
+    if (det) det.innerHTML = detectStage(R.book); else render();   // not drawn yet: Schwab's values need no console
   });
   document.addEventListener('ed:ticker', function () { _spotDisp = '—'; });   // until the new ticker's row
   document.addEventListener('ed:push', render);   // the push went down or came back: the LIVE badge says so

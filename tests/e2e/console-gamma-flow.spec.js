@@ -128,6 +128,18 @@ test.describe('D — Gamma Flow subview', () => {
     await page.screenshot({ path: 'test-results/gamma-flow-1672x941.png', fullPage: false });
   });
 
+  test('the contract\'s Schwab values show from the daemon before the console has answered for it', async ({ page }) => {
+    // Operator 2026-10-14: "nothing should ever be in the way of the straight path from schwab to
+    // the ui". The console's answer for the contract is held; its top of book is on screen.
+    const ctx = makeContext(); ctx.hangMicro = true;
+    await setup(page, ctx);
+    await selectCallAndOpenFlow(page);
+    await expect(rowV(page, 'top_of_book.bid')).toHaveText(fmt(FIXTURE.top_of_book.bid, 2));
+    await expect(rowV(page, 'mid')).toHaveCount(0);                    // the console's reads: not yet
+    ctx.releaseMicro();
+    await expect(rowV(page, 'mid')).toHaveText(fmt(FIXTURE.mid, 2));
+  });
+
   test('the contract\'s OPTIONS_BOOK is drawn as Schwab sent it, from the daemon', async ({ page }) => {
     // Real data: an OPTIONS_BOOK item as Schwab sent it 2026-10-05 14:00 CT
     // (tests/fixtures/real_stream_mix_2026_10_05_1400ct.json); STAND-IN: its key, this test's contract.
@@ -217,8 +229,6 @@ test.describe('D — Gamma Flow subview', () => {
     for (const n of ['1', '3', '5']) await expect(rowTag(page, 'depth.' + n + '.imbalance')).toHaveText(bc['depth.*.imbalance']);
     await expect(rowTag(page, 'depth.5.bid_total')).toHaveText(bc['depth.*.bid_total']);
     await expect(rowTag(page, 'depth.5.ask_total')).toHaveText(bc['depth.*.ask_total']);
-    // Feed health is not a classified metric: no tag is manufactured for it.
-    await expect(rowTag(page, 'streaming_plane.feed_health.replay')).toHaveCount(0);
     // No section-level (hardcoded) tag exists anywhere: every tag sits in a row — and the panel header
     // carries no static NATIVE/PROXY chips either (a classification claim nothing served).
     await expect(page.locator('#flowBody .fl-sec-h .fl-tag')).toHaveCount(0);
