@@ -278,12 +278,14 @@ def test_the_page_is_sent_what_each_symbol_is_its_row_then_only_the_fields_a_cha
             await page.inbox.put(_view(1))
             assert (await page.next("symbols"))["symbols"] == [{"requested": "CRWD", "key": TK, "display": "CRWD"}]
             first = (await page.next("rows"))["rows"][TK]
+            age = first.pop("trade_age")                    # the trade's age as sent with it
             assert first == server.price_row(TK, time.time()) and first["spot"] == CRWD.spot
-            assert first["feed_live"] is True
+            assert first["feed_live"] is True and age == "0s"
             traded(CRWD.spot + 1.25)
             moved = (await page.next("rows"))["rows"][TK]
             assert moved["spot"] == CRWD.spot + 1.25 and "ticker" not in moved
-            assert set(moved) < set(first), "only what changed"
+            assert set(moved) < set(first) | {"trade_age"}, "only what changed"
+            assert moved["trade_age"] == "0s", "a new trade comes with its own age"
         finally:
             await page.inbox.put(None)                 # the page closes
             await asyncio.wait_for(console, 10)

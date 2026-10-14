@@ -23,7 +23,6 @@ def _feed_live():
 
 
 def test_resolve_spot_rejects_mark_close_chain_and_snapshot() -> None:
-    L._by_ticker.pop("SPY", None)
     forget_price("SPY")   # no price record: a chain, MARK or close is no spot
     spot, source, _ts = server.resolve_spot("SPY", now=time.time())
     assert spot is None
@@ -31,7 +30,7 @@ def test_resolve_spot_rejects_mark_close_chain_and_snapshot() -> None:
 
 
 def test_plane_mark_only_tick_never_creates_current_spot() -> None:
-    L._by_ticker.pop("MARKNEVER", None)
+    forget_price("MARKNEVER")
     ok = L.record_from_level_one_equity(
         "MARKNEVER",
         {"key": "MARKNEVER", "MARK": 20.95, "BID_PRICE": 20.9, "ASK_PRICE": 21.1},
@@ -45,7 +44,7 @@ def test_plane_mark_only_tick_never_creates_current_spot() -> None:
 
 
 def test_plane_mark_cannot_replace_prior_last_price() -> None:
-    L._by_ticker.pop("KEEPLAST", None)
+    forget_price("KEEPLAST")
     assert L.record_from_level_one_equity(
         "KEEPLAST",
         {"key": "KEEPLAST", "LAST_PRICE": 50.0, "MARK": 50.2, "BID_PRICE": 49.9, "ASK_PRICE": 50.1},
@@ -60,7 +59,7 @@ def test_plane_mark_cannot_replace_prior_last_price() -> None:
     assert row is not None
     assert row["spot"] == 50.0
     assert row["quote_source_detail"]["spot"] == "LAST_PRICE"
-    L._by_ticker.pop("KEEPLAST", None)
+    forget_price("KEEPLAST")
 
 
 def test_a_rest_written_plane_row_is_not_spot() -> None:

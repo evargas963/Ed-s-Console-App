@@ -100,13 +100,9 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
                 fs.pop(name, None)       # not a number (-999, text, NaN): cleared
             else:
                 fs[name] = (v, rts if field_received is None else float(field_received[name]))
-        snapshot = dict(fs)
-    if not seen:
-        return False
-    out = _row_from(t, snapshot, rts)
-    with _lock:
-        _by_ticker[t] = out
-    return True
+        if seen:                         # the fields and their row change together
+            _by_ticker[t] = _row_from(t, dict(fs), rts)
+    return seen
 
 
 def _row_from(t: str, snapshot: dict, rts: float) -> dict[str, Any]:

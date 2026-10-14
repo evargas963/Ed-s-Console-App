@@ -50,9 +50,11 @@ def feed():
     ofs._feed_running = False
     ofls.clear_all_live_state()
     lmp._by_ticker.clear()
+    lmp._fields_by_ticker.clear()
     yield
     ofs._feed_running = False
     lmp._by_ticker.clear()
+    lmp._fields_by_ticker.clear()
     while _HELD:
         _HELD.pop().close()
 
