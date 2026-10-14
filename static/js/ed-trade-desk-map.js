@@ -377,7 +377,7 @@
         c.querySelector('.tdm-rows').innerHTML = '';
       } else {
         var reg = window.EdGamma.regime(t.regime).t;
-        state(c, reg, t.levels_stale ? 'warn' : (/LONG/.test(t.regime || '') ? 'up' : /SHORT/.test(t.regime || '') ? 'dn' : ''));
+        state(c, reg, t.levels_stale ? 'warn' : (/LONG/.test(String(t.regime)) ? 'up' : /SHORT/.test(String(t.regime)) ? 'dn' : ''));
         var ng = t.net_gex_at_spot;   // absent is uncoloured, never read as 0
         c.querySelector('.tdm-hero').innerHTML = '<span class="' + (ng == null ? '' : ng >= 0 ? 'up' : 'dn') + '">' + (ng == null ? '—' : window.EdGamma.formatUsd(ng)) + '</span> <small>net dealer gamma at spot, per 1%</small>';
         src(c, 'Schwab option chain · ' + (t.levels_stale ? 'stale ' + age(t.levels_age_sec) : age(t.levels_age_sec) + ' old'));
