@@ -792,6 +792,9 @@
   // the daemon's receive time of the last bar and headline received of each symbol, so a
   // reconnect is sent only those after them, each once ({service: {key: ts_recv}})
   var _seqSeen = {};
+  // every CHART_EQUITY bar the daemon has sent this page, per symbol, in order: what each chart at
+  // 1 minute draws on the console's history when it is drawn (EdTvChart setBars)
+  var _live1m = {};
   // Each symbol's LEVELONE_EQUITIES fields as Schwab sent them (Change: each the last one sent),
   // each symbol's verdict per service and its last trade's time and age, as the daemon's beat
   // serves them ({service: {live, outage}}, {time_ct, age})
@@ -823,6 +826,7 @@
           var seen = _seqSeen[m.service] || (_seqSeen[m.service] = {});
           if (typeof m.ts_recv === 'number') seen[m.key] = m.ts_recv;
         }
+        if (m.service === 'CHART_EQUITY' && m.bar) (_live1m[m.key] || (_live1m[m.key] = [])).push(m);
         // every Schwab message, by its service, to the screens that draw it (books, bars,
         // headlines, option quotes)
         try { window.dispatchEvent(new CustomEvent('ed:schwab', { detail: m })); } catch (e) { console.error(e); }
@@ -959,7 +963,7 @@
     'rightnow.zones': ['tdContext'], 'rightnow.strikes': ['tdMigration'],
     'desk.bars': ['tdmChart'], 'desk.levels': ['tdmChart'], 'desk.events': ['tdmChart', 'tdmCardFlow'],
     'desk.zones': ['tdmChart'], 'desk.strikes': ['tdmChart'], 'desk.terrain': ['tdmCardOpt', 'tdmCardVol'],
-    'desk.forces': ['tdmCardOpt'], 'desk.book': ['tdmCardLiq', 'tdmCardFlow'], 'desk.flow_bars': ['tdmCardFlow'] };
+    'desk.forces': ['tdmCardOpt'], 'desk.book': ['tdmCardLiq', 'tdmCardFlow'] };
   var _notLive = {};                 // each shown panel's not-live reasons (none: live)
   var _shown = [];                   // the panels of the view the console last took
   // the reason every value is not live while the page's own connection to the console is down
@@ -1228,6 +1232,7 @@
     setExpiry: setExpiry, getExpiry: function () { return state.expiryFilter; },
     getMeasure: function () { return state.measure; },
     feedVerdict: feedVerdict,
+    liveBars: function (key) { return _live1m[key] ? _live1m[key].slice() : []; },
     priceRow: priceRow,                                    // an equity's row, from the daemon's fields
     // a LEVELONE_EQUITIES / LEVELONE_OPTIONS field as Schwab last sent it, null where it is not a number
     schwabNumber: function (key, name) { return _l1[key] ? schwabNum(_l1[key][name]) : null; },

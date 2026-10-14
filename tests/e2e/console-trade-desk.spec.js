@@ -114,7 +114,9 @@ test('a desk load asks for each value once; a timeframe switch asks only for tha
   await page.waitForTimeout(500);
   const count = (re) => asked.filter((u) => re.test(u)).length;
   for (const re of [/^levels\?/, /^desk\/events\?/, /^terrain\?/, /^liquidity-snapshot\?/, /^terrain\/strikes\?/, /^forces\?/,
-    /^order-flow\/microstructure\?/, /^bars1m\?.*tf=5/, /^bars1m\?.*tf=1&/]) expect(count(re), String(re)).toBe(1);
+    /^order-flow\/microstructure\?/, /^bars1m\?.*tf=5/]) expect(count(re), String(re)).toBe(1);
+  // the Order Flow card's 1-minute bars are Schwab's CHART_EQUITY from the daemon: never asked of the console
+  expect(count(/^bars1m\?.*tf=1&/)).toBe(0);
 
   asked.length = 0;
   await page.locator('#tdmToolbar [data-tf="15"]').click();
@@ -224,6 +226,13 @@ test.describe('Trade Desk renders served values', () => {
   test('Desk: the served queue, counts, book side, tape side and flip relation', async ({ page }) => {
     const errs = watchErrors(page);
     await intercept(page);
+    // the Order Flow card's volume bars: SPY's real CHART_EQUITY bars (2026-10-01) from the daemon
+    const live = require(path.join(__dirname, '..', 'fixtures', 'real_daemon_bars_spy_tsla_2026_10_01_02.json')).rows
+      .filter((r) => r.native && r.symbol === 'SPY').slice(0, 3).map((r) => { const n = r.native, chg = n.CLOSE_PRICE - n.OPEN_PRICE;
+        return { service: 'CHART_EQUITY', key: 'SPY', schwab_ts: r.schwab_ts, ts_recv: r.ts_recv, content: n, time_ct: 'bar ' + n.SEQUENCE,
+          bar: { t: n.CHART_TIME_MILLIS / 1000, o: n.OPEN_PRICE, h: n.HIGH_PRICE, l: n.LOW_PRICE, c: n.CLOSE_PRICE, v: n.VOLUME,
+            chg: chg, chg_pct: chg / n.OPEN_PRICE * 100 } }; });
+    await mockPriceSocket(page, live);
     await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#tdmQueue .tdm-q')).toHaveCount(3);
@@ -243,7 +252,7 @@ test.describe('Trade Desk renders served values', () => {
     // each card draws its served series in the reference's chart type (2026-09-28): depth areas,
     // volume bars, and lines for put/call OI and ATM IV by expiry (a null expiry breaks the line)
     await expect(page.locator('#tdmCardLiq .tdm-plot svg path')).toHaveCount(4);
-    await expect(page.locator('#tdmCardFlow .tdm-plot svg rect')).toHaveCount(BARS.bars.length);
+    await expect(page.locator('#tdmCardFlow .tdm-plot svg rect')).toHaveCount(live.length);
     await expect(page.locator('#tdmCardOpt .tdm-plot svg path')).toHaveCount(2);
     await expect(page.locator('#tdmCardVol .tdm-plot svg path')).toHaveCount(1);
     await expect(page.locator('#tdmCardVol figcaption')).toHaveText('ATM implied vol by expiry, nearest first');

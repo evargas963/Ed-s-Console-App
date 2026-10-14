@@ -118,7 +118,7 @@ const STRIKES = {
   today: { all: [[586, -264500, 1200], [583, 958600, 5400], [580, -90000, 900]] },
 };
 const BARS = {
-  ticker: '$SPX', n: 8,
+  ticker: '$SPX', n: 8, tf: '1',                // the timeframe, as server.bars_payload serves it
   bars: [582.6, 582.9, 583.1, 582.8, 583.3, 583.5, 583.2, 583.41].map(function (c, i) {
     return { t: 1757000000 + i * 60, o: c - 0.1, h: c + 0.2, l: c - 0.2, c: c, v: 1000 + i };
   }),
@@ -1303,6 +1303,23 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#chartBody .gchart-head')).toContainText('spot 601.23', { timeout: 8000 });
     await expect.poll(() => page.evaluate(() => window.EdGammaChart.state().livePrice)).toBe(601.23);
     await expect(page.locator('#hPx')).toHaveText('601.23');
+  });
+
+  test('the Gamma Chart at 1 minute draws each CHART_EQUITY bar from the daemon, in order, on the served history', async ({ page }) => {
+    // Real data: SPY's CHART_EQUITY items as Schwab sent them 2026-10-01 (the daemon's record,
+    // tests/fixtures/real_daemon_bars_spy_tsla_2026_10_01_02.json); the bar each carries is the
+    // daemon's (proven in tests/test_live_ui_daemon_to_browser_v1.py), STAND-IN here. Before, this
+    // chart drew Schwab's bars only from the console's push.
+    const rows = require(path.join(__dirname, '..', 'fixtures', 'real_daemon_bars_spy_tsla_2026_10_01_02.json')).rows
+      .filter((r) => r.native && r.symbol === 'SPY').slice(0, 2);
+    await mockPriceSocket(page, [schwabQuote('SPY', 601.23)].concat(rows.map((r) => { const n = r.native, chg = n.CLOSE_PRICE - n.OPEN_PRICE;
+      return { service: 'CHART_EQUITY', key: 'SPY', schwab_ts: r.schwab_ts, ts_recv: r.ts_recv, content: n, time_ct: 'bar ' + n.SEQUENCE,
+        bar: { t: n.CHART_TIME_MILLIS / 1000, o: n.OPEN_PRICE, h: n.HIGH_PRICE, l: n.LOW_PRICE, c: n.CLOSE_PRICE, v: n.VOLUME,
+          chg: chg, chg_pct: chg / n.OPEN_PRICE * 100 } }; })));
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.locator('.vtab[data-view="chart"]').click();
+    await expect.poll(() => page.evaluate(() => (window.EdGammaChart.state() || {}).bars)).toBe(BARS.bars.length + rows.length);
+    expect(await page.evaluate(() => window.EdGammaChart.state().tf)).toBe('1');
   });
 
   test('the Key Levels rail updates on a levels push', async ({ page }) => {

@@ -717,6 +717,7 @@
           showRecent();
         }
         paintLegend(); paintPin(); draw.redraw(); syncButtons(); paintLevels(true);
+        liveBars();
       },
       // The newest bars only -- series.update keeps the operator's zoom/scroll exactly where it is.
       updateTail: function (tail, lastBarLabel) {
@@ -847,6 +848,18 @@
       },
       selectProfile: function (price) { profile.select(price); }
     };
+    // CHART_EQUITY (All Sequence): at 1 minute, every bar of the shown ticker from the daemon, in
+    // order, on the console's history (Schwab's /pricehistory and the bars before the page opened)
+    function liveBars() {
+      if (S.tf !== '1' || !S.bars.length) return;
+      window.EdShell.liveBars(window.EdShell.getState().key).forEach(function (m) { api.updateTail([m.bar], m.time_ct); });
+    }
+    window.addEventListener('ed:schwab', function (e) {
+      var m = e.detail;
+      if (m && m.service === 'CHART_EQUITY' && m.bar && S.tf === '1' && S.bars.length && m.key === window.EdShell.getState().key) {
+        api.updateTail([m.bar], m.time_ct);
+      }
+    });
     return api;
   }
 

@@ -17,6 +17,8 @@
 
   // the chart's timeframes (ed-tv-chart, every chart's)
   var TFS = window.EdTvChart.TFS;
+  //: the Order Flow card draws the newest hour of 1-minute bars
+  var DESK_FLOW_BARS = 60;
   // The ONE global timeframe also sets how far back the queue and the event markers reach.
   // the event window and its words are the server's (/api/desk/events window_label), for this timeframe
   function windowLabel() { return S.events && S.events.tf === S.tf ? S.events.window_label : '—'; }
@@ -61,7 +63,7 @@
     fam: (function () { try { return JSON.parse(sget('ed.desk.fam', 'null')) || null; } catch (e) { return null; } })() ||
       { value_area: 1, vwap: 1, gamma: 1, expected_move: 1, prior_day: 1, opening_range: 1, overnight: 1 },
     ticker: null, tb: null, gen: 0, chart: null, bars: [], levels: null, terrain: null, micro: null, crosses: null,
-    analytics: null, liq: null, quotes: {}, queue: [], sel: null, news: {}, live1m: {}
+    analytics: null, liq: null, quotes: {}, queue: [], sel: null, news: {}
   };
 
   // ------------------------------------------------------------------ layout wiring
@@ -151,29 +153,17 @@
       $('tdmChartEmpty').hidden = bars.length > 0;
       $('tdmChartEmpty').textContent = bars.length ? '' : (!d ? 'The bars request answered HTTP ' + a.status + ' for ' + shown() + ' (' + TFS.filter(function (x) { return x.id === S.tf; })[0].lbl + ').'
         : 'No bars for ' + shown() + (d.error ? ' — ' + d.error : ' — nothing banked or streamed for this symbol yet.'));
-      drawLiveBars(); paintChartOverlays(); paintQueue(); openView();
+      paintChartOverlays(); paintQueue(); openView();
       var src = $('tdmBarsSrc'); if (src) src.textContent = 'streamed 1m bars';
     } else if (bars.length && S.tf !== '1') {     // a bucket of several minutes: the console builds it
       S.chart.updateTail(bars.slice(-2), d.last_bar && d.last_bar.label);
     }
   });
-  // CHART_EQUITY (All Sequence): every 1-minute bar Schwab sends, in order, straight from the daemon
-  // (kept for the page's life, so a bar that comes before the history is drawn when it lands)
-  function drawLiveBars() {
-    var held = S.live1m[st().key];
-    if (!S.chart || !S.barsWhole || S.tf !== '1' || !held) return;
-    held.forEach(function (m) { S.chart.updateTail([m.bar], m.time_ct); });
-  }
-  window.addEventListener('ed:schwab', function (e) {
-    var m = e.detail; if (!m || m.service !== 'CHART_EQUITY' || !m.bar) return;
-    (S.live1m[m.key] || (S.live1m[m.key] = [])).push(m);
-    if (S.chart && S.barsWhole && S.tf === '1' && m.key === st().key) S.chart.updateTail([m.bar], m.time_ct);
-  });
   [['desk.levels', 'levels'], ['desk.events', 'events'], ['desk.terrain', 'terrain'], ['desk.zones', 'liq'],
-   ['desk.strikes', 'strikes'], ['desk.forces', 'forces'], ['desk.flow_bars', 'flowBars'], ['desk.book', 'micro']].forEach(function (p) {
+   ['desk.strikes', 'strikes'], ['desk.forces', 'forces'], ['desk.book', 'micro']].forEach(function (p) {
     window.EdShell.onPanel(p[0], function (a) {
       var d = a.waiting ? undefined : a.ok ? a.body : null;
-      S[p[1]] = p[1] === 'flowBars' && d ? d.bars : d;
+      S[p[1]] = d;
       paintTfButtons(); paintChartOverlays(); paintQueue(); paintCards(); paintTrust(); paintAgreement(); paintFooter();
       openView();
     });
@@ -432,11 +422,12 @@
         m && m.status === 'no_book' ? 'no ' + m.venue + ' for this symbol right now' : m === undefined ? 'loading…' : 'no book levels served');
     }
     if ((c = $('tdmCardFlow'))) {
-      var fb = S.flowBars || [];
+      // the last hour of Schwab's CHART_EQUITY bars from the daemon (EdShell.liveBars), as sent
+      var fb = window.EdShell.liveBars(st().key).slice(-DESK_FLOW_BARS).map(function (m) { return m.bar; });
       spark(c, [{ ys: fb.map(function (b) { return b.v; }), kind: 'bars', color: P.ink3,
         colors: fb.map(function (b) { return b.chg == null ? P.ink3 : b.chg >= 0 ? P.up : P.down; }) }],
         'Volume per 1-minute bar, last hour · green up, red down',
-        S.flowBars === undefined ? 'loading…' : 'no 1-minute bars for this symbol');
+        'no 1-minute bar from Schwab for this symbol since the daemon started');
     }
     if ((c = $('tdmCardOpt'))) {
       var pcr = (t && t.pcr_by_expiry) || {};
@@ -528,7 +519,7 @@
     if (!tk) return;
     if (tk !== S.ticker) {
       S.ticker = tk; S.gen++; S.bars = []; // undefined = not answered YET (loading); null = the request failed
-      S.levels = S.terrain = S.micro = S.events = S.liq = S.strikes = S.forces = S.flowBars = undefined; S.sel = null;
+      S.levels = S.terrain = S.micro = S.events = S.liq = S.strikes = S.forces = undefined; S.sel = null;
       clearChart(); paintHeader(); paintQueue(); paintCards(); paintTrust(); paintAgreement(); paintFooter();
     }
     paintNews();                                // what is held for the ticker, each time the Desk is shown

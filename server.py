@@ -2215,8 +2215,6 @@ _ROUTE_KINDS = {
 
 #: the 1-minute bars each chart reads, per timeframe
 CHART_BARS = {"1": 1200, "3": 2000, "5": 3000, "15": 6000, "30": 9000, "60": 12000, "D": 12000}
-#: the Desk's Order Flow card: the newest hour of 1-minute bars
-DESK_FLOW_BARS = 60
 #: the Options subviews that show the strike x expiry grid and its panels
 _GAMMA_FAMILY = {"gamma", "dex", "oi"}
 
@@ -2341,7 +2339,7 @@ def _panels(v: dict) -> "dict[str, _Panel]":
                     "desk.terrain": terrain, "desk.zones": zones, "desk.strikes": strikes(None),
                     # the forces: the stored chain captures, read from no stream
                     "desk.forces": _Panel(_route("/api/forces", ticker=tk), lambda: forces_payload(tk, time.time()), ()),
-                    "desk.flow_bars": bars("1", DESK_FLOW_BARS), "desk.book": book})
+                    "desk.book": book})
     return out
 
 

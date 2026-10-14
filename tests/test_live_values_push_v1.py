@@ -173,7 +173,7 @@ def test_a_route_that_raises_is_its_panels_500_and_the_push_goes_on(published):
             ack = await _next(ws, "view")
             got = await _panels(ws, ack["moved"])
             assert {"desk.bars", "desk.levels", "desk.events", "desk.terrain", "desk.zones", "desk.strikes",
-                    "desk.forces", "desk.flow_bars", "desk.book"} <= set(got)
+                    "desk.forces", "desk.book"} <= set(got)
             if time_et.last_open(time_et.now_et()) is None:      # no session held: the route raised
                 assert (got["desk.events"]["status"], got["desk.events"]["body"]) == (500, None)
             await ws.send(_view(2, workspace="trade-desk", subview="desk", view="", tfs={"chart": "1", "liquidity": "5", "desk": "15"}))
