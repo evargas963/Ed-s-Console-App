@@ -10,7 +10,7 @@ const { expiriesAnswer } = require('./fixtures/expiries');
 const path = require('path');
 const { routeWatchlist } = require('./fixtures/watchlist');
 
-const { mockPriceSocket, schwabQuote } = require('./fixtures/price_socket');
+const { mockPriceSocket, schwabQuote, schwabBook } = require('./fixtures/price_socket');
 
 const HEAT = require(path.join(__dirname, 'fixtures', 'book_heatmap_payload.json'));
 const BOOKS = require(path.join(__dirname, '..', 'fixtures', 'real_tsla_book_rows.json')).rows;
@@ -79,8 +79,7 @@ test('the Book ladder is each level of Schwab\'s book as sent, from the daemon, 
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
   await routeWatchlist(page, ['TSLA']);
-  await mockPriceSocket(page, books.map((r) => ({ service: 'NASDAQ_BOOK', key: 'TSLA', schwab_ts: r[2].BOOK_TIME,
-    ts_recv: Number(r[0]), content: r[2], time_ct: 'book ' + r[2].BOOK_TIME })));
+  await mockPriceSocket(page, books.map((r) => schwabBook('NASDAQ_BOOK', 'TSLA', r[2], Number(r[0]), 'book ' + r[2].BOOK_TIME)));
   await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'TSLA'); localStorage.setItem('ed_ws', 'order-flow'); localStorage.setItem('ed_sub', 'book'); localStorage.setItem('ed_book_venue', 'NASDAQ_BOOK'); } catch (e) {} });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   const last = books[books.length - 1][2];

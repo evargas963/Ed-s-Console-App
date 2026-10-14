@@ -38,6 +38,7 @@ import os
 import time
 
 import live_market_plane as lmp
+from app.options.order_flow.engine import book_levels
 from instrument_identity import display_symbol, ticker_storage_key
 from live_price_rows import with_change
 from micro_structure import bar_dict, schwab_bar
@@ -86,6 +87,11 @@ def schwab_message(topic: str, msg: dict) -> "dict | None":
         return None
     out = {"service": service if service is not None else msg.get("service"), "key": msg["symbol"],
            "schwab_ts": msg.get("schwab_ts"), "ts_recv": msg.get("ts_recv"), "content": content}
+    if DELIVERY.get(out["service"]) == CHANGE:          # each field Schwab sent that is not a number: '-'
+        out["absent"] = sorted(k for k, v in content.items() if k != "key" and lmp.read_stream_field(k, v) is None)
+    elif DELIVERY.get(out["service"]) == WHOLE:         # the book's levels as every reader of it takes them
+        bids, asks = book_levels(content)
+        out["levels"] = {"bids": [list(lv) for lv in bids], "asks": [list(lv) for lv in asks]}
     sent = schwab_number(content.get(NEWS_TIME) if out["service"] == "NEWS_HEADLINE"
                          else content.get("BOOK_TIME") if DELIVERY.get(out["service"]) == WHOLE else None)
     if sent is not None:
@@ -125,8 +131,9 @@ class _Client:
             held = self.change.get(k)
             if held is None:
                 self.change[k] = {**m, "content": dict(m["content"])}
-            else:                     # newest value of each field; Schwab's newest frame time
+            else:                     # newest value of each field, and its mark; Schwab's newest frame time
                 held["content"].update(m["content"])
+                held["absent"] = sorted((set(held["absent"]) - set(m["content"])) | set(m["absent"]))
                 held["schwab_ts"], held["ts_recv"] = m["schwab_ts"], m["ts_recv"]
         elif kind == WHOLE:
             self.whole[k] = m

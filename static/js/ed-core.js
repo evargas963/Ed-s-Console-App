@@ -818,8 +818,11 @@
       if (msg.type !== 'schwab') return;
       msg.messages.forEach(function (m) {
         if (m.service === 'LEVELONE_EQUITIES' || m.service === 'LEVELONE_OPTIONS') {   // Change: the fields Schwab changed
-          var f = _l1[m.key] || (_l1[m.key] = {});
-          Object.keys(m.content).forEach(function (k) { f[k] = m.content[k]; });
+          // each field Schwab sent, cleared where the daemon marks it not a number (AGENTS.md rule 2)
+          var f = _l1[m.key] || (_l1[m.key] = {}), absent = m.absent;
+          Object.keys(m.content).forEach(function (k) {
+            if (absent && absent.indexOf(k) !== -1) delete f[k]; else f[k] = m.content[k];
+          });
           if (m.service === 'LEVELONE_EQUITIES') ingestPriceRow(priceRow(m.key));
         }
         if (m.service === 'CHART_EQUITY' || m.service === 'NEWS_HEADLINE') {   // All Sequence: each once, in order
@@ -839,9 +842,6 @@
     };
     ws.onerror = function () { ws.close(); };
   }
-  // A Schwab number as sent, or null where Schwab's definition says it is not one (absent, text,
-  // -999, not finite): shown "—"
-  function schwabNum(v) { return (typeof v === 'number' && isFinite(v) && v !== -999) ? v : null; }
   // One symbol's row as the screen paints it: Schwab's LEVELONE_EQUITIES fields, each the last one
   // sent, named for the painters; its verdict, and its trade time and age, as the daemon serves
   // them. Not live, the values stand, marked (AGENTS.md rule 5).
@@ -849,7 +849,7 @@
   function priceRow(key) {
     // each absent until the daemon has sent it: Schwab's fields, the verdict, the trade's labels
     var f = _l1[key], s = feedVerdict(key, 'LEVELONE_EQUITIES'), t = _trades[key];
-    function v(name) { return f ? schwabNum(f[name]) : null; }
+    function v(name) { return f && f[name] !== undefined ? f[name] : null; }
     var spot = v('LAST_PRICE'), trade = v('TRADE_TIME_MILLIS');
     return { ticker: key, spot: spot, spot_disp: spot == null ? null : spot.toFixed(2),
       bid: v('BID_PRICE'), ask: v('ASK_PRICE'), bid_size: v('BID_SIZE'), ask_size: v('ASK_SIZE'), mark: v('MARK'),
@@ -1235,6 +1235,6 @@
     liveBars: function (key) { return _live1m[key] ? _live1m[key].slice() : []; },
     priceRow: priceRow,                                    // an equity's row, from the daemon's fields
     // a LEVELONE_EQUITIES / LEVELONE_OPTIONS field as Schwab last sent it, null where it is not a number
-    schwabNumber: function (key, name) { return _l1[key] ? schwabNum(_l1[key][name]) : null; },
+    schwabNumber: function (key, name) { return _l1[key] && _l1[key][name] !== undefined ? _l1[key][name] : null; },
     setSubview: setSubview };
 })();

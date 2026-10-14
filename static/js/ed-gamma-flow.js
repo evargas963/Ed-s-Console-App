@@ -55,9 +55,9 @@
     if (h && _flow && m.key === st().contract) render(h, st().contract, _flow);
   });
   // a Schwab book's side as rows: each level's price × total size, as sent
-  function bookRows(side, priceField, label) {
-    if (!side) return [];                       // Schwab sent no levels on this side: no rows
-    return side.map(function (l, i) { return [label + ' ' + (i + 1), num(l[priceField]) + ' × ' + int(l.TOTAL_VOLUME), 'OPTIONS_BOOK', undefined]; });
+  // (the daemon's levels: each price and total size as Schwab sent them, engine.book_levels)
+  function bookRows(side, label) {
+    return side.map(function (lv, i) { return [label + ' ' + (i + 1), num(lv[0]) + ' × ' + int(lv[1]), 'OPTIONS_BOOK', undefined]; });
   }
   // no contract selected: nothing to observe
   function none() {
@@ -90,7 +90,7 @@
     var rowsOb = !ob ? [['Book', 'no OPTIONS_BOOK from Schwab since the page opened', 'OPTIONS_BOOK', undefined]]
       : [['Book time', ob.time_ct == null ? '-' : ob.time_ct, 'OPTIONS_BOOK', undefined]]
         .concat(!(obv && obv.live) ? [['Book', 'NOT LIVE' + (obv && obv.outage ? ' · ' + obv.outage : ''), 'OPTIONS_BOOK', undefined]] : [])
-        .concat(bookRows(ob.content.ASKS, 'ASK_PRICE', 'Ask'), bookRows(ob.content.BIDS, 'BID_PRICE', 'Bid'));
+        .concat(bookRows(ob.levels.asks, 'Ask'), bookRows(ob.levels.bids, 'Bid'));
     var depth = d.depth || {};
     var ages = d.ages || {};
     var flow = d.flow || {};                        // the ONE flow block (never flattened)

@@ -39,10 +39,10 @@
     var h = host();
     if (h && m.key === st().key && (m.service === st().bookVenue || m.service === 'LEVELONE_EQUITIES')) render(h, ticker(), _book);
   });
-  // a Schwab book's side as the ladder draws it: each level's price and total size, as sent
-  function levels(side, priceField) {
-    if (!side) return [];                       // Schwab sent no levels on this side
-    return side.map(function (l) { return { price: l[priceField], volume: l.TOTAL_VOLUME }; });
+  // a Schwab book's side as the ladder draws it: the daemon's levels, each price and total size
+  // as Schwab sent them, as every reader of the book takes them (engine.book_levels)
+  function levels(side) {
+    return side.map(function (lv) { return { price: lv[0], volume: lv[1] }; });
   }
 
   function classOf(map, key) { var v = map ? map[key] : null; return (typeof v === 'string' && v) ? v : null; }
@@ -88,7 +88,7 @@
     var priced = d && d.status !== 'no_book' ? d : null;
     function got(k) { return priced ? priced[k] : undefined; }
     var depth = got('depth'), cls = got('classification'), asOf = got('as_of');
-    var bidLevels = sb ? levels(sb.content.BIDS, 'BID_PRICE') : [], askLevels = sb ? levels(sb.content.ASKS, 'ASK_PRICE') : [];
+    var bidLevels = sb ? levels(sb.levels.bids) : [], askLevels = sb ? levels(sb.levels.asks) : [];
     var verdict = window.EdShell.feedVerdict(st().key, st().bookVenue);
     // Schwab's top of book: LEVELONE_EQUITIES as the daemon pushes it, and its verdict
     var tob = window.EdShell.priceRow(st().key);

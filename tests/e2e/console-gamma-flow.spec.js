@@ -18,7 +18,7 @@ const { expiriesAnswer } = require('./fixtures/expiries');
 const FIXTURE = require('./fixtures/options_microstructure_payload.json');
 const { served } = require('./fixtures/served_chain');
 const { routeWatchlist } = require('./fixtures/watchlist');
-const { mockPriceSocket } = require('./fixtures/price_socket');
+const { mockPriceSocket, schwabBook } = require('./fixtures/price_socket');
 
 const SELECTED = FIXTURE.contract;                         // 'TSLA  260831C00367500'
 const OTHER = 'TSLA  260831P00367500';
@@ -131,8 +131,7 @@ test.describe('D — Gamma Flow subview', () => {
     // (tests/fixtures/real_stream_mix_2026_10_05_1400ct.json); STAND-IN: its key, this test's contract.
     const item = require('../fixtures/real_stream_mix_2026_10_05_1400ct.json').messages.find((m) => m.service === 'OPTIONS_BOOK').item;
     const ctx = makeContext();
-    await setup(page, ctx, [{ service: 'OPTIONS_BOOK', key: SELECTED, schwab_ts: item.BOOK_TIME, ts_recv: item.BOOK_TIME / 1000,
-      content: Object.assign({}, item, { key: SELECTED }), time_ct: 'book ' + item.BOOK_TIME }]);
+    await setup(page, ctx, [schwabBook('OPTIONS_BOOK', SELECTED, item, item.BOOK_TIME / 1000, 'book ' + item.BOOK_TIME)]);
     await selectCallAndOpenFlow(page);
     await expect(page.locator('#flowBody')).toContainText('book ' + item.BOOK_TIME);
     const bid1 = item.BIDS[0], ask1 = item.ASKS[0];

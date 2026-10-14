@@ -383,7 +383,9 @@ test.describe('Trade Desk renders served values', () => {
     await expect.poll(async () => (await chartState()).livePrice).toBeCloseTo(SPOT + 0.02, 6);
     await expect.poll(async () => (await chartState()).liveTitle).toBe('LAST · Fri 09/25 09:21 AM CT · 4s ago');   // Schwab's trade time, its served age
     expect((await chartState()).bars).toBe(BARS.bars.length);          // the candles are untouched
-    daemonSend(page, [schwabQuote('SPY', -999)]);                      // Schwab's own "no value" (AGENTS rule 2)
+    // Schwab's own "no value" (AGENTS rule 2), marked absent as the daemon marks it
+    // (tests/test_live_ui_daemon_to_browser_v1.py: the daemon's mark of each field that is not a number)
+    daemonSend(page, [Object.assign(schwabQuote('SPY', -999), { absent: ['LAST_PRICE'] })]);
     await expect.poll(async () => (await chartState()).livePrice).toBeNull();   // Schwab sent no price: no line
     await page.waitForTimeout(1500);
     expect(barReads.length).toBe(before);

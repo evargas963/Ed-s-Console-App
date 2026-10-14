@@ -222,6 +222,14 @@ def _sorted_valid_levels(levels: list[tuple[float, float]], *, descending: bool)
     return valid
 
 
+def book_levels(item: dict) -> "tuple[list[tuple[float, float]], list[tuple[float, float]]]":
+    """One Schwab book's (bids, asks) as every reader of it takes them: each level's price and
+    total size as Schwab sent them, a level without both dropped, bids high to low, asks low to
+    high (the engine's metrics and the screen's ladder alike)."""
+    return (_sorted_valid_levels(_iter_bids_levels(item), descending=True),
+            _sorted_valid_levels(_iter_asks_levels(item), descending=False))
+
+
 def _extract_canonical_book(data: dict) -> dict:
     """THE single extraction/normalization of the live book. Walks the content ONCE, validates
     and sorts both sides, and carries the live top of book (``data["top"]``). Every downstream
@@ -232,8 +240,7 @@ def _extract_canonical_book(data: dict) -> dict:
     bid_size = _schwab_int(t.get("bid_size"))
     ask_size = _schwab_int(t.get("ask_size"))
 
-    bid_levels = _sorted_valid_levels(_iter_bids_levels(snapshot), descending=True) if snapshot else []
-    ask_levels = _sorted_valid_levels(_iter_asks_levels(snapshot), descending=False) if snapshot else []
+    bid_levels, ask_levels = book_levels(snapshot) if snapshot else ([], [])
     mark, mark_leaf = _resolve_quote_mark(data)
     return {
         "has_book": snapshot is not None,

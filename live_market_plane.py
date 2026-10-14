@@ -38,8 +38,10 @@ _SIGNED_FIELDS = ("NET_CHANGE", "NET_CHANGE_PERCENT", "REGULAR_MARKET_CHANGE_PER
 _fields_by_ticker: dict[str, dict[str, tuple[float, float]]] = {}
 
 
-def _read_stream_field(name: str, raw: Any) -> Optional[float]:
-    """Each field as Schwab sent it (AGENTS.md rule 2); a reported 0 is 0."""
+def read_stream_field(name: str, raw: Any) -> Optional[float]:
+    """Each LEVELONE field as Schwab sent it (AGENTS.md rule 2), None where it is not a number (a
+    size or volume also when negative); a reported 0 is 0. The one reader: the console's record
+    and the daemon's mark of each field the screen must show as absent (live_ui)."""
     if name in _COUNT_FIELDS:
         return schwab_count(raw)
     v = schwab_number(raw)
@@ -49,11 +51,11 @@ def _read_stream_field(name: str, raw: Any) -> Optional[float]:
 def last_trade(fields: dict[str, Any]) -> "tuple[Optional[float], Optional[float]]":
     """(price, trade time in epoch s): Schwab's LAST_PRICE and TRADE_TIME_MILLIS in a
     LEVELONE_EQUITIES record, each read as sent by the one rule the console's price record reads
-    every field by (_read_stream_field); None for one not sent. The daemon reads its bus record of
+    every field by (read_stream_field); None for one not sent. The daemon reads its bus record of
     the stock through it (the chain history's spot, the option rule's price): the same fields
     Schwab sent, read the same way as the console's spot."""
-    return (_read_stream_field("LAST_PRICE", fields.get("LAST_PRICE")),
-            _read_stream_field("TRADE_TIME_MILLIS", fields.get("TRADE_TIME_MILLIS")))
+    return (read_stream_field("LAST_PRICE", fields.get("LAST_PRICE")),
+            read_stream_field("TRADE_TIME_MILLIS", fields.get("TRADE_TIME_MILLIS")))
 
 
 def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
@@ -95,7 +97,7 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
             if name not in item:
                 continue
             seen = True
-            v = _read_stream_field(name, item.get(name))
+            v = read_stream_field(name, item.get(name))
             if v is None:
                 fs.pop(name, None)       # not a number (-999, text, NaN): cleared
             else:

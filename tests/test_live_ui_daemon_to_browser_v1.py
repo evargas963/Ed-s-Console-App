@@ -254,6 +254,39 @@ def test_a_time_schwab_sent_as_no_value_is_not_labelled_and_replaces_no_held_tim
     assert srv.trade_ms[key] == quote["item"]["TRADE_TIME_MILLIS"]
 
 
+def test_each_book_carries_its_levels_and_each_quote_marks_the_fields_that_are_not_numbers():
+    """One reader per Schwab value, in the daemon, for the screen (AGENTS.md rules 2 and 3): a
+    real book's levels as every reader takes them (engine.book_levels: each level's price and
+    TOTAL_VOLUME, in Schwab's order for a real book), a level sent as -999 dropped and the book
+    otherwise as sent; a real quote's field sent as -999, or a negative size, marked absent
+    (live_market_plane.read_stream_field), its other fields not; a client behind gets the newest
+    mark of each field. STAND-IN (named): the -999 and the negative size."""
+    books = [m for m in _MIX if live_ui.DELIVERY[m["service"]] == live_ui.WHOLE]
+    books += [{"service": "NASDAQ_BOOK", "item": r[2]} for r in json.loads((FX / "real_tsla_book_rows.json").read_text(
+        encoding="utf-8"))["rows"][:2]]
+    for b in books:
+        it = b["item"]
+        m = live_ui.schwab_message("book." + it["key"], {"symbol": it["key"], "service": b["service"], "content": it})
+        assert m["content"] == it
+        assert m["levels"] == {"bids": [[lv["BID_PRICE"], lv["TOTAL_VOLUME"]] for lv in it["BIDS"]],
+                               "asks": [[lv["ASK_PRICE"], lv["TOTAL_VOLUME"]] for lv in it["ASKS"]]}
+    it = books[0]["item"]
+    bad = {**it, "BIDS": [{**it["BIDS"][0], "BID_PRICE": -999}, *it["BIDS"][1:]]}
+    m = live_ui.schwab_message("book." + it["key"], {"symbol": it["key"], "service": books[0]["service"], "content": bad})
+    assert m["content"] == bad and m["levels"]["bids"] == [[lv["BID_PRICE"], lv["TOTAL_VOLUME"]] for lv in it["BIDS"][1:]]
+    q = next(m["item"] for m in _MIX if m["service"] == "LEVELONE_EQUITIES" and "BID_SIZE" in m["item"]
+             and "LAST_PRICE" in m["item"])
+    sent = {**q, "LAST_PRICE": -999, "BID_SIZE": -5}
+    m = live_ui.schwab_message("quote." + q["key"], {"symbol": q["key"], "native": sent})
+    assert m["content"] == sent and {"LAST_PRICE", "BID_SIZE"} <= set(m["absent"])
+    assert not {k for k in q if isinstance(q[k], (int, float)) and k not in ("LAST_PRICE", "BID_SIZE")} & set(m["absent"])
+    c = live_ui._Client(None)
+    c.take(m)
+    c.take(live_ui.schwab_message("quote." + q["key"], {"symbol": q["key"], "native": {"key": q["key"], "LAST_PRICE": 1.5}}))
+    held = c.drain()[0]
+    assert held["content"]["LAST_PRICE"] == 1.5 and "LAST_PRICE" not in held["absent"] and "BID_SIZE" in held["absent"]
+
+
 def test_a_contract_opened_after_its_messages_gets_every_field_schwab_streamed():
     """Operator 2026-10-14 (the bank's running balance): a screen that asks for a contract Schwab
     has been streaming gets, at once, every LEVELONE_OPTIONS field Schwab sent for it, each the

@@ -35,6 +35,15 @@ function schwabQuote(key, last, fields) {
     content: Object.assign({ key: key, LAST_PRICE: last, TRADE_TIME_MILLIS: Date.now() - 1000 }, fields || {}) };
 }
 
+// One book message as the daemon sends it: Schwab's item as sent and its levels (STAND-IN for
+// engine.book_levels, proven on real books in tests/test_live_ui_daemon_to_browser_v1.py: a real
+// item's levels are each level's price and TOTAL_VOLUME, in Schwab's order)
+function schwabBook(service, key, item, tsRecv, timeCt) {
+  return { service: service, key: key, schwab_ts: item.BOOK_TIME, ts_recv: tsRecv, content: Object.assign({}, item, { key: key }),
+    time_ct: timeCt, levels: { bids: (item.BIDS || []).map((l) => [l.BID_PRICE, l.TOTAL_VOLUME]),
+      asks: (item.ASKS || []).map((l) => [l.ASK_PRICE, l.TOTAL_VOLUME]) } };
+}
+
 //: each page's daemon stand-in: its beat (send now, with trades labels overridden), its close
 const _daemons = new WeakMap();
 const _down = new WeakSet();
@@ -63,7 +72,7 @@ async function mockPriceSocket(page, messages) {
       if (q.content.TRADE_TIME_MILLIS != null) trade[q.key] = q.content.TRADE_TIME_MILLIS;
       if ('feed_live' in q) verdict[q.key + '|' + q.service] = { live: q.feed_live, outage: q.outage };
       send({ type: 'schwab', messages: [{ service: q.service, key: q.key, schwab_ts: q.schwab_ts, ts_recv: q.ts_recv,
-        content: q.content, bar: q.bar, time_ct: q.time_ct }] });
+        content: q.content, bar: q.bar, time_ct: q.time_ct, levels: q.levels, absent: q.absent }] });
       beat();
     }
     _daemons.set(page, { beat: (labels) => { Object.assign(override, labels); beat(); }, close: () => ws.close(), deliver: deliver });
@@ -102,4 +111,4 @@ function daemonSend(page, messages) {
   if (d) messages.forEach(d.deliver);
 }
 
-module.exports = { mockPriceSocket, schwabQuote, daemonBeat, daemonDown, daemonSend };
+module.exports = { mockPriceSocket, schwabQuote, schwabBook, daemonBeat, daemonDown, daemonSend };
