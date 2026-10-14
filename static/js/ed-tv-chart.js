@@ -703,7 +703,7 @@
       setBars: function (bars, tf, symbol, lastBarLabel) {
         var changed = tf !== S.tf || symbol !== S.symbol;
         function bar(b) { return { t: Number(b.t), o: b.o, h: b.h, l: b.l, c: b.c, v: b.v, chg: b.chg, chg_pct: b.chg_pct }; }
-        var series = (bars || []).map(bar);
+        var series = bars ? bars.map(bar) : [];   // none served: no candles
         // CHART_EQUITY (All Sequence) at 1 minute: each minute's bar from one route -- the
         // daemon's, every one it has sent this page, in order; the console's only for the history
         // before them (Schwab's /pricehistory and the bars before the page's first)
