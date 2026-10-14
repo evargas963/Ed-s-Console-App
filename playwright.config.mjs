@@ -28,7 +28,7 @@ export const e2eServerEnv = (() => {
   env.ED_CI_OFFLINE = '1';
   // never connect to the real capture daemon's live push (see tests/conftest.py)
   env.ED_LIVE_PUSH_PORT = '1';
-  // ...nor to its quote socket (the console's price rows); specs stand in for the rows
+  // ...nor to its socket to the screen (live_ui); specs stand in for it
   // (tests/e2e/fixtures/price_socket.js)
   env.ED_LIVE_UI_PORT = '1';
   env.SCHWAB_API_KEY = 'ci-placeholder-api-key';

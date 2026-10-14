@@ -1,12 +1,13 @@
-"""Schwab's LEVELONE_EQUITIES messages straight from the capture daemon to the console (live_ui.py),
-end to end, by their Schwab delivery type (Streamer API §1.1: Change).
+"""Every Schwab service straight from the capture daemon to the screen (live_ui.py), end to end,
+by its Schwab delivery type (Streamer API §1.1: Change, Whole, All Sequence).
 
 The REAL daemon-side path: Schwab's frames into the daemon's own handler (capture._publisher), its
 real bus (stream_spine.MessageBus), the real server (serve_live_ui), and a REAL WebSocket client
-standing in for the console's _rows_loop, over a real local socket. Real data: every message
-Schwab sent 2026-10-05 14:00:00-14:00:03 CT (tests/fixtures/real_stream_mix_2026_10_05_1400ct.json:
-7,420 LEVELONE_OPTIONS, 152 LEVELONE_EQUITIES, 12 book messages). STAND-IN (named): the daemon's
-status each beat reports (socket open, symbols held).
+standing in for the page, over a real local socket. Real data: every message Schwab sent
+2026-10-05 14:00:00-14:00:03 CT (tests/fixtures/real_stream_mix_2026_10_05_1400ct.json: 7,420
+LEVELONE_OPTIONS, 152 LEVELONE_EQUITIES, 12 book messages), the daemon's record of SPY's and
+TSLA's CHART_EQUITY bars and a NEWS_HEADLINE item. STAND-IN (named): the daemon's status each
+beat reports (socket open, symbols held).
 """
 from __future__ import annotations
 

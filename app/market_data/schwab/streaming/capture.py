@@ -31,8 +31,8 @@ It does four things, in one loop:
              recorded (stream_subscriptions) exactly as sent -- a refused ADD is answered twice
              (code 19, then code 24 "ADD command failed"), and both are its answers.
   3. FAN-OUT Every Schwab message is published once on the bus: the database writer
-             (stream_capture.db), the console socket (8799) and the console's quote socket
-             (8800) all read from it.
+             (stream_capture.db), the console socket (8799) and the screen's socket (8800,
+             live_ui: every Schwab value to the page, and the console's quotes) all read from it.
   4. HEALTH  Any frame from Schwab -- data or Schwab's own heartbeat -- proves the connection
              is alive. None for DEAD_SEC, or a request unanswered for REQUEST_TIMEOUT_SEC:
              reconnect with backoff and subscribe once again. There is nothing else to recover.

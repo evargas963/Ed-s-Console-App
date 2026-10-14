@@ -11,7 +11,7 @@ every move.
 ```
 EdWebConsole/
 ├── daemon/      the capture daemon: the one Schwab connection (stream and REST), the in-memory
-│                state, the push to the console (the console's push is the browser's), the one database writer, the
+│                state, the push to the console and the push of every Schwab value to the browser (live_ui), the one database writer, the
 │                database schema
 ├── producer/    the levels producer: every derived value (gamma, exposure, vanna, charm, flip,
 │                walls, max pain, PCR, liquidity levels, order-flow measures), computed once

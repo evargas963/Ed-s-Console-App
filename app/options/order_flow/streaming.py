@@ -64,7 +64,7 @@ from app.market_data.schwab.streaming.live_push import LIVE_PUSH_HOST, LIVE_PUSH
 from app.market_data.schwab.streaming.live_ui import LIVE_UI_PORT
 
 LIVE_PUSH_URL = f"ws://{LIVE_PUSH_HOST}:{LIVE_PUSH_PORT}"
-#: The daemon's Schwab push (live_ui): the console's price rows (_rows_loop).
+#: The daemon's Schwab push (live_ui): the LEVELONE_EQUITIES messages the console's price record takes (_rows_loop).
 LIVE_UI_URL = f"ws://127.0.0.1:{LIVE_UI_PORT}"
 #: Wait between reconnect attempts when the daemon's push server is down. While it is down
 #: no live value is refreshed -- the freshness checks turn them stale; nothing substitutes.

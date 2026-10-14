@@ -49,7 +49,7 @@ os.environ["ED_CI_OFFLINE"] = "1"
 # No test console may connect to the real capture daemon's live push (it would ingest live
 # market data): point the push at a port nothing listens on.
 os.environ["ED_LIVE_PUSH_PORT"] = "1"
-# ...nor to its quote socket (the console's price rows, streaming._rows_loop)
+# ...nor to its socket to the screen and the console's quotes (live_ui, streaming._rows_loop)
 os.environ["ED_LIVE_UI_PORT"] = "1"
 os.environ["SCHWAB_API_KEY"] = "ci-placeholder-api-key"
 os.environ["SCHWAB_APP_SECRET"] = "ci-placeholder-app-secret"
