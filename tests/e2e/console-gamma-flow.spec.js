@@ -18,6 +18,7 @@ const { expiriesAnswer } = require('./fixtures/expiries');
 const FIXTURE = require('./fixtures/options_microstructure_payload.json');
 const { served } = require('./fixtures/served_chain');
 const { routeWatchlist } = require('./fixtures/watchlist');
+const { mockPriceSocket } = require('./fixtures/price_socket');
 
 const SELECTED = FIXTURE.contract;                         // 'TSLA  260831C00367500'
 const OTHER = 'TSLA  260831P00367500';
@@ -45,7 +46,7 @@ function makeContext() {
   return { plane: {}, mutate: null, posts: [], microGets: 0, hangMicro: false, releaseMicro: null };
 }
 
-async function setup(page, ctx) {
+async function setup(page, ctx, daemonMessages) {
   await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'TSLA'); } catch (e) {} });
   // FALSIFIER (re-runnable from the tree): ED_FLOW_JS_OVERRIDE=<file> serves that file as
   // ed-gamma-flow.js, so the negative controls can be shown to FAIL against a consumer that reads
@@ -82,6 +83,11 @@ async function setup(page, ctx) {
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
   await routeWatchlist(page, ['TSLA']);
+  // the contract's LEVELONE_OPTIONS from the daemon: the fixture's top of book, which its producer
+  // read from real Schwab messages, by Schwab's field names
+  const t = FIXTURE.top_of_book;
+  await mockPriceSocket(page, [{ service: 'LEVELONE_OPTIONS', key: SELECTED, schwab_ts: Date.now(), ts_recv: Date.now() / 1000,
+    content: { key: SELECTED, BID_PRICE: t.bid, ASK_PRICE: t.ask, BID_SIZE: t.bid_size, ASK_SIZE: t.ask_size } }].concat(daemonMessages || []));
 }
 
 async function selectCallAndOpenFlow(page) {
@@ -118,6 +124,22 @@ test.describe('D — Gamma Flow subview', () => {
     expect(ctx.posts).toEqual([SELECTED]);
     await page.setViewportSize({ width: 1672, height: 941 });
     await page.screenshot({ path: 'test-results/gamma-flow-1672x941.png', fullPage: false });
+  });
+
+  test('the contract\'s OPTIONS_BOOK is drawn as Schwab sent it, from the daemon', async ({ page }) => {
+    // Real data: an OPTIONS_BOOK item as Schwab sent it 2026-10-05 14:00 CT
+    // (tests/fixtures/real_stream_mix_2026_10_05_1400ct.json); STAND-IN: its key, this test's contract.
+    const item = require('../fixtures/real_stream_mix_2026_10_05_1400ct.json').messages.find((m) => m.service === 'OPTIONS_BOOK').item;
+    const ctx = makeContext();
+    await setup(page, ctx, [{ service: 'OPTIONS_BOOK', key: SELECTED, schwab_ts: item.BOOK_TIME, ts_recv: item.BOOK_TIME / 1000,
+      content: Object.assign({}, item, { key: SELECTED }), time_ct: 'book ' + item.BOOK_TIME }]);
+    await selectCallAndOpenFlow(page);
+    await expect(page.locator('#flowBody')).toContainText('book ' + item.BOOK_TIME);
+    const bid1 = item.BIDS[0], ask1 = item.ASKS[0];
+    await expect(page.locator('#flowBody')).toContainText('Bid 1' + bid1.BID_PRICE.toFixed(2) + ' × ' + bid1.TOTAL_VOLUME);
+    await expect(page.locator('#flowBody')).toContainText('Ask 1' + ask1.ASK_PRICE.toFixed(2) + ' × ' + ask1.TOTAL_VOLUME);
+    expect(await page.locator('#flowBody .fl-row .k', { hasText: /^Bid \d+$/ }).count()).toBe(item.BIDS.length);
+    expect(await page.locator('#flowBody .fl-row .k', { hasText: /^Ask \d+$/ }).count()).toBe(item.ASKS.length);
   });
 
   test('NEGATIVE CONTROL: nested-only payload (no flattened flow fields) renders the real flow values', async ({ page }) => {
@@ -184,10 +206,13 @@ test.describe('D — Gamma Flow subview', () => {
     for (const [k, v] of Object.entries(fc)) await expect(rowTag(page, 'flow.' + k)).toHaveText(v);
     // d.classification (engine) -> book rows: exact keys, and the wildcard depth keys.
     const bc = FIXTURE.classification;
-    for (const k of ['top_of_book.bid', 'top_of_book.ask', 'top_of_book.bid_size', 'top_of_book.ask_size', 'mid', 'microprice', 'spread_pts', 'as_of.book', 'as_of.quote']) {
+    for (const k of ['mid', 'microprice', 'spread_pts', 'as_of.book', 'as_of.quote']) {
       expect(typeof bc[k]).toBe('string');
       await expect(rowTag(page, k)).toHaveText(bc[k]);
     }
+    // Schwab's top of book comes straight from the daemon (LEVELONE_OPTIONS, its section says so):
+    // no console classification is attached to it
+    for (const k of ['top_of_book.bid', 'top_of_book.ask', 'top_of_book.bid_size', 'top_of_book.ask_size']) await expect(rowTag(page, k)).toHaveCount(0);
     for (const n of ['1', '3', '5']) await expect(rowTag(page, 'depth.' + n + '.imbalance')).toHaveText(bc['depth.*.imbalance']);
     await expect(rowTag(page, 'depth.5.bid_total')).toHaveText(bc['depth.*.bid_total']);
     await expect(rowTag(page, 'depth.5.ask_total')).toHaveText(bc['depth.*.ask_total']);
@@ -205,7 +230,7 @@ test.describe('D — Gamma Flow subview', () => {
       d.flow.classification.tape_pressure_30s = 'NATIVE';        // was PROXY
       d.flow.classification.top_book_pressure = 'PROXY';         // was DERIVED
       d.classification.mid = 'PROXY';                            // was DERIVED
-      d.classification['top_of_book.bid'] = 'DERIVED-HEURISTIC (test)';   // an arbitrary backend string, verbatim
+      d.classification.microprice = 'DERIVED-HEURISTIC (test)';   // an arbitrary backend string, verbatim
       delete d.flow.classification.cum_delta_slope;              // served value, no classification
       delete d.flow.native_aggressor_available;                  // absent => not fabricated as false
     };
@@ -215,7 +240,7 @@ test.describe('D — Gamma Flow subview', () => {
     await expect(rowTag(page, 'flow.tape_pressure_30s')).toHaveText('NATIVE');
     await expect(rowTag(page, 'flow.top_book_pressure')).toHaveText('PROXY');
     await expect(rowTag(page, 'mid')).toHaveText('PROXY');
-    await expect(rowTag(page, 'top_of_book.bid')).toHaveText('DERIVED-HEURISTIC (test)');
+    await expect(rowTag(page, 'microprice')).toHaveText('DERIVED-HEURISTIC (test)');
     await expect(rowTag(page, 'flow.cum_delta_slope')).toHaveText('UNKNOWN');
     await expect(rowTag(page, 'flow.cum_delta_slope')).toHaveClass(/unknown/);
     await expect(rowV(page, 'flow.cum_delta_slope')).toHaveText(fmt(FIXTURE.flow.cum_delta_slope, 3));   // value still served

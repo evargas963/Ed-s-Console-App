@@ -38,11 +38,26 @@
   };
 
   // the selected contract's microstructure as the console pushes it (only ever the current contract's)
+  var _flow = null;                  // the console's reads of the contract, drawn again on each Schwab message
   window.EdShell.onPanel('flow', function (a) {
     var h = host(); if (!h || a.waiting) return;
+    _flow = null;
     if (!a.ok) { shell(h, st().contract, 'DEGRADED', '/api/order-flow/options-microstructure answered HTTP ' + a.status, null); return; }
+    _flow = a.body;
     render(h, st().contract, a.body);
   });
+  // LEVELONE_OPTIONS (Change) and OPTIONS_BOOK (Whole) for the selected contract, straight from the daemon
+  var _optBook = {};
+  window.addEventListener('ed:schwab', function (e) {
+    var m = e.detail; if (!m || (m.service !== 'LEVELONE_OPTIONS' && m.service !== 'OPTIONS_BOOK')) return;
+    if (m.service === 'OPTIONS_BOOK') _optBook[m.key] = m;
+    var h = host();
+    if (h && _flow && m.key === st().contract) render(h, st().contract, _flow);
+  });
+  // a Schwab book's side as rows: each level's price × total size, as sent
+  function bookRows(side, priceField, label) {
+    return (side || []).map(function (l, i) { return [label + ' ' + (i + 1), num(l[priceField]) + ' × ' + int(l.TOTAL_VOLUME), 'OPTIONS_BOOK', undefined]; });
+  }
   // no contract selected: nothing to observe
   function none() {
     var h = host();
@@ -65,7 +80,15 @@
   function render(h, desired, d) {
     var plane = d.streaming_plane || {};
     var ss = subState(plane);
-    var tob = d.top_of_book || {};
+    // Schwab's top of book for the contract: LEVELONE_OPTIONS as the daemon pushes it, and its verdict
+    var l1 = window.EdShell.schwabFields(desired) || {}, l1v = window.EdShell.feedVerdict(desired, 'LEVELONE_OPTIONS');
+    var tob = { bid: l1.BID_PRICE, ask: l1.ASK_PRICE, bid_size: l1.BID_SIZE, ask_size: l1.ASK_SIZE };
+    var topOutage = l1v && !l1v.live ? l1v.outage : l1v ? null : 'the daemon has not reported this contract';
+    var ob = _optBook[desired], obv = window.EdShell.feedVerdict(desired, 'OPTIONS_BOOK');
+    var rowsOb = !ob ? [['Book', 'no OPTIONS_BOOK from Schwab since the page opened', 'OPTIONS_BOOK', undefined]]
+      : [['Book time', ob.time_ct == null ? '-' : ob.time_ct, 'OPTIONS_BOOK', undefined]]
+        .concat(obv && !obv.live ? [['Book', 'NOT LIVE · ' + obv.outage, 'OPTIONS_BOOK', undefined]] : [])
+        .concat(bookRows(ob.content.ASKS, 'ASK_PRICE', 'Ask'), bookRows(ob.content.BIDS, 'BID_PRICE', 'Bid'));
     var depth = d.depth || {};
     var ages = d.ages || {};
     var flow = d.flow || {};                        // the ONE flow block (never flattened)
@@ -76,13 +99,13 @@
     function fk(k) { return classOf(flowCls, k); }
     // row = [label, displayed value, canonical key (data-k), backend classification | null]
     // The depth ladder is classified by the engine under its own wildcard keys ("depth.*.<leaf>").
-    // Schwab's last top of book; with its feed down, marked not live with the served reason
+    // Schwab's last top of book; with its feed down, marked not live with the daemon's reason
     var rowsTob = [
-      ['Bid', num(tob.bid), 'top_of_book.bid', bk('top_of_book.bid')],
-      ['Ask', num(tob.ask), 'top_of_book.ask', bk('top_of_book.ask')],
-      ['Bid size', int(tob.bid_size), 'top_of_book.bid_size', bk('top_of_book.bid_size')],
-      ['Ask size', int(tob.ask_size), 'top_of_book.ask_size', bk('top_of_book.ask_size')],
-    ].concat(d.top_outage ? [['Top of book', 'NOT LIVE · ' + d.top_outage, 'top_outage', null]] : []);
+      ['Bid', num(tob.bid), 'top_of_book.bid', undefined],
+      ['Ask', num(tob.ask), 'top_of_book.ask', undefined],
+      ['Bid size', int(tob.bid_size), 'top_of_book.bid_size', undefined],
+      ['Ask size', int(tob.ask_size), 'top_of_book.ask_size', undefined],
+    ].concat(topOutage ? [['Top of book', 'NOT LIVE · ' + topOutage, 'top_outage', undefined]] : []);
     var rowsBook = [
       ['Mid', num(d.mid), 'mid', bk('mid')], ['Microprice', num(d.microprice), 'microprice', bk('microprice')],
       ['Spread (pts)', num(d.spread_pts), 'spread_pts', bk('spread_pts')],
@@ -108,15 +131,16 @@
     // Book/quote ages are the payload's own `ages` block (engine-stamped, classified); feed health
     // is the streaming plane — a binding/health fact with no classification (key undefined = no tag).
     var fresh = [
-      ['Book age', d.as_of.book != null ? { pre: '', ageOf: 'book' } : '—', 'as_of.book', bk('as_of.book')],
-      ['Quote age', d.as_of.quote != null ? { pre: '', ageOf: 'quote' } : '—', 'as_of.quote', bk('as_of.quote')],
+      ['Book age', (d.as_of || {}).book != null ? { pre: '', ageOf: 'book' } : '—', 'as_of.book', bk('as_of.book')],
+      ['Quote age', (d.as_of || {}).quote != null ? { pre: '', ageOf: 'quote' } : '—', 'as_of.quote', bk('as_of.quote')],
       ['Replay', fh.replay || '—', 'streaming_plane.feed_health.replay', undefined],
       ['L1 upstream', svc(fh.l1, 'l1_feed'), 'streaming_plane.feed_health.l1', undefined],
       ['Book upstream', svc(fh.book, 'book_feed'), 'streaming_plane.feed_health.book', undefined],
     ];
     h.innerHTML = header(desired, ss, d && d.put_call) +
       '<div class="fl-grid">' +
-      section('Top of book', rowsTob, '') +
+      section('Top of book · Schwab LEVELONE_OPTIONS', rowsTob, '') +
+      section('Book · Schwab OPTIONS_BOOK, as sent', rowsOb, '') +
       section('Book microstructure', rowsBook, dim) +
       section('Flow observations', rowsFlow, dim) +
       section('Freshness / health', fresh, '') +

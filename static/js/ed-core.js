@@ -810,10 +810,10 @@
       }
       if (msg.type !== 'schwab') return;
       msg.messages.forEach(function (m) {
-        if (m.service === 'LEVELONE_EQUITIES') {      // Change: the fields Schwab changed
+        if (m.service === 'LEVELONE_EQUITIES' || m.service === 'LEVELONE_OPTIONS') {   // Change: the fields Schwab changed
           var f = _l1[m.key] || (_l1[m.key] = {});
           Object.keys(m.content).forEach(function (k) { f[k] = m.content[k]; });
-          ingestPriceRow(priceRow(m.key));
+          if (m.service === 'LEVELONE_EQUITIES') ingestPriceRow(priceRow(m.key));
         }
         // every Schwab message, by its service, to the screens that draw it (books, bars,
         // headlines, option quotes)
@@ -1219,6 +1219,6 @@
     setExpiry: setExpiry, getExpiry: function () { return state.expiryFilter; },
     getMeasure: function () { return state.measure; },
     feedVerdict: feedVerdict,
-    schwabFields: function (key) { return _l1[key] ? Object.assign({}, _l1[key]) : null; },   // LEVELONE_EQUITIES as sent
+    schwabFields: function (key) { return _l1[key] ? Object.assign({}, _l1[key]) : null; },   // LEVELONE_EQUITIES / _OPTIONS as sent
     setSubview: setSubview };
 })();
