@@ -214,74 +214,91 @@ def test_an_answer_the_view_moved_on_from_is_never_sent(published):
     _console(body)
 
 
-def test_each_panel_is_pushed_when_its_value_is_ready_never_waiting_for_another(published, monkeypatch):
+def test_each_panel_is_pushed_when_its_value_is_ready_never_waiting_for_another(published):
     """Ed, design A item 1: panels don't wait for each other. The Desk's event queue is held
-    unanswered (2026-09-29 14:52 CT, deployed: it took 1.34 s while the levels took 28 ms): every
-    other Desk panel arrives meanwhile, and the queue when it is ready."""
-    import threading
-
-    release = threading.Event()
-    produce = server.desk_events_payload
-
-    def held(*a, **k):
-        release.wait(30)
-        return produce(*a, **k)
-    monkeypatch.setattr(server, "desk_events_payload", held)
-
+    unanswered (2026-09-29 14:52 CT, deployed: it took 1.34 s while the levels took 28 ms) -- its
+    producer waits on the level crosses, held by a cross being recorded (server._crosses_lock):
+    every other Desk panel arrives meanwhile, and the queue when it is ready."""
     async def body(host):
         async with connect(f"ws://{host}/api/live", max_size=None) as ws:
-            await ws.send(_view(1, workspace="trade-desk", subview="desk", view=""))
-            ack = await _next(ws, "view")
-            got = await _panels(ws, [n for n in ack["moved"] if n != "desk.events"])
-            assert "desk.levels" in got and "desk.events" not in got
-            release.set()
+            server._crosses_lock.acquire()
+            try:
+                await ws.send(_view(1, workspace="trade-desk", subview="desk", view=""))
+                ack = await _next(ws, "view")
+                got = await _panels(ws, [n for n in ack["moved"] if n != "desk.events"])
+                assert "desk.levels" in got and "desk.events" not in got
+            finally:
+                server._crosses_lock.release()
             assert "desk.events" in await _panels(ws, ["desk.events"])
-    try:
-        _console(body)
-    finally:
-        release.set()
+    _console(body)
 
 
-def test_the_page_is_sent_what_each_symbol_is_its_row_then_only_the_fields_a_change_moved(published, monkeypatch):
+class _Page:
+    """The page's end of /api/live, for server.live_values called directly (STAND-IN, named: the
+    transport only -- what the page sends and what it is sent)."""
+
+    def __init__(self) -> None:
+        self.inbox: asyncio.Queue = asyncio.Queue()
+        self.sent: asyncio.Queue = asyncio.Queue()
+
+    async def accept(self) -> None:
+        pass
+
+    async def send_text(self, text: str) -> None:
+        await self.sent.put(json.loads(text))
+
+    async def iter_text(self):
+        while (m := await self.inbox.get()) is not None:
+            yield m
+
+    async def next(self, kind: str) -> dict:
+        while (m := await asyncio.wait_for(self.sent.get(), 10))["type"] != kind:
+            pass
+        return m
+
+
+def test_the_page_is_sent_what_each_symbol_is_its_row_then_only_the_fields_a_change_moved(published):
     """One delivery (Ed, design A): the page's price rows come on the console's push. CRWD's
     identity and its whole row (live_price_rows.price_row, read as every panel reads it) when the
     view names it; after a new trade, only the fields that changed."""
     import time
 
-    from tests.feed_live_helper import feed_live_during
-    feed_live_during(monkeypatch, TK)
-
     def traded(price):                     # a trade as the console's stream takes it (_rows_loop)
         price_sent(TK, price, time.time())
         push_changes.changed(TK, push_changes.FLOW)
 
-    async def body(host):
+    async def go():
+        push_changes.bind(asyncio.get_running_loop())
+        daemon_holds(time.time(), {"LEVELONE_EQUITIES": [TK]})
         traded(CRWD.spot)
         await asyncio.sleep(0.05)
-        async with connect(f"ws://{host}/api/live", max_size=None) as ws:
-            await ws.send(_view(1))
-            assert (await _next(ws, "symbols"))["symbols"] == [{"requested": "CRWD", "key": TK, "display": "CRWD"}]
-            first = (await _next(ws, "rows"))["rows"][TK]
+        page = _Page()
+        console = asyncio.create_task(server.live_values(page))
+        try:
+            await page.inbox.put(_view(1))
+            assert (await page.next("symbols"))["symbols"] == [{"requested": "CRWD", "key": TK, "display": "CRWD"}]
+            first = (await page.next("rows"))["rows"][TK]
             assert first == server.price_row(TK, time.time()) and first["spot"] == CRWD.spot
+            assert first["feed_live"] is True
             traded(CRWD.spot + 1.25)
-            while "spot" not in (moved := (await _next(ws, "rows"))["rows"][TK]):
-                pass
+            moved = (await page.next("rows"))["rows"][TK]
             assert moved["spot"] == CRWD.spot + 1.25 and "ticker" not in moved
             assert set(moved) < set(first), "only what changed"
-    _console(body)
+        finally:
+            await page.inbox.put(None)                 # the page closes
+            await asyncio.wait_for(console, 10)
+    asyncio.run(go())
 
 
-def test_a_change_no_page_shows_begins_a_new_round(published, monkeypatch):
+def test_a_change_no_page_shows_begins_a_new_round(published):
     """Every change is counted, shown or not: a round is current only until the next change of its
     symbol. A new trade while no page shows CRWD, then a page: it reads the new trade, never the
     old round's."""
     import time
 
-    from tests.feed_live_helper import feed_live_during
-    feed_live_during(monkeypatch, TK)
-
     async def go():
         push_changes.bind(asyncio.get_running_loop())
+        daemon_holds(time.time(), {"LEVELONE_EQUITIES": [TK]})
         _change, rnd = server._round(TK)
         assert server._row(TK, time.time())["spot"] == CRWD.spot
         price_sent(TK, CRWD.spot + 2.0, time.time())

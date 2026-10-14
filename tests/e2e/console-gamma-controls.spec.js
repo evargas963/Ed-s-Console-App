@@ -205,9 +205,12 @@ test.describe('ticker / expiry / measure controls', () => {
     await expect(page.locator('#flTicker')).toHaveText('QQQ');
     await page.locator('#subnav .tab', { hasText: 'Gamma' }).click();
     await page.waitForTimeout(4000);                                                 // more than one scheduler tick
+    // from the console's first QQQ answer on: until it takes the new view it still answers the
+    // old one (a change of AAPL marked just before the click), which the page draws, then replaces
     const tickered = reqs.filter((u) => /[?&]ticker=/.test(u));
-    expect(tickered.length).toBeGreaterThan(0);
-    expect(tickered.filter((u) => !/[?&]ticker=QQQ(&|$)/.test(u))).toEqual([]);      // no AAPL (or SPY) request survives the switch
+    const taken = tickered.findIndex((u) => /[?&]ticker=QQQ(&|$)/.test(u));
+    expect(taken).toBeGreaterThan(-1);
+    expect(tickered.slice(taken).filter((u) => !/[?&]ticker=QQQ(&|$)/.test(u))).toEqual([]);   // no AAPL (or SPY) request survives the switch
     expect(await page.evaluate(() => window.EdShell.getState().ticker)).toBe('QQQ');
   });
 });
