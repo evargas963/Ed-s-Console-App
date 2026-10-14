@@ -883,6 +883,12 @@
     });
     try { window.dispatchEvent(new CustomEvent('ed:quote_tick', { detail: q })); } catch (e) {}
   }
+  // the daemon's verdict for `key` on Schwab's `service` ({live, outage}); with the daemon's socket
+  // down, not live with that reason; null when the daemon has not reported the symbol
+  function feedVerdict(key, service) {
+    if (!pricePushHealthy()) return { live: false, outage: DAEMON_DOWN };
+    return ((_feedState || {})[key] || {})[service] || null;
+  }
   function pricePushHealthy() { return _priceUp && (Date.now() - _lastPriceTs <= PRICE_SILENCE_MS); }
   // 1 s watchdog: a silent daemon withdraws every price within PRICE_SILENCE_MS + 1 s
   function checkPriceSilence() {
@@ -1212,5 +1218,7 @@
     panServed: panServed, wireStrikeAxis: wireStrikeAxis, asOfBadge: asOfBadge, ageSpan: ageSpan, tradeLabel: tradeLabel, chainEmptyText: chainEmptyText,
     setExpiry: setExpiry, getExpiry: function () { return state.expiryFilter; },
     getMeasure: function () { return state.measure; },
+    feedVerdict: feedVerdict,
+    schwabFields: function (key) { return _l1[key] ? Object.assign({}, _l1[key]) : null; },   // LEVELONE_EQUITIES as sent
     setSubview: setSubview };
 })();

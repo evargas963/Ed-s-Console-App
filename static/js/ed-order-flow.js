@@ -30,6 +30,19 @@
     render(h, ticker(), a.body);
   });
   document.addEventListener('ed:push', function () { var h = host(); if (h && _book) render(h, ticker(), _book); });
+  // NYSE_BOOK / NASDAQ_BOOK (Whole): each book as Schwab sent it, pushed by the daemon, the newest
+  // replacing the last
+  var _schwabBook = {};
+  window.addEventListener('ed:schwab', function (e) {
+    var m = e.detail; if (!m) return;
+    if (m.service === 'NYSE_BOOK' || m.service === 'NASDAQ_BOOK') _schwabBook[m.service + '|' + m.key] = m;
+    var h = host();
+    if (h && m.key === st().key && (m.service === st().bookVenue || m.service === 'LEVELONE_EQUITIES')) render(h, ticker(), _book);
+  });
+  // a Schwab book's side as the ladder draws it: each level's price and total size, as sent
+  function levels(side, priceField) {
+    return (side || []).map(function (l) { return { price: l[priceField], volume: l.TOTAL_VOLUME }; });
+  }
 
   function classOf(map, key) { var v = map ? map[key] : null; return (typeof v === 'string' && v) ? v : null; }
   function tag(c) {
@@ -69,15 +82,15 @@
   }
 
   function render(h, tk, d) {
-    if (!d || d.status === 'no_book') {
-      h.innerHTML = '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Ticker</span><span class="fl-sym">' + esc(tk) + '</span></div>' +
-        '<div class="fl-sub"><span class="fl-lab">Book</span><span class="fl-badge warn">NO BOOK YET</span></div></div>' +
-        '<div class="placeholder"><div class="sm">No ' + esc(st().bookVenue) + ' for ' + esc(tk) +
-        ' — Schwab has sent no book from this venue for this symbol.</div></div>';
-      return;
-    }
-    var tob = d.top_of_book || {}, depth = d.depth || {}, ages = d.ages || {}, cls = d.classification || {};
-    var dp = d.depth_pressure || {}, bidLevels = dp.bid || [], askLevels = dp.ask || [];
+    var sb = _schwabBook[st().bookVenue + '|' + st().key];
+    d = d || {};                                  // the console's reads of the book, when it has priced them
+    var depth = d.depth || {}, cls = d.classification || {}, asOf = d.as_of || {};
+    var bidLevels = sb ? levels(sb.content.BIDS, 'BID_PRICE') : [], askLevels = sb ? levels(sb.content.ASKS, 'ASK_PRICE') : [];
+    var verdict = window.EdShell.feedVerdict(st().key, st().bookVenue);
+    // Schwab's top of book: LEVELONE_EQUITIES as the daemon pushes it, and its verdict
+    var l1 = window.EdShell.schwabFields(st().key) || {}, l1v = window.EdShell.feedVerdict(st().key, 'LEVELONE_EQUITIES');
+    var tob = { bid: l1.BID_PRICE, ask: l1.ASK_PRICE, bid_size: l1.BID_SIZE, ask_size: l1.ASK_SIZE };
+    var topOutage = l1v && !l1v.live ? l1v.outage : null;
     function dep(n, side) { var x = depth[String(n)] || {}; return x[side]; }
     function bk(k) { return classOf(cls, k); }
     var walls = d.wall_candidates || [];
@@ -91,7 +104,7 @@
     var rowsTob = [
       ['Bid × size', num(tob.bid) + ' × ' + int(tob.bid_size), bk('top_of_book.bid')],
       ['Ask × size', num(tob.ask) + ' × ' + int(tob.ask_size), bk('top_of_book.ask')],
-    ].concat(d.top_outage ? [['Top of book', 'NOT LIVE · ' + d.top_outage, null]] : []);
+    ].concat(topOutage ? [['Top of book', 'NOT LIVE · ' + topOutage, null]] : []);
     var rowsImb = [
       ['Depth 1 imbalance', num(dep(1, 'imbalance'), 3), bk('depth.*.imbalance')],
       ['Depth 3 imbalance', num(dep(3, 'imbalance'), 3), bk('depth.*.imbalance')],
@@ -100,8 +113,8 @@
       ['Ask total (5)', int(dep(5, 'ask_total')), bk('depth.*.ask_total')],
     ];
     var fresh = [
-      ['Book age', d.as_of.book != null ? { ageOf: 'book' } : '—', bk('as_of.book')],
-      ['Quote age', d.as_of.quote != null ? { ageOf: 'quote' } : '—', bk('as_of.quote')],
+      ['Book age', asOf.book != null ? { ageOf: 'book' } : '—', bk('as_of.book')],
+      ['Quote age', asOf.quote != null ? { ageOf: 'quote' } : '—', bk('as_of.quote')],
     ];
     var wallsHtml = walls.length
       ? walls.map(function (w) { return '<div class="fl-row"><span class="k">' + esc(w.side || '—') + ' @ ' + num(w.price) +
@@ -109,15 +122,14 @@
       : '<div class="sm" style="padding:4px 0;">no size-outlier candidates in the current displayed book</div>';
     var deferred = (d.deferred || []).join(' · ');
 
-    // book_stale is the server's verdict (app.options.order_flow.engine); LIVE only on its
-    // explicit "not stale", an unknown book age is not live
-    // and never while the console's push is down (nothing reaches the page)
-    var bs = ages.book_stale, down = window.EdShell.pushDown();
-    var badge = down ? 'NOT LIVE' : bs === false ? 'LIVE' : bs === true ? 'STALE' : 'AGE UNKNOWN';
-    var live = bs === false && !down;
+    // the book's verdict is the daemon's (the one live rule), on Schwab's book for this venue
+    var live = !!(verdict && verdict.live);
+    var badge = live ? 'LIVE' : 'NOT LIVE' + (verdict && verdict.outage ? ' · ' + verdict.outage : '');
     h.innerHTML =
       '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Ticker</span><span class="fl-sym">' + esc(tk) + '</span></div>' +
-      '<div class="fl-sub"><span class="fl-lab">Book</span><span class="fl-badge ' + (live ? 'live' : 'stale') + '">' + badge + '</span></div></div>' +
+      '<div class="fl-sub"><span class="fl-lab">Book</span><span class="fl-badge ' + (live ? 'live' : 'stale') + '">' + esc(badge) + '</span>' +
+      '<span class="sm">' + esc(st().bookVenue) + ' · ' + (!sb ? 'no book from Schwab since the page opened'
+        : sb.time_ct == null ? '-' : esc(sb.time_ct)) + '</span></div></div>' +
       '<div class="dom-wrap">' +
         '<div class="dom-ladder">' + ladderHtml(bidLevels, askLevels, wallSet) + midHtml + '</div>' +
         '<div class="dom-stats">' +

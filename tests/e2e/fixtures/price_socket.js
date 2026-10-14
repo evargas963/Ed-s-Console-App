@@ -13,6 +13,8 @@ function served(s) {
   const key = u.startsWith('$') || !INDEX_ROOTS.has(u) ? u : '$' + u;
   return { requested: s, key: key, display: key.replace(/^\$/, '') };
 }
+// the services the daemon reports each symbol's verdict on (live_ui.EQUITY_SERVICES / OPTION_SERVICES)
+const SERVICES = ['LEVELONE_EQUITIES', 'NYSE_BOOK', 'NASDAQ_BOOK', 'CHART_EQUITY', 'NEWS_HEADLINE', 'LEVELONE_OPTIONS', 'OPTIONS_BOOK'];
 const CT = { timeZone: 'America/Chicago' };
 function ctLabel(ms) {          // as time_et.ct_label words it: "Fri 09/25 06:59 PM CT"
   const d = new Date(ms);
@@ -46,7 +48,8 @@ async function mockPriceSocket(page, messages) {
     function beat() {
       const state = {}, trades = {};
       keys.forEach((k) => {
-        state[k] = { LEVELONE_EQUITIES: verdict[k] || { live: true, outage: null } };
+        state[k] = {};
+        SERVICES.forEach((svc) => { state[k][svc] = verdict[k + '|' + svc] || { live: true, outage: null }; });
         if (trade[k] != null) {
           trades[k] = Object.assign({ time_ct: ctLabel(trade[k]), age: ageLabel((Date.now() - trade[k]) / 1000) }, override[k]);
         }
@@ -68,7 +71,7 @@ async function mockPriceSocket(page, messages) {
       sent = true;
       (messages || []).forEach((q, i) => setTimeout(() => {
         if (q.content.TRADE_TIME_MILLIS != null) trade[q.key] = q.content.TRADE_TIME_MILLIS;
-        if ('feed_live' in q) verdict[q.key] = { live: q.feed_live, outage: q.outage };
+        if ('feed_live' in q) verdict[q.key + '|' + q.service] = { live: q.feed_live, outage: q.outage };
         send({ type: 'schwab', messages: [{ service: q.service, key: q.key, schwab_ts: q.schwab_ts, ts_recv: q.ts_recv,
           content: q.content, bar: q.bar, time_ct: q.time_ct }] });
         beat();

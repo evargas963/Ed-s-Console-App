@@ -10,7 +10,10 @@ const { expiriesAnswer } = require('./fixtures/expiries');
 const path = require('path');
 const { routeWatchlist } = require('./fixtures/watchlist');
 
+const { mockPriceSocket, schwabQuote } = require('./fixtures/price_socket');
+
 const HEAT = require(path.join(__dirname, 'fixtures', 'book_heatmap_payload.json'));
+const BOOKS = require(path.join(__dirname, '..', 'fixtures', 'real_tsla_book_rows.json')).rows;
 
 test('the heatmap paints the served cells, and a click pins a readout, without a page error', async ({ page }) => {
   const errs = [];
@@ -65,14 +68,40 @@ test('the Book panel shows each served wall candidate size', async ({ page }) =>
   await expect(page.locator('#obBody')).toContainText('12500');
 });
 
+test('the Book ladder is each level of Schwab\'s book as sent, from the daemon, the newest book replacing the last', async ({ page }) => {
+  // Real data: TSLA's NASDAQ_BOOK messages as Schwab sent them 2026-09-25 (tests/fixtures/real_tsla_book_rows.json)
+  const books = BOOKS.filter((r) => r[1] === 'NASDAQ_BOOK').slice(0, 2);
+  const errs = [];
+  page.on('pageerror', (e) => errs.push(e.message));
+  await page.route('**/api/**', (route) => {
+    const url = route.request().url();
+    const body = url.includes('/api/expiries') ? expiriesAnswer([]) : { available: false };
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+  });
+  await routeWatchlist(page, ['TSLA']);
+  await mockPriceSocket(page, books.map((r) => ({ service: 'NASDAQ_BOOK', key: 'TSLA', schwab_ts: r[2].BOOK_TIME,
+    ts_recv: Number(r[0]), content: r[2], time_ct: 'book ' + r[2].BOOK_TIME })));
+  await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'TSLA'); localStorage.setItem('ed_ws', 'order-flow'); localStorage.setItem('ed_sub', 'book'); localStorage.setItem('ed_book_venue', 'NASDAQ_BOOK'); } catch (e) {} });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  const last = books[books.length - 1][2];
+  await expect(page.locator('#obBody')).toContainText('NASDAQ_BOOK · book ' + last.BOOK_TIME);
+  const want = last.ASKS.slice().reverse().map((l) => [l.ASK_PRICE.toFixed(2), String(l.TOTAL_VOLUME)])
+    .concat(last.BIDS.map((l) => [l.BID_PRICE.toFixed(2), String(l.TOTAL_VOLUME)]));
+  const shown = await page.locator('#obBody .dom-row').evaluateAll((rows) => rows.map((r) =>
+    [r.querySelector('.dom-px').textContent, r.querySelector('.dom-sz').textContent]));
+  expect(shown).toEqual(want);
+  await expect(page.locator('#obBody .fl-badge').first()).toHaveText('LIVE');
+  expect(errs).toEqual([]);
+});
+
 test('a Schwab outage: the Book panel keeps Schwab\'s last top of book, marked NOT LIVE with the reason', async ({ page }) => {
-  // operator 2026-10-14: "the last values stand, marked not live". The microstructure answer as
-  // the console serves it with the price feed down (STAND-IN: SPY's last top of book from
-  // tests/test_data_path_rules_v1.py's real capture, the outage's words); the panel's mark is the
-  // real test console's own judgment of the book's feeds (it has no Schwab feed). Before, the
+  // operator 2026-10-14: "the last values stand, marked not live". Schwab's last top of book as the
+  // daemon pushes it, with the daemon's verdict on LEVELONE_EQUITIES (STAND-IN: SPY's last top of
+  // book from tests/test_data_path_rules_v1.py's real capture, the outage's words). Before, the
   // page drew the reason in place of the bid and ask.
-  const BOOK = { status: 'ok', top_of_book: { bid: 767.38, ask: 767.4, bid_size: 300, ask_size: 200 }, depth: {}, ages: {},
-    as_of: { book: null, quote: null }, classification: {}, depth_pressure: {}, wall_candidates: [], top_outage: 'Schwab LEVELONE_EQUITIES feed down during RTH' };
+  const BOOK = { status: 'ok', depth: {}, ages: {}, as_of: { book: null, quote: null }, classification: {}, wall_candidates: [] };
+  await mockPriceSocket(page, [Object.assign(schwabQuote('TSLA', 767.39, { BID_PRICE: 767.38, ASK_PRICE: 767.4, BID_SIZE: 300, ASK_SIZE: 200 }),
+    { feed_live: false, outage: 'Schwab LEVELONE_EQUITIES feed down during RTH' })]);
   await page.route('**/api/**', (route) => {
     const url = route.request().url();
     const body = url.includes('/api/order-flow/microstructure') ? BOOK

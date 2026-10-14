@@ -79,9 +79,10 @@ def schwab_message(topic: str, msg: dict) -> "dict | None":
         return None
     out = {"service": service if service is not None else msg.get("service"), "key": msg["symbol"],
            "schwab_ts": msg.get("schwab_ts"), "ts_recv": msg.get("ts_recv"), "content": content}
-    sent = content.get(NEWS_TIME) if out["service"] == "NEWS_HEADLINE" else None
+    sent = (content.get(NEWS_TIME) if out["service"] == "NEWS_HEADLINE"
+            else content.get("BOOK_TIME") if DELIVERY.get(out["service"]) == WHOLE else None)
     if isinstance(sent, (int, float)) and not isinstance(sent, bool):
-        out["time_ct"] = ct_label(sent / 1000.0)        # the headline's time as the screen shows it
+        out["time_ct"] = ct_label(sent / 1000.0)        # the headline's or book's time as the screen shows it
     if out["service"] == "CHART_EQUITY":                # the bar as the chart draws it, by its one producer
         candle = schwab_bar(content.get("CHART_TIME_MILLIS"), content.get("OPEN_PRICE"), content.get("HIGH_PRICE"),
                             content.get("LOW_PRICE"), content.get("CLOSE_PRICE"), content.get("VOLUME"))
