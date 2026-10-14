@@ -461,12 +461,14 @@
       : pill('PRICE', 'WAITING', 'warn', 'no price row yet for this symbol');
     h += m === undefined ? pill('BOOK', '…', '') : !m ? pill('BOOK', 'FAILED', 'bad') : m.status === 'no_book' ? pill('BOOK', 'NONE', 'warn', 'no ' + m.venue)
       : pill('BOOK', m.ages && m.ages.book_stale === false ? { pre: '', ageOf: 'book' } : m.ages && m.ages.book_stale ? 'STALE' : 'AGE UNKNOWN',
-          m.ages && m.ages.book_stale === false ? 'ok' : 'bad');
-    // the session levels snapshot's served age
-    h += L === undefined ? pill('LEVELS', '…', '') : !L ? pill('LEVELS', 'FAILED', 'bad') : pill('LEVELS', L.as_of.snapshot == null ? '—' : { pre: '', ageOf: 'snapshot' }, (L.degraded && L.degraded.length) ? 'warn' : 'ok', 'session levels snapshot age');
+          m.ages && m.ages.book_stale === false && !down ? 'ok' : 'bad', down ? window.EdShell.PUSH_DOWN : null);
+    // the session levels snapshot's served age; no pill reads ok while the push is down
+    h += L === undefined ? pill('LEVELS', '…', '') : !L ? pill('LEVELS', 'FAILED', 'bad') : pill('LEVELS', L.as_of.snapshot == null ? '—' : { pre: '', ageOf: 'snapshot' },
+      down ? 'bad' : (L.degraded && L.degraded.length) ? 'warn' : 'ok', down ? window.EdShell.PUSH_DOWN : 'session levels snapshot age');
     h += t === undefined ? pill('GAMMA', '…', '') : !t ? pill('GAMMA', 'DOWN', 'bad', 'terrain request failed')
       : t.error ? pill('GAMMA', 'DOWN', 'bad', t.error)
-      : pill('GAMMA', { pre: t.levels_stale ? 'STALE ' : '', ageOf: 'levels' }, t.levels_stale ? 'warn' : 'ok', t.levels_stale_reason);
+      : pill('GAMMA', { pre: t.levels_stale ? 'STALE ' : '', ageOf: 'levels' }, down ? 'bad' : t.levels_stale ? 'warn' : 'ok',
+          down ? window.EdShell.PUSH_DOWN : t.levels_stale_reason);
     host.innerHTML = h;
   }
   function paintFooter() {

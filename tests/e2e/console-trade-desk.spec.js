@@ -422,6 +422,27 @@ test.describe('Trade Desk renders served values', () => {
     expect(errs).toEqual([]);
   });
 
+  test('Right Now: each section is marked by its own panels; with the push down its book reads NOT LIVE', async ({ page }) => {
+    // operator 2026-10-14: "each panel gets its own screen element". The book's venue feed is down
+    // (STAND-IN: the outage's words); only the Detect section, read from the book, says so.
+    const errs = watchErrors(page);
+    await intercept(page);
+    setNotLive(page, 'rightnow.book', 'Schwab NASDAQ_BOOK feed down during RTH');
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'right-now'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#tdDetect')).toHaveAttribute('data-not-live', /NASDAQ_BOOK feed down during RTH/);
+    for (const id of ['#tdFrame', '#tdConfirm', '#tdContext', '#tdMigration']) {
+      await expect(page.locator(id)).not.toHaveAttribute('data-not-live', /NASDAQ_BOOK feed down during RTH/);
+    }
+    await expect(page.locator('#tdDetect .fl-badge')).toHaveText('LIVE');
+    pushDown(page);
+    await expect(page.locator('#tdDetect .fl-badge')).toHaveText('NOT LIVE', { timeout: 6000 });
+    for (const id of ['#tdDetect', '#tdFrame', '#tdConfirm', '#tdContext', '#tdMigration']) {
+      await expect(page.locator(id)).toHaveAttribute('data-not-live', /the console push is down/);
+    }
+    expect(errs).toEqual([]);
+  });
+
   test('Right Now: detect, frame, context and the migration read the served fields', async ({ page }) => {
     const errs = watchErrors(page);
     await intercept(page);

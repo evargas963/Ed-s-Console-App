@@ -388,8 +388,15 @@ def _mark_liveness(now: float) -> None:
         push_changes.changed(tk, push_changes.LIVE)
 
 
-#: the option contracts the daemon's last applied status says its rule picks
+#: the option contracts the daemon's last applied status says its rule picks (and those it no
+#: longer picks for a ticker it has not ranked again yet): what the console holds the prints and
+#: books of, through any outage
 _picked: "set[str]" = set()
+
+
+def picked() -> frozenset:
+    """The option contracts whose prints and books the console holds (_picked)."""
+    return frozenset(_picked)
 
 
 def note_liveness(now: float) -> None:

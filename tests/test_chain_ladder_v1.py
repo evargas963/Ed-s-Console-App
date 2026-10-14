@@ -57,3 +57,15 @@ def test_a_number_schwab_did_not_send_is_absent_and_an_unknown_side_is_not_a_cal
     shown = next(r[s] for r in rows for s in ("call", "put") if r[s] and r[s]["symbol"] == first["symbol"])
     assert shown["delta"] is None and shown["strikePrice"] == first["strikePrice"]
     assert unplaced == 1 and all(r[s]["symbol"] != "CRWD-ODD" for r in rows for s in ("call", "put") if r[s])
+
+
+def test_a_strike_the_one_list_does_not_hold_yet_is_counted_never_placed():
+    """The ladder draws the ledger's contracts on the published strike list; a newer round can list
+    a strike the publication does not hold yet (STAND-IN, named: the chain's top strike left off the
+    list). Its contracts are counted as not on the ladder until the next publication; before, the
+    ladder raised KeyError and the Chain panel answered 500."""
+    ks = listed_strikes(FX["chain"])
+    newer = ks[-1]
+    rows, unplaced = chain_ladder(FX["chain"], FX["spot"], ks[:-1], nearest_strike(ks[:-1], FX["spot"]))
+    assert newer not in {r["strike"] for r in rows}
+    assert unplaced == sum(1 for c in FX["chain"] if c["strikePrice"] == newer) > 0

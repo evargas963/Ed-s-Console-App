@@ -431,10 +431,12 @@ def dte_label(dte: float | None) -> str | None:
 def expiry_states(listed: dict[str, Any], now: float) -> dict[str, Any]:
     """The listed expiries (listed_expiries) at `now`: each one's `expired` (its settlement has
     passed; None while its settlement is not known) and the `front` expiry (the nearest that has
-    not expired; None when none is known not to have) -- the one rule of both for every panel."""
+    not expired; None when none is known not to have, or a nearer one's state is not known) -- the
+    one rule of both for every panel."""
     settles = listed["expiry_settles"]
     expired = {e: None if settles[e] is None else settles[e] <= now for e in listed["expiries"]}
-    front = next((e for e in listed["expiries"] if expired[e] is False), None)
+    known = [e for e in listed["expiries"] if expired[e] is not True]     # nearest first
+    front = known[0] if known and expired[known[0]] is False else None
     return {"expired": expired, "front": front}
 
 
@@ -447,7 +449,8 @@ def on_strikes(rows: list, strikes: list, width: int) -> list:
 
 def chain_ladder(contracts, spot, strikes, spot_strike) -> tuple[list[dict], int]:
     """One expiry's chain as the ladder draws it, and how many contracts it could not place (no
-    strike, or a putCall other than CALL/PUT). Rows on the one strike list `strikes`, high to low
+    strike, a putCall other than CALL/PUT, or a strike the one strike list does not hold yet: a
+    newer round's, until it is published). Rows on the one strike list `strikes`, high to low
     (a strike with no contract in this expiry: one row, neither side); per strike one row per
     listed contract index (a second contract at one strike and side gets its own row); each
     contract's numbers read by rule 2 (-999, text, NaN absent); `call_itm` / `put_itm` against
@@ -458,7 +461,7 @@ def chain_ladder(contracts, spot, strikes, spot_strike) -> tuple[list[dict], int
     for c in contracts or []:
         k = schwab_number(c.get("strikePrice"))
         side = {"CALL": "call", "PUT": "put"}.get(str(c.get("putCall") or "").upper())
-        if k is None or side is None:
+        if k is None or side is None or k not in by_k:
             unplaced += 1
             continue
         shown = {f: (schwab_number(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else v)

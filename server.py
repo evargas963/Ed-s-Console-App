@@ -177,6 +177,7 @@ from app.options.order_flow.engine import OrderFlowEngine
 from app.options.order_flow.history import TAPE
 from app.options.order_flow.live_payload import flow_block
 from app.options.order_flow.state import get_content_for_symbol
+from app.options.order_flow.streaming import picked
 
 #: the Schwab token file, whose age is shown (the console holds no Schwab credential and makes no
 #: Schwab call)
@@ -1128,7 +1129,7 @@ def _publish_levels(tk: str, round_ts: "float | None" = None,
     if new_chain:
         push_changes.changed(tk, push_changes.CHAIN)
     if capture is None:
-        _log_level_crosses(tk, prev_spot, payload)
+        _log_level_crosses(tk, prev_spot, payload, at.timestamp())
     return snap
 
 
@@ -1138,15 +1139,14 @@ CROSS_LEVELS = (("call_wall", "Call g-Wall"), ("put_wall", "Put g-Wall"), ("gamm
                 ("call_delta_wall", "Call d-Wall"), ("put_delta_wall", "Put d-Wall"))
 
 
-def _log_level_crosses(tk: str, prev_spot: "float | None", payload: dict) -> None:
+def _log_level_crosses(tk: str, prev_spot: "float | None", payload: dict, now: float) -> None:
     """Record each level spot moved through between the previous publication and this one
-    (`payload`, as published; max pain the front expiry's now: terrain_engine.at_spot)."""
-    now = time.time()
+    (`payload`, published at `now`; max pain the front expiry's then: terrain_engine.at_spot)."""
     held = {**payload, **at_spot(payload, payload["spot"], now)}
     levels = [(held[k], name) for k, name in CROSS_LEVELS if held[k] is not None]
     logged = get_db().detect_and_log_level_crosses(
         ticker=tk, prev_spot=prev_spot, cur_spot=payload["spot"], levels=levels, ts_utc=now,
-        ts_et=now_et().strftime("%Y-%m-%d %H:%M:%S ET"))
+        ts_et=datetime.fromtimestamp(now, ET).strftime("%Y-%m-%d %H:%M:%S ET"))
     if logged:
         with _crosses_lock:
             held = _crosses.setdefault(tk, [])
@@ -1722,9 +1722,9 @@ def get_options_tape(ticker: str = Query(...),
 
 
 def tape_contracts(tk: str) -> list:
-    """The option contracts of `tk`'s tape: every one of its chain the daemon streams on
-    LEVELONE_OPTIONS (as it last reported)."""
-    return sorted(lmp.held_reported("LEVELONE_OPTIONS") & set(_ledger(tk)))
+    """The option contracts of `tk`'s tape: every one of its chain the daemon's option rule picks
+    (streaming.picked: an outage or a restart leaves them, their prints standing, not live)."""
+    return sorted(picked() & set(_ledger(tk)))
 
 
 def tape_payload(tk: str, contract: Optional[str], limit: int) -> dict:
@@ -2262,6 +2262,8 @@ def _panels(v: dict) -> "dict[str, _Panel]":
     #: strike nearest the price), and one read from the venue's book as well
     price = ((tk, "LEVELONE_EQUITIES"),)
     book_feeds = price + ((tk, venue),)
+    #: a value read from the price and the price levels, which are built from the 1-minute bars
+    price_and_bars = price + ((tk, "CHART_EQUITY"),)
 
     def window(name: Optional[str]) -> dict:
         """A strike panel's window: its route key (no shift while it follows the price) and the
@@ -2282,8 +2284,8 @@ def _panels(v: dict) -> "dict[str, _Panel]":
         return _Panel(_route("/api/bars1m", ticker=tk, tf=tf, limit=limit), lambda: bars_payload(tk, limit, tf),
                       ((tk, "CHART_EQUITY"),))
 
-    def levels(tf: str) -> _Panel:
-        return _Panel(_route("/api/levels", ticker=tk, tf=tf), lambda: levels_payload(tk, tf, now_et()), price)
+    def levels(tf: str) -> _Panel:      # the price levels are built from the 1-minute bars
+        return _Panel(_route("/api/levels", ticker=tk, tf=tf), lambda: levels_payload(tk, tf, now_et()), price_and_bars)
 
     def chain(expiry: Optional[str]) -> _Panel:
         return _Panel(_route("/api/chain", ticker=tk, expiry=expiry), lambda: chain_payload(tk, expiry, time.time()),
@@ -2296,7 +2298,8 @@ def _panels(v: dict) -> "dict[str, _Panel]":
                       price)
 
     terrain = _Panel(_route("/api/terrain", ticker=tk), lambda: get_terrain(ticker=tk), price)
-    zones = _Panel(_route("/api/liquidity-snapshot", ticker=tk), lambda: liquidity_snapshot(tk, now_et()), price)
+    zones = _Panel(_route("/api/liquidity-snapshot", ticker=tk), lambda: liquidity_snapshot(tk, now_et()),
+                   price_and_bars)
     book = _Panel(_route("/api/order-flow/microstructure", ticker=tk, venue=venue),
                   lambda: order_flow_microstructure(tk, venue, time.time()), book_feeds)
     out = {"watchlist": _Panel("/api/watchlist", lambda: watchlist_payload(time.time()), ()),

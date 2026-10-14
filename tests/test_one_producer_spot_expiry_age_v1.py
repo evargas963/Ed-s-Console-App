@@ -177,6 +177,30 @@ def test_b_the_expiries_their_days_and_the_front_one_are_one_list_everywhere(mrv
     assert front == [exp_panel["front"]] == [a["chain"]["chain"]["expiry"]] == [terrain["max_pain_expiry"]]
 
 
+def test_b_the_front_expiry_moves_at_its_settlement_and_is_unknown_behind_an_unknown_one():
+    """Audit B at fixed instants, MRVL's real chain (no /markets answer held: each contract settles
+    at Schwab's expirationDate, time_et.settles_at): at the capture the front is the nearest expiry
+    not settled; a second after its settlement, the next; and with the nearest one's settlement
+    not known (STAND-IN, named: its settlement removed), the front is not known either -- never
+    the one after it."""
+    from datetime import datetime
+
+    from terrain_engine import expiry_states, listed_expiries
+    listed = listed_expiries(MRVL.chain)
+    settles = {}
+    for c in MRVL.chain:
+        e = c["expirationDate"][:10]
+        settles[e] = max(settles.get(e, 0.0), datetime.fromisoformat(c["expirationDate"]).timestamp())
+    at = MRVL.now.timestamp()
+    order = [e for e in listed["expiries"] if settles[e] > at]
+    assert expiry_states(listed, at)["front"] == order[0]
+    after = expiry_states(listed, settles[order[0]] + 1)
+    assert after["front"] == order[1] and after["expired"][order[0]] is True
+    unknown = {**listed, "expiry_settles": {**listed["expiry_settles"], order[0]: None}}
+    states = expiry_states(unknown, at)
+    assert states["expired"][order[0]] is None and states["front"] is None
+
+
 def test_c_the_levels_age_is_one_instant_labelled_once(crwd):
     """Audit C. The age of the published levels, on every panel that shows it (Key Levels, GEX by
     Strike, the heatmap, the Desk's terrain and its gamma levels): every answer names the one

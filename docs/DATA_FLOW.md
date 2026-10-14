@@ -412,7 +412,8 @@ from Schwab to the screen (daemon, console, page), are these:
   2026-10-14: "the live spot for every distance, side, breached and band"); the publication's
   price is shown only as "priced at". Each expiry's state (expired once its settlement,
   `time_et.settles_at`, has passed; an expiry with AM- and PM-settled contracts once all have) and
-  the front expiry (the nearest not expired) are read the same way at the moment served
+  the front expiry (the nearest not expired; not known while a nearer one's settlement is not
+  known) are read the same way at the moment served
   (`terrain_engine.expiry_states`): the heatmap's front column, the expiry dropdown, the Chain's
   default expiry, the max pain shown (computed per expiry, `max_pain_by_expiry`) and the pin's
   expiry gate all read it. The one expiry list and its days are `terrain_engine.listed_expiries`.
@@ -542,11 +543,13 @@ from Schwab to the screen (daemon, console, page), are these:
    anything -- the last values stand and every value read from a Schwab feed is marked not live by
    the one judgment of that feed (`live_market_plane.outage`: the price row's `feed_live`/`outage`,
    the books' `top_outage` drawn beside the last bid and ask, each panel's `not_live` reasons on
-   `/api/live` over the feeds it is read from, `server._Panel.feeds`, the candles' CHART_EQUITY
-   and the options tape's contracts included), and the header says OFFLINE with the last trade's
-   time and served age (operator 2026-10-14). On the page each element is marked with every panel
-   drawn in it (`ed-core.js` `PANEL_HOSTS`, never the last to arrive), and while the console's
-   push is down every shown panel and the Desk PRICE pill say so. After a reconnect a record is
+   `/api/live` over the feeds it is read from, `server._Panel.feeds`: the candles' CHART_EQUITY,
+   the price levels' and zones' too (they are built from the bars), and the options tape's
+   contracts, the rule's picks, whose prints stand through an outage), and the header says
+   OFFLINE with the last trade's time and served age (operator 2026-10-14). On the page each
+   element is marked with every panel drawn in it (`ed-core.js` `PANEL_HOSTS`: each Right Now
+   section and Desk card its own element; never the last to arrive), and while the console's push
+   is down every shown panel says so and no badge or pill reads LIVE. After a reconnect a record is
    not live until the new connection posts to it (every service). Left: the closed market is handled apart from any other stop
    (`server.terrain_staleness`); some calculations round or drop contracts. Each place is listed in
    PR #515's description and fixed by `ACTIVE_PROGRAM.md` NUMBERS.

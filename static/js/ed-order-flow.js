@@ -21,11 +21,15 @@
 
   // the book as the console pushes it for the view's ticker and venue (the same answer Right Now
   // and the Desk read)
+  var _book = null;                  // the book last drawn, drawn again when the push goes down or comes back
   window.EdShell.onPanel('book', function (a) {
     var h = host(); if (!h || a.waiting) return;
+    _book = null;
     if (!a.ok) { h.innerHTML = '<div class="placeholder"><div class="sm">/api/order-flow/microstructure answered HTTP ' + a.status + '</div></div>'; return; }
+    _book = a.body;
     render(h, ticker(), a.body);
   });
+  document.addEventListener('ed:push', function () { var h = host(); if (h && _book) render(h, ticker(), _book); });
 
   function classOf(map, key) { var v = map ? map[key] : null; return (typeof v === 'string' && v) ? v : null; }
   function tag(c) {
@@ -107,10 +111,13 @@
 
     // book_stale is the server's verdict (app.options.order_flow.engine); LIVE only on its
     // explicit "not stale", an unknown book age is not live
-    var bs = ages.book_stale, badge = bs === false ? 'LIVE' : bs === true ? 'STALE' : 'AGE UNKNOWN';
+    // and never while the console's push is down (nothing reaches the page)
+    var bs = ages.book_stale, down = window.EdShell.pushDown();
+    var badge = down ? 'NOT LIVE' : bs === false ? 'LIVE' : bs === true ? 'STALE' : 'AGE UNKNOWN';
+    var live = bs === false && !down;
     h.innerHTML =
       '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Ticker</span><span class="fl-sym">' + esc(tk) + '</span></div>' +
-      '<div class="fl-sub"><span class="fl-lab">Book</span><span class="fl-badge ' + (bs === false ? 'live' : 'stale') + '">' + badge + '</span></div></div>' +
+      '<div class="fl-sub"><span class="fl-lab">Book</span><span class="fl-badge ' + (live ? 'live' : 'stale') + '">' + badge + '</span></div></div>' +
       '<div class="dom-wrap">' +
         '<div class="dom-ladder">' + ladderHtml(bidLevels, askLevels, wallSet) + midHtml + '</div>' +
         '<div class="dom-stats">' +

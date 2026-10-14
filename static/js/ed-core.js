@@ -877,8 +877,8 @@
     vanna: ['vnBody'], charm: ['chmBody'], chain: ['chainBody'], structures: ['stBody'],
     'liquidity.map.zones': ['liqmBody'], 'liquidity.map.levels': ['liqmBody'], 'liquidity.map.bars': ['liqmBody'],
     'liquidity.levels': ['lvlBody'], book: ['obBody'],
-    'rightnow.book': ['tdBody'], 'rightnow.levels': ['tdBody'], 'rightnow.terrain': ['tdBody'], 'rightnow.zones': ['tdBody'],
-    'rightnow.strikes': ['tdBody'],
+    'rightnow.book': ['tdDetect'], 'rightnow.levels': ['tdFrame'], 'rightnow.terrain': ['tdConfirm', 'tdContext', 'tdMigration'],
+    'rightnow.zones': ['tdContext'], 'rightnow.strikes': ['tdMigration'],
     'desk.bars': ['tdmChart'], 'desk.levels': ['tdmChart'], 'desk.events': ['tdmChart', 'tdmCardFlow'],
     'desk.zones': ['tdmChart'], 'desk.strikes': ['tdmChart'], 'desk.terrain': ['tdmCardOpt', 'tdmCardVol'],
     'desk.forces': ['tdmCardOpt'], 'desk.book': ['tdmCardLiq', 'tdmCardFlow'], 'desk.flow_bars': ['tdmCardFlow'] };
@@ -890,16 +890,18 @@
   function hostsOf(n) { return Object.prototype.hasOwnProperty.call(PANEL_HOSTS, n) ? PANEL_HOSTS[n] : NO_HOSTS; }
   function markLive(name, notLive) {           // notLive: the served reasons, or none
     if (notLive) _notLive[name] = notLive; else delete _notLive[name];
-    hostsOf(name).forEach(paintMark);
+    paintMarks();
   }
+  // every shown panel's elements, marked again: a drawer may have drawn its element anew
+  function paintMarks() { _shown.forEach(function (n) { hostsOf(n).forEach(paintMark); }); }
   function drawnIn(n, id) { return hostsOf(n).indexOf(id) !== -1; }
   function paintMark(id) {
     var host = document.getElementById(id); if (!host) return;
     var why = _pushDown && _shown.some(function (n) { return drawnIn(n, id); }) ? [PUSH_DOWN] : [];
-    Object.keys(_notLive).forEach(function (n) {    // each reason once, in the served order
-      if (drawnIn(n, id)) _notLive[n].forEach(function (r) { if (why.indexOf(r) === -1) why.push(r); });
+    // each panel drawn in it, in PANEL_HOSTS's order, its served reasons as served, each said once
+    Object.keys(PANEL_HOSTS).forEach(function (n) {
+      if (_notLive[n] && drawnIn(n, id)) _notLive[n].forEach(function (r) { if (why.indexOf(r) === -1) why.push(r); });
     });
-    why.sort();
     if (why.length) { host.classList.add('not-live'); host.setAttribute('data-not-live', why.join('; ')); }
     else { host.classList.remove('not-live'); host.removeAttribute('data-not-live'); }
   }
@@ -909,8 +911,8 @@
   function setPushDown(down) {
     if (down === _pushDown) return;
     _pushDown = down;
-    _shown.forEach(function (n) { hostsOf(n).forEach(paintMark); });
-    document.dispatchEvent(new CustomEvent('ed:push', { detail: { down: down } }));   // the screens that say LIVE
+    document.dispatchEvent(new CustomEvent('ed:push', { detail: { down: down } }));   // the screens that say LIVE redraw
+    paintMarks();                                  // then every shown element is marked, the redrawn included
   }
   // each panel drawn on its own: one drawer's error is reported and never stops the others
   function deliver(name, a) {
@@ -919,7 +921,7 @@
     _panelFns[name].forEach(function (fn) {
       try { fn(a); } catch (e) { console.error('panel ' + name + ': ' + (e && e.stack ? e.stack : e)); }
     });
-    if ('notLive' in a) markLive(name, a.notLive);
+    if ('notLive' in a) markLive(name, a.notLive); else paintMarks();
     if (a.ages) fillAges(a.ages);
   }
   function answerOf(msg) {

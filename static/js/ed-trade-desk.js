@@ -79,11 +79,11 @@
     var heroVal = (imb == null || isNaN(imb)) ? '—' : (imb >= 0 ? '+' : '') + num(imb, 3);
     var side = dep(5, 'side');   // served: BID / ASK / EVEN by the imbalance's sign
     var heroUnit = side == null ? '' : (side === 'BID' ? 'bid-heavy' : side === 'ASK' ? 'ask-heavy' : 'balanced') + ' (' + esc(d.venue) + ', depth 5)';
-    // LIVE only on the server's explicit "not stale" (ages.book_stale, compute_book_microstructure);
-    // an unknown book age is not live
-    var bs = ages.book_stale;
+    // LIVE only on the server's explicit "not stale" (ages.book_stale, compute_book_microstructure)
+    // with the console's push reaching the page; an unknown book age is not live
+    var bs = ages.book_stale, down = window.EdShell.pushDown();
     return stage(1, 'td-accent-blue', 'Detect — book microstructure', heroVal, heroUnit, side === 'BID' ? 1 : side === 'ASK' ? -1 : 0,
-      rows, bs === false ? 'LIVE' : bs === true ? 'STALE' : 'AGE UNKNOWN', bs === false ? 'live' : 'stale');
+      rows, down ? 'NOT LIVE' : bs === false ? 'LIVE' : bs === true ? 'STALE' : 'AGE UNKNOWN', bs === false && !down ? 'live' : 'stale');
   }
 
   function frameStage(levelsD) {
@@ -298,8 +298,10 @@
     h.innerHTML =
       '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Right now</span><span class="fl-sym">' + esc(tk) +
       '</span><span class="fl-meta">spot <span class="td-spot">' + esc(_spotDisp) + '</span></span></div></div>' +
-      '<div class="td-grid">' + detectStage(R.book) + frameStage(R.levels) + confirmStage(R.terrain) + '</div>' +
-      contextSummary(R.terrain, R.zones) +
+      // each section its own element, marked by the panels it is drawn from (ed-core PANEL_HOSTS)
+      '<div class="td-grid"><div id="tdDetect">' + detectStage(R.book) + '</div><div id="tdFrame">' + frameStage(R.levels) +
+      '</div><div id="tdConfirm">' + confirmStage(R.terrain) + '</div></div>' +
+      '<div id="tdContext">' + contextSummary(R.terrain, R.zones) + '</div>' +
       migrationSection(R.strikes, R.terrain) +
       '<div class="notproven" style="margin-top:14px;">HOME PRESERVED — DECISION AUTHORITY NOT_PROVEN. ' +
       'This page assembles already-canonical Detect/Frame/Confirm signals and classifies them in plain English; it computes no new value and renders no Execute step. ' +
@@ -316,4 +318,5 @@
     document.querySelectorAll('#tdBody .td-spot').forEach(function (el) { el.textContent = _spotDisp; });
   });
   document.addEventListener('ed:ticker', function () { _spotDisp = '—'; });   // until the new ticker's row
+  document.addEventListener('ed:push', render);   // the push went down or came back: the LIVE badge says so
 })();
