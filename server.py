@@ -534,6 +534,8 @@ async def _app_lifespan(app):
     # completing, and that path joins background workers which may be blocked.
     _install_signal_handlers()
 
+    # every change counted from the first (push_changes), before anything that marks one starts
+    push_changes.bind(asyncio.get_running_loop())
     # The levels loop: the stored levels at startup, then the status line and the price levels
     # (the chains arrive from the daemon, _on_chain).
     start_terrain_loop()
@@ -547,10 +549,9 @@ async def _app_lifespan(app):
     start_order_flow_stream(on_tick_callback=_on_stream_tick,
                             on_chain_callback=_on_chain)
 
-    push_changes.bind(asyncio.get_running_loop())
-
-
     yield
+
+    push_changes.bind(None)          # this loop is ending: no change is marked on it from here
 
     # ── Shutdown ───────────────────────────────────────────────────────────
     # BOUNDED BY CONSTRUCTION. Everything below joins background workers
