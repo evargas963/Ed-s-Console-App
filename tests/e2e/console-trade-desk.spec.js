@@ -434,7 +434,7 @@ test.describe('Trade Desk renders served values', () => {
       content: Object.assign({}, news.content, { key: 'QQQ' }), time_ct: 'Mon 10/05 09:00 AM CT' }]);
     await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('#tdmNews')).toContainText('No headline from Schwab for SPY');
+    await expect(page.locator('#tdmNews')).toHaveText('-');           // none held for SPY: absent
     await page.evaluate(() => window.EdShell.setTicker('QQQ'));
     await expect(page.locator('#tdmNews')).toContainText(news.content['4']);
     expect(errs).toEqual([]);

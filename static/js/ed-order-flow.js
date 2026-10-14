@@ -129,8 +129,7 @@
     h.innerHTML =
       '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Ticker</span><span class="fl-sym">' + esc(tk) + '</span></div>' +
       '<div class="fl-sub"><span class="fl-lab">Book</span><span class="fl-badge ' + (live ? 'live' : 'stale') + '">' + esc(badge) + '</span>' +
-      '<span class="sm">' + esc(st().bookVenue) + ' · ' + (!sb ? 'no book from Schwab since the page opened'
-        : sb.time_ct == null ? '-' : esc(sb.time_ct)) + '</span></div></div>' +
+      '<span class="sm">' + esc(st().bookVenue) + ' · ' + (!sb || sb.time_ct == null ? '-' : esc(sb.time_ct)) + '</span></div></div>' +
       '<div class="dom-wrap">' +
         '<div class="dom-ladder">' + ladderHtml(bidLevels, askLevels, wallSet) + midHtml + '</div>' +
         '<div class="dom-stats">' +

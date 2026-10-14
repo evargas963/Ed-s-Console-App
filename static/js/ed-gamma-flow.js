@@ -87,7 +87,7 @@
     var tob = { bid: f('BID_PRICE'), ask: f('ASK_PRICE'), bid_size: f('BID_SIZE'), ask_size: f('ASK_SIZE') };
     var topLive = !!l1v && l1v.live === true;      // the daemon's verdict; not reported: not live
     var ob = _optBook[desired], obv = window.EdShell.feedVerdict(desired, 'OPTIONS_BOOK');
-    var rowsOb = !ob ? [['Book', 'no OPTIONS_BOOK from Schwab since the page opened', 'OPTIONS_BOOK', undefined]]
+    var rowsOb = !ob ? [['Book', '-', 'OPTIONS_BOOK', undefined]]
       : [['Book time', ob.time_ct == null ? '-' : ob.time_ct, 'OPTIONS_BOOK', undefined]]
         .concat(!(obv && obv.live) ? [['Book', 'NOT LIVE' + (obv && obv.outage ? ' · ' + obv.outage : ''), 'OPTIONS_BOOK', undefined]] : [])
         .concat(bookRows(ob.levels.asks, 'Ask'), bookRows(ob.levels.bids, 'Bid'));
