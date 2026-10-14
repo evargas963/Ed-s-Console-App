@@ -309,8 +309,8 @@ def _once(key: tuple, read):
 
 def price_row(ticker: str, now: float) -> dict:
     """The ticker's price row at `now` (live_price_rows.price_row), from its LEVELONE_EQUITIES
-    record as its change's round read it: the row the page shows and the spot every calculation of
-    the same change uses."""
+    record as its change's round read it: the spot every calculation of the same change uses (the
+    page shows Schwab's fields from the daemon's socket)."""
     tk = ticker_storage_key(ticker)
     return _lpr.price_row(tk, now, _once(("quote", tk), lambda: lmp.get_quote(tk)))
 
@@ -2485,7 +2485,7 @@ async def live_values(ws: WebSocket):
     async def push() -> None:
         last_beat = 0.0
         while True:
-            kinds, _moved_rows = await push_changes.next_changes(client, PUSH_BEAT_SEC)
+            kinds = await push_changes.next_changes(client, PUSH_BEAT_SEC)
             async with send_lock:
                 if time.monotonic() - last_beat >= PUSH_BEAT_SEC:
                     await beat()
@@ -2502,14 +2502,12 @@ async def live_values(ws: WebSocket):
                 # no ticker chosen yet: the watchlist alone
                 view["ticker"] = ticker_storage_key(_required_ticker(view["ticker"])) if view["ticker"] else None
                 panels = _panels(view) if view["ticker"] else {"watchlist": _Panel("/api/watchlist", lambda: watchlist_payload(time.time()), ())}
-                symbols = {s: ticker_storage_key(s) for s in view["symbols"]}
                 async with send_lock:
                     if not page["subscribed"] or view["ticker"] != page["ticker"]:
                         if page["subscribed"]:
                             push_changes.unsubscribe(page["ticker"], client)
                         push_changes.subscribe(view["ticker"], client)
                         page["ticker"], page["subscribed"] = view["ticker"], True
-                    client.symbols = set(symbols.values())
                     moved = [n for n, p in panels.items() if n not in client.panels or client.panels[n].source != p.source]
                     client.panels, page["seq"] = panels, view["seq"]
                     await text({"type": "view", "seq": view["seq"], "moved": moved, "shown": sorted(panels)})

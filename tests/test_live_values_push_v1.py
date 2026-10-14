@@ -77,12 +77,12 @@ async def _next(ws, *types):
 
 def _view(seq, **over):
     """A page's view as ed-core.js viewOf sends it: CRWD on Options > Gamma > Heatmap, nothing
-    selected, every pan following the price, CRWD's price row shown."""
+    selected, every pan following the price."""
     pan = {"centre": None, "shift": 0}
     v = {"seq": seq, "ticker": "CRWD", "workspace": "options", "subview": "gamma", "view": "heatmap",
          "expiry": None, "strike": None, "strike_expiry": None, "contract": None, "scope": "auto",
          "venue": "NYSE_BOOK", "cols": 6, "book_minutes": 60, "tfs": {"chart": "1", "liquidity": "5", "desk": "5"},
-         "pans": {k: dict(pan) for k in ("heatmap", "gbs", "vanna", "charm", "migration")}, "symbols": ["CRWD"]}
+         "pans": {k: dict(pan) for k in ("heatmap", "gbs", "vanna", "charm", "migration")}}
     v.update(over)
     return json.dumps({"op": "view", "view": v})
 

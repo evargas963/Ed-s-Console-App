@@ -928,7 +928,7 @@
     return { seq: _viewSeq, ticker: state.ticker, workspace: state.workspace, subview: state.subview, view: state.view,
       expiry: state.expiryFilter, strike: state.selStrike, strike_expiry: state.selExpiry, contract: state.contract,
       scope: state.scope, venue: state.bookVenue, cols: state.cols, book_minutes: state.bookMinutes,
-      tfs: state.tfs, pans: pans, symbols: priceSymbols() };
+      tfs: state.tfs, pans: pans };
   }
   // once per turn of the page, after every listener of the event has set its part
   function sendView() {

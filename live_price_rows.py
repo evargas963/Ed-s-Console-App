@@ -1,9 +1,8 @@
-"""THE displayed price row -- one producer for every price the operator sees.
+"""The console's price row -- the spot every calculation of a change reads.
 
 Built only from live_market_plane (the per-field Schwab LEVELONE_EQUITIES state) and its feed
-state (feed_live_for). The console pushes these rows to the page (server.live_values) and its
-analytics read the same row of the same change -- so a price on screen and a price in a
-calculation are one read.
+state (feed_live_for); every analytic of the same change reads the same row. The screen shows
+Schwab's fields straight from the daemon's socket (live_ui), not this row.
 
 Nothing here computes a market value: every number is a Schwab field or its receive time, with
 Schwab's own trade time; the only derivation is the trade time's label. Whether the feed

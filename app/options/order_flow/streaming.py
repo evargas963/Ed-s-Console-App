@@ -354,9 +354,9 @@ _verdicts: "dict[tuple[str, str], tuple]" = {}
 
 
 def _shown_feeds() -> "set[tuple[str, str, str]]":
-    """(ticker, symbol, service) of every feed an open page shows: each shown price row's
-    LEVELONE_EQUITIES, and each feed a panel on screen is read from (push_changes.feeds)."""
-    return {(s, s, "LEVELONE_EQUITIES") for s in push_changes.symbols()} | push_changes.feeds()
+    """(ticker, symbol, service) of every feed a panel on screen is read from (push_changes.feeds);
+    the screen's Schwab values carry the daemon's own verdict (live_ui)."""
+    return push_changes.feeds()
 
 
 def _verdict(symbol: str, service: str, now: float) -> tuple:
@@ -364,8 +364,8 @@ def _verdict(symbol: str, service: str, now: float) -> tuple:
 
 
 def _mark_liveness(now: float) -> None:
-    """A feed an open page shows that went down or came back is a change of its ticker: the price
-    row and every panel read from it are pushed again, marked (push_changes.changed)."""
+    """A feed an open page's panels are read from that went down or came back is a change of its
+    ticker: every panel read from it is pushed again, marked (push_changes.changed)."""
     shown = _shown_feeds()
     moved = set()
     for s, svc in {(s, svc) for _tk, s, svc in shown}:

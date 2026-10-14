@@ -1,9 +1,9 @@
-"""The console's push: which of a symbol's served values changed (the panels and price rows they
-move are pushed again).
+"""The console's push: which of a symbol's served values changed (the panels they move are pushed
+again).
 
 Every open page holds one connection (/api/live, server.live_values) on its ticker, kept in the
-order they opened, with the panels its view shows (`Client.panels`: name -> server._Panel) and
-the symbols whose price rows it shows (`Client.symbols`). Every change of every symbol
+order they opened, with the panels its view shows (`Client.panels`: name -> server._Panel); its
+Schwab values come from the daemon's socket (live_ui). Every change of every symbol
 (`changed`) counts toward that symbol's generation of its kind, whether or not a page shows it --
 an answer computed at one count is current until the next -- and reaches the pages that show it,
 on the event loop.
@@ -28,13 +28,9 @@ _count: "Counter[tuple[str, str]]" = Counter()
 class Client:
     def __init__(self) -> None:
         self.kinds: set[str] = set()
-        #: the symbols shown whose price rows changed since the page was last sent them
-        self.rows: set[str] = set()
         self.wake = asyncio.Event()
         #: each panel the page's view shows -> its value (server._Panel)
         self.panels: dict[str, Any] = {}
-        #: the symbols whose price rows the page shows
-        self.symbols: set[str] = set()
 
 
 def bind(loop: asyncio.AbstractEventLoop) -> None:
@@ -45,11 +41,6 @@ def bind(loop: asyncio.AbstractEventLoop) -> None:
 def watched() -> list[str]:
     """Every ticker an open page shows, on any workspace (a page with none chosen shows none)."""
     return list(dict.fromkeys(tk for tk, _c in list(_open) if tk is not None))
-
-
-def symbols() -> set[str]:
-    """Every symbol whose price row an open page shows."""
-    return {s for _tk, c in list(_open) for s in c.symbols}
 
 
 def feeds() -> "set[tuple[str, str, str]]":
@@ -93,19 +84,15 @@ def _mark(tk: str, kind: str) -> None:
         if t == tk:
             c.kinds.add(kind)
             c.wake.set()
-        if tk in c.symbols:
-            c.rows.add(tk)
-            c.wake.set()
 
 
-async def next_changes(c: Client, timeout: float) -> "tuple[set[str], set[str]]":
-    """(the kinds changed for the page's ticker, the symbols whose rows changed) since the last
-    call; both empty after `timeout` seconds with none."""
+async def next_changes(c: Client, timeout: float) -> "set[str]":
+    """The kinds changed for the page's ticker since the last call; empty after `timeout`
+    seconds with none."""
     try:
         await asyncio.wait_for(c.wake.wait(), timeout)
     except asyncio.TimeoutError:
-        return set(), set()
+        return set()
     c.wake.clear()
     kinds, c.kinds = c.kinds, set()
-    rows, c.rows = c.rows, set()
-    return kinds, rows
+    return kinds
