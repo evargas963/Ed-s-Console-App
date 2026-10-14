@@ -163,7 +163,7 @@ from Schwab to the screen (daemon, console, page), are these:
 | console → daemon | same socket | the clean stop (`{"op": "stop"}`, sent by `launch.py stop`); the contract selected on the Flow panel (`{"op": "flow_contract", "contract": symbol or null}`: only one Schwab listed in a chain the console holds, refused otherwise (409)), sent first on every connection and the moment it changes; the daemon holds it in memory only. And each add or removal of a watchlist ticker the operator makes (`{"op": "watchlist", "action", "ticker", "id"}`), answered by the daemon's `watchlist` record carrying the same id |
 | daemon → console | local WebSocket 127.0.0.1:8800 (`live_ui`, this computer only, operator 2026-10-14; no page connects to it, operator 2026-10-13 design A: "The console's push is the only path to the screen") | on each subscribe, each asked-for equity's current LEVELONE_EQUITIES record; then each of its messages as Schwab sent it, by its delivery type (Streamer API §1.1: Change, the fields that changed; a client behind gets each field's newest, none lost). A heartbeat every second: the daemon's whole status (Schwab socket, why it is not connected, this connection's start `connected_at`, symbols held per service, the watchlist, the chain sweep's last round time, health). The books, option messages, bars and news reach the console on 8799. Enforced by: `tests/test_live_ui_daemon_to_browser_v1.py` |
 | daemon → console | the same :8800 push | the LEVELONE_EQUITIES messages, for every equity the daemon holds on Schwab (`streaming._rows_wanted`: the heartbeat's held LEVELONE_EQUITIES, the watchlist and the market context as Schwab accepted them), taken into the console's price record (`live_market_plane`, which `live_price_rows.price_row` reads): the console's only live price; and the daemon's heartbeat, the console's one record of the daemon's status. It carries no chain, so a beat never waits behind one (measured 2026-10-02 on the 8799 push: DELL read feed down in 25 of 60 samples on a healthy feed while the console worked through chain parts) |
-| console → browser | WebSocket `/api/live` (`server.live_values`), the only path to the screen | the page sends its view, the operator's selections (ticker, workspace, subview, view, expiry, strike, contract, scope, venue, each chart's timeframe, the heatmap's columns and minutes, each strike panel's pan) and the symbols whose prices it shows (the ticker, the market context from meta `ed-market-context`, the watchlist); it names no route. Prices: what each symbol is (`{"type": "symbols"}`: its key, e.g. `$SPX`, and display name, from `instrument_identity`), then its price row (`live_price_rows.price_row`, the row every panel reads its spot from) whole once per connection and after that only the fields a change moved (`{"type": "rows"}`). A beat every second (`{"type": "feed"}`: the market session and the daemon writer's line); with no message for 3 s the page marks the push down: the last values stand, marked OFFLINE with their time. The console decides the panels on screen (`server._panels`) and pushes each one's answer by name, at once for each panel the view moved and again whenever a kind of change that moves its route happens for the ticker (`server._ROUTE_KINDS`: `levels`, `chain`, `flow`, `liquidity`; a route serving values derived from the live price at answer time moves with every kind); an answer the view moved on from is never sent. One producer per value, read once per change, every consumer the same value: each change of a symbol (counted whether or not a page shows it, `push_changes.changed`) is one round (`server._Round`), which reads each input once (the live price, the terrain publication, the price-level snapshot) for every answer and price row computed for it; the clock and the feed's liveness are read fresh. Each panel's value is computed by its producer, called directly (no HTTP hop), once per change however many panels and pages show it (`server._answers`), and each is pushed the moment it is ready, never waiting for another (operator 2026-10-13 design A item 1). Every route with a value derived from the live price (the spot strike, a level's distance, the chain's in-the-money rows) moves with the live price, so no consumer keeps an older spot than another. The session label. What the page sends over HTTP is a command (a watchlist add or removal, the Flow panel's contract). Enforced by: `tests/test_live_values_push_v1.py`, `tests/test_page_fetches_no_values_v1.py`, `tests/test_one_value_one_producer_v1.py` |
+| console → browser | WebSocket `/api/live` (`server.live_values`), the only path to the screen | the page sends its view, the operator's selections (ticker, workspace, subview, view, expiry, strike, contract, scope, venue, each chart's timeframe, the heatmap's columns and minutes, each strike panel's pan) and the symbols whose prices it shows (the ticker, the market context from meta `ed-market-context`, the watchlist); it names no route. Prices: what each symbol is (`{"type": "symbols"}`: its key, e.g. `$SPX`, and display name, from `instrument_identity`), then its price row (`live_price_rows.price_row`, the row every panel reads its spot from) whole once per connection and after that only the fields a change moved (`{"type": "rows"}`). A beat every second (`{"type": "feed"}`: the market session and the daemon writer's line); with no message for 3 s the page marks the push down: the last values stand, marked OFFLINE with their time. The console decides the panels on screen (`server._panels`) and pushes each one's answer by name, at once for each panel the view moved and again whenever a kind of change that moves its route happens for the ticker (`server._ROUTE_KINDS`: `levels`, `chain`, `flow`, `liquidity`, and `live`, a Schwab feed a panel is read from going down or coming back; a route serving values derived from the live price at answer time moves with every kind); an answer the view moved on from is never sent. One producer per value, read once per change, every consumer the same value: each change of a symbol (counted whether or not a page shows it, `push_changes.changed`) is one round (`server._Round`), which reads each input once (the live price, the terrain publication, the price-level snapshot) for every answer and price row computed for it; the clock and the feed's liveness are read fresh. Each panel's value is computed by its producer, called directly (no HTTP hop), once per change however many panels and pages show it (`server._answers`), and each is pushed the moment it is ready, never waiting for another (operator 2026-10-13 design A item 1). Every route with a value derived from the live price (the spot strike, a level's distance, the chain's in-the-money rows) moves with the live price, so no consumer keeps an older spot than another. The session label. What the page sends over HTTP is a command (a watchlist add or removal, the Flow panel's contract). Enforced by: `tests/test_live_values_push_v1.py`, `tests/test_page_fetches_no_values_v1.py`, `tests/test_one_value_one_producer_v1.py` |
 
 ### 3.3 Where data lives
 
@@ -208,8 +208,8 @@ from Schwab to the screen (daemon, console, page), are these:
   disconnect keep the last values, marked not live; reconnect's opening replaces them"); an option
   contract's record stands the same way until the stream's first message after it resubscribes --
   its terms are the day's opening's, which no stream carries. A held contract's leg is live
-  while its stream has posted on this connection (`streamTime` after the heartbeat's
-  `connected_at`) and the feed is live. Every option message recalculates the levels. A book
+  while its stream has posted to it on this connection and the feed is live (the one live rule,
+  `live_market_plane.feed_live_for`). Every option message recalculates the levels. A book
   message is the book Schwab sent, a
   side with no levels included (empty, never replaced by an older two-sided book); a side Schwab
   sent no level for at a price is absent in the book heatmap, never a 0 size. The book heatmap and
@@ -231,16 +231,19 @@ from Schwab to the screen (daemon, console, page), are these:
   on each service is its contracts with the highest gamma, the gamma the levels take
   (`math_exposure_core.greek_reported`: absent, -999 or a -999 volatility is no gamma, ranked
   last); of equal gammas the nearest expiration, then the strike nearest the price, calls before
-  puts. A contract has expired once now passes Schwab's expirationDate: it stays in the records
+  puts. A contract has expired once now passes its settlement (`time_et.settles_at`, the one
+  rule: the option market's close Schwab's /markets sent for its date, its open for an AM-settled
+  contract, else Schwab's expirationDate): it stays in the records
   and is never streamed (Schwab still lists an expired Friday on a weekend); one that expires
   between rounds streams until the ticker's next round (one is asked after each option close). Each
   change is one UNSUBS and one ADD of only the difference (`Daemon.ask`). The levels use every
   contract of the full chain, streamed or not. When the owner fails (the daemon down), nothing
   streams: every cell keeps its value and the header says OFFLINE. A contract the rule moves off
   keeps its record (the quotes keep posting to it), read not live (`live_market_plane.held_reported`);
-  its book and prints are forgotten when the daemon stops holding it on the same open Schwab
-  connection (`streaming.apply_heartbeat`); a feed down, an ended connection or a new one
-  releases nothing (the last values stand, not live). Tests:
+  its book and prints are forgotten when the rule, having ranked its ticker (the status's
+  `ranked`), no longer picks it (`streaming.apply_heartbeat`); a feed down, an ended connection,
+  a new one and a restarted daemon (it has ranked no ticker yet) release nothing (the last values
+  stand, not live). Test: `tests/test_outage_marks_v1.py`. Tests:
   `tests/test_ended_connection_records_stand_v1.py`,
   `tests/test_option_contract_rule_v1.py`.
 - **1-minute bar and daily candles.** Schwab's price history: the daemon's chain sweep
@@ -402,9 +405,17 @@ from Schwab to the screen (daemon, console, page), are these:
   serve that result and read no stored chain. The same publication carries each strike's net
   DEX $ and total OI (`terrain_engine._per_strike_measure_rows`, by the heatmap cell's readers),
   served as `/api/terrain/strikes` `measures` for the Chart view of Delta / DEX and Open
-  Interest. Everything computed from spot (gamma at spot, regime,
-  wall states and leans, wall distances, flip side, headline) is computed in that one publication
-  at that publication's price; `/api/terrain` serves it as published and recomputes nothing.
+  Interest. Everything read from the spot (the strike nearest it, the regime from the book's
+  gamma at spot, wall states and leans, wall distances, flip side, headline, the pin candidate,
+  the implied-move band) is read at the live spot by one producer, once per change, and every
+  panel carries that record (`terrain_engine.at_spot`, `server.live_levels`; operator
+  2026-10-14: "the live spot for every distance, side, breached and band"); the publication's
+  price is shown only as "priced at". Each expiry's state (expired once its settlement,
+  `time_et.settles_at`, has passed; an expiry with AM- and PM-settled contracts once all have) and
+  the front expiry (the nearest not expired) are read the same way at the moment served
+  (`terrain_engine.expiry_states`): the heatmap's front column, the expiry dropdown, the Chain's
+  default expiry, the max pain shown (computed per expiry, `max_pain_by_expiry`) and the pin's
+  expiry gate all read it. The one expiry list and its days are `terrain_engine.listed_expiries`.
   A publication carries the same fields whatever its chain's source (a live download or a stored
   capture). `/api/terrain` adds the daily, weekly and monthly ATR(14) when it is read (`server._atr`):
   Schwab's daily candles before today, today's candle rolled up live from today's 1-minute bars
@@ -427,7 +438,9 @@ from Schwab to the screen (daemon, console, page), are these:
   Its `spot` is the price the levels were computed at (`spot_source`, `spot_as_of_ts_utc`); the
   price is the daemon's price row. With no price from Schwab the next publication has no levels,
   with its reason.
-- **Heatmap cells.** Every strike Schwab listed in any expiry is a row; a cell is the book's
+- **Heatmap cells.** Every strike Schwab listed in any expiry is a row -- the one strike list
+  (`terrain_engine.listed_strikes`), on which every per-strike panel and the Chain ladder draw
+  their rows too, a strike with no value "-" (operator 2026-10-14); a cell is the book's
   value for its strike and expiry, exact. A cell with no value (no contract listed at that strike
   in that expiry, or Schwab sent nothing for it) is served as None, with no reason, and the page
   draws "-" (operator 2026-10-12). The surface is served whenever the levels projected one; no
@@ -457,9 +470,14 @@ from Schwab to the screen (daemon, console, page), are these:
   the feed is delivering a symbol now is stated beside its values: the
   daemon's heartbeat, sent every second, is under 3 s old
   (`live_market_plane.FEED_HEARTBEAT_MAX_AGE_SEC`), says the Schwab socket is open, and holds the
-  symbol on that Schwab service (`live_market_plane.feed_live_for`; the header's LIVE / OFFLINE,
-  a book's `book_live`, a heatmap leg's state). A value's age is never the test: Schwab sends a
-  field only when it changes. The daemon's status is read from the same heartbeat
+  symbol on that Schwab service, and that service has posted to the symbol on the daemon's
+  current Schwab connection -- one rule for every service (`live_market_plane.feed_live_for`,
+  `note_posted`; a status that reports no connection start is not live; the header's LIVE /
+  OFFLINE, a book's `book_live`, a heatmap leg's state). A value's age is never the test: Schwab
+  sends a field only when it changes. Every age shown is of an instant the answer names
+  (`as_of`), labelled by the console's push (`time_et.age_label`, the one wording) on the answer
+  and, every beat, for every shown panel at one instant (`as_of_ages`); the page computes no age
+  (operator 2026-10-14: "the server sends every age; the page only shows it"). The daemon's status is read from the same heartbeat
   (`live_market_plane.daemon_status`). Owner: the console's connection to the daemon's Schwab push (`streaming._rows_loop`)
   records each heartbeat; the message push yields after each frame, so a backlog of records
   never holds it. When the daemon stops or that connection drops or falls silent, every symbol
@@ -523,10 +541,13 @@ from Schwab to the screen (daemon, console, page), are these:
 4. **Rule 5's rest** (D5, operator 2026-10-11): a feed down in an open session no longer blanks
    anything -- the last values stand and every value read from a Schwab feed is marked not live by
    the one judgment of that feed (`live_market_plane.outage`: the price row's `feed_live`/`outage`,
-   the books' `top_outage` drawn beside the last bid and ask, each panel's `not_live` on
-   `/api/live` over the feeds it is read from, `server._Panel.feeds`), and the header says OFFLINE
-   with the last trade's time and served age (operator 2026-10-14). After a reconnect a record is
-   not live until the new connection posts to it. Left: the closed market is handled apart from any other stop
+   the books' `top_outage` drawn beside the last bid and ask, each panel's `not_live` reasons on
+   `/api/live` over the feeds it is read from, `server._Panel.feeds`, the candles' CHART_EQUITY
+   and the options tape's contracts included), and the header says OFFLINE with the last trade's
+   time and served age (operator 2026-10-14). On the page each element is marked with every panel
+   drawn in it (`ed-core.js` `PANEL_HOSTS`, never the last to arrive), and while the console's
+   push is down every shown panel and the Desk PRICE pill say so. After a reconnect a record is
+   not live until the new connection posts to it (every service). Left: the closed market is handled apart from any other stop
    (`server.terrain_staleness`); some calculations round or drop contracts. Each place is listed in
    PR #515's description and fixed by `ACTIVE_PROGRAM.md` NUMBERS.
 5. **Missing values served with a reason** (D5, operator 2026-10-12: a missing value shows "-"): an
