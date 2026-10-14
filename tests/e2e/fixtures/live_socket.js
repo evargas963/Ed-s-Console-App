@@ -26,6 +26,16 @@ async function answer(page, url) {
 
 //: each page's open push, for pushChange
 const _push = new WeakMap();
+//: each page's open push, for pushBeat
+const _beat = new WeakMap();
+
+// The console's beat with each shown row's trade age ({key: seconds}), as server.live_values
+// serves it every second (STAND-IN: the ages are the spec's).
+function pushBeat(page, ages) {
+  const b = _beat.get(page);
+  if (b) b(ages);
+}
+
 //: each page's stand-in price rows (tests/e2e/fixtures/price_socket.js), in the order pushed
 const _prices = new WeakMap();
 
@@ -67,7 +77,7 @@ async function installLive(page) {
     //: the console's answers under a view older than the page's newest: held until the console
     //: takes the newest, then read or dropped as the page draws or drops them
     let held = [];
-    let seq = null, pageSeq = null, ticker = null, closed = false, writer = null;
+    let seq = null, pageSeq = null, ticker = null, closed = false, writer = null, session = null;
     //: the stand-in rows' symbols already pushed
     const priced = new Set();
     const send = (m) => { if (!closed) { try { ws.send(JSON.stringify(m)); } catch (e) { closed = true; } } };
@@ -96,6 +106,7 @@ async function installLive(page) {
       await reply([...shown.values()].filter((m) => m.kinds.includes(kind)));
     }
     _push.set(page, moved);
+    _beat.set(page, (ages) => send({ type: 'feed', session: session, writer: writer, ages: ages }));
     // the spec's change stream for the ticker, read as the console's push of each kind
     async function changes(tk) {
       while (!closed && tk === ticker) {
@@ -110,7 +121,7 @@ async function installLive(page) {
         for (const block of r.text.split('\n\n')) {
           const ev = (block.match(/^event: (.+)$/m) || [])[1], data = (block.match(/^data: (.*)$/m) || [])[1];
           if (!ev) continue;
-          if (ev === 'session') { send({ type: 'feed', session: data, writer: writer }); continue; }
+          if (ev === 'session') { session = data; send({ type: 'feed', session: data, writer: writer, ages: {} }); continue; }
           await moved(ev);
         }
       }
@@ -133,7 +144,7 @@ async function installLive(page) {
       }
       const prices = _prices.get(page);
       if (msg.type === 'rows' && prices) return;       // the stand-in rows replace the server's
-      if (msg.type === 'feed') writer = msg.writer;
+      if (msg.type === 'feed') { writer = msg.writer; session = msg.session; }
       if (msg.type === 'symbols' && prices) {
         send(msg);
         const keys = new Set(msg.symbols.map((s) => s.key).filter((k) => !priced.has(k)));
@@ -167,4 +178,4 @@ const test = base.test.extend({
   },
 });
 
-module.exports = { test, expect: base.expect, pushChange, pushDown, setPrices };
+module.exports = { test, expect: base.expect, pushBeat, pushChange, pushDown, setPrices };

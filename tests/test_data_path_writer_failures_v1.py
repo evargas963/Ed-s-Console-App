@@ -52,9 +52,13 @@ def _count(db, table: str) -> int:
 
 
 def _beat(daemon: capture.Daemon) -> dict:
-    """The heartbeat as the browser's price socket sends it (live_ui's feed beat) and as the
-    console records it (live_market_plane.daemon_status); the console's record is cleared after."""
+    """The heartbeat as the daemon's socket sends it (live_ui's feed beat) and as the console
+    records it on arrival (streaming.apply_heartbeat, live_market_plane.daemon_status); the
+    console's record is cleared after."""
+    from app.options.order_flow import streaming as ofs
+
     beat = LiveUiServer(daemon.bus, daemon.status, {}).beat()
+    ofs.apply_heartbeat(json.loads(json.dumps(beat, default=str)))       # over the wire
     try:
         assert lmp.daemon_status(time.time())["writer"] == beat["writer"]
     finally:

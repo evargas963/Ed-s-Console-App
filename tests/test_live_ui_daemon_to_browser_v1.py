@@ -53,8 +53,7 @@ async def _run(body):
     stop = asyncio.Event()
     stats: dict = {}
     server = asyncio.create_task(live_ui.serve_live_ui(
-        bus, stop, heartbeat_fn=_Feed(), host="127.0.0.1", port=port, stats=stats,
-        record_heartbeat=lambda _beat: None))
+        bus, stop, heartbeat_fn=_Feed(), host="127.0.0.1", port=port, stats=stats))
     end = time.monotonic() + 5
     while not stats.get("listening") and time.monotonic() < end:
         await asyncio.sleep(0.01)

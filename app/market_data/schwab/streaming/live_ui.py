@@ -21,7 +21,6 @@ import logging
 import os
 import time
 
-import live_market_plane as lmp
 from instrument_identity import ticker_storage_key
 from stream_spine import LOG, MessageBus
 
@@ -72,11 +71,9 @@ class _Client:
 
 
 class LiveUiServer:
-    def __init__(self, bus: MessageBus, heartbeat_fn, stats: dict,
-                 record_heartbeat=lmp.record_feed_heartbeat) -> None:
+    def __init__(self, bus: MessageBus, heartbeat_fn, stats: dict) -> None:
         self.bus = bus
         self.heartbeat_fn = heartbeat_fn
-        self.record_heartbeat = record_heartbeat     # where the daemon keeps its own record of each beat
         self.stats = stats
         self.clients: set[_Client] = set()
         stats.update(clients=0, messages_sent=0, frames_sent=0, beat_send_failures=0, listening=None,
@@ -100,10 +97,8 @@ class LiveUiServer:
 
     def beat(self) -> dict:
         """The daemon's whole status (Schwab socket, symbols held and refused per service, the
-        watchlist, health), recorded here and sent with every beat: the console's one record of it."""
-        hb = self.heartbeat_fn()
-        self.record_heartbeat(hb)
-        return hb
+        watchlist, health), sent with every beat: the console's one record of it."""
+        return self.heartbeat_fn()
 
     # -- client side ------------------------------------------------------------------
 
@@ -186,13 +181,12 @@ class LiveUiServer:
 
 async def serve_live_ui(bus: MessageBus, stop: asyncio.Event, *, heartbeat_fn,
                         host: str = LIVE_UI_HOST, port: int = LIVE_UI_PORT,
-                        stats: "dict | None" = None, record_heartbeat=lmp.record_feed_heartbeat) -> None:
-    """Run until `stop` is set. Start it BEFORE the Schwab connection so no message is missed.
-    Each beat is recorded with `record_heartbeat` (the daemon's own plane)."""
+                        stats: "dict | None" = None) -> None:
+    """Run until `stop` is set. Start it BEFORE the Schwab connection so no message is missed."""
     from websockets.asyncio.server import serve
 
     stats = stats if stats is not None else {}
-    srv = LiveUiServer(bus, heartbeat_fn, stats, record_heartbeat)
+    srv = LiveUiServer(bus, heartbeat_fn, stats)
     sub = bus.subscribe("quote.", policy=LOG)           # every quote, as published
 
     async def _route() -> None:

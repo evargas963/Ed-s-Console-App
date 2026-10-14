@@ -22,7 +22,7 @@
  * Endpoints are intercepted with synthetic payloads so the proof is deterministic and offline —
  * it exercises the real shell HTML/JS, not stubbed rendering.
  */
-const { test, expect, pushChange, pushDown } = require('./fixtures/live_socket');
+const { test, expect, pushBeat, pushChange, pushDown } = require('./fixtures/live_socket');
 const { expiriesAnswer } = require('./fixtures/expiries');
 const path = require('path');
 
@@ -778,6 +778,28 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#hPx')).toHaveText('UNAVAILABLE');
     // no push, so Schwab's /markets answer is not held: the session says UNKNOWN
     await expect(page.locator('#hSession')).toHaveText('UNKNOWN');
+  });
+
+  test('the header shows the last trade\'s time and the age the console serves on its beat', async ({ page }) => {
+    await mockPriceSocket(page, [schwabQuote('SPY', 601.23)]);
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#hPx')).toHaveText('601.23');
+    await expect(page.locator('#hAge')).not.toContainText('ago');               // no age served yet
+    pushBeat(page, { SPY: 7.4 });
+    await expect(page.locator('#hAge')).toContainText(' · 7s ago');
+  });
+
+  test('the page opens no socket but the console\'s push', async ({ page }) => {
+    const sockets = [];
+    page.on('websocket', (ws) => sockets.push(new URL(ws.url()).pathname));
+    await mockPriceSocket(page, [schwabQuote('SPY', 601.23)]);
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#hPx')).toHaveText('601.23');
+    await page.locator('.vtab[data-view="chart"]').click();
+    await page.evaluate(() => window.EdShell.addSymbol('AMD'));
+    await page.waitForTimeout(1500);
+    expect(sockets.length).toBeGreaterThan(0);
+    expect([...new Set(sockets)]).toEqual(['/api/live']);
   });
 
   test('when the push goes down the last price stands, marked OFFLINE with its trade time', async ({ page }) => {

@@ -355,7 +355,7 @@
       // Schwab's values with Schwab's trade time, or the served outage reason; the feed state beside them
       state(c, !q ? 'WAITING' : q.feed_live ? 'SESSION VOLUME' : 'FEED DOWN', q && q.feed_live ? '' : 'warn');
       c.querySelector('.tdm-hero').innerHTML = q && q.total_volume != null ? fmtVol(q.total_volume) + ' <small>shares, Schwab TOTAL_VOLUME</small>' : '';
-      src(c, 'Schwab LEVELONE · ' + (!q ? 'no price row yet' : q.outage ? esc(q.outage) : q.trade_time_ct != null ? 'last trade ' + esc(q.trade_time_ct) : 'no trade sent'));
+      src(c, 'Schwab LEVELONE · ' + (!q ? 'no price row yet' : q.outage ? esc(q.outage) : q.trade_time_ct != null ? 'last trade ' + esc(window.EdShell.tradeLabel(q)) : 'no trade sent'));
       c.querySelector('.tdm-rows').innerHTML =
         row('Last trade size', q && q.last_size != null ? fmtVol(q.last_size) : '—') +
         row('Top of book', m && m.top_outage ? esc(m.top_outage) : tob ? (tob.bid_size != null ? fmtVol(tob.bid_size) : '—') + ' × ' + (tob.ask_size != null ? fmtVol(tob.ask_size) : '—') : '—') +
@@ -511,7 +511,7 @@
       paintHeader();
       if (q.ticker === st().key) {
         paintTrust();
-        if (S.chart) S.chart.setLivePrice(q.spot, q.trade_time_ct);
+        if (S.chart) S.chart.setLivePrice(q.spot, window.EdShell.tradeLabel(q));
         paintCards();   // the Order Flow card's Schwab fields, on every row
       }
     });

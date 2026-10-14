@@ -2402,9 +2402,10 @@ async def live_values(ws: WebSocket):
     row of one change is read from the change's one round (_Round); a panel is never sent an answer
     of an older change than the one it was sent, nor one the view moved on from.
 
-    Every PUSH_BEAT_SEC the market session and the daemon writer's line ({"type": "feed",
-    "session", "writer"}). The open connection is the page: a ticker an open page shows is repriced
+    Every PUSH_BEAT_SEC the market session, each shown row's trade age and the daemon writer's
+    line ({"type": "feed", "session", "ages": {key: seconds}, "writer"}). The open connection is the page: a ticker an open page shows is repriced
     on its ticks (push_changes.watched). Every page reconnects after a console restart."""
+    from app.options.order_flow.streaming import note_liveness    # as the lifespan imports it
     await ws.accept()
     client = push_changes.Client()
     page: dict = {"ticker": None, "seq": None, "subscribed": False}
@@ -2428,8 +2429,11 @@ async def live_values(ws: WebSocket):
             await text({"type": "rows", "rows": out})
 
     async def beat() -> None:                     # the caller holds send_lock
-        status = lmp.daemon_status(time.time())
-        await text({"type": "feed", "session": session_label(now_et()),
+        now = time.time()
+        status = lmp.daemon_status(now)
+        # each shown row's trade age now, from the trade time the page was sent (AGENTS.md rule 5)
+        ages = {s: now - r["trade_ts"] for s, r in sent_rows.items() if s in client.symbols and r["trade_ts"] is not None}
+        await text({"type": "feed", "session": session_label(now_et()), "ages": ages,
                     "writer": status["writer"] if status is not None and "writer" in status else None})
 
     async def show_one(name: str, p: _Panel, change: tuple, rnd: _Round) -> None:
@@ -2492,6 +2496,7 @@ async def live_values(ws: WebSocket):
                     await text({"type": "view", "seq": view["seq"], "moved": moved, "shown": sorted(panels)})
                     await beat()
                 _forget_unshown()
+                note_liveness(client.symbols | ({view["ticker"]} if view["ticker"] else set()), time.time())
                 show(moved)
             for t in list(jobs):
                 t.cancel()

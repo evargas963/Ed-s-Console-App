@@ -368,13 +368,32 @@ def _mark_liveness(now: float) -> None:
             push_changes.changed(s, push_changes.FLOW)
 
 
+#: the Schwab connection (its `connected_at`) the daemon's last applied status held its contracts
+#: on; None while its socket is not open
+_connection: "float | None" = None
+
+
+def note_liveness(symbols: "set[str]", now: float) -> None:
+    """The feed verdict of each of `symbols` a page has just begun to show, as its first answers
+    read it (on the event loop, before they are computed): only a later change of it is marked."""
+    for s in symbols - set(_verdicts):
+        _verdicts[s] = (_lmp.feed_live_for(s, "LEVELONE_EQUITIES", now), _lmp.outage(s, "LEVELONE_EQUITIES", now))
+
+
 def apply_heartbeat(feed: Any) -> None:
     """Apply the daemon's status (`feed`, live_market_plane.record_feed_heartbeat) and forget the
-    live state of each option contract it held before and no longer reports holding (its option
-    rule moved off it), so no screen shows that contract's last message as current. A status not
-    applied releases nothing: the last values stand, marked not live."""
+    live state of each option contract it held before and no longer reports holding on the same
+    open Schwab connection (its option rule moved off it), so no screen shows that contract's last
+    message as current. A connection that ended or a new one releases nothing (operator
+    2026-10-13: "On disconnect keep the last values, marked not live; reconnect's opening replaces
+    them"): what it held stands, not live; nor does a status not applied."""
+    global _connection
     previous = _lmp.record_feed_heartbeat(feed)
     if previous is None:
+        return
+    open_on = feed.get("connected_at") if feed.get("schwab_socket_open") is True else None
+    same, _connection = open_on is not None and open_on == _connection, open_on
+    if not same:
         return
     before = set().union(*(previous[s] for s in OPTION_PRODUCER_SERVICES if s in previous))
     for sym in before.difference(*(_lmp.held_reported(s) for s in OPTION_PRODUCER_SERVICES)):

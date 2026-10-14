@@ -326,3 +326,55 @@ def test_a_heartbeat_received_after_a_round_began_reads_live(published):
         assert server._row(TK, time.time())["feed_live"] is True
     finally:
         server._rounds.pop(TK, None)
+
+
+def test_a_symbol_a_page_begins_to_show_is_not_pushed_again_by_the_next_liveness_pass(published):
+    """The console's feed loop marks a shown symbol whose feed verdict changed
+    (streaming._mark_liveness). A symbol first shown was marked on that pass, unchanged: every
+    panel of the ticker was computed and pushed again about a second after the page chose it
+    (the full suite's ticker-switch test caught AAPL's flow panels read after the switch). Its
+    verdict is taken as its first answers read it, so only a real change is marked."""
+    import time
+
+    from app.options.order_flow import streaming as ofs
+
+    async def go():
+        push_changes.bind(asyncio.get_running_loop())
+        daemon_holds(time.time(), {"LEVELONE_EQUITIES": [TK]})
+        ofs._verdicts.pop(TK, None)                     # no page has shown CRWD
+        page = _Page()
+        console = asyncio.create_task(server.live_values(page))
+        try:
+            await page.inbox.put(_view(1))
+            await page.next("view")
+            before = push_changes.generation(TK, {push_changes.FLOW})
+            ofs._mark_liveness(time.time())
+            await asyncio.sleep(0.05)
+            assert push_changes.generation(TK, {push_changes.FLOW}) == before
+        finally:
+            await page.inbox.put(None)
+            await asyncio.wait_for(console, 10)
+            ofs._verdicts.pop(TK, None)
+    asyncio.run(go())
+
+
+def test_the_page_is_told_what_each_symbol_it_names_is():
+    """ONE-14 (2026-09-28 audit): the page stripped "$" in eight places to match a row to what it
+    asked for. The console answers each view with each named symbol's key (what its rows carry)
+    and display name, from instrument_identity, for an index typed bare or with "$", an ETF in
+    lower case and a single name alike."""
+    async def go():
+        page = _Page()
+        console = asyncio.create_task(server.live_values(page))
+        try:
+            await page.inbox.put(json.dumps({"op": "view", "view": {**json.loads(_view(1))["view"], "ticker": None,
+                                                                    "symbols": ["SPX", "$VIX", "spy", "MU"]}}))
+            assert (await page.next("symbols"))["symbols"] == [
+                {"requested": "SPX", "key": "$SPX", "display": "SPX"},
+                {"requested": "$VIX", "key": "$VIX", "display": "VIX"},
+                {"requested": "spy", "key": "SPY", "display": "SPY"},
+                {"requested": "MU", "key": "MU", "display": "MU"}]
+        finally:
+            await page.inbox.put(None)
+            await asyncio.wait_for(console, 10)
+    asyncio.run(go())

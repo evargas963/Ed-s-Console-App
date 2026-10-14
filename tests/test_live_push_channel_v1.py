@@ -93,10 +93,8 @@ def _daemon_heartbeat(socket_open=True, held=("SPY",)):
 
 async def _run(body, heartbeat_fn=None):
     """The daemon's two servers on one bus -- the message push and the price-row push, which
-    beats the daemon's status -- and the console's real feed loop connected to both. The daemon
-    runs in its own process with its own live_market_plane; here it shares the test's, so its own
-    record of each beat is kept out of it (record_heartbeat, a named stand-in for the process
-    boundary): what the console knows of the daemon arrives over the wire or not at all."""
+    beats the daemon's status -- and the console's real feed loop connected to both: what the
+    console knows of the daemon arrives over the wire or not at all."""
     bus = MessageBus()
     stop = asyncio.Event()
     stats: dict = {}
@@ -104,7 +102,7 @@ async def _run(body, heartbeat_fn=None):
     server = asyncio.create_task(live_push.serve_live_push(bus, stop, port=0, stats=stats))
     ui = asyncio.create_task(live_ui.serve_live_ui(
         bus, stop, heartbeat_fn=heartbeat_fn if heartbeat_fn is not None else _daemon_heartbeat(),
-        host="127.0.0.1", port=0, stats=ui_stats, record_heartbeat=lambda _beat: None))
+        host="127.0.0.1", port=0, stats=ui_stats))
     assert await _until(lambda: stats.get("listening") and ui_stats.get("listening"))
     ofs._feed_running = True
     client = asyncio.create_task(_console(_port(stats), _port(ui_stats)))

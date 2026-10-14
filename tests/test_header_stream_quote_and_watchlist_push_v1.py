@@ -66,15 +66,11 @@ def test_the_console_spot_is_its_price_record_and_the_console_keeps_no_other_cop
         lmp.record_feed_down()
 
 
-def test_the_page_reaches_no_price_socket_but_the_consoles_push() -> None:
-    """One delivery (Ed, design A): the console's push (/api/live) is the page's only path. The
-    page is told no daemon port, and its code opens no other socket."""
-    from pathlib import Path
-
-    html = srv.root().body.decode("utf-8")
-    assert "ed-live-ui-port" not in html
-    js = (Path(__file__).resolve().parents[1] / "static" / "js" / "ed-core.js").read_text(encoding="utf-8")
-    assert js.count("new WebSocket(") == 1 and "'/api/live'" in js
+def test_the_page_is_told_no_daemon_port() -> None:
+    """One delivery (Ed, design A): the console's push (/api/live) is the page's only path; the
+    page served carries no daemon port (the browser test that it opens no other socket:
+    tests/e2e/console-gamma-heatmap.spec.js)."""
+    assert "ed-live-ui-port" not in srv.root().body.decode("utf-8")
 
 
 

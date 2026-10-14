@@ -458,6 +458,11 @@
     s = Math.round(Number(s));
     return s < 90 ? (s + 's') : s < 5400 ? (Math.round(s / 60) + 'm') : (Math.round(s / 3600) + 'h');
   }
+  // a price row's last trade as every screen words it: Schwab's trade time and its served age
+  function tradeLabel(q) {
+    if (q.trade_time_ct == null) return null;
+    return q.trade_time_ct + (q.trade_age_sec == null ? '' : ' · ' + fmtAge(q.trade_age_sec) + ' ago');
+  }
   function asOfBadge(o) {
     o = o || {};
     var age = fmtAge(o.ageSec);
@@ -792,7 +797,7 @@
         chgPct: q.chg_pct, chgPctRegular: q.chg_pct_regular, quoteIngestion: q.quote_ingestion,
         feedCls: q.feed_live ? '' : 'stale',
         feedLabel: q.feed_live ? 'LIVE' : 'FEED DOWN',
-        ageLabel: q.outage || (q.trade_time_ct != null ? ('last trade ' + q.trade_time_ct) : 'no trade sent') });
+        ageLabel: q.outage || (q.trade_time_ct != null ? ('last trade ' + tradeLabel(q)) : 'no trade sent') });
     }
     loadWL().forEach(function (wlSym) {
       if (!_served[wlSym] || _served[wlSym].key !== q.ticker) return;
@@ -859,7 +864,13 @@
     ws.onmessage = function (ev) {
       var msg = JSON.parse(ev.data);
       _priceUp = true; _lastPriceTs = Date.now();   // the push is alive (it beats every second)
-      if (msg.type === 'feed') { paintSession(msg.session); paintRecord(msg.writer); return; }
+      if (msg.type === 'feed') {
+        paintSession(msg.session); paintRecord(msg.writer);
+        Object.keys(msg.ages).forEach(function (k) {     // each row's trade age, served every second
+          if (_rows[k]) { _rows[k].trade_age_sec = msg.ages[k]; ingestPriceRow(_rows[k]); }
+        });
+        return;
+      }
       if (msg.type === 'symbols') { ingestIdentity(msg.symbols); return; }
       if (msg.type === 'rows') { ingestRows(msg.rows); return; }
       if (msg.type === 'view') {                   // the console took view `msg.seq`; `moved`: its new panels
@@ -909,7 +920,7 @@
     } else {
       paintQuote({ spot: q.spot, spot_disp: q.spot_disp, bid: q.bid, ask: q.ask, chgPct: q.chg_pct,
         chgPctRegular: q.chg_pct_regular, quoteIngestion: q.quote_ingestion, feedCls: 'stale', feedLabel: feedLabel,
-        ageLabel: q.trade_time_ct == null ? 'no trade sent' : 'last trade ' + q.trade_time_ct });
+        ageLabel: q.trade_time_ct == null ? 'no trade sent' : 'last trade ' + tradeLabel(q) });
     }
     paintRecord(null);
   }
@@ -1050,7 +1061,7 @@
     setTheme: applyTheme,
     marketContext: function () { return MARKET_CONTEXT.slice(); },   // served [{key, display}]
     setScope: setScope, getScope: function () { return state.scope; },
-    panServed: panServed, wireStrikeAxis: wireStrikeAxis, asOfBadge: asOfBadge, fmtAge: fmtAge, chainEmptyText: chainEmptyText,
+    panServed: panServed, wireStrikeAxis: wireStrikeAxis, asOfBadge: asOfBadge, fmtAge: fmtAge, tradeLabel: tradeLabel, chainEmptyText: chainEmptyText,
     setExpiry: setExpiry, getExpiry: function () { return state.expiryFilter; },
     getMeasure: function () { return state.measure; },
     setSubview: setSubview };

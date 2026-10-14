@@ -46,3 +46,71 @@ def test_an_ended_connections_records_stand_not_live_and_the_next_ones_first_mes
     _sent(handler, opening)
     assert daemon.bus.current[_KEY][1]["native"] == opening["item"]
     assert set(daemon.bus.current[_KEY][1]["field_ts"]) == set(opening["item"])
+
+
+_OPEN = json.loads((Path(__file__).parent / "fixtures" / "real_spy_0dte_open_stream_and_chain_2026_10_13.json")
+                   .read_text(encoding="utf-8"))["messages"]
+
+
+def test_the_console_keeps_an_ended_connections_option_prints_until_the_rule_drops_the_contract():
+    """A held SPY 0DTE contract's first LEVELONE_OPTIONS message of the 2026-10-13 open (its trade
+    in the console's one tape), through the daemon's bus. The connection ends, and a new one
+    begins: its print stands. Only when the daemon stops holding it on one open connection (its
+    option rule moved off it) is it forgotten. Before, the first status after the connection
+    ended released every contract: the Flow tape and the option books emptied."""
+    import time
+
+    import option_ledger
+    from app.options.order_flow import history
+    from app.options.order_flow import state as ofls
+    from app.options.order_flow import streaming as ofs
+    from stream_spine import current_key
+    from tests.feed_live_helper import CONNECTED_AT, daemon_holds, no_daemon
+
+    m = next(x for x in _OPEN if "LAST_PRICE" in x["content"] and "TRADE_TIME_MILLIS" in x["content"])
+    sym, held = m["symbol"], {"LEVELONE_OPTIONS": [m["symbol"]]}
+    bus = MessageBus()
+    topic, msg = option_ledger.posting(sym, option_ledger.from_stream(m["content"], m["schwab_ts"]),
+                                       m["schwab_ts"], m["ts_recv"])
+    bus.publish(topic, msg)
+    now, again = time.time(), CONNECTED_AT + 1.0
+    try:
+        daemon_holds(now, held)
+        ofs._ingest_pushed(topic, bus.current[current_key(topic, msg)][1])
+        printed = history.TAPE.prints(sym)
+        assert printed
+        daemon_holds(now + 1, {}, socket_open=False)                    # the connection ended
+        daemon_holds(now + 2, {}, connected_at=again)                   # a new one, nothing held yet
+        assert history.TAPE.prints(sym) == printed, "the last values stand"
+        daemon_holds(now + 3, held, connected_at=again)
+        daemon_holds(now + 4, {}, connected_at=again)                   # the rule moved off it
+        assert history.TAPE.prints(sym) == []
+    finally:
+        ofls.clear_symbol(sym)
+        no_daemon()
+
+
+def test_the_consoles_price_record_takes_the_new_connections_opening_whole():
+    """SPY's two messages on the console's price record (live_market_plane, which the price row
+    reads), a new Schwab connection begun between them: the second, the new connection's first,
+    is the whole record. Before, the ended connection's LAST_SIZE stayed, shown as current once
+    the feed was held again."""
+    import live_market_plane as lmp
+    import live_price_rows
+    from tests.feed_live_helper import daemon_holds, forget_price, no_daemon
+
+    first, opening = _SPY
+    began = (first["ts_recv"] + opening["ts_recv"]) / 2
+    assert first["ts_recv"] < began < opening["ts_recv"]
+    forget_price("SPY")
+    try:
+        daemon_holds(first["ts_recv"], {"LEVELONE_EQUITIES": ["SPY"]})          # the first connection
+        lmp.record_from_level_one_equity("SPY", first["item"], received_ts=first["ts_recv"])
+        assert live_price_rows.price_row("SPY", first["ts_recv"], lmp.get_quote("SPY"))["last_size"] is not None
+        daemon_holds(opening["ts_recv"], {"LEVELONE_EQUITIES": ["SPY"]}, connected_at=began)
+        lmp.record_from_level_one_equity("SPY", opening["item"], received_ts=opening["ts_recv"])
+        row = live_price_rows.price_row("SPY", opening["ts_recv"], lmp.get_quote("SPY"))
+        assert row["last_size"] is None and row["spot"] == opening["item"]["LAST_PRICE"]
+    finally:
+        forget_price("SPY")
+        no_daemon()

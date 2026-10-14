@@ -75,8 +75,9 @@ def unsubscribe(tk: str, c: Client) -> None:
 
 def changed(tk: str, kind: str) -> None:
     """Callable from any thread."""
-    if _loop is not None:
-        _loop.call_soon_threadsafe(_mark, tk, kind)
+    loop = _loop                      # read once: the console's stop may unbind it meanwhile
+    if loop is not None:
+        loop.call_soon_threadsafe(_mark, tk, kind)
 
 
 def _mark(tk: str, kind: str) -> None:

@@ -62,6 +62,10 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
     `received_ts` is REQUIRED: the capture daemon's own receive time for this message --
     what every freshness check judges. A current record merged from several messages (the
     daemon's bus) carries each field's own receive time in `field_received`.
+
+    The first message of a new Schwab connection (received after the daemon's `connected_at`,
+    on a record holding only fields received before it) replaces the record whole: no field of
+    the ended connection stays (operator 2026-10-13: "reconnect's opening replaces them").
     """
     if not item or not isinstance(item, dict):
         return False
@@ -72,6 +76,9 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
     seen = False
     with _lock:
         fs = _fields_by_ticker.setdefault(t, {})
+        since = _feed["status"].get("connected_at") if _feed["status"] is not None else None
+        if since is not None and rts >= since and fs and all(at < since for _v, at in fs.values()):
+            fs.clear()                   # the new connection's opening: the whole record
         for name in _PRICE_FIELDS + _COUNT_FIELDS + _CLOCK_FIELDS + _SIGNED_FIELDS:
             if name not in item:
                 continue

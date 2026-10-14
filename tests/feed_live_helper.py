@@ -62,12 +62,17 @@ def forget_price(ticker: str) -> None:
     lmp._fields_by_ticker.pop(ticker, None)
 
 
-def daemon_holds(at: float, held: dict, *, socket_open: bool = True) -> None:
-    """The daemon's heartbeat stamped `at`, holding `held` ({Schwab service: [symbols]}), its
-    connection to Schwab begun an hour before, as the console's feed loop applies it
+#: when the daemon's one connection to Schwab in these tests began (STAND-IN: 2026-08-01 00:00 ET,
+#: before every captured message the tests replay)
+CONNECTED_AT = 1785556800.0
+
+
+def daemon_holds(at: float, held: dict, *, socket_open: bool = True, connected_at: float = CONNECTED_AT) -> None:
+    """The daemon's heartbeat stamped `at`, holding `held` ({Schwab service: [symbols]}) on its
+    connection to Schwab begun at `connected_at`, as the console's feed loop applies it
     (streaming.apply_heartbeat)."""
     from app.options.order_flow import streaming as ofs
-    ofs.apply_heartbeat({"ts": at, "schwab_socket_open": socket_open, "connected_at": at - 3600, "held": held})
+    ofs.apply_heartbeat({"ts": at, "schwab_socket_open": socket_open, "connected_at": connected_at, "held": held})
 
 
 #: the receive time of a tick given none, one second after the last

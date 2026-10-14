@@ -119,7 +119,6 @@ to write it plainly, in the forms `test_a_command_the_reader_cannot_see_into_is_
 - O-04 a 0 MARK, BOOK_TIME or quote time reads as missing (truthiness / `> 0`).
 - O-09 the price display (`spot_disp`) is formatted in three places.
 - O-13 malformed push messages and bad frames are dropped uncounted.
-- O-15 `_trade_age_sec` clamps a negative age to 0.
 - O-17 the book heatmap's `method` text says "both venues merged".
 - O-18 `history`: an invented 0.01 axis width; contract context carried forward; read failures return [] with no reason; EXPIRATION_* read raw and truth-tested.
 - O-20 the default contract at startup/closed is picked from the stored capture's spot with no age.
@@ -132,7 +131,7 @@ to write it plainly, in the forms `test_a_command_the_reader_cannot_see_into_is_
 - D-14 `persist_complete_chain_capture` drops non-dict contracts uncounted.
 
 **Page code (static/js)**
-- P-02 ages formatted and thresholded on the page (`fmtAge`, `Math.round(trade_age_sec)`); the push-silence verdict is the page's clock (`PRICE_SILENCE_MS`).
+- P-02 ages formatted and thresholded on the page (`fmtAge`; the trade age itself is served on the console's beat); the push-silence verdict is the page's clock (`PRICE_SILENCE_MS`).
 - P-09 an absent `live` reads live; first-of and "undefined" reasons; stale cells drawn as normal values; every error relabelled "no console serving".
 - P-10 six or more page formatters for dollars and volume with different precision.
 - P-12 Strike Detail matches contracts by tolerance, substitutes the put for the call, uses a UTC date and reads the raw contracts (a -999 prints).
@@ -151,7 +150,6 @@ producer, with a behavior test that fails if the second one returns.
 | ID | Status | Work item |
 |---|---|---|
 | ONE-02 | QUEUED | Equity last price and size kept a second time in the console's order-flow tape (`state.py` tape and receive log). |
-| ONE-03 | QUEUED | Feed liveness judged in both processes: the daemon applies its own heartbeat to its price rows (`live_ui.beat`), and the console applies the pushed copy again (`feed_live_for`); one rule since ONE-15, two places it runs. |
 | ONE-12 | QUEUED | Trade side: history's quote rule beside the live tick rule (with the trade-side decision, directive 3). |
 
 ## Phase 2 — the rest of the design, then decomposition
