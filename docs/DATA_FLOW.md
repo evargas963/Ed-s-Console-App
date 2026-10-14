@@ -358,8 +358,8 @@ from Schwab to the screen (daemon, console, page), are these:
   each contract's record with each field's Schwab time (`fieldTimes`) and the time the round
   began, one row per expiry, with the stock's own price as its LEVELONE_EQUITIES record holds it
   when the round is in and that price's trade time (`spot`, `spot_trade_ts`;
-  `live_market_plane.last_trade`, the one reading of the stock's record the console's spot is
-  too; operator 2026-10-14: "no extra chain requests. Each capture stores the stock record's own
+  `live_market_plane.last_trade`: Schwab's LAST_PRICE and TRADE_TIME as sent, read by the one
+  rule the console's spot is read by, `_read_stream_field`; operator 2026-10-14: "no extra chain requests. Each capture stores the stock record's own
   value (Schwab's price as sent, with its trade time) at the capture moment. Spot has one
   producer"); no quote held, none stored. The ledger is the one place a contract's values
   live, so every consumer (levels, walls, flip, the heatmap, per-strike rows, forces, the chain
@@ -521,10 +521,12 @@ from Schwab to the screen (daemon, console, page), are these:
 3. **The console computes the levels** in the same process that serves the page, so a request
    waits behind that work.
 4. **Rule 5's rest** (D5, operator 2026-10-11): a feed down in an open session no longer blanks
-   anything -- the last values stand and every value read from the price is marked not live by the
-   one judgment (`live_market_plane.outage`: the price row's `feed_live`/`outage`, the books'
-   `top_outage`, each panel's `not_live` on `/api/live`), and the header says OFFLINE (operator
-   2026-10-14). Left: the closed market is handled apart from any other stop
+   anything -- the last values stand and every value read from a Schwab feed is marked not live by
+   the one judgment of that feed (`live_market_plane.outage`: the price row's `feed_live`/`outage`,
+   the books' `top_outage` drawn beside the last bid and ask, each panel's `not_live` on
+   `/api/live` over the feeds it is read from, `server._Panel.feeds`), and the header says OFFLINE
+   with the last trade's time and served age (operator 2026-10-14). After a reconnect a record is
+   not live until the new connection posts to it. Left: the closed market is handled apart from any other stop
    (`server.terrain_staleness`); some calculations round or drop contracts. Each place is listed in
    PR #515's description and fixed by `ACTIVE_PROGRAM.md` NUMBERS.
 5. **Missing values served with a reason** (D5, operator 2026-10-12: a missing value shows "-"): an

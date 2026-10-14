@@ -341,7 +341,7 @@ def test_a_symbol_a_page_begins_to_show_is_not_pushed_again_by_the_next_liveness
     async def go():
         push_changes.bind(asyncio.get_running_loop())
         daemon_holds(time.time(), {"LEVELONE_EQUITIES": [TK]})
-        ofs._verdicts.pop(TK, None)                     # no page has shown CRWD
+        ofs._verdicts.clear()                           # no page has shown CRWD
         page = _Page()
         console = asyncio.create_task(server.live_values(page))
         try:
@@ -354,7 +354,7 @@ def test_a_symbol_a_page_begins_to_show_is_not_pushed_again_by_the_next_liveness
         finally:
             await page.inbox.put(None)
             await asyncio.wait_for(console, 10)
-            ofs._verdicts.pop(TK, None)
+            ofs._verdicts.clear()
     asyncio.run(go())
 
 
@@ -397,7 +397,7 @@ def test_a_value_read_from_the_price_stands_marked_not_live_when_the_feed_goes_d
         push_changes.bind(asyncio.get_running_loop())
         daemon_holds(time.time(), {"LEVELONE_EQUITIES": [TK]})
         price_sent(TK, CRWD.spot, time.time())
-        ofs._verdicts.pop(TK, None)
+        ofs._verdicts.clear()
         page = _Page()
         console = asyncio.create_task(server.live_values(page))
         try:
@@ -418,5 +418,36 @@ def test_a_value_read_from_the_price_stands_marked_not_live_when_the_feed_goes_d
         finally:
             await page.inbox.put(None)
             await asyncio.wait_for(console, 10)
-            ofs._verdicts.pop(TK, None)
+            ofs._verdicts.clear()
+    asyncio.run(go())
+
+
+def test_a_value_read_from_a_book_is_marked_by_its_own_feed(published):
+    """Operator 2026-10-14: "every derived value". The Order Flow heatmap is read from CRWD's
+    NYSE_BOOK, which the daemon does not hold: its frame is marked by that feed's one judgment
+    (not the price's, which is live); the expiry list, read from no feed, is never marked."""
+    import time
+
+    import live_market_plane as lmp
+    from time_et import now_et, session_label
+
+    async def go():
+        push_changes.bind(asyncio.get_running_loop())
+        daemon_holds(time.time(), {"LEVELONE_EQUITIES": [TK]})
+        price_sent(TK, CRWD.spot, time.time())
+        page = _Page()
+        console = asyncio.create_task(server.live_values(page))
+        try:
+            await page.inbox.put(_view(1, workspace="order-flow", subview="heatmap", view=""))
+            got: dict = {}
+            while not {"book.heatmap", "expiries"} <= set(got):
+                got.update(_by_name(await page.next("panels")))
+            now = time.time()
+            assert got["book.heatmap"]["not_live"] == lmp.outage(TK, "NYSE_BOOK", now)
+            if session_label(now_et()) != "Closed":
+                assert "NYSE_BOOK" in got["book.heatmap"]["not_live"]
+            assert lmp.outage(TK, "LEVELONE_EQUITIES", now) is None and got["expiries"]["not_live"] is None
+        finally:
+            await page.inbox.put(None)
+            await asyncio.wait_for(console, 10)
     asyncio.run(go())

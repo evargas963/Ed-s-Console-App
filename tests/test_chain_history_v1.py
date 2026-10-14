@@ -279,9 +279,9 @@ def test_a_partial_morning_capture_is_never_the_prior_day(tmp_path):
 
 
 def test_a_table_written_before_the_spots_trade_time_keeps_its_rows_and_takes_new_ones_with_it(tmp_path):
-    """A chain history table written before 2026-10-14 has no trade time column. Its rows are read
-    with their trade time not known; the daemon's next write adds the column (the stored rows
-    stand) and stores the stock's price with its trade time. Real data: one SPY 2026-11-20
+    """A chain history table written before 2026-10-14 has no trade time column. The daemon's start
+    adds it (open_history; the stored rows stand) and its rows are read with their trade time not
+    known; the daemon's next write stores the stock's price with its trade time. Real data: one SPY 2026-11-20
     contract of the stand-in host's chain (tests/schwab_rest_standin.py) and SPY's equity record
     (_SPY_QUOTE, named above)."""
     from json_blob_codec import encode_json_blob
@@ -298,6 +298,7 @@ def test_a_table_written_before_the_spots_trade_time_keeps_its_rows_and_takes_ne
                   "chain_json, source) VALUES (?,?,?,?,?,?,?,?)",
                   ("SPY", "2026-11-20", _ts("2026-09-29 16:15"), 766.31, 1, cch.CAPTURE_BASIS,
                    encode_json_blob([ct]), "schwab_chain_strike_range_all"))
+    cch.open_history(db)                                 # the daemon's start, before any read
     (old,) = cch.last_capture_per_day(db, "SPY", 1)
     assert (old["spot"], old["spot_trade_ts"]) == (766.31, None)
     price, traded = _SPY_QUOTE["item"]["LAST_PRICE"], _SPY_QUOTE["item"]["TRADE_TIME_MILLIS"] / 1000

@@ -7,9 +7,9 @@ calculation are one read.
 
 Nothing here computes a market value: every number is a Schwab field or its receive time, with
 Schwab's own trade time; the only derivation is the trade time's label. Whether the feed
-is delivering the symbol now (`feed_live`) is stated beside the values; in an open session a
-down feed leaves them absent with the reason (`outage`), and while Closed the values as of the
-close stand (docs/DATA_FLOW.md §2 D5).
+is delivering the symbol now (`feed_live`) is stated beside the values; with the feed down the
+last values stand, marked not live, with the reason in an open session (`outage`), and while
+Closed the values as of the close stand (docs/DATA_FLOW.md §2 D5).
 """
 from __future__ import annotations
 

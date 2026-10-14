@@ -15,6 +15,11 @@ function ctLabel(ms) {          // as time_et.ct_label words it: "Fri 09/25 06:5
     d.toLocaleTimeString('en-US', Object.assign({ hour: '2-digit', minute: '2-digit', hour12: true }, CT)) + ' CT';
 }
 
+function ageLabel(sec) {        // as time_et.age_label words it: "7s", "3m", "2h"
+  const s = Math.round(sec);
+  return s < 90 ? s + 's' : s < 5400 ? Math.round(s / 60) + 'm' : Math.round(s / 3600) + 'h';
+}
+
 // One symbol's row from its LEVELONE_EQUITIES fields: LAST_PRICE and its trade time, and any
 // other fields Schwab sent (`fields`, by Schwab's names).
 function schwabQuote(key, last, fields) {
@@ -25,6 +30,8 @@ function schwabQuote(key, last, fields) {
     ask_size: v('ASK_SIZE'), mark: v('MARK'), last_size: v('LAST_SIZE'), total_volume: v('TOTAL_VOLUME'),
     chg_pct: v('NET_CHANGE_PERCENT'), chg_pct_regular: v('REGULAR_MARKET_CHANGE_PERCENT'),
     trade_ts: f.TRADE_TIME_MILLIS / 1000, trade_time_ct: ctLabel(f.TRADE_TIME_MILLIS),
+    // the age the console sends with a trade time, at the row's send
+    trade_age: ageLabel((Date.now() - f.TRADE_TIME_MILLIS) / 1000),
     quote_ingestion: 'schwab_streaming_level_one' };
 }
 

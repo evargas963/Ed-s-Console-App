@@ -67,12 +67,16 @@ def forget_price(ticker: str) -> None:
 CONNECTED_AT = 1785556800.0
 
 
-def daemon_holds(at: float, held: dict, *, socket_open: bool = True, connected_at: float = CONNECTED_AT) -> None:
+def daemon_holds(at: float, held: dict, *, socket_open: bool = True, connected_at: float = CONNECTED_AT,
+                 picks: "dict | None" = None) -> None:
     """The daemon's heartbeat stamped `at`, holding `held` ({Schwab service: [symbols]}) on its
-    connection to Schwab begun at `connected_at`, as the console's feed loop applies it
+    connection to Schwab begun at `connected_at`, its option rule picking `picks` (the option
+    contracts it holds, when not given), as the console's feed loop applies it
     (streaming.apply_heartbeat)."""
     from app.options.order_flow import streaming as ofs
-    ofs.apply_heartbeat({"ts": at, "schwab_socket_open": socket_open, "connected_at": connected_at, "held": held})
+    options = {s: (held if picks is None else picks).get(s, []) for s in ofs.OPTION_PRODUCER_SERVICES}
+    ofs.apply_heartbeat({"ts": at, "schwab_socket_open": socket_open, "connected_at": connected_at, "held": held,
+                         "options": options})
 
 
 #: the receive time of a tick given none, one second after the last

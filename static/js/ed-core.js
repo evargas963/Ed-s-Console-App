@@ -86,7 +86,7 @@
   var _panelFns = {};
   var state = {
     ticker: (_ls(TICKER_KEY, '') || '').toUpperCase(),
-    // the selected instrument's identity as the daemon's price socket serves it (ingestIdentity):
+    // the selected instrument's identity as the console serves it (/api/live symbols, ingestIdentity):
     // the key every price row and route uses ("$SPX") and its display name ("SPX"); null until served
     key: null, display: null,
     workspace: _ls('ed_ws', app.getAttribute('data-workspace') || 'options'),
@@ -459,9 +459,10 @@
     return s < 90 ? (s + 's') : s < 5400 ? (Math.round(s / 60) + 'm') : (Math.round(s / 3600) + 'h');
   }
   // a price row's last trade as every screen words it: Schwab's trade time and its served age
+  // (time_et.age_label; while the console's push is down the age is not known)
   function tradeLabel(q) {
     if (q.trade_time_ct == null) return null;
-    return q.trade_time_ct + (q.trade_age_sec == null ? '' : ' · ' + fmtAge(q.trade_age_sec) + ' ago');
+    return q.trade_time_ct + (q.trade_age == null ? ' · age not known' : ' · ' + q.trade_age + ' ago');
   }
   function asOfBadge(o) {
     o = o || {};
@@ -584,8 +585,8 @@
   }
 
   // ================= ticker store (ONE selected-symbol state across every surface) =================
-  // The instrument's name on every header: as typed until the daemon's price socket serves its
-  // display name (ingestIdentity).
+  // The instrument's name on every header: as typed until the console serves its display name
+  // (/api/live symbols, ingestIdentity).
   // Every panel header ticker label shares .hticker, so a panel added later is never missed.
   function paintIdentity(name) {
     ['hSym', 'aiCtxSym'].forEach(function (id) { var el = document.getElementById(id); if (el) el.textContent = name; });
@@ -853,9 +854,10 @@
     if (!_panelFns[name]) _panelFns[name] = [];
     _panelFns[name].push(fn);
   }
-  // the element each panel's values are drawn in, for the panels whose values are read from the
-  // live price: the console says when one is not live (`not_live`, the ticker's outage)
+  // the element each panel's values are drawn in, for the panels whose values are read from a
+  // Schwab feed: the console says when one is not live (`not_live`, the feed's outage)
   var PANEL_HOSTS = {
+    'book.heatmap': 'ofhBody', flow: 'flowBody',
     'gamma.surface': 'heatBody', 'gamma.terrain': 'klBody', 'gamma.strikes': 'gbsBody', 'gamma.strike': 'sdBody',
     'gamma.chart.strikes': 'chartBody', 'gamma.chart.terrain': 'chartBody', 'gamma.levels': 'levelsBody',
     vanna: 'vnBody', charm: 'chmBody', chain: 'chainBody', structures: 'stBody',
@@ -891,7 +893,7 @@
       if (msg.type === 'feed') {
         paintSession(msg.session); paintRecord(msg.writer);
         Object.keys(msg.ages).forEach(function (k) {     // each row's trade age, served every second
-          if (_rows[k]) { _rows[k].trade_age_sec = msg.ages[k]; ingestPriceRow(_rows[k]); }
+          if (_rows[k]) { _rows[k].trade_age = msg.ages[k]; ingestPriceRow(_rows[k]); }
         });
         return;
       }
@@ -937,6 +939,12 @@
     // (WAITING); otherwise the push itself is down (OFFLINE)
     var connecting = Date.now() - _priceSubTs <= PRICE_SILENCE_MS;
     var feedLabel = connecting ? 'WAITING' : 'OFFLINE';
+    // no beat comes: no row's age is known any more (every screen that words a trade is told)
+    Object.keys(_rows).forEach(function (k) {
+      if (_rows[k].trade_age == null) return;
+      _rows[k].trade_age = null;
+      try { window.dispatchEvent(new CustomEvent('ed:quote_tick', { detail: _rows[k] })); } catch (e) { console.error(e); }
+    });
     var q = _rows[state.key];
     if (q === undefined) {             // never pushed: absent
       paintQuote({ spot: null, spot_disp: null, bid: null, ask: null, chgPct: null, chgPctRegular: null,

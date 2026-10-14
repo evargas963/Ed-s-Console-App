@@ -354,50 +354,59 @@ async def _feed_loop(push_url: str, ui_url: str, reconnect_sec: float) -> None:
 OPTION_PRODUCER_SERVICES: tuple[str, ...] = ("LEVELONE_OPTIONS", "OPTIONS_BOOK")
 
 
-#: each shown symbol's LEVELONE_EQUITIES feed verdict (live, outage) when last marked
-_verdicts: dict[str, tuple] = {}
+#: each shown feed's verdict (live, outage), by (symbol, Schwab service), when last marked
+_verdicts: "dict[tuple[str, str], tuple]" = {}
+
+
+def _shown_feeds() -> "set[tuple[str, str, str]]":
+    """(ticker, symbol, service) of every feed an open page shows: each shown price row's
+    LEVELONE_EQUITIES, and each feed a panel on screen is read from (push_changes.feeds)."""
+    return {(s, s, "LEVELONE_EQUITIES") for s in push_changes.symbols()} | push_changes.feeds()
+
+
+def _verdict(symbol: str, service: str, now: float) -> tuple:
+    return _lmp.feed_live_for(symbol, service, now), _lmp.outage(symbol, service, now)
 
 
 def _mark_liveness(now: float) -> None:
-    """A symbol an open page shows whose feed went down or came back changed: its price row and
-    every value read from it (push_changes.changed)."""
-    for s in push_changes.symbols() | set(push_changes.watched()):
-        verdict = (_lmp.feed_live_for(s, "LEVELONE_EQUITIES", now), _lmp.outage(s, "LEVELONE_EQUITIES", now))
-        if s not in _verdicts or _verdicts[s] != verdict:
-            _verdicts[s] = verdict
-            push_changes.changed(s, push_changes.FLOW)
+    """A feed an open page shows that went down or came back is a change of its ticker: the price
+    row and every panel read from it are pushed again, marked (push_changes.changed)."""
+    shown = _shown_feeds()
+    moved = set()
+    for s, svc in {(s, svc) for _tk, s, svc in shown}:
+        verdict = _verdict(s, svc, now)
+        if _verdicts.get((s, svc)) != verdict:
+            _verdicts[(s, svc)] = verdict
+            moved.add((s, svc))
+    for tk in {tk for tk, s, svc in shown if (s, svc) in moved}:
+        push_changes.changed(tk, push_changes.FLOW)
 
 
-#: the Schwab connection (its `connected_at`) the daemon's last applied status held its contracts
-#: on; None while its socket is not open
-_connection: "float | None" = None
+#: the option contracts the daemon's last applied status says its rule picks
+_picked: "set[str]" = set()
 
 
-def note_liveness(symbols: "set[str]", now: float) -> None:
-    """The feed verdict of each of `symbols` a page has just begun to show, as its first answers
-    read it (on the event loop, before they are computed): only a later change of it is marked."""
-    for s in symbols - set(_verdicts):
-        _verdicts[s] = (_lmp.feed_live_for(s, "LEVELONE_EQUITIES", now), _lmp.outage(s, "LEVELONE_EQUITIES", now))
+def note_liveness(now: float) -> None:
+    """The verdict of each feed an open page has just begun to show, as its first answers read
+    it (on the event loop, before they are computed): only a later change of it is marked."""
+    for _tk, s, svc in _shown_feeds():
+        if (s, svc) not in _verdicts:
+            _verdicts[(s, svc)] = _verdict(s, svc, now)
 
 
 def apply_heartbeat(feed: Any) -> None:
     """Apply the daemon's status (`feed`, live_market_plane.record_feed_heartbeat) and forget the
-    live state of each option contract it held before and no longer reports holding on the same
-    open Schwab connection (its option rule moved off it), so no screen shows that contract's last
-    message as current. A connection that ended or a new one releases nothing (operator
-    2026-10-13: "On disconnect keep the last values, marked not live; reconnect's opening replaces
-    them"): what it held stands, not live; nor does a status not applied."""
-    global _connection
-    previous = _lmp.record_feed_heartbeat(feed)
-    if previous is None:
+    live state of each option contract its option rule picked before and picks no more (`options`),
+    so no screen shows that contract's last message as current. A connection that ends, or a new
+    one still asking, releases nothing (operator 2026-10-13: "On disconnect keep the last values,
+    marked not live; reconnect's opening replaces them"); nor does a status not applied."""
+    global _picked
+    if _lmp.record_feed_heartbeat(feed) is None:
         return
-    open_on = feed.get("connected_at") if feed.get("schwab_socket_open") is True else None
-    same, _connection = open_on is not None and open_on == _connection, open_on
-    if not same:
-        return
-    before = set().union(*(previous[s] for s in OPTION_PRODUCER_SERVICES if s in previous))
-    for sym in before.difference(*(_lmp.held_reported(s) for s in OPTION_PRODUCER_SERVICES)):
+    picked = set().union(*(feed["options"][s] for s in OPTION_PRODUCER_SERVICES))
+    for sym in _picked - picked:
         clear_symbol(sym)
+    _picked = picked
 
 
 #: a contract's subscription, as the Flow panel shows it: the daemon's option rule holds it on

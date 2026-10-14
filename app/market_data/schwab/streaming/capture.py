@@ -31,7 +31,7 @@ It does four things, in one loop:
              recorded (stream_subscriptions) exactly as sent -- a refused ADD is answered twice
              (code 19, then code 24 "ADD command failed"), and both are its answers.
   3. FAN-OUT Every Schwab message is published once on the bus: the database writer
-             (stream_capture.db), the console socket (8799) and the browser price socket
+             (stream_capture.db), the console socket (8799) and the console's quote socket
              (8800) all read from it.
   4. HEALTH  Any frame from Schwab -- data or Schwab's own heartbeat -- proves the connection
              is alive. None for DEAD_SEC, or a request unanswered for REQUEST_TIMEOUT_SEC:
@@ -96,7 +96,8 @@ import option_ledger  # noqa: E402
 import psutil  # noqa: E402
 from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT, serve_live_push  # noqa: E402
 from app.market_data.schwab.streaming.live_ui import serve_live_ui  # noqa: E402
-from calibration.complete_chain_capture import ChainSweep, capture_slot, newest_capture_ts, write_capture  # noqa: E402
+from calibration.complete_chain_capture import (  # noqa: E402
+    ChainSweep, capture_slot, newest_capture_ts, open_history, write_capture)
 from config import build_config, load_dotenv_file  # noqa: E402
 from db_authority import canonical_console_db_path  # noqa: E402
 from instrument_identity import ticker_storage_key  # noqa: E402
@@ -622,6 +623,9 @@ class Daemon:
                 # this connection to Schwab: a value the stream sent before it began is not live
                 "connected_at": self.connected_at,
                 "held": {k: sorted(v) for k, v in self.held.items()},
+                # the option contracts the rule picks, whatever any connection holds: one it
+                # stops picking is released (streaming.apply_heartbeat), never one a drop ended
+                "options": {k: sorted(v) for k, v in self.options.items()},
                 "health": self.health.report(now),
                 "writer": self.writer.status() if self.writer is not None else None}
 
@@ -1012,6 +1016,7 @@ async def run() -> int:
     bus, health = MessageBus(), HealthRegistry()
     writer = CaptureWriter()
     db_path = canonical_console_db_path()
+    open_history(db_path)                               # its columns, before the console reads it
     daemon = Daemon(bus, health, stored_watchlist(writer.db_path))
     daemon.writer, daemon.stop = writer, stop
     wsub = bus.subscribe("", policy=LOG)                # the record of every message

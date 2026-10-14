@@ -55,9 +55,10 @@ _OPEN = json.loads((Path(__file__).parent / "fixtures" / "real_spy_0dte_open_str
 def test_the_console_keeps_an_ended_connections_option_prints_until_the_rule_drops_the_contract():
     """A held SPY 0DTE contract's first LEVELONE_OPTIONS message of the 2026-10-13 open (its trade
     in the console's one tape), through the daemon's bus. The connection ends, and a new one
-    begins: its print stands. Only when the daemon stops holding it on one open connection (its
-    option rule moved off it) is it forgotten. Before, the first status after the connection
-    ended released every contract: the Flow tape and the option books emptied."""
+    begins with nothing held yet: its print stands, the daemon's rule still picking it. Only when
+    the rule stops picking it -- here while Schwab is down, so no connection ever holds it again
+    -- is it forgotten. Before, the first status after the connection ended released every
+    contract: the Flow tape and the option books emptied."""
     import time
 
     import option_ledger
@@ -79,11 +80,10 @@ def test_the_console_keeps_an_ended_connections_option_prints_until_the_rule_dro
         ofs._ingest_pushed(topic, bus.current[current_key(topic, msg)][1])
         printed = history.TAPE.prints(sym)
         assert printed
-        daemon_holds(now + 1, {}, socket_open=False)                    # the connection ended
-        daemon_holds(now + 2, {}, connected_at=again)                   # a new one, nothing held yet
+        daemon_holds(now + 1, {}, socket_open=False, picks=held)        # the connection ended
+        daemon_holds(now + 2, {}, connected_at=again, picks=held)       # a new one, nothing held yet
         assert history.TAPE.prints(sym) == printed, "the last values stand"
-        daemon_holds(now + 3, held, connected_at=again)
-        daemon_holds(now + 4, {}, connected_at=again)                   # the rule moved off it
+        daemon_holds(now + 3, {}, socket_open=False, picks={})          # the rule moved off it, Schwab down
         assert history.TAPE.prints(sym) == []
     finally:
         ofls.clear_symbol(sym)
@@ -102,15 +102,28 @@ def test_the_consoles_price_record_takes_the_new_connections_opening_whole():
     first, opening = _SPY
     began = (first["ts_recv"] + opening["ts_recv"]) / 2
     assert first["ts_recv"] < began < opening["ts_recv"]
-    forget_price("SPY")
-    try:
-        daemon_holds(first["ts_recv"], {"LEVELONE_EQUITIES": ["SPY"]})          # the first connection
-        lmp.record_from_level_one_equity("SPY", first["item"], received_ts=first["ts_recv"])
-        assert live_price_rows.price_row("SPY", first["ts_recv"], lmp.get_quote("SPY"))["last_size"] is not None
-        daemon_holds(opening["ts_recv"], {"LEVELONE_EQUITIES": ["SPY"]}, connected_at=began)
-        lmp.record_from_level_one_equity("SPY", opening["item"], received_ts=opening["ts_recv"])
-        row = live_price_rows.price_row("SPY", opening["ts_recv"], lmp.get_quote("SPY"))
-        assert row["last_size"] is None and row["spot"] == opening["item"]["LAST_PRICE"]
-    finally:
+    held = {"LEVELONE_EQUITIES": ["SPY"]}
+
+    def row(at):
+        return live_price_rows.price_row("SPY", at, lmp.get_quote("SPY"))
+
+    for status_first in (True, False):           # the new connection's status before its opening, or after
         forget_price("SPY")
-        no_daemon()
+        try:
+            daemon_holds(first["ts_recv"], held)                                # the first connection
+            lmp.record_from_level_one_equity("SPY", first["item"], received_ts=first["ts_recv"])
+            assert row(first["ts_recv"])["last_size"] is not None and row(first["ts_recv"])["feed_live"]
+            if status_first:
+                daemon_holds(opening["ts_recv"], held, connected_at=began)
+                # the ended connection's values stand, not live, until the new one posts
+                assert row(opening["ts_recv"])["spot"] == first["item"]["LAST_PRICE"]
+                assert row(opening["ts_recv"])["feed_live"] is False
+            lmp.record_from_level_one_equity("SPY", opening["item"], received_ts=opening["ts_recv"])
+            if not status_first:
+                daemon_holds(opening["ts_recv"], held, connected_at=began)
+            served = row(opening["ts_recv"])
+            assert served["last_size"] is None and served["spot"] == opening["item"]["LAST_PRICE"], status_first
+            assert served["feed_live"] is True
+        finally:
+            forget_price("SPY")
+            no_daemon()

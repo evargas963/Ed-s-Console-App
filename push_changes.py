@@ -50,6 +50,11 @@ def symbols() -> set[str]:
     return {s for _tk, c in list(_open) for s in c.symbols}
 
 
+def feeds() -> "set[tuple[str, str, str]]":
+    """(ticker, symbol, Schwab service) of each feed a panel an open page shows is read from."""
+    return {(tk, s, svc) for tk, c in list(_open) for p in c.panels.values() for s, svc in p.feeds}
+
+
 def shown() -> set[str]:
     """Every panel value (its source) an open page shows."""
     return {p.source for _tk, c in list(_open) for p in c.panels.values()}

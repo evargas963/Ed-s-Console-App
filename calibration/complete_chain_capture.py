@@ -76,6 +76,17 @@ def _columns(conn: sqlite3.Connection) -> "set[str]":
     return {r[1] for r in conn.execute("PRAGMA table_info(complete_chain_captures)")}
 
 
+def open_history(db_path: Path | str) -> None:
+    """The chain history's table as its writer, the daemon, opens it at its start (ensure_schema),
+    before it serves anything: the console reads it only once the daemon's first status has come
+    (server._terrain_loop), so every read finds its columns."""
+    conn = sqlite3.connect(str(db_path), timeout=60.0)
+    try:
+        ensure_schema(conn)
+    finally:
+        conn.close()
+
+
 def persist_complete_chain_capture(
     db_path: Path | str,
     *,
@@ -544,7 +555,8 @@ def newest_capture_ts(db_path: Path | str, ticker: str) -> float | None:
 def last_capture_per_day(db_path: Path | str, ticker: str, days: int, *,
                          before_et_date: str | None = None) -> list[dict[str, Any]]:
     """The last capture of each of the newest `days` market days (newest first) -- the close --
-    each as {et_date, ts_utc, spot, basis, contracts} with every expiry of that capture.
+    each as {et_date, ts_utc, spot, spot_trade_ts (the spot's trade time; None when not known),
+    basis, contracts} with every expiry of that capture.
     `before_et_date` keeps only days before it (the previous market day for a day-over-day
     view)."""
     tk = ticker_storage_key(ticker)
@@ -566,12 +578,10 @@ def last_capture_per_day(db_path: Path | str, ticker: str, days: int, *,
             picked.append((day, ts))
             if len(picked) == days:
                 break
-        # a table written before 2026-10-14 has no trade time column: its spots' times are not known
-        traded = "spot_trade_ts" if "spot_trade_ts" in _columns(conn) else "NULL"
         out = []
         for day, ts in picked:
             rows = conn.execute(
-                f"SELECT spot, completeness_basis, chain_json, {traded} FROM complete_chain_captures "
+                "SELECT spot, completeness_basis, chain_json, spot_trade_ts FROM complete_chain_captures "
                 "WHERE ticker=? AND completeness_basis=? AND ts_utc=?",
                 (tk, CAPTURE_BASIS, ts)).fetchall()
             out.append({"et_date": day, "ts_utc": ts, "spot": rows[0][0], "spot_trade_ts": rows[0][3],

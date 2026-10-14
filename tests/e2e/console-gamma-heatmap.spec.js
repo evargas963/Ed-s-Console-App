@@ -782,13 +782,20 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#hSession')).toHaveText('UNKNOWN');
   });
 
-  test('the header shows the last trade\'s time and the age the console serves on its beat', async ({ page }) => {
-    await mockPriceSocket(page, [schwabQuote('SPY', 601.23)]);
+  test('the header shows the last trade\'s time and the age the console serves, never a frozen one', async ({ page }) => {
+    // a trade two minutes old, then a new trade: each comes with its own age; the beat moves it;
+    // with the push down no age is known, and none is shown
+    await mockPriceSocket(page, [schwabQuote('SPY', 601.23, { TRADE_TIME_MILLIS: Date.now() - 120000 }),
+      schwabQuote('SPY', 601.30)]);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('#hPx')).toHaveText('601.23');
-    await expect(page.locator('#hAge')).not.toContainText('ago');               // no age served yet
-    pushBeat(page, { SPY: 7.4 });
+    await expect(page.locator('#hPx')).toHaveText('601.30');
+    await expect(page.locator('#hAge')).toContainText(' · 1s ago');              // the new trade's, not 2m
+    pushBeat(page, { SPY: '7s' });
     await expect(page.locator('#hAge')).toContainText(' · 7s ago');
+    pushDown(page);
+    await expect(page.locator('#hFeed')).toHaveText('OFFLINE', { timeout: 6000 });
+    await expect(page.locator('#hAge')).toContainText(' · age not known');
+    await expect(page.locator('#hAge')).not.toContainText('7s ago');
   });
 
   test('a Schwab outage: the last price stands OFFLINE with its reason, and every panel read from it says NOT LIVE', async ({ page }) => {
@@ -818,6 +825,14 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.locator('.vtab[data-view="chart"]').click();
     await page.evaluate(() => window.EdShell.addSymbol('AMD'));
     await page.waitForTimeout(1500);
+    // every workspace, each opened as the operator leaves it (the stored workspace and subview)
+    for (const [ws, sub] of [['options', 'chain'], ['options', 'flow'], ['options', 'vanna'], ['order-flow', 'book'],
+      ['order-flow', 'heatmap'], ['liquidity', 'map'], ['liquidity', 'levels'], ['trade-desk', 'right-now'],
+      ['trade-desk', 'desk']]) {
+      await page.evaluate(([w, s]) => { localStorage.setItem('ed_ws', w); localStorage.setItem('ed_sub', s); }, [ws, sub]);
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await page.waitForTimeout(800);
+    }
     expect(sockets.length).toBeGreaterThan(0);
     expect([...new Set(sockets)]).toEqual(['/api/live']);
   });

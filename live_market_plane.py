@@ -48,9 +48,10 @@ def _read_stream_field(name: str, raw: Any) -> Optional[float]:
 
 def last_trade(fields: dict[str, Any]) -> "tuple[Optional[float], Optional[float]]":
     """(price, trade time in epoch s): Schwab's LAST_PRICE and TRADE_TIME_MILLIS in a
-    LEVELONE_EQUITIES record, each read as sent by the rule the console's price record reads them
-    by (_read_stream_field); None for one not sent. The chain history's spot (the daemon's
-    capture) and the console's spot are this one reading of the stock's record."""
+    LEVELONE_EQUITIES record, each read as sent by the one rule the console's price record reads
+    every field by (_read_stream_field); None for one not sent. The daemon reads its bus record of
+    the stock through it (the chain history's spot, the option rule's price): the same fields
+    Schwab sent, read the same way as the console's spot."""
     return (_read_stream_field("LAST_PRICE", fields.get("LAST_PRICE")),
             _read_stream_field("TRADE_TIME_MILLIS", fields.get("TRADE_TIME_MILLIS")))
 
@@ -72,9 +73,11 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
     what every freshness check judges. A current record merged from several messages (the
     daemon's bus) carries each field's own receive time in `field_received`.
 
-    The first message of a new Schwab connection (received after the daemon's `connected_at`,
-    on a record holding only fields received before it) replaces the record whole: no field of
-    the ended connection stays (operator 2026-10-13: "reconnect's opening replaces them").
+    A message of the daemon's current Schwab connection (received at or after its `connected_at`)
+    drops the record's fields received before it: no field of an ended connection stays beside
+    the new connection's, whichever of the status and the message came first (operator
+    2026-10-13: "reconnect's opening replaces them"). Until then the record is not live
+    (feed_live_for).
     """
     if not item or not isinstance(item, dict):
         return False
@@ -85,9 +88,9 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
     seen = False
     with _lock:
         fs = _fields_by_ticker.setdefault(t, {})
-        since = _feed["status"].get("connected_at") if _feed["status"] is not None else None
-        if since is not None and rts >= since and fs and all(at < since for _v, at in fs.values()):
-            fs.clear()                   # the new connection's opening: the whole record
+        since = _connected_at()
+        if since is not None and rts >= since:
+            _drop_before(fs, since)
         for name in _PRICE_FIELDS + _COUNT_FIELDS + _CLOCK_FIELDS + _SIGNED_FIELDS:
             if name not in item:
                 continue
@@ -100,14 +103,21 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
         snapshot = dict(fs)
     if not seen:
         return False
+    out = _row_from(t, snapshot, rts)
+    with _lock:
+        _by_ticker[t] = out
+    return True
 
+
+def _row_from(t: str, snapshot: dict, rts: float) -> dict[str, Any]:
+    """The plane row of `t`'s fields (`snapshot`), its newest message received at `rts`."""
     def val(name: str) -> Optional[float]:
         return snapshot[name][0] if name in snapshot else None
 
     spot_f = val("LAST_PRICE")
     bid, ask, mark = val("BID_PRICE"), val("ASK_PRICE"), val("MARK")
     quote_ts = val("QUOTE_TIME_MILLIS")   # exchange quote clock; TRADE_TIME never stands in
-    out = {
+    return {
         "ticker": t,
         "spot": spot_f,
         "bid": bid,
@@ -143,9 +153,6 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
             "quote_ts": "QUOTE_TIME_MILLIS" if quote_ts is not None else "unavailable",
         },
     }
-    with _lock:
-        _by_ticker[t] = out
-    return True
 
 
 def get_quote(ticker: str) -> Optional[dict[str, Any]]:
@@ -180,9 +187,23 @@ def plane_spot_is_last_price(row: dict[str, Any] | None) -> bool:
 #: only while the latest one is younger than this (console clock). The one liveness limit.
 FEED_HEARTBEAT_MAX_AGE_SEC: float = 3.0
 
-#: The daemon's latest status (its heartbeat), the time the daemon stamped it, and the symbols
-#: it holds per Schwab service. Written by record_feed_heartbeat / record_feed_down only.
-_feed: dict[str, Any] = {"rx": None, "status": None, "held": {}}
+#: The daemon's latest status (its heartbeat), the time the daemon stamped it, the symbols it
+#: holds per Schwab service, and when its current Schwab connection began (`connected_at`).
+#: Written by record_feed_heartbeat / record_feed_down only.
+_feed: dict[str, Any] = {"rx": None, "status": None, "held": {}, "connected_at": None}
+
+
+def _drop_before(fs: dict, since: float) -> None:
+    """Drop a record's fields received before `since`: an ended connection's (the caller holds
+    _lock)."""
+    for name in [n for n, (_v, at) in fs.items() if at < since]:
+        del fs[name]
+
+
+def _connected_at() -> Optional[float]:
+    """When the daemon's current Schwab connection began, as its last status said (the caller
+    holds _lock)."""
+    return _feed["connected_at"]
 
 
 def record_feed_heartbeat(msg: dict[str, Any]) -> "dict[str, frozenset[str]] | None":
@@ -196,7 +217,13 @@ def record_feed_heartbeat(msg: dict[str, Any]) -> "dict[str, frozenset[str]] | N
             for svc, syms in (msg.get("held") or {}).items() if isinstance(syms, list)}
     with _lock:
         previous = _feed["held"]
-        _feed.update(rx=float(msg["ts"]), status=msg, held=held)
+        since = msg.get("connected_at")
+        if since is not None and since != _connected_at():       # a new Schwab connection
+            for t, fs in _fields_by_ticker.items():
+                if any(at >= since for _v, at in fs.values()):  # its opening came first
+                    _drop_before(fs, since)
+                    _by_ticker[t] = _row_from(t, dict(fs), _by_ticker[t]["server_received_ts"])
+        _feed.update(rx=float(msg["ts"]), status=msg, held=held, connected_at=since)
     return previous
 
 
@@ -238,7 +265,10 @@ def held_by_daemon(service: str, now: float) -> frozenset[str]:
 def feed_live_for(symbol: str | None, service: str, now: float) -> bool:
     """THE live rule, for every streamed value: is Schwab `service` delivering `symbol` right
     now -- the daemon's heartbeat is live (daemon_status), it reports the Schwab socket open,
-    and it holds the symbol on that service.
+    and it holds the symbol on that service; an equity's record, besides, has a field from this
+    connection (a record of an ended connection is not live until the new one posts to it,
+    record_from_level_one_equity; a status that reports no connection start, as the tests'
+    stand-ins send, is not judged on it).
 
     Not "did a value arrive recently": Schwab sends a field only when it CHANGES (measured: 11%
     of 4,039 messages carried bid+ask+last together), so a quiet symbol's unchanged value is its
@@ -249,7 +279,14 @@ def feed_live_for(symbol: str | None, service: str, now: float) -> bool:
     if not t or status is None or status.get("schwab_socket_open") is not True:
         return False
     with _lock:
-        return t in _feed["held"].get(service, ())
+        return t in _feed["held"].get(service, ()) and (service != "LEVELONE_EQUITIES" or _posted_since(t, _connected_at()))
+
+
+def _posted_since(t: str, since: Optional[float]) -> bool:
+    """Whether `t`'s equity record has a field received at or after `since` (the caller holds
+    _lock); no connection start reported: not judged."""
+    fs = _fields_by_ticker.get(t)
+    return since is None or (fs is not None and any(at >= since for _v, at in fs.values()))
 
 
 def outage(symbol: str | None, service: str, now: float) -> str | None:

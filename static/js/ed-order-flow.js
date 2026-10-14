@@ -82,10 +82,11 @@
     var midHtml = '<div class="dom-mid"><span>mid ' + num(d.mid) + '</span><span>spread ' + num(d.spread_pts) +
       '</span><span>microprice ' + num(d.microprice) + '</span></div>';
 
+    // Schwab's last top of book; with its feed down, marked not live with the served reason
     var rowsTob = [
-      ['Bid × size', d.top_outage || num(tob.bid) + ' × ' + int(tob.bid_size), bk('top_of_book.bid')],
-      ['Ask × size', d.top_outage || num(tob.ask) + ' × ' + int(tob.ask_size), bk('top_of_book.ask')],
-    ];
+      ['Bid × size', num(tob.bid) + ' × ' + int(tob.bid_size), bk('top_of_book.bid')],
+      ['Ask × size', num(tob.ask) + ' × ' + int(tob.ask_size), bk('top_of_book.ask')],
+    ].concat(d.top_outage ? [['Top of book', 'NOT LIVE · ' + d.top_outage, null]] : []);
     var rowsImb = [
       ['Depth 1 imbalance', num(dep(1, 'imbalance'), 3), bk('depth.*.imbalance')],
       ['Depth 3 imbalance', num(dep(3, 'imbalance'), 3), bk('depth.*.imbalance')],

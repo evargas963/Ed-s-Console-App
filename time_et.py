@@ -11,6 +11,7 @@ unknown: nothing is guessed.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from zoneinfo import ZoneInfo
@@ -22,6 +23,17 @@ CT = ZoneInfo("America/Chicago")
 def ct_label(ts_utc: float) -> str:
     """An instant as the screen shows it: "Fri 09/25 06:59 PM CT"."""
     return datetime.fromtimestamp(float(ts_utc), CT).strftime("%a %m/%d %I:%M %p CT")
+
+
+def age_label(seconds: float) -> str:
+    """How long ago, as the screen shows a value's age: whole seconds under 90 s ("7s"), whole
+    minutes under 90 min ("3m"), else whole hours ("2h")."""
+    s = math.floor(seconds + 0.5)
+    if s < 90:
+        return f"{s}s"
+    if s < 5400:
+        return f"{math.floor(s / 60 + 0.5)}m"
+    return f"{math.floor(s / 3600 + 0.5)}h"
 
 
 def ct_clock(ts_utc: float) -> str:

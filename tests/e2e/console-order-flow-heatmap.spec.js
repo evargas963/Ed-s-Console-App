@@ -42,6 +42,8 @@ test('the heatmap paints the served cells, and a click pins a readout, without a
   await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.5);
   await expect(plot.locator('.tvc-pin')).toBeVisible();
   await expect(plot.locator('.tvc-pin')).toContainText('Bid size');
+  // read from TSLA's NYSE_BOOK, which the test console has no feed of: marked by that feed's judgment
+  await expect(page.locator('#ofhBody')).toHaveAttribute('data-not-live', /NYSE_BOOK/);
   expect(errs).toEqual([]);
 });
 
@@ -61,4 +63,27 @@ test('the Book panel shows each served wall candidate size', async ({ page }) =>
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await expect(page.locator('#obBody')).toContainText('bid @ 440.50');
   await expect(page.locator('#obBody')).toContainText('12500');
+});
+
+test('a Schwab outage: the Book panel keeps Schwab\'s last top of book, marked NOT LIVE with the reason', async ({ page }) => {
+  // operator 2026-10-14: "the last values stand, marked not live". The microstructure answer as
+  // the console serves it with the price feed down (STAND-IN: SPY's last top of book from
+  // tests/test_data_path_rules_v1.py's real capture, the outage's words); the panel's mark is the
+  // real test console's own judgment of the book's feeds (it has no Schwab feed). Before, the
+  // page drew the reason in place of the bid and ask.
+  const BOOK = { status: 'ok', top_of_book: { bid: 767.38, ask: 767.4, bid_size: 300, ask_size: 200 }, depth: {}, ages: {},
+    classification: {}, depth_pressure: {}, wall_candidates: [], top_outage: 'Schwab LEVELONE_EQUITIES feed down during RTH' };
+  await page.route('**/api/**', (route) => {
+    const url = route.request().url();
+    const body = url.includes('/api/order-flow/microstructure') ? BOOK
+      : url.includes('/api/expiries') ? expiriesAnswer([]) : { available: false };
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+  });
+  await routeWatchlist(page, ['TSLA']);
+  await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'TSLA'); localStorage.setItem('ed_ws', 'order-flow'); localStorage.setItem('ed_sub', 'book'); } catch (e) {} });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await expect(page.locator('#obBody')).toContainText('767.38 × 300');
+  await expect(page.locator('#obBody')).toContainText('767.40 × 200');
+  await expect(page.locator('#obBody')).toContainText('NOT LIVE · Schwab LEVELONE_EQUITIES feed down during RTH');
+  await expect(page.locator('#obBody')).toHaveClass(/not-live/);
 });

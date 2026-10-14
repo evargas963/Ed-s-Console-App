@@ -88,7 +88,8 @@ async def _until(pred, timeout=5.0):
 def _daemon_heartbeat(socket_open=True, held=("SPY",)):
     """What capture.py's heartbeat reports for a session holding `held` on LEVELONE_EQUITIES."""
     return lambda: {"ts": time.time(), "schwab_socket_open": socket_open,
-                    "held": {"LEVELONE_EQUITIES": list(held)}, "health": {}}
+                    "held": {"LEVELONE_EQUITIES": list(held)}, "health": {},
+                    "options": {"LEVELONE_OPTIONS": [], "OPTIONS_BOOK": []}}
 
 
 async def _run(body, heartbeat_fn=None):

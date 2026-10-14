@@ -327,11 +327,11 @@ test.describe('Trade Desk renders served values', () => {
     const before = barReads.length;
     await page.evaluate((spot) => {
       for (let i = 0; i < 3; i++) window.dispatchEvent(new CustomEvent('ed:quote_tick', { detail: { ticker: 'SPY', spot: spot + i / 100,
-        spot_disp: (spot + i / 100).toFixed(2), feed_live: true, trade_time_ct: 'Fri 09/25 09:21 AM CT' } }));
+        spot_disp: (spot + i / 100).toFixed(2), feed_live: true, trade_time_ct: 'Fri 09/25 09:21 AM CT', trade_age: '4s' } }));
     }, SPOT);
     const chartState = () => page.evaluate(() => window.EdTradeDeskMap.state().chart);
     await expect.poll(async () => (await chartState()).livePrice).toBeCloseTo(SPOT + 0.02, 6);
-    expect((await chartState()).liveTitle).toBe('LAST · Fri 09/25 09:21 AM CT');   // Schwab's trade time
+    expect((await chartState()).liveTitle).toBe('LAST · Fri 09/25 09:21 AM CT · 4s ago');   // Schwab's trade time, its served age
     expect((await chartState()).bars).toBe(BARS.bars.length);          // the candles are untouched
     await page.evaluate(() => window.dispatchEvent(new CustomEvent('ed:quote_tick', { detail: { ticker: 'SPY', spot: null,
       spot_disp: null, feed_live: false, trade_time_ct: null } })));

@@ -76,12 +76,13 @@
     function fk(k) { return classOf(flowCls, k); }
     // row = [label, displayed value, canonical key (data-k), backend classification | null]
     // The depth ladder is classified by the engine under its own wildcard keys ("depth.*.<leaf>").
+    // Schwab's last top of book; with its feed down, marked not live with the served reason
     var rowsTob = [
-      ['Bid', d.top_outage || num(tob.bid), 'top_of_book.bid', bk('top_of_book.bid')],
-      ['Ask', d.top_outage || num(tob.ask), 'top_of_book.ask', bk('top_of_book.ask')],
+      ['Bid', num(tob.bid), 'top_of_book.bid', bk('top_of_book.bid')],
+      ['Ask', num(tob.ask), 'top_of_book.ask', bk('top_of_book.ask')],
       ['Bid size', int(tob.bid_size), 'top_of_book.bid_size', bk('top_of_book.bid_size')],
       ['Ask size', int(tob.ask_size), 'top_of_book.ask_size', bk('top_of_book.ask_size')],
-    ];
+    ].concat(d.top_outage ? [['Top of book', 'NOT LIVE · ' + d.top_outage, 'top_outage', null]] : []);
     var rowsBook = [
       ['Mid', num(d.mid), 'mid', bk('mid')], ['Microprice', num(d.microprice), 'microprice', bk('microprice')],
       ['Spread (pts)', num(d.spread_pts), 'spread_pts', bk('spread_pts')],

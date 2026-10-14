@@ -69,11 +69,12 @@
     var imb = dep(5, 'imbalance');
     var ages = d.ages || {};
     var rows = [
-      ['Bid × Ask', d.top_outage || num(tob.bid) + ' × ' + num(tob.ask), classOf(cls, 'top_of_book.bid')],
+      ['Bid × Ask', num(tob.bid) + ' × ' + num(tob.ask), classOf(cls, 'top_of_book.bid')],
+    ].concat(d.top_outage ? [['Top of book', 'NOT LIVE · ' + d.top_outage, null]] : []).concat([
       ['Spread (pts)', num(d.spread_pts), classOf(cls, 'spread_pts')],
       ['Depth 1 imbalance', num(dep(1, 'imbalance'), 3), classOf(cls, 'depth.*.imbalance')],
       ['Book age', ages.book_age_sec != null ? Math.round(ages.book_age_sec) + 's' : '—', classOf(cls, 'ages.book_age_sec')],
-    ];
+    ]);
     var heroVal = (imb == null || isNaN(imb)) ? '—' : (imb >= 0 ? '+' : '') + num(imb, 3);
     var side = dep(5, 'side');   // served: BID / ASK / EVEN by the imbalance's sign
     var heroUnit = side == null ? '' : (side === 'BID' ? 'bid-heavy' : side === 'ASK' ? 'ask-heavy' : 'balanced') + ' (' + esc(d.venue) + ', depth 5)';
