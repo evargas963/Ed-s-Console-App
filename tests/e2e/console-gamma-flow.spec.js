@@ -143,7 +143,7 @@ test.describe('D — Gamma Flow subview', () => {
     await expect(rowV(page, 'microprice')).toHaveText(fmt(FIXTURE.microprice, 2));
     await expect(rowV(page, 'depth.1.imbalance')).toHaveText(fmt(FIXTURE.depth['1'].imbalance, 3));
     await expect(rowV(page, 'top_of_book.bid_size')).toHaveText(String(Math.round(FIXTURE.top_of_book.bid_size)));
-    pushBeat(page, {}, { book: '3s' });                       // the console labels the book's instant
+    pushBeat(page, { book: '3s' });                           // the console labels the book's instant
     await expect(rowV(page, 'as_of.book')).toHaveText('3s');
     // No flow row fell back to the absent-value placeholder.
     for (const k of ['flow.tape_pressure_30s', 'flow.tape_pressure_2m', 'flow.tape_pressure_5m', 'flow.cum_delta_proxy', 'flow.cum_delta_slope', 'flow.top_book_pressure']) {
@@ -165,7 +165,7 @@ test.describe('D — Gamma Flow subview', () => {
     await expect(rowV(page, 'flow.tape_pressure_30s')).toHaveText(fmt(FIXTURE.flow.tape_pressure_30s, 3));
     await expect(rowV(page, 'flow.cum_delta_proxy')).toHaveText(fmt(FIXTURE.flow.cum_delta_proxy, 1) + ' · ' + FIXTURE.flow.cum_delta_window);
     await expect(rowV(page, 'flow.top_book_pressure')).toHaveText(fmt(FIXTURE.flow.top_book_pressure, 3));
-    pushBeat(page, {}, { book: '3s' });
+    pushBeat(page, { book: '3s' });
     await expect(rowV(page, 'as_of.book')).toHaveText('3s');                  // not the decoy's 1s
     await expect(page.locator('#flowBody')).not.toContainText('0.999');
     await expect(page.locator('#flowBody')).not.toContainText('0.888');

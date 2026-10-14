@@ -132,7 +132,7 @@ const CHAIN = {
 };
 
 // The console's price rows, stood in for (tests/e2e/fixtures/price_socket.js).
-const { mockPriceSocket, schwabQuote } = require('./fixtures/price_socket');
+const { mockPriceSocket, schwabQuote, daemonBeat, daemonDown } = require('./fixtures/price_socket');
 // The console's watchlist routes, stood in for (tests/e2e/fixtures/watchlist.js).
 const { routeWatchlist } = require('./fixtures/watchlist');
 
@@ -773,7 +773,8 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   });
 
   test('header never paints a quote from a poll: no push -> UNAVAILABLE, not a fallback', async ({ page }) => {
-    // the price and the session label come only from the console's push
+    // the price comes only from the daemon's socket (none here) and the session only from the
+    // console's push
     pushDown(page);                                                  // the console's push is down
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#hPx')).toHaveText('UNAVAILABLE');
@@ -784,17 +785,17 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#hSession')).toHaveText('UNKNOWN');
   });
 
-  test('the header shows the last trade\'s time and the age the console serves, never a frozen one', async ({ page }) => {
-    // a trade two minutes old, then a new trade: each comes with its own age; the beat moves it;
-    // with the push down no age is known, and none is shown
+  test('the header shows the last trade\'s time and the age the daemon serves, never a frozen one', async ({ page }) => {
+    // a trade two minutes old, then a new trade: each comes with its own age; the daemon's beat
+    // moves it; with the daemon's socket down no age is known, and none is shown
     await mockPriceSocket(page, [schwabQuote('SPY', 601.23, { TRADE_TIME_MILLIS: Date.now() - 120000 }),
       schwabQuote('SPY', 601.30)]);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#hPx')).toHaveText('601.30');
-    await expect(page.locator('#hAge')).toContainText(' · 1s ago');              // the new trade's, not 2m
-    pushBeat(page, { SPY: '7s' });
+    await expect(page.locator('#hAge')).toContainText(/ · [0-9]s ago/);          // the new trade's, not 2m
+    daemonBeat(page, { SPY: { age: '7s' } });
     await expect(page.locator('#hAge')).toContainText(' · 7s ago');
-    pushDown(page);
+    daemonDown(page);
     await expect(page.locator('#hFeed')).toHaveText('OFFLINE', { timeout: 6000 });
     await expect(page.locator('#hAge')).toContainText(' · age not known');
     await expect(page.locator('#hAge')).not.toContainText('7s ago');
@@ -857,7 +858,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     expect([...new Set(sockets)]).toEqual(['/api/live']);
   });
 
-  test('when the push goes down the last price stands, marked OFFLINE with its trade time', async ({ page }) => {
+  test('when the daemon\'s socket goes down the last price stands, marked OFFLINE with its trade time', async ({ page }) => {
     await mockPriceSocket(page, [schwabQuote('SPY', 601.23), schwabQuote('AMD', 150.5, { NET_CHANGE_PERCENT: -1.25 })]);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#hPx')).toHaveText('601.23');
@@ -865,7 +866,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.evaluate(() => window.EdShell.addSymbol('AMD'));               // AMD becomes the ticker
     await expect(page.locator('.wl-px[data-wlpx="AMD"]')).toHaveText('150.50');
     await expect(page.locator('#hPx')).toHaveText('150.50');
-    pushDown(page);
+    daemonDown(page);
     await expect(page.locator('#hFeed')).toHaveText('OFFLINE', { timeout: 6000 });
     await expect(page.locator('#hPx')).toHaveText('150.50');                 // the last value stands
     await expect(page.locator('#hAge')).toContainText('last trade ');        // with its time

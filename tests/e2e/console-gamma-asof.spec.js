@@ -57,7 +57,7 @@ test.describe('#4 per-panel source / as-of / freshness', () => {
     const badge = page.locator('#gbsSrc .asof');
     await expect(badge).toBeVisible();
     await expect(badge).toContainText('terrain live');
-    pushBeat(page, {}, { levels: '21s' });               // the console labels the levels' instant
+    pushBeat(page, { levels: '21s' });               // the console labels the levels' instant
     await expect(badge).toContainText('21s');            // shown as served, never formatted here
   });
 

@@ -37,7 +37,7 @@ import json
 import logging
 import os
 
-from stream_spine import LATEST, MessageBus
+from stream_spine import LATEST, LOG, MessageBus
 
 log = logging.getLogger(__name__)
 
@@ -83,11 +83,22 @@ async def _serve_client(ws, bus: MessageBus, stats: dict, on_request=None) -> No
     blocked on `sub.get()` would otherwise never notice a closed socket, and server
     shutdown (which waits for every handler to return) would hang behind it."""
     sub = bus.subscribe("", policy=LATEST)
+    #: CHART_EQUITY is All Sequence (Streamer API §1.1): every bar, in order, besides the newest
+    #: record above (the console's bar writer keeps one bar per minute: a bar sent twice is one)
+    bars = bus.subscribe("bar1m.", policy=LOG)
     stats["clients"] += 1
 
     async def _pump() -> None:
         while True:
             topic, record = await sub.get()
+            if is_forwarded(topic, record):
+                for frame in frames(topic, record):
+                    await ws.send(frame)
+                stats["sent"] += 1
+
+    async def _bars() -> None:
+        while True:
+            topic, record = await bars.get()
             if is_forwarded(topic, record):
                 for frame in frames(topic, record):
                     await ws.send(frame)
@@ -106,17 +117,20 @@ async def _serve_client(ws, bus: MessageBus, stats: dict, on_request=None) -> No
                 on_request(req, ws)
 
     pump = asyncio.create_task(_pump())
+    every_bar = asyncio.create_task(_bars())
     closed = asyncio.create_task(_read())
     try:
-        await asyncio.wait({pump, closed}, return_when=asyncio.FIRST_COMPLETED)
-        if pump.done() and not pump.cancelled() and pump.exception() is not None:
-            e = pump.exception()
-            log.info("live push client ended: %s: %s", type(e).__name__, e)
+        await asyncio.wait({pump, every_bar, closed}, return_when=asyncio.FIRST_COMPLETED)
+        for t in (pump, every_bar):
+            if t.done() and not t.cancelled() and t.exception() is not None:
+                e = t.exception()
+                log.info("live push client ended: %s: %s", type(e).__name__, e)
     finally:
-        for t in (pump, closed):
+        for t in (pump, every_bar, closed):
             t.cancel()
-        await asyncio.gather(pump, closed, return_exceptions=True)
+        await asyncio.gather(pump, every_bar, closed, return_exceptions=True)
         bus.unsubscribe(sub)
+        bus.unsubscribe(bars)
         stats["clients"] -= 1
 
 

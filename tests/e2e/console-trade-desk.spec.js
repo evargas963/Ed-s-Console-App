@@ -8,7 +8,7 @@
 const { test, expect, pushBeat, pushChange, pushDown, setNotLive } = require('./fixtures/live_socket');
 const { expiriesAnswer } = require('./fixtures/expiries');
 const path = require('path');
-const { mockPriceSocket, schwabQuote } = require('./fixtures/price_socket');
+const { mockPriceSocket, schwabQuote, daemonDown } = require('./fixtures/price_socket');
 const { routeWatchlist } = require('./fixtures/watchlist');
 
 const CROSSES = require(path.join(__dirname, '..', 'fixtures', 'real_spy_level_crosses.json')).rows.slice(0, 3);
@@ -261,15 +261,17 @@ test.describe('Trade Desk renders served values', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const pill = (name) => page.locator('#tdmTrust .tdm-pill', { hasText: name });
     await expect(pill('PRICE')).toContainText('LIVE');
-    pushBeat(page, { SPY: '1s' }, { book: '4s', levels: '2m', snapshot: '9m' });     // the console's labels
+    pushBeat(page, { book: '4s', levels: '2m', snapshot: '9m' });     // the console's labels
     await expect(pill('BOOK')).toContainText('4s');
     await expect(pill('GAMMA')).toContainText('2m');
     await expect(pill('LEVELS')).toContainText('9m');
     await expect(page.locator('#tdmCardOpt .tdm-src')).toContainText('2m old');
-    pushDown(page);
+    pushDown(page);                                   // the console's push: its values, not the price
+    await expect(pill('BOOK')).toContainText('age not known', { timeout: 6000 });
+    await expect(pill('PRICE')).toContainText('LIVE');
+    daemonDown(page);                                 // the daemon's socket: the price
     await expect(pill('PRICE')).toContainText('OFFLINE', { timeout: 6000 });
-    await expect(pill('PRICE')).toHaveAttribute('title', /the console push is down/);
-    await expect(pill('BOOK')).toContainText('age not known');
+    await expect(pill('PRICE')).toHaveAttribute('title', /the daemon's socket is down/);
     for (const id of ['#tdmChart', '#tdmCardLiq', '#tdmCardFlow', '#tdmCardOpt', '#tdmCardVol']) {
       await expect(page.locator(id)).toHaveClass(/not-live/);
       await expect(page.locator(id)).toHaveAttribute('data-not-live', /the console push is down/);

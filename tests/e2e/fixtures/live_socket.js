@@ -1,7 +1,7 @@
 // The console's push to the page (/api/live, server.live_values), with each panel's value from the
 // spec's own stubs. The page's view ({op:'view'}) goes to the real test server, which answers as
-// the console does: what each price symbol is ({type:'symbols'}), its price row ({type:'rows'}),
-// which panels are on screen ({type:'view', seq, moved, shown}), each one's answer by name
+// the console does (Schwab's own values come from the daemon's socket instead,
+// tests/e2e/fixtures/price_socket.js): which panels are on screen ({type:'view', seq, moved, shown}), each one's answer by name
 // ({type:'panels', seq, panels: [{panel, source, kinds, ...}]}) and the beat ({type:'feed'}).
 // Each answer is replaced by what
 // the spec's stubs serve for its `source` (page.route), as the console serves its route's own
@@ -29,22 +29,11 @@ const _push = new WeakMap();
 //: each page's open push, for pushBeat
 const _beat = new WeakMap();
 
-// The console's beat with each shown row's trade age ({key: label}) and each shown panel's
-// instants' ages ({kind: label}), as server.live_values serves it every second (STAND-IN: the
-// ages are the spec's).
-function pushBeat(page, ages, asOfAges) {
+// The console's beat with each shown panel's instants' ages ({kind: label}), as server.live_values
+// serves it every second (STAND-IN: the ages are the spec's).
+function pushBeat(page, asOfAges) {
   const b = _beat.get(page);
-  if (b) b(ages, asOfAges);
-}
-
-//: each page's stand-in price rows (tests/e2e/fixtures/price_socket.js), in the order pushed
-const _prices = new WeakMap();
-
-// The console's price rows for `page`, stood in for: the test server's own rows (no Schwab feed
-// under e2e) are dropped, and these are pushed in their place, 300 ms apart, once the console has
-// answered what their symbols are.
-function setPrices(page, rows) {
-  _prices.set(page, rows);
+  if (b) b(asOfAges);
 }
 
 // The console pushes a change of `kind` for the page's ticker: every panel on screen that it
@@ -90,9 +79,7 @@ async function installLive(page) {
     //: the console's answers under a view older than the page's newest: held until the console
     //: takes the newest, then read or dropped as the page draws or drops them
     let held = [];
-    let seq = null, pageSeq = null, ticker = null, closed = false, writer = null, session = null;
-    //: the stand-in rows' symbols already pushed
-    const priced = new Set();
+    let seq = null, pageSeq = null, ticker = null, closed = false, session = null;
     const send = (m) => { if (!closed) { try { ws.send(JSON.stringify(m)); } catch (e) { closed = true; } } };
     ws.onClose(() => { closed = true; });
     function read(source) {
@@ -126,8 +113,7 @@ async function installLive(page) {
       await reply([...shown.values()].filter((m) => m.kinds.includes(kind)));
     }
     _push.set(page, moved);
-    _beat.set(page, (ages, asOfAges) => send({ type: 'feed', session: session, writer: writer, ages: ages,
-                                               as_of_ages: asOfAges || {} }));
+    _beat.set(page, (asOfAges) => send({ type: 'feed', session: session, as_of_ages: asOfAges || {} }));
     // the spec's change stream for the ticker, read as the console's push of each kind
     async function changes(tk) {
       while (!closed && tk === ticker) {
@@ -142,7 +128,7 @@ async function installLive(page) {
         for (const block of r.text.split('\n\n')) {
           const ev = (block.match(/^event: (.+)$/m) || [])[1], data = (block.match(/^data: (.*)$/m) || [])[1];
           if (!ev) continue;
-          if (ev === 'session') { session = data; send({ type: 'feed', session: data, writer: writer, ages: {}, as_of_ages: {} }); continue; }
+          if (ev === 'session') { session = data; send({ type: 'feed', session: data, as_of_ages: {} }); continue; }
           await moved(ev);
         }
       }
@@ -163,19 +149,9 @@ async function installLive(page) {
         }
         return;
       }
-      const prices = _prices.get(page);
-      if (msg.type === 'rows' && prices) return;       // the stand-in rows replace the server's
       if (msg.type === 'feed') {
-        writer = msg.writer; session = msg.session;
+        session = msg.session;
         msg = Object.assign({}, msg, { as_of_ages: {} });   // its labels are of its own answers, not the stubs'
-      }
-      if (msg.type === 'symbols' && prices) {
-        send(msg);
-        const keys = new Set(msg.symbols.map((s) => s.key).filter((k) => !priced.has(k)));
-        keys.forEach((k) => priced.add(k));
-        prices.filter((r) => keys.has(r.ticker))
-          .forEach((r, i) => setTimeout(() => send({ type: 'rows', rows: { [r.ticker]: r } }), 300 * i));
-        return;
       }
       if (msg.type === 'panels') {
         const each = msg.panels.map((p) => Object.assign({ seq: msg.seq }, p));
@@ -202,4 +178,4 @@ const test = base.test.extend({
   },
 });
 
-module.exports = { test, expect: base.expect, pushBeat, pushChange, pushDown, setNotLive, setPrices };
+module.exports = { test, expect: base.expect, pushBeat, pushChange, pushDown, setNotLive };

@@ -454,10 +454,11 @@
     var host = $('tdmTrust'); if (!host) return;
     var q = S.quotes[st().key], t = S.terrain, m = S.micro, L = S.levels;
     var h = '';
-    // live only while Schwab's feed delivers it and the console's push reaches this page
-    var down = window.EdShell.pushDown(), live = q && q.feed_live && !down;
-    h += q ? pill('PRICE', live ? 'LIVE' : 'OFFLINE', live ? 'ok' : 'bad', live ? 'the console\'s price row'
-        : 'not live' + (down ? ': ' + window.EdShell.PUSH_DOWN : q.outage ? ': ' + q.outage : ''))
+    // the price: live while Schwab's feed delivers it and the daemon's socket reaches this page
+    // (its row says which); the other pills: while the console's push reaches it
+    var down = window.EdShell.pushDown(), live = q && q.feed_live;
+    h += q ? pill('PRICE', live ? 'LIVE' : 'OFFLINE', live ? 'ok' : 'bad', live ? 'Schwab\'s LEVELONE_EQUITIES, from the daemon'
+        : 'not live' + (q.outage ? ': ' + q.outage : ''))
       : pill('PRICE', 'WAITING', 'warn', 'no price row yet for this symbol');
     h += m === undefined ? pill('BOOK', '…', '') : !m ? pill('BOOK', 'FAILED', 'bad') : m.status === 'no_book' ? pill('BOOK', 'NONE', 'warn', 'no ' + m.venue)
       : pill('BOOK', m.ages && m.ages.book_stale === false ? { pre: '', ageOf: 'book' } : m.ages && m.ages.book_stale ? 'STALE' : 'AGE UNKNOWN',

@@ -614,6 +614,7 @@ app.mount("/static", _RevalidateStaticFiles(directory=str(static_dir)), name="st
 # ROUTES
 # ─────────────────────────────────────────────────────────────────────────────
 
+_LIVE_UI_PORT_META = '<meta name="ed-live-ui-port" content="">'
 _MARKET_CONTEXT_META = '<meta name="ed-market-context" content="">'
 _SCOPES_META = '<meta name="ed-scopes" content="">'
 _STREAM_WORDS_META = '<meta name="ed-stream-words" content="">'
@@ -622,13 +623,17 @@ SCOPE_LABELS = {"auto": "Auto", "wider": "Wider", "all": "All available"}
 
 
 def _with_page_settings(html: str) -> str:
-    """Tell the page which market-context symbols it always shows (live_push.MARKET_CONTEXT, each
-    with its display name), the scopes its strike windows take (terrain_engine.SCOPES, each with
-    its word) and the words for each streaming state (STREAM_WORDS)."""
+    """Tell the page where the capture daemon's Schwab socket listens (the ED_LIVE_UI_PORT the
+    daemon binds: Schwab's messages go from the daemon straight to the screen), which
+    market-context symbols it always shows (live_push.MARKET_CONTEXT, each with its display name),
+    the scopes its strike windows take (terrain_engine.SCOPES, each with its word) and the words
+    for each streaming state (STREAM_WORDS)."""
     from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT
+    from app.market_data.schwab.streaming.live_ui import LIVE_UI_PORT
     context = json.dumps([{"key": k, "display": display_symbol(k)} for k in MARKET_CONTEXT])
     scopes = json.dumps([{"key": s, "label": SCOPE_LABELS[s]} for s in SCOPES])
-    return (html.replace(_MARKET_CONTEXT_META,
+    return (html.replace(_LIVE_UI_PORT_META, f'<meta name="ed-live-ui-port" content="{int(LIVE_UI_PORT)}">', 1)
+            .replace(_MARKET_CONTEXT_META,
                          f'<meta name="ed-market-context" content="{html_escape(context)}">', 1)
             .replace(_SCOPES_META, f'<meta name="ed-scopes" content="{html_escape(scopes)}">', 1)
             .replace(_STREAM_WORDS_META,
@@ -2426,26 +2431,13 @@ async def _answer(p: _Panel, change: tuple, rnd: _Round) -> dict:
     return await asyncio.shield(held[1])
 
 
-def _row(symbol: str, now: float) -> dict:
-    """`symbol`'s price row at `now`, read in its current change's round: the row every panel of
-    the same change reads its spot from."""
-    _change, rnd = _round(symbol)
-    token = _ROUND.set(rnd)
-    try:
-        return price_row(symbol, now)
-    finally:
-        _ROUND.reset(token)
-
-
 @app.websocket("/api/live")
 async def live_values(ws: WebSocket):
-    """The console's push to the page, one WebSocket: the only path from the console to the
-    screen. The page sends its view, the operator's selections and the symbols whose prices it
-    shows, whenever one changes ({"op": "view", "view"}); it names no route.
-
-    Prices: what each asked-for symbol is ({"type": "symbols", "symbols": [{requested, key,
-    display}]}), then its price row (live_price_rows.price_row) whenever a change of it happens,
-    only the fields that changed ({"type": "rows", "rows": {key: {field: value}}}).
+    """The console's push to the page, one WebSocket: the values the console computes. Schwab's own
+    values (each symbol's price, books, bars, headlines, option quotes) go from the capture daemon
+    straight to the screen (live_ui, by their delivery type), not through here. The page sends its
+    view, the operator's selections and the symbols it shows, whenever one changes ({"op": "view",
+    "view"}); it names no route.
 
     Panels: the console decides the panels on screen (_panels), names each one the view moved
     ({"type": "view", "seq", "moved", "shown" (every panel on screen)}) and pushes each one's answer
@@ -2458,16 +2450,15 @@ async def live_values(ws: WebSocket):
     row of one change is read from the change's one round (_Round); a panel is never sent an answer
     of an older change than the one it was sent, nor one the view moved on from.
 
-    Every PUSH_BEAT_SEC the market session, each shown row's trade age and the daemon writer's
-    line ({"type": "feed", "session", "ages": {key: its trade's age as the screen shows it,
-    time_et.age_label}, "as_of_ages": {kind: the age of each shown panel's instant}, "writer"}); a row whose trade time moved carries its age (`trade_age`). The open connection is the page: a ticker an open page shows is repriced
-    on its ticks (push_changes.watched). Every page reconnects after a console restart."""
+    Every PUSH_BEAT_SEC the market session and the age of each shown panel's instant ({"type":
+    "feed", "session", "as_of_ages": {kind: label}}). The open connection is the page: a ticker an
+    open page shows is repriced on its ticks (push_changes.watched). Every page reconnects after a
+    console restart."""
     from app.options.order_flow.streaming import note_liveness    # as the lifespan imports it
     await ws.accept()
     client = push_changes.Client()
     page: dict = {"ticker": None, "seq": None, "subscribed": False}
-    #: each symbol's row as the page was last sent it; each (panel, value)'s newest change sent
-    sent_rows: dict[str, dict] = {}
+    #: each (panel, value)'s newest change sent
     drawn: dict[tuple, int] = {}
     #: each panel's instants as it was last sent them (its answer's `as_of`), labelled every beat
     instants: dict[str, dict] = {}
@@ -2476,30 +2467,11 @@ async def live_values(ws: WebSocket):
     async def text(payload: dict) -> None:   # the caller holds send_lock
         await ws.send_text(json.dumps(payload, separators=(",", ":"), default=str))
 
-    async def rows(symbols: set[str]) -> None:    # the caller holds send_lock
-        now, out = time.time(), {}
-        for s in symbols & client.symbols:
-            row = _row(s, now)
-            last = sent_rows.get(s)
-            moved = row if last is None else {k: v for k, v in row.items() if last.get(k) != v}
-            if "trade_ts" in moved and row["trade_ts"] is not None:      # a new trade comes with its age
-                moved = {**moved, "trade_age": age_label(now - row["trade_ts"])}
-            if moved:
-                out[s], sent_rows[s] = moved, row
-        if out:
-            await text({"type": "rows", "rows": out})
-
     async def beat() -> None:                     # the caller holds send_lock
         now = time.time()
-        status = lmp.daemon_status(now)
-        # each shown row's trade age now, from the trade time the page was sent (AGENTS.md rule 5)
-        ages = {s: age_label(now - r["trade_ts"]) for s, r in sent_rows.items()
-                if s in client.symbols and r["trade_ts"] is not None}
         # every shown panel's instants, labelled at this one instant
         as_of = {k: ts for n, i in instants.items() if n in client.panels for k, ts in i.items()}
-        await text({"type": "feed", "session": session_label(now_et()), "ages": ages,
-                    "as_of_ages": _age_labels(as_of, now),
-                    "writer": status["writer"] if status is not None and "writer" in status else None})
+        await text({"type": "feed", "session": session_label(now_et()), "as_of_ages": _age_labels(as_of, now)})
 
     async def show_one(name: str, p: _Panel, change: tuple, rnd: _Round) -> None:
         a = await _answer(p, change, rnd)
@@ -2529,10 +2501,8 @@ async def live_values(ws: WebSocket):
     async def push() -> None:
         last_beat = 0.0
         while True:
-            kinds, moved_rows = await push_changes.next_changes(client, PUSH_BEAT_SEC)
+            kinds, _moved_rows = await push_changes.next_changes(client, PUSH_BEAT_SEC)
             async with send_lock:
-                if moved_rows:
-                    await rows(moved_rows)
                 if time.monotonic() - last_beat >= PUSH_BEAT_SEC:
                     await beat()
                     last_beat = time.monotonic()
@@ -2555,11 +2525,7 @@ async def live_values(ws: WebSocket):
                             push_changes.unsubscribe(page["ticker"], client)
                         push_changes.subscribe(view["ticker"], client)
                         page["ticker"], page["subscribed"] = view["ticker"], True
-                    new = set(symbols.values()) - client.symbols
                     client.symbols = set(symbols.values())
-                    await text({"type": "symbols", "symbols": [
-                        {"requested": s, "key": k, "display": display_symbol(k)} for s, k in symbols.items()]})
-                    await rows(new)
                     moved = [n for n, p in panels.items() if n not in client.panels or client.panels[n].source != p.source]
                     client.panels, page["seq"] = panels, view["seq"]
                     await text({"type": "view", "seq": view["seq"], "moved": moved, "shown": sorted(panels)})
