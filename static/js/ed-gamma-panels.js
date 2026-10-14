@@ -24,12 +24,6 @@
 
   // Which panels are on screen is the console's (server._panels): each one here draws what is
   // pushed under its name.
-  var REGIME = {
-    LONG_GAMMA_CHOP: { t: 'Long γ · chop', c: 'var(--ed-pos-ink)' },
-    SHORT_GAMMA_TREND: { t: 'Short γ · trend', c: 'var(--ed-warn)' },
-    UNAVAILABLE: { t: 'unavailable', c: 'var(--ed-ink-3)' },
-  };
-
   // ---------- Key Levels rail: the terrain the console pushes (the same answer the Gamma chart draws) ----------
   var _terrain = null;
   window.EdShell.onPanel('gamma.terrain', function (a) {
@@ -60,7 +54,7 @@
     }
     var reg = document.getElementById('klRegime');
     if (reg) {
-      var rm = REGIME[d.regime] || { t: (d.regime || '—'), c: 'var(--ed-ink-2)' };
+      var rm = window.EdGamma.regime(d.regime);
       reg.textContent = rm.t; reg.style.color = rm.c;
     }
     // B: the levels rail recedes when terrain reports stale
@@ -228,7 +222,7 @@
     // another expiry's chain (its new one is on its way) is never drawn under this one
     if (!host || !_sdChain || s.selStrike == null || strikeDetailExpiry() !== _sdFor) return;
     if (!_sdChain.ok) { host.innerHTML = '<div class="placeholder"><div class="sm">/api/chain answered HTTP ' + _sdChain.status + '</div></div>'; return; }
-    renderStrike(host, _sdChain.body, s.selStrike, strikeDetailExpiry());
+    renderStrike(host, _sdChain.body, s.selStrike, _sdChain.body.expiry);   // the expiry the chain served
   }
   var SCOPE_LABEL = {
     complete_single_expiry: { t: 'vendor · complete (ALL)', live: true },

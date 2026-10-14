@@ -254,5 +254,15 @@
   }
 
   var _root = (typeof window !== 'undefined') ? window : (typeof globalThis !== 'undefined' ? globalThis : this);
-  _root.EdGamma = { formatUsd: formatUsd };
+  // ---- the one wording of a served regime, for every panel that shows it ----
+  var REGIME = {
+    LONG_GAMMA_CHOP: { t: 'Long γ · chop', c: 'var(--ed-pos-ink)' },
+    SHORT_GAMMA_TREND: { t: 'Short γ · trend', c: 'var(--ed-warn)' },
+    UNAVAILABLE: { t: 'unavailable', c: 'var(--ed-ink-3)' },
+  };
+  function regime(r) {
+    if (r == null) return { t: '—', c: 'var(--ed-ink-2)' };
+    return REGIME[r] ? REGIME[r] : { t: String(r), c: 'var(--ed-ink-2)' };
+  }
+  _root.EdGamma = { formatUsd: formatUsd, regime: regime };
 })();

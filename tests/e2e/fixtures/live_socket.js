@@ -1,7 +1,8 @@
 // The console's push to the page (/api/live, server.live_values), with each panel's value from the
 // spec's own stubs. The page's view ({op:'view'}) goes to the real test server, which answers as
 // the console does: which panels are on screen ({type:'view', seq, moved, shown}) and each one's
-// answer by name ({type:'panel', panel, seq, source, kinds, ...}). Each answer is replaced by what
+// answer by name, one change's together ({type:'panels', seq, panels: [{panel, source, kinds, ...}]}).
+// Each answer is replaced by what
 // the spec's stubs serve for its `source` (page.route), as the console serves its route's own
 // answer, and stamped with the view the console holds when it is sent, as the console stamps it.
 // A spec that pushes a change does it as the console's stream of change kinds did
@@ -51,11 +52,12 @@ async function installLive(page) {
       }
       return reading.get(source);
     }
-    // a panel's answer from the stubs, sent if it is still the newest for that panel
-    async function reply(msg) {
-      const a = await read(msg.source);
-      if (shown.get(msg.panel) !== msg) return;
-      send(Object.assign({}, msg, a, { seq: seq }));
+    // panels' answers from the stubs, sent together (as the console sends one change's), each
+    // that is still the newest for its panel
+    async function reply(msgs) {
+      const got = await Promise.all(msgs.map((m) => read(m.source)));
+      const out = msgs.map((m, i) => Object.assign({}, m, got[i])).filter((m, i) => shown.get(msgs[i].panel) === msgs[i]);
+      if (out.length) send({ type: 'panels', seq: seq, panels: out });
     }
     // a change moves the panels of the view the console holds; one that comes while the page's
     // newer view is on its way moves that view's panels, once the console has taken it
@@ -65,7 +67,7 @@ async function installLive(page) {
         await new Promise((resolve) => waiting.push(() => moved(kind).then(resolve)));
         return;
       }
-      await Promise.all([...shown.values()].filter((m) => m.kinds.includes(kind)).map(reply));
+      await reply([...shown.values()].filter((m) => m.kinds.includes(kind)));
     }
     _push.set(page, moved);
     // the spec's change stream for the ticker, read as the console's push of each kind
@@ -97,15 +99,16 @@ async function installLive(page) {
         send(msg);
         if (seq === pageSeq) {                  // the page's newest view: what it would draw, read
           const now = held; held = [];
-          now.filter((h) => !msg.moved.includes(h.panel) && shown.get(h.panel) === h).forEach(reply);
+          reply(now.filter((h) => !msg.moved.includes(h.panel) && shown.get(h.panel) === h));
           const changes = waiting; waiting = [];
           changes.forEach((run) => run());
         }
         return;
       }
-      if (msg.type === 'panel') {
-        shown.set(msg.panel, msg);
-        if (pageSeq !== null && msg.seq < pageSeq) held.push(msg); else reply(msg);
+      if (msg.type === 'panels') {
+        const each = msg.panels.map((p) => Object.assign({ seq: msg.seq }, p));
+        each.forEach((p) => shown.set(p.panel, p));
+        if (pageSeq !== null && msg.seq < pageSeq) held.push(...each); else reply(each);
         return;
       }
       send(msg);

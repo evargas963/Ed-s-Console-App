@@ -94,8 +94,8 @@
     var nearest = sorted[0];
     var rows = sorted.slice(1, 6).map(function (r) { return [r.label || r.id, num(r.price), r.evidence_tier]; });
     var heroVal = (nearest.label || nearest.id) + ' ' + num(nearest.price);
-    var heroUnit = nearest.side === 'AT' ? 'at spot' : nearest.side === 'ABOVE' ? num(nearest.distance) + ' above spot'
-      : nearest.side === 'BELOW' ? num(-nearest.distance) + ' below spot' : '';
+    var heroUnit = nearest.side === 'AT' ? 'at spot' : nearest.side === 'ABOVE' ? num(nearest.gap) + ' above spot'
+      : nearest.side === 'BELOW' ? num(nearest.gap) + ' below spot' : '';
     return stage(2, 'td-accent-green', 'Frame — nearest liquidity level', heroVal, heroUnit, 0, rows, null);
   }
 
@@ -112,7 +112,7 @@
       // the heatmap's own dollar formatter: a value under $50K reads as itself, never "0.0M"
       ['Net GEX @ spot', d.net_gex_at_spot != null ? window.EdGamma.formatUsd(d.net_gex_at_spot) : '—'],
     ];
-    return stage(3, 'td-accent-amber', 'Confirm — options regime', d.regime || '—', '', 0, rows, d.confidence || null,
+    return stage(3, 'td-accent-amber', 'Confirm — options regime', window.EdGamma.regime(d.regime).t, '', 0, rows, d.confidence || null,
       d.confidence === 'TRUSTED' ? 'live' : 'warn');
   }
 
@@ -121,7 +121,7 @@
   function contextSummary(terrain, snap) {
     var lines = [];
     if (terrain) {
-      lines.push(['Regime', (terrain.regime || '—') + (terrain.posture ? ' · ' + terrain.posture : '')]);
+      lines.push(['Regime', window.EdGamma.regime(terrain.regime).t + (terrain.posture ? ' · ' + terrain.posture : '')]);
       if (terrain.headline) lines.push(['Read', terrain.headline]);
     }
     var zones = (snap && snap.zones) || [], sl = snap && snap.spot_location;   // served

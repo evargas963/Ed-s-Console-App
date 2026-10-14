@@ -26,8 +26,8 @@ const TERRAIN = { ticker: 'SPY', spot: SPOT, gamma_flip: 768, call_wall: 775, pu
   pcr_by_expiry: { '2026-09-25': 1.1, '2026-10-02': null, '2026-10-09': 0.9 }, atm_iv_pct_by_expiry: { '2026-09-25': 14.2, '2026-10-02': 15.1 } };
 const LEVELS = { ticker: 'SPY', spot: SPOT, tf: '30', generation: 1, vwap_series: [],
   levels: [
-    { id: 'PDH', price: 773.5, family: 'prior_day', label: 'Prior Day High', short: 'PDH', evidence_tier: 'MEASURED', distance: 2.2, side: 'ABOVE', },
-    { id: 'max_pain', price: 770, family: 'gamma', label: 'Max pain', short: 'Max pain', evidence_tier: 'DERIVED', distance: -1.3, side: 'BELOW', },
+    { id: 'PDH', price: 773.5, family: 'prior_day', label: 'Prior Day High', short: 'PDH', evidence_tier: 'MEASURED', distance: 2.2, gap: 2.2, side: 'ABOVE', },
+    { id: 'max_pain', price: 770, family: 'gamma', label: 'Max pain', short: 'Max pain', evidence_tier: 'DERIVED', distance: -1.3, gap: 1.3, side: 'BELOW', },
   ],
   by_distance: ['max_pain', 'PDH'], families_absent: [], degraded: [],
   volume_profile: { basis: 'RTH 1-minute bars, each bar\'s volume spread evenly over its range (not trade prints)', tick_size: 0.01,
@@ -198,13 +198,19 @@ test.describe('Trade Desk renders served values', () => {
     expect(errs).toEqual([]);
   });
 
-  test('Desk: the levels are drawn when they arrive, not held for the event queue', async ({ page }) => {
-    // 2026-09-29 14:52 CT, deployed: QQQ's levels answered in 28 ms and were drawn after 1.34 s,
-    // when /api/desk/events answered
+  test('Desk: the levels and the event queue of one change are drawn together', async ({ page }) => {
+    // operator 2026-10-13: one producer, read once per change, every consumer the same value --
+    // a change's answers are drawn together, never one change's levels beside another's queue.
+    // (2026-09-29 14:52 CT, deployed: /api/desk/events took 1.34 s; its speed is the SPEED item.)
     const errs = watchErrors(page);
-    await page.route('**/api/**', (route) => {
+    let answerEvents;
+    const events = new Promise((r) => { answerEvents = r; });
+    await page.route('**/api/**', async (route) => {
       const url = route.request().url();
-      if (url.includes('/api/desk/events')) return;               // the event queue has not answered
+      if (url.includes('/api/desk/events')) {
+        await events;                                             // the event queue answers late
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(Object.assign({}, EVENTS, { tf: '5' })) });
+      }
       let body = url.includes('/api/expiries') ? expiriesAnswer([]) : { available: false };
       if (url.includes('/api/levels')) body = LEVELS;
       else if (url.includes('/api/bars1m')) body = BARS;
@@ -213,8 +219,12 @@ test.describe('Trade Desk renders served values', () => {
     await routeWatchlist(page, ['SPY']);
     await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart.levelsShown)).toBeGreaterThan(0);
     await expect(page.locator('#tdmQueue')).toContainText('Loading');
+    await page.waitForTimeout(500);
+    expect(await page.evaluate(() => window.EdTradeDeskMap.state().chart.levelsShown)).toBe(0);   // held with the queue
+    answerEvents();
+    await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart.levelsShown)).toBeGreaterThan(0);
+    await expect(page.locator('#tdmQueue .tdm-q')).toHaveCount(EVENTS.items.length);
     expect(errs).toEqual([]);
   });
 
@@ -322,14 +332,14 @@ test.describe('Trade Desk renders served values', () => {
     const before = barReads.length;
     await page.evaluate((spot) => {
       for (let i = 0; i < 3; i++) window.dispatchEvent(new CustomEvent('ed:quote_tick', { detail: { ticker: 'SPY', spot: spot + i / 100,
-        spot_disp: (spot + i / 100).toFixed(2), feed_live: true, trade_age_sec: 1 } }));
+        spot_disp: (spot + i / 100).toFixed(2), feed_live: true, trade_time_ct: 'Fri 09/25 09:21 AM CT' } }));
     }, SPOT);
     const chartState = () => page.evaluate(() => window.EdTradeDeskMap.state().chart);
     await expect.poll(async () => (await chartState()).livePrice).toBeCloseTo(SPOT + 0.02, 6);
-    expect((await chartState()).liveTitle).toBe('LAST · 1s');
+    expect((await chartState()).liveTitle).toBe('LAST · Fri 09/25 09:21 AM CT');   // Schwab's trade time
     expect((await chartState()).bars).toBe(BARS.bars.length);          // the candles are untouched
     await page.evaluate(() => window.dispatchEvent(new CustomEvent('ed:quote_tick', { detail: { ticker: 'SPY', spot: null,
-      spot_disp: null, feed_live: false, trade_age_sec: null } })));
+      spot_disp: null, feed_live: false, trade_time_ct: null } })));
     await expect.poll(async () => (await chartState()).livePrice).toBeNull();   // Schwab sent no price: no line
     await page.waitForTimeout(1500);
     expect(barReads.length).toBe(before);
@@ -540,8 +550,8 @@ test.describe('Trade Desk renders served values', () => {
 
   test('Market Map: 3m, line mode, a level beyond the visible range pinned at the edge, and the FORCES split', async ({ page }) => {
     const errs = watchErrors(page);
-    const far = { id: 'grc', price: 837.58, family: 'gamma', label: 'GRC', short: 'GRC', evidence_tier: 'DERIVED', distance: 66.28, side: 'ABOVE', };
-    const wall = { id: 'call_wall', price: 772, family: 'gamma', label: 'Call wall', evidence_tier: 'DERIVED', distance: 0.7, side: 'ABOVE', };
+    const far = { id: 'grc', price: 837.58, family: 'gamma', label: 'GRC', short: 'GRC', evidence_tier: 'DERIVED', distance: 66.28, gap: 66.28, side: 'ABOVE', };
+    const wall = { id: 'call_wall', price: 772, family: 'gamma', label: 'Call wall', evidence_tier: 'DERIVED', distance: 0.7, gap: 0.7, side: 'ABOVE', };
     await page.route('**/api/**', (route) => {
       const url = route.request().url();
       let body = url.includes('/api/expiries') ? expiriesAnswer([]) : { available: false };

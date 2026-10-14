@@ -52,7 +52,8 @@ test('the Book panel shows each served wall candidate size', async ({ page }) =>
     wall_candidates: [{ side: 'bid', price: 440.5, volume: 12500, median_mult: 6.2 }] };
   await page.route('**/api/**', (route) => {
     const url = route.request().url();
-    const body = url.includes('/api/order-flow/microstructure') ? BOOK : { available: false };
+    const body = url.includes('/api/order-flow/microstructure') ? BOOK
+      : url.includes('/api/expiries') ? expiriesAnswer([]) : { available: false };
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
   await routeWatchlist(page, ['TSLA']);

@@ -87,7 +87,7 @@
     }
     c.setLevels(lv);
     var spot = liveSpot();
-    c.setLivePrice(spot, _liveQuote && spot != null ? _liveQuote.trade_age_sec : null);
+    c.setLivePrice(spot, _liveQuote && spot != null ? _liveQuote.trade_time_ct : null);
     var empty = host.querySelector('.gchart-empty');
     empty.hidden = !!(bars.length || win.length);
     empty.textContent = empty.hidden ? '' : (barsD || sd ? 'no bars / per-strike ' + prof.name + ' for this symbol'

@@ -100,9 +100,13 @@ async def _panels(ws, names):
     """The pushed answer of each of `names` (and of any other panel pushed meanwhile), by name."""
     got = {}
     while not set(names) <= set(got):
-        msg = await _next(ws, "panel")
-        got[msg["panel"]] = msg
+        got.update(_by_name(await _next(ws, "panels")))
     return got
+
+
+def _by_name(frame):
+    """One change's answers ({"type": "panels"}), each with the view it is for, by panel name."""
+    return {p["panel"]: {**p, "seq": frame["seq"]} for p in frame["panels"]}
 
 
 def test_the_view_gets_each_panel_on_screen_with_its_routes_own_answer_and_again_on_a_change_that_moves_it(published):
@@ -119,13 +123,14 @@ def test_the_view_gets_each_panel_on_screen_with_its_routes_own_answer_and_again
                     assert (m["seq"], m["status"]) == (1, 200)
                     served = (await http.get(m["source"])).json()
                     assert _at_answer_time(m["body"]) == _at_answer_time(served), f"{name} is not its route's own answer"
-            # a levels publication moves both again; the books move the terrain (it serves the
-            # live price) but not the gamma surface
+            # a levels publication moves both again; so does the live price (`flow`): every panel
+            # with a value derived from it, in one frame -- but not the expiry list
             push_changes.changed(TK, push_changes.LEVELS)
             assert {"gamma.surface", "gamma.terrain"} <= set(await _panels(ws, ["gamma.surface", "gamma.terrain"]))
             push_changes.changed(TK, push_changes.FLOW)
-            moved = await _panels(ws, ["gamma.terrain"])
-            assert "gamma.surface" not in moved
+            frame = _by_name(await _next(ws, "panels"))
+            assert {"gamma.surface", "gamma.terrain", "gamma.strikes", "gamma.tape"} <= set(frame)
+            assert "expiries" not in frame
     _console(body)
 
 
@@ -186,8 +191,8 @@ def test_an_answer_the_view_moved_on_from_is_never_sent(published):
                     m = json.loads(await asyncio.wait_for(ws.recv(), 0.2))
                 except TimeoutError:
                     break
-                if m["type"] == "panel":
-                    after[m["panel"]] = m
+                if m["type"] == "panels":
+                    after.update(_by_name(m))
             assert after["chain"]["seq"] == 2
             assert set(after) <= {"chain", "expiries", "watchlist"}, f"a panel off screen was pushed: {sorted(after)}"
     _console(body)

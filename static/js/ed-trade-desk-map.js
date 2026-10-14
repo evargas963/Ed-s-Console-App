@@ -347,7 +347,7 @@
           bs !== false ? 'warn' : (sd === 'BID' ? 'up' : sd === 'ASK' ? 'dn' : ''));
         // the imbalance when both sides carry levels; the depth Schwab sent is shown either way
         var imb = d5.imbalance == null ? null : Number(d5.imbalance);
-        c.querySelector('.tdm-hero').innerHTML = imb == null ? '' : '<span class="' + (imb >= 0 ? 'up' : 'dn') + '">' + (imb >= 0 ? '+' : '') + num(imb * 100, 1) + '%</span> <small>depth imbalance, 5 levels</small>';
+        c.querySelector('.tdm-hero').innerHTML = imb == null ? '' : '<span class="' + (imb >= 0 ? 'up' : 'dn') + '">' + (imb >= 0 ? '+' : '') + num(imb, 3) + '</span> <small>depth imbalance, 5 levels</small>';
         src(c, 'Schwab ' + esc(m.venue) + ' · book ' + (bs === false ? age(m.ages.book_age_sec) + ' old' : bs ? 'not live' : 'age unknown'));
         c.querySelector('.tdm-rows').innerHTML = row('Bid / ask depth (5)', (d5.bid_total != null ? fmtVol(d5.bid_total) : '—') + ' / ' + (d5.ask_total != null ? fmtVol(d5.ask_total) : '—')) +
           row('Spread', m.spread_pts != null ? num(m.spread_pts, 2) : '—');
@@ -376,10 +376,10 @@
         src(c, 'Schwab option chain · ' + (t === undefined ? 'loading…' : esc((t && t.error) || 'terrain request failed')));
         c.querySelector('.tdm-rows').innerHTML = '';
       } else {
-        var reg = String(t.regime || '').replace(/_/g, ' ');
-        state(c, reg || '—', t.levels_stale ? 'warn' : (/LONG/.test(t.regime || '') ? 'up' : /SHORT/.test(t.regime || '') ? 'dn' : ''));
+        var reg = window.EdGamma.regime(t.regime).t;
+        state(c, reg, t.levels_stale ? 'warn' : (/LONG/.test(t.regime || '') ? 'up' : /SHORT/.test(t.regime || '') ? 'dn' : ''));
         var ng = t.net_gex_at_spot;   // absent is uncoloured, never read as 0
-        c.querySelector('.tdm-hero').innerHTML = '<span class="' + (ng == null ? '' : ng >= 0 ? 'up' : 'dn') + '">' + usd(ng) + '</span> <small>net dealer gamma at spot, per 1%</small>';
+        c.querySelector('.tdm-hero').innerHTML = '<span class="' + (ng == null ? '' : ng >= 0 ? 'up' : 'dn') + '">' + (ng == null ? '—' : window.EdGamma.formatUsd(ng)) + '</span> <small>net dealer gamma at spot, per 1%</small>';
         src(c, 'Schwab option chain · ' + (t.levels_stale ? 'stale ' + age(t.levels_age_sec) : age(t.levels_age_sec) + ' old'));
         c.querySelector('.tdm-rows').innerHTML = row('Call wall', num(t.call_wall), 'up') + row('Put wall', num(t.put_wall), 'dn') +
           row('Flip', num(t.gamma_flip)) + row('P/C OI', num(t.pcr_all, 2)) + row('Max pain', num(t.max_pain)) +
@@ -465,7 +465,7 @@
     h += m === undefined ? pill('BOOK', '…', '') : !m ? pill('BOOK', 'FAILED', 'bad') : m.status === 'no_book' ? pill('BOOK', 'NONE', 'warn', 'no ' + m.venue)
       : pill('BOOK', m.ages && m.ages.book_stale === false ? age(m.ages.book_age_sec) : m.ages && m.ages.book_stale ? 'STALE' : 'AGE UNKNOWN',
           m.ages && m.ages.book_stale === false ? 'ok' : 'bad');
-    var la = L && L.snapshot_as_of_ts_utc ? Date.now() / 1000 - L.snapshot_as_of_ts_utc : null;
+    var la = L ? L.snapshot_age_sec : null;   // served: the snapshot's age at the answer
     h += L === undefined ? pill('LEVELS', '…', '') : !L ? pill('LEVELS', 'FAILED', 'bad') : pill('LEVELS', age(la), (L.degraded && L.degraded.length) ? 'warn' : 'ok', 'session levels snapshot age');
     h += t === undefined ? pill('GAMMA', '…', '') : !t || t.error ? pill('GAMMA', 'DOWN', 'bad', (t && t.error) || 'terrain request failed') : pill('GAMMA', t.levels_stale ? 'STALE ' + age(t.levels_age_sec) : age(t.levels_age_sec), t.levels_stale ? 'warn' : 'ok', t.levels_stale_reason || '');
     host.innerHTML = h;
@@ -518,7 +518,7 @@
       paintHeader();
       if (q.ticker === st().key) {
         paintTrust();
-        if (S.chart) S.chart.setLivePrice(q.spot, q.trade_age_sec);
+        if (S.chart) S.chart.setLivePrice(q.spot, q.trade_time_ct);
         paintCards();   // the Order Flow card's Schwab fields, on every row
       }
     });

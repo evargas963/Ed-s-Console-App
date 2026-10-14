@@ -12,6 +12,7 @@ import asyncio
 import logging
 from logging.handlers import RotatingFileHandler
 import contextlib
+import contextvars
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
@@ -280,11 +281,52 @@ def _install_signal_handlers() -> None:
             log.debug("could not install handler for %s: %s", sig, e)
 
 
+@dataclass
+class _Round:
+    """One change of a ticker's values, read once: the clock and every input the console's answers
+    read (the price row, the feed's outage, the terrain publication, the price-level snapshot),
+    each the first time an answer asks, and the same for every answer of the round -- so every
+    panel and page shown that change gets values from the same reads (one producer, read once per
+    change)."""
+    now: float
+    reads: dict
+    lock: threading.Lock
+
+
+#: the round the answer being computed belongs to (none: a plain GET, which reads as it goes)
+_ROUND: "contextvars.ContextVar[_Round | None]" = contextvars.ContextVar("_ROUND", default=None)
+
+
+def _once(key: tuple, read):
+    """`read()`, once per round: every answer of the round gets the same value."""
+    r = _ROUND.get()
+    if r is None:
+        return read()
+    with r.lock:
+        if key not in r.reads:
+            r.reads[key] = read()
+        return r.reads[key]
+
+
+def _clock() -> float:
+    """A route's `now`: its round's (the change's), else the clock."""
+    r = _ROUND.get()
+    return time.time() if r is None else r.now
+
+
+def _clock_et() -> datetime:
+    return datetime.fromtimestamp(_clock(), ET)
+
+
 def resolve_spot(ticker: str, *, now: float) -> tuple[float | None, str, float | None]:
     """(spot, source, as_of_ts_utc): the daemon's price row's Schwab LAST_PRICE as sent and its
     trade time -- the value the header shows. In an open session (at `now`) with the feed down it
     is absent and `source` is the outage reason; while Closed the price as of the close stands
-    (docs/DATA_FLOW.md §2 D5); (None, "none", None) until Schwab has sent one."""
+    (docs/DATA_FLOW.md §2 D5); (None, "none", None) until Schwab has sent one. Read once per round."""
+    return _once(("spot", ticker_storage_key(ticker)), lambda: _read_spot(ticker, now))
+
+
+def _read_spot(ticker: str, now: float) -> tuple[float | None, str, float | None]:
     outage = lmp.outage(ticker, "LEVELONE_EQUITIES", now)
     if outage is not None:
         return None, outage, None
@@ -694,8 +736,11 @@ def terrain_cache_get(ticker: str, now: float) -> dict | None:
     (the production authority), never treat a missing levels_stale key as fresh.
     """
     tk = ticker_storage_key(ticker)
-    with _terrain_cache_lock:
-        raw = _terrain_cache.get(tk)
+
+    def read():
+        with _terrain_cache_lock:
+            return _terrain_cache.get(tk)
+    raw = _once(("terrain", tk), read)          # the publication, read once per round
     if raw is None:
         return None
     out = dict(raw)
@@ -1458,7 +1503,7 @@ def get_terrain_strikes(ticker: str = Query(...), scope: ScopeQuery = "auto", ce
                         shift: ShiftQuery = 0):
     """The per-strike panels' answer now (terrain_strikes_payload)."""
     return JSONResponse(terrain_strikes_payload(ticker_storage_key(_required_ticker(ticker)), scope, centre,
-                                                shift, time.time()))
+                                                shift, _clock()))
 
 
 def terrain_strikes_payload(tk: str, scope: str, centre, shift: int, now: float) -> dict:
@@ -1663,7 +1708,7 @@ def get_vanna_by_strike(ticker: str = Query(...), scope: ScopeQuery = "auto", ce
     """Per-strike dealer VANNA exposure from the published levels (net_vanna = call_vanna -
     put_vanna, aggregated across every expiry; no per-expiry surface yet)."""
     return JSONResponse(strike_bar_payload(ticker_storage_key(_required_ticker(ticker)), "_vanna_rows", scope,
-                                           centre, shift, time.time()))
+                                           centre, shift, _clock()))
 
 
 @app.get("/api/options/charm-by-strike")
@@ -1672,7 +1717,7 @@ def get_charm_by_strike(ticker: str = Query(...), scope: ScopeQuery = "auto", ce
     """Per-strike dealer CHARM exposure from the published levels' charm map (the charm walls'
     own): net_charm = call_charm - put_charm per strike, delta-shares/day."""
     return JSONResponse(strike_bar_payload(ticker_storage_key(_required_ticker(ticker)), "_charm_rows", scope,
-                                           centre, shift, time.time()))
+                                           centre, shift, _clock()))
 
 
 @app.get("/api/options/tape")
@@ -1751,7 +1796,7 @@ def get_order_flow_book_heatmap(ticker: str = Query(...),
 def get_forces(ticker: str = Query(...)):
     """The ticker's forces, as the levels producer computed them from its chain captures."""
     tk = ticker_storage_key(_required_ticker(ticker))
-    cached = terrain_cache_get(tk, time.time())
+    cached = terrain_cache_get(tk, _clock())
     forces = cached.get("_forces") if cached is not None else None
     return JSONResponse(forces if forces is not None else {
         "ticker": tk, "available": False, "reason": "no levels published for this ticker yet"})
@@ -1943,7 +1988,7 @@ def get_options_gamma_surface(ticker: str = Query(...), scope: ScopeQuery = "aut
     second source. Exposes chain/spot as-of, source, and stale/degraded so the UI can fail stale
     visibly."""
     return JSONResponse(gamma_surface_payload(ticker_storage_key(_required_ticker(ticker)), scope, centre,
-                                              shift, cols, expiry, now_et()))
+                                              shift, cols, expiry, _clock_et()))
 
 
 def gamma_surface_payload(tk: str, scope: str, centre, shift: int, cols: "int | None", expiry: "str | None",
@@ -2025,7 +2070,7 @@ def gamma_surface_payload(tk: str, scope: str, centre, shift: int, cols: "int | 
 def get_terrain(ticker: str = Query(...)):
     """The ticker's published levels."""
     tk = ticker_storage_key(_required_ticker(ticker))   # RC-126: SPX -> $SPX etc., ONE authority
-    at = now_et()
+    at = _clock_et()
     cached = terrain_cache_get(tk, at.timestamp())
     if cached is not None:
         # the levels as the producer published them, every at-spot value computed at the
@@ -2079,7 +2124,7 @@ def get_desk_events(ticker: str = Query(...),
                     venue: str = Query(..., pattern=r"^(NYSE_BOOK|NASDAQ_BOOK)$"),
                     tf: Annotated[str, Query(pattern=r"^(1|3|5|15|30|60|D)$")] = "30"):
     """The Trade Desk's attention queue at this moment (desk_events_payload)."""
-    return JSONResponse(desk_events_payload(ticker_storage_key(_required_ticker(ticker)), venue, tf, now_et()))
+    return JSONResponse(desk_events_payload(ticker_storage_key(_required_ticker(ticker)), venue, tf, _clock_et()))
 
 
 def desk_events_payload(tk: str, venue: str, tf: str, now: datetime) -> dict:
@@ -2114,7 +2159,7 @@ def desk_events_payload(tk: str, venue: str, tf: str, now: datetime) -> dict:
         if t.get(f"{side}_wall_state") == "breached":
             items.append({"key": key, "ts": tts, "dom": "OPTIONS", "dir": "up" if side == "call" else "down",
                           "title": f"Spot through the {word} wall",
-                          "detail": f"{word} wall {_f2(t.get(f'{side}_wall'))} · spot {_f2(t.get('spot'))}",
+                          "detail": f"{word} wall {_f2(t.get(f'{side}_wall'))} · priced at spot {_f2(t.get('spot'))}",
                           "src": "/api/terrain"})
     if t.get("levels_stale"):
         items.append({"key": "ls", "ts": tts, "dom": "DATA", "dir": None, "warn": True,
@@ -2151,14 +2196,16 @@ CHANGES_SESSION_SEC = 5.0
 
 
 #: The kinds of change that move each route's answer (push_changes): the levels publication
-#: (_publish_levels), a new round of a ticker's chain, the books and option prints, the bars and
-#: the price levels built from them. A route that serves values derived from the live price at
-#: its answer's time (the spot, each level's distance, the chain's staleness) moves with every kind.
+#: (_publish_levels), a new round of a ticker's chain, the books, option prints and the equity's
+#: quote (`flow`: the live price), the bars and the price levels built from them. A route that
+#: serves values derived from the live price (the spot strike, each level's distance, the chain's
+#: in-the-money rows, the staleness) moves with every kind: every consumer of the spot is answered
+#: again on each change of it, from the same read.
 _EVERY_KIND = {"levels", "chain", "flow", "liquidity"}
 _ROUTE_KINDS = {
     "/api/terrain": _EVERY_KIND, "/api/terrain/strikes": _EVERY_KIND, "/api/forces": {"levels"},
-    "/api/options/gamma-surface": {"levels"}, "/api/options/vanna-by-strike": {"levels"},
-    "/api/options/charm-by-strike": {"levels"}, "/api/chain": {"levels", "chain"},
+    "/api/options/gamma-surface": _EVERY_KIND, "/api/options/vanna-by-strike": _EVERY_KIND,
+    "/api/options/charm-by-strike": _EVERY_KIND, "/api/chain": _EVERY_KIND,
     "/api/expiries": {"levels", "chain"}, "/api/levels": _EVERY_KIND,
     "/api/liquidity-snapshot": _EVERY_KIND, "/api/bars1m": {"liquidity"},
     "/api/desk/events": _EVERY_KIND,
@@ -2256,19 +2303,35 @@ async def _route_answer(url: str) -> dict:
     return {"status": r.status_code, "body": r.json()}
 
 
-#: Each route an open page shows: its answer's computation, and the count of changes it was
-#: computed at (push_changes.generation). One computation per route and count, however many
-#: panels and pages show it; computed again only when a change that moves it happened.
+#: Each route an open page shows: its answer's computation, and the change of its ticker it was
+#: computed for (push_changes.generation of every kind). One computation per route and change,
+#: however many panels and pages show it.
 _answers: dict[str, tuple[tuple, asyncio.Future]] = {}
+#: each ticker's current change and its round (_Round): every answer computed for that change
+#: reads the clock and its inputs once, together
+_rounds: dict[str, tuple[tuple, _Round]] = {}
 
 
-async def _answer(url: str, tk: str) -> dict:
-    """`url`'s current answer: the one already computed since the last change that moves it, else
-    a new computation that every page asking meanwhile shares."""
-    count = push_changes.generation(tk, _ROUTE_KINDS[url.split("?", 1)[0]])
+def _round(tk: Optional[str]) -> tuple[tuple, _Round]:
+    """`tk`'s current change and its round, begun the first time an answer of it is asked."""
+    change = push_changes.generation(tk, _EVERY_KIND)
+    held = _rounds.get(tk)
+    if held is None or held[0] != change:
+        held = _rounds[tk] = (change, _Round(now=time.time(), reads={}, lock=threading.Lock()))
+    return held
+
+
+async def _answer(url: str, tk: Optional[str]) -> dict:
+    """`url`'s answer for its ticker's current change: the one already computed for it, else a new
+    computation, in the change's round, that every panel and page asking meanwhile shares."""
+    change, rnd = _round(tk)
     held = _answers.get(url)
-    if held is None or held[0] != count:
-        held = _answers[url] = (count, asyncio.ensure_future(_route_answer(url)))
+    if held is None or held[0] != change:
+        token = _ROUND.set(rnd)                    # the computation's task carries the round
+        try:
+            held = _answers[url] = (change, asyncio.ensure_future(_route_answer(url)))
+        finally:
+            _ROUND.reset(token)
     return await asyncio.shield(held[1])
 
 
@@ -2276,13 +2339,13 @@ async def _answer(url: str, tk: str) -> dict:
 async def live_values(ws: WebSocket):
     """The console's push to the page, one WebSocket. The page sends its view, the operator's
     selections, whenever one changes ({"op": "view", "view"}); it names no route. The console
-    decides the panels on screen for it (_panels) and pushes each one's answer by name
-    ({"type": "panel", "panel", "seq" (the view it is for), "source" (the route that computed
-    it), "kinds", "status", "body"}): at once for each panel the view moved (named first, in the
-    console's answer to the view: {"type": "view", "seq", "moved", "shown" (every panel on screen)}),
-    and again whenever a kind of
-    change that moves it (_ROUTE_KINDS) happens for the ticker. An answer the view moved on from
-    is never sent. The market session label at the start and when nothing changed for CHANGES_SESSION_SEC
+    decides the panels on screen for it (_panels) and pushes each one's answer by name, the
+    answers of one change together ({"type": "panels", "seq" (the view they are for), "panels":
+    [{"panel", "source" (the route that computed it), "kinds", "status", "body"}]}), each
+    computed in the change's one round (_Round): at once for each panel the view moved (named
+    first, in the console's answer to the view: {"type": "view", "seq", "moved", "shown" (every
+    panel on screen)}), and again whenever a kind of change that moves it (_ROUTE_KINDS) happens
+    for the ticker. An answer the view moved on from is never sent. The market session label at the start and when nothing changed for CHANGES_SESSION_SEC
     ({"type": "session", "label"}). The open connection is the page: a ticker an open page shows
     is repriced on its ticks (push_changes.watched). Every page reconnects after a console
     restart."""
@@ -2295,15 +2358,15 @@ async def live_values(ws: WebSocket):
         await ws.send_text(json.dumps(payload, separators=(",", ":"), default=str))
 
     async def show(names: list[str]) -> None:
-        for name in names:
-            url = client.panels.get(name)
-            if url is None:
-                continue
-            a = await _answer(url, page["ticker"])
-            async with send_lock:
-                if client.panels.get(name) == url:       # still on screen for the page's view
-                    await text({"type": "panel", "panel": name, "seq": page["seq"], "source": url,
-                                "kinds": sorted(_ROUTE_KINDS[url.split("?", 1)[0]]), **a})
+        # every answer of the change at once, in its one round; sent in one frame, so the page
+        # draws them together
+        want = [(n, client.panels[n]) for n in names if n in client.panels]
+        answers = await asyncio.gather(*(_answer(u, page["ticker"]) for _n, u in want))
+        async with send_lock:
+            out = [{"panel": n, "source": u, "kinds": sorted(_ROUTE_KINDS[u.split("?", 1)[0]]), **a}
+                   for (n, u), a in zip(want, answers) if client.panels.get(n) == u]   # still on screen
+            if out:
+                await text({"type": "panels", "seq": page["seq"], "panels": out})
 
     async def push() -> None:
         while True:
@@ -2352,7 +2415,7 @@ def _forget_unshown() -> None:
 @app.get("/api/order-flow/microstructure")
 def api_order_flow_microstructure(ticker: str = Query(...),
                                   venue: str = Query(..., pattern=r"^(NYSE_BOOK|NASDAQ_BOOK)$")):
-    return JSONResponse(order_flow_microstructure(ticker, venue, time.time()))
+    return JSONResponse(order_flow_microstructure(ticker, venue, _clock()))
 
 
 def order_flow_microstructure(ticker: str, venue: str, now: float) -> dict:
@@ -2370,8 +2433,9 @@ def order_flow_microstructure(ticker: str, venue: str, now: float) -> dict:
     data: dict = {"content": get_content_for_symbol(t, venue), "prints": TAPE.prints(t)}
     # top of book: the daemon's price row; absent with the outage reason when its feed is down
     # in an open session, the values as of the close while Closed (docs/DATA_FLOW.md §2 D5)
-    top_outage = lmp.outage(t, "LEVELONE_EQUITIES", now)
-    _row = _lpr.price_row(t, now) if top_outage is None else None
+    top_outage, _row = _once(("top", t), lambda: (lmp.outage(t, "LEVELONE_EQUITIES", now),
+                                                  _lpr.price_row(t, now)))     # once per round
+    _row = _row if top_outage is None else None
     if _row and _row.get("quote_ts") is not None:
         data["exchange_quote_ts"] = _row["quote_ts"]
     data["top"] = ({k: _row.get(k) for k in ("bid", "ask", "bid_size", "ask_size", "mark")}
@@ -2402,7 +2466,7 @@ def api_order_flow_options_microstructure(contract: str = Query(...)):
     c = (contract or "").strip()
     if not c:
         return JSONResponse({"error": "contract is required"}, status_code=400)
-    return JSONResponse(options_microstructure(c, time.time()))
+    return JSONResponse(options_microstructure(c, _clock()))
 
 
 def options_microstructure(c: str, now: float) -> dict:
@@ -2423,7 +2487,7 @@ def options_microstructure(c: str, now: float) -> dict:
 def get_watchlist():
     """The watchlist, the one list of tickers Schwab is asked for, as the capture daemon (its
     keeper) last reported it; 503 with the reason while its status is not current."""
-    tickers = _watchlist(time.time())
+    tickers = _watchlist(_clock())
     if tickers is None:
         return JSONResponse({"error": "the capture daemon is not reporting (no current heartbeat): "
                                       "its watchlist is unknown"}, status_code=503)
@@ -2479,7 +2543,7 @@ def get_expiries(ticker: str = Query(...)):
     """The ticker's listed expiries with each one's dropdown label (MM/DD/YYYY and Schwab's
     daysToExpiration, as sent); with none, the levels' own reason."""
     ticker = ticker_storage_key(_required_ticker(ticker))   # SPX -> $SPX: the cache's own key
-    now = time.time()
+    now = _clock()
     t = terrain_cache_get(ticker, now)
     if t is None:
         return JSONResponse({"expiries": [], "dte": {}, "labels": {},
@@ -2505,7 +2569,7 @@ def get_chain(ticker: str = Query(...),
     times (`fieldTimes`). Every watchlist ticker's chain is kept. Answers `status: unavailable`
     with a reason when no chain is held."""
     t = ticker_storage_key(_required_ticker(ticker))
-    now = time.time()
+    now = _clock()
     held = terrain_cache_get(t, now)
     listed = held.get("expiries") if held is not None else None
     requested = expiry.strip()[:10] if expiry else None
@@ -2799,8 +2863,8 @@ def canonical_price_level_snapshot(ticker: str, now: datetime):
     Every server surface reads this; none computes a level."""
     from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS
 
-    return _MATERIALIZED_SNAPSHOTS.get((ticker_storage_key(_required_ticker(ticker)),
-                                        market_session_date(now).isoformat()))
+    key = (ticker_storage_key(_required_ticker(ticker)), market_session_date(now).isoformat())
+    return _once(("price_levels",) + key, lambda: _MATERIALIZED_SNAPSHOTS.get(key))   # once per round
 
 
 #: why a route serves no price levels for a ticker
@@ -2825,7 +2889,7 @@ GAMMA_LEVELS = (("call_wall", "Call wall"), ("put_wall", "Put wall"), ("gamma_fl
 def get_levels(ticker: str = Query(...),
                tf: Annotated[str, Query(pattern=r"^(1|3|5|15|30|60|D)$")] = "1"):
     """Single levels contract (schema v1): id/price/family/evidence_tier/provenance/staleness."""
-    return JSONResponse(levels_payload(ticker_storage_key(_required_ticker(ticker)), tf, now_et()))
+    return JSONResponse(levels_payload(ticker_storage_key(_required_ticker(ticker)), tf, _clock_et()))
 
 
 def levels_payload(tk: str, tf: str, now: datetime) -> dict:
@@ -2873,6 +2937,8 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict:
         # which side of spot, at the price's own two decimals (AT: prints as 0.00 away)
         row["side"] = (None if row["distance"] is None else "AT" if round(row["distance"], 2) == 0
                        else "ABOVE" if row["distance"] > 0 else "BELOW")
+        # how far, whichever side (the page shows it beside `side`; it computes nothing)
+        row["gap"] = None if row["distance"] is None else abs(row["distance"])
     # the ladder in price order (highest first, unpriced last), and the order by distance to spot
     levels = (sorted((r for r in levels if r.get("price") is not None), key=lambda r: r["price"], reverse=True)
               + [r for r in levels if r.get("price") is None])
@@ -2896,6 +2962,8 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict:
         "spot_as_of_ts_utc": spot_ts,
         "generation": snap.generation if snap is not None else None,
         "snapshot_as_of_ts_utc": snap.as_of_ts_utc if snap is not None else None,
+        # the snapshot's age at the answer (the Desk's LEVELS pill)
+        "snapshot_age_sec": served_ts - snap.as_of_ts_utc if snap is not None and snap.as_of_ts_utc is not None else None,
         "bar_source": snap.bar_source if snap is not None else None,
         "levels": levels,
         "by_distance": by_distance,
@@ -3033,7 +3101,7 @@ def _spot_location(zones: list, spot) -> "dict | None":
 # setTimeout pollLiquiditySnapshot) and every 60s; it does a blocking Schwab bar fetch with
 # no await, so as async it stalled the event loop on each switch.
 def get_liquidity_snapshot(ticker: str = Query(...)):
-    return liquidity_snapshot(ticker, now_et())
+    return liquidity_snapshot(ticker, _clock_et())
 
 
 def liquidity_snapshot(ticker: str, now: datetime):
