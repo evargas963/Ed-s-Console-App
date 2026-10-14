@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 
 from math_levels import GAMMA_FLIP_TRUSTED
-from terrain_engine import TERRAIN_SCHEMA_VERSION, compute_terrain
+from terrain_engine import TERRAIN_SCHEMA_VERSION, TerrainSnapshot, at_spot, compute_terrain
 from tests.real_chains import CRWD, MRVL, SPY_0DTE
 
 NOW = SPY_0DTE.now
@@ -20,6 +20,12 @@ NOW = SPY_0DTE.now
 
 def _real_chain() -> tuple[list, float]:
     return SPY_0DTE.chain, SPY_0DTE.spot
+
+
+def _at_spot(snap: TerrainSnapshot, spot=None) -> dict:
+    """The values read from the spot for `snap`'s publication (terrain_engine.at_spot), at `spot`
+    (omitted: the spot it was priced at)."""
+    return at_spot(snap.to_dict(), snap.spot if spot is None else spot)
 
 
 def test_fails_closed_on_every_missing_input() -> None:
@@ -32,8 +38,9 @@ def test_fails_closed_on_every_missing_input() -> None:
         ("SPY", [{"strikePrice": 740}], 0.0),
     ):
         snap = compute_terrain(ticker, chain, spot, now=NOW)
-        assert snap.regime == "UNAVAILABLE"
-        assert snap.posture == "STAND_ASIDE"
+        read = _at_spot(snap)
+        assert read["regime"] == "UNAVAILABLE"
+        assert read["posture"] == "STAND_ASIDE"
         assert snap.gamma_flip is None
         assert snap.call_wall is None and snap.put_wall is None
         assert snap.error, "a refusal must state its reason"
@@ -48,8 +55,9 @@ def test_real_chain_produces_a_complete_payload() -> None:
     assert snap.schema_version == TERRAIN_SCHEMA_VERSION
     assert snap.contracts_used > 0
     assert snap.strikes_used > 0
-    assert snap.headline, "the operator always gets a sentence"
-    assert isinstance(snap.lines, list)
+    read = _at_spot(snap)
+    assert read["headline"], "the operator always gets a sentence"
+    assert isinstance(read["lines"], list)
 
 
 def test_levels_are_real_strikes_or_absent() -> None:
@@ -61,9 +69,10 @@ def test_levels_are_real_strikes_or_absent() -> None:
     snap = compute_terrain("SPY", chain, spot, now=NOW)
     strikes = {float(c["strikePrice"]) for c in chain if c.get("strikePrice") is not None}
 
+    levels = {**snap.to_dict(), **_at_spot(snap)}
     for name in ("call_wall", "put_wall", "absolute_gamma_strike", "pin_candidate",
                  "call_charm_wall", "put_charm_wall"):
-        value = getattr(snap, name)
+        value = levels[name]
         assert value is None or value in strikes, f"{name}={value} is not a chain strike"
     # RC-134: dead total-gamma twin removed — absolute_gamma_strike is the sole terrain
     # total-gamma level.
@@ -82,9 +91,10 @@ def test_narrow_0dte_slice_fails_closed_gate_retained() -> None:
     chain, spot = _real_chain()
     snap = compute_terrain("SPY", chain, spot, now=NOW)
     assert snap.profile, "the chain must price, so the NARROW gate (not an expiry) is tested"
-    assert snap.confidence != GAMMA_FLIP_TRUSTED
-    assert snap.regime == "UNAVAILABLE"
-    assert snap.posture == "STAND_ASIDE"
+    assert snap.flip_confidence != GAMMA_FLIP_TRUSTED
+    read = _at_spot(snap)
+    assert read["regime"] == "UNAVAILABLE"
+    assert read["posture"] == "STAND_ASIDE"
 
 
 def test_payload_is_json_serialisable() -> None:
@@ -93,7 +103,7 @@ def test_payload_is_json_serialisable() -> None:
     payload = compute_terrain("SPY", chain, spot, now=NOW).to_dict()
     round_tripped = json.loads(json.dumps(payload))
     assert round_tripped["ticker"] == "SPY"
-    assert "spot" in round_tripped and "confidence" in round_tripped
+    assert "spot" in round_tripped and "flip_confidence" in round_tripped
     assert "flip_diag" in round_tripped
 
 
@@ -129,7 +139,8 @@ def test_implied_one_day_move_matches_the_named_formula() -> None:
     em = compute_implied_one_day_move(chain, spot)
     assert em is not None
     sigma = (0.20 + 0.24) / 2.0
-    assert abs(em["points"] - spot * sigma * (1.0 / 252.0) ** 0.5) < 1e-4
+    band = _at_spot(TerrainSnapshot(ticker="X", spot=spot, implied_move_sigma=em))["implied_1d_move"]
+    assert abs(band["points"] - spot * sigma * (1.0 / 252.0) ** 0.5) < 1e-4
     assert em["iv_pct_atm"] == 22.0, "sigma must be the ATM call/put mean, Schwab percent /100"
     assert em["dte_used"] == 1
     assert "sqrt(1/252)" in em["method"], "the method label is part of the contract"
@@ -167,14 +178,14 @@ def test_real_chain_carries_the_sigma_band() -> None:
     """The 1-day band uses the first expiry at least a day out (2026-09-27): a same-day-only
     chain has none; the CRWD chain (9 days out, valued at its capture) has one."""
     chain, spot = _real_chain()
-    assert compute_terrain("SPY", chain, spot, now=NOW).implied_1d_move is None
+    assert _at_spot(compute_terrain("SPY", chain, spot, now=NOW))["implied_1d_move"] is None
     snap = compute_terrain("CRWD", CRWD.chain, CRWD.spot, now=CRWD.now)
-    em = snap.implied_1d_move
+    em = _at_spot(snap)["implied_1d_move"]
     assert em is not None, "the CRWD chain must yield a band (its ATM IV is present)"
     s = CRWD.spot
     # a one-day sigma is points, not pennies and not tens of percent of spot
     assert 0.0005 * s < em["points"] < 0.15 * s, em
-    assert "implied_1d_move" in snap.to_dict(), "the payload must carry the band to the chart"
+    assert snap.to_dict()["implied_move_sigma"] == snap.implied_move_sigma, "the payload carries the sigma"
 
 
 def test_every_expiry_carries_its_atm_iv_by_the_one_rule() -> None:
@@ -188,7 +199,7 @@ def test_every_expiry_carries_its_atm_iv_by_the_one_rule() -> None:
     assert list(by_exp) == sorted({c["expirationDate"][:10] for c in chain})
     assert list(snap.pcr_by_expiry) == list(by_exp), "both card lines run nearest expiry first"
     assert all(v is None or 0 < v < 1000 for v in by_exp.values())
-    em = snap.implied_1d_move
+    em = snap.implied_move_sigma
     front = min(c["daysToExpiration"] for c in chain if c["daysToExpiration"] >= 1)
     front_exp = {c["expirationDate"][:10] for c in chain if c["daysToExpiration"] == front}.pop()
     assert em is not None and by_exp[front_exp] == em["iv_pct_atm"]
@@ -274,7 +285,7 @@ def test_real_chain_carries_wall_states_in_payload() -> None:
     from terrain_engine import wall_geometry_state
     chain, spot = _real_chain()
     snap = compute_terrain("SPY", chain, spot, now=NOW)
-    d = snap.to_dict()
+    d = _at_spot(snap)
     assert d["call_wall_state"] == wall_geometry_state(spot, snap.call_wall, "call")
     assert d["put_wall_state"] == wall_geometry_state(spot, snap.put_wall, "put")
     assert d["call_wall_state"] in ("contains", "breached")
@@ -392,7 +403,7 @@ def test_unavailable_terrain_does_not_fabricate_pin_score_stamps() -> None:
     assert snap.absolute_gamma_gex_dollars is None
     assert snap.absolute_gamma_oi is None
     assert snap.book_oi_total is None
-    assert snap.pin_candidate is None, "no chain must never yield a pin claim"
-    assert snap.pin_candidate_blockers == [], (
-        "the unavailable path carries no gate evaluation — blockers stay empty, the whole "
-        "snapshot is the absence")
+    read = _at_spot(snap)
+    assert read["pin_candidate"] is None, "no chain must never yield a pin claim"
+    assert read["pin_candidate_blockers"] == ["completeness", "regime", "dte", "liquidity"], (
+        "with no chain every gate's input is absent, and each gate says so")

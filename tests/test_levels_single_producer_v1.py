@@ -123,12 +123,14 @@ def test_strikes_payload_carries_server_side_sums():
 
     import live_market_plane as lmp
     import server as srv
+    from terrain_engine import TerrainSnapshot
 
     tk = "ZZSUMS"
     with srv._terrain_cache_lock:
-        srv._terrain_cache[tk] = {"_per_strike": {"all": [[95.0, 10.0, 100], [105.0, -4.0, 50]],
+        srv._terrain_cache[tk] = {**TerrainSnapshot(ticker=tk, spot=100.0).to_dict(), "_strikes": [95.0, 105.0],
+                                  "_per_strike": {"all": [[95.0, 10.0, 100], [105.0, -4.0, 50]],
                                                   "near": [], "far": []},
-                                  "spot": 100.0, "computed_ts_utc": 1.0}
+                                  "computed_ts_utc": 1.0}
     lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True,
                                "held": {"LEVELONE_EQUITIES": [tk]}})
     price_sent(tk, 100.0, 1.0)

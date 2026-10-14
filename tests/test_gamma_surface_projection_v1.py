@@ -13,6 +13,7 @@ identity is exact).
 import json
 
 from server import project_gamma_surface
+from terrain_engine import listed_strikes
 from math_exposure_core import (bucket_metric, compute_exposures_by_strike, exposure_books,
                                 strike_oi_legs, strike_volume_legs)
 from tests.real_chains import MRVL
@@ -39,7 +40,7 @@ def _slice(chain: list[dict], exp: str) -> list[dict]:
 
 def _surface(chain: list[dict], spot: float) -> dict:
     """The grid as _publish_levels builds it: shaped from the chain's exposure_books."""
-    return project_gamma_surface(chain, exposure_books(chain, spot=spot, now=NOW))
+    return project_gamma_surface(chain, exposure_books(chain, spot=spot, now=NOW), listed_strikes(chain))
 
 
 def _cell(surface, strike, expiry):
@@ -304,10 +305,10 @@ def test_the_chart_draws_the_heatmaps_own_dex_and_oi_per_strike():
 
     chain = _chain()
     snap = compute_terrain("MRVL", chain, SPOT, now=NOW)
-    surface = project_gamma_surface(chain, snap.books)
+    surface = project_gamma_surface(chain, snap.books, listed_strikes(chain))
     with server._terrain_cache_lock:
-        server._terrain_cache["MRVL"] = {"ticker": "MRVL", "spot": snap.spot, "computed_ts_utc": time.time(),
-                                         "_per_strike": snap.per_strike}
+        server._terrain_cache["MRVL"] = {**snap.to_dict(), "computed_ts_utc": time.time(),
+                                         "_strikes": listed_strikes(chain), "_per_strike": snap.per_strike}
     try:
         measures = json.loads(server.get_terrain_strikes(ticker="MRVL", scope="all").body)["measures"]
     finally:

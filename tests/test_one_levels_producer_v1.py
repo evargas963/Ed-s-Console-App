@@ -31,7 +31,7 @@ import server
 from calibration.complete_chain_capture import CAPTURE_BASIS, persist_complete_chain_capture
 from math_exposure_core import bucket_metric, merge_exposure_books
 from stream_spine import MessageBus
-from terrain_engine import compute_terrain
+from terrain_engine import at_spot, compute_terrain, listed_strikes, on_strikes
 from tests.feed_live_helper import (daemon_holds, forget_price, ledger_open, no_daemon, price_sent,
                                     through_the_daemons_bus)
 from tests.real_chains import CRWD
@@ -144,7 +144,11 @@ def test_heatmap_per_strike_rows_and_levels_are_one_computation():
     _daemon()
     snap = _put_chain()
     c = _cached()
-    assert c["_per_strike"] is snap.per_strike and c["_vanna_rows"] == server._vanna_rows(snap)
+    ks = listed_strikes(_CONTRACTS)                  # the one strike list every row is on
+    assert c["_strikes"] == ks
+    assert c["_per_strike"] == {n: on_strikes(rows, ks, 2 if n in ("dex", "oi") else 3)
+                                for n, rows in snap.per_strike.items()}
+    assert c["_vanna_rows"] == on_strikes(server._vanna_rows(snap), ks, 2)
     assert c["gamma_flip"] == snap.gamma_flip and c["call_wall"] == snap.call_wall
     full, _ = merge_exposure_books(snap.books.values())
     checked = 0
@@ -287,7 +291,9 @@ def test_a_released_contract_takes_its_next_rest_answer():
     requoted = dict(_CONTRACTS[0], quoteTimeInLong=int((_T + 2) * 1000))     # its next answer
     _publish([requoted], _T + 2)
     assert _as_sent(_served()[_A]) == requoted
-    assert _cached()["_per_strike"] == compute_terrain(TK, [requoted] + _CONTRACTS[1:], _SPOT, now=_AT).per_strike
+    chain = [requoted] + _CONTRACTS[1:]
+    assert _cached()["_per_strike"] == {n: on_strikes(rows, listed_strikes(chain), 2 if n in ("dex", "oi") else 3)
+                                        for n, rows in compute_terrain(TK, chain, _SPOT, now=_AT).per_strike.items()}
 
 
 def test_a_volume_only_tick_reaches_the_per_strike_volume_column():
@@ -383,7 +389,9 @@ def test_vanna_and_charm_by_strike_read_the_published_snapshot():
     _daemon(at=time.time())                              # live now, as the routes read it
     charm = json.loads(server.get_charm_by_strike(TK, scope="all").body)
     assert charm["available"] and charm["spot"] == snap.spot
-    assert len(charm["rows"]) == sum(1 for b in snap.charm_by_strike.values() if b.get("net_charm") is not None)
+    assert [r[0] for r in charm["rows"]] == listed_strikes(_CONTRACTS)      # the one strike list
+    assert sum(1 for r in charm["rows"] if r[1] is not None) == sum(
+        1 for b in snap.charm_by_strike.values() if b.get("net_charm") is not None)
     vanna = json.loads(server.get_vanna_by_strike(TK, scope="all").body)
     assert vanna["available"] and vanna["rows"]
 
@@ -399,16 +407,19 @@ def test_a_reprice_on_a_kept_chain_keeps_the_chains_time():
 
 def test_the_route_serves_the_publication_and_no_live_price_publishes_no_levels():
     """/api/terrain serves the levels exactly as the producer published them, none recomputed per
-    request, their spot labelled by its source and time. The next publication with no live price
+    request, their spot labelled by its source and time; what is read from the spot is read at
+    the live one (terrain_engine.at_spot; operator 2026-10-14), none with no price. The next publication with no live price
     has no levels, with its reason."""
     _daemon()
     _put_chain()
     published = _cached()
     _daemon(price=None)                                         # the price is no longer live
     out = server.get_terrain(ticker=TK)
-    for k in ("spot", "regime", "net_gex_at_spot", "call_wall", "call_wall_state", "call_wall_lean",
-              "dist_to_call_wall", "flip_relation", "headline"):
+    for k in ("spot", "net_gex_at_spot", "call_wall"):
         assert out[k] == published[k], k
+    read = at_spot(published, None)                             # with no price, none read from it
+    for k in ("regime", "call_wall_state", "call_wall_lean", "dist_to_call_wall", "flip_relation", "headline"):
+        assert out[k] == read[k], k
     assert "spot_state" not in out and out["spot_as_of_ts_utc"] == int(_T * 1000) / 1000   # Schwab's TRADE_TIME, in ms
     assert out["spot_source"] == server.SPOT_SOURCE_PLANE
     _put_chain()                                                # the next chain: no live price

@@ -25,7 +25,7 @@ import time_et
 from calibration.complete_chain_capture import ChainSweep
 from numeric_contract import schwab_count
 from option_ledger import GREEK_FIELDS
-from terrain_engine import compute_terrain
+from terrain_engine import compute_terrain, listed_strikes
 from tests.schwab_rest_standin import SPY, SPY_QUOTES, LocalSchwab, delivered
 
 _SPOT = float(SPY["spot"])
@@ -58,7 +58,7 @@ def _column(contracts: "list[dict]") -> dict:
     """The heatmap's 2026-11-20 column as the levels producer projects it: {strike: (cell's gex,
     its contracts)}."""
     snap = compute_terrain("SPY", contracts, _SPOT, now=_CAPTURED)
-    surface = server.project_gamma_surface(contracts, snap.books)
+    surface = server.project_gamma_surface(contracts, snap.books, listed_strikes(contracts))
     j = [e["expiry"] for e in surface["expirations"]].index("2026-11-20")
     by_k = {}
     for ct in contracts:

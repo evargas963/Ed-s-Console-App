@@ -16,7 +16,7 @@ from calibration.complete_chain_capture import CAPTURE_BASIS
 from instrument_identity import ticker_storage_key
 from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS
 from micro_structure import Candle
-from terrain_engine import compute_terrain
+from terrain_engine import at_spot, compute_terrain
 from tests.feed_live_helper import forget_price
 
 _FX = Path(__file__).resolve().parent / "fixtures"
@@ -141,11 +141,12 @@ def test_the_desk_event_feed_numbers_orders_and_counts_the_real_crosses():
 
 def _crwd_at(live):
     """The levels producer's snapshot on the real CRWD chain (tests/real_chains.py, valued at its
-    capture), priced at `live(base)` where base is the snapshot at the chain's own price
-    (stand-in live prices, named by each test)."""
+    capture, at the chain's own price) with the values read from the spot at `live(base)`
+    (terrain_engine.at_spot), base being that snapshot (stand-in live prices, named by each
+    test); `spot` is the live one."""
     from tests.real_chains import CRWD
     base = compute_terrain("CRWD", [dict(c) for c in CRWD.chain], CRWD.spot, now=CRWD.now).to_dict()
-    return compute_terrain("CRWD", [dict(c) for c in CRWD.chain], live(base), now=CRWD.now).to_dict()
+    return {**base, **at_spot(base, live(base)), "spot": live(base)}
 
 
 def test_wall_distances_and_flip_relation_are_served():
@@ -169,7 +170,7 @@ def test_a_breached_wall_says_so_at_the_live_price():
 def test_a_containing_wall_earns_the_dealer_lean_only_on_a_trusted_flip():
     out = _crwd_at(lambda b: (b["call_wall"] + b["put_wall"]) / 2)
     assert out["call_wall_state"] == out["put_wall_state"] == "contains"
-    earned = out["regime"] != "UNAVAILABLE" and out["confidence"] == "TRUSTED"
+    earned = out["regime"] != "UNAVAILABLE" and out["confidence"] == "TRUSTED" == out["flip_confidence"]
     assert out["call_wall_lean"] == ("DEALERS SELL" if earned else None)
     assert out["put_wall_lean"] == ("DEALERS BUY" if earned else None)
 
@@ -267,7 +268,7 @@ def test_levels_carry_the_gamma_family_into_the_one_distance_order(spy_levels):
 def test_a_same_day_chain_has_no_expected_move_and_says_why(spy_levels):
     """The SPY capture lists only the 0DTE expiry; the terrain's one-day move needs one a day out."""
     _spot, terrain, serve = spy_levels
-    assert terrain.get("implied_1d_move") is None
+    assert terrain["implied_move_sigma"] is None
     body = serve()
     assert not {"em_up", "em_dn"} & {r["id"] for r in body["levels"]}
     assert {"family": "expected_move", "reason": "the terrain has no implied 1-day move"} in body["families_absent"]
@@ -286,7 +287,7 @@ def test_the_expected_move_is_the_live_price_plus_and_minus_the_terrain_move():
     finally:
         _forget(DESK_EM)
     by_id = {r["id"]: r for r in body["levels"]}
-    em = terrain["implied_1d_move"]["points"]
+    em = at_spot(terrain, spot)["implied_1d_move"]["points"]      # at the live price
     assert by_id["em_up"]["price"] == spot + em and by_id["em_dn"]["price"] == spot - em
     assert by_id["em_up"]["family"] == by_id["em_dn"]["family"] == "expected_move"
     assert "expected_move" not in {f["family"] for f in body["families_absent"]}
