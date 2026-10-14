@@ -632,7 +632,7 @@ def test_d5_while_closed_levels_as_of_the_close_stand_and_older_ones_are_absent_
         assert st["levels_stale"] is True and st["levels_stale_reason"] == (
             "the options are closed and this ticker's close values have not been fetched"), st
         st = server.terrain_staleness(None, "ZZCLOSED", now=now)
-        assert st["levels_stale"] is True and st["levels_age_sec"] is None    # absent, not zero
+        assert st["levels_stale"] is True and st["as_of"] == {"levels": None}    # absent, not zero
     st = server.terrain_staleness(_et("2026-10-01 10:00"), "ZZCLOSED", now=_et("2026-10-01 11:00"))
     assert st["levels_stale"] is True and "has not delivered this ticker" in st["levels_stale_reason"], \
         "in session, an hour-old chain is a gap"

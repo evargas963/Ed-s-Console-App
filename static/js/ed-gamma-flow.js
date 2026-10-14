@@ -102,16 +102,17 @@
       ['Cum Δ slope (proxy)', num(flow.cum_delta_slope, 3), 'flow.cum_delta_slope', fk('cum_delta_slope')],
     ];
     var fh = plane.feed_health || {};   // served: the selected contract's three feeds
-    function svc(x) { return x ? (x.state || '—') + (x.age_sec != null ? ' · ' + num(x.age_sec, 1) + 's' : '') : '—'; }
+    // a feed's state and the served age of what it last received (`kind`: the answer's as_of)
+    function svc(x, kind) { return !x ? '—' : x.last_ts != null ? { pre: x.state + ' · ', ageOf: kind } : x.state; }
     var dim = ss.label === 'ACTIVE' ? '' : ' fl-dim';   // not-active data recedes (never presented as live)
     // Book/quote ages are the payload's own `ages` block (engine-stamped, classified); feed health
     // is the streaming plane — a binding/health fact with no classification (key undefined = no tag).
     var fresh = [
-      ['Book age', ages.book_age_sec != null ? Math.round(ages.book_age_sec) + 's' : '—', 'ages.book_age_sec', bk('ages.book_age_sec')],
-      ['Quote age', ages.quote_age_sec != null ? Math.round(ages.quote_age_sec) + 's' : '—', 'ages.quote_age_sec', bk('ages.quote_age_sec')],
+      ['Book age', d.as_of.book != null ? { pre: '', ageOf: 'book' } : '—', 'as_of.book', bk('as_of.book')],
+      ['Quote age', d.as_of.quote != null ? { pre: '', ageOf: 'quote' } : '—', 'as_of.quote', bk('as_of.quote')],
       ['Replay', fh.replay || '—', 'streaming_plane.feed_health.replay', undefined],
-      ['L1 upstream', svc(fh.l1), 'streaming_plane.feed_health.l1', undefined],
-      ['Book upstream', svc(fh.book), 'streaming_plane.feed_health.book', undefined],
+      ['L1 upstream', svc(fh.l1, 'l1_feed'), 'streaming_plane.feed_health.l1', undefined],
+      ['Book upstream', svc(fh.book, 'book_feed'), 'streaming_plane.feed_health.book', undefined],
     ];
     h.innerHTML = header(desired, ss, d && d.put_call) +
       '<div class="fl-grid">' +
@@ -151,7 +152,8 @@
   function section(title, rows, dim) {
     var h = '<div class="fl-sec' + dim + '"><div class="fl-sec-h">' + esc(title) + '</div>';
     rows.forEach(function (r) {
-      h += '<div class="fl-row" data-k="' + esc(r[2]) + '"><span class="k">' + esc(r[0]) + '</span><span class="v">' + esc(r[1]) +
+      var v = r[1] && r[1].ageOf ? esc(r[1].pre) + window.EdShell.ageSpan(r[1].ageOf) : esc(r[1]);   // a served age
+      h += '<div class="fl-row" data-k="' + esc(r[2]) + '"><span class="k">' + esc(r[0]) + '</span><span class="v">' + v +
         '</span>' + tag(r[3]) + '</div>';
     });
     return h + '</div>';

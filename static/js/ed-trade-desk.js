@@ -55,7 +55,8 @@
       '<div class="td-hero"><span class="' + dirCls + '">' + (dirGlyph ? dirGlyph + ' ' : '') + esc(hero) + '</span>' +
       (heroUnit ? '<span class="unit">' + esc(heroUnit) + '</span>' : '') + '</div>';
     rows.forEach(function (r) {
-      h += '<div class="fl-row"><span class="k">' + esc(r[0]) + '</span><span class="v">' + esc(r[1]) + '</span>' + tag(r[2]) + '</div>';
+      var v = r[1] && r[1].ageOf ? window.EdShell.ageSpan(r[1].ageOf) : esc(r[1]);   // a served age
+      h += '<div class="fl-row"><span class="k">' + esc(r[0]) + '</span><span class="v">' + v + '</span>' + tag(r[2]) + '</div>';
     });
     return h + '</div>';
   }
@@ -73,7 +74,7 @@
     ].concat(d.top_outage ? [['Top of book', 'NOT LIVE · ' + d.top_outage, null]] : []).concat([
       ['Spread (pts)', num(d.spread_pts), classOf(cls, 'spread_pts')],
       ['Depth 1 imbalance', num(dep(1, 'imbalance'), 3), classOf(cls, 'depth.*.imbalance')],
-      ['Book age', ages.book_age_sec != null ? Math.round(ages.book_age_sec) + 's' : '—', classOf(cls, 'ages.book_age_sec')],
+      ['Book age', d.as_of.book != null ? { ageOf: 'book' } : '—', classOf(cls, 'as_of.book')],
     ]);
     var heroVal = (imb == null || isNaN(imb)) ? '—' : (imb >= 0 ? '+' : '') + num(imb, 3);
     var side = dep(5, 'side');   // served: BID / ASK / EVEN by the imbalance's sign

@@ -45,14 +45,8 @@
     if (a >= 1e3) return (a / 1e3).toFixed(1) + 'K';
     return String(Math.round(a));
   }
-  function age(sec) {
-    if (sec == null || isNaN(sec)) return '—';
-    sec = Math.max(0, Number(sec));
-    if (sec < 90) return Math.round(sec) + 's';
-    if (sec < 5400) return Math.round(sec / 60) + 'm';
-    if (sec < 172800) return (sec / 3600).toFixed(1) + 'h';
-    return Math.round(sec / 86400) + 'd';
-  }
+  // an instant's age as the console's push labels it (`kind`: the answer's as_of; EdShell.ageSpan)
+  function age(kind) { return window.EdShell.ageSpan(kind); }
   function st() { return (window.EdShell && window.EdShell.getState()) || {}; }
   function onDesk() { var s = st(); return s.workspace === 'trade-desk' && s.subview === 'desk'; }
   // the instrument's served display name (the daemon's answer, EdShell state.display); as typed
@@ -341,7 +335,7 @@
         // the imbalance when both sides carry levels; the depth Schwab sent is shown either way
         var imb = d5.imbalance == null ? null : Number(d5.imbalance);
         c.querySelector('.tdm-hero').innerHTML = imb == null ? '' : '<span class="' + (imb >= 0 ? 'up' : 'dn') + '">' + (imb >= 0 ? '+' : '') + num(imb, 3) + '</span> <small>depth imbalance, 5 levels</small>';
-        src(c, 'Schwab ' + esc(m.venue) + ' · book ' + (bs === false ? age(m.ages.book_age_sec) + ' old' : bs ? 'not live' : 'age unknown'));
+        src(c, 'Schwab ' + esc(m.venue) + ' · book ' + (bs === false ? age('book') + ' old' : bs ? 'not live' : 'age unknown'));
         c.querySelector('.tdm-rows').innerHTML = row('Bid / ask depth (5)', (d5.bid_total != null ? fmtVol(d5.bid_total) : '—') + ' / ' + (d5.ask_total != null ? fmtVol(d5.ask_total) : '—')) +
           row('Spread', m.spread_pts != null ? num(m.spread_pts, 2) : '—');
       }
@@ -376,7 +370,7 @@
         state(c, reg, t.levels_stale ? 'warn' : (/LONG/.test(String(t.regime)) ? 'up' : /SHORT/.test(String(t.regime)) ? 'dn' : ''));
         var ng = t.net_gex_at_spot;   // absent is uncoloured, never read as 0
         c.querySelector('.tdm-hero').innerHTML = '<span class="' + (ng == null ? '' : ng >= 0 ? 'up' : 'dn') + '">' + (ng == null ? '—' : window.EdGamma.formatUsd(ng)) + '</span> <small>net dealer gamma at spot, per 1%</small>';
-        src(c, 'Schwab option chain · ' + (t.levels_stale ? 'stale ' + age(t.levels_age_sec) : age(t.levels_age_sec) + ' old'));
+        src(c, 'Schwab option chain · ' + (t.levels_stale ? 'stale ' + age('levels') : age('levels') + ' old'));
         c.querySelector('.tdm-rows').innerHTML = row('Call wall', num(t.call_wall), 'up') + row('Put wall', num(t.put_wall), 'dn') +
           row('Flip', num(t.gamma_flip)) + row('P/C OI', num(t.pcr_all, 2)) + row('Max pain', num(t.max_pain)) +
           row('Contracts', t.contracts_used != null ? t.contracts_used.toLocaleString() : '—') + forcesRows();
@@ -393,7 +387,7 @@
         state(c, 'ATM IV ' + num(im.iv_pct_atm, 1) + '%', '');
         c.querySelector('.tdm-hero').innerHTML = '±' + num(im.points, 2) + ' <small>implied 1-day move, 1σ</small>';
       }
-      src(c, 'Schwab option chain · ' + (!t || t.error ? '—' : age(t.levels_age_sec) + ' old'));
+      src(c, 'Schwab option chain · ' + (!t || t.error ? '—' : age('levels') + ' old'));
       c.querySelector('.tdm-rows').innerHTML =
         (im && im.dte_used != null ? row('Move from', 'first expiry ≥1 day out (' + num(im.dte_used, 0) + 'd)') : '') +
         row('ATR daily', t && t.atr_daily != null ? num(t.atr_daily) : esc((t && t.atr_daily_reason) || '—')) +
@@ -451,7 +445,11 @@
   }
 
   // ------------------------------------------------------------------ header trust + footer
-  function pill(lbl, val, cls, title) { return '<span class="tdm-pill ' + (cls || '') + '" title="' + esc(title || '') + '"><i></i>' + esc(lbl) + ' <b>' + esc(val) + '</b></span>'; }
+  // `val`: text, or {pre, ageOf} (a served age after `pre`)
+  function pill(lbl, val, cls, title) {
+    var v = val && val.ageOf ? esc(val.pre) + age(val.ageOf) : esc(val);
+    return '<span class="tdm-pill ' + (cls || '') + '" title="' + esc(title || '') + '"><i></i>' + esc(lbl) + ' <b>' + v + '</b></span>';
+  }
   function paintTrust() {
     var host = $('tdmTrust'); if (!host) return;
     var q = S.quotes[st().key], t = S.terrain, m = S.micro, L = S.levels;
@@ -459,11 +457,11 @@
     h += q ? pill('PRICE', q.feed_live ? 'LIVE' : 'OFFLINE', q.feed_live ? 'ok' : 'bad', q.feed_live ? 'the console\'s price row' : 'not live' + (q.outage ? ': ' + q.outage : ''))
       : pill('PRICE', 'WAITING', 'warn', 'no price row yet for this symbol');
     h += m === undefined ? pill('BOOK', '…', '') : !m ? pill('BOOK', 'FAILED', 'bad') : m.status === 'no_book' ? pill('BOOK', 'NONE', 'warn', 'no ' + m.venue)
-      : pill('BOOK', m.ages && m.ages.book_stale === false ? age(m.ages.book_age_sec) : m.ages && m.ages.book_stale ? 'STALE' : 'AGE UNKNOWN',
+      : pill('BOOK', m.ages && m.ages.book_stale === false ? { pre: '', ageOf: 'book' } : m.ages && m.ages.book_stale ? 'STALE' : 'AGE UNKNOWN',
           m.ages && m.ages.book_stale === false ? 'ok' : 'bad');
-    var la = L ? L.snapshot_age_sec : null;   // served: the snapshot's age at the answer
-    h += L === undefined ? pill('LEVELS', '…', '') : !L ? pill('LEVELS', 'FAILED', 'bad') : pill('LEVELS', age(la), (L.degraded && L.degraded.length) ? 'warn' : 'ok', 'session levels snapshot age');
-    h += t === undefined ? pill('GAMMA', '…', '') : !t || t.error ? pill('GAMMA', 'DOWN', 'bad', (t && t.error) || 'terrain request failed') : pill('GAMMA', t.levels_stale ? 'STALE ' + age(t.levels_age_sec) : age(t.levels_age_sec), t.levels_stale ? 'warn' : 'ok', t.levels_stale_reason || '');
+    // the session levels snapshot's served age
+    h += L === undefined ? pill('LEVELS', '…', '') : !L ? pill('LEVELS', 'FAILED', 'bad') : pill('LEVELS', L.as_of.snapshot == null ? '—' : { pre: '', ageOf: 'snapshot' }, (L.degraded && L.degraded.length) ? 'warn' : 'ok', 'session levels snapshot age');
+    h += t === undefined ? pill('GAMMA', '…', '') : !t || t.error ? pill('GAMMA', 'DOWN', 'bad', (t && t.error) || 'terrain request failed') : pill('GAMMA', { pre: t.levels_stale ? 'STALE ' : '', ageOf: 'levels' }, t.levels_stale ? 'warn' : 'ok', t.levels_stale_reason || '');
     host.innerHTML = h;
   }
   function paintFooter() {

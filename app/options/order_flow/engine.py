@@ -411,7 +411,7 @@ def _microstructure_structural(cb: dict) -> dict:
             "depth_pressure": "DERIVED", "book_slope": "DERIVED",
             "liquidity_concentration": "DERIVED",
             "wall_candidates": "DERIVED-HEURISTIC (size-outlier convention; see wall_method)",
-            "ages.book_age_sec": "DERIVED", "ages.quote_age_sec": "DERIVED",
+            "as_of.book": "NATIVE", "as_of.quote": "NATIVE",
             "ages.book_stale": "DERIVED",
             "provenance.book_time_ms": "NATIVE", "provenance.exchange_quote_ts": "NATIVE",
             "provenance.server_received_ts": "DERIVED",
@@ -459,13 +459,13 @@ def compute_book_microstructure(data: dict, *, now_ts: float,
     prov["server_received_ts"] = now                # DERIVED (server wall clock at serialization)
     payload.pop("provenance_structural", None)
     payload["provenance"] = prov
-    book_age_sec = now - book_time_ms / 1000.0 if book_time_ms else None
+    book_ts = book_time_ms / 1000.0 if book_time_ms else None
+    # the instants of the book's and the quote's ages (labelled by the console's push)
+    payload["as_of"] = {"book": book_ts, "quote": exch_ts}
     payload["ages"] = {
-        "book_age_sec": book_age_sec,
-        "quote_age_sec": now - exch_ts if exch_ts else None,
         # the live rule (live_market_plane.feed_live_for on the book's service), which the caller
         # passes as data["book_live"]; None with no book
-        "book_stale": None if book_age_sec is None else data.get("book_live") is not True,
+        "book_stale": None if book_ts is None else data.get("book_live") is not True,
     }
     return payload
 

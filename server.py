@@ -791,11 +791,12 @@ def terrain_staleness(computed_ts_utc: float | None, ticker: str | None = None, 
     failure = str(_terrain_refresh_last_error.get(
         ticker_storage_key(ticker) if ticker else "", "") or "")
     if computed_ts_utc is None:
-        return {"levels_stale": True, "levels_age_sec": None,
+        return {"levels_stale": True, "as_of": {"levels": None},
                 "levels_stale_reason": (f"no terrain snapshot has been computed yet — {failure}"
                                         if failure else "no terrain snapshot has been computed yet"),
                 "levels_failing": bool(failure), **token}
     age = now - float(computed_ts_utc)
+    as_of = {"levels": float(computed_ts_utc)}      # the age: labelled by the console's push (time_et.age_label)
     at = datetime.fromtimestamp(now, ET)
     closed = options_closed_at(at) if options_open(at) is False else None
     if closed is not None:
@@ -804,7 +805,7 @@ def terrain_staleness(computed_ts_utc: float | None, ticker: str | None = None, 
         if stale:
             reason = ("the options are closed and this ticker's close values have not been fetched"
                       + (f" — {failure}" if failure else ""))
-        return {"levels_stale": stale, "levels_age_sec": age, "levels_stale_reason": reason,
+        return {"levels_stale": stale, "as_of": as_of, "levels_stale_reason": reason,
                 "levels_failing": bool(stale and failure), **token}
     # judged against the round the daemon's chain sweep delivers (every watchlist ticker once)
     status = lmp.daemon_status(now)
@@ -817,12 +818,12 @@ def terrain_staleness(computed_ts_utc: float | None, ticker: str | None = None, 
     stale = age > stale_after
     reason = ""
     if stale:
-        reason = (f"levels are {age:.0f}s old and every chain since has failed — {failure}"
+        reason = (f"every chain since the levels has failed — {failure}"
                   if failure else
-                  f"levels are {age:.0f}s old; the daemon's chain sweep has not delivered this "
+                  "the daemon's chain sweep has not delivered this "
                   + (f"ticker in two of its rounds ({float(round_sec):.0f}s each)" if round_sec is not None
                      else f"ticker in {float(TERRAIN_STALE_AFTER_SEC):.0f}s (the daemon reports no round of its sweep)"))
-    return {"levels_stale": stale, "levels_age_sec": age, "levels_stale_reason": reason,
+    return {"levels_stale": stale, "as_of": as_of, "levels_stale_reason": reason,
             # actively FAILING is a different action (the chain fetch is erroring, the levels
             # will not come back on their own)
             "levels_failing": bool(stale and failure), **token}
@@ -919,13 +920,8 @@ def _stamp_gamma_surface_cell_stream_state(surface: dict, records: dict, now: fl
                     leg_state = "stale"
                 leg_states.append(leg_state)
                 ts_recv = record.times["streamTime"][1] if streamed else None
-                legs[side] = {
-                    "symbol": sym, "state": leg_state, "ts_recv": ts_recv,
-                    "age_sec": (now - ts_recv if ts_recv is not None else None),
-                }
+                legs[side] = {"symbol": sym, "state": leg_state, "ts_recv": ts_recv}
             legs["state"] = _stream_state_of(leg_states)
-            ages = [leg["age_sec"] for leg in legs.values() if isinstance(leg, dict) and leg["age_sec"] is not None]
-            legs["age_sec"] = max(ages) if ages else None   # the cell's oldest confirmed leg
             state_row.append(legs)
         cell["stream"] = state_row
     # each expiry column's state, from its cells' states -- the column header's streaming status
@@ -1512,7 +1508,6 @@ def terrain_strikes_payload(tk: str, scope: str, centre, shift: int, now: float)
     today = None
     measures: dict = {"dex": [], "oi": []}
     spot_used = None
-    today_age_sec = None
     # bound before the try: a failed cache read leaves the panels empty, never a 500
     _snap: dict = {}
     # today's per-strike rows: the published levels' own (_publish_levels' `_per_strike`,
@@ -1529,8 +1524,6 @@ def terrain_strikes_payload(tk: str, scope: str, centre, shift: int, now: float)
         if isinstance(_ps, dict) and _ps.get("all"):
             today = {k: (_ps.get(k) or []) for k in ("all", "near", "far")}
             spot_used = _snap.get("spot")
-            _cts_utc = _snap.get("computed_ts_utc")
-            today_age_sec = now - float(_cts_utc) if _cts_utc else None
             today_src = "terrain_live_cache"
     except Exception as e:
         log.debug("terrain strikes live read failed %s: %s", tk, e)
@@ -1596,9 +1589,8 @@ def terrain_strikes_payload(tk: str, scope: str, centre, shift: int, now: float)
         "max_abs_row": _max_abs_row(today.get("all")),
         "migration": migration,
         "today_source": today_src,
-        # the age of today's rows, for the panel's face
-        "today_age_sec": today_age_sec,
-        # whether the levels are still being published (a source is not freshness)
+        # whether the levels are still being published (a source is not freshness), and their
+        # instant (`as_of`: today's rows are the levels' own)
         **terrain_staleness(_snap.get("computed_ts_utc") if isinstance(_snap, dict) else None, tk, now=now),
         "prior": prior or {"all": [], "near": [], "far": []},
         "prior_source": prior_src,
@@ -2017,7 +2009,7 @@ def gamma_surface_payload(tk: str, scope: str, centre, shift: int, cols: "int | 
             "source": "terrain_live_cache", "live": True, "stale": stale,
             "degraded": live.get("levels_stale_reason") if stale else None,
             "chain_as_of_ts_utc": live.get("computed_ts_utc"),
-            "age_sec": live.get("levels_age_sec"),            # terrain's canonical age
+            "as_of": live["as_of"],                           # the levels' instant (terrain_staleness)
             "chain_basis": live.get("chain_basis"),
             **window,
             "view": view,
@@ -2348,6 +2340,21 @@ def _panels(v: dict) -> "dict[str, _Panel]":
     return out
 
 
+#: an answer that names no instant an age is shown of
+_NO_INSTANTS: dict = {}
+
+
+def _instants(body) -> dict:
+    """The instants whose ages answer `body` shows ({kind: as-of}, its `as_of`)."""
+    return body["as_of"] if isinstance(body, dict) and "as_of" in body else _NO_INSTANTS
+
+
+def _age_labels(instants: dict, now: float) -> dict:
+    """Each instant's age at `now` as every screen shows it (time_et.age_label, the one wording);
+    None for one not known. The page computes no age: it shows these."""
+    return {k: None if ts is None else age_label(now - float(ts)) for k, ts in instants.items()}
+
+
 def _not_live(p: _Panel, now: float) -> "str | None":
     """Why `p`'s value is not live at `now`: the one judgment (live_market_plane.outage) of each
     feed it is read from that is down, together; None while every one delivers (a change of one
@@ -2430,15 +2437,16 @@ async def live_values(ws: WebSocket):
     ({"type": "view", "seq", "moved", "shown" (every panel on screen)}) and pushes each one's answer
     by name the moment it is ready, never waiting for another ({"type": "panels", "seq" (the view it
     is for), "panels": [{"panel", "source" (its value's route), "kinds", "not_live" (why the value
-    is not live: the outage of each Schwab feed it is read from that is down, _not_live; else None), "status",
-    "body"}]}); again whenever a kind of change that moves it (_ROUTE_KINDS) happens for the
+    is not live: the outage of each Schwab feed it is read from that is down, _not_live; else None),
+    "ages" (the age of each instant its answer names, `as_of`, as the screen shows it: _age_labels),
+    "status", "body"}]}); again whenever a kind of change that moves it (_ROUTE_KINDS) happens for the
     ticker, a feed going down or coming back among them (streaming._mark_liveness). Every answer and
     row of one change is read from the change's one round (_Round); a panel is never sent an answer
     of an older change than the one it was sent, nor one the view moved on from.
 
     Every PUSH_BEAT_SEC the market session, each shown row's trade age and the daemon writer's
     line ({"type": "feed", "session", "ages": {key: its trade's age as the screen shows it,
-    time_et.age_label}, "writer"}); a row whose trade time moved carries its age (`trade_age`). The open connection is the page: a ticker an open page shows is repriced
+    time_et.age_label}, "as_of_ages": {kind: the age of each shown panel's instant}, "writer"}); a row whose trade time moved carries its age (`trade_age`). The open connection is the page: a ticker an open page shows is repriced
     on its ticks (push_changes.watched). Every page reconnects after a console restart."""
     from app.options.order_flow.streaming import note_liveness    # as the lifespan imports it
     await ws.accept()
@@ -2447,6 +2455,8 @@ async def live_values(ws: WebSocket):
     #: each symbol's row as the page was last sent it; each (panel, value)'s newest change sent
     sent_rows: dict[str, dict] = {}
     drawn: dict[tuple, int] = {}
+    #: each panel's instants as it was last sent them (its answer's `as_of`), labelled every beat
+    instants: dict[str, dict] = {}
     send_lock = asyncio.Lock()
 
     async def text(payload: dict) -> None:   # the caller holds send_lock
@@ -2471,7 +2481,10 @@ async def live_values(ws: WebSocket):
         # each shown row's trade age now, from the trade time the page was sent (AGENTS.md rule 5)
         ages = {s: age_label(now - r["trade_ts"]) for s, r in sent_rows.items()
                 if s in client.symbols and r["trade_ts"] is not None}
+        # every shown panel's instants, labelled at this one instant
+        as_of = {k: ts for n, i in instants.items() if n in client.panels for k, ts in i.items()}
         await text({"type": "feed", "session": session_label(now_et()), "ages": ages,
+                    "as_of_ages": _age_labels(as_of, now),
                     "writer": status["writer"] if status is not None and "writer" in status else None})
 
     async def show_one(name: str, p: _Panel, change: tuple, rnd: _Round) -> None:
@@ -2485,8 +2498,11 @@ async def live_values(ws: WebSocket):
                 return                                   # a newer change's answer is on screen
             drawn[key] = order
             kinds = _ROUTE_KINDS[p.source.split("?", 1)[0]]
+            instants[name] = _instants(a["body"])
+            now = time.time()
             await text({"type": "panels", "seq": page["seq"], "panels": [
-                {"panel": name, "source": p.source, "kinds": sorted(kinds), "not_live": _not_live(p, time.time()), **a}]})
+                {"panel": name, "source": p.source, "kinds": sorted(kinds), "not_live": _not_live(p, now),
+                 "ages": _age_labels(instants[name], now), **a}]})
 
     def show(names: list[str]) -> None:
         change, rnd = _round(page["ticker"])            # one round for every answer of the change
@@ -2617,7 +2633,9 @@ def options_microstructure(c: str, now: float) -> dict:
     record = contract(c)
     payload["put_call"] = record.fields.get("putCall") if record is not None else None  # external-key-ok: Schwab option chain contract
     # whether the daemon streams this contract (the option rule) and is receiving it
-    payload["streaming_plane"] = get_option_contract_streaming_diagnostics(c, now)
+    payload["streaming_plane"] = plane = get_option_contract_streaming_diagnostics(c, now)
+    fh = plane["feed_health"]
+    payload["as_of"] = {**payload["as_of"], "l1_feed": fh["l1"]["last_ts"], "book_feed": fh["book"]["last_ts"]}
     return payload
 
 
@@ -3047,12 +3065,15 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict:
     snap = canonical_price_level_snapshot(tk, now)
 
     levels: list[dict] = []
+    #: each instant an age on this answer is of ({kind: as-of}), labelled by the console's push;
+    #: a row names its own (`staleness.age_of`)
+    instants: dict = {}
     for lid, value in (snap.levels.items() if snap is not None else ()):
         row = value.to_contract_dict()
         as_of = value.as_of_ts_utc
+        instants[f"level:{lid}"] = as_of
         row["staleness"] = {
-            "as_of_ts_utc": as_of,
-            "age_sec": None if as_of is None else served_ts - as_of,
+            "as_of_ts_utc": as_of, "age_of": f"level:{lid}",
             "stale_after_sec": None,
             "stale": None,
             "reason": f"carried from canonical snapshot generation {snap.generation}; a session "
@@ -3070,14 +3091,14 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict:
                 ("em_dn", "−1σ move", "expected_move", None if em is None or spot is None else spot - em)]
     for gid, label, fam, price in carried:
         if price is not None:
-            as_of = t.get("computed_ts_utc")
+            as_of = t["as_of"]["levels"]
+            instants["levels"] = as_of
             levels.append({"id": gid, "price": price, "family": fam, "label": label, "short": label,
                            "evidence_tier": "DERIVED",
                            "provenance": {"producer": "terrain_engine.compute_terrain", "carried": True}
                            if fam == "gamma" else {"producer": "server.get_levels: live spot ± the terrain's "
                                                    "implied_1d_move.points", "carried": False},
-                           "staleness": {"as_of_ts_utc": as_of,
-                                         "age_sec": None if as_of is None else served_ts - as_of,
+                           "staleness": {"as_of_ts_utc": as_of, "age_of": "levels",
                                          "stale_after_sec": None, "stale": bool(t.get("levels_stale")),
                                          "reason": "carried from the terrain"}})
     for row in levels:
@@ -3111,8 +3132,8 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict:
         "spot_as_of_ts_utc": spot_ts,
         "generation": snap.generation if snap is not None else None,
         "snapshot_as_of_ts_utc": snap.as_of_ts_utc if snap is not None else None,
-        # the snapshot's age at the answer (the Desk's LEVELS pill)
-        "snapshot_age_sec": served_ts - snap.as_of_ts_utc if snap is not None and snap.as_of_ts_utc is not None else None,
+        # the instants of the ages shown: the snapshot's (the Desk's LEVELS pill) and each row's
+        "as_of": {**instants, "snapshot": snap.as_of_ts_utc if snap is not None else None},
         "bar_source": snap.bar_source if snap is not None else None,
         "levels": levels,
         "by_distance": by_distance,

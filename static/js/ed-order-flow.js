@@ -36,7 +36,8 @@
   function section(title, rows) {
     var h = '<div class="fl-sec"><div class="fl-sec-h">' + esc(title) + '</div>';
     rows.forEach(function (r) {
-      h += '<div class="fl-row"><span class="k">' + esc(r[0]) + '</span><span class="v">' + esc(r[1]) + '</span>' + tag(r[2]) + '</div>';
+      var v = r[1] && r[1].ageOf ? window.EdShell.ageSpan(r[1].ageOf) : esc(r[1]);   // a served age
+      h += '<div class="fl-row"><span class="k">' + esc(r[0]) + '</span><span class="v">' + v + '</span>' + tag(r[2]) + '</div>';
     });
     return h + '</div>';
   }
@@ -95,8 +96,8 @@
       ['Ask total (5)', int(dep(5, 'ask_total')), bk('depth.*.ask_total')],
     ];
     var fresh = [
-      ['Book age', ages.book_age_sec != null ? Math.round(ages.book_age_sec) + 's' : '—', bk('ages.book_age_sec')],
-      ['Quote age', ages.quote_age_sec != null ? Math.round(ages.quote_age_sec) + 's' : '—', bk('ages.quote_age_sec')],
+      ['Book age', d.as_of.book != null ? { ageOf: 'book' } : '—', bk('as_of.book')],
+      ['Quote age', d.as_of.quote != null ? { ageOf: 'quote' } : '—', bk('as_of.quote')],
     ];
     var wallsHtml = walls.length
       ? walls.map(function (w) { return '<div class="fl-row"><span class="k">' + esc(w.side || '—') + ' @ ' + num(w.price) +
@@ -104,12 +105,8 @@
       : '<div class="sm" style="padding:4px 0;">no size-outlier candidates in the current displayed book</div>';
     var deferred = (d.deferred || []).join(' · ');
 
-    // Operator-reproduced defect (2026-09-14): this badge was a hardcoded literal, never gated
-    // on ages.book_age_sec even though the exact same number is displayed two lines below it in
-    // the Freshness section -- a book observation aged to 3,600s still rendered LIVE. book_stale
-    // is server-computed (app.options.order_flow.engine.compute_book_microstructure); this only
-    // reads the verdict.
-    // LIVE only on the server's explicit "not stale"; an unknown book age is not live
+    // book_stale is the server's verdict (app.options.order_flow.engine); LIVE only on its
+    // explicit "not stale", an unknown book age is not live
     var bs = ages.book_stale, badge = bs === false ? 'LIVE' : bs === true ? 'STALE' : 'AGE UNKNOWN';
     h.innerHTML =
       '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Ticker</span><span class="fl-sym">' + esc(tk) + '</span></div>' +

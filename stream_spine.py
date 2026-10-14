@@ -412,8 +412,9 @@ class HealthRegistry:
         """When this feed last carried data (None: never, this connection)."""
         return self._last.get(feed)
 
-    def report(self, now: float) -> dict[str, dict]:
-        return {f: {"age_sec": now - ts} for f, ts in self._last.items()}
+    def report(self) -> dict[str, dict]:
+        """Each feed's instant it last carried data (its age is labelled where it is shown)."""
+        return {f: {"last_ts": ts} for f, ts in self._last.items()}
 
 
 # ---------------------------------------------------------------------------- the writer

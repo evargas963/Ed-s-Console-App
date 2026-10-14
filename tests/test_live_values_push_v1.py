@@ -48,16 +48,6 @@ def published():
     push_changes.bind(None)
 
 
-def _at_answer_time(body):
-    """`body` but each age it serves (`*age_sec`: seconds from a value's time to the answer's time,
-    so two answers a moment apart differ there and only there)."""
-    if isinstance(body, dict):
-        return {k: _at_answer_time(v) for k, v in body.items() if not k.endswith("age_sec")}
-    if isinstance(body, list):
-        return [_at_answer_time(v) for v in body]
-    return body
-
-
 def _console(body) -> None:
     """The console's app served by uvicorn on a free port, `body(base_url)` run against it."""
     with socket.socket() as s:
@@ -134,7 +124,8 @@ def test_the_view_gets_each_panel_on_screen_with_its_routes_own_answer_and_again
                     m = got[name]
                     assert (m["seq"], m["status"]) == (1, 200)
                     served = (await http.get(m["source"])).json()
-                    assert _at_answer_time(m["body"]) == _at_answer_time(served), f"{name} is not its route's own answer"
+                    # an answer serves no age (its instants' ages are the push's labels)
+                    assert m["body"] == served, f"{name} is not its route's own answer"
             # a levels publication moves both again; so does the live price (`flow`): every panel
             # with a value derived from it, each as it is ready -- but not the expiry list
             push_changes.changed(TK, push_changes.LEVELS)

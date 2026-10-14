@@ -133,8 +133,8 @@ def test_slope_and_concentration_sparse_and_asymmetric():
 
 def test_ages_from_native_timestamps():
     m = ofe.compute_book_microstructure(_data(), now_ts=1787233772.0)
-    assert m["ages"]["book_age_sec"] == 1787233772.0 - 1787233769563.0 / 1000.0     # in full
-    assert m["ages"]["quote_age_sec"] == 3.0
+    # the instants of the book's and the quote's ages, as Schwab sent them (labelled by the push)
+    assert m["as_of"] == {"book": 1787233769563.0 / 1000.0, "quote": 1787233769.0}
     assert m["provenance"]["book_time_ms"] == 1787233769563.0
     assert m["provenance"]["exchange_quote_ts"] == 1787233769.0
 
@@ -299,12 +299,11 @@ def test_route_serializes_carried_state_without_recomputing(monkeypatch):
     monkeypatch.setattr(ofe, "_microstructure_structural", _boom)
     second = ofe.compute_book_microstructure(data, now_ts=200.0, ticker="CARRYTEST")
 
-    # structural fields are identical (carried); only wall-clock ages/stamps advance.
+    # structural fields are identical (carried); only the wall-clock stamp advances.
     assert second["depth"] == first["depth"]
     assert second["top_of_book"] == first["top_of_book"]
     assert second["wall_candidates"] == first["wall_candidates"]
-    assert second["ages"]["book_age_sec"] != first["ages"]["book_age_sec"]
-    assert second["provenance"]["server_received_ts"] == 200.0
+    assert second["provenance"]["server_received_ts"] == 200.0 != first["provenance"]["server_received_ts"]
     ofe._MICRO_STRUCTURAL_CACHE.pop("CARRYTEST", None)
 
 

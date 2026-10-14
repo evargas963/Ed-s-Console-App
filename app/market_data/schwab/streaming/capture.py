@@ -626,7 +626,7 @@ class Daemon:
                 # the option contracts the rule picks, whatever any connection holds: one it
                 # stops picking is released (streaming.apply_heartbeat), never one a drop ended
                 "options": {k: sorted(v) for k, v in self.options.items()},
-                "health": self.health.report(now),
+                "health": self.health.report(),
                 "writer": self.writer.status() if self.writer is not None else None}
 
     async def send_requests(self) -> None:

@@ -43,14 +43,14 @@
       '<th>Evidence</th><th>Source</th><th>As-of</th></tr></thead><tbody>';
     rows.forEach(function (r) {
       var prov = r.provenance || {}, st = r.staleness || {};
-      var age = st.age_sec != null ? (Math.round(st.age_sec) + 's') : '—';
+      var age = st.age_of ? window.EdShell.ageSpan(st.age_of) : '—';
       var stale = st.stale ? ' stale' : '';
       body += '<tr class="lv-row"><td class="lv-fam">' + esc(r.family || '—') + '</td>' +
         '<td>' + esc(r.label || r.id || '—') + '</td>' +
         '<td class="lv-px">' + px(r.price) + '</td>' +
         '<td class="lv-ev">' + esc(r.evidence_tier || '—') + '</td>' +
         '<td class="lv-src">' + esc(prov.producer || '—') + '</td>' +
-        '<td class="lv-age' + stale + '">' + esc(age) + '</td></tr>';
+        '<td class="lv-age' + stale + '">' + age + '</td></tr>';
     });
     body += '</tbody></table>';
     // carried VWAP curve + honest absences/degradation, disclosed (never fabricated)

@@ -70,11 +70,10 @@ def test_one_live_rule_every_reader_agrees_and_all_fail_closed_at_one_limit():
     STAND-IN (named): the daemon's status."""
     import live_market_plane as lmp
     from app.options.order_flow import streaming as ofs
-    status = {"schwab_socket_open": True,
-              "health": {"OPTIONS_BOOK": {"age_sec": 45.0}},
-              "held": {"LEVELONE_EQUITIES": ["MU"], "LEVELONE_OPTIONS": ["B", "A"], "OPTIONS_BOOK": ["A"]}}
-
     now = time.time()
+    status = {"schwab_socket_open": True,
+              "health": {"OPTIONS_BOOK": {"last_ts": now - 45.0}},
+              "held": {"LEVELONE_EQUITIES": ["MU"], "LEVELONE_OPTIONS": ["B", "A"], "OPTIONS_BOOK": ["A"]}}
 
     def diag(sym):     # the served option-contract diagnostics for `sym`
         return ofs.get_option_contract_streaming_diagnostics(sym, now)
@@ -88,7 +87,7 @@ def test_one_live_rule_every_reader_agrees_and_all_fail_closed_at_one_limit():
         down = readers()
         limit = lmp.FEED_HEARTBEAT_MAX_AGE_SEC
         lmp.record_feed_heartbeat({**status, "ts": now - limit + 0.5})
-        live, book_age, b_book = readers(), diag("A")["feed_health"]["book"]["age_sec"], lmp.feed_live_for("B", "OPTIONS_BOOK", now)
+        live, book_heard, b_book = readers(), diag("A")["feed_health"]["book"]["last_ts"], lmp.feed_live_for("B", "OPTIONS_BOOK", now)
         lmp.record_feed_heartbeat({**status, "ts": now - limit - 0.5})
         late = readers()
         lmp.record_feed_heartbeat({**status, "schwab_socket_open": False, "ts": now})
@@ -96,7 +95,7 @@ def test_one_live_rule_every_reader_agrees_and_all_fail_closed_at_one_limit():
     finally:
         no_daemon()
     assert down == late == (False, False, "NOT LIVE", "NOT STREAMED")
-    assert live == (True, True, "LIVE", "SUBSCRIBED") and book_age == 45.0
+    assert live == (True, True, "LIVE", "SUBSCRIBED") and book_heard == now - 45.0   # its report, as sent
     assert b_book is False                                            # B held on L1 only
     assert schwab_down == (False, False, "NOT LIVE", "SUBSCRIBED")    # the daemon is up, Schwab is not
 

@@ -114,7 +114,7 @@ def test_a_book_with_no_age_is_not_reported_fresh():
     """LIVE badges read book_stale: an unknown book age is unknown (None), never False (fresh)."""
     from app.options.order_flow.engine import compute_book_microstructure
     out = compute_book_microstructure({"content": {}}, now_ts=1_800_000_000.0)
-    assert out["ages"]["book_age_sec"] is None and out["ages"]["book_stale"] is None
+    assert out["as_of"]["book"] is None and out["ages"]["book_stale"] is None
 
 
 def test_days_to_expiry_are_schwabs_as_sent(held):
@@ -171,8 +171,9 @@ def test_heatmap_column_state_cell_age_and_front_expiry_are_served():
         ofls.clear_all_live_state()
         no_daemon()
     assert body["stream_by_expiry"][EXPIRY] == "partial"
-    ages = [c["stream"][0]["age_sec"] for c in body["cells"] if c["stream"][0] and c["stream"][0]["age_sec"] is not None]
-    assert ages == [pytest.approx(2.0)]
+    received = [leg["ts_recv"] for c in body["cells"] if c["stream"][0]
+                for leg in (c["stream"][0].get("call"), c["stream"][0].get("put")) if leg and leg["ts_recv"] is not None]
+    assert received == [pytest.approx(_AT.timestamp() - 2.0)]
     assert [e["expiry"] for e in body["expirations"] if e["front"]] == [EXPIRY]
 
 

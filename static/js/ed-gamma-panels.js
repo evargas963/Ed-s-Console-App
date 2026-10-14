@@ -66,9 +66,7 @@
       if (d.levels_stale) {
         // compact status grammar: state + age on the panel; the full reason is disclosed in the
         // tooltip (title) rather than as a paragraph that consumes the Key Levels rail
-        var age = (window.EdShell && window.EdShell.fmtAge) ? window.EdShell.fmtAge(d.levels_age_sec)
-          : (d.levels_age_sec != null ? Math.round(d.levels_age_sec) + 's' : '');
-        src.textContent = 'STALE' + (age ? ' · ' + age : '');
+        src.innerHTML = 'STALE · ' + window.EdShell.ageSpan('levels');
         src.title = d.levels_stale_reason || 'terrain levels are stale';
         src.style.color = 'var(--ed-stale)';
       } else if (d.levels_stale === false) {
@@ -118,10 +116,10 @@
   function setGbsAsOf(d) {
     var el = document.getElementById('gbsSrc'); if (!el) return;
     if (!d || d.today_source == null) { el.innerHTML = ''; return; }
-    // reuse the terrain authority the server already merged (today_age_sec / levels_stale) - no
+    // reuse the terrain authority the server already merged (the levels' age / levels_stale) - no
     // client-side freshness computation; the badge only formats those server-owned fields.
     el.innerHTML = (window.EdShell && window.EdShell.asOfBadge)
-      ? window.EdShell.asOfBadge({ label: srcLabel(d.today_source), ageSec: d.today_age_sec,
+      ? window.EdShell.asOfBadge({ label: srcLabel(d.today_source), ageOf: 'levels',
           stale: !!d.levels_stale, reason: d.levels_stale_reason,
           live: (d.today_source === 'terrain_live_cache' && d.levels_stale === false) })
       : '';

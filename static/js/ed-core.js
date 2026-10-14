@@ -441,7 +441,7 @@
   }
 
   // #4: format a compact per-panel source/as-of badge. This ONLY formats server-owned fields
-  // (a source label + the server's own age_sec + its stale flag) - it never computes freshness and
+  // (a source label + the served age of its instant + its stale flag) - it never computes freshness and
   // never merges panels into one global "LIVE". Panels that read the same canonical generation pass
   // the same server age here, so their badges agree without a second computation.
   function _escBadge(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
@@ -453,10 +453,19 @@
     var why = d && d.status === 'unavailable' && d.scope && d.scope.reason;
     return why ? ('chain unavailable — ' + why) : 'no chain for this expiry';
   }
-  function fmtAge(s) {
-    if (s == null || isNaN(s)) return '';
-    s = Math.round(Number(s));
-    return s < 90 ? (s + 's') : s < 5400 ? (Math.round(s / 60) + 'm') : (Math.round(s / 3600) + 'h');
+  // The age of an instant an answer names (its `as_of` kind), as the console's push labels it
+  // (time_et.age_label, on each panel answer and every beat): the page computes no age. Each
+  // drawer places ageSpan(kind); the push fills every span of the kind. While the push is down
+  // no age is known.
+  var _ageLabels = {};
+  var AGE_NOT_KNOWN = 'age not known';
+  function ageText(kind) { var l = _ageLabels[kind]; return l == null ? AGE_NOT_KNOWN : l; }
+  function ageSpan(kind) { return '<span data-age-of="' + _escBadge(kind) + '">' + _escBadge(ageText(kind)) + '</span>'; }
+  function fillAges(labels) {
+    Object.keys(labels).forEach(function (k) { _ageLabels[k] = labels[k]; });
+    document.querySelectorAll('[data-age-of]').forEach(function (el) {
+      el.textContent = ageText(el.getAttribute('data-age-of'));
+    });
   }
   // a price row's last trade as every screen words it: Schwab's trade time and its served age
   // (time_et.age_label; while the console's push is down the age is not known)
@@ -466,11 +475,10 @@
   }
   function asOfBadge(o) {
     o = o || {};
-    var age = fmtAge(o.ageSec);
     var cls = 'asof' + (o.stale ? ' stale' : (o.ref ? ' ref' : (o.live ? ' live' : '')));
     var parts = [];
     if (o.label) parts.push(_escBadge(o.label));
-    if (age) parts.push(age);
+    if (o.ageOf) parts.push(ageSpan(o.ageOf));
     if (o.stale) parts.push('STALE');
     // the detailed reason is DISCLOSED in the tooltip — never as a paragraph inside an analytical panel
     var title = (o.stale && o.reason) ? o.reason : (o.title || o.label || '');
@@ -874,13 +882,16 @@
   // each panel drawn on its own: one drawer's error is reported and never stops the others
   function deliver(name, a) {
     if (!_panelFns[name]) return;
+    if (a.ages) Object.keys(a.ages).forEach(function (k) { _ageLabels[k] = a.ages[k]; });   // drawn with its ages
     _panelFns[name].forEach(function (fn) {
       try { fn(a); } catch (e) { console.error('panel ' + name + ': ' + (e && e.stack ? e.stack : e)); }
     });
     if ('notLive' in a) markLive(name, a.notLive);
+    if (a.ages) fillAges(a.ages);
   }
   function answerOf(msg) {
-    return { ok: msg.status >= 200 && msg.status < 300, status: msg.status, body: msg.body, notLive: msg.not_live };
+    return { ok: msg.status >= 200 && msg.status < 300, status: msg.status, body: msg.body, notLive: msg.not_live,
+             ages: msg.ages };
   }
   function openPush() {
     if (_live || typeof WebSocket === 'undefined') return;
@@ -895,6 +906,7 @@
         Object.keys(msg.ages).forEach(function (k) {     // each row's trade age, served every second
           if (_rows[k]) { _rows[k].trade_age = msg.ages[k]; ingestPriceRow(_rows[k]); }
         });
+        fillAges(msg.as_of_ages);                     // each shown panel's instants, at one instant
         return;
       }
       if (msg.type === 'symbols') { ingestIdentity(msg.symbols); return; }
@@ -939,7 +951,11 @@
     // (WAITING); otherwise the push itself is down (OFFLINE)
     var connecting = Date.now() - _priceSubTs <= PRICE_SILENCE_MS;
     var feedLabel = connecting ? 'WAITING' : 'OFFLINE';
-    // no beat comes: no row's age is known any more (every screen that words a trade is told)
+    // no beat comes: no row's age is known any more (every screen that words a trade is told),
+    // nor any panel's
+    var unknown = {};
+    Object.keys(_ageLabels).forEach(function (k) { unknown[k] = null; });
+    fillAges(unknown);
     Object.keys(_rows).forEach(function (k) {
       if (_rows[k].trade_age == null) return;
       _rows[k].trade_age = null;
@@ -1093,7 +1109,7 @@
     setTheme: applyTheme,
     marketContext: function () { return MARKET_CONTEXT.slice(); },   // served [{key, display}]
     setScope: setScope, getScope: function () { return state.scope; },
-    panServed: panServed, wireStrikeAxis: wireStrikeAxis, asOfBadge: asOfBadge, fmtAge: fmtAge, tradeLabel: tradeLabel, chainEmptyText: chainEmptyText,
+    panServed: panServed, wireStrikeAxis: wireStrikeAxis, asOfBadge: asOfBadge, ageSpan: ageSpan, tradeLabel: tradeLabel, chainEmptyText: chainEmptyText,
     setExpiry: setExpiry, getExpiry: function () { return state.expiryFilter; },
     getMeasure: function () { return state.measure; },
     setSubview: setSubview };

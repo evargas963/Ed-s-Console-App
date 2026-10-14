@@ -70,6 +70,16 @@ def mrvl():
 def _answers(ticker: str, spot: float, views: dict) -> dict:
     """Each view's panels' newest answers ({view: {panel: body}}), the price having moved to `spot`
     after the chain was priced (a trade, as the console's stream takes it)."""
+    return {v: {n: p["body"] for n, p in got.items() if n != BEAT} for v, got in _frames(ticker, spot, views).items()}
+
+
+#: the key of a view's beat after its panels (the console's "feed" line) in _frames
+BEAT = "feed"
+
+
+def _frames(ticker: str, spot: float, views: dict) -> dict:
+    """Each view's panels as the push sent them ({view: {panel: its newest frame entry, BEAT: the
+    next beat after them}}), as _answers."""
     async def go():
         push_changes.bind(asyncio.get_running_loop())
         daemon_holds(time.time(), {"LEVELONE_EQUITIES": [ticker]})
@@ -85,8 +95,8 @@ def _answers(ticker: str, spot: float, views: dict) -> dict:
                 shown = set((await page.next("view"))["shown"]) - {"watchlist"}
                 got: dict = {}
                 while not shown <= set(got):
-                    frame = await asyncio.wait_for(page.next("panels"), 30)
-                    got.update({n: p["body"] for n, p in _by_name(frame).items()})
+                    got.update(_by_name(await page.next("panels")))
+                got[BEAT] = await page.next("feed")
                 out[name] = got
             finally:
                 await page.inbox.put(None)
@@ -167,19 +177,32 @@ def test_b_the_expiries_their_days_and_the_front_one_are_one_list_everywhere(mrv
     assert front == [exp_panel["front"]] == [a["chain"]["chain"]["expiry"]] == [terrain["max_pain_expiry"]]
 
 
-def test_c_the_levels_age_is_one_label_everywhere(crwd):
-    """Audit C. The age of the published levels, as every panel that shows it serves it: one
-    label (time_et.age_label) from one age. Before: five computations at five instants and six
-    wordings."""
-    a = _answers(TK, CRWD.spot, {"heatmap": {}, "desk": {"workspace": "trade-desk", "subview": "desk", "view": ""}})
-    shown = {
-        "key_levels": a["heatmap"]["gamma.terrain"]["levels_age"],
-        "gex_by_strike": a["heatmap"]["gamma.strikes"]["levels_age"],
-        "heatmap": a["heatmap"]["gamma.surface"]["levels_age"],
-        "desk_terrain": a["desk"]["desk.terrain"]["levels_age"],
-        "desk_levels": {r["staleness"]["age"] for r in a["desk"]["desk.levels"]["levels"] if r["family"] == "gamma"},
-    }
-    labels = {shown[p] for p in shown if p != "desk_levels"} | shown["desk_levels"]
-    assert len(labels) == 1, shown
-    age = time.time() - CRWD.now.timestamp()
-    assert labels <= {age_label(age), age_label(age + 1)}
+def test_c_the_levels_age_is_one_instant_labelled_once(crwd):
+    """Audit C. The age of the published levels, on every panel that shows it (Key Levels, GEX by
+    Strike, the heatmap, the Desk's terrain and its gamma levels): every answer names the one
+    instant (the publication's, `as_of`) and serves no age of its own; the push labels it
+    (time_et.age_label) on each answer and, every beat, for every panel shown at one instant.
+    Before: five age computations at five instants, and six wordings on the page."""
+    f = _frames(TK, CRWD.spot, {"heatmap": {}, "desk": {"workspace": "trade-desk", "subview": "desk", "view": ""}})
+    published = CRWD.now.timestamp()
+    panels = {"heatmap": ("gamma.terrain", "gamma.strikes", "gamma.surface"), "desk": ("desk.terrain", "desk.levels")}
+    for view, names in panels.items():
+        for name in names:
+            body, ages = f[view][name]["body"], f[view][name]["ages"]
+            assert body["as_of"]["levels"] == published, (view, name)
+            assert ages["levels"] in {age_label(time.time() - published + d) for d in (-1, 0)}, (view, name, ages)
+            seconds = [k for k in _keys(body) if k.endswith("age_sec") or k in ("levels_age", "age")]
+            assert not seconds, (view, name, seconds)
+        beat = f[view][BEAT]["as_of_ages"]
+        assert beat["levels"] in {age_label(time.time() - published + d) for d in (-1, 0)}, beat
+    gamma_rows = [r["staleness"] for r in f["desk"]["desk.levels"]["body"]["levels"] if r["family"] == "gamma"]
+    assert gamma_rows and all(s["age_of"] == "levels" and s["as_of_ts_utc"] == published for s in gamma_rows)
+
+
+def _keys(v) -> list:
+    """Every key of every dict nested in `v`."""
+    if isinstance(v, dict):
+        return [key for k, x in v.items() for key in (k, *_keys(x))]
+    if isinstance(v, list):
+        return [key for x in v for key in _keys(x)]
+    return []
