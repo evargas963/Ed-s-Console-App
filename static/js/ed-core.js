@@ -497,6 +497,8 @@
   onPanel('watchlist', function (a) {
     if (a.waiting) return;
     if (!a.ok) { wlNotify(a.body ? a.body.error : 'The watchlist could not be read: HTTP ' + a.status); return; }
+    // the daemon not reporting: its list is unknown now; the last one stands, marked, with the reason
+    if (a.body.tickers === null) { markWlDegraded(a.body.error); return; }
     _wl = a.body.tickers; renderWatchlist();
   });
   // the daemon's answer to an add or a removal: the new list, or what happened instead

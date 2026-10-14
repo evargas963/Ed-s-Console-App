@@ -818,6 +818,24 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#heatBody .hcell').first()).toBeVisible();      // the values are drawn
   });
 
+  test('with the daemon not reporting, the watchlist is unknown: the page keeps working and says so', async ({ page }) => {
+    // the console's watchlist answer while the daemon's heartbeat is not current, as
+    // server.watchlist_payload serves it on the push (seen 2026-10-14 on the isolated console: the
+    // page stored the unknown list and threw on every later view, so no view reached the console)
+    const errs = [];
+    page.on('pageerror', (e) => errs.push(e.message));
+    await page.unroute('**/api/watchlist**');
+    await page.route('**/api/watchlist**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify({ tickers: null, error: 'the capture daemon is not reporting (no current heartbeat): its watchlist is unknown' }) }));
+    await mockPriceSocket(page, [schwabQuote('SPY', 601.23)]);
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#watchlist')).toHaveClass(/wl-degraded/);
+    await expect(page.locator('#hPx')).toHaveText('601.23');                  // the view still reaches the console
+    await page.locator('.vtab[data-view="chart"]').click();
+    await expect(page.locator('#chartBody')).toBeVisible();
+    expect(errs).toEqual([]);
+  });
+
   test('the page opens no socket but the console\'s push', async ({ page }) => {
     const sockets = [];
     page.on('websocket', (ws) => sockets.push(new URL(ws.url()).pathname));
