@@ -26,11 +26,12 @@ def _run(body):
         try:
             body()
             await asyncio.sleep(0)
-            return (await push_changes.next_changes(mine, 1.0),
-                    await push_changes.next_changes(other, 0.05))
+            return ((await push_changes.next_changes(mine, 1.0))[0],      # the kinds changed
+                    (await push_changes.next_changes(other, 0.05))[0])
         finally:
             push_changes.unsubscribe(TK, mine)
             push_changes.unsubscribe("ZZOTHER", other)
+            push_changes.bind(None)                 # this loop closes: no change is marked on it
     return asyncio.run(main())
 
 
