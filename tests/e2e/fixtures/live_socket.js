@@ -14,7 +14,8 @@ const base = require('@playwright/test');
 async function answer(page, url) {
   return page.evaluate(async (u) => {
     try {
-      const r = await fetch(u, { cache: 'no-store' });
+      // marked as the stand-in's own read of a spec's stub, never the page's (STAND_IN_HEADER)
+      const r = await fetch(u, { cache: 'no-store', headers: { 'x-ed-stand-in': 'console' } });
       let body = null;
       try { body = await r.json(); } catch (e) { body = null; }
       return { status: r.status, body: body };

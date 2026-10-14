@@ -822,8 +822,14 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   test('the page opens two sockets: the daemon\'s for Schwab\'s values, the console\'s push for computed panels', async ({ page }) => {
     // Operator 2026-10-14: Schwab -> daemon -> the screen. The daemon's socket is the stand-in
     // (routed, so Playwright does not list it below); the header painting 601.23 is its message.
-    const sockets = [];
+    // Operator 2026-10-13: "No SSE notices, no follow-up fetches": over HTTP the page sends only
+    // commands (a watchlist add or removal, the Flow panel's contract), never a read of a value
+    const sockets = [], reads = [];
     page.on('websocket', (ws) => sockets.push(new URL(ws.url()).pathname));
+    page.on('request', (r) => {
+      const u = new URL(r.url());
+      if (u.pathname.startsWith('/api/') && r.method() === 'GET' && !r.headers()['x-ed-stand-in']) reads.push(u.pathname);
+    });
     await mockPriceSocket(page, [schwabQuote('SPY', 601.23)]);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#hPx')).toHaveText('601.23');
@@ -840,6 +846,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     }
     expect(sockets.length).toBeGreaterThan(0);
     expect([...new Set(sockets)]).toEqual(['/api/live']);
+    expect(reads).toEqual([]);
   });
 
   test('when the daemon\'s socket goes down the last price stands, marked OFFLINE with its trade time', async ({ page }) => {
