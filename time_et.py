@@ -195,6 +195,24 @@ MIN_TIME_TO_EXPIRY_YEARS: float = 600.0 / YEAR_SECONDS
 SETTLEMENT_AM = "A"
 
 
+def settles_at(expiration_date: str, settlement_type: str | None = None) -> datetime | None:
+    """The instant an option settles, the one rule of its time to expiry and of whether it has
+    expired: the option market's (EQO) regular close Schwab's /markets sent for its expiry date
+    (its open for Schwab's settlementType "A"); for a date /markets does not answer, a PM-settled
+    contract's Schwab expirationDate. None for an AM-settled contract on a date /markets does not
+    answer, a date it answers with no regular option session, and an expirationDate without its
+    time."""
+    s = session(str(expiration_date)[:10])
+    if s is None:
+        if settlement_type == SETTLEMENT_AM or len(str(expiration_date)) <= 10:
+            return None
+        return datetime.fromisoformat(str(expiration_date))
+    windows = s.option_windows(EQUITY_OPTIONS)
+    if not windows:
+        return None
+    return windows[0][0] if settlement_type == SETTLEMENT_AM else windows[-1][1]
+
+
 def time_to_expiry_years(expiration_date: str, now: datetime, *,
                          settlement_type: str | None = None) -> float | None:
     """INTRADAY time-to-expiry in years (ACT/365), the one T of every Black-Scholes greek:
@@ -210,20 +228,11 @@ def time_to_expiry_years(expiration_date: str, now: datetime, *,
     VALIDATED 2026-07-26 against Schwab-reported gamma on real chains: intraday-to-close matches
     Schwab to a MEASURED median ratio 0.987 (94% of ATM strikes within 10%) in the 2-6h window.
 
-    None for an AM-settled contract whose expiry date /markets does not answer, for a date it
-    answers with no regular option session, for an expirationDate without its time, and once
-    the option has reached settlement. A 10-minute sub-floor guards the exact-expiry
-    singularity."""
-    s = session(str(expiration_date)[:10])
-    if s is None:
-        if settlement_type == SETTLEMENT_AM or len(str(expiration_date)) <= 10:
-            return None
-        settles = datetime.fromisoformat(str(expiration_date))
-    else:
-        windows = s.option_windows(EQUITY_OPTIONS)
-        if not windows:
-            return None
-        settles = windows[0][0] if settlement_type == SETTLEMENT_AM else windows[-1][1]
+    None when its settlement is not known (settles_at), and once the option has reached
+    settlement. A 10-minute sub-floor guards the exact-expiry singularity."""
+    settles = settles_at(expiration_date, settlement_type)
+    if settles is None:
+        return None
     # instants, not civil time: a DST change between now and the expiry is counted as elapsed
     t = (settles.timestamp() - now.timestamp()) / YEAR_SECONDS
     if t <= 0.0:

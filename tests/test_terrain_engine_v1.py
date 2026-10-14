@@ -22,10 +22,10 @@ def _real_chain() -> tuple[list, float]:
     return SPY_0DTE.chain, SPY_0DTE.spot
 
 
-def _at_spot(snap: TerrainSnapshot, spot=None) -> dict:
+def _at_spot(snap: TerrainSnapshot, spot=None, now=NOW) -> dict:
     """The values read from the spot for `snap`'s publication (terrain_engine.at_spot), at `spot`
-    (omitted: the spot it was priced at)."""
-    return at_spot(snap.to_dict(), snap.spot if spot is None else spot)
+    (omitted: the spot it was priced at) and `now` (omitted: the SPY chain's capture)."""
+    return at_spot(snap.to_dict(), snap.spot if spot is None else spot, now.timestamp())
 
 
 def test_fails_closed_on_every_missing_input() -> None:
@@ -180,7 +180,7 @@ def test_real_chain_carries_the_sigma_band() -> None:
     chain, spot = _real_chain()
     assert _at_spot(compute_terrain("SPY", chain, spot, now=NOW))["implied_1d_move"] is None
     snap = compute_terrain("CRWD", CRWD.chain, CRWD.spot, now=CRWD.now)
-    em = _at_spot(snap)["implied_1d_move"]
+    em = _at_spot(snap, now=CRWD.now)["implied_1d_move"]
     assert em is not None, "the CRWD chain must yield a band (its ATM IV is present)"
     s = CRWD.spot
     # a one-day sigma is points, not pennies and not tens of percent of spot

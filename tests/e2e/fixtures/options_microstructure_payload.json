@@ -1,17 +1,21 @@
 {
   "ages": {
-    "book_age_sec": 0.28710508346557617,
-    "book_stale": false,
-    "quote_age_sec": null
+    "book_stale": false
+  },
+  "as_of": {
+    "book": 1788202221.43,
+    "book_feed": null,
+    "l1_feed": null,
+    "quote": null
   },
   "book_slope": {
     "ask": 1006.6666666666665,
     "bid": 10033.333333333361
   },
   "classification": {
-    "ages.book_age_sec": "DERIVED",
     "ages.book_stale": "DERIVED",
-    "ages.quote_age_sec": "DERIVED",
+    "as_of.book": "NATIVE",
+    "as_of.quote": "NATIVE",
     "book_slope": "DERIVED",
     "crossed": "DERIVED",
     "depth.*.ask_total": "DERIVED",
@@ -133,11 +137,11 @@
   "streaming_plane": {
     "feed_health": {
       "book": {
-        "age_sec": null,
+        "last_ts": null,
         "state": "LIVE"
       },
       "l1": {
-        "age_sec": null,
+        "last_ts": null,
         "state": "LIVE"
       },
       "replay": "not connected"

@@ -118,7 +118,7 @@ def test_terrain_snapshot_v2_carries_net_gex_and_new_levels():
 
     snap = compute_terrain("SPY", SPY_0DTE.chain, SPY_0DTE.spot, now=SPY_0DTE.now)
     d = snap.to_dict()
-    d = {**d, **at_spot(d, SPY_0DTE.spot)}     # the pin candidate is read at the spot
+    d = {**d, **at_spot(d, SPY_0DTE.spot, SPY_0DTE.now.timestamp())}     # the pin candidate is read at the spot
     # v3 (RC-292): gamma_pin* renamed absolute_gamma_*; + pin_candidate(+blockers). The
     # v2 fields this test locks are all still carried.
     assert TERRAIN_SCHEMA_VERSION == 3 and d["schema_version"] == 3

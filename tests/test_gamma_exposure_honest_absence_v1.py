@@ -10,7 +10,7 @@ import time
 import server
 from math_exposure_core import compute_exposures_by_strike, exposure_books
 from server import project_gamma_surface
-from terrain_engine import compute_terrain, listed_strikes, on_strikes
+from terrain_engine import compute_terrain, listed_expiries, listed_strikes, on_strikes
 from terrain_engine import _per_strike_rows
 from tests.real_chains import CRWD
 
@@ -46,7 +46,8 @@ def test_real_chain_reported_zero_oi_shows_zero_and_unreported_shows_absent():
     for c in chain:
         if c["strikePrice"] == gone_k:
             del c["openInterest"]
-    surface = project_gamma_surface(chain, exposure_books(chain, spot=CRWD.spot, now=CRWD.now), listed_strikes(chain))
+    surface = project_gamma_surface(chain, exposure_books(chain, spot=CRWD.spot, now=CRWD.now), listed_strikes(chain),
+                                    listed_expiries(chain))
     cell = {r["strike"]: r for r in surface["cells"]}
     assert all(v == 0 for v in cell[zero_k]["gex"] if v is not None) and cell[zero_k]["gex"] != [None]
     assert cell[gone_k]["gex"] == [None]

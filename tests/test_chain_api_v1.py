@@ -62,8 +62,9 @@ def _hold(tk, contracts, fetched_ts, price, streamed=()):
     daemon_holds(time.time(), held)
 
 
-def _get(**kw):
-    return json.loads(srv.get_chain(**{"expiry": None, **kw}).body)
+def _get(ticker, expiry=None):
+    """/api/chain's answer at _AT (before every expiry of both chains: the front is the first)."""
+    return srv.chain_payload(srv.ticker_storage_key(ticker), expiry, _AT.timestamp())
 
 
 def _as_sent(served: list) -> list:
@@ -124,5 +125,5 @@ def test_the_route_answers_over_real_http():
     from starlette.testclient import TestClient
     _hold("TSLA", _TSLA_CONTRACTS, _AT.timestamp(), 330.0)
     with TestClient(srv.app) as client:
-        r = client.get("/api/chain", params={"ticker": "TSLA"})
+        r = client.get("/api/chain", params={"ticker": "TSLA", "expiry": _TSLA_EXPIRY})   # now: it has expired
     assert r.status_code == 200 and r.json()["expiry"] == _TSLA_EXPIRY

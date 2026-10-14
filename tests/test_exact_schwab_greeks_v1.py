@@ -58,7 +58,7 @@ def _column(contracts: "list[dict]") -> dict:
     """The heatmap's 2026-11-20 column as the levels producer projects it: {strike: (cell's gex,
     its contracts)}."""
     snap = compute_terrain("SPY", contracts, _SPOT, now=_CAPTURED)
-    surface = server.project_gamma_surface(contracts, snap.books, listed_strikes(contracts))
+    surface = server.project_gamma_surface(contracts, snap.books, listed_strikes(contracts), snap.to_dict())
     j = [e["expiry"] for e in surface["expirations"]].index("2026-11-20")
     by_k = {}
     for ct in contracts:

@@ -182,7 +182,7 @@ def test_pin_candidate_is_published_only_through_the_qualification_gates():
     chain, spot = _fixture_book()
     snap = compute_terrain("SPY", chain, spot, now=NOW)
     assert snap.net_gex_at_spot is not None and snap.net_gex_at_spot < 0
-    read = at_spot(snap.to_dict(), spot)
+    read = at_spot(snap.to_dict(), spot, NOW.timestamp())
     assert read["pin_candidate"] is None
     assert read["pin_candidate_blockers"] == ["regime", "liquidity"]
     assert snap.absolute_gamma_strike is not None, (
@@ -197,7 +197,7 @@ def test_every_level_shaped_payload_name_is_declared():
 
     chain, spot = _fixture_book()
     payload = compute_terrain("SPY", chain, spot, now=NOW).to_dict()
-    payload = {**payload, **at_spot(payload, spot)}     # as /api/terrain serves it
+    payload = {**payload, **at_spot(payload, spot, NOW.timestamp())}     # as /api/terrain serves it
     declared_terrain = {n for (s, n) in DECLARED if s == "terrain"}
     for key in payload:
         if key.endswith(("_state", "_range", "_blockers")) or key.startswith("dist_to_"):   # distances, not levels

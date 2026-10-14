@@ -165,8 +165,8 @@ from db_authority import canonical_stream_db_path
 from instrument_identity import display_symbol, ticker_storage_key   # RC-126: the ONE query-symbol authority
 import live_market_plane as lmp
 from numeric_contract import float_finite_or_none, schwab_count, schwab_number
-from terrain_engine import (SCOPES, TerrainSnapshot, at_spot, chain_ladder, compute_terrain, listed_strikes,
-                            on_strikes, positioning_migration, strike_window)
+from terrain_engine import (SCOPES, TerrainSnapshot, at_spot, chain_ladder, compute_terrain, dte_label,
+                            listed_strikes, on_strikes, positioning_migration, strike_window)
 from terrain_atr import Atr, compute_atrs, roll_up
 
 from db import get_db
@@ -327,11 +327,12 @@ def resolve_spot(ticker: str, *, now: float) -> tuple[float | None, str, float |
 
 def live_levels(tk: str, now: float) -> dict:
     """Every value read from the spot for ticker `tk` at `now` (terrain_engine.at_spot): at the
-    live spot (resolve_spot), from its published levels and their one strike list. Once per
-    change: every panel of it carries the same record (its inputs are read first: each is its own
+    live spot (resolve_spot), from its published levels and their one strike list, with each
+    expiry's state and the front one at `now`. Once per change: every panel of it carries the
+    same record (its inputs are read first: each is its own
     once-per-round read, and _once holds the round while it computes)."""
     pub, spot = terrain_cache_get(tk, now), resolve_spot(tk, now=now)[0]
-    return _once(("live_levels", tk), lambda: at_spot(pub, spot))
+    return _once(("live_levels", tk), lambda: at_spot(pub, spot, now))
 
 
 # (REST fast-quote writer DELETED 2026-09-24, independent-audit finding #3: it wrote REST
@@ -1119,7 +1120,7 @@ def _publish_levels(tk: str, round_ts: "float | None" = None,
                            _prior_strikes=_prior_strikes(stored, fetched_ts),
                            _captures_key=captures_key)
     if spot is not None and snap.books:
-        surface = project_gamma_surface(chain, snap.books, strikes)
+        surface = project_gamma_surface(chain, snap.books, strikes, payload)
         surface.update(spot=float(spot), spot_source=spot_source, spot_as_of_ts_utc=spot_ts)
         _stamp_gamma_surface_cell_stream_state(surface, records, at.timestamp())
         surface["surface_seq"] = _next_gamma_surface_seq(tk)
@@ -1130,7 +1131,7 @@ def _publish_levels(tk: str, round_ts: "float | None" = None,
     if new_chain:
         push_changes.changed(tk, push_changes.CHAIN)
     if capture is None:
-        _log_level_crosses(tk, prev_spot, snap)
+        _log_level_crosses(tk, prev_spot, payload)
     return snap
 
 
@@ -1140,12 +1141,14 @@ CROSS_LEVELS = (("call_wall", "Call g-Wall"), ("put_wall", "Put g-Wall"), ("gamm
                 ("call_delta_wall", "Call d-Wall"), ("put_delta_wall", "Put d-Wall"))
 
 
-def _log_level_crosses(tk: str, prev_spot: "float | None", snap: "TerrainSnapshot") -> None:
-    """Record each level spot moved through between the previous publication and this one."""
-    levels = [(getattr(snap, k), name) for k, name in CROSS_LEVELS if getattr(snap, k) is not None]
+def _log_level_crosses(tk: str, prev_spot: "float | None", payload: dict) -> None:
+    """Record each level spot moved through between the previous publication and this one
+    (`payload`, as published; max pain the front expiry's now: terrain_engine.at_spot)."""
     now = time.time()
+    held = {**payload, **at_spot(payload, payload["spot"], now)}
+    levels = [(held[k], name) for k, name in CROSS_LEVELS if held[k] is not None]
     logged = get_db().detect_and_log_level_crosses(
-        ticker=tk, prev_spot=prev_spot, cur_spot=snap.spot, levels=levels, ts_utc=now,
+        ticker=tk, prev_spot=prev_spot, cur_spot=payload["spot"], levels=levels, ts_utc=now,
         ts_et=now_et().strftime("%Y-%m-%d %H:%M:%S ET"))
     if logged:
         with _crosses_lock:
@@ -1899,12 +1902,13 @@ def _gamma_surface_cell_fields(bucket: "dict | None", syms: "dict | None"):
             _legs(strike_volume_legs(bucket)), contracts)
 
 
-def project_gamma_surface(chain: list, books: dict, strikes: list) -> dict:
+def project_gamma_surface(chain: list, books: dict, strikes: list, listed: dict) -> dict:
     """The strike × expiry grid the gamma heatmap draws, shaped from `books` -- the
     exposure_books compute_terrain priced `chain` into, so every cell is the number the levels
     and per-strike rows were computed from -- with a row for each strike of the one strike list
-    `strikes`. No exposure math here. A contract with a missing or malformed expiry is counted,
-    never given a column."""
+    `strikes` and a column for each expiry of the one expiry list `listed`
+    (terrain_engine.listed_expiries: its expiries and their days). No exposure math here. A
+    contract with a missing or malformed expiry is counted, never given a column."""
     chain = chain if isinstance(chain, list) else []
     by_expiry: "dict[str, list]" = {}
     for (exp, _dte), book in (books or {}).items():
@@ -1912,7 +1916,6 @@ def project_gamma_surface(chain: list, books: dict, strikes: list) -> dict:
             by_expiry.setdefault(exp, []).append(book)
     per_expiry = {e: (bs[0][0] if len(bs) == 1 else merge_exposure_books(bs)[0])
                   for e, bs in by_expiry.items()}
-    exp_dte: "dict[str, int | None]" = {}
     # the vendor OSI symbol behind each (strike, expiry) leg, so the browser can ask the stream
     # for exactly the contracts it is showing
     symbols_by_expiry: "dict[str, dict[float, dict[str, str]]]" = {}
@@ -1922,9 +1925,6 @@ def project_gamma_surface(chain: list, books: dict, strikes: list) -> dict:
         if e not in per_expiry:
             continue
         contracts_used += 1
-        if exp_dte.get(e) is None:   # native DTE for the column header, never inferred
-            d = schwab_number(ct.get("daysToExpiration"))
-            exp_dte[e] = int(d) if d is not None else None
         side = (ct.get("putCall") or "").upper()
         sym = ct.get("symbol")
         k = schwab_number(ct.get("strikePrice"))
@@ -1932,8 +1932,7 @@ def project_gamma_surface(chain: list, books: dict, strikes: list) -> dict:
             symbols_by_expiry.setdefault(e, {}).setdefault(k, {})[side.lower()] = str(sym)
     total_contracts = len(chain)
     excluded_malformed = total_contracts - contracts_used
-    expiries = sorted(per_expiry)
-    expirations = [{"expiry": e, "dte": exp_dte.get(e)} for e in expiries]
+    expirations = [{"expiry": e, "dte": listed["expiry_dte"][e]} for e in listed["expiries"]]
     # Each cell carries every measure its bucket already holds -- GEX, DEX, vanna
     # (call - put, the dealer convention of compute_net_vanna), OI and volume -- so one grid
     # serves every heatmap measure; a measure with no value is None (_gamma_surface_cell_fields).
@@ -1961,16 +1960,19 @@ def project_gamma_surface(chain: list, books: dict, strikes: list) -> dict:
     }
 
 
-def _stamp_columns(surface: dict, now: datetime) -> dict:
-    """The surface's expiration columns stamped at `now` (ET; a browser never decides what day it
-    is): `expired` (its expiry is before now's date) and `front` (the nearest expiry that has not
-    expired, by Schwab's daysToExpiration). No cell value is touched."""
-    today = now.strftime("%Y-%m-%d")
-    exps = [dict(e, expired=bool(e.get("expiry") and str(e["expiry"]) < today))
-            for e in (surface.get("expirations") or [])]
-    live_cols = [e for e in exps if not e["expired"] and e.get("dte") is not None]
-    front = min(live_cols, key=lambda e: e["dte"])["expiry"] if live_cols else None
-    return {**surface, "expirations": [dict(e, front=e.get("expiry") == front) for e in exps]}
+def _stamp_columns(surface: dict, live: dict) -> dict:
+    """The surface's expiration columns stamped with the expiry states of `live` (live_levels: each
+    expiry's `expired` and the `front` one, by its settlement and Schwab's session -- a browser
+    never decides it). No cell value is touched."""
+    return {**surface, "expirations": [
+        dict(e, expired=live["expired"][e["expiry"]], front=e["expiry"] == live["front"],
+             # the column's header word, as served: EXPIRED, else its days (terrain_engine.dte_label)
+             dte_label=EXPIRED_WORD if live["expired"][e["expiry"]] else dte_label(e["dte"]))
+        for e in surface["expirations"]]}
+
+
+#: an expired expiry's column header
+EXPIRED_WORD = "EXPIRED"
 
 
 @app.get("/api/options/gamma-surface")
@@ -1999,10 +2001,11 @@ def gamma_surface_payload(tk: str, scope: str, centre, shift: int, cols: "int | 
         # ONE freshness authority: terrain_staleness (RC-424) already merged onto the cache by
         # terrain_cache_get — serialize it verbatim, never a second age policy for the same truth.
         stale = bool(live.get("levels_stale"))
-        spot_strike = live_levels(tk, now.timestamp())["spot_strike"]
+        at_now = live_levels(tk, now.timestamp())
         # `live` means sourced from the live levels; whether the cells on screen are streaming is
         # the view's coverage
-        window, view = _surface_view(_stamp_columns(surf, now), spot_strike, scope, centre, shift, cols, expiry)
+        window, view = _surface_view(_stamp_columns(surf, at_now), at_now["spot_strike"], scope, centre, shift,
+                                     cols, expiry)
         return {
             # every cell Schwab listed is drawn: a cell without a value is None, drawn "-"
             "ticker": tk, "symbol": tk, "available": True, "reason": None,
@@ -2021,7 +2024,7 @@ def gamma_surface_payload(tk: str, scope: str, centre, shift: int, cols: "int | 
             "spot_source": _surface_live_spot[1],
             "spot_as_of_ts_utc": _surface_live_spot[2],
             "priced_at_spot": surf.get("spot"),
-            "spot_strike": spot_strike,
+            "spot_strike": at_now["spot_strike"],
             "priced_at_spot_as_of_ts_utc": surf.get("spot_as_of_ts_utc"),
             "provenance": {
                 "producer": "math_exposure_core.compute_exposures_by_strike",
@@ -2706,18 +2709,20 @@ def get_expiries(ticker: str = Query(...)):
 
 
 def expiries_payload(ticker: str, now: float) -> dict:
-    """The ticker's listed expiries with each one's dropdown label (MM/DD/YYYY and Schwab's
-    daysToExpiration, as sent); with none, the levels' own reason."""
+    """The ticker's one expiry list (terrain_engine.listed_expiries) with each one's dropdown label
+    (MM/DD/YYYY and Schwab's daysToExpiration, as sent), whether it has expired and the front one
+    at `now` (live_levels); with none, the levels' own reason."""
     t = terrain_cache_get(ticker, now)
+    live = live_levels(ticker_storage_key(ticker), now)
+    states = {"expired": live["expired"], "front": live["front"]}
     if t is None:
-        return {"expiries": [], "dte": {}, "labels": {},
+        return {"expiries": [], "dte": {}, "labels": {}, **states,
                 "reason": terrain_staleness(None, ticker, now=now)["levels_stale_reason"]}
-    exps, dte = t.get("expiries") or [], t.get("expiry_dte") or {}
-    labels = {e: f"{e[5:7]}/{e[8:10]}/{e[:4]}" + (f" · {dte[e]:g}DTE" if dte.get(e) is not None else "")
+    exps, dte = t["expiries"], t["expiry_dte"]
+    labels = {e: " · ".join(w for w in (f"{e[5:7]}/{e[8:10]}/{e[:4]}", dte_label(dte[e])) if w is not None)
               for e in exps}
-    return {"expiries": exps, "dte": dte, "labels": labels,
-            "reason": None if exps else (terrain_staleness(None, ticker, now=now)["levels_stale_reason"]
-                                         if not t else "no expiry listed in the published chain")}
+    return {"expiries": exps, "dte": dte, "labels": labels, **states,
+            "reason": None if exps else "no expiry listed in the published chain"}
 
 
 
@@ -2737,9 +2742,8 @@ def chain_payload(t: str, expiry: Optional[str], now: float) -> dict:
     times (`fieldTimes`). Every watchlist ticker's chain is kept. Answers `status: unavailable`
     with a reason when no chain is held."""
     held = terrain_cache_get(t, now)
-    listed = held.get("expiries") if held is not None else None
     requested = expiry.strip()[:10] if expiry else None
-    resolved_expiry = requested or (listed[0] if listed else None)
+    resolved_expiry = requested or live_levels(t, now)["front"]      # the front expiry by default
 
     def _unavailable(reason: str) -> dict:
         return {"ticker": t, "spot": None, "expiry": resolved_expiry,
@@ -2752,7 +2756,7 @@ def chain_payload(t: str, expiry: Optional[str], now: float) -> dict:
         return _unavailable((held.get("error") if held is not None else None) or _terrain_refresh_last_error.get(t)
                             or NO_CHAIN_YET)
     if resolved_expiry is None:
-        return _unavailable("no listed expiry for this ticker")
+        return _unavailable("no listed expiry of this ticker is known not to have expired")
     contracts = [c for c in chain if str(c.get("expirationDate") or "")[:10] == resolved_expiry]
     if not contracts:
         return _unavailable(f"the chain lists no contracts for {resolved_expiry}")
@@ -3210,6 +3214,7 @@ def _liquidity_option_levels(tk: str, now: float) -> tuple[list[tuple[float, str
     t = terrain_cache_get(tk, now)
     if not t:
         return [], "levels_not_ready"
+    t = {**t, **live_levels(tk, now)}      # max pain: the front expiry's at `now`
     levels = [(float(t[k]), tag) for k, tag in TERRAIN_FUSION_LEVELS if t.get(k) is not None]
     return levels, "fused" if levels else "fused_empty"
 

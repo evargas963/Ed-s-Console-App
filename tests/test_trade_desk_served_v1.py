@@ -146,7 +146,7 @@ def _crwd_at(live):
     test); `spot` is the live one."""
     from tests.real_chains import CRWD
     base = compute_terrain("CRWD", [dict(c) for c in CRWD.chain], CRWD.spot, now=CRWD.now).to_dict()
-    return {**base, **at_spot(base, live(base)), "spot": live(base)}
+    return {**base, **at_spot(base, live(base), CRWD.now.timestamp()), "spot": live(base)}
 
 
 def test_wall_distances_and_flip_relation_are_served():
@@ -287,7 +287,7 @@ def test_the_expected_move_is_the_live_price_plus_and_minus_the_terrain_move():
     finally:
         _forget(DESK_EM)
     by_id = {r["id"]: r for r in body["levels"]}
-    em = at_spot(terrain, spot)["implied_1d_move"]["points"]      # at the live price
+    em = at_spot(terrain, spot, FRIDAY_CLOSE.timestamp())["implied_1d_move"]["points"]      # at the live price
     assert by_id["em_up"]["price"] == spot + em and by_id["em_dn"]["price"] == spot - em
     assert by_id["em_up"]["family"] == by_id["em_dn"]["family"] == "expected_move"
     assert "expected_move" not in {f["family"] for f in body["families_absent"]}

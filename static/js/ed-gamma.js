@@ -139,7 +139,7 @@
     var live = surface.live !== false, stale = !!surface.stale;
     var tbl = '<table class="heat"><thead><tr><th class="hcorner">Strike</th>';
     exps.forEach(function (e, j) {
-      var dte = e.expired ? 'EXPIRED' : (e.dte === 0) ? '0DTE' : (e.dte != null ? e.dte + 'DTE' : '');
+      var dte = e.dte_label == null ? '' : escapeHtml(e.dte_label);   // served: EXPIRED, or its days
       var title = e.expired ? 'expired: a prior-session column, not current structure'
         : (words.column[(surface.stream_by_expiry || {})[e.expiry]] || '');
       tbl += '<th class="hexp' + (e.front ? ' col-front' : '') + (e.expired ? ' expired' : '') + '" data-col="' + j +

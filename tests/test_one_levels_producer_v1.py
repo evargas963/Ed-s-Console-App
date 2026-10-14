@@ -167,7 +167,7 @@ def test_published_levels_equal_compute_terrain_on_the_same_inputs():
     expected = compute_terrain(TK, _CONTRACTS, _SPOT, now=_AT).to_dict()
     got = _cached()
     assert expected["gamma_flip"] is not None, "the chain must price (valued at its capture)"
-    for k in ("gamma_flip", "call_wall", "put_wall", "absolute_gamma_strike", "max_pain",
+    for k in ("gamma_flip", "call_wall", "put_wall", "absolute_gamma_strike", "max_pain_by_expiry",
               "net_gex_peak", "contracts_used"):
         assert got[k] == expected[k], k
 
@@ -417,7 +417,7 @@ def test_the_route_serves_the_publication_and_no_live_price_publishes_no_levels(
     out = server.get_terrain(ticker=TK)
     for k in ("spot", "net_gex_at_spot", "call_wall"):
         assert out[k] == published[k], k
-    read = at_spot(published, None)                             # with no price, none read from it
+    read = at_spot(published, None, time.time())                # with no price, none read from it
     for k in ("regime", "call_wall_state", "call_wall_lean", "dist_to_call_wall", "flip_relation", "headline"):
         assert out[k] == read[k], k
     assert "spot_state" not in out and out["spot_as_of_ts_utc"] == int(_T * 1000) / 1000   # Schwab's TRADE_TIME, in ms
@@ -513,7 +513,7 @@ def test_startup_prices_the_newest_capture_with_its_own_price_and_time():
     assert loaded["spot"] == _SPOT and loaded["spot_source"] == server.SPOT_SOURCE_CAPTURE
     expected = compute_terrain(tk, _CONTRACTS, _SPOT, now=_AT)
     assert expected.gamma_flip is not None, "the capture must price (valued at its own time)"
-    for k in ("gamma_flip", "call_wall", "put_wall", "max_pain"):
+    for k in ("gamma_flip", "call_wall", "put_wall", "max_pain_by_expiry"):
         assert loaded[k] == getattr(expected, k), k
 
 

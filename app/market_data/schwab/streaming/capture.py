@@ -105,7 +105,7 @@ from math_exposure_core import greek_reported  # noqa: E402
 from numeric_contract import schwab_number  # noqa: E402
 from schwab.streaming import StreamClient  # noqa: E402
 from schwab_client import build_client_from_token, safe_get_quotes  # noqa: E402
-from time_et import ET, ct_label, options_closed_at, options_open, sessions_since  # noqa: E402
+from time_et import ET, ct_label, options_closed_at, options_open, sessions_since, settles_at  # noqa: E402
 from websockets.exceptions import ConnectionClosed  # noqa: E402
 
 log = logging.getLogger("capture")
@@ -217,14 +217,17 @@ def split_request(symbols: "list[str]", max_bytes: int = MAX_REQUEST_BYTES) -> "
 # ---------------------------------------------------------------------------- the option rule
 
 def expiration_ts(ct: dict) -> "float | None":
-    """A contract's expiration, Schwab's own expirationDate ("2026-09-18T20:00:00.000+00:00"), as
-    a time; None when Schwab sent none or not a date (rule 2)."""
+    """A contract's settlement as a time (time_et.settles_at: the option market's close Schwab's
+    /markets sent for its expiry date, its open for settlementType "A"; else Schwab's own
+    expirationDate, "2026-09-18T20:00:00.000+00:00"); None when it is not known, or Schwab sent
+    no expirationDate as a date (rule 2)."""
     try:
-        return datetime.fromisoformat(ct["expirationDate"]).timestamp()
+        settles = settles_at(ct["expirationDate"], ct.get("settlementType"))
     except (KeyError, TypeError, ValueError) as e:
         log.warning("option rule: %s has no expirationDate as a date (%s: %s)", ct.get("symbol"),
                     type(e).__name__, e)
         return None
+    return None if settles is None else settles.timestamp()
 
 
 def by_gamma(contracts: "list[dict]", price: float, now: float) -> "tuple[str, ...]":
@@ -232,8 +235,8 @@ def by_gamma(contracts: "list[dict]", price: float, now: float) -> "tuple[str, .
     Schwab gamma first, as the levels take it (math_exposure_core.greek_reported: absent, -999, or
     a -999 volatility is no gamma, ranked last); of equal gammas the nearest expiration, then the
     strike nearest `price` (the lower of two equally near), calls before puts. A contract has
-    expired once now passes its expirationDate and is left out (it stays in the records; it is
-    never streamed); so is one whose strike or expiration is not a number (rule 2)."""
+    expired once now passes its settlement (expiration_ts) and is left out (it stays in the
+    records; it is never streamed); so is one whose strike or settlement is not known (rule 2)."""
     with_gamma, without = [], []
     for ct in contracts:
         strike, expires = schwab_number(ct.get("strikePrice")), expiration_ts(ct)

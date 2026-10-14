@@ -103,11 +103,9 @@ class TerrainSnapshot:
     #: renders once as ABS GAMMA. Analytics `kl_hvl` remains a DIFFERENT book
     #: (net_gex_peak → "Net Γ peak").
     #: Max pain is defined PER EXPIRY (standard: the settlement price minimising intrinsic
-    #: payout on ONE expiry's open interest). It used to be computed over the whole wide
-    #: chain -- every expiry pooled (research check, 2026-09-24). Now: the FRONT expiry only,
-    #: and max_pain_dte says which.
-    max_pain: float | None = None
-    max_pain_dte: float | None = None
+    #: payout on ONE expiry's open interest): {expiry: strike} for each listed expiry. The one
+    #: shown is the front expiry's (expiry_states, at the instant it is served).
+    max_pain_by_expiry: dict = field(default_factory=dict)
     call_charm_wall: float | None = None
     put_charm_wall: float | None = None
     key_delta_strike: float | None = None
@@ -195,10 +193,11 @@ class TerrainSnapshot:
     #: the same two ratios over the whole book (every expiry)
     pcr_all: float | None = None
     pcr_volume_all: float | None = None
-    #: every expiry the chain lists, ascending
+    #: the one expiry list (listed_expiries): every expiry the chain lists, ascending, with
+    #: Schwab's daysToExpiration and its settlement instant
     expiries: list = field(default_factory=list)
-    #: {expiry: Schwab's daysToExpiration as sent with this chain}
     expiry_dte: dict = field(default_factory=dict)
+    expiry_settles: dict = field(default_factory=dict)
     #: Wall-clock the chain behind per_strike was fetched — every consumer must be able to render
     #: an age on its face rather than implying "now".
     computed_ts_utc: float | None = None
@@ -218,10 +217,11 @@ def _unavailable(ticker: str, spot: float | None, reason: str) -> TerrainSnapsho
 
 
 #: no levels published: every value read from the spot is absent, with the read's reason
-_NO_LEVELS: dict[str, Any] = {"flip_confidence": TerrainSnapshot.flip_confidence, "flip_diag": None}
+_NO_LEVELS: dict[str, Any] = {"flip_confidence": TerrainSnapshot.flip_confidence, "flip_diag": None,
+                              "expiries": [], "expiry_dte": {}, "expiry_settles": {}, "max_pain_by_expiry": {}}
 
 
-def at_spot(pub: "dict[str, Any] | None", spot: float | None) -> dict[str, Any]:
+def at_spot(pub: "dict[str, Any] | None", spot: float | None, now: float) -> dict[str, Any]:
     """Every value read from the spot, at `spot` (the live one), from the levels the chain was
     priced to (`pub`: the published TerrainSnapshot's fields with the one strike list `_strikes`,
     None when none is published) -- the one producer of each (operator 2026-10-14: "the live spot
@@ -230,8 +230,14 @@ def at_spot(pub: "dict[str, Any] | None", spot: float | None) -> dict[str, Any]:
     lines worded at `spot`), each wall's state (RC-130: "contains" when the call wall is above /
     the put wall below the spot, else "breached"; the strike never moves) and dealer lean, the
     spot's distance to each wall and side of the flip, the pin candidate (its proximity gate at
-    `spot`) and the implied 1-day move (`points` = spot x sigma_ATM x sqrt(1/252))."""
+    `spot`, its expiry gate on the front expiry's days) and the implied 1-day move (`points` =
+    spot x sigma_ATM x sqrt(1/252)); and at `now`, each expiry's `expired` and the `front` one
+    (expiry_states, operator 2026-10-14: "one front-expiry rule from Schwab's session,
+    everywhere"), whose max pain is the one shown (`max_pain`, `max_pain_expiry`, `max_pain_dte`)."""
     p = pub if pub is not None else _NO_LEVELS
+    states = expiry_states(p, now)
+    front = states["front"]
+    front_dte = None if front is None else p["expiry_dte"][front]
     flip, call_wall, put_wall = p.get("gamma_flip"), p.get("call_wall"), p.get("put_wall")
     diag = p["flip_diag"]
     read = build_terrain_read(
@@ -246,9 +252,11 @@ def at_spot(pub: "dict[str, Any] | None", spot: float | None) -> dict[str, Any]:
         absolute_gamma_strength_pct=p.get("absolute_gamma_strength_pct"),
         absolute_gamma_gex_dollars=p.get("absolute_gamma_gex_dollars"),
         absolute_gamma_oi=p.get("absolute_gamma_oi"), book_oi_total=p.get("book_oi_total"),
-        net_gex_at_spot=p.get("net_gex_at_spot"), front_dte=p.get("max_pain_dte"))
+        net_gex_at_spot=p.get("net_gex_at_spot"), front_dte=front_dte)
     sigma = p.get("implied_move_sigma")
     return {
+        **states, "max_pain_expiry": front, "max_pain_dte": front_dte, "max_pain_dte_label": dte_label(front_dte),
+        "max_pain": None if front is None else p["max_pain_by_expiry"].get(front),
         "spot_strike": nearest_strike(p.get("_strikes"), spot),
         "regime": read.regime, "posture": read.posture, "confidence": read.confidence,
         "headline": read.headline, "lines": read.lines,
@@ -388,6 +396,45 @@ def listed_strikes(contracts) -> list[float]:
     ascending, once each. Every per-strike panel draws its rows on it."""
     from numeric_contract import schwab_number
     return sorted({k for c in contracts or [] if (k := schwab_number(c.get("strikePrice"))) is not None})
+
+
+def listed_expiries(contracts) -> dict[str, Any]:
+    """The one expiry list: every expiry Schwab lists in the chain (its `expirationDate`'s date),
+    ascending (`expiries`), each with its days to expiry (`expiry_dte`: Schwab's
+    daysToExpiration as sent; None when its contracts send none, or disagree) and its settlement
+    (`expiry_settles`: the latest of its contracts', time_et.settles_at, as a timestamp -- an
+    expiry with AM- and PM-settled contracts has settled once all have; None while one
+    contract's is not known)."""
+    from numeric_contract import schwab_number
+    from time_et import settles_at
+    dtes: dict[str, set] = {}
+    settles: dict[str, list] = {}
+    for c in contracts or []:
+        e = str(c.get("expirationDate") or "")[:10]
+        if len(e) != 10:
+            continue
+        dtes.setdefault(e, set()).add(schwab_number(c.get("daysToExpiration")))
+        s = settles_at(c.get("expirationDate"), c.get("settlementType"))
+        settles.setdefault(e, []).append(None if s is None else s.timestamp())
+    exps = sorted(dtes)
+    return {"expiries": exps,
+            "expiry_dte": {e: next(iter(dtes[e])) if len(dtes[e]) == 1 else None for e in exps},
+            "expiry_settles": {e: None if None in settles[e] else max(settles[e]) for e in exps}}
+
+
+def dte_label(dte: float | None) -> str | None:
+    """Schwab's daysToExpiration as every screen words it ("0DTE", "9DTE"); None without one."""
+    return None if dte is None else f"{dte:g}DTE"
+
+
+def expiry_states(listed: dict[str, Any], now: float) -> dict[str, Any]:
+    """The listed expiries (listed_expiries) at `now`: each one's `expired` (its settlement has
+    passed; None while its settlement is not known) and the `front` expiry (the nearest that has
+    not expired; None when none is known not to have) -- the one rule of both for every panel."""
+    settles = listed["expiry_settles"]
+    expired = {e: None if settles[e] is None else settles[e] <= now for e in listed["expiries"]}
+    front = next((e for e in listed["expiries"] if expired[e] is False), None)
+    return {"expired": expired, "front": front}
 
 
 def on_strikes(rows: list, strikes: list, width: int) -> list:
@@ -771,8 +818,6 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
     # One pricing pass: exposures per (expiry, DTE) group; every book below is a merge of them.
     books = exposure_books(contracts, spot=spot, now=_terrain_now)
     exposures, diag = merge_exposure_books(books.values())
-    _dtes = [d for (_e, d) in books if d is not None]
-    _front_dte = min(_dtes, default=None)
     if not exposures:
         return _unavailable(ticker, spot, "chain produced no exposures")
 
@@ -828,12 +873,12 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
     _zero_dte_pin_reason = (None if _zero_dte_pin is not None else
                             "no same-day expiry in the chain" if not _exp_0dte else
                             "the same-day expiry has no dollar gamma")
-    # Max pain on the FRONT expiry only.
-    _front_max_pain = None
-    if _front_dte is not None:
-        _exp_front, _ = merge_exposure_books(
-            b for (_e, d), b in books.items() if d is not None and d <= _front_dte)
-        _front_max_pain = compute_max_pain(_exp_front)
+    # Max pain per expiry (its books merged: one per expiry date)
+    _by_expiry: dict[str, list] = {}
+    for (e, _d), b in books.items():
+        _by_expiry.setdefault(e, []).append(b)
+    _max_pain_by_expiry = {e: compute_max_pain(merge_exposure_books(bs)[0]) for e, bs in sorted(_by_expiry.items())
+                           if len(e) == 10}
     # RC-358: 25Δ risk reversal from the same wide chain (front expiry, tolerance-gated).
     from math_volatility import compute_25d_risk_reversal
     _rr25 = compute_25d_risk_reversal(contracts)
@@ -873,8 +918,8 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         put_wall_range=compute_wall_value_area(exposures, put_wall, "put"),      # RC-115
         call_delta_wall=call_delta_wall,   # RC-128: one book for delta walls too
         put_delta_wall=put_delta_wall,
-        max_pain=_front_max_pain,
-        max_pain_dte=_front_dte,
+        max_pain_by_expiry=_max_pain_by_expiry,
+        **listed_expiries(contracts),
         call_charm_wall=call_charm_wall,
         put_charm_wall=put_charm_wall,
         # ExposureDiagnostics is a frozen dataclass; contracts_used is ALWAYS an int.
@@ -898,7 +943,5 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         pcr_volume_by_expiry={e: put_call_volume_ratio(book) for (e, _d), (book, _diag) in books.items()},
         pcr_all=put_call_oi_ratio(exposures),
         pcr_volume_all=put_call_volume_ratio(exposures),
-        expiries=sorted({e for (e, _d) in books}),
-        expiry_dte={e: d for (e, d) in books},
         computed_ts_utc=_time.time(),
     )
