@@ -404,7 +404,8 @@ def test_a_value_read_from_the_price_stands_marked_not_live_when_the_feed_goes_d
             while "gamma.surface" not in (frame := _by_name(await page.next("panels"))):
                 pass
             marked = frame["gamma.surface"]
-            assert marked["not_live"] == lmp.outage(TK, "LEVELONE_EQUITIES", time.time())
+            outage = lmp.outage(TK, "LEVELONE_EQUITIES", time.time())
+            assert marked["not_live"] == (None if outage is None else [outage])
             if session_label(now_et()) != "Closed":
                 assert marked["not_live"] is not None
             assert marked["body"]["spot"] == CRWD.spot, "the last spot stands"
@@ -436,9 +437,10 @@ def test_a_value_read_from_a_book_is_marked_by_its_own_feed(published):
             while not {"book.heatmap", "expiries"} <= set(got):
                 got.update(_by_name(await page.next("panels")))
             now = time.time()
-            assert got["book.heatmap"]["not_live"] == lmp.outage(TK, "NYSE_BOOK", now)
+            outage = lmp.outage(TK, "NYSE_BOOK", now)
+            assert got["book.heatmap"]["not_live"] == (None if outage is None else [outage])
             if session_label(now_et()) != "Closed":
-                assert "NYSE_BOOK" in got["book.heatmap"]["not_live"]
+                assert "NYSE_BOOK" in got["book.heatmap"]["not_live"][0]
             assert lmp.outage(TK, "LEVELONE_EQUITIES", now) is None and got["expiries"]["not_live"] is None
         finally:
             await page.inbox.put(None)

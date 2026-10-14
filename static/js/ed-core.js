@@ -825,6 +825,7 @@
   function checkPriceSilence() {
     if (!state.ticker || pricePushHealthy()) return;
     markHeaderPushDown();
+    setPushDown(true);
     var wlHost = document.getElementById('watchlist');
     if (!(wlHost && wlHost.classList.contains('wl-degraded'))) markWlDegraded('live push down');
   }
@@ -862,22 +863,50 @@
     if (!_panelFns[name]) _panelFns[name] = [];
     _panelFns[name].push(fn);
   }
-  // the element each panel's values are drawn in, for the panels whose values are read from a
-  // Schwab feed: the console says when one is not live (`not_live`, the feed's outage)
+  // the elements each panel's values are drawn in, for the panels whose values are read from a
+  // Schwab feed: the console says when one is not live (`not_live`, the feed's outage). An element
+  // drawn from several panels is marked with every one of them that is not live, whichever
+  // arrived last.
   var PANEL_HOSTS = {
-    'book.heatmap': 'ofhBody', flow: 'flowBody',
-    'gamma.surface': 'heatBody', 'gamma.terrain': 'klBody', 'gamma.strikes': 'gbsBody', 'gamma.strike': 'sdBody',
-    'gamma.chart.strikes': 'chartBody', 'gamma.chart.terrain': 'chartBody', 'gamma.levels': 'levelsBody',
-    vanna: 'vnBody', charm: 'chmBody', chain: 'chainBody', structures: 'stBody',
-    'liquidity.map.zones': 'liqmBody', 'liquidity.map.levels': 'liqmBody', 'liquidity.levels': 'lvlBody', book: 'obBody',
-    'rightnow.book': 'tdBody', 'rightnow.levels': 'tdBody', 'rightnow.terrain': 'tdBody', 'rightnow.zones': 'tdBody',
-    'rightnow.strikes': 'tdBody', 'desk.levels': 'tdmMap', 'desk.events': 'tdmMap', 'desk.terrain': 'tdmMap',
-    'desk.zones': 'tdmMap', 'desk.strikes': 'tdmMap', 'desk.book': 'tdmMap' };
-  function markLive(name, notLive) {
-    var host = PANEL_HOSTS[name] && document.getElementById(PANEL_HOSTS[name]);
-    if (!host) { if (notLive) console.error('panel ' + name + ' is not live and has no element to mark'); return; }
-    if (notLive) { host.classList.add('not-live'); host.setAttribute('data-not-live', notLive); }
+    'book.heatmap': ['ofhBody'], flow: ['flowBody'],
+    'gamma.surface': ['heatBody'], 'gamma.terrain': ['klBody'], 'gamma.strikes': ['gbsBody'], 'gamma.strike': ['sdBody'],
+    'gamma.tape': ['ofBody'], 'gamma.chart.bars': ['chartBody'], 'gamma.chart.strikes': ['chartBody'],
+    'gamma.chart.terrain': ['chartBody'], 'gamma.levels': ['levelsBody'],
+    vanna: ['vnBody'], charm: ['chmBody'], chain: ['chainBody'], structures: ['stBody'],
+    'liquidity.map.zones': ['liqmBody'], 'liquidity.map.levels': ['liqmBody'], 'liquidity.map.bars': ['liqmBody'],
+    'liquidity.levels': ['lvlBody'], book: ['obBody'],
+    'rightnow.book': ['tdBody'], 'rightnow.levels': ['tdBody'], 'rightnow.terrain': ['tdBody'], 'rightnow.zones': ['tdBody'],
+    'rightnow.strikes': ['tdBody'],
+    'desk.bars': ['tdmChart'], 'desk.levels': ['tdmChart'], 'desk.events': ['tdmChart', 'tdmCardFlow'],
+    'desk.zones': ['tdmChart'], 'desk.strikes': ['tdmChart'], 'desk.terrain': ['tdmCardOpt', 'tdmCardVol'],
+    'desk.forces': ['tdmCardOpt'], 'desk.book': ['tdmCardLiq', 'tdmCardFlow'], 'desk.flow_bars': ['tdmCardFlow'] };
+  var _notLive = {};                 // each shown panel's not-live reasons (none: live)
+  var _shown = [];                   // the panels of the view the console last took
+  // the reason every value is not live while the page's own connection to the console is down
+  var PUSH_DOWN = 'the console push is down';
+  function markLive(name, notLive) {           // notLive: the served reasons, or none
+    if (notLive) _notLive[name] = notLive; else delete _notLive[name];
+    (PANEL_HOSTS[name] || []).forEach(paintMark);
+  }
+  function drawnIn(n, id) { return (PANEL_HOSTS[n] || []).indexOf(id) !== -1; }
+  function paintMark(id) {
+    var host = document.getElementById(id); if (!host) return;
+    var why = _pushDown && _shown.some(function (n) { return drawnIn(n, id); }) ? [PUSH_DOWN] : [];
+    Object.keys(_notLive).forEach(function (n) {    // each reason once, in the served order
+      if (drawnIn(n, id)) _notLive[n].forEach(function (r) { if (why.indexOf(r) === -1) why.push(r); });
+    });
+    why.sort();
+    if (why.length) { host.classList.add('not-live'); host.setAttribute('data-not-live', why.join('; ')); }
     else { host.classList.remove('not-live'); host.removeAttribute('data-not-live'); }
+  }
+  // the page's connection to the console is down (closed, or no beat): every panel shown stands,
+  // not live, until the push beats again
+  var _pushDown = false;
+  function setPushDown(down) {
+    if (down === _pushDown) return;
+    _pushDown = down;
+    _shown.forEach(function (n) { (PANEL_HOSTS[n] || []).forEach(paintMark); });
+    document.dispatchEvent(new CustomEvent('ed:push', { detail: { down: down } }));   // the screens that say LIVE
   }
   // each panel drawn on its own: one drawer's error is reported and never stops the others
   function deliver(name, a) {
@@ -907,12 +936,15 @@
           if (_rows[k]) { _rows[k].trade_age = msg.ages[k]; ingestPriceRow(_rows[k]); }
         });
         fillAges(msg.as_of_ages);                     // each shown panel's instants, at one instant
+        setPushDown(false);                           // the push beats: the console's own marks stand
         return;
       }
       if (msg.type === 'symbols') { ingestIdentity(msg.symbols); return; }
       if (msg.type === 'rows') { ingestRows(msg.rows); return; }
       if (msg.type === 'view') {                   // the console took view `msg.seq`; `moved`: its new panels
         Object.keys(_held).forEach(function (n) { if (msg.shown.indexOf(n) === -1) delete _held[n]; });   // off screen
+        _shown = msg.shown;
+        Object.keys(_notLive).forEach(function (n) { if (msg.shown.indexOf(n) === -1) markLive(n, null); });
         msg.moved.forEach(function (n) { delete _held[n]; deliver(n, { waiting: true }); });
         if (msg.seq !== _viewSeq) return;          // a newer view is on its way: it decides the rest
         var held = _held; _held = {};
@@ -928,6 +960,7 @@
     ws.onclose = function () {
       if (_live !== ws) return;
       _live = null; _priceUp = false;
+      setPushDown(true);
       paintSession('Unknown', 'session unknown: the console push is down');
       setTimeout(openPush, Math.min(2000, 250 * Math.pow(2, _liveRetry++)));
     };
@@ -1105,6 +1138,7 @@
   }
   window.EdShell = { getState: function () { return Object.assign({}, state); }, setTicker: setTicker,
     onPanel: onPanel, setInput: setInput, setTf: setTf, pan: function (name) { return state.pans[name]; },
+    pushDown: function () { return _pushDown; }, PUSH_DOWN: PUSH_DOWN,
     addSymbol: addSymbol, setWorkspace: setWorkspace, setStrike: setStrike,
     setTheme: applyTheme,
     marketContext: function () { return MARKET_CONTEXT.slice(); },   // served [{key, display}]

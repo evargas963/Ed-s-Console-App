@@ -104,7 +104,9 @@ def test_a_book_is_live_by_the_one_rule_on_its_venue_not_by_its_book_time(tmp_pa
     def stale(svc):
         return json.loads(server.api_order_flow_microstructure(ticker="SPY", venue=svc).body)["ages"]["book_stale"]
 
-    held = {"schwab_socket_open": True, "held": {"NASDAQ_BOOK": ["SPY"], "NYSE_BOOK": []}}
+    # on a Schwab connection begun before these books arrived (STAND-IN: their oldest receipt)
+    held = {"schwab_socket_open": True, "held": {"NASDAQ_BOOK": ["SPY"], "NYSE_BOOK": []},
+            "connected_at": min(fx[s]["ts_recv"] for s in ("NASDAQ_BOOK", "NYSE_BOOK"))}
     lmp.record_feed_heartbeat({**held, "ts": time.time()})
     assert (stale("NASDAQ_BOOK"), stale("NYSE_BOOK")) == (False, True)
     lmp.record_feed_heartbeat({**held, "ts": time.time() - lmp.FEED_HEARTBEAT_MAX_AGE_SEC - 1})

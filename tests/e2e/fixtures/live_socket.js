@@ -29,11 +29,12 @@ const _push = new WeakMap();
 //: each page's open push, for pushBeat
 const _beat = new WeakMap();
 
-// The console's beat with each shown row's trade age ({key: seconds}), as server.live_values
-// serves it every second (STAND-IN: the ages are the spec's).
-function pushBeat(page, ages) {
+// The console's beat with each shown row's trade age ({key: label}) and each shown panel's
+// instants' ages ({kind: label}), as server.live_values serves it every second (STAND-IN: the
+// ages are the spec's).
+function pushBeat(page, ages, asOfAges) {
   const b = _beat.get(page);
-  if (b) b(ages);
+  if (b) b(ages, asOfAges);
 }
 
 //: each page's stand-in price rows (tests/e2e/fixtures/price_socket.js), in the order pushed
@@ -51,6 +52,16 @@ function setPrices(page, rows) {
 async function pushChange(page, kind) {
   const p = _push.get(page);
   if (p) await p(kind);
+}
+
+//: each page's stand-in outages: panel -> the console's not_live reasons for it
+const _notLive = new WeakMap();
+
+// The console marks `panel` not live with `reason` (STAND-IN: the test server has no Schwab feed
+// to go down): its answers from now on carry it, as the console's `not_live` (its reasons).
+function setNotLive(page, panel, reason) {
+  if (!_notLive.has(page)) _notLive.set(page, {});
+  _notLive.get(page)[panel] = [reason];
 }
 
 //: each page's open push, for pushDown; the pages whose console push is down
@@ -95,7 +106,12 @@ async function installLive(page) {
     // that is still the newest for its panel
     async function reply(msgs) {
       const got = await Promise.all(msgs.map((m) => read(m.source)));
-      const out = msgs.map((m, i) => Object.assign({}, m, got[i])).filter((m, i) => shown.get(msgs[i].panel) === msgs[i]);
+      const outages = _notLive.get(page) || {};
+      // the test server's age labels are of its own answers, not the stubs': the spec's beat
+      // (pushBeat) labels the stubs' instants
+      const out = msgs.map((m, i) => Object.assign({}, m, got[i], { ages: {} },
+        m.panel in outages ? { not_live: outages[m.panel] } : {}))
+        .filter((m, i) => shown.get(msgs[i].panel) === msgs[i]);
       if (out.length) send({ type: 'panels', seq: seq, panels: out });
     }
     // a change moves the panels of the view the console holds; one that comes while the page's
@@ -110,7 +126,8 @@ async function installLive(page) {
       await reply([...shown.values()].filter((m) => m.kinds.includes(kind)));
     }
     _push.set(page, moved);
-    _beat.set(page, (ages) => send({ type: 'feed', session: session, writer: writer, ages: ages }));
+    _beat.set(page, (ages, asOfAges) => send({ type: 'feed', session: session, writer: writer, ages: ages,
+                                               as_of_ages: asOfAges || {} }));
     // the spec's change stream for the ticker, read as the console's push of each kind
     async function changes(tk) {
       while (!closed && tk === ticker) {
@@ -125,7 +142,7 @@ async function installLive(page) {
         for (const block of r.text.split('\n\n')) {
           const ev = (block.match(/^event: (.+)$/m) || [])[1], data = (block.match(/^data: (.*)$/m) || [])[1];
           if (!ev) continue;
-          if (ev === 'session') { session = data; send({ type: 'feed', session: data, writer: writer, ages: {} }); continue; }
+          if (ev === 'session') { session = data; send({ type: 'feed', session: data, writer: writer, ages: {}, as_of_ages: {} }); continue; }
           await moved(ev);
         }
       }
@@ -148,7 +165,10 @@ async function installLive(page) {
       }
       const prices = _prices.get(page);
       if (msg.type === 'rows' && prices) return;       // the stand-in rows replace the server's
-      if (msg.type === 'feed') { writer = msg.writer; session = msg.session; }
+      if (msg.type === 'feed') {
+        writer = msg.writer; session = msg.session;
+        msg = Object.assign({}, msg, { as_of_ages: {} });   // its labels are of its own answers, not the stubs'
+      }
       if (msg.type === 'symbols' && prices) {
         send(msg);
         const keys = new Set(msg.symbols.map((s) => s.key).filter((k) => !priced.has(k)));
@@ -182,4 +202,4 @@ const test = base.test.extend({
   },
 });
 
-module.exports = { test, expect: base.expect, pushBeat, pushChange, pushDown, setPrices };
+module.exports = { test, expect: base.expect, pushBeat, pushChange, pushDown, setNotLive, setPrices };

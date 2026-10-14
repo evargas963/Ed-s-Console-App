@@ -18,7 +18,7 @@ if str(ROOT) not in sys.path:
 
 import app.options.order_flow.engine as ofe
 from app.options.order_flow.state import ContractRecord, OrderFlowState
-from tests.feed_live_helper import no_daemon, through_the_daemons_bus
+from tests.feed_live_helper import CONNECTED_AT, no_daemon, through_the_daemons_bus
 
 FIXTURE = ROOT / "tests" / "fixtures" / "real_options_stream_history_samples.json"
 
@@ -510,9 +510,10 @@ def test_an_option_contracts_top_is_what_schwab_sent_on_a_live_feed():
     from stream_spine import MessageBus
     c = json.loads(FIXTURE.read_text(encoding="utf-8"))["contracts"][0]
     sym = c["symbol"]
-    through_the_daemons_bus(MessageBus(), sym, [ev["content"] for ev in c["events"][:4] if ev["kind"] == "l1"])
+    ticks = [ev["content"] for ev in c["events"][:4] if ev["kind"] == "l1"]
+    through_the_daemons_bus(MessageBus(), sym, ticks, [time.time()] * len(ticks))     # received now
     try:
-        lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True,
+        lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "connected_at": CONNECTED_AT,
                                    "held": {"LEVELONE_OPTIONS": [sym]}})
         payload = options_live_payload(sym, time.time())
         assert payload["flow"]["top_book_pressure"] is not None and payload["top_outage"] is None

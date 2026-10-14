@@ -880,9 +880,9 @@ def _stamp_gamma_surface_cell_stream_state(surface: dict, records: dict, now: fl
     exposure computation); it says whether a streamed Schwab value backs it now.
 
     `records`: the ticker's contract records (_ledger); a leg's stream is its record's
-    `streamTime` (the Schwab time of the stream's newest message for it), on the daemon's current
-    connection to Schwab or before it; whether the feed is delivering it now is
-    live_market_plane.feed_live_for, the one live rule. Each leg's age is at `now`.
+    `streamTime` (the Schwab time of the stream's newest message for it, `ts_recv` its receipt);
+    whether it was posted on the daemon's current connection to Schwab and the feed delivers it
+    now is live_market_plane.feed_live_for, the one live rule.
       'live'         — the stream sent it on this connection and the feed is delivering it now.
       'stale'        — the stream sent it, but not on this connection or not now.
       'pending'      — the daemon's live heartbeat holds the symbol and no message has come yet.
@@ -893,8 +893,6 @@ def _stamp_gamma_surface_cell_stream_state(surface: dict, records: dict, now: fl
     partial when some are, else the first of stale > pending present, else unavailable."""
     held = lmp.held_reported("LEVELONE_OPTIONS")
     held_now = lmp.held_by_daemon("LEVELONE_OPTIONS", now)
-    status = lmp.daemon_status(now)
-    since = status.get("connected_at") if status is not None else None
     for cell in (surface.get("cells") or []):
         contracts_row = cell.get("contracts") or []
         state_row = []
@@ -914,8 +912,7 @@ def _stamp_gamma_surface_cell_stream_state(surface: dict, records: dict, now: fl
                     leg_state = "unavailable"
                 elif not streamed:
                     leg_state = "pending" if sym in held_now else "unavailable"
-                elif (since is not None and record.fields["streamTime"] >= since * 1000
-                      and lmp.feed_live_for(sym, "LEVELONE_OPTIONS", now)):
+                elif lmp.feed_live_for(sym, "LEVELONE_OPTIONS", now):    # posted on this connection
                     leg_state = "live"
                 else:
                     leg_state = "stale"
@@ -1724,6 +1721,12 @@ def get_options_tape(ticker: str = Query(...),
     return JSONResponse(tape_payload(ticker_storage_key(_required_ticker(ticker)), contract, limit))
 
 
+def tape_contracts(tk: str) -> list:
+    """The option contracts of `tk`'s tape: every one of its chain the daemon streams on
+    LEVELONE_OPTIONS (as it last reported)."""
+    return sorted(lmp.held_reported("LEVELONE_OPTIONS") & set(_ledger(tk)))
+
+
 def tape_payload(tk: str, contract: Optional[str], limit: int) -> dict:
     """Discrete option TRADE prints (operator field-inventory audit, 2026-09-13) — the
     Options Flow tape, locked to the operator's own required schema: Time/Symbol/Expiry/
@@ -1743,11 +1746,10 @@ def tape_payload(tk: str, contract: Optional[str], limit: int) -> dict:
     if contract:
         symbols = [contract]
     else:
-        listed = _ledger(tk)
-        if not listed:
+        if not _ledger(tk):
             return {"ticker": tk, "available": False, "rows": [],
                     "reason": "the console holds no chain of this ticker yet"}
-        symbols = sorted(lmp.held_reported("LEVELONE_OPTIONS") & set(listed))
+        symbols = tape_contracts(tk)
 
     if not symbols:
         return {"ticker": tk, "available": False, "rows": [],
@@ -2207,16 +2209,16 @@ PUSH_BEAT_SEC = 1.0
 #: serves values derived from the live price (the spot strike, each level's distance, the chain's
 #: in-the-money rows, the staleness) moves with every kind: every consumer of the spot is answered
 #: again on each change of it, from the same read.
-_EVERY_KIND = {"levels", "chain", "flow", "liquidity"}
+_EVERY_KIND = {"levels", "chain", "flow", "liquidity", "live"}
 _ROUTE_KINDS = {
     "/api/terrain": _EVERY_KIND, "/api/terrain/strikes": _EVERY_KIND, "/api/forces": {"levels"},
     "/api/options/gamma-surface": _EVERY_KIND, "/api/options/vanna-by-strike": _EVERY_KIND,
     "/api/options/charm-by-strike": _EVERY_KIND, "/api/chain": _EVERY_KIND,
     "/api/expiries": {"levels", "chain"}, "/api/levels": _EVERY_KIND,
-    "/api/liquidity-snapshot": _EVERY_KIND, "/api/bars1m": {"liquidity"},
+    "/api/liquidity-snapshot": _EVERY_KIND, "/api/bars1m": {"liquidity", "live"},
     "/api/desk/events": _EVERY_KIND,
-    "/api/order-flow/microstructure": _EVERY_KIND, "/api/order-flow/book-heatmap": {"flow"},
-    "/api/order-flow/options-microstructure": {"levels", "flow"}, "/api/options/tape": {"flow"},
+    "/api/order-flow/microstructure": _EVERY_KIND, "/api/order-flow/book-heatmap": {"flow", "live"},
+    "/api/order-flow/options-microstructure": {"levels", "flow", "live"}, "/api/options/tape": {"flow", "live"},
     "/api/watchlist": set(),
 }
 
@@ -2240,10 +2242,14 @@ class _Panel:
     every panel and page that shows it, and its provenance), `produce`, its producer called
     directly (no HTTP hop), reading the clock as it runs, and `feeds`, the Schwab feeds its value
     is read from ((symbol, service), each judged by live_market_plane.outage: the panel is not
-    live while one is down; none for a value no stream feeds)."""
+    live while one is down; none for a value no stream feeds), or a function giving them as they
+    are now (the options tape: the contracts the daemon streams)."""
     source: str
     produce: Callable[[], dict]
-    feeds: tuple
+    feeds: "tuple | Callable[[], tuple]"
+
+    def feeds_now(self) -> tuple:
+        return self.feeds() if callable(self.feeds) else self.feeds
 
 
 def _panels(v: dict) -> "dict[str, _Panel]":
@@ -2273,7 +2279,8 @@ def _panels(v: dict) -> "dict[str, _Panel]":
                       lambda: terrain_strikes_payload(tk, scope, w["centre"], w["pan_shift"], time.time()), price)
 
     def bars(tf: str, limit: int) -> _Panel:      # Schwab's bars as sent, each its own record
-        return _Panel(_route("/api/bars1m", ticker=tk, tf=tf, limit=limit), lambda: bars_payload(tk, limit, tf), ())
+        return _Panel(_route("/api/bars1m", ticker=tk, tf=tf, limit=limit), lambda: bars_payload(tk, limit, tf),
+                      ((tk, "CHART_EQUITY"),))
 
     def levels(tf: str) -> _Panel:
         return _Panel(_route("/api/levels", ticker=tk, tf=tf), lambda: levels_payload(tk, tf, now_et()), price)
@@ -2296,7 +2303,8 @@ def _panels(v: dict) -> "dict[str, _Panel]":
            "expiries": _Panel(_route("/api/expiries", ticker=tk), lambda: expiries_payload(tk, time.time()), ())}
     if ws == "options" and sub in _GAMMA_FAMILY:
         out.update({"gamma.terrain": terrain, "gamma.strikes": strikes("gbs"),       # the tape: each print as sent
-                    "gamma.tape": _Panel(_route("/api/options/tape", ticker=tk), lambda: tape_payload(tk, None, 100), ())})
+                    "gamma.tape": _Panel(_route("/api/options/tape", ticker=tk), lambda: tape_payload(tk, None, 100),
+                                         lambda: tuple((c, "LEVELONE_OPTIONS") for c in tape_contracts(tk)))})
         if v["strike"] is not None:
             out["gamma.strike"] = chain(v["expiry"] or v["strike_expiry"])
         if v["view"] == "heatmap":
@@ -2358,12 +2366,12 @@ def _age_labels(instants: dict, now: float) -> dict:
     return {k: None if ts is None else age_label(now - float(ts)) for k, ts in instants.items()}
 
 
-def _not_live(p: _Panel, now: float) -> "str | None":
+def _not_live(p: _Panel, now: float) -> "list | None":
     """Why `p`'s value is not live at `now`: the one judgment (live_market_plane.outage) of each
-    feed it is read from that is down, together; None while every one delivers (a change of one
-    re-sends the panel: streaming._mark_liveness)."""
-    reasons = [o for s, svc in p.feeds if (o := lmp.outage(s, svc, now)) is not None]
-    return "; ".join(reasons) if reasons else None
+    feed it is read from that is down, each reason once, in order; None while every one delivers
+    (a change of one re-sends the panel: streaming._mark_liveness)."""
+    reasons = sorted({o for s, svc in p.feeds_now() if (o := lmp.outage(s, svc, now)) is not None})
+    return reasons if reasons else None
 
 
 async def _produce(p: _Panel) -> dict:

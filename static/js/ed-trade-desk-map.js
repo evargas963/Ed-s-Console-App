@@ -454,7 +454,10 @@
     var host = $('tdmTrust'); if (!host) return;
     var q = S.quotes[st().key], t = S.terrain, m = S.micro, L = S.levels;
     var h = '';
-    h += q ? pill('PRICE', q.feed_live ? 'LIVE' : 'OFFLINE', q.feed_live ? 'ok' : 'bad', q.feed_live ? 'the console\'s price row' : 'not live' + (q.outage ? ': ' + q.outage : ''))
+    // live only while Schwab's feed delivers it and the console's push reaches this page
+    var down = window.EdShell.pushDown(), live = q && q.feed_live && !down;
+    h += q ? pill('PRICE', live ? 'LIVE' : 'OFFLINE', live ? 'ok' : 'bad', live ? 'the console\'s price row'
+        : 'not live' + (down ? ': ' + window.EdShell.PUSH_DOWN : q.outage ? ': ' + q.outage : ''))
       : pill('PRICE', 'WAITING', 'warn', 'no price row yet for this symbol');
     h += m === undefined ? pill('BOOK', '…', '') : !m ? pill('BOOK', 'FAILED', 'bad') : m.status === 'no_book' ? pill('BOOK', 'NONE', 'warn', 'no ' + m.venue)
       : pill('BOOK', m.ages && m.ages.book_stale === false ? { pre: '', ageOf: 'book' } : m.ages && m.ages.book_stale ? 'STALE' : 'AGE UNKNOWN',
@@ -504,6 +507,7 @@
     if (!$('tdmMap')) return;
     document.addEventListener('ed:view', start);
     document.addEventListener('ed:ticker', start);
+    document.addEventListener('ed:push', function () { if (onDesk()) paintTrust(); });   // the push went down or came back
     // Every streamed price row: header + indices. The chart moves only on a completed bar.
     window.addEventListener('ed:quote_tick', function (e) {
       var q = e.detail; if (!q || !q.ticker) return;

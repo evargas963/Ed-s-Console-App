@@ -40,7 +40,9 @@ def price_history(symbol: str, series: str) -> dict:
 
 
 def mark_feed_live(*tickers: str) -> None:
-    lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True,
+    """The daemon's heartbeat now, holding `tickers` on LEVELONE_EQUITIES on its connection begun
+    at CONNECTED_AT."""
+    lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "connected_at": CONNECTED_AT,
                                "held": {"LEVELONE_EQUITIES": list(tickers)}})
 
 
@@ -60,6 +62,7 @@ def forget_price(ticker: str) -> None:
     """The console holds no price for `ticker`."""
     lmp._by_ticker.pop(ticker, None)
     lmp._fields_by_ticker.pop(ticker, None)
+    lmp._posted.pop((ticker, "LEVELONE_EQUITIES"), None)
 
 
 #: when the daemon's one connection to Schwab in these tests began (STAND-IN: 2026-08-01 00:00 ET,
@@ -71,12 +74,12 @@ def daemon_holds(at: float, held: dict, *, socket_open: bool = True, connected_a
                  picks: "dict | None" = None) -> None:
     """The daemon's heartbeat stamped `at`, holding `held` ({Schwab service: [symbols]}) on its
     connection to Schwab begun at `connected_at`, its option rule picking `picks` (the option
-    contracts it holds, when not given), as the console's feed loop applies it
-    (streaming.apply_heartbeat)."""
+    contracts it holds, when not given) having ranked every ticker it holds on LEVELONE_EQUITIES,
+    as the console's feed loop applies it (streaming.apply_heartbeat)."""
     from app.options.order_flow import streaming as ofs
     options = {s: (held if picks is None else picks).get(s, []) for s in ofs.OPTION_PRODUCER_SERVICES}
     ofs.apply_heartbeat({"ts": at, "schwab_socket_open": socket_open, "connected_at": connected_at, "held": held,
-                         "options": options})
+                         "options": options, "ranked": held.get("LEVELONE_EQUITIES", [])})
 
 
 #: the receive time of a tick given none, one second after the last

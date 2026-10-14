@@ -48,6 +48,7 @@ from app.options.order_flow.state import (
     clear_all_live_state,
     drop_unlisted,
     clear_symbol,
+    contract,
     push_book,
     push_contract,
 )
@@ -207,6 +208,8 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
     ts = float(ts)
     kind = topic.split(".", 1)[0]
     if kind in ("bar1m", "pricehistory"):          # the bar writer's: a streamed bar, a price history
+        if kind == "bar1m":
+            _lmp.note_posted(sym, "CHART_EQUITY", ts)
         streamed_bars.put(msg)
         return None
     if kind == "quote":
@@ -225,6 +228,7 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
         if not isinstance(content, dict):
             return None
         push_book(sym, content, msg["service"])
+        _lmp.note_posted(sym, msg["service"], ts)
         if msg.get("service") != "OPTIONS_BOOK":
             recent.BOOKS.record(sym, msg["service"], content, ts)
             push_changes.changed(sym, push_changes.FLOW)
@@ -235,6 +239,8 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
             return None
         record = ContractRecord(fields, msg["field_ts"])
         push_contract(sym, record)
+        if "streamTime" in record.times:         # Schwab's stream posted to it (REST does not)
+            _lmp.note_posted(sym, "LEVELONE_OPTIONS", record.times["streamTime"][1])
         recent.TAPE.record_option(sym, fields, record.times, ts)
         _tick(sym)          # a record changes only when Schwab sent it something new
     return None
@@ -379,7 +385,7 @@ def _mark_liveness(now: float) -> None:
             _verdicts[(s, svc)] = verdict
             moved.add((s, svc))
     for tk in {tk for tk, s, svc in shown if (s, svc) in moved}:
-        push_changes.changed(tk, push_changes.FLOW)
+        push_changes.changed(tk, push_changes.LIVE)
 
 
 #: the option contracts the daemon's last applied status says its rule picks
@@ -396,17 +402,25 @@ def note_liveness(now: float) -> None:
 
 def apply_heartbeat(feed: Any) -> None:
     """Apply the daemon's status (`feed`, live_market_plane.record_feed_heartbeat) and forget the
-    live state of each option contract its option rule picked before and picks no more (`options`),
-    so no screen shows that contract's last message as current. A connection that ends, or a new
-    one still asking, releases nothing (operator 2026-10-13: "On disconnect keep the last values,
+    live state of each option contract its option rule picked before and picks no more (`options`)
+    for a ticker it has ranked (`ranked`), so no screen shows that contract's last message as
+    current. A connection that ends, a new one still asking, and a restarted daemon (it has ranked
+    no ticker yet) release nothing (operator 2026-10-13: "On disconnect keep the last values,
     marked not live; reconnect's opening replaces them"); nor does a status not applied."""
     global _picked
     if _lmp.record_feed_heartbeat(feed) is None:
         return
     picked = set().union(*(feed["options"][s] for s in OPTION_PRODUCER_SERVICES))
+    ranked = {ticker_storage_key(t) for t in feed["ranked"]}
+    kept = set()
     for sym in _picked - picked:
-        clear_symbol(sym)
-    _picked = picked
+        rec = contract(sym)
+        tk = rec.fields.get("ticker") if rec is not None else None     # a stream-only record names none
+        if tk is not None and ticker_storage_key(tk) not in ranked:
+            kept.add(sym)                # its ticker's pick is not the rule's answer yet
+        else:
+            clear_symbol(sym)
+    _picked = picked | kept
 
 
 #: a contract's subscription, as the Flow panel shows it: the daemon's option rule holds it on

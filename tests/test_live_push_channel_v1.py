@@ -89,9 +89,10 @@ async def _until(pred, timeout=5.0):
 
 def _daemon_heartbeat(socket_open=True, held=("SPY",)):
     """What capture.py's heartbeat reports for a session holding `held` on LEVELONE_EQUITIES."""
-    return lambda: {"ts": time.time(), "schwab_socket_open": socket_open,
+    began = time.time() - 60.0                   # its connection to Schwab, begun a minute before
+    return lambda: {"ts": time.time(), "schwab_socket_open": socket_open, "connected_at": began,
                     "held": {"LEVELONE_EQUITIES": list(held)}, "health": {},
-                    "options": {"LEVELONE_OPTIONS": [], "OPTIONS_BOOK": []}}
+                    "options": {"LEVELONE_OPTIONS": [], "OPTIONS_BOOK": []}, "ranked": []}
 
 
 async def _run(body, heartbeat_fn=None):
@@ -170,6 +171,8 @@ def test_a_live_feed_stays_live_while_the_console_works_through_a_backlog_of_cha
             time.sleep(0.05)
 
     async def body(bus, stats):
+        assert await _until(lambda: stats["clients"] == 1)
+        bus.publish("quote.SPY", _spy_trade(501.0, time.time()))      # Schwab posts SPY on this connection
         assert await _until(lambda: lmp.feed_live_for("SPY", "LEVELONE_EQUITIES", time.time()))
         for i in range(300):                     # each round: its contract's record opened, then in
             ct = {**contracts[0], "symbol": f"ZZ{i:03d}  {contracts[0]['symbol'][6:]}"}

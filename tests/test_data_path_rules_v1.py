@@ -649,7 +649,8 @@ def test_d5_the_levels_spot_is_judged_at_the_time_they_are_served_for():
     served = {}
     for live in (True, False):
         if live:
-            lmp.record_feed_heartbeat({"ts": at, "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": ["SPY"]}})
+            lmp.record_feed_heartbeat({"ts": at, "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": ["SPY"]},
+                                       "connected_at": at - 60.0})
         lmp.record_from_level_one_equity("SPY", {"LAST_PRICE": 767.39, "TRADE_TIME_MILLIS": int(at * 1000)},
                                          received_ts=at)
         try:

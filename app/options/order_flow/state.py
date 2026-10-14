@@ -11,6 +11,7 @@ import threading
 from collections import deque
 from dataclasses import dataclass
 from typing import Optional
+import live_market_plane
 from app.options.order_flow import history
 from instrument_identity import ticker_storage_key
 from numeric_contract import schwab_count, schwab_number
@@ -89,8 +90,10 @@ class OrderFlowState:
             return [dict(item) for item in self._get_book(sym) if venue is None or item["SERVICE"] == venue]
 
     def clear_all(self) -> None:
-        """Drop the books, the prints and the option records of every symbol (the stream stopped)."""
+        """Drop the books, the prints and the option records of every symbol (the stream stopped),
+        and what the stream posted to them (live_market_plane.forget_posted)."""
         history.TAPE.forget_all()
+        live_market_plane.forget_posted()
         with self._lock:
             for values in self._book.values():
                 values.clear()
@@ -99,8 +102,9 @@ class OrderFlowState:
 
     def clear_symbol(self, symbol: str) -> None:
         """Clear one symbol's streamed state, its recent prints and books included (a contract's
-        record stays: the ledger's, which REST keeps posting to)."""
+        record stays: the ledger's, which REST keeps posting to), and what the stream posted to it."""
         sym = ticker_storage_key(symbol)
+        live_market_plane.forget_posted(sym)
         history.TAPE.forget(sym)
         history.BOOKS.forget(sym)
         with self._lock:

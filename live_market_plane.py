@@ -102,6 +102,7 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
                 fs[name] = (v, rts if field_received is None else float(field_received[name]))
         if seen:                         # the fields and their row change together
             _by_ticker[t] = _row_from(t, dict(fs), rts)
+            note_posted(t, "LEVELONE_EQUITIES", max(at for _v, at in fs.values()) if fs else rts)
     return seen
 
 
@@ -189,6 +190,29 @@ FEED_HEARTBEAT_MAX_AGE_SEC: float = 3.0
 _feed: dict[str, Any] = {"rx": None, "status": None, "held": {}, "connected_at": None}
 
 
+#: each (symbol, Schwab service)'s newest message, as the daemon received it: whether the service
+#: has posted to the symbol on the current Schwab connection (feed_live_for). Written by
+#: note_posted (and record_from_level_one_equity) only.
+_posted: dict[tuple[str, str], float] = {}
+
+
+def note_posted(symbol: str, service: str, received_ts: float) -> None:
+    """Schwab `service` sent `symbol` a message the daemon received at `received_ts`."""
+    key = (ticker_storage_key(symbol), service)
+    with _lock:
+        prev = _posted.get(key)
+        _posted[key] = float(received_ts) if prev is None else max(prev, float(received_ts))
+
+
+def forget_posted(symbol: "str | None" = None) -> None:
+    """Forget what Schwab posted to `symbol` (None: to every option contract and book), as its
+    streamed state is cleared: it is not live until the stream posts to it again."""
+    with _lock:
+        for key in [k for k in _posted if (k[0] == ticker_storage_key(symbol) if symbol is not None
+                                             else k[1] != "LEVELONE_EQUITIES")]:
+            del _posted[key]
+
+
 def _drop_before(fs: dict, since: float) -> None:
     """Drop a record's fields received before `since`: an ended connection's (the caller holds
     _lock)."""
@@ -261,10 +285,9 @@ def held_by_daemon(service: str, now: float) -> frozenset[str]:
 def feed_live_for(symbol: str | None, service: str, now: float) -> bool:
     """THE live rule, for every streamed value: is Schwab `service` delivering `symbol` right
     now -- the daemon's heartbeat is live (daemon_status), it reports the Schwab socket open,
-    and it holds the symbol on that service; an equity's record, besides, has a field from this
-    connection (a record of an ended connection is not live until the new one posts to it,
-    record_from_level_one_equity; a status that reports no connection start, as the tests'
-    stand-ins send, is not judged on it).
+    it holds the symbol on that service, and the service has posted to the symbol on this
+    connection (_posted_since: a value of an ended connection is not live until the new one posts
+    to it; a status that reports no connection start is not live).
 
     Not "did a value arrive recently": Schwab sends a field only when it CHANGES (measured: 11%
     of 4,039 messages carried bid+ask+last together), so a quiet symbol's unchanged value is its
@@ -278,14 +301,15 @@ def feed_live_for(symbol: str | None, service: str, now: float) -> bool:
         held = _feed["held"]                 # a service the status does not report holds nothing
         if service not in held or t not in held[service]:
             return False
-        return service != "LEVELONE_EQUITIES" or _posted_since(t, _connected_at())
+        return _posted_since(t, service, _connected_at())
 
 
-def _posted_since(t: str, since: Optional[float]) -> bool:
-    """Whether `t`'s equity record has a field received at or after `since` (the caller holds
-    _lock); no connection start reported: not judged."""
-    fs = _fields_by_ticker.get(t)
-    return since is None or (fs is not None and any(at >= since for _v, at in fs.values()))
+def _posted_since(t: str, service: str, since: Optional[float]) -> bool:
+    """Whether Schwab `service` has posted to `t` at or after `since`, the current connection's
+    start (the caller holds _lock): the one rule for every service. No connection start
+    reported: not live."""
+    posted = _posted.get((t, service))
+    return since is not None and posted is not None and posted >= since
 
 
 def outage(symbol: str | None, service: str, now: float) -> str | None:

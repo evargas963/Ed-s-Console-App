@@ -15,6 +15,8 @@ from collections import Counter
 from typing import Any
 
 LEVELS, CHAIN, FLOW, LIQUIDITY = "levels", "chain", "flow", "liquidity"
+#: a Schwab feed a panel is read from went down or came back (streaming._mark_liveness)
+LIVE = "live"
 
 _loop: asyncio.AbstractEventLoop | None = None
 #: (ticker, connection) of every open page, oldest first
@@ -52,7 +54,7 @@ def symbols() -> set[str]:
 
 def feeds() -> "set[tuple[str, str, str]]":
     """(ticker, symbol, Schwab service) of each feed a panel an open page shows is read from."""
-    return {(tk, s, svc) for tk, c in list(_open) for p in c.panels.values() for s, svc in p.feeds}
+    return {(tk, s, svc) for tk, c in list(_open) for p in c.panels.values() for s, svc in p.feeds_now()}
 
 
 def shown() -> set[str]:

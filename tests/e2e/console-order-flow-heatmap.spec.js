@@ -50,8 +50,8 @@ test('the heatmap paints the served cells, and a click pins a readout, without a
 test('the Book panel shows each served wall candidate size', async ({ page }) => {
   // stand-in wall in the engine's own shape (engine._book_wall_candidates: side, price, volume,
   // median_mult); the page printed w.size, which the engine never serves, so every wall read "—"
-  const BOOK = { status: 'ok', top_of_book: {}, depth: {}, ages: {}, classification: {}, depth_pressure: {},
-    wall_candidates: [{ side: 'bid', price: 440.5, volume: 12500, median_mult: 6.2 }] };
+  const BOOK = { status: 'ok', top_of_book: {}, depth: {}, ages: {}, as_of: { book: null, quote: null }, classification: {},
+    depth_pressure: {}, wall_candidates: [{ side: 'bid', price: 440.5, volume: 12500, median_mult: 6.2 }] };
   await page.route('**/api/**', (route) => {
     const url = route.request().url();
     const body = url.includes('/api/order-flow/microstructure') ? BOOK
@@ -72,7 +72,7 @@ test('a Schwab outage: the Book panel keeps Schwab\'s last top of book, marked N
   // real test console's own judgment of the book's feeds (it has no Schwab feed). Before, the
   // page drew the reason in place of the bid and ask.
   const BOOK = { status: 'ok', top_of_book: { bid: 767.38, ask: 767.4, bid_size: 300, ask_size: 200 }, depth: {}, ages: {},
-    classification: {}, depth_pressure: {}, wall_candidates: [], top_outage: 'Schwab LEVELONE_EQUITIES feed down during RTH' };
+    as_of: { book: null, quote: null }, classification: {}, depth_pressure: {}, wall_candidates: [], top_outage: 'Schwab LEVELONE_EQUITIES feed down during RTH' };
   await page.route('**/api/**', (route) => {
     const url = route.request().url();
     const body = url.includes('/api/order-flow/microstructure') ? BOOK

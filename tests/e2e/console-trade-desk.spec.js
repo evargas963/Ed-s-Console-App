@@ -5,7 +5,7 @@
  * and the positioning migration are served fields. Level crosses are real SPY rows
  * (tests/fixtures/real_spy_level_crosses.json). Any page error fails the test.
  */
-const { test, expect, pushChange } = require('./fixtures/live_socket');
+const { test, expect, pushBeat, pushChange, pushDown, setNotLive } = require('./fixtures/live_socket');
 const { expiriesAnswer } = require('./fixtures/expiries');
 const path = require('path');
 const { mockPriceSocket, schwabQuote } = require('./fixtures/price_socket');
@@ -24,9 +24,9 @@ const EVENTS = {
 };
 const SPOT = 771.3;
 const TERRAIN = { ticker: 'SPY', spot: SPOT, gamma_flip: 768, call_wall: 775, put_wall: 765, max_pain: 770, regime: 'LONG_GAMMA',
-  posture: 'PINNED', levels_stale: false, flip_relation: 'ABOVE', dist_to_call_wall: 3.7, dist_to_put_wall: 6.3, pcr_all: 1.1,
+  posture: 'PINNED', levels_stale: false, as_of: { levels: 1790343600 }, flip_relation: 'ABOVE', dist_to_call_wall: 3.7, dist_to_put_wall: 6.3, pcr_all: 1.1,
   pcr_by_expiry: { '2026-09-25': 1.1, '2026-10-02': null, '2026-10-09': 0.9 }, atm_iv_pct_by_expiry: { '2026-09-25': 14.2, '2026-10-02': 15.1 } };
-const LEVELS = { ticker: 'SPY', spot: SPOT, tf: '30', generation: 1, vwap_series: [],
+const LEVELS = { ticker: 'SPY', spot: SPOT, tf: '30', generation: 1, vwap_series: [], as_of: { snapshot: 1790343600 },
   levels: [
     { id: 'PDH', price: 773.5, family: 'prior_day', label: 'Prior Day High', short: 'PDH', evidence_tier: 'MEASURED', distance: 2.2, gap: 2.2, side: 'ABOVE', },
     { id: 'max_pain', price: 770, family: 'gamma', label: 'Max pain', short: 'Max pain', evidence_tier: 'DERIVED', distance: -1.3, gap: 1.3, side: 'BELOW', },
@@ -37,7 +37,7 @@ const LEVELS = { ticker: 'SPY', spot: SPOT, tf: '30', generation: 1, vwap_series
 const MICRO = { ticker: 'SPY', venue: 'NASDAQ_BOOK', status: 'ok', top_of_book: { bid: 771.29, ask: 771.31, bid_size: 300, ask_size: 200 },
   spread_pts: 0.02, depth: { '1': { imbalance: 0.2, side: 'BID' }, '5': { bid_total: 3000, ask_total: 2000, imbalance: 0.2, side: 'BID' } },
   depth_pressure: { bid: [{ price: 771.29, volume: 300, cum: 300 }, { price: 771.28, volume: 900, cum: 1200 }], ask: [{ price: 771.31, volume: 200, cum: 200 }] },
-  ages: { book_age_sec: 1, book_stale: false }, wall_candidates: [], provenance: { book_source: 'NASDAQ_BOOK' },
+  ages: { book_stale: false }, as_of: { book: 1790343659, quote: null }, wall_candidates: [], provenance: { book_source: 'NASDAQ_BOOK' },
   flow: { tape_pressure_5m: 0.3, tape_pressure_30s: 0.1, tape_pressure_2m: 0.2, cum_delta_proxy: 1000 } };
 // the pivot zone below spot was named "support" by type-guessing on the page: each zone's label and
 // side are served (liquidity_models.ZONE_DISPLAY)
@@ -248,6 +248,46 @@ test.describe('Trade Desk renders served values', () => {
     await expect(page.locator('#tdmCardVol .tdm-plot svg path')).toHaveCount(1);
     await expect(page.locator('#tdmCardVol figcaption')).toHaveText('ATM implied vol by expiry, nearest first');
     await expect(page.locator('#tdmAgree')).toContainText('Bid heavy');
+    expect(errs).toEqual([]);
+  });
+
+  test('Desk: the ages are the console\'s labels, and with its push down nothing reads LIVE', async ({ page }) => {
+    // operator 2026-10-14: "the server sends every age; the page only shows it", and "No value is
+    // LIVE unless every feed it depends on is live, including the Desk PRICE pill"
+    const errs = watchErrors(page);
+    await intercept(page);
+    await mockPriceSocket(page, [schwabQuote('SPY', SPOT)]);
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const pill = (name) => page.locator('#tdmTrust .tdm-pill', { hasText: name });
+    await expect(pill('PRICE')).toContainText('LIVE');
+    pushBeat(page, { SPY: '1s' }, { book: '4s', levels: '2m', snapshot: '9m' });     // the console's labels
+    await expect(pill('BOOK')).toContainText('4s');
+    await expect(pill('GAMMA')).toContainText('2m');
+    await expect(pill('LEVELS')).toContainText('9m');
+    await expect(page.locator('#tdmCardOpt .tdm-src')).toContainText('2m old');
+    pushDown(page);
+    await expect(pill('PRICE')).toContainText('OFFLINE', { timeout: 6000 });
+    await expect(pill('PRICE')).toHaveAttribute('title', /the console push is down/);
+    await expect(pill('BOOK')).toContainText('age not known');
+    for (const id of ['#tdmChart', '#tdmCardLiq', '#tdmCardFlow', '#tdmCardOpt', '#tdmCardVol']) {
+      await expect(page.locator(id)).toHaveClass(/not-live/);
+      await expect(page.locator(id)).toHaveAttribute('data-not-live', /the console push is down/);
+    }
+    expect(errs).toEqual([]);
+  });
+
+  test('Desk: each card is marked by every panel drawn in it, whichever arrived last', async ({ page }) => {
+    // the Options card reads the terrain and the forces: the terrain not live marks it even when
+    // the forces arrive after, live (before, the last panel to arrive set the card's mark)
+    const errs = watchErrors(page);
+    await intercept(page);
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#tdmCardOpt .tdm-state')).not.toHaveText('');
+    setNotLive(page, 'desk.terrain', 'Schwab LEVELONE_EQUITIES feed down during RTH');
+    await pushChange(page, 'levels');          // the terrain and the forces again, the forces after it
+    await expect(page.locator('#tdmCardOpt')).toHaveAttribute('data-not-live', /LEVELONE_EQUITIES feed down/);
     expect(errs).toEqual([]);
   });
 
@@ -597,7 +637,9 @@ test.describe('Trade Desk renders served values', () => {
       await Promise.all([page.waitForResponse((r) => /\/api\/terrain\?/.test(r.url())),
         page.goto('/', { waitUntil: 'domcontentloaded' })]);
       await expect.poll(() => page.evaluate(() => (window.EdTradeDeskMap.state().chart || {}).bars || 0)).toBeGreaterThan(0);
-      // the terrain's answer is painted on the next frames
+      // the chart's mark (the test console has no Schwab feed: its candles are not live) and the
+      // terrain's answer are painted on the next frames
+      await expect(page.locator('#tdmChart')).toHaveClass(/not-live/);
       await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
       await page.mouse.move(0, 0);
       return page.locator('#tdmChart').screenshot({ animations: 'disabled' });

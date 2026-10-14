@@ -17,6 +17,7 @@ import live_market_plane as lmp
 import server
 from app.options.order_flow import streaming as ofs
 from stream_spine import book_msg
+from tests.feed_live_helper import CONNECTED_AT
 
 CONTRACT = "SPY   261005C00774000"
 _MIX = json.loads((Path(__file__).parent / "fixtures" / "real_stream_mix_2026_10_05_1400ct.json")
@@ -25,7 +26,7 @@ BOOKS = [m for m in _MIX["messages"] if m["service"] == "OPTIONS_BOOK" and m["it
 
 
 def _daemon_holds(*services: str) -> None:
-    lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True,
+    lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "connected_at": CONNECTED_AT,
                                "held": {svc: [CONTRACT] for svc in services}})
 
 
@@ -59,9 +60,17 @@ def test_with_no_book_from_schwab_the_flow_panel_says_so():
 
 def test_the_flow_panel_says_whether_the_daemon_streams_the_contract():
     """SUBSCRIBED while the daemon holds the contract on LEVELONE_OPTIONS; NOT STREAMED when it
-    does not, and when its status is gone (a daemon that stopped reporting holds nothing)."""
+    does not, and when its status is gone (a daemon that stopped reporting holds nothing). Each
+    feed is LIVE once Schwab has posted to the contract on the connection (the one live rule),
+    not before. STAND-IN (named): an L1 tick of the contract; its book is Schwab's (BOOKS)."""
+    from stream_spine import MessageBus
+    from tests.feed_live_helper import through_the_daemons_bus
     try:
         _daemon_holds("LEVELONE_OPTIONS", "OPTIONS_BOOK")
+        unposted = _route()["streaming_plane"]
+        ofs._ingest_pushed(f"book.{CONTRACT}", book_msg(symbol=CONTRACT, service="OPTIONS_BOOK", content=BOOKS[0]["item"],
+                                                        src="schwab_book", ts_recv=time.time()))
+        through_the_daemons_bus(MessageBus(), CONTRACT, [{"BID_PRICE": 1.0}], [time.time()])
         held = _route()["streaming_plane"]
         _daemon_holds()
         not_held = _route()["streaming_plane"]
@@ -69,7 +78,9 @@ def test_the_flow_panel_says_whether_the_daemon_streams_the_contract():
         down = _route()["streaming_plane"]
     finally:
         lmp.record_feed_down()
-    assert held["subscription_state"] == "SUBSCRIBED"
+        ofls.clear_all_live_state()
+    assert unposted["subscription_state"] == held["subscription_state"] == "SUBSCRIBED"
+    assert (unposted["feed_health"]["l1"]["state"], unposted["feed_health"]["book"]["state"]) == ("NOT LIVE", "NOT LIVE")
     assert (held["feed_health"]["l1"]["state"], held["feed_health"]["book"]["state"]) == ("LIVE", "LIVE")
     assert not_held["subscription_state"] == down["subscription_state"] == "NOT STREAMED"
     assert not_held["feed_health"]["l1"]["state"] == "NOT LIVE"

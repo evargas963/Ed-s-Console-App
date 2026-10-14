@@ -40,7 +40,9 @@ def build_flow_e2e_fixture_response() -> dict:
     at = max(e["ts_recv"] for e in events)
     bus = MessageBus()
     try:
+        # on a Schwab connection begun before the first of these messages (STAND-IN: a second before)
         lmp.record_feed_heartbeat({"ts": at, "schwab_socket_open": True,
+                                   "connected_at": min(e["ts_recv"] for e in events) - 1.0,
                                    "held": {"LEVELONE_OPTIONS": [FLOW_CONTRACT], "OPTIONS_BOOK": [FLOW_CONTRACT]}})
         for e in sorted(events, key=lambda e: e["ts_recv"]):
             if e["kind"] == "book":

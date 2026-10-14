@@ -695,7 +695,9 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     const stamped = Object.assign({}, REAL, {
       source: 'terrain_live_cache', live: true, stale: false, degraded: null,
       session_date_et: '2026-09-10', prior_session: false,
-      expirations: REAL.expirations.map((e) => Object.assign({}, e, { expired: e.expiry < '2026-09-10', front: e.expiry === '2026-09-10' })),
+      // stamped as server._stamp_columns stamps them (the header word: EXPIRED, else dte_label's)
+      expirations: REAL.expirations.map((e) => Object.assign({}, e, { expired: e.expiry < '2026-09-10', front: e.expiry === '2026-09-10',
+        dte_label: e.expiry < '2026-09-10' ? 'EXPIRED' : e.dte + 'DTE' })),
       cells: REAL.cells.map((c) => Object.assign({}, c, { spot: c.strike === 764 })),
       view: view({ centre: 764, scope: 'all', max_abs: { gex: 1e9 } }),
     });
