@@ -61,7 +61,7 @@
     fam: (function () { try { return JSON.parse(sget('ed.desk.fam', 'null')) || null; } catch (e) { return null; } })() ||
       { value_area: 1, vwap: 1, gamma: 1, expected_move: 1, prior_day: 1, opening_range: 1, overnight: 1 },
     ticker: null, tb: null, gen: 0, chart: null, bars: [], levels: null, terrain: null, micro: null, crosses: null,
-    analytics: null, liq: null, quotes: {}, queue: [], sel: null, news: {}
+    analytics: null, liq: null, quotes: {}, queue: [], sel: null, news: {}, live1m: {}
   };
 
   // ------------------------------------------------------------------ layout wiring
@@ -151,11 +151,23 @@
       $('tdmChartEmpty').hidden = bars.length > 0;
       $('tdmChartEmpty').textContent = bars.length ? '' : (!d ? 'The bars request answered HTTP ' + a.status + ' for ' + shown() + ' (' + TFS.filter(function (x) { return x.id === S.tf; })[0].lbl + ').'
         : 'No bars for ' + shown() + (d.error ? ' — ' + d.error : ' — nothing banked or streamed for this symbol yet.'));
-      paintChartOverlays(); paintQueue(); openView();
+      drawLiveBars(); paintChartOverlays(); paintQueue(); openView();
       var src = $('tdmBarsSrc'); if (src) src.textContent = 'streamed 1m bars';
-    } else if (bars.length) {
+    } else if (bars.length && S.tf !== '1') {     // a bucket of several minutes: the console builds it
       S.chart.updateTail(bars.slice(-2), d.last_bar && d.last_bar.label);
     }
+  });
+  // CHART_EQUITY (All Sequence): every 1-minute bar Schwab sends, in order, straight from the daemon
+  // (kept for the page's life, so a bar that comes before the history is drawn when it lands)
+  function drawLiveBars() {
+    var held = S.live1m[st().key];
+    if (!S.chart || !S.barsWhole || S.tf !== '1' || !held) return;
+    held.forEach(function (m) { S.chart.updateTail([m.bar], m.time_ct); });
+  }
+  window.addEventListener('ed:schwab', function (e) {
+    var m = e.detail; if (!m || m.service !== 'CHART_EQUITY' || !m.bar) return;
+    (S.live1m[m.key] || (S.live1m[m.key] = [])).push(m);
+    if (S.chart && S.barsWhole && S.tf === '1' && m.key === st().key) S.chart.updateTail([m.bar], m.time_ct);
   });
   [['desk.levels', 'levels'], ['desk.events', 'events'], ['desk.terrain', 'terrain'], ['desk.zones', 'liq'],
    ['desk.strikes', 'strikes'], ['desk.forces', 'forces'], ['desk.flow_bars', 'flowBars'], ['desk.book', 'micro']].forEach(function (p) {

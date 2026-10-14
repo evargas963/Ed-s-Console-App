@@ -36,6 +36,8 @@ import time
 
 import live_market_plane as lmp
 from instrument_identity import display_symbol, ticker_storage_key
+from live_price_rows import with_change
+from micro_structure import bar_dict, schwab_bar
 from stream_spine import LOG, MessageBus
 from time_et import age_label, ct_label
 
@@ -80,6 +82,12 @@ def schwab_message(topic: str, msg: dict) -> "dict | None":
     sent = content.get(NEWS_TIME) if out["service"] == "NEWS_HEADLINE" else None
     if isinstance(sent, (int, float)) and not isinstance(sent, bool):
         out["time_ct"] = ct_label(sent / 1000.0)        # the headline's time as the screen shows it
+    if out["service"] == "CHART_EQUITY":                # the bar as the chart draws it, by its one producer
+        candle = schwab_bar(content.get("CHART_TIME_MILLIS"), content.get("OPEN_PRICE"), content.get("HIGH_PRICE"),
+                            content.get("LOW_PRICE"), content.get("CLOSE_PRICE"), content.get("VOLUME"))
+        if candle is not None:
+            out["bar"] = with_change(bar_dict(candle))
+            out["time_ct"] = ct_label(candle.ts)
     return out
 
 

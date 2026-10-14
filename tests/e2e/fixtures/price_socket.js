@@ -69,7 +69,8 @@ async function mockPriceSocket(page, messages) {
       (messages || []).forEach((q, i) => setTimeout(() => {
         if (q.content.TRADE_TIME_MILLIS != null) trade[q.key] = q.content.TRADE_TIME_MILLIS;
         if ('feed_live' in q) verdict[q.key] = { live: q.feed_live, outage: q.outage };
-        send({ type: 'schwab', messages: [{ service: q.service, key: q.key, schwab_ts: q.schwab_ts, ts_recv: q.ts_recv, content: q.content }] });
+        send({ type: 'schwab', messages: [{ service: q.service, key: q.key, schwab_ts: q.schwab_ts, ts_recv: q.ts_recv,
+          content: q.content, bar: q.bar, time_ct: q.time_ct }] });
         beat();
       }, 300 * i));
     });

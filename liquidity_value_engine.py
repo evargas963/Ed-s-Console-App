@@ -91,7 +91,7 @@ def liquidity_zone_tradeable_score(
 
 def bars_from_candles(candles) -> list[dict]:
     """The bars every level function takes, from the bar writer's Candles, each field already
-    checked once as Schwab sent it, where it came in (server._schwab_bar): {timestamp (ms), _dt
+    checked once as Schwab sent it, where it came in (micro_structure.schwab_bar): {timestamp (ms), _dt
     (its ET time), open, high, low, close, volume}."""
     return [{"timestamp": int(c.ts * 1000), "_dt": datetime.fromtimestamp(c.ts, tz=ET), "open": c.open,
              "high": c.high, "low": c.low, "close": c.close, "volume": c.volume} for c in candles]

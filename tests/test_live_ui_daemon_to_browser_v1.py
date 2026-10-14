@@ -165,6 +165,44 @@ def test_a_new_subscription_gets_each_symbols_current_record_at_once():
     asyncio.run(_run(body))
 
 
+def test_each_bar_carries_schwabs_fields_as_the_chart_draws_them():
+    """Every real CHART_EQUITY bar: its start (CHART_TIME_MILLIS, s), open, high, low, close and
+    volume as Schwab sent them, the change over the bar (close - open, and its percent of the open)
+    and its start labelled in Central Time, each by its one producer."""
+    from time_et import ct_label
+
+    for r in _BARS:
+        n = r["native"]
+        m = live_ui.schwab_message("bar1m." + n["key"], {"symbol": n["key"], "native": n, "schwab_ts": r["schwab_ts"],
+                                                         "ts_recv": r["ts_recv"]})
+        chg = n["CLOSE_PRICE"] - n["OPEN_PRICE"]
+        assert m["content"] == n
+        assert m["bar"] == {"t": n["CHART_TIME_MILLIS"] / 1000.0, "o": n["OPEN_PRICE"], "h": n["HIGH_PRICE"],
+                            "l": n["LOW_PRICE"], "c": n["CLOSE_PRICE"], "v": n["VOLUME"], "chg": chg,
+                            "chg_pct": chg / n["OPEN_PRICE"] * 100}
+        assert m["time_ct"] == ct_label(n["CHART_TIME_MILLIS"] / 1000.0)
+
+
+def test_a_contract_opened_after_its_messages_gets_every_field_schwab_streamed():
+    """Operator 2026-10-14 (the bank's running balance): a screen that asks for a contract Schwab
+    has been streaming gets, at once, every LEVELONE_OPTIONS field Schwab sent for it, each the
+    last one, as sent; before, it got nothing until the next change, and then only that change."""
+    key = max({m["item"]["key"] for m in _MIX if m["service"] == "LEVELONE_OPTIONS"},
+              key=lambda k: sum(1 for m in _MIX if m["item"]["key"] == k))
+    sent = [m for m in _MIX if m["item"]["key"] == key]
+    want: dict = {}
+    for m in sent:
+        want.update(m["item"])
+
+    async def body(bus, ws, stats):
+        for m in sent:
+            _frame(bus, m["service"], m["item"], m["schwab_ts"])
+        await ws.send(json.dumps({"op": "subscribe", "symbols": [key]}))
+        got, _beats = await _received(ws, quiet=0.3)
+        assert len(sent) > 1 and [(m["service"], m["content"]) for m in got] == [("LEVELONE_OPTIONS", want)]
+    asyncio.run(_run(body))
+
+
 def test_each_beat_is_the_daemons_whole_status():
     async def body(bus, ws, stats):
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"]}))

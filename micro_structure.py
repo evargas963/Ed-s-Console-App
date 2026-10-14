@@ -26,6 +26,8 @@ from dataclasses import (
 )
 from typing import Optional
 
+from numeric_contract import schwab_count, schwab_number
+
 
 
 # ════════════════════════════════════════════════════════════════════════════════
@@ -42,6 +44,20 @@ class Candle:
     close:  float
     volume: Optional[float] = None
 
+
+def schwab_bar(start_ms, o, h, lo, c, volume) -> "Candle | None":
+    """One Schwab CHART_EQUITY bar (or /pricehistory candle) as a Candle, each field as Schwab sent
+    it; None when its start or a price is not a number (AGENTS.md rule 2: absent, -999, text, NaN
+    or infinity). A volume that is not a number, or negative, is absent."""
+    start, o, h, lo, c = schwab_number(start_ms), schwab_number(o), schwab_number(h), schwab_number(lo), schwab_number(c)
+    if None in (start, o, h, lo, c):
+        return None
+    return Candle(ts=start / 1000.0, open=o, high=h, low=lo, close=c, volume=schwab_count(volume))
+
+
+def bar_dict(c: Candle) -> dict:
+    """A bar as the chart draws it: start (epoch s), open, high, low, close, volume."""
+    return {"t": float(c.ts), "o": c.open, "h": c.high, "l": c.low, "c": c.close, "v": c.volume}
 
 
 

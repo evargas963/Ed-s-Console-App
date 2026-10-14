@@ -385,6 +385,36 @@ test.describe('Trade Desk renders served values', () => {
     expect(errs).toEqual([]);
   });
 
+  test('Market Map 1m: each CHART_EQUITY bar from the daemon is drawn, in order; a headline is listed as sent', async ({ page }) => {
+    // Real data: SPY's CHART_EQUITY items as Schwab sent them 2026-10-01 (the daemon's record,
+    // tests/fixtures/real_daemon_bars_spy_tsla_2026_10_01_02.json); the bar and labels each carries
+    // are the daemon's (proven in tests/test_live_ui_daemon_to_browser_v1.py), STAND-IN here.
+    const errs = watchErrors(page);
+    await intercept(page);
+    const rows = require(path.join(__dirname, '..', 'fixtures', 'real_daemon_bars_spy_tsla_2026_10_01_02.json')).rows
+      .filter((r) => r.native && r.symbol === 'SPY').slice(0, 3);
+    const msgs = rows.map((r) => { const n = r.native, chg = n.CLOSE_PRICE - n.OPEN_PRICE;
+      return { service: 'CHART_EQUITY', key: 'SPY', schwab_ts: r.schwab_ts, ts_recv: r.ts_recv, content: n,
+        bar: { t: n.CHART_TIME_MILLIS / 1000, o: n.OPEN_PRICE, h: n.HIGH_PRICE, l: n.LOW_PRICE, c: n.CLOSE_PRICE, v: n.VOLUME,
+          chg: chg, chg_pct: chg / n.OPEN_PRICE * 100 }, time_ct: 'bar ' + n.SEQUENCE }; });
+    const news = require(path.join(__dirname, '..', 'fixtures', 'real_schwab_news_headline_spx_2026_10_05.json'));
+    msgs.push({ service: 'NEWS_HEADLINE', key: 'SPY', schwab_ts: news.schwab_ts, ts_recv: news.ts_recv, content: news.content,
+      time_ct: 'Mon 10/05 09:00 AM CT' });
+    await page.route('**/api/bars1m**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify(Object.assign({}, BARS, { tf: '1', bars: [{ t: rows[0].native.CHART_TIME_MILLIS / 1000 - 60,
+        o: 769, h: 770, l: 768, c: 769.5, v: 10, chg: 0.5, chg_pct: 0.065 }] })) }));
+    await mockPriceSocket(page, msgs);
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
+      localStorage.setItem('ed_sub', 'desk'); localStorage.setItem('ed.desk.tf', '1'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const chartState = () => page.evaluate(() => window.EdTradeDeskMap.state().chart);
+    await expect.poll(async () => (await chartState()).bars).toBe(1 + rows.length);
+    await expect(page.locator('#tdmChart .tvc-legend')).toContainText('Last completed bar bar ' + rows[rows.length - 1].native.SEQUENCE);
+    await expect(page.locator('#tdmNews')).toContainText(news.content['4']);
+    await expect(page.locator('#tdmNews')).toContainText('Reuters · Mon 10/05 09:00 AM CT');
+    expect(errs).toEqual([]);
+  });
+
   test('Market Map: a pinned bar shows its served change (the chart kept the bar without it)', async ({ page }) => {
     // 2026-09-28 (ONE-16): the chart copied each served bar without chg/chg_pct, so the pinned
     // readout's "Bar change" always read "—" while the legend recomputed close - open.

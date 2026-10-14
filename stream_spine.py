@@ -261,14 +261,14 @@ def subscription_msg(*, service: str, command: str, symbols: "list[str]", code: 
 #: older one at once, nothing old waits, and what a reader holds is bounded by the number of
 #: topics, never by how fast Schwab sends (D3).
 LOG, LATEST = "log", "latest"
-#: the topics whose messages carry only the fields that changed (Schwab's LEVELONE_EQUITIES, and
-#: each option contract's one record, option_ledger), by the key of the fields in the message:
-#: their current record merges field by field, each field the newest by Schwab's time
-_FIELD_DELTA = {"quote": "native", "contract": "fields"}
-#: the topics only the journal (LOG) takes: each message as Schwab sent it, which posts to a
-#: record elsewhere (an option message, a chain or quotes answer posts to its contracts' records)
-#: and is never a current record of its own
-_JOURNAL_ONLY = ("optquote.", "chainanswer.", "quotesanswer.", "expirationanswer.")
+#: the topics whose messages carry only the fields that changed (Schwab's LEVELONE_EQUITIES and
+#: LEVELONE_OPTIONS, Streamer API §1.1: Change; and each option contract's one record for the
+#: calculations, option_ledger), by the key of the fields in the message: their current record
+#: merges field by field, each field the newest by Schwab's time
+_FIELD_DELTA = {"quote": "native", "optquote": "content", "contract": "fields"}
+#: the topics only the journal (LOG) takes: each answer as Schwab sent it, which posts to its
+#: contracts' records and is never a current record of its own
+_JOURNAL_ONLY = ("chainanswer.", "quotesanswer.", "expirationanswer.")
 
 
 def current_key(topic: str, msg: Any) -> str:

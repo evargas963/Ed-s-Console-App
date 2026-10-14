@@ -15,8 +15,7 @@ from liquidity_value_engine import (
     compute_session_vwap_series,
     materialize_price_level_snapshot,
 )
-from micro_structure import Candle
-from server import _schwab_bar
+from micro_structure import Candle, schwab_bar
 from time_et import ET
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -47,12 +46,12 @@ def _tape():
 
 def _daemon_bars(name: str, tk: str) -> list:
     """The capture daemon's newest receipt of each of `tk`'s minutes in fixture `name`, taken in
-    by the bar writer's own check (server._schwab_bar)."""
+    by the bar writer's own check (micro_structure.schwab_bar)."""
     from tests.feed_live_helper import daemon_bars
     newest = {}
     for r in sorted(daemon_bars(name, tk), key=lambda r: r["ts_recv"]):
         newest[r["bar_start_ms"]] = r
-    taken = [_schwab_bar(ms, r["open"], r["high"], r["low"], r["close"], r["volume"]) for ms, r in sorted(newest.items())]
+    taken = [schwab_bar(ms, r["open"], r["high"], r["low"], r["close"], r["volume"]) for ms, r in sorted(newest.items())]
     return [b for b in taken if b is not None]
 
 

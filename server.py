@@ -164,7 +164,7 @@ from db_authority import canonical_stream_db_path
 
 from instrument_identity import display_symbol, ticker_storage_key   # RC-126: the ONE query-symbol authority
 import live_market_plane as lmp
-from numeric_contract import float_finite_or_none, schwab_count, schwab_number
+from numeric_contract import float_finite_or_none, schwab_number
 from terrain_engine import (SCOPES, TerrainSnapshot, at_spot, chain_ladder, compute_terrain, dte_label,
                             listed_strikes, on_strikes, positioning_migration, strike_window)
 from terrain_atr import Atr, compute_atrs, roll_up
@@ -358,7 +358,7 @@ def live_levels(tk: str, now: float) -> dict:
 # ─────────────────────────────────────────────────────────────────────────────
 #: one RTH day of 1-minute bars
 CANDLE_1M_MAX_BARS: int = 390
-from micro_structure import Candle
+from micro_structure import Candle, bar_dict, schwab_bar
 from calibration.complete_chain_capture import (
     CAPTURE_BASIS,
     last_capture_per_day,
@@ -381,23 +381,13 @@ _bars_lock = threading.Lock()
 BAR_SOURCE = "Schwab /pricehistory 1-minute bars and CHART_EQUITY"
 
 
-def _schwab_bar(start_ms, o, h, lo, c, volume) -> "Candle | None":
-    """One Schwab CHART_EQUITY bar as a Candle, each field as Schwab sent it; None when its start
-    or a price is not a number (AGENTS.md rule 2: absent, -999, text, NaN or infinity). A volume
-    that is not a number, or negative, is absent."""
-    start, o, h, lo, c = schwab_number(start_ms), schwab_number(o), schwab_number(h), schwab_number(lo), schwab_number(c)
-    if None in (start, o, h, lo, c):
-        return None
-    return Candle(ts=start / 1000.0, open=o, high=h, low=lo, close=c, volume=schwab_count(volume))
-
-
 def _write_price_history(msg: dict) -> "str | None":
     """One series of a ticker's price history as Schwab's /pricehistory answered it (pushed by the
     capture daemon): its 1-minute bars into the ticker's bars, each streamed bar standing over
     Schwab's history of its minute; its daily candles replacing the held ones. A candle without a
     valid field is not kept. The ticker when its 1-minute bars changed, else None."""
     tk = ticker_storage_key(msg["symbol"])
-    candles = [b for b in (_schwab_bar(c.get("datetime"), c.get("open"), c.get("high"), c.get("low"),
+    candles = [b for b in (schwab_bar(c.get("datetime"), c.get("open"), c.get("high"), c.get("low"),
                                        c.get("close"), c.get("volume")) for c in msg["answer"]["candles"])
                if b is not None]
     with _bars_lock:
@@ -434,14 +424,10 @@ def _bars_1m(tk: str, limit: int = CANDLE_1M_MAX_BARS) -> "list[Candle]":
         return list(_bars[key][-int(limit):]) if key in _bars else []
 
 
-def _bar_dict(c: "Candle") -> dict:
-    return {"t": float(c.ts), "o": c.open, "h": c.high, "l": c.low, "c": c.close, "v": c.volume}
-
-
 def _write_streamed_bar(msg: dict) -> bool:
     """Keep one streamed 1-minute bar (Schwab CHART_EQUITY, pushed by the capture daemon, which
     records it) with the ticker's bars; False when it lacks a valid field (then it is not kept)."""
-    bar = _schwab_bar(msg.get("bar_start_ms"), msg.get("open"), msg.get("high"), msg.get("low"),
+    bar = schwab_bar(msg.get("bar_start_ms"), msg.get("open"), msg.get("high"), msg.get("low"),
                       msg.get("close"), msg.get("volume"))
     if bar is None:
         log.warning("streamed bar for %s lacks a valid field, not kept: %s", msg.get("symbol"), msg)
@@ -1614,7 +1600,7 @@ def get_bars1m(ticker: str = Query(...),
 def bars_payload(tk: str, limit: int, tf: str) -> dict:
     """Completed Schwab 1m bars, newest-last: [{t,o,h,l,c,v}] epoch-seconds bar starts, rolled
     up to `tf` by aggregate_bars. `last_bar`: the newest completed minute and its label."""
-    bars = [_bar_dict(c) for c in _bars_1m(tk, int(limit))]
+    bars = [bar_dict(c) for c in _bars_1m(tk, int(limit))]
     out = [_lpr.with_change(b) for b in aggregate_bars(bars, tf)]
     last_bar = None                                    # no bar held: none
     if bars:
