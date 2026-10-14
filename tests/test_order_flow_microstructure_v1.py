@@ -285,24 +285,20 @@ def test_a_one_sided_book_schwab_sent_is_the_latest_book_never_the_older_two_sid
     assert m["depth"]["1"]["ask_total"] == 77.0 and m["depth"]["1"]["bid_total"] is None
 
 
-def test_route_serializes_carried_state_without_recomputing(monkeypatch):
+def test_route_serializes_carried_state_without_recomputing():
     """The /api/order-flow/microstructure route and the engine call the SAME producer. Once the
     structural state is computed for (ticker, BOOK_TIME) it is memoized; a second serialization of
-    the SAME unchanged book must carry that cached state, NOT re-run the structural computation."""
+    the SAME unchanged book must carry that cached state, NOT re-run the structural computation:
+    the second answer holds the first one's own objects (a recomputation builds new ones)."""
     ofe._MICRO_STRUCTURAL_CACHE.pop("CARRYTEST", None)
     data = _data()
     first = ofe.compute_book_microstructure(data, now_ts=100.0, ticker="CARRYTEST")
-
-    # If the second call recomputed instead of carrying, this would raise.
-    def _boom(_cb):
-        raise AssertionError("structural recomputed instead of carried")
-    monkeypatch.setattr(ofe, "_microstructure_structural", _boom)
     second = ofe.compute_book_microstructure(data, now_ts=200.0, ticker="CARRYTEST")
 
-    # structural fields are identical (carried); only the wall-clock stamp advances.
-    assert second["depth"] == first["depth"]
-    assert second["top_of_book"] == first["top_of_book"]
-    assert second["wall_candidates"] == first["wall_candidates"]
+    # structural fields are the same objects (carried); only the wall-clock stamp advances.
+    assert second["depth"] is first["depth"]
+    assert second["top_of_book"] is first["top_of_book"]
+    assert second["wall_candidates"] is first["wall_candidates"]
     assert second["provenance"]["server_received_ts"] == 200.0 != first["provenance"]["server_received_ts"]
     ofe._MICRO_STRUCTURAL_CACHE.pop("CARRYTEST", None)
 

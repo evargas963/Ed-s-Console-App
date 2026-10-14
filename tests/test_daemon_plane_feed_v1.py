@@ -84,7 +84,7 @@ def test_each_venue_serves_only_its_own_book(tmp_path):
         assert prov["book_time_ms"] == fx[svc]["content"]["BOOK_TIME"]
 
 
-def test_a_book_is_live_by_the_one_rule_on_its_venue_not_by_its_book_time(tmp_path, monkeypatch):
+def test_a_book_is_live_by_the_one_rule_on_its_venue_not_by_its_book_time(tmp_path):
     """ONE-15: a book read stale once its BOOK_TIME was 25 s old -- a fourth liveness limit. It
     is live while the daemon's heartbeat is live and it holds the ticker on that venue's service,
     however old its last change (these real books are days old), at any hour: no clock of ours

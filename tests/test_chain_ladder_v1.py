@@ -3,8 +3,6 @@ low, one row per listed contract, in-the-money flags against the live spot. Real
 import json
 from pathlib import Path
 
-import pytest
-
 from terrain_engine import chain_ladder, listed_strikes, nearest_strike
 
 FX = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_crwd_complete_chain_quarter.json")
@@ -16,11 +14,6 @@ def _ladder(chain, spot):
     (terrain_engine.at_spot's spot_strike)."""
     ks = listed_strikes(chain)
     return chain_ladder(chain, spot, ks, nearest_strike(ks, spot))
-
-
-@pytest.fixture(autouse=True)
-def _at_capture(pin_clock):
-    return pin_clock(2026, 9, 2, 12, 0)
 
 
 def test_every_contract_on_one_row_strikes_high_to_low():
