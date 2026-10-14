@@ -150,6 +150,7 @@ producer, with a behavior test that fails if the second one returns.
 
 | ID | Status | Work item |
 |---|---|---|
+| ONE-03 | QUEUED | Feed liveness judged in both processes: the daemon judges each Schwab value the screen shows (`live_ui.state`, the one rule `live_market_plane.feed_live_for`), and the console judges its own copy again for its computed panels' not-live marks (`server` `book_live`, `streaming._mark_liveness`); one rule, two places it runs, and the two can disagree for a moment. |
 | ONE-02 | QUEUED | Equity last price and size kept a second time in the console's order-flow tape (`state.py` tape and receive log). |
 | ONE-12 | QUEUED | Trade side: history's quote rule beside the live tick rule (with the trade-side decision, directive 3). |
 
