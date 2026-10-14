@@ -89,7 +89,7 @@
     var ob = _optBook[desired], obv = window.EdShell.feedVerdict(desired, 'OPTIONS_BOOK');
     var rowsOb = !ob ? [['Book', 'no OPTIONS_BOOK from Schwab since the page opened', 'OPTIONS_BOOK', undefined]]
       : [['Book time', ob.time_ct == null ? '-' : ob.time_ct, 'OPTIONS_BOOK', undefined]]
-        .concat(obv && !obv.live ? [['Book', 'NOT LIVE · ' + obv.outage, 'OPTIONS_BOOK', undefined]] : [])
+        .concat(!(obv && obv.live) ? [['Book', 'NOT LIVE' + (obv && obv.outage ? ' · ' + obv.outage : ''), 'OPTIONS_BOOK', undefined]] : [])
         .concat(bookRows(ob.content.ASKS, 'ASK_PRICE', 'Ask'), bookRows(ob.content.BIDS, 'BID_PRICE', 'Bid'));
     var depth = d.depth || {};
     var ages = d.ages || {};

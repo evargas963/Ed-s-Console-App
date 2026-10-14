@@ -16,6 +16,8 @@ import socket
 import time
 from pathlib import Path
 
+import pytest
+
 from app.market_data.schwab.streaming import capture, live_ui
 from stream_spine import HealthRegistry, MessageBus
 
@@ -48,7 +50,19 @@ def _frame(bus, service: str, item: dict, schwab_ts) -> None:
     capture._publisher(service, bus, HealthRegistry())({"timestamp": schwab_ts, "content": [item]})
 
 
-async def _run(body):
+class _Switch:
+    """The daemon's status (STAND-IN), its Schwab socket opened a minute ago and closed on demand,
+    holding `held` on LEVELONE_EQUITIES."""
+
+    def __init__(self, held=("SPY",)):
+        self.open, self.held, self.connected_at = True, list(held), time.time() - 60
+
+    def __call__(self) -> dict:
+        return {"ts": time.time(), "schwab_socket_open": self.open, "connected_at": self.connected_at,
+                "held": {"LEVELONE_EQUITIES": self.held}, "health": {}}
+
+
+async def _run(body, feed=None):
     """The daemon's server and a client on it."""
     from websockets.asyncio.client import connect
 
@@ -57,7 +71,8 @@ async def _run(body):
     stop = asyncio.Event()
     stats: dict = {}
     server = asyncio.create_task(live_ui.serve_live_ui(
-        bus, stop, heartbeat_fn=_Feed(), host="127.0.0.1", port=port, stats=stats))
+        bus, stop, heartbeat_fn=feed if feed is not None else _Feed(), host="127.0.0.1", port=port, stats=stats,
+        clock=lambda: time.time()))                  # the test's clock, when it sets one
     end = time.monotonic() + 5
     while not stats.get("listening") and time.monotonic() < end:
         await asyncio.sleep(0.01)
@@ -183,6 +198,25 @@ def test_each_bar_carries_schwabs_fields_as_the_chart_draws_them():
         assert m["time_ct"] == ct_label(n["CHART_TIME_MILLIS"] / 1000.0)
 
 
+def test_a_time_schwab_sent_as_no_value_is_not_labelled_and_replaces_no_held_time():
+    """AGENTS.md rule 2: -999 is no value. A real book, headline and quote with that time field
+    sent as -999 (STAND-IN: the field's value) get no time label, and the -999 trade time does not
+    replace the last trade time Schwab sent (before, each became "Wed 12/31 05:59 PM CT", 1969)."""
+    book = next(m for m in _MIX if m["service"] == "NASDAQ_BOOK")
+    quote = next(m for m in _MIX if m["service"] == "LEVELONE_EQUITIES" and "TRADE_TIME_MILLIS" in m["item"])
+    for service, topic, body, item in (("NASDAQ_BOOK", "book.", "content", {**book["item"], "BOOK_TIME": -999}),
+                                       ("NEWS_HEADLINE", "news.", "content", {**_NEWS["content"], "1": -999})):
+        m = live_ui.schwab_message(topic + item["key"], {"symbol": item["key"], "service": service, body: item,
+                                                         "schwab_ts": 1, "ts_recv": 1.0})
+        assert m["content"] == item and "time_ct" not in m
+    srv = live_ui.LiveUiServer(MessageBus(), _Feed(), {})
+    key = quote["item"]["key"]
+    srv.route("quote." + key, {"symbol": key, "native": quote["item"], "schwab_ts": 1, "ts_recv": 1.0})
+    srv.route("quote." + key, {"symbol": key, "native": {"key": key, "TRADE_TIME_MILLIS": -999}, "schwab_ts": 2,
+                               "ts_recv": 2.0})
+    assert srv.trade_ms[key] == quote["item"]["TRADE_TIME_MILLIS"]
+
+
 def test_a_contract_opened_after_its_messages_gets_every_field_schwab_streamed():
     """Operator 2026-10-14 (the bank's running balance): a screen that asks for a contract Schwab
     has been streaming gets, at once, every LEVELONE_OPTIONS field Schwab sent for it, each the
@@ -218,6 +252,60 @@ def test_the_page_is_told_what_each_symbol_it_names_is():
             {"requested": "spy", "key": "SPY", "display": "SPY"},
             {"requested": "MU", "key": "MU", "display": "MU"}]
     asyncio.run(_run(body))
+
+
+#: Wednesday 2026-09-30, 11:00 ET (RTH) and 22:00 ET (Closed), as epoch seconds
+_RTH, _CLOSED = 1790780400.0, 1790820000.0
+
+
+def _clock_from(monkeypatch, start: float) -> None:
+    """The wall clock running from `start` (the session the test is in); time still passes."""
+    real, offset = time.time, start - time.time()
+    monkeypatch.setattr(time, "time", lambda: real() + offset)
+
+
+async def _verdict(ws, key: str, until, timeout: float = 3.0) -> dict:
+    """`key`'s LEVELONE_EQUITIES verdict in the first beat for which `until(verdict)` holds."""
+    end = time.monotonic() + timeout
+    while time.monotonic() < end:
+        frame = json.loads(await asyncio.wait_for(ws.recv(), timeout))
+        if frame["type"] == "feed" and key in frame["state"]:
+            v = frame["state"][key]["LEVELONE_EQUITIES"]
+            if until(v):
+                return v
+    raise AssertionError(f"no beat with the verdict sought for {key}")
+
+
+@pytest.mark.parametrize("start, outage", [(_RTH, "Schwab LEVELONE_EQUITIES feed down during RTH"), (_CLOSED, None)],
+                         ids=["rth", "closed"])
+def test_a_closed_schwab_socket_reads_not_live_within_one_beat(monkeypatch, start, outage):
+    """Nothing from Schwab; only the daemon's status knows (docs/DATA_FLOW.md §2 D5): SPY live on a
+    real quote Schwab sent, then Schwab's socket closes: the next beat says not live, with the
+    outage while the market is open and none while Closed (the values as of the close stand)."""
+    _clock_from(monkeypatch, start)
+    quote = next(m for m in _MIX if m["service"] == "LEVELONE_EQUITIES" and m["item"]["key"] == "SPY")
+    feed = _Switch()
+
+    async def body(bus, ws, stats):
+        await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"]}))
+        _frame(bus, "LEVELONE_EQUITIES", quote["item"], quote["schwab_ts"])
+        assert await _verdict(ws, "SPY", lambda v: v["live"]) == {"live": True, "outage": None}
+        feed.open = False
+        assert await _verdict(ws, "SPY", lambda v: not v["live"], timeout=2.5) == {"live": False, "outage": outage}
+    asyncio.run(_run(body, feed=feed))
+
+
+def test_a_symbol_the_daemon_does_not_hold_is_not_live(monkeypatch):
+    """A quote for a symbol the daemon does not hold on Schwab is never live."""
+    _clock_from(monkeypatch, _CLOSED)
+    quote = next(m for m in _MIX if m["service"] == "LEVELONE_EQUITIES" and m["item"]["key"] != "SPY")
+
+    async def body(bus, ws, stats):
+        key = quote["item"]["key"]
+        await ws.send(json.dumps({"op": "subscribe", "symbols": [key]}))
+        _frame(bus, "LEVELONE_EQUITIES", quote["item"], quote["schwab_ts"])
+        assert await _verdict(ws, key, lambda v: True) == {"live": False, "outage": None}
+    asyncio.run(_run(body, feed=_Switch(held=("SPY",))))
 
 
 def test_each_beat_is_the_daemons_whole_status():

@@ -38,6 +38,7 @@ import live_market_plane as lmp
 from instrument_identity import display_symbol, ticker_storage_key
 from live_price_rows import with_change
 from micro_structure import bar_dict, schwab_bar
+from numeric_contract import schwab_number
 from stream_spine import LOG, MessageBus
 from time_et import age_label, ct_label
 
@@ -79,9 +80,9 @@ def schwab_message(topic: str, msg: dict) -> "dict | None":
         return None
     out = {"service": service if service is not None else msg.get("service"), "key": msg["symbol"],
            "schwab_ts": msg.get("schwab_ts"), "ts_recv": msg.get("ts_recv"), "content": content}
-    sent = (content.get(NEWS_TIME) if out["service"] == "NEWS_HEADLINE"
-            else content.get("BOOK_TIME") if DELIVERY.get(out["service"]) == WHOLE else None)
-    if isinstance(sent, (int, float)) and not isinstance(sent, bool):
+    sent = schwab_number(content.get(NEWS_TIME) if out["service"] == "NEWS_HEADLINE"
+                         else content.get("BOOK_TIME") if DELIVERY.get(out["service"]) == WHOLE else None)
+    if sent is not None:
         out["time_ct"] = ct_label(sent / 1000.0)        # the headline's or book's time as the screen shows it
     if out["service"] == "CHART_EQUITY":                # the bar as the chart draws it, by its one producer
         candle = schwab_bar(content.get("CHART_TIME_MILLIS"), content.get("OPEN_PRICE"), content.get("HIGH_PRICE"),
@@ -153,9 +154,9 @@ class LiveUiServer:
             return
         if isinstance(m["ts_recv"], (int, float)):
             lmp.note_posted(m["key"], m["service"], m["ts_recv"])
-        trade = m["content"].get("TRADE_TIME_MILLIS") if m["service"] == "LEVELONE_EQUITIES" else None
-        if isinstance(trade, (int, float)) and not isinstance(trade, bool):
-            self.trade_ms[m["key"]] = float(trade)
+        trade = schwab_number(m["content"].get("TRADE_TIME_MILLIS")) if m["service"] == "LEVELONE_EQUITIES" else None
+        if trade is not None:
+            self.trade_ms[m["key"]] = trade
         for c in self.clients:
             if m["key"] in c.symbols:
                 c.take(m)
@@ -292,7 +293,10 @@ async def serve_live_ui(bus: MessageBus, stop: asyncio.Event, *, heartbeat_fn,
     async def _route() -> None:
         while True:
             topic, msg = await sub.get()
-            srv.route(topic, msg)
+            try:
+                srv.route(topic, msg)
+            except Exception:  # noqa: BLE001 -- logged with the message; the next one is still delivered
+                log.exception("live ui: a %s message was not delivered: %r", topic, msg)
 
     tasks = [asyncio.create_task(_route()), asyncio.create_task(srv.beat_loop())]
     try:
