@@ -134,6 +134,8 @@ class _Client:
             else:                     # newest value of each field, and its mark; Schwab's newest frame time
                 held["content"].update(m["content"])
                 held["absent"] = sorted((set(held["absent"]) - set(m["content"])) | set(m["absent"]))
+                if "trade" in m:
+                    held["trade"] = m["trade"]
                 held["schwab_ts"], held["ts_recv"] = m["schwab_ts"], m["ts_recv"]
         elif kind == WHOLE:
             self.whole[k] = m
@@ -173,6 +175,7 @@ class LiveUiServer:
         trade = schwab_number(m["content"].get("TRADE_TIME_MILLIS")) if m["service"] == "LEVELONE_EQUITIES" else None
         if trade is not None:
             self.trade_ms[m["key"]] = trade
+            m["trade"] = self.trade_label(m["key"], self.clock())   # the new trade's time, with its price
         if DELIVERY[m["service"]] == SEQUENCE:
             k = (m["service"], m["key"])
             self.sequence.setdefault(k, collections.deque(maxlen=SEQUENCE_KEPT)).append(m)
@@ -209,10 +212,13 @@ class LiveUiServer:
         return {k: {svc: {"live": lmp.feed_live_for(k, svc, now), "outage": lmp.outage(k, svc, now)}
                     for svc in _services(k)} for k in sorted(c.symbols)}
 
+    def trade_label(self, key: str, now: float) -> dict:
+        """`key`'s last trade time and its age at `now`, as the screen shows them."""
+        return {"time_ct": ct_label(self.trade_ms[key] / 1000.0), "age": age_label(now - self.trade_ms[key] / 1000.0)}
+
     def trades(self, c: _Client, now: float) -> dict:
         """Each asked-for equity's last trade time and age at `now`, as the screen shows them."""
-        return {k: {"time_ct": ct_label(self.trade_ms[k] / 1000.0), "age": age_label(now - self.trade_ms[k] / 1000.0)}
-                for k in sorted(c.symbols) if k in self.trade_ms}
+        return {k: self.trade_label(k, now) for k in sorted(c.symbols) if k in self.trade_ms}
 
     # -- client side ------------------------------------------------------------------
 

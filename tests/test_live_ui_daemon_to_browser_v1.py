@@ -287,6 +287,24 @@ def test_each_book_carries_its_levels_and_each_quote_marks_the_fields_that_are_n
     assert held["content"]["LAST_PRICE"] == 1.5 and "LAST_PRICE" not in held["absent"] and "BID_SIZE" in held["absent"]
 
 
+def test_a_new_trade_reaches_the_screen_with_its_own_time_and_age():
+    """AGENTS.md rule 5, every value with its time: a real quote with a new trade carries that
+    trade's time and age as the daemon labels them, so the screen never shows the new price
+    with the previous trade's time until the next beat (before: up to a second)."""
+    from time_et import age_label, ct_label
+
+    q = next(m for m in _MIX if m["service"] == "LEVELONE_EQUITIES" and "TRADE_TIME_MILLIS" in m["item"])
+    at = q["item"]["TRADE_TIME_MILLIS"] / 1000.0 + 2.0
+    srv = live_ui.LiveUiServer(MessageBus(), _Feed(), {}, clock=lambda: at)
+    c = live_ui._Client(None)
+    c.symbols = frozenset({q["item"]["key"]})
+    srv.clients.add(c)
+    srv.route("quote." + q["item"]["key"], {"symbol": q["item"]["key"], "native": q["item"], "schwab_ts": 1, "ts_recv": 1.0})
+    sent = c.drain()[0]
+    assert sent["content"] == q["item"]
+    assert sent["trade"] == {"time_ct": ct_label(q["item"]["TRADE_TIME_MILLIS"] / 1000.0), "age": age_label(2.0)}
+
+
 def test_a_contract_opened_after_its_messages_gets_every_field_schwab_streamed():
     """Operator 2026-10-14 (the bank's running balance): a screen that asks for a contract Schwab
     has been streaming gets, at once, every LEVELONE_OPTIONS field Schwab sent for it, each the

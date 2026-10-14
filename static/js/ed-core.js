@@ -823,6 +823,7 @@
           Object.keys(m.content).forEach(function (k) {
             if (absent && absent.indexOf(k) !== -1) delete f[k]; else f[k] = m.content[k];
           });
+          if (m.trade) _trades[m.key] = m.trade;        // a new trade: its time and age, with its price
           if (m.service === 'LEVELONE_EQUITIES') ingestPriceRow(priceRow(m.key));
         }
         if (m.service === 'CHART_EQUITY' || m.service === 'NEWS_HEADLINE') {   // All Sequence: each once, in order
