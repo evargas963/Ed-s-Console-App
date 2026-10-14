@@ -6,11 +6,9 @@
 // Each answer is replaced by what
 // the spec's stubs serve for its `source` (page.route), as the console serves its route's own
 // answer, and stamped with the view the console holds when it is sent, as the console stamps it.
-// A spec that pushes a change does it as the console's stream of change kinds did
-// (page.route('**/api/changes**', ... text/event-stream)): each `event: <kind>` it serves is
-// pushed as the console pushes it -- every panel on screen that the kind moves, answered again;
-// `event: session` is the session label. The console's own push is proven against the real server
-// in tests/test_live_values_push_v1.py.
+// A spec pushes a change of a kind (pushChange) as the console pushes it -- every panel on screen
+// that the kind moves, answered again. The console's own push is proven against the real server in
+// tests/test_live_values_push_v1.py.
 const base = require('@playwright/test');
 
 async function answer(page, url) {
@@ -79,7 +77,7 @@ async function installLive(page) {
     //: the console's answers under a view older than the page's newest: held until the console
     //: takes the newest, then read or dropped as the page draws or drops them
     let held = [];
-    let seq = null, pageSeq = null, ticker = null, closed = false, session = null;
+    let seq = null, pageSeq = null, closed = false, session = null;
     const send = (m) => { if (!closed) { try { ws.send(JSON.stringify(m)); } catch (e) { closed = true; } } };
     ws.onClose(() => { closed = true; });
     function read(source) {
@@ -114,25 +112,6 @@ async function installLive(page) {
     }
     _push.set(page, moved);
     _beat.set(page, (asOfAges) => send({ type: 'feed', session: session, as_of_ages: asOfAges || {} }));
-    // the spec's change stream for the ticker, read as the console's push of each kind
-    async function changes(tk) {
-      while (!closed && tk === ticker) {
-        const r = await page.evaluate(async (t) => {
-          try {
-            const res = await fetch('/api/changes?ticker=' + encodeURIComponent(t), { cache: 'no-store' });
-            const stream = /text\/event-stream/.test(res.headers.get('content-type') || '');
-            return { ok: res.ok && stream, text: await res.text() };
-          } catch (e) { return { ok: false, text: '' }; }
-        }, tk).catch(() => ({ ok: false, text: '' }));
-        if (!r.ok) return;                        // no change stream stubbed: nothing is pushed
-        for (const block of r.text.split('\n\n')) {
-          const ev = (block.match(/^event: (.+)$/m) || [])[1], data = (block.match(/^data: (.*)$/m) || [])[1];
-          if (!ev) continue;
-          if (ev === 'session') { session = data; send({ type: 'feed', session: data, as_of_ages: {} }); continue; }
-          await moved(ev);
-        }
-      }
-    }
     const server = ws.connectToServer();
     server.onMessage((m) => {
       let msg; try { msg = JSON.parse(String(m)); } catch (e) { return; }
@@ -166,7 +145,6 @@ async function installLive(page) {
       if (!req || req.op !== 'view') return;
       pageSeq = req.view.seq;
       try { server.send(String(m)); } catch (e) { /* the test server's push is gone */ }
-      if (req.view.ticker && req.view.ticker !== ticker) { ticker = req.view.ticker; changes(ticker); }
     });
   });
 }

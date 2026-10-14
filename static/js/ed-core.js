@@ -851,13 +851,13 @@
     // each absent until the daemon has sent it: Schwab's fields, the verdict, the trade's labels
     var f = _l1[key], s = feedVerdict(key, 'LEVELONE_EQUITIES'), t = _trades[key];
     function v(name) { return f && f[name] !== undefined ? f[name] : null; }
-    var spot = v('LAST_PRICE'), trade = v('TRADE_TIME_MILLIS');
+    var spot = v('LAST_PRICE');
     return { ticker: key, spot: spot, spot_disp: spot == null ? null : spot.toFixed(2),
       bid: v('BID_PRICE'), ask: v('ASK_PRICE'), bid_size: v('BID_SIZE'), ask_size: v('ASK_SIZE'), mark: v('MARK'),
       last_size: v('LAST_SIZE'), total_volume: v('TOTAL_VOLUME'), net_change: v('NET_CHANGE'),
       chg_pct: v('NET_CHANGE_PERCENT'), chg_pct_regular: v('REGULAR_MARKET_CHANGE_PERCENT'),
       open_price: v('OPEN_PRICE'), high_price: v('HIGH_PRICE'), low_price: v('LOW_PRICE'), prior_close: v('CLOSE_PRICE'),
-      trade_ts: trade == null ? null : trade / 1000, trade_time_ct: t && t.time_ct != null ? t.time_ct : null,
+      trade_time_ct: t && t.time_ct != null ? t.time_ct : null,
       trade_age: t && t.age != null ? t.age : null,
       feed_live: !!s && s.live === true, outage: s && s.outage != null ? s.outage : null, quote_ingestion: 'schwab_streaming_level_one' };
   }

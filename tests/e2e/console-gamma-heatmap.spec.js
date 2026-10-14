@@ -136,25 +136,15 @@ const { mockPriceSocket, schwabQuote, daemonBeat, daemonDown } = require('./fixt
 // The console's watchlist routes, stood in for (tests/e2e/fixtures/watchlist.js).
 const { routeWatchlist } = require('./fixtures/watchlist');
 
-// the console pushes one `levels` change for `ticker` after `delayMs`; reconnects get the session
-// One levels push on `ticker`'s change stream, held until the test calls the returned release():
-// the push lands where the test says, however long the page took to get there.
-async function routeOneLevelsPush(page, ticker = 'SPY') {
-  let pushes = 0, release;
-  const held = new Promise((r) => { release = r; });
-  await page.route(`**/api/changes?ticker=${ticker}**`, async (route) => {
-    pushes += 1;
-    await (pushes === 1 ? held : new Promise((r) => setTimeout(r, 1000)));
-    route.fulfill({ status: 200, contentType: 'text/event-stream',
-      body: pushes === 1 ? `event: levels\ndata: ${ticker}\n\n` : 'event: session\ndata: RTH\n\n' });
-  });
-  return release;
+// One levels change, pushed by the console when the test calls the returned push(): the push lands
+// where the test says, however long the page took to get there.
+async function routeOneLevelsPush(page) {
+  return () => pushChange(page, 'levels');
 }
 
 async function intercept(page) {
   await page.route('**/api/**', (route) => {
     const url = route.request().url();
-    if (url.includes('/api/changes')) return route.fallback();   // the test server's own push
     let body = { available: false };
     if (url.includes('/api/options/gamma-surface')) body = SURFACE;
     else if (url.includes('/api/terrain/strikes')) body = STRIKES;
@@ -187,8 +177,8 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#hSession')).toHaveClass(/unknown/);
   });
 
-  test('a levels push on /api/changes reloads the heatmap, with no manual event dispatch', async ({ page }) => {
-    // Delivery, not rendering: the browser's own EventSource parses the pushed `levels` event.
+  test('a levels push reloads the heatmap, with no manual event dispatch', async ({ page }) => {
+    // Delivery, not rendering: the console's push of a `levels` change answers the heatmap again.
     let surfaceCalls = 0;
     await page.route('**/api/options/gamma-surface**', (route) => {
       surfaceCalls += 1;
@@ -202,18 +192,10 @@ test.describe('Ed Console shell + gamma heatmap', () => {
         })),
       });
     });
-    let pushes = 0, drawn;
-    const firstDrawn = new Promise((r) => { drawn = r; });
-    await page.route('**/api/changes**', async (route) => {
-      pushes += 1;
-      if (pushes === 1) await firstDrawn;           // the change comes once the first answer is on screen
-      route.fulfill({ status: 200, contentType: 'text/event-stream',
-        body: pushes === 1 ? 'event: levels\ndata: SPY\n\n' : 'event: session\ndata: RTH\n\n' });
-    });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const cell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
     await expect(cell).toHaveText('$1.0K');
-    drawn();
+    await pushChange(page, 'levels');                // the change comes once the first answer is on screen
     await expect(cell).toHaveText('$2.0K', { timeout: 3000 });
     expect(surfaceCalls).toBeGreaterThanOrEqual(2);
   });
@@ -1395,7 +1377,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     const reads = [];
     page.on('request', (r) => {
       const u = new URL(r.url());
-      if (r.method() === 'GET' && u.pathname.startsWith('/api/') && u.pathname !== '/api/changes') reads.push(u.pathname);
+      if (r.method() === 'GET' && u.pathname.startsWith('/api/')) reads.push(u.pathname);
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('.hcell').first()).toBeVisible();
@@ -1406,29 +1388,4 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     expect(reads.slice(settled)).toEqual([]);
   });
 
-  test('a late push on the PREVIOUS ticker\'s connection never paints the new ticker\'s cells', async ({ page }) => {
-    let seq = 0;
-    await page.route('**/api/options/gamma-surface**', (route) => {
-      const url = route.request().url();
-      const tk = decodeURIComponent((url.match(/[?&]ticker=([^&]+)/) || [])[1] || 'SPY');
-      const value = tk === 'SPY' ? 1000 : 9000;
-      seq += 1;
-      return route.fulfill({
-        status: 200, contentType: 'application/json',
-        body: JSON.stringify(Object.assign({}, SURFACE, {
-          strikes: [583], expirations: [{ expiry: '2026-09-11', dte: 2 }],
-          cells: [{ strike: 583, gex: [value] }], surface_seq: seq,
-        })),
-      });
-    });
-    const push = await routeOneLevelsPush(page);   // SPY's connection, which the test is about to leave
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
-    const cell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
-    await expect(cell).toHaveText('$1.0K');   // SPY's own value
-    await page.evaluate(() => window.EdShell.setTicker('QQQ'));
-    await expect(cell).toHaveText('$9.0K');   // QQQ's own value, before SPY's push lands
-    push();
-    await page.waitForTimeout(500);
-    await expect(cell).toHaveText('$9.0K');   // SPY's push on its closed connection changed nothing
-  });
 });

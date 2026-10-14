@@ -6,7 +6,7 @@
  * expiry filters the heatmap to that column; an old expiry invalid for a new ticker fails safe to All;
  * terrain Key Levels stay disclosed as all-exp when a single expiry is filtered. Offline.
  */
-const { test, expect } = require('./fixtures/live_socket');
+const { test, expect, pushChange } = require('./fixtures/live_socket');
 const { expiriesAnswer } = require('./fixtures/expiries');
 const { routeWatchlist } = require('./fixtures/watchlist');
 
@@ -75,7 +75,7 @@ test.describe('ticker / expiry / measure controls', () => {
 
   test('a new chain pushed for the ticker on screen replaces the expiry list (2026-10-08: yesterday\'s list stayed)', async ({ page }) => {
     // The console held yesterday's chain when the page opened; today's chain lands, the console
-    // pushes `chain` on /api/changes, and /api/expiries serves today's list.
+    // pushes a `chain` change, and /api/expiries serves today's list.
     const YESTERDAY = { expiries: ['2026-10-07', '2026-10-08'],
       labels: { '2026-10-07': '10/07/2026 · 0DTE', '2026-10-08': '10/08/2026 · 1DTE' } };
     const TODAY = { expiries: ['2026-10-08', '2026-10-09'],
@@ -86,15 +86,10 @@ test.describe('ticker / expiry / measure controls', () => {
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(served) });
       listed();
     });
-    let pushes = 0;
-    await page.route('**/api/changes**', async (route) => {
-      pushes += 1;
-      await first;                                          // the page holds yesterday's list
-      served = TODAY;                                        // today's chain reached the console
-      route.fulfill({ status: 200, contentType: 'text/event-stream',
-        body: pushes === 1 ? 'event: chain\ndata: SPY\n\n' : 'event: session\ndata: RTH\n\n' });
-    });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await first;                                            // the page holds yesterday's list
+    served = TODAY;                                          // today's chain reached the console
+    await pushChange(page, 'chain');
     await expect(page.locator('#expSel option')).toHaveText(['All Expirations', '10/08/2026 · 0DTE', '10/09/2026 · 1DTE']);
   });
 

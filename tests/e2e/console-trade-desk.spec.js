@@ -332,17 +332,6 @@ test.describe('Trade Desk renders served values', () => {
     expect(errs).toEqual([]);
   });
 
-  test('Desk: selecting a ticker opens its /api/changes connection (the book request)', async ({ page }) => {
-    await intercept(page);
-    const opened = [];
-    page.on('request', (r) => { if (r.url().includes('/api/changes')) opened.push(new URL(r.url()).searchParams.get('ticker')); });
-    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect.poll(() => opened).toContain('SPY');
-    await page.evaluate(() => window.EdShell.setTicker('MU'));
-    await expect.poll(() => opened).toContain('MU');
-  });
-
   test('Market Map: the wheel over the price axis rescales price (as TradingView); over the plot it does not', async ({ page }) => {
     // operator 2026-09-29: "in tv all you do is scroll [on the price legend] and it will expand the
     // chart vertically; the way you have it you have to click and drag"
