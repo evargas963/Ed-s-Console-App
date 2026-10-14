@@ -34,7 +34,7 @@
   var _last = { bars: undefined, strikes: undefined, terrain: undefined };
   // the chart's timeframe (the toolbar's), kept per viewer in the shell's view
   function tf() { return st().tfs.chart; }
-  function tfLabel() { return (window.EdTvChart.TFS.filter(function (t) { return t.id === tf(); })[0] || {}).lbl || tf(); }
+  function tfLabel() { return window.EdTvChart.TFS.filter(function (t) { return t.id === tf(); })[0].lbl; }
 
   function liveSpot() {   // the row whose served key is the selected instrument's (EdShell state.key)
     var q = _liveQuote;

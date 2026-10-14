@@ -783,7 +783,7 @@
       _priceUp = true; _lastPriceTs = Date.now();
       if (msg.type === 'feed') {
         paintRecord(msg.feed && msg.feed.writer);
-        _feedState = msg.state || {};
+        _feedState = msg.state;
         Object.keys(_feedState).forEach(function (k) { ingestPriceRow(priceRow(k)); });
         return;
       }
@@ -791,10 +791,10 @@
       msg.messages.forEach(function (m) {
         if (m.service === 'LEVELONE_EQUITIES') {      // Change: the fields Schwab changed
           var f = _l1[m.key] || (_l1[m.key] = {});
-          Object.keys(m.content || {}).forEach(function (k) { f[k] = m.content[k]; });
+          Object.keys(m.content).forEach(function (k) { f[k] = m.content[k]; });
           ingestPriceRow(priceRow(m.key));
         }
-        try { window.dispatchEvent(new CustomEvent('ed:schwab', { detail: m })); } catch (e) {}
+        window.dispatchEvent(new CustomEvent('ed:schwab', { detail: m }));
       });
     };
     ws.onclose = function () {
@@ -826,9 +826,10 @@
   // daemon's feed state. In an open session with the feed down the values are absent with the
   // outage reason; otherwise each is the last value Schwab sent (docs/DATA_FLOW.md §2 D5).
   function priceRow(key) {
-    var f = _l1[key] || {}, s = ((_feedState[key] || {}).LEVELONE_EQUITIES) || {};
-    var shown = !s.outage;
-    function v(name) { return shown ? schwabNum(f[name]) : null; }
+    // f: no field sent yet; s: no feed state served yet -- each absent, never an empty stand-in
+    var f = _l1[key], fs = _feedState[key], s = fs ? fs.LEVELONE_EQUITIES : undefined;
+    var outage = s && s.outage ? s.outage : null, shown = !outage;
+    function v(name) { return shown && f ? schwabNum(f[name]) : null; }
     var spot = v('LAST_PRICE'), trade = v('TRADE_TIME_MILLIS');
     return { ticker: key, spot: spot, spot_disp: spot == null ? null : spot.toFixed(2),
       bid: v('BID_PRICE'), ask: v('ASK_PRICE'), bid_size: v('BID_SIZE'), ask_size: v('ASK_SIZE'), mark: v('MARK'),
@@ -836,7 +837,7 @@
       total_volume: v('TOTAL_VOLUME'), trade_ts: trade == null ? null : trade / 1000,
       trade_time_ct: trade == null ? null : ctLabel(trade),
       trade_age_sec: trade == null ? null : Math.max(0, (Date.now() - trade) / 1000),
-      feed_live: !!s.live, outage: s.outage || null, quote_ingestion: 'schwab_streaming_level_one' };
+      feed_live: !!(s && s.live), outage: outage, quote_ingestion: 'schwab_streaming_level_one' };
   }
   // What each symbol the page asked for is, as the daemon answers the subscribe: the key its rows
   // carry ("$SPX") and its display name ("SPX"). Rows are matched to what was asked by that key.
@@ -915,7 +916,7 @@
     if (!_panelFns[name]) _panelFns[name] = [];
     _panelFns[name].push(fn);
   }
-  function deliver(name, a) { (_panelFns[name] || []).forEach(function (fn) { fn(a); }); }
+  function deliver(name, a) { if (_panelFns[name]) _panelFns[name].forEach(function (fn) { fn(a); }); }
   function answerOf(msg) { return { ok: msg.status >= 200 && msg.status < 300, status: msg.status, body: msg.body }; }
   function openPush() {
     if (_live || typeof WebSocket === 'undefined') return;

@@ -41,10 +41,9 @@ def test_changes_reach_only_the_tickers_page_each_kind_once():
     assert _run(body) == ({"levels", "flow"}, set())
 
 
-def test_a_streamed_equity_quote_and_book_mark_flow(monkeypatch):
-    # the page open on TSLA makes it viewed, and a viewed ticker's tick is also repriced (which
-    # marks levels); this test is about the flow mark alone
-    monkeypatch.setattr(server, "_on_stream_tick", lambda sym: None)
+def test_a_streamed_equity_quote_and_book_mark_flow():
+    # an equity quote and a book mark flow; the reprice a tick starts comes from the daemon's
+    # price rows (_rows_loop), not from these
     q, b = _FX["quote"], _FX["book"]
     bus = MessageBus()                      # the quote as the daemon's bus holds and pushes it
     sent = {"symbol": TK, "ts_recv": q["ts_recv"], "native": q["native"]}

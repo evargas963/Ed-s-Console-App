@@ -153,7 +153,8 @@ class LiveUiServer:
         t0 = time.perf_counter()
         await c.ws.send(json.dumps(payload, separators=(",", ":"), default=str))
         self.stats["frames_sent"] += 1
-        self.stats["messages_sent"] += len(payload.get("messages") or ())
+        if payload["type"] == "schwab":             # the frame that carries Schwab's messages
+            self.stats["messages_sent"] += len(payload["messages"])
         self.stats["last_send_ms"] = (time.perf_counter() - t0) * 1000.0
 
     async def _pump(self, c: _Client) -> None:

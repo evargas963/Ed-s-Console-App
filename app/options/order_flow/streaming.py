@@ -273,12 +273,13 @@ async def _rows_loop(ui_url: str, reconnect_sec: float) -> None:
                         _lmp.record_feed_down()      # the daemon beats every second: silence
                         continue
                     msg = json.loads(frame)
-                    if msg.get("type") == "feed":
-                        apply_heartbeat(msg.get("feed"))
-                    for m in msg.get("messages") or []:
-                        if m["service"] == "LEVELONE_EQUITIES":   # Change: the fields Schwab changed
-                            _lmp.record_from_level_one_equity(m["key"], m["content"], received_ts=float(m["ts_recv"]))
-                            _tick(m["key"])
+                    if msg["type"] == "feed":
+                        apply_heartbeat(msg["feed"])
+                    elif msg["type"] == "schwab":
+                        for m in msg["messages"]:
+                            if m["service"] == "LEVELONE_EQUITIES":   # Change: the fields Schwab changed
+                                _lmp.record_from_level_one_equity(m["key"], m["content"], received_ts=float(m["ts_recv"]))
+                                _tick(m["key"])
         except asyncio.CancelledError:
             raise
         except Exception as e:  # noqa: BLE001 -- daemon down/restarting: retry, never substitute

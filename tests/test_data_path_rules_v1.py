@@ -12,6 +12,7 @@ import asyncio
 import json
 import socket
 import sqlite3
+import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -815,11 +816,26 @@ def _chart_bars(tk: str) -> list[dict]:
 
 # ── D6. No live screen reads the database ───────────────────────────────────────────────────
 
-def test_d6_no_live_route_opens_a_database(monkeypatch):
+#: while a test watches, each database the process opens (Python's audit event
+#: "sqlite3.connect"), refused; the hook stays for the process, so it acts only while watched
+_DB_OPENS: list = []
+
+
+def _refuse_db_open(event, args):
+    if event == "sqlite3.connect" and _DB_OPENS:
+        _DB_OPENS[-1].append(str(args[0]))
+        raise sqlite3.OperationalError("a live screen read the database")
+
+
+sys.addaudithook(_refuse_db_open)
+
+
+def test_d6_no_live_route_opens_a_database():
     """Every live GET route of the console, with both databases present and holding SPY's data
     (the stream database written by the real writer: a captured SPY book and the captured option
-    quote; the console database), then SQLite made to refuse: none opens a database. The routes
-    are read from the app itself (the push, /api/live, is a WebSocket, not a GET route)."""
+    quote; the console database), then every database open refused (Python's sqlite3.connect
+    audit event): none opens a database. The routes are read from the app itself (the push,
+    /api/live, is a WebSocket, not a GET route)."""
     from fastapi.routing import APIRoute
     from fastapi.testclient import TestClient
     import server
@@ -834,11 +850,6 @@ def test_d6_no_live_route_opens_a_database(monkeypatch):
         symbol=_CONTRACT, content=_EVENTS[0]["content"], src="schwab_options_l1", ts_recv=time.time()))
     get_db()                                                 # the console database
     opened: list = []
-
-    def refuse(*a, **k):
-        opened.append(str(a[0]) if a else "")
-        raise sqlite3.OperationalError("a live screen read the database")
-    monkeypatch.setattr(sqlite3, "connect", refuse)
     client = TestClient(server.app, raise_server_exceptions=False)
     routes = [r.path for r in server.app.routes if isinstance(r, APIRoute) and "GET" in r.methods
               and r.path.startswith("/api/") and "{" not in r.path]
@@ -846,12 +857,16 @@ def test_d6_no_live_route_opens_a_database(monkeypatch):
     # what the page sends: every route must run, not answer "invalid request"
     params = {"ticker": "SPY", "contract": _CONTRACT, "venue": "NYSE_BOOK", "tf": "5", "minutes": "60"}
     readers, refused = [], []
-    for path in routes:
-        opened.clear()
-        if client.get(path, params=params).status_code == 422:
-            refused.append(path)
-        if opened:
-            readers.append(path)
+    _DB_OPENS.append(opened)
+    try:
+        for path in routes:
+            opened.clear()
+            if client.get(path, params=params).status_code == 422:
+                refused.append(path)
+            if opened:
+                readers.append(path)
+    finally:
+        _DB_OPENS.remove(opened)
     assert not refused, f"routes the test did not run (invalid request): {refused}"
     assert not readers, f"live routes that read the database: {readers}"
 

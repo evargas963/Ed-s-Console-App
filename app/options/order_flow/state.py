@@ -121,7 +121,9 @@ class OrderFlowState:
         each of its records the opening did not post: a contract Schwab no longer lists, as the
         daemon forgot it (capture.Daemon._took_chain)."""
         with self._lock:
-            listed = self._by_ticker.get(ticker, {})
+            if ticker not in self._by_ticker:            # none of its records held: nothing to forget
+                return
+            listed = self._by_ticker[ticker]
             for sym in [s for s in listed
                         if max(stamp[1] for stamp in self._contracts[s].times.values()) < opened_at]:
                 del listed[sym]

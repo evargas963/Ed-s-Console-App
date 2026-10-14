@@ -77,7 +77,7 @@
   // the spot is the header's price row (the daemon's Schwab LAST_PRICE), painted on every row
   var _spotDisp = '—';
   window.addEventListener('ed:quote_tick', function (e) {
-    var q = e.detail, s = (window.EdShell && window.EdShell.getState()) || {};
+    var q = e.detail, s = window.EdShell.getState();
     if (!q || q.ticker !== s.key) return;
     _spotDisp = q.spot_disp != null ? q.spot_disp : '—';
     document.querySelectorAll('.lv-spot-v').forEach(function (el) { el.textContent = _spotDisp; });

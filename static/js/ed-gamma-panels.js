@@ -224,7 +224,7 @@
   });
   function drawStrikeDetail() {
     var host = document.getElementById('sdBody');
-    var s = (window.EdShell && window.EdShell.getState()) || {};
+    var s = window.EdShell.getState();
     // another expiry's chain (its new one is on its way) is never drawn under this one
     if (!host || !_sdChain || s.selStrike == null || strikeDetailExpiry() !== _sdFor) return;
     if (!_sdChain.ok) { host.innerHTML = '<div class="placeholder"><div class="sm">/api/chain answered HTTP ' + _sdChain.status + '</div></div>'; return; }

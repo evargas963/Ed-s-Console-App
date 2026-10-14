@@ -12,18 +12,12 @@ from __future__ import annotations
 
 import time
 
-import pytest
-
 import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 from app.options.order_flow import history
 from stream_spine import MessageBus, book_msg, current_key, quote_msg
-
-
-@pytest.fixture(autouse=True)
-def _isolate_stream_capture_env(monkeypatch):
-    monkeypatch.delenv("STREAM_CAPTURE_DB_PATH", raising=False)
+from tests.feed_live_helper import forget_price
 
 
 def _reset(tmp_path):
@@ -46,9 +40,9 @@ def _push_book(symbol, content, ts_recv):
         ts_recv=ts_recv))
 
 
-def test_l1_message_lands_in_the_tape_and_the_console_keeps_no_price(tmp_path, monkeypatch):
+def test_l1_message_lands_in_the_tape_and_the_console_keeps_no_price(tmp_path):
     _reset(tmp_path)
-    monkeypatch.setattr(lmp, "_by_ticker", {})
+    forget_price("SPY")
     native = {"key": "SPY", "BID_PRICE": 449.98, "ASK_PRICE": 450.02, "LAST_PRICE": 450.0,
               "LAST_SIZE": 100, "TRADE_TIME_MILLIS": 1000, "TOTAL_VOLUME": 5000}
     _push_l1("SPY", native, ts_recv=time.time())
@@ -117,11 +111,10 @@ def test_a_book_is_live_by_the_one_rule_on_its_venue_not_by_its_book_time(tmp_pa
     assert (stale("NASDAQ_BOOK"), stale("NYSE_BOOK")) == (True, True)
 
 
-def test_each_symbol_lands_in_its_own_state_only(tmp_path, monkeypatch):
+def test_each_symbol_lands_in_its_own_state_only(tmp_path):
     """Every roster symbol is applied, each into its OWN state: a QQQ tick must never appear in
     SPY's."""
     _reset(tmp_path)
-    monkeypatch.setattr(lmp, "_by_ticker", {})
     _push_l1("QQQ", {"key": "QQQ", "LAST_PRICE": 380.0}, ts_recv=time.time())
 
     assert not any(p["price"] == 380.0 for p in history.TAPE.prints("SPY"))
