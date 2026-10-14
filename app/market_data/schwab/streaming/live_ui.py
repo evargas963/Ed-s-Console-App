@@ -26,8 +26,9 @@ from stream_spine import LOG, MessageBus
 
 log = logging.getLogger(__name__)
 
-#: The console connects to this port (streaming.LIVE_UI_URL, 127.0.0.1).
-LIVE_UI_HOST = os.environ.get("ED_LIVE_UI_HOST", "0.0.0.0")  # caps-ok: operator bind config with its declared default, not market data
+#: The console connects to this port (streaming.LIVE_UI_URL), on this computer only (operator
+#: 2026-10-14: "I only use this computer")
+LIVE_UI_HOST = "127.0.0.1"
 LIVE_UI_PORT = int(os.environ.get("ED_LIVE_UI_PORT", "8800"))  # caps-ok: operator port config with its declared default, not market data
 #: feed verdict beat cadence (the heartbeat that keeps "live" honest)
 HEARTBEAT_SEC = 1.0

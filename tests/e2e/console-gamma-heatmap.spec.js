@@ -789,6 +789,24 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#hAge')).toContainText(' · 7s ago');
   });
 
+  test('a Schwab outage: the last price stands OFFLINE with its reason, and every panel read from it says NOT LIVE', async ({ page }) => {
+    // operator 2026-10-14: "During a Schwab outage in an open session, the last values stand,
+    // marked not live, on the header and every derived value, from the one liveness judgment."
+    // The price row as the console serves it with its feed down (STAND-IN: the outage's words);
+    // the panel marks are the real test console's own judgment (it has no Schwab feed).
+    const down = Object.assign(schwabQuote('SPY', 601.23), { feed_live: false,
+      outage: 'Schwab LEVELONE_EQUITIES feed down during RTH' });
+    await mockPriceSocket(page, [down]);
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#hPx')).toHaveText('601.23');                    // the last value stands
+    await expect(page.locator('#hFeed')).toHaveText('OFFLINE');
+    await expect(page.locator('#hAge')).toContainText('feed down during RTH · last trade ');
+    await expect(page.locator('#heatBody')).toHaveClass(/not-live/);
+    await expect(page.locator('#heatBody')).toHaveAttribute('data-not-live', /feed down/);
+    await expect(page.locator('#klBody')).toHaveClass(/not-live/);
+    await expect(page.locator('#heatBody .hcell').first()).toBeVisible();      // the values are drawn
+  });
+
   test('the page opens no socket but the console\'s push', async ({ page }) => {
     const sockets = [];
     page.on('websocket', (ws) => sockets.push(new URL(ws.url()).pathname));

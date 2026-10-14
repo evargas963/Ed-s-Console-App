@@ -36,6 +36,7 @@ def test_every_per_strike_panel_answers_at_the_time_asked_around_the_price():
         lmp.record_from_level_one_equity(tk, _QUOTE["native"], received_ts=_QUOTE["ts_recv"])
         lmp.record_feed_heartbeat({"ts": at, "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [tk]}})
         server._publish_levels(tk, captures=[{"contracts": CRWD.chain, "ts_utc": at, "spot": CRWD.spot,
+                                              "spot_trade_ts": None,              # not in the captured data
                                               "et_date": CRWD.now.date().isoformat(),
                                               "basis": server.CAPTURE_BASIS}], now=CRWD.now)
         last = _QUOTE["native"]["LAST_PRICE"]

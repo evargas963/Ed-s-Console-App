@@ -378,3 +378,45 @@ def test_the_page_is_told_what_each_symbol_it_names_is():
             await page.inbox.put(None)
             await asyncio.wait_for(console, 10)
     asyncio.run(go())
+
+
+def test_a_value_read_from_the_price_stands_marked_not_live_when_the_feed_goes_down(published):
+    """Operator 2026-10-14: "During a Schwab outage in an open session, the last values stand,
+    marked not live, on the header and every derived value, from the one liveness judgment." The
+    heatmap with CRWD's feed live carries no mark (the expiry list, read from no price, never
+    does); the feed goes down: the console's liveness pass pushes it again with its last spot,
+    marked with the one judgment's reason (live_market_plane.outage). Before, the spot was blanked
+    and nothing said why."""
+    import time
+
+    import live_market_plane as lmp
+    from app.options.order_flow import streaming as ofs
+    from time_et import now_et, session_label
+
+    async def go():
+        push_changes.bind(asyncio.get_running_loop())
+        daemon_holds(time.time(), {"LEVELONE_EQUITIES": [TK]})
+        price_sent(TK, CRWD.spot, time.time())
+        ofs._verdicts.pop(TK, None)
+        page = _Page()
+        console = asyncio.create_task(server.live_values(page))
+        try:
+            await page.inbox.put(_view(1))
+            got: dict = {}
+            while not {"gamma.surface", "expiries"} <= set(got):
+                got.update(_by_name(await page.next("panels")))
+            assert got["gamma.surface"]["not_live"] is None and got["expiries"]["not_live"] is None
+            lmp.record_feed_down()                          # the daemon's feed is gone
+            ofs._mark_liveness(time.time())
+            while "gamma.surface" not in (frame := _by_name(await page.next("panels"))):
+                pass
+            marked = frame["gamma.surface"]
+            assert marked["not_live"] == lmp.outage(TK, "LEVELONE_EQUITIES", time.time())
+            if session_label(now_et()) != "Closed":
+                assert marked["not_live"] is not None
+            assert marked["body"]["spot"] == CRWD.spot, "the last spot stands"
+        finally:
+            await page.inbox.put(None)
+            await asyncio.wait_for(console, 10)
+            ofs._verdicts.pop(TK, None)
+    asyncio.run(go())

@@ -11,18 +11,18 @@ import server as srv
 from stream_spine import MessageBus, current_key
 
 
-def test_a_symbol_the_daemon_does_not_hold_is_absent_in_session_and_stands_while_closed() -> None:
-    """The Schwab socket open but the symbol not held (docs/DATA_FLOW.md §2 D5): during RTH its
-    row serves no values and says why; at 22:00 ET the values Schwab sent stand."""
+def test_a_symbol_the_daemon_does_not_hold_stands_marked_not_live() -> None:
+    """The Schwab socket open but the symbol not held (docs/DATA_FLOW.md §2 D5): the values Schwab
+    sent stand, not live; during RTH its row says why, at 22:00 ET (Closed) there is no outage."""
     try:
-        for now, served in ((1790780400.0, (None, None)), (1790820000.0, (9.0, 8.9))):  # 11:00, 22:00 ET
+        for now, outage in ((1790780400.0, True), (1790820000.0, False)):  # 11:00, 22:00 ET
             lmp.record_feed_heartbeat({"ts": now, "schwab_socket_open": True,
                                        "held": {"LEVELONE_EQUITIES": ["ZZHELD"]}})
             lmp.record_from_level_one_equity("ZZNOTHELD", {"LAST_PRICE": 9.0, "BID_PRICE": 8.9},
                                              received_ts=now)
             row = srv.price_row("ZZNOTHELD", now)
-            assert (row["spot"], row["bid"], row["feed_live"]) == (*served, False)
-            assert (row["outage"] is None) == (served[0] is not None)
+            assert (row["spot"], row["bid"], row["feed_live"]) == (9.0, 8.9, False)
+            assert (row["outage"] is not None) == outage
     finally:
         lmp.record_feed_down()
 

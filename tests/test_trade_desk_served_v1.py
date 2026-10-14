@@ -213,7 +213,8 @@ def _forget(tk):
 def _priced(tk, chain, spot, ts_utc):
     """The chain priced as the console prices a stored capture (at its own time and spot)."""
     server._publish_levels(tk, captures=[{"et_date": datetime.fromtimestamp(ts_utc, time_et.ET).date().isoformat(),
-                                          "ts_utc": ts_utc, "spot": spot, "basis": CAPTURE_BASIS,
+                                          "ts_utc": ts_utc, "spot": spot, "spot_trade_ts": None,   # not captured
+                                          "basis": CAPTURE_BASIS,
                                           "contracts": [dict(c) for c in chain]}])
     return server.terrain_cache_get(tk, ts_utc)
 

@@ -297,16 +297,17 @@ def _served_at(now: float, feed_live: bool) -> dict:
         no_daemon()
 
 
-def test_d5_a_feed_down_in_an_open_session_is_an_outage_shown_absent_with_its_reason():
-    """RTH, the feed down: the price, the equity top of book and the option top of book are
-    absent, each with the outage reason; no last value stands in for a live one."""
+def test_d5_a_feed_down_in_an_open_session_stands_marked_not_live_with_its_reason():
+    """RTH, the feed down (operator 2026-10-14: "the last values stand, marked not live"): the
+    price, the equity top of book and the option top of book Schwab last sent stand, each marked
+    by the one judgment with the outage reason. Before, each was blanked."""
     s = _served_at(_RTH, feed_live=False)
-    assert s["row"]["spot"] is None and s["row"]["bid"] is None
+    assert s["row"]["spot"] == 767.39 and s["row"]["feed_live"] is False
     assert s["row"]["outage"] == "Schwab LEVELONE_EQUITIES feed down during RTH"
-    assert s["spot"] == (None, "Schwab LEVELONE_EQUITIES feed down during RTH", None)
-    assert s["equity_book"]["top_of_book"]["bid"] is None
+    assert s["spot"][0] == 767.39
+    assert s["equity_book"]["top_of_book"]["bid"] == 767.38
     assert s["equity_book"]["top_outage"] == "Schwab LEVELONE_EQUITIES feed down during RTH"
-    assert s["option_book"]["top_of_book"]["ask"] is None
+    assert s["option_book"]["top_of_book"]["ask"] == _EVENTS[0]["content"]["ASK_PRICE"]
     assert s["option_book"]["top_outage"] == "Schwab LEVELONE_OPTIONS feed down during RTH"
 
 
@@ -639,9 +640,10 @@ def test_d5_while_closed_levels_as_of_the_close_stand_and_older_ones_are_absent_
 
 def test_d5_the_levels_spot_is_judged_at_the_time_they_are_served_for():
     """/api/levels served for Fri 2026-10-02 11:00 ET (RTH) with SPY's last trade in the console's
-    price record: with the daemon's heartbeat live then, that trade is the spot with its trade time;
-    with none, the spot is absent with the RTH outage reason -- whatever the machine's clock says
-    (judged by it, one of the two answers differs at every hour)."""
+    price record: that trade is the spot with its trade time, the daemon's heartbeat live then or
+    not; whether it is live is the one judgment at that time -- live, or the RTH outage reason --
+    whatever the machine's clock says (judged by it, one of the two answers differs at every
+    hour)."""
     import live_market_plane as lmp
     at = _et("2026-10-02 11:00")
     served = {}
@@ -652,12 +654,13 @@ def test_d5_the_levels_spot_is_judged_at_the_time_they_are_served_for():
                                          received_ts=at)
         try:
             body = server.levels_payload("SPY", "1", datetime.fromtimestamp(at, ET))
+            outage = lmp.outage("SPY", "LEVELONE_EQUITIES", at)
         finally:
             forget_price("SPY")
             lmp.record_feed_down()
-        served[live] = (body["spot"], body["spot_source"], body["spot_as_of_ts_utc"])
-    assert served[True] == (767.39, server.SPOT_SOURCE_PLANE, at)
-    assert served[False] == (None, "Schwab LEVELONE_EQUITIES feed down during RTH", None)
+        served[live] = (body["spot"], body["spot_source"], body["spot_as_of_ts_utc"], outage)
+    assert served[True] == (767.39, server.SPOT_SOURCE_PLANE, at, None)
+    assert served[False] == (767.39, server.SPOT_SOURCE_PLANE, at, "Schwab LEVELONE_EQUITIES feed down during RTH")
 
 
 #: Schwab's SPY and TSLA bars as the capture daemon recorded them, Thu 2026-10-01 and Fri 10-02

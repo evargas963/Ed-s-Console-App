@@ -30,7 +30,6 @@ from schwab.client import Client
 import option_ledger
 from instrument_identity import ticker_storage_key
 from json_blob_codec import decode_json_blob, encode_json_blob
-from numeric_contract import schwab_number
 from schwab_client import (QUOTES_BATCH_MAX, flatten_chain_contracts, option_expiries, safe_get_chain,
                            safe_get_quotes)
 from time_et import ET, options_closed_at, options_open, record_markets, session
@@ -51,6 +50,7 @@ CREATE TABLE IF NOT EXISTS complete_chain_captures (
     expiry TEXT NOT NULL,
     ts_utc REAL NOT NULL,
     spot REAL,
+    spot_trade_ts REAL,
     n_contracts INTEGER NOT NULL,
     completeness_basis TEXT NOT NULL,
     chain_json TEXT NOT NULL,
@@ -64,8 +64,16 @@ CREATE INDEX IF NOT EXISTS idx_complete_chain_captures_latest
 
 
 def ensure_schema(conn: sqlite3.Connection) -> None:
+    """The table, and on a table written before 2026-10-14 its spot's trade time column (added:
+    its rows stand, their trade time not known)."""
     conn.executescript(TABLE_SQL)
+    if "spot_trade_ts" not in _columns(conn):
+        conn.execute("ALTER TABLE complete_chain_captures ADD COLUMN spot_trade_ts REAL")
     conn.commit()
+
+
+def _columns(conn: sqlite3.Connection) -> "set[str]":
+    return {r[1] for r in conn.execute("PRAGMA table_info(complete_chain_captures)")}
 
 
 def persist_complete_chain_capture(
@@ -78,9 +86,12 @@ def persist_complete_chain_capture(
     completeness_basis: str,
     ts_utc: float | None = None,
     source: str = "schwab_chain_strike_range_all",
+    spot_trade_ts: float | None = None,
 ) -> dict[str, Any]:
     """Append one COMPLETE single-expiry capture. A time series (PRIMARY KEY includes
-    ts_utc): each capture time is its own set of rows, one per expiry. A stored capture is
+    ts_utc): each capture time is its own set of rows, one per expiry. `spot` is the stock's
+    price as Schwab sent it at the capture and `spot_trade_ts` its trade time (None: not known).
+    A stored capture is
     never replaced: a second write of the same (ticker, expiry, ts_utc) raises sqlite3.IntegrityError and the
     stored row stands.
 
@@ -106,9 +117,9 @@ def persist_complete_chain_capture(
         ensure_schema(conn)
         conn.execute(
             "INSERT INTO complete_chain_captures "
-            "(ticker, expiry, ts_utc, spot, n_contracts, completeness_basis, chain_json, source) "
-            "VALUES (?,?,?,?,?,?,?,?)",
-            (tk, exp, ts, spot, len(clean), str(completeness_basis),
+            "(ticker, expiry, ts_utc, spot, spot_trade_ts, n_contracts, completeness_basis, chain_json, source) "
+            "VALUES (?,?,?,?,?,?,?,?,?)",
+            (tk, exp, ts, spot, spot_trade_ts, len(clean), str(completeness_basis),
              encode_json_blob(clean, default=str), str(source)),
         )
         conn.commit()
@@ -434,7 +445,7 @@ class ChainSweep:
                     return False
                 self._optioned.add(ticker)
                 for ct in flatten_chain_contracts(answer):
-                    self.publish(*option_ledger.posting(ct["symbol"], option_ledger.opening(ct, ticker, answer),
+                    self.publish(*option_ledger.posting(ct["symbol"], option_ledger.opening(ct, ticker),
                                                         ct.get("quoteTimeInLong"), self.clock()))
                     symbols.append(ct["symbol"])
         except Exception as e:  # noqa: BLE001 -- that ticker's answer is the failure; the rotation goes on
@@ -499,21 +510,19 @@ class ChainSweep:
         self._fetched[rnd.ticker] = rnd.started
 
 
-def write_capture(db_path: Path | str, ticker: str, contracts: "list[dict]", ts_utc: float) -> None:
+def write_capture(db_path: Path | str, ticker: str, contracts: "list[dict]", spot: "float | None",
+                  spot_trade_ts: "float | None", ts_utc: float) -> None:
     """The chain history of one window: the ticker's contract records as the ledger holds them
     (each field with its Schwab time, `fieldTimes`), one row per expiry, with the time its round
-    began and Schwab's underlyingPrice as sent: the newest by Schwab's time of the expiry's
-    records (each posted by the chain answer, a quote or the stream; Market Data API, Option
-    Chains and Quotes; Streamer API LEVELONE_OPTIONS field 35). None sent with a time: none."""
+    began and the stock's own price at that moment as Schwab sent it, with its trade time
+    (operator 2026-10-14: "Each capture stores the stock record's own value")."""
     by_expiry: "dict[str, list[dict]]" = {}
     for ct in contracts:
         by_expiry.setdefault(str(ct["expirationDate"])[:10], []).append(ct)   # each opened from the chain
     for expiry, cts in by_expiry.items():
-        sent = [(ct["fieldTimes"]["underlyingPrice"], ct["underlyingPrice"]) for ct in cts
-                if "underlyingPrice" in ct and ct["fieldTimes"].get("underlyingPrice") is not None]
-        spot = schwab_number(max(sent, key=lambda s: s[0])[1]) if sent else None
         persist_complete_chain_capture(db_path, ticker=ticker, expiry=expiry, contracts=cts, spot=spot,
-                                       completeness_basis=CAPTURE_BASIS, ts_utc=ts_utc)
+                                       spot_trade_ts=spot_trade_ts, completeness_basis=CAPTURE_BASIS,
+                                       ts_utc=ts_utc)
 
 
 def newest_capture_ts(db_path: Path | str, ticker: str) -> float | None:
@@ -557,14 +566,16 @@ def last_capture_per_day(db_path: Path | str, ticker: str, days: int, *,
             picked.append((day, ts))
             if len(picked) == days:
                 break
+        # a table written before 2026-10-14 has no trade time column: its spots' times are not known
+        traded = "spot_trade_ts" if "spot_trade_ts" in _columns(conn) else "NULL"
         out = []
         for day, ts in picked:
             rows = conn.execute(
-                "SELECT spot, completeness_basis, chain_json FROM complete_chain_captures "
+                f"SELECT spot, completeness_basis, chain_json, {traded} FROM complete_chain_captures "
                 "WHERE ticker=? AND completeness_basis=? AND ts_utc=?",
                 (tk, CAPTURE_BASIS, ts)).fetchall()
-            out.append({"et_date": day, "ts_utc": ts, "spot": rows[0][0], "basis": rows[0][1],
-                        "contracts": [c for r in rows for c in decode_json_blob(r[2])]})
+            out.append({"et_date": day, "ts_utc": ts, "spot": rows[0][0], "spot_trade_ts": rows[0][3],
+                        "basis": rows[0][1], "contracts": [c for r in rows for c in decode_json_blob(r[2])]})
         return out
     finally:
         conn.close()

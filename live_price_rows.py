@@ -34,11 +34,12 @@ def with_change(bar: dict[str, Any]) -> dict[str, Any]:
 def price_row(ticker: str, now: float, row: Optional[dict[str, Any]]) -> dict[str, Any]:
     """The finished row the screen paints for one symbol, as it is at `now`, from `row` (its
     LEVELONE_EQUITIES record, live_market_plane.get_quote, read once for the change it is shown
-    for): each field the last value Schwab sent for it, unless its feed is down in an open session
-    (`outage`, the reason the values are absent; docs/DATA_FLOW.md §2 D5)."""
+    for): each field the last value Schwab sent for it. While its feed is down in an open session
+    the values stand, marked not live (`feed_live`, and `outage`, the reason; docs/DATA_FLOW.md §2
+    D5, AGENTS.md rule 5)."""
     tk = ticker_storage_key(ticker)
     outage = lmp.outage(tk, "LEVELONE_EQUITIES", now)
-    streamed = bool(row) and lmp.plane_row_is_streamed(row) and outage is None
+    streamed = bool(row) and lmp.plane_row_is_streamed(row)
     spot = float(row["spot"]) if streamed and lmp.plane_spot_is_last_price(row) else None
 
     def field(name: str):
@@ -50,7 +51,7 @@ def price_row(ticker: str, now: float, row: Optional[dict[str, Any]]) -> dict[st
         "spot": spot,
         "spot_disp": f"{spot:.2f}" if spot is not None else None,
         "spot_source": SPOT_SOURCE if spot is not None else None,
-        # the feed itself (heartbeat, socket open, symbol held), and why the values are absent
+        # the feed itself (heartbeat, socket open, symbol held), and why the values are not live
         "feed_live": lmp.feed_live_for(tk, "LEVELONE_EQUITIES", now),
         "outage": outage,
         "bid": field("bid"),

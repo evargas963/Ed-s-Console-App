@@ -337,7 +337,7 @@ def test_a_chain_whose_history_write_fails_is_kept_as_sent_and_is_never_a_chain_
     a repeated capture key (PR #465). The round is in and never published as failed, the sweep
     asks the next round at once (no pause: a second quotes request reaches the host), and the
     daemon's writer keeps the history it could not write: every contract's record as the ledger
-    holds it, at SPY's price."""
+    holds it, with SPY's price and trade time as its equity record holds them."""
     db = tmp_path / "ed_console.db"
     with sqlite3.connect(db) as conn:
         conn.execute("CREATE TABLE complete_chain_captures (ticker TEXT NOT NULL, expiry TEXT NOT NULL, "
@@ -352,7 +352,9 @@ def test_a_chain_whose_history_write_fails_is_kept_as_sent_and_is_never_a_chain_
         daemon = capture.Daemon(bus, health, ["SPY"])
         daemon.writer = CaptureWriter(failures_db, batch_rows=1, batch_sec=0.01)
         daemon.history_db = db
-        daemon._took_price("SPY", {"native": {"LAST_PRICE": 766.31}})
+        capture._publisher("LEVELONE_EQUITIES", bus, health)(       # SPY's equity record (STAND-IN, named)
+            {"timestamp": _SPY_QUOTE["schwab_ts"], "content": [_SPY_QUOTE["item"]]})
+        daemon._took_price("SPY", bus.current[capture._current_key("LEVELONE_EQUITIES", "SPY")][1])
         tasks = [asyncio.create_task(daemon.writer.run(bus.subscribe("", policy=LOG), stop=stop)),
                  asyncio.create_task(daemon.follow_market(stop))]
         loop = asyncio.get_running_loop()
@@ -396,8 +398,8 @@ def test_a_chain_whose_history_write_fails_is_kept_as_sent_and_is_never_a_chain_
     (topic, kept, error) = failures[0]
     assert error.startswith("IntegrityError: NOT NULL constraint failed: complete_chain_captures.refused")
     kept = json.loads(kept)
-    assert set(kept) == {"contracts"}, "the records alone: Schwab's underlyingPrice is in each, as sent"
-    assert {ct["underlyingPrice"] for ct in kept["contracts"]} == {762.63}
+    assert (kept["spot"], kept["spot_trade_ts"]) == (_SPY_QUOTE["item"]["LAST_PRICE"],
+                                                     _SPY_QUOTE["item"]["TRADE_TIME_MILLIS"] / 1000)
     assert len(kept["contracts"]) == len(ledger) == 442
     assert [{k: v for k, v in ct.items() if k != "fieldTimes"} for ct in kept["contracts"]] == ledger, \
         "kept as the ledger holds it"
@@ -820,6 +822,9 @@ def test_a_database_made_before_the_receipt_time_indexes_is_not_reindexed_at_sta
 #: stream_capture.db, provenance in the file)
 _MIX = json.loads((Path(__file__).parent / "fixtures" / "real_stream_mix_2026_10_05_1400ct.json")
                   .read_text(encoding="utf-8"))
+#: SPY's first equity message of it: SPY's record in the chain-history test (STAND-IN, named, for
+#: its record at the 2026-09-30 capture)
+_SPY_QUOTE = next(m for m in _MIX["messages"] if m["service"] == "LEVELONE_EQUITIES" and m["item"]["key"] == "SPY")
 _MIX_TABLES = {"stream_options_quotes_raw": "LEVELONE_OPTIONS", "stream_quotes_raw": "LEVELONE_EQUITIES",
                "stream_book_raw": None}
 

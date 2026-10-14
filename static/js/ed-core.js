@@ -527,7 +527,7 @@
       host.insertBefore(row, add);
       // its values as the console last pushed them: a row pushed once is only re-sent where it changed
       var q = _served[sym] && _rows[_served[sym].key];
-      if (q) setWlRow(sym, q.spot, q.chg_pct);
+      if (q) setWlRow(sym, q);
     });
     host.querySelectorAll('[data-rm]').forEach(function (b) {
       b.addEventListener('click', function (e) { e.stopPropagation(); removeSymbol(b.getAttribute('data-rm')); });
@@ -712,12 +712,17 @@
     // paintQuote owns the header display only; watchlist rows are written by setWlRow from
     // the same quote_tick event (one producer, two surfaces).
   }
-  // Watchlist quotes: setWlRow is the ONE writer for every wl-px/wl-chg cell, called from the
-  // quote_tick handler (and markWlDegraded). A null field CLEARS to "—" rather than leaving the previous
-  // text: failure and recovery must not leave a stale-but-current-looking number on screen.
-  function setWlRow(sym, spot, chgPct) {
+  // Watchlist quotes: setWlRow is the ONE writer for every wl-px/wl-chg cell, from the symbol's
+  // price row. A field never sent reads "—"; a price whose feed is down stands, marked not live
+  // with the row's reason.
+  function setWlRow(sym, q) {
+    var spot = q.spot, chgPct = q.chg_pct;
     var pe = document.querySelector('.wl-px[data-wlpx="' + sym + '"]');
-    if (pe) pe.textContent = spot == null ? 'UNAVAILABLE' : fmt(spot);
+    if (pe) {
+      pe.textContent = spot == null ? 'UNAVAILABLE' : fmt(spot);
+      pe.classList.toggle('not-live-px', !q.feed_live);
+      pe.title = q.feed_live ? '' : 'not live' + (q.outage ? ': ' + q.outage : '');
+    }
     var ce = document.querySelector('.wl-chg[data-wlchg="' + sym + '"]');
     if (ce) {
       if (chgPct != null) { ce.textContent = (chgPct >= 0 ? '+' : '') + fmt(chgPct) + '%'; ce.className = 'wl-chg ' + (chgPct >= 0 ? 'pos' : 'neg'); }
@@ -796,12 +801,12 @@
       paintQuote({ spot_disp: q.spot_disp, spot: q.spot, bid: q.bid, ask: q.ask,
         chgPct: q.chg_pct, chgPctRegular: q.chg_pct_regular, quoteIngestion: q.quote_ingestion,
         feedCls: q.feed_live ? '' : 'stale',
-        feedLabel: q.feed_live ? 'LIVE' : 'FEED DOWN',
-        ageLabel: q.outage || (q.trade_time_ct != null ? ('last trade ' + tradeLabel(q)) : 'no trade sent') });
+        feedLabel: q.feed_live ? 'LIVE' : 'OFFLINE',
+        ageLabel: (q.outage ? q.outage + ' · ' : '') + (q.trade_time_ct != null ? ('last trade ' + tradeLabel(q)) : 'no trade sent') });
     }
     loadWL().forEach(function (wlSym) {
       if (!_served[wlSym] || _served[wlSym].key !== q.ticker) return;
-      setWlRow(wlSym, q.spot, q.chg_pct);
+      setWlRow(wlSym, q);
       markWlHealthy();
     });
     try { window.dispatchEvent(new CustomEvent('ed:quote_tick', { detail: q })); } catch (e) {}
@@ -848,14 +853,33 @@
     if (!_panelFns[name]) _panelFns[name] = [];
     _panelFns[name].push(fn);
   }
+  // the element each panel's values are drawn in, for the panels whose values are read from the
+  // live price: the console says when one is not live (`not_live`, the ticker's outage)
+  var PANEL_HOSTS = {
+    'gamma.surface': 'heatBody', 'gamma.terrain': 'klBody', 'gamma.strikes': 'gbsBody', 'gamma.strike': 'sdBody',
+    'gamma.chart.strikes': 'chartBody', 'gamma.chart.terrain': 'chartBody', 'gamma.levels': 'levelsBody',
+    vanna: 'vnBody', charm: 'chmBody', chain: 'chainBody', structures: 'stBody',
+    'liquidity.map.zones': 'liqmBody', 'liquidity.map.levels': 'liqmBody', 'liquidity.levels': 'lvlBody', book: 'obBody',
+    'rightnow.book': 'tdBody', 'rightnow.levels': 'tdBody', 'rightnow.terrain': 'tdBody', 'rightnow.zones': 'tdBody',
+    'rightnow.strikes': 'tdBody', 'desk.levels': 'tdmMap', 'desk.events': 'tdmMap', 'desk.terrain': 'tdmMap',
+    'desk.zones': 'tdmMap', 'desk.strikes': 'tdmMap', 'desk.book': 'tdmMap' };
+  function markLive(name, notLive) {
+    var host = PANEL_HOSTS[name] && document.getElementById(PANEL_HOSTS[name]);
+    if (!host) { if (notLive) console.error('panel ' + name + ' is not live and has no element to mark'); return; }
+    if (notLive) { host.classList.add('not-live'); host.setAttribute('data-not-live', notLive); }
+    else { host.classList.remove('not-live'); host.removeAttribute('data-not-live'); }
+  }
   // each panel drawn on its own: one drawer's error is reported and never stops the others
   function deliver(name, a) {
     if (!_panelFns[name]) return;
     _panelFns[name].forEach(function (fn) {
       try { fn(a); } catch (e) { console.error('panel ' + name + ': ' + (e && e.stack ? e.stack : e)); }
     });
+    if ('notLive' in a) markLive(name, a.notLive);
   }
-  function answerOf(msg) { return { ok: msg.status >= 200 && msg.status < 300, status: msg.status, body: msg.body }; }
+  function answerOf(msg) {
+    return { ok: msg.status >= 200 && msg.status < 300, status: msg.status, body: msg.body, notLive: msg.not_live };
+  }
   function openPush() {
     if (_live || typeof WebSocket === 'undefined') return;
     var ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/api/live');

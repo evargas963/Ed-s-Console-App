@@ -158,6 +158,11 @@
      message text (below) and a persistent border on the list, not in dimmed numbers. */
   .wl.wl-degraded{outline:1px dashed var(--ed-stale);outline-offset:-1px}
   .wl.wl-degraded .wl-msg{color:var(--ed-stale)}
+  /* a value read from a price that is not live: marked, with the console's reason */
+  .not-live{outline:1px dashed var(--ed-stale);outline-offset:-1px;position:relative}
+  .not-live::before{content:'NOT LIVE · ' attr(data-not-live);position:absolute;top:2px;right:6px;z-index:5;
+    font:600 10px/1.4 var(--ed-mono);color:var(--ed-stale);background:var(--ed-panel);padding:0 4px;pointer-events:none}
+  .wl-px.not-live-px{color:var(--ed-stale)}
   .wl-add{display:flex;align-items:center;gap:10px;height:32px;padding:0 15px;color:var(--ed-ink-3);
     font-size:12.5px;white-space:nowrap}
   .wl-add:hover{color:var(--ed-accent-2)}

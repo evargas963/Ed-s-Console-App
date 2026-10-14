@@ -46,6 +46,15 @@ def _read_stream_field(name: str, raw: Any) -> Optional[float]:
     return v / 1000.0 if v is not None and name in _CLOCK_FIELDS else v
 
 
+def last_trade(fields: dict[str, Any]) -> "tuple[Optional[float], Optional[float]]":
+    """(price, trade time in epoch s): Schwab's LAST_PRICE and TRADE_TIME_MILLIS in a
+    LEVELONE_EQUITIES record, each read as sent by the rule the console's price record reads them
+    by (_read_stream_field); None for one not sent. The chain history's spot (the daemon's
+    capture) and the console's spot are this one reading of the stock's record."""
+    return (_read_stream_field("LAST_PRICE", fields.get("LAST_PRICE")),
+            _read_stream_field("TRADE_TIME_MILLIS", fields.get("TRADE_TIME_MILLIS")))
+
+
 def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
                                  received_ts: float, field_received: "dict[str, float] | None" = None) -> bool:
     """

@@ -186,7 +186,7 @@ TOKEN_PATH = token_path()
 #: Precedence for the ONE spot authority. Highest wins; every entry records where the
 #: number came from so a caller can never silently accept a lower-confidence source.
 SPOT_SOURCE_PLANE = "streaming_plane"          # live_market_plane.get_quote — the freshest real trade this process has seen
-SPOT_SOURCE_CAPTURE = "chain_capture"          # underlyingPrice of a stored chain capture (DATA_FLOW decision 7)
+SPOT_SOURCE_CAPTURE = "chain_capture"          # the stock's price stored with a chain capture, with its trade time (DATA_FLOW decision 7)
 
 
 #: Seconds the graceful shutdown gets before the process is killed outright. Generous
@@ -316,12 +316,9 @@ def price_row(ticker: str, now: float) -> dict:
 
 def resolve_spot(ticker: str, *, now: float) -> tuple[float | None, str, float | None]:
     """(spot, source, as_of_ts_utc): the price row's Schwab LAST_PRICE as sent and its trade time
-    -- the value the header shows. In an open session (at `now`) with the feed down it is absent
-    and `source` is the outage reason; while Closed the price as of the close stands
-    (docs/DATA_FLOW.md §2 D5); (None, "none", None) until Schwab has sent one."""
-    outage = lmp.outage(ticker, "LEVELONE_EQUITIES", now)
-    if outage is not None:
-        return None, outage, None
+    -- the value the header shows. With its feed down it stands, not live (each value read from it
+    is marked by the one judgment, live_market_plane.outage: server.live_values `not_live`;
+    docs/DATA_FLOW.md §2 D5); (None, "none", None) until Schwab has sent one."""
     row = price_row(ticker, now)
     if not row or row.get("spot") is None:
         return None, "none", None
@@ -1084,7 +1081,7 @@ def _publish_levels(tk: str, round_ts: "float | None" = None,
             return None
     new_chain = capture is not None or round_ts is not None
     if capture is not None:
-        spot, spot_source, spot_ts = capture["spot"], SPOT_SOURCE_CAPTURE, capture["ts_utc"]
+        spot, spot_source, spot_ts = capture["spot"], SPOT_SOURCE_CAPTURE, capture["spot_trade_ts"]
     else:
         spot, spot_source, spot_ts = resolve_spot(tk, now=at.timestamp())
     prev_spot = payload.get("spot")
@@ -1291,7 +1288,8 @@ def _status_line(now: float) -> str:
     st = lmp.daemon_status(now)
     watchlist = _watchlist(now)
     if watchlist is not None:
-        priced = sum(1 for tk in watchlist if resolve_spot(tk, now=now)[0] is not None)
+        priced = sum(1 for tk in watchlist if lmp.outage(tk, "LEVELONE_EQUITIES", now) is None
+                     and resolve_spot(tk, now=now)[0] is not None)
         prices = f"live prices: {priced} of {len(watchlist)} watchlist tickers"
     else:                                             # no current heartbeat: the list is unknown
         prices = "live prices: WATCHLIST UNKNOWN (no current daemon heartbeat)"
@@ -2397,8 +2395,10 @@ async def live_values(ws: WebSocket):
     Panels: the console decides the panels on screen (_panels), names each one the view moved
     ({"type": "view", "seq", "moved", "shown" (every panel on screen)}) and pushes each one's answer
     by name the moment it is ready, never waiting for another ({"type": "panels", "seq" (the view it
-    is for), "panels": [{"panel", "source" (its value's route), "kinds", "status", "body"}]}); again
-    whenever a kind of change that moves it (_ROUTE_KINDS) happens for the ticker. Every answer and
+    is for), "panels": [{"panel", "source" (its value's route), "kinds", "not_live" (for a value
+    read from the live price, the ticker's outage while its feed is down, else None), "status",
+    "body"}]}); again whenever a kind of change that moves it (_ROUTE_KINDS) happens for the
+    ticker, a feed going down or coming back among them (streaming._mark_liveness). Every answer and
     row of one change is read from the change's one round (_Round); a panel is never sent an answer
     of an older change than the one it was sent, nor one the view moved on from.
 
@@ -2446,8 +2446,12 @@ async def live_values(ws: WebSocket):
             if key in drawn and drawn[key] > order:
                 return                                   # a newer change's answer is on screen
             drawn[key] = order
+            kinds = _ROUTE_KINDS[p.source.split("?", 1)[0]]
+            # a value read from the live price (moved by every kind) is not live while the
+            # ticker's feed is down: the one judgment, as of this send (a change of it re-sends)
+            not_live = lmp.outage(page["ticker"], "LEVELONE_EQUITIES", time.time()) if kinds == _EVERY_KIND else None
             await text({"type": "panels", "seq": page["seq"], "panels": [
-                {"panel": name, "source": p.source, "kinds": sorted(_ROUTE_KINDS[p.source.split("?", 1)[0]]), **a}]})
+                {"panel": name, "source": p.source, "kinds": sorted(kinds), "not_live": not_live, **a}]})
 
     def show(names: list[str]) -> None:
         change, rnd = _round(page["ticker"])            # one round for every answer of the change
@@ -2531,10 +2535,10 @@ def order_flow_microstructure(ticker: str, venue: str, now: float) -> dict:
     t = ticker_storage_key(_required_ticker(ticker))
     # the venue's books (none held: 'no_book') and the one tape's prints
     data: dict = {"content": get_content_for_symbol(t, venue), "prints": TAPE.prints(t)}
-    # top of book: the daemon's price row; absent with the outage reason when its feed is down
-    # in an open session, the values as of the close while Closed (docs/DATA_FLOW.md §2 D5)
+    # top of book: the daemon's price row, the change's one; with its feed down in an open
+    # session its last values stand, marked not live with the reason (docs/DATA_FLOW.md §2 D5)
     top_outage = lmp.outage(t, "LEVELONE_EQUITIES", now)
-    _row = price_row(t, now) if top_outage is None else None     # the change's one price row
+    _row = price_row(t, now)
     if _row and _row.get("quote_ts") is not None:
         data["exchange_quote_ts"] = _row["quote_ts"]
     data["top"] = ({k: _row.get(k) for k in ("bid", "ask", "bid_size", "ask_size", "mark")}

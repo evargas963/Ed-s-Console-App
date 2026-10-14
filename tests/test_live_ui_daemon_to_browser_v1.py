@@ -149,3 +149,23 @@ def test_shutdown_is_not_held_up_by_a_connected_client():
     t0 = time.monotonic()
     asyncio.run(_run(body))
     assert time.monotonic() - t0 < 5
+
+
+def test_the_daemons_socket_and_the_console_listen_on_this_computer_only():
+    """Operator 2026-10-14: "Bind both 8800 and 8000 to 127.0.0.1. I only use this computer."
+    The daemon's socket, served as the daemon serves it (its own host), listens on 127.0.0.1;
+    the console is started by the launcher on 127.0.0.1. Before, both listened on every address."""
+    import launch
+
+    async def go():
+        stop, stats = asyncio.Event(), {}
+        server = asyncio.create_task(live_ui.serve_live_ui(MessageBus(), stop, heartbeat_fn=_Feed(), port=0, stats=stats))
+        end = time.monotonic() + 5
+        while not stats.get("listening") and time.monotonic() < end:
+            await asyncio.sleep(0.01)
+        stop.set()
+        await asyncio.wait_for(server, 5)
+        return stats["listening"]
+    assert asyncio.run(go()).startswith("ws://127.0.0.1:")
+    host = launch.CONSOLE[launch.CONSOLE.index("--host") + 1]
+    assert host == "127.0.0.1"

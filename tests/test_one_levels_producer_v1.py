@@ -300,12 +300,14 @@ def test_a_volume_only_tick_reaches_the_per_strike_volume_column():
     assert row[2] >= 999999
 
 
-def test_a_streamed_value_whose_feed_is_down_in_session_never_reaches_the_levels():
+def test_a_streamed_value_whose_feed_is_down_in_session_stands_in_the_levels_marked_not_live():
     """docs/DATA_FLOW.md §2 D5, Schwab's socket closed (the daemon still reporting, holding TK and
-    the contract): at 11:00 ET on 2026-10-07 (RTH by Schwab's /markets) nothing streamed is
-    current -- the spot is absent with its reason, and no level is published from a value from
-    elsewhere; at 22:00 ET (Closed) the values as of the close stand, the streamed volume in the
-    per-strike column."""
+    the contract): at 11:00 ET on 2026-10-07 (RTH by Schwab's /markets) and at 22:00 ET (Closed)
+    the levels are priced at the last spot Schwab sent, the streamed volume in the per-strike
+    column (operator 2026-10-14: "the last values stand, marked not live ... on every derived
+    value"); in RTH the one judgment marks them not live, while Closed it does not. Before, the
+    levels were not published in RTH."""
+    import live_market_plane as lmp
     strike = round(_CONTRACTS[0]["strikePrice"], 2)
     out = {}
     for at in (datetime(2026, 10, 7, 11, 0, tzinfo=ET), datetime(2026, 10, 7, 22, 0, tzinfo=ET)):
@@ -315,12 +317,12 @@ def test_a_streamed_value_whose_feed_is_down_in_session_never_reaches_the_levels
         ledger_open(TK, _CONTRACTS, at.timestamp() - 120.0, _bus())
         _streamed(_A, {"TOTAL_VOLUME": 999999}, at.timestamp() - 60.0)
         server._publish_levels(TK, at.timestamp() - 120.0, now=at)
-        out[at.hour] = _cached()
-    rth, closed = out[11], out[22]
-    assert rth["spot"] is None and rth["spot_source"] == "Schwab LEVELONE_EQUITIES feed down during RTH"
-    assert rth["_gamma_surface"] is None and rth["gamma_flip"] is None
-    row = next(r for r in closed["_per_strike"]["all"] if r[0] == strike)
-    assert closed["spot"] == _SPOT and row[2] >= 999999
+        out[at.hour] = (_cached(), lmp.outage(TK, "LEVELONE_EQUITIES", at.timestamp()))
+    for hour, outage in ((11, "Schwab LEVELONE_EQUITIES feed down during RTH"), (22, None)):
+        levels, judged = out[hour]
+        row = next(r for r in levels["_per_strike"]["all"] if r[0] == strike)
+        assert levels["spot"] == _SPOT and levels["_gamma_surface"] is not None and row[2] >= 999999
+        assert judged == outage
 
 
 def test_a_foreign_tickers_contract_never_prices_this_chain():
@@ -364,6 +366,7 @@ def test_a_stored_capture_and_a_live_chain_publish_the_same_fields():
     _put_chain()
     live = _cached()
     _publish(captures=[{"contracts": _CONTRACTS, "ts_utc": _T, "spot": _SPOT, "et_date": "2026-10-07",
+                        "spot_trade_ts": int(_T * 1000) / 1000,      # the live spot's trade time
                         "basis": server.CAPTURE_BASIS}])
     stored = _cached()
     assert {k for k in live if not k.startswith("_")} == {k for k in stored if not k.startswith("_")}

@@ -28,6 +28,9 @@ from tests.schwab_rest_standin import CHAIN, SPY_QUOTES, LocalSchwab
 from time_et import ET
 
 _QUOTED = {s: e["quote"] for s, e in SPY_QUOTES.items()}
+_SPY_QUOTE = next(m for m in json.loads((Path(__file__).resolve().parent / "fixtures"
+                                         / "real_stream_mix_2026_10_05_1400ct.json").read_text(encoding="utf-8"))["messages"]
+                  if m["service"] == "LEVELONE_EQUITIES" and m["item"]["key"] == "SPY")
 _MRVL = sc.flatten_chain_contracts(json.loads((Path(__file__).resolve().parent / "fixtures"
                                                / "real_mrvl_full_chain_vs_strike_window.json")
                                               .read_text(encoding="utf-8"))["full"])
@@ -80,11 +83,15 @@ def schwab():
 def _sweep(tmp_path, schwab, clock):
     """The daemon's sweep over SPY on `clock`, posting to the daemon's ledger, with the daemon's
     client of the stand-in host; the daemon writes the chain history to its database, and holds
-    SPY's price as Schwab sent it at the capture (the chain answer's underlyingPrice, 766.31)."""
+    SPY's equity record from a LEVELONE_EQUITIES message through its own Schwab handler
+    (STAND-IN, named: SPY's message of 2026-10-05 14:00 CT, tests/fixtures/
+    real_stream_mix_2026_10_05_1400ct.json, for its record at the 2026-09-30 capture)."""
     sqlite3.connect(tmp_path / "ed_console.db").close()          # the daemon's database exists
     daemon = capture.Daemon(MessageBus(), HealthRegistry(), ["SPY"])
     daemon.history_db = tmp_path / "ed_console.db"
-    daemon._took_price("SPY", {"native": {"LAST_PRICE": 766.31}})
+    capture._publisher("LEVELONE_EQUITIES", daemon.bus, daemon.health)(
+        {"timestamp": _SPY_QUOTE["schwab_ts"], "content": [_SPY_QUOTE["item"]]})
+    daemon._took_price("SPY", daemon.bus.current[capture._current_key("LEVELONE_EQUITIES", "SPY")][1])
     published: list = []
 
     def publish(topic, msg):
@@ -120,9 +127,10 @@ def test_a_refused_chain_reaches_the_console_as_schwabs_answer(tmp_path, schwab)
 
 def test_the_history_is_written_once_per_capture_window_and_never_outside_one(tmp_path, schwab):
     """Each window's first round is written from the daemon's ledger: every contract's record, its
-    Greeks the quote's, and the time the round began, at Schwab's underlyingPrice as sent -- the
-    newest by Schwab's time: the quotes' 762.63 (every one of the 442, each newer than the chain
-    answer's 766.31), never the daemon's last trade (766.31 here)."""
+    Greeks the quote's, and the time the round began, with the stock's own price as its record
+    holds it and that price's trade time (operator 2026-10-14) -- not the quotes' underlyingPrice
+    (762.63) nor the chain answer's (766.31). Before, the row took the newest underlyingPrice
+    across the records."""
     clock = {"now": 0.0}
     daemon, sweep, published, client = _sweep(tmp_path, schwab, lambda: clock["now"])
     for at in ("2026-09-30 15:31:57", "2026-09-30 15:35:00",      # the 15:30 window, twice
@@ -131,11 +139,11 @@ def test_the_history_is_written_once_per_capture_window_and_never_outside_one(tm
         clock["now"] = _ts(at)
         assert _rotate(daemon, sweep, published, client) == {"SPY"}
     with sqlite3.connect(tmp_path / "ed_console.db") as c:
-        rows = c.execute("SELECT ts_utc, expiry, spot, n_contracts, chain_json FROM complete_chain_captures "
+        rows = c.execute("SELECT ts_utc, expiry, spot, n_contracts, chain_json, spot_trade_ts FROM complete_chain_captures "
                          "ORDER BY ts_utc").fetchall()
-    assert [(_et(r[0]), r[1], r[2], r[3]) for r in rows] == [
-        ("2026-09-30 15:31", "2026-11-20", 762.63, 442), ("2026-09-30 16:01", "2026-11-20", 762.63, 442)]
-    assert {q["underlyingPrice"] for q in _QUOTED.values()} == {762.63}
+    price, traded = _SPY_QUOTE["item"]["LAST_PRICE"], _SPY_QUOTE["item"]["TRADE_TIME_MILLIS"] / 1000
+    assert [(_et(r[0]), r[1], r[2], r[5], r[3]) for r in rows] == [
+        ("2026-09-30 15:31", "2026-11-20", price, traded, 442), ("2026-09-30 16:01", "2026-11-20", price, traded, 442)]
     assert isinstance(rows[0][4], bytes), "stored compressed"
     stored = {c["symbol"]: c for c in decode_json_blob(rows[0][4])}
     assert all(stored[s]["gamma"] == q["gamma"] for s, q in _QUOTED.items()), "the quote's gamma is stored"
@@ -268,3 +276,32 @@ def test_a_partial_morning_capture_is_never_the_prior_day(tmp_path):
     assert [(c["et_date"], c["basis"]) for c in caps] == [("2026-09-28", cch.CAPTURE_BASIS)]
     forces = server._forces_from_captures("ZZ", caps)
     assert forces["available"] is False and "fewer than 2 market days" in forces["reason"]
+
+
+def test_a_table_written_before_the_spots_trade_time_keeps_its_rows_and_takes_new_ones_with_it(tmp_path):
+    """A chain history table written before 2026-10-14 has no trade time column. Its rows are read
+    with their trade time not known; the daemon's next write adds the column (the stored rows
+    stand) and stores the stock's price with its trade time. Real data: one SPY 2026-11-20
+    contract of the stand-in host's chain (tests/schwab_rest_standin.py) and SPY's equity record
+    (_SPY_QUOTE, named above)."""
+    from json_blob_codec import encode_json_blob
+    from tests.schwab_rest_standin import SPY as SPY_CHAIN
+
+    db = tmp_path / "ed_console.db"
+    ct = SPY_CHAIN["chain"][0]
+    with sqlite3.connect(db) as c:                       # the table as written before
+        c.execute("CREATE TABLE complete_chain_captures (ticker TEXT NOT NULL, expiry TEXT NOT NULL, "
+                  "ts_utc REAL NOT NULL, spot REAL, n_contracts INTEGER NOT NULL, completeness_basis TEXT NOT NULL, "
+                  "chain_json TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'x', created_at TEXT, "
+                  "PRIMARY KEY (ticker, expiry, ts_utc))")
+        c.execute("INSERT INTO complete_chain_captures (ticker, expiry, ts_utc, spot, n_contracts, completeness_basis, "
+                  "chain_json, source) VALUES (?,?,?,?,?,?,?,?)",
+                  ("SPY", "2026-11-20", _ts("2026-09-29 16:15"), 766.31, 1, cch.CAPTURE_BASIS,
+                   encode_json_blob([ct]), "schwab_chain_strike_range_all"))
+    (old,) = cch.last_capture_per_day(db, "SPY", 1)
+    assert (old["spot"], old["spot_trade_ts"]) == (766.31, None)
+    price, traded = _SPY_QUOTE["item"]["LAST_PRICE"], _SPY_QUOTE["item"]["TRADE_TIME_MILLIS"] / 1000
+    cch.write_capture(db, "SPY", [ct], price, traded, _ts("2026-09-30 16:15"))
+    new, before = cch.last_capture_per_day(db, "SPY", 2)
+    assert (new["spot"], new["spot_trade_ts"]) == (price, traded)
+    assert (before["spot"], before["spot_trade_ts"], before["contracts"]) == (766.31, None, [ct])

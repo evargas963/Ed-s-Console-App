@@ -91,6 +91,7 @@ from stream_spine import (  # noqa: E402
     resolve_stream_db_path,
     subscription_msg,
 )
+import live_market_plane as lmp  # noqa: E402
 import option_ledger  # noqa: E402
 import psutil  # noqa: E402
 from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT, serve_live_push  # noqa: E402
@@ -466,8 +467,7 @@ class Daemon:
     def _took_price(self, ticker: str, record: dict) -> None:
         """A ticker's newest equity quote on the bus: its LAST_PRICE, which its next chain is
         ordered by; a chain that arrived before the ticker's first price is ordered now."""
-        native = record["native"]
-        price = schwab_number(native["LAST_PRICE"]) if "LAST_PRICE" in native else None
+        price, _traded = lmp.last_trade(record["native"])
         if price is not None:
             self._prices[ticker] = price
             if ticker in self._chains and ticker not in self._ranked:
@@ -495,8 +495,10 @@ class Daemon:
         """The chain history (calibration.complete_chain_capture.write_capture), off the event loop:
         a round begun inside a capture window of the ticker's option market, the first one of the
         window for this ticker (a round begun before the close is not the close capture, whenever it
-        is in), each contract's record with each field's Schwab time (`fieldTimes`) and the time
-        the round began. A write that fails is kept by the daemon's writer (its failures ride the
+        is in), each contract's record with each field's Schwab time (`fieldTimes`), the time the
+        round began, and the stock's own price as its LEVELONE_EQUITIES record holds it when the
+        round is in, with its trade time (live_market_plane.last_trade, the one reading of it; none
+        held: none). A write that fails is kept by the daemon's writer (its failures ride the
         heartbeat) and the window's next round tries."""
         slot = capture_slot(started)
         if self.history_db is None or slot is None:
@@ -508,15 +510,20 @@ class Daemon:
             return None
         self._written[ticker] = slot                       # claim the window for this ticker
         contracts = [{**fields, "fieldTimes": {f: stamp[0] for f, stamp in times.items()}} for fields, times in held]
+        spot = traded = None                               # no quote of the stock held: none
+        quote = self.bus.current.get(_current_key("LEVELONE_EQUITIES", ticker))
+        if quote is not None:
+            spot, traded = lmp.last_trade(quote[1]["native"])
 
         def write() -> None:
             try:
-                write_capture(self.history_db, ticker, contracts, started)
+                write_capture(self.history_db, ticker, contracts, spot, traded, started)
             except Exception as e:  # noqa: BLE001 -- kept by the writer, shown on the heartbeat; the next round tries
                 log.warning("chain history for %s not written, kept: %s: %s", ticker, type(e).__name__, e)
                 self._written[ticker] = before
                 if self.writer is not None:
-                    self.writer.keep_failure(f"chain_history.{ticker}", {"contracts": contracts},
+                    self.writer.keep_failure(f"chain_history.{ticker}",
+                                             {"spot": spot, "spot_trade_ts": traded, "contracts": contracts},
                                              e, time.time())
         return asyncio.get_running_loop().run_in_executor(None, write)
 
