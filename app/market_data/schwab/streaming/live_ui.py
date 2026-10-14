@@ -193,7 +193,8 @@ class LiveUiServer:
                 c.take(m)
         for (service, key), held in self.sequence.items():
             if key in keys:
-                after = schwab_number((since.get(service) or {}).get(key)) if isinstance(since.get(service), dict) else None
+                seen = since.get(service)               # the last of this service the client received
+                after = schwab_number(seen.get(key)) if isinstance(seen, dict) else None
                 for m in list(held):
                     if after is None or (isinstance(m["ts_recv"], (int, float)) and m["ts_recv"] > after):
                         c.take(m)

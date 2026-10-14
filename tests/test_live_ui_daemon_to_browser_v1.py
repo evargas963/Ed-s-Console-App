@@ -52,18 +52,18 @@ def _frame(bus, service: str, item: dict, schwab_ts) -> None:
 
 
 class _Switch:
-    """The daemon's status (STAND-IN), its Schwab socket opened a minute ago and closed on demand,
-    holding `held` on LEVELONE_EQUITIES."""
+    """The daemon's status at `clock` (STAND-IN), its Schwab socket opened a minute before and
+    closed on demand, holding `held` on LEVELONE_EQUITIES."""
 
-    def __init__(self, held=("SPY",)):
-        self.open, self.held, self.connected_at = True, list(held), time.time() - 60
+    def __init__(self, clock, held=("SPY",)):
+        self.clock, self.open, self.held, self.connected_at = clock, True, list(held), clock() - 60
 
     def __call__(self) -> dict:
-        return {"ts": time.time(), "schwab_socket_open": self.open, "connected_at": self.connected_at,
+        return {"ts": self.clock(), "schwab_socket_open": self.open, "connected_at": self.connected_at,
                 "held": {"LEVELONE_EQUITIES": self.held}, "health": {}}
 
 
-async def _run(body, feed=None):
+async def _run(body, feed=None, clock=time.time):
     """The daemon's server and a client on it."""
     from websockets.asyncio.client import connect
 
@@ -73,7 +73,7 @@ async def _run(body, feed=None):
     stats: dict = {}
     server = asyncio.create_task(live_ui.serve_live_ui(
         bus, stop, heartbeat_fn=feed if feed is not None else _Feed(), host="127.0.0.1", port=port, stats=stats,
-        clock=lambda: time.time()))                  # the test's clock, when it sets one
+        clock=clock))                                # the instant each beat's verdicts are judged at
     end = time.monotonic() + 5
     while not stats.get("listening") and time.monotonic() < end:
         await asyncio.sleep(0.01)
@@ -347,10 +347,11 @@ def test_the_page_is_told_what_each_symbol_it_names_is():
 _RTH, _CLOSED = 1790780400.0, 1790820000.0
 
 
-def _clock_from(monkeypatch, start: float) -> None:
-    """The wall clock running from `start` (the session the test is in); time still passes."""
-    real, offset = time.time, start - time.time()
-    monkeypatch.setattr(time, "time", lambda: real() + offset)
+def _clock_from(start: float):
+    """A clock running from `start` (the session the test is in); time still passes. The daemon's
+    server and its status are given it (serve_live_ui's `clock`); nothing is patched."""
+    offset = start - time.time()
+    return lambda: time.time() + offset
 
 
 async def _verdict(ws, key: str, until, timeout: float = 3.0) -> dict:
@@ -367,13 +368,13 @@ async def _verdict(ws, key: str, until, timeout: float = 3.0) -> dict:
 
 @pytest.mark.parametrize("start, outage", [(_RTH, "Schwab LEVELONE_EQUITIES feed down during RTH"), (_CLOSED, None)],
                          ids=["rth", "closed"])
-def test_a_closed_schwab_socket_reads_not_live_within_one_beat(monkeypatch, start, outage):
+def test_a_closed_schwab_socket_reads_not_live_within_one_beat(start, outage):
     """Nothing from Schwab; only the daemon's status knows (docs/DATA_FLOW.md §2 D5): SPY live on a
     real quote Schwab sent, then Schwab's socket closes: the next beat says not live, with the
     outage while the market is open and none while Closed (the values as of the close stand)."""
-    _clock_from(monkeypatch, start)
+    clock = _clock_from(start)
     quote = next(m for m in _MIX if m["service"] == "LEVELONE_EQUITIES" and m["item"]["key"] == "SPY")
-    feed = _Switch()
+    feed = _Switch(clock)
 
     async def body(bus, ws, stats):
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"]}))
@@ -381,12 +382,12 @@ def test_a_closed_schwab_socket_reads_not_live_within_one_beat(monkeypatch, star
         assert await _verdict(ws, "SPY", lambda v: v["live"]) == {"live": True, "outage": None}
         feed.open = False
         assert await _verdict(ws, "SPY", lambda v: not v["live"], timeout=2.5) == {"live": False, "outage": outage}
-    asyncio.run(_run(body, feed=feed))
+    asyncio.run(_run(body, feed=feed, clock=clock))
 
 
-def test_a_symbol_the_daemon_does_not_hold_is_not_live(monkeypatch):
+def test_a_symbol_the_daemon_does_not_hold_is_not_live():
     """A quote for a symbol the daemon does not hold on Schwab is never live."""
-    _clock_from(monkeypatch, _CLOSED)
+    clock = _clock_from(_CLOSED)
     quote = next(m for m in _MIX if m["service"] == "LEVELONE_EQUITIES" and m["item"]["key"] != "SPY")
 
     async def body(bus, ws, stats):
@@ -394,7 +395,7 @@ def test_a_symbol_the_daemon_does_not_hold_is_not_live(monkeypatch):
         await ws.send(json.dumps({"op": "subscribe", "symbols": [key]}))
         _frame(bus, "LEVELONE_EQUITIES", quote["item"], quote["schwab_ts"])
         assert await _verdict(ws, key, lambda v: True) == {"live": False, "outage": None}
-    asyncio.run(_run(body, feed=_Switch(held=("SPY",))))
+    asyncio.run(_run(body, feed=_Switch(clock, held=("SPY",)), clock=clock))
 
 
 def test_each_beat_is_the_daemons_whole_status():

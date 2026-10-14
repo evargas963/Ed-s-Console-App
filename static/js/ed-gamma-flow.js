@@ -128,14 +128,14 @@
         'flow.cum_delta_proxy', fk('cum_delta_proxy')],
       ['Cum Δ slope (proxy)', num(flow.cum_delta_slope, 3), 'flow.cum_delta_slope', fk('cum_delta_slope')],
     ];
-    var fh = plane.feed_health || {};   // served: the console's replay of the daemon's push
+    var replay = plane.feed_health ? plane.feed_health.replay : null;   // served: the console's replay of the daemon's push
     var dim = ss.label === 'ACTIVE' ? '' : ' fl-dim';   // not-active data recedes (never presented as live)
     // Book/quote ages are the payload's own `ages` block (engine-stamped, classified); feed health
     // is the streaming plane — a binding/health fact with no classification (key undefined = no tag).
     var fresh = [
       ['Book age', d.as_of && d.as_of.book != null ? { pre: '', ageOf: 'book' } : '—', 'as_of.book', bk('as_of.book')],
       ['Quote age', d.as_of && d.as_of.quote != null ? { pre: '', ageOf: 'quote' } : '—', 'as_of.quote', bk('as_of.quote')],
-      ['Replay', fh.replay || '—', 'streaming_plane.feed_health.replay', undefined],
+      ['Replay', replay != null ? replay : '—', 'streaming_plane.feed_health.replay', undefined],
     ];
     h.innerHTML = header(desired, ss, d && d.put_call) +
       '<div class="fl-grid">' +
