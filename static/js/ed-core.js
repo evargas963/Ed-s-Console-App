@@ -886,11 +886,13 @@
   var _shown = [];                   // the panels of the view the console last took
   // the reason every value is not live while the page's own connection to the console is down
   var PUSH_DOWN = 'the console push is down';
+  var NO_HOSTS = [];                 // a panel drawn in no marked element
+  function hostsOf(n) { return Object.prototype.hasOwnProperty.call(PANEL_HOSTS, n) ? PANEL_HOSTS[n] : NO_HOSTS; }
   function markLive(name, notLive) {           // notLive: the served reasons, or none
     if (notLive) _notLive[name] = notLive; else delete _notLive[name];
-    (PANEL_HOSTS[name] || []).forEach(paintMark);
+    hostsOf(name).forEach(paintMark);
   }
-  function drawnIn(n, id) { return (PANEL_HOSTS[n] || []).indexOf(id) !== -1; }
+  function drawnIn(n, id) { return hostsOf(n).indexOf(id) !== -1; }
   function paintMark(id) {
     var host = document.getElementById(id); if (!host) return;
     var why = _pushDown && _shown.some(function (n) { return drawnIn(n, id); }) ? [PUSH_DOWN] : [];
@@ -907,7 +909,7 @@
   function setPushDown(down) {
     if (down === _pushDown) return;
     _pushDown = down;
-    _shown.forEach(function (n) { (PANEL_HOSTS[n] || []).forEach(paintMark); });
+    _shown.forEach(function (n) { hostsOf(n).forEach(paintMark); });
     document.dispatchEvent(new CustomEvent('ed:push', { detail: { down: down } }));   // the screens that say LIVE
   }
   // each panel drawn on its own: one drawer's error is reported and never stops the others

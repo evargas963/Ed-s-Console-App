@@ -395,7 +395,7 @@ def listed_strikes(contracts) -> list[float]:
     """The one strike list: every strike Schwab lists in the chain (`strikePrice`, rule 2),
     ascending, once each. Every per-strike panel draws its rows on it."""
     from numeric_contract import schwab_number
-    return sorted({k for c in contracts or [] if (k := schwab_number(c.get("strikePrice"))) is not None})
+    return sorted({k for c in contracts if (k := schwab_number(c.get("strikePrice"))) is not None})
 
 
 def listed_expiries(contracts) -> dict[str, Any]:
@@ -409,9 +409,10 @@ def listed_expiries(contracts) -> dict[str, Any]:
     from time_et import settles_at
     dtes: dict[str, set] = {}
     settles: dict[str, list] = {}
-    for c in contracts or []:
-        e = str(c.get("expirationDate") or "")[:10]
-        if len(e) != 10:
+    for c in contracts:
+        sent = c.get("expirationDate")
+        e = str(sent)[:10]
+        if sent is None or len(e) != 10:        # Schwab sent no date: no column of its own
             continue
         dtes.setdefault(e, set()).add(schwab_number(c.get("daysToExpiration")))
         s = settles_at(c.get("expirationDate"), c.get("settlementType"))

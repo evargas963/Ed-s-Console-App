@@ -448,7 +448,7 @@
   // `val`: text, or {pre, ageOf} (a served age after `pre`)
   function pill(lbl, val, cls, title) {
     var v = val && val.ageOf ? esc(val.pre) + age(val.ageOf) : esc(val);
-    return '<span class="tdm-pill ' + (cls || '') + '" title="' + esc(title || '') + '"><i></i>' + esc(lbl) + ' <b>' + v + '</b></span>';
+    return '<span class="tdm-pill ' + esc(cls) + '" title="' + esc(title) + '"><i></i>' + esc(lbl) + ' <b>' + v + '</b></span>';
   }
   function paintTrust() {
     var host = $('tdmTrust'); if (!host) return;
@@ -464,7 +464,9 @@
           m.ages && m.ages.book_stale === false ? 'ok' : 'bad');
     // the session levels snapshot's served age
     h += L === undefined ? pill('LEVELS', '…', '') : !L ? pill('LEVELS', 'FAILED', 'bad') : pill('LEVELS', L.as_of.snapshot == null ? '—' : { pre: '', ageOf: 'snapshot' }, (L.degraded && L.degraded.length) ? 'warn' : 'ok', 'session levels snapshot age');
-    h += t === undefined ? pill('GAMMA', '…', '') : !t || t.error ? pill('GAMMA', 'DOWN', 'bad', (t && t.error) || 'terrain request failed') : pill('GAMMA', { pre: t.levels_stale ? 'STALE ' : '', ageOf: 'levels' }, t.levels_stale ? 'warn' : 'ok', t.levels_stale_reason || '');
+    h += t === undefined ? pill('GAMMA', '…', '') : !t ? pill('GAMMA', 'DOWN', 'bad', 'terrain request failed')
+      : t.error ? pill('GAMMA', 'DOWN', 'bad', t.error)
+      : pill('GAMMA', { pre: t.levels_stale ? 'STALE ' : '', ageOf: 'levels' }, t.levels_stale ? 'warn' : 'ok', t.levels_stale_reason);
     host.innerHTML = h;
   }
   function paintFooter() {
