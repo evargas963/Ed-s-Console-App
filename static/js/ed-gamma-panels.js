@@ -323,7 +323,8 @@
   // ADJUSTED DELIVERABLE: served per contract (Schwab's nonStandard flag, as sent)
   function renderStructures(host, d, status) {
     var src = document.getElementById('stSrc'); if (src) src.textContent = '';
-    var ladder = ((d && d.ladder) || []).filter(function (r) { return r.first; });   // served: one row per strike, high to low
+    // served: one row per strike, high to low; a strike with no contract in this expiry has no terms to show
+    var ladder = ((d && d.ladder) || []).filter(function (r) { return r.first && (r.call || r.put); });
     if (!ladder.length) {
       host.innerHTML = '<div class="placeholder"><div class="sm">' +
         (d ? esc(window.EdShell.chainEmptyText(d)) : '/api/chain answered HTTP ' + status) + '</div></div>';
