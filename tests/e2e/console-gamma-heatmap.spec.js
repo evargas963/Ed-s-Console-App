@@ -837,7 +837,9 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     expect(errs).toEqual([]);
   });
 
-  test('the page opens no socket but the console\'s push', async ({ page }) => {
+  test('the page opens two sockets: the daemon\'s for Schwab\'s values, the console\'s push for computed panels', async ({ page }) => {
+    // Operator 2026-10-14: Schwab -> daemon -> the screen. The daemon's socket is the stand-in
+    // (routed, so Playwright does not list it below); the header painting 601.23 is its message.
     const sockets = [];
     page.on('websocket', (ws) => sockets.push(new URL(ws.url()).pathname));
     await mockPriceSocket(page, [schwabQuote('SPY', 601.23)]);
