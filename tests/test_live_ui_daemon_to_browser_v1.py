@@ -22,6 +22,10 @@ from stream_spine import HealthRegistry, MessageBus
 FX = Path(__file__).resolve().parent / "fixtures"
 _MIX = json.loads((FX / "real_stream_mix_2026_10_05_1400ct.json").read_text(encoding="utf-8"))["messages"]
 _EVERY = sorted({m["item"]["key"] for m in _MIX})
+#: the daemon's receipts of Schwab's CHART_EQUITY bars that carry Schwab's own item, in receive order
+_BARS = sorted((r for r in json.loads((FX / "real_daemon_bars_spy_tsla_2026_10_01_02.json").read_text(
+    encoding="utf-8"))["rows"] if r["native"]), key=lambda r: r["ts_recv"])
+_NEWS = json.loads((FX / "real_schwab_news_headline_spx_2026_10_05.json").read_text(encoding="utf-8"))
 
 
 def _free_port() -> int:
@@ -84,26 +88,54 @@ async def _received(ws, quiet: float = 0.5, timeout: float = 20.0) -> "tuple[lis
     return messages, beats
 
 
-def test_every_equity_field_schwab_sent_reaches_the_console_and_nothing_else():
-    """Every symbol of the real mix subscribed, then every message Schwab sent: each equity's
-    fields as the last Schwab sent each (Change: only fields Schwab sent, none lost), merged for a
-    client behind; no option quote or book (the console takes those from its own push, 8799)."""
+def test_every_service_reaches_the_screen_by_its_delivery_type():
+    """Every symbol of the real mix subscribed, then every message Schwab sent, with the real
+    CHART_EQUITY bars and NEWS_HEADLINE item behind it. Change (LEVELONE_EQUITIES,
+    LEVELONE_OPTIONS): each symbol's fields as the last Schwab sent each, none lost. Whole
+    (NYSE_BOOK, NASDAQ_BOOK, OPTIONS_BOOK): each book as Schwab sent it, the newest last. Sequence
+    (CHART_EQUITY, NEWS_HEADLINE): every bar and headline, in the order Schwab sent them."""
+    bars = [(r["native"], r["schwab_ts"]) for r in _BARS]
+    every = sorted({*_EVERY, *(b["key"] for b, _ts in bars), _NEWS["symbol"]})
+
     async def body(bus, ws, stats):
-        await ws.send(json.dumps({"op": "subscribe", "symbols": _EVERY}))
+        await ws.send(json.dumps({"op": "subscribe", "symbols": every}))
+        while json.loads(await asyncio.wait_for(ws.recv(), 3))["type"] != "symbols":
+            pass                                  # the daemon has taken the subscription
         for m in _MIX:
             _frame(bus, m["service"], m["item"], m["schwab_ts"])
+        for item, ts in bars:
+            _frame(bus, "CHART_EQUITY", item, ts)
+        _frame(bus, "NEWS_HEADLINE", _NEWS["content"], _NEWS["schwab_ts"])
         got, _beats = await _received(ws)
-        want: dict = {}
-        for m in _MIX:
-            if m["service"] == "LEVELONE_EQUITIES":
+        by = lambda svc: [m for m in got if m["service"] == svc]   # noqa: E731
+        sent = lambda svc: [m for m in _MIX if m["service"] == svc]   # noqa: E731
+        assert {m["service"] for m in got} == set(live_ui.DELIVERY)
+        for svc in ("LEVELONE_EQUITIES", "LEVELONE_OPTIONS"):
+            want: dict = {}
+            for m in sent(svc):
                 want.setdefault(m["item"]["key"], {}).update(m["item"])
-        fields: dict = {}
-        for m in got:
-            assert m["service"] == "LEVELONE_EQUITIES"
-            fields.setdefault(m["key"], {}).update(m["content"])
-        assert fields == want, "an equity field Schwab sent was lost or changed"
-        assert stats["frames_sent"] < sum(1 for m in _MIX if m["service"] == "LEVELONE_EQUITIES")
+            fields: dict = {}
+            for m in by(svc):
+                fields.setdefault(m["key"], {}).update(m["content"])
+            assert fields == want, f"a {svc} field Schwab sent was lost or changed"
+        for svc in ("NYSE_BOOK", "NASDAQ_BOOK", "OPTIONS_BOOK"):
+            for key in {m["item"]["key"] for m in sent(svc)}:
+                books = [m["item"] for m in sent(svc) if m["item"]["key"] == key]
+                shown = [m["content"] for m in by(svc) if m["key"] == key]
+                assert shown and shown[-1] == books[-1], f"{svc} {key}: the newest book is not the one shown"
+                assert all(b in books for b in shown), f"{svc} {key}: a book was changed"
+        assert [(m["key"], m["content"]) for m in by("CHART_EQUITY")] == [(b["key"], b) for b, _ts in bars]
+        assert [m["content"] for m in by("NEWS_HEADLINE")] == [_NEWS["content"]]
     asyncio.run(_run(body))
+
+
+def test_a_headline_carries_its_time_as_the_screen_shows_it():
+    """Schwab's headline time (field 1, epoch ms) labelled once, by the daemon, in Central Time."""
+    from time_et import ct_label
+
+    m = live_ui.schwab_message("news." + _NEWS["symbol"], {"symbol": _NEWS["symbol"], "content": _NEWS["content"],
+                                                           "schwab_ts": _NEWS["schwab_ts"], "ts_recv": _NEWS["ts_recv"]})
+    assert m["content"] == _NEWS["content"] and m["time_ct"] == ct_label(_NEWS["content"]["1"] / 1000.0)
 
 
 def test_a_symbol_nobody_asked_for_is_never_sent():
@@ -138,7 +170,8 @@ def test_each_beat_is_the_daemons_whole_status():
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"]}))
         while (frame := json.loads(await asyncio.wait_for(ws.recv(), 3)))["type"] != "feed":
             pass
-        assert set(frame) == {"type", "feed"} and frame["feed"]["held"] == {"LEVELONE_EQUITIES": ["SPY"]}
+        assert set(frame) == {"type", "feed", "state", "trades"} and frame["feed"]["held"] == {"LEVELONE_EQUITIES": ["SPY"]}
+        assert set(frame["state"]["SPY"]) == set(live_ui.EQUITY_SERVICES)
     asyncio.run(_run(body))
 
 

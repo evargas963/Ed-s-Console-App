@@ -61,7 +61,7 @@
     fam: (function () { try { return JSON.parse(sget('ed.desk.fam', 'null')) || null; } catch (e) { return null; } })() ||
       { value_area: 1, vwap: 1, gamma: 1, expected_move: 1, prior_day: 1, opening_range: 1, overnight: 1 },
     ticker: null, tb: null, gen: 0, chart: null, bars: [], levels: null, terrain: null, micro: null, crosses: null,
-    analytics: null, liq: null, quotes: {}, queue: [], sel: null
+    analytics: null, liq: null, quotes: {}, queue: [], sel: null, news: {}
   };
 
   // ------------------------------------------------------------------ layout wiring
@@ -246,6 +246,18 @@
         '<span class="tdm-q-b"><span class="tdm-dom">' + esc(q.dom) + '</span><span class="tdm-q-t">' + esc(q.title) + '</span>' +
         '<span class="tdm-q-d">' + esc(q.detail) + '</span>' +
         '<span class="tdm-q-m">' + esc(q.src) + ' · ' + (q.time_ct == null ? 'time not reported' : esc(q.time_ct)) + '</span></span></button>';
+    }).join('');
+  }
+  // Schwab's NEWS_HEADLINE items for the shown ticker, newest first, as sent (4 = headline, 9 = source);
+  // the time is the daemon's label of Schwab's field 1
+  function paintNews() {
+    var host = $('tdmNews'); if (!host) return;
+    var items = S.news[st().key] || [];
+    if (!items.length) { host.innerHTML = '<div class="tdm-empty">No headline from Schwab for ' + esc(shown()) + ' since the page opened.</div>'; return; }
+    host.innerHTML = items.map(function (m) {
+      var c = m.content;
+      return '<div class="tdm-q"><span class="tdm-q-b"><span class="tdm-q-t">' + esc(c['4'] == null ? '-' : c['4']) + '</span>' +
+        '<span class="tdm-q-m">' + esc(c['9'] == null ? '-' : c['9']) + ' · ' + (m.time_ct == null ? '-' : esc(m.time_ct)) + '</span></span></div>';
     }).join('');
   }
   function selectItem(key, scroll) {
@@ -505,7 +517,7 @@
     if (tk !== S.ticker) {
       S.ticker = tk; S.gen++; S.bars = []; // undefined = not answered YET (loading); null = the request failed
       S.levels = S.terrain = S.micro = S.events = S.liq = S.strikes = S.forces = S.flowBars = undefined; S.sel = null;
-      clearChart(); paintHeader(); paintQueue(); paintCards(); paintTrust(); paintAgreement(); paintFooter();
+      clearChart(); paintHeader(); paintQueue(); paintNews(); paintCards(); paintTrust(); paintAgreement(); paintFooter();
     }
   }
   function init() {
@@ -524,6 +536,12 @@
         if (S.chart) S.chart.setLivePrice(q.spot, window.EdShell.tradeLabel(q));
         paintCards();   // the Order Flow card's Schwab fields, on every row
       }
+    });
+    // NEWS_HEADLINE: each headline as Schwab sent it, pushed by the daemon
+    window.addEventListener('ed:schwab', function (e) {
+      var m = e.detail; if (!m || m.service !== 'NEWS_HEADLINE') return;
+      (S.news[m.key] || (S.news[m.key] = [])).unshift(m);
+      if (onDesk() && m.key === st().key) paintNews();
     });
     $('tdmQueue').addEventListener('click', function (e) {
       var b = e.target.closest('[data-q]'); if (b) selectItem(b.getAttribute('data-q'), true);

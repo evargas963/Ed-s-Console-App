@@ -57,6 +57,9 @@ DELIVERY = {"LEVELONE_EQUITIES": CHANGE, "LEVELONE_OPTIONS": CHANGE,
 _TOPIC_SERVICE = {"quote": ("LEVELONE_EQUITIES", "native"), "optquote": ("LEVELONE_OPTIONS", "content"),
                   "bar1m": ("CHART_EQUITY", "native"), "news": ("NEWS_HEADLINE", "content"),
                   "book": (None, "content")}
+#: a NEWS_HEADLINE item's time field (epoch ms), as measured from Schwab's own items (the service is
+#: not in Schwab's Streamer document; its items carry 1 = time, 2 = id, 4 = headline, 9 = source)
+NEWS_TIME = "1"
 #: the services a symbol's verdict is reported for, by kind of symbol
 EQUITY_SERVICES = ("LEVELONE_EQUITIES", "NYSE_BOOK", "NASDAQ_BOOK", "CHART_EQUITY", "NEWS_HEADLINE")
 OPTION_SERVICES = ("LEVELONE_OPTIONS", "OPTIONS_BOOK")
@@ -72,8 +75,12 @@ def schwab_message(topic: str, msg: dict) -> "dict | None":
     content = msg.get(item_key)
     if not isinstance(content, dict):
         return None
-    return {"service": service if service is not None else msg.get("service"), "key": msg["symbol"],
-            "schwab_ts": msg.get("schwab_ts"), "ts_recv": msg.get("ts_recv"), "content": content}
+    out = {"service": service if service is not None else msg.get("service"), "key": msg["symbol"],
+           "schwab_ts": msg.get("schwab_ts"), "ts_recv": msg.get("ts_recv"), "content": content}
+    sent = content.get(NEWS_TIME) if out["service"] == "NEWS_HEADLINE" else None
+    if isinstance(sent, (int, float)) and not isinstance(sent, bool):
+        out["time_ct"] = ct_label(sent / 1000.0)        # the headline's time as the screen shows it
+    return out
 
 
 def _services(key: str) -> tuple:
