@@ -12,8 +12,11 @@ Real data: SPY's and TSLA's /pricehistory answers of 2026-10-07 09:57 UTC
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 import threading
 from datetime import datetime
+from pathlib import Path
 
 import server
 from app.market_data.schwab.streaming import capture, live_push
@@ -172,6 +175,36 @@ def test_the_console_takes_schwabs_bars_and_candles_from_the_push_and_computes_t
         for tk in ("SPY", "TSLA"):
             server._bars.pop(tk, None)
             server._daily.pop(tk, None)
+
+
+#: a console just started (a fresh interpreter): its first price history, SPY's and TSLA's
+#: 1-minute series as Schwab answered them, taken by the bar writer; the modules loaded meanwhile
+_FIRST_TAKE = """
+import json, sys
+sys.path.insert(0, sys.argv[1])
+from datetime import datetime
+import server
+from tests.schwab_rest_standin import HISTORY
+from time_et import ET
+msgs = [{"src": "schwab_pricehistory", "symbol": tk, "series": "1m", "ts_recv": a["answered_utc"], "answer": a["body"]}
+        for tk, a in ((tk, HISTORY[(tk, "minute", "1")]) for tk in ("SPY", "TSLA"))]
+now = datetime.fromtimestamp(msgs[0]["ts_recv"], ET)
+before = set(sys.modules)
+server._write_streamed_bars(msgs, now)
+print(json.dumps({"loaded": sorted(set(sys.modules) - before),
+                  "bars": [len(server._bars_1m(tk, server.BARS_KEPT)) for tk in ("SPY", "TSLA")],
+                  "levels": [server.canonical_price_level_snapshot(tk, now) is not None for tk in ("SPY", "TSLA")]}))
+"""
+
+
+def test_a_console_just_started_takes_its_first_price_history_without_loading_a_module():
+    """The first price history after the console starts reaches its bars and price levels with
+    nothing loaded on the way (a module loaded there holds up the first answer beside the pricing
+    thread: 0.30 to 0.37 s measured)."""
+    done = subprocess.run([sys.executable, "-W", "ignore", "-c", _FIRST_TAKE, str(Path(__file__).resolve().parent.parent)],
+                          capture_output=True, text=True, timeout=120, check=True)
+    got = json.loads(done.stdout.strip().splitlines()[-1])
+    assert got["loaded"] == [] and all(got["bars"]) and got["levels"] == [True, True], got
 
 
 def test_before_schwab_sends_the_candles_the_atr_is_absent_with_why():
