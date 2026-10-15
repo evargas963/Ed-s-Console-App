@@ -1104,6 +1104,9 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
         payload.update(_contract_symbols=frozenset(c.get("symbol") for c in chain if c.get("symbol")))
     listed = payload.get("_contract_symbols") or frozenset()
     streamed = _streamed_greeks_for_ticker(listed, at.timestamp())
+    # the feed read once, at `at`: the same live set prices the chain and stamps its cells
+    feed_live = {s for s in streamed if lmp.feed_live_for(s, "LEVELONE_OPTIONS", at.timestamp())}
+    held = set(_held_option_symbols_for_ticker(listed, at.timestamp()))
     # each field the newest Schwab sent: a current streamed value received after this chain, else
     # the chain's
     priced, n_live = overlay_streamed_contract_fields(
@@ -1138,9 +1141,7 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
         surface.update(spot=float(spot), spot_source=spot_source, spot_as_of_ts_utc=spot_ts,
                        stream_overlay_contracts=n_live, stream_overlay_symbols=live_syms,
                        stream_overlay_computed_ts_utc=at.timestamp())
-        _stamp_gamma_surface_cell_stream_state(
-            surface, streamed, {s for s in streamed if lmp.feed_live_for(s, "LEVELONE_OPTIONS", at.timestamp())},
-            set(_held_option_symbols_for_ticker(listed, at.timestamp())), at.timestamp())
+        _stamp_gamma_surface_cell_stream_state(surface, streamed, feed_live, held, at.timestamp())
         surface["surface_seq"] = _next_gamma_surface_seq(tk)
         payload["_gamma_surface"] = surface
     with _terrain_cache_lock:
