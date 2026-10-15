@@ -155,9 +155,11 @@ class OneRefreshSession(OAuth2Client):
     The one owner of the sign-in, whose one record is the token file: before each request it
     takes a sign-in saved there since it last read or wrote the file (python reauth_schwab.py:
     the token and its creation time, `metadata`, the streamer's too; no restart), and its own
-    refreshes write it there. Once Schwab answers a refresh with a refusal (authlib raises on
-    Schwab's answer; a network failure, a 5xx or Schwab's edge page is not one), every request
-    raises SignInRefused and nothing is sent, until a new sign-in is saved."""
+    refreshes write it there, unless a sign-in was saved there while the refresh was asked (that
+    one is taken instead; a file that cannot be read is read again before each request, logged
+    once). Once Schwab answers a refresh with a refusal (authlib raises on
+    Schwab's answer; a network failure or Schwab's edge page is not one), every request raises
+    SignInRefused and nothing is sent, until a new sign-in is saved."""
 
     def __init__(self, *args, token_file: str, metadata, **kwargs):
         super().__init__(*args, **kwargs)
@@ -165,26 +167,29 @@ class OneRefreshSession(OAuth2Client):
         self._token_file, self._metadata = token_file, metadata
         #: the token file's change time as this session last read or wrote it
         self._read_at = _changed_at(token_file)
-        #: Schwab's refusal of the sign-in held; None: none refused
-        self._refused: "SignInRefused | None" = None
+        #: Schwab's refusal of the sign-in held (authlib's error); None: none refused
+        self._refused: "AuthlibBaseError | None" = None
+        #: the token file's read failure last logged; None: the last read succeeded
+        self._unread: "str | None" = None
         written = self.update_token
 
-        def update_token(token, *args, **kwargs):      # a refresh, written: this session's own
-            written(token, *args, **kwargs)
-            self._read_at = _changed_at(token_file)
+        def update_token(token, *args, **kwargs):      # this session's refresh, written unless a
+            if _changed_at(token_file) == self._read_at:   # sign-in was saved while it was asked
+                written(token, *args, **kwargs)
+                self._read_at = _changed_at(token_file)
         self.update_token = update_token
 
     def ensure_active_token(self, token=None):
         with self._refresh_lock:
             if not self._signed_in():
-                raise self._refused
+                raise SignInRefused(f"Schwab refused the sign-in: {self._refused}") from self._refused
             try:
                 return super().ensure_active_token(self.token)
             except AuthlibBaseError as e:
-                self._refused = SignInRefused(f"Schwab refused the sign-in: {e}")
+                self._refused = e
                 log.error("Schwab refused the sign-in (%s); nothing is sent to Schwab until a new "
                           "sign-in is saved: python reauth_schwab.py", e)
-                raise self._refused from e
+                raise SignInRefused(f"Schwab refused the sign-in: {e}") from e
 
     def signed_in(self) -> bool:
         """Whether this session holds a sign-in Schwab has not refused, a new one saved to the
@@ -193,11 +198,22 @@ class OneRefreshSession(OAuth2Client):
             return self._signed_in()
 
     def _signed_in(self) -> bool:
-        changed = _changed_at(self._token_file)
-        if changed is not None and changed != self._read_at:
-            saved = _token_read_func(self._token_file)()     # a new sign-in, saved since
-            self._metadata.token, self._metadata.creation_timestamp = saved["token"], saved["creation_timestamp"]
-            self.token, self._read_at = saved["token"], changed
+        try:
+            changed = _changed_at(self._token_file)
+            new = changed is not None and changed != self._read_at   # a new sign-in, saved since
+            if new:
+                saved = _token_read_func(self._token_file)()
+                token, created = saved["token"], saved["creation_timestamp"]
+        except (OSError, ValueError, KeyError) as e:              # read again on the next request
+            if repr(e) != self._unread:
+                log.warning("the token file %s could not be read (%r); it is read again before each "
+                            "request", self._token_file, e)
+            self._unread = repr(e)
+            return self._refused is None
+        self._unread = None
+        if new:
+            self._metadata.token, self._metadata.creation_timestamp = token, created
+            self.token, self._read_at = token, changed
             if self._refused is not None:
                 log.info("a new Schwab sign-in was saved: taken")
             self._refused = None
@@ -206,7 +222,7 @@ class OneRefreshSession(OAuth2Client):
 
 def _changed_at(path: str) -> "int | None":
     """`path`'s last change, in nanoseconds; None while it is not there (python reauth_schwab.py
-    removes it before it saves the new sign-in)."""
+    removes it before it saves the new sign-in). Any other failure to look raises."""
     try:
         return os.stat(path).st_mtime_ns
     except FileNotFoundError:

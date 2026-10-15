@@ -33,7 +33,7 @@ from calibration.complete_chain_capture import ChainSweep, chain_messages
 from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS, bars_from_candles
 from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus, bar_msg
 from tests.feed_live_helper import daemon_bars, price_history, stream_daemon_bars
-from tests.schwab_rest_standin import LocalSchwab
+from tests.schwab_rest_standin import EDGE_403, REFRESHED, LocalSchwab
 from time_et import ET, now_et
 
 FX = Path(__file__).resolve().parent / "fixtures"
@@ -902,9 +902,6 @@ def test_every_schwab_error_is_logged_as_sent_without_tokens(tmp_path, caplog):
 
 _SPY_1120 = json.loads((FX / "real_spy_2026_11_20_chain_and_quotes.json").read_text(encoding="utf-8"))
 _SPY_1120_QUOTES = {s: e for q in _SPY_1120["quotes"] for s, e in q["reply"].items()}
-_AKAMAI_403 = json.loads((FX / "real_schwab_akamai_403_2026_10_03.json").read_text(encoding="utf-8"))
-_REFRESHED = {"access_token": "new-access", "refresh_token": "r", "token_type": "Bearer",
-              "expires_in": 1800, "scope": "api", "id_token": "i"}
 
 
 def _spy_chain_payload() -> dict:
@@ -930,7 +927,7 @@ class _ToLocal(httpx.BaseTransport):
 
 class _LocalSchwab:
     """Schwab's host, played by a local server. The token endpoint answers `token_answer`
-    ("refreshed": _REFRESHED; "akamai": the captured 403 page); chains and quotes answer the
+    ("refreshed": REFRESHED; "akamai": the captured 403 page); chains and quotes answer the
     captured SPY chain and its quotes (or `chain`, another captured chain as Schwab sent it,
     whose quotes are not captured), or the captured 403 page while `refuse`. Every request is
     recorded: (time, method, path, Authorization)."""
@@ -948,19 +945,19 @@ class _LocalSchwab:
                 self.send_header("Content-Type", content_type)
                 self.send_header("Content-Length", str(len(body)))
                 if status == 403:
-                    self.send_header("Server", _AKAMAI_403["headers"]["server"])
+                    self.send_header("Server", EDGE_403["headers"]["server"])
                 self.end_headers()
                 self.wfile.write(body)
 
             def _akamai(self):
-                self._send(403, "text/html", _AKAMAI_403["body"].encode())
+                self._send(403, "text/html", EDGE_403["body"].encode())
 
             def do_POST(self):
                 self.rfile.read(int(self.headers.get("Content-Length") or 0))
                 outer.requests.append((time.monotonic(), "POST", urlparse(self.path).path, None))
                 if outer.token_answer == "akamai":
                     return self._akamai()
-                self._send(200, "application/json", json.dumps(_REFRESHED).encode())
+                self._send(200, "application/json", json.dumps(REFRESHED).encode())
 
             def do_GET(self):
                 url = urlparse(self.path)
