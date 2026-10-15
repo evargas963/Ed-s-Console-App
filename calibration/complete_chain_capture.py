@@ -29,6 +29,7 @@ from schwab.client import Client
 
 from instrument_identity import ticker_storage_key
 from json_blob_codec import decode_json_blob, encode_json_blob
+from math_exposure_core import stream_priced
 from numeric_contract import schwab_number
 from schwab_client import (GREEK_FIELDS, QUOTES_BATCH_MAX, flatten_chain_contracts, option_expiries,
                            safe_get_chain, safe_get_quotes)
@@ -221,8 +222,9 @@ class ChainSweep:
     next rotation, a removed one is asked for no more). For each ticker, Schwab's expiration chain once per ET
     date, then one chain request per expiry (strike_range=ALL), as Schwab says to break up a
     large chain. The chain's own Greeks (GREEK_FIELDS, rounded by Schwab) are never kept: a
-    contract whose LEVELONE_OPTIONS record (`streamed`) carries all of them takes the stream's,
-    each with its field's Schwab time; every other contract is asked for on the quotes endpoint,
+    contract the daemon streams on LEVELONE_OPTIONS (`streamed`) takes its price, bid/ask, last,
+    volume and Greeks from its stream record alone (math_exposure_core.stream_priced), each Greek
+    with its field's Schwab time, one not sent yet absent; every other contract is asked for on the quotes endpoint,
     QUOTES_BATCH_MAX symbols to a request across tickers, and takes its quote's, with the
     quote's quoteTime. A Greek Schwab does not send is absent (None). Each contract carries the
     time of its Greeks as `greeksTime` ({field: Schwab's time, ms}).
@@ -408,9 +410,10 @@ class ChainSweep:
             return self.fail([chain], f"{type(e).__name__}: {e}")
         for ct in chain.contracts():
             entry = self.streamed(ct["symbol"])
-            if entry is not None and all(f.upper() in entry[1]["content"] for f in GREEK_FIELDS):
-                ct.update({f: entry[1]["content"][f.upper()] for f in GREEK_FIELDS})
-                ct["greeksTime"] = {f: entry[1]["field_ts"][f.upper()][0] for f in GREEK_FIELDS}
+            if entry is not None:       # streamed: its values are the stream's alone, as sent
+                content, stamps = entry[1]["content"], entry[1]["field_ts"]
+                ct.update(stream_priced(ct, content))
+                ct["greeksTime"] = {f: stamps[f.upper()][0] for f in GREEK_FIELDS if f.upper() in stamps}
             else:
                 ct.update(dict.fromkeys(GREEK_FIELDS))
                 ct["greeksTime"] = None

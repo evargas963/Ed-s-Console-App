@@ -42,7 +42,7 @@ class OrderFlowState:
         self._top: dict[str, dict] = {}
         self._prev_trade: dict[str, dict] = {}
         self._receive_seq: dict[str, int] = {}
-        self._stream_greeks: dict[str, dict] = {}
+        self._option_records: dict[str, tuple[dict, float]] = {}
 
     def _get_book(self, symbol: str) -> deque:
         with self._lock:
@@ -98,52 +98,8 @@ class OrderFlowState:
             # delayed message read as live (same P0 as the live plane, 2026-09-23)
             raise TypeError("push_level_one: ts_recv (the daemon receive time) is required")
 
-        # TOTAL_VOLUME as sent; a reported 0 is 0 (AGENTS.md rule 2).
-        vf = schwab_count(content_item.get("TOTAL_VOLUME"))
-
-        # (change percent lives on the live plane only: NET_CHANGE_PERCENT, one store. This
-        # held REGULAR_MARKET_CHANGE_PERCENT with a CHANGE_PERCENT fallback -- a field Schwab
-        # never sends, measured 2026-09-24.)
-
-        # GAMMA/DELTA/OPEN_INTEREST/TOTAL_VOLUME: native Schwab LEVELONE_OPTIONS fields
-        # (confirmed in the installed SDK's field enum, schwab/streaming.py
-        # LevelOneOptionFields) that this state class never captured before -- every option L1
-        # tick discarded exactly the fields a live GEX recompute (and the per-strike volume
-        # column, which reads a contract's OWN totalVolume, not this symbol's ticker-level
-        # _stream_volume above) needs, keeping the heatmap and volume displays bound to the
-        # ~60s wide-chain REST cadence even for the one contract already streaming. Each field
-        # is merged independently (not as a group) and stamped with ITS OWN receive time: a
-        # quote tick that carries BID_PRICE/ASK_PRICE but not GAMMA this update must not blank
-        # out (or misdate) an OPEN_INTEREST value observed on an earlier tick -- the same
-        # explicit-presence discipline as chg_pct/volume above, extended per-field because
-        # these genuinely arrive independently of each other and of the last-trade fields
-        # below. `vf` is the SAME TOTAL_VOLUME/VOLUME value already resolved above -- stored a
-        # second time, per-field-stamped, so the overlay used by the exposure/per-strike faucet
-        # (which reads a contract's OWN totalVolume) can apply the SAME newer-than-REST
-        # precedence rule already used for gamma/delta/open_interest, instead of a bare
-        # ticker-level number with no freshness of its own.
-        gamma = schwab_number(content_item.get("GAMMA"))
-        delta = schwab_number(content_item.get("DELTA"))
-        oi = schwab_count(content_item.get("OPEN_INTEREST"))
-        # VOLATILITY too: the model's input must be as fresh as the gamma beside it
-        iv = schwab_number(content_item.get("VOLATILITY"))
         def received(field: str) -> float:
             return ts_recv if field_received is None else field_received[field]
-
-        if gamma is not None or delta is not None or oi is not None or vf is not None or iv is not None:
-            with self._lock:
-                g = self._stream_greeks.setdefault(sym, {})
-                if gamma is not None:
-                    g["gamma"], g["gamma_ts_recv"] = gamma, received("GAMMA")
-                if delta is not None:
-                    g["delta"], g["delta_ts_recv"] = delta, received("DELTA")
-                if oi is not None:
-                    g["open_interest"], g["open_interest_ts_recv"] = oi, received("OPEN_INTEREST")
-                if vf is not None:
-                    g["total_volume"], g["total_volume_ts_recv"] = vf, received("TOTAL_VOLUME")
-                if iv is not None:
-                    g["volatility"], g["volatility_ts_recv"] = iv, received("VOLATILITY")
-
 
         trade_ms = content_item.get("TRADE_TIME_MILLIS")
         last_price = content_item.get("LAST_PRICE")
@@ -213,7 +169,7 @@ class OrderFlowState:
             values.clear()
         self._prev_trade.clear()
         self._receive_seq.clear()
-        self._stream_greeks.clear()
+        self._option_records.clear()
 
 
     def clear_symbol(self, symbol: str) -> None:
@@ -229,7 +185,7 @@ class OrderFlowState:
             self._top.pop(sym, None)
             self._prev_trade.pop(sym, None)
             self._receive_seq.pop(sym, None)
-            self._stream_greeks.pop(sym, None)
+            self._option_records.pop(sym, None)
 
 
     def push_option_top(self, symbol: str, content_item: dict) -> None:
@@ -254,19 +210,19 @@ class OrderFlowState:
             t = self._top.get(sym)
             return dict(t) if t else None
 
-    def get_stream_greeks(self, symbol: str) -> Optional[dict]:
-        """Return the latest streamed GAMMA/DELTA/OPEN_INTEREST/TOTAL_VOLUME for one OPTION
-        contract symbol, each field paired with its own ``_ts_recv`` (the field's own
-        last-update wall-clock receive time, not merely this call's time) -- a per-field
-        freshness stamp is what lets a caller judge one field newer than a same-tick sibling
-        that was absent this update, per the sparse-overlay pattern below. Returns None when
-        nothing has ever been observed for this symbol (never a dict of Nones)."""
+    def push_option_record(self, symbol: str, content: dict, ts_recv: float) -> None:
+        """An option contract's LEVELONE_OPTIONS record as the daemon pushes it (every field
+        Schwab has sent, the last of each: Schwab sends changes only) and when its newest field
+        arrived; it replaces the one held, never changed in place."""
         sym = ticker_storage_key(symbol)
-        if not sym:
-            return None
+        if sym:
+            with self._lock:
+                self._option_records[sym] = (content, ts_recv)
+
+    def option_records(self, symbols) -> "dict[str, Optional[tuple[dict, float]]]":
+        """Each symbol's record (fields, newest receive time), None if none came."""
         with self._lock:
-            g = self._stream_greeks.get(sym)
-            return dict(g) if g else None
+            return {s: self._option_records.get(ticker_storage_key(s)) for s in symbols}
 
 
 
@@ -320,10 +276,12 @@ def clear_symbol(symbol: str) -> None:
 
 
 
-def get_stream_greeks(symbol: str) -> Optional[dict]:
-    """Return the live singleton's latest streamed GAMMA/DELTA/OPEN_INTEREST for one option
-    contract symbol (each paired with its own `_ts_recv`), or None if never observed."""
-    return _LIVE_STATE.get_stream_greeks(symbol)
+def push_option_record(symbol: str, content: dict, ts_recv: float) -> None:
+    _LIVE_STATE.push_option_record(symbol, content, ts_recv)
+
+
+def option_records(symbols) -> "dict[str, Optional[tuple[dict, float]]]":
+    return _LIVE_STATE.option_records(symbols)
 
 
 
