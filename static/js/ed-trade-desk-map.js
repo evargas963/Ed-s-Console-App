@@ -331,7 +331,7 @@
     plot.innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">' + svg + '</svg>';
   }
   function paintCards() {
-    var m = S.micro, t = S.terrain;
+    var m = S.micro;
     // LIQUIDITY — displayed book depth
     var c = $('tdmCardLiq');
     if (c) {
@@ -354,9 +354,16 @@
           row('Spread', m.spread_pts != null ? num(m.spread_pts, 2) : '—');
       }
     }
-    // ORDER FLOW — what Schwab reports of the trading: session volume, the last trade, the top of
-    // book and the level crosses. Schwab sends no trade side, so none is claimed.
-    c = $('tdmCardFlow');
+    paintFlowCard();
+    paintOptCard();
+    paintVolCard();
+    paintCardCharts();
+  }
+  // ORDER FLOW — what Schwab reports of the trading: session volume, the last trade, the top of
+  // book and the level crosses. Schwab sends no trade side, so none is claimed. Painted on every
+  // price row of the ticker.
+  function paintFlowCard() {
+    var c = $('tdmCardFlow');
     if (c) {
       var q = S.quotes[st().key];                 // the daemon's LEVELONE_EQUITIES row (its top of book too)
       var cc = (S.events && S.events.cross_counts) || null;   // served for the window
@@ -372,8 +379,10 @@
           + (q && !q.feed_live ? ' · NOT LIVE' : '')) +
         row('Crosses (' + esc(windowLabel()) + ')', cc ? cc.up + ' up · ' + cc.down + ' down' : '—');
     }
-    // OPTIONS POSITIONING — full-chain terrain
-    c = $('tdmCardOpt');
+  }
+  // OPTIONS POSITIONING — full-chain terrain
+  function paintOptCard() {
+    var c = $('tdmCardOpt'), t = S.terrain;
     if (c) {
       if (!t || t.error) {
         state(c, t === undefined ? 'LOADING' : 'UNAVAILABLE', t === undefined ? '' : 'warn'); c.querySelector('.tdm-hero').innerHTML = '';
@@ -390,8 +399,10 @@
           row('Contracts', t.contracts_used != null ? t.contracts_used.toLocaleString() : '—') + forcesRows();
       }
     }
-    // VOLATILITY
-    c = $('tdmCardVol');
+  }
+  // VOLATILITY — painted on every VIX price row too
+  function paintVolCard() {
+    var c = $('tdmCardVol'), t = S.terrain;
     if (c) {
       var vixC = window.EdShell.marketContext().filter(function (c) { return c.display === 'VIX'; })[0];
       var im = t && t.implied_1d_move, vix = vixC && S.quotes[vixC.key];
@@ -409,25 +420,28 @@
         row('ATR monthly', t && t.atr_monthly != null ? num(t.atr_monthly) : esc((t && t.atr_monthly_reason) || '—')) +
         row('VIX', vix && vix.spot != null ? num(vix.spot) + (vix.chg_pct != null ? ' (' + (vix.chg_pct >= 0 ? '+' : '') + num(vix.chg_pct) + '%)' : '') : 'waiting for the VIX stream');
     }
-    paintCardCharts();
+  }
+  // the volume card's bars: the newest hour of the daemon's 1-minute series (EdShell.series:
+  // Schwab's bars, one per minute)
+  function paintFlowSpark() {
+    var c = $('tdmCardFlow');
+    if (!S.chart || !c) return;
+    var P = S.chart.palette(), fb = window.EdShell.series(st().key, DESK_FLOW_BARS);
+    spark(c, [{ ys: fb.map(function (b) { return b.v; }), kind: 'bars', color: P.ink3,
+      colors: fb.map(function (b) { return b.chg == null ? P.ink3 : b.chg >= 0 ? P.up : P.down; }) }],
+      'Volume per 1-minute bar, last hour · green up, red down',
+      '-');
   }
   function paintCardCharts() {
     if (!S.chart) return;
     var P = S.chart.palette(), m = S.micro, t = S.terrain, c;
+    paintFlowSpark();
     if ((c = $('tdmCardLiq'))) {
       var dp = (m && m.depth_pressure) || {}, bid = (dp.bid || []).slice().reverse(), ask = dp.ask || [];
       spark(c, [{ xs: bid.map(function (r) { return r.price; }), ys: bid.map(function (r) { return r.cum; }), color: P.up, kind: 'area' },
         { xs: ask.map(function (r) { return r.price; }), ys: ask.map(function (r) { return r.cum; }), color: P.down, kind: 'area' }],
         'Cumulative displayed depth by price · ' + ((m && m.venue) || st().bookVenue),
         m && m.status === 'no_book' ? 'no ' + m.venue + ' for this symbol right now' : m === undefined ? 'loading…' : 'no book levels served');
-    }
-    if ((c = $('tdmCardFlow'))) {
-      // the newest hour of the daemon's 1-minute series (EdShell.series: Schwab's bars, one per minute)
-      var fb = window.EdShell.series(st().key).slice(-DESK_FLOW_BARS);
-      spark(c, [{ ys: fb.map(function (b) { return b.v; }), kind: 'bars', color: P.ink3,
-        colors: fb.map(function (b) { return b.chg == null ? P.ink3 : b.chg >= 0 ? P.up : P.down; }) }],
-        'Volume per 1-minute bar, last hour · green up, red down',
-        '-');
     }
     if ((c = $('tdmCardOpt'))) {
       var pcr = (t && t.pcr_by_expiry) || {};
@@ -528,6 +542,8 @@
     if (!$('tdmMap')) return;
     document.addEventListener('ed:view', start);
     document.addEventListener('ed:ticker', start);
+    document.addEventListener('ed:key', function () { if (onDesk()) paintNews(); });   // the ticker's key: its headlines
+    document.addEventListener('ed:series', function () { if (onDesk()) paintFlowSpark(); });   // the volume card's bars
     document.addEventListener('ed:push', function () { if (onDesk()) paintTrust(); });   // the push went down or came back
     // Every streamed price row: header + indices. The chart moves only on a completed bar.
     window.addEventListener('ed:quote_tick', function (e) {
@@ -537,10 +553,10 @@
       paintHeader();
       if (q.ticker === st().key) {
         paintTrust();
-        paintNews();                            // the ticker's key is known: its headlines
         if (S.chart) S.chart.setLivePrice(q.spot, window.EdShell.tradeLabel(q));
-        paintCards();   // the Order Flow card's Schwab fields, on every row
+        paintFlowCard();   // the Order Flow card's Schwab fields, on every row
       }
+      if (window.EdShell.marketContext().some(function (c) { return c.display === 'VIX' && c.key === q.ticker; })) paintVolCard();
     });
     // NEWS_HEADLINE: each headline as Schwab sent it, pushed by the daemon
     window.addEventListener('ed:schwab', function (e) {

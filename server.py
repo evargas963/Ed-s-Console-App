@@ -358,8 +358,8 @@ def live_levels(tk: str, now: float) -> dict:
 # ─────────────────────────────────────────────────────────────────────────────
 #: one RTH day of 1-minute bars
 CANDLE_1M_MAX_BARS: int = 390
-from micro_structure import Candle, bar_dict, schwab_bar
-from minute_bars import CHART_1M_BARS, MinuteBars
+from micro_structure import Candle, bar_dict, pricehistory_bars, streamed_bar
+from minute_bars import MinuteBars, last_bar
 from calibration.complete_chain_capture import (
     CAPTURE_BASIS,
     last_capture_per_day,
@@ -372,7 +372,7 @@ from calibration.complete_chain_capture import (
 #: daemon keeps the same for the screen. Owned by the bar writer (_bar_writer). Every live reader
 #: reads this, never a database (docs/DATA_FLOW.md §2 D6).
 _minutes = MinuteBars()
-_bars, _bars_lock, _keep_bar = _minutes.bars, _minutes.lock, _minutes.take
+_bars, _bars_lock = _minutes.bars, _minutes.lock
 #: every ticker's daily candles as Schwab's /pricehistory sent them (the daemon asks once a day):
 #: ticker -> candles, oldest first. Owned by the bar writer; the ATR reads them (_atr).
 _daily: "dict[str, list[Candle]]" = {}
@@ -389,9 +389,7 @@ def _write_price_history(msg: dict) -> "str | None":
     if msg["series"] == "1m":
         _minutes.take_history(tk, msg["answer"]["candles"])
         return tk
-    candles = [b for b in (schwab_bar(c.get("datetime"), c.get("open"), c.get("high"), c.get("low"),
-                                       c.get("close"), c.get("volume")) for c in msg["answer"]["candles"])
-               if b is not None]
+    candles = pricehistory_bars(msg["answer"]["candles"])
     with _bars_lock:
         _daily[tk] = candles
     return None
@@ -405,12 +403,11 @@ def _bars_1m(tk: str, limit: int = CANDLE_1M_MAX_BARS) -> "list[Candle]":
 def _write_streamed_bar(msg: dict) -> bool:
     """Keep one streamed 1-minute bar (Schwab CHART_EQUITY, pushed by the capture daemon, which
     records it) with the ticker's bars; False when it lacks a valid field (then it is not kept)."""
-    bar = schwab_bar(msg.get("bar_start_ms"), msg.get("open"), msg.get("high"), msg.get("low"),
-                      msg.get("close"), msg.get("volume"))
+    bar = streamed_bar(msg)
     if bar is None:
         log.warning("streamed bar for %s lacks a valid field, not kept: %s", msg.get("symbol"), msg)
         return False
-    _keep_bar(ticker_storage_key(msg["symbol"]), bar)          # what every live reader reads
+    _minutes.take(ticker_storage_key(msg["symbol"]), bar)      # what every live reader reads
     push_changes.changed(msg["symbol"], push_changes.LIQUIDITY)
     return True
 
@@ -1578,12 +1575,10 @@ def get_bars1m(ticker: str = Query(...),
 def bars_payload(tk: str, limit: int, tf: str) -> dict:
     """Completed Schwab 1m bars, newest-last: [{t,o,h,l,c,v}] epoch-seconds bar starts, rolled
     up to `tf` by aggregate_bars. `last_bar`: the newest completed minute and its label."""
-    bars = [bar_dict(c) for c in _bars_1m(tk, int(limit))]
-    out = [_lpr.with_change(b) for b in aggregate_bars(bars, tf)]
-    last_bar = None                                    # no bar held: none
-    if bars:
-        last_bar = {"t": bars[-1]["t"], "label": ct_label(bars[-1]["t"])}
-    return {"ticker": tk, "bars": out, "tf": tf, "n": len(out), "last_bar": last_bar}
+    candles = _bars_1m(tk, int(limit))
+    out = [_lpr.with_change(b) for b in aggregate_bars([bar_dict(c) for c in candles], tf)]
+    return {"ticker": tk, "bars": out, "tf": tf, "n": len(out),
+            "last_bar": last_bar(candles[-1]) if candles else None}      # no bar held: none
 
 
 def _tf_bucket_key(t: float, tf: str):
@@ -2179,8 +2174,6 @@ PUSH_BEAT_SEC = 1.0
 #: in-the-money rows, the staleness) moves with every kind: every consumer of the spot is answered
 #: again on each change of it, from the same read.
 _EVERY_KIND = {"levels", "chain", "flow", "liquidity", "live"}
-#: a panel whose value the daemon sends the page itself (the 1-minute series): its answer only says so
-DAEMON_SERIES = "daemon:CHART_EQUITY"
 _ROUTE_KINDS = {
     "/api/terrain": _EVERY_KIND, "/api/terrain/strikes": _EVERY_KIND, "/api/forces": {"levels"},
     "/api/options/gamma-surface": _EVERY_KIND, "/api/options/vanna-by-strike": _EVERY_KIND,
@@ -2191,11 +2184,11 @@ _ROUTE_KINDS = {
     "/api/order-flow/microstructure": _EVERY_KIND, "/api/order-flow/book-heatmap": {"flow", "live"},
     "/api/order-flow/options-microstructure": {"levels", "flow", "live"}, "/api/options/tape": {"flow", "live"},
     "/api/watchlist": set(),
-    DAEMON_SERIES: set(),
 }
 
-#: the 1-minute bars each chart reads, per timeframe
-CHART_BARS = {"1": CHART_1M_BARS, "3": 2000, "5": 3000, "15": 6000, "30": 9000, "60": 12000, "D": 12000}
+#: the 1-minute bars each chart rolls up, per timeframe (at 1 minute the chart draws the daemon's
+#: series, live_ui series_of)
+CHART_BARS = {"3": 2000, "5": 3000, "15": 6000, "30": 9000, "60": 12000, "D": 12000}
 #: the Options subviews that show the strike x expiry grid and its panels
 _GAMMA_FAMILY = {"gamma", "dex", "oi"}
 
@@ -2222,11 +2215,13 @@ class _Panel:
         return self.feeds() if callable(self.feeds) else self.feeds
 
 
-def _panels(v: dict) -> "dict[str, _Panel]":
+def _panels(v: dict) -> "tuple[dict[str, _Panel], list[str]]":
     """The panels on screen for a page's view `v` (the operator's selections: ticker, workspace,
     subview, view, expiry, the selected strike and contract, scope, book venue, each chart's
-    timeframe, the heatmap's columns and minutes, each strike panel's pan) and each one's value.
-    Panels that show the same value read the same producer with the same inputs."""
+    timeframe, the heatmap's columns and minutes, each strike panel's pan) and each one's value,
+    and the charts' bars panels on screen at 1 minute: those draw the daemon's series (live_ui
+    series_of), straight from the daemon. Panels that show the same value read the same producer
+    with the same inputs."""
     tk, ws, sub, scope, venue, pans = v["ticker"], v["workspace"], v["subview"], v["scope"], v["venue"], v["pans"]
     #: a value read from the stock's price (the price row: the spot, a level's distance, the
     #: strike nearest the price), and one read from the venue's book as well
@@ -2250,11 +2245,14 @@ def _panels(v: dict) -> "dict[str, _Panel]":
         return _Panel(_route("/api/terrain/strikes", ticker=tk, **key(w)),
                       lambda: terrain_strikes_payload(tk, scope, w["centre"], w["pan_shift"], time.time()), price)
 
-    def bars(tf: str, limit: int) -> _Panel:      # Schwab's bars as sent, each its own record
-        if tf == "1":       # the 1-minute series is the daemon's (live_ui series_of), straight to the screen
-            return _Panel(DAEMON_SERIES, lambda: {"from_daemon": "CHART_EQUITY"}, ())
-        return _Panel(_route("/api/bars1m", ticker=tk, tf=tf, limit=limit), lambda: bars_payload(tk, limit, tf),
-                      ((tk, "CHART_EQUITY"),))
+    series: list[str] = []
+
+    def bars(name: str, tf: str) -> "dict[str, _Panel]":   # Schwab's bars as sent, rolled up to `tf`
+        if tf == "1":
+            series.append(name)
+            return {}
+        return {name: _Panel(_route("/api/bars1m", ticker=tk, tf=tf, limit=CHART_BARS[tf]),
+                             lambda: bars_payload(tk, CHART_BARS[tf], tf), ((tk, "CHART_EQUITY"),))}
 
     def levels(tf: str) -> _Panel:      # the price levels are built from the 1-minute bars
         return _Panel(_route("/api/levels", ticker=tk, tf=tf), lambda: levels_payload(tk, tf, now_et()), price_and_bars)
@@ -2288,7 +2286,7 @@ def _panels(v: dict) -> "dict[str, _Panel]":
                 _route("/api/options/gamma-surface", ticker=tk, **key(w), cols=cols, expiry=expiry),
                 lambda: gamma_surface_payload(tk, scope, w["centre"], w["pan_shift"], cols, expiry, now_et()), price)
         elif v["view"] == "chart":
-            out.update({"gamma.chart.bars": bars(v["tfs"]["chart"], CHART_BARS[v["tfs"]["chart"]]),
+            out.update({**bars("gamma.chart.bars", v["tfs"]["chart"]),
                         "gamma.chart.strikes": strikes(None), "gamma.chart.terrain": terrain})
         elif v["view"] == "levels" and sub == "gamma":
             out["gamma.levels"] = levels("1")
@@ -2302,7 +2300,7 @@ def _panels(v: dict) -> "dict[str, _Panel]":
                              lambda: options_microstructure(c, time.time()), ((c, "LEVELONE_OPTIONS"), (c, "OPTIONS_BOOK")))
     elif ws == "liquidity" and sub == "map":
         out.update({"liquidity.map.zones": zones, "liquidity.map.levels": levels("1"),
-                    "liquidity.map.bars": bars(v["tfs"]["liquidity"], CHART_BARS[v["tfs"]["liquidity"]])})
+                    **bars("liquidity.map.bars", v["tfs"]["liquidity"])})
     elif ws == "liquidity" and sub == "levels":
         out["liquidity.levels"] = levels("1")
     elif ws == "order-flow" and sub == "book":
@@ -2316,14 +2314,14 @@ def _panels(v: dict) -> "dict[str, _Panel]":
                     "rightnow.zones": zones, "rightnow.strikes": strikes("migration")})
     elif ws == "trade-desk" and sub == "desk":
         tf = v["tfs"]["desk"]
-        out.update({"desk.bars": bars(tf, CHART_BARS[tf]), "desk.levels": levels(tf),
+        out.update({**bars("desk.bars", tf), "desk.levels": levels(tf),
                     "desk.events": _Panel(_route("/api/desk/events", ticker=tk, venue=venue, tf=tf),
                                           lambda: desk_events_payload(tk, venue, tf, now_et()), book_feeds),
                     "desk.terrain": terrain, "desk.zones": zones, "desk.strikes": strikes(None),
                     # the forces: the stored chain captures, read from no stream
                     "desk.forces": _Panel(_route("/api/forces", ticker=tk), lambda: forces_payload(tk, time.time()), ()),
                     "desk.book": book})
-    return out
+    return out, series
 
 
 #: an answer that names no instant an age is shown of
@@ -2407,7 +2405,8 @@ async def live_values(ws: WebSocket):
     "view"}); it names no route.
 
     Panels: the console decides the panels on screen (_panels), names each one the view moved
-    ({"type": "view", "seq", "moved", "shown" (every panel on screen)}) and pushes each one's answer
+    ({"type": "view", "seq", "moved", "shown" (every panel on screen), "series" (the charts on screen
+    that draw the daemon's 1-minute series, live_ui: no answer comes for them here)}) and pushes each one's answer
     by name the moment it is ready, never waiting for another ({"type": "panels", "seq" (the view it
     is for), "panels": [{"panel", "source" (its value's route), "kinds", "not_live" (why the value
     is not live: the outage of each Schwab feed it is read from that is down, _not_live; else None),
@@ -2484,7 +2483,8 @@ async def live_values(ws: WebSocket):
                 view = json.loads(message)["view"]
                 # no ticker chosen yet: the watchlist alone
                 view["ticker"] = ticker_storage_key(_required_ticker(view["ticker"])) if view["ticker"] else None
-                panels = _panels(view) if view["ticker"] else {"watchlist": _Panel("/api/watchlist", lambda: watchlist_payload(time.time()), ())}
+                panels, series = _panels(view) if view["ticker"] else \
+                    ({"watchlist": _Panel("/api/watchlist", lambda: watchlist_payload(time.time()), ())}, [])
                 async with send_lock:
                     if not page["subscribed"] or view["ticker"] != page["ticker"]:
                         if page["subscribed"]:
@@ -2493,7 +2493,8 @@ async def live_values(ws: WebSocket):
                         page["ticker"], page["subscribed"] = view["ticker"], True
                     moved = [n for n, p in panels.items() if n not in client.panels or client.panels[n].source != p.source]
                     client.panels, page["seq"] = panels, view["seq"]
-                    await text({"type": "view", "seq": view["seq"], "moved": moved, "shown": sorted(panels)})
+                    await text({"type": "view", "seq": view["seq"], "moved": moved, "shown": sorted([*panels, *series]),
+                                "series": series})
                     await beat()
                 _forget_unshown()
                 note_liveness(time.time())

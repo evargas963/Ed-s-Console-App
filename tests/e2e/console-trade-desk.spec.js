@@ -435,18 +435,19 @@ test.describe('Trade Desk renders served values', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const chartState = () => page.evaluate(() => window.EdTradeDeskMap.state().chart);
     await expect.poll(async () => (await chartState()).bars).toBe(2);
-    daemonSeries(page, 'SPY', series, 'the newest');                              // the gap filled, whole
+    daemonSeries(page, 'SPY', series, { t: series[series.length - 1].t, label: 'the newest' });   // the gap filled, whole
     await expect.poll(async () => (await chartState()).bars).toBe(series.length);
-    // another chart ticker: SPY's copy is not kept (the daemon keeps a page's chart series current
-    // only while it is the chart), so switching back draws the daemon's series, never an old copy
+    // another chart ticker: its series replaces SPY's (the daemon keeps a page's chart series
+    // current only while it is the chart), so switching back draws the daemon's series, never an old copy
     await page.evaluate(() => window.EdShell.setTicker('QQQ'));
-    await expect.poll(() => page.evaluate(() => window.EdShell.series('SPY').length)).toBe(0);
+    await expect.poll(() => page.evaluate(() => window.EdShell.series('SPY', 1200).length)).toBe(0);
     expect(errs).toEqual([]);
   });
 
   test('Desk 1m: the same index typed another way ($SPX after SPX) still draws the daemon\'s series', async ({ page }) => {
-    // Before, the page dropped its series on the new spelling and the daemon, seeing the same key,
-    // sent none: the chart stayed waiting. STAND-IN (named): the spec's bars as the daemon's series.
+    // The page keeps the series by the daemon's key, which the daemon does not send again for the
+    // same key; before, the page dropped it on the new spelling and the chart stayed waiting.
+    // STAND-IN (named): the spec's bars as the daemon's series.
     const errs = watchErrors(page);
     await intercept(page);
     await page.route('**/api/bars1m**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
@@ -457,7 +458,7 @@ test.describe('Trade Desk renders served values', () => {
     const chartState = () => page.evaluate(() => window.EdTradeDeskMap.state().chart);
     await expect.poll(async () => (await chartState()).bars).toBe(BARS.bars.length);
     await page.evaluate(() => window.EdShell.setTicker('$SPX'));
-    await expect.poll(() => page.evaluate(() => window.EdShell.series('$SPX').length)).toBe(BARS.bars.length);
+    await expect.poll(() => page.evaluate(() => window.EdShell.series('$SPX', 1200).length)).toBe(BARS.bars.length);
     await expect.poll(async () => (await chartState()).bars).toBe(BARS.bars.length);
     expect(errs).toEqual([]);
   });
@@ -475,6 +476,20 @@ test.describe('Trade Desk renders served values', () => {
     await expect(page.locator('#tdmNews')).toHaveText('-');           // none held for SPY: absent
     await page.evaluate(() => window.EdShell.setTicker('QQQ'));
     await expect(page.locator('#tdmNews')).toContainText(news.content['4']);
+    expect(errs).toEqual([]);
+  });
+
+  test('Desk Volatility: VIX moves with its own price rows, not only the chart ticker\'s', async ({ page }) => {
+    // Before, the card painted only on a row of the chart ticker: a VIX row alone left it
+    // "waiting for the VIX stream". STAND-IN (named): the VIX price (schwabQuote).
+    const errs = watchErrors(page);
+    await intercept(page);
+    await mockPriceSocket(page, []);
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#tdmCardVol .tdm-rows')).toContainText('waiting for the VIX stream');
+    daemonSend(page, [schwabQuote('$VIX', 18.42)]);
+    await expect(page.locator('#tdmCardVol .tdm-rows')).toContainText('18.42');
     expect(errs).toEqual([]);
   });
 

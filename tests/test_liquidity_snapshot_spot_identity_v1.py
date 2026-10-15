@@ -46,7 +46,7 @@ def published():
     forget()
     for b in _BARS:
         if b["timestamp"] / 1000 < FRIDAY.timestamp():
-            srv._keep_bar(TK, Candle(ts=b["timestamp"] / 1000, open=b["open"], high=b["high"], low=b["low"],
+            srv._minutes.take(TK,Candle(ts=b["timestamp"] / 1000, open=b["open"], high=b["high"], low=b["low"],
                                      close=b["close"], volume=b["volume"]))
     srv._publish_price_levels(TK, FRIDAY)
     yield

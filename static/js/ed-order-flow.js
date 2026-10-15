@@ -30,52 +30,33 @@
     render(h, ticker(), a.body);
   });
   document.addEventListener('ed:push', function () { var h = host(); if (h && _book) render(h, ticker(), _book); });
-  // NYSE_BOOK / NASDAQ_BOOK (Whole): each book as Schwab sent it, pushed by the daemon, the newest
-  // replacing the last
-  var _schwabBook = {};
+  // the venue's book (NYSE_BOOK / NASDAQ_BOOK, Whole) and the top of book, as the daemon pushes
+  // them, drawn while the Book is on screen
+  function onBook() { var s = st(); return s.workspace === 'order-flow' && s.subview === 'book'; }
   window.addEventListener('ed:schwab', function (e) {
-    var m = e.detail; if (!m) return;
-    if (m.service === 'NYSE_BOOK' || m.service === 'NASDAQ_BOOK') _schwabBook[m.service + '|' + m.key] = m;
-    var h = host();
-    if (h && m.key === st().key && (m.service === st().bookVenue || m.service === 'LEVELONE_EQUITIES')) render(h, ticker(), _book);
+    var m = e.detail, h = host();
+    if (h && onBook() && m.key === st().key && (m.service === st().bookVenue || m.service === 'LEVELONE_EQUITIES')) render(h, ticker(), _book);
   });
-  // a Schwab book's side as the ladder draws it: the daemon's levels, each price and total size
-  // as Schwab sent them, as every reader of the book takes them (engine.book_levels)
-  function levels(side) {
-    return side.map(function (lv) { return { price: lv[0], volume: lv[1] }; });
-  }
 
   function classOf(map, key) { var v = map ? map[key] : null; return (typeof v === 'string' && v) ? v : null; }
-  function tag(c) {
-    if (c === undefined || c == null) return '';
-    var hook = (String(c).toLowerCase().match(/^[a-z0-9-]+/) || ['unknown'])[0];
-    return '<span class="fl-tag ' + hook + '" data-cls="' + esc(c) + '">' + esc(c) + '</span>';
-  }
-  function section(title, rows) {
-    var h = '<div class="fl-sec"><div class="fl-sec-h">' + esc(title) + '</div>';
-    rows.forEach(function (r) {
-      var v = r[1] && r[1].ageOf ? window.EdShell.ageSpan(r[1].ageOf) : esc(r[1]);   // a served age
-      h += '<div class="fl-row"><span class="k">' + esc(r[0]) + '</span><span class="v">' + v + '</span>' + tag(r[2]) + '</div>';
-    });
-    return h + '</div>';
-  }
 
   // Real per-level DOM ladder from d.depth_pressure.{bid,ask} -- [{price,volume,cum}], best-
   // first, up to OF_BOOK_DEPTH_DEEP (5) levels. This is genuine displayed-book data the first
   // build of this view fetched but never rendered (only the aggregate depth.{1,3,5} totals
   // were shown) -- the operator's "this sucks, it's just numbers" is fixed by using the level
   // array that was already on the wire.
+  // each level [price, total size] as the daemon sends it (engine.book_levels)
   function ladderHtml(bidLevels, askLevels, wallSet) {
     var maxVol = 0;
-    bidLevels.concat(askLevels).forEach(function (l) { if (l.volume > maxVol) maxVol = l.volume; });
+    bidLevels.concat(askLevels).forEach(function (l) { if (l[1] > maxVol) maxVol = l[1]; });
     maxVol = maxVol || 1;
     function row(l, side) {
-      var isWall = wallSet[side + '@' + l.price];
+      var isWall = wallSet[side + '@' + l[0]];
       // a size Schwab did not send as a number: no bar (an unknown is not a small size)
-      var bar = l.volume == null ? '' : '<i class="dom-bar" style="width:' + Math.max(2, Math.round((l.volume / maxVol) * 100)) + '%"></i>';
+      var bar = l[1] == null ? '' : '<i class="dom-bar" style="width:' + Math.max(2, Math.round((l[1] / maxVol) * 100)) + '%"></i>';
       return '<div class="dom-row ' + side + (isWall ? ' wall' : '') + '">' +
         '<div class="dom-bar-track">' + bar + '</div>' +
-        '<span class="dom-px">' + num(l.price) + '</span><span class="dom-sz">' + int(l.volume) + '</span></div>';
+        '<span class="dom-px">' + num(l[0]) + '</span><span class="dom-sz">' + int(l[1]) + '</span></div>';
     }
     var asksHtml = askLevels.slice().reverse().map(function (l) { return row(l, 'ask'); }).join('');
     var bidsHtml = bidLevels.map(function (l) { return row(l, 'bid'); }).join('');
@@ -84,12 +65,12 @@
   }
 
   function render(h, tk, d) {
-    var sb = _schwabBook[st().bookVenue + '|' + st().key];
+    var sb = window.EdShell.book(st().bookVenue, st().key);
     // the console's reads of the book, absent until it has priced one (then each reads '—')
     var priced = d && d.status !== 'no_book' ? d : null;
     function got(k) { return priced ? priced[k] : undefined; }
     var depth = got('depth'), cls = got('classification'), asOf = got('as_of');
-    var bidLevels = sb ? levels(sb.levels.bids) : [], askLevels = sb ? levels(sb.levels.asks) : [];
+    var bidLevels = sb ? sb.levels.bids : [], askLevels = sb ? sb.levels.asks : [];
     var verdict = window.EdShell.feedVerdict(st().key, st().bookVenue);
     // Schwab's top of book: LEVELONE_EQUITIES as the daemon pushes it, and its verdict
     var tob = window.EdShell.priceRow(st().key);
@@ -109,7 +90,7 @@
     var rowsTob = [
       ['Bid × size', num(tob.bid) + ' × ' + int(tob.bid_size), bk('top_of_book.bid')],
       ['Ask × size', num(tob.ask) + ' × ' + int(tob.ask_size), bk('top_of_book.ask')],
-    ].concat(!tob.feed_live ? [['Top of book', 'NOT LIVE' + (tob.outage ? ' · ' + tob.outage : ''), null]] : []);
+    ].concat(!tob.feed_live ? [['Top of book', window.EdShell.notLive(tob), undefined]] : []);
     var rowsImb = [
       ['Depth 1 imbalance', num(dep(1, 'imbalance'), 3), bk('depth.*.imbalance')],
       ['Depth 3 imbalance', num(dep(3, 'imbalance'), 3), bk('depth.*.imbalance')],
@@ -129,7 +110,7 @@
 
     // the book's verdict is the daemon's (the one live rule), on Schwab's book for this venue
     var live = !!(verdict && verdict.live);
-    var badge = live ? 'LIVE' : 'NOT LIVE' + (verdict && verdict.outage ? ' · ' + verdict.outage : '');
+    var badge = live ? 'LIVE' : window.EdShell.notLive(verdict);
     h.innerHTML =
       '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Ticker</span><span class="fl-sym">' + esc(tk) + '</span></div>' +
       '<div class="fl-sub"><span class="fl-lab">Book</span><span class="fl-badge ' + (live ? 'live' : 'stale') + '">' + esc(badge) + '</span>' +
@@ -137,7 +118,8 @@
       '<div class="dom-wrap">' +
         '<div class="dom-ladder">' + ladderHtml(bidLevels, askLevels, wallSet) + midHtml + '</div>' +
         '<div class="dom-stats">' +
-          section('Top of book', rowsTob) + section('Imbalance', rowsImb) + section('Freshness', fresh) +
+          window.EdShell.flSection('Top of book', rowsTob, '') + window.EdShell.flSection('Imbalance', rowsImb, '') +
+          window.EdShell.flSection('Freshness', fresh, '') +
         '</div>' +
       '</div>' +
       '<div class="fl-sec" style="margin-top:14px;"><div class="fl-sec-h">Wall candidates (size-outlier heuristic, displayed book only)</div>' + wallsHtml + '</div>' +

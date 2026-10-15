@@ -3,15 +3,16 @@ WebSocket, each pushed by its Schwab delivery type (Streamer API §1.1).
 
 The daemon owns the Schwab connection. This server takes every Schwab stream message from the
 daemon's bus, in the order published, as Schwab sent it, and pushes it to every client that asked
-for its symbol:
+for its symbol and service:
   LEVELONE_EQUITIES, LEVELONE_OPTIONS  Change: only the fields that changed (a client behind
                                        gets each field's newest value, merged; none lost)
   NYSE_BOOK, NASDAQ_BOOK, OPTIONS_BOOK Whole: the whole book (a client behind gets the newest)
-  CHART_EQUITY                         All Sequence: each bar with its SEQUENCE, every one, in order
+  CHART_EQUITY                         All Sequence: each bar of the ticker the client's chart
+                                       draws, every one, in order, after that ticker's series
   NEWS_HEADLINE                        each headline as sent, every one, in order (not in
                                        Schwab's Streamer document; Schwab answers it, code 0)
-On subscribe a client gets each symbol's current record: every field Schwab has sent for a Change
-service, the newest book, the newest bar and headline.
+On subscribe a client gets each symbol's current record (every field Schwab has sent for a Change
+service, the newest book), every headline after the last it received, and its chart's series.
 
 No web server sits in this path, so no analytics load can delay a price. Every second the beat
 carries the daemon's status and, for each symbol the client asked for, each of its services'
@@ -21,15 +22,18 @@ last trade time and age as the screen shows them (time_et.ct_label, age_label).
 
 Protocol (JSON text frames):
   client -> {"op": "subscribe", "symbols": ["SPY", "SPY   261120C00700000", ...],
-             "since": {service: {symbol: ts_recv}}, "chart": "SPY", "series_held": true}
+             "since": {symbol: ts_recv}, "chart": "SPY", "services": ["LEVELONE_EQUITIES"]}
              (replaces the set; `since`: the last headline it received of each, so a reconnect is
              sent only those after them; `chart`: the ticker whose 1-minute series it draws;
-             `series_held`: whether it holds that series -- not, and it is sent whole)
+             `services`: the ones it reads, none named: every one)
   server -> {"type": "symbols", "symbols": [{requested, key, display}, ...]}  (on subscribe)
-  server -> {"type": "series", "key", "bars": [{t, o, h, l, c, v, chg, chg_pct}, ...], "last_bar"}
-            (the chart's ticker's 1-minute series, whole: on subscribe and on each /pricehistory
-            answer; each CHART_EQUITY bar after it comes as a message)
+  server -> {"type": "series", "key", "bars": [{t, o, h, l, c, v, chg, chg_pct}, ...],
+            "last_bar": {t, label}}  (the chart's ticker's 1-minute series, whole: on a new chart,
+            on each /pricehistory answer and when a bar lands on a minute before the newest)
   server -> {"type": "schwab", "messages": [{service, key, schwab_ts, ts_recv, content}, ...]}
+            (a Change service's also `absent`, the fields that are not a number; a book's
+            `levels` and `time_ct`; a headline's `time_ct`; a bar's `bar`, `last_bar` and
+            `series_op`, what it did to the series: "append" a new newest minute, "replace" it)
   server -> {"type": "feed", "feed": {...}, "state": {key: {service: {live, outage}}},
             "trades": {key: {time_ct, age}}}  (every HEARTBEAT_SEC)
 """
@@ -44,10 +48,10 @@ import time
 
 import live_market_plane as lmp
 from app.options.order_flow.engine import book_levels
-from instrument_identity import display_symbol, ticker_storage_key
+from instrument_identity import display_symbol, ticker_storage_key, vendor_option_root
 from live_price_rows import with_change
-from micro_structure import Candle, bar_dict, schwab_bar
-from minute_bars import CHART_1M_BARS, INSERT, MinuteBars
+from micro_structure import bar_dict, streamed_bar
+from minute_bars import CHART_1M_BARS, INSERT, MinuteBars, last_bar
 from numeric_contract import schwab_number
 from stream_spine import LOG, MessageBus
 from time_et import age_label, ct_label
@@ -72,12 +76,13 @@ _TOPIC_SERVICE = {"quote": ("LEVELONE_EQUITIES", "native"), "optquote": ("LEVELO
                   "book": (None, "content")}
 #: the headlines held per symbol for a client that (re)connects (a page's 1-minute chart is sent
 #: its whole series instead, series_of)
-SEQUENCE_KEPT = 1000
+HEADLINES_KEPT = 1000
 #: a NEWS_HEADLINE item's time field (epoch ms), as measured from Schwab's own items (the service is
 #: not in Schwab's Streamer document; its items carry 1 = time, 2 = id, 4 = headline, 9 = source)
 NEWS_TIME = "1"
-#: the services a symbol's verdict is reported for, by kind of symbol
-EQUITY_SERVICES = ("LEVELONE_EQUITIES", "NYSE_BOOK", "NASDAQ_BOOK", "CHART_EQUITY", "NEWS_HEADLINE")
+#: the services the daemon streams each kind of symbol on (capture subscribes them; each symbol's
+#: verdict is reported for them)
+EQUITY_SERVICES = ("LEVELONE_EQUITIES", "CHART_EQUITY", "NEWS_HEADLINE", "NYSE_BOOK", "NASDAQ_BOOK")
 OPTION_SERVICES = ("LEVELONE_OPTIONS", "OPTIONS_BOOK")
 
 
@@ -91,38 +96,38 @@ def schwab_message(topic: str, msg: dict) -> "dict | None":
     content = msg.get(item_key)
     if not isinstance(content, dict):
         return None
-    out = {"service": service if service is not None else msg.get("service"), "key": msg["symbol"],
-           "schwab_ts": msg.get("schwab_ts"), "ts_recv": msg.get("ts_recv"), "content": content}
-    if DELIVERY.get(out["service"]) == CHANGE:          # each field Schwab sent that is not a number: '-'
-        out["absent"] = sorted(k for k, v in content.items() if k != "key" and lmp.read_stream_field(k, v) is None)
-    elif DELIVERY.get(out["service"]) == WHOLE:         # the book's levels as the ladder shows them
+    return {"service": service if service is not None else msg.get("service"), "key": msg["symbol"],
+            "schwab_ts": msg.get("schwab_ts"), "ts_recv": msg.get("ts_recv"), "content": content}
+
+
+def marked(m: dict) -> dict:
+    """`m` as the screen reads it: each field of a Change service that is not a number (shown '-'),
+    a book's levels as the ladder shows them, and a book's or headline's time labelled."""
+    content, kind = m["content"], DELIVERY[m["service"]]
+    if kind == CHANGE:
+        m["absent"] = sorted(k for k, v in content.items() if k != "key" and lmp.read_stream_field(k, v) is None)
+    elif kind == WHOLE:
         bids, asks = book_levels(content)
-        out["levels"] = {"bids": [list(lv) for lv in bids], "asks": [list(lv) for lv in asks]}
-    sent = schwab_number(content.get(NEWS_TIME) if out["service"] == "NEWS_HEADLINE"
-                         else content.get("BOOK_TIME") if DELIVERY.get(out["service"]) == WHOLE else None)
+        m["levels"] = {"bids": [list(lv) for lv in bids], "asks": [list(lv) for lv in asks]}
+    sent = schwab_number(content.get(NEWS_TIME) if m["service"] == "NEWS_HEADLINE"
+                         else content.get("BOOK_TIME") if kind == WHOLE else None)
     if sent is not None:
-        out["time_ct"] = ct_label(sent / 1000.0)        # the headline's or book's time as the screen shows it
-    if out["service"] == "CHART_EQUITY":                # the bar as the chart draws it, by its one producer
-        candle = schwab_bar(content.get("CHART_TIME_MILLIS"), content.get("OPEN_PRICE"), content.get("HIGH_PRICE"),
-                            content.get("LOW_PRICE"), content.get("CLOSE_PRICE"), content.get("VOLUME"))
-        if candle is not None:
-            out["bar"] = with_change(bar_dict(candle))
-            out["time_ct"] = ct_label(candle.ts)
-    return out
+        m["time_ct"] = ct_label(sent / 1000.0)
+    return m
 
 
 def _services(key: str) -> tuple:
-    """The services a symbol is streamed on: an option contract's (Schwab's 21-character
-    contract symbol) or an equity's."""
-    return OPTION_SERVICES if len(key) == 21 and " " in key else EQUITY_SERVICES
+    """The services a symbol is streamed on: an option contract's or an equity's."""
+    return OPTION_SERVICES if vendor_option_root(key) else EQUITY_SERVICES
 
 
 class _Client:
-    __slots__ = ("ws", "symbols", "change", "whole", "sequence", "identity", "chart", "series", "wake")
+    __slots__ = ("ws", "symbols", "services", "change", "whole", "sequence", "identity", "chart", "series", "wake")
 
     def __init__(self, ws) -> None:
         self.ws = ws
         self.symbols: frozenset[str] = frozenset()
+        self.services: "frozenset[str] | None" = None   # the services it asked for (none named: every one)
         self.chart: "str | None" = None           # the ticker whose 1-minute series the page draws
         self.series: "dict | None" = None         # that series, whole, not yet sent
         self.change: dict[tuple, dict] = {}       # (service, key) -> the changed fields not yet sent
@@ -130,6 +135,13 @@ class _Client:
         self.sequence: list[dict] = []            # every bar and headline not yet sent, in order
         self.identity: "list[dict] | None" = None   # the last subscribe's answer, not yet sent
         self.wake = asyncio.Event()
+
+    def wants(self, service: str, key: str) -> bool:
+        """Whether this client is sent `key`'s messages on `service`: a service it asked for, and
+        the ticker its chart draws for a bar, else a symbol it asked for."""
+        if self.services is not None and service not in self.services:
+            return False
+        return key == self.chart if service == "CHART_EQUITY" else key in self.symbols
 
     def take(self, m: dict) -> None:
         """One Schwab message for this client, held by its delivery type until the next send."""
@@ -164,11 +176,11 @@ class LiveUiServer:
         self.clock = clock                           # each beat's instant (the verdicts are judged at it)
         self.stats = stats
         self.clients: set[_Client] = set()
-        #: each equity's last trade time (Schwab's TRADE_TIME_MILLIS, as sent)
-        self.trade_ms: dict[str, float] = {}
-        #: every headline sent, in order, per symbol, the newest SEQUENCE_KEPT: what a client that
+        #: each equity's last trade time (Schwab's TRADE_TIME_MILLIS, epoch s, by the one reader)
+        self.trade_s: dict[str, float] = {}
+        #: every headline sent, in order, per symbol, the newest HEADLINES_KEPT: what a client that
         #: connects or reconnects is sent after the last one it received
-        self.sequence: dict[tuple, collections.deque] = {}
+        self.headlines: dict[str, collections.deque] = {}
         #: each ticker's 1-minute bars (minute_bars, the one producer of the series; the console
         #: keeps the same for its calculations): what a page's 1-minute chart is sent whole
         self.minutes = MinuteBars()
@@ -183,53 +195,59 @@ class LiveUiServer:
         if topic.startswith("pricehistory.") and isinstance(msg, dict) and msg.get("series") == "1m":
             tk = ticker_storage_key(msg["symbol"])
             self.minutes.take_history(tk, msg["answer"]["candles"])
-            for c in self.clients:
-                if c.chart == tk:
-                    self.give_series(c, tk)
+            self.give_series_to_charts(tk)
             return
         m = schwab_message(topic, msg)
         if m is None:
             return
         if isinstance(m["ts_recv"], (int, float)):
             lmp.note_posted(m["key"], m["service"], m["ts_recv"])
-        trade = schwab_number(m["content"].get("TRADE_TIME_MILLIS")) if m["service"] == "LEVELONE_EQUITIES" else None
-        if trade is not None:
-            self.trade_ms[m["key"]] = trade
-            m["trade"] = self.trade_label(m["key"], self.clock())   # the new trade's time, with its price
-        if m["service"] == "CHART_EQUITY" and "bar" in m:       # into its ticker's series
-            b = m["bar"]
-            # what it did there, so a page applies it as is: a new newest minute or the newest
-            # again; any other minute, the series whole to each page drawing it
-            m["series_op"] = self.minutes.take(m["key"], Candle(ts=b["t"], open=b["o"], high=b["h"], low=b["l"],
-                                                              close=b["c"], volume=b["v"]))
+        if m["service"] == "LEVELONE_EQUITIES":
+            trade = lmp.read_stream_field("TRADE_TIME_MILLIS", m["content"].get("TRADE_TIME_MILLIS"))
+            if trade is not None:
+                self.trade_s[m["key"]] = trade
+                m["trade"] = self.trade_label(m["key"], self.clock())   # the new trade's time, with its price
+        elif m["service"] == "CHART_EQUITY":
+            candle = streamed_bar(msg)
+            if candle is None:
+                return
+            # into its ticker's series; what it did there, so a page applies it as is: a new
+            # newest minute or the newest again; any other minute, the series whole to each page
+            # drawing it (the bar is in it)
+            m["series_op"] = self.minutes.take(m["key"], candle)
             if m["series_op"] == INSERT:
-                for c in self.clients:
-                    if c.chart == m["key"]:
-                        self.give_series(c, m["key"])
+                self.give_series_to_charts(m["key"])
+                return
+            m["bar"], m["last_bar"] = with_change(bar_dict(candle)), last_bar(candle)
         elif m["service"] == "NEWS_HEADLINE":
-            k = (m["service"], m["key"])
-            self.sequence.setdefault(k, collections.deque(maxlen=SEQUENCE_KEPT)).append(m)
-        for c in self.clients:
-            if m["key"] in c.symbols:
-                c.take(m)
+            self.headlines.setdefault(m["key"], collections.deque(maxlen=HEADLINES_KEPT)).append(marked(m))
+        wanting = [c for c in self.clients if c.wants(m["service"], m["key"])]
+        if wanting and m["service"] != "NEWS_HEADLINE":
+            marked(m)
+        for c in wanting:
+            c.take(m)
 
     def snapshot(self, c: _Client, keys: "list[str]", since: dict) -> None:
         """For a client that just asked for `keys`: each one's current record on the bus (a quote
-        or a book), and every headline sent after the last the client received (`since`:
-        {service: {symbol: ts_recv}}; none: every one held), in order, each once."""
+        or a book) on a service it asked for, and every headline sent after the last the client
+        received (`since`: {symbol: ts_recv}; none: every one held), in order, each once."""
+        if not keys:
+            return
+        wanted = set(keys)
         for topic, record in list(self.bus.current.values()):
+            if not isinstance(record, dict) or record.get("symbol") not in wanted:
+                continue
             m = schwab_message(topic, record)
-            if m is not None and m["key"] in keys and DELIVERY[m["service"]] != SEQUENCE:
-                if m["service"] == "LEVELONE_EQUITIES" and m["key"] in self.trade_ms:
-                    m["trade"] = self.trade_label(m["key"], self.clock())   # its last trade, with its price
-                c.take(m)
-        for (service, key), held in self.sequence.items():
-            if key in keys:
-                seen = since.get(service)               # the last of this service the client received
-                after = schwab_number(seen.get(key)) if isinstance(seen, dict) else None
-                for m in list(held):
-                    if after is None or (isinstance(m["ts_recv"], (int, float)) and m["ts_recv"] > after):
-                        c.take(m)
+            if m is None or DELIVERY[m["service"]] == SEQUENCE or not c.wants(m["service"], m["key"]):
+                continue
+            if m["service"] == "LEVELONE_EQUITIES" and m["key"] in self.trade_s:
+                m["trade"] = self.trade_label(m["key"], self.clock())   # its last trade, with its price
+            c.take(marked(m))
+        for key in (k for k in keys if c.wants("NEWS_HEADLINE", k)):
+            after = schwab_number(since.get(key))       # the last headline of it the client received
+            for m in list(self.headlines.get(key, ())):
+                if after is None or (isinstance(m["ts_recv"], (int, float)) and m["ts_recv"] > after):
+                    c.take(m)
 
     def beat(self) -> dict:
         """The daemon's whole status (Schwab socket, symbols held and refused per service, the
@@ -252,20 +270,26 @@ class LiveUiServer:
         c.sequence = [m for m in c.sequence if not (m["service"] == "CHART_EQUITY" and m["key"] == tk)]
         c.wake.set()
 
+    def give_series_to_charts(self, tk: str) -> None:
+        """`tk`'s series, whole, to every page whose chart draws it."""
+        for c in self.clients:
+            if c.wants("CHART_EQUITY", tk):
+                self.give_series(c, tk)
+
     def series_of(self, tk: str) -> dict:
         """`tk`'s 1-minute series as the chart draws it, whole: its newest CHART_1M_BARS bars (each
-        with its change, live_price_rows.with_change) and the newest one's start, labelled."""
+        with its change, live_price_rows.with_change) and the newest one (minute_bars.last_bar)."""
         bars = self.minutes.newest(tk, CHART_1M_BARS)
         return {"type": "series", "key": tk, "bars": [with_change(bar_dict(c)) for c in bars],
-                "last_bar": ct_label(bars[-1].ts) if bars else None}
+                "last_bar": last_bar(bars[-1]) if bars else None}
 
     def trade_label(self, key: str, now: float) -> dict:
         """`key`'s last trade time and its age at `now`, as the screen shows them."""
-        return {"time_ct": ct_label(self.trade_ms[key] / 1000.0), "age": age_label(now - self.trade_ms[key] / 1000.0)}
+        return {"time_ct": ct_label(self.trade_s[key]), "age": age_label(now - self.trade_s[key])}
 
     def trades(self, c: _Client, now: float) -> dict:
         """Each asked-for equity's last trade time and age at `now`, as the screen shows them."""
-        return {k: self.trade_label(k, now) for k in sorted(c.symbols) if k in self.trade_ms}
+        return {k: self.trade_label(k, now) for k in sorted(c.symbols) if k in self.trade_s}
 
     # -- client side ------------------------------------------------------------------
 
@@ -312,14 +336,15 @@ class LiveUiServer:
                     keys.append(k)
             added = [k for k in keys if k not in c.symbols]
             c.symbols = frozenset(keys)
+            services = req.get("services")
+            c.services = frozenset(s for s in services if s in DELIVERY) if isinstance(services, list) else None
             c.identity = identity            # what each asked-for symbol is, before its messages
             self.snapshot(c, added, req["since"] if isinstance(req.get("since"), dict) else {})
             chart = ticker_storage_key(req["chart"]) if isinstance(req.get("chart"), str) else None
-            # a new chart, a page reconnecting, or a page that holds none (the same chart typed
-            # another way: SPX, $SPX)
-            if chart and (chart != c.chart or added or req.get("series_held") is not True):
+            if chart != c.chart:             # a new chart, or a page (re)connecting: its series whole
                 c.chart = chart
-                self.give_series(c, chart)
+                if chart:
+                    self.give_series(c, chart)
             c.wake.set()
 
     async def serve_client(self, ws) -> None:

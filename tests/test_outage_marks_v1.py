@@ -113,7 +113,7 @@ def test_through_a_schwab_outage_the_tape_keeps_its_prints_marked_not_live():
              "strike": None, "strike_expiry": None, "contract": None, "scope": "auto", "venue": "NYSE_BOOK",
              "cols": 6, "book_minutes": 60, "tfs": {"chart": "1", "liquidity": "5", "desk": "5"},
              "pans": {k: {"centre": None, "shift": 0} for k in ("heatmap", "gbs", "vanna", "charm", "migration")}}
-        assert server._not_live(server._panels(v)["gamma.tape"], now + 1)
+        assert server._not_live(server._panels(v)[0]["gamma.tape"], now + 1)
     finally:
         ofls.clear_symbol(_SYM)
         no_daemon()
@@ -137,15 +137,16 @@ def test_the_candles_and_the_options_tape_are_marked_when_their_feed_is_down():
         ofs.apply_heartbeat(_status(now, connected_at=_TRADE["ts_recv"] + 1, picks=picks, ranked=["SPY"],
                                     held={**picks, "LEVELONE_EQUITIES": ["SPY"]}))
         _priced_and_traded()
-        panels = server._panels(v)
-        assert panels["gamma.chart.bars"].feeds_now() == (("SPY", "CHART_EQUITY"),)
+        panels, series = server._panels(v)
+        assert series == [] and panels["gamma.chart.bars"].feeds_now() == (("SPY", "CHART_EQUITY"),)
         assert panels["gamma.tape"].feeds_now() == ((_SYM, "LEVELONE_OPTIONS"),)
         down = [server._not_live(panels[n], now) for n in ("gamma.chart.bars", "gamma.tape")]
         assert all(down), down
-        one_minute = server._panels({**v, "tfs": {**v["tfs"], "chart": "1"}})["gamma.chart.bars"]
-        assert one_minute.source == server.DAEMON_SERIES and one_minute.feeds_now() == ()
+        # at 1 minute the chart draws the daemon's series: the console answers no bars for it
+        panels, series = server._panels({**v, "tfs": {**v["tfs"], "chart": "1"}})
+        assert series == ["gamma.chart.bars"] and "gamma.chart.bars" not in panels
         # the price levels and the zones are built from the 1-minute bars: marked by CHART_EQUITY too
-        levels = server._panels({**v, "view": "levels"})["gamma.levels"]
+        levels = server._panels({**v, "view": "levels"})[0]["gamma.levels"]
         assert ("SPY", "CHART_EQUITY") in levels.feeds_now()
         assert any("CHART_EQUITY" in r for r in server._not_live(levels, now))
     finally:

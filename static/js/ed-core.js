@@ -461,6 +461,28 @@
   var AGE_NOT_KNOWN = 'age not known';
   function ageText(kind) { var l = _ageLabels[kind]; return l == null ? AGE_NOT_KNOWN : l; }
   function ageSpan(kind) { return '<span data-age-of="' + _escBadge(kind) + '">' + _escBadge(ageText(kind)) + '</span>'; }
+  // A value's classification tag: the backend's string verbatim, its CSS hook the leading token
+  // (NATIVE/DERIVED/PROXY styled; anything else neutral). null: a classified value the backend
+  // served no classification for, UNKNOWN (an unknown shows as unknown); undefined: not classified.
+  function flTag(c) {
+    if (c === undefined) return '';
+    var text = c === null ? 'UNKNOWN' : c;
+    var lead = String(text).toLowerCase().match(/^[a-z0-9-]+/);
+    return '<span class="fl-tag ' + (lead ? lead[0] : 'unknown') + '" data-cls="' + _escBadge(text) + '">' + _escBadge(text) + '</span>';
+  }
+  // The rows of a statistics section, each [label, value (text, or {ageOf} a served age),
+  // classification (flTag), its key (data-k), if it names one]
+  function flRows(rows) {
+    return rows.map(function (r) {
+      var v = r[1] && r[1].ageOf ? ageSpan(r[1].ageOf) : _escBadge(r[1]);
+      return '<div class="fl-row"' + (r[3] === undefined ? '' : ' data-k="' + _escBadge(r[3]) + '"') + '><span class="k">' +
+        _escBadge(r[0]) + '</span><span class="v">' + v + '</span>' + flTag(r[2]) + '</div>';
+    }).join('');
+  }
+  // one statistics section: its title and rows (flRows); `dim`: its class added, or ''
+  function flSection(title, rows, dim) {
+    return '<div class="fl-sec' + dim + '"><div class="fl-sec-h">' + _escBadge(title) + '</div>' + flRows(rows) + '</div>';
+  }
   function fillAges(labels) {
     Object.keys(labels).forEach(function (k) { _ageLabels[k] = labels[k]; });
     document.querySelectorAll('[data-age-of]').forEach(function (el) {
@@ -693,22 +715,9 @@
   // ---- header quote + watchlist: Schwab's LEVELONE_EQUITIES from the daemon's socket (8800) --
   //      the ONLY source of the header quote and the watchlist rows: when it is not delivering,
   //      the header says so -- nothing polls a quote. ----
-  // Operator directive (2026-09-14, spot 360 audit): the source that answered THIS number
-  // was already on every payload (quote_ingestion / _quote_authority) but never surfaced —
-  // a hover tooltip, not new chrome, so the next divergence (if the plane/REST hierarchy
-  // ever disagrees again) is diagnosable on the spot the operator is already looking at,
-  // not something that needs a screenshot comparison to notice.
-  var QUOTE_INGESTION_LABEL = {
-    schwab_streaming_level_one: 'streaming', rest_tier_a: 'REST (header bootstrap)',
-    rest_watchlist_batch: 'REST (watchlist batch)', live_market_plane: 'streaming plane',
-  };
   function paintQuote(q) {
     var px = document.getElementById('hPx'), chg = document.getElementById('hChg'), ba = document.getElementById('hBidAsk');
-    if (px) {
-      px.textContent = q.spot_disp == null ? 'UNAVAILABLE' : q.spot_disp;
-      var srcLbl = q.quoteIngestion ? (QUOTE_INGESTION_LABEL[q.quoteIngestion] || q.quoteIngestion) : '';
-      px.title = srcLbl ? ('spot source: ' + srcLbl) : '';
-    }
+    if (px) px.textContent = q.spot_disp == null ? 'UNAVAILABLE' : q.spot_disp;
     if (ba) ba.textContent = fmt(q.bid) + ' × ' + fmt(q.ask);
     // Schwab's two change percents, each labelled: the regular session's and the last price's
     // (extended hours included). Formatting only; absent reads "—".
@@ -753,7 +762,8 @@
   }
   // ---- Schwab's messages, straight from the capture daemon (app/market_data/schwab/streaming/
   //      live_ui.py), each by its delivery type: LEVELONE_EQUITIES / LEVELONE_OPTIONS Change (the
-  //      fields that changed), the books Whole, CHART_EQUITY and NEWS_HEADLINE every one in order ----
+  //      fields that changed), the books Whole, the chart's CHART_EQUITY bars after its series and
+  //      NEWS_HEADLINE every one in order ----
   var PRICE_SILENCE_MS = 3000;   // the daemon beats every 1 s; 3 s of nothing = its socket is down
   var _priceUp = false, _lastPriceTs = 0, _priceSubTs = 0, _daemon = null, _daemonRetry = 0;
   // The market context the server always streams, served in the page (meta ed-market-context,
@@ -784,46 +794,49 @@
     var port = m ? String(m.getAttribute('content')) : '';
     return /^\d+$/.test(port) ? 'ws://127.0.0.1:' + port + '/' : null;
   }
+  // the subscribe last sent on this connection: one that names the same is not sent again
+  var _subscribed = null;
   function subscribePrices() {
     if (!_daemon || _daemon.readyState !== 1) return;   // sent on open
-    // a new chart ticker: only its series is kept, the daemon's, whole, once it lands (another's
-    // copy is not kept up to date by the daemon, so it is never drawn again)
-    if (state.ticker !== _chart) { _chart = state.ticker; _series = {}; }
-    _daemon.send(JSON.stringify({ op: 'subscribe', symbols: priceSymbols().concat(state.contract ? [state.contract] : []),
-      since: _seqSeen, chart: state.ticker ? state.ticker : null,   // no ticker chosen: no chart
-      series_held: Object.keys(_series).length > 0 }));   // none held (a new chart): the daemon sends it whole
+    var req = JSON.stringify({ op: 'subscribe', symbols: priceSymbols().concat(state.contract ? [state.contract] : []),
+      since: _seqSeen, chart: state.ticker ? state.ticker : null });   // no ticker chosen: no chart
+    if (req === _subscribed) return;
+    _subscribed = req;
+    _daemon.send(req);
   }
-  // the daemon's receive time of the last bar and headline received of each symbol, so a
-  // reconnect is sent only those after them, each once ({service: {key: ts_recv}})
+  // the daemon's receive time of the last headline received of each symbol, so a reconnect is
+  // sent only those after them, each once ({key: ts_recv})
   var _seqSeen = {};
-  // the chart ticker's 1-minute series as the daemon serves it ({key: {bars, last_bar}}): whole on
-  // subscribe and on each /pricehistory answer, then each CHART_EQUITY bar in order
-  var _series = {};
-  var _chart = null;                  // the ticker whose series the page last asked the daemon for
+  // the chart's 1-minute series as the daemon serves it ({key, bars, last_bar}): whole for a new
+  // chart, a reconnect and each /pricehistory answer, then each CHART_EQUITY bar in order
+  var _series = null;
   // Each symbol's LEVELONE_EQUITIES fields as Schwab sent them (Change: each the last one sent),
   // each symbol's verdict per service and its last trade's time and age, as the daemon's beat
   // serves them ({service: {live, outage}}, {time_ct, age})
   var _l1 = {}, _feedState = {}, _trades = {};
+  // each symbol's newest book on each book service, as the daemon sent it ({'NYSE_BOOK|SPY': message})
+  var _books = {};
   function openDaemon() {
     var url = daemonUrl();
     if (_daemon || typeof WebSocket === 'undefined' || !url) return;
     var ws = new WebSocket(url);
     _daemon = ws;
-    ws.onopen = function () { _daemonRetry = 0; subscribePrices(); };
+    ws.onopen = function () { _daemonRetry = 0; _subscribed = null; subscribePrices(); };
     ws.onmessage = function (ev) {
       var msg = JSON.parse(ev.data);
       _priceUp = true; _lastPriceTs = Date.now();     // the daemon beats every second
       if (msg.type === 'symbols') { ingestIdentity(msg.symbols); redeliverDaemon(true); return; }
-      if (msg.type === 'series') {                    // the chart ticker's 1-minute series, whole
-        _series[msg.key] = { bars: msg.bars, last_bar: msg.last_bar };
+      if (msg.type === 'series') {                    // the chart's 1-minute series, whole
+        _series = { key: msg.key, bars: msg.bars, last_bar: msg.last_bar };
         redeliverDaemon(true);
+        document.dispatchEvent(new CustomEvent('ed:series', { detail: { key: msg.key } }));
         return;
       }
       if (msg.type === 'feed') {
         paintRecord(msg.feed ? msg.feed.writer : null);
         _feedState = msg.state; _trades = msg.trades;
         Object.keys(_feedState).forEach(function (k) { ingestPriceRow(priceRow(k)); });
-        Object.keys(_daemonPanels).forEach(function (n) { markLive(n, seriesAnswer().notLive); });   // the daemon's verdict now
+        _daemonPanels.forEach(function (n) { markLive(n, seriesAnswer().notLive); });   // the daemon's verdict now
         return;
       }
       if (msg.type !== 'schwab') return;
@@ -837,17 +850,17 @@
           if (m.trade) _trades[m.key] = m.trade;        // a new trade: its time and age, with its price
           if (m.service === 'LEVELONE_EQUITIES') ingestPriceRow(priceRow(m.key));
         }
-        if (m.service === 'NEWS_HEADLINE') {          // All Sequence: each once, in order
-          var seen = _seqSeen[m.service] || (_seqSeen[m.service] = {});
-          if (typeof m.ts_recv === 'number') seen[m.key] = m.ts_recv;
+        if (m.service === 'NYSE_BOOK' || m.service === 'NASDAQ_BOOK' || m.service === 'OPTIONS_BOOK') {
+          _books[m.service + '|' + m.key] = m;        // Whole: the newest book replaces the last
         }
-        // All Sequence: each bar after the series, applied as the daemon's series took it (its
-        // `series_op`: a new newest minute, or the newest again; any other minute comes whole)
-        if (m.service === 'CHART_EQUITY' && m.bar && _series[m.key] && (m.series_op === 'append' || m.series_op === 'replace')) {
-          var s = _series[m.key];
-          if (m.series_op === 'append') s.bars.push(m.bar); else s.bars[s.bars.length - 1] = m.bar;
-          s.last_bar = m.time_ct;
-          if (m.key === state.key) redeliverDaemon(false);
+        if (m.service === 'NEWS_HEADLINE' && typeof m.ts_recv === 'number') _seqSeen[m.key] = m.ts_recv;   // each once, in order
+        // each bar after the series, applied as the daemon's series took it (its `series_op`: a
+        // new newest minute, or the newest again; any other minute comes whole)
+        if (m.service === 'CHART_EQUITY' && _series && _series.key === m.key) {
+          if (m.series_op === 'append') _series.bars.push(m.bar); else _series.bars[_series.bars.length - 1] = m.bar;
+          _series.last_bar = m.last_bar;
+          redeliverDaemon(false);
+          document.dispatchEvent(new CustomEvent('ed:series', { detail: { key: m.key } }));
         }
         // every Schwab message, by its service, to the screens that draw it (books, bars,
         // headlines, option quotes)
@@ -870,14 +883,14 @@
     var f = _l1[key], s = feedVerdict(key, 'LEVELONE_EQUITIES'), t = _trades[key];
     function v(name) { return f && f[name] !== undefined ? f[name] : null; }
     var spot = v('LAST_PRICE');
-    return { ticker: key, spot: spot, spot_disp: spot == null ? null : spot.toFixed(2),
+    return { ticker: key, spot: spot, spot_disp: spot == null ? null : fmt(spot),
       bid: v('BID_PRICE'), ask: v('ASK_PRICE'), bid_size: v('BID_SIZE'), ask_size: v('ASK_SIZE'), mark: v('MARK'),
       last_size: v('LAST_SIZE'), total_volume: v('TOTAL_VOLUME'), net_change: v('NET_CHANGE'),
       chg_pct: v('NET_CHANGE_PERCENT'), chg_pct_regular: v('REGULAR_MARKET_CHANGE_PERCENT'),
       open_price: v('OPEN_PRICE'), high_price: v('HIGH_PRICE'), low_price: v('LOW_PRICE'), prior_close: v('CLOSE_PRICE'),
       trade_time_ct: t && t.time_ct != null ? t.time_ct : null,
       trade_age: t && t.age != null ? t.age : null,
-      feed_live: !!s && s.live === true, outage: s && s.outage != null ? s.outage : null, quote_ingestion: 'schwab_streaming_level_one' };
+      feed_live: !!s && s.live === true, outage: s && s.outage != null ? s.outage : null };
   }
   // What each symbol the page asked for is, as the daemon answers the subscribe: the key its
   // messages carry ("$SPX") and its display name ("SPX").
@@ -887,6 +900,7 @@
       if (s.requested === state.ticker && state.key !== s.key) {
         state.key = s.key; state.display = s.display;
         paintIdentity(s.display);
+        document.dispatchEvent(new CustomEvent('ed:key', { detail: { key: s.key } }));   // the screens keyed by it draw
         if (_l1[s.key]) ingestPriceRow(priceRow(s.key));   // its row as last sent, until it changes
       }
     });
@@ -902,7 +916,7 @@
       // writes per second. The price is Schwab's last trade with Schwab's
       // trade time, or absent with the served outage reason; the feed state is stated beside it.
       paintQuote({ spot_disp: q.spot_disp, spot: q.spot, bid: q.bid, ask: q.ask,
-        chgPct: q.chg_pct, chgPctRegular: q.chg_pct_regular, quoteIngestion: q.quote_ingestion,
+        chgPct: q.chg_pct, chgPctRegular: q.chg_pct_regular,
         feedCls: q.feed_live ? '' : 'stale',
         feedLabel: q.feed_live ? 'LIVE' : 'OFFLINE',
         ageLabel: (q.outage ? q.outage + ' · ' : '') + (q.trade_time_ct != null ? ('last trade ' + tradeLabel(q)) : 'no trade sent') });
@@ -1020,22 +1034,20 @@
     document.dispatchEvent(new CustomEvent('ed:push', { detail: { down: down } }));   // the screens that say LIVE redraw
     paintMarks();                                  // then every shown element is marked, the redrawn included
   }
-  // The panels the console says are the daemon's (the 1-minute series, server.DAEMON_SERIES): each
-  // drawn from the daemon's series for the ticker, marked by the daemon's CHART_EQUITY verdict
-  var _daemonPanels = {};
+  // The charts the console says draw the daemon's 1-minute series (its view's `series`): each drawn
+  // from the daemon's series for the ticker, marked by the daemon's CHART_EQUITY verdict
+  var _daemonPanels = [];
   // (`whole`: the series as the daemon sent it whole, drawn whole; else one new bar on it)
   function seriesAnswer(whole) {
-    var s = _series[state.key];
-    if (!s) return { waiting: true };              // the daemon's series not yet in
+    if (!_series || _series.key !== state.key) return { waiting: true };   // the daemon's series not yet in
     var v = feedVerdict(state.key, 'CHART_EQUITY');
-    return { ok: true, status: 200, body: { bars: s.bars, tf: '1', whole: whole, last_bar: s.last_bar ? { label: s.last_bar } : null },
+    return { ok: true, status: 200, body: { bars: _series.bars, tf: '1', whole: whole, last_bar: _series.last_bar },
              notLive: v && v.outage ? [v.outage] : null };
   }
-  function redeliverDaemon(whole) { Object.keys(_daemonPanels).forEach(function (n) { deliver(n, seriesAnswer(whole)); }); }
+  function redeliverDaemon(whole) { _daemonPanels.forEach(function (n) { deliver(n, seriesAnswer(whole)); }); }
   // each panel drawn on its own: one drawer's error is reported and never stops the others
   function deliver(name, a) {
     if (!_panelFns[name]) return;
-    if (a.ok && a.body && a.body.from_daemon === 'CHART_EQUITY') { _daemonPanels[name] = true; a = seriesAnswer(true); }
     if (a.ages) Object.keys(a.ages).forEach(function (k) { _ageLabels[k] = a.ages[k]; });   // drawn with its ages
     _panelFns[name].forEach(function (fn) {
       try { fn(a); } catch (e) { console.error('panel ' + name + ': ' + (e && e.stack ? e.stack : e)); }
@@ -1065,7 +1077,9 @@
         Object.keys(_held).forEach(function (n) { if (msg.shown.indexOf(n) === -1) delete _held[n]; });   // off screen
         _shown = msg.shown;
         Object.keys(_notLive).forEach(function (n) { if (msg.shown.indexOf(n) === -1) markLive(n, null); });
-        Object.keys(_daemonPanels).forEach(function (n) { if (msg.shown.indexOf(n) === -1 || msg.moved.indexOf(n) !== -1) delete _daemonPanels[n]; });
+        // the charts that draw the daemon's series: each one new to it is drawn from it now
+        var drawn = _daemonPanels; _daemonPanels = msg.series;
+        _daemonPanels.forEach(function (n) { if (drawn.indexOf(n) === -1) deliver(n, seriesAnswer(true)); });
         msg.moved.forEach(function (n) { delete _held[n]; deliver(n, { waiting: true }); });
         if (msg.seq !== _viewSeq) return;          // a newer view is on its way: it decides the rest
         var held = _held; _held = {};
@@ -1117,7 +1131,7 @@
         feedCls: 'stale', feedLabel: feedLabel, ageLabel: connecting ? 'no push yet' : 'live push down' });
     } else {
       paintQuote({ spot: q.spot, spot_disp: q.spot_disp, bid: q.bid, ask: q.ask, chgPct: q.chg_pct,
-        chgPctRegular: q.chg_pct_regular, quoteIngestion: q.quote_ingestion, feedCls: 'stale', feedLabel: feedLabel,
+        chgPctRegular: q.chg_pct_regular, feedCls: 'stale', feedLabel: feedLabel,
         ageLabel: q.trade_time_ct == null ? 'no trade sent' : 'last trade ' + tradeLabel(q) });
     }
     paintRecord(null);
@@ -1262,11 +1276,17 @@
     marketContext: function () { return MARKET_CONTEXT.slice(); },   // served [{key, display}]
     setScope: setScope, getScope: function () { return state.scope; },
     panServed: panServed, wireStrikeAxis: wireStrikeAxis, asOfBadge: asOfBadge, ageSpan: ageSpan, tradeLabel: tradeLabel, chainEmptyText: chainEmptyText,
+    flRows: flRows, flSection: flSection,
     setExpiry: setExpiry, getExpiry: function () { return state.expiryFilter; },
     getMeasure: function () { return state.measure; },
     feedVerdict: feedVerdict,
-    series: function (key) { return _series[key] ? _series[key].bars.slice() : []; },   // the daemon's 1-minute series
+    // the newest `n` bars of the daemon's 1-minute series of `key`
+    series: function (key, n) { return _series && _series.key === key ? _series.bars.slice(-n) : []; },
     priceRow: priceRow,                                    // an equity's row, from the daemon's fields
+    // `key`'s newest book on `service` (NYSE_BOOK, NASDAQ_BOOK, OPTIONS_BOOK) as the daemon sent it; null: none yet
+    book: function (service, key) { var k = service + '|' + key; return Object.prototype.hasOwnProperty.call(_books, k) ? _books[k] : null; },
+    // a verdict not live, worded: NOT LIVE and the daemon's outage, if it names one
+    notLive: function (v) { return 'NOT LIVE' + (v && v.outage ? ' · ' + v.outage : ''); },
     // a LEVELONE_EQUITIES / LEVELONE_OPTIONS field as Schwab last sent it, null where it is not a number
     schwabNumber: function (key, name) { return _l1[key] && _l1[key][name] !== undefined ? _l1[key][name] : null; },
     setSubview: setSubview };

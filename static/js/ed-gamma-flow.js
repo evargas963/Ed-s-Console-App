@@ -47,10 +47,8 @@
     render(h, st().contract, a.body);
   });
   // LEVELONE_OPTIONS (Change) and OPTIONS_BOOK (Whole) for the selected contract, straight from the daemon
-  var _optBook = {};
   window.addEventListener('ed:schwab', function (e) {
-    var m = e.detail; if (!m || (m.service !== 'LEVELONE_OPTIONS' && m.service !== 'OPTIONS_BOOK')) return;
-    if (m.service === 'OPTIONS_BOOK') _optBook[m.key] = m;
+    var m = e.detail; if (m.service !== 'LEVELONE_OPTIONS' && m.service !== 'OPTIONS_BOOK') return;
     var h = host();
     if (!h || !isFlow() || m.key !== st().contract) return;
     if (_flow) render(h, st().contract, _flow); else renderSchwab(h, st().contract);
@@ -58,7 +56,7 @@
   // a Schwab book's side as rows: each level's price × total size, as sent
   // (the daemon's levels: each price and total size as Schwab sent them, engine.book_levels)
   function bookRows(side, label) {
-    return side.map(function (lv, i) { return [label + ' ' + (i + 1), num(lv[0]) + ' × ' + int(lv[1]), 'OPTIONS_BOOK', undefined]; });
+    return side.map(function (lv, i) { return [label + ' ' + (i + 1), num(lv[0]) + ' × ' + int(lv[1]), undefined, 'OPTIONS_BOOK']; });
   }
   // no contract selected: nothing to observe
   // (a contract selected and the console's reads not yet in: the daemon's values for it, now)
@@ -90,17 +88,18 @@
     var topLive = !!l1v && l1v.live === true;      // the daemon's verdict; not reported: not live
     // Schwab's last top of book; with its feed down, marked not live with the daemon's reason
     var rowsTob = [
-      ['Bid', num(f('BID_PRICE')), 'top_of_book.bid', undefined],
-      ['Ask', num(f('ASK_PRICE')), 'top_of_book.ask', undefined],
-      ['Bid size', int(f('BID_SIZE')), 'top_of_book.bid_size', undefined],
-      ['Ask size', int(f('ASK_SIZE')), 'top_of_book.ask_size', undefined],
-    ].concat(!topLive ? [['Top of book', 'NOT LIVE' + (l1v && l1v.outage ? ' · ' + l1v.outage : ''), 'top_outage', undefined]] : []);
-    var ob = _optBook[desired], obv = window.EdShell.feedVerdict(desired, 'OPTIONS_BOOK');
-    var rowsOb = !ob ? [['Book', '-', 'OPTIONS_BOOK', undefined]]
-      : [['Book time', ob.time_ct == null ? '-' : ob.time_ct, 'OPTIONS_BOOK', undefined]]
-        .concat(!(obv && obv.live) ? [['Book', 'NOT LIVE' + (obv && obv.outage ? ' · ' + obv.outage : ''), 'OPTIONS_BOOK', undefined]] : [])
+      ['Bid', num(f('BID_PRICE')), undefined, 'top_of_book.bid'],
+      ['Ask', num(f('ASK_PRICE')), undefined, 'top_of_book.ask'],
+      ['Bid size', int(f('BID_SIZE')), undefined, 'top_of_book.bid_size'],
+      ['Ask size', int(f('ASK_SIZE')), undefined, 'top_of_book.ask_size'],
+    ].concat(!topLive ? [['Top of book', window.EdShell.notLive(l1v), undefined, 'top_outage']] : []);
+    var ob = window.EdShell.book('OPTIONS_BOOK', desired), obv = window.EdShell.feedVerdict(desired, 'OPTIONS_BOOK');
+    var rowsOb = !ob ? [['Book', '-', undefined, 'OPTIONS_BOOK']]
+      : [['Book time', ob.time_ct == null ? '-' : ob.time_ct, undefined, 'OPTIONS_BOOK']]
+        .concat(!(obv && obv.live) ? [['Book', window.EdShell.notLive(obv), undefined, 'OPTIONS_BOOK']] : [])
         .concat(bookRows(ob.levels.asks, 'Ask'), bookRows(ob.levels.bids, 'Bid'));
-    return section('Top of book · Schwab LEVELONE_OPTIONS', rowsTob, '') + section('Book · Schwab OPTIONS_BOOK, as sent', rowsOb, '');
+    return window.EdShell.flSection('Top of book · Schwab LEVELONE_OPTIONS', rowsTob, '') +
+      window.EdShell.flSection('Book · Schwab OPTIONS_BOOK, as sent', rowsOb, '');
   }
   // before the console's reads of the contract land: the daemon's values, the rest '-'
   function renderSchwab(h, desired) {
@@ -118,41 +117,41 @@
     function dep(n, side) { var x = depth[String(n)] || {}; return x[side]; }
     function bk(k) { return classOf(bookCls, k); }
     function fk(k) { return classOf(flowCls, k); }
-    // row = [label, displayed value, canonical key (data-k), backend classification | null]
+    // row = [label, displayed value, backend classification | null, canonical key (data-k)] (EdShell.flRows)
     // The depth ladder is classified by the engine under its own wildcard keys ("depth.*.<leaf>").
     var pricedAt = d.top_of_book;                  // the top of book the console priced these at (the engine's input)
     var rowsBook = [
-      ['Priced at', pricedAt ? num(pricedAt.bid) + ' × ' + num(pricedAt.ask) : '-', 'top_of_book', undefined],
-      ['Mid', num(d.mid), 'mid', bk('mid')], ['Microprice', num(d.microprice), 'microprice', bk('microprice')],
-      ['Spread (pts)', num(d.spread_pts), 'spread_pts', bk('spread_pts')],
-      ['Depth 1 · imbalance', num(dep(1, 'imbalance'), 3), 'depth.1.imbalance', bk('depth.*.imbalance')],
-      ['Depth 3 · imbalance', num(dep(3, 'imbalance'), 3), 'depth.3.imbalance', bk('depth.*.imbalance')],
-      ['Depth 5 · imbalance', num(dep(5, 'imbalance'), 3), 'depth.5.imbalance', bk('depth.*.imbalance')],
-      ['Bid total (5)', int(dep(5, 'bid_total')), 'depth.5.bid_total', bk('depth.*.bid_total')],
-      ['Ask total (5)', int(dep(5, 'ask_total')), 'depth.5.ask_total', bk('depth.*.ask_total')],
+      ['Priced at', pricedAt ? num(pricedAt.bid) + ' × ' + num(pricedAt.ask) : '-', undefined, 'top_of_book'],
+      ['Mid', num(d.mid), bk('mid'), 'mid'], ['Microprice', num(d.microprice), bk('microprice'), 'microprice'],
+      ['Spread (pts)', num(d.spread_pts), bk('spread_pts'), 'spread_pts'],
+      ['Depth 1 · imbalance', num(dep(1, 'imbalance'), 3), bk('depth.*.imbalance'), 'depth.1.imbalance'],
+      ['Depth 3 · imbalance', num(dep(3, 'imbalance'), 3), bk('depth.*.imbalance'), 'depth.3.imbalance'],
+      ['Depth 5 · imbalance', num(dep(5, 'imbalance'), 3), bk('depth.*.imbalance'), 'depth.5.imbalance'],
+      ['Bid total (5)', int(dep(5, 'bid_total')), bk('depth.*.bid_total'), 'depth.5.bid_total'],
+      ['Ask total (5)', int(dep(5, 'ask_total')), bk('depth.*.ask_total'), 'depth.5.ask_total'],
     ];
     var rowsFlow = [
-      ['Top-book pressure', num(flow.top_book_pressure, 3), 'flow.top_book_pressure', fk('top_book_pressure')],
-      ['Tape pressure 30s', num(flow.tape_pressure_30s, 3), 'flow.tape_pressure_30s', fk('tape_pressure_30s')],
-      ['Tape pressure 2m', num(flow.tape_pressure_2m, 3), 'flow.tape_pressure_2m', fk('tape_pressure_2m')],
-      ['Tape pressure 5m', num(flow.tape_pressure_5m, 3), 'flow.tape_pressure_5m', fk('tape_pressure_5m')],
+      ['Top-book pressure', num(flow.top_book_pressure, 3), fk('top_book_pressure'), 'flow.top_book_pressure'],
+      ['Tape pressure 30s', num(flow.tape_pressure_30s, 3), fk('tape_pressure_30s'), 'flow.tape_pressure_30s'],
+      ['Tape pressure 2m', num(flow.tape_pressure_2m, 3), fk('tape_pressure_2m'), 'flow.tape_pressure_2m'],
+      ['Tape pressure 5m', num(flow.tape_pressure_5m, 3), fk('tape_pressure_5m'), 'flow.tape_pressure_5m'],
       ['Cum Δ (proxy)', num(flow.cum_delta_proxy, 1) + (flow.cum_delta_window ? ' · ' + flow.cum_delta_window : ''),
-        'flow.cum_delta_proxy', fk('cum_delta_proxy')],
-      ['Cum Δ slope (proxy)', num(flow.cum_delta_slope, 3), 'flow.cum_delta_slope', fk('cum_delta_slope')],
+        fk('cum_delta_proxy'), 'flow.cum_delta_proxy'],
+      ['Cum Δ slope (proxy)', num(flow.cum_delta_slope, 3), fk('cum_delta_slope'), 'flow.cum_delta_slope'],
     ];
     var dim = ss.label === 'ACTIVE' ? '' : ' fl-dim';   // not-active data recedes (never presented as live)
     // Book/quote ages are the payload's own `ages` block (engine-stamped, classified); each feed's
     // live verdict is the daemon's, in the Top of book and Book sections
     var fresh = [
-      ['Book age', d.as_of && d.as_of.book != null ? { pre: '', ageOf: 'book' } : '—', 'as_of.book', bk('as_of.book')],
-      ['Quote age', d.as_of && d.as_of.quote != null ? { pre: '', ageOf: 'quote' } : '—', 'as_of.quote', bk('as_of.quote')],
+      ['Book age', d.as_of && d.as_of.book != null ? { ageOf: 'book' } : '—', bk('as_of.book'), 'as_of.book'],
+      ['Quote age', d.as_of && d.as_of.quote != null ? { ageOf: 'quote' } : '—', bk('as_of.quote'), 'as_of.quote'],
     ];
     h.innerHTML = header(desired, ss, d && d.put_call) +
       '<div class="fl-grid">' +
       schwabSections(desired) +
-      section('Book microstructure', rowsBook, dim) +
-      section('Flow observations', rowsFlow, dim) +
-      section('Freshness / health', fresh, '') +
+      window.EdShell.flSection('Book microstructure', rowsBook, dim) +
+      window.EdShell.flSection('Flow observations', rowsFlow, dim) +
+      window.EdShell.flSection('Freshness / health', fresh, '') +
       '</div>' +
       '<div class="fl-foot">signed aggressor classification NOT PROVEN — native_aggressor_available=' +
       bool3(flow.native_aggressor_available) + '; tape_classification=' + esc(flow.tape_classification || '—') +
@@ -173,25 +172,6 @@
       '<div class="fl-sub"><span class="fl-lab">Subscription</span><span class="fl-badge ' + cls + '">' + esc(badge) + '</span></div></div>' +
       '<div class="placeholder"><div class="sm">' + esc(msg) + '</div></div>';
   }
-  // Classification tag: text is the backend string verbatim; the CSS hook is its leading token
-  // (NATIVE/DERIVED/PROXY styled; anything else renders neutral). null => the backend served
-  // no classification for a classified metric => UNKNOWN. undefined => not a classified metric.
-  function tag(c) {
-    if (c === undefined) return '';
-    var text = c === null ? 'UNKNOWN' : c;
-    var hook = (String(text).toLowerCase().match(/^[a-z0-9-]+/) || ['unknown'])[0];
-    return '<span class="fl-tag ' + hook + '" data-cls="' + esc(text) + '">' + esc(text) + '</span>';
-  }
-  function section(title, rows, dim) {
-    var h = '<div class="fl-sec' + dim + '"><div class="fl-sec-h">' + esc(title) + '</div>';
-    rows.forEach(function (r) {
-      var v = r[1] && r[1].ageOf ? esc(r[1].pre) + window.EdShell.ageSpan(r[1].ageOf) : esc(r[1]);   // a served age
-      h += '<div class="fl-row" data-k="' + esc(r[2]) + '"><span class="k">' + esc(r[0]) + '</span><span class="v">' + v +
-        '</span>' + tag(r[3]) + '</div>';
-    });
-    return h + '</div>';
-  }
-
   if (typeof document !== 'undefined') {
     document.addEventListener('ed:view', none);
     // a ticker or expiry change clears the selection; a fresh Chain click observes again

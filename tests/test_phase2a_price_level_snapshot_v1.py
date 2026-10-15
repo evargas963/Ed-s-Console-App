@@ -154,7 +154,7 @@ def _published(tk: str, now: datetime) -> None:
 
     srv._bars.pop(tk, None)
     for b in _tape():
-        srv._keep_bar(tk, b)
+        srv._minutes.take(tk, b)
     srv._publish_price_levels(tk, now)
 
 

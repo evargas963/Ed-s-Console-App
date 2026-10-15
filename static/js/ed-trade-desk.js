@@ -23,11 +23,6 @@
   function host() { return document.getElementById('tdBody'); }
 
   function classOf(map, key) { var v = map ? map[key] : null; return (typeof v === 'string' && v) ? v : null; }
-  function tag(c) {
-    if (c === undefined || c == null) return '';
-    var hook = (String(c).toLowerCase().match(/^[a-z0-9-]+/) || ['unknown'])[0];
-    return '<span class="fl-tag ' + hook + '" data-cls="' + esc(c) + '">' + esc(c) + '</span>';
-  }
   var usd = function (n) {
     if (n == null || isNaN(n)) return '—';
     var a = Math.abs(n), s = n < 0 ? '-' : '';
@@ -54,11 +49,7 @@
       (badgeText ? '<span class="fl-badge ' + (badgeCls || '') + '" style="margin-left:auto;">' + esc(badgeText) + '</span>' : '') + '</div>' +
       '<div class="td-hero"><span class="' + dirCls + '">' + (dirGlyph ? dirGlyph + ' ' : '') + esc(hero) + '</span>' +
       (heroUnit ? '<span class="unit">' + esc(heroUnit) + '</span>' : '') + '</div>';
-    rows.forEach(function (r) {
-      var v = r[1] && r[1].ageOf ? window.EdShell.ageSpan(r[1].ageOf) : esc(r[1]);   // a served age
-      h += '<div class="fl-row"><span class="k">' + esc(r[0]) + '</span><span class="v">' + v + '</span>' + tag(r[2]) + '</div>';
-    });
-    return h + '</div>';
+    return h + window.EdShell.flRows(rows) + '</div>';
   }
 
   function detectStage(d) {
@@ -66,7 +57,7 @@
     // not the console has a book read
     var tob = window.EdShell.priceRow(window.EdShell.getState().key);
     var tobRows = [['Bid × Ask', num(tob.bid) + ' × ' + num(tob.ask), undefined]]
-      .concat(!tob.feed_live ? [['Top of book', 'NOT LIVE' + (tob.outage ? ' · ' + tob.outage : ''), null]] : []);
+      .concat(!tob.feed_live ? [['Top of book', window.EdShell.notLive(tob), undefined]] : []);
     if (!d || d.status === 'no_book') {           // on its way (undefined): no badge yet
       return stage(1, 'td-accent-blue', 'Detect — book microstructure', '-', '', 0, tobRows, d === undefined ? null : 'NO BOOK', 'warn');
     }
@@ -325,6 +316,8 @@
     if (!q || q.ticker !== st().key) return;
     _spotDisp = q.spot_disp != null ? q.spot_disp : '—';
     document.querySelectorAll('#tdBody .td-spot').forEach(function (el) { el.textContent = _spotDisp; });
+    var s = st();
+    if (s.workspace !== 'trade-desk' || s.subview !== 'right-now') return;   // drawn when it is shown
     var det = document.getElementById('tdDetect');          // its top of book is this row's too
     if (det) det.innerHTML = detectStage(R.book); else render();   // not drawn yet: Schwab's values need no console
   });

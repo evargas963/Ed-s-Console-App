@@ -92,10 +92,13 @@ def _frames(ticker: str, spot: float, views: dict) -> dict:
             console = asyncio.create_task(server.live_values(page))
             try:
                 await page.inbox.put(_view(1, ticker=ticker.lstrip("$"), symbols=[ticker.lstrip("$")], **over))
-                shown = set((await page.next("view"))["shown"]) - {"watchlist"}
+                view = await page.next("view")
+                # the console's panels: the charts at 1 minute draw the daemon's series, not its answer
+                shown = set(view["shown"]) - {"watchlist"} - set(view["series"])
                 got: dict = {}
-                while not shown <= set(got):
-                    got.update(_by_name(await page.next("panels")))
+                async with asyncio.timeout(20):     # one limit for the whole wait: a panel that never comes fails
+                    while not shown <= set(got):
+                        got.update(_by_name(await page.next("panels")))
                 got[BEAT] = await page.next("feed")
                 out[name] = got
             finally:

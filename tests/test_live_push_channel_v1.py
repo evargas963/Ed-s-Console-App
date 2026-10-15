@@ -219,8 +219,9 @@ def test_a_non_schwab_message_on_the_same_topic_is_never_forwarded(feed):
         assert await _until(_received(ts))
         assert stats["sent"] == 1
         async with connect(f"ws://127.0.0.1:{_port(stats)}", max_size=None) as ws:   # a second client
-            while (m := _json.loads(await asyncio.wait_for(ws.recv(), 5)))["topic"] != "quote.SPY":
-                pass
+            async with asyncio.timeout(5):          # one limit for the whole wait
+                while (m := _json.loads(await ws.recv()))["topic"] != "quote.SPY":
+                    pass
         assert "CLOSE_PRICE" not in m["msg"]["native"], "a non-Schwab value was forwarded as Schwab's"
     asyncio.run(_run(body))
 

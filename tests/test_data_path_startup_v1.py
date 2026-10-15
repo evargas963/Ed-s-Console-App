@@ -80,8 +80,9 @@ def test_why_schwab_is_not_connected_reaches_the_log_and_api_health(tmp_path, ca
         await asyncio.sleep(0.2)
         async with connect(f"ws://127.0.0.1:{port}", max_size=None) as ws:
             await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"]}))
-            while (msg := json.loads(await asyncio.wait_for(ws.recv(), 5)))["type"] != "feed":
-                pass
+            async with asyncio.timeout(5):          # one limit for the whole wait
+                while (msg := json.loads(await ws.recv()))["type"] != "feed":
+                    pass
         stop.set()
         await asyncio.gather(ui, run)
         return msg["feed"]

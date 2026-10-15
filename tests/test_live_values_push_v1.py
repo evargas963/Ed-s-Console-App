@@ -68,11 +68,12 @@ def _console(body) -> None:
 
 
 async def _next(ws, *types):
-    """The next message of one of `types` (the beat, the symbols and the rows ride along)."""
-    while True:
-        msg = json.loads(await asyncio.wait_for(ws.recv(), 10))
-        if msg["type"] in types:
-            return msg
+    """The next message of one of `types` (the beat rides along), within 10 s in all (the beat
+    comes every second, so a limit on each message alone would never end the wait)."""
+    async with asyncio.timeout(10):
+        while (msg := json.loads(await ws.recv()))["type"] not in types:
+            pass
+    return msg
 
 
 def _view(seq, **over):
@@ -90,8 +91,9 @@ def _view(seq, **over):
 async def _panels(ws, names):
     """The pushed answer of each of `names` (and of any other panel pushed meanwhile), by name."""
     got = {}
-    while not set(names) <= set(got):
-        got.update(_by_name(await _next(ws, "panels")))
+    async with asyncio.timeout(20):         # one limit for the whole wait: a panel that never comes fails
+        while not set(names) <= set(got):
+            got.update(_by_name(await _next(ws, "panels")))
     return got
 
 
@@ -187,8 +189,9 @@ def test_an_answer_the_view_moved_on_from_is_never_sent(published):
         async with connect(f"ws://{host}/api/live", max_size=None) as ws:
             await ws.send(_view(1))
             await ws.send(_view(2, subview="chain"))       # before the heatmap's answers can land
-            while (msg := json.loads(await asyncio.wait_for(ws.recv(), 10)))["type"] != "view" or msg["seq"] != 2:
-                pass
+            async with asyncio.timeout(10):         # one limit for the whole wait
+                while (msg := json.loads(await ws.recv()))["type"] != "view" or msg["seq"] != 2:
+                    pass
             assert "chain" in msg["moved"] and not any(n.startswith("gamma.") for n in msg["moved"])
             push_changes.changed(TK, push_changes.LEVELS)   # moves the heatmap's surface too
             after = await _panels(ws, ["chain"])
@@ -242,9 +245,12 @@ class _Page:
         while (m := await self.inbox.get()) is not None:
             yield m
 
-    async def next(self, kind: str) -> dict:
-        while (m := await asyncio.wait_for(self.sent.get(), 10))["type"] != kind:
-            pass
+    async def next(self, kind: str, within: float = 10.0) -> dict:
+        """The next message of `kind`, within `within` s in all (the beat comes every second, so
+        a limit on each message alone would never end the wait)."""
+        async with asyncio.timeout(within):
+            while (m := await self.sent.get())["type"] != kind:
+                pass
         return m
 
 

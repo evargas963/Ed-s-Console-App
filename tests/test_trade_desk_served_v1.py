@@ -239,7 +239,7 @@ def spy_levels():
     terrain = _priced(DESK, SPY_0DTE.chain, SPY_0DTE.spot, SPY_0DTE.now.timestamp())
     spot = bars[-1]["close"]
     for b in bars:
-        server._keep_bar(DESK, Candle(ts=b["timestamp"] / 1000, open=b["open"], high=b["high"], low=b["low"],
+        server._minutes.take(DESK,Candle(ts=b["timestamp"] / 1000, open=b["open"], high=b["high"], low=b["low"],
                                       close=b["close"], volume=b["volume"]))
     server._publish_price_levels(DESK, FRIDAY_CLOSE)                  # as the bar writer does
 

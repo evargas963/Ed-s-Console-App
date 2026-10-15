@@ -92,10 +92,8 @@ async function installLive(page) {
     // panels' answers from the stubs, sent together (as the console sends one change's), each
     // that is still the newest for its panel
     async function reply(msgs) {
-      // a panel whose value the daemon sends the page (server.DAEMON_SERIES): the console's own
-      // answer, which only says so; every other: the spec's stub for its route
-      const got = await Promise.all(msgs.map((m) => m.source === 'daemon:CHART_EQUITY'
-        ? Promise.resolve({ status: m.status, body: m.body }) : read(m.source)));
+      // each from the spec's stub for its route
+      const got = await Promise.all(msgs.map((m) => read(m.source)));
       const outages = _notLive.get(page) || {};
       // the test server's age labels are of its own answers, not the stubs': the spec's beat
       // (pushBeat) labels the stubs' instants

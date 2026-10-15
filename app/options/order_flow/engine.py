@@ -59,53 +59,20 @@ def _iter_content(data: dict) -> list:
     return []
 
 
-def _iter_bids_levels(content_item: dict) -> list[tuple[float, float]]:
-    """
-    Extract (price, total_volume) for each bid level Schwab sent a price for, from content.*.BIDS
-    (the size None where it is not a number). Uses: BID_PRICE, TOTAL_VOLUME per level.
-    """
-    bids = content_item.get("BIDS")
-    if not bids:
+def _side_levels(content_item: dict, side: str, price_key: str) -> "list[tuple[float, float | None]]":
+    """(price, TOTAL_VOLUME) for each level of one side of a Schwab book (`side`: BIDS or ASKS,
+    priced by `price_key`) that Schwab sent a price for, in Schwab's order, the size None where it
+    is not a number. A side is a level, a list of levels, or a list of lists of them."""
+    held = content_item.get(side)
+    if not held:
         return []
     out = []
-    for level in (bids if isinstance(bids, list) else [bids]):
-        if isinstance(level, dict):
-            p = schwab_number(level.get("BID_PRICE"))
-            v = schwab_count(level.get("TOTAL_VOLUME"))
-            if p is not None:                  # a size not sent as a number stays absent
-                out.append((p, v))
-        elif isinstance(level, list):
-            for sub in level:
-                if isinstance(sub, dict):
-                    p = schwab_number(sub.get("BID_PRICE"))
-                    v = schwab_count(sub.get("TOTAL_VOLUME"))
-                    if p is not None:                  # a size not sent as a number stays absent
-                        out.append((p, v))
-    return out
-
-
-def _iter_asks_levels(content_item: dict) -> list[tuple[float, float]]:
-    """
-    Extract (price, total_volume) for each ask level Schwab sent a price for, from content.*.ASKS
-    (the size None where it is not a number).
-    """
-    asks = content_item.get("ASKS")
-    if not asks:
-        return []
-    out = []
-    for level in (asks if isinstance(asks, list) else [asks]):
-        if isinstance(level, dict):
-            p = schwab_number(level.get("ASK_PRICE"))
-            v = schwab_count(level.get("TOTAL_VOLUME"))
-            if p is not None:                  # a size not sent as a number stays absent
-                out.append((p, v))
-        elif isinstance(level, list):
-            for sub in level:
-                if isinstance(sub, dict):
-                    p = schwab_number(sub.get("ASK_PRICE"))
-                    v = schwab_count(sub.get("TOTAL_VOLUME"))
-                    if p is not None:                  # a size not sent as a number stays absent
-                        out.append((p, v))
+    for level in (held if isinstance(held, list) else [held]):
+        for one in (level if isinstance(level, list) else [level]):
+            if isinstance(one, dict):
+                p = schwab_number(one.get(price_key))
+                if p is not None:                  # a size not sent as a number stays absent
+                    out.append((p, schwab_count(one.get("TOTAL_VOLUME"))))
     return out
 
 
@@ -214,21 +181,13 @@ OF_MICRO_DEPTH_LADDER: tuple[int, ...] = (OF_BOOK_DEPTH_TOP, OF_BOOK_DEPTH_SHALL
 _MICRO_STRUCTURAL_CACHE: dict[str, tuple[tuple, dict]] = {}
 
 
-def _sorted_valid_levels(levels: list[tuple[float, float]], *, descending: bool) -> list[tuple[float, float]]:
-    """Normalize a raw book side ONCE for the metrics: drop a level Schwab sent no size for (the raw
-    readers read -999, text, NaN and a negative size as None), then SORT so `[:N]` is the true Top-N
-    regardless of the vendor's array order: bids DESCENDING, asks ASCENDING."""
-    valid = [(p, v) for (p, v) in levels if p is not None and v is not None]
-    valid.sort(key=lambda pv: pv[0], reverse=descending)
-    return valid
-
-
 def book_levels(item: dict) -> "tuple[list[tuple[float, float | None]], list[tuple[float, float | None]]]":
     """One Schwab book's (bids, asks) as the screen's ladder shows them: each level Schwab sent a
     price for, its total size as sent or None where it is not a number ('-'), bids high to low,
-    asks low to high. The engine's metrics take the levels with both (_sorted_valid_levels)."""
-    return (sorted(_iter_bids_levels(item), key=lambda pv: pv[0], reverse=True),
-            sorted(_iter_asks_levels(item), key=lambda pv: pv[0]))
+    asks low to high, so `[:N]` is the true Top-N whatever Schwab's array order. The engine's
+    metrics take the levels with both (_extract_canonical_book)."""
+    return (sorted(_side_levels(item, "BIDS", "BID_PRICE"), key=lambda pv: pv[0], reverse=True),
+            sorted(_side_levels(item, "ASKS", "ASK_PRICE"), key=lambda pv: pv[0]))
 
 
 def _extract_canonical_book(data: dict) -> dict:
@@ -241,8 +200,10 @@ def _extract_canonical_book(data: dict) -> dict:
     bid_size = _schwab_int(t.get("bid_size"))
     ask_size = _schwab_int(t.get("ask_size"))
 
-    bid_levels = _sorted_valid_levels(_iter_bids_levels(snapshot), descending=True) if snapshot else []
-    ask_levels = _sorted_valid_levels(_iter_asks_levels(snapshot), descending=False) if snapshot else []
+    # the metrics read the levels Schwab sent a size for (-999, text, NaN or a negative size: none)
+    bids, asks = book_levels(snapshot) if snapshot else ([], [])
+    bid_levels = [(p, v) for p, v in bids if v is not None]
+    ask_levels = [(p, v) for p, v in asks if v is not None]
     mark, mark_leaf = _resolve_quote_mark(data)
     return {
         "has_book": snapshot is not None,

@@ -109,26 +109,38 @@ async def _received(ws, quiet: float = 0.5, timeout: float = 20.0, until=None) -
     return messages, beats
 
 
+async def _next(ws, kind: str, within: float = 5.0) -> dict:
+    """The next frame of `kind`, within `within` s in all (the daemon beats every second, so a
+    limit on each frame alone would never end the wait)."""
+    async with asyncio.timeout(within):
+        while (frame := json.loads(await ws.recv()))["type"] != kind:
+            pass
+    return frame
+
+
 def test_every_service_reaches_the_screen_by_its_delivery_type():
     """Every symbol of the real mix subscribed, then every message Schwab sent, with the real
     CHART_EQUITY bars and NEWS_HEADLINE item behind it. Change (LEVELONE_EQUITIES,
     LEVELONE_OPTIONS): each symbol's fields as the last Schwab sent each, none lost. Whole
     (NYSE_BOOK, NASDAQ_BOOK, OPTIONS_BOOK): each book as Schwab sent it, the newest last. Sequence
-    (CHART_EQUITY, NEWS_HEADLINE): every bar and headline, in the order Schwab sent them."""
+    (CHART_EQUITY, NEWS_HEADLINE): every bar of the ticker the page's chart draws (SPY; TSLA's
+    are sent to no page, which would drop them) and every headline, in the order Schwab sent them."""
     bars = [(r["native"], r["schwab_ts"]) for r in _BARS]
+    spy = [b for b, _ts in bars if b["key"] == "SPY"]
     every = sorted({*_EVERY, *(b["key"] for b, _ts in bars), _NEWS["symbol"]})
+    assert {b["key"] for b, _ts in bars} == {"SPY", "TSLA"}
+    assert sorted(spy, key=lambda b: b["CHART_TIME_MILLIS"]) == spy   # each a new newest minute or the newest again
 
     async def body(bus, ws, stats):
-        await ws.send(json.dumps({"op": "subscribe", "symbols": every}))
-        while json.loads(await asyncio.wait_for(ws.recv(), 3))["type"] != "symbols":
-            pass                                  # the daemon has taken the subscription
+        await ws.send(json.dumps({"op": "subscribe", "symbols": every, "chart": "SPY"}))
+        await _next(ws, "series")                 # the daemon has taken the subscription
         for m in _MIX:
             _frame(bus, m["service"], m["item"], m["schwab_ts"])
         for item, ts in bars:
             _frame(bus, "CHART_EQUITY", item, ts)
         _frame(bus, "NEWS_HEADLINE", _NEWS["content"], _NEWS["schwab_ts"])
         # sent last, in order: once every bar and the headline are in, everything sent before is
-        got, _beats = await _received(ws, until=lambda ms: sum(m["service"] == "CHART_EQUITY" for m in ms) == len(bars)
+        got, _beats = await _received(ws, until=lambda ms: sum(m["service"] == "CHART_EQUITY" for m in ms) == len(spy)
                                       and any(m["service"] == "NEWS_HEADLINE" for m in ms))
         by = lambda svc: [m for m in got if m["service"] == svc]   # noqa: E731
         sent = lambda svc: [m for m in _MIX if m["service"] == svc]   # noqa: E731
@@ -147,8 +159,20 @@ def test_every_service_reaches_the_screen_by_its_delivery_type():
                 shown = [m["content"] for m in by(svc) if m["key"] == key]
                 assert shown and shown[-1] == books[-1], f"{svc} {key}: the newest book is not the one shown"
                 assert all(b in books for b in shown), f"{svc} {key}: a book was changed"
-        assert [(m["key"], m["content"]) for m in by("CHART_EQUITY")] == [(b["key"], b) for b, _ts in bars]
+        assert [m["content"] for m in by("CHART_EQUITY")] == spy
         assert [m["content"] for m in by("NEWS_HEADLINE")] == [_NEWS["content"]]
+    asyncio.run(_run(body))
+
+
+def test_a_client_is_sent_only_the_services_it_reads():
+    """The console reads only LEVELONE_EQUITIES from the daemon (streaming._rows_loop): it names
+    that service and is sent no book, bar or headline (before: every one, parsed and dropped)."""
+    async def body(bus, ws, stats):
+        await ws.send(json.dumps({"op": "subscribe", "symbols": _EVERY, "services": ["LEVELONE_EQUITIES"]}))
+        for m in _MIX:
+            _frame(bus, m["service"], m["item"], m["schwab_ts"])
+        got, _beats = await _received(ws)
+        assert got and {m["service"] for m in got} == {"LEVELONE_EQUITIES"}
     asyncio.run(_run(body))
 
 
@@ -183,8 +207,7 @@ def test_a_page_that_reconnects_gets_every_bar_and_headline_it_missed_once_in_or
 
     async def body(bus, ws, stats):
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"], "chart": "SPY"}))
-        while json.loads(await asyncio.wait_for(ws.recv(), 3))["type"] != "symbols":
-            pass
+        await _next(ws, "symbols")
         for item, ts in bars[:half]:
             _frame(bus, "CHART_EQUITY", item, ts)
         first, _beats = await _received(ws, until=lambda ms: len(ms) == half)
@@ -198,7 +221,7 @@ def test_a_page_that_reconnects_gets_every_bar_and_headline_it_missed_once_in_or
             series, news = await _series_and_headlines(again)
             assert [b["t"] for b in series["bars"]] == minutes, "a bar Schwab sent is missing from the series"
             assert [m["content"]["2"] for m in news] == [_NEWS["content"]["2"]]
-            since = {"NEWS_HEADLINE": {"SPY": news[-1]["ts_recv"]}}
+            since = {"SPY": news[-1]["ts_recv"]}
         async with connect(stats["listening"], max_size=None) as third:   # nothing new: no headline again
             await third.send(json.dumps({"op": "subscribe", "symbols": ["SPY"], "chart": "SPY", "since": since}))
             series, news = await _series_and_headlines(third)
@@ -226,8 +249,7 @@ def test_the_screens_1_minute_series_is_the_daemons_and_equals_the_consoles_bar_
         for item, ts in bars:
             _frame(bus, "CHART_EQUITY", item, ts)
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"], "chart": "SPY"}))
-        while (frame := json.loads(await asyncio.wait_for(ws.recv(), 5)))["type"] != "series":
-            pass
+        frame = await _next(ws, "series")
         server._write_price_history(msg)                              # the console, the same inputs
         for item, ts in bars:
             _topic, m = capture._message("CHART_EQUITY", "SPY", item, ts)
@@ -235,10 +257,10 @@ def test_the_screens_1_minute_series_is_the_daemons_and_equals_the_consoles_bar_
         console = server.bars_payload("SPY", CHART_1M_BARS, "1")["bars"]
         assert frame["key"] == "SPY" and len(frame["bars"]) == min(CHART_1M_BARS, len(console)) > len(bars)
         assert frame["bars"] == console, "the daemon's series and the console's differ"
-        assert frame["last_bar"] == ct_label(console[-1]["t"])
+        assert frame["last_bar"] == server.bars_payload("SPY", CHART_1M_BARS, "1")["last_bar"] == \
+            {"t": console[-1]["t"], "label": ct_label(console[-1]["t"])}
         bus.publish(topic, msg)                                       # the next /pricehistory answer: whole again
-        while (again := json.loads(await asyncio.wait_for(ws.recv(), 5)))["type"] != "series":
-            pass
+        again = await _next(ws, "series")
         assert again["bars"] == console
     try:
         asyncio.run(_run(body))
@@ -246,10 +268,10 @@ def test_the_screens_1_minute_series_is_the_daemons_and_equals_the_consoles_bar_
         server._bars.pop("SPY", None)
 
 
-def test_a_page_that_holds_no_series_for_its_chart_is_sent_it_whole():
-    """The same chart asked again: held, nothing more; not held (the index typed another way,
-    SPX after $SPX, the page dropped its series), the series whole again. Before, the daemon saw
-    the same key and sent none, and the chart stayed waiting."""
+def test_the_series_is_sent_whole_for_a_new_chart_and_only_then():
+    """A page's chart: its series whole on the first subscribe; the same chart asked again, typed
+    another way too (SPX after $SPX), nothing more (the page holds it, keyed by the daemon's key);
+    another chart, that one whole. Before, the page said whether it held one (`series_held`)."""
     async def body(bus, ws, stats):
         async def series_after(req) -> "dict | None":
             await ws.send(json.dumps(req))
@@ -264,40 +286,44 @@ def test_a_page_that_holds_no_series_for_its_chart_is_sent_it_whole():
             return got
         first = await series_after({"op": "subscribe", "symbols": ["$SPX"], "chart": "$SPX"})
         assert first is not None and first["key"] == "$SPX"
-        assert await series_after({"op": "subscribe", "symbols": ["$SPX"], "chart": "$SPX", "series_held": True}) is None
-        again = await series_after({"op": "subscribe", "symbols": ["$SPX"], "chart": "SPX", "series_held": False})
-        assert again is not None and again["key"] == "$SPX"
+        assert await series_after({"op": "subscribe", "symbols": ["$SPX"], "chart": "$SPX"}) is None
+        assert await series_after({"op": "subscribe", "symbols": ["$SPX", "MU"], "chart": "SPX"}) is None
+        other = await series_after({"op": "subscribe", "symbols": ["SPY"], "chart": "SPY"})
+        assert other is not None and other["key"] == "SPY"
     asyncio.run(_run(body))
 
 
 def test_each_bar_says_what_the_series_did_and_a_resent_series_sends_no_bar_twice():
     """The page applies each bar as the daemon's series took it, comparing nothing: a new newest
     minute (append), the newest minute again (replace), any other minute (insert: the series goes
-    whole to each page drawing it). A series given whole drops the ticker's bars still queued for
-    the page, which it holds. Real bars (SPY, 2026-10-01); STAND-IN (named): a minute sent again."""
+    whole to each page drawing it, the bar in it, sent no other way). A series given whole drops
+    the ticker's bars still queued for the page, which it holds; a page whose chart draws another
+    ticker is sent none. Real bars (SPY, 2026-10-01); STAND-IN (named): a minute sent again."""
     srv = live_ui.LiveUiServer(MessageBus(), _Feed(), {})
-    c = live_ui._Client(None)
+    c, other = live_ui._Client(None), live_ui._Client(None)
     c.symbols, c.chart = frozenset({"SPY"}), "SPY"
-    srv.clients.add(c)
+    other.symbols, other.chart = frozenset({"SPY"}), "TSLA"
+    srv.clients.update({c, other})
     items = [r["native"] for r in _BARS if r["native"]["key"] == "SPY"]
     firsts = list({it["CHART_TIME_MILLIS"]: it for it in items}.values())[:3]   # three minutes, in time
 
     def route(item):
-        srv.route("bar1m.SPY", {"symbol": "SPY", "native": item, "schwab_ts": 1, "ts_recv": 1.0})
-        return c.sequence[-1]["series_op"]
-    assert [route(it) for it in firsts] == ["append", "append", "append"]
-    assert route({**firsts[-1], "CLOSE_PRICE": firsts[-1]["CLOSE_PRICE"] + 0.01}) == "replace"
+        srv.route(*capture._message("CHART_EQUITY", "SPY", item, 1))
+    for it in firsts:
+        route(it)
+    assert [m["series_op"] for m in c.sequence] == ["append", "append", "append"]
+    route({**firsts[-1], "CLOSE_PRICE": firsts[-1]["CLOSE_PRICE"] + 0.01})
+    assert c.sequence[-1]["series_op"] == "replace" and c.sequence[-1]["bar"]["c"] == firsts[-1]["CLOSE_PRICE"] + 0.01
     assert c.series is None
-    assert route(firsts[0]) == "insert" and c.series is not None        # an older minute: whole again
-    assert [m["series_op"] for m in c.sequence] == ["insert"]            # the bars before it: in the series
-    srv.give_series(c, "SPY")
+    route(firsts[0])                                                     # an older minute: whole again
     assert c.sequence == [] and [b["t"] for b in c.series["bars"]] == [it["CHART_TIME_MILLIS"] / 1000.0 for it in firsts]
+    assert other.sequence == [] and other.series is None
 
 
 def test_a_headline_carries_its_time_as_the_screen_shows_it():
     """Schwab's headline time (field 1, epoch ms) labelled once, by the daemon, in Central Time."""
-    m = live_ui.schwab_message("news." + _NEWS["symbol"], {"symbol": _NEWS["symbol"], "content": _NEWS["content"],
-                                                           "schwab_ts": _NEWS["schwab_ts"], "ts_recv": _NEWS["ts_recv"]})
+    m = live_ui.marked(live_ui.schwab_message("news." + _NEWS["symbol"], {
+        "symbol": _NEWS["symbol"], "content": _NEWS["content"], "schwab_ts": _NEWS["schwab_ts"], "ts_recv": _NEWS["ts_recv"]}))
     assert m["content"] == _NEWS["content"] and m["time_ct"] == ct_label(_NEWS["content"]["1"] / 1000.0)
 
 
@@ -333,17 +359,22 @@ def test_a_new_subscription_gets_each_symbols_current_record_at_once():
 def test_each_bar_carries_schwabs_fields_as_the_chart_draws_them():
     """Every real CHART_EQUITY bar: its start (CHART_TIME_MILLIS, s), open, high, low, close and
     volume as Schwab sent them, the change over the bar (close - open, and its percent of the open)
-    and its start labelled in Central Time, each by its one producer."""
+    and its start labelled in Central Time (the series' newest bar), each by its one producer, read
+    from the daemon's own message of it (capture._message)."""
     for r in _BARS:
         n = r["native"]
-        m = live_ui.schwab_message("bar1m." + n["key"], {"symbol": n["key"], "native": n, "schwab_ts": r["schwab_ts"],
-                                                         "ts_recv": r["ts_recv"]})
+        srv = live_ui.LiveUiServer(MessageBus(), _Feed(), {})
+        c = live_ui._Client(None)
+        c.chart = n["key"]
+        srv.clients.add(c)
+        srv.route(*capture._message("CHART_EQUITY", n["key"], n, r["schwab_ts"]))
+        m = c.drain()[0]
         chg = n["CLOSE_PRICE"] - n["OPEN_PRICE"]
         assert m["content"] == n
         assert m["bar"] == {"t": n["CHART_TIME_MILLIS"] / 1000.0, "o": n["OPEN_PRICE"], "h": n["HIGH_PRICE"],
                             "l": n["LOW_PRICE"], "c": n["CLOSE_PRICE"], "v": n["VOLUME"], "chg": chg,
                             "chg_pct": chg / n["OPEN_PRICE"] * 100}
-        assert m["time_ct"] == ct_label(n["CHART_TIME_MILLIS"] / 1000.0)
+        assert m["last_bar"] == {"t": n["CHART_TIME_MILLIS"] / 1000.0, "label": ct_label(n["CHART_TIME_MILLIS"] / 1000.0)}
 
 
 def test_a_time_schwab_sent_as_no_value_is_not_labelled_and_replaces_no_held_time():
@@ -354,15 +385,15 @@ def test_a_time_schwab_sent_as_no_value_is_not_labelled_and_replaces_no_held_tim
     quote = next(m for m in _MIX if m["service"] == "LEVELONE_EQUITIES" and "TRADE_TIME_MILLIS" in m["item"])
     for service, topic, body, item in (("NASDAQ_BOOK", "book.", "content", {**book["item"], "BOOK_TIME": -999}),
                                        ("NEWS_HEADLINE", "news.", "content", {**_NEWS["content"], "1": -999})):
-        m = live_ui.schwab_message(topic + item["key"], {"symbol": item["key"], "service": service, body: item,
-                                                         "schwab_ts": 1, "ts_recv": 1.0})
+        m = live_ui.marked(live_ui.schwab_message(topic + item["key"], {"symbol": item["key"], "service": service,
+                                                                        body: item, "schwab_ts": 1, "ts_recv": 1.0}))
         assert m["content"] == item and "time_ct" not in m
     srv = live_ui.LiveUiServer(MessageBus(), _Feed(), {})
     key = quote["item"]["key"]
     srv.route("quote." + key, {"symbol": key, "native": quote["item"], "schwab_ts": 1, "ts_recv": 1.0})
     srv.route("quote." + key, {"symbol": key, "native": {"key": key, "TRADE_TIME_MILLIS": -999}, "schwab_ts": 2,
                                "ts_recv": 2.0})
-    assert srv.trade_ms[key] == quote["item"]["TRADE_TIME_MILLIS"]
+    assert srv.trade_s[key] == quote["item"]["TRADE_TIME_MILLIS"] / 1000.0
 
 
 def test_each_book_carries_its_levels_and_each_quote_marks_the_fields_that_are_not_numbers():
@@ -377,27 +408,31 @@ def test_each_book_carries_its_levels_and_each_quote_marks_the_fields_that_are_n
         encoding="utf-8"))["rows"][:2]]
     for b in books:
         it = b["item"]
-        m = live_ui.schwab_message("book." + it["key"], {"symbol": it["key"], "service": b["service"], "content": it})
+        m = live_ui.marked(live_ui.schwab_message("book." + it["key"], {"symbol": it["key"], "service": b["service"],
+                                                                        "content": it}))
         assert m["content"] == it
         assert m["levels"] == {"bids": [[lv["BID_PRICE"], lv["TOTAL_VOLUME"]] for lv in it["BIDS"]],
                                "asks": [[lv["ASK_PRICE"], lv["TOTAL_VOLUME"]] for lv in it["ASKS"]]}
     it = books[0]["item"]
     bad = {**it, "BIDS": [{**it["BIDS"][0], "BID_PRICE": -999}, *it["BIDS"][1:]]}
-    m = live_ui.schwab_message("book." + it["key"], {"symbol": it["key"], "service": books[0]["service"], "content": bad})
+    m = live_ui.marked(live_ui.schwab_message("book." + it["key"], {"symbol": it["key"], "service": books[0]["service"],
+                                                                    "content": bad}))
     assert m["content"] == bad and m["levels"]["bids"] == [[lv["BID_PRICE"], lv["TOTAL_VOLUME"]] for lv in it["BIDS"][1:]]
     # a level with Schwab's price and a size sent as -999: shown at its price, its size absent ('-')
     no_size = {**it, "BIDS": [{**it["BIDS"][0], "TOTAL_VOLUME": -999}, *it["BIDS"][1:]]}
-    m = live_ui.schwab_message("book." + it["key"], {"symbol": it["key"], "service": books[0]["service"], "content": no_size})
+    m = live_ui.marked(live_ui.schwab_message("book." + it["key"], {"symbol": it["key"], "service": books[0]["service"],
+                                                                    "content": no_size}))
     assert m["levels"]["bids"][0] == [it["BIDS"][0]["BID_PRICE"], None]
     q = next(m["item"] for m in _MIX if m["service"] == "LEVELONE_EQUITIES" and "BID_SIZE" in m["item"]
              and "LAST_PRICE" in m["item"])
     sent = {**q, "LAST_PRICE": -999, "BID_SIZE": -5}
-    m = live_ui.schwab_message("quote." + q["key"], {"symbol": q["key"], "native": sent})
+    m = live_ui.marked(live_ui.schwab_message("quote." + q["key"], {"symbol": q["key"], "native": sent}))
     assert m["content"] == sent and {"LAST_PRICE", "BID_SIZE"} <= set(m["absent"])
     assert not {k for k in q if isinstance(q[k], (int, float)) and k not in ("LAST_PRICE", "BID_SIZE")} & set(m["absent"])
     c = live_ui._Client(None)
     c.take(m)
-    c.take(live_ui.schwab_message("quote." + q["key"], {"symbol": q["key"], "native": {"key": q["key"], "LAST_PRICE": 1.5}}))
+    c.take(live_ui.marked(live_ui.schwab_message("quote." + q["key"], {"symbol": q["key"],
+                                                                       "native": {"key": q["key"], "LAST_PRICE": 1.5}})))
     held = c.drain()[0]
     assert held["content"]["LAST_PRICE"] == 1.5 and "LAST_PRICE" not in held["absent"] and "BID_SIZE" in held["absent"]
 
@@ -445,8 +480,7 @@ def test_the_page_is_told_what_each_symbol_it_names_is():
     in lower case and a single name alike."""
     async def body(bus, ws, stats):
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPX", "$VIX", "spy", "MU"]}))
-        while (frame := json.loads(await asyncio.wait_for(ws.recv(), 3)))["type"] != "symbols":
-            pass
+        frame = await _next(ws, "symbols")
         assert frame["symbols"] == [
             {"requested": "SPX", "key": "$SPX", "display": "SPX"},
             {"requested": "$VIX", "key": "$VIX", "display": "VIX"},
@@ -513,8 +547,7 @@ def test_a_symbol_the_daemon_does_not_hold_is_not_live():
 def test_each_beat_is_the_daemons_whole_status():
     async def body(bus, ws, stats):
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"]}))
-        while (frame := json.loads(await asyncio.wait_for(ws.recv(), 3)))["type"] != "feed":
-            pass
+        frame = await _next(ws, "feed")
         assert set(frame) == {"type", "feed", "state", "trades"} and frame["feed"]["held"] == {"LEVELONE_EQUITIES": ["SPY"]}
         assert set(frame["state"]["SPY"]) == set(live_ui.EQUITY_SERVICES)
     asyncio.run(_run(body))

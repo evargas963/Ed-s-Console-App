@@ -11,7 +11,8 @@ from __future__ import annotations
 import threading
 from typing import Any
 
-from micro_structure import Candle, schwab_bar
+from micro_structure import Candle, pricehistory_bars
+from time_et import ct_label
 
 #: the newest bars kept per ticker
 BARS_KEPT = 24_000
@@ -20,6 +21,11 @@ CHART_1M_BARS = 1200
 #: what a streamed bar did to its ticker's bars (MinuteBars.take): a new newest minute, the newest
 #: minute again, or a minute anywhere else (the series is then sent whole)
 APPEND, REPLACE, INSERT = "append", "replace", "insert"
+
+
+def last_bar(c: Candle) -> dict:
+    """A series' newest bar as every chart names it: its start (epoch s) and that start labelled."""
+    return {"t": float(c.ts), "label": ct_label(c.ts)}
 
 
 class MinuteBars:
@@ -32,10 +38,8 @@ class MinuteBars:
     def take_history(self, tk: str, candles: "list[dict[str, Any]]") -> None:
         """Schwab's /pricehistory 1-minute answer for `tk` (its candles as sent): each candle with
         every field a number kept, each streamed bar already held standing over its minute."""
-        bars = [b for b in (schwab_bar(c.get("datetime"), c.get("open"), c.get("high"), c.get("low"),
-                                       c.get("close"), c.get("volume")) for c in candles) if b is not None]
         with self.lock:
-            merged = {c.ts: c for c in bars}
+            merged = {c.ts: c for c in pricehistory_bars(candles)}
             if tk in self.bars:
                 merged.update((c.ts, c) for c in self.bars[tk])
             self.bars[tk] = [merged[t] for t in sorted(merged)][-BARS_KEPT:]

@@ -71,7 +71,7 @@ def test_api_levels_b1_contract_single_session_prior_day():
     _forget(tk)
     try:
         for b in tape:
-            srv._keep_bar(tk, _candle(b))
+            srv._minutes.take(tk, _candle(b))
         srv._publish_price_levels(tk, now)            # as the bar writer does
         payload = srv.levels_payload(tk, "1", now)
     finally:

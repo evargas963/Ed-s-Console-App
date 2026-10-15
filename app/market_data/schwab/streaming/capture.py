@@ -95,7 +95,9 @@ import live_market_plane as lmp  # noqa: E402
 import option_ledger  # noqa: E402
 import psutil  # noqa: E402
 from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT, serve_live_push  # noqa: E402
-from app.market_data.schwab.streaming.live_ui import serve_live_ui  # noqa: E402
+#: every watchlist ticker is streamed on EQUITY_SERVICES; the option contracts the option rule
+#: picks (OptionPick) on OPTION_SERVICES
+from app.market_data.schwab.streaming.live_ui import EQUITY_SERVICES, OPTION_SERVICES, serve_live_ui  # noqa: E402
 from calibration.complete_chain_capture import (  # noqa: E402
     ChainSweep, capture_slot, newest_capture_ts, open_history, write_capture)
 from config import build_config, load_dotenv_file  # noqa: E402
@@ -124,10 +126,6 @@ REQUEST_TIMEOUT_SEC = 15.0
 
 SERVICES = ("LEVELONE_EQUITIES", "CHART_EQUITY", "NYSE_BOOK", "NASDAQ_BOOK",
             "LEVELONE_OPTIONS", "OPTIONS_BOOK", "NEWS_HEADLINE")
-#: every watchlist ticker is streamed on each of these
-EQUITY_SERVICES = ("LEVELONE_EQUITIES", "CHART_EQUITY", "NEWS_HEADLINE", "NYSE_BOOK", "NASDAQ_BOOK")
-#: the option contracts the option rule picks are streamed on these (OptionPick)
-OPTION_SERVICES = ("LEVELONE_OPTIONS", "OPTIONS_BOOK")
 #: Schwab's limit on each option service, as its own refusals on the daemon's connection state it
 #: ("(LEVELONE_OPTIONS=3000, DISCARDED=1)", "(OPTIONS_BOOK=100, DISCARDED=1)")
 OPTION_LIMITS = {"LEVELONE_OPTIONS": 3000, "OPTIONS_BOOK": 100}

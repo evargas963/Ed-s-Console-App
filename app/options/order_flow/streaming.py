@@ -260,7 +260,7 @@ async def _rows_loop(ui_url: str, reconnect_sec: float) -> None:
                 while _feed_running:
                     want = _rows_wanted(time.time())
                     if want != sent:
-                        await ws.send(json.dumps({"op": "subscribe", "symbols": want}))
+                        await ws.send(json.dumps({"op": "subscribe", "symbols": want, "services": ["LEVELONE_EQUITIES"]}))
                         sent = want
                     try:
                         frame = await asyncio.wait_for(ws.recv(), _lmp.FEED_HEARTBEAT_MAX_AGE_SEC)

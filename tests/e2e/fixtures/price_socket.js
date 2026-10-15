@@ -72,21 +72,25 @@ async function mockPriceSocket(page, messages) {
     ws.onClose(() => { closed = true; clearInterval(timer); });
     // one Schwab message to the page, as the daemon sends it, then a beat
     const sentBars = {};                       // each key's bars sent, as the daemon's store holds them
+    let chart = null;                          // the key the page's chart draws
     function deliver(q) {
       if (q.bar) (sentBars[q.key] || (sentBars[q.key] = [])).push(q.bar);
       if (q.content.TRADE_TIME_MILLIS != null) trade[q.key] = q.content.TRADE_TIME_MILLIS;
       verdict[q.key + '|' + q.service] = 'feed_live' in q ? { live: q.feed_live, outage: q.outage } : { live: true, outage: null };
-      // a bar: what the daemon's series did with it (a spec's bars are each a new newest minute)
-      send({ type: 'schwab', messages: [{ service: q.service, key: q.key, schwab_ts: q.schwab_ts, ts_recv: q.ts_recv,
-        content: q.content, bar: q.bar, time_ct: q.time_ct, levels: q.levels, absent: q.absent,
-        series_op: q.bar ? (q.series_op ? q.series_op : 'append') : undefined }] });
+      // a bar goes to the page whose chart draws its ticker, with what the daemon's series did
+      // with it (a spec's bars are each a new newest minute) and the series' newest bar
+      if (!q.bar || q.key === chart) {
+        send({ type: 'schwab', messages: [{ service: q.service, key: q.key, schwab_ts: q.schwab_ts, ts_recv: q.ts_recv,
+          content: q.content, bar: q.bar, time_ct: q.time_ct, levels: q.levels, absent: q.absent,
+          series_op: q.bar ? (q.series_op ? q.series_op : 'append') : undefined,
+          last_bar: q.bar ? { t: q.bar.t, label: q.time_ct } : undefined }] });
+      }
       beat();
     }
     _daemons.set(page, { beat: (labels) => { Object.assign(override, labels); beat(); }, close: () => ws.close(), deliver: deliver,
       series: (key, bars, lastBar) => send({ type: 'series', key: key, bars: bars, last_bar: lastBar }) });
     // the chart ticker's 1-minute series, whole, as the daemon sends it (live_ui series_of):
     // STAND-IN, the spec's own bars (its /api/bars1m stub, read as the console stand-in reads one)
-    let chart = null;
     async function sendSeries(key) {
       const a = await page.evaluate(async (u) => {
         try { const r = await fetch(u, { cache: 'no-store', headers: { 'x-ed-stand-in': 'daemon' } }); return r.ok ? await r.json() : null; }
@@ -96,7 +100,7 @@ async function mockPriceSocket(page, messages) {
       const byT = {};
       (a && Array.isArray(a.bars) ? a.bars : []).concat(sentBars[key] || []).forEach((b) => { byT[b.t] = b; });
       const bars = Object.keys(byT).map(Number).sort((x, y) => x - y).map((t) => byT[t]);
-      send({ type: 'series', key: key, bars: bars, last_bar: a && a.last_bar ? a.last_bar.label : null });
+      send({ type: 'series', key: key, bars: bars, last_bar: a && a.last_bar ? a.last_bar : null });
     }
     let sent = false;
     ws.onMessage(async (m) => {
@@ -106,10 +110,11 @@ async function mockPriceSocket(page, messages) {
       keys = symbols.map((s) => s.key);
       send({ type: 'symbols', symbols: symbols });
       beat();
-      // as the daemon: the chart's series whole, before any bar after it
-      // (by the daemon's key, and again whenever the page holds none: SPX after $SPX)
-      if (typeof req.chart === 'string' && req.chart && (served(req.chart).key !== chart || req.series_held !== true)) {
-        chart = served(req.chart).key; await sendSeries(chart);
+      // as the daemon: a new chart's series whole, by the daemon's key, before any bar after it
+      const want = typeof req.chart === 'string' && req.chart ? served(req.chart).key : null;
+      if (want !== chart) {
+        chart = want;
+        if (chart) await sendSeries(chart);
       }
       if (sent) return;                       // each spec message is Schwab's, sent once
       sent = true;
