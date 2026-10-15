@@ -93,6 +93,26 @@ test('the Book ladder is each level of Schwab\'s book as sent, from the daemon, 
   expect(errs).toEqual([]);
 });
 
+test('a book level whose size Schwab sent as no value shows its price, its size "—" and no bar', async ({ page }) => {
+  // Real data: a TSLA NASDAQ_BOOK as Schwab sent it (tests/fixtures/real_tsla_book_rows.json);
+  // STAND-IN: its first bid's TOTAL_VOLUME -999, which the daemon sends as no size
+  // (tests/test_live_ui_daemon_to_browser_v1.py). Before, the row drew a 2% bar like a real small size.
+  const item = BOOKS.filter((r) => r[1] === 'NASDAQ_BOOK')[0][2];
+  const msg = schwabBook('NASDAQ_BOOK', 'TSLA', item, 1, 'book');
+  msg.levels.bids[0] = [item.BIDS[0].BID_PRICE, null];
+  await page.route('**/api/**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
+    body: JSON.stringify(route.request().url().includes('/api/expiries') ? expiriesAnswer([]) : { available: false }) }));
+  await routeWatchlist(page, ['TSLA']);
+  await mockPriceSocket(page, [msg]);
+  await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'TSLA'); localStorage.setItem('ed_ws', 'order-flow'); localStorage.setItem('ed_sub', 'book'); localStorage.setItem('ed_book_venue', 'NASDAQ_BOOK'); } catch (e) {} });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  const row = page.locator('#obBody .dom-row.bid').first();
+  await expect(row.locator('.dom-px')).toHaveText(item.BIDS[0].BID_PRICE.toFixed(2));
+  await expect(row.locator('.dom-sz')).toHaveText('—');
+  await expect(row.locator('.dom-bar')).toHaveCount(0);
+  await expect(page.locator('#obBody .dom-row.bid').nth(1).locator('.dom-bar')).toHaveCount(1);   // a real size: its bar
+});
+
 test('a Schwab outage: the Book panel keeps Schwab\'s last top of book, marked NOT LIVE with the reason', async ({ page }) => {
   // operator 2026-10-14: "the last values stand, marked not live". Schwab's last top of book as the
   // daemon pushes it, with the daemon's verdict on LEVELONE_EQUITIES (STAND-IN: SPY's last top of

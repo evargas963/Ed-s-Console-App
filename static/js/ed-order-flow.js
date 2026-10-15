@@ -70,10 +70,11 @@
     bidLevels.concat(askLevels).forEach(function (l) { if (l.volume > maxVol) maxVol = l.volume; });
     maxVol = maxVol || 1;
     function row(l, side) {
-      var w = Math.max(2, Math.round((l.volume / maxVol) * 100));
       var isWall = wallSet[side + '@' + l.price];
+      // a size Schwab did not send as a number: no bar (an unknown is not a small size)
+      var bar = l.volume == null ? '' : '<i class="dom-bar" style="width:' + Math.max(2, Math.round((l.volume / maxVol) * 100)) + '%"></i>';
       return '<div class="dom-row ' + side + (isWall ? ' wall' : '') + '">' +
-        '<div class="dom-bar-track"><i class="dom-bar" style="width:' + w + '%"></i></div>' +
+        '<div class="dom-bar-track">' + bar + '</div>' +
         '<span class="dom-px">' + num(l.price) + '</span><span class="dom-sz">' + int(l.volume) + '</span></div>';
     }
     var asksHtml = askLevels.slice().reverse().map(function (l) { return row(l, 'ask'); }).join('');
