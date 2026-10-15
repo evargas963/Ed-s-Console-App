@@ -64,7 +64,7 @@ def test_one_live_rule_every_reader_agrees_and_all_fail_closed_at_one_limit():
     """ONE-15 (2026-09-28 audit): "is it live" had four limits -- 3 s (price), 5 s (daemon
     status), 10 s (option greeks), 25 s (book) -- plus the daemon's 5 s/30 s message-age states,
     so one moment could read live on one card and dead on the next. One rule now: the daemon's
-    heartbeat is within FEED_HEARTBEAT_MAX_AGE_SEC, its Schwab socket is open, and it holds the
+    heartbeat is under FEED_HEARTBEAT_MAX_AGE_SEC, its Schwab socket is open, and it holds the
     symbol on that service. A service quiet for 45 s on that feed is live (Schwab sends changes).
     STAND-IN (named): the daemon's status."""
     import live_market_plane as lmp

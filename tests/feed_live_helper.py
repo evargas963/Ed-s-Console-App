@@ -1,6 +1,6 @@
 """Test helper: put live_market_plane's feed state where a real daemon heartbeat would.
 
-Liveness is the FEED's (live_market_plane.feed_live_for): a daemon heartbeat within 3 s that
+Liveness is the FEED's (live_market_plane.feed_live_for): a daemon heartbeat < 3 s old that
 reports the Schwab socket open and holds the symbol. Tests that exercise a live price mark
 exactly the symbols the daemon would hold -- through the production entry point."""
 from __future__ import annotations
