@@ -216,12 +216,13 @@ def record_feed_down() -> None:
 
 
 def daemon_status(now: float) -> dict[str, Any] | None:
-    """The daemon's latest status while its heartbeat is live at `now` (younger than
-    FEED_HEARTBEAT_MAX_AGE_SEC), else None: a daemon that stopped reporting holds nothing and
-    streams nothing."""
+    """The daemon's latest status while its heartbeat is live at `now` (stamped within
+    FEED_HEARTBEAT_MAX_AGE_SEC of it, before or after: a status the daemon sent after `now`, while
+    its caller was working at `now`, says it was reporting then), else None: a daemon that
+    stopped reporting holds nothing and streams nothing."""
     with _lock:
         rx, status = _feed["rx"], _feed["status"]
-    if rx is None or not 0.0 <= now - rx < FEED_HEARTBEAT_MAX_AGE_SEC:
+    if rx is None or not abs(now - rx) < FEED_HEARTBEAT_MAX_AGE_SEC:
         return None
     return status
 

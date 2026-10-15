@@ -150,8 +150,9 @@ from Schwab to the screen (daemon, console, page), are these:
   during a feed outage the header says OFFLINE. A value never received, or sent invalid, shows as
   "-". Calculations keep every digit and every contract; rounding is on screen
   only. Where today's code differs: §3.5 items 5 and 6.
-  Enforced by: `tests/test_data_path_rules_v1.py` (newest by Schwab's time, no replay as live); the
-  rest — ENF-22.
+  Enforced by: `tests/test_data_path_rules_v1.py` (newest by Schwab's time, no replay as live),
+  `tests/test_data_path_live_status_v1.py` (the daemon's status is current within the live limit
+  of the time judged, before or after); the rest — ENF-22.
 - **D6. No live screen reads the database.** Every live route serves from memory; the database
   is read at startup, after the close and for research only.
   Enforced by: `tests/test_data_path_rules_v1.py`.
