@@ -78,6 +78,11 @@ test('the Book ladder is each level of Schwab\'s book as sent, from the daemon, 
     const body = url.includes('/api/expiries') ? expiriesAnswer([]) : { available: false };
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
+  // the console's read of the book, held back: Schwab's ladder draws without it
+  let release;
+  const held = new Promise((r) => { release = r; });
+  await page.route('**/api/order-flow/microstructure**', async (route) => { await held;
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ status: 'ok' }) }); });
   await routeWatchlist(page, ['TSLA']);
   await mockPriceSocket(page, books.map((r) => schwabBook('NASDAQ_BOOK', 'TSLA', r[2], Number(r[0]), 'book ' + r[2].BOOK_TIME)));
   await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'TSLA'); localStorage.setItem('ed_ws', 'order-flow'); localStorage.setItem('ed_sub', 'book'); localStorage.setItem('ed_book_venue', 'NASDAQ_BOOK'); } catch (e) {} });
@@ -90,16 +95,18 @@ test('the Book ladder is each level of Schwab\'s book as sent, from the daemon, 
     [r.querySelector('.dom-px').textContent, r.querySelector('.dom-sz').textContent]));
   expect(shown).toEqual(want);
   await expect(page.locator('#obBody .fl-badge').first()).toHaveText('LIVE');
-  // the console has priced no book: no classification is served, so none is shown (before,
-  // deade82e: every row read UNKNOWN while the label was simply not yet in)
+  // the console's answer not yet in: no classification to show, so none is shown
   await expect(page.locator('#obBody .fl-tag')).toHaveCount(0);
+  // an answer that serves no label for a classified value: each reads UNKNOWN (STAND-IN: the answer)
+  release();
+  await expect(page.locator('#obBody .fl-tag[data-cls="UNKNOWN"]').first()).toBeVisible();
   expect(errs).toEqual([]);
 });
 
 test('a book level whose size Schwab sent as no value shows its price, its size "—" and no bar', async ({ page }) => {
   // Real data: a TSLA NASDAQ_BOOK as Schwab sent it (tests/fixtures/real_tsla_book_rows.json);
   // STAND-IN: its first bid's TOTAL_VOLUME -999, which the daemon sends as no size
-  // (tests/test_live_ui_daemon_to_browser_v1.py). Before, the row drew a 2% bar like a real small size.
+  // (tests/test_live_ui_daemon_to_browser_v1.py); an unknown size is not a small size.
   const item = BOOKS.filter((r) => r[1] === 'NASDAQ_BOOK')[0][2];
   const msg = schwabBook('NASDAQ_BOOK', 'TSLA', item, 1, 'book');
   msg.levels.bids[0] = [item.BIDS[0].BID_PRICE, null];
@@ -119,8 +126,8 @@ test('a book level whose size Schwab sent as no value shows its price, its size 
 test('a Schwab outage: the Book panel keeps Schwab\'s last top of book, marked NOT LIVE with the reason', async ({ page }) => {
   // operator 2026-10-14: "the last values stand, marked not live". Schwab's last top of book as the
   // daemon pushes it, with the daemon's verdict on LEVELONE_EQUITIES (STAND-IN: SPY's last top of
-  // book from tests/test_data_path_rules_v1.py's real capture, the outage's words). Before, the
-  // page drew the reason in place of the bid and ask.
+  // book from tests/test_data_path_rules_v1.py's real capture, the outage's words); the reason
+  // is drawn beside the bid and ask, never in their place.
   const BOOK = { status: 'ok', depth: {}, ages: {}, as_of: { book: null, quote: null }, classification: {}, wall_candidates: [] };
   await mockPriceSocket(page, [Object.assign(schwabQuote('TSLA', 767.39, { BID_PRICE: 767.38, ASK_PRICE: 767.4, BID_SIZE: 300, ASK_SIZE: 200 }),
     { feed_live: false, outage: 'Schwab LEVELONE_EQUITIES feed down during RTH' })]);

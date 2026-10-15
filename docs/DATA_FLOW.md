@@ -273,7 +273,9 @@ from Schwab to the screen (daemon, console, page), are these:
   The page's 1-minute charts and the Desk's volume card draw the daemon's (8800: the chart
   ticker's series whole for a new chart, a reconnect, each /pricehistory answer and a bar on an
   earlier minute, then every CHART_EQUITY bar of it in order); at 1 minute the console answers no
-  bars and its view names the charts that draw the daemon's series (`series`, `server._panels`).
+  bars and its view names the charts that draw the daemon's series (`series`, `server._panels`);
+  while the page's newer view is on its way to the console, the series waits and is drawn on the
+  charts that view names once the console takes it (none waits on a closed connection).
   Enforced by: `tests/test_live_ui_daemon_to_browser_v1.py` (the daemon's series equals the
   console's, bar for bar, on real data). Enforced by: `tests/test_data_path_pricehistory_v1.py`. Charts show completed Schwab bars only, exactly as Schwab sent them, with
   the newest bar's minute (`last_bar`). The live Schwab LAST_PRICE (the header's price row, with
@@ -289,15 +291,13 @@ from Schwab to the screen (daemon, console, page), are these:
   waiting has been written and pushed as `liquidity` (a `levels` push when the published
   snapshot changed); and the levels loop (`_publish_missing_price_levels`) for a ticker with
   none yet for the market's session (the console's start, a new session). It reads the
-  console's bars (`_bars_1m`), whose one owner is the bar writer (`_bar_writer`): it loads them
-  from the daemon's record (`stream_bars_raw`, Schwab's newest bar of each minute) before it
-  takes any pushed bar (the push queue holds the bars that arrive meanwhile), then keeps each
-  pushed bar, and stops at the console's shutdown once the bars queued are kept
-  (`stop_bar_writer`). The console's old bar store (`ed_console.db` `price_bars_1m`: bars its
-  quote accumulator built and price-history re-seeds before 2026-09-26, then Schwab's streamed
-  bars to 2026-10-04) is neither written nor read. The levels loop builds nothing until that load is
-  done. If the load fails, no level is built and the console window shows the error. Each bar
-  is checked once, where it comes in (`server._schwab_bar`); the levels take the bar writer's
+  console's bars (`_bars_1m`, `minute_bars`), whose one owner is the bar writer (`_bar_writer`):
+  it keeps Schwab's /pricehistory 1-minute answer and each streamed bar as the daemon pushes them,
+  in the order they arrive, reading no database, and stops at the console's shutdown once the
+  bars queued are kept (`stop_bar_writer`). The console's old bar store (`ed_console.db`
+  `price_bars_1m`: bars its quote accumulator built and price-history re-seeds before 2026-09-26,
+  then Schwab's streamed bars to 2026-10-04) is neither written nor read. Each bar is read once,
+  where it comes in (`micro_structure.streamed_bar` and `pricehistory_bars`, over `schwab_bar`); the levels take the bar writer's
   bars as kept (`liquidity_value_engine.bars_from_candles`), every level function the same.
   The routes serve what it published and build nothing. `/api/levels` also serves the order the
   chart draws them in (`by_distance`): nearest the spot (Schwab's last trade under §2 D5, with
@@ -558,8 +558,8 @@ from Schwab to the screen (daemon, console, page), are these:
    waits behind that work.
 4. **Rule 5's rest** (D5, operator 2026-10-11): a feed down in an open session no longer blanks
    anything -- the last values stand and every value read from a Schwab feed is marked not live by
-   the one judgment of that feed (`live_market_plane.outage`: the price row's `feed_live`/`outage`,
-   the books' `top_outage` drawn beside the last bid and ask, each panel's `not_live` reasons on
+   the one judgment of that feed (`live_market_plane.outage`: on the daemon's socket each symbol's
+   verdict per service, drawn beside its last values, the top of book among them; each panel's `not_live` reasons on
    `/api/live` over the feeds it is read from, `server._Panel.feeds`: the candles' CHART_EQUITY,
    the price levels' and zones' too (they are built from the bars), and the options tape's
    contracts, the rule's picks, whose prints stand through an outage), and the header says

@@ -311,8 +311,8 @@ def test_a_streamed_value_whose_feed_is_down_in_session_stands_in_the_levels_mar
     the contract): at 11:00 ET on 2026-10-07 (RTH by Schwab's /markets) and at 22:00 ET (Closed)
     the levels are priced at the last spot Schwab sent, the streamed volume in the per-strike
     column (operator 2026-10-14: "the last values stand, marked not live ... on every derived
-    value"); in RTH the one judgment marks them not live, while Closed it does not. Before, the
-    levels were not published in RTH."""
+    value"); in RTH the one judgment marks them not live, while Closed it does not; they are
+    published in RTH too."""
     import live_market_plane as lmp
     strike = round(_CONTRACTS[0]["strikePrice"], 2)
     out = {}

@@ -76,8 +76,9 @@ def daemon_holds(at: float, held: dict, *, socket_open: bool = True, connected_a
     connection to Schwab begun at `connected_at`, its option rule picking `picks` (the option
     contracts it holds, when not given) having ranked every ticker it holds on LEVELONE_EQUITIES,
     as the console's feed loop applies it (streaming.apply_heartbeat)."""
+    from app.market_data.schwab.streaming.live_ui import OPTION_SERVICES
     from app.options.order_flow import streaming as ofs
-    options = {s: (held if picks is None else picks).get(s, []) for s in ofs.OPTION_PRODUCER_SERVICES}
+    options = {s: (held if picks is None else picks).get(s, []) for s in OPTION_SERVICES}
     ofs.apply_heartbeat({"ts": at, "schwab_socket_open": socket_open, "connected_at": connected_at, "held": held,
                          "options": options, "ranked": held.get("LEVELONE_EQUITIES", [])})
 

@@ -60,14 +60,14 @@
     if (!d || d.status === 'no_book') {           // on its way (undefined): no badge yet
       return stage(1, 'td-accent-blue', 'Detect — book microstructure', '-', '', 0, tobRows, d === undefined ? null : 'NO BOOK', 'warn');
     }
-    var depth = d.depth, cls = d.classification;    // absent when the console served none
+    var depth = d.depth;                            // absent when the console served none
     function dep(n, side) { var x = depth && depth[String(n)]; return x ? x[side] : undefined; }
     var imb = dep(5, 'imbalance');
     var ages = d.ages || {};
     var rows = tobRows.concat([
-      ['Spread (pts)', num(d.spread_pts), window.EdShell.classOf(cls, 'spread_pts')],
-      ['Depth 1 imbalance', num(dep(1, 'imbalance'), 3), window.EdShell.classOf(cls, 'depth.*.imbalance')],
-      ['Book age', d.as_of.book != null ? { ageOf: 'book' } : '—', window.EdShell.classOf(cls, 'as_of.book')],
+      ['Spread (pts)', num(d.spread_pts), window.EdShell.classOf(d, 'spread_pts')],
+      ['Depth 1 imbalance', num(dep(1, 'imbalance'), 3), window.EdShell.classOf(d, 'depth.*.imbalance')],
+      ['Book age', d.as_of.book != null ? { ageOf: 'book' } : '—', window.EdShell.classOf(d, 'as_of.book')],
     ]);
     var heroVal = (imb == null || isNaN(imb)) ? '—' : (imb >= 0 ? '+' : '') + num(imb, 3);
     var side = dep(5, 'side');   // served: BID / ASK / EVEN by the imbalance's sign

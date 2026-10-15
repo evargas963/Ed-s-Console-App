@@ -470,12 +470,13 @@
     var lead = String(text).toLowerCase().match(/^[a-z0-9-]+/);
     return '<span class="fl-tag ' + (lead ? lead[0] : 'unknown') + '" data-cls="' + _escBadge(text) + '">' + _escBadge(text) + '</span>';
   }
-  // A value's classification as the console served it with its answer (`map`, the answer's
-  // `classification`): its label; no answer yet (no map): undefined, no tag; an answer that
-  // serves no label for a classified value: null, UNKNOWN (a defect, shown).
-  function classOf(map, key) {
-    if (map === undefined || map === null) return undefined;
-    return typeof map[key] === 'string' && map[key] ? map[key] : null;
+  // A value's classification as the console served it in `answer` (its `classification` map):
+  // its label; no answer yet: undefined, no tag; an answer that serves no label for it, its map
+  // or the key missing: null, UNKNOWN (a defect, shown).
+  function classOf(answer, key) {
+    if (answer === undefined || answer === null) return undefined;
+    var map = answer.classification;
+    return map && typeof map[key] === 'string' && map[key] ? map[key] : null;
   }
   // The rows of a statistics section, each [label, value (text, or {ageOf} a served age),
   // classification (flTag), its key (data-k), if it names one]
@@ -1055,7 +1056,14 @@
     return { ok: true, status: 200, body: { bars: _series.bars, tf: '1', whole: whole, last_bar: _series.last_bar },
              notLive: v && v.outage ? [v.outage] : null };
   }
-  function redeliverDaemon(whole) { _daemonPanels.forEach(function (n) { deliver(n, seriesAnswer(whole)); }); }
+  // The daemon's series to the charts the console's newest view names. While a newer view is on
+  // its way (the charts it names not yet known), it waits, whole if any delivery was whole, and
+  // is drawn once the console takes that view.
+  var _viewTaken = 0, _seriesWaiting = null;
+  function redeliverDaemon(whole) {
+    if (_viewTaken !== _viewSeq) { _seriesWaiting = whole || _seriesWaiting === true; return; }
+    _daemonPanels.forEach(function (n) { deliver(n, seriesAnswer(whole)); });
+  }
   // each panel drawn on its own: one drawer's error is reported and never stops the others
   function deliver(name, a) {
     if (!_panelFns[name]) return;
@@ -1095,8 +1103,14 @@
         _daemonPanels.forEach(function (n) { if (drawn.indexOf(n) === -1) deliver(n, seriesAnswer(true)); });
         msg.moved.forEach(function (n) { delete _held[n]; deliver(n, { waiting: true }); });
         if (msg.seq !== _viewSeq) return;          // a newer view is on its way: it decides the rest
+        _viewTaken = msg.seq;
         var held = _held; _held = {};
         Object.keys(held).forEach(function (n) { deliver(n, held[n]); });
+        // the series that waited for this view, to the charts that were already drawing it
+        if (_seriesWaiting !== null) {
+          var waited = _seriesWaiting; _seriesWaiting = null;
+          _daemonPanels.forEach(function (n) { if (drawn.indexOf(n) !== -1) deliver(n, seriesAnswer(waited)); });
+        }
         return;
       }
       if (msg.type !== 'panels') return;              // one change's answers, drawn together
@@ -1108,6 +1122,10 @@
     ws.onclose = function () {
       if (_live !== ws) return;
       _live = null;
+      // no view is on its way on a closed connection: the daemon's series goes on to the charts
+      // the last view named (the console never stands in the path from Schwab to the screen)
+      _viewTaken = _viewSeq;
+      if (_seriesWaiting !== null) { var waited = _seriesWaiting; _seriesWaiting = null; redeliverDaemon(waited); }
       setPushDown(true);
       paintSession('Unknown', 'session unknown: the console push is down');
       setTimeout(openPush, Math.min(2000, 250 * Math.pow(2, _liveRetry++)));

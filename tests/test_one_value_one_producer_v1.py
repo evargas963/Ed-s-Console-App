@@ -4,9 +4,8 @@ gets that same value"). Two pages open on the real console (uvicorn, a real WebS
 Heatmap with a strike selected (the heatmap, GEX by Strike and Strike Detail's chain on screen) and
 the Trade Desk (the terrain and the levels). The price then moves across strikes, as Schwab's
 quote moves it; on the newest answer of every panel, each value two of them carry is the same
-number: the spot each used, the strike nearest it, the walls and the flip. Before, each route read
-the live price at its own moment and the heatmap was answered again only on a levels publication:
-its spot row stayed on the old strike while GEX by Strike's moved.
+number: the spot each used, the strike nearest it, the walls and the flip; no panel's spot row
+stays on an old strike while another's moves.
 
 Real data: CRWD's 2026-10-16 chain captured 2026-10-07 10:38:40 ET (tests/real_chains.py), its
 levels published at its capture. STAND-IN (named): the daemon's status and CRWD's last trades

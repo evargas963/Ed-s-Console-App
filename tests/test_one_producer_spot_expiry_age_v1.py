@@ -121,8 +121,7 @@ def test_a_the_strike_at_the_price_and_every_value_read_from_the_price_is_one_nu
     spot row, GEX by Strike, Strike Detail and the Chain's ladders, vanna, charm, the chart, the
     Desk, Right Now), is one strike from one strike list. Each wall's distance from the price, the
     price's side of the flip, whether a wall is breached and the expected-move band are each one
-    number at the live price, on the terrain and on the levels alike. Before: seven nearest-strike
-    computations on six strike lists, and the terrain's distances and sides at the price the
+    number at the live price, on the terrain and on the levels alike, never at the price the
     chain was priced at."""
     spot = CRWD.spot + MOVE
     strikes = sorted({c["strikePrice"] for c in CRWD.chain})
@@ -166,8 +165,7 @@ def test_b_the_expiries_their_days_and_the_front_one_are_one_list_everywhere(mrv
     """Audit B. MRVL's 20 expiries: the dropdown's list, the heatmap's columns and the terrain's
     list are one list, each expiry with one days-to-expiry and one expired state; the front expiry
     (the nearest not expired by Schwab's session) is the heatmap's front column, the Chain's
-    default expiry and the expiry max pain is read from. Before: two lists with two DTE sources,
-    and six front-expiry rules."""
+    default expiry and the expiry max pain is read from, by one front-expiry rule."""
     spot = MRVL.spot
     a = _answers(MK, spot, {"heatmap": {"scope": "all"}, "chain": {"subview": "chain", "view": ""}})
     exp_panel, surface = a["heatmap"]["expiries"], a["heatmap"]["gamma.surface"]
@@ -208,8 +206,8 @@ def test_c_the_levels_age_is_one_instant_labelled_once(crwd):
     """Audit C. The age of the published levels, on every panel that shows it (Key Levels, GEX by
     Strike, the heatmap, the Desk's terrain and its gamma levels): every answer names the one
     instant (the publication's, `as_of`) and serves no age of its own; the push labels it
-    (time_et.age_label) on each answer and, every beat, for every panel shown at one instant.
-    Before: five age computations at five instants, and six wordings on the page."""
+    (time_et.age_label) on each answer and, every beat, for every panel shown at one instant:
+    one age computation, one wording."""
     f = _frames(TK, CRWD.spot, {"heatmap": {}, "desk": {"workspace": "trade-desk", "subview": "desk", "view": ""}})
     published = CRWD.now.timestamp()
     panels = {"heatmap": ("gamma.terrain", "gamma.strikes", "gamma.surface"), "desk": ("desk.terrain", "desk.levels")}

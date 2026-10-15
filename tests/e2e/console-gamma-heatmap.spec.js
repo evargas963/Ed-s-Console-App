@@ -1297,8 +1297,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   test('the Gamma Chart at 1 minute draws each CHART_EQUITY bar from the daemon, in order, on the served history', async ({ page }) => {
     // Real data: SPY's CHART_EQUITY items as Schwab sent them 2026-10-01 (the daemon's record,
     // tests/fixtures/real_daemon_bars_spy_tsla_2026_10_01_02.json); the bar each carries is the
-    // daemon's (proven in tests/test_live_ui_daemon_to_browser_v1.py), STAND-IN here. Before, this
-    // chart drew Schwab's bars only from the console's push.
+    // daemon's (proven in tests/test_live_ui_daemon_to_browser_v1.py), STAND-IN here.
     const rows = require(path.join(__dirname, '..', 'fixtures', 'real_daemon_bars_spy_tsla_2026_10_01_02.json')).rows
       .filter((r) => r.native && r.symbol === 'SPY').slice(0, 2);
     await mockPriceSocket(page, [schwabQuote('SPY', 601.23)].concat(rows.map((r) => { const n = r.native, chg = n.CLOSE_PRICE - n.OPEN_PRICE;

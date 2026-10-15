@@ -61,7 +61,7 @@ log = logging.getLogger(__name__)
 #: The daemon's live push endpoint (app.market_data.schwab.streaming.live_push), the feed's
 #: (start_order_flow_stream -> _feed_loop).
 from app.market_data.schwab.streaming.live_push import LIVE_PUSH_HOST, LIVE_PUSH_PORT
-from app.market_data.schwab.streaming.live_ui import LIVE_UI_PORT
+from app.market_data.schwab.streaming.live_ui import LIVE_UI_PORT, OPTION_SERVICES
 
 LIVE_PUSH_URL = f"ws://{LIVE_PUSH_HOST}:{LIVE_PUSH_PORT}"
 #: The daemon's Schwab push (live_ui): the LEVELONE_EQUITIES messages the console's price record takes (_rows_loop).
@@ -345,10 +345,6 @@ async def _feed_loop(push_url: str, ui_url: str, reconnect_sec: float) -> None:
         _log_stream("FEED_LOOP_STOP_DONE")
 
 
-#: The two Schwab option services a contract streams on.
-OPTION_PRODUCER_SERVICES: tuple[str, ...] = ("LEVELONE_OPTIONS", "OPTIONS_BOOK")
-
-
 #: each shown feed's verdict (live, outage), by (symbol, Schwab service), when last marked
 _verdicts: "dict[tuple[str, str], tuple]" = {}
 
@@ -406,7 +402,7 @@ def apply_heartbeat(feed: Any) -> None:
     global _picked
     if _lmp.record_feed_heartbeat(feed) is None:
         return
-    picked = set().union(*(feed["options"][s] for s in OPTION_PRODUCER_SERVICES))
+    picked = set().union(*(feed["options"][s] for s in OPTION_SERVICES))
     ranked = {ticker_storage_key(t) for t in feed["ranked"]}
     kept = set()
     for sym in _picked - picked:

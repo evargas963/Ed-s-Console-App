@@ -53,8 +53,7 @@ def _status(at: float, *, connected_at, picks: dict, ranked: list, held: "dict |
 def test_a_restarted_daemon_keeps_the_option_prints_until_its_rule_has_ranked_their_ticker():
     """The daemon restarts: its first status holds nothing and its rule has picked nothing, for
     it has ranked no ticker yet. The contract's print stands; once the rule has ranked SPY and
-    does not pick it, it is released. Before, the restarted daemon's first status released every
-    contract: the Flow tape and the option books emptied."""
+    does not pick it, it is released; the Flow tape and the option books do not empty on a restart."""
     picks = {"LEVELONE_OPTIONS": [_SYM], "OPTIONS_BOOK": []}
     now = time.time()
     try:
@@ -76,8 +75,7 @@ def test_a_value_is_live_only_once_its_service_posted_to_it_on_this_connection()
     """One rule for every Schwab service: the contract's LEVELONE_OPTIONS value is live once the
     stream posted to it on the daemon's current connection. A new connection begun after its last
     message leaves it not live until the stream posts again; a status that reports no connection
-    start is not live. Before, only an equity was judged on its connection: an option contract
-    of an ended connection read live."""
+    start is not live; an option contract is judged on its connection as an equity is."""
     held = {"LEVELONE_OPTIONS": [_SYM]}
     received = _TRADE["ts_recv"]
     try:
@@ -96,8 +94,7 @@ def test_a_value_is_live_only_once_its_service_posted_to_it_on_this_connection()
 def test_through_a_schwab_outage_the_tape_keeps_its_prints_marked_not_live():
     """Schwab's connection ends: the daemon holds nothing and says so, its rule still picking the
     contract. The tape still serves the contract's print, and is marked not live with the reason.
-    Before, the tape read its contracts from what the daemon held: it went blank and unmarked.
-    Judged at the chain's capture, in the 2026-10-13 regular session."""
+    It never goes blank or unmarked. Judged at the chain's capture, in the 2026-10-13 regular session."""
     picks = {"LEVELONE_OPTIONS": [_SYM], "OPTIONS_BOOK": []}
     now = _FX["chain_capture_ts_utc"]
     try:
@@ -122,9 +119,9 @@ def test_through_a_schwab_outage_the_tape_keeps_its_prints_marked_not_live():
 def test_the_candles_and_the_options_tape_are_marked_when_their_feed_is_down():
     """The chart's candles of several minutes are the console's, read from Schwab's CHART_EQUITY,
     and the options tape from each streamed contract's LEVELONE_OPTIONS: with the feed holding
-    neither, each panel is marked not live with its reason. Before, both declared no feed and read
-    live through any outage. At 1 minute the candles are the daemon's series, marked on the page by
-    the daemon's own CHART_EQUITY verdict: the console's panel carries no verdict of its own. Judged
+    neither, each panel is marked not live with its reason. At 1 minute the candles are the
+    daemon's series, marked on the page by the daemon's own CHART_EQUITY verdict: the console
+    answers no bars for them. Judged
     at the chain's capture, in the 2026-10-13 regular session (an outage while Closed is none)."""
     picks = {"LEVELONE_OPTIONS": [_SYM], "OPTIONS_BOOK": []}
     now = _FX["chain_capture_ts_utc"]

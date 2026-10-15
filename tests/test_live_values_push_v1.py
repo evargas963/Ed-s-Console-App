@@ -165,8 +165,7 @@ def test_a_value_two_panels_or_two_pages_show_is_one_computation(published):
 def test_a_route_that_raises_is_its_panels_500_and_the_push_goes_on(published):
     """The Desk's event route raises while Schwab's /markets has sent no session (its window starts
     at the session's open): that panel is answered 500, every other panel of the view still
-    arrives, and the same connection takes the next view. Before, the route's error ended the
-    connection: the page reconnected, sent its view again, and the Desk never drew."""
+    arrives, and the same connection takes the next view: one route's error never ends it."""
     import time_et
 
     async def body(host):
@@ -338,8 +337,7 @@ def test_a_value_read_from_the_price_stands_marked_not_live_when_the_feed_goes_d
     marked not live, on the header and every derived value, from the one liveness judgment." The
     heatmap with CRWD's feed live carries no mark (the expiry list, read from no price, never
     does); the feed goes down: the console's liveness pass pushes it again with its last spot,
-    marked with the one judgment's reason (live_market_plane.outage). Before, the spot was blanked
-    and nothing said why."""
+    marked with the one judgment's reason (live_market_plane.outage), never blanked."""
     import time
 
     import live_market_plane as lmp

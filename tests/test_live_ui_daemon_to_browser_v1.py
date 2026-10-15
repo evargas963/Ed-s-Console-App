@@ -271,7 +271,7 @@ def test_the_screens_1_minute_series_is_the_daemons_and_equals_the_consoles_bar_
 def test_the_series_is_sent_whole_for_a_new_chart_and_only_then():
     """A page's chart: its series whole on the first subscribe; the same chart asked again, typed
     another way too (SPX after $SPX), nothing more (the page holds it, keyed by the daemon's key);
-    another chart, that one whole. Before, the page said whether it held one (`series_held`)."""
+    another chart, that one whole."""
     async def body(bus, ws, stats):
         async def series_after(req) -> "dict | None":
             await ws.send(json.dumps(req))
@@ -565,7 +565,7 @@ def test_shutdown_is_not_held_up_by_a_connected_client():
 def test_the_daemons_socket_and_the_console_listen_on_this_computer_only():
     """Operator 2026-10-14: "Bind both 8800 and 8000 to 127.0.0.1. I only use this computer."
     The daemon's socket, served as the daemon serves it (its own host), listens on 127.0.0.1;
-    the console is started by the launcher on 127.0.0.1. Before, both listened on every address."""
+    the console is started by the launcher on 127.0.0.1; neither listens on every address."""
     import launch
 
     async def go():

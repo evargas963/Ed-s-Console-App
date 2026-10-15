@@ -68,13 +68,13 @@
     // the console's reads of the book, absent until it has priced one (then each reads '—')
     var priced = d && d.status !== 'no_book' ? d : null;
     function got(k) { return priced ? priced[k] : undefined; }
-    var depth = got('depth'), cls = got('classification'), asOf = got('as_of');
+    var depth = got('depth'), asOf = got('as_of');
     var bidLevels = sb ? sb.levels.bids : [], askLevels = sb ? sb.levels.asks : [];
     var verdict = window.EdShell.feedVerdict(st().key, st().bookVenue);
     // Schwab's top of book: LEVELONE_EQUITIES as the daemon pushes it, and its verdict
     var tob = window.EdShell.priceRow(st().key);
     function dep(n, side) { var x = depth && depth[String(n)]; return x ? x[side] : undefined; }
-    function bk(k) { return window.EdShell.classOf(cls, k); }
+    function bk(k) { return window.EdShell.classOf(priced, k); }
     var walls = got('wall_candidates');
     var wallSet = {};
     if (walls) walls.forEach(function (w) { wallSet[w.side + '@' + w.price] = w; });

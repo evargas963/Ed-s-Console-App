@@ -302,7 +302,7 @@ def test_d5_a_feed_down_in_an_open_session_stands_marked_not_live_with_its_reaso
     """RTH, the feed down (operator 2026-10-14: "the last values stand, marked not live"): the
     price, the equity top of book and the option top of book Schwab last sent stand (the books'
     computed reads priced at them), the price marked by the one judgment with the outage reason.
-    Before, each was blanked. The screen's top of book is the daemon's, marked by the daemon's
+    None is blanked. The screen's top of book is the daemon's, marked by the daemon's
     verdict (tests/e2e/console-order-flow-heatmap.spec.js)."""
     s = _served_at(_RTH, feed_live=False)
     assert s["row"]["spot"] == 767.39 and s["row"]["feed_live"] is False

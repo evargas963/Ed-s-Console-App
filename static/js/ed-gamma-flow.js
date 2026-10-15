@@ -111,8 +111,8 @@
     var flow = d.flow || {};                        // the ONE flow block (never flattened)
     function dep(n, side) { var x = depth[String(n)] || {}; return x[side]; }
     // the engine's book/microstructure classification and live_payload's flow classification
-    function bk(k) { return window.EdShell.classOf(d.classification, k); }
-    function fk(k) { return window.EdShell.classOf(flow.classification, k); }
+    function bk(k) { return window.EdShell.classOf(d, k); }
+    function fk(k) { return window.EdShell.classOf(d.flow, k); }   // the flow block's own answer
     // row = [label, displayed value, backend classification | null, canonical key (data-k)] (EdShell.flRows)
     // The depth ladder is classified by the engine under its own wildcard keys ("depth.*.<leaf>").
     var pricedAt = d.top_of_book;                  // the top of book the console priced these at (the engine's input)

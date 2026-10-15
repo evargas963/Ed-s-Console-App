@@ -129,8 +129,7 @@ def test_the_history_is_written_once_per_capture_window_and_never_outside_one(tm
     """Each window's first round is written from the daemon's ledger: every contract's record, its
     Greeks the quote's, and the time the round began, with the stock's own price as its record
     holds it and that price's trade time (operator 2026-10-14) -- not the quotes' underlyingPrice
-    (762.63) nor the chain answer's (766.31). Before, the row took the newest underlyingPrice
-    across the records."""
+    (762.63) nor the chain answer's (766.31), nor the newest underlyingPrice across the records."""
     clock = {"now": 0.0}
     daemon, sweep, published, client = _sweep(tmp_path, schwab, lambda: clock["now"])
     for at in ("2026-09-30 15:31:57", "2026-09-30 15:35:00",      # the 15:30 window, twice

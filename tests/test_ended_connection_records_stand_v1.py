@@ -1,7 +1,7 @@
 """When Schwab's connection ends, the records it held stand with their last values, not live, and
 the next connection's first message replaces each whole (operator 2026-10-13: "On disconnect keep
-the last values, marked not live; reconnect's opening replaces them"). Before, the daemon forgot
-them: a console that connected meanwhile had no last value to show.
+the last values, marked not live; reconnect's opening replaces them"): a console that connects
+meanwhile has the last values to show.
 
 Real data: SPY's first two LEVELONE_EQUITIES messages received 2026-10-05 14:00 CT
 (tests/fixtures/real_stream_mix_2026_10_05_1400ct.json), each through the daemon's real Schwab
@@ -57,8 +57,7 @@ def test_the_console_keeps_an_ended_connections_option_prints_until_the_rule_dro
     in the console's one tape), through the daemon's bus. The connection ends, and a new one
     begins with nothing held yet: its print stands, the daemon's rule still picking it. Only when
     the rule stops picking it -- here while Schwab is down, so no connection ever holds it again
-    -- is it forgotten. Before, the first status after the connection ended released every
-    contract: the Flow tape and the option books emptied."""
+    -- is it forgotten; the Flow tape and the option books do not empty when a connection ends."""
     import time
 
     import option_ledger
@@ -93,8 +92,7 @@ def test_the_console_keeps_an_ended_connections_option_prints_until_the_rule_dro
 def test_the_consoles_price_record_takes_the_new_connections_opening_whole():
     """SPY's two messages on the console's price record (live_market_plane, which the price row
     reads), a new Schwab connection begun between them: the second, the new connection's first,
-    is the whole record. Before, the ended connection's LAST_SIZE stayed, shown as current once
-    the feed was held again."""
+    is the whole record: no field of the ended connection (its LAST_SIZE) is shown as current."""
     import live_market_plane as lmp
     import live_price_rows
     from tests.feed_live_helper import daemon_holds, forget_price, no_daemon

@@ -78,8 +78,7 @@ def test_no_change_is_an_empty_push():
 def test_a_change_after_the_console_stopped_is_marked_on_no_loop():
     """The console's loop is bound from its start and released at its stop: a change a thread
     marks after the stop (the levels loop, the bar writer, the stream finishing) is counted on no
-    closed loop. Before, the closed loop stayed bound, and once every change was counted, each
-    such mark raised "Event loop is closed" in the thread that made it."""
+    closed loop, and raises no "Event loop is closed" in the thread that made it."""
     from fastapi.testclient import TestClient
 
     with TestClient(server.app):
