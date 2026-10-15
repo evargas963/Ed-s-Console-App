@@ -61,8 +61,8 @@ def _resolve_token_path(token_path: str) -> str:
     return os.path.abspath(os.path.expanduser(token_path))
 
 
-#: os.replace on Windows fails with a sharing violation while another process (a sign-in being
-#: saved, or the daemon) has the token file open for its brief read; the SAME write is retried.
+#: os.replace on Windows fails with a sharing violation while a reader without the token file's
+#: lock (inspect_token_file, the console's token status) has it open; the SAME write is retried.
 TOKEN_REPLACE_ATTEMPTS = 5
 #: the longest a writer of the token file waits for another to finish, in seconds
 TOKEN_LOCK_WAIT_SEC = 10

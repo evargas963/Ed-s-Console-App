@@ -1,6 +1,7 @@
 """The daemon's Schwab sign-in, whose one record is the token file: a sign-in saved there is taken
-before the next request, without a restart; once Schwab refuses the sign-in, nothing more is sent
-to Schwab until a new one is saved.
+without a restart (while Schwab refuses the old one, at the next request; while signed in, when
+the next refresh is due); once Schwab refuses the sign-in, nothing more is sent to Schwab until a
+new one is saved.
 
 Through the real schwab-py client (schwab_client.client_from_token_file_atomic) against the local
 stand-in for Schwab's host (tests/schwab_rest_standin.py: its real data and stand-ins are named
@@ -137,19 +138,22 @@ def test_a_new_sign_in_saved_after_the_refusal_is_taken_without_a_restart(tmp_pa
     assert client.token_metadata.creation_timestamp == created
 
 
-def test_a_new_sign_in_saved_while_signed_in_is_taken_and_never_overwritten(tmp_path):
-    """A sign-in saved while the daemon still holds the old one (before it would be refused): the
-    next request carries the new token, nothing is refreshed with the old one, and the token file
-    still holds the new sign-in."""
+def test_a_new_sign_in_saved_while_signed_in_is_taken_when_the_refresh_is_due(tmp_path):
+    """A sign-in saved while the daemon still holds the old one: while the old token is not yet due
+    for its refresh, requests carry it; once it is due, the new sign-in is taken in place of the
+    refresh: no token request, the request carries the new token, the token file still holds it."""
     schwab = LocalSchwab()
     try:
-        client = schwab.client(tmp_path, 100)              # the old sign-in, in its refresh window
+        client = schwab.client(tmp_path)                   # the old sign-in, an hour from expiry
         token = tmp_path / "schwab_token.json"
         created = _new_sign_in(token, "fresh")
+        client.get_option_expiration_chain("SPY")
+        client.session.token["expires_at"] = int(time.time()) + 100   # the old token now in its refresh window
         resp = client.get_option_expiration_chain("SPY")
     finally:
         schwab.close()
-    assert resp.status_code == 200 and (_posts(schwab), _asked(schwab)) == (0, [(EXPIRATIONS, "Bearer fresh")])
+    assert resp.status_code == 200 and _posts(schwab) == 0
+    assert _asked(schwab) == [(EXPIRATIONS, "Bearer a"), (EXPIRATIONS, "Bearer fresh")]
     saved = json.loads(token.read_text())
     assert saved["token"]["access_token"] == "fresh" and saved["creation_timestamp"] == created
 
@@ -176,9 +180,11 @@ _FRESH = {"creation_timestamp": int(time.time()) + 1, "token": {
 
 
 def _saving(token) -> subprocess.Popen:
-    """The other process, holding the token file's lock once this returns."""
+    """The other process, holding the token file's lock once this returns, saving a sign-in newer
+    than the one the file holds."""
+    newer = {**_FRESH, "creation_timestamp": json.loads(token.read_text())["creation_timestamp"] + 1}
     saver = subprocess.Popen([sys.executable, "-c", _SAVER, str(Path(__file__).resolve().parent.parent),
-                              str(token), json.dumps(_FRESH)], stdout=subprocess.PIPE, text=True)
+                              str(token), json.dumps(newer)], stdout=subprocess.PIPE, text=True)
     assert saver.stdout.readline().strip() == "held"
     return saver
 

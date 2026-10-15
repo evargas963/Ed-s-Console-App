@@ -294,16 +294,17 @@ class ChainSweep:
         """Whether the daemon holds a Schwab sign-in to ask with: its client built
         (capture.one_schwab_client: built again on each ask until a build succeeds) and Schwab not
         having refused it (schwab_client.OneRefreshSession.signed_in). A build that fails (no
-        usable token file) is logged once, until a build succeeds."""
+        usable token file), or a token file locked past its wait, is logged once, until it
+        passes."""
         try:
-            client = schwab_client()
-        except ConnectionError as e:
+            held = schwab_client().session.signed_in()
+        except (ConnectionError, TimeoutError) as e:
             if str(e) != self._no_client:
                 log.warning("chain sweep waits for the daemon's Schwab client: %s", e)
             self._no_client = str(e)
             return False
         self._no_client = None
-        return client.session.signed_in()
+        return held
 
     def candles_due(self, ticker: str, now: datetime) -> bool:
         """Whether `ticker`'s price history is asked for at `now`: not yet whole on this ET date."""
