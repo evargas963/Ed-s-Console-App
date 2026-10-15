@@ -201,11 +201,12 @@ class LocalSchwab:
 
     def client(self, tmp_path, expires_in_sec: float = 3600):
         """The daemon's client, its requests delivered here, from a token file (tmp_path /
-        schwab_token.json) whose token expires in `expires_in_sec` (far from expiry by default)."""
+        schwab_token.json) whose token expires in `expires_in_sec` (far from expiry by default),
+        saved whole as every writer of it saves one (sc.write_token_file_atomically)."""
         tok = tmp_path / "schwab_token.json"
-        tok.write_text(json.dumps({"creation_timestamp": int(time.time()), "token": {
+        sc.write_token_file_atomically(str(tok), {"creation_timestamp": int(time.time()), "token": {
             "access_token": "a", "refresh_token": "r", "token_type": "Bearer", "expires_in": 1800,
-            "expires_at": int(time.time() + expires_in_sec)}}))
+            "expires_at": int(time.time() + expires_in_sec)}})
         return sc.client_from_token_file_atomic(str(tok), "k", "s",
                                                 transport=_ToLocal(self.server.server_address[1]))
 

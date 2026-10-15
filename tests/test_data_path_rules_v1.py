@@ -12,6 +12,7 @@ import asyncio
 import json
 import socket
 import sqlite3
+import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -798,10 +799,17 @@ def _chart_bars(tk: str) -> list[dict]:
 
 # ── D6. No live screen reads the database ───────────────────────────────────────────────────
 
-def test_d6_no_live_route_opens_a_database(monkeypatch):
+#: the databases SQLite opens while a test watches (each list in it, newest last), told by
+#: Python's own audit event for sqlite3.connect: nothing of SQLite's or the app's is replaced
+_watching: "list[list[str]]" = []
+sys.addaudithook(lambda event, args: _watching[-1].append(str(args[0]))
+                 if event == "sqlite3.connect" and _watching else None)
+
+
+def test_d6_no_live_route_opens_a_database():
     """Every live GET route of the console, with both databases present and holding SPY's data
     (the stream database written by the real writer: a captured SPY book and the captured option
-    quote; the console database), then SQLite made to refuse: none opens a database. The routes
+    quote; the console database), each database SQLite opens recorded: none opens one. The routes
     are read from the app itself; /api/changes is the push stream (it never ends)."""
     from fastapi.routing import APIRoute
     from fastapi.testclient import TestClient
@@ -816,12 +824,6 @@ def test_d6_no_live_route_opens_a_database(monkeypatch):
     writer.insert(f"optquote.{_CONTRACT}", options_quote_msg(
         symbol=_CONTRACT, content=_EVENTS[0]["content"], src="schwab_options_l1", ts_recv=time.time()))
     get_db()                                                 # the console database
-    opened: list = []
-
-    def refuse(*a, **k):
-        opened.append(str(a[0]) if a else "")
-        raise sqlite3.OperationalError("a live screen read the database")
-    monkeypatch.setattr(sqlite3, "connect", refuse)
     client = TestClient(server.app, raise_server_exceptions=False)
     routes = [r.path for r in server.app.routes if isinstance(r, APIRoute) and "GET" in r.methods
               and r.path.startswith("/api/") and "{" not in r.path and r.path != "/api/changes"]
@@ -830,8 +832,13 @@ def test_d6_no_live_route_opens_a_database(monkeypatch):
     params = {"ticker": "SPY", "contract": _CONTRACT, "venue": "NYSE_BOOK", "tf": "5", "minutes": "60"}
     readers, refused = [], []
     for path in routes:
-        opened.clear()
-        if client.get(path, params=params).status_code == 422:
+        opened: list = []
+        _watching.append(opened)
+        try:
+            status = client.get(path, params=params).status_code
+        finally:
+            _watching.remove(opened)
+        if status == 422:
             refused.append(path)
         if opened:
             readers.append(path)

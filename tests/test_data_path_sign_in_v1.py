@@ -50,14 +50,12 @@ def _every_request(client) -> list:
 
 
 def _new_sign_in(token_path, access: str) -> int:
-    """A new sign-in saved to the token file, as reauth_schwab.py saves one (whole, by
-    os.replace): its creation time."""
+    """A new sign-in saved to the token file by the writer of every sign-in python
+    reauth_schwab.py saves (sc.write_token_file_atomically): its creation time."""
     created = int(time.time()) + 1
-    saved = token_path.with_suffix(".new")
-    saved.write_text(json.dumps({"creation_timestamp": created, "token": {
+    sc.write_token_file_atomically(str(token_path), {"creation_timestamp": created, "token": {
         "access_token": access, "refresh_token": "r2", "token_type": "Bearer", "expires_in": 1800,
-        "expires_at": int(time.time() + 3600)}}))
-    saved.replace(token_path)
+        "expires_at": int(time.time() + 3600)}})
     return created
 
 
@@ -274,14 +272,17 @@ def test_the_chain_sweep_waits_for_a_client_it_cannot_build_and_goes_on_once_bui
     assert _asked(schwab)
 
 
-def test_a_token_file_that_cannot_be_read_is_logged_once_and_the_sweep_goes_on(tmp_path, caplog):
-    """The token file holding what is not a sign-in (not JSON): the chain sweep keeps looking, it
-    is logged once, and the sign-in saved after it is taken."""
+@pytest.mark.parametrize("held", ["{not a sign-in", "[]"], ids=["not JSON", "JSON, not a sign-in"])
+def test_a_token_file_that_cannot_be_read_is_logged_once_and_the_sweep_goes_on(tmp_path, caplog, held):
+    """The token file holding what is not a sign-in: the chain sweep keeps looking, it is logged
+    once, and the sign-in saved after it is taken."""
     schwab = LocalSchwab()
     try:
         client = schwab.client(tmp_path)
         token = tmp_path / "schwab_token.json"
-        token.write_text("{not a sign-in")
+        bad = tmp_path / "not_a_sign_in.json"
+        bad.write_text(held)
+        bad.replace(token)                                  # saved whole, as every writer saves
         sweep = _sweep(tmp_path)
         with caplog.at_level(logging.WARNING, logger=sc.log.name):
             assert _work(sweep, lambda: client, 20), "the sweep's thread ended"

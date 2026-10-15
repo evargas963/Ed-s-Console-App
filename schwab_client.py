@@ -161,13 +161,14 @@ class OneRefreshSession(OAuth2Client):
     Schwab's answer; a network failure or Schwab's edge page is not one), every request raises
     SignInRefused and nothing is sent, until a new sign-in is saved."""
 
-    def __init__(self, *args, token_file: str, metadata, **kwargs):
+    def __init__(self, *args, token_file: str, metadata, read_at, **kwargs):
         self._refresh_lock = threading.Lock()
         self._token_file, self._metadata = token_file, metadata
         #: schwab-py's writer of the token file (the token and its creation time, `metadata`'s)
         self._write_file = metadata.wrapped_token_write_func()
-        #: the token file as this session last read or wrote it (_version)
-        self._read_at = _version(token_file)
+        #: the token file as this session last read or wrote it (_version): at first, as it was
+        #: before `metadata` was read from it
+        self._read_at = read_at
         #: Schwab's refusal of the sign-in held (authlib's error); None: none refused
         self._refused: "AuthlibBaseError | None" = None
         #: the token file's read failure last logged; None: the last read succeeded
@@ -213,7 +214,7 @@ class OneRefreshSession(OAuth2Client):
             if new:
                 saved = _token_read_func(self._token_file)()
                 token, created = saved["token"], saved["creation_timestamp"]
-        except (OSError, ValueError, KeyError) as e:
+        except (OSError, ValueError, KeyError, TypeError) as e:     # not there whole, not JSON, not a sign-in
             if repr(e) != self._unread:
                 log.warning("the token file %s could not be read (%r); it is read again before each "
                             "request", self._token_file, e)
@@ -252,12 +253,13 @@ def client_from_token_file_atomic(token_path: str, api_key: str, app_secret: str
     the token refresh included: the network when None, a local stand-in for Schwab in a test
     (schwab-py and the token endpoint name Schwab's host themselves)."""
     resolved = _resolve_token_path(token_path)
+    read_at = _version(resolved)                  # before the read: one saved after it is taken
     metadata = auth.TokenMetadata.from_loaded_token(_token_read_func(resolved)(),
                                                      _token_update_func(resolved))
     register_redactions(metadata.token)
     session = OneRefreshSession(api_key, client_secret=app_secret, token=metadata.token,
                                 token_endpoint=auth.TOKEN_ENDPOINT, leeway=300,
-                                token_file=resolved, metadata=metadata,
+                                token_file=resolved, metadata=metadata, read_at=read_at,
                                 limits=httpx.Limits(max_connections=1, max_keepalive_connections=1),
                                 event_hooks={"request": [request_sent], "response": [log_request]},
                                 transport=transport)

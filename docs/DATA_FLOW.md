@@ -308,7 +308,9 @@ from Schwab to the screen (daemon, console, page), are these:
   when answered: endpoint, symbol, status, the times it was sent and answered
   (`schwab_client.log_request`). No throttle, pace, limit, gate or priority of ours sits between
   Schwab and the screen (operator 2026-10-06): an answer other than 200, or none, fails that
-  ticker's chain with the reason and the next request goes at once. Enforced by:
+  ticker's chain with the reason and the next request goes at once. One exception (operator
+  2026-10-15, the refused sign-in): once Schwab refuses the sign-in, nothing is sent until a new
+  one is saved (§1, `OneRefreshSession`, `ChainSweep.signed_in`). Enforced by:
   `tests/test_data_path_rest_one_connection_v1.py` (the requests, one at a time on one
   connection, quotes across tickers, no pause after a 429) and `tests/test_data_path_rules_v1.py`
   (`test_a_403_from_schwabs_edge_reaches_the_console_and_the_next_ticker_is_asked_at_once`, on
