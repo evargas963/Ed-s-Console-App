@@ -22,11 +22,14 @@ operator.
   daemon's life. Its session (`schwab_client.OneRefreshSession`) starts nothing else: it refreshes
   the token when it is within 300 s of expiry, one request at a time (the others carry the token
   it returned), and writes it to the token file atomically. Its session holds one connection
-  (httpx `max_connections=1`): every request waits for it, in turn. A refresh Schwab refuses fails
-  that request, and the chain sweep's next request tries again (§3.4 Option chain); the client is
-  never rebuilt.
-  When the refresh token itself expires, nothing refreshes and every request fails until
-  `python reauth_schwab.py` and a daemon restart. Enforced by: `tests/test_data_path_rules_v1.py`
+  (httpx `max_connections=1`): every request waits for it, in turn. The session is the one owner
+  of the sign-in: once Schwab answers a refresh with a refusal (the refresh token expired, revoked
+  or invalid; a network failure or a 5xx is no refusal), it logs it once and every request raises
+  `SignInRefused` with nothing sent, the stream's logins too; the chain sweep asks for nothing
+  while signed out (`ChainSweep.work`). A new sign-in saved to the token file (`python
+  reauth_schwab.py`) is taken at the next request or sweep turn, its token and creation time, the
+  streamer's too: no restart. The client is never rebuilt. Enforced by:
+  `tests/test_schwab_sign_in_v1.py`, `tests/test_data_path_rules_v1.py`
   (`test_twenty_requests_at_a_refresh_send_one_refresh_and_all_carry_the_new_token`,
   `test_the_daemon_builds_one_schwab_client_and_a_refused_refresh_never_rebuilds_it`).
 - Data is pushed at every hop. Nothing polls. Enforced by: no machine check — ENF-15 (the page

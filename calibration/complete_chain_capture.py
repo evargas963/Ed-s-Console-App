@@ -269,10 +269,11 @@ class ChainSweep:
         """The thread's life, until `stop`: on the daemon's client (`schwab_client()`), the
         market's sessions for today and the days before it, then a rotation of the watchlist
         tickers whose chain is due and the price history of those whose candles are due; with
-        none due, it looks again each second. With the watchlist empty it asks Schwab for
-        nothing and looks again each second."""
+        none due, it looks again each second. With the watchlist empty, or Schwab having refused
+        the sign-in (schwab_client.OneRefreshSession.signed_in: until a new one is saved), it asks
+        Schwab for nothing and looks again each second."""
         while not stop.is_set():
-            if not self.watchlist:
+            if not self.watchlist or not schwab_client().session.signed_in():
                 stop.wait(1.0)
                 continue
             today = datetime.fromtimestamp(self.clock(), ET).date()
