@@ -397,8 +397,8 @@ def apply_heartbeat(feed: Any) -> None:
     live state of each option contract its option rule picked before and picks no more (`options`)
     for a ticker it has ranked (`ranked`), so no screen shows that contract's last message as
     current. A connection that ends, a new one still asking, and a restarted daemon (it has ranked
-    no ticker yet) release nothing (operator 2026-10-13: "On disconnect keep the last values,
-    marked not live; reconnect's opening replaces them"); nor does a status not applied."""
+    no ticker yet) release nothing: the last values stand, marked not live, until the next
+    connection's opening replaces them; nor does a status not applied."""
     global _picked
     if _lmp.record_feed_heartbeat(feed) is None:
         return

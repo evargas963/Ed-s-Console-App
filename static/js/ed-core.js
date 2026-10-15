@@ -848,7 +848,7 @@
         paintRecord(msg.feed ? msg.feed.writer : null);
         _feedState = msg.state; _trades = msg.trades;
         Object.keys(_feedState).forEach(function (k) { ingestPriceRow(priceRow(k)); });
-        _daemonPanels.forEach(function (n) { markLive(n, seriesAnswer().notLive); });   // the daemon's verdict now
+        seriesCharts().forEach(function (n) { markLive(n, seriesAnswer().notLive); });   // the daemon's verdict now
         return;
       }
       if (msg.type !== 'schwab') return;
@@ -1046,24 +1046,33 @@
     document.dispatchEvent(new CustomEvent('ed:push', { detail: { down: down } }));   // the screens that say LIVE redraw
     paintMarks();                                  // then every shown element is marked, the redrawn included
   }
-  // The charts the console says draw the daemon's 1-minute series (its view's `series`): each drawn
-  // from the daemon's series for the ticker, marked by the daemon's CHART_EQUITY verdict
-  var _daemonPanels = [];
+  // Which charts draw the daemon's 1-minute series, served (meta ed-chart-series,
+  // server.CHART_SERIES): each chart's bars panel by the timeframe it follows, and the timeframe
+  // at which it draws the daemon's series, straight from the daemon, not the console's answer
+  var CHART_SERIES = JSON.parse(document.querySelector('meta[name="ed-chart-series"]').getAttribute('content'));
+  function drawsSeries(name) {
+    return Object.prototype.hasOwnProperty.call(CHART_SERIES.panels, name) && state.tfs[CHART_SERIES.panels[name]] === CHART_SERIES.tf;
+  }
+  // the charts on screen drawing the daemon's series now, by the timeframe chosen on the page
+  function seriesCharts() { return _shown.filter(drawsSeries); }
   // (`whole`: the series as the daemon sent it whole, drawn whole; else one new bar on it)
   function seriesAnswer(whole) {
     if (!_series || _series.key !== state.key) return { waiting: true };   // the daemon's series not yet in
     var v = feedVerdict(state.key, 'CHART_EQUITY');
-    return { ok: true, status: 200, body: { bars: _series.bars, tf: '1', whole: whole, last_bar: _series.last_bar },
+    return { ok: true, status: 200, body: { bars: _series.bars, tf: CHART_SERIES.tf, whole: whole, last_bar: _series.last_bar },
              notLive: v && v.outage ? [v.outage] : null };
   }
-  // The daemon's series to the charts the console's newest view names. While a newer view is on
-  // its way (the charts it names not yet known), it waits, whole if any delivery was whole, and
-  // is drawn once the console takes that view.
-  var _viewTaken = 0, _seriesWaiting = null;
-  function redeliverDaemon(whole) {
-    if (_viewTaken !== _viewSeq) { _seriesWaiting = whole || _seriesWaiting === true; return; }
-    _daemonPanels.forEach(function (n) { deliver(n, seriesAnswer(whole)); });
+  function redeliverDaemon(whole) { seriesCharts().forEach(function (n) { deliver(n, seriesAnswer(whole)); }); }
+  // the charts drawing the daemon's series as last drawn: one that starts to (on screen, or at its
+  // timeframe) is drawn from it whole at once
+  var _seriesDrawn = [];
+  function drawNewSeriesCharts() {
+    var now = seriesCharts();
+    now.forEach(function (n) { if (_seriesDrawn.indexOf(n) === -1) deliver(n, seriesAnswer(true)); });
+    _seriesDrawn = now;
   }
+  // a console answer, drawn unless its chart draws the daemon's series now
+  function deliverConsole(name, a) { if (!drawsSeries(name)) deliver(name, a); }
   // each panel drawn on its own: one drawer's error is reported and never stops the others
   function deliver(name, a) {
     if (!_panelFns[name]) return;
@@ -1096,36 +1105,22 @@
         Object.keys(_held).forEach(function (n) { if (msg.shown.indexOf(n) === -1) delete _held[n]; });   // off screen
         _shown = msg.shown;
         Object.keys(_notLive).forEach(function (n) { if (msg.shown.indexOf(n) === -1) markLive(n, null); });
-        // the charts that draw the daemon's series: no console answer is drawn on them (one held
-        // from the view before is dropped), and each one new to it is drawn from it now
-        msg.series.forEach(function (n) { delete _held[n]; });
-        var drawn = _daemonPanels; _daemonPanels = msg.series;
-        _daemonPanels.forEach(function (n) { if (drawn.indexOf(n) === -1) deliver(n, seriesAnswer(true)); });
-        msg.moved.forEach(function (n) { delete _held[n]; deliver(n, { waiting: true }); });
+        drawNewSeriesCharts();                      // a chart now on screen at the daemon's timeframe
+        msg.moved.forEach(function (n) { delete _held[n]; deliverConsole(n, { waiting: true }); });
         if (msg.seq !== _viewSeq) return;          // a newer view is on its way: it decides the rest
-        _viewTaken = msg.seq;
         var held = _held; _held = {};
-        Object.keys(held).forEach(function (n) { deliver(n, held[n]); });
-        // the series that waited for this view, to the charts that were already drawing it
-        if (_seriesWaiting !== null) {
-          var waited = _seriesWaiting; _seriesWaiting = null;
-          _daemonPanels.forEach(function (n) { if (drawn.indexOf(n) !== -1) deliver(n, seriesAnswer(waited)); });
-        }
+        Object.keys(held).forEach(function (n) { deliverConsole(n, held[n]); });
         return;
       }
       if (msg.type !== 'panels') return;              // one change's answers, drawn together
       msg.panels.forEach(function (p) {
         if (msg.seq < _viewSeq) _held[p.panel] = answerOf(p);   // under a view the page has left
-        else deliver(p.panel, answerOf(p));
+        else deliverConsole(p.panel, answerOf(p));
       });
     };
     ws.onclose = function () {
       if (_live !== ws) return;
       _live = null;
-      // no view is on its way on a closed connection: the daemon's series goes on to the charts
-      // the last view named (the console never stands in the path from Schwab to the screen)
-      _viewTaken = _viewSeq;
-      if (_seriesWaiting !== null) { var waited = _seriesWaiting; _seriesWaiting = null; redeliverDaemon(waited); }
       setPushDown(true);
       paintSession('Unknown', 'session unknown: the console push is down');
       setTimeout(openPush, Math.min(2000, 250 * Math.pow(2, _liveRetry++)));
@@ -1298,6 +1293,7 @@
   function setTf(chart, tf) {
     if (state.tfs[chart] === tf) return;
     state.tfs[chart] = tf; _lsSet(TF_KEY[chart], tf); sendView();
+    drawNewSeriesCharts();             // at the daemon's timeframe: its series at once, the console not asked
   }
   window.EdShell = { getState: function () { return Object.assign({}, state); }, setTicker: setTicker,
     onPanel: onPanel, setInput: setInput, setTf: setTf, pan: function (name) { return state.pans[name]; },

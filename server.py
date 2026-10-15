@@ -579,6 +579,7 @@ _LIVE_UI_PORT_META = '<meta name="ed-live-ui-port" content="">'
 _MARKET_CONTEXT_META = '<meta name="ed-market-context" content="">'
 _SCOPES_META = '<meta name="ed-scopes" content="">'
 _STREAM_WORDS_META = '<meta name="ed-stream-words" content="">'
+_CHART_SERIES_META = '<meta name="ed-chart-series" content="">'
 #: the scope control's words, one per terrain_engine.SCOPES
 SCOPE_LABELS = {"auto": "Auto", "wider": "Wider", "all": "All available"}
 
@@ -587,8 +588,9 @@ def _with_page_settings(html: str) -> str:
     """Tell the page where the capture daemon's Schwab socket listens (the ED_LIVE_UI_PORT the
     daemon binds: Schwab's messages go from the daemon straight to the screen), which
     market-context symbols it always shows (live_push.MARKET_CONTEXT, each with its display name),
-    the scopes its strike windows take (terrain_engine.SCOPES, each with its word) and the words
-    for each streaming state (STREAM_WORDS)."""
+    the scopes its strike windows take (terrain_engine.SCOPES, each with its word), the words
+    for each streaming state (STREAM_WORDS) and which charts draw the daemon's 1-minute series at
+    which timeframe (CHART_SERIES)."""
     from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT
     from app.market_data.schwab.streaming.live_ui import LIVE_UI_PORT
     context = json.dumps([{"key": k, "display": display_symbol(k)} for k in MARKET_CONTEXT])
@@ -598,7 +600,9 @@ def _with_page_settings(html: str) -> str:
                          f'<meta name="ed-market-context" content="{html_escape(context)}">', 1)
             .replace(_SCOPES_META, f'<meta name="ed-scopes" content="{html_escape(scopes)}">', 1)
             .replace(_STREAM_WORDS_META,
-                     f'<meta name="ed-stream-words" content="{html_escape(json.dumps(STREAM_WORDS))}">', 1))
+                     f'<meta name="ed-stream-words" content="{html_escape(json.dumps(STREAM_WORDS))}">', 1)
+            .replace(_CHART_SERIES_META,
+                     f'<meta name="ed-chart-series" content="{html_escape(json.dumps(CHART_SERIES))}">', 1))
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -2186,8 +2190,12 @@ _ROUTE_KINDS = {
     "/api/watchlist": set(),
 }
 
-#: the 1-minute bars each chart rolls up, per timeframe (at 1 minute the chart draws the daemon's
-#: series, live_ui series_of)
+#: The charts' bars panels, each by the view's timeframe it follows (`tfs`), and the timeframe at
+#: which a chart draws the daemon's 1-minute series (live_ui series_of), straight from the daemon:
+#: the one rule, served to the page (meta ed-chart-series) and read by _panels
+CHART_SERIES = {"panels": {"gamma.chart.bars": "chart", "liquidity.map.bars": "liquidity", "desk.bars": "desk"},
+                "tf": "1"}
+#: the 1-minute bars each chart rolls up, per timeframe above the daemon's
 CHART_BARS = {"3": 2000, "5": 3000, "15": 6000, "30": 9000, "60": 12000, "D": 12000}
 #: the Options subviews that show the strike x expiry grid and its panels
 _GAMMA_FAMILY = {"gamma", "dex", "oi"}
@@ -2247,8 +2255,9 @@ def _panels(v: dict) -> "tuple[dict[str, _Panel], list[str]]":
 
     series: list[str] = []
 
-    def bars(name: str, tf: str) -> "dict[str, _Panel]":   # Schwab's bars as sent, rolled up to `tf`
-        if tf == "1":
+    def bars(name: str) -> "dict[str, _Panel]":   # Schwab's bars as sent, rolled up to the chart's timeframe
+        tf = v["tfs"][CHART_SERIES["panels"][name]]
+        if tf == CHART_SERIES["tf"]:                # the daemon's series: no console panel
             series.append(name)
             return {}
         return {name: _Panel(_route("/api/bars1m", ticker=tk, tf=tf, limit=CHART_BARS[tf]),
@@ -2286,7 +2295,7 @@ def _panels(v: dict) -> "tuple[dict[str, _Panel], list[str]]":
                 _route("/api/options/gamma-surface", ticker=tk, **key(w), cols=cols, expiry=expiry),
                 lambda: gamma_surface_payload(tk, scope, w["centre"], w["pan_shift"], cols, expiry, now_et()), price)
         elif v["view"] == "chart":
-            out.update({**bars("gamma.chart.bars", v["tfs"]["chart"]),
+            out.update({**bars("gamma.chart.bars"),
                         "gamma.chart.strikes": strikes(None), "gamma.chart.terrain": terrain})
         elif v["view"] == "levels" and sub == "gamma":
             out["gamma.levels"] = levels("1")
@@ -2300,7 +2309,7 @@ def _panels(v: dict) -> "tuple[dict[str, _Panel], list[str]]":
                              lambda: options_microstructure(c, time.time()), ((c, "LEVELONE_OPTIONS"), (c, "OPTIONS_BOOK")))
     elif ws == "liquidity" and sub == "map":
         out.update({"liquidity.map.zones": zones, "liquidity.map.levels": levels("1"),
-                    **bars("liquidity.map.bars", v["tfs"]["liquidity"])})
+                    **bars("liquidity.map.bars")})
     elif ws == "liquidity" and sub == "levels":
         out["liquidity.levels"] = levels("1")
     elif ws == "order-flow" and sub == "book":
@@ -2314,7 +2323,7 @@ def _panels(v: dict) -> "tuple[dict[str, _Panel], list[str]]":
                     "rightnow.zones": zones, "rightnow.strikes": strikes("migration")})
     elif ws == "trade-desk" and sub == "desk":
         tf = v["tfs"]["desk"]
-        out.update({**bars("desk.bars", tf), "desk.levels": levels(tf),
+        out.update({**bars("desk.bars"), "desk.levels": levels(tf),
                     "desk.events": _Panel(_route("/api/desk/events", ticker=tk, venue=venue, tf=tf),
                                           lambda: desk_events_payload(tk, venue, tf, now_et()), book_feeds),
                     "desk.terrain": terrain, "desk.zones": zones, "desk.strikes": strikes(None),
@@ -2493,8 +2502,7 @@ async def live_values(ws: WebSocket):
                         page["ticker"], page["subscribed"] = view["ticker"], True
                     moved = [n for n, p in panels.items() if n not in client.panels or client.panels[n].source != p.source]
                     client.panels, page["seq"] = panels, view["seq"]
-                    await text({"type": "view", "seq": view["seq"], "moved": moved, "shown": sorted([*panels, *series]),
-                                "series": series})
+                    await text({"type": "view", "seq": view["seq"], "moved": moved, "shown": sorted([*panels, *series])})
                     await beat()
                 _forget_unshown()
                 note_liveness(time.time())

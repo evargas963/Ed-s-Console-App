@@ -42,7 +42,7 @@ ROOT = Path(__file__).resolve().parent
 CONSOLE_PORT = 8000
 URL = f"http://127.0.0.1:{CONSOLE_PORT}/"
 #: --timeout-graceful-shutdown: Ctrl+C ends it while pages hold their change streams open; bound
-#: to this computer only (operator 2026-10-14: "I only use this computer")
+#: to this computer only
 CONSOLE = [sys.executable, "-m", "uvicorn", "server:app", "--host", "127.0.0.1", "--port", str(CONSOLE_PORT),
            "--timeout-graceful-shutdown", "10"]
 #: what each process's command line carries: the daemon's module, the console's app

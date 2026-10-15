@@ -166,7 +166,7 @@ def test_every_service_reaches_the_screen_by_its_delivery_type():
 
 def test_a_client_is_sent_only_the_services_it_reads():
     """The console reads only LEVELONE_EQUITIES from the daemon (streaming._rows_loop): it names
-    that service and is sent no book, bar or headline (before: every one, parsed and dropped)."""
+    that service and is sent no book, bar or headline."""
     async def body(bus, ws, stats):
         await ws.send(json.dumps({"op": "subscribe", "symbols": _EVERY, "services": ["LEVELONE_EQUITIES"]}))
         for m in _MIX:
@@ -196,8 +196,8 @@ def test_a_page_that_reconnects_gets_every_bar_and_headline_it_missed_once_in_or
     """Across a dropped connection: the real bars, the first half received in order (All
     Sequence), the connection drops, the second half and a real headline sent meanwhile; the page
     reconnects and gets its chart's series whole, every bar Schwab sent in it, and the headline
-    it missed (after `since`) once; a page reconnecting with nothing new gets no headline again
-    (before: only the newest bar, and the newest headline again). STAND-IN (named): the
+    it missed (after `since`) once; a page reconnecting with nothing new gets no headline again.
+    STAND-IN (named): the
     headline's key, SPY."""
     from websockets.asyncio.client import connect
 
@@ -233,8 +233,8 @@ def test_the_screens_1_minute_series_is_the_daemons_and_equals_the_consoles_bar_
     """One producer of the 1-minute series (minute_bars): the daemon and the console, fed the same
     real /pricehistory answer (SPY, 2026-10-07) and the same real CHART_EQUITY bars (SPY,
     2026-10-01), hold the same bars. The page drawing SPY's chart is sent the series whole on
-    subscribe (and again on the next /pricehistory answer), then each bar; before, the page took
-    the console's and the daemon's bars and chose between them by time."""
+    subscribe (and again on the next /pricehistory answer), then each bar: one producer, so the
+    page chooses between none."""
     import server
     from calibration.complete_chain_capture import price_history_message
     from tests.feed_live_helper import price_history
@@ -380,7 +380,7 @@ def test_each_bar_carries_schwabs_fields_as_the_chart_draws_them():
 def test_a_time_schwab_sent_as_no_value_is_not_labelled_and_replaces_no_held_time():
     """AGENTS.md rule 2: -999 is no value. A real book, headline and quote with that time field
     sent as -999 (STAND-IN: the field's value) get no time label, and the -999 trade time does not
-    replace the last trade time Schwab sent (before, each became "Wed 12/31 05:59 PM CT", 1969)."""
+    replace the last trade time Schwab sent (none is labelled 1969, "Wed 12/31 05:59 PM CT")."""
     book = next(m for m in _MIX if m["service"] == "NASDAQ_BOOK")
     quote = next(m for m in _MIX if m["service"] == "LEVELONE_EQUITIES" and "TRADE_TIME_MILLIS" in m["item"])
     for service, topic, body, item in (("NASDAQ_BOOK", "book.", "content", {**book["item"], "BOOK_TIME": -999}),
@@ -440,7 +440,7 @@ def test_each_book_carries_its_levels_and_each_quote_marks_the_fields_that_are_n
 def test_a_new_trade_reaches_the_screen_with_its_own_time_and_age():
     """AGENTS.md rule 5, every value with its time: a real quote with a new trade carries that
     trade's time and age as the daemon labels them, so the screen never shows the new price
-    with the previous trade's time until the next beat (before: up to a second)."""
+    with the previous trade's time until the next beat."""
     q = next(m for m in _MIX if m["service"] == "LEVELONE_EQUITIES" and "TRADE_TIME_MILLIS" in m["item"])
     at = q["item"]["TRADE_TIME_MILLIS"] / 1000.0 + 2.0
     srv = live_ui.LiveUiServer(MessageBus(), _Feed(), {}, clock=lambda: at)
@@ -456,7 +456,7 @@ def test_a_new_trade_reaches_the_screen_with_its_own_time_and_age():
 def test_a_contract_opened_after_its_messages_gets_every_field_schwab_streamed():
     """Operator 2026-10-14 (the bank's running balance): a screen that asks for a contract Schwab
     has been streaming gets, at once, every LEVELONE_OPTIONS field Schwab sent for it, each the
-    last one, as sent; before, it got nothing until the next change, and then only that change."""
+    last one, as sent, not only the next change."""
     key = max({m["item"]["key"] for m in _MIX if m["service"] == "LEVELONE_OPTIONS"},
               key=lambda k: sum(1 for m in _MIX if m["item"]["key"] == k))
     sent = [m for m in _MIX if m["item"]["key"] == key]

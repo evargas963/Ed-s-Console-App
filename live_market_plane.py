@@ -77,8 +77,8 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
 
     A message of the daemon's current Schwab connection (received at or after its `connected_at`)
     drops the record's fields received before it: no field of an ended connection stays beside
-    the new connection's, whichever of the status and the message came first (operator
-    2026-10-13: "reconnect's opening replaces them"). Until then the record is not live
+    the new connection's, whichever of the status and the message came first: the connection's
+    opening replaces them. Until then the record is not live
     (feed_live_for).
     """
     if not item or not isinstance(item, dict):

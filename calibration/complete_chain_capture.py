@@ -256,7 +256,7 @@ class ChainSweep:
         sent (chain_answer_message, the journal), and each contract it lists opens its record
         (option_ledger.opening: every field as sent but the rounded Greeks);
       - Schwab's quotes, QUOTES_BATCH_MAX symbols to a request across tickers, only for what no
-        stream carries (operator 2026-10-13: "REST only for what no stream carries"): each round,
+        stream carries: each round,
         every listed contract the stream does not hold (`held`). Each answer is published as sent
         (quotes_answer_message), and each quote posts to its contract's record
         (option_ledger.from_quote), unless the stream took the contract meanwhile.
@@ -471,8 +471,8 @@ class ChainSweep:
         published as sent, and each quote posted to its contract's record; each round it completes
         is in. A request that fails fails every ticker in it. Schwab's answer carries a quote per
         symbol it knows and, beside them, an `errors` entry naming the symbols it does not
-        (`invalidSymbols`; measured 2026-10-07: 8 SPY contracts its own chain lists, every one
-        never quoted or traded): those records get no quote, logged once with their count, and the
+        (`invalidSymbols`: contracts its own chain lists that were never quoted or traded): those
+        records get no quote, logged once with their count, and the
         rest of the request is in."""
         self._queue = [(rnd, s) for rnd, s in self._queue if rnd.ticker in self.watchlist]  # removed: not asked
         batch, self._queue = self._queue[:QUOTES_BATCH_MAX], self._queue[QUOTES_BATCH_MAX:]
@@ -525,8 +525,7 @@ def write_capture(db_path: Path | str, ticker: str, contracts: "list[dict]", spo
                   spot_trade_ts: "float | None", ts_utc: float) -> None:
     """The chain history of one window: the ticker's contract records as the ledger holds them
     (each field with its Schwab time, `fieldTimes`), one row per expiry, with the time its round
-    began and the stock's own price at that moment as Schwab sent it, with its trade time
-    (operator 2026-10-14: "Each capture stores the stock record's own value")."""
+    began and the stock's own price at that moment as Schwab sent it, with its trade time."""
     by_expiry: "dict[str, list[dict]]" = {}
     for ct in contracts:
         by_expiry.setdefault(str(ct["expirationDate"])[:10], []).append(ct)   # each opened from the chain

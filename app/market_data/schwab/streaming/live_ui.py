@@ -58,8 +58,7 @@ from time_et import age_label, ct_label
 
 log = logging.getLogger(__name__)
 
-#: The screen and the console connect to this port, on this computer only (operator 2026-10-14:
-#: "I only use this computer")
+#: The screen and the console connect to this port, on this computer only
 LIVE_UI_HOST = "127.0.0.1"
 LIVE_UI_PORT = int(os.environ.get("ED_LIVE_UI_PORT", "8800"))  # caps-ok: operator port config with its declared default, not market data
 #: feed verdict beat cadence (the heartbeat that keeps "live" honest)
@@ -380,8 +379,6 @@ class LiveUiServer:
                 # one client can neither stop the beat nor hold it: an error is logged and the
                 # next client still gets its beat; a client that does not take its beat within
                 # a beat is not reading and is closed, and gets no more beats while it closes
-                # (2026-09-26: the beat stopped for every client and the whole screen read "no
-                # live feed" on a healthy Schwab socket)
                 try:
                     await asyncio.wait_for(self._send(c, {"type": "feed", "feed": feed, "state": self.state(c, now),
                                                           "trades": self.trades(c, now)}), timeout=HEARTBEAT_SEC)

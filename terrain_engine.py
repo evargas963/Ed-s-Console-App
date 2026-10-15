@@ -60,8 +60,7 @@ TERRAIN_SCHEMA_VERSION = 3
 class TerrainSnapshot:
     """Everything pricing one chain produces, at the spot it was priced at (`spot`). What is read
     from the spot -- the read, each wall's state, lean and distance, the flip side, the pin's
-    proximity and the implied-move band -- is at_spot's, at the live spot (operator 2026-10-14:
-    "the live spot for every distance, side, breached and band")."""
+    proximity and the implied-move band -- is at_spot's, at the live spot."""
 
     ticker: str
     spot: float | None
@@ -224,16 +223,14 @@ _NO_LEVELS: dict[str, Any] = {"flip_confidence": TerrainSnapshot.flip_confidence
 def at_spot(pub: "dict[str, Any] | None", spot: float | None, now: float) -> dict[str, Any]:
     """Every value read from the spot, at `spot` (the live one), from the levels the chain was
     priced to (`pub`: the published TerrainSnapshot's fields with the one strike list `_strikes`,
-    None when none is published) -- the one producer of each (operator 2026-10-14: "the live spot
-    for every distance, side, breached and band"): the strike nearest `spot` on the one strike
+    None when none is published) -- the one producer of each, at the live spot: the strike nearest `spot` on the one strike
     list, the read (regime from the priced book's gamma at spot; posture, confidence, headline and
     lines worded at `spot`), each wall's state (RC-130: "contains" when the call wall is above /
     the put wall below the spot, else "breached"; the strike never moves) and dealer lean, the
     spot's distance to each wall and side of the flip, the pin candidate (its proximity gate at
     `spot`, its expiry gate on the front expiry's days) and the implied 1-day move (`points` =
     spot x sigma_ATM x sqrt(1/252)); and at `now`, each expiry's `expired` and the `front` one
-    (expiry_states, operator 2026-10-14: "one front-expiry rule from Schwab's session,
-    everywhere"), whose max pain is the one shown (`max_pain`, `max_pain_expiry`, `max_pain_dte`)."""
+    (expiry_states, the one front-expiry rule, from Schwab's session), whose max pain is the one shown (`max_pain`, `max_pain_expiry`, `max_pain_dte`)."""
     p = pub if pub is not None else _NO_LEVELS
     states = expiry_states(p, now)
     front = states["front"]

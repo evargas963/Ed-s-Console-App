@@ -13,6 +13,7 @@ chain round -- so the live spot and the priced spot differ, as they do between r
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 
 import pytest
@@ -28,7 +29,7 @@ from time_et import age_label
 TK = server.ticker_storage_key("CRWD")
 MK = server.ticker_storage_key("MRVL")
 #: the price's move after the chain was priced: to 302.54, by 302.50 -- a strike the charm panel's
-#: own strike list leaves out (no priceable charm there), so before, its "spot strike" was 300 or 305
+#: own strike list leaves out (no priceable charm there): its spot strike is still the one list's
 MOVE = 33.5
 
 
@@ -91,10 +92,14 @@ def _frames(ticker: str, spot: float, views: dict) -> dict:
             page = _Page()
             console = asyncio.create_task(server.live_values(page))
             try:
-                await page.inbox.put(_view(1, ticker=ticker.lstrip("$"), symbols=[ticker.lstrip("$")], **over))
+                sent = _view(1, ticker=ticker.lstrip("$"), symbols=[ticker.lstrip("$")], **over)
+                await page.inbox.put(sent)
                 view = await page.next("view")
-                # the console's panels: the charts at 1 minute draw the daemon's series, not its answer
-                shown = set(view["shown"]) - {"watchlist"} - set(view["series"])
+                # the console's panels: a chart at the daemon's timeframe draws its series, not an
+                # answer of the console's (server.CHART_SERIES, the one rule)
+                tfs, rule = json.loads(sent)["view"]["tfs"], server.CHART_SERIES
+                series = {n for n, k in rule["panels"].items() if tfs[k] == rule["tf"]}
+                shown = set(view["shown"]) - {"watchlist"} - series
                 got: dict = {}
                 async with asyncio.timeout(20):     # one limit for the whole wait: a panel that never comes fails
                     while not shown <= set(got):

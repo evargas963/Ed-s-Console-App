@@ -62,8 +62,8 @@ def test_a_number_schwab_did_not_send_is_absent_and_an_unknown_side_is_not_a_cal
 def test_a_strike_the_one_list_does_not_hold_yet_is_counted_never_placed():
     """The ladder draws the ledger's contracts on the published strike list; a newer round can list
     a strike the publication does not hold yet (STAND-IN, named: the chain's top strike left off the
-    list). Its contracts are counted as not on the ladder until the next publication; before, the
-    ladder raised KeyError and the Chain panel answered 500."""
+    list). Its contracts are counted as not on the ladder until the next publication; the ladder
+    raises nothing and the Chain panel answers."""
     ks = listed_strikes(FX["chain"])
     newer = ks[-1]
     rows, unplaced = chain_ladder(FX["chain"], FX["spot"], ks[:-1], nearest_strike(ks[:-1], FX["spot"]))
