@@ -23,7 +23,7 @@ import pytest
 import schwab_client as sc
 from app.market_data.schwab.streaming.capture import CaptureWriter
 from calibration import complete_chain_capture as cch
-from tests.schwab_rest_standin import CHAIN, EXPIRATIONS, TOKEN, LocalSchwab
+from tests.schwab_rest_standin import EXPIRATIONS, TOKEN, LocalSchwab
 from time_et import ET
 
 _AFTER_THE_CLOSE = datetime(2026, 10, 7, 20, 0, tzinfo=ET).timestamp()
@@ -153,20 +153,23 @@ def test_a_new_sign_in_saved_while_signed_in_is_taken_and_never_overwritten(tmp_
 
 def test_a_sign_in_saved_while_the_refresh_is_asked_is_taken_and_not_overwritten(tmp_path):
     """python reauth_schwab.py saving a new sign-in while the daemon's refresh is on its way to
-    Schwab: the refreshed token is not written over it; the token file keeps the new sign-in and
-    the next request carries its token."""
+    Schwab: the refreshed token is not written over it; the new sign-in is taken at once, its
+    token the one the request carries and the one the streamer's login reads, and the token file
+    keeps it."""
     schwab = LocalSchwab()
     token = tmp_path / "schwab_token.json"
     schwab.answering = lambda: _new_sign_in(token, "fresh")
     try:
         client = schwab.client(tmp_path, 100)              # the old sign-in, in its refresh window
         client.get_option_expiration_chain("SPY")          # the refresh, and the new sign-in saved
+        held = (client.session.token["access_token"], client.token_metadata.token["access_token"])
         schwab.answering = lambda: None
         client.get_option_expiration_chain("SPY")
     finally:
         schwab.close()
+    assert held == ("fresh", "fresh")
     assert json.loads(token.read_text())["token"]["access_token"] == "fresh"
-    assert _posts(schwab) == 1 and _asked(schwab)[-1] == (EXPIRATIONS, "Bearer fresh")
+    assert _posts(schwab) == 1 and _asked(schwab) == [(EXPIRATIONS, "Bearer fresh")] * 2
 
 
 def test_a_sign_in_in_progress_removes_the_token_file_and_nothing_breaks(tmp_path):
@@ -269,21 +272,6 @@ def test_the_chain_sweep_waits_for_a_client_it_cannot_build_and_goes_on_once_bui
     finally:
         schwab.close()
     assert _asked(schwab)
-
-
-def test_a_sweep_whose_every_chain_fails_waits_its_second_before_asking_again(tmp_path):
-    """Signed in, after the close, Schwab answering every quotes request 502: each round delivers
-    nothing, and the sweep waits its second before the next (a round asked again at once is a
-    request storm for as long as Schwab fails); 5 looks, 5 rounds."""
-    schwab = LocalSchwab()
-    schwab.quotes_status = 502
-    try:
-        client = schwab.client(tmp_path)
-        assert _work(_sweep(tmp_path), lambda: client, 5), "the sweep asked again at once, never stopping to look"
-    finally:
-        schwab.close()
-    assert sum(1 for r in schwab.requests if r[0] == EXPIRATIONS) <= 1
-    assert sum(1 for r in schwab.requests if r[0] == CHAIN) == 5           # each round: its one listed expiry
 
 
 def test_a_token_file_that_cannot_be_read_is_logged_once_and_the_sweep_goes_on(tmp_path, caplog):

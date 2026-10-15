@@ -94,14 +94,16 @@ class LocalSchwab:
     (`{"errors": {"invalidSymbols": [...]}}`) instead of quoting them; `stream_url`: the streamer
     the user preferences name (tests/schwab_stream_standin.LocalStreamer.url); `token`: the token
     endpoint's answer ("refreshes": REFRESHED; "refuses": REFUSED, 400; "edge": EDGE_403);
-    `answering`: run while the token endpoint answers, before its answer leaves. Each request is
-    recorded as (path, query, started, answered, the client's port, its Authorization)."""
+    `answering`: run while the token endpoint answers, before its answer leaves; `edge`: while
+    set, every data request is answered with EDGE_403. Each request is recorded as (path, query,
+    started, answered, the client's port, its Authorization)."""
 
     def __init__(self, stream_url: "str | None" = None):
         self.stream_url = stream_url
         self.requests: list = []
         self.token = "refreshes"
         self.answering = lambda: None
+        self.edge = False
         self.quotes_status = 200
         self.quotes_body: "bytes | None" = None
         self.refuse_chain: "set[str]" = set()
@@ -116,6 +118,8 @@ class LocalSchwab:
                 started = time.monotonic()
                 url = urlparse(self.path)
                 query = {k: v[0] for k, v in parse_qs(url.query).items()}
+                if outer.edge:
+                    return self._edge(url.path, query, started)
                 status, body = outer.answer(url.path, query)
                 self._send(url.path, query, started, status, "application/json",
                            body if isinstance(body, bytes) else json.dumps(body).encode())
@@ -125,18 +129,25 @@ class LocalSchwab:
                 self.rfile.read(int(self.headers.get("Content-Length") or 0))
                 outer.answering()
                 if outer.token == "edge":
-                    return self._send(TOKEN, {}, started, 403, "text/html", EDGE_403["body"].encode())
+                    return self._edge(TOKEN, {}, started)
                 refused = outer.token == "refuses"
                 self._send(TOKEN, {}, started, 400 if refused else 200, "application/json",
                            json.dumps(REFUSED if refused else REFRESHED).encode())
 
-            def _send(self, path: str, query: dict, started: float, status: int, ctype: str, data: bytes):
+            def _edge(self, path: str, query: dict, started: float):
+                self._send(path, query, started, 403, "text/html", EDGE_403["body"].encode(),
+                           (("Server", EDGE_403["headers"]["server"]),))
+
+            def _send(self, path: str, query: dict, started: float, status: int, ctype: str, data: bytes,
+                      headers: tuple = ()):
                 # recorded before the answer leaves, so a client holding the answer finds its request
                 outer.requests.append((path, query, started, time.monotonic(), self.client_address[1],
                                        self.headers.get("Authorization")))
                 self.send_response(status)
                 self.send_header("Content-Type", ctype)
                 self.send_header("Content-Length", str(len(data)))
+                for name, value in headers:
+                    self.send_header(name, value)
                 self.end_headers()
                 self.wfile.write(data)
 

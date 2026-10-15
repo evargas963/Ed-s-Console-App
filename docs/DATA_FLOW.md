@@ -28,12 +28,13 @@ operator.
   `SignInRefused` with nothing sent, the stream's logins too; the chain sweep asks for nothing
   while signed out (`ChainSweep.work`). A new sign-in saved to the token file (`python
   reauth_schwab.py`) is taken at the next request or sweep turn, its token and creation time, the
-  streamer's too: no restart; one saved while a refresh is on its way is not written over by it. A
+  streamer's too: no restart; one saved while a refresh is on its way is taken at once, never
+  written over by it. A
   token file that cannot be read is read again before each request, logged once. The client is
   never rebuilt. Enforced by:
   `tests/test_data_path_sign_in_v1.py`, `tests/test_data_path_rules_v1.py`
   (`test_twenty_requests_at_a_refresh_send_one_refresh_and_all_carry_the_new_token`,
-  `test_the_daemon_builds_one_schwab_client_and_a_refused_refresh_never_rebuilds_it`).
+  `test_the_daemon_builds_one_schwab_client_and_a_failed_refresh_never_rebuilds_it`).
 - Data is pushed at every hop. Nothing polls. Enforced by: no machine check — ENF-15 (the page
   re-reads routes after each push today).
 - The databases are history, written in the background (two writers today, §3.5). Nothing on screen waits on them.
