@@ -802,8 +802,15 @@ def _chart_bars(tk: str) -> list[dict]:
 #: the databases SQLite opens while a test watches (each list in it, newest last), told by
 #: Python's own audit event for sqlite3.connect: nothing of SQLite's or the app's is replaced
 _watching: "list[list[str]]" = []
-sys.addaudithook(lambda event, args: _watching[-1].append(str(args[0]))
-                 if event == "sqlite3.connect" and _watching else None)
+
+
+def _record_connect(event: str, args: tuple) -> None:
+    if event == "sqlite3.connect":
+        for opened in _watching[-1:]:                     # one look: none once the watch has ended
+            opened.append(str(args[0]))
+
+
+sys.addaudithook(_record_connect)
 
 
 def test_d6_no_live_route_opens_a_database():
@@ -830,6 +837,13 @@ def test_d6_no_live_route_opens_a_database():
     assert routes
     # what the page sends: every route must run, not answer "invalid request"
     params = {"ticker": "SPY", "contract": _CONTRACT, "venue": "NYSE_BOOK", "tf": "5", "minutes": "60"}
+    seen: list = []                                          # the watch sees a database opened
+    _watching.append(seen)
+    try:
+        sqlite3.connect(":memory:").close()
+    finally:
+        _watching.remove(seen)
+    assert seen == [":memory:"]
     readers, refused = [], []
     for path in routes:
         opened: list = []

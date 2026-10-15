@@ -17,6 +17,7 @@ from urllib.parse import urlparse
 import httpx
 from authlib.common.errors import AuthlibBaseError
 from authlib.integrations.httpx_client import OAuth2Client
+from filelock import FileLock
 from schwab import auth
 from schwab.client import Client
 from schwab.debug import register_redactions
@@ -57,39 +58,51 @@ def _resolve_token_path(token_path: str) -> str:
     return os.path.abspath(os.path.expanduser(token_path))
 
 
-#: os.replace on Windows fails with a sharing violation while another process (the console or
-#: the capture daemon) has the token file open for its brief read; the SAME write is retried.
+#: os.replace on Windows fails with a sharing violation while another process (a sign-in being
+#: saved, or the daemon) has the token file open for its brief read; the SAME write is retried.
 TOKEN_REPLACE_ATTEMPTS = 5
+#: the longest a writer of the token file waits for another to finish, in seconds
+TOKEN_LOCK_WAIT_SEC = 10
+
+
+def token_file_lock(token_path: str) -> FileLock:
+    """The token file's lock (beside it, `.lock`), held by one writer at a time across processes:
+    the daemon's session from its look at the file to its write, a sign-in being saved,
+    tools/schwab_field_inventory.py's client. One lock per path within a process, which its
+    holder takes again without waiting."""
+    return FileLock(_resolve_token_path(token_path) + ".lock", is_singleton=True, timeout=TOKEN_LOCK_WAIT_SEC)
 
 
 def write_token_file_atomically(token_path: str, payload: dict) -> None:
-    """Write schwab_token.json via temp + fsync + os.replace -- never a partial file.
+    """Write schwab_token.json via temp + fsync + os.replace, under the token file's lock: never a
+    partial file, never two writers at once.
 
-    THE token writer: every Schwab client this repo builds refreshes through it
-    (client_from_token_file_atomic / the OAuth exchange). schwab-py's own writer is
-    open(path, 'w') + json.dump -- a reader in the other process (console / daemon both
-    refresh the same file) could load a torn token and fail the session (audit of #280)."""
+    The token writer: every Schwab client this repo builds refreshes through it
+    (client_from_token_file_atomic) and every sign-in is saved by it (the OAuth exchange).
+    schwab-py's own writer rewrites the file in place, so a reader in another process could
+    load a torn token."""
     import tempfile
     from pathlib import Path
 
     path = Path(_resolve_token_path(token_path))
     path.parent.mkdir(parents=True, exist_ok=True)
-    for attempt in range(1, TOKEN_REPLACE_ATTEMPTS + 1):
-        fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f"{path.name}.", suffix=".tmp")
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8", newline=chr(10)) as fh:
-                json.dump(payload, fh, indent=2, default=str)
-                fh.flush()
-                os.fsync(fh.fileno())
-            os.replace(tmp, path)
-            return
-        except PermissionError as e:
-            Path(tmp).unlink(missing_ok=True)
-            if attempt == TOKEN_REPLACE_ATTEMPTS:
-                raise
-            log.warning("token replace blocked by another reader (attempt %s/%s): %s",
-                           attempt, TOKEN_REPLACE_ATTEMPTS, e)
-            time.sleep(0.05 * attempt)
+    with token_file_lock(str(path)):
+        for attempt in range(1, TOKEN_REPLACE_ATTEMPTS + 1):
+            fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f"{path.name}.", suffix=".tmp")
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8", newline=chr(10)) as fh:
+                    json.dump(payload, fh, indent=2, default=str)
+                    fh.flush()
+                    os.fsync(fh.fileno())
+                os.replace(tmp, path)
+                return
+            except PermissionError as e:
+                Path(tmp).unlink(missing_ok=True)
+                if attempt == TOKEN_REPLACE_ATTEMPTS:
+                    raise
+                log.warning("token replace blocked by another reader (attempt %s/%s): %s",
+                            attempt, TOKEN_REPLACE_ATTEMPTS, e)
+                time.sleep(0.05 * attempt)
 
 
 def _token_update_func(resolved: str):
@@ -156,8 +169,8 @@ class OneRefreshSession(OAuth2Client):
     takes a sign-in saved there since it last read or wrote the file (python reauth_schwab.py:
     the token and its creation time, `metadata`, the streamer's too; no restart), and its own
     refreshes write it there, unless a sign-in was saved there while the refresh was asked (that
-    one is taken instead; a file that cannot be read is read again before each request, logged
-    once). Once Schwab answers a refresh with a refusal (authlib raises on
+    one is taken instead; every writer holds the token file's lock, token_file_lock; a file that
+    cannot be read is read again before each request, logged once). Once Schwab answers a refresh with a refusal (authlib raises on
     Schwab's answer; a network failure or Schwab's edge page is not one), every request raises
     SignInRefused and nothing is sent, until a new sign-in is saved."""
 
@@ -177,10 +190,12 @@ class OneRefreshSession(OAuth2Client):
 
     def _refreshed(self, token, *args, **kwargs):
         """A refresh this session made, written to the token file, unless a sign-in was saved there
-        while it was asked: that one is taken instead, for this request and the streamer's login."""
-        if not self._take_saved():
-            self._write_file(token, *args, **kwargs)
-            self._read_at = _version(self._token_file)
+        while it was asked: that one is taken instead, for this request and the streamer's login.
+        The token file's lock is held from the look to the write, so no sign-in is saved between."""
+        with token_file_lock(self._token_file):
+            if not self._take_saved():
+                self._write_file(token, *args, **kwargs)
+                self._read_at = _version(self._token_file)
 
     def ensure_active_token(self, token=None):
         with self._refresh_lock:
@@ -213,7 +228,7 @@ class OneRefreshSession(OAuth2Client):
             new = version is not None and version != self._read_at
             if new:
                 saved = _token_read_func(self._token_file)()
-                token, created = saved["token"], saved["creation_timestamp"]
+                token, created = dict(saved["token"]), saved["creation_timestamp"]
         except (OSError, ValueError, KeyError, TypeError) as e:     # not there whole, not JSON, not a sign-in
             if repr(e) != self._unread:
                 log.warning("the token file %s could not be read (%r); it is read again before each "
