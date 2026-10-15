@@ -152,48 +152,66 @@ class OneRefreshSession(OAuth2Client):
     client lets every request that finds the token near expiry refresh it, all at once. The
     first refreshes; each one after it finds the new token and sends its request with it.
 
-    The one owner of the sign-in: once Schwab answers a refresh with a refusal (authlib raises
-    on Schwab's answer; a network failure or a 5xx is not one), every request raises
-    SignInRefused and nothing is sent, until the token file holds another sign-in, which is then
-    taken (the token and its creation time, `metadata`, the streamer's too), no restart needed."""
+    The one owner of the sign-in, whose one record is the token file: before each request it
+    takes a sign-in saved there since it last read or wrote the file (python reauth_schwab.py:
+    the token and its creation time, `metadata`, the streamer's too; no restart), and its own
+    refreshes write it there. Once Schwab answers a refresh with a refusal (authlib raises on
+    Schwab's answer; a network failure, a 5xx or Schwab's edge page is not one), every request
+    raises SignInRefused and nothing is sent, until a new sign-in is saved."""
 
     def __init__(self, *args, token_file: str, metadata, **kwargs):
         super().__init__(*args, **kwargs)
         self._refresh_lock = threading.Lock()
         self._token_file, self._metadata = token_file, metadata
-        #: Schwab's refusal and the token file's change time when it came; None: signed in
-        self._refused: "tuple[SignInRefused, int] | None" = None
+        #: the token file's change time as this session last read or wrote it
+        self._read_at = _changed_at(token_file)
+        #: Schwab's refusal of the sign-in held; None: none refused
+        self._refused: "SignInRefused | None" = None
+        written = self.update_token
+
+        def update_token(token, *args, **kwargs):      # a refresh, written: this session's own
+            written(token, *args, **kwargs)
+            self._read_at = _changed_at(token_file)
+        self.update_token = update_token
 
     def ensure_active_token(self, token=None):
         with self._refresh_lock:
             if not self._signed_in():
-                raise self._refused[0]
+                raise self._refused
             try:
                 return super().ensure_active_token(self.token)
             except AuthlibBaseError as e:
-                self._refused = (SignInRefused(f"Schwab refused the sign-in: {e}"), _changed_at(self._token_file))
+                self._refused = SignInRefused(f"Schwab refused the sign-in: {e}")
                 log.error("Schwab refused the sign-in (%s); nothing is sent to Schwab until a new "
                           "sign-in is saved: python reauth_schwab.py", e)
-                raise self._refused[0] from e
+                raise self._refused from e
 
     def signed_in(self) -> bool:
-        """Whether Schwab holds this session's sign-in: not refused, or refused and the token file
-        changed since (a new sign-in, taken now)."""
+        """Whether this session holds a sign-in Schwab has not refused, a new one saved to the
+        token file taken first."""
         with self._refresh_lock:
             return self._signed_in()
 
     def _signed_in(self) -> bool:
-        if self._refused is not None and _changed_at(self._token_file) != self._refused[1]:
-            saved = _token_read_func(self._token_file)()     # a new sign-in, saved since the refusal
+        changed = _changed_at(self._token_file)
+        if changed is not None and changed != self._read_at:
+            saved = _token_read_func(self._token_file)()     # a new sign-in, saved since
             self._metadata.token, self._metadata.creation_timestamp = saved["token"], saved["creation_timestamp"]
-            self.token, self._refused = saved["token"], None
-            log.info("a new Schwab sign-in was saved: taken")
+            self.token, self._read_at = saved["token"], changed
+            if self._refused is not None:
+                log.info("a new Schwab sign-in was saved: taken")
+            self._refused = None
         return self._refused is None
 
 
-def _changed_at(path: str) -> int:
-    """`path`'s last change, in nanoseconds."""
-    return os.stat(path).st_mtime_ns
+def _changed_at(path: str) -> "int | None":
+    """`path`'s last change, in nanoseconds; None while it is not there (python reauth_schwab.py
+    removes it before it saves the new sign-in)."""
+    try:
+        return os.stat(path).st_mtime_ns
+    except FileNotFoundError:
+        log.debug("the token file %s is not there: a sign-in in progress", path)
+        return None
 
 
 def client_from_token_file_atomic(token_path: str, api_key: str, app_secret: str, *,
