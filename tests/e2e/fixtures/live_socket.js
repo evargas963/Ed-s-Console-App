@@ -10,6 +10,7 @@
 // that the kind moves, answered again. The console's own push is proven against the real server in
 // tests/test_live_values_push_v1.py.
 const base = require('@playwright/test');
+const { mockPriceSocket } = require('./price_socket');
 
 async function answer(page, url) {
   return page.evaluate(async (u) => {
@@ -91,7 +92,10 @@ async function installLive(page) {
     // panels' answers from the stubs, sent together (as the console sends one change's), each
     // that is still the newest for its panel
     async function reply(msgs) {
-      const got = await Promise.all(msgs.map((m) => read(m.source)));
+      // a panel whose value the daemon sends the page (server.DAEMON_SERIES): the console's own
+      // answer, which only says so; every other: the spec's stub for its route
+      const got = await Promise.all(msgs.map((m) => m.source === 'daemon:CHART_EQUITY'
+        ? Promise.resolve({ status: m.status, body: m.body }) : read(m.source)));
       const outages = _notLive.get(page) || {};
       // the test server's age labels are of its own answers, not the stubs': the spec's beat
       // (pushBeat) labels the stubs' instants
@@ -153,6 +157,9 @@ async function installLive(page) {
 const test = base.test.extend({
   page: async ({ page }, use) => {
     await installLive(page);
+    // every page has the daemon's socket stood in (no Schwab message unless a spec sends one; the
+    // chart ticker's 1-minute series from the spec's bars stub); a spec's own stand-in replaces it
+    await mockPriceSocket(page, []);
     await use(page);
   },
 });

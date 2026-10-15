@@ -21,9 +21,13 @@ last trade time and age as the screen shows them (time_et.ct_label, age_label).
 
 Protocol (JSON text frames):
   client -> {"op": "subscribe", "symbols": ["SPY", "SPY   261120C00700000", ...],
-             "since": {service: {symbol: ts_recv}}}  (replaces the set; `since`: the last bar and
-             headline it received of each, so a reconnect is sent only those after them)
+             "since": {service: {symbol: ts_recv}}, "chart": "SPY"}  (replaces the set; `since`:
+             the last headline it received of each, so a reconnect is sent only those after them;
+             `chart`: the ticker whose 1-minute series it draws)
   server -> {"type": "symbols", "symbols": [{requested, key, display}, ...]}  (on subscribe)
+  server -> {"type": "series", "key", "bars": [{t, o, h, l, c, v, chg, chg_pct}, ...], "last_bar"}
+            (the chart's ticker's 1-minute series, whole: on subscribe and on each /pricehistory
+            answer; each CHART_EQUITY bar after it comes as a message)
   server -> {"type": "schwab", "messages": [{service, key, schwab_ts, ts_recv, content}, ...]}
   server -> {"type": "feed", "feed": {...}, "state": {key: {service: {live, outage}}},
             "trades": {key: {time_ct, age}}}  (every HEARTBEAT_SEC)
@@ -41,7 +45,8 @@ import live_market_plane as lmp
 from app.options.order_flow.engine import book_levels
 from instrument_identity import display_symbol, ticker_storage_key
 from live_price_rows import with_change
-from micro_structure import bar_dict, schwab_bar
+from micro_structure import Candle, bar_dict, schwab_bar
+from minute_bars import CHART_1M_BARS, MinuteBars
 from numeric_contract import schwab_number
 from stream_spine import LOG, MessageBus
 from time_et import age_label, ct_label
@@ -64,8 +69,8 @@ DELIVERY = {"LEVELONE_EQUITIES": CHANGE, "LEVELONE_OPTIONS": CHANGE,
 _TOPIC_SERVICE = {"quote": ("LEVELONE_EQUITIES", "native"), "optquote": ("LEVELONE_OPTIONS", "content"),
                   "bar1m": ("CHART_EQUITY", "native"), "news": ("NEWS_HEADLINE", "content"),
                   "book": (None, "content")}
-#: the bars and headlines held per symbol and service for a client that (re)connects: a whole
-#: day's 1-minute bars, 04:00-20:00 ET, is 960
+#: the headlines held per symbol for a client that (re)connects (a page's 1-minute chart is sent
+#: its whole series instead, series_of)
 SEQUENCE_KEPT = 1000
 #: a NEWS_HEADLINE item's time field (epoch ms), as measured from Schwab's own items (the service is
 #: not in Schwab's Streamer document; its items carry 1 = time, 2 = id, 4 = headline, 9 = source)
@@ -112,11 +117,13 @@ def _services(key: str) -> tuple:
 
 
 class _Client:
-    __slots__ = ("ws", "symbols", "change", "whole", "sequence", "identity", "wake")
+    __slots__ = ("ws", "symbols", "change", "whole", "sequence", "identity", "chart", "series", "wake")
 
     def __init__(self, ws) -> None:
         self.ws = ws
         self.symbols: frozenset[str] = frozenset()
+        self.chart: "str | None" = None           # the ticker whose 1-minute series the page draws
+        self.series: "dict | None" = None         # that series, whole, not yet sent
         self.change: dict[tuple, dict] = {}       # (service, key) -> the changed fields not yet sent
         self.whole: dict[tuple, dict] = {}        # (service, key) -> the newest book not yet sent
         self.sequence: list[dict] = []            # every bar and headline not yet sent, in order
@@ -158,15 +165,28 @@ class LiveUiServer:
         self.clients: set[_Client] = set()
         #: each equity's last trade time (Schwab's TRADE_TIME_MILLIS, as sent)
         self.trade_ms: dict[str, float] = {}
-        #: every bar and headline sent, in order, per (service, symbol), the newest SEQUENCE_KEPT:
-        #: what a client that connects or reconnects is sent after the last one it received
+        #: every headline sent, in order, per symbol, the newest SEQUENCE_KEPT: what a client that
+        #: connects or reconnects is sent after the last one it received
         self.sequence: dict[tuple, collections.deque] = {}
+        #: each ticker's 1-minute bars (minute_bars, the one producer of the series; the console
+        #: keeps the same for its calculations): what a page's 1-minute chart is sent whole
+        self.minutes = MinuteBars()
         stats.update(clients=0, messages_sent=0, frames_sent=0, beat_send_failures=0, listening=None,
                      last_send_ms=None)
 
     def route(self, topic: str, msg) -> None:
         """One Schwab message from the bus to every client that asked for its symbol, and noted as
-        posted to the symbol on its service (the one live rule's "posted on this connection")."""
+        posted to the symbol on its service (the one live rule's "posted on this connection").
+        Schwab's 1-minute /pricehistory answer goes into the ticker's series, sent whole to each
+        page that draws it."""
+        if topic.startswith("pricehistory.") and isinstance(msg, dict) and msg.get("series") == "1m":
+            tk = ticker_storage_key(msg["symbol"])
+            self.minutes.take_history(tk, msg["answer"]["candles"])
+            for c in self.clients:
+                if c.chart == tk:
+                    c.series = self.series_of(tk)
+                    c.wake.set()
+            return
         m = schwab_message(topic, msg)
         if m is None:
             return
@@ -176,7 +196,10 @@ class LiveUiServer:
         if trade is not None:
             self.trade_ms[m["key"]] = trade
             m["trade"] = self.trade_label(m["key"], self.clock())   # the new trade's time, with its price
-        if DELIVERY[m["service"]] == SEQUENCE:
+        if m["service"] == "CHART_EQUITY" and "bar" in m:       # into its ticker's series
+            b = m["bar"]
+            self.minutes.take(m["key"], Candle(ts=b["t"], open=b["o"], high=b["h"], low=b["l"], close=b["c"], volume=b["v"]))
+        elif m["service"] == "NEWS_HEADLINE":
             k = (m["service"], m["key"])
             self.sequence.setdefault(k, collections.deque(maxlen=SEQUENCE_KEPT)).append(m)
         for c in self.clients:
@@ -185,7 +208,7 @@ class LiveUiServer:
 
     def snapshot(self, c: _Client, keys: "list[str]", since: dict) -> None:
         """For a client that just asked for `keys`: each one's current record on the bus (a quote
-        or a book), and every bar and headline sent after the last the client received (`since`:
+        or a book), and every headline sent after the last the client received (`since`:
         {service: {symbol: ts_recv}}; none: every one held), in order, each once."""
         for topic, record in list(self.bus.current.values()):
             m = schwab_message(topic, record)
@@ -215,6 +238,13 @@ class LiveUiServer:
         return {k: {svc: {"live": lmp.feed_live_for(k, svc, now), "outage": lmp.outage(k, svc, now)}
                     for svc in _services(k)} for k in sorted(c.symbols)}
 
+    def series_of(self, tk: str) -> dict:
+        """`tk`'s 1-minute series as the chart draws it, whole: its newest CHART_1M_BARS bars (each
+        with its change, live_price_rows.with_change) and the newest one's start, labelled."""
+        bars = self.minutes.newest(tk, CHART_1M_BARS)
+        return {"type": "series", "key": tk, "bars": [with_change(bar_dict(c)) for c in bars],
+                "last_bar": ct_label(bars[-1].ts) if bars else None}
+
     def trade_label(self, key: str, now: float) -> dict:
         """`key`'s last trade time and its age at `now`, as the screen shows them."""
         return {"time_ct": ct_label(self.trade_ms[key] / 1000.0), "age": age_label(now - self.trade_ms[key] / 1000.0)}
@@ -240,6 +270,9 @@ class LiveUiServer:
             if c.identity is not None:
                 identity, c.identity = c.identity, None
                 await self._send(c, {"type": "symbols", "symbols": identity})
+            if c.series is not None:                    # the whole series before the bars after it
+                series, c.series = c.series, None
+                await self._send(c, series)
             messages = c.drain()
             if messages:
                 await self._send(c, {"type": "schwab", "messages": messages})
@@ -267,6 +300,9 @@ class LiveUiServer:
             c.symbols = frozenset(keys)
             c.identity = identity            # what each asked-for symbol is, before its messages
             self.snapshot(c, added, req["since"] if isinstance(req.get("since"), dict) else {})
+            chart = ticker_storage_key(req["chart"]) if isinstance(req.get("chart"), str) else None
+            if chart and (chart != c.chart or added):          # a new chart, or a page reconnecting
+                c.chart, c.series = chart, self.series_of(chart)
             c.wake.set()
 
     async def serve_client(self, ws) -> None:

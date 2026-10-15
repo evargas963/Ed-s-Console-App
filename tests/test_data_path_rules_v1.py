@@ -32,6 +32,7 @@ import schwab_client as sc
 import server
 from app.market_data.schwab.streaming import capture, live_push
 from calibration.complete_chain_capture import ChainSweep, chain_round_message
+from minute_bars import BARS_KEPT
 from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS, bars_from_candles
 from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus, bar_msg
 from tests.feed_live_helper import daemon_bars, forget_price, price_history, stream_daemon_bars
@@ -751,7 +752,7 @@ def test_d6_the_price_history_and_a_pushed_bar_build_levels_on_the_whole_history
             assert snap.as_of_ts_utc == candles[-1]["datetime"] / 1000, tk
             assert (snap.levels["PDL"].price, snap.levels["PDH"].price) == (
                 min(c["low"] for c in monday), max(c["high"] for c in monday)), tk
-            held = {b.ts: b for b in server._bars_1m(tk, server.BARS_KEPT)}
+            held = {b.ts: b for b in server._bars_1m(tk, BARS_KEPT)}
             assert len(held) == len(candles), tk
             minute = held[r["bar_start_ms"] / 1000]
             assert (minute.open, minute.high, minute.low, minute.close, minute.volume) == (

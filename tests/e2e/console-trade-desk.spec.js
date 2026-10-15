@@ -102,7 +102,8 @@ test('a desk load asks for each value once; a timeframe switch asks only for tha
   const errs = watchErrors(page);
   await intercept(page);
   const asked = [];
-  page.on('request', (r) => { const u = r.url(); if (u.includes('/api/')) asked.push(u.split('/api/')[1]); });
+  // (the daemon stand-in's read of the spec's bars is its fixture, not the page asking the console)
+  page.on('request', (r) => { const u = r.url(); if (u.includes('/api/') && r.headers()['x-ed-stand-in'] !== 'daemon') asked.push(u.split('/api/')[1]); });
   let releaseBars;
   const barsHeld = new Promise((r) => { releaseBars = r; });
   await page.route(/\/api\/bars1m\?.*tf=15/, async (route) => { await barsHeld;
@@ -226,7 +227,8 @@ test.describe('Trade Desk renders served values', () => {
   test('Desk: the served queue, counts, book side, tape side and flip relation', async ({ page }) => {
     const errs = watchErrors(page);
     await intercept(page);
-    // the Order Flow card's volume bars: SPY's real CHART_EQUITY bars (2026-10-01) from the daemon
+    // the Order Flow card's volume bars: the daemon's 1-minute series, SPY's real CHART_EQUITY bars
+    // (2026-10-01) on its history (STAND-IN: the spec's bars)
     const live = require(path.join(__dirname, '..', 'fixtures', 'real_daemon_bars_spy_tsla_2026_10_01_02.json')).rows
       .filter((r) => r.native && r.symbol === 'SPY').slice(0, 3).map((r) => { const n = r.native, chg = n.CLOSE_PRICE - n.OPEN_PRICE;
         return { service: 'CHART_EQUITY', key: 'SPY', schwab_ts: r.schwab_ts, ts_recv: r.ts_recv, content: n, time_ct: 'bar ' + n.SEQUENCE,
@@ -252,7 +254,8 @@ test.describe('Trade Desk renders served values', () => {
     // each card draws its served series in the reference's chart type (2026-09-28): depth areas,
     // volume bars, and lines for put/call OI and ATM IV by expiry (a null expiry breaks the line)
     await expect(page.locator('#tdmCardLiq .tdm-plot svg path')).toHaveCount(4);
-    await expect(page.locator('#tdmCardFlow .tdm-plot svg rect')).toHaveCount(live.length);
+    // the newest hour of the daemon's 1-minute series: the history (the spec's bars) and the bars sent live
+    await expect(page.locator('#tdmCardFlow .tdm-plot svg rect')).toHaveCount(BARS.bars.length + live.length);
     await expect(page.locator('#tdmCardOpt .tdm-plot svg path')).toHaveCount(2);
     await expect(page.locator('#tdmCardVol .tdm-plot svg path')).toHaveCount(1);
     await expect(page.locator('#tdmCardVol figcaption')).toHaveText('ATM implied vol by expiry, nearest first');

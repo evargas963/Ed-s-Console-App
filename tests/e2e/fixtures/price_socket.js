@@ -4,9 +4,11 @@
 // symbol is ({type:'symbols'}: requested, key, display), sends each LEVELONE_EQUITIES message 300 ms
 // apart ({type:'schwab'}: the fields Schwab sent, by Schwab's names), and beats every second
 // ({type:'feed'}: each symbol's verdict and its last trade's time and age, as the daemon words them,
-// time_et.ct_label / age_label). STAND-IN (named): instrument_identity's index roots; the verdict
-// (live, unless a spec's message names an outage); the labels' words (the daemon's own are proven
-// in tests/test_live_ui_daemon_to_browser_v1.py).
+// time_et.ct_label / age_label), and answers a subscribe's `chart` with that ticker's 1-minute
+// series ({type:'series'}) before any message. STAND-IN (named): instrument_identity's index roots;
+// the verdict (live once a message for the symbol and service was sent, unless the message names an
+// outage); the series (the spec's own /api/bars1m stub); the labels' words (the daemon's own are
+// proven in tests/test_live_ui_daemon_to_browser_v1.py).
 const INDEX_ROOTS = new Set(['SPX', 'NDX', 'VIX', 'DJI', 'COMPX', 'RUT']);
 function served(s) {
   const u = String(s).toUpperCase();
@@ -58,7 +60,8 @@ async function mockPriceSocket(page, messages) {
       const state = {}, trades = {};
       keys.forEach((k) => {
         state[k] = {};
-        SERVICES.forEach((svc) => { state[k][svc] = verdict[k + '|' + svc] || { live: true, outage: null }; });
+        // as the daemon judges: live once Schwab has posted to the symbol on the service, not before
+        SERVICES.forEach((svc) => { state[k][svc] = verdict[k + '|' + svc] || { live: false, outage: null }; });
         if (trade[k] != null) {
           trades[k] = Object.assign({ time_ct: ctLabel(trade[k]), age: ageLabel((Date.now() - trade[k]) / 1000) }, override[k]);
         }
@@ -68,22 +71,40 @@ async function mockPriceSocket(page, messages) {
     const timer = setInterval(beat, 1000);
     ws.onClose(() => { closed = true; clearInterval(timer); });
     // one Schwab message to the page, as the daemon sends it, then a beat
+    const sentBars = {};                       // each key's bars sent, as the daemon's store holds them
     function deliver(q) {
+      if (q.bar) (sentBars[q.key] || (sentBars[q.key] = [])).push(q.bar);
       if (q.content.TRADE_TIME_MILLIS != null) trade[q.key] = q.content.TRADE_TIME_MILLIS;
-      if ('feed_live' in q) verdict[q.key + '|' + q.service] = { live: q.feed_live, outage: q.outage };
+      verdict[q.key + '|' + q.service] = 'feed_live' in q ? { live: q.feed_live, outage: q.outage } : { live: true, outage: null };
       send({ type: 'schwab', messages: [{ service: q.service, key: q.key, schwab_ts: q.schwab_ts, ts_recv: q.ts_recv,
         content: q.content, bar: q.bar, time_ct: q.time_ct, levels: q.levels, absent: q.absent }] });
       beat();
     }
     _daemons.set(page, { beat: (labels) => { Object.assign(override, labels); beat(); }, close: () => ws.close(), deliver: deliver });
+    // the chart ticker's 1-minute series, whole, as the daemon sends it (live_ui series_of):
+    // STAND-IN, the spec's own bars (its /api/bars1m stub, read as the console stand-in reads one)
+    let chart = null;
+    async function sendSeries(key) {
+      const a = await page.evaluate(async (u) => {
+        try { const r = await fetch(u, { cache: 'no-store', headers: { 'x-ed-stand-in': 'daemon' } }); return r.ok ? await r.json() : null; }
+        catch (e) { return null; }
+      }, '/api/bars1m?ticker=' + encodeURIComponent(key) + '&tf=1&limit=1200').catch(() => null);
+      // as the daemon's: every bar it holds, the ones it has already sent included, one per minute
+      const byT = {};
+      (a && Array.isArray(a.bars) ? a.bars : []).concat(sentBars[key] || []).forEach((b) => { byT[b.t] = b; });
+      const bars = Object.keys(byT).map(Number).sort((x, y) => x - y).map((t) => byT[t]);
+      send({ type: 'series', key: key, bars: bars, last_bar: a && a.last_bar ? a.last_bar.label : null });
+    }
     let sent = false;
-    ws.onMessage((m) => {
+    ws.onMessage(async (m) => {
       let req; try { req = JSON.parse(String(m)); } catch (e) { return; }
       if (!req || req.op !== 'subscribe' || !Array.isArray(req.symbols)) return;
       const symbols = req.symbols.map(served);
       keys = symbols.map((s) => s.key);
       send({ type: 'symbols', symbols: symbols });
       beat();
+      // as the daemon: the chart's series whole, before any bar after it
+      if (typeof req.chart === 'string' && req.chart && req.chart !== chart) { chart = req.chart; await sendSeries(served(chart).key); }
       if (sent) return;                       // each spec message is Schwab's, sent once
       sent = true;
       (messages || []).forEach((q, i) => setTimeout(() => deliver(q), 300 * i));

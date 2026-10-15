@@ -19,6 +19,7 @@ import server
 from app.market_data.schwab.streaming import capture, live_push
 from app.options.order_flow import streaming as ofs
 from calibration.complete_chain_capture import PRICE_HISTORY, ChainSweep
+from minute_bars import BARS_KEPT
 from stream_spine import LATEST, CaptureWriter, HealthRegistry, MessageBus
 from tests.schwab_rest_standin import HISTORY, PRICEHISTORY, LocalSchwab
 from time_et import ET
@@ -158,7 +159,7 @@ def test_the_console_takes_schwabs_bars_and_candles_from_the_push_and_computes_t
         server._write_streamed_bars(msgs, answered)
         for tk in ("SPY", "TSLA"):
             minutes = HISTORY[(tk, "minute", "1")]["body"]["candles"]
-            got = [(b.ts, b.open, b.high, b.low, b.close, b.volume) for b in server._bars_1m(tk, server.BARS_KEPT)]
+            got = [(b.ts, b.open, b.high, b.low, b.close, b.volume) for b in server._bars_1m(tk, BARS_KEPT)]
             assert got == [(c["datetime"] / 1000, c["open"], c["high"], c["low"], c["close"], c["volume"])
                            for c in minutes], tk
             daily = HISTORY[(tk, "daily", "1")]["body"]["candles"]

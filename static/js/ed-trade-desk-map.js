@@ -155,7 +155,7 @@
         : 'No bars for ' + shown() + (d.error ? ' — ' + d.error : ' — nothing banked or streamed for this symbol yet.'));
       paintChartOverlays(); paintQueue(); openView();
       var src = $('tdmBarsSrc'); if (src) src.textContent = 'streamed 1m bars';
-    } else if (bars.length && S.tf !== '1') {     // a bucket of several minutes: the console builds it
+    } else if (bars.length) {                     // the newest two: a new bar (the daemon's at 1 minute) or bucket
       S.chart.updateTail(bars.slice(-2), d.last_bar && d.last_bar.label);
     }
   });
@@ -422,8 +422,8 @@
         m && m.status === 'no_book' ? 'no ' + m.venue + ' for this symbol right now' : m === undefined ? 'loading…' : 'no book levels served');
     }
     if ((c = $('tdmCardFlow'))) {
-      // the last hour of Schwab's CHART_EQUITY bars from the daemon (EdShell.liveBars), as sent
-      var fb = window.EdShell.liveBars(st().key).slice(-DESK_FLOW_BARS).map(function (m) { return m.bar; });
+      // the newest hour of the daemon's 1-minute series (EdShell.series: Schwab's bars, one per minute)
+      var fb = window.EdShell.series(st().key).slice(-DESK_FLOW_BARS);
       spark(c, [{ ys: fb.map(function (b) { return b.v; }), kind: 'bars', color: P.ink3,
         colors: fb.map(function (b) { return b.chg == null ? P.ink3 : b.chg >= 0 ? P.up : P.down; }) }],
         'Volume per 1-minute bar, last hour · green up, red down',

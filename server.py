@@ -359,6 +359,7 @@ def live_levels(tk: str, now: float) -> dict:
 #: one RTH day of 1-minute bars
 CANDLE_1M_MAX_BARS: int = 390
 from micro_structure import Candle, bar_dict, schwab_bar
+from minute_bars import CHART_1M_BARS, MinuteBars
 from calibration.complete_chain_capture import (
     CAPTURE_BASIS,
     last_capture_per_day,
@@ -366,17 +367,15 @@ from calibration.complete_chain_capture import (
 )
 
 
-#: every ticker's completed 1-minute bars, oldest first, the newest BARS_KEPT: Schwab's own
-#: 1-minute price history (its last 10 days, extended hours, from the capture daemon's
-#: /pricehistory request each ET date) with Schwab's streamed CHART_EQUITY bars on top, a streamed
-#: minute replacing Schwab's history of it. Owned by the bar writer (_bar_writer). Every live
-#: reader reads this, never a database (docs/DATA_FLOW.md §2 D6).
-BARS_KEPT = 24_000
-_bars: "dict[str, list[Candle]]" = {}
+#: every ticker's completed 1-minute bars (minute_bars: Schwab's /pricehistory history with each
+#: streamed CHART_EQUITY bar standing over its minute), the console's for its calculations; the
+#: daemon keeps the same for the screen. Owned by the bar writer (_bar_writer). Every live reader
+#: reads this, never a database (docs/DATA_FLOW.md §2 D6).
+_minutes = MinuteBars()
+_bars, _bars_lock, _keep_bar = _minutes.bars, _minutes.lock, _minutes.take
 #: every ticker's daily candles as Schwab's /pricehistory sent them (the daemon asks once a day):
 #: ticker -> candles, oldest first. Owned by the bar writer; the ATR reads them (_atr).
 _daily: "dict[str, list[Candle]]" = {}
-_bars_lock = threading.Lock()
 #: where the bars come from, named in every level's provenance
 BAR_SOURCE = "Schwab /pricehistory 1-minute bars and CHART_EQUITY"
 
@@ -387,41 +386,20 @@ def _write_price_history(msg: dict) -> "str | None":
     Schwab's history of its minute; its daily candles replacing the held ones. A candle without a
     valid field is not kept. The ticker when its 1-minute bars changed, else None."""
     tk = ticker_storage_key(msg["symbol"])
+    if msg["series"] == "1m":
+        _minutes.take_history(tk, msg["answer"]["candles"])
+        return tk
     candles = [b for b in (schwab_bar(c.get("datetime"), c.get("open"), c.get("high"), c.get("low"),
                                        c.get("close"), c.get("volume")) for c in msg["answer"]["candles"])
                if b is not None]
     with _bars_lock:
-        if msg["series"] != "1m":
-            _daily[tk] = candles
-            return None
-        merged = {c.ts: c for c in candles}
-        if tk in _bars:
-            merged.update((c.ts, c) for c in _bars[tk])
-        _bars[tk] = [merged[t] for t in sorted(merged)][-BARS_KEPT:]
-    return tk
-
-
-def _keep_bar(tk: str, bar: "Candle") -> None:
-    """A streamed bar into `tk`'s bars: a minute already held is replaced (Schwab's newest bar for
-    it), a new one takes its place in time; the oldest beyond BARS_KEPT leave."""
-    with _bars_lock:
-        held = _bars.setdefault(tk, [])
-        i = len(held)                       # bars arrive in time order: found at once
-        while i and held[i - 1].ts > bar.ts:
-            i -= 1
-        if i and held[i - 1].ts == bar.ts:
-            held[i - 1] = bar
-        else:
-            held.insert(i, bar)
-        del held[:-BARS_KEPT]
+        _daily[tk] = candles
+    return None
 
 
 def _bars_1m(tk: str, limit: int = CANDLE_1M_MAX_BARS) -> "list[Candle]":
-    """`tk`'s completed 1-minute bars, oldest first: Schwab's streamed CHART_EQUITY bars as the
-    bar writer keeps them. A minute the stream did not deliver is absent, never filled in."""
-    key = ticker_storage_key(tk)
-    with _bars_lock:
-        return list(_bars[key][-int(limit):]) if key in _bars else []
+    """`tk`'s completed 1-minute bars, oldest first, as the bar writer keeps them (minute_bars)."""
+    return _minutes.newest(ticker_storage_key(tk), limit)
 
 
 def _write_streamed_bar(msg: dict) -> bool:
@@ -2201,6 +2179,8 @@ PUSH_BEAT_SEC = 1.0
 #: in-the-money rows, the staleness) moves with every kind: every consumer of the spot is answered
 #: again on each change of it, from the same read.
 _EVERY_KIND = {"levels", "chain", "flow", "liquidity", "live"}
+#: a panel whose value the daemon sends the page itself (the 1-minute series): its answer only says so
+DAEMON_SERIES = "daemon:CHART_EQUITY"
 _ROUTE_KINDS = {
     "/api/terrain": _EVERY_KIND, "/api/terrain/strikes": _EVERY_KIND, "/api/forces": {"levels"},
     "/api/options/gamma-surface": _EVERY_KIND, "/api/options/vanna-by-strike": _EVERY_KIND,
@@ -2211,10 +2191,11 @@ _ROUTE_KINDS = {
     "/api/order-flow/microstructure": _EVERY_KIND, "/api/order-flow/book-heatmap": {"flow", "live"},
     "/api/order-flow/options-microstructure": {"levels", "flow", "live"}, "/api/options/tape": {"flow", "live"},
     "/api/watchlist": set(),
+    DAEMON_SERIES: set(),
 }
 
 #: the 1-minute bars each chart reads, per timeframe
-CHART_BARS = {"1": 1200, "3": 2000, "5": 3000, "15": 6000, "30": 9000, "60": 12000, "D": 12000}
+CHART_BARS = {"1": CHART_1M_BARS, "3": 2000, "5": 3000, "15": 6000, "30": 9000, "60": 12000, "D": 12000}
 #: the Options subviews that show the strike x expiry grid and its panels
 _GAMMA_FAMILY = {"gamma", "dex", "oi"}
 
@@ -2270,6 +2251,8 @@ def _panels(v: dict) -> "dict[str, _Panel]":
                       lambda: terrain_strikes_payload(tk, scope, w["centre"], w["pan_shift"], time.time()), price)
 
     def bars(tf: str, limit: int) -> _Panel:      # Schwab's bars as sent, each its own record
+        if tf == "1":       # the 1-minute series is the daemon's (live_ui series_of), straight to the screen
+            return _Panel(DAEMON_SERIES, lambda: {"from_daemon": "CHART_EQUITY"}, ())
         return _Panel(_route("/api/bars1m", ticker=tk, tf=tf, limit=limit), lambda: bars_payload(tk, limit, tf),
                       ((tk, "CHART_EQUITY"),))
 

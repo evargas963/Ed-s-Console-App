@@ -20,6 +20,7 @@ from pathlib import Path
 import pytest
 
 from app.market_data.schwab.streaming import capture, live_ui
+from minute_bars import CHART_1M_BARS
 from stream_spine import HealthRegistry, MessageBus
 from time_et import age_label, ct_label
 
@@ -151,42 +152,98 @@ def test_every_service_reaches_the_screen_by_its_delivery_type():
     asyncio.run(_run(body))
 
 
+async def _series_and_headlines(ws, timeout: float = 10.0) -> "tuple[dict, list[dict]]":
+    """The chart's series frame and every headline message, read until the series has come and
+    `timeout` s pass without a frame of either."""
+    series, news, end = None, [], time.monotonic() + timeout
+    while time.monotonic() < end:
+        try:
+            frame = json.loads(await asyncio.wait_for(ws.recv(), 1.5 if series else timeout))
+        except (asyncio.TimeoutError, TimeoutError):
+            break
+        if frame["type"] == "series":
+            series = frame
+        elif frame["type"] == "schwab":
+            news += [m for m in frame["messages"] if m["service"] == "NEWS_HEADLINE"]
+    return series, news
+
+
 def test_a_page_that_reconnects_gets_every_bar_and_headline_it_missed_once_in_order():
-    """All Sequence across a dropped connection: the real bars, the first half received, the
-    connection drops, the second half and a real headline sent meanwhile; the page reconnects
-    saying the last bar and headline it received (`since`) and gets every one it missed, each
-    once, in order, and none twice (before: only the newest bar, and the newest headline again)."""
+    """Across a dropped connection: the real bars, the first half received in order (All
+    Sequence), the connection drops, the second half and a real headline sent meanwhile; the page
+    reconnects and gets its chart's series whole, every bar Schwab sent in it, and the headline
+    it missed (after `since`) once; a page reconnecting with nothing new gets no headline again
+    (before: only the newest bar, and the newest headline again). STAND-IN (named): the
+    headline's key, SPY."""
     from websockets.asyncio.client import connect
 
     bars = [(r["native"], r["schwab_ts"]) for r in _BARS if r["native"]["key"] == "SPY"]
     half = len(bars) // 2
+    minutes = sorted({b["CHART_TIME_MILLIS"] / 1000.0 for b, _ts in bars})
 
     async def body(bus, ws, stats):
-        await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"]}))
+        await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"], "chart": "SPY"}))
         while json.loads(await asyncio.wait_for(ws.recv(), 3))["type"] != "symbols":
             pass
         for item, ts in bars[:half]:
             _frame(bus, "CHART_EQUITY", item, ts)
         first, _beats = await _received(ws, until=lambda ms: len(ms) == half)
         assert [m["content"] for m in first] == [b for b, _ts in bars[:half]]
-        since = {"CHART_EQUITY": {"SPY": first[-1]["ts_recv"]}}
         await ws.close()                                   # the page's connection drops
         for item, ts in bars[half:]:
             _frame(bus, "CHART_EQUITY", item, ts)
         _frame(bus, "NEWS_HEADLINE", {**_NEWS["content"], "key": "SPY"}, _NEWS["schwab_ts"])
         async with connect(stats["listening"], max_size=None) as again:
-            await again.send(json.dumps({"op": "subscribe", "symbols": ["SPY"], "since": since}))
-            missed, _beats = await _received(again, until=lambda ms: any(m["service"] == "NEWS_HEADLINE" for m in ms)
-                                             and sum(m["service"] == "CHART_EQUITY" for m in ms) >= len(bars) - half)
-            assert [m["content"] for m in missed if m["service"] == "CHART_EQUITY"] == [b for b, _ts in bars[half:]]
-            assert [m["content"]["2"] for m in missed if m["service"] == "NEWS_HEADLINE"] == [_NEWS["content"]["2"]]
-            since = {svc: {"SPY": max(m["ts_recv"] for m in missed if m["service"] == svc)}
-                     for svc in ("CHART_EQUITY", "NEWS_HEADLINE")}
-        async with connect(stats["listening"], max_size=None) as third:   # nothing new: nothing again
-            await third.send(json.dumps({"op": "subscribe", "symbols": ["SPY"], "since": since}))
-            again_none, _beats = await _received(third, quiet=0.4)
-            assert [m for m in again_none if m["service"] in ("CHART_EQUITY", "NEWS_HEADLINE")] == []
+            await again.send(json.dumps({"op": "subscribe", "symbols": ["SPY"], "chart": "SPY"}))
+            series, news = await _series_and_headlines(again)
+            assert [b["t"] for b in series["bars"]] == minutes, "a bar Schwab sent is missing from the series"
+            assert [m["content"]["2"] for m in news] == [_NEWS["content"]["2"]]
+            since = {"NEWS_HEADLINE": {"SPY": news[-1]["ts_recv"]}}
+        async with connect(stats["listening"], max_size=None) as third:   # nothing new: no headline again
+            await third.send(json.dumps({"op": "subscribe", "symbols": ["SPY"], "chart": "SPY", "since": since}))
+            series, news = await _series_and_headlines(third)
+            assert news == [] and [b["t"] for b in series["bars"]] == minutes
     asyncio.run(_run(body))
+
+
+def test_the_screens_1_minute_series_is_the_daemons_and_equals_the_consoles_bar_for_bar():
+    """One producer of the 1-minute series (minute_bars): the daemon and the console, fed the same
+    real /pricehistory answer (SPY, 2026-10-07) and the same real CHART_EQUITY bars (SPY,
+    2026-10-01), hold the same bars. The page drawing SPY's chart is sent the series whole on
+    subscribe (and again on the next /pricehistory answer), then each bar; before, the page took
+    the console's and the daemon's bars and chose between them by time."""
+    import server
+    from calibration.complete_chain_capture import price_history_message
+    from tests.feed_live_helper import price_history
+
+    answer = price_history("SPY", "1m")
+    topic, msg = price_history_message("SPY", "1m", answer["body"], answer["answered_utc"])
+    bars = [(r["native"], r["schwab_ts"]) for r in _BARS if r["native"]["key"] == "SPY"]
+    server._bars.pop("SPY", None)
+
+    async def body(bus, ws, stats):
+        bus.publish(topic, msg)
+        for item, ts in bars:
+            _frame(bus, "CHART_EQUITY", item, ts)
+        await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"], "chart": "SPY"}))
+        while (frame := json.loads(await asyncio.wait_for(ws.recv(), 5)))["type"] != "series":
+            pass
+        server._write_price_history(msg)                              # the console, the same inputs
+        for item, ts in bars:
+            _topic, m = capture._message("CHART_EQUITY", "SPY", item, ts)
+            server._write_streamed_bar(m)
+        console = server.bars_payload("SPY", CHART_1M_BARS, "1")["bars"]
+        assert frame["key"] == "SPY" and len(frame["bars"]) == min(CHART_1M_BARS, len(console)) > len(bars)
+        assert frame["bars"] == console, "the daemon's series and the console's differ"
+        assert frame["last_bar"] == ct_label(console[-1]["t"])
+        bus.publish(topic, msg)                                       # the next /pricehistory answer: whole again
+        while (again := json.loads(await asyncio.wait_for(ws.recv(), 5)))["type"] != "series":
+            pass
+        assert again["bars"] == console
+    try:
+        asyncio.run(_run(body))
+    finally:
+        server._bars.pop("SPY", None)
 
 
 def test_a_headline_carries_its_time_as_the_screen_shows_it():

@@ -702,23 +702,8 @@
       // Replace the whole series (ticker or timeframe change).
       setBars: function (bars, tf, symbol, lastBarLabel) {
         var changed = tf !== S.tf || symbol !== S.symbol;
-        function bar(b) { return { t: Number(b.t), o: b.o, h: b.h, l: b.l, c: b.c, v: b.v, chg: b.chg, chg_pct: b.chg_pct }; }
-        var series = bars ? bars.map(bar) : [];   // none served: no candles
-        // CHART_EQUITY (All Sequence) at 1 minute: each minute's bar from one route -- the
-        // daemon's, every one it has sent this page, in order; the console's only for the history
-        // before them (Schwab's /pricehistory and the bars before the page's first)
-        var held = tf === '1' ? window.EdShell.liveBars(window.EdShell.getState().key) : [];
-        if (held.length) {
-          var cut = held[0].bar.t;
-          series = series.filter(function (b) { return b.t < cut; });
-          held.forEach(function (m) {                // a minute Schwab sent again: its newest bar
-            var b = bar(m.bar), last = series[series.length - 1];
-            if (last && last.t === b.t) series[series.length - 1] = b; else series.push(b);
-          });
-          lastBarLabel = held[held.length - 1].time_ct;
-        }
         S.lastBarLabel = lastBarLabel || null;
-        S.bars = series;
+        S.bars = (bars || []).map(function (b) { return { t: Number(b.t), o: b.o, h: b.h, l: b.l, c: b.c, v: b.v, chg: b.chg, chg_pct: b.chg_pct }; });
         S.tf = tf; S.symbol = symbol;
         candles.setData(S.bars.map(function (b) { return { time: b.t, open: b.o, high: b.h, low: b.l, close: b.c }; }));
         closeLine.setData(S.bars.map(function (b) { return { time: b.t, value: b.c }; }));
@@ -862,13 +847,6 @@
       },
       selectProfile: function (price) { profile.select(price); }
     };
-    // each new CHART_EQUITY bar of the shown ticker from the daemon, at 1 minute, as it comes
-    window.addEventListener('ed:schwab', function (e) {
-      var m = e.detail;
-      if (m && m.service === 'CHART_EQUITY' && m.bar && S.tf === '1' && S.bars.length && m.key === window.EdShell.getState().key) {
-        api.updateTail([m.bar], m.time_ct);
-      }
-    });
     return api;
   }
 
