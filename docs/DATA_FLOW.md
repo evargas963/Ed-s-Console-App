@@ -17,9 +17,12 @@ operator.
 
 - One Schwab connection, owned by the daemon (Schwab allows one streamer connection per user).
   Enforced by: `tests/test_schwab_client_import_boundary.py` (the console makes no Schwab call).
-- One owner of the Schwab token: the daemon's one client (`capture.one_schwab_client`), used by
-  the stream and every chain request, built from `schwab_token.json` once and kept for the
-  daemon's life. Its session (`schwab_client.OneRefreshSession`) starts nothing else: it refreshes
+- One owner of the Schwab token while the app runs: the daemon's one client
+  (`capture.one_schwab_client`), used by the stream and every chain request, built from
+  `schwab_token.json` once and kept for the daemon's life. The token file's other writers are
+  run by hand and write under its lock: `python reauth_schwab.py` (a new sign-in) and
+  `tools/schwab_field_inventory.py` (its own client, which takes a token the daemon saved
+  before refreshing one itself). Its session (`schwab_client.OneRefreshSession`) starts nothing else: it refreshes
   the token when it is within 300 s of expiry, one request at a time (the others carry the token
   it returned), and writes it to the token file atomically. Its session holds one connection
   (httpx `max_connections=1`): every request waits for it, in turn. The session is the one owner
@@ -30,10 +33,10 @@ operator.
   reauth_schwab.py`) is taken at the next request or sweep turn, its token and creation time, the
   streamer's too: no restart; one saved while a refresh is on its way is taken at once instead of
   written over. Every writer of the token file holds its lock (`schwab_client.token_file_lock`,
-  across processes): the daemon's session from its look at the file to its write, a sign-in being
-  saved, and `tools/schwab_field_inventory.py`'s client (run by hand; its session takes a token the
-  daemon saved before refreshing one itself). A
-  token file that cannot be read is read again before each request, logged once. The client is
+  across processes): the daemon's session from its look at the file to its write, the client's
+  read when it is built, a sign-in being saved or the old one removed (`reauth_schwab.py`), and
+  the field inventory's client. A token file that cannot be read is read again before each
+  request, logged once. The client is
   never rebuilt. Enforced by:
   `tests/test_data_path_sign_in_v1.py`, `tests/test_data_path_rules_v1.py`
   (`test_twenty_requests_at_a_refresh_send_one_refresh_and_all_carry_the_new_token`,

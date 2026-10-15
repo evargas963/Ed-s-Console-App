@@ -7,12 +7,14 @@ import json
 import os
 import re
 import socket
+import tempfile
 import threading
 import time
 from dataclasses import dataclass
 from datetime import date
+from pathlib import Path
 from typing import Optional
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 import httpx
 from authlib.common.errors import AuthlibBaseError
@@ -22,6 +24,7 @@ from schwab import auth
 from schwab.client import Client
 from schwab.debug import register_redactions
 
+from config import schwab_live_blocked_for
 from time_et import ct_clock
 import logging
 
@@ -81,9 +84,6 @@ def write_token_file_atomically(token_path: str, payload: dict) -> None:
     (client_from_token_file_atomic) and every sign-in is saved by it (the OAuth exchange).
     schwab-py's own writer rewrites the file in place, so a reader in another process could
     load a torn token."""
-    import tempfile
-    from pathlib import Path
-
     path = Path(_resolve_token_path(token_path))
     path.parent.mkdir(parents=True, exist_ok=True)
     with token_file_lock(str(path)):
@@ -191,7 +191,9 @@ class OneRefreshSession(OAuth2Client):
     def _refreshed(self, token, *args, **kwargs):
         """A refresh this session made, written to the token file, unless a sign-in was saved there
         while it was asked: that one is taken instead, for this request and the streamer's login.
-        The token file's lock is held from the look to the write, so no sign-in is saved between."""
+        The token file's lock is held from the look to the write, so no sign-in is saved between.
+        The refreshed token is the streamer's at once, whether or not the file can be written."""
+        self._metadata.token = token
         with token_file_lock(self._token_file):
             if not self._take_saved():
                 self._write_file(token, *args, **kwargs)
@@ -227,8 +229,7 @@ class OneRefreshSession(OAuth2Client):
             version = _version(self._token_file)
             new = version is not None and version != self._read_at
             if new:
-                saved = _token_read_func(self._token_file)()
-                token, created = dict(saved["token"]), saved["creation_timestamp"]
+                token, created = _sign_in(_token_read_func(self._token_file)())
         except (OSError, ValueError, KeyError, TypeError) as e:     # not there whole, not JSON, not a sign-in
             if repr(e) != self._unread:
                 log.warning("the token file %s could not be read (%r); it is read again before each "
@@ -243,6 +244,15 @@ class OneRefreshSession(OAuth2Client):
                 log.info("a new Schwab sign-in was saved: taken")
             self._refused = None
         return new
+
+
+def _sign_in(saved) -> "tuple[dict, int]":
+    """A token file's sign-in: its token and creation time. KeyError, TypeError or ValueError when
+    it holds none (not a JSON object, or a token without its access and refresh tokens)."""
+    token = dict(saved["token"])
+    if not (token.get("access_token") and token.get("refresh_token")):
+        raise KeyError("the token holds no access and refresh token")
+    return token, saved["creation_timestamp"]
 
 
 def _version(path: str) -> "tuple[int, int] | None":
@@ -359,8 +369,6 @@ def auth_is_refreshable(inspection: TokenInspectionResult) -> bool:
 
 def build_client_from_token(token_path: str, api_key: str, app_secret: str) -> SchwabClientState:
     """Build Schwab client from token file. token_path is normalized to absolute."""
-    from config import schwab_live_blocked_for
-
     if schwab_live_blocked_for(api_key=api_key, app_secret=app_secret):
         return SchwabClientState(
             ok=False,
@@ -536,8 +544,6 @@ def complete_oauth_from_redirect_url(
     Finish OAuth when the browser already redirected but the local callback server
     did not persist the token (common: self-signed cert warning on 127.0.0.1:8182).
     """
-    from urllib.parse import parse_qs, urlparse
-
     url = (redirect_url or "").strip()
     if not url:
         return False, "Redirect URL is empty."

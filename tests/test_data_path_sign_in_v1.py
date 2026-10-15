@@ -177,37 +177,60 @@ def test_a_sign_in_saved_while_the_refresh_is_asked_is_taken_and_not_overwritten
 
 #: another process saving a sign-in (as python reauth_schwab.py saves one): it holds the token
 #: file's lock, sees whether anything writes the file while it holds it, then saves the sign-in
-_SAVER = """
-import json, sys, time
-sys.path.insert(0, sys.argv[3])
+#: another process holding the token file's lock (as python reauth_schwab.py holds it while it
+#: saves a sign-in): it says "held", waits for "go", then holds the lock `hold` seconds more, sees
+#: whether anything wrote the file meanwhile, and saves the sign-in `payload` (none: saves nothing)
+_HOLDER = """
+import json, os, sys, time
+sys.path.insert(0, sys.argv[1])
 import schwab_client as sc
-path, payload = sys.argv[1], json.loads(sys.argv[2])
+path, payload, hold = sys.argv[2], json.loads(sys.argv[3]), float(sys.argv[4])
 with sc.token_file_lock(path):
-    seen = sc._version(path)
+    seen = os.stat(path)
     print("held", flush=True)
-    time.sleep(1.0)
-    written = sc._version(path) != seen
-    sc.write_token_file_atomically(path, payload)
+    sys.stdin.readline()
+    time.sleep(hold)
+    now = os.stat(path)
+    written = (now.st_mtime_ns, now.st_ino) != (seen.st_mtime_ns, seen.st_ino)
+    if payload:
+        sc.write_token_file_atomically(path, payload)
 sys.exit(3 if written else 0)
 """
+_FRESH = {"creation_timestamp": int(time.time()) + 1, "token": {
+    "access_token": "fresh", "refresh_token": "r2", "token_type": "Bearer", "expires_in": 1800,
+    "expires_at": int(time.time() + 3600)}}
+
+
+class _Holder:
+    """The other process, holding the token file's lock once started."""
+
+    def __init__(self, token, payload, hold: float):
+        self.proc = subprocess.Popen([sys.executable, "-c", _HOLDER, str(Path(__file__).resolve().parent.parent),
+                                      str(token), json.dumps(payload), str(hold)],
+                                     stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+        assert self.proc.stdout.readline().strip() == "held"
+
+    def go(self):
+        self.proc.stdin.write("go\n")
+        self.proc.stdin.flush()
+
+    def ended(self) -> int:
+        return self.proc.wait(30)
 
 
 def test_a_sign_in_being_saved_in_another_process_is_never_written_over_by_the_refresh(tmp_path):
-    """A sign-in being saved by another process (holding the token file's lock) while the daemon's
-    refresh comes back: nothing writes the token file while that process holds it, and once it
-    has saved the sign-in, the refresh takes it instead of writing over it."""
+    """A sign-in being saved by another process (holding the token file's lock) when the daemon's
+    refresh answer comes back (it is told "go" as the token endpoint answers, and saves half a
+    second later): nothing writes the token file while that process holds it, and the refresh
+    takes the saved sign-in instead of writing over it."""
     schwab = LocalSchwab()
     token = tmp_path / "schwab_token.json"
     try:
         client = schwab.client(tmp_path, 100)              # the old sign-in, in its refresh window
-        signed_in = {"creation_timestamp": int(time.time()) + 1, "token": {
-            "access_token": "fresh", "refresh_token": "r2", "token_type": "Bearer", "expires_in": 1800,
-            "expires_at": int(time.time() + 3600)}}
-        saver = subprocess.Popen([sys.executable, "-c", _SAVER, str(token), json.dumps(signed_in),
-                                  str(Path(__file__).resolve().parent.parent)], stdout=subprocess.PIPE, text=True)
-        assert saver.stdout.readline().strip() == "held"
-        client.get_option_expiration_chain("SPY")          # the refresh, back while the lock is held
-        assert saver.wait(20) == 0, "the token file was written while a sign-in being saved held it"
+        holder = _Holder(token, _FRESH, 0.5)
+        schwab.answering = holder.go
+        client.get_option_expiration_chain("SPY")
+        assert holder.ended() == 0, "the token file was written while a sign-in being saved held it"
     finally:
         schwab.close()
     assert json.loads(token.read_text())["token"]["access_token"] == "fresh"
@@ -216,27 +239,43 @@ def test_a_sign_in_being_saved_in_another_process_is_never_written_over_by_the_r
 
 def test_a_client_built_while_a_sign_in_is_being_saved_holds_that_sign_in(tmp_path):
     """The daemon's client built while another process is saving a sign-in (holding the token
-    file's lock): the client is built from the saved sign-in, never from the one it replaces, and
-    its first request carries it."""
+    file's lock, saving half a second after "go"): the client is built from the saved sign-in,
+    never from the one it replaces, and its first request carries it."""
     schwab = LocalSchwab()
     token = tmp_path / "schwab_token.json"
     try:
         schwab.client(tmp_path)                            # the old sign-in, saved before
-        signed_in = {"creation_timestamp": int(time.time()) + 1, "token": {
-            "access_token": "fresh", "refresh_token": "r2", "token_type": "Bearer", "expires_in": 1800,
-            "expires_at": int(time.time() + 3600)}}
-        saver = subprocess.Popen([sys.executable, "-c", _SAVER, str(token), json.dumps(signed_in),
-                                  str(Path(__file__).resolve().parent.parent)], stdout=subprocess.PIPE, text=True)
-        assert saver.stdout.readline().strip() == "held"
+        holder = _Holder(token, _FRESH, 0.5)
+        holder.go()
         client = sc.client_from_token_file_atomic(str(token), "k", "s",
                                                   transport=_ToLocal(schwab.server.server_address[1]))
         held = client.token_metadata.token["access_token"]
-        assert saver.wait(20) == 0
+        assert holder.ended() == 0
         client.get_option_expiration_chain("SPY")
     finally:
         schwab.close()
     assert held == "fresh"
     assert _asked(schwab) == [(EXPIRATIONS, "Bearer fresh")]
+
+
+def test_a_refresh_that_cannot_take_the_token_files_lock_still_gives_the_stream_its_token(tmp_path):
+    """Another process holding the token file's lock longer than a writer waits for it
+    (sc.TOKEN_LOCK_WAIT_SEC) when the refresh answer comes back: the request fails, no
+    refusal, and the refreshed token is the session's and the streamer's both (its login reads
+    the client's token record), so no reconnect logs in with the token it replaced."""
+    schwab = LocalSchwab()
+    token = tmp_path / "schwab_token.json"
+    try:
+        client = schwab.client(tmp_path, 100)
+        holder = _Holder(token, None, sc.TOKEN_LOCK_WAIT_SEC + 1)
+        schwab.answering = holder.go
+        with pytest.raises(TimeoutError):
+            client.get_option_expiration_chain("SPY")
+        assert holder.ended() == 0
+    finally:
+        schwab.close()
+    assert client.session.token["access_token"] == client.token_metadata.token["access_token"] == "new-access"
+    assert client.session.signed_in()
 
 
 def test_a_sign_in_in_progress_removes_the_token_file_and_nothing_breaks(tmp_path):
@@ -347,8 +386,9 @@ def test_the_chain_sweep_waits_for_a_client_it_cannot_build_and_goes_on_once_bui
     assert _asked(schwab)
 
 
-@pytest.mark.parametrize("held", ["{not a sign-in", "[]", '{"token": "x", "creation_timestamp": 1}'],
-                         ids=["not JSON", "JSON, not a sign-in", "a token that is not one"])
+@pytest.mark.parametrize("held", ["{not a sign-in", "[]", '{"token": "x", "creation_timestamp": 1}',
+                                  '{"token": {}, "creation_timestamp": 1}'],
+                         ids=["not JSON", "JSON, not a sign-in", "a token that is not one", "an empty token"])
 def test_a_token_file_that_cannot_be_read_is_logged_once_and_the_sweep_goes_on(tmp_path, caplog, held):
     """The token file holding what is not a sign-in: the chain sweep keeps looking, it is logged
     once, and the sign-in saved after it is taken."""

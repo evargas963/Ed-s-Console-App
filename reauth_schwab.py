@@ -30,6 +30,7 @@ from schwab_client import (
     inspect_token_file,
     run_login_flow,
     run_manual_flow,
+    token_file_lock,
 )
 
 
@@ -110,7 +111,8 @@ def reauth():
 
     if os.path.exists(token_path):
         try:
-            os.remove(token_path)
+            with token_file_lock(token_path):        # no writer of the token file meanwhile
+                os.remove(token_path)
             print("Removed existing token file.")
         except Exception as e:
             print(f"Could not remove old token: {e}")
