@@ -470,6 +470,13 @@
     var lead = String(text).toLowerCase().match(/^[a-z0-9-]+/);
     return '<span class="fl-tag ' + (lead ? lead[0] : 'unknown') + '" data-cls="' + _escBadge(text) + '">' + _escBadge(text) + '</span>';
   }
+  // A value's classification as the console served it with its answer (`map`, the answer's
+  // `classification`): its label; no answer yet (no map): undefined, no tag; an answer that
+  // serves no label for a classified value: null, UNKNOWN (a defect, shown).
+  function classOf(map, key) {
+    if (map === undefined || map === null) return undefined;
+    return typeof map[key] === 'string' && map[key] ? map[key] : null;
+  }
   // The rows of a statistics section, each [label, value (text, or {ageOf} a served age),
   // classification (flTag), its key (data-k), if it names one]
   function flRows(rows) {
@@ -627,17 +634,21 @@
     });
   }
   function setTicker(sym) {
-    state.ticker = (sym || '').toUpperCase();
-    state.key = null; state.display = null;
+    var typed = (sym || '').toUpperCase();
+    // another ticker: what it is comes with the daemon's answer; the same one stays as answered
+    if (typed !== state.ticker) { state.key = null; state.display = null; }
+    state.ticker = typed;
     try { localStorage.setItem(TICKER_KEY, state.ticker); } catch (e) {}
-    paintIdentity(state.ticker);
+    paintIdentity(state.display ? state.display : state.ticker);
     var si = document.getElementById('symInput'); if (si) { si.value = state.ticker; buildSymList(); }   // the control reflects the ONE state
     state.selStrike = null; state.selExpiry = null;   // a new ticker clears the shared selection
     Object.keys(state.pans).forEach(function (k) { state.pans[k].centre = null; state.pans[k].shift = 0; });   // and follows the price
     openPush();                          // the console's push (the view goes with ed:ticker)
     openDaemon();                        // the daemon's socket: Schwab's messages (the subscribe goes with the view)
-    _priceSubTs = Date.now();            // the daemon answers the subscribe with this ticker's record at once
-    markHeaderPushDown();                // WAITING until that row lands (milliseconds)
+    if (state.key === null) {
+      _priceSubTs = Date.now();          // the daemon answers the subscribe with this ticker's record at once
+      markHeaderPushDown();              // WAITING until that row lands (milliseconds)
+    }
     emit('ed:ticker', { ticker: state.ticker });
   }
 
@@ -1077,7 +1088,9 @@
         Object.keys(_held).forEach(function (n) { if (msg.shown.indexOf(n) === -1) delete _held[n]; });   // off screen
         _shown = msg.shown;
         Object.keys(_notLive).forEach(function (n) { if (msg.shown.indexOf(n) === -1) markLive(n, null); });
-        // the charts that draw the daemon's series: each one new to it is drawn from it now
+        // the charts that draw the daemon's series: no console answer is drawn on them (one held
+        // from the view before is dropped), and each one new to it is drawn from it now
+        msg.series.forEach(function (n) { delete _held[n]; });
         var drawn = _daemonPanels; _daemonPanels = msg.series;
         _daemonPanels.forEach(function (n) { if (drawn.indexOf(n) === -1) deliver(n, seriesAnswer(true)); });
         msg.moved.forEach(function (n) { delete _held[n]; deliver(n, { waiting: true }); });
@@ -1276,7 +1289,7 @@
     marketContext: function () { return MARKET_CONTEXT.slice(); },   // served [{key, display}]
     setScope: setScope, getScope: function () { return state.scope; },
     panServed: panServed, wireStrikeAxis: wireStrikeAxis, asOfBadge: asOfBadge, ageSpan: ageSpan, tradeLabel: tradeLabel, chainEmptyText: chainEmptyText,
-    flRows: flRows, flSection: flSection,
+    flRows: flRows, flSection: flSection, classOf: classOf,
     setExpiry: setExpiry, getExpiry: function () { return state.expiryFilter; },
     getMeasure: function () { return state.measure; },
     feedVerdict: feedVerdict,

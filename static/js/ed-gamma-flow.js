@@ -75,9 +75,6 @@
     return { label: s || '—', cls: 'stale' };
   }
 
-  // The backend's classification string for one canonical key, verbatim — or null when the
-  // backend served no classification for it. Never defaulted, never inferred from the key.
-  function classOf(map, key) { var v = map ? map[key] : null; return (typeof v === 'string' && v) ? v : null; }
   function bool3(v) { return v === true ? 'true' : (v === false ? 'false' : '—'); }
 
   // The contract's Schwab values, straight from the daemon, whether or not the console has
@@ -112,11 +109,10 @@
     var depth = d.depth || {};
     var ages = d.ages || {};
     var flow = d.flow || {};                        // the ONE flow block (never flattened)
-    var bookCls = d.classification || {};           // engine's book/microstructure classification
-    var flowCls = flow.classification || {};        // live_payload's flow classification
     function dep(n, side) { var x = depth[String(n)] || {}; return x[side]; }
-    function bk(k) { return classOf(bookCls, k); }
-    function fk(k) { return classOf(flowCls, k); }
+    // the engine's book/microstructure classification and live_payload's flow classification
+    function bk(k) { return window.EdShell.classOf(d.classification, k); }
+    function fk(k) { return window.EdShell.classOf(flow.classification, k); }
     // row = [label, displayed value, backend classification | null, canonical key (data-k)] (EdShell.flRows)
     // The depth ladder is classified by the engine under its own wildcard keys ("depth.*.<leaf>").
     var pricedAt = d.top_of_book;                  // the top of book the console priced these at (the engine's input)

@@ -14,7 +14,7 @@
        axis resets it, Alt+R resets everything, the wheel over the plot zooms time.
      - the crosshair follows the mouse; the readout BOX appears only on click (pinned, with a
        close control) -- never a hover tooltip.
-   Every number drawn here is the server's (bars from /api/bars1m, levels from /api/levels +
+   Every number drawn here is the server's (bars from the daemon's 1-minute series or /api/bars1m above it, levels from /api/levels +
    /api/terrain). Choosing WHICH levels to draw (the nearest few inside the visible range) and
    placing a 1m series point on the bar that contains it are presentation, not computation. */
 (function () {
@@ -850,7 +850,8 @@
     return api;
   }
 
-  // The timeframes every chart offers (the console reads each chart's bars: server.CHART_BARS).
+  // The timeframes every chart offers (at 1 minute the daemon's series; above it the console
+  // rolls up each chart's bars, server.CHART_BARS).
   var TFS = [{ id: '1', lbl: '1m' }, { id: '3', lbl: '3m' }, { id: '5', lbl: '5m' }, { id: '15', lbl: '15m' },
     { id: '30', lbl: '30m' }, { id: '60', lbl: '1h' }, { id: 'D', lbl: 'D' }];
 

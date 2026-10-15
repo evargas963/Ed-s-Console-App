@@ -43,6 +43,18 @@ async function pushChange(page, kind) {
   if (p) await p(kind);
 }
 
+//: each page's views held on their way to the console (holdViews), and their release
+const _viewsHeld = new WeakMap();
+const _viewsRelease = new WeakMap();
+
+// The views the page sends from now on are held on their way to the console until the returned
+// function is called (the console has not taken them yet): an answer it sends meanwhile is under
+// the view before, as on a busy connection.
+function holdViews(page) {
+  _viewsHeld.set(page, []);
+  return () => _viewsRelease.get(page)();
+}
+
 //: each page's stand-in outages: panel -> the console's not_live reasons for it
 const _notLive = new WeakMap();
 
@@ -121,7 +133,9 @@ async function installLive(page) {
       if (!msg) return;
       if (msg.type === 'view') {
         seq = msg.seq;
-        for (const n of [...shown.keys()]) if (!msg.shown.includes(n)) shown.delete(n);
+        // as the console's panels (server.live_values client.panels): the charts that draw the
+        // daemon's series are none of them, so no answer for one is sent after the view moved
+        for (const n of [...shown.keys()]) if (!msg.shown.includes(n) || msg.series.includes(n)) shown.delete(n);
         send(msg);
         if (seq === pageSeq) {                  // the page's newest view: what it would draw, read
           const now = held; held = [];
@@ -143,11 +157,18 @@ async function installLive(page) {
       }
       send(msg);
     });
+    const toServer = (m) => { try { server.send(String(m)); } catch (e) { /* the test server's push is gone */ } };
     ws.onMessage((m) => {
       let req; try { req = JSON.parse(String(m)); } catch (e) { return; }
       if (!req || req.op !== 'view') return;
+      const queued = _viewsHeld.get(page);
+      if (queued) { queued.push(m); return; }   // on its way to the console, not there yet (holdViews)
       pageSeq = req.view.seq;
-      try { server.send(String(m)); } catch (e) { /* the test server's push is gone */ }
+      toServer(m);
+    });
+    _viewsRelease.set(page, () => {
+      const queued = _viewsHeld.get(page); _viewsHeld.delete(page);
+      queued.forEach((m) => { pageSeq = JSON.parse(String(m)).view.seq; toServer(m); });
     });
   });
 }
@@ -162,4 +183,4 @@ const test = base.test.extend({
   },
 });
 
-module.exports = { test, expect: base.expect, pushBeat, pushChange, pushDown, setNotLive };
+module.exports = { test, expect: base.expect, pushBeat, pushChange, pushDown, setNotLive, holdViews };

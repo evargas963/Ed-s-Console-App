@@ -1,7 +1,7 @@
 /* Ed Console — Liquidity / "Map" subview. PRESENTATION ONLY, computes nothing.
    The zones /api/liquidity-snapshot computes (support / resistance / value bands, each with its
    served label, side and confluence score) on the one TradingView-style chart every chart in the
-   console uses (ed-tv-chart.js), over the price (/api/bars1m, completed Schwab bars, the toolbar's timeframe),
+   console uses (ed-tv-chart.js), over the price (completed Schwab bars at the toolbar's timeframe: the daemon's 1-minute series, /api/bars1m above it),
    with the prior-day and overnight levels and the live price from /api/levels -- the one level
    route. The zone list below the chart names each zone's source levels. */
 (function () {
@@ -23,7 +23,7 @@
     if (_chart && h.querySelector('.liqm-plot')) return _chart;
     if (!window.EdTvChart || !window.LightweightCharts) return null;
     h.innerHTML = '<div class="liqm-tb"></div><div class="liqm-plot"></div><div class="liqm-empty" hidden></div><div class="liqm-zones"></div>' +
-      '<div class="fl-foot">Zones from /api/liquidity-snapshot; prior-day and overnight levels from /api/levels, the bars from /api/bars1m, the price from the header\'s price row. The map arranges them; it computes nothing.</div>';
+      '<div class="fl-foot">Zones from /api/liquidity-snapshot; prior-day and overnight levels from /api/levels, the bars from Schwab\'s CHART_EQUITY (the daemon\'s 1-minute series; at more minutes rolled up by /api/bars1m), the price from the header\'s price row. The map arranges them; it computes nothing.</div>';
     _chart = window.EdTvChart.create(h.querySelector('.liqm-plot'), { nearestN: 99 });
     window.EdTvChart.toolbar(h.querySelector('.liqm-tb'), _chart, { tf: st().tfs.liquidity, styleKey: 'ed.liqm.style',
       onTf: function (tf) { window.EdShell.setTf('liquidity', tf); } });

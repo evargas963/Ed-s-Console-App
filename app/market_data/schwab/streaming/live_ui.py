@@ -188,8 +188,10 @@ class LiveUiServer:
                      last_send_ms=None)
 
     def route(self, topic: str, msg) -> None:
-        """One Schwab message from the bus to every client that asked for its symbol, and noted as
-        posted to the symbol on its service (the one live rule's "posted on this connection").
+        """One Schwab message from the bus to every client that wants it (_Client.wants: a bar to
+        each page whose chart draws its ticker, any other message to each client that asked for
+        its symbol, on a service it asked for), and noted as posted to the symbol on its service
+        (the one live rule's "posted on this connection").
         Schwab's 1-minute /pricehistory answer goes into the ticker's series, sent whole to each
         page that draws it."""
         if topic.startswith("pricehistory.") and isinstance(msg, dict) and msg.get("series") == "1m":

@@ -5,7 +5,7 @@
  * and the positioning migration are served fields. Level crosses are real SPY rows
  * (tests/fixtures/real_spy_level_crosses.json). Any page error fails the test.
  */
-const { test, expect, pushBeat, pushChange, pushDown, setNotLive } = require('./fixtures/live_socket');
+const { test, expect, pushBeat, pushChange, pushDown, setNotLive, holdViews } = require('./fixtures/live_socket');
 const { expiriesAnswer } = require('./fixtures/expiries');
 const path = require('path');
 const { mockPriceSocket, schwabQuote, daemonDown, daemonBeat, daemonSend, daemonSeries } = require('./fixtures/price_socket');
@@ -476,6 +476,52 @@ test.describe('Trade Desk renders served values', () => {
     await expect(page.locator('#tdmNews')).toHaveText('-');           // none held for SPY: absent
     await page.evaluate(() => window.EdShell.setTicker('QQQ'));
     await expect(page.locator('#tdmNews')).toContainText(news.content['4']);
+    expect(errs).toEqual([]);
+  });
+
+  test('the ticker already shown, picked again: its price keeps painting', async ({ page }) => {
+    // Before (deade82e), picking it again cleared its key and the subscribe, the same as the
+    // last, was not sent again: the daemon never answered what it is and the header stayed
+    // WAITING. STAND-IN (named): the price (schwabQuote).
+    const errs = watchErrors(page);
+    await intercept(page);
+    await mockPriceSocket(page, [schwabQuote('SPY', 501.25)]);
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#hPx')).toHaveText('501.25');
+    await page.evaluate(() => window.EdShell.setTicker('SPY'));
+    daemonSend(page, [schwabQuote('SPY', 502.5)]);
+    await expect(page.locator('#hPx')).toHaveText('502.50');
+    expect(errs).toEqual([]);
+  });
+
+  test('Desk 5m to 1m: an answer for 5 minutes in flight is never drawn on the 1-minute chart', async ({ page }) => {
+    // Before (deade82e), the console's 5-minute bars answered under the view before (sent before
+    // the console took the 1-minute view) were held and drawn after the daemon's series: its two
+    // buckets became the chart's newest two bars. STAND-IN (named): the 5-minute buckets, later
+    // than every bar of the series.
+    const errs = watchErrors(page);
+    await intercept(page);
+    const last = BARS.bars[BARS.bars.length - 1].t;
+    const five = [1, 2].map((i) => Object.assign({}, BARS.bars[BARS.bars.length - 1], { t: last + 300 * i }));
+    await page.route('**/api/bars1m**', (route) => {
+      const tf = new URL(route.request().url()).searchParams.get('tf');
+      route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify(Object.assign({}, BARS, tf === '1' ? { tf: '1' } : { tf: tf, bars: BARS.bars.concat(five) })) });
+    });
+    await mockPriceSocket(page, []);
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
+      localStorage.setItem('ed_sub', 'desk'); localStorage.setItem('ed.desk.tf', '5'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const chartState = () => page.evaluate(() => window.EdTradeDeskMap.state().chart);
+    await expect.poll(async () => (await chartState()).bars).toBe(BARS.bars.length + five.length);
+    const release = holdViews(page);                         // the 1-minute view, not yet at the console
+    await page.evaluate(() => window.EdShell.setTf('desk', '1'));
+    await pushChange(page, 'liquidity');                     // the 5-minute bars answered under the view before
+    release();
+    await expect.poll(async () => (await chartState()).bars).toBe(BARS.bars.length);   // the daemon's series
+    await page.waitForTimeout(500);
+    expect((await chartState()).bars).toBe(BARS.bars.length);
     expect(errs).toEqual([]);
   });
 

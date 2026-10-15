@@ -124,8 +124,8 @@ MAX_REQUEST_BYTES = 48_000
 #: A request Schwab does not answer in this long means the connection is broken.
 REQUEST_TIMEOUT_SEC = 15.0
 
-SERVICES = ("LEVELONE_EQUITIES", "CHART_EQUITY", "NYSE_BOOK", "NASDAQ_BOOK",
-            "LEVELONE_OPTIONS", "OPTIONS_BOOK", "NEWS_HEADLINE")
+#: every service the daemon streams
+SERVICES = EQUITY_SERVICES + OPTION_SERVICES
 #: Schwab's limit on each option service, as its own refusals on the daemon's connection state it
 #: ("(LEVELONE_OPTIONS=3000, DISCARDED=1)", "(OPTIONS_BOOK=100, DISCARDED=1)")
 OPTION_LIMITS = {"LEVELONE_OPTIONS": 3000, "OPTIONS_BOOK": 100}

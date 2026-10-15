@@ -22,7 +22,6 @@
   function ticker() { return (st().ticker || ''); }
   function host() { return document.getElementById('tdBody'); }
 
-  function classOf(map, key) { var v = map ? map[key] : null; return (typeof v === 'string' && v) ? v : null; }
   var usd = function (n) {
     if (n == null || isNaN(n)) return '—';
     var a = Math.abs(n), s = n < 0 ? '-' : '';
@@ -66,9 +65,9 @@
     var imb = dep(5, 'imbalance');
     var ages = d.ages || {};
     var rows = tobRows.concat([
-      ['Spread (pts)', num(d.spread_pts), classOf(cls, 'spread_pts')],
-      ['Depth 1 imbalance', num(dep(1, 'imbalance'), 3), classOf(cls, 'depth.*.imbalance')],
-      ['Book age', d.as_of.book != null ? { ageOf: 'book' } : '—', classOf(cls, 'as_of.book')],
+      ['Spread (pts)', num(d.spread_pts), window.EdShell.classOf(cls, 'spread_pts')],
+      ['Depth 1 imbalance', num(dep(1, 'imbalance'), 3), window.EdShell.classOf(cls, 'depth.*.imbalance')],
+      ['Book age', d.as_of.book != null ? { ageOf: 'book' } : '—', window.EdShell.classOf(cls, 'as_of.book')],
     ]);
     var heroVal = (imb == null || isNaN(imb)) ? '—' : (imb >= 0 ? '+' : '') + num(imb, 3);
     var side = dep(5, 'side');   // served: BID / ASK / EVEN by the imbalance's sign

@@ -38,7 +38,6 @@
     if (h && onBook() && m.key === st().key && (m.service === st().bookVenue || m.service === 'LEVELONE_EQUITIES')) render(h, ticker(), _book);
   });
 
-  function classOf(map, key) { var v = map ? map[key] : null; return (typeof v === 'string' && v) ? v : null; }
 
   // Real per-level DOM ladder from d.depth_pressure.{bid,ask} -- [{price,volume,cum}], best-
   // first, up to OF_BOOK_DEPTH_DEEP (5) levels. This is genuine displayed-book data the first
@@ -75,7 +74,7 @@
     // Schwab's top of book: LEVELONE_EQUITIES as the daemon pushes it, and its verdict
     var tob = window.EdShell.priceRow(st().key);
     function dep(n, side) { var x = depth && depth[String(n)]; return x ? x[side] : undefined; }
-    function bk(k) { return classOf(cls, k); }
+    function bk(k) { return window.EdShell.classOf(cls, k); }
     var walls = got('wall_candidates');
     var wallSet = {};
     if (walls) walls.forEach(function (w) { wallSet[w.side + '@' + w.price] = w; });

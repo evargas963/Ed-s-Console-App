@@ -1,14 +1,14 @@
 /* Ed Console — Trade Desk / "Desk" subview (the operator's 2026-09-25 mockup). PRESENTATION ONLY.
 
    One page for the SELECTED ticker, one global timeframe:
-     MARKET MAP   <- /api/bars1m (completed Schwab 1m bars, server-rolled timeframe),
+     MARKET MAP   <- the daemon's 1-minute series (Schwab CHART_EQUITY) or /api/bars1m (server-rolled timeframe),
                      /api/levels (value area, VWAP + bands, prior day, opening range, overnight),
                      /api/terrain (call/put wall, gamma flip, max pain -- full chain)
      ATTENTION    <- /api/desk/events (served, numbered; each marker is its queue entry, linked
                      both ways): level crosses judged by their minute's bar, wall breaches,
                      the book's size walls at the book's own time
      CARDS        <- /api/order-flow/microstructure, /api/terrain, the price row (Schwab
-                     LEVELONE), /api/bars1m, /api/liquidity-snapshot (value/VWAP relation)
+                     LEVELONE), the daemon's 1-minute series, /api/liquidity-snapshot (value/VWAP relation)
      HEADER TRUST <- the same responses' own state/age fields
    The browser computes nothing: it picks which served values to show, formats them, and
    places a served event on the bar that contains it. A value with no producer yet says so. */

@@ -90,6 +90,9 @@ test('the Book ladder is each level of Schwab\'s book as sent, from the daemon, 
     [r.querySelector('.dom-px').textContent, r.querySelector('.dom-sz').textContent]));
   expect(shown).toEqual(want);
   await expect(page.locator('#obBody .fl-badge').first()).toHaveText('LIVE');
+  // the console has priced no book: no classification is served, so none is shown (before,
+  // deade82e: every row read UNKNOWN while the label was simply not yet in)
+  await expect(page.locator('#obBody .fl-tag')).toHaveCount(0);
   expect(errs).toEqual([]);
 });
 
