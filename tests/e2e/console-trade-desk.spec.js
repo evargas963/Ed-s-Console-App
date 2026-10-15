@@ -437,6 +437,10 @@ test.describe('Trade Desk renders served values', () => {
     await expect.poll(async () => (await chartState()).bars).toBe(2);
     daemonSeries(page, 'SPY', series, 'the newest');                              // the gap filled, whole
     await expect.poll(async () => (await chartState()).bars).toBe(series.length);
+    // another chart ticker: SPY's copy is not kept (the daemon keeps a page's chart series current
+    // only while it is the chart), so switching back draws the daemon's series, never an old copy
+    await page.evaluate(() => window.EdShell.setTicker('QQQ'));
+    await expect.poll(() => page.evaluate(() => window.EdShell.series('SPY').length)).toBe(0);
     expect(errs).toEqual([]);
   });
 

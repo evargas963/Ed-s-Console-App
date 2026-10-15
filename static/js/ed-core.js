@@ -786,6 +786,9 @@
   }
   function subscribePrices() {
     if (!_daemon || _daemon.readyState !== 1) return;   // sent on open
+    // a new chart ticker: only its series is kept, the daemon's, whole, once it lands (another's
+    // copy is not kept up to date by the daemon, so it is never drawn again)
+    if (state.ticker !== _chart) { _chart = state.ticker; _series = {}; }
     _daemon.send(JSON.stringify({ op: 'subscribe', symbols: priceSymbols().concat(state.contract ? [state.contract] : []),
       since: _seqSeen, chart: state.ticker ? state.ticker : null }));   // no ticker chosen: no chart
   }
@@ -795,6 +798,7 @@
   // the chart ticker's 1-minute series as the daemon serves it ({key: {bars, last_bar}}): whole on
   // subscribe and on each /pricehistory answer, then each CHART_EQUITY bar in order
   var _series = {};
+  var _chart = null;                  // the ticker whose series the page last asked the daemon for
   // Each symbol's LEVELONE_EQUITIES fields as Schwab sent them (Change: each the last one sent),
   // each symbol's verdict per service and its last trade's time and age, as the daemon's beat
   // serves them ({service: {live, outage}}, {time_ct, age})
