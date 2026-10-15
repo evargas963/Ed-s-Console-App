@@ -183,15 +183,12 @@ class OneRefreshSession(OAuth2Client):
             return self._signed_in()
 
     def _signed_in(self) -> bool:
-        if self._refused is None:
-            return True
-        if _changed_at(self._token_file) == self._refused[1]:
-            return False
-        saved = _token_read_func(self._token_file)()
-        self._metadata.token, self._metadata.creation_timestamp = saved["token"], saved["creation_timestamp"]
-        self.token, self._refused = saved["token"], None
-        log.info("a new Schwab sign-in was saved: taken")
-        return True
+        if self._refused is not None and _changed_at(self._token_file) != self._refused[1]:
+            saved = _token_read_func(self._token_file)()     # a new sign-in, saved since the refusal
+            self._metadata.token, self._metadata.creation_timestamp = saved["token"], saved["creation_timestamp"]
+            self.token, self._refused = saved["token"], None
+            log.info("a new Schwab sign-in was saved: taken")
+        return self._refused is None
 
 
 def _changed_at(path: str) -> int:
