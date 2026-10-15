@@ -634,7 +634,7 @@
     });
   }
   function setTicker(sym) {
-    var typed = (sym || '').toUpperCase();
+    var typed = sym.toUpperCase();     // every caller names a symbol
     // another ticker: what it is comes with the daemon's answer; the same one stays as answered
     if (typed !== state.ticker) { state.key = null; state.display = null; }
     state.ticker = typed;
