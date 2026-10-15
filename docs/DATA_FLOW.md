@@ -30,14 +30,14 @@ operator.
   or invalid; a network failure or Schwab's edge 403 page is no refusal), it logs it once and every request raises
   `SignInRefused` with nothing sent, the stream's logins too; the chain sweep asks for nothing
   while signed out (`ChainSweep.work`). A new sign-in saved to the token file (`python
-  reauth_schwab.py`) is taken at the next request or sweep turn, its token and creation time, the
-  streamer's too: no restart; one saved while a refresh is on its way is taken at once instead of
-  written over. Every writer of the token file holds its lock (`schwab_client.token_file_lock`,
-  across processes): the daemon's session from its look at the file to its write, the client's
-  read when it is built, a sign-in being saved or the old one removed (`reauth_schwab.py`), and
-  the field inventory's client. A token file that cannot be read is read again before each
-  request, logged once. The client is
-  never rebuilt. Enforced by:
+  reauth_schwab.py`; a new creation time) is taken, its token and creation time, the streamer's
+  too, with no restart: while refused, at the next request or sweep look; while signed in, when
+  the next refresh is due, in place of the refresh. Every writer of the token file holds its lock
+  (`schwab_client.token_file_lock`, across processes): the daemon's session from its look at the
+  file through its refresh and write, the client's read when it is built, a sign-in being saved
+  or the old one removed (`reauth_schwab.py`), and the field inventory's client; so no sign-in is
+  saved during a refresh and none is written over. A token file that holds no sign-in is logged
+  once. The client is never rebuilt. Enforced by:
   `tests/test_data_path_sign_in_v1.py`, `tests/test_data_path_rules_v1.py`
   (`test_twenty_requests_at_a_refresh_send_one_refresh_and_all_carry_the_new_token`,
   `test_the_daemon_builds_one_schwab_client_and_a_failed_refresh_never_rebuilds_it`).

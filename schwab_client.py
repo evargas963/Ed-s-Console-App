@@ -165,106 +165,65 @@ class OneRefreshSession(OAuth2Client):
     client lets every request that finds the token near expiry refresh it, all at once. The
     first refreshes; each one after it finds the new token and sends its request with it.
 
-    The one owner of the sign-in, whose one record is the token file: before each request it
-    takes a sign-in saved there since it last read or wrote the file (python reauth_schwab.py:
-    the token and its creation time, `metadata`, the streamer's too; no restart), and its own
-    refreshes write it there, unless a sign-in was saved there while the refresh was asked (that
-    one is taken instead; every writer holds the token file's lock, token_file_lock; a file that
-    cannot be read is read again before each request, logged once). Once Schwab answers a refresh with a refusal (authlib raises on
-    Schwab's answer; a network failure or Schwab's edge page is not one), every request raises
-    SignInRefused and nothing is sent, until a new sign-in is saved."""
+    The token file is the sign-in's one record. When a refresh is due, and while Schwab refuses
+    the sign-in, the session first takes a sign-in saved there with a new creation time (python
+    reauth_schwab.py's; no restart), holding the file's lock, so none is saved during the refresh
+    and none is written over. Once Schwab refuses a refresh (authlib raises on Schwab's answer; a
+    network failure or Schwab's edge page is not one), every request raises SignInRefused and
+    nothing is sent, until a new sign-in is saved."""
 
-    def __init__(self, *args, token_file: str, metadata, read_at, **kwargs):
+    def __init__(self, *args, token_file: str, metadata, **kwargs):
+        super().__init__(*args, **kwargs)
         self._refresh_lock = threading.Lock()
         self._token_file, self._metadata = token_file, metadata
-        #: schwab-py's writer of the token file (the token and its creation time, `metadata`'s)
-        self._write_file = metadata.wrapped_token_write_func()
-        #: the token file as this session last read or wrote it (_version): at first, as it was
-        #: before `metadata` was read from it
-        self._read_at = read_at
-        #: Schwab's refusal of the sign-in held (authlib's error); None: none refused
-        self._refused: "AuthlibBaseError | None" = None
-        #: the token file's read failure last logged; None: the last read succeeded
-        self._unread: "str | None" = None
-        super().__init__(*args, update_token=self._refreshed, **kwargs)
-
-    def _refreshed(self, token, *args, **kwargs):
-        """A refresh this session made, written to the token file, unless a sign-in was saved there
-        while it was asked: that one is taken instead, for this request and the streamer's login.
-        The token file's lock is held from the look to the write, so no sign-in is saved between.
-        The refreshed token is the streamer's at once, whether or not the file can be written."""
-        self._metadata.token = token
-        with token_file_lock(self._token_file):
-            if not self._take_saved():
-                self._write_file(token, *args, **kwargs)
-                self._read_at = _version(self._token_file)
+        self._refused: "AuthlibBaseError | None" = None   # Schwab's refusal, held until a new sign-in
+        self._unread: "str | None" = None                 # the token file's read failure last logged
 
     def ensure_active_token(self, token=None):
         with self._refresh_lock:
-            if not self._signed_in():
-                raise SignInRefused(f"Schwab refused the sign-in: {self._refused}") from self._refused
-            try:
-                return super().ensure_active_token(self.token)
-            except AuthlibBaseError as e:
-                self._refused = e
-                log.error("Schwab refused the sign-in (%s); nothing is sent to Schwab until a new "
-                          "sign-in is saved: python reauth_schwab.py", e)
-                raise SignInRefused(f"Schwab refused the sign-in: {e}") from e
+            if self._refused is None and not self.token.is_expired(leeway=self.leeway):
+                return True
+            with token_file_lock(self._token_file):
+                self._take_saved()
+                if self._refused is None:
+                    try:
+                        return super().ensure_active_token(self.token)
+                    except AuthlibBaseError as e:
+                        self._refused = e
+                        log.error("Schwab refused the sign-in (%s); nothing is sent to Schwab until a "
+                                  "new sign-in is saved: python reauth_schwab.py", e)
+            raise SignInRefused(f"Schwab refused the sign-in: {self._refused}") from self._refused
 
     def signed_in(self) -> bool:
-        """Whether this session holds a sign-in Schwab has not refused, a new one saved to the
-        token file taken first."""
+        """Whether this session holds a sign-in Schwab has not refused; while refused, a new one
+        saved to the token file is taken first."""
         with self._refresh_lock:
-            return self._signed_in()
+            if self._refused is not None:
+                with token_file_lock(self._token_file):
+                    self._take_saved()
+            return self._refused is None
 
-    def _signed_in(self) -> bool:
-        self._take_saved()
-        return self._refused is None
-
-    def _take_saved(self) -> bool:
-        """Whether a sign-in was saved to the token file since this session last read or wrote
-        it; one that was is taken (its token and creation time, the streamer's too). A file that
-        cannot be read is read again at the next look, logged once."""
+    def _take_saved(self) -> None:
+        """Take the sign-in saved to the token file when it is a new one (a creation time not the
+        one held): its token and creation time, the streamer's too. A file that holds no sign-in
+        (not there, not JSON, no access and refresh token) is logged once."""
         try:
-            version = _version(self._token_file)
-            new = version is not None and version != self._read_at
-            if new:
-                token, created = _sign_in(_token_read_func(self._token_file)())
-        except (OSError, ValueError, KeyError, TypeError) as e:     # not there whole, not JSON, not a sign-in
+            saved = _token_read_func(self._token_file)()
+            token, created = dict(saved["token"]), saved["creation_timestamp"]
+            if not (token.get("access_token") and token.get("refresh_token")):
+                raise KeyError("no access and refresh token")
+        except (OSError, ValueError, KeyError, TypeError) as e:
             if repr(e) != self._unread:
-                log.warning("the token file %s could not be read (%r); it is read again before each "
-                            "request", self._token_file, e)
+                log.warning("the token file %s holds no sign-in to take (%r)", self._token_file, e)
             self._unread = repr(e)
-            return False
+            return
         self._unread = None
-        if new:
+        if created != self._metadata.creation_timestamp:
             self._metadata.token, self._metadata.creation_timestamp = token, created
-            self.token, self._read_at = token, version
+            self.token = token
             if self._refused is not None:
                 log.info("a new Schwab sign-in was saved: taken")
             self._refused = None
-        return new
-
-
-def _sign_in(saved) -> "tuple[dict, int]":
-    """A token file's sign-in: its token and creation time. KeyError, TypeError or ValueError when
-    it holds none (not a JSON object, or a token without its access and refresh tokens)."""
-    token = dict(saved["token"])
-    if not (token.get("access_token") and token.get("refresh_token")):
-        raise KeyError("the token holds no access and refresh token")
-    return token, saved["creation_timestamp"]
-
-
-def _version(path: str) -> "tuple[int, int] | None":
-    """`path`'s version: its last change, in nanoseconds, and its file index (a file saved whole,
-    by os.replace, is a new file); None while it is not there (python reauth_schwab.py removes it
-    before it saves the new sign-in). Any other failure to look raises."""
-    try:
-        s = os.stat(path)
-        return s.st_mtime_ns, s.st_ino
-    except FileNotFoundError:
-        log.debug("the token file %s is not there: a sign-in in progress", path)
-        return None
 
 
 def client_from_token_file_atomic(token_path: str, api_key: str, app_secret: str, *,
@@ -278,14 +237,14 @@ def client_from_token_file_atomic(token_path: str, api_key: str, app_secret: str
     the token refresh included: the network when None, a local stand-in for Schwab in a test
     (schwab-py and the token endpoint name Schwab's host themselves)."""
     resolved = _resolve_token_path(token_path)
-    with token_file_lock(resolved):               # no sign-in saved between the look and the read
-        read_at = _version(resolved)
+    with token_file_lock(resolved):               # a sign-in being saved: read once it is
         metadata = auth.TokenMetadata.from_loaded_token(_token_read_func(resolved)(),
                                                          _token_update_func(resolved))
     register_redactions(metadata.token)
     session = OneRefreshSession(api_key, client_secret=app_secret, token=metadata.token,
                                 token_endpoint=auth.TOKEN_ENDPOINT, leeway=300,
-                                token_file=resolved, metadata=metadata, read_at=read_at,
+                                update_token=metadata.wrapped_token_write_func(),
+                                token_file=resolved, metadata=metadata,
                                 limits=httpx.Limits(max_connections=1, max_keepalive_connections=1),
                                 event_hooks={"request": [request_sent], "response": [log_request]},
                                 transport=transport)

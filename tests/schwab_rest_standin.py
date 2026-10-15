@@ -93,16 +93,14 @@ class LocalSchwab:
     chain answer, which the quotes answer names in Schwab's errors entry
     (`{"errors": {"invalidSymbols": [...]}}`) instead of quoting them; `stream_url`: the streamer
     the user preferences name (tests/schwab_stream_standin.LocalStreamer.url); `token`: the token
-    endpoint's answer ("refreshes": REFRESHED; "refuses": REFUSED, 400; "edge": EDGE_403);
-    `answering`: run while the token endpoint answers, before its answer leaves; `edge`: while
-    set, every data request is answered with EDGE_403. Each request is recorded as (path, query,
+    endpoint's answer ("refreshes": REFRESHED; "refuses": REFUSED, 400; "edge": EDGE_403); `edge`:
+    while set, every data request is answered with EDGE_403. Each request is recorded as (path, query,
     started, answered, the client's port, its Authorization)."""
 
     def __init__(self, stream_url: "str | None" = None):
         self.stream_url = stream_url
         self.requests: list = []
         self.token = "refreshes"
-        self.answering = lambda: None
         self.edge = False
         self.quotes_status = 200
         self.quotes_body: "bytes | None" = None
@@ -127,7 +125,6 @@ class LocalSchwab:
             def do_POST(self):
                 started = time.monotonic()
                 self.rfile.read(int(self.headers.get("Content-Length") or 0))
-                outer.answering()
                 if outer.token == "edge":
                     return self._edge(TOKEN, {}, started)
                 refused = outer.token == "refuses"
