@@ -7,21 +7,24 @@ import json
 import os
 import re
 import socket
+import tempfile
 import threading
 import time
-import weakref
 from dataclasses import dataclass
 from datetime import date
+from pathlib import Path
 from typing import Optional
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 import httpx
 from authlib.common.errors import AuthlibBaseError
 from authlib.integrations.httpx_client import OAuth2Client
+from filelock import FileLock
 from schwab import auth
 from schwab.client import Client
 from schwab.debug import register_redactions
 
+from config import schwab_live_blocked_for
 from time_et import ct_clock
 import logging
 
@@ -58,39 +61,48 @@ def _resolve_token_path(token_path: str) -> str:
     return os.path.abspath(os.path.expanduser(token_path))
 
 
-#: os.replace on Windows fails with a sharing violation while another process (the console or
-#: the capture daemon) has the token file open for its brief read; the SAME write is retried.
+#: os.replace on Windows fails with a sharing violation while a reader without the token file's
+#: lock (inspect_token_file, the console's token status) has it open; the SAME write is retried.
 TOKEN_REPLACE_ATTEMPTS = 5
+#: the longest a writer of the token file waits for another to finish, in seconds
+TOKEN_LOCK_WAIT_SEC = 10
+
+
+def token_file_lock(token_path: str) -> FileLock:
+    """The token file's lock (beside it, `.lock`), held by one writer at a time across processes:
+    the daemon's session from its look at the file to its write, a sign-in being saved,
+    tools/schwab_field_inventory.py's client. One lock per path within a process, which its
+    holder takes again without waiting."""
+    return FileLock(_resolve_token_path(token_path) + ".lock", is_singleton=True, timeout=TOKEN_LOCK_WAIT_SEC)
 
 
 def write_token_file_atomically(token_path: str, payload: dict) -> None:
-    """Write schwab_token.json via temp + fsync + os.replace -- never a partial file.
+    """Write schwab_token.json via temp + fsync + os.replace, under the token file's lock: never a
+    partial file, never two writers at once.
 
-    THE token writer: every Schwab client this repo builds refreshes through it
-    (client_from_token_file_atomic / the OAuth exchange). schwab-py's own writer is
-    open(path, 'w') + json.dump -- a reader in the other process (console / daemon both
-    refresh the same file) could load a torn token and fail the session (audit of #280)."""
-    import tempfile
-    from pathlib import Path
-
+    The token writer: every Schwab client this repo builds refreshes through it
+    (client_from_token_file_atomic) and every sign-in is saved by it (the OAuth exchange).
+    schwab-py's own writer rewrites the file in place, so a reader in another process could
+    load a torn token."""
     path = Path(_resolve_token_path(token_path))
     path.parent.mkdir(parents=True, exist_ok=True)
-    for attempt in range(1, TOKEN_REPLACE_ATTEMPTS + 1):
-        fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f"{path.name}.", suffix=".tmp")
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8", newline=chr(10)) as fh:
-                json.dump(payload, fh, indent=2, default=str)
-                fh.flush()
-                os.fsync(fh.fileno())
-            os.replace(tmp, path)
-            return
-        except PermissionError as e:
-            Path(tmp).unlink(missing_ok=True)
-            if attempt == TOKEN_REPLACE_ATTEMPTS:
-                raise
-            log.warning("token replace blocked by another reader (attempt %s/%s): %s",
-                           attempt, TOKEN_REPLACE_ATTEMPTS, e)
-            time.sleep(0.05 * attempt)
+    with token_file_lock(str(path)):
+        for attempt in range(1, TOKEN_REPLACE_ATTEMPTS + 1):
+            fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f"{path.name}.", suffix=".tmp")
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8", newline=chr(10)) as fh:
+                    json.dump(payload, fh, indent=2, default=str)
+                    fh.flush()
+                    os.fsync(fh.fileno())
+                os.replace(tmp, path)
+                return
+            except PermissionError as e:
+                Path(tmp).unlink(missing_ok=True)
+                if attempt == TOKEN_REPLACE_ATTEMPTS:
+                    raise
+                log.warning("token replace blocked by another reader (attempt %s/%s): %s",
+                            attempt, TOKEN_REPLACE_ATTEMPTS, e)
+                time.sleep(0.05 * attempt)
 
 
 def _token_update_func(resolved: str):
@@ -143,18 +155,75 @@ def log_request(response: httpx.Response) -> None:
     log.warning("%s | body: %s | headers: %s", line, body, headers)
 
 
+class SignInRefused(Exception):
+    """Schwab refused the sign-in (the refresh token: expired, revoked, invalid). Nothing is sent
+    to Schwab until a new sign-in is saved to the token file (python reauth_schwab.py)."""
+
+
 class OneRefreshSession(OAuth2Client):
     """authlib's OAuth2Client, refreshing the token one request at a time: authlib's own (sync)
     client lets every request that finds the token near expiry refresh it, all at once. The
-    first refreshes; each one after it finds the new token and sends its request with it."""
+    first refreshes; each one after it finds the new token and sends its request with it.
 
-    def __init__(self, *args, **kwargs):
+    The token file is the sign-in's one record. When a refresh is due, and while Schwab refuses
+    the sign-in, the session first takes a sign-in saved there with a new creation time (python
+    reauth_schwab.py's; no restart), holding the file's lock, so none is saved during the refresh
+    and none is written over. Once Schwab refuses a refresh (authlib raises on Schwab's answer; a
+    network failure or Schwab's edge page is not one), every request raises SignInRefused and
+    nothing is sent, until a new sign-in is saved."""
+
+    def __init__(self, *args, token_file: str, metadata, **kwargs):
         super().__init__(*args, **kwargs)
         self._refresh_lock = threading.Lock()
+        self._token_file, self._metadata = token_file, metadata
+        self._refused: "AuthlibBaseError | None" = None   # Schwab's refusal, held until a new sign-in
+        self._unread: "str | None" = None                 # the token file's read failure last logged
 
     def ensure_active_token(self, token=None):
         with self._refresh_lock:
-            return super().ensure_active_token(self.token)
+            if self._refused is None and not self.token.is_expired(leeway=self.leeway):
+                return True
+            with token_file_lock(self._token_file):
+                self._take_saved()
+                if self._refused is None:
+                    try:
+                        return super().ensure_active_token(self.token)
+                    except AuthlibBaseError as e:
+                        self._refused = e
+                        log.error("Schwab refused the sign-in (%s); nothing is sent to Schwab until a "
+                                  "new sign-in is saved: python reauth_schwab.py", e)
+            raise SignInRefused(f"Schwab refused the sign-in: {self._refused}") from self._refused
+
+    def signed_in(self) -> bool:
+        """Whether this session holds a sign-in Schwab has not refused; while refused, a new one
+        saved to the token file is taken first."""
+        with self._refresh_lock:
+            if self._refused is not None:
+                with token_file_lock(self._token_file):
+                    self._take_saved()
+            return self._refused is None
+
+    def _take_saved(self) -> None:
+        """Take the sign-in saved to the token file when it is a new one (a creation time not the
+        one held): its token and creation time, the streamer's too. A file that holds no sign-in
+        (not there, not JSON, no access and refresh token) is logged once."""
+        try:
+            saved = _token_read_func(self._token_file)()
+            token, created = dict(saved["token"]), saved["creation_timestamp"]
+            if not (token.get("access_token") and token.get("refresh_token")):
+                raise KeyError("no access and refresh token")
+        except (OSError, ValueError, KeyError, TypeError) as e:
+            if repr(e) != self._unread:
+                log.warning("the token file %s holds no sign-in to take (%r)", self._token_file, e)
+            self._unread = repr(e)
+            return
+        self._unread = None
+        if created != self._metadata.creation_timestamp:
+            self._metadata.token, self._metadata.creation_timestamp = token, created
+            self.token = token
+            if self._refused is not None:
+                log.info("a new Schwab sign-in was saved: taken")
+            self._refused = None
 
 
 def client_from_token_file_atomic(token_path: str, api_key: str, app_secret: str, *,
@@ -168,12 +237,14 @@ def client_from_token_file_atomic(token_path: str, api_key: str, app_secret: str
     the token refresh included: the network when None, a local stand-in for Schwab in a test
     (schwab-py and the token endpoint name Schwab's host themselves)."""
     resolved = _resolve_token_path(token_path)
-    metadata = auth.TokenMetadata.from_loaded_token(_token_read_func(resolved)(),
-                                                     _token_update_func(resolved))
+    with token_file_lock(resolved):               # a sign-in being saved: read once it is
+        metadata = auth.TokenMetadata.from_loaded_token(_token_read_func(resolved)(),
+                                                         _token_update_func(resolved))
     register_redactions(metadata.token)
     session = OneRefreshSession(api_key, client_secret=app_secret, token=metadata.token,
-                                token_endpoint=auth.TOKEN_ENDPOINT,
-                                update_token=metadata.wrapped_token_write_func(), leeway=300,
+                                token_endpoint=auth.TOKEN_ENDPOINT, leeway=300,
+                                update_token=metadata.wrapped_token_write_func(),
+                                token_file=resolved, metadata=metadata,
                                 limits=httpx.Limits(max_connections=1, max_keepalive_connections=1),
                                 event_hooks={"request": [request_sent], "response": [log_request]},
                                 transport=transport)
@@ -193,7 +264,7 @@ def inspect_token_file(token_path: str) -> TokenInspectionResult:
             raw = f.read()
         data = json.loads(raw)
         out.json_valid = True
-    except json.JSONDecodeError as e:
+    except ValueError as e:                   # not UTF-8 text, or not JSON
         out.message = f"Invalid JSON in token file: {e}"
         return out
     except OSError as e:
@@ -257,8 +328,6 @@ def auth_is_refreshable(inspection: TokenInspectionResult) -> bool:
 
 def build_client_from_token(token_path: str, api_key: str, app_secret: str) -> SchwabClientState:
     """Build Schwab client from token file. token_path is normalized to absolute."""
-    from config import schwab_live_blocked_for
-
     if schwab_live_blocked_for(api_key=api_key, app_secret=app_secret):
         return SchwabClientState(
             ok=False,
@@ -434,8 +503,6 @@ def complete_oauth_from_redirect_url(
     Finish OAuth when the browser already redirected but the local callback server
     did not persist the token (common: self-signed cert warning on 127.0.0.1:8182).
     """
-    from urllib.parse import parse_qs, urlparse
-
     url = (redirect_url or "").strip()
     if not url:
         return False, "Redirect URL is empty."
@@ -464,40 +531,6 @@ def complete_oauth_from_redirect_url(
         return False, f"Token exchange succeeded but file missing: {resolved}"
     return True, f"Token created: {resolved}"
 
-class SchwabAuthError(Exception):
-    """Schwab OAuth / refresh token failure — fail fast; do not retry chain/quote for minutes."""
-
-    def __init__(self, message: str, *, remediation: str = "python reauth_schwab.py --manual"):
-        super().__init__(message)
-        self.remediation = remediation
-
-
-#: each client's auth latch: after an OAuth failure on a client, its chain and quote requests are
-#: withheld until this monotonic time. The latch belongs to the client whose token failed (the
-#: daemon holds one for its life, capture.one_schwab_client); another client is not withheld.
-_auth_failure_until: "weakref.WeakKeyDictionary[object, float]" = weakref.WeakKeyDictionary()
-_auth_failure_lock = threading.Lock()
-_SCHWAB_AUTH_FAILURE_LATCH_SEC = float(os.environ.get("ED_SCHWAB_AUTH_FAILURE_LATCH_SEC", "300"))  # caps-ok: OAuth/config timeout only
-
-
-def _is_token_error(exc: BaseException) -> bool:
-    """True for an OAuth failure: every error authlib raises (expired / missing / revoked token,
-    refresh rejected with invalid_grant) derives from AuthlibBaseError."""
-    return isinstance(exc, AuthlibBaseError)
-
-
-def _raise_schwab_auth_error(client, exc: BaseException) -> None:
-    with _auth_failure_lock:
-        _auth_failure_until[client] = time.monotonic() + _SCHWAB_AUTH_FAILURE_LATCH_SEC
-    raise SchwabAuthError(str(exc)) from exc
-
-
-def _schwab_auth_latched(client) -> bool:
-    with _auth_failure_lock:
-        until = _auth_failure_until.get(client)
-    return until is not None and time.monotonic() < until
-
-
 def safe_get_chain(client, ticker: str, *, strike_count: int | None = 20,
                    strike_range: str | None = None, from_date=None, to_date=None):
     # schwab-py supports optional args; we keep them optional to reduce breakage.
@@ -509,10 +542,6 @@ def safe_get_chain(client, ticker: str, *, strike_count: int | None = 20,
     # SAME request. When strike_range is given, strike_count is OMITTED entirely rather
     # than sent alongside it — exactly the combination proven live, never an untested
     # combination of both params on one request.
-    if _schwab_auth_latched(client):
-        raise SchwabAuthError(
-            "Schwab auth latched after prior token failure — option chain withheld"
-        )
     kwargs = {"include_underlying_quote": True}
     if strike_range is not None:
         kwargs["strike_range"] = strike_range
@@ -522,13 +551,7 @@ def safe_get_chain(client, ticker: str, *, strike_count: int | None = 20,
         kwargs["from_date"] = from_date
     if to_date is not None:
         kwargs["to_date"] = to_date
-    try:
-        resp = client.get_option_chain(ticker, **kwargs)
-    except Exception as e:
-        if _is_token_error(e):
-            _raise_schwab_auth_error(client, e)
-        raise
-    return resp
+    return client.get_option_chain(ticker, **kwargs)
 
 
 def option_expiries(client, ticker: str, today: date):
@@ -547,14 +570,7 @@ def option_expiries(client, ticker: str, today: date):
 def safe_get_quotes(client, symbols: "list[str]"):
     """One request to Schwab's quotes endpoint (/marketdata/v1/quotes) for `symbols`, the quote
     fields only; Schwab's response."""
-    if _schwab_auth_latched(client):
-        raise SchwabAuthError("Schwab auth latched after prior token failure — quotes withheld")
-    try:
-        return client.get_quotes(symbols, fields=["quote"])
-    except Exception as e:
-        if _is_token_error(e):
-            _raise_schwab_auth_error(client, e)
-        raise
+    return client.get_quotes(symbols, fields=["quote"])
 
 
 #: The most symbols one quotes request carries: Schwab Trader API Support, 2026-10-06 (email 1,

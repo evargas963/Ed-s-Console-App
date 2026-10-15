@@ -261,6 +261,7 @@ class ChainSweep:
         self._optioned: "set[str]" = set()                 # tickers Schwab has answered a chain for
         self._fetched: "dict[str, float]" = {}             # ticker -> when its newest delivered chain began
         self._candled: "dict[str, float]" = {}             # ticker -> when its newest whole price history began
+        self._no_client: "str | None" = None               # why the daemon's client could not be built, logged once
         self._queue: "list[tuple[_Chain, dict]]" = []     # contracts whose quote is not asked for
         self._delivered: "set[str]" = set()                # the tickers this rotation delivered
         self._written: "dict[str, float | None]" = {}       # ticker -> its newest history capture
@@ -269,10 +270,11 @@ class ChainSweep:
         """The thread's life, until `stop`: on the daemon's client (`schwab_client()`), the
         market's sessions for today and the days before it, then a rotation of the watchlist
         tickers whose chain is due and the price history of those whose candles are due; with
-        none due, it looks again each second. With the watchlist empty it asks Schwab for
-        nothing and looks again each second."""
+        none due, it looks again each second. With the watchlist empty, or no sign-in held
+        (signed_in), it asks Schwab for nothing and looks again each second: a sign-in Schwab
+        refused fails every request at once, and a round of them would only log each failure."""
         while not stop.is_set():
-            if not self.watchlist:
+            if not self.watchlist or not self.signed_in(schwab_client):
                 stop.wait(1.0)
                 continue
             today = datetime.fromtimestamp(self.clock(), ET).date()
@@ -287,6 +289,22 @@ class ChainSweep:
                 self.candles(schwab_client, candles, stop)
             if not chains and not candles:
                 stop.wait(1.0)
+
+    def signed_in(self, schwab_client) -> bool:
+        """Whether the daemon holds a Schwab sign-in to ask with: its client built
+        (capture.one_schwab_client: built again on each ask until a build succeeds) and Schwab not
+        having refused it (schwab_client.OneRefreshSession.signed_in). A build that fails (no
+        usable token file), or a token file locked past its wait, is logged once, until it
+        passes."""
+        try:
+            held = schwab_client().session.signed_in()
+        except (ConnectionError, TimeoutError) as e:
+            if str(e) != self._no_client:
+                log.warning("chain sweep waits for the daemon's Schwab client: %s", e)
+            self._no_client = str(e)
+            return False
+        self._no_client = None
+        return held
 
     def candles_due(self, ticker: str, now: datetime) -> bool:
         """Whether `ticker`'s price history is asked for at `now`: not yet whole on this ET date."""

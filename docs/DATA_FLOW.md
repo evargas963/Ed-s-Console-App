@@ -17,18 +17,30 @@ operator.
 
 - One Schwab connection, owned by the daemon (Schwab allows one streamer connection per user).
   Enforced by: `tests/test_schwab_client_import_boundary.py` (the console makes no Schwab call).
-- One owner of the Schwab token: the daemon's one client (`capture.one_schwab_client`), used by
-  the stream and every chain request, built from `schwab_token.json` once and kept for the
-  daemon's life. Its session (`schwab_client.OneRefreshSession`) starts nothing else: it refreshes
+- One owner of the Schwab token while the app runs: the daemon's one client
+  (`capture.one_schwab_client`), used by the stream and every chain request, built from
+  `schwab_token.json` once and kept for the daemon's life. The token file's other writers are
+  run by hand and write under its lock: `python reauth_schwab.py` (a new sign-in) and
+  `tools/schwab_field_inventory.py` (its own client, which takes a token the daemon saved
+  before refreshing one itself). Its session (`schwab_client.OneRefreshSession`) starts nothing else: it refreshes
   the token when it is within 300 s of expiry, one request at a time (the others carry the token
   it returned), and writes it to the token file atomically. Its session holds one connection
-  (httpx `max_connections=1`): every request waits for it, in turn. A refresh Schwab refuses fails
-  that request, and the chain sweep's next request tries again (§3.4 Option chain); the client is
-  never rebuilt.
-  When the refresh token itself expires, nothing refreshes and every request fails until
-  `python reauth_schwab.py` and a daemon restart. Enforced by: `tests/test_data_path_rules_v1.py`
+  (httpx `max_connections=1`): every request waits for it, in turn. The session is the one owner
+  of the sign-in: once Schwab answers a refresh with a refusal (the refresh token expired, revoked
+  or invalid; a network failure or Schwab's edge 403 page is no refusal), it logs it once and every request raises
+  `SignInRefused` with nothing sent, the stream's logins too; the chain sweep asks for nothing
+  while signed out (`ChainSweep.work`). A new sign-in saved to the token file (`python
+  reauth_schwab.py`; a new creation time) is taken, its token and creation time, the streamer's
+  too, with no restart: while refused, at the next request or sweep look; while signed in, when
+  the next refresh is due, in place of the refresh. Every writer of the token file holds its lock
+  (`schwab_client.token_file_lock`, across processes): the daemon's session from its look at the
+  file through its refresh and write, the client's read when it is built, a sign-in being saved
+  or the old one removed (`reauth_schwab.py`), and the field inventory's client; so no sign-in is
+  saved during a refresh and none is written over. A token file that holds no sign-in is logged
+  once. The client is never rebuilt. Enforced by:
+  `tests/test_data_path_sign_in_v1.py`, `tests/test_data_path_rules_v1.py`
   (`test_twenty_requests_at_a_refresh_send_one_refresh_and_all_carry_the_new_token`,
-  `test_the_daemon_builds_one_schwab_client_and_a_refused_refresh_never_rebuilds_it`).
+  `test_the_daemon_builds_one_schwab_client_and_a_failed_refresh_never_rebuilds_it`).
 - Data is pushed at every hop. Nothing polls. Enforced by: no machine check — ENF-15 (the page
   re-reads routes after each push today).
 - The databases are history, written in the background (two writers today, §3.5). Nothing on screen waits on them.
@@ -302,7 +314,9 @@ from Schwab to the screen (daemon, console, page), are these:
   when answered: endpoint, symbol, status, the times it was sent and answered
   (`schwab_client.log_request`). No throttle, pace, limit, gate or priority of ours sits between
   Schwab and the screen (operator 2026-10-06): an answer other than 200, or none, fails that
-  ticker's chain with the reason and the next request goes at once. Enforced by:
+  ticker's chain with the reason and the next request goes at once. One exception (operator
+  2026-10-15, the refused sign-in): once Schwab refuses the sign-in, nothing is sent until a new
+  one is saved (§1, `OneRefreshSession`, `ChainSweep.signed_in`). Enforced by:
   `tests/test_data_path_rest_one_connection_v1.py` (the requests, one at a time on one
   connection, quotes across tickers, no pause after a 429) and `tests/test_data_path_rules_v1.py`
   (`test_a_403_from_schwabs_edge_reaches_the_console_and_the_next_ticker_is_asked_at_once`, on
