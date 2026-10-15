@@ -7,10 +7,10 @@ through the daemon's plane and its price row (record_from_level_one_equity, live
 the pushed option message (streaming._ingest_pushed), the levels producer (server._publish_levels)
 and the heatmap route (server.gamma_surface_payload).
 Real data: SPY's 2026-11-20 chain captured 2026-09-30 15:31:57 ET
-(tests/fixtures/real_spy_2026_11_20_chain_and_quotes.json, priced as of its capture), and
+(tests/fixtures/real_spy_2026_11_20_chain_and_quotes.json, fetched at its capture), and
 Schwab's LEVELONE_EQUITIES SPY quote and LEVELONE_OPTIONS message for one of the chain's
 contracts received 2026-10-05 14:00 CT (tests/fixtures/real_stream_mix_2026_10_05_1400ct.json),
-judged a second after that message. The daemon's status is the console's own message, built here
+priced and judged a second after that message. The daemon's status is the console's own message, built here
 in its shape (no status is captured).
 """
 from __future__ import annotations
