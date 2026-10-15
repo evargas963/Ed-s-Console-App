@@ -132,7 +132,7 @@ const CHAIN = {
 };
 
 // The console's price rows, stood in for (tests/e2e/fixtures/price_socket.js).
-const { mockPriceSocket, schwabQuote, daemonBeat, daemonDown } = require('./fixtures/price_socket');
+const { mockPriceSocket, schwabQuote, daemonBeat, daemonDown, daemonSend } = require('./fixtures/price_socket');
 // The console's watchlist routes, stood in for (tests/e2e/fixtures/watchlist.js).
 const { routeWatchlist } = require('./fixtures/watchlist');
 
@@ -1309,6 +1309,11 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.locator('.vtab[data-view="chart"]').click();
     await expect.poll(() => page.evaluate(() => (window.EdGammaChart.state() || {}).bars)).toBe(BARS.bars.length + rows.length);
     expect(await page.evaluate(() => window.EdGammaChart.state().tf)).toBe('1');
+    await expect(page.locator('#chartBody')).not.toHaveAttribute('data-not-live', /CHART_EQUITY/);
+    // the daemon's own CHART_EQUITY verdict marks the candles (STAND-IN: the outage's words)
+    daemonSend(page, [{ service: 'CHART_EQUITY', key: 'SPY', schwab_ts: 1, ts_recv: 1, content: { key: 'SPY' },
+      feed_live: false, outage: 'Schwab CHART_EQUITY feed down during RTH' }]);
+    await expect(page.locator('#chartBody')).toHaveAttribute('data-not-live', /Schwab CHART_EQUITY feed down during RTH/, { timeout: 3000 });
   });
 
   test('the Key Levels rail updates on a levels push', async ({ page }) => {

@@ -787,7 +787,7 @@
   function subscribePrices() {
     if (!_daemon || _daemon.readyState !== 1) return;   // sent on open
     _daemon.send(JSON.stringify({ op: 'subscribe', symbols: priceSymbols().concat(state.contract ? [state.contract] : []),
-      since: _seqSeen, chart: state.ticker || null }));   // no ticker chosen: no chart
+      since: _seqSeen, chart: state.ticker ? state.ticker : null }));   // no ticker chosen: no chart
   }
   // the daemon's receive time of the last bar and headline received of each symbol, so a
   // reconnect is sent only those after them, each once ({service: {key: ts_recv}})
