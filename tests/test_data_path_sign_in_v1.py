@@ -214,6 +214,31 @@ def test_a_sign_in_being_saved_in_another_process_is_never_written_over_by_the_r
     assert (_posts(schwab), _asked(schwab)) == (1, [(EXPIRATIONS, "Bearer fresh")])
 
 
+def test_a_client_built_while_a_sign_in_is_being_saved_holds_that_sign_in(tmp_path):
+    """The daemon's client built while another process is saving a sign-in (holding the token
+    file's lock): the client is built from the saved sign-in, never from the one it replaces, and
+    its first request carries it."""
+    schwab = LocalSchwab()
+    token = tmp_path / "schwab_token.json"
+    try:
+        schwab.client(tmp_path)                            # the old sign-in, saved before
+        signed_in = {"creation_timestamp": int(time.time()) + 1, "token": {
+            "access_token": "fresh", "refresh_token": "r2", "token_type": "Bearer", "expires_in": 1800,
+            "expires_at": int(time.time() + 3600)}}
+        saver = subprocess.Popen([sys.executable, "-c", _SAVER, str(token), json.dumps(signed_in),
+                                  str(Path(__file__).resolve().parent.parent)], stdout=subprocess.PIPE, text=True)
+        assert saver.stdout.readline().strip() == "held"
+        client = sc.client_from_token_file_atomic(str(token), "k", "s",
+                                                  transport=_ToLocal(schwab.server.server_address[1]))
+        held = client.token_metadata.token["access_token"]
+        assert saver.wait(20) == 0
+        client.get_option_expiration_chain("SPY")
+    finally:
+        schwab.close()
+    assert held == "fresh"
+    assert _asked(schwab) == [(EXPIRATIONS, "Bearer fresh")]
+
+
 def test_a_sign_in_in_progress_removes_the_token_file_and_nothing_breaks(tmp_path):
     """python reauth_schwab.py removes the token file before it saves the new sign-in: while it
     is not there the session holds no sign-in and raises nothing else; once saved, it is taken."""

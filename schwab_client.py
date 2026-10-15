@@ -268,9 +268,10 @@ def client_from_token_file_atomic(token_path: str, api_key: str, app_secret: str
     the token refresh included: the network when None, a local stand-in for Schwab in a test
     (schwab-py and the token endpoint name Schwab's host themselves)."""
     resolved = _resolve_token_path(token_path)
-    read_at = _version(resolved)                  # before the read: one saved after it is taken
-    metadata = auth.TokenMetadata.from_loaded_token(_token_read_func(resolved)(),
-                                                     _token_update_func(resolved))
+    with token_file_lock(resolved):               # no sign-in saved between the look and the read
+        read_at = _version(resolved)
+        metadata = auth.TokenMetadata.from_loaded_token(_token_read_func(resolved)(),
+                                                         _token_update_func(resolved))
     register_redactions(metadata.token)
     session = OneRefreshSession(api_key, client_secret=app_secret, token=metadata.token,
                                 token_endpoint=auth.TOKEN_ENDPOINT, leeway=300,
