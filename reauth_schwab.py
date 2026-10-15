@@ -87,7 +87,7 @@ def reauth():
             )
             if ok:
                 print(f"\nSUCCESS: Token written to {token_path}")
-                print("You can restart the server now.")
+                print("The capture daemon takes it before its next request: no restart.")
                 _print_post_reauth_validation(token_path)
                 return
             print(f"\nFAILURE: {msg}")
@@ -114,8 +114,8 @@ def reauth():
             with token_file_lock(token_path):        # no writer of the token file meanwhile
                 os.remove(token_path)
             print("Removed existing token file.")
-        except Exception as e:
-            print(f"Could not remove old token: {e}")
+        except OSError as e:                         # held or locked past its wait: the save replaces it
+            print(f"Could not remove old token: {e!r}")
             print("Continuing — login flow will overwrite it.")
 
     flow_fn = run_manual_flow if manual else run_login_flow
@@ -129,7 +129,7 @@ def reauth():
         )
         if ok:
             print(f"\nSUCCESS: Token written to {token_path}")
-            print("You can restart the server now.")
+            print("The capture daemon takes it before its next request: no restart.")
             _print_post_reauth_validation(token_path)
         else:
             print(f"\nFAILURE: {msg}")

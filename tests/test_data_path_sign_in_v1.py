@@ -175,8 +175,6 @@ def test_a_sign_in_saved_while_the_refresh_is_asked_is_taken_and_not_overwritten
     assert _posts(schwab) == 1 and _asked(schwab) == [(EXPIRATIONS, "Bearer fresh")] * 2
 
 
-#: another process saving a sign-in (as python reauth_schwab.py saves one): it holds the token
-#: file's lock, sees whether anything writes the file while it holds it, then saves the sign-in
 #: another process holding the token file's lock (as python reauth_schwab.py holds it while it
 #: saves a sign-in): it says "held", waits for "go", then holds the lock `hold` seconds more, sees
 #: whether anything wrote the file meanwhile, and saves the sign-in `payload` (none: saves nothing)
@@ -384,6 +382,16 @@ def test_the_chain_sweep_waits_for_a_client_it_cannot_build_and_goes_on_once_bui
     finally:
         schwab.close()
     assert _asked(schwab)
+
+
+def test_a_token_file_that_is_not_utf8_text_is_reported_unreadable(tmp_path):
+    """A token file saved as UTF-16 (as Windows PowerShell 5.1's Out-File saves text): the daemon's
+    builder reads it as a token file that is not valid, a client it cannot build (the sweep waits
+    for one: the test above), never an error that ends the sweep's thread."""
+    token = tmp_path / "schwab_token.json"
+    token.write_bytes(json.dumps(_FRESH).encode("utf-16"))
+    got = sc.inspect_token_file(str(token))
+    assert got.file_exists and not got.json_valid and got.message.startswith("Invalid JSON in token file")
 
 
 @pytest.mark.parametrize("held", ["{not a sign-in", "[]", '{"token": "x", "creation_timestamp": 1}',

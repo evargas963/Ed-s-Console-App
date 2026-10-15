@@ -305,7 +305,7 @@ def inspect_token_file(token_path: str) -> TokenInspectionResult:
             raw = f.read()
         data = json.loads(raw)
         out.json_valid = True
-    except json.JSONDecodeError as e:
+    except ValueError as e:                   # not UTF-8 text, or not JSON
         out.message = f"Invalid JSON in token file: {e}"
         return out
     except OSError as e:
