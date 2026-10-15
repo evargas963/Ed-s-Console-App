@@ -1,17 +1,17 @@
-"""app.options.order_flow.state must preserve a genuinely-missing last-trade size as
-missing, not coerce it to zero -- downstream order-flow consumers need to tell
+"""The console's one tape (app.options.order_flow.history.TAPE) must preserve a genuinely-missing
+last-trade size as missing, not coerce it to zero -- downstream order-flow consumers need to tell
 "no size reported" apart from "size was zero"."""
 from __future__ import annotations
 import time
 
 import app.options.order_flow.engine as ofe
-import app.options.order_flow.state as live_state
+from app.options.order_flow import history
 
 
 def test_live_state_preserves_missing_last_size_for_order_flow_consumers():
     sym = "MISSIZE"
-    live_state.clear_symbol(sym)
-    live_state.push_level_one(
+    history.TAPE.forget(sym)
+    history.TAPE.record_equity(
         sym,
         {
             "key": sym,
@@ -20,24 +20,23 @@ def test_live_state_preserves_missing_last_size_for_order_flow_consumers():
         }, ts_recv=time.time()
     )
 
-    content = live_state.get_content_for_symbol(sym)
-    tape = [item for item in content if item.get("TRADE_TIME_MILLIS") == 1_000]
+    prints = history.TAPE.prints(sym)
+    tape = [p for p in prints if p.get("time_millis") == 1_000]
 
     assert len(tape) == 1
-    assert tape[0]["LAST_PRICE"] == 500.0
-    assert tape[0]["LAST_SIZE"] is None
-    assert tape[0]["TRADE_TIME_MILLIS"] == 1_000
-    assert tape[0]["native_event_id"] is False
-    assert tape[0]["receive_seq"] == 1
-    assert ofe._compute_cum_delta_proxy({"content": content}) is None
+    assert tape[0]["price"] == 500.0
+    assert tape[0]["size"] is None
+    assert tape[0]["time_millis"] == 1_000
+    assert ofe._compute_cum_delta_proxy({"prints": prints}) is None
+    history.TAPE.forget(sym)
 
 
 def test_live_state_present_last_size_reaches_order_flow_consumers():
     sym = "HASSIZE"
-    live_state.clear_symbol(sym)
+    history.TAPE.forget(sym)
     # First print anchors the prior trade price; second print is on the
     # uptick (500.0 -> 500.1) so cum_delta should be the second print's size.
-    live_state.push_level_one(
+    history.TAPE.record_equity(
         sym,
         {
             "key": sym,
@@ -46,7 +45,7 @@ def test_live_state_present_last_size_reaches_order_flow_consumers():
             "TRADE_TIME_MILLIS": 1_000,
         }, ts_recv=time.time()
     )
-    live_state.push_level_one(
+    history.TAPE.record_equity(
         sym,
         {
             "key": sym,
@@ -56,6 +55,7 @@ def test_live_state_present_last_size_reaches_order_flow_consumers():
         }, ts_recv=time.time()
     )
 
-    content = live_state.get_content_for_symbol(sym)
+    prints = history.TAPE.prints(sym)
 
-    assert ofe._compute_cum_delta_proxy({"content": content}) == 12
+    assert ofe._compute_cum_delta_proxy({"prints": prints}) == 12
+    history.TAPE.forget(sym)

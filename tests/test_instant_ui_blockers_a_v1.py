@@ -123,32 +123,43 @@ def test_daily_roll_up_is_keyed_on_the_et_trading_date():
     assert len(out) == 2 and out[0]["h"] == 3 and out[0]["v"] == 2
 
 
-def test_the_price_row_carries_feed_state_and_trade_age_and_no_bar():
+def test_the_price_row_carries_feed_state_and_schwabs_trade_time_and_no_bar():
     import time as _t
 
     import live_market_plane as lmp
-    import live_price_rows
     import server as srv
     from tests.feed_live_helper import mark_feed_live
 
     mark_feed_live("ZZQF")
     now = _t.time()
-    lmp.record_from_level_one_equity("ZZQF", {"LAST_PRICE": 42.0, "TRADE_TIME_MILLIS": int((now - 7) * 1000)},
+    traded = int((now - 7) * 1000)
+    lmp.record_from_level_one_equity("ZZQF", {"LAST_PRICE": 42.0, "TRADE_TIME_MILLIS": traded},
                                      received_ts=now)
-    ev = live_price_rows.price_row("ZZQF", now)
+    ev = srv.price_row("ZZQF", now)
     assert ev["feed_live"] is True and ev["spot"] == 42.0 and ev["spot_source"] == srv.SPOT_SOURCE_PLANE
-    assert 6.0 <= ev["trade_age_sec"] <= 9.0
+    assert ev["trade_ts"] == traded / 1000 and "trade_age_sec" not in ev   # the page shows Schwab's time
     assert "forming_1m" not in ev
-    held_no_trade = live_price_rows.price_row("ZZNOTRADE", now)
+    held_no_trade = srv.price_row("ZZNOTRADE", now)
     assert held_no_trade["spot"] is None
 
 
-def test_spot_gamma_reprice_runs_only_for_a_viewed_heatmap(monkeypatch, view):
+def test_spot_gamma_reprice_runs_only_for_a_viewed_heatmap():
+    """A page open on ZZVIEW (its /api/live connection, push_changes.subscribe) and none on
+    ZZNOTVIEWED: a streamed tick of each queues a reprice for the viewed one only. The pricing
+    thread is held meanwhile, so what waits for it is read as queued."""
+    import threading
+    import push_changes
     import server as srv
-    ran = []
-    monkeypatch.setattr(srv, "_price_chain", lambda tk, what, c, ts: ran.append((tk, what)))
-    view("ZZVIEW")
-    srv._on_stream_tick("ZZNOTVIEWED")
-    srv._on_stream_tick("ZZVIEW")
-    srv._chain_pricing.submit(lambda: None).result(timeout=10)
-    assert ran == [("ZZVIEW", srv.REPRICE)]
+    held = threading.Event()
+    srv._chain_pricing.submit(held.wait, 10)
+    page = push_changes.subscribe("ZZVIEW")
+    try:
+        srv._on_stream_tick("ZZNOTVIEWED")
+        srv._on_stream_tick("ZZVIEW")
+        with srv._chains_waiting_lock:
+            waiting = {tk: what for tk, (what, _ts) in srv._chains_waiting.items() if tk.startswith("ZZ")}
+    finally:
+        push_changes.unsubscribe("ZZVIEW", page)
+        held.set()
+        srv._chain_pricing.submit(lambda: None).result(timeout=10)
+    assert waiting == {"ZZVIEW": srv.REPRICE}

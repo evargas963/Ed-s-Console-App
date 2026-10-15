@@ -14,15 +14,16 @@ status holding them.
 """
 from __future__ import annotations
 
+import json
 from datetime import datetime
 
 import pytest
 
 import app.options.order_flow.state as ofls
-import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 import server
-from stream_spine import options_quote_msg
+from tests.feed_live_helper import (daemon_holds, forget_price, ledger_open, no_daemon, price_sent,
+                                    through_the_daemons_bus)
 from tests.real_chains import CRWD
 from time_et import ET
 
@@ -38,11 +39,11 @@ PUTS = [c["symbol"] for c in _CONTRACTS if c["putCall"] == "PUT"]
 @pytest.fixture(autouse=True)
 def _clean():
     ofls.clear_all_live_state()
-    lmp.record_feed_down()
+    no_daemon()
     yield
     ofls.clear_all_live_state()
-    lmp.record_feed_down()
-    ofs._price_rows.pop(TK, None)
+    no_daemon()
+    forget_price(TK)
     with server._terrain_cache_lock:
         server._terrain_cache.pop(TK, None)
 
@@ -51,13 +52,13 @@ def _publish(held, ticked, *, at=_AT, socket_open=True):
     """The daemon holding `held` on LEVELONE_OPTIONS, Schwab having sent a GAMMA for each of
     `ticked` a second before `at`, CRWD's chain published at `at`; the route's coverage of every
     strike, and the published surface."""
-    lmp.record_feed_heartbeat({"ts": at.timestamp(), "schwab_socket_open": socket_open,
-                               "held": {"LEVELONE_EQUITIES": [TK], "LEVELONE_OPTIONS": list(held)}})
-    ofs._price_rows[TK] = {"ticker": TK, "spot": _SPOT, "trade_ts": at.timestamp()}
+    daemon_holds(at.timestamp(), {"LEVELONE_EQUITIES": [TK], "LEVELONE_OPTIONS": list(held)},
+                 socket_open=socket_open)
+    price_sent(TK, _SPOT, at.timestamp())
+    bus = ledger_open(TK, _CONTRACTS, at.timestamp() - 10.0)
     for sym in ticked:
-        ofs._ingest_pushed(f"optquote.{sym}", options_quote_msg(
-            symbol=sym, content={"key": sym, "GAMMA": 0.05}, src="schwab_options_l1", ts_recv=at.timestamp() - 1))
-    server._publish_levels(TK, _CONTRACTS, at.timestamp() - 10.0, now=at)
+        through_the_daemons_bus(bus, sym, [{"GAMMA": 0.05}], [at.timestamp() - 1])
+    server._publish_levels(TK, at.timestamp() - 10.0, now=at)
     body = server.gamma_surface_payload(TK, "all", None, 0, None, None, at)
     with server._terrain_cache_lock:
         surface = server._terrain_cache[TK]["_gamma_surface"]
@@ -73,7 +74,7 @@ def test_a_contract_the_feed_delivers_is_live_with_its_own_age():
     sym = CALLS[0]
     cov, surface = _publish([sym], [sym])
     legs = _legs(surface, sym)
-    assert legs and all(leg["state"] == "live" and leg["age_sec"] == pytest.approx(1.0) for leg in legs)
+    assert legs and all(leg["state"] == "live" and leg["ts_recv"] == pytest.approx(_AT.timestamp() - 1.0) for leg in legs)
     assert cov["partial"] == 1 and cov["live"] == 0          # its put is not streamed: the cell is partial
 
 
@@ -104,8 +105,22 @@ def test_a_contract_that_streamed_reads_stale_while_schwabs_socket_is_closed():
     sym = CALLS[0]
     cov, surface = _publish([sym], [sym], at=_CLOSED, socket_open=False)
     assert [leg["state"] for leg in _legs(surface, sym)] == ["stale"]
-    assert surface["stream_overlay_symbols"] == [sym]
+    served = json.loads(server.get_chain(ticker=TK, expiry=None).body)["contracts"]
+    assert next(ct["gamma"] for ct in served if ct["symbol"] == sym) == 0.05
     assert cov["stale"] == 1 and cov["live"] == 0
+
+
+def test_a_held_contract_with_no_tick_is_pending_only_while_the_daemon_says_it_holds_it():
+    """ONE-15: unknown is never confirmation. While the daemon's heartbeat is live and holds the
+    contract it is pending; once the daemon stops reporting, its holding is unknown: unavailable."""
+    sym = CALLS[0]
+    _cov, surface = _publish([sym], [], at=_CLOSED)
+    pending = [leg["state"] for leg in _legs(surface, sym)]
+    lmp.record_feed_down()
+    server._publish_levels(TK, _CLOSED.timestamp() - 10.0, now=_CLOSED)
+    with server._terrain_cache_lock:
+        down = [leg["state"] for leg in _legs(server._terrain_cache[TK]["_gamma_surface"], sym)]
+    assert pending == ["pending"] and down == ["unavailable"]
 
 
 def test_a_contract_the_daemon_does_not_stream_is_not_streaming():

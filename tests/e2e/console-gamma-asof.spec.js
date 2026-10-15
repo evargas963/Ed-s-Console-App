@@ -6,20 +6,21 @@
  * chain scope and the chart shows the price-bars clock AND the GEX levels clock as two separate
  * badges. Stale server state -> stale badge styling. Offline.
  */
-const { test, expect } = require('@playwright/test');
+const { test, expect, pushBeat } = require('./fixtures/live_socket');
+const { expiriesAnswer } = require('./fixtures/expiries');
 const { routeWatchlist } = require('./fixtures/watchlist');
 
 const SURFACE = { ticker: 'SPY', symbol: 'SPY', available: true, spot: 100, front_expiry: '2026-09-11', source: 'terrain_live_cache',
-  live: true, stale: false, age_sec: 6, chain_basis: 'full', complete: false,
-  expirations: [{ expiry: '2026-09-11', dte: 2, front: true }], strikes: [98, 100, 102],
+  live: true, stale: false, as_of: { levels: 1757000000 }, chain_basis: 'full', complete: false,
+  expirations: [{ expiry: '2026-09-11', dte: 2, dte_label: '2DTE', expired: false, front: true }], strikes: [98, 100, 102],
   cells: [{ strike: 98, gex: [-90000], spot: false }, { strike: 100, gex: [958600], spot: true },
     { strike: 102, gex: [-264500], spot: false }],
   view: { centre: 100, scope: 'auto', coverage: null, max_abs: { gex: 958600 }, missing_expiry: null } };
 const TERRAIN = { ticker: 'SPY', spot: 100, gamma_flip: 99.5, call_wall: 102, put_wall: 98,
   absolute_gamma_strike: 100, net_gex_peak: 100, net_gex_at_spot: 5e8, regime: 'LONG_GAMMA_CHOP',
-  levels_stale: false, levels_age_sec: 21 };
+  levels_stale: false, as_of: { levels: 1757000000 } };
 const STRIKES = { ticker: 'SPY', spot: 100, spot_strike: 100, spot_source: 'schwab_quote_last',
-  today_source: 'terrain_live_cache', today_age_sec: 21, levels_stale: false, levels_age_sec: 21,
+  today_source: 'terrain_live_cache', levels_stale: false, as_of: { levels: 1757000000 },
   today: { all: [[98, -90000, 10], [100, 958600, 50], [102, -264500, 12]] },
   views: { all: { centre: 100, note: null, max_abs: 958600 } } };
 const BARS = { ticker: 'SPY', bars: [99.6, 99.9, 100.1, 100.0].map(function (c, i) {
@@ -34,7 +35,7 @@ function routes(over) {
   return async (page) => {
     await page.route('**/api/**', (route) => {
       const url = route.request().url();
-      let body = { available: false };
+      let body = url.includes('/api/expiries') ? expiriesAnswer([]) : { available: false };
       if (url.includes('/api/options/gamma-surface')) body = over.surface || SURFACE;
       else if (url.includes('/api/terrain/strikes')) body = over.strikes || STRIKES;
       else if (url.includes('/api/terrain')) body = over.terrain || TERRAIN;
@@ -56,7 +57,8 @@ test.describe('#4 per-panel source / as-of / freshness', () => {
     const badge = page.locator('#gbsSrc .asof');
     await expect(badge).toBeVisible();
     await expect(badge).toContainText('terrain live');
-    await expect(badge).toContainText('21s');            // the server's own today_age_sec, formatted
+    pushBeat(page, { levels: '21s' });               // the console labels the levels' instant
+    await expect(badge).toContainText('21s');            // shown as served, never formatted here
   });
 
   test('Strike Detail discloses the vendor chain scope', async ({ page }) => {

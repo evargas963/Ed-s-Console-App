@@ -83,8 +83,8 @@ Hold EdWebConsole to how a financial institution handles systems with real money
    Enforced by: `tests/test_live_quote_and_order_flow_no_fallbacks_v1.py`, `tests/test_gamma_exposure_honest_absence_v1.py`,
    `tests/test_absence_is_not_zero_v1.py` (absent when never sent), `tests/test_data_path_heatmap_absent_v1.py` (the heatmap's "-"); the rest — ENF-22.
 6. **One path.** Schwab → daemon memory → pushed to the screen. The databases are history:
-   `stream_capture.db` every equity message and the kept option contracts for five trading
-   sessions (DATA_FLOW D4); `ed_console.db` the chain captures and level crosses; read at
+   `stream_capture.db` every message Schwab sends, as sent, every option contract included, for
+   five trading sessions (DATA_FLOW D4; operator 2026-10-14); `ed_console.db` the chain captures and level crosses; read at
    startup, after the close and for research; never for a live screen.
    Enforced by: the tests `docs/DATA_FLOW.md` §2 D1–D6 each name.
 7. **Nothing without a job.** A change deletes what it replaces, in the same PR. A register, audit,

@@ -6,7 +6,8 @@
  * stand-in serves the window per scope -- 11, 23 or all 41 strikes of 80..120 around spot 100 --
  * and the page is proved to ask with the scope, draw what it is sent and keep the choice.
  */
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./fixtures/live_socket');
+const { expiriesAnswer } = require('./fixtures/expiries');
 const { routeWatchlist } = require('./fixtures/watchlist');
 
 // spot 100, 41 strikes 80..120; the stand-in's window per scope, as the server serves it
@@ -32,7 +33,7 @@ const SURFACE = { ticker: 'SPY', symbol: 'SPY', available: true, spot: 100, fron
 async function intercept(page, asked) {
   await page.route('**/api/**', (route) => {
     const url = route.request().url();
-    let body = { available: false };
+    let body = url.includes('/api/expiries') ? expiriesAnswer([]) : { available: false };
     if (url.includes('/api/options/gamma-surface')) body = SURFACE;
     else if (url.includes('/api/terrain/strikes')) {
       const scope = new URL(url).searchParams.get('scope');

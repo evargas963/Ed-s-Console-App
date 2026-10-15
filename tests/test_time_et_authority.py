@@ -68,3 +68,11 @@ def test_a_contract_is_priced_to_its_own_settlement_whatever_the_ticker():
     assert contract_inputs(am, now=fri_ten) == ([], {"expired_or_no_expiry": len(am)})
     assert len(contract_inputs(pm, now=fri_ten)[0]) == len(pm)
     assert len(contract_inputs(equity, now=fri_ten)[0]) == len(equity)
+
+
+def test_an_age_is_worded_once_on_the_server():
+    """time_et.age_label, the one wording of an age every screen shows (the page formats none):
+    whole seconds under 90 s, whole minutes under 90 min, then whole hours, each rounded."""
+    from time_et import age_label
+    assert [age_label(s) for s in (0.0, 0.4, 7.5, 89.4, 89.6, 150.0, 5399.0, 5400.0, 7200.0)] == [
+        "0s", "0s", "8s", "89s", "2m", "3m", "90m", "2h", "2h"]

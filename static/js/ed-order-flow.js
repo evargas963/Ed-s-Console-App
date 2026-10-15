@@ -6,7 +6,7 @@
    view's exact .fl-* CSS grammar so a book reads the same whether it's an option contract's
    or the ticker's own -- one visual language, not a second one invented here.
 
-   The console streams the books of the ticker whose /api/changes connection is open (the page
+   The console streams the books of the ticker whose /api/live connection is open (the page
    opens it for its ticker); a book not yet arrived reads "No <venue> for <ticker>". */
 (function () {
   'use strict';
@@ -16,58 +16,46 @@
   function num(n, d) { return (n == null || isNaN(n)) ? '—' : Number(n).toFixed(d == null ? 2 : d); }
   function int(n) { return (n == null || isNaN(n)) ? '—' : String(Math.round(Number(n))); }
   function st() { return (window.EdShell && window.EdShell.getState()) || {}; }
-  function isBook() { var s = st(); return s.workspace === 'order-flow' && s.subview === 'book'; }
   function ticker() { return (st().ticker || ''); }
   function host() { return document.getElementById('obBody'); }
-  function stillBook(tk) { return isBook() && ticker() === tk; }
 
-  function loadImpl(tk, signal) {
-    var h = host();
-    if (!h || !stillBook(tk)) return;
-    return fetch('/api/order-flow/microstructure?ticker=' + encodeURIComponent(tk) + '&venue=' + st().bookVenue, { cache: 'no-store', signal: signal })
-      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-      .then(function (d) { if (stillBook(tk)) render(h, tk, d); })
-      .catch(function (e) {
-        if (e && e.name === 'AbortError') return;
-        if (stillBook(tk)) h.innerHTML = '<div class="placeholder"><div class="sm">no console serving /api/order-flow/microstructure</div></div>';
-      });
-  }
-  var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(ticker(), signal); });
-  function load() {
-    if (!isBook()) return;
-    var tk = ticker();
-    _loader.trigger(tk);
-  }
+  // the book as the console pushes it for the view's ticker and venue (the same answer Right Now
+  // and the Desk read)
+  var _book = null;                  // the book last drawn, drawn again when the push goes down or comes back
+  window.EdShell.onPanel('book', function (a) {
+    var h = host(); if (!h || a.waiting) return;
+    _book = null;
+    if (!a.ok) { h.innerHTML = '<div class="placeholder"><div class="sm">/api/order-flow/microstructure answered HTTP ' + a.status + '</div></div>'; return; }
+    _book = a.body;
+    render(h, ticker(), a.body);
+  });
+  document.addEventListener('ed:push', function () { var h = host(); if (h && _book) render(h, ticker(), _book); });
+  // the venue's book (NYSE_BOOK / NASDAQ_BOOK, Whole) and the top of book, as the daemon pushes
+  // them, drawn while the Book is on screen
+  function onBook() { var s = st(); return s.workspace === 'order-flow' && s.subview === 'book'; }
+  window.addEventListener('ed:schwab', function (e) {
+    var m = e.detail, h = host();
+    if (h && onBook() && m.key === st().key && (m.service === st().bookVenue || m.service === 'LEVELONE_EQUITIES')) render(h, ticker(), _book);
+  });
 
-  function classOf(map, key) { var v = map ? map[key] : null; return (typeof v === 'string' && v) ? v : null; }
-  function tag(c) {
-    if (c === undefined || c == null) return '';
-    var hook = (String(c).toLowerCase().match(/^[a-z0-9-]+/) || ['unknown'])[0];
-    return '<span class="fl-tag ' + hook + '" data-cls="' + esc(c) + '">' + esc(c) + '</span>';
-  }
-  function section(title, rows) {
-    var h = '<div class="fl-sec"><div class="fl-sec-h">' + esc(title) + '</div>';
-    rows.forEach(function (r) {
-      h += '<div class="fl-row"><span class="k">' + esc(r[0]) + '</span><span class="v">' + esc(r[1]) + '</span>' + tag(r[2]) + '</div>';
-    });
-    return h + '</div>';
-  }
 
   // Real per-level DOM ladder from d.depth_pressure.{bid,ask} -- [{price,volume,cum}], best-
   // first, up to OF_BOOK_DEPTH_DEEP (5) levels. This is genuine displayed-book data the first
   // build of this view fetched but never rendered (only the aggregate depth.{1,3,5} totals
   // were shown) -- the operator's "this sucks, it's just numbers" is fixed by using the level
   // array that was already on the wire.
+  // each level [price, total size] as the daemon sends it (engine.book_levels)
   function ladderHtml(bidLevels, askLevels, wallSet) {
     var maxVol = 0;
-    bidLevels.concat(askLevels).forEach(function (l) { if (l.volume > maxVol) maxVol = l.volume; });
+    bidLevels.concat(askLevels).forEach(function (l) { if (l[1] > maxVol) maxVol = l[1]; });
     maxVol = maxVol || 1;
     function row(l, side) {
-      var w = Math.max(2, Math.round((l.volume / maxVol) * 100));
-      var isWall = wallSet[side + '@' + l.price];
+      var isWall = wallSet[side + '@' + l[0]];
+      // a size Schwab did not send as a number: no bar (an unknown is not a small size)
+      var bar = l[1] == null ? '' : '<i class="dom-bar" style="width:' + Math.max(2, Math.round((l[1] / maxVol) * 100)) + '%"></i>';
       return '<div class="dom-row ' + side + (isWall ? ' wall' : '') + '">' +
-        '<div class="dom-bar-track"><i class="dom-bar" style="width:' + w + '%"></i></div>' +
-        '<span class="dom-px">' + num(l.price) + '</span><span class="dom-sz">' + int(l.volume) + '</span></div>';
+        '<div class="dom-bar-track">' + bar + '</div>' +
+        '<span class="dom-px">' + num(l[0]) + '</span><span class="dom-sz">' + int(l[1]) + '</span></div>';
     }
     var asksHtml = askLevels.slice().reverse().map(function (l) { return row(l, 'ask'); }).join('');
     var bidsHtml = bidLevels.map(function (l) { return row(l, 'bid'); }).join('');
@@ -76,28 +64,32 @@
   }
 
   function render(h, tk, d) {
-    if (!d || d.status === 'no_book') {
-      h.innerHTML = '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Ticker</span><span class="fl-sym">' + esc(tk) + '</span></div>' +
-        '<div class="fl-sub"><span class="fl-lab">Book</span><span class="fl-badge warn">NO BOOK YET</span></div></div>' +
-        '<div class="placeholder"><div class="sm">No ' + esc(st().bookVenue) + ' for ' + esc(tk) +
-        ' — Schwab has sent no book from this venue for this symbol.</div></div>';
-      return;
-    }
-    var tob = d.top_of_book || {}, depth = d.depth || {}, ages = d.ages || {}, cls = d.classification || {};
-    var dp = d.depth_pressure || {}, bidLevels = dp.bid || [], askLevels = dp.ask || [];
-    function dep(n, side) { var x = depth[String(n)] || {}; return x[side]; }
-    function bk(k) { return classOf(cls, k); }
-    var walls = d.wall_candidates || [];
+    var sb = window.EdShell.book(st().bookVenue, st().key);
+    // the console's reads of the book, absent until it has priced one (then each reads '—')
+    var priced = d && d.status !== 'no_book' ? d : null;
+    function got(k) { return priced ? priced[k] : undefined; }
+    var depth = got('depth'), asOf = got('as_of');
+    var bidLevels = sb ? sb.levels.bids : [], askLevels = sb ? sb.levels.asks : [];
+    var verdict = window.EdShell.feedVerdict(st().key, st().bookVenue);
+    // Schwab's top of book: LEVELONE_EQUITIES as the daemon pushes it, and its verdict
+    var tob = window.EdShell.priceRow(st().key);
+    function dep(n, side) { var x = depth && depth[String(n)]; return x ? x[side] : undefined; }
+    function bk(k) { return window.EdShell.classOf(priced, k); }
+    var walls = got('wall_candidates');
     var wallSet = {};
-    walls.forEach(function (w) { wallSet[w.side + '@' + w.price] = w; });
+    if (walls) walls.forEach(function (w) { wallSet[w.side + '@' + w.price] = w; });
 
-    var midHtml = '<div class="dom-mid"><span>mid ' + num(d.mid) + '</span><span>spread ' + num(d.spread_pts) +
-      '</span><span>microprice ' + num(d.microprice) + '</span></div>';
+    // the console's reads, labelled with the top of book they were priced at (the engine's input)
+    var pricedAt = got('top_of_book');
+    var midHtml = '<div class="dom-mid"><span>mid ' + num(got('mid')) + '</span><span>spread ' + num(got('spread_pts')) +
+      '</span><span>microprice ' + num(got('microprice')) + '</span><span class="sm">priced at ' +
+      (pricedAt ? num(pricedAt.bid) + ' × ' + num(pricedAt.ask) : '-') + '</span></div>';
 
+    // Schwab's last top of book; with its feed down, marked not live with the served reason
     var rowsTob = [
-      ['Bid × size', d.top_outage || num(tob.bid) + ' × ' + int(tob.bid_size), bk('top_of_book.bid')],
-      ['Ask × size', d.top_outage || num(tob.ask) + ' × ' + int(tob.ask_size), bk('top_of_book.ask')],
-    ];
+      ['Bid × size', num(tob.bid) + ' × ' + int(tob.bid_size), bk('top_of_book.bid')],
+      ['Ask × size', num(tob.ask) + ' × ' + int(tob.ask_size), bk('top_of_book.ask')],
+    ].concat(!tob.feed_live ? [['Top of book', window.EdShell.notLive(tob), undefined]] : []);
     var rowsImb = [
       ['Depth 1 imbalance', num(dep(1, 'imbalance'), 3), bk('depth.*.imbalance')],
       ['Depth 3 imbalance', num(dep(3, 'imbalance'), 3), bk('depth.*.imbalance')],
@@ -106,42 +98,31 @@
       ['Ask total (5)', int(dep(5, 'ask_total')), bk('depth.*.ask_total')],
     ];
     var fresh = [
-      ['Book age', ages.book_age_sec != null ? Math.round(ages.book_age_sec) + 's' : '—', bk('ages.book_age_sec')],
-      ['Quote age', ages.quote_age_sec != null ? Math.round(ages.quote_age_sec) + 's' : '—', bk('ages.quote_age_sec')],
+      ['Book age', asOf && asOf.book != null ? { ageOf: 'book' } : '—', bk('as_of.book')],
+      ['Quote age', asOf && asOf.quote != null ? { ageOf: 'quote' } : '—', bk('as_of.quote')],
     ];
-    var wallsHtml = walls.length
+    var wallsHtml = walls && walls.length
       ? walls.map(function (w) { return '<div class="fl-row"><span class="k">' + esc(w.side || '—') + ' @ ' + num(w.price) +
           '</span><span class="v">' + int(w.volume) + ' <span class="sm">(' + num(w.median_mult, 1) + '× median)</span></span></div>'; }).join('')
       : '<div class="sm" style="padding:4px 0;">no size-outlier candidates in the current displayed book</div>';
-    var deferred = (d.deferred || []).join(' · ');
+    var deferred = got('deferred') ? got('deferred').join(' · ') : '';
 
-    // Operator-reproduced defect (2026-09-14): this badge was a hardcoded literal, never gated
-    // on ages.book_age_sec even though the exact same number is displayed two lines below it in
-    // the Freshness section -- a book observation aged to 3,600s still rendered LIVE. book_stale
-    // is server-computed (app.options.order_flow.engine.compute_book_microstructure); this only
-    // reads the verdict.
-    // LIVE only on the server's explicit "not stale"; an unknown book age is not live
-    var bs = ages.book_stale, badge = bs === false ? 'LIVE' : bs === true ? 'STALE' : 'AGE UNKNOWN';
+    // the book's verdict is the daemon's (the one live rule), on Schwab's book for this venue
+    var live = !!(verdict && verdict.live);
+    var badge = live ? 'LIVE' : window.EdShell.notLive(verdict);
     h.innerHTML =
       '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Ticker</span><span class="fl-sym">' + esc(tk) + '</span></div>' +
-      '<div class="fl-sub"><span class="fl-lab">Book</span><span class="fl-badge ' + (bs === false ? 'live' : 'stale') + '">' + badge + '</span></div></div>' +
+      '<div class="fl-sub"><span class="fl-lab">Book</span><span class="fl-badge ' + (live ? 'live' : 'stale') + '">' + esc(badge) + '</span>' +
+      '<span class="sm">' + esc(st().bookVenue) + ' · ' + (!sb || sb.time_ct == null ? '-' : esc(sb.time_ct)) + '</span></div></div>' +
       '<div class="dom-wrap">' +
         '<div class="dom-ladder">' + ladderHtml(bidLevels, askLevels, wallSet) + midHtml + '</div>' +
         '<div class="dom-stats">' +
-          section('Top of book', rowsTob) + section('Imbalance', rowsImb) + section('Freshness', fresh) +
+          window.EdShell.flSection('Top of book', rowsTob, '') + window.EdShell.flSection('Imbalance', rowsImb, '') +
+          window.EdShell.flSection('Freshness', fresh, '') +
         '</div>' +
       '</div>' +
       '<div class="fl-sec" style="margin-top:14px;"><div class="fl-sec-h">Wall candidates (size-outlier heuristic, displayed book only)</div>' + wallsHtml + '</div>' +
       '<div class="fl-foot">' + (deferred ? esc(deferred) + ' — ' : '') +
       'no signed buys/sells, CVD, or bull/bear verdict is canonical for the underlying; Schwab exposes no native aggressor field.</div>';
-  }
-
-  if (typeof document !== 'undefined') {
-    document.addEventListener('ed:view', load);
-    document.addEventListener('ed:ticker', load);
-    document.addEventListener('ed:book_venue', load);
-    document.addEventListener('ed:changed', function (e) { if (e.detail.kind === 'flow') load(); });
-    // Audit finding #4 (2026-09-16): initial hydration now comes SOLELY from ed-core.js's
-    // deferred ed:ticker/ed:view dispatch -- see that file's init() comment.
   }
 })();

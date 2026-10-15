@@ -9,7 +9,6 @@ from pathlib import Path
 import pytest
 
 import live_market_plane as lmp
-import live_price_rows
 import server
 import time_et
 from app.options.order_flow import streaming as ofs
@@ -17,7 +16,8 @@ from calibration.complete_chain_capture import CAPTURE_BASIS
 from instrument_identity import ticker_storage_key
 from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS
 from micro_structure import Candle
-from terrain_engine import compute_terrain
+from terrain_engine import at_spot, compute_terrain
+from tests.feed_live_helper import forget_price
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 
@@ -128,6 +128,8 @@ def test_the_desk_event_feed_numbers_orders_and_counts_the_real_crosses():
             events.setdefault((r["ts_utc"], r["level_value"], r["direction"]), r)
     crosses = [it for it in body["items"] if it["dom"] == "LEVELS"]
     assert len(crosses) == len(events) > 0
+    # each time served as the screen shows it: the page reads no clock to judge a day
+    assert [it["time_ct"] for it in crosses] == [time_et.ct_label(it["ts"]) for it in crosses]
     assert sorted(it["n"] for it in crosses) == list(range(1, len(events) + 1))
     oldest = min(events)[0]
     assert next(it for it in crosses if it["n"] == 1)["ts"] == oldest
@@ -139,11 +141,12 @@ def test_the_desk_event_feed_numbers_orders_and_counts_the_real_crosses():
 
 def _crwd_at(live):
     """The levels producer's snapshot on the real CRWD chain (tests/real_chains.py, valued at its
-    capture), priced at `live(base)` where base is the snapshot at the chain's own price
-    (stand-in live prices, named by each test)."""
+    capture, at the chain's own price) with the values read from the spot at `live(base)`
+    (terrain_engine.at_spot), base being that snapshot (stand-in live prices, named by each
+    test); `spot` is the live one."""
     from tests.real_chains import CRWD
     base = compute_terrain("CRWD", [dict(c) for c in CRWD.chain], CRWD.spot, now=CRWD.now).to_dict()
-    return compute_terrain("CRWD", [dict(c) for c in CRWD.chain], live(base), now=CRWD.now).to_dict()
+    return {**base, **at_spot(base, live(base), CRWD.now.timestamp()), "spot": live(base)}
 
 
 def test_wall_distances_and_flip_relation_are_served():
@@ -167,7 +170,7 @@ def test_a_breached_wall_says_so_at_the_live_price():
 def test_a_containing_wall_earns_the_dealer_lean_only_on_a_trusted_flip():
     out = _crwd_at(lambda b: (b["call_wall"] + b["put_wall"]) / 2)
     assert out["call_wall_state"] == out["put_wall_state"] == "contains"
-    earned = out["regime"] != "UNAVAILABLE" and out["confidence"] == "TRUSTED"
+    earned = out["regime"] != "UNAVAILABLE" and out["confidence"] == "TRUSTED" == out["flip_confidence"]
     assert out["call_wall_lean"] == ("DEALERS SELL" if earned else None)
     assert out["put_wall_lean"] == ("DEALERS BUY" if earned else None)
 
@@ -201,7 +204,7 @@ def _spy_bars() -> list:
 
 def _forget(tk):
     server._bars.pop(tk, None)
-    ofs._price_rows.pop(tk, None)
+    forget_price(tk)
     with server._terrain_cache_lock:
         server._terrain_cache.pop(tk, None)
     for key in [k for k in _MATERIALIZED_SNAPSHOTS if k[0] == tk]:
@@ -211,18 +214,18 @@ def _forget(tk):
 def _priced(tk, chain, spot, ts_utc):
     """The chain priced as the console prices a stored capture (at its own time and spot)."""
     server._publish_levels(tk, captures=[{"et_date": datetime.fromtimestamp(ts_utc, time_et.ET).date().isoformat(),
-                                          "ts_utc": ts_utc, "spot": spot, "basis": CAPTURE_BASIS,
+                                          "ts_utc": ts_utc, "spot": spot, "spot_trade_ts": None,   # not captured
+                                          "basis": CAPTURE_BASIS,
                                           "contracts": [dict(c) for c in chain]}])
     return server.terrain_cache_get(tk, ts_utc)
 
 
 def _live_price(tk, last):
-    """Schwab's LAST_PRICE through the daemon's price row, its feed live at FRIDAY_CLOSE (the time
+    """Schwab's LAST_PRICE in the console's price record, its feed live at FRIDAY_CLOSE (the time
     the levels are served at)."""
     at = FRIDAY_CLOSE.timestamp()
     lmp.record_feed_heartbeat({"ts": at, "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [tk]}})
     lmp.record_from_level_one_equity(tk, {"LAST_PRICE": last}, received_ts=at)
-    ofs._price_rows[tk] = live_price_rows.price_row(tk, at)
 
 
 @pytest.fixture
@@ -236,7 +239,7 @@ def spy_levels():
     terrain = _priced(DESK, SPY_0DTE.chain, SPY_0DTE.spot, SPY_0DTE.now.timestamp())
     spot = bars[-1]["close"]
     for b in bars:
-        server._keep_bar(DESK, Candle(ts=b["timestamp"] / 1000, open=b["open"], high=b["high"], low=b["low"],
+        server._minutes.take(DESK,Candle(ts=b["timestamp"] / 1000, open=b["open"], high=b["high"], low=b["low"],
                                       close=b["close"], volume=b["volume"]))
     server._publish_price_levels(DESK, FRIDAY_CLOSE)                  # as the bar writer does
 
@@ -265,7 +268,7 @@ def test_levels_carry_the_gamma_family_into_the_one_distance_order(spy_levels):
 def test_a_same_day_chain_has_no_expected_move_and_says_why(spy_levels):
     """The SPY capture lists only the 0DTE expiry; the terrain's one-day move needs one a day out."""
     _spot, terrain, serve = spy_levels
-    assert terrain.get("implied_1d_move") is None
+    assert terrain["implied_move_sigma"] is None
     body = serve()
     assert not {"em_up", "em_dn"} & {r["id"] for r in body["levels"]}
     assert {"family": "expected_move", "reason": "the terrain has no implied 1-day move"} in body["families_absent"]
@@ -284,7 +287,7 @@ def test_the_expected_move_is_the_live_price_plus_and_minus_the_terrain_move():
     finally:
         _forget(DESK_EM)
     by_id = {r["id"]: r for r in body["levels"]}
-    em = terrain["implied_1d_move"]["points"]
+    em = at_spot(terrain, spot, FRIDAY_CLOSE.timestamp())["implied_1d_move"]["points"]      # at the live price
     assert by_id["em_up"]["price"] == spot + em and by_id["em_dn"]["price"] == spot - em
     assert by_id["em_up"]["family"] == by_id["em_dn"]["family"] == "expected_move"
     assert "expected_move" not in {f["family"] for f in body["families_absent"]}
@@ -365,7 +368,6 @@ def test_after_the_close_the_levels_are_measured_from_schwabs_last_trade(spy_lev
     lmp.record_feed_heartbeat({"ts": at, "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [DESK]}})
     lmp.record_from_level_one_equity(DESK, {"LAST_PRICE": 769.5, "TRADE_TIME_MILLIS": 1790983830151},
                                      received_ts=at)
-    ofs._price_rows[DESK] = live_price_rows.price_row(DESK, at)
     body = server.levels_payload(DESK, "1", FRIDAY_CLOSE)
     priced = [r for r in body["levels"] if r["price"] is not None]
     assert len(priced) > 5 and body["spot"] == 769.5 and body["spot_as_of_ts_utc"] == 1790983830.151

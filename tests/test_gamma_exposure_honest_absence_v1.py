@@ -10,7 +10,7 @@ import time
 import server
 from math_exposure_core import compute_exposures_by_strike, exposure_books
 from server import project_gamma_surface
-from terrain_engine import compute_terrain
+from terrain_engine import compute_terrain, listed_expiries, listed_strikes, on_strikes
 from terrain_engine import _per_strike_rows
 from tests.real_chains import CRWD
 
@@ -46,7 +46,8 @@ def test_real_chain_reported_zero_oi_shows_zero_and_unreported_shows_absent():
     for c in chain:
         if c["strikePrice"] == gone_k:
             del c["openInterest"]
-    surface = project_gamma_surface(chain, exposure_books(chain, spot=CRWD.spot, now=CRWD.now))
+    surface = project_gamma_surface(chain, exposure_books(chain, spot=CRWD.spot, now=CRWD.now), listed_strikes(chain),
+                                    listed_expiries(chain))
     cell = {r["strike"]: r for r in surface["cells"]}
     assert all(v == 0 for v in cell[zero_k]["gex"] if v is not None) and cell[zero_k]["gex"] != [None]
     assert cell[gone_k]["gex"] == [None]
@@ -65,11 +66,13 @@ def test_vanna_by_strike_route_omits_unreported_oi_strikes():
     tk = server.ticker_storage_key("ZZTESTNOOI")
     snap = compute_terrain(tk, chain, CRWD.spot, now=CRWD.now)
     with server._terrain_cache_lock:
-        server._terrain_cache[tk] = {"ticker": tk, "spot": CRWD.spot, "computed_ts_utc": time.time(),
-                                     "_vanna_rows": server._vanna_rows(snap)}
+        ks = listed_strikes(chain)            # as _publish_levels publishes: on the one strike list
+        server._terrain_cache[tk] = {**snap.to_dict(), "computed_ts_utc": time.time(), "_strikes": ks,
+                                     "_vanna_rows": on_strikes(server._vanna_rows(snap), ks, 2)}
     try:
-        body = json.loads(server.get_vanna_by_strike(ticker="ZZTESTNOOI").body)
-        assert body["rows"] == [], f"a chain with no reported OI yields no rows: {body['rows']}"
+        body = json.loads(server.get_vanna_by_strike(ticker="ZZTESTNOOI", scope="all").body)
+        assert [r[0] for r in body["rows"]] == ks
+        assert all(r[1] is None for r in body["rows"]), f"no reported OI: no strike has a vanna: {body['rows']}"
         # no rows is shown absent with its reason, the one rule for the vanna and charm panels
         assert body["available"] is False and body["reason"]
     finally:

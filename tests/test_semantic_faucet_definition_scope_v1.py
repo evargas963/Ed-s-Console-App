@@ -28,6 +28,7 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
+from terrain_engine import at_spot  # noqa: E402
 from tests.real_chains import SPY_0DTE  # noqa: E402
 
 NOW = SPY_0DTE.now
@@ -57,6 +58,8 @@ DECLARED: dict[tuple[str, str], tuple[str, str]] = {
     ("terrain", "put_charm_wall"): ("max_put_charm", FULL),
     ("terrain", "call_delta_wall"): ("max_call_delta", FULL),
     ("terrain", "put_delta_wall"): ("max_put_delta", FULL),
+    # at_spot's: the listed strike nearest the live spot, on the one strike list
+    ("terrain", "spot_strike"): ("nearest_listed_strike_to_live_spot", FULL),
     # analytics summary rows (/api/state summary_rows[]) — the SELECTED-EXPIRY book.
     # Same definition token as terrain net_gex_peak: same function, declared other scope.
     ("summary_rows", "net_gex_peak"): ("max_abs_net_gex", SEL),
@@ -179,8 +182,9 @@ def test_pin_candidate_is_published_only_through_the_qualification_gates():
     chain, spot = _fixture_book()
     snap = compute_terrain("SPY", chain, spot, now=NOW)
     assert snap.net_gex_at_spot is not None and snap.net_gex_at_spot < 0
-    assert snap.pin_candidate is None
-    assert snap.pin_candidate_blockers == ["regime", "liquidity"]
+    read = at_spot(snap.to_dict(), spot, NOW.timestamp())
+    assert read["pin_candidate"] is None
+    assert read["pin_candidate_blockers"] == ["regime", "liquidity"]
     assert snap.absolute_gamma_strike is not None, (
         "withholding the CLAIM must never delete the measured concentration (deliver, "
         "never delete)")
@@ -193,6 +197,7 @@ def test_every_level_shaped_payload_name_is_declared():
 
     chain, spot = _fixture_book()
     payload = compute_terrain("SPY", chain, spot, now=NOW).to_dict()
+    payload = {**payload, **at_spot(payload, spot, NOW.timestamp())}     # as /api/terrain serves it
     declared_terrain = {n for (s, n) in DECLARED if s == "terrain"}
     for key in payload:
         if key.endswith(("_state", "_range", "_blockers")) or key.startswith("dist_to_"):   # distances, not levels

@@ -6,7 +6,8 @@
  * (D), and the centre strike selects only the shared strike. Symbols are the vendor's own, never
  * reconstructed.
  */
-const { test, expect } = require('@playwright/test');
+const { test, expect, pushChange } = require('./fixtures/live_socket');
+const { expiriesAnswer } = require('./fixtures/expiries');
 const { served } = require('./fixtures/served_chain');
 const { routeWatchlist } = require('./fixtures/watchlist');
 
@@ -52,7 +53,7 @@ async function intercept(page) {
     else if (url.includes('/api/terrain/strikes')) body = { spot: 100, today_source: 'terrain_live_cache', today_age_sec: 5, levels_stale: false, today: { all: [[100, 1, 1]] },
       views: { all: { centre: 100, note: null, max_abs: 1 } } };
     else if (url.includes('/api/terrain')) body = { spot: 100, gamma_flip: 99.5, regime: 'LONG_GAMMA_CHOP', levels_stale: false };
-    else if (url.includes('/api/expiries')) body = { expiries: ['2026-09-11'] };    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    else if (url.includes('/api/expiries')) body = expiriesAnswer(['2026-09-11']);    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
   await routeWatchlist(page, ['SPY']);
 }
@@ -148,7 +149,7 @@ test.describe('D — Gamma Chain subview', () => {
     // Fire a background refresh (same context) WHILE scrolled, with genuinely changed data,
     // and confirm both the new value lands AND the header still has not moved at all.
     vol = 25;
-    await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'chain' } })));
+    await pushChange(page, 'chain');
     await expect(page.locator('#chainBody tbody tr').first().locator('td').nth(1)).toHaveText('25');
     const afterRefresh = await headBox();
 
@@ -203,7 +204,7 @@ test.describe('D — Gamma Chain subview', () => {
     // The NEXT chain fetch carries a genuinely different value -- proof a refresh actually
     // completed comes from the DOM showing THIS new value, not merely from time having passed.
     vol = 25;
-    await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'chain' } })));
+    await pushChange(page, 'chain');
     await expect(page.locator('#chainBody tbody tr').first().locator('td').nth(1)).toHaveText('25');
 
     // A routine background refresh (same ticker/expiry context) must not recentre the ladder,
@@ -229,7 +230,7 @@ test.describe('D — Gamma Chain subview', () => {
     const symA = occSymbol('SPY', EXP_A, 'CALL', 100);
     const symB = occSymbol('SPY', EXP_B, 'CALL', 200);
     await page.route('**/api/expiries*', (r) => r.fulfill({ status: 200, contentType: 'application/json',
-      body: JSON.stringify({ expiries: [EXP_A, EXP_B] }) }));
+      body: JSON.stringify(expiriesAnswer([EXP_A, EXP_B])) }));
     await page.route('**/api/chain*', (route) => {
       const exp = new URL(route.request().url()).searchParams.get('expiry') || EXP_A;
       const strike = exp === EXP_A ? 100 : 200;   // distinct strike AND distinct symbol per expiry
@@ -270,7 +271,7 @@ test.describe('D — Gamma Chain subview', () => {
     const symA2 = occSymbol('SPY', EXP_A, 'CALL', 333);
     let aCallCount = 0;
     await page.route('**/api/expiries*', (r) => r.fulfill({ status: 200, contentType: 'application/json',
-      body: JSON.stringify({ expiries: [EXP_A, EXP_B] }) }));
+      body: JSON.stringify(expiriesAnswer([EXP_A, EXP_B])) }));
     await page.route('**/api/chain*', async (route) => {
       const exp = new URL(route.request().url()).searchParams.get('expiry') || EXP_A;
       if (exp === EXP_A) {

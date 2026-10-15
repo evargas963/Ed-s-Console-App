@@ -2,7 +2,7 @@
 price and the price its cells were computed at each named, and a ticker open on a page is
 repriced for as long as the page has it (question 2: the screen shows it correctly and promptly).
 
-Through the real code: the daemon's status and price row as the console holds them, the console's
+Through the real code: the daemon's status and the price as the console holds them, the console's
 pages (push_changes), the levels producer, the routes. Real data: CRWD's captured chain
 (tests/fixtures/real_crwd_complete_chain_quarter.json, 2026-09-02, spot 205.4), valued at its
 capture. STAND-INS (named): the live price after the capture (206.0), and the CRWD chain published
@@ -15,12 +15,13 @@ from pathlib import Path
 
 import pytest
 
-import app.options.order_flow.streaming as ofs
+import app.options.order_flow.state as ofls
 import live_market_plane as lmp
 import push_changes
 import server
 from calibration.complete_chain_capture import CAPTURE_BASIS
 from server import get_options_gamma_surface, ticker_storage_key
+from tests.feed_live_helper import forget_price, ledger_round, price_sent
 from time_et import ET
 
 _CRWD = json.loads((Path(__file__).parent / "fixtures" / "real_crwd_complete_chain_quarter.json")
@@ -35,11 +36,11 @@ def _call(tk):
 
 def _daemon(price: float, at: float, *tickers) -> None:
     """The daemon's status at `at` (Schwab's socket open, `tickers` held, the watchlist [_ON]) and
-    each ticker's price row."""
+    each ticker's last trade as Schwab sends it."""
     lmp.record_feed_heartbeat({"ts": at, "schwab_socket_open": True, "watchlist": [_ON],
                                "held": {"LEVELONE_EQUITIES": list(tickers)}})
     for tk in tickers:
-        ofs._price_rows[tk] = {"ticker": tk, "spot": price, "trade_ts": _AT.timestamp()}
+        price_sent(tk, price, _AT.timestamp())
 
 
 @pytest.fixture
@@ -47,13 +48,14 @@ def published():
     """CRWD's chain published at its capture under _ON and _OFF, at its own spot."""
     _daemon(_CRWD["spot"], _AT.timestamp(), _ON, _OFF)            # live when the chain is published
     for tk in (_ON, _OFF):
-        server._publish_levels(tk, [dict(c) for c in _CRWD["chain"]], _AT.timestamp(), now=_AT)
+        ledger_round(tk, _CRWD["chain"], _AT.timestamp(), now=_AT)
     _daemon(_CRWD["spot"], time.time(), _ON, _OFF)                # live now, as the routes read it
     yield
     with server._terrain_cache_lock:
         for tk in (_ON, _OFF):
             server._terrain_cache.pop(tk, None)
-            ofs._price_rows.pop(tk, None)
+            forget_price(tk)
+    ofls.clear_all_live_state()
     lmp.record_feed_down()
 
 
@@ -73,7 +75,7 @@ def test_freshness_is_the_one_terrain_authority_not_a_second_policy(published):
     live = server.terrain_cache_get(_ON, time.time())             # the one authority
     d = _call(_ON)
     assert d["stale"] == bool(live.get("levels_stale"))
-    assert d["age_sec"] == pytest.approx(live.get("levels_age_sec"), abs=5.0)
+    assert d["as_of"] == live["as_of"] == {"levels": live["computed_ts_utc"]}    # one instant, labelled by the push
     assert (d["degraded"] or None) == (live.get("levels_stale_reason") if live.get("levels_stale") else None)
     assert d["chain_as_of_ts_utc"] == _AT.timestamp()
 
@@ -85,7 +87,7 @@ def test_a_ticker_open_on_a_page_is_viewed_until_the_page_leaves_it(published, t
     stays viewed for as long as the page has it open."""
     _call(tk)                                       # a route read alone: not viewed
     assert not server._gamma_surface_wanted(tk)
-    client = push_changes.subscribe(tk)             # /api/changes open on this ticker
+    client = push_changes.subscribe(tk)             # /api/live open on this ticker
     try:
         assert server._gamma_surface_wanted(tk)
     finally:

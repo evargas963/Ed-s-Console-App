@@ -21,7 +21,7 @@ import calibration.complete_chain_capture as cch
 import server
 import time_et
 from schwab_client import flatten_chain_contracts
-from terrain_engine import compute_terrain
+from terrain_engine import at_spot, compute_terrain
 
 _FX = json.loads((Path(__file__).resolve().parent / "fixtures"
                   / "real_mrvl_full_chain_vs_strike_window.json").read_text(encoding="utf-8"))
@@ -34,8 +34,14 @@ def _contracts(payload: dict) -> list[dict]:
 
 
 def _levels(snap) -> dict:
-    return {k: getattr(snap, k) for k in ("call_wall", "put_wall", "gamma_flip",
-                                          "absolute_gamma_strike", "net_gex_peak", "max_pain")}
+    return _shown(snap.to_dict())
+
+
+def _shown(published: dict) -> dict:
+    """The levels of a publication, max pain the front expiry's at the capture (terrain_engine.at_spot)."""
+    shown = {**published, **at_spot(published, published["spot"], _CAPTURED.timestamp())}
+    return {k: shown[k] for k in ("call_wall", "put_wall", "gamma_flip",
+                                  "absolute_gamma_strike", "net_gex_peak", "max_pain")}
 
 
 def test_the_fixture_is_the_full_chain_and_its_window():
@@ -71,9 +77,9 @@ def test_the_level_producer_computes_from_the_full_chain(tmp_path):
                                            completeness_basis=cch.CAPTURE_BASIS,
                                            ts_utc=_FX["captured_utc"])
     server._publish_levels(tk, captures=cch.last_capture_per_day(db, tk, 2))
-    published = server.terrain_cache_get(tk, _CAPTURED.timestamp()) or {}
+    published = server.terrain_cache_get(tk, _CAPTURED.timestamp())
     full = _levels(compute_terrain("MRVL", _contracts(_FX["full"]), _SPOT, now=_CAPTURED))
     window = _levels(compute_terrain("MRVL", _contracts(_FX["window"]), _SPOT, now=_CAPTURED))
-    got = {k: published.get(k) for k in full}
+    got = _shown(published)
     assert got == full, (got, full)
     assert got != window

@@ -58,18 +58,16 @@ TERRAIN_SCHEMA_VERSION = 3
 
 @dataclass(frozen=True)
 class TerrainSnapshot:
-    """Everything the terrain tab renders, computed from one chain."""
+    """Everything pricing one chain produces, at the spot it was priced at (`spot`). What is read
+    from the spot -- the read, each wall's state, lean and distance, the flip side, the pin's
+    proximity and the implied-move band -- is at_spot's, at the live spot."""
 
     ticker: str
     spot: float | None
     schema_version: int = TERRAIN_SCHEMA_VERSION
 
-    # regime
-    regime: str = "UNAVAILABLE"
-    posture: str = "STAND_ASIDE"
-    confidence: str = "UNAVAILABLE"
-    headline: str = ""
-    lines: list[str] = field(default_factory=list)
+    #: the flip's confidence tier (compute_gamma_flip_v2): the read's input
+    flip_confidence: str = "UNAVAILABLE"
 
     # levels — chain scope for every level in this dataclass: FULL_BOOK (the wide
     # multi-expiry capture chain). The analytics summary_rows carry the SELECTED_EXPIRY
@@ -83,7 +81,7 @@ class TerrainSnapshot:
     #: magnet — magnitude sets the SIZE of the hedging flow while the unobservable dealer
     #: SIGN decides pin vs repel (RC-315). Renamed from `gamma_pin` per the operator's
     #: RC-292 disposition: the raw value carries the metric's name; the word "pin" is
-    #: reserved for `pin_candidate` below, which must earn it. Strength = leader's margin
+    #: reserved for `pin_candidate` (at_spot's), which must earn it. Strength = leader's margin
     #: over the runner-up on the same metric (a 1% lead is a coin flip; the label says so).
     absolute_gamma_strike: float | None = None
     absolute_gamma_strength_pct: float | None = None
@@ -94,13 +92,6 @@ class TerrainSnapshot:
     absolute_gamma_gex_dollars: float | None = None
     absolute_gamma_oi: float | None = None
     book_oi_total: float | None = None
-    #: RC-292 operator disposition: `pin_candidate` is absolute_gamma_strike published as a
-    #: candidate pin ONLY after regime, proximity, DTE, liquidity and completeness
-    #: qualification (qualify_pin_candidate below). None = one or more gates failed;
-    #: pin_candidate_blockers records WHICH, so absence renders with its reason, never as
-    #: an unexplained dash (RC-128 pattern).
-    pin_candidate: float | None = None
-    pin_candidate_blockers: list[str] = field(default_factory=list)
     #: RC-124: the former "pin" — max |net GEX$| (calls minus puts) — kept under its honest
     #: name; a real measure of where the SIGNED book peaks, distinct from the concentration.
     #: Scope: FULL_BOOK here; ExposureRow.net_gex_peak is the SAME definition over the
@@ -111,11 +102,9 @@ class TerrainSnapshot:
     #: renders once as ABS GAMMA. Analytics `kl_hvl` remains a DIFFERENT book
     #: (net_gex_peak → "Net Γ peak").
     #: Max pain is defined PER EXPIRY (standard: the settlement price minimising intrinsic
-    #: payout on ONE expiry's open interest). It used to be computed over the whole wide
-    #: chain -- every expiry pooled (research check, 2026-09-24). Now: the FRONT expiry only,
-    #: and max_pain_dte says which.
-    max_pain: float | None = None
-    max_pain_dte: float | None = None
+    #: payout on ONE expiry's open interest): {expiry: strike} for each listed expiry. The one
+    #: shown is the front expiry's (expiry_states, at the instant it is served).
+    max_pain_by_expiry: dict = field(default_factory=dict)
     call_charm_wall: float | None = None
     put_charm_wall: float | None = None
     key_delta_strike: float | None = None
@@ -154,11 +143,10 @@ class TerrainSnapshot:
     #: or None. Sizes the IV-driven hedge flow (vol-crush tailwind / vol-spike selling).
     vanna_agg: dict | None = None
 
-    #: RC-113: the institutional sigma band — {points, iv_pct_atm, dte_used, method} or None
-    #: when ATM IV is unusable (fail-closed, never a fabricated band). `points` is the
-    #: one-sigma half-width; the client centers it on the live spot. The wall RANGE itself
-    #: is the put_wall↔call_wall corridor — already carried above, drawn client-side.
-    implied_1d_move: dict[str, Any] | None = None
+    #: RC-113: the sigma of the institutional band -- {iv_pct_atm, dte_used, method} (the front
+    #: expiry at least a day out's ATM implied vol, compute_implied_one_day_move) or None when ATM
+    #: IV is unusable; the band itself (`points`) is at_spot's, at the live spot.
+    implied_move_sigma: dict[str, Any] | None = None
 
     #: RC-115: each wall's EARNED per-side range — {lo, hi, coverage_pct, method} or None —
     #: the value-area of the wall's own side-gamma mass (never the strike grid).
@@ -170,23 +158,6 @@ class TerrainSnapshot:
     #: get fields here and render BLANK with a withheld reason, never an analytics book.
     call_delta_wall: float | None = None
     put_delta_wall: float | None = None
-
-    #: RC-130: the wall's GEOMETRY state — "contains" (call wall above spot / put wall below
-    #: spot, the configuration in which support/resistance language is true) or "breached"
-    #: (spot at or through the wall). Institutional basis (researched 2026-07-29): the picker
-    #: is deliberately NOT side-constrained — SpotGamma's wall stays at the concentration max
-    #: and their own SPX stats track breach frequency and closes beyond it; what changes on a
-    #: breach is the LABEL/state, not the strike. None = wall or spot missing (absence, never
-    #: a guessed state). Computed with the snapshot, at its spot.
-    call_wall_state: str | None = None
-    put_wall_state: str | None = None
-    #: the walls' dealer lean (wall_lean), and the spot's distance to each wall and side of the
-    #: flip, at this snapshot's spot
-    call_wall_lean: str | None = None
-    put_wall_lean: str | None = None
-    dist_to_call_wall: float | None = None
-    dist_to_put_wall: float | None = None
-    flip_relation: str | None = None
 
     # provenance — never render a level without knowing where it came from
     contracts_used: int = 0
@@ -221,10 +192,11 @@ class TerrainSnapshot:
     #: the same two ratios over the whole book (every expiry)
     pcr_all: float | None = None
     pcr_volume_all: float | None = None
-    #: every expiry the chain lists, ascending
+    #: the one expiry list (listed_expiries): every expiry the chain lists, ascending, with
+    #: Schwab's daysToExpiration and its settlement instant
     expiries: list = field(default_factory=list)
-    #: {expiry: Schwab's daysToExpiration as sent with this chain}
     expiry_dte: dict = field(default_factory=dict)
+    expiry_settles: dict = field(default_factory=dict)
     #: Wall-clock the chain behind per_strike was fetched — every consumer must be able to render
     #: an age on its face rather than implying "now".
     computed_ts_utc: float | None = None
@@ -240,12 +212,60 @@ _HEAVY_FIELDS = ("profile", "per_strike", "books", "charm_by_strike")
 
 
 def _unavailable(ticker: str, spot: float | None, reason: str) -> TerrainSnapshot:
-    read = build_terrain_read(spot=spot, flip=None, flip_confidence="UNAVAILABLE")
-    return TerrainSnapshot(
-        ticker=ticker, spot=spot, regime=read.regime, posture=read.posture,
-        confidence=read.confidence, headline=read.headline, lines=read.lines,
-        error=reason,
-    )
+    return TerrainSnapshot(ticker=ticker, spot=spot, error=reason)
+
+
+#: no levels published: every value read from the spot is absent, with the read's reason
+_NO_LEVELS: dict[str, Any] = {"flip_confidence": TerrainSnapshot.flip_confidence, "flip_diag": None,
+                              "expiries": [], "expiry_dte": {}, "expiry_settles": {}, "max_pain_by_expiry": {}}
+
+
+def at_spot(pub: "dict[str, Any] | None", spot: float | None, now: float) -> dict[str, Any]:
+    """Every value read from the spot, at `spot` (the live one), from the levels the chain was
+    priced to (`pub`: the published TerrainSnapshot's fields with the one strike list `_strikes`,
+    None when none is published) -- the one producer of each, at the live spot: the strike nearest `spot` on the one strike
+    list, the read (regime from the priced book's gamma at spot; posture, confidence, headline and
+    lines worded at `spot`), each wall's state (RC-130: "contains" when the call wall is above /
+    the put wall below the spot, else "breached"; the strike never moves) and dealer lean, the
+    spot's distance to each wall and side of the flip, the pin candidate (its proximity gate at
+    `spot`, its expiry gate on the front expiry's days) and the implied 1-day move (`points` =
+    spot x sigma_ATM x sqrt(1/252)); and at `now`, each expiry's `expired` and the `front` one
+    (expiry_states, the one front-expiry rule, from Schwab's session), whose max pain is the one shown (`max_pain`, `max_pain_expiry`, `max_pain_dte`)."""
+    p = pub if pub is not None else _NO_LEVELS
+    states = expiry_states(p, now)
+    front = states["front"]
+    front_dte = None if front is None else p["expiry_dte"][front]
+    flip, call_wall, put_wall = p.get("gamma_flip"), p.get("call_wall"), p.get("put_wall")
+    diag = p["flip_diag"]
+    read = build_terrain_read(
+        spot=spot, flip=flip, flip_confidence=p["flip_confidence"],
+        put_wall=put_wall, call_wall=call_wall,
+        gamma_at_spot=None if diag is None else diag.get("gamma_at_spot"),
+        flip_curve_agrees=None if diag is None else diag.get("curve_agrees_with_schwab_at_spot"))
+    call_state, put_state = wall_geometry_state(spot, call_wall, "call"), wall_geometry_state(spot, put_wall, "put")
+    call_lean, put_lean = wall_lean(call_wall, put_wall, call_state, put_state, read.regime, read.confidence)
+    pin, pin_blockers = qualify_pin_candidate(
+        spot=spot, absolute_gamma_strike=p.get("absolute_gamma_strike"),
+        absolute_gamma_strength_pct=p.get("absolute_gamma_strength_pct"),
+        absolute_gamma_gex_dollars=p.get("absolute_gamma_gex_dollars"),
+        absolute_gamma_oi=p.get("absolute_gamma_oi"), book_oi_total=p.get("book_oi_total"),
+        net_gex_at_spot=p.get("net_gex_at_spot"), front_dte=front_dte)
+    sigma = p.get("implied_move_sigma")
+    return {
+        **states, "max_pain_expiry": front, "max_pain_dte": front_dte, "max_pain_dte_label": dte_label(front_dte),
+        "max_pain": None if front is None else p["max_pain_by_expiry"].get(front),
+        "spot_strike": nearest_strike(p.get("_strikes"), spot),
+        "regime": read.regime, "posture": read.posture, "confidence": read.confidence,
+        "headline": read.headline, "lines": read.lines,
+        "call_wall_state": call_state, "put_wall_state": put_state,
+        "call_wall_lean": call_lean, "put_wall_lean": put_lean,
+        "dist_to_call_wall": None if call_wall is None or spot is None else call_wall - spot,
+        "dist_to_put_wall": None if put_wall is None or spot is None else spot - put_wall,
+        "flip_relation": None if flip is None or spot is None else "ABOVE" if spot >= flip else "BELOW",
+        "pin_candidate": pin, "pin_candidate_blockers": pin_blockers,
+        "implied_1d_move": None if sigma is None or spot is None else {
+            **sigma, "points": float(spot) * sigma["sigma"] * (1.0 / 252.0) ** 0.5},
+    }
 
 
 def _per_strike_rows(exposures: dict) -> list[list]:
@@ -368,31 +388,88 @@ def strike_window(strikes, centre, scope: str, shift: int = 0) -> "tuple[int, in
     return lo, lo + n - 1, ks[c]
 
 
-def chain_ladder(contracts, spot) -> tuple[list[dict], int]:
-    """One expiry's chain as the ladder draws it, and how many contracts it could not place (no
-    strike, or a putCall other than CALL/PUT). Strikes high to low; per strike one row per listed
-    contract index (a second contract at one strike and side gets its own row); each contract's
-    numbers read by rule 2 (-999, text, NaN absent); `call_itm` / `put_itm` against `spot` (None
-    without one); `spot` marks the first row of the strike nearest spot."""
+def listed_strikes(contracts) -> list[float]:
+    """The one strike list: every strike Schwab lists in the chain (`strikePrice`, rule 2),
+    ascending, once each. Every per-strike panel draws its rows on it."""
     from numeric_contract import schwab_number
-    by_k: dict[float, dict[str, list]] = {}
+    return sorted({k for c in contracts if (k := schwab_number(c.get("strikePrice"))) is not None})
+
+
+def listed_expiries(contracts) -> dict[str, Any]:
+    """The one expiry list: every expiry Schwab lists in the chain (its `expirationDate`'s date),
+    ascending (`expiries`), each with its days to expiry (`expiry_dte`: Schwab's
+    daysToExpiration as sent; None when its contracts send none, or disagree) and its settlement
+    (`expiry_settles`: the latest of its contracts', time_et.settles_at, as a timestamp -- an
+    expiry with AM- and PM-settled contracts has settled once all have; None while one
+    contract's is not known)."""
+    from numeric_contract import schwab_number
+    from time_et import settles_at
+    dtes: dict[str, set] = {}
+    settles: dict[str, list] = {}
+    for c in contracts:
+        sent = c.get("expirationDate")
+        e = str(sent)[:10]
+        if sent is None or len(e) != 10:        # Schwab sent no date: no column of its own
+            continue
+        dtes.setdefault(e, set()).add(schwab_number(c.get("daysToExpiration")))
+        s = settles_at(c.get("expirationDate"), c.get("settlementType"))
+        settles.setdefault(e, []).append(None if s is None else s.timestamp())
+    exps = sorted(dtes)
+    return {"expiries": exps,
+            "expiry_dte": {e: next(iter(dtes[e])) if len(dtes[e]) == 1 else None for e in exps},
+            "expiry_settles": {e: None if None in settles[e] else max(settles[e]) for e in exps}}
+
+
+def dte_label(dte: float | None) -> str | None:
+    """Schwab's daysToExpiration as every screen words it ("0DTE", "9DTE"); None without one."""
+    return None if dte is None else f"{dte:g}DTE"
+
+
+def expiry_states(listed: dict[str, Any], now: float) -> dict[str, Any]:
+    """The listed expiries (listed_expiries) at `now`: each one's `expired` (its settlement has
+    passed; None while its settlement is not known) and the `front` expiry (the nearest that has
+    not expired; None when none is known not to have, or a nearer one's state is not known) -- the
+    one rule of both for every panel."""
+    settles = listed["expiry_settles"]
+    expired = {e: None if settles[e] is None else settles[e] <= now for e in listed["expiries"]}
+    known = [e for e in listed["expiries"] if expired[e] is not True]     # nearest first
+    front = known[0] if known and expired[known[0]] is False else None
+    return {"expired": expired, "front": front}
+
+
+def on_strikes(rows: list, strikes: list, width: int) -> list:
+    """`rows` ([strike, value, ...], `width` long) on the one strike list `strikes`: one row per
+    listed strike, its own where `rows` has it, else the strike with no value ("-")."""
+    by_k = {r[0]: r for r in rows}
+    return [by_k[k] if k in by_k else [k] + [None] * (width - 1) for k in strikes]
+
+
+def chain_ladder(contracts, spot, strikes, spot_strike) -> tuple[list[dict], int]:
+    """One expiry's chain as the ladder draws it, and how many contracts it could not place (no
+    strike, a putCall other than CALL/PUT, or a strike the one strike list does not hold yet: a
+    newer round's, until it is published). Rows on the one strike list `strikes`, high to low
+    (a strike with no contract in this expiry: one row, neither side); per strike one row per
+    listed contract index (a second contract at one strike and side gets its own row); each
+    contract's numbers read by rule 2 (-999, text, NaN absent); `call_itm` / `put_itm` against
+    `spot` (None without one); `spot` marks the first row of `spot_strike` (at_spot's)."""
+    from numeric_contract import schwab_number
+    by_k: dict[float, dict[str, list]] = {k: {"call": [], "put": []} for k in strikes}
     unplaced = 0
     for c in contracts or []:
         k = schwab_number(c.get("strikePrice"))
         side = {"CALL": "call", "PUT": "put"}.get(str(c.get("putCall") or "").upper())
-        if k is None or side is None:
+        if k is None or side is None or k not in by_k:
             unplaced += 1
             continue
         shown = {f: (schwab_number(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else v)
                  for f, v in c.items()}
-        by_k.setdefault(k, {"call": [], "put": []})[side].append(shown)
-    spot_k = nearest_strike(by_k, spot)
+        by_k[k][side].append(shown)
     rows = []
     for k in sorted(by_k, reverse=True):
         g = by_k[k]
-        for i in range(max(len(g["call"]), len(g["put"]))):
+        for i in range(max(len(g["call"]), len(g["put"]), 1)):
             rows.append({
-                "strike": k, "first": i == 0, "spot": i == 0 and k == spot_k,
+                "strike": k, "first": i == 0, "spot": i == 0 and k == spot_strike,
                 "call": g["call"][i] if i < len(g["call"]) else None,
                 "put": g["put"][i] if i < len(g["put"]) else None,
                 "call_itm": None if spot is None else k < spot,
@@ -514,9 +591,9 @@ def compute_implied_one_day_move(contracts: list[dict], spot: float | None) -> d
     — divided by 100 here. Fails closed: no usable ATM IV means None, never a fabricated
     band (a made-up sigma is worse than no sigma).
 
-    Returns {points, iv_pct_atm, dte_used, method} — `points` is the one-sigma HALF-width
-    in price points; the client centers it on the LIVE spot so the band can never disagree
-    with the price beside it (the RC-28/RC-77 one-spot discipline).
+    Returns the band's sigma {sigma, iv_pct_atm, dte_used, method}, the ATM pair picked at the
+    spot the chain is priced at; the band itself (`points`, the one-sigma half-width in price
+    points) is at_spot's, at the live spot, so it can never disagree with the price beside it.
     """
     if spot is None or spot <= 0 or not contracts:
         return None
@@ -535,9 +612,8 @@ def compute_implied_one_day_move(contracts: list[dict], spot: float | None) -> d
     if len(at_front) != 1 or at_front[0] is None:
         return None
     sigma = at_front[0]
-    em = float(spot) * sigma * (1.0 / 252.0) ** 0.5
     return {
-        "points": em,
+        "sigma": sigma,
         "iv_pct_atm": sigma * 100.0,
         "dte_used": front,
         "method": "S x sigma_ATM x sqrt(1/252), one standard deviation (68.3pct); "
@@ -743,8 +819,6 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
     # One pricing pass: exposures per (expiry, DTE) group; every book below is a merge of them.
     books = exposure_books(contracts, spot=spot, now=_terrain_now)
     exposures, diag = merge_exposure_books(books.values())
-    _dtes = [d for (_e, d) in books if d is not None]
-    _front_dte = min(_dtes, default=None)
     if not exposures:
         return _unavailable(ticker, spot, "chain produced no exposures")
 
@@ -800,48 +874,22 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
     _zero_dte_pin_reason = (None if _zero_dte_pin is not None else
                             "no same-day expiry in the chain" if not _exp_0dte else
                             "the same-day expiry has no dollar gamma")
-    # Max pain on the FRONT expiry only.
-    _front_max_pain = None
-    if _front_dte is not None:
-        _exp_front, _ = merge_exposure_books(
-            b for (_e, d), b in books.items() if d is not None and d <= _front_dte)
-        _front_max_pain = compute_max_pain(_exp_front)
+    # Max pain per expiry (its books merged: one per expiry date)
+    _by_expiry: dict[str, list] = {}
+    for (e, _d), b in books.items():
+        _by_expiry.setdefault(e, []).append(b)
+    _max_pain_by_expiry = {e: compute_max_pain(merge_exposure_books(bs)[0]) for e, bs in sorted(_by_expiry.items())
+                           if len(e) == 10}
     # RC-358: 25Δ risk reversal from the same wide chain (front expiry, tolerance-gated).
     from math_volatility import compute_25d_risk_reversal
     _rr25 = compute_25d_risk_reversal(contracts)
     charm_by_strike = compute_charm_by_strike(contracts, spot, now=_terrain_now, parsed=parsed)
     call_charm_wall, put_charm_wall = pick_charm_wall_strikes(charm_by_strike)
 
-    # RC-292: _front_dte (the nearest readable DTE; RC-290: a contract that does not state
-    # its maturity is dropped, never defaulted) feeds the DTE gate.
-    _pin_candidate, _pin_candidate_blockers = qualify_pin_candidate(
-        spot=float(spot),
-        absolute_gamma_strike=_abs_gamma_strike,
-        absolute_gamma_strength_pct=_abs_gamma_strength,
-        absolute_gamma_gex_dollars=_abs_gamma_gex_dollars,
-        absolute_gamma_oi=_abs_gamma_oi,
-        book_oi_total=_book_oi_total,
-        net_gex_at_spot=flip_diag.get("gamma_at_spot"),
-        front_dte=_front_dte,
-    )
-
-    read = build_terrain_read(
-        spot=spot, flip=flip, flip_confidence=confidence,
-        put_wall=put_wall, call_wall=call_wall,
-        gamma_at_spot=flip_diag.get("gamma_at_spot"),
-        flip_curve_agrees=flip_diag.get("curve_agrees_with_schwab_at_spot"),
-    )
-    call_state, put_state = wall_geometry_state(spot, call_wall, "call"), wall_geometry_state(spot, put_wall, "put")
-    call_lean, put_lean = wall_lean(call_wall, put_wall, call_state, put_state, read.regime, read.confidence)
-
     return TerrainSnapshot(
         ticker=ticker,
         spot=float(spot),
-        regime=read.regime,
-        posture=read.posture,
-        confidence=read.confidence,
-        headline=read.headline,
-        lines=read.lines,
+        flip_confidence=confidence,
         gamma_flip=flip,
         call_wall=call_wall,
         put_wall=put_wall,
@@ -853,8 +901,6 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         absolute_gamma_gex_dollars=_abs_gamma_gex_dollars,
         absolute_gamma_oi=_abs_gamma_oi,
         book_oi_total=_book_oi_total,
-        pin_candidate=_pin_candidate,
-        pin_candidate_blockers=_pin_candidate_blockers,
         net_gex_peak=pick_net_gex_peak_strike(exposures, strikes),
         key_delta_strike=pick_key_delta_strike(exposures, strikes),
         hvp=hvp,
@@ -868,23 +914,13 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         zero_dte_abs_gamma_reason=_zero_dte_pin_reason,
         rr_25d=_rr25,
         vanna_agg=compute_net_vanna(exposures, spot),     # RC-362: same book, one sum
-        implied_1d_move=compute_implied_one_day_move(contracts, spot),   # RC-113
+        implied_move_sigma=compute_implied_one_day_move(contracts, spot),   # RC-113
         call_wall_range=compute_wall_value_area(exposures, call_wall, "call"),   # RC-115
         put_wall_range=compute_wall_value_area(exposures, put_wall, "put"),      # RC-115
         call_delta_wall=call_delta_wall,   # RC-128: one book for delta walls too
         put_delta_wall=put_delta_wall,
-        # RC-130: the geometry state ships WITH the wall so no paint site can claim
-        # support/resistance the spot contradicts (live SPY 2026-07-29: put wall 740
-        # painted "dealer support" while spot sat at 735.13 below it).
-        call_wall_state=call_state,
-        put_wall_state=put_state,
-        call_wall_lean=call_lean,
-        put_wall_lean=put_lean,
-        dist_to_call_wall=(call_wall - spot) if call_wall is not None else None,
-        dist_to_put_wall=(spot - put_wall) if put_wall is not None else None,
-        flip_relation=None if flip is None else "ABOVE" if spot >= flip else "BELOW",
-        max_pain=_front_max_pain,
-        max_pain_dte=_front_dte,
+        max_pain_by_expiry=_max_pain_by_expiry,
+        **listed_expiries(contracts),
         call_charm_wall=call_charm_wall,
         put_charm_wall=put_charm_wall,
         # ExposureDiagnostics is a frozen dataclass; contracts_used is ALWAYS an int.
@@ -908,7 +944,5 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         pcr_volume_by_expiry={e: put_call_volume_ratio(book) for (e, _d), (book, _diag) in books.items()},
         pcr_all=put_call_oi_ratio(exposures),
         pcr_volume_all=put_call_volume_ratio(exposures),
-        expiries=sorted({e for (e, _d) in books}),
-        expiry_dte={e: d for (e, d) in books},
         computed_ts_utc=_time.time(),
     )

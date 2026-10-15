@@ -13,10 +13,12 @@
  * overlaid per test. The flow fields live under `flow` — never flattened — so a green run here proves
  * compatibility with the REAL API shape.
  */
-const { test, expect } = require('@playwright/test');
+const { test, expect, pushBeat } = require('./fixtures/live_socket');
+const { expiriesAnswer } = require('./fixtures/expiries');
 const FIXTURE = require('./fixtures/options_microstructure_payload.json');
 const { served } = require('./fixtures/served_chain');
 const { routeWatchlist } = require('./fixtures/watchlist');
+const { mockPriceSocket, schwabBook } = require('./fixtures/price_socket');
 
 const SELECTED = FIXTURE.contract;                         // 'TSLA  260831C00367500'
 const OTHER = 'TSLA  260831P00367500';
@@ -44,7 +46,7 @@ function makeContext() {
   return { plane: {}, mutate: null, posts: [], microGets: 0, hangMicro: false, releaseMicro: null };
 }
 
-async function setup(page, ctx) {
+async function setup(page, ctx, daemonMessages) {
   await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'TSLA'); } catch (e) {} });
   // FALSIFIER (re-runnable from the tree): ED_FLOW_JS_OVERRIDE=<file> serves that file as
   // ed-gamma-flow.js, so the negative controls can be shown to FAIL against a consumer that reads
@@ -77,10 +79,15 @@ async function setup(page, ctx) {
     else if (url.includes('/api/terrain/strikes')) body = { spot: 367, today_source: 'terrain_live_cache', today_age_sec: 5, levels_stale: false, today: { all: [[367.5, 1, 1]] },
       views: { all: { centre: 367.5, note: null, max_abs: 1 } } };
     else if (url.includes('/api/terrain')) body = { spot: 367, gamma_flip: 366, levels_stale: false };
-    else if (url.includes('/api/expiries')) body = { expiries: ['2026-08-31'] };
+    else if (url.includes('/api/expiries')) body = expiriesAnswer(['2026-08-31']);
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
   await routeWatchlist(page, ['TSLA']);
+  // the contract's LEVELONE_OPTIONS from the daemon: the fixture's top of book, which its producer
+  // read from real Schwab messages, by Schwab's field names
+  const t = FIXTURE.top_of_book;
+  await mockPriceSocket(page, [{ service: 'LEVELONE_OPTIONS', key: SELECTED, schwab_ts: Date.now(), ts_recv: Date.now() / 1000,
+    content: { key: SELECTED, BID_PRICE: t.bid, ASK_PRICE: t.ask, BID_SIZE: t.bid_size, ASK_SIZE: t.ask_size } }].concat(daemonMessages || []));
 }
 
 async function selectCallAndOpenFlow(page) {
@@ -107,6 +114,8 @@ test.describe('D — Gamma Flow subview', () => {
     await expect(page.locator('#flowBody .fl-badge')).toHaveText('ACTIVE');
     await expect(page.locator('#flowBody .fl-sym')).toHaveText(SELECTED);
     await expect(rowV(page, 'top_of_book.bid')).toHaveText(fmt(FIXTURE.top_of_book.bid, 2));   // Schwab's bid as sent
+    // the console's reads say the top of book they were priced at
+    await expect(rowV(page, 'top_of_book')).toHaveText(fmt(FIXTURE.top_of_book.bid, 2) + ' × ' + fmt(FIXTURE.top_of_book.ask, 2));
     await expect(page.locator('#flowBody .fl-tag.native').first()).toBeVisible();  // NATIVE/DERIVED/PROXY labels
     await expect(page.locator('#flowBody .fl-tag.derived').first()).toBeVisible();
     await expect(page.locator('#flowBody .fl-tag.proxy').first()).toBeVisible();
@@ -119,15 +128,42 @@ test.describe('D — Gamma Flow subview', () => {
     await page.screenshot({ path: 'test-results/gamma-flow-1672x941.png', fullPage: false });
   });
 
+  test('the contract\'s Schwab values show from the daemon before the console has answered for it', async ({ page }) => {
+    // Operator 2026-10-14: "nothing should ever be in the way of the straight path from schwab to
+    // the ui". The console's answer for the contract is held; its top of book is on screen.
+    const ctx = makeContext(); ctx.hangMicro = true;
+    await setup(page, ctx);
+    await selectCallAndOpenFlow(page);
+    await expect(rowV(page, 'top_of_book.bid')).toHaveText(fmt(FIXTURE.top_of_book.bid, 2));
+    await expect(rowV(page, 'mid')).toHaveCount(0);                    // the console's reads: not yet
+    ctx.releaseMicro();
+    await expect(rowV(page, 'mid')).toHaveText(fmt(FIXTURE.mid, 2));
+  });
+
+  test('the contract\'s OPTIONS_BOOK is drawn as Schwab sent it, from the daemon', async ({ page }) => {
+    // Real data: an OPTIONS_BOOK item as Schwab sent it 2026-10-05 14:00 CT
+    // (tests/fixtures/real_stream_mix_2026_10_05_1400ct.json); STAND-IN: its key, this test's contract.
+    const item = require('../fixtures/real_stream_mix_2026_10_05_1400ct.json').messages.find((m) => m.service === 'OPTIONS_BOOK').item;
+    const ctx = makeContext();
+    await setup(page, ctx, [schwabBook('OPTIONS_BOOK', SELECTED, item, item.BOOK_TIME / 1000, 'book ' + item.BOOK_TIME)]);
+    await selectCallAndOpenFlow(page);
+    await expect(page.locator('#flowBody')).toContainText('book ' + item.BOOK_TIME);
+    const bid1 = item.BIDS[0], ask1 = item.ASKS[0];
+    await expect(page.locator('#flowBody')).toContainText('Bid 1' + bid1.BID_PRICE.toFixed(2) + ' × ' + bid1.TOTAL_VOLUME);
+    await expect(page.locator('#flowBody')).toContainText('Ask 1' + ask1.ASK_PRICE.toFixed(2) + ' × ' + ask1.TOTAL_VOLUME);
+    expect(await page.locator('#flowBody .fl-row .k', { hasText: /^Bid \d+$/ }).count()).toBe(item.BIDS.length);
+    expect(await page.locator('#flowBody .fl-row .k', { hasText: /^Ask \d+$/ }).count()).toBe(item.ASKS.length);
+  });
+
   test('NEGATIVE CONTROL: nested-only payload (no flattened flow fields) renders the real flow values', async ({ page }) => {
     // The fixture is the real route response: flow fields exist ONLY under `flow`.
     for (const k of ['tape_pressure_30s', 'tape_pressure_2m', 'tape_pressure_5m', 'cum_delta_proxy', 'cum_delta_slope', 'top_book_pressure', 'native_aggressor_available']) {
       expect(FIXTURE[k]).toBeUndefined();
       expect(FIXTURE.flow[k]).not.toBeUndefined();
     }
-    // Ages are the payload's own `ages` block, not a streaming_plane field.
+    // The book's age is of the payload's own instant (`as_of.book`), labelled by the console's push.
     expect(FIXTURE.streaming_plane.book_age_sec).toBeUndefined();
-    expect(FIXTURE.ages.book_age_sec).not.toBeNull();
+    expect(FIXTURE.as_of.book).not.toBeNull();
     const ctx = makeContext(); await setup(page, ctx);
     await selectCallAndOpenFlow(page);
     await expect(page.locator('#flowBody .fl-badge')).toHaveText('ACTIVE');
@@ -142,7 +178,8 @@ test.describe('D — Gamma Flow subview', () => {
     await expect(rowV(page, 'microprice')).toHaveText(fmt(FIXTURE.microprice, 2));
     await expect(rowV(page, 'depth.1.imbalance')).toHaveText(fmt(FIXTURE.depth['1'].imbalance, 3));
     await expect(rowV(page, 'top_of_book.bid_size')).toHaveText(String(Math.round(FIXTURE.top_of_book.bid_size)));
-    await expect(rowV(page, 'ages.book_age_sec')).toHaveText(Math.round(FIXTURE.ages.book_age_sec) + 's');
+    pushBeat(page, { book: '3s' });                           // the console labels the book's instant
+    await expect(rowV(page, 'as_of.book')).toHaveText('3s');
     // No flow row fell back to the absent-value placeholder.
     for (const k of ['flow.tape_pressure_30s', 'flow.tape_pressure_2m', 'flow.tape_pressure_5m', 'flow.cum_delta_proxy', 'flow.cum_delta_slope', 'flow.top_book_pressure']) {
       await expect(rowV(page, k)).not.toHaveText('—');
@@ -163,7 +200,8 @@ test.describe('D — Gamma Flow subview', () => {
     await expect(rowV(page, 'flow.tape_pressure_30s')).toHaveText(fmt(FIXTURE.flow.tape_pressure_30s, 3));
     await expect(rowV(page, 'flow.cum_delta_proxy')).toHaveText(fmt(FIXTURE.flow.cum_delta_proxy, 1) + ' · ' + FIXTURE.flow.cum_delta_window);
     await expect(rowV(page, 'flow.top_book_pressure')).toHaveText(fmt(FIXTURE.flow.top_book_pressure, 3));
-    await expect(rowV(page, 'ages.book_age_sec')).toHaveText(Math.round(FIXTURE.ages.book_age_sec) + 's');
+    pushBeat(page, { book: '3s' });
+    await expect(rowV(page, 'as_of.book')).toHaveText('3s');                  // not the decoy's 1s
     await expect(page.locator('#flowBody')).not.toContainText('0.999');
     await expect(page.locator('#flowBody')).not.toContainText('0.888');
     await expect(page.locator('#flowBody')).not.toContainText('-9999');
@@ -181,15 +219,16 @@ test.describe('D — Gamma Flow subview', () => {
     for (const [k, v] of Object.entries(fc)) await expect(rowTag(page, 'flow.' + k)).toHaveText(v);
     // d.classification (engine) -> book rows: exact keys, and the wildcard depth keys.
     const bc = FIXTURE.classification;
-    for (const k of ['top_of_book.bid', 'top_of_book.ask', 'top_of_book.bid_size', 'top_of_book.ask_size', 'mid', 'microprice', 'spread_pts', 'ages.book_age_sec', 'ages.quote_age_sec']) {
+    for (const k of ['mid', 'microprice', 'spread_pts', 'as_of.book', 'as_of.quote']) {
       expect(typeof bc[k]).toBe('string');
       await expect(rowTag(page, k)).toHaveText(bc[k]);
     }
+    // Schwab's top of book comes straight from the daemon (LEVELONE_OPTIONS, its section says so):
+    // no console classification is attached to it
+    for (const k of ['top_of_book.bid', 'top_of_book.ask', 'top_of_book.bid_size', 'top_of_book.ask_size']) await expect(rowTag(page, k)).toHaveCount(0);
     for (const n of ['1', '3', '5']) await expect(rowTag(page, 'depth.' + n + '.imbalance')).toHaveText(bc['depth.*.imbalance']);
     await expect(rowTag(page, 'depth.5.bid_total')).toHaveText(bc['depth.*.bid_total']);
     await expect(rowTag(page, 'depth.5.ask_total')).toHaveText(bc['depth.*.ask_total']);
-    // Feed health is not a classified metric: no tag is manufactured for it.
-    await expect(rowTag(page, 'streaming_plane.feed_health.replay')).toHaveCount(0);
     // No section-level (hardcoded) tag exists anywhere: every tag sits in a row — and the panel header
     // carries no static NATIVE/PROXY chips either (a classification claim nothing served).
     await expect(page.locator('#flowBody .fl-sec-h .fl-tag')).toHaveCount(0);
@@ -202,7 +241,7 @@ test.describe('D — Gamma Flow subview', () => {
       d.flow.classification.tape_pressure_30s = 'NATIVE';        // was PROXY
       d.flow.classification.top_book_pressure = 'PROXY';         // was DERIVED
       d.classification.mid = 'PROXY';                            // was DERIVED
-      d.classification['top_of_book.bid'] = 'DERIVED-HEURISTIC (test)';   // an arbitrary backend string, verbatim
+      d.classification.microprice = 'DERIVED-HEURISTIC (test)';   // an arbitrary backend string, verbatim
       delete d.flow.classification.cum_delta_slope;              // served value, no classification
       delete d.flow.native_aggressor_available;                  // absent => not fabricated as false
     };
@@ -212,7 +251,7 @@ test.describe('D — Gamma Flow subview', () => {
     await expect(rowTag(page, 'flow.tape_pressure_30s')).toHaveText('NATIVE');
     await expect(rowTag(page, 'flow.top_book_pressure')).toHaveText('PROXY');
     await expect(rowTag(page, 'mid')).toHaveText('PROXY');
-    await expect(rowTag(page, 'top_of_book.bid')).toHaveText('DERIVED-HEURISTIC (test)');
+    await expect(rowTag(page, 'microprice')).toHaveText('DERIVED-HEURISTIC (test)');
     await expect(rowTag(page, 'flow.cum_delta_slope')).toHaveText('UNKNOWN');
     await expect(rowTag(page, 'flow.cum_delta_slope')).toHaveClass(/unknown/);
     await expect(rowV(page, 'flow.cum_delta_slope')).toHaveText(fmt(FIXTURE.flow.cum_delta_slope, 3));   // value still served

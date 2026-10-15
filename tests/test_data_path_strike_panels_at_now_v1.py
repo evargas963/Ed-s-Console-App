@@ -5,8 +5,8 @@ function that depends on the clock takes `now`).
 
 Real data: CRWD's 2026-10-16 expiry, every strike, captured 2026-10-07 10:38:40 ET (tests/real_chains.py
 CRWD), and CRWD's LEVELONE_EQUITIES message the daemon received at 10:38:00 ET
-(tests/fixtures/real_crwd_quote_2026_10_07.json), taken in by the plane at its receipt time and
-turned into the price row by the daemon's own function at the capture's instant.
+(tests/fixtures/real_crwd_quote_2026_10_07.json), taken in by the plane at its receipt time: the
+console's price record, read at the capture's instant.
 """
 from __future__ import annotations
 
@@ -14,9 +14,8 @@ import json
 from pathlib import Path
 
 import live_market_plane as lmp
-import live_price_rows
 import server
-from app.options.order_flow import streaming as ofs
+from tests.feed_live_helper import forget_price
 from tests.real_chains import CRWD
 
 _QUOTE = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_crwd_quote_2026_10_07.json")
@@ -26,9 +25,7 @@ _QUOTE = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_crwd_q
 def _clear(tk):
     with server._terrain_cache_lock:
         server._terrain_cache.pop(tk, None)
-    ofs._price_rows.pop(tk, None)
-    lmp._by_ticker.pop(tk, None)
-    lmp._fields_by_ticker.pop(tk, None)
+    forget_price(tk)
     lmp.record_feed_down()
 
 
@@ -38,9 +35,8 @@ def test_every_per_strike_panel_answers_at_the_time_asked_around_the_price():
     try:
         lmp.record_from_level_one_equity(tk, _QUOTE["native"], received_ts=_QUOTE["ts_recv"])
         lmp.record_feed_heartbeat({"ts": at, "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [tk]}})
-        row = live_price_rows.price_row(tk, at)
-        ofs._price_rows[row["ticker"]] = row
         server._publish_levels(tk, captures=[{"contracts": CRWD.chain, "ts_utc": at, "spot": CRWD.spot,
+                                              "spot_trade_ts": None,              # not in the captured data
                                               "et_date": CRWD.now.date().isoformat(),
                                               "basis": server.CAPTURE_BASIS}], now=CRWD.now)
         last = _QUOTE["native"]["LAST_PRICE"]

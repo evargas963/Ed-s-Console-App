@@ -11,7 +11,7 @@ from pathlib import Path
 import app.options.order_flow.streaming as ofs
 import push_changes
 import server
-from stream_spine import bar_msg
+from stream_spine import MessageBus, bar_msg, current_key
 from tests.feed_live_helper import daemon_bars
 from time_et import ET
 
@@ -26,11 +26,12 @@ def _run(body):
         try:
             body()
             await asyncio.sleep(0)
-            return (await push_changes.next_changes(mine, 1.0),
+            return (await push_changes.next_changes(mine, 1.0),           # the kinds changed
                     await push_changes.next_changes(other, 0.05))
         finally:
             push_changes.unsubscribe(TK, mine)
             push_changes.unsubscribe("ZZOTHER", other)
+            push_changes.bind(None)                 # this loop closes: no change is marked on it
     return asyncio.run(main())
 
 
@@ -41,13 +42,14 @@ def test_changes_reach_only_the_tickers_page_each_kind_once():
     assert _run(body) == ({"levels", "flow"}, set())
 
 
-def test_a_streamed_equity_quote_and_book_mark_flow(monkeypatch):
-    # the page open on TSLA makes it viewed, and a viewed ticker's tick is also repriced (which
-    # marks levels); this test is about the flow mark alone
-    monkeypatch.setattr(server, "_on_stream_tick", lambda sym: None)
+def test_a_streamed_equity_quote_and_book_mark_flow():
+    # an equity quote and a book mark flow; the reprice a tick starts comes from the daemon's
+    # price rows (_rows_loop), not from these
     q, b = _FX["quote"], _FX["book"]
-    assert _run(lambda: ofs._ingest_pushed(f"quote.{TK}", {"symbol": TK, "ts_recv": q["ts_recv"],
-                                                            "native": q["native"]}))[0] == {"flow"}
+    bus = MessageBus()                      # the quote as the daemon's bus holds and pushes it
+    sent = {"symbol": TK, "ts_recv": q["ts_recv"], "native": q["native"]}
+    bus.publish(f"quote.{TK}", sent)
+    assert _run(lambda: ofs._ingest_pushed(f"quote.{TK}", bus.current[current_key(f"quote.{TK}", sent)][1]))[0] == {"flow"}
     assert _run(lambda: ofs._ingest_pushed(f"book.{TK}", {"symbol": TK, "ts_recv": b["ts_recv"],
                                                            "service": b["service"],
                                                            "content": b["native"]}))[0] == {"flow"}
@@ -71,3 +73,15 @@ def test_a_kept_bar_marks_liquidity():
 
 def test_no_change_is_an_empty_push():
     assert _run(lambda: None) == (set(), set())
+
+
+def test_a_change_after_the_console_stopped_is_marked_on_no_loop():
+    """The console's loop is bound from its start and released at its stop: a change a thread
+    marks after the stop (the levels loop, the bar writer, the stream finishing) is counted on no
+    closed loop, and raises no "Event loop is closed" in the thread that made it."""
+    from fastapi.testclient import TestClient
+
+    with TestClient(server.app):
+        assert push_changes._loop is not None
+    assert push_changes._loop is None
+    push_changes.changed(TK, push_changes.FLOW)

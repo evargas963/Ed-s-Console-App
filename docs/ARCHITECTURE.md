@@ -11,7 +11,7 @@ every move.
 ```
 EdWebConsole/
 ├── daemon/      the capture daemon: the one Schwab connection (stream and REST), the in-memory
-│                state, the push to the console and the browser, the one database writer, the
+│                state, the push to the console and the push of every Schwab value to the browser (live_ui), the one database writer, the
 │                database schema
 ├── producer/    the levels producer: every derived value (gamma, exposure, vanna, charm, flip,
 │                walls, max pain, PCR, liquidity levels, order-flow measures), computed once
@@ -41,7 +41,7 @@ Moves happen one change at a time. `delete` rows go with the change named in `AC
 | `liquidity_value_engine.py`, `liquidity_models.py` | `producer/` |
 | `app/options/order_flow/`, `l1_trade_observation.py`, `micro_structure.py` | `producer/` |
 | From `server.py`: the levels loop, `_publish_levels`, `_publish_price_levels`, the gamma-surface projection | `producer/` |
-| From `server.py`: the routes, startup; `push_changes.py` (the `/api/changes` push) | `console/` |
+| From `server.py`: the routes, startup; `push_changes.py` (the `/api/live` push: each open page's panels, and each ticker's changes) | `console/` |
 | `time_et.py`, `config.py`, `runtime_layout.py`, `instrument_identity.py`, `numeric_contract.py` | `shared/` |
 | `static/` (the page, its icons, manifest and the vendored chart library) | `static/` |
 | `start_*.bat`, `launch.py`, `reauth_schwab.py` | stay at the root |

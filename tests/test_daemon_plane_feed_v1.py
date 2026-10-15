@@ -12,17 +12,12 @@ from __future__ import annotations
 
 import time
 
-import pytest
-
 import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
-from stream_spine import book_msg, quote_msg
-
-
-@pytest.fixture(autouse=True)
-def _isolate_stream_capture_env(monkeypatch):
-    monkeypatch.delenv("STREAM_CAPTURE_DB_PATH", raising=False)
+from app.options.order_flow import history
+from stream_spine import MessageBus, book_msg, current_key, quote_msg
+from tests.feed_live_helper import forget_price
 
 
 def _reset(tmp_path):
@@ -32,9 +27,11 @@ def _reset(tmp_path):
 
 
 def _push_l1(symbol, native, ts_recv):
-    ofs._ingest_pushed(f"quote.{symbol}", quote_msg(
-        symbol=symbol, bid=native.get("BID_PRICE"), src="schwab_l1", ts_recv=ts_recv,
-        native=native))
+    """The quote as the daemon pushes it: its bus's current record (each field's times in field_ts)."""
+    msg = quote_msg(symbol=symbol, bid=native.get("BID_PRICE"), src="schwab_l1", ts_recv=ts_recv, native=native)
+    bus = MessageBus()
+    bus.publish(f"quote.{symbol}", msg)
+    ofs._ingest_pushed(f"quote.{symbol}", bus.current[current_key(f"quote.{symbol}", msg)][1])
 
 
 def _push_book(symbol, content, ts_recv):
@@ -43,15 +40,15 @@ def _push_book(symbol, content, ts_recv):
         ts_recv=ts_recv))
 
 
-def test_l1_message_lands_in_the_tape_and_the_console_keeps_no_price(tmp_path, monkeypatch):
+def test_l1_message_lands_in_the_tape_and_the_console_keeps_no_price(tmp_path):
     _reset(tmp_path)
-    monkeypatch.setattr(lmp, "_by_ticker", {})
+    forget_price("SPY")
     native = {"key": "SPY", "BID_PRICE": 449.98, "ASK_PRICE": 450.02, "LAST_PRICE": 450.0,
               "LAST_SIZE": 100, "TRADE_TIME_MILLIS": 1000, "TOTAL_VOLUME": 5000}
     _push_l1("SPY", native, ts_recv=time.time())
 
-    top = ofls.get_content_for_symbol("SPY")
-    assert any(item.get("LAST_PRICE") == 450.0 for item in top)
+    assert [(p["price"], p["size"], p["time_millis"]) for p in history.TAPE.prints("SPY")] == [(450.0, 100, 1000)]
+    assert not any("LAST_PRICE" in item for item in ofls.get_content_for_symbol("SPY"))   # one store
     assert lmp.get_quote("SPY") is None          # the price is the daemon's row, not a copy here
 
 
@@ -87,7 +84,7 @@ def test_each_venue_serves_only_its_own_book(tmp_path):
         assert prov["book_time_ms"] == fx[svc]["content"]["BOOK_TIME"]
 
 
-def test_a_book_is_live_by_the_one_rule_on_its_venue_not_by_its_book_time(tmp_path, monkeypatch):
+def test_a_book_is_live_by_the_one_rule_on_its_venue_not_by_its_book_time(tmp_path):
     """ONE-15: a book read stale once its BOOK_TIME was 25 s old -- a fourth liveness limit. It
     is live while the daemon's heartbeat is live and it holds the ticker on that venue's service,
     however old its last change (these real books are days old), at any hour: no clock of ours
@@ -107,19 +104,20 @@ def test_a_book_is_live_by_the_one_rule_on_its_venue_not_by_its_book_time(tmp_pa
     def stale(svc):
         return json.loads(server.api_order_flow_microstructure(ticker="SPY", venue=svc).body)["ages"]["book_stale"]
 
-    held = {"schwab_socket_open": True, "held": {"NASDAQ_BOOK": ["SPY"], "NYSE_BOOK": []}}
+    # on a Schwab connection begun before these books arrived (STAND-IN: their oldest receipt)
+    held = {"schwab_socket_open": True, "held": {"NASDAQ_BOOK": ["SPY"], "NYSE_BOOK": []},
+            "connected_at": min(fx[s]["ts_recv"] for s in ("NASDAQ_BOOK", "NYSE_BOOK"))}
     lmp.record_feed_heartbeat({**held, "ts": time.time()})
     assert (stale("NASDAQ_BOOK"), stale("NYSE_BOOK")) == (False, True)
     lmp.record_feed_heartbeat({**held, "ts": time.time() - lmp.FEED_HEARTBEAT_MAX_AGE_SEC - 1})
     assert (stale("NASDAQ_BOOK"), stale("NYSE_BOOK")) == (True, True)
 
 
-def test_each_symbol_lands_in_its_own_state_only(tmp_path, monkeypatch):
+def test_each_symbol_lands_in_its_own_state_only(tmp_path):
     """Every roster symbol is applied, each into its OWN state: a QQQ tick must never appear in
     SPY's."""
     _reset(tmp_path)
-    monkeypatch.setattr(lmp, "_by_ticker", {})
     _push_l1("QQQ", {"key": "QQQ", "LAST_PRICE": 380.0}, ts_recv=time.time())
 
-    assert not any(i.get("LAST_PRICE") == 380.0 for i in ofls.get_content_for_symbol("SPY"))
-    assert any(i.get("LAST_PRICE") == 380.0 for i in ofls.get_content_for_symbol("QQQ"))
+    assert not any(p["price"] == 380.0 for p in history.TAPE.prints("SPY"))
+    assert any(p["price"] == 380.0 for p in history.TAPE.prints("QQQ"))

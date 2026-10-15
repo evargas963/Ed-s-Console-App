@@ -8,7 +8,8 @@
  * screenshots show the heatmap as the hero the way real data would — clearly synthetic, offline.
  * Captures DARK and LIGHT at 2560x1440 and 1920x1080 (full viewport, not cropped).
  */
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./fixtures/live_socket');
+const { expiriesAnswer } = require('./fixtures/expiries');
 const { routeWatchlist } = require('./fixtures/watchlist');
 
 const SPOT = 5000;
@@ -63,7 +64,7 @@ async function intercept(page) {
     else if (url.includes('/api/terrain')) body = TERRAIN;
     else if (url.includes('/api/bars1m')) body = BARS;
     else if (url.includes('/api/chain')) body = CHAIN;
-    else if (url.includes('/api/expiries')) body = { expiries: EXPS.map(function (e) { return e.expiry; }) };    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    else if (url.includes('/api/expiries')) body = expiriesAnswer(EXPS.map(function (e) { return e.expiry; }));    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
   await routeWatchlist(page, ['SPY']);
 }

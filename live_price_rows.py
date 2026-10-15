@@ -1,16 +1,14 @@
-"""THE displayed price row -- one producer for every price the operator sees.
+"""The console's price row -- the spot every calculation of a change reads.
 
 Built only from live_market_plane (the per-field Schwab LEVELONE_EQUITIES state) and its feed
-state (feed_live_for). Imported by the capture daemon, which pushes these rows straight to
-the browser (app/market_data/schwab/streaming/live_ui.py), and by the console, whose analytics
-read the same function -- so a price on screen and a price in a calculation can never come
-from two different rules.
+state (feed_live_for); every analytic of the same change reads the same row. The screen shows
+Schwab's fields straight from the daemon's socket (live_ui), not this row.
 
 Nothing here computes a market value: every number is a Schwab field or its receive time, with
-Schwab's own trade time; the only derivations are the trade age and its label. Whether the feed
-is delivering the symbol now (`feed_live`) is stated beside the values; in an open session a
-down feed leaves them absent with the reason (`outage`), and while Closed the values as of the
-close stand (docs/DATA_FLOW.md §2 D5).
+Schwab's own trade time; the only derivation is the trade time's label. Whether the feed
+is delivering the symbol now (`feed_live`) is stated beside the values; with the feed down the
+last values stand, marked not live, with the reason in an open session (`outage`), and while
+Closed the values as of the close stand (docs/DATA_FLOW.md §2 D5).
 """
 from __future__ import annotations
 
@@ -32,21 +30,15 @@ def with_change(bar: dict[str, Any]) -> dict[str, Any]:
     return bar
 
 
-def _trade_age_sec(trade_ts: Optional[float], now: float) -> Optional[float]:
-    """Seconds since the Schwab trade time; None when no trade is known (never a 0)."""
-    if trade_ts is None:
-        return None
-    return max(0.0, now - float(trade_ts))
-
-
-def price_row(ticker: str, now: float) -> dict[str, Any]:
-    """The finished row the screen paints for one symbol, as it is at `now`: each field the
-    last value Schwab sent for it, unless its feed is down in an open session (`outage`, the
-    reason the values are absent; docs/DATA_FLOW.md §2 D5)."""
+def price_row(ticker: str, now: float, row: Optional[dict[str, Any]]) -> dict[str, Any]:
+    """The finished row the screen paints for one symbol, as it is at `now`, from `row` (its
+    LEVELONE_EQUITIES record, live_market_plane.get_quote, read once for the change it is shown
+    for): each field the last value Schwab sent for it. While its feed is down in an open session
+    the values stand, marked not live (`feed_live`, and `outage`, the reason; docs/DATA_FLOW.md §2
+    D5, AGENTS.md rule 5)."""
     tk = ticker_storage_key(ticker)
     outage = lmp.outage(tk, "LEVELONE_EQUITIES", now)
-    row = lmp.get_quote(tk) if tk else None
-    streamed = bool(row) and lmp.plane_row_is_streamed(row) and outage is None
+    streamed = bool(row) and lmp.plane_row_is_streamed(row)
     spot = float(row["spot"]) if streamed and lmp.plane_spot_is_last_price(row) else None
 
     def field(name: str):
@@ -58,7 +50,7 @@ def price_row(ticker: str, now: float) -> dict[str, Any]:
         "spot": spot,
         "spot_disp": f"{spot:.2f}" if spot is not None else None,
         "spot_source": SPOT_SOURCE if spot is not None else None,
-        # the feed itself (heartbeat, socket open, symbol held), and why the values are absent
+        # the feed itself (heartbeat, socket open, symbol held), and why the values are not live
         "feed_live": lmp.feed_live_for(tk, "LEVELONE_EQUITIES", now),
         "outage": outage,
         "bid": field("bid"),
@@ -80,8 +72,6 @@ def price_row(ticker: str, now: float) -> dict[str, Any]:
         "prior_close": field("prior_close"),
         "trade_ts": trade_ts,                          # Schwab TRADE_TIME (epoch s)
         "trade_time_ct": ct_label(trade_ts) if trade_ts is not None else None,
-        "trade_age_sec": _trade_age_sec(trade_ts, now),
         "ts_recv": row.get("server_received_ts") if row else None,
         "quote_ingestion": row.get("quote_ingestion") if row else None,
-        "server_ts": now,
     }

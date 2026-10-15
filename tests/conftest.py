@@ -49,7 +49,7 @@ os.environ["ED_CI_OFFLINE"] = "1"
 # No test console may connect to the real capture daemon's live push (it would ingest live
 # market data): point the push at a port nothing listens on.
 os.environ["ED_LIVE_PUSH_PORT"] = "1"
-# ...and the browser price socket a test daemon would bind / a test page is told
+# ...nor to its socket to the screen and the console's quotes (live_ui, streaming._rows_loop)
 os.environ["ED_LIVE_UI_PORT"] = "1"
 os.environ["SCHWAB_API_KEY"] = "ci-placeholder-api-key"
 os.environ["SCHWAB_APP_SECRET"] = "ci-placeholder-app-secret"
@@ -170,16 +170,3 @@ def pin_clock(monkeypatch):
     return pin
 
 
-@pytest.fixture
-def view(monkeypatch):
-    """Open the page on tickers: `view("SPY")` opens its /api/changes connection (the one viewing
-    signal) as the page does; the test starts with no page open and ends with them closed. No
-    event loop is bound, so a change is recorded for the page but not delivered (another test's
-    loop may be closed)."""
-    import push_changes
-    monkeypatch.setattr(push_changes, "_open", [])
-    monkeypatch.setattr(push_changes, "_loop", None)
-
-    def open_(*tickers):
-        return [push_changes.subscribe(tk) for tk in tickers]
-    return open_

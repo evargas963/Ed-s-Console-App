@@ -11,10 +11,11 @@ What is forwarded -- Schwab only, by each message's `src` (anything else publish
 the same topics is refused):
   quote.SYM    src "schwab_l1"          LEVELONE_EQUITIES
   book.SYM     src "schwab_book"        NASDAQ_BOOK / NYSE_BOOK / OPTIONS_BOOK (by `service`)
-  optquote.SYM src "schwab_options_l1"  LEVELONE_OPTIONS
+  contract.SYM src "ledger"             an option contract's one record (option_ledger): opened from
+               Schwab's chain and quotes, posted to by every LEVELONE_OPTIONS message
   news.SYM     src "schwab_news"        NEWS_HEADLINE
   bar1m.SYM    src "schwab_chart"       CHART_EQUITY
-  chain.TK     src "schwab_chain"       the REST option chain, in parts (the daemon's chain sweep)
+  chain.TK     src "schwab_chain"       the ticker's round is in, or why it failed (the chain sweep)
   pricehistory.TK.SERIES src "schwab_pricehistory"  Schwab's 1-minute bars, 15-minute and daily
                candles of the ticker (the chain sweep's /pricehistory requests)
   markets.DATE src "schwab_markets"     Schwab's /markets answer for the market date (the chain
@@ -23,12 +24,11 @@ the same topics is refused):
                for, with Schwab's /quotes answer to an add's check (capture.watchlist_message)
 
 A client receives the CURRENT RECORD of each topic as the daemon's bus keeps it (the newest by
-Schwab's time; a LEVELONE record merged field by field, each field's times in `field_ts`; a
-chain whole): first every record the bus holds, then each record that changes, the moment the
+Schwab's time; an equity quote or a contract record merged field by field, each field's times
+in `field_ts`): first every record the bus holds, then each record that changes, the moment the
 socket can take it. Nothing old waits in line behind a newer value (docs/DATA_FLOW.md §2 D1, D3).
 
-Wire format: one JSON text frame per record, {"topic": str, "msg": {...}}; a chain is one frame
-per part.
+Wire format: one JSON text frame per record, {"topic": str, "msg": {...}}.
 """
 from __future__ import annotations
 
@@ -37,7 +37,7 @@ import json
 import logging
 import os
 
-from stream_spine import LATEST, MessageBus
+from stream_spine import LATEST, LOG, MessageBus
 
 log = logging.getLogger(__name__)
 
@@ -52,16 +52,14 @@ LIVE_PUSH_PORT = int(os.environ.get("ED_LIVE_PUSH_PORT", "8799"))  # caps-ok: op
 MARKET_CONTEXT = ("$SPX", "$NDX", "$VIX")
 
 #: topic prefix -> the only `src` forwarded for it
-_FORWARDED = {"quote.": "schwab_l1", "book.": "schwab_book", "optquote.": "schwab_options_l1",
+_FORWARDED = {"quote.": "schwab_l1", "book.": "schwab_book", "contract.": "ledger",
               "news.": "schwab_news", "bar1m.": "schwab_chart", "chain.": "schwab_chain",
               "pricehistory.": "schwab_pricehistory", "markets.": "schwab_markets",
               "watchlist": "daemon_watchlist"}
 
 
 def is_forwarded(topic: str, msg) -> bool:
-    """A record that came from Schwab (a chain: its parts)."""
-    if isinstance(msg, list) and msg:
-        msg = msg[0]
+    """A record that came from Schwab."""
     if not isinstance(msg, dict):
         return False
     for prefix, src in _FORWARDED.items():
@@ -71,11 +69,8 @@ def is_forwarded(topic: str, msg) -> bool:
 
 
 def frames(topic: str, record) -> "list[str]":
-    """The wire frames of one current record: a chain's parts and a price history arrive with
-    their frames already built, off the event loop (complete_chain_capture.chain_messages,
-    price_history_message)."""
-    if topic.startswith("chain."):
-        return [part["frame"] for part in record]
+    """The wire frames of one current record: a price history and a markets answer arrive with
+    their frames already built, off the event loop (complete_chain_capture.price_history_message)."""
     if topic.startswith(("pricehistory.", "markets.")):
         return [record["frame"]]
     return [json.dumps({"topic": topic, "msg": record}, separators=(",", ":"))]
@@ -88,11 +83,22 @@ async def _serve_client(ws, bus: MessageBus, stats: dict, on_request=None) -> No
     blocked on `sub.get()` would otherwise never notice a closed socket, and server
     shutdown (which waits for every handler to return) would hang behind it."""
     sub = bus.subscribe("", policy=LATEST)
+    #: CHART_EQUITY is All Sequence (Streamer API §1.1): every bar, in order, besides the newest
+    #: record above (the console's bar writer keeps one bar per minute: a bar sent twice is one)
+    bars = bus.subscribe("bar1m.", policy=LOG)
     stats["clients"] += 1
 
     async def _pump() -> None:
         while True:
             topic, record = await sub.get()
+            if is_forwarded(topic, record):
+                for frame in frames(topic, record):
+                    await ws.send(frame)
+                stats["sent"] += 1
+
+    async def _bars() -> None:
+        while True:
+            topic, record = await bars.get()
             if is_forwarded(topic, record):
                 for frame in frames(topic, record):
                     await ws.send(frame)
@@ -111,17 +117,20 @@ async def _serve_client(ws, bus: MessageBus, stats: dict, on_request=None) -> No
                 on_request(req, ws)
 
     pump = asyncio.create_task(_pump())
+    every_bar = asyncio.create_task(_bars())
     closed = asyncio.create_task(_read())
     try:
-        await asyncio.wait({pump, closed}, return_when=asyncio.FIRST_COMPLETED)
-        if pump.done() and not pump.cancelled() and pump.exception() is not None:
-            e = pump.exception()
-            log.info("live push client ended: %s: %s", type(e).__name__, e)
+        await asyncio.wait({pump, every_bar, closed}, return_when=asyncio.FIRST_COMPLETED)
+        for t in (pump, every_bar):
+            if t.done() and not t.cancelled() and t.exception() is not None:
+                e = t.exception()
+                log.info("live push client ended: %s: %s", type(e).__name__, e)
     finally:
-        for t in (pump, closed):
+        for t in (pump, every_bar, closed):
             t.cancel()
-        await asyncio.gather(pump, closed, return_exceptions=True)
+        await asyncio.gather(pump, every_bar, closed, return_exceptions=True)
         bus.unsubscribe(sub)
+        bus.unsubscribe(bars)
         stats["clients"] -= 1
 
 

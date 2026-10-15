@@ -12,13 +12,11 @@ from datetime import datetime
 import pytest
 
 import live_market_plane as lmp
-import live_price_rows
 import server as srv
 import liquidity_value_engine as lve
-from app.options.order_flow import streaming as ofs
 from liquidity_models import ZONE_DISPLAY, SnapshotType, ZoneType
 from micro_structure import Candle
-from tests.feed_live_helper import daemon_bars
+from tests.feed_live_helper import daemon_bars, forget_price
 from time_et import ET
 
 TK = "ZZLIQ"
@@ -42,13 +40,13 @@ def published():
     them; nothing of the stand-in ticker is left behind."""
     def forget():
         srv._bars.pop(TK, None)
-        ofs._price_rows.pop(TK, None)
+        forget_price(TK)
         for key in [k for k in lve._MATERIALIZED_SNAPSHOTS if k[0] == TK]:
             del lve._MATERIALIZED_SNAPSHOTS[key]
     forget()
     for b in _BARS:
         if b["timestamp"] / 1000 < FRIDAY.timestamp():
-            srv._keep_bar(TK, Candle(ts=b["timestamp"] / 1000, open=b["open"], high=b["high"], low=b["low"],
+            srv._minutes.take(TK,Candle(ts=b["timestamp"] / 1000, open=b["open"], high=b["high"], low=b["low"],
                                      close=b["close"], volume=b["volume"]))
     srv._publish_price_levels(TK, FRIDAY)
     yield
@@ -85,13 +83,12 @@ def test_missing_spot_produces_honest_null_distance_and_neutral_score_through_th
 
 
 def test_spot_used_for_scoring_reports_the_real_live_spot_when_available(published):
-    """The positive control: Schwab's LAST_PRICE, through the daemon's price row to the console
+    """The positive control: Schwab's LAST_PRICE, through the console's price record
     (resolve_spot, the one spot authority), is reported as spot_used_for_scoring. Stand-in: the
     last bar's close as the LAST_PRICE Schwab sent."""
     last, at = _BARS[-1]["close"], FRIDAY.timestamp()
     lmp.record_feed_heartbeat({"ts": at, "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [TK]}})
     lmp.record_from_level_one_equity(TK, {"LAST_PRICE": last}, received_ts=at)
-    ofs._price_rows[TK] = live_price_rows.price_row(TK, at)
     body = _body(srv.liquidity_snapshot(TK, FRIDAY))
     assert body["spot_used_for_scoring"] == last
     assert "spot_estimate_vwap_fallback" not in body

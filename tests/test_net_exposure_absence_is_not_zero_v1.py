@@ -68,20 +68,22 @@ def test_per_strike_bars_are_dollar_gex_on_valid_gamma_only():
 
 def test_terrain_max_pain_uses_only_the_front_expiry():
     from math_levels import compute_max_pain
-    from terrain_engine import compute_terrain
+    from terrain_engine import at_spot, compute_terrain
 
-    def c(k, typ, oi, dte):
+    def c(k, typ, oi, dte, expires):
         ct = _c(k, typ, delta=0.5 if typ == "CALL" else -0.5, gamma=0.02, oi=oi)
-        ct["daysToExpiration"] = dte
+        ct["daysToExpiration"], ct["expirationDate"] = dte, expires
         return ct
 
-    front = [c(495.0, "PUT", 1000, 0), c(500.0, "CALL", 50, 0), c(500.0, "PUT", 50, 0),
-             c(505.0, "CALL", 1000, 0)]
+    today, later_day = "2026-10-07T20:00:00.000+00:00", "2026-11-06T21:00:00.000+00:00"
+    front = [c(495.0, "PUT", 1000, 0, today), c(500.0, "CALL", 50, 0, today), c(500.0, "PUT", 50, 0, today),
+             c(505.0, "CALL", 1000, 0, today)]
     # a later expiry with a very different distribution that would drag a POOLED max pain
-    later = [c(520.0, "CALL", 90000, 30), c(530.0, "PUT", 90000, 30)]
+    later = [c(520.0, "CALL", 90000, 30, later_day), c(530.0, "PUT", 90000, 30, later_day)]
     snap = compute_terrain("SPY", front + later, SPOT, now=NOW)
+    shown = at_spot(snap.to_dict(), SPOT, NOW.timestamp())     # the front expiry's, at NOW
     ex_front, _ = _book(front)
-    assert snap.max_pain_dte == 0
-    assert snap.max_pain == compute_max_pain(ex_front) == 500.0
+    assert (shown["max_pain_expiry"], shown["max_pain_dte"]) == ("2026-10-07", 0)
+    assert shown["max_pain"] == snap.max_pain_by_expiry["2026-10-07"] == compute_max_pain(ex_front) == 500.0
     ex_all, _ = _book(front + later)
-    assert compute_max_pain(ex_all) != snap.max_pain     # pooling would have moved it
+    assert compute_max_pain(ex_all) != shown["max_pain"]     # pooling would have moved it

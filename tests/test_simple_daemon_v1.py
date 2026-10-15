@@ -13,6 +13,7 @@ import pytest
 
 import stream_spine as ss
 from app.market_data.schwab.streaming import capture as cap
+from tests.feed_live_helper import no_daemon
 
 
 def test_requests_are_split_under_schwabs_message_limit():
@@ -64,40 +65,42 @@ def test_one_live_rule_every_reader_agrees_and_all_fail_closed_at_one_limit():
     """ONE-15 (2026-09-28 audit): "is it live" had four limits -- 3 s (price), 5 s (daemon
     status), 10 s (option greeks), 25 s (book) -- plus the daemon's 5 s/30 s message-age states,
     so one moment could read live on one card and dead on the next. One rule now: the daemon's
-    heartbeat is under FEED_HEARTBEAT_MAX_AGE_SEC, its Schwab socket is open, and it holds the
-    symbol on that service. A service quiet for 45 s on that feed is live (Schwab sends changes).
-    STAND-IN (named): the daemon's status."""
+    heartbeat is under FEED_HEARTBEAT_MAX_AGE_SEC, its Schwab socket is open, it holds the
+    symbol on that service, and the service has posted to it on this connection. A service quiet
+    for 45 s on that feed is live (Schwab sends changes). STAND-IN (named): the daemon's status,
+    and Schwab's last messages to MU, A and A's book 45 s ago (their receipts)."""
     import live_market_plane as lmp
     from app.options.order_flow import streaming as ofs
-    status = {"schwab_socket_open": True,
-              "health": {"OPTIONS_BOOK": {"age_sec": 45.0}},
-              "held": {"LEVELONE_EQUITIES": ["MU"], "LEVELONE_OPTIONS": ["B", "A"], "OPTIONS_BOOK": ["A"]}}
-
     now = time.time()
+    for sym, svc in (("MU", "LEVELONE_EQUITIES"), ("A", "LEVELONE_OPTIONS"), ("A", "OPTIONS_BOOK")):
+        lmp.note_posted(sym, svc, now - 45.0)
+    status = {"schwab_socket_open": True, "connected_at": now - 60.0,
+              "health": {"OPTIONS_BOOK": {"last_ts": now - 45.0}},
+              "held": {"LEVELONE_EQUITIES": ["MU"], "LEVELONE_OPTIONS": ["B", "A"], "OPTIONS_BOOK": ["A"]}}
 
     def diag(sym):     # the served option-contract diagnostics for `sym`
         return ofs.get_option_contract_streaming_diagnostics(sym, now)
 
     def readers():
         return (lmp.feed_live_for("MU", "LEVELONE_EQUITIES", now), lmp.feed_live_for("A", "LEVELONE_OPTIONS", now),
-                diag("A")["feed_health"]["book"]["state"], diag("B")["subscription_state"])
+                lmp.feed_live_for("A", "OPTIONS_BOOK", now), diag("B")["subscription_state"])
 
     lmp.record_feed_down()
     try:
         down = readers()
         limit = lmp.FEED_HEARTBEAT_MAX_AGE_SEC
         lmp.record_feed_heartbeat({**status, "ts": now - limit + 0.5})
-        live, book_age, b_book = readers(), diag("A")["feed_health"]["book"]["age_sec"], lmp.feed_live_for("B", "OPTIONS_BOOK", now)
+        live, b_book = readers(), lmp.feed_live_for("B", "OPTIONS_BOOK", now)
         lmp.record_feed_heartbeat({**status, "ts": now - limit - 0.5})
         late = readers()
         lmp.record_feed_heartbeat({**status, "schwab_socket_open": False, "ts": now})
         schwab_down = readers()
     finally:
-        lmp.record_feed_down()
-    assert down == late == (False, False, "NOT LIVE", "NOT STREAMED")
-    assert live == (True, True, "LIVE", "SUBSCRIBED") and book_age == 45.0
+        no_daemon()
+    assert down == late == (False, False, False, "NOT STREAMED")
+    assert live == (True, True, True, "SUBSCRIBED")
     assert b_book is False                                            # B held on L1 only
-    assert schwab_down == (False, False, "NOT LIVE", "SUBSCRIBED")    # the daemon is up, Schwab is not
+    assert schwab_down == (False, False, False, "SUBSCRIBED")         # the daemon is up, Schwab is not
 
 
 # ------------------------------------------------------------------ the process

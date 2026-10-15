@@ -101,6 +101,35 @@ CREATE TABLE IF NOT EXISTS stream_markets_raw (
     src TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_smkr_date_ts ON stream_markets_raw(date, ts_recv);
+-- Schwab's /chains answers, verbatim: one row per expiry asked, its status and the whole answer.
+CREATE TABLE IF NOT EXISTS stream_chains_raw (
+    ts_recv REAL NOT NULL,
+    symbol TEXT NOT NULL,
+    expiry TEXT NOT NULL,
+    status INTEGER NOT NULL,
+    native_json TEXT NOT NULL,
+    src TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_schr_sym_ts ON stream_chains_raw(symbol, expiry, ts_recv);
+-- Schwab's /expirationchain answers, verbatim: one row per ticker asked, its status and the answer.
+CREATE TABLE IF NOT EXISTS stream_expirations_raw (
+    ts_recv REAL NOT NULL,
+    symbol TEXT NOT NULL,
+    status INTEGER NOT NULL,
+    native_json TEXT NOT NULL,
+    src TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_sexr_sym_ts ON stream_expirations_raw(symbol, ts_recv);
+-- Schwab's /quotes answers for option contracts, verbatim: one row per request, the symbols asked,
+-- its status and the whole answer.
+CREATE TABLE IF NOT EXISTS stream_option_quotes_rest_raw (
+    ts_recv REAL NOT NULL,
+    symbols_json TEXT NOT NULL,
+    status INTEGER NOT NULL,
+    native_json TEXT NOT NULL,
+    src TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_soqrest_ts ON stream_option_quotes_rest_raw(ts_recv);
 -- The watchlist, the one list of tickers Schwab is asked for (written only by the daemon): one row
 -- per add or removal the console asked for -- the whole list after it, what happened to the
 -- ticker, and Schwab's /quotes answer to an add's check, as sent. The newest row is the list.
@@ -227,14 +256,21 @@ def subscription_msg(*, service: str, command: str, symbols: "list[str]", code: 
 # ---------------------------------------------------------------------------- the bus
 
 #: How a reader takes the bus. LOG: every message, in order -- the database writer, the record of
-#: everything Schwab sent (docs/DATA_FLOW.md §2 D4). LATEST: for each topic that changed since
-#: its last read, that topic's current record -- every live reader: a newer value replaces an
-#: older one at once, nothing old waits, and what a reader holds is bounded by the number of
-#: topics, never by how fast Schwab sends (D3).
+#: everything Schwab sent (docs/DATA_FLOW.md §2 D4); the daemon's socket to the screen (live_ui),
+#: which routes each at once and holds per page what its delivery type keeps; and the console's
+#: every 1-minute bar (live_push). LATEST: for each topic that changed since its last read, that
+#: topic's current record -- every other live reader: a newer value replaces an older one at once,
+#: nothing old waits, and what a reader holds is bounded by the number of topics, never by how
+#: fast Schwab sends (D3).
 LOG, LATEST = "log", "latest"
-#: the topics whose messages carry only the fields that changed (Schwab's LEVELONE services),
-#: by the key of the Schwab item in the message: their current record merges field by field
-_FIELD_DELTA = {"quote": "native", "optquote": "content"}
+#: the topics whose messages carry only the fields that changed (Schwab's LEVELONE_EQUITIES and
+#: LEVELONE_OPTIONS, Streamer API §1.1: Change; and each option contract's one record for the
+#: calculations, option_ledger), by the key of the fields in the message: their current record
+#: merges field by field, each field the newest by Schwab's time
+_FIELD_DELTA = {"quote": "native", "optquote": "content", "contract": "fields"}
+#: the topics only the journal (LOG) takes: each answer as Schwab sent it, which posts to its
+#: contracts' records and is never a current record of its own
+_JOURNAL_ONLY = ("chainanswer.", "quotesanswer.", "expirationanswer.")
 
 
 def current_key(topic: str, msg: Any) -> str:
@@ -270,8 +306,7 @@ class Subscription:
             self.wake.set()
 
     async def get(self) -> tuple[str, Any]:
-        """LOG: the next message. LATEST: (topic, current record) of the next changed topic; a
-        chain's record is its parts, in order."""
+        """LOG: the next message. LATEST: (topic, current record) of the next changed topic."""
         if self.policy == LOG:
             return await self.queue.get()
         while True:
@@ -286,17 +321,18 @@ class Subscription:
 
 
 class MessageBus:
-    """Every Schwab message is published once. It becomes its topic's current record -- the
-    newest by Schwab's time (`schwab_ts`, the frame's timestamp; a chain by its fetch time):
-    a LEVELONE message merged field by field, a book, bar or news item whole, a chain whole once
-    all its parts are in -- and each reader takes it by its policy (LOG or LATEST)."""
+    """Every Schwab message is published once. The journal (LOG) takes each as sent; one that is
+    a record of its own becomes its topic's current record -- the newest by Schwab's time
+    (`schwab_ts`): an equity quote and an option contract's record (option_ledger) merged field
+    by field, a book, bar or news item whole -- which each live reader (LATEST) takes."""
 
     def __init__(self) -> None:
         self._subs: list[Subscription] = []
         #: key (current_key) -> (topic, record)
         self.current: dict[str, tuple[str, Any]] = {}
-        #: chain topic -> (fetch time, {part: message}, parts): the newest fetch, filling
-        self._chains: dict[str, tuple[float, dict, int]] = {}
+        #: the keys whose record is of a connection that ended (stand): kept, until the next
+        #: message replaces it whole
+        self._standing: set[str] = set()
 
     def subscribe(self, prefix: str, *, policy: str = LATEST) -> Subscription:
         """A LATEST reader starts with every current record under `prefix` to read."""
@@ -314,24 +350,30 @@ class MessageBus:
 
     def publish(self, topic: str, msg: Any) -> None:
         key = current_key(topic, msg)
-        chain = topic.startswith("chain.")
-        changed = self._chain(key, topic, msg) if chain else self._newest(key, topic, msg)
+        journal = topic.startswith(_JOURNAL_ONLY)
+        changed = not journal and self._newest(key, topic, msg)
         for sub in self._subs:
-            if not topic.startswith(sub.prefix):
-                continue
-            # a chain's record is its own history (the chain sweep writes it), never the log's
-            if (sub.policy == LOG and not chain) or (sub.policy == LATEST and changed):
+            if topic.startswith(sub.prefix) and (sub.policy == LOG or changed):
                 sub.deliver(key, topic, msg)
 
     def forget(self, key: str) -> None:
         """The daemon stopped holding what `key` (current_key) names: its record is no longer
         current and is never handed out again (D5)."""
         self.current.pop(key, None)
+        self._standing.discard(key)
+
+    def stand(self, key: str) -> None:
+        """The connection that sent `key`'s record ended: the record stands as the last values
+        sent (D5), and the next connection's first message for it replaces it whole, so no field
+        of the ended connection is merged into the new one's."""
+        if key in self.current:
+            self._standing.add(key)
 
     def _newest(self, key: str, topic: str, msg: Any) -> bool:
         """Make `msg` part of its topic's current record where it is the newest by Schwab's
-        time. Returns whether the record changed."""
-        held = self.current.get(key)
+        time; a record that stands (stand) is replaced whole. Returns whether the record changed."""
+        held = None if key in self._standing else self.current.get(key)
+        self._standing.discard(key)
         t = msg.get("schwab_ts") if isinstance(msg, dict) else None
         body_key = _FIELD_DELTA.get(topic.split(".", 1)[0])
         body = msg.get(body_key) if body_key is not None and isinstance(msg, dict) else None
@@ -355,22 +397,6 @@ class MessageBus:
         self.current[key] = (topic, {**top, body_key: merged, "field_ts": stamps})
         return True
 
-    def _chain(self, key: str, topic: str, msg: dict) -> bool:
-        """A chain part (or a failed fetch, which has no parts): the newest fetch of the ticker
-        is kept; once all its parts are in it replaces the current chain whole."""
-        ts, part = msg.get("ts_recv"), msg.get("part")
-        held = self._chains.get(key)
-        if held is not None and ts < held[0]:
-            return False                                      # an older fetch: never current
-        if held is None or ts > held[0]:
-            held = (ts, {}, msg.get("parts") if part is not None else 1)
-            self._chains[key] = held
-        held[1][part if part is not None else 0] = msg
-        if len(held[1]) < held[2]:
-            return False
-        self.current[key] = (topic, [held[1][i] for i in sorted(held[1])])
-        return True
-
 
 
 class HealthRegistry:
@@ -388,8 +414,9 @@ class HealthRegistry:
         """When this feed last carried data (None: never, this connection)."""
         return self._last.get(feed)
 
-    def report(self, now: float) -> dict[str, dict]:
-        return {f: {"age_sec": now - ts} for f, ts in self._last.items()}
+    def report(self) -> dict[str, dict]:
+        """Each feed's instant it last carried data (its age is labelled where it is shown)."""
+        return {f: {"last_ts": ts} for f, ts in self._last.items()}
 
 
 # ---------------------------------------------------------------------------- the writer
@@ -436,6 +463,17 @@ _INSERTS = {
                      lambda m: (m["ts_recv"], m["symbol"], m["series"], json.dumps(m["answer"]), m["src"])),
     "markets": ("INSERT INTO stream_markets_raw(ts_recv,date,status,native_json,src) VALUES(?,?,?,?,?)",
                 lambda m: (m["ts_recv"], m["date"], m["status"], json.dumps(m["answer"]), m["src"])),
+    "chainanswer": ("INSERT INTO stream_chains_raw(ts_recv,symbol,expiry,status,native_json,src) "
+                    "VALUES(?,?,?,?,?,?)",
+                    lambda m: (m["ts_recv"], m["symbol"], m["expiry"], m["status"], json.dumps(m["answer"]),
+                               m["src"])),
+    "expirationanswer": ("INSERT INTO stream_expirations_raw(ts_recv,symbol,status,native_json,src) "
+                         "VALUES(?,?,?,?,?)",
+                         lambda m: (m["ts_recv"], m["symbol"], m["status"], json.dumps(m["answer"]), m["src"])),
+    "quotesanswer": ("INSERT INTO stream_option_quotes_rest_raw(ts_recv,symbols_json,status,native_json,src) "
+                     "VALUES(?,?,?,?,?)",
+                     lambda m: (m["ts_recv"], json.dumps(m["symbols"]), m["status"], json.dumps(m["answer"]),
+                                m["src"])),
     "watchlist": ("INSERT INTO stream_watchlist(ts_recv,symbol,op,tickers_json,status,native_json,src) "
                   "VALUES(?,?,?,?,?,?,?)",
                   lambda m: (m["ts_recv"], m["ticker"], m["op"], json.dumps(m["tickers"]), m["status"],
@@ -493,16 +531,13 @@ SPILL_CHUNK = 5000
 KEPT_BY_TIME = (("stream_quotes_raw", "ts_recv"), ("stream_book_raw", "ts_recv"),
                 ("stream_options_quotes_raw", "ts_recv"), ("stream_bars_raw", "ts_recv"),
                 ("stream_news_raw", "ts_recv"), ("stream_pricehistory_raw", "ts_recv"),
-                ("stream_markets_raw", "ts_recv"),
+                ("stream_markets_raw", "ts_recv"), ("stream_chains_raw", "ts_recv"),
+                ("stream_expirations_raw", "ts_recv"),
+                ("stream_option_quotes_rest_raw", "ts_recv"),
                 ("stream_watchlist", "ts_recv"), ("stream_subscriptions", "ts"),
                 ("stream_feed_status", "ts"), ("stream_write_failures", "ts"))
 #: rows removed in one transaction, so a live write never waits behind a long delete
 PRUNE_ROWS = 20000
-
-
-def _every_message(topic: str, msg: Any) -> bool:
-    """The writer's save rule when no one has set one (CaptureWriter.saves): every message."""
-    return True
 
 
 @dataclass(frozen=True)
@@ -839,9 +874,6 @@ class CaptureWriter:
         self.error: "str | None" = None
         self.error_ts: "float | None" = None
         self.left_on_disk: list = []
-        #: which bus messages are recorded (topic, message) -> bool; the daemon sets its own
-        #: (Daemon.saves: option quotes and option books of the contracts it keeps)
-        self.saves = _every_message
         #: the daily keep in progress (prune): rows received before `_prune_before` leave each
         #: table still in `_prune`, a part at a time; `_pruned` counts them per table
         self._prune: "list[tuple[str, str]]" = []
@@ -1004,7 +1036,7 @@ class CaptureWriter:
             await asyncio.to_thread(thread.join)
 
     def _hand(self, item) -> None:
-        if not self.saves(*item):
+        if item[0].split(".", 1)[0] not in _INSERTS:     # not a Schwab message (no table): not recorded
             return
         with self._lock:
             if self.state == WRITER_DEAD:

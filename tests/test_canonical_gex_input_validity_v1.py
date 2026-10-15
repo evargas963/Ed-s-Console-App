@@ -16,6 +16,7 @@ from math_exposure_core import (
     greek_reported,
 )
 from server import project_gamma_surface
+from terrain_engine import listed_expiries, listed_strikes
 from tests.real_chains import SPY_0DTE
 from time_et import ET
 
@@ -78,9 +79,9 @@ def test_real_spy_capture_is_used_as_schwab_sent_it():
 def test_a_strike_no_greek_reached_is_blank_not_zero():
     exp, _ = compute_exposures_by_strike([_ct(100.0, "CALL", 500, iv=MISSING_GREEK_SENTINEL)], spot=SPOT, now=NOW)
     assert bucket_metric(exp[100.0], "net_gex_1pct") is None
-    surface = project_gamma_surface([_ct(100.0, "CALL", 500, iv=MISSING_GREEK_SENTINEL)],
-                                    exposure_books([_ct(100.0, "CALL", 500, iv=MISSING_GREEK_SENTINEL)], spot=SPOT,
-                                                   now=NOW))
+    chain = [_ct(100.0, "CALL", 500, iv=MISSING_GREEK_SENTINEL)]
+    surface = project_gamma_surface(chain, exposure_books(chain, spot=SPOT, now=NOW), listed_strikes(chain),
+                                    listed_expiries(chain))
     row = [r for r in surface["cells"] if r["strike"] == 100.0][0]
     # no put is listed at the strike: its OI is the call's 500 (strike_oi_legs, the one reader)
     assert row["gex"] == [None] and row["oi"] == [{"call": 500, "put": 0, "total": 500}]
@@ -91,5 +92,6 @@ def test_genuine_balanced_zero_is_a_zero():
     put = _ct(100.0, "PUT", 500)
     exp, _ = compute_exposures_by_strike([call, put], spot=SPOT, now=NOW)
     assert bucket_metric(exp[100.0], "net_gex_1pct") == 0.0
-    surface = project_gamma_surface([call, put], exposure_books([call, put], spot=SPOT, now=NOW))
+    surface = project_gamma_surface([call, put], exposure_books([call, put], spot=SPOT, now=NOW),
+                                    listed_strikes([call, put]), listed_expiries([call, put]))
     assert [r for r in surface["cells"] if r["strike"] == 100.0][0]["gex"] == [0]

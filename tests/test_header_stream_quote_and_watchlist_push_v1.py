@@ -1,70 +1,78 @@
-"""The price is one row, built once by the capture daemon (live_price_rows.price_row) and pushed
-to the browser (live_ui.py) and to the console alike: a price on screen and a price in a
-console calculation are the same value."""
+"""The price is Schwab's LEVELONE_EQUITIES fields, pushed by the capture daemon as Schwab sent
+them (live_ui.py) to the browser and to the console alike. The console keeps one record of them
+per ticker, its live_market_plane entry, which live_price_rows.price_row reads; it keeps no other
+copy, so a price in a console calculation is the record's."""
 from __future__ import annotations
 
 import time
 
 import live_market_plane as lmp
-import live_price_rows
 import server as srv
+from stream_spine import MessageBus, current_key
 
 
-def test_a_symbol_the_daemon_does_not_hold_is_absent_in_session_and_stands_while_closed() -> None:
-    """The Schwab socket open but the symbol not held (docs/DATA_FLOW.md §2 D5): during RTH its
-    row serves no values and says why; at 22:00 ET the values Schwab sent stand."""
+def test_a_symbol_the_daemon_does_not_hold_stands_marked_not_live() -> None:
+    """The Schwab socket open but the symbol not held (docs/DATA_FLOW.md §2 D5): the values Schwab
+    sent stand, not live; during RTH its row says why, at 22:00 ET (Closed) there is no outage."""
     try:
-        for now, served in ((1790780400.0, (None, None)), (1790820000.0, (9.0, 8.9))):  # 11:00, 22:00 ET
+        for now, outage in ((1790780400.0, True), (1790820000.0, False)):  # 11:00, 22:00 ET
             lmp.record_feed_heartbeat({"ts": now, "schwab_socket_open": True,
                                        "held": {"LEVELONE_EQUITIES": ["ZZHELD"]}})
             lmp.record_from_level_one_equity("ZZNOTHELD", {"LAST_PRICE": 9.0, "BID_PRICE": 8.9},
                                              received_ts=now)
-            row = live_price_rows.price_row("ZZNOTHELD", now)
-            assert (row["spot"], row["bid"], row["feed_live"]) == (*served, False)
-            assert (row["outage"] is None) == (served[0] is not None)
+            row = srv.price_row("ZZNOTHELD", now)
+            assert (row["spot"], row["bid"], row["feed_live"]) == (9.0, 8.9, False)
+            assert (row["outage"] is not None) == outage
     finally:
         lmp.record_feed_down()
 
 
-def test_the_console_spot_is_the_daemons_price_row_and_the_console_keeps_no_copy() -> None:
+def test_the_console_spot_is_its_price_record_and_the_console_keeps_no_other_copy() -> None:
     """Measured 2026-09-28: the console's spot differed from the header's in 25 of 200
-    same-moment checks -- the console rebuilt LAST_PRICE from the forwarded messages. Real TSLA
-    quote as Schwab sent it (tests/fixtures/real_equity_book.json), received now."""
+    same-moment checks -- the console rebuilt LAST_PRICE from the forwarded messages. The
+    console's one price is its live_market_plane record: the order-flow tape's copy of Schwab's
+    message is no price, the spot is the record's row (live_price_rows.price_row), and without
+    the record the console has no price. Real TSLA quote as Schwab sent it
+    (tests/fixtures/real_equity_book.json), received now."""
     import json
     from pathlib import Path
 
     from app.options.order_flow import streaming as ofs
-    from tests.feed_live_helper import publish_daemon_rows
+    from tests.feed_live_helper import forget_price
 
     fx = json.loads((Path(__file__).parent / "fixtures" / "real_equity_book.json").read_text(encoding="utf-8"))
     tk, native, now = fx["ticker"], fx["quote"]["native"], time.time()
-    for kept in (lmp._by_ticker, lmp._fields_by_ticker, ofs._price_rows):
+    for kept in (lmp._by_ticker, lmp._fields_by_ticker):
         kept.pop(tk, None)
     lmp.record_feed_heartbeat({"ts": now, "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [tk]}})
     try:
-        # the console receives Schwab's message (its order-flow tape) and keeps no price of its own
-        ofs._ingest_pushed(f"quote.{tk}", {"symbol": tk, "ts_recv": now, "native": native})
+        # the console receives Schwab's message on its order-flow tape: that is no price
+        bus = MessageBus()                  # the record as the daemon's bus holds and pushes it
+        sent = {"symbol": tk, "ts_recv": now, "native": native}
+        bus.publish(f"quote.{tk}", sent)
+        ofs._ingest_pushed(f"quote.{tk}", bus.current[current_key(f"quote.{tk}", sent)][1])
         assert lmp.get_quote(tk) is None and srv.resolve_spot(tk, now=now)[0] is None
-        # the daemon builds its price row from the same message and pushes it
+        # the same fields, as the daemon pushes them, taken into the console's price record
         lmp.record_from_level_one_equity(tk, native, received_ts=now)
-        publish_daemon_rows(tk)
-        row = ofs.price_row(tk)
+        row = srv.price_row(tk, now)
         assert row["spot"] == native["LAST_PRICE"]
         assert srv.resolve_spot(tk, now=now) == (row["spot"], srv.SPOT_SOURCE_PLANE, row["trade_ts"])
+        # the record is the console's only copy: without it, the console has no price
+        forget_price(tk)
+        assert lmp.get_quote(tk) is None and srv.resolve_spot(tk, now=now)[0] is None
     finally:
-        for kept in (lmp._by_ticker, lmp._fields_by_ticker, ofs._price_rows):
+        for kept in (lmp._by_ticker, lmp._fields_by_ticker):
             kept.pop(tk, None)
         lmp.record_feed_down()
 
 
-def test_pages_are_told_the_daemon_price_port(monkeypatch) -> None:
-    """The console fills the page's price-socket port from the daemon's own setting; e2e
-    points it at a dead port so no test page can ever reach the real daemon."""
-    from app.market_data.schwab.streaming import live_ui
-    monkeypatch.setattr(live_ui, "LIVE_UI_PORT", 8811)
-    html = srv.root().body.decode("utf-8")
-    assert '<meta name="ed-live-ui-port" content="8811">' in html
-    assert 'content="">' not in html.split("ed-live-ui-port", 1)[1][:12]
+def test_the_page_is_told_the_daemons_port() -> None:
+    """Operator 2026-10-14, reversing design A: Schwab -> daemon -> the screen. The page served
+    carries the port of the daemon's socket (live_ui), which it opens for every Schwab value."""
+    from app.market_data.schwab.streaming.live_ui import LIVE_UI_PORT
+
+    body = srv.root().body.decode("utf-8")
+    assert f'<meta name="ed-live-ui-port" content="{int(LIVE_UI_PORT)}">' in body
 
 
 

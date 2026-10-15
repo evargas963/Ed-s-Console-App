@@ -68,18 +68,19 @@ def test_the_regime_is_read_by_one_rule_for_every_instrument():
     (tests/real_chains.py), each valued at its own capture: SPY's 0DTE chain is too narrow for the
     sign (withheld, the coverage rule); CRWD's complete chain is trusted (issued)."""
     from math_levels import GAMMA_FLIP_NARROW
-    from terrain_engine import compute_terrain
+    from terrain_engine import at_spot, compute_terrain
     from tests.real_chains import CRWD, SPY_0DTE
     got = {}
     for real in (SPY_0DTE, CRWD):
         tk = real.ticker
         snap = compute_terrain(tk, [dict(c) for c in real.chain], real.spot, now=real.now)
         g = snap.flip_diag.get("gamma_at_spot")
-        got[tk] = (snap.confidence, snap.regime)
-        if snap.confidence in (GAMMA_FLIP_NARROW, GAMMA_FLIP_UNAVAILABLE) or not g:
-            assert snap.regime == REGIME_UNAVAILABLE, tk
+        regime = at_spot(snap.to_dict(), real.spot, real.now.timestamp())["regime"]
+        got[tk] = (snap.flip_confidence, regime)
+        if snap.flip_confidence in (GAMMA_FLIP_NARROW, GAMMA_FLIP_UNAVAILABLE) or not g:
+            assert regime == REGIME_UNAVAILABLE, tk
         else:
-            assert snap.regime == (REGIME_LONG_GAMMA if g > 0 else REGIME_SHORT_GAMMA), tk
+            assert regime == (REGIME_LONG_GAMMA if g > 0 else REGIME_SHORT_GAMMA), tk
     assert got["CRWD"][1] != REGIME_UNAVAILABLE, "a single name's regime is issued"
 
 

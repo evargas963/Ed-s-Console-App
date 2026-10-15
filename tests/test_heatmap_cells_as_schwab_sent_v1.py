@@ -25,6 +25,7 @@ from pathlib import Path
 import server
 import time_et
 from math_exposure_core import exposure_books
+from terrain_engine import listed_expiries, listed_strikes
 from tests.gamma_render_helper import drawn as render
 
 _FX = Path(__file__).resolve().parent / "fixtures"
@@ -40,7 +41,8 @@ _CONTRACTS = [c for cs in _COLUMNS.values() for c in cs]
 
 
 def _surface() -> dict:
-    return server.project_gamma_surface(_CONTRACTS, exposure_books(_CONTRACTS, spot=_SPOT, now=_AT))
+    return server.project_gamma_surface(_CONTRACTS, exposure_books(_CONTRACTS, spot=_SPOT, now=_AT),
+                                        listed_strikes(_CONTRACTS), listed_expiries(_CONTRACTS))
 
 
 def _by_strike(contracts) -> "dict[float, list]":

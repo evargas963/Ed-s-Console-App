@@ -9,14 +9,12 @@
   'use strict';
 
   function st() { return (window.EdShell && window.EdShell.getState()) || {}; }
-  function isHeatmap() { var s = st(); return s.workspace === 'order-flow' && s.subview === 'heatmap'; }
   function ticker() { return (st().ticker || ''); }
-  function stillHeatmap(tk) { return isHeatmap() && ticker() === tk; }
   function fmtCT(ts) {
     try { return new Date(ts * 1000).toLocaleTimeString('en-US', { timeZone: 'America/Chicago', hour: '2-digit', minute: '2-digit' }); } catch (e) { return '—'; }
   }
 
-  var _minutes = 60, _chart = null;
+  var _chart = null;
   function host() { return document.getElementById('ofhBody'); }
   function ensureChart(h) {
     if (_chart && h.querySelector('.ofh-plot')) return _chart;
@@ -38,35 +36,18 @@
       fmtCT(d.since_ts) + '–' + fmtCT(d.until_ts) + ' CT · latest capture ' + fmtCT(d.latest_captured_ts) + ' CT — every cell is a captured book tick; nothing is interpolated between ticks.';
   }
 
-  function loadImpl(tk, signal) {
-    var h = host();
-    if (!h || !stillHeatmap(tk)) return;
-    return fetch('/api/order-flow/book-heatmap?ticker=' + encodeURIComponent(tk) + '&venue=' + st().bookVenue + '&minutes=' + _minutes, { cache: 'no-store', signal: signal })
-      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-      .then(function (d) { if (stillHeatmap(tk)) render(h, tk, d); })
-      .catch(function (e) {
-        if (e && e.name === 'AbortError') return;
-        if (stillHeatmap(tk)) render(h, tk, null);
-      });
-  }
-  var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(ticker(), signal); });
-  function load() {
-    if (!isHeatmap()) return;
-    // keyed on ticker + venue + minutes: a different window while a fetch is in flight aborts it
-    _loader.trigger(ticker() + '|' + st().bookVenue + '|' + _minutes);
-  }
+  // the grid as the console pushes it for the view's ticker, venue and minutes
+  window.EdShell.onPanel('book.heatmap', function (a) {
+    var h = host(); if (!h || a.waiting) return;
+    render(h, ticker(), a.ok ? a.body : null);
+  });
 
   if (typeof document !== 'undefined') {
-    document.addEventListener('ed:view', load);
-    document.addEventListener('ed:ticker', load);
-    document.addEventListener('ed:book_venue', load);
-    document.addEventListener('ed:changed', function (e) { if (e.detail.kind === 'flow') load(); });
     document.addEventListener('click', function (e) {
       var btn = e.target.closest && e.target.closest('[data-ofh-minutes]');
       if (!btn) return;
-      _minutes = Number(btn.getAttribute('data-ofh-minutes')) || 60;
       document.querySelectorAll('[data-ofh-minutes]').forEach(function (b) { b.classList.toggle('on', b === btn); });
-      load();
+      window.EdShell.setInput('bookMinutes', Number(btn.getAttribute('data-ofh-minutes')));
     });
   }
   // read-only view for tests (e2e) -- never a control surface

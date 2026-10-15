@@ -30,7 +30,8 @@
  * carried through -> Strike Detail's /api/chain fetch -> Strike Detail showing that strike's call
  * and put -- is actually exercised end to end.
  */
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./fixtures/live_socket');
+const { expiriesAnswer } = require('./fixtures/expiries');
 const { routeWatchlist } = require('./fixtures/watchlist');
 
 const STRIKES = { spot: 100, spot_strike: 100, max_abs_row: [100, 958600, 50], today_source: 'terrain_live_cache', today_age_sec: 5, levels_stale: false,
@@ -58,7 +59,7 @@ async function intercept(page) {
     if (url.includes('/api/terrain/strikes')) body = STRIKES;
     else if (url.includes('/api/terrain')) body = TERRAIN;
     else if (url.includes('/api/bars1m')) body = BARS;
-    else if (url.includes('/api/expiries')) body = { expiries: ['2026-09-11', '2026-09-18'] };
+    else if (url.includes('/api/expiries')) body = expiriesAnswer(['2026-09-11', '2026-09-18']);
     else if (url.includes('/api/chain')) {
       const u = new URL(url); chainRequests.push(u.searchParams.get('expiry'));
       body = CHAIN;

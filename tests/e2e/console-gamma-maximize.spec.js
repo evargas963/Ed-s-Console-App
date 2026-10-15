@@ -5,7 +5,8 @@
  * touching the shared ticker / strike / expiry / scope state — so Restore returns to the exact same
  * context. Esc restores; the choice persists. Offline.
  */
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./fixtures/live_socket');
+const { expiriesAnswer } = require('./fixtures/expiries');
 const { routeWatchlist } = require('./fixtures/watchlist');
 
 const SURFACE = { ticker: 'SPY', symbol: 'SPY', available: true, spot: 100, source: 'terrain_live_cache',
@@ -30,7 +31,7 @@ async function intercept(page) {
     else if (url.includes('/api/terrain/strikes')) body = STRIKES;
     else if (url.includes('/api/terrain')) body = TERRAIN;
     else if (url.includes('/api/bars1m')) body = { bars: [{ t: 1757000000, o: 99, h: 101, l: 98, c: 100, v: 1 }] };
-    else if (url.includes('/api/expiries')) body = { expiries: ['2026-09-11', '2026-09-18'] };
+    else if (url.includes('/api/expiries')) body = expiriesAnswer(['2026-09-11', '2026-09-18']);
     else if (url.includes('/api/chain')) body = CHAIN;    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
   await routeWatchlist(page, ['SPY']);

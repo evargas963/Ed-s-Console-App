@@ -3,14 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<!-- the capture daemon's price socket port: filled in by the console (ED_LIVE_UI_PORT) -->
-<meta name="ed-live-ui-port" content="">
 <!-- the market-context symbols the page always shows, [{key, display}]: filled in by the console -->
+<meta name="ed-live-ui-port" content="">
 <meta name="ed-market-context" content="">
 <!-- the strike-window scopes, [{key, label}]: filled in by the console -->
 <meta name="ed-scopes" content="">
 <!-- the words for each streaming state, {cell, column}: filled in by the console -->
 <meta name="ed-stream-words" content="">
+<meta name="ed-chart-series" content="">
 <title>Ed Console</title>
 <!-- Carried forward from legacy static/index.html during the /console cutover (operator
      directive 2026-09-14): the PWA manifest and icons are a real, currently-served capability
@@ -160,6 +160,11 @@
      message text (below) and a persistent border on the list, not in dimmed numbers. */
   .wl.wl-degraded{outline:1px dashed var(--ed-stale);outline-offset:-1px}
   .wl.wl-degraded .wl-msg{color:var(--ed-stale)}
+  /* a value read from a price that is not live: marked, with the console's reason */
+  .not-live{outline:1px dashed var(--ed-stale);outline-offset:-1px;position:relative}
+  .not-live::before{content:'NOT LIVE · ' attr(data-not-live);position:absolute;top:2px;right:6px;z-index:5;
+    font:600 10px/1.4 var(--ed-mono);color:var(--ed-stale);background:var(--ed-panel);padding:0 4px;pointer-events:none}
+  .wl-px.not-live-px{color:var(--ed-stale)}
   .wl-add{display:flex;align-items:center;gap:10px;height:32px;padding:0 15px;color:var(--ed-ink-3);
     font-size:12.5px;white-space:nowrap}
   .wl-add:hover{color:var(--ed-accent-2)}
@@ -925,6 +930,8 @@
               <aside class="tdm-queue panel">
                 <div class="panel-h"><span class="t">Attention Queue</span><span class="tdm-count" id="tdmQueueCount"></span><div class="r"><span class="sub" id="tdmLookback"></span></div></div>
                 <div class="tdm-queue-b" id="tdmQueue"></div>
+                <div class="panel-h"><span class="t">News</span><div class="r"><span class="sub">Schwab NEWS_HEADLINE, as sent</span></div></div>
+                <div class="tdm-queue-b" id="tdmNews"></div>
               </aside>
             </div>
             <div class="tdm-cards" id="tdmCards">
@@ -1027,7 +1034,6 @@
   </div>
 </aside>
 
-<script src="/static/js/l1_sse_guards.js" defer></script>
 <script src="/static/js/ed-core.js" defer></script>
 <script src="/static/js/ed-gamma.js" defer></script>
 <script src="/static/js/ed-gamma-panels.js" defer></script>

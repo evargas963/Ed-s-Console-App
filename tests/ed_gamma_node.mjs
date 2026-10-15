@@ -30,12 +30,12 @@ ctx.window = ctx;
 ctx.globalThis = ctx;
 // the shell (ed-core.js) as the heatmap uses it: no pan, no expiry selected
 ctx.EdShell = {
+  onPanel: () => {}, setInput: () => {},
   getState: () => ({}), getMeasure: () => 'gex', getExpiry: () => null, setStrike: () => {},
-  newPan: () => ({ centre: null, shift: 0, served: null }), panServed: (pan, c) => { pan.served = c; },
-  windowQuery: () => '&scope=auto', wireStrikeAxis: () => {},
+  pan: () => ({ centre: null, shift: 0, served: null }), panServed: (pan, c) => { pan.served = c; },
+  wireStrikeAxis: () => {},
 };
 vm.createContext(ctx);
-vm.runInContext(readFileSync(join(ROOT, 'static/js/l1_sse_guards.js'), 'utf8'), ctx, { filename: 'l1_sse_guards.js' });
 vm.runInContext(readFileSync(join(ROOT, 'static/js/ed-gamma.js'), 'utf8'), ctx, { filename: 'ed-gamma.js' });
 
 const G = ctx.EdGamma;

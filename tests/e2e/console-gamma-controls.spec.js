@@ -6,7 +6,8 @@
  * expiry filters the heatmap to that column; an old expiry invalid for a new ticker fails safe to All;
  * terrain Key Levels stay disclosed as all-exp when a single expiry is filtered. Offline.
  */
-const { test, expect } = require('@playwright/test');
+const { test, expect, pushChange } = require('./fixtures/live_socket');
+const { expiriesAnswer } = require('./fixtures/expiries');
 const { routeWatchlist } = require('./fixtures/watchlist');
 
 const EXPS = ['2026-09-11', '2026-09-12', '2026-09-18'];
@@ -40,7 +41,7 @@ async function intercept(page) {
     else if (url.includes('/api/terrain/strikes')) body = Object.assign({}, STRIKES, { spot: spot });
     else if (url.includes('/api/terrain')) body = Object.assign({}, TERRAIN, { spot: spot });
     else if (url.includes('/api/bars1m')) body = BARS;
-    else if (url.includes('/api/expiries')) body = { expiries: EXPS };
+    else if (url.includes('/api/expiries')) body = expiriesAnswer(EXPS);
     else if (url.includes('/api/chain')) body = { ticker: dec, spot: spot, expiry: EXPS[0], status: 'ok',
       scope: { kind: 'complete_single_expiry' }, contracts: [] };    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
@@ -74,7 +75,7 @@ test.describe('ticker / expiry / measure controls', () => {
 
   test('a new chain pushed for the ticker on screen replaces the expiry list (2026-10-08: yesterday\'s list stayed)', async ({ page }) => {
     // The console held yesterday's chain when the page opened; today's chain lands, the console
-    // pushes `chain` on /api/changes, and /api/expiries serves today's list.
+    // pushes a `chain` change, and /api/expiries serves today's list.
     const YESTERDAY = { expiries: ['2026-10-07', '2026-10-08'],
       labels: { '2026-10-07': '10/07/2026 · 0DTE', '2026-10-08': '10/08/2026 · 1DTE' } };
     const TODAY = { expiries: ['2026-10-08', '2026-10-09'],
@@ -85,15 +86,10 @@ test.describe('ticker / expiry / measure controls', () => {
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(served) });
       listed();
     });
-    let pushes = 0;
-    await page.route('**/api/changes**', async (route) => {
-      pushes += 1;
-      await first;                                          // the page holds yesterday's list
-      served = TODAY;                                        // today's chain reached the console
-      route.fulfill({ status: 200, contentType: 'text/event-stream',
-        body: pushes === 1 ? 'event: chain\ndata: SPY\n\n' : 'event: session\ndata: RTH\n\n' });
-    });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await first;                                            // the page holds yesterday's list
+    served = TODAY;                                          // today's chain reached the console
+    await pushChange(page, 'chain');
     await expect(page.locator('#expSel option')).toHaveText(['All Expirations', '10/08/2026 · 0DTE', '10/09/2026 · 1DTE']);
   });
 
@@ -188,6 +184,10 @@ test.describe('ticker / expiry / measure controls', () => {
     await expect(page.locator('#flTicker')).toHaveText('AAPL');
     await page.locator('#subnav .tab', { hasText: 'Gamma' }).click();
     await expect(page.locator('#mvTicker')).toHaveText('AAPL');
+    // AAPL's Gamma panels drawn: the stand-in console's reads of them (tests/e2e/fixtures/
+    // live_socket.js reads each through the page's stubs; the console reads them in itself) are done
+    await expect(page.locator('#heatBody .hcell').first()).toBeVisible();
+    await page.waitForTimeout(500);
     // switch by WATCHLIST CLICK -> the same single state everywhere; nothing keeps asking for AAPL
     reqs.length = 0;
     await page.locator('.wl-row .wl-sym', { hasText: 'QQQ' }).click();

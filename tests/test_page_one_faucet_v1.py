@@ -6,7 +6,7 @@ One spot on every screen: each route that serves `spot` serves the live price at
 price `priced_at_spot`. Strike Detail's Net GEX is the heatmap's own cell, and OI/volume cell
 totals are served, not summed in the browser.
 
-Through the real code: the daemon's status and price row as the console holds them, the levels
+Through the real code: the daemon's status and the price as the console holds them, the levels
 producer (server._publish_levels), the routes. Real data: Schwab's CRWD chain as captured
 2026-09-02 (tests/fixtures/real_crwd_complete_chain_quarter.json), published at its capture price
 (205.4). STAND-IN (named): the live price after the capture, LIVE (206.4).
@@ -18,10 +18,11 @@ from pathlib import Path
 
 import pytest
 
-import app.options.order_flow.streaming as ofs
+import app.options.order_flow.state as ofls
 import live_market_plane as lmp
 import server
-from stream_spine import options_quote_msg
+from tests.feed_live_helper import (forget_price, ledger_open, ledger_round, no_daemon, price_sent,
+                                    through_the_daemons_bus)
 from time_et import ET
 
 _REAL = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_crwd_complete_chain_quarter.json")
@@ -35,24 +36,26 @@ _AT = datetime(2026, 9, 2, 10, 5, tzinfo=ET)
 
 
 def _daemon(price, at: float, held_options=()):
-    """The daemon's heartbeat at `at` and its price row for TK."""
-    lmp.record_feed_heartbeat({"ts": at, "schwab_socket_open": True,
+    """The daemon's heartbeat at `at` (its connection to Schwab begun an hour before) and TK's last
+    trade as Schwab sends it."""
+    lmp.record_feed_heartbeat({"ts": at, "schwab_socket_open": True, "connected_at": at - 3600,
                                "held": {"LEVELONE_EQUITIES": [TK], "LEVELONE_OPTIONS": list(held_options)}})
-    ofs._price_rows[TK] = {"ticker": TK, "spot": price, "trade_ts": _AT.timestamp()}
+    price_sent(TK, price, _AT.timestamp())
 
 
 @pytest.fixture
 def held():
     """CRWD's chain published at its capture price, the live price since moved to LIVE."""
     _daemon(PUBLISHED, _AT.timestamp())                  # live when the chain is published
-    server._publish_levels(TK, [dict(c) for c in _CONTRACTS], _AT.timestamp(), now=_AT)
+    ledger_round(TK, _CONTRACTS, _AT.timestamp(), now=_AT)
     _daemon(LIVE, time.time())                           # live now, as the routes read it
     with server._terrain_cache_lock:
         payload = server._terrain_cache[TK]
     yield payload
     with server._terrain_cache_lock:
         server._terrain_cache.pop(TK, None)
-    ofs._price_rows.pop(TK, None)
+    forget_price(TK)
+    ofls.clear_all_live_state()
     lmp.record_feed_down()
 
 
@@ -111,7 +114,7 @@ def test_a_book_with_no_age_is_not_reported_fresh():
     """LIVE badges read book_stale: an unknown book age is unknown (None), never False (fresh)."""
     from app.options.order_flow.engine import compute_book_microstructure
     out = compute_book_microstructure({"content": {}}, now_ts=1_800_000_000.0)
-    assert out["ages"]["book_age_sec"] is None and out["ages"]["book_stale"] is None
+    assert out["as_of"]["book"] is None and out["ages"]["book_stale"] is None
 
 
 def test_days_to_expiry_are_schwabs_as_sent(held):
@@ -156,20 +159,21 @@ def test_heatmap_column_state_cell_age_and_front_expiry_are_served():
     publication): the column is partly streaming and the cell's age is 2 s."""
     sym = next(c["symbol"] for c in _CONTRACTS if c["putCall"] == "CALL")
     _daemon(PUBLISHED, _AT.timestamp(), [sym])
-    ofs._ingest_pushed(f"optquote.{sym}", options_quote_msg(symbol=sym, content={"key": sym, "GAMMA": 0.05},
-                                                            src="schwab_options_l1", ts_recv=_AT.timestamp() - 2))
+    bus = ledger_open(TK, _CONTRACTS, _AT.timestamp() - 10)
+    through_the_daemons_bus(bus, sym, [{"GAMMA": 0.05}], [_AT.timestamp() - 2])
     try:
-        server._publish_levels(TK, [dict(c) for c in _CONTRACTS], _AT.timestamp() - 10, now=_AT)
+        server._publish_levels(TK, _AT.timestamp() - 10, now=_AT)
         body = server.gamma_surface_payload(TK, "all", None, 0, None, None, _AT)
     finally:
         with server._terrain_cache_lock:
             server._terrain_cache.pop(TK, None)
-        ofs._price_rows.pop(TK, None)
-        ofs._drop_released_options(_AT.timestamp())
-        lmp.record_feed_down()
+        forget_price(TK)
+        ofls.clear_all_live_state()
+        no_daemon()
     assert body["stream_by_expiry"][EXPIRY] == "partial"
-    ages = [c["stream"][0]["age_sec"] for c in body["cells"] if c["stream"][0] and c["stream"][0]["age_sec"] is not None]
-    assert ages == [pytest.approx(2.0)]
+    received = [leg["ts_recv"] for c in body["cells"] if c["stream"][0]
+                for leg in (c["stream"][0].get("call"), c["stream"][0].get("put")) if leg and leg["ts_recv"] is not None]
+    assert received == [pytest.approx(_AT.timestamp() - 2.0)]
     assert [e["expiry"] for e in body["expirations"] if e["front"]] == [EXPIRY]
 
 
@@ -191,14 +195,15 @@ def test_an_index_option_is_not_flagged_adjusted_only_schwabs_nonstandard_would_
                     .read_text(encoding="utf-8"))
     at = datetime.fromtimestamp(fx["ts_utc"], ET)
     lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": ["$SPX"]}})
-    ofs._price_rows["$SPX"] = {"ticker": "$SPX", "spot": fx["spot"], "trade_ts": fx["ts_utc"]}
+    price_sent("$SPX", fx["spot"], fx["ts_utc"])
     try:
-        server._publish_levels("$SPX", [dict(c) for c in fx["contracts"]], fx["ts_utc"], now=at)
+        ledger_round("$SPX", fx["contracts"], fx["ts_utc"], now=at)
         body = json.loads(server.get_chain(ticker="$SPX", expiry="2026-10-16").body)
     finally:
         with server._terrain_cache_lock:
             server._terrain_cache.pop("$SPX", None)
-        ofs._price_rows.pop("$SPX", None)
+        forget_price("$SPX")
+        ofls.clear_all_live_state()
         lmp.record_feed_down()
     assert {c["nonStandard"] for c in fx["contracts"]} == {False}
     assert len(body["contracts"]) == len(fx["contracts"]) and body["adjusted_deliverable_symbols"] == []
@@ -215,17 +220,15 @@ def test_at_any_hour_the_price_is_schwabs_last_trade_with_schwabs_trade_time():
     captured it (stream_quotes_raw). Operator, 2026-10-01: "From Schwab's mouth to our UI's ears.
     Period." -- no live/closed verdict by our clock: the row serves Schwab's last price as the
     spot with Schwab's trade time, and every consumer reads it."""
-    import live_price_rows
     from tests.feed_live_helper import mark_feed_live
     mark_feed_live("SPY")
     lmp.record_from_level_one_equity("SPY", {"LAST_PRICE": 772.04, "TRADE_TIME_MILLIS": 1790380799830},
                                      received_ts=time.time())
-    row = live_price_rows.price_row("SPY", time.time())
-    ofs._price_rows["SPY"] = row                    # the row as the daemon pushes it to the console
+    row = server.price_row("SPY", time.time())
     try:
         spot = server.resolve_spot("SPY", now=time.time())
     finally:
-        ofs._price_rows.pop("SPY", None)
+        forget_price("SPY")
         lmp.record_feed_down()
     assert (row["spot"], row["spot_disp"], row["trade_time_ct"]) == (772.04, "772.04", "Fri 09/25 06:59 PM CT")
     assert "spot_state" not in row and "closed_last" not in row

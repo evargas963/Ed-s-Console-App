@@ -75,9 +75,8 @@
   // the words for each cell's and column's streaming state, served in the page (meta
   // ed-stream-words, server.STREAM_WORDS)
   var WORDS = JSON.parse(document.querySelector('meta[name="ed-stream-words"]').getAttribute('content'));
-  var _pan = window.EdShell.newPan();
-  var _panTicker = null;
-  var _lastSurface = null, _lastRevision = null, _pendingTicker = null;
+  var _pan = window.EdShell.pan('heatmap');
+  var _lastSurface = null, _lastRevision = null;
 
   function paintChip(cov) {   // the header's coverage chip: the served words
     var el = document.getElementById('heatScope'); if (!el) return;
@@ -140,7 +139,7 @@
     var live = surface.live !== false, stale = !!surface.stale;
     var tbl = '<table class="heat"><thead><tr><th class="hcorner">Strike</th>';
     exps.forEach(function (e, j) {
-      var dte = e.expired ? 'EXPIRED' : (e.dte === 0) ? '0DTE' : (e.dte != null ? e.dte + 'DTE' : '');
+      var dte = e.dte_label == null ? '' : escapeHtml(e.dte_label);   // served: EXPIRED, or its days
       var title = e.expired ? 'expired: a prior-session column, not current structure'
         : (words.column[(surface.stream_by_expiry || {})[e.expiry]] || '');
       tbl += '<th class="hexp' + (e.front ? ' col-front' : '') + (e.expired ? ' expired' : '') + '" data-col="' + j +
@@ -196,7 +195,7 @@
     });
     var firstRow = host.querySelector('tbody tr');
     var rowPx = firstRow && firstRow.getBoundingClientRect ? firstRow.getBoundingClientRect().height : 0;
-    window.EdShell.wireStrikeAxis(host.querySelectorAll('.hstrike, .hcorner'), host.querySelector('.heat-wrap'), _pan, rowPx, load);
+    window.EdShell.wireStrikeAxis(host.querySelectorAll('.hstrike, .hcorner'), host.querySelector('.heat-wrap'), _pan, rowPx);
     // the shared selection starts on the spot strike and the front expiry (never over a choice made)
     var spotRow = cells.filter(function (c) { return c.spot; })[0];
     var front = exps.filter(function (e) { return e.front; })[0];
@@ -216,7 +215,7 @@
   }
 
   // how many expiry columns fit the panel at a legible width (a measurement of the page, sent with
-  // the read; the server picks which columns)
+  // the view; the server picks which columns)
   var MIN_COL_PX = 84, MAX_AUTO_COLS = 11, MIN_AUTO_COLS = 3;
   function autoColCount(host) {
     var w = (host && host.clientWidth) || 0;
@@ -228,62 +227,42 @@
   function escapeHtml(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
     return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
 
-  // gamma, dex and oi are the same heatmap pane under three subview ids
-  function _isGammaFamilySubview(sv) { return sv === 'gamma' || sv === 'dex' || sv === 'oi'; }
-  function stillCurrent(ticker) {
-    var s = (window.EdShell && window.EdShell.getState()) || {};
-    return s.workspace === 'options' && _isGammaFamilySubview(s.subview) && s.view === 'heatmap' && (s.ticker || '') === ticker;
-  }
-  function surfaceUrl(ticker, host) {
-    var expiry = window.EdShell.getExpiry();
-    return '/api/options/gamma-surface?ticker=' + encodeURIComponent(ticker) +
-      window.EdShell.windowQuery(_pan) + '&cols=' + autoColCount(host) +
-      (expiry ? '&expiry=' + encodeURIComponent(expiry) : '');
-  }
-  // only the network fetch is coalesced (keyed on ticker: a newer ticker aborts the older read)
-  function loadImpl(ticker, signal) {
+  // the surface the console pushes for the view (only ever the current view's)
+  window.EdShell.onPanel('gamma.surface', function (a) {
     var host = document.getElementById('heatBody');
-    if (!host || !stillCurrent(ticker)) return;
-    return fetch(surfaceUrl(ticker, host), { cache: 'no-store', signal: signal })
-      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-      .then(function (d) { if (stillCurrent(ticker)) renderSurface(host, d); })
-      .catch(function (e) {
-        if (e && e.name === 'AbortError') return;   // superseded by a newer read -- that one renders
-        if (stillCurrent(ticker)) renderSurface(host, { available: false, ticker: ticker, reason: 'no console serving /api/options/gamma-surface' });
-      });
-  }
-  var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(_pendingTicker, signal); });
-  function load() {
+    if (!host || a.waiting) return;
+    renderSurface(host, a.ok ? a.body : { available: false, reason: '/api/options/gamma-surface answered HTTP ' + a.status });
+  });
+  // the columns that fit, measured on the panel as it is shown (sent with the view)
+  function fitColumns() {
     var host = document.getElementById('heatBody');
-    if (!host) return;
-    var st = (window.EdShell && window.EdShell.getState()) || {};
-    if (st.workspace !== 'options' || !_isGammaFamilySubview(st.subview) || st.view !== 'heatmap') {
-      _pendingTicker = null;
-      return;
-    }
-    var nextTicker = st.ticker || '';
-    if (_panTicker !== nextTicker) { _pan.centre = null; _pan.shift = 0; _panTicker = nextTicker; }
-    _pendingTicker = nextTicker;
-    _loader.trigger(_pendingTicker);
+    if (host && host.clientWidth) window.EdShell.setInput('cols', autoColCount(host));
   }
-  function rerender() {   // a presentation change on the window on screen: no read needed
+  function rerender() {   // a presentation change on the window on screen: nothing new from the console
     var h = document.getElementById('heatBody'); if (!h) return;
     _lastRevision = null;
-    if (_lastSurface) renderSurface(h, _lastSurface); else load();
+    if (_lastSurface) renderSurface(h, _lastSurface);
   }
 
   if (typeof document !== 'undefined') {
-    document.addEventListener('ed:ticker', load);
-    document.addEventListener('ed:view', load);
-    document.addEventListener('ed:changed', function (e) { if (e.detail.kind === 'levels') load(); });
+    document.addEventListener('ed:view', fitColumns);
+    document.addEventListener('ed:ticker', fitColumns);
     document.addEventListener('ed:strike', function () { applyStrikeHighlight(); });
     document.addEventListener('ed:theme', rerender);
     document.addEventListener('ed:measure', rerender);
-    document.addEventListener('ed:expiry', load);   // a new window: the server picks it
-    document.addEventListener('ed:scope', load);
-    if (typeof window !== 'undefined' && window.addEventListener) window.addEventListener('resize', load);
+    if (typeof window !== 'undefined' && window.addEventListener) window.addEventListener('resize', fitColumns);
   }
 
   var _root = (typeof window !== 'undefined') ? window : (typeof globalThis !== 'undefined' ? globalThis : this);
-  _root.EdGamma = { formatUsd: formatUsd };
+  // ---- the one wording of a served regime, for every panel that shows it ----
+  var REGIME = {
+    LONG_GAMMA_CHOP: { t: 'Long γ · chop', c: 'var(--ed-pos-ink)' },
+    SHORT_GAMMA_TREND: { t: 'Short γ · trend', c: 'var(--ed-warn)' },
+    UNAVAILABLE: { t: 'unavailable', c: 'var(--ed-ink-3)' },
+  };
+  function regime(r) {
+    if (r == null) return { t: '—', c: 'var(--ed-ink-2)' };
+    return REGIME[r] ? REGIME[r] : { t: String(r), c: 'var(--ed-ink-2)' };
+  }
+  _root.EdGamma = { formatUsd: formatUsd, regime: regime };
 })();

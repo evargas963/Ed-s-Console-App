@@ -8,7 +8,8 @@
  * buy/sell aggressor side is ever fabricated; `classification` states only the mechanical
  * fact of where a print landed relative to that same tick's own bid/ask.
  */
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./fixtures/live_socket');
+const { expiriesAnswer } = require('./fixtures/expiries');
 const { routeWatchlist } = require('./fixtures/watchlist');
 
 const TERRAIN = { ticker: 'SPY', spot: 100, gamma_flip: 99.5, call_wall: 106, put_wall: 94,
@@ -24,7 +25,7 @@ const TAPE_ROW = {
   ts_recv: 1789166557.5, symbol: 'SPY   260918C00600000', underlying: 'SPY',
   expiry: '2026-09-18', type: 'CALL', strike: 600,
   bid: 1.17, bid_size: 187, ask: 1.19, ask_size: 180,
-  trade: 1.18, size: 1, premium: 118.0,
+  price: 1.18, size: 1, time_millis: 1789166557000, premium: 118.0,
   volume: 70984, oi: 901, iv: 7.16, delta: 0.357,
   multiplier: 100, classification: 'inside_spread',
 };
@@ -39,7 +40,7 @@ async function intercept(page, tapeBody) {
     else if (url.includes('/api/terrain')) body = TERRAIN;
     else if (url.includes('/api/bars1m')) body = BARS;
     else if (url.includes('/api/chain')) body = { ticker: 'SPY', spot: 100, expiry: null, contracts: [], status: 'unavailable', scope: { kind: 'unavailable', requested_expiry: null, reason: 'no listed expiry for this ticker' } };
-    else if (url.includes('/api/expiries')) body = { expiries: ['2026-09-18'] };    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    else if (url.includes('/api/expiries')) body = expiriesAnswer(['2026-09-18']);    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
   await routeWatchlist(page, ['SPY']);
 }
@@ -86,8 +87,8 @@ test.describe('Options Flow tape (Gamma pane, native trade prints)', () => {
   });
 
   test('at-bid and at-ask prints are labelled by mechanical comparison, not aggressor inference', async ({ page }) => {
-    const atBid = { ...TAPE_ROW, ts_recv: TAPE_ROW.ts_recv + 1, trade: 1.17, classification: 'at_bid' };
-    const atAsk = { ...TAPE_ROW, ts_recv: TAPE_ROW.ts_recv + 2, trade: 1.19, classification: 'at_ask' };
+    const atBid = { ...TAPE_ROW, ts_recv: TAPE_ROW.ts_recv + 1, price: 1.17, classification: 'at_bid' };
+    const atAsk = { ...TAPE_ROW, ts_recv: TAPE_ROW.ts_recv + 2, price: 1.19, classification: 'at_ask' };
     await intercept(page, { ticker: 'SPY', available: true, symbols: [TAPE_ROW.symbol], rows: [atAsk, atBid] });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const rows = page.locator('#ofBody tbody tr');

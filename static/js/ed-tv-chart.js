@@ -14,7 +14,7 @@
        axis resets it, Alt+R resets everything, the wheel over the plot zooms time.
      - the crosshair follows the mouse; the readout BOX appears only on click (pinned, with a
        close control) -- never a hover tooltip.
-   Every number drawn here is the server's (bars from /api/bars1m, levels from /api/levels +
+   Every number drawn here is the server's (bars from the daemon's 1-minute series or /api/bars1m above it, levels from /api/levels +
    /api/terrain). Choosing WHICH levels to draw (the nearest few inside the visible range) and
    placing a 1m series point on the bar that contains it are presentation, not computation. */
 (function () {
@@ -741,7 +741,7 @@
         return b.v == null ? { time: b.t } : { time: b.t, value: b.v, color: alpha(b.chg >= 0 ? P.up : P.down, 0.7) };
       },
       setVolume: function (bars) { volume.setData((bars || []).map(api._volPoint)); },
-      // VWAP + bands, one point per bar, served for the chart's timeframe (/api/levels?tf=:
+      // VWAP + bands, one point per bar, served for the chart's timeframe (/api/levels, its tf:
       // the value as of the bar's last minute, stamped with the bar's t). Rows are
       // [t, vwap, +1, -1, +2, -2].
       setVwap: function (rows) {
@@ -796,12 +796,12 @@
         var el = opts.fullscreenEl || host;
         if (document.fullscreenElement) document.exitFullscreen(); else if (el.requestFullscreen) el.requestFullscreen();
       },
-      // The live price row's LAST_PRICE and its served age since the Schwab trade; null when the
-      // price is not live (the line is removed, never left at an old price).
-      setLivePrice: function (price, ageSec) {
+      // The live price row's LAST_PRICE and Schwab's trade time for it (the row's label); null when
+      // the price is not live (the line is removed, never left at an old price).
+      setLivePrice: function (price, tradeTime) {
         if (price == null) { if (liveLine) { candles.removePriceLine(liveLine); liveLine = null; } return; }
         var opts = { price: price, color: P.accent, lineWidth: 1, lineStyle: 2, axisLabelVisible: true,
-          title: 'LAST' + (ageSec != null ? ' · ' + Math.round(ageSec) + 's' : '') };
+          title: 'LAST' + (tradeTime != null ? ' · ' + tradeTime : '') };
         if (liveLine) liveLine.applyOptions(opts); else liveLine = candles.createPriceLine(opts);
       },
       state: function () {
@@ -850,11 +850,10 @@
     return api;
   }
 
-  // The timeframes every chart offers, and the 1-minute bars each asks /api/bars1m for (the server
-  // rolls them up to the timeframe).
+  // The timeframes every chart offers (at 1 minute the daemon's series; above it the console
+  // rolls up each chart's bars, server.CHART_BARS).
   var TFS = [{ id: '1', lbl: '1m' }, { id: '3', lbl: '3m' }, { id: '5', lbl: '5m' }, { id: '15', lbl: '15m' },
     { id: '30', lbl: '30m' }, { id: '60', lbl: '1h' }, { id: 'D', lbl: 'D' }];
-  var BARS_LIMIT = { '1': 1200, '3': 2000, '5': 3000, '15': 6000, '30': 9000, '60': 12000, 'D': 12000 };
 
   function lsGet(k, d) { try { var v = window.localStorage.getItem(k); return v == null ? d : v; } catch (e) { return d; } }
   function lsSet(k, v) { try { window.localStorage.setItem(k, v); } catch (e) { /* per-viewer only */ } }
@@ -899,5 +898,5 @@
     return { setTf: setTf, slot: el.querySelector('.tvc-slot') };
   }
 
-  window.EdTvChart = { create: create, toolbar: toolbar, TFS: TFS, BARS_LIMIT: BARS_LIMIT, alpha: alpha };
+  window.EdTvChart = { create: create, toolbar: toolbar, TFS: TFS, alpha: alpha };
 })();

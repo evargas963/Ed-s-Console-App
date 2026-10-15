@@ -3,8 +3,9 @@ app/options/order_flow/engine.py — Order Flow Engine
 ========================================
 The book microstructure and the tape flow of one symbol, from Schwab streaming fields.
 
-Input: dict `data` with ``content`` (the streamed book and tape items), ``top`` (the top of
-book as Schwab last sent it) and ``book_live`` (whether the feed delivers the book now).
+Input: dict `data` with ``content`` (the streamed books), ``prints`` (the symbol's trade prints in
+the order received: the one tape's, history.TAPE.prints), ``top`` (the top of book as Schwab last
+sent it) and ``book_live`` (whether the feed delivers the book now).
 """
 
 from __future__ import annotations
@@ -15,7 +16,6 @@ import numpy as np
 
 from numeric_contract import float_finite_or_none, schwab_count, schwab_number
 from l1_trade_observation import (
-    canonical_tape_prints,
     compute_cum_delta_proxy as _canonical_cum_delta,
     compute_tape_pressure as _canonical_tape_pressure,
     cum_delta_window,
@@ -59,52 +59,20 @@ def _iter_content(data: dict) -> list:
     return []
 
 
-def _iter_bids_levels(content_item: dict) -> list[tuple[float, float]]:
-    """
-    Extract (price, total_volume) for each bid level from content.*.BIDS.
-    Uses: BID_PRICE, TOTAL_VOLUME per level.
-    """
-    bids = content_item.get("BIDS")
-    if not bids:
+def _side_levels(content_item: dict, side: str, price_key: str) -> "list[tuple[float, float | None]]":
+    """(price, TOTAL_VOLUME) for each level of one side of a Schwab book (`side`: BIDS or ASKS,
+    priced by `price_key`) that Schwab sent a price for, in Schwab's order, the size None where it
+    is not a number. A side is a level, a list of levels, or a list of lists of them."""
+    held = content_item.get(side)
+    if not held:
         return []
     out = []
-    for level in (bids if isinstance(bids, list) else [bids]):
-        if isinstance(level, dict):
-            p = schwab_number(level.get("BID_PRICE"))
-            v = schwab_count(level.get("TOTAL_VOLUME"))
-            if p is not None and v is not None:
-                out.append((p, v))
-        elif isinstance(level, list):
-            for sub in level:
-                if isinstance(sub, dict):
-                    p = schwab_number(sub.get("BID_PRICE"))
-                    v = schwab_count(sub.get("TOTAL_VOLUME"))
-                    if p is not None and v is not None:
-                        out.append((p, v))
-    return out
-
-
-def _iter_asks_levels(content_item: dict) -> list[tuple[float, float]]:
-    """
-    Extract (price, total_volume) for each ask level from content.*.ASKS.
-    """
-    asks = content_item.get("ASKS")
-    if not asks:
-        return []
-    out = []
-    for level in (asks if isinstance(asks, list) else [asks]):
-        if isinstance(level, dict):
-            p = schwab_number(level.get("ASK_PRICE"))
-            v = schwab_count(level.get("TOTAL_VOLUME"))
-            if p is not None and v is not None:
-                out.append((p, v))
-        elif isinstance(level, list):
-            for sub in level:
-                if isinstance(sub, dict):
-                    p = schwab_number(sub.get("ASK_PRICE"))
-                    v = schwab_count(sub.get("TOTAL_VOLUME"))
-                    if p is not None and v is not None:
-                        out.append((p, v))
+    for level in (held if isinstance(held, list) else [held]):
+        for one in (level if isinstance(level, list) else [level]):
+            if isinstance(one, dict):
+                p = schwab_number(one.get(price_key))
+                if p is not None:                  # a size not sent as a number stays absent
+                    out.append((p, schwab_count(one.get("TOTAL_VOLUME"))))
     return out
 
 
@@ -213,13 +181,13 @@ OF_MICRO_DEPTH_LADDER: tuple[int, ...] = (OF_BOOK_DEPTH_TOP, OF_BOOK_DEPTH_SHALL
 _MICRO_STRUCTURAL_CACHE: dict[str, tuple[tuple, dict]] = {}
 
 
-def _sorted_valid_levels(levels: list[tuple[float, float]], *, descending: bool) -> list[tuple[float, float]]:
-    """Normalize a raw book side ONCE: drop a level Schwab sent no price or size for (the raw
-    readers drop -999, text, NaN and a negative size), then SORT so `[:N]` is the true Top-N
-    regardless of the vendor's array order: bids DESCENDING, asks ASCENDING."""
-    valid = [(p, v) for (p, v) in levels if p is not None and v is not None]
-    valid.sort(key=lambda pv: pv[0], reverse=descending)
-    return valid
+def book_levels(item: dict) -> "tuple[list[tuple[float, float | None]], list[tuple[float, float | None]]]":
+    """One Schwab book's (bids, asks) as the screen's ladder shows them: each level Schwab sent a
+    price for, its total size as sent or None where it is not a number ('-'), bids high to low,
+    asks low to high, so `[:N]` is the true Top-N whatever Schwab's array order. The engine's
+    metrics take the levels with both (_extract_canonical_book)."""
+    return (sorted(_side_levels(item, "BIDS", "BID_PRICE"), key=lambda pv: pv[0], reverse=True),
+            sorted(_side_levels(item, "ASKS", "ASK_PRICE"), key=lambda pv: pv[0]))
 
 
 def _extract_canonical_book(data: dict) -> dict:
@@ -232,8 +200,10 @@ def _extract_canonical_book(data: dict) -> dict:
     bid_size = _schwab_int(t.get("bid_size"))
     ask_size = _schwab_int(t.get("ask_size"))
 
-    bid_levels = _sorted_valid_levels(_iter_bids_levels(snapshot), descending=True) if snapshot else []
-    ask_levels = _sorted_valid_levels(_iter_asks_levels(snapshot), descending=False) if snapshot else []
+    # the metrics read the levels Schwab sent a size for (-999, text, NaN or a negative size: none)
+    bids, asks = book_levels(snapshot) if snapshot else ([], [])
+    bid_levels = [(p, v) for p, v in bids if v is not None]
+    ask_levels = [(p, v) for p, v in asks if v is not None]
     mark, mark_leaf = _resolve_quote_mark(data)
     return {
         "has_book": snapshot is not None,
@@ -411,7 +381,7 @@ def _microstructure_structural(cb: dict) -> dict:
             "depth_pressure": "DERIVED", "book_slope": "DERIVED",
             "liquidity_concentration": "DERIVED",
             "wall_candidates": "DERIVED-HEURISTIC (size-outlier convention; see wall_method)",
-            "ages.book_age_sec": "DERIVED", "ages.quote_age_sec": "DERIVED",
+            "as_of.book": "NATIVE", "as_of.quote": "NATIVE",
             "ages.book_stale": "DERIVED",
             "provenance.book_time_ms": "NATIVE", "provenance.exchange_quote_ts": "NATIVE",
             "provenance.server_received_ts": "DERIVED",
@@ -459,13 +429,13 @@ def compute_book_microstructure(data: dict, *, now_ts: float,
     prov["server_received_ts"] = now                # DERIVED (server wall clock at serialization)
     payload.pop("provenance_structural", None)
     payload["provenance"] = prov
-    book_age_sec = now - book_time_ms / 1000.0 if book_time_ms else None
+    book_ts = book_time_ms / 1000.0 if book_time_ms else None
+    # the instants of the book's and the quote's ages (labelled by the console's push)
+    payload["as_of"] = {"book": book_ts, "quote": exch_ts}
     payload["ages"] = {
-        "book_age_sec": book_age_sec,
-        "quote_age_sec": now - exch_ts if exch_ts else None,
         # the live rule (live_market_plane.feed_live_for on the book's service), which the caller
         # passes as data["book_live"]; None with no book
-        "book_stale": None if book_age_sec is None else data.get("book_live") is not True,
+        "book_stale": None if book_ts is None else data.get("book_live") is not True,
     }
     return payload
 
@@ -476,7 +446,7 @@ def compute_book_microstructure(data: dict, *, now_ts: float,
 
 def _compute_tape_pressure(data: dict, window_sec: float, now: float) -> Optional[float]:
     """PROXY reconstructed L1 tick-rule pressure. ONE FAUCET: l1_trade_observation."""
-    return _canonical_tape_pressure(canonical_tape_prints(_iter_content(data)), window_sec, now * 1000.0)
+    return _canonical_tape_pressure(data["prints"], window_sec, now * 1000.0)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -485,12 +455,12 @@ def _compute_tape_pressure(data: dict, window_sec: float, now: float) -> Optiona
 
 def _compute_cum_delta_proxy(data: dict) -> Optional[float]:
     """PROXY reconstructed L1 tick-rule signed size sum. ONE FAUCET: l1_trade_observation."""
-    return _canonical_cum_delta(canonical_tape_prints(_iter_content(data)))
+    return _canonical_cum_delta(data["prints"])
 
 
 def _compute_cum_delta_slope(data: dict, now: float, window_sec: float = 60.0) -> Optional[float]:
     """Slope of PROXY cum-delta in receive order. ONE signed-size walk: l1_trade_observation."""
-    points = iter_signed_cum_points(canonical_tape_prints(_iter_content(data)), window_sec, now * 1000.0)
+    points = iter_signed_cum_points(data["prints"], window_sec, now * 1000.0)
     if len(points) < 2:
         return None
     xs = np.array([p[0] for p in points])
@@ -524,7 +494,7 @@ class OrderFlowEngine:
 
         # Cumulative delta
         cum_delta_proxy = _compute_cum_delta_proxy(data)
-        cum_first, cum_last = cum_delta_window(canonical_tape_prints(_iter_content(data)))
+        cum_first, cum_last = cum_delta_window(data["prints"])
         cum_delta_slope = _compute_cum_delta_slope(data, now)
 
         return {

@@ -5,9 +5,10 @@
  * and the positioning migration are served fields. Level crosses are real SPY rows
  * (tests/fixtures/real_spy_level_crosses.json). Any page error fails the test.
  */
-const { test, expect } = require('@playwright/test');
+const { test, expect, pushBeat, pushChange, pushDown, setNotLive, holdViews } = require('./fixtures/live_socket');
+const { expiriesAnswer } = require('./fixtures/expiries');
 const path = require('path');
-const { mockPriceSocket } = require('./fixtures/price_socket');
+const { mockPriceSocket, schwabQuote, daemonDown, daemonBeat, daemonSend, daemonSeries } = require('./fixtures/price_socket');
 const { routeWatchlist } = require('./fixtures/watchlist');
 
 const CROSSES = require(path.join(__dirname, '..', 'fixtures', 'real_spy_level_crosses.json')).rows.slice(0, 3);
@@ -16,17 +17,19 @@ const EVENTS = {
   // the served shape (server.get_desk_events): each cross as recorded, at its level's price
   items: CROSSES.map((c, i) => ({ key: 'x' + c.cross_id, n: 3 - i, ts: c.ts_utc, dom: 'LEVELS', dir: c.direction, marker: true,
     price: c.level_value, title: 'Crossed ' + (c.direction === 'up' ? 'above ' : 'below ') + c.level_name,
-    detail: c.level_value.toFixed(2), src: 'level_crosses' })),
+    detail: c.level_value.toFixed(2), src: 'level_crosses',
+    // time_et.ct_label of each cross's ts_utc, as served
+    time_ct: ['Fri 09/25 04:25 PM CT', 'Fri 09/25 04:18 PM CT', 'Fri 09/25 04:18 PM CT'][i] })),
   cross_counts: { up: CROSSES.filter((c) => c.direction === 'up').length, down: CROSSES.filter((c) => c.direction !== 'up').length },
 };
 const SPOT = 771.3;
 const TERRAIN = { ticker: 'SPY', spot: SPOT, gamma_flip: 768, call_wall: 775, put_wall: 765, max_pain: 770, regime: 'LONG_GAMMA',
-  posture: 'PINNED', levels_stale: false, flip_relation: 'ABOVE', dist_to_call_wall: 3.7, dist_to_put_wall: 6.3, pcr_all: 1.1,
+  posture: 'PINNED', levels_stale: false, as_of: { levels: 1790343600 }, flip_relation: 'ABOVE', dist_to_call_wall: 3.7, dist_to_put_wall: 6.3, pcr_all: 1.1,
   pcr_by_expiry: { '2026-09-25': 1.1, '2026-10-02': null, '2026-10-09': 0.9 }, atm_iv_pct_by_expiry: { '2026-09-25': 14.2, '2026-10-02': 15.1 } };
-const LEVELS = { ticker: 'SPY', spot: SPOT, tf: '30', generation: 1, vwap_series: [],
+const LEVELS = { ticker: 'SPY', spot: SPOT, tf: '30', generation: 1, vwap_series: [], as_of: { snapshot: 1790343600 },
   levels: [
-    { id: 'PDH', price: 773.5, family: 'prior_day', label: 'Prior Day High', short: 'PDH', evidence_tier: 'MEASURED', distance: 2.2, side: 'ABOVE', },
-    { id: 'max_pain', price: 770, family: 'gamma', label: 'Max pain', short: 'Max pain', evidence_tier: 'DERIVED', distance: -1.3, side: 'BELOW', },
+    { id: 'PDH', price: 773.5, family: 'prior_day', label: 'Prior Day High', short: 'PDH', evidence_tier: 'MEASURED', distance: 2.2, gap: 2.2, side: 'ABOVE', },
+    { id: 'max_pain', price: 770, family: 'gamma', label: 'Max pain', short: 'Max pain', evidence_tier: 'DERIVED', distance: -1.3, gap: 1.3, side: 'BELOW', },
   ],
   by_distance: ['max_pain', 'PDH'], families_absent: [], degraded: [],
   volume_profile: { basis: 'RTH 1-minute bars, each bar\'s volume spread evenly over its range (not trade prints)', tick_size: 0.01,
@@ -34,7 +37,7 @@ const LEVELS = { ticker: 'SPY', spot: SPOT, tf: '30', generation: 1, vwap_series
 const MICRO = { ticker: 'SPY', venue: 'NASDAQ_BOOK', status: 'ok', top_of_book: { bid: 771.29, ask: 771.31, bid_size: 300, ask_size: 200 },
   spread_pts: 0.02, depth: { '1': { imbalance: 0.2, side: 'BID' }, '5': { bid_total: 3000, ask_total: 2000, imbalance: 0.2, side: 'BID' } },
   depth_pressure: { bid: [{ price: 771.29, volume: 300, cum: 300 }, { price: 771.28, volume: 900, cum: 1200 }], ask: [{ price: 771.31, volume: 200, cum: 200 }] },
-  ages: { book_age_sec: 1, book_stale: false }, wall_candidates: [], provenance: { book_source: 'NASDAQ_BOOK' },
+  ages: { book_stale: false }, as_of: { book: 1790343659, quote: null }, wall_candidates: [], provenance: { book_source: 'NASDAQ_BOOK' },
   flow: { tape_pressure_5m: 0.3, tape_pressure_30s: 0.1, tape_pressure_2m: 0.2, cum_delta_proxy: 1000 } };
 // the pivot zone below spot was named "support" by type-guessing on the page: each zone's label and
 // side are served (liquidity_models.ZONE_DISPLAY)
@@ -48,18 +51,38 @@ const STRIKES = { ticker: 'SPY', spot: SPOT, spot_strike: 771, today_source: 'te
   views: { all: { centre: 771, max_abs: 900000, max_abs_with_prior: 900000 } } };
 const BARS = { ticker: 'SPY', tf: '30', bars: [{ t: 1790343000, o: 770, h: 772, l: 769, c: SPOT, v: 1000, chg: SPOT - 770, chg_pct: (SPOT - 770) / 770 * 100 }],
   last_bar: { t: 1790343660, label: 'Fri 09/25 09:21 AM CT' } };
+// Each minute of SPY's CHART_EQUITY bars as Schwab sent them 2026-10-01 (the daemon's record,
+// tests/fixtures/real_daemon_bars_spy_tsla_2026_10_01_02.json), its newest receipt, in time, as
+// the daemon's message carrying it and the bar the daemon builds from it (that building is proven
+// in tests/test_live_ui_daemon_to_browser_v1.py; the message's time label is a STAND-IN).
+const DAEMON_BARS = (() => {
+  const byT = new Map();
+  require(path.join(__dirname, '..', 'fixtures', 'real_daemon_bars_spy_tsla_2026_10_01_02.json')).rows
+    .filter((r) => r.native && r.symbol === 'SPY').forEach((r) => {
+      const n = r.native, chg = n.CLOSE_PRICE - n.OPEN_PRICE;
+      byT.set(n.CHART_TIME_MILLIS, { service: 'CHART_EQUITY', key: 'SPY', schwab_ts: r.schwab_ts, ts_recv: r.ts_recv, content: n,
+        time_ct: 'bar ' + n.SEQUENCE, bar: { t: n.CHART_TIME_MILLIS / 1000, o: n.OPEN_PRICE, h: n.HIGH_PRICE, l: n.LOW_PRICE,
+          c: n.CLOSE_PRICE, v: n.VOLUME, chg: chg, chg_pct: chg / n.OPEN_PRICE * 100 } });
+    });
+  return [...byT.keys()].sort((x, y) => x - y).map((t) => byT.get(t));
+})();
+// the daemon's 1-minute series of SPY (its first 30 minutes), as the daemon sends it whole, and
+// the message carrying the minute after them
+const SERIES = { ticker: 'SPY', tf: '1', bars: DAEMON_BARS.slice(0, 30).map((m) => m.bar),
+  last_bar: { t: DAEMON_BARS[29].bar.t, label: DAEMON_BARS[29].time_ct } };
+const NEXT = DAEMON_BARS[30];
 
 async function intercept(page) {
   await page.route('**/api/**', (route) => {
     const url = route.request().url();
-    let body = { available: false };
+    let body = url.includes('/api/expiries') ? expiriesAnswer([]) : { available: false };
     if (url.includes('/api/desk/events')) body = Object.assign({}, EVENTS, { tf: new URL(url).searchParams.get('tf') });
     else if (url.includes('/api/terrain/strikes')) body = STRIKES;
     else if (url.includes('/api/terrain')) body = TERRAIN;
     else if (url.includes('/api/levels')) body = LEVELS;
     else if (url.includes('/api/order-flow/microstructure')) body = MICRO;
     else if (url.includes('/api/liquidity-snapshot')) body = LIQ;
-    else if (url.includes('/api/bars1m')) body = BARS;
+    else if (url.includes('/api/bars1m')) body = new URL(url).searchParams.get('tf') === '1' ? SERIES : BARS;   // the daemon's series at 1
     else if (url.includes('/api/order-flow/book-heatmap')) body = HEAT;
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
@@ -99,7 +122,8 @@ test('a desk load asks for each value once; a timeframe switch asks only for tha
   const errs = watchErrors(page);
   await intercept(page);
   const asked = [];
-  page.on('request', (r) => { const u = r.url(); if (u.includes('/api/')) asked.push(u.split('/api/')[1]); });
+  // (the daemon stand-in's read of the spec's bars is its fixture, not the page asking the console)
+  page.on('request', (r) => { const u = r.url(); if (u.includes('/api/') && r.headers()['x-ed-stand-in'] !== 'daemon') asked.push(u.split('/api/')[1]); });
   let releaseBars;
   const barsHeld = new Promise((r) => { releaseBars = r; });
   await page.route(/\/api\/bars1m\?.*tf=15/, async (route) => { await barsHeld;
@@ -111,7 +135,9 @@ test('a desk load asks for each value once; a timeframe switch asks only for tha
   await page.waitForTimeout(500);
   const count = (re) => asked.filter((u) => re.test(u)).length;
   for (const re of [/^levels\?/, /^desk\/events\?/, /^terrain\?/, /^liquidity-snapshot\?/, /^terrain\/strikes\?/, /^forces\?/,
-    /^order-flow\/microstructure\?/, /^bars1m\?.*tf=5/, /^bars1m\?.*tf=1&/]) expect(count(re), String(re)).toBe(1);
+    /^order-flow\/microstructure\?/, /^bars1m\?.*tf=5/]) expect(count(re), String(re)).toBe(1);
+  // the Order Flow card's 1-minute bars are Schwab's CHART_EQUITY from the daemon: never asked of the console
+  expect(count(/^bars1m\?.*tf=1&/)).toBe(0);
 
   asked.length = 0;
   await page.locator('#tdmToolbar [data-tf="15"]').click();
@@ -180,7 +206,7 @@ test.describe('Trade Desk renders served values', () => {
     const errs = watchErrors(page);
     await page.route('**/api/**', (route) => {
       const url = route.request().url();
-      let body = { available: false };
+      let body = url.includes('/api/expiries') ? expiriesAnswer([]) : { available: false };
       if (url.includes('/api/levels')) body = LEVELS;
       else if (url.includes('/api/bars1m')) body = BARS;
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
@@ -199,12 +225,13 @@ test.describe('Trade Desk renders served values', () => {
 
   test('Desk: the levels are drawn when they arrive, not held for the event queue', async ({ page }) => {
     // 2026-09-29 14:52 CT, deployed: QQQ's levels answered in 28 ms and were drawn after 1.34 s,
-    // when /api/desk/events answered
+    // when /api/desk/events answered. Each panel is pushed the moment its value is ready (Ed,
+    // design A item 1: panels don't wait for each other).
     const errs = watchErrors(page);
     await page.route('**/api/**', (route) => {
       const url = route.request().url();
       if (url.includes('/api/desk/events')) return;               // the event queue has not answered
-      let body = { available: false };
+      let body = url.includes('/api/expiries') ? expiriesAnswer([]) : { available: false };
       if (url.includes('/api/levels')) body = LEVELS;
       else if (url.includes('/api/bars1m')) body = BARS;
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
@@ -220,10 +247,16 @@ test.describe('Trade Desk renders served values', () => {
   test('Desk: the served queue, counts, book side, tape side and flip relation', async ({ page }) => {
     const errs = watchErrors(page);
     await intercept(page);
+    // the Order Flow card's volume bars: the daemon's 1-minute series (SERIES) and the next three
+    // minutes' CHART_EQUITY bars as Schwab sent them
+    const live = DAEMON_BARS.slice(30, 33);
+    await mockPriceSocket(page, live);
     await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#tdmQueue .tdm-q')).toHaveCount(3);
     await expect(page.locator('#tdmQueueCount')).toHaveText('3');
+    // each item's time as served: the page judges no day by its own clock
+    await expect(page.locator('#tdmQueue .tdm-q-m')).toHaveText(EVENTS.items.map((it) => 'level_crosses · ' + it.time_ct));
     await expect(page.locator('#tdmCardLiq')).toContainText('BID HEAVY');
     // Schwab sends no trade side: the Order Flow card claims none (operator 2026-09-29)
     await expect(page.locator('#tdmCardFlow')).not.toContainText(/NET BUYING|NET SELLING|tick rule|PROXY|delta/i);
@@ -237,11 +270,54 @@ test.describe('Trade Desk renders served values', () => {
     // each card draws its served series in the reference's chart type (2026-09-28): depth areas,
     // volume bars, and lines for put/call OI and ATM IV by expiry (a null expiry breaks the line)
     await expect(page.locator('#tdmCardLiq .tdm-plot svg path')).toHaveCount(4);
-    await expect(page.locator('#tdmCardFlow .tdm-plot svg rect')).toHaveCount(BARS.bars.length);
+    // the newest hour of the daemon's 1-minute series: the history (the spec's bars) and the bars sent live
+    await expect(page.locator('#tdmCardFlow .tdm-plot svg rect')).toHaveCount(SERIES.bars.length + live.length);
     await expect(page.locator('#tdmCardOpt .tdm-plot svg path')).toHaveCount(2);
     await expect(page.locator('#tdmCardVol .tdm-plot svg path')).toHaveCount(1);
     await expect(page.locator('#tdmCardVol figcaption')).toHaveText('ATM implied vol by expiry, nearest first');
     await expect(page.locator('#tdmAgree')).toContainText('Bid heavy');
+    expect(errs).toEqual([]);
+  });
+
+  test('Desk: the ages are the console\'s labels, and with its push down nothing reads LIVE', async ({ page }) => {
+    // operator 2026-10-14: "the server sends every age; the page only shows it", and "No value is
+    // LIVE unless every feed it depends on is live, including the Desk PRICE pill"
+    const errs = watchErrors(page);
+    await intercept(page);
+    await mockPriceSocket(page, [schwabQuote('SPY', SPOT)]);
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const pill = (name) => page.locator('#tdmTrust .tdm-pill', { hasText: name });
+    await expect(pill('PRICE')).toContainText('LIVE');
+    pushBeat(page, { book: '4s', levels: '2m', snapshot: '9m' });     // the console's labels
+    await expect(pill('BOOK')).toContainText('4s');
+    await expect(pill('GAMMA')).toContainText('2m');
+    await expect(pill('LEVELS')).toContainText('9m');
+    await expect(page.locator('#tdmCardOpt .tdm-src')).toContainText('2m old');
+    pushDown(page);                                   // the console's push: its values, not the price
+    await expect(pill('BOOK')).toContainText('age not known', { timeout: 6000 });
+    await expect(pill('PRICE')).toContainText('LIVE');
+    daemonDown(page);                                 // the daemon's socket: the price
+    await expect(pill('PRICE')).toContainText('OFFLINE', { timeout: 6000 });
+    await expect(pill('PRICE')).toHaveAttribute('title', /the daemon's socket is down/);
+    for (const id of ['#tdmChart', '#tdmCardLiq', '#tdmCardFlow', '#tdmCardOpt', '#tdmCardVol']) {
+      await expect(page.locator(id)).toHaveClass(/not-live/);
+      await expect(page.locator(id)).toHaveAttribute('data-not-live', /the console push is down/);
+    }
+    expect(errs).toEqual([]);
+  });
+
+  test('Desk: each card is marked by every panel drawn in it, whichever arrived last', async ({ page }) => {
+    // the Options card reads the terrain and the forces: the terrain not live marks it even when
+    // the forces arrive after, live (not the last panel to arrive)
+    const errs = watchErrors(page);
+    await intercept(page);
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#tdmCardOpt .tdm-state')).not.toHaveText('');
+    setNotLive(page, 'desk.terrain', 'Schwab LEVELONE_EQUITIES feed down during RTH');
+    await pushChange(page, 'levels');          // the terrain and the forces again, the forces after it
+    await expect(page.locator('#tdmCardOpt')).toHaveAttribute('data-not-live', /LEVELONE_EQUITIES feed down/);
     expect(errs).toEqual([]);
   });
 
@@ -275,17 +351,6 @@ test.describe('Trade Desk renders served values', () => {
     expect(errs).toEqual([]);
   });
 
-  test('Desk: selecting a ticker opens its /api/changes connection (the book request)', async ({ page }) => {
-    await intercept(page);
-    const opened = [];
-    page.on('request', (r) => { if (r.url().includes('/api/changes')) opened.push(new URL(r.url()).searchParams.get('ticker')); });
-    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect.poll(() => opened).toContain('SPY');
-    await page.evaluate(() => window.EdShell.setTicker('MU'));
-    await expect.poll(() => opened).toContain('MU');
-  });
-
   test('Market Map: the wheel over the price axis rescales price (as TradingView); over the plot it does not', async ({ page }) => {
     // operator 2026-09-29: "in tv all you do is scroll [on the price legend] and it will expand the
     // chart vertically; the way you have it you have to click and drag"
@@ -312,28 +377,370 @@ test.describe('Trade Desk renders served values', () => {
     await intercept(page);
     const barReads = [];
     page.on('request', (r) => { if (r.url().includes('/api/bars1m')) barReads.push(r.url()); });
-    await mockPriceSocket(page, []);            // the daemon answers what SPY is (its served key)
+    await mockPriceSocket(page, []);            // no price row; the console answers what SPY is (its served key)
     await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect.poll(() => page.evaluate(() => window.EdShell.getState().key)).toBe('SPY');
     const legend = page.locator('#tdmChart .tvc-legend');
     await expect(legend).toContainText('Last completed bar Fri 09/25 09:21 AM CT');
     const before = barReads.length;
-    await page.evaluate((spot) => {
-      for (let i = 0; i < 3; i++) window.dispatchEvent(new CustomEvent('ed:quote_tick', { detail: { ticker: 'SPY', spot: spot + i / 100,
-        spot_disp: (spot + i / 100).toFixed(2), feed_live: true, trade_age_sec: 1 } }));
-    }, SPOT);
+    // three of Schwab's LEVELONE_EQUITIES messages from the daemon, its trade labels as it words them
+    daemonBeat(page, { SPY: { time_ct: 'Fri 09/25 09:21 AM CT', age: '4s' } });
+    daemonSend(page, [0, 1, 2].map((i) => schwabQuote('SPY', SPOT + i / 100)));
     const chartState = () => page.evaluate(() => window.EdTradeDeskMap.state().chart);
     await expect.poll(async () => (await chartState()).livePrice).toBeCloseTo(SPOT + 0.02, 6);
-    expect((await chartState()).liveTitle).toBe('LAST · 1s');
+    await expect.poll(async () => (await chartState()).liveTitle).toBe('LAST · Fri 09/25 09:21 AM CT · 4s ago');   // Schwab's trade time, its served age
     expect((await chartState()).bars).toBe(BARS.bars.length);          // the candles are untouched
-    await page.evaluate(() => window.dispatchEvent(new CustomEvent('ed:quote_tick', { detail: { ticker: 'SPY', spot: null,
-      spot_disp: null, feed_live: false, trade_age_sec: null } })));
+    // Schwab's own "no value" (AGENTS rule 2), marked absent as the daemon marks it
+    // (tests/test_live_ui_daemon_to_browser_v1.py: the daemon's mark of each field that is not a number)
+    daemonSend(page, [Object.assign(schwabQuote('SPY', -999), { absent: ['LAST_PRICE'] })]);
     await expect.poll(async () => (await chartState()).livePrice).toBeNull();   // Schwab sent no price: no line
     await page.waitForTimeout(1500);
     expect(barReads.length).toBe(before);
-    await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'liquidity' } })));
+    await pushChange(page, 'liquidity');
     await expect.poll(() => barReads.length).toBeGreaterThan(before);
+    expect(errs).toEqual([]);
+  });
+
+  test('Market Map 1m: each CHART_EQUITY bar from the daemon is drawn, in order; a headline is listed as sent', async ({ page }) => {
+    // Real data: SPY's CHART_EQUITY items as Schwab sent them 2026-10-01 (the daemon's record,
+    // tests/fixtures/real_daemon_bars_spy_tsla_2026_10_01_02.json); the bar and labels each carries
+    // are the daemon's (proven in tests/test_live_ui_daemon_to_browser_v1.py), STAND-IN here.
+    const errs = watchErrors(page);
+    await intercept(page);
+    const rows = require(path.join(__dirname, '..', 'fixtures', 'real_daemon_bars_spy_tsla_2026_10_01_02.json')).rows
+      .filter((r) => r.native && r.symbol === 'SPY').slice(0, 3);
+    const msgs = rows.map((r) => { const n = r.native, chg = n.CLOSE_PRICE - n.OPEN_PRICE;
+      return { service: 'CHART_EQUITY', key: 'SPY', schwab_ts: r.schwab_ts, ts_recv: r.ts_recv, content: n,
+        bar: { t: n.CHART_TIME_MILLIS / 1000, o: n.OPEN_PRICE, h: n.HIGH_PRICE, l: n.LOW_PRICE, c: n.CLOSE_PRICE, v: n.VOLUME,
+          chg: chg, chg_pct: chg / n.OPEN_PRICE * 100 }, time_ct: 'bar ' + n.SEQUENCE }; });
+    const news = require(path.join(__dirname, '..', 'fixtures', 'real_schwab_news_headline_spx_2026_10_05.json'));
+    msgs.push({ service: 'NEWS_HEADLINE', key: 'SPY', schwab_ts: news.schwab_ts, ts_recv: news.ts_recv, content: news.content,
+      time_ct: 'Mon 10/05 09:00 AM CT' });
+    await page.route('**/api/bars1m**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify(Object.assign({}, BARS, { tf: '1', bars: [{ t: rows[0].native.CHART_TIME_MILLIS / 1000 - 60,
+        o: 769, h: 770, l: 768, c: 769.5, v: 10, chg: 0.5, chg_pct: 0.065 }] })) }));
+    await mockPriceSocket(page, msgs);
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
+      localStorage.setItem('ed_sub', 'desk'); localStorage.setItem('ed.desk.tf', '1'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const chartState = () => page.evaluate(() => window.EdTradeDeskMap.state().chart);
+    await expect.poll(async () => (await chartState()).bars).toBe(1 + rows.length);
+    await expect(page.locator('#tdmChart .tvc-legend')).toContainText('Last completed bar bar ' + rows[rows.length - 1].native.SEQUENCE);
+    await expect(page.locator('#tdmNews')).toContainText(news.content['4']);
+    await expect(page.locator('#tdmNews')).toContainText('Reuters · Mon 10/05 09:00 AM CT');
+    expect(errs).toEqual([]);
+  });
+
+  test('Desk 1m: a series the daemon sends whole again (a reconnect, a /pricehistory answer) is drawn whole', async ({ page }) => {
+    // Real data: SPY's CHART_EQUITY bars as Schwab sent them 2026-10-01 (the daemon's record); the
+    // bars the daemon builds from them are proven in tests/test_live_ui_daemon_to_browser_v1.py,
+    // STAND-IN here. A series sent whole is drawn whole, not as its newest two bars.
+    const errs = watchErrors(page);
+    await intercept(page);
+    const all = require(path.join(__dirname, '..', 'fixtures', 'real_daemon_bars_spy_tsla_2026_10_01_02.json')).rows
+      .filter((r) => r.native && r.symbol === 'SPY').slice(0, 8).map((r) => { const n = r.native, chg = n.CLOSE_PRICE - n.OPEN_PRICE;
+        return { t: n.CHART_TIME_MILLIS / 1000, o: n.OPEN_PRICE, h: n.HIGH_PRICE, l: n.LOW_PRICE, c: n.CLOSE_PRICE, v: n.VOLUME,
+          chg: chg, chg_pct: chg / n.OPEN_PRICE * 100 }; });
+    const series = all.filter((b, i) => all.findIndex((x) => x.t === b.t) === i)        // one per minute, in time, as the daemon's
+      .sort((x, y) => x.t - y.t);
+    await page.route('**/api/bars1m**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify(Object.assign({}, BARS, { tf: '1', bars: series.slice(0, 2) })) }));
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
+      localStorage.setItem('ed_sub', 'desk'); localStorage.setItem('ed.desk.tf', '1'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const chartState = () => page.evaluate(() => window.EdTradeDeskMap.state().chart);
+    await expect.poll(async () => (await chartState()).bars).toBe(2);
+    daemonSeries(page, 'SPY', series, { t: series[series.length - 1].t, label: 'the newest' });   // the gap filled, whole
+    await expect.poll(async () => (await chartState()).bars).toBe(series.length);
+    // another chart ticker: its series replaces SPY's (the daemon keeps a page's chart series
+    // current only while it is the chart), so switching back draws the daemon's series, never an old copy
+    await page.evaluate(() => window.EdShell.setTicker('QQQ'));
+    await expect.poll(() => page.evaluate(() => window.EdShell.series('SPY', 1200).length)).toBe(0);
+    expect(errs).toEqual([]);
+  });
+
+  test('Desk 1m: the same index typed another way ($SPX after SPX) still draws the daemon\'s series', async ({ page }) => {
+    // The page keeps the series by the daemon's key, which the daemon does not send again for the
+    // same key, so the chart never waits on the new spelling.
+    // STAND-IN (named): SPY's real series (SERIES) as $SPX's.
+    const errs = watchErrors(page);
+    await intercept(page);
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPX'); localStorage.setItem('ed_ws', 'trade-desk');
+      localStorage.setItem('ed_sub', 'desk'); localStorage.setItem('ed.desk.tf', '1'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const chartState = () => page.evaluate(() => window.EdTradeDeskMap.state().chart);
+    await expect.poll(async () => (await chartState()).bars).toBe(SERIES.bars.length);
+    await page.evaluate(() => window.EdShell.setTicker('$SPX'));
+    await expect.poll(() => page.evaluate(() => window.EdShell.series('$SPX', 1200).length)).toBe(SERIES.bars.length);
+    await expect.poll(async () => (await chartState()).bars).toBe(SERIES.bars.length);
+    expect(errs).toEqual([]);
+  });
+
+  test('Desk News: a headline held for another ticker is listed when that ticker is shown', async ({ page }) => {
+    // Real data: a NEWS_HEADLINE item as Schwab sent it (tests/fixtures/real_schwab_news_headline_spx_2026_10_05.json);
+    // STAND-IN: its key, QQQ. The list paints what is held for the ticker shown.
+    const errs = watchErrors(page);
+    await intercept(page);
+    const news = require(path.join(__dirname, '..', 'fixtures', 'real_schwab_news_headline_spx_2026_10_05.json'));
+    await mockPriceSocket(page, [{ service: 'NEWS_HEADLINE', key: 'QQQ', schwab_ts: news.schwab_ts, ts_recv: news.ts_recv,
+      content: Object.assign({}, news.content, { key: 'QQQ' }), time_ct: 'Mon 10/05 09:00 AM CT' }]);
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#tdmNews')).toHaveText('-');           // none held for SPY: absent
+    await page.evaluate(() => window.EdShell.setTicker('QQQ'));
+    await expect(page.locator('#tdmNews')).toContainText(news.content['4']);
+    expect(errs).toEqual([]);
+  });
+
+  test('the ticker already shown, picked again: its price keeps painting', async ({ page }) => {
+    // Picking it again keeps what it is: the subscribe, the same as the last, is not sent again,
+    // and the header keeps painting its price. STAND-IN (named): the price (schwabQuote).
+    const errs = watchErrors(page);
+    await intercept(page);
+    await mockPriceSocket(page, [schwabQuote('SPY', 501.25)]);
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#hPx')).toHaveText('501.25');
+    await page.evaluate(() => window.EdShell.setTicker('SPY'));
+    daemonSend(page, [schwabQuote('SPY', 502.5)]);
+    await expect(page.locator('#hPx')).toHaveText('502.50');
+    expect(errs).toEqual([]);
+  });
+
+  test('Desk 5m to 1m: an answer for 5 minutes in flight is never drawn on the 1-minute chart', async ({ page }) => {
+    // The console's 5-minute bars answered under the view before (sent before the console took
+    // the 1-minute view) are dropped, never drawn after the daemon's series as its newest two
+    // bars. Real data: the daemon's series (SERIES). STAND-IN (named): the console's 5-minute bars
+    // (BARS and two buckets later than every bar of the series).
+    const errs = watchErrors(page);
+    await intercept(page);
+    const last = SERIES.bars[SERIES.bars.length - 1].t;
+    const five = [1, 2].map((i) => Object.assign({}, SERIES.bars[SERIES.bars.length - 1], { t: last + 300 * i }));
+    await page.route('**/api/bars1m**', (route) => {
+      const tf = new URL(route.request().url()).searchParams.get('tf');
+      route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify(tf === '1' ? SERIES : Object.assign({}, BARS, { tf: tf, bars: BARS.bars.concat(five) })) });
+    });
+    await mockPriceSocket(page, []);
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
+      localStorage.setItem('ed_sub', 'desk'); localStorage.setItem('ed.desk.tf', '5'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const chartState = () => page.evaluate(() => window.EdTradeDeskMap.state().chart);
+    await expect.poll(async () => (await chartState()).bars).toBe(BARS.bars.length + five.length);
+    const release = holdViews(page);                         // the 1-minute view, not yet at the console
+    await page.locator('#tdmToolbar [data-tf="1"]').click();
+    await pushChange(page, 'liquidity');                     // the 5-minute bars answered under the view before
+    release();
+    // the series drawn at the click; the held 5-minute bars, answered for a timeframe the chart
+    // left, never drawn on it
+    await expect.poll(async () => (await chartState()).bars).toBe(SERIES.bars.length);
+    expect(errs).toEqual([]);
+  });
+
+  test('Desk 1m to 5m: the series sent whole before the console takes the view is not drawn on the 5-minute chart', async ({ page }) => {
+    // The daemon's series goes to the charts at its timeframe by the page's own view: once 5
+    // minutes is chosen, the 1-minute series sent whole (a /pricehistory answer) is not drawn on
+    // the chart, which draws the console's 5-minute answer, never 1-minute bars labelled 5 minutes.
+    // Real data: the daemon's series (SERIES) and the minute after it (NEXT). STAND-IN (named): the
+    // console's 5-minute bars (BARS).
+    const errs = watchErrors(page);
+    await intercept(page);
+    await mockPriceSocket(page, []);
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
+      localStorage.setItem('ed_sub', 'desk'); localStorage.setItem('ed.desk.tf', '1'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const chartState = () => page.evaluate(() => window.EdTradeDeskMap.state().chart);
+    await expect.poll(async () => (await chartState()).bars).toBe(SERIES.bars.length);   // the daemon's series
+    const release = holdViews(page);                         // the 5-minute view, not yet at the console
+    await page.locator('#tdmToolbar [data-tf="5"]').click();
+    daemonSeries(page, 'SPY', SERIES.bars.concat([NEXT.bar]), { t: NEXT.bar.t, label: NEXT.time_ct });
+    await expect.poll(() => page.evaluate(() => window.EdShell.series('SPY', 1200).length)).toBe(SERIES.bars.length + 1);
+    expect((await chartState()).bars).toBe(0);               // the 5-minute chart, cleared: no 1-minute bar on it
+    release();
+    await expect.poll(async () => (await chartState()).tf).toBe('5');
+    await expect.poll(async () => (await chartState()).bars).toBe(BARS.bars.length);   // the console's 5-minute answer
+    expect(errs).toEqual([]);
+  });
+
+  test('Desk 1m to 5m with the console\'s push going down: no 1-minute bars on the 5-minute chart', async ({ page }) => {
+    // The charts that draw the daemon's series follow the timeframe chosen on the page (the served
+    // rule, server.CHART_SERIES), never the console's acknowledgment: the 5-minute view on its way,
+    // the push closing and the series sent whole, the 5-minute chart stays without 1-minute bars.
+    // Real data: the daemon's series (SERIES).
+    const errs = watchErrors(page);
+    await intercept(page);
+    await mockPriceSocket(page, []);
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
+      localStorage.setItem('ed_sub', 'desk'); localStorage.setItem('ed.desk.tf', '1'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const chartState = () => page.evaluate(() => window.EdTradeDeskMap.state().chart);
+    await expect.poll(async () => (await chartState()).bars).toBe(SERIES.bars.length);
+    holdViews(page);                                         // the 5-minute view, never taken
+    await page.locator('#tdmToolbar [data-tf="5"]').click();
+    pushDown(page);
+    daemonSeries(page, 'SPY', SERIES.bars, SERIES.last_bar);
+    await expect.poll(() => page.evaluate(() => window.EdShell.getState().tfs.desk)).toBe('5');
+    await expect(page.locator('#tdmChartEmpty')).toBeVisible();   // waiting for the console's 5-minute bars
+    expect((await chartState()).bars).toBe(0);
+    expect(errs).toEqual([]);
+  });
+
+  test('Desk 5m to 1m to 5m: the console\'s answer to the 1-minute view draws nothing on the 5-minute chart', async ({ page }) => {
+    // Two timeframe changes inside one console round trip: the answer to the 1-minute view comes
+    // after the page is back at 5 minutes; the chart follows the page, so no 1-minute series is
+    // drawn on it and the console's 5-minute bars stand. Real data: the daemon's series (SERIES).
+    // STAND-IN (named): the console's 5-minute bars (BARS).
+    const errs = watchErrors(page);
+    await intercept(page);
+    await mockPriceSocket(page, []);
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
+      localStorage.setItem('ed_sub', 'desk'); localStorage.setItem('ed.desk.tf', '5'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const chartState = () => page.evaluate(() => window.EdTradeDeskMap.state().chart);
+    await expect.poll(async () => (await chartState()).tf).toBe('5');
+    await expect.poll(async () => (await chartState()).bars).toBe(BARS.bars.length);
+    const release = holdViews(page);
+    await page.locator('#tdmToolbar [data-tf="1"]').click();
+    await page.locator('#tdmToolbar [data-tf="5"]').click();
+    release();                                               // the console takes both, in order
+    await expect.poll(async () => (await chartState()).bars).toBe(BARS.bars.length);
+    const st = await chartState();
+    expect(st.tf).toBe('5');
+    expect(errs).toEqual([]);
+  });
+
+  // each chart that draws the daemon's series: where it is (localStorage, as the operator left
+  // it), its element and the bars it draws
+  const SERIES_CHARTS = {
+    desk: { at: { ed_ws: 'trade-desk', ed_sub: 'desk', 'ed.desk.tf': '1' }, host: '#tdmChart',
+      bars: () => { const c = window.EdTradeDeskMap.state().chart; return c && c.bars; } },
+    gamma: { at: { ed_ws: 'options', ed_sub: 'gamma', ed_view: 'chart', 'ed.gchart.tf': '1' }, host: '#chartBody',
+      bars: () => { const s = window.EdGammaChart.state(); return s && s.bars; } },
+    map: { at: { ed_ws: 'liquidity', ed_sub: 'map', 'ed.liqm.tf': '1' }, host: '#liqmBody',
+      bars: () => { const s = window.EdLiquidityMap.state(); return s && s.bars; } } };
+  async function openAt(page, at) {
+    await page.addInitScript((a) => { try { localStorage.setItem('ed_ticker', 'SPY');
+      Object.keys(a).forEach((k) => localStorage.setItem(k, a[k])); } catch (e) {} }, at);
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+  }
+
+  for (const [name, chart] of Object.entries(SERIES_CHARTS)) {
+    test(`${name} 1m: a page opened with the console's push down draws the daemon's bars, marked by the daemon's verdict`, async ({ page }) => {
+      // Which charts are on screen and at which timeframe is the page's own view read against the
+      // served rule (server.CHART_SERIES), so no console answer is needed to draw the daemon's
+      // series, and its mark is the daemon's verdict, not the console's last view. Real data: the
+      // daemon's series (SERIES); STAND-IN (named): the daemon's CHART_EQUITY verdict.
+      const errs = watchErrors(page);
+      await intercept(page);
+      pushDown(page);
+      await mockPriceSocket(page, [Object.assign({}, NEXT, { feed_live: false, outage: 'no CHART_EQUITY since 09:31' })]);
+      await openAt(page, chart.at);
+      await expect.poll(() => page.evaluate(chart.bars)).toBe(SERIES.bars.length + 1);
+      await expect(page.locator(chart.host)).toHaveAttribute('data-not-live', /no CHART_EQUITY since 09:31/);
+      expect(errs).toEqual([]);
+    });
+
+    test(`${name} 1m: the daemon's socket down marks its bars not live`, async ({ page }) => {
+      // The daemon's socket closing (it stopped): the bars stand, marked not live with its reason,
+      // as every value read from it (AGENTS.md rule 5). Real data: the daemon's series (SERIES).
+      const errs = watchErrors(page);
+      await intercept(page);
+      await mockPriceSocket(page, [NEXT]);
+      await openAt(page, chart.at);
+      await expect.poll(() => page.evaluate(chart.bars)).toBe(SERIES.bars.length + 1);
+      await expect(page.locator(chart.host)).not.toHaveAttribute('data-not-live', /socket is down/);
+      daemonDown(page);
+      await expect(page.locator(chart.host)).toHaveAttribute('data-not-live', /the daemon's socket is down/);
+      expect(await page.evaluate(chart.bars)).toBe(SERIES.bars.length + 1);
+      expect(errs).toEqual([]);
+    });
+
+    test(`${name} 1m: another ticker with the daemon's socket down draws none of the last ticker's bars`, async ({ page }) => {
+      // The series is the ticker's: on a new ticker each chart waits for the daemon's series of it,
+      // whether or not the daemon answers. Real data: SPY's series (SERIES).
+      const errs = watchErrors(page);
+      await intercept(page);
+      await mockPriceSocket(page, []);
+      await openAt(page, chart.at);
+      await expect.poll(() => page.evaluate(chart.bars)).toBe(SERIES.bars.length);
+      daemonDown(page);
+      await page.evaluate(() => window.EdShell.setTicker('TSLA'));
+      await expect.poll(() => page.evaluate(chart.bars)).toBe(0);
+      expect(errs).toEqual([]);
+    });
+  }
+
+  test('Desk 1m: switching to the Desk with the console\'s push down draws the daemon\'s bars', async ({ page }) => {
+    // Real data: the daemon's series (SERIES).
+    const errs = watchErrors(page);
+    await intercept(page);
+    await mockPriceSocket(page, []);
+    await openAt(page, { ed_ws: 'order-flow', ed_sub: 'book', 'ed.desk.tf': '1' });
+    await expect.poll(() => page.evaluate(() => window.EdShell.series('SPY', 1200).length)).toBe(SERIES.bars.length);
+    pushDown(page);
+    await page.evaluate(() => window.EdShell.setWorkspace('trade-desk'));
+    await expect.poll(() => page.evaluate(SERIES_CHARTS.desk.bars)).toBe(SERIES.bars.length);
+    expect(errs).toEqual([]);
+  });
+
+  test('Gamma chart 1m to 5m: the 1-minute bars are not left under the 5-minute label', async ({ page }) => {
+    // A chart leaving the daemon's timeframe waits for the console's bars at its new one: its
+    // 1-minute bars, and the header's time of their newest, are cleared at once, the console's
+    // view on its way (holdViews). Real data: the daemon's series (SERIES).
+    const errs = watchErrors(page);
+    await intercept(page);
+    await mockPriceSocket(page, []);
+    await openAt(page, SERIES_CHARTS.gamma.at);
+    await expect.poll(() => page.evaluate(SERIES_CHARTS.gamma.bars)).toBe(SERIES.bars.length);
+    await expect(page.locator('#chartBody .gchart-head')).toContainText('price 1m');
+    holdViews(page);
+    await page.locator('#chartBody .gchart-tb [data-tf="5"]').click();
+    await expect.poll(() => page.evaluate(SERIES_CHARTS.gamma.bars)).toBe(0);
+    await expect(page.locator('#chartBody .gchart-head')).not.toContainText('price 1m');
+    expect(errs).toEqual([]);
+  });
+
+  test('Liquidity map 1m to 5m: the 1-minute bars are not left under the 5-minute label', async ({ page }) => {
+    // As the Gamma chart. Real data: the daemon's series (SERIES).
+    const errs = watchErrors(page);
+    await intercept(page);
+    await mockPriceSocket(page, []);
+    await openAt(page, SERIES_CHARTS.map.at);
+    await expect.poll(() => page.evaluate(SERIES_CHARTS.map.bars)).toBe(SERIES.bars.length);
+    holdViews(page);
+    await page.locator('#liqmBody .liqm-tb [data-tf="5"]').click();
+    await expect.poll(() => page.evaluate(SERIES_CHARTS.map.bars)).toBe(0);
+    expect(errs).toEqual([]);
+  });
+
+  test('Desk 1m: with the console\'s push down, the daemon\'s bars still draw', async ({ page }) => {
+    // The console never stands in the path from Schwab to the screen: a view that was on its way
+    // when the console's push went down holds nothing back. Real data: the daemon's series
+    // (SERIES) and the minute after it (NEXT).
+    const errs = watchErrors(page);
+    await intercept(page);
+    await mockPriceSocket(page, []);
+    await openAt(page, SERIES_CHARTS.desk.at);
+    await expect.poll(() => page.evaluate(SERIES_CHARTS.desk.bars)).toBe(SERIES.bars.length);
+    holdViews(page);                                         // a view on its way that the console never takes
+    await page.evaluate(() => window.EdShell.setTf('chart', '5'));   // another chart's timeframe: the Desk unchanged
+    pushDown(page);
+    daemonSend(page, [NEXT]);
+    await expect.poll(() => page.evaluate(SERIES_CHARTS.desk.bars)).toBe(SERIES.bars.length + 1);
+    expect(errs).toEqual([]);
+  });
+
+  test('Desk Volatility: VIX moves with its own price rows, not only the chart ticker\'s', async ({ page }) => {
+    // A VIX row alone repaints the card's VIX. STAND-IN (named): the VIX price (schwabQuote).
+    const errs = watchErrors(page);
+    await intercept(page);
+    await mockPriceSocket(page, []);
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#tdmCardVol .tdm-rows')).toContainText('waiting for the VIX stream');
+    daemonSend(page, [schwabQuote('$VIX', 18.42)]);
+    await expect(page.locator('#tdmCardVol .tdm-rows')).toContainText('18.42');
     expect(errs).toEqual([]);
   });
 
@@ -376,6 +783,47 @@ test.describe('Trade Desk renders served values', () => {
     expect(errs).toEqual([]);
   });
 
+  test('Right Now: each section is marked by its own panels; with the push down its book reads NOT LIVE', async ({ page }) => {
+    // operator 2026-10-14: "each panel gets its own screen element". The book's venue feed is down
+    // (STAND-IN: the outage's words); only the Detect section, read from the book, says so.
+    const errs = watchErrors(page);
+    await intercept(page);
+    setNotLive(page, 'rightnow.book', 'Schwab NASDAQ_BOOK feed down during RTH');
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'right-now'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#tdDetect')).toHaveAttribute('data-not-live', /NASDAQ_BOOK feed down during RTH/);
+    for (const id of ['#tdFrame', '#tdConfirm', '#tdContext', '#tdMigration']) {
+      await expect(page.locator(id)).not.toHaveAttribute('data-not-live', /NASDAQ_BOOK feed down during RTH/);
+    }
+    await expect(page.locator('#tdDetect .fl-badge')).toHaveText('LIVE');
+    pushDown(page);
+    await expect(page.locator('#tdDetect .fl-badge')).toHaveText('NOT LIVE', { timeout: 6000 });
+    for (const id of ['#tdDetect', '#tdFrame', '#tdConfirm', '#tdContext', '#tdMigration']) {
+      await expect(page.locator(id)).toHaveAttribute('data-not-live', /the console push is down/);
+    }
+    expect(errs).toEqual([]);
+  });
+
+  test('Right Now: Schwab\'s top of book shows from the daemon before the console\'s answers have landed', async ({ page }) => {
+    // Operator 2026-10-14: "nothing should ever be in the way of the straight path from schwab to
+    // the ui". The levels answer is held; Detect shows the daemon's bid × ask; the rest once it lands.
+    const errs = watchErrors(page);
+    await intercept(page);
+    let release;
+    const held = new Promise((r) => { release = r; });
+    await page.route('**/api/levels**', async (route) => { await held;
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(LEVELS) }); });
+    await mockPriceSocket(page, [schwabQuote('SPY', SPOT, { BID_PRICE: 771.29, ASK_PRICE: 771.31 })]);
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'right-now'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#tdDetect')).toContainText('771.29 × 771.31');
+    await expect(page.locator('#tdFrame')).toHaveCount(0);            // the console's levels: not yet
+    release();
+    await expect(page.locator('#tdFrame')).toHaveCount(1);
+    await expect(page.locator('#tdDetect')).toContainText('771.29 × 771.31');
+    expect(errs).toEqual([]);
+  });
+
   test('Right Now: detect, frame, context and the migration read the served fields', async ({ page }) => {
     const errs = watchErrors(page);
     await intercept(page);
@@ -408,7 +856,7 @@ test.describe('Trade Desk renders served values', () => {
     const push = async (kind) => {
       await page.waitForTimeout(300);                    // the first read has settled
       reads.length = 0;
-      await page.evaluate((k) => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: k } })), kind);
+      await pushChange(page, kind);
       await expect.poll(() => reads.length).toBeGreaterThan(0);
       await page.waitForTimeout(300);                    // every read that push makes has gone out
       return [...new Set(reads)].sort();
@@ -435,7 +883,7 @@ test.describe('Trade Desk renders served values', () => {
     await expect(strikes).toHaveText(['772', '771', '770']);
     await page.evaluate(() => window.EdShell.setScope('wider'));
     await expect(strikes).toHaveText(['792', '791', '790']);
-    await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'flow' } })));
+    await pushChange(page, 'flow');
     await page.waitForTimeout(600);                                   // the push's reads have landed
     await expect(strikes).toHaveText(['792', '791', '790']);          // the window asked for, not the old one
   });
@@ -474,18 +922,24 @@ test.describe('Trade Desk renders served values', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const body = page.locator('#tdBody');
     await expect(body).toContainText('(NYSE_BOOK, depth 5)');
-    await page.evaluate(() => {          // the venue each draw from here on shows
+    await page.evaluate(() => {          // the venue each draw from here on shows, and the venue then on screen
       window.__draws = [];
-      new MutationObserver(() => window.__draws.push((document.getElementById('tdBody').textContent.match(/\((NYSE|NASDAQ)_BOOK/) || [''])[0]))
+      new MutationObserver(() => window.__draws.push([(document.getElementById('tdBody').textContent.match(/\((NYSE|NASDAQ)_BOOK/) || [''])[0],
+        '(' + window.EdShell.getState().bookVenue]))
         .observe(document.getElementById('tdBody'), { childList: true });
     });
     slow = true;
-    await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'flow' } })));
+    const pushed = pushChange(page, 'flow');                         // the console's answers are slow ...
     await expect.poll(() => inFlight).toBe(1);
     await page.evaluate(() => document.querySelector('.bookvenue [data-venue="NASDAQ_BOOK"]').click());   // ... cut short
     await expect(body).toContainText('(NASDAQ_BOOK, depth 5)');
-    await page.waitForTimeout(1200);                                 // the cut-short read would have landed
-    expect(await page.evaluate(() => window.__draws)).toEqual(['(NASDAQ_BOOK']);
+    await pushed;                                                    // the slow NYSE answer has landed
+    await page.waitForTimeout(400);
+    const draws = await page.evaluate(() => window.__draws);
+    // every draw is the venue on screen at that draw; the old venue's late answer never draws
+    // after the switch (each panel's answer is drawn as it is pushed)
+    expect(draws.filter((d) => d[1] === '(NASDAQ_BOOK').length).toBeGreaterThan(0);
+    expect(draws.filter((d) => d[0] !== d[1])).toEqual([]);
   });
 
   test('Right Now: a read cut short by a scope change never draws', async ({ page }) => {
@@ -501,35 +955,43 @@ test.describe('Trade Desk renders served values', () => {
       if (slow) { inFlight += 1; await new Promise((r) => setTimeout(r, 800)); }   // the push's read is in flight ...
       route.fallback();
     });
+    await mockPriceSocket(page, [schwabQuote('SPY', SPOT)]);      // the spot: the header's price row
     await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
       localStorage.setItem('ed_sub', 'right-now'); localStorage.setItem('ed_scope', 'auto'); } catch (e) {} });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#tdMigration .gbs-k')).toHaveText(['772', '771', '770']);
-    await page.evaluate(() => {          // every draw of the page from here on: its strikes and its spot
+    await expect(page.locator('#tdBody .fl-meta')).toHaveText('spot 771.30');
+    await page.evaluate(() => {          // every draw of the page from here on: its strikes and its spot, and the scope then on screen
       window.__draws = [];
       new MutationObserver(() => {
         const ks = [...document.querySelectorAll('#tdMigration .gbs-k')].map((e) => e.textContent).join(',');
         const meta = document.querySelector('#tdBody .fl-meta');
-        window.__draws.push(ks + ' | ' + (meta ? meta.textContent : ''));
+        window.__draws.push([ks + ' | ' + (meta ? meta.textContent : ''), window.EdShell.getState().scope]);
       }).observe(document.getElementById('tdBody'), { childList: true });
     });
     slow = true;
-    await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'flow' } })));
+    const pushed = pushChange(page, 'flow');                         // the console's answers are slow ...
     await expect.poll(() => inFlight).toBe(1);
     slow = false;
     await page.evaluate(() => window.EdShell.setScope('wider'));     // ... and the scope change cuts it short
     await expect(page.locator('#tdMigration .gbs-k')).toHaveText(['792', '791', '790']);
-    await page.waitForTimeout(1200);                                 // the cut-short read would have landed
-    expect(await page.evaluate(() => window.__draws)).toEqual(['792,791,790 | spot 771.30']);
+    await pushed;                                                    // the slow answer has landed
+    await page.waitForTimeout(400);
+    const draws = await page.evaluate(() => window.__draws);
+    // every draw is the scope on screen at that draw; the old scope's late answer never draws
+    // after the change
+    const drawn = { auto: '772,771,770 | spot 771.30', wider: '792,791,790 | spot 771.30' };
+    expect(draws.filter((d) => d[1] === 'wider').length).toBeGreaterThan(0);
+    expect(draws.filter((d) => d[0] !== drawn[d[1]])).toEqual([]);
   });
 
   test('Market Map: 3m, line mode, a level beyond the visible range pinned at the edge, and the FORCES split', async ({ page }) => {
     const errs = watchErrors(page);
-    const far = { id: 'grc', price: 837.58, family: 'gamma', label: 'GRC', short: 'GRC', evidence_tier: 'DERIVED', distance: 66.28, side: 'ABOVE', };
-    const wall = { id: 'call_wall', price: 772, family: 'gamma', label: 'Call wall', evidence_tier: 'DERIVED', distance: 0.7, side: 'ABOVE', };
+    const far = { id: 'grc', price: 837.58, family: 'gamma', label: 'GRC', short: 'GRC', evidence_tier: 'DERIVED', distance: 66.28, gap: 66.28, side: 'ABOVE', };
+    const wall = { id: 'call_wall', price: 772, family: 'gamma', label: 'Call wall', evidence_tier: 'DERIVED', distance: 0.7, gap: 0.7, side: 'ABOVE', };
     await page.route('**/api/**', (route) => {
       const url = route.request().url();
-      let body = { available: false };
+      let body = url.includes('/api/expiries') ? expiriesAnswer([]) : { available: false };
       if (url.includes('/api/desk/events')) body = EVENTS;
       else if (url.includes('/api/terrain/strikes')) body = Object.assign({}, STRIKES, { today_side_sums: { gex_below: -1.2e9, gex_above: 8e8 } });
       else if (url.includes('/api/forces')) body = { ticker: 'SPY', available: true, doi_below: 1200, doi_above: -300,
@@ -563,7 +1025,7 @@ test.describe('Trade Desk renders served values', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
       await page.route('**/api/**', (route) => {
         const url = route.request().url();
-        let body = { available: false };
+        let body = url.includes('/api/expiries') ? expiriesAnswer([]) : { available: false };
         if (url.includes('/api/desk/events')) body = EVENTS;
         else if (url.includes('/api/terrain/strikes')) body = STRIKES;
         else if (url.includes('/api/terrain')) body = terrain;
@@ -577,7 +1039,9 @@ test.describe('Trade Desk renders served values', () => {
       await Promise.all([page.waitForResponse((r) => /\/api\/terrain\?/.test(r.url())),
         page.goto('/', { waitUntil: 'domcontentloaded' })]);
       await expect.poll(() => page.evaluate(() => (window.EdTradeDeskMap.state().chart || {}).bars || 0)).toBeGreaterThan(0);
-      // the terrain's answer is painted on the next frames
+      // the chart's mark (the test console has no Schwab feed: its candles are not live) and the
+      // terrain's answer are painted on the next frames
+      await expect(page.locator('#tdmChart')).toHaveClass(/not-live/);
       await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
       await page.mouse.move(0, 0);
       return page.locator('#tdmChart').screenshot({ animations: 'disabled' });

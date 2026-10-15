@@ -19,9 +19,8 @@ from pathlib import Path
 
 import live_market_plane as lmp
 import server
-from app.options.order_flow import streaming as ofs
-from terrain_engine import compute_terrain
-from tests.feed_live_helper import mark_feed_live, publish_daemon_rows
+from terrain_engine import compute_terrain, listed_strikes, on_strikes
+from tests.feed_live_helper import forget_price, mark_feed_live
 from tests.real_chains import CRWD
 
 _SPOT = CRWD.spot
@@ -34,17 +33,16 @@ TK = server.ticker_storage_key("CRWD")
 def _clear():
     with server._terrain_cache_lock:
         server._terrain_cache.pop(TK, None)
-    ofs._price_rows.pop(TK, None)
-    lmp._by_ticker.pop(TK, None)
-    lmp._fields_by_ticker.pop(TK, None)
+    forget_price(TK)
 
 
 def _put_live_chain():
     snap = compute_terrain(TK, _CONTRACTS, _SPOT, now=CRWD.now)
     with server._terrain_cache_lock:
-        server._terrain_cache[TK] = {"ticker": TK, "spot": snap.spot, "computed_ts_utc": time.time(),
-                                     "_vanna_rows": server._vanna_rows(snap),
-                                     "_charm_rows": server._charm_rows(snap)}
+        ks = listed_strikes(_CONTRACTS)       # as _publish_levels publishes: on the one strike list
+        server._terrain_cache[TK] = {**snap.to_dict(), "computed_ts_utc": time.time(), "_strikes": ks,
+                                     "_vanna_rows": on_strikes(server._vanna_rows(snap), ks, 2),
+                                     "_charm_rows": on_strikes(server._charm_rows(snap), ks, 2)}
 
 
 def setup_function(_fn):
@@ -70,10 +68,9 @@ def test_charm_by_strike_unavailable_with_no_cached_chain():
 def test_vanna_by_strike_matches_the_same_canonical_faucet_call_vanna_minus_put_vanna():
     _put_live_chain()
     from math_exposure_core import bucket_metric, compute_exposures_by_strike as cebs
-    # Schwab's CRWD quote reaches the console as the daemon pushes it: its price row
+    # Schwab's CRWD quote reaches the console as the daemon pushes it: its price record
     lmp.record_from_level_one_equity(TK, _QUOTE["native"], received_ts=time.time())
     mark_feed_live(TK)
-    publish_daemon_rows(TK)
 
     body = json.loads(server.get_vanna_by_strike(ticker="CRWD", scope="all").body)
     assert body["available"] is True
@@ -87,8 +84,8 @@ def test_vanna_by_strike_matches_the_same_canonical_faucet_call_vanna_minus_put_
     checked = 0
     for k, b in exposures.items():
         expected = bucket_metric(b, "net_vanna")
-        if expected is None:            # a leg's vanna input Schwab did not send: no row
-            assert float(k) not in rows
+        if expected is None:            # a leg's vanna input Schwab did not send: no value ("-")
+            assert rows[float(k)] is None
             continue
         assert rows[float(k)] == expected
         checked += 1
