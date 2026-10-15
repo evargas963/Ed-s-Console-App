@@ -61,6 +61,8 @@
   [['liquidity.map.zones', 'zones'], ['liquidity.map.levels', 'levels'], ['liquidity.map.bars', 'bars']].forEach(function (p) {
     window.EdShell.onPanel(p[0], function (a) {
       _last[p[1]] = a.waiting ? undefined : a.ok ? a.body : null;
+      // bars on their way at another timeframe: the drawn ones are not this map's any more
+      if (p[1] === 'bars' && a.waiting && _chart) _chart.setBars([], st().tfs.liquidity, st().display || ticker(), null);
       var h = host();
       if (h && _last.zones !== undefined && _last.levels !== undefined && _last.bars !== undefined) {
         render(h, ticker(), _last.zones, _last.levels, _last.bars);

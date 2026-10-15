@@ -517,15 +517,16 @@ test.describe('Trade Desk renders served values', () => {
     await page.locator('#tdmToolbar [data-tf="1"]').click();
     await pushChange(page, 'liquidity');                     // the 5-minute bars answered under the view before
     release();
-    // the console's view answer drops the held 5-minute bars and draws the series, in one step
+    // the series drawn at the click; the held 5-minute bars, answered for a timeframe the chart
+    // left, never drawn on it
     await expect.poll(async () => (await chartState()).bars).toBe(BARS.bars.length);
     expect(errs).toEqual([]);
   });
 
   test('Desk 1m to 5m: the series sent whole before the console takes the view is not drawn on the 5-minute chart', async ({ page }) => {
-    // The daemon's series goes to the charts the console's newest view names: while the 5-minute
-    // view is on its way, the 1-minute series sent whole (a /pricehistory answer) waits, and the
-    // 5-minute chart draws the console's answer, never the 1-minute bars labelled 5 minutes.
+    // The daemon's series goes to the charts at its timeframe by the page's own view: once 5
+    // minutes is chosen, the 1-minute series sent whole (a /pricehistory answer) is not drawn on
+    // the chart, which draws the console's 5-minute answer, never 1-minute bars labelled 5 minutes.
     // Real data: SPY's CHART_EQUITY bar (tests/fixtures/real_daemon_bars_spy_tsla_2026_10_01_02.json).
     // STAND-INS (named): the series' history (BARS) and the bar's time label.
     const errs = watchErrors(page);
@@ -596,6 +597,73 @@ test.describe('Trade Desk renders served values', () => {
     await expect.poll(async () => (await chartState()).bars).toBe(BARS.bars.length);
     const st = await chartState();
     expect(st.tf).toBe('5');
+    expect(errs).toEqual([]);
+  });
+
+  test('Desk 1m: a page opened with the console\'s push down draws the daemon\'s bars', async ({ page }) => {
+    // Which charts are on screen and at which timeframe is the page's own view read against the
+    // served rule (server.CHART_SERIES), so no console answer is needed to draw the daemon's
+    // series. STAND-IN (named): the series' bars (BARS).
+    const errs = watchErrors(page);
+    await intercept(page);
+    pushDown(page);
+    await mockPriceSocket(page, []);
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
+      localStorage.setItem('ed_sub', 'desk'); localStorage.setItem('ed.desk.tf', '1'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect.poll(() => page.evaluate(() => window.EdShell.series('SPY', 1200).length)).toBe(BARS.bars.length);
+    await expect.poll(async () => { const c = await page.evaluate(() => window.EdTradeDeskMap.state().chart); return c && c.bars; })
+      .toBe(BARS.bars.length);
+    expect(errs).toEqual([]);
+  });
+
+  test('Desk 1m: switching to the Desk with the console\'s push down draws the daemon\'s bars', async ({ page }) => {
+    // STAND-IN (named): the series' bars (BARS).
+    const errs = watchErrors(page);
+    await intercept(page);
+    await mockPriceSocket(page, []);
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'order-flow');
+      localStorage.setItem('ed_sub', 'book'); localStorage.setItem('ed.desk.tf', '1'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect.poll(() => page.evaluate(() => window.EdShell.series('SPY', 1200).length)).toBe(BARS.bars.length);
+    pushDown(page);
+    await page.evaluate(() => window.EdShell.setWorkspace('trade-desk'));
+    await expect.poll(async () => { const c = await page.evaluate(() => window.EdTradeDeskMap.state().chart); return c && c.bars; })
+      .toBe(BARS.bars.length);
+    expect(errs).toEqual([]);
+  });
+
+  test('Gamma chart 1m to 5m: the 1-minute bars are not left under the 5-minute label', async ({ page }) => {
+    // A chart leaving the daemon's timeframe waits for the console's bars at its new one: its
+    // 1-minute bars are cleared at once, the console's view on its way (holdViews). STAND-IN
+    // (named): the series' bars (BARS).
+    const errs = watchErrors(page);
+    await intercept(page);
+    await mockPriceSocket(page, []);
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'options');
+      localStorage.setItem('ed_sub', 'gamma'); localStorage.setItem('ed_view', 'chart'); localStorage.setItem('ed.gchart.tf', '1'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const gamma = () => page.evaluate(() => { const s = window.EdGammaChart.state(); return s && s.bars; });
+    await expect.poll(gamma).toBe(BARS.bars.length);
+    holdViews(page);
+    await page.locator('#chartBody .gchart-tb [data-tf="5"]').click();
+    await expect.poll(gamma).toBe(0);
+    expect(errs).toEqual([]);
+  });
+
+  test('Liquidity map 1m to 5m: the 1-minute bars are not left under the 5-minute label', async ({ page }) => {
+    // As the Gamma chart. STAND-IN (named): the series' bars (BARS).
+    const errs = watchErrors(page);
+    await intercept(page);
+    await mockPriceSocket(page, []);
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'liquidity');
+      localStorage.setItem('ed_sub', 'map'); localStorage.setItem('ed.liqm.tf', '1'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const map = () => page.evaluate(() => { const s = window.EdLiquidityMap.state(); return s && s.bars; });
+    await expect.poll(map).toBe(BARS.bars.length);
+    holdViews(page);
+    await page.locator('#liqmBody .liqm-tb [data-tf="5"]').click();
+    await expect.poll(map).toBe(0);
     expect(errs).toEqual([]);
   });
 

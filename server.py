@@ -2190,15 +2190,18 @@ _ROUTE_KINDS = {
     "/api/watchlist": set(),
 }
 
-#: The charts' bars panels, each by the view's timeframe it follows (`tfs`), and the timeframe at
-#: which a chart draws the daemon's 1-minute series (live_ui series_of), straight from the daemon:
-#: the one rule, served to the page (meta ed-chart-series) and read by _panels
-CHART_SERIES = {"panels": {"gamma.chart.bars": "chart", "liquidity.map.bars": "liquidity", "desk.bars": "desk"},
-                "tf": "1"}
-#: the 1-minute bars each chart rolls up, per timeframe above the daemon's
-CHART_BARS = {"3": 2000, "5": 3000, "15": 6000, "30": 9000, "60": 12000, "D": 12000}
 #: the Options subviews that show the strike x expiry grid and its panels
 _GAMMA_FAMILY = {"gamma", "dex", "oi"}
+#: The charts' bars panels, each with where it is on screen (its workspace, subviews and view,
+#: none: any) and the view's timeframe it follows (`tfs`), and the timeframe at which a chart draws
+#: the daemon's 1-minute series (live_ui series_of), straight from the daemon: the one rule,
+#: served to the page (meta ed-chart-series) and read by _panels
+CHART_SERIES = {"tf": "1", "panels": {
+    "gamma.chart.bars": {"workspace": "options", "subviews": sorted(_GAMMA_FAMILY), "view": "chart", "tf": "chart"},
+    "liquidity.map.bars": {"workspace": "liquidity", "subviews": ["map"], "view": None, "tf": "liquidity"},
+    "desk.bars": {"workspace": "trade-desk", "subviews": ["desk"], "view": None, "tf": "desk"}}}
+#: the 1-minute bars each chart rolls up, per timeframe above the daemon's
+CHART_BARS = {"3": 2000, "5": 3000, "15": 6000, "30": 9000, "60": 12000, "D": 12000}
 
 
 def _route(path: str, **params) -> str:
@@ -2256,7 +2259,7 @@ def _panels(v: dict) -> "tuple[dict[str, _Panel], list[str]]":
     series: list[str] = []
 
     def bars(name: str) -> "dict[str, _Panel]":   # Schwab's bars as sent, rolled up to the chart's timeframe
-        tf = v["tfs"][CHART_SERIES["panels"][name]]
+        tf = v["tfs"][CHART_SERIES["panels"][name]["tf"]]
         if tf == CHART_SERIES["tf"]:                # the daemon's series: no console panel
             series.append(name)
             return {}
@@ -2295,8 +2298,7 @@ def _panels(v: dict) -> "tuple[dict[str, _Panel], list[str]]":
                 _route("/api/options/gamma-surface", ticker=tk, **key(w), cols=cols, expiry=expiry),
                 lambda: gamma_surface_payload(tk, scope, w["centre"], w["pan_shift"], cols, expiry, now_et()), price)
         elif v["view"] == "chart":
-            out.update({**bars("gamma.chart.bars"),
-                        "gamma.chart.strikes": strikes(None), "gamma.chart.terrain": terrain})
+            out.update({"gamma.chart.strikes": strikes(None), "gamma.chart.terrain": terrain})
         elif v["view"] == "levels" and sub == "gamma":
             out["gamma.levels"] = levels("1")
     elif ws == "options" and sub in ("vanna", "charm"):
@@ -2308,8 +2310,7 @@ def _panels(v: dict) -> "tuple[dict[str, _Panel], list[str]]":
         out["flow"] = _Panel(_route("/api/order-flow/options-microstructure", contract=c),
                              lambda: options_microstructure(c, time.time()), ((c, "LEVELONE_OPTIONS"), (c, "OPTIONS_BOOK")))
     elif ws == "liquidity" and sub == "map":
-        out.update({"liquidity.map.zones": zones, "liquidity.map.levels": levels("1"),
-                    **bars("liquidity.map.bars")})
+        out.update({"liquidity.map.zones": zones, "liquidity.map.levels": levels("1")})
     elif ws == "liquidity" and sub == "levels":
         out["liquidity.levels"] = levels("1")
     elif ws == "order-flow" and sub == "book":
@@ -2323,13 +2324,16 @@ def _panels(v: dict) -> "tuple[dict[str, _Panel], list[str]]":
                     "rightnow.zones": zones, "rightnow.strikes": strikes("migration")})
     elif ws == "trade-desk" and sub == "desk":
         tf = v["tfs"]["desk"]
-        out.update({**bars("desk.bars"), "desk.levels": levels(tf),
+        out.update({"desk.levels": levels(tf),
                     "desk.events": _Panel(_route("/api/desk/events", ticker=tk, venue=venue, tf=tf),
                                           lambda: desk_events_payload(tk, venue, tf, now_et()), book_feeds),
                     "desk.terrain": terrain, "desk.zones": zones, "desk.strikes": strikes(None),
                     # the forces: the stored chain captures, read from no stream
                     "desk.forces": _Panel(_route("/api/forces", ticker=tk), lambda: forces_payload(tk, time.time()), ()),
                     "desk.book": book})
+    for name, chart in CHART_SERIES["panels"].items():       # each chart on screen: its bars
+        if ws == chart["workspace"] and sub in chart["subviews"] and chart["view"] in (None, v["view"]):
+            out.update(bars(name))
     return out, series
 
 
@@ -2414,8 +2418,8 @@ async def live_values(ws: WebSocket):
     "view"}); it names no route.
 
     Panels: the console decides the panels on screen (_panels), names each one the view moved
-    ({"type": "view", "seq", "moved", "shown" (every panel on screen), "series" (the charts on screen
-    that draw the daemon's 1-minute series, live_ui: no answer comes for them here)}) and pushes each one's answer
+    ({"type": "view", "seq", "moved", "shown" (every panel on screen; a chart at the daemon's
+    timeframe, CHART_SERIES, gets no answer here)}) and pushes each one's answer
     by name the moment it is ready, never waiting for another ({"type": "panels", "seq" (the view it
     is for), "panels": [{"panel", "source" (its value's route), "kinds", "not_live" (why the value
     is not live: the outage of each Schwab feed it is read from that is down, _not_live; else None),

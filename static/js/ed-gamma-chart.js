@@ -62,6 +62,8 @@
   [['gamma.chart.bars', 'bars'], ['gamma.chart.strikes', 'strikes'], ['gamma.chart.terrain', 'terrain']].forEach(function (p) {
     window.EdShell.onPanel(p[0], function (a) {
       _last[p[1]] = a.waiting ? undefined : a.ok ? a.body : null;
+      // bars on their way at another timeframe: the drawn ones are not this chart's any more
+      if (p[1] === 'bars' && a.waiting && _chart) _chart.setBars([], tf(), st().display || ticker(), null);
       if (isChart() && ready()) render();
     });
   });

@@ -98,7 +98,7 @@ def _frames(ticker: str, spot: float, views: dict) -> dict:
                 # the console's panels: a chart at the daemon's timeframe draws its series, not an
                 # answer of the console's (server.CHART_SERIES, the one rule)
                 tfs, rule = json.loads(sent)["view"]["tfs"], server.CHART_SERIES
-                series = {n for n, k in rule["panels"].items() if tfs[k] == rule["tf"]}
+                series = {n for n, chart in rule["panels"].items() if tfs[chart["tf"]] == rule["tf"]}
                 shown = set(view["shown"]) - {"watchlist"} - series
                 got: dict = {}
                 async with asyncio.timeout(20):     # one limit for the whole wait: a panel that never comes fails

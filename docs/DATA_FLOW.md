@@ -273,11 +273,13 @@ from Schwab to the screen (daemon, console, page), are these:
   The page's 1-minute charts and the Desk's volume card draw the daemon's (8800: the chart
   ticker's series whole for a new chart, a reconnect, each /pricehistory answer and a bar on an
   earlier minute, then every CHART_EQUITY bar of it in order). One served rule says which charts
-  draw it (`server.CHART_SERIES`: each chart's bars panel by the timeframe it follows, and the
-  daemon's timeframe, 1 minute; meta `ed-chart-series`): the console answers no bars for a chart
-  at that timeframe (`server._panels`), and the page draws the daemon's series on it by the
-  timeframe chosen on the page, at the moment it is chosen, and draws no console answer on it; no
-  console round trip stands between the daemon's series and the chart.
+  draw it (`server.CHART_SERIES`: each chart's bars panel by where it is on screen and the
+  timeframe it follows, and the daemon's timeframe, 1 minute; meta `ed-chart-series`): the console
+  builds each chart's bars panel from it and answers no bars for a chart at that timeframe
+  (`server._panels`); the page reads it against its own view (workspace, subview, view,
+  timeframes), so the daemon's series is drawn on each chart on screen at that timeframe the
+  moment the view is chosen, whether or not the console is connected, no console answer is drawn
+  on it, and a chart leaving it waits for the console's bars with its 1-minute bars cleared.
   Enforced by: `tests/test_live_ui_daemon_to_browser_v1.py` (the daemon's series equals the
   console's, bar for bar, on real data). Enforced by: `tests/test_data_path_pricehistory_v1.py`. Charts show completed Schwab bars only, exactly as Schwab sent them, with
   the newest bar's minute (`last_bar`). The live Schwab LAST_PRICE (the header's price row, with
