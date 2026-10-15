@@ -275,12 +275,15 @@ from Schwab to the screen (daemon, console, page), are these:
   earlier minute, then every CHART_EQUITY bar of it in order). One served rule says which charts
   draw it (`server.CHART_SERIES`: each chart's bars panel by where it is on screen and the
   timeframe it follows, and the daemon's timeframe, 1 minute; meta `ed-chart-series`): the console
-  builds each chart's bars panel from it and answers no bars for a chart at that timeframe
-  (`server._panels`); the page reads it against its own view (workspace, subview, view,
-  timeframes), so the daemon's series is drawn on each chart on screen at that timeframe the
-  moment the view is chosen, whether or not the console is connected, no console answer is drawn
-  on it, and a chart leaving it waits for the console's bars with its 1-minute bars cleared.
-  Enforced by: `tests/test_live_ui_daemon_to_browser_v1.py` (the daemon's series equals the
+  places each chart by it and answers no bars for a chart at that timeframe (`server._panels`; its
+  `shown` names only its own panels); the page reads it against its own view (workspace, subview,
+  view, timeframes, ticker), so the daemon's series is drawn on each chart on screen at that
+  timeframe the moment the view is chosen, whether or not the console is connected, each part of
+  a chart drawn as it comes; those charts are marked by the daemon's CHART_EQUITY verdict (its
+  socket down: "the daemon's socket is down"); a new ticker's charts wait for its series; and a
+  chart leaving the daemon's timeframe waits for the console's bars with its 1-minute bars
+  cleared. Enforced by: `tests/e2e/console-trade-desk.spec.js` (each chart: the push down at load,
+  the daemon's socket down, a new ticker with it down; the timeframe changes). Enforced by: `tests/test_live_ui_daemon_to_browser_v1.py` (the daemon's series equals the
   console's, bar for bar, on real data). Enforced by: `tests/test_data_path_pricehistory_v1.py`. Charts show completed Schwab bars only, exactly as Schwab sent them, with
   the newest bar's minute (`last_bar`). The live Schwab LAST_PRICE (the header's price row, with
   its age since the trade) is drawn on the chart as its own line and moves with every update; no

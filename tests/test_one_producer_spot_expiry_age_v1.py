@@ -13,7 +13,6 @@ chain round -- so the live spot and the priced spot differ, as they do between r
 from __future__ import annotations
 
 import asyncio
-import json
 import time
 
 import pytest
@@ -95,11 +94,7 @@ def _frames(ticker: str, spot: float, views: dict) -> dict:
                 sent = _view(1, ticker=ticker.lstrip("$"), symbols=[ticker.lstrip("$")], **over)
                 await page.inbox.put(sent)
                 view = await page.next("view")
-                # the console's panels: a chart at the daemon's timeframe draws its series, not an
-                # answer of the console's (server.CHART_SERIES, the one rule)
-                tfs, rule = json.loads(sent)["view"]["tfs"], server.CHART_SERIES
-                series = {n for n, chart in rule["panels"].items() if tfs[chart["tf"]] == rule["tf"]}
-                shown = set(view["shown"]) - {"watchlist"} - series
+                shown = set(view["shown"]) - {"watchlist"}
                 got: dict = {}
                 async with asyncio.timeout(20):     # one limit for the whole wait: a panel that never comes fails
                     while not shown <= set(got):

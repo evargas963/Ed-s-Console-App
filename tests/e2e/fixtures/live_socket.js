@@ -133,8 +133,7 @@ async function installLive(page) {
       if (!msg) return;
       if (msg.type === 'view') {
         seq = msg.seq;
-        // a chart that now draws the daemon's series may still be answered here, as by a console
-        // answer sent before it took the view: the page draws none on it (ed-core deliverConsole)
+        // as the console: a panel the view no longer shows is answered no more
         for (const n of [...shown.keys()]) if (!msg.shown.includes(n)) shown.delete(n);
         send(msg);
         if (seq === pageSeq) {                  // the page's newest view: what it would draw, read

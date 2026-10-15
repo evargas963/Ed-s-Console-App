@@ -2226,13 +2226,13 @@ class _Panel:
         return self.feeds() if callable(self.feeds) else self.feeds
 
 
-def _panels(v: dict) -> "tuple[dict[str, _Panel], list[str]]":
-    """The panels on screen for a page's view `v` (the operator's selections: ticker, workspace,
-    subview, view, expiry, the selected strike and contract, scope, book venue, each chart's
-    timeframe, the heatmap's columns and minutes, each strike panel's pan) and each one's value,
-    and the charts' bars panels on screen at 1 minute: those draw the daemon's series (live_ui
-    series_of), straight from the daemon. Panels that show the same value read the same producer
-    with the same inputs."""
+def _panels(v: dict) -> "dict[str, _Panel]":
+    """The console's panels on screen for a page's view `v` (the operator's selections: ticker,
+    workspace, subview, view, expiry, the selected strike and contract, scope, book venue, each
+    chart's timeframe, the heatmap's columns and minutes, each strike panel's pan) and each one's
+    value. A chart's bars at the daemon's timeframe are none of them: the page draws the daemon's
+    series (live_ui series_of) by CHART_SERIES. Panels that show the same value read the same
+    producer with the same inputs."""
     tk, ws, sub, scope, venue, pans = v["ticker"], v["workspace"], v["subview"], v["scope"], v["venue"], v["pans"]
     #: a value read from the stock's price (the price row: the spot, a level's distance, the
     #: strike nearest the price), and one read from the venue's book as well
@@ -2256,12 +2256,13 @@ def _panels(v: dict) -> "tuple[dict[str, _Panel], list[str]]":
         return _Panel(_route("/api/terrain/strikes", ticker=tk, **key(w)),
                       lambda: terrain_strikes_payload(tk, scope, w["centre"], w["pan_shift"], time.time()), price)
 
-    series: list[str] = []
+    def here(chart: str) -> bool:       # the chart on screen in this view (CHART_SERIES: where it is)
+        c = CHART_SERIES["panels"][chart]
+        return ws == c["workspace"] and sub in c["subviews"] and c["view"] in (None, v["view"])
 
     def bars(name: str) -> "dict[str, _Panel]":   # Schwab's bars as sent, rolled up to the chart's timeframe
         tf = v["tfs"][CHART_SERIES["panels"][name]["tf"]]
         if tf == CHART_SERIES["tf"]:                # the daemon's series: no console panel
-            series.append(name)
             return {}
         return {name: _Panel(_route("/api/bars1m", ticker=tk, tf=tf, limit=CHART_BARS[tf]),
                              lambda: bars_payload(tk, CHART_BARS[tf], tf), ((tk, "CHART_EQUITY"),))}
@@ -2297,8 +2298,8 @@ def _panels(v: dict) -> "tuple[dict[str, _Panel], list[str]]":
             out["gamma.surface"] = _Panel(
                 _route("/api/options/gamma-surface", ticker=tk, **key(w), cols=cols, expiry=expiry),
                 lambda: gamma_surface_payload(tk, scope, w["centre"], w["pan_shift"], cols, expiry, now_et()), price)
-        elif v["view"] == "chart":
-            out.update({"gamma.chart.strikes": strikes(None), "gamma.chart.terrain": terrain})
+        elif here("gamma.chart.bars"):
+            out.update({"gamma.chart.strikes": strikes(None), "gamma.chart.terrain": terrain, **bars("gamma.chart.bars")})
         elif v["view"] == "levels" and sub == "gamma":
             out["gamma.levels"] = levels("1")
     elif ws == "options" and sub in ("vanna", "charm"):
@@ -2309,8 +2310,8 @@ def _panels(v: dict) -> "tuple[dict[str, _Panel], list[str]]":
         c = v["contract"]
         out["flow"] = _Panel(_route("/api/order-flow/options-microstructure", contract=c),
                              lambda: options_microstructure(c, time.time()), ((c, "LEVELONE_OPTIONS"), (c, "OPTIONS_BOOK")))
-    elif ws == "liquidity" and sub == "map":
-        out.update({"liquidity.map.zones": zones, "liquidity.map.levels": levels("1")})
+    elif here("liquidity.map.bars"):
+        out.update({"liquidity.map.zones": zones, "liquidity.map.levels": levels("1"), **bars("liquidity.map.bars")})
     elif ws == "liquidity" and sub == "levels":
         out["liquidity.levels"] = levels("1")
     elif ws == "order-flow" and sub == "book":
@@ -2322,7 +2323,7 @@ def _panels(v: dict) -> "tuple[dict[str, _Panel], list[str]]":
     elif ws == "trade-desk" and sub == "right-now":
         out.update({"rightnow.book": book, "rightnow.levels": levels("1"), "rightnow.terrain": terrain,
                     "rightnow.zones": zones, "rightnow.strikes": strikes("migration")})
-    elif ws == "trade-desk" and sub == "desk":
+    elif here("desk.bars"):
         tf = v["tfs"]["desk"]
         out.update({"desk.levels": levels(tf),
                     "desk.events": _Panel(_route("/api/desk/events", ticker=tk, venue=venue, tf=tf),
@@ -2330,11 +2331,8 @@ def _panels(v: dict) -> "tuple[dict[str, _Panel], list[str]]":
                     "desk.terrain": terrain, "desk.zones": zones, "desk.strikes": strikes(None),
                     # the forces: the stored chain captures, read from no stream
                     "desk.forces": _Panel(_route("/api/forces", ticker=tk), lambda: forces_payload(tk, time.time()), ()),
-                    "desk.book": book})
-    for name, chart in CHART_SERIES["panels"].items():       # each chart on screen: its bars
-        if ws == chart["workspace"] and sub in chart["subviews"] and chart["view"] in (None, v["view"]):
-            out.update(bars(name))
-    return out, series
+                    "desk.book": book, **bars("desk.bars")})
+    return out
 
 
 #: an answer that names no instant an age is shown of
@@ -2418,8 +2416,8 @@ async def live_values(ws: WebSocket):
     "view"}); it names no route.
 
     Panels: the console decides the panels on screen (_panels), names each one the view moved
-    ({"type": "view", "seq", "moved", "shown" (every panel on screen; a chart at the daemon's
-    timeframe, CHART_SERIES, gets no answer here)}) and pushes each one's answer
+    ({"type": "view", "seq", "moved", "shown" (every panel of the console's on screen; a chart at
+    the daemon's timeframe, CHART_SERIES, is none of them)}) and pushes each one's answer
     by name the moment it is ready, never waiting for another ({"type": "panels", "seq" (the view it
     is for), "panels": [{"panel", "source" (its value's route), "kinds", "not_live" (why the value
     is not live: the outage of each Schwab feed it is read from that is down, _not_live; else None),
@@ -2496,8 +2494,8 @@ async def live_values(ws: WebSocket):
                 view = json.loads(message)["view"]
                 # no ticker chosen yet: the watchlist alone
                 view["ticker"] = ticker_storage_key(_required_ticker(view["ticker"])) if view["ticker"] else None
-                panels, series = _panels(view) if view["ticker"] else \
-                    ({"watchlist": _Panel("/api/watchlist", lambda: watchlist_payload(time.time()), ())}, [])
+                panels = _panels(view) if view["ticker"] else \
+                    {"watchlist": _Panel("/api/watchlist", lambda: watchlist_payload(time.time()), ())}
                 async with send_lock:
                     if not page["subscribed"] or view["ticker"] != page["ticker"]:
                         if page["subscribed"]:
@@ -2506,7 +2504,7 @@ async def live_values(ws: WebSocket):
                         page["ticker"], page["subscribed"] = view["ticker"], True
                     moved = [n for n, p in panels.items() if n not in client.panels or client.panels[n].source != p.source]
                     client.panels, page["seq"] = panels, view["seq"]
-                    await text({"type": "view", "seq": view["seq"], "moved": moved, "shown": sorted([*panels, *series])})
+                    await text({"type": "view", "seq": view["seq"], "moved": moved, "shown": sorted(panels)})
                     await beat()
                 _forget_unshown()
                 note_liveness(time.time())

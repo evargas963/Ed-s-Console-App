@@ -50,23 +50,19 @@
       .map(function (l) { return { id: l.id, price: Number(l.price), label: l.short, color: P.stale, style: 2, width: 1 }; }));
     c.setLivePrice(_spot, null);
     var empty = h.querySelector('.liqm-empty');
-    empty.hidden = !!(snap && snap.zones !== undefined);
+    empty.hidden = snap === undefined || !!(snap && snap.zones !== undefined);   // on its way, or in
     empty.textContent = empty.hidden ? '' : 'the liquidity snapshot request failed for ' + tk;
     h.querySelector('.liqm-zones').innerHTML = '<div class="fl-sec"><div class="fl-sec-h">Zones (confluence-scored, /api/liquidity-snapshot)</div>' +
       (zones.length ? zones.map(zoneRow).join('') : '<div class="sm">no zones for this session yet</div>') + '</div>';
   }
 
-  // drawn once all three are pushed for the view; a failed one is absent (null), one on its way
-  // for a new view is not drawn from the old one
+  // each drawn as it is delivered for the view; a failed one is absent (null), one on its way for
+  // a new view (undefined) is not drawn from the old one
   [['liquidity.map.zones', 'zones'], ['liquidity.map.levels', 'levels'], ['liquidity.map.bars', 'bars']].forEach(function (p) {
     window.EdShell.onPanel(p[0], function (a) {
       _last[p[1]] = a.waiting ? undefined : a.ok ? a.body : null;
-      // bars on their way at another timeframe: the drawn ones are not this map's any more
-      if (p[1] === 'bars' && a.waiting && _chart) _chart.setBars([], st().tfs.liquidity, st().display || ticker(), null);
       var h = host();
-      if (h && _last.zones !== undefined && _last.levels !== undefined && _last.bars !== undefined) {
-        render(h, ticker(), _last.zones, _last.levels, _last.bars);
-      }
+      if (h) render(h, ticker(), _last.zones, _last.levels, _last.bars);
     });
   });
   // the live price is the header's price row (the daemon's Schwab LAST_PRICE)

@@ -848,7 +848,7 @@
         paintRecord(msg.feed ? msg.feed.writer : null);
         _feedState = msg.state; _trades = msg.trades;
         Object.keys(_feedState).forEach(function (k) { ingestPriceRow(priceRow(k)); });
-        seriesCharts().forEach(function (n) { markLive(n, seriesAnswer().notLive); });   // the daemon's verdict now
+        markSeries();
         return;
       }
       if (msg.type !== 'schwab') return;
@@ -882,6 +882,7 @@
     ws.onclose = function () {
       if (_daemon !== ws) return;
       _daemon = null; _priceUp = false;
+      markSeries();
       setTimeout(openDaemon, Math.min(2000, 250 * Math.pow(2, _daemonRetry++)));   // the daemon restarting is seen at once
     };
     ws.onerror = function () { ws.close(); };
@@ -954,6 +955,7 @@
     if (Date.now() - _liveTs > PRICE_SILENCE_MS) setPushDown(true);   // the console's push: its panels
     if (pricePushHealthy()) return;                                 // the daemon's socket: the prices
     markHeaderPushDown();
+    markSeries();
     var wlHost = document.getElementById('watchlist');
     if (!(wlHost && wlHost.classList.contains('wl-degraded'))) markWlDegraded('live push down');
   }
@@ -1020,8 +1022,9 @@
     if (notLive) _notLive[name] = notLive; else delete _notLive[name];
     paintMarks();
   }
-  // every shown panel's elements, marked again: a drawer may have drawn its element anew
-  function paintMarks() { _shown.forEach(function (n) { hostsOf(n).forEach(paintMark); }); }
+  // every shown panel's elements (the console's, and the charts drawing the daemon's series),
+  // marked again: a drawer may have drawn its element anew
+  function paintMarks() { _shown.concat(seriesCharts()).forEach(function (n) { hostsOf(n).forEach(paintMark); }); }
   function drawnIn(n, id) { return hostsOf(n).indexOf(id) !== -1; }
   function paintMark(id) {
     var host = document.getElementById(id); if (!host) return;
@@ -1071,18 +1074,21 @@
              notLive: v && v.outage ? [v.outage] : null };
   }
   function redeliverDaemon(whole) { seriesCharts().forEach(function (n) { deliver(n, seriesAnswer(whole)); }); }
-  // the charts drawing the daemon's series as last drawn: one that starts to (on screen, or at its
-  // timeframe) is drawn from it whole at once; one that stops waits for its next value (the
-  // console's bars at its timeframe), its 1-minute bars no longer standing
-  var _seriesDrawn = [];
+  // each chart drawing the daemon's series, marked by the daemon's verdict now (its socket down
+  // included)
+  function markSeries() { seriesCharts().forEach(function (n) { markLive(n, seriesAnswer().notLive); }); }
+  // the charts drawing the daemon's series as last drawn, and the ticker they were drawn for: one
+  // that starts to (on screen, or at its timeframe), or every one on a new ticker, is drawn from
+  // it whole at once (waiting until the daemon's series for the ticker is in); one that stops waits
+  // for its next value (the console's bars at its timeframe), its 1-minute bars and their mark no
+  // longer standing
+  var _seriesDrawn = [], _seriesTicker = null;
   function drawNewSeriesCharts() {
-    var now = seriesCharts();
-    now.forEach(function (n) { if (_seriesDrawn.indexOf(n) === -1) deliver(n, seriesAnswer(true)); });
-    _seriesDrawn.forEach(function (n) { if (now.indexOf(n) === -1) deliver(n, { waiting: true }); });
-    _seriesDrawn = now;
+    var now = seriesCharts(), same = _seriesTicker === state.ticker;
+    now.forEach(function (n) { if (!same || _seriesDrawn.indexOf(n) === -1) deliver(n, seriesAnswer(true)); });
+    _seriesDrawn.forEach(function (n) { if (now.indexOf(n) === -1) deliver(n, { waiting: true, notLive: null }); });
+    _seriesDrawn = now; _seriesTicker = state.ticker;
   }
-  // a console answer, drawn unless its chart is at the daemon's timeframe now
-  function deliverConsole(name, a) { if (!atSeriesTf(name)) deliver(name, a); }
   // each panel drawn on its own: one drawer's error is reported and never stops the others
   function deliver(name, a) {
     if (!_panelFns[name]) return;
@@ -1114,17 +1120,20 @@
       if (msg.type === 'view') {                   // the console took view `msg.seq`; `moved`: its new panels
         Object.keys(_held).forEach(function (n) { if (msg.shown.indexOf(n) === -1) delete _held[n]; });   // off screen
         _shown = msg.shown;
-        Object.keys(_notLive).forEach(function (n) { if (msg.shown.indexOf(n) === -1) markLive(n, null); });
-        msg.moved.forEach(function (n) { delete _held[n]; deliverConsole(n, { waiting: true }); });
+        var series = seriesCharts();                // marked by the daemon's verdict, not the console's
+        Object.keys(_notLive).forEach(function (n) {
+          if (msg.shown.indexOf(n) === -1 && series.indexOf(n) === -1) markLive(n, null);
+        });
+        msg.moved.forEach(function (n) { delete _held[n]; deliver(n, { waiting: true }); });
         if (msg.seq !== _viewSeq) return;          // a newer view is on its way: it decides the rest
         var held = _held; _held = {};
-        Object.keys(held).forEach(function (n) { deliverConsole(n, held[n]); });
+        Object.keys(held).forEach(function (n) { deliver(n, held[n]); });
         return;
       }
       if (msg.type !== 'panels') return;              // one change's answers, drawn together
       msg.panels.forEach(function (p) {
         if (msg.seq < _viewSeq) _held[p.panel] = answerOf(p);   // under a view the page has left
-        else deliverConsole(p.panel, answerOf(p));
+        else deliver(p.panel, answerOf(p));
       });
     };
     ws.onclose = function () {

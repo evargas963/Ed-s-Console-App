@@ -56,18 +56,16 @@
     return _chart;
   }
 
-  // each part as the console pushes it for the view (the bars at the chart's timeframe, the
-  // window of per-strike rows GEX by Strike shows unpanned, the terrain Key Levels shows); a
-  // failed answer is absent (null); a part on its way for a new view is not drawn from the old one
+  // each part as it is delivered for the view (the bars at the chart's timeframe, the window of
+  // per-strike rows GEX by Strike shows unpanned, the terrain Key Levels shows), each drawn as it
+  // comes; a failed answer is absent (null); a part on its way for a new view (undefined) is not
+  // drawn from the old one
   [['gamma.chart.bars', 'bars'], ['gamma.chart.strikes', 'strikes'], ['gamma.chart.terrain', 'terrain']].forEach(function (p) {
     window.EdShell.onPanel(p[0], function (a) {
       _last[p[1]] = a.waiting ? undefined : a.ok ? a.body : null;
-      // bars on their way at another timeframe: the drawn ones are not this chart's any more
-      if (p[1] === 'bars' && a.waiting && _chart) _chart.setBars([], tf(), st().display || ticker(), null);
-      if (isChart() && ready()) render();
+      if (isChart()) render();
     });
   });
-  function ready() { return _last.bars !== undefined && _last.strikes !== undefined && _last.terrain !== undefined; }
 
   function render() {
     var c = ensureChart(); if (!c) return;
@@ -91,7 +89,7 @@
     var spot = liveSpot();
     c.setLivePrice(spot, _liveQuote && spot != null ? window.EdShell.tradeLabel(_liveQuote) : null);
     var empty = host.querySelector('.gchart-empty');
-    empty.hidden = !!(bars.length || win.length);
+    empty.hidden = !!(bars.length || win.length) || barsD === undefined || sd === undefined;   // drawn, or on its way
     empty.textContent = empty.hidden ? '' : (barsD || sd ? 'no bars / per-strike ' + prof.name + ' for this symbol'
       : 'the bars and per-strike ' + prof.name + ' requests failed');
     paintHead(host.querySelector('.gchart-head'), bars, win, prof, sd, spot);
@@ -132,9 +130,9 @@
     var q = (ev && ev.detail) || {};
     if (q.ticker !== st().key) return;
     _liveQuote = q;
-    if (isChart() && _chart && ready()) render();
+    if (isChart() && _chart) render();
   });
-  document.addEventListener('ed:measure', function () { if (_chart && isChart() && ready()) render(); });
+  document.addEventListener('ed:measure', function () { if (_chart && isChart()) render(); });
   document.addEventListener('ed:strike', function () { if (_chart && isChart()) _chart.selectProfile(st().selStrike == null ? null : Number(st().selStrike)); });
   bindModes();
   // read-only view for tests (e2e) -- never a control surface
