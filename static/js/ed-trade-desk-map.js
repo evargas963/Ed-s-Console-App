@@ -146,7 +146,7 @@
     if (a.waiting) { S.barsWhole = false; return; }
     if (!S.chart) return;
     var d = a.ok ? a.body : null, bars = d ? d.bars : [];
-    if (!S.barsWhole) {
+    if (!S.barsWhole || (d && d.whole)) {        // a new view, or the daemon's series sent whole again
       S.barsWhole = true;
       S.bars = bars; S.barsAnswered = S.gen;
       S.chart.setBars(bars, S.tf, shown(), d && d.last_bar && d.last_bar.label);

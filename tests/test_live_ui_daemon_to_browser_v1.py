@@ -246,6 +246,30 @@ def test_the_screens_1_minute_series_is_the_daemons_and_equals_the_consoles_bar_
         server._bars.pop("SPY", None)
 
 
+def test_each_bar_says_what_the_series_did_and_a_resent_series_sends_no_bar_twice():
+    """The page applies each bar as the daemon's series took it, comparing nothing: a new newest
+    minute (append), the newest minute again (replace), any other minute (insert: the series goes
+    whole to each page drawing it). A series given whole drops the ticker's bars still queued for
+    the page, which it holds. Real bars (SPY, 2026-10-01); STAND-IN (named): a minute sent again."""
+    srv = live_ui.LiveUiServer(MessageBus(), _Feed(), {})
+    c = live_ui._Client(None)
+    c.symbols, c.chart = frozenset({"SPY"}), "SPY"
+    srv.clients.add(c)
+    items = [r["native"] for r in _BARS if r["native"]["key"] == "SPY"]
+    firsts = list({it["CHART_TIME_MILLIS"]: it for it in items}.values())[:3]   # three minutes, in time
+
+    def route(item):
+        srv.route("bar1m.SPY", {"symbol": "SPY", "native": item, "schwab_ts": 1, "ts_recv": 1.0})
+        return c.sequence[-1]["series_op"]
+    assert [route(it) for it in firsts] == ["append", "append", "append"]
+    assert route({**firsts[-1], "CLOSE_PRICE": firsts[-1]["CLOSE_PRICE"] + 0.01}) == "replace"
+    assert c.series is None
+    assert route(firsts[0]) == "insert" and c.series is not None        # an older minute: whole again
+    assert [m["series_op"] for m in c.sequence] == ["insert"]            # the bars before it: in the series
+    srv.give_series(c, "SPY")
+    assert c.sequence == [] and [b["t"] for b in c.series["bars"]] == [it["CHART_TIME_MILLIS"] / 1000.0 for it in firsts]
+
+
 def test_a_headline_carries_its_time_as_the_screen_shows_it():
     """Schwab's headline time (field 1, epoch ms) labelled once, by the daemon, in Central Time."""
     m = live_ui.schwab_message("news." + _NEWS["symbol"], {"symbol": _NEWS["symbol"], "content": _NEWS["content"],

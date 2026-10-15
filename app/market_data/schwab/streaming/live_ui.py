@@ -46,7 +46,7 @@ from app.options.order_flow.engine import book_levels
 from instrument_identity import display_symbol, ticker_storage_key
 from live_price_rows import with_change
 from micro_structure import Candle, bar_dict, schwab_bar
-from minute_bars import CHART_1M_BARS, MinuteBars
+from minute_bars import CHART_1M_BARS, INSERT, MinuteBars
 from numeric_contract import schwab_number
 from stream_spine import LOG, MessageBus
 from time_et import age_label, ct_label
@@ -184,8 +184,7 @@ class LiveUiServer:
             self.minutes.take_history(tk, msg["answer"]["candles"])
             for c in self.clients:
                 if c.chart == tk:
-                    c.series = self.series_of(tk)
-                    c.wake.set()
+                    self.give_series(c, tk)
             return
         m = schwab_message(topic, msg)
         if m is None:
@@ -198,7 +197,14 @@ class LiveUiServer:
             m["trade"] = self.trade_label(m["key"], self.clock())   # the new trade's time, with its price
         if m["service"] == "CHART_EQUITY" and "bar" in m:       # into its ticker's series
             b = m["bar"]
-            self.minutes.take(m["key"], Candle(ts=b["t"], open=b["o"], high=b["h"], low=b["l"], close=b["c"], volume=b["v"]))
+            # what it did there, so a page applies it as is: a new newest minute or the newest
+            # again; any other minute, the series whole to each page drawing it
+            m["series_op"] = self.minutes.take(m["key"], Candle(ts=b["t"], open=b["o"], high=b["h"], low=b["l"],
+                                                              close=b["c"], volume=b["v"]))
+            if m["series_op"] == INSERT:
+                for c in self.clients:
+                    if c.chart == m["key"]:
+                        self.give_series(c, m["key"])
         elif m["service"] == "NEWS_HEADLINE":
             k = (m["service"], m["key"])
             self.sequence.setdefault(k, collections.deque(maxlen=SEQUENCE_KEPT)).append(m)
@@ -237,6 +243,13 @@ class LiveUiServer:
         when not, why (live_market_plane: the one live rule)."""
         return {k: {svc: {"live": lmp.feed_live_for(k, svc, now), "outage": lmp.outage(k, svc, now)}
                     for svc in _services(k)} for k in sorted(c.symbols)}
+
+    def give_series(self, c: _Client, tk: str) -> None:
+        """`c`'s chart series, whole, to send next; the bars of `tk` queued for it are in it, so
+        they are not sent again."""
+        c.series = self.series_of(tk)
+        c.sequence = [m for m in c.sequence if not (m["service"] == "CHART_EQUITY" and m["key"] == tk)]
+        c.wake.set()
 
     def series_of(self, tk: str) -> dict:
         """`tk`'s 1-minute series as the chart draws it, whole: its newest CHART_1M_BARS bars (each
@@ -302,7 +315,8 @@ class LiveUiServer:
             self.snapshot(c, added, req["since"] if isinstance(req.get("since"), dict) else {})
             chart = ticker_storage_key(req["chart"]) if isinstance(req.get("chart"), str) else None
             if chart and (chart != c.chart or added):          # a new chart, or a page reconnecting
-                c.chart, c.series = chart, self.series_of(chart)
+                c.chart = chart
+                self.give_series(c, chart)
             c.wake.set()
 
     async def serve_client(self, ws) -> None:

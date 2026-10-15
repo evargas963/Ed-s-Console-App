@@ -808,10 +808,10 @@
     ws.onmessage = function (ev) {
       var msg = JSON.parse(ev.data);
       _priceUp = true; _lastPriceTs = Date.now();     // the daemon beats every second
-      if (msg.type === 'symbols') { ingestIdentity(msg.symbols); redeliverDaemon(); return; }
+      if (msg.type === 'symbols') { ingestIdentity(msg.symbols); redeliverDaemon(true); return; }
       if (msg.type === 'series') {                    // the chart ticker's 1-minute series, whole
         _series[msg.key] = { bars: msg.bars, last_bar: msg.last_bar };
-        redeliverDaemon();
+        redeliverDaemon(true);
         return;
       }
       if (msg.type === 'feed') {
@@ -836,13 +836,13 @@
           var seen = _seqSeen[m.service] || (_seqSeen[m.service] = {});
           if (typeof m.ts_recv === 'number') seen[m.key] = m.ts_recv;
         }
-        // All Sequence: each bar after the series, in order -- a minute sent again replaces it
-        if (m.service === 'CHART_EQUITY' && m.bar && _series[m.key]) {
-          var s = _series[m.key], last = s.bars[s.bars.length - 1];
-          if (last && last.t === m.bar.t) s.bars[s.bars.length - 1] = m.bar;
-          else if (!last || m.bar.t > last.t) s.bars.push(m.bar);
+        // All Sequence: each bar after the series, applied as the daemon's series took it (its
+        // `series_op`: a new newest minute, or the newest again; any other minute comes whole)
+        if (m.service === 'CHART_EQUITY' && m.bar && _series[m.key] && (m.series_op === 'append' || m.series_op === 'replace')) {
+          var s = _series[m.key];
+          if (m.series_op === 'append') s.bars.push(m.bar); else s.bars[s.bars.length - 1] = m.bar;
           s.last_bar = m.time_ct;
-          if (m.key === state.key) redeliverDaemon();
+          if (m.key === state.key) redeliverDaemon(false);
         }
         // every Schwab message, by its service, to the screens that draw it (books, bars,
         // headlines, option quotes)
@@ -1018,18 +1018,19 @@
   // The panels the console says are the daemon's (the 1-minute series, server.DAEMON_SERIES): each
   // drawn from the daemon's series for the ticker, marked by the daemon's CHART_EQUITY verdict
   var _daemonPanels = {};
-  function seriesAnswer() {
+  // (`whole`: the series as the daemon sent it whole, drawn whole; else one new bar on it)
+  function seriesAnswer(whole) {
     var s = _series[state.key];
     if (!s) return { waiting: true };              // the daemon's series not yet in
     var v = feedVerdict(state.key, 'CHART_EQUITY');
-    return { ok: true, status: 200, body: { bars: s.bars, tf: '1', n: s.bars.length, last_bar: s.last_bar ? { label: s.last_bar } : null },
+    return { ok: true, status: 200, body: { bars: s.bars, tf: '1', whole: whole, last_bar: s.last_bar ? { label: s.last_bar } : null },
              notLive: v && v.outage ? [v.outage] : null };
   }
-  function redeliverDaemon() { Object.keys(_daemonPanels).forEach(function (n) { deliver(n, seriesAnswer()); }); }
+  function redeliverDaemon(whole) { Object.keys(_daemonPanels).forEach(function (n) { deliver(n, seriesAnswer(whole)); }); }
   // each panel drawn on its own: one drawer's error is reported and never stops the others
   function deliver(name, a) {
     if (!_panelFns[name]) return;
-    if (a.ok && a.body && a.body.from_daemon === 'CHART_EQUITY') { _daemonPanels[name] = true; a = seriesAnswer(); }
+    if (a.ok && a.body && a.body.from_daemon === 'CHART_EQUITY') { _daemonPanels[name] = true; a = seriesAnswer(true); }
     if (a.ages) Object.keys(a.ages).forEach(function (k) { _ageLabels[k] = a.ages[k]; });   // drawn with its ages
     _panelFns[name].forEach(function (fn) {
       try { fn(a); } catch (e) { console.error('panel ' + name + ': ' + (e && e.stack ? e.stack : e)); }

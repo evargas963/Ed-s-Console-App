@@ -17,6 +17,9 @@ from micro_structure import Candle, schwab_bar
 BARS_KEPT = 24_000
 #: the newest bars the 1-minute chart draws
 CHART_1M_BARS = 1200
+#: what a streamed bar did to its ticker's bars (MinuteBars.take): a new newest minute, the newest
+#: minute again, or a minute anywhere else (the series is then sent whole)
+APPEND, REPLACE, INSERT = "append", "replace", "insert"
 
 
 class MinuteBars:
@@ -37,9 +40,10 @@ class MinuteBars:
                 merged.update((c.ts, c) for c in self.bars[tk])
             self.bars[tk] = [merged[t] for t in sorted(merged)][-BARS_KEPT:]
 
-    def take(self, tk: str, bar: Candle) -> None:
+    def take(self, tk: str, bar: Candle) -> str:
         """A streamed bar into `tk`'s bars: a minute already held is replaced (Schwab's newest bar
-        for it), a new one takes its place in time; the oldest beyond BARS_KEPT leave."""
+        for it), a new one takes its place in time; the oldest beyond BARS_KEPT leave. What it did:
+        APPEND (the newest), REPLACE (the newest minute again) or INSERT (anywhere else)."""
         with self.lock:
             held = self.bars.setdefault(tk, [])
             i = len(held)                       # bars arrive in time order: found at once
@@ -47,9 +51,12 @@ class MinuteBars:
                 i -= 1
             if i and held[i - 1].ts == bar.ts:
                 held[i - 1] = bar
+                op = REPLACE if i == len(held) else INSERT
             else:
                 held.insert(i, bar)
+                op = APPEND if i == len(held) - 1 else INSERT
             del held[:-BARS_KEPT]
+            return op
 
     def newest(self, tk: str, limit: int) -> "list[Candle]":
         """`tk`'s newest `limit` bars, oldest first."""

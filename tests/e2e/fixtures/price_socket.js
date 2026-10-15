@@ -76,11 +76,14 @@ async function mockPriceSocket(page, messages) {
       if (q.bar) (sentBars[q.key] || (sentBars[q.key] = [])).push(q.bar);
       if (q.content.TRADE_TIME_MILLIS != null) trade[q.key] = q.content.TRADE_TIME_MILLIS;
       verdict[q.key + '|' + q.service] = 'feed_live' in q ? { live: q.feed_live, outage: q.outage } : { live: true, outage: null };
+      // a bar: what the daemon's series did with it (a spec's bars are each a new newest minute)
       send({ type: 'schwab', messages: [{ service: q.service, key: q.key, schwab_ts: q.schwab_ts, ts_recv: q.ts_recv,
-        content: q.content, bar: q.bar, time_ct: q.time_ct, levels: q.levels, absent: q.absent }] });
+        content: q.content, bar: q.bar, time_ct: q.time_ct, levels: q.levels, absent: q.absent,
+        series_op: q.bar ? (q.series_op ? q.series_op : 'append') : undefined }] });
       beat();
     }
-    _daemons.set(page, { beat: (labels) => { Object.assign(override, labels); beat(); }, close: () => ws.close(), deliver: deliver });
+    _daemons.set(page, { beat: (labels) => { Object.assign(override, labels); beat(); }, close: () => ws.close(), deliver: deliver,
+      series: (key, bars, lastBar) => send({ type: 'series', key: key, bars: bars, last_bar: lastBar }) });
     // the chart ticker's 1-minute series, whole, as the daemon sends it (live_ui series_of):
     // STAND-IN, the spec's own bars (its /api/bars1m stub, read as the console stand-in reads one)
     let chart = null;
@@ -132,4 +135,10 @@ function daemonSend(page, messages) {
   if (d) messages.forEach(d.deliver);
 }
 
-module.exports = { mockPriceSocket, schwabQuote, schwabBook, daemonBeat, daemonDown, daemonSend };
+// The daemon sends `key`'s 1-minute series whole again (a page reconnecting, a /pricehistory answer)
+function daemonSeries(page, key, bars, lastBar) {
+  const d = _daemons.get(page);
+  if (d) d.series(key, bars, lastBar);
+}
+
+module.exports = { mockPriceSocket, schwabQuote, schwabBook, daemonBeat, daemonDown, daemonSend, daemonSeries };

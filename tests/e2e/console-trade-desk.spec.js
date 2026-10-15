@@ -8,7 +8,7 @@
 const { test, expect, pushBeat, pushChange, pushDown, setNotLive } = require('./fixtures/live_socket');
 const { expiriesAnswer } = require('./fixtures/expiries');
 const path = require('path');
-const { mockPriceSocket, schwabQuote, daemonDown, daemonBeat, daemonSend } = require('./fixtures/price_socket');
+const { mockPriceSocket, schwabQuote, daemonDown, daemonBeat, daemonSend, daemonSeries } = require('./fixtures/price_socket');
 const { routeWatchlist } = require('./fixtures/watchlist');
 
 const CROSSES = require(path.join(__dirname, '..', 'fixtures', 'real_spy_level_crosses.json')).rows.slice(0, 3);
@@ -413,6 +413,30 @@ test.describe('Trade Desk renders served values', () => {
     await expect(page.locator('#tdmChart .tvc-legend')).toContainText('Last completed bar bar ' + rows[rows.length - 1].native.SEQUENCE);
     await expect(page.locator('#tdmNews')).toContainText(news.content['4']);
     await expect(page.locator('#tdmNews')).toContainText('Reuters · Mon 10/05 09:00 AM CT');
+    expect(errs).toEqual([]);
+  });
+
+  test('Desk 1m: a series the daemon sends whole again (a reconnect, a /pricehistory answer) is drawn whole', async ({ page }) => {
+    // Real data: SPY's CHART_EQUITY bars as Schwab sent them 2026-10-01 (the daemon's record); the
+    // bars the daemon builds from them are proven in tests/test_live_ui_daemon_to_browser_v1.py,
+    // STAND-IN here. Before, the Desk took only the newest two bars of a later series.
+    const errs = watchErrors(page);
+    await intercept(page);
+    const all = require(path.join(__dirname, '..', 'fixtures', 'real_daemon_bars_spy_tsla_2026_10_01_02.json')).rows
+      .filter((r) => r.native && r.symbol === 'SPY').slice(0, 8).map((r) => { const n = r.native, chg = n.CLOSE_PRICE - n.OPEN_PRICE;
+        return { t: n.CHART_TIME_MILLIS / 1000, o: n.OPEN_PRICE, h: n.HIGH_PRICE, l: n.LOW_PRICE, c: n.CLOSE_PRICE, v: n.VOLUME,
+          chg: chg, chg_pct: chg / n.OPEN_PRICE * 100 }; });
+    const series = all.filter((b, i) => all.findIndex((x) => x.t === b.t) === i)        // one per minute, in time, as the daemon's
+      .sort((x, y) => x.t - y.t);
+    await page.route('**/api/bars1m**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify(Object.assign({}, BARS, { tf: '1', bars: series.slice(0, 2) })) }));
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
+      localStorage.setItem('ed_sub', 'desk'); localStorage.setItem('ed.desk.tf', '1'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const chartState = () => page.evaluate(() => window.EdTradeDeskMap.state().chart);
+    await expect.poll(async () => (await chartState()).bars).toBe(2);
+    daemonSeries(page, 'SPY', series, 'the newest');                              // the gap filled, whole
+    await expect.poll(async () => (await chartState()).bars).toBe(series.length);
     expect(errs).toEqual([]);
   });
 
