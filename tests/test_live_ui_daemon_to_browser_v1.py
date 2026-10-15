@@ -246,6 +246,30 @@ def test_the_screens_1_minute_series_is_the_daemons_and_equals_the_consoles_bar_
         server._bars.pop("SPY", None)
 
 
+def test_a_page_that_holds_no_series_for_its_chart_is_sent_it_whole():
+    """The same chart asked again: held, nothing more; not held (the index typed another way,
+    SPX after $SPX, the page dropped its series), the series whole again. Before, the daemon saw
+    the same key and sent none, and the chart stayed waiting."""
+    async def body(bus, ws, stats):
+        async def series_after(req) -> "dict | None":
+            await ws.send(json.dumps(req))
+            got, end = None, time.monotonic() + 1.5
+            while time.monotonic() < end:
+                try:
+                    frame = json.loads(await asyncio.wait_for(ws.recv(), max(0.01, end - time.monotonic())))
+                except (asyncio.TimeoutError, TimeoutError):
+                    break
+                if frame["type"] == "series":
+                    got = frame
+            return got
+        first = await series_after({"op": "subscribe", "symbols": ["$SPX"], "chart": "$SPX"})
+        assert first is not None and first["key"] == "$SPX"
+        assert await series_after({"op": "subscribe", "symbols": ["$SPX"], "chart": "$SPX", "series_held": True}) is None
+        again = await series_after({"op": "subscribe", "symbols": ["$SPX"], "chart": "SPX", "series_held": False})
+        assert again is not None and again["key"] == "$SPX"
+    asyncio.run(_run(body))
+
+
 def test_each_bar_says_what_the_series_did_and_a_resent_series_sends_no_bar_twice():
     """The page applies each bar as the daemon's series took it, comparing nothing: a new newest
     minute (append), the newest minute again (replace), any other minute (insert: the series goes

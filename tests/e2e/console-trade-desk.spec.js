@@ -444,6 +444,24 @@ test.describe('Trade Desk renders served values', () => {
     expect(errs).toEqual([]);
   });
 
+  test('Desk 1m: the same index typed another way ($SPX after SPX) still draws the daemon\'s series', async ({ page }) => {
+    // Before, the page dropped its series on the new spelling and the daemon, seeing the same key,
+    // sent none: the chart stayed waiting. STAND-IN (named): the spec's bars as the daemon's series.
+    const errs = watchErrors(page);
+    await intercept(page);
+    await page.route('**/api/bars1m**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify(Object.assign({}, BARS, { tf: '1' })) }));
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPX'); localStorage.setItem('ed_ws', 'trade-desk');
+      localStorage.setItem('ed_sub', 'desk'); localStorage.setItem('ed.desk.tf', '1'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const chartState = () => page.evaluate(() => window.EdTradeDeskMap.state().chart);
+    await expect.poll(async () => (await chartState()).bars).toBe(BARS.bars.length);
+    await page.evaluate(() => window.EdShell.setTicker('$SPX'));
+    await expect.poll(() => page.evaluate(() => window.EdShell.series('$SPX').length)).toBe(BARS.bars.length);
+    await expect.poll(async () => (await chartState()).bars).toBe(BARS.bars.length);
+    expect(errs).toEqual([]);
+  });
+
   test('Desk News: a headline held for another ticker is listed when that ticker is shown', async ({ page }) => {
     // Real data: a NEWS_HEADLINE item as Schwab sent it (tests/fixtures/real_schwab_news_headline_spx_2026_10_05.json);
     // STAND-IN: its key, QQQ. Before, the list painted only on a new headline for the shown key.

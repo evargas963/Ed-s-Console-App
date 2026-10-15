@@ -790,7 +790,8 @@
     // copy is not kept up to date by the daemon, so it is never drawn again)
     if (state.ticker !== _chart) { _chart = state.ticker; _series = {}; }
     _daemon.send(JSON.stringify({ op: 'subscribe', symbols: priceSymbols().concat(state.contract ? [state.contract] : []),
-      since: _seqSeen, chart: state.ticker ? state.ticker : null }));   // no ticker chosen: no chart
+      since: _seqSeen, chart: state.ticker ? state.ticker : null,   // no ticker chosen: no chart
+      series_held: Object.keys(_series).length > 0 }));   // none held (a new chart): the daemon sends it whole
   }
   // the daemon's receive time of the last bar and headline received of each symbol, so a
   // reconnect is sent only those after them, each once ({service: {key: ts_recv}})

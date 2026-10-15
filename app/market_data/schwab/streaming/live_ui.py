@@ -21,9 +21,10 @@ last trade time and age as the screen shows them (time_et.ct_label, age_label).
 
 Protocol (JSON text frames):
   client -> {"op": "subscribe", "symbols": ["SPY", "SPY   261120C00700000", ...],
-             "since": {service: {symbol: ts_recv}}, "chart": "SPY"}  (replaces the set; `since`:
-             the last headline it received of each, so a reconnect is sent only those after them;
-             `chart`: the ticker whose 1-minute series it draws)
+             "since": {service: {symbol: ts_recv}}, "chart": "SPY", "series_held": true}
+             (replaces the set; `since`: the last headline it received of each, so a reconnect is
+             sent only those after them; `chart`: the ticker whose 1-minute series it draws;
+             `series_held`: whether it holds that series -- not, and it is sent whole)
   server -> {"type": "symbols", "symbols": [{requested, key, display}, ...]}  (on subscribe)
   server -> {"type": "series", "key", "bars": [{t, o, h, l, c, v, chg, chg_pct}, ...], "last_bar"}
             (the chart's ticker's 1-minute series, whole: on subscribe and on each /pricehistory
@@ -314,7 +315,9 @@ class LiveUiServer:
             c.identity = identity            # what each asked-for symbol is, before its messages
             self.snapshot(c, added, req["since"] if isinstance(req.get("since"), dict) else {})
             chart = ticker_storage_key(req["chart"]) if isinstance(req.get("chart"), str) else None
-            if chart and (chart != c.chart or added):          # a new chart, or a page reconnecting
+            # a new chart, a page reconnecting, or a page that holds none (the same chart typed
+            # another way: SPX, $SPX)
+            if chart and (chart != c.chart or added or req.get("series_held") is not True):
                 c.chart = chart
                 self.give_series(c, chart)
             c.wake.set()

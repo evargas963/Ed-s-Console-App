@@ -107,7 +107,10 @@ async function mockPriceSocket(page, messages) {
       send({ type: 'symbols', symbols: symbols });
       beat();
       // as the daemon: the chart's series whole, before any bar after it
-      if (typeof req.chart === 'string' && req.chart && req.chart !== chart) { chart = req.chart; await sendSeries(served(chart).key); }
+      // (by the daemon's key, and again whenever the page holds none: SPX after $SPX)
+      if (typeof req.chart === 'string' && req.chart && (served(req.chart).key !== chart || req.series_held !== true)) {
+        chart = served(req.chart).key; await sendSeries(chart);
+      }
       if (sent) return;                       // each spec message is Schwab's, sent once
       sent = true;
       (messages || []).forEach((q, i) => setTimeout(() => deliver(q), 300 * i));
