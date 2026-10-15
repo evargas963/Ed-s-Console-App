@@ -2528,7 +2528,7 @@ def checkout_head(checkout: "str | Path") -> Optional[str]:
             log.warning("the checkout's HEAD is not a commit: %r", head)
             return None
         return head.lower()
-    except (OSError, IndexError, StopIteration) as e:
+    except (OSError, ValueError, IndexError, StopIteration) as e:   # ValueError: a file that is not text
         log.warning("the checkout's HEAD could not be read from its git files: %r", e)
         return None
 

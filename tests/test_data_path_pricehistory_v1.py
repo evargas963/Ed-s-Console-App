@@ -188,10 +188,12 @@ from tests.schwab_rest_standin import HISTORY
 from time_et import ET
 msgs = [{"src": "schwab_pricehistory", "symbol": tk, "series": "1m", "ts_recv": a["answered_utc"], "answer": a["body"]}
         for tk, a in ((tk, HISTORY[(tk, "minute", "1")]) for tk in ("SPY", "TSLA"))]
+now = datetime.fromtimestamp(msgs[0]["ts_recv"], ET)
 before = set(sys.modules)
-server._write_streamed_bars(msgs, datetime.fromtimestamp(msgs[0]["ts_recv"], ET))
+server._write_streamed_bars(msgs, now)
 print(json.dumps({"loaded": sorted(set(sys.modules) - before),
-                  "bars": [len(server._bars_1m(tk, server.BARS_KEPT)) for tk in ("SPY", "TSLA")]}))
+                  "bars": [len(server._bars_1m(tk, server.BARS_KEPT)) for tk in ("SPY", "TSLA")],
+                  "levels": [server.canonical_price_level_snapshot(tk, now) is not None for tk in ("SPY", "TSLA")]}))
 """
 
 
@@ -202,7 +204,7 @@ def test_a_console_just_started_takes_its_first_price_history_without_loading_a_
     done = subprocess.run([sys.executable, "-W", "ignore", "-c", _FIRST_TAKE, str(Path(__file__).resolve().parent.parent)],
                           capture_output=True, text=True, timeout=120, check=True)
     got = json.loads(done.stdout.strip().splitlines()[-1])
-    assert got["loaded"] == [] and all(got["bars"]), got
+    assert got["loaded"] == [] and all(got["bars"]) and got["levels"] == [True, True], got
 
 
 def test_before_schwab_sends_the_candles_the_atr_is_absent_with_why():

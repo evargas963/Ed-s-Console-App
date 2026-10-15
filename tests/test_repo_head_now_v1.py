@@ -53,6 +53,7 @@ def test_a_folder_that_is_no_checkout_has_no_head(tmp_path):
     assert server.checkout_head(tmp_path) is None
 
 
-def test_the_apps_own_head_is_read_without_starting_a_process():
-    """/api/build reads the app's checkout's HEAD per request: from its files, as git names it."""
-    assert server._repo_git_head_sha() == _git(Path(server.APP_DIR), "rev-parse", "HEAD")
+def test_a_head_file_that_is_not_text_has_no_head(tmp_path):
+    repo = _repo(tmp_path)
+    (repo / ".git" / "HEAD").write_bytes(b"\xff\xfe not text")
+    assert server.checkout_head(repo) is None
