@@ -29,6 +29,9 @@ from math_exposure_core import (
     strike_oi_legs,
     strike_volume_legs,
 )
+from liquidity_models import ZONE_DISPLAY, PlaybookConfig
+from liquidity_value_engine import (_MATERIALIZED_SNAPSHOTS, bars_from_candles, build_live_snapshot,
+                                    liquidity_zone_tradeable_score, materialize_price_level_snapshot)
 
 import json
 from html import escape as html_escape
@@ -2497,21 +2500,36 @@ def health():
 
 
 def _repo_git_head_sha() -> Optional[str]:
-    """Best-effort repo tip for runtime-vs-disk checks (Meet-or-Exceed cycle)."""
-    import subprocess
+    """The app's checkout's HEAD now (checkout_head of APP_DIR)."""
+    return checkout_head(APP_DIR)
 
+
+def checkout_head(checkout: "str | Path") -> Optional[str]:
+    """`checkout`'s HEAD now, read from its git files as git lays them out
+    (gitrepository-layout): a worktree's `.git` file names its git directory, whose `commondir`
+    holds the shared refs; HEAD holds a commit, or names a branch whose commit is in its ref file
+    or in `packed-refs`. No process is started, so no request waits on one. None, logged with
+    why, when it cannot be read."""
     try:
-        proc = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            cwd=APP_DIR,
-            capture_output=True,
-            text=True,
-            check=True,
-            timeout=3.0,
-        )
-        sha = (proc.stdout or "").strip()
-        return sha or None
-    except (OSError, subprocess.SubprocessError):
+        git = Path(checkout) / ".git"
+        if git.is_file():                                   # a worktree: "gitdir: <its git directory>"
+            git = Path(checkout) / git.read_text(encoding="utf-8").split(":", 1)[1].strip()
+        common = git / (git / "commondir").read_text(encoding="utf-8").strip() if (git / "commondir").is_file() else git
+        head = (git / "HEAD").read_text(encoding="utf-8").strip()
+        if head.startswith("ref: "):
+            ref = head[len("ref: "):]
+            loose = common / ref
+            if loose.is_file():
+                head = loose.read_text(encoding="utf-8").strip()
+            else:
+                packed = (common / "packed-refs").read_text(encoding="utf-8").splitlines()
+                head = next(line.split(" ", 1)[0] for line in packed if line.endswith(" " + ref))
+        if not _is_full_git_sha(head.lower()):
+            log.warning("the checkout's HEAD is not a commit: %r", head)
+            return None
+        return head.lower()
+    except (OSError, IndexError, StopIteration) as e:
+        log.warning("the checkout's HEAD could not be read from its git files: %r", e)
         return None
 
 
@@ -2683,8 +2701,6 @@ def _publish_price_levels(ticker: str, now: datetime) -> None:
     a new session). The routes read what it published (canonical_price_level_snapshot). A failed
     build is logged; the routes serve the last published snapshot with its as-of time, or say
     the levels are absent."""
-    from liquidity_value_engine import PlaybookConfig, bars_from_candles, materialize_price_level_snapshot
-
     tk = ticker_storage_key(_required_ticker(ticker))
     before = canonical_price_level_snapshot(tk, now)
     try:
@@ -2709,8 +2725,6 @@ def canonical_price_level_snapshot(ticker: str, now: datetime):
     """The ticker's price-level snapshot for the market's session at `now` (market_session_date)
     as its producer published it (_publish_price_levels), or None when none is published yet.
     Every server surface reads this; none computes a level."""
-    from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS
-
     return _MATERIALIZED_SNAPSHOTS.get((ticker_storage_key(_required_ticker(ticker)),
                                         market_session_date(now).isoformat()))
 
@@ -2890,8 +2904,6 @@ def _liquidity_option_levels(tk: str, now: float) -> tuple[list[tuple[float, str
 
 def _liquidity_zone_tradeable_fields(zp: dict, spot: Optional[float]) -> None:
     """Add anchor, distance_to_spot, tradeable_score, options_level_count (mutates zp)."""
-    from liquidity_value_engine import liquidity_zone_tradeable_score
-
     tags = zp.get("source_tags") or []
     lo, hi = float(zp["zone_low"]), float(zp["zone_high"])
     mid = zp.get("zone_mid")
@@ -2954,9 +2966,6 @@ def liquidity_snapshot(ticker: str, now: datetime):
     with the terrain's option levels and the live price fused in. It computes no level of its
     own."""
     try:
-        from liquidity_value_engine import build_live_snapshot
-        from liquidity_models import ZONE_DISPLAY, PlaybookConfig
-
         ticker_upper = ticker_storage_key(ticker)
         config = PlaybookConfig(max_zone_width=2.0)
         extra, fusion_status = _liquidity_option_levels(ticker_upper, now.timestamp())
