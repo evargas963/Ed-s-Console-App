@@ -243,9 +243,9 @@ class LiveUiServer:
             if m["service"] == "LEVELONE_EQUITIES" and m["key"] in self.trade_s:
                 m["trade"] = self.trade_label(m["key"], self.clock())   # its last trade, with its price
             c.take(marked(m))
-        for key in (k for k in keys if c.wants("NEWS_HEADLINE", k)):
+        for key in (k for k in keys if k in self.headlines and c.wants("NEWS_HEADLINE", k)):
             after = schwab_number(since.get(key))       # the last headline of it the client received
-            for m in list(self.headlines.get(key, ())):
+            for m in list(self.headlines[key]):
                 if after is None or (isinstance(m["ts_recv"], (int, float)) and m["ts_recv"] > after):
                     c.take(m)
 
