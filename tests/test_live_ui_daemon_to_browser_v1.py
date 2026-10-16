@@ -9,8 +9,8 @@ no database. Proves:
     Schwab trade age, and no bar (charts show Schwab's completed bars only);
   * a symbol nobody subscribed to is never sent;
   * the feed verdict rides every beat: a closed Schwab socket reads feed_live False within one
-    beat, with no message needed from Schwab; in session the values go absent with the outage
-    reason, while Closed the values Schwab last sent stand (docs/DATA_FLOW.md §2 D5);
+    beat, with no message needed from Schwab; the last values stand, and in session the row
+    names the outage (docs/DATA_FLOW.md §2 D5);
   * a slow browser gets the newest row per symbol, never a backlog of stale ones;
   * shutdown is not held up by a connected browser.
 """
@@ -173,12 +173,10 @@ def _clock_from(monkeypatch, start: float) -> None:
     monkeypatch.setattr(time, "time", lambda: real() + offset)
 
 
-@pytest.mark.parametrize("start, served", [(_RTH, (None, None)),
-                                           (_CLOSED, (583.41, pytest.approx(583.40)))],
-                         ids=["rth", "closed"])
-def test_a_closed_schwab_socket_reads_feed_down_within_one_beat(monkeypatch, start, served):
-    """Nothing from Schwab; only the beat knows (docs/DATA_FLOW.md §2 D5): during RTH the row's
-    values are absent with the outage reason; while Closed the values Schwab last sent stand."""
+@pytest.mark.parametrize("start, outage", [(_RTH, True), (_CLOSED, False)], ids=["rth", "closed"])
+def test_a_closed_schwab_socket_reads_feed_down_within_one_beat(monkeypatch, start, outage):
+    """Nothing from Schwab; only the beat knows (docs/DATA_FLOW.md §2 D5): the last price and
+    bid stand. During RTH the row names the outage; while Closed it does not."""
     _clock_from(monkeypatch, start)
 
     async def body(bus, ws, feed, stats):
@@ -188,8 +186,8 @@ def test_a_closed_schwab_socket_reads_feed_down_within_one_beat(monkeypatch, sta
         feed.open = False
         msg, row = await _next_row(ws, "SPY", lambda r: r["feed_live"] is False, timeout=1.0)
         assert msg["type"] == "feed" and msg["feed"]["schwab_socket_open"] is False
-        assert (row["spot"], row["bid"]) == served
-        assert (row["outage"] is None) == (served[0] is not None)
+        assert row["spot"] == 583.41 and row["bid"] == pytest.approx(583.40)
+        assert (row["outage"] is not None) is outage
     asyncio.run(_run(body))
 
 

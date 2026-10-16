@@ -296,13 +296,14 @@ def _served_at(now: float, feed_live: bool) -> dict:
         lmp.record_feed_down()
 
 
-def test_d5_a_feed_down_in_an_open_session_is_an_outage_shown_absent_with_its_reason():
-    """RTH, the feed down: the price, the equity top of book and the option top of book are
-    absent, each with the outage reason; no last value stands in for a live one."""
+def test_d5_a_feed_down_in_an_open_session_keeps_the_last_price_and_names_the_outage():
+    """RTH, the feed down: the last price stands, marked not live, with the outage reason.
+    The book tops are still blank (NUMBERS, still open)."""
     s = _served_at(_RTH, feed_live=False)
-    assert s["row"]["spot"] is None and s["row"]["bid"] is None
+    assert s["row"]["spot"] == 767.39 and s["row"]["bid"] == 767.38
+    assert s["row"]["feed_live"] is False
     assert s["row"]["outage"] == "Schwab LEVELONE_EQUITIES feed down during RTH"
-    assert s["spot"] == (None, "Schwab LEVELONE_EQUITIES feed down during RTH", None)
+    assert s["spot"][0] == 767.39 and s["spot"][1] == server.SPOT_SOURCE_PLANE
     assert s["equity_book"]["top_of_book"]["bid"] is None
     assert s["equity_book"]["top_outage"] == "Schwab LEVELONE_EQUITIES feed down during RTH"
     assert s["option_book"]["top_of_book"]["ask"] is None
@@ -620,9 +621,7 @@ def test_d5_while_closed_levels_as_of_the_close_stand_and_older_ones_are_absent_
 
 def test_d5_the_levels_spot_is_judged_at_the_time_they_are_served_for():
     """/api/levels served for Fri 2026-10-02 11:00 ET (RTH) with SPY's last trade in the daemon's
-    price row: with the daemon's heartbeat live then, that trade is the spot with its trade time;
-    with none, the spot is absent with the RTH outage reason -- whatever the machine's clock says
-    (judged by it, one of the two answers differs at every hour)."""
+    price row: that trade is the spot with its trade time, the heartbeat live or not."""
     import live_market_plane as lmp
     import live_price_rows
     from app.options.order_flow import streaming as ofs
@@ -640,8 +639,7 @@ def test_d5_the_levels_spot_is_judged_at_the_time_they_are_served_for():
             ofs._price_rows.pop("SPY", None)
             lmp.record_feed_down()
         served[live] = (body["spot"], body["spot_source"], body["spot_as_of_ts_utc"])
-    assert served[True] == (767.39, server.SPOT_SOURCE_PLANE, at)
-    assert served[False] == (None, "Schwab LEVELONE_EQUITIES feed down during RTH", None)
+    assert served[True] == served[False] == (767.39, server.SPOT_SOURCE_PLANE, at)
 
 
 #: Schwab's SPY and TSLA bars as the capture daemon recorded them, Thu 2026-10-01 and Fri 10-02

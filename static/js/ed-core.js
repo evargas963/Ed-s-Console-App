@@ -725,12 +725,10 @@
       else { ce.textContent = '—'; ce.className = 'wl-chg'; }
     }
   }
-  // A silent price push withdraws every row to UNAVAILABLE and marks the list degraded with
-  // the reason, until a row arrives again.
+  // A silent price push marks the list degraded. The last prices stay.
   function markWlDegraded(reason) {
     var host = document.getElementById('watchlist');
     if (host) host.classList.add('wl-degraded');
-    loadWL().forEach(function (sym) { setWlRow(sym, null, null); });
     wlNotify(reason);
   }
   function markWlHealthy() {
@@ -824,7 +822,7 @@
       paintQuote({ spot_disp: q.spot_disp, spot: q.spot, bid: q.bid, ask: q.ask,
         chgPct: q.chg_pct, chgPctRegular: q.chg_pct_regular, quoteIngestion: q.quote_ingestion,
         feedCls: q.feed_live ? '' : 'stale',
-        feedLabel: q.feed_live ? 'LIVE' : 'FEED DOWN',
+        feedLabel: q.feed_live ? 'LIVE' : 'OFFLINE',
         ageLabel: q.outage || (q.trade_time_ct != null ? ('last trade ' + q.trade_time_ct) : 'no trade sent') });
     }
     loadWL().forEach(function (wlSym) {
@@ -873,17 +871,14 @@
     el.textContent = v[0]; el.className = 'sess ' + v[1]; el.title = why || '';
   }
 
-  // The push is not delivering: withdraw the quote instead of leaving the last one on screen
-  // (and instead of polling for it -- operator rule 2026-09-23: no fallbacks). The session
-  // label is not a live quote and keeps its own slow read.
+  // The push is not delivering: the last quote stays and the chip says so. Nothing polls
+  // for a replacement. The session label is not a live quote and keeps its own slow read.
   function markHeaderPushDown() {
     // just asked for this ticker (page load or a ticker change): the row is on its way
     // (WAITING); otherwise the push itself is down (OFFLINE)
     var connecting = Date.now() - _priceSubTs <= PRICE_SILENCE_MS;
-    paintQuote({ spot: null, spot_disp: null, bid: null, ask: null, chgPct: null, chgPctRegular: null,
-      feedCls: 'stale',
-      feedLabel: connecting ? 'WAITING' : 'OFFLINE',
-      ageLabel: connecting ? 'no push yet' : 'live push down' });
+    setFeed('stale', connecting ? 'WAITING' : 'OFFLINE',
+      connecting ? 'no push yet' : 'live push down');
     paintRecord(null);
   }
 

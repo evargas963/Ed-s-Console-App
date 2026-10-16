@@ -397,7 +397,7 @@
       var q = S.quotes[st().key], tob = m && m.top_of_book;
       var cc = (S.events && S.events.cross_counts) || null;   // served for the window
       // Schwab's values with Schwab's trade time, or the served outage reason; the feed state beside them
-      state(c, !q ? 'WAITING' : q.feed_live ? 'SESSION VOLUME' : 'FEED DOWN', q && q.feed_live ? '' : 'warn');
+      state(c, !q ? 'WAITING' : q.feed_live ? 'SESSION VOLUME' : 'OFFLINE', q && q.feed_live ? '' : 'warn');
       c.querySelector('.tdm-hero').innerHTML = q && q.total_volume != null ? fmtVol(q.total_volume) + ' <small>shares, Schwab TOTAL_VOLUME</small>' : '';
       src(c, 'Schwab LEVELONE · ' + (!q ? 'no price row yet' : q.outage ? esc(q.outage) : q.trade_time_ct != null ? 'last trade ' + esc(q.trade_time_ct) : 'no trade sent'));
       c.querySelector('.tdm-rows').innerHTML =
@@ -497,7 +497,7 @@
     var host = $('tdmTrust'); if (!host) return;
     var q = S.quotes[st().key], t = S.terrain, m = S.micro, L = S.levels;
     var h = '';
-    h += q ? pill('PRICE', q.feed_live ? 'LIVE' : 'FEED DOWN', q.feed_live ? 'ok' : 'bad', 'daemon price socket')
+    h += q ? pill('PRICE', q.feed_live ? 'LIVE' : 'OFFLINE', q.feed_live ? 'ok' : 'bad', 'daemon price socket')
       : pill('PRICE', 'WAITING', 'warn', 'no price row yet for this symbol');
     h += m === undefined ? pill('BOOK', '…', '') : !m ? pill('BOOK', 'FAILED', 'bad') : m.status === 'no_book' ? pill('BOOK', 'NONE', 'warn', 'no ' + m.venue)
       : pill('BOOK', m.ages && m.ages.book_stale === false ? age(m.ages.book_age_sec) : m.ages && m.ages.book_stale ? 'STALE' : 'AGE UNKNOWN',
