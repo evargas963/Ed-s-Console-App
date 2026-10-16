@@ -484,6 +484,27 @@ test.describe('Trade Desk renders served values', () => {
     expect(errs).toEqual([]);
   });
 
+  test('Right Now: the book age keeps Schwab\'s book time', async ({ page }) => {
+    const errs = watchErrors(page);
+    const BOOK_TIME = 'Fri 09/25 06:59 PM CT';
+    await intercept(page);
+    await page.route('**/api/order-flow/microstructure**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify(Object.assign({}, MICRO, {
+        book_time_ct: BOOK_TIME, top_outage: 'Schwab NASDAQ_BOOK feed down during RTH',
+      })),
+    }));
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
+      localStorage.setItem('ed_sub', 'right-now'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const body = page.locator('#tdBody');
+    await expect(body).toContainText('OFFLINE');
+    await expect(body).toContainText(BOOK_TIME + ' · 1s');
+    await expect(body).toContainText('771.29 × 771.31');
+    await expect(body).toContainText('bid-heavy (NASDAQ_BOOK, depth 5)');
+    expect(errs).toEqual([]);
+  });
+
   test('Right Now re-reads all five reads on every push', async ({ page }) => {
     await intercept(page);
     await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'right-now'); } catch (e) {} });

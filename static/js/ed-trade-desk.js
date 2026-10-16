@@ -76,11 +76,19 @@
     function dep(n, side) { var x = depth[String(n)] || {}; return x[side]; }
     var imb = dep(5, 'imbalance');
     var ages = d.ages || {};
+    // Schwab's book time stands beside the seconds. The seconds stay when no book time was
+    // sent, and the time stays when the age is missing. Neither sent shows "—".
+    var bookSec = ages.book_age_sec != null ? Math.round(ages.book_age_sec) + 's' : null;
+    var bookWhen = d.book_time_ct != null ? d.book_time_ct : null;
+    var bookAge = '—';
+    if (bookWhen != null && bookSec != null) bookAge = bookWhen + ' · ' + bookSec;
+    else if (bookWhen != null) bookAge = bookWhen;
+    else if (bookSec != null) bookAge = bookSec;
     var rows = [
       ['Bid × Ask', num(tob.bid) + ' × ' + num(tob.ask), classOf(cls, 'top_of_book.bid')],
       ['Spread (pts)', num(d.spread_pts), classOf(cls, 'spread_pts')],
       ['Depth 1 imbalance', num(dep(1, 'imbalance'), 3), classOf(cls, 'depth.*.imbalance')],
-      ['Book age', ages.book_age_sec != null ? Math.round(ages.book_age_sec) + 's' : '—', classOf(cls, 'ages.book_age_sec')],
+      ['Book age', bookAge, classOf(cls, 'ages.book_age_sec')],
     ];
     var heroVal = (imb == null || isNaN(imb)) ? '—' : (imb >= 0 ? '+' : '') + num(imb, 3);
     var side = dep(5, 'side');   // served: BID / ASK / EVEN by the imbalance's sign
