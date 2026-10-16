@@ -1597,6 +1597,7 @@ def terrain_strikes_payload(tk: str, scope: str, centre, shift: int, now: float)
     measures: dict = {"dex": [], "oi": []}
     spot_used = None
     today_age_sec = None
+    levels_time_ct = None
     # bound before the try: a failed cache read leaves the panels empty, never a 500
     _snap: dict = {}
     # today's per-strike rows: the published levels' own (_publish_levels' `_per_strike`,
@@ -1615,6 +1616,7 @@ def terrain_strikes_payload(tk: str, scope: str, centre, shift: int, now: float)
             spot_used = _snap.get("spot")
             _cts_utc = _snap.get("computed_ts_utc")
             today_age_sec = now - float(_cts_utc) if _cts_utc else None
+            levels_time_ct = ct_label(_cts_utc) if _cts_utc is not None else None
             today_src = "terrain_live_cache"
     except Exception as e:
         log.debug("terrain strikes live read failed %s: %s", tk, e)
@@ -1682,6 +1684,7 @@ def terrain_strikes_payload(tk: str, scope: str, centre, shift: int, now: float)
         "today_source": today_src,
         # the age of today's rows, for the panel's face
         "today_age_sec": today_age_sec,
+        "levels_time_ct": levels_time_ct,
         # whether the levels are still being published (a source is not freshness)
         **terrain_staleness(_snap.get("computed_ts_utc") if isinstance(_snap, dict) else None, tk, now=now),
         "prior": prior or {"all": [], "near": [], "far": []},

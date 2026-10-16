@@ -462,6 +462,7 @@
     var cls = 'asof' + (o.stale ? ' stale' : (o.ref ? ' ref' : (o.live ? ' live' : '')));
     var parts = [];
     if (o.label) parts.push(_escBadge(o.label));
+    if (o.when != null) parts.push(_escBadge(o.when));
     if (age) parts.push(age);
     if (o.stale) parts.push('STALE');
     // the detailed reason is DISCLOSED in the tooltip — never as a paragraph inside an analytical panel

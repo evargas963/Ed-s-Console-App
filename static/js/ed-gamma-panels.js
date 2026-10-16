@@ -171,6 +171,7 @@
     // client-side freshness computation; the badge only formats those server-owned fields.
     el.innerHTML = (window.EdShell && window.EdShell.asOfBadge)
       ? window.EdShell.asOfBadge({ label: srcLabel(d.today_source), ageSec: d.today_age_sec,
+          when: d.levels_time_ct,
           stale: !!d.levels_stale, reason: d.levels_stale_reason,
           live: (d.today_source === 'terrain_live_cache' && d.levels_stale === false) })
       : '';
