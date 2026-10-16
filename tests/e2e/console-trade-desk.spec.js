@@ -7,7 +7,7 @@
  */
 const { test, expect } = require('@playwright/test');
 const path = require('path');
-const { mockPriceSocket } = require('./fixtures/price_socket');
+const { mockPriceSocket, priceRow } = require('./fixtures/price_socket');
 const { routeWatchlist } = require('./fixtures/watchlist');
 
 const CROSSES = require(path.join(__dirname, '..', 'fixtures', 'real_spy_level_crosses.json')).rows.slice(0, 3);
@@ -172,6 +172,24 @@ function watchErrors(page) {
   page.on('console', (m) => { if (m.type() === 'error' && !/WebSocket|EventSource|Failed to load resource/.test(m.text())) errs.push(m.text()); });
   return errs;
 }
+
+test('Desk: an offline price keeps its last trade time on the map', async ({ page }) => {
+  await intercept(page);
+  await mockPriceSocket(page, [
+    priceRow('$SPX', 5800.12, { trade_time_ct: '14:00:01 CT', feed_live: false, outage: 'Schwab LEVELONE_EQUITIES feed down during RTH' }),
+    priceRow('$VIX', 16.4, { trade_time_ct: '14:00:02 CT', chg_pct: 1.2, feed_live: false, outage: 'Schwab LEVELONE_EQUITIES feed down during RTH' }),
+    priceRow('SPY', 771.3, { trade_time_ct: '14:00:03 CT', feed_live: false, outage: 'Schwab LEVELONE_EQUITIES feed down during RTH', total_volume: 1000 }),
+  ]);
+  await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
+    localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await expect(page.locator('#tdmIdxSPX')).toContainText('last trade 14:00:01 CT');
+  await expect(page.locator('#tdmIdxSPX')).toHaveAttribute('title', 'last trade 14:00:01 CT');
+  await expect(page.locator('#tdmCardVol')).toContainText('16.40 (+1.20%) · last trade 14:00:02 CT');
+  await expect(page.locator('#tdmCardFlow')).toContainText('OFFLINE');
+  await expect(page.locator('#tdmCardFlow .tdm-src')).toContainText('last trade 14:00:03 CT');
+  await expect(page.locator('#tdmCardFlow .tdm-src')).toContainText('Schwab LEVELONE_EQUITIES feed down during RTH');
+});
 
 test('Right Now: the spot keeps its last trade time', async ({ page }) => {
   await intercept(page);
