@@ -57,7 +57,12 @@
       '<th>Evidence</th><th>Source</th><th>As-of</th></tr></thead><tbody>';
     rows.forEach(function (r) {
       var prov = r.provenance || {}, st = r.staleness || {};
-      var age = st.age_sec != null ? (Math.round(st.age_sec) + 's') : '—';
+      var ageWord = st.age_sec != null ? (Math.round(st.age_sec) + 's') : null;
+      var ageWhen = st.as_of_time_ct != null ? st.as_of_time_ct : null;
+      var age = '—';
+      if (ageWhen != null && ageWord != null) age = ageWhen + ' · ' + ageWord;
+      else if (ageWhen != null) age = ageWhen;
+      else if (ageWord != null) age = ageWord;
       var stale = st.stale ? ' stale' : '';
       body += '<tr class="lv-row"><td class="lv-fam">' + esc(r.family || '—') + '</td>' +
         '<td>' + esc(r.label || r.id || '—') + '</td>' +

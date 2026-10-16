@@ -2786,6 +2786,7 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict:
         as_of = value.as_of_ts_utc
         row["staleness"] = {
             "as_of_ts_utc": as_of,
+            "as_of_time_ct": ct_label(as_of) if as_of is not None else None,
             "age_sec": None if as_of is None else served_ts - as_of,
             "stale_after_sec": None,
             "stale": None,
@@ -2809,6 +2810,7 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict:
                            if fam == "gamma" else {"producer": "server.get_levels: live spot ± the terrain's "
                                                    "implied_1d_move.points", "carried": False},
                            "staleness": {"as_of_ts_utc": as_of,
+                                         "as_of_time_ct": ct_label(as_of) if as_of is not None else None,
                                          "age_sec": None if as_of is None else served_ts - as_of,
                                          "stale_after_sec": None, "stale": bool(t.get("levels_stale")),
                                          "reason": "carried from the terrain"}})
