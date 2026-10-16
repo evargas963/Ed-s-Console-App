@@ -127,6 +127,17 @@ test('a desk load asks for each value once; a timeframe switch asks only for tha
   expect(errs).toEqual([]);
 });
 
+test('Liquidity map: the live price keeps its last trade time', async ({ page }) => {
+  await intercept(page);
+  await page.route('**/api/levels**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
+    body: JSON.stringify(Object.assign({}, LEVELS, { spot_time_ct: 'Fri 10/02 10:00 AM CT' })) }));
+  await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'liquidity');
+    localStorage.setItem('ed_sub', 'map'); } catch (e) {} });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await expect.poll(() => page.evaluate(() => (window.EdLiquidityMap.state() || {}).liveTitle)).toBe('LAST · last trade Fri 10/02 10:00 AM CT');
+  await expect.poll(() => page.evaluate(() => (window.EdLiquidityMap.state() || {}).livePrice)).toBe(SPOT);
+});
+
 test('the liquidity map fits its price scale to the candles; a far zone does not flatten them', async ({ page }) => {
   // 2026-09-29 RTH: SPY's served zones at 750 and 800 joined the auto-fit, the scale ran 735-805
   // and the candles (765) were a flat line
