@@ -2521,7 +2521,7 @@ def get_chain(ticker: str = Query(...),
     # each field the newest Schwab sent (the levels' own rule, _publish_levels)
     response_contracts, overlay_n = overlay_streamed_contract_fields(
         contracts, _streamed_greeks_for_ticker(held["_contract_symbols"], now), fetched_ts)
-    live_spot, _src, _ts = resolve_spot(t, now=now)       # the one spot on every screen
+    live_spot, _src, live_ts = resolve_spot(t, now=now)   # the one spot, with Schwab's trade time
     ladder, not_on_ladder = chain_ladder(response_contracts, live_spot)
     # this expiry's net GEX per strike, as the heatmap publishes it (its column of the surface):
     # Strike Detail shows it beside this expiry's contracts -- one value, one producer
@@ -2532,6 +2532,8 @@ def get_chain(ticker: str = Query(...),
         [c["strike"], c["gex"][col]] for c in surf.get("cells") or [] if c["gex"][col] is not None]
     return JSONResponse({
         "ticker": t, "spot": live_spot, "priced_at_spot": held.get("spot"),
+        "spot_as_of_ts_utc": live_ts,
+        "spot_time_ct": ct_label(live_ts) if live_ts is not None else None,
         "expiry": resolved_expiry,
         "net_gex_by_strike": net_gex_by_strike,
         "spot_strike": nearest_strike({k for c in response_contracts
