@@ -396,10 +396,14 @@
     if (c) {
       var q = S.quotes[st().key], tob = m && m.top_of_book;
       var cc = (S.events && S.events.cross_counts) || null;   // served for the window
-      // Schwab's values with Schwab's trade time, or the served outage reason; the feed state beside them
+      // Schwab's values with Schwab's trade time; the outage stays beside that time, and the feed state beside them
       state(c, !q ? 'WAITING' : q.feed_live ? 'SESSION VOLUME' : 'OFFLINE', q && q.feed_live ? '' : 'warn');
       c.querySelector('.tdm-hero').innerHTML = q && q.total_volume != null ? fmtVol(q.total_volume) + ' <small>shares, Schwab TOTAL_VOLUME</small>' : '';
-      src(c, 'Schwab LEVELONE · ' + (!q ? 'no price row yet' : q.outage ? esc(q.outage) : q.trade_time_ct != null ? 'last trade ' + esc(q.trade_time_ct) : 'no trade sent'));
+      // Schwab's trade time stands when the feed is down; OFFLINE is the card's state, and the
+      // outage stays beside the time instead of replacing it.
+      var tradeWhen = (q && q.trade_time_ct != null) ? ('last trade ' + esc(q.trade_time_ct)) : null;
+      var tradeWhy = !q ? 'no price row yet' : (q.outage ? esc(q.outage) : (tradeWhen ? null : 'no trade sent'));
+      src(c, 'Schwab LEVELONE · ' + (tradeWhen && tradeWhy ? (tradeWhen + ' · ' + tradeWhy) : (tradeWhen || tradeWhy)));
       c.querySelector('.tdm-rows').innerHTML =
         row('Last trade size', q && q.last_size != null ? fmtVol(q.last_size) : '—') +
         row('Top of book', tob ? (tob.bid_size != null ? fmtVol(tob.bid_size) : '—') + ' × ' + (tob.ask_size != null ? fmtVol(tob.ask_size) : '—') : '—') +
@@ -440,7 +444,7 @@
         row('ATR daily', t && t.atr_daily != null ? num(t.atr_daily) : esc((t && t.atr_daily_reason) || '—')) +
         row('ATR weekly', t && t.atr_weekly != null ? num(t.atr_weekly) : esc((t && t.atr_weekly_reason) || '—')) +
         row('ATR monthly', t && t.atr_monthly != null ? num(t.atr_monthly) : esc((t && t.atr_monthly_reason) || '—')) +
-        row('VIX', vix && vix.spot != null ? num(vix.spot) + (vix.chg_pct != null ? ' (' + (vix.chg_pct >= 0 ? '+' : '') + num(vix.chg_pct) + '%)' : '') : 'waiting for the VIX stream');
+        row('VIX', vixText(vix));
     }
     paintCardCharts();
   }
@@ -520,13 +524,22 @@
   }
   // The shell header already carries the symbol, price, change and CT clock; this page adds
   // the index context and the data-trust row beside it.
+  function vixText(vix) {
+    if (!vix || vix.spot == null) return 'waiting for the VIX stream';
+    var txt = num(vix.spot) + (vix.chg_pct != null ? ' (' + (vix.chg_pct >= 0 ? '+' : '') + num(vix.chg_pct) + '%)' : '');
+    return vix.trade_time_ct != null ? (txt + ' · last trade ' + esc(vix.trade_time_ct)) : txt;
+  }
   function paintHeader() {
     window.EdShell.marketContext().forEach(function (c) {   // the served context symbols
       var el = $('tdmIdx' + c.display); if (!el) return;
       var r = S.quotes[c.key];
-      el.title = r ? '' : 'waiting for the ' + c.display + ' stream';
+      if (!r) el.title = 'waiting for the ' + c.display + ' stream';
+      else if (r.trade_time_ct != null) el.title = 'last trade ' + r.trade_time_ct;
+      else if (r.outage != null) el.title = r.outage;
+      else el.title = 'no trade sent';
       el.innerHTML = '<span>' + c.display + '</span><b>' + (r && r.spot != null ? num(r.spot) : '—') + '</b>' +
-        (r && r.chg_pct != null ? '<em class="' + (r.chg_pct >= 0 ? 'up' : 'dn') + '">' + (r.chg_pct >= 0 ? '+' : '') + num(r.chg_pct) + '%</em>' : '');
+        (r && r.chg_pct != null ? '<em class="' + (r.chg_pct >= 0 ? 'up' : 'dn') + '">' + (r.chg_pct >= 0 ? '+' : '') + num(r.chg_pct) + '%</em>' : '') +
+        (r && r.trade_time_ct != null ? '<span> · last trade ' + esc(r.trade_time_ct) + '</span>' : '');
     });
   }
 
