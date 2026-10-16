@@ -524,7 +524,7 @@ from Schwab to the screen (daemon, console, page), are these:
    options card, volatility card, and GAMMA pill keep the chain's time beside that
    age (`server.get_terrain`, `static/js/ed-trade-desk-map.js`). The key levels
    keep the last wall when that price has stopped, and the rail says OFFLINE
-   (`server.get_terrain`, `#klSrc`); the chain's own age stays `levels_stale`. The
+   beside the chain's time (`server.get_terrain`, `#klSrc`, `static/js/ed-gamma-panels.js`); the chain's own age stays `levels_stale`. The
    book's top keeps the last bid and ask, and that panel says OFFLINE (`top_outage`).
    The book's quote time and book time stay on that panel (`server.order_flow_microstructure`,
    `static/js/ed-order-flow.js`). The Flow panel keeps the contract's quote time and book time

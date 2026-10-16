@@ -86,29 +86,35 @@
     // B: the levels rail recedes when terrain reports stale
     var klb = document.getElementById('klBody');
     if (klb) klb.classList.toggle('recede', !!d.levels_stale);
-    // freshness / provenance line
+    // freshness / provenance line. The chain's time stands beside the mark. The mark is
+    // unchanged when no chain time was sent.
     var src = document.getElementById('klSrc');
+    function chainMarked(words) {
+      var when = d.levels_time_ct != null ? d.levels_time_ct : null;
+      if (when != null) return when + ' · ' + words;
+      return words;
+    }
     if (src) {
       if (d.levels_stale) {
         // compact status grammar: state + age on the panel; the full reason is disclosed in the
         // tooltip (title) rather than as a paragraph that consumes the Key Levels rail
         var age = (window.EdShell && window.EdShell.fmtAge) ? window.EdShell.fmtAge(d.levels_age_sec)
           : (d.levels_age_sec != null ? Math.round(d.levels_age_sec) + 's' : '');
-        src.textContent = 'STALE' + (age ? ' · ' + age : '');
+        src.textContent = chainMarked('STALE' + (age ? ' · ' + age : ''));
         src.title = d.levels_stale_reason || 'terrain levels are stale';
         src.style.color = 'var(--ed-stale)';
       } else if (d.levels_stale === false && d.spot_feed_live === false) {
         // the chain is current and the wall stays; the price it was built from has stopped
-        src.textContent = 'OFFLINE';
+        src.textContent = chainMarked('OFFLINE');
         src.title = d.spot_outage == null ? '' : d.spot_outage;
         src.style.color = 'var(--ed-stale)';
       } else if (d.levels_stale === false) {
-        src.textContent = 'terrain · live';
+        src.textContent = chainMarked('terrain · live');
         src.title = '';
         src.style.color = '';
       } else {
         // no freshness verdict served: never read as live
-        src.textContent = 'freshness not reported';
+        src.textContent = chainMarked('freshness not reported');
         src.title = '';
         src.style.color = 'var(--ed-stale)';
       }
