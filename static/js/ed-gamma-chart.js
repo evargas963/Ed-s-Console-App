@@ -110,14 +110,15 @@
     }
     c.setLevels(lv);
     var spot = liveSpot();
+    var tradeTime = (_liveQuote && spot != null) ? _liveQuote.trade_time_ct : null;
     c.setLivePrice(spot, _liveQuote && spot != null ? _liveQuote.trade_age_sec : null);
     var empty = host.querySelector('.gchart-empty');
     empty.hidden = !!(bars.length || win.length);
     empty.textContent = empty.hidden ? '' : (barsD || sd ? 'no bars / per-strike ' + prof.name + ' for this symbol'
       : 'the bars and per-strike ' + prof.name + ' requests failed');
-    paintHead(host.querySelector('.gchart-head'), bars, win, prof, sd, spot);
+    paintHead(host.querySelector('.gchart-head'), bars, win, prof, sd, spot, tradeTime);
   }
-  function paintHead(el, bars, win, prof, sd, spot) {
+  function paintHead(el, bars, win, prof, sd, spot, tradeTime) {
     var n = prof.name;
     var ab = (window.EdShell && window.EdShell.asOfBadge) || function () { return ''; };
     var lastT = bars.length ? bars[bars.length - 1].t : null;
@@ -133,7 +134,8 @@
           '<span><span class="sw" style="background:var(--ed-neg)"></span>−' + n + '</span>'
         : '<span><span class="sw" style="background:var(--ed-accent)"></span>' + n + '</span>') +
       '<span><span class="sw" style="background:var(--ed-accent)"></span>flip</span>' +
-      '<span>spot ' + (spot == null ? '—' : spot.toFixed(2)) + '</span>' +
+      '<span>spot ' + (spot == null ? '—' : spot.toFixed(2)) +
+      (tradeTime ? (' · last trade ' + esc(tradeTime)) : '') + '</span>' +
       (top ? '<span>largest |' + n + '| ' + esc(top[0]) + ' · ' + esc(shown) + '</span>' : '') + '</div>';
   }
 

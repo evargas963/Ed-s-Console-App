@@ -731,7 +731,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   test('chart view: Price + GEX Profile and Dot Map render from canonical inputs', async ({ page }) => {
     // The chart's spot is the header's price row (audit of #280 removed the /api/terrain copy,
     // a second producer): the daemon's price socket delivers it.
-    await mockPriceSocket(page, [priceRow('SPY', 583.41)]);
+    await mockPriceSocket(page, [priceRow('SPY', 583.41, { trade_time_ct: '14:00:01 CT' })]);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.locator('.vtab[data-view="chart"]').click();
     await expect(page.locator('#view-chart')).toHaveClass(/on/);
@@ -744,6 +744,9 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect.poll(async () => (await cs()).profile.style).toBe('bars');
     await expect.poll(async () => (await cs()).livePrice).toBe(583.41);
     await expect(page.locator('#chartBody .gchart-head')).toContainText('spot 583.41');
+    await expect(page.locator('#chartBody .gchart-head')).toContainText('last trade 14:00:01 CT');
+    await expect(page.locator('#hFeed')).toHaveText('OFFLINE', { timeout: 6000 });
+    await expect(page.locator('#chartBody .gchart-head')).toContainText('last trade 14:00:01 CT');
     await expect.poll(async () => (await cs()).levels).toContain('flip');
     await page.setViewportSize({ width: 2560, height: 1440 });
     await page.screenshot({ path: require('path').join('test-results', 'console-gamma-chart-2560x1440.png') });
