@@ -200,7 +200,7 @@ print(json.dumps({"loaded": sorted(set(sys.modules) - before),
 def test_a_console_just_started_takes_its_first_price_history_without_loading_a_module():
     """The first price history after the console starts reaches its bars and price levels with
     nothing loaded on the way (a module loaded there holds up the first answer beside the pricing
-    thread: 0.30 to 0.37 s measured)."""
+    thread)."""
     done = subprocess.run([sys.executable, "-W", "ignore", "-c", _FIRST_TAKE, str(Path(__file__).resolve().parent.parent)],
                           capture_output=True, text=True, timeout=120, check=True)
     got = json.loads(done.stdout.strip().splitlines()[-1])
