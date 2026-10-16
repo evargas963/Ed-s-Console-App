@@ -157,7 +157,8 @@ from Schwab to the screen (daemon, console, page), are these:
   spot keeps every digit), `tests/test_data_path_book_size_v1.py` (the book's top size
   keeps every digit), `tests/test_data_path_tape_size_v1.py` (a tape print's size
   keeps every digit), `tests/test_data_path_silent_subscription_v1.py` (a missing heartbeat
-  keeps the last subscription); the rest — ENF-22.
+  keeps the last subscription), `tests/test_data_path_quote_time_v1.py` (the row carries
+  Schwab's quote time); the rest — ENF-22.
 - **D6. No live screen reads the database.** Every live route serves from memory; the database
   is read at startup, after the close and for research only.
   Enforced by: `tests/test_data_path_rules_v1.py`.
@@ -502,6 +503,7 @@ from Schwab to the screen (daemon, console, page), are these:
    instead of receiving the values; bars are not yet on the daemon's push.
 5. **Values blank when they stop** (D5, operator 2026-10-11): the price row keeps the last
    values and the header says OFFLINE (`live_price_rows.price_row`, the page's feed chip). The
+   age line keeps that price's last trade time (`static/js/ed-core.js`). The
    book's top keeps the last bid and ask, and that panel says OFFLINE (`top_outage`). A contract
    the daemon stops holding keeps its last quote; the Flow panel marks it NOT STREAMED. A missing
    heartbeat keeps that last subscription, and the panel says OFFLINE

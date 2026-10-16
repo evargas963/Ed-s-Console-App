@@ -53,6 +53,7 @@ def price_row(ticker: str, now: float) -> dict[str, Any]:
         return row.get(name) if streamed else None
 
     trade_ts = field("trade_ts")
+    quote_ts = field("exchange_quote_ts")
     return {
         "ticker": tk,
         "spot": spot,
@@ -66,7 +67,8 @@ def price_row(ticker: str, now: float) -> dict[str, Any]:
         "bid_size": field("bid_size"),
         "ask_size": field("ask_size"),
         "mark": field("mark"),                         # Schwab MARK
-        "quote_ts": field("exchange_quote_ts"),        # Schwab QUOTE_TIME (epoch s)
+        "quote_ts": quote_ts,                          # Schwab QUOTE_TIME (epoch s)
+        "quote_time_ct": ct_label(quote_ts) if quote_ts is not None else None,
         "last_size": field("last_size"),
         "total_volume": field("total_volume"),
         # Schwab's own percent changes vs the prior close: NET_CHANGE_PERCENT (extended hours
