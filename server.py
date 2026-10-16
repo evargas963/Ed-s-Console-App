@@ -283,18 +283,17 @@ def _install_signal_handlers() -> None:
 
 def resolve_spot(ticker: str, *, now: float) -> tuple[float | None, str, float | None]:
     """(spot, source, as_of_ts_utc): the daemon's price row's Schwab LAST_PRICE as sent and its
-    trade time -- the value the header shows. In an open session (at `now`) with the feed down it
-    is absent and `source` is the outage reason; while Closed the price as of the close stands
-    (docs/DATA_FLOW.md §2 D5); (None, "none", None) until Schwab has sent one."""
+    trade time. The row's own `outage` says the feed is not delivering it; the number stays.
+    (None, the outage reason or "none", None) until Schwab has sent one."""
     from app.options.order_flow.streaming import price_row
 
-    outage = lmp.outage(ticker, "LEVELONE_EQUITIES", now)
-    if outage is not None:
-        return None, outage, None
     row = price_row(ticker)
-    if not row or row.get("spot") is None:
+    if row and row.get("spot") is not None:
+        return row["spot"], SPOT_SOURCE_PLANE, row.get("trade_ts")
+    outage = lmp.outage(ticker, "LEVELONE_EQUITIES", now)
+    if outage is None:
         return None, "none", None
-    return row["spot"], SPOT_SOURCE_PLANE, row.get("trade_ts")
+    return None, outage, None
 
 
 # (REST fast-quote writer DELETED 2026-09-24, independent-audit finding #3: it wrote REST

@@ -8,9 +8,9 @@ from two different rules.
 
 Nothing here computes a market value: every number is a Schwab field or its receive time, with
 Schwab's own trade time; the only derivations are the trade age and its label. Whether the feed
-is delivering the symbol now (`feed_live`) is stated beside the values; in an open session a
-down feed leaves them absent with the reason (`outage`), and while Closed the values as of the
-close stand (docs/DATA_FLOW.md §2 D5).
+is delivering the symbol now (`feed_live`) is stated beside the values. A down feed in an open
+session sets `outage` and leaves the last values Schwab sent; while Closed there is no outage
+(docs/DATA_FLOW.md §2 D5).
 """
 from __future__ import annotations
 
@@ -41,12 +41,12 @@ def _trade_age_sec(trade_ts: Optional[float], now: float) -> Optional[float]:
 
 def price_row(ticker: str, now: float) -> dict[str, Any]:
     """The finished row the screen paints for one symbol, as it is at `now`: each field the
-    last value Schwab sent for it, unless its feed is down in an open session (`outage`, the
-    reason the values are absent; docs/DATA_FLOW.md §2 D5)."""
+    last value Schwab sent. A feed down in an open session sets `outage` and `feed_live` false;
+    the fields stay (docs/DATA_FLOW.md §2 D5)."""
     tk = ticker_storage_key(ticker)
     outage = lmp.outage(tk, "LEVELONE_EQUITIES", now)
     row = lmp.get_quote(tk) if tk else None
-    streamed = bool(row) and lmp.plane_row_is_streamed(row) and outage is None
+    streamed = bool(row) and lmp.plane_row_is_streamed(row)
     spot = float(row["spot"]) if streamed and lmp.plane_spot_is_last_price(row) else None
 
     def field(name: str):

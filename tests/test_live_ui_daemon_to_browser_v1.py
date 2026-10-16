@@ -9,8 +9,8 @@ no database. Proves:
     Schwab trade age, and no bar (charts show Schwab's completed bars only);
   * a symbol nobody subscribed to is never sent;
   * the feed verdict rides every beat: a closed Schwab socket reads feed_live False within one
-    beat, with no message needed from Schwab; in session the values go absent with the outage
-    reason, while Closed the values Schwab last sent stand (docs/DATA_FLOW.md §2 D5);
+    beat, with no message needed from Schwab; the last values stand, and in session the row
+    names the outage (docs/DATA_FLOW.md §2 D5);
   * a slow browser gets the newest row per symbol, never a backlog of stale ones;
   * shutdown is not held up by a connected browser.
 """
@@ -37,10 +37,16 @@ def _free_port() -> int:
 
 
 @pytest.fixture(autouse=True)
-def _fresh_plane(monkeypatch):
-    monkeypatch.setattr(lmp, "_by_ticker", {})
-    monkeypatch.setattr(lmp, "_fields_by_ticker", {})
-    monkeypatch.setattr(live_ui, "HEARTBEAT_SEC", 0.2)
+def _fresh_plane():
+    """Each test starts from an empty quote plane and a short heartbeat, then both are put back."""
+    quotes, fields, beat = lmp._by_ticker, lmp._fields_by_ticker, live_ui.HEARTBEAT_SEC
+    lmp._by_ticker = {}
+    lmp._fields_by_ticker = {}
+    live_ui.HEARTBEAT_SEC = 0.2
+    yield
+    lmp._by_ticker = quotes
+    lmp._fields_by_ticker = fields
+    live_ui.HEARTBEAT_SEC = beat
 
 
 def _trade(sym: str, last: float, ts: float, **extra) -> dict:
@@ -173,24 +179,26 @@ def _clock_from(monkeypatch, start: float) -> None:
     monkeypatch.setattr(time, "time", lambda: real() + offset)
 
 
-@pytest.mark.parametrize("start, served", [(_RTH, (None, None)),
-                                           (_CLOSED, (583.41, pytest.approx(583.40)))],
-                         ids=["rth", "closed"])
-def test_a_closed_schwab_socket_reads_feed_down_within_one_beat(monkeypatch, start, served):
-    """Nothing from Schwab; only the beat knows (docs/DATA_FLOW.md §2 D5): during RTH the row's
-    values are absent with the outage reason; while Closed the values Schwab last sent stand."""
-    _clock_from(monkeypatch, start)
-
-    async def body(bus, ws, feed, stats):
-        await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"]}))
-        bus.publish("quote.SPY", _trade("SPY", 583.41, time.time()))
-        await _next_row(ws, "SPY", lambda r: r["feed_live"] is True)
-        feed.open = False
-        msg, row = await _next_row(ws, "SPY", lambda r: r["feed_live"] is False, timeout=1.0)
-        assert msg["type"] == "feed" and msg["feed"]["schwab_socket_open"] is False
-        assert (row["spot"], row["bid"]) == served
-        assert (row["outage"] is None) == (served[0] is not None)
-    asyncio.run(_run(body))
+@pytest.mark.parametrize("start, outage", [(_RTH, True), (_CLOSED, False)], ids=["rth", "closed"])
+def test_a_closed_schwab_socket_reads_feed_down_within_one_beat(start, outage):
+    """Nothing from Schwab; only the beat knows (docs/DATA_FLOW.md §2 D5): the last price and
+    bid stand. During RTH the row names the outage; while Closed it does not. The clock runs
+    from `start` so the session is that hour, and time still passes."""
+    real, offset = time.time, start - time.time()
+    time.time = lambda: real() + offset
+    try:
+        async def body(bus, ws, feed, stats):
+            await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"]}))
+            bus.publish("quote.SPY", _trade("SPY", 583.41, time.time()))
+            await _next_row(ws, "SPY", lambda r: r["feed_live"] is True)
+            feed.open = False
+            msg, row = await _next_row(ws, "SPY", lambda r: r["feed_live"] is False, timeout=1.0)
+            assert msg["type"] == "feed" and msg["feed"]["schwab_socket_open"] is False
+            assert row["spot"] == 583.41 and row["bid"] == pytest.approx(583.40)
+            assert (row["outage"] is not None) is outage
+        asyncio.run(_run(body))
+    finally:
+        time.time = real
 
 
 def test_a_symbol_the_daemon_does_not_hold_reads_feed_not_live(monkeypatch):
