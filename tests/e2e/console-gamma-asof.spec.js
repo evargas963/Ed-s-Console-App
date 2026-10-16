@@ -98,6 +98,17 @@ test.describe('#4 per-panel source / as-of / freshness', () => {
     await expect(asof).toContainText('GEX terrain live'); // levels clock (separate)
   });
 
+  test('the Chart GEX badge keeps the chain time', async ({ page }) => {
+    const CHAIN_TIME = 'Fri 09/25 06:59 PM CT';
+    await routes({ strikes: Object.assign({}, STRIKES, { levels_time_ct: CHAIN_TIME }) })(page);
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.locator('.vtab', { hasText: 'Chart' }).click();
+    const asof = page.locator('#chartBody .chart-asof');
+    await expect(asof).toContainText('GEX terrain live');
+    await expect(asof).toContainText(CHAIN_TIME);
+    await expect(asof).toContainText('21s');
+  });
+
   test('a stale terrain generation makes the GEX-by-strike badge read stale', async ({ page }) => {
     const staleStrikes = Object.assign({}, STRIKES, { levels_stale: true, levels_age_sec: 900,
       today_age_sec: 900, levels_stale_reason: 'levels loop paused' });
