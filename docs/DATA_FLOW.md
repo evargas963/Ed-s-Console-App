@@ -154,7 +154,8 @@ from Schwab to the screen (daemon, console, page), are these:
   `tests/test_data_path_live_status_v1.py` (the daemon's status is current when it is not older
   than 3 s), `tests/test_data_path_strike_counts_v1.py` (a strike's volume and open interest
   keep every digit), `tests/test_data_path_side_volume_v1.py` (the volume below and above
-  spot keeps every digit); the rest — ENF-22.
+  spot keeps every digit), `tests/test_data_path_book_size_v1.py` (the book's top size
+  keeps every digit); the rest — ENF-22.
 - **D6. No live screen reads the database.** Every live route serves from memory; the database
   is read at startup, after the close and for research only.
   Enforced by: `tests/test_data_path_rules_v1.py`.
@@ -506,7 +507,9 @@ from Schwab to the screen (daemon, console, page), are these:
    OFFLINE (`live_market_plane.outage`). A strike's session volume and open interest keep
    every digit Schwab sent (`terrain_engine._per_strike_rows`,
    `_per_strike_measure_rows`), and so do the volume sums below and above spot
-   (`server.terrain_strikes_payload`); the screen rounds those counts for display. Still
+   (`server.terrain_strikes_payload`), and so does the book's top size
+   (`app.options.order_flow.engine._extract_canonical_book`); the screen rounds those counts
+   for display. Still
    blank: levels fetched before the option close are marked apart from a feed stop
    (`server.terrain_staleness`); some calculations still drop
    contracts. The §3 descriptions of these are today's behavior. Each remaining place is
