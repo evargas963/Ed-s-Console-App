@@ -514,7 +514,8 @@ async def _app_lifespan(app):
     # ticker; every chain the daemon fetched -> _on_chain, which prices it.
     from app.options.order_flow.streaming import start_order_flow_stream
     start_order_flow_stream(on_tick_callback=_on_stream_tick,
-                            on_chain_callback=_on_chain)
+                            on_chain_callback=_on_chain,
+                            on_feed_callback=restamp_open_surfaces)
 
     push_changes.bind(asyncio.get_running_loop())
 
@@ -815,32 +816,40 @@ def _next_gamma_surface_seq(tk: str) -> int:
     return n
 
 
-def _streamed_greeks_for_ticker(listed: frozenset, now: float) -> dict:
+def _streamed_greeks_for_ticker(listed: frozenset, now: float, feed: "lmp.FeedNow | None" = None) -> dict:
     """The newest streamed GAMMA/DELTA/OPEN_INTEREST/VOLUME of every contract the daemon streams
-    at `now` of the ticker's chain (`listed`, the symbols Schwab listed in it), gathered whole on
-    every call."""
+    at `now` of the ticker's chain (`listed`, the symbols Schwab listed in it). `feed` is one
+    read of that heartbeat; omitted, this call reads it."""
     from app.options.order_flow.state import get_stream_greeks
     out: dict = {}
-    for sym in _held_option_symbols_for_ticker(listed, now):
+    for sym in _held_option_symbols_for_ticker(listed, now, feed):
         greeks = get_stream_greeks(sym)
         if greeks:
             out[sym] = greeks
     return out
 
 
-def _current_stream_greeks(streamed: dict, now: float) -> dict:
-    """The streamed values that are current at `now`, the ones that may price over the chain: a
-    contract whose LEVELONE_OPTIONS feed is down in an open session has none, and the chain's own
-    values stand (docs/DATA_FLOW.md §2 D5)."""
-    return {s: g for s, g in streamed.items() if lmp.outage(s, "LEVELONE_OPTIONS", now) is None}
+def _current_stream_greeks(streamed: dict, now: float, feed: "lmp.FeedNow | None" = None) -> dict:
+    """The streamed values that are current at `now`, the ones that may price over the chain.
+    `feed` is the same heartbeat read that chose `streamed`."""
+    if feed is None:
+        return {s: g for s, g in streamed.items() if lmp.outage(s, "LEVELONE_OPTIONS", now) is None}
+    session = session_label(datetime.fromtimestamp(now, ET))
+    return {s: g for s, g in streamed.items()
+            if session == "Closed" or lmp.live_on(feed, s, "LEVELONE_OPTIONS")}
 
 
-def _held_option_symbols_for_ticker(listed: frozenset, now: float) -> "list[str]":
-    """Every contract of the ticker's chain (`listed`, the symbols Schwab listed in it) the daemon
-    holds on LEVELONE_OPTIONS at `now` -- the option rule's pick, as its heartbeat carries it --
-    whether or not a tick has landed for it yet (a held contract with no tick yet reads PENDING)."""
-    from app.options.order_flow.streaming import _read_producer_option_contracts
-    return [sym for sym in _read_producer_option_contracts(now)["LEVELONE_OPTIONS"] if sym in listed]
+def _held_option_symbols_for_ticker(listed: frozenset, now: float, feed: "lmp.FeedNow | None" = None) -> "list[str]":
+    """Every contract of the ticker's chain (`listed`) the daemon holds on LEVELONE_OPTIONS at
+    `now`. `feed` is one read of that heartbeat; omitted, this call reads it."""
+    if feed is None:
+        from app.options.order_flow.streaming import _read_producer_option_contracts
+        opts = _read_producer_option_contracts(now)["LEVELONE_OPTIONS"]
+    else:
+        opts = feed.held.get("LEVELONE_OPTIONS") if feed.status is not None else None
+    if not opts:
+        return []
+    return [sym for sym in opts if sym in listed]
 
 
 def _overlaid_symbols(pre: list, post: list) -> list[str]:
@@ -880,6 +889,22 @@ def _stream_state_of(states: list) -> str:
     if any(s in ("live", "partial") for s in states):
         return "partial"
     return next((o for o in _STREAM_STATE_ORDER if o in states), "unavailable")
+
+
+def _stream_cell_title(state: str, age: "float | None", ts_recv: "float | None") -> "str | None":
+    """The tooltip for a cell that is not live: the served word, Schwab's time in Central Time,
+    and the age. A live cell has no tooltip."""
+    if state == "live":
+        return None
+    word = STREAM_WORDS["cell"].get(state)
+    if word is None:
+        return None
+    parts = [word]
+    if ts_recv is not None:
+        parts.append(ct_label(ts_recv))
+    if age is not None:
+        parts.append(f"{age:.0f}s")
+    return " · ".join(parts)
 
 
 def _stamp_gamma_surface_cell_stream_state(surface: dict, streamed: dict, overlay_symbols: set,
@@ -930,8 +955,12 @@ def _stamp_gamma_surface_cell_stream_state(surface: dict, streamed: dict, overla
                     "age_sec": (now - ts_recv if ts_recv is not None else None),
                 }
             legs["state"] = _stream_state_of(leg_states)
-            ages = [leg["age_sec"] for leg in legs.values() if isinstance(leg, dict) and leg["age_sec"] is not None]
-            legs["age_sec"] = max(ages) if ages else None   # the cell's oldest confirmed leg
+            confirmed = [leg for leg in legs.values()
+                         if isinstance(leg, dict) and isinstance(leg.get("age_sec"), (int, float))]
+            oldest = max(confirmed, key=lambda leg: leg["age_sec"]) if confirmed else None
+            legs["age_sec"] = oldest["age_sec"] if oldest else None
+            legs["title"] = _stream_cell_title(
+                legs["state"], legs["age_sec"], None if oldest is None else oldest.get("ts_recv"))
             state_row.append(legs)
         cell["stream"] = state_row
     # each expiry column's state, from its cells' states -- the column header's streaming status
@@ -950,6 +979,56 @@ STREAM_WORDS = {
     "column": {"live": "streaming", "partial": "partly streaming", "stale": "stopped streaming",
                "pending": "streaming requested", "unavailable": "not streaming"},
 }
+
+#: the last heartbeat the open surfaces were stamped from, so a repeat beat does not republish
+_last_feed_stamp: "tuple | None" = None
+
+
+def restamp_open_surfaces(now: float) -> None:
+    """Mark every cached heatmap from the daemon's heartbeat at `now`, without repricing.
+
+    The last streamed gamma stays. A socket that has closed is not live; a contract the daemon
+    still holds is. The page is told only when that set changes."""
+    global _last_feed_stamp
+    from app.options.order_flow.state import get_stream_greeks
+
+    feed = lmp.feed_now(now)
+    socket_open = bool(feed.status is not None and feed.status.get("schwab_socket_open") is True)
+    held_now = feed.held.get("LEVELONE_OPTIONS", frozenset()) if socket_open else frozenset()
+    key = (socket_open, held_now)
+    if key == _last_feed_stamp:
+        return
+    _last_feed_stamp = key
+    bumped: list[str] = []
+    with _terrain_cache_lock:
+        for tk, payload in _terrain_cache.items():
+            surface = payload.get("_gamma_surface")
+            if not isinstance(surface, dict):
+                continue
+            symbols: list[str] = []
+            cells = surface.get("cells")
+            if cells:
+                for cell in cells:
+                    pairs = cell.get("contracts")
+                    if not pairs:
+                        continue
+                    for pair in pairs:
+                        if isinstance(pair, dict):
+                            symbols.extend(s for s in (pair.get("call"), pair.get("put")) if s)
+            streamed = {}
+            for sym in symbols:
+                greeks = get_stream_greeks(sym)
+                if greeks:
+                    streamed[sym] = greeks
+            held = set(symbols) & set(held_now)
+            live = {s for s in streamed if lmp.live_on(feed, s, "LEVELONE_OPTIONS")}
+            _stamp_gamma_surface_cell_stream_state(surface, streamed, live, held, now)
+            surface["surface_seq"] = _next_gamma_surface_seq(tk)
+            bumped.append(tk)
+    watching = set(push_changes.watched())
+    for tk in bumped:
+        if tk in watching:
+            push_changes.changed(tk, push_changes.LEVELS)
 
 
 #: The heatmap header's chip, per coverage state: ALL STREAMING only when every cell on screen is
@@ -1099,14 +1178,15 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
     if new_chain:       # the ticker's contracts are the ones Schwab listed in this chain
         payload.update(_contract_symbols=frozenset(c.get("symbol") for c in chain if c.get("symbol")))
     listed = payload.get("_contract_symbols") or frozenset()
-    streamed = _streamed_greeks_for_ticker(listed, at.timestamp())
-    # the live and held contracts at `at`, read before pricing: the cells are stamped with them
-    feed_live = {s for s in streamed if lmp.feed_live_for(s, "LEVELONE_OPTIONS", at.timestamp())}
-    held = set(_held_option_symbols_for_ticker(listed, at.timestamp()))
+    # one read of the heartbeat: pricing and the cell stamp share it
+    feed = lmp.feed_now(at.timestamp())
+    streamed = _streamed_greeks_for_ticker(listed, at.timestamp(), feed)
+    feed_live = {s for s in streamed if lmp.live_on(feed, s, "LEVELONE_OPTIONS")}
+    held = set(_held_option_symbols_for_ticker(listed, at.timestamp(), feed))
     # each field the newest Schwab sent: a current streamed value received after this chain, else
     # the chain's
     priced, n_live = overlay_streamed_contract_fields(
-        chain, _current_stream_greeks(streamed, at.timestamp()), fetched_ts)
+        chain, _current_stream_greeks(streamed, at.timestamp(), feed), fetched_ts)
     live_syms = _overlaid_symbols(chain, priced)
     snap = compute_terrain(tk, priced, spot, now=(
         datetime.fromtimestamp(fetched_ts, ET) if capture is not None else at))

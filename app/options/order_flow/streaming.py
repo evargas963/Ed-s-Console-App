@@ -129,6 +129,7 @@ _option_contract_last_update_ts: dict[str, float] = {}
 #: GAMMA/DELTA/OPEN_INTEREST/TOTAL_VOLUME/VOLUME (server._on_stream_tick: reprices a viewed
 #: ticker). Runs on the event loop, so it must return at once.
 _on_tick_callback: Optional[Callable[[str], None]] = None
+_on_feed_callback: Optional[Callable[[float], None]] = None
 _tick_callback_failures = 0
 #: Every streamed 1-minute bar (bar1m.SYM, Schwab CHART_EQUITY), for server._bar_writer to write.
 streamed_bars: "queue.SimpleQueue[dict]" = queue.SimpleQueue()
@@ -313,11 +314,13 @@ async def _rows_loop(ui_url: str, reconnect_sec: float) -> None:
                     except asyncio.TimeoutError:
                         _price_rows.clear()          # the daemon beats every second: silence
                         _lmp.record_feed_down()
+                        _feed_changed(time.time())
                         continue
                     msg = json.loads(frame)
                     if msg.get("type") == "feed":
                         _lmp.record_feed_heartbeat(msg.get("feed"))
                         _drop_released_options(time.time())
+                        _feed_changed(time.time())
                     for row in msg.get("rows") or []:
                         _price_rows[row["ticker"]] = row
                         if msg.get("type") == "quotes":
@@ -329,6 +332,7 @@ async def _rows_loop(ui_url: str, reconnect_sec: float) -> None:
                      type(e).__name__, e, reconnect_sec)
         _price_rows.clear()
         _lmp.record_feed_down()            # no daemon, no live price -- visible at once
+        _feed_changed(time.time())
         if _feed_running:
             await asyncio.sleep(reconnect_sec)
 
@@ -385,6 +389,7 @@ async def _feed_loop(push_url: str, ui_url: str, reconnect_sec: float) -> None:
         await asyncio.gather(rows, return_exceptions=True)
         _price_rows.clear()
         _lmp.record_feed_down()
+        _feed_changed(time.time())
         _log_stream("FEED_LOOP_STOP_DONE")
 
 
@@ -404,10 +409,19 @@ _held_options: "set[str]" = set()
 
 
 def _drop_released_options(now: float) -> None:
-    """Forget the live state of each option contract the daemon stopped streaming at `now` (its
-    option rule moved off it), so no screen shows that contract's last message as current."""
+    """Forget a contract the daemon stopped streaming at `now` while its Schwab socket is open
+    (the option rule moved off it). A socket that has closed keeps the last values: they stand,
+    marked not live, until the socket holds a set again. A service the heartbeat does not
+    name is missing, not an empty set."""
     global _held_options
-    held = set().union(*_read_producer_option_contracts(now).values())
+    feed = _lmp.feed_now(now)
+    if feed.status is None or feed.status.get("schwab_socket_open") is not True:
+        return
+    held: set[str] = set()
+    for service in OPTION_PRODUCER_SERVICES:
+        symbols = feed.held.get(service)
+        if symbols is not None:
+            held.update(symbols)
     for sym in _held_options - held:
         clear_symbol(sym)
         _option_contract_last_update_ts.pop(sym, None)
@@ -438,15 +452,23 @@ def get_option_contract_streaming_diagnostics(for_contract: str, now: float) -> 
     }
 
 
+def _feed_changed(now: float) -> None:
+    """The daemon's heartbeat changed: the console restamps what is live."""
+    if _on_feed_callback is not None:
+        _on_feed_callback(now)
+
+
 def start_order_flow_stream(on_tick_callback: Optional[Callable[[str], None]] = None,
-                            on_chain_callback: Optional[Callable[..., None]] = None) -> bool:
+                            on_chain_callback: Optional[Callable[..., None]] = None,
+                            on_feed_callback: Optional[Callable[[float], None]] = None) -> bool:
     """Start the feed from the capture daemon (on the event loop)."""
-    global _feed_task, _feed_running, _on_tick_callback, _on_chain_callback
+    global _feed_task, _feed_running, _on_tick_callback, _on_chain_callback, _on_feed_callback
     if _feed_task is not None and not _feed_task.done():
         log.info("Live-plane feed already running")
         return True
     _on_tick_callback = on_tick_callback
     _on_chain_callback = on_chain_callback
+    _on_feed_callback = on_feed_callback
     _feed_running = True
     _feed_task = asyncio.get_event_loop().create_task(
         _feed_loop(LIVE_PUSH_URL, LIVE_UI_URL, PUSH_RECONNECT_SEC), name="daemon-plane-feed")
