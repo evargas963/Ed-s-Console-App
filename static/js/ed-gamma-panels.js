@@ -97,6 +97,11 @@
         src.textContent = 'STALE' + (age ? ' · ' + age : '');
         src.title = d.levels_stale_reason || 'terrain levels are stale';
         src.style.color = 'var(--ed-stale)';
+      } else if (d.levels_stale === false && d.spot_feed_live === false) {
+        // the chain is current and the wall stays; the price it was built from has stopped
+        src.textContent = 'OFFLINE';
+        src.title = d.spot_outage == null ? '' : d.spot_outage;
+        src.style.color = 'var(--ed-stale)';
       } else if (d.levels_stale === false) {
         src.textContent = 'terrain · live';
         src.title = '';

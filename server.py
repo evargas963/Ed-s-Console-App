@@ -2168,8 +2168,13 @@ def get_terrain(ticker: str = Query(...)):
         # spot_as_of_ts_utc, never called live (the live price is the daemon's price row);
         # internal fields (the kept chain, the heatmap grid, per-strike rows) have their own routes
         out = {k: v for k, v in cached.items() if not k.startswith("_")}
-        out.update(terrain_staleness(cached.get("computed_ts_utc"), tk, now=at.timestamp()))
+        now = at.timestamp()
+        out.update(terrain_staleness(cached.get("computed_ts_utc"), tk, now=now))
         out.update(_atr_fields(tk, at))     # live: today's candle from the bars held now
+        # the chain's age is levels_stale, above. The price those levels were built from is a
+        # separate fact: the numbers stay, and the rail says OFFLINE when that feed is not live.
+        out["spot_feed_live"] = lmp.feed_live_for(tk, "LEVELONE_EQUITIES", now)
+        out["spot_outage"] = lmp.outage(tk, "LEVELONE_EQUITIES", now)
         return out
     spot, spot_source, spot_ts = resolve_spot(tk, now=at.timestamp())
     _why = _terrain_refresh_last_error.get(tk)
