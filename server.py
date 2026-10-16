@@ -1645,7 +1645,7 @@ def terrain_strikes_payload(tk: str, scope: str, centre, shift: int, now: float)
                 else:
                     va += v
         return {"gex_below": gb, "gex_above": ga,
-                "vol_below": int(vb), "vol_above": int(va),
+                "vol_below": vb, "vol_above": va,
                 "spot_basis": float(s)}
 
     live_spot, live_src, _live_ts = resolve_spot(tk, now=now)   # the one spot on every screen
