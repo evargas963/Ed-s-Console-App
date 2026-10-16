@@ -240,6 +240,30 @@ test('Desk: a book that is not live keeps Schwab\'s book time', async ({ page })
   expect(errs).toEqual([]);
 });
 
+test('Desk: the chain age keeps the chain\'s time', async ({ page }) => {
+  const errs = watchErrors(page);
+  const CHAIN_TIME = 'Fri 09/25 06:59 PM CT';
+  await intercept(page);
+  await page.route('**/api/terrain**', (route) => {
+    const url = route.request().url();
+    if (url.includes('/api/terrain/strikes')) {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(STRIKES) });
+    }
+    return route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify(Object.assign({}, TERRAIN, {
+        levels_age_sec: 4, levels_stale: false, levels_time_ct: CHAIN_TIME,
+      })) });
+  });
+  await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
+    localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await expect(page.locator('#tdmCardOpt .tdm-src')).toContainText('Schwab option chain · ' + CHAIN_TIME + ' · 4s old');
+  await expect(page.locator('#tdmCardOpt')).toContainText('775.00');
+  await expect(page.locator('#tdmCardVol .tdm-src')).toContainText(CHAIN_TIME + ' · 4s old');
+  await expect(page.locator('#tdmTrust')).toContainText('GAMMA ' + CHAIN_TIME + ' · 4s');
+  expect(errs).toEqual([]);
+});
+
 test('Right Now: the spot keeps its last trade time', async ({ page }) => {
   await intercept(page);
   await page.route('**/api/levels**', (route) => route.fulfill({ status: 200, contentType: 'application/json',

@@ -2170,6 +2170,8 @@ def get_terrain(ticker: str = Query(...)):
         out = {k: v for k, v in cached.items() if not k.startswith("_")}
         now = at.timestamp()
         out.update(terrain_staleness(cached.get("computed_ts_utc"), tk, now=now))
+        computed = cached.get("computed_ts_utc")
+        out["levels_time_ct"] = ct_label(computed) if computed is not None else None
         out.update(_atr_fields(tk, at))     # live: today's candle from the bars held now
         # the chain's age is levels_stale, above. The price those levels were built from is a
         # separate fact: the numbers stay, and the rail says OFFLINE when that feed is not live.
