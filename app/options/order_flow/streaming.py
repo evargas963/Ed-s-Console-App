@@ -418,7 +418,9 @@ def _drop_released_options(now: float) -> None:
         return
     held: set[str] = set()
     for service in OPTION_PRODUCER_SERVICES:
-        held.update(feed.held.get(service, ()))
+        symbols = feed.held.get(service)
+        if symbols is not None:
+            held.update(symbols)
     for sym in _held_options - held:
         clear_symbol(sym)
         _option_contract_last_update_ts.pop(sym, None)

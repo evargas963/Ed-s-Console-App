@@ -846,7 +846,9 @@ def _held_option_symbols_for_ticker(listed: frozenset, now: float, feed: "lmp.Fe
         from app.options.order_flow.streaming import _read_producer_option_contracts
         opts = _read_producer_option_contracts(now)["LEVELONE_OPTIONS"]
     else:
-        opts = feed.held.get("LEVELONE_OPTIONS", ()) if feed.status is not None else ()
+        opts = feed.held.get("LEVELONE_OPTIONS") if feed.status is not None else None
+    if not opts:
+        return []
     return [sym for sym in opts if sym in listed]
 
 
@@ -1004,10 +1006,15 @@ def restamp_open_surfaces(now: float) -> None:
             if not isinstance(surface, dict):
                 continue
             symbols: list[str] = []
-            for cell in surface.get("cells") or []:
-                for pair in cell.get("contracts") or []:
-                    if isinstance(pair, dict):
-                        symbols.extend(s for s in (pair.get("call"), pair.get("put")) if s)
+            cells = surface.get("cells")
+            if cells:
+                for cell in cells:
+                    pairs = cell.get("contracts")
+                    if not pairs:
+                        continue
+                    for pair in pairs:
+                        if isinstance(pair, dict):
+                            symbols.extend(s for s in (pair.get("call"), pair.get("put")) if s)
             streamed = {}
             for sym in symbols:
                 greeks = get_stream_greeks(sym)

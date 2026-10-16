@@ -237,10 +237,11 @@ def feed_now(now: float) -> FeedNow:
 
 def live_on(feed: FeedNow, symbol: str | None, service: str) -> bool:
     """Whether `feed` says Schwab `service` is delivering `symbol`."""
-    t = ticker_storage_key(symbol or "")
-    if not t or feed.status is None or feed.status.get("schwab_socket_open") is not True:
+    if symbol is None or feed.status is None or feed.status.get("schwab_socket_open") is not True:
         return False
-    return t in feed.held.get(service, ())
+    t = ticker_storage_key(symbol)
+    symbols = feed.held.get(service)
+    return bool(t) and symbols is not None and t in symbols
 
 
 def daemon_status(now: float) -> dict[str, Any] | None:
