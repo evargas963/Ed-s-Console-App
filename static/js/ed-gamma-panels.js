@@ -536,7 +536,10 @@
   window.addEventListener('ed:quote_tick', function (e) {
     var q = e.detail;
     if (!q || q.ticker !== ((window.EdShell && window.EdShell.getState()) || {}).key) return;   // the served key
-    txt('klSpot', q.spot_disp != null ? q.spot_disp : '—');
+    var el = document.getElementById('klSpot');
+    if (!el) return;
+    el.textContent = q.spot_disp != null ? q.spot_disp : '—';
+    el.title = q.trade_time_ct ? ('last trade ' + q.trade_time_ct) : '';
   });
   document.addEventListener('ed:view', loadAll);
   // a new scope is a new window: every per-strike panel re-reads it from the server
