@@ -60,6 +60,13 @@
     if (sec < 172800) return (sec / 3600).toFixed(1) + 'h';
     return Math.round(sec / 86400) + 'd';
   }
+  // Schwab's book time stands beside the age words. A book that is not live keeps that
+  // time and says so. The words are unchanged when no book time was sent.
+  function bookAgeLabel(m, word) {
+    var when = (m && m.book_time_ct != null) ? m.book_time_ct : null;
+    if (when != null) return when + ' · ' + word;
+    return word;
+  }
   function whenCT(ts) {
     var d = new Date(ts * 1000);
     return (CT_DAYKEY.format(d) === CT_DAYKEY.format(new Date()) ? '' : CT_MD.format(d) + ' ') + CT_HM.format(d);
@@ -385,7 +392,7 @@
         // the imbalance when both sides carry levels; the depth Schwab sent is shown either way
         var imb = d5.imbalance == null ? null : Number(d5.imbalance);
         c.querySelector('.tdm-hero').innerHTML = imb == null ? '' : '<span class="' + (imb >= 0 ? 'up' : 'dn') + '">' + (imb >= 0 ? '+' : '') + num(imb * 100, 1) + '%</span> <small>depth imbalance, 5 levels</small>';
-        src(c, 'Schwab ' + esc(m.venue) + ' · book ' + (bs === false ? age(m.ages.book_age_sec) + ' old' : bs ? 'not live' : 'age unknown'));
+        src(c, 'Schwab ' + esc(m.venue) + ' · book ' + esc(bookAgeLabel(m, bs === false ? age(m.ages.book_age_sec) + ' old' : bs ? 'not live' : 'age unknown')));
         c.querySelector('.tdm-rows').innerHTML = row('Bid / ask depth (5)', (d5.bid_total != null ? fmtVol(d5.bid_total) : '—') + ' / ' + (d5.ask_total != null ? fmtVol(d5.ask_total) : '—')) +
           row('Spread', m.spread_pts != null ? num(m.spread_pts, 2) : '—');
       }
@@ -504,7 +511,7 @@
     h += q ? pill('PRICE', q.feed_live ? 'LIVE' : 'OFFLINE', q.feed_live ? 'ok' : 'bad', 'daemon price socket')
       : pill('PRICE', 'WAITING', 'warn', 'no price row yet for this symbol');
     h += m === undefined ? pill('BOOK', '…', '') : !m ? pill('BOOK', 'FAILED', 'bad') : m.status === 'no_book' ? pill('BOOK', 'NONE', 'warn', 'no ' + m.venue)
-      : pill('BOOK', m.ages && m.ages.book_stale === false ? age(m.ages.book_age_sec) : m.ages && m.ages.book_stale ? 'STALE' : 'AGE UNKNOWN',
+      : pill('BOOK', bookAgeLabel(m, m.ages && m.ages.book_stale === false ? age(m.ages.book_age_sec) : m.ages && m.ages.book_stale ? 'STALE' : 'AGE UNKNOWN'),
           m.ages && m.ages.book_stale === false ? 'ok' : 'bad');
     var la = L && L.snapshot_as_of_ts_utc ? Date.now() / 1000 - L.snapshot_as_of_ts_utc : null;
     h += L === undefined ? pill('LEVELS', '…', '') : !L ? pill('LEVELS', 'FAILED', 'bad') : pill('LEVELS', age(la), (L.degraded && L.degraded.length) ? 'warn' : 'ok', 'session levels snapshot age');
