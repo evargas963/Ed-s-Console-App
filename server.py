@@ -2559,9 +2559,9 @@ def capture_process_identity(checkout: "str | Path") -> ProcessIdentityV1:
     was dirty (`git status --porcelain` with any output, tracked changes or untracked files;
     None, unknown and never clean, when git cannot say), and the process's id and start time."""
     sha = checkout_head(checkout)
-    dirty: Optional[bool] = None
-    error = "head_unreadable" if sha is None else None
+    short, dirty, source, error = None, None, "unavailable", "head_unreadable"
     if sha is not None:
+        short, source, error = sha[:12], "git_startup_capture", None
         try:
             dirty = bool(subprocess.run(["git", "status", "--porcelain"], cwd=checkout, capture_output=True,
                                         text=True, check=True, timeout=10.0).stdout.strip())
@@ -2571,13 +2571,13 @@ def capture_process_identity(checkout: "str | Path") -> ProcessIdentityV1:
     return ProcessIdentityV1(
         schema_version="1",
         startup_git_sha=sha,
-        startup_git_sha_short=sha[:12] if sha is not None else None,
+        startup_git_sha_short=short,
         startup_git_dirty=dirty,
         startup_git_available=sha is not None,
         startup_identity_captured_at_utc=datetime.now(tz=timezone.utc).timestamp(),
         process_started_at_utc=float(psutil.Process(os.getpid()).create_time()),
         process_id=os.getpid(),
-        identity_source="git_startup_capture" if sha is not None else "unavailable",
+        identity_source=source,
         identity_capture_error=error,
     )
 
