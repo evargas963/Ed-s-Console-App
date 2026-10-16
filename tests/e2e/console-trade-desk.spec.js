@@ -264,6 +264,22 @@ test('Desk: the chain age keeps the chain\'s time', async ({ page }) => {
   expect(errs).toEqual([]);
 });
 
+test('Desk: the levels pill keeps the snapshot time', async ({ page }) => {
+  const SNAP_TIME = 'Fri 09/25 06:59 PM CT';
+  const errs = [];
+  page.on('pageerror', (e) => errs.push(String(e)));
+  await intercept(page);
+  await page.route('**/api/levels**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
+    body: JSON.stringify(Object.assign({}, LEVELS, {
+      snapshot_as_of_ts_utc: 1790380799.830, snapshot_time_ct: SNAP_TIME,
+    })) }));
+  await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
+    localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await expect(page.locator('#tdmTrust')).toContainText('LEVELS ' + SNAP_TIME);
+  expect(errs).toEqual([]);
+});
+
 test('Right Now: the spot keeps its last trade time', async ({ page }) => {
   await intercept(page);
   await page.route('**/api/levels**', (route) => route.fulfill({ status: 200, contentType: 'application/json',

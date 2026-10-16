@@ -2842,6 +2842,7 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict:
         "spot_time_ct": ct_label(spot_ts) if spot_ts is not None else None,
         "generation": snap.generation if snap is not None else None,
         "snapshot_as_of_ts_utc": snap.as_of_ts_utc if snap is not None else None,
+        "snapshot_time_ct": ct_label(snap.as_of_ts_utc) if snap is not None and snap.as_of_ts_utc is not None else None,
         "bar_source": snap.bar_source if snap is not None else None,
         "levels": levels,
         "by_distance": by_distance,

@@ -520,7 +520,10 @@
       : pill('BOOK', bookAgeLabel(m, m.ages && m.ages.book_stale === false ? age(m.ages.book_age_sec) : m.ages && m.ages.book_stale ? 'STALE' : 'AGE UNKNOWN'),
           m.ages && m.ages.book_stale === false ? 'ok' : 'bad');
     var la = L && L.snapshot_as_of_ts_utc ? Date.now() / 1000 - L.snapshot_as_of_ts_utc : null;
-    h += L === undefined ? pill('LEVELS', '…', '') : !L ? pill('LEVELS', 'FAILED', 'bad') : pill('LEVELS', age(la), (L.degraded && L.degraded.length) ? 'warn' : 'ok', 'session levels snapshot age');
+    var levelWord = age(la);
+    var levelWhen = (L && L.snapshot_time_ct != null) ? L.snapshot_time_ct : null;
+    var levelShown = levelWhen != null ? (levelWhen + ' · ' + levelWord) : levelWord;
+    h += L === undefined ? pill('LEVELS', '…', '') : !L ? pill('LEVELS', 'FAILED', 'bad') : pill('LEVELS', levelShown, (L.degraded && L.degraded.length) ? 'warn' : 'ok', 'session levels snapshot age');
     var gammaWhen = t ? chainAgeLabel(t, t.levels_stale ? ('STALE ' + age(t.levels_age_sec)) : age(t.levels_age_sec)) : null;
     var gammaWhy = (t && t.levels_stale_reason != null) ? t.levels_stale_reason : null;
     h += t === undefined ? pill('GAMMA', '…', '')
