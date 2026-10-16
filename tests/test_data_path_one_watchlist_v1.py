@@ -316,8 +316,8 @@ def test_with_the_watchlist_empty_the_sweep_asks_for_nothing_and_waits(tmp_path,
 def test_a_viewed_ticker_warms_only_on_the_watchlist_and_a_silent_daemon_says_so_first():
     """The gamma surface's reason for a ticker with no surface (server.get_options_gamma_surface):
     on the watchlist it warms (its chain is coming); off it, it says it is not on the watchlist;
-    with the daemon's heartbeat late, every reason says first that the watchlist is unknown; a
-    chain Schwab refused says Schwab's answer."""
+    with the daemon's heartbeat late, the last list still stands and the reason says the daemon
+    is not reporting; a chain Schwab refused says Schwab's answer."""
     on, off = "ZZWLON", "ZZWLOFF"
     pages = [push_changes.subscribe(tk) for tk in (on, off)]
     with server._terrain_cache_lock:
@@ -333,9 +333,11 @@ def test_a_viewed_ticker_warms_only_on_the_watchlist_and_a_silent_daemon_says_so
             "no terrain snapshot has been computed yet — chain fetch failed (full chain returned HTTP 400)")
         lmp.record_feed_heartbeat({"ts": time.time() - 100, "schwab_socket_open": True, "watchlist": [on]})
         silent = json.loads(server.get_options_gamma_surface(off).body)
-        assert (silent["warming"], silent["reason"]) == (
-            False, "the capture daemon is not reporting (no current heartbeat): its watchlist is unknown")
-        assert "WATCHLIST UNKNOWN" in server._status_line(time.time())
+        assert silent["warming"] is False
+        assert silent["reason"].startswith("the capture daemon is not reporting (no current heartbeat)")
+        assert "it is not on the watchlist" in silent["reason"]
+        assert "WATCHLIST UNKNOWN" not in server._status_line(time.time())
+        assert "daemon not reporting" in server._status_line(time.time())
     finally:
         for tk, page in zip((on, off), pages):
             push_changes.unsubscribe(tk, page)

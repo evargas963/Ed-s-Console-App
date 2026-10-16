@@ -482,6 +482,7 @@
       .then(function (a) {
         if (!a.ok) { wlNotify(a.j.error); return; }
         _wl = a.j.tickers; renderWatchlist();
+        if (a.j.live === false) wlNotify('the capture daemon is not reporting');
       })
       .catch(function (e) { wlNotify('The watchlist could not be read: ' + e); });
   }
