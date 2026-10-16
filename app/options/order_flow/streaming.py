@@ -389,17 +389,6 @@ async def _feed_loop(push_url: str, ui_url: str, reconnect_sec: float) -> None:
         _log_stream("FEED_LOOP_STOP_DONE")
 
 
-#: The two Schwab option services whose durable open coverage epochs constitute
-#: PRODUCER-side subscription identity (as opposed to the server's desired state).
-OPTION_PRODUCER_SERVICES: tuple[str, ...] = ("LEVELONE_OPTIONS", "OPTIONS_BOOK")
-
-
-def _read_producer_option_contracts(now: float) -> dict[str, list[str]]:
-    """What Schwab holds per option service, from the daemon's status at `now`; empty when that
-    status is missing or stale (unknown is never confirmation)."""
-    return {s: sorted(_lmp.held_by_daemon(s, now)) for s in OPTION_PRODUCER_SERVICES}
-
-
 def _drop_released_options(now: float) -> None:
     """A contract that left the daemon's held set keeps its last quote, its last greeks, and
     the time of that quote. The Flow panel marks it NOT STREAMED. `now` is the heartbeat's
@@ -416,14 +405,15 @@ SUBSCRIBED, NOT_STREAMED = "SUBSCRIBED", "NOT STREAMED"
 def get_option_contract_streaming_diagnostics(for_contract: str, now: float) -> dict[str, Any]:
     """Whether the daemon streams `for_contract` and is receiving it at `now`, distinct from the
     book's own content ages (options_live_payload): its subscription (SUBSCRIBED / NOT STREAMED,
-    from the daemon's held contracts), and each feed by the one live rule
-    (live_market_plane.feed_live_for)."""
+    from the symbols on the latest beat), and each feed by the one live rule
+    (live_market_plane.feed_live_for). A missing beat keeps that last subscription. The feed
+    health says whether it is live. The page paints ACTIVE only while that feed is live."""
     c = ticker_storage_key(for_contract)
-    held = _read_producer_option_contracts(now)
+    levelone = _lmp.feed_now(now).held.get("LEVELONE_OPTIONS") or ()
     healthy = bool(_feed_running and _lmp.feed_live_for(c, "LEVELONE_OPTIONS", now))
     return {
         "queried_contract": c,
-        "subscription_state": SUBSCRIBED if c in held["LEVELONE_OPTIONS"] else NOT_STREAMED,
+        "subscription_state": SUBSCRIBED if c in levelone else NOT_STREAMED,
         "streaming_last_update_ts": _option_contract_last_update_ts.get(c),
         "feed_health": {"replay": "healthy" if healthy else "stale" if _feed_running else "not connected",
                         "l1": _service_feed(c, "LEVELONE_OPTIONS", now),

@@ -62,11 +62,14 @@
     _loader.trigger(_selected);
   }
 
-  // the queried contract's subscription, served (streaming_plane.subscription_state): the
-  // daemon's option rule streams it (ACTIVE), or it does not (the served words)
+  // the queried contract's subscription, served (streaming_plane.subscription_state): ACTIVE
+  // only while the daemon holds it and that feed is live. A held contract whose feed is down
+  // reads OFFLINE. The numbers stay. Anything else shows the served words.
   function subState(plane) {
     var s = (plane || {}).subscription_state;
-    if (s === 'SUBSCRIBED') return { label: 'ACTIVE', cls: 'live' };
+    var l1 = plane && plane.feed_health && plane.feed_health.l1;
+    if (s === 'SUBSCRIBED' && l1 && l1.state === 'LIVE') return { label: 'ACTIVE', cls: 'live' };
+    if (s === 'SUBSCRIBED') return { label: 'OFFLINE', cls: 'stale' };
     return { label: s || '—', cls: 'stale' };
   }
 
