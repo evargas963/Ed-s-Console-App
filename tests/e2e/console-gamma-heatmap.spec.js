@@ -638,6 +638,18 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#klPcrVolScope')).toContainText('volume');
   });
 
+  test('a level built from a price that has stopped stays, and the rail says OFFLINE', async ({ page }) => {
+    await page.route('**/api/terrain?**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify(Object.assign({}, TERRAIN, {
+        levels_stale: false, call_wall: 586, spot_feed_live: false,
+        spot_outage: 'Schwab LEVELONE_EQUITIES feed down during RTH' })) }));
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#klCall')).toHaveText('586.00');
+    await expect(page.locator('#klSrc')).toHaveText('OFFLINE');
+    await expect(page.locator('#klSrc')).toHaveAttribute('title', 'Schwab LEVELONE_EQUITIES feed down during RTH');
+    await expect(page.locator('#klBody')).not.toHaveClass(/recede/);
+  });
+
   test('PCR: the selected expiry re-scopes the ratio; an expiry the chain has no ratio for shows none', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#klPcr')).toHaveText('1.02');
