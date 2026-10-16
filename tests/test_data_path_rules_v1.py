@@ -310,15 +310,17 @@ def test_d5_a_feed_down_in_an_open_session_keeps_the_last_price_and_the_book():
     assert s["option_book"]["top_outage"] == "Schwab LEVELONE_OPTIONS feed down during RTH"
 
 
-def test_d5_while_closed_the_values_as_of_the_close_stand_feed_up_or_down():
-    """22:00 ET, the feed down: the last price and both tops of book Schwab sent are served,
-    with no outage."""
+def test_d5_while_closed_a_feed_down_keeps_the_last_values_and_says_so():
+    """22:00 ET, the feed down: the last price and both tops of book stand, and the panels
+    say the feed is down. A closed market is the same stop as any other."""
     s = _served_at(_CLOSED, feed_live=False)
-    assert s["row"]["spot"] == 767.39 and s["row"]["outage"] is None
+    assert s["row"]["spot"] == 767.39
+    assert s["row"]["outage"] == "Schwab LEVELONE_EQUITIES feed down during Closed"
     assert s["spot"][0] == 767.39
-    assert s["equity_book"]["top_of_book"]["bid"] == 767.38 and s["equity_book"]["top_outage"] is None
+    assert s["equity_book"]["top_of_book"]["bid"] == 767.38
+    assert s["equity_book"]["top_outage"] == "Schwab LEVELONE_EQUITIES feed down during Closed"
     assert s["option_book"]["top_of_book"]["ask"] == _EVENTS[0]["content"]["ASK_PRICE"]
-    assert s["option_book"]["top_outage"] is None
+    assert s["option_book"]["top_outage"] == "Schwab LEVELONE_OPTIONS feed down during Closed"
 
 
 def test_d5_a_live_feed_in_an_open_session_serves_the_newest_values():
