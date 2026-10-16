@@ -1,4 +1,4 @@
-"""The capture daemon's start, Schwab to the screen: why Schwab is not connected reaches the
+"""The capture daemon's start, Schwab to the screen: its window closes when its batch ends; why Schwab is not connected reaches the
 daemon's log and /api/health on its heartbeat; a module that fails to load, and a chain sweep
 thread that ends on an error, leave their reason in the daemon's log."""
 from __future__ import annotations
@@ -14,10 +14,12 @@ import sys
 import time
 from pathlib import Path
 
+import psutil
 import pytest
 from websockets.asyncio.client import connect
 
 import db
+import launch
 import live_market_plane as lmp
 import server
 from app.market_data.schwab.streaming import capture, live_ui
@@ -33,6 +35,29 @@ async def _until(cond, limit: float = 10.0) -> None:
     while not cond():
         assert time.monotonic() < end, "timed out"
         await asyncio.sleep(0.05)
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="the daemon's window is a Windows console window")
+def test_the_daemons_window_closes_when_its_batch_ends(tmp_path):
+    """launch.start_daemon_window runs the batch in a window of its own; when the batch ends (the
+    daemon stopped on request), the window's cmd ends too, so no empty window stays open."""
+    window_pid = tmp_path / "window.pid"
+    bat = tmp_path / "daemon.bat"
+    bat.write_text(f'@"{sys.executable}" -c "import os; open(r\'{window_pid}\', \'w\').write(str(os.getppid()))"\r\n',
+                   encoding="utf-8")
+    launch.start_daemon_window(bat)
+    deadline = time.monotonic() + 60.0
+    while not window_pid.exists():
+        assert time.monotonic() < deadline, "the batch never ran"
+        time.sleep(0.1)
+    window = int(window_pid.read_text(encoding="utf-8"))
+    deadline = time.monotonic() + 30.0
+    while psutil.pid_exists(window) and time.monotonic() < deadline:
+        time.sleep(0.1)
+    still_open = psutil.pid_exists(window)
+    if still_open:
+        psutil.Process(window).kill()
+    assert not still_open, "the daemon's window stayed open after its batch ended"
 
 
 def test_a_chain_sweep_that_ends_on_an_error_is_logged(tmp_path, caplog):
