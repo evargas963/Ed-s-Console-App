@@ -495,8 +495,7 @@ from Schwab to the screen (daemon, console, page), are these:
 5. **Values blank when they stop** (D5, operator 2026-10-11): the price row keeps the last
    values and the header says OFFLINE (`live_price_rows.price_row`, the page's feed chip). The
    book's top keeps the last bid and ask, and that panel says OFFLINE (`top_outage`). Still
-   blank: a contract's streamed Greeks, which stop pricing (`server._current_stream_greeks`);
-   the console forgets a contract the daemon stops holding; the closed market is handled apart
+   blank: the console forgets a contract the daemon stops holding; the closed market is handled apart
    from any other stop
    (`live_market_plane.outage`, `server.terrain_staleness`); some calculations round or drop
    contracts. The §3 descriptions of these are today's behavior. Each remaining place is
