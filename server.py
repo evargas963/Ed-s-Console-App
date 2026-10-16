@@ -2330,6 +2330,15 @@ def api_order_flow_microstructure(ticker: str = Query(...),
     return JSONResponse(order_flow_microstructure(ticker, venue, time.time()))
 
 
+def _stamp_book_times(payload: dict) -> None:
+    """Schwab's quote clock and book clock, as the screen shows them. Absent stays absent."""
+    prov = payload.get("provenance")
+    quote_ts = prov.get("exchange_quote_ts") if isinstance(prov, dict) else None
+    book_ms = prov.get("book_time_ms") if isinstance(prov, dict) else None
+    payload["quote_time_ct"] = ct_label(quote_ts) if quote_ts is not None else None
+    payload["book_time_ct"] = ct_label(book_ms / 1000.0) if book_ms is not None else None
+
+
 def order_flow_microstructure(ticker: str, venue: str, now: float) -> dict:
     """Canonical L2 book microstructure at `now` (ORDER_FLOW_MARKET_MICROSTRUCTURE_V1): top-of-book,
     spread, microprice, Top 1/3/5 depth totals + imbalance, depth-pressure curve, book slope,
@@ -2374,11 +2383,7 @@ def order_flow_microstructure(ticker: str, venue: str, now: float) -> dict:
         payload["flow"] = None
     payload["ticker"] = t
     payload["venue"] = venue
-    prov = payload.get("provenance")
-    quote_ts = prov.get("exchange_quote_ts") if isinstance(prov, dict) else None
-    book_ms = prov.get("book_time_ms") if isinstance(prov, dict) else None
-    payload["quote_time_ct"] = ct_label(quote_ts) if quote_ts is not None else None
-    payload["book_time_ct"] = ct_label(book_ms / 1000.0) if book_ms is not None else None
+    _stamp_book_times(payload)
     return payload
 
 
@@ -2411,6 +2416,7 @@ def options_microstructure(c: str, now: float) -> dict:
                                               if it.get("CONTRACT_TYPE")), None))
     # whether the daemon streams this contract (the option rule) and is receiving it
     payload["streaming_plane"] = get_option_contract_streaming_diagnostics(c, now)
+    _stamp_book_times(payload)
     return payload
 
 

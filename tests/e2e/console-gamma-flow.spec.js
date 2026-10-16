@@ -230,6 +230,24 @@ test.describe('D — Gamma Flow subview', () => {
     await expect(rowV(page, 'top_of_book.bid')).toHaveText(fmt(FIXTURE.top_of_book.bid, 2));
   });
 
+  test('an offline contract keeps Schwab\'s quote time and book time', async ({ page }) => {
+    const ctx = makeContext();
+    ctx.plane = { feed_health: { l1: { state: 'NOT LIVE', age_sec: null }, book: { state: 'NOT LIVE', age_sec: null }, replay: 'stale' } };
+    ctx.mutate = (d) => {
+      d.quote_time_ct = 'Fri 09/25 06:59 PM CT';
+      d.book_time_ct = 'Fri 09/25 06:59 PM CT';
+      d.ages.book_age_sec = 4;
+      d.ages.quote_age_sec = 4;
+      d.top_outage = 'Schwab LEVELONE_OPTIONS feed down during RTH';
+    };
+    await setup(page, ctx);
+    await selectCallAndOpenFlow(page);
+    await expect(page.locator('#flowBody .fl-badge')).toHaveText('OFFLINE');
+    await expect(rowV(page, 'top_of_book.bid')).toHaveText(fmt(FIXTURE.top_of_book.bid, 2));
+    await expect(rowV(page, 'ages.quote_age_sec')).toHaveText('Fri 09/25 06:59 PM CT · 4s');
+    await expect(rowV(page, 'ages.book_age_sec')).toHaveText('Fri 09/25 06:59 PM CT · 4s');
+  });
+
   test('a contract the daemon does not stream reads NOT STREAMED and its data recedes', async ({ page }) => {
     const ctx = makeContext();
     ctx.plane = { subscription_state: 'NOT STREAMED' };
