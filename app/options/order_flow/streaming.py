@@ -409,11 +409,11 @@ def get_option_contract_streaming_diagnostics(for_contract: str, now: float) -> 
     (live_market_plane.feed_live_for). A missing beat keeps that last subscription. The feed
     health says whether it is live. The page paints ACTIVE only while that feed is live."""
     c = ticker_storage_key(for_contract)
-    levelone = _lmp.feed_now(now).held.get("LEVELONE_OPTIONS") or ()
+    levelone = _lmp.feed_now(now).held.get("LEVELONE_OPTIONS")
     healthy = bool(_feed_running and _lmp.feed_live_for(c, "LEVELONE_OPTIONS", now))
     return {
         "queried_contract": c,
-        "subscription_state": SUBSCRIBED if c in levelone else NOT_STREAMED,
+        "subscription_state": SUBSCRIBED if levelone is not None and c in levelone else NOT_STREAMED,
         "streaming_last_update_ts": _option_contract_last_update_ts.get(c),
         "feed_health": {"replay": "healthy" if healthy else "stale" if _feed_running else "not connected",
                         "l1": _service_feed(c, "LEVELONE_OPTIONS", now),
