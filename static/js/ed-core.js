@@ -677,7 +677,7 @@
     if (f) f.textContent = label;
     if (a && age != null) {
       a.textContent = age;
-      if (ageTitle != null) a.title = ageTitle;
+      a.title = ageTitle == null ? '' : ageTitle;
     }
     var shown = age != null ? age : (a ? a.textContent : '');
     var fresh = document.getElementById('aiCtxFresh'); if (fresh) fresh.textContent = label + (shown && shown !== '—' ? ' · ' + shown : '');
@@ -841,7 +841,7 @@
         feedCls: q.feed_live ? '' : 'stale',
         feedLabel: q.feed_live ? 'LIVE' : 'OFFLINE',
         ageLabel: trade || q.outage || 'no trade sent',
-        ageTitle: q.outage || '' });
+        ageTitle: q.outage });
     }
     loadWL().forEach(function (wlSym) {
       if (!_served[wlSym] || _served[wlSym].key !== q.ticker) return;
