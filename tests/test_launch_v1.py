@@ -137,6 +137,23 @@ def test_the_stop_ends_the_console_and_leaves_no_window_waiting(tmp_path):
         window.kill()
 
 
+@windows_only
+def test_the_daemons_window_closes_when_its_batch_ends(tmp_path):
+    """launch.start_daemon_window runs the batch in a window of its own; when the batch ends (the
+    daemon stopped on request), the window's cmd ends too, so no empty window stays open."""
+    window_pid = tmp_path / "window.pid"
+    bat = tmp_path / "daemon.bat"
+    bat.write_text(f'@"{sys.executable}" -c "import os; open(r\'{window_pid}\', \'w\').write(str(os.getppid()))"\r\n',
+                   encoding="utf-8")
+    launch.start_daemon_window(bat)
+    window = psutil.Process(int(_until(window_pid)))
+    try:
+        window.wait(timeout=30)
+    finally:
+        if window.is_running():
+            window.kill()
+
+
 def _real_console(tmp_path: Path) -> "tuple[subprocess.Popen, int]":
     """The real console, offline on a free port with a runtime root of its own, started by the
     batch file in a window of its own; healthy before this returns its window and process id."""
