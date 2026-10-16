@@ -845,15 +845,8 @@ def _overlaid_symbols(pre: list, post: list) -> list[str]:
     freshened copy -- that function's own contract is "sparse, non-destructive... a contract
     absent from streamed_by_symbol is passed through UNCHANGED (SAME dict, not a copy)", so a
     changed contract is identifiable by object identity alone (`is not`), with no need to
-    diff field values or touch that function's own return signature.
-
-    A SIXTH independent review (2026-09-13), REPRODUCED: the heatmap's 'observed' demand
-    state promoted EVERY currently-accepted column the instant `stream_overlay_contracts`
-    (a single surface-wide COUNT) was merely nonzero, whichever contract or expiry
-    actually received the freshening -- one overlaid contract on an UNRELATED expiry
-    incorrectly marked a completely different column as carrying real observed evidence.
-    This is the missing piece: WHICH symbols were actually freshened, so a consumer can
-    bind 'observed' to the specific column/contracts it actually covers."""
+    diff field values or touch that function's own return signature. A consumer binds a
+    freshened value to the exact contracts it covers, never to a surface-wide count."""
     return [new.get("symbol") for orig, new in zip(pre, post)
             if new is not orig and isinstance(new, dict) and new.get("symbol")]
 
