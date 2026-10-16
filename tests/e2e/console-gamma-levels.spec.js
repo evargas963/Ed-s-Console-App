@@ -49,6 +49,13 @@ test.describe('D — Gamma Levels view', () => {
     await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_view', 'levels'); } catch (e) {} });
   });
 
+  test('the levels spot keeps its last trade time', async ({ page }) => {
+    await page.route('**/api/levels**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify(Object.assign({}, LEVELS, { spot_time_ct: 'Fri 10/02 10:00 AM CT' })) }));
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#levelsBody .lv-spot')).toHaveText('spot 100.00 · schwab_quote_last · last trade Fri 10/02 10:00 AM CT');
+  });
+
   test('renders the canonical /api/levels contract as a table', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const lv = page.locator('#levelsBody');
