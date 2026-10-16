@@ -510,7 +510,8 @@ from Schwab to the screen (daemon, console, page), are these:
    spot carries that same time (`#klSpot`). The chain ladder's spot carries it too
    (`server.get_chain`, the chain head). The trade desk's spot carries it too
    (`server.levels_payload`, the Right Now line). The levels page's spot carries it too
-   (`static/js/ed-gamma-levels.js`). The key levels
+   (`static/js/ed-gamma-levels.js`). The gamma chart's spot carries it too
+   (`static/js/ed-gamma-chart.js`). The key levels
    keep the last wall when that price has stopped, and the rail says OFFLINE
    (`server.get_terrain`, `#klSrc`); the chain's own age stays `levels_stale`. The
    book's top keeps the last bid and ask, and that panel says OFFLINE (`top_outage`). A contract
