@@ -774,11 +774,12 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#hChgReg')).toHaveText('REG —');
   });
 
-  test('a price that stops arriving is withdrawn within seconds (the daemon beats every 1 s)', async ({ page }) => {
+  test('a price that stops arriving stays, and the chip says OFFLINE', async ({ page }) => {
     await mockPriceSocket(page, [priceRow('SPY', 601.23)]);   // one row, then silence
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#hPx')).toHaveText('601.23');
-    await expect(page.locator('#hPx')).toHaveText('UNAVAILABLE', { timeout: 6000 });
+    await expect(page.locator('#hFeed')).toHaveText('OFFLINE', { timeout: 6000 });
+    await expect(page.locator('#hPx')).toHaveText('601.23');
   });
 
   test('a watchlist symbol paints from its own row on the same socket', async ({ page }) => {

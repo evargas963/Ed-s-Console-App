@@ -738,6 +738,7 @@
   // ---- the price socket (daemon -> browser) ----
   var PRICE_SILENCE_MS = 3000;   // the daemon beats every 1 s; 3 s of nothing = the push is down
   var _priceWs = null, _priceUp = false, _lastPriceTs = 0, _priceSubTs = 0, _priceRetry = 0;
+  var _quoteShown = false;
   // the port comes from the console (meta ed-live-ui-port = the daemon's ED_LIVE_UI_PORT);
   // an unfilled page opens no socket and its prices read UNAVAILABLE
   function priceSocketUrl() {
@@ -819,6 +820,7 @@
       // The daemon already conflates to the newest row per symbol, so there is no burst to
       // throttle -- a few text writes per second. The price is Schwab's last trade with Schwab's
       // trade time, or absent with the served outage reason; the feed state is stated beside it.
+      _quoteShown = true;
       paintQuote({ spot_disp: q.spot_disp, spot: q.spot, bid: q.bid, ask: q.ask,
         chgPct: q.chg_pct, chgPctRegular: q.chg_pct_regular, quoteIngestion: q.quote_ingestion,
         feedCls: q.feed_live ? '' : 'stale',
@@ -875,10 +877,13 @@
   // for a replacement. The session label is not a live quote and keeps its own slow read.
   function markHeaderPushDown() {
     // just asked for this ticker (page load or a ticker change): the row is on its way
-    // (WAITING); otherwise the push itself is down (OFFLINE)
+    // (WAITING); otherwise the push itself is down (OFFLINE). A price already shown stays.
     var connecting = Date.now() - _priceSubTs <= PRICE_SILENCE_MS;
-    setFeed('stale', connecting ? 'WAITING' : 'OFFLINE',
-      connecting ? 'no push yet' : 'live push down');
+    var label = connecting ? 'WAITING' : 'OFFLINE';
+    var age = connecting ? 'no push yet' : 'live push down';
+    if (_quoteShown) setFeed('stale', label, age);
+    else paintQuote({ spot: null, spot_disp: null, bid: null, ask: null, chgPct: null, chgPctRegular: null,
+      feedCls: 'stale', feedLabel: label, ageLabel: age });
     paintRecord(null);
   }
 
