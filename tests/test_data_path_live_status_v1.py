@@ -84,8 +84,7 @@ def test_a_status_stamped_before_the_time_judged_keeps_the_streamed_cell_live(be
 
 @pytest.mark.parametrize("after", [0.001, 0.5, 2.9])
 def test_a_status_stamped_after_the_time_judged_is_not_that_time(after):
-    """A stamp after `_AT` is not `_AT`. With the quote in place, the old rule priced a live
-    cell from it; this rule does not."""
+    """A stamp after `_AT` is not `_AT`. The last price still stands, and the cell is not live."""
     _beat(_AT + after)
     lmp.record_from_level_one_equity(TK, _QUOTE["item"], received_ts=_QUOTE["ts_recv"])
     ofs._price_rows[TK] = live_price_rows.price_row(TK, _AT)
@@ -94,8 +93,11 @@ def test_a_status_stamped_after_the_time_judged_is_not_that_time(after):
     at = datetime.fromtimestamp(_AT, ET)
     server._publish_levels(TK, [dict(c) for c in _CAPTURE["chain"]], _CAPTURE["capture_ts_utc"], now=at)
     body = server.gamma_surface_payload(TK, "all", None, 0, None, None, at)
+    states = [col[side]["state"] for cell in body["cells"]
+              for col, pair in zip(cell["stream"], cell["contracts"])
+              for side in ("call", "put") if col and pair.get(side) == SYM]
     assert lmp.daemon_status(_AT) is None
-    assert body["available"] is False
+    assert states and "live" not in states
 
 
 def test_a_status_sent_past_the_live_limit_is_not_current():
