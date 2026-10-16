@@ -505,6 +505,7 @@ from Schwab to the screen (daemon, console, page), are these:
 5. **Values blank when they stop** (D5, operator 2026-10-11): the price row keeps the last
    values and the header says OFFLINE (`live_price_rows.price_row`, the page's feed chip). The
    age line keeps that price's last trade time (`static/js/ed-core.js`). The key levels
+   spot carries that same time (`#klSpot`). The key levels
    keep the last wall when that price has stopped, and the rail says OFFLINE
    (`server.get_terrain`, `#klSrc`); the chain's own age stays `levels_stale`. The
    book's top keeps the last bid and ask, and that panel says OFFLINE (`top_outage`). A contract

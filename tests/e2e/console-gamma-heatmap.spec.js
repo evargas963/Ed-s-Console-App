@@ -793,9 +793,13 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#hPx')).toHaveText('601.23');
     await expect(page.locator('#hAge')).toHaveText('last trade 14:00:01 CT · 4s');
     await expect(page.locator('#hBidAsk')).toHaveAttribute('title', 'quote 14:00:02 CT');
+    await expect(page.locator('#klSpot')).toHaveText('601.23');
+    await expect(page.locator('#klSpot')).toHaveAttribute('title', 'last trade 14:00:01 CT');
     await expect(page.locator('#hFeed')).toHaveText('OFFLINE', { timeout: 6000 });
     await expect(page.locator('#hPx')).toHaveText('601.23');
     await expect(page.locator('#hAge')).toHaveText('last trade 14:00:01 CT · 4s');
+    await expect(page.locator('#klSpot')).toHaveText('601.23');
+    await expect(page.locator('#klSpot')).toHaveAttribute('title', 'last trade 14:00:01 CT');
   });
 
   test('a watchlist symbol paints from its own row on the same socket', async ({ page }) => {
