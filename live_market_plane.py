@@ -290,13 +290,12 @@ def feed_live_for(symbol: str | None, service: str, now: float) -> bool:
 
 
 def outage(symbol: str | None, service: str, now: float) -> str | None:
-    """Why `symbol`'s values from Schwab `service` are not current at `now`, or None when they
-    are (docs/DATA_FLOW.md §2 D5): in an open session (Pre-Market, RTH, After-Hours) a value is
-    current only while its feed delivers it; while Closed, the values as of the close stand,
-    the feed up or down."""
-    session = session_label(datetime.fromtimestamp(now, ET))
-    if session == "Closed" or feed_live_for(symbol, service, now):
+    """Why `symbol`'s feed from Schwab `service` is not delivering at `now`, or None when it
+    is (docs/DATA_FLOW.md §2 D5). The last values stand either way. A closed market is the
+    same stop as any other: the numbers stay and this says the feed is down."""
+    if feed_live_for(symbol, service, now):
         return None
+    session = session_label(datetime.fromtimestamp(now, ET))
     return f"Schwab {service} feed down during {session}"
 
 

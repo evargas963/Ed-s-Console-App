@@ -499,10 +499,11 @@ from Schwab to the screen (daemon, console, page), are these:
    values and the header says OFFLINE (`live_price_rows.price_row`, the page's feed chip). The
    book's top keeps the last bid and ask, and that panel says OFFLINE (`top_outage`). A contract
    the daemon stops holding keeps its last quote; the Flow panel marks it NOT STREAMED. A missing
-   heartbeat keeps the last streamed greeks on the levels; the cells are not live. Still
-   blank: the closed market is handled apart
-   from any other stop
-   (`live_market_plane.outage`, `server.terrain_staleness`); some calculations round or drop
+   heartbeat keeps the last streamed greeks on the levels; the cells are not live. A feed
+   down while the market is closed keeps the last price and the book, and that panel says
+   OFFLINE (`live_market_plane.outage`). Still
+   blank: levels fetched before the option close are marked apart from a feed stop
+   (`server.terrain_staleness`); some calculations round or drop
    contracts. The §3 descriptions of these are today's behavior. Each remaining place is
    listed in PR #515's description and fixed by `ACTIVE_PROGRAM.md` NUMBERS.
 6. **Missing values served with a reason** (D5, operator 2026-10-12: a missing value shows "-"): an
