@@ -828,16 +828,6 @@ def _streamed_greeks_for_ticker(listed: frozenset, now: float, feed: "lmp.FeedNo
     return out
 
 
-def _current_stream_greeks(streamed: dict, now: float, feed: "lmp.FeedNow | None" = None) -> dict:
-    """The streamed values that are current at `now`, the ones that may price over the chain.
-    `feed` is the same heartbeat read that chose `streamed`."""
-    if feed is None:
-        return {s: g for s, g in streamed.items() if lmp.outage(s, "LEVELONE_OPTIONS", now) is None}
-    session = session_label(datetime.fromtimestamp(now, ET))
-    return {s: g for s, g in streamed.items()
-            if session == "Closed" or lmp.live_on(feed, s, "LEVELONE_OPTIONS")}
-
-
 def _held_option_symbols_for_ticker(listed: frozenset, now: float, feed: "lmp.FeedNow | None" = None) -> "list[str]":
     """Every contract of the ticker's chain (`listed`) the daemon holds on LEVELONE_OPTIONS at
     `now`. `feed` is one read of that heartbeat; omitted, this call reads it."""
@@ -1156,7 +1146,7 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
     read once: the newest is priced with Schwab's underlying price from that capture, valued and
     dated at its own time, and both feed the forces and prior-day rows. `now`: the instant of
     this publication (omitted, the clock's), at which a chain that is not a capture is valued,
-    streamed values are current or not (D5) and each leg's age is taken.
+    the last streamed values price over the chain when they are newer, and each leg's age is taken.
     Returns the snapshot, or None when there is no chain to price."""
     at = now if now is not None else now_et()
     with _terrain_cache_lock:
@@ -1182,10 +1172,9 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
     streamed = _streamed_greeks_for_ticker(listed, at.timestamp(), feed)
     feed_live = {s for s in streamed if lmp.live_on(feed, s, "LEVELONE_OPTIONS")}
     held = set(_held_option_symbols_for_ticker(listed, at.timestamp(), feed))
-    # each field the newest Schwab sent: a current streamed value received after this chain, else
-    # the chain's
-    priced, n_live = overlay_streamed_contract_fields(
-        chain, _current_stream_greeks(streamed, at.timestamp(), feed), fetched_ts)
+    # each field the newest Schwab sent: the last streamed value received after this chain, else
+    # the chain's. The cell stamp says whether that stream is live.
+    priced, n_live = overlay_streamed_contract_fields(chain, streamed, fetched_ts)
     live_syms = _overlaid_symbols(chain, priced)
     snap = compute_terrain(tk, priced, spot, now=(
         datetime.fromtimestamp(fetched_ts, ET) if capture is not None else at))
@@ -2516,8 +2505,7 @@ def get_chain(ticker: str = Query(...),
     fetched_ts = held.get("_chain_fetched_ts")
     # each field the newest Schwab sent (the levels' own rule, _publish_levels)
     response_contracts, overlay_n = overlay_streamed_contract_fields(
-        contracts, _current_stream_greeks(_streamed_greeks_for_ticker(held["_contract_symbols"], now),
-                                          now), fetched_ts)
+        contracts, _streamed_greeks_for_ticker(held["_contract_symbols"], now), fetched_ts)
     live_spot, _src, _ts = resolve_spot(t, now=now)       # the one spot on every screen
     ladder, not_on_ladder = chain_ladder(response_contracts, live_spot)
     # this expiry's net GEX per strike, as the heatmap publishes it (its column of the surface):

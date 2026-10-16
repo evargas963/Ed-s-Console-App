@@ -233,26 +233,6 @@ def test_a_volume_only_tick_reaches_the_per_strike_volume_column():
     assert row[2] >= 999999
 
 
-def test_a_streamed_value_whose_feed_is_down_in_session_never_reaches_the_levels():
-    """docs/DATA_FLOW.md §2 D5, Schwab's socket closed (the daemon still reporting, holding TK and
-    the contract): at 11:00 ET on 2026-10-07 (RTH) the last spot stands and nothing streamed
-    prices the levels; at 22:00 ET (Closed) the values as of the close stand, the streamed
-    volume in the per-strike column."""
-    strike = round(_CONTRACTS[0]["strikePrice"], 2)
-    out = {}
-    for at in (datetime(2026, 10, 7, 11, 0, tzinfo=ET), datetime(2026, 10, 7, 22, 0, tzinfo=ET)):
-        ofls.clear_all_live_state()
-        _daemon(held=[_A], socket_open=False, at=at.timestamp())
-        _streamed(_A, {"TOTAL_VOLUME": 999999}, at.timestamp() - 60.0)
-        server._publish_levels(TK, _CONTRACTS, at.timestamp() - 120.0, now=at)
-        out[at.hour] = _cached()
-    rth, closed = out[11], out[22]
-    assert rth["spot"] == _SPOT and rth["spot_source"] == server.SPOT_SOURCE_PLANE
-    assert rth["_gamma_surface"]["stream_overlay_contracts"] == 0
-    row = next(r for r in closed["_per_strike"]["all"] if r[0] == strike)
-    assert closed["spot"] == _SPOT and row[2] >= 999999
-
-
 def test_a_foreign_tickers_contract_never_overlays_this_chain():
     foreign = "SPY   260911C00583000"
     _daemon(held=[foreign])
