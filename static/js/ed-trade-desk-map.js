@@ -67,6 +67,12 @@
     if (when != null) return when + ' · ' + word;
     return word;
   }
+  // The chain's time stands beside its age. The age words are unchanged when no chain time was sent.
+  function chainAgeLabel(t, word) {
+    var when = (t && t.levels_time_ct != null) ? t.levels_time_ct : null;
+    if (when != null) return when + ' · ' + word;
+    return word;
+  }
   function whenCT(ts) {
     var d = new Date(ts * 1000);
     return (CT_DAYKEY.format(d) === CT_DAYKEY.format(new Date()) ? '' : CT_MD.format(d) + ' ') + CT_HM.format(d);
@@ -428,7 +434,7 @@
         state(c, reg || '—', t.levels_stale ? 'warn' : (/LONG/.test(t.regime || '') ? 'up' : /SHORT/.test(t.regime || '') ? 'dn' : ''));
         var ng = t.net_gex_at_spot;   // absent is uncoloured, never read as 0
         c.querySelector('.tdm-hero').innerHTML = '<span class="' + (ng == null ? '' : ng >= 0 ? 'up' : 'dn') + '">' + usd(ng) + '</span> <small>net dealer gamma at spot, per 1%</small>';
-        src(c, 'Schwab option chain · ' + (t.levels_stale ? 'stale ' + age(t.levels_age_sec) : age(t.levels_age_sec) + ' old'));
+        src(c, 'Schwab option chain · ' + esc(chainAgeLabel(t, t.levels_stale ? ('stale ' + age(t.levels_age_sec)) : (age(t.levels_age_sec) + ' old'))));
         c.querySelector('.tdm-rows').innerHTML = row('Call wall', num(t.call_wall), 'up') + row('Put wall', num(t.put_wall), 'dn') +
           row('Flip', num(t.gamma_flip)) + row('P/C OI', num(t.pcr_all, 2)) + row('Max pain', num(t.max_pain)) +
           row('Contracts', t.contracts_used != null ? t.contracts_used.toLocaleString() : '—') + forcesRows();
@@ -445,7 +451,7 @@
         state(c, 'ATM IV ' + num(im.iv_pct_atm, 1) + '%', '');
         c.querySelector('.tdm-hero').innerHTML = '±' + num(im.points, 2) + ' <small>implied 1-day move, 1σ</small>';
       }
-      src(c, 'Schwab option chain · ' + (!t || t.error ? '—' : age(t.levels_age_sec) + ' old'));
+      src(c, 'Schwab option chain · ' + (!t || t.error ? '—' : esc(chainAgeLabel(t, age(t.levels_age_sec) + ' old'))));
       c.querySelector('.tdm-rows').innerHTML =
         (im && im.dte_used != null ? row('Move from', 'first expiry ≥1 day out (' + num(im.dte_used, 0) + 'd)') : '') +
         row('ATR daily', t && t.atr_daily != null ? num(t.atr_daily) : esc((t && t.atr_daily_reason) || '—')) +
@@ -515,7 +521,11 @@
           m.ages && m.ages.book_stale === false ? 'ok' : 'bad');
     var la = L && L.snapshot_as_of_ts_utc ? Date.now() / 1000 - L.snapshot_as_of_ts_utc : null;
     h += L === undefined ? pill('LEVELS', '…', '') : !L ? pill('LEVELS', 'FAILED', 'bad') : pill('LEVELS', age(la), (L.degraded && L.degraded.length) ? 'warn' : 'ok', 'session levels snapshot age');
-    h += t === undefined ? pill('GAMMA', '…', '') : !t || t.error ? pill('GAMMA', 'DOWN', 'bad', (t && t.error) || 'terrain request failed') : pill('GAMMA', t.levels_stale ? 'STALE ' + age(t.levels_age_sec) : age(t.levels_age_sec), t.levels_stale ? 'warn' : 'ok', t.levels_stale_reason || '');
+    var gammaWhen = t ? chainAgeLabel(t, t.levels_stale ? ('STALE ' + age(t.levels_age_sec)) : age(t.levels_age_sec)) : null;
+    var gammaWhy = (t && t.levels_stale_reason != null) ? t.levels_stale_reason : null;
+    h += t === undefined ? pill('GAMMA', '…', '')
+      : !t || t.error ? pill('GAMMA', 'DOWN', 'bad', (t && t.error) ? t.error : 'terrain request failed')
+      : pill('GAMMA', gammaWhen, t.levels_stale ? 'warn' : 'ok', gammaWhy);
     host.innerHTML = h;
   }
   function paintFooter() {

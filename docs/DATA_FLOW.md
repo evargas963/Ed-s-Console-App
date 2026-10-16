@@ -163,7 +163,8 @@ from Schwab to the screen (daemon, console, page), are these:
   panel carries the contract's quote time and book time), `tests/test_data_path_level_spot_v1.py` (a down price marks the
   levels and the wall stays), `tests/test_data_path_chain_spot_time_v1.py` (the chain
   ladder's spot carries Schwab's trade time), `tests/test_data_path_desk_spot_time_v1.py`
-  (the trade desk's spot carries Schwab's trade time); the rest — ENF-22.
+  (the trade desk's spot carries Schwab's trade time), `tests/test_data_path_chain_time_v1.py`
+  (the desk map's chain age carries the chain's time); the rest — ENF-22.
 - **D6. No live screen reads the database.** Every live route serves from memory; the database
   is read at startup, after the close and for research only.
   Enforced by: `tests/test_data_path_rules_v1.py`.
@@ -519,7 +520,9 @@ from Schwab to the screen (daemon, console, page), are these:
    (`static/js/ed-liquidity-map.js`). The desk chart's live price line carries it too
    (`static/js/ed-trade-desk-map.js`). The desk map's liquidity card and its BOOK
    pill keep the book's time beside that age (`static/js/ed-trade-desk-map.js`). The Right Now
-   book-age row keeps that same time (`static/js/ed-trade-desk.js`). The key levels
+   book-age row keeps that same time (`static/js/ed-trade-desk.js`). The desk map's
+   options card, volatility card, and GAMMA pill keep the chain's time beside that
+   age (`server.get_terrain`, `static/js/ed-trade-desk-map.js`). The key levels
    keep the last wall when that price has stopped, and the rail says OFFLINE
    (`server.get_terrain`, `#klSrc`); the chain's own age stays `levels_stale`. The
    book's top keeps the last bid and ask, and that panel says OFFLINE (`top_outage`).
