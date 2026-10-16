@@ -202,6 +202,44 @@ test('Desk: an offline price keeps its last trade time on the map', async ({ pag
   await expect(page.locator('#tdmCardFlow .tdm-src')).toContainText('Schwab LEVELONE_EQUITIES feed down during RTH');
 });
 
+test('Desk: the book age keeps Schwab\'s book time', async ({ page }) => {
+  const errs = watchErrors(page);
+  const BOOK_TIME = 'Fri 09/25 06:59 PM CT';
+  await intercept(page);
+  await page.route('**/api/order-flow/microstructure**', (route) => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify(Object.assign({}, MICRO, { book_time_ct: BOOK_TIME })),
+  }));
+  await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
+    localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await expect(page.locator('#tdmCardLiq .tdm-src')).toContainText('book ' + BOOK_TIME + ' · 1s old');
+  await expect(page.locator('#tdmCardLiq')).toContainText('BID HEAVY');
+  await expect(page.locator('#tdmCardLiq')).toContainText('3.0K / 2.0K');
+  await expect(page.locator('#tdmTrust')).toContainText('BOOK ' + BOOK_TIME + ' · 1s');
+  expect(errs).toEqual([]);
+});
+
+test('Desk: a book that is not live keeps Schwab\'s book time', async ({ page }) => {
+  const errs = watchErrors(page);
+  const BOOK_TIME = 'Fri 09/25 06:59 PM CT';
+  await intercept(page);
+  await page.route('**/api/order-flow/microstructure**', (route) => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify(Object.assign({}, MICRO, {
+      book_time_ct: BOOK_TIME, ages: { book_age_sec: 4, book_stale: true },
+    })),
+  }));
+  await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
+    localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await expect(page.locator('#tdmCardLiq')).toContainText('STALE BOOK');
+  await expect(page.locator('#tdmCardLiq .tdm-src')).toContainText('book ' + BOOK_TIME + ' · not live');
+  await expect(page.locator('#tdmCardLiq')).toContainText('3.0K / 2.0K');
+  await expect(page.locator('#tdmTrust')).toContainText('BOOK ' + BOOK_TIME + ' · STALE');
+  expect(errs).toEqual([]);
+});
+
 test('Right Now: the spot keeps its last trade time', async ({ page }) => {
   await intercept(page);
   await page.route('**/api/levels**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
