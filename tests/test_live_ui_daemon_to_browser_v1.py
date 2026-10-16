@@ -37,10 +37,16 @@ def _free_port() -> int:
 
 
 @pytest.fixture(autouse=True)
-def _fresh_plane(monkeypatch):
-    monkeypatch.setattr(lmp, "_by_ticker", {})
-    monkeypatch.setattr(lmp, "_fields_by_ticker", {})
-    monkeypatch.setattr(live_ui, "HEARTBEAT_SEC", 0.2)
+def _fresh_plane():
+    """Each test starts from an empty quote plane and a short heartbeat, then both are put back."""
+    quotes, fields, beat = lmp._by_ticker, lmp._fields_by_ticker, live_ui.HEARTBEAT_SEC
+    lmp._by_ticker = {}
+    lmp._fields_by_ticker = {}
+    live_ui.HEARTBEAT_SEC = 0.2
+    yield
+    lmp._by_ticker = quotes
+    lmp._fields_by_ticker = fields
+    live_ui.HEARTBEAT_SEC = beat
 
 
 def _trade(sym: str, last: float, ts: float, **extra) -> dict:
