@@ -527,6 +527,7 @@ from Schwab to the screen (daemon, console, page), are these:
    keep the last wall when that price has stopped, and the rail says OFFLINE
    beside the chain's time (`server.get_terrain`, `#klSrc`, `static/js/ed-gamma-panels.js`); the chain's own age stays `levels_stale`. The
    GEX-by-strike badge keeps that same time beside its age (`server.terrain_strikes_payload`, `#gbsSrc`). The
+   gamma chart's GEX badge keeps it too (`static/js/ed-gamma-chart.js`). The
    book's top keeps the last bid and ask, and that panel says OFFLINE (`top_outage`).
    The book's quote time and book time stay on that panel (`server.order_flow_microstructure`,
    `static/js/ed-order-flow.js`). The Flow panel keeps the contract's quote time and book time
