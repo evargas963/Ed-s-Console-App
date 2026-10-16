@@ -510,7 +510,7 @@ from Schwab to the screen (daemon, console, page), are these:
    spot carries that same time (`#klSpot`). The chain ladder's spot carries it too
    (`server.get_chain`, the chain head). The trade desk's spot carries it too
    (`server.levels_payload`, the Right Now line). The levels page's spot carries it too
-   (`static/js/ed-gamma-levels.js`). The gamma chart's spot carries it too
+   (`static/js/ed-gamma-levels.js`). The gamma chart's spot and its live price line carry it too
    (`static/js/ed-gamma-chart.js`). The desk map's index prices and its VIX row carry it
    too, and an offline order-flow card keeps it beside the outage
    (`static/js/ed-trade-desk-map.js`). The liquidity map's live price line carries it too
