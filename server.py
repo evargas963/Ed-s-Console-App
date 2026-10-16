@@ -816,9 +816,9 @@ def _next_gamma_surface_seq(tk: str) -> int:
 
 
 def _streamed_greeks_for_ticker(listed: frozenset, now: float, feed: "lmp.FeedNow | None" = None) -> dict:
-    """The newest streamed GAMMA/DELTA/OPEN_INTEREST/VOLUME of every contract the daemon streams
-    at `now` of the ticker's chain (`listed`, the symbols Schwab listed in it). `feed` is one
-    read of that heartbeat; omitted, this call reads it."""
+    """The newest streamed GAMMA/DELTA/OPEN_INTEREST/VOLUME of every contract the daemon's
+    latest beat holds of the ticker's chain (`listed`, the symbols Schwab listed in it). A
+    missing beat keeps that set. `feed` is one read of that heartbeat; omitted, this call reads it."""
     from app.options.order_flow.state import get_stream_greeks
     out: dict = {}
     for sym in _held_option_symbols_for_ticker(listed, now, feed):
@@ -829,13 +829,12 @@ def _streamed_greeks_for_ticker(listed: frozenset, now: float, feed: "lmp.FeedNo
 
 
 def _held_option_symbols_for_ticker(listed: frozenset, now: float, feed: "lmp.FeedNow | None" = None) -> "list[str]":
-    """Every contract of the ticker's chain (`listed`) the daemon holds on LEVELONE_OPTIONS at
-    `now`. `feed` is one read of that heartbeat; omitted, this call reads it."""
+    """Every contract of the ticker's chain (`listed`) on the daemon's latest LEVELONE_OPTIONS
+    beat. A missing or too-old beat keeps that set; it does not say the feed is live.
+    `feed` is one read of that heartbeat; omitted, this call reads it."""
     if feed is None:
-        from app.options.order_flow.streaming import _read_producer_option_contracts
-        opts = _read_producer_option_contracts(now)["LEVELONE_OPTIONS"]
-    else:
-        opts = feed.held.get("LEVELONE_OPTIONS") if feed.status is not None else None
+        feed = lmp.feed_now(now)
+    opts = feed.held.get("LEVELONE_OPTIONS")
     if not opts:
         return []
     return [sym for sym in opts if sym in listed]
@@ -902,12 +901,11 @@ def _stamp_gamma_surface_cell_stream_state(surface: dict, streamed: dict, overla
     in place. It never touches a cell's computed value (project_gamma_surface is the one
     exposure computation); it says whether a streamed Schwab value backs it now.
 
-    `streamed`: the streamed values of the contracts the daemon holds of this ticker
-    (_streamed_greeks_for_ticker); `overlay_symbols`: those the feed is delivering now
-    (live_market_plane.feed_live_for, the one live rule); `held_symbols`: every contract the
-    daemon holds of this ticker, ticked or not (_held_option_symbols_for_ticker). A daemon
-    that is down holds nothing: its cells keep their values and the header says OFFLINE. Each
-    leg's age is at `now`.
+    `streamed`: the streamed values of the contracts the daemon's latest beat holds of this
+    ticker (_streamed_greeks_for_ticker); `overlay_symbols`: those the feed is delivering now
+    (live_market_plane.live_on, the one live rule); `held_symbols`: every contract on that
+    beat, ticked or not (_held_option_symbols_for_ticker). A missing beat is not live: those
+    cells keep the last streamed value and are not live. Each leg's age is at `now`.
       'live'         — the feed is delivering this symbol now.
       'stale'        — the symbol has streamed but the feed is not delivering it now.
       'pending'      — the daemon holds the symbol and no tick has landed yet.
