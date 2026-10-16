@@ -291,7 +291,9 @@ def resolve_spot(ticker: str, *, now: float) -> tuple[float | None, str, float |
     if row and row.get("spot") is not None:
         return row["spot"], SPOT_SOURCE_PLANE, row.get("trade_ts")
     outage = lmp.outage(ticker, "LEVELONE_EQUITIES", now)
-    return None, outage or "none", None
+    if outage is None:
+        return None, "none", None
+    return None, outage, None
 
 
 # (REST fast-quote writer DELETED 2026-09-24, independent-audit finding #3: it wrote REST
