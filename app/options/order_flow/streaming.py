@@ -65,8 +65,8 @@ LIVE_PUSH_URL = f"ws://{LIVE_PUSH_HOST}:{LIVE_PUSH_PORT}"
 #: The daemon's price-row push (live_ui), the one the browser reads.
 LIVE_UI_URL = f"ws://127.0.0.1:{LIVE_UI_PORT}"
 #: The daemon's finished price row per ticker (live_price_rows.price_row), exactly as it pushes
-#: it to the browser. The console keeps no other copy of a live price; the rows are dropped when
-#: the push is gone or silent for the live limit (live_market_plane.FEED_HEARTBEAT_MAX_AGE_SEC).
+#: it to the browser. The console keeps no other copy of a live price. A silent or dropped push
+#: marks the feed down; the last row stays until a newer one arrives.
 _price_rows: "dict[str, dict]" = {}
 
 
@@ -312,9 +312,8 @@ async def _rows_loop(ui_url: str, reconnect_sec: float) -> None:
                     try:
                         frame = await asyncio.wait_for(ws.recv(), _lmp.FEED_HEARTBEAT_MAX_AGE_SEC)
                     except asyncio.TimeoutError:
-                        _price_rows.clear()          # the daemon beats every second: silence
-                        _lmp.record_feed_down()
-                        _feed_changed(time.time())
+                        _lmp.record_feed_down()      # the daemon beats every second: silence
+                        _feed_changed(time.time())   # the last price row stays
                         continue
                     msg = json.loads(frame)
                     if msg.get("type") == "feed":
@@ -330,8 +329,7 @@ async def _rows_loop(ui_url: str, reconnect_sec: float) -> None:
         except Exception as e:  # noqa: BLE001 -- daemon down/restarting: retry, never substitute
             log.info("price rows unavailable (%s: %s); retrying in %.1fs",
                      type(e).__name__, e, reconnect_sec)
-        _price_rows.clear()
-        _lmp.record_feed_down()            # no daemon, no live price -- visible at once
+        _lmp.record_feed_down()            # no daemon: the feed is down, the last price stays
         _feed_changed(time.time())
         if _feed_running:
             await asyncio.sleep(reconnect_sec)
@@ -387,7 +385,6 @@ async def _feed_loop(push_url: str, ui_url: str, reconnect_sec: float) -> None:
     finally:
         rows.cancel()
         await asyncio.gather(rows, return_exceptions=True)
-        _price_rows.clear()
         _lmp.record_feed_down()
         _feed_changed(time.time())
         _log_stream("FEED_LOOP_STOP_DONE")
