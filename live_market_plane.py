@@ -189,7 +189,7 @@ def plane_spot_is_last_price(row: dict[str, Any] | None) -> bool:
 
 
 #: The daemon sends its status every second; the daemon, and everything it streams, is live
-#: only while the latest one is younger than this (console clock). The one liveness limit.
+#: only while the latest one was stamped within this of the time judged. The one liveness limit.
 FEED_HEARTBEAT_MAX_AGE_SEC: float = 3.0
 
 #: The daemon's latest status (its heartbeat), the time the daemon stamped it, and the symbols
@@ -216,12 +216,13 @@ def record_feed_down() -> None:
 
 
 def daemon_status(now: float) -> dict[str, Any] | None:
-    """The daemon's latest status while its heartbeat is live at `now` (younger than
-    FEED_HEARTBEAT_MAX_AGE_SEC), else None: a daemon that stopped reporting holds nothing and
-    streams nothing."""
+    """The daemon's latest status while its heartbeat is live at `now` (stamped within
+    FEED_HEARTBEAT_MAX_AGE_SEC of it, before or after: a status the daemon sent after `now`, while
+    its caller was working at `now`, says it was reporting then), else None: a daemon that
+    stopped reporting holds nothing and streams nothing."""
     with _lock:
         rx, status = _feed["rx"], _feed["status"]
-    if rx is None or not 0.0 <= now - rx < FEED_HEARTBEAT_MAX_AGE_SEC:
+    if rx is None or not abs(now - rx) < FEED_HEARTBEAT_MAX_AGE_SEC:
         return None
     return status
 
@@ -242,8 +243,7 @@ def feed_live_for(symbol: str | None, service: str, now: float) -> bool:
 
     Not "did a value arrive recently": Schwab sends a field only when it CHANGES (measured: 11%
     of 4,039 messages carried bid+ask+last together), so a quiet symbol's unchanged value is its
-    current value; judging by arrival age blanked quiet names on a healthy feed (2026-09-24
-    08:44 CT, DELL) and kept a dead feed's prices "live" for 30 s."""
+    current value; judging by arrival age blanks quiet names on a healthy feed."""
     t = ticker_storage_key(symbol or "")
     status = daemon_status(now)
     if not t or status is None or status.get("schwab_socket_open") is not True:
