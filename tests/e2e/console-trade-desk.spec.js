@@ -173,6 +173,16 @@ function watchErrors(page) {
   return errs;
 }
 
+test('Right Now: the spot keeps its last trade time', async ({ page }) => {
+  await intercept(page);
+  await page.route('**/api/levels**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
+    body: JSON.stringify(Object.assign({}, LEVELS, { spot_time_ct: 'Fri 10/02 10:00 AM CT' })) }));
+  await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
+    localStorage.setItem('ed_sub', 'right-now'); } catch (e) {} });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await expect(page.locator('#tdBody .fl-meta')).toHaveText('spot 771.30 · last trade Fri 10/02 10:00 AM CT');
+});
+
 test.describe('Trade Desk renders served values', () => {
   test('Desk after the close: levels drawn from the served order; dark by default', async ({ page }) => {
     // 2026-09-28 21:40 ET: after the close /api/levels served an empty by_distance and the chart drew
