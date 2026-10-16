@@ -775,18 +775,23 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   });
 
   test('a price that stops arriving stays, and the chip says OFFLINE', async ({ page }) => {
-    await mockPriceSocket(page, [priceRow('SPY', 601.23)]);   // one row, then silence
+    await mockPriceSocket(page, [priceRow('SPY', 601.23, { trade_time_ct: '14:00:01 CT', trade_age_sec: 4,
+      quote_time_ct: '14:00:02 CT' })]);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#hPx')).toHaveText('601.23');
+    await expect(page.locator('#hAge')).toHaveText('last trade 14:00:01 CT · 4s');
+    await expect(page.locator('#hBidAsk')).toHaveAttribute('title', 'quote 14:00:02 CT');
     await expect(page.locator('#hFeed')).toHaveText('OFFLINE', { timeout: 6000 });
     await expect(page.locator('#hPx')).toHaveText('601.23');
+    await expect(page.locator('#hAge')).toHaveText('last trade 14:00:01 CT · 4s');
   });
 
   test('a watchlist symbol paints from its own row on the same socket', async ({ page }) => {
-    await mockPriceSocket(page, [priceRow('SPY', 601.23), priceRow('AMD', 150.5, { chg_pct: -1.25 })]);
+    await mockPriceSocket(page, [priceRow('SPY', 601.23), priceRow('AMD', 150.5, { chg_pct: -1.25, trade_time_ct: '14:00:01 CT' })]);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.evaluate(() => window.EdShell.addSymbol('AMD'));
     await expect(page.locator('.wl-px[data-wlpx="AMD"]')).toHaveText('150.50');
+    await expect(page.locator('.wl-px[data-wlpx="AMD"]')).toHaveAttribute('title', 'last trade 14:00:01 CT');
     await expect(page.locator('.wl-chg[data-wlchg="AMD"]')).toHaveText('-1.25%');
   });
 
