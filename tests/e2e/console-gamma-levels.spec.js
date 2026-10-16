@@ -56,6 +56,17 @@ test.describe('D — Gamma Levels view', () => {
     await expect(page.locator('#levelsBody .lv-spot')).toHaveText('spot 100.00 · schwab_quote_last · last trade Fri 10/02 10:00 AM CT');
   });
 
+  test('the As-of column keeps the level time', async ({ page }) => {
+    const LEVEL_TIME = 'Fri 09/25 06:59 PM CT';
+    const levels = JSON.parse(JSON.stringify(LEVELS));
+    levels.levels.forEach(function (r) { r.staleness.as_of_time_ct = LEVEL_TIME; });
+    await page.route('**/api/levels**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify(levels) }));
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#levelsBody .lv-row', { hasText: 'Prior Day High' }).locator('.lv-px')).toHaveText('101.50');
+    await expect(page.locator('#levelsBody .lv-row', { hasText: 'Prior Day High' }).locator('.lv-age')).toHaveText(LEVEL_TIME + ' · 12s');
+  });
+
   test('renders the canonical /api/levels contract as a table', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const lv = page.locator('#levelsBody');
