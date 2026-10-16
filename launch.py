@@ -103,6 +103,12 @@ def start_console(argv: "list[str]", env: dict) -> subprocess.Popen:
     return subprocess.Popen(argv, cwd=ROOT, env=env, creationflags=subprocess.CREATE_NEW_PROCESS_GROUP)
 
 
+def start_daemon_window(batch: Path) -> None:
+    """`batch` (start_capture_daemon.bat) in a minimized window of its own titled "Ed Capture
+    Daemon", run by `cmd /c` so the window closes when the batch ends (`start` alone keeps it open)."""
+    subprocess.Popen(["cmd", "/c", "start", "Ed Capture Daemon", "/min", "cmd", "/c", str(batch)], cwd=ROOT)
+
+
 def ctrl_break(group: int) -> None:
     """Ctrl+Break to process group `group` (the console's, start_console) on its window, from a
     process without a window of its own: the console's handler runs its shutdown
@@ -174,8 +180,7 @@ def main() -> int:
     if in_use(DAEMON_PORT):
         print(f"Capture daemon: port {DAEMON_PORT} is already in use; not started.")
     else:
-        subprocess.Popen(["cmd", "/c", "start", "Ed Capture Daemon", "/min", str(ROOT / "start_capture_daemon.bat")],
-                         cwd=ROOT)
+        start_daemon_window(ROOT / "start_capture_daemon.bat")
         print('Capture daemon: started in its own window ("Ed Capture Daemon").')
     if in_use(CONSOLE_PORT):
         print(f"Console: port {CONSOLE_PORT} is already in use; not started. Opening {URL}.")
