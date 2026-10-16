@@ -174,21 +174,25 @@ def _clock_from(monkeypatch, start: float) -> None:
 
 
 @pytest.mark.parametrize("start, outage", [(_RTH, True), (_CLOSED, False)], ids=["rth", "closed"])
-def test_a_closed_schwab_socket_reads_feed_down_within_one_beat(monkeypatch, start, outage):
+def test_a_closed_schwab_socket_reads_feed_down_within_one_beat(start, outage):
     """Nothing from Schwab; only the beat knows (docs/DATA_FLOW.md §2 D5): the last price and
-    bid stand. During RTH the row names the outage; while Closed it does not."""
-    _clock_from(monkeypatch, start)
-
-    async def body(bus, ws, feed, stats):
-        await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"]}))
-        bus.publish("quote.SPY", _trade("SPY", 583.41, time.time()))
-        await _next_row(ws, "SPY", lambda r: r["feed_live"] is True)
-        feed.open = False
-        msg, row = await _next_row(ws, "SPY", lambda r: r["feed_live"] is False, timeout=1.0)
-        assert msg["type"] == "feed" and msg["feed"]["schwab_socket_open"] is False
-        assert row["spot"] == 583.41 and row["bid"] == pytest.approx(583.40)
-        assert (row["outage"] is not None) is outage
-    asyncio.run(_run(body))
+    bid stand. During RTH the row names the outage; while Closed it does not. The clock runs
+    from `start` so the session is that hour, and time still passes."""
+    real, offset = time.time, start - time.time()
+    time.time = lambda: real() + offset
+    try:
+        async def body(bus, ws, feed, stats):
+            await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"]}))
+            bus.publish("quote.SPY", _trade("SPY", 583.41, time.time()))
+            await _next_row(ws, "SPY", lambda r: r["feed_live"] is True)
+            feed.open = False
+            msg, row = await _next_row(ws, "SPY", lambda r: r["feed_live"] is False, timeout=1.0)
+            assert msg["type"] == "feed" and msg["feed"]["schwab_socket_open"] is False
+            assert row["spot"] == 583.41 and row["bid"] == pytest.approx(583.40)
+            assert (row["outage"] is not None) is outage
+        asyncio.run(_run(body))
+    finally:
+        time.time = real
 
 
 def test_a_symbol_the_daemon_does_not_hold_reads_feed_not_live(monkeypatch):
