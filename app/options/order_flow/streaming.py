@@ -45,7 +45,6 @@ from app.options.order_flow import history as recent
 
 from app.options.order_flow.state import (
     clear_all_live_state,
-    clear_symbol,
     push_book,
     push_level_one,
     push_option_top,
@@ -401,28 +400,11 @@ def _read_producer_option_contracts(now: float) -> dict[str, list[str]]:
     return {s: sorted(_lmp.held_by_daemon(s, now)) for s in OPTION_PRODUCER_SERVICES}
 
 
-#: the option contracts the daemon held at its last status (_drop_released_options)
-_held_options: "set[str]" = set()
-
-
 def _drop_released_options(now: float) -> None:
-    """Forget a contract the daemon stopped streaming at `now` while its Schwab socket is open
-    (the option rule moved off it). A socket that has closed keeps the last values: they stand,
-    marked not live, until the socket holds a set again. A service the heartbeat does not
-    name is missing, not an empty set."""
-    global _held_options
-    feed = _lmp.feed_now(now)
-    if feed.status is None or feed.status.get("schwab_socket_open") is not True:
-        return
-    held: set[str] = set()
-    for service in OPTION_PRODUCER_SERVICES:
-        symbols = feed.held.get(service)
-        if symbols is not None:
-            held.update(symbols)
-    for sym in _held_options - held:
-        clear_symbol(sym)
-        _option_contract_last_update_ts.pop(sym, None)
-    _held_options = held
+    """A contract that left the daemon's held set keeps its last quote, its last greeks, and
+    the time of that quote. The Flow panel marks it NOT STREAMED. `now` is the heartbeat's
+    time. Nothing is deleted because the option rule moved on or the socket closed."""
+    return None
 
 
 #: a contract's subscription, as the Flow panel shows it: the daemon's option rule holds it on

@@ -53,7 +53,6 @@ def _clean():
     with server._terrain_cache_lock:
         server._terrain_cache.pop(TK, None)
     server._last_feed_stamp = None
-    ofs._held_options.clear()
 
 
 def _beat(ts: float, *, socket_open: bool = True, options: "list[str] | None" = None) -> None:

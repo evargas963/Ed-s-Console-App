@@ -233,9 +233,10 @@ from Schwab to the screen (daemon, console, page), are these:
   between chains streams until the ticker's next chain (one is asked after each option close). Each
   change is one UNSUBS and one ADD of only the difference (`Daemon.ask`). The levels use every
   contract of the full chain, streamed or not. When the owner fails (the daemon down), nothing
-  streams: every cell keeps its value and the header says OFFLINE; the console forgets the live
-  values of a contract the daemon stops holding (`streaming._drop_released_options`). Tests:
-  `tests/test_option_contract_rule_v1.py`.
+  streams: every cell keeps its value and the header says OFFLINE. A contract the daemon stops
+  holding keeps its last quote; the Flow panel marks it NOT STREAMED
+  (`streaming._drop_released_options`, `get_option_contract_streaming_diagnostics`). Tests:
+  `tests/test_option_contract_rule_v1.py`, `tests/test_data_path_released_contract_v1.py`.
 - **1-minute bar and daily candles.** Schwab's price history: the daemon's chain sweep
   asks `/pricehistory` for each ticker (`complete_chain_capture.PRICE_HISTORY`,
   per `docs/schwab/schwab_market_data_parameters_pricehistory_markets.txt`, each request ending
@@ -494,8 +495,9 @@ from Schwab to the screen (daemon, console, page), are these:
    instead of receiving the values; bars are not yet on the daemon's push.
 5. **Values blank when they stop** (D5, operator 2026-10-11): the price row keeps the last
    values and the header says OFFLINE (`live_price_rows.price_row`, the page's feed chip). The
-   book's top keeps the last bid and ask, and that panel says OFFLINE (`top_outage`). Still
-   blank: the console forgets a contract the daemon stops holding; the closed market is handled apart
+   book's top keeps the last bid and ask, and that panel says OFFLINE (`top_outage`). A contract
+   the daemon stops holding keeps its last quote; the Flow panel marks it NOT STREAMED. Still
+   blank: the closed market is handled apart
    from any other stop
    (`live_market_plane.outage`, `server.terrain_staleness`); some calculations round or drop
    contracts. The §3 descriptions of these are today's behavior. Each remaining place is
