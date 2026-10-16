@@ -157,8 +157,9 @@ from Schwab to the screen (daemon, console, page), are these:
   spot keeps every digit), `tests/test_data_path_book_size_v1.py` (the book's top size
   keeps every digit), `tests/test_data_path_tape_size_v1.py` (a tape print's size
   keeps every digit), `tests/test_data_path_silent_subscription_v1.py` (a missing heartbeat
-  keeps the last subscription), `tests/test_data_path_quote_time_v1.py` (the row carries
-  Schwab's quote time), `tests/test_data_path_level_spot_v1.py` (a down price marks the
+  keeps the last subscription),   `tests/test_data_path_quote_time_v1.py` (the row carries
+  Schwab's quote time), `tests/test_data_path_book_time_v1.py` (the book panel carries
+  Schwab's quote time and book time), `tests/test_data_path_level_spot_v1.py` (a down price marks the
   levels and the wall stays), `tests/test_data_path_chain_spot_time_v1.py` (the chain
   ladder's spot carries Schwab's trade time), `tests/test_data_path_desk_spot_time_v1.py`
   (the trade desk's spot carries Schwab's trade time); the rest — ENF-22.
@@ -518,7 +519,9 @@ from Schwab to the screen (daemon, console, page), are these:
    (`static/js/ed-trade-desk-map.js`). The key levels
    keep the last wall when that price has stopped, and the rail says OFFLINE
    (`server.get_terrain`, `#klSrc`); the chain's own age stays `levels_stale`. The
-   book's top keeps the last bid and ask, and that panel says OFFLINE (`top_outage`). A contract
+   book's top keeps the last bid and ask, and that panel says OFFLINE (`top_outage`).
+   The book's quote time and book time stay on that panel (`server.order_flow_microstructure`,
+   `static/js/ed-order-flow.js`). A contract
    the daemon stops holding keeps its last quote; the Flow panel marks it NOT STREAMED. A missing
    heartbeat keeps that last subscription, and the panel says OFFLINE
    (`streaming.get_option_contract_streaming_diagnostics`, the Flow badge). A missing

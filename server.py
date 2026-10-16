@@ -2374,6 +2374,11 @@ def order_flow_microstructure(ticker: str, venue: str, now: float) -> dict:
         payload["flow"] = None
     payload["ticker"] = t
     payload["venue"] = venue
+    prov = payload.get("provenance")
+    quote_ts = prov.get("exchange_quote_ts") if isinstance(prov, dict) else None
+    book_ms = prov.get("book_time_ms") if isinstance(prov, dict) else None
+    payload["quote_time_ct"] = ct_label(quote_ts) if quote_ts is not None else None
+    payload["book_time_ct"] = ct_label(book_ms / 1000.0) if book_ms is not None else None
     return payload
 
 

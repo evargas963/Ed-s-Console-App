@@ -105,9 +105,16 @@
       ['Bid total (5)', int(dep(5, 'bid_total')), bk('depth.*.bid_total')],
       ['Ask total (5)', int(dep(5, 'ask_total')), bk('depth.*.ask_total')],
     ];
+    function whenAge(when, sec) {
+      var age = sec != null ? (Math.round(sec) + 's') : null;
+      if (when != null && age != null) return when + ' · ' + age;
+      if (when != null) return when;
+      if (age != null) return age;
+      return '—';
+    }
     var fresh = [
-      ['Book age', ages.book_age_sec != null ? Math.round(ages.book_age_sec) + 's' : '—', bk('ages.book_age_sec')],
-      ['Quote age', ages.quote_age_sec != null ? Math.round(ages.quote_age_sec) + 's' : '—', bk('ages.quote_age_sec')],
+      ['Book age', whenAge(d.book_time_ct, ages.book_age_sec), bk('ages.book_age_sec')],
+      ['Quote age', whenAge(d.quote_time_ct, ages.quote_age_sec), bk('ages.quote_age_sec')],
     ];
     var wallsHtml = walls.length
       ? walls.map(function (w) { return '<div class="fl-row"><span class="k">' + esc(w.side || '—') + ' @ ' + num(w.price) +
