@@ -211,15 +211,17 @@ def record_feed_heartbeat(msg: dict[str, Any]) -> None:
 
 
 def record_feed_down() -> None:
-    """The connection to the daemon ended: nothing is live until a heartbeat arrives."""
+    """The connection to the daemon ended: nothing is live until a heartbeat arrives.
+    The symbols that beat last named stay, so the last streamed values still price."""
     with _lock:
-        _feed.update(rx=None, status=None, held={})
+        _feed.update(rx=None, status=None)
 
 
 @dataclass(frozen=True)
 class FeedNow:
     """One read of the daemon's heartbeat at a time. `status` is None when that beat is not
-    current. `held` is the symbols per Schwab service on that same beat."""
+    current. `held` is the symbols on the latest beat: they stand when that beat is missing
+    or too old. A beat stamped after `now` contributes neither."""
 
     status: dict[str, Any] | None
     held: dict[str, frozenset[str]]
@@ -227,12 +229,15 @@ class FeedNow:
 
 def feed_now(now: float) -> FeedNow:
     """The daemon's heartbeat at `now`, read once. Current only when its stamp is not older
-    than FEED_HEARTBEAT_MAX_AGE_SEC. A stamp after `now` is a later moment, not this one."""
+    than FEED_HEARTBEAT_MAX_AGE_SEC. A stamp after `now` is a later moment, not this one.
+    A beat that is missing or too old is not live, and the symbols it last named still stand."""
     with _lock:
         rx, status, held = _feed["rx"], _feed["status"], dict(_feed["held"])
-    if rx is None or not isinstance(status, dict) or not (0.0 <= now - float(rx) < FEED_HEARTBEAT_MAX_AGE_SEC):
+    if isinstance(rx, (int, float)) and now < float(rx):
         return FeedNow(None, {})
-    return FeedNow(status, held)
+    current = (isinstance(rx, (int, float)) and isinstance(status, dict)
+               and 0.0 <= now - float(rx) < FEED_HEARTBEAT_MAX_AGE_SEC)
+    return FeedNow(status, held) if current else FeedNow(None, held)
 
 
 def live_on(feed: FeedNow, symbol: str | None, service: str) -> bool:

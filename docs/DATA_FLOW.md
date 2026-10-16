@@ -440,7 +440,8 @@ from Schwab to the screen (daemon, console, page), are these:
   never holds it. When the daemon stops or that connection drops or falls silent, every symbol
   reads feed down within 3 s. The
   console keeps the daemon's last price rows through that silence and through a dropped
-  connection; a newer row replaces one when the push returns.
+  connection; a newer row replaces one when the push returns. The contracts that beat last
+  named keep their last streamed greeks on the levels; those cells are not live.
 - **Tape.** The cumulative delta (PROXY, tick rule) sums every print the tape holds; no clock
   resets it, and the window it sums (its first and last print's Schwab trade time,
   `cum_delta_window`) is served beside it and printed with it. A print of size 0 adds 0.
@@ -496,7 +497,8 @@ from Schwab to the screen (daemon, console, page), are these:
 5. **Values blank when they stop** (D5, operator 2026-10-11): the price row keeps the last
    values and the header says OFFLINE (`live_price_rows.price_row`, the page's feed chip). The
    book's top keeps the last bid and ask, and that panel says OFFLINE (`top_outage`). A contract
-   the daemon stops holding keeps its last quote; the Flow panel marks it NOT STREAMED. Still
+   the daemon stops holding keeps its last quote; the Flow panel marks it NOT STREAMED. A missing
+   heartbeat keeps the last streamed greeks on the levels; the cells are not live. Still
    blank: the closed market is handled apart
    from any other stop
    (`live_market_plane.outage`, `server.terrain_staleness`); some calculations round or drop
