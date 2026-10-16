@@ -152,7 +152,8 @@ from Schwab to the screen (daemon, console, page), are these:
   only. Where today's code differs: §3.5 items 5 and 6.
   Enforced by: `tests/test_data_path_rules_v1.py` (newest by Schwab's time, no replay as live),
   `tests/test_data_path_live_status_v1.py` (the daemon's status is current when it is not older
-  than 3 s); the rest — ENF-22.
+  than 3 s), `tests/test_data_path_strike_counts_v1.py` (a strike's volume and open interest
+  keep every digit); the rest — ENF-22.
 - **D6. No live screen reads the database.** Every live route serves from memory; the database
   is read at startup, after the close and for research only.
   Enforced by: `tests/test_data_path_rules_v1.py`.
@@ -501,9 +502,11 @@ from Schwab to the screen (daemon, console, page), are these:
    the daemon stops holding keeps its last quote; the Flow panel marks it NOT STREAMED. A missing
    heartbeat keeps the last streamed greeks on the levels; the cells are not live. A feed
    down while the market is closed keeps the last price and the book, and that panel says
-   OFFLINE (`live_market_plane.outage`). Still
+   OFFLINE (`live_market_plane.outage`). A strike's session volume and open interest keep
+   every digit Schwab sent (`terrain_engine._per_strike_rows`,
+   `_per_strike_measure_rows`); the screen rounds those counts for display. Still
    blank: levels fetched before the option close are marked apart from a feed stop
-   (`server.terrain_staleness`); some calculations round or drop
+   (`server.terrain_staleness`); some calculations still drop
    contracts. The §3 descriptions of these are today's behavior. Each remaining place is
    listed in PR #515's description and fixed by `ACTIVE_PROGRAM.md` NUMBERS.
 6. **Missing values served with a reason** (D5, operator 2026-10-12: a missing value shows "-"): an

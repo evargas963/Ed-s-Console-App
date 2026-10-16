@@ -280,7 +280,7 @@ def _per_strike_rows(exposures: dict) -> list[list]:
         if gf is None:
             continue
         vol = strike_total_volume(b)
-        rows.append([sk, gf, None if vol is None else int(vol)])
+        rows.append([sk, gf, vol])
     rows.sort(key=lambda r: r[0])
     return rows
 
@@ -548,7 +548,8 @@ def compute_implied_one_day_move(contracts: list[dict], spot: float | None) -> d
 def _per_strike_measure_rows(exposures: dict) -> dict:
     """`{"dex": [[strike, net DEX $], …], "oi": [[strike, total OI], …]}`: every strike whose value
     is known, by the heatmap cell's own readers (net_dex_dollars of a dollarized book;
-    strike_total_oi). A strike whose value is unknown has no row."""
+    strike_total_oi). Open interest keeps every digit; the screen rounds the count. A strike
+    whose value is unknown has no row."""
     from math_exposure_core import bucket_metric, exposures_have_dollar_gex, strike_total_oi
     from numeric_contract import float_finite_or_none
 
@@ -564,7 +565,7 @@ def _per_strike_measure_rows(exposures: dict) -> dict:
             dex.append([sk, d])
         o = strike_total_oi(b)
         if o is not None:
-            oi.append([sk, int(o)])
+            oi.append([sk, o])
     dex.sort(key=lambda r: r[0])
     oi.sort(key=lambda r: r[0])
     return {"dex": dex, "oi": oi}
