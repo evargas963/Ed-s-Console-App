@@ -346,6 +346,19 @@ test.describe('Trade Desk renders served values', () => {
     expect(await span()).toBeCloseTo(widened, 6);
   });
 
+  test('Desk: the live price line keeps its last trade time', async ({ page }) => {
+    await intercept(page);
+    await mockPriceSocket(page, []);
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().bars)).toBeGreaterThan(0);
+    await page.evaluate((spot) => window.dispatchEvent(new CustomEvent('ed:quote_tick', { detail: {
+      ticker: 'SPY', spot: spot, feed_live: false, trade_age_sec: 1, trade_time_ct: '14:00:01 CT',
+      outage: 'Schwab LEVELONE_EQUITIES feed down during RTH' } })), SPOT);
+    await expect.poll(() => page.evaluate(() => (window.EdTradeDeskMap.state().chart || {}).liveTitle)).toBe('LAST · last trade 14:00:01 CT');
+    await expect.poll(() => page.evaluate(() => (window.EdTradeDeskMap.state().chart || {}).livePrice)).toBe(SPOT);
+  });
+
   test('Market Map: the served last completed bar; a price tick moves the live LAST line and reads no bars', async ({ page }) => {
     const errs = watchErrors(page);
     await intercept(page);
