@@ -151,8 +151,8 @@ from Schwab to the screen (daemon, console, page), are these:
   "-". Calculations keep every digit and every contract; rounding is on screen
   only. Where today's code differs: §3.5 items 5 and 6.
   Enforced by: `tests/test_data_path_rules_v1.py` (newest by Schwab's time, no replay as live),
-  `tests/test_data_path_live_status_v1.py` (the daemon's status is current within the live limit
-  of the time judged, before or after); the rest — ENF-22.
+  `tests/test_data_path_live_status_v1.py` (the daemon's status is current when it is not older
+  than 3 s); the rest — ENF-22.
 - **D6. No live screen reads the database.** Every live route serves from memory; the database
   is read at startup, after the close and for research only.
   Enforced by: `tests/test_data_path_rules_v1.py`.
@@ -429,7 +429,7 @@ from Schwab to the screen (daemon, console, page), are these:
 - **Live.** Every value is the last one Schwab sent, with Schwab's own time (the price with its
   TRADE_TIME, `trade_time_ct`), under §2 D5 (today's outage blanking: §3.5 item 5). Whether
   the feed is delivering a symbol now is stated beside its values: the
-  daemon's heartbeat, sent every second, was stamped within 3 s of the time judged, before or after
+  daemon's heartbeat, sent every second, is not older than 3 s at the time judged
   (`live_market_plane.FEED_HEARTBEAT_MAX_AGE_SEC`), says the Schwab socket is open, and holds the
   symbol on that Schwab service (`live_market_plane.feed_live_for`; the header's LIVE / FEED DOWN,
   a book's `book_live`, a heatmap leg's state). A value's age is never the test: Schwab sends a

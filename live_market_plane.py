@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import logging
 import threading
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Optional
 
@@ -215,41 +216,56 @@ def record_feed_down() -> None:
         _feed.update(rx=None, status=None, held={})
 
 
-def daemon_status(now: float) -> dict[str, Any] | None:
-    """The daemon's latest status while its heartbeat is live at `now` (stamped within
-    FEED_HEARTBEAT_MAX_AGE_SEC of it, before or after: a status the daemon sent after `now`, while
-    its caller was working at `now`, says it was reporting then), else None: a daemon that
-    stopped reporting holds nothing and streams nothing."""
+@dataclass(frozen=True)
+class FeedNow:
+    """One read of the daemon's heartbeat at a time. `status` is None when that beat is not
+    current. `held` is the symbols per Schwab service on that same beat."""
+
+    status: dict[str, Any] | None
+    held: dict[str, frozenset[str]]
+
+
+def feed_now(now: float) -> FeedNow:
+    """The daemon's heartbeat at `now`, read once. Current only when its stamp is not older
+    than FEED_HEARTBEAT_MAX_AGE_SEC. A stamp after `now` is a later moment, not this one."""
     with _lock:
-        rx, status = _feed["rx"], _feed["status"]
-    if rx is None or not abs(now - rx) < FEED_HEARTBEAT_MAX_AGE_SEC:
-        return None
-    return status
+        rx, status, held = _feed["rx"], _feed["status"], dict(_feed["held"])
+    if rx is None or not isinstance(status, dict) or not (0.0 <= now - float(rx) < FEED_HEARTBEAT_MAX_AGE_SEC):
+        return FeedNow(None, {})
+    return FeedNow(status, held)
+
+
+def live_on(feed: FeedNow, symbol: str | None, service: str) -> bool:
+    """Whether `feed` says Schwab `service` is delivering `symbol`."""
+    t = ticker_storage_key(symbol or "")
+    if not t or feed.status is None or feed.status.get("schwab_socket_open") is not True:
+        return False
+    return t in feed.held.get(service, ())
+
+
+def daemon_status(now: float) -> dict[str, Any] | None:
+    """The daemon's latest status while its heartbeat is current at `now`, else None."""
+    return feed_now(now).status
 
 
 def held_by_daemon(service: str, now: float) -> frozenset[str]:
-    """The symbols the daemon holds on Schwab `service` at `now`, as its live heartbeat reports
-    them; none while its heartbeat is not live (unknown is never confirmation)."""
-    if daemon_status(now) is None:
+    """The symbols the daemon holds on Schwab `service` at `now`; none while its heartbeat
+    is not current (unknown is never confirmation)."""
+    feed = feed_now(now)
+    if feed.status is None:
         return frozenset()
-    with _lock:
-        return _feed["held"].get(service, frozenset())
+    return feed.held.get(service, frozenset())
 
 
 def feed_live_for(symbol: str | None, service: str, now: float) -> bool:
     """THE live rule, for every streamed value: is Schwab `service` delivering `symbol` right
-    now -- the daemon's heartbeat is live (daemon_status), it reports the Schwab socket open,
+    now -- the daemon's heartbeat is current (feed_now), it reports the Schwab socket open,
     and it holds the symbol on that service.
 
     Not "did a value arrive recently": Schwab sends a field only when it CHANGES (measured: 11%
     of 4,039 messages carried bid+ask+last together), so a quiet symbol's unchanged value is its
     current value; judging by arrival age blanks quiet names on a healthy feed."""
-    t = ticker_storage_key(symbol or "")
-    status = daemon_status(now)
-    if not t or status is None or status.get("schwab_socket_open") is not True:
-        return False
-    with _lock:
-        return t in _feed["held"].get(service, ())
+    return live_on(feed_now(now), symbol, service)
 
 
 def outage(symbol: str | None, service: str, now: float) -> str | None:
