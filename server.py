@@ -469,12 +469,15 @@ def stop_bar_writer(thread: "threading.Thread | None" = None) -> None:
 
 
 def _watchlist(now: float) -> "list[str] | None":
-    """The watchlist: the tickers the capture daemon asks Schwab for, as its heartbeat carries
-    it; None while the daemon's status is not current at `now`."""
+    """The watchlist: the tickers the capture daemon asks Schwab for. A current heartbeat that
+    carries a list is that list; one that carries none is unknown. A missing heartbeat keeps
+    the last list a beat carried."""
     st = lmp.daemon_status(now)
-    if st is None or not isinstance(st.get("watchlist"), list):
-        return None                 # no current heartbeat, or one that carries no list: unknown
-    return list(st["watchlist"])
+    if st is not None:
+        if not isinstance(st.get("watchlist"), list):
+            return None
+        return list(st["watchlist"])
+    return lmp.last_watchlist()
 
 
 
@@ -1380,10 +1383,12 @@ def _status_line(now: float) -> str:
     """One line for the console window: is each part working at `now`, from its own check."""
     st = lmp.daemon_status(now)
     watchlist = _watchlist(now)
-    if watchlist is not None:
+    if st is None and watchlist is not None:
+        prices = f"last watchlist: {len(watchlist)} tickers (daemon not reporting)"
+    elif watchlist is not None:
         priced = sum(1 for tk in watchlist if resolve_spot(tk, now=now)[0] is not None)
         prices = f"live prices: {priced} of {len(watchlist)} watchlist tickers"
-    else:                                             # no current heartbeat: the list is unknown
+    else:                                             # no list has arrived: the list is unknown
         prices = "live prices: WATCHLIST UNKNOWN (no current daemon heartbeat)"
     with _terrain_cache_lock:
         as_of = [p.get("computed_ts_utc") for p in _terrain_cache.values() if p.get("computed_ts_utc")]
@@ -2122,13 +2127,18 @@ def gamma_surface_payload(tk: str, scope: str, centre, shift: int, cols: "int | 
     # watchlist (fetched in turn; while Closed, once, its close values). The reason is that
     # state's own.
     _requested = _gamma_surface_wanted(tk)
-    _watched = _watchlist(now.timestamp())     # None: the daemon's heartbeat is not current
+    _watched = _watchlist(now.timestamp())     # the last list stands when the heartbeat is missing
     _warming = _watched is not None and tk in _watched
     _levels_why = terrain_staleness(live.get("computed_ts_utc") if live is not None else None, tk,
                                     now=now.timestamp())["levels_stale_reason"]
-    if _watched is None:     # the daemon not reporting is the cause of every other absence: first
-        _why = ["the capture daemon is not reporting (no current heartbeat): its watchlist is unknown",
-                _levels_why]
+    if lmp.daemon_status(now.timestamp()) is None:
+        _why = ["the capture daemon is not reporting (no current heartbeat)"]
+        if _watched is None:
+            _why.append("its watchlist is unknown")
+        elif tk not in _watched:
+            _why.append("it is not on the watchlist")
+        if _levels_why:
+            _why.append(_levels_why)
     elif _levels_why:
         _why = [_levels_why]
     elif _warming:
@@ -2397,12 +2407,14 @@ def options_microstructure(c: str, now: float) -> dict:
 @app.get("/api/watchlist")
 def get_watchlist():
     """The watchlist, the one list of tickers Schwab is asked for, as the capture daemon (its
-    keeper) last reported it; 503 with the reason while its status is not current."""
-    tickers = _watchlist(time.time())
+    keeper) last reported it. A missing heartbeat keeps that list and says it is not live.
+    503 only when no beat has ever carried a list."""
+    now = time.time()
+    tickers = _watchlist(now)
     if tickers is None:
         return JSONResponse({"error": "the capture daemon is not reporting (no current heartbeat): "
                                       "its watchlist is unknown"}, status_code=503)
-    return {"tickers": tickers}
+    return {"tickers": tickers, "live": lmp.daemon_status(now) is not None}
 
 
 async def _watchlist_change(action: str, ticker: str) -> JSONResponse:

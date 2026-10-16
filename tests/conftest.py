@@ -93,18 +93,20 @@ def _markets_answers_held():
 @pytest.fixture(autouse=True)
 def _live_feed_starts_down():
     """live_market_plane's feed state (the daemon heartbeat) is process-global: every test
-    starts with NO live feed and no remembered held set, so a heartbeat one test marks can
-    never make another test's price live. A down feed keeps that set for the screen
-    (record_feed_down); this fixture clears it. Tests that need a live price mark it
-    (tests/feed_live_helper.py)."""
+    starts with NO live feed and no remembered held set or watchlist, so a heartbeat one test
+    marks can never make another test's price live. A down feed keeps that set and that list
+    for the screen (record_feed_down); this fixture clears them. Tests that need a live price
+    mark it (tests/feed_live_helper.py)."""
     import live_market_plane as _lmp_feed
     _lmp_feed.record_feed_down()
     with _lmp_feed._lock:
         _lmp_feed._feed["held"] = {}
+        _lmp_feed._feed["watchlist"] = None
     yield
     _lmp_feed.record_feed_down()
     with _lmp_feed._lock:
         _lmp_feed._feed["held"] = {}
+        _lmp_feed._feed["watchlist"] = None
 
 
 def most_recent_trading_day_et(*, on_or_before: date | None = None) -> date:

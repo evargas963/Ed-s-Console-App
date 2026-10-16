@@ -193,9 +193,10 @@ def plane_spot_is_last_price(row: dict[str, Any] | None) -> bool:
 #: only while the latest one was stamped within this of the time judged. The one liveness limit.
 FEED_HEARTBEAT_MAX_AGE_SEC: float = 3.0
 
-#: The daemon's latest status (its heartbeat), the time the daemon stamped it, and the symbols
-#: it holds per Schwab service. Written by record_feed_heartbeat / record_feed_down only.
-_feed: dict[str, Any] = {"rx": None, "status": None, "held": {}}
+#: The daemon's latest status (its heartbeat), the time the daemon stamped it, the symbols
+#: it holds per Schwab service, and the last watchlist a beat carried. Written by
+#: record_feed_heartbeat / record_feed_down only. A down feed keeps `held` and `watchlist`.
+_feed: dict[str, Any] = {"rx": None, "status": None, "held": {}, "watchlist": None}
 
 
 def record_feed_heartbeat(msg: dict[str, Any]) -> None:
@@ -206,15 +207,29 @@ def record_feed_heartbeat(msg: dict[str, Any]) -> None:
         return
     held = {svc: frozenset(ticker_storage_key(s) for s in syms)
             for svc, syms in (msg.get("held") or {}).items() if isinstance(syms, list)}
+    watchlist = msg.get("watchlist")
     with _lock:
         _feed.update(rx=float(msg["ts"]), status=msg, held=held)
+        if isinstance(watchlist, list):
+            _feed["watchlist"] = list(watchlist)
 
 
 def record_feed_down() -> None:
     """The connection to the daemon ended: nothing is live until a heartbeat arrives.
-    The symbols that beat last named stay, so the last streamed values still price."""
+    The symbols that beat last named stay, so the last streamed values still price.
+    The last watchlist stays with them."""
     with _lock:
         _feed.update(rx=None, status=None)
+
+
+def last_watchlist() -> list[str] | None:
+    """The watchlist on the latest beat that carried one, current or not. None until a beat
+    carries a list. A missing beat does not erase it."""
+    with _lock:
+        watchlist = _feed.get("watchlist")
+    if not isinstance(watchlist, list):
+        return None
+    return list(watchlist)
 
 
 @dataclass(frozen=True)

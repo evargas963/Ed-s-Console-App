@@ -441,7 +441,8 @@ from Schwab to the screen (daemon, console, page), are these:
   reads feed down within 3 s. The
   console keeps the daemon's last price rows through that silence and through a dropped
   connection; a newer row replaces one when the push returns. The contracts that beat last
-  named keep their last streamed greeks on the levels; those cells are not live.
+  named keep their last streamed greeks on the levels; those cells are not live. The last
+  watchlist stands through that silence; the page says the daemon is not reporting.
 - **Tape.** The cumulative delta (PROXY, tick rule) sums every print the tape holds; no clock
   resets it, and the window it sums (its first and last print's Schwab trade time,
   `cum_delta_window`) is served beside it and printed with it. A print of size 0 adds 0.
