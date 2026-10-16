@@ -2531,8 +2531,8 @@ _IDENTITY_SHA_HEX_CHARS = frozenset("0123456789abcdef")
 
 
 def _is_full_git_sha(value: str) -> bool:
-    """True only for a 40-char lowercase-hex string — malformed git output is
-    rejected rather than represented as a valid identity."""
+    """True only for a 40-char lowercase-hex string: a HEAD or ref file that holds anything else
+    is no commit (checkout_head)."""
     return len(value) == 40 and set(value) <= _IDENTITY_SHA_HEX_CHARS
 
 

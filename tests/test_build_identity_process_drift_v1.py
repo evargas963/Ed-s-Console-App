@@ -83,6 +83,8 @@ def test_the_identity_stands_while_the_checkout_moves_and_the_drift_is_explicit(
     assert srv.build_identity_answer(ident, sha_a)["code_drift"]["repo_moved_past_process"] is False
     assert srv.build_identity_answer(ident, None)["code_drift"]["repo_moved_past_process"] is None
     assert srv.capture_process_identity(repo).startup_git_sha == sha_b      # a new process loads B
+    unknown_start = srv.capture_process_identity(tmp_path / "nowhere")      # no checkout: no identity
+    assert srv.build_identity_answer(unknown_start, sha_b)["code_drift"]["repo_moved_past_process"] is None
 
 
 def test_the_identity_cannot_be_changed():
