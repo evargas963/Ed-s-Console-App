@@ -514,7 +514,8 @@ from Schwab to the screen (daemon, console, page), are these:
    (`static/js/ed-gamma-chart.js`). The desk map's index prices and its VIX row carry it
    too, and an offline order-flow card keeps it beside the outage
    (`static/js/ed-trade-desk-map.js`). The liquidity map's live price line carries it too
-   (`static/js/ed-liquidity-map.js`). The key levels
+   (`static/js/ed-liquidity-map.js`). The desk chart's live price line carries it too
+   (`static/js/ed-trade-desk-map.js`). The key levels
    keep the last wall when that price has stopped, and the rail says OFFLINE
    (`server.get_terrain`, `#klSrc`); the chain's own age stays `levels_stale`. The
    book's top keeps the last bid and ask, and that panel says OFFLINE (`top_outage`). A contract
