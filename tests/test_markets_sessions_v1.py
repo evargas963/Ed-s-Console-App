@@ -170,8 +170,9 @@ def test_a_stock_quote_before_schwabs_pre_market_is_shown():
         mark_feed_live(tk)
         publish_daemon_rows(tk)
         assert time_et.session_label(_et("2026-10-07 05:00")) == time_et.CLOSED
-        assert lmp.outage(tk, "LEVELONE_EQUITIES", _et("2026-10-07 05:00").timestamp()) is None
-        assert server.resolve_spot(tk, now=_et("2026-10-07 05:00").timestamp())[0] == native["LAST_PRICE"]
+        at = _et("2026-10-07 05:00").timestamp()
+        assert lmp.outage(tk, "LEVELONE_EQUITIES", at) == "Schwab LEVELONE_EQUITIES feed down during Closed"
+        assert server.resolve_spot(tk, now=at)[0] == native["LAST_PRICE"]
     finally:
         ofs._price_rows.pop(tk, None)
         lmp._by_ticker.pop(tk, None)
