@@ -49,9 +49,10 @@
     var rows = levels;
     // null/'' spot is ABSENT: Number(null) is 0, which drew 'spot 0.00' (audit P0, 2026-09-23)
     var spot = (d.spot == null || d.spot === '') ? NaN : Number(d.spot);
+    var when = d.spot_time_ct ? (' · last trade ' + esc(d.spot_time_ct)) : '';
     var head = '<div class="lv-head"><span>Canonical levels · gen ' + esc(d.generation) + '</span>' +
       '<span class="lv-spot">spot ' + (isFinite(spot) ? spot.toFixed(2) : '—') +
-      (d.spot_source ? ' · ' + esc(d.spot_source) : '') + '</span></div>';
+      (d.spot_source ? ' · ' + esc(d.spot_source) : '') + when + '</span></div>';
     var body = '<table class="lv"><thead><tr><th>Family</th><th>Level</th><th>Price</th>' +
       '<th>Evidence</th><th>Source</th><th>As-of</th></tr></thead><tbody>';
     rows.forEach(function (r) {
