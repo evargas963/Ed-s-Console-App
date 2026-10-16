@@ -164,7 +164,8 @@ from Schwab to the screen (daemon, console, page), are these:
   levels and the wall stays), `tests/test_data_path_chain_spot_time_v1.py` (the chain
   ladder's spot carries Schwab's trade time), `tests/test_data_path_desk_spot_time_v1.py`
   (the trade desk's spot carries Schwab's trade time), `tests/test_data_path_chain_time_v1.py`
-  (the desk map's chain age carries the chain's time); the rest — ENF-22.
+  (the desk map's chain age carries the chain's time), `tests/test_data_path_strike_chain_time_v1.py`
+  (the GEX-by-strike badge carries the chain's time); the rest — ENF-22.
 - **D6. No live screen reads the database.** Every live route serves from memory; the database
   is read at startup, after the close and for research only.
   Enforced by: `tests/test_data_path_rules_v1.py`.
@@ -525,6 +526,7 @@ from Schwab to the screen (daemon, console, page), are these:
    age (`server.get_terrain`, `static/js/ed-trade-desk-map.js`). The key levels
    keep the last wall when that price has stopped, and the rail says OFFLINE
    beside the chain's time (`server.get_terrain`, `#klSrc`, `static/js/ed-gamma-panels.js`); the chain's own age stays `levels_stale`. The
+   GEX-by-strike badge keeps that same time beside its age (`server.terrain_strikes_payload`, `#gbsSrc`). The
    book's top keeps the last bid and ask, and that panel says OFFLINE (`top_outage`).
    The book's quote time and book time stay on that panel (`server.order_flow_microstructure`,
    `static/js/ed-order-flow.js`). The Flow panel keeps the contract's quote time and book time
