@@ -296,17 +296,17 @@ def _served_at(now: float, feed_live: bool) -> dict:
         lmp.record_feed_down()
 
 
-def test_d5_a_feed_down_in_an_open_session_keeps_the_last_price_and_names_the_outage():
-    """RTH, the feed down: the last price stands, marked not live, with the outage reason.
-    The book tops are still blank (NUMBERS, still open)."""
+def test_d5_a_feed_down_in_an_open_session_keeps_the_last_price_and_the_book():
+    """RTH, the feed down: the last price and both tops of book stand, marked not live."""
     s = _served_at(_RTH, feed_live=False)
     assert s["row"]["spot"] == 767.39 and s["row"]["bid"] == 767.38
     assert s["row"]["feed_live"] is False
     assert s["row"]["outage"] == "Schwab LEVELONE_EQUITIES feed down during RTH"
     assert s["spot"][0] == 767.39 and s["spot"][1] == server.SPOT_SOURCE_PLANE
-    assert s["equity_book"]["top_of_book"]["bid"] is None
+    assert s["equity_book"]["top_of_book"]["bid"] == 767.38
+    assert s["equity_book"]["top_of_book"]["ask"] == 767.40
     assert s["equity_book"]["top_outage"] == "Schwab LEVELONE_EQUITIES feed down during RTH"
-    assert s["option_book"]["top_of_book"]["ask"] is None
+    assert s["option_book"]["top_of_book"]["ask"] == _EVENTS[0]["content"]["ASK_PRICE"]
     assert s["option_book"]["top_outage"] == "Schwab LEVELONE_OPTIONS feed down during RTH"
 
 

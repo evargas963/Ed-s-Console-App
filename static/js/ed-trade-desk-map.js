@@ -402,7 +402,7 @@
       src(c, 'Schwab LEVELONE · ' + (!q ? 'no price row yet' : q.outage ? esc(q.outage) : q.trade_time_ct != null ? 'last trade ' + esc(q.trade_time_ct) : 'no trade sent'));
       c.querySelector('.tdm-rows').innerHTML =
         row('Last trade size', q && q.last_size != null ? fmtVol(q.last_size) : '—') +
-        row('Top of book', m && m.top_outage ? esc(m.top_outage) : tob ? (tob.bid_size != null ? fmtVol(tob.bid_size) : '—') + ' × ' + (tob.ask_size != null ? fmtVol(tob.ask_size) : '—') : '—') +
+        row('Top of book', tob ? (tob.bid_size != null ? fmtVol(tob.bid_size) : '—') + ' × ' + (tob.ask_size != null ? fmtVol(tob.ask_size) : '—') : '—') +
         row('Crosses (' + esc(windowLabel()) + ')', cc ? cc.up + ' up · ' + cc.down + ' down' : '—');
     }
     // OPTIONS POSITIONING — full-chain terrain

@@ -2347,11 +2347,11 @@ def order_flow_microstructure(ticker: str, venue: str, now: float) -> dict:
             data["content"] = _content
     except Exception as e:  # streaming state optional — fail closed to 'no_book', never fabricate
         log.debug("microstructure content build failed for %s: %s", t, e)
-    # top of book: the daemon's price row; absent with the outage reason when its feed is down
-    # in an open session, the values as of the close while Closed (docs/DATA_FLOW.md §2 D5)
+    # top of book: the daemon's price row. The last bid and ask stand when the feed is down;
+    # top_outage names that, and the page says OFFLINE (docs/DATA_FLOW.md §2 D5)
     from app.options.order_flow.streaming import price_row
     top_outage = lmp.outage(t, "LEVELONE_EQUITIES", now)
-    _row = price_row(t) if top_outage is None else None
+    _row = price_row(t)
     if _row and _row.get("quote_ts") is not None:
         data["exchange_quote_ts"] = _row["quote_ts"]
     data["top"] = ({k: _row.get(k) for k in ("bid", "ask", "bid_size", "ask_size", "mark")}

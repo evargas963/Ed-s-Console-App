@@ -59,3 +59,21 @@ test('the Book panel shows each served wall candidate size', async ({ page }) =>
   await expect(page.locator('#obBody')).toContainText('bid @ 440.50');
   await expect(page.locator('#obBody')).toContainText('12500');
 });
+
+test('a feed down keeps the last bid and the panel says OFFLINE', async ({ page }) => {
+  const BOOK = { status: 'ok', top_of_book: { bid: 767.38, ask: 767.40, bid_size: 3, ask_size: 5 },
+    top_outage: 'Schwab LEVELONE_EQUITIES feed down during RTH',
+    depth: {}, ages: { book_stale: true }, classification: {}, depth_pressure: { bid: [], ask: [] },
+    wall_candidates: [] };
+  await page.route('**/api/**', (route) => {
+    const url = route.request().url();
+    const body = url.includes('/api/order-flow/microstructure') ? BOOK : { available: false };
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+  });
+  await routeWatchlist(page, ['TSLA']);
+  await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'TSLA'); localStorage.setItem('ed_ws', 'order-flow'); localStorage.setItem('ed_sub', 'book'); } catch (e) {} });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await expect(page.locator('#obBody')).toContainText('767.38');
+  await expect(page.locator('#obBody')).toContainText('OFFLINE');
+  await expect(page.locator('#obBody')).not.toContainText('feed down');
+});

@@ -77,7 +77,7 @@
     var imb = dep(5, 'imbalance');
     var ages = d.ages || {};
     var rows = [
-      ['Bid × Ask', d.top_outage || num(tob.bid) + ' × ' + num(tob.ask), classOf(cls, 'top_of_book.bid')],
+      ['Bid × Ask', num(tob.bid) + ' × ' + num(tob.ask), classOf(cls, 'top_of_book.bid')],
       ['Spread (pts)', num(d.spread_pts), classOf(cls, 'spread_pts')],
       ['Depth 1 imbalance', num(dep(1, 'imbalance'), 3), classOf(cls, 'depth.*.imbalance')],
       ['Book age', ages.book_age_sec != null ? Math.round(ages.book_age_sec) + 's' : '—', classOf(cls, 'ages.book_age_sec')],
@@ -88,8 +88,9 @@
     // LIVE only on the server's explicit "not stale" (ages.book_stale, compute_book_microstructure);
     // an unknown book age is not live
     var bs = ages.book_stale;
+    var badge = d.top_outage ? 'OFFLINE' : (bs === false ? 'LIVE' : bs === true ? 'STALE' : 'AGE UNKNOWN');
     return stage(1, 'td-accent-blue', 'Detect — book microstructure', heroVal, heroUnit, side === 'BID' ? 1 : side === 'ASK' ? -1 : 0,
-      rows, bs === false ? 'LIVE' : bs === true ? 'STALE' : 'AGE UNKNOWN', bs === false ? 'live' : 'stale');
+      rows, badge, d.top_outage || bs !== false ? 'stale' : 'live');
   }
 
   function frameStage(levelsD) {

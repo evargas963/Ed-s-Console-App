@@ -90,8 +90,8 @@
     // row = [label, displayed value, canonical key (data-k), backend classification | null]
     // The depth ladder is classified by the engine under its own wildcard keys ("depth.*.<leaf>").
     var rowsTob = [
-      ['Bid', d.top_outage || num(tob.bid), 'top_of_book.bid', bk('top_of_book.bid')],
-      ['Ask', d.top_outage || num(tob.ask), 'top_of_book.ask', bk('top_of_book.ask')],
+      ['Bid', num(tob.bid), 'top_of_book.bid', bk('top_of_book.bid')],
+      ['Ask', num(tob.ask), 'top_of_book.ask', bk('top_of_book.ask')],
       ['Bid size', int(tob.bid_size), 'top_of_book.bid_size', bk('top_of_book.bid_size')],
       ['Ask size', int(tob.ask_size), 'top_of_book.ask_size', bk('top_of_book.ask_size')],
     ];
@@ -127,7 +127,7 @@
     ];
     h.innerHTML = header(desired, ss, d && d.put_call) +
       '<div class="fl-grid">' +
-      section('Top of book', rowsTob, '') +
+      section('Top of book' + (d.top_outage ? ' · OFFLINE' : ''), rowsTob, '') +
       section('Book microstructure', rowsBook, dim) +
       section('Flow observations', rowsFlow, dim) +
       section('Freshness / health', fresh, '') +
