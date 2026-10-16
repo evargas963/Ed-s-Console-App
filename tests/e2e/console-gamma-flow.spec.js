@@ -221,6 +221,15 @@ test.describe('D — Gamma Flow subview', () => {
     await expect(page.locator('#flowBody .fl-foot')).not.toContainText('native_aggressor_available=false');
   });
 
+  test('a held contract whose feed is down reads OFFLINE and keeps the bid', async ({ page }) => {
+    const ctx = makeContext();
+    ctx.plane = { feed_health: { l1: { state: 'NOT LIVE', age_sec: null }, book: { state: 'NOT LIVE', age_sec: null }, replay: 'stale' } };
+    await setup(page, ctx);
+    await selectCallAndOpenFlow(page);
+    await expect(page.locator('#flowBody .fl-badge')).toHaveText('OFFLINE');
+    await expect(rowV(page, 'top_of_book.bid')).toHaveText(fmt(FIXTURE.top_of_book.bid, 2));
+  });
+
   test('a contract the daemon does not stream reads NOT STREAMED and its data recedes', async ({ page }) => {
     const ctx = makeContext();
     ctx.plane = { subscription_state: 'NOT STREAMED' };
