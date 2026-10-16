@@ -121,9 +121,16 @@
     var dim = ss.label === 'ACTIVE' ? '' : ' fl-dim';   // not-active data recedes (never presented as live)
     // Book/quote ages are the payload's own `ages` block (engine-stamped, classified); feed health
     // is the streaming plane — a binding/health fact with no classification (key undefined = no tag).
+    function whenAge(when, sec) {
+      var age = sec != null ? (Math.round(sec) + 's') : null;
+      if (when != null && age != null) return when + ' · ' + age;
+      if (when != null) return when;
+      if (age != null) return age;
+      return '—';
+    }
     var fresh = [
-      ['Book age', ages.book_age_sec != null ? Math.round(ages.book_age_sec) + 's' : '—', 'ages.book_age_sec', bk('ages.book_age_sec')],
-      ['Quote age', ages.quote_age_sec != null ? Math.round(ages.quote_age_sec) + 's' : '—', 'ages.quote_age_sec', bk('ages.quote_age_sec')],
+      ['Book age', whenAge(d.book_time_ct, ages.book_age_sec), 'ages.book_age_sec', bk('ages.book_age_sec')],
+      ['Quote age', whenAge(d.quote_time_ct, ages.quote_age_sec), 'ages.quote_age_sec', bk('ages.quote_age_sec')],
       ['Replay', fh.replay || '—', 'streaming_plane.feed_health.replay', undefined],
       ['L1 upstream', svc(fh.l1), 'streaming_plane.feed_health.l1', undefined],
       ['Book upstream', svc(fh.book), 'streaming_plane.feed_health.book', undefined],
