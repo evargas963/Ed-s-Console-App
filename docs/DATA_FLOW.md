@@ -160,7 +160,8 @@ from Schwab to the screen (daemon, console, page), are these:
   keeps the last subscription), `tests/test_data_path_quote_time_v1.py` (the row carries
   Schwab's quote time), `tests/test_data_path_level_spot_v1.py` (a down price marks the
   levels and the wall stays), `tests/test_data_path_chain_spot_time_v1.py` (the chain
-  ladder's spot carries Schwab's trade time); the rest — ENF-22.
+  ladder's spot carries Schwab's trade time), `tests/test_data_path_desk_spot_time_v1.py`
+  (the trade desk's spot carries Schwab's trade time); the rest — ENF-22.
 - **D6. No live screen reads the database.** Every live route serves from memory; the database
   is read at startup, after the close and for research only.
   Enforced by: `tests/test_data_path_rules_v1.py`.
@@ -507,7 +508,8 @@ from Schwab to the screen (daemon, console, page), are these:
    values and the header says OFFLINE (`live_price_rows.price_row`, the page's feed chip). The
    age line keeps that price's last trade time (`static/js/ed-core.js`). The key levels
    spot carries that same time (`#klSpot`). The chain ladder's spot carries it too
-   (`server.get_chain`, the chain head). The key levels
+   (`server.get_chain`, the chain head). The trade desk's spot carries it too
+   (`server.levels_payload`, the Right Now line). The key levels
    keep the last wall when that price has stopped, and the rail says OFFLINE
    (`server.get_terrain`, `#klSrc`); the chain's own age stays `levels_stale`. The
    book's top keeps the last bid and ask, and that panel says OFFLINE (`top_outage`). A contract

@@ -2823,6 +2823,7 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict:
         "spot": spot,
         "spot_source": spot_source,
         "spot_as_of_ts_utc": spot_ts,
+        "spot_time_ct": ct_label(spot_ts) if spot_ts is not None else None,
         "generation": snap.generation if snap is not None else None,
         "snapshot_as_of_ts_utc": snap.as_of_ts_utc if snap is not None else None,
         "bar_source": snap.bar_source if snap is not None else None,
