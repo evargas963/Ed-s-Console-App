@@ -411,7 +411,8 @@ _held_options: "set[str]" = set()
 def _drop_released_options(now: float) -> None:
     """Forget a contract the daemon stopped streaming at `now` while its Schwab socket is open
     (the option rule moved off it). A socket that has closed keeps the last values: they stand,
-    marked not live, until the socket holds a set again."""
+    marked not live, until the socket holds a set again. A service the heartbeat does not
+    name is missing, not an empty set."""
     global _held_options
     feed = _lmp.feed_now(now)
     if feed.status is None or feed.status.get("schwab_socket_open") is not True:
