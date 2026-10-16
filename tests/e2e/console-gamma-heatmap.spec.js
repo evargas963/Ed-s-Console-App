@@ -650,6 +650,18 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#klBody')).not.toHaveClass(/recede/);
   });
 
+  test('key levels rail keeps the chain time when the price has stopped', async ({ page }) => {
+    const CHAIN_TIME = 'Fri 09/25 06:59 PM CT';
+    await page.route('**/api/terrain?**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify(Object.assign({}, TERRAIN, {
+        levels_stale: false, levels_age_sec: 4, levels_time_ct: CHAIN_TIME, call_wall: 586,
+        spot_feed_live: false, spot_outage: 'Schwab LEVELONE_EQUITIES feed down during RTH' })) }));
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#klCall')).toHaveText('586.00');
+    await expect(page.locator('#klSrc')).toHaveText(CHAIN_TIME + ' · OFFLINE');
+    await expect(page.locator('#klSrc')).toHaveAttribute('title', 'Schwab LEVELONE_EQUITIES feed down during RTH');
+  });
+
   test('PCR: the selected expiry re-scopes the ratio; an expiry the chain has no ratio for shows none', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#klPcr')).toHaveText('1.02');
