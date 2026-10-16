@@ -9,7 +9,7 @@ book as Schwab last sent it) and ``book_live`` (whether the feed delivers the bo
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Optional
 
 import numpy as np
 
@@ -36,15 +36,6 @@ OF_BOOK_DEPTH_DEEP: int = 5
 # ─────────────────────────────────────────────────────────────────────────────
 # DATA EXTRACTION — safe access to nested structures
 # ─────────────────────────────────────────────────────────────────────────────
-
-def _schwab_int(val: Any) -> Optional[int]:
-    """A whole-number Schwab field (size, days, epoch ms) as sent."""
-    v = schwab_number(val)
-    return int(v) if v is not None else None
-
-
-
-
 
 
 def _iter_content(data: dict) -> list:
@@ -229,8 +220,8 @@ def _extract_canonical_book(data: dict) -> dict:
     snapshot = _latest_book_snapshot(_iter_content(data))
     bid, ask, bid_leaf, ask_leaf = _resolve_bid_ask_prices(data)
     t = _top(data)
-    bid_size = _schwab_int(t.get("bid_size"))
-    ask_size = _schwab_int(t.get("ask_size"))
+    bid_size = schwab_count(t.get("bid_size"))
+    ask_size = schwab_count(t.get("ask_size"))
 
     bid_levels = _sorted_valid_levels(_iter_bids_levels(snapshot), descending=True) if snapshot else []
     ask_levels = _sorted_valid_levels(_iter_asks_levels(snapshot), descending=False) if snapshot else []
