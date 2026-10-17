@@ -454,9 +454,9 @@
       src(c, 'Schwab option chain · ' + (!t || t.error ? '—' : esc(chainAgeLabel(t, age(t.levels_age_sec) + ' old'))));
       c.querySelector('.tdm-rows').innerHTML =
         (im && im.dte_used != null ? row('Move from', 'first expiry ≥1 day out (' + num(im.dte_used, 0) + 'd)') : '') +
-        row('ATR daily', t && t.atr_daily != null ? num(t.atr_daily) : esc((t && t.atr_daily_reason) || '—')) +
-        row('ATR weekly', t && t.atr_weekly != null ? num(t.atr_weekly) : esc((t && t.atr_weekly_reason) || '—')) +
-        row('ATR monthly', t && t.atr_monthly != null ? num(t.atr_monthly) : esc((t && t.atr_monthly_reason) || '—')) +
+        row('ATR daily', num(t && t.atr_daily)) +
+        row('ATR weekly', num(t && t.atr_weekly)) +
+        row('ATR monthly', num(t && t.atr_monthly)) +
         row('VIX', vixText(vix));
     }
     paintCardCharts();

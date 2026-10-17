@@ -1485,7 +1485,7 @@ def _atr(ticker: str, now: datetime) -> "Atr":
     """The ticker's daily, weekly and monthly ATR at `now`: Schwab's daily candles as the bar
     writer holds them (_daily; none from Schwab yet: none held) up to yesterday, and today's
     candle rolled up live from today's 1-minute bars inside Schwab's regular session for today
-    (none before it opens). Too few reads as None with why."""
+    (none before it opens). Too few reads as None."""
     tk = ticker_storage_key(ticker)
     today = now.astimezone(ET).date()
     s = session(today.isoformat())
@@ -1498,11 +1498,9 @@ def _atr(ticker: str, now: datetime) -> "Atr":
 
 
 def _atr_fields(tk: str, now: datetime) -> dict:
-    """atr_daily / atr_weekly / atr_monthly at `now`, with the reason of each that is absent."""
+    """atr_daily / atr_weekly / atr_monthly at `now`. A horizon that cannot be computed is None."""
     a = _atr(tk, now)
-    return {"atr_daily": a.daily, "atr_weekly": a.weekly, "atr_monthly": a.monthly,
-            "atr_daily_reason": a.daily_reason, "atr_weekly_reason": a.weekly_reason,
-            "atr_monthly_reason": a.monthly_reason}
+    return {"atr_daily": a.daily, "atr_weekly": a.weekly, "atr_monthly": a.monthly}
 
 
 #: WHICH producer computed a set of levels. The radar deliberately merges two of them, and an

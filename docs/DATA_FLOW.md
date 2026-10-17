@@ -400,8 +400,8 @@ from Schwab to the screen (daemon, console, page), are these:
   Schwab's daily candles before today, today's candle rolled up live from today's 1-minute bars
   inside Schwab's regular window, and the weeks and months those make. The day-over-day
   open-interest change has one producer: the forces, from the stored captures (`/api/forces`,
-  shown on the Trade Desk). An ATR that cannot be computed is served absent with its reason
-  (how many days, weeks or months of Schwab's daily candles are held; ATR(14) needs 15). None of these rules names a ticker; the
+  shown on the Trade Desk). An ATR that cannot be computed is absent (`server._atr_fields`); the
+  screen draws "-". None of these rules names a ticker; the
   watchlist decides which tickers are fetched and priced. A viewed
   ticker is one an open page shows (its `/api/changes` stream, on any workspace, open while the
   stream runs): every streamed tick queues a reprice on the pricing thread (the ticks that arrive
@@ -553,10 +553,11 @@ from Schwab to the screen (daemon, console, page), are these:
    (`server.terrain_staleness`); some calculations still drop
    contracts. The §3 descriptions of these are today's behavior. Each remaining place is
    listed in PR #515's description and fixed by `ACTIVE_PROGRAM.md` NUMBERS.
-6. **Missing values served with a reason** (D5, operator 2026-10-12: a missing value shows "-"): an
-   ATR that cannot be computed, the levels with no price and the outage words are served with
-   their reason (§3 above), and a screen may draw it; each is fixed by `ACTIVE_PROGRAM.md` DASH.
-   The gamma heatmap's cells draw "-".
+6. **Missing values served with a reason** (D5, operator 2026-10-12: a missing value shows "-";
+   operator 2026-10-16: one producer, the number or nothing). An ATR that cannot be computed and
+   a same-day absolute-gamma strike with no same-day book are absent (`server._atr_fields`,
+   `terrain_engine.compute_terrain`); the screen draws "-". The levels with no price and the
+   outage words are still served with their reason (§3 above). The gamma heatmap's cells draw "-".
 
 The work that closes these gaps, in order, is `ACTIVE_PROGRAM.md`.
 

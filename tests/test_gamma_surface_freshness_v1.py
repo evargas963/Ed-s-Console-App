@@ -94,22 +94,22 @@ def test_a_ticker_open_on_a_page_is_viewed_until_the_page_leaves_it(published, t
 
 
 @pytest.mark.parametrize("tk", [_ON, _OFF])
-def test_every_ticker_is_published_with_the_same_fields_and_atr_served_with_its_reason(published, tk):
+def test_every_ticker_is_published_with_the_same_fields_and_atr_absent_without_a_sentence(published, tk):
     """On the watchlist or not, a publication carries the same fields: the chain basis, and ATR
-    (from the bars, none here) served absent with its reason."""
+    (from the bars, none here) absent, with no sentence in its place."""
     t = server.get_terrain(ticker=tk)
     assert t["chain_basis"] == CAPTURE_BASIS
-    for horizon, unit in (("daily", "days"), ("weekly", "weeks"), ("monthly", "months")):
-        assert t[f"atr_{horizon}"] is None and f"0 {unit}" in t[f"atr_{horizon}_reason"], horizon
+    for horizon in ("daily", "weekly", "monthly"):
+        assert t[f"atr_{horizon}"] is None and f"atr_{horizon}_reason" not in t, horizon
     assert _call(tk)["available"] is True
 
 
-def test_with_no_levels_the_atr_is_served_with_its_reason():
+def test_with_no_levels_the_atr_is_absent():
     """ATR is from the bars, not the chain: a ticker with no levels published still serves it
-    (here absent, with its reason)."""
+    (here absent, and no sentence in its place)."""
     import server
     t = server.get_terrain(ticker="ZZNOLEVELSATR")
-    assert t["atr_daily"] is None and "0 days" in t["atr_daily_reason"]
+    assert t["atr_daily"] is None and "atr_daily_reason" not in t
 
 
 def test_fallback_is_labelled_not_live_never_intraday():

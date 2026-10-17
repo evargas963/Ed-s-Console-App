@@ -69,7 +69,7 @@
     txt('klCall', px(d.call_wall));
     txt('klPut', px(d.put_wall));
     txt('klAbs', px(d.absolute_gamma_strike));
-    txt('klAbs0', d.zero_dte_abs_gamma_strike == null ? (d.zero_dte_abs_gamma_reason || '—') : px(d.zero_dte_abs_gamma_strike));
+    txt('klAbs0', px(d.zero_dte_abs_gamma_strike));
     txt('klPeak', px(d.net_gex_peak));
     // Net GEX / 1% move — signed $, coloured by sign (formatting only)
     var net = document.getElementById('klNet');
