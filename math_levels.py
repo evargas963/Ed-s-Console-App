@@ -83,12 +83,11 @@ def bs_gamma(spot: float, strike: float, t_years: float, sigma: float) -> float 
     """Black-Scholes gamma per share, r = q = 0. The same gamma the profile sums."""
     if spot <= 0 or strike <= 0 or t_years <= 0 or sigma <= 0:
         return None
-    try:
-        vt = sigma * math.sqrt(t_years)
-        d1 = (math.log(spot / strike) + 0.5 * sigma * sigma * t_years) / vt
-        g = _norm_pdf(d1) / (spot * vt)
-    except (ValueError, ZeroDivisionError, OverflowError):
+    vt = sigma * math.sqrt(t_years)
+    d1 = (math.log(spot / strike) + 0.5 * sigma * sigma * t_years) / vt
+    if not math.isfinite(d1):
         return None
+    g = _norm_pdf(d1) / (spot * vt)
     return g if math.isfinite(g) else None
 
 
@@ -97,12 +96,11 @@ def bs_delta(spot: float, strike: float, t_years: float, sigma: float, *,
     """Black-Scholes delta per share, r = q = 0. A put is the call delta minus one."""
     if spot <= 0 or strike <= 0 or t_years <= 0 or sigma <= 0:
         return None
-    try:
-        vt = sigma * math.sqrt(t_years)
-        d1 = (math.log(spot / strike) + 0.5 * sigma * sigma * t_years) / vt
-        call_delta = 0.5 * (1.0 + math.erf(d1 / math.sqrt(2.0)))
-    except (ValueError, ZeroDivisionError, OverflowError):
+    vt = sigma * math.sqrt(t_years)
+    d1 = (math.log(spot / strike) + 0.5 * sigma * sigma * t_years) / vt
+    if not math.isfinite(d1):
         return None
+    call_delta = 0.5 * (1.0 + math.erf(d1 / math.sqrt(2.0)))
     d = call_delta if call else call_delta - 1.0
     return d if math.isfinite(d) else None
 

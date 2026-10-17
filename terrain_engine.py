@@ -739,6 +739,14 @@ SAME_DAY_LEVELS = (
 )
 
 
+def _listed_expiry_day(ct: dict) -> str | None:
+    """Schwab's expirationDate, the calendar day, or None when it was not sent as text."""
+    raw = ct.get("expirationDate")
+    if not isinstance(raw, str) or len(raw) < 10:
+        return None
+    return raw[:10]
+
+
 def same_day_levels(ticker: str, contracts: list[dict] | None, spot: float | None,
                     *, now: datetime) -> dict[str, float | None]:
     """Nearest listed expiry, its open interest and implied volatility kept, gamma and
@@ -755,8 +763,10 @@ def same_day_levels(ticker: str, contracts: list[dict] | None, spot: float | Non
     for ct in contracts:
         if not isinstance(ct, dict):
             continue
-        exp = str(ct.get("expirationDate") or "")[:10]
-        if len(exp) == 10 and exp >= today and (front is None or exp < front):
+        exp = _listed_expiry_day(ct)
+        if exp is None or exp < today:
+            continue
+        if front is None or exp < front:
             front = exp
     if front is None:
         return blank
@@ -764,7 +774,7 @@ def same_day_levels(ticker: str, contracts: list[dict] | None, spot: float | Non
     priced: list[dict] = []
     repriced: list[dict] = []
     for ct in contracts:
-        if not isinstance(ct, dict) or str(ct.get("expirationDate") or "")[:10] != front:
+        if not isinstance(ct, dict) or _listed_expiry_day(ct) != front:
             continue
         copied = dict(ct)
         row = _contract_inputs(ct, now, t_years=t_close)
