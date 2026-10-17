@@ -39,19 +39,20 @@ def test_every_ticker_gets_same_day_levels_from_its_nearest_expiry():
 
 
 def test_open_interest_without_volatility_withholds_that_strike():
-    """A second contract at the call wall, with open interest and no volatility, is not
-    dropped. The strike stops being the call wall."""
+    """Two contracts at the call wall, one of them open interest with no volatility.
+    That strike is not a same-day wall and not a same-day charm wall."""
     book = SPY_0DTE
-    wall = compute_terrain(book.ticker, book.chain, book.spot, now=book.now).to_dict()
-    strike = wall["same_day"]["call_wall"]
+    strike = compute_terrain(book.ticker, book.chain, book.spot, now=book.now).to_dict()["same_day"]["call_wall"]
     assert strike is not None
-    chain = [dict(ct) for ct in book.chain]
-    seed = next(ct for ct in chain
+    seed = next(ct for ct in book.chain
                 if str(ct.get("putCall") or "").upper() == "CALL"
                 and float(ct["strikePrice"]) == float(strike))
     withheld = dict(seed)
     withheld["volatility"] = None
     withheld["openInterest"] = 100000
-    chain.append(withheld)
-    again = compute_terrain(book.ticker, chain, book.spot, now=book.now).to_dict()
-    assert again["same_day"]["call_wall"] != strike
+    again = compute_terrain(book.ticker, [dict(seed), withheld], book.spot, now=book.now).to_dict()
+    same = again["same_day"]
+    for name in ("call_wall", "put_wall", "absolute_gamma_strike", "net_gex_peak",
+                 "hvp", "lvp", "key_delta_strike", "call_charm_wall", "put_charm_wall",
+                 "gamma_flip", "gsf", "grc"):
+        assert same[name] != float(strike), name

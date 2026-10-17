@@ -773,28 +773,43 @@ def same_day_levels(ticker: str, contracts: list[dict] | None, spot: float | Non
     parsed: list = []
     priced: list[dict] = []
     repriced: list[dict] = []
+    built: list[tuple[dict, tuple | None, float | None]] = []
+    blocked: set[float] = set()
+    from numeric_contract import schwab_count, schwab_number
     for ct in contracts:
         if not isinstance(ct, dict) or _listed_expiry_day(ct) != front:
             continue
         copied = dict(ct)
+        strike = schwab_number(ct.get("strikePrice"))
         row = _contract_inputs(ct, now, t_years=t_close)
         gamma = delta = None
         if isinstance(row, tuple):
-            strike, _oi, _mult, t_years, sigma, sign = row
-            gamma = bs_gamma(float(spot), strike, t_years, sigma)
-            delta = bs_delta(float(spot), strike, t_years, sigma, call=sign > 0)
+            _strike, _oi, _mult, t_years, sigma, sign = row
+            gamma = bs_gamma(float(spot), _strike, t_years, sigma)
+            delta = bs_delta(float(spot), _strike, t_years, sigma, call=sign > 0)
         if gamma is None or delta is None:
-            # The open interest stays. No rebuilt greek, so the exposure book withholds
-            # the strike instead of naming it from whatever sibling still has one.
+            copied["gamma"] = None
+            copied["delta"] = None
+            oi = schwab_count(ct.get("openInterest"))
+            if strike is not None and oi is not None and oi > 0:
+                blocked.add(float(strike))
+            built.append((copied, None, strike))
+            continue
+        copied["gamma"] = gamma
+        copied["delta"] = delta
+        built.append((copied, row, strike))
+    for copied, row, strike in built:
+        if strike is not None and float(strike) in blocked:
+            # One contract at this strike has open interest and no rebuilt greek.
+            # No sibling names the strike either: not a wall, and not a charm wall.
             copied["gamma"] = None
             copied["delta"] = None
             repriced.append(copied)
             continue
-        copied["gamma"] = gamma
-        copied["delta"] = delta
-        parsed.append(row)
-        priced.append(copied)
         repriced.append(copied)
+        if row is not None:
+            parsed.append(row)
+            priced.append(copied)
     if not repriced:
         return blank
     books = exposure_books(repriced, spot=spot, now=now)
