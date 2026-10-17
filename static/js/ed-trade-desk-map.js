@@ -325,9 +325,8 @@
   // OI change, DEX and charm below/above from the last two market days' captures (/api/forces)
   function forcesRows() {
     var ss = S.strikes && S.strikes.today_side_sums, f = S.forces || {};
-    var out = row('GEX below / above', ss ? usd(ss.gex_below) + ' / ' + usd(ss.gex_above) : '—');
-    if (f.available !== true) return out + row('ΔOI · DEX · charm', esc(f.reason || '—'));
-    return out + row('ΔOI below / above', num(f.doi_below, 0) + ' / ' + num(f.doi_above, 0)) +
+    return row('GEX below / above', ss ? usd(ss.gex_below) + ' / ' + usd(ss.gex_above) : '—') +
+      row('ΔOI below / above', num(f.doi_below, 0) + ' / ' + num(f.doi_above, 0)) +
       row('DEX below / above', usd(f.dex_below_dollars) + ' / ' + usd(f.dex_above_dollars)) +
       row('Charm below / above', num(f.charm_below, 4) + ' / ' + num(f.charm_above, 4));
   }
