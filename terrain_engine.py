@@ -51,6 +51,7 @@ from math_levels import (
 )
 from time_et import ET, option_close_product, time_to_expiry_years
 from math_exposure_core import key_level_strikes_with_gamma
+from numeric_contract import schwab_count, schwab_number
 from terrain_read import build_terrain_read
 
 #: Payload schema version — bump on any field change so the UI can fail closed.
@@ -775,7 +776,6 @@ def same_day_levels(ticker: str, contracts: list[dict] | None, spot: float | Non
     repriced: list[dict] = []
     built: list[tuple[dict, tuple | None, float | None]] = []
     blocked: set[float] = set()
-    from numeric_contract import schwab_count, schwab_number
     for ct in contracts:
         if not isinstance(ct, dict) or _listed_expiry_day(ct) != front:
             continue

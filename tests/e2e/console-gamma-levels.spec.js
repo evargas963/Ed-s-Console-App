@@ -106,6 +106,6 @@ test.describe('D — Gamma Levels view', () => {
     const row = page.locator('#levelsBody .zd-row', { hasText: 'Call wall' });
     await expect(row.locator('.lv-px').nth(0)).toHaveText('600.00');
     await expect(row.locator('.lv-px').nth(1)).toHaveText('580.00');
-    await expect(row.locator('.lv-age')).toHaveText('12:32:07 CT · 4s');
+    await expect(row.locator('.lv-age')).toHaveText('12:32:07 CT');
   });
 });

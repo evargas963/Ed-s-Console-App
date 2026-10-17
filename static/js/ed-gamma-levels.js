@@ -80,18 +80,13 @@
         '<th>As-of</th></tr></thead><tbody>';
       zd.forEach(function (r) {
         var st = (r && r.staleness) ? r.staleness : null;
-        var ageWord = (st && st.age_sec != null) ? (Math.round(st.age_sec) + 's') : null;
-        var ageWhen = (st && st.as_of_time_ct != null) ? st.as_of_time_ct : null;
-        var age = '—';
-        if (ageWhen != null && ageWord != null) age = ageWhen + ' · ' + ageWord;
-        else if (ageWhen != null) age = ageWhen;
-        else if (ageWord != null) age = ageWord;
+        var when = (st && st.as_of_time_ct != null) ? st.as_of_time_ct : '—';
         var stale = (st && st.stale) ? ' stale' : '';
         var name = (r && r.label != null) ? r.label : ((r && r.id != null) ? r.id : '—');
         body += '<tr class="zd-row"><td>' + esc(name) + '</td>' +
           '<td class="lv-px">' + px(r.carried) + '</td>' +
           '<td class="lv-px">' + px(r.price) + '</td>' +
-          '<td class="lv-age' + stale + '">' + esc(age) + '</td></tr>';
+          '<td class="lv-age' + stale + '">' + esc(when) + '</td></tr>';
       });
       body += '</tbody></table>';
     }
