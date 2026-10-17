@@ -40,9 +40,30 @@
 
   function render(host, d) {
     var levels = (d && d.levels) || [];
+    var zdHtml = '';
+    var zd = (d && d.zero_dte) ? d.zero_dte : null;
+    if (zd && zd.length) {
+      zdHtml = '<div class="lv-head"><span>0DTE</span>' +
+        '<span>nearest expiry, clock cut to today\'s option close</span></div>' +
+        '<table class="lv zd"><thead><tr><th>Level</th><th>As carried</th><th>0DTE</th>' +
+        '<th>As-of</th></tr></thead><tbody>';
+      zd.forEach(function (r) {
+        var st = (r && r.staleness) ? r.staleness : null;
+        var when = (st && st.as_of_time_ct != null) ? st.as_of_time_ct : '—';
+        var stale = (st && st.stale) ? ' stale' : '';
+        var name = (r && r.label != null) ? r.label : ((r && r.id != null) ? r.id : '—');
+        zdHtml += '<tr class="zd-row"><td>' + esc(name) + '</td>' +
+          '<td class="lv-px">' + px(r.carried) + '</td>' +
+          '<td class="lv-px">' + px(r.price) + '</td>' +
+          '<td class="lv-age' + stale + '">' + esc(when) + '</td></tr>';
+      });
+      zdHtml += '</tbody></table>';
+    }
     if (!levels.length) {
+      var degraded = (d && d.degraded) ? d.degraded : null;
+      var note = (degraded && degraded.length) ? degraded.join(', ') : 'the levels snapshot is empty for this symbol';
       host.innerHTML = '<div class="placeholder"><div class="big">No canonical levels</div>' +
-        '<div class="sm">' + esc((d && (d.degraded || []).join(', ')) || 'the levels snapshot is empty for this symbol') + '</div></div>';
+        '<div class="sm">' + esc(note) + '</div></div>' + zdHtml;
       return;
     }
     // served in ladder order (price, highest first)
@@ -72,24 +93,7 @@
         '<td class="lv-age' + stale + '">' + esc(age) + '</td></tr>';
     });
     body += '</tbody></table>';
-    var zd = (d && d.zero_dte) ? d.zero_dte : null;
-    if (zd && zd.length) {
-      body += '<div class="lv-head"><span>0DTE</span>' +
-        '<span>nearest expiry, clock cut to today\'s option close</span></div>';
-      body += '<table class="lv zd"><thead><tr><th>Level</th><th>As carried</th><th>0DTE</th>' +
-        '<th>As-of</th></tr></thead><tbody>';
-      zd.forEach(function (r) {
-        var st = (r && r.staleness) ? r.staleness : null;
-        var when = (st && st.as_of_time_ct != null) ? st.as_of_time_ct : '—';
-        var stale = (st && st.stale) ? ' stale' : '';
-        var name = (r && r.label != null) ? r.label : ((r && r.id != null) ? r.id : '—');
-        body += '<tr class="zd-row"><td>' + esc(name) + '</td>' +
-          '<td class="lv-px">' + px(r.carried) + '</td>' +
-          '<td class="lv-px">' + px(r.price) + '</td>' +
-          '<td class="lv-age' + stale + '">' + esc(when) + '</td></tr>';
-      });
-      body += '</tbody></table>';
-    }
+    body += zdHtml;
     // carried VWAP curve + honest absences/degradation, disclosed (never fabricated)
     var vwapN = (d.vwap_series || []).length;
     var foot = '<div class="lv-foot">';
