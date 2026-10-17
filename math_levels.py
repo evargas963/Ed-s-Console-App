@@ -79,6 +79,34 @@ def _norm_pdf(x: float) -> float:
     return math.exp(-0.5 * x * x) / _SQRT_2PI
 
 
+def bs_gamma(spot: float, strike: float, t_years: float, sigma: float) -> float | None:
+    """Black-Scholes gamma per share, r = q = 0. The same gamma the profile sums."""
+    if spot <= 0 or strike <= 0 or t_years <= 0 or sigma <= 0:
+        return None
+    try:
+        vt = sigma * math.sqrt(t_years)
+        d1 = (math.log(spot / strike) + 0.5 * sigma * sigma * t_years) / vt
+        g = _norm_pdf(d1) / (spot * vt)
+    except (ValueError, ZeroDivisionError, OverflowError):
+        return None
+    return g if math.isfinite(g) else None
+
+
+def bs_delta(spot: float, strike: float, t_years: float, sigma: float, *,
+             call: bool) -> float | None:
+    """Black-Scholes delta per share, r = q = 0. A put is the call delta minus one."""
+    if spot <= 0 or strike <= 0 or t_years <= 0 or sigma <= 0:
+        return None
+    try:
+        vt = sigma * math.sqrt(t_years)
+        d1 = (math.log(spot / strike) + 0.5 * sigma * sigma * t_years) / vt
+        call_delta = 0.5 * (1.0 + math.erf(d1 / math.sqrt(2.0)))
+    except (ValueError, ZeroDivisionError, OverflowError):
+        return None
+    d = call_delta if call else call_delta - 1.0
+    return d if math.isfinite(d) else None
+
+
 
 
 def bs_vanna(spot: float, strike: float, t_years: float, sigma: float,
@@ -198,14 +226,15 @@ def contract_inputs(contracts: List[dict], now: datetime) -> tuple[list, dict]:
     return priced, unpriced
 
 
-def _contract_inputs(ct: dict, now: datetime) -> tuple[float, float, float, float, float, int] | str:
+def _contract_inputs(ct: dict, now: datetime, *,
+                     t_years: float | None = None) -> tuple[float, float, float, float, float, int] | str:
     """(strike, oi, mult, t_years, sigma, sign), or the reason it cannot be priced.
 
     `t_years` is the canonical INTRADAY time-to-expiry (time_et.time_to_expiry_years): to the
     contract's settlement (the option market's regular close Schwab's /markets sent for its
     expiry date, or its open for Schwab's settlementType "A"; Schwab's expirationDate for a
     PM-settled contract on a date /markets does not answer), ACT/365, from `now` (the caller's
-    valuation instant). Replaces the old max(dte,0.5)/365 0.5-DAY floor, which over-stated T by up to
+    valuation instant), unless the caller passes `t_years`. Replaces the old max(dte,0.5)/365 0.5-DAY floor, which over-stated T by up to
     24x near the close and flattened the real 1/sqrt(T) gamma/charm spike (RC-42; validated
     against Schwab-reported gamma). Offline/replay callers pass `now` = the snapshot time.
     """
@@ -226,9 +255,10 @@ def _contract_inputs(ct: dict, now: datetime) -> tuple[float, float, float, floa
     sigma = schwab_iv_to_sigma(schwab_number(ct.get("volatility")))  # single source: math_exposure_core
     if sigma is None or sigma <= 0:
         return "no_volatility"
-    t_years = time_to_expiry_years(ct.get("expirationDate"), now=now,
-                                   settlement_type=ct.get("settlementType"))
     if t_years is None:
+        t_years = time_to_expiry_years(ct.get("expirationDate"), now=now,
+                                       settlement_type=ct.get("settlementType"))
+    if t_years is None or t_years <= 0:
         am_unanswered = (ct.get("settlementType") == SETTLEMENT_AM
                          and session(str(ct.get("expirationDate"))[:10]) is None)
         return NO_EXPIRY_SESSION if am_unanswered else "expired_or_no_expiry"

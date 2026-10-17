@@ -645,3 +645,13 @@ behavior (AGENTS.md).
 9. **No trade side** (operator 2026-09-28, ONE-12). Schwab supplies no aggressor side, so no
    inferred buy/sell side (tick rule, quote rule) is computed or shown as order flow.
    Enforced by: no machine check — ENF-16.
+10. **Same-day levels, every ticker** (operator 2026-10-17). One producer
+    (`terrain_engine.same_day_levels`). The nearest listed expiry keeps its open interest and
+    implied volatility. Gamma and delta are rebuilt, Black-Scholes with no rate and no dividend,
+    at the wall-clock time from the valuation instant to that day's option close. The close is
+    the regular window Schwab's /markets sent: the index window for an index it names with "$"
+    and for SPY, QQQ and IWM, the equity-option window for every other ticker. No window held,
+    or a close already passed, leaves the level absent. The whole-book levels are unchanged.
+    The heatmap key levels show the same-day flip, call wall, put wall, absolute-gamma pin and
+    net gamma peak under 0DTE. The levels list shows every same-day level beside the level it
+    reprices. Enforced by: `tests/test_data_path_same_day_levels_v1.py`.

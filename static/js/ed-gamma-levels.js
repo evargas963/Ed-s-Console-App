@@ -72,6 +72,19 @@
         '<td class="lv-age' + stale + '">' + esc(age) + '</td></tr>';
     });
     body += '</tbody></table>';
+    var zd = (d && d.zero_dte) ? d.zero_dte : null;
+    if (zd && zd.length) {
+      body += '<div class="lv-head"><span>0DTE</span>' +
+        '<span>nearest expiry, clock cut to today\'s option close</span></div>';
+      body += '<table class="lv zd"><thead><tr><th>Level</th><th>As carried</th><th>0DTE</th>' +
+        '</tr></thead><tbody>';
+      zd.forEach(function (r) {
+        body += '<tr class="zd-row"><td>' + esc(r.label || r.id || '—') + '</td>' +
+          '<td class="lv-px">' + px(r.carried) + '</td>' +
+          '<td class="lv-px">' + px(r.price) + '</td></tr>';
+      });
+      body += '</tbody></table>';
+    }
     // carried VWAP curve + honest absences/degradation, disclosed (never fabricated)
     var vwapN = (d.vwap_series || []).length;
     var foot = '<div class="lv-foot">';
