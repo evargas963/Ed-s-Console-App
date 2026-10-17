@@ -626,8 +626,9 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#klPut')).toHaveText('580.00');
     await expect(page.locator('#klNet')).toHaveText('$2.1B');
     await expect(page.locator('#klRegime')).toContainText('Long γ');
-    // NOT_PROVEN items are honestly labelled, never fabricated
-    await expect(page.locator('#klBody')).toContainText('NOT PROVEN');
+    // a label with no served number is not on the rail
+    await expect(page.locator('#klBody')).not.toContainText('NOT PROVEN');
+    await expect(page.locator('#klAbs0')).toHaveCount(0);
     // PCR: with no expiry selected, the whole book's put/call OI ratio as served (pcr_all), its
     // scope disclosed -- the page no longer picks an expiry itself
     await expect(page.locator('#klPcr')).toHaveText('1.02');
@@ -1217,7 +1218,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#hPx')).toHaveText('601.23');
   });
 
-  test('the Key Levels rail shows the served 0DTE levels under the regular ones', async ({ page }) => {
+  test('the Key Levels rail shows regular and 0DTE in the same row', async ({ page }) => {
     await page.route('**/api/terrain?**', (route) => route.fulfill({
       status: 200, contentType: 'application/json',
       body: JSON.stringify(Object.assign({}, TERRAIN, {
@@ -1226,12 +1227,17 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       })),
     }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('#klBody .kl-sec', { hasText: '0DTE' })).toBeVisible();
+    await expect(page.locator('#klBody .kl-pairs .h').nth(0)).toHaveText('Regular');
+    await expect(page.locator('#klBody .kl-pairs .h').nth(1)).toHaveText('0DTE');
+    await expect(page.locator('#klAbs0')).toHaveCount(0);
+    await expect(page.locator('#klBody')).not.toContainText('0DTE γ pin');
+    await expect(page.locator('#klFlip + #kl0Flip')).toHaveCount(1);
     await expect(page.locator('#kl0Flip')).toHaveText('571.25');
     await expect(page.locator('#kl0Call')).toHaveText('575.00');
     await expect(page.locator('#kl0Put')).toHaveText('570.00');
     await expect(page.locator('#kl0Abs')).toHaveText('572.50');
     await expect(page.locator('#kl0Peak')).toHaveText('570.00');
+    await expect(page.locator('#klNet')).toBeVisible();
   });
 
   test('the Key Levels rail updates on a levels push', async ({ page }) => {

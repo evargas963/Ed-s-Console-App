@@ -1,7 +1,7 @@
 /* Ed Console — Options/Gamma "Levels" view (D). PRESENTATION ONLY.
-   Serializes the canonical /api/levels contract (the ONE materialized PriceLevelSnapshot:
-   per-level price/family/evidence_tier/provenance/staleness + carried VWAP curve). It renders the
-   contract verbatim and computes NO levels — /api/levels is the authority. */
+   One glance table: the level, the regular price, and the same-day price. The page
+   joins rows the server already paired (zero_dte carries both prices) and draws the
+   other served levels under them. It computes no level. /api/levels is the authority. */
 (function () {
   'use strict';
 
@@ -38,71 +38,84 @@
   var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(ticker(), signal); });
   function load() { _loader.trigger(ticker()); }
 
+  function levelName(r) {
+    if (r.label != null && r.label !== '') return r.label;
+    if (r.id != null && r.id !== '') return r.id;
+    return '—';
+  }
+  function timeHtml(when) {
+    if (when == null || when === '') return '';
+    return '<div class="lv-age">' + esc(when) + '</div>';
+  }
+  function pairRow(name, nowPrice, nowWhen, sameDay, sameWhen, paired) {
+    var cls = paired ? 'lv-row zd-row' : 'lv-row';
+    var third = paired ? px(sameDay) : '—';
+    var thirdWhen = paired ? timeHtml(sameWhen) : '';
+    return '<tr class="' + cls + '"><td>' + esc(name) + '</td>' +
+      '<td class="lv-px">' + px(nowPrice) + timeHtml(nowWhen) + '</td>' +
+      '<td class="lv-px">' + third + thirdWhen + '</td></tr>';
+  }
   function render(host, d) {
-    var levels = (d && d.levels) || [];
-    var zdHtml = '';
-    var zd = (d && d.zero_dte) ? d.zero_dte : null;
-    if (zd && zd.length) {
-      zdHtml = '<div class="lv-head"><span>0DTE</span>' +
-        '<span>nearest expiry, clock cut to today\'s option close</span></div>' +
-        '<table class="lv zd"><thead><tr><th>Level</th><th>As carried</th><th>0DTE</th>' +
-        '<th>As-of</th></tr></thead><tbody>';
+    var levels = (d && d.levels != null) ? d.levels : null;
+    var zd = (d && d.zero_dte != null) ? d.zero_dte : null;
+    var shown = {};
+    var body = '';
+    if (zd != null) {
       zd.forEach(function (r) {
-        var st = (r && r.staleness) ? r.staleness : null;
-        var when = (st && st.as_of_time_ct != null) ? st.as_of_time_ct : '—';
-        var stale = (st && st.stale) ? ' stale' : '';
-        var name = (r && r.label != null) ? r.label : ((r && r.id != null) ? r.id : '—');
-        zdHtml += '<tr class="zd-row"><td>' + esc(name) + '</td>' +
-          '<td class="lv-px">' + px(r.carried) + '</td>' +
-          '<td class="lv-px">' + px(r.price) + '</td>' +
-          '<td class="lv-age' + stale + '">' + esc(when) + '</td></tr>';
+        if (!r) return;
+        if (r.id != null) shown[r.id] = true;
+        var st = (r.staleness != null) ? r.staleness : null;
+        var when = (st != null && st.as_of_time_ct != null) ? st.as_of_time_ct : null;
+        body += pairRow(levelName(r), r.carried, when, r.price, when, true);
       });
-      zdHtml += '</tbody></table>';
     }
-    if (!levels.length) {
-      var degraded = (d && d.degraded) ? d.degraded : null;
+    if (levels != null) {
+      levels.forEach(function (r) {
+        if (!r) return;
+        if (r.id != null && shown[r.id]) return;
+        var st = (r.staleness != null) ? r.staleness : null;
+        var when = (st != null && st.as_of_time_ct != null) ? st.as_of_time_ct : null;
+        body += pairRow(levelName(r), r.price, when, null, null, false);
+      });
+    }
+    if (!body) {
+      var degraded = (d && d.degraded != null) ? d.degraded : null;
       var note = (degraded && degraded.length) ? degraded.join(', ') : 'the levels snapshot is empty for this symbol';
       host.innerHTML = '<div class="placeholder"><div class="big">No canonical levels</div>' +
-        '<div class="sm">' + esc(note) + '</div></div>' + zdHtml;
+        '<div class="sm">' + esc(note) + '</div></div>';
       return;
     }
-    // served in ladder order (price, highest first)
-    var rows = levels;
     // null/'' spot is ABSENT: Number(null) is 0, which drew 'spot 0.00' (audit P0, 2026-09-23)
     var spot = (d.spot == null || d.spot === '') ? NaN : Number(d.spot);
-    var when = d.spot_time_ct ? (' · last trade ' + esc(d.spot_time_ct)) : '';
-    var head = '<div class="lv-head"><span>Canonical levels · gen ' + esc(d.generation) + '</span>' +
+    var trade = '';
+    if (d.spot_time_ct) trade = ' · last trade ' + esc(d.spot_time_ct);
+    var source = '';
+    if (d.spot_source) source = ' · ' + esc(d.spot_source);
+    var head = '<div class="lv-head"><span>Levels · gen ' + esc(d.generation) + '</span>' +
       '<span class="lv-spot">spot ' + (isFinite(spot) ? spot.toFixed(2) : '—') +
-      (d.spot_source ? ' · ' + esc(d.spot_source) : '') + when + '</span></div>';
-    var body = '<table class="lv"><thead><tr><th>Family</th><th>Level</th><th>Price</th>' +
-      '<th>Evidence</th><th>Source</th><th>As-of</th></tr></thead><tbody>';
-    rows.forEach(function (r) {
-      var prov = r.provenance || {}, st = r.staleness || {};
-      var ageWord = st.age_sec != null ? (Math.round(st.age_sec) + 's') : null;
-      var ageWhen = st.as_of_time_ct != null ? st.as_of_time_ct : null;
-      var age = '—';
-      if (ageWhen != null && ageWord != null) age = ageWhen + ' · ' + ageWord;
-      else if (ageWhen != null) age = ageWhen;
-      else if (ageWord != null) age = ageWord;
-      var stale = st.stale ? ' stale' : '';
-      body += '<tr class="lv-row"><td class="lv-fam">' + esc(r.family || '—') + '</td>' +
-        '<td>' + esc(r.label || r.id || '—') + '</td>' +
-        '<td class="lv-px">' + px(r.price) + '</td>' +
-        '<td class="lv-ev">' + esc(r.evidence_tier || '—') + '</td>' +
-        '<td class="lv-src">' + esc(prov.producer || '—') + '</td>' +
-        '<td class="lv-age' + stale + '">' + esc(age) + '</td></tr>';
-    });
-    body += '</tbody></table>';
-    body += zdHtml;
+      source + trade + '</span></div>';
+    var table = '<table class="lv"><thead><tr><th>Level</th><th>Regular</th><th>0DTE</th>' +
+      '</tr></thead><tbody>' + body + '</tbody></table>';
     // carried VWAP curve + honest absences/degradation, disclosed (never fabricated)
-    var vwapN = (d.vwap_series || []).length;
+    var vwapN = 0;
+    if (d.vwap_series != null) vwapN = d.vwap_series.length;
     var foot = '<div class="lv-foot">';
     foot += '<span>VWAP curve: ' + (vwapN ? (vwapN + ' pts carried (±1σ/±2σ)') : 'not available') + '</span>';
-    var absent = (d.families_absent || []).map(function (f) { return (f && f.family) || f; });
+    var absentSrc = (d.families_absent != null) ? d.families_absent : null;
+    var absent = [];
+    if (absentSrc != null) {
+      absentSrc.forEach(function (f) {
+        if (f && f.family) absent.push(f.family);
+        else if (f) absent.push(f);
+      });
+    }
     if (absent.length) foot += '<span class="lv-absent">absent: ' + esc(absent.join(', ')) + '</span>';
-    if ((d.degraded || []).length) foot += '<span class="lv-absent">degraded: ' + esc((d.degraded || []).join(', ')) + '</span>';
+    var degradedFoot = (d.degraded != null) ? d.degraded : null;
+    if (degradedFoot != null && degradedFoot.length) {
+      foot += '<span class="lv-absent">degraded: ' + esc(degradedFoot.join(', ')) + '</span>';
+    }
     foot += '<span class="lv-provsrc">/api/levels · schema v' + esc(d.schema_version) + '</span></div>';
-    host.innerHTML = head + body + foot;
+    host.innerHTML = head + table + foot;
     // A canonical level PRICE (VWAP / value / liquidity / structural) is NOT necessarily a listed
     // option strike, so a level click must never write selStrike (that identity belongs to a real
     // option strike). Clicking only highlights the level locally — presentation, no global state,

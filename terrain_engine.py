@@ -147,9 +147,8 @@ class TerrainSnapshot:
     #: walls/flip decay into the close (0DTE gamma dies at 4pm); low = levels persist.
     #: None (fail-closed) when the book is empty, never a fabricated 0%.
     zero_dte_gamma_share_pct: float | None = None
-    #: absolute gamma (pick_pin_and_strength) of the same-day expiry's book alone, or None
-    zero_dte_abs_gamma_strike: float | None = None
     #: Nearest expiry repriced to today's option close. Keys are SAME_DAY_LEVELS.
+    #: absolute_gamma_strike in this dict is the one 0DTE pin.
     same_day: dict[str, float | None] = field(default_factory=dict)
 
     #: RC-358: 25Δ risk reversal — {rr_pts, call_iv_25d, put_iv_25d, dte} or None.
@@ -925,7 +924,6 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
     # a contract with no readable DTE belongs to no expiry's book (it was counted as 0DTE)
     _exp_0dte, _ = merge_exposure_books(b for (_e, d), b in books.items() if d is not None and d <= 0)
     _zero_dte_share = compute_zero_dte_gamma_share(exposures, _exp_0dte)
-    _zero_dte_pin = pick_pin_and_strength(_exp_0dte, sorted(_exp_0dte))[0]
     # Max pain on the FRONT expiry only.
     _front_max_pain = None
     if _front_dte is not None:
@@ -990,7 +988,6 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         grc=_gsl["grc"],
         gsf_state=_gsl["state"],
         zero_dte_gamma_share_pct=_zero_dte_share,
-        zero_dte_abs_gamma_strike=_zero_dte_pin,
         same_day=same_day_levels(ticker, contracts, spot, now=_terrain_now),
         rr_25d=_rr25,
         vanna_agg=compute_net_vanna(exposures, spot),     # RC-362: same book, one sum

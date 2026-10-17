@@ -532,8 +532,9 @@ from Schwab to the screen (daemon, console, page), are these:
    GEX-by-strike badge keeps that same time beside its age (`server.terrain_strikes_payload`, `#gbsSrc`). The
    gamma chart's GEX badge keeps it too (`static/js/ed-gamma-chart.js`). The desk map's
    LEVELS pill keeps the snapshot's time beside that age (`server.levels_payload`,
-   `static/js/ed-trade-desk-map.js`). The levels page As-of column keeps each
-   level's time beside that age (`server.levels_payload`, `static/js/ed-gamma-levels.js`). The
+   `static/js/ed-trade-desk-map.js`). The levels glance shows each price with the
+   time the payload already carries for it (`server.levels_payload`,
+   `static/js/ed-gamma-levels.js`). The
    book's top keeps the last bid and ask, and that panel says OFFLINE (`top_outage`).
    The book's quote time and book time stay on that panel (`server.order_flow_microstructure`,
    `static/js/ed-order-flow.js`). The Flow panel keeps the contract's quote time and book time
@@ -653,7 +654,15 @@ behavior (AGENTS.md).
     gamma cannot be rebuilt leaves that strike's level absent. The close is
     the regular window Schwab's /markets sent: the index window for an index it names with "$"
     and for SPY, QQQ and IWM, the equity-option window for every other ticker. No window held,
-    or a close already passed, leaves the level absent. The whole-book levels are unchanged.
-    The heatmap key levels show the same-day flip, call wall, put wall, absolute-gamma pin and
-    net gamma peak under 0DTE. The levels list shows every same-day level beside the level it
-    reprices. Enforced by: `tests/test_data_path_same_day_levels_v1.py`.
+    or a close already passed, leaves the level absent.     The whole-book levels are unchanged.
+    The 0DTE pin is `same_day.absolute_gamma_strike` only. The listed-expiry pin
+    (`zero_dte_abs_gamma_strike`) is not produced: it was a second pin.
+    The key levels rail draws each strike once, the regular price beside the same-day
+    price. Spot has no same-day cell. Exposure (net GEX, the two put/call ratios, the
+    dealer regime) stays under those rows. Zero Gamma, Volatility Trigger, Vanna Support
+    and Charm Resistance are not on the rail: nothing is served for them.
+    The levels list is one table, Level, Regular, 0DTE, same-day rows first, then the
+    other served levels. Family, evidence and source are not drawn. Each price is shown
+    with the time the server sent for it.
+    Enforced by: `tests/test_data_path_same_day_levels_v1.py`,
+    `tests/test_data_path_zero_dte_pin_v1.py`.
