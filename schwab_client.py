@@ -209,11 +209,12 @@ class OneRefreshSession(OAuth2Client):
         one held): its token and creation time, the streamer's too. A file unchanged since the
         last look is not read again. One that holds no usable sign-in (sign_in_problem) is logged
         once."""
+        seen = None
         try:
             st = os.stat(self._token_file)
             seen = (st.st_ino, st.st_mtime_ns, st.st_size)
-        except OSError:
-            seen = None
+        except OSError as e:
+            log.debug("the token file %s could not be stated (%r)", self._token_file, e)
         if seen is not None and seen == self._seen:
             return
         self._seen = seen
