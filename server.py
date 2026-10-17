@@ -1884,8 +1884,16 @@ def get_forces(ticker: str = Query(...)):
     tk = ticker_storage_key(_required_ticker(ticker))
     cached = terrain_cache_get(tk, time.time())
     forces = cached.get("_forces") if cached is not None else None
-    return JSONResponse(forces if forces is not None else {
-        "ticker": tk, "available": False, "reason": "no levels published for this ticker yet"})
+    return JSONResponse(forces if forces is not None else _forces_absent(tk))
+
+
+def _forces_absent(tk: str) -> dict:
+    """The forces numbers before two market days of captures exist, or when the read fails.
+    Each number is None. Nothing stands in for it."""
+    return {"ticker": tk, "available": False,
+            "doi_below": None, "doi_above": None,
+            "dex_below_dollars": None, "dex_above_dollars": None,
+            "charm_below": None, "charm_above": None}
 
 
 def _forces_from_captures(tk: str, captures: list) -> dict:
@@ -1901,8 +1909,7 @@ def _forces_from_captures(tk: str, captures: list) -> dict:
     from math_exposure_core import compute_exposures_by_strike as _cebs
     from math_levels import compute_charm_by_strike as _ccs
 
-    payload: dict = {"ticker": tk, "available": False,
-                     "reason": "fewer than 2 market days of chain captures for this ticker"}
+    payload: dict = _forces_absent(tk)
     try:
         rows = [(c["et_date"], c["spot"], c["contracts"], c["ts_utc"])
                 for c in captures if c["spot"] is not None]
@@ -1923,13 +1930,10 @@ def _forces_from_captures(tk: str, captures: list) -> dict:
             # RC-199: CHARM below/above from the NEWER banked wide chain (full book).
             # Dealer-signed net_charm = call_charm - put_charm per strike (RC-179).
             charm_below = charm_above = None
-            charm_err = None
             try:
                 # priced at the capture's own time, not today's clock
                 per_ch = _ccs(c1, spot1, now=datetime.fromtimestamp(t1, ET)) if c1 else {}
-                if not per_ch:
-                    charm_err = "charm_by_strike empty on newer banked chain"
-                else:
+                if per_ch:
                     # RC-276: a strike with no net_charm is not a strike with zero charm.
                     # Summed as 0.0 it silently tilted the below/above pair the console
                     # renders as dealer charm pressure.
@@ -1944,8 +1948,8 @@ def _forces_from_captures(tk: str, captures: list) -> dict:
                     charm_above = sum(
                         c for c in (_ch(v) for k, v in per_ch.items() if k > spot1)
                         if c is not None)
-            except Exception as _ce:
-                charm_err = str(_ce)[:120]
+            except Exception as e:
+                log.warning("forces charm for %s failed (%s)", tk, e)
             payload = {
                 "ticker": tk, "available": True,
                 "doi_below": sum(d for k, d in doi.items() if k < spot1),
@@ -1955,14 +1959,14 @@ def _forces_from_captures(tk: str, captures: list) -> dict:
                 "strikes_diffed": len(doi),
                 "charm_below": charm_below,
                 "charm_above": charm_above,
-                "charm_error": charm_err,
                 "newer_et_date": d1, "older_et_date": d0, "bucket_spot": spot1,
                 "method": ("per-strike OI delta first, bucketed by the newer capture's spot; "
                            "DEX = net_dex_dollars side sums on the newer capture; "
                            "CHARM = dealer-signed net_charm side sums on the newer capture"),
             }
     except Exception as e:
-        payload = {"ticker": tk, "available": False, "reason": f"forces read failed: {e}"}
+        log.warning("forces for %s failed (%s)", tk, e)
+        payload = _forces_absent(tk)
     return payload
 
 
