@@ -1069,15 +1069,15 @@ class CaptureWriter:
                     item = False
                 stopping = stopping or item is None
                 incoming = [item] if item else []
+                while not stopping:        # every message already queued is taken in this round
+                    try:
+                        item = q.get_nowait()
+                    except queue.Empty:
+                        break
+                    stopping = item is None
+                    incoming += [item] if item else []
                 holding = bool(self._waiting) or bool(self._spills)
-                if holding:                # every queued message joins the held ones, in order
-                    while not stopping:
-                        try:
-                            item = q.get_nowait()
-                        except queue.Empty:
-                            break
-                        stopping = item is None
-                        incoming += [item] if item else []
+                if holding:                # the round's messages join the held ones, in order
                     self._admit(incoming)
                     del incoming           # what was spilled is held on disk only
                     items = self._waiting
@@ -1100,8 +1100,8 @@ class CaptureWriter:
                             self._waiting, self._waiting_bytes = [], 0
                     if self._spills and not self._waiting:
                         self._write_back(conn)
-                    if self._prune and not self._waiting and not self._spills and not self._batch:
-                        self._prune_part(conn)
+                    if self._prune and not stopping and not self._spills and not self._batch:
+                        self._prune_part(conn)  # one part between rounds, none once the stop is taken
                 except DATABASE_REFUSALS as e:
                     if conn is not None:
                         conn.close()       # its open transaction is rolled back
@@ -1187,8 +1187,8 @@ class CaptureWriter:
     def prune(self, before: float) -> None:
         """Remove every row received before `before` from the tables of KEPT_BY_TIME (the newest
         stream_watchlist row stays), on the writer thread, one part of PRUNE_ROWS at a time between
-        live writes and only while nothing is held; a stop before it ends leaves the rest for the
-        next one."""
+        rounds of live writes (each round takes every message queued) while nothing is held on disk;
+        a stop before it ends leaves the rest for the next one."""
         with self._lock:
             self._prune_before, self._prune, self._pruned = before, list(KEPT_BY_TIME), Counter()
 

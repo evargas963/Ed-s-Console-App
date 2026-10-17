@@ -17,7 +17,7 @@ from datetime import datetime
 
 from app.market_data.schwab.streaming import capture
 from calibration.complete_chain_capture import chain_messages
-from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus, book_msg, options_quote_msg, quote_msg
+from stream_spine import LOG, PRUNE_ROWS, CaptureWriter, HealthRegistry, MessageBus, book_msg, options_quote_msg, quote_msg
 from tests.real_chains import MRVL, SPY_0DTE
 from time_et import ET
 
@@ -36,6 +36,17 @@ def _rows(db, sql: str) -> list:
 
 def _et(text: str) -> float:
     return datetime.fromisoformat(text).replace(tzinfo=ET).timestamp()
+
+
+def _as_production(db) -> None:
+    """The indexes of production's stream_capture.db (PRAGMA index_list on it): its quote, book and
+    option tables by symbol and receipt time, none by receipt time alone."""
+    with sqlite3.connect(db) as conn:
+        for index in ("idx_sqr_ts", "idx_sbkr_ts", "idx_soqr_ts"):
+            conn.execute(f"DROP INDEX {index}")
+        conn.execute("CREATE INDEX idx_sqr_sym_ts ON stream_quotes_raw(symbol, ts_recv)")
+        conn.execute("CREATE INDEX idx_sbkr_sym_ts ON stream_book_raw(symbol, ts_recv)")
+        conn.execute("CREATE INDEX idx_soqr_sym_ts ON stream_options_quotes_raw(symbol, ts_recv)")
 
 
 def test_only_the_option_contracts_traded_are_recorded_and_every_equity_message(tmp_path):
@@ -142,6 +153,71 @@ def test_after_the_last_option_close_rows_before_the_newest_five_sessions_are_re
     the newest watchlist row, which the daemon reads at its start."""
     assert _kept_at(tmp_path, "2026-10-07 17:00", 30.0) == \
         "quotes:1 options:1 feed:1 watchlist:1 newest-watchlist:09-30 12:00"
+
+
+def test_every_message_arriving_during_the_keep_is_written_while_old_rows_are_still_being_removed(tmp_path):
+    """A file indexed as production's stream_capture.db is (PRAGMA index_list on it: its quote, book
+    and option tables by symbol and receipt time, none by receipt time alone). 400,000 option quotes
+    received before the newest five sessions began (twenty parts of the keep), and 2,000 equity
+    quotes arriving while the keep runs: each one is written while old rows remain (every message
+    queued is written in each round between parts), and the keep then removes every old row."""
+    db = tmp_path / "stream_capture.db"
+    writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01)
+    _as_production(db)
+    with sqlite3.connect(db) as conn:
+        contract = SPY_0DTE.chain[0]["symbol"]
+        old = _et("2026-09-30 15:00")
+        conn.executemany("INSERT INTO stream_options_quotes_raw(ts_recv,symbol,native_json,src,schwab_ts) "
+                         "VALUES(?,?,?,?,?)", ((old + i / 1000, contract, '{"key":"' + contract + '"}',
+                                                "schwab_options_l1", None) for i in range(400_000)))
+    bus = MessageBus()
+    now = _et("2026-10-07 17:00")
+
+    async def go():
+        stop = asyncio.Event()
+        task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
+        await asyncio.sleep(0)
+        writer.prune(_et("2026-10-01 00:00"))
+        for i in range(2_000):
+            bus.publish("quote.SPY", quote_msg(symbol="SPY", last=776.61, src="schwab_l1", ts_recv=now + i / 1000,
+                                               native={"key": "SPY"}))
+        await _until(lambda: writer.status()["rows_written"] >= 2_000)
+        old_left = _rows(db, "SELECT COUNT(*) FROM stream_options_quotes_raw")[0][0]
+        await _until(lambda: _rows(db, "SELECT COUNT(*) FROM stream_options_quotes_raw")[0][0] == 0, 60)
+        stop.set()
+        await task
+        return old_left
+    old_left = asyncio.run(go())
+    assert old_left > 0, "the keep had finished before the messages that arrived during it were written"
+    assert _rows(db, "SELECT COUNT(*) FROM stream_quotes_raw")[0][0] == 2_000
+
+
+def test_a_stop_asked_during_the_keep_writes_what_was_queued_and_removes_nothing_more(tmp_path):
+    """The keep has 400,000 old option quotes to remove (twenty parts) when ten equity quotes and the
+    stop are handed to the writer: it writes the ten and ends, having run at most the one part in
+    progress when they arrived, none after it took the stop. The bound holds while run() hands the
+    ten (microseconds) within one part's time (a 20,000-row delete); on main one part ran per message."""
+    db = tmp_path / "stream_capture.db"
+    writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01)
+    _as_production(db)
+    contract = SPY_0DTE.chain[0]["symbol"]
+    old = _et("2026-09-30 15:00")
+    with sqlite3.connect(db) as conn:
+        conn.executemany("INSERT INTO stream_options_quotes_raw(ts_recv,symbol,native_json,src,schwab_ts) "
+                         "VALUES(?,?,?,?,?)", ((old + i / 1000, contract, '{"key":"' + contract + '"}',
+                                                "schwab_options_l1", None) for i in range(400_000)))
+    bus = MessageBus()
+    sub = bus.subscribe("", policy=LOG)
+    now = _et("2026-10-07 17:00")
+    for i in range(10):
+        bus.publish("quote.SPY", quote_msg(symbol="SPY", last=776.61, src="schwab_l1", ts_recv=now + i / 1000,
+                                           native={"key": "SPY"}))
+    writer.prune(_et("2026-10-01 00:00"))
+    stop = asyncio.Event()
+    stop.set()                                   # the stop is asked as the ten are handed over
+    asyncio.run(writer.run(sub, stop=stop))
+    assert _rows(db, "SELECT COUNT(*) FROM stream_quotes_raw")[0][0] == 10
+    assert _rows(db, "SELECT COUNT(*) FROM stream_options_quotes_raw")[0][0] >= 400_000 - PRUNE_ROWS
 
 
 def test_nothing_is_removed_while_the_options_trade_or_the_market_is_unknown(tmp_path):
