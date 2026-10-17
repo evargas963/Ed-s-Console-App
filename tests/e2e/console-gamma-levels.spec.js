@@ -56,15 +56,16 @@ test.describe('D — Gamma Levels view', () => {
     await expect(page.locator('#levelsBody .lv-spot')).toHaveText('spot 100.00 · schwab_quote_last · last trade Fri 10/02 10:00 AM CT');
   });
 
-  test('the As-of column keeps the level time', async ({ page }) => {
+  test('a level keeps its price without a time on the row', async ({ page }) => {
     const LEVEL_TIME = 'Fri 09/25 06:59 PM CT';
     const levels = JSON.parse(JSON.stringify(LEVELS));
     levels.levels.forEach(function (r) { r.staleness.as_of_time_ct = LEVEL_TIME; });
     await page.route('**/api/levels**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
       body: JSON.stringify(levels) }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('#levelsBody .lv-row', { hasText: 'Prior Day High' }).locator('.lv-px')).toHaveText('101.50');
-    await expect(page.locator('#levelsBody .lv-row', { hasText: 'Prior Day High' }).locator('.lv-age')).toHaveText(LEVEL_TIME + ' · 12s');
+    await expect(page.locator('#levelsBody .lv-row', { hasText: 'Prior Day High' }).locator('.lv-px').nth(0)).toHaveText('101.50');
+    await expect(page.locator('#levelsBody .lv-age')).toHaveCount(0);
+    await expect(page.locator('#levelsBody th', { hasText: 'As-of' })).toHaveCount(0);
   });
 
   test('renders the canonical /api/levels contract as a table', async ({ page }) => {
@@ -73,9 +74,16 @@ test.describe('D — Gamma Levels view', () => {
     await expect(lv.locator('table.lv')).toBeVisible();
     await expect(lv.locator('.lv-row')).toHaveCount(3);
     // the served ladder order: PDH (101.5) first
+    await expect(lv.locator('th').nth(0)).toHaveText('Level');
+    await expect(lv.locator('th').nth(1)).toHaveText('Regular');
+    await expect(lv.locator('th').nth(2)).toHaveText('0DTE');
+    await expect(lv.locator('th', { hasText: 'Family' })).toHaveCount(0);
+    await expect(lv.locator('th', { hasText: 'Evidence' })).toHaveCount(0);
+    await expect(lv.locator('th', { hasText: 'Source' })).toHaveCount(0);
     await expect(lv.locator('.lv-row').first()).toContainText('Prior Day High');
-    await expect(lv.locator('.lv-row').first().locator('.lv-px')).toHaveText('101.50');
-    await expect(lv.locator('.lv-row', { hasText: 'VWAP' }).locator('.lv-src')).toContainText('liquidity_value_engine');
+    await expect(lv.locator('.lv-row').first().locator('.lv-px').nth(0)).toHaveText('101.50');
+    await expect(lv.locator('.lv-row', { hasText: 'VWAP' }).locator('.lv-px').nth(0)).toHaveText('100.02');
+    await expect(lv.locator('.lv-row', { hasText: 'VWAP' }).locator('.lv-px').nth(1)).toHaveText('—');
     // no proximity marking (operator 2026-09-29); absence disclosed honestly
     await expect(lv.locator('.lv-row.near-spot')).toHaveCount(0);
     await expect(lv.locator('.lv-foot')).toContainText('VWAP curve');
@@ -106,7 +114,8 @@ test.describe('D — Gamma Levels view', () => {
     const row = page.locator('#levelsBody .zd-row', { hasText: 'Call wall' });
     await expect(row.locator('.lv-px').nth(0)).toHaveText('600.00');
     await expect(row.locator('.lv-px').nth(1)).toHaveText('580.00');
-    await expect(row.locator('.lv-age')).toHaveText('12:32:07 CT');
+    await expect(page.locator('#levelsBody .lv-head')).toContainText('12:32:07 CT');
+    await expect(row.locator('.lv-age')).toHaveCount(0);
   });
 
   test('the 0DTE table still shows when the canonical list is empty', async ({ page }) => {
@@ -119,7 +128,8 @@ test.describe('D — Gamma Levels view', () => {
       })),
     }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('#levelsBody .placeholder')).toContainText('No canonical levels');
+    await expect(page.locator('#levelsBody .placeholder')).toHaveCount(0);
+    await expect(page.locator('#levelsBody th', { hasText: 'Regular' })).toBeVisible();
     await expect(page.locator('#levelsBody .zd-row .lv-px').nth(1)).toHaveText('580.00');
   });
 });

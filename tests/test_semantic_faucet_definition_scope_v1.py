@@ -40,13 +40,11 @@ NOW = SPY_0DTE.now
 
 FULL = "full_book"
 SEL = "selected_expiry"
-ZERO_DTE = "same_day_expiry"
 TODAY = "front_expiry_to_todays_close"
 
 DECLARED: dict[tuple[str, str], tuple[str, str]] = {
     # terrain payload (/api/terrain, TerrainSnapshot.to_dict) — the levels SSOT
     ("terrain", "absolute_gamma_strike"): ("max_total_gamma", FULL),
-    ("terrain", "zero_dte_abs_gamma_strike"): ("max_total_gamma", ZERO_DTE),
     ("terrain", "pin_candidate"): ("qualified_max_total_gamma", FULL),
     ("terrain", "net_gex_peak"): ("max_abs_net_gex", FULL),
     ("terrain", "call_wall"): ("max_call_gamma", FULL),

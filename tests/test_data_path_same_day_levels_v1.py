@@ -1,6 +1,6 @@
 """Same-day levels: one producer, every ticker. The nearest expiry keeps its open interest
 and implied volatility; gamma and delta are rebuilt to that ticker's option close today.
-A name with no listed same-day expiry still gets them. The listed same-day pin is unchanged."""
+A name with no listed same-day expiry still gets them. That pin is the only 0DTE pin."""
 from __future__ import annotations
 
 from terrain_engine import SAME_DAY_LEVELS, compute_terrain
@@ -24,7 +24,7 @@ def test_the_option_close_follows_the_ticker():
 
 def test_every_ticker_gets_same_day_levels_from_its_nearest_expiry():
     """SPY 2026-10-07 12:32 ET expires that day. MRVL, CRWD and TSLA that morning do not.
-    Each still gets a same-day pin. MRVL's listed same-day pin stays absent."""
+    Each still gets a same-day pin. There is no second listed-expiry pin beside it."""
     for book in (SPY_0DTE, MRVL, CRWD, TSLA):
         snap = compute_terrain(book.ticker, book.chain, book.spot, now=book.now).to_dict()
         same = snap["same_day"]
@@ -34,7 +34,7 @@ def test_every_ticker_gets_same_day_levels_from_its_nearest_expiry():
         assert same["put_wall"] is not None, book.ticker
 
     mrvl = compute_terrain(MRVL.ticker, MRVL.chain, MRVL.spot, now=MRVL.now).to_dict()
-    assert mrvl["zero_dte_abs_gamma_strike"] is None
+    assert "zero_dte_abs_gamma_strike" not in mrvl
     assert mrvl["same_day"]["absolute_gamma_strike"] != mrvl["absolute_gamma_strike"]
 
 

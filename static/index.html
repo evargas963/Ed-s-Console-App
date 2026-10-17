@@ -330,7 +330,7 @@
   /* gamma workspace layout — the heatmap is the HERO (dominant center), Key Levels a narrow right
      rail, and the bottom a subordinate supporting strip. Tight gaps/rhythm = terminal density. */
   .gamma-grid{display:grid;height:100%;gap:8px;
-    grid-template-columns:1fr minmax(340px,25%);
+    grid-template-columns:1fr minmax(400px,28%);
     grid-template-rows:minmax(0,2.15fr) minmax(0,1fr);
     grid-template-areas:"heat levels" "bottom bottom"}
   .p-heat{grid-area:heat} .p-levels{grid-area:levels} .p-bottom{grid-area:bottom}
@@ -384,7 +384,12 @@
   .notproven{border:1px dashed var(--ed-proxy);color:var(--ed-proxy);border-radius:5px;
     padding:3px 9px;font-family:var(--ed-mono);font-size:10px;letter-spacing:.04em}
 
-  /* key levels rail rows — operator rail; roomy rows fill the rail, strong numeric alignment */
+  /* key levels rail — one row, two prices. The label takes the leftover width; the two
+     numbers stay on one line so Regular and 0DTE can be read across. */
+  .kl-pairs{display:grid;grid-template-columns:minmax(0,1fr) auto auto;column-gap:10px;align-items:baseline}
+  .kl-pairs .h{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--ed-ink-3);text-align:right;padding-bottom:4px}
+  .kl-pairs .k{font-size:12.5px;color:var(--ed-ink-2);padding:4px 0;border-bottom:1px solid var(--ed-edge-soft)}
+  .kl-pairs .v{font-family:var(--ed-sans);font-size:14px;font-weight:700;color:var(--ed-ink);font-variant-numeric:tabular-nums;text-align:right;padding:4px 0;border-bottom:1px solid var(--ed-edge-soft)}
   .kl-row{display:flex;align-items:baseline;justify-content:space-between;padding:3.5px 0;border-bottom:1px solid var(--ed-edge-soft)}
   .kl-row:last-child{border-bottom:none}
   .kl-row .k{font-size:13px;color:var(--ed-ink-2);letter-spacing:.01em}
@@ -623,14 +628,9 @@
   .lv-head .lv-spot{color:var(--ed-ink-2)}
   .lv{width:100%;border-collapse:collapse;font-family:var(--ed-sans);font-size:13px;font-variant-numeric:tabular-nums}
   .lv th{font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--ed-ink-3);text-align:left;padding:8px 9px;border-bottom:1px solid var(--ed-edge)}
-  .lv th:nth-child(3),.lv th:nth-child(6){text-align:right}
+  .lv th:nth-child(2),.lv th:nth-child(3){text-align:right}
   .lv td{padding:9px 9px;border-bottom:1px solid var(--ed-edge-soft);color:var(--ed-ink)}
   .lv .lv-px{font-weight:600;text-align:right}
-  .lv.zd{margin-top:4px}
-  .lv.zd th:nth-child(2),.lv.zd th:nth-child(3),.lv.zd th:nth-child(4){text-align:right}
-  .lv .lv-fam{color:var(--ed-ink-2);text-transform:capitalize}
-  .lv .lv-ev,.lv .lv-src{color:var(--ed-ink-3);font-size:12px}
-  .lv .lv-age{color:var(--ed-ink-3);text-align:right}.lv .lv-age.stale{color:var(--ed-stale)}
   .lv-row{cursor:pointer}.lv-row:hover{background:var(--ed-panel-2)}
   .lv-row.lv-sel{outline:1px solid var(--ed-accent);outline-offset:-1px;background:var(--ed-accent-bg)}
   .lv-foot{display:flex;flex-wrap:wrap;gap:12px;font-family:var(--ed-sans);font-size:10.5px;color:var(--ed-ink-4);padding:10px 2px 0}
@@ -806,24 +806,15 @@
               <span class="sub" id="klSrc">terrain</span>
             </div>
             <div class="panel-b klbody" id="klBody">
-              <div class="kl-sec">Levels</div>
-              <div class="kl-row"><span class="k">Spot</span><span class="v" id="klSpot">—</span></div>
-              <div class="kl-row"><span class="k">Gamma Flip</span><span class="v" id="klFlip">—</span></div>
-              <div class="kl-row"><span class="k">Call Wall</span><span class="v" id="klCall">—</span></div>
-              <div class="kl-row"><span class="k">Put Wall</span><span class="v" id="klPut">—</span></div>
-              <div class="kl-row"><span class="k">Absolute γ (pin)</span><span class="v" id="klAbs">—</span></div>
-              <div class="kl-row"><span class="k">0DTE γ pin</span><span class="v" id="klAbs0">—</span></div>
-              <div class="kl-row"><span class="k">Net GEX peak</span><span class="v" id="klPeak">—</span></div>
-              <div class="kl-sec">0DTE</div>
-              <div class="kl-row"><span class="k">Gamma Flip</span><span class="v" id="kl0Flip">—</span></div>
-              <div class="kl-row"><span class="k">Call Wall</span><span class="v" id="kl0Call">—</span></div>
-              <div class="kl-row"><span class="k">Put Wall</span><span class="v" id="kl0Put">—</span></div>
-              <div class="kl-row"><span class="k">Absolute γ (pin)</span><span class="v" id="kl0Abs">—</span></div>
-              <div class="kl-row"><span class="k">Net GEX peak</span><span class="v" id="kl0Peak">—</span></div>
-              <div class="kl-row"><span class="k muted">Zero Gamma</span><span class="notproven">NOT PROVEN</span></div>
-              <div class="kl-row"><span class="k muted">Volatility Trigger</span><span class="notproven">NOT PROVEN</span></div>
-              <div class="kl-row"><span class="k muted">Vanna Support</span><span class="notproven">AGG $ ONLY</span></div>
-              <div class="kl-row"><span class="k muted">Charm Resistance</span><span class="notproven">→ CHARM WALL</span></div>
+              <div class="kl-pairs">
+                <span></span><span class="h">Regular</span><span class="h">0DTE</span>
+                <span class="k">Spot</span><span class="v" id="klSpot">—</span><span class="v"></span>
+                <span class="k">Gamma Flip</span><span class="v" id="klFlip">—</span><span class="v" id="kl0Flip">—</span>
+                <span class="k">Call Wall</span><span class="v" id="klCall">—</span><span class="v" id="kl0Call">—</span>
+                <span class="k">Put Wall</span><span class="v" id="klPut">—</span><span class="v" id="kl0Put">—</span>
+                <span class="k">Absolute γ (pin)</span><span class="v" id="klAbs">—</span><span class="v" id="kl0Abs">—</span>
+                <span class="k">Net GEX peak</span><span class="v" id="klPeak">—</span><span class="v" id="kl0Peak">—</span>
+              </div>
               <div class="kl-sec">Exposure</div>
               <div class="kl-row"><span class="k">Net GEX / 1%</span><span class="v" id="klNet">—</span></div>
               <div class="kl-row"><span class="k">Put/Call OI <span class="kl-scope" id="klPcrScope"></span></span><span class="v" id="klPcr">—</span></div>
