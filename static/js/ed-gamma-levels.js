@@ -43,33 +43,39 @@
     if (r.id != null && r.id !== '') return r.id;
     return '—';
   }
-  function pairRow(name, nowPrice, sameDay, paired) {
+  function timeHtml(when) {
+    if (when == null || when === '') return '';
+    return '<div class="lv-age">' + esc(when) + '</div>';
+  }
+  function pairRow(name, nowPrice, nowWhen, sameDay, sameWhen, paired) {
     var cls = paired ? 'lv-row zd-row' : 'lv-row';
     var third = paired ? px(sameDay) : '—';
+    var thirdWhen = paired ? timeHtml(sameWhen) : '';
     return '<tr class="' + cls + '"><td>' + esc(name) + '</td>' +
-      '<td class="lv-px">' + px(nowPrice) + '</td>' +
-      '<td class="lv-px">' + third + '</td></tr>';
+      '<td class="lv-px">' + px(nowPrice) + timeHtml(nowWhen) + '</td>' +
+      '<td class="lv-px">' + third + thirdWhen + '</td></tr>';
   }
   function render(host, d) {
     var levels = (d && d.levels != null) ? d.levels : null;
     var zd = (d && d.zero_dte != null) ? d.zero_dte : null;
     var shown = {};
     var body = '';
-    var snap = null;
     if (zd != null) {
       zd.forEach(function (r) {
         if (!r) return;
         if (r.id != null) shown[r.id] = true;
         var st = (r.staleness != null) ? r.staleness : null;
-        if (snap == null && st != null && st.as_of_time_ct != null) snap = st.as_of_time_ct;
-        body += pairRow(levelName(r), r.carried, r.price, true);
+        var when = (st != null && st.as_of_time_ct != null) ? st.as_of_time_ct : null;
+        body += pairRow(levelName(r), r.carried, when, r.price, when, true);
       });
     }
     if (levels != null) {
       levels.forEach(function (r) {
         if (!r) return;
         if (r.id != null && shown[r.id]) return;
-        body += pairRow(levelName(r), r.price, null, false);
+        var st = (r.staleness != null) ? r.staleness : null;
+        var when = (st != null && st.as_of_time_ct != null) ? st.as_of_time_ct : null;
+        body += pairRow(levelName(r), r.price, when, null, null, false);
       });
     }
     if (!body) {
@@ -83,13 +89,11 @@
     var spot = (d.spot == null || d.spot === '') ? NaN : Number(d.spot);
     var trade = '';
     if (d.spot_time_ct) trade = ' · last trade ' + esc(d.spot_time_ct);
-    var snapWord = '';
-    if (snap != null) snapWord = ' · 0DTE ' + esc(snap);
     var source = '';
     if (d.spot_source) source = ' · ' + esc(d.spot_source);
     var head = '<div class="lv-head"><span>Levels · gen ' + esc(d.generation) + '</span>' +
       '<span class="lv-spot">spot ' + (isFinite(spot) ? spot.toFixed(2) : '—') +
-      source + trade + snapWord + '</span></div>';
+      source + trade + '</span></div>';
     var table = '<table class="lv"><thead><tr><th>Level</th><th>Regular</th><th>0DTE</th>' +
       '</tr></thead><tbody>' + body + '</tbody></table>';
     // carried VWAP curve + honest absences/degradation, disclosed (never fabricated)

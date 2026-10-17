@@ -56,15 +56,17 @@ test.describe('D — Gamma Levels view', () => {
     await expect(page.locator('#levelsBody .lv-spot')).toHaveText('spot 100.00 · schwab_quote_last · last trade Fri 10/02 10:00 AM CT');
   });
 
-  test('a level keeps its price without a time on the row', async ({ page }) => {
+  test('a level keeps its price with the time the server sent', async ({ page }) => {
     const LEVEL_TIME = 'Fri 09/25 06:59 PM CT';
     const levels = JSON.parse(JSON.stringify(LEVELS));
     levels.levels.forEach(function (r) { r.staleness.as_of_time_ct = LEVEL_TIME; });
     await page.route('**/api/levels**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
       body: JSON.stringify(levels) }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('#levelsBody .lv-row', { hasText: 'Prior Day High' }).locator('.lv-px').nth(0)).toHaveText('101.50');
-    await expect(page.locator('#levelsBody .lv-age')).toHaveCount(0);
+    const cell = page.locator('#levelsBody .lv-row', { hasText: 'Prior Day High' }).locator('.lv-px').nth(0);
+    await expect(cell).toContainText('101.50');
+    await expect(cell.locator('.lv-age')).toHaveText(LEVEL_TIME);
+    await expect(cell).not.toContainText('12s');
     await expect(page.locator('#levelsBody th', { hasText: 'As-of' })).toHaveCount(0);
   });
 
@@ -112,10 +114,9 @@ test.describe('D — Gamma Levels view', () => {
     }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const row = page.locator('#levelsBody .zd-row', { hasText: 'Call wall' });
-    await expect(row.locator('.lv-px').nth(0)).toHaveText('600.00');
-    await expect(row.locator('.lv-px').nth(1)).toHaveText('580.00');
-    await expect(page.locator('#levelsBody .lv-head')).toContainText('12:32:07 CT');
-    await expect(row.locator('.lv-age')).toHaveCount(0);
+    await expect(row.locator('.lv-px').nth(0)).toContainText('600.00');
+    await expect(row.locator('.lv-px').nth(1)).toContainText('580.00');
+    await expect(row.locator('.lv-px').nth(1).locator('.lv-age')).toHaveText('12:32:07 CT');
   });
 
   test('the 0DTE table still shows when the canonical list is empty', async ({ page }) => {
@@ -130,6 +131,7 @@ test.describe('D — Gamma Levels view', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#levelsBody .placeholder')).toHaveCount(0);
     await expect(page.locator('#levelsBody th', { hasText: 'Regular' })).toBeVisible();
-    await expect(page.locator('#levelsBody .zd-row .lv-px').nth(1)).toHaveText('580.00');
+    await expect(page.locator('#levelsBody .zd-row .lv-px').nth(1)).toContainText('580.00');
+    await expect(page.locator('#levelsBody .zd-row .lv-px').nth(1).locator('.lv-age')).toHaveText('12:32:07 CT');
   });
 });

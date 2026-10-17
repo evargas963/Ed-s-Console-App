@@ -532,9 +532,9 @@ from Schwab to the screen (daemon, console, page), are these:
    GEX-by-strike badge keeps that same time beside its age (`server.terrain_strikes_payload`, `#gbsSrc`). The
    gamma chart's GEX badge keeps it too (`static/js/ed-gamma-chart.js`). The desk map's
    LEVELS pill keeps the snapshot's time beside that age (`server.levels_payload`,
-   `static/js/ed-trade-desk-map.js`). The levels payload keeps each level's time
-   (`server.levels_payload`). The levels glance shows the same-day snapshot's time once,
-   beside the spot (`static/js/ed-gamma-levels.js`). The
+   `static/js/ed-trade-desk-map.js`). The levels glance shows each price with the
+   time the payload already carries for it (`server.levels_payload`,
+   `static/js/ed-gamma-levels.js`). The
    book's top keeps the last bid and ask, and that panel says OFFLINE (`top_outage`).
    The book's quote time and book time stay on that panel (`server.order_flow_microstructure`,
    `static/js/ed-order-flow.js`). The Flow panel keeps the contract's quote time and book time
@@ -662,7 +662,7 @@ behavior (AGENTS.md).
     dealer regime) stays under those rows. Zero Gamma, Volatility Trigger, Vanna Support
     and Charm Resistance are not on the rail: nothing is served for them.
     The levels list is one table, Level, Regular, 0DTE, same-day rows first, then the
-    other served levels. Family, evidence, source and a time on every row are not drawn.
-    The same-day snapshot's time is shown once, beside the spot.
+    other served levels. Family, evidence and source are not drawn. Each price is shown
+    with the time the server sent for it.
     Enforced by: `tests/test_data_path_same_day_levels_v1.py`,
     `tests/test_data_path_zero_dte_pin_v1.py`.
