@@ -93,4 +93,33 @@ test.describe('D — Gamma Levels view', () => {
     expect(after).toBe(before);                                                          // selStrike unchanged
     expect(after).not.toBe(101.5);                                                       // never the level price
   });
+
+  test('the 0DTE table shows the served same-day price beside the level it reprices', async ({ page }) => {
+    await page.route('**/api/levels**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify(Object.assign({}, LEVELS, {
+        zero_dte: [{ id: 'call_wall', label: 'Call wall', carried: 600, price: 580,
+          staleness: { as_of_time_ct: '12:32:07 CT', age_sec: 4, stale: false } }],
+      })),
+    }));
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const row = page.locator('#levelsBody .zd-row', { hasText: 'Call wall' });
+    await expect(row.locator('.lv-px').nth(0)).toHaveText('600.00');
+    await expect(row.locator('.lv-px').nth(1)).toHaveText('580.00');
+    await expect(row.locator('.lv-age')).toHaveText('12:32:07 CT');
+  });
+
+  test('the 0DTE table still shows when the canonical list is empty', async ({ page }) => {
+    await page.route('**/api/levels**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify(Object.assign({}, LEVELS, {
+        levels: [],
+        zero_dte: [{ id: 'call_wall', label: 'Call wall', carried: 600, price: 580,
+          staleness: { as_of_time_ct: '12:32:07 CT', stale: false } }],
+      })),
+    }));
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#levelsBody .placeholder')).toContainText('No canonical levels');
+    await expect(page.locator('#levelsBody .zd-row .lv-px').nth(1)).toHaveText('580.00');
+  });
 });

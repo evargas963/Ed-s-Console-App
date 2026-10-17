@@ -1217,6 +1217,23 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#hPx')).toHaveText('601.23');
   });
 
+  test('the Key Levels rail shows the served 0DTE levels under the regular ones', async ({ page }) => {
+    await page.route('**/api/terrain?**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify(Object.assign({}, TERRAIN, {
+        same_day: { gamma_flip: 571.25, call_wall: 575, put_wall: 570,
+          absolute_gamma_strike: 572.5, net_gex_peak: 570 },
+      })),
+    }));
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#klBody .kl-sec', { hasText: '0DTE' })).toBeVisible();
+    await expect(page.locator('#kl0Flip')).toHaveText('571.25');
+    await expect(page.locator('#kl0Call')).toHaveText('575.00');
+    await expect(page.locator('#kl0Put')).toHaveText('570.00');
+    await expect(page.locator('#kl0Abs')).toHaveText('572.50');
+    await expect(page.locator('#kl0Peak')).toHaveText('570.00');
+  });
+
   test('the Key Levels rail updates on a levels push', async ({ page }) => {
     let terrainFlip = 582.90;
     await page.route('**/api/terrain?**', (route) => route.fulfill({

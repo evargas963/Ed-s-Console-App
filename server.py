@@ -170,8 +170,8 @@ from db_authority import canonical_stream_db_path
 from instrument_identity import display_symbol, ticker_storage_key   # RC-126: the ONE query-symbol authority
 import live_market_plane as lmp
 from numeric_contract import float_finite_or_none, schwab_count, schwab_number
-from terrain_engine import (SCOPES, TerrainSnapshot, chain_ladder, compute_terrain, nearest_strike,
-                            positioning_migration, strike_window)
+from terrain_engine import (SCOPES, SAME_DAY_LEVELS, TerrainSnapshot, chain_ladder, compute_terrain,
+                            nearest_strike, positioning_migration, strike_window)
 from terrain_atr import Atr, compute_atrs, roll_up
 
 from db import get_db
@@ -2850,6 +2850,22 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict:
         "bar_source": snap.bar_source if snap is not None else None,
         "levels": levels,
         "by_distance": by_distance,
+        # nearest expiry repriced to today's option close, beside the level it reprices.
+        # The time is the terrain's own compute time, the same instant the gamma rows carry.
+        "zero_dte": [
+            {"id": gid, "label": label,
+             "price": None if t is None or not isinstance(t.get("same_day"), dict) else t["same_day"].get(gid),
+             "carried": None if t is None else t.get(gid),
+             "staleness": {"as_of_ts_utc": None if t is None else t.get("computed_ts_utc"),
+                           "as_of_time_ct": None if t is None or t.get("computed_ts_utc") is None
+                           else ct_label(t.get("computed_ts_utc")),
+                           "age_sec": None if t is None or t.get("computed_ts_utc") is None
+                           else served_ts - t.get("computed_ts_utc"),
+                           "stale_after_sec": None,
+                           "stale": bool(t is not None and t.get("levels_stale")),
+                           "reason": "carried from the terrain"}}
+            for gid, label in SAME_DAY_LEVELS
+        ],
         # The VWAP curve and its σ bands, CARRIED. The standalone pages each
         # used to accumulate their own from /api/bars1m — two more VWAPs for one
         # session, drawn beside a level neither of them agreed with.

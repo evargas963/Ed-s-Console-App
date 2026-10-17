@@ -44,8 +44,14 @@ from math_exposure_core import (
     pick_volatility_point_strikes,
     total_gex_dollars_at_strike,
 )
-from math_levels import compute_charm_by_strike, contract_inputs, compute_gamma_flip_v2, compute_gamma_profile, compute_gamma_support_levels, compute_max_pain, pick_charm_wall_strikes
+from math_levels import (
+    _contract_inputs, bs_delta, bs_gamma, compute_charm_by_strike, contract_inputs,
+    compute_gamma_flip_v2, compute_gamma_profile, compute_gamma_support_levels, compute_max_pain,
+    pick_charm_wall_strikes,
+)
+from time_et import ET, option_close_product, time_to_expiry_years
 from math_exposure_core import key_level_strikes_with_gamma
+from numeric_contract import schwab_count, schwab_number
 from terrain_read import build_terrain_read
 
 #: Payload schema version — bump on any field change so the UI can fail closed.
@@ -143,6 +149,8 @@ class TerrainSnapshot:
     zero_dte_gamma_share_pct: float | None = None
     #: absolute gamma (pick_pin_and_strength) of the same-day expiry's book alone, or None
     zero_dte_abs_gamma_strike: float | None = None
+    #: Nearest expiry repriced to today's option close. Keys are SAME_DAY_LEVELS.
+    same_day: dict[str, float | None] = field(default_factory=dict)
 
     #: RC-358: 25Δ risk reversal — {rr_pts, call_iv_25d, put_iv_25d, dte} or None.
     #: Skew steepness on the front expiry; deterioration toward −6 = the put bid
@@ -715,6 +723,127 @@ def qualify_pin_candidate(
     return float(absolute_gamma_strike), []
 
 
+#: The levels a same-day clock can move, in the order the levels list shows them.
+SAME_DAY_LEVELS = (
+    ("call_wall", "Call wall"),
+    ("put_wall", "Put wall"),
+    ("gamma_flip", "Gamma flip"),
+    ("absolute_gamma_strike", "Abs Γ"),
+    ("net_gex_peak", "Net Γ peak"),
+    ("gsf", "GSF"),
+    ("grc", "GRC"),
+    ("hvp", "HVP"),
+    ("lvp", "LVP"),
+    ("key_delta_strike", "Key Δ strike"),
+    ("call_charm_wall", "Call charm wall"),
+    ("put_charm_wall", "Put charm wall"),
+)
+
+
+def _listed_expiry_day(ct: dict) -> str | None:
+    """Schwab's expirationDate, the calendar day, or None when it was not sent as text."""
+    raw = ct.get("expirationDate")
+    if not isinstance(raw, str) or len(raw) < 10:
+        return None
+    return raw[:10]
+
+
+def same_day_levels(ticker: str, contracts: list[dict] | None, spot: float | None,
+                    *, now: datetime) -> dict[str, float | None]:
+    """Nearest listed expiry, its open interest and implied volatility kept, gamma and
+    delta rebuilt to today's option close for this ticker. Every ticker, one function.
+    Absent when that close is not held or has passed, or the chain has no expiry left."""
+    blank = {name: None for name, _label in SAME_DAY_LEVELS}
+    if not contracts or spot is None or spot <= 0:
+        return blank
+    today = now.astimezone(ET).date().isoformat()
+    t_close = time_to_expiry_years(today, now, product=option_close_product(ticker))
+    if t_close is None:
+        return blank
+    front = None
+    for ct in contracts:
+        if not isinstance(ct, dict):
+            continue
+        exp = _listed_expiry_day(ct)
+        if exp is None or exp < today:
+            continue
+        if front is None or exp < front:
+            front = exp
+    if front is None:
+        return blank
+    parsed: list = []
+    priced: list[dict] = []
+    repriced: list[dict] = []
+    built: list[tuple[dict, tuple | None, float | None]] = []
+    blocked: set[float] = set()
+    for ct in contracts:
+        if not isinstance(ct, dict) or _listed_expiry_day(ct) != front:
+            continue
+        copied = dict(ct)
+        strike = schwab_number(ct.get("strikePrice"))
+        row = _contract_inputs(ct, now, t_years=t_close)
+        gamma = delta = None
+        if isinstance(row, tuple):
+            _strike, _oi, _mult, t_years, sigma, sign = row
+            gamma = bs_gamma(float(spot), _strike, t_years, sigma)
+            delta = bs_delta(float(spot), _strike, t_years, sigma, call=sign > 0)
+        if gamma is None or delta is None:
+            copied["gamma"] = None
+            copied["delta"] = None
+            oi = schwab_count(ct.get("openInterest"))
+            if strike is not None and oi is not None and oi > 0:
+                blocked.add(float(strike))
+            built.append((copied, None, strike))
+            continue
+        copied["gamma"] = gamma
+        copied["delta"] = delta
+        built.append((copied, row, strike))
+    for copied, row, strike in built:
+        if strike is not None and float(strike) in blocked:
+            # One contract at this strike has open interest and no rebuilt greek.
+            # No sibling names the strike either: not a wall, and not a charm wall.
+            copied["gamma"] = None
+            copied["delta"] = None
+            repriced.append(copied)
+            continue
+        repriced.append(copied)
+        if row is not None:
+            parsed.append(row)
+            priced.append(copied)
+    if not repriced:
+        return blank
+    books = exposure_books(repriced, spot=spot, now=now)
+    exposures, _diag = merge_exposure_books(books.values())
+    strikes = key_level_strikes_with_gamma(exposures)
+    (call_wall, _), (put_wall, _) = pick_gamma_wall_strikes(exposures, strikes)
+    pin, _strength = pick_pin_and_strength(exposures, strikes)
+    hvp, lvp = pick_volatility_point_strikes(exposures, strikes)
+    if priced:
+        profile = compute_gamma_profile(priced, float(spot), now=now, parsed=parsed)
+        flip, _confidence, _flip_diag = compute_gamma_flip_v2(priced, float(spot), profile=profile)
+        support = compute_gamma_support_levels(profile, float(spot))
+        charm = compute_charm_by_strike(priced, float(spot), now=now, parsed=parsed)
+        call_charm, put_charm = pick_charm_wall_strikes(charm)
+    else:
+        flip = None
+        support = {"gsf": None, "grc": None}
+        call_charm = put_charm = None
+    return {
+        "call_wall": call_wall,
+        "put_wall": put_wall,
+        "gamma_flip": flip,
+        "absolute_gamma_strike": pin,
+        "net_gex_peak": pick_net_gex_peak_strike(exposures, strikes),
+        "gsf": support["gsf"],
+        "grc": support["grc"],
+        "hvp": hvp,
+        "lvp": lvp,
+        "key_delta_strike": pick_key_delta_strike(exposures, strikes),
+        "call_charm_wall": call_charm,
+        "put_charm_wall": put_charm,
+    }
+
+
 def compute_terrain(ticker: str, contracts: list[dict] | None,
                     spot: float | None, *, now: datetime) -> TerrainSnapshot:
     """Full terrain for one ticker. Fails closed — never invents a level.
@@ -862,6 +991,7 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         gsf_state=_gsl["state"],
         zero_dte_gamma_share_pct=_zero_dte_share,
         zero_dte_abs_gamma_strike=_zero_dte_pin,
+        same_day=same_day_levels(ticker, contracts, spot, now=_terrain_now),
         rr_25d=_rr25,
         vanna_agg=compute_net_vanna(exposures, spot),     # RC-362: same book, one sum
         implied_1d_move=compute_implied_one_day_move(contracts, spot),   # RC-113
