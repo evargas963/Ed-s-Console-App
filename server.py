@@ -2862,7 +2862,7 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict:
                            "age_sec": None if t is None or t.get("computed_ts_utc") is None
                            else served_ts - t.get("computed_ts_utc"),
                            "stale_after_sec": None,
-                           "stale": False if t is None else bool(t.get("levels_stale")),
+                           "stale": bool(t is not None and t.get("levels_stale")),
                            "reason": "carried from the terrain"}}
             for gid, label in SAME_DAY_LEVELS
         ],
