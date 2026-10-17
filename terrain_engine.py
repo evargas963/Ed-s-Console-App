@@ -761,22 +761,29 @@ def same_day_levels(ticker: str, contracts: list[dict] | None, spot: float | Non
     if front is None:
         return blank
     parsed: list = []
+    priced: list[dict] = []
     repriced: list[dict] = []
     for ct in contracts:
         if not isinstance(ct, dict) or str(ct.get("expirationDate") or "")[:10] != front:
             continue
-        row = _contract_inputs(ct, now, t_years=t_close)
-        if not isinstance(row, tuple):
-            continue
-        strike, _oi, _mult, t_years, sigma, sign = row
-        gamma = bs_gamma(float(spot), strike, t_years, sigma)
-        delta = bs_delta(float(spot), strike, t_years, sigma, call=sign > 0)
-        if gamma is None or delta is None:
-            continue
         copied = dict(ct)
+        row = _contract_inputs(ct, now, t_years=t_close)
+        gamma = delta = None
+        if isinstance(row, tuple):
+            strike, _oi, _mult, t_years, sigma, sign = row
+            gamma = bs_gamma(float(spot), strike, t_years, sigma)
+            delta = bs_delta(float(spot), strike, t_years, sigma, call=sign > 0)
+        if gamma is None or delta is None:
+            # The open interest stays. No rebuilt greek, so the exposure book withholds
+            # the strike instead of naming it from whatever sibling still has one.
+            copied["gamma"] = None
+            copied["delta"] = None
+            repriced.append(copied)
+            continue
         copied["gamma"] = gamma
         copied["delta"] = delta
         parsed.append(row)
+        priced.append(copied)
         repriced.append(copied)
     if not repriced:
         return blank
@@ -786,11 +793,16 @@ def same_day_levels(ticker: str, contracts: list[dict] | None, spot: float | Non
     (call_wall, _), (put_wall, _) = pick_gamma_wall_strikes(exposures, strikes)
     pin, _strength = pick_pin_and_strength(exposures, strikes)
     hvp, lvp = pick_volatility_point_strikes(exposures, strikes)
-    profile = compute_gamma_profile(repriced, float(spot), now=now, parsed=parsed)
-    flip, _confidence, _flip_diag = compute_gamma_flip_v2(repriced, float(spot), profile=profile)
-    support = compute_gamma_support_levels(profile, float(spot))
-    charm = compute_charm_by_strike(repriced, float(spot), now=now, parsed=parsed)
-    call_charm, put_charm = pick_charm_wall_strikes(charm)
+    if priced:
+        profile = compute_gamma_profile(priced, float(spot), now=now, parsed=parsed)
+        flip, _confidence, _flip_diag = compute_gamma_flip_v2(priced, float(spot), profile=profile)
+        support = compute_gamma_support_levels(profile, float(spot))
+        charm = compute_charm_by_strike(priced, float(spot), now=now, parsed=parsed)
+        call_charm, put_charm = pick_charm_wall_strikes(charm)
+    else:
+        flip = None
+        support = {"gsf": None, "grc": None}
+        call_charm = put_charm = None
     return {
         "call_wall": call_wall,
         "put_wall": put_wall,

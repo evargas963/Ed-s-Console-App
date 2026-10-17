@@ -648,7 +648,9 @@ behavior (AGENTS.md).
 10. **Same-day levels, every ticker** (operator 2026-10-17). One producer
     (`terrain_engine.same_day_levels`). The nearest listed expiry keeps its open interest and
     implied volatility. Gamma and delta are rebuilt, Black-Scholes with no rate and no dividend,
-    at the wall-clock time from the valuation instant to that day's option close. The close is
+    at the time every other greek uses (`time_to_expiry_years`, including its 10-minute floor)
+    from the valuation instant to that day's option close. A contract with open interest whose
+    gamma cannot be rebuilt leaves that strike's level absent. The close is
     the regular window Schwab's /markets sent: the index window for an index it names with "$"
     and for SPY, QQQ and IWM, the equity-option window for every other ticker. No window held,
     or a close already passed, leaves the level absent. The whole-book levels are unchanged.

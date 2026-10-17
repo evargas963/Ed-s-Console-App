@@ -2850,11 +2850,20 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict:
         "bar_source": snap.bar_source if snap is not None else None,
         "levels": levels,
         "by_distance": by_distance,
-        # nearest expiry repriced to today's option close, beside the level it reprices
+        # nearest expiry repriced to today's option close, beside the level it reprices.
+        # The time is the terrain's own compute time, the same instant the gamma rows carry.
         "zero_dte": [
             {"id": gid, "label": label,
              "price": None if t is None or not isinstance(t.get("same_day"), dict) else t["same_day"].get(gid),
-             "carried": None if t is None else t.get(gid)}
+             "carried": None if t is None else t.get(gid),
+             "staleness": {"as_of_ts_utc": None if t is None else t.get("computed_ts_utc"),
+                           "as_of_time_ct": None if t is None or t.get("computed_ts_utc") is None
+                           else ct_label(t.get("computed_ts_utc")),
+                           "age_sec": None if t is None or t.get("computed_ts_utc") is None
+                           else served_ts - t.get("computed_ts_utc"),
+                           "stale_after_sec": None,
+                           "stale": False if t is None else bool(t.get("levels_stale")),
+                           "reason": "carried from the terrain"}}
             for gid, label in SAME_DAY_LEVELS
         ],
         # The VWAP curve and its σ bands, CARRIED. The standalone pages each

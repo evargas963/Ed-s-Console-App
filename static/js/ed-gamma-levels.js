@@ -77,11 +77,21 @@
       body += '<div class="lv-head"><span>0DTE</span>' +
         '<span>nearest expiry, clock cut to today\'s option close</span></div>';
       body += '<table class="lv zd"><thead><tr><th>Level</th><th>As carried</th><th>0DTE</th>' +
-        '</tr></thead><tbody>';
+        '<th>As-of</th></tr></thead><tbody>';
       zd.forEach(function (r) {
-        body += '<tr class="zd-row"><td>' + esc(r.label || r.id || '—') + '</td>' +
+        var st = (r && r.staleness) ? r.staleness : null;
+        var ageWord = (st && st.age_sec != null) ? (Math.round(st.age_sec) + 's') : null;
+        var ageWhen = (st && st.as_of_time_ct != null) ? st.as_of_time_ct : null;
+        var age = '—';
+        if (ageWhen != null && ageWord != null) age = ageWhen + ' · ' + ageWord;
+        else if (ageWhen != null) age = ageWhen;
+        else if (ageWord != null) age = ageWord;
+        var stale = (st && st.stale) ? ' stale' : '';
+        var name = (r && r.label != null) ? r.label : ((r && r.id != null) ? r.id : '—');
+        body += '<tr class="zd-row"><td>' + esc(name) + '</td>' +
           '<td class="lv-px">' + px(r.carried) + '</td>' +
-          '<td class="lv-px">' + px(r.price) + '</td></tr>';
+          '<td class="lv-px">' + px(r.price) + '</td>' +
+          '<td class="lv-age' + stale + '">' + esc(age) + '</td></tr>';
       });
       body += '</tbody></table>';
     }

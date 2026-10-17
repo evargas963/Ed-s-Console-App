@@ -98,12 +98,14 @@ test.describe('D — Gamma Levels view', () => {
     await page.route('**/api/levels**', (route) => route.fulfill({
       status: 200, contentType: 'application/json',
       body: JSON.stringify(Object.assign({}, LEVELS, {
-        zero_dte: [{ id: 'call_wall', label: 'Call wall', carried: 600, price: 580 }],
+        zero_dte: [{ id: 'call_wall', label: 'Call wall', carried: 600, price: 580,
+          staleness: { as_of_time_ct: '12:32:07 CT', age_sec: 4, stale: false } }],
       })),
     }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const row = page.locator('#levelsBody .zd-row', { hasText: 'Call wall' });
     await expect(row.locator('.lv-px').nth(0)).toHaveText('600.00');
     await expect(row.locator('.lv-px').nth(1)).toHaveText('580.00');
+    await expect(row.locator('.lv-age')).toHaveText('12:32:07 CT · 4s');
   });
 });
