@@ -15,7 +15,14 @@ function matrix(expiry) {
       { expiry: '2026-10-23', dte: 7, label: '2026-10-23 · 7' },
     ],
     weights_in_score: { CHARMM: 0.22, DGEXM: 0, GEXM: 0.15, FLOWM: 0 },
-    spot_text: '670', notes: [], slopes: [], offscreen: [],
+    spot: 670, spot_text: '670', regime: 'SHORT_GAMMA_TREND', scale_text: '0–72',
+    status_text: 'Chain as of 10:00:00 AM CT',
+    flip_text: '669.00', move_text: '665.00–675.00', pin_text: '671.00',
+    move_low: 665, move_high: 675, notes: [], slopes: [], offscreen: [],
+    levels: [
+      { lane: 'session', abbrev: 'PDH', price: 680, price_text: '680.00', title: 'Prior day high' },
+      { lane: 'options', abbrev: '0D Pin', price: 671, price_text: '671.00', title: '0DTE Abs Γ' },
+    ],
     rows: [{
       strike: 671, strike_text: '671', distance_text: '1.00', score: 40, score_text: '40',
       net_gex_text: '18.00', gross_text: '42.00', oi_text: '14', pc_gex_text: '0.40',
@@ -53,11 +60,21 @@ test('the matrix redraws when the priced chain updates and keeps the expiry', as
   await page.goto('/');
   await expect(page.locator('#cmBody')).toContainText('40');
   await expect(page.locator('#cmBody')).toContainText('—');
+  await expect(page.locator('#cmBody h1')).toHaveText('Confluence matrix');
+  await expect(page.locator('#cmExp')).toHaveValue('2026-10-16');
+  await expect(page.locator('.level-pill')).toContainText('0D Pin 671.00');
+  await expect(page.locator('#cmAbove')).toContainText('PDH 680.00');
+  const font = await page.locator('.cm-page').evaluate((el) => getComputedStyle(el).fontSize);
+  expect(font).toBe('13px');
   const opened = expiries.length;
   expect(opened).toBeGreaterThan(0);
 
   await page.locator('#cmBody tbody tr[data-i]').click();
   await expect(page.locator('#cmDetail')).toContainText('net gamma 12.0');
+  await expect(page.locator('#cmDetail')).toContainText('18.00M');
+  await expect(page.locator('#cmDetail')).toContainText('1.00k');
+  await expect(page.locator('#cmDetail')).toContainText('$ per 1% move');
+  await expect(page.locator('#cmDetail')).toContainText('delta-shares / day');
 
   await page.evaluate(() => {
     document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'levels' } }));
@@ -66,7 +83,7 @@ test('the matrix redraws when the priced chain updates and keeps the expiry', as
   expect(expiries[expiries.length - 1]).toBe('2026-10-16');
   await expect(page.locator('#cmDetail')).toContainText('net gamma 12.0');
 
-  await page.getByRole('button', { name: '2026-10-23 · 7' }).click();
+  await page.locator('#cmExp').selectOption('2026-10-23');
   await expect.poll(() => expiries[expiries.length - 1]).toBe('2026-10-23');
   const picked = expiries.length;
 

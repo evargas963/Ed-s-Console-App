@@ -41,6 +41,7 @@
     SHORT_GAMMA_TREND: { t: 'Short γ · trend', c: 'var(--ed-warn)' },
     UNAVAILABLE: { t: 'unavailable', c: 'var(--ed-ink-3)' },
   };
+  window.EdGammaRegime = REGIME;
 
   // ---------- Key Levels rail ----------
   function stillLevelsCtx(tk) { return isGamma() && !!document.getElementById('klSpot') && ticker() === tk; }
