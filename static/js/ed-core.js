@@ -23,7 +23,8 @@
   // sub id (map/filter/find/sort/... are all real Array.prototype methods). ----
   var NAV = {
     'trade-desk': { title: 'TRADE DESK', subs: [
-      { id: 'desk', label: 'Desk' }, { id: 'right-now', label: 'Right Now' }, { id: 'plan', label: 'Plan' },
+      { id: 'desk', label: 'Desk' }, { id: 'confluence', label: 'Confluence Matrix' },
+      { id: 'right-now', label: 'Right Now' }, { id: 'plan', label: 'Plan' },
       { id: 'expression', label: 'Expression', state: 'na' } ], views: Object.create(null) },
     // Book/DOM first (real, wired 2026-09-13 to /api/order-flow/microstructure); the rest stay
     // `na` until they have their own real wiring -- Overview/Heatmap/Tape/Options Book/History

@@ -1,0 +1,76 @@
+"""Schwab -> the confluence matrix. The score is the chain already priced, ranked once."""
+from __future__ import annotations
+
+from datetime import datetime
+
+from confluence_composite import score_magnitudes
+from time_et import ET
+
+import server
+
+
+def test_a_missing_gamma_blanks_the_score_and_the_top_is_not_100():
+    """The worked example. Strike 795 has charm 8 and no gamma, so its score is absent.
+    The highest score is 70, not 100."""
+    rows = {
+        770.0: {"GEXM": 10.0, "CHARMM": 5.0, "OI": 1.0, "VOL": 1.0},
+        775.0: {"GEXM": 30.0, "CHARMM": 5.0, "OI": 1.0, "VOL": 1.0},
+        780.0: {"GEXM": 20.0, "CHARMM": 15.0, "OI": 1.0, "VOL": 1.0},
+        785.0: {"GEXM": 50.0, "CHARMM": 2.0, "OI": 1.0, "VOL": 1.0},
+        790.0: {"GEXM": 40.0, "CHARMM": 9.0, "OI": 1.0, "VOL": 1.0},
+        795.0: {"GEXM": None, "CHARMM": 8.0, "OI": 1.0, "VOL": 1.0},
+    }
+    scored, _flat, _spans = score_magnitudes(rows, {"GEXM": 0.6, "CHARMM": 0.4})
+    shown = {strike: None if row["score"] is None else int(round(row["score"]))
+             for strike, row in scored.items()}
+    assert shown[795.0] is None
+    assert "net gamma" in scored[795.0]["missing"]
+    assert shown[770.0] == 8
+    assert shown[775.0] == 38
+    assert shown[780.0] == 53
+    assert shown[785.0] == 60
+    assert shown[790.0] == 70
+    assert max(v for v in shown.values() if v is not None) == 70
+
+
+def test_the_matrix_reads_the_priced_book_and_leaves_flow_out():
+    """A planted book is the one the matrix ranks. Flow and the change in gamma stay empty,
+    and a today expiry's score cannot pass 72."""
+    now = datetime(2026, 10, 16, 10, 0, tzinfo=ET)
+    tk = "SPY"
+    bucket = {
+        "dollarized": True, "oi_unreported": 0, "volume_unreported": 0,
+        "call_oi": 10.0, "put_oi": 4.0, "call_volume": 3.0, "put_volume": 1.0,
+        "call_gex_1pct": 30_000_000.0, "put_gex_1pct": 12_000_000.0, "net_gex_1pct": 18_000_000.0,
+        "call_dex_dollars": 5.0, "put_dex_dollars": 2.0, "net_dex_dollars": 3.0,
+        "call_vanna": 1.0, "put_vanna": 0.0, "net_vanna": 1.0,
+        "call_gamma_unreported": 0, "put_gamma_unreported": 0,
+        "call_delta_unreported": 0, "put_delta_unreported": 0,
+        "call_vanna_unreported": 0, "put_vanna_unreported": 0,
+    }
+    contract = {
+        "strikePrice": 670.0, "putCall": "CALL", "openInterest": 10, "totalVolume": 3,
+        "multiplier": 100, "volatility": 20.0, "expirationDate": "2026-10-16",
+        "gamma": 0.01, "delta": 0.5,
+    }
+    server._terrain_cache[tk] = {
+        "spot": 669.5, "computed_ts_utc": now.timestamp(),
+        "expiry_dte": {"2026-10-16": 0},
+        "_books": {("2026-10-16", 0): ({670.0: bucket}, None)},
+        "_priced_chain": [contract],
+    }
+    try:
+        body = server.confluence_payload(tk, "2026-10-16", now)
+    finally:
+        server._terrain_cache.pop(tk, None)
+    assert body["available"] is True
+    assert body["preset"] == "0DTE"
+    assert body["ceiling"] == 72
+    assert body["weights_in_score"]["FLOWM"] == 0
+    assert body["weights_in_score"]["DGEXM"] == 0
+    row = body["rows"][0]
+    assert row["strike"] == 670.0
+    assert row["net_gex_text"] == "18.00"
+    assert row["gross_text"] == "42.00"
+    assert row["flow_text"] is None
+    assert row["dgex_text"] is None
