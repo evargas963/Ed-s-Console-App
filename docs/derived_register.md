@@ -18,4 +18,5 @@ values added for the confluence matrix.
 | Thin book | `confluence_composite.build_matrix` | Fewer than 10 strikes in the expiry have open interest or volume. The score is still computed. The note is served as text. |
 | Flat factor | `confluence_composite.score_magnitudes` | The 95th percentile equals the 5th, so that factor adds nothing. The note is served as text. |
 | Level price on the rail | `server._screen_levels` | Each level is sent at its own price. The page draws that price on the rail between the strike rows. A price outside the visible strikes is a button above or below the matrix. The page does not move the price onto a strike. |
-| One-day move markers | `server._confluence_markers` | The book's spot plus and minus the book's implied one-day move. Display only. Not scored. |
+| One-day move markers | `server._confluence_markers` | The book's spot plus and minus the book's implied one-day move. Display only. Not scored. A strike between those two prices is marked `inside` by `server._inside_move`. |
+| Rail and spot geometry | the confluence page | The page places each served level price and the served spot between the rendered strike-row centers. That is the design spec's display geometry. It does not produce a price. |

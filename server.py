@@ -170,7 +170,7 @@ from db_authority import canonical_stream_db_path
 from instrument_identity import display_symbol, ticker_storage_key   # RC-126: the ONE query-symbol authority
 import live_market_plane as lmp
 from numeric_contract import float_finite_or_none, schwab_count, schwab_number
-from confluence_composite import build_matrix, iv_by_strike, place_markers
+from confluence_composite import build_matrix, iv_by_strike
 from math_levels import compute_charm_by_strike
 from terrain_engine import (SCOPES, SAME_DAY_LEVELS, TerrainSnapshot, chain_ladder, compute_terrain,
                             nearest_strike, positioning_migration, strike_window)
@@ -2820,15 +2820,6 @@ def _option_abbrev(label: str, same_day: bool) -> str:
     return base
 
 
-def _regime_words(code) -> str | None:
-    """The same words the gamma card already shows. White on this screen."""
-    if code == "LONG_GAMMA_CHOP":
-        return "Long γ · chop"
-    if code == "SHORT_GAMMA_TREND":
-        return "Short γ · trend"
-    return None
-
-
 def _confluence_markers(live: dict, tk: str, now: datetime) -> list[dict]:
     """Levels carried from this same priced snapshot, plus the session levels already published."""
     markers = []
@@ -2907,6 +2898,13 @@ def _move_text(low: dict | None, high: dict | None) -> str | None:
     return low["price_text"] + "–" + high["price_text"]
 
 
+def _inside_move(strike, low, high) -> bool:
+    """Whether this strike sits between the book's one-day move. Display only."""
+    if not isinstance(low, (int, float)) or not isinstance(high, (int, float)):
+        return False
+    return float(low) <= float(strike) <= float(high)
+
+
 def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict:
     """The confluence matrix for one expiry of the chain already priced in memory."""
     live = terrain_cache_get(tk, now.timestamp())
@@ -2952,7 +2950,6 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict:
     if isinstance(valued_ts, (int, float)):
         charm = compute_charm_by_strike(
             contracts, float(spot), now=datetime.fromtimestamp(float(valued_ts), ET))
-    strikes = [float(s) for s in exposures.keys()]
     markers = _confluence_markers(live, tk, now)
     levels = _screen_levels(markers)
     flip = _level_named(levels, "Flip")
@@ -2960,20 +2957,31 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict:
     em_up = _level_named(levels, "EM+")
     em_dn = _level_named(levels, "EM−")
     body = build_matrix(exposures, charm, iv_by_strike(contracts), float(spot), float(match["dte"]),
-                        place_markers(markers, strikes))
+                        [])
+    low = None
+    high = None
+    if em_dn is not None:
+        low = em_dn["price"]
+    if em_up is not None:
+        high = em_up["price"]
+    for row in body["rows"]:
+        row["inside"] = _inside_move(row["strike"], low, high)
+    regime = live.get("regime")
+    status_text = None
+    if isinstance(fetched, (int, float)):
+        status_text = "Chain as of " + ct_label(fetched)
     body.update({
         "ticker": tk, "available": True, "reason": None,
         "expiry": chosen, "expiries": listed,
         "spot": float(spot),
         "chain_as_of_ts_utc": fetched,
         "chain_as_of_time_ct": None if fetched is None else ct_label(fetched),
+        "status_text": status_text,
         "levels": levels,
-        "regime_text": _regime_words(live.get("regime")),
+        "regime": regime if isinstance(regime, str) else None,
         "flip_text": None if flip is None else flip["price_text"],
         "pin_text": None if pin is None else pin["price_text"],
         "move_text": _move_text(em_dn, em_up),
-        "move_low": None if em_dn is None else em_dn["price"],
-        "move_high": None if em_up is None else em_up["price"],
     })
     return body
 

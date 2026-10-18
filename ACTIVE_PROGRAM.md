@@ -19,7 +19,9 @@ zero, the volatility blend is the simple mean of the contracts that have a volat
 chip is the only not-live mark. The matrix shows the chain's time. It does not show chain age or a
 STALE word. The window is seven strikes below the price and seven above, plus a strike on the
 price. Percentiles use the whole expiry. Each level is drawn at its own price on the rail.
-A price outside the visible strikes is a button above or below the matrix. The expiry, including
+A price outside the visible strikes is a button above or below the matrix. The page's placement
+of those served prices, and of the spot line, is display geometry from the design spec. It is
+not a second price. The expiry, including
 0DTE, is chosen from a dropdown. With no priced chain, the page says so. A selected strike may name the missing input. Charm
 for the chosen expiry uses that expiry's contracts at the book's valuation time. Known open
 interest of zero is zero charm.

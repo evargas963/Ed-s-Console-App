@@ -15,7 +15,8 @@ function matrix(expiry) {
       { expiry: '2026-10-23', dte: 7, label: '2026-10-23 · 7' },
     ],
     weights_in_score: { CHARMM: 0.22, DGEXM: 0, GEXM: 0.15, FLOWM: 0 },
-    spot: 670, spot_text: '670', regime_text: 'Short γ · trend',
+    spot: 670, spot_text: '670', regime: 'SHORT_GAMMA_TREND', scale_text: '0–72',
+    status_text: 'Chain as of 10:00:00 AM CT',
     flip_text: '669.00', move_text: '665.00–675.00', pin_text: '671.00',
     move_low: 665, move_high: 675, notes: [], slopes: [], offscreen: [],
     levels: [

@@ -269,7 +269,11 @@ def _signed(n: float | None, digits: int) -> str | None:
     if n is None:
         return None
     shown = f"{float(n):.{digits}f}"
-    if shown.startswith("-") or shown.startswith("0"):
+    if shown.startswith("-"):
+        if float(shown) == 0:
+            return shown[1:]
+        return shown
+    if float(shown) == 0:
         return shown
     return "+" + shown
 
@@ -460,6 +464,7 @@ def build_matrix(exposures: dict, charm_by_strike: dict, ivs: dict[float, float 
     return {
         "preset": name,
         "preset_text": name + " · ceiling " + f"{cap:g}",
+        "scale_text": "0–" + f"{cap:g}",
         "weights_in_score": weights,
         "ceiling": cap,
         "notes": notes,

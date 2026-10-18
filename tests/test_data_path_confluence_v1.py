@@ -73,6 +73,7 @@ def test_the_matrix_reads_the_priced_book_and_leaves_flow_out():
     row = body["rows"][0]
     assert row["strike"] == 670.0
     assert row["net_gex_text"] == "+18.00"
+    assert row["distance_text"] == "+0.50"
     assert row["gross_text"] == "42.00"
     assert row["flow_text"] is None
     assert row["dgex_text"] is None
@@ -121,7 +122,7 @@ def test_charm_uses_the_book_valuation_time_and_a_zero_book_is_zero_charm():
     row = body["rows"][0]
     assert row["charm_text"] == "0.00"
     assert row["score"] is not None
-    assert "Call wall" in row["markers"]
+    assert row["markers"] == []
     walls = [level for level in body["levels"] if level["abbrev"] == "CW"]
     assert walls[0]["price"] == 669.0
     assert walls[0]["price_text"] == "669.00"

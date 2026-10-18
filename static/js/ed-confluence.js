@@ -29,7 +29,7 @@
     ['Vol/OI', 'ratio', 'Options volume divided by open interest.', false],
     ['Flow', 'signed $M', 'No signed flow is produced.', true],
     ['DEX', '$M', 'Delta exposure in millions of dollars.', false],
-    ['Vanna', '$M / vol pt', 'Vanna in dollars per volatility point.', false],
+    ['Vanna', '$M / vol pt', 'Vanna in millions of dollars per volatility point.', false],
     ['IV', '%', 'Implied volatility for the strike.', false],
     ['Charm', 'k shares/day', 'Charm in thousands of delta-shares per day.', false]
   ];
@@ -43,6 +43,14 @@
     if (value == null) return '—';
     if (value === '') return '—';
     return String(value);
+  }
+
+  function regimeWords(code) {
+    var table = window.EdGammaRegime;
+    if (!table || code == null) return '—';
+    var row = table[code];
+    if (!row || row.t == null) return '—';
+    return row.t;
   }
 
   function esc(value) {
@@ -135,6 +143,9 @@
         for (i = pos.length - 2; i >= 0; i--) {
           if (pos[i] > pos[i + 1] - 25) pos[i] = pos[i + 1] - 25;
         }
+      }
+      for (i = 0; i < pos.length; i++) {
+        if (pos[i] < 12) pos[i] = 12;
       }
       group.forEach(function (lv, index) {
         var x = laneIndex * 138 + 7;
@@ -352,7 +363,7 @@
     }
     var summary = [
       ['SPOT', body.spot_text, ''],
-      ['GAMMA REGIME · CHAIN', body.regime_text, ''],
+      ['GAMMA REGIME · CHAIN', regimeWords(body.regime), ''],
       ['MODELED FLIP · CHAIN', body.flip_text, body.expiry ? body.expiry : ''],
       ['EXPECTED MOVE · CHAIN', body.move_text, body.move_text ? 'one day' : ''],
       ['0DTE PIN · MODELED', body.pin_text, body.pin_text ? 'same-day' : '']
@@ -360,24 +371,20 @@
       var small = cell[2] ? '<small>' + esc(cell[2]) + '</small>' : '';
       return '<div class="stat"><label>' + esc(cell[0]) + '</label><strong>' + esc(text(cell[1])) + '</strong>' + small + '</div>';
     }).join('');
-    var status = body.available
-      ? (body.chain_as_of_time_ct ? 'Chain as of ' + body.chain_as_of_time_ct : 'The chain time was not sent.')
-      : text(body.reason);
+    var status = body.available ? text(body.status_text) : text(body.reason);
     var heads = '<tr><th class="group edge" colspan="5">Price context</th><th class="group edge" colspan="4">Positioning</th><th class="group edge" colspan="5">Activity</th><th class="group" colspan="4">Sensitivity</th></tr><tr>';
     HEADS.forEach(function (col, index) {
       var secondary = '<small>' + esc(col[1]) + '</small>';
       if (index === 4) {
-        secondary = '<small>0–100</small>';
+        secondary = '<small>' + esc(text(body.scale_text)) + '</small>';
         if (body.preset) secondary += '<small>' + esc(body.preset) + '</small>';
       }
       heads += '<th tabindex="0" title="' + esc(col[2]) + '"' + (col[3] ? ' class="edge"' : '') + '>' + esc(col[0]) + secondary + '</th>';
     });
     heads += '</tr>';
     var bodyRows = '';
-    var low = typeof body.move_low === 'number' ? body.move_low : null;
-    var high = typeof body.move_high === 'number' ? body.move_high : null;
     rows.forEach(function (row, i) {
-      var inside = low != null && high != null && row.strike >= low && row.strike <= high;
+      var inside = row.inside === true;
       var scoreShown = row.score_text == null
         ? ''
         : '<button type="button" class="score" aria-label="Inspect strike ' + esc(text(row.strike_text)) + '">' + esc(row.score_text) + ' ›</button>';
