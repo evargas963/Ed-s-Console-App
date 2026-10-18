@@ -54,7 +54,10 @@
     var preset = document.getElementById('cmPreset');
     var exp = document.getElementById('cmExp');
     if (!box) return;
-    if (expiry == null && body.expiry) expiry = body.expiry;
+    var names = Array.isArray(body.expiries) ? body.expiries : [];
+    var held = false;
+    names.forEach(function (e) { if (e.expiry === expiry) held = true; });
+    if (body.expiry && (expiry == null || !held)) expiry = body.expiry;
     if (time) time.textContent = body.chain_as_of_time_ct == null ? '' : body.chain_as_of_time_ct;
     if (preset) preset.textContent = body.preset_text == null ? '' : body.preset_text;
     var expiries = Array.isArray(body.expiries) ? body.expiries : [];

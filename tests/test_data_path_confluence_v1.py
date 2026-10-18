@@ -182,9 +182,12 @@ def test_a_passed_expiry_is_not_the_one_the_matrix_opens_on():
         "_priced_chain": [],
     }
     try:
-        body = server.confluence_payload(tk, None, sunday)
+        opened = server.confluence_payload(tk, None, sunday)
+        asked = server.confluence_payload(tk, "2026-10-16", sunday)
     finally:
         server._terrain_cache.pop(tk, None)
-    assert body["available"] is True
-    assert body["expiry"] == "2026-10-19"
-    assert [e["expiry"] for e in body["expiries"]] == ["2026-10-19"]
+    assert opened["available"] is True
+    assert opened["expiry"] == "2026-10-19"
+    assert [e["expiry"] for e in opened["expiries"]] == ["2026-10-19"]
+    assert asked["available"] is True
+    assert asked["expiry"] == "2026-10-19"
