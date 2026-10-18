@@ -184,6 +184,9 @@ def test_a_passed_expiry_is_not_the_one_the_matrix_opens_on():
     try:
         opened = server.confluence_payload(tk, None, sunday)
         asked = server.confluence_payload(tk, "2026-10-16", sunday)
+        server._terrain_cache[tk]["_books"] = {("2026-10-19", 3): ({670.0: bucket}, None)}
+        server._terrain_cache[tk]["expiry_dte"] = {"2026-10-19": 3}
+        gone = server.confluence_payload(tk, "2026-10-16", sunday)
     finally:
         server._terrain_cache.pop(tk, None)
     assert opened["available"] is True
@@ -191,3 +194,5 @@ def test_a_passed_expiry_is_not_the_one_the_matrix_opens_on():
     assert [e["expiry"] for e in opened["expiries"]] == ["2026-10-19"]
     assert asked["available"] is True
     assert asked["expiry"] == "2026-10-19"
+    assert gone["available"] is True
+    assert gone["expiry"] == "2026-10-19"

@@ -87,3 +87,40 @@ test('the matrix redraws when the priced chain updates and keeps the expiry', as
   expect(expiries.length).toBe(picked + 2);
   expect(errs).toEqual([]);
 });
+
+test('a passed expiry is replaced by the one the server returns', async ({ page }) => {
+  const asked = [];
+  let serveNext = false;
+  await page.route('**/api/confluence**', (route) => {
+    asked.push(new URL(route.request().url()).searchParams.get('expiry'));
+    const body = serveNext
+      ? Object.assign(matrix('2026-10-19'), {
+        expiry: '2026-10-19',
+        expiries: [{ expiry: '2026-10-19', dte: 1, label: '2026-10-19 · 1' }],
+      })
+      : matrix('2026-10-16');
+    return route.fulfill({
+      status: 200, contentType: 'application/json', body: JSON.stringify(body),
+    });
+  });
+  await page.addInitScript(() => {
+    try {
+      localStorage.setItem('ed_ticker', 'SPY');
+      localStorage.setItem('ed_ws', 'trade-desk');
+      localStorage.setItem('ed_sub', 'confluence');
+    } catch (e) { /* storage unavailable */ }
+  });
+  await page.goto('/');
+  await expect(page.locator('#cmBody')).toContainText('40');
+  serveNext = true;
+  const before = asked.length;
+  await page.evaluate(() => {
+    document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'levels' } }));
+  });
+  await expect.poll(() => asked.length).toBe(before + 1);
+  expect(asked[asked.length - 1]).toBe('2026-10-16');
+  await page.evaluate(() => {
+    document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'chain' } }));
+  });
+  await expect.poll(() => asked[asked.length - 1]).toBe('2026-10-19');
+});

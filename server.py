@@ -2838,15 +2838,12 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict:
                 "reason": "no priced chain is held for this ticker"}
     expiry_dte = live.get("expiry_dte") if isinstance(live.get("expiry_dte"), dict) else {}
     today = now.strftime("%Y-%m-%d")
-    all_listed = _confluence_expiries(books, expiry_dte)
-    listed = [e for e in all_listed if e["expiry"] >= today]
+    listed = [e for e in _confluence_expiries(books, expiry_dte) if e["expiry"] >= today]
     if not listed:
         return {"ticker": tk, "available": False,
                 "reason": "no expiry on this chain is still open"}
     chosen = expiry
-    on_book = next((e for e in all_listed if e["expiry"] == chosen), None)
-    passed = on_book is not None and chosen < today
-    if chosen is None or passed:
+    if not isinstance(chosen, str) or chosen < today:
         live_listed = [e for e in listed if e["dte"] is not None and e["dte"] >= 0]
         chosen = (live_listed or listed)[0]["expiry"]
     match = next((e for e in listed if e["expiry"] == chosen), None)
