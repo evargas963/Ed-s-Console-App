@@ -3,7 +3,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from confluence_composite import score_magnitudes
+from confluence_composite import magnitudes, score_magnitudes
+from math_levels import compute_charm_by_strike
 from time_et import ET
 
 import server
@@ -74,3 +75,46 @@ def test_the_matrix_reads_the_priced_book_and_leaves_flow_out():
     assert row["gross_text"] == "42.00"
     assert row["flow_text"] is None
     assert row["dgex_text"] is None
+
+
+def test_charm_uses_the_book_valuation_time_and_a_zero_book_is_zero_charm():
+    """A reprice values charm when the book was priced, not at the older chain stamp.
+    Open interest of zero is no charm, not a missing charm."""
+    chain_time = datetime(2026, 10, 16, 9, 45, tzinfo=ET)
+    valued = datetime(2026, 10, 16, 15, 0, tzinfo=ET)
+    tk = "SPY"
+    bucket = {
+        "dollarized": True, "oi_unreported": 0, "volume_unreported": 0,
+        "call_oi": 0.0, "put_oi": 0.0, "call_volume": 4.0, "put_volume": 0.0,
+        "call_gex_1pct": 30_000_000.0, "put_gex_1pct": 12_000_000.0, "net_gex_1pct": 18_000_000.0,
+        "call_dex_dollars": 0.0, "put_dex_dollars": 0.0, "net_dex_dollars": 0.0,
+        "call_vanna": 0.0, "put_vanna": 0.0, "net_vanna": 0.0,
+        "call_gamma_unreported": 0, "put_gamma_unreported": 0,
+        "call_delta_unreported": 0, "put_delta_unreported": 0,
+        "call_vanna_unreported": 0, "put_vanna_unreported": 0,
+    }
+    contract = {
+        "strikePrice": 670.0, "putCall": "CALL", "openInterest": 0, "totalVolume": 4,
+        "multiplier": 100, "volatility": 20.0, "expirationDate": "2026-10-16T20:00:00",
+        "gamma": 0.01, "delta": 0.5,
+    }
+    direct = compute_charm_by_strike([contract], 669.5, now=valued)
+    assert 670.0 not in direct
+    zero = magnitudes(bucket, None, 20.0, 669.5)
+    assert zero["CHARMM"] == 0.0
+    server._terrain_cache[tk] = {
+        "spot": 669.5, "computed_ts_utc": chain_time.timestamp(),
+        "_valued_ts_utc": valued.timestamp(),
+        "expiry_dte": {"2026-10-16": 0},
+        "_books": {("2026-10-16", 0): ({670.0: bucket}, None)},
+        "_priced_chain": [contract],
+        "call_wall": 669.0,
+    }
+    try:
+        body = server.confluence_payload(tk, "2026-10-16", valued)
+    finally:
+        server._terrain_cache.pop(tk, None)
+    row = body["rows"][0]
+    assert row["charm_text"] == "0.00"
+    assert row["score"] is not None
+    assert "Call wall" in row["markers"]

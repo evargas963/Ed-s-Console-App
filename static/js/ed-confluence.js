@@ -54,6 +54,7 @@
     var preset = document.getElementById('cmPreset');
     var exp = document.getElementById('cmExp');
     if (!box) return;
+    if (expiry == null && body.expiry) expiry = body.expiry;
     if (time) time.textContent = body.chain_as_of_time_ct == null ? '' : body.chain_as_of_time_ct;
     if (preset) {
       preset.textContent = body.preset ? (body.preset + ' · ceiling ' + body.ceiling) : '';
@@ -102,11 +103,11 @@
       keys.forEach(function (k) {
         var marks = Array.isArray(row.markers) ? row.markers : [];
         var shown = k === 'strike' ? text(row.strike) : (k === 'markers' ? marks.join(' ') : text(row[k]));
-        var heat = (k === 'score_text' && row.heat != null) ? ' style="background:rgba(47,107,255,' + (0.15 + 0.55 * row.heat) + ')"' : '';
+        var heat = (k === 'score_text' && row.heat_background) ? ' style="background:' + row.heat_background + '"' : '';
         html += '<td' + heat + '>' + shown + '</td>';
       });
       html += '</tr>';
-      if (row.strike === body.spot_under) {
+      if (row.spot_line) {
         html += '<tr class="cm-spot"><td colspan="' + cols.length + '">spot ' + text(body.spot) + '</td></tr>';
       }
     });
@@ -145,7 +146,7 @@
     if (kept) showDetail(kept);
   }
 
-  document.addEventListener('ed:view', function () { expiry = null; selectedStrike = null; load(); });
+  document.addEventListener('ed:view', function () { selectedStrike = null; load(); });
   document.addEventListener('ed:ticker', function () { expiry = null; selectedStrike = null; load(); });
   // The priced book is republished as `levels`. A new chain publishes that too.
   document.addEventListener('ed:changed', function (e) {

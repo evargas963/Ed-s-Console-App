@@ -121,7 +121,10 @@ def score_magnitudes(by_strike: dict[float, dict[str, float | None]],
     scored: dict[float, dict[str, Any]] = {}
     for strike, factors in by_strike.items():
         if strike not in universe:
-            scored[strike] = {"score": None, "missing": ["no open interest and no volume"],
+            unreported = factors.get("OI") is None or factors.get("VOL") is None
+            why = ("open interest or volume was not reported" if unreported
+                   else "no open interest and no volume")
+            scored[strike] = {"score": None, "missing": [why],
                               "contributions": [], "factors": []}
             continue
         missing = [_LABEL[k] for k in required if factors.get(k) is None]
@@ -161,13 +164,18 @@ def magnitudes(bucket: dict, charm: dict | None, iv: float | None, spot: float
                ) -> dict[str, float | None]:
     """The scored magnitudes, plus the signed numbers the columns show."""
     gex = _legs_ok(bucket, "call_gex_1pct", "put_gex_1pct")
+    net_gex = bucket_metric(bucket, "net_gex_1pct")
     dex = bucket_metric(bucket, "net_dex_dollars")
     vanna = bucket_metric(bucket, "net_vanna")
     oi = strike_total_oi(bucket)
     vol = strike_total_volume(bucket)
-    charm_net = None if charm is None else schwab_number(charm.get("net_charm"))
+    charm_net = None
+    if charm is None and oi == 0:
+        charm_net = 0.0
+    elif charm is not None:
+        charm_net = schwab_number(charm.get("net_charm"))
     out = {
-        "GEXM": None if gex is None else abs(gex[0] - gex[1]),
+        "GEXM": None if gex is None or net_gex is None else abs(net_gex),
         "OI": oi,
         "VOL": vol,
         "DEXM": None if dex is None else abs(dex),
@@ -177,7 +185,7 @@ def magnitudes(bucket: dict, charm: dict | None, iv: float | None, spot: float
         "DGEXM": None,
         "FLOWM": None,
     }
-    out["_net_gex"] = None if gex is None else gex[0] - gex[1]
+    out["_net_gex"] = None if gex is None else net_gex
     out["_gross"] = None if gex is None else gex[0] + gex[1]
     out["_pc_gex"] = None if gex is None or gex[0] == 0 else gex[1] / gex[0]
     out["_dex"] = dex
@@ -301,6 +309,7 @@ def build_matrix(exposures: dict, charm_by_strike: dict, ivs: dict[float, float 
     )
     shown = window_strikes(list(mags), spot)
     cap = ceiling(weights)
+    spot_under = under_strike(spot, strikes)
     rows = []
     for strike in sorted(shown, reverse=True):
         factors = mags[strike]
@@ -326,12 +335,14 @@ def build_matrix(exposures: dict, charm_by_strike: dict, ivs: dict[float, float 
             "score": score,
             "score_text": None if score is None else str(int(round(score))),
             "heat": None if score is None or cap == 0 else max(0.0, min(1.0, score / cap)),
+            "heat_background": None if score is None or cap == 0 else (
+                "rgba(47,107,255," + f"{0.15 + 0.55 * max(0.0, min(1.0, score / cap)):.3f}" + ")"),
+            "spot_line": strike == spot_under,
             "missing": result["missing"],
             "contributions": [_factor_row(p) for p in result["contributions"]],
             "factors": [_factor_row(p) for p in result["factors"]],
             "markers": [m["label"] for m in markers if m.get("under_strike") == strike],
         })
-    spot_under = under_strike(spot, strikes)
     return {
         "preset": name,
         "weights_written": WRITTEN[name],

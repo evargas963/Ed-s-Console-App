@@ -289,8 +289,10 @@ from Schwab to the screen (daemon, console, page), are these:
   is checked once, where it comes in (`server._schwab_bar`); the levels take the bar writer's
   bars as kept (`liquidity_value_engine.bars_from_candles`), every level function the same.
   The routes serve what it published and build nothing. `/api/confluence` ranks one expiry of
-  that priced chain from the book `_publish_levels` stored. Charm for that expiry is
-  `compute_charm_by_strike` on that expiry's contracts.
+  that priced chain from the book `_publish_levels` stored. It has no loop of its own: the
+  page asks again when the console pushes `levels` or `chain` for that ticker. Charm for
+  that expiry is `compute_charm_by_strike` on that expiry's contracts, at the same instant
+  the book was valued (`_valued_ts_utc`). The chain's own time stays `computed_ts_utc`.
   `/api/levels` also serves the order the
   chart draws them in (`by_distance`): nearest the spot (Schwab's last trade under §2 D5, with
   its trade time `spot_as_of_ts_utc`), each level's distance and side from it,
