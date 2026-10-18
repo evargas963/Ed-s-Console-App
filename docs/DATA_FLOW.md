@@ -288,7 +288,18 @@ from Schwab to the screen (daemon, console, page), are these:
   done. If the load fails, no level is built and the console window shows the error. Each bar
   is checked once, where it comes in (`server._schwab_bar`); the levels take the bar writer's
   bars as kept (`liquidity_value_engine.bars_from_candles`), every level function the same.
-  The routes serve what it published and build nothing. `/api/levels` also serves the order the
+  The routes serve what it published and build nothing. `/api/confluence` is the one
+  exception that still calculates: it ranks one expiry of the book `_publish_levels` already
+  stored, because the operator picks the expiry. It does not read a chain, the database, or
+  Schwab. It has no loop of its own. The page asks again when the console pushes `levels` or
+  `chain` for that ticker, the same re-read ENF-15 still owes for every pane. Charm for that
+  expiry is `compute_charm_by_strike` on that expiry's contracts, and only at `_valued_ts_utc`,
+  the instant the book was valued. A book with no valuation time contributes no charm. The
+  chain's own time stays `computed_ts_utc` and is what the header shows. When no priced book
+  is held, the route says so and the page draws that sentence. When the request fails, the
+  page says the request failed. When the push stops, the last drawn table stays; the header
+  chip is the not-live mark.
+  `/api/levels` also serves the order the
   chart draws them in (`by_distance`): nearest the spot (Schwab's last trade under §2 D5, with
   its trade time `spot_as_of_ts_utc`), each level's distance and side from it,
   and the session's volume profile (`volume_profile`: each RTH 1-minute bar's volume spread

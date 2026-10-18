@@ -7,6 +7,22 @@ design, with nothing kept that has no job.
 
 Status values: `NEXT` | `IN PROGRESS` | `QUEUED` | `BLOCKED` | `OPERATOR`.
 
+## Confluence matrix (operator 2026-10-18)
+
+The matrix ranks one expiry of the chain already priced in memory. It does not read the chain
+database. The page asks again when the console pushes `levels` or `chain`. Flow and the change in
+gamma stay dashes and their weights stay at zero. The written starting weights stay frozen. The
+weekly distance check that would later move a weight is not part of this.
+
+A negative gamma leg leaves that factor missing. When open interest plus volume weights sum to
+zero, the volatility blend is the simple mean of the contracts that have a volatility. The header
+chip is the only not-live mark. The matrix shows the chain's time. It does not show chain age or a
+STALE word. The window is seven strikes below the price and seven above, plus a strike on the
+price. Percentiles use the whole expiry. A level sits on the lowest listed strike at or above its
+price. With no priced chain, the page says so. A selected strike may name the missing input. Charm
+for the chosen expiry uses that expiry's contracts at the book's valuation time. Known open
+interest of zero is zero charm.
+
 ## Data path (operator 2026-10-02: one rule the whole way through, end to end)
 
 | ID | Status | Work item |

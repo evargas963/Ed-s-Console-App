@@ -170,6 +170,8 @@ from db_authority import canonical_stream_db_path
 from instrument_identity import display_symbol, ticker_storage_key   # RC-126: the ONE query-symbol authority
 import live_market_plane as lmp
 from numeric_contract import float_finite_or_none, schwab_count, schwab_number
+from confluence_composite import build_matrix, iv_by_strike, place_markers
+from math_levels import compute_charm_by_strike
 from terrain_engine import (SCOPES, SAME_DAY_LEVELS, TerrainSnapshot, chain_ladder, compute_terrain,
                             nearest_strike, positioning_migration, strike_window)
 from terrain_atr import Atr, compute_atrs, roll_up
@@ -1177,20 +1179,23 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
     # the chain's. The cell stamp says whether that stream is live.
     priced, n_live = overlay_streamed_contract_fields(chain, streamed, fetched_ts)
     live_syms = _overlaid_symbols(chain, priced)
-    snap = compute_terrain(tk, priced, spot, now=(
-        datetime.fromtimestamp(fetched_ts, ET) if capture is not None else at))
+    valued_at = datetime.fromtimestamp(fetched_ts, ET) if capture is not None else at
+    snap = compute_terrain(tk, priced, spot, now=valued_at)
     payload.update(snap.to_dict())
     payload.update({
         # as of the chain they were computed from: a reprice on a kept chain does not make
         # the levels newer, so a chain that stops arriving shows as stale
         "computed_ts_utc": fetched_ts,
+        # the instant the book and its charm were valued; a reprice is later than the chain
+        "_valued_ts_utc": valued_at.timestamp(),
         "levels_source": LEVELS_SOURCE_WIDE_CHAIN,
         "chain_basis": capture["basis"] if capture is not None else CAPTURE_BASIS,
         "spot_source": spot_source, "spot_as_of_ts_utc": spot_ts,
         "_per_strike": snap.per_strike, "_gamma_surface": None,
         "_vanna_rows": _vanna_rows(snap), "_charm_rows": _charm_rows(snap),
         # every ticker keeps its chain and its heatmap, so a ticker put on screen shows at once
-        "_chain": chain, "_chain_fetched_ts": fetched_ts,
+        "_chain": chain, "_priced_chain": priced, "_books": snap.books,
+        "_chain_fetched_ts": fetched_ts,
     })
     # the values read from the stored chain captures (forces, the prior day's per-strike rows)
     # change only with a new capture or a new chain day: computed then, once, for all readers
@@ -2762,6 +2767,128 @@ GAMMA_LEVELS = (("call_wall", "Call wall"), ("put_wall", "Put wall"), ("gamma_fl
                 ("pin_candidate", "Pin candidate"), ("gsf", "GSF"), ("grc", "GRC"), ("hvp", "HVP"),
                 ("lvp", "LVP"), ("key_delta_strike", "Key Δ strike"), ("call_charm_wall", "Call charm wall"),
                 ("put_charm_wall", "Put charm wall"))
+
+
+def _expiry_order(item: tuple) -> tuple:
+    """Known days-to-expiration first, then the date. A missing count sorts last."""
+    dte = item[1]
+    if isinstance(dte, (int, float)):
+        return (0, float(dte), item[0])
+    return (1, 0.0, item[0])
+
+
+def _confluence_expiries(books: dict, expiry_dte: dict) -> list[dict]:
+    found: dict[str, float | None] = {}
+    for key in books:
+        if not isinstance(key, tuple) or not key[0]:
+            continue
+        exp = str(key[0])[:10]
+        dte = expiry_dte.get(exp)
+        if dte is None:
+            dte = key[1]
+        if exp not in found or (found[exp] is None and dte is not None):
+            found[exp] = dte
+    listed = []
+    for exp, dte in sorted(found.items(), key=_expiry_order):
+        label = exp
+        if isinstance(dte, (int, float)) and float(dte) == int(dte):
+            label = exp + " · " + str(int(dte))
+        elif isinstance(dte, (int, float)):
+            label = exp + " · " + str(dte)
+        listed.append({"expiry": exp, "dte": dte, "label": label})
+    return listed
+
+
+def _confluence_markers(live: dict, tk: str, now: datetime) -> list[dict]:
+    """Levels carried from this same priced snapshot, plus the session levels already published."""
+    markers = []
+    snap = canonical_price_level_snapshot(tk, now)
+    if snap is not None:
+        for value in snap.levels.values():
+            row = value.to_contract_dict()
+            price = row.get("price")
+            if price is not None:
+                markers.append({"label": row["label"], "price": price})
+    for gid, label in GAMMA_LEVELS:
+        price = live.get(gid)
+        if price is not None:
+            markers.append({"label": label, "price": price})
+    same = live.get("same_day")
+    if isinstance(same, dict):
+        for gid, label in SAME_DAY_LEVELS:
+            price = same.get(gid)
+            if price is not None:
+                markers.append({"label": "0DTE " + label, "price": price})
+    move = live.get("implied_1d_move")
+    points = move.get("points") if isinstance(move, dict) else None
+    spot = live.get("spot")
+    if points is not None and isinstance(spot, (int, float)):
+        markers.append({"label": "+1σ move", "price": float(spot) + float(points)})
+        markers.append({"label": "−1σ move", "price": float(spot) - float(points)})
+    return markers
+
+
+def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict:
+    """The confluence matrix for one expiry of the chain already priced in memory."""
+    live = terrain_cache_get(tk, now.timestamp())
+    books = None if live is None else live.get("_books")
+    spot = None if live is None else live.get("spot")
+    if not live or not isinstance(books, dict) or not books or not isinstance(spot, (int, float)):
+        return {"ticker": tk, "available": False,
+                "reason": "no priced chain is held for this ticker"}
+    expiry_dte = live.get("expiry_dte") if isinstance(live.get("expiry_dte"), dict) else {}
+    listed = _confluence_expiries(books, expiry_dte)
+    chosen = expiry
+    if chosen is None:
+        live_listed = [e for e in listed if e["dte"] is not None and e["dte"] >= 0]
+        chosen = (live_listed or listed)[0]["expiry"] if listed else None
+    match = next((e for e in listed if e["expiry"] == chosen), None)
+    if match is None or match["dte"] is None:
+        absent = match is None
+        reason = ("that expiry is not on the priced chain" if absent
+                  else "that expiry did not carry days to expiration")
+        return {"ticker": tk, "available": False, "expiries": listed, "reason": reason}
+    selected = [book for key, book in books.items()
+                if isinstance(key, tuple) and str(key[0])[:10] == chosen]
+    if len(selected) == 0:
+        return {"ticker": tk, "available": False, "expiries": listed,
+                "reason": "that expiry is not on the priced chain"}
+    exposures = selected[0][0] if len(selected) == 1 else merge_exposure_books(selected)[0]
+    priced = live.get("_priced_chain")
+    contracts = []
+    if isinstance(priced, list):
+        for ct in priced:
+            if not isinstance(ct, dict):
+                continue
+            exp = ct.get("expirationDate")
+            if isinstance(exp, str) and exp[:10] == chosen:
+                contracts.append(ct)
+    fetched = live.get("computed_ts_utc")
+    valued_ts = live.get("_valued_ts_utc")
+    charm = {}
+    if isinstance(valued_ts, (int, float)):
+        charm = compute_charm_by_strike(
+            contracts, float(spot), now=datetime.fromtimestamp(float(valued_ts), ET))
+    strikes = [float(s) for s in exposures.keys()]
+    markers = _confluence_markers(live, tk, now)
+    body = build_matrix(exposures, charm, iv_by_strike(contracts), float(spot), float(match["dte"]),
+                        place_markers(markers, strikes))
+    body.update({
+        "ticker": tk, "available": True, "reason": None,
+        "expiry": chosen, "expiries": listed,
+        "spot": float(spot),
+        "chain_as_of_ts_utc": fetched,
+        "chain_as_of_time_ct": None if fetched is None else ct_label(fetched),
+    })
+    return body
+
+
+@app.get("/api/confluence")
+def get_confluence(ticker: str = Query(...),
+                   expiry: Annotated[Optional[str], Query()] = None):
+    """The confluence matrix. The chain already priced for this ticker; no database read."""
+    return JSONResponse(confluence_payload(
+        ticker_storage_key(_required_ticker(ticker)), expiry, now_et()))
 
 
 @app.get("/api/levels")
