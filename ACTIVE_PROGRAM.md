@@ -17,8 +17,8 @@ weekly distance check that would later move a weight is not part of this.
 A negative gamma leg leaves that factor missing. When open interest plus volume weights sum to
 zero, the volatility blend is the simple mean of the contracts that have a volatility. The header
 chip is the only not-live mark. The matrix shows the chain's time. It does not show chain age or a
-STALE word. The window is seven strikes below the price and seven above, plus a strike on the
-price. Percentiles use the whole expiry. Each level is drawn at its own price on the rail.
+STALE word. The window is five strikes below the price and five above, plus a strike on the
+price. The strike column shows two decimals. Percentiles use the whole expiry. Each level is drawn at its own price on the rail.
 A price outside the visible strikes is a button above or below the matrix. The page's placement
 of those served prices, and of the spot line, is display geometry from the design spec. It is
 not a second price. The expiry, including
