@@ -196,17 +196,18 @@
       ? text(missing.join(', '))
       : text(row.score_text) + ' / ' + text(ceiling);
     var facts = [
-      ['Net GEX', row.net_gex_text, row.net_reason, '$ per 1% move'],
-      ['Open interest', row.oi_text, row.oi_reason, 'contracts'],
-      ['Options Volume', row.volume_text, row.volume_reason, 'session contracts'],
-      ['IV', row.iv_text, row.iv_reason, 'implied volatility'],
-      ['Flow', row.flow_text, row.flow_reason, 'premium dollars'],
-      ['Charm', row.charm_text, row.charm_reason, 'delta-shares / day']
+      ['Net GEX', row.net_gex_text, row.net_reason, '$ per 1% move', 'M'],
+      ['Open interest', row.oi_text, row.oi_reason, 'contracts', ''],
+      ['Options Volume', row.volume_text, row.volume_reason, 'session contracts', ''],
+      ['IV', row.iv_text, row.iv_reason, 'implied volatility', '%'],
+      ['Flow', row.flow_text, row.flow_reason, 'premium dollars', 'M'],
+      ['Charm', row.charm_text, row.charm_reason, 'delta-shares / day', 'k']
     ];
     var cards = facts.map(function (f) {
       var missingValue = f[1] == null || f[1] === '';
       var caption = missingValue && f[2] ? f[2] : f[3];
-      return '<div class="card"><label>' + esc(f[0]) + '</label><b>' + (missingValue ? '—' : esc(f[1])) + '</b><span>' + esc(caption) + '</span></div>';
+      var shown = missingValue ? '—' : String(f[1]) + f[4];
+      return '<div class="card"><label>' + esc(f[0]) + '</label><b>' + esc(shown) + '</b><span>' + esc(caption) + '</span></div>';
     }).join('');
     var why = parts.map(function (p) { return p.label + ' ' + p.text; }).join(' · ');
     var lines = factors.map(function (p) {

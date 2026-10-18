@@ -71,6 +71,10 @@ test('the matrix redraws when the priced chain updates and keeps the expiry', as
 
   await page.locator('#cmBody tbody tr[data-i]').click();
   await expect(page.locator('#cmDetail')).toContainText('net gamma 12.0');
+  await expect(page.locator('#cmDetail')).toContainText('18.00M');
+  await expect(page.locator('#cmDetail')).toContainText('1.00k');
+  await expect(page.locator('#cmDetail')).toContainText('$ per 1% move');
+  await expect(page.locator('#cmDetail')).toContainText('delta-shares / day');
 
   await page.evaluate(() => {
     document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'levels' } }));
