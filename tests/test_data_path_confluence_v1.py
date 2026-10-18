@@ -196,3 +196,33 @@ def test_a_passed_expiry_is_not_the_one_the_matrix_opens_on():
     assert asked["expiry"] == "2026-10-19"
     assert gone["available"] is True
     assert gone["expiry"] == "2026-10-19"
+
+
+def test_a_chain_whose_every_expiry_has_passed_says_so():
+    """Sunday, and the only expiry on the chain is Friday: the matrix says none is still open."""
+    friday = datetime(2026, 10, 16, 15, 15, tzinfo=ET)
+    sunday = datetime(2026, 10, 18, 12, 0, tzinfo=ET)
+    tk = "SPY"
+    bucket = {
+        "dollarized": True, "oi_unreported": 0, "volume_unreported": 0,
+        "call_oi": 10.0, "put_oi": 4.0, "call_volume": 3.0, "put_volume": 1.0,
+        "call_gex_1pct": 30_000_000.0, "put_gex_1pct": 12_000_000.0, "net_gex_1pct": 18_000_000.0,
+        "call_dex_dollars": 5.0, "put_dex_dollars": 2.0, "net_dex_dollars": 3.0,
+        "call_vanna": 1.0, "put_vanna": 0.0, "net_vanna": 1.0,
+        "call_gamma_unreported": 0, "put_gamma_unreported": 0,
+        "call_delta_unreported": 0, "put_delta_unreported": 0,
+        "call_vanna_unreported": 0, "put_vanna_unreported": 0,
+    }
+    server._terrain_cache[tk] = {
+        "spot": 669.5, "computed_ts_utc": friday.timestamp(),
+        "_valued_ts_utc": friday.timestamp(),
+        "expiry_dte": {"2026-10-16": 0},
+        "_books": {("2026-10-16", 0): ({670.0: bucket}, None)},
+        "_priced_chain": [],
+    }
+    try:
+        body = server.confluence_payload(tk, None, sunday)
+    finally:
+        server._terrain_cache.pop(tk, None)
+    assert body["available"] is False
+    assert body["reason"] == "no expiry on this chain is still open"
