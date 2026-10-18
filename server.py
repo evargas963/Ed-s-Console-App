@@ -2788,8 +2788,15 @@ def _confluence_expiries(books: dict, expiry_dte: dict) -> list[dict]:
             dte = key[1]
         if exp not in found or (found[exp] is None and dte is not None):
             found[exp] = dte
-    return [{"expiry": exp, "dte": dte} for exp, dte in
-            sorted(found.items(), key=_expiry_order)]
+    listed = []
+    for exp, dte in sorted(found.items(), key=_expiry_order):
+        label = exp
+        if isinstance(dte, (int, float)) and float(dte) == int(dte):
+            label = exp + " · " + str(int(dte))
+        elif isinstance(dte, (int, float)):
+            label = exp + " · " + str(dte)
+        listed.append({"expiry": exp, "dte": dte, "label": label})
+    return listed
 
 
 def _confluence_markers(live: dict, tk: str, now: datetime) -> list[dict]:
@@ -2848,28 +2855,27 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict:
                 "reason": "that expiry is not on the priced chain"}
     exposures = selected[0][0] if len(selected) == 1 else merge_exposure_books(selected)[0]
     priced = live.get("_priced_chain")
-    if not isinstance(priced, list):
-        priced = []
     contracts = []
-    for ct in priced:
-        if not isinstance(ct, dict):
-            continue
-        exp = ct.get("expirationDate")
-        if isinstance(exp, str) and exp[:10] == chosen:
-            contracts.append(ct)
+    if isinstance(priced, list):
+        for ct in priced:
+            if not isinstance(ct, dict):
+                continue
+            exp = ct.get("expirationDate")
+            if isinstance(exp, str) and exp[:10] == chosen:
+                contracts.append(ct)
     fetched = live.get("computed_ts_utc")
     valued_ts = live.get("_valued_ts_utc")
-    if valued_ts is None:
-        valued_ts = fetched
-    valued = datetime.fromtimestamp(float(valued_ts), ET) if valued_ts is not None else now
-    charm = compute_charm_by_strike(contracts, float(spot), now=valued)
+    charm = {}
+    if isinstance(valued_ts, (int, float)):
+        charm = compute_charm_by_strike(
+            contracts, float(spot), now=datetime.fromtimestamp(float(valued_ts), ET))
     strikes = [float(s) for s in exposures.keys()]
     markers = _confluence_markers(live, tk, now)
     body = build_matrix(exposures, charm, iv_by_strike(contracts), float(spot), float(match["dte"]),
                         place_markers(markers, strikes))
     body.update({
         "ticker": tk, "available": True, "reason": None,
-        "expiry": chosen, "dte": match["dte"], "expiries": listed,
+        "expiry": chosen, "expiries": listed,
         "spot": float(spot),
         "chain_as_of_ts_utc": fetched,
         "chain_as_of_time_ct": None if fetched is None else ct_label(fetched),

@@ -7,14 +7,17 @@ const { test, expect } = require('@playwright/test');
 
 function matrix(expiry) {
   return {
-    available: true, ticker: 'SPY', preset: '0DTE', ceiling: 72,
+    available: true, ticker: 'SPY', preset: '0DTE', preset_text: '0DTE · ceiling 72', ceiling: 72,
     chain_as_of_time_ct: '10:00:00 AM CT',
     expiry: expiry || '2026-10-16',
-    expiries: [{ expiry: '2026-10-16', dte: 0 }, { expiry: '2026-10-23', dte: 7 }],
+    expiries: [
+      { expiry: '2026-10-16', dte: 0, label: '2026-10-16 · 0' },
+      { expiry: '2026-10-23', dte: 7, label: '2026-10-23 · 7' },
+    ],
     weights_in_score: { CHARMM: 0.22, DGEXM: 0, GEXM: 0.15, FLOWM: 0 },
-    spot: 670, spot_under: 671, thin: true, flat_factors: [], slopes: [], offscreen: [],
+    spot_text: '670', notes: [], slopes: [], offscreen: [],
     rows: [{
-      strike: 671, distance_text: '1.00', score: 40, score_text: '40', heat: 0.55,
+      strike: 671, strike_text: '671', distance_text: '1.00', score: 40, score_text: '40',
       net_gex_text: '18.00', gross_text: '42.00', oi_text: '14', pc_gex_text: '0.40',
       dgex_text: null, volume_text: '4', pc_vol_text: '0.33', vol_oi_text: '0.29',
       flow_text: null, dex_text: '0.00', vanna_text: '0.00', iv_text: '20.0', charm_text: '1.00',

@@ -56,9 +56,7 @@
     if (!box) return;
     if (expiry == null && body.expiry) expiry = body.expiry;
     if (time) time.textContent = body.chain_as_of_time_ct == null ? '' : body.chain_as_of_time_ct;
-    if (preset) {
-      preset.textContent = body.preset ? (body.preset + ' · ceiling ' + body.ceiling) : '';
-    }
+    if (preset) preset.textContent = body.preset_text == null ? '' : body.preset_text;
     var expiries = Array.isArray(body.expiries) ? body.expiries : [];
     if (exp) {
       exp.innerHTML = '';
@@ -66,7 +64,7 @@
         var b = document.createElement('button');
         b.type = 'button';
         b.className = 'cm-exp-b' + (e.expiry === body.expiry ? ' on' : '');
-        b.textContent = e.expiry + (e.dte == null ? '' : ' · ' + e.dte);
+        b.textContent = e.label;
         b.addEventListener('click', function () { expiry = e.expiry; selectedStrike = null; load(); });
         exp.appendChild(b);
       });
@@ -76,10 +74,7 @@
       return;
     }
     var weights = body.weights_in_score == null ? {} : body.weights_in_score;
-    var notes = [];
-    if (body.thin) notes.push('Thin book: fewer than 10 strikes.');
-    var flat = Array.isArray(body.flat_factors) ? body.flat_factors : [];
-    if (flat.length) notes.push(flat.join(', ') + ' does not vary, so it adds nothing.');
+    var notes = Array.isArray(body.notes) ? body.notes : [];
     var slopes = Array.isArray(body.slopes) ? body.slopes : [];
     var head = '<div class="cm-weights">' + Object.keys(weights).map(function (k) {
       return k + ' ' + weights[k];
@@ -102,19 +97,19 @@
       html += '<tr data-i="' + i + '"' + (row.strike === selectedStrike ? ' class="on"' : '') + '>';
       keys.forEach(function (k) {
         var marks = Array.isArray(row.markers) ? row.markers : [];
-        var shown = k === 'strike' ? text(row.strike) : (k === 'markers' ? marks.join(' ') : text(row[k]));
+        var shown = k === 'strike' ? text(row.strike_text) : (k === 'markers' ? marks.join(' ') : text(row[k]));
         var heat = (k === 'score_text' && row.heat_background) ? ' style="background:' + row.heat_background + '"' : '';
         html += '<td' + heat + '>' + shown + '</td>';
       });
       html += '</tr>';
       if (row.spot_line) {
-        html += '<tr class="cm-spot"><td colspan="' + cols.length + '">spot ' + text(body.spot) + '</td></tr>';
+        html += '<tr class="cm-spot"><td colspan="' + cols.length + '">spot ' + text(body.spot_text) + '</td></tr>';
       }
     });
     html += '</tbody></table></div><div class="cm-detail" id="cmDetail"></div>';
     var off = Array.isArray(body.offscreen) ? body.offscreen : [];
     if (off.length) {
-      html += '<div class="cm-off">' + off.map(function (m) { return m.label + ' ' + m.price; }).join(' · ') + '</div>';
+      html += '<div class="cm-off">' + off.map(function (m) { return m.label + ' ' + text(m.price_text); }).join(' · ') + '</div>';
     }
     box.innerHTML = html;
     function showDetail(row) {

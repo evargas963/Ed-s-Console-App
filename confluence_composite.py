@@ -18,6 +18,7 @@ from numeric_contract import schwab_count, schwab_number
 
 ABSENT = ("DGEXM", "FLOWM")
 WINDOW = 7
+THIN_BOOK = 10
 
 WRITTEN = {
     "0DTE": {
@@ -244,11 +245,17 @@ def window_strikes(strikes: list[float], spot: float) -> list[float]:
 
 
 def under_strike(price: float, strikes: list[float]) -> float | None:
-    """The lowest listed strike still above `price`, where a marker sits."""
-    above = [s for s in strikes if s > price]
-    if not above:
+    """The lowest listed strike at or above `price`, where a marker sits."""
+    at_or_above = [s for s in strikes if s >= price]
+    if not at_or_above:
         return None
-    return min(above)
+    return min(at_or_above)
+
+
+def _count_text(n: float) -> str:
+    if float(n) == int(n):
+        return str(int(n))
+    return f"{n:g}"
 
 
 def _text(n: float | None, digits: int) -> str | None:
@@ -317,7 +324,7 @@ def build_matrix(exposures: dict, charm_by_strike: dict, ivs: dict[float, float 
         score = result["score"]
         rows.append({
             "strike": strike,
-            "distance": strike - spot,
+            "strike_text": _count_text(strike),
             "distance_text": _text(strike - spot, 2),
             "net_gex_text": _millions(factors["_net_gex"]),
             "oi_text": None if factors["OI"] is None else f"{factors['OI']:.0f}",
@@ -334,30 +341,38 @@ def build_matrix(exposures: dict, charm_by_strike: dict, ivs: dict[float, float 
             "charm_text": _thousands(factors["_charm"]),
             "score": score,
             "score_text": None if score is None else str(int(round(score))),
-            "heat": None if score is None or cap == 0 else max(0.0, min(1.0, score / cap)),
             "heat_background": None if score is None or cap == 0 else (
-                "rgba(47,107,255," + f"{0.15 + 0.55 * max(0.0, min(1.0, score / cap)):.3f}" + ")"),
+                "rgba(47,107,255," + f"{0.15 + 0.55 * (score / cap):.3f}" + ")"),
             "spot_line": strike == spot_under,
             "missing": result["missing"],
             "contributions": [_factor_row(p) for p in result["contributions"]],
             "factors": [_factor_row(p) for p in result["factors"]],
             "markers": [m["label"] for m in markers if m.get("under_strike") == strike],
         })
+    universe_n = sum(1 for s in mags if _in_universe(
+        {k: v for k, v in mags[s].items() if not k.startswith("_")}))
+    flat_labels = [_LABEL[k] for k in flat]
+    notes = []
+    if universe_n < THIN_BOOK:
+        notes.append("Thin book: fewer than " + str(THIN_BOOK) + " strikes.")
+    if flat_labels:
+        notes.append(", ".join(flat_labels) + " does not vary, so it adds nothing.")
     return {
         "preset": name,
-        "weights_written": WRITTEN[name],
+        "preset_text": name + " · ceiling " + f"{cap:g}",
         "weights_in_score": weights,
         "ceiling": cap,
-        "thin": sum(1 for s in mags if _in_universe(
-            {k: v for k, v in mags[s].items() if not k.startswith("_")})) < 10,
-        "flat_factors": [_LABEL[k] for k in flat],
+        "notes": notes,
         "slopes": [
             {"label": _LABEL[k], "text": f"{100.0 * weights[k] / span:.2f}"}
             for k, span in spans.items() if span is not None and span != 0
         ],
-        "spot_under": spot_under,
+        "spot_text": _count_text(spot),
         "rows": rows,
-        "offscreen": [m for m in markers if m.get("under_strike") not in shown],
+        "offscreen": [
+            {"label": m["label"], "price_text": m["price_text"]}
+            for m in markers if m.get("under_strike") not in shown
+        ],
     }
 
 
@@ -368,5 +383,9 @@ def place_markers(markers: list[dict], strikes: list[float]) -> list[dict]:
         if price is None:
             continue
         under = under_strike(float(price), strikes)
-        placed.append({"label": marker["label"], "price": float(price), "under_strike": under})
+        placed.append({
+            "label": marker["label"],
+            "price_text": _text(float(price), 2),
+            "under_strike": under,
+        })
     return placed

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from confluence_composite import magnitudes, score_magnitudes
+from confluence_composite import build_matrix, magnitudes, place_markers, score_magnitudes, under_strike
 from math_levels import compute_charm_by_strike
 from time_et import ET
 
@@ -56,6 +56,7 @@ def test_the_matrix_reads_the_priced_book_and_leaves_flow_out():
     }
     server._terrain_cache[tk] = {
         "spot": 669.5, "computed_ts_utc": now.timestamp(),
+        "_valued_ts_utc": now.timestamp(),
         "expiry_dte": {"2026-10-16": 0},
         "_books": {("2026-10-16", 0): ({670.0: bucket}, None)},
         "_priced_chain": [contract],
@@ -118,3 +119,38 @@ def test_charm_uses_the_book_valuation_time_and_a_zero_book_is_zero_charm():
     assert row["charm_text"] == "0.00"
     assert row["score"] is not None
     assert "Call wall" in row["markers"]
+
+
+def test_a_level_on_a_listed_strike_sits_on_that_strike():
+    """A call wall that is itself a listed strike is that row, including the highest strike.
+    The spot line uses the same rule."""
+    strikes = [665.0, 670.0, 675.0]
+    assert under_strike(670.0, strikes) == 670.0
+    assert under_strike(675.0, strikes) == 675.0
+    assert under_strike(669.0, strikes) == 670.0
+    assert under_strike(680.0, strikes) is None
+    bucket = {
+        "dollarized": True, "oi_unreported": 0, "volume_unreported": 0,
+        "call_oi": 10.0, "put_oi": 4.0, "call_volume": 3.0, "put_volume": 1.0,
+        "call_gex_1pct": 30_000_000.0, "put_gex_1pct": 12_000_000.0, "net_gex_1pct": 18_000_000.0,
+        "call_dex_dollars": 5.0, "put_dex_dollars": 2.0, "net_dex_dollars": 3.0,
+        "call_vanna": 1.0, "put_vanna": 0.0, "net_vanna": 1.0,
+        "call_gamma_unreported": 0, "put_gamma_unreported": 0,
+        "call_delta_unreported": 0, "put_delta_unreported": 0,
+        "call_vanna_unreported": 0, "put_vanna_unreported": 0,
+    }
+    exposures = {strike: bucket for strike in strikes}
+    placed = place_markers([
+        {"label": "Call wall", "price": 670.0},
+        {"label": "Put wall", "price": 675.0},
+        {"label": "Above", "price": 680.0},
+    ], strikes)
+    body = build_matrix(exposures, {}, {}, 669.0, 0, placed)
+    by_strike = {row["strike"]: row for row in body["rows"]}
+    assert "Call wall" in by_strike[670.0]["markers"]
+    assert "Call wall" not in by_strike[675.0]["markers"]
+    assert "Put wall" in by_strike[675.0]["markers"]
+    assert [item["label"] for item in body["offscreen"]] == ["Above"]
+    assert body["offscreen"][0]["price_text"] == "680.00"
+    on_spot = build_matrix(exposures, {}, {}, 670.0, 0, [])
+    assert [row["strike"] for row in on_spot["rows"] if row["spot_line"]] == [670.0]
