@@ -2765,6 +2765,14 @@ GAMMA_LEVELS = (("call_wall", "Call wall"), ("put_wall", "Put wall"), ("gamma_fl
                 ("put_charm_wall", "Put charm wall"))
 
 
+def _expiry_order(item: tuple) -> tuple:
+    """Known days-to-expiration first, then the date. A missing count sorts last."""
+    dte = item[1]
+    if isinstance(dte, (int, float)):
+        return (0, float(dte), item[0])
+    return (1, 0.0, item[0])
+
+
 def _confluence_expiries(books: dict, expiry_dte: dict) -> list[dict]:
     found: dict[str, float | None] = {}
     for key in books:
@@ -2777,7 +2785,7 @@ def _confluence_expiries(books: dict, expiry_dte: dict) -> list[dict]:
         if exp not in found or (found[exp] is None and dte is not None):
             found[exp] = dte
     return [{"expiry": exp, "dte": dte} for exp, dte in
-            sorted(found.items(), key=lambda item: (item[1] is None, item[1] if item[1] is not None else 0, item[0]))]
+            sorted(found.items(), key=_expiry_order)]
 
 
 def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict:
@@ -2796,9 +2804,10 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict:
         chosen = (live_listed or listed)[0]["expiry"] if listed else None
     match = next((e for e in listed if e["expiry"] == chosen), None)
     if match is None or match["dte"] is None:
-        return {"ticker": tk, "available": False, "expiries": listed,
-                "reason": "that expiry is not on the priced chain" if match is None
-                else "that expiry did not carry days to expiration"}
+        absent = match is None
+        reason = ("that expiry is not on the priced chain" if absent
+                  else "that expiry did not carry days to expiration")
+        return {"ticker": tk, "available": False, "expiries": listed, "reason": reason}
     selected = [book for key, book in books.items()
                 if isinstance(key, tuple) and str(key[0])[:10] == chosen]
     if len(selected) == 0:
