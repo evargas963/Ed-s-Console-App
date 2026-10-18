@@ -264,16 +264,80 @@ def _text(n: float | None, digits: int) -> str | None:
     return f"{n:.{digits}f}"
 
 
+def _signed(n: float | None, digits: int) -> str | None:
+    """A positive number keeps its plus. Zero and a rounded zero do not."""
+    if n is None:
+        return None
+    shown = f"{float(n):.{digits}f}"
+    if shown.startswith("-") or shown.startswith("0"):
+        return shown
+    return "+" + shown
+
+
 def _millions(n: float | None) -> str | None:
     if n is None:
         return None
     return f"{n / 1e6:.2f}"
 
 
+def _signed_millions(n: float | None) -> str | None:
+    if n is None:
+        return None
+    return _signed(float(n) / 1e6, 2)
+
+
+def _signed_thousands(n: float | None) -> str | None:
+    if n is None:
+        return None
+    return _signed(float(n) / 1000, 2)
+
+
 def _thousands(n: float | None) -> str | None:
     if n is None:
         return None
     return f"{n / 1000:.2f}"
+
+
+def _peak(values) -> float | None:
+    """Largest absolute value on this expiry. The color ramp's own scale, not a score."""
+    peak = None
+    for value in values:
+        if not isinstance(value, (int, float)):
+            continue
+        size = abs(float(value))
+        if peak is None or size > peak:
+            peak = size
+    return peak
+
+
+def _ramp(value, peak, signed: bool) -> str | None:
+    """Neutral toward red or green. The page paints this string and does not scale it."""
+    if not isinstance(value, (int, float)):
+        return None
+    number = float(value)
+    if number == 0 or not isinstance(peak, (int, float)) or peak == 0:
+        return "background:#111822;font-weight:550"
+    t = abs(number) / float(peak)
+    if t > 1:
+        t = 1.0
+    if signed and number < 0:
+        end = (224, 35, 47)
+    else:
+        end = (9, 166, 67)
+    neutral = (17, 24, 34)
+    channels = [str(int(round(neutral[i] * (1 - t) + end[i] * t))) for i in range(3)]
+    weight = "750" if t > 0.65 else "550"
+    return "background:rgb(" + ",".join(channels) + ");font-weight:" + weight
+
+
+def _absent(value, words: str) -> str | None:
+    if isinstance(value, (int, float)):
+        return None
+    return words
+
+
+FLOW_REASON = "no signed flow is produced"
+DGEX_REASON = "no change in gamma is produced"
 
 
 def _raw_text(name: str, raw: float | None) -> str | None:
@@ -317,32 +381,68 @@ def build_matrix(exposures: dict, charm_by_strike: dict, ivs: dict[float, float 
     shown = window_strikes(list(mags), spot)
     cap = ceiling(weights)
     spot_under = under_strike(spot, strikes)
+    net_peak = _peak(f["_net_gex"] for f in mags.values())
+    oi_peak = _peak(f["OI"] for f in mags.values())
+    gross_peak = _peak(f["_gross"] for f in mags.values())
+    vol_peak = _peak(f["VOL"] for f in mags.values())
+    dex_peak = _peak(f["_dex"] for f in mags.values())
+    vanna_peak = _peak(f["_vanna"] for f in mags.values())
+    iv_peak = _peak(f["IV"] for f in mags.values())
+    charm_peak = _peak(f["_charm"] for f in mags.values())
+    vol_oi_peak = _peak(f["_vol_oi"] for f in mags.values())
+    pc_gex_peak = _peak(None if f["_pc_gex"] is None else 1 - f["_pc_gex"] for f in mags.values())
+    pc_vol_peak = _peak(None if f["_pc_vol"] is None else 1 - f["_pc_vol"] for f in mags.values())
     rows = []
     for strike in sorted(shown, reverse=True):
         factors = mags[strike]
         result = scored[strike]
         score = result["score"]
+        pc_gex = factors["_pc_gex"]
+        pc_vol = factors["_pc_vol"]
         rows.append({
             "strike": strike,
             "strike_text": _count_text(strike),
-            "distance_text": _text(strike - spot, 2),
-            "net_gex_text": _millions(factors["_net_gex"]),
+            "distance_text": _signed(strike - spot, 2),
+            "net_gex_text": _signed_millions(factors["_net_gex"]),
+            "net_style": _ramp(factors["_net_gex"], net_peak, True),
+            "net_reason": _absent(factors["_net_gex"], "net gamma is missing"),
             "oi_text": None if factors["OI"] is None else f"{factors['OI']:.0f}",
-            "pc_gex_text": _text(factors["_pc_gex"], 2),
+            "oi_style": _ramp(factors["OI"], oi_peak, False),
+            "oi_reason": _absent(factors["OI"], "open interest is missing"),
+            "pc_gex_text": _text(pc_gex, 2),
+            "pc_gex_style": _ramp(None if pc_gex is None else 1 - pc_gex, pc_gex_peak, True),
+            "pc_gex_reason": _absent(pc_gex, "put/call gamma is missing"),
             "gross_text": _millions(factors["_gross"]),
+            "gross_style": _ramp(factors["_gross"], gross_peak, False),
+            "gross_reason": _absent(factors["_gross"], "gross gamma is missing"),
             "dgex_text": None,
+            "dgex_reason": DGEX_REASON,
             "volume_text": None if factors["VOL"] is None else f"{factors['VOL']:.0f}",
-            "pc_vol_text": _text(factors["_pc_vol"], 2),
+            "volume_style": _ramp(factors["VOL"], vol_peak, False),
+            "volume_reason": _absent(factors["VOL"], "volume is missing"),
+            "pc_vol_text": _text(pc_vol, 2),
+            "pc_vol_style": _ramp(None if pc_vol is None else 1 - pc_vol, pc_vol_peak, True),
+            "pc_vol_reason": _absent(pc_vol, "put/call volume is missing"),
             "vol_oi_text": _text(factors["_vol_oi"], 2),
+            "vol_oi_style": _ramp(factors["_vol_oi"], vol_oi_peak, False),
+            "vol_oi_reason": _absent(factors["_vol_oi"], "volume/open interest is missing"),
             "flow_text": None,
-            "dex_text": _millions(factors["_dex"]),
-            "vanna_text": _millions(factors["_vanna"]),
+            "flow_reason": FLOW_REASON,
+            "dex_text": _signed_millions(factors["_dex"]),
+            "dex_style": _ramp(factors["_dex"], dex_peak, True),
+            "dex_reason": _absent(factors["_dex"], "delta exposure is missing"),
+            "vanna_text": _signed_millions(factors["_vanna"]),
+            "vanna_style": _ramp(factors["_vanna"], vanna_peak, True),
+            "vanna_reason": _absent(factors["_vanna"], "vanna is missing"),
             "iv_text": _text(factors["IV"], 1),
-            "charm_text": _thousands(factors["_charm"]),
+            "iv_style": _ramp(factors["IV"], iv_peak, False),
+            "iv_reason": _absent(factors["IV"], "implied volatility is missing"),
+            "charm_text": _signed_thousands(factors["_charm"]),
+            "charm_style": _ramp(factors["_charm"], charm_peak, True),
+            "charm_reason": _absent(factors["_charm"], "charm is missing"),
             "score": score,
             "score_text": None if score is None else str(int(round(score))),
-            "heat_background": None if score is None or cap == 0 else (
-                "rgba(47,107,255," + f"{0.15 + 0.55 * (score / cap):.3f}" + ")"),
+            "heat_background": _ramp(score, cap, False),
             "spot_line": strike == spot_under,
             "missing": result["missing"],
             "contributions": [_factor_row(p) for p in result["contributions"]],

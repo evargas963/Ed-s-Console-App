@@ -295,7 +295,7 @@ from Schwab to the screen (daemon, console, page), are these:
   `chain` for that ticker, the same re-read ENF-15 still owes for every pane. Charm for that
   expiry is `compute_charm_by_strike` on that expiry's contracts, and only at `_valued_ts_utc`,
   the instant the book was valued. A book with no valuation time contributes no charm. The
-  chain's own time stays `computed_ts_utc` and is what the header shows. An expiry dated before today is not offered. A request that names a date before
+  chain's own time stays `computed_ts_utc` and is the line above the matrix. The expiry is a dropdown; a same-day expiry is labeled 0DTE. Each level is sent at its own price and drawn on the rail. An expiry dated before today is not offered. A request that names a date before
   today opens on the next expiry, and the page keeps that one. When every expiry
   on the held chain is before today, the route says no expiry on this chain is
   still open. When no priced book

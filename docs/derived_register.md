@@ -14,8 +14,8 @@ values added for the confluence matrix.
 | Strike distance | `confluence_composite.build_matrix` | The strike minus the book's spot. |
 | Score slope | `confluence_composite.build_matrix` | `100 × weight / (p95 − p5)` for each scored factor that varies. A diagnostic, not a second score. |
 | Preset and ceiling | `confluence_composite.preset_name`, `confluence_composite.ceiling` | The weight row for that expiry's days to expiration: 0, 1–7, or 8 and beyond. The ceiling is 100 times the weights that are in the score. Flow and the change in gamma stay at zero, so they do not raise it. |
-| Heat color | `confluence_composite.build_matrix` | The score divided by the ceiling, sent as the cell's background string. The page does not scale it. |
+| Heat color | `confluence_composite.build_matrix` | Each column's color is that column's number divided by the largest absolute value of the same column on the expiry. The composite uses the score divided by the ceiling. Put/call columns color by which side is heavier. The page paints the served string. |
 | Thin book | `confluence_composite.build_matrix` | Fewer than 10 strikes in the expiry have open interest or volume. The score is still computed. The note is served as text. |
 | Flat factor | `confluence_composite.score_magnitudes` | The 95th percentile equals the 5th, so that factor adds nothing. The note is served as text. |
-| Marker placement | `confluence_composite.under_strike` | A level sits on the lowest listed strike at or above its price. A level above every strike, or on a strike outside the seven-strike window, is listed under the table with its price. |
+| Level price on the rail | `server._screen_levels` | Each level is sent at its own price. The page draws that price on the rail between the strike rows. A price outside the visible strikes is a button above or below the matrix. The page does not move the price onto a strike. |
 | One-day move markers | `server._confluence_markers` | The book's spot plus and minus the book's implied one-day move. Display only. Not scored. |

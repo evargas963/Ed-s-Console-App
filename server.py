@@ -2791,12 +2791,42 @@ def _confluence_expiries(books: dict, expiry_dte: dict) -> list[dict]:
     listed = []
     for exp, dte in sorted(found.items(), key=_expiry_order):
         label = exp
-        if isinstance(dte, (int, float)) and float(dte) == int(dte):
+        if isinstance(dte, (int, float)) and float(dte) == 0:
+            label = "0DTE · " + exp
+        elif isinstance(dte, (int, float)) and float(dte) == int(dte):
             label = exp + " · " + str(int(dte))
         elif isinstance(dte, (int, float)):
             label = exp + " · " + str(dte)
         listed.append({"expiry": exp, "dte": dte, "label": label})
     return listed
+
+
+#: Pill text for the chain's option levels. Same-day copies take "0D " in front.
+#: The same-day absolute-gamma strike is the 0DTE pin.
+_OPTION_SHORT = {
+    "Call wall": "CW", "Put wall": "PW", "Gamma flip": "Flip", "Max pain": "Pain",
+    "Net Γ peak": "Net Γ", "Abs Γ": "Abs Γ", "Pin candidate": "Pin",
+    "GSF": "GSF", "GRC": "GRC", "HVP": "HVP", "LVP": "LVP",
+    "Key Δ strike": "Key Δ", "Call charm wall": "CCh", "Put charm wall": "PCh",
+}
+
+
+def _option_abbrev(label: str, same_day: bool) -> str:
+    if same_day and label == "Abs Γ":
+        return "0D Pin"
+    base = _OPTION_SHORT[label] if label in _OPTION_SHORT else label
+    if same_day:
+        return "0D " + base
+    return base
+
+
+def _regime_words(code) -> str | None:
+    """The same words the gamma card already shows. White on this screen."""
+    if code == "LONG_GAMMA_CHOP":
+        return "Long γ · chop"
+    if code == "SHORT_GAMMA_TREND":
+        return "Short γ · trend"
+    return None
 
 
 def _confluence_markers(live: dict, tk: str, now: datetime) -> list[dict]:
@@ -2808,24 +2838,73 @@ def _confluence_markers(live: dict, tk: str, now: datetime) -> list[dict]:
             row = value.to_contract_dict()
             price = row.get("price")
             if price is not None:
-                markers.append({"label": row["label"], "price": price})
+                short = row.get("short")
+                markers.append({
+                    "label": row["label"],
+                    "short": short if isinstance(short, str) and short else row["label"],
+                    "title": row["label"],
+                    "lane": "session",
+                    "price": price,
+                })
     for gid, label in GAMMA_LEVELS:
         price = live.get(gid)
         if price is not None:
-            markers.append({"label": label, "price": price})
+            markers.append({
+                "label": label, "short": _option_abbrev(label, False),
+                "title": label, "lane": "options", "price": price,
+            })
     same = live.get("same_day")
     if isinstance(same, dict):
         for gid, label in SAME_DAY_LEVELS:
             price = same.get(gid)
             if price is not None:
-                markers.append({"label": "0DTE " + label, "price": price})
+                markers.append({
+                    "label": "0DTE " + label, "short": _option_abbrev(label, True),
+                    "title": "0DTE " + label, "lane": "options", "price": price,
+                })
     move = live.get("implied_1d_move")
     points = move.get("points") if isinstance(move, dict) else None
     spot = live.get("spot")
     if points is not None and isinstance(spot, (int, float)):
-        markers.append({"label": "+1σ move", "price": float(spot) + float(points)})
-        markers.append({"label": "−1σ move", "price": float(spot) - float(points)})
+        markers.append({
+            "label": "+1σ move", "short": "EM+", "title": "Expected move, one day, upper",
+            "lane": "session", "price": float(spot) + float(points),
+        })
+        markers.append({
+            "label": "−1σ move", "short": "EM−", "title": "Expected move, one day, lower",
+            "lane": "session", "price": float(spot) - float(points),
+        })
     return markers
+
+
+def _screen_levels(markers: list[dict]) -> list[dict]:
+    """Each level at its own price, for the rail. The page does not move it onto a strike."""
+    levels = []
+    for marker in markers:
+        price = marker.get("price")
+        if not isinstance(price, (int, float)):
+            continue
+        levels.append({
+            "lane": marker["lane"],
+            "abbrev": marker["short"],
+            "price": float(price),
+            "price_text": f"{float(price):.2f}",
+            "title": marker["title"],
+        })
+    return levels
+
+
+def _level_named(levels: list[dict], abbrev: str) -> dict | None:
+    for level in levels:
+        if level["abbrev"] == abbrev:
+            return level
+    return None
+
+
+def _move_text(low: dict | None, high: dict | None) -> str | None:
+    if low is None or high is None:
+        return None
+    return low["price_text"] + "–" + high["price_text"]
 
 
 def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict:
@@ -2875,6 +2954,11 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict:
             contracts, float(spot), now=datetime.fromtimestamp(float(valued_ts), ET))
     strikes = [float(s) for s in exposures.keys()]
     markers = _confluence_markers(live, tk, now)
+    levels = _screen_levels(markers)
+    flip = _level_named(levels, "Flip")
+    pin = _level_named(levels, "0D Pin")
+    em_up = _level_named(levels, "EM+")
+    em_dn = _level_named(levels, "EM−")
     body = build_matrix(exposures, charm, iv_by_strike(contracts), float(spot), float(match["dte"]),
                         place_markers(markers, strikes))
     body.update({
@@ -2883,6 +2967,13 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict:
         "spot": float(spot),
         "chain_as_of_ts_utc": fetched,
         "chain_as_of_time_ct": None if fetched is None else ct_label(fetched),
+        "levels": levels,
+        "regime_text": _regime_words(live.get("regime")),
+        "flip_text": None if flip is None else flip["price_text"],
+        "pin_text": None if pin is None else pin["price_text"],
+        "move_text": _move_text(em_dn, em_up),
+        "move_low": None if em_dn is None else em_dn["price"],
+        "move_high": None if em_up is None else em_up["price"],
     })
     return body
 
