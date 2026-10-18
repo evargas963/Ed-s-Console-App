@@ -295,7 +295,8 @@ from Schwab to the screen (daemon, console, page), are these:
   `chain` for that ticker, the same re-read ENF-15 still owes for every pane. Charm for that
   expiry is `compute_charm_by_strike` on that expiry's contracts, and only at `_valued_ts_utc`,
   the instant the book was valued. A book with no valuation time contributes no charm. The
-  chain's own time stays `computed_ts_utc` and is what the header shows. When no priced book
+  chain's own time stays `computed_ts_utc` and is what the header shows.   An expiry dated before today is not offered, so a chain kept past its front expiry
+  opens on the next one. When no priced book
   is held, the route says so and the page draws that sentence. When the request fails, the
   page says the request failed. When the push stops, the last drawn table stays; the header
   chip is the not-live mark.
