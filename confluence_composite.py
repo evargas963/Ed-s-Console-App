@@ -17,7 +17,7 @@ from math_exposure_core import (
 from numeric_contract import schwab_count, schwab_number
 
 ABSENT = ("DGEXM", "FLOWM")
-WINDOW = 7
+WINDOW = 5
 THIN_BOOK = 10
 
 WRITTEN = {
@@ -237,7 +237,7 @@ def iv_by_strike(contracts: list) -> dict[float, float | None]:
 
 
 def window_strikes(strikes: list[float], spot: float) -> list[float]:
-    """Seven listed strikes below the price, seven above, and the strike on the price."""
+    """Five listed strikes below the price, five above, and the strike on the price."""
     below = sorted((s for s in strikes if s < spot), reverse=True)[:WINDOW]
     above = sorted(s for s in strikes if s > spot)[:WINDOW]
     at = [s for s in strikes if s == spot]
@@ -405,7 +405,7 @@ def build_matrix(exposures: dict, charm_by_strike: dict, ivs: dict[float, float 
         pc_vol = factors["_pc_vol"]
         rows.append({
             "strike": strike,
-            "strike_text": _count_text(strike),
+            "strike_text": f"{float(strike):.2f}",
             "distance_text": _signed(strike - spot, 2),
             "net_gex_text": _signed_millions(factors["_net_gex"]),
             "net_style": _ramp(factors["_net_gex"], net_peak, True),

@@ -3,7 +3,9 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from confluence_composite import build_matrix, magnitudes, place_markers, score_magnitudes, under_strike
+from confluence_composite import (
+    build_matrix, magnitudes, place_markers, score_magnitudes, under_strike, window_strikes,
+)
 from math_levels import compute_charm_by_strike
 from time_et import ET
 
@@ -72,6 +74,7 @@ def test_the_matrix_reads_the_priced_book_and_leaves_flow_out():
     assert body["weights_in_score"]["DGEXM"] == 0
     row = body["rows"][0]
     assert row["strike"] == 670.0
+    assert row["strike_text"] == "670.00"
     assert row["net_gex_text"] == "+18.00"
     assert row["distance_text"] == "+0.50"
     assert row["gross_text"] == "42.00"
@@ -127,6 +130,12 @@ def test_charm_uses_the_book_valuation_time_and_a_zero_book_is_zero_charm():
     assert walls[0]["price"] == 669.0
     assert walls[0]["price_text"] == "669.00"
     assert walls[0]["lane"] == "options"
+
+
+def test_the_window_is_five_strikes_each_side_of_the_price():
+    """Five listed strikes below the price, five above, and the strike on the price."""
+    strikes = [float(n) for n in range(100, 121)]
+    assert window_strikes(strikes, 110.0) == [float(n) for n in range(105, 116)]
 
 
 def test_a_level_on_a_listed_strike_sits_on_that_strike():
