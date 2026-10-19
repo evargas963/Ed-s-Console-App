@@ -377,7 +377,8 @@ from Schwab to the screen (daemon, console, page), are these:
   the chain's gamma; stream and quotes Greeks measured equal). Operator, 2026-10-01: "use what
   schwab gives us... no rounding, use the exact data that schwab gives us everywhere". A
   contract whose LEVELONE_OPTIONS record on the daemon's bus (`Daemon.option_record`) carries all
-  six takes the stream's; every other contract is asked for on `/quotes`, comma-separated, 300 to
+  six as reported values takes the stream's. Schwab's -999 is not a reported value and does not
+  block the quote; every other contract is asked for on `/quotes`, comma-separated, 300 to
   a request across tickers (`QUOTES_BATCH_MAX`, Schwab Trader API Support 2026-10-06: not more
   than 300), and takes its quote's, as sent. Each contract carries the time of its Greeks as
   Schwab sent it, `greeksTime` ({field: ms}: the stream field's frame time, or the quote's

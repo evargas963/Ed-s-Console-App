@@ -110,6 +110,27 @@ def test_a_rotation_asks_schwab_as_documented_one_request_at_a_time_with_exact_g
                     ("TSLA", "2026-10-09", TSLA["spot"], len(TSLA["chain"]))]
 
 
+def test_a_streamed_no_value_code_does_not_block_the_quote(tmp_path):
+    """The stream record holds every greek field as Schwab's -999. That is not a reported greek,
+    so the contract is asked on the quotes endpoint and takes the quote's exact greeks. The same
+    rule for every ticker."""
+    schwab = LocalSchwab()
+    daemon, sweep, client, published = _setup(tmp_path, schwab, _et("2026-10-01 10:15"))
+    record = daemon.option_record(HELD)[1]
+    daemon.bus.publish(f"optquote.{HELD}", options_quote_msg(
+        symbol=HELD, content={**record["content"], **{f.upper(): -999 for f in GREEKS}},
+        src="schwab_options_l1", ts_recv=record["ts_recv"] + 1, schwab_ts=int((record["ts_recv"] + 1) * 1000)))
+    try:
+        assert sweep.rotation(client, ["SPY"], threading.Event()) == {"SPY"}
+    finally:
+        schwab.close()
+    assert HELD in [s for q in schwab.asked(QUOTES) for s in q["symbols"].split(",")]
+    quote = SPY_QUOTES[HELD]["quote"]
+    got = delivered(published, "SPY")[HELD]
+    assert {f: got[f] for f in GREEKS} == {f: quote[f] for f in GREEKS}
+    assert got["gamma"] != -999
+
+
 def test_a_refused_quotes_request_fails_each_ticker_in_it_and_the_next_request_goes_at_once(tmp_path):
     schwab = LocalSchwab()
     schwab.quotes_status = 429
