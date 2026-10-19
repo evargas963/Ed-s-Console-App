@@ -29,8 +29,12 @@ SCHWAB_NO_VALUE = -999
 def schwab_number(value: Any) -> float | None:
     """A Schwab field as sent (AGENTS.md rule 2): None when absent, -999, text, a bool, NaN or
     infinity; every other number exactly as sent, a reported 0 included."""
-    if value is None or isinstance(value, (bool, str)):
+    if isinstance(value, float):
+        return value if math.isfinite(value) and value != SCHWAB_NO_VALUE else None
+    if isinstance(value, bool) or value is None or isinstance(value, str):
         return None
+    if isinstance(value, int):
+        return None if value == SCHWAB_NO_VALUE else float(value)
     try:
         v = float(value)
     except (TypeError, ValueError):

@@ -131,3 +131,12 @@ def test_the_fingerprint_covers_every_bar_field():
     shifted = [dict(b) for b in base]
     shifted[30]["timestamp"] = shifted[30]["timestamp"] + 60_000
     assert LVE._snapshot_input_fingerprint("ZZRC324", session, shifted, "test_fixture") != fp
+
+    # A missing volume is not a reported zero: both must miss the original key, and each other.
+    blank = [dict(b) for b in base]
+    blank[30]["volume"] = None
+    zero = [dict(b) for b in base]
+    zero[30]["volume"] = 0.0
+    blank_fp = LVE._snapshot_input_fingerprint("ZZRC324", session, blank, "test_fixture")
+    zero_fp = LVE._snapshot_input_fingerprint("ZZRC324", session, zero, "test_fixture")
+    assert blank_fp != fp and zero_fp != fp and blank_fp != zero_fp
