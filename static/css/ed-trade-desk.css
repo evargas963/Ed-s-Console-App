@@ -180,20 +180,19 @@
 .cm-host.panel-b{padding:0;background:#080d14}
 .cm-page{box-sizing:border-box;max-width:1740px;margin:0 auto;padding:14px;background:#080d14;color:#fff;
   font-family:'Arial Narrow','Segoe UI',Arial,sans-serif;font-size:13px;font-weight:600;line-height:1.4}
-.cm-page h1{font-size:21px;text-transform:uppercase;letter-spacing:.4px;margin:6px 0;font-weight:700;color:#fff}
 .cm-page p{color:#fff;line-height:1.5;margin:6px 0;font-size:13px;font-weight:600}
-.cm-page .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
-.cm-page .expiry-pick{display:flex;flex-direction:column;gap:4px;font-size:11px;color:#fff;font-weight:600}
+.cm-page .expiry-pick{display:flex;flex-direction:row;align-items:center;gap:8px;font-size:11px;color:#fff;font-weight:600;flex:none}
 .cm-page select{background:#142031;color:#fff;padding:6px 8px;border:1px solid #2b3c54;border-radius:4px;
   font-family:inherit;font-size:13px;font-weight:600}
 .cm-page button{font-family:inherit;background:#172231;color:#fff;border:1px solid #2b394d;border-radius:5px;cursor:pointer}
 .cm-page button:focus-visible{outline:2px solid #9bd1ff}
-.cm-page .summary{display:flex;margin:14px 0;background:#0c121c;border:1px solid #243044;border-radius:4px}
+.cm-page .summary{display:flex;margin:0 0 8px;background:#0c121c;border:1px solid #243044;border-radius:4px}
 .cm-page .stat{padding:13px 17px;border-right:1px solid #243044;flex:1;min-width:0}
 .cm-page .stat label{display:block;color:#fff;font-size:11px;margin-bottom:7px;font-weight:600}
 .cm-page .stat strong{display:block;color:#fff;font-size:21px;font-weight:600;white-space:nowrap}
 .cm-page .stat small{display:block;color:#fff;font-size:11px;font-weight:600;margin-top:2px}
 .cm-page .status,.cm-page .levelread{font-size:11px;padding:8px 0;min-height:29px;color:#fff;font-weight:600}
+.cm-page .status{display:flex;justify-content:space-between;align-items:center;gap:12px}
 .cm-page .offscreen{display:flex;flex-wrap:wrap;gap:6px;padding:5px 0}
 .cm-page .offscreen:empty{display:none}
 .cm-page .offscreen button{font-size:10px;color:#fff;padding:4px 7px;background:#172231;border:1px solid #2b394d;border-radius:5px}

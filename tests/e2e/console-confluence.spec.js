@@ -60,7 +60,8 @@ test('the matrix redraws when the priced chain updates and keeps the expiry', as
   await page.goto('/');
   await expect(page.locator('#cmBody')).toContainText('40');
   await expect(page.locator('#cmBody')).toContainText('—');
-  await expect(page.locator('#cmBody h1')).toHaveText('Confluence matrix');
+  await expect(page.locator('#cmBody h1')).toHaveCount(0);
+  await expect(page.locator('#cmBody')).not.toContainText('Hover a level to trace its price');
   await expect(page.locator('#cmExp')).toHaveValue('2026-10-16');
   await expect(page.locator('.level-pill')).toContainText('0D Pin 671.00');
   await expect(page.locator('#cmAbove')).toContainText('PDH 680.00');
