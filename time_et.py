@@ -12,7 +12,7 @@ unknown: nothing is guessed.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 from zoneinfo import ZoneInfo
 
 ET = ZoneInfo("America/New_York")
@@ -158,7 +158,7 @@ def valuation_instant(now: datetime, product: str = EQUITY_OPTIONS) -> datetime:
         return now
     end = windows[-1][1]
     if now >= end:
-        return end - timedelta(microseconds=1)
+        return end
     return now
 
 
@@ -233,8 +233,8 @@ def time_to_expiry_years(expiration_date: str, now: datetime, *,
     Schwab to a MEASURED median ratio 0.987 (94% of ATM strikes within 10%) in the 2-6h window.
 
     None for an AM-settled contract whose expiry date /markets does not answer, for a date it
-    answers with no regular option session, for an expirationDate without its time, and once
-    the option has reached settlement. A 10-minute sub-floor guards the exact-expiry
+    answers with no regular option session, for an expirationDate without its time, and after
+    settlement. At the settlement instant the 10-minute floor guards the exact-expiry
     singularity."""
     s = session(str(expiration_date)[:10])
     if s is None:
@@ -248,6 +248,6 @@ def time_to_expiry_years(expiration_date: str, now: datetime, *,
         settles = windows[0][0] if settlement_type == SETTLEMENT_AM else windows[-1][1]
     # instants, not civil time: a DST change between now and the expiry is counted as elapsed
     t = (settles.timestamp() - now.timestamp()) / YEAR_SECONDS
-    if t <= 0.0:
-        return None  # at/after settlement — no greeks for an expired contract
+    if t < 0.0:
+        return None  # after settlement — the contract has expired
     return max(t, MIN_TIME_TO_EXPIRY_YEARS)

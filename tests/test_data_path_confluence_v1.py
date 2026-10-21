@@ -230,123 +230,109 @@ def test_a_passed_expiry_is_not_the_one_the_matrix_opens_on():
 
 
 def test_the_matrix_reads_the_expiry_charm_map_and_does_not_rebuild_it():
-    """Charm is the map the book stored for this expiry. A contract Schwab sent with no
-    volatility cannot build one, so a number on the matrix is that stored map."""
-    chain_time = datetime(2026, 10, 16, 9, 45, tzinfo=ET)
-    valued = datetime(2026, 10, 16, 15, 0, tzinfo=ET)
-    tk = "SPY"
-    bucket = {
-        "dollarized": True, "oi_unreported": 0, "volume_unreported": 0,
-        "call_oi": 10.0, "put_oi": 0.0, "call_volume": 4.0, "put_volume": 0.0,
-        "call_gex_1pct": 30_000_000.0, "put_gex_1pct": 12_000_000.0, "net_gex_1pct": 18_000_000.0,
-        "call_dex_dollars": 0.0, "put_dex_dollars": 0.0, "net_dex_dollars": 0.0,
-        "call_vanna": 0.0, "put_vanna": 0.0, "net_vanna": 0.0,
-        "call_gamma_unreported": 0, "put_gamma_unreported": 0,
-        "call_delta_unreported": 0, "put_delta_unreported": 0,
-        "call_vanna_unreported": 0, "put_vanna_unreported": 0,
-    }
-    contract = {
-        "strikePrice": 670.0, "putCall": "CALL", "openInterest": 10, "totalVolume": 4,
-        "multiplier": 100, "expirationDate": "2026-10-16T20:00:00",
-        "gamma": 0.01, "delta": 0.5,
-    }
-    server._terrain_cache[tk] = {
-        "spot": 669.5, "computed_ts_utc": chain_time.timestamp(),
-        "_valued_ts_utc": valued.timestamp(),
-        "expiry_dte": {"2026-10-16": 0},
-        "_books": {("2026-10-16", 0): ({670.0: bucket}, None)},
-        "_priced_chain": [contract],
-        "_charm_by_expiry": { "2026-10-16": {
-            670.0: {"call_charm": 8000.0, "put_charm": 0.0, "net_charm": 8000.0}}},
+    """Charm is the map the book stored for this expiry. SPY's captured 0DTE chain would
+    build a different charm, so a planted number on the matrix is that stored map."""
+    from math_exposure_core import compute_exposures_by_strike
+    from tests.real_chains import SPY_0DTE
+    from time_et import INDEX_OPTIONS
+
+    held = SPY_0DTE
+    expiry = str(held.chain[0]["expirationDate"])[:10]
+    book, _diag = compute_exposures_by_strike(
+        held.chain, spot=held.spot, now=held.now, product=INDEX_OPTIONS)
+    strike = min(book, key=lambda s: abs(s - held.spot))
+    server._terrain_cache["SPY"] = {
+        "spot": held.spot, "computed_ts_utc": held.now.timestamp(),
+        "_valued_ts_utc": held.now.timestamp(),
+        "expiry_dte": {expiry: 0},
+        "_books": {(expiry, 0): (book, None)},
+        "_priced_chain": held.chain,
+        "_charm_by_expiry": {expiry: {
+            strike: {"call_charm": 8000.0, "put_charm": 0.0, "net_charm": 8000.0}}},
     }
     try:
-        body = server.confluence_payload(tk, "2026-10-16", valued)
+        body = server.confluence_payload("SPY", expiry, held.now)
     finally:
-        server._terrain_cache.pop(tk, None)
-    assert body["rows"][0]["charm_text"] == "+8.00"
+        server._terrain_cache.pop("SPY", None)
+    row = next(r for r in body["rows"] if r["strike"] == strike)
+    assert row["charm_text"] == "+8.00"
+
+
+def _window_has(rows: list, key: str) -> bool:
+    return any(row.get(key) is not None for row in rows)
 
 
 def test_the_close_keeps_the_vanna_a_settled_clock_drops():
-    """After the option close, the book is valued at the close, so the matrix still has
-    vanna, charm, and a score. The same contracts priced past settlement have no time
-    left, and those three are missing."""
+    """SPY's captured 0DTE chain, valued at the index close, still has vanna, charm, and a
+    score. The same chain priced after that close has no time left, and those three are missing."""
     from confluence_composite import iv_by_strike
     from math_exposure_core import bucket_metric, compute_exposures_by_strike
-    from time_et import valuation_instant
+    from tests.real_chains import SPY_0DTE
+    from time_et import INDEX_OPTIONS, valuation_instant
 
+    held = SPY_0DTE
     at = datetime(2026, 10, 7, 18, 0, tzinfo=ET)
-    valued = valuation_instant(at)
-    contract = {
-        "strikePrice": 670.0, "putCall": "CALL", "openInterest": 10, "totalVolume": 4,
-        "multiplier": 100, "volatility": 20.0, "expirationDate": "2026-10-07",
-        "gamma": 0.01, "delta": 0.5, "daysToExpiration": 0,
-    }
-    at_close, _diag = compute_exposures_by_strike([contract], spot=669.5, now=valued)
-    after, _diag = compute_exposures_by_strike([contract], spot=669.5, now=at)
-    assert bucket_metric(at_close[670.0], "net_vanna") is not None
-    assert bucket_metric(after[670.0], "net_vanna") is None
-    iv = iv_by_strike([contract])
-    close_row = build_matrix(
-        at_close, compute_charm_by_strike([contract], 669.5, now=valued), iv, 669.5, 0.0, [],
-    )["rows"][0]
-    late_row = build_matrix(
-        after, compute_charm_by_strike([contract], 669.5, now=at), iv, 669.5, 0.0, [],
-    )["rows"][0]
-    assert close_row["vanna_text"] is not None
-    assert close_row["charm_text"] is not None
-    assert close_row["score"] is not None
-    assert late_row["vanna_text"] is None
-    assert late_row["charm_text"] is None
-    assert late_row["score"] is None
+    valued = valuation_instant(at, INDEX_OPTIONS)
+    at_close, _diag = compute_exposures_by_strike(
+        held.chain, spot=held.spot, now=valued, product=INDEX_OPTIONS)
+    after, _diag = compute_exposures_by_strike(
+        held.chain, spot=held.spot, now=at, product=INDEX_OPTIONS)
+    strike = min(at_close, key=lambda s: abs(s - held.spot))
+    assert bucket_metric(at_close[strike], "net_vanna") is not None
+    assert bucket_metric(after[strike], "net_vanna") is None
+    iv = iv_by_strike(held.chain)
+    charm_close = compute_charm_by_strike(held.chain, held.spot, now=valued, product=INDEX_OPTIONS)
+    charm_late = compute_charm_by_strike(held.chain, held.spot, now=at, product=INDEX_OPTIONS)
+    close_rows = build_matrix(at_close, charm_close, iv, held.spot, 0.0, [])["rows"]
+    late_rows = build_matrix(after, charm_late, iv, held.spot, 0.0, [])["rows"]
+    assert _window_has(close_rows, "vanna_text")
+    assert _window_has(close_rows, "charm_text")
+    assert _window_has(close_rows, "score")
+    assert not _window_has(late_rows, "vanna_text")
+    assert not _window_has(late_rows, "charm_text")
+    assert not _window_has(late_rows, "score")
 
 
 def test_spy_keeps_vanna_until_the_index_close():
-    """SPY, QQQ, and IWM settle at the index close. At 4:10 PM ET the equity-option
-    close has passed and the index close has not, so their vanna still stands."""
+    """SPY settles at the index close. At 4:10 PM ET the equity-option close has passed
+    and the index close has not, so this captured chain's vanna still stands."""
     from math_exposure_core import bucket_metric, compute_exposures_by_strike
-    from time_et import INDEX_OPTIONS, valuation_instant
+    from tests.real_chains import SPY_0DTE
+    from time_et import INDEX_OPTIONS
 
+    held = SPY_0DTE
     at = datetime(2026, 10, 7, 16, 10, tzinfo=ET)
-    contract = {
-        "strikePrice": 670.0, "putCall": "CALL", "openInterest": 10, "totalVolume": 4,
-        "multiplier": 100, "volatility": 20.0, "expirationDate": "2026-10-07",
-        "gamma": 0.01, "delta": 0.5, "daysToExpiration": 0,
-    }
-    valued = valuation_instant(at, INDEX_OPTIONS)
     book, _diag = compute_exposures_by_strike(
-        [contract], spot=669.5, now=valued, product=INDEX_OPTIONS)
-    equity, _diag = compute_exposures_by_strike([contract], spot=669.5, now=at)
-    assert bucket_metric(book[670.0], "net_vanna") is not None
-    assert bucket_metric(equity[670.0], "net_vanna") is None
+        held.chain, spot=held.spot, now=at, product=INDEX_OPTIONS)
+    equity, _diag = compute_exposures_by_strike(held.chain, spot=held.spot, now=at)
+    strike = min(book, key=lambda s: abs(s - held.spot))
+    assert bucket_metric(book[strike], "net_vanna") is not None
+    assert bucket_metric(equity[strike], "net_vanna") is None
 
 
 def test_a_chain_delivered_after_the_close_still_fills_the_matrix():
-    """The page reads the publication. A chain delivered after the close is valued at
-    the close, so vanna, charm, and the score are on the matrix."""
+    """The page reads the publication. SPY's captured chain, delivered after the index
+    close, is valued at that close, so vanna, charm, and the score are on the matrix."""
     import app.options.order_flow.streaming as ofs
+    from tests.real_chains import SPY_0DTE
 
-    tk = "META"
+    held = SPY_0DTE
+    tk = "SPY"
     at = datetime(2026, 10, 7, 18, 0, tzinfo=ET)
-    contract = {
-        "symbol": "META  261007C00670000",
-        "strikePrice": 670.0, "putCall": "CALL", "openInterest": 10, "totalVolume": 4,
-        "multiplier": 100, "volatility": 20.0, "expirationDate": "2026-10-07",
-        "gamma": 0.01, "delta": 0.5, "daysToExpiration": 0,
-    }
-    ofs._price_rows[tk] = {"ticker": tk, "spot": 669.5, "trade_ts": at.timestamp()}
+    expiry = str(held.chain[0]["expirationDate"])[:10]
+    ofs._price_rows[tk] = {"ticker": tk, "spot": held.spot, "trade_ts": at.timestamp()}
     try:
-        snap = server._publish_levels(tk, [contract], at.timestamp(), now=at)
-        body = server.confluence_payload(tk, "2026-10-07", at)
+        snap = server._publish_levels(tk, held.chain, at.timestamp(), now=at)
+        body = server.confluence_payload(tk, expiry, at)
     finally:
         ofs._price_rows.pop(tk, None)
         with server._terrain_cache_lock:
             server._terrain_cache.pop(tk, None)
     assert snap is not None
     assert body["available"] is True
-    row = body["rows"][0]
-    assert row["vanna_text"] is not None
-    assert row["charm_text"] is not None
-    assert row["score"] is not None
+    assert _window_has(body["rows"], "vanna_text")
+    assert _window_has(body["rows"], "charm_text")
+    assert _window_has(body["rows"], "score")
 
 
 def test_a_chain_whose_every_expiry_has_passed_says_so():

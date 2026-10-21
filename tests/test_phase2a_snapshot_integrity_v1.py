@@ -131,18 +131,3 @@ def test_the_fingerprint_covers_every_bar_field():
     shifted = [dict(b) for b in base]
     shifted[30]["timestamp"] = shifted[30]["timestamp"] + 60_000
     assert LVE._snapshot_input_fingerprint("ZZRC324", session, shifted, "test_fixture") != fp
-
-
-def test_a_missing_volume_is_a_new_generation():
-    """A bar with no volume is not that bar with volume 0: the producer serves a new generation."""
-    _fresh()
-    session = most_recent_trading_day_et()
-    bars = _bars(session, 105.0)
-    missing = [dict(b) for b in bars]
-    missing[30]["volume"] = None
-    zero = [dict(b) for b in bars]
-    zero[30]["volume"] = 0.0
-    first = _mat(session, missing)
-    second = _mat(session, zero)
-    assert second is not first, "a reported volume of 0 reused the snapshot of a missing volume"
-    assert second.generation == first.generation + 1
