@@ -406,8 +406,8 @@ from Schwab to the screen (daemon, console, page), are these:
   daemon's heartbeat says what the watchlist is), queued on the pricing thread behind the delivered
   chains while the console
   already serves the page (each ticker's levels appear as they are priced). The values read from the stored captures (forces: ΔOI, DEX and
-  charm by side; the prior day's per-strike rows) are computed by the same producer only when the
-  ticker's newest capture or its chain's day changes; `/api/forces` and `/api/terrain/strikes`
+  charm by side; the prior day's per-strike rows) are computed by the same producer, each capture at its own time or at that ticker's option
+  close once the capture is past it, only when the ticker's newest capture or its chain's day changes; `/api/forces` and `/api/terrain/strikes`
   serve that result and read no stored chain. The same publication carries each strike's net
   DEX $ and total OI (`terrain_engine._per_strike_measure_rows`, by the heatmap cell's readers),
   served as `/api/terrain/strikes` `measures` for the Chart view of Delta / DEX and Open

@@ -1924,10 +1924,12 @@ def _forces_from_captures(tk: str, captures: list) -> dict:
                 for c in captures if c["spot"] is not None]
         if len(rows) >= 2:
             (d1, s1, c1, t1), (d0, s0, c0, t0) = rows[0], rows[1]
-            # each capture priced at its own time, not today's clock
+            # each capture at its own time, or at that day's option close once the capture is past it
             product = option_close_product(tk)
-            per1 = _cebs(c1, spot=float(s1), now=datetime.fromtimestamp(t1, ET), product=product)[0]
-            per0 = _cebs(c0, spot=float(s0), now=datetime.fromtimestamp(t0, ET), product=product)[0]
+            clock1 = valuation_instant(datetime.fromtimestamp(t1, ET), product)
+            clock0 = valuation_instant(datetime.fromtimestamp(t0, ET), product)
+            per1 = _cebs(c1, spot=float(s1), now=clock1, product=product)[0]
+            per0 = _cebs(c0, spot=float(s0), now=clock0, product=product)[0]
 
             from math_exposure_core import bucket_metric as _bm, strike_total_oi as _sto
 
@@ -1941,8 +1943,7 @@ def _forces_from_captures(tk: str, captures: list) -> dict:
             # Dealer-signed net_charm = call_charm - put_charm per strike (RC-179).
             charm_below = charm_above = None
             try:
-                # priced at the capture's own time, not today's clock
-                per_ch = _ccs(c1, spot1, now=datetime.fromtimestamp(t1, ET), product=product) if c1 else {}
+                per_ch = _ccs(c1, spot1, now=clock1, product=product)
                 if per_ch:
                     # RC-276: a strike with no net_charm is not a strike with zero charm.
                     # Summed as 0.0 it silently tilted the below/above pair the console

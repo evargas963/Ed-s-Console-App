@@ -335,6 +335,25 @@ def test_a_chain_delivered_after_the_close_still_fills_the_matrix():
     assert _window_has(body["rows"], "score")
 
 
+def test_a_close_capture_keeps_its_charm_in_the_forces():
+    """SPY's captured 0DTE chain, banked after the index close, is valued at that close.
+    The forces charm sums include it."""
+    from tests.real_chains import SPY_0DTE
+
+    held = SPY_0DTE
+    after = datetime(2026, 10, 7, 18, 0, tzinfo=ET)
+    prior = datetime(2026, 10, 6, 12, 0, tzinfo=ET)
+    caps = [
+        {"et_date": "2026-10-07", "spot": held.spot, "contracts": held.chain,
+         "ts_utc": after.timestamp()},
+        {"et_date": "2026-10-06", "spot": held.spot, "contracts": held.chain,
+         "ts_utc": prior.timestamp()},
+    ]
+    forces = server._forces_from_captures("SPY", caps)
+    assert forces["charm_below"] is not None
+    assert forces["charm_above"] is not None
+
+
 def test_a_chain_whose_every_expiry_has_passed_says_so():
     """Sunday, and the only expiry on the chain is Friday: the matrix says none is still open."""
     friday = datetime(2026, 10, 16, 15, 15, tzinfo=ET)
