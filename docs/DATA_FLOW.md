@@ -290,11 +290,15 @@ from Schwab to the screen (daemon, console, page), are these:
   bars as kept (`liquidity_value_engine.bars_from_candles`), every level function the same.
   The routes serve what it published and build nothing. `/api/confluence` is the one
   exception that still calculates: it ranks one expiry of the book `_publish_levels` already
-  stored, because the operator picks the expiry. It does not read a chain, the database, or
-  Schwab. It has no loop of its own. The page asks again when the console pushes `levels` or
-  `chain` for that ticker, the same re-read ENF-15 still owes for every pane. Charm for that
-  expiry is `compute_charm_by_strike` on that expiry's contracts, and only at `_valued_ts_utc`,
-  the instant the book was valued. A book with no valuation time contributes no charm. The
+  stored, because the operator picks the expiry, and it blends that expiry's Schwab
+  `volatility` into one number per strike (`iv_by_strike`, the one blend). It does not read a
+  chain, the database, or Schwab. It has no loop of its own. The page asks again when the
+  console pushes `levels` or `chain` for that ticker, the same re-read ENF-15 still owes for
+  every pane. Charm for that expiry is the map `compute_terrain` stored
+  (`compute_charm_by_strike` once for the expiry). The matrix does not call it again. Vanna
+  is the book's `net_vanna`. After that ticker's option market has closed, the publication
+  is valued at that close (`time_et.valuation_instant`, the index close for SPY, QQQ, and
+  IWM, the equity-option close for every other ticker), so the close numbers stay. The
   chain's own time stays `computed_ts_utc` and is the line above the matrix. The expiry is a dropdown; a same-day expiry is labeled 0DTE. Each level is sent at its own price and drawn on the rail. An expiry dated before today is not offered. A request that names a date before
   today opens on the next expiry, and the page keeps that one. When every expiry
   on the held chain is before today, the route says no expiry on this chain is

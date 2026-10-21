@@ -22,7 +22,8 @@ from typing import Annotated, Optional
 from dataclasses import asdict, dataclass
 
 from time_et import (ET, now_et, ct_label, et_date_str_from_ts_utc, last_open,
-                     market_session_date, options_closed_at, options_open, session, session_label)
+                     market_session_date, option_close_product, options_closed_at, options_open,
+                     session, session_label, valuation_instant)
 from math_exposure_core import (
     bucket_metric,
     merge_exposure_books,
@@ -171,7 +172,6 @@ from instrument_identity import display_symbol, ticker_storage_key   # RC-126: t
 import live_market_plane as lmp
 from numeric_contract import float_finite_or_none, schwab_count, schwab_number
 from confluence_composite import build_matrix, iv_by_strike
-from math_levels import compute_charm_by_strike
 from terrain_engine import (SCOPES, SAME_DAY_LEVELS, TerrainSnapshot, chain_ladder, compute_terrain,
                             nearest_strike, positioning_migration, strike_window)
 from terrain_atr import Atr, compute_atrs, roll_up
@@ -1146,10 +1146,12 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
     (_price_chain), so each publication is computed from inputs read after the one it replaces.
     `captures` (startup
     and a closed market, DATA_FLOW decision 7) are the two newest market days' stored captures,
-    read once: the newest is priced with Schwab's underlying price from that capture, valued and
-    dated at its own time, and both feed the forces and prior-day rows. `now`: the instant of
-    this publication (omitted, the clock's), at which a chain that is not a capture is valued,
-    the last streamed values price over the chain when they are newer, and each leg's age is taken.
+    read once: the newest is priced with Schwab's underlying price from that capture, valued at
+    its own time, or at that ticker's option close when the capture is past it, and both feed
+    the forces and prior-day rows. `now`: the instant of this publication (omitted, the clock's).
+    A chain that is not a capture is valued then, or at that ticker's option close once it has
+    passed. The last streamed values price over the chain when they are newer, and each leg's
+    age is taken.
     Returns the snapshot, or None when there is no chain to price."""
     at = now if now is not None else now_et()
     with _terrain_cache_lock:
@@ -1179,7 +1181,8 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
     # the chain's. The cell stamp says whether that stream is live.
     priced, n_live = overlay_streamed_contract_fields(chain, streamed, fetched_ts)
     live_syms = _overlaid_symbols(chain, priced)
-    valued_at = datetime.fromtimestamp(fetched_ts, ET) if capture is not None else at
+    clock = datetime.fromtimestamp(fetched_ts, ET) if capture is not None else at
+    valued_at = valuation_instant(clock, option_close_product(tk))
     snap = compute_terrain(tk, priced, spot, now=valued_at)
     payload.update(snap.to_dict())
     payload.update({
@@ -1195,6 +1198,7 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
         "_vanna_rows": _vanna_rows(snap), "_charm_rows": _charm_rows(snap),
         # every ticker keeps its chain and its heatmap, so a ticker put on screen shows at once
         "_chain": chain, "_priced_chain": priced, "_books": snap.books,
+        "_charm_by_expiry": snap.charm_by_expiry,
         "_chain_fetched_ts": fetched_ts,
     })
     # the values read from the stored chain captures (forces, the prior day's per-strike rows)
@@ -1921,8 +1925,9 @@ def _forces_from_captures(tk: str, captures: list) -> dict:
         if len(rows) >= 2:
             (d1, s1, c1, t1), (d0, s0, c0, t0) = rows[0], rows[1]
             # each capture priced at its own time, not today's clock
-            per1 = _cebs(c1, spot=float(s1), now=datetime.fromtimestamp(t1, ET))[0]
-            per0 = _cebs(c0, spot=float(s0), now=datetime.fromtimestamp(t0, ET))[0]
+            product = option_close_product(tk)
+            per1 = _cebs(c1, spot=float(s1), now=datetime.fromtimestamp(t1, ET), product=product)[0]
+            per0 = _cebs(c0, spot=float(s0), now=datetime.fromtimestamp(t0, ET), product=product)[0]
 
             from math_exposure_core import bucket_metric as _bm, strike_total_oi as _sto
 
@@ -1937,7 +1942,7 @@ def _forces_from_captures(tk: str, captures: list) -> dict:
             charm_below = charm_above = None
             try:
                 # priced at the capture's own time, not today's clock
-                per_ch = _ccs(c1, spot1, now=datetime.fromtimestamp(t1, ET)) if c1 else {}
+                per_ch = _ccs(c1, spot1, now=datetime.fromtimestamp(t1, ET), product=product) if c1 else {}
                 if per_ch:
                     # RC-276: a strike with no net_charm is not a strike with zero charm.
                     # Summed as 0.0 it silently tilted the below/above pair the console
@@ -2945,11 +2950,12 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict:
             if isinstance(exp, str) and exp[:10] == chosen:
                 contracts.append(ct)
     fetched = live.get("computed_ts_utc")
-    valued_ts = live.get("_valued_ts_utc")
+    maps = live.get("_charm_by_expiry")
     charm = {}
-    if isinstance(valued_ts, (int, float)):
-        charm = compute_charm_by_strike(
-            contracts, float(spot), now=datetime.fromtimestamp(float(valued_ts), ET))
+    if isinstance(maps, dict):
+        held = maps.get(chosen)
+        if isinstance(held, dict):
+            charm = held
     markers = _confluence_markers(live, tk, now)
     levels = _screen_levels(markers)
     flip = _level_named(levels, "Flip")

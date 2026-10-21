@@ -12,7 +12,7 @@ unknown: nothing is guessed.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 ET = ZoneInfo("America/New_York")
@@ -144,6 +144,22 @@ def options_closed_at(now: datetime) -> datetime | None:
     the answers held; None when none has."""
     ended = [end for s in _sessions.values() for _p, windows in s.options for _start, end in windows if end <= now]
     return max(ended) if ended else None
+
+
+def valuation_instant(now: datetime, product: str = EQUITY_OPTIONS) -> datetime:
+    """The instant a live chain is priced. Once `product`'s regular window has ended, that
+    instant is its close, so the close numbers stand. While the window is open, or that
+    date's session is not held, it is `now`."""
+    held = session(now.astimezone(ET).date().isoformat())
+    if held is None:
+        return now
+    windows = held.option_windows(product)
+    if not windows:
+        return now
+    end = windows[-1][1]
+    if now >= end:
+        return end - timedelta(microseconds=1)
+    return now
 
 
 def closed_since(now: datetime) -> "datetime | None":

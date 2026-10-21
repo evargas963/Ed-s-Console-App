@@ -117,7 +117,7 @@ def score_magnitudes(by_strike: dict[float, dict[str, float | None]],
         mapped, span = _normalize(present)
         norm[name] = mapped
         spans[name] = span
-        if span is None and present:
+        if span is None and present and len(present) == len(universe):
             flat.append(name)
     scored: dict[float, dict[str, Any]] = {}
     for strike, factors in by_strike.items():

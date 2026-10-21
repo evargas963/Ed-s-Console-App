@@ -141,6 +141,7 @@ def compute_exposures_by_strike(
     *,
     spot: float | None = None,
     now: datetime,
+    product: str = "EQO",
 ) -> tuple[Dict[float, dict], ExposureDiagnostics]:
     """
     Produces per-strike aggregated, over every listed contract with a strike and a side:
@@ -171,7 +172,7 @@ def compute_exposures_by_strike(
     def _tte_memo(ct: dict) -> float | None:
         key = (str(ct.get("expirationDate")), ct.get("settlementType"))
         if key not in _tte_cache:
-            _tte_cache[key] = _tte(key[0], now=now, settlement_type=key[1])
+            _tte_cache[key] = _tte(key[0], now=now, settlement_type=key[1], product=product)
         return _tte_cache[key]
 
     for ct in contracts:
@@ -287,7 +288,8 @@ def _diagnostics(total: int, used: int, missing: int) -> ExposureDiagnostics:
                                greeks_missing=missing, note=note)
 
 
-def exposure_books(contracts: List[dict], *, spot: float | None, now: datetime
+def exposure_books(contracts: List[dict], *, spot: float | None, now: datetime,
+                   product: str = "EQO",
                    ) -> "Dict[tuple[str, float | None], tuple[Dict[float, dict], ExposureDiagnostics]]":
     """compute_exposures_by_strike once per (expiration date, days to
     expiry) group. Every contract is priced once; any subset of expiries is then a
@@ -297,7 +299,7 @@ def exposure_books(contracts: List[dict], *, spot: float | None, now: datetime
         if isinstance(ct, dict):
             key = (str(ct.get("expirationDate") or "")[:10], schwab_number(ct.get("daysToExpiration")))
             groups.setdefault(key, []).append(ct)
-    return {k: compute_exposures_by_strike(cs, spot=spot, now=now)
+    return {k: compute_exposures_by_strike(cs, spot=spot, now=now, product=product)
             for k, cs in groups.items()}
 
 

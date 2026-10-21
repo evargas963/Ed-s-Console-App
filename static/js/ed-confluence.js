@@ -74,6 +74,11 @@
       return r.json();
     }).then(draw).catch(function (e) {
       if (e && e.name === 'AbortError') return;
+      if (lastBody && lastBody.ticker === tk && lastBody.available) {
+        var line = document.querySelector('#cmBody .status span');
+        if (line) line.textContent = line.textContent + ' · last update, the refresh failed';
+        return;
+      }
       box.innerHTML = '<div class="placeholder"><div class="sm">The matrix request failed.</div></div>';
     });
   }
