@@ -1142,7 +1142,9 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
     Prices the ticker's chain once -- overlaid with any fresher streamed option greeks, at the
     current spot -- and publishes all three together, so the heatmap, Strike Detail and Key
     Levels always show one computation. A delivered chain is passed in; a tick on a viewed ticker
-    passes none and the kept chain is repriced. Called only on the one pricing thread
+    passes none and the kept chain is repriced. Once that ticker's option window has ended, a
+    later publication keeps the spot already published, so a later equity print does not move
+    the close book. Called only on the one pricing thread
     (_price_chain), so each publication is computed from inputs read after the one it replaces.
     `captures` (startup
     and a closed market, DATA_FLOW decision 7) are the two newest market days' stored captures,
@@ -1164,8 +1166,19 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
         chain, fetched_ts = payload.get("_chain"), payload.get("_chain_fetched_ts")
         if not chain:
             return None
+    clock = datetime.fromtimestamp(fetched_ts, ET) if capture is not None else at
+    valued_at = valuation_instant(clock, option_close_product(tk))
     if capture is not None:
         spot, spot_source, spot_ts = capture["spot"], SPOT_SOURCE_CAPTURE, capture["ts_utc"]
+    elif valued_at < at:
+        # the window has ended: the spot already published is the close, and a later print is not
+        held_spot = payload.get("spot")
+        if held_spot is not None:
+            spot = held_spot
+            spot_source = payload.get("spot_source")
+            spot_ts = payload.get("spot_as_of_ts_utc")
+        else:
+            spot, spot_source, spot_ts = resolve_spot(tk, now=at.timestamp())
     else:
         spot, spot_source, spot_ts = resolve_spot(tk, now=at.timestamp())
     prev_spot = payload.get("spot")
@@ -1181,8 +1194,6 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
     # the chain's. The cell stamp says whether that stream is live.
     priced, n_live = overlay_streamed_contract_fields(chain, streamed, fetched_ts)
     live_syms = _overlaid_symbols(chain, priced)
-    clock = datetime.fromtimestamp(fetched_ts, ET) if capture is not None else at
-    valued_at = valuation_instant(clock, option_close_product(tk))
     snap = compute_terrain(tk, priced, spot, now=valued_at)
     payload.update(snap.to_dict())
     payload.update({

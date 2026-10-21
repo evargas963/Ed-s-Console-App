@@ -335,6 +335,36 @@ def test_a_chain_delivered_after_the_close_still_fills_the_matrix():
     assert _window_has(body["rows"], "score")
 
 
+def test_an_after_hours_print_keeps_the_close_book():
+    """SPY's captured chain is published after the index close at the close spot. A later
+    equity print, with no new chain, leaves that strike's gamma, vanna, and charm."""
+    import app.options.order_flow.streaming as ofs
+    from tests.real_chains import SPY_0DTE
+
+    held = SPY_0DTE
+    tk = "SPY"
+    at = datetime(2026, 10, 7, 18, 0, tzinfo=ET)
+    expiry = str(held.chain[0]["expirationDate"])[:10]
+    ofs._price_rows[tk] = {"ticker": tk, "spot": held.spot, "trade_ts": at.timestamp()}
+    try:
+        server._publish_levels(tk, held.chain, at.timestamp(), now=at)
+        first = server.confluence_payload(tk, expiry, at)
+        near = min(first["rows"], key=lambda row: abs(row["strike"] - held.spot))
+        close_texts = (near["net_gex_text"], near["vanna_text"], near["charm_text"])
+        assert None not in close_texts
+        ofs._price_rows[tk] = {"ticker": tk, "spot": held.spot + 1.0,
+                               "trade_ts": at.timestamp()}
+        second_snap = server._publish_levels(tk, now=at)
+        second = server.confluence_payload(tk, expiry, at)
+        again = min(second["rows"], key=lambda row: abs(row["strike"] - held.spot))
+        assert (again["net_gex_text"], again["vanna_text"], again["charm_text"]) == close_texts
+        assert second_snap.spot == held.spot
+    finally:
+        ofs._price_rows.pop(tk, None)
+        with server._terrain_cache_lock:
+            server._terrain_cache.pop(tk, None)
+
+
 def test_a_close_capture_keeps_its_charm_in_the_forces():
     """SPY's captured 0DTE chain, banked after the index close, is valued at that close.
     The forces charm sums include it."""

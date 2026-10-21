@@ -298,7 +298,8 @@ from Schwab to the screen (daemon, console, page), are these:
   (`compute_charm_by_strike` once for the expiry). The matrix does not call it again. Vanna
   is the book's `net_vanna`. After that ticker's option market has closed, the publication
   is valued at that close (`time_et.valuation_instant`, the index close for SPY, QQQ, and
-  IWM, the equity-option close for every other ticker), so the close numbers stay. The
+  IWM, the equity-option close for every other ticker), so the close numbers stay. A later
+  equity print keeps the spot that publication was priced at. The
   chain's own time stays `computed_ts_utc` and is the line above the matrix. The expiry is a dropdown; a same-day expiry is labeled 0DTE. Each level is sent at its own price and drawn on the rail. An expiry dated before today is not offered. A request that names a date before
   today opens on the next expiry, and the page keeps that one. When every expiry
   on the held chain is before today, the route says no expiry on this chain is
