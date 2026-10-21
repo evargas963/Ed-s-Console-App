@@ -337,21 +337,13 @@ _BUCKET_FLAGS = frozenset({"dollarized"})
 
 
 #: streamed-state key -> (chain contract field it overlays, that field's own freshness key).
-#: Native Schwab LEVELONE_OPTIONS fields (schwab-py's LevelOneOptionFields: DELTA=28, GAMMA=29,
-#: OPEN_INTEREST=9, TOTAL_VOLUME=8) map onto the SAME field names compute_exposures_by_strike
-#: already reads from a REST chain contract (`gamma`, `delta`, `openInterest`, `totalVolume`)
-#: -- this overlay changes no formula and adds no second computation path; it only lets these
-#: inputs be fresher than the chain snapshot they arrived in, for whichever contract is
-#: actively streaming. `total_volume` closes the "near-instant options volume" requirement:
-#: without it, a volume-only tick (no Greeks/OI change) never reached ANY display, since
-#: _per_strike's volume column and compute_exposures_by_strike's own call/put volume both read
-#: a contract's `totalVolume` directly, not the ticker-level ``_stream_volume`` cache.
-_STREAMED_GREEK_FIELDS: tuple[tuple[str, str], ...] = (
-    ("gamma", "gamma"),
-    ("delta", "delta"),
+#: A newer streamed open interest or volume replaces the chain's. Gamma, delta, and volatility
+#: do not: those are the quote the sweep stored, one service for every contract. `total_volume`
+#: is how a volume-only tick reaches the column: _per_strike and the exposure book both read
+#: the contract's `totalVolume`.
+_STREAMED_COUNT_FIELDS: tuple[tuple[str, str], ...] = (
     ("open_interest", "openInterest"),
     ("total_volume", "totalVolume"),
-    ("volatility", "volatility"),
 )
 
 
@@ -360,12 +352,11 @@ def overlay_streamed_contract_fields(
     streamed_by_symbol: Dict[str, dict],
     chain_received_ts: float | None,
 ) -> tuple[List[dict], int]:
-    """A contract's streamed GAMMA/DELTA/OPEN_INTEREST/TOTAL_VOLUME/VOLATILITY onto the REST
-    chain, matched by each contract's own `symbol` field: for each field the newest value Schwab
-    sent wins. Neither source carries a Schwab time for these fields, so the receive times decide:
-    a streamed field (its own `<field>_ts_recv`) received after the chain (`chain_received_ts`)
-    replaces the chain's; one received before it -- yesterday's OPEN_INTEREST under a chain
-    fetched today -- does not. A chain with no receive time is replaced by every streamed field.
+    """A contract's streamed open interest and volume onto the chain, matched by `symbol`.
+    Gamma, delta, and volatility stay the quote the sweep stored. For open interest and volume
+    the receive times decide: a streamed field (`<field>_ts_recv`) received after the chain
+    (`chain_received_ts`) replaces the chain's; one received before it does not. A chain with
+    no receive time is replaced by every streamed open interest and volume.
 
     Pure: `contracts` and its dicts are never mutated; only a contract that gets a field is
     copied. Returns (new_contracts, overlaid_count).
@@ -383,7 +374,7 @@ def overlay_streamed_contract_fields(
             out.append(ct)
             continue
         new_ct = None
-        for streamed_key, chain_key in _STREAMED_GREEK_FIELDS:
+        for streamed_key, chain_key in _STREAMED_COUNT_FIELDS:
             val = streamed.get(streamed_key)
             if val is None:
                 continue
