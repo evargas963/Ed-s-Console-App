@@ -941,8 +941,12 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
     charm_by_expiry = {}
     expiry_rows: dict[str, list] = {}
     for ct in contracts:
-        if isinstance(ct, dict):
-            expiry_rows.setdefault(str(ct.get("expirationDate") or "")[:10], []).append(ct)
+        if not isinstance(ct, dict):
+            continue
+        exp = _listed_expiry_day(ct)
+        if exp is None:
+            continue
+        expiry_rows.setdefault(exp, []).append(ct)
     for exp, rows in expiry_rows.items():
         charm_by_expiry[exp] = compute_charm_by_strike(
             rows, float(spot), now=_terrain_now, product=product)
