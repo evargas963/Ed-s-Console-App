@@ -26,6 +26,7 @@ from time_et import (ET, now_et, ct_label, et_date_str_from_ts_utc, last_open,
                      session, session_label, valuation_instant)
 from math_exposure_core import (
     bucket_metric,
+    greek_reported,
     merge_exposure_books,
     overlay_streamed_contract_fields,
     strike_oi_legs,
@@ -1134,6 +1135,45 @@ def _contract_ticker(sym: str) -> "str | None":
         return next((tk for tk, p in _terrain_cache.items() if sym in (p.get("_contract_symbols") or ())), None)
 
 
+_QUOTE_GREEKS = ("gamma", "delta", "theta", "vega", "rho", "volatility")
+
+
+def _keep_last_reported_greeks(chain, previous, valued_at, at):
+    """After that ticker's option window has ended, a quote that does not report a greek
+    leaves the greek the last quote reported. During the window the quote stands, and
+    Schwab's no-value code does not keep an older greek."""
+    if not (valued_at < at) or not previous:
+        return chain
+    prior = {}
+    for ct in previous:
+        sym = ct.get("symbol") if isinstance(ct, dict) else None
+        if sym:
+            prior[sym] = ct
+    out = []
+    for ct in chain:
+        if not isinstance(ct, dict):
+            out.append(ct)
+            continue
+        sym = ct.get("symbol")
+        old = None
+        if sym in prior:
+            old = prior[sym]
+        if old is None or greek_reported(ct.get("gamma"), iv=ct.get("volatility")):
+            out.append(ct)
+            continue
+        if not greek_reported(old.get("gamma"), iv=old.get("volatility")):
+            out.append(ct)
+            continue
+        kept = dict(ct)
+        for field in _QUOTE_GREEKS:
+            kept[field] = old.get(field)
+        times = old.get("greeksTime")
+        if isinstance(times, dict):
+            kept["greeksTime"] = times
+        out.append(kept)
+    return out
+
+
 def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | None" = None,
                     *, captures: "list | None" = None,
                     now: "datetime | None" = None) -> "TerrainSnapshot | None":
@@ -1152,8 +1192,9 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
     its own time, or at that ticker's option close when the capture is past it, and both feed
     the forces and prior-day rows. `now`: the instant of this publication (omitted, the clock's).
     A chain that is not a capture is valued then, or at that ticker's option close once it has
-    passed. The last streamed values price over the chain when they are newer, and each leg's
-    age is taken.
+    passed. Once that window has ended, a quote that does not report a greek leaves the greek
+    the last quote reported. The last streamed values price over the chain when they are newer,
+    and each leg's age is taken.
     Returns the snapshot, or None when there is no chain to price."""
     at = now if now is not None else now_et()
     with _terrain_cache_lock:
@@ -1168,6 +1209,8 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
             return None
     clock = datetime.fromtimestamp(fetched_ts, ET) if capture is not None else at
     valued_at = valuation_instant(clock, option_close_product(tk))
+    if new_chain and capture is None:
+        chain = _keep_last_reported_greeks(chain, payload.get("_chain"), valued_at, at)
     if capture is not None:
         spot, spot_source, spot_ts = capture["spot"], SPOT_SOURCE_CAPTURE, capture["ts_utc"]
     elif valued_at < at:

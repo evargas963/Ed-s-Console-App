@@ -431,6 +431,68 @@ def test_a_later_expiry_keeps_its_columns_at_that_expirys_close():
     assert again["rows"] == body["rows"]
 
 
+def _no_value_quote(chain):
+    """Schwab's after-the-close quote: gamma 0, delta -1, volatility the no-value code."""
+    poisoned = []
+    for ct in chain:
+        row = dict(ct)
+        row["gamma"] = 0.0
+        row["delta"] = -1.0
+        row["volatility"] = -999.0
+        poisoned.append(row)
+    return poisoned
+
+
+def test_a_no_value_quote_after_the_close_keeps_the_last_reported_greek():
+    """SPY's captured chain is published after the index close, valued at that close. A later
+    quote that sends Schwab's no-value code does not erase that quote's gamma, vanna, or charm."""
+    import app.options.order_flow.streaming as ofs
+    from tests.real_chains import SPY_0DTE
+
+    held = SPY_0DTE
+    tk = "SPY"
+    after = datetime(2026, 10, 7, 18, 0, tzinfo=ET)
+    expiry = str(held.chain[0]["expirationDate"])[:10]
+    ofs._price_rows[tk] = {"ticker": tk, "spot": held.spot, "trade_ts": after.timestamp()}
+    try:
+        server._publish_levels(tk, [dict(c) for c in held.chain], after.timestamp(), now=after)
+        first = server.confluence_payload(tk, expiry, after)
+        near = min(first["rows"], key=lambda row: abs(row["strike"] - held.spot))
+        kept = (near["net_gex_text"], near["vanna_text"], near["charm_text"], near["score_text"])
+        assert None not in kept
+        server._publish_levels(tk, _no_value_quote(held.chain), after.timestamp(), now=after)
+        second = server.confluence_payload(tk, expiry, after)
+        again = min(second["rows"], key=lambda row: abs(row["strike"] - held.spot))
+        assert (again["net_gex_text"], again["vanna_text"], again["charm_text"], again["score_text"]) == kept
+    finally:
+        ofs._price_rows.pop(tk, None)
+        with server._terrain_cache_lock:
+            server._terrain_cache.pop(tk, None)
+
+
+def test_during_the_session_a_no_value_quote_does_not_keep_the_old_greek():
+    """During the session Schwab's no-value code is not a greek. It does not keep the older one."""
+    import app.options.order_flow.streaming as ofs
+    from tests.real_chains import SPY_0DTE
+
+    held = SPY_0DTE
+    tk = "SPY"
+    session = datetime(2026, 10, 7, 12, 32, tzinfo=ET)
+    later = datetime(2026, 10, 7, 12, 40, tzinfo=ET)
+    expiry = str(held.chain[0]["expirationDate"])[:10]
+    ofs._price_rows[tk] = {"ticker": tk, "spot": held.spot, "trade_ts": session.timestamp()}
+    try:
+        server._publish_levels(tk, [dict(c) for c in held.chain], session.timestamp(), now=session)
+        server._publish_levels(tk, _no_value_quote(held.chain), later.timestamp(), now=later)
+        body = server.confluence_payload(tk, expiry, later)
+        near = min(body["rows"], key=lambda row: abs(row["strike"] - held.spot))
+        assert near["vanna_text"] is None and near["charm_text"] is None and near["score"] is None
+    finally:
+        ofs._price_rows.pop(tk, None)
+        with server._terrain_cache_lock:
+            server._terrain_cache.pop(tk, None)
+
+
 def test_an_after_hours_print_keeps_the_close_book():
     """SPY's captured chain is published after the index close at the close spot. A later
     equity print, with no new chain, leaves that strike's gamma, vanna, and charm."""
