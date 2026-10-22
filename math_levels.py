@@ -161,7 +161,7 @@ def bs_charm(spot: float, strike: float, t_years: float, sigma: float,
 
 
 def compute_charm_by_strike(contracts: List[dict], spot: float, *, now: datetime,
-                            parsed: "list | None" = None) -> Dict[float, dict]:
+                            parsed: "list | None" = None, product: str = "EQO") -> Dict[float, dict]:
     """Per-strike dealer CHARM exposure, in delta-shares per day.
 
     Charm exposure is standard institutional practice (SpotGamma, Unusual Whales and
@@ -177,7 +177,7 @@ def compute_charm_by_strike(contracts: List[dict], spot: float, *, now: datetime
     if not contracts or not spot or spot <= 0:
         return out
     for strike, oi, mult, t_years, sigma, sign in (parsed if parsed is not None
-                                                   else contract_inputs(contracts, now)[0]):
+                                                   else contract_inputs(contracts, now, product=product)[0]):
         c = bs_charm(float(spot), strike, t_years, sigma)
         if c is None:
             continue
@@ -188,6 +188,27 @@ def compute_charm_by_strike(contracts: List[dict], spot: float, *, now: datetime
         else:
             b["put_charm"] += exposure
         b["net_charm"] = b["call_charm"] - b["put_charm"]
+    return out
+
+
+def merge_charm_maps(maps: Dict[str, Dict[float, dict]]) -> Dict[float, dict]:
+    """One strike map from per-expiry maps of the same function. A strike listed on more
+    than one expiry is the sum of those expiries, +call/−put, the same as one call over
+    every contract."""
+    out: Dict[float, dict] = {}
+    for part in maps.values():
+        for strike, bucket in part.items():
+            cur = out.get(strike)
+            if cur is None:
+                out[strike] = {
+                    "call_charm": bucket["call_charm"],
+                    "put_charm": bucket["put_charm"],
+                    "net_charm": bucket["net_charm"],
+                }
+                continue
+            cur["call_charm"] += bucket["call_charm"]
+            cur["put_charm"] += bucket["put_charm"]
+            cur["net_charm"] = cur["call_charm"] - cur["put_charm"]
     return out
 
 
@@ -210,13 +231,13 @@ def pick_charm_wall_strikes(charm_by_strike: Dict[float, dict]
 NO_EXPIRY_SESSION = "no_markets_session_for_expiry"
 
 
-def contract_inputs(contracts: List[dict], now: datetime) -> tuple[list, dict]:
+def contract_inputs(contracts: List[dict], now: datetime, product: str = "EQO") -> tuple[list, dict]:
     """(priced, unpriced): _contract_inputs for every contract with open interest, parsed once
     and shared by the gamma profile and charm (compute_terrain); `unpriced` counts the
     contracts with open interest the profile could not price, by reason."""
     priced, unpriced = [], {}
     for ct in contracts:
-        r = _contract_inputs(ct, now=now) if isinstance(ct, dict) else "invalid"
+        r = _contract_inputs(ct, now=now, product=product) if isinstance(ct, dict) else "invalid"
         if isinstance(r, tuple):
             priced.append(r)
         elif r != "zero_open_interest":
@@ -225,7 +246,8 @@ def contract_inputs(contracts: List[dict], now: datetime) -> tuple[list, dict]:
 
 
 def _contract_inputs(ct: dict, now: datetime, *,
-                     t_years: float | None = None) -> tuple[float, float, float, float, float, int] | str:
+                     t_years: float | None = None, product: str = "EQO",
+                     ) -> tuple[float, float, float, float, float, int] | str:
     """(strike, oi, mult, t_years, sigma, sign), or the reason it cannot be priced.
 
     `t_years` is the canonical INTRADAY time-to-expiry (time_et.time_to_expiry_years): to the
@@ -255,7 +277,7 @@ def _contract_inputs(ct: dict, now: datetime, *,
         return "no_volatility"
     if t_years is None:
         t_years = time_to_expiry_years(ct.get("expirationDate"), now=now,
-                                       settlement_type=ct.get("settlementType"))
+                                       settlement_type=ct.get("settlementType"), product=product)
     if t_years is None or t_years <= 0:
         am_unanswered = (ct.get("settlementType") == SETTLEMENT_AM
                          and session(str(ct.get("expirationDate"))[:10]) is None)

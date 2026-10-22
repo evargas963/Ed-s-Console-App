@@ -164,17 +164,16 @@ def test_the_terrain_endpoint_serves_a_published_ticker_as_json_without_internal
     assert not [k for k in body if k.startswith("_")]
 
 
-# ── streamed values: the newest Schwab sent wins, an older or a stopped one never does ──────────
+# ── a streamed greek does not replace the chain's; a streamed volume does ───────────────────────
 
-def test_a_fresh_streamed_greek_reprices_levels_heatmap_and_rows():
+def test_a_streamed_greek_does_not_replace_the_chains():
+    """Gamma on the book is the chain's. A later LEVELONE_OPTIONS gamma does not reprice it."""
     _daemon(held=[_A])
     _streamed(_A, {"GAMMA": 0.9}, _T)
     _put_chain(fetched_ts=_T - 5.0)
     c = _cached()
-    assert c["_gamma_surface"]["stream_overlay_contracts"] == 1
-    assert c["_gamma_surface"]["stream_overlay_symbols"] == [_A]
-    overlaid = [dict(_CONTRACTS[0], gamma=0.9)] + _CONTRACTS[1:]
-    assert c["_per_strike"] == compute_terrain(TK, overlaid, _SPOT, now=_AT).per_strike
+    assert c["_gamma_surface"]["stream_overlay_contracts"] == 0
+    assert c["_per_strike"] == compute_terrain(TK, _CONTRACTS, _SPOT, now=_AT).per_strike
 
 
 def test_a_new_chain_does_not_turn_a_live_contracts_leg_stale():
@@ -193,23 +192,22 @@ def test_a_new_chain_does_not_turn_a_live_contracts_leg_stale():
     assert legs and all(leg["state"] == "live" for leg in legs)
 
 
-def test_a_streamed_value_applies_by_its_time():
-    """A streamed gamma received after the chain is the newest Schwab sent: it reprices the
-    levels; one received before the chain does not."""
+def test_a_streamed_gamma_does_not_apply_before_or_after_the_chain():
+    """A streamed gamma, newer or older than the chain, leaves the chain's gamma."""
     _daemon(held=[_A])
     _streamed(_A, {"GAMMA": 0.9}, _T - 60.0)
     _put_chain(fetched_ts=_T - 120.0)
-    assert _cached()["_gamma_surface"]["stream_overlay_symbols"] == [_A]
+    assert _cached()["_gamma_surface"]["stream_overlay_contracts"] == 0
     _put_chain(fetched_ts=_T - 30.0)
     assert _cached()["_gamma_surface"]["stream_overlay_contracts"] == 0
 
 
-def test_every_streamed_contract_is_overlaid_not_only_the_one_that_ticked():
+def test_a_streamed_gamma_on_two_contracts_does_not_replace_either():
     _daemon(held=[_A, _B])
     _streamed(_A, {"GAMMA": 0.9}, _T)
     _streamed(_B, {"GAMMA": 0.8}, _T)
     _put_chain(fetched_ts=_T - 5.0)
-    assert sorted(_cached()["_gamma_surface"]["stream_overlay_symbols"]) == sorted([_A, _B])
+    assert _cached()["_gamma_surface"]["stream_overlay_symbols"] == []
 
 
 def test_repeated_reprices_start_from_the_raw_chain_never_a_prior_overlay():

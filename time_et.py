@@ -146,6 +146,22 @@ def options_closed_at(now: datetime) -> datetime | None:
     return max(ended) if ended else None
 
 
+def valuation_instant(now: datetime, product: str = EQUITY_OPTIONS) -> datetime:
+    """The instant a live chain is priced. Once `product`'s regular window has ended, that
+    instant is its close, so the close numbers stand. While the window is open, or that
+    date's session is not held, it is `now`."""
+    held = session(now.astimezone(ET).date().isoformat())
+    if held is None:
+        return now
+    windows = held.option_windows(product)
+    if not windows:
+        return now
+    end = windows[-1][1]
+    if now >= end:
+        return end
+    return now
+
+
 def closed_since(now: datetime) -> "datetime | None":
     """While the stock market is CLOSED at `now` (session_label): when it closed, the end of the
     newest window Schwab sent that has ended. None while a session is open or unknown, and when no
@@ -217,8 +233,8 @@ def time_to_expiry_years(expiration_date: str, now: datetime, *,
     Schwab to a MEASURED median ratio 0.987 (94% of ATM strikes within 10%) in the 2-6h window.
 
     None for an AM-settled contract whose expiry date /markets does not answer, for a date it
-    answers with no regular option session, for an expirationDate without its time, and once
-    the option has reached settlement. A 10-minute sub-floor guards the exact-expiry
+    answers with no regular option session, for an expirationDate without its time, and after
+    settlement. At the settlement instant the 10-minute floor guards the exact-expiry
     singularity."""
     s = session(str(expiration_date)[:10])
     if s is None:
@@ -232,6 +248,6 @@ def time_to_expiry_years(expiration_date: str, now: datetime, *,
         settles = windows[0][0] if settlement_type == SETTLEMENT_AM else windows[-1][1]
     # instants, not civil time: a DST change between now and the expiry is counted as elapsed
     t = (settles.timestamp() - now.timestamp()) / YEAR_SECONDS
-    if t <= 0.0:
-        return None  # at/after settlement — no greeks for an expired contract
+    if t < 0.0:
+        return None  # after settlement — the contract has expired
     return max(t, MIN_TIME_TO_EXPIRY_YEARS)

@@ -1,9 +1,7 @@
 """Per-strike composite for one expiry.
 
-The exposure book and the charm map are the producers already computed for
-that expiry. This module ranks them. It does not recompute a greek. The
-per-strike volatility blend is produced here because Schwab sends a
-volatility on each contract and not one number for the strike.
+The exposure book, the charm map, and the volatility blend are already computed
+for that expiry. This module ranks them. It does not recompute a greek or the blend.
 """
 
 from __future__ import annotations
@@ -117,7 +115,7 @@ def score_magnitudes(by_strike: dict[float, dict[str, float | None]],
         mapped, span = _normalize(present)
         norm[name] = mapped
         spans[name] = span
-        if span is None and present:
+        if span is None and present and len(present) == len(universe):
             flat.append(name)
     scored: dict[float, dict[str, Any]] = {}
     for strike, factors in by_strike.items():

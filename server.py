@@ -22,7 +22,8 @@ from typing import Annotated, Optional
 from dataclasses import asdict, dataclass
 
 from time_et import (ET, now_et, ct_label, et_date_str_from_ts_utc, last_open,
-                     market_session_date, options_closed_at, options_open, session, session_label)
+                     market_session_date, option_close_product, options_closed_at, options_open,
+                     session, session_label, valuation_instant)
 from math_exposure_core import (
     bucket_metric,
     merge_exposure_books,
@@ -170,8 +171,7 @@ from db_authority import canonical_stream_db_path
 from instrument_identity import display_symbol, ticker_storage_key   # RC-126: the ONE query-symbol authority
 import live_market_plane as lmp
 from numeric_contract import float_finite_or_none, schwab_count, schwab_number
-from confluence_composite import build_matrix, iv_by_strike
-from math_levels import compute_charm_by_strike
+from confluence_composite import build_matrix
 from terrain_engine import (SCOPES, SAME_DAY_LEVELS, TerrainSnapshot, chain_ladder, compute_terrain,
                             nearest_strike, positioning_migration, strike_window)
 from terrain_atr import Atr, compute_atrs, roll_up
@@ -1142,14 +1142,18 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
     Prices the ticker's chain once -- overlaid with any fresher streamed option greeks, at the
     current spot -- and publishes all three together, so the heatmap, Strike Detail and Key
     Levels always show one computation. A delivered chain is passed in; a tick on a viewed ticker
-    passes none and the kept chain is repriced. Called only on the one pricing thread
+    passes none and the kept chain is repriced. Once that ticker's option window has ended, a
+    later publication keeps the spot already published, so a later equity print does not move
+    the close book. Called only on the one pricing thread
     (_price_chain), so each publication is computed from inputs read after the one it replaces.
     `captures` (startup
     and a closed market, DATA_FLOW decision 7) are the two newest market days' stored captures,
-    read once: the newest is priced with Schwab's underlying price from that capture, valued and
-    dated at its own time, and both feed the forces and prior-day rows. `now`: the instant of
-    this publication (omitted, the clock's), at which a chain that is not a capture is valued,
-    the last streamed values price over the chain when they are newer, and each leg's age is taken.
+    read once: the newest is priced with Schwab's underlying price from that capture, valued at
+    its own time, or at that ticker's option close when the capture is past it, and both feed
+    the forces and prior-day rows. `now`: the instant of this publication (omitted, the clock's).
+    A chain that is not a capture is valued then, or at that ticker's option close once it has
+    passed. The last streamed values price over the chain when they are newer, and each leg's
+    age is taken.
     Returns the snapshot, or None when there is no chain to price."""
     at = now if now is not None else now_et()
     with _terrain_cache_lock:
@@ -1162,8 +1166,19 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
         chain, fetched_ts = payload.get("_chain"), payload.get("_chain_fetched_ts")
         if not chain:
             return None
+    clock = datetime.fromtimestamp(fetched_ts, ET) if capture is not None else at
+    valued_at = valuation_instant(clock, option_close_product(tk))
     if capture is not None:
         spot, spot_source, spot_ts = capture["spot"], SPOT_SOURCE_CAPTURE, capture["ts_utc"]
+    elif valued_at < at:
+        # the window has ended: the spot already published is the close, and a later print is not
+        held_spot = payload.get("spot")
+        if held_spot is not None:
+            spot = held_spot
+            spot_source = payload.get("spot_source")
+            spot_ts = payload.get("spot_as_of_ts_utc")
+        else:
+            spot, spot_source, spot_ts = resolve_spot(tk, now=at.timestamp())
     else:
         spot, spot_source, spot_ts = resolve_spot(tk, now=at.timestamp())
     prev_spot = payload.get("spot")
@@ -1179,7 +1194,6 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
     # the chain's. The cell stamp says whether that stream is live.
     priced, n_live = overlay_streamed_contract_fields(chain, streamed, fetched_ts)
     live_syms = _overlaid_symbols(chain, priced)
-    valued_at = datetime.fromtimestamp(fetched_ts, ET) if capture is not None else at
     snap = compute_terrain(tk, priced, spot, now=valued_at)
     payload.update(snap.to_dict())
     payload.update({
@@ -1195,15 +1209,23 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
         "_vanna_rows": _vanna_rows(snap), "_charm_rows": _charm_rows(snap),
         # every ticker keeps its chain and its heatmap, so a ticker put on screen shows at once
         "_chain": chain, "_priced_chain": priced, "_books": snap.books,
+        "_charm_by_expiry": snap.charm_by_expiry,
+        "_iv_by_expiry": snap.iv_by_expiry,
         "_chain_fetched_ts": fetched_ts,
     })
+    payload["_matrix_by_expiry"] = _ranked_matrices(payload)
     # the values read from the stored chain captures (forces, the prior day's per-strike rows)
     # change only with a new capture or a new chain day: computed then, once, for all readers
     if new_chain:
         captures_key = (newest_capture_ts(get_db().db_path, tk), et_date_str_from_ts_utc(float(fetched_ts)))
         if payload.get("_captures_key") != captures_key:
             stored = captures if captures is not None else last_capture_per_day(get_db().db_path, tk, 2)
-            payload.update(_forces=_forces_from_captures(tk, stored),
+            # This publication priced a stored capture, so its charm map is that newer capture.
+            # A live chain is not that capture: the same function then runs once on the banked one.
+            held_charm = None
+            if captures and captures[0].get("spot") is not None:
+                held_charm = snap.charm_by_strike
+            payload.update(_forces=_forces_from_captures(tk, stored, held_charm),
                            _prior_strikes=_prior_strikes(stored, fetched_ts),
                            _captures_key=captures_key)
     if spot is not None and snap.books:
@@ -1901,13 +1923,15 @@ def _forces_absent(tk: str) -> dict:
             "charm_below": None, "charm_above": None}
 
 
-def _forces_from_captures(tk: str, captures: list) -> dict:
+def _forces_from_captures(tk: str, captures: list, charm_by_strike: dict | None = None) -> dict:
     """Forces rows from banked chains (RC-192/RC-199): per-strike OI delta FIRST, then
     bucketed by the NEWER capture's spot — bucketing each day by its own spot lets the moving
     boundary masquerade as OI change (measured inversion, OPEN_ITEMS DIR-01 method note).
     DEX is the newer capture's net_dex_dollars side sums. CHARM side sums (RC-199): operator
     2026-08-02 revoked the DIR-01(i) vote-lock — serve dealer-signed net_charm below/above
-    spot from the newer banked chain via compute_charm_by_strike (same book as terrain walls).
+    spot from the newer banked chain. `charm_by_strike` is that capture's map when this
+    publication just priced it. Otherwise the same function runs once, at that capture's
+    valuation instant.
     Run by _publish_levels when the ticker's newest capture changes, on `captures`: the two
     newest market days' captures (last_capture_per_day, newest first), read once for it.
     """
@@ -1920,9 +1944,12 @@ def _forces_from_captures(tk: str, captures: list) -> dict:
                 for c in captures if c["spot"] is not None]
         if len(rows) >= 2:
             (d1, s1, c1, t1), (d0, s0, c0, t0) = rows[0], rows[1]
-            # each capture priced at its own time, not today's clock
-            per1 = _cebs(c1, spot=float(s1), now=datetime.fromtimestamp(t1, ET))[0]
-            per0 = _cebs(c0, spot=float(s0), now=datetime.fromtimestamp(t0, ET))[0]
+            # each capture at its own time, or at that day's option close once the capture is past it
+            product = option_close_product(tk)
+            clock1 = valuation_instant(datetime.fromtimestamp(t1, ET), product)
+            clock0 = valuation_instant(datetime.fromtimestamp(t0, ET), product)
+            per1 = _cebs(c1, spot=float(s1), now=clock1, product=product)[0]
+            per0 = _cebs(c0, spot=float(s0), now=clock0, product=product)[0]
 
             from math_exposure_core import bucket_metric as _bm, strike_total_oi as _sto
 
@@ -1936,8 +1963,10 @@ def _forces_from_captures(tk: str, captures: list) -> dict:
             # Dealer-signed net_charm = call_charm - put_charm per strike (RC-179).
             charm_below = charm_above = None
             try:
-                # priced at the capture's own time, not today's clock
-                per_ch = _ccs(c1, spot1, now=datetime.fromtimestamp(t1, ET)) if c1 else {}
+                if isinstance(charm_by_strike, dict):
+                    per_ch = charm_by_strike
+                else:
+                    per_ch = _ccs(c1, spot1, now=clock1, product=product)
                 if per_ch:
                     # RC-276: a strike with no net_charm is not a strike with zero charm.
                     # Summed as 0.0 it silently tilted the below/above pair the console
@@ -2905,8 +2934,45 @@ def _inside_move(strike, low, high) -> bool:
     return float(low) <= float(strike) <= float(high)
 
 
+def _ranked_matrices(live: dict) -> dict:
+    """One ranking of each expiry on this publication. The matrix request reads the expiry it shows."""
+    books = live.get("_books")
+    spot = live.get("spot")
+    if not isinstance(books, dict) or not isinstance(spot, (int, float)):
+        return {}
+    expiry_dte = live.get("expiry_dte")
+    if not isinstance(expiry_dte, dict):
+        expiry_dte = {}
+    maps = live.get("_charm_by_expiry")
+    if not isinstance(maps, dict):
+        maps = {}
+    blends = live.get("_iv_by_expiry")
+    if not isinstance(blends, dict):
+        blends = {}
+    ranked = {}
+    for item in _confluence_expiries(books, expiry_dte):
+        chosen = item["expiry"]
+        dte = item["dte"]
+        if not isinstance(dte, (int, float)):
+            continue
+        selected = [book for key, book in books.items()
+                    if isinstance(key, tuple) and str(key[0])[:10] == chosen]
+        if len(selected) == 0:
+            continue
+        exposures = selected[0][0] if len(selected) == 1 else merge_exposure_books(selected)[0]
+        charm = maps.get(chosen)
+        if not isinstance(charm, dict):
+            charm = {}
+        iv = blends.get(chosen)
+        if not isinstance(iv, dict):
+            iv = {}
+        body = build_matrix(exposures, charm, iv, float(spot), float(dte), [])
+        ranked[chosen] = body
+    return ranked
+
+
 def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict:
-    """The confluence matrix for one expiry of the chain already priced in memory."""
+    """The ranking stored with the priced chain, for the expiry the operator picks."""
     live = terrain_cache_get(tk, now.timestamp())
     books = None if live is None else live.get("_books")
     spot = None if live is None else live.get("spot")
@@ -2929,35 +2995,25 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict:
         reason = ("that expiry is not on the priced chain" if absent
                   else "that expiry did not carry days to expiration")
         return {"ticker": tk, "available": False, "expiries": listed, "reason": reason}
-    selected = [book for key, book in books.items()
-                if isinstance(key, tuple) and str(key[0])[:10] == chosen]
-    if len(selected) == 0:
+    ranked = live.get("_matrix_by_expiry")
+    stored = None
+    if isinstance(ranked, dict):
+        found = ranked.get(chosen)
+        if isinstance(found, dict):
+            stored = found
+    if not isinstance(stored, dict):
         return {"ticker": tk, "available": False, "expiries": listed,
                 "reason": "that expiry is not on the priced chain"}
-    exposures = selected[0][0] if len(selected) == 1 else merge_exposure_books(selected)[0]
-    priced = live.get("_priced_chain")
-    contracts = []
-    if isinstance(priced, list):
-        for ct in priced:
-            if not isinstance(ct, dict):
-                continue
-            exp = ct.get("expirationDate")
-            if isinstance(exp, str) and exp[:10] == chosen:
-                contracts.append(ct)
     fetched = live.get("computed_ts_utc")
-    valued_ts = live.get("_valued_ts_utc")
-    charm = {}
-    if isinstance(valued_ts, (int, float)):
-        charm = compute_charm_by_strike(
-            contracts, float(spot), now=datetime.fromtimestamp(float(valued_ts), ET))
     markers = _confluence_markers(live, tk, now)
     levels = _screen_levels(markers)
     flip = _level_named(levels, "Flip")
     pin = _level_named(levels, "0D Pin")
     em_up = _level_named(levels, "EM+")
     em_dn = _level_named(levels, "EM−")
-    body = build_matrix(exposures, charm, iv_by_strike(contracts), float(spot), float(match["dte"]),
-                        [])
+    rows = stored.get("rows")
+    body = {key: value for key, value in stored.items() if key != "rows"}
+    body["rows"] = [dict(row) for row in rows] if isinstance(rows, list) else []
     low = None
     high = None
     if em_dn is not None:

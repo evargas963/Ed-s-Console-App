@@ -288,13 +288,19 @@ from Schwab to the screen (daemon, console, page), are these:
   done. If the load fails, no level is built and the console window shows the error. Each bar
   is checked once, where it comes in (`server._schwab_bar`); the levels take the bar writer's
   bars as kept (`liquidity_value_engine.bars_from_candles`), every level function the same.
-  The routes serve what it published and build nothing. `/api/confluence` is the one
-  exception that still calculates: it ranks one expiry of the book `_publish_levels` already
-  stored, because the operator picks the expiry. It does not read a chain, the database, or
-  Schwab. It has no loop of its own. The page asks again when the console pushes `levels` or
-  `chain` for that ticker, the same re-read ENF-15 still owes for every pane. Charm for that
-  expiry is `compute_charm_by_strike` on that expiry's contracts, and only at `_valued_ts_utc`,
-  the instant the book was valued. A book with no valuation time contributes no charm. The
+  The routes serve what it published and build nothing. `/api/confluence` reads the ranking
+  `_publish_levels` stored for the expiry the operator picks. It does not rank again. It does not read a
+  chain, the database, or Schwab. It has no loop of its own. The page asks again when the
+  console pushes `levels` or `chain` for that ticker, the same re-read ENF-15 still owes for
+  every pane. Charm for that expiry is the map `compute_terrain` stored
+  (`compute_charm_by_strike` once for the expiry). The volatility blend for that expiry is
+  the map `compute_terrain` stored (`iv_by_strike` once for the expiry). The ranking is
+  `score_magnitudes` once for that expiry, stored with the publication. The matrix does not
+  call any of them again. Vanna
+  is the book's `net_vanna`. After that ticker's option market has closed, the publication
+  is valued at that close (`time_et.valuation_instant`, the index close for SPY, QQQ, and
+  IWM, the equity-option close for every other ticker), so the close numbers stay. A later
+  equity print keeps the spot that publication was priced at. The
   chain's own time stays `computed_ts_utc` and is the line above the matrix. The expiry is a dropdown; a same-day expiry is labeled 0DTE. Each level is sent at its own price and drawn on the rail. An expiry dated before today is not offered. A request that names a date before
   today opens on the next expiry, and the page keeps that one. When every expiry
   on the held chain is before today, the route says no expiry on this chain is
@@ -370,18 +376,18 @@ from Schwab to the screen (daemon, console, page), are these:
   (`ChainSweep.fetch_chain`, `send_quotes`) is the one place a chain enters, so every consumer
   (levels, walls, flip, the heatmap, per-strike rows, forces, the chain ladder, Strike Detail,
   the captures) reads the Greeks it sets. The Greeks (gamma, delta, theta, vega, rho,
-  volatility) are never the chain's: the chain sends them rounded, which Schwab cannot change
-  (Schwab Trader API Support, 2026-10-06), while the quotes endpoint and the LEVELONE_OPTIONS
-  stream send them as computed (measured 2026-10-01, SPY 261120C00875000: chain gamma 0.0, quote
-  gamma 0.00037225; on SPY's 2026-11-20 column 86 of 221 cells with open interest read $0 GEX on
-  the chain's gamma; stream and quotes Greeks measured equal). Operator, 2026-10-01: "use what
-  schwab gives us... no rounding, use the exact data that schwab gives us everywhere". A
-  contract whose LEVELONE_OPTIONS record on the daemon's bus (`Daemon.option_record`) carries all
-  six takes the stream's; every other contract is asked for on `/quotes`, comma-separated, 300 to
-  a request across tickers (`QUOTES_BATCH_MAX`, Schwab Trader API Support 2026-10-06: not more
-  than 300), and takes its quote's, as sent. Each contract carries the time of its Greeks as
-  Schwab sent it, `greeksTime` ({field: ms}: the stream field's frame time, or the quote's
-  `quoteTime`). A chain is published once all its quotes are in. A quotes request Schwab refuses
+  volatility) are the quote's, every contract, every ticker. The chain sends them rounded, which
+  Schwab cannot change (Schwab Trader API Support, 2026-10-06), and the sweep does not keep
+  them (measured 2026-10-01, SPY 261120C00875000: chain gamma 0.0, quote gamma 0.00037225; on
+  SPY's 2026-11-20 column 86 of 221 cells with open interest read $0 GEX on the chain's gamma).
+  Operator, 2026-10-01: "use what schwab gives us... no rounding, use the exact data that schwab
+  gives us everywhere". `/quotes` is the one service that carries those six fields for every
+  contract (`quotes.quote`, `docs/schwab_fields.csv`). The stream is not read for them, and a
+  later stream tick does not replace them. Every contract is asked for on `/quotes`,
+  comma-separated, 300 to a request across tickers (`QUOTES_BATCH_MAX`, Schwab Trader API
+  Support 2026-10-06: not more than 300), and takes its quote's, as sent. Each contract carries
+  the time of its Greeks as Schwab sent it, `greeksTime` ({field: ms}: the quote's `quoteTime`).
+  A chain is published once all its quotes are in. A quotes request Schwab refuses
   fails every chain in it with its status and reason, so the levels keep their last good
   publication, stale with that reason. A contract missing from an answered request has no Greeks (None, logged with the count), never the
   chain's: its leg's exposure and its strike's net read absent (a leg's sum is known only when
@@ -401,8 +407,8 @@ from Schwab to the screen (daemon, console, page), are these:
   daemon's heartbeat says what the watchlist is), queued on the pricing thread behind the delivered
   chains while the console
   already serves the page (each ticker's levels appear as they are priced). The values read from the stored captures (forces: ΔOI, DEX and
-  charm by side; the prior day's per-strike rows) are computed by the same producer only when the
-  ticker's newest capture or its chain's day changes; `/api/forces` and `/api/terrain/strikes`
+  charm by side; the prior day's per-strike rows) are computed by the same producer, each capture at its own time or at that ticker's option
+  close once the capture is past it, only when the ticker's newest capture or its chain's day changes; `/api/forces` and `/api/terrain/strikes`
   serve that result and read no stored chain. The same publication carries each strike's net
   DEX $ and total OI (`terrain_engine._per_strike_measure_rows`, by the heatmap cell's readers),
   served as `/api/terrain/strikes` `measures` for the Chart view of Delta / DEX and Open
@@ -471,7 +477,7 @@ from Schwab to the screen (daemon, console, page), are these:
   reads feed down within 3 s. The
   console keeps the daemon's last price rows through that silence and through a dropped
   connection; a newer row replaces one when the push returns. The contracts that beat last
-  named keep their last streamed greeks on the levels; those cells are not live. The last
+  named keep the quote's greeks on the levels; those cells are not live. The last
   watchlist stands through that silence; the page says the daemon is not reporting.
 - **Tape.** The cumulative delta (PROXY, tick rule) sums every print the tape holds; no clock
   resets it, and the window it sums (its first and last print's Schwab trade time,
@@ -556,7 +562,7 @@ from Schwab to the screen (daemon, console, page), are these:
    the daemon stops holding keeps its last quote; the Flow panel marks it NOT STREAMED. A missing
    heartbeat keeps that last subscription, and the panel says OFFLINE
    (`streaming.get_option_contract_streaming_diagnostics`, the Flow badge). A missing
-   heartbeat keeps the last streamed greeks on the levels; the cells are not live. A feed
+   heartbeat keeps the quote's greeks on the levels; the cells are not live. A feed
    down while the market is closed keeps the last price and the book, and that panel says
    OFFLINE (`live_market_plane.outage`). A strike's session volume and open interest keep
    every digit Schwab sent (`terrain_engine._per_strike_rows`,
