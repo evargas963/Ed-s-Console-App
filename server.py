@@ -1136,12 +1136,19 @@ def _contract_ticker(sym: str) -> "str | None":
 
 
 _QUOTE_GREEKS = ("gamma", "delta", "theta", "vega", "rho", "volatility")
+_QUOTE_COUNTS = ("openInterest", "totalVolume")
 
 
-def _keep_last_reported_greeks(chain, previous, valued_at, at):
+def _positive_count(value) -> bool:
+    """A count Schwab reported above zero. Zero and the no-value code are not one."""
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0
+
+
+def _keep_last_reported(chain, previous, valued_at, at):
     """After that ticker's option window has ended, a quote that does not report a greek
-    leaves the greek the last quote reported. During the window the quote stands, and
-    Schwab's no-value code does not keep an older greek."""
+    leaves the greek the last quote reported, and a count of zero leaves the last count
+    above zero. During the window the quote stands, and Schwab's no-value code does not
+    keep an older greek."""
     if not (valued_at < at) or not previous:
         return chain
     prior = {}
@@ -1158,19 +1165,23 @@ def _keep_last_reported_greeks(chain, previous, valued_at, at):
         old = None
         if sym in prior:
             old = prior[sym]
-        if old is None or greek_reported(ct.get("gamma"), iv=ct.get("volatility")):
-            out.append(ct)
-            continue
-        if not greek_reported(old.get("gamma"), iv=old.get("volatility")):
-            out.append(ct)
-            continue
-        kept = dict(ct)
-        for field in _QUOTE_GREEKS:
-            kept[field] = old.get(field)
-        times = old.get("greeksTime")
-        if isinstance(times, dict):
-            kept["greeksTime"] = times
-        out.append(kept)
+        kept = None
+        if old is not None and not greek_reported(ct.get("gamma"), iv=ct.get("volatility")) \
+                and greek_reported(old.get("gamma"), iv=old.get("volatility")):
+            kept = dict(ct)
+            for field in _QUOTE_GREEKS:
+                kept[field] = old.get(field)
+            times = old.get("greeksTime")
+            if isinstance(times, dict):
+                kept["greeksTime"] = times
+        if old is not None:
+            for field in _QUOTE_COUNTS:
+                old_count = old.get(field)
+                if _positive_count(old_count) and not _positive_count(ct.get(field)):
+                    if kept is None:
+                        kept = dict(ct)
+                    kept[field] = old_count
+        out.append(ct if kept is None else kept)
     return out
 
 
@@ -1193,8 +1204,8 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
     the forces and prior-day rows. `now`: the instant of this publication (omitted, the clock's).
     A chain that is not a capture is valued then, or at that ticker's option close once it has
     passed. Once that window has ended, a quote that does not report a greek leaves the greek
-    the last quote reported. The last streamed values price over the chain when they are newer,
-    and each leg's age is taken.
+    the last quote reported, and a count of zero leaves the last count above zero. The last
+    streamed values price over the chain when they are newer, and each leg's age is taken.
     Returns the snapshot, or None when there is no chain to price."""
     at = now if now is not None else now_et()
     with _terrain_cache_lock:
@@ -1209,8 +1220,11 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
             return None
     clock = datetime.fromtimestamp(fetched_ts, ET) if capture is not None else at
     valued_at = valuation_instant(clock, option_close_product(tk))
-    if new_chain and capture is None:
-        chain = _keep_last_reported_greeks(chain, payload.get("_chain"), valued_at, at)
+    if new_chain and capture is None and valued_at < at:
+        previous = payload.get("_priced_chain")
+        if previous is None:
+            previous = payload.get("_chain")
+        chain = _keep_last_reported(chain, previous, valued_at, at)
     if capture is not None:
         spot, spot_source, spot_ts = capture["spot"], SPOT_SOURCE_CAPTURE, capture["ts_utc"]
     elif valued_at < at:
@@ -1236,6 +1250,8 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
     # each field the newest Schwab sent: the last streamed value received after this chain, else
     # the chain's. The cell stamp says whether that stream is live.
     priced, n_live = overlay_streamed_contract_fields(chain, streamed, fetched_ts)
+    if capture is None and valued_at < at:
+        priced = _keep_last_reported(priced, chain, valued_at, at)
     live_syms = _overlaid_symbols(chain, priced)
     snap = compute_terrain(tk, priced, spot, now=valued_at)
     payload.update(snap.to_dict())
@@ -2616,6 +2632,9 @@ def get_chain(ticker: str = Query(...),
     # each field the newest Schwab sent (the levels' own rule, _publish_levels)
     response_contracts, overlay_n = overlay_streamed_contract_fields(
         contracts, _streamed_greeks_for_ticker(held["_contract_symbols"], now), fetched_ts)
+    at = now_et()
+    valued_at = valuation_instant(at, option_close_product(t))
+    response_contracts = _keep_last_reported(response_contracts, contracts, valued_at, at)
     live_spot, _src, live_ts = resolve_spot(t, now=now)   # the one spot, with Schwab's trade time
     ladder, not_on_ladder = chain_ladder(response_contracts, live_spot)
     # this expiry's net GEX per strike, as the heatmap publishes it (its column of the surface):
