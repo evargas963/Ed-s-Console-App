@@ -825,6 +825,53 @@ def test_a_date_with_no_session_keeps_a_reported_zero():
             server._terrain_cache.pop(tk, None)
 
 
+def test_a_newer_capture_is_the_count_the_next_chain_keeps():
+    """The capture read before the open is not kept once a newer one is stored."""
+    import app.options.order_flow.streaming as ofs
+    from calibration.complete_chain_capture import CAPTURE_BASIS, persist_complete_chain_capture
+    from tests.real_chains import SPY_0DTE
+
+    held = SPY_0DTE
+    tk = "SPYNEW"
+    fresh = [dict(c) for c in held.chain]
+    target = next(ct for ct in fresh if ct.get("symbol") and isinstance(ct.get("totalVolume"), (int, float))
+                  and ct["totalVolume"] > 0)
+    bumped = []
+    for ct in fresh:
+        row = dict(ct)
+        if row.get("symbol") == target["symbol"]:
+            row["totalVolume"] = ct["totalVolume"] + 777
+        bumped.append(row)
+    before = datetime(2026, 10, 7, 8, 0, tzinfo=ET)
+    session = datetime(2026, 10, 7, 12, 32, tzinfo=ET)
+    after = datetime(2026, 10, 7, 18, 0, tzinfo=ET)
+    ofs._price_rows[tk] = {"ticker": tk, "spot": held.spot, "trade_ts": before.timestamp()}
+
+    def store(contracts, when):
+        by_expiry: dict = {}
+        for ct in contracts:
+            by_expiry.setdefault(str(ct["expirationDate"])[:10], []).append(ct)
+        for exp, cts in by_expiry.items():
+            persist_complete_chain_capture(
+                server.get_db().db_path, ticker=tk, expiry=exp,
+                contracts=[dict(c) for c in cts], spot=held.spot,
+                completeness_basis=CAPTURE_BASIS, ts_utc=when.timestamp())
+
+    try:
+        store(fresh, datetime(2026, 10, 6, 16, 0, tzinfo=ET))
+        server._publish_levels(tk, _zero_counts(fresh), before.timestamp(), now=before)
+        store(bumped, datetime(2026, 10, 7, 16, 15, tzinfo=ET))
+        server._publish_levels(tk, _zero_counts(fresh), session.timestamp(), now=session)
+        server._publish_levels(tk, _zero_counts(fresh), after.timestamp(), now=after)
+        book = server.terrain_cache_get(tk, after.timestamp())
+        kept = next(ct for ct in book["_priced_chain"] if ct.get("symbol") == target["symbol"])
+        assert kept["totalVolume"] == target["totalVolume"] + 777
+    finally:
+        ofs._price_rows.pop(tk, None)
+        with server._terrain_cache_lock:
+            server._terrain_cache.pop(tk, None)
+
+
 def test_during_the_session_a_zero_count_replaces_the_old_count():
     """During the session a count of zero is the count. It does not keep the older one."""
     import app.options.order_flow.streaming as ofs

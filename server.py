@@ -1278,9 +1278,11 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
         memory = payload.get("_priced_chain")
         if memory is None:
             memory = payload.get("_chain")
-        if "_count_capture" not in payload:
+        newest = newest_capture_ts(get_db().db_path, tk)
+        if payload.get("_count_capture_ts") != newest:
             rows = last_capture_per_day(get_db().db_path, tk, 1)
             payload["_count_capture"] = rows[0].get("contracts") if rows else ()
+            payload["_count_capture_ts"] = newest
         chain = _keep_last_reported(
             chain, _previous_counts(memory, payload.get("_count_capture")), begun, product)
     if capture is not None:
