@@ -38,6 +38,39 @@ def test_every_ticker_gets_same_day_levels_from_its_nearest_expiry():
     assert mrvl["same_day"]["absolute_gamma_strike"] != mrvl["absolute_gamma_strike"]
 
 
+def test_a_same_day_expiry_reads_the_charm_map_already_priced():
+    """SPY expires 2026-10-07, the day this chain was captured. The rail charm is that
+    expiry's map. Charm is calculated once for the expiry, not again for the rail."""
+    import terrain_engine
+
+    held = SPY_0DTE
+    calls = {"n": 0}
+    real = terrain_engine.compute_charm_by_strike
+
+    def counting(*args, **kwargs):
+        calls["n"] += 1
+        return real(*args, **kwargs)
+
+    terrain_engine.compute_charm_by_strike = counting
+    try:
+        snap = terrain_engine.compute_terrain(held.ticker, held.chain, held.spot, now=held.now)
+    finally:
+        terrain_engine.compute_charm_by_strike = real
+    assert calls["n"] == len(snap.charm_by_expiry)
+    assert snap.same_day["call_charm_wall"] == 780.0
+    assert snap.same_day["put_charm_wall"] == 779.0
+
+
+def test_a_later_front_expiry_keeps_its_charm_at_todays_close():
+    """TSLA on 2026-10-07 expires 2026-10-09. The rail charm is that front expiry at today's
+    close. It is not the charm of the Friday settlement."""
+    snap = compute_terrain(TSLA.ticker, TSLA.chain, TSLA.spot, now=TSLA.now)
+    assert snap.same_day["call_charm_wall"] == 372.5
+    assert snap.same_day["put_charm_wall"] == 380.0
+    assert snap.call_charm_wall == 390.0
+    assert snap.put_charm_wall == 370.0
+
+
 def test_open_interest_without_volatility_withholds_that_strike():
     """The captured call at the same-day call wall, with its volatility absent and its own
     open interest kept, is put back on the captured chain. That strike is not a same-day level."""

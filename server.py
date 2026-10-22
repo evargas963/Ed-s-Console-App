@@ -171,7 +171,7 @@ from db_authority import canonical_stream_db_path
 from instrument_identity import display_symbol, ticker_storage_key   # RC-126: the ONE query-symbol authority
 import live_market_plane as lmp
 from numeric_contract import float_finite_or_none, schwab_count, schwab_number
-from confluence_composite import build_matrix, iv_by_strike
+from confluence_composite import build_matrix
 from terrain_engine import (SCOPES, SAME_DAY_LEVELS, TerrainSnapshot, chain_ladder, compute_terrain,
                             nearest_strike, positioning_migration, strike_window)
 from terrain_atr import Atr, compute_atrs, roll_up
@@ -1210,15 +1210,22 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
         # every ticker keeps its chain and its heatmap, so a ticker put on screen shows at once
         "_chain": chain, "_priced_chain": priced, "_books": snap.books,
         "_charm_by_expiry": snap.charm_by_expiry,
+        "_iv_by_expiry": snap.iv_by_expiry,
         "_chain_fetched_ts": fetched_ts,
     })
+    payload["_matrix_by_expiry"] = _ranked_matrices(payload)
     # the values read from the stored chain captures (forces, the prior day's per-strike rows)
     # change only with a new capture or a new chain day: computed then, once, for all readers
     if new_chain:
         captures_key = (newest_capture_ts(get_db().db_path, tk), et_date_str_from_ts_utc(float(fetched_ts)))
         if payload.get("_captures_key") != captures_key:
             stored = captures if captures is not None else last_capture_per_day(get_db().db_path, tk, 2)
-            payload.update(_forces=_forces_from_captures(tk, stored),
+            # This publication priced a stored capture, so its charm map is that newer capture.
+            # A live chain is not that capture: the same function then runs once on the banked one.
+            held_charm = None
+            if captures and captures[0].get("spot") is not None:
+                held_charm = snap.charm_by_strike
+            payload.update(_forces=_forces_from_captures(tk, stored, held_charm),
                            _prior_strikes=_prior_strikes(stored, fetched_ts),
                            _captures_key=captures_key)
     if spot is not None and snap.books:
@@ -1916,13 +1923,15 @@ def _forces_absent(tk: str) -> dict:
             "charm_below": None, "charm_above": None}
 
 
-def _forces_from_captures(tk: str, captures: list) -> dict:
+def _forces_from_captures(tk: str, captures: list, charm_by_strike: dict | None = None) -> dict:
     """Forces rows from banked chains (RC-192/RC-199): per-strike OI delta FIRST, then
     bucketed by the NEWER capture's spot — bucketing each day by its own spot lets the moving
     boundary masquerade as OI change (measured inversion, OPEN_ITEMS DIR-01 method note).
     DEX is the newer capture's net_dex_dollars side sums. CHARM side sums (RC-199): operator
     2026-08-02 revoked the DIR-01(i) vote-lock — serve dealer-signed net_charm below/above
-    spot from the newer banked chain via compute_charm_by_strike (same book as terrain walls).
+    spot from the newer banked chain. `charm_by_strike` is that capture's map when this
+    publication just priced it. Otherwise the same function runs once, at that capture's
+    valuation instant.
     Run by _publish_levels when the ticker's newest capture changes, on `captures`: the two
     newest market days' captures (last_capture_per_day, newest first), read once for it.
     """
@@ -1954,7 +1963,10 @@ def _forces_from_captures(tk: str, captures: list) -> dict:
             # Dealer-signed net_charm = call_charm - put_charm per strike (RC-179).
             charm_below = charm_above = None
             try:
-                per_ch = _ccs(c1, spot1, now=clock1, product=product)
+                if isinstance(charm_by_strike, dict):
+                    per_ch = charm_by_strike
+                else:
+                    per_ch = _ccs(c1, spot1, now=clock1, product=product)
                 if per_ch:
                     # RC-276: a strike with no net_charm is not a strike with zero charm.
                     # Summed as 0.0 it silently tilted the below/above pair the console
@@ -2922,8 +2934,45 @@ def _inside_move(strike, low, high) -> bool:
     return float(low) <= float(strike) <= float(high)
 
 
+def _ranked_matrices(live: dict) -> dict:
+    """One ranking of each expiry on this publication. The matrix request reads the expiry it shows."""
+    books = live.get("_books")
+    spot = live.get("spot")
+    if not isinstance(books, dict) or not isinstance(spot, (int, float)):
+        return {}
+    expiry_dte = live.get("expiry_dte")
+    if not isinstance(expiry_dte, dict):
+        expiry_dte = {}
+    maps = live.get("_charm_by_expiry")
+    if not isinstance(maps, dict):
+        maps = {}
+    blends = live.get("_iv_by_expiry")
+    if not isinstance(blends, dict):
+        blends = {}
+    ranked = {}
+    for item in _confluence_expiries(books, expiry_dte):
+        chosen = item["expiry"]
+        dte = item["dte"]
+        if not isinstance(dte, (int, float)):
+            continue
+        selected = [book for key, book in books.items()
+                    if isinstance(key, tuple) and str(key[0])[:10] == chosen]
+        if len(selected) == 0:
+            continue
+        exposures = selected[0][0] if len(selected) == 1 else merge_exposure_books(selected)[0]
+        charm = maps.get(chosen)
+        if not isinstance(charm, dict):
+            charm = {}
+        iv = blends.get(chosen)
+        if not isinstance(iv, dict):
+            iv = {}
+        body = build_matrix(exposures, charm, iv, float(spot), float(dte), [])
+        ranked[chosen] = body
+    return ranked
+
+
 def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict:
-    """The confluence matrix for one expiry of the chain already priced in memory."""
+    """The ranking stored with the priced chain, for the expiry the operator picks."""
     live = terrain_cache_get(tk, now.timestamp())
     books = None if live is None else live.get("_books")
     spot = None if live is None else live.get("spot")
@@ -2946,36 +2995,25 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict:
         reason = ("that expiry is not on the priced chain" if absent
                   else "that expiry did not carry days to expiration")
         return {"ticker": tk, "available": False, "expiries": listed, "reason": reason}
-    selected = [book for key, book in books.items()
-                if isinstance(key, tuple) and str(key[0])[:10] == chosen]
-    if len(selected) == 0:
+    ranked = live.get("_matrix_by_expiry")
+    stored = None
+    if isinstance(ranked, dict):
+        found = ranked.get(chosen)
+        if isinstance(found, dict):
+            stored = found
+    if not isinstance(stored, dict):
         return {"ticker": tk, "available": False, "expiries": listed,
                 "reason": "that expiry is not on the priced chain"}
-    exposures = selected[0][0] if len(selected) == 1 else merge_exposure_books(selected)[0]
-    priced = live.get("_priced_chain")
-    contracts = []
-    if isinstance(priced, list):
-        for ct in priced:
-            if not isinstance(ct, dict):
-                continue
-            exp = ct.get("expirationDate")
-            if isinstance(exp, str) and exp[:10] == chosen:
-                contracts.append(ct)
     fetched = live.get("computed_ts_utc")
-    maps = live.get("_charm_by_expiry")
-    charm = {}
-    if isinstance(maps, dict):
-        held = maps.get(chosen)
-        if isinstance(held, dict):
-            charm = held
     markers = _confluence_markers(live, tk, now)
     levels = _screen_levels(markers)
     flip = _level_named(levels, "Flip")
     pin = _level_named(levels, "0D Pin")
     em_up = _level_named(levels, "EM+")
     em_dn = _level_named(levels, "EM−")
-    body = build_matrix(exposures, charm, iv_by_strike(contracts), float(spot), float(match["dte"]),
-                        [])
+    rows = stored.get("rows")
+    body = {key: value for key, value in stored.items() if key != "rows"}
+    body["rows"] = [dict(row) for row in rows] if isinstance(rows, list) else []
     low = None
     high = None
     if em_dn is not None:

@@ -1,9 +1,7 @@
 """Per-strike composite for one expiry.
 
-The exposure book and the charm map are the producers already computed for
-that expiry. This module ranks them. It does not recompute a greek. The
-per-strike volatility blend is produced here because Schwab sends a
-volatility on each contract and not one number for the strike.
+The exposure book, the charm map, and the volatility blend are already computed
+for that expiry. This module ranks them. It does not recompute a greek or the blend.
 """
 
 from __future__ import annotations
