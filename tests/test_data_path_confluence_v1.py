@@ -759,6 +759,72 @@ def test_a_streamed_zero_after_the_close_does_not_replace_the_capture():
             server._terrain_cache.pop(tk, None)
 
 
+def _drop_counts(chain):
+    """The chain with open interest and volume absent."""
+    dropped = []
+    for ct in chain:
+        row = dict(ct)
+        row.pop("openInterest", None)
+        row.pop("totalVolume", None)
+        dropped.append(row)
+    return dropped
+
+
+def test_a_missing_count_after_the_close_is_not_the_last_count():
+    """A count Schwab did not send is not a reported zero. It does not keep the last count."""
+    import app.options.order_flow.streaming as ofs
+    from tests.real_chains import SPY_0DTE
+
+    held = SPY_0DTE
+    tk = "SPY"
+    after = datetime(2026, 10, 7, 18, 0, tzinfo=ET)
+    expiry = str(held.chain[0]["expirationDate"])[:10]
+    ofs._price_rows[tk] = {"ticker": tk, "spot": held.spot, "trade_ts": after.timestamp()}
+    try:
+        server._publish_levels(tk, [dict(c) for c in held.chain], after.timestamp(), now=after)
+        first = server.confluence_payload(tk, expiry, after)
+        assert any(row["pc_vol_text"] is not None for row in first["rows"])
+        server._publish_levels(tk, _drop_counts(held.chain), after.timestamp(), now=after)
+        second = server.confluence_payload(tk, expiry, after)
+        assert all(row["pc_vol_text"] is None for row in second["rows"])
+    finally:
+        ofs._price_rows.pop(tk, None)
+        with server._terrain_cache_lock:
+            server._terrain_cache.pop(tk, None)
+
+
+def test_a_date_with_no_session_keeps_a_reported_zero():
+    """A date Schwab has not answered is not outside an option window. A reported zero stays."""
+    import app.options.order_flow.streaming as ofs
+    from calibration.complete_chain_capture import CAPTURE_BASIS, persist_complete_chain_capture
+    from tests.real_chains import SPY_0DTE
+
+    held = SPY_0DTE
+    tk = "SPYNOSN"
+    fresh = [dict(c) for c in held.chain]
+    expiry = str(fresh[0]["expirationDate"])[:10]
+    unknown = datetime(2026, 9, 29, 12, 0, tzinfo=ET)
+    ofs._price_rows[tk] = {"ticker": tk, "spot": held.spot, "trade_ts": unknown.timestamp()}
+    try:
+        by_expiry: dict = {}
+        for ct in fresh:
+            by_expiry.setdefault(str(ct["expirationDate"])[:10], []).append(ct)
+        for exp, cts in by_expiry.items():
+            persist_complete_chain_capture(
+                server.get_db().db_path, ticker=tk, expiry=exp,
+                contracts=[dict(c) for c in cts], spot=held.spot,
+                completeness_basis=CAPTURE_BASIS,
+                ts_utc=datetime(2026, 10, 7, 16, 15, tzinfo=ET).timestamp())
+        server._publish_levels(tk, _zero_counts(fresh), unknown.timestamp(), now=unknown)
+        body = server.confluence_payload(tk, expiry, unknown)
+        assert body["rows"]
+        assert all(row["pc_vol_text"] is None for row in body["rows"])
+    finally:
+        ofs._price_rows.pop(tk, None)
+        with server._terrain_cache_lock:
+            server._terrain_cache.pop(tk, None)
+
+
 def test_during_the_session_a_zero_count_replaces_the_old_count():
     """During the session a count of zero is the count. It does not keep the older one."""
     import app.options.order_flow.streaming as ofs
