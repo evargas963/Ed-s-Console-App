@@ -387,7 +387,9 @@ from Schwab to the screen (daemon, console, page), are these:
   comma-separated, 300 to a request across tickers (`QUOTES_BATCH_MAX`, Schwab Trader API
   Support 2026-10-06: not more than 300), and takes its quote's, as sent. Each contract carries
   the time of its Greeks as Schwab sent it, `greeksTime` ({field: ms}: the quote's `quoteTime`).
-  A chain is published once all its quotes are in. A quotes request Schwab refuses
+  Once that ticker's option window has ended, a quote that does not report a greek leaves the
+  greek the last quote reported. During the window, Schwab's no-value code is not a greek and
+  does not keep an older one. A chain is published once all its quotes are in. A quotes request Schwab refuses
   fails every chain in it with its status and reason, so the levels keep their last good
   publication, stale with that reason. A contract missing from an answered request has no Greeks (None, logged with the count), never the
   chain's: its leg's exposure and its strike's net read absent (a leg's sum is known only when
