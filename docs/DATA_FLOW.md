@@ -392,7 +392,10 @@ from Schwab to the screen (daemon, console, page), are these:
   interest or volume of zero leaves the last count above zero. A missing count and Schwab's
   no-value code are not that zero. That last count is the one this process already published,
   or, when it has not, the newest stored capture. A day with no option window keeps a reported
-  zero. During the window,
+  zero. A chain is judged by when it was fetched: one begun inside the window keeps a reported
+  zero even when it is priced after the close. A streamed zero after the close does not replace
+  the count already on that chain. A zero book from a closed day does not hide the stored capture
+  before the next open. During the window,
   Schwab's no-value code is not a greek and does not keep an older one, and a count of zero
   replaces the last count. A chain is published once all its quotes are in. A quotes request Schwab refuses
   fails every chain in it with its status and reason, so the levels keep their last good

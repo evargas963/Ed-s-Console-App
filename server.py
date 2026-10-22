@@ -1190,6 +1190,51 @@ def _keep_last_reported(chain, previous, at, product):
     return out
 
 
+def _last_positive(newer, older):
+    """`newer`, with a count or the greeks taken from `older` where `newer` does not report them."""
+    if not isinstance(newer, dict):
+        return older
+    if not isinstance(older, dict):
+        return newer
+    merged = dict(newer)
+    if not greek_reported(merged.get("gamma"), iv=merged.get("volatility")) \
+            and greek_reported(older.get("gamma"), iv=older.get("volatility")):
+        for field in _QUOTE_GREEKS:
+            merged[field] = older.get(field)
+        times = older.get("greeksTime")
+        if isinstance(times, dict):
+            merged["greeksTime"] = times
+    for field in _QUOTE_COUNTS:
+        if _positive_count(older.get(field)) and not _positive_count(merged.get(field)):
+            merged[field] = older.get(field)
+    return merged
+
+
+def _previous_counts(memory, stored):
+    """The last reported contract per symbol. `memory` is newer than `stored`."""
+    by_sym = {}
+    order = []
+    sources = []
+    if stored:
+        sources.extend(stored)
+    if memory:
+        sources.extend(memory)
+    for ct in sources:
+        if not isinstance(ct, dict):
+            continue
+        sym = ct.get("symbol")
+        if not sym:
+            continue
+        if sym not in by_sym:
+            order.append(sym)
+            by_sym[sym] = ct
+        else:
+            by_sym[sym] = _last_positive(ct, by_sym[sym])
+    if not order:
+        return None
+    return [by_sym[sym] for sym in order]
+
+
 def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | None" = None,
                     *, captures: "list | None" = None,
                     now: "datetime | None" = None) -> "TerrainSnapshot | None":
@@ -1228,15 +1273,16 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
     clock = datetime.fromtimestamp(fetched_ts, ET) if capture is not None else at
     product = option_close_product(tk)
     valued_at = valuation_instant(clock, product)
-    if new_chain and capture is None and outside_option_window(at, product):
-        previous = payload.get("_priced_chain")
-        if previous is None:
-            previous = payload.get("_chain")
-        if previous is None:
-            stored = last_capture_per_day(get_db().db_path, tk, 1)
-            if stored:
-                previous = stored[0].get("contracts")
-        chain = _keep_last_reported(chain, previous, at, product)
+    begun = datetime.fromtimestamp(fetched_ts, ET) if isinstance(fetched_ts, (int, float)) else at
+    if new_chain and capture is None and outside_option_window(begun, product):
+        memory = payload.get("_priced_chain")
+        if memory is None:
+            memory = payload.get("_chain")
+        if "_count_capture" not in payload:
+            rows = last_capture_per_day(get_db().db_path, tk, 1)
+            payload["_count_capture"] = rows[0].get("contracts") if rows else ()
+        chain = _keep_last_reported(
+            chain, _previous_counts(memory, payload.get("_count_capture")), begun, product)
     if capture is not None:
         spot, spot_source, spot_ts = capture["spot"], SPOT_SOURCE_CAPTURE, capture["ts_utc"]
     elif valued_at < at:
@@ -1262,7 +1308,7 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
     # each field the newest Schwab sent: the last streamed value received after this chain, else
     # the chain's. The cell stamp says whether that stream is live.
     priced, n_live = overlay_streamed_contract_fields(chain, streamed, fetched_ts)
-    if capture is None and outside_option_window(at, product):
+    if outside_option_window(at, product):
         priced = _keep_last_reported(priced, chain, at, product)
     live_syms = _overlaid_symbols(chain, priced)
     snap = compute_terrain(tk, priced, spot, now=valued_at)
