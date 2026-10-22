@@ -162,6 +162,17 @@ def valuation_instant(now: datetime, product: str = EQUITY_OPTIONS) -> datetime:
     return now
 
 
+def outside_option_window(now: datetime, product: str = EQUITY_OPTIONS) -> bool:
+    """True when `product`'s regular window is held and not open at `now`: before it opens,
+    and after it has ended. A day with no window, and a date whose session is not held, are
+    not that."""
+    held = session(now.astimezone(ET).date().isoformat())
+    windows = held.option_windows(product) if held is not None else None
+    if not windows:
+        return False
+    return now < windows[0][0] or now >= windows[-1][1]
+
+
 def closed_since(now: datetime) -> "datetime | None":
     """While the stock market is CLOSED at `now` (session_label): when it closed, the end of the
     newest window Schwab sent that has ended. None while a session is open or unknown, and when no

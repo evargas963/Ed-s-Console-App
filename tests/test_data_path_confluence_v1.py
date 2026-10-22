@@ -531,6 +531,347 @@ def test_a_zero_count_after_the_close_keeps_the_last_reported_count():
             server._terrain_cache.pop(tk, None)
 
 
+def _first_chain_keeps_the_capture(now, capture_at):
+    """No chain is in memory. The delivered chain reports zero counts. The stored capture
+    is the last count, so put/call volume stays."""
+    import app.options.order_flow.streaming as ofs
+    from calibration.complete_chain_capture import CAPTURE_BASIS, persist_complete_chain_capture
+    from tests.real_chains import SPY_0DTE
+
+    held = SPY_0DTE
+    tk = "SPYKEEP"
+    expiry = str(held.chain[0]["expirationDate"])[:10]
+    fresh = [dict(c) for c in held.chain]
+    ofs._price_rows[tk] = {"ticker": tk, "spot": held.spot, "trade_ts": now.timestamp()}
+    try:
+        server._publish_levels(tk, [dict(c) for c in fresh], now.timestamp(), now=now)
+        first = server.confluence_payload(tk, expiry, now)
+        shown = next(row for row in first["rows"] if row["pc_vol_text"] is not None)
+        kept = (shown["oi_text"], shown["volume_text"], shown["pc_vol_text"])
+        with server._terrain_cache_lock:
+            server._terrain_cache.pop(tk, None)
+        by_expiry: dict = {}
+        for ct in fresh:
+            by_expiry.setdefault(str(ct["expirationDate"])[:10], []).append(ct)
+        for exp, cts in by_expiry.items():
+            persist_complete_chain_capture(
+                server.get_db().db_path, ticker=tk, expiry=exp,
+                contracts=[dict(c) for c in cts], spot=held.spot,
+                completeness_basis=CAPTURE_BASIS, ts_utc=capture_at.timestamp())
+        server._publish_levels(tk, _zero_counts(fresh), now.timestamp(), now=now)
+        second = server.confluence_payload(tk, expiry, now)
+        again = next(row for row in second["rows"] if row["strike"] == shown["strike"])
+        assert (again["oi_text"], again["volume_text"], again["pc_vol_text"]) == kept
+    finally:
+        ofs._price_rows.pop(tk, None)
+        with server._terrain_cache_lock:
+            server._terrain_cache.pop(tk, None)
+
+
+def test_the_first_chain_after_the_close_keeps_the_stored_counts():
+    """A restart after the close has no chain in memory. The chain the daemon delivers
+    reports zero open interest and zero volume. The stored close capture is the last
+    count, so put/call volume stays."""
+    _first_chain_keeps_the_capture(
+        datetime(2026, 10, 7, 18, 0, tzinfo=ET),
+        datetime(2026, 10, 7, 16, 15, tzinfo=ET))
+
+
+def test_a_chain_before_the_next_open_keeps_the_stored_counts():
+    """Before the next option window opens, a delivered chain of zeros does not erase
+    the stored close capture's volume."""
+    _first_chain_keeps_the_capture(
+        datetime(2026, 10, 7, 8, 0, tzinfo=ET),
+        datetime(2026, 10, 6, 16, 0, tzinfo=ET))
+
+
+def test_a_closed_day_keeps_a_reported_zero():
+    """A day with no option window keeps a reported zero. The stored capture does not fill it."""
+    import app.options.order_flow.streaming as ofs
+    from calibration.complete_chain_capture import CAPTURE_BASIS, persist_complete_chain_capture
+    from tests.real_chains import SPY_0DTE
+
+    held = SPY_0DTE
+    tk = "SPYCLOSED"
+    closed = datetime(2026, 10, 4, 12, 0, tzinfo=ET)
+    expiry = str(held.chain[0]["expirationDate"])[:10]
+    fresh = [dict(c) for c in held.chain]
+    ofs._price_rows[tk] = {"ticker": tk, "spot": held.spot, "trade_ts": closed.timestamp()}
+    try:
+        by_expiry: dict = {}
+        for ct in fresh:
+            by_expiry.setdefault(str(ct["expirationDate"])[:10], []).append(ct)
+        for exp, cts in by_expiry.items():
+            persist_complete_chain_capture(
+                server.get_db().db_path, ticker=tk, expiry=exp,
+                contracts=[dict(c) for c in cts], spot=held.spot,
+                completeness_basis=CAPTURE_BASIS,
+                ts_utc=datetime(2026, 10, 2, 16, 0, tzinfo=ET).timestamp())
+        server._publish_levels(tk, _zero_counts(fresh), closed.timestamp(), now=closed)
+        body = server.confluence_payload(tk, expiry, closed)
+        assert body["rows"]
+        assert all(row["pc_vol_text"] is None for row in body["rows"])
+    finally:
+        ofs._price_rows.pop(tk, None)
+        with server._terrain_cache_lock:
+            server._terrain_cache.pop(tk, None)
+
+
+def _no_value_counts(chain):
+    """The chain with Schwab's no-value code on open interest and volume."""
+    coded = []
+    for ct in chain:
+        row = dict(ct)
+        row["openInterest"] = -999
+        row["totalVolume"] = -999
+        coded.append(row)
+    return coded
+
+
+def test_a_no_value_count_after_the_close_is_not_the_last_count():
+    """Schwab's no-value code is not a reported zero. It does not keep the last count."""
+    import app.options.order_flow.streaming as ofs
+    from tests.real_chains import SPY_0DTE
+
+    held = SPY_0DTE
+    tk = "SPY"
+    after = datetime(2026, 10, 7, 18, 0, tzinfo=ET)
+    expiry = str(held.chain[0]["expirationDate"])[:10]
+    ofs._price_rows[tk] = {"ticker": tk, "spot": held.spot, "trade_ts": after.timestamp()}
+    try:
+        server._publish_levels(tk, [dict(c) for c in held.chain], after.timestamp(), now=after)
+        first = server.confluence_payload(tk, expiry, after)
+        assert any(row["pc_vol_text"] is not None for row in first["rows"])
+        server._publish_levels(tk, _no_value_counts(held.chain), after.timestamp(), now=after)
+        second = server.confluence_payload(tk, expiry, after)
+        assert all(row["pc_vol_text"] is None for row in second["rows"])
+    finally:
+        ofs._price_rows.pop(tk, None)
+        with server._terrain_cache_lock:
+            server._terrain_cache.pop(tk, None)
+
+
+def test_a_chain_begun_inside_the_window_keeps_its_reported_zero():
+    """A chain fetched before the close and priced after it keeps the zero it reported."""
+    import app.options.order_flow.streaming as ofs
+    from tests.real_chains import SPY_0DTE
+
+    held = SPY_0DTE
+    tk = "SPY"
+    inside = datetime(2026, 10, 7, 16, 10, tzinfo=ET)
+    after = datetime(2026, 10, 7, 16, 20, tzinfo=ET)
+    expiry = str(held.chain[0]["expirationDate"])[:10]
+    ofs._price_rows[tk] = {"ticker": tk, "spot": held.spot, "trade_ts": inside.timestamp()}
+    try:
+        server._publish_levels(tk, [dict(c) for c in held.chain], inside.timestamp(), now=inside)
+        first = server.confluence_payload(tk, expiry, inside)
+        assert any(row["pc_vol_text"] is not None for row in first["rows"])
+        server._publish_levels(tk, _zero_counts(held.chain), inside.timestamp(), now=after)
+        second = server.confluence_payload(tk, expiry, after)
+        assert all(row["pc_vol_text"] is None for row in second["rows"])
+    finally:
+        ofs._price_rows.pop(tk, None)
+        with server._terrain_cache_lock:
+            server._terrain_cache.pop(tk, None)
+
+
+def test_a_closed_day_zero_does_not_hide_the_capture_before_the_open():
+    """Monday before the open, Saturday's zero book is not the last count. The capture is."""
+    import app.options.order_flow.streaming as ofs
+    from calibration.complete_chain_capture import CAPTURE_BASIS, persist_complete_chain_capture
+    from tests.real_chains import SPY_0DTE
+
+    held = SPY_0DTE
+    tk = "SPYMON"
+    fresh = [dict(c) for c in held.chain]
+    expiry = str(fresh[0]["expirationDate"])[:10]
+    before = datetime(2026, 10, 5, 8, 0, tzinfo=ET)
+    ofs._price_rows[tk] = {"ticker": tk, "spot": held.spot, "trade_ts": before.timestamp()}
+    try:
+        server._publish_levels(tk, [dict(c) for c in fresh], before.timestamp(), now=before)
+        first = server.confluence_payload(tk, expiry, before)
+        shown = next(row for row in first["rows"] if row["pc_vol_text"] is not None)
+        kept = shown["pc_vol_text"]
+        with server._terrain_cache_lock:
+            server._terrain_cache.pop(tk, None)
+        by_expiry: dict = {}
+        for ct in fresh:
+            by_expiry.setdefault(str(ct["expirationDate"])[:10], []).append(ct)
+        for exp, cts in by_expiry.items():
+            persist_complete_chain_capture(
+                server.get_db().db_path, ticker=tk, expiry=exp,
+                contracts=[dict(c) for c in cts], spot=held.spot,
+                completeness_basis=CAPTURE_BASIS,
+                ts_utc=datetime(2026, 10, 2, 16, 0, tzinfo=ET).timestamp())
+        closed = datetime(2026, 10, 4, 12, 0, tzinfo=ET)
+        server._publish_levels(tk, _zero_counts(fresh), closed.timestamp(), now=closed)
+        wiped = server.confluence_payload(tk, expiry, closed)
+        assert all(row["pc_vol_text"] is None for row in wiped["rows"])
+        server._publish_levels(tk, _zero_counts(fresh), before.timestamp(), now=before)
+        second = server.confluence_payload(tk, expiry, before)
+        again = next(row for row in second["rows"] if row["strike"] == shown["strike"])
+        assert again["pc_vol_text"] == kept
+    finally:
+        ofs._price_rows.pop(tk, None)
+        with server._terrain_cache_lock:
+            server._terrain_cache.pop(tk, None)
+
+
+def test_a_streamed_zero_after_the_close_does_not_replace_the_capture():
+    """Publishing the stored capture after the close keeps its volume when the stream says 0."""
+    import app.options.order_flow.state as ofls
+    import app.options.order_flow.streaming as ofs
+    import live_market_plane as lmp
+    from calibration.complete_chain_capture import CAPTURE_BASIS
+    from stream_spine import options_quote_msg
+    from tests.real_chains import SPY_0DTE
+
+    held = SPY_0DTE
+    tk = "SPY"
+    after = datetime(2026, 10, 7, 18, 0, tzinfo=ET)
+    capture_at = datetime(2026, 10, 7, 16, 15, tzinfo=ET)
+    fresh = [dict(c) for c in held.chain]
+    target = next(ct for ct in fresh if isinstance(ct.get("totalVolume"), (int, float))
+                  and ct["totalVolume"] > 0 and ct.get("symbol"))
+    ofls.clear_all_live_state()
+    ofs._price_rows[tk] = {"ticker": tk, "spot": held.spot, "trade_ts": after.timestamp()}
+    try:
+        symbols = [ct["symbol"] for ct in fresh if ct.get("symbol")]
+        lmp.record_feed_heartbeat({"ts": after.timestamp(), "schwab_socket_open": True,
+                                   "held": {"LEVELONE_EQUITIES": [tk], "LEVELONE_OPTIONS": symbols}})
+        for sym in symbols:
+            ofs._ingest_pushed(
+                f"optquote.{sym}",
+                options_quote_msg(symbol=sym, content={"key": sym, "TOTAL_VOLUME": 0},
+                                  src="schwab_options_l1", ts_recv=after.timestamp()))
+        server._publish_levels(tk, captures=[{
+            "contracts": fresh, "ts_utc": capture_at.timestamp(), "spot": held.spot,
+            "basis": CAPTURE_BASIS, "et_date": "2026-10-07"}], now=after)
+        book = server.terrain_cache_get(tk, after.timestamp())
+        assert book["_gamma_surface"]["stream_overlay_contracts"]
+        kept = next(ct for ct in book["_priced_chain"] if ct.get("symbol") == target["symbol"])
+        assert kept["totalVolume"] == target["totalVolume"]
+    finally:
+        ofls.clear_all_live_state()
+        lmp.record_feed_down()
+        ofs._price_rows.pop(tk, None)
+        with server._terrain_cache_lock:
+            server._terrain_cache.pop(tk, None)
+
+
+def _drop_counts(chain):
+    """The chain with open interest and volume absent."""
+    dropped = []
+    for ct in chain:
+        row = dict(ct)
+        row.pop("openInterest", None)
+        row.pop("totalVolume", None)
+        dropped.append(row)
+    return dropped
+
+
+def test_a_missing_count_after_the_close_is_not_the_last_count():
+    """A count Schwab did not send is not a reported zero. It does not keep the last count."""
+    import app.options.order_flow.streaming as ofs
+    from tests.real_chains import SPY_0DTE
+
+    held = SPY_0DTE
+    tk = "SPY"
+    after = datetime(2026, 10, 7, 18, 0, tzinfo=ET)
+    expiry = str(held.chain[0]["expirationDate"])[:10]
+    ofs._price_rows[tk] = {"ticker": tk, "spot": held.spot, "trade_ts": after.timestamp()}
+    try:
+        server._publish_levels(tk, [dict(c) for c in held.chain], after.timestamp(), now=after)
+        first = server.confluence_payload(tk, expiry, after)
+        assert any(row["pc_vol_text"] is not None for row in first["rows"])
+        server._publish_levels(tk, _drop_counts(held.chain), after.timestamp(), now=after)
+        second = server.confluence_payload(tk, expiry, after)
+        assert all(row["pc_vol_text"] is None for row in second["rows"])
+    finally:
+        ofs._price_rows.pop(tk, None)
+        with server._terrain_cache_lock:
+            server._terrain_cache.pop(tk, None)
+
+
+def test_a_date_with_no_session_keeps_a_reported_zero():
+    """A date Schwab has not answered is not outside an option window. A reported zero stays."""
+    import app.options.order_flow.streaming as ofs
+    from calibration.complete_chain_capture import CAPTURE_BASIS, persist_complete_chain_capture
+    from tests.real_chains import SPY_0DTE
+
+    held = SPY_0DTE
+    tk = "SPYNOSN"
+    fresh = [dict(c) for c in held.chain]
+    expiry = str(fresh[0]["expirationDate"])[:10]
+    unknown = datetime(2026, 9, 29, 12, 0, tzinfo=ET)
+    ofs._price_rows[tk] = {"ticker": tk, "spot": held.spot, "trade_ts": unknown.timestamp()}
+    try:
+        by_expiry: dict = {}
+        for ct in fresh:
+            by_expiry.setdefault(str(ct["expirationDate"])[:10], []).append(ct)
+        for exp, cts in by_expiry.items():
+            persist_complete_chain_capture(
+                server.get_db().db_path, ticker=tk, expiry=exp,
+                contracts=[dict(c) for c in cts], spot=held.spot,
+                completeness_basis=CAPTURE_BASIS,
+                ts_utc=datetime(2026, 10, 7, 16, 15, tzinfo=ET).timestamp())
+        server._publish_levels(tk, _zero_counts(fresh), unknown.timestamp(), now=unknown)
+        body = server.confluence_payload(tk, expiry, unknown)
+        assert body["rows"]
+        assert all(row["pc_vol_text"] is None for row in body["rows"])
+    finally:
+        ofs._price_rows.pop(tk, None)
+        with server._terrain_cache_lock:
+            server._terrain_cache.pop(tk, None)
+
+
+def test_a_newer_capture_is_the_count_the_next_chain_keeps():
+    """The capture read before the open is not kept once a newer one is stored."""
+    import app.options.order_flow.streaming as ofs
+    from calibration.complete_chain_capture import CAPTURE_BASIS, persist_complete_chain_capture
+    from tests.real_chains import SPY_0DTE
+
+    held = SPY_0DTE
+    tk = "SPYNEW"
+    fresh = [dict(c) for c in held.chain]
+    target = next(ct for ct in fresh if ct.get("symbol") and isinstance(ct.get("totalVolume"), (int, float))
+                  and ct["totalVolume"] > 0)
+    bumped = []
+    for ct in fresh:
+        row = dict(ct)
+        if row.get("symbol") == target["symbol"]:
+            row["totalVolume"] = ct["totalVolume"] + 777
+        bumped.append(row)
+    before = datetime(2026, 10, 7, 8, 0, tzinfo=ET)
+    session = datetime(2026, 10, 7, 12, 32, tzinfo=ET)
+    after = datetime(2026, 10, 7, 18, 0, tzinfo=ET)
+    ofs._price_rows[tk] = {"ticker": tk, "spot": held.spot, "trade_ts": before.timestamp()}
+
+    def store(contracts, when):
+        by_expiry: dict = {}
+        for ct in contracts:
+            by_expiry.setdefault(str(ct["expirationDate"])[:10], []).append(ct)
+        for exp, cts in by_expiry.items():
+            persist_complete_chain_capture(
+                server.get_db().db_path, ticker=tk, expiry=exp,
+                contracts=[dict(c) for c in cts], spot=held.spot,
+                completeness_basis=CAPTURE_BASIS, ts_utc=when.timestamp())
+
+    try:
+        store(fresh, datetime(2026, 10, 6, 16, 0, tzinfo=ET))
+        server._publish_levels(tk, _zero_counts(fresh), before.timestamp(), now=before)
+        store(bumped, datetime(2026, 10, 7, 16, 15, tzinfo=ET))
+        server._publish_levels(tk, _zero_counts(fresh), session.timestamp(), now=session)
+        server._publish_levels(tk, _zero_counts(fresh), after.timestamp(), now=after)
+        book = server.terrain_cache_get(tk, after.timestamp())
+        kept = next(ct for ct in book["_priced_chain"] if ct.get("symbol") == target["symbol"])
+        assert kept["totalVolume"] == target["totalVolume"] + 777
+    finally:
+        ofs._price_rows.pop(tk, None)
+        with server._terrain_cache_lock:
+            server._terrain_cache.pop(tk, None)
+
+
 def test_during_the_session_a_zero_count_replaces_the_old_count():
     """During the session a count of zero is the count. It does not keep the older one."""
     import app.options.order_flow.streaming as ofs

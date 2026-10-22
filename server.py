@@ -23,7 +23,7 @@ from dataclasses import asdict, dataclass
 
 from time_et import (ET, now_et, ct_label, et_date_str_from_ts_utc, last_open,
                      market_session_date, option_close_product, options_closed_at, options_open,
-                     session, session_label, valuation_instant)
+                     outside_option_window, session, session_label, valuation_instant)
 from math_exposure_core import (
     bucket_metric,
     greek_reported,
@@ -1144,12 +1144,17 @@ def _positive_count(value) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0
 
 
-def _keep_last_reported(chain, previous, valued_at, at):
-    """After that ticker's option window has ended, a quote that does not report a greek
-    leaves the greek the last quote reported, and a count of zero leaves the last count
-    above zero. During the window the quote stands, and Schwab's no-value code does not
-    keep an older greek."""
-    if not (valued_at < at) or not previous:
+def _reported_zero(value) -> bool:
+    """A count Schwab reported as zero. Missing and the no-value code are not one."""
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and value == 0
+
+
+def _keep_last_reported(chain, previous, at, product):
+    """Outside that ticker's option window, a quote that does not report a greek leaves the
+    greek the last quote reported, and a count of zero leaves the last count above zero.
+    During the window the quote stands, and Schwab's no-value code does not keep an older
+    greek."""
+    if not outside_option_window(at, product) or not previous:
         return chain
     prior = {}
     for ct in previous:
@@ -1177,12 +1182,57 @@ def _keep_last_reported(chain, previous, valued_at, at):
         if old is not None:
             for field in _QUOTE_COUNTS:
                 old_count = old.get(field)
-                if _positive_count(old_count) and not _positive_count(ct.get(field)):
+                if _positive_count(old_count) and _reported_zero(ct.get(field)):
                     if kept is None:
                         kept = dict(ct)
                     kept[field] = old_count
         out.append(ct if kept is None else kept)
     return out
+
+
+def _last_positive(newer, older):
+    """`newer`, with a count or the greeks taken from `older` where `newer` does not report them."""
+    if not isinstance(newer, dict):
+        return older
+    if not isinstance(older, dict):
+        return newer
+    merged = dict(newer)
+    if not greek_reported(merged.get("gamma"), iv=merged.get("volatility")) \
+            and greek_reported(older.get("gamma"), iv=older.get("volatility")):
+        for field in _QUOTE_GREEKS:
+            merged[field] = older.get(field)
+        times = older.get("greeksTime")
+        if isinstance(times, dict):
+            merged["greeksTime"] = times
+    for field in _QUOTE_COUNTS:
+        if _positive_count(older.get(field)) and not _positive_count(merged.get(field)):
+            merged[field] = older.get(field)
+    return merged
+
+
+def _previous_counts(memory, stored):
+    """The last reported contract per symbol. `memory` is newer than `stored`."""
+    by_sym = {}
+    order = []
+    sources = []
+    if stored:
+        sources.extend(stored)
+    if memory:
+        sources.extend(memory)
+    for ct in sources:
+        if not isinstance(ct, dict):
+            continue
+        sym = ct.get("symbol")
+        if not sym:
+            continue
+        if sym not in by_sym:
+            order.append(sym)
+            by_sym[sym] = ct
+        else:
+            by_sym[sym] = _last_positive(ct, by_sym[sym])
+    if not order:
+        return None
+    return [by_sym[sym] for sym in order]
 
 
 def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | None" = None,
@@ -1203,9 +1253,11 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
     its own time, or at that ticker's option close when the capture is past it, and both feed
     the forces and prior-day rows. `now`: the instant of this publication (omitted, the clock's).
     A chain that is not a capture is valued then, or at that ticker's option close once it has
-    passed. Once that window has ended, a quote that does not report a greek leaves the greek
-    the last quote reported, and a count of zero leaves the last count above zero. The last
-    streamed values price over the chain when they are newer, and each leg's age is taken.
+    passed. Outside that window, a quote that does not report a greek leaves the greek the
+    last quote reported, and a count of zero leaves the last count above zero. That last
+    count is the one already published, or the newest stored capture when this process has
+    not published one. The last streamed values price over the chain when they are newer,
+    and each leg's age is taken.
     Returns the snapshot, or None when there is no chain to price."""
     at = now if now is not None else now_et()
     with _terrain_cache_lock:
@@ -1219,12 +1271,20 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
         if not chain:
             return None
     clock = datetime.fromtimestamp(fetched_ts, ET) if capture is not None else at
-    valued_at = valuation_instant(clock, option_close_product(tk))
-    if new_chain and capture is None and valued_at < at:
-        previous = payload.get("_priced_chain")
-        if previous is None:
-            previous = payload.get("_chain")
-        chain = _keep_last_reported(chain, previous, valued_at, at)
+    product = option_close_product(tk)
+    valued_at = valuation_instant(clock, product)
+    begun = datetime.fromtimestamp(fetched_ts, ET) if isinstance(fetched_ts, (int, float)) else at
+    if new_chain and capture is None and outside_option_window(begun, product):
+        memory = payload.get("_priced_chain")
+        if memory is None:
+            memory = payload.get("_chain")
+        newest = newest_capture_ts(get_db().db_path, tk)
+        if payload.get("_count_capture_ts") != newest:
+            rows = last_capture_per_day(get_db().db_path, tk, 1)
+            payload["_count_capture"] = rows[0].get("contracts") if rows else ()
+            payload["_count_capture_ts"] = newest
+        chain = _keep_last_reported(
+            chain, _previous_counts(memory, payload.get("_count_capture")), begun, product)
     if capture is not None:
         spot, spot_source, spot_ts = capture["spot"], SPOT_SOURCE_CAPTURE, capture["ts_utc"]
     elif valued_at < at:
@@ -1250,8 +1310,8 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
     # each field the newest Schwab sent: the last streamed value received after this chain, else
     # the chain's. The cell stamp says whether that stream is live.
     priced, n_live = overlay_streamed_contract_fields(chain, streamed, fetched_ts)
-    if capture is None and valued_at < at:
-        priced = _keep_last_reported(priced, chain, valued_at, at)
+    if outside_option_window(at, product):
+        priced = _keep_last_reported(priced, chain, at, product)
     live_syms = _overlaid_symbols(chain, priced)
     snap = compute_terrain(tk, priced, spot, now=valued_at)
     payload.update(snap.to_dict())
@@ -1376,7 +1436,8 @@ DELIVERED, STORED, REPRICE = "delivered", "stored", "reprice"
 _chains_waiting: "dict[str, tuple[str, list | None, float | None]]" = {}
 _chains_waiting_lock = threading.Lock()
 #: the tickers the daemon has delivered a chain for since the console started: their stored
-#: capture is older and is never priced
+#: capture is older and is not priced as the book. Outside the option window that capture's
+#: counts are the last counts when this process has not published one.
 _chains_delivered: "set[str]" = set()
 
 
@@ -2633,8 +2694,8 @@ def get_chain(ticker: str = Query(...),
     response_contracts, overlay_n = overlay_streamed_contract_fields(
         contracts, _streamed_greeks_for_ticker(held["_contract_symbols"], now), fetched_ts)
     at = now_et()
-    valued_at = valuation_instant(at, option_close_product(t))
-    response_contracts = _keep_last_reported(response_contracts, contracts, valued_at, at)
+    response_contracts = _keep_last_reported(
+        response_contracts, contracts, at, option_close_product(t))
     live_spot, _src, live_ts = resolve_spot(t, now=now)   # the one spot, with Schwab's trade time
     ladder, not_on_ladder = chain_ladder(response_contracts, live_spot)
     # this expiry's net GEX per strike, as the heatmap publishes it (its column of the surface):
