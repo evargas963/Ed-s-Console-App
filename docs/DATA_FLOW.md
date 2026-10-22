@@ -389,8 +389,10 @@ from Schwab to the screen (daemon, console, page), are these:
   the time of its Greeks as Schwab sent it, `greeksTime` ({field: ms}: the quote's `quoteTime`).
   Outside that ticker's option window — after it has ended, and before the next one opens —
   a quote that does not report a greek leaves the greek the last quote reported, and an open
-  interest or volume of zero leaves the last count above zero. That last count is the one this
-  process already published, or, when it has not, the newest stored capture. During the window,
+  interest or volume of zero leaves the last count above zero. A missing count and Schwab's
+  no-value code are not that zero. That last count is the one this process already published,
+  or, when it has not, the newest stored capture. A day with no option window keeps a reported
+  zero. During the window,
   Schwab's no-value code is not a greek and does not keep an older one, and a count of zero
   replaces the last count. A chain is published once all its quotes are in. A quotes request Schwab refuses
   fails every chain in it with its status and reason, so the levels keep their last good

@@ -163,15 +163,13 @@ def valuation_instant(now: datetime, product: str = EQUITY_OPTIONS) -> datetime:
 
 
 def outside_option_window(now: datetime, product: str = EQUITY_OPTIONS) -> bool:
-    """True when `product`'s regular window is not open at `now`: before it opens, after it
-    has ended, on a closed day, and when that date's session is not held. A count reported
-    then is not a new count."""
+    """True when `product`'s regular window is held and not open at `now`: before it opens,
+    and after it has ended. A day with no window, and a date whose session is not held, are
+    not that."""
     held = session(now.astimezone(ET).date().isoformat())
-    if held is None:
-        return True
-    windows = held.option_windows(product)
+    windows = held.option_windows(product) if held is not None else None
     if not windows:
-        return True
+        return False
     return now < windows[0][0] or now >= windows[-1][1]
 
 

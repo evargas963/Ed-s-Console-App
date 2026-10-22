@@ -1144,6 +1144,11 @@ def _positive_count(value) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0
 
 
+def _reported_zero(value) -> bool:
+    """A count Schwab reported as zero. Missing and the no-value code are not one."""
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and value == 0
+
+
 def _keep_last_reported(chain, previous, at, product):
     """Outside that ticker's option window, a quote that does not report a greek leaves the
     greek the last quote reported, and a count of zero leaves the last count above zero.
@@ -1177,7 +1182,7 @@ def _keep_last_reported(chain, previous, at, product):
         if old is not None:
             for field in _QUOTE_COUNTS:
                 old_count = old.get(field)
-                if _positive_count(old_count) and not _positive_count(ct.get(field)):
+                if _positive_count(old_count) and _reported_zero(ct.get(field)):
                     if kept is None:
                         kept = dict(ct)
                     kept[field] = old_count

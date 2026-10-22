@@ -26,6 +26,13 @@ not a second price. The expiry, including
 for the chosen expiry uses that expiry's contracts at the book's valuation time. Known open
 interest of zero is zero charm.
 
+Outside a session day's option window (operator 2026-10-22: the last number stands after the
+close, the way a balance stands after the bank closes), a reported open interest or volume of
+zero leaves the last count above zero. That count is the one already published, or the newest
+stored capture when this process has not published one. A missing count and Schwab's no-value
+code are not that zero. A day with no option window keeps a reported zero (operator
+2026-09-27: open interest 0 is 0).
+
 ## Data path (operator 2026-10-02: one rule the whole way through, end to end)
 
 | ID | Status | Work item |
