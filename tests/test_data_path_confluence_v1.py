@@ -531,6 +531,60 @@ def test_a_zero_count_after_the_close_keeps_the_last_reported_count():
             server._terrain_cache.pop(tk, None)
 
 
+def _first_chain_keeps_the_capture(now, capture_at):
+    """No chain is in memory. The delivered chain reports zero counts. The stored capture
+    is the last count, so put/call volume stays."""
+    import app.options.order_flow.streaming as ofs
+    from calibration.complete_chain_capture import CAPTURE_BASIS, persist_complete_chain_capture
+    from tests.real_chains import SPY_0DTE
+
+    held = SPY_0DTE
+    tk = "SPYKEEP"
+    expiry = str(held.chain[0]["expirationDate"])[:10]
+    fresh = [dict(c) for c in held.chain]
+    ofs._price_rows[tk] = {"ticker": tk, "spot": held.spot, "trade_ts": now.timestamp()}
+    try:
+        server._publish_levels(tk, [dict(c) for c in fresh], now.timestamp(), now=now)
+        first = server.confluence_payload(tk, expiry, now)
+        shown = next(row for row in first["rows"] if row["pc_vol_text"] is not None)
+        kept = (shown["oi_text"], shown["volume_text"], shown["pc_vol_text"])
+        with server._terrain_cache_lock:
+            server._terrain_cache.pop(tk, None)
+        by_expiry: dict = {}
+        for ct in fresh:
+            by_expiry.setdefault(str(ct["expirationDate"])[:10], []).append(ct)
+        for exp, cts in by_expiry.items():
+            persist_complete_chain_capture(
+                server.get_db().db_path, ticker=tk, expiry=exp,
+                contracts=[dict(c) for c in cts], spot=held.spot,
+                completeness_basis=CAPTURE_BASIS, ts_utc=capture_at.timestamp())
+        server._publish_levels(tk, _zero_counts(fresh), now.timestamp(), now=now)
+        second = server.confluence_payload(tk, expiry, now)
+        again = next(row for row in second["rows"] if row["strike"] == shown["strike"])
+        assert (again["oi_text"], again["volume_text"], again["pc_vol_text"]) == kept
+    finally:
+        ofs._price_rows.pop(tk, None)
+        with server._terrain_cache_lock:
+            server._terrain_cache.pop(tk, None)
+
+
+def test_the_first_chain_after_the_close_keeps_the_stored_counts():
+    """A restart after the close has no chain in memory. The chain the daemon delivers
+    reports zero open interest and zero volume. The stored close capture is the last
+    count, so put/call volume stays."""
+    _first_chain_keeps_the_capture(
+        datetime(2026, 10, 7, 18, 0, tzinfo=ET),
+        datetime(2026, 10, 7, 16, 15, tzinfo=ET))
+
+
+def test_a_chain_before_the_next_open_keeps_the_stored_counts():
+    """Before the next option window opens, a delivered chain of zeros does not erase
+    the stored close capture's volume."""
+    _first_chain_keeps_the_capture(
+        datetime(2026, 10, 7, 8, 0, tzinfo=ET),
+        datetime(2026, 10, 6, 16, 0, tzinfo=ET))
+
+
 def test_during_the_session_a_zero_count_replaces_the_old_count():
     """During the session a count of zero is the count. It does not keep the older one."""
     import app.options.order_flow.streaming as ofs
