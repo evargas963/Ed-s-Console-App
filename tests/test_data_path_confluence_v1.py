@@ -493,6 +493,68 @@ def test_during_the_session_a_no_value_quote_does_not_keep_the_old_greek():
             server._terrain_cache.pop(tk, None)
 
 
+def _zero_counts(chain):
+    """The chain Schwab sends after the close: open interest and volume both zero."""
+    zeroed = []
+    for ct in chain:
+        row = dict(ct)
+        row["openInterest"] = 0
+        row["totalVolume"] = 0
+        zeroed.append(row)
+    return zeroed
+
+
+def test_a_zero_count_after_the_close_keeps_the_last_reported_count():
+    """SPY's captured chain is published after the index close. A later chain that reports
+    zero open interest and zero volume does not erase those counts, or the score they carry."""
+    import app.options.order_flow.streaming as ofs
+    from tests.real_chains import SPY_0DTE
+
+    held = SPY_0DTE
+    tk = "SPY"
+    after = datetime(2026, 10, 7, 18, 0, tzinfo=ET)
+    expiry = str(held.chain[0]["expirationDate"])[:10]
+    ofs._price_rows[tk] = {"ticker": tk, "spot": held.spot, "trade_ts": after.timestamp()}
+    try:
+        server._publish_levels(tk, [dict(c) for c in held.chain], after.timestamp(), now=after)
+        first = server.confluence_payload(tk, expiry, after)
+        near = min(first["rows"], key=lambda row: abs(row["strike"] - held.spot))
+        kept = (near["oi_text"], near["volume_text"], near["score_text"], near["vanna_text"])
+        assert None not in kept
+        server._publish_levels(tk, _zero_counts(held.chain), after.timestamp(), now=after)
+        second = server.confluence_payload(tk, expiry, after)
+        again = min(second["rows"], key=lambda row: abs(row["strike"] - held.spot))
+        assert (again["oi_text"], again["volume_text"], again["score_text"], again["vanna_text"]) == kept
+    finally:
+        ofs._price_rows.pop(tk, None)
+        with server._terrain_cache_lock:
+            server._terrain_cache.pop(tk, None)
+
+
+def test_during_the_session_a_zero_count_replaces_the_old_count():
+    """During the session a count of zero is the count. It does not keep the older one."""
+    import app.options.order_flow.streaming as ofs
+    from tests.real_chains import SPY_0DTE
+
+    held = SPY_0DTE
+    tk = "SPY"
+    session = datetime(2026, 10, 7, 12, 32, tzinfo=ET)
+    later = datetime(2026, 10, 7, 12, 40, tzinfo=ET)
+    expiry = str(held.chain[0]["expirationDate"])[:10]
+    ofs._price_rows[tk] = {"ticker": tk, "spot": held.spot, "trade_ts": session.timestamp()}
+    try:
+        server._publish_levels(tk, [dict(c) for c in held.chain], session.timestamp(), now=session)
+        server._publish_levels(tk, _zero_counts(held.chain), later.timestamp(), now=later)
+        body = server.confluence_payload(tk, expiry, later)
+        near = min(body["rows"], key=lambda row: abs(row["strike"] - held.spot))
+        assert near["score"] is None
+        assert "no open interest and no volume" in near["missing"]
+    finally:
+        ofs._price_rows.pop(tk, None)
+        with server._terrain_cache_lock:
+            server._terrain_cache.pop(tk, None)
+
+
 def test_an_after_hours_print_keeps_the_close_book():
     """SPY's captured chain is published after the index close at the close spot. A later
     equity print, with no new chain, leaves that strike's gamma, vanna, and charm."""
