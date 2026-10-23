@@ -98,75 +98,45 @@ def test_why_schwab_is_not_connected_reaches_the_log_and_api_health(tmp_path, ca
                         r"ConnectionError: no Schwab client \(Token file not found.*", reason, re.S), reason
 
 
-class _Browser:
-    """A browser on the daemon's price socket: one that stopped reading never takes a send."""
-
-    def __init__(self, reading: bool):
-        self.reading, self.sent, self.offered, self.closed = reading, [], 0, False
-        self.transport = self                   # its connection: abort() drops it
-
-    async def send(self, text):
-        self.offered += 1
-        if not self.reading:
-            await asyncio.sleep(3600)
-        self.sent.append(text)
-
-    def abort(self):
-        self.closed = True
-
-
-def test_a_browser_closed_for_not_reading_gets_no_more_beats_and_the_others_keep_theirs():
-    """The daemon's heartbeat on its price socket (LiveUiServer.beat_loop, every HEARTBEAT_SEC)
-    to two browsers, one that stopped reading: it is offered one beat, dropped when it does not
-    take it within a beat, and offered none after, so every later beat reaches the reading
-    browser on time (each offer to it cost the others a whole beat)."""
+def test_a_browser_that_stopped_reading_is_dropped_the_others_keep_their_beats_and_the_stop_is_not_held():
+    """The daemon's price socket (serve_live_ui, its heartbeat the daemon's own status) and two
+    real browser sockets: one reads every frame, one takes one beat and then reads nothing. The
+    one that stopped reading is found once (its beat not taken within HEARTBEAT_SEC), dropped
+    (its connection aborted: a close frame cannot be written to a browser that does not read),
+    and its handler ends; every later beat reaches the reading browser; the daemon's stop ends
+    the server with no error. Induced test condition: each beat carries a 2 MB pad, so the
+    stalled socket's buffers fill in seconds (the real status, a few KB, takes far longer)."""
     daemon = capture.Daemon(MessageBus(), HealthRegistry(), ["SPY"])
 
-    async def go():
-        srv = live_ui.LiveUiServer(MessageBus(), daemon.status, {
-            "frames_sent": 0, "rows_sent": 0, "last_send_ms": 0.0, "beat_send_failures": 0})
-        stuck, reading = live_ui._Client(_Browser(False)), live_ui._Client(_Browser(True))
-        srv.clients.update({stuck, reading})
-        beat = asyncio.create_task(srv.beat_loop())
-        await asyncio.sleep(4.5 * live_ui.HEARTBEAT_SEC)
-        beat.cancel()
-        return stuck.ws, reading.ws, srv.stats
-    stuck, reading, stats = asyncio.run(go())
-    assert stuck.closed and stuck.offered == 1, f"the closed browser was offered {stuck.offered} beats"
-    assert len(reading.sent) >= 3 and json.loads(reading.sent[-1])["type"] == "feed"
-    assert stats["beat_send_failures"] == 1
-
-
-def test_a_browser_that_stopped_reading_is_dropped_and_does_not_hold_the_daemons_stop():
-    """The daemon's price socket (serve_live_ui) and a real browser socket that takes one beat and
-    then reads nothing, while the beats are 2 MB: its sends back up, the beat drops it, its
-    handler ends, and the daemon's stop is not held. A close frame cannot be written to a
-    browser that does not read; dropping needs none."""
     async def go():
         stop = asyncio.Event()
         stats: dict = {}
         daemon_side = asyncio.create_task(serve_live_ui(
-            MessageBus(), stop, heartbeat_fn=lambda: {"pad": "x" * 2_000_000}, host="127.0.0.1", port=0,
-            stats=stats, record_heartbeat=lambda _hb: None))
-        end = time.monotonic() + 5
-        while not stats.get("listening") and time.monotonic() < end:
-            await asyncio.sleep(0.01)
-        async with connect(stats["listening"], max_queue=1, max_size=None):
-            end = time.monotonic() + 15
-            while not stats.get("beat_send_failures") and time.monotonic() < end:
-                await asyncio.sleep(0.05)
-            backed_up = stats.get("beat_send_failures", 0) > 0
-            end = time.monotonic() + 3
-            while stats.get("clients") and time.monotonic() < end:
-                await asyncio.sleep(0.05)
-            handlers = stats.get("clients")
-            stop.set()
-            await asyncio.wait_for(asyncio.gather(daemon_side, return_exceptions=True), 5)
-        return backed_up, handlers
+            MessageBus(), stop, heartbeat_fn=lambda: {**daemon.status(), "pad": "x" * 2_000_000},
+            host="127.0.0.1", port=0, stats=stats))
+        await _until(lambda: stats.get("listening"), 5)
+        beats: list[float] = []
+        async with connect(stats["listening"], max_size=None) as reading, \
+                connect(stats["listening"], max_queue=1, max_size=None):
 
-    backed_up, handlers = asyncio.run(asyncio.wait_for(go(), 30))
-    assert backed_up, "the browser's beats never backed up"
-    assert handlers == 0, f"{handlers} browser handler(s) still running after the drop"
+            async def read_all():
+                async for frame in reading:
+                    if json.loads(frame)["type"] == "feed":
+                        beats.append(time.monotonic())
+            reader = asyncio.create_task(read_all())
+            await _until(lambda: stats.get("beat_send_failures"), 15)
+            await _until(lambda: stats.get("clients") == 1, 3)
+            dropped_at = time.monotonic()
+            await asyncio.sleep(4.5 * live_ui.HEARTBEAT_SEC)
+            failures = stats["beat_send_failures"]
+            stop.set()
+            await asyncio.wait_for(daemon_side, 5)
+            reader.cancel()
+        return failures, [t for t in beats if t > dropped_at]
+
+    failures, beats_after = asyncio.run(asyncio.wait_for(go(), 40))
+    assert failures == 1, f"the browser that stopped reading was found {failures} times"
+    assert len(beats_after) >= 4, f"the reading browser got {len(beats_after)} beats in 4.5 beats after the drop"
 
 
 def test_a_module_that_fails_to_load_leaves_its_reason_in_the_daemons_log(tmp_path):
