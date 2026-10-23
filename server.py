@@ -27,8 +27,8 @@ from time_et import (ET, now_et, ct_label, et_date_str_from_ts_utc, last_open,
 from math_exposure_core import (
     bucket_metric,
     compute_exposures_by_strike,
+    gamma_reported,
     greek_reported,
-    largest_gamma,
     merge_exposure_books,
     overlay_streamed_contract_fields,
     strike_oi_legs,
@@ -1141,14 +1141,17 @@ _QUOTE_COUNTS = ("openInterest", "totalVolume")
 
 
 def _shown_greeks(ct, price, product):
-    """The contract as the chain shows it: a Greek greek_reported does not take is None ("-")."""
+    """The contract as the chain shows it: a Greek that is not a value (gamma_reported for the gamma,
+    greek_reported for the rest) is None ("-")."""
     if not isinstance(ct, dict):
         return ct
-    largest = largest_gamma(ct, price, product=product)
     shown = dict(ct)
     for field in _QUOTE_GREEKS:
-        limit = largest if field == "gamma" else None
-        if field in ct and not greek_reported(schwab_number(ct.get(field)), iv=ct.get("volatility"), largest=limit):
+        if field == "gamma":
+            valid = gamma_reported(ct, price, product=product)
+        else:
+            valid = greek_reported(schwab_number(ct.get(field)), iv=ct.get("volatility"))
+        if field in ct and not valid:
             shown[field] = None
     return shown
 
@@ -1163,11 +1166,11 @@ def _reported_zero(value) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool) and value == 0
 
 
-def _keep_last_reported(chain, previous, at, product):
+def _keep_last_reported(chain, previous, at, product, price):
     """Outside that ticker's option window, a quote that does not report a greek leaves the
     greek the last quote reported, and a count of zero leaves the last count above zero.
     During the window the quote stands, and Schwab's no-value code does not keep an older
-    greek."""
+    greek. A gamma is reported by gamma_reported at `price`."""
     if not outside_option_window(at, product) or not previous:
         return chain
     prior = {}
@@ -1185,8 +1188,8 @@ def _keep_last_reported(chain, previous, at, product):
         if sym in prior:
             old = prior[sym]
         kept = None
-        if old is not None and not greek_reported(ct.get("gamma"), iv=ct.get("volatility")) \
-                and greek_reported(old.get("gamma"), iv=old.get("volatility")):
+        if old is not None and not gamma_reported(ct, price, product=product) \
+                and gamma_reported(old, price, product=product):
             kept = dict(ct)
             for field in _QUOTE_GREEKS:
                 kept[field] = old.get(field)
@@ -1204,15 +1207,15 @@ def _keep_last_reported(chain, previous, at, product):
     return out
 
 
-def _last_positive(newer, older):
-    """`newer`, with a count or the greeks taken from `older` where `newer` does not report them."""
+def _last_positive(newer, older, price, product):
+    """`newer`, with a count or the greeks taken from `older` where `newer` does not report them
+    (a gamma: gamma_reported at `price`)."""
     if not isinstance(newer, dict):
         return older
     if not isinstance(older, dict):
         return newer
     merged = dict(newer)
-    if not greek_reported(merged.get("gamma"), iv=merged.get("volatility")) \
-            and greek_reported(older.get("gamma"), iv=older.get("volatility")):
+    if not gamma_reported(merged, price, product=product) and gamma_reported(older, price, product=product):
         for field in _QUOTE_GREEKS:
             merged[field] = older.get(field)
         times = older.get("greeksTime")
@@ -1224,7 +1227,7 @@ def _last_positive(newer, older):
     return merged
 
 
-def _previous_counts(memory, stored):
+def _previous_counts(memory, stored, price, product):
     """The last reported contract per symbol. `memory` is newer than `stored`."""
     by_sym = {}
     order = []
@@ -1243,7 +1246,7 @@ def _previous_counts(memory, stored):
             order.append(sym)
             by_sym[sym] = ct
         else:
-            by_sym[sym] = _last_positive(ct, by_sym[sym])
+            by_sym[sym] = _last_positive(ct, by_sym[sym], price, product)
     if not order:
         return None
     return [by_sym[sym] for sym in order]
@@ -1297,8 +1300,10 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
             rows = last_capture_per_day(get_db().db_path, tk, 1)
             payload["_count_capture"] = rows[0].get("contracts") if rows else ()
             payload["_count_capture_ts"] = newest
+        published = payload.get("spot")
         chain = _keep_last_reported(
-            chain, _previous_counts(memory, payload.get("_count_capture")), begun, product)
+            chain, _previous_counts(memory, payload.get("_count_capture"), published, product), begun, product,
+            published)
     if capture is not None:
         spot, spot_source, spot_ts = capture["spot"], SPOT_SOURCE_CAPTURE, capture["ts_utc"]
     elif valued_at < at:
@@ -1325,7 +1330,7 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
     # the chain's. The cell stamp says whether that stream is live.
     priced, n_live = overlay_streamed_contract_fields(chain, streamed, fetched_ts)
     if outside_option_window(at, product):
-        priced = _keep_last_reported(priced, chain, at, product)
+        priced = _keep_last_reported(priced, chain, at, product, spot)
     live_syms = _overlaid_symbols(chain, priced)
     snap = compute_terrain(tk, priced, spot, now=valued_at)
     payload.update(snap.to_dict())
@@ -1359,7 +1364,7 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
             if captures and captures[0].get("spot") is not None:
                 held_charm = snap.charm_by_strike
             payload.update(_forces=_forces_from_captures(tk, stored, held_charm),
-                           _prior_strikes=_prior_strikes(stored, fetched_ts),
+                           _prior_strikes=_prior_strikes(stored, fetched_ts, product),
                            _captures_key=captures_key)
     if spot is not None and snap.books:
         surface = project_gamma_surface(priced, snap.books)
@@ -1673,7 +1678,7 @@ LEVELS_SOURCE_WIDE_CHAIN = "wide_chain_loop"      # _publish_levels, the single 
 # the previous market day's last chain capture (the day-over-day migration ghosts), each in
 # three expiry scopes (all / near<=7DTE / far). Read-only, no Schwab call. Bar heights use the
 # same exposure math as terrain.
-def _prior_strikes(captures: list, chain_ts: float) -> "tuple[dict | None, str | None]":
+def _prior_strikes(captures: list, chain_ts: float, product: str) -> "tuple[dict | None, str | None]":
     """The previous market day's close before the day of the chain the ticker's rows came from,
     as per-strike rows ({all, near, far}), with its source. On a closed market today's rows ARE
     the newest capture; the wall clock's date picked that same capture and compared it with
@@ -1685,7 +1690,8 @@ def _prior_strikes(captures: list, chain_ts: float) -> "tuple[dict | None, str |
         def _scope(cts: list) -> list:
             if not cts:
                 return []
-            exposures, _diag = compute_exposures_by_strike(cts, spot=spot, now=at)   # at the capture's own time
+            exposures, _diag = compute_exposures_by_strike(cts, spot=spot, now=at,   # at the capture's own time
+                                                           product=product)
             return _per_strike_rows(exposures)
 
         # a contract with no readable DTE is in neither near nor far (terrain_engine._dte_of)
@@ -2641,7 +2647,7 @@ NO_CHAIN_YET = "the daemon has not delivered this ticker's chain yet"
 def get_chain(ticker: str = Query(...),
               expiry: Optional[str] = Query(default=None)):
     """One expiry of the ticker's full chain -- every contract Schwab listed, every field as sent
-    -- from the chain the daemon delivered (strike_range=ALL), with each live streamed contract's
+    except a Greek that is not a value, which is null (_shown_greeks) -- from the chain the daemon delivered (strike_range=ALL), with each live streamed contract's
     streamed fields as its values (the stream owns them), by the levels' own rule on the same
     inputs (the chain's listed contracts, its fetch time). Every watchlist ticker's chain is kept.
     Answers `status: unavailable` with a reason when no chain is held."""
@@ -2672,9 +2678,9 @@ def get_chain(ticker: str = Query(...),
     response_contracts, overlay_n = overlay_streamed_contract_fields(
         contracts, _streamed_greeks_for_ticker(held["_contract_symbols"], now), fetched_ts)
     at = now_et()
-    response_contracts = _keep_last_reported(
-        response_contracts, contracts, at, option_close_product(t))
-    response_contracts = [_shown_greeks(c, held.get("spot"), option_close_product(t)) for c in response_contracts]
+    product = option_close_product(t)
+    response_contracts = _keep_last_reported(response_contracts, contracts, at, product, held.get("spot"))
+    response_contracts = [_shown_greeks(c, held.get("spot"), product) for c in response_contracts]
     live_spot, _src, live_ts = resolve_spot(t, now=now)   # the one spot, with Schwab's trade time
     ladder, not_on_ladder = chain_ladder(response_contracts, live_spot)
     # this expiry's net GEX per strike, as the heatmap publishes it (its column of the surface):

@@ -99,7 +99,7 @@ from calibration.complete_chain_capture import ChainSweep  # noqa: E402
 from config import build_config, load_dotenv_file  # noqa: E402
 from db_authority import canonical_console_db_path  # noqa: E402
 from instrument_identity import ticker_storage_key  # noqa: E402
-from math_exposure_core import greek_reported, largest_gamma  # noqa: E402
+from math_exposure_core import gamma_reported  # noqa: E402
 from numeric_contract import schwab_number  # noqa: E402
 from schwab.streaming import StreamClient  # noqa: E402
 from schwab_client import build_client_from_token, safe_get_quotes  # noqa: E402
@@ -227,7 +227,7 @@ def expiration_ts(ct: dict) -> "float | None":
 
 def by_gamma(contracts: "list[dict]", price: float, now: float, product: str) -> "tuple[str, ...]":
     """`contracts` (a chain as the sweep delivers it) in the option rule's order at `now`: highest
-    Schwab gamma first, as the levels take it (math_exposure_core.greek_reported: absent, -999, a
+    Schwab gamma first, as the levels take it (math_exposure_core.gamma_reported: absent, -999, a
     -999 volatility, or past twice the largest gamma possible at `price` is no gamma, ranked last); of equal gammas the nearest expiration, then the
     strike nearest `price` (the lower of two equally near), calls before puts. A contract has
     expired once now passes its expirationDate and is left out (it stays in the records; it is
@@ -238,7 +238,7 @@ def by_gamma(contracts: "list[dict]", price: float, now: float, product: str) ->
         if strike is not None and expires is not None and expires > now:
             gamma = schwab_number(ct.get("gamma"))
             row = (expires, abs(strike - price), strike, ct["putCall"], ct["symbol"])
-            if greek_reported(gamma, iv=ct.get("volatility"), largest=largest_gamma(ct, price, product=product)):
+            if gamma_reported(ct, price, product=product):
                 with_gamma.append((-gamma, *row))
             else:
                 without.append(row)

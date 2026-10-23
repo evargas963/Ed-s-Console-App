@@ -241,7 +241,7 @@ from Schwab to the screen (daemon, console, page), are these:
   Schwab's limits (LEVELONE_OPTIONS 3,000, OPTIONS_BOOK 100, measured on the daemon's own
   connection 2026-10-07) is split evenly across the watchlist tickers, and each ticker's share
   on each service is its contracts with the highest gamma, the gamma the levels take
-  (`math_exposure_core.greek_reported`: absent, -999, a -999 volatility, or more than twice the
+  (`math_exposure_core.gamma_reported`: absent, -999, a -999 volatility, or more than twice the
   largest gamma possible at its own volatility, the price and the time left is no gamma, ranked
   last); of equal gammas the nearest expiration, then the strike nearest the price, calls before
   puts. A contract has expired once now passes Schwab's expirationDate: it stays in the records

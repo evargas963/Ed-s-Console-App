@@ -350,7 +350,7 @@ def test_pin_score_inputs_follow_the_wide_terrain_book_not_selected_expiry() -> 
     assert wb is not None and sb is not None
     wide_gex = total_gex_dollars_at_strike(wb)
     sel_gex = total_gex_dollars_at_strike(sb)
-    assert wide_gex != sel_gex
+    assert wide_gex is not None and sel_gex is not None and wide_gex != sel_gex
     assert terrain.absolute_gamma_gex_dollars == wide_gex
     assert terrain.absolute_gamma_oi != (
         (float(sb.get("call_oi") or 0) + float(sb.get("put_oi") or 0))

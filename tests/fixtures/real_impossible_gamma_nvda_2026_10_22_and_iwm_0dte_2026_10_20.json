@@ -36516,5 +36516,406 @@
     }
    }
   ]
+ },
+ "iwm_last_minutes": {
+  "source": "ed_console.db complete_chain_captures (read-only)",
+  "ticker": "IWM",
+  "expiry": "2026-10-20",
+  "ts_utc": 1792527436.553338,
+  "spot": 276.04,
+  "contracts": [
+   {
+    "interestRate": 4.08,
+    "dividendYield": 1.087,
+    "putCall": "CALL",
+    "symbol": "IWM   261020C00276000",
+    "description": "IWM 10/20/2026 276.00 C",
+    "exchangeName": "OPR",
+    "bid": 0.06,
+    "ask": 0.08,
+    "last": 0.06,
+    "mark": 0.07,
+    "bidSize": 23,
+    "askSize": 29,
+    "bidAskSize": "23X29",
+    "lastSize": 2,
+    "highPrice": 1.22,
+    "lowPrice": 0.01,
+    "openPrice": 0.03,
+    "closePrice": 0.05,
+    "totalVolume": 135396,
+    "tradeTimeInLong": 1792527299417,
+    "quoteTimeInLong": 1792527300005,
+    "netChange": 0.01,
+    "volatility": 7.44747755,
+    "delta": 0.56854051,
+    "gamma": 2.95213472,
+    "theta": -0.03147459,
+    "vega": 0.00790742,
+    "rho": 6.197e-05,
+    "openInterest": 2925,
+    "timeValue": 0.02,
+    "theoreticalOptionValue": 0.071,
+    "theoreticalVolatility": 29.0,
+    "optionDeliverablesList": [
+     {
+      "symbol": "IWM",
+      "assetType": "STOCK",
+      "deliverableUnits": 100.0,
+      "currencyType": null
+     }
+    ],
+    "strikePrice": 276.0,
+    "expirationDate": "2026-10-20T20:00:00.000+00:00",
+    "daysToExpiration": 0,
+    "expirationType": "W",
+    "lastTradingDay": 1792540800000,
+    "multiplier": 100.0,
+    "settlementType": "P",
+    "deliverableNote": "100 IWM",
+    "percentChange": 22.22,
+    "markChange": 0.03,
+    "markPercentChange": 55.56,
+    "intrinsicValue": 0.04,
+    "extrinsicValue": 0.02,
+    "optionRoot": "IWM",
+    "exerciseType": "A",
+    "high52Week": 4.52,
+    "low52Week": 0.01,
+    "breakEven": 276.07,
+    "ssid": 149429230,
+    "nonStandard": false,
+    "inTheMoney": true,
+    "mini": false,
+    "pennyPilot": true,
+    "greeksTime": {
+     "gamma": 1792527300005,
+     "delta": 1792527300005,
+     "theta": 1792527300005,
+     "vega": 1792527300005,
+     "rho": 1792527300005,
+     "volatility": 1792527300005
+    }
+   },
+   {
+    "interestRate": 4.08,
+    "dividendYield": 1.087,
+    "putCall": "PUT",
+    "symbol": "IWM   261020P00276000",
+    "description": "IWM 10/20/2026 276.00 P",
+    "exchangeName": "OPR",
+    "bid": 0.04,
+    "ask": 0.07,
+    "last": 0.07,
+    "mark": 0.06,
+    "bidSize": 120,
+    "askSize": 5,
+    "bidAskSize": "120X5",
+    "lastSize": 3,
+    "highPrice": 4.07,
+    "lowPrice": 0.05,
+    "openPrice": 4.07,
+    "closePrice": 4.75,
+    "totalVolume": 84090,
+    "tradeTimeInLong": 1792527288211,
+    "quoteTimeInLong": 1792527300005,
+    "netChange": -4.68,
+    "volatility": 7.44747755,
+    "delta": -0.46294338,
+    "gamma": 2.55814416,
+    "theta": -0.05500913,
+    "vega": 0.00828049,
+    "rho": -7.292e-05,
+    "openInterest": 342,
+    "timeValue": 0.07,
+    "theoreticalOptionValue": 0.055,
+    "theoreticalVolatility": 29.0,
+    "optionDeliverablesList": [
+     {
+      "symbol": "IWM",
+      "assetType": "STOCK",
+      "deliverableUnits": 100.0,
+      "currencyType": null
+     }
+    ],
+    "strikePrice": 276.0,
+    "expirationDate": "2026-10-20T20:00:00.000+00:00",
+    "daysToExpiration": 0,
+    "expirationType": "W",
+    "lastTradingDay": 1792540800000,
+    "multiplier": 100.0,
+    "settlementType": "P",
+    "deliverableNote": "100 IWM",
+    "percentChange": -98.5,
+    "markChange": -4.7,
+    "markPercentChange": -98.84,
+    "intrinsicValue": -0.04,
+    "extrinsicValue": 0.11,
+    "optionRoot": "IWM",
+    "exerciseType": "A",
+    "high52Week": 5.94,
+    "low52Week": 0.05,
+    "breakEven": 275.95,
+    "ssid": 149429237,
+    "nonStandard": false,
+    "inTheMoney": false,
+    "mini": false,
+    "pennyPilot": true,
+    "greeksTime": {
+     "gamma": 1792527300005,
+     "delta": 1792527300005,
+     "theta": 1792527300005,
+     "vega": 1792527300005,
+     "rho": 1792527300005,
+     "volatility": 1792527300005
+    }
+   }
+  ]
+ },
+ "nvda_before": {
+  "source": "ed_console.db complete_chain_captures (read-only)",
+  "ticker": "NVDA",
+  "expiry": "2026-12-18",
+  "ts_utc": 1792688551.7740724,
+  "spot": 212.75,
+  "contracts": [
+   {
+    "interestRate": 4.018,
+    "dividendYield": 0.47,
+    "putCall": "CALL",
+    "symbol": "NVDA  261218C00148000",
+    "description": "NVDA 12/18/2026 148.00 C",
+    "exchangeName": "OPR",
+    "bid": 66.05,
+    "ask": 67.2,
+    "last": 67.25,
+    "mark": 66.63,
+    "bidSize": 383,
+    "askSize": 783,
+    "bidAskSize": "383X783",
+    "lastSize": 1,
+    "highPrice": 71.3,
+    "lowPrice": 67.25,
+    "openPrice": 71.3,
+    "closePrice": 75.38,
+    "totalVolume": 3,
+    "tradeTimeInLong": 1792682345648,
+    "quoteTimeInLong": 1792688554867,
+    "netChange": -8.13,
+    "volatility": 55.47157832,
+    "delta": 1.0,
+    "gamma": 0.0,
+    "theta": 0.0,
+    "vega": 0.04205929,
+    "rho": 0.0,
+    "openInterest": 9083,
+    "timeValue": 2.5,
+    "theoreticalOptionValue": 64.68,
+    "theoreticalVolatility": 29.0,
+    "optionDeliverablesList": [
+     {
+      "symbol": "NVDA",
+      "assetType": "STOCK",
+      "deliverableUnits": 100.0,
+      "currencyType": null
+     }
+    ],
+    "strikePrice": 148.0,
+    "expirationDate": "2026-12-18T21:00:00.000+00:00",
+    "daysToExpiration": 57,
+    "expirationType": "S",
+    "lastTradingDay": 1797642000000,
+    "multiplier": 100.0,
+    "settlementType": "P",
+    "deliverableNote": "100 NVDA",
+    "percentChange": -10.78,
+    "markChange": -8.76,
+    "markPercentChange": -11.62,
+    "intrinsicValue": 64.75,
+    "extrinsicValue": 2.5,
+    "optionRoot": "NVDA",
+    "exerciseType": "A",
+    "high52Week": 95.27,
+    "low52Week": 11.5,
+    "breakEven": 214.63,
+    "ssid": 97057079,
+    "nonStandard": false,
+    "inTheMoney": true,
+    "mini": false,
+    "pennyPilot": true,
+    "greeksTime": {
+     "gamma": 1792688564400,
+     "delta": 1792688564400,
+     "theta": 1792688564400,
+     "vega": 1792688564400,
+     "rho": 1792688564400,
+     "volatility": 1792688564400
+    }
+   }
+  ]
+ },
+ "markets": {
+  "2026-10-20": {
+   "equity": {
+    "EQ": {
+     "date": "2026-10-20",
+     "marketType": "EQUITY",
+     "product": "EQ",
+     "productName": "equity",
+     "isOpen": true,
+     "sessionHours": {
+      "preMarket": [
+       {
+        "start": "2026-10-20T07:00:00-04:00",
+        "end": "2026-10-20T09:30:00-04:00"
+       }
+      ],
+      "regularMarket": [
+       {
+        "start": "2026-10-20T09:30:00-04:00",
+        "end": "2026-10-20T16:00:00-04:00"
+       }
+      ],
+      "postMarket": [
+       {
+        "start": "2026-10-20T16:00:00-04:00",
+        "end": "2026-10-20T20:00:00-04:00"
+       }
+      ]
+     }
+    }
+   },
+   "option": {
+    "EQO": {
+     "date": "2026-10-20",
+     "marketType": "OPTION",
+     "product": "EQO",
+     "productName": "equity option",
+     "isOpen": true,
+     "sessionHours": {
+      "preMarket": [
+       {
+        "start": "2026-10-20T07:30:00-04:00",
+        "end": "2026-10-20T09:25:00-04:00"
+       }
+      ],
+      "regularMarket": [
+       {
+        "start": "2026-10-20T09:30:00-04:00",
+        "end": "2026-10-20T16:00:00-04:00"
+       }
+      ],
+      "postMarket": [
+       {
+        "start": "2026-10-20T16:00:00-04:00",
+        "end": "2026-10-20T16:15:00-04:00"
+       }
+      ]
+     }
+    },
+    "IND": {
+     "date": "2026-10-20",
+     "marketType": "OPTION",
+     "product": "IND",
+     "productName": "index option",
+     "isOpen": true,
+     "sessionHours": {
+      "preMarket": [
+       {
+        "start": "2026-10-20T07:30:00-04:00",
+        "end": "2026-10-20T09:25:00-04:00"
+       }
+      ],
+      "regularMarket": [
+       {
+        "start": "2026-10-20T09:30:00-04:00",
+        "end": "2026-10-20T16:15:00-04:00"
+       }
+      ]
+     }
+    }
+   }
+  },
+  "2026-10-22": {
+   "equity": {
+    "EQ": {
+     "date": "2026-10-22",
+     "marketType": "EQUITY",
+     "product": "EQ",
+     "productName": "equity",
+     "isOpen": true,
+     "sessionHours": {
+      "preMarket": [
+       {
+        "start": "2026-10-22T07:00:00-04:00",
+        "end": "2026-10-22T09:30:00-04:00"
+       }
+      ],
+      "regularMarket": [
+       {
+        "start": "2026-10-22T09:30:00-04:00",
+        "end": "2026-10-22T16:00:00-04:00"
+       }
+      ],
+      "postMarket": [
+       {
+        "start": "2026-10-22T16:00:00-04:00",
+        "end": "2026-10-22T20:00:00-04:00"
+       }
+      ]
+     }
+    }
+   },
+   "option": {
+    "EQO": {
+     "date": "2026-10-22",
+     "marketType": "OPTION",
+     "product": "EQO",
+     "productName": "equity option",
+     "isOpen": true,
+     "sessionHours": {
+      "preMarket": [
+       {
+        "start": "2026-10-22T07:30:00-04:00",
+        "end": "2026-10-22T09:25:00-04:00"
+       }
+      ],
+      "regularMarket": [
+       {
+        "start": "2026-10-22T09:30:00-04:00",
+        "end": "2026-10-22T16:00:00-04:00"
+       }
+      ],
+      "postMarket": [
+       {
+        "start": "2026-10-22T16:00:00-04:00",
+        "end": "2026-10-22T16:15:00-04:00"
+       }
+      ]
+     }
+    },
+    "IND": {
+     "date": "2026-10-22",
+     "marketType": "OPTION",
+     "product": "IND",
+     "productName": "index option",
+     "isOpen": true,
+     "sessionHours": {
+      "preMarket": [
+       {
+        "start": "2026-10-22T07:30:00-04:00",
+        "end": "2026-10-22T09:25:00-04:00"
+       }
+      ],
+      "regularMarket": [
+       {
+        "start": "2026-10-22T09:30:00-04:00",
+        "end": "2026-10-22T16:15:00-04:00"
+       }
+      ]
+     }
+    }
+   }
+  }
  }
 }
