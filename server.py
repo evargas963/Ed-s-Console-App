@@ -205,6 +205,7 @@ TOKEN_PATH = token_path()
 #: number came from so a caller can never silently accept a lower-confidence source.
 SPOT_SOURCE_PLANE = "streaming_plane"          # live_market_plane.get_quote — the freshest real trade this process has seen
 SPOT_SOURCE_CAPTURE = "chain_capture"          # underlyingPrice of a stored chain capture (DATA_FLOW decision 7)
+SPOT_SOURCE_NONE = "none"                       # Schwab has sent no price
 
 
 #: Seconds the graceful shutdown gets before the process is killed outright. Generous
@@ -301,13 +302,13 @@ def _install_signal_handlers() -> None:
 def resolve_spot(ticker: str, *, now: float) -> tuple[float | None, str, float | None]:
     """(spot, source, as_of_ts_utc): the daemon's price row's Schwab LAST_PRICE as sent and its
     trade time. The row's own `outage` says the feed is not delivering it; the number stays.
-    (None, the outage reason or "none", None) until Schwab has sent one."""
+    (None, the outage reason or SPOT_SOURCE_NONE, None) until Schwab has sent one."""
     row = price_row(ticker)
     if row and row.get("spot") is not None:
         return row["spot"], SPOT_SOURCE_PLANE, row.get("trade_ts")
     outage = lmp.outage(ticker, "LEVELONE_EQUITIES", now)
     if outage is None:
-        return None, "none", None
+        return None, SPOT_SOURCE_NONE, None
     return None, outage, None
 
 
@@ -1314,11 +1315,11 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
         # a capture written without the chain's spot: its nearest expiry's underlyingPrice
         priced_at = (capture["spot"], SPOT_SOURCE_CAPTURE, capture["ts_utc"])
     elif new_chain:
-        # Schwab's LAST_PRICE when the chain was complete, with its trade time; "none" when the
-        # daemon held no price (resolve_spot's word for the same state)
+        # Schwab's LAST_PRICE when the chain was complete, with its trade time; SPOT_SOURCE_NONE
+        # when the daemon held no price
         source = SPOT_SOURCE_PLANE
         if chain_spot[0] is None:
-            source = "none"
+            source = SPOT_SOURCE_NONE
         priced_at = (chain_spot[0], source, chain_spot[1])
     else:
         priced_at = payload["_chain_spot"]
