@@ -16,8 +16,6 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-TURN_AUDIT_OWNS = ["tools/check_eol_style_invariant.py"]
-
 TOOL = REPO / "tools" / "check_eol_style_invariant.py"
 
 
@@ -77,7 +75,7 @@ def test_pure_eol_reflow_is_refused(repo):
     root, _git = repo
     p = root / "lf_file.py"
     p.write_bytes(p.read_bytes().replace(b"\n", b"\r\n"))
-    rc, out = run_in(root, "--measure")
+    _, out = run_in(root, "--measure")
     assert "PURE EOL REFLOW" in out, out
     assert "lf -> crlf" in out, out
 
@@ -88,7 +86,7 @@ def test_eol_style_flip_hiding_a_real_edit_is_refused(repo):
     p = root / "lf_file.py"
     body = p.read_bytes().replace(b"b = 2\n", b"b = 22  # real edit\n")
     p.write_bytes(body.replace(b"\n", b"\r\n"))
-    rc, out = run_in(root, "--measure")
+    _, out = run_in(root, "--measure")
     assert "EOL STYLE FLIP" in out, out
 
 
@@ -161,7 +159,7 @@ def test_a_pinned_path_may_differ_on_disk_without_being_a_violation(repo):
     assert rc == 0 and "[PASS]" in out, f"a pinned path was reported as a flip: {out}"
 
 
-def test_a_pinned_path_with_a_real_content_change_is_still_silent(repo):
+def test_a_pinned_path_with_a_real_content_change_is_silent(repo):
     """A pinned path with a REAL content change is in `git diff --name-only`'s changed list,
     so the lock judges it; it must compare git's normalised bytes, not the raw disk bytes,
     or it fires on a correctly configured file.
@@ -175,7 +173,7 @@ def test_a_pinned_path_with_a_real_content_change_is_still_silent(repo):
     # UNSTAGED and CRLF on disk: staged mode reads the index, which git has already
     # normalised; only the worktree comparison sees raw CRLF against an LF blob.
     (root / "pinned.json").write_bytes(b'{\r\n  "a": 2,\r\n  "b": 3\r\n}\r\n')
-    rc, out = run_in(root, "--measure")
+    _, out = run_in(root, "--measure")
     assert "EOL STYLE FLIP" not in out, (
         f"a real edit to a PINNED path was reported as a terminator flip — the check is "
         f"judging disk bytes where git judges normalised bytes: {out}")

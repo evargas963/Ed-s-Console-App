@@ -1,27 +1,6 @@
-"""RC-273 — deleting an unrecoverable artefact must be refused at the agent layer.
-
-WHAT WAS MEASURED (2026-08-06). The agent destroyed data/ed_console.db TWICE in
-ten minutes:
-
-  1. `mv data/ed_console.db /tmp/_x` to exercise a missing-file branch. The file
-     came back, but the pattern did not.
-  2. `rm -f data/ed_console.db` while TESTING the ACL meant to prevent (1).
-
-Both were "just a test". Both destroyed 27,215 MB. Restored twice from
-backups/db/20260806_203509_ed_console.db (28,675,186,688 bytes, quick_check ok),
-losing ~28,150 bars captured after the 15:35 backup.
-
-THE OS LAYER (measured 2026-09-26). The live database files carry a deny-delete
-on the file plus a deny-delete-contents on the data/ folder. A canary in the
-real data/ folder with the same protection refused delete and rename; an
-unprotected file there stayed deletable (the database engine's own temporary
-files need that). This guard stops an attempt early, judged on what the
-command RUNS, not on text that mentions these folders.
-
-WHY THE EXISTING GUARD MISSED IT. `_DESTRUCTIVE_GIT` refused `git checkout --`
-in the same session, so the guard was awake. It encodes "destructive means
-git" -- and `.gitignore:31 data/*` means the one artefact with no history at
-all was the one the rule was built to ignore.
+"""Deleting, moving, overwriting or unprotecting a file under data/ is refused at the agent
+layer: data/ is gitignored, so nothing in it has a history to restore from. The guard judges
+what a command RUNS, not text that mentions the folder; restores into it and reads stay legal.
 """
 
 from __future__ import annotations
@@ -36,14 +15,14 @@ sys.path.insert(0, str(REPO / "tools"))
 
 import operator_law_guard as G  # noqa: E402
 
-# RC-368: declared direct owner — this suite drives the guard's protected-path clauses.
-TURN_AUDIT_OWNS = [
-    "tools/operator_law_guard.py",
-]
-
 #: Split so this test file is not itself refused when its text is scanned.
 D = "d" + "ata/"
 B = "b" + "ackups/"
+
+
+def _refuses_data(cmd) -> bool:
+    """The law guard refuses `cmd` for what it does to data/."""
+    return any(f"under {D}" in b for b in G.bash_violations(cmd))
 
 
 @pytest.mark.parametrize("cmd", [
@@ -61,7 +40,7 @@ B = "b" + "ackups/"
 ])
 def test_destruction_of_an_unrecoverable_tree_is_refused(cmd):
     """Every shape that took the database, and the ones that would next."""
-    assert G._protected_path_violation(cmd), f"NOT blocked: {cmd}"
+    assert _refuses_data(cmd), f"NOT blocked: {cmd}"
 
 
 @pytest.mark.parametrize("cmd", [
@@ -77,19 +56,15 @@ def test_destruction_of_an_unrecoverable_tree_is_refused(cmd):
     "rm -f tools/dead_tool.py",
     "git worktree remove --force ../EdWebConsole-item4",
 ])
-def test_restore_read_and_ordinary_cleanup_still_pass(cmd):
-    """A lock that blocks recovery or normal work gets switched off within a day."""
-    assert not G._protected_path_violation(cmd), f"wrongly blocked: {cmd}"
+def test_restore_read_and_ordinary_cleanup_pass(cmd):
+    """Recovery into data/, reads, and deletes elsewhere are not refused."""
+    assert not _refuses_data(cmd), f"wrongly blocked: {cmd}"
 
 
-def test_a_commit_message_describing_the_incident_is_not_blocked():
-    """The rule fired on its own landing commit.
-
-    The commit message describes the incident, so it CONTAINS the command text
-    that caused it. A lock that stops you writing down what went wrong gets
-    deleted, and the honest record is the entire point of the row. `git commit`
-    cannot remove a file, so it is exempt -- narrowly, by verb, not by channel:
-    heredocs stay watched everywhere else because they are a real write path.
+def test_a_commit_message_quoting_a_destructive_command_is_not_blocked():
+    """A commit message that quotes a destructive command is not refused: `git commit`
+    cannot remove a file, so it is exempt — by verb, not by channel: heredocs stay watched
+    everywhere else because they are a real write path.
     """
     msg = (
         f"git commit -F - <<'MSG'\n"
@@ -98,27 +73,27 @@ def test_a_commit_message_describing_the_incident_is_not_blocked():
         f"Restored from {B}db/20260806_203509_ed_console.db.\n"
         f"MSG"
     )
-    assert not G._protected_path_violation(msg), (
-        "the guard blocks the commit that records the incident it exists for")
+    assert not _refuses_data(msg), (
+        "the guard blocks a commit whose message quotes a destructive command")
 
 
 def test_the_commit_exemption_is_by_verb_not_by_heredoc():
-    """A heredoc that is NOT a commit must still be judged."""
+    """A heredoc that is NOT a commit is judged."""
     payload = f"cat <<'EOF' | bash\nrm -f {D}ed_console.db\nEOF"
-    assert G._protected_path_violation(payload), (
+    assert _refuses_data(payload), (
         "a heredoc piped to a shell is a write channel and must stay watched")
 
 
 def test_the_protected_tree_is_guarded_and_backups_is_not():
     """Destructive is defined by the TARGET's recoverability, not by the verb. No database
-    backups are kept (operator 2026-10-10), so backups/ is no protected tree."""
-    assert G._protected_path_violation(f"rm -rf {D}x")
-    assert not G._protected_path_violation(f"rm -rf {B}x")
+    backups are kept (operator's decision), so backups/ is no protected tree."""
+    assert _refuses_data(f"rm -rf {D}x")
+    assert not _refuses_data(f"rm -rf {B}x")
 
 
 def test_empty_and_none_commands_do_not_crash():
-    assert not G._protected_path_violation("")
-    assert not G._protected_path_violation(None)  # type: ignore[arg-type]
+    assert not _refuses_data("")
+    assert not _refuses_data(None)  # type: ignore[arg-type]
 
 
 
@@ -129,13 +104,13 @@ def test_empty_and_none_commands_do_not_crash():
     # a Python string that only mentions a protected path
     f"python - <<'EOF'\nprint('never delete {D}ed_console.db')\nEOF",
     # adding protection is not removing it
-    f"icacls {D}ed_console.db /deny \"evarg:(DE)\"",
+    f"icacls {D}ed_console.db /deny \"someuser:(DE)\"",
     # deleting a temp file whose path shares no protected segment
     "rm ../ap.md",
 ])
 def test_text_that_only_mentions_a_protected_path_passes(cmd):
     """The rule judges what runs: prose, file content and protection pass untouched."""
-    assert not G._protected_path_violation(cmd), f"wrongly blocked: {cmd}"
+    assert not _refuses_data(cmd), f"wrongly blocked: {cmd}"
 
 
 @pytest.mark.parametrize("cmd", [
@@ -144,10 +119,10 @@ def test_text_that_only_mentions_a_protected_path_passes(cmd):
     f"python - <<'EOF'\nfrom pathlib import Path\nPath('{D}ed_console.db').write_bytes(b'')\nEOF",
     f"python - <<'EOF'\nopen('{D}ed_console.db', 'w').close()\nEOF",
     f"bash <<'EOF'\nrm -f {D}stream_capture.db\nEOF",
-    f"icacls {D}ed_console.db /remove:d evarg",
+    f"icacls {D}ed_console.db /remove:d someuser",
     f"icacls C:/repo/{D} /reset",
     f"cd /c/repo && rm -rf {D}",
 ])
 def test_code_that_would_destroy_or_unprotect_is_refused(cmd):
     """Python run from a heredoc, a shell heredoc, and removing the OS protection all block."""
-    assert G._protected_path_violation(cmd), f"NOT blocked: {cmd}"
+    assert _refuses_data(cmd), f"NOT blocked: {cmd}"

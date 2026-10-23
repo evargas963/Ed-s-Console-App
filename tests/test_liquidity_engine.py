@@ -3,7 +3,6 @@ test_liquidity_engine.py — Unit tests for Liquidity & Value Playbook Engine
 ============================================================================
 
 Run: pytest tests/test_liquidity_engine.py -v
-  or: python tests/test_liquidity_engine.py
 """
 from __future__ import annotations
 
@@ -83,7 +82,7 @@ def test_volume_profile_flat_bar_puts_all_volume_at_one_price():
 
 
 def test_volume_profile_distributes_a_wide_bar_across_its_range():
-    """The defect in one line: one wide bar's volume belongs across [low, high], not at
+    """One wide bar's volume belongs across [low, high], not at
     (H+L+C)/3. With a single bar the distributed profile is FLAT, so every spanned price ties —
     while the dump puts 100% of it in one bin at the typical price."""
     from liquidity_models import volume_profile
@@ -98,7 +97,7 @@ def test_volume_profile_distributes_a_wide_bar_across_its_range():
     dump_poc = _typical_price_dump(bars)
     assert abs(dump_poc - 100.6333) < 0.01, "witness fixture drifted"
     assert vah > dump_poc > val, (
-        "the retired dump concentrated everything at the typical price; the distributed "
+        "the typical-price dump concentrates everything at the typical price; the distributed "
         "profile must instead spread across the range that price sits inside"
     )
 
@@ -121,7 +120,7 @@ def test_volume_profile_poc_is_the_price_most_bars_traded_through():
     )
     dump_poc = _typical_price_dump(bars)
     assert dump_poc not in (100.03, 100.04), (
-        "fixture no longer discriminates — the retired dump happens to agree here"
+        "fixture does not discriminate — the typical-price dump agrees here"
     )
     assert val <= poc <= vah
 
@@ -141,7 +140,7 @@ def test_volume_profile_rejects_nan_and_nonpositive_volume():
     assert volume_profile([{"high": 1.0, "low": 1.0, "close": 1.0, "volume": 1.0}], tick_size=0.0) is None
 
 
-def test_volume_profile_wide_bar_stays_bounded_and_still_distributed():
+def test_volume_profile_wide_bar_stays_bounded_and_distributed():
     """A pathological range against a 0.01 tick must not allocate unbounded bins, and must
     still SPREAD — the bound is a work cap, never a licence to dump."""
     from liquidity_models import MAX_BINS_PER_BAR, volume_profile
@@ -258,7 +257,7 @@ def test_overnight_without_a_prior_session_uses_only_this_session_premarket():
 _POOL_WORDS = ("liquidity", "pool", "sweep", "stop hunt", "stop-hunt", "magnet")
 
 
-def _step3_bars(session_date: date) -> list:
+def _overnight_under_prior_low_bars(session_date: date) -> list:
     """Bars that drive the taxonomy branch: a prior session, an overnight leg that undercuts
     the prior low, and an RTH open — the shape a pool label would claim as 'sell-side
     liquidity'."""
@@ -272,10 +271,10 @@ def _step3_bars(session_date: date) -> list:
     ]
 
 
-def _step3_zones(session_date: date):
+def _overnight_under_prior_low_zones(session_date: date):
     from liquidity_models import PlaybookConfig
     from liquidity_value_engine import bars_from_candles, build_premarket_snapshot, build_price_level_snapshot
-    snap = build_price_level_snapshot("SPY", session_date, bars_from_candles(_step3_bars(session_date)), bar_source="test")
+    snap = build_price_level_snapshot("SPY", session_date, bars_from_candles(_overnight_under_prior_low_bars(session_date)), bar_source="test")
     return build_premarket_snapshot("SPY", session_date, PlaybookConfig(), canonical=snap).zones
 
 
@@ -283,7 +282,7 @@ def test_no_pool_language_in_rendered_zone_payload():
     """Behaviour-bound: build the snapshot for an overnight leg under the prior low and assert
     no operator-facing field claims a pool."""
     session = date(2026, 10, 6)          # a Tuesday: its prior session is the day before
-    zones = _step3_zones(session)
+    zones = _overnight_under_prior_low_zones(session)
     assert zones, "fixture produced no zones — the assertion would be vacuous"
     for z in zones:
         zt = str(getattr(z.zone_type, "value", z.zone_type))

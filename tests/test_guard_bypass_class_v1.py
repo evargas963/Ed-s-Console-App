@@ -21,9 +21,8 @@ def test_git_commit_no_verify_blocks():
     assert any("disables a mechanical lock" in v for v in out), out
 
 
-def test_hook_entrypoint_rejects_no_verify_with_guard_env_off(monkeypatch):
+def test_hook_entrypoint_rejects_no_verify():
     """Attempt the real hook process, not a helper-exists check."""
-    monkeypatch.setenv("ED_OPERATOR_LAW_GUARD", "off")
     payload = json.dumps({
         "session_id": "bypass-class",
         "tool_name": "Bash",

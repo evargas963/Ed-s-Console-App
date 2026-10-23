@@ -75,11 +75,6 @@ def _python_violation(code: str) -> bool:
     return False
 
 
-def _protected_path_violation(cmd: str) -> bool:
-    """`cmd` runs a statement that deletes, moves, overwrites or unprotects a file under data/."""
-    return any(_destroys_protected(st) for st in read(cmd or ""))
-
-
 def _destroys_protected(st: Statement) -> bool:
     """The statement deletes, moves, overwrites or unprotects a file under data/. A python's
     `-c` code and the stdin text it reads are parsed as Python. A copy INTO a protected tree is a

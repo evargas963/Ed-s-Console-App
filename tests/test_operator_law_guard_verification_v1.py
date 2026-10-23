@@ -16,11 +16,16 @@ sys.path.insert(0, str(REPO / "tools"))
 import operator_law_guard as G  # noqa: E402
 
 
+def _refuses_data(cmd: str) -> bool:
+    """The law guard refuses `cmd` for what it does to data/."""
+    return any("under data/" in b for b in G.bash_violations(cmd))
+
+
 # ── unrecoverable trees ───────────────────────────────────────────────────────────────
 def test_appdata_redirect_not_protected_tree():
-    """_PROTECTED_TREE is path-segment anchored: `AppData/` is not `data/`."""
-    cmd = "git show HEAD:x > /c/Users/evarg/AppData/Local/Temp/claude/s/out.txt"
-    assert G._protected_path_violation(cmd) is False
+    """The protected tree is path-segment anchored: `AppData/` is not `data/`."""
+    cmd = "git show HEAD:x > /c/scratch/AppData/Local/Temp/out.txt"
+    assert _refuses_data(cmd) is False
 
 
 @pytest.mark.parametrize("cmd", [
@@ -28,8 +33,8 @@ def test_appdata_redirect_not_protected_tree():
     "> data/x.db",
     "mv data/ed_console.db b",
 ])
-def test_real_protected_tree_targets_still_block(cmd):
-    assert G._protected_path_violation(cmd) is True, cmd
+def test_real_protected_tree_targets_block(cmd):
+    assert _refuses_data(cmd) is True, cmd
 
 
 @pytest.mark.parametrize("cmd", [
@@ -39,7 +44,7 @@ def test_real_protected_tree_targets_still_block(cmd):
     "rm backups/db/x.db",                             # backups/ is no protected tree (no backups are kept)
 ])
 def test_protected_tree_permits_restores_messages_and_reads(cmd):
-    assert G._protected_path_violation(cmd) is False, cmd
+    assert _refuses_data(cmd) is False, cmd
 
 
 # ── lock disable ───────────────────────────────────────────────────────────────────────
