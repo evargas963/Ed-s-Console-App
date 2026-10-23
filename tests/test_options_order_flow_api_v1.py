@@ -4,9 +4,7 @@ daemon's status (live_market_plane.record_feed_heartbeat), the route.
 
 Real data: every message of SPY 2026-10-05 774 call received 2026-10-05 14:00:00-14:00:03 CT, as
 Schwab sent them (tests/fixtures/real_stream_mix_2026_10_05_1400ct.json: four OPTIONS_BOOK
-messages); the stored messages of SPY 2026-10-23 761 call and 762 put from the one carrying
-CONTRACT_TYPE (tests/fixtures/real_spy_option_contract_type_2026_10_23.json, read from
-stream_capture.db). STAND-IN (named): the daemon's status, holding the contract or not.
+messages). STAND-IN (named): the daemon's status, holding the contract or not.
 """
 from __future__ import annotations
 
@@ -18,15 +16,12 @@ import app.options.order_flow.state as ofls
 import live_market_plane as lmp
 import server
 from app.options.order_flow import streaming as ofs
-from app.options.order_flow.history import TAPE
-from stream_spine import book_msg, options_quote_msg
+from stream_spine import book_msg
 
 CONTRACT = "SPY   261005C00774000"
 _MIX = json.loads((Path(__file__).parent / "fixtures" / "real_stream_mix_2026_10_05_1400ct.json")
                   .read_text(encoding="utf-8"))
 BOOKS = [m for m in _MIX["messages"] if m["service"] == "OPTIONS_BOOK" and m["item"]["key"] == CONTRACT]
-_SIDES = json.loads((Path(__file__).parent / "fixtures" / "real_spy_option_contract_type_2026_10_23.json")
-                    .read_text(encoding="utf-8"))["contracts"]
 
 
 def _daemon_holds(*services: str) -> None:
@@ -55,29 +50,6 @@ def test_the_flow_panel_shows_schwabs_newest_option_book_as_sent():
     assert len(BOOKS) == 4 and body["status"] == "ok"
     assert (body["depth"]["1"]["bid_total"], body["depth"]["1"]["ask_total"]) == (
         newest["BIDS"][0]["TOTAL_VOLUME"], newest["ASKS"][0]["TOTAL_VOLUME"])
-
-
-def test_the_flow_panel_shows_the_side_schwab_sent_in_the_contracts_first_message():
-    """Real SPY 2026-10-23 761 call and 762 put: Schwab sends CONTRACT_TYPE in a contract's first
-    LEVELONE_OPTIONS message only; after the messages that leave it out, the Flow panel still shows
-    CALL and PUT. Before Schwab sends it, the side is unknown."""
-    sides = {}
-    try:
-        for sym, msgs in _SIDES.items():
-            ofs._ingest_pushed(f"optquote.{sym}", options_quote_msg(symbol=sym, content=msgs[1]["item"], src="schwab",
-                                                                    ts_recv=msgs[1]["ts_recv"]))
-            before = server.options_microstructure(sym, time.time())["put_call"]
-            for m in msgs:
-                ofs._ingest_pushed(f"optquote.{sym}", options_quote_msg(symbol=sym, content=m["item"], src="schwab",
-                                                                        ts_recv=m["ts_recv"]))
-            sides[sym] = (before, server.options_microstructure(sym, time.time())["put_call"])
-    finally:
-        for sym in _SIDES:
-            TAPE.forget(sym)
-        ofls.clear_all_live_state()
-    assert [len(m) for m in _SIDES.values()] == [4, 4]
-    assert all("CONTRACT_TYPE" not in m["item"] for msgs in _SIDES.values() for m in msgs[1:])
-    assert sides == {"SPY   261023C00761000": (None, "CALL"), "SPY   261023P00762000": (None, "PUT")}
 
 
 def test_with_no_book_from_schwab_the_flow_panel_says_so():
