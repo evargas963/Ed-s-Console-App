@@ -11,6 +11,7 @@ Real data: SPY's and TSLA's /pricehistory answers of 2026-10-07 09:57 UTC
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import subprocess
 import sys
@@ -18,6 +19,7 @@ import threading
 from datetime import datetime
 from pathlib import Path
 
+import push_changes
 import server
 from app.market_data.schwab.streaming import capture, live_push
 from app.options.order_flow import streaming as ofs
@@ -93,13 +95,32 @@ def _grouped(candles: list[dict], key) -> list[dict]:
     return list(out.values())
 
 
-def _held(tk: str, series: str, now: datetime) -> None:
-    """Schwab's captured `series` answer for `tk`, published, pushed and taken by the console."""
+def _held(tk: str, series: str, now: datetime, candles: "list | None" = None) -> None:
+    """Schwab's captured `series` answer for `tk` (its `candles` only, when given), published,
+    pushed and taken by the console."""
     from calibration.complete_chain_capture import price_history_message
     a = HISTORY[(tk, *_SERIES[series])]
-    topic, msg = price_history_message(tk, series, a["body"], a["answered_utc"])
+    body = a["body"] if candles is None else dict(a["body"], candles=candles)
+    topic, msg = price_history_message(tk, series, body, a["answered_utc"])
     ofs._ingest_pushed(topic, json.loads(live_push.frames(topic, msg)[0])["msg"])
     server._write_streamed_bars([ofs.streamed_bars.get_nowait()], now)
+
+
+def _told(tk: str, takes) -> list:
+    """What the page open on `tk` is told after each of `takes` (callables run in turn)."""
+    async def main():
+        push_changes.bind(asyncio.get_running_loop())
+        page = push_changes.subscribe(tk)
+        try:
+            told = []
+            for take in takes:
+                take()
+                told.append(await push_changes.next_changes(page, 0.5))
+            return told
+        finally:
+            push_changes.unsubscribe(tk, page)
+            push_changes.bind(None)
+    return asyncio.run(main())
 
 
 def test_today_s_candle_is_rolled_up_live_from_the_regular_session_bars():
@@ -176,6 +197,64 @@ def test_the_console_takes_schwabs_bars_and_candles_from_the_push_and_computes_t
             server._daily.pop(tk, None)
 
 
+def test_a_price_history_sent_again_with_every_minute_held_changes_nothing():
+    """The daemon pushes a ticker's price history again (it asks once per ET date and again after
+    its own restart): the console's bars stay Schwab's candles as first taken, and the ticker's
+    open page is told of no change (no liquidity push, no levels rebuilt for it)."""
+    for tk in ("SPY", "TSLA"):
+        now = datetime.fromtimestamp(HISTORY[(tk, "minute", "1")]["answered_utc"], ET)
+        server._bars.pop(tk, None)
+        try:
+            first, again = _told(tk, [lambda: _held(tk, "1m", now), lambda: _held(tk, "1m", now)])
+            got = [(b.ts, b.open, b.high, b.low, b.close, b.volume) for b in server._bars_1m(tk, server.BARS_KEPT)]
+        finally:
+            server._bars.pop(tk, None)
+        assert "liquidity" in first, tk
+        assert again == set(), (tk, again)
+        assert got == [(c["datetime"] / 1000, c["open"], c["high"], c["low"], c["close"], c["volume"])
+                       for c in HISTORY[(tk, "minute", "1")]["body"]["candles"]], tk
+
+
+def test_a_price_history_that_brings_minutes_not_held_adds_exactly_those():
+    """An earlier answer held without its newest session and without every seventh minute; the
+    next answer brings them: the bars are Schwab's whole answer, each minute once, in time order,
+    and the page is told the bars changed."""
+    for tk in ("SPY", "TSLA"):
+        sent = HISTORY[(tk, "minute", "1")]["body"]["candles"]
+        earlier = [c for i, c in enumerate(sent[:-390]) if i % 7]
+        now = datetime.fromtimestamp(HISTORY[(tk, "minute", "1")]["answered_utc"], ET)
+        server._bars.pop(tk, None)
+        try:
+            _held(tk, "1m", now, earlier)
+            (told,) = _told(tk, [lambda: _held(tk, "1m", now)])
+            got = [(b.ts, b.open, b.high, b.low, b.close, b.volume) for b in server._bars_1m(tk, server.BARS_KEPT)]
+        finally:
+            server._bars.pop(tk, None)
+        assert "liquidity" in told, tk
+        assert got == [(c["datetime"] / 1000, c["open"], c["high"], c["low"], c["close"], c["volume"])
+                       for c in sent], tk
+
+
+def test_new_daily_candles_reach_the_open_page_and_the_same_candles_again_do_not():
+    """The daily candles the ATR is computed from: an answer with a candle the console does not
+    hold tells the open page (the trade desk re-reads its ATR); the same answer again tells it
+    nothing."""
+    for tk in ("SPY", "TSLA"):
+        sent = HISTORY[(tk, "daily", "1")]["body"]["candles"]
+        now = datetime.fromtimestamp(HISTORY[(tk, "daily", "1")]["answered_utc"], ET)
+        server._daily.pop(tk, None)
+        try:
+            _held(tk, "1d", now, sent[:-1])
+            newer, again = _told(tk, [lambda: _held(tk, "1d", now), lambda: _held(tk, "1d", now)])
+            held = [(c.ts, c.open, c.high, c.low, c.close, c.volume) for c in server._daily[tk]]
+        finally:
+            server._daily.pop(tk, None)
+        assert "liquidity" in newer, tk
+        assert again == set(), (tk, again)
+        assert held == [(c["datetime"] / 1000, c["open"], c["high"], c["low"], c["close"], c["volume"])
+                        for c in sent], tk
+
+
 #: a console just started (a fresh interpreter): its first price history, SPY's and TSLA's
 #: 1-minute series as Schwab answered them, taken by the bar writer; the modules loaded meanwhile
 _FIRST_TAKE = """
@@ -218,7 +297,6 @@ def test_the_daemons_writer_records_every_answer_as_schwab_sent_it(tmp_path):
     D4): the daemon's chain sweep (capture.run_chains, on its thread) publishes each series on the
     daemon's bus, and the one writer (CaptureWriter, the bus's LOG reader) writes each answer whole,
     as sent, into stream_pricehistory_raw: SPY's 1-minute, 15-minute and daily answers."""
-    import asyncio
     import sqlite3
 
     db = tmp_path / "stream_capture.db"

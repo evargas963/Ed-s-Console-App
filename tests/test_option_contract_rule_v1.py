@@ -98,7 +98,7 @@ class _Market:
         self.daemon = capture.Daemon(self.bus, HealthRegistry(), watchlist, clock=clock)
 
     def chain(self, tk: str, ts: float = CAPTURED, contracts: "list[dict] | None" = None) -> None:
-        for topic, msg in chain_messages(tk, CHAINS[tk] if contracts is None else contracts, ts):
+        for topic, msg in chain_messages(tk, CHAINS[tk] if contracts is None else contracts, ts, None, None):
             self.bus.publish(topic, msg)
 
     def price(self, tk: str, last: float) -> None:

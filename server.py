@@ -205,6 +205,7 @@ TOKEN_PATH = token_path()
 #: number came from so a caller can never silently accept a lower-confidence source.
 SPOT_SOURCE_PLANE = "streaming_plane"          # live_market_plane.get_quote — the freshest real trade this process has seen
 SPOT_SOURCE_CAPTURE = "chain_capture"          # underlyingPrice of a stored chain capture (DATA_FLOW decision 7)
+SPOT_SOURCE_NONE = "none"                       # Schwab has sent no price
 
 
 #: Seconds the graceful shutdown gets before the process is killed outright. Generous
@@ -301,13 +302,13 @@ def _install_signal_handlers() -> None:
 def resolve_spot(ticker: str, *, now: float) -> tuple[float | None, str, float | None]:
     """(spot, source, as_of_ts_utc): the daemon's price row's Schwab LAST_PRICE as sent and its
     trade time. The row's own `outage` says the feed is not delivering it; the number stays.
-    (None, the outage reason or "none", None) until Schwab has sent one."""
+    (None, the outage reason or SPOT_SOURCE_NONE, None) until Schwab has sent one."""
     row = price_row(ticker)
     if row and row.get("spot") is not None:
         return row["spot"], SPOT_SOURCE_PLANE, row.get("trade_ts")
     outage = lmp.outage(ticker, "LEVELONE_EQUITIES", now)
     if outage is None:
-        return None, "none", None
+        return None, SPOT_SOURCE_NONE, None
     return None, outage, None
 
 
@@ -361,29 +362,44 @@ def _schwab_bar(start_ms, o, h, lo, c, volume) -> "Candle | None":
     or a price is not a number (AGENTS.md rule 2: absent, -999, text, NaN or infinity). A volume
     that is not a number, or negative, is absent."""
     start, o, h, lo, c = schwab_number(start_ms), schwab_number(o), schwab_number(h), schwab_number(lo), schwab_number(c)
-    if None in (start, o, h, lo, c):
+    if start is None or o is None or h is None or lo is None or c is None:
         return None
-    return Candle(ts=start / 1000.0, open=o, high=h, low=lo, close=c, volume=schwab_count(volume))
+    return Candle(start / 1000.0, o, h, lo, c, schwab_count(volume))
 
 
 def _write_price_history(msg: dict) -> "str | None":
     """One series of a ticker's price history as Schwab's /pricehistory answered it (pushed by the
-    capture daemon): its 1-minute bars into the ticker's bars, each streamed bar standing over
-    Schwab's history of its minute; its daily candles replacing the held ones. A candle without a
-    valid field is not kept. The ticker when its 1-minute bars changed, else None."""
+    capture daemon): its 1-minute bars into the ticker's bars, only the minutes not held taken (a
+    held minute, a streamed bar or an earlier history's, stands over Schwab's history of it); its
+    daily candles replacing the held ones. A candle without a valid field is not kept. The ticker
+    when the bars or candles it holds changed, else None. Runs on the bar writer, the one writer
+    of _bars and _daily."""
     tk = ticker_storage_key(msg["symbol"])
-    candles = [b for b in (_schwab_bar(c.get("datetime"), c.get("open"), c.get("high"), c.get("low"),
-                                       c.get("close"), c.get("volume")) for c in msg["answer"]["candles"])
-               if b is not None]
-    with _bars_lock:
-        if msg["series"] != "1m":
-            _daily[tk] = candles
+    sent = msg["answer"]["candles"]
+    if msg["series"] != "1m":
+        daily = [b for b in (_schwab_bar(c.get("datetime"), c.get("open"), c.get("high"), c.get("low"),
+                                         c.get("close"), c.get("volume")) for c in sent) if b is not None]
+        if tk in _daily and _daily[tk] == daily:
             return None
-        merged = {c.ts: c for c in candles}
-        if tk in _bars:
-            merged.update((c.ts, c) for c in _bars[tk])
-        _bars[tk] = [merged[t] for t in sorted(merged)][-BARS_KEPT:]
-    return tk
+        with _bars_lock:
+            _daily[tk] = daily
+        return tk
+    held = _bars[tk] if tk in _bars else []
+    held_minutes = {b.ts for b in held}
+    taken = {}
+    for c in sent:
+        start = schwab_number(c.get("datetime"))
+        if start is None or start / 1000.0 in held_minutes:
+            continue
+        b = _schwab_bar(start, c.get("open"), c.get("high"), c.get("low"), c.get("close"), c.get("volume"))
+        if b is not None:
+            taken[b.ts] = b
+    if not taken:
+        return None
+    bars = sorted([*held, *taken.values()], key=lambda b: b.ts)[-BARS_KEPT:]
+    with _bars_lock:
+        _bars[tk] = bars
+    return tk if any(t >= bars[0].ts for t in taken) else None
 
 
 def _keep_bar(tk: str, bar: "Candle") -> None:
@@ -437,8 +453,9 @@ def _write_streamed_bars(msgs: list, now: datetime) -> None:
             if "series" in msg:
                 tk = _write_price_history(msg)
                 if tk is not None:
-                    written.append(tk)
                     push_changes.changed(tk, push_changes.LIQUIDITY)
+                    if msg["series"] == "1m":
+                        written.append(tk)
             elif _write_streamed_bar(msg):
                 written.append(msg["symbol"])
         except Exception as e:  # noqa: BLE001 -- logged; the next bar is still written
@@ -1253,20 +1270,23 @@ def _previous_counts(memory, stored, price, product):
 
 
 def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | None" = None,
-                    *, captures: "list | None" = None,
+                    *, chain_spot: "tuple" = (None, None), captures: "list | None" = None,
                     now: "datetime | None" = None) -> "TerrainSnapshot | None":
     """THE producer of a ticker's levels, per-strike rows and gamma-surface grid.
 
     Prices the ticker's chain once -- overlaid with any fresher streamed option greeks, at the
-    current spot -- and publishes all three together, so the heatmap, Strike Detail and Key
-    Levels always show one computation. A delivered chain is passed in; a tick on a viewed ticker
-    passes none and the kept chain is repriced. Once that ticker's option window has ended, a
+    chain's one spot -- and publishes all three together, so the heatmap, Strike Detail and Key
+    Levels always show one computation. A delivered chain is passed in with its spot
+    (`chain_spot`: Schwab's LAST_PRICE when the chain was complete and its trade time; (None, None)
+    when the daemon held none); a tick on a viewed ticker passes none and the kept chain is
+    repriced at the kept chain's spot. Once that ticker's option window has ended, a
     later publication keeps the spot already published, so a later equity print does not move
     the close book. Called only on the one pricing thread
     (_price_chain), so each publication is computed from inputs read after the one it replaces.
     `captures` (startup
     and a closed market, DATA_FLOW decision 7) are the two newest market days' stored captures,
-    read once: the newest is priced with Schwab's underlying price from that capture, valued at
+    read once: the newest is priced at that capture's chain spot (one written before the chain
+    carried one: its nearest expiry's underlyingPrice, labelled chain_capture), valued at
     its own time, or at that ticker's option close when the capture is past it, and both feed
     the forces and prior-day rows. `now`: the instant of this publication (omitted, the clock's).
     A chain that is not a capture is valued then, or at that ticker's option close once it has
@@ -1304,19 +1324,28 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
         chain = _keep_last_reported(
             chain, _previous_counts(memory, payload.get("_count_capture"), published, product), begun, product,
             published)
-    if capture is not None:
-        spot, spot_source, spot_ts = capture["spot"], SPOT_SOURCE_CAPTURE, capture["ts_utc"]
-    elif valued_at < at:
-        # the window has ended: the spot already published is the close, and a later print is not
-        held_spot = payload.get("spot")
-        if held_spot is not None:
-            spot = held_spot
-            spot_source = payload.get("spot_source")
-            spot_ts = payload.get("spot_as_of_ts_utc")
-        else:
-            spot, spot_source, spot_ts = resolve_spot(tk, now=at.timestamp())
+    # the chain's spot as published: (price, source, time), kept with the chain for its reprices
+    if capture is not None and capture["spot_from_chain"]:
+        priced_at = (capture["spot"], SPOT_SOURCE_PLANE, capture["spot_ts"])
+    elif capture is not None:
+        # a capture written without the chain's spot: its nearest expiry's underlyingPrice
+        priced_at = (capture["spot"], SPOT_SOURCE_CAPTURE, capture["ts_utc"])
+    elif new_chain:
+        # Schwab's LAST_PRICE when the chain was complete, with its trade time; SPOT_SOURCE_NONE
+        # when the daemon held no price
+        source = SPOT_SOURCE_PLANE
+        if chain_spot[0] is None:
+            source = SPOT_SOURCE_NONE
+        priced_at = (chain_spot[0], source, chain_spot[1])
     else:
-        spot, spot_source, spot_ts = resolve_spot(tk, now=at.timestamp())
+        priced_at = payload["_chain_spot"]
+    if capture is None and valued_at < at and payload.get("spot") is not None:
+        # the window has ended: the spot already published is the close, and a later print is not
+        spot = payload.get("spot")
+        spot_source = payload.get("spot_source")
+        spot_ts = payload.get("spot_as_of_ts_utc")
+    else:
+        spot, spot_source, spot_ts = priced_at
     prev_spot = payload.get("spot")
     if new_chain:       # the ticker's contracts are the ones Schwab listed in this chain
         payload.update(_contract_symbols=frozenset(c.get("symbol") for c in chain if c.get("symbol")))
@@ -1349,7 +1378,7 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
         "_chain": chain, "_priced_chain": priced, "_books": snap.books,
         "_charm_by_expiry": snap.charm_by_expiry,
         "_iv_by_expiry": snap.iv_by_expiry,
-        "_chain_fetched_ts": fetched_ts,
+        "_chain_fetched_ts": fetched_ts, "_chain_spot": priced_at,
     })
     payload["_matrix_by_expiry"] = _ranked_matrices(payload)
     # the values read from the stored chain captures (forces, the prior day's per-strike rows)
@@ -1459,18 +1488,21 @@ _chains_waiting_lock = threading.Lock()
 _chains_delivered: "set[str]" = set()
 
 
-def _on_chain(ticker: str, contracts: "list | None", ts: float, reason: "str | None" = None) -> None:
+def _on_chain(ticker: str, contracts: "list | None", ts: float, reason: "str | None",
+              spot: "tuple | None") -> None:
     """The feed's chain callback (streaming.assemble_chain_part), on the event loop: a whole
-    chain the daemon fetched is priced on a pricing thread; a chain it could not deliver keeps
-    the ticker's last levels, which then say why no newer chain came."""
+    chain the daemon fetched is priced on a pricing thread at its one spot (spot, trade time);
+    a chain it could not deliver keeps the ticker's last levels, which then say why no newer
+    chain came."""
     tk = ticker_storage_key(ticker)
     if contracts is None:
         _terrain_refresh_last_error[tk] = f"chain fetch failed ({reason})"
         return
-    _wait_to_price(tk, DELIVERED, contracts, ts)
+    _wait_to_price(tk, DELIVERED, contracts, ts, spot)
 
 
-def _wait_to_price(tk: str, what: str, contracts: "list | None" = None, ts: "float | None" = None) -> bool:
+def _wait_to_price(tk: str, what: str, contracts: "list | None" = None, ts: "float | None" = None,
+                   spot: "tuple | None" = None) -> bool:
     """Queue a ticker's pricing (DELIVERED, STORED or REPRICE) for the pricing thread: a delivered
     chain replaces whatever waits for the ticker; anything else waits only for a ticker with
     nothing waiting, and stored captures only for one with nothing delivered. Returns whether it
@@ -1481,7 +1513,7 @@ def _wait_to_price(tk: str, what: str, contracts: "list | None" = None, ts: "flo
             return False
         if what == DELIVERED:
             _chains_delivered.add(tk)
-        _chains_waiting[tk] = (what, contracts, ts)
+        _chains_waiting[tk] = (what, contracts, ts, spot)
     if held is None:
         _chain_pricing.submit(_price_waiting_chain)
     return True
@@ -1492,11 +1524,12 @@ def _price_waiting_chain() -> None:
     with _chains_waiting_lock:
         waiting = list(_chains_waiting)
         tk = next((t for t in waiting if _chains_waiting[t][0] != STORED), waiting[0])
-        what, contracts, ts = _chains_waiting.pop(tk)
-    _price_chain(tk, what, contracts, ts)
+        what, contracts, ts, spot = _chains_waiting.pop(tk)
+    _price_chain(tk, what, contracts, ts, spot)
 
 
-def _price_chain(tk: str, what: str, contracts: "list | None", fetched_ts: "float | None") -> None:
+def _price_chain(tk: str, what: str, contracts: "list | None", fetched_ts: "float | None",
+                 spot: "tuple | None" = None) -> None:
     """THE producer of a ticker's levels (_publish_levels): from a newly fetched chain, with the
     chain's own fetch time as its as-of (an older streamed value never overrides it); from the
     held chain with the newest streamed values (REPRICE); or from the ticker's newest stored
@@ -1513,7 +1546,7 @@ def _price_chain(tk: str, what: str, contracts: "list | None", fetched_ts: "floa
             if captures:
                 _publish_levels(tk, captures=captures)
             return
-        _publish_levels(tk, contracts, fetched_ts)
+        _publish_levels(tk, contracts, fetched_ts, chain_spot=spot)
         _terrain_refresh_last_error.pop(tk, None)
     except Exception as e:  # noqa: BLE001 -- kept as the ticker's reason, and logged
         _terrain_refresh_last_error[tk] = f"pricing the chain failed: {type(e).__name__}: {e}"

@@ -1,7 +1,6 @@
 """The sed edit guard (tools/sed_edit_guard.py), run as Claude Code runs it: the wired hook chain
-on a hook payload, its exit code (2 refuses the command) and its message. On 2026-10-03 an agent
-changed a line of calibration/complete_chain_capture.py with `sed -i` against AGENTS.md
-("never edit source through a script")."""
+on a hook payload, its exit code (2 refuses the command) and its message. AGENTS.md: never edit
+source through a script."""
 from __future__ import annotations
 
 import json
@@ -24,12 +23,12 @@ def _hook(tool: str, tool_input: dict) -> subprocess.CompletedProcess[str]:
 
 
 @pytest.mark.parametrize("command", [
-    "sed -i 's/-> None:/-> bool:/' calibration/complete_chain_capture.py",   # 2026-10-03
+    "sed -i 's/-> None:/-> bool:/' calibration/complete_chain_capture.py",
     "sed -i.bak 's/a/b/' f.txt",
     "sed -ni 's/a/b/p' f.txt",
     "sed --in-place 's/a/b/' f.txt",
     "sed --in-place=.orig 's/a/b/' f.txt",
-    "cd /c/Users/evarg/Documents/Trading/EdWebConsole && sed -i 's/a/b/' f.txt",
+    "cd /c/repo/EdWebConsole && sed -i 's/a/b/' f.txt",
     "git status\nsed -i 's/a/b/' f.txt",
     "find . -name '*.py' -exec sed -i 's/a/b/' {} +",
     "ls *.py | xargs sed -i 's/a/b/'",

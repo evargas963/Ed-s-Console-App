@@ -216,7 +216,7 @@ async def _chains_then_console(contracts, fetched) -> list[dict]:
                     break
                 await asyncio.sleep(0.01)
             for ts in fetched:
-                for topic, msg in chain_messages("SPY", contracts, ts):
+                for topic, msg in chain_messages("SPY", contracts, ts, None, None):
                     bus.publish(topic, msg)
             got = []
             end = time.monotonic() + 3.0

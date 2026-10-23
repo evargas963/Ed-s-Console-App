@@ -5,7 +5,7 @@ import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 import server
-from tests.test_one_levels_producer_v1 import TK, _A, _AT, _CONTRACTS, _T, _cached, _daemon, _streamed
+from tests.test_one_levels_producer_v1 import TK, _A, _AT, _CONTRACTS, _SPOT, _T, _cached, _daemon, _streamed
 
 
 def test_a_missing_heartbeat_keeps_the_last_streamed_volume_on_the_levels():
@@ -18,9 +18,9 @@ def test_a_missing_heartbeat_keeps_the_last_streamed_volume_on_the_levels():
     try:
         _daemon(held=[_A], socket_open=True, at=_T)
         _streamed(_A, {"TOTAL_VOLUME": 999999}, _T - 60.0)
-        server._publish_levels(TK, _CONTRACTS, _T - 120.0, now=_AT)
+        server._publish_levels(TK, _CONTRACTS, _T - 120.0, chain_spot=(_SPOT, _T), now=_AT)
         lmp.record_feed_down()
-        server._publish_levels(TK, _CONTRACTS, _T - 120.0, now=_AT)
+        server._publish_levels(TK, _CONTRACTS, _T - 120.0, chain_spot=(_SPOT, _T), now=_AT)
         cached = _cached()
         strike = round(_CONTRACTS[0]["strikePrice"], 2)
         row = next(r for r in cached["_per_strike"]["all"] if r[0] == strike)
