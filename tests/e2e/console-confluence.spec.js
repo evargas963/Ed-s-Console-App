@@ -47,7 +47,13 @@ test('the matrix redraws when the priced chain updates and keeps the expiry', as
   await expect(page.locator('#cmBody')).toContainText(rows[0].score_text);
   await expect(page.locator('#cmBody')).toContainText('—');
   await expect(page.locator('#cmBody h1')).toHaveCount(0);
+  await expect(page.locator('#cmBody')).not.toContainText('Hover a level to trace its price');
   await expect(page.locator('#cmExp')).toHaveValue(FRONT);
+  const inside = body.levels.filter((l) => l.price <= hi && l.price >= lo);
+  expect(inside.length).toBeGreaterThan(0);
+  for (const lv of inside) {
+    await expect(page.locator('.level-pill', { hasText: lv.abbrev + ' ' + lv.price_text }).first()).toBeAttached();
+  }
   for (const lv of body.levels.filter((l) => l.price > hi)) {
     await expect(page.locator('#cmAbove')).toContainText(lv.abbrev + ' ' + lv.price_text);
   }

@@ -96,7 +96,7 @@ def test_the_matrix_reads_the_priced_book_and_leaves_flow_out():
     assert (body["preset"], body["ceiling"]) == ("0DTE", 72)
     assert body["weights_in_score"]["FLOWM"] == 0 and body["weights_in_score"]["DGEXM"] == 0
     assert body["expiries"][0]["label"] == "0DTE · 2026-10-22"
-    checked = 0
+    checked = grossed = 0
     for row in body["rows"]:
         bucket = book[row["strike"]]
         assert row["strike_text"] == price_text(row["strike"])
@@ -109,7 +109,8 @@ def test_the_matrix_reads_the_priced_book_and_leaves_flow_out():
             checked += 1
         if call is not None and put is not None and call >= 0 and put >= 0:
             assert row["gross_text"] == f"{(call + put) / 1e6:.2f}"
-    assert checked > 5
+            grossed += 1
+    assert checked > 5 and grossed > 5
 
 
 def test_a_zero_book_is_zero_charm_and_the_wall_is_drawn_at_its_own_price():
@@ -132,6 +133,29 @@ def test_a_zero_book_is_zero_charm_and_the_wall_is_drawn_at_its_own_price():
     walls = [level for level in body["levels"] if level["abbrev"] == "CW"]
     assert [(w["price"], w["price_text"], w["lane"]) for w in walls] == [
         (live["call_wall"], price_text(live["call_wall"]), "options")]
+
+
+def test_a_served_strike_with_no_open_interest_shows_zero_charm_and_is_scored():
+    """SPY's 2026-10-14 expiry as the console served it 2026-10-01 08:59:47 ET
+    (tests/fixtures/real_spy_2026_10_14_chain_oi_zero.json): strikes 761 to 764, inside the window,
+    have open interest 0 on both legs and no volume. Each one's charm on the matrix is 0.00, not
+    missing; with no open interest and no volume the strike is not scored, and says why."""
+    fx = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_spy_2026_10_14_chain_oi_zero.json")
+                    .read_text(encoding="utf-8"))
+    at = datetime.fromtimestamp(fx["chain_as_of_ts_utc"], ET)
+    zero = {k for k in {c["strikePrice"] for c in fx["contracts"]}
+            if all(c["openInterest"] == 0 for c in fx["contracts"] if c["strikePrice"] == k)}
+    try:
+        server._publish_levels("SPY", captures=[{"contracts": [dict(c) for c in fx["contracts"]],
+                                                 "ts_utc": fx["chain_as_of_ts_utc"], "spot": fx["priced_at_spot"],
+                                                 "et_date": at.date().isoformat(), "basis": CAPTURE_BASIS}], now=at)
+        body = server.confluence_payload("SPY", fx["expiry"], at)
+    finally:
+        server._terrain_cache.pop("SPY", None)
+    shown = [r for r in body["rows"] if r["strike"] in zero]
+    assert len(shown) >= 4
+    assert all(r["charm_text"] == "0.00" and r["charm_reason"] is None for r in shown)
+    assert all(r["score"] is None and r["missing"] == ["no open interest and no volume"] for r in shown)
 
 
 def test_the_window_is_five_strikes_each_side_of_the_price():

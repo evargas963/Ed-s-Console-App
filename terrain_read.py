@@ -80,7 +80,7 @@ def _pct_from(spot: float, level: float) -> float:
 
 def _fmt(label: str, level: float | None, spot: float) -> str:
     if level is None:
-        return f"{label}: unavailable"
+        return f"{label} -"
     return f"{label} {price_text(level)} ({_pct_from(spot, level) * 100:+.2f}%)"
 
 

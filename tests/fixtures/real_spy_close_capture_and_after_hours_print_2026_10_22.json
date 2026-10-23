@@ -1,5 +1,5 @@
 {
- "source": "production data/ed_console.db complete_chain_captures (read-only): SPY's 2026-10-22 expiry from the close capture the daemon began 2026-10-22 16:17:04 ET, every field as stored; and production data/stream_capture.db stream_quotes_raw (read-only): SPY's first LEVELONE_EQUITIES message carrying LAST_PRICE the daemon received from 18:00 ET that day, Schwab's item as recorded (native)",
+ "source": "production data/ed_console.db complete_chain_captures (read-only): SPY's 2026-10-22 expiry from the close capture the daemon began 2026-10-22 16:17:04 ET, every field as stored; and production data/stream_capture.db stream_quotes_raw (read-only): SPY's first LEVELONE_EQUITIES message carrying LAST_PRICE the daemon received from 18:00 ET that day, Schwab's item as recorded (native); and the first such message after the capture whose LAST_PRICE is more than 0.60 from the capture's price (a strike away)",
  "ticker": "SPY",
  "ts_utc": 1792700224.3624022,
  "spot": 764.04,
@@ -21349,6 +21349,32 @@
    "MARK_CHANGE_PERCENT": -1.169333,
    "POST_MARKET_NET_CHANGE": 0.31,
    "POST_MARKET_NET_CHANGE_PERCENT": 0.040578
+  }
+ },
+ "print_a_strike_away": {
+  "ts_recv": 1792701543.0707903,
+  "native": {
+   "key": "SPY",
+   "52": 126437,
+   "54": 53317885.210119,
+   "55": 1080,
+   "56": 200,
+   "ASK_PRICE": 764.1,
+   "LAST_PRICE": 773.1269,
+   "BID_SIZE": 1080,
+   "ASK_SIZE": 200,
+   "TOTAL_VOLUME": 53317885,
+   "LAST_SIZE": 126437,
+   "LAST_ID": "D",
+   "NET_CHANGE": 0.0369,
+   "QUOTE_TIME_MILLIS": 1792701542105,
+   "TRADE_TIME_MILLIS": 1792701541652,
+   "BID_TIME_MILLIS": 1792701542105,
+   "ASK_TIME_MILLIS": 1792701542039,
+   "LAST_MIC_ID": "XADF",
+   "NET_CHANGE_PERCENT": 0.004773,
+   "POST_MARKET_NET_CHANGE": 9.1669,
+   "POST_MARKET_NET_CHANGE_PERCENT": 1.199919
   }
  }
 }

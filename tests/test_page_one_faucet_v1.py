@@ -25,11 +25,13 @@ from fastapi.testclient import TestClient
 
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
+from app.options.order_flow.engine import compute_book_microstructure
+from tests.feed_live_helper import mark_feed_live
 import live_price_rows
 import server
 from instrument_identity import ticker_storage_key
 from stream_spine import options_quote_msg
-from tests.real_chains import CRWD
+from tests.real_chains import CRWD, SPY_CLOSE, SPY_PRINT_A_STRIKE_AWAY
 from time_et import ET
 
 _QUOTE = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_crwd_quote_2026_10_07.json")
@@ -141,7 +143,6 @@ def test_oi_and_volume_cells_carry_the_served_total(held):
 
 def test_a_book_with_no_age_is_not_reported_fresh():
     """LIVE badges read book_stale: an unknown book age is unknown (None), never False (fresh)."""
-    from app.options.order_flow.engine import compute_book_microstructure
     out = compute_book_microstructure({"content": {}}, now_ts=1_800_000_000.0)
     assert out["ages"]["book_age_sec"] is None and out["ages"]["book_stale"] is None
 
@@ -163,16 +164,37 @@ def test_with_no_published_levels_the_expiries_carry_the_levels_reason():
 
 
 @pytest.mark.parametrize("route", [
-    lambda: server.get_chain(ticker=TK, expiry=EXPIRY),
-    lambda: server.get_options_gamma_surface(ticker=TK),
-    lambda: server.get_terrain_strikes(ticker=TK),
+    lambda: server.get_chain(ticker="SPY", expiry="2026-10-22"),
+    lambda: server.get_options_gamma_surface(ticker="SPY"),
+    lambda: server.get_terrain_strikes(ticker="SPY"),
 ], ids=["chain", "gamma-surface", "terrain-strikes"])
-def test_the_spot_row_is_served(held, route):
+def test_the_spot_row_is_served(route):
     """The row every panel marks as spot: the listed strike nearest the live price, served (it
-    was worked out in six places in the page)."""
-    body = json.loads(route().body)
-    strikes = sorted({float(c["strikePrice"]) for c in _CONTRACTS})
-    assert body["spot_strike"] == min(strikes, key=lambda k: abs(k - LIVE))
+    was worked out in six places in the page). SPY's 2026-10-22 close capture, published at the
+    price Schwab sent in it (764.04), and SPY's first print after it a strike away (16:39:03 ET,
+    LAST_PRICE 773.1269, as the daemon received it): the row is the live price's strike."""
+    print_ = SPY_PRINT_A_STRIKE_AWAY
+    strikes = sorted({float(c["strikePrice"]) for c in SPY_CLOSE.chain})
+    live = min(strikes, key=lambda k: abs(k - print_["native"]["LAST_PRICE"]))
+    assert live != min(strikes, key=lambda k: abs(k - SPY_CLOSE.spot))
+    server._publish_levels("SPY", captures=[{"contracts": [dict(c) for c in SPY_CLOSE.chain],
+                                             "ts_utc": SPY_CLOSE.now.timestamp(), "spot": SPY_CLOSE.spot,
+                                             "et_date": SPY_CLOSE.now.date().isoformat(),
+                                             "basis": server.CAPTURE_BASIS}], now=SPY_CLOSE.now)
+    lmp.record_from_level_one_equity("SPY", print_["native"], received_ts=print_["ts_recv"])
+    lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": ["SPY"]}})
+    ofs._price_rows["SPY"] = live_price_rows.price_row("SPY", time.time())
+    try:
+        body = json.loads(route().body)
+    finally:
+        with server._terrain_cache_lock:
+            server._terrain_cache.pop("SPY", None)
+        ofs._price_rows.pop("SPY", None)
+        lmp._by_ticker.pop("SPY", None)
+        lmp._fields_by_ticker.pop("SPY", None)
+        lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "held": {}})
+        lmp.record_feed_down()
+    assert body["spot_strike"] == live
 
 
 def test_put_call_ratios_over_every_expiry_are_served(held):
@@ -246,8 +268,6 @@ def test_at_any_hour_the_price_is_schwabs_last_trade_with_schwabs_trade_time():
     captured it (stream_quotes_raw). Operator, 2026-10-01: "From Schwab's mouth to our UI's ears.
     Period." -- no live/closed verdict by our clock: the row serves Schwab's last price as the
     spot with Schwab's trade time, and every consumer reads it."""
-    import live_price_rows
-    from tests.feed_live_helper import mark_feed_live
     mark_feed_live("SPY")
     lmp.record_from_level_one_equity("SPY", {"LAST_PRICE": 772.04, "TRADE_TIME_MILLIS": 1790380799830},
                                      received_ts=time.time())
