@@ -361,29 +361,41 @@ def _schwab_bar(start_ms, o, h, lo, c, volume) -> "Candle | None":
     or a price is not a number (AGENTS.md rule 2: absent, -999, text, NaN or infinity). A volume
     that is not a number, or negative, is absent."""
     start, o, h, lo, c = schwab_number(start_ms), schwab_number(o), schwab_number(h), schwab_number(lo), schwab_number(c)
-    if None in (start, o, h, lo, c):
+    if start is None or o is None or h is None or lo is None or c is None:
         return None
-    return Candle(ts=start / 1000.0, open=o, high=h, low=lo, close=c, volume=schwab_count(volume))
+    return Candle(start / 1000.0, o, h, lo, c, schwab_count(volume))
 
 
 def _write_price_history(msg: dict) -> "str | None":
     """One series of a ticker's price history as Schwab's /pricehistory answered it (pushed by the
-    capture daemon): its 1-minute bars into the ticker's bars, each streamed bar standing over
-    Schwab's history of its minute; its daily candles replacing the held ones. A candle without a
-    valid field is not kept. The ticker when its 1-minute bars changed, else None."""
+    capture daemon): its 1-minute bars into the ticker's bars, only the minutes not held taken (a
+    held minute, a streamed bar or an earlier history's, stands over Schwab's history of it); its
+    daily candles replacing the held ones. A candle without a valid field is not kept. The ticker
+    when its 1-minute bars changed, else None. Runs on the bar writer, the one writer of _bars."""
     tk = ticker_storage_key(msg["symbol"])
-    candles = [b for b in (_schwab_bar(c.get("datetime"), c.get("open"), c.get("high"), c.get("low"),
-                                       c.get("close"), c.get("volume")) for c in msg["answer"]["candles"])
-               if b is not None]
+    sent = msg["answer"]["candles"]
+    if msg["series"] != "1m":
+        daily = [b for b in (_schwab_bar(c.get("datetime"), c.get("open"), c.get("high"), c.get("low"),
+                                         c.get("close"), c.get("volume")) for c in sent) if b is not None]
+        with _bars_lock:
+            _daily[tk] = daily
+        return None
+    held = _bars[tk] if tk in _bars else []
+    held_minutes = {b.ts for b in held}
+    taken = {}
+    for c in sent:
+        start = schwab_number(c.get("datetime"))
+        if start is None or start / 1000.0 in held_minutes:
+            continue
+        b = _schwab_bar(start, c.get("open"), c.get("high"), c.get("low"), c.get("close"), c.get("volume"))
+        if b is not None:
+            taken[b.ts] = b
+    if not taken:
+        return None
+    bars = sorted([*held, *taken.values()], key=lambda b: b.ts)[-BARS_KEPT:]
     with _bars_lock:
-        if msg["series"] != "1m":
-            _daily[tk] = candles
-            return None
-        merged = {c.ts: c for c in candles}
-        if tk in _bars:
-            merged.update((c.ts, c) for c in _bars[tk])
-        _bars[tk] = [merged[t] for t in sorted(merged)][-BARS_KEPT:]
-    return tk
+        _bars[tk] = bars
+    return tk if any(t >= bars[0].ts for t in taken) else None
 
 
 def _keep_bar(tk: str, bar: "Candle") -> None:

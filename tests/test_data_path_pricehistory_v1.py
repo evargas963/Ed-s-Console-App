@@ -11,6 +11,7 @@ Real data: SPY's and TSLA's /pricehistory answers of 2026-10-07 09:57 UTC
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import subprocess
 import sys
@@ -18,6 +19,7 @@ import threading
 from datetime import datetime
 from pathlib import Path
 
+import push_changes
 import server
 from app.market_data.schwab.streaming import capture, live_push
 from app.options.order_flow import streaming as ofs
@@ -176,6 +178,39 @@ def test_the_console_takes_schwabs_bars_and_candles_from_the_push_and_computes_t
             server._daily.pop(tk, None)
 
 
+def test_a_price_history_sent_again_with_every_minute_held_changes_nothing():
+    """The daemon pushes a ticker's price history again (it asks once per ET date and again after
+    its own restart; production's stream_capture.db holds 144 such 1-minute answers for 11 tickers
+    over 2026-10-19..23, 27 of them adding no minute): the console's bars stay Schwab's candles as
+    first taken, and the ticker's open page is told of no change (no liquidity push, no levels
+    rebuilt for it)."""
+    now = datetime.fromtimestamp(HISTORY[("SPY", "minute", "1")]["answered_utc"], ET)
+    minutes = [(c["datetime"] / 1000, c["open"], c["high"], c["low"], c["close"], c["volume"])
+               for c in HISTORY[("SPY", "minute", "1")]["body"]["candles"]]
+    server._bars.pop("SPY", None)
+
+    async def main():
+        push_changes.bind(asyncio.get_running_loop())
+        page = push_changes.subscribe("SPY")
+        try:
+            _held("SPY", "1m", now)
+            first = await push_changes.next_changes(page, 1.0)
+            _held("SPY", "1m", now)
+            again = await push_changes.next_changes(page, 0.2)
+            return first, again
+        finally:
+            push_changes.unsubscribe("SPY", page)
+            push_changes.bind(None)
+    try:
+        first, again = asyncio.run(main())
+        got = [(b.ts, b.open, b.high, b.low, b.close, b.volume) for b in server._bars_1m("SPY", server.BARS_KEPT)]
+    finally:
+        server._bars.pop("SPY", None)
+    assert "liquidity" in first
+    assert again == set(), again
+    assert got == minutes
+
+
 #: a console just started (a fresh interpreter): its first price history, SPY's and TSLA's
 #: 1-minute series as Schwab answered them, taken by the bar writer; the modules loaded meanwhile
 _FIRST_TAKE = """
@@ -218,7 +253,6 @@ def test_the_daemons_writer_records_every_answer_as_schwab_sent_it(tmp_path):
     D4): the daemon's chain sweep (capture.run_chains, on its thread) publishes each series on the
     daemon's bus, and the one writer (CaptureWriter, the bus's LOG reader) writes each answer whole,
     as sent, into stream_pricehistory_raw: SPY's 1-minute, 15-minute and daily answers."""
-    import asyncio
     import sqlite3
 
     db = tmp_path / "stream_capture.db"
