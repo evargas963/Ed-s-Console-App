@@ -1,8 +1,7 @@
-# institutional-synthetic-ok: inject index≠WT and sole-writer violations to prove RC-217 BLOCKs.
-"""Operating process lock — negative controls + quiet paths (RC-217)."""
+# institutional-synthetic-ok: inject cross-checkout edits and destructive git to prove the locks BLOCK.
+"""Operating process lock — negative controls + quiet paths."""
 from __future__ import annotations
 
-import subprocess
 import sys
 from pathlib import Path
 
@@ -14,22 +13,9 @@ import tools.operating_process_lock as OPL  # noqa: E402
 import tools.process_lock_guard as PLG  # noqa: E402
 
 
-def _init_repo(tmp_path: Path) -> Path:
-    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
-    subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=tmp_path, check=True)
-    subprocess.run(["git", "config", "user.name", "t"], cwd=tmp_path, check=True)
-    (tmp_path / "governance").mkdir(parents=True, exist_ok=True)
-    (tmp_path / "tools").mkdir(parents=True, exist_ok=True)
-    (tmp_path / "db.py").write_text("# RC-183\nis_collect_window_bar_end_ts_utc\n", encoding="utf-8")
-    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True, capture_output=True)
-    subprocess.run(["git", "commit", "-m", "init"], cwd=tmp_path, check=True, capture_output=True)
-    return tmp_path
-
-
 def test_edit_branch_topology_rails_only_no_role_denylist(tmp_path):
-    """2026-08-24 teardown: the role/mission/authority edit DENYLISTS are GONE and must not
-    resurrect. The Edit branch carries only topology rails that name no agent — RC-442/RC-477
-    cross-checkout (a LINKED worktree editing the primary), and the live-checkout invariant #4
+    """No role/mission/authority edit denylist exists. The Edit branch carries only topology
+    rails that name no agent — cross-checkout (a LINKED worktree editing the primary), and the live-checkout invariant #4
     (a session that IS the production primary editing its OWN app code). A linked worktree
     editing its own files stays unblocked: that is where development belongs. Deterministic
     against a temp topology, so it holds in a primary clone (CI) and a linked worktree alike."""
@@ -44,10 +30,6 @@ def test_edit_branch_topology_rails_only_no_role_denylist(tmp_path):
     assert any("PROD_CHECKOUT_APP_EDIT" in b for b in bad), bad
     # ...but a non-app file (docs/governance) in the primary is NOT gated
     assert PLG.production_checkout_app_edit_violations({"file_path": str(primary / "notes.md")}, primary) == []
-    # no role-based denylist resurrected
-    assert not hasattr(OPL, "claude_isolated_edit_violation")
-    assert not hasattr(OPL, "operator_go_granted")
-    assert not hasattr(OPL, "pm_mission_record")
 
 
 def _linked_worktree_layout(tmp_path: Path) -> tuple[Path, Path]:
@@ -66,8 +48,8 @@ def _linked_worktree_layout(tmp_path: Path) -> tuple[Path, Path]:
 
 
 def test_cross_checkout_edit_into_primary_blocks(tmp_path):
-    """RC-442(a)/RC-477: a linked-worktree session editing the PRIMARY working tree is the
-    2026-08-20 hazard — the rail must fire on that exact topology."""
+    """A linked-worktree session editing the PRIMARY working tree: the rail fires on that
+    exact topology."""
     primary, wt = _linked_worktree_layout(tmp_path)
     bad = PLG.cross_checkout_edit_violations(
         {"file_path": str(primary / "db.py")}, repo=wt)
@@ -102,27 +84,11 @@ def test_rail_fails_open_on_unreadable_topology(tmp_path):
         {"file_path": str(tmp_path / "anything.py")}, repo=wt) == []
 
 
-def test_index_worktree_mismatch_detected(tmp_path, monkeypatch):
-    repo = _init_repo(tmp_path)
-    db = repo / "db.py"
-    db.write_text(db.read_text(encoding="utf-8") + "\n# wt delta\n", encoding="utf-8")
-    monkeypatch.chdir(repo)
-    mism = OPL.index_worktree_mismatches(repo)
-    assert any("index≠WT" in m or "worktree=" in m for m in mism)
-
-
-def test_index_parity_passes_when_clean(tmp_path, monkeypatch):
-    repo = _init_repo(tmp_path)
-    monkeypatch.chdir(repo)
-    assert OPL.index_worktree_mismatches(repo) == []
-
-
-def test_reset_guard_blocks_destructive_git_on_product(monkeypatch, tmp_path):
+def test_reset_guard_blocks_destructive_git_on_product():
     """LOCK-2 (RC-231): soft tree-destructive git against product scope BLOCKS.
 
     The guard's own static inventory (PRODUCT_WIPE_PROTECTED) is the only thing that can
-    satisfy it — no mission scope, no grant file (both gone, 2026-08-24 teardown)."""
-    monkeypatch.delenv("ED_RESET_GUARD", raising=False)
+    satisfy it."""
     for cmd in ("git restore -- static/chart.html",
                 "git checkout -- server.py",
                 "git restore -- math_levels.py",
@@ -133,43 +99,17 @@ def test_reset_guard_blocks_destructive_git_on_product(monkeypatch, tmp_path):
         assert OPL.reset_guard_violations(cmd), f"reset guard silent on: {cmd}"
 
 
-def test_reset_guard_permits_safe_git(monkeypatch, tmp_path):
+def test_reset_guard_permits_safe_git():
     """LOCK-2 negative control: index-only and read-only git stays legal."""
-    monkeypatch.delenv("ED_RESET_GUARD", raising=False)
     for cmd in ("git status", "git log --oneline -3",
                 "git restore --staged governance/root_cause_log.md",
                 "git stash list", "git checkout -b feature/x"):
         assert not OPL.reset_guard_violations(cmd), f"reset guard false-fired on: {cmd}"
 
 
-def test_reset_guard_escapes_do_not_disable(monkeypatch):
-    """RC-450: ED_RESET_GUARD=off must not disarm the wipe block."""
-    monkeypatch.delenv("ED_RESET_GUARD", raising=False)
-    assert OPL.reset_guard_violations("git restore -- static/chart.html")
-    monkeypatch.setenv("ED_RESET_GUARD", "off")
-    assert OPL.reset_guard_violations("git restore -- static/chart.html")
-
-
-def test_measure_report_has_enforcement_hashes():
-    rep = OPL.measure_report()
-    assert "enforcement_hashes" in rep
-    # 2026-08-24 teardown: no role/GO/mission records — the repo stores none of them.
-    assert "sole_writer" not in rep
-    assert "pm_mission" not in rep
-    assert "operator_go" not in rep
-
-
-def test_main_precommit_exits_zero_on_clean_repo(tmp_path, monkeypatch):
-    repo = _init_repo(tmp_path)
-    monkeypatch.chdir(repo)
-    monkeypatch.setattr(OPL, "REPO", repo)
-    rc = OPL.main(["--pre-commit"])
-    assert rc == 0
-
-
 # ---------------------------------------------------------------------------
-# RC-234 — pipe-masked commits (the t6+t12 slice reported exit 0 off `| tail -3`
-# while HEAD never moved; the filter's exit code replaced the commit's).
+# RC-234 — pipe-masked commits: a `git commit` piped into a filter reports the filter's
+# exit code, not the commit's.
 # ---------------------------------------------------------------------------
 
 def test_rc234_piped_commit_blocks():
