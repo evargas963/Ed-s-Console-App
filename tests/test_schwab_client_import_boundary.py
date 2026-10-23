@@ -69,12 +69,13 @@ import json, sys
 from pathlib import Path
 import server
 from app.options.order_flow import streaming as ofs
+from calibration.complete_chain_capture import chain_messages
 from fastapi.testclient import TestClient
 fx = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 with TestClient(server.app) as client:
     ofs._on_chain_callback = server._on_chain
-    ofs._ingest_pushed("chain.SPY", {"src": "schwab_chain", "ticker": "SPY", "ts_recv": fx["capture_ts_utc"],
-                                     "part": 0, "parts": 1, "contracts": fx["chain"]})
+    for topic, msg in chain_messages("SPY", fx["chain"], fx["capture_ts_utc"], fx["spot"], fx["capture_ts_utc"]):
+        ofs._ingest_pushed(topic, msg)
     server._chain_pricing.submit(lambda: None).result(timeout=120)   # the chain is priced
     for route in server.app.routes:
         # /api/changes is an open-ended event stream (it reads only the push's own state)

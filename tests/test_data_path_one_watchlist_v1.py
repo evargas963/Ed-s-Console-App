@@ -76,7 +76,7 @@ def _answers(log) -> "list[tuple[str, str, int, str]]":
 def _market(bus, ticker: str, contracts: "list[dict]", price: float, ts: float) -> None:
     """`ticker`'s chain and price on the daemon's bus, as the chain sweep and the stream publish
     them: the option rule's inputs."""
-    for topic, msg in chain_messages(ticker, contracts, ts):
+    for topic, msg in chain_messages(ticker, contracts, ts, price, ts):
         bus.publish(topic, msg)
     bus.publish(f"quote.{ticker}", quote_msg(symbol=ticker, last=price, src="schwab_l1",
                                              native={"key": ticker, "LAST_PRICE": price}))
@@ -328,7 +328,7 @@ def test_a_viewed_ticker_warms_only_on_the_watchlist_and_a_silent_daemon_says_so
         assert (d_on["warming"], d_on["reason"]) == (True, "no terrain snapshot has been computed yet")
         assert (d_off["warming"], d_off["reason"]) == (False, "no chain is fetched for this ticker: it is not on "
                                                               "the watchlist")
-        server._on_chain(on, None, time.time(), "full chain returned HTTP 400")
+        server._on_chain(on, None, time.time(), "full chain returned HTTP 400", None)
         assert json.loads(server.get_options_gamma_surface(on).body)["reason"] == (
             "no terrain snapshot has been computed yet — chain fetch failed (full chain returned HTTP 400)")
         lmp.record_feed_heartbeat({"ts": time.time() - 100, "schwab_socket_open": True, "watchlist": [on]})

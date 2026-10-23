@@ -49,7 +49,8 @@ def _published():
     with server._terrain_cache_lock:              # this test's chain, never one an earlier test left
         server._terrain_cache.pop(TK, None)
     _price(_SPOT)
-    assert server._publish_levels(TK, copy.deepcopy(_CHAIN), _AT.timestamp(), now=_AT) is not None
+    assert server._publish_levels(TK, copy.deepcopy(_CHAIN), _AT.timestamp(), chain_spot=(_SPOT, _AT.timestamp()),
+                                  now=_AT) is not None
     yield
     with server._terrain_cache_lock:
         server._terrain_cache.pop(TK, None)
@@ -132,7 +133,7 @@ def test_a_new_publication_serves_the_new_number():
         return next(c for c in d["cells"] if c["strike"] == k)["oi"][col]["total"]
     chain = copy.deepcopy(_CHAIN)
     next(c for c in chain if c["symbol"] == target["symbol"])["openInterest"] += 1000
-    server._publish_levels(TK, chain, _AT.timestamp() + 1, now=_AT)
+    server._publish_levels(TK, chain, _AT.timestamp() + 1, chain_spot=(_SPOT, _AT.timestamp()), now=_AT)
     now = _heat(scope="all")
     assert oi(now) == oi(first) + 1000
     assert now["surface_seq"] == first["surface_seq"] + 1
