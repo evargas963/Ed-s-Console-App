@@ -95,8 +95,8 @@
       '</span><span>microprice ' + num(d.microprice) + '</span></div>';
 
     var rowsTob = [
-      ['Bid × size', d.top_outage || num(tob.bid) + ' × ' + int(tob.bid_size), bk('top_of_book.bid')],
-      ['Ask × size', d.top_outage || num(tob.ask) + ' × ' + int(tob.ask_size), bk('top_of_book.ask')],
+      ['Bid × size', num(tob.bid) + ' × ' + int(tob.bid_size), bk('top_of_book.bid')],
+      ['Ask × size', num(tob.ask) + ' × ' + int(tob.ask_size), bk('top_of_book.ask')],
     ];
     var rowsImb = [
       ['Depth 1 imbalance', num(dep(1, 'imbalance'), 3), bk('depth.*.imbalance')],
@@ -105,9 +105,16 @@
       ['Bid total (5)', int(dep(5, 'bid_total')), bk('depth.*.bid_total')],
       ['Ask total (5)', int(dep(5, 'ask_total')), bk('depth.*.ask_total')],
     ];
+    function whenAge(when, sec) {
+      var age = sec != null ? (Math.round(sec) + 's') : null;
+      if (when != null && age != null) return when + ' · ' + age;
+      if (when != null) return when;
+      if (age != null) return age;
+      return '—';
+    }
     var fresh = [
-      ['Book age', ages.book_age_sec != null ? Math.round(ages.book_age_sec) + 's' : '—', bk('ages.book_age_sec')],
-      ['Quote age', ages.quote_age_sec != null ? Math.round(ages.quote_age_sec) + 's' : '—', bk('ages.quote_age_sec')],
+      ['Book age', whenAge(d.book_time_ct, ages.book_age_sec), bk('ages.book_age_sec')],
+      ['Quote age', whenAge(d.quote_time_ct, ages.quote_age_sec), bk('ages.quote_age_sec')],
     ];
     var wallsHtml = walls.length
       ? walls.map(function (w) { return '<div class="fl-row"><span class="k">' + esc(w.side || '—') + ' @ ' + num(w.price) +
@@ -128,7 +135,7 @@
       '<div class="dom-wrap">' +
         '<div class="dom-ladder">' + ladderHtml(bidLevels, askLevels, wallSet) + midHtml + '</div>' +
         '<div class="dom-stats">' +
-          section('Top of book', rowsTob) + section('Imbalance', rowsImb) + section('Freshness', fresh) +
+          section('Top of book' + (d.top_outage ? ' · OFFLINE' : ''), rowsTob) + section('Imbalance', rowsImb) + section('Freshness', fresh) +
         '</div>' +
       '</div>' +
       '<div class="fl-sec" style="margin-top:14px;"><div class="fl-sec-h">Wall candidates (size-outlier heuristic, displayed book only)</div>' + wallsHtml + '</div>' +

@@ -10,6 +10,8 @@ MRVL:     MRVL's full chain, all 20 expiries, every strike, at 10:31:20 ET (spot
           expiry's answer).
 NFLX:     NFLX's 2026-10-16, 2027-12-17 and 2028-01-21 expiries at 10:32:20 ET; 8 contracts with
           open interest carry Greeks Schwab sent as -999.
+SPY_CLOSE: SPY's 2026-10-22 expiry from the close capture begun 2026-10-22 16:17:04 ET, with SPY's
+          LEVELONE_EQUITIES prints after it as the daemon received them.
 """
 from __future__ import annotations
 
@@ -41,3 +43,10 @@ CRWD = _load("real_crwd_complete_chain_2026_10_07.json")
 TSLA = _load("real_tsla_complete_chain_2026_10_07.json")
 MRVL = _load("real_mrvl_full_chain_2026_10_07.json")
 NFLX = _load("real_nflx_chain_2026_10_07_three_expiries.json")
+SPY_CLOSE = _load("real_spy_close_capture_and_after_hours_print_2026_10_22.json")
+#: SPY's first LEVELONE_EQUITIES message with a LAST_PRICE from 18:00 ET 2026-10-22, as recorded
+_SPY_CLOSE_FX = json.loads((_FX / "real_spy_close_capture_and_after_hours_print_2026_10_22.json")
+                           .read_text(encoding="utf-8"))
+SPY_AFTER_HOURS_PRINT = _SPY_CLOSE_FX["after_hours_print"]
+#: SPY's first LEVELONE_EQUITIES message after that capture whose LAST_PRICE is a strike from it
+SPY_PRINT_A_STRIKE_AWAY = _SPY_CLOSE_FX["print_a_strike_away"]

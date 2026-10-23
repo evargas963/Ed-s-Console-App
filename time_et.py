@@ -44,6 +44,22 @@ def et_date_str_from_ts_utc(ts_utc: float) -> str:
 PRE_MARKET, RTH, AFTER_HOURS, CLOSED, UNKNOWN = "Pre-Market", "RTH", "After-Hours", "Closed", "Unknown"
 #: Schwab's option markets in /markets: stock and ETF options, index options
 EQUITY_OPTIONS, INDEX_OPTIONS = "EQO", "IND"
+#: Underlyings whose listed options run to the index close. Schwab's equity-option
+#: window ends earlier and names no separate window for them (docs/DATA_FLOW.md).
+_INDEX_CLOSE_UNDERLYINGS = frozenset({"SPY", "QQQ", "IWM"})
+
+
+def option_close_product(ticker: str) -> str:
+    """The option market whose regular close is this ticker's option close.
+
+    An index Schwab names with "$", and SPY, QQQ and IWM, stop at the index close.
+    Every other ticker stops at the equity-option close."""
+    if not isinstance(ticker, str):
+        return EQUITY_OPTIONS
+    t = ticker.strip().upper()
+    if t.startswith("$") or t in _INDEX_CLOSE_UNDERLYINGS:
+        return INDEX_OPTIONS
+    return EQUITY_OPTIONS
 
 Windows = tuple[tuple[datetime, datetime], ...]
 
@@ -130,6 +146,33 @@ def options_closed_at(now: datetime) -> datetime | None:
     return max(ended) if ended else None
 
 
+def valuation_instant(now: datetime, product: str = EQUITY_OPTIONS) -> datetime:
+    """The instant a live chain is priced. Once `product`'s regular window has ended, that
+    instant is its close, so the close numbers stand. While the window is open, or that
+    date's session is not held, it is `now`."""
+    held = session(now.astimezone(ET).date().isoformat())
+    if held is None:
+        return now
+    windows = held.option_windows(product)
+    if not windows:
+        return now
+    end = windows[-1][1]
+    if now >= end:
+        return end
+    return now
+
+
+def outside_option_window(now: datetime, product: str = EQUITY_OPTIONS) -> bool:
+    """True when `product`'s regular window is held and not open at `now`: before it opens,
+    and after it has ended. A day with no window, and a date whose session is not held, are
+    not that."""
+    held = session(now.astimezone(ET).date().isoformat())
+    windows = held.option_windows(product) if held is not None else None
+    if not windows:
+        return False
+    return now < windows[0][0] or now >= windows[-1][1]
+
+
 def closed_since(now: datetime) -> "datetime | None":
     """While the stock market is CLOSED at `now` (session_label): when it closed, the end of the
     newest window Schwab sent that has ended. None while a session is open or unknown, and when no
@@ -184,12 +227,14 @@ SETTLEMENT_AM = "A"
 
 
 def time_to_expiry_years(expiration_date: str, now: datetime, *,
-                         settlement_type: str | None = None) -> float | None:
+                         settlement_type: str | None = None,
+                         product: str = EQUITY_OPTIONS) -> float | None:
     """INTRADAY time-to-expiry in years (ACT/365), the one T of every Black-Scholes greek:
     seconds from `now` (the caller's valuation instant) to the option's settlement, over a
     365-day year. `expiration_date` is Schwab's expirationDate as sent.
-    The settlement is the option market's (EQO) regular close Schwab's /markets sent for the
-    expiry date (16:00 ET, 13:00 on an early close), or its open for Schwab's settlementType "A".
+    The settlement is the option market's regular close Schwab's /markets sent for the
+    expiry date (`product`, EQO unless the caller names another), or its open for Schwab's
+    settlementType "A".
     Schwab's own expirationDate is not the settlement of an AM-settled contract (an AM-settled
     $SPX monthly carries the 16:00 ET of its date, captured 2026-10-08). For a date /markets does
     not answer (beyond the year it answers, or before the 7 days back) a PM-settled contract
@@ -199,8 +244,8 @@ def time_to_expiry_years(expiration_date: str, now: datetime, *,
     Schwab to a MEASURED median ratio 0.987 (94% of ATM strikes within 10%) in the 2-6h window.
 
     None for an AM-settled contract whose expiry date /markets does not answer, for a date it
-    answers with no regular option session, for an expirationDate without its time, and once
-    the option has reached settlement. A 10-minute sub-floor guards the exact-expiry
+    answers with no regular option session, for an expirationDate without its time, and after
+    settlement. At the settlement instant the 10-minute floor guards the exact-expiry
     singularity."""
     s = session(str(expiration_date)[:10])
     if s is None:
@@ -208,12 +253,12 @@ def time_to_expiry_years(expiration_date: str, now: datetime, *,
             return None
         settles = datetime.fromisoformat(str(expiration_date))
     else:
-        windows = s.option_windows(EQUITY_OPTIONS)
+        windows = s.option_windows(product)
         if not windows:
             return None
         settles = windows[0][0] if settlement_type == SETTLEMENT_AM else windows[-1][1]
     # instants, not civil time: a DST change between now and the expiry is counted as elapsed
     t = (settles.timestamp() - now.timestamp()) / YEAR_SECONDS
-    if t <= 0.0:
-        return None  # at/after settlement — no greeks for an expired contract
+    if t < 0.0:
+        return None  # after settlement — the contract has expired
     return max(t, MIN_TIME_TO_EXPIRY_YEARS)

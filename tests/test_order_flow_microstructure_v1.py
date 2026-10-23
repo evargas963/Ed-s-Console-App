@@ -411,7 +411,8 @@ def test_push_option_top_merges_real_partial_ticks_per_field():
         st.push_option_top(tsla["symbol"], tick)
     assert "BID_PRICE" not in tsla_l1[3] and "ASK_PRICE" not in tsla_l1[3]
     assert st.option_top(tsla["symbol"]) == {
-        "bid": 0.56, "ask": 0.59, "bid_size": 83, "ask_size": 57, "mark": 0.575}
+        "bid": 0.56, "ask": 0.59, "bid_size": 83, "ask_size": 57, "mark": 0.575,
+        "quote_time_ms": tsla_l1[3]["QUOTE_TIME_MILLIS"]}
 
     st.push_option_top(tsla["symbol"], dict(tsla_l1[3], BID_SIZE=0))
     assert st.option_top(tsla["symbol"])["bid_size"] == 0
@@ -422,7 +423,8 @@ def test_push_option_top_merges_real_partial_ticks_per_field():
 
     qqq_first = next(e["content"] for e in qqq["events"] if e["kind"] == "l1")
     st.push_option_top(qqq["symbol"], qqq_first)
-    assert st.option_top(qqq["symbol"]) == {"bid_size": 272, "ask_size": 29}
+    assert st.option_top(qqq["symbol"]) == {
+        "bid_size": 272, "ask_size": 29, "quote_time_ms": qqq_first["QUOTE_TIME_MILLIS"]}
     assert st.option_top(tsla["symbol"])["bid"] == 0.56
 
 

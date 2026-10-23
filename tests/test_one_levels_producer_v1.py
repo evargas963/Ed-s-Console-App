@@ -164,17 +164,16 @@ def test_the_terrain_endpoint_serves_a_published_ticker_as_json_without_internal
     assert not [k for k in body if k.startswith("_")]
 
 
-# ── streamed values: the newest Schwab sent wins, an older or a stopped one never does ──────────
+# ── a streamed greek does not replace the chain's; a streamed volume does ───────────────────────
 
-def test_a_fresh_streamed_greek_reprices_levels_heatmap_and_rows():
+def test_a_streamed_greek_does_not_replace_the_chains():
+    """Gamma on the book is the chain's. A later LEVELONE_OPTIONS gamma does not reprice it."""
     _daemon(held=[_A])
     _streamed(_A, {"GAMMA": 0.9}, _T)
     _put_chain(fetched_ts=_T - 5.0)
     c = _cached()
-    assert c["_gamma_surface"]["stream_overlay_contracts"] == 1
-    assert c["_gamma_surface"]["stream_overlay_symbols"] == [_A]
-    overlaid = [dict(_CONTRACTS[0], gamma=0.9)] + _CONTRACTS[1:]
-    assert c["_per_strike"] == compute_terrain(TK, overlaid, _SPOT, now=_AT).per_strike
+    assert c["_gamma_surface"]["stream_overlay_contracts"] == 0
+    assert c["_per_strike"] == compute_terrain(TK, _CONTRACTS, _SPOT, now=_AT).per_strike
 
 
 def test_a_new_chain_does_not_turn_a_live_contracts_leg_stale():
@@ -193,23 +192,22 @@ def test_a_new_chain_does_not_turn_a_live_contracts_leg_stale():
     assert legs and all(leg["state"] == "live" for leg in legs)
 
 
-def test_a_streamed_value_applies_by_its_time():
-    """A streamed gamma received after the chain is the newest Schwab sent: it reprices the
-    levels; one received before the chain does not."""
+def test_a_streamed_gamma_does_not_apply_before_or_after_the_chain():
+    """A streamed gamma, newer or older than the chain, leaves the chain's gamma."""
     _daemon(held=[_A])
     _streamed(_A, {"GAMMA": 0.9}, _T - 60.0)
     _put_chain(fetched_ts=_T - 120.0)
-    assert _cached()["_gamma_surface"]["stream_overlay_symbols"] == [_A]
+    assert _cached()["_gamma_surface"]["stream_overlay_contracts"] == 0
     _put_chain(fetched_ts=_T - 30.0)
     assert _cached()["_gamma_surface"]["stream_overlay_contracts"] == 0
 
 
-def test_every_streamed_contract_is_overlaid_not_only_the_one_that_ticked():
+def test_a_streamed_gamma_on_two_contracts_does_not_replace_either():
     _daemon(held=[_A, _B])
     _streamed(_A, {"GAMMA": 0.9}, _T)
     _streamed(_B, {"GAMMA": 0.8}, _T)
     _put_chain(fetched_ts=_T - 5.0)
-    assert sorted(_cached()["_gamma_surface"]["stream_overlay_symbols"]) == sorted([_A, _B])
+    assert _cached()["_gamma_surface"]["stream_overlay_symbols"] == []
 
 
 def test_repeated_reprices_start_from_the_raw_chain_never_a_prior_overlay():
@@ -231,27 +229,6 @@ def test_a_volume_only_tick_reaches_the_per_strike_volume_column():
     strike = round(_CONTRACTS[0]["strikePrice"], 2)
     row = next(r for r in _cached()["_per_strike"]["all"] if r[0] == strike)
     assert row[2] >= 999999
-
-
-def test_a_streamed_value_whose_feed_is_down_in_session_never_reaches_the_levels():
-    """docs/DATA_FLOW.md §2 D5, Schwab's socket closed (the daemon still reporting, holding TK and
-    the contract): at 11:00 ET on 2026-10-07 (RTH by Schwab's /markets) nothing streamed is
-    current -- the spot is absent with its reason, and no level is published from a value from
-    elsewhere; at 22:00 ET (Closed) the values as of the close stand, the streamed volume in the
-    per-strike column."""
-    strike = round(_CONTRACTS[0]["strikePrice"], 2)
-    out = {}
-    for at in (datetime(2026, 10, 7, 11, 0, tzinfo=ET), datetime(2026, 10, 7, 22, 0, tzinfo=ET)):
-        ofls.clear_all_live_state()
-        _daemon(held=[_A], socket_open=False, at=at.timestamp())
-        _streamed(_A, {"TOTAL_VOLUME": 999999}, at.timestamp() - 60.0)
-        server._publish_levels(TK, _CONTRACTS, at.timestamp() - 120.0, now=at)
-        out[at.hour] = _cached()
-    rth, closed = out[11], out[22]
-    assert rth["spot"] is None and rth["spot_source"] == "Schwab LEVELONE_EQUITIES feed down during RTH"
-    assert rth["_gamma_surface"] is None and rth["gamma_flip"] is None
-    row = next(r for r in closed["_per_strike"]["all"] if r[0] == strike)
-    assert closed["spot"] == _SPOT and row[2] >= 999999
 
 
 def test_a_foreign_tickers_contract_never_overlays_this_chain():
@@ -327,18 +304,19 @@ def test_a_reprice_on_a_kept_chain_keeps_the_chains_time():
 
 def test_the_route_serves_the_publication_and_no_live_price_publishes_no_levels():
     """/api/terrain serves the levels exactly as the producer published them, none recomputed per
-    request, their spot labelled by its source and time. The next publication with no live price
-    has no levels, with its reason."""
+    request, the price they were computed at named `priced_at_spot` with its source and time, and
+    `spot` the live price. The next publication with no live price has no levels, with its reason."""
     _daemon()
     _put_chain()
     published = _cached()
     _daemon(price=None)                                         # the price is no longer live
     out = server.get_terrain(ticker=TK)
-    for k in ("spot", "regime", "net_gex_at_spot", "call_wall", "call_wall_state", "call_wall_lean",
+    for k in ("regime", "net_gex_at_spot", "call_wall", "call_wall_state", "call_wall_lean",
               "dist_to_call_wall", "flip_relation", "headline"):
         assert out[k] == published[k], k
-    assert "spot_state" not in out and out["spot_as_of_ts_utc"] == _T
-    assert out["spot_source"] == server.SPOT_SOURCE_PLANE
+    assert out["priced_at_spot"] == published["spot"] and out["priced_at_spot_as_of_ts_utc"] == _T
+    assert out["priced_at_spot_source"] == server.SPOT_SOURCE_PLANE
+    assert out["spot"] is None and "spot_state" not in out
     _put_chain()                                                # the next chain: no live price
     out = server.get_terrain(ticker=TK)
     assert out["regime"] == "UNAVAILABLE" and out["call_wall"] is None and out["error"] == "no spot price"

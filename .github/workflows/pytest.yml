@@ -15,7 +15,10 @@ on:
 
 jobs:
   pytest-full:
-    runs-on: ubuntu-latest
+    # ubuntu-latest is 26.04. Playwright 1.59.1 refuses that image
+    # ("Cannot install dependencies for ubuntu26.04-x64") and the browser
+    # install exits before any test. 24.04 is the image this job was measured on.
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
       - name: Check out repository

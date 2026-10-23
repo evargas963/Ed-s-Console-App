@@ -59,6 +59,17 @@ test.describe('#4 per-panel source / as-of / freshness', () => {
     await expect(badge).toContainText('21s');            // the server's own today_age_sec, formatted
   });
 
+  test('GEX-by-strike keeps the chain time beside its age', async ({ page }) => {
+    const CHAIN_TIME = 'Fri 09/25 06:59 PM CT';
+    await routes({ strikes: Object.assign({}, STRIKES, { levels_time_ct: CHAIN_TIME }) })(page);
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const badge = page.locator('#gbsSrc .asof');
+    await expect(badge).toContainText('terrain live');
+    await expect(badge).toContainText(CHAIN_TIME);
+    await expect(badge).toContainText('21s');
+    await expect(page.locator('#gbsBody')).toContainText('100');
+  });
+
   test('Strike Detail discloses the vendor chain scope', async ({ page }) => {
     await routes()(page);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
@@ -85,6 +96,17 @@ test.describe('#4 per-panel source / as-of / freshness', () => {
     const asof = page.locator('#chartBody .chart-asof');
     await expect(asof).toContainText('price 1m');       // bars clock
     await expect(asof).toContainText('GEX terrain live'); // levels clock (separate)
+  });
+
+  test('the Chart GEX badge keeps the chain time', async ({ page }) => {
+    const CHAIN_TIME = 'Fri 09/25 06:59 PM CT';
+    await routes({ strikes: Object.assign({}, STRIKES, { levels_time_ct: CHAIN_TIME }) })(page);
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.locator('.vtab', { hasText: 'Chart' }).click();
+    const asof = page.locator('#chartBody .chart-asof');
+    await expect(asof).toContainText('GEX terrain live');
+    await expect(asof).toContainText(CHAIN_TIME);
+    await expect(asof).toContainText('21s');
   });
 
   test('a stale terrain generation makes the GEX-by-strike badge read stale', async ({ page }) => {

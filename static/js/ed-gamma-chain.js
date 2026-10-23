@@ -76,7 +76,8 @@
     var head = '<div class="chn-head"><span>SINGLE EXPIRY · ' + esc(d.expiry || '—') +
       (filterNull ? ' <span class="chn-default">(server default)</span>' : '') + ' · ' + esc(d.n_strikes) + ' strikes' +
       (dup ? ' · <span class="chn-dup">duplicate contracts retained</span>' : '') + '</span>' +
-      '<span>spot ' + (isFinite(spot) ? spot.toFixed(2) : '—') + (d.spot_source ? ' · ' + esc(d.spot_source) : '') + '</span></div>';
+      '<span>spot ' + (isFinite(spot) ? spot.toFixed(2) : '—') + (d.spot_source ? ' · ' + esc(d.spot_source) : '') +
+      (d.spot_time_ct ? (' · last trade ' + esc(d.spot_time_ct)) : '') + '</span></div>';
     // dg: decimals, or AS_SENT: every digit Schwab sent (its Greeks)
     function cell(c, k, dg) { var v = c ? c[k] : null; return (v == null) ? '—' : (typeof v === 'number' ? (dg === AS_SENT ? String(v) : v.toFixed(dg == null ? 2 : dg)) : esc(v)); }
     function sym(c) { return c && c.symbol ? String(c.symbol) : ''; }
