@@ -1,16 +1,30 @@
 """Schwab -> the confluence matrix. The score is the chain already priced, ranked once."""
 from __future__ import annotations
 
+import json
 from datetime import datetime
+from pathlib import Path
 
+import app.options.order_flow.state as ofls
+import live_market_plane as lmp
+import live_price_rows
+from app.options.order_flow import streaming as ofs
+from calibration.complete_chain_capture import CAPTURE_BASIS, persist_complete_chain_capture
 from confluence_composite import (
     at_price, build_matrix, iv_by_strike, magnitudes, place_markers, score_magnitudes,
     under_strike, window_strikes,
 )
+from math_exposure_core import bucket_metric, compute_exposures_by_strike
 from math_levels import compute_charm_by_strike
-from time_et import ET, ct_label
+from stream_spine import options_quote_msg
+from terrain_engine import compute_terrain
+from time_et import ET, INDEX_OPTIONS, ct_label, valuation_instant
 
 import server
+from tests.real_chains import CRWD, SPY_0DTE, TSLA
+
+_QUOTE = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_crwd_quote_2026_10_07.json")
+                    .read_text(encoding="utf-8"))
 
 
 def _store(tk: str, cache: dict) -> None:
@@ -85,13 +99,10 @@ def test_the_matrix_reads_the_priced_book_and_leaves_flow_out():
         "_charm_by_expiry": {"2026-10-16": compute_charm_by_strike([contract], 669.5, now=now)},
         "_iv_by_expiry": {"2026-10-16": iv_by_strike([contract])},
     })
-    import app.options.order_flow.streaming as ofs
-    ofs._price_rows[tk] = {"ticker": tk, "spot": 669.5, "trade_ts": now.timestamp()}
     try:
         body = server.confluence_payload(tk, "2026-10-16", now)
     finally:
         server._terrain_cache.pop(tk, None)
-        ofs._price_rows.pop(tk, None)
     assert body["available"] is True
     assert body["preset"] == "0DTE"
     assert body["ceiling"] == 72
@@ -101,7 +112,6 @@ def test_the_matrix_reads_the_priced_book_and_leaves_flow_out():
     assert row["strike"] == 670.0
     assert row["strike_text"] == "670.00"
     assert row["net_gex_text"] == "+18.00"
-    assert row["distance_text"] == "+0.50"
     assert row["gross_text"] == "42.00"
     assert row["flow_text"] is None
     assert row["dgex_text"] is None
@@ -246,9 +256,6 @@ def test_a_passed_expiry_is_not_the_one_the_matrix_opens_on():
 def test_the_matrix_reads_the_expiry_charm_map_and_does_not_rebuild_it():
     """Charm is the map the book stored for this expiry. SPY's captured 0DTE chain would
     build a different charm, so a planted number on the matrix is that stored map."""
-    from math_exposure_core import compute_exposures_by_strike
-    from tests.real_chains import SPY_0DTE
-    from time_et import INDEX_OPTIONS
 
     held = SPY_0DTE
     expiry = str(held.chain[0]["expirationDate"])[:10]
@@ -275,9 +282,6 @@ def test_the_matrix_reads_the_expiry_charm_map_and_does_not_rebuild_it():
 def test_the_matrix_reads_the_expiry_volatility_blend_and_does_not_rebuild_it():
     """The volatility column is the blend the book stored for this expiry. SPY's captured
     0DTE chain would blend a different number, so a planted value on the matrix is that map."""
-    from math_exposure_core import compute_exposures_by_strike
-    from tests.real_chains import SPY_0DTE
-    from time_et import INDEX_OPTIONS
 
     held = SPY_0DTE
     expiry = str(held.chain[0]["expirationDate"])[:10]
@@ -302,7 +306,6 @@ def test_the_matrix_reads_the_expiry_volatility_blend_and_does_not_rebuild_it():
 
 def test_the_matrix_request_returns_the_ranking_stored_with_the_book():
     """The request does not rank again. SPY's captured chain would not produce this row."""
-    from tests.real_chains import SPY_0DTE
 
     held = SPY_0DTE
     expiry = str(held.chain[0]["expirationDate"])[:10]
@@ -333,10 +336,6 @@ def _window_has(rows: list, key: str) -> bool:
 def test_the_close_keeps_the_vanna_a_settled_clock_drops():
     """SPY's captured 0DTE chain, valued at the index close, still has vanna, charm, and a
     score. The same chain priced after that close has no time left, and those three are missing."""
-    from confluence_composite import iv_by_strike
-    from math_exposure_core import bucket_metric, compute_exposures_by_strike
-    from tests.real_chains import SPY_0DTE
-    from time_et import INDEX_OPTIONS, valuation_instant
 
     held = SPY_0DTE
     at = datetime(2026, 10, 7, 18, 0, tzinfo=ET)
@@ -364,9 +363,6 @@ def test_the_close_keeps_the_vanna_a_settled_clock_drops():
 def test_spy_keeps_vanna_until_the_index_close():
     """SPY settles at the index close. At 4:10 PM ET the equity-option close has passed
     and the index close has not, so this captured chain's vanna still stands."""
-    from math_exposure_core import bucket_metric, compute_exposures_by_strike
-    from tests.real_chains import SPY_0DTE
-    from time_et import INDEX_OPTIONS
 
     held = SPY_0DTE
     at = datetime(2026, 10, 7, 16, 10, tzinfo=ET)
@@ -381,8 +377,6 @@ def test_spy_keeps_vanna_until_the_index_close():
 def test_a_chain_delivered_after_the_close_still_fills_the_matrix():
     """The page reads the publication. SPY's captured chain, delivered after the index
     close, is valued at that close, so vanna, charm, and the score are on the matrix."""
-    import app.options.order_flow.streaming as ofs
-    from tests.real_chains import SPY_0DTE
 
     held = SPY_0DTE
     tk = "SPY"
@@ -401,7 +395,6 @@ def test_a_chain_delivered_after_the_close_still_fills_the_matrix():
     assert _window_has(body["rows"], "vanna_text")
     assert _window_has(body["rows"], "charm_text")
     assert _window_has(body["rows"], "score")
-    from confluence_composite import iv_by_strike
     blend = iv_by_strike(
         [ct for ct in held.chain if str(ct.get("expirationDate"))[:10] == expiry])
     shown = next(r for r in body["rows"] if blend.get(r["strike"]) is not None)
@@ -411,8 +404,6 @@ def test_a_chain_delivered_after_the_close_still_fills_the_matrix():
 def test_a_later_expiry_keeps_its_columns_at_that_expirys_close():
     """TSLA's captured Friday chain, delivered after that Friday's equity close, is valued
     at that close. The same publication fills vanna, charm, and the score. The request reads it."""
-    import app.options.order_flow.streaming as ofs
-    from tests.real_chains import TSLA
 
     held = TSLA
     tk = "TSLA"
@@ -451,8 +442,6 @@ def _no_value_quote(chain):
 def test_a_no_value_quote_after_the_close_keeps_the_last_reported_greek():
     """SPY's captured chain is published after the index close, valued at that close. A later
     quote that sends Schwab's no-value code does not erase that quote's gamma, vanna, or charm."""
-    import app.options.order_flow.streaming as ofs
-    from tests.real_chains import SPY_0DTE
 
     held = SPY_0DTE
     tk = "SPY"
@@ -477,8 +466,6 @@ def test_a_no_value_quote_after_the_close_keeps_the_last_reported_greek():
 
 def test_during_the_session_a_no_value_quote_does_not_keep_the_old_greek():
     """During the session Schwab's no-value code is not a greek. It does not keep the older one."""
-    import app.options.order_flow.streaming as ofs
-    from tests.real_chains import SPY_0DTE
 
     held = SPY_0DTE
     tk = "SPY"
@@ -512,8 +499,6 @@ def _zero_counts(chain):
 def test_a_zero_count_after_the_close_keeps_the_last_reported_count():
     """SPY's captured chain is published after the index close. A later chain that reports
     zero open interest and zero volume does not erase those counts, or the score they carry."""
-    import app.options.order_flow.streaming as ofs
-    from tests.real_chains import SPY_0DTE
 
     held = SPY_0DTE
     tk = "SPY"
@@ -539,9 +524,6 @@ def test_a_zero_count_after_the_close_keeps_the_last_reported_count():
 def _first_chain_keeps_the_capture(now, capture_at):
     """No chain is in memory. The delivered chain reports zero counts. The stored capture
     is the last count, so put/call volume stays."""
-    import app.options.order_flow.streaming as ofs
-    from calibration.complete_chain_capture import CAPTURE_BASIS, persist_complete_chain_capture
-    from tests.real_chains import SPY_0DTE
 
     held = SPY_0DTE
     tk = "SPYKEEP"
@@ -592,9 +574,6 @@ def test_a_chain_before_the_next_open_keeps_the_stored_counts():
 
 def test_a_closed_day_keeps_a_reported_zero():
     """A day with no option window keeps a reported zero. The stored capture does not fill it."""
-    import app.options.order_flow.streaming as ofs
-    from calibration.complete_chain_capture import CAPTURE_BASIS, persist_complete_chain_capture
-    from tests.real_chains import SPY_0DTE
 
     held = SPY_0DTE
     tk = "SPYCLOSED"
@@ -635,8 +614,6 @@ def _no_value_counts(chain):
 
 def test_a_no_value_count_after_the_close_is_not_the_last_count():
     """Schwab's no-value code is not a reported zero. It does not keep the last count."""
-    import app.options.order_flow.streaming as ofs
-    from tests.real_chains import SPY_0DTE
 
     held = SPY_0DTE
     tk = "SPY"
@@ -658,8 +635,6 @@ def test_a_no_value_count_after_the_close_is_not_the_last_count():
 
 def test_a_chain_begun_inside_the_window_keeps_its_reported_zero():
     """A chain fetched before the close and priced after it keeps the zero it reported."""
-    import app.options.order_flow.streaming as ofs
-    from tests.real_chains import SPY_0DTE
 
     held = SPY_0DTE
     tk = "SPY"
@@ -682,9 +657,6 @@ def test_a_chain_begun_inside_the_window_keeps_its_reported_zero():
 
 def test_a_closed_day_zero_does_not_hide_the_capture_before_the_open():
     """Monday before the open, Saturday's zero book is not the last count. The capture is."""
-    import app.options.order_flow.streaming as ofs
-    from calibration.complete_chain_capture import CAPTURE_BASIS, persist_complete_chain_capture
-    from tests.real_chains import SPY_0DTE
 
     held = SPY_0DTE
     tk = "SPYMON"
@@ -724,12 +696,6 @@ def test_a_closed_day_zero_does_not_hide_the_capture_before_the_open():
 
 def test_a_streamed_zero_after_the_close_does_not_replace_the_capture():
     """Publishing the stored capture after the close keeps its volume when the stream says 0."""
-    import app.options.order_flow.state as ofls
-    import app.options.order_flow.streaming as ofs
-    import live_market_plane as lmp
-    from calibration.complete_chain_capture import CAPTURE_BASIS
-    from stream_spine import options_quote_msg
-    from tests.real_chains import SPY_0DTE
 
     held = SPY_0DTE
     tk = "SPY"
@@ -777,8 +743,6 @@ def _drop_counts(chain):
 
 def test_a_missing_count_after_the_close_is_not_the_last_count():
     """A count Schwab did not send is not a reported zero. It does not keep the last count."""
-    import app.options.order_flow.streaming as ofs
-    from tests.real_chains import SPY_0DTE
 
     held = SPY_0DTE
     tk = "SPY"
@@ -800,9 +764,6 @@ def test_a_missing_count_after_the_close_is_not_the_last_count():
 
 def test_a_date_with_no_session_keeps_a_reported_zero():
     """A date Schwab has not answered is not outside an option window. A reported zero stays."""
-    import app.options.order_flow.streaming as ofs
-    from calibration.complete_chain_capture import CAPTURE_BASIS, persist_complete_chain_capture
-    from tests.real_chains import SPY_0DTE
 
     held = SPY_0DTE
     tk = "SPYNOSN"
@@ -832,9 +793,6 @@ def test_a_date_with_no_session_keeps_a_reported_zero():
 
 def test_a_newer_capture_is_the_count_the_next_chain_keeps():
     """The capture read before the open is not kept once a newer one is stored."""
-    import app.options.order_flow.streaming as ofs
-    from calibration.complete_chain_capture import CAPTURE_BASIS, persist_complete_chain_capture
-    from tests.real_chains import SPY_0DTE
 
     held = SPY_0DTE
     tk = "SPYNEW"
@@ -879,8 +837,6 @@ def test_a_newer_capture_is_the_count_the_next_chain_keeps():
 
 def test_during_the_session_a_zero_count_replaces_the_old_count():
     """During the session a count of zero is the count. It does not keep the older one."""
-    import app.options.order_flow.streaming as ofs
-    from tests.real_chains import SPY_0DTE
 
     held = SPY_0DTE
     tk = "SPY"
@@ -904,8 +860,6 @@ def test_during_the_session_a_zero_count_replaces_the_old_count():
 def test_an_after_hours_print_keeps_the_close_book():
     """SPY's captured chain is published after the index close at the close spot. A later
     equity print, with no new chain, leaves that strike's gamma, vanna, and charm."""
-    import app.options.order_flow.streaming as ofs
-    from tests.real_chains import SPY_0DTE
 
     held = SPY_0DTE
     tk = "SPY"
@@ -934,7 +888,6 @@ def test_an_after_hours_print_keeps_the_close_book():
 def test_a_close_capture_keeps_its_charm_in_the_forces():
     """SPY's captured 0DTE chain, banked after the index close, is valued at that close.
     The forces charm sums include it."""
-    from tests.real_chains import SPY_0DTE
 
     held = SPY_0DTE
     after = datetime(2026, 10, 7, 18, 0, tzinfo=ET)
@@ -954,9 +907,6 @@ def test_the_forces_read_the_charm_map_of_the_capture_just_priced():
     """The side sums are the charm map priced with that capture. SPY's captured chain,
     valued at the index close, sums to the same charm either way. A planted map is not
     that chain's charm, so the sums are the planted map."""
-    from terrain_engine import compute_terrain
-    from tests.real_chains import SPY_0DTE
-    from time_et import INDEX_OPTIONS, valuation_instant
 
     held = SPY_0DTE
     after = datetime(2026, 10, 7, 18, 0, tzinfo=ET)
@@ -1013,31 +963,35 @@ def test_a_chain_whose_every_expiry_has_passed_says_so():
 
 
 def test_the_matrix_shows_the_live_price_and_the_one_day_move_levels_serves():
-    """MRVL's captured full chain, published at its capture price; the live price then moves a
-    dollar. The matrix stays ranked at the capture price (priced_at_spot); its spot and its one-day
-    move are the live price's, the same two prices /api/levels serves (server.expected_move). They
-    were the capture price and a second computation at it."""
-    import app.options.order_flow.streaming as ofs
-    from tests.real_chains import MRVL
-
-    held = MRVL
-    tk = "MRVL"
-    at = held.now
-    expiry = str(held.chain[0]["expirationDate"])[:10]
-    live = held.spot + 1.0
-    ofs._price_rows[tk] = {"ticker": tk, "spot": held.spot, "trade_ts": at.timestamp()}
+    """CRWD's captured chain (2026-10-16 expiry, captured 2026-10-07 10:38:40 ET), published at the
+    price Schwab sent in that chain answer (its stored capture's spot, 269.04), and CRWD's
+    LEVELONE_EQUITIES message the daemon received at 10:38:00 ET (LAST_PRICE 269.395), taken in by
+    the plane and made the price row by the daemon's own function. The matrix stays ranked at the
+    chain's price (priced_at_spot); its spot, its one-day move and each row's distance are the
+    live price's, the move the same two prices /api/levels serves (server.expected_move). They were
+    the chain's price and a second computation at it."""
+    tk, at = server.ticker_storage_key(CRWD.ticker), CRWD.now
+    live = _QUOTE["native"]["LAST_PRICE"]
+    lmp.record_from_level_one_equity(tk, _QUOTE["native"], received_ts=_QUOTE["ts_recv"])
+    lmp.record_feed_heartbeat({"ts": at.timestamp(), "schwab_socket_open": True,
+                               "held": {"LEVELONE_EQUITIES": [tk]}})
+    ofs._price_rows[tk] = live_price_rows.price_row(tk, at.timestamp())
     try:
-        server._publish_levels(tk, [dict(c) for c in held.chain], at.timestamp(), now=at)
-        ofs._price_rows[tk] = {"ticker": tk, "spot": live, "trade_ts": at.timestamp()}
-        body = server.confluence_payload(tk, expiry, at)
+        server._publish_levels(tk, captures=[{"contracts": CRWD.chain, "ts_utc": at.timestamp(),
+                                              "spot": CRWD.spot, "et_date": at.date().isoformat(),
+                                              "basis": server.CAPTURE_BASIS}], now=at)
+        body = server.confluence_payload(tk, str(CRWD.chain[0]["expirationDate"])[:10], at)
         levels = {r["id"]: r["price"] for r in server.levels_payload(tk, "1", at)["levels"]}
     finally:
-        ofs._price_rows.pop(tk, None)
         with server._terrain_cache_lock:
             server._terrain_cache.pop(tk, None)
+        ofs._price_rows.pop(tk, None)
+        lmp._by_ticker.pop(tk, None)
+        lmp._fields_by_ticker.pop(tk, None)
+        lmp.record_feed_down()
     moves = {lv["abbrev"]: lv["price"] for lv in body["levels"] if lv["abbrev"] in ("EM+", "EM−")}
-    assert (body["spot"], body["spot_text"], body["priced_at_spot"]) == (live, f"{live:.2f}", held.spot)
-    assert body["spot_time_ct"] == ct_label(at.timestamp())
+    assert (body["spot"], body["spot_text"], body["priced_at_spot"]) == (live, f"{live:.2f}", CRWD.spot)
+    assert body["spot_time_ct"] == ct_label(_QUOTE["native"]["TRADE_TIME_MILLIS"] / 1000.0)
     assert moves == {"EM+": levels["em_up"], "EM−": levels["em_dn"]}
     assert all(abs(float(r["distance_text"]) - (r["strike"] - live)) <= 0.005 for r in body["rows"])
     assert [r["strike"] for r in body["rows"] if r["spot_line"]] == [min(
