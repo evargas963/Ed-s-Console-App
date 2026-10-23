@@ -1132,12 +1132,11 @@ class CaptureWriter:
                 self.error_ts = time.time()
             self.state, self.error = WRITER_BLOCKED, reason
         if not holding:                    # held now: in memory up to the cap, then spilled
-            with self._lock:               # the round while they are admitted (a death counts them)
+            with self._lock:
                 self._waiting, self._waiting_bytes = [], 0
-                self._round, self._stored = held, 0
             self._admit(held)
-            with self._lock:               # then what memory holds; the spilled are on disk
-                self._round = self._waiting
+            with self._lock:               # the round is now what memory holds; the spilled are on disk
+                self._round, self._stored = self._waiting, 0
         if stopping:
             self._leave_on_disk()
             return
