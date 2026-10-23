@@ -1,6 +1,7 @@
-"""tools/check_one_reader.py (ONE-31) on real git repositories: a pull request may not add a module
-that reads a Schwab field raw. The refused case is what happened: the daemon's option rule
-(`capture._took_price`) read LAST_PRICE itself, beside the price plane, with its own rule for -999."""
+"""tools/check_one_reader.py (ENF-23) on real git repositories, with the repository's own Schwab
+field list (docs/schwab_fields.csv): a pull request may not add a module that reads a Schwab
+field raw. The refused shape is the daemon's option rule reading LAST_PRICE itself
+(app/market_data/schwab/streaming/capture.py), beside the price plane's reader."""
 from __future__ import annotations
 
 import subprocess
@@ -10,9 +11,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
 import check_one_reader as cor  # noqa: E402
 
-FIELDS = ("canonical_field,endpoint,type,variants,first_seen,last_seen,schwab_doc,sample\n"
-          "LAST_PRICE,streaming,number,,2026-09-28,2026-09-28,,\n"
-          "chains.callExpDateMap.*.openInterest,chains,number,,2026-09-28,2026-09-28,,\n")
+FIELDS = (Path(__file__).resolve().parent.parent / "docs" / "schwab_fields.csv").read_text(encoding="utf-8")
 PLANE = 'def spot(item):\n    return item.get("LAST_PRICE")\n'
 BASE = {"docs/schwab_fields.csv": FIELDS, "plane.py": PLANE,
         "tests/test_plane.py": 'def test_it():\n    assert {"LAST_PRICE": 1}["LAST_PRICE"] == 1\n'}
@@ -53,20 +52,48 @@ def test_a_second_module_reading_a_schwab_field_raw_is_refused(tmp_path):
         "LAST_PRICE: read raw by 2 modules, 1 before (added capture.py); one module reads a Schwab field"]
 
 
+def test_a_read_through_a_module_constant_is_a_read(tmp_path):
+    root = _pr(tmp_path, {"trades.py": 'VENDOR_LAST_PRICE = "LAST_PRICE"\n\n\n'
+                                       'def price(item):\n    return item.get(VENDOR_LAST_PRICE)\n'})
+    assert cor.violations(root, "main") == [
+        "LAST_PRICE: read raw by 2 modules, 1 before (added trades.py); one module reads a Schwab field"]
+
+
 def test_moving_the_one_reader_and_a_test_reading_it_are_not_refused(tmp_path):
     root = _pr(tmp_path, {"plane.py": None, "parse.py": PLANE,
                           "tests/test_more.py": 'def test_it():\n    assert {"LAST_PRICE": 2}.get("LAST_PRICE")\n'})
     assert cor.violations(root, "main") == []
 
 
-def test_a_field_name_from_the_list_by_its_last_name_is_read_from_any_mapping(tmp_path):
+def test_a_rest_field_in_camel_case_is_read_from_any_mapping(tmp_path):
     root = _pr(tmp_path, {"levels.py": 'def oi(ct):\n    return ct["openInterest"]\n',
-                          "book.py": 'def oi(ct):\n    return ct.get("openInterest")\n'})
+                          "book.py": 'def oi(ct):\n    return ct.pop("openInterest")\n'})
     assert cor.violations(root, "main") == [
         "openInterest: read raw by 2 modules, 0 before (added book.py, levels.py); one module reads a Schwab field"]
 
 
-def test_a_name_that_is_not_a_schwab_field_is_not_judged(tmp_path):
-    root = _pr(tmp_path, {"other.py": 'def f(row):\n    return row["computed_ts_utc"]\n',
-                          "more.py": 'def g(row):\n    return row.get("computed_ts_utc")\n'})
+def test_our_own_records_keys_named_like_a_plain_schwab_word_are_not_judged(tmp_path):
+    """`status`, `type` and `symbol` are in Schwab's field list and are our own records' keys too."""
+    root = _pr(tmp_path, {"feed.py": '_feed = {"status": None}\n\n\ndef state():\n    return _feed["status"]\n',
+                          "push.py": 'def kind(msg):\n    return msg.get("type"), msg["symbol"]\n',
+                          "more.py": 'def kind(msg):\n    return msg.get("type"), msg["symbol"]\n'})
     assert cor.violations(root, "main") == []
+
+
+def test_removing_a_field_from_the_list_does_not_take_it_out_of_the_check(tmp_path):
+    kept = "\n".join(line for line in FIELDS.splitlines() if ".LAST_PRICE," not in line) + "\n"
+    assert "LAST_PRICE" not in cor.schwab_fields(kept) and "LAST_PRICE" in cor.schwab_fields(FIELDS)
+    root = _pr(tmp_path, {"docs/schwab_fields.csv": kept,
+                          "capture.py": 'def took(n):\n    return n["LAST_PRICE"]\n'})
+    assert cor.violations(root, "main") == [
+        "LAST_PRICE: read raw by 2 modules, 1 before (added capture.py); one module reads a Schwab field"]
+
+
+def test_a_module_that_does_not_parse_fails_the_check_closed(tmp_path):
+    root = _pr(tmp_path, {"broken.py": "def f(:\n"})
+    try:
+        cor.violations(root, "main")
+    except cor.ToolError as e:
+        assert "broken.py does not parse" in str(e)
+    else:
+        raise AssertionError("an unparseable module was left out of the count")
