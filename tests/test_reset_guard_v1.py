@@ -119,6 +119,7 @@ _ADJUDICATION: tuple[tuple[str, bool, str], ...] = (
     ("git reset HEAD~1", True, "the index (--mixed is the default)"),
     ("git reset --keep HEAD~1", True, "local changes"),
     ("git reset --merge HEAD~1", True, "merge state"),
+    ("git reset -- static/chart.html", True, "the index of a product file"),
     ("git clean -fd", True, "untracked files"),
     ("git clean -xfd", True, "untracked + ignored"),
     ("git checkout -- .", True, "whole worktree"),
