@@ -42,7 +42,7 @@ const rowV = (page, k) => page.locator('#flowBody .fl-row[data-k="' + k + '"] .v
 const rowTag = (page, k) => page.locator('#flowBody .fl-row[data-k="' + k + '"] .fl-tag');
 
 function chain(ctx) {
-  if (ctx.sides) {
+  if (ctx.sides) {   // STAND-IN (named, ACTIVE_PROGRAM STAND-INS): the envelope's status and scope
     return { ticker: SPY_CHAIN.ticker, spot: SPY_CHAIN.spot, expiry: SPY_CHAIN.expiry, status: 'ok',
       scope: { kind: 'complete_single_expiry' }, contracts: SPY_CHAIN.contracts };
   }
