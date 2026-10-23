@@ -2,15 +2,20 @@
 from __future__ import annotations
 
 import json
+import statistics
 from datetime import datetime, timedelta
 from pathlib import Path
+
+import pytest
 
 import app.options.order_flow.state as ofls
 import live_market_plane as lmp
 import live_price_rows
 from app.options.order_flow import streaming as ofs
 from calibration.complete_chain_capture import CAPTURE_BASIS, persist_complete_chain_capture
-from confluence_composite import build_matrix, ceiling, in_score_weights, iv_by_strike, magnitudes, score_magnitudes
+from confluence_composite import (
+    at_price, build_matrix, in_score_weights, iv_by_strike, magnitudes, score_magnitudes, under_strike,
+)
 from math_exposure_core import bucket_metric, compute_exposures_by_strike
 from math_levels import compute_charm_by_strike
 from numeric_contract import price_text
@@ -35,16 +40,18 @@ _SPY_TWO_CLOSES = _fixture("real_spy_2026_10_23_expiry_two_closes_2026_10_21_22.
 _SPY_MONDAY = _fixture("real_spy_2026_10_19_close_capture_and_premarket_zero_volume.json")
 _IWM_ON_A_STRIKE = _fixture("real_iwm_0dte_chain_priced_on_a_strike_2026_10_23.json")
 _SPY_PRINT_ON_A_STRIKE = _fixture("real_spy_print_on_a_strike_2026_10_22.json")
+_SPY_PRINT_ABOVE = _fixture("real_spy_print_above_the_0dte_strikes_2026_10_23.json")
+_SPX_FAR = _fixture("real_spx_2027_10_15_expiry_2026_10_14.json")
 
 
-def _quoted(tk: str, quote: dict, at: datetime) -> tuple:
-    """Schwab's LEVELONE_EQUITIES message `quote` taken in by the daemon's plane at its receipt time,
-    and the price row the daemon's own function makes at `at`. Returns the chain's spot as the
-    daemon sends it with a chain: (LAST_PRICE, its trade time)."""
-    lmp.record_from_level_one_equity(tk, quote["native"], received_ts=quote["ts_recv"])
-    lmp.record_feed_heartbeat({"ts": at.timestamp(), "schwab_socket_open": True,
-                               "held": {"LEVELONE_EQUITIES": [tk]}})
-    row = ofs._price_rows[tk] = live_price_rows.price_row(tk, at.timestamp())
+def _chain_spot(tk: str, quote: dict) -> tuple:
+    """The spot the daemon sends with a chain completed when Schwab's LEVELONE_EQUITIES message
+    `quote` was the last it had: that message taken in by the daemon's plane at its receipt time,
+    and the price row the daemon's own function makes then. (LAST_PRICE, its trade time)."""
+    at = quote["ts_recv"]
+    lmp.record_from_level_one_equity(tk, quote["native"], received_ts=at)
+    lmp.record_feed_heartbeat({"ts": at, "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [tk]}})
+    row = live_price_rows.price_row(tk, at)
     return row["spot"], row["trade_ts"]
 
 
@@ -54,6 +61,7 @@ def _forget(tk: str) -> None:
     ofs._price_rows.pop(tk, None)
     lmp._by_ticker.pop(tk, None)
     lmp._fields_by_ticker.pop(tk, None)
+    lmp.record_feed_heartbeat({"ts": 0.0, "schwab_socket_open": True, "held": {}})
     lmp.record_feed_down()
 
 
@@ -61,6 +69,15 @@ def _store(tk: str, cache: dict) -> None:
     """The publication ranks once. The request then reads that ranking."""
     cache["_matrix_by_expiry"] = server._ranked_matrices(cache)
     server._terrain_cache[tk] = cache
+
+
+def _book_magnitudes(live: dict, expiry: str, spot: float) -> dict:
+    """Each strike's factor magnitudes of one published expiry, as the matrix builds them."""
+    book = next(b for (e, _d), (b, _x) in live["_books"].items() if e == expiry)
+    charm = live["_charm_by_expiry"].get(expiry) or {}
+    iv = live["_iv_by_expiry"].get(expiry) or {}
+    mags = {s: magnitudes(b, charm.get(s), iv.get(s), spot) for s, b in book.items()}
+    return {s: {k: v for k, v in m.items() if not k.startswith("_")} for s, m in mags.items()}
 
 
 def _nflx_far_book() -> tuple[dict, dict]:
@@ -75,33 +92,72 @@ def _nflx_far_book() -> tuple[dict, dict]:
     finally:
         _forget("NFLX")
     book = next(b for (e, _d), (b, _x) in live["_books"].items() if e == "2027-12-17")
-    charm = live["_charm_by_expiry"]["2027-12-17"]
-    iv = live["_iv_by_expiry"]["2027-12-17"]
-    mags = {s: magnitudes(b, charm.get(s), iv.get(s), NFLX.spot) for s, b in book.items()}
-    return book, {s: {k: v for k, v in m.items() if not k.startswith("_")} for s, m in mags.items()}
+    return book, _book_magnitudes(live, "2027-12-17", NFLX.spot)
+
+
+def _traded(m: dict) -> bool:
+    return (m["OI"] is not None and m["OI"] > 0) or (m["VOL"] is not None and m["VOL"] > 0)
+
+
+def _scores_by_definition(mags: dict, weights: dict) -> dict:
+    """The score as defined, stated apart from the code: over the strikes with open interest or
+    volume, each weighted factor's 5th and 95th percentiles (Hyndman-Fan type 7, Python's
+    statistics.quantiles with method="inclusive"), each value placed between them and clipped to
+    [0, 1], weighted, summed and times 100; a strike missing a weighted factor has none."""
+    universe = [s for s, m in mags.items() if _traded(m)]
+    required = [k for k, w in weights.items() if w > 0]
+    cuts = {}
+    for k in required:
+        q = statistics.quantiles([mags[s][k] for s in universe if mags[s][k] is not None], n=20, method="inclusive")
+        cuts[k] = (q[0], q[18])
+    out = {}
+    for s in universe:
+        if any(mags[s][k] is None for k in required):
+            continue
+        out[s] = 100.0 * sum(weights[k] * min(1.0, max(0.0, (mags[s][k] - cuts[k][0]) / (cuts[k][1] - cuts[k][0])))
+                             for k in required)
+    return out
 
 
 def test_a_missing_gamma_blanks_the_score_and_the_top_is_not_100():
     """NFLX's 2027-12-17 book: strikes where Schwab sent no gamma (-999) have no net gamma, so
-    their score is absent with that reason. The top score is not rescaled to 100: it stays under
-    the MONTHLY ceiling."""
+    their score is absent with that reason. Every other strike's score is the definition's, and
+    the top one is not rescaled to 100."""
     _book, mags = _nflx_far_book()
     weights = in_score_weights("MONTHLY")
-    scored, _flat, _spans = score_magnitudes(mags, weights)
-    blank = [s for s, m in mags.items() if m["GEXM"] is None and m["OI"]]
-    assert blank
+    scored, _flat, spans = score_magnitudes(mags, weights)
+    blank = [s for s, m in mags.items() if m["GEXM"] is None and _traded(m)]
+    expected = _scores_by_definition(mags, weights)
+    assert blank and len(expected) > 10
+    assert all(spans[k] is not None for k, w in weights.items() if w > 0)
     assert all(scored[s]["score"] is None and "net gamma" in scored[s]["missing"] for s in blank)
+    assert {s: scored[s]["score"] for s in expected} == pytest.approx(expected, rel=1e-12, abs=1e-12)
     top = max(r["score"] for r in scored.values() if r["score"] is not None)
-    assert top <= ceiling(weights) < 100
+    assert top == pytest.approx(max(expected.values()), rel=1e-12) and top < 100
 
 
 def test_a_missing_factor_is_not_called_flat():
-    """NFLX's 2027-12-17 book: net gamma is missing on some strikes, so the flat note does not
-    name net gamma, whatever the other strikes hold."""
-    _book, mags = _nflx_far_book()
-    _scored, flat, _spans = score_magnitudes(mags, in_score_weights("MONTHLY"))
-    assert any(m["GEXM"] is None for m in mags.values())
-    assert "GEXM" not in flat
+    """$SPX's 2027-10-15 expiry from the 2026-10-14 13:31:14 ET capture, priced by the levels
+    producer: two traded strikes have charm, both 0.00, and every other traded strike has none.
+    Charm does not vary where present, but the note does not call it flat, because it is missing
+    elsewhere; each strike missing it has no score and says charm."""
+    fx = _SPX_FAR
+    tk, at = server.ticker_storage_key(fx["ticker"]), datetime.fromtimestamp(fx["ts_utc"], ET)
+    try:
+        server._publish_levels(tk, captures=[{"contracts": [dict(c) for c in fx["chain"]], "ts_utc": fx["ts_utc"],
+                                              "spot": fx["spot"], "et_date": at.date().isoformat(),
+                                              "basis": CAPTURE_BASIS, "spot_ts": None, "spot_from_chain": False}], now=at)
+        live = server._terrain_cache[tk]
+    finally:
+        _forget(tk)
+    mags = _book_magnitudes(live, fx["expiry"], fx["spot"])
+    scored, flat, spans = score_magnitudes(mags, in_score_weights("MONTHLY"))
+    traded = [s for s, m in mags.items() if _traded(m)]
+    present = [s for s in traded if mags[s]["CHARMM"] is not None]
+    assert spans["CHARMM"] is None and present and len(present) < len(traded)
+    assert len({mags[s]["CHARMM"] for s in present}) == 1
+    assert "CHARMM" not in flat
+    assert all(scored[s]["score"] is None and "charm" in scored[s]["missing"] for s in traded if s not in present)
 
 
 def _publish_close(tk: str = "SPY") -> dict:
@@ -220,12 +276,27 @@ def test_a_price_on_a_listed_strike_puts_the_spot_line_on_that_strike():
     on = quote["native"]["LAST_PRICE"]
     try:
         _publish_close(tk)
-        _quoted(tk, quote, at)
+        _chain_spot(tk, quote)
+        ofs._price_rows[tk] = live_price_rows.price_row(tk, at.timestamp())
         body = server.confluence_payload(tk, "2026-10-22", at)
     finally:
         _forget(tk)
     assert on in {r["strike"] for r in body["rows"]} and body["spot"] == on
     assert [r["strike"] for r in body["rows"] if r["spot_line"]] == [on]
+
+
+def test_a_price_above_every_listed_strike_has_no_spot_line():
+    """SPY's 2026-10-07 chain as captured here (its 20 strikes nearest the price, 767 to 786) and
+    SPY's first kept print above all of them (LAST_PRICE 787.5169, received 2026-10-23 17:09:50
+    ET): no listed strike is at or above the price, so no row carries the spot line, and the price
+    is still shown."""
+    held, price = SPY_0DTE, _SPY_PRINT_ABOVE["native"]["LAST_PRICE"]
+    book, _diag = compute_exposures_by_strike(held.chain, spot=held.spot, now=held.now, product=INDEX_OPTIONS)
+    body = build_matrix(book, {}, iv_by_strike(held.chain), held.spot, 0.0)
+    assert price > max(body["strikes"])
+    assert under_strike(price, body["strikes"]) is None
+    assert at_price(body["rows"], body["strikes"], price) == {"spot": price, "spot_text": price_text(price)}
+    assert body["rows"] and not any(r["spot_line"] for r in body["rows"])
 
 
 def test_a_passed_expiry_is_not_the_one_the_matrix_opens_on():
@@ -388,7 +459,7 @@ def test_a_chain_delivered_after_the_close_still_fills_the_matrix():
     at = datetime(2026, 10, 7, 18, 0, tzinfo=ET)
     expiry = str(held.chain[0]["expirationDate"])[:10]
     try:
-        spot = _quoted(tk, _AT_CAPTURE[held.ticker], at)
+        spot = _chain_spot(tk, _AT_CAPTURE[held.ticker])
         snap = server._publish_levels(tk, held.chain, at.timestamp(), chain_spot=spot, now=at)
         body = server.confluence_payload(tk, expiry, at)
     finally:
@@ -413,7 +484,7 @@ def test_a_later_expiry_keeps_its_columns_at_that_expirys_close():
     at = datetime(2026, 10, 9, 18, 0, tzinfo=ET)
     expiry = str(held.chain[0]["expirationDate"])[:10]
     try:
-        spot = _quoted(tk, _AT_CAPTURE[held.ticker], at)
+        spot = _chain_spot(tk, _AT_CAPTURE[held.ticker])
         snap = server._publish_levels(tk, held.chain, at.timestamp(), chain_spot=spot, now=at)
         body = server.confluence_payload(tk, expiry, at)
         again = server.confluence_payload(tk, expiry, at)
@@ -449,7 +520,7 @@ def test_a_no_value_quote_after_the_close_keeps_the_last_reported_greek():
     after = datetime(2026, 10, 7, 18, 0, tzinfo=ET)
     expiry = str(held.chain[0]["expirationDate"])[:10]
     try:
-        spot = _quoted(tk, _AT_CAPTURE[held.ticker], after)
+        spot = _chain_spot(tk, _AT_CAPTURE[held.ticker])
         server._publish_levels(tk, [dict(c) for c in held.chain], after.timestamp(), chain_spot=spot, now=after)
         first = server.confluence_payload(tk, expiry, after)
         near = min(first["rows"], key=lambda row: abs(row["strike"] - held.spot))
@@ -472,7 +543,7 @@ def test_during_the_session_a_no_value_quote_does_not_keep_the_old_greek():
     later = datetime(2026, 10, 7, 12, 40, tzinfo=ET)
     expiry = str(held.chain[0]["expirationDate"])[:10]
     try:
-        spot = _quoted(tk, _AT_CAPTURE[held.ticker], session)
+        spot = _chain_spot(tk, _AT_CAPTURE[held.ticker])
         server._publish_levels(tk, [dict(c) for c in held.chain], session.timestamp(), chain_spot=spot, now=session)
         server._publish_levels(tk, _no_value_quote(held.chain), later.timestamp(), chain_spot=spot, now=later)
         body = server.confluence_payload(tk, expiry, later)
@@ -502,7 +573,7 @@ def test_a_zero_count_after_the_close_keeps_the_last_reported_count():
     after = datetime(2026, 10, 7, 18, 0, tzinfo=ET)
     expiry = str(held.chain[0]["expirationDate"])[:10]
     try:
-        spot = _quoted(tk, _AT_CAPTURE[held.ticker], after)
+        spot = _chain_spot(tk, _AT_CAPTURE[held.ticker])
         server._publish_levels(tk, [dict(c) for c in held.chain], after.timestamp(), chain_spot=spot, now=after)
         first = server.confluence_payload(tk, expiry, after)
         near = min(first["rows"], key=lambda row: abs(row["strike"] - held.spot))
@@ -525,7 +596,7 @@ def _first_chain_keeps_the_capture(now, capture_at):
     expiry = str(held.chain[0]["expirationDate"])[:10]
     fresh = [dict(c) for c in held.chain]
     try:
-        spot = _quoted(tk, _AT_CAPTURE[held.ticker], now)
+        spot = _chain_spot(tk, _AT_CAPTURE[held.ticker])
         server._publish_levels(tk, [dict(c) for c in fresh], now.timestamp(), chain_spot=spot, now=now)
         first = server.confluence_payload(tk, expiry, now)
         shown = next(row for row in first["rows"] if row["pc_vol_text"] is not None)
@@ -574,7 +645,7 @@ def test_a_closed_day_keeps_a_reported_zero():
     expiry = str(held.chain[0]["expirationDate"])[:10]
     fresh = [dict(c) for c in held.chain]
     try:
-        spot = _quoted(tk, _AT_CAPTURE[held.ticker], closed)
+        spot = _chain_spot(tk, _AT_CAPTURE[held.ticker])
         by_expiry: dict = {}
         for ct in fresh:
             by_expiry.setdefault(str(ct["expirationDate"])[:10], []).append(ct)
@@ -611,7 +682,7 @@ def test_a_no_value_count_after_the_close_is_not_the_last_count():
     after = datetime(2026, 10, 7, 18, 0, tzinfo=ET)
     expiry = str(held.chain[0]["expirationDate"])[:10]
     try:
-        spot = _quoted(tk, _AT_CAPTURE[held.ticker], after)
+        spot = _chain_spot(tk, _AT_CAPTURE[held.ticker])
         server._publish_levels(tk, [dict(c) for c in held.chain], after.timestamp(), chain_spot=spot, now=after)
         first = server.confluence_payload(tk, expiry, after)
         assert any(row["pc_vol_text"] is not None for row in first["rows"])
@@ -631,7 +702,7 @@ def test_a_chain_begun_inside_the_window_keeps_its_reported_zero():
     after = datetime(2026, 10, 7, 16, 20, tzinfo=ET)
     expiry = str(held.chain[0]["expirationDate"])[:10]
     try:
-        spot = _quoted(tk, _AT_CAPTURE[held.ticker], inside)
+        spot = _chain_spot(tk, _AT_CAPTURE[held.ticker])
         server._publish_levels(tk, [dict(c) for c in held.chain], inside.timestamp(), chain_spot=spot, now=inside)
         first = server.confluence_payload(tk, expiry, inside)
         assert any(row["pc_vol_text"] is not None for row in first["rows"])
@@ -651,7 +722,7 @@ def test_a_closed_day_zero_does_not_hide_the_capture_before_the_open():
     expiry = str(fresh[0]["expirationDate"])[:10]
     before = datetime(2026, 10, 5, 8, 0, tzinfo=ET)
     try:
-        spot = _quoted(tk, _AT_CAPTURE[held.ticker], before)
+        spot = _chain_spot(tk, _AT_CAPTURE[held.ticker])
         server._publish_levels(tk, [dict(c) for c in fresh], before.timestamp(), chain_spot=spot, now=before)
         first = server.confluence_payload(tk, expiry, before)
         shown = next(row for row in first["rows"] if row["pc_vol_text"] is not None)
@@ -728,7 +799,7 @@ def test_a_missing_count_after_the_close_is_not_the_last_count():
     after = datetime(2026, 10, 7, 18, 0, tzinfo=ET)
     expiry = str(held.chain[0]["expirationDate"])[:10]
     try:
-        spot = _quoted(tk, _AT_CAPTURE[held.ticker], after)
+        spot = _chain_spot(tk, _AT_CAPTURE[held.ticker])
         server._publish_levels(tk, [dict(c) for c in held.chain], after.timestamp(), chain_spot=spot, now=after)
         first = server.confluence_payload(tk, expiry, after)
         assert any(row["pc_vol_text"] is not None for row in first["rows"])
@@ -748,7 +819,7 @@ def test_a_date_with_no_session_keeps_a_reported_zero():
     expiry = str(fresh[0]["expirationDate"])[:10]
     unknown = datetime(2026, 9, 29, 12, 0, tzinfo=ET)
     try:
-        spot = _quoted(tk, _AT_CAPTURE[held.ticker], unknown)
+        spot = _chain_spot(tk, _AT_CAPTURE[held.ticker])
         by_expiry: dict = {}
         for ct in fresh:
             by_expiry.setdefault(str(ct["expirationDate"])[:10], []).append(ct)
@@ -788,7 +859,7 @@ def test_a_newer_capture_is_the_count_the_next_chain_keeps():
             completeness_basis=CAPTURE_BASIS, ts_utc=capture["ts_utc"])
 
     try:
-        spot = _quoted(tk, _SPY_TWO_CLOSES["quote_at_older"], before)
+        spot = _chain_spot(tk, _SPY_TWO_CLOSES["quote_at_older"])
         store(older)
         server._publish_levels(tk, _zero_counts(fresh), before.timestamp(), chain_spot=spot, now=before)
         store(newer)
@@ -810,7 +881,7 @@ def test_during_the_session_a_zero_count_replaces_the_old_count():
     later = datetime(2026, 10, 7, 12, 40, tzinfo=ET)
     expiry = str(held.chain[0]["expirationDate"])[:10]
     try:
-        spot = _quoted(tk, _AT_CAPTURE[held.ticker], session)
+        spot = _chain_spot(tk, _AT_CAPTURE[held.ticker])
         server._publish_levels(tk, [dict(c) for c in held.chain], session.timestamp(), chain_spot=spot, now=session)
         server._publish_levels(tk, _zero_counts(held.chain), later.timestamp(), chain_spot=spot, now=later)
         body = server.confluence_payload(tk, expiry, later)
