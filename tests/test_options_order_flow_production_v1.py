@@ -10,7 +10,8 @@ newest message's time. STAND-IN (named): the daemon's status, holding the contra
 services. Those messages carry no CONTRACT_TYPE, so the side the header shows is proven by
 tests/e2e/fixtures/options_microstructure_side_payloads.json: the route's payloads for SPY 2026-10-23
 761 call and 762 put after their stored messages, the first carrying CONTRACT_TYPE
-(tests/fixtures/real_spy_option_contract_type_2026_10_23.json).
+(tests/fixtures/real_spy_option_contract_type_2026_10_23.json). STAND-IN (named): the daemon's
+status, holding each contract on LEVELONE_OPTIONS.
 
 Regenerate (from the repo root, project .venv):
   python -c "from tests.test_options_order_flow_production_v1 import write_flow_e2e_fixture; write_flow_e2e_fixture()"
@@ -70,6 +71,7 @@ def build_side_e2e_fixture_response() -> dict:
 
     contracts = json.loads(_SIDES.read_text(encoding="utf-8"))["contracts"]
     out = {}
+    ofls.clear_all_live_state()
     try:
         for sym, msgs in contracts.items():
             at = max(m["ts_recv"] for m in msgs)

@@ -19,6 +19,8 @@ const FIXTURE = require('./fixtures/options_microstructure_payload.json');
 // their stored messages (the first carries Schwab's CONTRACT_TYPE); held to the route by
 // test_side_e2e_fixture_is_the_route_contract.
 const SIDES = require('./fixtures/options_microstructure_side_payloads.json');
+// Schwab's /chains rows for the two contracts, from the stored chain capture before their messages.
+const SPY_CHAIN = require('../fixtures/real_spy_option_contract_type_2026_10_23.json').chain;
 const SPY_CALL = 'SPY   261023C00761000';
 const SPY_PUT = 'SPY   261023P00762000';
 const { served } = require('./fixtures/served_chain');
@@ -40,10 +42,14 @@ const rowV = (page, k) => page.locator('#flowBody .fl-row[data-k="' + k + '"] .v
 const rowTag = (page, k) => page.locator('#flowBody .fl-row[data-k="' + k + '"] .fl-tag');
 
 function chain(ctx) {
+  if (ctx.sides) {
+    return { ticker: SPY_CHAIN.ticker, spot: SPY_CHAIN.spot, expiry: SPY_CHAIN.expiry, status: 'ok',
+      scope: { kind: 'complete_single_expiry' }, contracts: SPY_CHAIN.contracts };
+  }
+  // STAND-IN (named, ACTIVE_PROGRAM STAND-INS): Schwab's TSLA 2026-08-31 chain was not kept.
   function ct(side, k, sym) { return { putCall: side, strikePrice: k, symbol: sym, openInterest: 10, totalVolume: 5, volatility: 12, delta: side === 'CALL' ? 0.5 : -0.5, gamma: 0.01, expirationDate: '2026-08-31' }; }
-  const contracts = ctx.sides ? [ct('CALL', 761, SPY_CALL), ct('PUT', 762, SPY_PUT)]
-    : [ct('CALL', 367.5, SELECTED), ct('PUT', 367.5, OTHER)];
-  return { ticker: 'TSLA', spot: 367, expiry: '2026-08-31', status: 'ok', scope: { kind: 'complete_single_expiry' }, contracts };
+  return { ticker: 'TSLA', spot: 367, expiry: '2026-08-31', status: 'ok', scope: { kind: 'complete_single_expiry' },
+    contracts: [ct('CALL', 367.5, SELECTED), ct('PUT', 367.5, OTHER)] };
 }
 /** The real route payload with this test's plane overlaid; `mutate` (optional) edits a deep copy
  *  for negative controls. Nothing else in the payload is invented here. */
@@ -125,6 +131,7 @@ test.describe('D — Gamma Flow subview', () => {
     await page.locator('#chainBody tr[data-csym="' + SPY_CALL + '"] td.chn-call').first().click();
     await page.locator('#subnav .tab', { hasText: 'Flow' }).click();
     await expect(page.locator('#flowBody .fl-sym')).toHaveText(SPY_CALL);
+    expect(SPY_CHAIN.contracts.map((c) => [c.symbol, c.strikePrice])).toEqual(expect.arrayContaining([[SPY_CALL, 761], [SPY_PUT, 762]]));
     await expect(page.locator('#flowBody .fl-meta')).toHaveText(/^Call · 761/);
     await page.locator('#subnav .tab', { hasText: 'Chain' }).click();
     await page.locator('#chainBody tr[data-psym="' + SPY_PUT + '"] td.chn-put').first().click();
