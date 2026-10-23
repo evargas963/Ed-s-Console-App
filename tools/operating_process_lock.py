@@ -121,15 +121,14 @@ def reset_guard_violations(command: str, powershell: bool = False) -> list[str]:
     return []
 
 
-#: the output filters whose exit code replaced a commit's (the measured maskers); a pipe into
-#: anything else passes
+#: the output filters whose exit code replaces a commit's; a pipe into anything else passes
 _MASKING_FILTERS = frozenset({"tail", "head", "cat", "tee", "grep", "findstr", "out-null", "select-object"})
 
 
 def commit_pipe_violations(cmd: str, powershell: bool = False) -> list[str]:
     """RC-234: a `git commit` piped into a filter (tail/head/grep/Out-Null/...) reports
-    the FILTER's exit code and truncates hook output — twice this masked a failed landing
-    as exit 0 (F401 hidden, t6+t12 slice silently not on HEAD). Commits run UNPIPED;
+    the FILTER's exit code and truncates hook output, so a failed commit reads as exit 0.
+    Commits run UNPIPED;
     long hooks go to a background task whose full output is read back. Escape:
     '# pipe-ok: <reason>' (operator-reviewed). A `|` inside a quoted -m message is not a pipe."""
     if not cmd or "# pipe-ok:" in cmd:

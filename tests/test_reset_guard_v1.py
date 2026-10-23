@@ -44,9 +44,7 @@ def test_safe_forms_allow():
 
 
 # ── RC-253: judge the ACTION, not the data the command carries (RC-93) ──────────────────
-# LOCK-2 blocked a `git commit` because the MESSAGE described a wipe. It fired hardest on the
-# most precise incident write-ups, which pressures every future writer toward vaguer accounts
-# of exactly the incidents this ledger exists to record.
+# A commit message or other quoted text that describes destructive git is not a statement.
 
 
 def test_rc253_commit_message_quoting_destructive_git_is_not_an_action():
@@ -128,7 +126,7 @@ _ADJUDICATION: tuple[tuple[str, bool, str], ...] = (
     ("git stash pop", True, "rewrites the worktree"),
     ("git stash apply", True, "rewrites the worktree"),
     ("git stash drop", True, "deletes a stash"),
-    ("git stash show -p stash@{0}", True, "AGENTS.md: never git stash; only `stash list` was ever legal"),
+    ("git stash show -p stash@{0}", True, "AGENTS.md: never git stash; only `stash list` reads"),
     ("git -C ../other stash push -- stream_spine.py", True, "another checkout's product file"),
     ("git push -f origin main", True, "remote history"),
     ("git push origin main -f", True, "remote history, flag after the refspec"),
@@ -147,16 +145,12 @@ def test_rc525_reset_is_adjudicated_by_what_it_can_destroy():
 
 
 def test_rc525_a_safe_form_cannot_launder_a_destructive_one():
-    """THE REASON the class rule is judged per statement.
-
-    The safe list used to be searched across the WHOLE command, so one safe form anywhere
-    exempted everything chained after it — a live hole before `reset --soft` was added, and
-    adding a safe form without fixing it would have widened the hole.
-    """
+    """The class rule is judged per statement: a safe form exempts only itself, never a
+    destructive statement chained after it."""
     for chain in (
         "git reset --soft HEAD~1 && git clean -fd",
         "git reset --soft HEAD~1 && git reset --mixed HEAD~1",
-        "git restore --staged x.py && git reset --mixed HEAD~1",   # the pre-existing hole
+        "git restore --staged x.py && git reset --mixed HEAD~1",
         "git stash list ; git restore .",
         "git checkout -b feat/x && git checkout -- server.py",
         "git status | cat && git stash",
@@ -168,7 +162,7 @@ def test_rc525_a_safe_form_cannot_launder_a_destructive_one():
 
 
 def test_rc525_an_interpreter_heredoc_is_still_judged_per_line():
-    """RC-253 kept: a heredoc handed to a shell IS the instruction, so a CLASS form inside it
+    """A heredoc handed to a shell IS the instruction, so a CLASS form inside it
     (not only a hard form) still blocks, and a quoted commit message stays prose."""
     assert OPL.reset_guard_violations("bash <<'EOF'\ngit status\ngit restore .\nEOF")
     assert not OPL.reset_guard_violations(

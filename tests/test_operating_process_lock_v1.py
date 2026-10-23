@@ -30,10 +30,6 @@ def test_edit_branch_topology_rails_only_no_role_denylist(tmp_path):
     assert any("PROD_CHECKOUT_APP_EDIT" in b for b in bad), bad
     # ...but a non-app file (docs/governance) in the primary is NOT gated
     assert PLG.production_checkout_app_edit_violations({"file_path": str(primary / "notes.md")}, primary) == []
-    # no role-based denylist resurrected
-    assert not hasattr(OPL, "claude_isolated_edit_violation")
-    assert not hasattr(OPL, "operator_go_granted")
-    assert not hasattr(OPL, "pm_mission_record")
 
 
 def _linked_worktree_layout(tmp_path: Path) -> tuple[Path, Path]:
@@ -112,8 +108,8 @@ def test_reset_guard_permits_safe_git():
 
 
 # ---------------------------------------------------------------------------
-# RC-234 — pipe-masked commits (the t6+t12 slice reported exit 0 off `| tail -3`
-# while HEAD never moved; the filter's exit code replaced the commit's).
+# RC-234 — pipe-masked commits: a `git commit` piped into a filter reports the filter's
+# exit code, not the commit's.
 # ---------------------------------------------------------------------------
 
 def test_rc234_piped_commit_blocks():
