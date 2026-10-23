@@ -187,7 +187,7 @@ import push_changes
 from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT
 from app.market_data.schwab.streaming import live_ui
 from app.options.order_flow.engine import OrderFlowEngine, compute_book_microstructure
-from app.options.order_flow.history import TAPE, book_heatmap_for_ticker, put_call_side
+from app.options.order_flow.history import TAPE, book_heatmap_for_ticker
 from app.options.order_flow.live_payload import flow_block, options_live_payload
 from app.options.order_flow.state import get_content_for_symbol, get_stream_greeks
 from app.options.order_flow.streaming import (
@@ -2540,8 +2540,7 @@ def options_microstructure(c: str, now: float) -> dict:
     """The Flow panel's payload for contract `c` at `now` (/api/order-flow/options-microstructure)."""
     payload = options_live_payload(ticker_storage_key(c), now)
     payload["contract"] = c
-    payload["put_call"] = put_call_side(next((it.get("CONTRACT_TYPE") for it in get_content_for_symbol(c)  # external-key-ok: Schwab LEVELONE_OPTIONS
-                                              if it.get("CONTRACT_TYPE")), None))
+    payload["put_call"] = TAPE.put_call(c)
     # whether the daemon streams this contract (the option rule) and is receiving it
     payload["streaming_plane"] = get_option_contract_streaming_diagnostics(c, now)
     _stamp_book_times(payload)
