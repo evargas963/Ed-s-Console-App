@@ -39,7 +39,9 @@ def _run_port(config: dict) -> int:
 
 def test_two_runs_at_once_get_two_ports():
     env = {k: v for k, v in os.environ.items() if k != "ED_E2E_PORT"}
-    assert _run_port(_load_config(env)) != _run_port(_load_config(env))
+    first, second = _load_config(env), _load_config(env)
+    assert urlsplit(first["base"]).port != urlsplit(second["base"]).port
+    assert _run_port(first) != _run_port(second)
 
 
 def test_a_worker_keeps_the_port_its_run_picked():
