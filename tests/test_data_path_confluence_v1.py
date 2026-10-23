@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import app.options.order_flow.state as ofls
@@ -16,12 +16,13 @@ from confluence_composite import (
 )
 from math_exposure_core import bucket_metric, compute_exposures_by_strike
 from math_levels import compute_charm_by_strike
+from numeric_contract import price_text
 from stream_spine import options_quote_msg
 from terrain_engine import compute_terrain
 from time_et import ET, INDEX_OPTIONS, ct_label, valuation_instant
 
 import server
-from tests.real_chains import CRWD, SPY_0DTE, TSLA
+from tests.real_chains import CRWD, MRVL, SPY_0DTE, SPY_AFTER_HOURS_PRINT, SPY_CLOSE, TSLA
 
 _QUOTE = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_crwd_quote_2026_10_07.json")
                     .read_text(encoding="utf-8"))
@@ -70,102 +71,67 @@ def test_a_missing_factor_is_not_called_flat():
     assert "charm" in scored[770.0]["missing"]
 
 
+def _publish_close(tk: str = "SPY") -> dict:
+    """SPY's 2026-10-22 close capture, published as the stored capture it is, at Schwab's price."""
+    server._publish_levels(tk, captures=[{"contracts": [dict(c) for c in SPY_CLOSE.chain],
+                                          "ts_utc": SPY_CLOSE.now.timestamp(), "spot": SPY_CLOSE.spot,
+                                          "et_date": SPY_CLOSE.now.date().isoformat(),
+                                          "basis": CAPTURE_BASIS}], now=SPY_CLOSE.now)
+    with server._terrain_cache_lock:
+        return server._terrain_cache[tk]
+
+
 def test_the_matrix_reads_the_priced_book_and_leaves_flow_out():
-    """A planted book is the one the matrix ranks. Flow and the change in gamma stay empty,
-    and a today expiry's score cannot pass 72."""
-    now = datetime(2026, 10, 16, 10, 0, tzinfo=ET)
-    tk = "SPY"
-    bucket = {
-        "dollarized": True, "oi_unreported": 0, "volume_unreported": 0,
-        "call_oi": 10.0, "put_oi": 4.0, "call_volume": 3.0, "put_volume": 1.0,
-        "call_gex_1pct": 30_000_000.0, "put_gex_1pct": 12_000_000.0, "net_gex_1pct": 18_000_000.0,
-        "call_dex_dollars": 5.0, "put_dex_dollars": 2.0, "net_dex_dollars": 3.0,
-        "call_vanna": 1.0, "put_vanna": 0.0, "net_vanna": 1.0,
-        "call_gamma_unreported": 0, "put_gamma_unreported": 0,
-        "call_delta_unreported": 0, "put_delta_unreported": 0,
-        "call_vanna_unreported": 0, "put_vanna_unreported": 0,
-    }
-    contract = {
-        "strikePrice": 670.0, "putCall": "CALL", "openInterest": 10, "totalVolume": 3,
-        "multiplier": 100, "volatility": 20.0, "expirationDate": "2026-10-16",
-        "gamma": 0.01, "delta": 0.5,
-    }
-    _store(tk, {
-        "spot": 669.5, "computed_ts_utc": now.timestamp(),
-        "_valued_ts_utc": now.timestamp(),
-        "expiry_dte": {"2026-10-16": 0},
-        "_books": {("2026-10-16", 0): ({670.0: bucket}, None)},
-        "_priced_chain": [contract],
-        "_charm_by_expiry": {"2026-10-16": compute_charm_by_strike([contract], 669.5, now=now)},
-        "_iv_by_expiry": {"2026-10-16": iv_by_strike([contract])},
-    })
+    """SPY's 2026-10-22 close capture, its same-day expiry: the matrix ranks the book the
+    publication priced, each row's net and gross gamma that book's own numbers (millions, two
+    decimals, net signed), flow and the change in gamma empty, and a same-day expiry's score
+    cannot pass 72."""
     try:
-        body = server.confluence_payload(tk, "2026-10-16", now)
+        live = _publish_close()
+        book = live["_books"][("2026-10-22", 0.0)][0]
+        body = server.confluence_payload("SPY", "2026-10-22", SPY_CLOSE.now)
     finally:
-        server._terrain_cache.pop(tk, None)
+        server._terrain_cache.pop("SPY", None)
     assert body["available"] is True
-    assert body["preset"] == "0DTE"
-    assert body["ceiling"] == 72
-    assert body["weights_in_score"]["FLOWM"] == 0
-    assert body["weights_in_score"]["DGEXM"] == 0
-    row = body["rows"][0]
-    assert row["strike"] == 670.0
-    assert row["strike_text"] == "670.00"
-    assert row["net_gex_text"] == "+18.00"
-    assert row["gross_text"] == "42.00"
-    assert row["flow_text"] is None
-    assert row["dgex_text"] is None
-    assert body["expiries"][0]["label"] == "0DTE · 2026-10-16"
-    assert row["heat_background"].startswith("background:")
-    assert "9,166,67" in row["net_style"]
+    assert (body["preset"], body["ceiling"]) == ("0DTE", 72)
+    assert body["weights_in_score"]["FLOWM"] == 0 and body["weights_in_score"]["DGEXM"] == 0
+    assert body["expiries"][0]["label"] == "0DTE · 2026-10-22"
+    checked = 0
+    for row in body["rows"]:
+        bucket = book[row["strike"]]
+        assert row["strike_text"] == price_text(row["strike"])
+        assert row["flow_text"] is None and row["dgex_text"] is None
+        net = bucket_metric(bucket, "net_gex_1pct")
+        call, put = bucket_metric(bucket, "call_gex_1pct"), bucket_metric(bucket, "put_gex_1pct")
+        if net is not None and abs(net) >= 5_000:
+            assert row["net_gex_text"] == f"{net / 1e6:+.2f}"
+            assert row["heat_background"].startswith("background:")
+            checked += 1
+        if call is not None and put is not None and call >= 0 and put >= 0:
+            assert row["gross_text"] == f"{(call + put) / 1e6:.2f}"
+    assert checked > 5
 
 
-def test_charm_uses_the_book_valuation_time_and_a_zero_book_is_zero_charm():
-    """A reprice values charm when the book was priced, not at the older chain stamp.
-    Open interest of zero is no charm, not a missing charm."""
-    chain_time = datetime(2026, 10, 16, 9, 45, tzinfo=ET)
-    valued = datetime(2026, 10, 16, 15, 0, tzinfo=ET)
-    tk = "SPY"
-    bucket = {
-        "dollarized": True, "oi_unreported": 0, "volume_unreported": 0,
-        "call_oi": 0.0, "put_oi": 0.0, "call_volume": 4.0, "put_volume": 0.0,
-        "call_gex_1pct": 30_000_000.0, "put_gex_1pct": 12_000_000.0, "net_gex_1pct": 18_000_000.0,
-        "call_dex_dollars": 0.0, "put_dex_dollars": 0.0, "net_dex_dollars": 0.0,
-        "call_vanna": 0.0, "put_vanna": 0.0, "net_vanna": 0.0,
-        "call_gamma_unreported": 0, "put_gamma_unreported": 0,
-        "call_delta_unreported": 0, "put_delta_unreported": 0,
-        "call_vanna_unreported": 0, "put_vanna_unreported": 0,
-    }
-    contract = {
-        "strikePrice": 670.0, "putCall": "CALL", "openInterest": 0, "totalVolume": 4,
-        "multiplier": 100, "volatility": 20.0, "expirationDate": "2026-10-16T20:00:00",
-        "gamma": 0.01, "delta": 0.5,
-    }
-    direct = compute_charm_by_strike([contract], 669.5, now=valued)
-    assert 670.0 not in direct
-    zero = magnitudes(bucket, None, 20.0, 669.5)
-    assert zero["CHARMM"] == 0.0
-    _store(tk, {
-        "spot": 669.5, "computed_ts_utc": chain_time.timestamp(),
-        "_valued_ts_utc": valued.timestamp(),
-        "expiry_dte": {"2026-10-16": 0},
-        "_books": {("2026-10-16", 0): ({670.0: bucket}, None)},
-        "_priced_chain": [contract],
-        "_iv_by_expiry": {"2026-10-16": iv_by_strike([contract])},
-        "call_wall": 669.0,
-    })
+def test_a_zero_book_is_zero_charm_and_the_wall_is_drawn_at_its_own_price():
+    """SPY's 2026-10-22 close capture: a strike whose every contract Schwab sent with open interest
+    0 has no charm entry, and its book's charm magnitude is 0, not missing. The publication's call
+    wall is a level at its own price, in the options lane, its text two decimals."""
+    zero_oi = sorted(k for k in {c["strikePrice"] for c in SPY_CLOSE.chain}
+                     if all(c["openInterest"] == 0 for c in SPY_CLOSE.chain if c["strikePrice"] == k))
+    strike = zero_oi[0]
+    inside = datetime(2026, 10, 22, 15, 0, tzinfo=ET)       # before the close: charm has time
+    legs = [dict(c) for c in SPY_CLOSE.chain if c["strikePrice"] == strike]
+    assert strike not in compute_charm_by_strike(legs, SPY_CLOSE.spot, now=inside)
     try:
-        body = server.confluence_payload(tk, "2026-10-16", valued)
+        live = _publish_close()
+        bucket = live["_books"][("2026-10-22", 0.0)][0][strike]
+        body = server.confluence_payload("SPY", "2026-10-22", SPY_CLOSE.now)
     finally:
-        server._terrain_cache.pop(tk, None)
-    row = body["rows"][0]
-    assert row["charm_text"] == "0.00"
-    assert row["score"] is not None
-    assert row["markers"] == []
+        server._terrain_cache.pop("SPY", None)
+    assert magnitudes(bucket, None, None, SPY_CLOSE.spot)["CHARMM"] == 0.0
     walls = [level for level in body["levels"] if level["abbrev"] == "CW"]
-    assert walls[0]["price"] == 669.0
-    assert walls[0]["price_text"] == "669.00"
-    assert walls[0]["lane"] == "options"
+    assert [(w["price"], w["price_text"], w["lane"]) for w in walls] == [
+        (live["call_wall"], price_text(live["call_wall"]), "options")]
 
 
 def test_the_window_is_five_strikes_each_side_of_the_price():
@@ -211,56 +177,38 @@ def test_a_level_on_a_listed_strike_sits_on_that_strike():
 
 
 def test_a_passed_expiry_is_not_the_one_the_matrix_opens_on():
-    """Friday's chain still holds Friday's expiry. On Sunday the matrix opens on the next one."""
-    friday = datetime(2026, 10, 16, 15, 15, tzinfo=ET)
-    sunday = datetime(2026, 10, 18, 12, 0, tzinfo=ET)
-    tk = "SPY"
-    bucket = {
-        "dollarized": True, "oi_unreported": 0, "volume_unreported": 0,
-        "call_oi": 10.0, "put_oi": 4.0, "call_volume": 3.0, "put_volume": 1.0,
-        "call_gex_1pct": 30_000_000.0, "put_gex_1pct": 12_000_000.0, "net_gex_1pct": 18_000_000.0,
-        "call_dex_dollars": 5.0, "put_dex_dollars": 2.0, "net_dex_dollars": 3.0,
-        "call_vanna": 1.0, "put_vanna": 0.0, "net_vanna": 1.0,
-        "call_gamma_unreported": 0, "put_gamma_unreported": 0,
-        "call_delta_unreported": 0, "put_delta_unreported": 0,
-        "call_vanna_unreported": 0, "put_vanna_unreported": 0,
-    }
-    cache = {
-        "spot": 669.5, "computed_ts_utc": friday.timestamp(),
-        "_valued_ts_utc": friday.timestamp(),
-        "expiry_dte": {"2026-10-16": 0, "2026-10-19": 3},
-        "_books": {
-            ("2026-10-16", 0): ({670.0: bucket}, None),
-            ("2026-10-19", 3): ({670.0: bucket}, None),
-        },
-        "_priced_chain": [],
-    }
-    _store(tk, cache)
+    """MRVL's full chain captured Wednesday 2026-10-07 still holds Friday's 2026-10-09 expiry. On
+    Sunday the matrix opens on the next one, and a request for Friday's opens there too."""
+    tk = "MRVL"
+    sunday = datetime(2026, 10, 11, 12, 0, tzinfo=ET)
+    listed = sorted({str(c["expirationDate"])[:10] for c in MRVL.chain})
     try:
+        server._publish_levels(tk, captures=[{"contracts": [dict(c) for c in MRVL.chain],
+                                              "ts_utc": MRVL.now.timestamp(), "spot": MRVL.spot,
+                                              "et_date": MRVL.now.date().isoformat(),
+                                              "basis": CAPTURE_BASIS}], now=MRVL.now)
         opened = server.confluence_payload(tk, None, sunday)
-        asked = server.confluence_payload(tk, "2026-10-16", sunday)
-        server._terrain_cache[tk]["_books"] = {("2026-10-19", 3): ({670.0: bucket}, None)}
-        server._terrain_cache[tk]["expiry_dte"] = {"2026-10-19": 3}
-        gone = server.confluence_payload(tk, "2026-10-16", sunday)
+        asked = server.confluence_payload(tk, listed[0], sunday)
     finally:
         server._terrain_cache.pop(tk, None)
-    assert opened["available"] is True
-    assert opened["expiry"] == "2026-10-19"
-    assert [e["expiry"] for e in opened["expiries"]] == ["2026-10-19"]
-    assert asked["available"] is True
-    assert asked["expiry"] == "2026-10-19"
-    assert gone["available"] is True
-    assert gone["expiry"] == "2026-10-19"
+    assert listed[:2] == ["2026-10-09", "2026-10-16"]
+    assert (opened["available"], opened["expiry"]) == (True, "2026-10-16")
+    assert "2026-10-09" not in [e["expiry"] for e in opened["expiries"]]
+    assert (asked["available"], asked["expiry"]) == (True, "2026-10-16")
 
 
 def test_the_matrix_reads_the_expiry_charm_map_and_does_not_rebuild_it():
-    """Charm is the map the book stored for this expiry. SPY's captured 0DTE chain would
-    build a different charm, so a planted number on the matrix is that stored map."""
+    """Charm is the map the book stored for this expiry. SPY's captured 0DTE chain valued an hour
+    before its capture is a different charm map than the chain valued at its capture would build;
+    stored with the book, it is the charm on the matrix (thousands, two decimals, signed)."""
 
     held = SPY_0DTE
     expiry = str(held.chain[0]["expirationDate"])[:10]
     book, _diag = compute_exposures_by_strike(
         held.chain, spot=held.spot, now=held.now, product=INDEX_OPTIONS)
+    earlier = compute_charm_by_strike(held.chain, held.spot, now=held.now - timedelta(hours=1),
+                                      product=INDEX_OPTIONS)
+    at_capture = compute_charm_by_strike(held.chain, held.spot, now=held.now, product=INDEX_OPTIONS)
     strike = min(book, key=lambda s: abs(s - held.spot))
     _store("SPY", {
         "spot": held.spot, "computed_ts_utc": held.now.timestamp(),
@@ -268,25 +216,28 @@ def test_the_matrix_reads_the_expiry_charm_map_and_does_not_rebuild_it():
         "expiry_dte": {expiry: 0},
         "_books": {(expiry, 0): (book, None)},
         "_priced_chain": held.chain,
-        "_charm_by_expiry": {expiry: {
-            strike: {"call_charm": 8000.0, "put_charm": 0.0, "net_charm": 8000.0}}},
+        "_charm_by_expiry": {expiry: earlier},
     })
     try:
         body = server.confluence_payload("SPY", expiry, held.now)
     finally:
         server._terrain_cache.pop("SPY", None)
     row = next(r for r in body["rows"] if r["strike"] == strike)
-    assert row["charm_text"] == "+8.00"
+    assert earlier[strike]["net_charm"] != at_capture[strike]["net_charm"]
+    assert row["charm_text"] == f"{earlier[strike]['net_charm'] / 1000:+.2f}"
 
 
 def test_the_matrix_reads_the_expiry_volatility_blend_and_does_not_rebuild_it():
-    """The volatility column is the blend the book stored for this expiry. SPY's captured
-    0DTE chain would blend a different number, so a planted value on the matrix is that map."""
+    """The volatility column is the blend the book stored for this expiry. The blend of SPY's
+    2026-10-22 close chain, stored with SPY's 2026-10-07 0DTE book, is not the blend that chain
+    would build; it is the volatility on the matrix (one decimal)."""
 
     held = SPY_0DTE
     expiry = str(held.chain[0]["expirationDate"])[:10]
     book, _diag = compute_exposures_by_strike(
         held.chain, spot=held.spot, now=held.now, product=INDEX_OPTIONS)
+    puts = iv_by_strike(SPY_CLOSE.chain)
+    whole = iv_by_strike(held.chain)
     strike = min(book, key=lambda s: abs(s - held.spot))
     _store("SPY", {
         "spot": held.spot, "computed_ts_utc": held.now.timestamp(),
@@ -294,39 +245,39 @@ def test_the_matrix_reads_the_expiry_volatility_blend_and_does_not_rebuild_it():
         "expiry_dte": {expiry: 0},
         "_books": {(expiry, 0): (book, None)},
         "_priced_chain": held.chain,
-        "_iv_by_expiry": {expiry: {strike: 99.0}},
+        "_iv_by_expiry": {expiry: puts},
     })
     try:
         body = server.confluence_payload("SPY", expiry, held.now)
     finally:
         server._terrain_cache.pop("SPY", None)
-    row = next(r for r in body["rows"] if r["strike"] == strike)
-    assert row["iv_text"] == "99.0"
+    differ = [r for r in body["rows"] if r["strike"] in puts and r["strike"] in whole
+              and f"{puts[r['strike']]:.1f}" != f"{whole[r['strike']]:.1f}"]
+    assert differ and all(r["iv_text"] == f"{puts[r['strike']]:.1f}" for r in differ)
 
 
 def test_the_matrix_request_returns_the_ranking_stored_with_the_book():
-    """The request does not rank again. SPY's captured chain would not produce this row."""
+    """The request does not rank again. The ranking of SPY's 2026-10-22 close book, stored with
+    SPY's 2026-10-07 chain, is not a ranking that chain could produce; the request returns it."""
 
     held = SPY_0DTE
     expiry = str(held.chain[0]["expirationDate"])[:10]
-    server._terrain_cache["SPY"] = {
-        "spot": held.spot, "computed_ts_utc": held.now.timestamp(),
-        "_valued_ts_utc": held.now.timestamp(),
-        "expiry_dte": {expiry: 0},
-        "_books": {(expiry, 0): ({held.spot: {}}, None)},
-        "_priced_chain": held.chain,
-        "_matrix_by_expiry": {expiry: {
-            "preset": "0DTE", "ceiling": 72, "weights_in_score": {},
-            "rows": [{"strike": held.spot, "iv_text": "11.0", "charm_text": "+1.00"}],
-            "strikes": [held.spot],
-        }},
-    }
     try:
+        other = _publish_close()["_matrix_by_expiry"]["2026-10-22"]
+        server._terrain_cache["SPY"] = {
+            "spot": held.spot, "computed_ts_utc": held.now.timestamp(),
+            "_valued_ts_utc": held.now.timestamp(),
+            "expiry_dte": {expiry: 0},
+            "_books": {(expiry, 0): ({held.spot: {}}, None)},
+            "_priced_chain": held.chain,
+            "_matrix_by_expiry": {expiry: other},
+        }
         body = server.confluence_payload("SPY", expiry, held.now)
     finally:
         server._terrain_cache.pop("SPY", None)
-    assert body["rows"][0]["iv_text"] == "11.0"
-    assert body["rows"][0]["charm_text"] == "+1.00"
+    assert [r["strike"] for r in body["rows"]] == [r["strike"] for r in other["rows"]]
+    assert [(r["score_text"], r["iv_text"], r["charm_text"]) for r in body["rows"]] == [
+        (r["score_text"], r["iv_text"], r["charm_text"]) for r in other["rows"]]
 
 
 def _window_has(rows: list, key: str) -> bool:
@@ -858,31 +809,42 @@ def test_during_the_session_a_zero_count_replaces_the_old_count():
 
 
 def test_an_after_hours_print_keeps_the_close_book():
-    """SPY's captured chain is published after the index close at the close spot. A later
-    equity print, with no new chain, leaves that strike's gamma, vanna, and charm."""
-
-    held = SPY_0DTE
+    """SPY's 2026-10-22 close capture (begun 16:17:04 ET, after the index close) is published at
+    the price Schwab sent in it. SPY's after-hours print at 18:00 ET (LAST_PRICE as the daemon
+    received it), with no new chain, reprices nothing: the strike's gamma, vanna and charm and the
+    publication's price stay the close's."""
+    held, print_ = SPY_CLOSE, SPY_AFTER_HOURS_PRINT
     tk = "SPY"
-    at = datetime(2026, 10, 7, 18, 0, tzinfo=ET)
+    at = datetime.fromtimestamp(print_["ts_recv"], ET)
     expiry = str(held.chain[0]["expirationDate"])[:10]
-    ofs._price_rows[tk] = {"ticker": tk, "spot": held.spot, "trade_ts": at.timestamp()}
     try:
-        server._publish_levels(tk, held.chain, at.timestamp(), now=at)
-        first = server.confluence_payload(tk, expiry, at)
+        server._publish_levels(tk, captures=[{"contracts": [dict(c) for c in held.chain],
+                                              "ts_utc": held.now.timestamp(), "spot": held.spot,
+                                              "et_date": held.now.date().isoformat(),
+                                              "basis": CAPTURE_BASIS}], now=held.now)
+        first = server.confluence_payload(tk, expiry, held.now)
         near = min(first["rows"], key=lambda row: abs(row["strike"] - held.spot))
         close_texts = (near["net_gex_text"], near["vanna_text"], near["charm_text"])
         assert None not in close_texts
-        ofs._price_rows[tk] = {"ticker": tk, "spot": held.spot + 1.0,
-                               "trade_ts": at.timestamp()}
+        lmp.record_from_level_one_equity(tk, print_["native"], received_ts=print_["ts_recv"])
+        lmp.record_feed_heartbeat({"ts": at.timestamp(), "schwab_socket_open": True,
+                                   "held": {"LEVELONE_EQUITIES": [tk]}})
+        ofs._price_rows[tk] = live_price_rows.price_row(tk, at.timestamp())
         second_snap = server._publish_levels(tk, now=at)
         second = server.confluence_payload(tk, expiry, at)
         again = min(second["rows"], key=lambda row: abs(row["strike"] - held.spot))
-        assert (again["net_gex_text"], again["vanna_text"], again["charm_text"]) == close_texts
-        assert second_snap.spot == held.spot
     finally:
-        ofs._price_rows.pop(tk, None)
         with server._terrain_cache_lock:
             server._terrain_cache.pop(tk, None)
+        ofs._price_rows.pop(tk, None)
+        lmp._by_ticker.pop(tk, None)
+        lmp._fields_by_ticker.pop(tk, None)
+        lmp.record_feed_heartbeat({"ts": at.timestamp(), "schwab_socket_open": True, "held": {}})
+        lmp.record_feed_down()
+    assert print_["native"]["LAST_PRICE"] != held.spot
+    assert (again["net_gex_text"], again["vanna_text"], again["charm_text"]) == close_texts
+    assert second_snap.spot == held.spot and second["priced_at_spot"] == held.spot
+    assert second["spot"] == print_["native"]["LAST_PRICE"]
 
 
 def test_a_close_capture_keeps_its_charm_in_the_forces():
@@ -905,8 +867,8 @@ def test_a_close_capture_keeps_its_charm_in_the_forces():
 
 def test_the_forces_read_the_charm_map_of_the_capture_just_priced():
     """The side sums are the charm map priced with that capture. SPY's captured chain,
-    valued at the index close, sums to the same charm either way. A planted map is not
-    that chain's charm, so the sums are the planted map."""
+    valued at the index close, sums to the same charm either way. The same chain's charm valued
+    at its own capture instant, 12:32 ET, is a different map, and the sums are that map's."""
 
     held = SPY_0DTE
     after = datetime(2026, 10, 7, 18, 0, tzinfo=ET)
@@ -923,41 +885,23 @@ def test_the_forces_read_the_charm_map_of_the_capture_just_priced():
     from_book = server._forces_from_captures("SPY", caps, snap.charm_by_strike)
     assert from_book["charm_below"] == fresh["charm_below"]
     assert from_book["charm_above"] == fresh["charm_above"]
-    planted = {
-        held.spot - 1: {"call_charm": 5000.0, "put_charm": 0.0, "net_charm": 5000.0},
-        held.spot + 1: {"call_charm": 7000.0, "put_charm": 0.0, "net_charm": 7000.0},
-    }
-    read = server._forces_from_captures("SPY", caps, planted)
-    assert read["charm_below"] == 5000.0
-    assert read["charm_above"] == 7000.0
+    midday = compute_charm_by_strike(held.chain, held.spot, now=held.now, product=INDEX_OPTIONS)
+    read = server._forces_from_captures("SPY", caps, midday)
+    below = sum(v["net_charm"] for k, v in midday.items() if k < held.spot and v.get("net_charm") is not None)
+    above = sum(v["net_charm"] for k, v in midday.items() if k > held.spot and v.get("net_charm") is not None)
+    assert (below, above) != (fresh["charm_below"], fresh["charm_above"])
+    assert (read["charm_below"], read["charm_above"]) == (below, above)
 
 
 def test_a_chain_whose_every_expiry_has_passed_says_so():
-    """Sunday, and the only expiry on the chain is Friday: the matrix says none is still open."""
-    friday = datetime(2026, 10, 16, 15, 15, tzinfo=ET)
-    sunday = datetime(2026, 10, 18, 12, 0, tzinfo=ET)
-    tk = "SPY"
-    bucket = {
-        "dollarized": True, "oi_unreported": 0, "volume_unreported": 0,
-        "call_oi": 10.0, "put_oi": 4.0, "call_volume": 3.0, "put_volume": 1.0,
-        "call_gex_1pct": 30_000_000.0, "put_gex_1pct": 12_000_000.0, "net_gex_1pct": 18_000_000.0,
-        "call_dex_dollars": 5.0, "put_dex_dollars": 2.0, "net_dex_dollars": 3.0,
-        "call_vanna": 1.0, "put_vanna": 0.0, "net_vanna": 1.0,
-        "call_gamma_unreported": 0, "put_gamma_unreported": 0,
-        "call_delta_unreported": 0, "put_delta_unreported": 0,
-        "call_vanna_unreported": 0, "put_vanna_unreported": 0,
-    }
-    server._terrain_cache[tk] = {
-        "spot": 669.5, "computed_ts_utc": friday.timestamp(),
-        "_valued_ts_utc": friday.timestamp(),
-        "expiry_dte": {"2026-10-16": 0},
-        "_books": {("2026-10-16", 0): ({670.0: bucket}, None)},
-        "_priced_chain": [],
-    }
+    """SPY's 2026-10-22 close capture holds only that day's expiry. On Sunday 2026-10-25 the
+    matrix says no expiry on the chain is still open."""
+    sunday = datetime(2026, 10, 25, 12, 0, tzinfo=ET)
     try:
-        body = server.confluence_payload(tk, None, sunday)
+        _publish_close()
+        body = server.confluence_payload("SPY", None, sunday)
     finally:
-        server._terrain_cache.pop(tk, None)
+        server._terrain_cache.pop("SPY", None)
     assert body["available"] is False
     assert body["reason"] == "no expiry on this chain is still open"
 

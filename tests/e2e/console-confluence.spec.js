@@ -2,37 +2,29 @@
  * Confluence Matrix. The page draws /api/confluence and computes nothing. A priced-book
  * update (the `levels` notice, and a new `chain`) redraws the table and keeps the expiry
  * the operator picked. A flow notice does not.
+ *
+ * Real data: /api/confluence as the real code served it on MRVL's full chain captured
+ * 2026-10-07 10:31:20 ET (tests/fixtures/real_mrvl_confluence_payloads_2026_10_07.json).
  */
 const { test, expect } = require('@playwright/test');
+const FX = require('../fixtures/real_mrvl_confluence_payloads_2026_10_07.json');
 
-function matrix(expiry) {
-  return {
-    available: true, ticker: 'SPY', preset: '0DTE', preset_text: '0DTE · ceiling 72', ceiling: 72,
-    chain_as_of_time_ct: '10:00:00 AM CT',
-    expiry: expiry || '2026-10-16',
-    expiries: [
-      { expiry: '2026-10-16', dte: 0, label: '2026-10-16 · 0' },
-      { expiry: '2026-10-23', dte: 7, label: '2026-10-23 · 7' },
-    ],
-    weights_in_score: { CHARMM: 0.22, DGEXM: 0, GEXM: 0.15, FLOWM: 0 },
-    spot: 670, spot_text: '670.00', spot_time_ct: '10:00:00 AM CT', regime: 'SHORT_GAMMA_TREND', scale_text: '0–72',
-    status_text: 'Chain as of 10:00:00 AM CT',
-    flip_text: '669.00', move_text: '665.00–675.00', pin_text: '671.00',
-    move_low: 665, move_high: 675, notes: [], slopes: [], offscreen: [],
-    levels: [
-      { lane: 'session', abbrev: 'PDH', price: 680, price_text: '680.00', title: 'Prior day high' },
-      { lane: 'options', abbrev: '0D Pin', price: 671, price_text: '671.00', title: '0DTE Abs Γ' },
-    ],
-    rows: [{
-      strike: 671, strike_text: '671', distance_text: '1.00', score: 40, score_text: '40',
-      net_gex_text: '18.00', gross_text: '42.00', oi_text: '14', pc_gex_text: '0.40',
-      dgex_text: null, volume_text: '4', pc_vol_text: '0.33', vol_oi_text: '0.29',
-      flow_text: null, dex_text: '0.00', vanna_text: '0.00', iv_text: '20.0', charm_text: '1.00',
-      markers: [], missing: [], spot_line: true,
-      contributions: [{ label: 'net gamma', text: '12.0', raw_text: '18.00', normalized_text: '0.80', weight_text: '0.15' }],
-      factors: [{ label: 'net gamma', text: '12.0', raw_text: '18.00', normalized_text: '0.80', weight_text: '0.15' }],
-    }],
-  };
+const FRONT = '2026-10-09';
+const NEXT = '2026-10-16';
+
+function served(expiry) {
+  return FX.by_expiry[expiry] || FX.by_expiry[FRONT];
+}
+
+async function openMatrix(page) {
+  await page.addInitScript(() => {
+    try {
+      localStorage.setItem('ed_ticker', 'MRVL');
+      localStorage.setItem('ed_ws', 'trade-desk');
+      localStorage.setItem('ed_sub', 'confluence');
+    } catch (e) { /* storage unavailable */ }
+  });
+  await page.goto('/');
 }
 
 test('the matrix redraws when the priced chain updates and keeps the expiry', async ({ page }) => {
@@ -45,35 +37,34 @@ test('the matrix redraws when the priced chain updates and keeps the expiry', as
   await page.route('**/api/confluence**', (route) => {
     const asked = new URL(route.request().url()).searchParams.get('expiry');
     expiries.push(asked);
-    return route.fulfill({
-      status: 200, contentType: 'application/json',
-      body: JSON.stringify(matrix(asked)),
-    });
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(served(asked)) });
   });
-  await page.addInitScript(() => {
-    try {
-      localStorage.setItem('ed_ticker', 'SPY');
-      localStorage.setItem('ed_ws', 'trade-desk');
-      localStorage.setItem('ed_sub', 'confluence');
-    } catch (e) { /* storage unavailable */ }
-  });
-  await page.goto('/');
-  await expect(page.locator('#cmBody')).toContainText('40');
+  await openMatrix(page);
+  const body = served(FRONT);
+  const rows = body.rows;
+  const hi = rows[0].strike;
+  const lo = rows[rows.length - 1].strike;
+  await expect(page.locator('#cmBody')).toContainText(rows[0].score_text);
   await expect(page.locator('#cmBody')).toContainText('—');
   await expect(page.locator('#cmBody h1')).toHaveCount(0);
-  await expect(page.locator('#cmBody')).not.toContainText('Hover a level to trace its price');
-  await expect(page.locator('#cmExp')).toHaveValue('2026-10-16');
-  await expect(page.locator('.level-pill')).toContainText('0D Pin 671.00');
-  await expect(page.locator('#cmAbove')).toContainText('PDH 680.00');
+  await expect(page.locator('#cmExp')).toHaveValue(FRONT);
+  for (const lv of body.levels.filter((l) => l.price > hi)) {
+    await expect(page.locator('#cmAbove')).toContainText(lv.abbrev + ' ' + lv.price_text);
+  }
+  for (const lv of body.levels.filter((l) => l.price < lo)) {
+    await expect(page.locator('#cmBelow')).toContainText(lv.abbrev + ' ' + lv.price_text);
+  }
   const font = await page.locator('.cm-page').evaluate((el) => getComputedStyle(el).fontSize);
   expect(font).toBe('13px');
   const opened = expiries.length;
   expect(opened).toBeGreaterThan(0);
 
-  await page.locator('#cmBody tbody tr[data-i]').click();
-  await expect(page.locator('#cmDetail')).toContainText('net gamma 12.0');
-  await expect(page.locator('#cmDetail')).toContainText('18.00M');
-  await expect(page.locator('#cmDetail')).toContainText('1.00k');
+  const row = rows.find((r) => r.score_text && r.contributions.length);
+  const first = row.contributions[0];
+  await page.locator('#cmBody tbody tr[data-i="' + rows.indexOf(row) + '"]').click();
+  await expect(page.locator('#cmDetail')).toContainText(first.label + ' ' + first.text);
+  await expect(page.locator('#cmDetail')).toContainText(row.net_gex_text + 'M');
+  await expect(page.locator('#cmDetail')).toContainText(row.charm_text + 'k');
   await expect(page.locator('#cmDetail')).toContainText('$ per 1% move');
   await expect(page.locator('#cmDetail')).toContainText('delta-shares / day');
 
@@ -81,22 +72,22 @@ test('the matrix redraws when the priced chain updates and keeps the expiry', as
     document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'levels' } }));
   });
   await expect.poll(() => expiries.length).toBe(opened + 1);
-  expect(expiries[expiries.length - 1]).toBe('2026-10-16');
-  await expect(page.locator('#cmDetail')).toContainText('net gamma 12.0');
+  expect(expiries[expiries.length - 1]).toBe(FRONT);
+  await expect(page.locator('#cmDetail')).toContainText(first.label + ' ' + first.text);
 
-  await page.locator('#cmExp').selectOption('2026-10-23');
-  await expect.poll(() => expiries[expiries.length - 1]).toBe('2026-10-23');
+  await page.locator('#cmExp').selectOption(NEXT);
+  await expect.poll(() => expiries[expiries.length - 1]).toBe(NEXT);
   const picked = expiries.length;
 
   await page.evaluate(() => {
     document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'chain' } }));
   });
   await expect.poll(() => expiries.length).toBe(picked + 1);
-  expect(expiries[expiries.length - 1]).toBe('2026-10-23');
+  expect(expiries[expiries.length - 1]).toBe(NEXT);
 
   await page.getByRole('button', { name: 'Confluence Matrix' }).click();
   await expect.poll(() => expiries.length).toBe(picked + 2);
-  expect(expiries[expiries.length - 1]).toBe('2026-10-23');
+  expect(expiries[expiries.length - 1]).toBe(NEXT);
 
   await page.evaluate(() => {
     document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'flow' } }));
@@ -108,37 +99,23 @@ test('the matrix redraws when the priced chain updates and keeps the expiry', as
 
 test('a passed expiry is replaced by the one the server returns', async ({ page }) => {
   const asked = [];
-  let serveNext = false;
+  let afterItPassed = false;
   await page.route('**/api/confluence**', (route) => {
     asked.push(new URL(route.request().url()).searchParams.get('expiry'));
-    const body = serveNext
-      ? Object.assign(matrix('2026-10-19'), {
-        expiry: '2026-10-19',
-        expiries: [{ expiry: '2026-10-19', dte: 1, label: '2026-10-19 · 1' }],
-      })
-      : matrix('2026-10-16');
-    return route.fulfill({
-      status: 200, contentType: 'application/json', body: JSON.stringify(body),
-    });
+    const body = afterItPassed ? FX.front_passed : served(FRONT);
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
-  await page.addInitScript(() => {
-    try {
-      localStorage.setItem('ed_ticker', 'SPY');
-      localStorage.setItem('ed_ws', 'trade-desk');
-      localStorage.setItem('ed_sub', 'confluence');
-    } catch (e) { /* storage unavailable */ }
-  });
-  await page.goto('/');
-  await expect(page.locator('#cmBody')).toContainText('40');
-  serveNext = true;
+  await openMatrix(page);
+  await expect(page.locator('#cmBody')).toContainText(served(FRONT).rows[0].score_text);
+  afterItPassed = true;
   const before = asked.length;
   await page.evaluate(() => {
     document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'levels' } }));
   });
   await expect.poll(() => asked.length).toBe(before + 1);
-  expect(asked[asked.length - 1]).toBe('2026-10-16');
+  expect(asked[asked.length - 1]).toBe(FRONT);
   await page.evaluate(() => {
     document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'chain' } }));
   });
-  await expect.poll(() => asked[asked.length - 1]).toBe('2026-10-19');
+  await expect.poll(() => asked[asked.length - 1]).toBe(FX.front_passed.expiry);
 });

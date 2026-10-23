@@ -56,6 +56,14 @@ def float_positive_or_none(value: Any) -> float | None:
     return v if v is not None and v > 0.0 else None
 
 
+def price_text(value: float | None) -> str | None:
+    """A price as the screen shows it: two decimals (operator 2026-10-23). The value keeps every
+    digit; only this text rounds. None when there is no price: the page draws "-"."""
+    if value is None:
+        return None
+    return f"{float(value):.2f}"
+
+
 
 
 

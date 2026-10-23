@@ -7,9 +7,11 @@ price `priced_at_spot`. Strike Detail's Net GEX is the heatmap's own cell, and O
 totals are served, not summed in the browser.
 
 Through the real code: the daemon's status and price row as the console holds them, the levels
-producer (server._publish_levels), the routes. Real data: Schwab's CRWD chain as captured
-2026-09-02 (tests/fixtures/real_crwd_complete_chain_quarter.json), published at its capture price
-(205.4). STAND-IN (named): the live price after the capture, LIVE (206.4).
+producer (server._publish_levels), the routes. Real data: CRWD's 2026-10-16 expiry, every strike,
+captured 2026-10-07 10:38:40 ET (tests/real_chains.py CRWD), published at the price Schwab sent in
+that answer (PUBLISHED, 269.04), and CRWD's LEVELONE_EQUITIES message the daemon received at
+10:38:00 ET (tests/fixtures/real_crwd_quote_2026_10_07.json, LIVE: its LAST_PRICE 269.395), made
+the price row by the daemon's own function.
 """
 import inspect
 import json
@@ -33,78 +35,70 @@ from time_et import ET
 _QUOTE = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_crwd_quote_2026_10_07.json")
                     .read_text(encoding="utf-8"))
 
-_REAL = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_crwd_complete_chain_quarter.json")
-                   .read_text(encoding="utf-8"))
-_CONTRACTS = [dict(ct) for ct in _REAL["chain"]]
-TK = "CRWD"
-EXPIRY = _REAL["expiry"]                   # 2026-09-18
-PUBLISHED = float(_REAL["spot"])           # Schwab's price at the capture
-LIVE = PUBLISHED + 1.0                     # stand-in for the stream's price
-_AT = datetime(2026, 9, 2, 10, 5, tzinfo=ET)
+_CONTRACTS = [dict(ct) for ct in CRWD.chain]
+TK = ticker_storage_key(CRWD.ticker)
+EXPIRY = str(CRWD.chain[0]["expirationDate"])[:10]     # 2026-10-16
+PUBLISHED = CRWD.spot                                  # Schwab's price in the chain answer
+LIVE = _QUOTE["native"]["LAST_PRICE"]                  # Schwab's last trade, as the daemon received it
+_AT = CRWD.now
 
 
-def _daemon(price, at: float, held_options=()):
-    """The daemon's heartbeat at `at` and its price row for TK."""
+def _daemon(at: float, held_options=()):
+    """The daemon's heartbeat at `at`, holding TK and `held_options`, and its price row for TK made
+    from Schwab's captured quote."""
+    lmp.record_from_level_one_equity(TK, _QUOTE["native"], received_ts=_QUOTE["ts_recv"])
     lmp.record_feed_heartbeat({"ts": at, "schwab_socket_open": True,
                                "held": {"LEVELONE_EQUITIES": [TK], "LEVELONE_OPTIONS": list(held_options)}})
-    ofs._price_rows[TK] = {"ticker": TK, "spot": price, "trade_ts": _AT.timestamp()}
+    ofs._price_rows[TK] = live_price_rows.price_row(TK, at)
+
+
+def _publish(fetched_ts: float):
+    """The chain published as the stored capture it is, at the price Schwab sent with it."""
+    server._publish_levels(TK, captures=[{"contracts": [dict(c) for c in _CONTRACTS], "ts_utc": fetched_ts,
+                                          "spot": PUBLISHED, "et_date": _AT.date().isoformat(),
+                                          "basis": server.CAPTURE_BASIS}], now=_AT)
+
+
+def _forget():
+    with server._terrain_cache_lock:
+        server._terrain_cache.pop(TK, None)
+    ofs._price_rows.pop(TK, None)
+    lmp._by_ticker.pop(TK, None)
+    lmp._fields_by_ticker.pop(TK, None)
+    lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "held": {}})
+    lmp.record_feed_down()
 
 
 @pytest.fixture
 def held():
-    """CRWD's chain published at its capture price, the live price since moved to LIVE."""
-    _daemon(PUBLISHED, _AT.timestamp())                  # live when the chain is published
-    server._publish_levels(TK, [dict(c) for c in _CONTRACTS], _AT.timestamp(), now=_AT)
-    _daemon(LIVE, time.time())                           # live now, as the routes read it
+    """CRWD's chain published at the price Schwab sent with it; the live price is Schwab's last trade."""
+    _publish(_AT.timestamp())
+    _daemon(time.time())                                 # live now, as the routes read it
     with server._terrain_cache_lock:
         payload = server._terrain_cache[TK]
     yield payload
-    with server._terrain_cache_lock:
-        server._terrain_cache.pop(TK, None)
-    ofs._price_rows.pop(TK, None)
-    lmp.record_feed_down()
+    _forget()
 
 
-def test_every_route_serves_the_live_spot_and_names_the_computed_one():
+def test_every_route_serves_the_live_spot_and_names_the_computed_one(held):
     """Every GET route that answers a ticker, found from the app, each answering this request: a
     route that serves a price serves `spot`, the live price, and `priced_at_spot`, the price the
-    payload was computed at. Real data: CRWD's chain captured 2026-10-07 10:38:40 ET (tests/real_chains.py
-    CRWD), published at the price Schwab sent in that answer, and CRWD's LEVELONE_EQUITIES message
-    the daemon received at 10:38:00 ET (tests/fixtures/real_crwd_quote_2026_10_07.json), made the
-    price row by the daemon's own function."""
-    tk, at = ticker_storage_key(CRWD.ticker), CRWD.now.timestamp()
-    live = _QUOTE["native"]["LAST_PRICE"]
-    lmp.record_from_level_one_equity(tk, _QUOTE["native"], received_ts=_QUOTE["ts_recv"])
-    lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [tk]}})
-    ofs._price_rows[tk] = live_price_rows.price_row(tk, time.time())
+    payload was computed at."""
+    client = TestClient(server.app)
     paths = [r.path for r in server.app.routes
              if isinstance(r, APIRoute) and "GET" in r.methods
              and "ticker" in inspect.signature(r.endpoint).parameters
              and not inspect.iscoroutinefunction(r.endpoint)]      # /api/changes is a stream
     served, refused = {}, {}
-    try:
-        server._publish_levels(tk, captures=[{"contracts": CRWD.chain, "ts_utc": at, "spot": CRWD.spot,
-                                              "et_date": CRWD.now.date().isoformat(),
-                                              "basis": server.CAPTURE_BASIS}], now=CRWD.now)
-        client = TestClient(server.app)
-        expiry = str(CRWD.chain[0]["expirationDate"])[:10]
-        for path in paths:
-            answer = client.get(path, params={"ticker": tk, "expiry": expiry, "venue": "NYSE_BOOK"})
-            body = answer.json()
-            if answer.status_code != 200:
-                refused[path] = answer.status_code
-            elif {"spot", "priced_at_spot"} & set(body):
-                served[path] = (body.get("spot"), body.get("priced_at_spot"))
-    finally:
-        with server._terrain_cache_lock:
-            server._terrain_cache.pop(tk, None)
-        ofs._price_rows.pop(tk, None)
-        lmp._by_ticker.pop(tk, None)
-        lmp._fields_by_ticker.pop(tk, None)
-        lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "held": {}})
-        lmp.record_feed_down()
+    for path in paths:
+        answer = client.get(path, params={"ticker": TK, "expiry": EXPIRY, "venue": "NYSE_BOOK"})
+        body = answer.json()
+        if answer.status_code != 200:
+            refused[path] = answer.status_code
+        elif {"spot", "priced_at_spot"} & set(body):
+            served[path] = (body.get("spot"), body.get("priced_at_spot"))
     assert refused == {} and served
-    assert {p: s for p, s in served.items() if s != (live, CRWD.spot)} == {}
+    assert {p: s for p, s in served.items() if s != (LIVE, PUBLISHED)} == {}
 
 
 def test_strike_side_sums_split_at_the_live_spot(held):
@@ -138,7 +132,7 @@ def test_oi_and_volume_cells_carry_the_served_total(held):
         legs = {ct["putCall"]: ct for ct in _CONTRACTS if ct["strikePrice"] == c["strike"]}
         if set(legs) != {"CALL", "PUT"}:
             continue
-        # Schwab's values as sent: a reported 0 (strike 38.75's put OI) is a real zero
+        # Schwab's values as sent: a reported 0 is a real zero
         assert c["oi"][col]["total"] == legs["CALL"]["openInterest"] + legs["PUT"]["openInterest"]
         assert c["volume"][col]["total"] == legs["CALL"]["totalVolume"] + legs["PUT"]["totalVolume"]
         checked += 1
@@ -191,20 +185,19 @@ def test_put_call_ratios_over_every_expiry_are_served(held):
 def test_heatmap_column_state_cell_age_and_front_expiry_are_served():
     """Column streaming status and a cell's age come from the server's own stream states; the
     front column is the nearest unexpired expiry. One call streaming (its update 2 s before the
-    publication): the column is partly streaming and the cell's age is 2 s."""
-    sym = next(c["symbol"] for c in _CONTRACTS if c["putCall"] == "CALL")
-    _daemon(PUBLISHED, _AT.timestamp(), [sym])
-    ofs._ingest_pushed(f"optquote.{sym}", options_quote_msg(symbol=sym, content={"key": sym, "GAMMA": 0.05},
+    publication, carrying the gamma Schwab sent for it): the column is partly streaming and the
+    cell's age is 2 s."""
+    call = next(c for c in _CONTRACTS if c["putCall"] == "CALL" and c.get("gamma") is not None)
+    sym = call["symbol"]
+    _daemon(_AT.timestamp(), [sym])
+    ofs._ingest_pushed(f"optquote.{sym}", options_quote_msg(symbol=sym, content={"key": sym, "GAMMA": call["gamma"]},
                                                             src="schwab_options_l1", ts_recv=_AT.timestamp() - 2))
     try:
-        server._publish_levels(TK, [dict(c) for c in _CONTRACTS], _AT.timestamp() - 10, now=_AT)
+        _publish(_AT.timestamp() - 10)
         body = server.gamma_surface_payload(TK, "all", None, 0, None, None, _AT)
     finally:
-        with server._terrain_cache_lock:
-            server._terrain_cache.pop(TK, None)
-        ofs._price_rows.pop(TK, None)
         ofs._drop_released_options(_AT.timestamp())
-        lmp.record_feed_down()
+        _forget()
     assert body["stream_by_expiry"][EXPIRY] == "partial"
     ages = [c["stream"][0]["age_sec"] for c in body["cells"] if c["stream"][0] and c["stream"][0]["age_sec"] is not None]
     assert ages == [pytest.approx(2.0)]

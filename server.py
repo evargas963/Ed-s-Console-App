@@ -173,7 +173,7 @@ from db_authority import canonical_stream_db_path
 
 from instrument_identity import display_symbol, ticker_storage_key, vendor_option_root
 import live_market_plane as lmp
-from numeric_contract import float_finite_or_none, schwab_count, schwab_number
+from numeric_contract import float_finite_or_none, price_text, schwab_count, schwab_number
 from confluence_composite import at_price, build_matrix
 from terrain_engine import (SCOPES, SAME_DAY_LEVELS, TerrainSnapshot, _dte_of, _per_strike_rows, chain_ladder,
                             compute_terrain, nearest_strike, positioning_migration, strike_window)
@@ -2350,10 +2350,6 @@ def _desk_window_start(tf: str, now: datetime) -> float:
     return start.timestamp()
 
 
-def _f2(v) -> str:
-    return "—" if v is None else f"{float(v):.2f}"
-
-
 @app.get("/api/desk/events")
 def get_desk_events(ticker: str = Query(...),
                     venue: str = Query(..., pattern=r"^(NYSE_BOOK|NASDAQ_BOOK)$"),
@@ -2381,7 +2377,7 @@ def desk_events_payload(tk: str, venue: str, tf: str, now: datetime) -> dict:
         items.append({"key": f"x{cid}", "n": i + 1, "ts": c["ts_utc"], "dom": "LEVELS",
                       "price": c.get("level_value"), "dir": c.get("direction"), "marker": False,
                       "title": f"Crossed {_CROSS_WORD.get(c.get('direction'), 'through')} {names}",
-                      "detail": f"{_f2(c.get('level_value'))} · spot {_f2(c.get('spot_at_cross'))} at the cross",
+                      "detail": f"{price_text(c['level_value'])} · spot {price_text(c['spot_at_cross'])} at the cross",
                       "src": "level_crosses"})
     # the chart's few: the newest cross at each level, for the newest DESK_MARKERS levels
     newest_at = {it["price"]: it for it in items}
@@ -2393,8 +2389,8 @@ def desk_events_payload(tk: str, venue: str, tf: str, now: datetime) -> dict:
         if t.get(f"{side}_wall_state") == "breached":
             items.append({"key": key, "ts": tts, "dom": "OPTIONS", "dir": "up" if side == "call" else "down",
                           "title": f"Spot through the {word} wall",
-                          "detail": f"{word} wall {_f2(t.get(f'{side}_wall'))} · priced at "
-                                    f"{_f2(t.get('priced_at_spot'))}",
+                          "detail": f"{word} wall {price_text(t[f'{side}_wall'])} · priced at "
+                                    f"{price_text(t['priced_at_spot'])}",
                           "src": "/api/terrain"})
     if t.get("levels_stale"):
         items.append({"key": "ls", "ts": tts, "dom": "DATA", "dir": None, "warn": True,
@@ -2408,7 +2404,7 @@ def desk_events_payload(tk: str, venue: str, tf: str, now: datetime) -> dict:
     for i, w in enumerate((micro.get("wall_candidates") or [])[:3]):
         items.append({"key": f"wall{i}", "ts": None if book_ms is None else book_ms / 1000.0,
                       "dom": "LIQUIDITY", "dir": "up" if w.get("side") == "bid" else "down", "warn": not live_book,
-                      "title": f"{venue} size wall · {w.get('side') or ''} {_f2(w.get('price'))}"
+                      "title": f"{venue} size wall · {w.get('side') or ''} {price_text(w['price'])}"
                                + ("" if live_book else " (not live)"),
                       "detail": f"{w.get('volume')} shown · "
                                 + (f"{w['median_mult']:.1f}× the median level" if w.get("median_mult") is not None else "size outlier")
@@ -3009,7 +3005,7 @@ def _screen_levels(markers: list[dict]) -> list[dict]:
             "lane": marker["lane"],
             "abbrev": marker["short"],
             "price": float(price),
-            "price_text": f"{float(price):.2f}",
+            "price_text": price_text(price),
             "title": marker["title"],
         })
     return levels

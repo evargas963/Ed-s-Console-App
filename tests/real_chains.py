@@ -41,3 +41,7 @@ CRWD = _load("real_crwd_complete_chain_2026_10_07.json")
 TSLA = _load("real_tsla_complete_chain_2026_10_07.json")
 MRVL = _load("real_mrvl_full_chain_2026_10_07.json")
 NFLX = _load("real_nflx_chain_2026_10_07_three_expiries.json")
+SPY_CLOSE = _load("real_spy_close_capture_and_after_hours_print_2026_10_22.json")
+#: SPY's first LEVELONE_EQUITIES message with a LAST_PRICE from 18:00 ET 2026-10-22, as recorded
+SPY_AFTER_HOURS_PRINT = json.loads((_FX / "real_spy_close_capture_and_after_hours_print_2026_10_22.json")
+                                   .read_text(encoding="utf-8"))["after_hours_print"]

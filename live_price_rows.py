@@ -18,6 +18,7 @@ from typing import Any, Optional
 
 import live_market_plane as lmp
 from instrument_identity import ticker_storage_key
+from numeric_contract import price_text
 from time_et import ct_label
 
 SPOT_SOURCE = "streaming_plane"
@@ -57,7 +58,7 @@ def price_row(ticker: str, now: float) -> dict[str, Any]:
     return {
         "ticker": tk,
         "spot": spot,
-        "spot_disp": f"{spot:.2f}" if spot is not None else None,
+        "spot_disp": price_text(spot),
         "spot_source": SPOT_SOURCE if spot is not None else None,
         # the feed itself (heartbeat, socket open, symbol held), and why the values are absent
         "feed_live": lmp.feed_live_for(tk, "LEVELONE_EQUITIES", now),
