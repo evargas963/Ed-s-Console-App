@@ -91,9 +91,12 @@ def in_use(port: int) -> bool:
 
 
 def running(mark: str) -> "list[psutil.Process]":
-    """The processes whose command line carries `mark` (one whose line cannot be read carries none)."""
-    return [p for p in psutil.process_iter(["cmdline"])
-            if p.info["cmdline"] is not None and mark in " ".join(p.info["cmdline"])]
+    """This checkout's processes whose command line carries `mark`: those whose folder is ROOT,
+    where its daemon's batch and its console run, so another checkout's daemon or console (a
+    test's) is never taken for one (one whose line or folder cannot be read is none)."""
+    return [p for p in psutil.process_iter(["cmdline", "cwd"])
+            if p.info["cmdline"] is not None and mark in " ".join(p.info["cmdline"])
+            and p.info["cwd"] is not None and Path(p.info["cwd"]).resolve() == ROOT]
 
 
 def start_console(argv: "list[str]", env: dict) -> subprocess.Popen:
@@ -101,6 +104,13 @@ def start_console(argv: "list[str]", env: dict) -> subprocess.Popen:
     (ctrl_break) reaches it alone: the window's cmd, which would ask "Terminate batch job (Y/N)?"
     after an interrupt, and this launcher never get one."""
     return subprocess.Popen(argv, cwd=ROOT, env=env, creationflags=subprocess.CREATE_NEW_PROCESS_GROUP)
+
+
+def daemon_window(batch: Path) -> "list[str]":
+    """The command that runs `batch` (start_capture_daemon.bat) in a minimized window of its own
+    titled "Ed Capture Daemon", under `cmd /c` so the window closes when the batch ends (`start`
+    given a batch file runs it under `cmd /K`, which keeps the window open)."""
+    return ["cmd", "/c", "start", "Ed Capture Daemon", "/min", "cmd", "/c", str(batch)]
 
 
 def ctrl_break(group: int) -> None:
@@ -174,8 +184,7 @@ def main() -> int:
     if in_use(DAEMON_PORT):
         print(f"Capture daemon: port {DAEMON_PORT} is already in use; not started.")
     else:
-        subprocess.Popen(["cmd", "/c", "start", "Ed Capture Daemon", "/min", str(ROOT / "start_capture_daemon.bat")],
-                         cwd=ROOT)
+        subprocess.Popen(daemon_window(ROOT / "start_capture_daemon.bat"), cwd=ROOT)
         print('Capture daemon: started in its own window ("Ed Capture Daemon").')
     if in_use(CONSOLE_PORT):
         print(f"Console: port {CONSOLE_PORT} is already in use; not started. Opening {URL}.")

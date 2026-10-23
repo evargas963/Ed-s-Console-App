@@ -1,5 +1,5 @@
-"""The capture daemon's start, Schwab to the screen: why Schwab is not connected reaches the
-daemon's log and /api/health on its heartbeat; a module that fails to load, and a chain sweep
+"""The capture daemon's start, Schwab to the screen: its window closes when its batch ends, and the
+stop takes only this checkout's processes; why Schwab is not connected reaches the daemon's log and /api/health on its heartbeat; a module that fails to load, and a chain sweep
 thread that ends on an error, leave their reason in the daemon's log."""
 from __future__ import annotations
 
@@ -14,10 +14,12 @@ import sys
 import time
 from pathlib import Path
 
+import psutil
 import pytest
 from websockets.asyncio.client import connect
 
 import db
+import launch
 import live_market_plane as lmp
 import server
 from app.market_data.schwab.streaming import capture, live_ui
@@ -33,6 +35,56 @@ async def _until(cond, limit: float = 10.0) -> None:
     while not cond():
         assert time.monotonic() < end, "timed out"
         await asyncio.sleep(0.05)
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="the daemon's window is a Windows console window")
+def test_the_daemons_window_closes_when_its_batch_ends(tmp_path):
+    """The launcher's command for the daemon's window (launch.daemon_window) runs the batch in a
+    window of its own; when the batch ends (the daemon stopped on request), the window's cmd ends
+    too, so no empty window stays open."""
+    window_pid = tmp_path / "window.pid"
+    bat = tmp_path / "daemon.bat"
+    bat.write_text(f'@"{sys.executable}" -c "import psutil; window = next(p for p in psutil.Process().parents() '
+                   f'if p.name().lower() == \'cmd.exe\'); open(r\'{window_pid}\', \'w\').write(str(window.pid))"\r\n',
+                   encoding="utf-8")
+    subprocess.Popen(launch.daemon_window(bat), cwd=launch.ROOT)
+    deadline = time.monotonic() + 60.0
+    while not window_pid.exists():
+        assert time.monotonic() < deadline, "the batch never ran"
+        time.sleep(0.1)
+    window = int(window_pid.read_text(encoding="utf-8"))
+    deadline = time.monotonic() + 30.0
+    while psutil.pid_exists(window) and time.monotonic() < deadline:
+        time.sleep(0.1)
+    still_open = psutil.pid_exists(window)
+    if still_open:
+        psutil.Process(window).kill()
+    assert not still_open, "the daemon's window stayed open after its batch ended"
+
+
+def test_the_stop_takes_only_this_checkouts_processes(tmp_path):
+    """launch.stop finds the daemon and the console by launch.running: of two processes carrying
+    the same mark, the one started in this checkout's folder (as its daemon's batch and its
+    console are) is found, and the one started in another folder (another checkout's console, a
+    test's) is not, so the stop's Ctrl+Break never goes to it instead of this console. Induced
+    test condition: two sleeping Pythons carrying a mark of this test's own."""
+    mark = f"ed-stop-mark-{os.getpid()}-{time.monotonic_ns()}"
+    ours, theirs = (subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)", mark], cwd=cwd)
+                    for cwd in (launch.ROOT, tmp_path))
+    try:
+        found: set = set()
+        end = time.monotonic() + 10
+        while ours.pid not in found and time.monotonic() < end:
+            found = {p.pid for p in launch.running(mark)}
+            time.sleep(0.05)
+        theirs_tree = {theirs.pid} | {c.pid for c in psutil.Process(theirs.pid).children(recursive=True)}
+        assert ours.pid in found, f"this checkout's process {ours.pid} was not found: {found}"
+        assert not found & theirs_tree, f"another checkout's process was taken for this one's: {found & theirs_tree}"
+    finally:
+        for p in (ours, theirs):
+            for c in psutil.Process(p.pid).children(recursive=True):
+                c.kill()
+            p.kill()
 
 
 def test_a_chain_sweep_that_ends_on_an_error_is_logged(tmp_path, caplog):
