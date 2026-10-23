@@ -124,7 +124,7 @@ def test_a_minus_999_last_price_clears_the_spot_and_the_quote_stays():
     _rec("NOLAST", {"key": "NOLAST", "LAST_PRICE": 10.0, "BID_PRICE": 9.9, "ASK_PRICE": 10.1})
     assert _rec("NOLAST", {"key": "NOLAST", "LAST_PRICE": -999.0, "BID_PRICE": 9.8}) is True
     row = lmp.get_quote("NOLAST")
-    assert (row["spot"], row["spot_disp"], row["bid"], row["ask"]) == (None, None, 9.8, 10.1)
+    assert (row["spot"], row["bid"], row["ask"]) == (None, 9.8, 10.1)
 
 
 def test_a_quote_before_the_first_trade_is_published():

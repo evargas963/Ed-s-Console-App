@@ -6,7 +6,10 @@ so no chain fixture is involved. The rule under test is the read logic itself.
 
 from __future__ import annotations
 
-from math_levels import GAMMA_FLIP_TRUSTED, GAMMA_FLIP_UNAVAILABLE
+from math_levels import GAMMA_FLIP_NARROW, GAMMA_FLIP_TRUSTED, GAMMA_FLIP_UNAVAILABLE
+from numeric_contract import price_text
+from terrain_engine import compute_terrain
+from tests.real_chains import CRWD, SPY_0DTE
 from terrain_read import (
     POSTURE_FADE,
     POSTURE_FOLLOW,
@@ -60,6 +63,20 @@ def test_missing_inputs_fail_closed() -> None:
         assert r.posture == POSTURE_STAND_ASIDE
 
 
+def test_a_missing_wall_reads_as_a_dash_and_a_known_one_as_its_price():
+    """CRWD's chain captured 2026-10-07 (tests/real_chains.py), valued at its capture: its flip, put
+    wall and gamma at spot as the levels producer computed them. Induced: the call wall withheld.
+    The box line shows the put wall at two decimals and the missing call wall as "-", no word."""
+    snap = compute_terrain(CRWD.ticker, [dict(c) for c in CRWD.chain], CRWD.spot, now=CRWD.now)
+    r = build_terrain_read(spot=CRWD.spot, flip=snap.gamma_flip, flip_confidence=snap.confidence,
+                           put_wall=snap.put_wall, call_wall=None,
+                           gamma_at_spot=snap.flip_diag.get("gamma_at_spot"))
+    box = next(line for line in r.lines if line.startswith("Box: "))
+    assert snap.put_wall is not None
+    assert box.startswith(f"Box: put wall {price_text(snap.put_wall)} (")
+    assert box.endswith(" · call wall -") and "unavailable" not in box
+
+
 def test_the_regime_is_read_by_one_rule_for_every_instrument():
     """All tickers (operator 2026-09-23, "show for all tickers"): the regime is the sign of
     Schwab's gamma at spot wherever the chain covers spot well enough to know it, for an ETF and
@@ -67,9 +84,6 @@ def test_the_regime_is_read_by_one_rule_for_every_instrument():
     argument that carried the ticker in stayed behind, dead. Real Schwab chains
     (tests/real_chains.py), each valued at its own capture: SPY's 0DTE chain is too narrow for the
     sign (withheld, the coverage rule); CRWD's complete chain is trusted (issued)."""
-    from math_levels import GAMMA_FLIP_NARROW
-    from terrain_engine import compute_terrain
-    from tests.real_chains import CRWD, SPY_0DTE
     got = {}
     for real in (SPY_0DTE, CRWD):
         tk = real.ticker

@@ -40,12 +40,11 @@ NOW = SPY_0DTE.now
 
 FULL = "full_book"
 SEL = "selected_expiry"
-ZERO_DTE = "same_day_expiry"
+TODAY = "front_expiry_to_todays_close"
 
 DECLARED: dict[tuple[str, str], tuple[str, str]] = {
     # terrain payload (/api/terrain, TerrainSnapshot.to_dict) — the levels SSOT
     ("terrain", "absolute_gamma_strike"): ("max_total_gamma", FULL),
-    ("terrain", "zero_dte_abs_gamma_strike"): ("max_total_gamma", ZERO_DTE),
     ("terrain", "pin_candidate"): ("qualified_max_total_gamma", FULL),
     ("terrain", "net_gex_peak"): ("max_abs_net_gex", FULL),
     ("terrain", "call_wall"): ("max_call_gamma", FULL),
@@ -57,6 +56,19 @@ DECLARED: dict[tuple[str, str], tuple[str, str]] = {
     ("terrain", "put_charm_wall"): ("max_put_charm", FULL),
     ("terrain", "call_delta_wall"): ("max_call_delta", FULL),
     ("terrain", "put_delta_wall"): ("max_put_delta", FULL),
+    # nearest expiry, gamma and delta rebuilt to today's option close (one producer, every ticker)
+    ("terrain", "same_day.call_wall"): ("max_call_gamma", TODAY),
+    ("terrain", "same_day.put_wall"): ("max_put_gamma", TODAY),
+    ("terrain", "same_day.gamma_flip"): ("net_gamma_zero_cross", TODAY),
+    ("terrain", "same_day.absolute_gamma_strike"): ("max_total_gamma", TODAY),
+    ("terrain", "same_day.net_gex_peak"): ("max_abs_net_gex", TODAY),
+    ("terrain", "same_day.key_delta_strike"): ("max_total_delta", TODAY),
+    ("terrain", "same_day.call_charm_wall"): ("max_call_charm", TODAY),
+    ("terrain", "same_day.put_charm_wall"): ("max_put_charm", TODAY),
+    ("terrain", "same_day.hvp"): ("most_negative_net_gex", TODAY),
+    ("terrain", "same_day.lvp"): ("most_positive_net_gex", TODAY),
+    ("terrain", "same_day.gsf"): ("gamma_support_floor", TODAY),
+    ("terrain", "same_day.grc"): ("gamma_resistance_ceiling", TODAY),
     # analytics summary rows (/api/state summary_rows[]) — the SELECTED-EXPIRY book.
     # Same definition token as terrain net_gex_peak: same function, declared other scope.
     ("summary_rows", "net_gex_peak"): ("max_abs_net_gex", SEL),
@@ -194,6 +206,12 @@ def test_every_level_shaped_payload_name_is_declared():
     chain, spot = _fixture_book()
     payload = compute_terrain("SPY", chain, spot, now=NOW).to_dict()
     declared_terrain = {n for (s, n) in DECLARED if s == "terrain"}
+    same = payload.get("same_day")
+    assert isinstance(same, dict)
+    for key in same:
+        if key.endswith(_LEVEL_SUFFIXES) or key in _LEVEL_EXTRAS:
+            assert f"same_day.{key}" in declared_terrain, (
+                f"same-day level {key!r} has no declared (definition, chain scope)")
     for key in payload:
         if key.endswith(("_state", "_range", "_blockers")) or key.startswith("dist_to_"):   # distances, not levels
             continue
@@ -203,4 +221,7 @@ def test_every_level_shaped_payload_name_is_declared():
                 f"(definition, chain scope) — declare it in DECLARED before shipping")
     # every declared terrain name really is published (a stale declaration is a lie too)
     for name in declared_terrain:
-        assert name in payload, f"declared terrain name {name!r} is not published"
+        if name.startswith("same_day."):
+            assert name.split(".", 1)[1] in same, f"declared same-day name {name!r} is not published"
+        else:
+            assert name in payload, f"declared terrain name {name!r} is not published"

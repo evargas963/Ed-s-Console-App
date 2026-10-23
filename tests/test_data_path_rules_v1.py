@@ -12,15 +12,13 @@ import asyncio
 import json
 import socket
 import sqlite3
+import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
 
-import httpx
 import pytest
 from fastapi.testclient import TestClient
 from websockets.asyncio.client import connect
@@ -33,7 +31,7 @@ from calibration.complete_chain_capture import ChainSweep, chain_messages
 from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS, bars_from_candles
 from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus, bar_msg
 from tests.feed_live_helper import daemon_bars, price_history, stream_daemon_bars
-from tests.schwab_rest_standin import LocalSchwab
+from tests.schwab_rest_standin import SPY_QUOTES, TOKEN, LocalSchwab
 from time_et import ET, now_et
 
 FX = Path(__file__).resolve().parent / "fixtures"
@@ -298,28 +296,31 @@ def _served_at(now: float, feed_live: bool) -> dict:
         lmp.record_feed_down()
 
 
-def test_d5_a_feed_down_in_an_open_session_is_an_outage_shown_absent_with_its_reason():
-    """RTH, the feed down: the price, the equity top of book and the option top of book are
-    absent, each with the outage reason; no last value stands in for a live one."""
+def test_d5_a_feed_down_in_an_open_session_keeps_the_last_price_and_the_book():
+    """RTH, the feed down: the last price and both tops of book stand, marked not live."""
     s = _served_at(_RTH, feed_live=False)
-    assert s["row"]["spot"] is None and s["row"]["bid"] is None
+    assert s["row"]["spot"] == 767.39 and s["row"]["bid"] == 767.38
+    assert s["row"]["feed_live"] is False
     assert s["row"]["outage"] == "Schwab LEVELONE_EQUITIES feed down during RTH"
-    assert s["spot"] == (None, "Schwab LEVELONE_EQUITIES feed down during RTH", None)
-    assert s["equity_book"]["top_of_book"]["bid"] is None
+    assert s["spot"][0] == 767.39 and s["spot"][1] == server.SPOT_SOURCE_PLANE
+    assert s["equity_book"]["top_of_book"]["bid"] == 767.38
+    assert s["equity_book"]["top_of_book"]["ask"] == 767.40
     assert s["equity_book"]["top_outage"] == "Schwab LEVELONE_EQUITIES feed down during RTH"
-    assert s["option_book"]["top_of_book"]["ask"] is None
+    assert s["option_book"]["top_of_book"]["ask"] == _EVENTS[0]["content"]["ASK_PRICE"]
     assert s["option_book"]["top_outage"] == "Schwab LEVELONE_OPTIONS feed down during RTH"
 
 
-def test_d5_while_closed_the_values_as_of_the_close_stand_feed_up_or_down():
-    """22:00 ET, the feed down: the last price and both tops of book Schwab sent are served,
-    with no outage."""
+def test_d5_while_closed_a_feed_down_keeps_the_last_values_and_says_so():
+    """22:00 ET, the feed down: the last price and both tops of book stand, and the panels
+    say the feed is down. A closed market is the same stop as any other."""
     s = _served_at(_CLOSED, feed_live=False)
-    assert s["row"]["spot"] == 767.39 and s["row"]["outage"] is None
+    assert s["row"]["spot"] == 767.39
+    assert s["row"]["outage"] == "Schwab LEVELONE_EQUITIES feed down during Closed"
     assert s["spot"][0] == 767.39
-    assert s["equity_book"]["top_of_book"]["bid"] == 767.38 and s["equity_book"]["top_outage"] is None
+    assert s["equity_book"]["top_of_book"]["bid"] == 767.38
+    assert s["equity_book"]["top_outage"] == "Schwab LEVELONE_EQUITIES feed down during Closed"
     assert s["option_book"]["top_of_book"]["ask"] == _EVENTS[0]["content"]["ASK_PRICE"]
-    assert s["option_book"]["top_outage"] is None
+    assert s["option_book"]["top_outage"] == "Schwab LEVELONE_OPTIONS feed down during Closed"
 
 
 def test_d5_a_live_feed_in_an_open_session_serves_the_newest_values():
@@ -622,9 +623,7 @@ def test_d5_while_closed_levels_as_of_the_close_stand_and_older_ones_are_absent_
 
 def test_d5_the_levels_spot_is_judged_at_the_time_they_are_served_for():
     """/api/levels served for Fri 2026-10-02 11:00 ET (RTH) with SPY's last trade in the daemon's
-    price row: with the daemon's heartbeat live then, that trade is the spot with its trade time;
-    with none, the spot is absent with the RTH outage reason -- whatever the machine's clock says
-    (judged by it, one of the two answers differs at every hour)."""
+    price row: that trade is the spot with its trade time, the heartbeat live or not."""
     import live_market_plane as lmp
     import live_price_rows
     from app.options.order_flow import streaming as ofs
@@ -642,8 +641,7 @@ def test_d5_the_levels_spot_is_judged_at_the_time_they_are_served_for():
             ofs._price_rows.pop("SPY", None)
             lmp.record_feed_down()
         served[live] = (body["spot"], body["spot_source"], body["spot_as_of_ts_utc"])
-    assert served[True] == (767.39, server.SPOT_SOURCE_PLANE, at)
-    assert served[False] == (None, "Schwab LEVELONE_EQUITIES feed down during RTH", None)
+    assert served[True] == served[False] == (767.39, server.SPOT_SOURCE_PLANE, at)
 
 
 #: Schwab's SPY and TSLA bars as the capture daemon recorded them, Thu 2026-10-01 and Fri 10-02
@@ -801,10 +799,24 @@ def _chart_bars(tk: str) -> list[dict]:
 
 # ── D6. No live screen reads the database ───────────────────────────────────────────────────
 
-def test_d6_no_live_route_opens_a_database(monkeypatch):
+#: the databases SQLite opens while a test watches (each list in it, newest last), told by
+#: Python's own audit event for sqlite3.connect: nothing of SQLite's or the app's is replaced
+_watching: "list[list[str]]" = []
+
+
+def _record_connect(event: str, args: tuple) -> None:
+    if event == "sqlite3.connect":
+        for opened in _watching[-1:]:                     # one look: none once the watch has ended
+            opened.append(str(args[0]))
+
+
+sys.addaudithook(_record_connect)
+
+
+def test_d6_no_live_route_opens_a_database():
     """Every live GET route of the console, with both databases present and holding SPY's data
     (the stream database written by the real writer: a captured SPY book and the captured option
-    quote; the console database), then SQLite made to refuse: none opens a database. The routes
+    quote; the console database), each database SQLite opens recorded: none opens one. The routes
     are read from the app itself; /api/changes is the push stream (it never ends)."""
     from fastapi.routing import APIRoute
     from fastapi.testclient import TestClient
@@ -819,22 +831,28 @@ def test_d6_no_live_route_opens_a_database(monkeypatch):
     writer.insert(f"optquote.{_CONTRACT}", options_quote_msg(
         symbol=_CONTRACT, content=_EVENTS[0]["content"], src="schwab_options_l1", ts_recv=time.time()))
     get_db()                                                 # the console database
-    opened: list = []
-
-    def refuse(*a, **k):
-        opened.append(str(a[0]) if a else "")
-        raise sqlite3.OperationalError("a live screen read the database")
-    monkeypatch.setattr(sqlite3, "connect", refuse)
     client = TestClient(server.app, raise_server_exceptions=False)
     routes = [r.path for r in server.app.routes if isinstance(r, APIRoute) and "GET" in r.methods
               and r.path.startswith("/api/") and "{" not in r.path and r.path != "/api/changes"]
     assert routes
     # what the page sends: every route must run, not answer "invalid request"
     params = {"ticker": "SPY", "contract": _CONTRACT, "venue": "NYSE_BOOK", "tf": "5", "minutes": "60"}
+    seen: list = []                                          # the watch sees a database opened
+    _watching.append(seen)
+    try:
+        sqlite3.connect(":memory:").close()
+    finally:
+        _watching.remove(seen)
+    assert seen == [":memory:"]
     readers, refused = [], []
     for path in routes:
-        opened.clear()
-        if client.get(path, params=params).status_code == 422:
+        opened: list = []
+        _watching.append(opened)
+        try:
+            status = client.get(path, params=params).status_code
+        finally:
+            _watching.remove(opened)
+        if status == 422:
             refused.append(path)
         if opened:
             readers.append(path)
@@ -893,108 +911,19 @@ def test_every_schwab_error_is_logged_as_sent_without_tokens(tmp_path, caplog):
         assert secret not in text
 
 
-# ── The daemon's one Schwab client, against a local stand-in for Schwab's host ───────────────
-# Real data: the captured SPY 2026-11-20 chain and Schwab's quotes for it, and Schwab's edge's
-# 403 page (Akamai) as it answered on 2026-10-03. Stand-ins, named: the local server playing
-# Schwab's host, and the token endpoint's answer to a refresh (no real one is kept: it holds the
-# tokens) in the shape Schwab documents. A result that rests on the stand-in token answer is an
-# induced test condition, not observed Schwab behavior.
+# ── The daemon's one Schwab client, against the local stand-in for Schwab's host ─────────────
+# (tests/schwab_rest_standin.py: its real data and stand-ins are named there). A result that rests
+# on the stand-in token answer (REFRESHED) is an induced test condition, not observed Schwab
+# behavior.
 
-_SPY_1120 = json.loads((FX / "real_spy_2026_11_20_chain_and_quotes.json").read_text(encoding="utf-8"))
-_SPY_1120_QUOTES = {s: e for q in _SPY_1120["quotes"] for s, e in q["reply"].items()}
-_AKAMAI_403 = json.loads((FX / "real_schwab_akamai_403_2026_10_03.json").read_text(encoding="utf-8"))
-_REFRESHED = {"access_token": "new-access", "refresh_token": "r", "token_type": "Bearer",
-              "expires_in": 1800, "scope": "api", "id_token": "i"}
+def _posts(schwab: LocalSchwab) -> "list[float]":
+    """When each token request reached the stand-in."""
+    return [r[2] for r in schwab.requests if r[0] == TOKEN]
 
 
-def _spy_chain_payload() -> dict:
-    payload = {"symbol": "SPY", "underlyingPrice": _SPY_1120["spot"], "callExpDateMap": {},
-               "putExpDateMap": {}}
-    for ct in _SPY_1120["chain"]:
-        side = "callExpDateMap" if ct["putCall"] == "CALL" else "putExpDateMap"
-        payload[side].setdefault(f"{ct['expirationDate'][:10]}:{ct['daysToExpiration']}", {}) \
-            .setdefault(str(ct["strikePrice"]), []).append(ct)
-    return payload
-
-
-class _ToLocal(httpx.BaseTransport):
-    """Every request the client sends, delivered to the local server instead of Schwab's host."""
-
-    def __init__(self, port: int):
-        self.port, self.inner = port, httpx.HTTPTransport()
-
-    def handle_request(self, request: httpx.Request) -> httpx.Response:
-        request.url = request.url.copy_with(scheme="http", host="127.0.0.1", port=self.port)
-        return self.inner.handle_request(request)
-
-
-class _LocalSchwab:
-    """Schwab's host, played by a local server. The token endpoint answers `token_answer`
-    ("refreshed": _REFRESHED; "akamai": the captured 403 page); chains and quotes answer the
-    captured SPY chain and its quotes (or `chain`, another captured chain as Schwab sent it,
-    whose quotes are not captured), or the captured 403 page while `refuse`. Every request is
-    recorded: (time, method, path, Authorization)."""
-
-    def __init__(self, token_answer: str = "refreshed", refuse: bool = False,
-                 chain: "dict | None" = None):
-        self.token_answer, self.refuse = token_answer, refuse
-        payload = json.dumps(_spy_chain_payload() if chain is None else chain).encode()
-        self.requests: list = []
-        outer = self
-
-        class Handler(BaseHTTPRequestHandler):
-            def _send(self, status, content_type, body: bytes):
-                self.send_response(status)
-                self.send_header("Content-Type", content_type)
-                self.send_header("Content-Length", str(len(body)))
-                if status == 403:
-                    self.send_header("Server", _AKAMAI_403["headers"]["server"])
-                self.end_headers()
-                self.wfile.write(body)
-
-            def _akamai(self):
-                self._send(403, "text/html", _AKAMAI_403["body"].encode())
-
-            def do_POST(self):
-                self.rfile.read(int(self.headers.get("Content-Length") or 0))
-                outer.requests.append((time.monotonic(), "POST", urlparse(self.path).path, None))
-                if outer.token_answer == "akamai":
-                    return self._akamai()
-                self._send(200, "application/json", json.dumps(_REFRESHED).encode())
-
-            def do_GET(self):
-                url = urlparse(self.path)
-                outer.requests.append((time.monotonic(), "GET", url.path, self.headers.get("Authorization")))
-                if outer.refuse:
-                    return self._akamai()
-                if url.path == "/marketdata/v1/chains":
-                    return self._send(200, "application/json", payload)
-                symbols = parse_qs(url.query).get("symbols", [""])[0].split(",")
-                reply = {s: _SPY_1120_QUOTES[s] for s in symbols if s in _SPY_1120_QUOTES}
-                self._send(200, "application/json", json.dumps(reply).encode())
-
-            def log_message(self, *a):
-                pass
-
-        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-        self.server.daemon_threads = True
-        threading.Thread(target=self.server.serve_forever, daemon=True).start()
-        self.transport = _ToLocal(self.server.server_address[1])
-
-    def posts(self) -> "list[float]":
-        return [t for t, method, path, _a in self.requests if method == "POST" and path == "/v1/oauth/token"]
-
-    def close(self) -> None:
-        self.server.shutdown()
-
-
-def _token_file(tmp_path, expires_in_sec: float) -> Path:
-    """A token file in schwab-py's shape (stand-in for schwab_token.json)."""
-    tok = tmp_path / "schwab_token.json"
-    tok.write_text(json.dumps({"creation_timestamp": int(time.time()), "token": {
-        "access_token": "old-access", "refresh_token": "r", "token_type": "Bearer",
-        "expires_in": 1800, "expires_at": int(time.time() + expires_in_sec)}}))
-    return tok
+def _gets(schwab: LocalSchwab) -> list:
+    """Each data request, as recorded."""
+    return [r for r in schwab.requests if r[0] != TOKEN]
 
 
 def test_twenty_requests_at_a_refresh_send_one_refresh_and_all_carry_the_new_token(tmp_path):
@@ -1002,32 +931,31 @@ def test_twenty_requests_at_a_refresh_send_one_refresh_and_all_carry_the_new_tok
     20 requests at once: one refresh reaches the token endpoint, and every request carries the
     token it returned. Live on 2026-10-03 one renewal went out as 8 POSTs in one second. INDUCED
     CONDITION: the token endpoint's answer is the stand-in."""
-    schwab = _LocalSchwab()
+    schwab = LocalSchwab()
     try:
-        client = sc.client_from_token_file_atomic(str(_token_file(tmp_path, 100)), "k", "s",
-                                                  transport=schwab.transport)
-        symbols = sorted(_SPY_1120_QUOTES)[:5]
+        client = schwab.client(tmp_path, 100)
+        symbols = sorted(SPY_QUOTES)[:5]
         with ThreadPoolExecutor(max_workers=20) as pool:
             codes = list(pool.map(lambda _: client.get_quotes(symbols).status_code, range(20)))
     finally:
         schwab.close()
     assert codes == [200] * 20
-    assert len(schwab.posts()) == 1, f"{len(schwab.posts())} refreshes for one renewal"
-    assert {a for _t, m, _p, a in schwab.requests if m == "GET"} == {"Bearer new-access"}
+    assert len(_posts(schwab)) == 1, f"{len(_posts(schwab))} refreshes for one renewal"
+    assert {r[5] for r in _gets(schwab)} == {"Bearer new-access"}
 
 
-def test_the_daemon_builds_one_schwab_client_and_a_refused_refresh_never_rebuilds_it(tmp_path):
+def test_the_daemon_builds_one_schwab_client_and_a_failed_refresh_never_rebuilds_it(tmp_path):
     """The stream and the chain sweep ask one holder (capture.one_schwab_client). Schwab's edge
-    refuses the token refresh with its 403 page (as at 19:53:55 on 2026-10-03): every chain fails
-    with it, and the client is never rebuilt."""
-    schwab = _LocalSchwab(token_answer="akamai")
+    answers the token refresh with its 403 page (as at 19:53:55 on 2026-10-03; no refusal of the
+    sign-in: each request asks again): every chain fails with it, and the client is never
+    rebuilt."""
+    schwab = LocalSchwab()
+    schwab.token = "edge"
     built = []
 
     def build():
         built.append(1)
-        client = sc.client_from_token_file_atomic(str(_token_file(tmp_path, 100)), "k", "s",
-                                                  transport=schwab.transport)
-        return sc.SchwabClientState(ok=True, message="", client=client)
+        return sc.SchwabClientState(ok=True, message="", client=schwab.client(tmp_path, 100))
 
     schwab_client = capture.one_schwab_client(build)
     assert schwab_client() is schwab_client(), "the stream and the chains are handed one client"
@@ -1045,7 +973,7 @@ def test_the_daemon_builds_one_schwab_client_and_a_refused_refresh_never_rebuild
         worker.join(10)
         schwab.close()
     assert built == [1], f"the client was built {len(built)} times"
-    assert schwab.posts() and failed, "the refresh was tried and the chains failed with it"
+    assert _posts(schwab) and failed, "the refresh was tried and the chains failed with it"
 
 
 def test_a_403_from_schwabs_edge_reaches_the_console_and_the_next_ticker_is_asked_at_once(tmp_path):
@@ -1053,14 +981,14 @@ def test_a_403_from_schwabs_edge_reaches_the_console_and_the_next_ticker_is_aske
     its price history is not published, and the sweep asks for the next request at once. The
     clock is 2026-10-01 08:00 ET (pre-market, outside every capture window, so nothing is
     written)."""
-    schwab = _LocalSchwab(refuse=True)
+    schwab = LocalSchwab()
+    schwab.edge = True
     published = []
     now = 1790856000.0                                    # 2026-10-01 08:00 ET
     sweep = ChainSweep(tmp_path / "ed_console.db", ["AAA", "BBB"],
                        lambda topic, msg: published.append(msg), clock=lambda: now,
                        failures=CaptureWriter(tmp_path / "stream_capture.db"), streamed=lambda symbol: None)
-    client = sc.client_from_token_file_atomic(str(_token_file(tmp_path, 3600)), "k", "s",
-                                              transport=schwab.transport)
+    client = schwab.client(tmp_path)
     try:
         assert sweep.rotation(lambda: client, ["AAA", "BBB"], threading.Event()) == set()
         sweep.candles(lambda: client, ["AAA", "BBB"], threading.Event())      # the stock session's turn
@@ -1068,6 +996,6 @@ def test_a_403_from_schwabs_edge_reaches_the_console_and_the_next_ticker_is_aske
         schwab.close()
     assert [(m["ticker"], m["failed"]) for m in published] == [
         ("AAA", "expiration chain returned HTTP 403"), ("BBB", "expiration chain returned HTTP 403")]
-    gets = [(t, path) for t, method, path, _a in schwab.requests if method == "GET"]
-    assert [p for _t, p in gets] == ["/marketdata/v1/expirationchain"] * 2 + ["/marketdata/v1/pricehistory"] * 4
-    assert all(b[0] - a[0] < 1.0 for a, b in zip(gets, gets[1:])), "no pause after a 403"
+    gets = _gets(schwab)
+    assert [r[0] for r in gets] == ["/marketdata/v1/expirationchain"] * 2 + ["/marketdata/v1/pricehistory"] * 4
+    assert all(b[2] - a[2] < 1.0 for a, b in zip(gets, gets[1:])), "no pause after a 403"

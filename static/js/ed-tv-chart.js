@@ -796,12 +796,15 @@
         var el = opts.fullscreenEl || host;
         if (document.fullscreenElement) document.exitFullscreen(); else if (el.requestFullscreen) el.requestFullscreen();
       },
-      // The live price row's LAST_PRICE and its served age since the Schwab trade; null when the
-      // price is not live (the line is removed, never left at an old price).
-      setLivePrice: function (price, ageSec) {
+      // The live price row's LAST_PRICE. A null price removes the line. Schwab's trade time, when
+      // the caller has it, is the title; otherwise the served age in seconds.
+      setLivePrice: function (price, ageSec, tradeTime) {
         if (price == null) { if (liveLine) { candles.removePriceLine(liveLine); liveLine = null; } return; }
+        var title = 'LAST';
+        if (tradeTime != null) title += ' · last trade ' + tradeTime;
+        else if (ageSec != null) title += ' · ' + Math.round(ageSec) + 's';
         var opts = { price: price, color: P.accent, lineWidth: 1, lineStyle: 2, axisLabelVisible: true,
-          title: 'LAST' + (ageSec != null ? ' · ' + Math.round(ageSec) + 's' : '') };
+          title: title };
         if (liveLine) liveLine.applyOptions(opts); else liveLine = candles.createPriceLine(opts);
       },
       state: function () {

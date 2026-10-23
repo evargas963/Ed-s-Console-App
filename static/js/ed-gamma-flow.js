@@ -62,11 +62,14 @@
     _loader.trigger(_selected);
   }
 
-  // the queried contract's subscription, served (streaming_plane.subscription_state): the
-  // daemon's option rule streams it (ACTIVE), or it does not (the served words)
+  // the queried contract's subscription, served (streaming_plane.subscription_state): ACTIVE
+  // only while the daemon holds it and that feed is live. A held contract whose feed is down
+  // reads OFFLINE. The numbers stay. Anything else shows the served words.
   function subState(plane) {
     var s = (plane || {}).subscription_state;
-    if (s === 'SUBSCRIBED') return { label: 'ACTIVE', cls: 'live' };
+    var l1 = plane && plane.feed_health && plane.feed_health.l1;
+    if (s === 'SUBSCRIBED' && l1 && l1.state === 'LIVE') return { label: 'ACTIVE', cls: 'live' };
+    if (s === 'SUBSCRIBED') return { label: 'OFFLINE', cls: 'stale' };
     return { label: s || '—', cls: 'stale' };
   }
 
@@ -90,8 +93,8 @@
     // row = [label, displayed value, canonical key (data-k), backend classification | null]
     // The depth ladder is classified by the engine under its own wildcard keys ("depth.*.<leaf>").
     var rowsTob = [
-      ['Bid', d.top_outage || num(tob.bid), 'top_of_book.bid', bk('top_of_book.bid')],
-      ['Ask', d.top_outage || num(tob.ask), 'top_of_book.ask', bk('top_of_book.ask')],
+      ['Bid', num(tob.bid), 'top_of_book.bid', bk('top_of_book.bid')],
+      ['Ask', num(tob.ask), 'top_of_book.ask', bk('top_of_book.ask')],
       ['Bid size', int(tob.bid_size), 'top_of_book.bid_size', bk('top_of_book.bid_size')],
       ['Ask size', int(tob.ask_size), 'top_of_book.ask_size', bk('top_of_book.ask_size')],
     ];
@@ -118,16 +121,23 @@
     var dim = ss.label === 'ACTIVE' ? '' : ' fl-dim';   // not-active data recedes (never presented as live)
     // Book/quote ages are the payload's own `ages` block (engine-stamped, classified); feed health
     // is the streaming plane — a binding/health fact with no classification (key undefined = no tag).
+    function whenAge(when, sec) {
+      var age = sec != null ? (Math.round(sec) + 's') : null;
+      if (when != null && age != null) return when + ' · ' + age;
+      if (when != null) return when;
+      if (age != null) return age;
+      return '—';
+    }
     var fresh = [
-      ['Book age', ages.book_age_sec != null ? Math.round(ages.book_age_sec) + 's' : '—', 'ages.book_age_sec', bk('ages.book_age_sec')],
-      ['Quote age', ages.quote_age_sec != null ? Math.round(ages.quote_age_sec) + 's' : '—', 'ages.quote_age_sec', bk('ages.quote_age_sec')],
+      ['Book age', whenAge(d.book_time_ct, ages.book_age_sec), 'ages.book_age_sec', bk('ages.book_age_sec')],
+      ['Quote age', whenAge(d.quote_time_ct, ages.quote_age_sec), 'ages.quote_age_sec', bk('ages.quote_age_sec')],
       ['Replay', fh.replay || '—', 'streaming_plane.feed_health.replay', undefined],
       ['L1 upstream', svc(fh.l1), 'streaming_plane.feed_health.l1', undefined],
       ['Book upstream', svc(fh.book), 'streaming_plane.feed_health.book', undefined],
     ];
     h.innerHTML = header(desired, ss, d && d.put_call) +
       '<div class="fl-grid">' +
-      section('Top of book', rowsTob, '') +
+      section('Top of book' + (d.top_outage ? ' · OFFLINE' : ''), rowsTob, '') +
       section('Book microstructure', rowsBook, dim) +
       section('Flow observations', rowsFlow, dim) +
       section('Freshness / health', fresh, '') +

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import struct
 import threading
 from collections import defaultdict
 from datetime import date, datetime
@@ -821,6 +822,12 @@ class PriceLevelSnapshot:
 
 
 
+# A reported volume and a missing one are different inputs (a reported 0 is 0). They are
+# packed with different layouts so the digest cannot treat an absent volume as zero.
+_BAR_PRESENT = struct.Struct("<qdddddB")
+_BAR_ABSENT = struct.Struct("<qddddB")
+
+
 def _snapshot_input_fingerprint(ticker: str, session_date: date, bars_norm: list,
                                 bar_source: str) -> tuple:
     """Identity of the INPUT. Same fingerprint ⇒ same generation ⇒ same result object.
@@ -839,9 +846,15 @@ def _snapshot_input_fingerprint(ticker: str, session_date: date, bars_norm: list
     h = hashlib.blake2b(digest_size=16)
     h.update(f"{ticker}\x1f{session_date.isoformat()}\x1f{bar_source}\x1f"
              f"{len(bars_norm)}".encode())
+    present, absent = _BAR_PRESENT.pack, _BAR_ABSENT.pack
     for b in bars_norm:
-        h.update(b"\x1e")
-        h.update(repr((b["timestamp"], b["open"], b["high"], b["low"], b["close"], b["volume"])).encode())
+        ts, o, hi, lo, c = (int(b["timestamp"]), float(b["open"]), float(b["high"]),
+                            float(b["low"]), float(b["close"]))
+        vol = b["volume"]
+        if vol is None:
+            h.update(absent(ts, o, hi, lo, c, 0))
+        else:
+            h.update(present(ts, o, hi, lo, c, float(vol), 1))
     return (ticker, session_date.isoformat(), bar_source, len(bars_norm), h.hexdigest())
 
 

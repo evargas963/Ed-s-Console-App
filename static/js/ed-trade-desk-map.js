@@ -60,6 +60,19 @@
     if (sec < 172800) return (sec / 3600).toFixed(1) + 'h';
     return Math.round(sec / 86400) + 'd';
   }
+  // Schwab's book time stands beside the age words. A book that is not live keeps that
+  // time and says so. The words are unchanged when no book time was sent.
+  function bookAgeLabel(m, word) {
+    var when = (m && m.book_time_ct != null) ? m.book_time_ct : null;
+    if (when != null) return when + ' · ' + word;
+    return word;
+  }
+  // The chain's time stands beside its age. The age words are unchanged when no chain time was sent.
+  function chainAgeLabel(t, word) {
+    var when = (t && t.levels_time_ct != null) ? t.levels_time_ct : null;
+    if (when != null) return when + ' · ' + word;
+    return word;
+  }
   function whenCT(ts) {
     var d = new Date(ts * 1000);
     return (CT_DAYKEY.format(d) === CT_DAYKEY.format(new Date()) ? '' : CT_MD.format(d) + ' ') + CT_HM.format(d);
@@ -312,9 +325,8 @@
   // OI change, DEX and charm below/above from the last two market days' captures (/api/forces)
   function forcesRows() {
     var ss = S.strikes && S.strikes.today_side_sums, f = S.forces || {};
-    var out = row('GEX below / above', ss ? usd(ss.gex_below) + ' / ' + usd(ss.gex_above) : '—');
-    if (f.available !== true) return out + row('ΔOI · DEX · charm', esc(f.reason || '—'));
-    return out + row('ΔOI below / above', num(f.doi_below, 0) + ' / ' + num(f.doi_above, 0)) +
+    return row('GEX below / above', ss ? usd(ss.gex_below) + ' / ' + usd(ss.gex_above) : '—') +
+      row('ΔOI below / above', num(f.doi_below, 0) + ' / ' + num(f.doi_above, 0)) +
       row('DEX below / above', usd(f.dex_below_dollars) + ' / ' + usd(f.dex_above_dollars)) +
       row('Charm below / above', num(f.charm_below, 4) + ' / ' + num(f.charm_above, 4));
   }
@@ -385,7 +397,7 @@
         // the imbalance when both sides carry levels; the depth Schwab sent is shown either way
         var imb = d5.imbalance == null ? null : Number(d5.imbalance);
         c.querySelector('.tdm-hero').innerHTML = imb == null ? '' : '<span class="' + (imb >= 0 ? 'up' : 'dn') + '">' + (imb >= 0 ? '+' : '') + num(imb * 100, 1) + '%</span> <small>depth imbalance, 5 levels</small>';
-        src(c, 'Schwab ' + esc(m.venue) + ' · book ' + (bs === false ? age(m.ages.book_age_sec) + ' old' : bs ? 'not live' : 'age unknown'));
+        src(c, 'Schwab ' + esc(m.venue) + ' · book ' + esc(bookAgeLabel(m, bs === false ? age(m.ages.book_age_sec) + ' old' : bs ? 'not live' : 'age unknown')));
         c.querySelector('.tdm-rows').innerHTML = row('Bid / ask depth (5)', (d5.bid_total != null ? fmtVol(d5.bid_total) : '—') + ' / ' + (d5.ask_total != null ? fmtVol(d5.ask_total) : '—')) +
           row('Spread', m.spread_pts != null ? num(m.spread_pts, 2) : '—');
       }
@@ -396,13 +408,17 @@
     if (c) {
       var q = S.quotes[st().key], tob = m && m.top_of_book;
       var cc = (S.events && S.events.cross_counts) || null;   // served for the window
-      // Schwab's values with Schwab's trade time, or the served outage reason; the feed state beside them
-      state(c, !q ? 'WAITING' : q.feed_live ? 'SESSION VOLUME' : 'FEED DOWN', q && q.feed_live ? '' : 'warn');
+      // Schwab's values with Schwab's trade time; the outage stays beside that time, and the feed state beside them
+      state(c, !q ? 'WAITING' : q.feed_live ? 'SESSION VOLUME' : 'OFFLINE', q && q.feed_live ? '' : 'warn');
       c.querySelector('.tdm-hero').innerHTML = q && q.total_volume != null ? fmtVol(q.total_volume) + ' <small>shares, Schwab TOTAL_VOLUME</small>' : '';
-      src(c, 'Schwab LEVELONE · ' + (!q ? 'no price row yet' : q.outage ? esc(q.outage) : q.trade_time_ct != null ? 'last trade ' + esc(q.trade_time_ct) : 'no trade sent'));
+      // Schwab's trade time stands when the feed is down; OFFLINE is the card's state, and the
+      // outage stays beside the time instead of replacing it.
+      var tradeWhen = (q && q.trade_time_ct != null) ? ('last trade ' + esc(q.trade_time_ct)) : null;
+      var tradeWhy = !q ? 'no price row yet' : (q.outage ? esc(q.outage) : (tradeWhen ? null : 'no trade sent'));
+      src(c, 'Schwab LEVELONE · ' + (tradeWhen && tradeWhy ? (tradeWhen + ' · ' + tradeWhy) : (tradeWhen || tradeWhy)));
       c.querySelector('.tdm-rows').innerHTML =
         row('Last trade size', q && q.last_size != null ? fmtVol(q.last_size) : '—') +
-        row('Top of book', m && m.top_outage ? esc(m.top_outage) : tob ? (tob.bid_size != null ? fmtVol(tob.bid_size) : '—') + ' × ' + (tob.ask_size != null ? fmtVol(tob.ask_size) : '—') : '—') +
+        row('Top of book', tob ? (tob.bid_size != null ? fmtVol(tob.bid_size) : '—') + ' × ' + (tob.ask_size != null ? fmtVol(tob.ask_size) : '—') : '—') +
         row('Crosses (' + esc(windowLabel()) + ')', cc ? cc.up + ' up · ' + cc.down + ' down' : '—');
     }
     // OPTIONS POSITIONING — full-chain terrain
@@ -417,7 +433,7 @@
         state(c, reg || '—', t.levels_stale ? 'warn' : (/LONG/.test(t.regime || '') ? 'up' : /SHORT/.test(t.regime || '') ? 'dn' : ''));
         var ng = t.net_gex_at_spot;   // absent is uncoloured, never read as 0
         c.querySelector('.tdm-hero').innerHTML = '<span class="' + (ng == null ? '' : ng >= 0 ? 'up' : 'dn') + '">' + usd(ng) + '</span> <small>net dealer gamma at spot, per 1%</small>';
-        src(c, 'Schwab option chain · ' + (t.levels_stale ? 'stale ' + age(t.levels_age_sec) : age(t.levels_age_sec) + ' old'));
+        src(c, 'Schwab option chain · ' + esc(chainAgeLabel(t, t.levels_stale ? ('stale ' + age(t.levels_age_sec)) : (age(t.levels_age_sec) + ' old'))));
         c.querySelector('.tdm-rows').innerHTML = row('Call wall', num(t.call_wall), 'up') + row('Put wall', num(t.put_wall), 'dn') +
           row('Flip', num(t.gamma_flip)) + row('P/C OI', num(t.pcr_all, 2)) + row('Max pain', num(t.max_pain)) +
           row('Contracts', t.contracts_used != null ? t.contracts_used.toLocaleString() : '—') + forcesRows();
@@ -434,13 +450,13 @@
         state(c, 'ATM IV ' + num(im.iv_pct_atm, 1) + '%', '');
         c.querySelector('.tdm-hero').innerHTML = '±' + num(im.points, 2) + ' <small>implied 1-day move, 1σ</small>';
       }
-      src(c, 'Schwab option chain · ' + (!t || t.error ? '—' : age(t.levels_age_sec) + ' old'));
+      src(c, 'Schwab option chain · ' + (!t || t.error ? '—' : esc(chainAgeLabel(t, age(t.levels_age_sec) + ' old'))));
       c.querySelector('.tdm-rows').innerHTML =
         (im && im.dte_used != null ? row('Move from', 'first expiry ≥1 day out (' + num(im.dte_used, 0) + 'd)') : '') +
-        row('ATR daily', t && t.atr_daily != null ? num(t.atr_daily) : esc((t && t.atr_daily_reason) || '—')) +
-        row('ATR weekly', t && t.atr_weekly != null ? num(t.atr_weekly) : esc((t && t.atr_weekly_reason) || '—')) +
-        row('ATR monthly', t && t.atr_monthly != null ? num(t.atr_monthly) : esc((t && t.atr_monthly_reason) || '—')) +
-        row('VIX', vix && vix.spot != null ? num(vix.spot) + (vix.chg_pct != null ? ' (' + (vix.chg_pct >= 0 ? '+' : '') + num(vix.chg_pct) + '%)' : '') : 'waiting for the VIX stream');
+        row('ATR daily', num(t && t.atr_daily)) +
+        row('ATR weekly', num(t && t.atr_weekly)) +
+        row('ATR monthly', num(t && t.atr_monthly)) +
+        row('VIX', vixText(vix));
     }
     paintCardCharts();
   }
@@ -497,14 +513,21 @@
     var host = $('tdmTrust'); if (!host) return;
     var q = S.quotes[st().key], t = S.terrain, m = S.micro, L = S.levels;
     var h = '';
-    h += q ? pill('PRICE', q.feed_live ? 'LIVE' : 'FEED DOWN', q.feed_live ? 'ok' : 'bad', 'daemon price socket')
+    h += q ? pill('PRICE', q.feed_live ? 'LIVE' : 'OFFLINE', q.feed_live ? 'ok' : 'bad', 'daemon price socket')
       : pill('PRICE', 'WAITING', 'warn', 'no price row yet for this symbol');
     h += m === undefined ? pill('BOOK', '…', '') : !m ? pill('BOOK', 'FAILED', 'bad') : m.status === 'no_book' ? pill('BOOK', 'NONE', 'warn', 'no ' + m.venue)
-      : pill('BOOK', m.ages && m.ages.book_stale === false ? age(m.ages.book_age_sec) : m.ages && m.ages.book_stale ? 'STALE' : 'AGE UNKNOWN',
+      : pill('BOOK', bookAgeLabel(m, m.ages && m.ages.book_stale === false ? age(m.ages.book_age_sec) : m.ages && m.ages.book_stale ? 'STALE' : 'AGE UNKNOWN'),
           m.ages && m.ages.book_stale === false ? 'ok' : 'bad');
     var la = L && L.snapshot_as_of_ts_utc ? Date.now() / 1000 - L.snapshot_as_of_ts_utc : null;
-    h += L === undefined ? pill('LEVELS', '…', '') : !L ? pill('LEVELS', 'FAILED', 'bad') : pill('LEVELS', age(la), (L.degraded && L.degraded.length) ? 'warn' : 'ok', 'session levels snapshot age');
-    h += t === undefined ? pill('GAMMA', '…', '') : !t || t.error ? pill('GAMMA', 'DOWN', 'bad', (t && t.error) || 'terrain request failed') : pill('GAMMA', t.levels_stale ? 'STALE ' + age(t.levels_age_sec) : age(t.levels_age_sec), t.levels_stale ? 'warn' : 'ok', t.levels_stale_reason || '');
+    var levelWord = age(la);
+    var levelWhen = (L && L.snapshot_time_ct != null) ? L.snapshot_time_ct : null;
+    var levelShown = levelWhen != null ? (levelWhen + ' · ' + levelWord) : levelWord;
+    h += L === undefined ? pill('LEVELS', '…', '') : !L ? pill('LEVELS', 'FAILED', 'bad') : pill('LEVELS', levelShown, (L.degraded && L.degraded.length) ? 'warn' : 'ok', 'session levels snapshot age');
+    var gammaWhen = t ? chainAgeLabel(t, t.levels_stale ? ('STALE ' + age(t.levels_age_sec)) : age(t.levels_age_sec)) : null;
+    var gammaWhy = (t && t.levels_stale_reason != null) ? t.levels_stale_reason : null;
+    h += t === undefined ? pill('GAMMA', '…', '')
+      : !t || t.error ? pill('GAMMA', 'DOWN', 'bad', (t && t.error) ? t.error : 'terrain request failed')
+      : pill('GAMMA', gammaWhen, t.levels_stale ? 'warn' : 'ok', gammaWhy);
     host.innerHTML = h;
   }
   function paintFooter() {
@@ -520,13 +543,22 @@
   }
   // The shell header already carries the symbol, price, change and CT clock; this page adds
   // the index context and the data-trust row beside it.
+  function vixText(vix) {
+    if (!vix || vix.spot == null) return 'waiting for the VIX stream';
+    var txt = num(vix.spot) + (vix.chg_pct != null ? ' (' + (vix.chg_pct >= 0 ? '+' : '') + num(vix.chg_pct) + '%)' : '');
+    return vix.trade_time_ct != null ? (txt + ' · last trade ' + esc(vix.trade_time_ct)) : txt;
+  }
   function paintHeader() {
     window.EdShell.marketContext().forEach(function (c) {   // the served context symbols
       var el = $('tdmIdx' + c.display); if (!el) return;
       var r = S.quotes[c.key];
-      el.title = r ? '' : 'waiting for the ' + c.display + ' stream';
+      if (!r) el.title = 'waiting for the ' + c.display + ' stream';
+      else if (r.trade_time_ct != null) el.title = 'last trade ' + r.trade_time_ct;
+      else if (r.outage != null) el.title = r.outage;
+      else el.title = 'no trade sent';
       el.innerHTML = '<span>' + c.display + '</span><b>' + (r && r.spot != null ? num(r.spot) : '—') + '</b>' +
-        (r && r.chg_pct != null ? '<em class="' + (r.chg_pct >= 0 ? 'up' : 'dn') + '">' + (r.chg_pct >= 0 ? '+' : '') + num(r.chg_pct) + '%</em>' : '');
+        (r && r.chg_pct != null ? '<em class="' + (r.chg_pct >= 0 ? 'up' : 'dn') + '">' + (r.chg_pct >= 0 ? '+' : '') + num(r.chg_pct) + '%</em>' : '') +
+        (r && r.trade_time_ct != null ? '<span> · last trade ' + esc(r.trade_time_ct) + '</span>' : '');
     });
   }
 
@@ -567,7 +599,7 @@
       paintHeader();
       if (q.ticker === st().key) {
         paintTrust();
-        if (S.chart) S.chart.setLivePrice(q.spot, q.trade_age_sec);
+        if (S.chart) S.chart.setLivePrice(q.spot, q.trade_age_sec, q.spot != null ? q.trade_time_ct : null);
         paintCards();   // the Order Flow card's Schwab fields, on every row
       }
     });
