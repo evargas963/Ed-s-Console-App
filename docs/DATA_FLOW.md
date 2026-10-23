@@ -300,7 +300,9 @@ from Schwab to the screen (daemon, console, page), are these:
   is the book's `net_vanna`. After that ticker's option market has closed, the publication
   is valued at that close (`time_et.valuation_instant`, the index close for SPY, QQQ, and
   IWM, the equity-option close for every other ticker), so the close numbers stay. A later
-  equity print keeps the spot that publication was priced at. The
+  equity print keeps the price that publication was priced at (`priced_at_spot`); the matrix's
+  spot, each row's distance from it and the row it sits under are the live price's
+  (`confluence_composite.at_price`). The
   chain's own time stays `computed_ts_utc` and is the line above the matrix. The expiry is a dropdown; a same-day expiry is labeled 0DTE. Each level is sent at its own price and drawn on the rail. An expiry dated before today is not offered. A request that names a date before
   today opens on the next expiry, and the page keeps that one. When every expiry
   on the held chain is before today, the route says no expiry on this chain is
@@ -446,7 +448,12 @@ from Schwab to the screen (daemon, console, page), are these:
   than two of the sweep's delivered rounds are stale with the reason (the daemon's last answer
   for its chain, or not delivered), whatever the hour.
   Its `spot` is the price the levels were computed at (`spot_source`, `spot_as_of_ts_utc`); the
-  price is the daemon's price row. With no price from Schwab the next publication has no levels,
+  price is the daemon's price row. Every route names that price `priced_at_spot` (with
+  `priced_at_spot_source`, `priced_at_spot_as_of_ts_utc` where it serves them) and serves `spot`
+  as the live price (`resolve_spot`), one meaning on every route (`tests/test_page_one_faucet_v1.py`
+  checks every GET route that answers a ticker). The one-day move's two prices are the live price
+  plus and minus the publication's implied move (`server.expected_move`, the one producer;
+  `/api/levels` and `/api/confluence` carry it). With no price from Schwab the next publication has no levels,
   with its reason.
 - **Heatmap cells.** Every strike Schwab listed in any expiry is a row; a cell is the book's
   value for its strike and expiry, exact. A cell with no value (no contract listed at that strike
