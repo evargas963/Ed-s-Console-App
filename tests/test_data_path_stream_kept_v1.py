@@ -24,7 +24,7 @@ import pytest
 
 from app.market_data.schwab.streaming import capture
 from calibration.complete_chain_capture import chain_messages
-from stream_spine import LOG, PRUNE_ROWS, WRITER_BLOCKED, WRITER_RECORDING, CaptureWriter, HealthRegistry, MessageBus, book_msg, options_quote_msg, quote_msg
+from stream_spine import LOG, PRUNE_ROWS, WRITER_BLOCKED, WRITER_DEAD, WRITER_RECORDING, CaptureWriter, HealthRegistry, MessageBus, book_msg, options_quote_msg, quote_msg
 from tests.real_chains import MRVL, SPY_0DTE
 from time_et import ET
 
@@ -308,6 +308,46 @@ def test_messages_spilled_when_the_database_refuses_a_round_are_not_counted_as_h
     assert during["held"] == during["queue_depth"] + during["waiting"] == during["queue_depth"], \
         f"held {during['held']}: {during['spill']['messages']} spilled, {during['queue_depth']} queued"
     assert _rows(db, "SELECT COUNT(*) FROM stream_quotes_raw")[0][0] == sent
+
+
+class _UnwritableQuote(dict):
+    """STAND-IN for a defect: a captured equity quote whose fields cannot be read as items, so no
+    spill record can hold it (_spill_record raises RuntimeError on it)."""
+
+    def items(self):
+        raise RuntimeError("a message no spill record can hold")
+
+
+def test_a_writer_that_dies_while_holding_counts_as_not_recorded_only_what_was_not_yet_held(tmp_path):
+    """INDUCED CONDITIONS: the write lock held, a 1-byte memory cap (an input, STAND-IN for about
+    2 GB), the mix's first ten equity quotes and then the eleventh as an _UnwritableQuote: the ten
+    go to the spill file and the writer dies holding the eleventh. Not recorded is the eleventh
+    alone; the ten are in the spill file, listed as left on disk; none is lost."""
+    db = tmp_path / "stream_capture.db"
+    writer = CaptureWriter(db, timeout_sec=0.05, retry_sec=0.1, hold_cap_bytes=1)
+    holder = sqlite3.connect(db, isolation_level=None, check_same_thread=False)
+    holder.execute("BEGIN IMMEDIATE")
+    bus = MessageBus()
+    sub = bus.subscribe("", policy=LOG)
+    assert _publish_mix(bus, {"LEVELONE_EQUITIES"}, limit=10) == 10
+    m = [m for m in _MIX["messages"] if m["service"] == "LEVELONE_EQUITIES"][10]
+    key = m["item"]["key"].upper()
+    kind, msg = capture._message(m["service"], key, m["item"], m["schwab_ts"])
+    bus.publish(f"{kind}.{key}", _UnwritableQuote(msg))
+
+    async def go():
+        stop = asyncio.Event()
+        task = asyncio.create_task(writer.run(sub, stop=stop))
+        await _until(lambda: writer.status()["state"] == WRITER_DEAD)
+        stop.set()
+        await task
+    try:
+        asyncio.run(go())
+    finally:
+        holder.close()
+    s = writer.status()
+    assert s["error"] == "RuntimeError: a message no spill record can hold"
+    assert (s["unrecorded"], s["lost"], [k["messages"] for k in s["left_on_disk"]]) == (1, 0, [10])
 
 
 def test_nothing_is_removed_while_the_options_trade_or_the_market_is_unknown(tmp_path):

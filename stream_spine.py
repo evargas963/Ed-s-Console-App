@@ -830,6 +830,8 @@ class CaptureWriter:
         self.lost_last_ts: "float | None" = None
         self._round: list = []         # the messages the writer is writing now, in order
         self._stored = 0               # how many of them are in the open batch
+        self._admitting: list = []     # the messages _admit is holding now, in order
+        self._admitted = 0             # how many of them are held (in memory, spilled or lost)
         self._logged: dict = {}        # log line kind -> [minute last logged, count since]
         self.state = WRITER_NOT_STARTED
         self.rows_written = 0
@@ -970,10 +972,11 @@ class CaptureWriter:
                                      if self.last_failure_ts is not None else None),
                  "queue_depth": self._q.qsize(), "waiting": len(self._waiting),
                  # the open batch and the round's messages not yet in it; a retry's are part of what
-                 # is waiting; spill records are on disk
+                 # is waiting; those _admit has not yet held; spill records are on disk
                  "held": self._q.qsize() + max(len(self._waiting),
                                                (0 if self._batch_spilled else len(self._batch))
-                                               + len(self._round) - self._stored),
+                                               + len(self._round) - self._stored)
+                         + len(self._admitting) - self._admitted,
                  "held_bytes": self._waiting_bytes,
                  "spill": self._spills[0].status() if self._spills else None,
                  "spills_after": [s.status() for s in self._spills[1:]],
@@ -1025,12 +1028,15 @@ class CaptureWriter:
             with self._lock:
                 self.state, self.error, self.error_ts = WRITER_DEAD, f"{type(e).__name__}: {e}", time.time()
                 # not recorded: the open batch, the round's messages not yet in it (the one that
-                # ended the thread first; a retry's round holds its batch and what was waiting) and
-                # the queue. A spill file's messages are on disk: the file stays, listed as left
+                # ended the thread first; a retry's round holds its batch and what was waiting),
+                # those _admit had not yet held, and the queue. A spill file's messages are on
+                # disk: the file stays, listed as left
                 batch = 0 if self._batch_spilled else len(self._batch)
-                self.unrecorded += batch + len(self._round) - self._stored + self._drained(q)
+                self.unrecorded += (batch + len(self._round) - self._stored
+                                    + len(self._admitting) - self._admitted + self._drained(q))
                 self._leave_spills()
                 self._batch, self._waiting, self._round, self._stored = [], [], [], 0
+                self._admitting, self._admitted = [], 0
                 self._batch_spilled = False
             raise
         with self._lock:                   # anything handed in after the stop is not written
@@ -1132,11 +1138,10 @@ class CaptureWriter:
                 self.error_ts = time.time()
             self.state, self.error = WRITER_BLOCKED, reason
         if not holding:                    # held now: in memory up to the cap, then spilled
-            with self._lock:
+            with self._lock:               # the round is what memory holds; the spilled are on disk
                 self._waiting, self._waiting_bytes = [], 0
-            self._admit(held)
-            with self._lock:               # the round is now what memory holds; the spilled are on disk
                 self._round, self._stored = self._waiting, 0
+            self._admit(held)
         if stopping:
             self._leave_on_disk()
             return
@@ -1144,7 +1149,10 @@ class CaptureWriter:
 
     def _admit(self, items: list) -> None:
         """Hold `items`, in order: while no spill file is open, in memory while the held bytes
-        stay within the cap; then, and for every newer message, in the newest spill file."""
+        stay within the cap; then, and for every newer message, in the newest spill file. Those not
+        yet held are counted held (status) and, if the writer dies, not recorded."""
+        with self._lock:
+            self._admitting, self._admitted = items, 0
         for item in items:
             if not self._spills:
                 size = _held_size(item)
@@ -1152,6 +1160,7 @@ class CaptureWriter:
                     with self._lock:
                         self._waiting.append(item)
                         self._waiting_bytes += size
+                        self._admitted += 1
                     continue
             try:
                 refused = self._tail().append(_spill_record(item))
@@ -1159,6 +1168,10 @@ class CaptureWriter:
                 refused = e
             if refused is not None:
                 self._lose(item, refused)
+            with self._lock:
+                self._admitted += 1
+        with self._lock:
+            self._admitting, self._admitted = [], 0
 
     def _tail(self) -> _Spill:
         """The spill file new messages go to: the newest, when this writer opened it; a new one,
