@@ -58,11 +58,9 @@ def test_the_engine_takes_the_bar_writers_candles_as_they_are():
 
 
 def _typical_price_dump(bars, tick_size=0.01):
-    """The construction LP-01 Step 1 REPLACED, kept here only as the disagreement witness.
-
-    A test that a new method 'works' proves nothing if the old one produced the same number.
-    This reproduces the retired typical-price dump so the fixtures below can show the two
-    genuinely differ where it matters.
+    """The typical-price dump (each bar's whole volume at (H+L+C)/3), the disagreement
+    witness: the fixtures below show the engine's distribution differs from it where it
+    matters.
     """
     from collections import defaultdict
     vol_by_price: dict = defaultdict(float)
@@ -173,9 +171,8 @@ def _overnight(bars: list, session_date: date) -> dict:
 
 
 def test_overnight_window_monday_reaches_back_to_friday():
-    """LP-01 Step 2 (RC-153): Monday's overnight starts at FRIDAY's 16:00 close. The old code
-    used session_date - 1 day = SUNDAY, a day with no close and no bars, so Friday's entire
-    post-16:00 tape was dropped and OVERNIGHT_HIGH/LOW described only Monday's pre-open."""
+    """Monday's overnight starts at FRIDAY's 16:00 close (the prior session), not at Sunday,
+    which has no close and no bars: Friday's post-16:00 tape is in OVERNIGHT_HIGH/LOW."""
     friday, monday = date(2026, 10, 2), date(2026, 10, 5)    # sessions Schwab's /markets sent
     bars = [
         _bar(friday, 10, 0, 100.0, 99.0),      # Friday RTH — establishes the prior session
@@ -257,14 +254,14 @@ def test_overnight_without_a_prior_session_uses_only_this_session_premarket():
     )
 
 
-# ── LP-01 Step 3 (RC-154): no liquidity-pool claim on untested extremes ──────────────────
+# ── No liquidity-pool claim on untested extremes ─────────────────────────────────────────
 _POOL_WORDS = ("liquidity", "pool", "sweep", "stop hunt", "stop-hunt", "magnet")
 
 
 def _step3_bars(session_date: date) -> list:
     """Bars that drive the taxonomy branch: a prior session, an overnight leg that undercuts
-    the prior low, and an RTH open — i.e. exactly the shape that used to be labelled
-    'sell-side liquidity'."""
+    the prior low, and an RTH open — the shape a pool label would claim as 'sell-side
+    liquidity'."""
     prev = date.fromordinal(session_date.toordinal() - 1)
     return [
         _bar(prev, 10, 0, 105.0, 100.0, close=104.0),
@@ -283,8 +280,8 @@ def _step3_zones(session_date: date):
 
 
 def test_no_pool_language_in_rendered_zone_payload():
-    """Behaviour-bound: build the snapshot that used to produce 'Sell-side liquidity at
-    overnight low' and assert no operator-facing field claims a pool."""
+    """Behaviour-bound: build the snapshot for an overnight leg under the prior low and assert
+    no operator-facing field claims a pool."""
     session = date(2026, 10, 6)          # a Tuesday: its prior session is the day before
     zones = _step3_zones(session)
     assert zones, "fixture produced no zones — the assertion would be vacuous"
@@ -336,11 +333,8 @@ def test_no_lookahead_premarket():
     out = build_premarket_snapshot("SPY", session, cfg, canonical=snap)
     assert out.raw_levels.get("prev_day")
     # No today POC/VAH/VAL in premarket raw: every "poc"-shaped key inside prev_day
-    # must be the pd_-prefixed previous-day form, not an unprefixed today value that
-    # leaked in. TEST_SYSTEM_REHAB_V2: was `"poc" not in prev_day or "pd_" in
-    # raw_levels` -- the second arm checked ANY "pd_" occurrence anywhere in the
-    # whole payload, satisfied unconditionally since prev_day always has pd_ keys,
-    # so a leaked unprefixed "today_poc" inside prev_day would never be caught.
+    # must be the pd_-prefixed previous-day form, not an unprefixed today value; each key
+    # is checked inside prev_day itself, so a "today_poc" there is caught.
     prev_day = out.raw_levels.get("prev_day", {})
     poc_keys = [k for k in prev_day if "poc" in str(k).lower()]
     assert poc_keys, "prev_day carries no poc-shaped key at all"

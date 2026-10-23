@@ -1,10 +1,7 @@
 # institutional-synthetic-ok: crafted command strings prove the action bans block and permit correctly.
-"""operator_law_guard — the three surviving host-wide action bans, in both directions.
-
-KEEP/MERGE/DELETE 2026-09-10: the no-grep rule, the shell source-write bans, the -c payload
-classifier and the transcript-derived CLOSE-needs-verification rule were deleted (the module
-docstring records why); their suites went with them. What remains must still bite where it
-bit before and stay quiet on the measured false-positive classes.
+"""operator_law_guard — the host-wide action bans (unrecoverable trees, lock disable, blind
+staging), in both directions: each blocks its action and stays quiet on the forms that only
+look like it.
 """
 from __future__ import annotations
 
@@ -19,7 +16,7 @@ sys.path.insert(0, str(REPO / "tools"))
 import operator_law_guard as G  # noqa: E402
 
 
-# ── RC-273: unrecoverable trees ────────────────────────────────────────────────────────
+# ── unrecoverable trees ───────────────────────────────────────────────────────────────
 def test_appdata_redirect_not_protected_tree():
     """_PROTECTED_TREE is path-segment anchored: `AppData/` is not `data/`."""
     cmd = "git show HEAD:x > /c/Users/evarg/AppData/Local/Temp/claude/s/out.txt"

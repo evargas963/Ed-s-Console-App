@@ -1,10 +1,6 @@
-"""Guard bypass class — mandatory controls are not subject-disableable (RC-450/RC-454).
-
-Carried forward from the Architecture A battery when the role/authority machinery was
-torn down (operator, 2026-08-24): the ROLES are gone, but the property that an acting
-agent cannot switch off its own guards is not role machinery — it is what makes the
-remaining small guard surface real. These tests attempt the prohibited action and
-require the real boundary to reject it; a function-exists assertion is not enough.
+"""Guard bypass class — mandatory controls are not subject-disableable: an acting agent
+cannot switch off its own guards. These tests attempt the prohibited action and require the
+real boundary to reject it.
 """
 from __future__ import annotations
 

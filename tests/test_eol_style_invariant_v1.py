@@ -1,16 +1,8 @@
-"""RC-382 — the line-ending lock, driven against real git repositories.
+"""The line-ending lock, driven against real git repositories.
 
-The three occurrences this lock exists to refuse, each reproduced below as a planted
-control rather than described:
-
-  1. RC-372         a text-mode restore flipped the real AGENTS.md LF->CRLF every run.
-  2. settings.json  an 8-line addition committed as 78 insertions / 71 deletions.
-  3. RC-381 slice 1 a 15-line declaration pass committed as 2428 / 2427.
-
-Cases 1 and 2/3 are different shapes and are refused by different clauses: a PURE EOL
-REFLOW carries no content change at all, while an EOL STYLE FLIP hides a genuine edit
-inside a whole-file reflow. Both must fail; a legitimate edit that preserves the
-terminator must pass, or the lock would simply block work.
+Two shapes are refused by different clauses: a PURE EOL REFLOW carries no content change at
+all, while an EOL STYLE FLIP hides a genuine edit inside a whole-file reflow. Both must fail;
+a legitimate edit that preserves the terminator must pass.
 """
 from __future__ import annotations
 
@@ -45,7 +37,7 @@ def repo(tmp_path):
     git("config", "user.email", "t@t.t")
     git("config", "user.name", "t")
     # core.autocrlf=false so the blob is exactly what we write — the same setting the
-    # real repo runs, and the condition under which occurrence 3 still happened.
+    # real repo runs.
     git("config", "core.autocrlf", "false")
     (root / "lf_file.py").write_bytes(b"a = 1\nb = 2\nc = 3\n")
     (root / "crlf_file.py").write_bytes(b"x = 1\r\ny = 2\r\nz = 3\r\n")
@@ -81,7 +73,7 @@ def test_clean_repo_passes(repo):
 
 
 def test_pure_eol_reflow_is_refused(repo):
-    """Occurrence 1 (RC-372): content identical, every terminator flipped."""
+    """Content identical, every terminator flipped."""
     root, _git = repo
     p = root / "lf_file.py"
     p.write_bytes(p.read_bytes().replace(b"\n", b"\r\n"))
@@ -91,7 +83,7 @@ def test_pure_eol_reflow_is_refused(repo):
 
 
 def test_eol_style_flip_hiding_a_real_edit_is_refused(repo):
-    """Occurrences 2 and 3: a genuine change PLUS a whole-file reflow."""
+    """A genuine change PLUS a whole-file reflow."""
     root, _git = repo
     p = root / "lf_file.py"
     body = p.read_bytes().replace(b"b = 2\n", b"b = 22  # real edit\n")
@@ -154,7 +146,7 @@ def test_binary_files_are_exempt(repo):
 
 
 def test_a_pinned_path_may_differ_on_disk_without_being_a_violation(repo):
-    """RC-383: `text eol=lf` means git normalises into the blob, so worktree CRLF is the
+    """`text eol=lf` means git normalises into the blob, so worktree CRLF is the
     CONFIGURED state, not a flip. .claude/settings.json lives exactly here."""
     root, git = repo
     (root / ".gitattributes").write_bytes(b"pinned.json text eol=lf\n")
@@ -162,20 +154,17 @@ def test_a_pinned_path_may_differ_on_disk_without_being_a_violation(repo):
     git("add", "-A")
     git("commit", "-m", "pin a path")
 
-    # An external tool rewrites it with platform terminators - exactly what the harness
-    # does to settings.json. Nothing about the committed form has changed.
+    # An external tool rewrites it with platform terminators, as the harness does to
+    # settings.json. Nothing about the committed form has changed.
     (root / "pinned.json").write_bytes(b'{\r\n  "a": 1\r\n}\r\n')
     rc, out = run_in(root, "--measure")
     assert rc == 0 and "[PASS]" in out, f"a pinned path was reported as a flip: {out}"
 
 
 def test_a_pinned_path_with_a_real_content_change_is_still_silent(repo):
-    """The case the pre-RC-383 implementation only survived by accident.
-
-    Before the fix, pinned paths escaped only because `git diff --name-only` filters
-    normalised files out of the changed list. Give the file a REAL content change and it
-    reappears in that list, and the raw byte comparison then fires on a correctly
-    configured file. This test fails against the pre-fix code.
+    """A pinned path with a REAL content change is in `git diff --name-only`'s changed list,
+    so the lock judges it; it must compare git's normalised bytes, not the raw disk bytes,
+    or it fires on a correctly configured file.
     """
     root, git = repo
     (root / ".gitattributes").write_bytes(b"pinned.json text eol=lf\n")
@@ -183,31 +172,23 @@ def test_a_pinned_path_with_a_real_content_change_is_still_silent(repo):
     git("add", "-A")
     git("commit", "-m", "pin a path")
 
-    # UNSTAGED and CRLF on disk. This is the discriminating case: staged mode reads the
-    # index, which git has already normalised, so the defect cannot show there. Only the
-    # worktree comparison sees raw CRLF against an LF blob.
+    # UNSTAGED and CRLF on disk: staged mode reads the index, which git has already
+    # normalised; only the worktree comparison sees raw CRLF against an LF blob.
     (root / "pinned.json").write_bytes(b'{\r\n  "a": 2,\r\n  "b": 3\r\n}\r\n')
     rc, out = run_in(root, "--measure")
     assert "EOL STYLE FLIP" not in out, (
         f"a real edit to a PINNED path was reported as a terminator flip — the check is "
-        f"judging disk bytes where git judges normalised bytes (RC-383): {out}")
+        f"judging disk bytes where git judges normalised bytes: {out}")
     assert "[PASS]" in out, out
 
 
 def test_a_blob_that_violates_its_own_pin_can_be_repaired(repo):
-    """RC-528 (ported from #221's row 511): the pin binds on BOTH sides of the comparison.
+    """The pin binds on BOTH sides of the comparison: a path pinned `eol=lf` whose HEAD blob
+    is CRLF is compared normalised against normalised, so the commit that restores the pin
+    passes instead of reading as a PURE EOL REFLOW.
 
-    It was applied to the worktree side only, so a path pinned `eol=lf` whose HEAD blob is
-    CRLF was compared LF-against-CRLF, and the commit that RESTORES the pin was reported as a
-    PURE EOL REFLOW — the gate demanding "restore the original terminator" while refusing the
-    restoration. Invisible while every blob obeyed its pin, which is why it survived.
-
-    MEASURED by #221 on the real tree: moving three artifacts out from under
-    `reports/artifacts/*.json text eol=lf` let git store the CRLF a Windows suite run had
-    written, and re-pinning the new location was refused three times.
-
-    Planted by committing CRLF with NO pin, then adding the pin — which is exactly how a blob
-    comes to violate one: the file did not move, the pattern did.
+    Planted by committing CRLF with NO pin, then adding the pin — how a blob comes to violate
+    one: the file did not move, the pattern did.
     """
     root, git = repo
     (root / "pinned.json").write_bytes(b'{\r\n  "a": 1\r\n}\r\n')
@@ -223,11 +204,11 @@ def test_a_blob_that_violates_its_own_pin_can_be_repaired(repo):
         f"message itself asks for is unreachable: {out}")
 
 
-def test_an_unpinned_reflow_is_still_refused_after_the_pin_fix(repo):
-    """The negative half: RC-528 must not turn the lock off for unpinned paths.
+def test_an_unpinned_reflow_is_refused(repo):
+    """The negative half: the pin rule does not turn the lock off for unpinned paths.
 
     Same shape as the pinned case above, minus the pin. Nothing normalises it, so the flip is
-    real and must still fail — otherwise the repair would have bought silence.
+    real and must fail.
     """
     root, git = repo
     (root / "plain.json").write_bytes(b'{\r\n  "a": 1\r\n}\r\n')
@@ -238,11 +219,11 @@ def test_an_unpinned_reflow_is_still_refused_after_the_pin_fix(repo):
     git("add", "-A")
     rc, out = run_in(root)
     assert rc != 0 and "PURE EOL REFLOW" in out, (
-        f"an unpinned terminator flip stopped being refused: {out}")
+        f"an unpinned terminator flip is not refused: {out}")
 
 
 def test_the_live_repo_is_currently_clean():
-    """Negative control on the real tree: the lock must not be born failing."""
+    """Negative control on the real tree: the lock passes the repository as it is."""
     rc = subprocess.run(
         [sys.executable, str(TOOL), "--measure"], cwd=str(REPO),
         capture_output=True, text=True, check=False,

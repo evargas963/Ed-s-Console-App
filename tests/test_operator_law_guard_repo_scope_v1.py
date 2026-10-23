@@ -1,5 +1,5 @@
 """operator_law_guard's universal protections fire whatever repository a command is aimed at:
-the checkout in front of a command never exempts it (RC-258)."""
+the checkout in front of a command never exempts it."""
 from __future__ import annotations
 
 import sys
@@ -39,7 +39,7 @@ def test_deleting_the_database_fires_in_this_repository():
 
 def test_guard_does_not_return_early_for_an_out_of_scope_repository(other_repo):
     """A banned action AND a commit in one chain aimed at another repository: the universal
-    rule must still fire (RC-258: applicability is per rule, never an early return)."""
+    rule fires (applicability is per rule, never an early return)."""
     out = G.bash_violations('cd "%s" && git add -A && git commit -m x' % other_repo)
     assert any("blind staging" in v for v in out), out
     chain = 'cd "%s" && git reset --hard HEAD~1' % other_repo
