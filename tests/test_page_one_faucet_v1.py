@@ -77,16 +77,6 @@ def test_every_route_serves_the_live_spot_and_names_the_computed_one(held):
     assert {p: s for p, s in served.items() if s != (LIVE, PUBLISHED)} == {}
 
 
-def test_confluence_serves_the_live_spot_and_the_one_expected_move(held):
-    """The matrix is priced at the publication's price; its spot and its one-day move are the live
-    price's, the same move /api/levels serves (one producer, server.expected_move)."""
-    body = server.confluence_payload(TK, EXPIRY, _AT)
-    levels = {r["id"]: r["price"] for r in server.levels_payload(TK, "1", _AT)["levels"]}
-    moves = {lv["abbrev"]: lv["price"] for lv in body["levels"] if lv["abbrev"] in ("EM+", "EM−")}
-    assert (body["spot"], body["spot_text"], body["priced_at_spot"]) == (LIVE, f"{LIVE:.2f}", PUBLISHED)
-    assert moves == {"EM+": levels["em_up"], "EM−": levels["em_dn"]}
-
-
 def test_strike_side_sums_split_at_the_live_spot(held):
     rows = held["_per_strike"]["all"]
     below = [r for r in rows if r[0] < LIVE]

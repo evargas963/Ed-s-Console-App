@@ -1005,3 +1005,32 @@ def test_a_chain_whose_every_expiry_has_passed_says_so():
         server._terrain_cache.pop(tk, None)
     assert body["available"] is False
     assert body["reason"] == "no expiry on this chain is still open"
+
+
+def test_the_matrix_shows_the_live_price_and_the_one_day_move_levels_serves():
+    """MRVL's captured full chain, published at its capture price; the live price then moves a
+    dollar. The matrix stays ranked at the capture price (priced_at_spot); its spot and its one-day
+    move are the live price's, the same two prices /api/levels serves (server.expected_move). They
+    were the capture price and a second computation at it."""
+    import app.options.order_flow.streaming as ofs
+    from tests.real_chains import MRVL
+
+    held = MRVL
+    tk = "MRVL"
+    at = held.now
+    expiry = str(held.chain[0]["expirationDate"])[:10]
+    live = held.spot + 1.0
+    ofs._price_rows[tk] = {"ticker": tk, "spot": held.spot, "trade_ts": at.timestamp()}
+    try:
+        server._publish_levels(tk, [dict(c) for c in held.chain], at.timestamp(), now=at)
+        ofs._price_rows[tk] = {"ticker": tk, "spot": live, "trade_ts": at.timestamp()}
+        body = server.confluence_payload(tk, expiry, at)
+        levels = {r["id"]: r["price"] for r in server.levels_payload(tk, "1", at)["levels"]}
+    finally:
+        ofs._price_rows.pop(tk, None)
+        with server._terrain_cache_lock:
+            server._terrain_cache.pop(tk, None)
+    moves = {lv["abbrev"]: lv["price"] for lv in body["levels"] if lv["abbrev"] in ("EM+", "EM−")}
+    assert (body["spot"], body["spot_text"], body["priced_at_spot"]) == (live, f"{live:.2f}", held.spot)
+    assert moves == {"EM+": levels["em_up"], "EM−": levels["em_dn"]}
+    assert levels["em_up"] - live == live - levels["em_dn"] > 0
