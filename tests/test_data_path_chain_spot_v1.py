@@ -92,6 +92,8 @@ def test_a_capture_written_before_the_chain_carried_a_spot_is_read_at_its_neares
     published = []
     try:
         server._publish_levels(TK, captures=[read], now=CRWD.now)
+        with server._terrain_cache_lock:
+            published.append(dict(server._terrain_cache[TK]))
         server._publish_levels(TK, now=CRWD.now)                  # a reprice of the kept capture
         with server._terrain_cache_lock:
             published.append(dict(server._terrain_cache[TK]))

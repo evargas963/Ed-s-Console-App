@@ -328,6 +328,7 @@ def test_the_route_serves_the_publication_and_a_chain_without_a_spot_publishes_n
     _publish(_CONTRACTS, _T, chain_spot=(None, None))           # the next chain: no spot
     out = server.get_terrain(ticker=TK)
     assert out["regime"] == "UNAVAILABLE" and out["call_wall"] is None and out["error"] == "no spot price"
+    assert (out["priced_at_spot"], out["priced_at_spot_source"], out["priced_at_spot_as_of_ts_utc"]) == (None, "none", None)
 
 
 def test_an_unknown_gamma_at_spot_never_reads_as_short_gamma():

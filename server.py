@@ -1314,8 +1314,12 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
         # a capture written without the chain's spot: its nearest expiry's underlyingPrice
         priced_at = (capture["spot"], SPOT_SOURCE_CAPTURE, capture["ts_utc"])
     elif new_chain:
-        # Schwab's LAST_PRICE when the chain was complete, with its trade time
-        priced_at = (chain_spot[0], SPOT_SOURCE_PLANE, chain_spot[1])
+        # Schwab's LAST_PRICE when the chain was complete, with its trade time; "none" when the
+        # daemon held no price (resolve_spot's word for the same state)
+        source = SPOT_SOURCE_PLANE
+        if chain_spot[0] is None:
+            source = "none"
+        priced_at = (chain_spot[0], source, chain_spot[1])
     else:
         priced_at = payload["_chain_spot"]
     if capture is None and valued_at < at and payload.get("spot") is not None:
