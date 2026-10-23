@@ -36,6 +36,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from math_levels import GAMMA_FLIP_LEVEL_APPROX, GAMMA_FLIP_TRUSTED
+from numeric_contract import price_text
 
 REGIME_LONG_GAMMA = "LONG_GAMMA_CHOP"
 REGIME_SHORT_GAMMA = "SHORT_GAMMA_TREND"
@@ -79,8 +80,8 @@ def _pct_from(spot: float, level: float) -> float:
 
 def _fmt(label: str, level: float | None, spot: float) -> str:
     if level is None:
-        return f"{label}: unavailable"
-    return f"{label} {level:.2f} ({_pct_from(spot, level) * 100:+.2f}%)"
+        return f"{label} -"
+    return f"{label} {price_text(level)} ({_pct_from(spot, level) * 100:+.2f}%)"
 
 
 def regime_from_signed_gamma(signed_gamma: float | None) -> str | None:
@@ -221,7 +222,7 @@ def build_terrain_read(
 
     if flip is not None:
         distance_pct = _pct_from(spot, flip) * 100.0
-        flip_line = (f"Spot {spot:.2f} vs {_fmt('flip', flip, spot)} — {abs(distance_pct):.2f}% "
+        flip_line = (f"Spot {price_text(spot)} vs {_fmt('flip', flip, spot)} — {abs(distance_pct):.2f}% "
                      f"{'above' if spot > flip else 'below'} the regime line.")
         # Gamma audit: at the middle tier the chain does not reach the measured flip-LEVEL
         # convergence span, so the LEVEL is approximate (~1.4% of spot in the study) even though the
@@ -231,7 +232,7 @@ def build_terrain_read(
             flip_line += (" APPROXIMATE: the chain is too narrow to place this level precisely "
                           "(~1.4% of spot); the regime above does not depend on it.")
     else:
-        flip_line = (f"Spot {spot:.2f} — dealer gamma holds one sign across the whole chain, "
+        flip_line = (f"Spot {price_text(spot)} — dealer gamma holds one sign across the whole chain, "
                      f"so there is no flip nearby to cross. The regime is unambiguous.")
 
     lines = [
