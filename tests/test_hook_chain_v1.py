@@ -232,9 +232,12 @@ def test_5b_a_worktree_nested_inside_the_primary_edits_its_own_files_and_never_t
     for rel in ("server.py", "tools/operator_law_guard.py", "static/index.html", "tests/test_x.py"):
         own = _chain(edit(nested / rel), root=nested)
         assert own.returncode == 0 and own.stderr == "", (rel, own.stderr)
-    for rel in ("server.py", "tools/operator_law_guard.py", "static/index.html"):
-        cross = _chain(edit(primary / rel), root=nested)
-        assert cross.returncode == 2 and "CROSS_CHECKOUT_EDIT" in cross.stderr, (rel, cross.stderr)
+    sibling = primary / ".claude" / "worktrees" / "sibling"
+    _git(primary, "worktree", "add", "-q", str(sibling), "-b", "sibling")
+    for target in (primary / "server.py", primary / "tools" / "operator_law_guard.py",
+                   primary / "static" / "index.html", sibling / "server.py"):
+        cross = _chain(edit(target), root=nested)
+        assert cross.returncode == 2 and "CROSS_CHECKOUT_EDIT" in cross.stderr, (target, cross.stderr)
 
 
 def test_6_a_dev_worktree_commits_freely_the_production_primary_refuses_moves_and_masked_forms_block(tmp_path):
