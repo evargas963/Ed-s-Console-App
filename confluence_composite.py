@@ -369,8 +369,8 @@ def _factor_row(part: dict) -> dict:
 
 
 def build_matrix(exposures: dict, charm_by_strike: dict, ivs: dict[float, float | None],
-                 spot: float, dte: float, markers: list[dict]) -> dict:
-    """The rows, the score, and the marker placement for one expiry's book."""
+                 spot: float, dte: float) -> dict:
+    """The rows and the score for one expiry's book."""
     name = preset_name(dte)
     weights = in_score_weights(name)
     strikes = sorted(float(s) for s in exposures.keys())
@@ -450,7 +450,6 @@ def build_matrix(exposures: dict, charm_by_strike: dict, ivs: dict[float, float 
             "missing": result["missing"],
             "contributions": [_factor_row(p) for p in result["contributions"]],
             "factors": [_factor_row(p) for p in result["factors"]],
-            "markers": [m["label"] for m in markers if m.get("under_strike") == strike],
         })
     universe_n = sum(1 for s in mags if _in_universe(
         {k: v for k, v in mags[s].items() if not k.startswith("_")}))
@@ -473,23 +472,4 @@ def build_matrix(exposures: dict, charm_by_strike: dict, ivs: dict[float, float 
         ],
         "rows": rows,
         "strikes": strikes,
-        "offscreen": [
-            {"label": m["label"], "price_text": m["price_text"]}
-            for m in markers if m.get("under_strike") not in shown
-        ],
     }
-
-
-def place_markers(markers: list[dict], strikes: list[float]) -> list[dict]:
-    placed = []
-    for marker in markers:
-        price = marker.get("price")
-        if price is None:
-            continue
-        under = under_strike(float(price), strikes)
-        placed.append({
-            "label": marker["label"],
-            "price_text": price_text(price),
-            "under_strike": under,
-        })
-    return placed
