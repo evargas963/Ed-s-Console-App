@@ -250,12 +250,6 @@ def under_strike(price: float, strikes: list[float]) -> float | None:
     return min(at_or_above)
 
 
-def _count_text(n: float) -> str:
-    if float(n) == int(n):
-        return str(int(n))
-    return f"{n:g}"
-
-
 def _text(n: float | None, digits: int) -> str | None:
     if n is None:
         return None
@@ -470,7 +464,6 @@ def build_matrix(exposures: dict, charm_by_strike: dict, ivs: dict[float, float 
             {"label": _LABEL[k], "text": f"{100.0 * weights[k] / span:.2f}"}
             for k, span in spans.items() if span is not None and span != 0
         ],
-        "spot_text": _count_text(spot),
         "rows": rows,
         "offscreen": [
             {"label": m["label"], "price_text": m["price_text"]}

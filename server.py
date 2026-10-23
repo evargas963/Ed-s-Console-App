@@ -2323,11 +2323,13 @@ def get_terrain(ticker: str = Query(...)):
     cached = terrain_cache_get(tk, at.timestamp())
     if cached is not None:
         # the levels as the producer published them, every at-spot value computed at the
-        # publication's spot -- the price they were computed at, labelled by spot_source and
-        # spot_as_of_ts_utc, never called live (the live price is the daemon's price row);
+        # publication's price (priced_at_spot); `spot` is the live price, as on every route;
         # internal fields (the kept chain, the heatmap grid, per-strike rows) have their own routes
         out = {k: v for k, v in cached.items() if not k.startswith("_")}
         now = at.timestamp()
+        out.update(priced_at_spot=cached.get("spot"), priced_at_spot_source=cached.get("spot_source"),
+                   priced_at_spot_as_of_ts_utc=cached.get("spot_as_of_ts_utc"))
+        out["spot"], out["spot_source"], out["spot_as_of_ts_utc"] = resolve_spot(tk, now=now)
         out.update(terrain_staleness(cached.get("computed_ts_utc"), tk, now=now))
         computed = cached.get("computed_ts_utc")
         out["levels_time_ct"] = ct_label(computed) if computed is not None else None
@@ -2414,7 +2416,8 @@ def desk_events_payload(tk: str, venue: str, tf: str, now: datetime) -> dict:
         if t.get(f"{side}_wall_state") == "breached":
             items.append({"key": key, "ts": tts, "dom": "OPTIONS", "dir": "up" if side == "call" else "down",
                           "title": f"Spot through the {word} wall",
-                          "detail": f"{word} wall {_f2(t.get(f'{side}_wall'))} · spot {_f2(t.get('spot'))}",
+                          "detail": f"{word} wall {_f2(t.get(f'{side}_wall'))} · priced at "
+                                    f"{_f2(t.get('priced_at_spot'))}",
                           "src": "/api/terrain"})
     if t.get("levels_stale"):
         items.append({"key": "ls", "ts": tts, "dom": "DATA", "dir": None, "warn": True,
@@ -2972,8 +2975,9 @@ def _option_abbrev(label: str, same_day: bool) -> str:
     return base
 
 
-def _confluence_markers(live: dict, tk: str, now: datetime) -> list[dict]:
-    """Levels carried from this same priced snapshot, plus the session levels already published."""
+def _confluence_markers(live: dict, tk: str, now: datetime, spot) -> list[dict]:
+    """Levels carried from this same priced snapshot, plus the session levels already published,
+    and the one-day move around the live price `spot`."""
     markers = []
     snap = canonical_price_level_snapshot(tk, now)
     if snap is not None:
@@ -3005,19 +3009,27 @@ def _confluence_markers(live: dict, tk: str, now: datetime) -> list[dict]:
                     "label": "0DTE " + label, "short": _option_abbrev(label, True),
                     "title": "0DTE " + label, "lane": "options", "price": price,
                 })
-    move = live.get("implied_1d_move")
-    points = move.get("points") if isinstance(move, dict) else None
-    spot = live.get("spot")
-    if points is not None and isinstance(spot, (int, float)):
+    move = expected_move(live, spot)
+    if move is not None:
         markers.append({
             "label": "+1σ move", "short": "EM+", "title": "Expected move, one day, upper",
-            "lane": "session", "price": float(spot) + float(points),
+            "lane": "session", "price": move[0],
         })
         markers.append({
             "label": "−1σ move", "short": "EM−", "title": "Expected move, one day, lower",
-            "lane": "session", "price": float(spot) - float(points),
+            "lane": "session", "price": move[1],
         })
     return markers
+
+
+def expected_move(terrain: "dict | None", spot) -> "tuple[float, float] | None":
+    """The one-day move's upper and lower price: the live price plus and minus the terrain's
+    implied one-day move. None without either."""
+    move = None if terrain is None else terrain.get("implied_1d_move")
+    points = move.get("points") if isinstance(move, dict) else None
+    if points is None or not isinstance(spot, (int, float)):
+        return None
+    return float(spot) + float(points), float(spot) - float(points)
 
 
 def _screen_levels(markers: list[dict]) -> list[dict]:
@@ -3128,7 +3140,8 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict:
         return {"ticker": tk, "available": False, "expiries": listed,
                 "reason": "that expiry is not on the priced chain"}
     fetched = live.get("computed_ts_utc")
-    markers = _confluence_markers(live, tk, now)
+    live_spot, _src, live_ts = resolve_spot(tk, now=now.timestamp())
+    markers = _confluence_markers(live, tk, now, live_spot)
     levels = _screen_levels(markers)
     flip = _level_named(levels, "Flip")
     pin = _level_named(levels, "0D Pin")
@@ -3152,7 +3165,9 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict:
     body.update({
         "ticker": tk, "available": True, "reason": None,
         "expiry": chosen, "expiries": listed,
-        "spot": float(spot),
+        "spot": live_spot, "spot_text": None if live_spot is None else f"{live_spot:.2f}",
+        "spot_as_of_ts_utc": live_ts,
+        "priced_at_spot": float(spot),
         "chain_as_of_ts_utc": fetched,
         "chain_as_of_time_ct": None if fetched is None else ct_label(fetched),
         "status_text": status_text,
@@ -3207,19 +3222,17 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict:
         levels.append(row)
     # the gamma family, carried from the terrain (terrain_engine.compute_terrain's own values)
     t = terrain_cache_get(tk, now.timestamp())
-    move = t.get("implied_1d_move") if t is not None else None
-    em = move.get("points") if move is not None else None
+    em = expected_move(t, spot)
     carried = [(gid, label, "gamma", t.get(gid) if t is not None else None) for gid, label in GAMMA_LEVELS]
-    carried += [("em_up", "+1σ move", "expected_move", None if em is None or spot is None else spot + em),
-                ("em_dn", "−1σ move", "expected_move", None if em is None or spot is None else spot - em)]
+    carried += [("em_up", "+1σ move", "expected_move", None if em is None else em[0]),
+                ("em_dn", "−1σ move", "expected_move", None if em is None else em[1])]
     for gid, label, fam, price in carried:
         if price is not None:
             as_of = t.get("computed_ts_utc")
             levels.append({"id": gid, "price": price, "family": fam, "label": label, "short": label,
                            "evidence_tier": "DERIVED",
                            "provenance": {"producer": "terrain_engine.compute_terrain", "carried": True}
-                           if fam == "gamma" else {"producer": "server.get_levels: live spot ± the terrain's "
-                                                   "implied_1d_move.points", "carried": False},
+                           if fam == "gamma" else {"producer": "server.expected_move", "carried": False},
                            "staleness": {"as_of_ts_utc": as_of,
                                          "as_of_time_ct": ct_label(as_of) if as_of is not None else None,
                                          "age_sec": None if as_of is None else served_ts - as_of,
@@ -3241,7 +3254,7 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict:
     families_absent = (list(snap.families_absent) if snap is not None
                        else [{"family": "price_levels", "reason": NO_PRICE_LEVELS_REASON}])
     vp = snap.volume_profile if snap is not None else None
-    if em is None or spot is None:
+    if em is None:
         families_absent.append({"family": "expected_move", "reason": "no live price" if spot is None
                                 else "the terrain has no implied 1-day move"})
 

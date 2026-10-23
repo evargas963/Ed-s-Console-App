@@ -11,12 +11,15 @@ producer (server._publish_levels), the routes. Real data: Schwab's CRWD chain as
 2026-09-02 (tests/fixtures/real_crwd_complete_chain_quarter.json), published at its capture price
 (205.4). STAND-IN (named): the live price after the capture, LIVE (206.4).
 """
+import inspect
 import json
 import time
 from datetime import datetime
 from pathlib import Path
 
 import pytest
+from fastapi.routing import APIRoute
+from fastapi.testclient import TestClient
 
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
@@ -56,17 +59,32 @@ def held():
     lmp.record_feed_down()
 
 
-@pytest.mark.parametrize("route", [
-    lambda: server.get_chain(ticker=TK, expiry=EXPIRY),
-    lambda: server.get_options_gamma_surface(ticker=TK),
-    lambda: server.get_terrain_strikes(ticker=TK),
-    lambda: server.get_vanna_by_strike(ticker=TK),
-    lambda: server.get_charm_by_strike(ticker=TK),
-], ids=["chain", "gamma-surface", "terrain-strikes", "vanna", "charm"])
-def test_every_route_serves_the_live_spot_and_names_the_computed_one(held, route):
-    body = json.loads(route().body)
-    assert body["spot"] == LIVE, "served the price the payload was computed at, not the live one"
-    assert body["priced_at_spot"] == PUBLISHED
+def test_every_route_serves_the_live_spot_and_names_the_computed_one(held):
+    """Every GET route that answers a ticker, found from the app (a route added later is in it):
+    `spot` is the live price, and the price a payload was computed at is `priced_at_spot`.
+    /api/terrain and /api/confluence served the publication's price as `spot`."""
+    client = TestClient(server.app)
+    paths = [r.path for r in server.app.routes
+             if isinstance(r, APIRoute) and "GET" in r.methods
+             and "ticker" in inspect.signature(r.endpoint).parameters
+             and not inspect.iscoroutinefunction(r.endpoint)]      # /api/changes is a stream
+    served = {}
+    for path in paths:
+        body = client.get(path, params={"ticker": TK, "expiry": EXPIRY}).json()
+        if isinstance(body, dict) and "spot" in body:
+            served[path] = (body["spot"], body.get("priced_at_spot", PUBLISHED))
+    assert {"/api/terrain", "/api/chain", "/api/options/gamma-surface"} <= set(served)
+    assert {p: s for p, s in served.items() if s != (LIVE, PUBLISHED)} == {}
+
+
+def test_confluence_serves_the_live_spot_and_the_one_expected_move(held):
+    """The matrix is priced at the publication's price; its spot and its one-day move are the live
+    price's, the same move /api/levels serves (one producer, server.expected_move)."""
+    body = server.confluence_payload(TK, EXPIRY, _AT)
+    levels = {r["id"]: r["price"] for r in server.levels_payload(TK, "1", _AT)["levels"]}
+    moves = {lv["abbrev"]: lv["price"] for lv in body["levels"] if lv["abbrev"] in ("EM+", "EM−")}
+    assert (body["spot"], body["spot_text"], body["priced_at_spot"]) == (LIVE, f"{LIVE:.2f}", PUBLISHED)
+    assert moves == {"EM+": levels["em_up"], "EM−": levels["em_dn"]}
 
 
 def test_strike_side_sums_split_at_the_live_spot(held):

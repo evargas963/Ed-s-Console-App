@@ -446,7 +446,12 @@ from Schwab to the screen (daemon, console, page), are these:
   than two of the sweep's delivered rounds are stale with the reason (the daemon's last answer
   for its chain, or not delivered), whatever the hour.
   Its `spot` is the price the levels were computed at (`spot_source`, `spot_as_of_ts_utc`); the
-  price is the daemon's price row. With no price from Schwab the next publication has no levels,
+  price is the daemon's price row. Every route names that price `priced_at_spot` (with
+  `priced_at_spot_source`, `priced_at_spot_as_of_ts_utc` where it serves them) and serves `spot`
+  as the live price (`resolve_spot`), one meaning on every route (`tests/test_page_one_faucet_v1.py`
+  checks every GET route that answers a ticker). The one-day move's two prices are the live price
+  plus and minus the publication's implied move (`server.expected_move`, the one producer;
+  `/api/levels` and `/api/confluence` carry it). With no price from Schwab the next publication has no levels,
   with its reason.
 - **Heatmap cells.** Every strike Schwab listed in any expiry is a row; a cell is the book's
   value for its strike and expiry, exact. A cell with no value (no contract listed at that strike

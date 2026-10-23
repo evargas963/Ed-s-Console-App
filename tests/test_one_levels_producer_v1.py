@@ -304,18 +304,19 @@ def test_a_reprice_on_a_kept_chain_keeps_the_chains_time():
 
 def test_the_route_serves_the_publication_and_no_live_price_publishes_no_levels():
     """/api/terrain serves the levels exactly as the producer published them, none recomputed per
-    request, their spot labelled by its source and time. The next publication with no live price
-    has no levels, with its reason."""
+    request, the price they were computed at named `priced_at_spot` with its source and time, and
+    `spot` the live price. The next publication with no live price has no levels, with its reason."""
     _daemon()
     _put_chain()
     published = _cached()
     _daemon(price=None)                                         # the price is no longer live
     out = server.get_terrain(ticker=TK)
-    for k in ("spot", "regime", "net_gex_at_spot", "call_wall", "call_wall_state", "call_wall_lean",
+    for k in ("regime", "net_gex_at_spot", "call_wall", "call_wall_state", "call_wall_lean",
               "dist_to_call_wall", "flip_relation", "headline"):
         assert out[k] == published[k], k
-    assert "spot_state" not in out and out["spot_as_of_ts_utc"] == _T
-    assert out["spot_source"] == server.SPOT_SOURCE_PLANE
+    assert out["priced_at_spot"] == published["spot"] and out["priced_at_spot_as_of_ts_utc"] == _T
+    assert out["priced_at_spot_source"] == server.SPOT_SOURCE_PLANE
+    assert out["spot"] is None and "spot_state" not in out
     _put_chain()                                                # the next chain: no live price
     out = server.get_terrain(ticker=TK)
     assert out["regime"] == "UNAVAILABLE" and out["call_wall"] is None and out["error"] == "no spot price"

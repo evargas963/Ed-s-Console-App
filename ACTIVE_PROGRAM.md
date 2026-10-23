@@ -175,11 +175,33 @@ to write it plainly, in the forms `test_a_command_the_reader_cannot_see_into_is_
 Each row is a second copy or a second computation of one value. It is fixed by deleting down to one
 producer, with a behavior test that fails if the second one returns.
 
+Operator 2026-10-23: every value has exactly one producer, the way a bank posts a balance once
+whoever reads it ("the bank answer always"); any test, rule or document that conflicts is changed
+in the same PR. The screen shows 2 decimals for prices, dollars, percents and ratios, whole numbers
+for counts, and each contract's Greeks as Schwab sent them; every calculation keeps every digit and
+every contract (rule 5). A chain's spot is posted once: Schwab's LAST_PRICE, with its trade time,
+when the chain is complete; the console prices that chain at it and the stored capture keeps it;
+the live screens show the live price and measure distances from it. Each expiry's
+`underlyingPrice` is kept as sent and is no spot; a capture stored before this reads the nearest
+expiry's, labelled. The audit of 2026-10-23 found the rows below.
+
 | ID | Status | Work item |
 |---|---|---|
 | ONE-02 | QUEUED | Equity last price and size kept a second time in the console's order-flow tape (`state.py` tape and receive log). |
 | ONE-03 | QUEUED | Feed liveness judged in both processes: the daemon applies its own heartbeat to its price rows (`live_ui.beat`), and the console applies the pushed copy again (`feed_live_for`); one rule since ONE-15, two places it runs. |
 | ONE-12 | QUEUED | Trade side: history's quote rule beside the live tick rule (with the trade-side decision, directive 3). |
+| ONE-20 | NEXT | A chain's one spot (operator 2026-10-23): `_publish_levels` takes its price from a stored capture's `underlyingPrice`, the held close price or the live row; a stored capture's spot is whichever expiry row the database returns first (`last_capture_per_day`, no order; SPY's newest capture holds 7 prices). |
+| ONE-21 | QUEUED | The strike at the price: `terrain_engine.nearest_strike`, `confluence_composite.under_strike` and the daemon's `saved_window` bisect. |
+| ONE-22 | QUEUED | Price-to-level relations: wall states, flip relation and wall distances at the publication's price, `/api/levels` distances and sides at the live price, confluence `distance_text` at the book's, with four different above/at rules. |
+| ONE-23 | QUEUED | The daemon's option rule reads LAST_PRICE itself (`capture._took_price`) and keeps the last price on -999; the price row clears it. |
+| ONE-24 | QUEUED | One contract record: open interest, volume, Greeks, volatility, multiplier, strike and expiry each read by several modules with different validity rules (`math_exposure_core`, `math_levels`, `terrain_engine.chain_ladder`, `confluence_composite`, `history`), two keep-the-last-count rules (`_keep_last_reported`, `_last_positive`), `/api/chain` repricing at request time; the heatmap cell labelled streaming while its Greeks are the /quotes answer. |
+| ONE-25 | QUEUED | The front expiry: seven definitions (max pain, implied move, risk reversal, same-day levels, 0DTE share, heatmap front, confluence default). |
+| ONE-26 | QUEUED | Options closed: `terrain_staleness` judges by any option market's close, the publication by the ticker's own. |
+| ONE-27 | QUEUED | Prior-day close, high and low and today's candle computed from 1-minute bars while Schwab sends CLOSE_PRICE, the daily candles and OPEN/HIGH/LOW_PRICE (First gate 2). |
+| ONE-28 | QUEUED | The equity book: two stores, two parsers, two clocks (`state._book` and `engine`, `history.BOOKS` and `history._levels`). |
+| ONE-29 | QUEUED | One server formatter per format at the operator's decimals (above); the page draws served text (dollars in four formatters, charm in three units, ages, DTE labels, Central Time and volume on the page). |
+| ONE-30 | QUEUED | Push signals: `levels` sent by three producers (the heatmap restamp, the levels, the price-level snapshot); `flow` on every equity quote; Chain and Strike Detail reload on different signals. |
+| ONE-31 | QUEUED | One check that each Schwab field is read in one module and each served derived value is the register's producer, found from the code. |
 
 ## Phase 2 — the rest of the design, then decomposition
 
