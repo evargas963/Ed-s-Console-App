@@ -12,7 +12,7 @@ from typing import Any
 from math_exposure_core import (
     bucket_metric, strike_total_oi, strike_total_volume, strike_volume_legs,
 )
-from numeric_contract import schwab_count, schwab_number
+from numeric_contract import price_text, schwab_count, schwab_number
 
 ABSENT = ("DGEXM", "FLOWM")
 WINDOW = 5
@@ -263,7 +263,7 @@ def at_price(rows: list[dict], strikes: list[float], spot: float | None) -> dict
     for row in rows:
         row["distance_text"] = None if spot is None else _signed(row["strike"] - spot, 2)
         row["spot_line"] = row["strike"] == under
-    return {"spot": spot, "spot_text": _text(spot, 2)}
+    return {"spot": spot, "spot_text": price_text(spot)}
 
 
 def _signed(n: float | None, digits: int) -> str | None:
@@ -406,7 +406,7 @@ def build_matrix(exposures: dict, charm_by_strike: dict, ivs: dict[float, float 
         pc_vol = factors["_pc_vol"]
         rows.append({
             "strike": strike,
-            "strike_text": f"{float(strike):.2f}",
+            "strike_text": price_text(strike),
             "net_gex_text": _signed_millions(factors["_net_gex"]),
             "net_style": _ramp(factors["_net_gex"], net_peak, True),
             "net_reason": _absent(factors["_net_gex"], "net gamma is missing"),
@@ -489,7 +489,7 @@ def place_markers(markers: list[dict], strikes: list[float]) -> list[dict]:
         under = under_strike(float(price), strikes)
         placed.append({
             "label": marker["label"],
-            "price_text": _text(float(price), 2),
+            "price_text": price_text(price),
             "under_strike": under,
         })
     return placed
