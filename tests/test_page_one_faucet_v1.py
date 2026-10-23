@@ -1,4 +1,4 @@
-"""Page-side one faucet (2026-09-27): every value on the console page has one server producer
+"""Page-side one faucet: every value on the console page has one server producer
 (question 2: the screen shows it correctly; question 3: each value the one computation's).
 
 One spot on every screen: each route that serves `spot` serves the live price at response time
@@ -23,9 +23,15 @@ from fastapi.testclient import TestClient
 
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
+import live_price_rows
 import server
+from instrument_identity import ticker_storage_key
 from stream_spine import options_quote_msg
+from tests.real_chains import CRWD
 from time_et import ET
+
+_QUOTE = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_crwd_quote_2026_10_07.json")
+                    .read_text(encoding="utf-8"))
 
 _REAL = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_crwd_complete_chain_quarter.json")
                    .read_text(encoding="utf-8"))
@@ -59,25 +65,46 @@ def held():
     lmp.record_feed_down()
 
 
-def test_every_route_serves_the_live_spot_and_names_the_computed_one(held):
+def test_every_route_serves_the_live_spot_and_names_the_computed_one():
     """Every GET route that answers a ticker, found from the app, each answering this request: a
     route that serves a price serves `spot`, the live price, and `priced_at_spot`, the price the
-    payload was computed at. /api/terrain served the publication's price as `spot`."""
-    client = TestClient(server.app)
+    payload was computed at. Real data: CRWD's chain captured 2026-10-07 10:38:40 ET (tests/real_chains.py
+    CRWD), published at the price Schwab sent in that answer, and CRWD's LEVELONE_EQUITIES message
+    the daemon received at 10:38:00 ET (tests/fixtures/real_crwd_quote_2026_10_07.json), made the
+    price row by the daemon's own function."""
+    tk, at = ticker_storage_key(CRWD.ticker), CRWD.now.timestamp()
+    live = _QUOTE["native"]["LAST_PRICE"]
+    lmp.record_from_level_one_equity(tk, _QUOTE["native"], received_ts=_QUOTE["ts_recv"])
+    lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [tk]}})
+    ofs._price_rows[tk] = live_price_rows.price_row(tk, time.time())
     paths = [r.path for r in server.app.routes
              if isinstance(r, APIRoute) and "GET" in r.methods
              and "ticker" in inspect.signature(r.endpoint).parameters
              and not inspect.iscoroutinefunction(r.endpoint)]      # /api/changes is a stream
     served, refused = {}, {}
-    for path in paths:
-        answer = client.get(path, params={"ticker": TK, "expiry": EXPIRY, "venue": "NYSE_BOOK"})
-        body = answer.json()
-        if answer.status_code != 200:
-            refused[path] = answer.status_code
-        elif {"spot", "priced_at_spot"} & set(body):
-            served[path] = (body.get("spot"), body.get("priced_at_spot"))
+    try:
+        server._publish_levels(tk, captures=[{"contracts": CRWD.chain, "ts_utc": at, "spot": CRWD.spot,
+                                              "et_date": CRWD.now.date().isoformat(),
+                                              "basis": server.CAPTURE_BASIS}], now=CRWD.now)
+        client = TestClient(server.app)
+        expiry = str(CRWD.chain[0]["expirationDate"])[:10]
+        for path in paths:
+            answer = client.get(path, params={"ticker": tk, "expiry": expiry, "venue": "NYSE_BOOK"})
+            body = answer.json()
+            if answer.status_code != 200:
+                refused[path] = answer.status_code
+            elif {"spot", "priced_at_spot"} & set(body):
+                served[path] = (body.get("spot"), body.get("priced_at_spot"))
+    finally:
+        with server._terrain_cache_lock:
+            server._terrain_cache.pop(tk, None)
+        ofs._price_rows.pop(tk, None)
+        lmp._by_ticker.pop(tk, None)
+        lmp._fields_by_ticker.pop(tk, None)
+        lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "held": {}})
+        lmp.record_feed_down()
     assert refused == {} and served
-    assert {p: s for p, s in served.items() if s != (LIVE, PUBLISHED)} == {}
+    assert {p: s for p, s in served.items() if s != (live, CRWD.spot)} == {}
 
 
 def test_strike_side_sums_split_at_the_live_spot(held):

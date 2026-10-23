@@ -968,8 +968,7 @@ def test_the_matrix_shows_the_live_price_and_the_one_day_move_levels_serves():
     LEVELONE_EQUITIES message the daemon received at 10:38:00 ET (LAST_PRICE 269.395), taken in by
     the plane and made the price row by the daemon's own function. The matrix stays ranked at the
     chain's price (priced_at_spot); its spot, its one-day move and each row's distance are the
-    live price's, the move the same two prices /api/levels serves (server.expected_move). They were
-    the chain's price and a second computation at it."""
+    live price's, the move the same two prices /api/levels serves (server.expected_move)."""
     tk, at = server.ticker_storage_key(CRWD.ticker), CRWD.now
     live = _QUOTE["native"]["LAST_PRICE"]
     lmp.record_from_level_one_equity(tk, _QUOTE["native"], received_ts=_QUOTE["ts_recv"])
@@ -988,8 +987,9 @@ def test_the_matrix_shows_the_live_price_and_the_one_day_move_levels_serves():
         ofs._price_rows.pop(tk, None)
         lmp._by_ticker.pop(tk, None)
         lmp._fields_by_ticker.pop(tk, None)
+        lmp.record_feed_heartbeat({"ts": at.timestamp(), "schwab_socket_open": True, "held": {}})
         lmp.record_feed_down()
-    moves = {lv["abbrev"]: lv["price"] for lv in body["levels"] if lv["abbrev"] in ("EM+", "EM−")}
+    moves ={lv["abbrev"]: lv["price"] for lv in body["levels"] if lv["abbrev"] in ("EM+", "EM−")}
     assert (body["spot"], body["spot_text"], body["priced_at_spot"]) == (live, f"{live:.2f}", CRWD.spot)
     assert body["spot_time_ct"] == ct_label(_QUOTE["native"]["TRADE_TIME_MILLIS"] / 1000.0)
     assert moves == {"EM+": levels["em_up"], "EM−": levels["em_dn"]}
