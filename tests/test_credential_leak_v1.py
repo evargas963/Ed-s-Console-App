@@ -15,6 +15,16 @@ def test_detects_bearer_and_home_path():
     assert any("windows_user_home" in h for h in hits)
 
 
+def test_detects_a_git_bash_home_path():
+    """Git Bash spells the Windows home `/c/Users/<name>/`; it is an operator-home path too."""
+    diff = """\
++++ b/tests/test_x.py
+@@ -0,0 +1 @@
++cmd = "cd /c/Users/someone/Documents/repo && ls"
+"""
+    assert any("git_bash_user_home" in h for h in find_credential_leaks(diff))
+
+
 def test_fixture_marker_suppresses():
     diff = """\
 +++ b/tests/test_x.py
