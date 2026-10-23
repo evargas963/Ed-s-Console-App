@@ -172,7 +172,7 @@ from db_authority import canonical_stream_db_path
 from instrument_identity import display_symbol, ticker_storage_key   # RC-126: the ONE query-symbol authority
 import live_market_plane as lmp
 from numeric_contract import float_finite_or_none, schwab_count, schwab_number
-from confluence_composite import build_matrix
+from confluence_composite import at_price, build_matrix
 from terrain_engine import (SCOPES, SAME_DAY_LEVELS, TerrainSnapshot, chain_ladder, compute_terrain,
                             nearest_strike, positioning_migration, strike_window)
 from terrain_atr import Atr, compute_atrs, roll_up
@@ -3148,8 +3148,9 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict:
     em_up = _level_named(levels, "EM+")
     em_dn = _level_named(levels, "EM−")
     rows = stored.get("rows")
-    body = {key: value for key, value in stored.items() if key != "rows"}
+    body = {key: value for key, value in stored.items() if key not in ("rows", "strikes")}
     body["rows"] = [dict(row) for row in rows] if isinstance(rows, list) else []
+    body.update(at_price(body["rows"], stored.get("strikes") or [], live_spot))
     low = None
     high = None
     if em_dn is not None:
@@ -3165,8 +3166,8 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict:
     body.update({
         "ticker": tk, "available": True, "reason": None,
         "expiry": chosen, "expiries": listed,
-        "spot": live_spot, "spot_text": None if live_spot is None else f"{live_spot:.2f}",
         "spot_as_of_ts_utc": live_ts,
+        "spot_time_ct": None if live_ts is None else ct_label(live_ts),
         "priced_at_spot": float(spot),
         "chain_as_of_ts_utc": fetched,
         "chain_as_of_time_ct": None if fetched is None else ct_label(fetched),
@@ -3266,6 +3267,7 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict:
         "spot_source": spot_source,
         "spot_as_of_ts_utc": spot_ts,
         "spot_time_ct": ct_label(spot_ts) if spot_ts is not None else None,
+        "priced_at_spot": t.get("spot") if t is not None else None,
         "generation": snap.generation if snap is not None else None,
         "snapshot_as_of_ts_utc": snap.as_of_ts_utc if snap is not None else None,
         "snapshot_time_ct": ct_label(snap.as_of_ts_utc) if snap is not None and snap.as_of_ts_utc is not None else None,

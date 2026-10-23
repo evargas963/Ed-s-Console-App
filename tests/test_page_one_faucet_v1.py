@@ -60,20 +60,23 @@ def held():
 
 
 def test_every_route_serves_the_live_spot_and_names_the_computed_one(held):
-    """Every GET route that answers a ticker, found from the app (a route added later is in it):
-    `spot` is the live price, and the price a payload was computed at is `priced_at_spot`.
-    /api/terrain and /api/confluence served the publication's price as `spot`."""
+    """Every GET route that answers a ticker, found from the app, each answering this request: a
+    route that serves a price serves `spot`, the live price, and `priced_at_spot`, the price the
+    payload was computed at. /api/terrain served the publication's price as `spot`."""
     client = TestClient(server.app)
     paths = [r.path for r in server.app.routes
              if isinstance(r, APIRoute) and "GET" in r.methods
              and "ticker" in inspect.signature(r.endpoint).parameters
              and not inspect.iscoroutinefunction(r.endpoint)]      # /api/changes is a stream
-    served = {}
+    served, refused = {}, {}
     for path in paths:
-        body = client.get(path, params={"ticker": TK, "expiry": EXPIRY}).json()
-        if isinstance(body, dict) and "spot" in body:
-            served[path] = (body["spot"], body.get("priced_at_spot", PUBLISHED))
-    assert {"/api/terrain", "/api/chain", "/api/options/gamma-surface"} <= set(served)
+        answer = client.get(path, params={"ticker": TK, "expiry": EXPIRY, "venue": "NYSE_BOOK"})
+        body = answer.json()
+        if answer.status_code != 200:
+            refused[path] = answer.status_code
+        elif {"spot", "priced_at_spot"} & set(body):
+            served[path] = (body.get("spot"), body.get("priced_at_spot"))
+    assert refused == {} and served
     assert {p: s for p, s in served.items() if s != (LIVE, PUBLISHED)} == {}
 
 

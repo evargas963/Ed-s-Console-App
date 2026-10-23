@@ -256,6 +256,16 @@ def _text(n: float | None, digits: int) -> str | None:
     return f"{n:.{digits}f}"
 
 
+def at_price(rows: list[dict], strikes: list[float], spot: float | None) -> dict:
+    """Each shown row's distance from the live price and the strike the price sits under, and the
+    price's text: the matrix is ranked at the book's price, the price on screen is the live one."""
+    under = None if spot is None else under_strike(spot, strikes)
+    for row in rows:
+        row["distance_text"] = None if spot is None else _signed(row["strike"] - spot, 2)
+        row["spot_line"] = row["strike"] == under
+    return {"spot": spot, "spot_text": _text(spot, 2)}
+
+
 def _signed(n: float | None, digits: int) -> str | None:
     """A positive number keeps its plus. Zero and a rounded zero do not."""
     if n is None:
@@ -376,7 +386,6 @@ def build_matrix(exposures: dict, charm_by_strike: dict, ivs: dict[float, float 
     )
     shown = window_strikes(list(mags), spot)
     cap = ceiling(weights)
-    spot_under = under_strike(spot, strikes)
     net_peak = _peak(f["_net_gex"] for f in mags.values())
     oi_peak = _peak(f["OI"] for f in mags.values())
     gross_peak = _peak(f["_gross"] for f in mags.values())
@@ -398,7 +407,6 @@ def build_matrix(exposures: dict, charm_by_strike: dict, ivs: dict[float, float 
         rows.append({
             "strike": strike,
             "strike_text": f"{float(strike):.2f}",
-            "distance_text": _signed(strike - spot, 2),
             "net_gex_text": _signed_millions(factors["_net_gex"]),
             "net_style": _ramp(factors["_net_gex"], net_peak, True),
             "net_reason": _absent(factors["_net_gex"], "net gamma is missing"),
@@ -439,7 +447,6 @@ def build_matrix(exposures: dict, charm_by_strike: dict, ivs: dict[float, float 
             "score": score,
             "score_text": None if score is None else str(int(round(score))),
             "heat_background": _ramp(score, cap, False),
-            "spot_line": strike == spot_under,
             "missing": result["missing"],
             "contributions": [_factor_row(p) for p in result["contributions"]],
             "factors": [_factor_row(p) for p in result["factors"]],
@@ -465,6 +472,7 @@ def build_matrix(exposures: dict, charm_by_strike: dict, ivs: dict[float, float 
             for k, span in spans.items() if span is not None and span != 0
         ],
         "rows": rows,
+        "strikes": strikes,
         "offscreen": [
             {"label": m["label"], "price_text": m["price_text"]}
             for m in markers if m.get("under_strike") not in shown

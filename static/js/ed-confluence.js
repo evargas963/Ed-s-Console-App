@@ -363,7 +363,7 @@
       selectedStrike = fallback == null ? null : fallback.strike;
     }
     var summary = [
-      ['SPOT', body.spot_text, ''],
+      ['SPOT', body.spot_text, body.spot_time_ct ? 'last trade ' + body.spot_time_ct : ''],
       ['GAMMA REGIME · CHAIN', regimeWords(body.regime), ''],
       ['MODELED FLIP · CHAIN', body.flip_text, body.expiry ? body.expiry : ''],
       ['EXPECTED MOVE · CHAIN', body.move_text, body.move_text ? 'one day' : ''],

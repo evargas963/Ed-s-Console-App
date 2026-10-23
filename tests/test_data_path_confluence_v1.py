@@ -4,11 +4,11 @@ from __future__ import annotations
 from datetime import datetime
 
 from confluence_composite import (
-    build_matrix, iv_by_strike, magnitudes, place_markers, score_magnitudes,
+    at_price, build_matrix, iv_by_strike, magnitudes, place_markers, score_magnitudes,
     under_strike, window_strikes,
 )
 from math_levels import compute_charm_by_strike
-from time_et import ET
+from time_et import ET, ct_label
 
 import server
 
@@ -85,10 +85,13 @@ def test_the_matrix_reads_the_priced_book_and_leaves_flow_out():
         "_charm_by_expiry": {"2026-10-16": compute_charm_by_strike([contract], 669.5, now=now)},
         "_iv_by_expiry": {"2026-10-16": iv_by_strike([contract])},
     })
+    import app.options.order_flow.streaming as ofs
+    ofs._price_rows[tk] = {"ticker": tk, "spot": 669.5, "trade_ts": now.timestamp()}
     try:
         body = server.confluence_payload(tk, "2026-10-16", now)
     finally:
         server._terrain_cache.pop(tk, None)
+        ofs._price_rows.pop(tk, None)
     assert body["available"] is True
     assert body["preset"] == "0DTE"
     assert body["ceiling"] == 72
@@ -193,6 +196,7 @@ def test_a_level_on_a_listed_strike_sits_on_that_strike():
     assert [item["label"] for item in body["offscreen"]] == ["Above"]
     assert body["offscreen"][0]["price_text"] == "680.00"
     on_spot = build_matrix(exposures, {}, {}, 670.0, 0, [])
+    at_price(on_spot["rows"], on_spot["strikes"], 670.0)
     assert [row["strike"] for row in on_spot["rows"] if row["spot_line"]] == [670.0]
 
 
@@ -1032,5 +1036,9 @@ def test_the_matrix_shows_the_live_price_and_the_one_day_move_levels_serves():
             server._terrain_cache.pop(tk, None)
     moves = {lv["abbrev"]: lv["price"] for lv in body["levels"] if lv["abbrev"] in ("EM+", "EM−")}
     assert (body["spot"], body["spot_text"], body["priced_at_spot"]) == (live, f"{live:.2f}", held.spot)
+    assert body["spot_time_ct"] == ct_label(at.timestamp())
     assert moves == {"EM+": levels["em_up"], "EM−": levels["em_dn"]}
+    assert all(abs(float(r["distance_text"]) - (r["strike"] - live)) <= 0.005 for r in body["rows"])
+    assert [r["strike"] for r in body["rows"] if r["spot_line"]] == [min(
+        r["strike"] for r in body["rows"] if r["strike"] >= live)]
     assert levels["em_up"] - live == live - levels["em_dn"] > 0

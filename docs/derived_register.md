@@ -13,7 +13,7 @@ values added for the confluence matrix.
 | Gross gamma | `confluence_composite.magnitudes` | Call leg plus put leg of the book's 1% gamma, and only when both legs are zero or positive. A negative leg leaves the cell empty. Not scored. |
 | Put/call gamma, put/call volume, volume/open interest | `confluence_composite.magnitudes` | Ratios of the book's own legs. Blank when the divisor is zero or unknown. Not scored. |
 | Vanna in dollars per vol point | `confluence_composite.magnitudes` | The book's per-strike `net_vanna` times the book's spot. The book stores `net_vanna` before that multiply. |
-| Strike distance | `confluence_composite.build_matrix` | The strike minus the book's spot. |
+| Strike distance | `confluence_composite.at_price` | The strike minus the live price, and the row the live price sits under. The ranking is the book's; the price beside it is live. |
 | Score slope | `confluence_composite.build_matrix` | `100 × weight / (p95 − p5)` for each scored factor that varies. A diagnostic, not a second score. |
 | Preset and ceiling | `confluence_composite.preset_name`, `confluence_composite.ceiling` | The weight row for that expiry's days to expiration: 0, 1–7, or 8 and beyond. The ceiling is 100 times the weights that are in the score. Flow and the change in gamma stay at zero, so they do not raise it. |
 | Heat color | `confluence_composite.build_matrix` | Each column's color is that column's number divided by the largest absolute value of the same column on the expiry. The composite uses the score divided by the ceiling. Put/call columns color by which side is heavier. The page paints the served string. |

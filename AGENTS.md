@@ -69,7 +69,7 @@ Hold EdWebConsole to how a financial institution handles systems with real money
 3. **One authority.** Each value served, stored or shown has one computation authority.
    Consumers carry its result; they never select, compute, repair or relabel it. A second authority
    for the same value is banned whatever it is called: helper, parser, resolver or cache.
-   Enforced by: `tests/test_page_one_faucet_v1.py` (every ticker route found from the app serves `spot` live, `priced_at_spot` computed), `tests/test_one_levels_producer_v1.py` (one publication), `tests/test_data_path_confluence_v1.py` (one one-day move); a raw Schwab field read outside its one parser, a served value outside the register — ONE-31; the rest — ENF-02.
+   Enforced by: `tests/test_page_one_faucet_v1.py` (every ticker route found from the app serves `spot` live, `priced_at_spot` computed), `tests/test_one_levels_producer_v1.py` (one publication), `tests/test_data_path_confluence_v1.py` (one one-day move, distances from the live price); a module added that reads a raw Schwab field, a served value outside the register — no machine check, ENF-23; the rest — ENF-02.
 4. **The UI computes nothing.** Page code formats and draws. Every number, total, choice,
    comparison and date the page shows is served.
    Enforced by: no machine check — ENF-03.
