@@ -96,7 +96,7 @@ def running(mark: str) -> "list[psutil.Process]":
     test's) is never taken for one (one whose line or folder cannot be read is none)."""
     return [p for p in psutil.process_iter(["cmdline", "cwd"])
             if p.info["cmdline"] is not None and mark in " ".join(p.info["cmdline"])
-            and p.info["cwd"] is not None and Path(p.info["cwd"]) == ROOT]
+            and p.info["cwd"] is not None and Path(p.info["cwd"]).resolve() == ROOT]
 
 
 def start_console(argv: "list[str]", env: dict) -> subprocess.Popen:

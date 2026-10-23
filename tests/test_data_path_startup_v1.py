@@ -44,7 +44,8 @@ def test_the_daemons_window_closes_when_its_batch_ends(tmp_path):
     too, so no empty window stays open."""
     window_pid = tmp_path / "window.pid"
     bat = tmp_path / "daemon.bat"
-    bat.write_text(f'@"{sys.executable}" -c "import os; open(r\'{window_pid}\', \'w\').write(str(os.getppid()))"\r\n',
+    bat.write_text(f'@"{sys.executable}" -c "import psutil; window = next(p for p in psutil.Process().parents() '
+                   f'if p.name().lower() == \'cmd.exe\'); open(r\'{window_pid}\', \'w\').write(str(window.pid))"\r\n',
                    encoding="utf-8")
     subprocess.Popen(launch.daemon_window(bat), cwd=launch.ROOT)
     deadline = time.monotonic() + 60.0
