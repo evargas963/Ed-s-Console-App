@@ -1,22 +1,25 @@
 """ENF-23 (AGENTS.md rule 3): a Schwab field is read raw by no more modules than before.
 
 The fields judged are the names in `docs/schwab_fields.csv` that are Schwab's own: each canonical
-field's last name in Schwab's spelling, an UPPER_SNAKE streamer field (`LAST_PRICE`) or a camelCase
-REST field (`openInterest`). A plain lowercase word (`status`, `symbol`, `gamma`) is also the name
+field's last name in Schwab's spelling, an uppercase streamer field (`LAST_PRICE`, `DELTA`) or a
+camelCase REST field (`openInterest`). A plain lowercase word (`status`, `symbol`, `gamma`) is also the name
 of our own records' keys, so a read of it says nothing about Schwab; it is not judged. The list is
 read from the base and from the pull request, so removing a row does not take a field out.
 
 A module reads a field raw when its code takes it out of a mapping by that name: `x["NAME"]`,
 `x.get("NAME")`, `x.pop("NAME")` or `"NAME" in x` / `not in x`, the name written as text or as a
-module-level constant holding it (`K = "LAST_PRICE"` ... `x.get(K)`). For each field, the product
-Python modules (`check_end_to_end.is_product`) that read it are found at the merge base and on the
-pull request, and the pull request is refused when a field is read by more modules than at the
-merge base. Moving a reader and bringing readers into one parser pass. Reads through a helper, a
-loop over a table of names, `getattr`, `itemgetter` or a `match` pattern are not seen. `--list`
+module-level constant holding it (`K = "LAST_PRICE"` ... `x.get(K)`). A write (`x["NAME"] = v`) is
+not a read. For each field, the product Python modules (`check_end_to_end.is_product`) that read it
+are found at the merge base and on the pull request, and the pull request is refused when a module
+that did not read the field at the merge base reads it and the field is then read by more than one
+module. Moving a field's one reader and bringing readers into one parser pass; renaming one of
+several readers is refused like a new one. Reads through a helper, a constant imported from another
+module, a loop over a table of names, `getattr`, `itemgetter` or a `match` pattern are not seen. `--list`
 names each field read by more than one module: the second readers still to remove.
 
     python tools/check_one_reader.py --base origin/main      (or --list)
-Exit 0: no field is read by more modules. Exit 1: refused, each field and module named.
+Exit 0: no module began reading a field that has another reader. Exit 1: refused, each field and
+module named.
 Exit 2: the check itself failed (git unavailable, the base unknown, a file it cannot read or parse,
 a field list without its canonical_field column).
 """
@@ -36,7 +39,7 @@ from check_end_to_end import is_product  # noqa: E402
 
 FIELDS_CSV = "docs/schwab_fields.csv"
 #: Schwab's own spelling: an UPPER_SNAKE streamer field or a camelCase REST field
-SCHWAB_SPELLING = re.compile(r"[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+|[a-z]+(?:[A-Z][a-z0-9]*)+")
+SCHWAB_SPELLING = re.compile(r"[A-Z][A-Z0-9]+(?:_[A-Z0-9]+)*|[a-z]+(?:[A-Z][a-z0-9]*)+")
 
 
 class ToolError(Exception):
@@ -88,7 +91,7 @@ def fields_read(src: str, fields: set[str]) -> set[str]:
 
     found = set()
     for n in ast.walk(tree):
-        if isinstance(n, ast.Subscript):
+        if isinstance(n, ast.Subscript) and isinstance(n.ctx, ast.Load):
             k = key(n.slice)
         elif (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr in ("get", "pop")
               and n.args):
@@ -128,9 +131,10 @@ def violations(root: Path, base: str) -> list[str]:
     out = []
     for name in sorted(after):
         was = before.get(name, set())
-        if len(after[name]) > max(len(was), 1):
+        added = after[name] - was
+        if added and len(after[name]) > 1:
             out.append(f"{name}: read raw by {len(after[name])} modules, {len(was)} before "
-                       f"(added {', '.join(sorted(after[name] - was))}); one module reads a Schwab field")
+                       f"(added {', '.join(sorted(added))}); one module reads a Schwab field")
     return out
 
 

@@ -4,6 +4,7 @@ field raw. The refused shape is the daemon's option rule reading LAST_PRICE itse
 (app/market_data/schwab/streaming/capture.py), beside the price plane's reader."""
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -52,6 +53,14 @@ def test_a_second_module_reading_a_schwab_field_raw_is_refused(tmp_path):
         "LAST_PRICE: read raw by 2 modules, 1 before (added capture.py); one module reads a Schwab field"]
 
 
+def test_a_one_word_streamer_field_is_judged(tmp_path):
+    """DELTA is Schwab's LEVELONE_OPTIONS field; our own records name it `delta`."""
+    root = _pr(tmp_path, {"greeks.py": 'def d(item):\n    return item.get("DELTA")\n',
+                          "tape.py": 'def d(item):\n    return item["DELTA"]\n'})
+    assert cor.violations(root, "main") == [
+        "DELTA: read raw by 2 modules, 0 before (added greeks.py, tape.py); one module reads a Schwab field"]
+
+
 def test_a_read_through_a_module_constant_is_a_read(tmp_path):
     root = _pr(tmp_path, {"trades.py": 'VENDOR_LAST_PRICE = "LAST_PRICE"\n\n\n'
                                        'def price(item):\n    return item.get(VENDOR_LAST_PRICE)\n'})
@@ -87,6 +96,45 @@ def test_removing_a_field_from_the_list_does_not_take_it_out_of_the_check(tmp_pa
                           "capture.py": 'def took(n):\n    return n["LAST_PRICE"]\n'})
     assert cor.violations(root, "main") == [
         "LAST_PRICE: read raw by 2 modules, 1 before (added capture.py); one module reads a Schwab field"]
+
+
+def test_a_membership_test_is_a_read(tmp_path):
+    root = _pr(tmp_path, {"has.py": 'def has(item):\n    return "LAST_PRICE" not in item\n'})
+    assert cor.violations(root, "main") == [
+        "LAST_PRICE: read raw by 2 modules, 1 before (added has.py); one module reads a Schwab field"]
+
+
+def test_a_write_in_schwabs_spelling_is_not_a_read(tmp_path):
+    root = _pr(tmp_path, {"build.py": 'def build(d):\n    d["LAST_PRICE"] = 1\n    return d\n'})
+    assert cor.violations(root, "main") == []
+
+
+def test_a_new_reader_beside_another_is_refused_even_when_one_stops_reading(tmp_path):
+    root = _pr(tmp_path, {"plane.py": 'def spot(item):\n    return item.get("LAST_PRICE")\n',
+                          "first.py": 'def a(item):\n    return item["BID_PRICE"]\n'})
+    _git(root, "checkout", "-q", "main")
+    (root / "first.py").write_text('def a(item):\n    return item["BID_PRICE"]\n', encoding="utf-8")
+    (root / "second.py").write_text('def b(item):\n    return item["BID_PRICE"]\n', encoding="utf-8")
+    _git(root, "add", "first.py", "second.py")
+    _git(root, "commit", "-q", "-m", "two readers")
+    _git(root, "checkout", "-q", "-b", "swap")
+    (root / "second.py").write_text("def b(item):\n    return item\n", encoding="utf-8")
+    (root / "third.py").write_text('def c(item):\n    return item.get("BID_PRICE")\n', encoding="utf-8")
+    _git(root, "add", "second.py", "third.py")
+    _git(root, "commit", "-q", "-m", "swap a reader")
+    assert cor.violations(root, "main") == [
+        "BID_PRICE: read raw by 2 modules, 2 before (added third.py); one module reads a Schwab field"]
+
+
+def test_the_check_exits_2_when_it_cannot_read_the_code(tmp_path, capsys):
+    root = _pr(tmp_path, {"broken.py": "def f(:\n"})
+    here = Path.cwd()
+    try:
+        os.chdir(root)
+        assert cor.main(["--base", "main"]) == 2
+    finally:
+        os.chdir(here)
+    assert "does not parse" in capsys.readouterr().err
 
 
 def test_a_module_that_does_not_parse_fails_the_check_closed(tmp_path):
