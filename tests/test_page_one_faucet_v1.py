@@ -58,7 +58,7 @@ def _publish(fetched_ts: float):
     """The chain published as the stored capture it is, at the price Schwab sent with it."""
     server._publish_levels(TK, captures=[{"contracts": [dict(c) for c in _CONTRACTS], "ts_utc": fetched_ts,
                                           "spot": PUBLISHED, "et_date": _AT.date().isoformat(),
-                                          "basis": server.CAPTURE_BASIS}], now=_AT)
+                                          "basis": server.CAPTURE_BASIS, "spot_ts": None, "spot_from_chain": False}], now=_AT)
 
 
 def _forget():
@@ -180,7 +180,7 @@ def test_the_spot_row_is_served(route):
     server._publish_levels("SPY", captures=[{"contracts": [dict(c) for c in SPY_CLOSE.chain],
                                              "ts_utc": SPY_CLOSE.now.timestamp(), "spot": SPY_CLOSE.spot,
                                              "et_date": SPY_CLOSE.now.date().isoformat(),
-                                             "basis": server.CAPTURE_BASIS}], now=SPY_CLOSE.now)
+                                             "basis": server.CAPTURE_BASIS, "spot_ts": None, "spot_from_chain": False}], now=SPY_CLOSE.now)
     lmp.record_from_level_one_equity("SPY", print_["native"], received_ts=print_["ts_recv"])
     lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": ["SPY"]}})
     ofs._price_rows["SPY"] = live_price_rows.price_row("SPY", time.time())

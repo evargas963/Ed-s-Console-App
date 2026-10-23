@@ -143,12 +143,26 @@ def test_the_price_row_carries_feed_state_and_trade_age_and_no_bar():
     assert held_no_trade["spot"] is None
 
 
-def test_spot_gamma_reprice_runs_only_for_a_viewed_heatmap(monkeypatch, view):
+def test_spot_gamma_reprice_runs_only_for_a_viewed_heatmap():
+    """A tick queues a reprice for the viewed ticker only (a page open on it, the pricing thread
+    held while the ticks arrive, the queue read as it stands)."""
+    import threading
+
+    import push_changes
     import server as srv
-    ran = []
-    monkeypatch.setattr(srv, "_price_chain", lambda tk, what, c, ts: ran.append((tk, what)))
-    view("ZZVIEW")
-    srv._on_stream_tick("ZZNOTVIEWED")
-    srv._on_stream_tick("ZZVIEW")
-    srv._chain_pricing.submit(lambda: None).result(timeout=10)
-    assert ran == [("ZZVIEW", srv.REPRICE)]
+    loop = push_changes._loop
+    push_changes.bind(None)
+    page = push_changes.subscribe("ZZVIEW")
+    gate = threading.Event()
+    srv._chain_pricing.submit(gate.wait, 10)
+    try:
+        srv._on_stream_tick("ZZNOTVIEWED")
+        srv._on_stream_tick("ZZVIEW")
+        with srv._chains_waiting_lock:
+            waiting = dict(srv._chains_waiting)
+    finally:
+        gate.set()
+        srv._chain_pricing.submit(lambda: None).result(timeout=10)
+        push_changes.unsubscribe("ZZVIEW", page)
+        push_changes.bind(loop)
+    assert waiting == {"ZZVIEW": (srv.REPRICE, None, None, None)}
