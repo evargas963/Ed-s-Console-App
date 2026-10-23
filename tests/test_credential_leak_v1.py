@@ -8,11 +8,21 @@ def test_detects_bearer_and_home_path():
 +++ b/evil.py
 @@ -0,0 +1,2 @@
 +Authorization: Bearer supersecrettokenvalue99
-+path = 'C:/Users/evarg/secret.json'
++path = 'C:/Users/someone/secret.json'
 """
     hits = find_credential_leaks(diff)
     assert any("bearer_token" in h for h in hits)
     assert any("windows_user_home" in h for h in hits)
+
+
+def test_detects_a_git_bash_home_path():
+    """Git Bash spells the Windows home `/c/Users/<name>/`; it is an operator-home path too."""
+    diff = """\
++++ b/tests/test_x.py
+@@ -0,0 +1 @@
++cmd = "cd /c/Users/someone/Documents/repo && ls"
+"""
+    assert any("git_bash_user_home" in h for h in find_credential_leaks(diff))
 
 
 def test_fixture_marker_suppresses():
@@ -30,7 +40,7 @@ def test_scanner_own_suite_path_is_skipped():
 +++ b/tests/test_credential_leak_v1.py
 @@ -0,0 +1,2 @@
 +Authorization: Bearer supersecrettokenvalue99
-+path = 'C:/Users/evarg/secret.json'
++path = 'C:/Users/someone/secret.json'
 """
     assert find_credential_leaks(diff) == []
 

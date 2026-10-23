@@ -19,7 +19,9 @@ def test_lock_disable_routes_are_git_and_precommits_own():
     (`--no-verify`, `-n`, `core.hooksPath`) and pre-commit's (`SKIP=`, uninstall)."""
     for cmd in ("git commit --no-verify -m x", "git commit -n -m x", "git -c core.hooksPath=/dev/null commit",
                 "SKIP=institutional-correctness git commit -m x", "$env:SKIP='ruff-correctness'; git commit -m x",
-                "pre-commit uninstall"):
+                "pre-commit uninstall", "some_tool --no-verify",
+                "ED_UI_MOCKUP_LOCK=off git commit --no-verify -m x",
+                "git add a && git commit --no-verify -m x && git push --no-verify"):
         assert any(LOCK in b for b in bash_violations(cmd)), cmd
     for cmd in ("git commit -m 'skip the typo'", "SKIPPED=1 python x.py", "echo pre-commit installed",
                 "git push -n origin main", "ED_UI_MOCKUP_LOCK=off git commit", "git commit -m 'normal'"):
@@ -65,7 +67,7 @@ def test_python_reading_its_program_from_stdin_is_refused(cmd):
     "git commit -m \"fix: eval python - hang\"", "echo \"wrap it as bash -c python - </dev/null\"",
     "echo '$(python - </dev/null)'",
 ])
-def test_python_with_a_script_or_c_or_m_still_runs(cmd):
+def test_python_with_a_script_or_c_or_m_runs(cmd):
     assert not any("python -c" in b for b in bash_violations(cmd))
 
 
@@ -83,8 +85,8 @@ def test_operator_law_guard_wired_for_edit_tools():
     assert "pretooluse_guard" not in cmds
 
 
-#: Split so this file's own text is not read as the actions it names.
-D = "d" + "ata"
+#: The protected tree, as the commands below name it.
+D = "data"
 
 
 def test_a_whole_protected_tree_find_delete_and_cmd_c_are_refused():
