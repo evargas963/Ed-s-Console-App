@@ -1253,20 +1253,23 @@ def _previous_counts(memory, stored, price, product):
 
 
 def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | None" = None,
-                    *, captures: "list | None" = None,
+                    *, chain_spot: "tuple" = (None, None), captures: "list | None" = None,
                     now: "datetime | None" = None) -> "TerrainSnapshot | None":
     """THE producer of a ticker's levels, per-strike rows and gamma-surface grid.
 
     Prices the ticker's chain once -- overlaid with any fresher streamed option greeks, at the
-    current spot -- and publishes all three together, so the heatmap, Strike Detail and Key
-    Levels always show one computation. A delivered chain is passed in; a tick on a viewed ticker
-    passes none and the kept chain is repriced. Once that ticker's option window has ended, a
+    chain's one spot -- and publishes all three together, so the heatmap, Strike Detail and Key
+    Levels always show one computation. A delivered chain is passed in with its spot
+    (`chain_spot`: Schwab's LAST_PRICE when the chain was complete and its trade time; (None, None)
+    when the daemon held none); a tick on a viewed ticker passes none and the kept chain is
+    repriced at the kept chain's spot. Once that ticker's option window has ended, a
     later publication keeps the spot already published, so a later equity print does not move
     the close book. Called only on the one pricing thread
     (_price_chain), so each publication is computed from inputs read after the one it replaces.
     `captures` (startup
     and a closed market, DATA_FLOW decision 7) are the two newest market days' stored captures,
-    read once: the newest is priced with Schwab's underlying price from that capture, valued at
+    read once: the newest is priced at that capture's chain spot (one written before the chain
+    carried one: its nearest expiry's underlyingPrice, labelled chain_capture), valued at
     its own time, or at that ticker's option close when the capture is past it, and both feed
     the forces and prior-day rows. `now`: the instant of this publication (omitted, the clock's).
     A chain that is not a capture is valued then, or at that ticker's option close once it has
@@ -1305,18 +1308,21 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
             chain, _previous_counts(memory, payload.get("_count_capture"), published, product), begun, product,
             published)
     if capture is not None:
+        chain_spot = (capture["spot"], capture["spot_ts"])
+    elif not new_chain:
+        chain_spot = payload["_chain_spot"]
+    if capture is not None and capture["spot_ts"] is None:
+        # a capture written before the chain carried its spot: its nearest expiry's underlyingPrice
         spot, spot_source, spot_ts = capture["spot"], SPOT_SOURCE_CAPTURE, capture["ts_utc"]
-    elif valued_at < at:
+    elif capture is None and valued_at < at and payload.get("spot") is not None:
         # the window has ended: the spot already published is the close, and a later print is not
-        held_spot = payload.get("spot")
-        if held_spot is not None:
-            spot = held_spot
-            spot_source = payload.get("spot_source")
-            spot_ts = payload.get("spot_as_of_ts_utc")
-        else:
-            spot, spot_source, spot_ts = resolve_spot(tk, now=at.timestamp())
+        spot = payload.get("spot")
+        spot_source = payload.get("spot_source")
+        spot_ts = payload.get("spot_as_of_ts_utc")
     else:
-        spot, spot_source, spot_ts = resolve_spot(tk, now=at.timestamp())
+        # the chain's one spot: Schwab's LAST_PRICE when the chain was complete, with its trade time
+        spot, spot_ts = chain_spot
+        spot_source = SPOT_SOURCE_PLANE
     prev_spot = payload.get("spot")
     if new_chain:       # the ticker's contracts are the ones Schwab listed in this chain
         payload.update(_contract_symbols=frozenset(c.get("symbol") for c in chain if c.get("symbol")))
@@ -1349,7 +1355,7 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
         "_chain": chain, "_priced_chain": priced, "_books": snap.books,
         "_charm_by_expiry": snap.charm_by_expiry,
         "_iv_by_expiry": snap.iv_by_expiry,
-        "_chain_fetched_ts": fetched_ts,
+        "_chain_fetched_ts": fetched_ts, "_chain_spot": chain_spot,
     })
     payload["_matrix_by_expiry"] = _ranked_matrices(payload)
     # the values read from the stored chain captures (forces, the prior day's per-strike rows)
@@ -1459,18 +1465,21 @@ _chains_waiting_lock = threading.Lock()
 _chains_delivered: "set[str]" = set()
 
 
-def _on_chain(ticker: str, contracts: "list | None", ts: float, reason: "str | None" = None) -> None:
+def _on_chain(ticker: str, contracts: "list | None", ts: float, reason: "str | None",
+              spot: "tuple | None") -> None:
     """The feed's chain callback (streaming.assemble_chain_part), on the event loop: a whole
-    chain the daemon fetched is priced on a pricing thread; a chain it could not deliver keeps
-    the ticker's last levels, which then say why no newer chain came."""
+    chain the daemon fetched is priced on a pricing thread at its one spot (spot, trade time);
+    a chain it could not deliver keeps the ticker's last levels, which then say why no newer
+    chain came."""
     tk = ticker_storage_key(ticker)
     if contracts is None:
         _terrain_refresh_last_error[tk] = f"chain fetch failed ({reason})"
         return
-    _wait_to_price(tk, DELIVERED, contracts, ts)
+    _wait_to_price(tk, DELIVERED, contracts, ts, spot)
 
 
-def _wait_to_price(tk: str, what: str, contracts: "list | None" = None, ts: "float | None" = None) -> bool:
+def _wait_to_price(tk: str, what: str, contracts: "list | None" = None, ts: "float | None" = None,
+                   spot: "tuple | None" = None) -> bool:
     """Queue a ticker's pricing (DELIVERED, STORED or REPRICE) for the pricing thread: a delivered
     chain replaces whatever waits for the ticker; anything else waits only for a ticker with
     nothing waiting, and stored captures only for one with nothing delivered. Returns whether it
@@ -1481,7 +1490,7 @@ def _wait_to_price(tk: str, what: str, contracts: "list | None" = None, ts: "flo
             return False
         if what == DELIVERED:
             _chains_delivered.add(tk)
-        _chains_waiting[tk] = (what, contracts, ts)
+        _chains_waiting[tk] = (what, contracts, ts, spot)
     if held is None:
         _chain_pricing.submit(_price_waiting_chain)
     return True
@@ -1492,11 +1501,12 @@ def _price_waiting_chain() -> None:
     with _chains_waiting_lock:
         waiting = list(_chains_waiting)
         tk = next((t for t in waiting if _chains_waiting[t][0] != STORED), waiting[0])
-        what, contracts, ts = _chains_waiting.pop(tk)
-    _price_chain(tk, what, contracts, ts)
+        what, contracts, ts, spot = _chains_waiting.pop(tk)
+    _price_chain(tk, what, contracts, ts, spot)
 
 
-def _price_chain(tk: str, what: str, contracts: "list | None", fetched_ts: "float | None") -> None:
+def _price_chain(tk: str, what: str, contracts: "list | None", fetched_ts: "float | None",
+                 spot: "tuple | None" = None) -> None:
     """THE producer of a ticker's levels (_publish_levels): from a newly fetched chain, with the
     chain's own fetch time as its as-of (an older streamed value never overrides it); from the
     held chain with the newest streamed values (REPRICE); or from the ticker's newest stored
@@ -1513,7 +1523,7 @@ def _price_chain(tk: str, what: str, contracts: "list | None", fetched_ts: "floa
             if captures:
                 _publish_levels(tk, captures=captures)
             return
-        _publish_levels(tk, contracts, fetched_ts)
+        _publish_levels(tk, contracts, fetched_ts, chain_spot=spot)
         _terrain_refresh_last_error.pop(tk, None)
     except Exception as e:  # noqa: BLE001 -- kept as the ticker's reason, and logged
         _terrain_refresh_last_error[tk] = f"pricing the chain failed: {type(e).__name__}: {e}"

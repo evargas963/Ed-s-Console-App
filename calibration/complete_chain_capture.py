@@ -29,6 +29,7 @@ from schwab.client import Client
 
 from instrument_identity import ticker_storage_key
 from json_blob_codec import decode_json_blob, encode_json_blob
+from live_price_rows import price_row
 from numeric_contract import schwab_number
 from schwab_client import (GREEK_FIELDS, QUOTES_BATCH_MAX, flatten_chain_contracts, option_expiries,
                            safe_get_chain, safe_get_quotes)
@@ -63,8 +64,17 @@ CREATE INDEX IF NOT EXISTS idx_complete_chain_captures_latest
 """
 
 
+#: the chain's one spot (Schwab's LAST_PRICE when the chain was complete) and its trade time; a
+#: capture written before them has neither, and `spot` is each expiry's own underlyingPrice
+CHAIN_SPOT_COLUMNS = (("chain_spot", "REAL"), ("chain_spot_ts", "REAL"))
+
+
 def ensure_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(TABLE_SQL)
+    have = {row[1] for row in conn.execute("PRAGMA table_info(complete_chain_captures)")}
+    for name, kind in CHAIN_SPOT_COLUMNS:
+        if name not in have:
+            conn.execute(f"ALTER TABLE complete_chain_captures ADD COLUMN {name} {kind}")
     conn.commit()
 
 
@@ -78,8 +88,12 @@ def persist_complete_chain_capture(
     completeness_basis: str,
     ts_utc: float | None = None,
     source: str = "schwab_chain_strike_range_all",
+    chain_spot: float | None = None,
+    chain_spot_ts: float | None = None,
 ) -> dict[str, Any]:
-    """Append one COMPLETE single-expiry capture. A time series (PRIMARY KEY includes
+    """Append one COMPLETE single-expiry capture: `spot` is that expiry's underlyingPrice as
+    Schwab sent it; `chain_spot` / `chain_spot_ts` the chain's one spot and its trade time (None
+    when the daemon held no price). A time series (PRIMARY KEY includes
     ts_utc): each capture time is its own set of rows, one per expiry. A stored capture is
     never replaced: a second write of the same (ticker, expiry, ts_utc) raises sqlite3.IntegrityError and the
     stored row stands.
@@ -106,10 +120,10 @@ def persist_complete_chain_capture(
         ensure_schema(conn)
         conn.execute(
             "INSERT INTO complete_chain_captures "
-            "(ticker, expiry, ts_utc, spot, n_contracts, completeness_basis, chain_json, source) "
-            "VALUES (?,?,?,?,?,?,?,?)",
+            "(ticker, expiry, ts_utc, spot, n_contracts, completeness_basis, chain_json, source, "
+            "chain_spot, chain_spot_ts) VALUES (?,?,?,?,?,?,?,?,?,?)",
             (tk, exp, ts, spot, len(clean), str(completeness_basis),
-             encode_json_blob(clean, default=str), str(source)),
+             encode_json_blob(clean, default=str), str(source), chain_spot, chain_spot_ts),
         )
         conn.commit()
     finally:
@@ -144,15 +158,16 @@ def capture_slot(now_ts: float) -> float | None:
 CHAIN_PART_CONTRACTS = 500
 
 
-def chain_messages(ticker: str, contracts: list[dict], fetched_ts: float) -> list[tuple[str, dict]]:
+def chain_messages(ticker: str, contracts: list[dict], fetched_ts: float, spot: float | None,
+                   spot_ts: float | None) -> list[tuple[str, dict]]:
     """A fetched chain as its bus messages, each carrying its finished wire frame: part i of n,
-    CHAIN_PART_CONTRACTS contracts each, all with the time the chain began. The console assembles the
-    parts; a chain missing a part is never priced."""
+    CHAIN_PART_CONTRACTS contracts each, all with the time the chain began and the chain's one spot
+    with its trade time. The console assembles the parts; a chain missing a part is never priced."""
     parts = [contracts[i:i + CHAIN_PART_CONTRACTS]
              for i in range(0, len(contracts), CHAIN_PART_CONTRACTS)] or [[]]
     out = []
     for i, part in enumerate(parts):
-        msg = {"src": "schwab_chain", "ticker": ticker, "ts_recv": fetched_ts,
+        msg = {"src": "schwab_chain", "ticker": ticker, "ts_recv": fetched_ts, "spot": spot, "spot_ts": spot_ts,
                "part": i, "parts": len(parts), "contracts": part}
         out.append((f"chain.{ticker}", {**msg, "frame": json.dumps(
             {"topic": f"chain.{ticker}", "msg": msg}, separators=(",", ":"))}))
@@ -206,6 +221,8 @@ class _Chain:
     ticker: str
     started: float                                                 # its first request
     spots: "dict[str, float | None]" = field(default_factory=dict)  # expiry -> Schwab's underlyingPrice in its answer
+    spot: "float | None" = None                                    # the chain's one spot: LAST_PRICE when complete
+    spot_ts: "float | None" = None                                 # that price's trade time
     by_expiry: "dict[str, list[dict]]" = field(default_factory=dict)
     unquoted: "set[str]" = field(default_factory=set)              # contracts whose quote is not in
     named_invalid: "set[str]" = field(default_factory=set)         # contracts Schwab's quotes named invalid
@@ -248,13 +265,14 @@ class ChainSweep:
 
     def __init__(self, db_path: Path | str, watchlist: "list[str]", publish: "callable",
                  clock: "callable" = time.time, *, failures: "CaptureWriter",
-                 streamed: "callable") -> None:
+                 streamed: "callable", price: "callable" = price_row) -> None:
         self.db_path = db_path
         self.watchlist = list(watchlist)  # the daemon's list, replaced whole on each change
         self.publish = publish          # (topic, msg) -> None, safe from any thread
         self.clock = clock              # when a request begins, and when a chain is delivered
         self.failures = failures        # the daemon's writer: keeps a failed history write
         self.streamed = streamed        # not read: every greek is the quote's
+        self.price = price              # (ticker, now) -> the daemon's price row (live_price_rows.price_row)
         self.round_sec: float | None = None
         self._expiries: "dict[str, tuple[date, list[date]]]" = {}   # ticker -> (ET date, expiries)
         self._markets_day: "dict[str, date]" = {}          # market date -> the ET date Schwab answered it
@@ -479,10 +497,13 @@ class ChainSweep:
     def deliver(self, chain: _Chain) -> None:
         """The chain to the console, and to the chain history when it is the window's first, both
         carrying the time the chain began (its as-of everywhere: a chain begun before the close is
-        not the close values, whenever it is delivered)."""
+        not the close values, whenever it is delivered) and its one spot: Schwab's LAST_PRICE with
+        its trade time, as the daemon's price row holds it now that the chain is complete."""
         now = self.clock()
+        row = self.price(chain.ticker, now)
+        chain.spot, chain.spot_ts = row["spot"], row["trade_ts"]
         contracts = chain.contracts()
-        for topic, msg in chain_messages(chain.ticker, contracts, chain.started):
+        for topic, msg in chain_messages(chain.ticker, contracts, chain.started, chain.spot, chain.spot_ts):
             self.publish(topic, msg)
         self._delivered.add(chain.ticker)
         self._fetched[chain.ticker] = chain.started
@@ -496,7 +517,8 @@ class ChainSweep:
             log.warning("chain history for %s not written, kept as delivered: %s: %s",
                         chain.ticker, type(e).__name__, e)
             self.failures.keep_failure(f"chain_history.{chain.ticker}",
-                                       {"spots": chain.spots, "contracts": contracts}, e, now)
+                                       {"spots": chain.spots, "spot": chain.spot, "spot_ts": chain.spot_ts,
+                                        "contracts": contracts}, e, now)
 
     def _write_history(self, chain: _Chain) -> None:
         """The chain history: a chain begun inside a capture window of the ticker's option market,
@@ -517,7 +539,8 @@ class ChainSweep:
             for expiry, cts in chain.by_expiry.items():
                 persist_complete_chain_capture(self.db_path, ticker=ticker, expiry=expiry, contracts=cts,
                                                spot=chain.spots[expiry], completeness_basis=CAPTURE_BASIS,
-                                               ts_utc=chain.started)
+                                               ts_utc=chain.started, chain_spot=chain.spot,
+                                               chain_spot_ts=chain.spot_ts)
         except Exception:
             self._written[ticker] = before                 # unwritten: the window's next chain tries
             raise
@@ -542,7 +565,9 @@ def newest_capture_ts(db_path: Path | str, ticker: str) -> float | None:
 def last_capture_per_day(db_path: Path | str, ticker: str, days: int, *,
                          before_et_date: str | None = None) -> list[dict[str, Any]]:
     """The last capture of each of the newest `days` market days (newest first) -- the close --
-    each as {et_date, ts_utc, spot, basis, contracts} with every expiry of that capture.
+    each as {et_date, ts_utc, spot, spot_ts, basis, contracts} with every expiry of that capture.
+    `spot` is the chain's one spot with its trade time `spot_ts`; a capture written before the
+    chain carried one gives its nearest expiry's underlyingPrice and `spot_ts` None.
     `before_et_date` keeps only days before it (the previous market day for a day-over-day
     view)."""
     tk = ticker_storage_key(ticker)
@@ -564,14 +589,19 @@ def last_capture_per_day(db_path: Path | str, ticker: str, days: int, *,
             picked.append((day, ts))
             if len(picked) == days:
                 break
+        have = {row[1] for row in conn.execute("PRAGMA table_info(complete_chain_captures)")}
+        chain_spot = ", ".join(name for name, _kind in CHAIN_SPOT_COLUMNS) if "chain_spot" in have else "NULL, NULL"
         out = []
         for day, ts in picked:
             rows = conn.execute(
-                "SELECT spot, completeness_basis, chain_json FROM complete_chain_captures "
-                "WHERE ticker=? AND completeness_basis=? AND ts_utc=?",
+                f"SELECT expiry, spot, {chain_spot}, completeness_basis, chain_json FROM complete_chain_captures "
+                "WHERE ticker=? AND completeness_basis=? AND ts_utc=? ORDER BY expiry",
                 (tk, CAPTURE_BASIS, ts)).fetchall()
-            out.append({"et_date": day, "ts_utc": ts, "spot": rows[0][0], "basis": rows[0][1],
-                        "contracts": [c for r in rows for c in decode_json_blob(r[2])]})
+            spot, spot_ts = rows[0][2], rows[0][3]
+            if spot is None:
+                spot = next((r[1] for r in rows if r[0] >= day), rows[-1][1])
+            out.append({"et_date": day, "ts_utc": ts, "spot": spot, "spot_ts": spot_ts, "basis": rows[0][4],
+                        "contracts": [c for r in rows for c in decode_json_blob(r[5])]})
         return out
     finally:
         conn.close()

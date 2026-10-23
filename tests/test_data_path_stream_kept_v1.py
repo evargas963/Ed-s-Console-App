@@ -63,7 +63,7 @@ def test_only_the_option_contracts_traded_are_recorded_and_every_equity_message(
                  asyncio.create_task(daemon.follow_market(stop))]
         await asyncio.sleep(0)
         for rc in (SPY_0DTE, MRVL):
-            for topic, msg in chain_messages(rc.ticker, rc.chain, rc.now.timestamp()):
+            for topic, msg in chain_messages(rc.ticker, rc.chain, rc.now.timestamp(), rc.spot, rc.now.timestamp()):
                 bus.publish(topic, msg)
             bus.publish(f"quote.{rc.ticker}", quote_msg(symbol=rc.ticker, last=rc.spot, src="schwab_l1",
                                                         native={"key": rc.ticker, "LAST_PRICE": rc.spot}))

@@ -47,7 +47,8 @@ def published():
     """CRWD's chain published at its capture under _ON and _OFF, at its own spot."""
     _daemon(_CRWD["spot"], _AT.timestamp(), _ON, _OFF)            # live when the chain is published
     for tk in (_ON, _OFF):
-        server._publish_levels(tk, [dict(c) for c in _CRWD["chain"]], _AT.timestamp(), now=_AT)
+        server._publish_levels(tk, [dict(c) for c in _CRWD["chain"]], _AT.timestamp(),
+                               chain_spot=(_CRWD["spot"], _AT.timestamp()), now=_AT)
     _daemon(_CRWD["spot"], time.time(), _ON, _OFF)                # live now, as the routes read it
     yield
     with server._terrain_cache_lock:

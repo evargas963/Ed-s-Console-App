@@ -22,7 +22,8 @@ def drawn(tk: str, contracts: list, spot: float, now: datetime, tmp_path: Path) 
         server._terrain_cache.pop(tk, None)
     try:
         server._publish_levels(tk, captures=[{"contracts": contracts, "ts_utc": now.timestamp(), "spot": spot,
-                                              "et_date": now.date().isoformat(), "basis": server.CAPTURE_BASIS}],
+                                              "spot_ts": None, "et_date": now.date().isoformat(),
+                                              "basis": server.CAPTURE_BASIS}],
                                now=now)
         surface = server.gamma_surface_payload(tk, "all", None, 0, None, None, now)
     finally:

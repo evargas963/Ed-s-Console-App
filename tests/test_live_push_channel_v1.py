@@ -173,7 +173,7 @@ def test_a_live_feed_stays_live_while_the_console_works_through_a_backlog_of_cha
     async def body(bus, stats):
         assert await _until(lambda: lmp.feed_live_for("SPY", "LEVELONE_EQUITIES", time.time()))
         for i in range(300):
-            for topic, msg in chain_messages(f"ZZ{i:03d}", contracts, time.time()):
+            for topic, msg in chain_messages(f"ZZ{i:03d}", contracts, time.time(), None, None):
                 bus.publish(topic, msg)
         sampler = threading.Thread(target=sample, args=(7.0,))
         sampler.start()
