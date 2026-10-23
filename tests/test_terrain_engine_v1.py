@@ -330,33 +330,20 @@ def test_pin_score_stamps_match_the_same_exposures_book_as_the_pin() -> None:
 
 
 def test_pin_score_inputs_follow_the_wide_terrain_book_not_selected_expiry() -> None:
-    """RC-413 mixed-book proof: extra later-expiry mass at the pin changes terrain
-    GEX/OI and therefore pin_score; the selected-expiry (analytics-style) book does not.
-    The extra contracts are the pin strike's own, moved to 2026-11-06 (30 days later, a date
-    Schwab's /markets answers) with 50,000 more open interest: a stand-in book."""
+    """The pin's GEX and open interest are the whole book's (every expiry), so its pin_score is
+    not the selected expiry's. MRVL's full real chain, all its expiries, against its front expiry."""
     from math_exposure_core import compute_exposures_by_strike, total_gex_dollars_at_strike
     from math_probabilities import compute_pin_score
 
-    chain, spot = _real_chain()
-    pin = compute_terrain("SPY", chain, spot, now=NOW).absolute_gamma_strike
+    wide, spot, now = MRVL.chain, MRVL.spot, MRVL.now
+    front = min(c["expirationDate"][:10] for c in wide)
+    chain = [c for c in wide if c["expirationDate"].startswith(front)]
+    assert len({c["expirationDate"][:10] for c in wide}) > 1
+    terrain = compute_terrain("MRVL", wide, spot, now=now)
+    pin = terrain.absolute_gamma_strike
     assert pin is not None
-    extra = []
-    for c in chain:
-        try:
-            if float(c.get("strikePrice") or 0) != float(pin):
-                continue
-        except (TypeError, ValueError):
-            continue
-        d = dict(c)
-        d["daysToExpiration"] = int(c.get("daysToExpiration") or 0) + 30
-        d["expirationDate"] = "2026-11-06"
-        d["openInterest"] = float(c.get("openInterest") or 0) + 50_000
-        extra.append(d)
-    assert extra, "the pin strike must exist on the captured chain"
-    wide = chain + extra
-    terrain = compute_terrain("SPY", wide, spot, now=NOW)
-    wide_ex, _ = compute_exposures_by_strike(wide, spot=spot, now=NOW)
-    sel_ex, _ = compute_exposures_by_strike(chain, spot=spot, now=NOW)
+    wide_ex, _ = compute_exposures_by_strike(wide, spot=spot, now=now)
+    sel_ex, _ = compute_exposures_by_strike(chain, spot=spot, now=now)
     assert terrain.absolute_gamma_strike == pin
     wb = _bucket_for_pin(wide_ex, pin)
     sb = _bucket_for_pin(sel_ex, pin)

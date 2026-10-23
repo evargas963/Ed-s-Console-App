@@ -28,6 +28,7 @@ from math_exposure_core import (
     bucket_metric,
     compute_exposures_by_strike,
     greek_reported,
+    largest_gamma,
     merge_exposure_books,
     overlay_streamed_contract_fields,
     strike_oi_legs,
@@ -1137,6 +1138,19 @@ def _contract_ticker(sym: str) -> "str | None":
 
 _QUOTE_GREEKS = ("gamma", "delta", "theta", "vega", "rho", "volatility")
 _QUOTE_COUNTS = ("openInterest", "totalVolume")
+
+
+def _shown_greeks(ct, price, product):
+    """The contract as the chain shows it: a Greek greek_reported does not take is None ("-")."""
+    if not isinstance(ct, dict):
+        return ct
+    largest = largest_gamma(ct, price, product=product)
+    shown = dict(ct)
+    for field in _QUOTE_GREEKS:
+        limit = largest if field == "gamma" else None
+        if field in ct and not greek_reported(schwab_number(ct.get(field)), iv=ct.get("volatility"), largest=limit):
+            shown[field] = None
+    return shown
 
 
 def _positive_count(value) -> bool:
@@ -2660,6 +2674,7 @@ def get_chain(ticker: str = Query(...),
     at = now_et()
     response_contracts = _keep_last_reported(
         response_contracts, contracts, at, option_close_product(t))
+    response_contracts = [_shown_greeks(c, held.get("spot"), option_close_product(t)) for c in response_contracts]
     live_spot, _src, live_ts = resolve_spot(t, now=now)   # the one spot, with Schwab's trade time
     ladder, not_on_ladder = chain_ladder(response_contracts, live_spot)
     # this expiry's net GEX per strike, as the heatmap publishes it (its column of the surface):
