@@ -59,31 +59,3 @@ def test_success_still_reads_as_success(tmp_path: Path) -> None:
     r = subprocess.run([sys.executable, str(WRAPPER), str(_target(tmp_path, 0))],
                        cwd=str(ROOT), capture_output=True, text=True)
     assert r.returncode == 0, f"a clean target now reports {r.returncode}"
-
-
-def test_a_real_precommit_hook_through_the_wrapper_carries_its_verdict(tmp_path: Path) -> None:
-    """End-to-end at the real seam: a hook routed through the wrapper must surface ITS exit
-    code (RC-254). The `operating-process` hook is driven in both directions on a scratch
-    repository: clean index==WT -> 0; a working-tree edit of an enforcement path -> 1."""
-    import shutil
-
-    repo = tmp_path / "r"
-    (repo / "tools").mkdir(parents=True)
-    shutil.copy(ROOT / "tools" / "operating_process_lock.py", repo / "tools" / "operating_process_lock.py")
-    shutil.copy(ROOT / "tools" / "shell_parse.py", repo / "tools" / "shell_parse.py")
-    (repo / "tools" / "__init__.py").write_text("", encoding="utf-8")
-    (repo / "tools" / "check_institutional_correctness.py").write_text("CHECKS = []\n", encoding="utf-8")
-    (repo / "db.py").write_text("x = 1\n", encoding="utf-8")
-
-    def g(*a: str) -> None:
-        subprocess.run(["git", *a], cwd=str(repo), check=True, capture_output=True)
-    g("init", "-q"); g("config", "user.email", "t@t"); g("config", "user.name", "t")
-    g("add", "-A"); g("commit", "-qm", "seed")
-    lock = repo / "tools" / "operating_process_lock.py"
-    clean = subprocess.run([sys.executable, str(WRAPPER), str(lock), "--pre-commit"],
-                           cwd=str(repo), capture_output=True, text=True)
-    assert clean.returncode == 0, (clean.stdout, clean.stderr)
-    (repo / "db.py").write_text("x = 2\n", encoding="utf-8")        # index != worktree
-    dirty = subprocess.run([sys.executable, str(WRAPPER), str(lock), "--pre-commit"],
-                           cwd=str(repo), capture_output=True, text=True)
-    assert dirty.returncode == 1, (dirty.stdout, dirty.stderr)

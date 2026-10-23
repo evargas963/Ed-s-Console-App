@@ -411,8 +411,7 @@ def main() -> int:
     sys.stderr.write(
         "BLOCKED by operating process lock.\n\n"
         + "".join(f"  {b}\n" for b in bad)
-        + "\nSee AGENTS.md, "
-        + "tools/operating_process_lock.py --measure\n"
+        + "\nSee AGENTS.md\n"
     )
     return 2
 

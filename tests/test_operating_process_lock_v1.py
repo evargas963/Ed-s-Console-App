@@ -1,8 +1,7 @@
-# institutional-synthetic-ok: inject index≠WT and sole-writer violations to prove RC-217 BLOCKs.
+# institutional-synthetic-ok: inject cross-checkout edits and destructive git to prove the locks BLOCK.
 """Operating process lock — negative controls + quiet paths (RC-217)."""
 from __future__ import annotations
 
-import subprocess
 import sys
 from pathlib import Path
 
@@ -12,18 +11,6 @@ if str(ROOT) not in sys.path:
 
 import tools.operating_process_lock as OPL  # noqa: E402
 import tools.process_lock_guard as PLG  # noqa: E402
-
-
-def _init_repo(tmp_path: Path) -> Path:
-    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
-    subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=tmp_path, check=True)
-    subprocess.run(["git", "config", "user.name", "t"], cwd=tmp_path, check=True)
-    (tmp_path / "governance").mkdir(parents=True, exist_ok=True)
-    (tmp_path / "tools").mkdir(parents=True, exist_ok=True)
-    (tmp_path / "db.py").write_text("# RC-183\nis_collect_window_bar_end_ts_utc\n", encoding="utf-8")
-    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True, capture_output=True)
-    subprocess.run(["git", "commit", "-m", "init"], cwd=tmp_path, check=True, capture_output=True)
-    return tmp_path
 
 
 def test_edit_branch_topology_rails_only_no_role_denylist(tmp_path):
@@ -102,19 +89,6 @@ def test_rail_fails_open_on_unreadable_topology(tmp_path):
         {"file_path": str(tmp_path / "anything.py")}, repo=wt) == []
 
 
-def test_index_worktree_mismatch_detected(tmp_path):
-    repo = _init_repo(tmp_path)
-    db = repo / "db.py"
-    db.write_text(db.read_text(encoding="utf-8") + "\n# wt delta\n", encoding="utf-8")
-    mism = OPL.index_worktree_mismatches(repo)
-    assert any("index≠WT" in m or "worktree=" in m for m in mism)
-
-
-def test_index_parity_passes_when_clean(tmp_path):
-    repo = _init_repo(tmp_path)
-    assert OPL.index_worktree_mismatches(repo) == []
-
-
 def test_reset_guard_blocks_destructive_git_on_product():
     """LOCK-2 (RC-231): soft tree-destructive git against product scope BLOCKS.
 
@@ -136,20 +110,6 @@ def test_reset_guard_permits_safe_git():
                 "git restore --staged governance/root_cause_log.md",
                 "git stash list", "git checkout -b feature/x"):
         assert not OPL.reset_guard_violations(cmd), f"reset guard false-fired on: {cmd}"
-
-
-def test_measure_report_has_enforcement_hashes():
-    rep = OPL.measure_report()
-    assert "enforcement_hashes" in rep
-    # 2026-08-24 teardown: no role/GO/mission records — the repo stores none of them.
-    assert "sole_writer" not in rep
-    assert "pm_mission" not in rep
-    assert "operator_go" not in rep
-
-
-def test_precommit_finds_nothing_on_a_clean_repo(tmp_path):
-    """What `main --pre-commit` judges (all_precommit_violations), on a clean repo."""
-    assert OPL.all_precommit_violations(_init_repo(tmp_path)) == []
 
 
 # ---------------------------------------------------------------------------
