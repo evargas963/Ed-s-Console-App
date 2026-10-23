@@ -3150,7 +3150,7 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict:
     rows = stored.get("rows")
     body = {key: value for key, value in stored.items() if key not in ("rows", "strikes")}
     body["rows"] = [dict(row) for row in rows] if isinstance(rows, list) else []
-    body.update(at_price(body["rows"], stored.get("strikes") or [], live_spot))
+    body.update(at_price(body["rows"], stored["strikes"], live_spot))
     low = None
     high = None
     if em_dn is not None:
