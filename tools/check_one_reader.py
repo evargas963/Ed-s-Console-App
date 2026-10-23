@@ -1,4 +1,4 @@
-"""ENF-23 (AGENTS.md rule 3): a Schwab field is read raw by no more modules than before.
+"""ENF-23 (AGENTS.md rule 3): no module becomes a raw reader of a Schwab field another module reads.
 
 The fields judged are the names in `docs/schwab_fields.csv` that are Schwab's own: each canonical
 field's last name in Schwab's spelling, an uppercase streamer field (`LAST_PRICE`, `DELTA`) or a
@@ -38,7 +38,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from check_end_to_end import is_product  # noqa: E402
 
 FIELDS_CSV = "docs/schwab_fields.csv"
-#: Schwab's own spelling: an UPPER_SNAKE streamer field or a camelCase REST field
+#: Schwab's own spelling: an uppercase streamer field (one word or UPPER_SNAKE) or a camelCase REST field
 SCHWAB_SPELLING = re.compile(r"[A-Z][A-Z0-9]+(?:_[A-Z0-9]+)*|[a-z]+(?:[A-Z][a-z0-9]*)+")
 
 
