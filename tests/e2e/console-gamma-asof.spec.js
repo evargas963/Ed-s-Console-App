@@ -7,13 +7,14 @@
  * badges. Stale server state -> stale badge styling. Offline.
  */
 const { test, expect } = require('@playwright/test');
+const { routeWatchlist } = require('./fixtures/watchlist');
 
 const SURFACE = { ticker: 'SPY', symbol: 'SPY', available: true, spot: 100, front_expiry: '2026-09-11', source: 'terrain_live_cache',
   live: true, stale: false, age_sec: 6, chain_basis: 'full', complete: false,
   expirations: [{ expiry: '2026-09-11', dte: 2, front: true }], strikes: [98, 100, 102],
   cells: [{ strike: 98, gex: [-90000], spot: false }, { strike: 100, gex: [958600], spot: true },
     { strike: 102, gex: [-264500], spot: false }],
-  view: { centre: 100, scope: 'auto', coverage: null, demand: [], max_abs: { gex: 958600 }, missing_expiry: null } };
+  view: { centre: 100, scope: 'auto', coverage: null, max_abs: { gex: 958600 }, missing_expiry: null } };
 const TERRAIN = { ticker: 'SPY', spot: 100, gamma_flip: 99.5, call_wall: 102, put_wall: 98,
   absolute_gamma_strike: 100, net_gex_peak: 100, net_gex_at_spot: 5e8, regime: 'LONG_GAMMA_CHOP',
   levels_stale: false, levels_age_sec: 21 };
@@ -40,6 +41,7 @@ function routes(over) {
       else if (url.includes('/api/bars1m')) body = BARS;
       else if (url.includes('/api/chain')) body = over.chain || CHAIN;      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
     });
+    await routeWatchlist(page, ['SPY']);
   };
 }
 
@@ -55,6 +57,17 @@ test.describe('#4 per-panel source / as-of / freshness', () => {
     await expect(badge).toBeVisible();
     await expect(badge).toContainText('terrain live');
     await expect(badge).toContainText('21s');            // the server's own today_age_sec, formatted
+  });
+
+  test('GEX-by-strike keeps the chain time beside its age', async ({ page }) => {
+    const CHAIN_TIME = 'Fri 09/25 06:59 PM CT';
+    await routes({ strikes: Object.assign({}, STRIKES, { levels_time_ct: CHAIN_TIME }) })(page);
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const badge = page.locator('#gbsSrc .asof');
+    await expect(badge).toContainText('terrain live');
+    await expect(badge).toContainText(CHAIN_TIME);
+    await expect(badge).toContainText('21s');
+    await expect(page.locator('#gbsBody')).toContainText('100');
   });
 
   test('Strike Detail discloses the vendor chain scope', async ({ page }) => {
@@ -83,6 +96,17 @@ test.describe('#4 per-panel source / as-of / freshness', () => {
     const asof = page.locator('#chartBody .chart-asof');
     await expect(asof).toContainText('price 1m');       // bars clock
     await expect(asof).toContainText('GEX terrain live'); // levels clock (separate)
+  });
+
+  test('the Chart GEX badge keeps the chain time', async ({ page }) => {
+    const CHAIN_TIME = 'Fri 09/25 06:59 PM CT';
+    await routes({ strikes: Object.assign({}, STRIKES, { levels_time_ct: CHAIN_TIME }) })(page);
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.locator('.vtab', { hasText: 'Chart' }).click();
+    const asof = page.locator('#chartBody .chart-asof');
+    await expect(asof).toContainText('GEX terrain live');
+    await expect(asof).toContainText(CHAIN_TIME);
+    await expect(asof).toContainText('21s');
   });
 
   test('a stale terrain generation makes the GEX-by-strike badge read stale', async ({ page }) => {

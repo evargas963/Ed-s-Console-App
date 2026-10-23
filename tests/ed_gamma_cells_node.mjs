@@ -1,7 +1,7 @@
 /**
  * Render one served gamma surface through static/js/ed-gamma.js (its own load path) and print
- * each drawn cell as JSON lines: {strike, expiry, text}. Run by
- * tests/test_heatmap_cells_as_schwab_sent_v1.py with the surface the server projected.
+ * each drawn cell as JSON lines: {strike, expiry, text}. Run by tests/gamma_render_helper.py
+ * with the surface the server serves.
  * Usage: node tests/ed_gamma_cells_node.mjs <surface.json>
  */
 import { readFileSync } from 'fs';
@@ -35,7 +35,6 @@ ctx.EdShell = {
   newPan: () => ({ centre: null, shift: 0, served: null }), panServed: (pan, c) => { pan.served = c; },
   windowQuery: () => '&scope=all', wireStrikeAxis: () => {},
 };
-ctx.EdStream = { setAdditionalContracts: () => Promise.resolve({ accepted: true }) };
 vm.createContext(ctx);
 vm.runInContext(readFileSync(join(ROOT, 'static/js/l1_sse_guards.js'), 'utf8'), ctx, { filename: 'l1_sse_guards.js' });
 vm.runInContext(readFileSync(join(ROOT, 'static/js/ed-gamma.js'), 'utf8'), ctx, { filename: 'ed-gamma.js' });

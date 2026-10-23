@@ -1,0 +1,24 @@
+=== GET /pricehistory ===
+Get historical Open, High, Low, Close, and Volume for a given frequency (i.e. aggregation). Frequency available is dependent on periodType selected. The datetime format is in EPOCH milliseconds.
+symbol* (string, query): The Equity symbol used to look up price history. Example: AAPL
+periodType (string, query): The chart period being requested. Available values: day, month, year, ytd
+period (integer, query): The number of chart period types. If the periodType is day - valid values are 1, 2, 3, 4, 5, 10; month - 1, 2, 3, 6; year - 1, 2, 3, 5, 10, 15, 20; ytd - 1. If the period is not specified and the periodType is day - default period is 10; month - 1; year - 1; ytd - 1.
+frequencyType (string, query): The time frequencyType. If the periodType is day - valid value is minute; month - daily, weekly; year - daily, weekly, monthly; ytd - daily, weekly. If frequencyType is not specified, default value depends on the periodType: day - minute; month - weekly; year - monthly; ytd - weekly. Available values: minute, daily, weekly, monthly
+frequency (integer, query): The time frequency duration. If the frequencyType is minute - valid values are 1, 5, 10, 15, 30; daily - 1; weekly - 1; monthly - 1. If frequency is not specified, default value is 1.
+startDate (integer, query): The start date, Time in milliseconds since the UNIX epoch eg 1451624400000. If not specified startDate will be (endDate - period) excluding weekends and holidays.
+endDate (integer, query): The end date, Time in milliseconds since the UNIX epoch eg 1451624400000. If not specified, the endDate will default to the market close of previous business day.
+needExtendedHoursData (boolean, query): Need extended hours data
+needPreviousClose (boolean, query): Need previous close price/date
+Response 200: Get all candles for given date range
+
+=== GET /markets ===
+Get Market Hours for dates in the future across different markets.
+markets* (array[string], query): List of markets. Available values: equity, option, bond, future, forex
+date (string, date, query): Valid date range is from currentdate to 1 year from today. It will default to current day if not entered. Date format: YYYY-MM-DD
+Response 200: OK
+
+=== GET /markets/{market_id} ===
+Get Market Hours for dates in the future for a single market.
+market_id* (string, path): market id. Available values: equity, option, bond, future, forex
+date (string, date, query): Valid date range is from currentdate to 1 year from today. It will default to current day if not entered. Date format: YYYY-MM-DD
+Response 200: OK

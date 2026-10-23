@@ -110,16 +110,21 @@ def test_no_guard_named_is_refused_not_passed():
 
 
 def test_both_hosts_wire_the_one_executor_with_the_same_rosters():
+    """The guards run before a tool on both hosts, through the one executor, with one roster. Claude's
+    host also runs ruff after each edit and the Stop gate (operator 2026-10-10), one script each."""
     wired = _wired_commands()
+    guards = wired["PreToolUse"] + wired["preToolUse"]
     commands = [c for cmds in wired.values() for c in cmds]
-    assert commands and all("tools/hook_chain.py" in c for c in commands), commands
+    assert guards and all("tools/hook_chain.py" in c for c in guards), guards
     for retired in ("stop_chain.py", "pretooluse_chain.py", "honesty_guard", "proof_only_guard"):
         assert not any(retired in c for c in commands), retired
         assert not (ROOT / "tools" / retired.split(".")[0]).with_suffix(".py").exists() or retired.endswith("guard"), retired
     def roster(c: str) -> set[str]:
         return {t for t in c.split() if t.startswith("tools/") and "chain" not in t}
-    assert set(wired) == {"PreToolUse", "preToolUse"}, wired
-    assert all(roster(c) == set(WIRED_ROSTER) for c in wired["PreToolUse"] + wired["preToolUse"]), wired
+    assert set(wired) == {"PreToolUse", "preToolUse", "PostToolUse", "Stop"}, wired
+    assert all(roster(c) == set(WIRED_ROSTER) for c in guards), wired
+    assert [roster(c) for c in wired["PostToolUse"] + wired["Stop"]] == [{"tools/ruff_edited_file.py"},
+                                                                       {"tools/stop_gate.py"}], wired
 
 
 def test_every_wired_executable_refuses_an_unreadable_payload():
@@ -245,7 +250,8 @@ def test_6b_a_linked_worktree_cannot_write_main_the_branch_production_runs(tmp_p
                     "git branch -f main HEAD", "git branch --force main HEAD", "git branch -D main",
                     "git branch -d main", "git branch -m main old", "git branch -M dev main",
                     "git branch -c dev main", "git fetch origin +dev:main", "git fetch . dev:refs/heads/main",
-                    "git push . HEAD:main", 'git -C "%s" update-ref refs/heads/main HEAD' % primary):
+                    "git push . HEAD:main", "git push . HEAD:heads/main", "git fetch . dev:heads/main",
+                    'git -C "%s" update-ref refs/heads/main HEAD' % primary):
         r = _chain(bash(command, cwd=linked), root=linked)
         assert r.returncode == 2 and "MAIN_REF_LOCK" in r.stderr, (command, r.stderr)
 

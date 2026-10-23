@@ -24,10 +24,9 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-# The ONE shell segmenter (tools/shell_parse.py, stdlib-only, BEDROCK 2026-09-06): the class
-# rule below judges each chained statement on its own (RC-525), and a second splitter here
-# would be one truth with two answers.
-from tools.shell_parse import iter_command_segments  # noqa: E402
+# The ONE shell reader (tools/shell_parse.py, stdlib-only): the rules below judge each git
+# statement a command runs on its own words.
+from tools.shell_parse import git_subcommand, read  # noqa: E402
 
 #: Paths where index≠WT is catastrophic: the one writer and the guards.
 ENFORCEMENT_PATHS: tuple[str, ...] = (
@@ -42,47 +41,14 @@ ENFORCEMENT_PATHS: tuple[str, ...] = (
 #: Wipe-protected paths (LOCK-2 reach).
 PROTECTED_PATHS: tuple[str, ...] = ENFORCEMENT_PATHS
 
-#: LOCK-2 (RC-231): the tree-destructive git CLASS, not just `reset --hard`. Three wipes on
-#: 2026-08-03 (RC-210 x2, RC-229) used soft forms the literal-match ban never saw. A command
-#: matching a destructive verb AND touching a protected/product path (or bare, whole-tree
-#: forms) BLOCKS at PreToolUse in EVERY session wired to process_lock_guard.
-#: BEDROCK 2026-09-06: ONE owner. The universal hard forms (reset --hard, checkout -- <any
-#: path>, clean -f, push --force without lease) used to live as a second regex in
-#: operator_law_guard, "deliberately split, both firing" — two rules answering one question.
-#: They are `_UNIVERSAL_DESTRUCTIVE_RE` below and refuse regardless of target; the class rule
-#: covers the full reset/restore/checkout--/clean/stash verb family on protected/bare targets.
-#:
-#: RC-525 (ported from #221's row 508, re-measured on ac3f78fb 2026-09-06): three holes and one
-#: over-block. `git -C <other> reset --hard` passed because the global-option skip admitted
-#: only flags, not a flag WITH its argument; `git push -f` passed because only the long
-#: spelling was named; `git restore --staged x && git reset --mixed HEAD~1` passed because the
-#: safe list was searched across the WHOLE command, so one safe statement exempted everything
-#: chained after it; and `git reset --soft`, which moves HEAD and leaves index and worktree
-#: untouched, was refused although the repository's own merge authority runs it. The globals
-#: prefix admits an option with its argument; the push clause admits flags after the refspec
-#: and the short `-f`; the class rule is judged PER SEGMENT (below); `--soft` is safe.
-_GIT_GLOBAL_WITH_ARG: tuple[str, ...] = (
-    "-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--config-env")
-_GIT_GLOBALS = (
-    r"(?:(?:" + "|".join(__import__("re").escape(o) for o in _GIT_GLOBAL_WITH_ARG)
-    + r")(?:=\S+|\s+\S+)\s+|-\S+\s+)*")
-_UNIVERSAL_DESTRUCTIVE_RE = __import__("re").compile(
-    r"\bgit\s+" + _GIT_GLOBALS + r"(?:"
-    r"reset\s+--hard"
-    r"|checkout\s+--\s"
-    r"|clean\s+-[a-z]*f"
-    r"|push\s+(?:[^|;&]*\s)?(?:--force(?!-with-lease)|-[a-zA-Z]*f[a-zA-Z]*(?=\s|$))"
-    r")",
-    __import__("re").I)
-_RESET_GUARD_RE = __import__("re").compile(
-    r"\bgit\s+" + _GIT_GLOBALS
-    + r"(reset\b|restore\b|checkout\s+(?:\S+\s+)*--\s|clean\b|stash\b)",
-    __import__("re").I)
-_RESET_GUARD_SAFE_RE = __import__("re").compile(
-    r"\bgit\s+" + _GIT_GLOBALS
-    + r"(reset\s+--soft\b|restore\s+--staged\b(?!.*--worktree)|stash\s+list\b|checkout\s+-b\b"
-    r"|clean\s+(?:-\S*n\S*\b|--dry-run\b))",
-    __import__("re").I)
+#: LOCK-2: the tree-destructive git class, not just `reset --hard`. The hard forms (reset --hard,
+#: checkout -- <any path>, clean -f, push --force without lease, short -f included) are `_hard`
+#: below and refuse on any target. The class rule covers the reset/restore/checkout--/clean/stash
+#: family: a statement running a destructive verb AND touching a protected/product path (or a
+#: bare, whole-tree form) is refused at PreToolUse in every session wired to process_lock_guard.
+#: git's global options (`git -C <other> ...`) are skipped; the class rule is judged per
+#: statement, so a safe first statement exempts nothing chained after it; `git reset --soft`
+#: (HEAD only) is safe.
 
 #: RC-252: the STATIC inventory of what must never be wiped, independent of any mission.
 #: LOCK-2 originally drew its targeted reach from PROTECTED_PATHS plus the ACTIVE mission's
@@ -105,54 +71,32 @@ PRODUCT_WIPE_PROTECTED: tuple[str, ...] = (
 )
 
 
-#: RC-253: a command that pipes its heredoc INTO an interpreter is one where the body IS the
-#: instruction, so the body must still be judged. Everywhere else a heredoc is data.
-_INTERPRETER_RE = __import__("re").compile(
-    r"(?:^|[|;&]\s*)(?:bash|sh|zsh|pwsh|powershell|cmd|eval|xargs|source|\.)\b",
-    __import__("re").I)
-_HEREDOC_RE = __import__("re").compile(
-    r"<<-?\s*(['\"]?)([A-Za-z_]\w*)\1\s*?\n.*?^\2\s*$",
-    __import__("re").S | __import__("re").M)
-_MESSAGE_PAYLOAD_RE = __import__("re").compile(
-    r"(-m|--message|--file|-F)\s+('[^']*'|\"[^\"]*\")")
+def _hard(sub: str, args: list[str]) -> bool:
+    """A git subcommand that discards work whatever it names."""
+    return ((sub == "reset" and "--hard" in args)
+            or (sub == "checkout" and args[:1] == ["--"] and len(args) > 1)
+            or (sub == "clean" and any(re.match(r"-[a-z]*f", a, re.I) for a in args))
+            or (sub == "push" and any((a.startswith("--force") and not a.startswith("--force-with-lease"))
+                                      or re.fullmatch(r"-[a-zA-Z]*f[a-zA-Z]*", a) for a in args)))
 
 
-def _strip_command_payloads(cmd: str) -> str:
-    """RC-253: judge the ACTION, not the data the command carries (RC-93).
-
-    A commit message that quotes `git reset --hard` is prose about an incident; the command
-    itself touches nothing. Left unstripped, LOCK-2 fired hardest on the most precise incident
-    write-ups — taxing exactly the honesty the ledger depends on. Heredoc bodies handed to an
-    interpreter are NOT stripped: there the body is the instruction.
-    """
-    if _INTERPRETER_RE.search(cmd):
-        return cmd
-    return _MESSAGE_PAYLOAD_RE.sub(r"\1 <payload>", _HEREDOC_RE.sub("<heredoc>", cmd))
+def _safe(sub: str, args: list[str]) -> bool:
+    """A form of the class that cannot reach the index or the worktree, or only reads."""
+    first = args[0] if args else ""
+    return ((sub == "reset" and first == "--soft")
+            or (sub == "restore" and first == "--staged" and "--worktree" not in args)
+            or (sub == "stash" and first == "list")
+            or (sub == "checkout" and first == "-b")
+            or (sub == "clean" and bool(re.match(r"-\S*n", first))))
 
 
-def _judged_segments(cmd: str) -> list[str]:
-    """The statements of a payload-stripped command, each judged on its own (RC-525).
-
-    `iter_command_segments` is the ONE splitter; it drops heredoc bodies as data. When the
-    command hands a heredoc to an interpreter, `_strip_command_payloads` has already kept the
-    body because there the body IS the instruction (RC-253), so its lines are segmented too.
-    Falls back to the whole command, which fails CLOSED: one big segment blocks at least as
-    much as its parts.
-    """
-    try:
-        segs = [seg for _cwd, seg in iter_command_segments(cmd, "")]
-        if _INTERPRETER_RE.search(cmd):
-            for line in cmd.splitlines():
-                segs.extend(seg for _cwd, seg in iter_command_segments(line, ""))
-    except (OSError, ValueError):
-        segs = []
-    return segs or [cmd]
-
-
-def _reset_class_violation(seg: str) -> list[str]:
+def _reset_class_violation(words: tuple[str, ...]) -> list[str]:
     """The CLASS rule for ONE statement (RC-525): a chain cannot launder a later wipe."""
-    if not _RESET_GUARD_RE.search(seg) or _RESET_GUARD_SAFE_RE.search(seg):
+    sub, args = git_subcommand(words)
+    if not (sub in ("reset", "restore", "clean", "stash") or (sub == "checkout" and "--" in args[:-1])) \
+            or _safe(sub, args):
         return []
+    seg = " ".join(words)
     touched = [p for p in PROTECTED_PATHS + PRODUCT_WIPE_PROTECTED if p in seg]
     bare = not any(tok in seg for tok in (" -- ", ".py", ".html", ".json"))
     if touched or bare:
@@ -165,7 +109,7 @@ def _reset_class_violation(seg: str) -> list[str]:
     return []
 
 
-def reset_guard_violations(command: str) -> list[str]:
+def reset_guard_violations(command: str, powershell: bool = False) -> list[str]:
     """LOCK-2: BLOCK tree-destructive git — the ONE owner of that question (RC-231/RC-252).
 
     Two clauses, one predicate. The HARD forms (`reset --hard`, `checkout -- <any path>`,
@@ -177,18 +121,19 @@ def reset_guard_violations(command: str) -> list[str]:
 
     Not subject-disableable (RC-450): no env token or repo file can authorize a wipe.
     `git reset --soft`, `git restore --staged` (index-only), `git stash list`,
-    `git checkout -b` and `push --force-with-lease` stay legal.
+    `git checkout -b` and `push --force-with-lease` stay legal. Text a command only carries (a
+    commit message, a heredoc nothing runs) is not a statement.
     """
-    cmd = _strip_command_payloads(command or "")
-    if _UNIVERSAL_DESTRUCTIVE_RE.search(cmd):
+    gits = [st.words for st in read(command or "", powershell=powershell) if st.program == "git"]
+    if any(_hard(*git_subcommand(words)) for words in gits):
         return [
             "RESET_GUARD (LOCK-2/RC-231): destructive git can discard operator work — "
             "reset --hard / checkout -- <path> / clean -f / push --force or -f are refused on "
             "any target (`--force-with-lease` is the safe form). Hand it to the operator. Not "
             "subject-disableable (RC-450)."
         ]
-    for seg in _judged_segments(cmd):
-        hit = _reset_class_violation(seg)
+    for words in gits:
+        hit = _reset_class_violation(words)
         if hit:
             return hit
     return []
@@ -307,27 +252,24 @@ def index_worktree_mismatches(
 # 2026-09-10 (KEEP/MERGE/DELETE).
 
 
-_QUOTED_STRING_RE = re.compile(r"\"(?:[^\"\\]|\\.)*\"|'(?:[^'\\]|\\.)*'")
+#: the output filters whose exit code replaced a commit's (the measured maskers); a pipe into
+#: anything else passes
+_MASKING_FILTERS = frozenset({"tail", "head", "cat", "tee", "grep", "findstr", "out-null", "select-object"})
 
 
-def commit_pipe_violations(cmd: str) -> list[str]:
+def commit_pipe_violations(cmd: str, powershell: bool = False) -> list[str]:
     """RC-234: a `git commit` piped into a filter (tail/head/grep/Out-Null/...) reports
     the FILTER's exit code and truncates hook output — twice this masked a failed landing
     as exit 0 (F401 hidden, t6+t12 slice silently not on HEAD). Commits run UNPIPED;
     long hooks go to a background task whose full output is read back. Escape:
-    '# pipe-ok: <reason>' (operator-reviewed). Pipes inside the quoted -m message are
-    legal — quoted strings are stripped before the scan."""
+    '# pipe-ok: <reason>' (operator-reviewed). A `|` inside a quoted -m message is not a pipe."""
     if not cmd or "# pipe-ok:" in cmd:
         return []
-    stripped = _QUOTED_STRING_RE.sub("", cmd).replace("||", "&&")
-    # SIMPLICITY REHAB 2026-08-24 (T2-6): the ban binds the OBSERVED defect class — a
-    # commit piped into an output FILTER whose exit code replaces the commit's
-    # (tail/head/cat/tee/grep/findstr/Out-Null/Select-Object were the measured maskers).
-    # A pipe into anything else on the segment passes.
-    masking_filter = re.compile(
-        r"\|\s*(?:tail|head|cat|tee|grep|findstr|Out-Null|Select-Object)\b", re.I)
-    for seg in re.split(r"&&|;|\n", stripped):
-        if re.search(r"\bgit\s+commit\b", seg, re.I) and masking_filter.search(seg):
+    for st in read(cmd, powershell=powershell):
+        up = st.upstream if st.program in _MASKING_FILTERS else None
+        while up is not None and git_subcommand(up.words)[0] != "commit":
+            up = up.upstream
+        if up is not None:
             return [
                 "PIPE_MASKED_COMMIT: `git commit` piped into a filter — the filter's exit "
                 "code replaces the commit's and hook failures vanish (RC-234). Run the "

@@ -23,10 +23,12 @@ if str(REPO) not in sys.path:
 
 from liquidity_value_engine import (  # noqa: E402
     PlaybookConfig,
+    bars_from_candles,
     build_live_snapshot,
     build_premarket_snapshot,
     build_price_level_snapshot,
 )
+from micro_structure import Candle  # noqa: E402
 from time_et import ET  # noqa: E402
 
 from tests.conftest import most_recent_trading_day_et  # noqa: E402
@@ -60,15 +62,14 @@ def _bars(session: date, n: int = 120) -> list:
         for i in range(n):
             ts = datetime(d.year, d.month, d.day, start_h, 30, tzinfo=ET) + timedelta(minutes=i)
             px = 100.0 + (i % 17) * 0.05 + day_off * 0.3
-            out.append({"datetime": ts.timestamp(), "open": px, "high": px + 0.08,
-                        "low": px - 0.08, "close": px, "volume": 1000.0 + i})
+            out.append(Candle(ts=ts.timestamp(), open=px, high=px + 0.08, low=px - 0.08, close=px,
+                              volume=1000.0 + i))
     return out
 
 
 def _canonical(session: date, bars: list):
-    from liquidity_value_engine import _bars_to_list
     return build_price_level_snapshot(
-        "SPY", session, _bars_to_list(bars), bar_source="test_fixture", config=PlaybookConfig(),
+        "SPY", session, bars_from_candles(bars), bar_source="test_fixture", config=PlaybookConfig(),
         generation=1)
 
 

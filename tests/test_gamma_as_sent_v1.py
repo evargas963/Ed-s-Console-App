@@ -4,28 +4,19 @@ disagreed in sign). The chain's rate and dividend travel with each contract as s
 stream keeps IV beside the gamma it overlays."""
 from __future__ import annotations
 
-import json
-from pathlib import Path
-
 import pytest
 
 from math_exposure_core import bucket_metric, compute_exposures_by_strike
 from schwab_client import flatten_chain_contracts
 from terrain_engine import compute_terrain
-
-_FX = json.loads((Path(__file__).parent / "fixtures" / "real_spy_0dte_chain.json").read_text(encoding="utf-8"))
-
-
-@pytest.fixture(autouse=True)
-def _at_capture(pin_clock):
-    """real_spy_0dte_chain.json was captured 2026-09-22 12:46 ET."""
-    return pin_clock(2026, 9, 22, 12, 46)
+from tests.real_chains import SPY_0DTE
 
 
 def test_gamma_at_spot_is_schwabs_gamma_summed_over_the_book():
-    chain, spot = _FX["chain"], float(_FX["spot"])
-    snap = compute_terrain("SPY", chain, spot)
-    per, _ = compute_exposures_by_strike(chain, spot=spot)
+    """SPY's same-day chain of 2026-10-07 12:32 ET, valued at its capture (tests/real_chains.py)."""
+    chain, spot, now = SPY_0DTE.chain, SPY_0DTE.spot, SPY_0DTE.now
+    snap = compute_terrain("SPY", chain, spot, now=now)
+    per, _ = compute_exposures_by_strike(chain, spot=spot, now=now)
     schwab = sum(v for b in per.values() if (v := bucket_metric(b, "net_gex_1pct")) is not None)
     assert snap.net_gex_at_spot == pytest.approx(schwab, rel=1e-9)
     assert snap.flip_diag["gamma_at_spot"] == snap.net_gex_at_spot

@@ -12,18 +12,15 @@ summary_rows — but then the SCOPE is declared per surface, and the (name, surf
 resolves to exactly one (definition, scope). Two definitions under one name is the RC-292
 defect and fails here BY CONSTRUCTION, not by review.
 
-Behavioral teeth: the real SPY 0DTE fixture is a book where the two definitions genuinely
-diverge (max-total-gamma 745 vs max-|net-GEX| 743 — the exact measurement recorded in the
-RC-292 ledger row), so a name wired to the wrong metric produces a different NUMBER here,
+Behavioral teeth: the real SPY 0DTE chain (tests/real_chains.py, 2026-10-07 12:32 ET) is a book
+where the two definitions genuinely diverge (max-total-gamma 778 vs max-|net-GEX| 775, measured
+at its capture), so a name wired to the wrong metric produces a different NUMBER here,
 never a silently agreeing one. This is a TEST in the suite, deliberately not a new
 enforced check (teardown rule: no new governance mechanism).
 """
 
 from __future__ import annotations
 
-import pytest
-
-import json
 import sys
 from pathlib import Path
 
@@ -31,7 +28,9 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-FIXTURE = REPO / "tests" / "fixtures" / "real_spy_0dte_chain.json"
+from tests.real_chains import SPY_0DTE  # noqa: E402
+
+NOW = SPY_0DTE.now
 
 # ── The declaration table ────────────────────────────────────────────────────────────────
 # (surface, name) -> (definition, chain_scope). Definitions are metric identities, not
@@ -41,6 +40,7 @@ FIXTURE = REPO / "tests" / "fixtures" / "real_spy_0dte_chain.json"
 
 FULL = "full_book"
 SEL = "selected_expiry"
+TODAY = "front_expiry_to_todays_close"
 
 DECLARED: dict[tuple[str, str], tuple[str, str]] = {
     # terrain payload (/api/terrain, TerrainSnapshot.to_dict) — the levels SSOT
@@ -56,6 +56,19 @@ DECLARED: dict[tuple[str, str], tuple[str, str]] = {
     ("terrain", "put_charm_wall"): ("max_put_charm", FULL),
     ("terrain", "call_delta_wall"): ("max_call_delta", FULL),
     ("terrain", "put_delta_wall"): ("max_put_delta", FULL),
+    # nearest expiry, gamma and delta rebuilt to today's option close (one producer, every ticker)
+    ("terrain", "same_day.call_wall"): ("max_call_gamma", TODAY),
+    ("terrain", "same_day.put_wall"): ("max_put_gamma", TODAY),
+    ("terrain", "same_day.gamma_flip"): ("net_gamma_zero_cross", TODAY),
+    ("terrain", "same_day.absolute_gamma_strike"): ("max_total_gamma", TODAY),
+    ("terrain", "same_day.net_gex_peak"): ("max_abs_net_gex", TODAY),
+    ("terrain", "same_day.key_delta_strike"): ("max_total_delta", TODAY),
+    ("terrain", "same_day.call_charm_wall"): ("max_call_charm", TODAY),
+    ("terrain", "same_day.put_charm_wall"): ("max_put_charm", TODAY),
+    ("terrain", "same_day.hvp"): ("most_negative_net_gex", TODAY),
+    ("terrain", "same_day.lvp"): ("most_positive_net_gex", TODAY),
+    ("terrain", "same_day.gsf"): ("gamma_support_floor", TODAY),
+    ("terrain", "same_day.grc"): ("gamma_resistance_ceiling", TODAY),
     # analytics summary rows (/api/state summary_rows[]) — the SELECTED-EXPIRY book.
     # Same definition token as terrain net_gex_peak: same function, declared other scope.
     ("summary_rows", "net_gex_peak"): ("max_abs_net_gex", SEL),
@@ -93,18 +106,12 @@ _SINGLE_SURFACE_FULL_BOOK = {"hvp", "lvp", "gsf", "grc"}
 
 
 
-@pytest.fixture(autouse=True)
-def _at_capture(pin_clock):
-    """real_spy_0dte_chain.json was captured 2026-09-22 12:46 ET."""
-    return pin_clock(2026, 9, 22, 12, 46)
-
 def _fixture_book():
-    fx = json.loads(FIXTURE.read_text(encoding="utf-8"))
-    return fx["chain"], float(fx["spot"])
+    return SPY_0DTE.chain, SPY_0DTE.spot
 
 
 def test_definitions_diverge_on_the_real_book_so_a_miswire_cannot_hide():
-    """Premise: the two pin-shaped definitions disagree on this chain (773 vs 775; SPY 2026-09-22 12:46 ET).
+    """Premise: the two pin-shaped definitions disagree on this chain (778 vs 775; SPY 2026-10-07 12:32 ET).
 
     RC-292 measured live SPY where they AGREED (775 == 775) and named the coincidence the
     finding: nothing could tell two definitions apart. This fixture is the book where they
@@ -119,7 +126,7 @@ def test_definitions_diverge_on_the_real_book_so_a_miswire_cannot_hide():
     from math_exposure_core import key_level_strikes_with_gamma
 
     chain, spot = _fixture_book()
-    ex, _ = compute_exposures_by_strike(chain, spot=spot)
+    ex, _ = compute_exposures_by_strike(chain, spot=spot, now=NOW)
     ks = key_level_strikes_with_gamma(ex) or sorted(ex)
     total_leader, _strength = pick_pin_and_strength(ex, ks)
     net_leader = pick_net_gex_peak_strike(ex, ks)
@@ -127,8 +134,8 @@ def test_definitions_diverge_on_the_real_book_so_a_miswire_cannot_hide():
     assert total_leader != net_leader, (
         "the fixture no longer separates max-total-gamma from max-|net-GEX| — replace it "
         "with a book where the definitions diverge or every wiring check below is blind")
-    assert (total_leader, net_leader) == (773.0, 775.0), (
-        "the measured split (773 vs 775) no longer reproduces on this fixture")
+    assert (total_leader, net_leader) == (778.0, 775.0), (
+        "the measured split (778 vs 775) no longer reproduces on this fixture")
 
 
 def test_terrain_names_carry_their_declared_definitions():
@@ -143,8 +150,8 @@ def test_terrain_names_carry_their_declared_definitions():
     from terrain_engine import compute_terrain
 
     chain, spot = _fixture_book()
-    snap = compute_terrain("SPY", chain, spot)
-    ex, _ = compute_exposures_by_strike(chain, spot=spot)
+    snap = compute_terrain("SPY", chain, spot, now=NOW)
+    ex, _ = compute_exposures_by_strike(chain, spot=spot, now=NOW)
     ks = key_level_strikes_with_gamma(ex) or sorted(ex)
     assert snap.absolute_gamma_strike == pick_pin_and_strength(ex, ks)[0]
     assert snap.net_gex_peak == pick_net_gex_peak_strike(ex, ks)
@@ -178,15 +185,14 @@ def test_pin_candidate_is_published_only_through_the_qualification_gates():
         strike, blockers = qualify_pin_candidate(**{**passing, **patch})
         assert strike is None and gate in blockers, (
             f"the {gate} gate did not withhold the pin claim: blockers={blockers}")
-    # The real book, valued at its capture (2026-09-22 12:46 ET): gamma at spot is +$2.41B, so
-    # the regime gate passes and liquidity withholds the claim -- WITH its reason. (Until
-    # 2026-09-27 this expected ["regime", "liquidity"]: the fixture had expired, gamma at spot
-    # read None, and the test had locked in the expired answer.)
+    # The real book, valued at its capture (2026-10-07 12:32 ET): gamma at spot is -$2.44B, so the
+    # regime gate withholds the claim, and liquidity too -- WITH the reasons; the measured
+    # concentration stays.
     chain, spot = _fixture_book()
-    snap = compute_terrain("SPY", chain, spot)
-    assert snap.net_gex_at_spot is not None and snap.net_gex_at_spot > 0
+    snap = compute_terrain("SPY", chain, spot, now=NOW)
+    assert snap.net_gex_at_spot is not None and snap.net_gex_at_spot < 0
     assert snap.pin_candidate is None
-    assert snap.pin_candidate_blockers == ["liquidity"]
+    assert snap.pin_candidate_blockers == ["regime", "liquidity"]
     assert snap.absolute_gamma_strike is not None, (
         "withholding the CLAIM must never delete the measured concentration (deliver, "
         "never delete)")
@@ -198,8 +204,14 @@ def test_every_level_shaped_payload_name_is_declared():
     from terrain_engine import compute_terrain
 
     chain, spot = _fixture_book()
-    payload = compute_terrain("SPY", chain, spot).to_dict()
+    payload = compute_terrain("SPY", chain, spot, now=NOW).to_dict()
     declared_terrain = {n for (s, n) in DECLARED if s == "terrain"}
+    same = payload.get("same_day")
+    assert isinstance(same, dict)
+    for key in same:
+        if key.endswith(_LEVEL_SUFFIXES) or key in _LEVEL_EXTRAS:
+            assert f"same_day.{key}" in declared_terrain, (
+                f"same-day level {key!r} has no declared (definition, chain scope)")
     for key in payload:
         if key.endswith(("_state", "_range", "_blockers")) or key.startswith("dist_to_"):   # distances, not levels
             continue
@@ -209,4 +221,7 @@ def test_every_level_shaped_payload_name_is_declared():
                 f"(definition, chain scope) — declare it in DECLARED before shipping")
     # every declared terrain name really is published (a stale declaration is a lie too)
     for name in declared_terrain:
-        assert name in payload, f"declared terrain name {name!r} is not published"
+        if name.startswith("same_day."):
+            assert name.split(".", 1)[1] in same, f"declared same-day name {name!r} is not published"
+        else:
+            assert name in payload, f"declared terrain name {name!r} is not published"

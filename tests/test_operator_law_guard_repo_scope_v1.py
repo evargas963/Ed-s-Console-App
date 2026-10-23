@@ -34,7 +34,7 @@ def test_destructive_git_has_one_owner_and_it_fires_unscoped(cmd):
 
 def test_deleting_the_database_fires_in_this_repository():
     out = G.bash_violations("rm -rf data/ed_console.db")
-    assert any("RC-273" in v for v in out), out
+    assert any("under data/" in v for v in out), out
 
 
 def test_guard_does_not_return_early_for_an_out_of_scope_repository(other_repo):

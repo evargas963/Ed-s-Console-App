@@ -7,6 +7,7 @@
  * and the page is proved to ask with the scope, draw what it is sent and keep the choice.
  */
 const { test, expect } = require('@playwright/test');
+const { routeWatchlist } = require('./fixtures/watchlist');
 
 // spot 100, 41 strikes 80..120; the stand-in's window per scope, as the server serves it
 const ALL_ROWS = [];
@@ -26,7 +27,7 @@ const SURFACE = { ticker: 'SPY', symbol: 'SPY', available: true, spot: 100, fron
   expirations: [{ expiry: '2026-09-11', dte: 2, front: true }], strikes: [99, 100, 101],
   cells: [{ strike: 99, gex: [-90000], spot: false }, { strike: 100, gex: [958600], spot: true },
     { strike: 101, gex: [-264500], spot: false }],
-  view: { centre: 100, scope: 'auto', coverage: null, demand: [], max_abs: { gex: 958600 }, missing_expiry: null } };
+  view: { centre: 100, scope: 'auto', coverage: null, max_abs: { gex: 958600 }, missing_expiry: null } };
 
 async function intercept(page, asked) {
   await page.route('**/api/**', (route) => {
@@ -41,6 +42,7 @@ async function intercept(page, asked) {
     else if (url.includes('/api/bars1m')) body = BARS;
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
+  await routeWatchlist(page, ['SPY']);
 }
 
 test.describe('the Gamma presentation scope', () => {

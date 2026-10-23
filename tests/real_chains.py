@@ -1,0 +1,52 @@
+"""Real option chains the capture daemon captured on 2026-10-07 (production complete_chain_captures,
+read-only), each with Schwab's underlying price in the capture and the instant it was captured --
+the valuation instant a test prices it at (`now`), inside the sessions Schwab's /markets answers
+(tests/conftest.py).
+
+SPY_0DTE: SPY's same-day expiry (2026-10-07) at 12:32:07 ET, the 20 strikes nearest the price.
+CRWD:     CRWD's 2026-10-16 expiry, every strike (strike_range=ALL), at 10:38:40 ET.
+TSLA:     TSLA's 2026-10-09 expiry, every strike (strike_range=ALL), at 12:32:15 ET.
+MRVL:     MRVL's full chain, all 20 expiries, every strike, at 10:31:20 ET (spot: the front
+          expiry's answer).
+NFLX:     NFLX's 2026-10-16, 2027-12-17 and 2028-01-21 expiries at 10:32:20 ET; 8 contracts with
+          open interest carry Greeks Schwab sent as -999.
+SPY_CLOSE: SPY's 2026-10-22 expiry from the close capture begun 2026-10-22 16:17:04 ET, with SPY's
+          LEVELONE_EQUITIES prints after it as the daemon received them.
+"""
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
+
+from time_et import ET
+
+_FX = Path(__file__).resolve().parent / "fixtures"
+
+
+@dataclass(frozen=True)
+class RealChain:
+    ticker: str
+    chain: list
+    spot: float
+    now: datetime
+
+
+def _load(name: str) -> RealChain:
+    d = json.loads((_FX / name).read_text(encoding="utf-8"))
+    return RealChain(d["ticker"], d["chain"], float(d["spot"]), datetime.fromtimestamp(d["ts_utc"], ET))
+
+
+SPY_0DTE = _load("real_spy_0dte_chain_2026_10_07.json")
+CRWD = _load("real_crwd_complete_chain_2026_10_07.json")
+TSLA = _load("real_tsla_complete_chain_2026_10_07.json")
+MRVL = _load("real_mrvl_full_chain_2026_10_07.json")
+NFLX = _load("real_nflx_chain_2026_10_07_three_expiries.json")
+SPY_CLOSE = _load("real_spy_close_capture_and_after_hours_print_2026_10_22.json")
+#: SPY's first LEVELONE_EQUITIES message with a LAST_PRICE from 18:00 ET 2026-10-22, as recorded
+_SPY_CLOSE_FX = json.loads((_FX / "real_spy_close_capture_and_after_hours_print_2026_10_22.json")
+                           .read_text(encoding="utf-8"))
+SPY_AFTER_HOURS_PRINT = _SPY_CLOSE_FX["after_hours_print"]
+#: SPY's first LEVELONE_EQUITIES message after that capture whose LAST_PRICE is a strike from it
+SPY_PRINT_A_STRIKE_AWAY = _SPY_CLOSE_FX["print_a_strike_away"]

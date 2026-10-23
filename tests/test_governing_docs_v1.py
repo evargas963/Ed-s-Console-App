@@ -11,7 +11,10 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-DOCS = ("AGENTS.md", "docs/DATA_FLOW.md", "ACTIVE_PROGRAM.md", "docs/ARCHITECTURE.md")
+#: the agents' rules for one area, the skills and the reviewers (loaded on demand)
+AGENT_FILES = tuple(p.relative_to(ROOT).as_posix() for p in sorted(
+    [*ROOT.glob(".claude/rules/*.md"), *ROOT.glob(".claude/skills/*/SKILL.md"), *ROOT.glob(".claude/agents/*.md")]))
+DOCS = ("AGENTS.md", "CLAUDE.md", "docs/DATA_FLOW.md", "ACTIVE_PROGRAM.md", "docs/ARCHITECTURE.md", *AGENT_FILES)
 FILE_EXT = (".py", ".js", ".mjs", ".html", ".bat", ".md")
 
 
@@ -46,9 +49,11 @@ def test_the_check_catches_the_deleted_paths_the_old_charter_named():
 
 
 #: the documents whose sections marked "(enforced)" hold requirements
-ENFORCED_DOCS = ("AGENTS.md", "docs/DATA_FLOW.md")
+ENFORCED_DOCS = ("AGENTS.md", "docs/DATA_FLOW.md",
+                 *(p for p in AGENT_FILES if p.startswith(".claude/rules/")))
 ENFORCEMENT_ID = re.compile(r"\bENF-\d+\b")
 DATA_RULE_ID = re.compile(r"\bD\d\b")
+BLOCKERS = ("tests/", "tools/", ".github/workflows/")      # what can block a violation: a test, a hook, a CI job
 
 
 def requirements(text: str) -> list[str]:
@@ -89,7 +94,8 @@ def enforcement_gaps(doc_text: str, tracked: list[str], program: str) -> list[st
             gaps.append(f"no 'Enforced by:': {item[:80]}")
             continue
         how = item.split("Enforced by:", 1)[1]
-        cites_file = any(t.rstrip(".,;") in files for t in re.findall(r"`([^`\s]+)`", how))
+        cites_file = any(t.rstrip(".,;") in files and t.startswith(BLOCKERS)
+                         for t in re.findall(r"`([^`\s]+)`", how))
         ids = ENFORCEMENT_ID.findall(how)
         unlisted = [i for i in ids if i not in listed]
         if unlisted:
@@ -112,11 +118,12 @@ def test_the_check_catches_a_requirement_with_no_enforcement():
            "2. **Prose only.** Nobody checks this.\n"
            "3. **Tracked.** Enforced by: no machine check — ENF-01.\n"
            "4. **Untracked.** Enforced by: no machine check — ENF-99.\n"
-           "5. **Vague.** Enforced by: review.\n\n## Running it\n\nNot a requirement.\n")
-    gaps = enforcement_gaps(doc, ["tests/test_a.py"], "| ENF-01 | QUEUED | x |\n")
+           "5. **Vague.** Enforced by: review.\n"
+           "6. **A procedure.** Enforced by: `.claude/skills/x/SKILL.md`.\n\n## Running it\n\nNot a requirement.\n")
+    gaps = enforcement_gaps(doc, ["tests/test_a.py", ".claude/skills/x/SKILL.md"], "| ENF-01 | QUEUED | x |\n")
     assert [g.split(":")[0] for g in gaps] == [
         "no 'Enforced by", "names ['ENF-99'], not in ACTIVE_PROGRAM.md",
-        "names no test, hook, check or ENF item"]
+        "names no test, hook, check or ENF item", "names no test, hook, check or ENF item"]
 
 
 def test_agents_md_stays_under_200_lines():

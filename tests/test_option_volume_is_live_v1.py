@@ -8,32 +8,16 @@ live) with ~500K missing on strike 740 alone.
 This drives the REAL chain end to end — compute_terrain -> TerrainSnapshot.per_strike -> the cache
 payload shape the endpoint reads — and proves the volume that arrives on the chain is the volume
 the panel would render, with no archive anywhere in the path. The input is a captured Schwab SPY
-chain (tests/fixtures/), not a hand-built one: a fixture tuned by the same hand that writes the
-assertion proves only that the hand is consistent.
+chain (tests/real_chains.py: 2026-10-07 12:32 ET), valued at its capture, not a hand-built one: a
+fixture tuned by the same hand that writes the assertion proves only that the hand is consistent.
 """
 from __future__ import annotations
 
-import pytest
-
-import json
-from pathlib import Path
-
 from terrain_engine import compute_terrain
+from tests.real_chains import SPY_0DTE
 
-ROOT = Path(__file__).resolve().parent.parent
-FIXTURE = json.loads(
-    (ROOT / "tests" / "fixtures" / "real_spy_0dte_chain.json").read_text(encoding="utf-8")
-)
-CHAIN: list[dict] = FIXTURE["chain"]
-SPOT: float = float(FIXTURE["spot"])
+TICKER, CHAIN, SPOT, NOW = SPY_0DTE.ticker, SPY_0DTE.chain, SPY_0DTE.spot, SPY_0DTE.now
 
-
-
-@pytest.fixture(autouse=True)
-def _at_capture(pin_clock):
-    """Valued at the stored chain's capture (2026-09-22 12:46 ET), so its expiries passing never change
-    what this test measures."""
-    return pin_clock(2026, 9, 22, 12, 46)
 
 def _expected_volume_by_strike() -> dict[float, int]:
     """Ground truth read straight off the vendor payload, independent of the engine."""
@@ -46,7 +30,7 @@ def _expected_volume_by_strike() -> dict[float, int]:
 
 def test_live_chain_volume_reaches_the_per_strike_rows():
     """The volume ON THE VENDOR CHAIN is the volume IN THE ROWS — call + put summed per strike."""
-    snap = compute_terrain(FIXTURE["ticker"], CHAIN, SPOT)
+    snap = compute_terrain(TICKER, CHAIN, SPOT, now=NOW)
     assert snap.per_strike, "terrain produced no per-strike rows; the panel would have no source"
     expected = _expected_volume_by_strike()
     got = {r[0]: r[2] for r in snap.per_strike["all"]}
@@ -59,7 +43,7 @@ def test_rows_are_the_shape_the_panel_renders():
     served today_source=terrain_live_cache with today_age_sec=7.4 — live and fresh — and ZERO
     rows, because it rebuilt synthetic contracts from these numbers and re-ran the exposure
     engine, which rejected them for having no open interest."""
-    ps = compute_terrain(FIXTURE["ticker"], CHAIN, SPOT).per_strike
+    ps = compute_terrain(TICKER, CHAIN, SPOT, now=NOW).per_strike
     # the three GEX scopes, and the Chart view's DEX and OI rows (operator 2026-09-29: those views
     # were blank)
     assert set(ps) == {"all", "near", "far", "dex", "oi"}, (
@@ -76,12 +60,12 @@ def test_rows_are_the_shape_the_panel_renders():
 
 def test_per_strike_map_is_stamped_with_its_own_age():
     """A number with no age is how a 2.1-hour-old histogram sat under 'TODAY'S OPTION VOLUME'."""
-    snap = compute_terrain(FIXTURE["ticker"], CHAIN, SPOT)
+    snap = compute_terrain(TICKER, CHAIN, SPOT, now=NOW)
     assert snap.computed_ts_utc is not None and snap.computed_ts_utc > 0
 
 
 def test_absence_renders_as_absence_not_as_stale_data():
     """With no chain there must be no fabricated per-strike data."""
-    snap = compute_terrain(FIXTURE["ticker"], [], SPOT)
+    snap = compute_terrain(TICKER, [], SPOT, now=NOW)
     assert not (snap.per_strike or {}).get("all")
     assert snap.error

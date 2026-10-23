@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import logging
 import threading
-import time
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Optional
 
@@ -100,7 +100,6 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
         "spot": spot_f,
         "bid": bid,
         "ask": ask,
-        "spot_disp": f"{spot_f:.2f}" if spot_f is not None else None,
         "mark": mark,
         "bid_size": val("BID_SIZE"),
         "ask_size": val("ASK_SIZE"),
@@ -190,12 +189,13 @@ def plane_spot_is_last_price(row: dict[str, Any] | None) -> bool:
 
 
 #: The daemon sends its status every second; the daemon, and everything it streams, is live
-#: only while the latest one is younger than this (console clock). The one liveness limit.
+#: only while the latest one was stamped within this of the time judged. The one liveness limit.
 FEED_HEARTBEAT_MAX_AGE_SEC: float = 3.0
 
-#: The daemon's latest status (its heartbeat), the time the daemon stamped it, and the symbols
-#: it holds per Schwab service. Written by record_feed_heartbeat / record_feed_down only.
-_feed: dict[str, Any] = {"rx": None, "status": None, "held": {}}
+#: The daemon's latest status (its heartbeat), the time the daemon stamped it, the symbols
+#: it holds per Schwab service, and the last watchlist a beat carried. Written by
+#: record_feed_heartbeat / record_feed_down only. A down feed keeps `held` and `watchlist`.
+_feed: dict[str, Any] = {"rx": None, "status": None, "held": {}, "watchlist": None}
 
 
 def record_feed_heartbeat(msg: dict[str, Any]) -> None:
@@ -206,51 +206,95 @@ def record_feed_heartbeat(msg: dict[str, Any]) -> None:
         return
     held = {svc: frozenset(ticker_storage_key(s) for s in syms)
             for svc, syms in (msg.get("held") or {}).items() if isinstance(syms, list)}
+    watchlist = msg.get("watchlist")
     with _lock:
         _feed.update(rx=float(msg["ts"]), status=msg, held=held)
+        if isinstance(watchlist, list):
+            _feed["watchlist"] = list(watchlist)
 
 
 def record_feed_down() -> None:
-    """The connection to the daemon ended: nothing is live until a heartbeat arrives."""
+    """The connection to the daemon ended: nothing is live until a heartbeat arrives.
+    The symbols that beat last named stay, so the last streamed values still price.
+    The last watchlist stays with them."""
     with _lock:
-        _feed.update(rx=None, status=None, held={})
+        _feed.update(rx=None, status=None)
 
 
-def daemon_status() -> dict[str, Any] | None:
-    """The daemon's latest status while its heartbeat is live (FEED_HEARTBEAT_MAX_AGE_SEC),
-    else None: a daemon that stopped reporting holds nothing and streams nothing."""
+def last_watchlist() -> list[str] | None:
+    """The watchlist on the latest beat that carried one, current or not. None until a beat
+    carries a list. A missing beat does not erase it."""
     with _lock:
-        rx, status = _feed["rx"], _feed["status"]
-    if rx is None or not 0.0 <= time.time() - rx < FEED_HEARTBEAT_MAX_AGE_SEC:
+        watchlist = _feed.get("watchlist")
+    if not isinstance(watchlist, list):
         return None
-    return status
+    return list(watchlist)
 
 
-def feed_live_for(symbol: str | None, service: str) -> bool:
+@dataclass(frozen=True)
+class FeedNow:
+    """One read of the daemon's heartbeat at a time. `status` is None when that beat is not
+    current. `held` is the symbols on the latest beat: they stand when that beat is missing
+    or too old. A beat stamped after `now` contributes neither."""
+
+    status: dict[str, Any] | None
+    held: dict[str, frozenset[str]]
+
+
+def feed_now(now: float) -> FeedNow:
+    """The daemon's heartbeat at `now`, read once. Current only when its stamp is not older
+    than FEED_HEARTBEAT_MAX_AGE_SEC. A stamp after `now` is a later moment, not this one.
+    A beat that is missing or too old is not live, and the symbols it last named still stand."""
+    with _lock:
+        rx, status, held = _feed["rx"], _feed["status"], dict(_feed["held"])
+    if isinstance(rx, (int, float)) and now < float(rx):
+        return FeedNow(None, {})
+    current = (isinstance(rx, (int, float)) and isinstance(status, dict)
+               and 0.0 <= now - float(rx) < FEED_HEARTBEAT_MAX_AGE_SEC)
+    return FeedNow(status, held) if current else FeedNow(None, held)
+
+
+def live_on(feed: FeedNow, symbol: str | None, service: str) -> bool:
+    """Whether `feed` says Schwab `service` is delivering `symbol`."""
+    if symbol is None or feed.status is None or feed.status.get("schwab_socket_open") is not True:
+        return False
+    t = ticker_storage_key(symbol)
+    symbols = feed.held.get(service)
+    return bool(t) and symbols is not None and t in symbols
+
+
+def daemon_status(now: float) -> dict[str, Any] | None:
+    """The daemon's latest status while its heartbeat is current at `now`, else None."""
+    return feed_now(now).status
+
+
+def held_by_daemon(service: str, now: float) -> frozenset[str]:
+    """The symbols the daemon holds on Schwab `service` at `now`; none while its heartbeat
+    is not current (unknown is never confirmation)."""
+    feed = feed_now(now)
+    if feed.status is None:
+        return frozenset()
+    return feed.held.get(service, frozenset())
+
+
+def feed_live_for(symbol: str | None, service: str, now: float) -> bool:
     """THE live rule, for every streamed value: is Schwab `service` delivering `symbol` right
-    now -- the daemon's heartbeat is live (daemon_status), it reports the Schwab socket open,
+    now -- the daemon's heartbeat is current (feed_now), it reports the Schwab socket open,
     and it holds the symbol on that service.
 
     Not "did a value arrive recently": Schwab sends a field only when it CHANGES (measured: 11%
     of 4,039 messages carried bid+ask+last together), so a quiet symbol's unchanged value is its
-    current value; judging by arrival age blanked quiet names on a healthy feed (2026-09-24
-    08:44 CT, DELL) and kept a dead feed's prices "live" for 30 s."""
-    t = ticker_storage_key(symbol or "")
-    status = daemon_status()
-    if not t or status is None or status.get("schwab_socket_open") is not True:
-        return False
-    with _lock:
-        return t in _feed["held"].get(service, ())
+    current value; judging by arrival age blanks quiet names on a healthy feed."""
+    return live_on(feed_now(now), symbol, service)
 
 
 def outage(symbol: str | None, service: str, now: float) -> str | None:
-    """Why `symbol`'s values from Schwab `service` are not current at `now`, or None when they
-    are (docs/DATA_FLOW.md §2 D5): in an open session (Pre-Market, RTH, After-Hours) a value is
-    current only while its feed delivers it; while Closed, the values as of the close stand,
-    the feed up or down."""
-    session = session_label(datetime.fromtimestamp(now, ET))
-    if session == "Closed" or feed_live_for(symbol, service):
+    """Why `symbol`'s feed from Schwab `service` is not delivering at `now`, or None when it
+    is (docs/DATA_FLOW.md §2 D5). The last values stand either way. A closed market is the
+    same stop as any other: the numbers stay and this says the feed is down."""
+    if feed_live_for(symbol, service, now):
         return None
+    session = session_label(datetime.fromtimestamp(now, ET))
     return f"Schwab {service} feed down during {session}"
 
 

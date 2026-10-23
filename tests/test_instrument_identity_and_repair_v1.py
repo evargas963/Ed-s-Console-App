@@ -4,26 +4,24 @@ from __future__ import annotations
 
 import server
 from instrument_identity import ticker_storage_key
-from tests.feed_live_helper import daemon_bars, forget_daemon_bars, record_daemon_bars
+from tests.feed_live_helper import daemon_bars, stream_daemon_bars
 
 
 def test_recorded_index_bars_are_held_and_served_under_the_index_key():
     """Schwab keys an index as "$SPX" (tests/fixtures/real_schwab_index_identity_2026_09_28.json:
     only the "$" form answers). Schwab's $SPX bars of 2026-10-01/02 as the capture daemon recorded
-    them, loaded at the console's start: held under $SPX, and the bare "SPX" a page asks for
-    serves exactly them (Issue 19 rehydration)."""
+    them, streamed to the console: held under $SPX, and the bare "SPX" a page asks for serves
+    exactly them (Issue 19 rehydration)."""
     rows = daemon_bars("real_daemon_bars_spy_tsla_spx_2026_10_01_02.json", "$SPX")
     newest = {}
     for r in sorted(rows, key=lambda r: r["ts_recv"]):
         newest[r["bar_start_ms"]] = r
     server._bars.pop("$SPX", None)
-    record_daemon_bars(rows)
     try:
-        server._load_bars()
+        stream_daemon_bars(rows)
         held = [b for b in server._bars_1m("$SPX", server.BARS_KEPT) if b.ts * 1000 in newest]
         asked_bare = [b for b in server._bars_1m("spx", server.BARS_KEPT) if b.ts * 1000 in newest]
     finally:
-        forget_daemon_bars(rows)
         server._bars.pop("$SPX", None)
     want = [(ms / 1000, r["open"], r["high"], r["low"], r["close"], r["volume"]) for ms, r in sorted(newest.items())]
     assert [(b.ts, b.open, b.high, b.low, b.close, b.volume) for b in held] == want

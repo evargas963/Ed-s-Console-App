@@ -9,6 +9,7 @@
  * Captures DARK and LIGHT at 2560x1440 and 1920x1080 (full viewport, not cropped).
  */
 const { test, expect } = require('@playwright/test');
+const { routeWatchlist } = require('./fixtures/watchlist');
 
 const SPOT = 5000;
 const EXPS = [
@@ -35,7 +36,7 @@ const SURFACE = {
   cells: STRIKE_LIST.map(function (k) {
     return { strike: k, gex: EXPS.map(function (_e, ci) { return gexAt(k, ci); }), spot: k === SPOT }; }),
   // the served view; the colour scale is a stand-in at least every |gexAt| (peak 7.6e6 x 1.24)
-  view: { centre: SPOT, scope: 'auto', coverage: null, demand: [], max_abs: { gex: 1e7 }, missing_expiry: null },
+  view: { centre: SPOT, scope: 'auto', coverage: null, max_abs: { gex: 1e7 }, missing_expiry: null },
   provenance: { producer: 'math_exposure_core.compute_exposures_by_strike', classification: 'DERIVED' },
 };
 const TERRAIN = { ticker: '$SPX', spot: SPOT, gamma_flip: 4992.4, call_wall: 5100, put_wall: 4900,
@@ -64,6 +65,7 @@ async function intercept(page) {
     else if (url.includes('/api/chain')) body = CHAIN;
     else if (url.includes('/api/expiries')) body = { expiries: EXPS.map(function (e) { return e.expiry; }) };    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
+  await routeWatchlist(page, ['SPY']);
 }
 
 const VIEWPORTS = [{ w: 1672, h: 941 }, { w: 1920, h: 1080 }, { w: 2560, h: 1440 }];

@@ -7,7 +7,8 @@
  */
 const { test, expect } = require('@playwright/test');
 const path = require('path');
-const { mockPriceSocket } = require('./fixtures/price_socket');
+const { mockPriceSocket, priceRow } = require('./fixtures/price_socket');
+const { routeWatchlist } = require('./fixtures/watchlist');
 
 const CROSSES = require(path.join(__dirname, '..', 'fixtures', 'real_spy_level_crosses.json')).rows.slice(0, 3);
 const EVENTS = {
@@ -62,6 +63,7 @@ async function intercept(page) {
     else if (url.includes('/api/order-flow/book-heatmap')) body = HEAT;
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
+  await routeWatchlist(page, ['SPY']);
 }
 const HEAT = require(path.join(__dirname, 'fixtures', 'book_heatmap_payload.json'));
 
@@ -125,6 +127,17 @@ test('a desk load asks for each value once; a timeframe switch asks only for tha
   expect(errs).toEqual([]);
 });
 
+test('Liquidity map: the live price keeps its last trade time', async ({ page }) => {
+  await intercept(page);
+  await page.route('**/api/levels**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
+    body: JSON.stringify(Object.assign({}, LEVELS, { spot_time_ct: 'Fri 10/02 10:00 AM CT' })) }));
+  await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'liquidity');
+    localStorage.setItem('ed_sub', 'map'); } catch (e) {} });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await expect.poll(() => page.evaluate(() => (window.EdLiquidityMap.state() || {}).liveTitle)).toBe('LAST · last trade Fri 10/02 10:00 AM CT');
+  await expect.poll(() => page.evaluate(() => (window.EdLiquidityMap.state() || {}).livePrice)).toBe(SPOT);
+});
+
 test('the liquidity map fits its price scale to the candles; a far zone does not flatten them', async ({ page }) => {
   // 2026-09-29 RTH: SPY's served zones at 750 and 800 joined the auto-fit, the scale ran 735-805
   // and the candles (765) were a flat line
@@ -171,6 +184,112 @@ function watchErrors(page) {
   return errs;
 }
 
+test('Desk: an offline price keeps its last trade time on the map', async ({ page }) => {
+  await intercept(page);
+  await mockPriceSocket(page, [
+    priceRow('$SPX', 5800.12, { trade_time_ct: '14:00:01 CT', feed_live: false, outage: 'Schwab LEVELONE_EQUITIES feed down during RTH' }),
+    priceRow('$VIX', 16.4, { trade_time_ct: '14:00:02 CT', chg_pct: 1.2, feed_live: false, outage: 'Schwab LEVELONE_EQUITIES feed down during RTH' }),
+    priceRow('SPY', 771.3, { trade_time_ct: '14:00:03 CT', feed_live: false, outage: 'Schwab LEVELONE_EQUITIES feed down during RTH', total_volume: 1000 }),
+  ]);
+  await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
+    localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await expect(page.locator('#tdmIdxSPX')).toContainText('last trade 14:00:01 CT');
+  await expect(page.locator('#tdmIdxSPX')).toHaveAttribute('title', 'last trade 14:00:01 CT');
+  await expect(page.locator('#tdmCardVol')).toContainText('16.40 (+1.20%) · last trade 14:00:02 CT');
+  await expect(page.locator('#tdmCardFlow')).toContainText('OFFLINE');
+  await expect(page.locator('#tdmCardFlow .tdm-src')).toContainText('last trade 14:00:03 CT');
+  await expect(page.locator('#tdmCardFlow .tdm-src')).toContainText('Schwab LEVELONE_EQUITIES feed down during RTH');
+});
+
+test('Desk: the book age keeps Schwab\'s book time', async ({ page }) => {
+  const errs = watchErrors(page);
+  const BOOK_TIME = 'Fri 09/25 06:59 PM CT';
+  await intercept(page);
+  await page.route('**/api/order-flow/microstructure**', (route) => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify(Object.assign({}, MICRO, { book_time_ct: BOOK_TIME })),
+  }));
+  await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
+    localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await expect(page.locator('#tdmCardLiq .tdm-src')).toContainText('book ' + BOOK_TIME + ' · 1s old');
+  await expect(page.locator('#tdmCardLiq')).toContainText('BID HEAVY');
+  await expect(page.locator('#tdmCardLiq')).toContainText('3.0K / 2.0K');
+  await expect(page.locator('#tdmTrust')).toContainText('BOOK ' + BOOK_TIME + ' · 1s');
+  expect(errs).toEqual([]);
+});
+
+test('Desk: a book that is not live keeps Schwab\'s book time', async ({ page }) => {
+  const errs = watchErrors(page);
+  const BOOK_TIME = 'Fri 09/25 06:59 PM CT';
+  await intercept(page);
+  await page.route('**/api/order-flow/microstructure**', (route) => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify(Object.assign({}, MICRO, {
+      book_time_ct: BOOK_TIME, ages: { book_age_sec: 4, book_stale: true },
+    })),
+  }));
+  await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
+    localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await expect(page.locator('#tdmCardLiq')).toContainText('STALE BOOK');
+  await expect(page.locator('#tdmCardLiq .tdm-src')).toContainText('book ' + BOOK_TIME + ' · not live');
+  await expect(page.locator('#tdmCardLiq')).toContainText('3.0K / 2.0K');
+  await expect(page.locator('#tdmTrust')).toContainText('BOOK ' + BOOK_TIME + ' · STALE');
+  expect(errs).toEqual([]);
+});
+
+test('Desk: the chain age keeps the chain\'s time', async ({ page }) => {
+  const errs = watchErrors(page);
+  const CHAIN_TIME = 'Fri 09/25 06:59 PM CT';
+  await intercept(page);
+  await page.route('**/api/terrain**', (route) => {
+    const url = route.request().url();
+    if (url.includes('/api/terrain/strikes')) {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(STRIKES) });
+    }
+    return route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify(Object.assign({}, TERRAIN, {
+        levels_age_sec: 4, levels_stale: false, levels_time_ct: CHAIN_TIME,
+      })) });
+  });
+  await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
+    localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await expect(page.locator('#tdmCardOpt .tdm-src')).toContainText('Schwab option chain · ' + CHAIN_TIME + ' · 4s old');
+  await expect(page.locator('#tdmCardOpt')).toContainText('775.00');
+  await expect(page.locator('#tdmCardVol .tdm-src')).toContainText(CHAIN_TIME + ' · 4s old');
+  await expect(page.locator('#tdmTrust')).toContainText('GAMMA ' + CHAIN_TIME + ' · 4s');
+  expect(errs).toEqual([]);
+});
+
+test('Desk: the levels pill keeps the snapshot time', async ({ page }) => {
+  const SNAP_TIME = 'Fri 09/25 06:59 PM CT';
+  const errs = [];
+  page.on('pageerror', (e) => errs.push(String(e)));
+  await intercept(page);
+  await page.route('**/api/levels**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
+    body: JSON.stringify(Object.assign({}, LEVELS, {
+      snapshot_as_of_ts_utc: 1790380799.830, snapshot_time_ct: SNAP_TIME,
+    })) }));
+  await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
+    localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await expect(page.locator('#tdmTrust')).toContainText('LEVELS ' + SNAP_TIME);
+  expect(errs).toEqual([]);
+});
+
+test('Right Now: the spot keeps its last trade time', async ({ page }) => {
+  await intercept(page);
+  await page.route('**/api/levels**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
+    body: JSON.stringify(Object.assign({}, LEVELS, { spot_time_ct: 'Fri 10/02 10:00 AM CT' })) }));
+  await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
+    localStorage.setItem('ed_sub', 'right-now'); } catch (e) {} });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await expect(page.locator('#tdBody .fl-meta')).toHaveText('spot 771.30 · last trade Fri 10/02 10:00 AM CT');
+});
+
 test.describe('Trade Desk renders served values', () => {
   test('Desk after the close: levels drawn from the served order; dark by default', async ({ page }) => {
     // 2026-09-28 21:40 ET: after the close /api/levels served an empty by_distance and the chart drew
@@ -183,6 +302,7 @@ test.describe('Trade Desk renders served values', () => {
       else if (url.includes('/api/bars1m')) body = BARS;
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
     });
+    await routeWatchlist(page, ['SPY']);
     await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     expect(await page.evaluate(() => document.documentElement.getAttribute('data-theme'))).toBe('dark');
@@ -206,6 +326,7 @@ test.describe('Trade Desk renders served values', () => {
       else if (url.includes('/api/bars1m')) body = BARS;
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
     });
+    await routeWatchlist(page, ['SPY']);
     await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart.levelsShown)).toBeGreaterThan(0);
@@ -280,7 +401,6 @@ test.describe('Trade Desk renders served values', () => {
     await expect.poll(() => opened).toContain('SPY');
     await page.evaluate(() => window.EdShell.setTicker('MU'));
     await expect.poll(() => opened).toContain('MU');
-    expect(await page.evaluate(() => window.EdStream.setActiveTicker)).toBeUndefined();   // no separate request
   });
 
   test('Market Map: the wheel over the price axis rescales price (as TradingView); over the plot it does not', async ({ page }) => {
@@ -302,6 +422,19 @@ test.describe('Trade Desk renders served values', () => {
     await page.mouse.wheel(0, 400);
     await page.waitForTimeout(200);
     expect(await span()).toBeCloseTo(widened, 6);
+  });
+
+  test('Desk: the live price line keeps its last trade time', async ({ page }) => {
+    await intercept(page);
+    await mockPriceSocket(page, []);
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().bars)).toBeGreaterThan(0);
+    await page.evaluate((spot) => window.dispatchEvent(new CustomEvent('ed:quote_tick', { detail: {
+      ticker: 'SPY', spot: spot, feed_live: false, trade_age_sec: 1, trade_time_ct: '14:00:01 CT',
+      outage: 'Schwab LEVELONE_EQUITIES feed down during RTH' } })), SPOT);
+    await expect.poll(() => page.evaluate(() => (window.EdTradeDeskMap.state().chart || {}).liveTitle)).toBe('LAST · last trade 14:00:01 CT');
+    await expect.poll(() => page.evaluate(() => (window.EdTradeDeskMap.state().chart || {}).livePrice)).toBe(SPOT);
   });
 
   test('Market Map: the served last completed bar; a price tick moves the live LAST line and reads no bars', async ({ page }) => {
@@ -391,6 +524,27 @@ test.describe('Trade Desk renders served values', () => {
     expect(errs).toEqual([]);
   });
 
+  test('Right Now: the book age keeps Schwab\'s book time', async ({ page }) => {
+    const errs = watchErrors(page);
+    const BOOK_TIME = 'Fri 09/25 06:59 PM CT';
+    await intercept(page);
+    await page.route('**/api/order-flow/microstructure**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify(Object.assign({}, MICRO, {
+        book_time_ct: BOOK_TIME, top_outage: 'Schwab NASDAQ_BOOK feed down during RTH',
+      })),
+    }));
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
+      localStorage.setItem('ed_sub', 'right-now'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const body = page.locator('#tdBody');
+    await expect(body).toContainText('OFFLINE');
+    await expect(body).toContainText(BOOK_TIME + ' · 1s');
+    await expect(body).toContainText('771.29 × 771.31');
+    await expect(body).toContainText('bid-heavy (NASDAQ_BOOK, depth 5)');
+    expect(errs).toEqual([]);
+  });
+
   test('Right Now re-reads all five reads on every push', async ({ page }) => {
     await intercept(page);
     await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'right-now'); } catch (e) {} });
@@ -440,9 +594,9 @@ test.describe('Trade Desk renders served values', () => {
   test('no panel stays marked busy once its read has landed', async ({ page }) => {
     await intercept(page);
     const CONTRACT = 'SPY   261002C00768000';
-    await page.route('**/api/streaming/active-option-contract', (route) => route.fulfill({ status: 200,
+    await page.route('**/api/flow-contract', (route) => route.fulfill({ status: 200,
       contentType: 'application/json', body: JSON.stringify({ ok: true, contract: CONTRACT }) }));
-    // each panel and the read it makes; Flow reads only once a contract is chosen and accepted
+    // each panel and the read it makes; Flow reads only once a contract is chosen
     const panels = [['trade-desk', 'right-now', '', '/api/order-flow/microstructure'],
       ['options', 'gamma', 'heatmap', '/api/options/gamma-surface'], ['options', 'gamma', 'levels', '/api/levels'],
       ['options', 'chain', '', '/api/chain'], ['options', 'flow', '', '/api/order-flow/options-microstructure'],
@@ -452,10 +606,7 @@ test.describe('Trade Desk renders served values', () => {
         localStorage.setItem('ed_sub', s); if (v) localStorage.setItem('ed_view', v); } catch (e) {} }, [ws, sub, view]);
       const landed = page.waitForResponse((r) => new URL(r.url()).pathname === read);
       await page.goto('/', { waitUntil: 'domcontentloaded' });
-      if (sub === 'flow') {
-        await page.evaluate((c) => window.EdStream.setActiveContract(c), CONTRACT);
-        await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:contract')));
-      }
+      if (sub === 'flow') await page.evaluate((c) => window.EdFlow.select(c), CONTRACT);
       await landed;                                                  // the read began, and so set its flag, before this
       expect(await page.locator('[aria-busy="true"]').count(), sub + ' ' + view).toBe(0);
     }
@@ -542,6 +693,7 @@ test.describe('Trade Desk renders served values', () => {
       else if (url.includes('/api/bars1m')) body = BARS;
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
     });
+    await routeWatchlist(page, ['SPY']);
     await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#tdmToolbar [data-tf="3"]')).toHaveText('3m');
@@ -572,6 +724,7 @@ test.describe('Trade Desk renders served values', () => {
         else if (url.includes('/api/bars1m')) body = BARS;
         return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
       });
+      await routeWatchlist(page, ['SPY']);
       await Promise.all([page.waitForResponse((r) => /\/api\/terrain\?/.test(r.url())),
         page.goto('/', { waitUntil: 'domcontentloaded' })]);
       await expect.poll(() => page.evaluate(() => (window.EdTradeDeskMap.state().chart || {}).bars || 0)).toBeGreaterThan(0);

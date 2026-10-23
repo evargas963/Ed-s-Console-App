@@ -16,16 +16,16 @@ EdWebConsole/
 ├── producer/    the levels producer: every derived value (gamma, exposure, vanna, charm, flip,
 │                walls, max pain, PCR, liquidity levels, order-flow measures), computed once
 ├── console/     the web server: the page and the read routes; computes nothing, writes nothing
-├── shared/      what more than one process uses: market calendar and sessions, config, runtime
+├── shared/      what more than one process uses: market sessions (Schwab's /markets), config, runtime
 │                paths, instrument identity
 ├── static/      the page (one shell)
 ├── tests/
 ├── tools/       the few checks and scripts the repository needs
 ├── docs/
-└── start_ed_console.bat, start_capture_daemon.bat, and the launch checks they run
+└── start_ed_console.bat (runs launch.py), start_capture_daemon.bat
 ```
 
-Outside the repository: the runtime folder (the one database, the token, logs) and worktrees.
+Outside the repository: the runtime folder (the two databases, the token, logs) and worktrees.
 
 ## 2. Where each file goes
 
@@ -35,16 +35,16 @@ Moves happen one change at a time. `delete` rows go with the change named in `AC
 |---|---|
 | `app/market_data/schwab/streaming/` (capture, live_push, live_ui), `stream_spine.py`, `live_market_plane.py`, `live_price_rows.py` | `daemon/` |
 | `schwab_client.py` (Schwab REST calls) | `daemon/` |
-| `calibration/complete_chain_capture.py` (the board, the chain sweep and the chain history, DATA_FLOW decisions 1 and 7) | `daemon/` |
+| `calibration/complete_chain_capture.py` (the chain sweep and the chain history, DATA_FLOW decisions 1 and 7) | `daemon/` |
 | `db.py` (the parts that stay: bars, level history, enrollment, connection), `db_authority.py`, `db_safety.py`, `json_blob_codec.py` | `daemon/` (writes) — the console opens the database read-only |
 | `terrain_engine.py`, `terrain_read.py`, `terrain_atr.py`, `math_exposure_core.py`, `math_levels.py`, `math_probabilities.py`, `math_volatility.py` | `producer/` |
 | `liquidity_value_engine.py`, `liquidity_models.py` | `producer/` |
-| `app/options/order_flow/`, `app/options/contracts/`, `l1_trade_observation.py`, `micro_structure.py` | `producer/` |
+| `app/options/order_flow/`, `l1_trade_observation.py`, `micro_structure.py` | `producer/` |
 | From `server.py`: the levels loop, `_publish_levels`, `_publish_price_levels`, the gamma-surface projection | `producer/` |
-| From `server.py`: the routes, startup; `push_changes.py` (the `/api/changes` push and the ticker on screen) | `console/` |
-| `time_et.py`, `config.py`, `runtime_layout.py`, `instrument_identity.py`, `production_universe.py`, `numeric_contract.py` | `shared/` |
+| From `server.py`: the routes, startup; `push_changes.py` (the `/api/changes` push) | `console/` |
+| `time_et.py`, `config.py`, `runtime_layout.py`, `instrument_identity.py`, `numeric_contract.py` | `shared/` |
 | `static/` (the page, its icons, manifest and the vendored chart library) | `static/` |
-| `start_*.bat`, `runtime_preflight.py`, `live_schwab_env.py`, `launcher_port_guard.py`, `wait_for_ready_then_open.py`, `reauth_schwab.py` | stay at the root |
+| `start_*.bat`, `launch.py`, `reauth_schwab.py` | stay at the root |
 | `tools/` (the git hooks and checks), `scripts/` (the test runners), `tests/`, `docs/`, the config files | stay |
 
 ## 3. Taking apart the big files
@@ -52,9 +52,8 @@ Moves happen one change at a time. `delete` rows go with the change named in `AC
 Each step is one change: delete what has no job, move what remains, update §2, pass the full test
 suite and the browser suite, check the running app. Nothing is copied.
 
-**db.py.** Keep, and move to `daemon/`: bars, level crosses, enrollment (the ticker board), the
-connection. The console stops writing (DATA_FLOW decision 5); its writes go to the daemon's
-writer, into `ed_console.db`.
+**db.py.** Keep, and move to `daemon/`: level crosses and the connection (P2-5). The console
+writes only the level crosses (DATA_FLOW decision 5).
 
 **server.py.**
 - To `producer/`: the levels loop, `_publish_levels`, `_publish_price_levels`, the gamma-surface

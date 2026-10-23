@@ -65,6 +65,12 @@ class RecentTape:
             held = list(self._prints[sym]) if sym in self._prints else []
         return held[::-1][:max(0, int(limit))]
 
+    def put_call(self, contract: str) -> "str | None":
+        """The contract's side (CALL / PUT) as Schwab's CONTRACT_TYPE last sent it; None until sent."""
+        sym = ticker_storage_key(contract)
+        with self._lock:
+            return put_call_side(self._context[sym].get("CONTRACT_TYPE")) if sym in self._context else None
+
 
 def _print_row(sym: str, item: dict, p: dict, context: dict, ts_recv: float) -> "dict[str, Any]":
     """One trade print in the Options Flow tape's schema: Schwab's values as sent; premium =
@@ -242,7 +248,7 @@ def book_heatmap_for_ticker(ticker: str, venue: str, *, minutes: float = 60.0,
     return {
         "ticker": sym, "venue": venue, "available": True,
         "since_ts": t0, "until_ts": rows[-1][0], "latest_captured_ts": rows[-1][0],
-        "n_buckets": n_buckets, "bucket_sec": round(bucket_sec, 2),
+        "n_buckets": n_buckets, "bucket_sec": bucket_sec,
         "price_min": min(prices_seen), "price_max": max(prices_seen),
         # the default price window, and the largest displayed size (the colour scale's top)
         "display_lo": display_lo, "display_hi": display_hi,

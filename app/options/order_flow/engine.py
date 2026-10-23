@@ -9,7 +9,7 @@ book as Schwab last sent it) and ``book_live`` (whether the feed delivers the bo
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Optional
 
 import numpy as np
 
@@ -36,15 +36,6 @@ OF_BOOK_DEPTH_DEEP: int = 5
 # ─────────────────────────────────────────────────────────────────────────────
 # DATA EXTRACTION — safe access to nested structures
 # ─────────────────────────────────────────────────────────────────────────────
-
-def _schwab_int(val: Any) -> Optional[int]:
-    """A whole-number Schwab field (size, days, epoch ms) as sent."""
-    v = schwab_number(val)
-    return int(v) if v is not None else None
-
-
-
-
 
 
 def _iter_content(data: dict) -> list:
@@ -229,8 +220,8 @@ def _extract_canonical_book(data: dict) -> dict:
     snapshot = _latest_book_snapshot(_iter_content(data))
     bid, ask, bid_leaf, ask_leaf = _resolve_bid_ask_prices(data)
     t = _top(data)
-    bid_size = _schwab_int(t.get("bid_size"))
-    ask_size = _schwab_int(t.get("ask_size"))
+    bid_size = schwab_count(t.get("bid_size"))
+    ask_size = schwab_count(t.get("ask_size"))
 
     bid_levels = _sorted_valid_levels(_iter_bids_levels(snapshot), descending=True) if snapshot else []
     ask_levels = _sorted_valid_levels(_iter_asks_levels(snapshot), descending=False) if snapshot else []
@@ -331,7 +322,7 @@ def _book_wall_candidates(levels: list[tuple[float, float]], side: str, depth: i
     for price, vol in lv:
         if vol >= OF_BOOK_WALL_MEDIAN_MULT * median:
             out.append({"side": side, "price": price, "volume": vol,
-                        "median_mult": round(vol / median, 2)})
+                        "median_mult": vol / median})
     return out
 
 
@@ -459,10 +450,10 @@ def compute_book_microstructure(data: dict, *, now_ts: float,
     prov["server_received_ts"] = now                # DERIVED (server wall clock at serialization)
     payload.pop("provenance_structural", None)
     payload["provenance"] = prov
-    book_age_sec = round(now - book_time_ms / 1000.0, 3) if book_time_ms else None
+    book_age_sec = now - book_time_ms / 1000.0 if book_time_ms else None
     payload["ages"] = {
         "book_age_sec": book_age_sec,
-        "quote_age_sec": round(now - exch_ts, 3) if exch_ts else None,
+        "quote_age_sec": now - exch_ts if exch_ts else None,
         # the live rule (live_market_plane.feed_live_for on the book's service), which the caller
         # passes as data["book_live"]; None with no book
         "book_stale": None if book_age_sec is None else data.get("book_live") is not True,

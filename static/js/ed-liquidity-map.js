@@ -53,7 +53,8 @@
     }));
     c.setLevels(((levels && levels.levels) || []).filter(function (l) { return REF_FAMILIES[l.family] && l.price != null; })
       .map(function (l) { return { id: l.id, price: Number(l.price), label: l.short, color: P.stale, style: 2, width: 1 }; }));
-    c.setLivePrice(levels && levels.spot != null ? Number(levels.spot) : null, null);
+    var spot = (levels && levels.spot != null) ? Number(levels.spot) : null;
+    c.setLivePrice(spot, null, (spot != null && levels.spot_time_ct != null) ? levels.spot_time_ct : null);
     var empty = h.querySelector('.liqm-empty');
     empty.hidden = !!(snap && snap.zones !== undefined);
     empty.textContent = empty.hidden ? '' : 'the liquidity snapshot request failed for ' + tk;

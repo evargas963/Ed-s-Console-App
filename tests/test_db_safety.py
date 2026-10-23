@@ -1,4 +1,4 @@
-"""db_safety: SQL guard, backups/manifests, row-count invariants, canonical shutil policy."""
+"""db_safety: SQL guard, row-count invariants, canonical shutil policy."""
 
 from __future__ import annotations
 

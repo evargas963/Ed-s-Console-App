@@ -6,7 +6,10 @@ so no chain fixture is involved. The rule under test is the read logic itself.
 
 from __future__ import annotations
 
-from math_levels import GAMMA_FLIP_TRUSTED, GAMMA_FLIP_UNAVAILABLE
+from math_levels import GAMMA_FLIP_NARROW, GAMMA_FLIP_TRUSTED, GAMMA_FLIP_UNAVAILABLE
+from numeric_contract import price_text
+from terrain_engine import compute_terrain
+from tests.real_chains import CRWD, SPY_0DTE
 from terrain_read import (
     POSTURE_FADE,
     POSTURE_FOLLOW,
@@ -60,25 +63,31 @@ def test_missing_inputs_fail_closed() -> None:
         assert r.posture == POSTURE_STAND_ASIDE
 
 
-def test_the_regime_is_read_by_one_rule_for_every_instrument(pin_clock):
+def test_a_missing_wall_reads_as_a_dash_and_a_known_one_as_its_price():
+    """CRWD's chain captured 2026-10-07 (tests/real_chains.py), valued at its capture: its flip, put
+    wall and gamma at spot as the levels producer computed them. Induced: the call wall withheld.
+    The box line shows the put wall at two decimals and the missing call wall as "-", no word."""
+    snap = compute_terrain(CRWD.ticker, [dict(c) for c in CRWD.chain], CRWD.spot, now=CRWD.now)
+    r = build_terrain_read(spot=CRWD.spot, flip=snap.gamma_flip, flip_confidence=snap.confidence,
+                           put_wall=snap.put_wall, call_wall=None,
+                           gamma_at_spot=snap.flip_diag.get("gamma_at_spot"))
+    box = next(line for line in r.lines if line.startswith("Box: "))
+    assert snap.put_wall is not None
+    assert box.startswith(f"Box: put wall {price_text(snap.put_wall)} (")
+    assert box.endswith(" · call wall -") and "unavailable" not in box
+
+
+def test_the_regime_is_read_by_one_rule_for_every_instrument():
     """All tickers (operator 2026-09-23, "show for all tickers"): the regime is the sign of
     Schwab's gamma at spot wherever the chain covers spot well enough to know it, for an ETF and
     a single name alike; a single name's regime was once withheld (SIGN-DEMOTION) and the
-    argument that carried the ticker in stayed behind, dead. Real Schwab chains (tests/fixtures),
-    each valued at its own capture: SPY's 0DTE chain is too narrow for the sign (withheld, the
-    coverage rule); CRWD's complete chain is trusted (issued)."""
-    import json
-    from pathlib import Path
-
-    from math_levels import GAMMA_FLIP_NARROW
-    from terrain_engine import compute_terrain
-    fx = Path(__file__).resolve().parent / "fixtures"
+    argument that carried the ticker in stayed behind, dead. Real Schwab chains
+    (tests/real_chains.py), each valued at its own capture: SPY's 0DTE chain is too narrow for the
+    sign (withheld, the coverage rule); CRWD's complete chain is trusted (issued)."""
     got = {}
-    for name, tk, at in (("real_spy_0dte_chain.json", "SPY", (2026, 9, 22, 12, 46)),
-                         ("real_crwd_complete_chain_quarter.json", "CRWD", (2026, 9, 2, 12, 0))):
-        pin_clock(*at)
-        d = json.loads((fx / name).read_text(encoding="utf-8"))
-        snap = compute_terrain(tk, [dict(c) for c in d["chain"]], float(d["spot"]))
+    for real in (SPY_0DTE, CRWD):
+        tk = real.ticker
+        snap = compute_terrain(tk, [dict(c) for c in real.chain], real.spot, now=real.now)
         g = snap.flip_diag.get("gamma_at_spot")
         got[tk] = (snap.confidence, snap.regime)
         if snap.confidence in (GAMMA_FLIP_NARROW, GAMMA_FLIP_UNAVAILABLE) or not g:

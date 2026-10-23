@@ -1,4 +1,4 @@
-"""db.py — the console database: level crosses and the ticker board."""
+"""db.py — the console database: level crosses."""
 
 from __future__ import annotations
 
@@ -145,10 +145,6 @@ class EdDB:
             self._bootstrap_sql_guard_suppress = True
             try:
                 self._init_schema()
-                self._ensure_logging_universe_table()
-                self._migrate_drop_session_log_v1()
-                self._migrate_drop_confluence_log_v1()
-                self._migrate_drop_news_events_v1()
             finally:
                 self._bootstrap_sql_guard_suppress = False
         log.info(f"EdDB initialized at {self.db_path}")
@@ -189,76 +185,6 @@ class EdDB:
 
             """)
         log.info("Schema initialized")
-
-    def _ensure_logging_universe_table(self):
-        """Issue 22 — durable background-logging enrollment (additive schema)."""
-        with self._connect() as conn:
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS logging_universe (
-                    ticker                     TEXT PRIMARY KEY COLLATE NOCASE,
-                    category                   TEXT NOT NULL,
-                    enrollment_source          TEXT,
-                    enrolled_ts_utc            REAL NOT NULL,
-                    last_seen_ts_utc           REAL NOT NULL,
-                    last_background_log_ts_utc REAL
-                )
-                """
-            )
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_logging_universe_cat "
-                "ON logging_universe (category, enrolled_ts_utc)"
-            )
-
-    def _migrate_drop_session_log_v1(self) -> None:
-        """Pass 6 — drop the session_log table.
-
-        session_log was scaffolded with start_session / end_session /
-        update_session_counts writers but zero production callers (one of the
-        4 originally-known dormants). verification/daily_health.py already
-        covers richer per-ticker session telemetry, so the table delivers
-        no incremental value. Drop is idempotent (IF EXISTS).
-        """
-        with self._connect() as conn:
-            try:
-                conn.execute("DROP TABLE IF EXISTS session_log")
-            except sqlite3.OperationalError as exc:
-                log.warning("drop session_log failed: %s", exc)
-
-    def _migrate_drop_news_events_v1(self) -> None:
-        """Pass 8 — drop the news_events table.
-
-        news_events was scaffolded with insert_news_event writer and a single
-        guarded call site in news_sentiment.py:refresh_and_context, but zero
-        production readers. Operator-authorized drop 2026-05-26 after Cursor
-        identified it as the only remaining table-level dormancy with a live
-        writer post-Pass 7. News headlines reach the operator UI via
-        ms.news_context (live aggregator), persistence added no value.
-        """
-        with self._connect() as conn:
-            try:
-                conn.execute("DROP INDEX IF EXISTS idx_news_ticker_ts")
-                conn.execute("DROP INDEX IF EXISTS idx_news_impact_ts")
-                conn.execute("DROP TABLE IF EXISTS news_events")
-            except sqlite3.OperationalError as exc:
-                log.warning("drop news_events failed: %s", exc)
-
-    def _migrate_drop_confluence_log_v1(self) -> None:
-        """Pass 7 — drop the confluence_log table.
-
-        confluence_log was scaffolded with log_confluence writer + ConfluenceLog
-        dataclass but zero production callers / zero readers. Cross-instrument
-        confluence state (spy_state / qqq_state / iwm_state / vix_state) is
-        already computed live per refresh in market_state and surfaced through
-        ms_dict for /api/state consumers; persisting it added no incremental
-        value because no analyzer ever read confluence_log rows back. Drop is
-        idempotent (IF EXISTS).
-        """
-        with self._connect() as conn:
-            try:
-                conn.execute("DROP TABLE IF EXISTS confluence_log")
-            except sqlite3.OperationalError as exc:
-                log.warning("drop confluence_log failed: %s", exc)
 
     # ════════════════════════════════════════════════════════════════════════
     # LEVEL CROSS OPERATIONS

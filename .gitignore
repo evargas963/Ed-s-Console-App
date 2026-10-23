@@ -1,5 +1,6 @@
 # Credentials & secrets
 schwab_token.json
+schwab_token.json.lock
 *.json.bak
 .env
 *.key
@@ -17,14 +18,12 @@ env/
 # Node
 node_modules/
 
-# Runtime output: logs, data, backups, runtime files the app writes
+# Runtime output: logs, data, runtime files the app writes
 *.log
 logs/
 .runtime/
 reports/
 data/*
-backups/db/*
-!backups/db/.gitkeep
 calibration/trading_data.db
 
 # Test artifacts

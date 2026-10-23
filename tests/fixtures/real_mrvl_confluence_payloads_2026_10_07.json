@@ -1,0 +1,4686 @@
+{
+ "source": "/api/confluence (server.confluence_payload) on MRVL's full chain captured 2026-10-07 10:31:20 ET (tests/fixtures/real_mrvl_full_chain_2026_10_07.json), published as the stored capture at the price Schwab sent; no live price row (spot absent). by_expiry: each expiry asked at the capture instant; front_passed: the front expiry asked on Sunday 2026-10-11, after it passed.",
+ "by_expiry": {
+  "2026-10-09": {
+   "preset": "WEEKLY",
+   "preset_text": "WEEKLY \u00b7 ceiling 75",
+   "scale_text": "0\u201375",
+   "weights_in_score": {
+    "GEXM": 0.25,
+    "OI": 0.15,
+    "DGEXM": 0.0,
+    "VOL": 0.1,
+    "FLOWM": 0.0,
+    "CHARMM": 0.08,
+    "VANNAM": 0.07,
+    "DEXM": 0.05,
+    "IV": 0.05
+   },
+   "ceiling": 75.0,
+   "notes": [],
+   "slopes": [
+    {
+     "label": "net gamma",
+     "text": "0.00"
+    },
+    {
+     "label": "open interest",
+     "text": "0.00"
+    },
+    {
+     "label": "volume",
+     "text": "0.01"
+    },
+    {
+     "label": "charm",
+     "text": "0.00"
+    },
+    {
+     "label": "vanna",
+     "text": "0.00"
+    },
+    {
+     "label": "delta",
+     "text": "0.00"
+    },
+    {
+     "label": "volatility",
+     "text": "0.02"
+    }
+   ],
+   "offscreen": [],
+   "rows": [
+    {
+     "strike": 295.0,
+     "strike_text": "295.00",
+     "net_gex_text": "+3.76",
+     "net_style": "background:rgb(14,80,47);font-weight:550",
+     "net_reason": null,
+     "oi_text": "3582",
+     "oi_style": "background:rgb(14,80,47);font-weight:550",
+     "oi_reason": null,
+     "pc_gex_text": "0.22",
+     "pc_gex_style": "background:rgb(16,50,40);font-weight:550",
+     "pc_gex_reason": null,
+     "gross_text": "5.84",
+     "gross_style": "background:rgb(14,71,45);font-weight:550",
+     "gross_reason": null,
+     "dgex_text": null,
+     "dgex_reason": "no change in gamma is produced",
+     "volume_text": "1539",
+     "volume_style": "background:rgb(14,76,46);font-weight:550",
+     "volume_reason": null,
+     "pc_vol_text": "0.01",
+     "pc_vol_style": "background:rgb(17,25,34);font-weight:550",
+     "pc_vol_reason": null,
+     "vol_oi_text": "0.43",
+     "vol_oi_style": "background:rgb(13,98,51);font-weight:550",
+     "vol_oi_reason": null,
+     "flow_text": null,
+     "flow_reason": "no signed flow is produced",
+     "dex_text": "+34.32",
+     "dex_style": "background:rgb(14,69,44);font-weight:550",
+     "dex_reason": null,
+     "vanna_text": "+0.22",
+     "vanna_style": "background:rgb(14,80,47);font-weight:550",
+     "vanna_reason": null,
+     "iv_text": "70.4",
+     "iv_style": "background:rgb(15,56,41);font-weight:550",
+     "iv_reason": null,
+     "charm_text": "-12.06",
+     "charm_style": "background:rgb(98,28,39);font-weight:550",
+     "charm_reason": null,
+     "score": 55.11046462312955,
+     "score_text": "55",
+     "heat_background": "background:rgb(11,128,58);font-weight:750",
+     "missing": [],
+     "contributions": [
+      {
+       "label": "net gamma",
+       "text": "19.0",
+       "raw_text": "3.76",
+       "normalized_text": "0.76",
+       "weight_text": "0.25"
+      },
+      {
+       "label": "open interest",
+       "text": "10.1",
+       "raw_text": "3582",
+       "normalized_text": "0.67",
+       "weight_text": "0.15"
+      },
+      {
+       "label": "volume",
+       "text": "8.2",
+       "raw_text": "1539",
+       "normalized_text": "0.82",
+       "weight_text": "0.10"
+      }
+     ],
+     "factors": [
+      {
+       "label": "net gamma",
+       "text": "19.0",
+       "raw_text": "3.76",
+       "normalized_text": "0.76",
+       "weight_text": "0.25"
+      },
+      {
+       "label": "open interest",
+       "text": "10.1",
+       "raw_text": "3582",
+       "normalized_text": "0.67",
+       "weight_text": "0.15"
+      },
+      {
+       "label": "volume",
+       "text": "8.2",
+       "raw_text": "1539",
+       "normalized_text": "0.82",
+       "weight_text": "0.10"
+      },
+      {
+       "label": "charm",
+       "text": "8.0",
+       "raw_text": "12.06",
+       "normalized_text": "1.00",
+       "weight_text": "0.08"
+      },
+      {
+       "label": "vanna",
+       "text": "7.0",
+       "raw_text": "0.22",
+       "normalized_text": "1.00",
+       "weight_text": "0.07"
+      },
+      {
+       "label": "delta",
+       "text": "2.8",
+       "raw_text": "34.32",
+       "normalized_text": "0.57",
+       "weight_text": "0.05"
+      },
+      {
+       "label": "volatility",
+       "text": "0.0",
+       "raw_text": "70.4",
+       "normalized_text": "0.00",
+       "weight_text": "0.05"
+      }
+     ],
+     "markers": [],
+     "distance_text": null,
+     "spot_line": false,
+     "inside": false
+    },
+    {
+     "strike": 292.5,
+     "strike_text": "292.50",
+     "net_gex_text": "+0.76",
+     "net_style": "background:rgb(16,35,37);font-weight:550",
+     "net_reason": null,
+     "oi_text": "867",
+     "oi_style": "background:rgb(16,38,37);font-weight:550",
+     "oi_reason": null,
+     "pc_gex_text": "0.34",
+     "pc_gex_style": "background:rgb(16,46,39);font-weight:550",
+     "pc_gex_reason": null,
+     "gross_text": "1.55",
+     "gross_style": "background:rgb(16,37,37);font-weight:550",
+     "gross_reason": null,
+     "dgex_text": null,
+     "dgex_reason": "no change in gamma is produced",
+     "volume_text": "717",
+     "volume_style": "background:rgb(16,48,40);font-weight:550",
+     "volume_reason": null,
+     "pc_vol_text": "0.06",
+     "pc_vol_style": "background:rgb(17,25,34);font-weight:550",
+     "pc_vol_reason": null,
+     "vol_oi_text": "0.83",
+     "vol_oi_style": "background:rgb(9,166,67);font-weight:750",
+     "vol_oi_reason": null,
+     "flow_text": null,
+     "flow_reason": "no signed flow is produced",
+     "dex_text": "+9.89",
+     "dex_style": "background:rgb(16,37,37);font-weight:550",
+     "dex_reason": null,
+     "vanna_text": "+0.03",
+     "vanna_style": "background:rgb(16,33,36);font-weight:550",
+     "vanna_reason": null,
+     "iv_text": "70.4",
+     "iv_style": "background:rgb(15,56,41);font-weight:550",
+     "iv_reason": null,
+     "charm_text": "-1.92",
+     "charm_style": "background:rgb(30,25,35);font-weight:550",
+     "charm_reason": null,
+     "score": 14.120904153098882,
+     "score_text": "14",
+     "heat_background": "background:rgb(15,51,40);font-weight:550",
+     "missing": [],
+     "contributions": [
+      {
+       "label": "net gamma",
+       "text": "3.8",
+       "raw_text": "0.76",
+       "normalized_text": "0.15",
+       "weight_text": "0.25"
+      },
+      {
+       "label": "volume",
+       "text": "3.8",
+       "raw_text": "717",
+       "normalized_text": "0.38",
+       "weight_text": "0.10"
+      },
+      {
+       "label": "open interest",
+       "text": "2.4",
+       "raw_text": "867",
+       "normalized_text": "0.16",
+       "weight_text": "0.15"
+      }
+     ],
+     "factors": [
+      {
+       "label": "net gamma",
+       "text": "3.8",
+       "raw_text": "0.76",
+       "normalized_text": "0.15",
+       "weight_text": "0.25"
+      },
+      {
+       "label": "volume",
+       "text": "3.8",
+       "raw_text": "717",
+       "normalized_text": "0.38",
+       "weight_text": "0.10"
+      },
+      {
+       "label": "open interest",
+       "text": "2.4",
+       "raw_text": "867",
+       "normalized_text": "0.16",
+       "weight_text": "0.15"
+      },
+      {
+       "label": "charm",
+       "text": "1.7",
+       "raw_text": "1.92",
+       "normalized_text": "0.21",
+       "weight_text": "0.08"
+      },
+      {
+       "label": "vanna",
+       "text": "1.5",
+       "raw_text": "0.03",
+       "normalized_text": "0.22",
+       "weight_text": "0.07"
+      },
+      {
+       "label": "delta",
+       "text": "0.8",
+       "raw_text": "9.89",
+       "normalized_text": "0.16",
+       "weight_text": "0.05"
+      },
+      {
+       "label": "volatility",
+       "text": "0.0",
+       "raw_text": "70.4",
+       "normalized_text": "0.00",
+       "weight_text": "0.05"
+      }
+     ],
+     "markers": [],
+     "distance_text": null,
+     "spot_line": false,
+     "inside": false
+    },
+    {
+     "strike": 290.0,
+     "strike_text": "290.00",
+     "net_gex_text": "+9.57",
+     "net_style": "background:rgb(9,166,67);font-weight:750",
+     "net_reason": null,
+     "oi_text": "9090",
+     "oi_style": "background:rgb(9,166,67);font-weight:750",
+     "oi_reason": null,
+     "pc_gex_text": "0.30",
+     "pc_gex_style": "background:rgb(16,47,39);font-weight:550",
+     "pc_gex_reason": null,
+     "gross_text": "17.59",
+     "gross_style": "background:rgb(9,166,67);font-weight:750",
+     "gross_reason": null,
+     "dgex_text": null,
+     "dgex_reason": "no change in gamma is produced",
+     "volume_text": "3289",
+     "volume_style": "background:rgb(11,135,60);font-weight:750",
+     "volume_reason": null,
+     "pc_vol_text": "0.06",
+     "pc_vol_style": "background:rgb(17,25,34);font-weight:550",
+     "pc_vol_reason": null,
+     "vol_oi_text": "0.36",
+     "vol_oi_style": "background:rgb(13,86,48);font-weight:550",
+     "vol_oi_reason": null,
+     "flow_text": null,
+     "flow_reason": "no signed flow is produced",
+     "dex_text": "+108.50",
+     "dex_style": "background:rgb(9,166,67);font-weight:750",
+     "dex_reason": null,
+     "vanna_text": "+0.32",
+     "vanna_style": "background:rgb(12,107,53);font-weight:550",
+     "vanna_reason": null,
+     "iv_text": "69.7",
+     "iv_style": "background:rgb(15,56,41);font-weight:550",
+     "iv_reason": null,
+     "charm_text": "-17.68",
+     "charm_style": "background:rgb(136,30,41);font-weight:550",
+     "charm_reason": null,
+     "score": 70.0,
+     "score_text": "70",
+     "heat_background": "background:rgb(10,157,65);font-weight:750",
+     "missing": [],
+     "contributions": [
+      {
+       "label": "net gamma",
+       "text": "25.0",
+       "raw_text": "9.57",
+       "normalized_text": "1.00",
+       "weight_text": "0.25"
+      },
+      {
+       "label": "open interest",
+       "text": "15.0",
+       "raw_text": "9090",
+       "normalized_text": "1.00",
+       "weight_text": "0.15"
+      },
+      {
+       "label": "volume",
+       "text": "10.0",
+       "raw_text": "3289",
+       "normalized_text": "1.00",
+       "weight_text": "0.10"
+      }
+     ],
+     "factors": [
+      {
+       "label": "net gamma",
+       "text": "25.0",
+       "raw_text": "9.57",
+       "normalized_text": "1.00",
+       "weight_text": "0.25"
+      },
+      {
+       "label": "open interest",
+       "text": "15.0",
+       "raw_text": "9090",
+       "normalized_text": "1.00",
+       "weight_text": "0.15"
+      },
+      {
+       "label": "volume",
+       "text": "10.0",
+       "raw_text": "3289",
+       "normalized_text": "1.00",
+       "weight_text": "0.10"
+      },
+      {
+       "label": "charm",
+       "text": "8.0",
+       "raw_text": "17.68",
+       "normalized_text": "1.00",
+       "weight_text": "0.08"
+      },
+      {
+       "label": "vanna",
+       "text": "7.0",
+       "raw_text": "0.32",
+       "normalized_text": "1.00",
+       "weight_text": "0.07"
+      },
+      {
+       "label": "delta",
+       "text": "5.0",
+       "raw_text": "108.50",
+       "normalized_text": "1.00",
+       "weight_text": "0.05"
+      },
+      {
+       "label": "volatility",
+       "text": "0.0",
+       "raw_text": "69.7",
+       "normalized_text": "0.00",
+       "weight_text": "0.05"
+      }
+     ],
+     "markers": [],
+     "distance_text": null,
+     "spot_line": false,
+     "inside": false
+    },
+    {
+     "strike": 287.5,
+     "strike_text": "287.50",
+     "net_gex_text": "+1.11",
+     "net_style": "background:rgb(16,40,38);font-weight:550",
+     "net_reason": null,
+     "oi_text": "1015",
+     "oi_style": "background:rgb(16,40,38);font-weight:550",
+     "oi_reason": null,
+     "pc_gex_text": "0.30",
+     "pc_gex_style": "background:rgb(16,47,39);font-weight:550",
+     "pc_gex_reason": null,
+     "gross_text": "2.05",
+     "gross_style": "background:rgb(16,41,38);font-weight:550",
+     "gross_reason": null,
+     "dgex_text": null,
+     "dgex_reason": "no change in gamma is produced",
+     "volume_text": "474",
+     "volume_style": "background:rgb(16,40,38);font-weight:550",
+     "volume_reason": null,
+     "pc_vol_text": "0.31",
+     "pc_vol_style": "background:rgb(17,25,34);font-weight:550",
+     "pc_vol_reason": null,
+     "vol_oi_text": "0.47",
+     "vol_oi_style": "background:rgb(12,104,53);font-weight:550",
+     "vol_oi_reason": null,
+     "flow_text": null,
+     "flow_reason": "no signed flow is produced",
+     "dex_text": "+13.08",
+     "dex_style": "background:rgb(16,41,38);font-weight:550",
+     "dex_reason": null,
+     "vanna_text": "+0.02",
+     "vanna_style": "background:rgb(17,30,35);font-weight:550",
+     "vanna_reason": null,
+     "iv_text": "70.1",
+     "iv_style": "background:rgb(15,56,41);font-weight:550",
+     "iv_reason": null,
+     "charm_text": "-1.29",
+     "charm_style": "background:rgb(26,24,35);font-weight:550",
+     "charm_reason": null,
+     "score": 14.247173504406852,
+     "score_text": "14",
+     "heat_background": "background:rgb(15,51,40);font-weight:550",
+     "missing": [],
+     "contributions": [
+      {
+       "label": "net gamma",
+       "text": "5.6",
+       "raw_text": "1.11",
+       "normalized_text": "0.22",
+       "weight_text": "0.25"
+      },
+      {
+       "label": "open interest",
+       "text": "2.9",
+       "raw_text": "1015",
+       "normalized_text": "0.19",
+       "weight_text": "0.15"
+      },
+      {
+       "label": "volume",
+       "text": "2.5",
+       "raw_text": "474",
+       "normalized_text": "0.25",
+       "weight_text": "0.10"
+      }
+     ],
+     "factors": [
+      {
+       "label": "net gamma",
+       "text": "5.6",
+       "raw_text": "1.11",
+       "normalized_text": "0.22",
+       "weight_text": "0.25"
+      },
+      {
+       "label": "open interest",
+       "text": "2.9",
+       "raw_text": "1015",
+       "normalized_text": "0.19",
+       "weight_text": "0.15"
+      },
+      {
+       "label": "volume",
+       "text": "2.5",
+       "raw_text": "474",
+       "normalized_text": "0.25",
+       "weight_text": "0.10"
+      },
+      {
+       "label": "charm",
+       "text": "1.2",
+       "raw_text": "1.29",
+       "normalized_text": "0.14",
+       "weight_text": "0.08"
+      },
+      {
+       "label": "delta",
+       "text": "1.1",
+       "raw_text": "13.08",
+       "normalized_text": "0.22",
+       "weight_text": "0.05"
+      },
+      {
+       "label": "vanna",
+       "text": "1.0",
+       "raw_text": "0.02",
+       "normalized_text": "0.15",
+       "weight_text": "0.07"
+      },
+      {
+       "label": "volatility",
+       "text": "0.0",
+       "raw_text": "70.1",
+       "normalized_text": "0.00",
+       "weight_text": "0.05"
+      }
+     ],
+     "markers": [],
+     "distance_text": null,
+     "spot_line": false,
+     "inside": false
+    },
+    {
+     "strike": 285.0,
+     "strike_text": "285.00",
+     "net_gex_text": "+4.95",
+     "net_style": "background:rgb(13,97,51);font-weight:550",
+     "net_reason": null,
+     "oi_text": "4370",
+     "oi_style": "background:rgb(13,92,50);font-weight:550",
+     "oi_reason": null,
+     "pc_gex_text": "0.29",
+     "pc_gex_style": "background:rgb(16,47,39);font-weight:550",
+     "pc_gex_reason": null,
+     "gross_text": "9.02",
+     "gross_style": "background:rgb(13,97,51);font-weight:550",
+     "gross_reason": null,
+     "dgex_text": null,
+     "dgex_reason": "no change in gamma is produced",
+     "volume_text": "1619",
+     "volume_style": "background:rgb(14,79,47);font-weight:550",
+     "volume_reason": null,
+     "pc_vol_text": "0.17",
+     "pc_vol_style": "background:rgb(17,25,34);font-weight:550",
+     "pc_vol_reason": null,
+     "vol_oi_text": "0.37",
+     "vol_oi_style": "background:rgb(13,88,49);font-weight:550",
+     "vol_oi_reason": null,
+     "flow_text": null,
+     "flow_reason": "no signed flow is produced",
+     "dex_text": "+60.52",
+     "dex_style": "background:rgb(13,103,52);font-weight:550",
+     "dex_reason": null,
+     "vanna_text": "+0.04",
+     "vanna_style": "background:rgb(16,35,37);font-weight:550",
+     "vanna_reason": null,
+     "iv_text": "70.0",
+     "iv_style": "background:rgb(15,56,41);font-weight:550",
+     "iv_reason": null,
+     "charm_text": "-2.34",
+     "charm_style": "background:rgb(33,25,35);font-weight:550",
+     "charm_reason": null,
+     "score": 54.86259337217364,
+     "score_text": "55",
+     "heat_background": "background:rgb(11,128,58);font-weight:750",
+     "missing": [],
+     "contributions": [
+      {
+       "label": "net gamma",
+       "text": "25.0",
+       "raw_text": "4.95",
+       "normalized_text": "1.00",
+       "weight_text": "0.25"
+      },
+      {
+       "label": "open interest",
+       "text": "12.3",
+       "raw_text": "4370",
+       "normalized_text": "0.82",
+       "weight_text": "0.15"
+      },
+      {
+       "label": "volume",
+       "text": "8.6",
+       "raw_text": "1619",
+       "normalized_text": "0.86",
+       "weight_text": "0.10"
+      }
+     ],
+     "factors": [
+      {
+       "label": "net gamma",
+       "text": "25.0",
+       "raw_text": "4.95",
+       "normalized_text": "1.00",
+       "weight_text": "0.25"
+      },
+      {
+       "label": "open interest",
+       "text": "12.3",
+       "raw_text": "4370",
+       "normalized_text": "0.82",
+       "weight_text": "0.15"
+      },
+      {
+       "label": "volume",
+       "text": "8.6",
+       "raw_text": "1619",
+       "normalized_text": "0.86",
+       "weight_text": "0.10"
+      },
+      {
+       "label": "delta",
+       "text": "5.0",
+       "raw_text": "60.52",
+       "normalized_text": "1.00",
+       "weight_text": "0.05"
+      },
+      {
+       "label": "charm",
+       "text": "2.1",
+       "raw_text": "2.34",
+       "normalized_text": "0.26",
+       "weight_text": "0.08"
+      },
+      {
+       "label": "vanna",
+       "text": "1.9",
+       "raw_text": "0.04",
+       "normalized_text": "0.27",
+       "weight_text": "0.07"
+      },
+      {
+       "label": "volatility",
+       "text": "0.0",
+       "raw_text": "70.0",
+       "normalized_text": "0.00",
+       "weight_text": "0.05"
+      }
+     ],
+     "markers": [],
+     "distance_text": null,
+     "spot_line": false,
+     "inside": false
+    },
+    {
+     "strike": 282.5,
+     "strike_text": "282.50",
+     "net_gex_text": "+6.67",
+     "net_style": "background:rgb(11,123,57);font-weight:750",
+     "net_reason": null,
+     "oi_text": "3901",
+     "oi_style": "background:rgb(14,85,48);font-weight:550",
+     "oi_reason": null,
+     "pc_gex_text": "0.10",
+     "pc_gex_style": "background:rgb(15,54,41);font-weight:550",
+     "pc_gex_reason": null,
+     "gross_text": "8.11",
+     "gross_style": "background:rgb(13,89,49);font-weight:550",
+     "gross_reason": null,
+     "dgex_text": null,
+     "dgex_reason": "no change in gamma is produced",
+     "volume_text": "2203",
+     "volume_style": "background:rgb(13,99,51);font-weight:550",
+     "volume_reason": null,
+     "pc_vol_text": "0.10",
+     "pc_vol_style": "background:rgb(17,25,34);font-weight:550",
+     "pc_vol_reason": null,
+     "vol_oi_text": "0.56",
+     "vol_oi_style": "background:rgb(12,121,57);font-weight:750",
+     "vol_oi_reason": null,
+     "flow_text": null,
+     "flow_reason": "no signed flow is produced",
+     "dex_text": "+59.24",
+     "dex_style": "background:rgb(13,102,52);font-weight:550",
+     "dex_reason": null,
+     "vanna_text": "-0.03",
+     "vanna_style": "background:rgb(27,25,35);font-weight:550",
+     "vanna_reason": null,
+     "iv_text": "69.2",
+     "iv_style": "background:rgb(15,55,41);font-weight:550",
+     "iv_reason": null,
+     "charm_text": "+1.52",
+     "charm_style": "background:rgb(17,31,36);font-weight:550",
+     "charm_reason": null,
+     "score": 53.47646480286908,
+     "score_text": "53",
+     "heat_background": "background:rgb(11,125,58);font-weight:750",
+     "missing": [],
+     "contributions": [
+      {
+       "label": "net gamma",
+       "text": "25.0",
+       "raw_text": "6.67",
+       "normalized_text": "1.00",
+       "weight_text": "0.25"
+      },
+      {
+       "label": "open interest",
+       "text": "11.0",
+       "raw_text": "3901",
+       "normalized_text": "0.73",
+       "weight_text": "0.15"
+      },
+      {
+       "label": "volume",
+       "text": "10.0",
+       "raw_text": "2203",
+       "normalized_text": "1.00",
+       "weight_text": "0.10"
+      }
+     ],
+     "factors": [
+      {
+       "label": "net gamma",
+       "text": "25.0",
+       "raw_text": "6.67",
+       "normalized_text": "1.00",
+       "weight_text": "0.25"
+      },
+      {
+       "label": "open interest",
+       "text": "11.0",
+       "raw_text": "3901",
+       "normalized_text": "0.73",
+       "weight_text": "0.15"
+      },
+      {
+       "label": "volume",
+       "text": "10.0",
+       "raw_text": "2203",
+       "normalized_text": "1.00",
+       "weight_text": "0.10"
+      },
+      {
+       "label": "delta",
+       "text": "4.9",
+       "raw_text": "59.24",
+       "normalized_text": "0.98",
+       "weight_text": "0.05"
+      },
+      {
+       "label": "charm",
+       "text": "1.4",
+       "raw_text": "1.52",
+       "normalized_text": "0.17",
+       "weight_text": "0.08"
+      },
+      {
+       "label": "vanna",
+       "text": "1.2",
+       "raw_text": "0.03",
+       "normalized_text": "0.18",
+       "weight_text": "0.07"
+      },
+      {
+       "label": "volatility",
+       "text": "0.0",
+       "raw_text": "69.2",
+       "normalized_text": "0.00",
+       "weight_text": "0.05"
+      }
+     ],
+     "markers": [],
+     "distance_text": null,
+     "spot_line": false,
+     "inside": false
+    },
+    {
+     "strike": 280.0,
+     "strike_text": "280.00",
+     "net_gex_text": "+5.39",
+     "net_style": "background:rgb(12,104,53);font-weight:550",
+     "net_reason": null,
+     "oi_text": "5203",
+     "oi_style": "background:rgb(12,105,53);font-weight:550",
+     "oi_reason": null,
+     "pc_gex_text": "0.32",
+     "pc_gex_style": "background:rgb(16,47,39);font-weight:550",
+     "pc_gex_reason": null,
+     "gross_text": "10.39",
+     "gross_style": "background:rgb(12,108,53);font-weight:550",
+     "gross_reason": null,
+     "dgex_text": null,
+     "dgex_reason": "no change in gamma is produced",
+     "volume_text": "2663",
+     "volume_style": "background:rgb(12,114,55);font-weight:550",
+     "volume_reason": null,
+     "pc_vol_text": "0.72",
+     "pc_vol_style": "background:rgb(17,24,34);font-weight:550",
+     "pc_vol_reason": null,
+     "vol_oi_text": "0.51",
+     "vol_oi_style": "background:rgb(12,112,54);font-weight:550",
+     "vol_oi_reason": null,
+     "flow_text": null,
+     "flow_reason": "no signed flow is produced",
+     "dex_text": "+81.94",
+     "dex_style": "background:rgb(11,131,59);font-weight:750",
+     "dex_reason": null,
+     "vanna_text": "-0.09",
+     "vanna_style": "background:rgb(51,26,36);font-weight:550",
+     "vanna_reason": null,
+     "iv_text": "70.0",
+     "iv_style": "background:rgb(15,56,41);font-weight:550",
+     "iv_reason": null,
+     "charm_text": "+4.99",
+     "charm_style": "background:rgb(16,47,39);font-weight:550",
+     "charm_reason": null,
+     "score": 63.09019096146279,
+     "score_text": "63",
+     "heat_background": "background:rgb(10,143,62);font-weight:750",
+     "missing": [],
+     "contributions": [
+      {
+       "label": "net gamma",
+       "text": "25.0",
+       "raw_text": "5.39",
+       "normalized_text": "1.00",
+       "weight_text": "0.25"
+      },
+      {
+       "label": "open interest",
+       "text": "14.7",
+       "raw_text": "5203",
+       "normalized_text": "0.98",
+       "weight_text": "0.15"
+      },
+      {
+       "label": "volume",
+       "text": "10.0",
+       "raw_text": "2663",
+       "normalized_text": "1.00",
+       "weight_text": "0.10"
+      }
+     ],
+     "factors": [
+      {
+       "label": "net gamma",
+       "text": "25.0",
+       "raw_text": "5.39",
+       "normalized_text": "1.00",
+       "weight_text": "0.25"
+      },
+      {
+       "label": "open interest",
+       "text": "14.7",
+       "raw_text": "5203",
+       "normalized_text": "0.98",
+       "weight_text": "0.15"
+      },
+      {
+       "label": "volume",
+       "text": "10.0",
+       "raw_text": "2663",
+       "normalized_text": "1.00",
+       "weight_text": "0.10"
+      },
+      {
+       "label": "delta",
+       "text": "5.0",
+       "raw_text": "81.94",
+       "normalized_text": "1.00",
+       "weight_text": "0.05"
+      },
+      {
+       "label": "charm",
+       "text": "4.4",
+       "raw_text": "4.99",
+       "normalized_text": "0.55",
+       "weight_text": "0.08"
+      },
+      {
+       "label": "vanna",
+       "text": "4.0",
+       "raw_text": "0.09",
+       "normalized_text": "0.57",
+       "weight_text": "0.07"
+      },
+      {
+       "label": "volatility",
+       "text": "0.0",
+       "raw_text": "70.0",
+       "normalized_text": "0.00",
+       "weight_text": "0.05"
+      }
+     ],
+     "markers": [],
+     "distance_text": null,
+     "spot_line": false,
+     "inside": false
+    },
+    {
+     "strike": 277.5,
+     "strike_text": "277.50",
+     "net_gex_text": "+2.05",
+     "net_style": "background:rgb(15,54,41);font-weight:550",
+     "net_reason": null,
+     "oi_text": "2019",
+     "oi_style": "background:rgb(15,56,41);font-weight:550",
+     "oi_reason": null,
+     "pc_gex_text": "0.30",
+     "pc_gex_style": "background:rgb(16,47,39);font-weight:550",
+     "pc_gex_reason": null,
+     "gross_text": "3.80",
+     "gross_style": "background:rgb(15,55,41);font-weight:550",
+     "gross_reason": null,
+     "dgex_text": null,
+     "dgex_reason": "no change in gamma is produced",
+     "volume_text": "985",
+     "volume_style": "background:rgb(15,57,42);font-weight:550",
+     "volume_reason": null,
+     "pc_vol_text": "1.36",
+     "pc_vol_style": "background:rgb(18,24,34);font-weight:550",
+     "pc_vol_reason": null,
+     "vol_oi_text": "0.49",
+     "vol_oi_style": "background:rgb(12,108,53);font-weight:550",
+     "vol_oi_reason": null,
+     "flow_text": null,
+     "flow_reason": "no signed flow is produced",
+     "dex_text": "+33.82",
+     "dex_style": "background:rgb(15,68,44);font-weight:550",
+     "dex_reason": null,
+     "vanna_text": "-0.06",
+     "vanna_style": "background:rgb(40,25,35);font-weight:550",
+     "vanna_reason": null,
+     "iv_text": "70.1",
+     "iv_style": "background:rgb(15,56,41);font-weight:550",
+     "iv_reason": null,
+     "charm_text": "+3.35",
+     "charm_style": "background:rgb(16,39,38);font-weight:550",
+     "charm_reason": null,
+     "score": 29.721776271677847,
+     "score_text": "30",
+     "heat_background": "background:rgb(14,80,47);font-weight:550",
+     "missing": [],
+     "contributions": [
+      {
+       "label": "net gamma",
+       "text": "10.4",
+       "raw_text": "2.05",
+       "normalized_text": "0.41",
+       "weight_text": "0.25"
+      },
+      {
+       "label": "open interest",
+       "text": "5.7",
+       "raw_text": "2019",
+       "normalized_text": "0.38",
+       "weight_text": "0.15"
+      },
+      {
+       "label": "volume",
+       "text": "5.2",
+       "raw_text": "985",
+       "normalized_text": "0.52",
+       "weight_text": "0.10"
+      }
+     ],
+     "factors": [
+      {
+       "label": "net gamma",
+       "text": "10.4",
+       "raw_text": "2.05",
+       "normalized_text": "0.41",
+       "weight_text": "0.25"
+      },
+      {
+       "label": "open interest",
+       "text": "5.7",
+       "raw_text": "2019",
+       "normalized_text": "0.38",
+       "weight_text": "0.15"
+      },
+      {
+       "label": "volume",
+       "text": "5.2",
+       "raw_text": "985",
+       "normalized_text": "0.52",
+       "weight_text": "0.10"
+      },
+      {
+       "label": "charm",
+       "text": "3.0",
+       "raw_text": "3.35",
+       "normalized_text": "0.37",
+       "weight_text": "0.08"
+      },
+      {
+       "label": "delta",
+       "text": "2.8",
+       "raw_text": "33.82",
+       "normalized_text": "0.56",
+       "weight_text": "0.05"
+      },
+      {
+       "label": "vanna",
+       "text": "2.7",
+       "raw_text": "0.06",
+       "normalized_text": "0.38",
+       "weight_text": "0.07"
+      },
+      {
+       "label": "volatility",
+       "text": "0.0",
+       "raw_text": "70.1",
+       "normalized_text": "0.00",
+       "weight_text": "0.05"
+      }
+     ],
+     "markers": [],
+     "distance_text": null,
+     "spot_line": false,
+     "inside": false
+    },
+    {
+     "strike": 275.0,
+     "strike_text": "275.00",
+     "net_gex_text": "+3.26",
+     "net_style": "background:rgb(14,72,45);font-weight:550",
+     "net_reason": null,
+     "oi_text": "4282",
+     "oi_style": "background:rgb(13,91,50);font-weight:550",
+     "oi_reason": null,
+     "pc_gex_text": "0.39",
+     "pc_gex_style": "background:rgb(16,44,39);font-weight:550",
+     "pc_gex_reason": null,
+     "gross_text": "7.43",
+     "gross_style": "background:rgb(14,84,48);font-weight:550",
+     "gross_reason": null,
+     "dgex_text": null,
+     "dgex_reason": "no change in gamma is produced",
+     "volume_text": "1883",
+     "volume_style": "background:rgb(13,88,49);font-weight:550",
+     "volume_reason": null,
+     "pc_vol_text": "1.86",
+     "pc_vol_style": "background:rgb(18,24,34);font-weight:550",
+     "pc_vol_reason": null,
+     "vol_oi_text": "0.44",
+     "vol_oi_style": "background:rgb(13,100,52);font-weight:550",
+     "vol_oi_reason": null,
+     "flow_text": null,
+     "flow_reason": "no signed flow is produced",
+     "dex_text": "+72.80",
+     "dex_style": "background:rgb(12,119,56);font-weight:750",
+     "dex_reason": null,
+     "vanna_text": "-0.14",
+     "vanna_style": "background:rgb(69,27,37);font-weight:550",
+     "vanna_reason": null,
+     "iv_text": "69.8",
+     "iv_style": "background:rgb(15,56,41);font-weight:550",
+     "iv_reason": null,
+     "charm_text": "+7.64",
+     "charm_style": "background:rgb(15,59,42);font-weight:550",
+     "charm_reason": null,
+     "score": 56.437909494845975,
+     "score_text": "56",
+     "heat_background": "background:rgb(11,131,59);font-weight:750",
+     "missing": [],
+     "contributions": [
+      {
+       "label": "net gamma",
+       "text": "16.5",
+       "raw_text": "3.26",
+       "normalized_text": "0.66",
+       "weight_text": "0.25"
+      },
+      {
+       "label": "open interest",
+       "text": "12.1",
+       "raw_text": "4282",
+       "normalized_text": "0.80",
+       "weight_text": "0.15"
+      },
+      {
+       "label": "volume",
+       "text": "10.0",
+       "raw_text": "1883",
+       "normalized_text": "1.00",
+       "weight_text": "0.10"
+      }
+     ],
+     "factors": [
+      {
+       "label": "net gamma",
+       "text": "16.5",
+       "raw_text": "3.26",
+       "normalized_text": "0.66",
+       "weight_text": "0.25"
+      },
+      {
+       "label": "open interest",
+       "text": "12.1",
+       "raw_text": "4282",
+       "normalized_text": "0.80",
+       "weight_text": "0.15"
+      },
+      {
+       "label": "volume",
+       "text": "10.0",
+       "raw_text": "1883",
+       "normalized_text": "1.00",
+       "weight_text": "0.10"
+      },
+      {
+       "label": "charm",
+       "text": "6.8",
+       "raw_text": "7.64",
+       "normalized_text": "0.85",
+       "weight_text": "0.08"
+      },
+      {
+       "label": "vanna",
+       "text": "6.1",
+       "raw_text": "0.14",
+       "normalized_text": "0.87",
+       "weight_text": "0.07"
+      },
+      {
+       "label": "delta",
+       "text": "5.0",
+       "raw_text": "72.80",
+       "normalized_text": "1.00",
+       "weight_text": "0.05"
+      },
+      {
+       "label": "volatility",
+       "text": "0.0",
+       "raw_text": "69.8",
+       "normalized_text": "0.00",
+       "weight_text": "0.05"
+      }
+     ],
+     "markers": [],
+     "distance_text": null,
+     "spot_line": false,
+     "inside": false
+    },
+    {
+     "strike": 272.5,
+     "strike_text": "272.50",
+     "net_gex_text": "+0.39",
+     "net_style": "background:rgb(17,30,35);font-weight:550",
+     "net_reason": null,
+     "oi_text": "2153",
+     "oi_style": "background:rgb(15,58,42);font-weight:550",
+     "oi_reason": null,
+     "pc_gex_text": "0.79",
+     "pc_gex_style": "background:rgb(17,31,36);font-weight:550",
+     "pc_gex_reason": null,
+     "gross_text": "3.32",
+     "gross_style": "background:rgb(15,51,40);font-weight:550",
+     "gross_reason": null,
+     "dgex_text": null,
+     "dgex_reason": "no change in gamma is produced",
+     "volume_text": "855",
+     "volume_style": "background:rgb(15,53,41);font-weight:550",
+     "volume_reason": null,
+     "pc_vol_text": "8.10",
+     "pc_vol_style": "background:rgb(28,25,35);font-weight:550",
+     "pc_vol_reason": null,
+     "vol_oi_text": "0.40",
+     "vol_oi_style": "background:rgb(13,92,50);font-weight:550",
+     "vol_oi_reason": null,
+     "flow_text": null,
+     "flow_reason": "no signed flow is produced",
+     "dex_text": "+32.53",
+     "dex_style": "background:rgb(15,67,44);font-weight:550",
+     "dex_reason": null,
+     "vanna_text": "-0.02",
+     "vanna_style": "background:rgb(25,24,34);font-weight:550",
+     "vanna_reason": null,
+     "iv_text": "70.0",
+     "iv_style": "background:rgb(15,56,41);font-weight:550",
+     "iv_reason": null,
+     "charm_text": "+1.17",
+     "charm_style": "background:rgb(17,29,35);font-weight:550",
+     "charm_reason": null,
+     "score": 17.208320708776675,
+     "score_text": "17",
+     "heat_background": "background:rgb(15,57,42);font-weight:550",
+     "missing": [],
+     "contributions": [
+      {
+       "label": "open interest",
+       "text": "6.1",
+       "raw_text": "2153",
+       "normalized_text": "0.40",
+       "weight_text": "0.15"
+      },
+      {
+       "label": "volume",
+       "text": "4.5",
+       "raw_text": "855",
+       "normalized_text": "0.45",
+       "weight_text": "0.10"
+      },
+      {
+       "label": "delta",
+       "text": "2.7",
+       "raw_text": "32.53",
+       "normalized_text": "0.54",
+       "weight_text": "0.05"
+      }
+     ],
+     "factors": [
+      {
+       "label": "open interest",
+       "text": "6.1",
+       "raw_text": "2153",
+       "normalized_text": "0.40",
+       "weight_text": "0.15"
+      },
+      {
+       "label": "volume",
+       "text": "4.5",
+       "raw_text": "855",
+       "normalized_text": "0.45",
+       "weight_text": "0.10"
+      },
+      {
+       "label": "delta",
+       "text": "2.7",
+       "raw_text": "32.53",
+       "normalized_text": "0.54",
+       "weight_text": "0.05"
+      },
+      {
+       "label": "net gamma",
+       "text": "1.9",
+       "raw_text": "0.39",
+       "normalized_text": "0.08",
+       "weight_text": "0.25"
+      },
+      {
+       "label": "charm",
+       "text": "1.0",
+       "raw_text": "1.17",
+       "normalized_text": "0.13",
+       "weight_text": "0.08"
+      },
+      {
+       "label": "vanna",
+       "text": "0.9",
+       "raw_text": "0.02",
+       "normalized_text": "0.13",
+       "weight_text": "0.07"
+      },
+      {
+       "label": "volatility",
+       "text": "0.0",
+       "raw_text": "70.0",
+       "normalized_text": "0.00",
+       "weight_text": "0.05"
+      }
+     ],
+     "markers": [],
+     "distance_text": null,
+     "spot_line": false,
+     "inside": false
+    }
+   ],
+   "spot": null,
+   "spot_text": null,
+   "ticker": "MRVL",
+   "available": true,
+   "reason": null,
+   "expiry": "2026-10-09",
+   "expiries": [
+    {
+     "expiry": "2026-10-09",
+     "dte": 2.0,
+     "label": "2026-10-09 \u00b7 2"
+    },
+    {
+     "expiry": "2026-10-16",
+     "dte": 9.0,
+     "label": "2026-10-16 \u00b7 9"
+    },
+    {
+     "expiry": "2026-10-23",
+     "dte": 16.0,
+     "label": "2026-10-23 \u00b7 16"
+    },
+    {
+     "expiry": "2026-10-30",
+     "dte": 23.0,
+     "label": "2026-10-30 \u00b7 23"
+    },
+    {
+     "expiry": "2026-11-06",
+     "dte": 30.0,
+     "label": "2026-11-06 \u00b7 30"
+    },
+    {
+     "expiry": "2026-11-13",
+     "dte": 37.0,
+     "label": "2026-11-13 \u00b7 37"
+    },
+    {
+     "expiry": "2026-11-20",
+     "dte": 44.0,
+     "label": "2026-11-20 \u00b7 44"
+    },
+    {
+     "expiry": "2026-12-18",
+     "dte": 72.0,
+     "label": "2026-12-18 \u00b7 72"
+    },
+    {
+     "expiry": "2027-01-15",
+     "dte": 100.0,
+     "label": "2027-01-15 \u00b7 100"
+    },
+    {
+     "expiry": "2027-02-19",
+     "dte": 135.0,
+     "label": "2027-02-19 \u00b7 135"
+    },
+    {
+     "expiry": "2027-03-19",
+     "dte": 163.0,
+     "label": "2027-03-19 \u00b7 163"
+    },
+    {
+     "expiry": "2027-04-16",
+     "dte": 191.0,
+     "label": "2027-04-16 \u00b7 191"
+    },
+    {
+     "expiry": "2027-05-21",
+     "dte": 226.0,
+     "label": "2027-05-21 \u00b7 226"
+    },
+    {
+     "expiry": "2027-06-17",
+     "dte": 253.0,
+     "label": "2027-06-17 \u00b7 253"
+    },
+    {
+     "expiry": "2027-09-17",
+     "dte": 345.0,
+     "label": "2027-09-17 \u00b7 345"
+    },
+    {
+     "expiry": "2027-12-17",
+     "dte": 436.0,
+     "label": "2027-12-17 \u00b7 436"
+    },
+    {
+     "expiry": "2028-01-21",
+     "dte": 471.0,
+     "label": "2028-01-21 \u00b7 471"
+    },
+    {
+     "expiry": "2028-03-17",
+     "dte": 527.0,
+     "label": "2028-03-17 \u00b7 527"
+    },
+    {
+     "expiry": "2028-06-16",
+     "dte": 618.0,
+     "label": "2028-06-16 \u00b7 618"
+    },
+    {
+     "expiry": "2029-01-19",
+     "dte": 835.0,
+     "label": "2029-01-19 \u00b7 835"
+    }
+   ],
+   "spot_as_of_ts_utc": null,
+   "spot_time_ct": null,
+   "priced_at_spot": 283.73,
+   "chain_as_of_ts_utc": 1791383480.265546,
+   "chain_as_of_time_ct": "Wed 10/07 09:31 AM CT",
+   "status_text": "Chain as of Wed 10/07 09:31 AM CT",
+   "levels": [
+    {
+     "lane": "options",
+     "abbrev": "CW",
+     "price": 300.0,
+     "price_text": "300.00",
+     "title": "Call wall"
+    },
+    {
+     "lane": "options",
+     "abbrev": "PW",
+     "price": 270.0,
+     "price_text": "270.00",
+     "title": "Put wall"
+    },
+    {
+     "lane": "options",
+     "abbrev": "Flip",
+     "price": 250.7213166575583,
+     "price_text": "250.72",
+     "title": "Gamma flip"
+    },
+    {
+     "lane": "options",
+     "abbrev": "Pain",
+     "price": 270.0,
+     "price_text": "270.00",
+     "title": "Max pain"
+    },
+    {
+     "lane": "options",
+     "abbrev": "Net \u0393",
+     "price": 300.0,
+     "price_text": "300.00",
+     "title": "Net \u0393 peak"
+    },
+    {
+     "lane": "options",
+     "abbrev": "Abs \u0393",
+     "price": 300.0,
+     "price_text": "300.00",
+     "title": "Abs \u0393"
+    },
+    {
+     "lane": "options",
+     "abbrev": "GSF",
+     "price": 268.11826169281255,
+     "price_text": "268.12",
+     "title": "GSF"
+    },
+    {
+     "lane": "options",
+     "abbrev": "HVP",
+     "price": 200.0,
+     "price_text": "200.00",
+     "title": "HVP"
+    },
+    {
+     "lane": "options",
+     "abbrev": "LVP",
+     "price": 300.0,
+     "price_text": "300.00",
+     "title": "LVP"
+    },
+    {
+     "lane": "options",
+     "abbrev": "Key \u0394",
+     "price": 300.0,
+     "price_text": "300.00",
+     "title": "Key \u0394 strike"
+    },
+    {
+     "lane": "options",
+     "abbrev": "CCh",
+     "price": 300.0,
+     "price_text": "300.00",
+     "title": "Call charm wall"
+    },
+    {
+     "lane": "options",
+     "abbrev": "PCh",
+     "price": 260.0,
+     "price_text": "260.00",
+     "title": "Put charm wall"
+    },
+    {
+     "lane": "options",
+     "abbrev": "0D CW",
+     "price": 282.5,
+     "price_text": "282.50",
+     "title": "0DTE Call wall"
+    },
+    {
+     "lane": "options",
+     "abbrev": "0D PW",
+     "price": 290.0,
+     "price_text": "290.00",
+     "title": "0DTE Put wall"
+    },
+    {
+     "lane": "options",
+     "abbrev": "0D Flip",
+     "price": 267.45313954078324,
+     "price_text": "267.45",
+     "title": "0DTE Gamma flip"
+    },
+    {
+     "lane": "options",
+     "abbrev": "0D Pin",
+     "price": 285.0,
+     "price_text": "285.00",
+     "title": "0DTE Abs \u0393"
+    },
+    {
+     "lane": "options",
+     "abbrev": "0D Net \u0393",
+     "price": 282.5,
+     "price_text": "282.50",
+     "title": "0DTE Net \u0393 peak"
+    },
+    {
+     "lane": "options",
+     "abbrev": "0D GSF",
+     "price": 274.3815082242009,
+     "price_text": "274.38",
+     "title": "0DTE GSF"
+    },
+    {
+     "lane": "options",
+     "abbrev": "0D HVP",
+     "price": 265.0,
+     "price_text": "265.00",
+     "title": "0DTE HVP"
+    },
+    {
+     "lane": "options",
+     "abbrev": "0D LVP",
+     "price": 282.5,
+     "price_text": "282.50",
+     "title": "0DTE LVP"
+    },
+    {
+     "lane": "options",
+     "abbrev": "0D Key \u0394",
+     "price": 280.0,
+     "price_text": "280.00",
+     "title": "0DTE Key \u0394 strike"
+    },
+    {
+     "lane": "options",
+     "abbrev": "0D CCh",
+     "price": 290.0,
+     "price_text": "290.00",
+     "title": "0DTE Call charm wall"
+    },
+    {
+     "lane": "options",
+     "abbrev": "0D PCh",
+     "price": 290.0,
+     "price_text": "290.00",
+     "title": "0DTE Put charm wall"
+    }
+   ],
+   "regime": "LONG_GAMMA_CHOP",
+   "flip_text": "250.72",
+   "pin_text": "285.00",
+   "move_text": null
+  },
+  "2026-10-16": {
+   "preset": "MONTHLY",
+   "preset_text": "MONTHLY \u00b7 ceiling 87",
+   "scale_text": "0\u201387",
+   "weights_in_score": {
+    "GEXM": 0.3,
+    "OI": 0.2,
+    "VANNAM": 0.1,
+    "DEXM": 0.1,
+    "DGEXM": 0.0,
+    "VOL": 0.07,
+    "FLOWM": 0.0,
+    "CHARMM": 0.05,
+    "IV": 0.05
+   },
+   "ceiling": 87.0,
+   "notes": [],
+   "slopes": [
+    {
+     "label": "net gamma",
+     "text": "0.00"
+    },
+    {
+     "label": "open interest",
+     "text": "0.00"
+    },
+    {
+     "label": "vanna",
+     "text": "0.00"
+    },
+    {
+     "label": "delta",
+     "text": "0.00"
+    },
+    {
+     "label": "volume",
+     "text": "0.02"
+    },
+    {
+     "label": "charm",
+     "text": "0.00"
+    },
+    {
+     "label": "volatility",
+     "text": "0.04"
+    }
+   ],
+   "offscreen": [],
+   "rows": [
+    {
+     "strike": 295.0,
+     "strike_text": "295.00",
+     "net_gex_text": "+2.19",
+     "net_style": "background:rgb(16,44,39);font-weight:550",
+     "net_reason": null,
+     "oi_text": "2547",
+     "oi_style": "background:rgb(16,39,37);font-weight:550",
+     "oi_reason": null,
+     "pc_gex_text": "0.11",
+     "pc_gex_style": "background:rgb(17,32,36);font-weight:550",
+     "pc_gex_reason": null,
+     "gross_text": "2.76",
+     "gross_style": "background:rgb(16,45,39);font-weight:550",
+     "gross_reason": null,
+     "dgex_text": null,
+     "dgex_reason": "no change in gamma is produced",
+     "volume_text": "227",
+     "volume_style": "background:rgb(16,36,37);font-weight:550",
+     "volume_reason": null,
+     "pc_vol_text": "0.02",
+     "pc_vol_style": "background:rgb(17,26,34);font-weight:550",
+     "pc_vol_reason": null,
+     "vol_oi_text": "0.09",
+     "vol_oi_style": "background:rgb(17,30,35);font-weight:550",
+     "vol_oi_reason": null,
+     "flow_text": null,
+     "flow_reason": "no signed flow is produced",
+     "dex_text": "+28.28",
+     "dex_style": "background:rgb(16,37,37);font-weight:550",
+     "dex_reason": null,
+     "vanna_text": "+0.16",
+     "vanna_style": "background:rgb(16,39,37);font-weight:550",
+     "vanna_reason": null,
+     "iv_text": "61.9",
+     "iv_style": "background:rgb(15,61,43);font-weight:550",
+     "iv_reason": null,
+     "charm_text": "-1.83",
+     "charm_style": "background:rgb(38,25,35);font-weight:550",
+     "charm_reason": null,
+     "score": 41.66533149114034,
+     "score_text": "42",
+     "heat_background": "background:rgb(13,92,50);font-weight:550",
+     "missing": [],
+     "contributions": [
+      {
+       "label": "net gamma",
+       "text": "22.8",
+       "raw_text": "2.19",
+       "normalized_text": "0.76",
+       "weight_text": "0.30"
+      },
+      {
+       "label": "open interest",
+       "text": "5.1",
+       "raw_text": "2547",
+       "normalized_text": "0.25",
+       "weight_text": "0.20"
+      },
+      {
+       "label": "vanna",
+       "text": "4.9",
+       "raw_text": "0.16",
+       "normalized_text": "0.49",
+       "weight_text": "0.10"
+      }
+     ],
+     "factors": [
+      {
+       "label": "net gamma",
+       "text": "22.8",
+       "raw_text": "2.19",
+       "normalized_text": "0.76",
+       "weight_text": "0.30"
+      },
+      {
+       "label": "open interest",
+       "text": "5.1",
+       "raw_text": "2547",
+       "normalized_text": "0.25",
+       "weight_text": "0.20"
+      },
+      {
+       "label": "vanna",
+       "text": "4.9",
+       "raw_text": "0.16",
+       "normalized_text": "0.49",
+       "weight_text": "0.10"
+      },
+      {
+       "label": "volume",
+       "text": "3.5",
+       "raw_text": "227",
+       "normalized_text": "0.50",
+       "weight_text": "0.07"
+      },
+      {
+       "label": "delta",
+       "text": "2.9",
+       "raw_text": "28.28",
+       "normalized_text": "0.29",
+       "weight_text": "0.10"
+      },
+      {
+       "label": "charm",
+       "text": "2.4",
+       "raw_text": "1.83",
+       "normalized_text": "0.49",
+       "weight_text": "0.05"
+      },
+      {
+       "label": "volatility",
+       "text": "0.0",
+       "raw_text": "61.9",
+       "normalized_text": "0.01",
+       "weight_text": "0.05"
+      }
+     ],
+     "markers": [],
+     "distance_text": null,
+     "spot_line": false,
+     "inside": false
+    },
+    {
+     "strike": 292.5,
+     "strike_text": "292.50",
+     "net_gex_text": "+0.11",
+     "net_style": "background:rgb(17,25,34);font-weight:550",
+     "net_reason": null,
+     "oi_text": "418",
+     "oi_style": "background:rgb(17,26,35);font-weight:550",
+     "oi_reason": null,
+     "pc_gex_text": "0.62",
+     "pc_gex_style": "background:rgb(17,27,35);font-weight:550",
+     "pc_gex_reason": null,
+     "gross_text": "0.47",
+     "gross_style": "background:rgb(17,28,35);font-weight:550",
+     "gross_reason": null,
+     "dgex_text": null,
+     "dgex_reason": "no change in gamma is produced",
+     "volume_text": "238",
+     "volume_style": "background:rgb(16,36,37);font-weight:550",
+     "volume_reason": null,
+     "pc_vol_text": "0.11",
+     "pc_vol_style": "background:rgb(17,26,34);font-weight:550",
+     "pc_vol_reason": null,
+     "vol_oi_text": "0.57",
+     "vol_oi_style": "background:rgb(15,63,43);font-weight:550",
+     "vol_oi_reason": null,
+     "flow_text": null,
+     "flow_reason": "no signed flow is produced",
+     "dex_text": "+5.64",
+     "dex_style": "background:rgb(17,27,35);font-weight:550",
+     "dex_reason": null,
+     "vanna_text": "+0.01",
+     "vanna_style": "background:rgb(17,25,34);font-weight:550",
+     "vanna_reason": null,
+     "iv_text": "61.5",
+     "iv_style": "background:rgb(15,61,43);font-weight:550",
+     "iv_reason": null,
+     "charm_text": "-0.07",
+     "charm_style": "background:rgb(18,24,34);font-weight:550",
+     "charm_reason": null,
+     "score": 6.572950372232284,
+     "score_text": "7",
+     "heat_background": "background:rgb(16,35,36);font-weight:550",
+     "missing": [],
+     "contributions": [
+      {
+       "label": "volume",
+       "text": "3.7",
+       "raw_text": "238",
+       "normalized_text": "0.53",
+       "weight_text": "0.07"
+      },
+      {
+       "label": "net gamma",
+       "text": "1.1",
+       "raw_text": "0.11",
+       "normalized_text": "0.04",
+       "weight_text": "0.30"
+      },
+      {
+       "label": "open interest",
+       "text": "0.8",
+       "raw_text": "418",
+       "normalized_text": "0.04",
+       "weight_text": "0.20"
+      }
+     ],
+     "factors": [
+      {
+       "label": "volume",
+       "text": "3.7",
+       "raw_text": "238",
+       "normalized_text": "0.53",
+       "weight_text": "0.07"
+      },
+      {
+       "label": "net gamma",
+       "text": "1.1",
+       "raw_text": "0.11",
+       "normalized_text": "0.04",
+       "weight_text": "0.30"
+      },
+      {
+       "label": "open interest",
+       "text": "0.8",
+       "raw_text": "418",
+       "normalized_text": "0.04",
+       "weight_text": "0.20"
+      },
+      {
+       "label": "delta",
+       "text": "0.6",
+       "raw_text": "5.64",
+       "normalized_text": "0.06",
+       "weight_text": "0.10"
+      },
+      {
+       "label": "vanna",
+       "text": "0.2",
+       "raw_text": "0.01",
+       "normalized_text": "0.02",
+       "weight_text": "0.10"
+      },
+      {
+       "label": "charm",
+       "text": "0.1",
+       "raw_text": "0.07",
+       "normalized_text": "0.02",
+       "weight_text": "0.05"
+      },
+      {
+       "label": "volatility",
+       "text": "0.0",
+       "raw_text": "61.5",
+       "normalized_text": "0.01",
+       "weight_text": "0.05"
+      }
+     ],
+     "markers": [],
+     "distance_text": null,
+     "spot_line": false,
+     "inside": false
+    },
+    {
+     "strike": 290.0,
+     "strike_text": "290.00",
+     "net_gex_text": "+7.08",
+     "net_style": "background:rgb(13,89,49);font-weight:550",
+     "net_reason": null,
+     "oi_text": "8624",
+     "oi_style": "background:rgb(14,73,45);font-weight:550",
+     "oi_reason": null,
+     "pc_gex_text": "0.16",
+     "pc_gex_style": "background:rgb(17,31,36);font-weight:550",
+     "pc_gex_reason": null,
+     "gross_text": "9.77",
+     "gross_style": "background:rgb(13,99,52);font-weight:550",
+     "gross_reason": null,
+     "dgex_text": null,
+     "dgex_reason": "no change in gamma is produced",
+     "volume_text": "674",
+     "volume_style": "background:rgb(15,59,42);font-weight:550",
+     "volume_reason": null,
+     "pc_vol_text": "0.19",
+     "pc_vol_style": "background:rgb(17,25,34);font-weight:550",
+     "pc_vol_reason": null,
+     "vol_oi_text": "0.08",
+     "vol_oi_style": "background:rgb(17,29,35);font-weight:550",
+     "vol_oi_reason": null,
+     "flow_text": null,
+     "flow_reason": "no signed flow is produced",
+     "dex_text": "+110.01",
+     "dex_style": "background:rgb(14,75,46);font-weight:550",
+     "dex_reason": null,
+     "vanna_text": "+0.31",
+     "vanna_style": "background:rgb(15,53,41);font-weight:550",
+     "vanna_reason": null,
+     "iv_text": "61.8",
+     "iv_style": "background:rgb(15,61,43);font-weight:550",
+     "iv_reason": null,
+     "charm_text": "-3.61",
+     "charm_style": "background:rgb(59,26,37);font-weight:550",
+     "charm_reason": null,
+     "score": 78.67678365880975,
+     "score_text": "79",
+     "heat_background": "background:rgb(10,152,64);font-weight:750",
+     "missing": [],
+     "contributions": [
+      {
+       "label": "net gamma",
+       "text": "30.0",
+       "raw_text": "7.08",
+       "normalized_text": "1.00",
+       "weight_text": "0.30"
+      },
+      {
+       "label": "open interest",
+       "text": "17.2",
+       "raw_text": "8624",
+       "normalized_text": "0.86",
+       "weight_text": "0.20"
+      },
+      {
+       "label": "delta",
+       "text": "10.0",
+       "raw_text": "110.01",
+       "normalized_text": "1.00",
+       "weight_text": "0.10"
+      }
+     ],
+     "factors": [
+      {
+       "label": "net gamma",
+       "text": "30.0",
+       "raw_text": "7.08",
+       "normalized_text": "1.00",
+       "weight_text": "0.30"
+      },
+      {
+       "label": "open interest",
+       "text": "17.2",
+       "raw_text": "8624",
+       "normalized_text": "0.86",
+       "weight_text": "0.20"
+      },
+      {
+       "label": "delta",
+       "text": "10.0",
+       "raw_text": "110.01",
+       "normalized_text": "1.00",
+       "weight_text": "0.10"
+      },
+      {
+       "label": "vanna",
+       "text": "9.6",
+       "raw_text": "0.31",
+       "normalized_text": "0.96",
+       "weight_text": "0.10"
+      },
+      {
+       "label": "volume",
+       "text": "7.0",
+       "raw_text": "674",
+       "normalized_text": "1.00",
+       "weight_text": "0.07"
+      },
+      {
+       "label": "charm",
+       "text": "4.8",
+       "raw_text": "3.61",
+       "normalized_text": "0.95",
+       "weight_text": "0.05"
+      },
+      {
+       "label": "volatility",
+       "text": "0.0",
+       "raw_text": "61.8",
+       "normalized_text": "0.01",
+       "weight_text": "0.05"
+      }
+     ],
+     "markers": [],
+     "distance_text": null,
+     "spot_line": false,
+     "inside": false
+    },
+    {
+     "strike": 287.5,
+     "strike_text": "287.50",
+     "net_gex_text": "-0.10",
+     "net_style": "background:rgb(18,24,34);font-weight:550",
+     "net_reason": null,
+     "oi_text": "209",
+     "oi_style": "background:rgb(17,25,34);font-weight:550",
+     "oi_reason": null,
+     "pc_gex_text": "2.54",
+     "pc_gex_style": "background:rgb(36,25,35);font-weight:550",
+     "pc_gex_reason": null,
+     "gross_text": "0.24",
+     "gross_style": "background:rgb(17,26,34);font-weight:550",
+     "gross_reason": null,
+     "dgex_text": null,
+     "dgex_reason": "no change in gamma is produced",
+     "volume_text": "435",
+     "volume_style": "background:rgb(16,46,39);font-weight:550",
+     "volume_reason": null,
+     "pc_vol_text": "0.66",
+     "pc_vol_style": "background:rgb(17,25,34);font-weight:550",
+     "pc_vol_reason": null,
+     "vol_oi_text": "2.08",
+     "vol_oi_style": "background:rgb(9,166,67);font-weight:750",
+     "vol_oi_reason": null,
+     "flow_text": null,
+     "flow_reason": "no signed flow is produced",
+     "dex_text": "+3.05",
+     "dex_style": "background:rgb(17,25,34);font-weight:550",
+     "dex_reason": null,
+     "vanna_text": "0.00",
+     "vanna_style": "background:rgb(17,24,34);font-weight:550",
+     "vanna_reason": null,
+     "iv_text": "61.7",
+     "iv_style": "background:rgb(15,61,43);font-weight:550",
+     "iv_reason": null,
+     "charm_text": "+0.04",
+     "charm_style": "background:rgb(17,24,34);font-weight:550",
+     "charm_reason": null,
+     "score": 8.764836709620868,
+     "score_text": "9",
+     "heat_background": "background:rgb(16,38,37);font-weight:550",
+     "missing": [],
+     "contributions": [
+      {
+       "label": "volume",
+       "text": "6.8",
+       "raw_text": "435",
+       "normalized_text": "0.97",
+       "weight_text": "0.07"
+      },
+      {
+       "label": "net gamma",
+       "text": "1.1",
+       "raw_text": "0.10",
+       "normalized_text": "0.04",
+       "weight_text": "0.30"
+      },
+      {
+       "label": "open interest",
+       "text": "0.4",
+       "raw_text": "209",
+       "normalized_text": "0.02",
+       "weight_text": "0.20"
+      }
+     ],
+     "factors": [
+      {
+       "label": "volume",
+       "text": "6.8",
+       "raw_text": "435",
+       "normalized_text": "0.97",
+       "weight_text": "0.07"
+      },
+      {
+       "label": "net gamma",
+       "text": "1.1",
+       "raw_text": "0.10",
+       "normalized_text": "0.04",
+       "weight_text": "0.30"
+      },
+      {
+       "label": "open interest",
+       "text": "0.4",
+       "raw_text": "209",
+       "normalized_text": "0.02",
+       "weight_text": "0.20"
+      },
+      {
+       "label": "delta",
+       "text": "0.3",
+       "raw_text": "3.05",
+       "normalized_text": "0.03",
+       "weight_text": "0.10"
+      },
+      {
+       "label": "vanna",
+       "text": "0.1",
+       "raw_text": "0.00",
+       "normalized_text": "0.01",
+       "weight_text": "0.10"
+      },
+      {
+       "label": "charm",
+       "text": "0.0",
+       "raw_text": "0.04",
+       "normalized_text": "0.01",
+       "weight_text": "0.05"
+      },
+      {
+       "label": "volatility",
+       "text": "0.0",
+       "raw_text": "61.7",
+       "normalized_text": "0.01",
+       "weight_text": "0.05"
+      }
+     ],
+     "markers": [],
+     "distance_text": null,
+     "spot_line": false,
+     "inside": false
+    },
+    {
+     "strike": 285.0,
+     "strike_text": "285.00",
+     "net_gex_text": "+2.05",
+     "net_style": "background:rgb(16,43,38);font-weight:550",
+     "net_reason": null,
+     "oi_text": "2152",
+     "oi_style": "background:rgb(16,36,37);font-weight:550",
+     "oi_reason": null,
+     "pc_gex_text": "0.10",
+     "pc_gex_style": "background:rgb(17,32,36);font-weight:550",
+     "pc_gex_reason": null,
+     "gross_text": "2.49",
+     "gross_style": "background:rgb(16,43,38);font-weight:550",
+     "gross_reason": null,
+     "dgex_text": null,
+     "dgex_reason": "no change in gamma is produced",
+     "volume_text": "585",
+     "volume_style": "background:rgb(15,54,41);font-weight:550",
+     "volume_reason": null,
+     "pc_vol_text": "0.50",
+     "pc_vol_style": "background:rgb(17,25,34);font-weight:550",
+     "pc_vol_reason": null,
+     "vol_oi_text": "0.27",
+     "vol_oi_style": "background:rgb(16,43,38);font-weight:550",
+     "vol_oi_reason": null,
+     "flow_text": null,
+     "flow_reason": "no signed flow is produced",
+     "dex_text": "+30.56",
+     "dex_style": "background:rgb(16,38,37);font-weight:550",
+     "dex_reason": null,
+     "vanna_text": "+0.03",
+     "vanna_style": "background:rgb(17,27,35);font-weight:550",
+     "vanna_reason": null,
+     "iv_text": "61.7",
+     "iv_style": "background:rgb(15,61,43);font-weight:550",
+     "iv_reason": null,
+     "charm_text": "-0.36",
+     "charm_style": "background:rgb(21,24,34);font-weight:550",
+     "charm_reason": null,
+     "score": 37.19023233292847,
+     "score_text": "37",
+     "heat_background": "background:rgb(14,85,48);font-weight:550",
+     "missing": [],
+     "contributions": [
+      {
+       "label": "net gamma",
+       "text": "21.3",
+       "raw_text": "2.05",
+       "normalized_text": "0.71",
+       "weight_text": "0.30"
+      },
+      {
+       "label": "volume",
+       "text": "7.0",
+       "raw_text": "585",
+       "normalized_text": "1.00",
+       "weight_text": "0.07"
+      },
+      {
+       "label": "open interest",
+       "text": "4.3",
+       "raw_text": "2152",
+       "normalized_text": "0.21",
+       "weight_text": "0.20"
+      }
+     ],
+     "factors": [
+      {
+       "label": "net gamma",
+       "text": "21.3",
+       "raw_text": "2.05",
+       "normalized_text": "0.71",
+       "weight_text": "0.30"
+      },
+      {
+       "label": "volume",
+       "text": "7.0",
+       "raw_text": "585",
+       "normalized_text": "1.00",
+       "weight_text": "0.07"
+      },
+      {
+       "label": "open interest",
+       "text": "4.3",
+       "raw_text": "2152",
+       "normalized_text": "0.21",
+       "weight_text": "0.20"
+      },
+      {
+       "label": "delta",
+       "text": "3.1",
+       "raw_text": "30.56",
+       "normalized_text": "0.31",
+       "weight_text": "0.10"
+      },
+      {
+       "label": "vanna",
+       "text": "1.0",
+       "raw_text": "0.03",
+       "normalized_text": "0.10",
+       "weight_text": "0.10"
+      },
+      {
+       "label": "charm",
+       "text": "0.5",
+       "raw_text": "0.36",
+       "normalized_text": "0.10",
+       "weight_text": "0.05"
+      },
+      {
+       "label": "volatility",
+       "text": "0.0",
+       "raw_text": "61.7",
+       "normalized_text": "0.01",
+       "weight_text": "0.05"
+      }
+     ],
+     "markers": [],
+     "distance_text": null,
+     "spot_line": false,
+     "inside": false
+    },
+    {
+     "strike": 282.5,
+     "strike_text": "282.50",
+     "net_gex_text": "+0.22",
+     "net_style": "background:rgb(17,26,34);font-weight:550",
+     "net_reason": null,
+     "oi_text": "343",
+     "oi_style": "background:rgb(17,26,34);font-weight:550",
+     "oi_reason": null,
+     "pc_gex_text": "0.30",
+     "pc_gex_style": "background:rgb(17,30,35);font-weight:550",
+     "pc_gex_reason": null,
+     "gross_text": "0.40",
+     "gross_style": "background:rgb(17,27,35);font-weight:550",
+     "gross_reason": null,
+     "dgex_text": null,
+     "dgex_reason": "no change in gamma is produced",
+     "volume_text": "241",
+     "volume_style": "background:rgb(16,36,37);font-weight:550",
+     "volume_reason": null,
+     "pc_vol_text": "0.31",
+     "pc_vol_style": "background:rgb(17,25,34);font-weight:550",
+     "pc_vol_reason": null,
+     "vol_oi_text": "0.70",
+     "vol_oi_style": "background:rgb(14,72,45);font-weight:550",
+     "vol_oi_reason": null,
+     "flow_text": null,
+     "flow_reason": "no signed flow is produced",
+     "dex_text": "+5.05",
+     "dex_style": "background:rgb(17,26,35);font-weight:550",
+     "dex_reason": null,
+     "vanna_text": "0.00",
+     "vanna_style": "background:rgb(17,24,34);font-weight:550",
+     "vanna_reason": null,
+     "iv_text": "60.5",
+     "iv_style": "background:rgb(15,60,42);font-weight:550",
+     "iv_reason": null,
+     "charm_text": "0.00",
+     "charm_style": "background:rgb(17,24,34);font-weight:550",
+     "charm_reason": null,
+     "score": 7.1868294741006356,
+     "score_text": "7",
+     "heat_background": "background:rgb(16,36,37);font-weight:550",
+     "missing": [],
+     "contributions": [
+      {
+       "label": "volume",
+       "text": "3.7",
+       "raw_text": "241",
+       "normalized_text": "0.53",
+       "weight_text": "0.07"
+      },
+      {
+       "label": "net gamma",
+       "text": "2.2",
+       "raw_text": "0.22",
+       "normalized_text": "0.07",
+       "weight_text": "0.30"
+      },
+      {
+       "label": "open interest",
+       "text": "0.7",
+       "raw_text": "343",
+       "normalized_text": "0.03",
+       "weight_text": "0.20"
+      }
+     ],
+     "factors": [
+      {
+       "label": "volume",
+       "text": "3.7",
+       "raw_text": "241",
+       "normalized_text": "0.53",
+       "weight_text": "0.07"
+      },
+      {
+       "label": "net gamma",
+       "text": "2.2",
+       "raw_text": "0.22",
+       "normalized_text": "0.07",
+       "weight_text": "0.30"
+      },
+      {
+       "label": "open interest",
+       "text": "0.7",
+       "raw_text": "343",
+       "normalized_text": "0.03",
+       "weight_text": "0.20"
+      },
+      {
+       "label": "delta",
+       "text": "0.5",
+       "raw_text": "5.05",
+       "normalized_text": "0.05",
+       "weight_text": "0.10"
+      },
+      {
+       "label": "vanna",
+       "text": "0.0",
+       "raw_text": "0.00",
+       "normalized_text": "0.00",
+       "weight_text": "0.10"
+      },
+      {
+       "label": "charm",
+       "text": "0.0",
+       "raw_text": "0.00",
+       "normalized_text": "0.00",
+       "weight_text": "0.05"
+      },
+      {
+       "label": "volatility",
+       "text": "0.0",
+       "raw_text": "60.5",
+       "normalized_text": "0.00",
+       "weight_text": "0.05"
+      }
+     ],
+     "markers": [],
+     "distance_text": null,
+     "spot_line": false,
+     "inside": false
+    },
+    {
+     "strike": 280.0,
+     "strike_text": "280.00",
+     "net_gex_text": "+9.64",
+     "net_style": "background:rgb(12,112,55);font-weight:550",
+     "net_reason": null,
+     "oi_text": "10556",
+     "oi_style": "background:rgb(14,84,48);font-weight:550",
+     "oi_reason": null,
+     "pc_gex_text": "0.12",
+     "pc_gex_style": "background:rgb(17,31,36);font-weight:550",
+     "pc_gex_reason": null,
+     "gross_text": "12.29",
+     "gross_style": "background:rgb(12,119,56);font-weight:750",
+     "gross_reason": null,
+     "dgex_text": null,
+     "dgex_reason": "no change in gamma is produced",
+     "volume_text": "806",
+     "volume_style": "background:rgb(15,65,44);font-weight:550",
+     "volume_reason": null,
+     "pc_vol_text": "0.52",
+     "pc_vol_style": "background:rgb(17,25,34);font-weight:550",
+     "pc_vol_reason": null,
+     "vol_oi_text": "0.08",
+     "vol_oi_style": "background:rgb(17,29,35);font-weight:550",
+     "vol_oi_reason": null,
+     "flow_text": null,
+     "flow_reason": "no signed flow is produced",
+     "dex_text": "+166.93",
+     "dex_style": "background:rgb(13,101,52);font-weight:550",
+     "dex_reason": null,
+     "vanna_text": "-0.14",
+     "vanna_style": "background:rgb(36,25,35);font-weight:550",
+     "vanna_reason": null,
+     "iv_text": "60.1",
+     "iv_style": "background:rgb(15,60,42);font-weight:550",
+     "iv_reason": null,
+     "charm_text": "+1.60",
+     "charm_style": "background:rgb(16,37,37);font-weight:550",
+     "charm_reason": null,
+     "score": 73.49659004434146,
+     "score_text": "73",
+     "heat_background": "background:rgb(10,144,62);font-weight:750",
+     "missing": [],
+     "contributions": [
+      {
+       "label": "net gamma",
+       "text": "30.0",
+       "raw_text": "9.64",
+       "normalized_text": "1.00",
+       "weight_text": "0.30"
+      },
+      {
+       "label": "open interest",
+       "text": "20.0",
+       "raw_text": "10556",
+       "normalized_text": "1.00",
+       "weight_text": "0.20"
+      },
+      {
+       "label": "delta",
+       "text": "10.0",
+       "raw_text": "166.93",
+       "normalized_text": "1.00",
+       "weight_text": "0.10"
+      }
+     ],
+     "factors": [
+      {
+       "label": "net gamma",
+       "text": "30.0",
+       "raw_text": "9.64",
+       "normalized_text": "1.00",
+       "weight_text": "0.30"
+      },
+      {
+       "label": "open interest",
+       "text": "20.0",
+       "raw_text": "10556",
+       "normalized_text": "1.00",
+       "weight_text": "0.20"
+      },
+      {
+       "label": "delta",
+       "text": "10.0",
+       "raw_text": "166.93",
+       "normalized_text": "1.00",
+       "weight_text": "0.10"
+      },
+      {
+       "label": "volume",
+       "text": "7.0",
+       "raw_text": "806",
+       "normalized_text": "1.00",
+       "weight_text": "0.07"
+      },
+      {
+       "label": "vanna",
+       "text": "4.4",
+       "raw_text": "0.14",
+       "normalized_text": "0.44",
+       "weight_text": "0.10"
+      },
+      {
+       "label": "charm",
+       "text": "2.1",
+       "raw_text": "1.60",
+       "normalized_text": "0.42",
+       "weight_text": "0.05"
+      },
+      {
+       "label": "volatility",
+       "text": "0.0",
+       "raw_text": "60.1",
+       "normalized_text": "0.00",
+       "weight_text": "0.05"
+      }
+     ],
+     "markers": [],
+     "distance_text": null,
+     "spot_line": false,
+     "inside": false
+    },
+    {
+     "strike": 277.5,
+     "strike_text": "277.50",
+     "net_gex_text": "-0.04",
+     "net_style": "background:rgb(18,24,34);font-weight:550",
+     "net_reason": null,
+     "oi_text": "794",
+     "oi_style": "background:rgb(17,29,35);font-weight:550",
+     "oi_reason": null,
+     "pc_gex_text": "1.09",
+     "pc_gex_style": "background:rgb(18,24,34);font-weight:550",
+     "pc_gex_reason": null,
+     "gross_text": "0.90",
+     "gross_style": "background:rgb(17,31,36);font-weight:550",
+     "gross_reason": null,
+     "dgex_text": null,
+     "dgex_reason": "no change in gamma is produced",
+     "volume_text": "236",
+     "volume_style": "background:rgb(16,36,37);font-weight:550",
+     "volume_reason": null,
+     "pc_vol_text": "0.57",
+     "pc_vol_style": "background:rgb(17,25,34);font-weight:550",
+     "pc_vol_reason": null,
+     "vol_oi_text": "0.30",
+     "vol_oi_style": "background:rgb(16,44,39);font-weight:550",
+     "vol_oi_reason": null,
+     "flow_text": null,
+     "flow_reason": "no signed flow is produced",
+     "dex_text": "+11.16",
+     "dex_style": "background:rgb(17,29,35);font-weight:550",
+     "dex_reason": null,
+     "vanna_text": "0.00",
+     "vanna_style": "background:rgb(17,24,34);font-weight:550",
+     "vanna_reason": null,
+     "iv_text": "60.6",
+     "iv_style": "background:rgb(15,60,42);font-weight:550",
+     "iv_reason": null,
+     "charm_text": "-0.01",
+     "charm_style": "background:rgb(17,24,34);font-weight:550",
+     "charm_reason": null,
+     "score": 6.834508867159779,
+     "score_text": "7",
+     "heat_background": "background:rgb(16,35,37);font-weight:550",
+     "missing": [],
+     "contributions": [
+      {
+       "label": "volume",
+       "text": "3.7",
+       "raw_text": "236",
+       "normalized_text": "0.52",
+       "weight_text": "0.07"
+      },
+      {
+       "label": "open interest",
+       "text": "1.6",
+       "raw_text": "794",
+       "normalized_text": "0.08",
+       "weight_text": "0.20"
+      },
+      {
+       "label": "delta",
+       "text": "1.1",
+       "raw_text": "11.16",
+       "normalized_text": "0.11",
+       "weight_text": "0.10"
+      }
+     ],
+     "factors": [
+      {
+       "label": "volume",
+       "text": "3.7",
+       "raw_text": "236",
+       "normalized_text": "0.52",
+       "weight_text": "0.07"
+      },
+      {
+       "label": "open interest",
+       "text": "1.6",
+       "raw_text": "794",
+       "normalized_text": "0.08",
+       "weight_text": "0.20"
+      },
+      {
+       "label": "delta",
+       "text": "1.1",
+       "raw_text": "11.16",
+       "normalized_text": "0.11",
+       "weight_text": "0.10"
+      },
+      {
+       "label": "net gamma",
+       "text": "0.4",
+       "raw_text": "0.04",
+       "normalized_text": "0.01",
+       "weight_text": "0.30"
+      },
+      {
+       "label": "vanna",
+       "text": "0.0",
+       "raw_text": "0.00",
+       "normalized_text": "0.00",
+       "weight_text": "0.10"
+      },
+      {
+       "label": "charm",
+       "text": "0.0",
+       "raw_text": "0.01",
+       "normalized_text": "0.00",
+       "weight_text": "0.05"
+      },
+      {
+       "label": "volatility",
+       "text": "0.0",
+       "raw_text": "60.6",
+       "normalized_text": "0.00",
+       "weight_text": "0.05"
+      }
+     ],
+     "markers": [],
+     "distance_text": null,
+     "spot_line": false,
+     "inside": false
+    },
+    {
+     "strike": 275.0,
+     "strike_text": "275.00",
+     "net_gex_text": "+0.84",
+     "net_style": "background:rgb(17,32,36);font-weight:550",
+     "net_reason": null,
+     "oi_text": "2342",
+     "oi_style": "background:rgb(16,37,37);font-weight:550",
+     "oi_reason": null,
+     "pc_gex_text": "0.51",
+     "pc_gex_style": "background:rgb(17,28,35);font-weight:550",
+     "pc_gex_reason": null,
+     "gross_text": "2.57",
+     "gross_style": "background:rgb(16,44,39);font-weight:550",
+     "gross_reason": null,
+     "dgex_text": null,
+     "dgex_reason": "no change in gamma is produced",
+     "volume_text": "296",
+     "volume_style": "background:rgb(16,39,38);font-weight:550",
+     "volume_reason": null,
+     "pc_vol_text": "1.64",
+     "pc_vol_style": "background:rgb(19,24,34);font-weight:550",
+     "pc_vol_reason": null,
+     "vol_oi_text": "0.13",
+     "vol_oi_style": "background:rgb(17,33,36);font-weight:550",
+     "vol_oi_reason": null,
+     "flow_text": null,
+     "flow_reason": "no signed flow is produced",
+     "dex_text": "+36.37",
+     "dex_style": "background:rgb(16,41,38);font-weight:550",
+     "dex_reason": null,
+     "vanna_text": "-0.04",
+     "vanna_style": "background:rgb(22,24,34);font-weight:550",
+     "vanna_reason": null,
+     "iv_text": "60.6",
+     "iv_style": "background:rgb(15,60,42);font-weight:550",
+     "iv_reason": null,
+     "charm_text": "+0.43",
+     "charm_style": "background:rgb(17,27,35);font-weight:550",
+     "charm_reason": null,
+     "score": 23.49785504368062,
+     "score_text": "23",
+     "heat_background": "background:rgb(15,62,43);font-weight:550",
+     "missing": [],
+     "contributions": [
+      {
+       "label": "net gamma",
+       "text": "8.8",
+       "raw_text": "0.84",
+       "normalized_text": "0.29",
+       "weight_text": "0.30"
+      },
+      {
+       "label": "open interest",
+       "text": "4.7",
+       "raw_text": "2342",
+       "normalized_text": "0.23",
+       "weight_text": "0.20"
+      },
+      {
+       "label": "volume",
+       "text": "4.6",
+       "raw_text": "296",
+       "normalized_text": "0.66",
+       "weight_text": "0.07"
+      }
+     ],
+     "factors": [
+      {
+       "label": "net gamma",
+       "text": "8.8",
+       "raw_text": "0.84",
+       "normalized_text": "0.29",
+       "weight_text": "0.30"
+      },
+      {
+       "label": "open interest",
+       "text": "4.7",
+       "raw_text": "2342",
+       "normalized_text": "0.23",
+       "weight_text": "0.20"
+      },
+      {
+       "label": "volume",
+       "text": "4.6",
+       "raw_text": "296",
+       "normalized_text": "0.66",
+       "weight_text": "0.07"
+      },
+      {
+       "label": "delta",
+       "text": "3.7",
+       "raw_text": "36.37",
+       "normalized_text": "0.37",
+       "weight_text": "0.10"
+      },
+      {
+       "label": "vanna",
+       "text": "1.2",
+       "raw_text": "0.04",
+       "normalized_text": "0.12",
+       "weight_text": "0.10"
+      },
+      {
+       "label": "charm",
+       "text": "0.6",
+       "raw_text": "0.43",
+       "normalized_text": "0.11",
+       "weight_text": "0.05"
+      },
+      {
+       "label": "volatility",
+       "text": "0.0",
+       "raw_text": "60.6",
+       "normalized_text": "0.00",
+       "weight_text": "0.05"
+      }
+     ],
+     "markers": [],
+     "distance_text": null,
+     "spot_line": false,
+     "inside": false
+    },
+    {
+     "strike": 272.5,
+     "strike_text": "272.50",
+     "net_gex_text": "-0.10",
+     "net_style": "background:rgb(18,24,34);font-weight:550",
+     "net_reason": null,
+     "oi_text": "932",
+     "oi_style": "background:rgb(17,29,35);font-weight:550",
+     "oi_reason": null,
+     "pc_gex_text": "1.23",
+     "pc_gex_style": "background:rgb(20,24,34);font-weight:550",
+     "pc_gex_reason": null,
+     "gross_text": "0.98",
+     "gross_style": "background:rgb(17,32,36);font-weight:550",
+     "gross_reason": null,
+     "dgex_text": null,
+     "dgex_reason": "no change in gamma is produced",
+     "volume_text": "111",
+     "volume_style": "background:rgb(17,30,35);font-weight:550",
+     "volume_reason": null,
+     "pc_vol_text": "2.00",
+     "pc_vol_style": "background:rgb(20,24,34);font-weight:550",
+     "pc_vol_reason": null,
+     "vol_oi_text": "0.12",
+     "vol_oi_style": "background:rgb(17,32,36);font-weight:550",
+     "vol_oi_reason": null,
+     "flow_text": null,
+     "flow_reason": "no signed flow is produced",
+     "dex_text": "+12.72",
+     "dex_style": "background:rgb(17,30,35);font-weight:550",
+     "dex_reason": null,
+     "vanna_text": "+0.01",
+     "vanna_style": "background:rgb(17,25,34);font-weight:550",
+     "vanna_reason": null,
+     "iv_text": "60.7",
+     "iv_style": "background:rgb(15,60,42);font-weight:550",
+     "iv_reason": null,
+     "charm_text": "-0.07",
+     "charm_style": "background:rgb(18,24,34);font-weight:550",
+     "charm_reason": null,
+     "score": 6.230573354864352,
+     "score_text": "6",
+     "heat_background": "background:rgb(16,34,36);font-weight:550",
+     "missing": [],
+     "contributions": [
+      {
+       "label": "open interest",
+       "text": "1.9",
+       "raw_text": "932",
+       "normalized_text": "0.09",
+       "weight_text": "0.20"
+      },
+      {
+       "label": "volume",
+       "text": "1.7",
+       "raw_text": "111",
+       "normalized_text": "0.24",
+       "weight_text": "0.07"
+      },
+      {
+       "label": "delta",
+       "text": "1.3",
+       "raw_text": "12.72",
+       "normalized_text": "0.13",
+       "weight_text": "0.10"
+      }
+     ],
+     "factors": [
+      {
+       "label": "open interest",
+       "text": "1.9",
+       "raw_text": "932",
+       "normalized_text": "0.09",
+       "weight_text": "0.20"
+      },
+      {
+       "label": "volume",
+       "text": "1.7",
+       "raw_text": "111",
+       "normalized_text": "0.24",
+       "weight_text": "0.07"
+      },
+      {
+       "label": "delta",
+       "text": "1.3",
+       "raw_text": "12.72",
+       "normalized_text": "0.13",
+       "weight_text": "0.10"
+      },
+      {
+       "label": "net gamma",
+       "text": "1.1",
+       "raw_text": "0.10",
+       "normalized_text": "0.04",
+       "weight_text": "0.30"
+      },
+      {
+       "label": "vanna",
+       "text": "0.2",
+       "raw_text": "0.01",
+       "normalized_text": "0.02",
+       "weight_text": "0.10"
+      },
+      {
+       "label": "charm",
+       "text": "0.1",
+       "raw_text": "0.07",
+       "normalized_text": "0.02",
+       "weight_text": "0.05"
+      },
+      {
+       "label": "volatility",
+       "text": "0.0",
+       "raw_text": "60.7",
+       "normalized_text": "0.00",
+       "weight_text": "0.05"
+      }
+     ],
+     "markers": [],
+     "distance_text": null,
+     "spot_line": false,
+     "inside": false
+    }
+   ],
+   "spot": null,
+   "spot_text": null,
+   "ticker": "MRVL",
+   "available": true,
+   "reason": null,
+   "expiry": "2026-10-16",
+   "expiries": [
+    {
+     "expiry": "2026-10-09",
+     "dte": 2.0,
+     "label": "2026-10-09 \u00b7 2"
+    },
+    {
+     "expiry": "2026-10-16",
+     "dte": 9.0,
+     "label": "2026-10-16 \u00b7 9"
+    },
+    {
+     "expiry": "2026-10-23",
+     "dte": 16.0,
+     "label": "2026-10-23 \u00b7 16"
+    },
+    {
+     "expiry": "2026-10-30",
+     "dte": 23.0,
+     "label": "2026-10-30 \u00b7 23"
+    },
+    {
+     "expiry": "2026-11-06",
+     "dte": 30.0,
+     "label": "2026-11-06 \u00b7 30"
+    },
+    {
+     "expiry": "2026-11-13",
+     "dte": 37.0,
+     "label": "2026-11-13 \u00b7 37"
+    },
+    {
+     "expiry": "2026-11-20",
+     "dte": 44.0,
+     "label": "2026-11-20 \u00b7 44"
+    },
+    {
+     "expiry": "2026-12-18",
+     "dte": 72.0,
+     "label": "2026-12-18 \u00b7 72"
+    },
+    {
+     "expiry": "2027-01-15",
+     "dte": 100.0,
+     "label": "2027-01-15 \u00b7 100"
+    },
+    {
+     "expiry": "2027-02-19",
+     "dte": 135.0,
+     "label": "2027-02-19 \u00b7 135"
+    },
+    {
+     "expiry": "2027-03-19",
+     "dte": 163.0,
+     "label": "2027-03-19 \u00b7 163"
+    },
+    {
+     "expiry": "2027-04-16",
+     "dte": 191.0,
+     "label": "2027-04-16 \u00b7 191"
+    },
+    {
+     "expiry": "2027-05-21",
+     "dte": 226.0,
+     "label": "2027-05-21 \u00b7 226"
+    },
+    {
+     "expiry": "2027-06-17",
+     "dte": 253.0,
+     "label": "2027-06-17 \u00b7 253"
+    },
+    {
+     "expiry": "2027-09-17",
+     "dte": 345.0,
+     "label": "2027-09-17 \u00b7 345"
+    },
+    {
+     "expiry": "2027-12-17",
+     "dte": 436.0,
+     "label": "2027-12-17 \u00b7 436"
+    },
+    {
+     "expiry": "2028-01-21",
+     "dte": 471.0,
+     "label": "2028-01-21 \u00b7 471"
+    },
+    {
+     "expiry": "2028-03-17",
+     "dte": 527.0,
+     "label": "2028-03-17 \u00b7 527"
+    },
+    {
+     "expiry": "2028-06-16",
+     "dte": 618.0,
+     "label": "2028-06-16 \u00b7 618"
+    },
+    {
+     "expiry": "2029-01-19",
+     "dte": 835.0,
+     "label": "2029-01-19 \u00b7 835"
+    }
+   ],
+   "spot_as_of_ts_utc": null,
+   "spot_time_ct": null,
+   "priced_at_spot": 283.73,
+   "chain_as_of_ts_utc": 1791383480.265546,
+   "chain_as_of_time_ct": "Wed 10/07 09:31 AM CT",
+   "status_text": "Chain as of Wed 10/07 09:31 AM CT",
+   "levels": [
+    {
+     "lane": "options",
+     "abbrev": "CW",
+     "price": 300.0,
+     "price_text": "300.00",
+     "title": "Call wall"
+    },
+    {
+     "lane": "options",
+     "abbrev": "PW",
+     "price": 270.0,
+     "price_text": "270.00",
+     "title": "Put wall"
+    },
+    {
+     "lane": "options",
+     "abbrev": "Flip",
+     "price": 250.7213166575583,
+     "price_text": "250.72",
+     "title": "Gamma flip"
+    },
+    {
+     "lane": "options",
+     "abbrev": "Pain",
+     "price": 270.0,
+     "price_text": "270.00",
+     "title": "Max pain"
+    },
+    {
+     "lane": "options",
+     "abbrev": "Net \u0393",
+     "price": 300.0,
+     "price_text": "300.00",
+     "title": "Net \u0393 peak"
+    },
+    {
+     "lane": "options",
+     "abbrev": "Abs \u0393",
+     "price": 300.0,
+     "price_text": "300.00",
+     "title": "Abs \u0393"
+    },
+    {
+     "lane": "options",
+     "abbrev": "GSF",
+     "price": 268.11826169281255,
+     "price_text": "268.12",
+     "title": "GSF"
+    },
+    {
+     "lane": "options",
+     "abbrev": "HVP",
+     "price": 200.0,
+     "price_text": "200.00",
+     "title": "HVP"
+    },
+    {
+     "lane": "options",
+     "abbrev": "LVP",
+     "price": 300.0,
+     "price_text": "300.00",
+     "title": "LVP"
+    },
+    {
+     "lane": "options",
+     "abbrev": "Key \u0394",
+     "price": 300.0,
+     "price_text": "300.00",
+     "title": "Key \u0394 strike"
+    },
+    {
+     "lane": "options",
+     "abbrev": "CCh",
+     "price": 300.0,
+     "price_text": "300.00",
+     "title": "Call charm wall"
+    },
+    {
+     "lane": "options",
+     "abbrev": "PCh",
+     "price": 260.0,
+     "price_text": "260.00",
+     "title": "Put charm wall"
+    },
+    {
+     "lane": "options",
+     "abbrev": "0D CW",
+     "price": 282.5,
+     "price_text": "282.50",
+     "title": "0DTE Call wall"
+    },
+    {
+     "lane": "options",
+     "abbrev": "0D PW",
+     "price": 290.0,
+     "price_text": "290.00",
+     "title": "0DTE Put wall"
+    },
+    {
+     "lane": "options",
+     "abbrev": "0D Flip",
+     "price": 267.45313954078324,
+     "price_text": "267.45",
+     "title": "0DTE Gamma flip"
+    },
+    {
+     "lane": "options",
+     "abbrev": "0D Pin",
+     "price": 285.0,
+     "price_text": "285.00",
+     "title": "0DTE Abs \u0393"
+    },
+    {
+     "lane": "options",
+     "abbrev": "0D Net \u0393",
+     "price": 282.5,
+     "price_text": "282.50",
+     "title": "0DTE Net \u0393 peak"
+    },
+    {
+     "lane": "options",
+     "abbrev": "0D GSF",
+     "price": 274.3815082242009,
+     "price_text": "274.38",
+     "title": "0DTE GSF"
+    },
+    {
+     "lane": "options",
+     "abbrev": "0D HVP",
+     "price": 265.0,
+     "price_text": "265.00",
+     "title": "0DTE HVP"
+    },
+    {
+     "lane": "options",
+     "abbrev": "0D LVP",
+     "price": 282.5,
+     "price_text": "282.50",
+     "title": "0DTE LVP"
+    },
+    {
+     "lane": "options",
+     "abbrev": "0D Key \u0394",
+     "price": 280.0,
+     "price_text": "280.00",
+     "title": "0DTE Key \u0394 strike"
+    },
+    {
+     "lane": "options",
+     "abbrev": "0D CCh",
+     "price": 290.0,
+     "price_text": "290.00",
+     "title": "0DTE Call charm wall"
+    },
+    {
+     "lane": "options",
+     "abbrev": "0D PCh",
+     "price": 290.0,
+     "price_text": "290.00",
+     "title": "0DTE Put charm wall"
+    }
+   ],
+   "regime": "LONG_GAMMA_CHOP",
+   "flip_text": "250.72",
+   "pin_text": "285.00",
+   "move_text": null
+  }
+ },
+ "front_passed": {
+  "preset": "MONTHLY",
+  "preset_text": "MONTHLY \u00b7 ceiling 87",
+  "scale_text": "0\u201387",
+  "weights_in_score": {
+   "GEXM": 0.3,
+   "OI": 0.2,
+   "VANNAM": 0.1,
+   "DEXM": 0.1,
+   "DGEXM": 0.0,
+   "VOL": 0.07,
+   "FLOWM": 0.0,
+   "CHARMM": 0.05,
+   "IV": 0.05
+  },
+  "ceiling": 87.0,
+  "notes": [],
+  "slopes": [
+   {
+    "label": "net gamma",
+    "text": "0.00"
+   },
+   {
+    "label": "open interest",
+    "text": "0.00"
+   },
+   {
+    "label": "vanna",
+    "text": "0.00"
+   },
+   {
+    "label": "delta",
+    "text": "0.00"
+   },
+   {
+    "label": "volume",
+    "text": "0.02"
+   },
+   {
+    "label": "charm",
+    "text": "0.00"
+   },
+   {
+    "label": "volatility",
+    "text": "0.04"
+   }
+  ],
+  "offscreen": [],
+  "rows": [
+   {
+    "strike": 295.0,
+    "strike_text": "295.00",
+    "net_gex_text": "+2.19",
+    "net_style": "background:rgb(16,44,39);font-weight:550",
+    "net_reason": null,
+    "oi_text": "2547",
+    "oi_style": "background:rgb(16,39,37);font-weight:550",
+    "oi_reason": null,
+    "pc_gex_text": "0.11",
+    "pc_gex_style": "background:rgb(17,32,36);font-weight:550",
+    "pc_gex_reason": null,
+    "gross_text": "2.76",
+    "gross_style": "background:rgb(16,45,39);font-weight:550",
+    "gross_reason": null,
+    "dgex_text": null,
+    "dgex_reason": "no change in gamma is produced",
+    "volume_text": "227",
+    "volume_style": "background:rgb(16,36,37);font-weight:550",
+    "volume_reason": null,
+    "pc_vol_text": "0.02",
+    "pc_vol_style": "background:rgb(17,26,34);font-weight:550",
+    "pc_vol_reason": null,
+    "vol_oi_text": "0.09",
+    "vol_oi_style": "background:rgb(17,30,35);font-weight:550",
+    "vol_oi_reason": null,
+    "flow_text": null,
+    "flow_reason": "no signed flow is produced",
+    "dex_text": "+28.28",
+    "dex_style": "background:rgb(16,37,37);font-weight:550",
+    "dex_reason": null,
+    "vanna_text": "+0.16",
+    "vanna_style": "background:rgb(16,39,37);font-weight:550",
+    "vanna_reason": null,
+    "iv_text": "61.9",
+    "iv_style": "background:rgb(15,61,43);font-weight:550",
+    "iv_reason": null,
+    "charm_text": "-1.83",
+    "charm_style": "background:rgb(38,25,35);font-weight:550",
+    "charm_reason": null,
+    "score": 41.66533149114034,
+    "score_text": "42",
+    "heat_background": "background:rgb(13,92,50);font-weight:550",
+    "missing": [],
+    "contributions": [
+     {
+      "label": "net gamma",
+      "text": "22.8",
+      "raw_text": "2.19",
+      "normalized_text": "0.76",
+      "weight_text": "0.30"
+     },
+     {
+      "label": "open interest",
+      "text": "5.1",
+      "raw_text": "2547",
+      "normalized_text": "0.25",
+      "weight_text": "0.20"
+     },
+     {
+      "label": "vanna",
+      "text": "4.9",
+      "raw_text": "0.16",
+      "normalized_text": "0.49",
+      "weight_text": "0.10"
+     }
+    ],
+    "factors": [
+     {
+      "label": "net gamma",
+      "text": "22.8",
+      "raw_text": "2.19",
+      "normalized_text": "0.76",
+      "weight_text": "0.30"
+     },
+     {
+      "label": "open interest",
+      "text": "5.1",
+      "raw_text": "2547",
+      "normalized_text": "0.25",
+      "weight_text": "0.20"
+     },
+     {
+      "label": "vanna",
+      "text": "4.9",
+      "raw_text": "0.16",
+      "normalized_text": "0.49",
+      "weight_text": "0.10"
+     },
+     {
+      "label": "volume",
+      "text": "3.5",
+      "raw_text": "227",
+      "normalized_text": "0.50",
+      "weight_text": "0.07"
+     },
+     {
+      "label": "delta",
+      "text": "2.9",
+      "raw_text": "28.28",
+      "normalized_text": "0.29",
+      "weight_text": "0.10"
+     },
+     {
+      "label": "charm",
+      "text": "2.4",
+      "raw_text": "1.83",
+      "normalized_text": "0.49",
+      "weight_text": "0.05"
+     },
+     {
+      "label": "volatility",
+      "text": "0.0",
+      "raw_text": "61.9",
+      "normalized_text": "0.01",
+      "weight_text": "0.05"
+     }
+    ],
+    "markers": [],
+    "distance_text": null,
+    "spot_line": false,
+    "inside": false
+   },
+   {
+    "strike": 292.5,
+    "strike_text": "292.50",
+    "net_gex_text": "+0.11",
+    "net_style": "background:rgb(17,25,34);font-weight:550",
+    "net_reason": null,
+    "oi_text": "418",
+    "oi_style": "background:rgb(17,26,35);font-weight:550",
+    "oi_reason": null,
+    "pc_gex_text": "0.62",
+    "pc_gex_style": "background:rgb(17,27,35);font-weight:550",
+    "pc_gex_reason": null,
+    "gross_text": "0.47",
+    "gross_style": "background:rgb(17,28,35);font-weight:550",
+    "gross_reason": null,
+    "dgex_text": null,
+    "dgex_reason": "no change in gamma is produced",
+    "volume_text": "238",
+    "volume_style": "background:rgb(16,36,37);font-weight:550",
+    "volume_reason": null,
+    "pc_vol_text": "0.11",
+    "pc_vol_style": "background:rgb(17,26,34);font-weight:550",
+    "pc_vol_reason": null,
+    "vol_oi_text": "0.57",
+    "vol_oi_style": "background:rgb(15,63,43);font-weight:550",
+    "vol_oi_reason": null,
+    "flow_text": null,
+    "flow_reason": "no signed flow is produced",
+    "dex_text": "+5.64",
+    "dex_style": "background:rgb(17,27,35);font-weight:550",
+    "dex_reason": null,
+    "vanna_text": "+0.01",
+    "vanna_style": "background:rgb(17,25,34);font-weight:550",
+    "vanna_reason": null,
+    "iv_text": "61.5",
+    "iv_style": "background:rgb(15,61,43);font-weight:550",
+    "iv_reason": null,
+    "charm_text": "-0.07",
+    "charm_style": "background:rgb(18,24,34);font-weight:550",
+    "charm_reason": null,
+    "score": 6.572950372232284,
+    "score_text": "7",
+    "heat_background": "background:rgb(16,35,36);font-weight:550",
+    "missing": [],
+    "contributions": [
+     {
+      "label": "volume",
+      "text": "3.7",
+      "raw_text": "238",
+      "normalized_text": "0.53",
+      "weight_text": "0.07"
+     },
+     {
+      "label": "net gamma",
+      "text": "1.1",
+      "raw_text": "0.11",
+      "normalized_text": "0.04",
+      "weight_text": "0.30"
+     },
+     {
+      "label": "open interest",
+      "text": "0.8",
+      "raw_text": "418",
+      "normalized_text": "0.04",
+      "weight_text": "0.20"
+     }
+    ],
+    "factors": [
+     {
+      "label": "volume",
+      "text": "3.7",
+      "raw_text": "238",
+      "normalized_text": "0.53",
+      "weight_text": "0.07"
+     },
+     {
+      "label": "net gamma",
+      "text": "1.1",
+      "raw_text": "0.11",
+      "normalized_text": "0.04",
+      "weight_text": "0.30"
+     },
+     {
+      "label": "open interest",
+      "text": "0.8",
+      "raw_text": "418",
+      "normalized_text": "0.04",
+      "weight_text": "0.20"
+     },
+     {
+      "label": "delta",
+      "text": "0.6",
+      "raw_text": "5.64",
+      "normalized_text": "0.06",
+      "weight_text": "0.10"
+     },
+     {
+      "label": "vanna",
+      "text": "0.2",
+      "raw_text": "0.01",
+      "normalized_text": "0.02",
+      "weight_text": "0.10"
+     },
+     {
+      "label": "charm",
+      "text": "0.1",
+      "raw_text": "0.07",
+      "normalized_text": "0.02",
+      "weight_text": "0.05"
+     },
+     {
+      "label": "volatility",
+      "text": "0.0",
+      "raw_text": "61.5",
+      "normalized_text": "0.01",
+      "weight_text": "0.05"
+     }
+    ],
+    "markers": [],
+    "distance_text": null,
+    "spot_line": false,
+    "inside": false
+   },
+   {
+    "strike": 290.0,
+    "strike_text": "290.00",
+    "net_gex_text": "+7.08",
+    "net_style": "background:rgb(13,89,49);font-weight:550",
+    "net_reason": null,
+    "oi_text": "8624",
+    "oi_style": "background:rgb(14,73,45);font-weight:550",
+    "oi_reason": null,
+    "pc_gex_text": "0.16",
+    "pc_gex_style": "background:rgb(17,31,36);font-weight:550",
+    "pc_gex_reason": null,
+    "gross_text": "9.77",
+    "gross_style": "background:rgb(13,99,52);font-weight:550",
+    "gross_reason": null,
+    "dgex_text": null,
+    "dgex_reason": "no change in gamma is produced",
+    "volume_text": "674",
+    "volume_style": "background:rgb(15,59,42);font-weight:550",
+    "volume_reason": null,
+    "pc_vol_text": "0.19",
+    "pc_vol_style": "background:rgb(17,25,34);font-weight:550",
+    "pc_vol_reason": null,
+    "vol_oi_text": "0.08",
+    "vol_oi_style": "background:rgb(17,29,35);font-weight:550",
+    "vol_oi_reason": null,
+    "flow_text": null,
+    "flow_reason": "no signed flow is produced",
+    "dex_text": "+110.01",
+    "dex_style": "background:rgb(14,75,46);font-weight:550",
+    "dex_reason": null,
+    "vanna_text": "+0.31",
+    "vanna_style": "background:rgb(15,53,41);font-weight:550",
+    "vanna_reason": null,
+    "iv_text": "61.8",
+    "iv_style": "background:rgb(15,61,43);font-weight:550",
+    "iv_reason": null,
+    "charm_text": "-3.61",
+    "charm_style": "background:rgb(59,26,37);font-weight:550",
+    "charm_reason": null,
+    "score": 78.67678365880975,
+    "score_text": "79",
+    "heat_background": "background:rgb(10,152,64);font-weight:750",
+    "missing": [],
+    "contributions": [
+     {
+      "label": "net gamma",
+      "text": "30.0",
+      "raw_text": "7.08",
+      "normalized_text": "1.00",
+      "weight_text": "0.30"
+     },
+     {
+      "label": "open interest",
+      "text": "17.2",
+      "raw_text": "8624",
+      "normalized_text": "0.86",
+      "weight_text": "0.20"
+     },
+     {
+      "label": "delta",
+      "text": "10.0",
+      "raw_text": "110.01",
+      "normalized_text": "1.00",
+      "weight_text": "0.10"
+     }
+    ],
+    "factors": [
+     {
+      "label": "net gamma",
+      "text": "30.0",
+      "raw_text": "7.08",
+      "normalized_text": "1.00",
+      "weight_text": "0.30"
+     },
+     {
+      "label": "open interest",
+      "text": "17.2",
+      "raw_text": "8624",
+      "normalized_text": "0.86",
+      "weight_text": "0.20"
+     },
+     {
+      "label": "delta",
+      "text": "10.0",
+      "raw_text": "110.01",
+      "normalized_text": "1.00",
+      "weight_text": "0.10"
+     },
+     {
+      "label": "vanna",
+      "text": "9.6",
+      "raw_text": "0.31",
+      "normalized_text": "0.96",
+      "weight_text": "0.10"
+     },
+     {
+      "label": "volume",
+      "text": "7.0",
+      "raw_text": "674",
+      "normalized_text": "1.00",
+      "weight_text": "0.07"
+     },
+     {
+      "label": "charm",
+      "text": "4.8",
+      "raw_text": "3.61",
+      "normalized_text": "0.95",
+      "weight_text": "0.05"
+     },
+     {
+      "label": "volatility",
+      "text": "0.0",
+      "raw_text": "61.8",
+      "normalized_text": "0.01",
+      "weight_text": "0.05"
+     }
+    ],
+    "markers": [],
+    "distance_text": null,
+    "spot_line": false,
+    "inside": false
+   },
+   {
+    "strike": 287.5,
+    "strike_text": "287.50",
+    "net_gex_text": "-0.10",
+    "net_style": "background:rgb(18,24,34);font-weight:550",
+    "net_reason": null,
+    "oi_text": "209",
+    "oi_style": "background:rgb(17,25,34);font-weight:550",
+    "oi_reason": null,
+    "pc_gex_text": "2.54",
+    "pc_gex_style": "background:rgb(36,25,35);font-weight:550",
+    "pc_gex_reason": null,
+    "gross_text": "0.24",
+    "gross_style": "background:rgb(17,26,34);font-weight:550",
+    "gross_reason": null,
+    "dgex_text": null,
+    "dgex_reason": "no change in gamma is produced",
+    "volume_text": "435",
+    "volume_style": "background:rgb(16,46,39);font-weight:550",
+    "volume_reason": null,
+    "pc_vol_text": "0.66",
+    "pc_vol_style": "background:rgb(17,25,34);font-weight:550",
+    "pc_vol_reason": null,
+    "vol_oi_text": "2.08",
+    "vol_oi_style": "background:rgb(9,166,67);font-weight:750",
+    "vol_oi_reason": null,
+    "flow_text": null,
+    "flow_reason": "no signed flow is produced",
+    "dex_text": "+3.05",
+    "dex_style": "background:rgb(17,25,34);font-weight:550",
+    "dex_reason": null,
+    "vanna_text": "0.00",
+    "vanna_style": "background:rgb(17,24,34);font-weight:550",
+    "vanna_reason": null,
+    "iv_text": "61.7",
+    "iv_style": "background:rgb(15,61,43);font-weight:550",
+    "iv_reason": null,
+    "charm_text": "+0.04",
+    "charm_style": "background:rgb(17,24,34);font-weight:550",
+    "charm_reason": null,
+    "score": 8.764836709620868,
+    "score_text": "9",
+    "heat_background": "background:rgb(16,38,37);font-weight:550",
+    "missing": [],
+    "contributions": [
+     {
+      "label": "volume",
+      "text": "6.8",
+      "raw_text": "435",
+      "normalized_text": "0.97",
+      "weight_text": "0.07"
+     },
+     {
+      "label": "net gamma",
+      "text": "1.1",
+      "raw_text": "0.10",
+      "normalized_text": "0.04",
+      "weight_text": "0.30"
+     },
+     {
+      "label": "open interest",
+      "text": "0.4",
+      "raw_text": "209",
+      "normalized_text": "0.02",
+      "weight_text": "0.20"
+     }
+    ],
+    "factors": [
+     {
+      "label": "volume",
+      "text": "6.8",
+      "raw_text": "435",
+      "normalized_text": "0.97",
+      "weight_text": "0.07"
+     },
+     {
+      "label": "net gamma",
+      "text": "1.1",
+      "raw_text": "0.10",
+      "normalized_text": "0.04",
+      "weight_text": "0.30"
+     },
+     {
+      "label": "open interest",
+      "text": "0.4",
+      "raw_text": "209",
+      "normalized_text": "0.02",
+      "weight_text": "0.20"
+     },
+     {
+      "label": "delta",
+      "text": "0.3",
+      "raw_text": "3.05",
+      "normalized_text": "0.03",
+      "weight_text": "0.10"
+     },
+     {
+      "label": "vanna",
+      "text": "0.1",
+      "raw_text": "0.00",
+      "normalized_text": "0.01",
+      "weight_text": "0.10"
+     },
+     {
+      "label": "charm",
+      "text": "0.0",
+      "raw_text": "0.04",
+      "normalized_text": "0.01",
+      "weight_text": "0.05"
+     },
+     {
+      "label": "volatility",
+      "text": "0.0",
+      "raw_text": "61.7",
+      "normalized_text": "0.01",
+      "weight_text": "0.05"
+     }
+    ],
+    "markers": [],
+    "distance_text": null,
+    "spot_line": false,
+    "inside": false
+   },
+   {
+    "strike": 285.0,
+    "strike_text": "285.00",
+    "net_gex_text": "+2.05",
+    "net_style": "background:rgb(16,43,38);font-weight:550",
+    "net_reason": null,
+    "oi_text": "2152",
+    "oi_style": "background:rgb(16,36,37);font-weight:550",
+    "oi_reason": null,
+    "pc_gex_text": "0.10",
+    "pc_gex_style": "background:rgb(17,32,36);font-weight:550",
+    "pc_gex_reason": null,
+    "gross_text": "2.49",
+    "gross_style": "background:rgb(16,43,38);font-weight:550",
+    "gross_reason": null,
+    "dgex_text": null,
+    "dgex_reason": "no change in gamma is produced",
+    "volume_text": "585",
+    "volume_style": "background:rgb(15,54,41);font-weight:550",
+    "volume_reason": null,
+    "pc_vol_text": "0.50",
+    "pc_vol_style": "background:rgb(17,25,34);font-weight:550",
+    "pc_vol_reason": null,
+    "vol_oi_text": "0.27",
+    "vol_oi_style": "background:rgb(16,43,38);font-weight:550",
+    "vol_oi_reason": null,
+    "flow_text": null,
+    "flow_reason": "no signed flow is produced",
+    "dex_text": "+30.56",
+    "dex_style": "background:rgb(16,38,37);font-weight:550",
+    "dex_reason": null,
+    "vanna_text": "+0.03",
+    "vanna_style": "background:rgb(17,27,35);font-weight:550",
+    "vanna_reason": null,
+    "iv_text": "61.7",
+    "iv_style": "background:rgb(15,61,43);font-weight:550",
+    "iv_reason": null,
+    "charm_text": "-0.36",
+    "charm_style": "background:rgb(21,24,34);font-weight:550",
+    "charm_reason": null,
+    "score": 37.19023233292847,
+    "score_text": "37",
+    "heat_background": "background:rgb(14,85,48);font-weight:550",
+    "missing": [],
+    "contributions": [
+     {
+      "label": "net gamma",
+      "text": "21.3",
+      "raw_text": "2.05",
+      "normalized_text": "0.71",
+      "weight_text": "0.30"
+     },
+     {
+      "label": "volume",
+      "text": "7.0",
+      "raw_text": "585",
+      "normalized_text": "1.00",
+      "weight_text": "0.07"
+     },
+     {
+      "label": "open interest",
+      "text": "4.3",
+      "raw_text": "2152",
+      "normalized_text": "0.21",
+      "weight_text": "0.20"
+     }
+    ],
+    "factors": [
+     {
+      "label": "net gamma",
+      "text": "21.3",
+      "raw_text": "2.05",
+      "normalized_text": "0.71",
+      "weight_text": "0.30"
+     },
+     {
+      "label": "volume",
+      "text": "7.0",
+      "raw_text": "585",
+      "normalized_text": "1.00",
+      "weight_text": "0.07"
+     },
+     {
+      "label": "open interest",
+      "text": "4.3",
+      "raw_text": "2152",
+      "normalized_text": "0.21",
+      "weight_text": "0.20"
+     },
+     {
+      "label": "delta",
+      "text": "3.1",
+      "raw_text": "30.56",
+      "normalized_text": "0.31",
+      "weight_text": "0.10"
+     },
+     {
+      "label": "vanna",
+      "text": "1.0",
+      "raw_text": "0.03",
+      "normalized_text": "0.10",
+      "weight_text": "0.10"
+     },
+     {
+      "label": "charm",
+      "text": "0.5",
+      "raw_text": "0.36",
+      "normalized_text": "0.10",
+      "weight_text": "0.05"
+     },
+     {
+      "label": "volatility",
+      "text": "0.0",
+      "raw_text": "61.7",
+      "normalized_text": "0.01",
+      "weight_text": "0.05"
+     }
+    ],
+    "markers": [],
+    "distance_text": null,
+    "spot_line": false,
+    "inside": false
+   },
+   {
+    "strike": 282.5,
+    "strike_text": "282.50",
+    "net_gex_text": "+0.22",
+    "net_style": "background:rgb(17,26,34);font-weight:550",
+    "net_reason": null,
+    "oi_text": "343",
+    "oi_style": "background:rgb(17,26,34);font-weight:550",
+    "oi_reason": null,
+    "pc_gex_text": "0.30",
+    "pc_gex_style": "background:rgb(17,30,35);font-weight:550",
+    "pc_gex_reason": null,
+    "gross_text": "0.40",
+    "gross_style": "background:rgb(17,27,35);font-weight:550",
+    "gross_reason": null,
+    "dgex_text": null,
+    "dgex_reason": "no change in gamma is produced",
+    "volume_text": "241",
+    "volume_style": "background:rgb(16,36,37);font-weight:550",
+    "volume_reason": null,
+    "pc_vol_text": "0.31",
+    "pc_vol_style": "background:rgb(17,25,34);font-weight:550",
+    "pc_vol_reason": null,
+    "vol_oi_text": "0.70",
+    "vol_oi_style": "background:rgb(14,72,45);font-weight:550",
+    "vol_oi_reason": null,
+    "flow_text": null,
+    "flow_reason": "no signed flow is produced",
+    "dex_text": "+5.05",
+    "dex_style": "background:rgb(17,26,35);font-weight:550",
+    "dex_reason": null,
+    "vanna_text": "0.00",
+    "vanna_style": "background:rgb(17,24,34);font-weight:550",
+    "vanna_reason": null,
+    "iv_text": "60.5",
+    "iv_style": "background:rgb(15,60,42);font-weight:550",
+    "iv_reason": null,
+    "charm_text": "0.00",
+    "charm_style": "background:rgb(17,24,34);font-weight:550",
+    "charm_reason": null,
+    "score": 7.1868294741006356,
+    "score_text": "7",
+    "heat_background": "background:rgb(16,36,37);font-weight:550",
+    "missing": [],
+    "contributions": [
+     {
+      "label": "volume",
+      "text": "3.7",
+      "raw_text": "241",
+      "normalized_text": "0.53",
+      "weight_text": "0.07"
+     },
+     {
+      "label": "net gamma",
+      "text": "2.2",
+      "raw_text": "0.22",
+      "normalized_text": "0.07",
+      "weight_text": "0.30"
+     },
+     {
+      "label": "open interest",
+      "text": "0.7",
+      "raw_text": "343",
+      "normalized_text": "0.03",
+      "weight_text": "0.20"
+     }
+    ],
+    "factors": [
+     {
+      "label": "volume",
+      "text": "3.7",
+      "raw_text": "241",
+      "normalized_text": "0.53",
+      "weight_text": "0.07"
+     },
+     {
+      "label": "net gamma",
+      "text": "2.2",
+      "raw_text": "0.22",
+      "normalized_text": "0.07",
+      "weight_text": "0.30"
+     },
+     {
+      "label": "open interest",
+      "text": "0.7",
+      "raw_text": "343",
+      "normalized_text": "0.03",
+      "weight_text": "0.20"
+     },
+     {
+      "label": "delta",
+      "text": "0.5",
+      "raw_text": "5.05",
+      "normalized_text": "0.05",
+      "weight_text": "0.10"
+     },
+     {
+      "label": "vanna",
+      "text": "0.0",
+      "raw_text": "0.00",
+      "normalized_text": "0.00",
+      "weight_text": "0.10"
+     },
+     {
+      "label": "charm",
+      "text": "0.0",
+      "raw_text": "0.00",
+      "normalized_text": "0.00",
+      "weight_text": "0.05"
+     },
+     {
+      "label": "volatility",
+      "text": "0.0",
+      "raw_text": "60.5",
+      "normalized_text": "0.00",
+      "weight_text": "0.05"
+     }
+    ],
+    "markers": [],
+    "distance_text": null,
+    "spot_line": false,
+    "inside": false
+   },
+   {
+    "strike": 280.0,
+    "strike_text": "280.00",
+    "net_gex_text": "+9.64",
+    "net_style": "background:rgb(12,112,55);font-weight:550",
+    "net_reason": null,
+    "oi_text": "10556",
+    "oi_style": "background:rgb(14,84,48);font-weight:550",
+    "oi_reason": null,
+    "pc_gex_text": "0.12",
+    "pc_gex_style": "background:rgb(17,31,36);font-weight:550",
+    "pc_gex_reason": null,
+    "gross_text": "12.29",
+    "gross_style": "background:rgb(12,119,56);font-weight:750",
+    "gross_reason": null,
+    "dgex_text": null,
+    "dgex_reason": "no change in gamma is produced",
+    "volume_text": "806",
+    "volume_style": "background:rgb(15,65,44);font-weight:550",
+    "volume_reason": null,
+    "pc_vol_text": "0.52",
+    "pc_vol_style": "background:rgb(17,25,34);font-weight:550",
+    "pc_vol_reason": null,
+    "vol_oi_text": "0.08",
+    "vol_oi_style": "background:rgb(17,29,35);font-weight:550",
+    "vol_oi_reason": null,
+    "flow_text": null,
+    "flow_reason": "no signed flow is produced",
+    "dex_text": "+166.93",
+    "dex_style": "background:rgb(13,101,52);font-weight:550",
+    "dex_reason": null,
+    "vanna_text": "-0.14",
+    "vanna_style": "background:rgb(36,25,35);font-weight:550",
+    "vanna_reason": null,
+    "iv_text": "60.1",
+    "iv_style": "background:rgb(15,60,42);font-weight:550",
+    "iv_reason": null,
+    "charm_text": "+1.60",
+    "charm_style": "background:rgb(16,37,37);font-weight:550",
+    "charm_reason": null,
+    "score": 73.49659004434146,
+    "score_text": "73",
+    "heat_background": "background:rgb(10,144,62);font-weight:750",
+    "missing": [],
+    "contributions": [
+     {
+      "label": "net gamma",
+      "text": "30.0",
+      "raw_text": "9.64",
+      "normalized_text": "1.00",
+      "weight_text": "0.30"
+     },
+     {
+      "label": "open interest",
+      "text": "20.0",
+      "raw_text": "10556",
+      "normalized_text": "1.00",
+      "weight_text": "0.20"
+     },
+     {
+      "label": "delta",
+      "text": "10.0",
+      "raw_text": "166.93",
+      "normalized_text": "1.00",
+      "weight_text": "0.10"
+     }
+    ],
+    "factors": [
+     {
+      "label": "net gamma",
+      "text": "30.0",
+      "raw_text": "9.64",
+      "normalized_text": "1.00",
+      "weight_text": "0.30"
+     },
+     {
+      "label": "open interest",
+      "text": "20.0",
+      "raw_text": "10556",
+      "normalized_text": "1.00",
+      "weight_text": "0.20"
+     },
+     {
+      "label": "delta",
+      "text": "10.0",
+      "raw_text": "166.93",
+      "normalized_text": "1.00",
+      "weight_text": "0.10"
+     },
+     {
+      "label": "volume",
+      "text": "7.0",
+      "raw_text": "806",
+      "normalized_text": "1.00",
+      "weight_text": "0.07"
+     },
+     {
+      "label": "vanna",
+      "text": "4.4",
+      "raw_text": "0.14",
+      "normalized_text": "0.44",
+      "weight_text": "0.10"
+     },
+     {
+      "label": "charm",
+      "text": "2.1",
+      "raw_text": "1.60",
+      "normalized_text": "0.42",
+      "weight_text": "0.05"
+     },
+     {
+      "label": "volatility",
+      "text": "0.0",
+      "raw_text": "60.1",
+      "normalized_text": "0.00",
+      "weight_text": "0.05"
+     }
+    ],
+    "markers": [],
+    "distance_text": null,
+    "spot_line": false,
+    "inside": false
+   },
+   {
+    "strike": 277.5,
+    "strike_text": "277.50",
+    "net_gex_text": "-0.04",
+    "net_style": "background:rgb(18,24,34);font-weight:550",
+    "net_reason": null,
+    "oi_text": "794",
+    "oi_style": "background:rgb(17,29,35);font-weight:550",
+    "oi_reason": null,
+    "pc_gex_text": "1.09",
+    "pc_gex_style": "background:rgb(18,24,34);font-weight:550",
+    "pc_gex_reason": null,
+    "gross_text": "0.90",
+    "gross_style": "background:rgb(17,31,36);font-weight:550",
+    "gross_reason": null,
+    "dgex_text": null,
+    "dgex_reason": "no change in gamma is produced",
+    "volume_text": "236",
+    "volume_style": "background:rgb(16,36,37);font-weight:550",
+    "volume_reason": null,
+    "pc_vol_text": "0.57",
+    "pc_vol_style": "background:rgb(17,25,34);font-weight:550",
+    "pc_vol_reason": null,
+    "vol_oi_text": "0.30",
+    "vol_oi_style": "background:rgb(16,44,39);font-weight:550",
+    "vol_oi_reason": null,
+    "flow_text": null,
+    "flow_reason": "no signed flow is produced",
+    "dex_text": "+11.16",
+    "dex_style": "background:rgb(17,29,35);font-weight:550",
+    "dex_reason": null,
+    "vanna_text": "0.00",
+    "vanna_style": "background:rgb(17,24,34);font-weight:550",
+    "vanna_reason": null,
+    "iv_text": "60.6",
+    "iv_style": "background:rgb(15,60,42);font-weight:550",
+    "iv_reason": null,
+    "charm_text": "-0.01",
+    "charm_style": "background:rgb(17,24,34);font-weight:550",
+    "charm_reason": null,
+    "score": 6.834508867159779,
+    "score_text": "7",
+    "heat_background": "background:rgb(16,35,37);font-weight:550",
+    "missing": [],
+    "contributions": [
+     {
+      "label": "volume",
+      "text": "3.7",
+      "raw_text": "236",
+      "normalized_text": "0.52",
+      "weight_text": "0.07"
+     },
+     {
+      "label": "open interest",
+      "text": "1.6",
+      "raw_text": "794",
+      "normalized_text": "0.08",
+      "weight_text": "0.20"
+     },
+     {
+      "label": "delta",
+      "text": "1.1",
+      "raw_text": "11.16",
+      "normalized_text": "0.11",
+      "weight_text": "0.10"
+     }
+    ],
+    "factors": [
+     {
+      "label": "volume",
+      "text": "3.7",
+      "raw_text": "236",
+      "normalized_text": "0.52",
+      "weight_text": "0.07"
+     },
+     {
+      "label": "open interest",
+      "text": "1.6",
+      "raw_text": "794",
+      "normalized_text": "0.08",
+      "weight_text": "0.20"
+     },
+     {
+      "label": "delta",
+      "text": "1.1",
+      "raw_text": "11.16",
+      "normalized_text": "0.11",
+      "weight_text": "0.10"
+     },
+     {
+      "label": "net gamma",
+      "text": "0.4",
+      "raw_text": "0.04",
+      "normalized_text": "0.01",
+      "weight_text": "0.30"
+     },
+     {
+      "label": "vanna",
+      "text": "0.0",
+      "raw_text": "0.00",
+      "normalized_text": "0.00",
+      "weight_text": "0.10"
+     },
+     {
+      "label": "charm",
+      "text": "0.0",
+      "raw_text": "0.01",
+      "normalized_text": "0.00",
+      "weight_text": "0.05"
+     },
+     {
+      "label": "volatility",
+      "text": "0.0",
+      "raw_text": "60.6",
+      "normalized_text": "0.00",
+      "weight_text": "0.05"
+     }
+    ],
+    "markers": [],
+    "distance_text": null,
+    "spot_line": false,
+    "inside": false
+   },
+   {
+    "strike": 275.0,
+    "strike_text": "275.00",
+    "net_gex_text": "+0.84",
+    "net_style": "background:rgb(17,32,36);font-weight:550",
+    "net_reason": null,
+    "oi_text": "2342",
+    "oi_style": "background:rgb(16,37,37);font-weight:550",
+    "oi_reason": null,
+    "pc_gex_text": "0.51",
+    "pc_gex_style": "background:rgb(17,28,35);font-weight:550",
+    "pc_gex_reason": null,
+    "gross_text": "2.57",
+    "gross_style": "background:rgb(16,44,39);font-weight:550",
+    "gross_reason": null,
+    "dgex_text": null,
+    "dgex_reason": "no change in gamma is produced",
+    "volume_text": "296",
+    "volume_style": "background:rgb(16,39,38);font-weight:550",
+    "volume_reason": null,
+    "pc_vol_text": "1.64",
+    "pc_vol_style": "background:rgb(19,24,34);font-weight:550",
+    "pc_vol_reason": null,
+    "vol_oi_text": "0.13",
+    "vol_oi_style": "background:rgb(17,33,36);font-weight:550",
+    "vol_oi_reason": null,
+    "flow_text": null,
+    "flow_reason": "no signed flow is produced",
+    "dex_text": "+36.37",
+    "dex_style": "background:rgb(16,41,38);font-weight:550",
+    "dex_reason": null,
+    "vanna_text": "-0.04",
+    "vanna_style": "background:rgb(22,24,34);font-weight:550",
+    "vanna_reason": null,
+    "iv_text": "60.6",
+    "iv_style": "background:rgb(15,60,42);font-weight:550",
+    "iv_reason": null,
+    "charm_text": "+0.43",
+    "charm_style": "background:rgb(17,27,35);font-weight:550",
+    "charm_reason": null,
+    "score": 23.49785504368062,
+    "score_text": "23",
+    "heat_background": "background:rgb(15,62,43);font-weight:550",
+    "missing": [],
+    "contributions": [
+     {
+      "label": "net gamma",
+      "text": "8.8",
+      "raw_text": "0.84",
+      "normalized_text": "0.29",
+      "weight_text": "0.30"
+     },
+     {
+      "label": "open interest",
+      "text": "4.7",
+      "raw_text": "2342",
+      "normalized_text": "0.23",
+      "weight_text": "0.20"
+     },
+     {
+      "label": "volume",
+      "text": "4.6",
+      "raw_text": "296",
+      "normalized_text": "0.66",
+      "weight_text": "0.07"
+     }
+    ],
+    "factors": [
+     {
+      "label": "net gamma",
+      "text": "8.8",
+      "raw_text": "0.84",
+      "normalized_text": "0.29",
+      "weight_text": "0.30"
+     },
+     {
+      "label": "open interest",
+      "text": "4.7",
+      "raw_text": "2342",
+      "normalized_text": "0.23",
+      "weight_text": "0.20"
+     },
+     {
+      "label": "volume",
+      "text": "4.6",
+      "raw_text": "296",
+      "normalized_text": "0.66",
+      "weight_text": "0.07"
+     },
+     {
+      "label": "delta",
+      "text": "3.7",
+      "raw_text": "36.37",
+      "normalized_text": "0.37",
+      "weight_text": "0.10"
+     },
+     {
+      "label": "vanna",
+      "text": "1.2",
+      "raw_text": "0.04",
+      "normalized_text": "0.12",
+      "weight_text": "0.10"
+     },
+     {
+      "label": "charm",
+      "text": "0.6",
+      "raw_text": "0.43",
+      "normalized_text": "0.11",
+      "weight_text": "0.05"
+     },
+     {
+      "label": "volatility",
+      "text": "0.0",
+      "raw_text": "60.6",
+      "normalized_text": "0.00",
+      "weight_text": "0.05"
+     }
+    ],
+    "markers": [],
+    "distance_text": null,
+    "spot_line": false,
+    "inside": false
+   },
+   {
+    "strike": 272.5,
+    "strike_text": "272.50",
+    "net_gex_text": "-0.10",
+    "net_style": "background:rgb(18,24,34);font-weight:550",
+    "net_reason": null,
+    "oi_text": "932",
+    "oi_style": "background:rgb(17,29,35);font-weight:550",
+    "oi_reason": null,
+    "pc_gex_text": "1.23",
+    "pc_gex_style": "background:rgb(20,24,34);font-weight:550",
+    "pc_gex_reason": null,
+    "gross_text": "0.98",
+    "gross_style": "background:rgb(17,32,36);font-weight:550",
+    "gross_reason": null,
+    "dgex_text": null,
+    "dgex_reason": "no change in gamma is produced",
+    "volume_text": "111",
+    "volume_style": "background:rgb(17,30,35);font-weight:550",
+    "volume_reason": null,
+    "pc_vol_text": "2.00",
+    "pc_vol_style": "background:rgb(20,24,34);font-weight:550",
+    "pc_vol_reason": null,
+    "vol_oi_text": "0.12",
+    "vol_oi_style": "background:rgb(17,32,36);font-weight:550",
+    "vol_oi_reason": null,
+    "flow_text": null,
+    "flow_reason": "no signed flow is produced",
+    "dex_text": "+12.72",
+    "dex_style": "background:rgb(17,30,35);font-weight:550",
+    "dex_reason": null,
+    "vanna_text": "+0.01",
+    "vanna_style": "background:rgb(17,25,34);font-weight:550",
+    "vanna_reason": null,
+    "iv_text": "60.7",
+    "iv_style": "background:rgb(15,60,42);font-weight:550",
+    "iv_reason": null,
+    "charm_text": "-0.07",
+    "charm_style": "background:rgb(18,24,34);font-weight:550",
+    "charm_reason": null,
+    "score": 6.230573354864352,
+    "score_text": "6",
+    "heat_background": "background:rgb(16,34,36);font-weight:550",
+    "missing": [],
+    "contributions": [
+     {
+      "label": "open interest",
+      "text": "1.9",
+      "raw_text": "932",
+      "normalized_text": "0.09",
+      "weight_text": "0.20"
+     },
+     {
+      "label": "volume",
+      "text": "1.7",
+      "raw_text": "111",
+      "normalized_text": "0.24",
+      "weight_text": "0.07"
+     },
+     {
+      "label": "delta",
+      "text": "1.3",
+      "raw_text": "12.72",
+      "normalized_text": "0.13",
+      "weight_text": "0.10"
+     }
+    ],
+    "factors": [
+     {
+      "label": "open interest",
+      "text": "1.9",
+      "raw_text": "932",
+      "normalized_text": "0.09",
+      "weight_text": "0.20"
+     },
+     {
+      "label": "volume",
+      "text": "1.7",
+      "raw_text": "111",
+      "normalized_text": "0.24",
+      "weight_text": "0.07"
+     },
+     {
+      "label": "delta",
+      "text": "1.3",
+      "raw_text": "12.72",
+      "normalized_text": "0.13",
+      "weight_text": "0.10"
+     },
+     {
+      "label": "net gamma",
+      "text": "1.1",
+      "raw_text": "0.10",
+      "normalized_text": "0.04",
+      "weight_text": "0.30"
+     },
+     {
+      "label": "vanna",
+      "text": "0.2",
+      "raw_text": "0.01",
+      "normalized_text": "0.02",
+      "weight_text": "0.10"
+     },
+     {
+      "label": "charm",
+      "text": "0.1",
+      "raw_text": "0.07",
+      "normalized_text": "0.02",
+      "weight_text": "0.05"
+     },
+     {
+      "label": "volatility",
+      "text": "0.0",
+      "raw_text": "60.7",
+      "normalized_text": "0.00",
+      "weight_text": "0.05"
+     }
+    ],
+    "markers": [],
+    "distance_text": null,
+    "spot_line": false,
+    "inside": false
+   }
+  ],
+  "spot": null,
+  "spot_text": null,
+  "ticker": "MRVL",
+  "available": true,
+  "reason": null,
+  "expiry": "2026-10-16",
+  "expiries": [
+   {
+    "expiry": "2026-10-16",
+    "dte": 9.0,
+    "label": "2026-10-16 \u00b7 9"
+   },
+   {
+    "expiry": "2026-10-23",
+    "dte": 16.0,
+    "label": "2026-10-23 \u00b7 16"
+   },
+   {
+    "expiry": "2026-10-30",
+    "dte": 23.0,
+    "label": "2026-10-30 \u00b7 23"
+   },
+   {
+    "expiry": "2026-11-06",
+    "dte": 30.0,
+    "label": "2026-11-06 \u00b7 30"
+   },
+   {
+    "expiry": "2026-11-13",
+    "dte": 37.0,
+    "label": "2026-11-13 \u00b7 37"
+   },
+   {
+    "expiry": "2026-11-20",
+    "dte": 44.0,
+    "label": "2026-11-20 \u00b7 44"
+   },
+   {
+    "expiry": "2026-12-18",
+    "dte": 72.0,
+    "label": "2026-12-18 \u00b7 72"
+   },
+   {
+    "expiry": "2027-01-15",
+    "dte": 100.0,
+    "label": "2027-01-15 \u00b7 100"
+   },
+   {
+    "expiry": "2027-02-19",
+    "dte": 135.0,
+    "label": "2027-02-19 \u00b7 135"
+   },
+   {
+    "expiry": "2027-03-19",
+    "dte": 163.0,
+    "label": "2027-03-19 \u00b7 163"
+   },
+   {
+    "expiry": "2027-04-16",
+    "dte": 191.0,
+    "label": "2027-04-16 \u00b7 191"
+   },
+   {
+    "expiry": "2027-05-21",
+    "dte": 226.0,
+    "label": "2027-05-21 \u00b7 226"
+   },
+   {
+    "expiry": "2027-06-17",
+    "dte": 253.0,
+    "label": "2027-06-17 \u00b7 253"
+   },
+   {
+    "expiry": "2027-09-17",
+    "dte": 345.0,
+    "label": "2027-09-17 \u00b7 345"
+   },
+   {
+    "expiry": "2027-12-17",
+    "dte": 436.0,
+    "label": "2027-12-17 \u00b7 436"
+   },
+   {
+    "expiry": "2028-01-21",
+    "dte": 471.0,
+    "label": "2028-01-21 \u00b7 471"
+   },
+   {
+    "expiry": "2028-03-17",
+    "dte": 527.0,
+    "label": "2028-03-17 \u00b7 527"
+   },
+   {
+    "expiry": "2028-06-16",
+    "dte": 618.0,
+    "label": "2028-06-16 \u00b7 618"
+   },
+   {
+    "expiry": "2029-01-19",
+    "dte": 835.0,
+    "label": "2029-01-19 \u00b7 835"
+   }
+  ],
+  "spot_as_of_ts_utc": null,
+  "spot_time_ct": null,
+  "priced_at_spot": 283.73,
+  "chain_as_of_ts_utc": 1791383480.265546,
+  "chain_as_of_time_ct": "Wed 10/07 09:31 AM CT",
+  "status_text": "Chain as of Wed 10/07 09:31 AM CT",
+  "levels": [
+   {
+    "lane": "options",
+    "abbrev": "CW",
+    "price": 300.0,
+    "price_text": "300.00",
+    "title": "Call wall"
+   },
+   {
+    "lane": "options",
+    "abbrev": "PW",
+    "price": 270.0,
+    "price_text": "270.00",
+    "title": "Put wall"
+   },
+   {
+    "lane": "options",
+    "abbrev": "Flip",
+    "price": 250.7213166575583,
+    "price_text": "250.72",
+    "title": "Gamma flip"
+   },
+   {
+    "lane": "options",
+    "abbrev": "Pain",
+    "price": 270.0,
+    "price_text": "270.00",
+    "title": "Max pain"
+   },
+   {
+    "lane": "options",
+    "abbrev": "Net \u0393",
+    "price": 300.0,
+    "price_text": "300.00",
+    "title": "Net \u0393 peak"
+   },
+   {
+    "lane": "options",
+    "abbrev": "Abs \u0393",
+    "price": 300.0,
+    "price_text": "300.00",
+    "title": "Abs \u0393"
+   },
+   {
+    "lane": "options",
+    "abbrev": "GSF",
+    "price": 268.11826169281255,
+    "price_text": "268.12",
+    "title": "GSF"
+   },
+   {
+    "lane": "options",
+    "abbrev": "HVP",
+    "price": 200.0,
+    "price_text": "200.00",
+    "title": "HVP"
+   },
+   {
+    "lane": "options",
+    "abbrev": "LVP",
+    "price": 300.0,
+    "price_text": "300.00",
+    "title": "LVP"
+   },
+   {
+    "lane": "options",
+    "abbrev": "Key \u0394",
+    "price": 300.0,
+    "price_text": "300.00",
+    "title": "Key \u0394 strike"
+   },
+   {
+    "lane": "options",
+    "abbrev": "CCh",
+    "price": 300.0,
+    "price_text": "300.00",
+    "title": "Call charm wall"
+   },
+   {
+    "lane": "options",
+    "abbrev": "PCh",
+    "price": 260.0,
+    "price_text": "260.00",
+    "title": "Put charm wall"
+   },
+   {
+    "lane": "options",
+    "abbrev": "0D CW",
+    "price": 282.5,
+    "price_text": "282.50",
+    "title": "0DTE Call wall"
+   },
+   {
+    "lane": "options",
+    "abbrev": "0D PW",
+    "price": 290.0,
+    "price_text": "290.00",
+    "title": "0DTE Put wall"
+   },
+   {
+    "lane": "options",
+    "abbrev": "0D Flip",
+    "price": 267.45313954078324,
+    "price_text": "267.45",
+    "title": "0DTE Gamma flip"
+   },
+   {
+    "lane": "options",
+    "abbrev": "0D Pin",
+    "price": 285.0,
+    "price_text": "285.00",
+    "title": "0DTE Abs \u0393"
+   },
+   {
+    "lane": "options",
+    "abbrev": "0D Net \u0393",
+    "price": 282.5,
+    "price_text": "282.50",
+    "title": "0DTE Net \u0393 peak"
+   },
+   {
+    "lane": "options",
+    "abbrev": "0D GSF",
+    "price": 274.3815082242009,
+    "price_text": "274.38",
+    "title": "0DTE GSF"
+   },
+   {
+    "lane": "options",
+    "abbrev": "0D HVP",
+    "price": 265.0,
+    "price_text": "265.00",
+    "title": "0DTE HVP"
+   },
+   {
+    "lane": "options",
+    "abbrev": "0D LVP",
+    "price": 282.5,
+    "price_text": "282.50",
+    "title": "0DTE LVP"
+   },
+   {
+    "lane": "options",
+    "abbrev": "0D Key \u0394",
+    "price": 280.0,
+    "price_text": "280.00",
+    "title": "0DTE Key \u0394 strike"
+   },
+   {
+    "lane": "options",
+    "abbrev": "0D CCh",
+    "price": 290.0,
+    "price_text": "290.00",
+    "title": "0DTE Call charm wall"
+   },
+   {
+    "lane": "options",
+    "abbrev": "0D PCh",
+    "price": 290.0,
+    "price_text": "290.00",
+    "title": "0DTE Put charm wall"
+   }
+  ],
+  "regime": "LONG_GAMMA_CHOP",
+  "flip_text": "250.72",
+  "pin_text": "285.00",
+  "move_text": null
+ }
+}

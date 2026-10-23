@@ -1,0 +1,52 @@
+=== Schwab Trader API Support, 2026-10-12 ===
+Thank you for contacting Schwab Trader API Support!
+Please see our answers below:
+1. Time & Sales
+No. There is not any Schwab Trader API endpoint or streamer service that provides a complete options Time & Sales feed containing every individual trade, price, size, and timestamp.
+
+2. Trade Side / Aggressor Information
+No. The Trader API does not provide fields indicating:
+
+* Trade aggressor side (buyer-initiated vs. seller-initiated)
+* Trade condition codes
+* Opening vs. closing trade indicators
+* Bid/ask execution side classification
+
+3. Missing Trades on LEVELONE_OPTIONS
+What you are observing is expected. LEVELONE_OPTIONS should be viewed as a quote stream using a change-based delivery model rather than a complete trade-event feed. The streamer updates approximately every 300 milliseconds to 1 second depending on activity and only transmits fields whose values have changed.
+As a result, LAST_PRICE, LAST_SIZE, TRADE_TIME, and TOTAL_VOLUME should not be interpreted as a complete audit trail of every trade. There is not a supported method within Trader API to receive every individual options trade.
+
+4. Symbol Count
+We generally recommend remaining under 300 subscribed symbols for best performance, although LEVELONE services support up to 3,000 symbols.
+However, reducing the symbol count should not be interpreted as a method of receiving every trade. Staying below 300 symbols may help reduce performance-related concerns, but LEVELONE_OPTIONS is still not designed to function as a complete trade-by-trade feed.
+
+5. Open Interest
+Open interest is not a real-time value. It reflects the prior trading day's open interest as reported after the previous session's close.
+
+6. Volume Going Down
+A decrease in TOTAL_VOLUME is uncommon but can occur. Trade corrections, cancellations, or exchange-side adjustments would be potential explanations.
+
+7. OPTIONS_BOOK
+OPTIONS_BOOK provides depth-of-book quote information. Market Maker IDs identify the participant and/or venue contributing the displayed quote at a particular bid or ask level.
+The service reports:
+
+* Bid prices
+* Ask prices
+* Quote sizes
+* Market maker participation at each level
+
+It does not provide:
+
+* Executed trade records
+* Trade prices and sizes
+* Aggressor side information
+* Opening/closing trade indicators
+* Execution reports
+
+In other words, OPTIONS_BOOK should be viewed as an order-book depth service rather than a trade-reporting service.
+There is not a documented method that Schwab recommends for determining trade side or aggressor side from the fields provided by the Trader API. Since the API does not provide trade-side indicators, aggressor information, or trade condition data, any methodology used to infer buyer- or seller-initiated activity would be an application-level interpretation rather than a value supplied or endorsed by Schwab. As such, we do not have a recommended approach for deriving trade side from the available API fields.
+Please let us know if you have any additional questions.
+
+Best regards,
+
+Schwab Trader API Support

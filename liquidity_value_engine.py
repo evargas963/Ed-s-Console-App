@@ -14,13 +14,14 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import struct
 import threading
 from collections import defaultdict
-from datetime import date, datetime, time
-from typing import Any, Optional
+from datetime import date, datetime
+from typing import Optional
 
 from instrument_identity import ticker_storage_key
-from numeric_contract import float_finite_or_none, float_positive_or_none, schwab_count, schwab_number
+from numeric_contract import float_finite_or_none, float_positive_or_none
 from liquidity_models import (
     PlaybookConfig,
     SnapshotOutput,
@@ -34,30 +35,25 @@ from liquidity_models import (
 
 log = logging.getLogger(__name__)
 
-from time_et import (
-    ET,
-    RTH_OPEN_MINS,
-    session_close_mins_for_et_date,
-)
-
-# The session comes from time_et, the one market calendar: the open, and each day's close
-# (13:00 on an early close, none on a holiday).
-RTH_OPEN = time(RTH_OPEN_MINS // 60, RTH_OPEN_MINS % 60)
+from time_et import ET, session
 
 #: a prior session with fewer 1-minute RTH bars than this (of ~390) is disclosed as partial on the
 #: price levels built from it
 LEVELS_PRIOR_SESSION_MIN_BARS: int = 300
 
 
-def rth_close(d: date) -> Optional[time]:
-    """The regular session's close on `d` (the market calendar's); None: no session that day."""
-    m = session_close_mins_for_et_date(d.isoformat())
-    return None if m is None else time(m // 60, m % 60)
+def _regular(d: date) -> "tuple[datetime, datetime] | None":
+    """`d`'s regular session (open, close) as Schwab's /markets sent it (time_et.session); None:
+    no regular session that day, or Schwab's answer for it is not held."""
+    s = session(d.isoformat())
+    if s is None or not s.regular:
+        return None
+    return s.regular[0][0], s.regular[-1][1]
 
 
 def _in_rth(dt: datetime) -> bool:
-    close = rth_close(dt.date())
-    return close is not None and RTH_OPEN <= dt.time() < close
+    regular = _regular(dt.date())
+    return regular is not None and regular[0] <= dt < regular[1]
 
 
 #: each price level's name, spelled out and as the chart's short tag -- the one home for both.
@@ -90,33 +86,16 @@ def liquidity_zone_tradeable_score(
 ) -> float:
     """Spot-normalized liquidity zone tradeability score (LM-1 authority)."""
     if spot is None:
-        return round(3.0 * n_tags + 2.5 * n_opt, 2)
-    return round(3.0 * n_tags + 2.5 * n_opt + (1.5 if inside else 0.0) - dist_pen, 2)
+        return 3.0 * n_tags + 2.5 * n_opt
+    return 3.0 * n_tags + 2.5 * n_opt + (1.5 if inside else 0.0) - dist_pen
 
 
-def _resolve_bar_timestamp(d: dict) -> Optional[Any]:
-    """Bar time: the first of timestamp, date, ts present on the bar."""
-    for key in ("timestamp", "date", "ts"):
-        val = d.get(key)
-        if val is not None:
-            return val
-    return None
-
-
-def _bars_to_list(bars) -> list[dict]:
-    """The bars every level function takes, normalized once by the producer:
-    {timestamp, _dt (its ET time), open, high, low, close, volume} for each bar dict with a time
-    and four prices that are numbers (rule 2); a volume that is not a number stays None."""
-    out = []
-    for b in bars or []:
-        ts = _resolve_bar_timestamp(b)
-        o, h, lo, c = (schwab_number(b.get(k)) for k in ("open", "high", "low", "close"))
-        if ts is None or None in (o, h, lo, c):
-            continue
-        sec = ts.timestamp() if hasattr(ts, "timestamp") else (ts / 1000.0 if ts > 1e12 else ts)
-        out.append({"timestamp": ts, "_dt": datetime.fromtimestamp(sec, tz=ET), "open": o, "high": h,
-                    "low": lo, "close": c, "volume": schwab_count(b.get("volume"))})
-    return out
+def bars_from_candles(candles) -> list[dict]:
+    """The bars every level function takes, from the bar writer's Candles, each field already
+    checked once as Schwab sent it, where it came in (server._schwab_bar): {timestamp (ms), _dt
+    (its ET time), open, high, low, close, volume}."""
+    return [{"timestamp": int(c.ts * 1000), "_dt": datetime.fromtimestamp(c.ts, tz=ET), "open": c.open,
+             "high": c.high, "low": c.low, "close": c.close, "volume": c.volume} for c in candles]
 
 
 
@@ -134,8 +113,8 @@ def prior_trading_session_date(bars_norm: list, session_date: date) -> Optional[
     `session_date - 1 day` is Sunday on a Monday and a closed holiday after one, and a market
     that was shut has no close for an overnight range to start from.
 
-    Presence of bars inside a day's regular session (the market calendar's hours, early closes
-    included) is the evidence a session happened, so an ad-hoc closure with no bars is skipped.
+    Presence of bars inside a day's regular session (the hours Schwab's /markets sent, early
+    closes included) is the evidence a session happened, so an ad-hoc closure with no bars is skipped.
     Fail-closed: no prior RTH date in the buffer returns None, never a guessed date.
     """
     prior: Optional[date] = None
@@ -154,7 +133,7 @@ def get_previous_day_levels(
     config: PlaybookConfig,
 ) -> dict:
     """The prior session (the most recent earlier date with RTH bars, prior_trading_session_date)
-    from normalized bars (_bars_to_list): its date, its RTH bar count, and its high, low, close,
+    from normalized bars (bars_from_candles): its date, its RTH bar count, and its high, low, close,
     POC, VAH and VAL from those RTH bars. No prior session: {} (never a calendar walk or other
     days' bars)."""
     prior = prior_trading_session_date(bars_norm, session_date)
@@ -174,13 +153,17 @@ def get_overnight_levels(
     session_date: date,
     prev_session: Optional[date],
 ) -> dict:
-    """Overnight range over normalized bars (_bars_to_list): the continuous interval from the
-    prior session's (`prev_session`, prior_trading_session_date) RTH close to this session's RTH
-    open -- a weekend's or holiday's bars included. With no prior session the interval has no
-    start, so only this session's pre-open bars are used. No bars in the window: {}."""
-    session_open_dt = datetime.combine(session_date, RTH_OPEN, tzinfo=ET)
-    prev_close_dt = (datetime.combine(prev_session, rth_close(prev_session), tzinfo=ET)
-                     if prev_session is not None else None)       # a session day: it has a close
+    """Overnight range over normalized bars (bars_from_candles): the continuous interval from the
+    prior session's (`prev_session`, prior_trading_session_date) regular close to this session's
+    regular open, as Schwab's /markets sent them -- a weekend's or holiday's bars included. With
+    no prior session the interval has no start, so only this session's pre-open bars are used.
+    No bars in the window, or a session's hours not held: {}."""
+    today = _regular(session_date)
+    prev = None if prev_session is None else _regular(prev_session)
+    if today is None or (prev_session is not None and prev is None):
+        return {}
+    session_open_dt = today[0]
+    prev_close_dt = None if prev is None else prev[1]
 
     overnight = []
     for b in bars_norm:
@@ -212,7 +195,7 @@ def compute_opening_range(
     config: PlaybookConfig,
 ) -> dict:
     """
-    First N minutes of RTH (default 15), from normalized bars (_bars_to_list).
+    First N minutes of RTH (default 15), from normalized bars (bars_from_candles).
     """
     orb_min = config.opening_range_minutes
 
@@ -242,7 +225,7 @@ def compute_opening_range(
 def compute_session_vwap_series(
     bars_norm: list, session_date: date,
 ) -> list[tuple[float, float, float, float, float, float]]:
-    """Running session VWAP and σ bands after each RTH bar, from normalized bars (_bars_to_list).
+    """Running session VWAP and σ bands after each RTH bar, from normalized bars (bars_from_candles).
 
     Returns [(bar_epoch_sec, vwap, +1σ, -1σ, +2σ, -2σ), ...] using the standard
     cumulative moments VWAP_t = Σ(tp·v)/Σv and σ_t² = Σ(tp²·v)/Σv − VWAP_t².
@@ -265,8 +248,7 @@ def compute_session_vwap_series(
             continue
         w = cum_tpv / cum_vol
         sd = max(0.0, cum_tp2v / cum_vol - w * w) ** 0.5
-        series.append((b["_dt"].timestamp(), round(w, 4), round(w + sd, 4), round(w - sd, 4),
-                       round(w + 2 * sd, 4), round(w - 2 * sd, 4)))
+        series.append((b["_dt"].timestamp(), w, w + sd, w - sd, w + 2 * sd, w - 2 * sd))
     return series
 
 
@@ -292,7 +274,7 @@ def compute_volume_profile_levels(
     config: PlaybookConfig,
 ) -> Optional[VolumeProfile]:
     """The current day's volume profile with its POC, VAH, VAL, from normalized bars
-    (_bars_to_list). RTH only, no lookahead."""
+    (bars_from_candles). RTH only, no lookahead."""
     return volume_profile(_filter_rth_bars(bars_norm, session_date), config.value_area_percent,
                           config.tick_size, ndigits=4)
 
@@ -402,7 +384,7 @@ def build_premarket_snapshot(
             zt = ZoneType.SUPPORT_LIQUIDITY
         elif "PD_POC" in str(tags) or "PDC" in str(tags):
             zt = ZoneType.PIVOT_VALUE
-        sl = [{"label": t, "value": round(p, 4)} for p, t in source_pairs]
+        sl = [{"label": t, "value": p} for p, t in source_pairs]
         z = Zone(
             zone_type=zt,
             zone_low=lo, zone_high=hi, zone_mid=mid,
@@ -555,16 +537,15 @@ def build_live_snapshot(
     """
     The session's zones from the one materialized price-level snapshot (``canonical``), with
     optional ``extra_levels`` (the option levels and spot) fused in; no level helper runs here.
-    Before the session's RTH open it is the premarket shape. The cutoff shown is min(now, the
-    day's close) -- the market calendar's, early closes included.
+    Before the session's regular open it is the premarket shape, as it is while the session's
+    hours are not held. The cutoff shown is min(now, the day's close) -- the regular session
+    Schwab's /markets sent, early closes included.
     """
     session_date = canonical.session_date
-    open_dt = datetime.combine(session_date, RTH_OPEN, tzinfo=ET)
-    close = rth_close(session_date)
-    close_dt = datetime.combine(session_date, close, tzinfo=ET) if close is not None else open_dt
-    if now < open_dt:
+    regular = _regular(session_date)
+    if regular is None or now < regular[0]:
         return build_premarket_snapshot(ticker, session_date, config, canonical=canonical)
-    cutoff = min(now, close_dt)
+    cutoff = min(now, regular[1])
     prev, over, orb, poc, vah, val, vwap, (vwap_p1, vwap_m1, vwap_p2, vwap_m2) = (
         _phase2a_families_from_canonical(canonical))
 
@@ -622,7 +603,7 @@ def build_live_snapshot(
     zones: list[Zone] = []
     for lo, hi, mid, tags, source_pairs in clusters:
         zt, notes = _classify_live_cluster(tags, orb)
-        sl = [{"label": t, "value": round(p, 4)} for p, t in source_pairs]
+        sl = [{"label": t, "value": p} for p, t in source_pairs]
         zones.append(
             Zone(
                 zone_type=zt,
@@ -841,6 +822,12 @@ class PriceLevelSnapshot:
 
 
 
+# A reported volume and a missing one are different inputs (a reported 0 is 0). They are
+# packed with different layouts so the digest cannot treat an absent volume as zero.
+_BAR_PRESENT = struct.Struct("<qdddddB")
+_BAR_ABSENT = struct.Struct("<qddddB")
+
+
 def _snapshot_input_fingerprint(ticker: str, session_date: date, bars_norm: list,
                                 bar_source: str) -> tuple:
     """Identity of the INPUT. Same fingerprint ⇒ same generation ⇒ same result object.
@@ -859,9 +846,15 @@ def _snapshot_input_fingerprint(ticker: str, session_date: date, bars_norm: list
     h = hashlib.blake2b(digest_size=16)
     h.update(f"{ticker}\x1f{session_date.isoformat()}\x1f{bar_source}\x1f"
              f"{len(bars_norm)}".encode())
+    present, absent = _BAR_PRESENT.pack, _BAR_ABSENT.pack
     for b in bars_norm:
-        h.update(b"\x1e")
-        h.update(repr((b["timestamp"], b["open"], b["high"], b["low"], b["close"], b["volume"])).encode())
+        ts, o, hi, lo, c = (int(b["timestamp"]), float(b["open"]), float(b["high"]),
+                            float(b["low"]), float(b["close"]))
+        vol = b["volume"]
+        if vol is None:
+            h.update(absent(ts, o, hi, lo, c, 0))
+        else:
+            h.update(present(ts, o, hi, lo, c, float(vol), 1))
     return (ticker, session_date.isoformat(), bar_source, len(bars_norm), h.hexdigest())
 
 
@@ -874,7 +867,7 @@ def build_price_level_snapshot(
     config: Optional[PlaybookConfig] = None,
     generation: int = 0,
 ) -> PriceLevelSnapshot:
-    """THE Phase 2A producer, from normalized bars (_bars_to_list). The only production caller
+    """THE Phase 2A producer, from normalized bars (bars_from_candles). The only production caller
     of the canonical helpers.
 
     Absent input stays absent: a family with no bars in its window is declared in
@@ -1022,7 +1015,7 @@ def materialize_price_level_snapshot(
     bar_source: str,
     config: Optional[PlaybookConfig] = None,
 ) -> PriceLevelSnapshot:
-    """Materialize once per generation from normalized bars (_bars_to_list); return the SAME
+    """Materialize once per generation from normalized bars (bars_from_candles); return the SAME
     object within a generation.
 
     A new market generation (the bar input changed) invokes the producer exactly once.

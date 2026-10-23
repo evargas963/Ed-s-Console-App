@@ -4,30 +4,20 @@ MEASURED 2026-09-25: the same stored SPY chain run twice with the same `now`, 3 
 gave two different net vanna figures (6,975,952,365.89 vs 6,975,877,192.65): the exposure
 book behind the vanna aggregate priced time-to-expiry at the wall clock, ignoring `now` -- and a
 stored chain whose expiry had already passed read as ZERO vanna on replay.
+
+Real data: TSLA's complete 2026-10-09 chain captured 2026-10-07 12:32 ET (tests/real_chains.py).
 """
 from __future__ import annotations
 
-import pytest
-
-import json
 import time
 from datetime import datetime, timedelta
-from pathlib import Path
 
 from terrain_engine import compute_terrain
+from tests.real_chains import TSLA
 
-_FX = Path(__file__).resolve().parent / "fixtures" / "real_tsla_complete_chain_strike_range_all.json"
-
-
-
-@pytest.fixture(autouse=True)
-def _at_capture(pin_clock):
-    """Valued at the stored chain's capture (2026-08-30), so its expiries passing never change
-    what this test measures."""
-    return pin_clock(2026, 8, 30, 12, 0)
 
 def _real_chain():
-    chain = json.loads(_FX.read_text(encoding="utf-8"))["chain"]
+    chain = TSLA.chain
     expiry = datetime.fromisoformat(chain[0]["expirationDate"].replace("Z", "+00:00"))
     strikes = sorted(float(c["strikePrice"]) for c in chain)
     return chain, expiry, strikes[len(strikes) // 2]
@@ -35,7 +25,7 @@ def _real_chain():
 
 def test_the_same_chain_at_the_same_instant_gives_the_same_vanna():
     chain, expiry, spot = _real_chain()
-    now = expiry - timedelta(days=3)
+    now = expiry - timedelta(days=1)
     a = compute_terrain("TSLA", chain, spot, now=now).vanna_agg
     time.sleep(1.5)
     b = compute_terrain("TSLA", chain, spot, now=now).vanna_agg
@@ -47,7 +37,7 @@ def test_the_same_chain_at_the_same_instant_gives_the_same_vanna():
 
 def test_the_valuation_instant_reaches_the_vanna_book():
     chain, expiry, spot = _real_chain()
-    early = compute_terrain("TSLA", chain, spot, now=expiry - timedelta(days=6)).vanna_agg
-    late = compute_terrain("TSLA", chain, spot, now=expiry - timedelta(days=1)).vanna_agg
+    early = compute_terrain("TSLA", chain, spot, now=expiry - timedelta(days=2)).vanna_agg
+    late = compute_terrain("TSLA", chain, spot, now=expiry - timedelta(hours=8)).vanna_agg
     assert early is not None and late is not None
     assert early != late, "vanna must be priced at the given instant, not the wall clock"

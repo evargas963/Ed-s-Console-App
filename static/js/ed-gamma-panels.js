@@ -41,6 +41,7 @@
     SHORT_GAMMA_TREND: { t: 'Short γ · trend', c: 'var(--ed-warn)' },
     UNAVAILABLE: { t: 'unavailable', c: 'var(--ed-ink-3)' },
   };
+  window.EdGammaRegime = REGIME;
 
   // ---------- Key Levels rail ----------
   function stillLevelsCtx(tk) { return isGamma() && !!document.getElementById('klSpot') && ticker() === tk; }
@@ -58,7 +59,8 @@
   var _levelsLoader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadLevelsImpl(ticker(), signal); });
   function loadLevels() { _levelsLoader.trigger(ticker()); }
   function renderLevels(d) {
-    var ids = ['klSpot', 'klFlip', 'klCall', 'klPut', 'klAbs', 'klPeak', 'klNet', 'klRegime'];
+    var ids = ['klSpot', 'klFlip', 'klCall', 'klPut', 'klAbs', 'klPeak', 'klNet', 'klRegime',
+      'kl0Flip', 'kl0Call', 'kl0Put', 'kl0Abs', 'kl0Peak'];
     paintPcr(d && !d.error ? d : null);
     if (!d || d.error) {
       ids.forEach(function (id) { txt(id, '—'); });
@@ -70,6 +72,12 @@
     txt('klPut', px(d.put_wall));
     txt('klAbs', px(d.absolute_gamma_strike));
     txt('klPeak', px(d.net_gex_peak));
+    var z = d.same_day != null ? d.same_day : null;
+    txt('kl0Flip', px(z ? z.gamma_flip : null));
+    txt('kl0Call', px(z ? z.call_wall : null));
+    txt('kl0Put', px(z ? z.put_wall : null));
+    txt('kl0Abs', px(z ? z.absolute_gamma_strike : null));
+    txt('kl0Peak', px(z ? z.net_gex_peak : null));
     // Net GEX / 1% move — signed $, coloured by sign (formatting only)
     var net = document.getElementById('klNet');
     if (net) {
@@ -85,24 +93,35 @@
     // B: the levels rail recedes when terrain reports stale
     var klb = document.getElementById('klBody');
     if (klb) klb.classList.toggle('recede', !!d.levels_stale);
-    // freshness / provenance line
+    // freshness / provenance line. The chain's time stands beside the mark. The mark is
+    // unchanged when no chain time was sent.
     var src = document.getElementById('klSrc');
+    function chainMarked(words) {
+      var when = d.levels_time_ct != null ? d.levels_time_ct : null;
+      if (when != null) return when + ' · ' + words;
+      return words;
+    }
     if (src) {
       if (d.levels_stale) {
         // compact status grammar: state + age on the panel; the full reason is disclosed in the
         // tooltip (title) rather than as a paragraph that consumes the Key Levels rail
         var age = (window.EdShell && window.EdShell.fmtAge) ? window.EdShell.fmtAge(d.levels_age_sec)
           : (d.levels_age_sec != null ? Math.round(d.levels_age_sec) + 's' : '');
-        src.textContent = 'STALE' + (age ? ' · ' + age : '');
+        src.textContent = chainMarked('STALE' + (age ? ' · ' + age : ''));
         src.title = d.levels_stale_reason || 'terrain levels are stale';
         src.style.color = 'var(--ed-stale)';
+      } else if (d.levels_stale === false && d.spot_feed_live === false) {
+        // the chain is current and the wall stays; the price it was built from has stopped
+        src.textContent = chainMarked('OFFLINE');
+        src.title = d.spot_outage == null ? '' : d.spot_outage;
+        src.style.color = 'var(--ed-stale)';
       } else if (d.levels_stale === false) {
-        src.textContent = 'terrain · live';
+        src.textContent = chainMarked('terrain · live');
         src.title = '';
         src.style.color = '';
       } else {
         // no freshness verdict served: never read as live
-        src.textContent = 'freshness not reported';
+        src.textContent = chainMarked('freshness not reported');
         src.title = '';
         src.style.color = 'var(--ed-stale)';
       }
@@ -159,6 +178,7 @@
     // client-side freshness computation; the badge only formats those server-owned fields.
     el.innerHTML = (window.EdShell && window.EdShell.asOfBadge)
       ? window.EdShell.asOfBadge({ label: srcLabel(d.today_source), ageSec: d.today_age_sec,
+          when: d.levels_time_ct,
           stale: !!d.levels_stale, reason: d.levels_stale_reason,
           live: (d.today_source === 'terrain_live_cache' && d.levels_stale === false) })
       : '';
@@ -267,7 +287,6 @@
         if (e && e.name === 'AbortError') return;   // superseded by a newer strike -- that load renders instead
         if (stillStrikeCtx(tk, strike, expiry)) {
           host.innerHTML = '<div class="placeholder"><div class="sm">no console serving /api/chain</div></div>';
-          _setAdditionalContractsDemand([]);
         }
       });
   }
@@ -290,32 +309,11 @@
           title: 'chain scope: ' + kind + (sc.reason ? ' — ' + sc.reason : '') })
       : '';
   }
-  // Independent-review finding (2026-09-12): an empty/failed chain result left Strike
-  // Detail showing "no chain" while the PREVIOUS strike's additional-contract
-  // subscription stayed active forever -- nothing ever told the plural endpoint that
-  // demand had ended. Every path out of renderStrike must state the additional-contract
-  // demand for the current render, including "none".
-  // ownerKey is 'strike:<ticker>' (2026-09-21, universal-ticker-scope fix, same class of
-  // defect and same fix pattern as the heatmap's _heatmapOwnerKey): a single shared
-  // 'default' owner meant switching tickers here silently clobbered whatever the PREVIOUS
-  // ticker's Strike Detail selection had demanded, exactly like the heatmap's shared
-  // 'heatmap' key did. The ticker just left is explicitly released so demand does not grow
-  // unbounded across every ticker ever selected in one session.
-  var _lastStrikeOwnerTicker = null;
-  function _setAdditionalContractsDemand(symbols) {
-    var tk = ticker();
-    if (_lastStrikeOwnerTicker && _lastStrikeOwnerTicker !== tk) {
-      window.EdStream.setAdditionalContracts([], 'strike:' + _lastStrikeOwnerTicker);
-    }
-    _lastStrikeOwnerTicker = tk;
-    return window.EdStream.setAdditionalContracts(symbols || [], 'strike:' + tk);
-  }
   function renderStrike(host, d, strike, expiry) {
     setSdAsOf(d);
     var cs = (d && d.contracts) || [];
     if (!cs.length) {
       host.innerHTML = '<div class="placeholder"><div class="sm">' + esc(window.EdShell.chainEmptyText(d)) + '</div></div>';
-      _setAdditionalContractsDemand([]);
       return;
     }
     function pick(side) {
@@ -345,10 +343,6 @@
       '<tr class="sd-net"><td class="side">Net</td><td>—</td><td>—</td><td>—</td><td class="' + netCls + '">' +
       (net == null ? '—' : usd(net)) + '</td><td>—</td><td>—</td></tr>' +
       '</tbody></table><div class="sd-src">vendor per-contract · net GEX$ this expiry · /api/chain</div>';
-    // stream the displayed strike's two contracts (always stated, even empty); the tape reads
-    // the streamed contracts, so it loads once the server has accepted a changed demand
-    var p = _setAdditionalContractsDemand([call && call.symbol, put && put.symbol].filter(Boolean));
-    if (p) p.then(function (r) { if (r && r.accepted && !r.unchanged) loadOf(); });
   }
 
   // Independent-review finding (2026-09-12), REPRODUCED: switching the active ticker did
@@ -361,9 +355,8 @@
   // desired (strike, expiry) so `stillStrikeCtx`'s ticker check discards any in-flight
   // response for the OLD ticker (2026-09-13: this now doubles as the fix's context-identity
   // check, replacing the old `_sgen` generation counter) and no pending strike is left to
-  // fetch under the new ticker without a fresh click, plus clearing all Strike Detail state
-  // (DOM placeholder + additional-contracts demand) the instant the ticker changes, same
-  // discipline `_setAdditionalContractsDemand([])` already gives an empty/failed chain.
+  // fetch under the new ticker without a fresh click, plus clearing the Strike Detail
+  // placeholder the instant the ticker changes.
   function resetStrikeDetailForTickerChange() {
     _sdDesired = { strike: null, expiry: null };
     var host = document.getElementById('sdBody');
@@ -371,7 +364,6 @@
       host.innerHTML = '<div class="placeholder"><div class="sm">Select a strike/expiry. '
         + 'OI · volume · gamma · delta · IV from /api/chain (vendor).</div></div>';
     }
-    _setAdditionalContractsDemand([]);
   }
 
   // ---------- Vanna / Charm by strike: the same bar list (drawStrikeBars), each its own pan ----------
@@ -489,8 +481,8 @@
 
   // ---------- Options Flow tape (operator field-inventory audit, 2026-09-13) ------------
   // The embedded tape widget on the Gamma pane (#ofBody) -- real native trade prints for
-  // whichever contract(s) are currently desired (the same identity Strike Detail's own
-  // _setAdditionalContractsDemand already established), never a fabricated buy/sell side.
+  // every contract of the ticker the daemon streams (its option rule), never a fabricated
+  // buy/sell side.
   var OF_CLS_LABEL = { at_bid: 'at bid', at_ask: 'at ask', inside_spread: 'inside',
     outside_spread_low: 'below bid', outside_spread_high: 'above ask', unknown: '—' };
   function fmtOfPrice(n) { return (n == null || isNaN(n)) ? '—' : Number(n).toFixed(2); }
@@ -558,7 +550,10 @@
   window.addEventListener('ed:quote_tick', function (e) {
     var q = e.detail;
     if (!q || q.ticker !== ((window.EdShell && window.EdShell.getState()) || {}).key) return;   // the served key
-    txt('klSpot', q.spot_disp != null ? q.spot_disp : '—');
+    var el = document.getElementById('klSpot');
+    if (!el) return;
+    el.textContent = q.spot_disp != null ? q.spot_disp : '—';
+    el.title = q.trade_time_ct ? ('last trade ' + q.trade_time_ct) : '';
   });
   document.addEventListener('ed:view', loadAll);
   // a new scope is a new window: every per-strike panel re-reads it from the server

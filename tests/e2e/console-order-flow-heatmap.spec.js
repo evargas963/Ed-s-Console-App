@@ -7,6 +7,7 @@
  */
 const { test, expect } = require('@playwright/test');
 const path = require('path');
+const { routeWatchlist } = require('./fixtures/watchlist');
 
 const HEAT = require(path.join(__dirname, 'fixtures', 'book_heatmap_payload.json'));
 
@@ -19,6 +20,7 @@ test('the heatmap paints the served cells, and a click pins a readout, without a
     const body = url.includes('/api/order-flow/book-heatmap') ? HEAT : { available: false };
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
+  await routeWatchlist(page, ['TSLA']);
   await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'TSLA'); localStorage.setItem('ed_ws', 'order-flow'); localStorage.setItem('ed_sub', 'heatmap'); } catch (e) {} });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   // drawn on the one shared chart (ed-tv-chart.js), every served cell handed to it
@@ -51,8 +53,46 @@ test('the Book panel shows each served wall candidate size', async ({ page }) =>
     const body = url.includes('/api/order-flow/microstructure') ? BOOK : { available: false };
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
+  await routeWatchlist(page, ['TSLA']);
   await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'TSLA'); localStorage.setItem('ed_ws', 'order-flow'); localStorage.setItem('ed_sub', 'book'); } catch (e) {} });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await expect(page.locator('#obBody')).toContainText('bid @ 440.50');
   await expect(page.locator('#obBody')).toContainText('12500');
+});
+
+test('a feed down keeps the last bid and the panel says OFFLINE', async ({ page }) => {
+  const BOOK = { status: 'ok', top_of_book: { bid: 767.38, ask: 767.40, bid_size: 3, ask_size: 5 },
+    top_outage: 'Schwab LEVELONE_EQUITIES feed down during RTH',
+    depth: {}, ages: { book_stale: true }, classification: {}, depth_pressure: { bid: [], ask: [] },
+    wall_candidates: [] };
+  await page.route('**/api/**', (route) => {
+    const url = route.request().url();
+    const body = url.includes('/api/order-flow/microstructure') ? BOOK : { available: false };
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+  });
+  await routeWatchlist(page, ['TSLA']);
+  await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'TSLA'); localStorage.setItem('ed_ws', 'order-flow'); localStorage.setItem('ed_sub', 'book'); } catch (e) {} });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await expect(page.locator('#obBody')).toContainText('767.38');
+  await expect(page.locator('#obBody')).toContainText('OFFLINE');
+  await expect(page.locator('#obBody')).not.toContainText('feed down');
+});
+
+test('an offline book keeps Schwab\'s quote time and book time', async ({ page }) => {
+  const BOOK = { status: 'ok', top_of_book: { bid: 767.38, ask: 767.40, bid_size: 3, ask_size: 5 },
+    top_outage: 'Schwab LEVELONE_EQUITIES feed down during RTH',
+    quote_time_ct: 'Fri 09/25 06:59 PM CT', book_time_ct: 'Fri 09/25 06:59 PM CT',
+    depth: {}, ages: { book_age_sec: 4, quote_age_sec: 4, book_stale: true }, classification: {},
+    depth_pressure: { bid: [], ask: [] }, wall_candidates: [] };
+  await page.route('**/api/**', (route) => {
+    const url = route.request().url();
+    const body = url.includes('/api/order-flow/microstructure') ? BOOK : { available: false };
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+  });
+  await routeWatchlist(page, ['TSLA']);
+  await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'TSLA'); localStorage.setItem('ed_ws', 'order-flow'); localStorage.setItem('ed_sub', 'book'); } catch (e) {} });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await expect(page.locator('#obBody')).toContainText('767.38');
+  await expect(page.locator('#obBody')).toContainText('OFFLINE');
+  await expect(page.locator('#obBody')).toContainText('Fri 09/25 06:59 PM CT · 4s');
 });
