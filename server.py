@@ -2404,7 +2404,7 @@ def desk_events_payload(tk: str, venue: str, tf: str, now: datetime) -> dict:
     for i, w in enumerate((micro.get("wall_candidates") or [])[:3]):
         items.append({"key": f"wall{i}", "ts": None if book_ms is None else book_ms / 1000.0,
                       "dom": "LIQUIDITY", "dir": "up" if w.get("side") == "bid" else "down", "warn": not live_book,
-                      "title": f"{venue} size wall · {w.get('side') or ''} {price_text(w['price'])}"
+                      "title": f"{venue} size wall · {w['side']} {price_text(w['price'])}"
                                + ("" if live_book else " (not live)"),
                       "detail": f"{w.get('volume')} shown · "
                                 + (f"{w['median_mult']:.1f}× the median level" if w.get("median_mult") is not None else "size outlier")
