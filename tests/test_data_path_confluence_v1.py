@@ -315,6 +315,7 @@ def test_the_matrix_request_returns_the_ranking_stored_with_the_book():
         "_matrix_by_expiry": {expiry: {
             "preset": "0DTE", "ceiling": 72, "weights_in_score": {},
             "rows": [{"strike": held.spot, "iv_text": "11.0", "charm_text": "+1.00"}],
+            "strikes": [held.spot],
         }},
     }
     try:
