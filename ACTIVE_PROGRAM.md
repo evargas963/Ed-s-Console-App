@@ -201,7 +201,7 @@ expiry's, labelled. The audit of 2026-10-23 found the rows below.
 | ONE-28 | QUEUED | The equity book: two stores, two parsers, two clocks (`state._book` and `engine`, `history.BOOKS` and `history._levels`). |
 | ONE-29 | QUEUED | One server formatter per format at the operator's decimals (above); the page draws served text (dollars in four formatters, charm in three units, ages, DTE labels, Central Time and volume on the page). |
 | ONE-30 | QUEUED | Push signals: `levels` sent by three producers (the heatmap restamp, the levels, the price-level snapshot); `flow` on every equity quote; Chain and Strike Detail reload on different signals. |
-| ONE-31 | QUEUED | One check that each Schwab field is read in one module and each served derived value is the register's producer, found from the code. |
+| ONE-31 | NEXT | **The one-producer gate** (operator 2026-10-23: every one-producer rule names the test or hook that enforces it): a check in the required `hardening` job, like `tools/check_no_new_patches.py`, that refuses a pull request adding a read of a raw Schwab field outside that field's one parser, or serving a derived value that `docs/derived_register.md` does not name with its producer; its list of parsers and producers is read from the code and the register, never kept by hand. The second producers already there are the rows above, each fixed in its own PR. |
 
 ## Phase 2 — the rest of the design, then decomposition
 
