@@ -87,7 +87,8 @@ class _LevelMarkerFormatter(logging.Formatter):
 # uvicorn, …) at INFO+ lands here; gate fails on WARNING+ / traceback.
 # RC-523: under the RUNTIME root (runtime_layout), which is this checkout unless
 # ED_RUNTIME_ROOT moves it — runtime output must not pollute the source tree (§8).
-from runtime_layout import live_binding_error, logs_dir as _runtime_logs_dir  # noqa: E402
+import runtime_layout  # noqa: E402
+from runtime_layout import logs_dir as _runtime_logs_dir  # noqa: E402
 
 ED_SERVER_LOG_PATH = _runtime_logs_dir() / "ed_server.log"
 
@@ -158,7 +159,7 @@ def _install_visual_severity_markers(level: int = logging.INFO) -> None:
     # not write that checkout's live log -- measured 2026-09-23: a worktree console appended
     # 15,451 errors to the production logs/ed_server.log. The stream handler still prints.
     if ("pytest" not in sys.modules and not os.environ.get("PYTEST_CURRENT_TEST")
-            and live_binding_error() is None):
+            and runtime_layout.live_binding_error() is None):
         install_ed_server_file_sink(ED_SERVER_LOG_PATH, level=level)
 
 
@@ -184,7 +185,7 @@ from db import get_db
 import live_price_rows as _lpr        # with_change: the bar-change computation
 import push_changes
 from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT
-from app.market_data.schwab.streaming.live_ui import LIVE_UI_PORT
+from app.market_data.schwab.streaming import live_ui
 from app.options.order_flow.engine import OrderFlowEngine, compute_book_microstructure
 from app.options.order_flow.history import TAPE, book_heatmap_for_ticker, put_call_side
 from app.options.order_flow.live_payload import flow_block, options_live_payload
@@ -507,7 +508,7 @@ async def _app_lifespan(app):
     # ANOTHER checkout (a worktree converging on production) does not start a live console
     # (runtime_layout.live_binding_error -- a worktree console ran against production on
     # 2026-09-23). Refusing here stops uvicorn before it serves anything.
-    _binding = live_binding_error()
+    _binding = runtime_layout.live_binding_error()
     if _binding is not None:
         log.critical("LIVE CONSOLE REFUSED: %s", _binding)
         raise RuntimeError(f"live console refused: {_binding}")
@@ -602,7 +603,7 @@ def _with_live_ui_port(html: str) -> str:
     context = json.dumps([{"key": k, "display": display_symbol(k)} for k in MARKET_CONTEXT])
     scopes = json.dumps([{"key": s, "label": SCOPE_LABELS[s]} for s in SCOPES])
     return (html.replace(_LIVE_UI_PORT_META,
-                         f'<meta name="ed-live-ui-port" content="{int(LIVE_UI_PORT)}">', 1)
+                         f'<meta name="ed-live-ui-port" content="{int(live_ui.LIVE_UI_PORT)}">', 1)
             .replace(_MARKET_CONTEXT_META,
                      f'<meta name="ed-market-context" content="{html_escape(context)}">', 1)
             .replace(_SCOPES_META, f'<meta name="ed-scopes" content="{html_escape(scopes)}">', 1)

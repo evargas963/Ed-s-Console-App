@@ -184,7 +184,9 @@ every contract (rule 5). A chain's spot is posted once: Schwab's LAST_PRICE, wit
 when the chain is complete; the console prices that chain at it and the stored capture keeps it;
 the live screens show the live price and measure distances from it. Each expiry's
 `underlyingPrice` is kept as sent and is no spot; a capture stored before this reads the nearest
-expiry's, labelled. The audit of 2026-10-23 found the rows below.
+expiry's, labelled. The audit of 2026-10-23 found the rows below. Operator 2026-10-23: "fix
+everything that you see and touch": a defect seen in a file a change touches is fixed in that
+change, not deferred.
 
 | ID | Status | Work item |
 |---|---|---|
