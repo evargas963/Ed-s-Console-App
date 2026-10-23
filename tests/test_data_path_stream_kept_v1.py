@@ -314,6 +314,48 @@ def test_messages_spilled_when_the_database_refuses_a_round_are_not_counted_as_h
     assert _rows(db, "SELECT COUNT(*) FROM stream_quotes_raw")[0][0] == sent
 
 
+def test_a_keep_part_refused_after_a_commit_counts_none_of_the_committed_as_held(tmp_path):
+    """INDUCED CONDITIONS: one captured equity quote received a week earlier, a trigger that makes
+    the keep's DELETE abort (STAND-IN for a keep part the database refuses), the keep asked, and
+    the mix's first ten equity quotes held in memory while another connection holds the write
+    lock. Once the lock is let go the ten are committed, and the keep's part after them is
+    refused: in the pause that follows, held is the queue alone, nothing waits and nothing spills."""
+    db = tmp_path / "stream_capture.db"
+    writer = CaptureWriter(db, timeout_sec=0.05, retry_sec=1.0)
+    old = {**_eleventh(), "ts_recv": _et("2026-09-28 13:00")}
+    with sqlite3.connect(db) as conn:
+        writer.insert(f"quote.{old['symbol']}", old, conn=conn)
+        conn.execute("CREATE TRIGGER keep_refused BEFORE DELETE ON stream_quotes_raw "
+                     "BEGIN SELECT RAISE(ABORT, 'a keep part the database refuses'); END")
+    holder = sqlite3.connect(db, isolation_level=None, check_same_thread=False)
+    holder.execute("BEGIN IMMEDIATE")
+    bus = MessageBus()
+    sub = bus.subscribe("", policy=LOG)
+    assert _publish_mix(bus, {"LEVELONE_EQUITIES"}, limit=10) == 10
+
+    async def go():
+        stop = asyncio.Event()
+        task = asyncio.create_task(writer.run(sub, stop=stop))
+        await _until(lambda: writer.status()["waiting"] == 10)
+        writer.prune(_et(_FIVE_SESSIONS))
+        holder.execute("COMMIT")
+
+        def keep_refused() -> bool:
+            s = writer.status()
+            return s["state"] == WRITER_BLOCKED and s["rows_written"] == 10 and s["error"].startswith("IntegrityError")
+        await _until(keep_refused)
+        during = writer.status()
+        stop.set()
+        await task
+        return during
+    try:
+        during = asyncio.run(go())
+    finally:
+        holder.close()
+    assert (during["held"], during["waiting"], during["spill"]) == (during["queue_depth"], 0, None), \
+        f"held {during['held']} after the ten were committed"
+
+
 class _UnreadableQuote(dict):
     """STAND-IN for a defect: a captured equity quote whose fields cannot be read as items, so the
     writer can neither size it for memory nor write it to a spill record (RuntimeError)."""
