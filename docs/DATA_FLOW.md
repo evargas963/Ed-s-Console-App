@@ -264,7 +264,8 @@ from Schwab to the screen (daemon, console, page), are these:
   (`stream_capture.db` `stream_bars_raw`, every bar every hour Schwab sends it), and → the console's
   bar writer. Console memory: `_bars`, Schwab's 1-minute history with each streamed bar standing
   over its minute (a history sent again is taken only for the minutes not held: one that adds
-  none changes nothing, pushes nothing and rebuilds no level); `_daily`, the daily candles (the console reads no database
+  none changes nothing, pushes nothing and rebuilds no level; daily candles the same as those
+  held push nothing, new ones push like a new bar); `_daily`, the daily candles (the console reads no database
   for them, and writes no bar) → a `liquidity` push on `/api/changes` → the browser reads
   `/api/bars1m`. Enforced by: `tests/test_data_path_pricehistory_v1.py`. Charts show completed Schwab bars only, exactly as Schwab sent them, with
   the newest bar's minute (`last_bar`). The live Schwab LAST_PRICE (the header's price row, with

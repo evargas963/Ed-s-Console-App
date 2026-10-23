@@ -95,13 +95,32 @@ def _grouped(candles: list[dict], key) -> list[dict]:
     return list(out.values())
 
 
-def _held(tk: str, series: str, now: datetime) -> None:
-    """Schwab's captured `series` answer for `tk`, published, pushed and taken by the console."""
+def _held(tk: str, series: str, now: datetime, candles: "list | None" = None) -> None:
+    """Schwab's captured `series` answer for `tk` (its `candles` only, when given), published,
+    pushed and taken by the console."""
     from calibration.complete_chain_capture import price_history_message
     a = HISTORY[(tk, *_SERIES[series])]
-    topic, msg = price_history_message(tk, series, a["body"], a["answered_utc"])
+    body = a["body"] if candles is None else dict(a["body"], candles=candles)
+    topic, msg = price_history_message(tk, series, body, a["answered_utc"])
     ofs._ingest_pushed(topic, json.loads(live_push.frames(topic, msg)[0])["msg"])
     server._write_streamed_bars([ofs.streamed_bars.get_nowait()], now)
+
+
+def _told(tk: str, takes) -> list:
+    """What the page open on `tk` is told after each of `takes` (callables run in turn)."""
+    async def main():
+        push_changes.bind(asyncio.get_running_loop())
+        page = push_changes.subscribe(tk)
+        try:
+            told = []
+            for take in takes:
+                take()
+                told.append(await push_changes.next_changes(page, 0.5))
+            return told
+        finally:
+            push_changes.unsubscribe(tk, page)
+            push_changes.bind(None)
+    return asyncio.run(main())
 
 
 def test_today_s_candle_is_rolled_up_live_from_the_regular_session_bars():
@@ -180,35 +199,60 @@ def test_the_console_takes_schwabs_bars_and_candles_from_the_push_and_computes_t
 
 def test_a_price_history_sent_again_with_every_minute_held_changes_nothing():
     """The daemon pushes a ticker's price history again (it asks once per ET date and again after
-    its own restart; production's stream_capture.db holds 144 such 1-minute answers for 11 tickers
-    over 2026-10-19..23, 27 of them adding no minute): the console's bars stay Schwab's candles as
-    first taken, and the ticker's open page is told of no change (no liquidity push, no levels
-    rebuilt for it)."""
-    now = datetime.fromtimestamp(HISTORY[("SPY", "minute", "1")]["answered_utc"], ET)
-    minutes = [(c["datetime"] / 1000, c["open"], c["high"], c["low"], c["close"], c["volume"])
-               for c in HISTORY[("SPY", "minute", "1")]["body"]["candles"]]
-    server._bars.pop("SPY", None)
-
-    async def main():
-        push_changes.bind(asyncio.get_running_loop())
-        page = push_changes.subscribe("SPY")
+    its own restart): the console's bars stay Schwab's candles as first taken, and the ticker's
+    open page is told of no change (no liquidity push, no levels rebuilt for it)."""
+    for tk in ("SPY", "TSLA"):
+        now = datetime.fromtimestamp(HISTORY[(tk, "minute", "1")]["answered_utc"], ET)
+        server._bars.pop(tk, None)
         try:
-            _held("SPY", "1m", now)
-            first = await push_changes.next_changes(page, 1.0)
-            _held("SPY", "1m", now)
-            again = await push_changes.next_changes(page, 0.2)
-            return first, again
+            first, again = _told(tk, [lambda: _held(tk, "1m", now), lambda: _held(tk, "1m", now)])
+            got = [(b.ts, b.open, b.high, b.low, b.close, b.volume) for b in server._bars_1m(tk, server.BARS_KEPT)]
         finally:
-            push_changes.unsubscribe("SPY", page)
-            push_changes.bind(None)
-    try:
-        first, again = asyncio.run(main())
-        got = [(b.ts, b.open, b.high, b.low, b.close, b.volume) for b in server._bars_1m("SPY", server.BARS_KEPT)]
-    finally:
-        server._bars.pop("SPY", None)
-    assert "liquidity" in first
-    assert again == set(), again
-    assert got == minutes
+            server._bars.pop(tk, None)
+        assert "liquidity" in first, tk
+        assert again == set(), (tk, again)
+        assert got == [(c["datetime"] / 1000, c["open"], c["high"], c["low"], c["close"], c["volume"])
+                       for c in HISTORY[(tk, "minute", "1")]["body"]["candles"]], tk
+
+
+def test_a_price_history_that_brings_minutes_not_held_adds_exactly_those():
+    """An earlier answer held without its newest session and without every seventh minute; the
+    next answer brings them: the bars are Schwab's whole answer, each minute once, in time order,
+    and the page is told the bars changed."""
+    for tk in ("SPY", "TSLA"):
+        sent = HISTORY[(tk, "minute", "1")]["body"]["candles"]
+        earlier = [c for i, c in enumerate(sent[:-390]) if i % 7]
+        now = datetime.fromtimestamp(HISTORY[(tk, "minute", "1")]["answered_utc"], ET)
+        server._bars.pop(tk, None)
+        try:
+            _held(tk, "1m", now, earlier)
+            (told,) = _told(tk, [lambda: _held(tk, "1m", now)])
+            got = [(b.ts, b.open, b.high, b.low, b.close, b.volume) for b in server._bars_1m(tk, server.BARS_KEPT)]
+        finally:
+            server._bars.pop(tk, None)
+        assert "liquidity" in told, tk
+        assert got == [(c["datetime"] / 1000, c["open"], c["high"], c["low"], c["close"], c["volume"])
+                       for c in sent], tk
+
+
+def test_new_daily_candles_reach_the_open_page_and_the_same_candles_again_do_not():
+    """The daily candles the ATR is computed from: an answer with a candle the console does not
+    hold tells the open page (the trade desk re-reads its ATR); the same answer again tells it
+    nothing."""
+    for tk in ("SPY", "TSLA"):
+        sent = HISTORY[(tk, "daily", "1")]["body"]["candles"]
+        now = datetime.fromtimestamp(HISTORY[(tk, "daily", "1")]["answered_utc"], ET)
+        server._daily.pop(tk, None)
+        try:
+            _held(tk, "1d", now, sent[:-1])
+            newer, again = _told(tk, [lambda: _held(tk, "1d", now), lambda: _held(tk, "1d", now)])
+            held = [(c.ts, c.open, c.high, c.low, c.close, c.volume) for c in server._daily[tk]]
+        finally:
+            server._daily.pop(tk, None)
+        assert "liquidity" in newer, tk
+        assert again == set(), (tk, again)
+        assert held == [(c["datetime"] / 1000, c["open"], c["high"], c["low"], c["close"], c["volume"])
+                        for c in sent], tk
 
 
 #: a console just started (a fresh interpreter): its first price history, SPY's and TSLA's

@@ -371,15 +371,18 @@ def _write_price_history(msg: dict) -> "str | None":
     capture daemon): its 1-minute bars into the ticker's bars, only the minutes not held taken (a
     held minute, a streamed bar or an earlier history's, stands over Schwab's history of it); its
     daily candles replacing the held ones. A candle without a valid field is not kept. The ticker
-    when its 1-minute bars changed, else None. Runs on the bar writer, the one writer of _bars."""
+    when the bars or candles it holds changed, else None. Runs on the bar writer, the one writer
+    of _bars and _daily."""
     tk = ticker_storage_key(msg["symbol"])
     sent = msg["answer"]["candles"]
     if msg["series"] != "1m":
         daily = [b for b in (_schwab_bar(c.get("datetime"), c.get("open"), c.get("high"), c.get("low"),
                                          c.get("close"), c.get("volume")) for c in sent) if b is not None]
+        if tk in _daily and _daily[tk] == daily:
+            return None
         with _bars_lock:
             _daily[tk] = daily
-        return None
+        return tk
     held = _bars[tk] if tk in _bars else []
     held_minutes = {b.ts for b in held}
     taken = {}
@@ -449,8 +452,9 @@ def _write_streamed_bars(msgs: list, now: datetime) -> None:
             if "series" in msg:
                 tk = _write_price_history(msg)
                 if tk is not None:
-                    written.append(tk)
                     push_changes.changed(tk, push_changes.LIQUIDITY)
+                    if msg["series"] == "1m":
+                        written.append(tk)
             elif _write_streamed_bar(msg):
                 written.append(msg["symbol"])
         except Exception as e:  # noqa: BLE001 -- logged; the next bar is still written
