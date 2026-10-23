@@ -1,5 +1,6 @@
 # Credentials & secrets
 schwab_token.json
+schwab_token.json.lock
 *.json.bak
 .env
 *.key

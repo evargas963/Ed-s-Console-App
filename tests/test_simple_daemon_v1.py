@@ -94,7 +94,8 @@ def test_one_live_rule_every_reader_agrees_and_all_fail_closed_at_one_limit():
         schwab_down = readers()
     finally:
         lmp.record_feed_down()
-    assert down == late == (False, False, "NOT LIVE", "NOT STREAMED")
+    assert down == (False, False, "NOT LIVE", "NOT STREAMED")
+    assert late == (False, False, "NOT LIVE", "SUBSCRIBED")
     assert live == (True, True, "LIVE", "SUBSCRIBED") and book_age == 45.0
     assert b_book is False                                            # B held on L1 only
     assert schwab_down == (False, False, "NOT LIVE", "SUBSCRIBED")    # the daemon is up, Schwab is not

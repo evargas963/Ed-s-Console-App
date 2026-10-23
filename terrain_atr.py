@@ -23,14 +23,12 @@ ATR_PERIOD = 14
 
 @dataclass(frozen=True)
 class Atr:
-    """Daily, weekly and monthly ATR in price points. Any may be None, with its reason."""
+    """Daily, weekly and monthly ATR in price points. Any may be None: Schwab did not send enough
+    candles to compute it. Nothing stands in for the missing number."""
 
     daily: float | None
     weekly: float | None
     monthly: float | None
-    daily_reason: str | None = None
-    weekly_reason: str | None = None
-    monthly_reason: str | None = None
 
 
 def roll_up(candles: "list[Candle]", key) -> "list[Candle]":
@@ -49,20 +47,17 @@ def roll_up(candles: "list[Candle]", key) -> "list[Candle]":
     return out
 
 
-def _leg(candles: list, unit: str) -> tuple[float | None, str | None]:
-    """ATR(ATR_PERIOD) of `candles`, or None with why: fewer than ATR_PERIOD + 1 of them."""
-    atr = compute_atr(candles, period=ATR_PERIOD)
-    if atr is not None:
-        return atr, None
-    if len(candles) < ATR_PERIOD + 1:
-        return None, f"{len(candles)} {unit} of Schwab's daily candles; ATR({ATR_PERIOD}) needs {ATR_PERIOD + 1}"
-    return None, f"Schwab's daily candles do not give a {unit[:-1]} true range"
+def _leg(candles: list) -> "float | None":
+    """ATR(ATR_PERIOD) of `candles`, or None when fewer than ATR_PERIOD + 1 of them give a true
+    range."""
+    return compute_atr(candles, period=ATR_PERIOD)
 
 
 def compute_atrs(daily: "list[Candle]") -> Atr:
     """Daily, weekly and monthly ATR of one ticker from its daily candles (oldest first, today's
-    the live one), each None with its reason when it cannot be computed."""
-    d = _leg(daily, "days")
-    w = _leg(roll_up(daily, lambda day: day.isocalendar()[:2]), "weeks")
-    m = _leg(roll_up(daily, lambda day: (day.year, day.month)), "months")
-    return Atr(d[0], w[0], m[0], d[1], w[1], m[1])
+    the live one). A horizon that cannot be computed is None."""
+    return Atr(
+        _leg(daily),
+        _leg(roll_up(daily, lambda day: day.isocalendar()[:2])),
+        _leg(roll_up(daily, lambda day: (day.year, day.month))),
+    )

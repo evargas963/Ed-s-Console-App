@@ -626,8 +626,9 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#klPut')).toHaveText('580.00');
     await expect(page.locator('#klNet')).toHaveText('$2.1B');
     await expect(page.locator('#klRegime')).toContainText('Long γ');
-    // NOT_PROVEN items are honestly labelled, never fabricated
-    await expect(page.locator('#klBody')).toContainText('NOT PROVEN');
+    // a label with no served number is not on the rail
+    await expect(page.locator('#klBody')).not.toContainText('NOT PROVEN');
+    await expect(page.locator('#klAbs0')).toHaveCount(0);
     // PCR: with no expiry selected, the whole book's put/call OI ratio as served (pcr_all), its
     // scope disclosed -- the page no longer picks an expiry itself
     await expect(page.locator('#klPcr')).toHaveText('1.02');
@@ -636,6 +637,30 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // and the put/call VOLUME ratio (today's trading) on its own row, same scope
     await expect(page.locator('#klPcrVol')).toHaveText('0.93');
     await expect(page.locator('#klPcrVolScope')).toContainText('volume');
+  });
+
+  test('a level built from a price that has stopped stays, and the rail says OFFLINE', async ({ page }) => {
+    await page.route('**/api/terrain?**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify(Object.assign({}, TERRAIN, {
+        levels_stale: false, call_wall: 586, spot_feed_live: false,
+        spot_outage: 'Schwab LEVELONE_EQUITIES feed down during RTH' })) }));
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#klCall')).toHaveText('586.00');
+    await expect(page.locator('#klSrc')).toHaveText('OFFLINE');
+    await expect(page.locator('#klSrc')).toHaveAttribute('title', 'Schwab LEVELONE_EQUITIES feed down during RTH');
+    await expect(page.locator('#klBody')).not.toHaveClass(/recede/);
+  });
+
+  test('key levels rail keeps the chain time when the price has stopped', async ({ page }) => {
+    const CHAIN_TIME = 'Fri 09/25 06:59 PM CT';
+    await page.route('**/api/terrain?**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify(Object.assign({}, TERRAIN, {
+        levels_stale: false, levels_age_sec: 4, levels_time_ct: CHAIN_TIME, call_wall: 586,
+        spot_feed_live: false, spot_outage: 'Schwab LEVELONE_EQUITIES feed down during RTH' })) }));
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#klCall')).toHaveText('586.00');
+    await expect(page.locator('#klSrc')).toHaveText(CHAIN_TIME + ' · OFFLINE');
+    await expect(page.locator('#klSrc')).toHaveAttribute('title', 'Schwab LEVELONE_EQUITIES feed down during RTH');
   });
 
   test('PCR: the selected expiry re-scopes the ratio; an expiry the chain has no ratio for shows none', async ({ page }) => {
@@ -719,7 +744,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   test('chart view: Price + GEX Profile and Dot Map render from canonical inputs', async ({ page }) => {
     // The chart's spot is the header's price row (audit of #280 removed the /api/terrain copy,
     // a second producer): the daemon's price socket delivers it.
-    await mockPriceSocket(page, [priceRow('SPY', 583.41)]);
+    await mockPriceSocket(page, [priceRow('SPY', 583.41, { trade_time_ct: '14:00:01 CT' })]);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.locator('.vtab[data-view="chart"]').click();
     await expect(page.locator('#view-chart')).toHaveClass(/on/);
@@ -732,6 +757,11 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect.poll(async () => (await cs()).profile.style).toBe('bars');
     await expect.poll(async () => (await cs()).livePrice).toBe(583.41);
     await expect(page.locator('#chartBody .gchart-head')).toContainText('spot 583.41');
+    await expect(page.locator('#chartBody .gchart-head')).toContainText('last trade 14:00:01 CT');
+    await expect.poll(async () => (await cs()).liveTitle).toBe('LAST · last trade 14:00:01 CT');
+    await expect(page.locator('#hFeed')).toHaveText('OFFLINE', { timeout: 6000 });
+    await expect(page.locator('#chartBody .gchart-head')).toContainText('last trade 14:00:01 CT');
+    await expect.poll(async () => (await cs()).liveTitle).toBe('LAST · last trade 14:00:01 CT');
     await expect.poll(async () => (await cs()).levels).toContain('flip');
     await page.setViewportSize({ width: 2560, height: 1440 });
     await page.screenshot({ path: require('path').join('test-results', 'console-gamma-chart-2560x1440.png') });
@@ -774,18 +804,28 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#hChgReg')).toHaveText('REG —');
   });
 
-  test('a price that stops arriving is withdrawn within seconds (the daemon beats every 1 s)', async ({ page }) => {
-    await mockPriceSocket(page, [priceRow('SPY', 601.23)]);   // one row, then silence
+  test('a price that stops arriving stays, and the chip says OFFLINE', async ({ page }) => {
+    await mockPriceSocket(page, [priceRow('SPY', 601.23, { trade_time_ct: '14:00:01 CT', trade_age_sec: 4,
+      quote_time_ct: '14:00:02 CT' })]);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#hPx')).toHaveText('601.23');
-    await expect(page.locator('#hPx')).toHaveText('UNAVAILABLE', { timeout: 6000 });
+    await expect(page.locator('#hAge')).toHaveText('last trade 14:00:01 CT · 4s');
+    await expect(page.locator('#hBidAsk')).toHaveAttribute('title', 'quote 14:00:02 CT');
+    await expect(page.locator('#klSpot')).toHaveText('601.23');
+    await expect(page.locator('#klSpot')).toHaveAttribute('title', 'last trade 14:00:01 CT');
+    await expect(page.locator('#hFeed')).toHaveText('OFFLINE', { timeout: 6000 });
+    await expect(page.locator('#hPx')).toHaveText('601.23');
+    await expect(page.locator('#hAge')).toHaveText('last trade 14:00:01 CT · 4s');
+    await expect(page.locator('#klSpot')).toHaveText('601.23');
+    await expect(page.locator('#klSpot')).toHaveAttribute('title', 'last trade 14:00:01 CT');
   });
 
   test('a watchlist symbol paints from its own row on the same socket', async ({ page }) => {
-    await mockPriceSocket(page, [priceRow('SPY', 601.23), priceRow('AMD', 150.5, { chg_pct: -1.25 })]);
+    await mockPriceSocket(page, [priceRow('SPY', 601.23), priceRow('AMD', 150.5, { chg_pct: -1.25, trade_time_ct: '14:00:01 CT' })]);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.evaluate(() => window.EdShell.addSymbol('AMD'));
     await expect(page.locator('.wl-px[data-wlpx="AMD"]')).toHaveText('150.50');
+    await expect(page.locator('.wl-px[data-wlpx="AMD"]')).toHaveAttribute('title', 'last trade 14:00:01 CT');
     await expect(page.locator('.wl-chg[data-wlchg="AMD"]')).toHaveText('-1.25%');
   });
 
@@ -1176,6 +1216,28 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#chartBody .gchart-head')).toContainText('spot 601.23', { timeout: 8000 });
     await expect.poll(() => page.evaluate(() => window.EdGammaChart.state().livePrice)).toBe(601.23);
     await expect(page.locator('#hPx')).toHaveText('601.23');
+  });
+
+  test('the Key Levels rail shows regular and 0DTE in the same row', async ({ page }) => {
+    await page.route('**/api/terrain?**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify(Object.assign({}, TERRAIN, {
+        same_day: { gamma_flip: 571.25, call_wall: 575, put_wall: 570,
+          absolute_gamma_strike: 572.5, net_gex_peak: 570 },
+      })),
+    }));
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#klBody .kl-pairs .h').nth(0)).toHaveText('Regular');
+    await expect(page.locator('#klBody .kl-pairs .h').nth(1)).toHaveText('0DTE');
+    await expect(page.locator('#klAbs0')).toHaveCount(0);
+    await expect(page.locator('#klBody')).not.toContainText('0DTE γ pin');
+    await expect(page.locator('#klFlip + #kl0Flip')).toHaveCount(1);
+    await expect(page.locator('#kl0Flip')).toHaveText('571.25');
+    await expect(page.locator('#kl0Call')).toHaveText('575.00');
+    await expect(page.locator('#kl0Put')).toHaveText('570.00');
+    await expect(page.locator('#kl0Abs')).toHaveText('572.50');
+    await expect(page.locator('#kl0Peak')).toHaveText('570.00');
+    await expect(page.locator('#klNet')).toBeVisible();
   });
 
   test('the Key Levels rail updates on a levels push', async ({ page }) => {

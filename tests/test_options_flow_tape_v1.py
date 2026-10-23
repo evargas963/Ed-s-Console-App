@@ -133,8 +133,8 @@ def test_a_contract_never_recorded_and_a_blank_symbol_serve_no_prints():
 
 
 def test_a_contract_the_console_stops_streaming_leaves_no_prints_in_memory():
-    """The console's intake records a print, then the contract leaves the stream (the state's
-    clear_symbol, as streaming calls it): its prints and its books are gone from memory."""
+    """The console's intake records a print, then clear_symbol is called for that contract:
+    its prints and its books are gone from memory. The release path does not call it."""
     from app.options.order_flow import history, state
     from app.options.order_flow.streaming import _ingest_pushed
     _ingest_pushed(f"optquote.{SYM}", {"symbol": SYM, "ts_recv": 1000.0, "content": _full_context(

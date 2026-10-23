@@ -110,20 +110,22 @@
     }
     c.setLevels(lv);
     var spot = liveSpot();
-    c.setLivePrice(spot, _liveQuote && spot != null ? _liveQuote.trade_age_sec : null);
+    var tradeTime = (_liveQuote && spot != null) ? _liveQuote.trade_time_ct : null;
+    c.setLivePrice(spot, _liveQuote && spot != null ? _liveQuote.trade_age_sec : null, tradeTime);
     var empty = host.querySelector('.gchart-empty');
     empty.hidden = !!(bars.length || win.length);
     empty.textContent = empty.hidden ? '' : (barsD || sd ? 'no bars / per-strike ' + prof.name + ' for this symbol'
       : 'the bars and per-strike ' + prof.name + ' requests failed');
-    paintHead(host.querySelector('.gchart-head'), bars, win, prof, sd, spot);
+    paintHead(host.querySelector('.gchart-head'), bars, win, prof, sd, spot, tradeTime);
   }
-  function paintHead(el, bars, win, prof, sd, spot) {
+  function paintHead(el, bars, win, prof, sd, spot, tradeTime) {
     var n = prof.name;
     var ab = (window.EdShell && window.EdShell.asOfBadge) || function () { return ''; };
     var lastT = bars.length ? bars[bars.length - 1].t : null;
     var src = sd && sd.today_source;
     var asof = (lastT ? '<span class="asof">price ' + tfLabel() + ' · ' + ctTime(lastT) + ' CT</span>' : '') +
       (src ? ab({ label: n + ' ' + (src === 'terrain_live_cache' ? 'terrain live' : src), ageSec: sd.today_age_sec,
+        when: sd.levels_time_ct,
         stale: !!sd.levels_stale, reason: sd.levels_stale_reason, live: src === 'terrain_live_cache' && sd.levels_stale === false }) : '');
     var top = prof.max_abs_row;   // served: the largest-magnitude row
     var shown = top ? (prof.signed ? usd(top[1]) : Number(top[1]).toLocaleString('en-US') + ' contracts') : '';
@@ -133,7 +135,8 @@
           '<span><span class="sw" style="background:var(--ed-neg)"></span>−' + n + '</span>'
         : '<span><span class="sw" style="background:var(--ed-accent)"></span>' + n + '</span>') +
       '<span><span class="sw" style="background:var(--ed-accent)"></span>flip</span>' +
-      '<span>spot ' + (spot == null ? '—' : spot.toFixed(2)) + '</span>' +
+      '<span>spot ' + (spot == null ? '—' : spot.toFixed(2)) +
+      (tradeTime ? (' · last trade ' + esc(tradeTime)) : '') + '</span>' +
       (top ? '<span>largest |' + n + '| ' + esc(top[0]) + ' · ' + esc(shown) + '</span>' : '') + '</div>';
   }
 

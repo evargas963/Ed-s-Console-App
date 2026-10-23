@@ -99,11 +99,11 @@ from calibration.complete_chain_capture import ChainSweep  # noqa: E402
 from config import build_config, load_dotenv_file  # noqa: E402
 from db_authority import canonical_console_db_path  # noqa: E402
 from instrument_identity import ticker_storage_key  # noqa: E402
-from math_exposure_core import greek_reported  # noqa: E402
+from math_exposure_core import gamma_reported  # noqa: E402
 from numeric_contract import schwab_number  # noqa: E402
 from schwab.streaming import StreamClient  # noqa: E402
 from schwab_client import build_client_from_token, safe_get_quotes  # noqa: E402
-from time_et import ET, ct_label, options_closed_at, options_open, sessions_since  # noqa: E402
+from time_et import ET, ct_label, option_close_product, options_closed_at, options_open, sessions_since  # noqa: E402
 from websockets.exceptions import ConnectionClosed  # noqa: E402
 
 log = logging.getLogger("capture")
@@ -141,9 +141,12 @@ LEVELONE_FIELDS = {"BID_PRICE": "bid", "ASK_PRICE": "ask", "LAST_PRICE": "last",
                    "QUOTE_TIME_MILLIS": "quote_time_ms", "TRADE_TIME_MILLIS": "trade_time_ms"}
 CHART_FIELDS = {"OPEN_PRICE": "open", "HIGH_PRICE": "high", "LOW_PRICE": "low",
                 "CLOSE_PRICE": "close", "VOLUME": "volume", "CHART_TIME_MILLIS": "bar_start_ms"}
-#: NEWS_HEADLINE is not in the Streamer Guide and schwab-py has no helper for it; these are
-#: the fields it answers with (time, id, ..., headline, ..., categories).
-NEWS_FIELDS = tuple(range(0, 11))
+#: The highest field number Schwab accepts on each service: every number above it, asked alone, is
+#: answered code 22 "SUBS command failed" (tests/fixtures/real_schwab_field_number_replies_2026_10_12.json).
+#: The daemon asks for every number up to it, so each field Schwab sends, documented or not, is kept.
+HIGHEST_FIELD = {"LEVELONE_EQUITIES": 150, "LEVELONE_OPTIONS": 150, "CHART_EQUITY": 300, "NYSE_BOOK": 300,
+                 "NASDAQ_BOOK": 300, "OPTIONS_BOOK": 300, "NEWS_HEADLINE": 300}
+FIELDS = {svc: ",".join(str(f) for f in range(top + 1)) for svc, top in HIGHEST_FIELD.items()}
 
 
 # ---------------------------------------------------------------------------- the watchlist
@@ -222,10 +225,10 @@ def expiration_ts(ct: dict) -> "float | None":
         return None
 
 
-def by_gamma(contracts: "list[dict]", price: float, now: float) -> "tuple[str, ...]":
+def by_gamma(contracts: "list[dict]", price: float, now: float, product: str) -> "tuple[str, ...]":
     """`contracts` (a chain as the sweep delivers it) in the option rule's order at `now`: highest
-    Schwab gamma first, as the levels take it (math_exposure_core.greek_reported: absent, -999, or
-    a -999 volatility is no gamma, ranked last); of equal gammas the nearest expiration, then the
+    Schwab gamma first, as the levels take it (math_exposure_core.gamma_reported: absent, -999, a
+    -999 volatility, or past twice the largest gamma possible at `price` is no gamma, ranked last); of equal gammas the nearest expiration, then the
     strike nearest `price` (the lower of two equally near), calls before puts. A contract has
     expired once now passes its expirationDate and is left out (it stays in the records; it is
     never streamed); so is one whose strike or expiration is not a number (rule 2)."""
@@ -235,7 +238,7 @@ def by_gamma(contracts: "list[dict]", price: float, now: float) -> "tuple[str, .
         if strike is not None and expires is not None and expires > now:
             gamma = schwab_number(ct.get("gamma"))
             row = (expires, abs(strike - price), strike, ct["putCall"], ct["symbol"])
-            if greek_reported(gamma, iv=ct.get("volatility")):
+            if gamma_reported(ct, price, product=product):
                 with_gamma.append((-gamma, *row))
             else:
                 without.append(row)
@@ -348,15 +351,6 @@ def _open_stream(client):
         return msg
     stream._receive = timed_receive
     return stream
-
-
-def _fields(stream, service: str) -> str:
-    if service == "NEWS_HEADLINE":
-        return ",".join(str(f) for f in NEWS_FIELDS)
-    enum = {"LEVELONE_EQUITIES": stream.LevelOneEquityFields,
-            "CHART_EQUITY": stream.ChartEquityFields,
-            "LEVELONE_OPTIONS": stream.LevelOneOptionFields}.get(service, stream.BookFields)
-    return ",".join(str(f) for f in sorted(int(x.value) for x in enum))
 
 
 def _dispatch(stream, msg: dict) -> None:
@@ -509,7 +503,8 @@ class Daemon:
     def _rank(self, ticker: str) -> None:
         """`ticker`'s newest chain put in the rule's order (by_gamma) at its newest price and the
         daemon's time, and the pick redone."""
-        self._ranked[ticker] = by_gamma(self._chains[ticker], self._prices[ticker], self.clock())
+        self._ranked[ticker] = by_gamma(self._chains[ticker], self._prices[ticker], self.clock(),
+                                        option_close_product(ticker))
         self.pick_options()
 
     def _took_price(self, ticker: str, record: dict) -> None:
@@ -644,7 +639,7 @@ class Daemon:
                 cmd = "ADD" if first == "SUBS" and i else first
                 params = {"keys": ",".join(chunk)}
                 if cmd != "UNSUBS":
-                    params["fields"] = _fields(self.stream, svc)
+                    params["fields"] = FIELDS[svc]
                 req, rid = self.stream._make_request(service=svc, command=cmd, parameters=params)
                 self._sent[rid] = _Sent(svc, cmd, chunk, time.time())
                 await self.stream._send({"requests": [req]})
@@ -962,8 +957,8 @@ async def run_chains(daemon: "Daemon", db_path, schwab_client, stop: asyncio.Eve
                      failures: "CaptureWriter") -> None:
     """The chain sweep (calibration.complete_chain_capture.ChainSweep) on its own thread, so the
     stream never waits on a chain; each chain part is published on the event loop, and the bus
-    keeps each ticker's newest whole chain (stream_spine.MessageBus._chain). The sweep reads each
-    option's LEVELONE_OPTIONS record from the bus for its Greeks. A chain whose history write
+    keeps each ticker's newest whole chain (stream_spine.MessageBus._chain). Every contract's
+    Greeks are its quote's. A chain whose history write
     fails is kept by `failures`, the daemon's writer (its failures ride the heartbeat). A sweep
     that ends on an error is logged with it (_worker_ended): its thread has no error output of
     its own to reach."""

@@ -23,7 +23,8 @@
   // sub id (map/filter/find/sort/... are all real Array.prototype methods). ----
   var NAV = {
     'trade-desk': { title: 'TRADE DESK', subs: [
-      { id: 'desk', label: 'Desk' }, { id: 'right-now', label: 'Right Now' }, { id: 'plan', label: 'Plan' },
+      { id: 'desk', label: 'Desk' }, { id: 'confluence', label: 'Confluence Matrix' },
+      { id: 'right-now', label: 'Right Now' }, { id: 'plan', label: 'Plan' },
       { id: 'expression', label: 'Expression', state: 'na' } ], views: Object.create(null) },
     // Book/DOM first (real, wired 2026-09-13 to /api/order-flow/microstructure); the rest stay
     // `na` until they have their own real wiring -- Overview/Heatmap/Tape/Options Book/History
@@ -462,6 +463,7 @@
     var cls = 'asof' + (o.stale ? ' stale' : (o.ref ? ' ref' : (o.live ? ' live' : '')));
     var parts = [];
     if (o.label) parts.push(_escBadge(o.label));
+    if (o.when != null) parts.push(_escBadge(o.when));
     if (age) parts.push(age);
     if (o.stale) parts.push('STALE');
     // the detailed reason is DISCLOSED in the tooltip — never as a paragraph inside an analytical panel
@@ -482,6 +484,7 @@
       .then(function (a) {
         if (!a.ok) { wlNotify(a.j.error); return; }
         _wl = a.j.tickers; renderWatchlist();
+        if (a.j.live === false) wlNotify('the capture daemon is not reporting');
       })
       .catch(function (e) { wlNotify('The watchlist could not be read: ' + e); });
   }
@@ -670,12 +673,16 @@
 
   // ================= header live data (single coordinated poll; degrades honestly) =================
   function fmt(n, d) { return (n === null || n === undefined || isNaN(n)) ? '—' : Number(n).toFixed(d === undefined ? 2 : d); }
-  function setFeed(cls, label, age) {
+  function setFeed(cls, label, age, ageTitle) {
     var dot = document.getElementById('hFeedDot'), f = document.getElementById('hFeed'), a = document.getElementById('hAge');
     if (dot) dot.className = 'dot' + (cls ? ' ' + cls : '');
     if (f) f.textContent = label;
-    if (a) a.textContent = age;
-    var fresh = document.getElementById('aiCtxFresh'); if (fresh) fresh.textContent = label + (age && age !== '—' ? ' · ' + age : '');
+    if (a && age != null) {
+      a.textContent = age;
+      a.title = ageTitle == null ? '' : ageTitle;
+    }
+    var shown = age != null ? age : (a ? a.textContent : '');
+    var fresh = document.getElementById('aiCtxFresh'); if (fresh) fresh.textContent = label + (shown && shown !== '—' ? ' · ' + shown : '');
   }
   // ---- header quote + watchlist: PUSHED BY THE CAPTURE DAEMON over WebSocket (port 8800,
   //      app/market_data/schwab/streaming/live_ui.py) -- the finished row (live_price_rows.
@@ -699,7 +706,10 @@
       var srcLbl = q.quoteIngestion ? (QUOTE_INGESTION_LABEL[q.quoteIngestion] || q.quoteIngestion) : '';
       px.title = srcLbl ? ('spot source: ' + srcLbl) : '';
     }
-    if (ba) ba.textContent = fmt(q.bid) + ' × ' + fmt(q.ask);
+    if (ba) {
+      ba.textContent = fmt(q.bid) + ' × ' + fmt(q.ask);
+      ba.title = q.quoteTime ? ('quote ' + q.quoteTime) : '';
+    }
     // Schwab's two change percents, each labelled: the regular session's and the last price's
     // (extended hours included). Formatting only; absent reads "—".
     [[document.getElementById('hChgReg'), 'REG ', q.chgPctRegular], [chg, 'EXT ', q.chgPct]].forEach(function (c) {
@@ -709,28 +719,29 @@
         c[0].className = 'chg mono ' + (c[2] >= 0 ? 'pos' : 'neg');
       } else { c[0].textContent = c[1] + '—'; c[0].className = 'chg mono'; }
     });
-    setFeed(q.feedCls, q.feedLabel, q.ageLabel);
+    setFeed(q.feedCls, q.feedLabel, q.ageLabel, q.ageTitle);
     // paintQuote owns the header display only; watchlist rows are written by setWlRow from
     // the same quote_tick event (one producer, two surfaces).
   }
   // Watchlist quotes: setWlRow is the ONE writer for every wl-px/wl-chg cell, called from the
   // quote_tick handler (and markWlDegraded). A null field CLEARS to "—" rather than leaving the previous
   // text: failure and recovery must not leave a stale-but-current-looking number on screen.
-  function setWlRow(sym, spot, chgPct) {
+  function setWlRow(sym, spot, chgPct, tradeTime) {
     var pe = document.querySelector('.wl-px[data-wlpx="' + sym + '"]');
-    if (pe) pe.textContent = spot == null ? 'UNAVAILABLE' : fmt(spot);
+    if (pe) {
+      pe.textContent = spot == null ? 'UNAVAILABLE' : fmt(spot);
+      pe.title = tradeTime ? ('last trade ' + tradeTime) : '';
+    }
     var ce = document.querySelector('.wl-chg[data-wlchg="' + sym + '"]');
     if (ce) {
       if (chgPct != null) { ce.textContent = (chgPct >= 0 ? '+' : '') + fmt(chgPct) + '%'; ce.className = 'wl-chg ' + (chgPct >= 0 ? 'pos' : 'neg'); }
       else { ce.textContent = '—'; ce.className = 'wl-chg'; }
     }
   }
-  // A silent price push withdraws every row to UNAVAILABLE and marks the list degraded with
-  // the reason, until a row arrives again.
+  // A silent price push marks the list degraded. The last prices stay.
   function markWlDegraded(reason) {
     var host = document.getElementById('watchlist');
     if (host) host.classList.add('wl-degraded');
-    loadWL().forEach(function (sym) { setWlRow(sym, null, null); });
     wlNotify(reason);
   }
   function markWlHealthy() {
@@ -740,6 +751,7 @@
   // ---- the price socket (daemon -> browser) ----
   var PRICE_SILENCE_MS = 3000;   // the daemon beats every 1 s; 3 s of nothing = the push is down
   var _priceWs = null, _priceUp = false, _lastPriceTs = 0, _priceSubTs = 0, _priceRetry = 0;
+  var _quoteShown = false;
   // the port comes from the console (meta ed-live-ui-port = the daemon's ED_LIVE_UI_PORT);
   // an unfilled page opens no socket and its prices read UNAVAILABLE
   function priceSocketUrl() {
@@ -821,15 +833,21 @@
       // The daemon already conflates to the newest row per symbol, so there is no burst to
       // throttle -- a few text writes per second. The price is Schwab's last trade with Schwab's
       // trade time, or absent with the served outage reason; the feed state is stated beside it.
+      _quoteShown = true;
+      var trade = q.trade_time_ct != null
+        ? ('last trade ' + q.trade_time_ct + (q.trade_age_sec != null ? (' · ' + fmtAge(q.trade_age_sec)) : ''))
+        : null;
       paintQuote({ spot_disp: q.spot_disp, spot: q.spot, bid: q.bid, ask: q.ask,
         chgPct: q.chg_pct, chgPctRegular: q.chg_pct_regular, quoteIngestion: q.quote_ingestion,
+        quoteTime: q.quote_time_ct,
         feedCls: q.feed_live ? '' : 'stale',
-        feedLabel: q.feed_live ? 'LIVE' : 'FEED DOWN',
-        ageLabel: q.outage || (q.trade_time_ct != null ? ('last trade ' + q.trade_time_ct) : 'no trade sent') });
+        feedLabel: q.feed_live ? 'LIVE' : 'OFFLINE',
+        ageLabel: trade || q.outage || 'no trade sent',
+        ageTitle: q.outage });
     }
     loadWL().forEach(function (wlSym) {
       if (!_served[wlSym] || _served[wlSym].key !== q.ticker) return;
-      setWlRow(wlSym, q.spot, q.chg_pct);
+      setWlRow(wlSym, q.spot, q.chg_pct, q.trade_time_ct);
       markWlHealthy();
     });
     try { window.dispatchEvent(new CustomEvent('ed:quote_tick', { detail: q })); } catch (e) {}
@@ -873,17 +891,18 @@
     el.textContent = v[0]; el.className = 'sess ' + v[1]; el.title = why || '';
   }
 
-  // The push is not delivering: withdraw the quote instead of leaving the last one on screen
-  // (and instead of polling for it -- operator rule 2026-09-23: no fallbacks). The session
-  // label is not a live quote and keeps its own slow read.
+  // The push is not delivering: the last quote stays and the chip says so. Nothing polls
+  // for a replacement. The session label is not a live quote and keeps its own slow read.
   function markHeaderPushDown() {
     // just asked for this ticker (page load or a ticker change): the row is on its way
-    // (WAITING); otherwise the push itself is down (OFFLINE)
+    // (WAITING); otherwise the push itself is down (OFFLINE). A price already shown stays,
+    // and so does its last trade time.
     var connecting = Date.now() - _priceSubTs <= PRICE_SILENCE_MS;
-    paintQuote({ spot: null, spot_disp: null, bid: null, ask: null, chgPct: null, chgPctRegular: null,
-      feedCls: 'stale',
-      feedLabel: connecting ? 'WAITING' : 'OFFLINE',
-      ageLabel: connecting ? 'no push yet' : 'live push down' });
+    var label = connecting ? 'WAITING' : 'OFFLINE';
+    var age = connecting ? 'no push yet' : 'live push down';
+    if (_quoteShown) setFeed('stale', label);
+    else paintQuote({ spot: null, spot_disp: null, bid: null, ask: null, chgPct: null, chgPctRegular: null,
+      feedCls: 'stale', feedLabel: label, ageLabel: age });
     paintRecord(null);
   }
 

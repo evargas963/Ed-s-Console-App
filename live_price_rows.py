@@ -8,9 +8,9 @@ from two different rules.
 
 Nothing here computes a market value: every number is a Schwab field or its receive time, with
 Schwab's own trade time; the only derivations are the trade age and its label. Whether the feed
-is delivering the symbol now (`feed_live`) is stated beside the values; in an open session a
-down feed leaves them absent with the reason (`outage`), and while Closed the values as of the
-close stand (docs/DATA_FLOW.md §2 D5).
+is delivering the symbol now (`feed_live`) is stated beside the values. A down feed sets
+`outage` and leaves the last values Schwab sent, the market open or closed
+(docs/DATA_FLOW.md §2 D5).
 """
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ from typing import Any, Optional
 
 import live_market_plane as lmp
 from instrument_identity import ticker_storage_key
+from numeric_contract import price_text
 from time_et import ct_label
 
 SPOT_SOURCE = "streaming_plane"
@@ -41,22 +42,23 @@ def _trade_age_sec(trade_ts: Optional[float], now: float) -> Optional[float]:
 
 def price_row(ticker: str, now: float) -> dict[str, Any]:
     """The finished row the screen paints for one symbol, as it is at `now`: each field the
-    last value Schwab sent for it, unless its feed is down in an open session (`outage`, the
-    reason the values are absent; docs/DATA_FLOW.md §2 D5)."""
+    last value Schwab sent. A feed down sets `outage` and `feed_live` false, the market open
+    or closed; the fields stay (docs/DATA_FLOW.md §2 D5)."""
     tk = ticker_storage_key(ticker)
     outage = lmp.outage(tk, "LEVELONE_EQUITIES", now)
     row = lmp.get_quote(tk) if tk else None
-    streamed = bool(row) and lmp.plane_row_is_streamed(row) and outage is None
+    streamed = bool(row) and lmp.plane_row_is_streamed(row)
     spot = float(row["spot"]) if streamed and lmp.plane_spot_is_last_price(row) else None
 
     def field(name: str):
         return row.get(name) if streamed else None
 
     trade_ts = field("trade_ts")
+    quote_ts = field("exchange_quote_ts")
     return {
         "ticker": tk,
         "spot": spot,
-        "spot_disp": f"{spot:.2f}" if spot is not None else None,
+        "spot_disp": price_text(spot),
         "spot_source": SPOT_SOURCE if spot is not None else None,
         # the feed itself (heartbeat, socket open, symbol held), and why the values are absent
         "feed_live": lmp.feed_live_for(tk, "LEVELONE_EQUITIES", now),
@@ -66,7 +68,8 @@ def price_row(ticker: str, now: float) -> dict[str, Any]:
         "bid_size": field("bid_size"),
         "ask_size": field("ask_size"),
         "mark": field("mark"),                         # Schwab MARK
-        "quote_ts": field("exchange_quote_ts"),        # Schwab QUOTE_TIME (epoch s)
+        "quote_ts": quote_ts,                          # Schwab QUOTE_TIME (epoch s)
+        "quote_time_ct": ct_label(quote_ts) if quote_ts is not None else None,
         "last_size": field("last_size"),
         "total_volume": field("total_volume"),
         # Schwab's own percent changes vs the prior close: NET_CHANGE_PERCENT (extended hours

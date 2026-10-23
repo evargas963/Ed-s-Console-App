@@ -87,6 +87,14 @@ test.describe('D — Gamma Chain subview', () => {
     await expect(page.locator('#expSel option').first()).toHaveText('All Expirations');   // Gamma: null = all
   });
 
+  test('the chain spot keeps its last trade time', async ({ page }) => {
+    await page.route('**/api/chain**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify(served(Object.assign({}, CHAIN, { spot_time_ct: 'Fri 09/25 06:59 PM CT' }))) }));
+    await toChain(page);
+    await expect(page.locator('#chainBody .chn-head')).toContainText('spot 100.00');
+    await expect(page.locator('#chainBody .chn-head')).toContainText('last trade Fri 09/25 06:59 PM CT');
+  });
+
   test('CALL click selects the exact CALL vendor symbol; PUT click the exact PUT symbol, each named to stream', async ({ page }) => {
     flowPosts.length = 0;
     await toChain(page);

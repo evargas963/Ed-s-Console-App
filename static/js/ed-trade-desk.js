@@ -76,11 +76,19 @@
     function dep(n, side) { var x = depth[String(n)] || {}; return x[side]; }
     var imb = dep(5, 'imbalance');
     var ages = d.ages || {};
+    // Schwab's book time stands beside the seconds. The seconds stay when no book time was
+    // sent, and the time stays when the age is missing. Neither sent shows "—".
+    var bookSec = ages.book_age_sec != null ? Math.round(ages.book_age_sec) + 's' : null;
+    var bookWhen = d.book_time_ct != null ? d.book_time_ct : null;
+    var bookAge = '—';
+    if (bookWhen != null && bookSec != null) bookAge = bookWhen + ' · ' + bookSec;
+    else if (bookWhen != null) bookAge = bookWhen;
+    else if (bookSec != null) bookAge = bookSec;
     var rows = [
-      ['Bid × Ask', d.top_outage || num(tob.bid) + ' × ' + num(tob.ask), classOf(cls, 'top_of_book.bid')],
+      ['Bid × Ask', num(tob.bid) + ' × ' + num(tob.ask), classOf(cls, 'top_of_book.bid')],
       ['Spread (pts)', num(d.spread_pts), classOf(cls, 'spread_pts')],
       ['Depth 1 imbalance', num(dep(1, 'imbalance'), 3), classOf(cls, 'depth.*.imbalance')],
-      ['Book age', ages.book_age_sec != null ? Math.round(ages.book_age_sec) + 's' : '—', classOf(cls, 'ages.book_age_sec')],
+      ['Book age', bookAge, classOf(cls, 'ages.book_age_sec')],
     ];
     var heroVal = (imb == null || isNaN(imb)) ? '—' : (imb >= 0 ? '+' : '') + num(imb, 3);
     var side = dep(5, 'side');   // served: BID / ASK / EVEN by the imbalance's sign
@@ -88,8 +96,9 @@
     // LIVE only on the server's explicit "not stale" (ages.book_stale, compute_book_microstructure);
     // an unknown book age is not live
     var bs = ages.book_stale;
+    var badge = d.top_outage ? 'OFFLINE' : (bs === false ? 'LIVE' : bs === true ? 'STALE' : 'AGE UNKNOWN');
     return stage(1, 'td-accent-blue', 'Detect — book microstructure', heroVal, heroUnit, side === 'BID' ? 1 : side === 'ASK' ? -1 : 0,
-      rows, bs === false ? 'LIVE' : bs === true ? 'STALE' : 'AGE UNKNOWN', bs === false ? 'live' : 'stale');
+      rows, badge, d.top_outage || bs !== false ? 'stale' : 'live');
   }
 
   function frameStage(levelsD) {
@@ -313,9 +322,10 @@
       var detect = results[0], levelsD = results[1], terrain = results[2], snap = results[3], strikesD = results[4];
       // the spot is /api/levels' alone; a failed read or a null/'' spot is absent, never 0
       var spot = (levelsD && levelsD.spot != null && levelsD.spot !== '') ? Number(levelsD.spot) : NaN;
+      var when = (levelsD && levelsD.spot_time_ct) ? (' · last trade ' + esc(levelsD.spot_time_ct)) : '';
       h.innerHTML =
         '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Right now</span><span class="fl-sym">' + esc(tk) +
-        '</span><span class="fl-meta">' + (isFinite(spot) ? 'spot ' + num(spot) : '') + '</span></div></div>' +
+        '</span><span class="fl-meta">' + (isFinite(spot) ? ('spot ' + num(spot) + when) : '') + '</span></div></div>' +
         '<div class="td-grid">' + detectStage(detect) + frameStage(levelsD) + confirmStage(terrain) + '</div>' +
         contextSummary(terrain, snap, spot) +
         migrationSection(strikesD, terrain, spot, tk) +

@@ -47,12 +47,14 @@ def _held_port() -> int:
 def feed():
     """The console's state cleared before and after."""
     ofs._feed_running = False
+    ofs._price_rows.clear()
     ofs._option_streaming_last_update_ts = None
     ofs._option_contract_last_update_ts.clear()
     ofls.clear_all_live_state()
     lmp._by_ticker.clear()
     yield
     ofs._feed_running = False
+    ofs._price_rows.clear()
     lmp._by_ticker.clear()
     while _HELD:
         _HELD.pop().close()
