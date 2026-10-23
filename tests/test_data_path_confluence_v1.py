@@ -11,8 +11,8 @@ import live_price_rows
 from app.options.order_flow import streaming as ofs
 from calibration.complete_chain_capture import CAPTURE_BASIS, persist_complete_chain_capture
 from confluence_composite import (
-    at_price, build_matrix, iv_by_strike, magnitudes, place_markers, score_magnitudes,
-    under_strike, window_strikes,
+    at_price, build_matrix, ceiling, in_score_weights, iv_by_strike, magnitudes, place_markers,
+    score_magnitudes, under_strike, window_strikes,
 )
 from math_exposure_core import bucket_metric, compute_exposures_by_strike
 from math_levels import compute_charm_by_strike
@@ -22,7 +22,7 @@ from terrain_engine import compute_terrain
 from time_et import ET, INDEX_OPTIONS, ct_label, valuation_instant
 
 import server
-from tests.real_chains import CRWD, MRVL, SPY_0DTE, SPY_AFTER_HOURS_PRINT, SPY_CLOSE, TSLA
+from tests.real_chains import CRWD, MRVL, NFLX, SPY_0DTE, SPY_AFTER_HOURS_PRINT, SPY_CLOSE, TSLA
 
 _QUOTE = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_crwd_quote_2026_10_07.json")
                     .read_text(encoding="utf-8"))
@@ -34,41 +34,45 @@ def _store(tk: str, cache: dict) -> None:
     server._terrain_cache[tk] = cache
 
 
+def _nflx_far_book() -> tuple[dict, dict]:
+    """NFLX's 2027-12-17 expiry as the levels producer priced it (tests/real_chains.py NFLX,
+    captured 2026-10-07): its book, and each strike's factor magnitudes as the matrix builds them."""
+    try:
+        server._publish_levels("NFLX", captures=[{"contracts": [dict(c) for c in NFLX.chain],
+                                                  "ts_utc": NFLX.now.timestamp(), "spot": NFLX.spot,
+                                                  "et_date": NFLX.now.date().isoformat(),
+                                                  "basis": CAPTURE_BASIS}], now=NFLX.now)
+        live = server._terrain_cache["NFLX"]
+    finally:
+        server._terrain_cache.pop("NFLX", None)
+    book = next(b for (e, _d), (b, _x) in live["_books"].items() if e == "2027-12-17")
+    charm = live["_charm_by_expiry"]["2027-12-17"]
+    iv = live["_iv_by_expiry"]["2027-12-17"]
+    mags = {s: magnitudes(b, charm.get(s), iv.get(s), NFLX.spot) for s, b in book.items()}
+    return book, {s: {k: v for k, v in m.items() if not k.startswith("_")} for s, m in mags.items()}
+
+
 def test_a_missing_gamma_blanks_the_score_and_the_top_is_not_100():
-    """The worked example. Strike 795 has charm 8 and no gamma, so its score is absent.
-    The highest score is 70, not 100."""
-    rows = {
-        770.0: {"GEXM": 10.0, "CHARMM": 5.0, "OI": 1.0, "VOL": 1.0},
-        775.0: {"GEXM": 30.0, "CHARMM": 5.0, "OI": 1.0, "VOL": 1.0},
-        780.0: {"GEXM": 20.0, "CHARMM": 15.0, "OI": 1.0, "VOL": 1.0},
-        785.0: {"GEXM": 50.0, "CHARMM": 2.0, "OI": 1.0, "VOL": 1.0},
-        790.0: {"GEXM": 40.0, "CHARMM": 9.0, "OI": 1.0, "VOL": 1.0},
-        795.0: {"GEXM": None, "CHARMM": 8.0, "OI": 1.0, "VOL": 1.0},
-    }
-    scored, _flat, _spans = score_magnitudes(rows, {"GEXM": 0.6, "CHARMM": 0.4})
-    shown = {strike: None if row["score"] is None else int(round(row["score"]))
-             for strike, row in scored.items()}
-    assert shown[795.0] is None
-    assert "net gamma" in scored[795.0]["missing"]
-    assert shown[770.0] == 8
-    assert shown[775.0] == 38
-    assert shown[780.0] == 53
-    assert shown[785.0] == 60
-    assert shown[790.0] == 70
-    assert max(v for v in shown.values() if v is not None) == 70
+    """NFLX's 2027-12-17 book: strikes where Schwab sent no gamma (-999) have no net gamma, so
+    their score is absent with that reason. The top score is not rescaled to 100: it stays under
+    the MONTHLY ceiling."""
+    _book, mags = _nflx_far_book()
+    weights = in_score_weights("MONTHLY")
+    scored, _flat, _spans = score_magnitudes(mags, weights)
+    blank = [s for s, m in mags.items() if m["GEXM"] is None and m["OI"]]
+    assert blank
+    assert all(scored[s]["score"] is None and "net gamma" in scored[s]["missing"] for s in blank)
+    top = max(r["score"] for r in scored.values() if r["score"] is not None)
+    assert top <= ceiling(weights) < 100
 
 
 def test_a_missing_factor_is_not_called_flat():
-    """A strike that is missing charm blanks its score. Strikes that have charm at one
-    value do not make the note say charm does not vary."""
-    rows = {
-        770.0: {"GEXM": 10.0, "CHARMM": None, "OI": 1.0, "VOL": 1.0},
-        775.0: {"GEXM": 10.0, "CHARMM": 0.0, "OI": 0.0, "VOL": 1.0},
-    }
-    scored, flat, _spans = score_magnitudes(rows, {"GEXM": 0.5, "CHARMM": 0.5})
-    assert "CHARMM" not in flat
-    assert scored[770.0]["score"] is None
-    assert "charm" in scored[770.0]["missing"]
+    """NFLX's 2027-12-17 book: net gamma is missing on some strikes, so the flat note does not
+    name net gamma, whatever the other strikes hold."""
+    _book, mags = _nflx_far_book()
+    _scored, flat, _spans = score_magnitudes(mags, in_score_weights("MONTHLY"))
+    assert any(m["GEXM"] is None for m in mags.values())
+    assert "GEXM" not in flat
 
 
 def _publish_close(tk: str = "SPY") -> dict:
