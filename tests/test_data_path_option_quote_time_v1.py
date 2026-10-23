@@ -37,6 +37,7 @@ def test_the_flow_panel_shows_the_side_schwab_sent_in_the_contracts_first_messag
     finally:
         for sym in _SIDES:
             TAPE.forget(sym)
+            ofs._option_contract_last_update_ts.pop(sym, None)
         of_state.clear_all_live_state()
     assert [len(m) for m in _SIDES.values()] == [4, 4]
     assert all("CONTRACT_TYPE" not in m["item"] for msgs in _SIDES.values() for m in msgs[1:])
