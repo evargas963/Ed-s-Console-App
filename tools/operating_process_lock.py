@@ -38,12 +38,7 @@ PROTECTED_PATHS: tuple[str, ...] = (
 #: statement, so a safe first statement exempts nothing chained after it; `git reset --soft`
 #: (HEAD only) is safe.
 
-#: RC-252: the STATIC inventory of what must never be wiped, independent of any mission.
-#: LOCK-2 originally drew its targeted reach from PROTECTED_PATHS plus the ACTIVE mission's
-#: scope_paths — so protection contracted whenever a mission narrowed, which is what a good
-#: mission does. Under axiom-brand-landing-v1 that left `git restore -- static/chart.html`,
-#: `git checkout -- server.py` and `git restore -- math_levels.py` all silent. Mission scope
-#: is gone (2026-08-24 teardown); this static inventory alone defines LOCK-2 reach.
+#: The product paths that must never be wiped; with PROTECTED_PATHS, the class rule's whole reach.
 PRODUCT_WIPE_PROTECTED: tuple[str, ...] = (
     "db.py",
     "server.py",
@@ -91,8 +86,7 @@ def _reset_class_violation(words: tuple[str, ...]) -> list[str]:
         return [
             "RESET_GUARD (LOCK-2/RC-231): tree-destructive git "
             f"({'paths: ' + ', '.join(sorted(set(touched))[:4]) if touched else 'bare/whole-tree form'}) "
-            "— three 2026-08-03 wipes used exactly this class. Not subject-disableable "
-            "(Architecture A / RC-450)."
+            "can discard operator work. Not subject-disableable (RC-450)."
         ]
     return []
 

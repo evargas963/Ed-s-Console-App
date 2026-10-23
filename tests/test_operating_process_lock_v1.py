@@ -14,9 +14,8 @@ import tools.process_lock_guard as PLG  # noqa: E402
 
 
 def test_edit_branch_topology_rails_only_no_role_denylist(tmp_path):
-    """2026-08-24 teardown: the role/mission/authority edit DENYLISTS are GONE and must not
-    resurrect. The Edit branch carries only topology rails that name no agent — RC-442/RC-477
-    cross-checkout (a LINKED worktree editing the primary), and the live-checkout invariant #4
+    """No role/mission/authority edit denylist exists. The Edit branch carries only topology
+    rails that name no agent — cross-checkout (a LINKED worktree editing the primary), and the live-checkout invariant #4
     (a session that IS the production primary editing its OWN app code). A linked worktree
     editing its own files stays unblocked: that is where development belongs. Deterministic
     against a temp topology, so it holds in a primary clone (CI) and a linked worktree alike."""
@@ -53,8 +52,8 @@ def _linked_worktree_layout(tmp_path: Path) -> tuple[Path, Path]:
 
 
 def test_cross_checkout_edit_into_primary_blocks(tmp_path):
-    """RC-442(a)/RC-477: a linked-worktree session editing the PRIMARY working tree is the
-    2026-08-20 hazard — the rail must fire on that exact topology."""
+    """A linked-worktree session editing the PRIMARY working tree: the rail fires on that
+    exact topology."""
     primary, wt = _linked_worktree_layout(tmp_path)
     bad = PLG.cross_checkout_edit_violations(
         {"file_path": str(primary / "db.py")}, repo=wt)
@@ -93,7 +92,7 @@ def test_reset_guard_blocks_destructive_git_on_product():
     """LOCK-2 (RC-231): soft tree-destructive git against product scope BLOCKS.
 
     The guard's own static inventory (PRODUCT_WIPE_PROTECTED) is the only thing that can
-    satisfy it — no mission scope, no grant file (both gone, 2026-08-24 teardown)."""
+    satisfy it."""
     for cmd in ("git restore -- static/chart.html",
                 "git checkout -- server.py",
                 "git restore -- math_levels.py",

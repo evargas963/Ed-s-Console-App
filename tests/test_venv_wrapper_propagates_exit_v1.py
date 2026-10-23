@@ -1,21 +1,6 @@
-"""RC-254: the venv wrapper must PROPAGATE its target's exit code.
-
-Why this file exists. `tools/run_with_repo_venv.py` re-exec'd its target with os.execv. On
-POSIX that replaces the process, so the target's status becomes the caller's. On Windows
-there is no exec — CPython maps os.execv onto the CRT spawn family, so the parent returned
-to its caller immediately with status 0 while the target ran detached and its exit code was
-discarded.
-
-Every pre-commit hook routed through that wrapper therefore reported "Passed" without the
-gate's verdict ever reaching pre-commit: venv-parity, market-correctness, operating-process,
-and institutional-correctness — the repo's ONE gate. It was invisible because a no-op gate
-and a passing gate look identical from outside; the hook only printed on failure, so
-"no output, Passed" read as health.
-
-Every existing test drove the gate FUNCTIONS or invoked the module with `-m`. Nothing ran
-the wrapper the way pre-commit runs it, so the seam between hook and gate was the one path
-never exercised. These tests are that seam.
-"""
+"""The venv wrapper (`tools/run_with_repo_venv.py`) carries its target's exit code and output
+back to its caller, as pre-commit runs it for the `venv-parity` hook: on Windows there is no
+exec, so a wrapper that did not wait for its target would report 0 for a failing hook."""
 from __future__ import annotations
 
 import subprocess

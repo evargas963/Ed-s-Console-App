@@ -86,16 +86,13 @@ def test_rc253_a_destructive_command_after_a_quoted_message_still_blocks():
 
 def test_live_path_wired_through_guard():
     """The guard's Shell path carries the reset-guard — the live BLOCK site."""
-    bad = PLG.pretooluse_block("Bash", {"command": "git restore -- static/chart.html"})
-    assert any("RESET_GUARD" in b for b in bad), "reset guard not on the live PreToolUse path"
+    for cmd in ("git restore -- static/chart.html", "git stash push -q -m probe -- stream_spine.py"):
+        bad = PLG.pretooluse_block("Bash", {"command": cmd})
+        assert any("RESET_GUARD" in b for b in bad), f"reset guard not on the live PreToolUse path: {cmd}"
 
 
-# ── RC-525 (ported from #221's row 508): adjudicated by what the command can DESTROY ────────
-# Re-measured on ac3f78fb 2026-09-06: `git push -f origin main`, `git -C ../other reset --hard`
-# and `git restore --staged x.py && git reset --mixed HEAD~1` all PASSED the one owner, and
-# `git reset --soft HEAD~1` (HEAD only; index and worktree untouched) was refused although the
-# repository's own merge authority runs it. The class rule is now judged PER STATEMENT, the
-# globals prefix admits `-C <path>`, the push clause admits `-f` and flags after the refspec.
+# ── Adjudicated by what the command can DESTROY: the class rule is judged per statement, ────
+# the globals prefix admits `-C <path>`, the push clause admits `-f` and flags after the refspec.
 
 #: (command, must_block, what it can reach). One table, both directions.
 _ADJUDICATION: tuple[tuple[str, bool, str], ...] = (
@@ -194,8 +191,7 @@ def test_rc525_the_safe_reset_is_live_on_the_pretooluse_path():
 
 
 def test_git_named_by_its_full_path_or_exe_is_judged_as_git():
-    """`& C:\\Git\\cmd\\git.exe reset --hard` passed the guard (reviewer, 2026-10-06): the git
-    readers matched the bare word `git`, not git given by path or with `.exe`."""
+    """git given by its path or with `.exe` (`& C:\\Git\\cmd\\git.exe reset --hard`) is git."""
     for tool, cmd in (("PowerShell", "& C:\\Git\\cmd\\git.exe reset --hard"),
                       ("PowerShell", "& \"C:\\Program Files\\Git\\cmd\\git.exe\" reset --hard HEAD~1"),
                       ("Bash", "C:/Git/cmd/git.exe stash"),
@@ -207,8 +203,7 @@ def test_git_named_by_its_full_path_or_exe_is_judged_as_git():
 
 
 def test_a_heredoc_handed_to_an_interpreter_by_its_full_path_is_judged():
-    """`C:\\Git\\bin\\bash.exe <<'EOF'` with `git reset --hard` in the body passed every guard
-    (architecture review, 2026-10-06): the interpreter was read as the bare word `bash`."""
+    """A heredoc handed to bash by its path (`C:\\Git\\bin\\bash.exe <<'EOF'`) is judged as bash's."""
     for shell in ("C:\\Git\\bin\\bash.exe", "/usr/bin/bash", "\"C:\\Program Files\\Git\\bin\\bash.exe\"",
                   "sudo bash"):
         assert OPL.reset_guard_violations(f"{shell} <<'EOF'\ngit status\ngit reset --hard\nEOF"), shell
