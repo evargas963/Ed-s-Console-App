@@ -57,7 +57,7 @@ def _hold(tk, contracts, fetched_ts, price, streamed=()):
     for sym, fields, ts in streamed:
         ofs._ingest_pushed(f"optquote.{sym}", options_quote_msg(symbol=sym, content={"key": sym, **fields},
                                                                 src="schwab_options_l1", ts_recv=ts))
-    srv._publish_levels(tk, [dict(c) for c in contracts], fetched_ts, now=_AT)
+    srv._publish_levels(tk, [dict(c) for c in contracts], fetched_ts, chain_spot=(price, fetched_ts), now=_AT)
     lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "held": held})
 
 
