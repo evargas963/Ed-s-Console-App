@@ -24,7 +24,7 @@ import pytest
 
 from app.market_data.schwab.streaming import capture
 from calibration.complete_chain_capture import chain_messages
-from stream_spine import LOG, PRUNE_ROWS, CaptureWriter, HealthRegistry, MessageBus, book_msg, options_quote_msg, quote_msg
+from stream_spine import LOG, PRUNE_ROWS, WRITER_RECORDING, CaptureWriter, HealthRegistry, MessageBus, book_msg, options_quote_msg, quote_msg
 from tests.real_chains import MRVL, SPY_0DTE
 from time_et import ET
 
@@ -241,6 +241,40 @@ def test_a_stop_asked_during_the_keep_writes_what_was_queued_and_removes_nothing
     asyncio.run(writer.run(sub, stop=stop))
     assert _rows(db, "SELECT COUNT(*) FROM stream_quotes_raw")[0][0] == 10
     assert _old_rows(db) >= old - PRUNE_ROWS
+
+
+def test_every_message_a_round_has_taken_counts_as_held_until_it_is_written(tmp_path):
+    """The mix's 152 equity quotes are queued while another connection holds the database's write
+    lock: the writer takes what is queued into its round and waits up to timeout_sec on the round's
+    first row. While it waits, the header's held count is every one of them, queued or taken, and
+    once the lock is let go every one is written. The 0.2 s pause lets the last hand-over and the
+    round's take (microseconds) finish well inside the 5 s wait."""
+    db = tmp_path / "stream_capture.db"
+    writer = CaptureWriter(db, timeout_sec=5.0)
+    holder = sqlite3.connect(db, isolation_level=None, check_same_thread=False)
+    holder.execute("BEGIN IMMEDIATE")
+    bus = MessageBus()
+    sub = bus.subscribe("", policy=LOG)
+    sent = _publish_mix(bus, {"LEVELONE_EQUITIES"})
+
+    async def go():
+        stop = asyncio.Event()
+        task = asyncio.create_task(writer.run(sub, stop=stop))
+        await _until(lambda: sub.queue.empty() and writer.status()["queue_depth"] < sent)
+        await asyncio.sleep(0.2)
+        during = writer.status()
+        holder.execute("COMMIT")
+        await _until(lambda: writer.status()["rows_written"] == sent)
+        stop.set()
+        await task
+        return during
+    try:
+        during = asyncio.run(go())
+    finally:
+        holder.close()
+    assert (during["state"], during["rows_written"]) == (WRITER_RECORDING, 0), "the round was not still waiting"
+    assert during["held"] == sent == 152, f"{during['held']} of {sent} taken messages counted as held"
+    assert _rows(db, "SELECT COUNT(*) FROM stream_quotes_raw")[0][0] == sent
 
 
 def test_nothing_is_removed_while_the_options_trade_or_the_market_is_unknown(tmp_path):
