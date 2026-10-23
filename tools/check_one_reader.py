@@ -14,8 +14,12 @@ are found at the merge base and on the pull request, and the pull request is ref
 that did not read the field at the merge base reads it and the field is then read by more than one
 module. Moving a field's one reader and bringing readers into one parser pass; renaming one of
 several readers is refused like a new one. Reads through a helper, a constant imported from another
-module, a loop over a table of names, `getattr`, `itemgetter` or a `match` pattern are not seen. `--list`
-names each field read by more than one module: the second readers still to remove.
+module, a loop over a table of names, `getattr`, `itemgetter` or a `match` pattern are not seen. A field is
+keyed by its last name, so two Schwab fields that share one (a quote's BID_PRICE and a book level's)
+count together, and a module reading our own record kept in Schwab's spelling counts as a reader
+(a record crossing modules is a typed record, ENF-10). `--list` names each field read by name in
+more than one module: the candidates to check, each one either a second reader to remove or one of
+those two cases.
 
     python tools/check_one_reader.py --base origin/main      (or --list)
 Exit 0: no module began reading a field that has another reader. Exit 1: refused, each field and
