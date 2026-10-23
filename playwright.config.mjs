@@ -2,10 +2,26 @@
 // Issue 40/46: Browser install is enforced by `npm run test:e2e` (scripts/run-playwright-e2e.mjs) before tests run.
 import { defineConfig } from '@playwright/test';
 import fs from 'node:fs';
+import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { projectPython } from './scripts/project-python.mjs';
+
+const configDir = path.dirname(fileURLToPath(import.meta.url));
+
+// Each run serves the console on its own free port, so runs from two checkouts at once never
+// reach each other's server. Playwright's workers load this file again and inherit the port the
+// main process picked.
+async function freePort() {
+  const server = net.createServer();
+  await new Promise((resolve, reject) => server.once('error', reject).listen(0, '127.0.0.1', resolve));
+  const { port } = /** @type {import('node:net').AddressInfo} */ (server.address());
+  await new Promise((resolve) => server.close(resolve));
+  return port;
+}
+process.env.ED_E2E_PORT ||= String(await freePort());
+export const e2eBaseURL = `http://127.0.0.1:${process.env.ED_E2E_PORT}`;
 
 // RC-515 + RC-534 reconciled: this is the one E2E process boundary. The web server
 // receives no live runtime path, token, or credentials from its parent. RC-534 disabled the
@@ -45,15 +61,22 @@ export default defineConfig({
   fullyParallel: false,
   expect: { timeout: 30000 },
   use: {
-    baseURL: 'http://127.0.0.1:8765',
+    baseURL: e2eBaseURL,
     trace: 'retain-on-failure',
     // The console has no built-in ticker (universality, operator 2026-09-23); these specs play
     // an operator who already chose SPY and a watchlist. A spec testing the first run clears it.
-    storageState: 'tests/e2e/fixtures/operator_chose_spy.storage.json',
+    storageState: {
+      cookies: [],
+      origins: [{
+        origin: e2eBaseURL,
+        localStorage: JSON.parse(fs.readFileSync(
+          path.join(configDir, 'tests/e2e/fixtures/operator_chose_spy.local_storage.json'), 'utf8')),
+      }],
+    },
   },
   webServer: {
-    command: `"${projectPython(path.dirname(fileURLToPath(import.meta.url)))}" -m uvicorn server:app --host 127.0.0.1 --port 8765`,
-    url: 'http://127.0.0.1:8765/',
+    command: `"${projectPython(configDir)}" -m uvicorn server:app --host 127.0.0.1 --port ${process.env.ED_E2E_PORT}`,
+    url: `${e2eBaseURL}/`,
     timeout: 120000,
     reuseExistingServer: false,
     stdout: 'pipe',
