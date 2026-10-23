@@ -57,7 +57,7 @@ def _publish(held, ticked, *, at=_AT, socket_open=True):
     for sym in ticked:
         ofs._ingest_pushed(f"optquote.{sym}", options_quote_msg(
             symbol=sym, content={"key": sym, "GAMMA": 0.05}, src="schwab_options_l1", ts_recv=at.timestamp() - 1))
-    server._publish_levels(TK, _CONTRACTS, at.timestamp() - 10.0, now=at)
+    server._publish_levels(TK, _CONTRACTS, at.timestamp() - 10.0, chain_spot=(_SPOT, at.timestamp()), now=at)
     body = server.gamma_surface_payload(TK, "all", None, 0, None, None, at)
     with server._terrain_cache_lock:
         surface = server._terrain_cache[TK]["_gamma_surface"]

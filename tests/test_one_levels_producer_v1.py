@@ -90,8 +90,9 @@ def _streamed(sym: str, content: dict, ts: float) -> None:
         symbol=sym, content={"key": sym, **content}, src="schwab_options_l1", ts_recv=ts))
 
 
-def _publish(chain=None, fetched_ts=None, **kw):
-    return server._publish_levels(TK, chain, fetched_ts, now=_AT, **kw)
+def _publish(chain=None, fetched_ts=None, chain_spot=(_SPOT, _T), **kw):
+    """TK's chain published at its one spot (CRWD's captured price, at the capture's time)."""
+    return server._publish_levels(TK, chain, fetched_ts, chain_spot=chain_spot, now=_AT, **kw)
 
 
 def _put_chain(fetched_ts=_T):
@@ -242,16 +243,23 @@ def test_a_foreign_tickers_contract_never_overlays_this_chain():
 
 # ── spot ─────────────────────────────────────────────────────────────────────────────────────
 
-def test_a_moved_spot_reprices_every_view_at_the_new_spot():
+def test_the_levels_are_priced_at_the_chains_spot_and_a_new_chain_moves_them():
+    """One spot per chain (operator 2026-10-23): a reprice of the kept chain on a tick stays at the
+    chain's spot whatever the live price does; the next chain, at its own spot, reprices every view."""
     _daemon()
     _put_chain()
     before = _cached()["_gamma_surface"]
-    _daemon(price=_SPOT * 1.02)
+    _daemon(price=_SPOT * 1.02)                                         # the live price moves
     _publish()
+    kept = _cached()
+    assert kept["spot"] == _SPOT and kept["spot_as_of_ts_utc"] == _T
+    assert kept["_gamma_surface"]["cells"] == before["cells"]
+    _publish(_CONTRACTS, _T + 60.0, chain_spot=(_SPOT * 1.02, _T + 55.0))   # the next chain, at its spot
     after = _cached()
     assert after["_gamma_surface"]["spot"] == _SPOT * 1.02 and after["spot"] == _SPOT * 1.02
+    assert after["spot_as_of_ts_utc"] == _T + 55.0
     assert after["_gamma_surface"]["cells"] != before["cells"]          # GEX scales with spot
-    assert after["_gamma_surface"]["surface_seq"] == before["surface_seq"] + 1
+    assert after["_gamma_surface"]["surface_seq"] == before["surface_seq"] + 2   # the reprice, then the chain
 
 
 # ── what is kept, and for whom ───────────────────────────────────────────────────────────────
@@ -272,7 +280,7 @@ def test_a_stored_capture_and_a_live_chain_publish_the_same_fields():
     _daemon()
     _put_chain()
     live = _cached()
-    _publish(captures=[{"contracts": _CONTRACTS, "ts_utc": _T, "spot": _SPOT, "et_date": "2026-10-07",
+    _publish(captures=[{"contracts": _CONTRACTS, "ts_utc": _T, "spot": _SPOT, "spot_ts": None, "spot_from_chain": False, "et_date": "2026-10-07",
                         "basis": server.CAPTURE_BASIS}])
     stored = _cached()
     assert {k for k in live if not k.startswith("_")} == {k for k in stored if not k.startswith("_")}
@@ -284,7 +292,7 @@ def test_vanna_and_charm_by_strike_read_the_published_snapshot():
     time value, which charm needs."""
     valued = datetime(2026, 10, 7, 12, 0, tzinfo=ET)
     _daemon(at=valued.timestamp())                       # live when the chain is published
-    snap = server._publish_levels(TK, _CONTRACTS, _T, now=valued)
+    snap = server._publish_levels(TK, _CONTRACTS, _T, chain_spot=(_SPOT, _T), now=valued)
     _daemon(at=time.time())                              # live now, as the routes read it
     charm = json.loads(server.get_charm_by_strike(TK, scope="all").body)
     assert charm["available"] and charm["spot"] == snap.spot
@@ -302,10 +310,10 @@ def test_a_reprice_on_a_kept_chain_keeps_the_chains_time():
     assert _cached()["computed_ts_utc"] == _T - 600.0
 
 
-def test_the_route_serves_the_publication_and_no_live_price_publishes_no_levels():
+def test_the_route_serves_the_publication_and_a_chain_without_a_spot_publishes_no_levels():
     """/api/terrain serves the levels exactly as the producer published them, none recomputed per
     request, the price they were computed at named `priced_at_spot` with its source and time, and
-    `spot` the live price. The next publication with no live price has no levels, with its reason."""
+    `spot` the live price. A chain the daemon delivered with no spot has no levels, with its reason."""
     _daemon()
     _put_chain()
     published = _cached()
@@ -317,9 +325,10 @@ def test_the_route_serves_the_publication_and_no_live_price_publishes_no_levels(
     assert out["priced_at_spot"] == published["spot"] and out["priced_at_spot_as_of_ts_utc"] == _T
     assert out["priced_at_spot_source"] == server.SPOT_SOURCE_PLANE
     assert out["spot"] is None and "spot_state" not in out
-    _put_chain()                                                # the next chain: no live price
+    _publish(_CONTRACTS, _T, chain_spot=(None, None))           # the next chain: no spot
     out = server.get_terrain(ticker=TK)
     assert out["regime"] == "UNAVAILABLE" and out["call_wall"] is None and out["error"] == "no spot price"
+    assert (out["priced_at_spot"], out["priced_at_spot_source"], out["priced_at_spot_as_of_ts_utc"]) == (None, "none", None)
 
 
 def test_an_unknown_gamma_at_spot_never_reads_as_short_gamma():
@@ -350,7 +359,7 @@ def test_a_ticker_on_screen_reprices_on_its_ticks_its_options_included_and_a_bur
     finally:
         gate.set()
         _drain()
-    assert waiting == {TK: (server.REPRICE, None, None)}
+    assert waiting == {TK: (server.REPRICE, None, None, None)}
 
 
 def test_chains_waiting_to_be_priced_keep_only_the_newest_of_each_ticker():
@@ -359,7 +368,7 @@ def test_chains_waiting_to_be_priced_keep_only_the_newest_of_each_ticker():
     gate = _busy()
     try:
         for i in range(3):
-            server._on_chain(TK, _CONTRACTS, _T + i)
+            server._on_chain(TK, _CONTRACTS, _T + i, None, (_SPOT, _T))
         with server._chains_waiting_lock:
             waiting = server._chains_waiting[TK]
     finally:
@@ -421,11 +430,11 @@ def test_a_stored_capture_never_replaces_a_delivered_chain(delivered_first):
     gate = _busy()
     try:
         if delivered_first:
-            server._on_chain(tk, _CONTRACTS, _T)
+            server._on_chain(tk, _CONTRACTS, _T, None, (_SPOT, _T))
             queued = server._load_stored_levels([tk])
         else:
             queued = server._load_stored_levels([tk])
-            server._on_chain(tk, _CONTRACTS, _T)                 # arrives while the capture waits
+            server._on_chain(tk, _CONTRACTS, _T, None, (_SPOT, _T))   # arrives while the capture waits
     finally:
         gate.set()
         _drain()
@@ -450,7 +459,7 @@ def test_a_delivered_chain_is_priced_before_the_stored_ones_waiting():
     gate = _busy()
     try:
         assert server._load_stored_levels(list(stored)) == 2
-        server._on_chain(TK, _CONTRACTS, _T)
+        server._on_chain(TK, _CONTRACTS, _T, None, (_SPOT, _T))
     finally:
         gate.set()
         _drain()
