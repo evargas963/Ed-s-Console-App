@@ -787,7 +787,8 @@ class _Spill:
 
 class CaptureWriter:
     """Writes every bus message to stream_capture.db from its own thread, in batches
-    (commit every `batch_rows` rows or `batch_sec`). Never points at ed_console.db. A message
+    (each round writes every message queued, and commits once the batch has `batch_rows` rows or
+    `batch_sec` has passed). Never points at ed_console.db. A message
     whose row is refused is kept as sent in stream_write_failures, in the same batch. While the
     database refuses every write (DATABASE_REFUSALS, each wait `timeout_sec`), the open batch
     is rolled back and its messages, and every one after, are held in order and written again,
@@ -1079,22 +1080,19 @@ class CaptureWriter:
                 holding = bool(self._waiting) or bool(self._spills)
                 if holding:                # the round's messages join the held ones, in order
                     self._admit(incoming)
-                    del incoming           # what was spilled is held on disk only
-                    items = self._waiting
-                else:
-                    items = incoming
-                self._round, self._stored = items, 0
+                self._round, self._stored = self._waiting if holding else incoming, 0
+                del incoming               # the round is held by _round only; what was spilled, on disk only
                 try:
                     if conn is None:
                         conn = self._open()
-                    for item in items:
+                    for item in self._round:
                         self._batch.append((item, self._store(conn, item)))
                         self._stored += 1
                     if self._batch and (holding or stopping or len(self._batch) >= self.batch_rows
                                         or time.monotonic() - last_commit >= self.batch_sec):
                         conn.commit()
-                        batch, self._batch = self._batch, []
-                        self._committed(batch)
+                        self._committed(self._batch)
+                        self._batch = []
                         last_commit = time.monotonic()
                         with self._lock:
                             self._waiting, self._waiting_bytes = [], 0
@@ -1107,7 +1105,8 @@ class CaptureWriter:
                         conn.close()       # its open transaction is rolled back
                     conn = None
                     held = [] if self._batch_spilled else [item for item, _out in self._batch]
-                    self._refused(e, held + items[self._stored:], holding, stopping)
+                    self._refused(e, held + self._round[self._stored:], holding, stopping)
+                self._round, self._stored = [], 0  # a finished round's messages are not kept
         finally:
             if conn is not None:
                 conn.close()
@@ -1222,8 +1221,8 @@ class CaptureWriter:
                          "ON CONFLICT(spill) DO UPDATE SET written_back=excluded.written_back",
                          (spill.path.name, spill.written_back + len(records)))
             conn.commit()
-            batch, self._batch, self._batch_spilled = self._batch, [], False
-            self._committed(batch)
+            self._committed(self._batch)
+            self._batch, self._batch_spilled = [], False
             with self._lock:
                 spill.committed(len(records), end)
         if spill.read_at == spill.size:

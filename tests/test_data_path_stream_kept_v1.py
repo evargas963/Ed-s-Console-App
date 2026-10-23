@@ -38,17 +38,6 @@ def _et(text: str) -> float:
     return datetime.fromisoformat(text).replace(tzinfo=ET).timestamp()
 
 
-def _as_production(db) -> None:
-    """The indexes of production's stream_capture.db (PRAGMA index_list on it): its quote, book and
-    option tables by symbol and receipt time, none by receipt time alone."""
-    with sqlite3.connect(db) as conn:
-        for index in ("idx_sqr_ts", "idx_sbkr_ts", "idx_soqr_ts"):
-            conn.execute(f"DROP INDEX {index}")
-        conn.execute("CREATE INDEX idx_sqr_sym_ts ON stream_quotes_raw(symbol, ts_recv)")
-        conn.execute("CREATE INDEX idx_sbkr_sym_ts ON stream_book_raw(symbol, ts_recv)")
-        conn.execute("CREATE INDEX idx_soqr_sym_ts ON stream_options_quotes_raw(symbol, ts_recv)")
-
-
 def test_only_the_option_contracts_traded_are_recorded_and_every_equity_message(tmp_path):
     """SPY 2026-10-07 12:32 ET at 776.61, its same-day expiration listed: strikes 772 to 782 (777
     nearest, 5 listed each side), calls and puts. MRVL at 283.73, no same-day expiration: its
@@ -156,14 +145,13 @@ def test_after_the_last_option_close_rows_before_the_newest_five_sessions_are_re
 
 
 def test_every_message_arriving_during_the_keep_is_written_while_old_rows_are_still_being_removed(tmp_path):
-    """A file indexed as production's stream_capture.db is (PRAGMA index_list on it: its quote, book
-    and option tables by symbol and receipt time, none by receipt time alone). 400,000 option quotes
+    """The writer's own file, indexed as production's stream_capture.db is (PRAGMA index_list on it:
+    its quote, book and option tables by receipt time). 400,000 option quotes
     received before the newest five sessions began (twenty parts of the keep), and 2,000 equity
     quotes arriving while the keep runs: each one is written while old rows remain (every message
     queued is written in each round between parts), and the keep then removes every old row."""
     db = tmp_path / "stream_capture.db"
     writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01)
-    _as_production(db)
     with sqlite3.connect(db) as conn:
         contract = SPY_0DTE.chain[0]["symbol"]
         old = _et("2026-09-30 15:00")
@@ -199,7 +187,6 @@ def test_a_stop_asked_during_the_keep_writes_what_was_queued_and_removes_nothing
     ten (microseconds) within one part's time (a 20,000-row delete); on main one part ran per message."""
     db = tmp_path / "stream_capture.db"
     writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01)
-    _as_production(db)
     contract = SPY_0DTE.chain[0]["symbol"]
     old = _et("2026-09-30 15:00")
     with sqlite3.connect(db) as conn:
