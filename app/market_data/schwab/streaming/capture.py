@@ -99,11 +99,11 @@ from calibration.complete_chain_capture import ChainSweep  # noqa: E402
 from config import build_config, load_dotenv_file  # noqa: E402
 from db_authority import canonical_console_db_path  # noqa: E402
 from instrument_identity import ticker_storage_key  # noqa: E402
-from math_exposure_core import greek_reported  # noqa: E402
+from math_exposure_core import gamma_reported  # noqa: E402
 from numeric_contract import schwab_number  # noqa: E402
 from schwab.streaming import StreamClient  # noqa: E402
 from schwab_client import build_client_from_token, safe_get_quotes  # noqa: E402
-from time_et import ET, ct_label, options_closed_at, options_open, sessions_since  # noqa: E402
+from time_et import ET, ct_label, option_close_product, options_closed_at, options_open, sessions_since  # noqa: E402
 from websockets.exceptions import ConnectionClosed  # noqa: E402
 
 log = logging.getLogger("capture")
@@ -225,10 +225,10 @@ def expiration_ts(ct: dict) -> "float | None":
         return None
 
 
-def by_gamma(contracts: "list[dict]", price: float, now: float) -> "tuple[str, ...]":
+def by_gamma(contracts: "list[dict]", price: float, now: float, product: str) -> "tuple[str, ...]":
     """`contracts` (a chain as the sweep delivers it) in the option rule's order at `now`: highest
-    Schwab gamma first, as the levels take it (math_exposure_core.greek_reported: absent, -999, or
-    a -999 volatility is no gamma, ranked last); of equal gammas the nearest expiration, then the
+    Schwab gamma first, as the levels take it (math_exposure_core.gamma_reported: absent, -999, a
+    -999 volatility, or past twice the largest gamma possible at `price` is no gamma, ranked last); of equal gammas the nearest expiration, then the
     strike nearest `price` (the lower of two equally near), calls before puts. A contract has
     expired once now passes its expirationDate and is left out (it stays in the records; it is
     never streamed); so is one whose strike or expiration is not a number (rule 2)."""
@@ -238,7 +238,7 @@ def by_gamma(contracts: "list[dict]", price: float, now: float) -> "tuple[str, .
         if strike is not None and expires is not None and expires > now:
             gamma = schwab_number(ct.get("gamma"))
             row = (expires, abs(strike - price), strike, ct["putCall"], ct["symbol"])
-            if greek_reported(gamma, iv=ct.get("volatility")):
+            if gamma_reported(ct, price, product=product):
                 with_gamma.append((-gamma, *row))
             else:
                 without.append(row)
@@ -503,7 +503,8 @@ class Daemon:
     def _rank(self, ticker: str) -> None:
         """`ticker`'s newest chain put in the rule's order (by_gamma) at its newest price and the
         daemon's time, and the pick redone."""
-        self._ranked[ticker] = by_gamma(self._chains[ticker], self._prices[ticker], self.clock())
+        self._ranked[ticker] = by_gamma(self._chains[ticker], self._prices[ticker], self.clock(),
+                                        option_close_product(ticker))
         self.pick_options()
 
     def _took_price(self, ticker: str, record: dict) -> None:

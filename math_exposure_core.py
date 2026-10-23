@@ -8,11 +8,12 @@ Phase 2 extraction from math_exposure.py per Extraction Blueprint v1.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List
 import math
 
 from numeric_contract import float_finite_or_none, schwab_count, schwab_number
+from time_et import EQUITY_OPTIONS, MIN_TIME_TO_EXPIRY_YEARS, time_to_expiry_years
 
 
 # Schwab options API missing-greek sentinel (documented wire value).
@@ -47,10 +48,37 @@ def vendor_greeks_unavailable(iv: float | None) -> bool:
 
 
 def greek_reported(value: float | None, *, iv: float | None = None) -> bool:
-    """True when Schwab sent a value for this Greek: present and not Schwab's -999 no-value
-    code (on the Greek itself or on the contract's volatility). Schwab's value is used exactly
-    as sent -- no bound of ours overrides it."""
+    """True when Schwab sent a value for this Greek: present and not Schwab's -999 no-value code (on
+    the Greek itself or on the contract's volatility). A gamma is judged by gamma_reported."""
     return value is not None and value != MISSING_GREEK_SENTINEL and not vendor_greeks_unavailable(iv)
+
+
+def gamma_reported(ct: dict, price: float | None, *, product: str = EQUITY_OPTIONS) -> bool:
+    """True when the contract's gamma is a value: greek_reported, and not more than twice the
+    largest gamma any option can have at its own volatility, `price` and time left (largest_gamma;
+    operator 2026-10-23). The one test of a gamma; unknown inputs leave it as sent."""
+    gamma = schwab_number(ct.get("gamma"))
+    if not greek_reported(gamma, iv=ct.get("volatility")):
+        return False
+    largest = largest_gamma(ct, price, product=product)
+    return largest is None or gamma <= 2.0 * largest
+
+
+def largest_gamma(ct: dict, price: float | None, *, product: str = EQUITY_OPTIONS) -> float | None:
+    """The largest gamma any option can have at the contract's own volatility, `price` and the time
+    left when Schwab computed its gamma (greeksTime.gamma): the at-the-money peak
+    1 / (S * sigma * sqrt(2 * pi * T)). None when one of them is not known, and in the last ten
+    minutes, where time_to_expiry_years gives its floor instead of the time left."""
+    sigma = schwab_iv_to_sigma(schwab_number(ct.get("volatility")))
+    times = ct.get("greeksTime")
+    stamp = schwab_number(times.get("gamma")) if isinstance(times, dict) else None
+    if price is None or price <= 0 or sigma is None or stamp is None or stamp <= 0:
+        return None
+    t = time_to_expiry_years(ct.get("expirationDate"), datetime.fromtimestamp(stamp / 1000.0, tz=timezone.utc),
+                             settlement_type=ct.get("settlementType"), product=product)
+    if t is None or t <= MIN_TIME_TO_EXPIRY_YEARS:
+        return None
+    return 1.0 / (price * sigma * math.sqrt(2.0 * math.pi * t))
 
 
 
@@ -166,13 +194,12 @@ def compute_exposures_by_strike(
     # whole-day `dte / 365.0`. Every contract in the aggregate is priced at the caller's one
     # valuation instant `now` (a replay of a stored chain prices at the snapshot's time), and T
     # is memoised per distinct expiry string.
-    from time_et import time_to_expiry_years as _tte
     _tte_cache: dict[tuple, float | None] = {}
 
     def _tte_memo(ct: dict) -> float | None:
         key = (str(ct.get("expirationDate")), ct.get("settlementType"))
         if key not in _tte_cache:
-            _tte_cache[key] = _tte(key[0], now=now, settlement_type=key[1], product=product)
+            _tte_cache[key] = time_to_expiry_years(key[0], now=now, settlement_type=key[1], product=product)
         return _tte_cache[key]
 
     for ct in contracts:
@@ -217,7 +244,7 @@ def compute_exposures_by_strike(
         gamma = schwab_number(ct.get("gamma"))
         iv = schwab_number(ct.get("volatility"))
         delta_ok = greek_reported(delta, iv=ct.get("volatility"))   # raw: a -999 IV voids its greeks
-        gamma_ok = greek_reported(gamma, iv=ct.get("volatility"))
+        gamma_ok = gamma_reported(ct, spot, product=product)
         if not delta_ok or not gamma_ok:
             missing += 1
         if oi > 0:      # open interest 0 adds a known 0 whatever its Greeks

@@ -58,14 +58,14 @@ Hold EdWebConsole to how a financial institution handles systems with real money
    `contextlib.suppress`, a literal standing in for a missing value), or whose description lacks "Schwab → screen:",
    "Deleted:" or "End-to-end test:"; the path tests of `docs/DATA_FLOW.md` §2 fail a broken path; a design-level patch —
    ENF-01.
-2. **Schwab fields as sent.** Not a number: absent, -999, text, NaN or infinity, and a value Schwab's own field
-   definition excludes (a negative volume or size). Everything else is taken as sent; a reported 0 is 0. No other
-   bounds, no substitution. What Schwab sends or accepts is settled by Schwab's own documentation, cited by section:
+2. **Schwab fields as sent.** Not a number: absent, -999, text, NaN or infinity, a value Schwab's own field
+   definition excludes (a negative volume or size), and a gamma more than twice the largest any option can have at its
+   own volatility, price and time left (operator 2026-10-23). Everything else is taken as sent; a reported 0 is 0. No other bounds, no substitution. What Schwab sends or accepts is settled by Schwab's own documentation, cited by section:
    `docs/schwab/schwab_market_data_api_spec.pdf` (Market Data API, with
    `docs/schwab/schwab_market_data_parameters_chains_quotes.txt` for the expanded /chains and /quotes parameters) and
    `docs/schwab/schwab_streamer_api.pdf` (Streamer API), from Schwab's Developer Portal. A limit not stated there or in
    Schwab's own reply is our defect until shown otherwise.
-   Enforced by: `tests/test_schwab_as_sent_v1.py`, `tests/test_absence_is_not_zero_v1.py`; the documentation authority — ENF-21.
+   Enforced by: `tests/test_schwab_as_sent_v1.py`, `tests/test_absence_is_not_zero_v1.py`, `tests/test_data_path_impossible_gamma_v1.py`; the documentation authority — ENF-21.
 3. **One authority.** Each value served, stored or shown has one computation authority.
    Consumers carry its result; they never select, compute, repair or relabel it. A second authority
    for the same value is banned whatever it is called: helper, parser, resolver or cache.
