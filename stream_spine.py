@@ -702,8 +702,7 @@ class _Spill:
         except OSError as e:
             self.out.truncate(self.size)   # no partial record stays behind the whole ones
             return e
-        self.size += len(data)
-        self.messages += 1
+        self.size += len(data)             # its message is counted by the writer (_spilled)
         return None
 
     def read(self, n: int) -> list:
@@ -1137,10 +1136,10 @@ class CaptureWriter:
             if self.state != WRITER_BLOCKED:
                 self.error_ts = time.time()
             self.state, self.error = WRITER_BLOCKED, reason
-            if not holding:                # held now: in memory up to the cap, then spilled; the
-                self._waiting, self._waiting_bytes = [], 0  # round is what memory holds
-                self._round = self._waiting
+            if not holding:                # held now: in memory up to the cap, then spilled
+                self._waiting, self._waiting_bytes = [], 0
                 self._admitting, self._admitted = held, 0
+            self._round = self._waiting    # the round is what memory holds (a commit may have emptied it)
         if not holding:
             self._admit(held)
         if stopping:
@@ -1164,13 +1163,11 @@ class CaptureWriter:
                         self._admitted += 1
                     continue
             try:
-                refused = self._tail().append(_spill_record(item))
+                spill = self._tail()
+                refused = spill.append(_spill_record(item))
             except OSError as e:
-                refused = e
-            if refused is not None:
-                self._lose(item, refused)
-            with self._lock:
-                self._admitted += 1
+                spill, refused = None, e
+            self._spilled(item, spill, refused)
         with self._lock:
             self._admitting, self._admitted = [], 0
 
@@ -1194,17 +1191,23 @@ class CaptureWriter:
             self.left_on_disk.append(spill.left())
         self._spills = []
 
-    def _lose(self, item, error: BaseException) -> None:
-        """A message neither the database nor a spill file holds: counted, with when it was
-        received."""
-        ts = _received(item)
+    def _spilled(self, item, spill: "_Spill | None", refused: "BaseException | None") -> None:
+        """One message _admit or the stop's spill is done with, counted in one locked section with
+        its being held (_admitted): in `spill`, or, refused by the disk, lost (neither the database
+        nor a spill file holds it), with when it was received."""
+        ts = _received(item) if refused is not None else None
         with self._lock:
-            self.lost += 1
-            if ts is not None:
-                self.lost_first_ts = ts if self.lost_first_ts is None else min(self.lost_first_ts, ts)
-                self.lost_last_ts = ts if self.lost_last_ts is None else max(self.lost_last_ts, ts)
-        self._log_once_a_minute(("lost", type(error).__name__),
-                                "stream writer: a message is lost: %s: %s", type(error).__name__, error)
+            if refused is None:
+                spill.messages += 1
+            else:
+                self.lost += 1
+                if ts is not None:
+                    self.lost_first_ts = ts if self.lost_first_ts is None else min(self.lost_first_ts, ts)
+                    self.lost_last_ts = ts if self.lost_last_ts is None else max(self.lost_last_ts, ts)
+            self._admitted += 1
+        if refused is not None:
+            self._log_once_a_minute(("lost", type(refused).__name__),
+                                    "stream writer: a message is lost: %s: %s", type(refused).__name__, refused)
 
     def prune(self, before: float) -> None:
         """Remove every row received before `before` from the tables of KEPT_BY_TIME (the newest
@@ -1272,8 +1275,9 @@ class CaptureWriter:
 
     def _leave_on_disk(self) -> None:
         """At a stop while the database refuses writes: what is held in memory goes to a spill
-        file named for when the block began (before the spill file's, _tail), and both stay. Those
-        not yet in it are counted as _admit's are (held; not recorded if the writer dies)."""
+        file named for when the block began (before the spill file's, _tail), and both stay, listed
+        as left (here, or by the writer's death). Those not yet in it are counted as _admit's are
+        (held; not recorded if the writer dies)."""
         with self._lock:
             items, self._waiting, self._waiting_bytes = self._waiting, [], 0
             self._round, self._stored = self._waiting, 0
@@ -1284,16 +1288,14 @@ class CaptureWriter:
                 held = _Spill.new(self.db_path, int(began * 1000), 0)
             except OSError as e:
                 held = e
+            else:
+                with self._lock:
+                    self._spills.insert(0, held)
             for item in items:
-                refused = held if isinstance(held, OSError) else held.append(_spill_record(item))
-                if refused is not None:
-                    self._lose(item, refused)
-                with self._lock:
-                    self._admitted += 1
-            if not isinstance(held, OSError):
-                held.close()
-                with self._lock:
-                    self.left_on_disk.append(held.left())
+                if isinstance(held, OSError):
+                    self._spilled(item, None, held)
+                else:
+                    self._spilled(item, held, held.append(_spill_record(item)))
         with self._lock:
             self._leave_spills()
             self._admitting, self._admitted = [], 0

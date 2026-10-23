@@ -389,7 +389,7 @@ def test_a_writer_that_dies_leaving_memory_on_disk_at_a_stop_counts_only_what_wa
     db = tmp_path / "stream_capture.db"
     s = _dies_holding(db, 10_000_000, {**_eleventh(), "unprintable": _Unprintable()}, stop=True)
     assert s["error"] == "RuntimeError: a value no spill record can write"
-    assert (s["unrecorded"], s["lost"]) == (1, 0)
+    assert (s["unrecorded"], s["lost"], [k["messages"] for k in s["left_on_disk"]]) == (1, 0, [10])
     writer = CaptureWriter(db)
 
     async def go():
