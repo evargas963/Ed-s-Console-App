@@ -64,7 +64,7 @@ def extract_vendor_print(item: dict[str, Any]) -> Optional[dict[str, Any]]:
     received_ts = float_finite_or_none(item.get("server_received_ts"))
     return {
         "price": price,
-        "size": int(size) if size is not None else None,
+        "size": size,
         "time_millis": trade_ms,
         "receive_seq": receive_seq,
         "server_received_ts": received_ts,
@@ -109,7 +109,7 @@ def canonical_tape_prints(content_items: list) -> list[dict[str, Any]]:
 def tick_rule_signed_size(
     prev_price: Optional[float],
     price: Optional[float],
-    size: Optional[int],
+    size: Optional[float],
 ) -> Optional[float]:
     """PROXY tick-rule signed size. Not native aggressor. None without a size or a price to
     compare (Schwab sent none); a size of 0 signs 0."""

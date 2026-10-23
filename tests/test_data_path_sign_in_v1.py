@@ -371,3 +371,32 @@ def test_a_token_file_that_cannot_be_read_is_logged_once_and_the_sweep_goes_on(t
     finally:
         schwab.close()
     assert _asked(schwab) == [(EXPIRATIONS, "Bearer fresh")]
+
+
+def test_a_sign_in_a_client_cannot_use_is_not_taken(tmp_path, caplog):
+    """A token file with an access token and a refresh token but no expiry is not a sign-in the
+    builder can use. The sweep logs it once, does not take it, and takes the sign-in saved after."""
+    held = '{"token": {"access_token": "a", "refresh_token": "r"}, "creation_timestamp": 1}'
+    schwab = LocalSchwab()
+    schwab.token = "refuses"
+    try:
+        client = schwab.client(tmp_path, 100)
+        with pytest.raises(sc.SignInRefused):
+            client.get_option_expiration_chain("SPY")
+        token = tmp_path / "schwab_token.json"
+        bad = tmp_path / "not_a_sign_in.json"
+        bad.write_text(held)
+        bad.replace(token)
+        assert "expires_at" in sc.sign_in_problem(sc.inspect_token_file(str(token)), str(token))
+        sweep = _sweep(tmp_path)
+        with caplog.at_level(logging.WARNING, logger=sc.log.name):
+            assert _work(sweep, lambda: client, 20), "the sweep's thread ended"
+            assert _work(sweep, lambda: client, 20)
+        assert len([r for r in caplog.records if "holds no sign-in" in r.getMessage()]) == 1
+        with pytest.raises(sc.SignInRefused):
+            client.get_option_expiration_chain("SPY")
+        _new_sign_in(token, "fresh")
+        client.get_option_expiration_chain("SPY")
+    finally:
+        schwab.close()
+    assert _asked(schwab) == [(EXPIRATIONS, "Bearer fresh")]

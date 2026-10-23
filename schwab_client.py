@@ -178,6 +178,7 @@ class OneRefreshSession(OAuth2Client):
         self._token_file, self._metadata = token_file, metadata
         self._refused: "AuthlibBaseError | None" = None   # Schwab's refusal, held until a new sign-in
         self._unread: "str | None" = None                 # the token file's read failure last logged
+        self._seen: "tuple | None" = None                 # the token file as last looked at (id, time, size)
 
     def ensure_active_token(self, token=None):
         with self._refresh_lock:
@@ -205,17 +206,30 @@ class OneRefreshSession(OAuth2Client):
 
     def _take_saved(self) -> None:
         """Take the sign-in saved to the token file when it is a new one (a creation time not the
-        one held): its token and creation time, the streamer's too. A file that holds no sign-in
-        (not there, not JSON, no access and refresh token) is logged once."""
+        one held): its token and creation time, the streamer's too. A file unchanged since the
+        last look is not read again. One that holds no usable sign-in (sign_in_problem) is logged
+        once."""
+        seen = None
         try:
-            saved = _token_read_func(self._token_file)()
-            token, created = dict(saved["token"]), saved["creation_timestamp"]
-            if not (token.get("access_token") and token.get("refresh_token")):
-                raise KeyError("no access and refresh token")
-        except (OSError, ValueError, KeyError, TypeError) as e:
-            if repr(e) != self._unread:
-                log.warning("the token file %s holds no sign-in to take (%r)", self._token_file, e)
-            self._unread = repr(e)
+            st = os.stat(self._token_file)
+            seen = (st.st_ino, st.st_mtime_ns, st.st_size)
+        except OSError as e:
+            log.debug("the token file %s could not be stated (%r)", self._token_file, e)
+        if seen is not None and seen == self._seen:
+            return
+        self._seen = seen
+        problem = sign_in_problem(inspect_token_file(self._token_file), self._token_file)
+        token = created = None
+        if problem is None:
+            try:
+                saved = _token_read_func(self._token_file)()
+                token, created = dict(saved["token"]), saved["creation_timestamp"]
+            except (OSError, ValueError, KeyError, TypeError) as e:
+                problem = repr(e)
+        if problem is not None:
+            if problem != self._unread:
+                log.warning("the token file %s holds no sign-in to take (%s)", self._token_file, problem)
+            self._unread = problem
             return
         self._unread = None
         if created != self._metadata.creation_timestamp:
@@ -326,6 +340,30 @@ def auth_is_refreshable(inspection: TokenInspectionResult) -> bool:
     return inspection.has_refresh_token
 
 
+def sign_in_problem(inspection: TokenInspectionResult, resolved: str) -> "str | None":
+    """Why `resolved` holds no sign-in a client can use, or None when it does. The one rule for a
+    client built from the file and for a sign-in saved while a client runs."""
+    if not inspection.file_exists:
+        return f"Token file not found: {resolved}. {inspection.message}"
+    if not inspection.json_valid:
+        return f"Schwab token file is not valid JSON at {resolved!r}. {inspection.message}"
+    if not (inspection.has_creation_timestamp and inspection.has_token_object):
+        return (
+            f"Schwab token file malformed (expected schwab-py layout with creation_timestamp and token) "
+            f"at {resolved!r}. {inspection.message}"
+        )
+    if not inspection.has_access_token:
+        return f"Schwab token file missing access_token at {resolved!r}. {inspection.message}"
+    if not inspection.has_expires_at:
+        return f"Schwab token file missing expires_at at {resolved!r}. {inspection.message}"
+    if not auth_is_refreshable(inspection):
+        return (
+            f"Schwab token is NOT refreshable (refresh_token missing or empty) at {resolved!r}. "
+            "Remediation: python reauth_schwab.py --manual"
+        )
+    return None
+
+
 def build_client_from_token(token_path: str, api_key: str, app_secret: str) -> SchwabClientState:
     """Build Schwab client from token file. token_path is normalized to absolute."""
     if schwab_live_blocked_for(api_key=api_key, app_secret=app_secret):
@@ -340,48 +378,9 @@ def build_client_from_token(token_path: str, api_key: str, app_secret: str) -> S
         )
     resolved = _resolve_token_path(token_path)
     inv = inspect_token_file(resolved)
-    if not inv.file_exists:
-        return SchwabClientState(
-            ok=False,
-            message=f"Token file not found: {resolved}. {inv.message}",
-            client=None,
-        )
-    if not inv.json_valid:
-        return SchwabClientState(
-            ok=False,
-            message=f"Schwab token file is not valid JSON at {resolved!r}. {inv.message}",
-            client=None,
-        )
-    if not inv.has_creation_timestamp or not inv.has_token_object:
-        return SchwabClientState(
-            ok=False,
-            message=(
-                f"Schwab token file malformed (expected schwab-py layout with creation_timestamp and token) "
-                f"at {resolved!r}. {inv.message}"
-            ),
-            client=None,
-        )
-    if not inv.has_access_token:
-        return SchwabClientState(
-            ok=False,
-            message=f"Schwab token file missing access_token at {resolved!r}. {inv.message}",
-            client=None,
-        )
-    if not inv.has_expires_at:
-        return SchwabClientState(
-            ok=False,
-            message=f"Schwab token file missing expires_at at {resolved!r}. {inv.message}",
-            client=None,
-        )
-    if not auth_is_refreshable(inv):
-        return SchwabClientState(
-            ok=False,
-            message=(
-                f"Schwab token is NOT refreshable (refresh_token missing or empty) at {resolved!r}. "
-                "Remediation: python reauth_schwab.py --manual"
-            ),
-            client=None,
-        )
+    problem = sign_in_problem(inv, resolved)
+    if problem is not None:
+        return SchwabClientState(ok=False, message=problem, client=None)
     try:
         c = client_from_token_file_atomic(
             resolved,

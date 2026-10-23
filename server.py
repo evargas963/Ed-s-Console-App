@@ -22,12 +22,17 @@ from typing import Annotated, Optional
 from dataclasses import asdict, dataclass
 
 from time_et import (ET, now_et, ct_label, et_date_str_from_ts_utc, last_open,
-                     market_session_date, options_closed_at, options_open, session, session_label)
+                     market_session_date, option_close_product, options_closed_at, options_open,
+                     outside_option_window, session, session_label, valuation_instant)
 from math_exposure_core import (
     bucket_metric,
+    compute_exposures_by_strike,
+    gamma_reported,
+    greek_reported,
     merge_exposure_books,
     overlay_streamed_contract_fields,
     strike_oi_legs,
+    strike_total_oi,
     strike_volume_legs,
 )
 from liquidity_models import ZONE_DISPLAY, PlaybookConfig
@@ -83,6 +88,7 @@ class _LevelMarkerFormatter(logging.Formatter):
 # uvicorn, …) at INFO+ lands here; gate fails on WARNING+ / traceback.
 # RC-523: under the RUNTIME root (runtime_layout), which is this checkout unless
 # ED_RUNTIME_ROOT moves it — runtime output must not pollute the source tree (§8).
+import runtime_layout  # noqa: E402
 from runtime_layout import logs_dir as _runtime_logs_dir  # noqa: E402
 
 ED_SERVER_LOG_PATH = _runtime_logs_dir() / "ed_server.log"
@@ -153,9 +159,8 @@ def _install_visual_severity_markers(level: int = logging.INFO) -> None:
     # A checkout bound to ANOTHER checkout's runtime (runtime_layout.live_binding_error) must
     # not write that checkout's live log -- measured 2026-09-23: a worktree console appended
     # 15,451 errors to the production logs/ed_server.log. The stream handler still prints.
-    from runtime_layout import live_binding_error as _live_binding_error
     if ("pytest" not in sys.modules and not os.environ.get("PYTEST_CURRENT_TEST")
-            and _live_binding_error() is None):
+            and runtime_layout.live_binding_error() is None):
         install_ed_server_file_sink(ED_SERVER_LOG_PATH, level=level)
 
 
@@ -167,17 +172,29 @@ log = logging.getLogger("ed_server")
 from config import token_path
 from db_authority import canonical_stream_db_path
 
-from instrument_identity import display_symbol, ticker_storage_key   # RC-126: the ONE query-symbol authority
+from instrument_identity import display_symbol, ticker_storage_key, vendor_option_root
 import live_market_plane as lmp
-from numeric_contract import float_finite_or_none, schwab_count, schwab_number
-from terrain_engine import (SCOPES, TerrainSnapshot, chain_ladder, compute_terrain, nearest_strike,
-                            positioning_migration, strike_window)
+from numeric_contract import float_finite_or_none, price_text, schwab_count, schwab_number
+from confluence_composite import at_price, build_matrix
+from terrain_engine import (SCOPES, SAME_DAY_LEVELS, TerrainSnapshot, _dte_of, _per_strike_rows, chain_ladder,
+                            compute_terrain, nearest_strike, positioning_migration, strike_window)
+from math_levels import compute_charm_by_strike
 from terrain_atr import Atr, compute_atrs, roll_up
 
 from db import get_db
 
 import live_price_rows as _lpr        # with_change: the bar-change computation
 import push_changes
+from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT
+from app.market_data.schwab.streaming import live_ui
+from app.options.order_flow.engine import OrderFlowEngine, compute_book_microstructure
+from app.options.order_flow.history import TAPE, book_heatmap_for_ticker
+from app.options.order_flow.live_payload import flow_block, options_live_payload
+from app.options.order_flow.state import get_content_for_symbol, get_stream_greeks
+from app.options.order_flow.streaming import (
+    get_option_contract_streaming_diagnostics, price_row, select_flow_contract,
+    start_order_flow_stream, stop_order_flow_stream, streamed_bars, watchlist_request,
+)
 
 #: the Schwab token file, whose age is shown (the console holds no Schwab credential and makes no
 #: Schwab call)
@@ -283,18 +300,15 @@ def _install_signal_handlers() -> None:
 
 def resolve_spot(ticker: str, *, now: float) -> tuple[float | None, str, float | None]:
     """(spot, source, as_of_ts_utc): the daemon's price row's Schwab LAST_PRICE as sent and its
-    trade time -- the value the header shows. In an open session (at `now`) with the feed down it
-    is absent and `source` is the outage reason; while Closed the price as of the close stands
-    (docs/DATA_FLOW.md §2 D5); (None, "none", None) until Schwab has sent one."""
-    from app.options.order_flow.streaming import price_row
-
-    outage = lmp.outage(ticker, "LEVELONE_EQUITIES", now)
-    if outage is not None:
-        return None, outage, None
+    trade time. The row's own `outage` says the feed is not delivering it; the number stays.
+    (None, the outage reason or "none", None) until Schwab has sent one."""
     row = price_row(ticker)
-    if not row or row.get("spot") is None:
+    if row and row.get("spot") is not None:
+        return row["spot"], SPOT_SOURCE_PLANE, row.get("trade_ts")
+    outage = lmp.outage(ticker, "LEVELONE_EQUITIES", now)
+    if outage is None:
         return None, "none", None
-    return row["spot"], SPOT_SOURCE_PLANE, row.get("trade_ts")
+    return None, outage, None
 
 
 # (REST fast-quote writer DELETED 2026-09-24, independent-audit finding #3: it wrote REST
@@ -438,7 +452,6 @@ def _bar_writer() -> None:
     streamed bar and price history the capture daemon pushes, as it arrives, with those already
     waiting behind it. Ends at stop_bar_writer's None, once everything queued before it is
     written."""
-    from app.options.order_flow.streaming import streamed_bars
     while True:
         msgs = [streamed_bars.get()]
         while not streamed_bars.empty():
@@ -461,7 +474,6 @@ def start_bar_writer() -> None:
 
 def stop_bar_writer(thread: "threading.Thread | None" = None) -> None:
     """Write every bar already queued, then end the bar writer (`thread`: the one started)."""
-    from app.options.order_flow.streaming import streamed_bars
     thread = thread or _bar_writer_thread
     if thread is None:
         return
@@ -470,12 +482,15 @@ def stop_bar_writer(thread: "threading.Thread | None" = None) -> None:
 
 
 def _watchlist(now: float) -> "list[str] | None":
-    """The watchlist: the tickers the capture daemon asks Schwab for, as its heartbeat carries
-    it; None while the daemon's status is not current at `now`."""
+    """The watchlist: the tickers the capture daemon asks Schwab for. A current heartbeat that
+    carries a list is that list; one that carries none is unknown. A missing heartbeat keeps
+    the last list a beat carried."""
     st = lmp.daemon_status(now)
-    if st is None or not isinstance(st.get("watchlist"), list):
-        return None                 # no current heartbeat, or one that carries no list: unknown
-    return list(st["watchlist"])
+    if st is not None:
+        if not isinstance(st.get("watchlist"), list):
+            return None
+        return list(st["watchlist"])
+    return lmp.last_watchlist()
 
 
 
@@ -494,8 +509,7 @@ async def _app_lifespan(app):
     # ANOTHER checkout (a worktree converging on production) does not start a live console
     # (runtime_layout.live_binding_error -- a worktree console ran against production on
     # 2026-09-23). Refusing here stops uvicorn before it serves anything.
-    from runtime_layout import live_binding_error
-    _binding = live_binding_error()
+    _binding = runtime_layout.live_binding_error()
     if _binding is not None:
         log.critical("LIVE CONSOLE REFUSED: %s", _binding)
         raise RuntimeError(f"live console refused: {_binding}")
@@ -512,9 +526,9 @@ async def _app_lifespan(app):
     # The live feed from the capture daemon (the only Schwab client): every streamed equity
     # quote and option greeks/OI/volume quote -> _on_stream_tick, which reprices a viewed
     # ticker; every chain the daemon fetched -> _on_chain, which prices it.
-    from app.options.order_flow.streaming import start_order_flow_stream
     start_order_flow_stream(on_tick_callback=_on_stream_tick,
-                            on_chain_callback=_on_chain)
+                            on_chain_callback=_on_chain,
+                            on_feed_callback=restamp_open_surfaces)
 
     push_changes.bind(asyncio.get_running_loop())
 
@@ -534,8 +548,6 @@ async def _app_lifespan(app):
     # Live-plane feed task (reads the canonical capture daemon's DB — no Schwab socket
     # of its own to close here since single-stream-authority root fix 2026-08-30).
     try:
-        from app.options.order_flow.streaming import stop_order_flow_stream
-
         stop_order_flow_stream(join_timeout=40.0)
     except Exception as e:
         log.warning("Order flow streaming shutdown: %s", e)
@@ -589,12 +601,10 @@ def _with_live_ui_port(html: str) -> str:
     windows take (terrain_engine.SCOPES, each with its word) and the words for each streaming
     state (STREAM_WORDS). An unfilled page opens no price socket -- its prices read UNAVAILABLE
     rather than reaching a daemon nobody configured it for."""
-    from app.market_data.schwab.streaming.live_ui import LIVE_UI_PORT
-    from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT
     context = json.dumps([{"key": k, "display": display_symbol(k)} for k in MARKET_CONTEXT])
     scopes = json.dumps([{"key": s, "label": SCOPE_LABELS[s]} for s in SCOPES])
     return (html.replace(_LIVE_UI_PORT_META,
-                         f'<meta name="ed-live-ui-port" content="{int(LIVE_UI_PORT)}">', 1)
+                         f'<meta name="ed-live-ui-port" content="{int(live_ui.LIVE_UI_PORT)}">', 1)
             .replace(_MARKET_CONTEXT_META,
                      f'<meta name="ed-market-context" content="{html_escape(context)}">', 1)
             .replace(_SCOPES_META, f'<meta name="ed-scopes" content="{html_escape(scopes)}">', 1)
@@ -815,32 +825,28 @@ def _next_gamma_surface_seq(tk: str) -> int:
     return n
 
 
-def _streamed_greeks_for_ticker(listed: frozenset, now: float) -> dict:
-    """The newest streamed GAMMA/DELTA/OPEN_INTEREST/VOLUME of every contract the daemon streams
-    at `now` of the ticker's chain (`listed`, the symbols Schwab listed in it), gathered whole on
-    every call."""
-    from app.options.order_flow.state import get_stream_greeks
+def _streamed_greeks_for_ticker(listed: frozenset, now: float, feed: "lmp.FeedNow | None" = None) -> dict:
+    """The newest streamed GAMMA/DELTA/OPEN_INTEREST/VOLUME of every contract the daemon's
+    latest beat holds of the ticker's chain (`listed`, the symbols Schwab listed in it). A
+    missing beat keeps that set. `feed` is one read of that heartbeat; omitted, this call reads it."""
     out: dict = {}
-    for sym in _held_option_symbols_for_ticker(listed, now):
+    for sym in _held_option_symbols_for_ticker(listed, now, feed):
         greeks = get_stream_greeks(sym)
         if greeks:
             out[sym] = greeks
     return out
 
 
-def _current_stream_greeks(streamed: dict, now: float) -> dict:
-    """The streamed values that are current at `now`, the ones that may price over the chain: a
-    contract whose LEVELONE_OPTIONS feed is down in an open session has none, and the chain's own
-    values stand (docs/DATA_FLOW.md §2 D5)."""
-    return {s: g for s, g in streamed.items() if lmp.outage(s, "LEVELONE_OPTIONS", now) is None}
-
-
-def _held_option_symbols_for_ticker(listed: frozenset, now: float) -> "list[str]":
-    """Every contract of the ticker's chain (`listed`, the symbols Schwab listed in it) the daemon
-    holds on LEVELONE_OPTIONS at `now` -- the option rule's pick, as its heartbeat carries it --
-    whether or not a tick has landed for it yet (a held contract with no tick yet reads PENDING)."""
-    from app.options.order_flow.streaming import _read_producer_option_contracts
-    return [sym for sym in _read_producer_option_contracts(now)["LEVELONE_OPTIONS"] if sym in listed]
+def _held_option_symbols_for_ticker(listed: frozenset, now: float, feed: "lmp.FeedNow | None" = None) -> "list[str]":
+    """Every contract of the ticker's chain (`listed`) on the daemon's latest LEVELONE_OPTIONS
+    beat. A missing or too-old beat keeps that set; it does not say the feed is live.
+    `feed` is one read of that heartbeat; omitted, this call reads it."""
+    if feed is None:
+        feed = lmp.feed_now(now)
+    opts = feed.held.get("LEVELONE_OPTIONS")
+    if not opts:
+        return []
+    return [sym for sym in opts if sym in listed]
 
 
 def _overlaid_symbols(pre: list, post: list) -> list[str]:
@@ -882,18 +888,33 @@ def _stream_state_of(states: list) -> str:
     return next((o for o in _STREAM_STATE_ORDER if o in states), "unavailable")
 
 
+def _stream_cell_title(state: str, age: "float | None", ts_recv: "float | None") -> "str | None":
+    """The tooltip for a cell that is not live: the served word, Schwab's time in Central Time,
+    and the age. A live cell has no tooltip."""
+    if state == "live":
+        return None
+    word = STREAM_WORDS["cell"].get(state)
+    if word is None:
+        return None
+    parts = [word]
+    if ts_recv is not None:
+        parts.append(ct_label(ts_recv))
+    if age is not None:
+        parts.append(f"{age:.0f}s")
+    return " · ".join(parts)
+
+
 def _stamp_gamma_surface_cell_stream_state(surface: dict, streamed: dict, overlay_symbols: set,
                                            held_symbols: "set[str]", now: float) -> None:
     """Attach per-leg (call/put) and per-cell STREAM state to a projected gamma surface's cells,
     in place. It never touches a cell's computed value (project_gamma_surface is the one
     exposure computation); it says whether a streamed Schwab value backs it now.
 
-    `streamed`: the streamed values of the contracts the daemon holds of this ticker
-    (_streamed_greeks_for_ticker); `overlay_symbols`: those the feed is delivering now
-    (live_market_plane.feed_live_for, the one live rule); `held_symbols`: every contract the
-    daemon holds of this ticker, ticked or not (_held_option_symbols_for_ticker). A daemon
-    that is down holds nothing: its cells keep their values and the header says OFFLINE. Each
-    leg's age is at `now`.
+    `streamed`: the streamed values of the contracts the daemon's latest beat holds of this
+    ticker (_streamed_greeks_for_ticker); `overlay_symbols`: those the feed is delivering now
+    (live_market_plane.live_on, the one live rule); `held_symbols`: every contract on that
+    beat, ticked or not (_held_option_symbols_for_ticker). A missing beat is not live: those
+    cells keep the last streamed value and are not live. Each leg's age is at `now`.
       'live'         — the feed is delivering this symbol now.
       'stale'        — the symbol has streamed but the feed is not delivering it now.
       'pending'      — the daemon holds the symbol and no tick has landed yet.
@@ -930,8 +951,12 @@ def _stamp_gamma_surface_cell_stream_state(surface: dict, streamed: dict, overla
                     "age_sec": (now - ts_recv if ts_recv is not None else None),
                 }
             legs["state"] = _stream_state_of(leg_states)
-            ages = [leg["age_sec"] for leg in legs.values() if isinstance(leg, dict) and leg["age_sec"] is not None]
-            legs["age_sec"] = max(ages) if ages else None   # the cell's oldest confirmed leg
+            confirmed = [leg for leg in legs.values()
+                         if isinstance(leg, dict) and isinstance(leg.get("age_sec"), (int, float))]
+            oldest = max(confirmed, key=lambda leg: leg["age_sec"]) if confirmed else None
+            legs["age_sec"] = oldest["age_sec"] if oldest else None
+            legs["title"] = _stream_cell_title(
+                legs["state"], legs["age_sec"], None if oldest is None else oldest.get("ts_recv"))
             state_row.append(legs)
         cell["stream"] = state_row
     # each expiry column's state, from its cells' states -- the column header's streaming status
@@ -950,6 +975,54 @@ STREAM_WORDS = {
     "column": {"live": "streaming", "partial": "partly streaming", "stale": "stopped streaming",
                "pending": "streaming requested", "unavailable": "not streaming"},
 }
+
+#: the last heartbeat the open surfaces were stamped from, so a repeat beat does not republish
+_last_feed_stamp: "tuple | None" = None
+
+
+def restamp_open_surfaces(now: float) -> None:
+    """Mark every cached heatmap from the daemon's heartbeat at `now`, without repricing.
+
+    The last streamed gamma stays. A socket that has closed is not live; a contract the daemon
+    still holds is. The page is told only when that set changes."""
+    global _last_feed_stamp
+    feed = lmp.feed_now(now)
+    socket_open = bool(feed.status is not None and feed.status.get("schwab_socket_open") is True)
+    held_now = feed.held.get("LEVELONE_OPTIONS", frozenset()) if socket_open else frozenset()
+    key = (socket_open, held_now)
+    if key == _last_feed_stamp:
+        return
+    _last_feed_stamp = key
+    bumped: list[str] = []
+    with _terrain_cache_lock:
+        for tk, payload in _terrain_cache.items():
+            surface = payload.get("_gamma_surface")
+            if not isinstance(surface, dict):
+                continue
+            symbols: list[str] = []
+            cells = surface.get("cells")
+            if cells:
+                for cell in cells:
+                    pairs = cell.get("contracts")
+                    if not pairs:
+                        continue
+                    for pair in pairs:
+                        if isinstance(pair, dict):
+                            symbols.extend(s for s in (pair.get("call"), pair.get("put")) if s)
+            streamed = {}
+            for sym in symbols:
+                greeks = get_stream_greeks(sym)
+                if greeks:
+                    streamed[sym] = greeks
+            held = set(symbols) & set(held_now)
+            live = {s for s in streamed if lmp.live_on(feed, s, "LEVELONE_OPTIONS")}
+            _stamp_gamma_surface_cell_stream_state(surface, streamed, live, held, now)
+            surface["surface_seq"] = _next_gamma_surface_seq(tk)
+            bumped.append(tk)
+    watching = set(push_changes.watched())
+    for tk in bumped:
+        if tk in watching:
+            push_changes.changed(tk, push_changes.LEVELS)
 
 
 #: The heatmap header's chip, per coverage state: ALL STREAMING only when every cell on screen is
@@ -1063,6 +1136,122 @@ def _contract_ticker(sym: str) -> "str | None":
         return next((tk for tk, p in _terrain_cache.items() if sym in (p.get("_contract_symbols") or ())), None)
 
 
+_QUOTE_GREEKS = ("gamma", "delta", "theta", "vega", "rho", "volatility")
+_QUOTE_COUNTS = ("openInterest", "totalVolume")
+
+
+def _shown_greeks(ct, price, product):
+    """The contract as the chain shows it: a Greek that is not a value (gamma_reported for the gamma,
+    greek_reported for the rest) is None ("-")."""
+    if not isinstance(ct, dict):
+        return ct
+    shown = dict(ct)
+    for field in _QUOTE_GREEKS:
+        if field == "gamma":
+            valid = gamma_reported(ct, price, product=product)
+        else:
+            valid = greek_reported(schwab_number(ct.get(field)), iv=ct.get("volatility"))
+        if field in ct and not valid:
+            shown[field] = None
+    return shown
+
+
+def _positive_count(value) -> bool:
+    """A count Schwab reported above zero. Zero and the no-value code are not one."""
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0
+
+
+def _reported_zero(value) -> bool:
+    """A count Schwab reported as zero. Missing and the no-value code are not one."""
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and value == 0
+
+
+def _keep_last_reported(chain, previous, at, product, price):
+    """Outside that ticker's option window, a quote that does not report a greek leaves the
+    greek the last quote reported, and a count of zero leaves the last count above zero.
+    During the window the quote stands, and Schwab's no-value code does not keep an older
+    greek. A gamma is reported by gamma_reported at `price`."""
+    if not outside_option_window(at, product) or not previous:
+        return chain
+    prior = {}
+    for ct in previous:
+        sym = ct.get("symbol") if isinstance(ct, dict) else None
+        if sym:
+            prior[sym] = ct
+    out = []
+    for ct in chain:
+        if not isinstance(ct, dict):
+            out.append(ct)
+            continue
+        sym = ct.get("symbol")
+        old = None
+        if sym in prior:
+            old = prior[sym]
+        kept = None
+        if old is not None and not gamma_reported(ct, price, product=product) \
+                and gamma_reported(old, price, product=product):
+            kept = dict(ct)
+            for field in _QUOTE_GREEKS:
+                kept[field] = old.get(field)
+            times = old.get("greeksTime")
+            if isinstance(times, dict):
+                kept["greeksTime"] = times
+        if old is not None:
+            for field in _QUOTE_COUNTS:
+                old_count = old.get(field)
+                if _positive_count(old_count) and _reported_zero(ct.get(field)):
+                    if kept is None:
+                        kept = dict(ct)
+                    kept[field] = old_count
+        out.append(ct if kept is None else kept)
+    return out
+
+
+def _last_positive(newer, older, price, product):
+    """`newer`, with a count or the greeks taken from `older` where `newer` does not report them
+    (a gamma: gamma_reported at `price`)."""
+    if not isinstance(newer, dict):
+        return older
+    if not isinstance(older, dict):
+        return newer
+    merged = dict(newer)
+    if not gamma_reported(merged, price, product=product) and gamma_reported(older, price, product=product):
+        for field in _QUOTE_GREEKS:
+            merged[field] = older.get(field)
+        times = older.get("greeksTime")
+        if isinstance(times, dict):
+            merged["greeksTime"] = times
+    for field in _QUOTE_COUNTS:
+        if _positive_count(older.get(field)) and not _positive_count(merged.get(field)):
+            merged[field] = older.get(field)
+    return merged
+
+
+def _previous_counts(memory, stored, price, product):
+    """The last reported contract per symbol. `memory` is newer than `stored`."""
+    by_sym = {}
+    order = []
+    sources = []
+    if stored:
+        sources.extend(stored)
+    if memory:
+        sources.extend(memory)
+    for ct in sources:
+        if not isinstance(ct, dict):
+            continue
+        sym = ct.get("symbol")
+        if not sym:
+            continue
+        if sym not in by_sym:
+            order.append(sym)
+            by_sym[sym] = ct
+        else:
+            by_sym[sym] = _last_positive(ct, by_sym[sym], price, product)
+    if not order:
+        return None
+    return [by_sym[sym] for sym in order]
+
+
 def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | None" = None,
                     *, captures: "list | None" = None,
                     now: "datetime | None" = None) -> "TerrainSnapshot | None":
@@ -1071,14 +1260,21 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
     Prices the ticker's chain once -- overlaid with any fresher streamed option greeks, at the
     current spot -- and publishes all three together, so the heatmap, Strike Detail and Key
     Levels always show one computation. A delivered chain is passed in; a tick on a viewed ticker
-    passes none and the kept chain is repriced. Called only on the one pricing thread
+    passes none and the kept chain is repriced. Once that ticker's option window has ended, a
+    later publication keeps the spot already published, so a later equity print does not move
+    the close book. Called only on the one pricing thread
     (_price_chain), so each publication is computed from inputs read after the one it replaces.
     `captures` (startup
     and a closed market, DATA_FLOW decision 7) are the two newest market days' stored captures,
-    read once: the newest is priced with Schwab's underlying price from that capture, valued and
-    dated at its own time, and both feed the forces and prior-day rows. `now`: the instant of
-    this publication (omitted, the clock's), at which a chain that is not a capture is valued,
-    streamed values are current or not (D5) and each leg's age is taken.
+    read once: the newest is priced with Schwab's underlying price from that capture, valued at
+    its own time, or at that ticker's option close when the capture is past it, and both feed
+    the forces and prior-day rows. `now`: the instant of this publication (omitted, the clock's).
+    A chain that is not a capture is valued then, or at that ticker's option close once it has
+    passed. Outside that window, a quote that does not report a greek leaves the greek the
+    last quote reported, and a count of zero leaves the last count above zero. That last
+    count is the one already published, or the newest stored capture when this process has
+    not published one. The last streamed values price over the chain when they are newer,
+    and each leg's age is taken.
     Returns the snapshot, or None when there is no chain to price."""
     at = now if now is not None else now_et()
     with _terrain_cache_lock:
@@ -1091,46 +1287,84 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
         chain, fetched_ts = payload.get("_chain"), payload.get("_chain_fetched_ts")
         if not chain:
             return None
+    clock = datetime.fromtimestamp(fetched_ts, ET) if capture is not None else at
+    product = option_close_product(tk)
+    valued_at = valuation_instant(clock, product)
+    begun = datetime.fromtimestamp(fetched_ts, ET) if isinstance(fetched_ts, (int, float)) else at
+    if new_chain and capture is None and outside_option_window(begun, product):
+        memory = payload.get("_priced_chain")
+        if memory is None:
+            memory = payload.get("_chain")
+        newest = newest_capture_ts(get_db().db_path, tk)
+        if payload.get("_count_capture_ts") != newest:
+            rows = last_capture_per_day(get_db().db_path, tk, 1)
+            payload["_count_capture"] = rows[0].get("contracts") if rows else ()
+            payload["_count_capture_ts"] = newest
+        published = payload.get("spot")
+        chain = _keep_last_reported(
+            chain, _previous_counts(memory, payload.get("_count_capture"), published, product), begun, product,
+            published)
     if capture is not None:
         spot, spot_source, spot_ts = capture["spot"], SPOT_SOURCE_CAPTURE, capture["ts_utc"]
+    elif valued_at < at:
+        # the window has ended: the spot already published is the close, and a later print is not
+        held_spot = payload.get("spot")
+        if held_spot is not None:
+            spot = held_spot
+            spot_source = payload.get("spot_source")
+            spot_ts = payload.get("spot_as_of_ts_utc")
+        else:
+            spot, spot_source, spot_ts = resolve_spot(tk, now=at.timestamp())
     else:
         spot, spot_source, spot_ts = resolve_spot(tk, now=at.timestamp())
     prev_spot = payload.get("spot")
     if new_chain:       # the ticker's contracts are the ones Schwab listed in this chain
         payload.update(_contract_symbols=frozenset(c.get("symbol") for c in chain if c.get("symbol")))
     listed = payload.get("_contract_symbols") or frozenset()
-    streamed = _streamed_greeks_for_ticker(listed, at.timestamp())
-    # the live and held contracts at `at`, read before pricing: the cells are stamped with them
-    feed_live = {s for s in streamed if lmp.feed_live_for(s, "LEVELONE_OPTIONS", at.timestamp())}
-    held = set(_held_option_symbols_for_ticker(listed, at.timestamp()))
-    # each field the newest Schwab sent: a current streamed value received after this chain, else
-    # the chain's
-    priced, n_live = overlay_streamed_contract_fields(
-        chain, _current_stream_greeks(streamed, at.timestamp()), fetched_ts)
+    # one read of the heartbeat: pricing and the cell stamp share it
+    feed = lmp.feed_now(at.timestamp())
+    streamed = _streamed_greeks_for_ticker(listed, at.timestamp(), feed)
+    feed_live = {s for s in streamed if lmp.live_on(feed, s, "LEVELONE_OPTIONS")}
+    held = set(_held_option_symbols_for_ticker(listed, at.timestamp(), feed))
+    # each field the newest Schwab sent: the last streamed value received after this chain, else
+    # the chain's. The cell stamp says whether that stream is live.
+    priced, n_live = overlay_streamed_contract_fields(chain, streamed, fetched_ts)
+    if outside_option_window(at, product):
+        priced = _keep_last_reported(priced, chain, at, product, spot)
     live_syms = _overlaid_symbols(chain, priced)
-    snap = compute_terrain(tk, priced, spot, now=(
-        datetime.fromtimestamp(fetched_ts, ET) if capture is not None else at))
+    snap = compute_terrain(tk, priced, spot, now=valued_at)
     payload.update(snap.to_dict())
     payload.update({
         # as of the chain they were computed from: a reprice on a kept chain does not make
         # the levels newer, so a chain that stops arriving shows as stale
         "computed_ts_utc": fetched_ts,
+        # the instant the book and its charm were valued; a reprice is later than the chain
+        "_valued_ts_utc": valued_at.timestamp(),
         "levels_source": LEVELS_SOURCE_WIDE_CHAIN,
         "chain_basis": capture["basis"] if capture is not None else CAPTURE_BASIS,
         "spot_source": spot_source, "spot_as_of_ts_utc": spot_ts,
         "_per_strike": snap.per_strike, "_gamma_surface": None,
         "_vanna_rows": _vanna_rows(snap), "_charm_rows": _charm_rows(snap),
         # every ticker keeps its chain and its heatmap, so a ticker put on screen shows at once
-        "_chain": chain, "_chain_fetched_ts": fetched_ts,
+        "_chain": chain, "_priced_chain": priced, "_books": snap.books,
+        "_charm_by_expiry": snap.charm_by_expiry,
+        "_iv_by_expiry": snap.iv_by_expiry,
+        "_chain_fetched_ts": fetched_ts,
     })
+    payload["_matrix_by_expiry"] = _ranked_matrices(payload)
     # the values read from the stored chain captures (forces, the prior day's per-strike rows)
     # change only with a new capture or a new chain day: computed then, once, for all readers
     if new_chain:
         captures_key = (newest_capture_ts(get_db().db_path, tk), et_date_str_from_ts_utc(float(fetched_ts)))
         if payload.get("_captures_key") != captures_key:
             stored = captures if captures is not None else last_capture_per_day(get_db().db_path, tk, 2)
-            payload.update(_forces=_forces_from_captures(tk, stored),
-                           _prior_strikes=_prior_strikes(stored, fetched_ts),
+            # This publication priced a stored capture, so its charm map is that newer capture.
+            # A live chain is not that capture: the same function then runs once on the banked one.
+            held_charm = None
+            if captures and captures[0].get("spot") is not None:
+                held_charm = snap.charm_by_strike
+            payload.update(_forces=_forces_from_captures(tk, stored, held_charm),
+                           _prior_strikes=_prior_strikes(stored, fetched_ts, product),
                            _captures_key=captures_key)
     if spot is not None and snap.books:
         surface = project_gamma_surface(priced, snap.books)
@@ -1193,7 +1427,6 @@ def _charm_rows(snap: "TerrainSnapshot") -> list:
 def _tick_ticker(sym: str) -> "str | None":
     """The cached ticker a streamed symbol moves: the equity itself, or an option contract's
     underlying."""
-    from instrument_identity import vendor_option_root
     if not vendor_option_root(sym):
         return ticker_storage_key(sym)
     return _contract_ticker(sym)
@@ -1221,7 +1454,8 @@ DELIVERED, STORED, REPRICE = "delivered", "stored", "reprice"
 _chains_waiting: "dict[str, tuple[str, list | None, float | None]]" = {}
 _chains_waiting_lock = threading.Lock()
 #: the tickers the daemon has delivered a chain for since the console started: their stored
-#: capture is older and is never priced
+#: capture is older and is not priced as the book. Outside the option window that capture's
+#: counts are the last counts when this process has not published one.
 _chains_delivered: "set[str]" = set()
 
 
@@ -1314,10 +1548,12 @@ def _status_line(now: float) -> str:
     """One line for the console window: is each part working at `now`, from its own check."""
     st = lmp.daemon_status(now)
     watchlist = _watchlist(now)
-    if watchlist is not None:
+    if st is None and watchlist is not None:
+        prices = f"last watchlist: {len(watchlist)} tickers (daemon not reporting)"
+    elif watchlist is not None:
         priced = sum(1 for tk in watchlist if resolve_spot(tk, now=now)[0] is not None)
         prices = f"live prices: {priced} of {len(watchlist)} watchlist tickers"
-    else:                                             # no current heartbeat: the list is unknown
+    else:                                             # no list has arrived: the list is unknown
         prices = "live prices: WATCHLIST UNKNOWN (no current daemon heartbeat)"
     with _terrain_cache_lock:
         as_of = [p.get("computed_ts_utc") for p in _terrain_cache.values() if p.get("computed_ts_utc")]
@@ -1414,7 +1650,7 @@ def _atr(ticker: str, now: datetime) -> "Atr":
     """The ticker's daily, weekly and monthly ATR at `now`: Schwab's daily candles as the bar
     writer holds them (_daily; none from Schwab yet: none held) up to yesterday, and today's
     candle rolled up live from today's 1-minute bars inside Schwab's regular session for today
-    (none before it opens). Too few reads as None with why."""
+    (none before it opens). Too few reads as None."""
     tk = ticker_storage_key(ticker)
     today = now.astimezone(ET).date()
     s = session(today.isoformat())
@@ -1427,11 +1663,9 @@ def _atr(ticker: str, now: datetime) -> "Atr":
 
 
 def _atr_fields(tk: str, now: datetime) -> dict:
-    """atr_daily / atr_weekly / atr_monthly at `now`, with the reason of each that is absent."""
+    """atr_daily / atr_weekly / atr_monthly at `now`. A horizon that cannot be computed is None."""
     a = _atr(tk, now)
-    return {"atr_daily": a.daily, "atr_weekly": a.weekly, "atr_monthly": a.monthly,
-            "atr_daily_reason": a.daily_reason, "atr_weekly_reason": a.weekly_reason,
-            "atr_monthly_reason": a.monthly_reason}
+    return {"atr_daily": a.daily, "atr_weekly": a.weekly, "atr_monthly": a.monthly}
 
 
 #: WHICH producer computed a set of levels. The radar deliberately merges two of them, and an
@@ -1444,7 +1678,7 @@ LEVELS_SOURCE_WIDE_CHAIN = "wide_chain_loop"      # _publish_levels, the single 
 # the previous market day's last chain capture (the day-over-day migration ghosts), each in
 # three expiry scopes (all / near<=7DTE / far). Read-only, no Schwab call. Bar heights use the
 # same exposure math as terrain.
-def _prior_strikes(captures: list, chain_ts: float) -> "tuple[dict | None, str | None]":
+def _prior_strikes(captures: list, chain_ts: float, product: str) -> "tuple[dict | None, str | None]":
     """The previous market day's close before the day of the chain the ticker's rows came from,
     as per-strike rows ({all, near, far}), with its source. On a closed market today's rows ARE
     the newest capture; the wall clock's date picked that same capture and compared it with
@@ -1452,25 +1686,15 @@ def _prior_strikes(captures: list, chain_ts: float) -> "tuple[dict | None, str |
     ticker's newest capture or its chain's day changes, on the same two newest market days'
     captures the forces read: the chain's day is today or the newest capture's, so the day
     before it is one of those two."""
-    from math_exposure_core import compute_exposures_by_strike as _cebs
-
     def _per_strike(contracts: list, spot: float, at: datetime) -> dict:
         def _scope(cts: list) -> list:
             if not cts:
                 return []
-            exposures, _diag = _cebs(cts, spot=spot, now=at)     # priced at the capture's own time
-            # ONE producer (2026-09-24): this was a second copy of terrain_engine._per_strike_rows
-            # carrying the same raw-gamma fallback (audit T-01) -- the live panel and this ghost
-            # must be one computation or they draw a positioning shift that did not happen.
-            from terrain_engine import _per_strike_rows
+            exposures, _diag = compute_exposures_by_strike(cts, spot=spot, now=at,   # at the capture's own time
+                                                           product=product)
             return _per_strike_rows(exposures)
 
-        # Cursor-audit F8: unknown DTE must belong to NEITHER near nor far, not silently to far.
-        # This endpoint carried its own near/far splitter with the old 999.0 sentinel — a duplicate
-        # of the RC-290-fixed canonical _dte_of, which drops an unreadable DTE from BOTH sides. With
-        # 999.0 a parse-failed 0-DTE was rendered in the prior-day MONTHLY+ (far) chip and omitted
-        # from the ≤7DTE (near) chip. Use the ONE canonical splitter so the two can't diverge again.
-        from terrain_engine import _dte_of
+        # a contract with no readable DTE is in neither near nor far (terrain_engine._dte_of)
         near = [c for c in contracts if (d := _dte_of(c)) is not None and d <= 7]
         far = [c for c in contracts if (d := _dte_of(c)) is not None and d > 7]
         return {"all": _scope(contracts), "near": _scope(near), "far": _scope(far)}
@@ -1526,6 +1750,7 @@ def terrain_strikes_payload(tk: str, scope: str, centre, shift: int, now: float)
     measures: dict = {"dex": [], "oi": []}
     spot_used = None
     today_age_sec = None
+    levels_time_ct = None
     # bound before the try: a failed cache read leaves the panels empty, never a 500
     _snap: dict = {}
     # today's per-strike rows: the published levels' own (_publish_levels' `_per_strike`,
@@ -1544,6 +1769,7 @@ def terrain_strikes_payload(tk: str, scope: str, centre, shift: int, now: float)
             spot_used = _snap.get("spot")
             _cts_utc = _snap.get("computed_ts_utc")
             today_age_sec = now - float(_cts_utc) if _cts_utc else None
+            levels_time_ct = ct_label(_cts_utc) if _cts_utc is not None else None
             today_src = "terrain_live_cache"
     except Exception as e:
         log.debug("terrain strikes live read failed %s: %s", tk, e)
@@ -1574,7 +1800,7 @@ def terrain_strikes_payload(tk: str, scope: str, centre, shift: int, now: float)
                 else:
                     va += v
         return {"gex_below": gb, "gex_above": ga,
-                "vol_below": int(vb), "vol_above": int(va),
+                "vol_below": vb, "vol_above": va,
                 "spot_basis": float(s)}
 
     live_spot, live_src, _live_ts = resolve_spot(tk, now=now)   # the one spot on every screen
@@ -1611,6 +1837,7 @@ def terrain_strikes_payload(tk: str, scope: str, centre, shift: int, now: float)
         "today_source": today_src,
         # the age of today's rows, for the panel's face
         "today_age_sec": today_age_sec,
+        "levels_time_ct": levels_time_ct,
         # whether the levels are still being published (a source is not freshness)
         **terrain_staleness(_snap.get("computed_ts_utc") if isinstance(_snap, dict) else None, tk, now=now),
         "prior": prior or {"all": [], "near": [], "far": []},
@@ -1745,8 +1972,6 @@ def get_options_tape(ticker: str = Query(...),
     contract of `ticker` the daemon streams (its option rule's pick, the same identity
     `_held_option_symbols_for_ticker` resolves for the gamma-surface overlay), merged
     newest-first and capped at `limit` across the whole merge, not per-contract."""
-    from app.options.order_flow.history import TAPE
-
     tk = ticker_storage_key(_required_ticker(ticker))
     try:
         bounded_limit = max(1, min(500, int(limit)))
@@ -1789,8 +2014,6 @@ def get_order_flow_book_heatmap(ticker: str = Query(...),
     app.options.order_flow.history.book_heatmap_for_ticker, which bins the venue's recent books
     in the console's memory into a time x price grid. The window ends at the newest book, never
     wall-clock now. `minutes` is clamped to [5, 240], the books the console keeps."""
-    from app.options.order_flow.history import book_heatmap_for_ticker
-
     tk = ticker_storage_key(_required_ticker(ticker))
     try:
         bounded_minutes = max(5.0, min(240.0, float(minutes)))
@@ -1812,59 +2035,63 @@ def get_forces(ticker: str = Query(...)):
     tk = ticker_storage_key(_required_ticker(ticker))
     cached = terrain_cache_get(tk, time.time())
     forces = cached.get("_forces") if cached is not None else None
-    return JSONResponse(forces if forces is not None else {
-        "ticker": tk, "available": False, "reason": "no levels published for this ticker yet"})
+    return JSONResponse(forces if forces is not None else _forces_absent(tk))
 
 
-def _forces_from_captures(tk: str, captures: list) -> dict:
+def _forces_absent(tk: str) -> dict:
+    """The forces numbers before two market days of captures exist, or when the read fails.
+    Each number is None. Nothing stands in for it."""
+    return {"ticker": tk, "available": False,
+            "doi_below": None, "doi_above": None,
+            "dex_below_dollars": None, "dex_above_dollars": None,
+            "charm_below": None, "charm_above": None}
+
+
+def _forces_from_captures(tk: str, captures: list, charm_by_strike: dict | None = None) -> dict:
     """Forces rows from banked chains (RC-192/RC-199): per-strike OI delta FIRST, then
     bucketed by the NEWER capture's spot — bucketing each day by its own spot lets the moving
     boundary masquerade as OI change (measured inversion, OPEN_ITEMS DIR-01 method note).
     DEX is the newer capture's net_dex_dollars side sums. CHARM side sums (RC-199): operator
     2026-08-02 revoked the DIR-01(i) vote-lock — serve dealer-signed net_charm below/above
-    spot from the newer banked chain via compute_charm_by_strike (same book as terrain walls).
+    spot from the newer banked chain. `charm_by_strike` is that capture's map when this
+    publication just priced it. Otherwise the same function runs once, at that capture's
+    valuation instant.
     Run by _publish_levels when the ticker's newest capture changes, on `captures`: the two
     newest market days' captures (last_capture_per_day, newest first), read once for it.
     """
-    from math_exposure_core import compute_exposures_by_strike as _cebs
-    from math_levels import compute_charm_by_strike as _ccs
-
-    payload: dict = {"ticker": tk, "available": False,
-                     "reason": "fewer than 2 market days of chain captures for this ticker"}
+    payload: dict = _forces_absent(tk)
     try:
         rows = [(c["et_date"], c["spot"], c["contracts"], c["ts_utc"])
                 for c in captures if c["spot"] is not None]
         if len(rows) >= 2:
             (d1, s1, c1, t1), (d0, s0, c0, t0) = rows[0], rows[1]
-            # each capture priced at its own time, not today's clock
-            per1 = _cebs(c1, spot=float(s1), now=datetime.fromtimestamp(t1, ET))[0]
-            per0 = _cebs(c0, spot=float(s0), now=datetime.fromtimestamp(t0, ET))[0]
-
-            from math_exposure_core import bucket_metric as _bm, strike_total_oi as _sto
+            # each capture at its own time, or at that day's option close once the capture is past it
+            product = option_close_product(tk)
+            clock1 = valuation_instant(datetime.fromtimestamp(t1, ET), product)
+            clock0 = valuation_instant(datetime.fromtimestamp(t0, ET), product)
+            per1 = compute_exposures_by_strike(c1, spot=float(s1), now=clock1, product=product)[0]
+            per0 = compute_exposures_by_strike(c0, spot=float(s0), now=clock0, product=product)[0]
 
             # a strike's OI change exists only when its OI is known on both days
-            oi1 = {k: t for k, v in per1.items() if (t := _sto(v)) is not None}
-            oi0 = {k: t for k, v in per0.items() if (t := _sto(v)) is not None}
+            oi1 = {k: t for k, v in per1.items() if (t := strike_total_oi(v)) is not None}
+            oi0 = {k: t for k, v in per0.items() if (t := strike_total_oi(v)) is not None}
             doi = {k: oi1[k] - oi0[k] for k in oi1 if k in oi0}
-            dex1 = {k: d for k, v in per1.items() if (d := _bm(v, "net_dex_dollars")) is not None}
+            dex1 = {k: d for k, v in per1.items() if (d := bucket_metric(v, "net_dex_dollars")) is not None}
             spot1 = float(s1)
             # RC-199: CHARM below/above from the NEWER banked wide chain (full book).
             # Dealer-signed net_charm = call_charm - put_charm per strike (RC-179).
             charm_below = charm_above = None
-            charm_err = None
             try:
-                # priced at the capture's own time, not today's clock
-                per_ch = _ccs(c1, spot1, now=datetime.fromtimestamp(t1, ET)) if c1 else {}
-                if not per_ch:
-                    charm_err = "charm_by_strike empty on newer banked chain"
+                if isinstance(charm_by_strike, dict):
+                    per_ch = charm_by_strike
                 else:
+                    per_ch = compute_charm_by_strike(c1, spot1, now=clock1, product=product)
+                if per_ch:
                     # RC-276: a strike with no net_charm is not a strike with zero charm.
                     # Summed as 0.0 it silently tilted the below/above pair the console
                     # renders as dealer charm pressure.
-                    from numeric_contract import float_finite_or_none as _fin_ch
-
                     def _ch(v: dict) -> float | None:
-                        return _fin_ch(v.get("net_charm"))
+                        return float_finite_or_none(v.get("net_charm"))
 
                     charm_below = sum(
                         c for c in (_ch(v) for k, v in per_ch.items() if k < spot1)
@@ -1872,8 +2099,8 @@ def _forces_from_captures(tk: str, captures: list) -> dict:
                     charm_above = sum(
                         c for c in (_ch(v) for k, v in per_ch.items() if k > spot1)
                         if c is not None)
-            except Exception as _ce:
-                charm_err = str(_ce)[:120]
+            except Exception as e:
+                log.warning("forces charm for %s failed (%s)", tk, e)
             payload = {
                 "ticker": tk, "available": True,
                 "doi_below": sum(d for k, d in doi.items() if k < spot1),
@@ -1883,14 +2110,14 @@ def _forces_from_captures(tk: str, captures: list) -> dict:
                 "strikes_diffed": len(doi),
                 "charm_below": charm_below,
                 "charm_above": charm_above,
-                "charm_error": charm_err,
                 "newer_et_date": d1, "older_et_date": d0, "bucket_spot": spot1,
                 "method": ("per-strike OI delta first, bucketed by the newer capture's spot; "
                            "DEX = net_dex_dollars side sums on the newer capture; "
                            "CHARM = dealer-signed net_charm side sums on the newer capture"),
             }
     except Exception as e:
-        payload = {"ticker": tk, "available": False, "reason": f"forces read failed: {e}"}
+        log.warning("forces for %s failed (%s)", tk, e)
+        payload = _forces_absent(tk)
     return payload
 
 
@@ -2056,13 +2283,18 @@ def gamma_surface_payload(tk: str, scope: str, centre, shift: int, cols: "int | 
     # watchlist (fetched in turn; while Closed, once, its close values). The reason is that
     # state's own.
     _requested = _gamma_surface_wanted(tk)
-    _watched = _watchlist(now.timestamp())     # None: the daemon's heartbeat is not current
+    _watched = _watchlist(now.timestamp())     # the last list stands when the heartbeat is missing
     _warming = _watched is not None and tk in _watched
     _levels_why = terrain_staleness(live.get("computed_ts_utc") if live is not None else None, tk,
                                     now=now.timestamp())["levels_stale_reason"]
-    if _watched is None:     # the daemon not reporting is the cause of every other absence: first
-        _why = ["the capture daemon is not reporting (no current heartbeat): its watchlist is unknown",
-                _levels_why]
+    if lmp.daemon_status(now.timestamp()) is None:
+        _why = ["the capture daemon is not reporting (no current heartbeat)"]
+        if _watched is None:
+            _why.append("its watchlist is unknown")
+        elif tk not in _watched:
+            _why.append("it is not on the watchlist")
+        if _levels_why:
+            _why.append(_levels_why)
     elif _levels_why:
         _why = [_levels_why]
     elif _warming:
@@ -2088,12 +2320,21 @@ def get_terrain(ticker: str = Query(...)):
     cached = terrain_cache_get(tk, at.timestamp())
     if cached is not None:
         # the levels as the producer published them, every at-spot value computed at the
-        # publication's spot -- the price they were computed at, labelled by spot_source and
-        # spot_as_of_ts_utc, never called live (the live price is the daemon's price row);
+        # publication's price (priced_at_spot); `spot` is the live price, as on every route;
         # internal fields (the kept chain, the heatmap grid, per-strike rows) have their own routes
         out = {k: v for k, v in cached.items() if not k.startswith("_")}
-        out.update(terrain_staleness(cached.get("computed_ts_utc"), tk, now=at.timestamp()))
+        now = at.timestamp()
+        out.update(priced_at_spot=cached.get("spot"), priced_at_spot_source=cached.get("spot_source"),
+                   priced_at_spot_as_of_ts_utc=cached.get("spot_as_of_ts_utc"))
+        out["spot"], out["spot_source"], out["spot_as_of_ts_utc"] = resolve_spot(tk, now=now)
+        out.update(terrain_staleness(cached.get("computed_ts_utc"), tk, now=now))
+        computed = cached.get("computed_ts_utc")
+        out["levels_time_ct"] = ct_label(computed) if computed is not None else None
         out.update(_atr_fields(tk, at))     # live: today's candle from the bars held now
+        # the chain's age is levels_stale, above. The price those levels were built from is a
+        # separate fact: the numbers stay, and the rail says OFFLINE when that feed is not live.
+        out["spot_feed_live"] = lmp.feed_live_for(tk, "LEVELONE_EQUITIES", now)
+        out["spot_outage"] = lmp.outage(tk, "LEVELONE_EQUITIES", now)
         return out
     spot, spot_source, spot_ts = resolve_spot(tk, now=at.timestamp())
     _why = _terrain_refresh_last_error.get(tk)
@@ -2129,10 +2370,6 @@ def _desk_window_start(tf: str, now: datetime) -> float:
     return start.timestamp()
 
 
-def _f2(v) -> str:
-    return "—" if v is None else f"{float(v):.2f}"
-
-
 @app.get("/api/desk/events")
 def get_desk_events(ticker: str = Query(...),
                     venue: str = Query(..., pattern=r"^(NYSE_BOOK|NASDAQ_BOOK)$"),
@@ -2160,7 +2397,7 @@ def desk_events_payload(tk: str, venue: str, tf: str, now: datetime) -> dict:
         items.append({"key": f"x{cid}", "n": i + 1, "ts": c["ts_utc"], "dom": "LEVELS",
                       "price": c.get("level_value"), "dir": c.get("direction"), "marker": False,
                       "title": f"Crossed {_CROSS_WORD.get(c.get('direction'), 'through')} {names}",
-                      "detail": f"{_f2(c.get('level_value'))} · spot {_f2(c.get('spot_at_cross'))} at the cross",
+                      "detail": f"{price_text(c['level_value'])} · spot {price_text(c['spot_at_cross'])} at the cross",
                       "src": "level_crosses"})
     # the chart's few: the newest cross at each level, for the newest DESK_MARKERS levels
     newest_at = {it["price"]: it for it in items}
@@ -2172,7 +2409,8 @@ def desk_events_payload(tk: str, venue: str, tf: str, now: datetime) -> dict:
         if t.get(f"{side}_wall_state") == "breached":
             items.append({"key": key, "ts": tts, "dom": "OPTIONS", "dir": "up" if side == "call" else "down",
                           "title": f"Spot through the {word} wall",
-                          "detail": f"{word} wall {_f2(t.get(f'{side}_wall'))} · spot {_f2(t.get('spot'))}",
+                          "detail": f"{word} wall {price_text(t[f'{side}_wall'])} · priced at "
+                                    f"{price_text(t['priced_at_spot'])}",
                           "src": "/api/terrain"})
     if t.get("levels_stale"):
         items.append({"key": "ls", "ts": tts, "dom": "DATA", "dir": None, "warn": True,
@@ -2186,7 +2424,7 @@ def desk_events_payload(tk: str, venue: str, tf: str, now: datetime) -> dict:
     for i, w in enumerate((micro.get("wall_candidates") or [])[:3]):
         items.append({"key": f"wall{i}", "ts": None if book_ms is None else book_ms / 1000.0,
                       "dom": "LIQUIDITY", "dir": "up" if w.get("side") == "bid" else "down", "warn": not live_book,
-                      "title": f"{venue} size wall · {w.get('side') or ''} {_f2(w.get('price'))}"
+                      "title": f"{venue} size wall · {w['side']} {price_text(w['price'])}"
                                + ("" if live_book else " (not live)"),
                       "detail": f"{w.get('volume')} shown · "
                                 + (f"{w['median_mult']:.1f}× the median level" if w.get("median_mult") is not None else "size outlier")
@@ -2249,6 +2487,15 @@ def api_order_flow_microstructure(ticker: str = Query(...),
     return JSONResponse(order_flow_microstructure(ticker, venue, time.time()))
 
 
+def _stamp_book_times(payload: dict) -> None:
+    """Schwab's quote clock and book clock, as the screen shows them. Absent stays absent."""
+    prov = payload.get("provenance")
+    quote_ts = prov.get("exchange_quote_ts") if isinstance(prov, dict) else None
+    book_ms = prov.get("book_time_ms") if isinstance(prov, dict) else None
+    payload["quote_time_ct"] = ct_label(quote_ts) if quote_ts is not None else None
+    payload["book_time_ct"] = ct_label(book_ms / 1000.0) if book_ms is not None else None
+
+
 def order_flow_microstructure(ticker: str, venue: str, now: float) -> dict:
     """Canonical L2 book microstructure at `now` (ORDER_FLOW_MARKET_MICROSTRUCTURE_V1): top-of-book,
     spread, microprice, Top 1/3/5 depth totals + imbalance, depth-pressure curve, book slope,
@@ -2262,37 +2509,33 @@ def order_flow_microstructure(ticker: str, venue: str, now: float) -> dict:
     t = ticker_storage_key(_required_ticker(ticker))
     data: dict = {}
     try:
-        from app.options.order_flow.state import get_content_for_symbol
         _content = get_content_for_symbol(t, venue)
         if _content:
             data["content"] = _content
     except Exception as e:  # streaming state optional — fail closed to 'no_book', never fabricate
         log.debug("microstructure content build failed for %s: %s", t, e)
-    # top of book: the daemon's price row; absent with the outage reason when its feed is down
-    # in an open session, the values as of the close while Closed (docs/DATA_FLOW.md §2 D5)
-    from app.options.order_flow.streaming import price_row
+    # top of book: the daemon's price row. The last bid and ask stand when the feed is down;
+    # top_outage names that, and the page says OFFLINE (docs/DATA_FLOW.md §2 D5)
     top_outage = lmp.outage(t, "LEVELONE_EQUITIES", now)
-    _row = price_row(t) if top_outage is None else None
+    _row = price_row(t)
     if _row and _row.get("quote_ts") is not None:
         data["exchange_quote_ts"] = _row["quote_ts"]
     data["top"] = ({k: _row.get(k) for k in ("bid", "ask", "bid_size", "ask_size", "mark")}
                    if _row and (_row.get("bid") is not None or _row.get("ask") is not None) else None)
     data["book_live"] = lmp.feed_live_for(t, venue, now)
-    from app.options.order_flow.engine import compute_book_microstructure
     # ticker=t → serialize the canonical state carried per (ticker, BOOK_TIME); no independent recompute.
     payload = compute_book_microstructure(data, now_ts=now, ticker=t)
     payload["top_outage"] = top_outage
     # The trade-side read the Trade Desk's Order Flow card shows: tick-rule PROXY flow from the
     # same OrderFlowEngine the option book uses (no second classifier).
     try:
-        from app.options.order_flow.engine import OrderFlowEngine
-        from app.options.order_flow.live_payload import flow_block
         payload["flow"] = flow_block(OrderFlowEngine().compute(data, now=now, ticker=t))
     except Exception as e:  # flow is additive -- the book payload stands without it
         log.debug("microstructure flow failed for %s: %s", t, e)
         payload["flow"] = None
     payload["ticker"] = t
     payload["venue"] = venue
+    _stamp_book_times(payload)
     return payload
 
 
@@ -2315,35 +2558,32 @@ def api_order_flow_options_microstructure(contract: str = Query(...)):
 
 def options_microstructure(c: str, now: float) -> dict:
     """The Flow panel's payload for contract `c` at `now` (/api/order-flow/options-microstructure)."""
-    from app.options.order_flow.live_payload import options_live_payload
-    from app.options.order_flow.streaming import get_option_contract_streaming_diagnostics
     payload = options_live_payload(ticker_storage_key(c), now)
     payload["contract"] = c
-    from app.options.order_flow.history import put_call_side
-    from app.options.order_flow.state import get_content_for_symbol
-    payload["put_call"] = put_call_side(next((it.get("CONTRACT_TYPE") for it in get_content_for_symbol(c)  # external-key-ok: Schwab LEVELONE_OPTIONS
-                                              if it.get("CONTRACT_TYPE")), None))
+    payload["put_call"] = TAPE.put_call(c)
     # whether the daemon streams this contract (the option rule) and is receiving it
     payload["streaming_plane"] = get_option_contract_streaming_diagnostics(c, now)
+    _stamp_book_times(payload)
     return payload
 
 
 @app.get("/api/watchlist")
 def get_watchlist():
     """The watchlist, the one list of tickers Schwab is asked for, as the capture daemon (its
-    keeper) last reported it; 503 with the reason while its status is not current."""
-    tickers = _watchlist(time.time())
+    keeper) last reported it. A missing heartbeat keeps that list and says it is not live.
+    503 only when no beat has ever carried a list."""
+    now = time.time()
+    tickers = _watchlist(now)
     if tickers is None:
         return JSONResponse({"error": "the capture daemon is not reporting (no current heartbeat): "
                                       "its watchlist is unknown"}, status_code=503)
-    return {"tickers": tickers}
+    return {"tickers": tickers, "live": lmp.daemon_status(now) is not None}
 
 
 async def _watchlist_change(action: str, ticker: str) -> JSONResponse:
     """An add or a removal, made by the daemon (streaming.watchlist_request); its record as the
     answer: `ok` when it happened, else what happened (an invalid ticker with Schwab's /quotes
     answer, one already on the list, ...)."""
-    from app.options.order_flow.streaming import watchlist_request
     try:
         rec = await watchlist_request(action, ticker)
     except ConnectionError as e:
@@ -2372,7 +2612,6 @@ async def post_flow_contract(payload: dict = Body(...)):
     """The contract selected on the Flow panel ({"contract": symbol}, or null for none): the daemon
     streams it on LEVELONE_OPTIONS and OPTIONS_BOOK on top of its option rule. Only a contract
     Schwab listed in a chain the console holds is taken."""
-    from app.options.order_flow.streaming import select_flow_contract
     c = payload["contract"]
     if c is not None and _contract_ticker(c) is None:
         return JSONResponse({"ok": False, "contract": c,
@@ -2408,7 +2647,7 @@ NO_CHAIN_YET = "the daemon has not delivered this ticker's chain yet"
 def get_chain(ticker: str = Query(...),
               expiry: Optional[str] = Query(default=None)):
     """One expiry of the ticker's full chain -- every contract Schwab listed, every field as sent
-    -- from the chain the daemon delivered (strike_range=ALL), with each live streamed contract's
+    except a Greek that is not a value, which is null (_shown_greeks) -- from the chain the daemon delivered (strike_range=ALL), with each live streamed contract's
     streamed fields as its values (the stream owns them), by the levels' own rule on the same
     inputs (the chain's listed contracts, its fetch time). Every watchlist ticker's chain is kept.
     Answers `status: unavailable` with a reason when no chain is held."""
@@ -2437,9 +2676,12 @@ def get_chain(ticker: str = Query(...),
     fetched_ts = held.get("_chain_fetched_ts")
     # each field the newest Schwab sent (the levels' own rule, _publish_levels)
     response_contracts, overlay_n = overlay_streamed_contract_fields(
-        contracts, _current_stream_greeks(_streamed_greeks_for_ticker(held["_contract_symbols"], now),
-                                          now), fetched_ts)
-    live_spot, _src, _ts = resolve_spot(t, now=now)       # the one spot on every screen
+        contracts, _streamed_greeks_for_ticker(held["_contract_symbols"], now), fetched_ts)
+    at = now_et()
+    product = option_close_product(t)
+    response_contracts = _keep_last_reported(response_contracts, contracts, at, product, held.get("spot"))
+    response_contracts = [_shown_greeks(c, held.get("spot"), product) for c in response_contracts]
+    live_spot, _src, live_ts = resolve_spot(t, now=now)   # the one spot, with Schwab's trade time
     ladder, not_on_ladder = chain_ladder(response_contracts, live_spot)
     # this expiry's net GEX per strike, as the heatmap publishes it (its column of the surface):
     # Strike Detail shows it beside this expiry's contracts -- one value, one producer
@@ -2450,6 +2692,8 @@ def get_chain(ticker: str = Query(...),
         [c["strike"], c["gex"][col]] for c in surf.get("cells") or [] if c["gex"][col] is not None]
     return JSONResponse({
         "ticker": t, "spot": live_spot, "priced_at_spot": held.get("spot"),
+        "spot_as_of_ts_utc": live_ts,
+        "spot_time_ct": ct_label(live_ts) if live_ts is not None else None,
         "expiry": resolved_expiry,
         "net_gex_by_strike": net_gex_by_strike,
         "spot_strike": nearest_strike({k for c in response_contracts
@@ -2657,9 +2901,274 @@ NO_PRICE_LEVELS_REASON = ("no price levels published for this ticker for the mar
 #: the terrain's price levels the chart draws (terrain_engine.compute_terrain), in its words
 GAMMA_LEVELS = (("call_wall", "Call wall"), ("put_wall", "Put wall"), ("gamma_flip", "Gamma flip"),
                 ("max_pain", "Max pain"), ("net_gex_peak", "Net Γ peak"), ("absolute_gamma_strike", "Abs Γ"),
-                ("zero_dte_abs_gamma_strike", "0DTE Γ pin"), ("pin_candidate", "Pin candidate"), ("gsf", "GSF"), ("grc", "GRC"), ("hvp", "HVP"),
+                ("pin_candidate", "Pin candidate"), ("gsf", "GSF"), ("grc", "GRC"), ("hvp", "HVP"),
                 ("lvp", "LVP"), ("key_delta_strike", "Key Δ strike"), ("call_charm_wall", "Call charm wall"),
                 ("put_charm_wall", "Put charm wall"))
+
+
+def _expiry_order(item: tuple) -> tuple:
+    """Known days-to-expiration first, then the date. A missing count sorts last."""
+    dte = item[1]
+    if isinstance(dte, (int, float)):
+        return (0, float(dte), item[0])
+    return (1, 0.0, item[0])
+
+
+def _confluence_expiries(books: dict, expiry_dte: dict) -> list[dict]:
+    found: dict[str, float | None] = {}
+    for key in books:
+        if not isinstance(key, tuple) or not key[0]:
+            continue
+        exp = str(key[0])[:10]
+        dte = expiry_dte.get(exp)
+        if dte is None:
+            dte = key[1]
+        if exp not in found or (found[exp] is None and dte is not None):
+            found[exp] = dte
+    listed = []
+    for exp, dte in sorted(found.items(), key=_expiry_order):
+        label = exp
+        if isinstance(dte, (int, float)) and float(dte) == 0:
+            label = "0DTE · " + exp
+        elif isinstance(dte, (int, float)) and float(dte) == int(dte):
+            label = exp + " · " + str(int(dte))
+        elif isinstance(dte, (int, float)):
+            label = exp + " · " + str(dte)
+        listed.append({"expiry": exp, "dte": dte, "label": label})
+    return listed
+
+
+#: Pill text for the chain's option levels. Same-day copies take "0D " in front.
+#: The same-day absolute-gamma strike is the 0DTE pin.
+_OPTION_SHORT = {
+    "Call wall": "CW", "Put wall": "PW", "Gamma flip": "Flip", "Max pain": "Pain",
+    "Net Γ peak": "Net Γ", "Abs Γ": "Abs Γ", "Pin candidate": "Pin",
+    "GSF": "GSF", "GRC": "GRC", "HVP": "HVP", "LVP": "LVP",
+    "Key Δ strike": "Key Δ", "Call charm wall": "CCh", "Put charm wall": "PCh",
+}
+
+
+def _option_abbrev(label: str, same_day: bool) -> str:
+    if same_day and label == "Abs Γ":
+        return "0D Pin"
+    base = _OPTION_SHORT[label] if label in _OPTION_SHORT else label
+    if same_day:
+        return "0D " + base
+    return base
+
+
+def _confluence_markers(live: dict, tk: str, now: datetime, spot) -> list[dict]:
+    """Levels carried from this same priced snapshot, plus the session levels already published,
+    and the one-day move around the live price `spot`."""
+    markers = []
+    snap = canonical_price_level_snapshot(tk, now)
+    if snap is not None:
+        for value in snap.levels.values():
+            row = value.to_contract_dict()
+            price = row.get("price")
+            if price is not None:
+                short = row.get("short")
+                markers.append({
+                    "label": row["label"],
+                    "short": short if isinstance(short, str) and short else row["label"],
+                    "title": row["label"],
+                    "lane": "session",
+                    "price": price,
+                })
+    for gid, label in GAMMA_LEVELS:
+        price = live.get(gid)
+        if price is not None:
+            markers.append({
+                "label": label, "short": _option_abbrev(label, False),
+                "title": label, "lane": "options", "price": price,
+            })
+    same = live.get("same_day")
+    if isinstance(same, dict):
+        for gid, label in SAME_DAY_LEVELS:
+            price = same.get(gid)
+            if price is not None:
+                markers.append({
+                    "label": "0DTE " + label, "short": _option_abbrev(label, True),
+                    "title": "0DTE " + label, "lane": "options", "price": price,
+                })
+    move = expected_move(live, spot)
+    if move is not None:
+        markers.append({
+            "label": "+1σ move", "short": "EM+", "title": "Expected move, one day, upper",
+            "lane": "session", "price": move[0],
+        })
+        markers.append({
+            "label": "−1σ move", "short": "EM−", "title": "Expected move, one day, lower",
+            "lane": "session", "price": move[1],
+        })
+    return markers
+
+
+def expected_move(terrain: "dict | None", spot) -> "tuple[float, float] | None":
+    """The one-day move's upper and lower price: the live price plus and minus the terrain's
+    implied one-day move. None without either."""
+    move = None if terrain is None else terrain.get("implied_1d_move")
+    points = move.get("points") if isinstance(move, dict) else None
+    if points is None or not isinstance(spot, (int, float)):
+        return None
+    return float(spot) + float(points), float(spot) - float(points)
+
+
+def _screen_levels(markers: list[dict]) -> list[dict]:
+    """Each level at its own price, for the rail. The page does not move it onto a strike."""
+    levels = []
+    for marker in markers:
+        price = marker.get("price")
+        if not isinstance(price, (int, float)):
+            continue
+        levels.append({
+            "lane": marker["lane"],
+            "abbrev": marker["short"],
+            "price": float(price),
+            "price_text": price_text(price),
+            "title": marker["title"],
+        })
+    return levels
+
+
+def _level_named(levels: list[dict], abbrev: str) -> dict | None:
+    for level in levels:
+        if level["abbrev"] == abbrev:
+            return level
+    return None
+
+
+def _move_text(low: dict | None, high: dict | None) -> str | None:
+    if low is None or high is None:
+        return None
+    return low["price_text"] + "–" + high["price_text"]
+
+
+def _inside_move(strike, low, high) -> bool:
+    """Whether this strike sits between the book's one-day move. Display only."""
+    if not isinstance(low, (int, float)) or not isinstance(high, (int, float)):
+        return False
+    return float(low) <= float(strike) <= float(high)
+
+
+def _ranked_matrices(live: dict) -> dict:
+    """One ranking of each expiry on this publication. The matrix request reads the expiry it shows."""
+    books = live.get("_books")
+    spot = live.get("spot")
+    if not isinstance(books, dict) or not isinstance(spot, (int, float)):
+        return {}
+    expiry_dte = live.get("expiry_dte")
+    if not isinstance(expiry_dte, dict):
+        expiry_dte = {}
+    maps = live.get("_charm_by_expiry")
+    if not isinstance(maps, dict):
+        maps = {}
+    blends = live.get("_iv_by_expiry")
+    if not isinstance(blends, dict):
+        blends = {}
+    ranked = {}
+    for item in _confluence_expiries(books, expiry_dte):
+        chosen = item["expiry"]
+        dte = item["dte"]
+        if not isinstance(dte, (int, float)):
+            continue
+        selected = [book for key, book in books.items()
+                    if isinstance(key, tuple) and str(key[0])[:10] == chosen]
+        if len(selected) == 0:
+            continue
+        exposures = selected[0][0] if len(selected) == 1 else merge_exposure_books(selected)[0]
+        charm = maps.get(chosen)
+        if not isinstance(charm, dict):
+            charm = {}
+        iv = blends.get(chosen)
+        if not isinstance(iv, dict):
+            iv = {}
+        body = build_matrix(exposures, charm, iv, float(spot), float(dte), [])
+        ranked[chosen] = body
+    return ranked
+
+
+def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict:
+    """The ranking stored with the priced chain, for the expiry the operator picks."""
+    live = terrain_cache_get(tk, now.timestamp())
+    books = None if live is None else live.get("_books")
+    spot = None if live is None else live.get("spot")
+    if not live or not isinstance(books, dict) or not books or not isinstance(spot, (int, float)):
+        return {"ticker": tk, "available": False,
+                "reason": "no priced chain is held for this ticker"}
+    expiry_dte = live.get("expiry_dte") if isinstance(live.get("expiry_dte"), dict) else {}
+    today = now.strftime("%Y-%m-%d")
+    listed = [e for e in _confluence_expiries(books, expiry_dte) if e["expiry"] >= today]
+    if not listed:
+        return {"ticker": tk, "available": False,
+                "reason": "no expiry on this chain is still open"}
+    chosen = expiry
+    if not isinstance(chosen, str) or chosen < today:
+        live_listed = [e for e in listed if e["dte"] is not None and e["dte"] >= 0]
+        chosen = (live_listed or listed)[0]["expiry"]
+    match = next((e for e in listed if e["expiry"] == chosen), None)
+    if match is None or match["dte"] is None:
+        absent = match is None
+        reason = ("that expiry is not on the priced chain" if absent
+                  else "that expiry did not carry days to expiration")
+        return {"ticker": tk, "available": False, "expiries": listed, "reason": reason}
+    ranked = live.get("_matrix_by_expiry")
+    stored = None
+    if isinstance(ranked, dict):
+        found = ranked.get(chosen)
+        if isinstance(found, dict):
+            stored = found
+    if not isinstance(stored, dict):
+        return {"ticker": tk, "available": False, "expiries": listed,
+                "reason": "that expiry is not on the priced chain"}
+    fetched = live.get("computed_ts_utc")
+    live_spot, _src, live_ts = resolve_spot(tk, now=now.timestamp())
+    markers = _confluence_markers(live, tk, now, live_spot)
+    levels = _screen_levels(markers)
+    flip = _level_named(levels, "Flip")
+    pin = _level_named(levels, "0D Pin")
+    em_up = _level_named(levels, "EM+")
+    em_dn = _level_named(levels, "EM−")
+    rows = stored.get("rows")
+    body = {key: value for key, value in stored.items() if key not in ("rows", "strikes")}
+    body["rows"] = [dict(row) for row in rows] if isinstance(rows, list) else []
+    body.update(at_price(body["rows"], stored["strikes"], live_spot))
+    low = None
+    high = None
+    if em_dn is not None:
+        low = em_dn["price"]
+    if em_up is not None:
+        high = em_up["price"]
+    for row in body["rows"]:
+        row["inside"] = _inside_move(row["strike"], low, high)
+    regime = live.get("regime")
+    status_text = None
+    if isinstance(fetched, (int, float)):
+        status_text = "Chain as of " + ct_label(fetched)
+    body.update({
+        "ticker": tk, "available": True, "reason": None,
+        "expiry": chosen, "expiries": listed,
+        "spot_as_of_ts_utc": live_ts,
+        "spot_time_ct": None if live_ts is None else ct_label(live_ts),
+        "priced_at_spot": float(spot),
+        "chain_as_of_ts_utc": fetched,
+        "chain_as_of_time_ct": None if fetched is None else ct_label(fetched),
+        "status_text": status_text,
+        "levels": levels,
+        "regime": regime if isinstance(regime, str) else None,
+        "flip_text": None if flip is None else flip["price_text"],
+        "pin_text": None if pin is None else pin["price_text"],
+        "move_text": _move_text(em_dn, em_up),
+    })
+    return body
+
+
+@app.get("/api/confluence")
+def get_confluence(ticker: str = Query(...),
+                   expiry: Annotated[Optional[str], Query()] = None):
+    """The confluence matrix. The chain already priced for this ticker; no database read."""
+    return JSONResponse(confluence_payload(
+        ticker_storage_key(_required_ticker(ticker)), expiry, now_et()))
 
 
 @app.get("/api/levels")
@@ -2686,6 +3195,7 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict:
         as_of = value.as_of_ts_utc
         row["staleness"] = {
             "as_of_ts_utc": as_of,
+            "as_of_time_ct": ct_label(as_of) if as_of is not None else None,
             "age_sec": None if as_of is None else served_ts - as_of,
             "stale_after_sec": None,
             "stale": None,
@@ -2695,20 +3205,19 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict:
         levels.append(row)
     # the gamma family, carried from the terrain (terrain_engine.compute_terrain's own values)
     t = terrain_cache_get(tk, now.timestamp())
-    move = t.get("implied_1d_move") if t is not None else None
-    em = move.get("points") if move is not None else None
+    em = expected_move(t, spot)
     carried = [(gid, label, "gamma", t.get(gid) if t is not None else None) for gid, label in GAMMA_LEVELS]
-    carried += [("em_up", "+1σ move", "expected_move", None if em is None or spot is None else spot + em),
-                ("em_dn", "−1σ move", "expected_move", None if em is None or spot is None else spot - em)]
+    carried += [("em_up", "+1σ move", "expected_move", None if em is None else em[0]),
+                ("em_dn", "−1σ move", "expected_move", None if em is None else em[1])]
     for gid, label, fam, price in carried:
         if price is not None:
             as_of = t.get("computed_ts_utc")
             levels.append({"id": gid, "price": price, "family": fam, "label": label, "short": label,
                            "evidence_tier": "DERIVED",
                            "provenance": {"producer": "terrain_engine.compute_terrain", "carried": True}
-                           if fam == "gamma" else {"producer": "server.get_levels: live spot ± the terrain's "
-                                                   "implied_1d_move.points", "carried": False},
+                           if fam == "gamma" else {"producer": "server.expected_move", "carried": False},
                            "staleness": {"as_of_ts_utc": as_of,
+                                         "as_of_time_ct": ct_label(as_of) if as_of is not None else None,
                                          "age_sec": None if as_of is None else served_ts - as_of,
                                          "stale_after_sec": None, "stale": bool(t.get("levels_stale")),
                                          "reason": "carried from the terrain"}})
@@ -2728,7 +3237,7 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict:
     families_absent = (list(snap.families_absent) if snap is not None
                        else [{"family": "price_levels", "reason": NO_PRICE_LEVELS_REASON}])
     vp = snap.volume_profile if snap is not None else None
-    if em is None or spot is None:
+    if em is None:
         families_absent.append({"family": "expected_move", "reason": "no live price" if spot is None
                                 else "the terrain has no implied 1-day move"})
 
@@ -2739,11 +3248,30 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict:
         "spot": spot,
         "spot_source": spot_source,
         "spot_as_of_ts_utc": spot_ts,
+        "spot_time_ct": ct_label(spot_ts) if spot_ts is not None else None,
+        "priced_at_spot": t.get("spot") if t is not None else None,
         "generation": snap.generation if snap is not None else None,
         "snapshot_as_of_ts_utc": snap.as_of_ts_utc if snap is not None else None,
+        "snapshot_time_ct": ct_label(snap.as_of_ts_utc) if snap is not None and snap.as_of_ts_utc is not None else None,
         "bar_source": snap.bar_source if snap is not None else None,
         "levels": levels,
         "by_distance": by_distance,
+        # nearest expiry repriced to today's option close, beside the level it reprices.
+        # The time is the terrain's own compute time, the same instant the gamma rows carry.
+        "zero_dte": [
+            {"id": gid, "label": label,
+             "price": None if t is None or not isinstance(t.get("same_day"), dict) else t["same_day"].get(gid),
+             "carried": None if t is None else t.get(gid),
+             "staleness": {"as_of_ts_utc": None if t is None else t.get("computed_ts_utc"),
+                           "as_of_time_ct": None if t is None or t.get("computed_ts_utc") is None
+                           else ct_label(t.get("computed_ts_utc")),
+                           "age_sec": None if t is None or t.get("computed_ts_utc") is None
+                           else served_ts - t.get("computed_ts_utc"),
+                           "stale_after_sec": None,
+                           "stale": bool(t is not None and t.get("levels_stale")),
+                           "reason": "carried from the terrain"}}
+            for gid, label in SAME_DAY_LEVELS
+        ],
         # The VWAP curve and its σ bands, CARRIED. The standalone pages each
         # used to accumulate their own from /api/bars1m — two more VWAPs for one
         # session, drawn beside a level neither of them agreed with.

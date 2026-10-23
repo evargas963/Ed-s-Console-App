@@ -41,6 +41,7 @@
     SHORT_GAMMA_TREND: { t: 'Short γ · trend', c: 'var(--ed-warn)' },
     UNAVAILABLE: { t: 'unavailable', c: 'var(--ed-ink-3)' },
   };
+  window.EdGammaRegime = REGIME;
 
   // ---------- Key Levels rail ----------
   function stillLevelsCtx(tk) { return isGamma() && !!document.getElementById('klSpot') && ticker() === tk; }
@@ -58,7 +59,8 @@
   var _levelsLoader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadLevelsImpl(ticker(), signal); });
   function loadLevels() { _levelsLoader.trigger(ticker()); }
   function renderLevels(d) {
-    var ids = ['klSpot', 'klFlip', 'klCall', 'klPut', 'klAbs', 'klAbs0', 'klPeak', 'klNet', 'klRegime'];
+    var ids = ['klSpot', 'klFlip', 'klCall', 'klPut', 'klAbs', 'klPeak', 'klNet', 'klRegime',
+      'kl0Flip', 'kl0Call', 'kl0Put', 'kl0Abs', 'kl0Peak'];
     paintPcr(d && !d.error ? d : null);
     if (!d || d.error) {
       ids.forEach(function (id) { txt(id, '—'); });
@@ -69,8 +71,13 @@
     txt('klCall', px(d.call_wall));
     txt('klPut', px(d.put_wall));
     txt('klAbs', px(d.absolute_gamma_strike));
-    txt('klAbs0', d.zero_dte_abs_gamma_strike == null ? (d.zero_dte_abs_gamma_reason || '—') : px(d.zero_dte_abs_gamma_strike));
     txt('klPeak', px(d.net_gex_peak));
+    var z = d.same_day != null ? d.same_day : null;
+    txt('kl0Flip', px(z ? z.gamma_flip : null));
+    txt('kl0Call', px(z ? z.call_wall : null));
+    txt('kl0Put', px(z ? z.put_wall : null));
+    txt('kl0Abs', px(z ? z.absolute_gamma_strike : null));
+    txt('kl0Peak', px(z ? z.net_gex_peak : null));
     // Net GEX / 1% move — signed $, coloured by sign (formatting only)
     var net = document.getElementById('klNet');
     if (net) {
@@ -86,24 +93,35 @@
     // B: the levels rail recedes when terrain reports stale
     var klb = document.getElementById('klBody');
     if (klb) klb.classList.toggle('recede', !!d.levels_stale);
-    // freshness / provenance line
+    // freshness / provenance line. The chain's time stands beside the mark. The mark is
+    // unchanged when no chain time was sent.
     var src = document.getElementById('klSrc');
+    function chainMarked(words) {
+      var when = d.levels_time_ct != null ? d.levels_time_ct : null;
+      if (when != null) return when + ' · ' + words;
+      return words;
+    }
     if (src) {
       if (d.levels_stale) {
         // compact status grammar: state + age on the panel; the full reason is disclosed in the
         // tooltip (title) rather than as a paragraph that consumes the Key Levels rail
         var age = (window.EdShell && window.EdShell.fmtAge) ? window.EdShell.fmtAge(d.levels_age_sec)
           : (d.levels_age_sec != null ? Math.round(d.levels_age_sec) + 's' : '');
-        src.textContent = 'STALE' + (age ? ' · ' + age : '');
+        src.textContent = chainMarked('STALE' + (age ? ' · ' + age : ''));
         src.title = d.levels_stale_reason || 'terrain levels are stale';
         src.style.color = 'var(--ed-stale)';
+      } else if (d.levels_stale === false && d.spot_feed_live === false) {
+        // the chain is current and the wall stays; the price it was built from has stopped
+        src.textContent = chainMarked('OFFLINE');
+        src.title = d.spot_outage == null ? '' : d.spot_outage;
+        src.style.color = 'var(--ed-stale)';
       } else if (d.levels_stale === false) {
-        src.textContent = 'terrain · live';
+        src.textContent = chainMarked('terrain · live');
         src.title = '';
         src.style.color = '';
       } else {
         // no freshness verdict served: never read as live
-        src.textContent = 'freshness not reported';
+        src.textContent = chainMarked('freshness not reported');
         src.title = '';
         src.style.color = 'var(--ed-stale)';
       }
@@ -160,6 +178,7 @@
     // client-side freshness computation; the badge only formats those server-owned fields.
     el.innerHTML = (window.EdShell && window.EdShell.asOfBadge)
       ? window.EdShell.asOfBadge({ label: srcLabel(d.today_source), ageSec: d.today_age_sec,
+          when: d.levels_time_ct,
           stale: !!d.levels_stale, reason: d.levels_stale_reason,
           live: (d.today_source === 'terrain_live_cache' && d.levels_stale === false) })
       : '';
@@ -531,7 +550,10 @@
   window.addEventListener('ed:quote_tick', function (e) {
     var q = e.detail;
     if (!q || q.ticker !== ((window.EdShell && window.EdShell.getState()) || {}).key) return;   // the served key
-    txt('klSpot', q.spot_disp != null ? q.spot_disp : '—');
+    var el = document.getElementById('klSpot');
+    if (!el) return;
+    el.textContent = q.spot_disp != null ? q.spot_disp : '—';
+    el.title = q.trade_time_ct ? ('last trade ' + q.trade_time_ct) : '';
   });
   document.addEventListener('ed:view', loadAll);
   // a new scope is a new window: every per-strike panel re-reads it from the server

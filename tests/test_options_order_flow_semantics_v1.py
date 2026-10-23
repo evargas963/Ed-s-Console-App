@@ -89,9 +89,9 @@ def test_every_option_and_equity_message_on_the_one_push_reaches_the_console():
     assert book["BIDS"] == newest_book["BIDS"] and book["ASKS"] == newest_book["ASKS"]
 
 
-def test_a_contract_the_daemon_stops_streaming_no_longer_shows_as_current():
-    """The option rule moves off a contract (the daemon's status no longer holds it): the
-    console forgets its live values, so no screen shows its last message as current."""
+def test_a_contract_the_daemon_stops_streaming_keeps_its_last_bid():
+    """The option rule moves off a contract (the daemon's status no longer holds it): the last
+    bid stays, and the Flow panel marks the contract NOT STREAMED."""
     m = next(m for m in _MIX if m["service"] == "LEVELONE_OPTIONS" and "BID_PRICE" in m["item"])
     sym = m["item"]["key"]
     ofls.clear_all_live_state()
@@ -109,4 +109,5 @@ def test_a_contract_the_daemon_stops_streaming_no_longer_shows_as_current():
         ofls.clear_all_live_state()
         lmp.record_feed_down()
     assert held["bid"] == m["item"]["BID_PRICE"]
-    assert released is None
+    assert released["bid"] == m["item"]["BID_PRICE"]
+    assert ofs.get_option_contract_streaming_diagnostics(sym, time.time())["subscription_state"] == ofs.NOT_STREAMED

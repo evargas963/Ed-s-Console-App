@@ -28,7 +28,8 @@ log = logging.getLogger(__name__)
 
 _OPTION_TOP_FIELDS = (("BID_PRICE", "bid", schwab_number), ("ASK_PRICE", "ask", schwab_number),
                       ("BID_SIZE", "bid_size", schwab_count), ("ASK_SIZE", "ask_size", schwab_count),
-                      ("MARK", "mark", schwab_number))
+                      ("MARK", "mark", schwab_number),
+                      ("QUOTE_TIME_MILLIS", "quote_time_ms", schwab_number))
 
 
 class OrderFlowState:

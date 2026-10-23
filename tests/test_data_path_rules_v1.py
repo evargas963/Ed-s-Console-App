@@ -296,28 +296,31 @@ def _served_at(now: float, feed_live: bool) -> dict:
         lmp.record_feed_down()
 
 
-def test_d5_a_feed_down_in_an_open_session_is_an_outage_shown_absent_with_its_reason():
-    """RTH, the feed down: the price, the equity top of book and the option top of book are
-    absent, each with the outage reason; no last value stands in for a live one."""
+def test_d5_a_feed_down_in_an_open_session_keeps_the_last_price_and_the_book():
+    """RTH, the feed down: the last price and both tops of book stand, marked not live."""
     s = _served_at(_RTH, feed_live=False)
-    assert s["row"]["spot"] is None and s["row"]["bid"] is None
+    assert s["row"]["spot"] == 767.39 and s["row"]["bid"] == 767.38
+    assert s["row"]["feed_live"] is False
     assert s["row"]["outage"] == "Schwab LEVELONE_EQUITIES feed down during RTH"
-    assert s["spot"] == (None, "Schwab LEVELONE_EQUITIES feed down during RTH", None)
-    assert s["equity_book"]["top_of_book"]["bid"] is None
+    assert s["spot"][0] == 767.39 and s["spot"][1] == server.SPOT_SOURCE_PLANE
+    assert s["equity_book"]["top_of_book"]["bid"] == 767.38
+    assert s["equity_book"]["top_of_book"]["ask"] == 767.40
     assert s["equity_book"]["top_outage"] == "Schwab LEVELONE_EQUITIES feed down during RTH"
-    assert s["option_book"]["top_of_book"]["ask"] is None
+    assert s["option_book"]["top_of_book"]["ask"] == _EVENTS[0]["content"]["ASK_PRICE"]
     assert s["option_book"]["top_outage"] == "Schwab LEVELONE_OPTIONS feed down during RTH"
 
 
-def test_d5_while_closed_the_values_as_of_the_close_stand_feed_up_or_down():
-    """22:00 ET, the feed down: the last price and both tops of book Schwab sent are served,
-    with no outage."""
+def test_d5_while_closed_a_feed_down_keeps_the_last_values_and_says_so():
+    """22:00 ET, the feed down: the last price and both tops of book stand, and the panels
+    say the feed is down. A closed market is the same stop as any other."""
     s = _served_at(_CLOSED, feed_live=False)
-    assert s["row"]["spot"] == 767.39 and s["row"]["outage"] is None
+    assert s["row"]["spot"] == 767.39
+    assert s["row"]["outage"] == "Schwab LEVELONE_EQUITIES feed down during Closed"
     assert s["spot"][0] == 767.39
-    assert s["equity_book"]["top_of_book"]["bid"] == 767.38 and s["equity_book"]["top_outage"] is None
+    assert s["equity_book"]["top_of_book"]["bid"] == 767.38
+    assert s["equity_book"]["top_outage"] == "Schwab LEVELONE_EQUITIES feed down during Closed"
     assert s["option_book"]["top_of_book"]["ask"] == _EVENTS[0]["content"]["ASK_PRICE"]
-    assert s["option_book"]["top_outage"] is None
+    assert s["option_book"]["top_outage"] == "Schwab LEVELONE_OPTIONS feed down during Closed"
 
 
 def test_d5_a_live_feed_in_an_open_session_serves_the_newest_values():
@@ -620,9 +623,7 @@ def test_d5_while_closed_levels_as_of_the_close_stand_and_older_ones_are_absent_
 
 def test_d5_the_levels_spot_is_judged_at_the_time_they_are_served_for():
     """/api/levels served for Fri 2026-10-02 11:00 ET (RTH) with SPY's last trade in the daemon's
-    price row: with the daemon's heartbeat live then, that trade is the spot with its trade time;
-    with none, the spot is absent with the RTH outage reason -- whatever the machine's clock says
-    (judged by it, one of the two answers differs at every hour)."""
+    price row: that trade is the spot with its trade time, the heartbeat live or not."""
     import live_market_plane as lmp
     import live_price_rows
     from app.options.order_flow import streaming as ofs
@@ -640,8 +641,7 @@ def test_d5_the_levels_spot_is_judged_at_the_time_they_are_served_for():
             ofs._price_rows.pop("SPY", None)
             lmp.record_feed_down()
         served[live] = (body["spot"], body["spot_source"], body["spot_as_of_ts_utc"])
-    assert served[True] == (767.39, server.SPOT_SOURCE_PLANE, at)
-    assert served[False] == (None, "Schwab LEVELONE_EQUITIES feed down during RTH", None)
+    assert served[True] == served[False] == (767.39, server.SPOT_SOURCE_PLANE, at)
 
 
 #: Schwab's SPY and TSLA bars as the capture daemon recorded them, Thu 2026-10-01 and Fri 10-02

@@ -284,7 +284,7 @@ def test_a_partial_morning_capture_is_never_the_prior_day(tmp_path):
     """2026-09-28: the only 09-25 captures were the partial morning chains (expiries to 37 days),
     so the forces diffed Monday's full chain against them and every later expiry read as new open
     interest (SPY: +1.4M below and above spot in one day). Only full captures are read: with no
-    full prior day the forces are absent with their reason."""
+    full prior day the forces numbers are absent."""
     import server
     db = tmp_path / "ed_console.db"
     # institutional-synthetic-ok: the reader returns stored contracts verbatim; none is priced.
@@ -298,4 +298,5 @@ def test_a_partial_morning_capture_is_never_the_prior_day(tmp_path):
     caps = cch.last_capture_per_day(db, "ZZ", 2)
     assert [(c["et_date"], c["basis"]) for c in caps] == [("2026-09-28", cch.CAPTURE_BASIS)]
     forces = server._forces_from_captures("ZZ", caps)
-    assert forces["available"] is False and "fewer than 2 market days" in forces["reason"]
+    assert forces["available"] is False
+    assert forces["doi_below"] is None and "reason" not in forces
