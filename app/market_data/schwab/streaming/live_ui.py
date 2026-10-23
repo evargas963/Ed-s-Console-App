@@ -182,8 +182,6 @@ class LiveUiServer:
                 # next browser still gets its beat; a browser that does not take its beat within
                 # a beat is not reading and is dropped: its connection is aborted, because a close
                 # frame cannot be written to a browser that does not read
-                # (2026-09-26: the beat stopped for every browser and the whole screen read "no
-                # live feed" on a healthy Schwab socket)
                 try:
                     rows = [live_price_rows.price_row(s, now) for s in sorted(c.symbols)]
                     await asyncio.wait_for(
