@@ -11,8 +11,8 @@
     `git pull --ff-only` in production. A push to GitHub's main is the operator's
     (operator_yes_guard).
   * TREE-DESTRUCTIVE GIT (`operating_process_lock.reset_guard_violations`, the ONE owner):
-    `reset --hard`, `checkout -- <path>`, `clean -f`, `push --force` on any target, and the
-    restore/stash class on product paths.
+    `reset --hard`, `checkout -- <path>`, `clean -f`, `push --force` and every `stash` but
+    `stash list` on any target, and the reset/restore class on product paths.
   * PIPED COMMITS: `git commit | tail` reports the filter's exit code and hides a
     failed hook; refused before it runs.
 
@@ -411,8 +411,7 @@ def main() -> int:
     sys.stderr.write(
         "BLOCKED by operating process lock.\n\n"
         + "".join(f"  {b}\n" for b in bad)
-        + "\nSee AGENTS.md, "
-        + "tools/operating_process_lock.py --measure\n"
+        + "\nSee AGENTS.md\n"
     )
     return 2
 
