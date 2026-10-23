@@ -7,7 +7,11 @@ written, from real Schwab messages: TSLA 2026-08-31 367.5 call's 12 LEVELONE_OPT
 OPTIONS_BOOK messages as Schwab sent them (tests/fixtures/real_options_stream_history_samples.json,
 observed 2026-08-31), applied by the console's own intake (streaming._ingest_pushed), valued at the
 newest message's time. STAND-IN (named): the daemon's status, holding the contract on both
-services.
+services. Those messages carry no CONTRACT_TYPE, so the side the header shows is proven by
+tests/e2e/fixtures/options_microstructure_side_payloads.json: the route's payloads for SPY 2026-10-23
+761 call and 762 put after their stored messages, the first carrying CONTRACT_TYPE
+(tests/fixtures/real_spy_option_contract_type_2026_10_23.json). STAND-IN (named): the daemon's
+status, holding each contract on LEVELONE_OPTIONS.
 
 Regenerate (from the repo root, project .venv):
   python -c "from tests.test_options_order_flow_production_v1 import write_flow_e2e_fixture; write_flow_e2e_fixture()"
@@ -21,6 +25,8 @@ import pytest
 
 _HISTORY = Path(__file__).resolve().parent / "fixtures" / "real_options_stream_history_samples.json"
 _FLOW_E2E_FIXTURE = Path(__file__).resolve().parent / "e2e" / "fixtures" / "options_microstructure_payload.json"
+_SIDES = Path(__file__).resolve().parent / "fixtures" / "real_spy_option_contract_type_2026_10_23.json"
+_SIDES_E2E_FIXTURE = _FLOW_E2E_FIXTURE.with_name("options_microstructure_side_payloads.json")
 FLOW_CONTRACT = "TSLA  260831C00367500"
 
 
@@ -53,6 +59,36 @@ def build_flow_e2e_fixture_response() -> dict:
         ofls.clear_all_live_state()
 
 
+def build_side_e2e_fixture_response() -> dict:
+    """contract -> the route's payload for the SPY call and put after their stored messages, at the
+    newest one's time."""
+    import app.options.order_flow.state as ofls
+    import live_market_plane as lmp
+    import server as srv
+    from app.options.order_flow import streaming as ofs
+    from app.options.order_flow.history import TAPE
+    from stream_spine import options_quote_msg
+
+    contracts = json.loads(_SIDES.read_text(encoding="utf-8"))["contracts"]
+    out = {}
+    ofls.clear_all_live_state()
+    try:
+        for sym, msgs in contracts.items():
+            at = max(m["ts_recv"] for m in msgs)
+            lmp.record_feed_heartbeat({"ts": at, "schwab_socket_open": True, "held": {"LEVELONE_OPTIONS": [sym]}})
+            for m in msgs:
+                ofs._ingest_pushed(f"optquote.{sym}", options_quote_msg(symbol=sym, content=m["item"], src="schwab",
+                                                                        ts_recv=m["ts_recv"]))
+            out[sym] = srv.options_microstructure(sym, at)
+        return out
+    finally:
+        for sym in contracts:
+            TAPE.forget(sym)
+            ofs._option_contract_last_update_ts.pop(sym, None)
+        lmp.record_feed_down()
+        ofls.clear_all_live_state()
+
+
 def write_flow_e2e_fixture() -> None:
     """Regeneration utility (never called by a test), in a child process with the same private
     runtime boundary tests/conftest.py applies, so the fixture never carries a live DB or token."""
@@ -70,15 +106,17 @@ def write_flow_e2e_fixture() -> None:
                 "SCHWAB_API_KEY": "ci-placeholder-api-key", "SCHWAB_APP_SECRET": "ci-placeholder-app-secret",
                 "SCHWAB_CALLBACK_URL": "https://127.0.0.1:8182"})
     code = ("import json, sys; from tests.test_options_order_flow_production_v1 import "
-            "build_flow_e2e_fixture_response as b; sys.stdout.write(json.dumps(b()))")
+            "build_flow_e2e_fixture_response as b, build_side_e2e_fixture_response as s; "
+            "sys.stdout.write(json.dumps({'flow': b(), 'sides': s()}))")
     try:
         out = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True, check=True,
                              cwd=str(_FLOW_E2E_FIXTURE.parents[3])).stdout
     finally:
         shutil.rmtree(root, ignore_errors=True)
     payload = json.loads(out.strip().splitlines()[-1])     # import-time log lines may precede it
-    _FLOW_E2E_FIXTURE.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    print(f"wrote {_FLOW_E2E_FIXTURE}")
+    for path, key in ((_FLOW_E2E_FIXTURE, "flow"), (_SIDES_E2E_FIXTURE, "sides")):
+        path.write_text(json.dumps(payload[key], indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        print(f"wrote {path}")
 
 
 def _same(fixture, live):
@@ -102,3 +140,13 @@ def test_flow_e2e_fixture_is_the_route_contract():
     assert fixture["status"] == "ok" and fixture["streaming_plane"]["subscription_state"] == "SUBSCRIBED"
     for k in ("tape_pressure_30s", "tape_pressure_2m", "tape_pressure_5m", "cum_delta_proxy", "top_book_pressure"):
         assert k not in live and fixture["flow"][k] is not None, k
+
+
+def test_side_e2e_fixture_is_the_route_contract():
+    """The Playwright side payloads are what the route serves for the SPY call and put, every key and
+    value: the side the header shows is the route's CALL and PUT."""
+    fixture = json.loads(_SIDES_E2E_FIXTURE.read_text(encoding="utf-8"))
+    assert _same(fixture, build_side_e2e_fixture_response()), \
+        "E2E side fixture drifted from the route; regenerate with write_flow_e2e_fixture()"
+    assert {k: v["put_call"] for k, v in fixture.items()} == {
+        "SPY   261023C00761000": "CALL", "SPY   261023P00762000": "PUT"}
