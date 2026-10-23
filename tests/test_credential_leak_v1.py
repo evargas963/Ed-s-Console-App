@@ -8,7 +8,7 @@ def test_detects_bearer_and_home_path():
 +++ b/evil.py
 @@ -0,0 +1,2 @@
 +Authorization: Bearer supersecrettokenvalue99
-+path = 'C:/Users/evarg/secret.json'
++path = 'C:/Users/someone/secret.json'
 """
     hits = find_credential_leaks(diff)
     assert any("bearer_token" in h for h in hits)
@@ -40,7 +40,7 @@ def test_scanner_own_suite_path_is_skipped():
 +++ b/tests/test_credential_leak_v1.py
 @@ -0,0 +1,2 @@
 +Authorization: Bearer supersecrettokenvalue99
-+path = 'C:/Users/evarg/secret.json'
++path = 'C:/Users/someone/secret.json'
 """
     assert find_credential_leaks(diff) == []
 
