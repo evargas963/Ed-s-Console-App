@@ -135,7 +135,7 @@ def test_a_zero_book_is_zero_charm_and_the_wall_is_drawn_at_its_own_price():
         (live["call_wall"], price_text(live["call_wall"]), "options")]
 
 
-def test_a_served_strike_with_no_open_interest_shows_zero_charm_and_is_scored():
+def test_a_served_strike_with_no_open_interest_shows_zero_charm_and_says_why_it_is_unscored():
     """SPY's 2026-10-14 expiry as the console served it 2026-10-01 08:59:47 ET
     (tests/fixtures/real_spy_2026_10_14_chain_oi_zero.json): strikes 761 to 764, inside the window,
     have open interest 0 on both legs and no volume. Each one's charm on the matrix is 0.00, not
