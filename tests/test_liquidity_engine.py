@@ -3,7 +3,6 @@ test_liquidity_engine.py — Unit tests for Liquidity & Value Playbook Engine
 ============================================================================
 
 Run: pytest tests/test_liquidity_engine.py -v
-  or: python tests/test_liquidity_engine.py
 """
 from __future__ import annotations
 
@@ -57,12 +56,10 @@ def test_the_engine_takes_the_bar_writers_candles_as_they_are():
 
 
 
-def _typical_price_dump(bars, value_area_pct=0.70, tick_size=0.01):
-    """The construction LP-01 Step 1 REPLACED, kept here only as the disagreement witness.
-
-    A test that a new method 'works' proves nothing if the old one produced the same number.
-    This reproduces the retired typical-price dump so the fixtures below can show the two
-    genuinely differ where it matters.
+def _typical_price_dump(bars, tick_size=0.01):
+    """The typical-price dump (each bar's whole volume at (H+L+C)/3), the disagreement
+    witness: the fixtures below show the engine's distribution differs from it where it
+    matters.
     """
     from collections import defaultdict
     vol_by_price: dict = defaultdict(float)
@@ -85,7 +82,7 @@ def test_volume_profile_flat_bar_puts_all_volume_at_one_price():
 
 
 def test_volume_profile_distributes_a_wide_bar_across_its_range():
-    """The defect in one line: one wide bar's volume belongs across [low, high], not at
+    """One wide bar's volume belongs across [low, high], not at
     (H+L+C)/3. With a single bar the distributed profile is FLAT, so every spanned price ties —
     while the dump puts 100% of it in one bin at the typical price."""
     from liquidity_models import volume_profile
@@ -95,12 +92,12 @@ def test_volume_profile_distributes_a_wide_bar_across_its_range():
     assert val >= 100.0 and vah <= 101.0, f"value area escaped the bar's range: {val}..{vah}"
     assert (vah - val) > 0.5, (
         f"a 70% value area over a uniformly-distributed 1.00-wide bar must span ~0.70, got "
-        f"{vah - val:.2f} — volume is still being dumped"
+        f"{vah - val:.2f} — the volume sits at one price, not across the bar"
     )
     dump_poc = _typical_price_dump(bars)
     assert abs(dump_poc - 100.6333) < 0.01, "witness fixture drifted"
     assert vah > dump_poc > val, (
-        "the retired dump concentrated everything at the typical price; the distributed "
+        "the typical-price dump concentrates everything at the typical price; the distributed "
         "profile must instead spread across the range that price sits inside"
     )
 
@@ -123,7 +120,7 @@ def test_volume_profile_poc_is_the_price_most_bars_traded_through():
     )
     dump_poc = _typical_price_dump(bars)
     assert dump_poc not in (100.03, 100.04), (
-        "fixture no longer discriminates — the retired dump happens to agree here"
+        "fixture does not discriminate — the typical-price dump agrees here"
     )
     assert val <= poc <= vah
 
@@ -143,7 +140,7 @@ def test_volume_profile_rejects_nan_and_nonpositive_volume():
     assert volume_profile([{"high": 1.0, "low": 1.0, "close": 1.0, "volume": 1.0}], tick_size=0.0) is None
 
 
-def test_volume_profile_wide_bar_stays_bounded_and_still_distributed():
+def test_volume_profile_wide_bar_stays_bounded_and_distributed():
     """A pathological range against a 0.01 tick must not allocate unbounded bins, and must
     still SPREAD — the bound is a work cap, never a licence to dump."""
     from liquidity_models import MAX_BINS_PER_BAR, volume_profile
@@ -173,9 +170,8 @@ def _overnight(bars: list, session_date: date) -> dict:
 
 
 def test_overnight_window_monday_reaches_back_to_friday():
-    """LP-01 Step 2 (RC-153): Monday's overnight starts at FRIDAY's 16:00 close. The old code
-    used session_date - 1 day = SUNDAY, a day with no close and no bars, so Friday's entire
-    post-16:00 tape was dropped and OVERNIGHT_HIGH/LOW described only Monday's pre-open."""
+    """Monday's overnight starts at FRIDAY's 16:00 close (the prior session), not at Sunday,
+    which has no close and no bars: Friday's post-16:00 tape is in OVERNIGHT_HIGH/LOW."""
     friday, monday = date(2026, 10, 2), date(2026, 10, 5)    # sessions Schwab's /markets sent
     bars = [
         _bar(friday, 10, 0, 100.0, 99.0),      # Friday RTH — establishes the prior session
@@ -257,14 +253,14 @@ def test_overnight_without_a_prior_session_uses_only_this_session_premarket():
     )
 
 
-# ── LP-01 Step 3 (RC-154): no liquidity-pool claim on untested extremes ──────────────────
+# ── No liquidity-pool claim on untested extremes ─────────────────────────────────────────
 _POOL_WORDS = ("liquidity", "pool", "sweep", "stop hunt", "stop-hunt", "magnet")
 
 
-def _step3_bars(session_date: date) -> list:
+def _overnight_under_prior_low_bars(session_date: date) -> list:
     """Bars that drive the taxonomy branch: a prior session, an overnight leg that undercuts
-    the prior low, and an RTH open — i.e. exactly the shape that used to be labelled
-    'sell-side liquidity'."""
+    the prior low, and an RTH open — the shape a pool label would claim as 'sell-side
+    liquidity'."""
     prev = date.fromordinal(session_date.toordinal() - 1)
     return [
         _bar(prev, 10, 0, 105.0, 100.0, close=104.0),
@@ -275,18 +271,18 @@ def _step3_bars(session_date: date) -> list:
     ]
 
 
-def _step3_zones(session_date: date):
+def _overnight_under_prior_low_zones(session_date: date):
     from liquidity_models import PlaybookConfig
     from liquidity_value_engine import bars_from_candles, build_premarket_snapshot, build_price_level_snapshot
-    snap = build_price_level_snapshot("SPY", session_date, bars_from_candles(_step3_bars(session_date)), bar_source="test")
+    snap = build_price_level_snapshot("SPY", session_date, bars_from_candles(_overnight_under_prior_low_bars(session_date)), bar_source="test")
     return build_premarket_snapshot("SPY", session_date, PlaybookConfig(), canonical=snap).zones
 
 
 def test_no_pool_language_in_rendered_zone_payload():
-    """Behaviour-bound: build the snapshot that used to produce 'Sell-side liquidity at
-    overnight low' and assert no operator-facing field claims a pool."""
+    """Behaviour-bound: build the snapshot for an overnight leg under the prior low and assert
+    no operator-facing field claims a pool."""
     session = date(2026, 10, 6)          # a Tuesday: its prior session is the day before
-    zones = _step3_zones(session)
+    zones = _overnight_under_prior_low_zones(session)
     assert zones, "fixture produced no zones — the assertion would be vacuous"
     for z in zones:
         zt = str(getattr(z.zone_type, "value", z.zone_type))
@@ -336,11 +332,8 @@ def test_no_lookahead_premarket():
     out = build_premarket_snapshot("SPY", session, cfg, canonical=snap)
     assert out.raw_levels.get("prev_day")
     # No today POC/VAH/VAL in premarket raw: every "poc"-shaped key inside prev_day
-    # must be the pd_-prefixed previous-day form, not an unprefixed today value that
-    # leaked in. TEST_SYSTEM_REHAB_V2: was `"poc" not in prev_day or "pd_" in
-    # raw_levels` -- the second arm checked ANY "pd_" occurrence anywhere in the
-    # whole payload, satisfied unconditionally since prev_day always has pd_ keys,
-    # so a leaked unprefixed "today_poc" inside prev_day would never be caught.
+    # must be the pd_-prefixed previous-day form, not an unprefixed today value; each key
+    # is checked inside prev_day itself, so a "today_poc" there is caught.
     prev_day = out.raw_levels.get("prev_day", {})
     poc_keys = [k for k in prev_day if "poc" in str(k).lower()]
     assert poc_keys, "prev_day carries no poc-shaped key at all"
