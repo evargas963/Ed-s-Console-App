@@ -74,7 +74,7 @@ def _safe(sub: str, args: list[str]) -> bool:
 
 
 def _reset_class_violation(words: tuple[str, ...]) -> list[str]:
-    """The CLASS rule for ONE statement (RC-525): a chain cannot launder a later wipe."""
+    """The CLASS rule for ONE statement: a chain cannot launder a later wipe."""
     sub, args = git_subcommand(words)
     if not (sub in ("reset", "restore", "clean") or (sub == "checkout" and "--" in args[:-1])) \
             or _safe(sub, args):
@@ -92,7 +92,7 @@ def _reset_class_violation(words: tuple[str, ...]) -> list[str]:
 
 
 def reset_guard_violations(command: str, powershell: bool = False) -> list[str]:
-    """LOCK-2: BLOCK tree-destructive git — the ONE owner of that question (RC-231/RC-252).
+    """LOCK-2: BLOCK tree-destructive git — the ONE owner of that question (RC-231).
 
     Two clauses, one predicate. The HARD forms (`reset --hard`, `checkout -- <any path>`,
     `clean -f`, `push --force`/`-f`, every `stash` but `stash list`) discard work whatever they

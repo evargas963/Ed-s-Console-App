@@ -1,5 +1,5 @@
 # institutional-synthetic-ok: inject cross-checkout edits and destructive git to prove the locks BLOCK.
-"""Operating process lock — negative controls + quiet paths (RC-217)."""
+"""Operating process lock — negative controls + quiet paths."""
 from __future__ import annotations
 
 import sys

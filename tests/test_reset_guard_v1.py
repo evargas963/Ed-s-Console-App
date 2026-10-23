@@ -1,5 +1,5 @@
 # institutional-synthetic-ok: inject destructive git commands to prove LOCK-2 BLOCKs.
-"""LOCK-2 reset-guard (RC-231/RC-232) — dedicated acceptance suite.
+"""LOCK-2 reset-guard (RC-231) — dedicated acceptance suite.
 
 Tree-destructive git blocks at PreToolUse: reset --hard, checkout -- <path>, clean -f,
 push --force and every stash but `stash list` on any target; the wider reset, restore,
@@ -43,11 +43,11 @@ def test_safe_forms_allow():
         assert not OPL.reset_guard_violations(cmd), f"LOCK-2 false-fired on: {cmd}"
 
 
-# ── RC-253: judge the ACTION, not the data the command carries (RC-93) ──────────────────
+# ── Judge the ACTION, not the data the command carries ──────────────────────────────────
 # A commit message or other quoted text that describes destructive git is not a statement.
 
 
-def test_rc253_commit_message_quoting_destructive_git_is_not_an_action():
+def test_a_commit_message_quoting_destructive_git_is_not_an_action():
     heredoc = (
         "git commit --file - <<'MSG'\n"
         "RC-252: the guard was silent on git restore -- static/chart.html\n"
@@ -56,14 +56,14 @@ def test_rc253_commit_message_quoting_destructive_git_is_not_an_action():
         "MSG"
     )
     assert not OPL.reset_guard_violations(heredoc), (
-        "LOCK-2 blocked a commit whose only destructive git is prose in the message — this is "
-        "the RC-93 inversion: banning the word, not the action"
+        "LOCK-2 blocked a commit whose only destructive git is prose in the message — "
+        "banning the word, not the action"
     )
     inline = "git commit -m 'RC-231 was opened after a git reset --hard wiped static/chart.html'"
     assert not OPL.reset_guard_violations(inline)
 
 
-def test_rc253_stripping_payloads_does_not_open_a_bypass():
+def test_stripping_payloads_does_not_open_a_bypass():
     """The exemption is for DATA. A body handed to an interpreter is the instruction, and a
     real destructive command is unaffected by any of this."""
     piped = "bash <<'EOF'\ngit reset --hard\nEOF"
@@ -74,11 +74,11 @@ def test_rc253_stripping_payloads_does_not_open_a_bypass():
         assert OPL.reset_guard_violations(cmd), f"real command no longer blocks: {cmd}"
 
 
-def test_rc253_a_destructive_command_after_a_quoted_message_still_blocks():
+def test_a_destructive_command_after_a_quoted_message_still_blocks():
     """Stripping the quoted payload must not swallow what follows it."""
     chained = "git commit -m 'notes' && git checkout -- server.py"
     assert OPL.reset_guard_violations(chained), (
-        "the second, genuinely destructive command was lost with the message payload"
+        "the destructive command after the quoted message is dropped with the message payload"
     )
 
 
@@ -137,14 +137,14 @@ _ADJUDICATION: tuple[tuple[str, bool, str], ...] = (
 )
 
 
-def test_rc525_reset_is_adjudicated_by_what_it_can_destroy():
+def test_git_is_adjudicated_by_what_it_can_destroy():
     """Both directions in one table: safe forms pass, every destructive mode still blocks."""
     wrong = [(cmd, reaches) for cmd, must_block, reaches in _ADJUDICATION
              if bool(OPL.reset_guard_violations(cmd)) != must_block]
     assert wrong == [], f"verdict disagrees with what the command can destroy: {wrong}"
 
 
-def test_rc525_a_safe_form_cannot_launder_a_destructive_one():
+def test_a_safe_form_cannot_launder_a_destructive_one():
     """The class rule is judged per statement: a safe form exempts only itself, never a
     destructive statement chained after it."""
     for chain in (
@@ -156,12 +156,12 @@ def test_rc525_a_safe_form_cannot_launder_a_destructive_one():
         "git status | cat && git stash",
     ):
         assert OPL.reset_guard_violations(chain), f"a safe form laundered the chain: {chain}"
-    # ...and a chain that is safe end to end stays legal, or the fix would be a new over-block.
+    # ...and a chain that is safe end to end stays legal.
     assert not OPL.reset_guard_violations("git status && git reset --soft HEAD~1")
     assert not OPL.reset_guard_violations("git fetch origin && git reset --soft origin/main")
 
 
-def test_rc525_an_interpreter_heredoc_is_still_judged_per_line():
+def test_an_interpreter_heredoc_is_judged_per_line():
     """A heredoc handed to a shell IS the instruction, so a CLASS form inside it
     (not only a hard form) still blocks, and a quoted commit message stays prose."""
     assert OPL.reset_guard_violations("bash <<'EOF'\ngit status\ngit restore .\nEOF")
@@ -169,7 +169,7 @@ def test_rc525_an_interpreter_heredoc_is_still_judged_per_line():
         "git commit -m 'RC-231: git restore . wiped the tree' && git push origin feat/x")
 
 
-def test_rc525_the_safe_reset_is_live_on_the_pretooluse_path():
+def test_the_safe_reset_is_live_on_the_pretooluse_path():
     """The seam that actually runs: LOCK-2 lets --soft through and still refuses --hard.
 
     Asserted on the RESET_GUARD verdict, not on an empty result: the Bash seam also carries

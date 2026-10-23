@@ -19,7 +19,7 @@ def _target(tmp_path: Path, code: int) -> Path:
 
 
 def test_nonzero_exit_reaches_the_caller(tmp_path: Path) -> None:
-    """The property the wrapper exists to provide, and the one nothing asserted."""
+    """A target's non-zero exit is the wrapper's exit."""
     r = subprocess.run([sys.executable, str(WRAPPER), str(_target(tmp_path, 7))],
                        cwd=str(ROOT), capture_output=True, text=True)
     assert r.returncode == 7, (
@@ -29,8 +29,7 @@ def test_nonzero_exit_reaches_the_caller(tmp_path: Path) -> None:
 
 
 def test_the_target_actually_runs_and_its_output_is_not_lost(tmp_path: Path) -> None:
-    """A detached child's stdout raced the caller and arrived after it had moved on, so
-    captured output was empty. Waiting for the child is what makes the output usable."""
+    """The wrapper waits for its target, so the target's output reaches the caller."""
     r = subprocess.run([sys.executable, str(WRAPPER), str(_target(tmp_path, 0))],
                        cwd=str(ROOT), capture_output=True, text=True)
     assert r.returncode == 0
@@ -40,7 +39,7 @@ def test_the_target_actually_runs_and_its_output_is_not_lost(tmp_path: Path) -> 
 
 
 def test_success_still_reads_as_success(tmp_path: Path) -> None:
-    """Negative control: the fix must not make everything fail."""
+    """Negative control: a target that exits 0 makes the wrapper exit 0."""
     r = subprocess.run([sys.executable, str(WRAPPER), str(_target(tmp_path, 0))],
                        cwd=str(ROOT), capture_output=True, text=True)
     assert r.returncode == 0, f"a clean target now reports {r.returncode}"
