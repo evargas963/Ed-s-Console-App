@@ -140,12 +140,12 @@ _on_chain_callback: Optional[Callable[..., None]] = None
 _chain_parts: "dict[str, dict]" = {}
 
 
-def assemble_chain_part(msg: dict) -> "list[tuple[str, list | None, float, str | None]]":
+def assemble_chain_part(msg: dict) -> "list[tuple[str, list | None, float, str | None, tuple | None]]":
     """One chain message from the daemon (complete_chain_capture.chain_messages) -> what it
     settles, in order: a chain whose parts did not all arrive before the next one began
-    (ticker, None, ts, reason); a fetch that failed (ticker, None, ts, Schwab's answer); the whole
-    chain once its last part is in (ticker, contracts, fetched_ts, None). A chain missing a part
-    is never returned."""
+    (ticker, None, ts, reason, None); a fetch that failed (ticker, None, ts, Schwab's answer, None);
+    the whole chain once its last part is in (ticker, contracts, fetched_ts, None, (spot, spot_ts)),
+    with the chain's one spot and its trade time. A chain missing a part is never returned."""
     tk, ts = msg.get("ticker"), msg.get("ts_recv")
     if not tk or not isinstance(ts, (int, float)):
         return []
@@ -153,12 +153,12 @@ def assemble_chain_part(msg: dict) -> "list[tuple[str, list | None, float, str |
     cur = _chain_parts.get(tk)
     if cur is not None and cur["ts"] != ts:
         out.append((tk, None, float(ts), f"the daemon's chain of {tk} arrived with "
-                    f"{len(cur['got'])} of its {cur['parts']} parts"))
+                    f"{len(cur['got'])} of its {cur['parts']} parts", None))
         del _chain_parts[tk]
         cur = None
     if "failed" in msg:
         _chain_parts.pop(tk, None)
-        return [*out, (tk, None, float(ts), str(msg["failed"]))]
+        return [*out, (tk, None, float(ts), str(msg["failed"]), None)]
     if cur is None:
         if int(msg["part"]) != 0:
             return out              # a chain begun before this console connected: not its chain
@@ -166,7 +166,8 @@ def assemble_chain_part(msg: dict) -> "list[tuple[str, list | None, float, str |
     cur["got"][int(msg["part"])] = msg.get("contracts") or []
     if len(cur["got"]) == cur["parts"]:
         del _chain_parts[tk]
-        out.append((tk, [c for i in range(cur["parts"]) for c in cur["got"][i]], float(ts), None))
+        out.append((tk, [c for i in range(cur["parts"]) for c in cur["got"][i]], float(ts), None,
+                    (msg["spot"], msg["spot_ts"])))
     return out
 
 

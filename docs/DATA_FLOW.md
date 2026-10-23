@@ -375,7 +375,8 @@ from Schwab to the screen (daemon, console, page), are these:
   stored capture is never replaced (a second write of its ticker, expiry and time is refused,
   `test_a_stored_chain_capture_is_never_overwritten_by_a_second_write_of_its_key`); a
   history write that fails (that refusal included) is a write failure, never the chain's: the
-  chain as the sweep delivered it (each expiry's underlying price and the contracts) is handed to
+  chain as the sweep delivered it (each expiry's underlying price, the chain's spot and the
+  contracts) is handed to
   the daemon's writer, which keeps it in `stream_write_failures` and counts it on its state (§2
   D4); the delivered chain stands, and the window's next chain writes the history. The sweep
   (`ChainSweep.fetch_chain`, `send_quotes`) is the one place a chain enters, so every consumer
@@ -450,14 +451,19 @@ from Schwab to the screen (daemon, console, page), are these:
   Levels older
   than two of the sweep's delivered rounds are stale with the reason (the daemon's last answer
   for its chain, or not delivered), whatever the hour.
-  Its `spot` is the price the levels were computed at (`spot_source`, `spot_as_of_ts_utc`); the
-  price is the daemon's price row. Every route names that price `priced_at_spot` (with
+  Its `spot` is the price the levels were computed at (`spot_source`, `spot_as_of_ts_utc`): the
+  chain's one spot (operator 2026-10-23), Schwab's LAST_PRICE with its trade time as the daemon's
+  price row (`live_price_rows.price_row`) holds it when the chain's last quote is in
+  (`ChainSweep.deliver`). The chain carries it to the console (`chain_messages`) and to the chain
+  history; a reprice of the kept chain stays at it; a capture written before the chain carried
+  one is read at its nearest expiry's underlyingPrice, labelled `chain_capture`
+  (`tests/test_data_path_chain_spot_v1.py`). Every route names that price `priced_at_spot` (with
   `priced_at_spot_source`, `priced_at_spot_as_of_ts_utc` where it serves them) and serves `spot`
   as the live price (`resolve_spot`), one meaning on every route (`tests/test_page_one_faucet_v1.py`
   checks every GET route that answers a ticker). The one-day move's two prices are the live price
   plus and minus the publication's implied move (`server.expected_move`, the one producer;
-  `/api/levels` and `/api/confluence` carry it). With no price from Schwab the next publication has no levels,
-  with its reason.
+  `/api/levels` and `/api/confluence` carry it). A chain delivered with no spot (the daemon held no
+  price) has no levels, with its reason.
 - **Heatmap cells.** Every strike Schwab listed in any expiry is a row; a cell is the book's
   value for its strike and expiry, exact. A cell with no value (no contract listed at that strike
   in that expiry, or Schwab sent nothing for it) is served as None, with no reason, and the page
@@ -672,7 +678,8 @@ behavior (AGENTS.md).
    (`tests/test_data_path_tables_stand_v1.py`); any other table drop — ENF-16.
 7. **Chain history is kept for research.** Schwab's API has no past option chains: a chain not
    saved is gone. One table holds it (§4.2): full chain, every 30 minutes, market hours only,
-   compressed, with Schwab's own underlying price. Levels are not stored as history; research
+   compressed, with Schwab's own underlying price of each expiry as sent and the chain's one spot
+   (`chain_spot`, `chain_spot_ts`). Levels are not stored as history; research
    runs the one levels producer over the stored chains, so research and the screen are one
    computation. After the close, the levels are that producer run on the newest capture, with
    the capture's price and time (operator 2026-09-26; a weekend chain blanks open interest).

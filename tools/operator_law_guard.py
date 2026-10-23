@@ -75,11 +75,6 @@ def _python_violation(code: str) -> bool:
     return False
 
 
-def _protected_path_violation(cmd: str) -> bool:
-    """`cmd` runs a statement that deletes, moves, overwrites or unprotects a file under data/."""
-    return any(_destroys_protected(st) for st in read(cmd or ""))
-
-
 def _destroys_protected(st: Statement) -> bool:
     """The statement deletes, moves, overwrites or unprotects a file under data/. A python's
     `-c` code and the stdin text it reads are parsed as Python. A copy INTO a protected tree is a
@@ -152,11 +147,10 @@ def _disables_a_lock(st: Statement) -> bool:
             or [w.lower() for w in st.words[:2]] == ["pre-commit", "uninstall"])
 
 
-def bash_violations(cmd: str, ledger=None, payload_cwd: str = "", powershell: bool = False) -> list[str]:
+def bash_violations(cmd: str, powershell: bool = False) -> list[str]:
     """Every host-wide ban that fires on `cmd` (a PowerShell command when `powershell`).
     Applicability is per rule, never an early return (a foreign-repository target
-    exempts nothing host-wide). `ledger` and `payload_cwd` are accepted for the suites' call
-    shape; no rule reads a repository."""
+    exempts nothing host-wide); no rule reads a repository."""
     statements = read(cmd or "", powershell=powershell)
     out: list[str] = []
     if any(_blind_stage(st) for st in statements):
@@ -196,7 +190,7 @@ def main() -> int:
     if payload.get("tool_name") not in BASH_TOOLS:
         return 0                          # file edits carry no shell action to judge
     cmd = (payload.get("tool_input") or {}).get("command") or ""
-    bad = bash_violations(cmd, [], str(payload.get("cwd") or ""), payload.get("tool_name") == "PowerShell")
+    bad = bash_violations(cmd, powershell=payload.get("tool_name") == "PowerShell")
     if bad:
         sys.stderr.write("BLOCKED — OPERATOR LAW: ban the ACTION, not the word.\n\n"
                          + "\n".join(f"    {b}" for b in bad) + "\n")

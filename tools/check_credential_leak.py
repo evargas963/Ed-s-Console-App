@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
 """Credential / secret leak firewall on staged (and optional) text diffs.
 
-OBSERVED (2026-07-25): operator-home paths already partially gated for
-scoreboard evidence, but staged source can still land Bearer tokens, API
-keys, or C:\\Users\\… literals that neither private-path scope nor ruff catch.
-VALIDATED: regex suite unit-tested; scans `git diff --cached` only (what a
-commit would publish). The scanner's own suite and this module are path-skipped
+Refuses Bearer tokens, API keys, private keys and operator-home paths (Windows, posix and Git
+Bash spellings) in `git diff --cached` (what a commit would publish). The scanner's own suite
+and this module are path-skipped
 (injected payloads must live there). Other fixtures mark a line with
 `# credential-leak-ok` or `# credential-leak-fixture-ok`.
 
@@ -42,6 +40,7 @@ SECRET_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("windows_user_home", re.compile(
         r"[A-Za-z]:[\\/]+Users[\\/]+[A-Za-z0-9_.-]+", re.IGNORECASE)),
     ("posix_user_home", re.compile(r"(?<![\w<])/(?:home|Users)/[A-Za-z0-9_.-]+[\\/]")),
+    ("git_bash_user_home", re.compile(r"(?<![\w<])/[A-Za-z]/Users/[A-Za-z0-9_.-]+[\\/]", re.IGNORECASE)),
 )
 
 
@@ -52,12 +51,9 @@ class StagedDiffUnreadable(RuntimeError):
 def _staged_text() -> str:
     """The staged diff, RAISING when git could not produce it.
 
-    RC-529 (ported from #219's row 506; re-measured 2026-09-06 on ac3f78fb). This returned
-    `p.stdout or ""` and never read returncode, so any failure of the child — a broken or
-    locked index, a corrupt object, git absent from PATH under a different launch context —
-    yielded an empty diff. An empty diff scans clean, so this BLOCKING pre-commit secrets gate
-    would print its success line and let the commit through without having read a single byte
-    of what was being committed. "I could not look" is not "there is nothing".
+    Any failure of git — a broken or locked index, a corrupt object, git absent from PATH —
+    raises: an unread diff would scan clean and let the commit through unread. "I could not
+    look" is not "there is nothing".
     """
     p = subprocess.run(
         ["git", "diff", "--cached", "--unified=0", "--no-color"],
@@ -76,8 +72,8 @@ def _staged_text() -> str:
 
 
 def _norm_path(path: str) -> str:
-    """The ONE repo-relative spelling (RC-527). `lstrip("./")` used to live here and ate the
-    leading dot of `.github/...`, so a dot-prefixed skip entry could never match."""
+    """The ONE repo-relative spelling; a leading dot (`.github/...`) is kept, so a dot-prefixed
+    skip entry matches."""
     if str(REPO) not in sys.path:
         sys.path.insert(0, str(REPO))
     from tools.pretooluse_guard import normalize_repo_relative
@@ -113,8 +109,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         hits = find_credential_leaks()
     except StagedDiffUnreadable as e:
-        # RC-529: fail CLOSED. Reporting "clean" for a diff nobody read is the one outcome a
-        # secrets gate must never produce.
+        # Fail CLOSED: "clean" for a diff nobody read is the one outcome a secrets gate must
+        # never produce.
         print("check_credential_leak: FAIL — the staged diff could not be read, so nothing "
               "was scanned:", file=sys.stderr)
         print(f"  {e}", file=sys.stderr)
@@ -132,9 +128,9 @@ def main(argv: list[str] | None = None) -> int:
     else:
         print("check_credential_leak: PASS (staged diff clean)")
     if "--and-private-paths" in args:
-        # BEDROCK 2026-09-06: ONE secrets-and-paths hook at the commit seam. The tracked-
-        # evidence private-path scan (tools/check_private_paths.py) keeps its own module and
-        # suite; this flag runs it in the same hook so the seam has one owner.
+        # ONE secrets-and-paths hook at the commit seam. The tracked-evidence private-path scan
+        # (tools/check_private_paths.py) keeps its own module and suite; this flag runs it in
+        # the same hook so the seam has one owner.
         if str(REPO) not in sys.path:
             sys.path.insert(0, str(REPO))
         from tools.check_private_paths import main as private_paths_main

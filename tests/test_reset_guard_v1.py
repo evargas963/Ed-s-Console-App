@@ -1,9 +1,10 @@
 # institutional-synthetic-ok: inject destructive git commands to prove LOCK-2 BLOCKs.
-"""LOCK-2 reset-guard (RC-231/RC-232) — dedicated acceptance suite.
+"""LOCK-2 reset-guard (RC-231) — dedicated acceptance suite.
 
-The tree-destructive git CLASS blocks at PreToolUse: reset, restore, checkout --,
-clean, stash — against protected/mission scope or in bare whole-tree form. Safe and
-read-only forms stay legal; escapes are explicit and operator-visible.
+Tree-destructive git blocks at PreToolUse: reset --hard, checkout -- <path>, clean -f,
+push --force and every stash but `stash list` on any target; the wider reset, restore,
+checkout --, clean class against protected or product paths or in bare whole-tree form.
+Safe and read-only forms stay legal.
 """
 from __future__ import annotations
 
@@ -18,14 +19,7 @@ import tools.operating_process_lock as OPL  # noqa: E402
 import tools.process_lock_guard as PLG  # noqa: E402
 
 
-def _no_escape(monkeypatch, tmp_path):
-    # 2026-08-24 teardown: the operator_go grant file is GONE — the only residual
-    # escape vector is the env var, which must also not disarm the guard.
-    monkeypatch.delenv("ED_RESET_GUARD", raising=False)
-
-
-def test_destructive_class_blocks(monkeypatch, tmp_path):
-    _no_escape(monkeypatch, tmp_path)
+def test_destructive_class_blocks():
     for cmd in (
         "git restore -- server.py",
         "git checkout -- static/chart.html",
@@ -37,8 +31,7 @@ def test_destructive_class_blocks(monkeypatch, tmp_path):
         assert OPL.reset_guard_violations(cmd), f"LOCK-2 silent on: {cmd}"
 
 
-def test_safe_forms_allow(monkeypatch, tmp_path):
-    _no_escape(monkeypatch, tmp_path)
+def test_safe_forms_allow():
     for cmd in (
         "git log --oneline -5",
         "git diff HEAD -- server.py",
@@ -50,23 +43,11 @@ def test_safe_forms_allow(monkeypatch, tmp_path):
         assert not OPL.reset_guard_violations(cmd), f"LOCK-2 false-fired on: {cmd}"
 
 
-def test_escapes_are_explicit(monkeypatch, tmp_path):
-    """No grant file exists any more (2026-08-24 teardown) and the env token never
-    disarmed the guard (RC-450) — both directions still BLOCK."""
-    monkeypatch.delenv("ED_RESET_GUARD", raising=False)
-    assert OPL.reset_guard_violations("git reset -- static/chart.html")
-    monkeypatch.setenv("ED_RESET_GUARD", "off")
-    assert OPL.reset_guard_violations("git reset -- static/chart.html")
+# ── Judge the ACTION, not the data the command carries ──────────────────────────────────
+# A commit message or other quoted text that describes destructive git is not a statement.
 
 
-# ── RC-253: judge the ACTION, not the data the command carries (RC-93) ──────────────────
-# LOCK-2 blocked a `git commit` because the MESSAGE described a wipe. It fired hardest on the
-# most precise incident write-ups, which pressures every future writer toward vaguer accounts
-# of exactly the incidents this ledger exists to record.
-
-
-def test_rc253_commit_message_quoting_destructive_git_is_not_an_action(monkeypatch, tmp_path):
-    _no_escape(monkeypatch, tmp_path)
+def test_a_commit_message_quoting_destructive_git_is_not_an_action():
     heredoc = (
         "git commit --file - <<'MSG'\n"
         "RC-252: the guard was silent on git restore -- static/chart.html\n"
@@ -75,17 +56,16 @@ def test_rc253_commit_message_quoting_destructive_git_is_not_an_action(monkeypat
         "MSG"
     )
     assert not OPL.reset_guard_violations(heredoc), (
-        "LOCK-2 blocked a commit whose only destructive git is prose in the message — this is "
-        "the RC-93 inversion: banning the word, not the action"
+        "LOCK-2 blocked a commit whose only destructive git is prose in the message — "
+        "banning the word, not the action"
     )
     inline = "git commit -m 'RC-231 was opened after a git reset --hard wiped static/chart.html'"
     assert not OPL.reset_guard_violations(inline)
 
 
-def test_rc253_stripping_payloads_does_not_open_a_bypass(monkeypatch, tmp_path):
+def test_stripping_payloads_does_not_open_a_bypass():
     """The exemption is for DATA. A body handed to an interpreter is the instruction, and a
     real destructive command is unaffected by any of this."""
-    _no_escape(monkeypatch, tmp_path)
     piped = "bash <<'EOF'\ngit reset --hard\nEOF"
     assert OPL.reset_guard_violations(piped), (
         "a heredoc piped into a shell IS the instruction — stripping it would be a bypass"
@@ -94,28 +74,23 @@ def test_rc253_stripping_payloads_does_not_open_a_bypass(monkeypatch, tmp_path):
         assert OPL.reset_guard_violations(cmd), f"real command no longer blocks: {cmd}"
 
 
-def test_rc253_a_destructive_command_after_a_quoted_message_still_blocks(monkeypatch, tmp_path):
+def test_a_destructive_command_after_a_quoted_message_still_blocks():
     """Stripping the quoted payload must not swallow what follows it."""
-    _no_escape(monkeypatch, tmp_path)
     chained = "git commit -m 'notes' && git checkout -- server.py"
     assert OPL.reset_guard_violations(chained), (
-        "the second, genuinely destructive command was lost with the message payload"
+        "the destructive command after the quoted message is dropped with the message payload"
     )
 
 
-def test_live_path_wired_through_guard(monkeypatch, tmp_path):
+def test_live_path_wired_through_guard():
     """The guard's Shell path carries the reset-guard — the live BLOCK site."""
-    _no_escape(monkeypatch, tmp_path)
-    bad = PLG.pretooluse_block("Bash", {"command": "git restore -- static/chart.html"})
-    assert any("RESET_GUARD" in b for b in bad), "reset guard not on the live PreToolUse path"
+    for cmd in ("git restore -- static/chart.html", "git stash push -q -m probe -- stream_spine.py"):
+        bad = PLG.pretooluse_block("Bash", {"command": cmd})
+        assert any("RESET_GUARD" in b for b in bad), f"reset guard not on the live PreToolUse path: {cmd}"
 
 
-# ── RC-525 (ported from #221's row 508): adjudicated by what the command can DESTROY ────────
-# Re-measured on ac3f78fb 2026-09-06: `git push -f origin main`, `git -C ../other reset --hard`
-# and `git restore --staged x.py && git reset --mixed HEAD~1` all PASSED the one owner, and
-# `git reset --soft HEAD~1` (HEAD only; index and worktree untouched) was refused although the
-# repository's own merge authority runs it. The class rule is now judged PER STATEMENT, the
-# globals prefix admits `-C <path>`, the push clause admits `-f` and flags after the refspec.
+# ── Adjudicated by what the command can DESTROY: the class rule is judged per statement, ────
+# the globals prefix admits `-C <path>`, the push clause admits `-f` and flags after the refspec.
 
 #: (command, must_block, what it can reach). One table, both directions.
 _ADJUDICATION: tuple[tuple[str, bool, str], ...] = (
@@ -139,12 +114,20 @@ _ADJUDICATION: tuple[tuple[str, bool, str], ...] = (
     ("git reset HEAD~1", True, "the index (--mixed is the default)"),
     ("git reset --keep HEAD~1", True, "local changes"),
     ("git reset --merge HEAD~1", True, "merge state"),
+    ("git reset -- static/chart.html", True, "the index of a product file"),
     ("git clean -fd", True, "untracked files"),
     ("git clean -xfd", True, "untracked + ignored"),
     ("git checkout -- .", True, "whole worktree"),
     ("git checkout -- server.py", True, "a product file"),
     ("git restore .", True, "whole worktree"),
     ("git stash", True, "moves the worktree away"),
+    ("git stash push -q -m probe -- stream_spine.py", True, "a product file on no wipe list"),
+    ("git stash push -- app/market_data/schwab/streaming/capture.py", True, "a product file on no wipe list"),
+    ("git stash pop", True, "rewrites the worktree"),
+    ("git stash apply", True, "rewrites the worktree"),
+    ("git stash drop", True, "deletes a stash"),
+    ("git stash show -p stash@{0}", True, "AGENTS.md: never git stash; only `stash list` reads"),
+    ("git -C ../other stash push -- stream_spine.py", True, "another checkout's product file"),
     ("git push -f origin main", True, "remote history"),
     ("git push origin main -f", True, "remote history, flag after the refspec"),
     ("git push --force origin main", True, "remote history"),
@@ -154,46 +137,39 @@ _ADJUDICATION: tuple[tuple[str, bool, str], ...] = (
 )
 
 
-def test_rc525_reset_is_adjudicated_by_what_it_can_destroy(monkeypatch, tmp_path):
+def test_git_is_adjudicated_by_what_it_can_destroy():
     """Both directions in one table: safe forms pass, every destructive mode still blocks."""
-    _no_escape(monkeypatch, tmp_path)
     wrong = [(cmd, reaches) for cmd, must_block, reaches in _ADJUDICATION
              if bool(OPL.reset_guard_violations(cmd)) != must_block]
     assert wrong == [], f"verdict disagrees with what the command can destroy: {wrong}"
 
 
-def test_rc525_a_safe_form_cannot_launder_a_destructive_one(monkeypatch, tmp_path):
-    """THE REASON the class rule is judged per statement.
-
-    The safe list used to be searched across the WHOLE command, so one safe form anywhere
-    exempted everything chained after it — a live hole before `reset --soft` was added, and
-    adding a safe form without fixing it would have widened the hole.
-    """
-    _no_escape(monkeypatch, tmp_path)
+def test_a_safe_form_cannot_launder_a_destructive_one():
+    """The class rule is judged per statement: a safe form exempts only itself, never a
+    destructive statement chained after it."""
     for chain in (
         "git reset --soft HEAD~1 && git clean -fd",
         "git reset --soft HEAD~1 && git reset --mixed HEAD~1",
-        "git restore --staged x.py && git reset --mixed HEAD~1",   # the pre-existing hole
+        "git restore --staged x.py && git reset --mixed HEAD~1",
         "git stash list ; git restore .",
         "git checkout -b feat/x && git checkout -- server.py",
         "git status | cat && git stash",
     ):
         assert OPL.reset_guard_violations(chain), f"a safe form laundered the chain: {chain}"
-    # ...and a chain that is safe end to end stays legal, or the fix would be a new over-block.
+    # ...and a chain that is safe end to end stays legal.
     assert not OPL.reset_guard_violations("git status && git reset --soft HEAD~1")
     assert not OPL.reset_guard_violations("git fetch origin && git reset --soft origin/main")
 
 
-def test_rc525_an_interpreter_heredoc_is_still_judged_per_line(monkeypatch, tmp_path):
-    """RC-253 kept: a heredoc handed to a shell IS the instruction, so a CLASS form inside it
+def test_an_interpreter_heredoc_is_judged_per_line():
+    """A heredoc handed to a shell IS the instruction, so a CLASS form inside it
     (not only a hard form) still blocks, and a quoted commit message stays prose."""
-    _no_escape(monkeypatch, tmp_path)
     assert OPL.reset_guard_violations("bash <<'EOF'\ngit status\ngit restore .\nEOF")
     assert not OPL.reset_guard_violations(
         "git commit -m 'RC-231: git restore . wiped the tree' && git push origin feat/x")
 
 
-def test_rc525_the_safe_reset_is_live_on_the_pretooluse_path(monkeypatch, tmp_path):
+def test_the_safe_reset_is_live_on_the_pretooluse_path():
     """The seam that actually runs: LOCK-2 lets --soft through and still refuses --hard.
 
     Asserted on the RESET_GUARD verdict, not on an empty result: the Bash seam also carries
@@ -201,7 +177,6 @@ def test_rc525_the_safe_reset_is_live_on_the_pretooluse_path(monkeypatch, tmp_pa
     checkout, and a control whose verdict depends on which checkout it runs in is testing the
     topology, not the law.
     """
-    _no_escape(monkeypatch, tmp_path)
     soft = PLG.pretooluse_block("Bash", {"command": "git reset --soft HEAD~1"})
     assert not any("RESET_GUARD" in b for b in soft), (
         f"LOCK-2 still refuses a reset that cannot touch index or worktree: {soft}")
@@ -210,8 +185,7 @@ def test_rc525_the_safe_reset_is_live_on_the_pretooluse_path(monkeypatch, tmp_pa
 
 
 def test_git_named_by_its_full_path_or_exe_is_judged_as_git():
-    """`& C:\\Git\\cmd\\git.exe reset --hard` passed the guard (reviewer, 2026-10-06): the git
-    readers matched the bare word `git`, not git given by path or with `.exe`."""
+    """git given by its path or with `.exe` (`& C:\\Git\\cmd\\git.exe reset --hard`) is git."""
     for tool, cmd in (("PowerShell", "& C:\\Git\\cmd\\git.exe reset --hard"),
                       ("PowerShell", "& \"C:\\Program Files\\Git\\cmd\\git.exe\" reset --hard HEAD~1"),
                       ("Bash", "C:/Git/cmd/git.exe stash"),
@@ -223,8 +197,7 @@ def test_git_named_by_its_full_path_or_exe_is_judged_as_git():
 
 
 def test_a_heredoc_handed_to_an_interpreter_by_its_full_path_is_judged():
-    """`C:\\Git\\bin\\bash.exe <<'EOF'` with `git reset --hard` in the body passed every guard
-    (architecture review, 2026-10-06): the interpreter was read as the bare word `bash`."""
+    """A heredoc handed to bash by its path (`C:\\Git\\bin\\bash.exe <<'EOF'`) is judged as bash's."""
     for shell in ("C:\\Git\\bin\\bash.exe", "/usr/bin/bash", "\"C:\\Program Files\\Git\\bin\\bash.exe\"",
                   "sudo bash"):
         assert OPL.reset_guard_violations(f"{shell} <<'EOF'\ngit status\ngit reset --hard\nEOF"), shell
