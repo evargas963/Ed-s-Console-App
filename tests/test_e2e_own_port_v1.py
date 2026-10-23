@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import socket
 import subprocess
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -38,8 +39,13 @@ def _run_port(config: dict) -> int:
 
 
 def test_two_runs_at_once_get_two_ports():
+    """The second run picks while the first run's server holds its port."""
     env = {k: v for k, v in os.environ.items() if k != "ED_E2E_PORT"}
-    first, second = _load_config(env), _load_config(env)
+    first = _load_config(env)
+    with socket.socket() as first_server:
+        first_server.bind(("127.0.0.1", urlsplit(first["base"]).port))
+        first_server.listen()
+        second = _load_config(env)
     assert urlsplit(first["base"]).port != urlsplit(second["base"]).port
     assert _run_port(first) != _run_port(second)
 
