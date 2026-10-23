@@ -830,8 +830,8 @@ class CaptureWriter:
         self.lost_last_ts: "float | None" = None
         self._round: list = []         # the messages the writer is writing now, in order
         self._stored = 0               # how many of them are in the open batch
-        self._admitting: list = []     # the messages _admit is holding now, in order
-        self._admitted = 0             # how many of them are held (in memory, spilled or lost)
+        self._admitting: list = []     # the messages _admit or the stop's spill is holding now
+        self._admitted = 0             # how many of them are held (in memory, on disk or lost)
         self._logged: dict = {}        # log line kind -> [minute last logged, count since]
         self.state = WRITER_NOT_STARTED
         self.rows_written = 0
@@ -1132,15 +1132,16 @@ class CaptureWriter:
         self._log_once_a_minute(("refused", reason),
                                 "stream writer: the database refused a write, %d messages held: %s",
                                 len(held), reason)
-        with self._lock:
-            self._batch, self._batch_spilled = [], False
+        with self._lock:                   # rolled back: none of the round is stored
+            self._batch, self._batch_spilled, self._stored = [], False, 0
             if self.state != WRITER_BLOCKED:
                 self.error_ts = time.time()
             self.state, self.error = WRITER_BLOCKED, reason
-        if not holding:                    # held now: in memory up to the cap, then spilled
-            with self._lock:               # the round is what memory holds; the spilled are on disk
-                self._waiting, self._waiting_bytes = [], 0
-                self._round, self._stored = self._waiting, 0
+            if not holding:                # held now: in memory up to the cap, then spilled; the
+                self._waiting, self._waiting_bytes = [], 0  # round is what memory holds
+                self._round = self._waiting
+                self._admitting, self._admitted = held, 0
+        if not holding:
             self._admit(held)
         if stopping:
             self._leave_on_disk()
@@ -1271,23 +1272,28 @@ class CaptureWriter:
 
     def _leave_on_disk(self) -> None:
         """At a stop while the database refuses writes: what is held in memory goes to a spill
-        file named for when the block began (before the spill file's, _tail), and both stay."""
-        if self._waiting:
+        file named for when the block began (before the spill file's, _tail), and both stay. Those
+        not yet in it are counted as _admit's are (held; not recorded if the writer dies)."""
+        with self._lock:
+            items, self._waiting, self._waiting_bytes = self._waiting, [], 0
+            self._round, self._stored = self._waiting, 0
+            self._admitting, self._admitted = items, 0
+        if items:
             began = self.error_ts if self.error_ts is not None else time.time()
             try:
                 held = _Spill.new(self.db_path, int(began * 1000), 0)
             except OSError as e:
-                for item in self._waiting:
-                    self._lose(item, e)
-                held = None
-            if held is not None:
-                for item in self._waiting:
-                    refused = held.append(_spill_record(item))
-                    if refused is not None:
-                        self._lose(item, refused)
+                held = e
+            for item in items:
+                refused = held if isinstance(held, OSError) else held.append(_spill_record(item))
+                if refused is not None:
+                    self._lose(item, refused)
+                with self._lock:
+                    self._admitted += 1
+            if not isinstance(held, OSError):
                 held.close()
                 with self._lock:
                     self.left_on_disk.append(held.left())
         with self._lock:
             self._leave_spills()
-            self._waiting, self._waiting_bytes = [], 0
+            self._admitting, self._admitted = [], 0

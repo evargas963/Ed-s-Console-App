@@ -293,7 +293,11 @@ def test_messages_spilled_when_the_database_refuses_a_round_are_not_counted_as_h
     async def go():
         stop = asyncio.Event()
         task = asyncio.create_task(writer.run(sub, stop=stop))
-        await _until(lambda: writer.status()["spill"] is not None)
+        def admitted() -> bool:        # every message spilled or queued: _admit has finished
+            s = writer.status()
+            return (s["state"] == WRITER_BLOCKED and s["spill"] is not None
+                    and s["spill"]["messages"] + s["queue_depth"] == sent)
+        await _until(admitted)
         during = writer.status()
         holder.execute("COMMIT")
         await _until(lambda: writer.status()["rows_written"] == sent)
@@ -310,44 +314,91 @@ def test_messages_spilled_when_the_database_refuses_a_round_are_not_counted_as_h
     assert _rows(db, "SELECT COUNT(*) FROM stream_quotes_raw")[0][0] == sent
 
 
-class _UnwritableQuote(dict):
-    """STAND-IN for a defect: a captured equity quote whose fields cannot be read as items, so no
-    spill record can hold it (_spill_record raises RuntimeError on it)."""
+class _UnreadableQuote(dict):
+    """STAND-IN for a defect: a captured equity quote whose fields cannot be read as items, so the
+    writer can neither size it for memory nor write it to a spill record (RuntimeError)."""
 
     def items(self):
-        raise RuntimeError("a message no spill record can hold")
+        raise RuntimeError("a message the writer cannot read")
 
 
-def test_a_writer_that_dies_while_holding_counts_as_not_recorded_only_what_was_not_yet_held(tmp_path):
-    """INDUCED CONDITIONS: the write lock held, a 1-byte memory cap (an input, STAND-IN for about
-    2 GB), the mix's first ten equity quotes and then the eleventh as an _UnwritableQuote: the ten
-    go to the spill file and the writer dies holding the eleventh. Not recorded is the eleventh
-    alone; the ten are in the spill file, listed as left on disk; none is lost."""
-    db = tmp_path / "stream_capture.db"
-    writer = CaptureWriter(db, timeout_sec=0.05, retry_sec=0.1, hold_cap_bytes=1)
+class _Unprintable:
+    """STAND-IN for a defect: a value no spill record can write (its repr raises RuntimeError)."""
+
+    def __repr__(self):
+        raise RuntimeError("a value no spill record can write")
+
+
+def _dies_holding(db, cap: int, eleventh: dict, *, stop: bool) -> dict:
+    """The writer's status once it has died holding the mix's first ten equity quotes and then the
+    eleventh's message `eleventh`, the write lock held throughout; with `stop`, the stop is asked
+    once all eleven are held in memory."""
+    writer = CaptureWriter(db, timeout_sec=0.05, retry_sec=0.1, hold_cap_bytes=cap)
     holder = sqlite3.connect(db, isolation_level=None, check_same_thread=False)
     holder.execute("BEGIN IMMEDIATE")
     bus = MessageBus()
     sub = bus.subscribe("", policy=LOG)
     assert _publish_mix(bus, {"LEVELONE_EQUITIES"}, limit=10) == 10
-    m = [m for m in _MIX["messages"] if m["service"] == "LEVELONE_EQUITIES"][10]
-    key = m["item"]["key"].upper()
-    kind, msg = capture._message(m["service"], key, m["item"], m["schwab_ts"])
-    bus.publish(f"{kind}.{key}", _UnwritableQuote(msg))
+    bus.publish(f"quote.{eleventh['symbol']}", eleventh)
 
     async def go():
-        stop = asyncio.Event()
-        task = asyncio.create_task(writer.run(sub, stop=stop))
+        ended = asyncio.Event()
+        task = asyncio.create_task(writer.run(sub, stop=ended))
+        if stop:
+            await _until(lambda: writer.status()["waiting"] == 11)
+            ended.set()
         await _until(lambda: writer.status()["state"] == WRITER_DEAD)
-        stop.set()
+        ended.set()
         await task
     try:
         asyncio.run(go())
     finally:
         holder.close()
-    s = writer.status()
-    assert s["error"] == "RuntimeError: a message no spill record can hold"
+    return writer.status()
+
+
+def _eleventh() -> dict:
+    m = [m for m in _MIX["messages"] if m["service"] == "LEVELONE_EQUITIES"][10]
+    return capture._message(m["service"], m["item"]["key"].upper(), m["item"], m["schwab_ts"])[1]
+
+
+def test_a_writer_that_dies_while_spilling_counts_as_not_recorded_only_what_was_not_yet_held(tmp_path):
+    """INDUCED CONDITIONS: a 1-byte memory cap (an input, STAND-IN for about 2 GB), so the first ten
+    go to the spill file, and the eleventh an _UnreadableQuote: the writer dies holding it. Not
+    recorded is the eleventh alone; the ten are in the spill file, listed as left on disk; none is
+    lost."""
+    s = _dies_holding(tmp_path / "stream_capture.db", 1, _UnreadableQuote(_eleventh()), stop=False)
+    assert s["error"] == "RuntimeError: a message the writer cannot read"
     assert (s["unrecorded"], s["lost"], [k["messages"] for k in s["left_on_disk"]]) == (1, 0, [10])
+
+
+def test_a_writer_that_dies_while_holding_in_memory_counts_all_it_held_as_not_recorded(tmp_path):
+    """INDUCED CONDITIONS: a 10 MB memory cap, so the first ten are held in memory, and the eleventh
+    an _UnreadableQuote: the writer dies holding it. Not recorded is all eleven; nothing is on
+    disk or lost."""
+    s = _dies_holding(tmp_path / "stream_capture.db", 10_000_000, _UnreadableQuote(_eleventh()), stop=False)
+    assert s["error"] == "RuntimeError: a message the writer cannot read"
+    assert (s["unrecorded"], s["lost"], s["left_on_disk"]) == (11, 0, [])
+
+
+def test_a_writer_that_dies_leaving_memory_on_disk_at_a_stop_counts_only_what_was_not_yet_written(tmp_path):
+    """INDUCED CONDITIONS: a 10 MB memory cap, so all eleven are held in memory, the eleventh
+    carrying an _Unprintable value; the stop is asked, and the writer dies writing the eleventh
+    to the stop's file. Not recorded is the eleventh alone, none is lost, and the next writer
+    writes the ten from that file into the database."""
+    db = tmp_path / "stream_capture.db"
+    s = _dies_holding(db, 10_000_000, {**_eleventh(), "unprintable": _Unprintable()}, stop=True)
+    assert s["error"] == "RuntimeError: a value no spill record can write"
+    assert (s["unrecorded"], s["lost"]) == (1, 0)
+    writer = CaptureWriter(db)
+
+    async def go():
+        ended = asyncio.Event()
+        task = asyncio.create_task(writer.run(MessageBus().subscribe("", policy=LOG), stop=ended))
+        await _until(lambda: _rows(db, "SELECT COUNT(*) FROM stream_quotes_raw")[0][0] == 10)
+        ended.set()
+        await task
+    asyncio.run(go())
 
 
 def test_nothing_is_removed_while_the_options_trade_or_the_market_is_unknown(tmp_path):
