@@ -75,7 +75,7 @@ def published():
     at = datetime.fromtimestamp(NVDA["ts_utc"], tz=ET)
     server._publish_levels("NVDA", captures=[{"contracts": [dict(c) for c in NVDA["contracts"]], "ts_utc": NVDA["ts_utc"],
                                               "spot": NVDA["spot"], "et_date": at.date().isoformat(),
-                                              "basis": server.CAPTURE_BASIS, "spot_ts": None}], now=at)
+                                              "basis": server.CAPTURE_BASIS, "spot_ts": None, "spot_from_chain": False}], now=at)
     yield
     with server._terrain_cache_lock:
         server._terrain_cache.pop("NVDA", None)
@@ -102,7 +102,7 @@ def test_the_chain_shows_greeks_on_a_no_value_volatility_as_missing():
     tk, expiry = "NFLX", "2027-12-17"
     server._publish_levels(tk, captures=[{"contracts": [dict(c) for c in NFLX.chain], "ts_utc": NFLX.now.timestamp(),
                                           "spot": NFLX.spot, "et_date": NFLX.now.date().isoformat(),
-                                          "basis": server.CAPTURE_BASIS, "spot_ts": None}], now=NFLX.now)
+                                          "basis": server.CAPTURE_BASIS, "spot_ts": None, "spot_from_chain": False}], now=NFLX.now)
     try:
         body = json.loads(bytes(server.get_chain(ticker=tk, expiry=expiry).body))
     finally:

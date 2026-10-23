@@ -42,7 +42,7 @@ def test_every_per_strike_panel_answers_at_the_time_asked_around_the_price():
         ofs._price_rows[row["ticker"]] = row
         server._publish_levels(tk, captures=[{"contracts": CRWD.chain, "ts_utc": at, "spot": CRWD.spot,
                                               "et_date": CRWD.now.date().isoformat(),
-                                              "basis": server.CAPTURE_BASIS, "spot_ts": None}], now=CRWD.now)
+                                              "basis": server.CAPTURE_BASIS, "spot_ts": None, "spot_from_chain": False}], now=CRWD.now)
         last = _QUOTE["native"]["LAST_PRICE"]
         strikes = server.terrain_strikes_payload(tk, "auto", None, 0, at)
         assert strikes["spot"] == last and strikes["spot_strike"] is not None

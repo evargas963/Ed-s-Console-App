@@ -150,6 +150,7 @@ def test_spot_gamma_reprice_runs_only_for_a_viewed_heatmap():
 
     import push_changes
     import server as srv
+    loop = push_changes._loop
     push_changes.bind(None)
     page = push_changes.subscribe("ZZVIEW")
     gate = threading.Event()
@@ -163,4 +164,5 @@ def test_spot_gamma_reprice_runs_only_for_a_viewed_heatmap():
         gate.set()
         srv._chain_pricing.submit(lambda: None).result(timeout=10)
         push_changes.unsubscribe("ZZVIEW", page)
+        push_changes.bind(loop)
     assert waiting == {"ZZVIEW": (srv.REPRICE, None, None, None)}

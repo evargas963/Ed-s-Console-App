@@ -259,6 +259,7 @@ def test_the_levels_are_priced_at_the_chains_spot_and_a_new_chain_moves_them():
     assert after["_gamma_surface"]["spot"] == _SPOT * 1.02 and after["spot"] == _SPOT * 1.02
     assert after["spot_as_of_ts_utc"] == _T + 55.0
     assert after["_gamma_surface"]["cells"] != before["cells"]          # GEX scales with spot
+    assert after["_gamma_surface"]["surface_seq"] == before["surface_seq"] + 2   # the reprice, then the chain
 
 
 # ── what is kept, and for whom ───────────────────────────────────────────────────────────────
@@ -279,7 +280,7 @@ def test_a_stored_capture_and_a_live_chain_publish_the_same_fields():
     _daemon()
     _put_chain()
     live = _cached()
-    _publish(captures=[{"contracts": _CONTRACTS, "ts_utc": _T, "spot": _SPOT, "spot_ts": None, "et_date": "2026-10-07",
+    _publish(captures=[{"contracts": _CONTRACTS, "ts_utc": _T, "spot": _SPOT, "spot_ts": None, "spot_from_chain": False, "et_date": "2026-10-07",
                         "basis": server.CAPTURE_BASIS}])
     stored = _cached()
     assert {k for k in live if not k.startswith("_")} == {k for k in stored if not k.startswith("_")}

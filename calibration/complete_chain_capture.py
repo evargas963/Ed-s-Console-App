@@ -265,14 +265,13 @@ class ChainSweep:
 
     def __init__(self, db_path: Path | str, watchlist: "list[str]", publish: "callable",
                  clock: "callable" = time.time, *, failures: "CaptureWriter",
-                 streamed: "callable", price: "callable" = price_row) -> None:
+                 streamed: "callable") -> None:
         self.db_path = db_path
         self.watchlist = list(watchlist)  # the daemon's list, replaced whole on each change
         self.publish = publish          # (topic, msg) -> None, safe from any thread
         self.clock = clock              # when a request begins, and when a chain is delivered
         self.failures = failures        # the daemon's writer: keeps a failed history write
         self.streamed = streamed        # not read: every greek is the quote's
-        self.price = price              # (ticker, now) -> the daemon's price row (live_price_rows.price_row)
         self.round_sec: float | None = None
         self._expiries: "dict[str, tuple[date, list[date]]]" = {}   # ticker -> (ET date, expiries)
         self._markets_day: "dict[str, date]" = {}          # market date -> the ET date Schwab answered it
@@ -500,8 +499,9 @@ class ChainSweep:
         not the close values, whenever it is delivered) and its one spot: Schwab's LAST_PRICE with
         its trade time, as the daemon's price row holds it now that the chain is complete."""
         now = self.clock()
-        row = self.price(chain.ticker, now)
-        chain.spot, chain.spot_ts = row["spot"], row["trade_ts"]
+        row = price_row(chain.ticker, now)
+        if row["spot"] is not None:      # a trade time without its price is no spot
+            chain.spot, chain.spot_ts = row["spot"], row["trade_ts"]
         contracts = chain.contracts()
         for topic, msg in chain_messages(chain.ticker, contracts, chain.started, chain.spot, chain.spot_ts):
             self.publish(topic, msg)
@@ -565,9 +565,10 @@ def newest_capture_ts(db_path: Path | str, ticker: str) -> float | None:
 def last_capture_per_day(db_path: Path | str, ticker: str, days: int, *,
                          before_et_date: str | None = None) -> list[dict[str, Any]]:
     """The last capture of each of the newest `days` market days (newest first) -- the close --
-    each as {et_date, ts_utc, spot, spot_ts, basis, contracts} with every expiry of that capture.
-    `spot` is the chain's one spot with its trade time `spot_ts`; a capture written before the
-    chain carried one gives its nearest expiry's underlyingPrice and `spot_ts` None.
+    each as {et_date, ts_utc, spot, spot_ts, spot_from_chain, basis, contracts} with every expiry of
+    that capture. `spot` is the chain's one spot with its trade time `spot_ts` (`spot_from_chain`
+    true); a capture written without one gives its nearest expiry's underlyingPrice, `spot_ts`
+    None and `spot_from_chain` false.
     `before_et_date` keeps only days before it (the previous market day for a day-over-day
     view)."""
     tk = ticker_storage_key(ticker)
@@ -598,9 +599,11 @@ def last_capture_per_day(db_path: Path | str, ticker: str, days: int, *,
                 "WHERE ticker=? AND completeness_basis=? AND ts_utc=? ORDER BY expiry",
                 (tk, CAPTURE_BASIS, ts)).fetchall()
             spot, spot_ts = rows[0][2], rows[0][3]
-            if spot is None:
-                spot = next((r[1] for r in rows if r[0] >= day), rows[-1][1])
-            out.append({"et_date": day, "ts_utc": ts, "spot": spot, "spot_ts": spot_ts, "basis": rows[0][4],
+            from_chain = spot is not None
+            if not from_chain:
+                spot, spot_ts = next((r[1] for r in rows if r[0] >= day), rows[-1][1]), None
+            out.append({"et_date": day, "ts_utc": ts, "spot": spot, "spot_ts": spot_ts,
+                        "spot_from_chain": from_chain, "basis": rows[0][4],
                         "contracts": [c for r in rows for c in decode_json_blob(r[5])]})
         return out
     finally:

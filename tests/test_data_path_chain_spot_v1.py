@@ -88,12 +88,24 @@ def test_a_capture_written_before_the_chain_carried_a_spot_is_read_at_its_neares
         cch.persist_complete_chain_capture(db, ticker=TK, expiry=expiry, contracts=cts, spot=CRWD.spot,
                                            completeness_basis=cch.CAPTURE_BASIS, ts_utc=CRWD.now.timestamp())
     (read,) = cch.last_capture_per_day(db, TK, 1)
-    assert (read["spot"], read["spot_ts"]) == (CRWD.spot, None)
+    assert (read["spot"], read["spot_ts"], read["spot_from_chain"]) == (CRWD.spot, None, False)
+    published = []
     try:
         server._publish_levels(TK, captures=[read], now=CRWD.now)
+        server._publish_levels(TK, now=CRWD.now)                  # a reprice of the kept capture
         with server._terrain_cache_lock:
-            held = dict(server._terrain_cache[TK])
+            published.append(dict(server._terrain_cache[TK]))
     finally:
         _forget()
-    assert (held["spot"], held["spot_source"], held["spot_as_of_ts_utc"]) == (
-        CRWD.spot, server.SPOT_SOURCE_CAPTURE, CRWD.now.timestamp())
+    for held in published:
+        assert (held["spot"], held["spot_source"], held["spot_as_of_ts_utc"]) == (
+            CRWD.spot, server.SPOT_SOURCE_CAPTURE, CRWD.now.timestamp())
+
+
+def test_a_stored_trade_time_without_its_price_is_no_chain_spot(tmp_path):
+    db = tmp_path / "ed_console.db"
+    cch.persist_complete_chain_capture(db, ticker=TK, expiry=EXPIRY, contracts=CRWD.chain, spot=CRWD.spot,
+                                       completeness_basis=cch.CAPTURE_BASIS, ts_utc=CRWD.now.timestamp(),
+                                       chain_spot=None, chain_spot_ts=TRADED)
+    (read,) = cch.last_capture_per_day(db, TK, 1)
+    assert (read["spot"], read["spot_ts"], read["spot_from_chain"]) == (CRWD.spot, None, False)

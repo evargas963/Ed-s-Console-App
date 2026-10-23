@@ -1307,22 +1307,24 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
         chain = _keep_last_reported(
             chain, _previous_counts(memory, payload.get("_count_capture"), published, product), begun, product,
             published)
-    if capture is not None:
-        chain_spot = (capture["spot"], capture["spot_ts"])
-    elif not new_chain:
-        chain_spot = payload["_chain_spot"]
-    if capture is not None and capture["spot_ts"] is None:
-        # a capture written before the chain carried its spot: its nearest expiry's underlyingPrice
-        spot, spot_source, spot_ts = capture["spot"], SPOT_SOURCE_CAPTURE, capture["ts_utc"]
-    elif capture is None and valued_at < at and payload.get("spot") is not None:
+    # the chain's spot as published: (price, source, time), kept with the chain for its reprices
+    if capture is not None and capture["spot_from_chain"]:
+        priced_at = (capture["spot"], SPOT_SOURCE_PLANE, capture["spot_ts"])
+    elif capture is not None:
+        # a capture written without the chain's spot: its nearest expiry's underlyingPrice
+        priced_at = (capture["spot"], SPOT_SOURCE_CAPTURE, capture["ts_utc"])
+    elif new_chain:
+        # Schwab's LAST_PRICE when the chain was complete, with its trade time
+        priced_at = (chain_spot[0], SPOT_SOURCE_PLANE, chain_spot[1])
+    else:
+        priced_at = payload["_chain_spot"]
+    if capture is None and valued_at < at and payload.get("spot") is not None:
         # the window has ended: the spot already published is the close, and a later print is not
         spot = payload.get("spot")
         spot_source = payload.get("spot_source")
         spot_ts = payload.get("spot_as_of_ts_utc")
     else:
-        # the chain's one spot: Schwab's LAST_PRICE when the chain was complete, with its trade time
-        spot, spot_ts = chain_spot
-        spot_source = SPOT_SOURCE_PLANE
+        spot, spot_source, spot_ts = priced_at
     prev_spot = payload.get("spot")
     if new_chain:       # the ticker's contracts are the ones Schwab listed in this chain
         payload.update(_contract_symbols=frozenset(c.get("symbol") for c in chain if c.get("symbol")))
@@ -1355,7 +1357,7 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
         "_chain": chain, "_priced_chain": priced, "_books": snap.books,
         "_charm_by_expiry": snap.charm_by_expiry,
         "_iv_by_expiry": snap.iv_by_expiry,
-        "_chain_fetched_ts": fetched_ts, "_chain_spot": chain_spot,
+        "_chain_fetched_ts": fetched_ts, "_chain_spot": priced_at,
     })
     payload["_matrix_by_expiry"] = _ranked_matrices(payload)
     # the values read from the stored chain captures (forces, the prior day's per-strike rows)

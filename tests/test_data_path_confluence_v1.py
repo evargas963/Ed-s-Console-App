@@ -76,7 +76,7 @@ def _publish_close(tk: str = "SPY") -> dict:
     server._publish_levels(tk, captures=[{"contracts": [dict(c) for c in SPY_CLOSE.chain],
                                           "ts_utc": SPY_CLOSE.now.timestamp(), "spot": SPY_CLOSE.spot,
                                           "et_date": SPY_CLOSE.now.date().isoformat(),
-                                          "basis": CAPTURE_BASIS, "spot_ts": None}], now=SPY_CLOSE.now)
+                                          "basis": CAPTURE_BASIS, "spot_ts": None, "spot_from_chain": False}], now=SPY_CLOSE.now)
     with server._terrain_cache_lock:
         return server._terrain_cache[tk]
 
@@ -148,7 +148,7 @@ def test_a_served_strike_with_no_open_interest_shows_zero_charm_and_says_why_it_
     try:
         server._publish_levels("SPY", captures=[{"contracts": [dict(c) for c in fx["contracts"]],
                                                  "ts_utc": fx["chain_as_of_ts_utc"], "spot": fx["priced_at_spot"],
-                                                 "et_date": at.date().isoformat(), "basis": CAPTURE_BASIS, "spot_ts": None}], now=at)
+                                                 "et_date": at.date().isoformat(), "basis": CAPTURE_BASIS, "spot_ts": None, "spot_from_chain": False}], now=at)
         body = server.confluence_payload("SPY", fx["expiry"], at)
     finally:
         server._terrain_cache.pop("SPY", None)
@@ -210,7 +210,7 @@ def test_a_passed_expiry_is_not_the_one_the_matrix_opens_on():
         server._publish_levels(tk, captures=[{"contracts": [dict(c) for c in MRVL.chain],
                                               "ts_utc": MRVL.now.timestamp(), "spot": MRVL.spot,
                                               "et_date": MRVL.now.date().isoformat(),
-                                              "basis": CAPTURE_BASIS, "spot_ts": None}], now=MRVL.now)
+                                              "basis": CAPTURE_BASIS, "spot_ts": None, "spot_from_chain": False}], now=MRVL.now)
         opened = server.confluence_payload(tk, None, sunday)
         asked = server.confluence_payload(tk, listed[0], sunday)
     finally:
@@ -692,7 +692,7 @@ def test_a_streamed_zero_after_the_close_does_not_replace_the_capture():
                                   src="schwab_options_l1", ts_recv=after.timestamp()))
         server._publish_levels(tk, captures=[{
             "contracts": fresh, "ts_utc": capture_at.timestamp(), "spot": held.spot,
-            "basis": CAPTURE_BASIS, "spot_ts": None, "et_date": "2026-10-07"}], now=after)
+            "basis": CAPTURE_BASIS, "spot_ts": None, "spot_from_chain": False, "et_date": "2026-10-07"}], now=after)
         book = server.terrain_cache_get(tk, after.timestamp())
         assert book["_gamma_surface"]["stream_overlay_contracts"]
         kept = next(ct for ct in book["_priced_chain"] if ct.get("symbol") == target["symbol"])
@@ -845,7 +845,7 @@ def test_an_after_hours_print_keeps_the_close_book():
         server._publish_levels(tk, captures=[{"contracts": [dict(c) for c in held.chain],
                                               "ts_utc": held.now.timestamp(), "spot": held.spot,
                                               "et_date": held.now.date().isoformat(),
-                                              "basis": CAPTURE_BASIS, "spot_ts": None}], now=held.now)
+                                              "basis": CAPTURE_BASIS, "spot_ts": None, "spot_from_chain": False}], now=held.now)
         first = server.confluence_payload(tk, expiry, held.now)
         near = min(first["rows"], key=lambda row: abs(row["strike"] - held.spot))
         close_texts = (near["net_gex_text"], near["vanna_text"], near["charm_text"])
@@ -946,7 +946,7 @@ def test_the_matrix_shows_the_live_price_and_the_one_day_move_levels_serves():
     try:
         server._publish_levels(tk, captures=[{"contracts": CRWD.chain, "ts_utc": at.timestamp(),
                                               "spot": CRWD.spot, "et_date": at.date().isoformat(),
-                                              "basis": server.CAPTURE_BASIS, "spot_ts": None}], now=at)
+                                              "basis": server.CAPTURE_BASIS, "spot_ts": None, "spot_from_chain": False}], now=at)
         body = server.confluence_payload(tk, str(CRWD.chain[0]["expirationDate"])[:10], at)
         levels = {r["id"]: r["price"] for r in server.levels_payload(tk, "1", at)["levels"]}
     finally:
