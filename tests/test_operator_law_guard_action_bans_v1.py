@@ -19,7 +19,9 @@ def test_lock_disable_routes_are_git_and_precommits_own():
     (`--no-verify`, `-n`, `core.hooksPath`) and pre-commit's (`SKIP=`, uninstall)."""
     for cmd in ("git commit --no-verify -m x", "git commit -n -m x", "git -c core.hooksPath=/dev/null commit",
                 "SKIP=institutional-correctness git commit -m x", "$env:SKIP='ruff-correctness'; git commit -m x",
-                "pre-commit uninstall"):
+                "pre-commit uninstall", "some_tool --no-verify",
+                "ED_UI_MOCKUP_LOCK=off git commit --no-verify -m x",
+                "git add a && git commit --no-verify -m x && git push --no-verify"):
         assert any(LOCK in b for b in bash_violations(cmd)), cmd
     for cmd in ("git commit -m 'skip the typo'", "SKIPPED=1 python x.py", "echo pre-commit installed",
                 "git push -n origin main", "ED_UI_MOCKUP_LOCK=off git commit", "git commit -m 'normal'"):

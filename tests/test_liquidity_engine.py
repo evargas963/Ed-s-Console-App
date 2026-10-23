@@ -92,7 +92,7 @@ def test_volume_profile_distributes_a_wide_bar_across_its_range():
     assert val >= 100.0 and vah <= 101.0, f"value area escaped the bar's range: {val}..{vah}"
     assert (vah - val) > 0.5, (
         f"a 70% value area over a uniformly-distributed 1.00-wide bar must span ~0.70, got "
-        f"{vah - val:.2f} — volume is still being dumped"
+        f"{vah - val:.2f} — the volume sits at one price, not across the bar"
     )
     dump_poc = _typical_price_dump(bars)
     assert abs(dump_poc - 100.6333) < 0.01, "witness fixture drifted"

@@ -16,16 +16,11 @@ sys.path.insert(0, str(REPO / "tools"))
 import operator_law_guard as G  # noqa: E402
 
 
-def _refuses_data(cmd: str) -> bool:
-    """The law guard refuses `cmd` for what it does to data/."""
-    return any("under data/" in b for b in G.bash_violations(cmd))
-
-
 # ── unrecoverable trees ───────────────────────────────────────────────────────────────
 def test_appdata_redirect_not_protected_tree():
     """The protected tree is path-segment anchored: `AppData/` is not `data/`."""
     cmd = "git show HEAD:x > /c/scratch/AppData/Local/Temp/out.txt"
-    assert _refuses_data(cmd) is False
+    assert not any("under data/" in b for b in G.bash_violations(cmd))
 
 
 @pytest.mark.parametrize("cmd", [
@@ -34,7 +29,7 @@ def test_appdata_redirect_not_protected_tree():
     "mv data/ed_console.db b",
 ])
 def test_real_protected_tree_targets_block(cmd):
-    assert _refuses_data(cmd) is True, cmd
+    assert any("under data/" in b for b in G.bash_violations(cmd)), cmd
 
 
 @pytest.mark.parametrize("cmd", [
@@ -44,7 +39,7 @@ def test_real_protected_tree_targets_block(cmd):
     "rm backups/db/x.db",                             # backups/ is no protected tree (no backups are kept)
 ])
 def test_protected_tree_permits_restores_messages_and_reads(cmd):
-    assert _refuses_data(cmd) is False, cmd
+    assert not any("under data/" in b for b in G.bash_violations(cmd)), cmd
 
 
 # ── lock disable ───────────────────────────────────────────────────────────────────────
@@ -60,7 +55,8 @@ def test_git_push_dry_run_not_lock_disable():
 
 
 # ── blind staging ──────────────────────────────────────────────────────────────────────
-@pytest.mark.parametrize("cmd", ["git add -A", "git add --all", "git add .", "git add -u", "git add *"])
+@pytest.mark.parametrize("cmd", ["git add -A", "git add --all", "git add .", "git add -u", "git add *",
+                                 'cd "../OtherRepo" && git add -A && git commit -m x'])
 def test_blind_staging_blocks(cmd):
     assert any("blind staging" in v for v in G.bash_violations(cmd)), cmd
 

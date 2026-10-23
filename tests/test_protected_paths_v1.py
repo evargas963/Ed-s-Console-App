@@ -15,14 +15,9 @@ sys.path.insert(0, str(REPO / "tools"))
 
 import operator_law_guard as G  # noqa: E402
 
-#: Split so this test file is not itself refused when its text is scanned.
-D = "d" + "ata/"
-B = "b" + "ackups/"
-
-
-def _refuses_data(cmd) -> bool:
-    """The law guard refuses `cmd` for what it does to data/."""
-    return any(f"under {D}" in b for b in G.bash_violations(cmd))
+#: The protected tree and the backups folder, as the commands below name them.
+D = "data/"
+B = "backups/"
 
 
 @pytest.mark.parametrize("cmd", [
@@ -39,8 +34,8 @@ def _refuses_data(cmd) -> bool:
     f"echo x > {D}ed_console.db",
 ])
 def test_destruction_of_an_unrecoverable_tree_is_refused(cmd):
-    """Every shape that took the database, and the ones that would next."""
-    assert _refuses_data(cmd), f"NOT blocked: {cmd}"
+    """Delete, remove, move, python file removal and redirect-overwrite of data/ are refused."""
+    assert any(f"under {D}" in b for b in G.bash_violations(cmd)), f"NOT blocked: {cmd}"
 
 
 @pytest.mark.parametrize("cmd", [
@@ -58,7 +53,7 @@ def test_destruction_of_an_unrecoverable_tree_is_refused(cmd):
 ])
 def test_restore_read_and_ordinary_cleanup_pass(cmd):
     """Recovery into data/, reads, and deletes elsewhere are not refused."""
-    assert not _refuses_data(cmd), f"wrongly blocked: {cmd}"
+    assert not any(f"under {D}" in b for b in G.bash_violations(cmd)), f"wrongly blocked: {cmd}"
 
 
 def test_a_commit_message_quoting_a_destructive_command_is_not_blocked():
@@ -73,27 +68,27 @@ def test_a_commit_message_quoting_a_destructive_command_is_not_blocked():
         f"Restored from {B}db/20260806_203509_ed_console.db.\n"
         f"MSG"
     )
-    assert not _refuses_data(msg), (
+    assert not any(f"under {D}" in b for b in G.bash_violations(msg)), (
         "the guard blocks a commit whose message quotes a destructive command")
 
 
 def test_the_commit_exemption_is_by_verb_not_by_heredoc():
     """A heredoc that is NOT a commit is judged."""
     payload = f"cat <<'EOF' | bash\nrm -f {D}ed_console.db\nEOF"
-    assert _refuses_data(payload), (
+    assert any(f"under {D}" in b for b in G.bash_violations(payload)), (
         "a heredoc piped to a shell is a write channel and must stay watched")
 
 
 def test_the_protected_tree_is_guarded_and_backups_is_not():
     """Destructive is defined by the TARGET's recoverability, not by the verb. No database
     backups are kept (operator's decision), so backups/ is no protected tree."""
-    assert _refuses_data(f"rm -rf {D}x")
-    assert not _refuses_data(f"rm -rf {B}x")
+    assert any(f"under {D}" in b for b in G.bash_violations(f"rm -rf {D}x"))
+    assert not any(f"under {D}" in b for b in G.bash_violations(f"rm -rf {B}x"))
 
 
 def test_empty_and_none_commands_do_not_crash():
-    assert not _refuses_data("")
-    assert not _refuses_data(None)  # type: ignore[arg-type]
+    assert G.bash_violations("") == []
+    assert G.bash_violations(None) == []  # type: ignore[arg-type]
 
 
 
@@ -110,7 +105,7 @@ def test_empty_and_none_commands_do_not_crash():
 ])
 def test_text_that_only_mentions_a_protected_path_passes(cmd):
     """The rule judges what runs: prose, file content and protection pass untouched."""
-    assert not _refuses_data(cmd), f"wrongly blocked: {cmd}"
+    assert not any(f"under {D}" in b for b in G.bash_violations(cmd)), f"wrongly blocked: {cmd}"
 
 
 @pytest.mark.parametrize("cmd", [
@@ -125,4 +120,4 @@ def test_text_that_only_mentions_a_protected_path_passes(cmd):
 ])
 def test_code_that_would_destroy_or_unprotect_is_refused(cmd):
     """Python run from a heredoc, a shell heredoc, and removing the OS protection all block."""
-    assert _refuses_data(cmd), f"NOT blocked: {cmd}"
+    assert any(f"under {D}" in b for b in G.bash_violations(cmd)), f"NOT blocked: {cmd}"
