@@ -2,9 +2,10 @@
 
 Built only from live_market_plane (the per-field Schwab LEVELONE_EQUITIES state) and its feed
 state (feed_live_for). Imported by the capture daemon, which pushes these rows straight to
-the browser (app/market_data/schwab/streaming/live_ui.py), and by the console, whose analytics
-read the same function -- so a price on screen and a price in a calculation can never come
-from two different rules.
+the browser (app/market_data/schwab/streaming/live_ui.py) and orders and records its option
+contracts at their price (`spot`, capture.Daemon's option rule), and by the console, whose
+analytics read the same function -- so a price on screen and a price in a calculation can
+never come from two different rules.
 
 Nothing here computes a market value: every number is a Schwab field or its receive time, with
 Schwab's own trade time; the only derivations are the trade age and its label. Whether the feed
@@ -40,6 +41,20 @@ def _trade_age_sec(trade_ts: Optional[float], now: float) -> Optional[float]:
     return max(0.0, now - float(trade_ts))
 
 
+def _spot_of(row: "dict[str, Any] | None") -> Optional[float]:
+    """A plane row's live price: its Schwab LAST_PRICE as the stream sent it, None while the row
+    has none (never received, or sent as not a number)."""
+    streamed = bool(row) and lmp.plane_row_is_streamed(row)
+    return float(row["spot"]) if streamed and lmp.plane_spot_is_last_price(row) else None
+
+
+def spot(ticker: str) -> Optional[float]:
+    """`ticker`'s live price, the price row's own (price_row's `spot`), for a reader that needs
+    only the price: the capture daemon's option rule."""
+    tk = ticker_storage_key(ticker)
+    return _spot_of(lmp.get_quote(tk) if tk else None)
+
+
 def price_row(ticker: str, now: float) -> dict[str, Any]:
     """The finished row the screen paints for one symbol, as it is at `now`: each field the
     last value Schwab sent. A feed down sets `outage` and `feed_live` false, the market open
@@ -48,7 +63,7 @@ def price_row(ticker: str, now: float) -> dict[str, Any]:
     outage = lmp.outage(tk, "LEVELONE_EQUITIES", now)
     row = lmp.get_quote(tk) if tk else None
     streamed = bool(row) and lmp.plane_row_is_streamed(row)
-    spot = float(row["spot"]) if streamed and lmp.plane_spot_is_last_price(row) else None
+    spot = _spot_of(row)
 
     def field(name: str):
         return row.get(name) if streamed else None

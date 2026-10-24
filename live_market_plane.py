@@ -145,7 +145,7 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
 
 
 #: callables told the ticker of every published row, in the process that owns this plane: the
-#: capture daemon's browser push (live_ui).
+#: capture daemon's browser push (live_ui) and its option rule (capture.Daemon._took_row).
 _row_listeners: list = []
 _row_listener_failures = [0]
 

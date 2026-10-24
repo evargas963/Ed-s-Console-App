@@ -237,8 +237,11 @@ from Schwab to the screen (daemon, console, page), are these:
   `Daemon.follow_market` on each new chain, on a watchlist change and on the Flow panel's
   selection, never on a price; a chain is put in the rule's order once, as it arrives,
   `capture.by_gamma`, at the daemon's time and the ticker's live price, the price row's
-  (`live_price_rows.price_row`, read when the plane publishes the row, its row listener; the rule
-  reads LAST_PRICE nowhere else). While the row has no price (none received yet, or Schwab sent it
+  (`live_price_rows.spot`, read when the plane publishes a watchlist ticker's row, its row
+  listener; the rule reads LAST_PRICE nowhere else). The plane is fed by `live_ui.serve_live_ui`
+  (its owner, for the price rows and for this rule): if that ends (its port cannot be bound) the
+  plane takes no more quotes, every price row stands at the last price, and the rule keeps the
+  order and recorded windows it has. While the row has no price (none received yet, or Schwab sent it
   invalid) the ticker keeps the order and the recorded window it has, and its newest chain is
   ordered at the next price (`tests/test_option_contract_rule_v1.py`). The contract
   selected on the Flow panel (`POST /api/flow-contract`, only one Schwab listed in a chain the

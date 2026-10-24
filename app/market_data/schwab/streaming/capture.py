@@ -489,18 +489,12 @@ class Daemon:
         self.options = new
         self.ask()
 
-    def _price(self, ticker: str, now: float) -> "float | None":
-        """`ticker`'s live price at `now`: the price row's (live_price_rows.price_row, the one
-        producer: Schwab's LAST_PRICE as the plane holds it), None while it has none."""
-        return live_price_rows.price_row(ticker, now)["spot"]
-
-    def _keep_options(self) -> None:
+    def _keep_options(self, now: float) -> None:
         """The option contracts recorded (saved_options): each watchlist ticker's saved_window at
-        its price row's price and the daemon's time (a ticker whose row has no price keeps the
-        window last computed), and the Flow panel's contract."""
-        now = self.clock()
+        its live price (live_price_rows.spot, the price row's) and `now` (a ticker whose row has
+        no price keeps the window last computed), and the Flow panel's contract."""
         for tk in self.watchlist:
-            price = self._price(tk, now) if tk in self._ladders else None
+            price = live_price_rows.spot(tk) if tk in self._ladders else None
             if price is not None:
                 self._windows[tk] = saved_window(self._ladders[tk], price, now)
         kept = frozenset(c for c in [self.flow_contract] if c is not None)
@@ -514,12 +508,12 @@ class Daemon:
         option = topic.startswith("optquote.") or (topic.startswith("book.") and msg["service"] == "OPTIONS_BOOK")
         return not option or msg["symbol"] in self.saved_options
 
-    def _rank(self, ticker: str) -> None:
-        """`ticker`'s newest chain put in the rule's order (by_gamma) at its price row's price and
-        the daemon's time, and the pick redone. While the row has no price the ticker keeps the
-        order it has, and the chain waits for the next price (_unpriced)."""
-        now = self.clock()
-        price = self._price(ticker, now)
+    def _rank(self, ticker: str, now: float) -> None:
+        """`ticker`'s newest chain put in the rule's order (by_gamma) at its live price
+        (live_price_rows.spot, the price row's) and `now`, and the pick redone. While the row has
+        no price the ticker keeps the order it has, and the chain waits for the next price
+        (_unpriced)."""
+        price = live_price_rows.spot(ticker)
         if price is None:
             self._unpriced.add(ticker)
             return
@@ -529,25 +523,31 @@ class Daemon:
 
     def _took_row(self, ticker: str) -> None:
         """The plane published `ticker`'s price row (live_market_plane's row listener, after it took
-        the ticker's newest equity quote): a chain that waits for a price is ordered now, and the
-        recorded contracts follow the price."""
+        the ticker's newest equity quote): for a watchlist ticker, a chain that waits for a price
+        is ordered now, and the recorded contracts follow the price."""
+        if ticker not in self.watchlist:
+            return
+        now = self.clock()
         if ticker in self._unpriced:
-            self._rank(ticker)
-        self._keep_options()
+            self._rank(ticker, now)
+        self._keep_options(now)
 
     def _took_chain(self, ticker: str, record: list) -> None:
-        """A ticker's newest whole chain on the bus (its parts), ordered at the price row's price.
+        """A ticker's newest whole chain on the bus (its parts), ordered at its live price.
         A failed fetch carries no contracts and changes nothing."""
         if all("contracts" in part for part in record):
+            now = self.clock()
             self._chains[ticker] = [ct for part in record for ct in part["contracts"]]
             self._ladders[ticker] = strike_ladders(self._chains[ticker])
-            self._rank(ticker)
-            self._keep_options()
+            self._rank(ticker, now)
+            self._keep_options(now)
 
     async def follow_market(self, stop: asyncio.Event) -> None:
         """The option rule's inputs until `stop`: each ticker's price row as the plane publishes it
-        (its row listener; the plane is fed by serve_live_ui) and newest whole chain, as the bus
-        has it (the chain sweep's); a new chain redoes the pick (pick_options)."""
+        (its row listener) and newest whole chain, as the bus has it (the chain sweep's); a new
+        chain redoes the pick (pick_options). The plane is fed by serve_live_ui, its owner: if
+        that ends (its port cannot be bound), the plane takes no more quotes, every price row
+        stands at the last price, and the rule keeps the order and recorded windows it has."""
         async def follow(prefix: str, take) -> None:
             sub = self.bus.subscribe(prefix, policy=LATEST)
             try:
@@ -578,7 +578,7 @@ class Daemon:
             self.flow_contract = req["contract"]
             log.info("flow contract: %s", self.flow_contract)
             self.pick_options()
-            self._keep_options()
+            self._keep_options(self.clock())
         elif req["op"] == "stop":
             log.info("capture daemon: stop requested on its local socket")
             self.stop.set()
@@ -598,7 +598,9 @@ class Daemon:
             self._chains.pop(ticker, None)          # added again, it waits for its next chain
             self._ranked.pop(ticker, None)
             self._ladders.pop(ticker, None)
-            self._keep_options()
+            self._windows.pop(ticker, None)
+            self._unpriced.discard(ticker)
+            self._keep_options(self.clock())
         else:
             if ticker in self.watchlist:
                 return self.bus.publish(*watchlist_message(self.watchlist, op=ON_LIST, ticker=ticker, request_id=rid))

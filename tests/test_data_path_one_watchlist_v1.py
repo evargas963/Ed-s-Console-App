@@ -102,7 +102,7 @@ def test_the_daemon_subscribes_once_and_each_of_schwabs_answers_reaches_its_own_
     async def go():
         stop = asyncio.Event()
         # the plane fed as production feeds it (serve_live_ui, on a port the system picks)
-        tasks = [asyncio.create_task(serve_live_ui(bus, stop, heartbeat_fn=daemon.status, port=0)),
+        tasks = [asyncio.create_task(serve_live_ui(bus, stop, heartbeat_fn=daemon.status, host="127.0.0.1", port=0)),
                  asyncio.create_task(daemon.run(lambda: schwab.client, stop)),
                  asyncio.create_task(daemon.follow_market(stop))]
         _market(bus, "SPY", SPY_CHAIN["chain"], SPY_CHAIN["spot"], SPY_CHAIN["capture_ts_utc"])
@@ -118,6 +118,8 @@ def test_the_daemon_subscribes_once_and_each_of_schwabs_answers_reaches_its_own_
         held = asyncio.run(go())
     finally:
         schwab.close()
+        lmp._by_ticker.pop("SPY", None)                      # the plane row its price wrote
+        lmp._fields_by_ticker.pop("SPY", None)
     asked = [(r["service"], r["command"], sorted(r["parameters"]["keys"].split(",")))
              for r in schwab.streamer.requests if r["service"] != "ADMIN"]
     context = sorted(["SPY", "TSLA", *MARKET_CONTEXT])
@@ -166,7 +168,7 @@ def test_a_subscription_split_under_schwabs_message_limit_keeps_every_part(tmp_p
 
     async def go():
         stop = asyncio.Event()
-        tasks = [asyncio.create_task(serve_live_ui(bus, stop, heartbeat_fn=daemon.status, port=0)),
+        tasks = [asyncio.create_task(serve_live_ui(bus, stop, heartbeat_fn=daemon.status, host="127.0.0.1", port=0)),
                  asyncio.create_task(daemon.run(lambda: schwab.client, stop)),
                  asyncio.create_task(daemon.follow_market(stop))]
         _market(bus, "MRVL", contracts, mrvl["full"]["underlying"]["last"], mrvl["captured_utc"])
@@ -177,6 +179,8 @@ def test_a_subscription_split_under_schwabs_message_limit_keeps_every_part(tmp_p
         asyncio.run(go())
     finally:
         schwab.close()
+        lmp._by_ticker.pop("MRVL", None)                     # the plane row its price wrote
+        lmp._fields_by_ticker.pop("MRVL", None)
     commands = [c for c, _k in schwab.streamer.asked("LEVELONE_OPTIONS")]
     assert len(commands) > 1 and commands == ["SUBS"] + ["ADD"] * (len(commands) - 1)
     assert sorted(schwab.streamer.held["LEVELONE_OPTIONS"]) == symbols, "Schwab holds every part"

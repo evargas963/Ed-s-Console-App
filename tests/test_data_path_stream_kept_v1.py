@@ -22,6 +22,7 @@ from pathlib import Path
 
 import pytest
 
+import live_market_plane as lmp
 from app.market_data.schwab.streaming import capture
 from app.market_data.schwab.streaming.live_ui import serve_live_ui
 from calibration.complete_chain_capture import chain_messages
@@ -69,7 +70,7 @@ def test_only_the_option_contracts_traded_are_recorded_and_every_equity_message(
         stop = asyncio.Event()
         # the plane fed as production feeds it (serve_live_ui, on a port the system picks)
         tasks = [asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop)),
-                 asyncio.create_task(serve_live_ui(bus, stop, heartbeat_fn=daemon.status, port=0)),
+                 asyncio.create_task(serve_live_ui(bus, stop, heartbeat_fn=daemon.status, host="127.0.0.1", port=0)),
                  asyncio.create_task(daemon.follow_market(stop))]
         await asyncio.sleep(0)
         for rc in (SPY_0DTE, MRVL):
@@ -90,7 +91,12 @@ def test_only_the_option_contracts_traded_are_recorded_and_every_equity_message(
         await _until(lambda: writer.status()["rows_written"] == len(spy_kept | mrvl_kept) + 1 + 1 + 3)
         stop.set()
         await asyncio.gather(*tasks)
-    asyncio.run(go())
+    try:
+        asyncio.run(go())
+    finally:
+        for tk in ("SPY", "MRVL"):                               # the plane rows these prices wrote
+            lmp._by_ticker.pop(tk, None)
+            lmp._fields_by_ticker.pop(tk, None)
 
     assert len(spy_kept) == len(mrvl_kept) == 22                 # 11 strikes, a call and a put each
     options = {s for (s,) in _rows(db, "SELECT symbol FROM stream_options_quotes_raw")}

@@ -25,6 +25,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+import live_market_plane as lmp
 import server
 from app.market_data.schwab.streaming import capture
 from app.market_data.schwab.streaming.live_push import serve_live_push
@@ -113,7 +114,8 @@ class _Market:
         async def go():
             stop = asyncio.Event()
             # the plane fed as production feeds it (serve_live_ui, on a port the system picks)
-            tasks = [asyncio.create_task(serve_live_ui(self.bus, stop, heartbeat_fn=self.daemon.status, port=0)),
+            tasks = [asyncio.create_task(serve_live_ui(self.bus, stop, heartbeat_fn=self.daemon.status,
+                                                       host="127.0.0.1", port=0)),
                      asyncio.create_task(self.daemon.run(lambda: self.client, stop)),
                      asyncio.create_task(self.daemon.follow_market(stop))]
             try:
@@ -126,6 +128,9 @@ class _Market:
         finally:
             self.streamer.close()
             self.rest.close()
+            for tk in CHAINS:                                    # the plane rows these prices wrote
+                lmp._by_ticker.pop(tk, None)
+                lmp._fields_by_ticker.pop(tk, None)
 
 
 def _answers(streamer, service: str) -> "list[int]":
@@ -206,8 +211,8 @@ def test_the_rule_orders_a_chain_at_the_price_rows_price_and_waits_while_it_has_
     """The option rule's price is the price row's (live_price_rows.price_row), not a second read of
     LAST_PRICE. Induced condition: after MRVL's last (263.51), Schwab marks LAST_PRICE invalid
     (-999), so the row has no price. MRVL's next chain, after its 2026-09-25 contracts expire, is
-    not ordered at the last price: the contracts held stay as they were. It is ordered at the next
-    price Schwab sends (its close, 258.95)."""
+    not ordered at the last price: the contracts held, and the contracts recorded, stay as they
+    were. It is ordered at the next price Schwab sends (its close, 258.95)."""
     clock = [CAPTURED]
     expired = {c["symbol"] for c in CHAINS["MRVL"] if c["expirationDate"].startswith("2026-09-25")}
     after = _expires(next(c for c in CHAINS["MRVL"] if c["symbol"] in expired)) + 60
@@ -221,15 +226,20 @@ def test_the_rule_orders_a_chain_at_the_price_rows_price_and_waits_while_it_has_
             m.chain(tk)
             m.price(tk, PRICES[tk])
         await _until(lambda: m.holds(before))
+        recorded = m.daemon.saved_options
         m.price("MRVL", -999)
         clock[0] = after
         m.chain("MRVL", after)
         await asyncio.sleep(1.0)
-        held.update({s: set(m.daemon.held[s]) for s in (L1, BOOK)})
+        held.update({s: set(m.daemon.held[s]) for s in (L1, BOOK)}, recorded=(recorded, m.daemon.saved_options))
         m.price("MRVL", MRVL_CLOSE)
         await _until(lambda: m.holds(then))
+        held["then_recorded"] = m.daemon.saved_options
     market.run(steps)
-    assert held == {s: before[s] for s in (L1, BOOK)}, "no chain is ordered at a price the row does not hold"
+    assert {s: held[s] for s in (L1, BOOK)} == {s: before[s] for s in (L1, BOOK)}, (
+        "no chain is ordered at a price the row does not hold")
+    assert held["recorded"][1] == held["recorded"][0], "the recorded window stands while the row has no price"
+    assert held["then_recorded"] != held["recorded"][0]            # at the next price it moves
     assert expired & before[L1] and not expired & then[L1]          # the next chain moved what is held
 
 
@@ -248,6 +258,35 @@ def test_a_watchlist_change_splits_schwabs_limits_again(tmp_path):
         await _until(lambda: m.holds(want))
     market.run(steps)
     assert len(want[L1]) == len(CHAINS["MRVL"]) and len(want[BOOK]) == 100
+
+
+def test_a_ticker_removed_and_added_again_records_nothing_until_its_next_chain(tmp_path):
+    """SPY removed from the watchlist and added again (its check answered by Schwab's /quotes, as
+    captured), then a SPY price: no SPY contract is recorded from the window it had before it was
+    removed, and its price row's price orders nothing, until its next chain arrives."""
+    market = _Market(tmp_path, ["MRVL", "SPY"], lambda: CAPTURED)
+    spy = {c["symbol"] for c in CHAINS["SPY"]}
+    seen: dict = {}
+
+    async def steps(m):
+        for tk in ("MRVL", "SPY"):
+            m.chain(tk)
+            m.price(tk, PRICES[tk])
+        await _until(lambda: m.holds(_rule(CHAINS, PRICES, CAPTURED, ["MRVL", "SPY"])))
+        seen["before"] = m.daemon.saved_options & spy
+        m.daemon.console_frame({"op": "watchlist", "action": "remove", "ticker": "SPY", "id": 1}, None)
+        await _until(lambda: "SPY" not in m.daemon.watchlist)
+        m.daemon.console_frame({"op": "watchlist", "action": "add", "ticker": "SPY", "id": 2}, None)
+        await _until(lambda: "SPY" in m.daemon.watchlist)
+        m.price("SPY", PRICES["SPY"])
+        await asyncio.sleep(0.5)
+        seen["re_added"] = m.daemon.saved_options & spy
+        m.chain("SPY")
+        await _until(lambda: m.daemon.saved_options & spy)
+        seen["next_chain"] = m.daemon.saved_options & spy
+    market.run(steps)
+    assert seen["before"] and seen["re_added"] == set(), "no window from before the removal"
+    assert seen["next_chain"] == seen["before"]                    # the same chain at the same price
 
 
 def test_the_flow_panels_contract_streams_on_both_services_on_top_of_the_rule(tmp_path):
