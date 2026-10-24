@@ -54,7 +54,7 @@
     var G = window.EdL1SseGuards;
     return G.show(G.readJson('/api/chain?ticker=' + encodeURIComponent(tk) + (exp ? '&expiry=' + encodeURIComponent(exp) : ''), signal), '/api/chain',
       function (d) { if (current()) render(host, d); },
-      function (words) { if (current()) host.innerHTML = '<div class="placeholder"><div class="sm">' + esc(words) + '</div></div>'; });
+      function (words) { if (current()) window.EdShell.placeholder(host, words); });
   }
   var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(st().ticker || '', curExpiry(), signal); });
   function load() { _loader.trigger((st().ticker || '') + '|' + (curExpiry() || '')); }

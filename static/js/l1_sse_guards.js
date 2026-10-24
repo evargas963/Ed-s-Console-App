@@ -79,12 +79,12 @@
 
   /**
    * A panel's answer drawn: `draw(answer)`, or `say(words)` for a read that failed or an answer
-   * the page could not draw (that error is then raised again, for the loader to report). A
-   * superseded read draws and says nothing.
+   * the page could not draw (`what` names it; that error is then raised again, for the loader to
+   * report). A superseded read draws and says nothing.
    */
-  function show(read, route, draw, say) {
+  function show(read, what, draw, say) {
     return read.then(function (d) {
-      try { draw(d); } catch (e) { say('the page could not draw the answer of ' + route); throw e; }
+      try { draw(d); } catch (e) { say('the page could not draw the answer of ' + what); throw e; }
     }, function (e) {
       if (!e || !e.words) throw e;
       say(e.words);

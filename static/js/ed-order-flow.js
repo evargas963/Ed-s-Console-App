@@ -28,7 +28,7 @@
     return G.show(G.readJson('/api/order-flow/microstructure?ticker=' + encodeURIComponent(tk) + '&venue=' + st().bookVenue, signal),
       '/api/order-flow/microstructure',
       function (d) { if (stillBook(tk)) render(h, tk, d); },
-      function (words) { if (stillBook(tk)) h.innerHTML = '<div class="placeholder"><div class="sm">' + esc(words) + '</div></div>'; });
+      function (words) { if (stillBook(tk)) window.EdShell.placeholder(h, words); });
   }
   var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(ticker(), signal); });
   function load() {

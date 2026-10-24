@@ -31,10 +31,8 @@
     return '<span class="fl-tag ' + hook + '" data-cls="' + esc(c) + '">' + esc(c) + '</span>';
   }
   // a read that failed is absent (null); a read cut short by a newer one rejects, so it never draws
-  function fetchJson(url, signal) {
-    return fetch(url, { cache: 'no-store', signal: signal })
-      .then(function (r) { return r.ok ? r.json() : null; })
-      .catch(function (e) { if (e && e.name === 'AbortError') throw e; return null; });
+  function fetchJson(url, signal) {   // a failed read is that endpoint's answer absent
+    return window.EdL1SseGuards.readJson(url, signal).catch(function (e) { if (!e.words) throw e; return null; });
   }
   var usd = function (n) {
     if (n == null || isNaN(n)) return '—';
@@ -339,7 +337,7 @@
       var migEl = document.getElementById('tdMigration');
       if (migEl) wireMigration(migEl, tk);
     }, function (words) {
-      if (stillRightNow(tk)) h.innerHTML = '<div class="placeholder"><div class="sm">' + esc(words) + '</div></div>';
+      if (stillRightNow(tk)) window.EdShell.placeholder(h, words);
     });
   }
   var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(ticker(), signal); });

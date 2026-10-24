@@ -448,6 +448,11 @@
   // The one empty-chain message for every /api/chain panel (Chain, Strike Detail, contract
   // specs). /api/chain answers the live chain or status 'unavailable' with a named reason --
   // no stored or captured substitute (fallback register R-01) -- so the reason IS the message.
+  // a panel's placeholder: one line of words, drawn as text
+  function placeholder(host, words) {
+    host.innerHTML = '<div class="placeholder"><div class="sm"></div></div>';
+    host.querySelector('.sm').textContent = words;
+  }
   function chainEmptyText(d) {
     var why = d && d.status === 'unavailable' && d.scope && d.scope.reason;
     return why ? ('chain unavailable — ' + why) : 'no chain for this expiry';
@@ -1032,7 +1037,7 @@
     setTheme: applyTheme,
     marketContext: function () { return MARKET_CONTEXT.slice(); },   // served [{key, display}]
     setScope: setScope, getScope: function () { return state.scope; },
-    windowQuery: windowQuery, newPan: newPan, panServed: panServed, wireStrikeAxis: wireStrikeAxis, asOfBadge: asOfBadge, fmtAge: fmtAge, chainEmptyText: chainEmptyText,
+    windowQuery: windowQuery, newPan: newPan, panServed: panServed, wireStrikeAxis: wireStrikeAxis, asOfBadge: asOfBadge, fmtAge: fmtAge, chainEmptyText: chainEmptyText, placeholder: placeholder,
     setExpiry: setExpiry, getExpiry: function () { return state.expiryFilter; },
     getMeasure: function () { return state.measure; },
     setSubview: setSubview };

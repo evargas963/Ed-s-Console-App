@@ -159,7 +159,7 @@
     return G.show(G.sharedFetchJson('/api/terrain/strikes?ticker=' + encodeURIComponent(tk) +
         window.EdShell.windowQuery(_gbsPan)), '/api/terrain/strikes',
       function (d) { if (stillGbsCtx(tk)) renderGbs(host, d, tk); },
-      function (words) { if (stillGbsCtx(tk)) host.innerHTML = '<div class="placeholder"><div class="sm">' + esc(words) + '</div></div>'; });
+      function (words) { if (stillGbsCtx(tk)) window.EdShell.placeholder(host, words); });
   }
   var _gbsLoader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadGbsImpl(ticker(), signal); });
   function loadGbs() { _gbsLoader.trigger(ticker()); }
@@ -282,7 +282,7 @@
     return G.show(G.readJson(q, signal), '/api/chain',
       function (d) { if (stillStrikeCtx(tk, strike, expiry)) renderStrike(host, d, strike, expiry); },
       function (words) {
-        if (stillStrikeCtx(tk, strike, expiry)) host.innerHTML = '<div class="placeholder"><div class="sm">' + esc(words) + '</div></div>';
+        if (stillStrikeCtx(tk, strike, expiry)) window.EdShell.placeholder(host, words);
       });
   }
   var _sdLoader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadStrikeImpl(_sdDesired.strike, _sdDesired.expiry, signal); });
@@ -454,7 +454,7 @@
     var G = window.EdL1SseGuards;
     return G.show(G.readJson(url, signal), '/api/chain',
       function (d) { if (stillStructuresCtx(tk, exp)) renderStructures(host, d, tk); },
-      function (words) { if (stillStructuresCtx(tk, exp)) host.innerHTML = '<div class="placeholder"><div class="sm">' + esc(words) + '</div></div>'; });
+      function (words) { if (stillStructuresCtx(tk, exp)) window.EdShell.placeholder(host, words); });
   }
   var _structuresLoader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) {
     return loadStructuresImpl(ticker(), (window.EdShell && window.EdShell.getExpiry && window.EdShell.getExpiry()), signal); });

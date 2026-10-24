@@ -30,7 +30,7 @@
     var G = window.EdL1SseGuards;
     return G.show(G.readJson('/api/levels?ticker=' + encodeURIComponent(tk), signal), '/api/levels',
       function (d) { if (stillLevels(tk)) render(host, d); },
-      function (words) { if (stillLevels(tk)) host.innerHTML = '<div class="placeholder"><div class="sm">' + esc(words) + '</div></div>'; });
+      function (words) { if (stillLevels(tk)) window.EdShell.placeholder(host, words); });
   }
   var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(ticker(), signal); });
   function load() { _loader.trigger(ticker()); }
