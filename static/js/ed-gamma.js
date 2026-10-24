@@ -231,8 +231,8 @@
   // gamma, dex and oi are the same heatmap pane under three subview ids
   function _isGammaFamilySubview(sv) { return sv === 'gamma' || sv === 'dex' || sv === 'oi'; }
   function stillCurrent(ticker) {
-    var s = (window.EdShell && window.EdShell.getState()) || {};
-    return s.workspace === 'options' && _isGammaFamilySubview(s.subview) && s.view === 'heatmap' && (s.ticker || '') === ticker;
+    var s = window.EdShell.getState();
+    return s.workspace === 'options' && _isGammaFamilySubview(s.subview) && s.view === 'heatmap' && s.ticker === ticker;
   }
   function surfaceUrl(ticker, host) {
     var expiry = window.EdShell.getExpiry();
@@ -266,7 +266,7 @@
   function load() {
     var host = document.getElementById('heatBody');
     if (!host) return;
-    var st = (window.EdShell && window.EdShell.getState()) || {};
+    var st = window.EdShell.getState();
     var nextTicker = st.ticker;   // the shell's: '' while none is chosen
     if (_panTicker !== nextTicker) {   // a new ticker, in any view: the last one's grid leaves at once
       _pan.centre = null; _pan.shift = 0; _panTicker = nextTicker;

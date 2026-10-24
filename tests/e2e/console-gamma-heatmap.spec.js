@@ -388,8 +388,11 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   });
 
   test('a ticker switched on another view leaves no old surface for a theme change to redraw', async ({ page }) => {
+    // SPY's captured surface is drawn; AAPL's read is held.
     await page.route('**/api/options/gamma-surface**', (route) =>
-      new URL(route.request().url()).searchParams.get('ticker') === 'SPY' ? route.fallback() : undefined);
+      new URL(route.request().url()).searchParams.get('ticker') === 'SPY'
+        ? route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(realSpySurface()) })
+        : undefined);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('.hcell').first()).toBeVisible();
     await page.locator('#viewbar .vtab[data-view="chart"]').click();
