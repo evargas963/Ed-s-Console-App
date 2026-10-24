@@ -74,7 +74,7 @@
       render();
     });
   }
-  var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(ticker(), signal); });
+  var _loader = window.EdShell.loader(function (signal) { return loadImpl(ticker(), signal); });
   function load() { _loader.trigger(ticker()); }
 
   // the profile and the levels only (a levels push): the bars are unchanged
@@ -88,7 +88,7 @@
       render();
     });
   }
-  var _levelsLoader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadLevelsImpl(ticker(), signal); });
+  var _levelsLoader = window.EdShell.loader(function (signal) { return loadLevelsImpl(ticker(), signal); });
 
   function render() {
     var c = ensureChart(); if (!c) return;

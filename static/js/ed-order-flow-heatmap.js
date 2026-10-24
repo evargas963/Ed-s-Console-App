@@ -49,7 +49,7 @@
         if (stillHeatmap(tk)) render(h, tk, null);
       });
   }
-  var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(ticker(), signal); });
+  var _loader = window.EdShell.loader(function (signal) { return loadImpl(ticker(), signal); });
   function load() {
     if (!isHeatmap()) return;
     // keyed on ticker + venue + minutes: a different window while a fetch is in flight aborts it

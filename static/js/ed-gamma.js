@@ -245,14 +245,16 @@
     var host = document.getElementById('heatBody');
     if (!host || !stillCurrent(ticker)) return;
     return fetch(surfaceUrl(ticker, host), { cache: 'no-store', signal: signal })
-      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (r) { if (!r.ok) throw new Error('the console answered /api/options/gamma-surface with ' + r.status); return r.json(); })
       .then(function (d) { if (stillCurrent(ticker)) renderSurface(host, d); })
       .catch(function (e) {
         if (e && e.name === 'AbortError') return;   // superseded by a newer read -- that one renders
-        if (stillCurrent(ticker)) renderSurface(host, { available: false, ticker: ticker, reason: 'no console serving /api/options/gamma-surface' });
+        // a failed connection (TypeError) is no console; any other failure is the console's answer
+        var reason = e instanceof TypeError ? 'no console serving /api/options/gamma-surface' : e.message;
+        if (stillCurrent(ticker)) renderSurface(host, { available: false, ticker: ticker, reason: reason });
       });
   }
-  var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(_pendingTicker, signal); });
+  var _loader = window.EdShell.loader(function (signal) { return loadImpl(_pendingTicker, signal); });
   function load() {
     var host = document.getElementById('heatBody');
     if (!host) return;

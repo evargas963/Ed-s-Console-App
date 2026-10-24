@@ -1026,7 +1026,14 @@
   else document.addEventListener('DOMContentLoaded', init);
 
   // expose for view modules + tests (no trading logic here)
-  window.EdShell = { getState: function () { return Object.assign({}, state); }, setTicker: setTicker,
+  // A panel's loader (EdL1SseGuards.makeCoalescedLoader): it loads only while a symbol is chosen,
+  // so no resize, view change or push asks the server about a ticker nobody chose.
+  function loader(run) {
+    var l = window.EdL1SseGuards.makeCoalescedLoader(run);
+    return { trigger: function (key) { if (state.ticker) l.trigger(key); }, reset: l.reset };
+  }
+
+  window.EdShell = { getState: function () { return Object.assign({}, state); }, setTicker: setTicker, loader: loader,
     addSymbol: addSymbol, setWorkspace: setWorkspace, setStrike: setStrike,
     setTheme: applyTheme,
     marketContext: function () { return MARKET_CONTEXT.slice(); },   // served [{key, display}]

@@ -56,7 +56,7 @@
         if (stillLevelsCtx(tk)) renderLevels(null);
       });
   }
-  var _levelsLoader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadLevelsImpl(ticker(), signal); });
+  var _levelsLoader = window.EdShell.loader(function (signal) { return loadLevelsImpl(ticker(), signal); });
   function loadLevels() { _levelsLoader.trigger(ticker()); }
   function renderLevels(d) {
     var ids = ['klSpot', 'klFlip', 'klCall', 'klPut', 'klAbs', 'klPeak', 'klNet', 'klRegime',
@@ -163,7 +163,7 @@
         if (stillGbsCtx(tk)) renderGbs(host, null, tk);
       });
   }
-  var _gbsLoader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadGbsImpl(ticker(), signal); });
+  var _gbsLoader = window.EdShell.loader(function (signal) { return loadGbsImpl(ticker(), signal); });
   function loadGbs() { _gbsLoader.trigger(ticker()); }
   var SRC_LABEL = { terrain_live_cache: 'terrain live' };
   function srcLabel(s) {
@@ -290,7 +290,7 @@
         }
       });
   }
-  var _sdLoader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadStrikeImpl(_sdDesired.strike, _sdDesired.expiry, signal); });
+  var _sdLoader = window.EdShell.loader(function (signal) { return loadStrikeImpl(_sdDesired.strike, _sdDesired.expiry, signal); });
   function loadStrike(strike, expiry) {
     _sdDesired = { strike: strike, expiry: expiry };
     _sdLoader.trigger(ticker() + '|' + strike + '|' + (expiry || ''));
@@ -395,7 +395,7 @@
           if (stillCtx(tk)) renderIt(host, null);
         });
     }
-    var loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return impl(ticker(), signal); });
+    var loader = window.EdShell.loader(function (signal) { return impl(ticker(), signal); });
     function load() { if (inSub()) loader.trigger(ticker()); }
     return load;
   }
@@ -467,7 +467,7 @@
         if (stillStructuresCtx(tk, exp)) renderStructures(host, null, tk);
       });
   }
-  var _structuresLoader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) {
+  var _structuresLoader = window.EdShell.loader(function (signal) {
     return loadStructuresImpl(ticker(), (window.EdShell && window.EdShell.getExpiry && window.EdShell.getExpiry()), signal); });
   // Keyed on ticker+expiry (ROUND 8 pattern, same as every other loader in this file) so a
   // context change while a fetch is still in flight ABORTS it immediately instead of merely
@@ -538,7 +538,7 @@
         if (stillOfCtx(tk)) renderOf(host, null);
       });
   }
-  var _ofLoader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadOfImpl(ticker(), signal); });
+  var _ofLoader = window.EdShell.loader(function (signal) { return loadOfImpl(ticker(), signal); });
   function loadOf() { if (isGamma()) _ofLoader.trigger(ticker()); }
 
   // ---------- events ----------

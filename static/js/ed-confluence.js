@@ -63,10 +63,6 @@
     var tk = st.key || st.ticker;
     var box = document.getElementById('cmBody');
     if (!box) return;
-    if (!tk) {
-      box.innerHTML = '<div class="placeholder"><div class="sm">Pick a ticker.</div></div>';
-      return;
-    }
     var url = '/api/confluence?ticker=' + encodeURIComponent(tk);
     if (expiry) url += '&expiry=' + encodeURIComponent(expiry);
     return fetch(url, { cache: 'no-store', signal: signal }).then(function (r) {
@@ -78,7 +74,7 @@
     });
   }
 
-  var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(signal); });
+  var _loader = window.EdShell.loader(function (signal) { return loadImpl(signal); });
 
   function load() {
     var st = state();
