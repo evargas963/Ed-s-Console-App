@@ -1428,7 +1428,9 @@ def _level_crosses_at(tk: str, spot: "float | None") -> "list[tuple[float, str, 
     before = _cross_check_spot.get(tk)
     _cross_check_spot[tk] = spot
     with _terrain_cache_lock:
-        payload = _terrain_cache.get(tk) or {}
+        payload = _terrain_cache.get(tk)
+    if payload is None:                          # no levels published for the ticker yet
+        return []
     return [(payload[k], name, side) for k, name in CROSS_LEVELS
             if (side := crossed(payload.get(k), before, spot)) is not None]
 
@@ -1444,7 +1446,7 @@ def _log_level_crosses(tk: str, spot: float, crosses: "list[tuple[float, str, st
     cross in the same direction from the last LEVEL_CROSS_HOLD_S, and hold them for the live
     readers."""
     with _crosses_lock:
-        recent = {(c["level_name"], c["direction"]) for c in _crosses.get(tk, ())
+        recent = {(c["level_name"], c["direction"]) for c in _crosses.setdefault(tk, [])
                   if c["ts_utc"] >= now - LEVEL_CROSS_HOLD_S}
     fresh = [c for c in crosses if (c[1], c[2]) not in recent]
     logged = get_db().record_level_crosses(ticker=tk, spot=spot, crosses=fresh, ts_utc=now,
