@@ -1027,7 +1027,7 @@
   else document.addEventListener('DOMContentLoaded', init);
 
   // expose for view modules + tests (no trading logic here)
-  window.EdShell = { getState: function () { return Object.assign({}, state); }, setTicker: setTicker,
+  window.EdShell = { getState: function () { return Object.assign({}, state); }, setTicker: setTicker, emit: emit,
     addSymbol: addSymbol, setWorkspace: setWorkspace, setStrike: setStrike,
     setTheme: applyTheme,
     marketContext: function () { return MARKET_CONTEXT.slice(); },   // served [{key, display}]

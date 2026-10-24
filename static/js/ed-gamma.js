@@ -112,7 +112,7 @@
       _lastSurface = null; _lastRevision = null;
       paintChip(null);
       host.innerHTML = buildBanner(surface || { live: false }) + '<div class="placeholder"><div class="big">Gamma surface unavailable</div>' +
-        '<div class="sm">' + escapeHtml((surface && surface.reason) || 'no console / no live surface for this symbol') + '</div></div>';
+        '<div class="sm">' + escapeHtml((surface && surface.reason) || 'the console sent no reason') + '</div></div>';
       return;
     }
     var view = surface.view;
@@ -254,24 +254,30 @@
           return unavailable('the console answered /api/options/gamma-surface with a body that is not JSON');
         });
       }, function (e) { superseded(e); return unavailable('no console serving /api/options/gamma-surface'); })
-      .then(function (d) { if (stillCurrent(ticker)) renderSurface(host, d); });
+      .then(function (d) {
+        if (!stillCurrent(ticker)) return;
+        try { renderSurface(host, d); } catch (e) {   // said on screen, then reported by the loader
+          renderSurface(host, unavailable('the page could not draw the answer of /api/options/gamma-surface'));
+          throw e;
+        }
+      });
   }
   var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(_pendingTicker, signal); });
   function load() {
     var host = document.getElementById('heatBody');
     if (!host) return;
     var st = (window.EdShell && window.EdShell.getState()) || {};
-    if (st.workspace !== 'options' || !_isGammaFamilySubview(st.subview) || st.view !== 'heatmap') {
-      _pendingTicker = null;
-      return;
-    }
     var nextTicker = st.ticker || '';
-    if (_panTicker !== nextTicker) {   // a new ticker: the last one's grid leaves the screen at once
+    if (_panTicker !== nextTicker) {   // a new ticker, in any view: the last one's grid leaves at once
       _pan.centre = null; _pan.shift = 0; _panTicker = nextTicker;
       _lastSurface = null; _lastRevision = null;
       paintChip(null);
       host.innerHTML = '<div class="placeholder"><div class="sm">reading /api/options/gamma-surface for ' +
         escapeHtml(nextTicker) + '</div></div>';
+    }
+    if (st.workspace !== 'options' || !_isGammaFamilySubview(st.subview) || st.view !== 'heatmap') {
+      _pendingTicker = null;
+      return;
     }
     _pendingTicker = nextTicker;
     _loader.trigger(_pendingTicker);

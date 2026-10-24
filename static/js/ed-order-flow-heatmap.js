@@ -51,7 +51,7 @@
   }
   var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(ticker(), signal); });
   function load() {
-    if (!isHeatmap() || !ticker()) return;   // the minutes buttons call this outside the shell's emit()
+    if (!isHeatmap()) return;
     // keyed on ticker + venue + minutes: a different window while a fetch is in flight aborts it
     _loader.trigger(ticker() + '|' + st().bookVenue + '|' + _minutes);
   }
@@ -60,13 +60,14 @@
     document.addEventListener('ed:view', load);
     document.addEventListener('ed:ticker', load);
     document.addEventListener('ed:book_venue', load);
+    document.addEventListener('ed:book_window', load);
     document.addEventListener('ed:changed', function (e) { if (e.detail.kind === 'flow') load(); });
     document.addEventListener('click', function (e) {
       var btn = e.target.closest && e.target.closest('[data-ofh-minutes]');
       if (!btn) return;
       _minutes = Number(btn.getAttribute('data-ofh-minutes')) || 60;
       document.querySelectorAll('[data-ofh-minutes]').forEach(function (b) { b.classList.toggle('on', b === btn); });
-      load();
+      window.EdShell.emit('ed:book_window', { minutes: _minutes });
     });
   }
   // read-only view for tests (e2e) -- never a control surface
