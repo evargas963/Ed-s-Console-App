@@ -484,7 +484,7 @@
   function stillOfCtx(tk) { var host = document.getElementById('ofBody'); return isGamma() && !!host && ticker() === tk; }
   function renderOf(host, d) {
     var src = document.getElementById('ofSrc'); if (src) src.textContent = '';
-    var rows = d.rows || [];
+    var rows = d.rows;
     if (!rows.length) {
       host.innerHTML = '<table class="of"><thead><tr><th>Time</th><th>Symbol</th><th>Exp</th><th>Type</th><th>Strike</th>' +
         '<th>Bid×Size</th><th>Ask×Size</th><th>Trade</th><th>Size</th><th>Premium</th>' +
@@ -522,7 +522,7 @@
     var G = window.EdL1SseGuards;
     return G.show(G.readJson('/api/options/tape?ticker=' + encodeURIComponent(tk), signal), '/api/options/tape',
       function (d) { if (stillOfCtx(tk)) renderOf(host, d); },
-      function (words) { if (stillOfCtx(tk)) renderOf(host, { reason: words }); });
+      function (words) { if (stillOfCtx(tk)) renderOf(host, { rows: [], reason: words }); });
   }
   var _ofLoader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadOfImpl(ticker(), signal); });
   function loadOf() { if (isGamma()) _ofLoader.trigger(ticker()); }
