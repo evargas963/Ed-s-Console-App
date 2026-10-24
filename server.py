@@ -1422,17 +1422,13 @@ CROSS_LEVELS = (("call_wall", "Call g-Wall"), ("put_wall", "Put g-Wall"), ("gamm
 _cross_check_spot: "dict[str, float | None]" = {}
 
 
-def _level_crosses_at(tk: str, spot: "float | None") -> "list[tuple[float, str, str]]":
-    """(level value, level name, direction) for each published level the live price crossed
-    since the last price checked for the ticker (terrain_read.crossed)."""
+def _level_crosses_at(tk: str, published: dict, spot: "float | None") -> "list[tuple[float, str, str]]":
+    """(level value, level name, direction) for each of the ticker's `published` levels the live
+    price crossed since the last price checked against them (terrain_read.crossed)."""
     before = _cross_check_spot.get(tk)
     _cross_check_spot[tk] = spot
-    with _terrain_cache_lock:
-        payload = _terrain_cache.get(tk)
-    if payload is None:                          # no levels published for the ticker yet
-        return []
-    return [(payload[k], name, side) for k, name in CROSS_LEVELS
-            if (side := crossed(payload.get(k), before, spot)) is not None]
+    return [(published[k], name, side) for k, name in CROSS_LEVELS
+            if (side := crossed(published.get(k), before, spot)) is not None]
 
 
 #: seconds a level's cross in one direction holds back the next in that direction (a price
@@ -1492,10 +1488,12 @@ def _on_stream_tick(sym: str) -> None:
     levels for a cross at the live price (stored off the event loop); a viewed ticker is queued
     for a reprice. Returns at once."""
     tk = _tick_ticker(sym)
-    if tk and not vendor_option_root(sym):
+    with _terrain_cache_lock:
+        published = _terrain_cache.get(tk) if tk else None
+    if published is not None and not vendor_option_root(sym):
         now = time.time()
         spot, _source, _ts = resolve_spot(tk, now=now)
-        crosses = _level_crosses_at(tk, spot)
+        crosses = _level_crosses_at(tk, published, spot)
         if crosses:
             _chain_pricing.submit(_log_level_crosses, tk, spot, crosses, now,
                                   now_et().strftime("%Y-%m-%d %H:%M:%S ET"))
