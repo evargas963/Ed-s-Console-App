@@ -1,0 +1,64 @@
+{
+ "source": "production data/old_stream_capture_2026-10-13/stream_capture.db stream_quotes_raw (read-only, the 5-session switch's kept file): for SPY (tests/real_chains.py SPY_0DTE, captured 2026-10-07 12:32:07 ET) and TSLA (TSLA, captured 12:32:15 ET), the last LEVELONE_EQUITIES message carrying LAST_PRICE the capture daemon received at or before that chain's capture, Schwab's item as recorded (native)",
+ "quotes": [
+  {
+   "ticker": "SPY",
+   "ts_recv": 1791390726.860729,
+   "src": "schwab_l1",
+   "native": {
+    "key": "SPY",
+    "BID_PRICE": 776.7,
+    "LAST_PRICE": 776.7,
+    "BID_SIZE": 40,
+    "ASK_SIZE": 160,
+    "BID_ID": "K",
+    "TOTAL_VOLUME": 12063717,
+    "LAST_SIZE": 40,
+    "LAST_ID": "K",
+    "NET_CHANGE": -2.39,
+    "REGULAR_MARKET_LAST_PRICE": 776.7,
+    "REGULAR_MARKET_LAST_SIZE": 40,
+    "REGULAR_MARKET_NET_CHANGE": -2.39,
+    "MARK": 776.7,
+    "QUOTE_TIME_MILLIS": 1791390726325,
+    "TRADE_TIME_MILLIS": 1791390726164,
+    "REGULAR_MARKET_TRADE_MILLIS": 1791390726164,
+    "BID_TIME_MILLIS": 1791390726264,
+    "ASK_TIME_MILLIS": 1791390726325,
+    "BID_MIC_ID": "EDGX",
+    "LAST_MIC_ID": "EDGX",
+    "NET_CHANGE_PERCENT": -0.306768,
+    "REGULAR_MARKET_CHANGE_PERCENT": -0.306768,
+    "MARK_CHANGE": -2.39,
+    "MARK_CHANGE_PERCENT": -0.306768
+   }
+  },
+  {
+   "ticker": "TSLA",
+   "ts_recv": 1791390735.159794,
+   "src": "schwab_l1",
+   "native": {
+    "key": "TSLA",
+    "LAST_PRICE": 375.815,
+    "BID_SIZE": 320,
+    "ASK_SIZE": 280,
+    "TOTAL_VOLUME": 14427517,
+    "LAST_SIZE": 150,
+    "NET_CHANGE": -4.865,
+    "REGULAR_MARKET_LAST_PRICE": 375.815,
+    "REGULAR_MARKET_LAST_SIZE": 150,
+    "REGULAR_MARKET_NET_CHANGE": -4.865,
+    "MARK": 375.815,
+    "QUOTE_TIME_MILLIS": 1791390734402,
+    "TRADE_TIME_MILLIS": 1791390734141,
+    "REGULAR_MARKET_TRADE_MILLIS": 1791390734141,
+    "BID_TIME_MILLIS": 1791390734250,
+    "ASK_TIME_MILLIS": 1791390734402,
+    "NET_CHANGE_PERCENT": -1.277976,
+    "REGULAR_MARKET_CHANGE_PERCENT": -1.277976,
+    "MARK_CHANGE": -4.865,
+    "MARK_CHANGE_PERCENT": -1.277976
+   }
+  }
+ ]
+}

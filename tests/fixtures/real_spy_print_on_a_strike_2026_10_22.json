@@ -1,0 +1,32 @@
+{
+ "source": "production data/stream_capture.db stream_quotes_raw (read-only): SPY's first LEVELONE_EQUITIES message after the 2026-10-22 close capture (tests/real_chains.py SPY_CLOSE, begun 16:17:04 ET) whose LAST_PRICE is one of that capture's strikes, Schwab's item as recorded (native)",
+ "ticker": "SPY",
+ "ts_recv": 1792701207.5081868,
+ "src": "schwab_l1",
+ "native": {
+  "key": "SPY",
+  "52": 44,
+  "54": 53169486.531582,
+  "55": 120,
+  "56": 160,
+  "LAST_PRICE": 764,
+  "BID_SIZE": 120,
+  "ASK_SIZE": 160,
+  "ASK_ID": "K",
+  "BID_ID": "T",
+  "TOTAL_VOLUME": 53169486,
+  "LAST_SIZE": 44,
+  "LAST_ID": "P",
+  "NET_CHANGE": -9.09,
+  "QUOTE_TIME_MILLIS": 1792701207055,
+  "TRADE_TIME_MILLIS": 1792701206729,
+  "BID_TIME_MILLIS": 1792701207048,
+  "ASK_TIME_MILLIS": 1792701207055,
+  "ASK_MIC_ID": "EDGX",
+  "BID_MIC_ID": "XNAS",
+  "LAST_MIC_ID": "ARCX",
+  "NET_CHANGE_PERCENT": -1.175801,
+  "POST_MARKET_NET_CHANGE": 0.04,
+  "POST_MARKET_NET_CHANGE_PERCENT": 0.005236
+ }
+}
