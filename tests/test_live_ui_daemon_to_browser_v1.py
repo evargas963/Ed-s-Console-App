@@ -126,10 +126,15 @@ def test_an_unsubscribed_symbol_is_never_sent():
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"]}))
         bus.publish("quote.AAPL", _trade("AAPL", 230.0, time.time()))
         bus.publish("quote.SPY", _trade("SPY", 583.0, time.time()))
-        end = time.monotonic() + 0.6
-        while time.monotonic() < end:
-            msg = json.loads(await asyncio.wait_for(ws.recv(), 1))
-            assert all(r["ticker"] == "SPY" for r in msg.get("rows") or []), msg
+        frames = []
+        end = time.monotonic() + 1.5 * live_ui.HEARTBEAT_SEC        # the rows, and a beat's rows
+        while (left := end - time.monotonic()) > 0:
+            try:
+                frames.append(json.loads(await asyncio.wait_for(ws.recv(), left)))
+            except TimeoutError:
+                break
+        assert any(m["type"] == "feed" for m in frames), "a beat came within the window"
+        assert all(r["ticker"] == "SPY" for m in frames for r in m.get("rows") or []), frames
     asyncio.run(_run(body))
 
 
