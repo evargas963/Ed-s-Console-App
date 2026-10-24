@@ -177,13 +177,13 @@ import live_market_plane as lmp
 from numeric_contract import float_finite_or_none, price_text, schwab_count, schwab_number
 from confluence_composite import at_price, build_matrix
 from terrain_engine import (SCOPES, SAME_DAY_LEVELS, TerrainSnapshot, _dte_of, _per_strike_rows, chain_ladder,
-                            compute_terrain, nearest_strike, positioning_migration, price_relations,
-                            strike_window)
-from terrain_read import crossed, level_side
+                            compute_terrain, nearest_strike, positioning_migration, PRICE_RELATIONS,
+                            price_relations, strike_window)
+from terrain_read import LEVEL_ABOVE, LEVEL_BELOW, crossed, level_side, within
 from math_levels import compute_charm_by_strike
 from terrain_atr import Atr, compute_atrs, roll_up
 
-from db import get_db
+from db import LevelCrossEvent, get_db
 
 import live_price_rows as _lpr        # with_change: the bar-change computation
 import push_changes
@@ -664,14 +664,20 @@ _crosses: "dict[str, list[dict]]" = {}
 _crosses_lock = threading.Lock()
 
 
+def _held_crosses(tk: str) -> "list[dict]":
+    """The ticker's held level crosses, oldest first: the one database read of them, the first
+    time they are needed (the console's start, or a cross found before it), then fed live.
+    Called holding _crosses_lock."""
+    if tk not in _crosses:
+        _crosses[tk] = get_db().get_recent_crosses(ticker=tk, n=CROSSES_KEPT)[::-1]
+    return _crosses[tk]
+
+
 def _load_crosses(watchlist: "list[str]") -> None:
-    """The one database read of the level crosses, at startup."""
-    for tk in watchlist:
-        rows = get_db().get_recent_crosses(ticker=tk, n=CROSSES_KEPT)
-        with _crosses_lock:
-            held = _crosses.setdefault(tk, [])     # a cross recorded before the load stays newest
-            held[:0] = rows[::-1]
-            del held[:-CROSSES_KEPT]
+    """The watchlist's held level crosses, at the console's start."""
+    with _crosses_lock:
+        for tk in watchlist:
+            _held_crosses(tk)
 
 
 def _merged_recent_crosses(ticker: str, n: int) -> "list[dict]":
@@ -1418,15 +1424,14 @@ CROSS_LEVELS = (("call_wall", "Call g-Wall"), ("put_wall", "Put g-Wall"), ("gamm
                 ("call_delta_wall", "Call d-Wall"), ("put_delta_wall", "Put d-Wall"))
 
 
-#: ticker -> the live price its levels were last checked against; read and written on the event loop
-_cross_check_spot: "dict[str, float | None]" = {}
+#: ticker -> the live price at its last streamed equity quote: the price before the next one (a
+#: cross needs both, and the price row holds only the newest); read and written on the event loop
+_last_tick_spot: "dict[str, float | None]" = {}
 
 
-def _level_crosses_at(tk: str, published: dict, spot: "float | None") -> "list[tuple[float, str, str]]":
-    """(level value, level name, direction) for each of the ticker's `published` levels the live
-    price crossed since the last price checked against them (terrain_read.crossed)."""
-    before = _cross_check_spot.get(tk)
-    _cross_check_spot[tk] = spot
+def _level_crosses_at(published: dict, before: "float | None", spot: "float | None") -> "list[tuple]":
+    """(level value, level name, direction) for each `published` level the price crossed going
+    from `before` to `spot` (terrain_read.crossed)."""
     return [(published[k], name, side) for k, name in CROSS_LEVELS
             if (side := crossed(published.get(k), before, spot)) is not None]
 
@@ -1436,22 +1441,28 @@ def _level_crosses_at(tk: str, published: dict, spot: "float | None") -> "list[t
 LEVEL_CROSS_HOLD_S = 60.0
 
 
-def _log_level_crosses(tk: str, spot: float, crosses: "list[tuple[float, str, str]]",
-                       now: float, now_text: str) -> None:
-    """Store the crosses _level_crosses_at found, each unless the console holds the same level's
-    cross in the same direction from the last LEVEL_CROSS_HOLD_S, and hold them for the live
-    readers."""
-    with _crosses_lock:
-        recent = {(c["level_name"], c["direction"]) for c in _crosses.setdefault(tk, [])
-                  if c["ts_utc"] >= now - LEVEL_CROSS_HOLD_S}
-    fresh = [c for c in crosses if (c[1], c[2]) not in recent]
-    logged = get_db().record_level_crosses(ticker=tk, spot=spot, crosses=fresh, ts_utc=now,
-                                           ts_et=now_text)
+def _log_level_crosses(tk: str, spot: float, crosses: "list[tuple]", now: float, now_text: str) -> None:
+    """Store the crosses _level_crosses_at found, each unless the ticker's held crosses have the
+    same level's cross in the same direction from the last LEVEL_CROSS_HOLD_S; hold them for the
+    live readers and tell the open pages. Runs on the pricing thread; a failed store is logged."""
+    try:
+        with _crosses_lock:
+            recent = {(c["level_name"], c["direction"]) for c in _held_crosses(tk)
+                      if c["ts_utc"] >= now - LEVEL_CROSS_HOLD_S}
+        logged = get_db().record_level_crosses([
+            LevelCrossEvent(ticker=tk, ts_utc=now, ts_et=now_text, level_name=name, level_value=value,
+                            direction=side, spot_at_cross=spot, zone_before=None, zone_after=None,
+                            timeframe="1m")
+            for value, name, side in crosses if (name, side) not in recent])
+    except Exception:
+        log.exception("level crosses of %s at %s not stored: %s", tk, spot, crosses)
+        return
     if logged:
         with _crosses_lock:
-            held = _crosses.setdefault(tk, [])
+            held = _held_crosses(tk)
             held.extend(logged)
             del held[:-CROSSES_KEPT]
+        push_changes.changed(tk, push_changes.LEVELS)
 
 
 def _vanna_rows(snap: "TerrainSnapshot") -> list:
@@ -1488,12 +1499,13 @@ def _on_stream_tick(sym: str) -> None:
     levels for a cross at the live price (stored off the event loop); a viewed ticker is queued
     for a reprice. Returns at once."""
     tk = _tick_ticker(sym)
-    with _terrain_cache_lock:
-        published = _terrain_cache.get(tk) if tk else None
-    if published is not None and not vendor_option_root(sym):
+    if tk and not vendor_option_root(sym):
         now = time.time()
         spot, _source, _ts = resolve_spot(tk, now=now)
-        crosses = _level_crosses_at(tk, published, spot)
+        before, _last_tick_spot[tk] = _last_tick_spot.get(tk), spot
+        with _terrain_cache_lock:
+            published = _terrain_cache.get(tk)
+        crosses = _level_crosses_at(published, before, spot) if published is not None else None
         if crosses:
             _chain_pricing.submit(_log_level_crosses, tk, spot, crosses, now,
                                   now_et().strftime("%Y-%m-%d %H:%M:%S ET"))
@@ -2392,7 +2404,7 @@ def get_terrain(ticker: str = Query(...)):
         out.update(priced_at_spot=cached.get("spot"), priced_at_spot_source=cached.get("spot_source"),
                    priced_at_spot_as_of_ts_utc=cached.get("spot_as_of_ts_utc"))
         out["spot"], out["spot_source"], out["spot_as_of_ts_utc"] = resolve_spot(tk, now=now)
-        out.update(price_relations(out, out["spot"]))
+        out.update(price_relations(out, out["spot"]).to_dict())
         computed = cached.get("computed_ts_utc")
         out["levels_time_ct"] = ct_label(computed) if computed is not None else None
         out.update(_atr_fields(tk, at))     # live: today's candle from the bars held now
@@ -2404,7 +2416,7 @@ def get_terrain(ticker: str = Query(...)):
     spot, spot_source, spot_ts = resolve_spot(tk, now=at.timestamp())
     _why = _terrain_refresh_last_error.get(tk)
     unavailable = compute_terrain(tk, None, spot, now=at).to_dict()
-    return unavailable | price_relations(unavailable, spot) | {
+    return unavailable | price_relations(unavailable, spot).to_dict() | {
         "spot_source": spot_source, "spot_as_of_ts_utc": spot_ts,
         **_atr_fields(tk, at),    # from the candles and bars, which do not wait for a chain
         # RC-126: not_ready carries its REASON when the producer has one — an eternal
@@ -3042,7 +3054,7 @@ def _confluence_markers(live: dict, tk: str, now: datetime, spot) -> list[dict]:
                     "lane": "session",
                     "price": price,
                 })
-    at_spot = live | price_relations(live, spot)       # the pin candidate is at the live price
+    at_spot = live | price_relations(live, spot).to_dict()     # the pin candidate is at the live price
     for gid, label in GAMMA_LEVELS:
         price = at_spot.get(gid)
         if price is not None:
@@ -3271,10 +3283,11 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict:
                       "price level has no staleness rule, its age is shown",
         }
         levels.append(row)
-    # the gamma family, carried from the terrain (terrain_engine.compute_terrain's own values)
+    # the gamma family, carried from the terrain (terrain_engine.compute_terrain's own values),
+    # and the pin candidate at the live price (terrain_engine.price_relations)
     t = terrain_cache_get(tk, now.timestamp())
     if t is not None:
-        t |= price_relations(t, spot)                   # the pin candidate is at the live price
+        t |= price_relations(t, spot).to_dict()
     em = expected_move(t, spot)
     carried = [(gid, label, "gamma", t.get(gid) if t is not None else None) for gid, label in GAMMA_LEVELS]
     carried += [("em_up", "+1σ move", "expected_move", None if em is None else em[0]),
@@ -3282,9 +3295,11 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict:
     for gid, label, fam, price in carried:
         if price is not None:
             as_of = t.get("computed_ts_utc")
+            producer = ({"producer": "terrain_engine.price_relations", "carried": False}
+                        if gid in PRICE_RELATIONS else {"producer": "terrain_engine.compute_terrain", "carried": True})
             levels.append({"id": gid, "price": price, "family": fam, "label": label, "short": label,
                            "evidence_tier": "DERIVED",
-                           "provenance": {"producer": "terrain_engine.compute_terrain", "carried": True}
+                           "provenance": producer
                            if fam == "gamma" else {"producer": "server.expected_move", "carried": False},
                            "staleness": {"as_of_ts_utc": as_of,
                                          "as_of_time_ct": ct_label(as_of) if as_of is not None else None,
@@ -3439,7 +3454,7 @@ def _liquidity_zone_tradeable_fields(zp: dict, spot: Optional[float]) -> None:
         )
         return
     sf = float(spot)
-    inside = lo <= sf <= hi
+    inside = within(lo, hi, sf)
     if inside:
         d = 0.0
     else:
@@ -3458,10 +3473,10 @@ def _spot_location(zones: list, spot) -> "dict | None":
     if spot is None or not zones:
         return None
     for i, z in enumerate(zones):
-        if z.get("zone_low") is not None and z.get("zone_high") is not None and z["zone_low"] <= spot <= z["zone_high"]:
+        if within(z.get("zone_low"), z.get("zone_high"), spot):
             return {"inside": i, "above": None, "below": None}
-    above = [i for i, z in enumerate(zones) if z.get("zone_low") is not None and z["zone_low"] > spot]
-    below = [i for i, z in enumerate(zones) if z.get("zone_high") is not None and z["zone_high"] < spot]
+    above = [i for i, z in enumerate(zones) if level_side(z.get("zone_low"), spot) == LEVEL_ABOVE]
+    below = [i for i, z in enumerate(zones) if level_side(z.get("zone_high"), spot) == LEVEL_BELOW]
     return {"inside": None,
             "above": min(above, key=lambda i: zones[i]["zone_low"]) if above else None,
             "below": max(below, key=lambda i: zones[i]["zone_high"]) if below else None}

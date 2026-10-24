@@ -190,7 +190,7 @@ def test_pin_candidate_is_published_only_through_the_qualification_gates():
     # concentration stays.
     chain, spot = _fixture_book()
     snap = compute_terrain("SPY", chain, spot, now=NOW)
-    served = price_relations(snap.to_dict(), spot)
+    served = price_relations(snap.to_dict(), spot).to_dict()
     assert snap.net_gex_at_spot is not None and snap.net_gex_at_spot < 0
     assert served["pin_candidate"] is None
     assert served["pin_candidate_blockers"] == ["regime", "liquidity"]
@@ -206,7 +206,7 @@ def test_every_level_shaped_payload_name_is_declared():
 
     chain, spot = _fixture_book()
     published = compute_terrain("SPY", chain, spot, now=NOW).to_dict()
-    payload = published | price_relations(published, spot)          # as /api/terrain serves it
+    payload = published | price_relations(published, spot).to_dict()     # as /api/terrain serves it
     declared_terrain = {n for (s, n) in DECLARED if s == "terrain"}
     same = payload.get("same_day")
     assert isinstance(same, dict)

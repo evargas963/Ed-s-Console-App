@@ -429,9 +429,10 @@ from Schwab to the screen (daemon, console, page), are these:
   serve that result and read no stored chain. The same publication carries each strike's net
   DEX $ and total OI (`terrain_engine._per_strike_measure_rows`, by the heatmap cell's readers),
   served as `/api/terrain/strikes` `measures` for the Chart view of Delta / DEX and Open
-  Interest. Everything computed from spot (gamma at spot, regime,
-  wall states and leans, wall distances, flip side, headline) is computed in that one publication
-  at that publication's price; `/api/terrain` serves it as published and recomputes nothing.
+  Interest. The book's values at spot (gamma at spot, regime, posture, confidence, headline) are
+  computed in that one publication at that publication's price; `/api/terrain` serves them as
+  published and recomputes none. Each relation of the live price to the levels is served beside
+  them, at the live price (below).
   A publication carries the same fields whatever its chain's source (a live download or a stored
   capture). `/api/terrain` adds the daily, weekly and monthly ATR(14) when it is read (`server._atr`):
   Schwab's daily candles before today, today's candle rolled up live from today's 1-minute bars
@@ -463,11 +464,13 @@ from Schwab to the screen (daemon, console, page), are these:
   as the live price (`resolve_spot`), one meaning on every route (`tests/test_page_one_faucet_v1.py`
   checks every GET route that answers a ticker). Every relation of the price to the levels is at
   that live price, computed when served, never stored with the publication: each wall's state
-  and lean, the distance to each wall, the price's side of the flip, the pin candidate and the
-  read's lines (`terrain_engine.price_relations`, on `/api/terrain`, `/api/levels` and the chart's
-  markers), `/api/levels`' side of each level, and the level crosses (below). One side rule,
-  exact values: `terrain_read.level_side` (ABOVE, AT, BELOW) and `terrain_read.crossed`
-  (`tests/test_level_crosses_wire.py`, `tests/test_trade_desk_served_v1.py`). The one-day move's two prices are the live price
+  and lean, the price's side of the flip, the pin candidate and the read's lines
+  (`terrain_engine.price_relations`, a `PriceRelations` record, on `/api/terrain`, `/api/levels`
+  and the chart's markers); each level's distance (level minus price) and side on `/api/levels`,
+  the one distance the desk's nearest level and its Box line read; the price inside, above or
+  below each liquidity zone (`terrain_read.within`); and the level crosses (below). One side rule,
+  exact values: `terrain_read.level_side` (ABOVE, AT, BELOW), with `within` and `crossed` built
+  on it (`tests/test_level_crosses_wire.py`, `tests/test_trade_desk_served_v1.py`). The one-day move's two prices are the live price
   plus and minus the publication's implied move (`server.expected_move`, the one producer;
   `/api/levels` and `/api/confluence` carry it). A chain delivered with no spot (the daemon held no
   price) has no levels, with its reason.
@@ -516,13 +519,18 @@ from Schwab to the screen (daemon, console, page), are these:
   resets it, and the window it sums (its first and last print's Schwab trade time,
   `cum_delta_window`) is served beside it and printed with it. A print of size 0 adds 0.
 - **Level crosses.** Found by the console at the live price on each streamed equity quote
-  (`server._on_stream_tick`, on the event loop): each published level the price reached or passed
-  since the last price checked for that ticker (`terrain_read.crossed`, the one side rule). No
-  quote, no check; a new publication moves the levels, not the price, and is not a cross. Stored
-  on the pricing thread (`EdDB.record_level_crosses`; a level's cross in the direction the
-  console holds one for from the last minute is not stored again, `server.LEVEL_CROSS_HOLD_S`,
-  read from memory), written to `ed_console.db`
-  and kept in the console's memory (§3.3) → the `levels` push → `/api/desk/events`, which serves
+  (`server._on_stream_tick`, on the event loop, the owner): each published level the price
+  reached or passed going from the ticker's previous streamed price to this one
+  (`server._last_tick_spot`, kept on every equity quote, since the price row holds only the
+  newest; `terrain_read.crossed`, the one side rule). No quote, no check; a new publication moves
+  the levels, not the price, and is not a cross. Stored on the pricing thread as `LevelCrossEvent`
+  records (`server._log_level_crosses`, `EdDB.record_level_crosses`): a level's cross in the
+  direction the ticker's held crosses have one for from the last minute is not stored again
+  (`server.LEVEL_CROSS_HOLD_S`); a ticker's held crosses are read from `ed_console.db` once, the
+  first time they are needed, so a restart holds back what the last minute stored. A failed store
+  is logged, and that cross is not held or stored. Written to `ed_console.db`
+  and kept in the console's memory (§3.3) → the `levels` push, sent after the cross is held →
+  `/api/desk/events`, which serves
   each cross as recorded, from memory, and flags the
   newest cross at each level, for the newest six levels, as the chart's numbered callouts (one
   served item is both a callout and its queue entry). The window is the timeframe's

@@ -111,9 +111,12 @@
     var nearest = sorted[0];
     var rows = sorted.slice(1, 6).map(function (r) { return [r.label || r.id, num(r.price), r.evidence_tier]; });
     var heroVal = (nearest.label || nearest.id) + ' ' + num(nearest.price);
-    var heroUnit = nearest.side === 'AT' ? 'at spot' : nearest.side === 'ABOVE' ? num(nearest.distance) + ' above spot'
-      : nearest.side === 'BELOW' ? num(-nearest.distance) + ' below spot' : '';
-    return stage(2, 'td-accent-green', 'Frame — nearest liquidity level', heroVal, heroUnit, 0, rows, null);
+    return stage(2, 'td-accent-green', 'Frame — nearest liquidity level', heroVal, fromSpot(nearest), 0, rows, null);
+  }
+  // a served level's distance and side from the live price, in words
+  function fromSpot(r) {
+    return r.side === 'AT' ? 'at spot' : r.side === 'ABOVE' ? num(r.distance) + ' above spot'
+      : r.side === 'BELOW' ? num(-r.distance) + ' below spot' : '';
   }
 
   function confirmStage(d) {
@@ -135,7 +138,7 @@
 
   // ---- Context Summary: plain-English arrangement of the SAME 4 responses. Classifies
   // (inside a zone / between two zones), never invents a value. ----
-  function contextSummary(terrain, snap, spot) {
+  function contextSummary(terrain, snap, levelsD) {
     var lines = [];
     if (terrain) {
       lines.push(['Regime', (terrain.regime || '—') + (terrain.posture ? ' · ' + terrain.posture : '')]);
@@ -154,8 +157,9 @@
       if (loc.below) parts.push(esc(loc.below.zone_label) + ' zone below at ' + num(loc.below.zone_high) + ' (confluence ' + loc.below.confluence_score + ')');
       lines.push(['Location', parts.length ? 'Between zones — ' + parts.join(', ') : 'No scored zone nearby']);
     }
-    if (terrain && terrain.dist_to_put_wall != null && terrain.dist_to_call_wall != null) {   // served
-      lines.push(['Box', num(terrain.dist_to_put_wall) + ' above put wall, ' + num(terrain.dist_to_call_wall) + ' below call wall']);
+    var walls = {}; ((levelsD && levelsD.levels) || []).forEach(function (r) { walls[r.id] = r; });   // served
+    if (walls.put_wall && walls.call_wall && walls.put_wall.side && walls.call_wall.side) {
+      lines.push(['Box', 'Put wall ' + fromSpot(walls.put_wall) + ', call wall ' + fromSpot(walls.call_wall)]);
     }
     if (!lines.length) return '';
     return '<div class="td-context"><h4>Context summary</h4>' +
@@ -327,7 +331,7 @@
         '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Right now</span><span class="fl-sym">' + esc(tk) +
         '</span><span class="fl-meta">' + (isFinite(spot) ? ('spot ' + num(spot) + when) : '') + '</span></div></div>' +
         '<div class="td-grid">' + detectStage(detect) + frameStage(levelsD) + confirmStage(terrain) + '</div>' +
-        contextSummary(terrain, snap, spot) +
+        contextSummary(terrain, snap, levelsD) +
         migrationSection(strikesD, terrain, spot, tk) +
         '<div class="notproven" style="margin-top:14px;">HOME PRESERVED — DECISION AUTHORITY NOT_PROVEN. ' +
         'This page assembles already-canonical Detect/Frame/Confirm signals and classifies them in plain English; it computes no new value and renders no Execute step. ' +

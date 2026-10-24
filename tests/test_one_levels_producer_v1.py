@@ -323,7 +323,7 @@ def test_the_route_serves_the_publication_and_a_chain_without_a_spot_publishes_n
     out = server.get_terrain(ticker=TK)
     for k in ("regime", "net_gex_at_spot", "call_wall", "headline"):
         assert out[k] == published[k], k
-    for k in ("call_wall_state", "call_wall_lean", "dist_to_call_wall", "flip_relation", "pin_candidate"):
+    for k in ("call_wall_state", "call_wall_lean", "flip_relation", "pin_candidate"):
         assert out[k] is None, k
     assert out["priced_at_spot"] == published["spot"] and out["priced_at_spot_as_of_ts_utc"] == _T
     assert out["priced_at_spot_source"] == server.SPOT_SOURCE_PLANE

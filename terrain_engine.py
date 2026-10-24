@@ -23,7 +23,7 @@ scheduling live in the caller, so this stays trivially testable.
 from __future__ import annotations
 
 import time as _time
-from dataclasses import asdict, dataclass, field, replace
+from dataclasses import asdict, dataclass, field, fields, replace
 from datetime import datetime
 from typing import Any
 
@@ -585,30 +585,56 @@ def per_strike_view(books: dict, exposures: dict) -> dict:
 
 
 
+#: a wall's geometry against the price (wall_geometry_state)
+WALL_CONTAINS, WALL_BREACHED = "contains", "breached"
+#: where the price is against a level, from the level's side of the price (level_side)
+_SPOT_IS = {LEVEL_BELOW: "above", LEVEL_AT: "at", LEVEL_ABOVE: "below"}
+
+
 def wall_geometry_state(spot: float | None, wall: float | None,
                         side: str) -> str | None:
     """Whether this wall is in the configuration its support/resistance label claims, by
-    level_side: "contains" = a call wall above the price / a put wall below it, the only geometry
-    in which dealer-hedging containment language is true; "breached" = the price at or through
-    the wall (a wall at the price contains nothing). None when the wall or the price is unknown."""
+    level_side: WALL_CONTAINS = a call wall above the price / a put wall below it, the only
+    geometry in which dealer-hedging containment language is true; WALL_BREACHED = the price at or
+    through the wall (a wall at the price contains nothing). None when the wall or the price is
+    unknown."""
     where = level_side(wall, spot)
     if where is None:
         return None
     if side == "call":
-        return "contains" if where == LEVEL_ABOVE else "breached"
+        return WALL_CONTAINS if where == LEVEL_ABOVE else WALL_BREACHED
     if side == "put":
-        return "contains" if where == LEVEL_BELOW else "breached"
+        return WALL_CONTAINS if where == LEVEL_BELOW else WALL_BREACHED
     raise ValueError(f"side must be 'call' or 'put', got {side!r}")
 
 
-def price_relations(terrain: dict, price: float | None) -> dict:
-    """Every relation of `price` to the published levels (`terrain`, a snapshot's to_dict), as the
-    routes serve it: each wall's state and lean, the distance to each wall, the price's side of the
-    flip, the pin candidate and the read's lines. The levels are the publication's; the price is
-    the one given, the live price on every route."""
+@dataclass(frozen=True)
+class PriceRelations:
+    """Every relation of a price to the published levels, as the routes serve it beside them."""
+    call_wall_state: str | None
+    put_wall_state: str | None
+    call_wall_lean: str | None
+    put_wall_lean: str | None
+    flip_relation: str | None
+    pin_candidate: float | None
+    pin_candidate_blockers: list[str]
+    lines: list[str]
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+#: the names of the relations served beside the levels
+PRICE_RELATIONS = frozenset(f.name for f in fields(PriceRelations))
+
+
+def price_relations(terrain: dict, price: float | None) -> PriceRelations:
+    """Every relation of `price` to the published levels (`terrain`, a snapshot's to_dict): each
+    wall's state and lean, the price's side of the flip, the pin candidate and the read's lines.
+    The levels are the publication's; the price is the one given, the live price on every route.
+    A level's distance from the price is served with the level (/api/levels)."""
     call, put, flip = terrain["call_wall"], terrain["put_wall"], terrain["gamma_flip"]
-    call_state, put_state = wall_geometry_state(price, call, "call"), wall_geometry_state(price, put, "put")
-    call_lean, put_lean = wall_lean(call, put, call_state, put_state, terrain["regime"], terrain["confidence"])
+    call_lean, put_lean = wall_lean(call, put, price, terrain["regime"], terrain["confidence"])
     read = build_terrain_read(spot=price, flip=flip, flip_confidence=terrain["confidence"], put_wall=put,
                               call_wall=call, gamma_at_spot=terrain["net_gex_at_spot"],
                               flip_curve_agrees=terrain["flip_diag"].get("curve_agrees_with_schwab_at_spot"))
@@ -619,30 +645,30 @@ def price_relations(terrain: dict, price: float | None) -> dict:
         absolute_gamma_oi=terrain["absolute_gamma_oi"], book_oi_total=terrain["book_oi_total"],
         net_gex_at_spot=terrain["net_gex_at_spot"], front_dte=terrain["max_pain_dte"])
     flip_side = level_side(flip, price)
-    return {
-        "call_wall_state": call_state, "put_wall_state": put_state,
-        "call_wall_lean": call_lean, "put_wall_lean": put_lean,
-        "dist_to_call_wall": None if call is None or price is None else call - price,
-        "dist_to_put_wall": None if put is None or price is None else price - put,
-        "flip_relation": None if flip_side is None else {LEVEL_BELOW: LEVEL_ABOVE, LEVEL_ABOVE: LEVEL_BELOW,
-                                                         LEVEL_AT: LEVEL_AT}[flip_side],
-        "pin_candidate": pin, "pin_candidate_blockers": list(pin_blockers),
-        "lines": read.lines,
-    }
+    return PriceRelations(
+        call_wall_state=wall_geometry_state(price, call, "call"),
+        put_wall_state=wall_geometry_state(price, put, "put"),
+        call_wall_lean=call_lean, put_wall_lean=put_lean,
+        flip_relation=None if flip_side is None else {LEVEL_BELOW: LEVEL_ABOVE, LEVEL_ABOVE: LEVEL_BELOW,
+                                                      LEVEL_AT: LEVEL_AT}[flip_side],
+        pin_candidate=pin, pin_candidate_blockers=list(pin_blockers), lines=read.lines)
 
 
-def wall_lean(call_wall, put_wall, call_state, put_state, regime, confidence) -> tuple:
-    """(call, put) wall labels as the chart states them: one strike holding both walls is
-    TWO-SIDED (a magnet, not a barrier); a breached wall says so; a containing wall earns the
-    dealer lean (resistance: dealers sell, support: dealers buy) only on a TRUSTED flip with a
-    regime; otherwise None. Moved from the former /chart page (RC-83/RC-130/RC-131)."""
+def wall_lean(call_wall, put_wall, price, regime, confidence) -> tuple:
+    """(call, put) wall labels as the chart states them at `price`: one strike holding both walls
+    is TWO-SIDED (a magnet, not a barrier); a breached wall says where the price is (above, at or
+    below it); a containing wall earns the dealer lean (resistance: dealers sell, support: dealers
+    buy) only on a TRUSTED flip with a regime; otherwise None."""
     if call_wall is not None and call_wall == put_wall:
         return ("TWO-SIDED — magnet, not a barrier",) * 2
     earn = regime != "UNAVAILABLE" and confidence == "TRUSTED"
-    def one(state, breached, lean):
-        return breached if state == "breached" else lean if state == "contains" and earn else None
-    return (one(call_state, "BREACHED — spot above", "DEALERS SELL"),
-            one(put_state, "BREACHED — spot below", "DEALERS BUY"))
+
+    def one(wall, side, lean):
+        state = wall_geometry_state(price, wall, side)
+        if state == WALL_BREACHED:
+            return f"BREACHED — spot {_SPOT_IS[level_side(wall, price)]}"
+        return lean if state == WALL_CONTAINS and earn else None
+    return one(call_wall, "call", "DEALERS SELL"), one(put_wall, "put", "DEALERS BUY")
 
 
 #: RC-292 pin-candidate qualification thresholds. Hardwired, not configurable. Each cites

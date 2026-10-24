@@ -21,12 +21,14 @@ const EVENTS = {
 };
 const SPOT = 771.3;
 const TERRAIN = { ticker: 'SPY', spot: SPOT, gamma_flip: 768, call_wall: 775, put_wall: 765, max_pain: 770, regime: 'LONG_GAMMA',
-  posture: 'PINNED', levels_stale: false, flip_relation: 'ABOVE', dist_to_call_wall: 3.7, dist_to_put_wall: 6.3, pcr_all: 1.1,
+  posture: 'PINNED', levels_stale: false, flip_relation: 'ABOVE', pcr_all: 1.1,
   pcr_by_expiry: { '2026-09-25': 1.1, '2026-10-02': null, '2026-10-09': 0.9 }, atm_iv_pct_by_expiry: { '2026-09-25': 14.2, '2026-10-02': 15.1 } };
 const LEVELS = { ticker: 'SPY', spot: SPOT, tf: '30', generation: 1, vwap_series: [],
   levels: [
     { id: 'PDH', price: 773.5, family: 'prior_day', label: 'Prior Day High', short: 'PDH', evidence_tier: 'MEASURED', distance: 2.2, side: 'ABOVE', },
     { id: 'max_pain', price: 770, family: 'gamma', label: 'Max pain', short: 'Max pain', evidence_tier: 'DERIVED', distance: -1.3, side: 'BELOW', },
+    { id: 'call_wall', price: 775, family: 'gamma', label: 'Call wall', short: 'Call wall', evidence_tier: 'DERIVED', distance: 3.7, side: 'ABOVE', },
+    { id: 'put_wall', price: 765, family: 'gamma', label: 'Put wall', short: 'Put wall', evidence_tier: 'DERIVED', distance: -6.3, side: 'BELOW', },
   ],
   by_distance: ['max_pain', 'PDH'], families_absent: [], degraded: [],
   volume_profile: { basis: 'RTH 1-minute bars, each bar\'s volume spread evenly over its range (not trade prints)', tick_size: 0.01,
@@ -515,7 +517,7 @@ test.describe('Trade Desk renders served values', () => {
     await expect(body).toContainText('bid-heavy (NASDAQ_BOOK, depth 5)');
     await expect(body).toContainText('Max pain 770.00');           // nearest by the served by_distance
     await expect(body).toContainText('1.30 below spot');
-    await expect(body).toContainText('6.30 above put wall, 3.70 below call wall');
+    await expect(body).toContainText('Put wall 6.30 below spot, call wall 3.70 above spot');   // /api/levels' own rows
     await expect(body).toContainText('Resistance zone above at 772.00');
     await expect(body).toContainText('Pivot / value zone below at 769.00');
     await expect(body).toContainText('moved UP the chain');

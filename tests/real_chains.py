@@ -50,3 +50,7 @@ _SPY_CLOSE_FX = json.loads((_FX / "real_spy_close_capture_and_after_hours_print_
 SPY_AFTER_HOURS_PRINT = _SPY_CLOSE_FX["after_hours_print"]
 #: SPY's first LEVELONE_EQUITIES message after that capture whose LAST_PRICE is a strike from it
 SPY_PRINT_A_STRIKE_AWAY = _SPY_CLOSE_FX["print_a_strike_away"]
+#: SPY's first LEVELONE_EQUITIES message after that capture whose LAST_PRICE is one of its strikes
+#: (764.00, received 16:33:27 ET): the first of the three, then SPY_PRINT_A_STRIKE_AWAY (16:39:03),
+#: then SPY_AFTER_HOURS_PRINT (18:00)
+SPY_PRINT_ON_A_STRIKE = json.loads((_FX / "real_spy_print_on_a_strike_2026_10_22.json").read_text(encoding="utf-8"))

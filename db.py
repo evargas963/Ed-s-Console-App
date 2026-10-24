@@ -205,15 +205,11 @@ class EdDB:
 
         return _do()
 
-    def record_level_crosses(self, *, ticker: str, spot: float, crosses: list[tuple[float, str, str]],
-                             ts_utc: float, ts_et: str) -> list[dict]:
-        """Store each (level value, level name, direction) the price crossed at `spot`
-        (server._level_crosses_at decides them). Returns the rows stored."""
+    def record_level_crosses(self, events: list[LevelCrossEvent]) -> list[dict]:
+        """Store each level cross (server._log_level_crosses decides them). Returns the rows
+        stored, each as get_recent_crosses reads it back."""
         logged: list[dict] = []
-        for value, name, direction in crosses:
-            event = LevelCrossEvent(ticker=ticker, ts_utc=float(ts_utc), ts_et=str(ts_et), level_name=str(name),
-                                    level_value=value, direction=direction, spot_at_cross=float(spot),
-                                    zone_before=None, zone_after=None, timeframe="1m")
+        for event in events:
             cross_id = self.log_level_cross(event)
             logged.append({**asdict(event), "cross_id": cross_id})     # the stored row
         return logged

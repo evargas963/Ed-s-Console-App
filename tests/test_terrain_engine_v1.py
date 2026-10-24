@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 
 from math_levels import GAMMA_FLIP_TRUSTED
-from terrain_engine import TERRAIN_SCHEMA_VERSION, compute_terrain, price_relations
+from terrain_engine import TERRAIN_SCHEMA_VERSION, WALL_BREACHED, WALL_CONTAINS, compute_terrain, price_relations
 from tests.real_chains import CRWD, MRVL, SPY_0DTE
 
 NOW = SPY_0DTE.now
@@ -49,7 +49,7 @@ def test_real_chain_produces_a_complete_payload() -> None:
     assert snap.contracts_used > 0
     assert snap.strikes_used > 0
     assert snap.headline, "the operator always gets a sentence"
-    assert price_relations(snap.to_dict(), spot)["lines"]
+    assert price_relations(snap.to_dict(), spot).lines
 
 
 def test_levels_are_real_strikes_or_absent() -> None:
@@ -60,7 +60,7 @@ def test_levels_are_real_strikes_or_absent() -> None:
     chain, spot = _real_chain()
     snap = compute_terrain("SPY", chain, spot, now=NOW)
     strikes = {float(c["strikePrice"]) for c in chain if c.get("strikePrice") is not None}
-    served = snap.to_dict() | price_relations(snap.to_dict(), spot)
+    served = snap.to_dict() | price_relations(snap.to_dict(), spot).to_dict()
 
     for name in ("call_wall", "put_wall", "absolute_gamma_strike", "pin_candidate",
                  "call_charm_wall", "put_charm_wall"):
@@ -276,10 +276,10 @@ def test_real_chain_wall_states_agree_with_the_geometry() -> None:
     chain, spot = _real_chain()
     snap = compute_terrain("SPY", chain, spot, now=NOW)
     d = price_relations(snap.to_dict(), spot)
-    assert d["call_wall_state"] == wall_geometry_state(spot, snap.call_wall, "call")
-    assert d["put_wall_state"] == wall_geometry_state(spot, snap.put_wall, "put")
-    assert d["call_wall_state"] in ("contains", "breached")
-    assert d["put_wall_state"] in ("contains", "breached")
+    assert d.call_wall_state == wall_geometry_state(spot, snap.call_wall, "call")
+    assert d.put_wall_state == wall_geometry_state(spot, snap.put_wall, "put")
+    assert d.call_wall_state in (WALL_CONTAINS, WALL_BREACHED)
+    assert d.put_wall_state in (WALL_CONTAINS, WALL_BREACHED)
 
 
 def _bucket_for_pin(exposures: dict, pin: float) -> dict | None:
@@ -375,11 +375,11 @@ def test_pin_score_inputs_follow_the_wide_terrain_book_not_selected_expiry() -> 
 
 
 def test_unavailable_terrain_does_not_fabricate_pin_score_stamps() -> None:
-    snap = compute_terrain("SPY", None, 743.0, now=NOW)
+    snap = compute_terrain("SPY", None, SPY_0DTE.spot, now=NOW)
     assert snap.absolute_gamma_strike is None
     assert snap.absolute_gamma_gex_dollars is None
     assert snap.absolute_gamma_oi is None
     assert snap.book_oi_total is None
-    served = price_relations(snap.to_dict(), 743.0)
-    assert served["pin_candidate"] is None, "no chain must never yield a pin claim"
-    assert "completeness" in served["pin_candidate_blockers"], "no chain: no absolute-gamma strike"
+    served = price_relations(snap.to_dict(), SPY_0DTE.spot)
+    assert served.pin_candidate is None, "no chain must never yield a pin claim"
+    assert "completeness" in served.pin_candidate_blockers, "no chain: no absolute-gamma strike"

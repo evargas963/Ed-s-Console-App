@@ -71,6 +71,12 @@ def level_side(level: float | None, price: float | None) -> str | None:
     return LEVEL_AT
 
 
+def within(low: float | None, high: float | None, price: float | None) -> bool:
+    """Whether `price` is inside the range from `low` to `high`, either edge included (level_side)."""
+    return (level_side(low, price) in (LEVEL_BELOW, LEVEL_AT)
+            and level_side(high, price) in (LEVEL_ABOVE, LEVEL_AT))
+
+
 def crossed(level: float | None, before: float | None, after: float | None) -> str | None:
     """CROSSED_UP when the price moved from under `level` to at or over it, CROSSED_DOWN from over
     it to at or under it (level_side); None otherwise."""
