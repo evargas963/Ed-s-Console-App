@@ -194,7 +194,9 @@ gates included; each value computed from the live price is marked not live, with
 and age, when that price stops (`server.price_mark`), in the PR that moves it to the live price; a
 ticker's stored level crosses are read from `ed_console.db` once, the first time they are needed
 (the console's start, or a ticker's first cross), and that read counts as the ticker's startup
-under rule 6.
+under rule 6. Operator 2026-10-23, later: during a feed outage the console tells each open page
+to read again once a minute (`server.refresh_not_live_pages`), so the not-live mark's age keeps
+counting.
 
 | ID | Status | Work item |
 |---|---|---|

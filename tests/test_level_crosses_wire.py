@@ -177,6 +177,41 @@ def test_relations_from_a_stopped_price_stand_marked_not_live_with_its_time_and_
     assert call["from_spot_text"] == f"{STRIKE_AWAY - 765.0:.2f} below spot"
 
 
+def test_a_page_whose_price_has_stopped_is_told_each_minute_to_read_its_levels_again():
+    """The not-live mark's age keeps counting: while SPY's last price (the 16:39 print) is live, a
+    page open on SPY is not told anything; once the daemon's connection ends, the levels loop's
+    minute (server.refresh_not_live_pages) tells it to read its levels again, every minute."""
+    import asyncio
+
+    import push_changes
+
+    _forget()
+    _publish_close()
+    msg = SPY_PRINT_A_STRIKE_AWAY
+    lmp.record_from_level_one_equity("SPY", msg["native"], received_ts=msg["ts_recv"])
+    ofs._price_rows["SPY"] = live_price_rows.price_row("SPY", time.time())
+
+    async def told():
+        push_changes.bind(asyncio.get_running_loop())
+        page = push_changes.subscribe("SPY")
+        try:
+            seen = []
+            for down in (False, True, True):
+                if down:
+                    lmp.record_feed_down()
+                server.refresh_not_live_pages(time.time())
+                seen.append(await push_changes.next_changes(page, 0.3))
+            return seen
+        finally:
+            push_changes.unsubscribe("SPY", page)
+            push_changes.bind(None)
+    try:
+        seen = asyncio.run(told())
+    finally:
+        _forget()
+    assert seen == [set(), {push_changes.LEVELS}, {push_changes.LEVELS}]
+
+
 #: the answers the browser tests render, each kept equal to the route's own (stopped_price_answers)
 STOPPED_FIXTURES = {"levels": "real_spy_levels_at_a_stopped_price_2026_10_22.json",
                     "confluence": "real_spy_confluence_at_a_stopped_price_2026_10_22.json"}

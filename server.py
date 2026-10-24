@@ -1682,10 +1682,22 @@ def _wait_for(what: str, ready) -> None:
         log.info("done waiting for %s after %.1f s", what, time.monotonic() - started)
 
 
+def refresh_not_live_pages(now: float) -> None:
+    """Tell each open page whose ticker's live price is not live at `now` (Schwab's
+    LEVELONE_EQUITIES feed not delivering it) to read its levels again, so the not-live mark's age
+    (server.price_mark) keeps counting while the price stays stopped. The levels loop calls it
+    every STATUS_EVERY_SEC; a page whose price is live is not told."""
+    for tk in push_changes.watched():
+        if not lmp.feed_live_for(tk, "LEVELONE_EQUITIES", now):
+            push_changes.changed(tk, push_changes.LEVELS)
+
+
 def _terrain_loop() -> None:
     """The watchlist's stored levels once the daemon has said what the watchlist is (queued behind
-    the delivered chains: _load_stored_levels); then every STATUS_EVERY_SEC the status line is logged
-    and the price levels of a new session or a new ticker are published. The chains, and the bars
+    the delivered chains: _load_stored_levels); then every STATUS_EVERY_SEC the status line is logged,
+    each open page whose price is not live is told to read its levels again
+    (refresh_not_live_pages) and the price levels of a new session or a new ticker are published.
+    The chains, and the bars
     each ticker's price levels are built from, arrive from the daemon (_on_chain, _bar_writer)."""
     _wait_for("the capture daemon's heartbeat (it says what the watchlist is)",
               lambda: _watchlist(time.time()) is not None)
@@ -1703,6 +1715,7 @@ def _terrain_loop() -> None:
                 next_status = time.monotonic() + STATUS_EVERY_SEC
                 now = time.time()
                 log.info(_status_line(now))
+                refresh_not_live_pages(now)
                 watchlist = _watchlist(now)
                 if watchlist is not None:
                     _publish_missing_price_levels(watchlist, now_et())

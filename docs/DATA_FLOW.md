@@ -478,8 +478,13 @@ from Schwab to the screen (daemon, console, page), are these:
   `spot_not_live_text`, "not live · last trade Thu 10/22 03:39 PM CT, 81m old", from the one age
   formatter `time_et.age_text`); `/api/levels` puts it on the pin candidate's row too
   (`not_live_text`). When the price stops, every relation stands, marked with it: the desk's wall
-  labels, GAMMA cell, pin candidate, nearest level and Box line, and the confluence screen's spot
-  (`tests/test_level_crosses_wire.py::test_relations_from_a_stopped_price_stand_marked_not_live_with_its_time_and_age`;
+  labels, GAMMA cell, pin candidate, nearest level and Box line, and the confluence screen's spot.
+  While the price stays stopped, the levels loop tells each open page on that ticker to read
+  again every minute (`server.refresh_not_live_pages`, its owner `server._terrain_loop`; when that
+  loop stops, the age stays as of the page's last read and the trade time beside it stays true),
+  so the age keeps counting
+  (`tests/test_level_crosses_wire.py::test_relations_from_a_stopped_price_stand_marked_not_live_with_its_time_and_age`,
+  `test_a_page_whose_price_has_stopped_is_told_each_minute_to_read_its_levels_again`;
   `tests/e2e/console-trade-desk.spec.js` and `tests/e2e/console-confluence.spec.js` render the
   routes' own answers, `tests/fixtures/real_spy_levels_at_a_stopped_price_2026_10_22.json` and
   `tests/fixtures/real_spy_confluence_at_a_stopped_price_2026_10_22.json`, kept equal to them by
