@@ -177,11 +177,16 @@ def test_relations_from_a_stopped_price_stand_marked_not_live_with_its_time_and_
     assert call["from_spot_text"] == f"{STRIKE_AWAY - 765.0:.2f} below spot"
 
 
-def stopped_price_levels() -> dict:
-    """/api/levels as the real code serves it on SPY's 2026-10-22 close publication with SPY's
-    16:39 print (773.1269) as the last price and the daemon's connection ended, read at the 18:00
-    print's instant: the answer the browser test renders (tests/fixtures/
-    real_spy_levels_at_a_stopped_price_2026_10_22.json)."""
+#: the answers the browser tests render, each kept equal to the route's own (stopped_price_answers)
+STOPPED_FIXTURES = {"levels": "real_spy_levels_at_a_stopped_price_2026_10_22.json",
+                    "confluence": "real_spy_confluence_at_a_stopped_price_2026_10_22.json"}
+
+
+def stopped_price_answers() -> dict:
+    """/api/levels and /api/confluence (the 2026-10-22 expiry) as the real code serves them on
+    SPY's 2026-10-22 close publication with SPY's 16:39 print (773.1269) as the last price and the
+    daemon's connection ended, read at the 18:00 print's instant: the answers the browser tests
+    render (STOPPED_FIXTURES)."""
     import json
     from datetime import datetime
 
@@ -194,21 +199,26 @@ def stopped_price_levels() -> dict:
     lmp.record_from_level_one_equity("SPY", msg["native"], received_ts=msg["ts_recv"])
     ofs._price_rows["SPY"] = live_price_rows.price_row("SPY", msg["ts_recv"])
     lmp.record_feed_down()
+    at = datetime.fromtimestamp(SPY_AFTER_HOURS_PRINT["ts_recv"], ET)
     try:
-        body = server.levels_payload("SPY", "1", datetime.fromtimestamp(SPY_AFTER_HOURS_PRINT["ts_recv"], ET))
+        bodies = {"levels": server.levels_payload("SPY", "1", at),
+                  "confluence": server.confluence_payload("SPY", "2026-10-22", at)}
     finally:
         _forget()
-    return json.loads(json.dumps(body))
+    return json.loads(json.dumps(bodies))
 
 
-def test_the_stopped_price_answer_the_browser_renders_is_the_routes_own():
-    """The browser test's /api/levels answer is this route's, on captured data: kept equal to it."""
+def test_the_stopped_price_answers_the_browser_renders_are_the_routes_own():
+    """The browser tests' /api/levels and /api/confluence answers are these routes', on captured
+    data: kept equal to them."""
     import json
 
-    fx = Path(__file__).parent / "fixtures" / "real_spy_levels_at_a_stopped_price_2026_10_22.json"
-    served = stopped_price_levels()
-    assert json.loads(fx.read_text(encoding="utf-8")) == served
-    assert served["spot_feed_live"] is False and served["spot_not_live_text"].startswith("not live · last trade ")
+    served = stopped_price_answers()
+    for route, name in STOPPED_FIXTURES.items():
+        fx = json.loads((Path(__file__).parent / "fixtures" / name).read_text(encoding="utf-8"))
+        assert fx == served[route], route
+        assert served[route]["spot_feed_live"] is False
+        assert served[route]["spot_not_live_text"].startswith("not live · last trade ")
 
 
 def test_a_stored_cross_is_the_row_read_back(tmp_path: Path) -> None:

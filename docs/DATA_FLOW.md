@@ -480,9 +480,10 @@ from Schwab to the screen (daemon, console, page), are these:
   (`not_live_text`). When the price stops, every relation stands, marked with it: the desk's wall
   labels, GAMMA cell, pin candidate, nearest level and Box line, and the confluence screen's spot
   (`tests/test_level_crosses_wire.py::test_relations_from_a_stopped_price_stand_marked_not_live_with_its_time_and_age`;
-  `tests/e2e/console-trade-desk.spec.js` renders the route's own answer,
-  `tests/fixtures/real_spy_levels_at_a_stopped_price_2026_10_22.json`, kept equal to it by
-  `test_the_stopped_price_answer_the_browser_renders_is_the_routes_own`). The one-day move's two prices are the live price
+  `tests/e2e/console-trade-desk.spec.js` and `tests/e2e/console-confluence.spec.js` render the
+  routes' own answers, `tests/fixtures/real_spy_levels_at_a_stopped_price_2026_10_22.json` and
+  `tests/fixtures/real_spy_confluence_at_a_stopped_price_2026_10_22.json`, kept equal to them by
+  `test_the_stopped_price_answers_the_browser_renders_are_the_routes_own`). The one-day move's two prices are the live price
   plus and minus the publication's implied move (`server.expected_move`, the one producer;
   `/api/levels` and `/api/confluence` carry it). A chain delivered with no spot (the daemon held no
   price) has no levels, with its reason.

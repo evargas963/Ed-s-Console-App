@@ -25,8 +25,9 @@ def ct_label(ts_utc: float) -> str:
 
 
 def age_text(sec: float) -> str:
-    """An age as the screen shows it: "45s", "12m", "3h", "2d"."""
-    sec = max(0.0, float(sec))
+    """An age as the screen shows it: "45s", "12m", "3h", "2d". A negative age (a time after the
+    console's clock) shows as negative, never as 0."""
+    sec = float(sec)
     if sec < 90:
         return f"{round(sec)}s"
     if sec < 5400:

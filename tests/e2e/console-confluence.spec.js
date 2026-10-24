@@ -27,6 +27,29 @@ async function openMatrix(page) {
   await page.goto('/');
 }
 
+test('a price that has stopped marks the spot not live with its time and age', async ({ page }) => {
+  // AGENTS rule 5: /api/confluence as the real code serves it on SPY's 2026-10-22 close
+  // publication, its 16:39 print the last price and the daemon's connection ended, read at 18:00
+  // (tests/test_level_crosses_wire.py keeps this file equal to the route's answer)
+  const STOPPED = require('../fixtures/real_spy_confluence_at_a_stopped_price_2026_10_22.json');
+  const errs = [];
+  page.on('pageerror', (e) => errs.push(e.message));
+  await page.route('**/api/confluence**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(STOPPED) }));
+  await page.addInitScript(() => {
+    try {
+      localStorage.setItem('ed_ticker', 'SPY');
+      localStorage.setItem('ed_ws', 'trade-desk');
+      localStorage.setItem('ed_sub', 'confluence');
+    } catch (e) { /* storage unavailable */ }
+  });
+  await page.goto('/');
+  expect(STOPPED.spot_not_live_text).toContain('last trade');
+  await expect(page.locator('#cmBody')).toContainText(STOPPED.spot_text);
+  await expect(page.locator('#cmBody')).toContainText(STOPPED.spot_not_live_text);
+  expect(errs).toEqual([]);
+});
+
 test('the matrix redraws when the priced chain updates and keeps the expiry', async ({ page }) => {
   const errs = [];
   const expiries = [];
