@@ -188,7 +188,11 @@ change, not deferred. Operator 2026-10-23, on #589: merge it once CI is green; t
 three test files and one shared price formatter are the next PR; the deploy restart waits for his
 word while the market is open. Operator 2026-10-23, later: "you do not have to ask me to merge, you
 have full authority to get everything into production": the one-producer PRs merge once CI is green
-and both reviews pass, and deploy, without a separate yes. Operator 2026-10-23, on ONE-22: every
+and both reviews pass, and deploy, without a separate yes. Operator 2026-10-23, later still: "you do
+not have to wait till after hours to deploy ... we get things done right away we don't wait": a
+merged PR deploys at once, in any session (a restart in regular hours still goes through the yes
+guard's Allow/Deny, CLAUDE.md item 5); "no reason to ever wait": the work is done and deployed
+now, and only what needs a live market is tested in regular hours. Operator 2026-10-23, on ONE-22: every
 relation of the price to the levels is at the live price with one side rule, the pin candidate's
 gates included; each value computed from the live price is marked not live, with the price's time
 and age, when that price stops (`server.price_mark`), in the PR that moves it to the live price; a
