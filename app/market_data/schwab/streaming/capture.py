@@ -99,6 +99,8 @@ from calibration.complete_chain_capture import ChainSweep  # noqa: E402
 from config import build_config, load_dotenv_file  # noqa: E402
 from db_authority import canonical_console_db_path  # noqa: E402
 from instrument_identity import ticker_storage_key  # noqa: E402
+import live_market_plane as lmp  # noqa: E402
+import live_price_rows  # noqa: E402
 from math_exposure_core import gamma_reported  # noqa: E402
 from numeric_contract import schwab_number  # noqa: E402
 from schwab.streaming import StreamClient  # noqa: E402
@@ -409,15 +411,18 @@ class Daemon:
         #: the contract Ed selected on the Flow panel (the console's {"op": "flow_contract"}),
         #: streamed on both option services on top of the rule
         self.flow_contract: "str | None" = None
-        #: the option rule's inputs per watchlist ticker, as the bus has them (follow_market): its
-        #: newest LAST_PRICE and newest whole chain; and that chain in the rule's order (by_gamma)
-        self._prices: "dict[str, float]" = {}
+        #: the option rule's inputs per watchlist ticker (follow_market): its newest whole chain, as
+        #: the bus has it, and that chain in the rule's order (by_gamma) at the price row's price
         self._chains: "dict[str, list[dict]]" = {}
         self._ranked: "dict[str, tuple[str, ...]]" = {}
-        #: each ticker's newest chain as its strikes per expiration (strike_ladders), and the option
-        #: contracts whose quotes and books the writer records (saves): each watchlist ticker's
-        #: saved_window at its newest price, and the Flow panel's contract
+        #: the tickers whose newest chain waits for a price to be put in the rule's order
+        self._unpriced: "set[str]" = set()
+        #: each ticker's newest chain as its strikes per expiration (strike_ladders); each ticker's
+        #: recorded contracts (saved_window at the price row's price, as last computed: a ticker
+        #: whose price row has no price keeps its window); the option contracts whose quotes and
+        #: books the writer records (saves): those windows and the Flow panel's contract
         self._ladders: "dict[str, list]" = {}
+        self._windows: "dict[str, frozenset[str]]" = {}
         self.saved_options: "frozenset[str]" = frozenset()
         self.chains = None                 # the ChainSweep: its round time, its tickers
         self.writer = None                  # the CaptureWriter: its state rides the heartbeat
@@ -484,14 +489,23 @@ class Daemon:
         self.options = new
         self.ask()
 
+    def _price(self, ticker: str, now: float) -> "float | None":
+        """`ticker`'s live price at `now`: the price row's (live_price_rows.price_row, the one
+        producer: Schwab's LAST_PRICE as the plane holds it), None while it has none."""
+        return live_price_rows.price_row(ticker, now)["spot"]
+
     def _keep_options(self) -> None:
         """The option contracts recorded (saved_options): each watchlist ticker's saved_window at
-        its newest price and the daemon's time, and the Flow panel's contract."""
+        its price row's price and the daemon's time (a ticker whose row has no price keeps the
+        window last computed), and the Flow panel's contract."""
         now = self.clock()
+        for tk in self.watchlist:
+            price = self._price(tk, now) if tk in self._ladders else None
+            if price is not None:
+                self._windows[tk] = saved_window(self._ladders[tk], price, now)
         kept = frozenset(c for c in [self.flow_contract] if c is not None)
         for tk in self.watchlist:
-            if tk in self._ladders and tk in self._prices:
-                kept |= saved_window(self._ladders[tk], self._prices[tk], now)
+            kept |= self._windows.get(tk, frozenset())
         self.saved_options = kept
 
     def saves(self, topic: str, msg: dict) -> bool:
@@ -501,37 +515,39 @@ class Daemon:
         return not option or msg["symbol"] in self.saved_options
 
     def _rank(self, ticker: str) -> None:
-        """`ticker`'s newest chain put in the rule's order (by_gamma) at its newest price and the
-        daemon's time, and the pick redone."""
-        self._ranked[ticker] = by_gamma(self._chains[ticker], self._prices[ticker], self.clock(),
-                                        option_close_product(ticker))
+        """`ticker`'s newest chain put in the rule's order (by_gamma) at its price row's price and
+        the daemon's time, and the pick redone. While the row has no price the ticker keeps the
+        order it has, and the chain waits for the next price (_unpriced)."""
+        now = self.clock()
+        price = self._price(ticker, now)
+        if price is None:
+            self._unpriced.add(ticker)
+            return
+        self._unpriced.discard(ticker)
+        self._ranked[ticker] = by_gamma(self._chains[ticker], price, now, option_close_product(ticker))
         self.pick_options()
 
-    def _took_price(self, ticker: str, record: dict) -> None:
-        """A ticker's newest equity quote on the bus: its LAST_PRICE, which its next chain is
-        ordered by; a chain that arrived before the ticker's first price is ordered now."""
-        native = record["native"]
-        price = schwab_number(native["LAST_PRICE"]) if "LAST_PRICE" in native else None
-        if price is not None:
-            self._prices[ticker] = price
-            if ticker in self._chains and ticker not in self._ranked:
-                self._rank(ticker)
-            self._keep_options()
+    def _took_row(self, ticker: str) -> None:
+        """The plane published `ticker`'s price row (live_market_plane's row listener, after it took
+        the ticker's newest equity quote): a chain that waits for a price is ordered now, and the
+        recorded contracts follow the price."""
+        if ticker in self._unpriced:
+            self._rank(ticker)
+        self._keep_options()
 
     def _took_chain(self, ticker: str, record: list) -> None:
-        """A ticker's newest whole chain on the bus (its parts), ordered once its price is held.
+        """A ticker's newest whole chain on the bus (its parts), ordered at the price row's price.
         A failed fetch carries no contracts and changes nothing."""
         if all("contracts" in part for part in record):
             self._chains[ticker] = [ct for part in record for ct in part["contracts"]]
             self._ladders[ticker] = strike_ladders(self._chains[ticker])
-            if ticker in self._prices:
-                self._rank(ticker)
+            self._rank(ticker)
             self._keep_options()
 
     async def follow_market(self, stop: asyncio.Event) -> None:
-        """The option rule's inputs, as the bus has them, until `stop`: each ticker's newest
-        equity quote and newest whole chain (the chain sweep's); a new chain redoes the pick
-        (pick_options)."""
+        """The option rule's inputs until `stop`: each ticker's price row as the plane publishes it
+        (its row listener; the plane is fed by serve_live_ui) and newest whole chain, as the bus
+        has it (the chain sweep's); a new chain redoes the pick (pick_options)."""
         async def follow(prefix: str, take) -> None:
             sub = self.bus.subscribe(prefix, policy=LATEST)
             try:
@@ -540,14 +556,14 @@ class Daemon:
                     take(topic.split(".", 1)[1], record)
             finally:
                 self.bus.unsubscribe(sub)
-        tasks = [asyncio.create_task(follow("quote.", self._took_price)),
-                 asyncio.create_task(follow("chain.", self._took_chain))]
+        lmp.add_row_listener(self._took_row)
+        task = asyncio.create_task(follow("chain.", self._took_chain))
         try:
             await stop.wait()
         finally:
-            for t in tasks:
-                t.cancel()
-            await asyncio.gather(*tasks, return_exceptions=True)
+            lmp.remove_row_listener(self._took_row)
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
 
     def console_frame(self, req: dict, sender) -> None:
         """A frame from a connection `sender` to the daemon's local socket (live_push, 127.0.0.1): a

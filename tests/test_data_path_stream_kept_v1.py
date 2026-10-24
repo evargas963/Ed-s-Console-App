@@ -23,6 +23,7 @@ from pathlib import Path
 import pytest
 
 from app.market_data.schwab.streaming import capture
+from app.market_data.schwab.streaming.live_ui import serve_live_ui
 from calibration.complete_chain_capture import chain_messages
 from stream_spine import LOG, PRUNE_ROWS, WRITER_BLOCKED, WRITER_DEAD, WRITER_RECORDING, CaptureWriter, HealthRegistry, MessageBus, book_msg, options_quote_msg, quote_msg
 from tests.real_chains import MRVL, SPY_0DTE
@@ -66,7 +67,9 @@ def test_only_the_option_contracts_traded_are_recorded_and_every_equity_message(
 
     async def go():
         stop = asyncio.Event()
+        # the plane fed as production feeds it (serve_live_ui, on a port the system picks)
         tasks = [asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop)),
+                 asyncio.create_task(serve_live_ui(bus, stop, heartbeat_fn=daemon.status, port=0)),
                  asyncio.create_task(daemon.follow_market(stop))]
         await asyncio.sleep(0)
         for rc in (SPY_0DTE, MRVL):

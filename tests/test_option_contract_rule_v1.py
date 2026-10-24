@@ -28,6 +28,7 @@ from pathlib import Path
 import server
 from app.market_data.schwab.streaming import capture
 from app.market_data.schwab.streaming.live_push import serve_live_push
+from app.market_data.schwab.streaming.live_ui import serve_live_ui
 from app.options.order_flow import streaming as ofs
 from calibration.complete_chain_capture import chain_messages
 from schwab_client import flatten_chain_contracts
@@ -111,7 +112,9 @@ class _Market:
     def run(self, steps) -> None:
         async def go():
             stop = asyncio.Event()
-            tasks = [asyncio.create_task(self.daemon.run(lambda: self.client, stop)),
+            # the plane fed as production feeds it (serve_live_ui, on a port the system picks)
+            tasks = [asyncio.create_task(serve_live_ui(self.bus, stop, heartbeat_fn=self.daemon.status, port=0)),
+                     asyncio.create_task(self.daemon.run(lambda: self.client, stop)),
                      asyncio.create_task(self.daemon.follow_market(stop))]
             try:
                 await steps(self)
@@ -197,6 +200,37 @@ def test_a_price_tick_asks_schwab_for_nothing_and_the_next_chain_only_the_differ
         assert moved == [("UNSUBS", sorted(before[svc] - then[svc])), ("ADD", sorted(then[svc] - before[svc]))], svc
         assert before[svc] != then[svc] and not expired & then[svc]
     assert expired & before[BOOK]
+
+
+def test_the_rule_orders_a_chain_at_the_price_rows_price_and_waits_while_it_has_none(tmp_path):
+    """The option rule's price is the price row's (live_price_rows.price_row), not a second read of
+    LAST_PRICE. Induced condition: after MRVL's last (263.51), Schwab marks LAST_PRICE invalid
+    (-999), so the row has no price. MRVL's next chain, after its 2026-09-25 contracts expire, is
+    not ordered at the last price: the contracts held stay as they were. It is ordered at the next
+    price Schwab sends (its close, 258.95)."""
+    clock = [CAPTURED]
+    expired = {c["symbol"] for c in CHAINS["MRVL"] if c["expirationDate"].startswith("2026-09-25")}
+    after = _expires(next(c for c in CHAINS["MRVL"] if c["symbol"] in expired)) + 60
+    before = _rule(CHAINS, PRICES, CAPTURED, ["MRVL", "SPY"])
+    then = _rule(CHAINS, {**PRICES, "MRVL": MRVL_CLOSE}, after, ["MRVL", "SPY"])
+    market = _Market(tmp_path, ["MRVL", "SPY"], lambda: clock[0])
+    held: dict = {}
+
+    async def steps(m):
+        for tk in ("MRVL", "SPY"):
+            m.chain(tk)
+            m.price(tk, PRICES[tk])
+        await _until(lambda: m.holds(before))
+        m.price("MRVL", -999)
+        clock[0] = after
+        m.chain("MRVL", after)
+        await asyncio.sleep(1.0)
+        held.update({s: set(m.daemon.held[s]) for s in (L1, BOOK)})
+        m.price("MRVL", MRVL_CLOSE)
+        await _until(lambda: m.holds(then))
+    market.run(steps)
+    assert held == {s: before[s] for s in (L1, BOOK)}, "no chain is ordered at a price the row does not hold"
+    assert expired & before[L1] and not expired & then[L1]          # the next chain moved what is held
 
 
 def test_a_watchlist_change_splits_schwabs_limits_again(tmp_path):
