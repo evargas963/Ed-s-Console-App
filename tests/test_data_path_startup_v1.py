@@ -164,6 +164,35 @@ def test_an_option_rule_error_on_a_price_ends_the_market_follower(tmp_path):
         lmp._fields_by_ticker.pop("SPY", None)
 
 
+def test_a_plane_row_listener_that_fails_ends_the_market_follower():
+    """Induced condition: a row listener that raises, added through the plane's own
+    add_row_listener. SPY's price (its 2026-09-22 capture's) reaches the plane: follow_market ends
+    on the listener's error instead of the plane swallowing it."""
+    fixture = json.loads((REPO / "tests" / "fixtures" / "real_spy_0dte_chain.json").read_text(encoding="utf-8"))
+    bus = MessageBus()
+    daemon = capture.Daemon(bus, HealthRegistry(), ["SPY"])
+
+    def failing(ticker):
+        raise RuntimeError(f"a listener that fails on {ticker}")
+
+    async def go():
+        stop = asyncio.Event()
+        task = asyncio.create_task(daemon.follow_market(stop))
+        await asyncio.sleep(0)
+        bus.publish("quote.SPY", quote_msg(symbol="SPY", last=fixture["spot"], src="schwab_l1",
+                                           ts_recv=fixture["ts_utc"],
+                                           native={"key": "SPY", "LAST_PRICE": fixture["spot"]}))
+        await asyncio.wait_for(task, timeout=10)
+    lmp.add_row_listener(failing)
+    try:
+        with pytest.raises(RuntimeError, match="a listener that fails on SPY"):
+            asyncio.run(go())
+    finally:
+        lmp.remove_row_listener(failing)
+        lmp._by_ticker.pop("SPY", None)                      # the plane row its price wrote
+        lmp._fields_by_ticker.pop("SPY", None)
+
+
 def test_why_schwab_is_not_connected_reaches_the_log_and_api_health(tmp_path, caplog):
     """The daemon's one client, built by the real builder from a token file that does not exist:
     the connection fails; the daemon's log has why, and its heartbeat, taken from the daemon's

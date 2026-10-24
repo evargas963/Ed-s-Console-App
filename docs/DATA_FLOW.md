@@ -233,9 +233,9 @@ from Schwab to the screen (daemon, console, page), are these:
   SPX and SPXW are both $SPX's).
 - **The option contracts streamed (the option rule).** What streams live is the most actionable
   information at any moment (operator 2026-10-08). The daemon picks the contracts from each
-  watchlist ticker's newest whole chain on its bus (owner `capture.Daemon.pick_options`, run by
-  `Daemon.follow_market` when a chain is put in the rule's order, on a watchlist change and on the
-  Flow panel's selection). A chain is put in the rule's order once, `capture.by_gamma`, at the
+  watchlist ticker's newest whole chain on its bus (owner `capture.Daemon.pick_options`, run when
+  a chain is put in the rule's order, by `Daemon.follow_market`; on a watchlist change,
+  `Daemon.watchlist_request`; and on the Flow panel's selection, `Daemon.console_frame`). A chain is put in the rule's order once, `capture.by_gamma`, at the
   daemon's time and the ticker's live price, the price row's (`live_price_rows.spot`, the rule
   reads LAST_PRICE nowhere else): as it arrives, or, while the row has no price, at the next price
   row. The plane is fed by `Daemon.follow_market` (each equity quote on the bus,

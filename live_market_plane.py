@@ -4,7 +4,6 @@ whether the feed is delivering the symbol now (`feed_live_for`)."""
 
 from __future__ import annotations
 
-import logging
 import threading
 from dataclasses import dataclass
 from datetime import datetime
@@ -13,8 +12,6 @@ from typing import Any, Optional
 from instrument_identity import ticker_storage_key
 from numeric_contract import float_finite_or_none, schwab_count, schwab_number
 from time_et import ET, session_label
-
-log = logging.getLogger(__name__)
 
 
 
@@ -133,21 +130,13 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
     with _lock:
         _by_ticker[t] = out
     for fn in list(_row_listeners):
-        try:
-            fn(t)
-        except Exception as e:  # noqa: BLE001 -- counted + WARNING; one bad listener never stops ingest
-            _row_listener_failures[0] += 1
-            n = _row_listener_failures[0]
-            if n & (n - 1) == 0:
-                log.warning("plane row listener %s failed for %s (%s failures): %s",
-                            getattr(fn, "__name__", fn), t, n, e)
+        fn(t)
     return True
 
 
 #: callables told the ticker of every published row, in the process that owns this plane: the
 #: capture daemon's browser push (live_ui).
 _row_listeners: list = []
-_row_listener_failures = [0]
 
 
 def add_row_listener(fn) -> None:
