@@ -81,8 +81,9 @@ from Schwab to the screen (daemon, console, page), are these:
   one writer records every message Schwab sends but option quotes and option books, which it
   records only for the contracts the daemon keeps (`capture.Daemon.saves`, operator 2026-10-09):
   each watchlist ticker's soonest expiration not passed (today's when one is listed, else the
-  nearest), at the strike nearest its price and the 5 listed strikes each side
-  (`capture.saved_window`, redone on each price and chain), and the contract selected on the Flow
+  nearest), at the strike nearest its price (the price row's) and the 5 listed strikes each side
+  (`capture.saved_window`, redone on each price and chain; while the price row has no price the
+  ticker keeps the window last computed, so its contracts go on being recorded), and the contract selected on the Flow
   panel. What the daemon streams and pushes, and the levels, are unchanged. Once after each close
   of the last option market the daemon has the writer remove every row received before the newest
   five sessions in Schwab's /markets answers began (`capture.keep_sessions`,
@@ -232,10 +233,20 @@ from Schwab to the screen (daemon, console, page), are these:
   SPX and SPXW are both $SPX's).
 - **The option contracts streamed (the option rule).** What streams live is the most actionable
   information at any moment (operator 2026-10-08). The daemon picks the contracts from each
-  watchlist ticker's newest whole chain on its bus (owner `capture.Daemon.pick_options`, run by
-  `Daemon.follow_market` on each new chain, on a watchlist change and on the Flow panel's
-  selection, never on a price; a chain is put in the rule's order once, as it arrives,
-  `capture.by_gamma`, at the daemon's time and the ticker's newest LAST_PRICE). The contract
+  watchlist ticker's newest whole chain on its bus (owner `capture.Daemon.pick_options`, run when
+  a chain is put in the rule's order, by `Daemon.follow_market`; on a watchlist change,
+  `Daemon.watchlist_request`; and on the Flow panel's selection, `Daemon.console_frame`). A chain is put in the rule's order once, `capture.by_gamma`, at the
+  daemon's time and the ticker's live price, the price row's (`live_price_rows.spot`, the rule
+  reads LAST_PRICE nowhere else): as it arrives, or, while the row has no price, at the next price
+  row. The plane is fed by `Daemon.follow_market` (each equity quote on the bus,
+  `Daemon._took_quote`, which then hands the ticker's row to the rule), the owner of its rows for
+  the browsers (`live_ui.serve_live_ui` reads them) and for this rule. A daemon task that ends before the stop
+  (a local socket whose port cannot be bound, a follower or the chain sweep ended on an error)
+  makes `capture.run` end the daemon with the error in its log, and `start_capture_daemon.bat`
+  restarts it (`tests/test_data_path_startup_v1.py`). While the row has no price (none received
+  yet, or Schwab sent it invalid) the ticker keeps the order and the recorded window it has, and
+  its newest chain is ordered at the next price; each row places only its own ticker's window
+  (`tests/test_option_contract_rule_v1.py`). The contract
   selected on the Flow panel (`POST /api/flow-contract`, only one Schwab listed in a chain the
   console holds; the console names it to the daemon on every connection, `{"op":
   "flow_contract"}`, §3.2) streams on LEVELONE_OPTIONS and OPTIONS_BOOK. What is left of

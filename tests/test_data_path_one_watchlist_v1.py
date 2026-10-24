@@ -115,6 +115,8 @@ def test_the_daemon_subscribes_once_and_each_of_schwabs_answers_reaches_its_own_
         held = asyncio.run(go())
     finally:
         schwab.close()
+        lmp._by_ticker.pop("SPY", None)                      # the plane row its price wrote
+        lmp._fields_by_ticker.pop("SPY", None)
     asked = [(r["service"], r["command"], sorted(r["parameters"]["keys"].split(",")))
              for r in schwab.streamer.requests if r["service"] != "ADMIN"]
     context = sorted(["SPY", "TSLA", *MARKET_CONTEXT])
@@ -173,6 +175,8 @@ def test_a_subscription_split_under_schwabs_message_limit_keeps_every_part(tmp_p
         asyncio.run(go())
     finally:
         schwab.close()
+        lmp._by_ticker.pop("MRVL", None)                     # the plane row its price wrote
+        lmp._fields_by_ticker.pop("MRVL", None)
     commands = [c for c, _k in schwab.streamer.asked("LEVELONE_OPTIONS")]
     assert len(commands) > 1 and commands == ["SUBS"] + ["ADD"] * (len(commands) - 1)
     assert sorted(schwab.streamer.held["LEVELONE_OPTIONS"]) == symbols, "Schwab holds every part"

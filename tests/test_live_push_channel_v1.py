@@ -25,8 +25,8 @@ import pytest
 import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
-from app.market_data.schwab.streaming import live_push, live_ui
-from stream_spine import MessageBus, book_msg, options_quote_msg, quote_msg
+from app.market_data.schwab.streaming import capture, live_push, live_ui
+from stream_spine import HealthRegistry, MessageBus, book_msg, options_quote_msg, quote_msg
 
 _CONTRACT = "SPY   260918C00500000"
 
@@ -96,7 +96,8 @@ def _daemon_heartbeat(socket_open=True, held=("SPY",)):
 
 async def _run(body, heartbeat_fn=None):
     """The daemon's two servers on one bus -- the message push and the price-row push, which
-    beats the daemon's status -- and the console's real feed loop connected to both. The daemon
+    beats the daemon's status -- with its market follower feeding the plane the price rows are
+    read from, and the console's real feed loop connected to both. The daemon
     runs in its own process with its own live_market_plane; here it shares the test's, so its own
     record of each beat is kept out of it (record_heartbeat, a named stand-in for the process
     boundary): what the console knows of the daemon arrives over the wire or not at all."""
@@ -106,8 +107,9 @@ async def _run(body, heartbeat_fn=None):
     ui_stats: dict = {}
     server = asyncio.create_task(live_push.serve_live_push(bus, stop, port=0, stats=stats))
     ui = asyncio.create_task(live_ui.serve_live_ui(
-        bus, stop, heartbeat_fn=heartbeat_fn if heartbeat_fn is not None else _daemon_heartbeat(),
+        stop, heartbeat_fn=heartbeat_fn if heartbeat_fn is not None else _daemon_heartbeat(),
         host="127.0.0.1", port=0, stats=ui_stats, record_heartbeat=lambda _beat: None))
+    follower = asyncio.create_task(capture.Daemon(bus, HealthRegistry(), []).follow_market(stop))
     assert await _until(lambda: stats.get("listening") and ui_stats.get("listening"))
     ofs._feed_running = True
     client = asyncio.create_task(_console(_port(stats), _port(ui_stats)))
@@ -117,7 +119,7 @@ async def _run(body, heartbeat_fn=None):
         ofs._feed_running = False
         client.cancel()
         stop.set()
-        await asyncio.gather(client, server, ui, return_exceptions=True)
+        await asyncio.gather(client, server, ui, follower, return_exceptions=True)
 
 
 def _received(ts):
@@ -298,7 +300,7 @@ def test_push_down_serves_nothing_and_the_feed_recovers_when_it_returns(feed):
     asyncio.run(run())
 
 
-def test_a_message_missing_its_receive_time_is_dropped_whole(monkeypatch):
+def test_a_message_missing_its_receive_time_is_dropped_whole():
     ofs._ingest_pushed("quote.ZZZNOTS", {"symbol": "ZZZNOTS", "native": {"LAST_PRICE": 1.0}})
     msg = _spy_trade(1.0, time.time())
     msg["symbol"] = "ZZZNOPE"

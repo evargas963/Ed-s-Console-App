@@ -1,7 +1,7 @@
 """Prices straight from the capture daemon to the browser over WebSocket.
 
-The daemon owns the Schwab connection. This server keeps the latest value of every
-LEVELONE_EQUITIES field (live_market_plane, fed here in the daemon's own process), knows
+The daemon owns the Schwab connection. This server reads the latest value of every
+LEVELONE_EQUITIES field (live_market_plane, fed by capture.Daemon.follow_market), knows
 whether the feed is alive (the daemon's own heartbeat, applied every HEARTBEAT_SEC), and
 pushes the FINISHED displayed row (live_price_rows.price_row -- the one producer) to every
 browser that asked for the symbol, the moment a Schwab message changes it.
@@ -39,7 +39,6 @@ import time
 import live_market_plane as lmp
 import live_price_rows
 from instrument_identity import display_symbol, ticker_storage_key
-from stream_spine import LATEST, MessageBus
 
 log = logging.getLogger(__name__)
 
@@ -63,32 +62,17 @@ class _Client:
 
 
 class LiveUiServer:
-    def __init__(self, bus: MessageBus, heartbeat_fn, stats: dict,
-                 record_heartbeat=lmp.record_feed_heartbeat) -> None:
-        self.bus = bus
+    def __init__(self, heartbeat_fn, stats: dict, record_heartbeat=lmp.record_feed_heartbeat,
+                 clock=time.time) -> None:
         self.heartbeat_fn = heartbeat_fn
+        self.clock = clock                           # the time each row is finished at
         self.record_heartbeat = record_heartbeat     # where the daemon keeps its own record of each beat
         self.stats = stats
         self.clients: set[_Client] = set()
-        stats.update(clients=0, rows_sent=0, frames_sent=0, ingest_failures=0,
+        stats.update(clients=0, rows_sent=0, frames_sent=0,
                      beat_send_failures=0, listening=None, last_send_ms=None)
 
     # -- plane side -------------------------------------------------------------------
-
-    def ingest(self, msg) -> None:
-        """One quote's current record -> the plane (each field with the daemon's receive time of
-        the message that carried it)."""
-        if not isinstance(msg, dict):
-            return
-        sym, ts, item = msg.get("symbol"), msg.get("ts_recv"), msg.get("native")
-        if not sym or not isinstance(ts, (int, float)) or not isinstance(item, dict):
-            return
-        received = {f: stamp[1] for f, stamp in msg["field_ts"].items()}
-        try:
-            lmp.record_from_level_one_equity(sym, item, received_ts=float(ts), field_received=received)
-        except Exception as e:  # noqa: BLE001 -- counted; one malformed item never ends the feed
-            self.stats["ingest_failures"] += 1
-            log.warning("live ui ingest %s: %s: %s", sym, type(e).__name__, e)
 
     def on_row(self, ticker: str) -> None:
         """Plane row listener: mark the symbol changed for every browser watching it."""
@@ -121,7 +105,7 @@ class LiveUiServer:
                 identity, c.identity = c.identity, None
                 await self._send(c, {"type": "symbols", "symbols": identity})
             syms, c.pending = c.pending, set()
-            now = time.time()
+            now = self.clock()
             rows = [live_price_rows.price_row(s, now) for s in syms if s in c.symbols]
             if rows:
                 await self._send(c, {"type": "quotes", "rows": rows})
@@ -176,7 +160,7 @@ class LiveUiServer:
             except Exception as e:  # noqa: BLE001 -- a failed beat leaves the feed unproven (it ages out)
                 log.warning("live ui heartbeat: %s: %s", type(e).__name__, e)
                 feed = None
-            now = time.time()
+            now = self.clock()
             for c in list(self.clients):
                 # one browser can neither stop the beat nor hold it: an error is logged and the
                 # next browser still gets its beat; a browser that does not take its beat within
@@ -198,25 +182,18 @@ class LiveUiServer:
             await asyncio.sleep(HEARTBEAT_SEC)
 
 
-async def serve_live_ui(bus: MessageBus, stop: asyncio.Event, *, heartbeat_fn,
+async def serve_live_ui(stop: asyncio.Event, *, heartbeat_fn,
                         host: str = LIVE_UI_HOST, port: int = LIVE_UI_PORT,
-                        stats: "dict | None" = None, record_heartbeat=lmp.record_feed_heartbeat) -> None:
-    """Run until `stop` is set. Start it BEFORE the Schwab connection so the plane sees the
-    first messages (Schwab sends each field once, then only changes). Each beat is recorded with
-    `record_heartbeat` (the daemon's own plane)."""
+                        stats: "dict | None" = None, record_heartbeat=lmp.record_feed_heartbeat,
+                        clock=time.time) -> None:
+    """Run until `stop` is set. Each beat is recorded with `record_heartbeat` (the daemon's own
+    plane)."""
     from websockets.asyncio.server import serve
 
     stats = stats if stats is not None else {}
-    srv = LiveUiServer(bus, heartbeat_fn, stats, record_heartbeat)
-    sub = bus.subscribe("quote.", policy=LATEST)         # starts with every quote already held
+    srv = LiveUiServer(heartbeat_fn, stats, record_heartbeat, clock)
     lmp.add_row_listener(srv.on_row)
-
-    async def _track() -> None:
-        while True:
-            _topic, msg = await sub.get()
-            srv.ingest(msg)
-
-    tasks = [asyncio.create_task(_track()), asyncio.create_task(srv.beat_loop())]
+    tasks = [asyncio.create_task(srv.beat_loop())]
     try:
         async with serve(srv.serve_client, host, port, max_size=None, compression=None,
                          ping_interval=20, ping_timeout=20) as server:
@@ -229,4 +206,3 @@ async def serve_live_ui(bus: MessageBus, stop: asyncio.Event, *, heartbeat_fn,
             t.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
         lmp.remove_row_listener(srv.on_row)
-        bus.unsubscribe(sub)

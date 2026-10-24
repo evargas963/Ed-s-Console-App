@@ -77,6 +77,8 @@ class LocalStreamer:
                 for frame in frames:
                     self.answers.append(frame)
                     await ws.send(json.dumps(frame))
+                if req["command"] == "LOGOUT":          # "Streamer will close the connection" (Streamer API §1)
+                    return await ws.close()
                 if req["command"] == "SUBS" and req["service"] in self.data \
                         and frames[-1]["response"][0]["content"]["code"] == 0:
                     await ws.send(json.dumps({"data": [self.data[req["service"]]]}))

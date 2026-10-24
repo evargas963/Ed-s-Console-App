@@ -1,6 +1,7 @@
 """Prices straight from the capture daemon to the browser (live_ui.py), end to end.
 
-The REAL daemon-side server (serve_live_ui on a real stream_spine.MessageBus) and a REAL
+The REAL daemon-side server (serve_live_ui, its plane fed from a real stream_spine.MessageBus by
+the daemon's follow_market) and a REAL
 WebSocket client standing in for the browser, over a real local socket. No console process,
 no database. Proves:
 
@@ -24,8 +25,8 @@ import time
 import pytest
 
 import live_market_plane as lmp
-from app.market_data.schwab.streaming import live_ui
-from stream_spine import MessageBus, quote_msg
+from app.market_data.schwab.streaming import capture, live_ui
+from stream_spine import HealthRegistry, MessageBus, quote_msg
 
 
 def _free_port() -> int:
@@ -38,15 +39,13 @@ def _free_port() -> int:
 
 @pytest.fixture(autouse=True)
 def _fresh_plane():
-    """Each test starts from an empty quote plane and a short heartbeat, then both are put back."""
-    quotes, fields, beat = lmp._by_ticker, lmp._fields_by_ticker, live_ui.HEARTBEAT_SEC
+    """Each test starts from an empty quote plane, then the plane is put back."""
+    quotes, fields = lmp._by_ticker, lmp._fields_by_ticker
     lmp._by_ticker = {}
     lmp._fields_by_ticker = {}
-    live_ui.HEARTBEAT_SEC = 0.2
     yield
     lmp._by_ticker = quotes
     lmp._fields_by_ticker = fields
-    live_ui.HEARTBEAT_SEC = beat
 
 
 def _trade(sym: str, last: float, ts: float, **extra) -> dict:
@@ -58,12 +57,13 @@ def _trade(sym: str, last: float, ts: float, **extra) -> dict:
 
 
 class _Feed:
-    def __init__(self, held=("SPY", "AAPL")):
+    def __init__(self, held=("SPY", "AAPL"), clock=time.time):
         self.open = True
         self.held = list(held)
+        self.clock = clock
 
     def __call__(self) -> dict:
-        return {"ts": time.time(), "schwab_socket_open": self.open,
+        return {"ts": self.clock(), "schwab_socket_open": self.open,
                 "held": {"LEVELONE_EQUITIES": self.held}, "health": {}}
 
 
@@ -76,7 +76,8 @@ async def _run(body, feed=None):
     stats: dict = {}
     feed = feed if feed is not None else _Feed()
     server = asyncio.create_task(live_ui.serve_live_ui(
-        bus, stop, heartbeat_fn=feed, host="127.0.0.1", port=port, stats=stats))
+        stop, heartbeat_fn=feed, host="127.0.0.1", port=port, stats=stats, clock=feed.clock))
+    follower = asyncio.create_task(capture.Daemon(bus, HealthRegistry(), []).follow_market(stop))
     end = time.monotonic() + 5
     while not stats.get("listening") and time.monotonic() < end:
         await asyncio.sleep(0.01)
@@ -86,7 +87,7 @@ async def _run(body, feed=None):
             await body(bus, ws, feed, stats)
     finally:
         stop.set()
-        await asyncio.wait_for(asyncio.gather(server, return_exceptions=True), 5)
+        await asyncio.wait_for(asyncio.gather(server, follower, return_exceptions=True), 5)
 
 
 async def _next_row(ws, sym, pred=lambda r: True, timeout=3.0):
@@ -125,10 +126,15 @@ def test_an_unsubscribed_symbol_is_never_sent():
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"]}))
         bus.publish("quote.AAPL", _trade("AAPL", 230.0, time.time()))
         bus.publish("quote.SPY", _trade("SPY", 583.0, time.time()))
-        end = time.monotonic() + 0.6
-        while time.monotonic() < end:
-            msg = json.loads(await asyncio.wait_for(ws.recv(), 1))
-            assert all(r["ticker"] == "SPY" for r in msg.get("rows") or []), msg
+        frames = []
+        end = time.monotonic() + 1.5 * live_ui.HEARTBEAT_SEC        # the rows, and a beat's rows
+        while (left := end - time.monotonic()) > 0:
+            try:
+                frames.append(json.loads(await asyncio.wait_for(ws.recv(), left)))
+            except TimeoutError:
+                break
+        assert any(m["type"] == "feed" for m in frames), "a beat came within the window"
+        assert all(r["ticker"] == "SPY" for m in frames for r in m.get("rows") or []), frames
     asyncio.run(_run(body))
 
 
@@ -173,43 +179,41 @@ def test_an_index_typed_bare_is_served_under_its_storage_key():
 _RTH, _CLOSED = 1790780400.0, 1790820000.0
 
 
-def _clock_from(monkeypatch, start: float) -> None:
-    """The wall clock running from `start` (the session the test is in); time still passes."""
-    real, offset = time.time, start - time.time()
-    monkeypatch.setattr(time, "time", lambda: real() + offset)
+def _clock_from(start: float):
+    """A clock running from `start` (the session the test is in); time still passes."""
+    began = time.monotonic()
+    return lambda: start + time.monotonic() - began
 
 
 @pytest.mark.parametrize("start", [_RTH, _CLOSED], ids=["rth", "closed"])
 def test_a_closed_schwab_socket_reads_feed_down_within_one_beat(start):
     """Nothing from Schwab; only the beat knows (docs/DATA_FLOW.md §2 D5): the last price and
-    bid stand, and the row names the outage, the market open or closed. The clock runs from
-    `start` so the session is that hour, and time still passes."""
-    real, offset = time.time, start - time.time()
-    time.time = lambda: real() + offset
-    try:
-        async def body(bus, ws, feed, stats):
-            await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"]}))
-            bus.publish("quote.SPY", _trade("SPY", 583.41, time.time()))
-            await _next_row(ws, "SPY", lambda r: r["feed_live"] is True)
-            feed.open = False
-            msg, row = await _next_row(ws, "SPY", lambda r: r["feed_live"] is False, timeout=1.0)
-            assert msg["type"] == "feed" and msg["feed"]["schwab_socket_open"] is False
-            assert row["spot"] == 583.41 and row["bid"] == pytest.approx(583.40)
-            assert row["outage"] is not None
-        asyncio.run(_run(body))
-    finally:
-        time.time = real
+    bid stand, and the row names the outage, the market open or closed. The server's clock runs
+    from `start` so the session is that hour, and time still passes."""
+    clock = _clock_from(start)
+
+    async def body(bus, ws, feed, stats):
+        await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"]}))
+        bus.publish("quote.SPY", _trade("SPY", 583.41, clock()))
+        await _next_row(ws, "SPY", lambda r: r["feed_live"] is True)
+        feed.open = False
+        msg, row = await _next_row(ws, "SPY", lambda r: r["feed_live"] is False,
+                                   timeout=1.5 * live_ui.HEARTBEAT_SEC)            # the next beat
+        assert msg["type"] == "feed" and msg["feed"]["schwab_socket_open"] is False
+        assert row["spot"] == 583.41 and row["bid"] == pytest.approx(583.40)
+        assert row["outage"] is not None
+    asyncio.run(_run(body, feed=_Feed(clock=clock)))
 
 
-def test_a_symbol_the_daemon_does_not_hold_reads_feed_not_live(monkeypatch):
-    _clock_from(monkeypatch, _CLOSED)
+def test_a_symbol_the_daemon_does_not_hold_reads_feed_not_live():
+    clock = _clock_from(_CLOSED)
 
     async def body(bus, ws, feed, stats):
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["TSLA"]}))
-        bus.publish("quote.TSLA", _trade("TSLA", 400.0, time.time()))
+        bus.publish("quote.TSLA", _trade("TSLA", 400.0, clock()))
         msg, row = await _next_row(ws, "TSLA", lambda r: r["spot"] == 400.0)
         assert row["feed_live"] is False
-    asyncio.run(_run(body))
+    asyncio.run(_run(body, feed=_Feed(clock=clock)))
 
 
 def test_a_burst_is_conflated_to_the_newest_row_per_symbol():

@@ -24,8 +24,9 @@ import live_market_plane as lmp
 import server
 from app.market_data.schwab.streaming import capture, live_ui
 from app.market_data.schwab.streaming.live_ui import serve_live_ui
+from calibration.complete_chain_capture import chain_messages
 from schwab_client import build_client_from_token
-from stream_spine import CaptureWriter, HealthRegistry, MessageBus
+from stream_spine import CaptureWriter, HealthRegistry, MessageBus, quote_msg
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -89,8 +90,9 @@ def test_the_stop_takes_only_this_checkouts_processes(tmp_path):
 
 def test_a_chain_sweep_that_ends_on_an_error_is_logged(tmp_path, caplog):
     """A forced thread error: the sweep's client raises an error the sweep does not catch (one
-    not an Exception), its thread ends, and the daemon's log has it with its traceback (a thread
-    has no error output under pythonw)."""
+    not an Exception), its thread ends, the daemon's log has it with its traceback (a thread
+    has no error output under pythonw), and run_chains ends with it, before any stop (run then
+    ends the daemon)."""
     class ForcedThreadError(BaseException):
         pass
 
@@ -103,14 +105,92 @@ def test_a_chain_sweep_that_ends_on_an_error_is_logged(tmp_path, caplog):
         stop = asyncio.Event()
         task = asyncio.create_task(capture.run_chains(daemon, tmp_path / "ed_console.db", client, stop,
                                                       failures=CaptureWriter(tmp_path / "stream_capture.db")))
-        await _until(lambda: any("chain sweep: ended" in r.getMessage() for r in caplog.records))
-        stop.set()
-        await asyncio.wait_for(task, timeout=30)
+        await asyncio.wait_for(task, timeout=30)        # the sweep's end ends it, with no stop
+        assert not stop.is_set()
     with caplog.at_level("ERROR", logger="capture"):
         asyncio.run(go())
     record = next(r for r in caplog.records if "chain sweep: ended" in r.getMessage())
     assert record.getMessage() == "chain sweep: ended on ForcedThreadError: forced in a chain sweep thread"
     assert record.exc_info is not None and record.exc_info[0] is ForcedThreadError
+
+
+def test_a_market_follower_that_ends_on_an_error_carries_it_out(tmp_path):
+    """Induced condition: SPY's same-day chain captured 2026-09-22 with one contract's symbol taken
+    out, so the option rule's strike ladders raise. follow_market ends on that error."""
+    fixture = json.loads((REPO / "tests" / "fixtures" / "real_spy_0dte_chain.json").read_text(encoding="utf-8"))
+    contracts = [dict(c) for c in fixture["chain"]]
+    del contracts[0]["symbol"]
+    bus = MessageBus()
+    daemon = capture.Daemon(bus, HealthRegistry(), ["SPY"])
+
+    async def go():
+        stop = asyncio.Event()
+        task = asyncio.create_task(daemon.follow_market(stop))
+        await asyncio.sleep(0)
+        for topic, msg in chain_messages("SPY", contracts, time.time(), None, None):
+            bus.publish(topic, msg)
+        await asyncio.wait_for(task, timeout=10)
+    with pytest.raises(KeyError, match="symbol"):
+        asyncio.run(go())
+
+
+def test_an_option_rule_error_on_a_price_ends_the_market_follower(tmp_path):
+    """Induced condition: SPY's same-day chain captured 2026-09-22 16:46 UTC, at that time, with one
+    contract's putCall taken out, arriving before SPY has a price, so the option rule fails only
+    when SPY's price comes. follow_market ends on that error, instead of the plane swallowing it."""
+    fixture = json.loads((REPO / "tests" / "fixtures" / "real_spy_0dte_chain.json").read_text(encoding="utf-8"))
+    contracts = [dict(c) for c in fixture["chain"]]
+    del contracts[0]["putCall"]
+    bus = MessageBus()
+    now = fixture["ts_utc"]
+    daemon = capture.Daemon(bus, HealthRegistry(), ["SPY"], clock=lambda: now)
+
+    async def go():
+        stop = asyncio.Event()
+        task = asyncio.create_task(daemon.follow_market(stop))
+        await asyncio.sleep(0)
+        for topic, msg in chain_messages("SPY", contracts, now, None, None):
+            bus.publish(topic, msg)
+        await asyncio.sleep(0.1)
+        bus.publish("quote.SPY", quote_msg(symbol="SPY", last=fixture["spot"], src="schwab_l1", ts_recv=now,
+                                           native={"key": "SPY", "LAST_PRICE": fixture["spot"]}))
+        await asyncio.wait_for(task, timeout=10)
+    lmp._by_ticker.pop("SPY", None)
+    try:
+        with pytest.raises(KeyError, match="putCall"):
+            asyncio.run(go())
+    finally:
+        lmp._by_ticker.pop("SPY", None)                      # the plane row its price wrote
+        lmp._fields_by_ticker.pop("SPY", None)
+
+
+def test_a_plane_row_listener_that_fails_ends_the_market_follower():
+    """Induced condition: a row listener that raises, added through the plane's own
+    add_row_listener. SPY's price (its 2026-09-22 capture's) reaches the plane: follow_market ends
+    on the listener's error instead of the plane swallowing it."""
+    fixture = json.loads((REPO / "tests" / "fixtures" / "real_spy_0dte_chain.json").read_text(encoding="utf-8"))
+    bus = MessageBus()
+    daemon = capture.Daemon(bus, HealthRegistry(), ["SPY"])
+
+    def failing(ticker):
+        raise RuntimeError(f"a listener that fails on {ticker}")
+
+    async def go():
+        stop = asyncio.Event()
+        task = asyncio.create_task(daemon.follow_market(stop))
+        await asyncio.sleep(0)
+        bus.publish("quote.SPY", quote_msg(symbol="SPY", last=fixture["spot"], src="schwab_l1",
+                                           ts_recv=fixture["ts_utc"],
+                                           native={"key": "SPY", "LAST_PRICE": fixture["spot"]}))
+        await asyncio.wait_for(task, timeout=10)
+    lmp.add_row_listener(failing)
+    try:
+        with pytest.raises(RuntimeError, match="a listener that fails on SPY"):
+            asyncio.run(go())
+    finally:
+        lmp.remove_row_listener(failing)
+        lmp._by_ticker.pop("SPY", None)                      # the plane row its price wrote
+        lmp._fields_by_ticker.pop("SPY", None)
 
 
 def test_why_schwab_is_not_connected_reaches_the_log_and_api_health(tmp_path, caplog):
@@ -127,7 +207,7 @@ def test_why_schwab_is_not_connected_reaches_the_log_and_api_health(tmp_path, ca
 
     async def go():
         stop = asyncio.Event()
-        ui = asyncio.create_task(serve_live_ui(bus, stop, heartbeat_fn=daemon.status, host="127.0.0.1", port=port))
+        ui = asyncio.create_task(serve_live_ui(stop, heartbeat_fn=daemon.status, host="127.0.0.1", port=port))
         run = asyncio.create_task(daemon.run(schwab_client, stop))
         await _until(lambda: daemon.status()["schwab_down"].startswith("NOT CONNECTED"))
         await asyncio.sleep(0.2)
@@ -165,7 +245,7 @@ def test_a_browser_that_stopped_reading_is_dropped_the_others_keep_their_beats_a
         stop = asyncio.Event()
         stats: dict = {}
         daemon_side = asyncio.create_task(serve_live_ui(
-            MessageBus(), stop, heartbeat_fn=lambda: {**daemon.status(), "pad": "x" * 2_000_000},
+            stop, heartbeat_fn=lambda: {**daemon.status(), "pad": "x" * 2_000_000},
             host="127.0.0.1", port=0, stats=stats))
         await _until(lambda: stats.get("listening"), 5)
         beats: list[float] = []
@@ -215,6 +295,26 @@ def test_a_module_that_fails_to_load_leaves_its_reason_in_the_daemons_log(tmp_pa
     assert done.returncode == 1
     assert "capture daemon loading (pid " in log
     assert "ModuleNotFoundError: No module named 'schwab'" in log, log
+
+
+def test_a_daemon_whose_live_ui_port_is_held_ends_at_once_with_why_and_its_window_restarts_it(tmp_path):
+    """Another socket holds the live UI's port: the daemon, run as its window runs it, ends with
+    the bind's error in its log and an exit code its window restarts on (not EXIT_STOPPED), instead
+    of running with no browser served."""
+    with socket.socket() as held:
+        held.bind(("127.0.0.1", 0))
+        held.listen()
+        env = {**os.environ, "ED_RUNTIME_ROOT": str(tmp_path), "ED_LIVE_UI_HOST": "127.0.0.1",
+               "ED_LIVE_UI_PORT": str(held.getsockname()[1]), "ED_LIVE_PUSH_PORT": "0",
+               "SCHWAB_TOKEN_PATH": str(tmp_path / "missing_token.json")}
+        done = subprocess.run([sys.executable, "-m", "app.market_data.schwab.streaming.capture"],
+                              cwd=REPO, env=env, capture_output=True, timeout=60)
+    (path,) = (tmp_path / "logs").glob("stream_capture.*.log")
+    log = path.read_text(encoding="utf-8")
+    assert done.returncode == 1, (done.returncode, log)
+    assert "capture daemon: ended by an error" in log, log
+    assert "RuntimeError: the capture daemon's live ui ended before the stop" in log, log
+    assert "OSError" in log, log
 
 
 def test_a_database_path_under_backups_is_refused_as_any_other_non_canonical_path(tmp_path):
