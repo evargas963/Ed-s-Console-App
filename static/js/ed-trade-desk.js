@@ -343,7 +343,7 @@
       if (stillRightNow(tk)) h.innerHTML = '<div class="placeholder"><div class="sm">no console serving Right Now — one of its endpoints failed to render</div></div>';
     });
   }
-  var _loader = window.EdShell.loader(function (signal) { return loadImpl(ticker(), signal); });
+  var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(ticker(), signal); });
   // every input of the read is in its key, so a change aborts the read in flight instead of
   // queueing behind it: the ticker, the venue, the migration chips, the Gamma scope and the pan
   function _loadKey() {

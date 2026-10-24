@@ -76,7 +76,7 @@
       if (stillMap(tk)) render(h, tk, null, null, null);
     });
   }
-  var _loader = window.EdShell.loader(function (signal) { return loadImpl(ticker(), signal); });
+  var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(ticker(), signal); });
   function load() { if (isMap()) _loader.trigger(ticker()); }
 
   if (typeof document !== 'undefined') {

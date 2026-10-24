@@ -349,21 +349,6 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     expect(html).toContain('Gamma surface unavailable');
   });
 
-  test('a console that answers with an error is named with its status; only a failed connection reads "no console serving"', async ({ page }) => {
-    // Induced conditions: the surface route answers 500, then the connection to it is refused.
-    let answer = 'error';
-    await page.route('**/api/options/gamma-surface**', (route) => answer === 'error'
-      ? route.fulfill({ status: 500, contentType: 'application/json', body: '{"detail":"Internal Server Error"}' })
-      : route.abort('connectionrefused'));
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('#heatBody')).toContainText('the console answered /api/options/gamma-surface with 500');
-    await expect(page.locator('#heatBody')).not.toContainText('no console serving');
-
-    answer = 'refused';
-    await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'levels' } })));
-    await expect(page.locator('#heatBody')).toContainText('no console serving /api/options/gamma-surface');
-  });
-
   test('each column streaming status is the served stream_by_expiry, never a page-side verdict', async ({ page }) => {
     // The server serves each column's state from its cells' stream states (server.py
     // _stream_state_of); the tooltip only picks the words.

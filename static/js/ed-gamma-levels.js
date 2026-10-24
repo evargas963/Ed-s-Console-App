@@ -35,7 +35,7 @@
         if (stillLevels(tk)) host.innerHTML = '<div class="placeholder"><div class="sm">no console serving /api/levels</div></div>';
       });
   }
-  var _loader = window.EdShell.loader(function (signal) { return loadImpl(ticker(), signal); });
+  var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(ticker(), signal); });
   function load() { _loader.trigger(ticker()); }
 
   function levelName(r) {

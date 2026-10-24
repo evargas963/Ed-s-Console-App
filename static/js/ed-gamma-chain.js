@@ -59,7 +59,7 @@
         if (current()) host.innerHTML = '<div class="placeholder"><div class="sm">no console serving /api/chain</div></div>';
       });
   }
-  var _loader = window.EdShell.loader(function (signal) { return loadImpl(st().ticker || '', curExpiry(), signal); });
+  var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(st().ticker || '', curExpiry(), signal); });
   function load() { _loader.trigger((st().ticker || '') + '|' + (curExpiry() || '')); }
 
   function render(host, d) {

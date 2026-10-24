@@ -32,7 +32,7 @@
         if (stillBook(tk)) h.innerHTML = '<div class="placeholder"><div class="sm">no console serving /api/order-flow/microstructure</div></div>';
       });
   }
-  var _loader = window.EdShell.loader(function (signal) { return loadImpl(ticker(), signal); });
+  var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(ticker(), signal); });
   function load() {
     if (!isBook()) return;
     var tk = ticker();

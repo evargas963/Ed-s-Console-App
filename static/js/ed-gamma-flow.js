@@ -54,7 +54,7 @@
       });
   }
   var _pendingDesired = null;
-  var _loader = window.EdShell.loader(function (signal) { return loadImpl(_pendingDesired, signal); });
+  var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(_pendingDesired, signal); });
   function load() {
     var h = host(); if (!h || !isFlow()) return;
     if (!_selected) { return shell(h, null, 'NONE', 'Select a Call or Put contract in Chain.', null); }
