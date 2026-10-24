@@ -970,6 +970,7 @@
       if (e.key === 'Escape') { var g = document.querySelector('.gamma-grid'); if (g && g.classList.contains('maxed')) applyMaximize(false); }
     });
     try { if (localStorage.getItem(MAX_KEY) === '1') applyMaximize(true); } catch (e) {}
+    window.addEventListener('resize', function () { emit('ed:resize', {}); });   // a view event too
     // subnav/viewbar initial — restore persisted workspace/subview/view (D), validated to NAV
     normalizeState();
     // Reflect AGAIN, now that normalizeState() may have just corrected state.measure to
