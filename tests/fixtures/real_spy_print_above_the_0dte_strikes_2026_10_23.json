@@ -1,0 +1,19 @@
+{
+ "source": "production data/stream_capture.db stream_quotes_raw (read-only): SPY's first LEVELONE_EQUITIES message the capture daemon kept whose LAST_PRICE is above 786.00, the highest strike of the 2026-10-07 0DTE chain in tests/fixtures/real_spy_0dte_chain_2026_10_07.json, Schwab's item as recorded (native)",
+ "ticker": "SPY",
+ "ts_recv": 1792789790.0840511,
+ "src": "schwab_l1",
+ "native": {
+  "key": "SPY",
+  "52": 10,
+  "54": 33316612.33308,
+  "LAST_PRICE": 787.5169,
+  "TOTAL_VOLUME": 33316612,
+  "LAST_SIZE": 10,
+  "NET_CHANGE": 23.5569,
+  "TRADE_TIME_MILLIS": 1792789789318,
+  "NET_CHANGE_PERCENT": 3.083525,
+  "POST_MARKET_NET_CHANGE": 27.5469,
+  "POST_MARKET_NET_CHANGE_PERCENT": 3.624735
+ }
+}

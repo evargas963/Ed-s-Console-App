@@ -48,7 +48,6 @@
      "text": "0.02"
     }
    ],
-   "offscreen": [],
    "rows": [
     {
      "strike": 295.0,
@@ -168,7 +167,6 @@
        "weight_text": "0.05"
       }
      ],
-     "markers": [],
      "distance_text": null,
      "spot_line": false,
      "inside": false
@@ -291,7 +289,6 @@
        "weight_text": "0.05"
       }
      ],
-     "markers": [],
      "distance_text": null,
      "spot_line": false,
      "inside": false
@@ -414,7 +411,6 @@
        "weight_text": "0.05"
       }
      ],
-     "markers": [],
      "distance_text": null,
      "spot_line": false,
      "inside": false
@@ -537,7 +533,6 @@
        "weight_text": "0.05"
       }
      ],
-     "markers": [],
      "distance_text": null,
      "spot_line": false,
      "inside": false
@@ -660,7 +655,6 @@
        "weight_text": "0.05"
       }
      ],
-     "markers": [],
      "distance_text": null,
      "spot_line": false,
      "inside": false
@@ -783,7 +777,6 @@
        "weight_text": "0.05"
       }
      ],
-     "markers": [],
      "distance_text": null,
      "spot_line": false,
      "inside": false
@@ -906,7 +899,6 @@
        "weight_text": "0.05"
       }
      ],
-     "markers": [],
      "distance_text": null,
      "spot_line": false,
      "inside": false
@@ -1029,7 +1021,6 @@
        "weight_text": "0.05"
       }
      ],
-     "markers": [],
      "distance_text": null,
      "spot_line": false,
      "inside": false
@@ -1152,7 +1143,6 @@
        "weight_text": "0.05"
       }
      ],
-     "markers": [],
      "distance_text": null,
      "spot_line": false,
      "inside": false
@@ -1275,7 +1265,6 @@
        "weight_text": "0.05"
       }
      ],
-     "markers": [],
      "distance_text": null,
      "spot_line": false,
      "inside": false
@@ -1483,8 +1472,8 @@
     {
      "lane": "options",
      "abbrev": "0D CW",
-     "price": 282.5,
-     "price_text": "282.50",
+     "price": 290.0,
+     "price_text": "290.00",
      "title": "0DTE Call wall"
     },
     {
@@ -1504,15 +1493,15 @@
     {
      "lane": "options",
      "abbrev": "0D Pin",
-     "price": 285.0,
-     "price_text": "285.00",
+     "price": 290.0,
+     "price_text": "290.00",
      "title": "0DTE Abs \u0393"
     },
     {
      "lane": "options",
      "abbrev": "0D Net \u0393",
-     "price": 282.5,
-     "price_text": "282.50",
+     "price": 290.0,
+     "price_text": "290.00",
      "title": "0DTE Net \u0393 peak"
     },
     {
@@ -1532,15 +1521,15 @@
     {
      "lane": "options",
      "abbrev": "0D LVP",
-     "price": 282.5,
-     "price_text": "282.50",
+     "price": 290.0,
+     "price_text": "290.00",
      "title": "0DTE LVP"
     },
     {
      "lane": "options",
      "abbrev": "0D Key \u0394",
-     "price": 280.0,
-     "price_text": "280.00",
+     "price": 270.0,
+     "price_text": "270.00",
      "title": "0DTE Key \u0394 strike"
     },
     {
@@ -1560,7 +1549,7 @@
    ],
    "regime": "LONG_GAMMA_CHOP",
    "flip_text": "250.72",
-   "pin_text": "285.00",
+   "pin_text": "290.00",
    "move_text": null
   },
   "2026-10-16": {
@@ -1610,7 +1599,6 @@
      "text": "0.04"
     }
    ],
-   "offscreen": [],
    "rows": [
     {
      "strike": 295.0,
@@ -1730,7 +1718,6 @@
        "weight_text": "0.05"
       }
      ],
-     "markers": [],
      "distance_text": null,
      "spot_line": false,
      "inside": false
@@ -1853,7 +1840,6 @@
        "weight_text": "0.05"
       }
      ],
-     "markers": [],
      "distance_text": null,
      "spot_line": false,
      "inside": false
@@ -1976,7 +1962,6 @@
        "weight_text": "0.05"
       }
      ],
-     "markers": [],
      "distance_text": null,
      "spot_line": false,
      "inside": false
@@ -2099,7 +2084,6 @@
        "weight_text": "0.05"
       }
      ],
-     "markers": [],
      "distance_text": null,
      "spot_line": false,
      "inside": false
@@ -2222,7 +2206,6 @@
        "weight_text": "0.05"
       }
      ],
-     "markers": [],
      "distance_text": null,
      "spot_line": false,
      "inside": false
@@ -2345,7 +2328,6 @@
        "weight_text": "0.05"
       }
      ],
-     "markers": [],
      "distance_text": null,
      "spot_line": false,
      "inside": false
@@ -2468,7 +2450,6 @@
        "weight_text": "0.05"
       }
      ],
-     "markers": [],
      "distance_text": null,
      "spot_line": false,
      "inside": false
@@ -2591,7 +2572,6 @@
        "weight_text": "0.05"
       }
      ],
-     "markers": [],
      "distance_text": null,
      "spot_line": false,
      "inside": false
@@ -2714,7 +2694,6 @@
        "weight_text": "0.05"
       }
      ],
-     "markers": [],
      "distance_text": null,
      "spot_line": false,
      "inside": false
@@ -2837,7 +2816,6 @@
        "weight_text": "0.05"
       }
      ],
-     "markers": [],
      "distance_text": null,
      "spot_line": false,
      "inside": false
@@ -3045,8 +3023,8 @@
     {
      "lane": "options",
      "abbrev": "0D CW",
-     "price": 282.5,
-     "price_text": "282.50",
+     "price": 290.0,
+     "price_text": "290.00",
      "title": "0DTE Call wall"
     },
     {
@@ -3066,15 +3044,15 @@
     {
      "lane": "options",
      "abbrev": "0D Pin",
-     "price": 285.0,
-     "price_text": "285.00",
+     "price": 290.0,
+     "price_text": "290.00",
      "title": "0DTE Abs \u0393"
     },
     {
      "lane": "options",
      "abbrev": "0D Net \u0393",
-     "price": 282.5,
-     "price_text": "282.50",
+     "price": 290.0,
+     "price_text": "290.00",
      "title": "0DTE Net \u0393 peak"
     },
     {
@@ -3094,15 +3072,15 @@
     {
      "lane": "options",
      "abbrev": "0D LVP",
-     "price": 282.5,
-     "price_text": "282.50",
+     "price": 290.0,
+     "price_text": "290.00",
      "title": "0DTE LVP"
     },
     {
      "lane": "options",
      "abbrev": "0D Key \u0394",
-     "price": 280.0,
-     "price_text": "280.00",
+     "price": 270.0,
+     "price_text": "270.00",
      "title": "0DTE Key \u0394 strike"
     },
     {
@@ -3122,7 +3100,7 @@
    ],
    "regime": "LONG_GAMMA_CHOP",
    "flip_text": "250.72",
-   "pin_text": "285.00",
+   "pin_text": "290.00",
    "move_text": null
   }
  },
@@ -3173,7 +3151,6 @@
     "text": "0.04"
    }
   ],
-  "offscreen": [],
   "rows": [
    {
     "strike": 295.0,
@@ -3293,7 +3270,6 @@
       "weight_text": "0.05"
      }
     ],
-    "markers": [],
     "distance_text": null,
     "spot_line": false,
     "inside": false
@@ -3416,7 +3392,6 @@
       "weight_text": "0.05"
      }
     ],
-    "markers": [],
     "distance_text": null,
     "spot_line": false,
     "inside": false
@@ -3539,7 +3514,6 @@
       "weight_text": "0.05"
      }
     ],
-    "markers": [],
     "distance_text": null,
     "spot_line": false,
     "inside": false
@@ -3662,7 +3636,6 @@
       "weight_text": "0.05"
      }
     ],
-    "markers": [],
     "distance_text": null,
     "spot_line": false,
     "inside": false
@@ -3785,7 +3758,6 @@
       "weight_text": "0.05"
      }
     ],
-    "markers": [],
     "distance_text": null,
     "spot_line": false,
     "inside": false
@@ -3908,7 +3880,6 @@
       "weight_text": "0.05"
      }
     ],
-    "markers": [],
     "distance_text": null,
     "spot_line": false,
     "inside": false
@@ -4031,7 +4002,6 @@
       "weight_text": "0.05"
      }
     ],
-    "markers": [],
     "distance_text": null,
     "spot_line": false,
     "inside": false
@@ -4154,7 +4124,6 @@
       "weight_text": "0.05"
      }
     ],
-    "markers": [],
     "distance_text": null,
     "spot_line": false,
     "inside": false
@@ -4277,7 +4246,6 @@
       "weight_text": "0.05"
      }
     ],
-    "markers": [],
     "distance_text": null,
     "spot_line": false,
     "inside": false
@@ -4400,7 +4368,6 @@
       "weight_text": "0.05"
      }
     ],
-    "markers": [],
     "distance_text": null,
     "spot_line": false,
     "inside": false
@@ -4603,8 +4570,8 @@
    {
     "lane": "options",
     "abbrev": "0D CW",
-    "price": 282.5,
-    "price_text": "282.50",
+    "price": 290.0,
+    "price_text": "290.00",
     "title": "0DTE Call wall"
    },
    {
@@ -4624,15 +4591,15 @@
    {
     "lane": "options",
     "abbrev": "0D Pin",
-    "price": 285.0,
-    "price_text": "285.00",
+    "price": 290.0,
+    "price_text": "290.00",
     "title": "0DTE Abs \u0393"
    },
    {
     "lane": "options",
     "abbrev": "0D Net \u0393",
-    "price": 282.5,
-    "price_text": "282.50",
+    "price": 290.0,
+    "price_text": "290.00",
     "title": "0DTE Net \u0393 peak"
    },
    {
@@ -4652,15 +4619,15 @@
    {
     "lane": "options",
     "abbrev": "0D LVP",
-    "price": 282.5,
-    "price_text": "282.50",
+    "price": 290.0,
+    "price_text": "290.00",
     "title": "0DTE LVP"
    },
    {
     "lane": "options",
     "abbrev": "0D Key \u0394",
-    "price": 280.0,
-    "price_text": "280.00",
+    "price": 270.0,
+    "price_text": "270.00",
     "title": "0DTE Key \u0394 strike"
    },
    {
@@ -4680,7 +4647,7 @@
   ],
   "regime": "LONG_GAMMA_CHOP",
   "flip_text": "250.72",
-  "pin_text": "285.00",
+  "pin_text": "290.00",
   "move_text": null
  }
 }

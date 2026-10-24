@@ -3191,7 +3191,7 @@ def _ranked_matrices(live: dict) -> dict:
         iv = blends.get(chosen)
         if not isinstance(iv, dict):
             iv = {}
-        body = build_matrix(exposures, charm, iv, float(spot), float(dte), [])
+        body = build_matrix(exposures, charm, iv, float(spot), float(dte))
         ranked[chosen] = body
     return ranked
 
