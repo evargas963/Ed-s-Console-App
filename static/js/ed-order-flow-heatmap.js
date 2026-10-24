@@ -51,7 +51,7 @@
   }
   var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(ticker(), signal); });
   function load() {
-    if (!isHeatmap()) return;
+    if (!isHeatmap() || !ticker()) return;   // the minutes buttons call this outside the shell's emit()
     // keyed on ticker + venue + minutes: a different window while a fetch is in flight aborts it
     _loader.trigger(ticker() + '|' + st().bookVenue + '|' + _minutes);
   }

@@ -244,15 +244,17 @@
   function loadImpl(ticker, signal) {
     var host = document.getElementById('heatBody');
     if (!host || !stillCurrent(ticker)) return;
+    function unavailable(reason) { return { available: false, ticker: ticker, reason: reason }; }
+    function superseded(e) { if (e && e.name === 'AbortError') throw e; }   // a newer read renders
     return fetch(surfaceUrl(ticker, host), { cache: 'no-store', signal: signal })
-      .then(function (r) { if (!r.ok) throw new Error('the console answered /api/options/gamma-surface with ' + r.status); return r.json(); })
-      .then(function (d) { if (stillCurrent(ticker)) renderSurface(host, d); })
-      .catch(function (e) {
-        if (e && e.name === 'AbortError') return;   // superseded by a newer read -- that one renders
-        // a failed connection (TypeError) is no console; any other failure is the console's answer
-        var reason = e instanceof TypeError ? 'no console serving /api/options/gamma-surface' : e.message;
-        if (stillCurrent(ticker)) renderSurface(host, { available: false, ticker: ticker, reason: reason });
-      });
+      .then(function (r) {
+        if (!r.ok) return unavailable('the console answered /api/options/gamma-surface with ' + r.status);
+        return r.json().catch(function (e) {
+          superseded(e);
+          return unavailable('the console answered /api/options/gamma-surface with a body that is not JSON');
+        });
+      }, function (e) { superseded(e); return unavailable('no console serving /api/options/gamma-surface'); })
+      .then(function (d) { if (stillCurrent(ticker)) renderSurface(host, d); });
   }
   var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(_pendingTicker, signal); });
   function load() {
@@ -264,7 +266,13 @@
       return;
     }
     var nextTicker = st.ticker || '';
-    if (_panTicker !== nextTicker) { _pan.centre = null; _pan.shift = 0; _panTicker = nextTicker; }
+    if (_panTicker !== nextTicker) {   // a new ticker: the last one's grid leaves the screen at once
+      _pan.centre = null; _pan.shift = 0; _panTicker = nextTicker;
+      _lastSurface = null; _lastRevision = null;
+      paintChip(null);
+      host.innerHTML = '<div class="placeholder"><div class="sm">reading /api/options/gamma-surface for ' +
+        escapeHtml(nextTicker) + '</div></div>';
+    }
     _pendingTicker = nextTicker;
     _loader.trigger(_pendingTicker);
   }

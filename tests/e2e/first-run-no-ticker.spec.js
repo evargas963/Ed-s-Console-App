@@ -21,10 +21,8 @@ test('first run: no ticker is assumed, no ticker data is requested', async ({ pa
   expect(await page.evaluate(() => window.EdShell.getState().ticker)).toBe('');
 });
 
-test('no symbol chosen: no view asks for a ticker on a view change, a resize or a theme change', async ({ page }) => {
-  // Seen 2026-10-24 on production: Options > Gamma > Heatmap with no symbol asked
-  // /api/options/gamma-surface?ticker= (400) on a window resize, then read "no console serving".
-  const tickerCalls = [];
+test('no symbol chosen: no view asks for a ticker on a view change, a resize, a theme change or its own controls', async ({ page }) => {
+  const tickerCalls = [], asked = [];
   page.on('request', (req) => { if (/[?&]ticker=/.test(req.url())) tickerCalls.push(req.url()); });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await expect(page.locator('#hPx')).toHaveText('CHOOSE A SYMBOL');
@@ -38,9 +36,11 @@ test('no symbol chosen: no view asks for a ticker on a view change, a resize or 
         await page.setViewportSize({ width: 1500, height: 900 });
         await page.setViewportSize({ width: 1280, height: 800 });
         await page.evaluate(() => { window.EdShell.setTheme('dark'); window.EdShell.setTheme('light'); });
+        for (const control of await page.locator('.cmode:visible, .scbtn:visible').all()) await control.click();
         await page.waitForTimeout(100);
-        expect(tickerCalls, `${ws} > ${sub} > ${view}: nothing may be fetched for an unchosen ticker`).toEqual([]);
+        if (tickerCalls.length) asked.push(`${ws} > ${sub} > ${view}: ${tickerCalls.splice(0).join(', ')}`);
       }
     }
   }
+  expect(asked, 'nothing may be fetched for an unchosen ticker').toEqual([]);
 });

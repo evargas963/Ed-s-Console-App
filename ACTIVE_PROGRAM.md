@@ -159,7 +159,7 @@ to write it plainly, in the forms `test_a_command_the_reader_cannot_see_into_is_
 
 **Page code (static/js)**
 - P-02 ages formatted and thresholded on the page (`fmtAge`, `Math.round(trade_age_sec)`); the push-silence verdict is the page's clock (`PRICE_SILENCE_MS`).
-- P-09 an absent `live` reads live; first-of and "undefined" reasons; stale cells drawn as normal values; every error relabelled "no console serving".
+- P-09 an absent `live` reads live; first-of and "undefined" reasons; stale cells drawn as normal values; every error relabelled "no console serving". Done for the Options heatmap (`ed-gamma.js`, operator 2026-10-24: its own small PR): a failed connection reads "no console serving", an error answer names its status. Left with the same relabelling: `ed-gamma-panels.js` (Strike Detail, GEX by strike, the by-strike bars, the chain, the tape), `ed-gamma-levels.js`, `ed-gamma-chain.js`, `ed-gamma-flow.js`, `ed-order-flow.js`, `ed-trade-desk.js`.
 - P-10 six or more page formatters for dollars and volume with different precision.
 - P-12 Strike Detail matches contracts by tolerance, substitutes the put for the call, uses a UTC date and reads the raw contracts (a -999 prints).
 - P-13 Key Levels: a fallback age formatter and a page-computed live badge.

@@ -364,6 +364,38 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#heatBody')).toContainText('no console serving /api/options/gamma-surface');
   });
 
+  test('an answer the page fails to draw is never read as "no console serving"', async ({ page }) => {
+    // Induced condition: the console answers 200 with a surface that has no `view`, so drawing
+    // it raises a TypeError after the console has answered.
+    await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json', body: JSON.stringify({ available: true, ticker: 'SPY' }) }));
+    const drawn = page.waitForEvent('console', (m) => m.type() === 'error');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await drawn;                                          // the loader reports the drawing error
+    await expect(page.locator('#heatBody')).not.toContainText('no console serving');
+  });
+
+  test('a theme change while a new ticker\'s surface is on its way never redraws the old ticker\'s grid', async ({ page }) => {
+    let releaseAapl;
+    const aaplGate = new Promise((r) => { releaseAapl = r; });
+    await page.route('**/api/options/gamma-surface**', async (route) => {
+      const tk = new URL(route.request().url()).searchParams.get('ticker');
+      if (tk === 'AAPL') await aaplGate;
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(Object.assign({}, SURFACE, {
+        ticker: tk, symbol: tk, strikes: [583], expirations: [{ expiry: '2026-09-11', dte: 2 }],
+        cells: [{ strike: 583, gex: [tk === 'SPY' ? 1000 : 9000] }], surface_seq: 1 })) });
+    });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const cell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
+    await expect(cell).toHaveText('$1.0K');
+    await page.locator('#symInput').fill('AAPL');
+    await page.locator('#symInput').press('Enter');
+    await page.evaluate(() => window.EdShell.setTheme('dark'));
+    await expect(page.locator('#heatBody')).not.toContainText('$1.0K');   // SPY's grid, under AAPL
+    releaseAapl();
+    await expect(cell).toHaveText('$9.0K');
+  });
+
   test('each column streaming status is the served stream_by_expiry, never a page-side verdict', async ({ page }) => {
     // The server serves each column's state from its cells' stream states (server.py
     // _stream_state_of); the tooltip only picks the words.
@@ -1025,27 +1057,33 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // OI/Vol/Gamma/Delta/IV UNDER THE NEW TICKER'S CONTEXT. Reproduced here exactly: select
     // strike 586 on SPY (delayed /api/chain), switch to QQQ before the response arrives, then
     // deliver it -- Strike Detail must stay reset (no SPY table rendered).
-    let chainCalls = 0;
+    // Each symbol is answered as itself: SPY's contracts carry open interest 1200/980, QQQ's
+    // 7777/6666. SPY's second chain read is held until the test releases it.
+    let spyCalls = 0;
     let releaseChain = null;
-    function contractsFor(strike) {
-      return [
-        { symbol: 'SPY   260911C00' + strike + '000', putCall: 'CALL', strikePrice: strike,
-          openInterest: 1200, totalVolume: 540, gamma: 0.021, delta: 0.52, volatility: 12.3,
+    function contractsFor(tk, oi) {
+      return [583, 586].flatMap((strike) => [
+        { symbol: tk + '   260911C00' + strike + '000', putCall: 'CALL', strikePrice: strike,
+          openInterest: oi[0], totalVolume: 540, gamma: 0.021, delta: 0.52, volatility: 12.3,
           expirationDate: '2026-09-11' },
-        { symbol: 'SPY   260911P00' + strike + '000', putCall: 'PUT', strikePrice: strike,
-          openInterest: 980, totalVolume: 410, gamma: 0.019, delta: -0.48, volatility: 12.6,
+        { symbol: tk + '   260911P00' + strike + '000', putCall: 'PUT', strikePrice: strike,
+          openInterest: oi[1], totalVolume: 410, gamma: 0.019, delta: -0.48, volatility: 12.6,
           expirationDate: '2026-09-11' },
-      ];
+      ]);
     }
     await page.route('**/api/chain**', async (route) => {
-      chainCalls += 1;
-      const strike = chainCalls === 1 ? 583 : 586;   // first select resolves immediately; second is delayed
-      if (chainCalls > 1) await new Promise((resolve) => { releaseChain = resolve; });
+      const tk = new URL(route.request().url()).searchParams.get('ticker');
+      if (tk === 'SPY' && ++spyCalls > 1) await new Promise((resolve) => { releaseChain = resolve; });
       route.fulfill({
         status: 200, contentType: 'application/json',
-        body: JSON.stringify({ ticker: 'SPY', spot: 583.41, expiry: '2026-09-11', status: 'ok',
-          contracts: contractsFor(strike) }),
+        body: JSON.stringify({ ticker: tk, spot: 583.41, expiry: '2026-09-11', status: 'ok',
+          contracts: contractsFor(tk, tk === 'SPY' ? [1200, 980] : [7777, 6666]) }),
       });
+    });
+    await page.route('**/api/options/gamma-surface**', (route) => {
+      const tk = new URL(route.request().url()).searchParams.get('ticker');
+      route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify(Object.assign({}, SURFACE, { ticker: tk, symbol: tk })) });
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
 
@@ -1057,18 +1095,18 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.locator('.hcell[data-strike="586"][data-expiry="2026-09-11"]').click();
     await expect.poll(() => releaseChain !== null).toBe(true);
 
-    // switch ticker BEFORE the delayed 586 chain response arrives; the reset fires
-    // synchronously off the 'ed:ticker' listener, BEFORE the stale data lands
+    // switch ticker BEFORE the delayed 586 chain response arrives: QQQ's grid starts the
+    // selection on its spot strike, and Strike Detail shows QQQ's contracts
     await page.evaluate(() => window.EdShell.setTicker('QQQ'));
-    await expect(page.locator('#sdBody')).toContainText('Select a strike/expiry');
+    await expect(page.locator('#sdBody')).toContainText('7777');
 
     // now deliver the stale (586, SPY) response
     releaseChain(undefined);
     await page.waitForTimeout(300);   // let any (incorrect) render attempt land
 
-    // Strike Detail must still show the reset placeholder, not SPY's stale 586 table
-    await expect(page.locator('#sdBody')).toContainText('Select a strike/expiry');
-    await expect(page.locator('.sd')).toHaveCount(0);
+    // Strike Detail still shows QQQ's contracts, never SPY's stale 586 table
+    await expect(page.locator('#sdBody')).toContainText('7777');
+    await expect(page.locator('#sdBody')).not.toContainText('1200');
   });
 
   // Independent-review finding (2026-09-13), REPRODUCED, then a FOURTH review overturned the
