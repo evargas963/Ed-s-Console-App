@@ -70,8 +70,9 @@ def _named(rows: list) -> dict:
 
 
 def test_each_cross_is_found_at_the_live_price_in_the_order_schwab_sent_the_prints():
-    """The levels are the close capture's, published at 764.04. The 16:33 print (764.00) sits on
-    the put wall and the net-gamma peak and crosses nothing. The 16:39 print (773.1269) crosses
+    """The levels are the close capture's, published at 764.04. The 16:33 print (764.00), the
+    ticker's first, is the price the next is checked from and crosses nothing; from it, the put
+    wall and the net-gamma peak (764) are left, not crossed. The 16:39 print (773.1269) crosses
     upward each level between the two prints; the 18:00 print (764.27) crosses each of them back
     down, a reversal stored at once. No chain was published in between."""
     _forget()
@@ -148,6 +149,25 @@ def test_a_stored_cross_is_the_row_read_back(tmp_path: Path) -> None:
         ("Call g-Wall", 765.0, CROSSED_UP, STRIKE_AWAY)]
     # a cross recorded live and the same cross loaded at startup are the same row, cross_id included
     assert edb.get_recent_crosses("SPY", n=10) == stored
+
+
+def test_the_crosses_of_one_price_are_stored_together_or_not_at_all(tmp_path: Path) -> None:
+    """Induced condition: the second of the 16:39 print's crosses is refused (a level value the
+    table does not take). Neither is stored, and the refusal reaches the caller, which logs it and
+    holds neither, so the database and the console's memory stay the same."""
+    import sqlite3
+
+    import pytest
+
+    edb = EdDB(tmp_path / "level_crosses.db")
+
+    def cross(name, value):
+        return LevelCrossEvent(ticker="SPY", ts_utc=SPY_PRINT_A_STRIKE_AWAY["ts_recv"], ts_et="2026-10-22 16:39:03 ET",
+                               level_name=name, level_value=value, direction=CROSSED_UP, spot_at_cross=STRIKE_AWAY,
+                               zone_before=None, zone_after=None, timeframe="1m")
+    with pytest.raises(sqlite3.IntegrityError):
+        edb.record_level_crosses([cross("Call g-Wall", 765.0), cross("Gamma Flip", None)])
+    assert edb.get_recent_crosses("SPY", n=10) == []
 
 
 def test_levels_crossed_together_are_one_event_naming_every_level() -> None:

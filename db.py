@@ -206,12 +206,17 @@ class EdDB:
         return _do()
 
     def record_level_crosses(self, events: list[LevelCrossEvent]) -> list[dict]:
-        """Store each level cross (server._log_level_crosses decides them). Returns the rows
-        stored, each as get_recent_crosses reads it back."""
+        """Store the level crosses of one price (server._log_level_crosses decides them), all in
+        one transaction: every one is stored, or none is and the error is raised. Returns the
+        rows stored, each as get_recent_crosses reads it back."""
+        cols = [f.name for f in fields(LevelCrossEvent)]
+        sql = f"INSERT INTO level_crosses ({', '.join(cols)}) VALUES ({', '.join('?' for _ in cols)})"
         logged: list[dict] = []
-        for event in events:
-            cross_id = self.log_level_cross(event)
-            logged.append({**asdict(event), "cross_id": cross_id})     # the stored row
+        with self._connect() as conn:
+            for event in events:
+                d = asdict(event)
+                cross_id = int(conn.execute(sql, [d[c] for c in cols]).lastrowid)
+                logged.append({**d, "cross_id": cross_id})     # the stored row
         return logged
 
     def get_recent_crosses(self, ticker: str, n: int = 20) -> list:

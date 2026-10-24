@@ -215,7 +215,7 @@ def test_every_level_shaped_payload_name_is_declared():
             assert f"same_day.{key}" in declared_terrain, (
                 f"same-day level {key!r} has no declared (definition, chain scope)")
     for key in payload:
-        if key.endswith(("_state", "_range", "_blockers")) or key.startswith("dist_to_"):   # distances, not levels
+        if key.endswith(("_state", "_range", "_blockers")):   # states, ranges and reasons, not levels
             continue
         if key.endswith(_LEVEL_SUFFIXES) or key in _LEVEL_EXTRAS:
             assert key in declared_terrain or key in _SINGLE_SURFACE_FULL_BOOK, (
