@@ -460,7 +460,13 @@ from Schwab to the screen (daemon, console, page), are these:
   (`tests/test_data_path_chain_spot_v1.py`). Every route names that price `priced_at_spot` (with
   `priced_at_spot_source`, `priced_at_spot_as_of_ts_utc` where it serves them) and serves `spot`
   as the live price (`resolve_spot`), one meaning on every route (`tests/test_page_one_faucet_v1.py`
-  checks every GET route that answers a ticker). The one-day move's two prices are the live price
+  checks every GET route that answers a ticker). Every relation of the price to the levels is at
+  that live price, computed when served, never stored with the publication: each wall's state
+  and lean, the distance to each wall, the price's side of the flip, the pin candidate and the
+  read's lines (`terrain_engine.price_relations`, on `/api/terrain`, `/api/levels` and the chart's
+  markers), `/api/levels`' side of each level, and the level crosses (below). One side rule,
+  exact values: `terrain_read.level_side` (ABOVE, AT, BELOW) and `terrain_read.crossed`
+  (`tests/test_level_crosses_wire.py`, `tests/test_trade_desk_served_v1.py`). The one-day move's two prices are the live price
   plus and minus the publication's implied move (`server.expected_move`, the one producer;
   `/api/levels` and `/api/confluence` carry it). A chain delivered with no spot (the daemon held no
   price) has no levels, with its reason.
@@ -508,7 +514,13 @@ from Schwab to the screen (daemon, console, page), are these:
 - **Tape.** The cumulative delta (PROXY, tick rule) sums every print the tape holds; no clock
   resets it, and the window it sums (its first and last print's Schwab trade time,
   `cum_delta_window`) is served beside it and printed with it. A print of size 0 adds 0.
-- **Level crosses.** Computed by the console at each levels publish; written to `ed_console.db`
+- **Level crosses.** Found by the console at the live price on each streamed equity quote
+  (`server._on_stream_tick`, on the event loop): each published level the price reached or passed
+  since the last price checked for that ticker (`terrain_read.crossed`, the one side rule). No
+  quote, no check; a new publication moves the levels, not the price, and is not a cross. Stored
+  on the pricing thread (`EdDB.record_level_crosses`; a level's cross in the direction the
+  console holds one for from the last minute is not stored again, `server.LEVEL_CROSS_HOLD_S`,
+  read from memory), written to `ed_console.db`
   and kept in the console's memory (§3.3) → the `levels` push → `/api/desk/events`, which serves
   each cross as recorded, from memory, and flags the
   newest cross at each level, for the newest six levels, as the chart's numbered callouts (one

@@ -500,7 +500,7 @@
       ['VALUE', l && l.summary ? String(l.summary.value_state || '—').replace(/_/g, ' ') : '—', ''],
       ['VWAP', l && l.summary ? String(l.summary.vwap_relation || '—').replace(/_/g, ' ') : '—', ''],
       ['OPTIONS', t && !t.error && t.posture ? String(t.posture).replace(/_/g, ' ') : '—', ''],
-      ['GAMMA', ({ ABOVE: 'Above flip', BELOW: 'Below flip' })[t && t.flip_relation] || '—', t && t.flip_relation === 'ABOVE' ? 'up' : t && t.flip_relation === 'BELOW' ? 'dn' : '']
+      ['GAMMA', ({ ABOVE: 'Above flip', AT: 'At flip', BELOW: 'Below flip' })[t && t.flip_relation] || '—', t && t.flip_relation === 'ABOVE' ? 'up' : t && t.flip_relation === 'BELOW' ? 'dn' : '']
     ];
     host.innerHTML = cells.map(function (c) {
       return '<div class="tdm-ag"><span>' + c[0] + '</span><b class="' + c[2] + '">' + esc(c[1]) + '</b></div>'; }).join('') +

@@ -101,11 +101,9 @@ to write it plainly, in the forms `test_a_command_the_reader_cannot_see_into_is_
 ### P1-6 — what is still open, by file
 
 **server.py**
-- S-11 `_publish_levels` seeds level crosses with a stored capture's past spot (`prev_spot`), stamped now.
 - S-22 `_prior_strikes` and `terrain_engine.per_strike_view` each define the 7-DTE near/far split.
 - S-23 `_side_sums` leaves a row's missing strike, gamma or volume out of its sum without counting them; its sums use the live spot while the rows were priced at the snapshot's.
 - S-38 `_publish_levels` reads the database (`newest_capture_ts`) on every new chain to learn whether a newer capture exists; the daemon, which writes the captures, could carry that time on the chain it delivers.
-- S-40 level-cross detection (`db.detect_and_log_level_crosses`) reads `level_crosses` on the pricing thread to hold back a repeat within 60 s; the console's `_crosses` already holds what it needs.
 - S-30 the equity microstructure route (`flow`), the options one (`streaming_plane`) and the microstructure content build return None/{} after an exception with no reason.
 - S-35 `get_levels` expected-move levels: live spot ± the chain-time move, stamped with the terrain's time and stale flag, computed in the route.
 - S-36 `_build_raw_levels_used` takes `prev_day` or `prev` (the two snapshot builders name it differently).
@@ -197,7 +195,6 @@ and both reviews pass, and deploy, without a separate yes.
 | ONE-03 | QUEUED | Feed liveness judged in both processes: the daemon applies its own heartbeat to its price rows (`live_ui.beat`), and the console applies the pushed copy again (`feed_live_for`); one rule since ONE-15, two places it runs. |
 | ONE-12 | QUEUED | Trade side: history's quote rule beside the live tick rule (with the trade-side decision, directive 3). |
 | ONE-21 | QUEUED | The strike at the price: `terrain_engine.nearest_strike`, `confluence_composite.under_strike` and the daemon's `saved_window` bisect. |
-| ONE-22 | QUEUED | Price-to-level relations: wall states, flip relation and wall distances at the publication's price, `/api/levels` and the confluence distances at the live price, with four different above/at rules. |
 | ONE-23 | QUEUED | The daemon's option rule reads LAST_PRICE itself (`capture._took_price`) and keeps the last price on -999; the price row clears it. |
 | ONE-24 | QUEUED | One contract record: open interest, volume, Greeks, volatility, multiplier, strike and expiry each read by several modules with different validity rules (`math_exposure_core`, `math_levels`, `terrain_engine.chain_ladder`, `confluence_composite`, `history`), two keep-the-last-count rules (`_keep_last_reported`, `_last_positive`); the heatmap cell labelled streaming while its Greeks are the /quotes answer. Its candidates are what `tools/check_one_reader.py --list` names; done when each Schwab field it names has one reader of Schwab's message. |
 | ONE-25 | QUEUED | The front expiry: seven definitions (max pain, implied move, risk reversal, same-day levels, 0DTE share, heatmap front, confluence default). |

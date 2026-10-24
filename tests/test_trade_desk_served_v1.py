@@ -17,7 +17,7 @@ from calibration.complete_chain_capture import CAPTURE_BASIS
 from instrument_identity import ticker_storage_key
 from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS
 from micro_structure import Candle
-from terrain_engine import compute_terrain
+from terrain_engine import compute_terrain, price_relations
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 
@@ -139,11 +139,12 @@ def test_the_desk_event_feed_numbers_orders_and_counts_the_real_crosses():
 
 def _crwd_at(live):
     """The levels producer's snapshot on the real CRWD chain (tests/real_chains.py, valued at its
-    capture), priced at `live(base)` where base is the snapshot at the chain's own price
-    (stand-in live prices, named by each test)."""
+    capture, at the chain's own price), with every relation of a live price `live(base)` to its
+    levels (price_relations; stand-in live prices, named by each test)."""
     from tests.real_chains import CRWD
     base = compute_terrain("CRWD", [dict(c) for c in CRWD.chain], CRWD.spot, now=CRWD.now).to_dict()
-    return compute_terrain("CRWD", [dict(c) for c in CRWD.chain], live(base), now=CRWD.now).to_dict()
+    price = live(base)
+    return base | price_relations(base, price) | {"spot": price}
 
 
 def test_wall_distances_and_flip_relation_are_served():
@@ -151,7 +152,8 @@ def test_wall_distances_and_flip_relation_are_served():
     assert out["dist_to_call_wall"] == pytest.approx(out["call_wall"] - out["spot"])
     assert out["dist_to_put_wall"] == pytest.approx(out["spot"] - out["put_wall"])
     assert out["flip_relation"] == (None if out["gamma_flip"] is None
-                                    else "ABOVE" if out["spot"] >= out["gamma_flip"] else "BELOW")
+                                    else "AT" if out["spot"] == out["gamma_flip"]
+                                    else "ABOVE" if out["spot"] > out["gamma_flip"] else "BELOW")
 
 
 def test_a_breached_wall_says_so_at_the_live_price():

@@ -114,10 +114,10 @@ def test_terrain_snapshot_v2_carries_net_gex_and_new_levels():
     """Real seam: compute_terrain (the /api/terrain producer) on the real SPY chain
     must serve schema v2 with net_gex_at_spot ≡ flip_diag.gamma_at_spot and the new
     levels agreeing with their pickers — the UI renders these fields directly."""
-    from terrain_engine import TERRAIN_SCHEMA_VERSION, compute_terrain
+    from terrain_engine import TERRAIN_SCHEMA_VERSION, compute_terrain, price_relations
 
     snap = compute_terrain("SPY", SPY_0DTE.chain, SPY_0DTE.spot, now=SPY_0DTE.now)
-    d = snap.to_dict()
+    d = snap.to_dict() | price_relations(snap.to_dict(), SPY_0DTE.spot)     # as /api/terrain serves it
     # v3 (RC-292): gamma_pin* renamed absolute_gamma_*; + pin_candidate(+blockers). The
     # v2 fields this test locks are all still carried.
     assert TERRAIN_SCHEMA_VERSION == 3 and d["schema_version"] == 3

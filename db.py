@@ -205,82 +205,21 @@ class EdDB:
 
         return _do()
 
-    # Pass 4: minimum seconds between two recorded crosses of the same
-    # (ticker, level_name, direction). Prevents tape-oscillation spam without
-    # losing signal when price genuinely reverses (an "up" cross does not
-    # debounce a subsequent "down" cross of the same level).
-    LEVEL_CROSS_DEBOUNCE_S: float = 60.0
-
-    def detect_and_log_level_crosses(
-        self,
-        *,
-        ticker: str,
-        prev_spot: float | None,
-        cur_spot: float | None,
-        levels: list[tuple[float, str]],
-        ts_utc: float,
-        ts_et: str,
-        timeframe: str = "1m",
-        zone_before: Optional[str] = None,
-        zone_after: Optional[str] = None,
-        debounce_s: Optional[float] = None,
-    ) -> list[dict]:
-        """Detect spot-vs-level crossings between two ticks and persist them.
-
-        Pass 4 wire from server tick path. For each (level_value, level_name)
-        in ``levels``, records a `level_crosses` row when prev_spot and cur_spot
-        sit on opposite sides of level_value, debounced by
-        (ticker, level_name, direction) within ``debounce_s`` seconds.
-
-        Returns the list of crosses actually logged (so the caller can emit
-        a single log line per cross — Pass 4 telemetry).
-        """
-        if prev_spot is None or cur_spot is None:
-            return []
-        if float(prev_spot) == float(cur_spot):
-            return []
-        direction = "up" if cur_spot > prev_spot else "down"
-        deb = float(debounce_s) if debounce_s is not None else self.LEVEL_CROSS_DEBOUNCE_S
-        debounce_since = float(ts_utc) - deb
+    def record_level_crosses(self, *, ticker: str, spot: float, crosses: list[tuple[float, str, str]],
+                             ts_utc: float, ts_et: str) -> list[dict]:
+        """Store each (level value, level name, direction) the price crossed at `spot`
+        (server._level_crosses_at decides them). Returns the rows stored."""
         logged: list[dict] = []
-        for raw_value, name in levels:
-            if raw_value is None or name is None:
-                continue
-            try:
-                value = float(raw_value)
-            except (TypeError, ValueError):
-                continue
-            crossed_up = float(prev_spot) < value <= float(cur_spot)
-            crossed_down = float(cur_spot) <= value < float(prev_spot)
-            if not (crossed_up or crossed_down):
-                continue
-            with self._connect() as conn:
-                last = conn.execute(
-                    "SELECT ts_utc FROM level_crosses "
-                    "WHERE ticker = ? AND level_name = ? AND direction = ? "
-                    "ORDER BY ts_utc DESC LIMIT 1",
-                    (ticker, name, direction),
-                ).fetchone()
-            if last is not None and float(last["ts_utc"]) >= debounce_since:
-                continue
-            event = LevelCrossEvent(
-                ticker=ticker,
-                ts_utc=float(ts_utc),
-                ts_et=str(ts_et),
-                level_name=str(name),
-                level_value=value,
-                direction=direction,
-                spot_at_cross=float(cur_spot),
-                zone_before=zone_before,
-                zone_after=zone_after,
-                timeframe=str(timeframe),
-            )
+        for value, name, direction in crosses:
+            event = LevelCrossEvent(ticker=ticker, ts_utc=float(ts_utc), ts_et=str(ts_et), level_name=str(name),
+                                    level_value=value, direction=direction, spot_at_cross=float(spot),
+                                    zone_before=None, zone_after=None, timeframe="1m")
             cross_id = self.log_level_cross(event)
             logged.append({**asdict(event), "cross_id": cross_id})     # the stored row
         return logged
 
     def get_recent_crosses(self, ticker: str, n: int = 20) -> list:
-        """The most recent level crosses, each the row detect_and_log_level_crosses returns."""
+        """The most recent level crosses, each the row record_level_crosses returns."""
         cols = ", ".join(["cross_id", *(f.name for f in fields(LevelCrossEvent))])
         with self._connect() as conn:
             rows = conn.execute(f"""

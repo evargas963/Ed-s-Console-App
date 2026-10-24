@@ -28,6 +28,11 @@ _QUOTE = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_crwd_q
                     .read_text(encoding="utf-8"))
 
 
+def _published(held) -> dict:
+    """The levels the producer publishes for `held`'s chain at its own price and capture."""
+    return compute_terrain(held.ticker, [dict(c) for c in held.chain], held.spot, now=held.now).to_dict()
+
+
 def _store(tk: str, cache: dict) -> None:
     """The publication ranks once. The request then reads that ranking."""
     cache["_matrix_by_expiry"] = server._ranked_matrices(cache)
@@ -234,8 +239,8 @@ def test_the_matrix_reads_the_expiry_charm_map_and_does_not_rebuild_it():
                                       product=INDEX_OPTIONS)
     at_capture = compute_charm_by_strike(held.chain, held.spot, now=held.now, product=INDEX_OPTIONS)
     strike = min(book, key=lambda s: abs(s - held.spot))
-    _store("SPY", {
-        "spot": held.spot, "computed_ts_utc": held.now.timestamp(),
+    _store("SPY", _published(held) | {
+        "computed_ts_utc": held.now.timestamp(),
         "_valued_ts_utc": held.now.timestamp(),
         "expiry_dte": {expiry: 0},
         "_books": {(expiry, 0): (book, None)},
@@ -262,9 +267,8 @@ def test_the_matrix_reads_the_expiry_volatility_blend_and_does_not_rebuild_it():
         held.chain, spot=held.spot, now=held.now, product=INDEX_OPTIONS)
     puts = iv_by_strike(SPY_CLOSE.chain)
     whole = iv_by_strike(held.chain)
-    strike = min(book, key=lambda s: abs(s - held.spot))
-    _store("SPY", {
-        "spot": held.spot, "computed_ts_utc": held.now.timestamp(),
+    _store("SPY", _published(held) | {
+        "computed_ts_utc": held.now.timestamp(),
         "_valued_ts_utc": held.now.timestamp(),
         "expiry_dte": {expiry: 0},
         "_books": {(expiry, 0): (book, None)},
@@ -288,8 +292,8 @@ def test_the_matrix_request_returns_the_ranking_stored_with_the_book():
     expiry = str(held.chain[0]["expirationDate"])[:10]
     try:
         other = _publish_close()["_matrix_by_expiry"]["2026-10-22"]
-        server._terrain_cache["SPY"] = {
-            "spot": held.spot, "computed_ts_utc": held.now.timestamp(),
+        server._terrain_cache["SPY"] = _published(held) | {
+            "computed_ts_utc": held.now.timestamp(),
             "_valued_ts_utc": held.now.timestamp(),
             "expiry_dte": {expiry: 0},
             "_books": {(expiry, 0): ({held.spot: {}}, None)},

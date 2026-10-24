@@ -51,6 +51,36 @@ POSTURE_STAND_ASIDE = "STAND_ASIDE"
 #: Within this fraction of a wall, price is "at the edge" and the reaction is tradeable.
 EDGE_PROXIMITY_PCT = 0.004
 
+#: where a level sits against a price (level_side)
+LEVEL_ABOVE, LEVEL_AT, LEVEL_BELOW = "ABOVE", "AT", "BELOW"
+#: the way a price moved through a level (crossed)
+CROSSED_UP, CROSSED_DOWN = "up", "down"
+
+
+def level_side(level: float | None, price: float | None) -> str | None:
+    """Where `level` sits against `price`: LEVEL_ABOVE, LEVEL_AT or LEVEL_BELOW, from the exact
+    values (rounding happens only on screen); None when either is unknown. The one side rule of
+    every relation of a price to a level: the wall states, the flip side, the levels' sides and
+    the crosses."""
+    if level is None or price is None:
+        return None
+    if level > price:
+        return LEVEL_ABOVE
+    if level < price:
+        return LEVEL_BELOW
+    return LEVEL_AT
+
+
+def crossed(level: float | None, before: float | None, after: float | None) -> str | None:
+    """CROSSED_UP when the price moved from under `level` to at or over it, CROSSED_DOWN from over
+    it to at or under it (level_side); None otherwise."""
+    was, now = level_side(level, before), level_side(level, after)
+    if was == LEVEL_ABOVE and now in (LEVEL_AT, LEVEL_BELOW):
+        return CROSSED_UP
+    if was == LEVEL_BELOW and now in (LEVEL_AT, LEVEL_ABOVE):
+        return CROSSED_DOWN
+    return None
+
 
 #: the one wording, shown whenever the flip's modelled curve and Schwab's gamma disagree on the
 #: sign at today's price (the flip is placed by the curve; the regime is Schwab's gamma)
@@ -222,8 +252,9 @@ def build_terrain_read(
 
     if flip is not None:
         distance_pct = _pct_from(spot, flip) * 100.0
+        where = {LEVEL_BELOW: "above", LEVEL_ABOVE: "below", LEVEL_AT: "at"}[level_side(flip, spot)]
         flip_line = (f"Spot {price_text(spot)} vs {_fmt('flip', flip, spot)} — {abs(distance_pct):.2f}% "
-                     f"{'above' if spot > flip else 'below'} the regime line.")
+                     f"{where} the regime line.")
         # Gamma audit: at the middle tier the chain does not reach the measured flip-LEVEL
         # convergence span, so the LEVEL is approximate (~1.4% of spot in the study) even though the
         # regime is sound. Say so on the same line the operator reads the number from — a precise
