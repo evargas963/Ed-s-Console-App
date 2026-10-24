@@ -190,21 +190,6 @@ class EdDB:
     # LEVEL CROSS OPERATIONS
     # ════════════════════════════════════════════════════════════════════════
 
-    def log_level_cross(self, event: LevelCrossEvent) -> int:
-        """Log a level crossing event."""
-        d = asdict(event)
-        cols = ", ".join(d.keys())
-        placeholders = ", ".join("?" for _ in d)
-        sql = f"INSERT INTO level_crosses ({cols}) VALUES ({placeholders})"
-        vals = list(d.values())
-
-        def _do() -> int:
-            with self._connect() as conn:
-                cur = conn.execute(sql, vals)
-                return int(cur.lastrowid)
-
-        return _do()
-
     def record_level_crosses(self, events: list[LevelCrossEvent]) -> list[dict]:
         """Store the level crosses of one price (server._log_level_crosses decides them), all in
         one transaction: every one is stored, or none is and the error is raised. Returns the

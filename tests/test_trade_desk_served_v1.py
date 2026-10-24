@@ -111,9 +111,8 @@ def test_the_desk_event_feed_numbers_orders_and_counts_the_real_crosses():
     from db import LevelCrossEvent
     tk = "ZZDESKX"
     fx = _load("real_spy_level_crosses_2026_10_06_07.json")["rows"]
-    for r in fx:
-        server.get_db().log_level_cross(LevelCrossEvent(**{**{f.name: r[f.name] for f in fields(LevelCrossEvent)},
-                                                           "ticker": tk}))
+    server.get_db().record_level_crosses([LevelCrossEvent(**{**{f.name: r[f.name] for f in fields(LevelCrossEvent)},
+                                                             "ticker": tk}) for r in fx])
     server._crosses.pop(tk, None)
     server._load_crosses([tk])
     try:

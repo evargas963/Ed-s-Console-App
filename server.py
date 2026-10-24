@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Annotated, Optional
 from dataclasses import asdict, dataclass
 
-from time_et import (ET, now_et, ct_label, et_date_str_from_ts_utc, last_open,
+from time_et import (ET, now_et, age_text, ct_label, et_date_str_from_ts_utc, last_open,
                      market_session_date, option_close_product, options_closed_at, options_open,
                      outside_option_window, session, session_label, valuation_instant)
 from math_exposure_core import (
@@ -304,11 +304,17 @@ def _install_signal_handlers() -> None:
 def price_mark(ticker: str, spot_ts: float | None, now: float) -> dict:
     """Whether the live price is live at `now` (Schwab's LEVELONE_EQUITIES feed delivering it), why
     not, and its trade time and age: served beside every value computed from that price, so a
-    value from a price that has stopped stands marked not live (AGENTS rule 5)."""
-    return {"spot_feed_live": lmp.feed_live_for(ticker, "LEVELONE_EQUITIES", now),
+    value from a price that has stopped stands marked not live (AGENTS rule 5): `spot_not_live_text`
+    is the mark the page prints beside each such value, None while the price is live."""
+    live = lmp.feed_live_for(ticker, "LEVELONE_EQUITIES", now)
+    mark = ["not live"]
+    if spot_ts is not None:
+        mark.append(f"last trade {ct_label(spot_ts)}, {age_text(now - spot_ts)} old")
+    return {"spot_feed_live": live,
             "spot_outage": lmp.outage(ticker, "LEVELONE_EQUITIES", now),
             "spot_time_ct": None if spot_ts is None else ct_label(spot_ts),
-            "spot_age_sec": None if spot_ts is None else now - spot_ts}
+            "spot_age_sec": None if spot_ts is None else now - spot_ts,
+            "spot_not_live_text": None if live else " · ".join(mark)}
 
 
 def resolve_spot(ticker: str, *, now: float) -> tuple[float | None, str, float | None]:
@@ -3238,7 +3244,8 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict:
         "ticker": tk, "available": True, "reason": None,
         "expiry": chosen, "expiries": listed,
         "spot_as_of_ts_utc": live_ts,
-        "spot_time_ct": None if live_ts is None else ct_label(live_ts),
+        # the distances, the spot line and the pin candidate are from the live price: its mark
+        **price_mark(tk, live_ts, now.timestamp()),
         "priced_at_spot": float(spot),
         "chain_as_of_ts_utc": fetched,
         "chain_as_of_time_ct": None if fetched is None else ct_label(fetched),
@@ -3276,6 +3283,7 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict:
     terrain's levels carried beside it, each with its distance from the live price."""
     served_ts = now.timestamp()
     spot, spot_source, spot_ts = resolve_spot(tk, now=now.timestamp())
+    mark = price_mark(tk, spot_ts, served_ts)        # each value computed from that price carries it
     snap = canonical_price_level_snapshot(tk, now)
 
     levels: list[dict] = []
@@ -3314,7 +3322,9 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict:
                                          "as_of_time_ct": ct_label(as_of) if as_of is not None else None,
                                          "age_sec": None if as_of is None else served_ts - as_of,
                                          "stale_after_sec": None, "stale": bool(t.get("levels_stale")),
-                                         "reason": "carried from the terrain"}})
+                                         "reason": "carried from the terrain"},
+                           # a level placed at the live price (the pin candidate) is marked with it
+                           "not_live_text": mark["spot_not_live_text"] if gid in PRICE_RELATIONS else None})
     for row in levels:
         price = row.get("price")
         row["distance"] = (price - spot) if price is not None and spot is not None else None
@@ -3341,7 +3351,7 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict:
         "spot": spot,
         "spot_source": spot_source,
         "spot_as_of_ts_utc": spot_ts,
-        **price_mark(tk, spot_ts, served_ts),     # each level's distance and side are from that price
+        **mark,                                   # each level's distance and side are from that price
         "priced_at_spot": t.get("spot") if t is not None else None,
         "generation": snap.generation if snap is not None else None,
         "snapshot_as_of_ts_utc": snap.as_of_ts_utc if snap is not None else None,

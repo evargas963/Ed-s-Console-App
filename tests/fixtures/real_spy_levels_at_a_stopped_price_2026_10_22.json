@@ -1,0 +1,481 @@
+{
+ "bar_source": null,
+ "by_distance": [
+  "key_delta_strike",
+  "max_pain",
+  "gamma_flip",
+  "lvp",
+  "call_wall",
+  "absolute_gamma_strike",
+  "call_charm_wall",
+  "put_charm_wall",
+  "put_wall",
+  "net_gex_peak",
+  "hvp"
+ ],
+ "degraded": [],
+ "families_absent": [
+  {
+   "family": "price_levels",
+   "reason": "no price levels published for this ticker for the market's session yet (they are built from its 1-minute bars on each new bar and at the console's start)"
+  },
+  {
+   "family": "expected_move",
+   "reason": "the terrain has no implied 1-day move"
+  }
+ ],
+ "generation": null,
+ "levels": [
+  {
+   "distance": 2.873100000000022,
+   "evidence_tier": "DERIVED",
+   "family": "gamma",
+   "from_spot_text": "2.87 above spot",
+   "id": "lvp",
+   "label": "LVP",
+   "not_live_text": null,
+   "price": 776.0,
+   "provenance": {
+    "carried": true,
+    "producer": "terrain_engine.compute_terrain"
+   },
+   "short": "LVP",
+   "side": "ABOVE",
+   "staleness": {
+    "age_sec": 6176.727853059769,
+    "as_of_time_ct": "Thu 10/22 03:17 PM CT",
+    "as_of_ts_utc": 1792700224.362402,
+    "reason": "carried from the terrain",
+    "stale": false,
+    "stale_after_sec": null
+   }
+  },
+  {
+   "distance": -1.1268999999999778,
+   "evidence_tier": "DERIVED",
+   "family": "gamma",
+   "from_spot_text": "1.13 below spot",
+   "id": "key_delta_strike",
+   "label": "Key \u0394 strike",
+   "not_live_text": null,
+   "price": 772.0,
+   "provenance": {
+    "carried": true,
+    "producer": "terrain_engine.compute_terrain"
+   },
+   "short": "Key \u0394 strike",
+   "side": "BELOW",
+   "staleness": {
+    "age_sec": 6176.727853059769,
+    "as_of_time_ct": "Thu 10/22 03:17 PM CT",
+    "as_of_ts_utc": 1792700224.362402,
+    "reason": "carried from the terrain",
+    "stale": false,
+    "stale_after_sec": null
+   }
+  },
+  {
+   "distance": -2.126899999999978,
+   "evidence_tier": "DERIVED",
+   "family": "gamma",
+   "from_spot_text": "2.13 below spot",
+   "id": "max_pain",
+   "label": "Max pain",
+   "not_live_text": null,
+   "price": 771.0,
+   "provenance": {
+    "carried": true,
+    "producer": "terrain_engine.compute_terrain"
+   },
+   "short": "Max pain",
+   "side": "BELOW",
+   "staleness": {
+    "age_sec": 6176.727853059769,
+    "as_of_time_ct": "Thu 10/22 03:17 PM CT",
+    "as_of_ts_utc": 1792700224.362402,
+    "reason": "carried from the terrain",
+    "stale": false,
+    "stale_after_sec": null
+   }
+  },
+  {
+   "distance": -2.3576794711594857,
+   "evidence_tier": "DERIVED",
+   "family": "gamma",
+   "from_spot_text": "2.36 below spot",
+   "id": "gamma_flip",
+   "label": "Gamma flip",
+   "not_live_text": null,
+   "price": 770.7692205288405,
+   "provenance": {
+    "carried": true,
+    "producer": "terrain_engine.compute_terrain"
+   },
+   "short": "Gamma flip",
+   "side": "BELOW",
+   "staleness": {
+    "age_sec": 6176.727853059769,
+    "as_of_time_ct": "Thu 10/22 03:17 PM CT",
+    "as_of_ts_utc": 1792700224.362402,
+    "reason": "carried from the terrain",
+    "stale": false,
+    "stale_after_sec": null
+   }
+  },
+  {
+   "distance": -8.126899999999978,
+   "evidence_tier": "DERIVED",
+   "family": "gamma",
+   "from_spot_text": "8.13 below spot",
+   "id": "call_wall",
+   "label": "Call wall",
+   "not_live_text": null,
+   "price": 765.0,
+   "provenance": {
+    "carried": true,
+    "producer": "terrain_engine.compute_terrain"
+   },
+   "short": "Call wall",
+   "side": "BELOW",
+   "staleness": {
+    "age_sec": 6176.727853059769,
+    "as_of_time_ct": "Thu 10/22 03:17 PM CT",
+    "as_of_ts_utc": 1792700224.362402,
+    "reason": "carried from the terrain",
+    "stale": false,
+    "stale_after_sec": null
+   }
+  },
+  {
+   "distance": -8.126899999999978,
+   "evidence_tier": "DERIVED",
+   "family": "gamma",
+   "from_spot_text": "8.13 below spot",
+   "id": "absolute_gamma_strike",
+   "label": "Abs \u0393",
+   "not_live_text": null,
+   "price": 765.0,
+   "provenance": {
+    "carried": true,
+    "producer": "terrain_engine.compute_terrain"
+   },
+   "short": "Abs \u0393",
+   "side": "BELOW",
+   "staleness": {
+    "age_sec": 6176.727853059769,
+    "as_of_time_ct": "Thu 10/22 03:17 PM CT",
+    "as_of_ts_utc": 1792700224.362402,
+    "reason": "carried from the terrain",
+    "stale": false,
+    "stale_after_sec": null
+   }
+  },
+  {
+   "distance": -8.126899999999978,
+   "evidence_tier": "DERIVED",
+   "family": "gamma",
+   "from_spot_text": "8.13 below spot",
+   "id": "call_charm_wall",
+   "label": "Call charm wall",
+   "not_live_text": null,
+   "price": 765.0,
+   "provenance": {
+    "carried": true,
+    "producer": "terrain_engine.compute_terrain"
+   },
+   "short": "Call charm wall",
+   "side": "BELOW",
+   "staleness": {
+    "age_sec": 6176.727853059769,
+    "as_of_time_ct": "Thu 10/22 03:17 PM CT",
+    "as_of_ts_utc": 1792700224.362402,
+    "reason": "carried from the terrain",
+    "stale": false,
+    "stale_after_sec": null
+   }
+  },
+  {
+   "distance": -8.126899999999978,
+   "evidence_tier": "DERIVED",
+   "family": "gamma",
+   "from_spot_text": "8.13 below spot",
+   "id": "put_charm_wall",
+   "label": "Put charm wall",
+   "not_live_text": null,
+   "price": 765.0,
+   "provenance": {
+    "carried": true,
+    "producer": "terrain_engine.compute_terrain"
+   },
+   "short": "Put charm wall",
+   "side": "BELOW",
+   "staleness": {
+    "age_sec": 6176.727853059769,
+    "as_of_time_ct": "Thu 10/22 03:17 PM CT",
+    "as_of_ts_utc": 1792700224.362402,
+    "reason": "carried from the terrain",
+    "stale": false,
+    "stale_after_sec": null
+   }
+  },
+  {
+   "distance": -9.126899999999978,
+   "evidence_tier": "DERIVED",
+   "family": "gamma",
+   "from_spot_text": "9.13 below spot",
+   "id": "put_wall",
+   "label": "Put wall",
+   "not_live_text": null,
+   "price": 764.0,
+   "provenance": {
+    "carried": true,
+    "producer": "terrain_engine.compute_terrain"
+   },
+   "short": "Put wall",
+   "side": "BELOW",
+   "staleness": {
+    "age_sec": 6176.727853059769,
+    "as_of_time_ct": "Thu 10/22 03:17 PM CT",
+    "as_of_ts_utc": 1792700224.362402,
+    "reason": "carried from the terrain",
+    "stale": false,
+    "stale_after_sec": null
+   }
+  },
+  {
+   "distance": -9.126899999999978,
+   "evidence_tier": "DERIVED",
+   "family": "gamma",
+   "from_spot_text": "9.13 below spot",
+   "id": "net_gex_peak",
+   "label": "Net \u0393 peak",
+   "not_live_text": null,
+   "price": 764.0,
+   "provenance": {
+    "carried": true,
+    "producer": "terrain_engine.compute_terrain"
+   },
+   "short": "Net \u0393 peak",
+   "side": "BELOW",
+   "staleness": {
+    "age_sec": 6176.727853059769,
+    "as_of_time_ct": "Thu 10/22 03:17 PM CT",
+    "as_of_ts_utc": 1792700224.362402,
+    "reason": "carried from the terrain",
+    "stale": false,
+    "stale_after_sec": null
+   }
+  },
+  {
+   "distance": -9.126899999999978,
+   "evidence_tier": "DERIVED",
+   "family": "gamma",
+   "from_spot_text": "9.13 below spot",
+   "id": "hvp",
+   "label": "HVP",
+   "not_live_text": null,
+   "price": 764.0,
+   "provenance": {
+    "carried": true,
+    "producer": "terrain_engine.compute_terrain"
+   },
+   "short": "HVP",
+   "side": "BELOW",
+   "staleness": {
+    "age_sec": 6176.727853059769,
+    "as_of_time_ct": "Thu 10/22 03:17 PM CT",
+    "as_of_ts_utc": 1792700224.362402,
+    "reason": "carried from the terrain",
+    "stale": false,
+    "stale_after_sec": null
+   }
+  }
+ ],
+ "priced_at_spot": 764.04,
+ "schema_version": 1,
+ "served_ts_utc": 1792706401.090255,
+ "snapshot_as_of_ts_utc": null,
+ "snapshot_time_ct": null,
+ "spot": 773.1269,
+ "spot_age_sec": 4859.43825507164,
+ "spot_as_of_ts_utc": 1792701541.652,
+ "spot_feed_live": false,
+ "spot_not_live_text": "not live \u00b7 last trade Thu 10/22 03:39 PM CT, 81m old",
+ "spot_outage": "Schwab LEVELONE_EQUITIES feed down during After-Hours",
+ "spot_source": "streaming_plane",
+ "spot_time_ct": "Thu 10/22 03:39 PM CT",
+ "tf": "1",
+ "ticker": "SPY",
+ "volume_profile": null,
+ "vwap_series": [],
+ "zero_dte": [
+  {
+   "carried": 765.0,
+   "id": "call_wall",
+   "label": "Call wall",
+   "price": 765.0,
+   "staleness": {
+    "age_sec": 6176.727853059769,
+    "as_of_time_ct": "Thu 10/22 03:17 PM CT",
+    "as_of_ts_utc": 1792700224.362402,
+    "reason": "carried from the terrain",
+    "stale": false,
+    "stale_after_sec": null
+   }
+  },
+  {
+   "carried": 764.0,
+   "id": "put_wall",
+   "label": "Put wall",
+   "price": 764.0,
+   "staleness": {
+    "age_sec": 6176.727853059769,
+    "as_of_time_ct": "Thu 10/22 03:17 PM CT",
+    "as_of_ts_utc": 1792700224.362402,
+    "reason": "carried from the terrain",
+    "stale": false,
+    "stale_after_sec": null
+   }
+  },
+  {
+   "carried": 770.7692205288405,
+   "id": "gamma_flip",
+   "label": "Gamma flip",
+   "price": 770.7692205288405,
+   "staleness": {
+    "age_sec": 6176.727853059769,
+    "as_of_time_ct": "Thu 10/22 03:17 PM CT",
+    "as_of_ts_utc": 1792700224.362402,
+    "reason": "carried from the terrain",
+    "stale": false,
+    "stale_after_sec": null
+   }
+  },
+  {
+   "carried": 765.0,
+   "id": "absolute_gamma_strike",
+   "label": "Abs \u0393",
+   "price": 764.0,
+   "staleness": {
+    "age_sec": 6176.727853059769,
+    "as_of_time_ct": "Thu 10/22 03:17 PM CT",
+    "as_of_ts_utc": 1792700224.362402,
+    "reason": "carried from the terrain",
+    "stale": false,
+    "stale_after_sec": null
+   }
+  },
+  {
+   "carried": 764.0,
+   "id": "net_gex_peak",
+   "label": "Net \u0393 peak",
+   "price": 764.0,
+   "staleness": {
+    "age_sec": 6176.727853059769,
+    "as_of_time_ct": "Thu 10/22 03:17 PM CT",
+    "as_of_ts_utc": 1792700224.362402,
+    "reason": "carried from the terrain",
+    "stale": false,
+    "stale_after_sec": null
+   }
+  },
+  {
+   "carried": null,
+   "id": "gsf",
+   "label": "GSF",
+   "price": null,
+   "staleness": {
+    "age_sec": 6176.727853059769,
+    "as_of_time_ct": "Thu 10/22 03:17 PM CT",
+    "as_of_ts_utc": 1792700224.362402,
+    "reason": "carried from the terrain",
+    "stale": false,
+    "stale_after_sec": null
+   }
+  },
+  {
+   "carried": null,
+   "id": "grc",
+   "label": "GRC",
+   "price": null,
+   "staleness": {
+    "age_sec": 6176.727853059769,
+    "as_of_time_ct": "Thu 10/22 03:17 PM CT",
+    "as_of_ts_utc": 1792700224.362402,
+    "reason": "carried from the terrain",
+    "stale": false,
+    "stale_after_sec": null
+   }
+  },
+  {
+   "carried": 764.0,
+   "id": "hvp",
+   "label": "HVP",
+   "price": 764.0,
+   "staleness": {
+    "age_sec": 6176.727853059769,
+    "as_of_time_ct": "Thu 10/22 03:17 PM CT",
+    "as_of_ts_utc": 1792700224.362402,
+    "reason": "carried from the terrain",
+    "stale": false,
+    "stale_after_sec": null
+   }
+  },
+  {
+   "carried": 776.0,
+   "id": "lvp",
+   "label": "LVP",
+   "price": 776.0,
+   "staleness": {
+    "age_sec": 6176.727853059769,
+    "as_of_time_ct": "Thu 10/22 03:17 PM CT",
+    "as_of_ts_utc": 1792700224.362402,
+    "reason": "carried from the terrain",
+    "stale": false,
+    "stale_after_sec": null
+   }
+  },
+  {
+   "carried": 772.0,
+   "id": "key_delta_strike",
+   "label": "Key \u0394 strike",
+   "price": 772.0,
+   "staleness": {
+    "age_sec": 6176.727853059769,
+    "as_of_time_ct": "Thu 10/22 03:17 PM CT",
+    "as_of_ts_utc": 1792700224.362402,
+    "reason": "carried from the terrain",
+    "stale": false,
+    "stale_after_sec": null
+   }
+  },
+  {
+   "carried": 765.0,
+   "id": "call_charm_wall",
+   "label": "Call charm wall",
+   "price": 765.0,
+   "staleness": {
+    "age_sec": 6176.727853059769,
+    "as_of_time_ct": "Thu 10/22 03:17 PM CT",
+    "as_of_ts_utc": 1792700224.362402,
+    "reason": "carried from the terrain",
+    "stale": false,
+    "stale_after_sec": null
+   }
+  },
+  {
+   "carried": 765.0,
+   "id": "put_charm_wall",
+   "label": "Put charm wall",
+   "price": 765.0,
+   "staleness": {
+    "age_sec": 6176.727853059769,
+    "as_of_time_ct": "Thu 10/22 03:17 PM CT",
+    "as_of_ts_utc": 1792700224.362402,
+    "reason": "carried from the terrain",
+    "stale": false,
+    "stale_after_sec": null
+   }
+  }
+ ]
+}

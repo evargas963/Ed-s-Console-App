@@ -115,10 +115,7 @@
                  nearest.from_spot_text + notLive(levelsD), 0, rows, null);
   }
   // a value computed from the live price, marked when that price is not live (served price_mark)
-  function notLive(d) {
-    return d && d.spot_feed_live === false
-      ? ' · not live ' + (window.EdShell && window.EdShell.fmtAge ? window.EdShell.fmtAge(d.spot_age_sec) : '') : '';
-  }
+  function notLive(d) { return d && d.spot_not_live_text ? ' · ' + d.spot_not_live_text : ''; }
 
   function confirmStage(d) {
     if (!d) return stage(3, 'td-accent-amber', 'Confirm — options regime', 'No regime', '', 0, [], null);

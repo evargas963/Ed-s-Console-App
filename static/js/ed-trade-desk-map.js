@@ -61,7 +61,7 @@
     return Math.round(sec / 86400) + 'd';
   }
   // a value computed from the live price, marked when that price is not live (served price_mark)
-  function notLive(d) { return d && d.spot_feed_live === false ? ' · not live ' + age(d.spot_age_sec) : ''; }
+  function notLive(d) { return d && d.spot_not_live_text ? ' · ' + d.spot_not_live_text : ''; }
   // Schwab's book time stands beside the age words. A book that is not live keeps that
   // time and says so. The words are unchanged when no book time was sent.
   function bookAgeLabel(m, word) {
@@ -255,7 +255,8 @@
       var lean = S.terrain && S.terrain[l.id + '_lean'];   // served: call_wall_lean / put_wall_lean
       if (g) { out.push({ id: l.id, price: Number(l.price), label: g[0] + (lean ? ' · ' + lean + notLive(S.terrain) : ''), color: g[1], style: g[2], width: g[3] }); return; }
       var s = style[l.family]; if (!s) return;
-      out.push({ id: l.id, price: Number(l.price), label: l.short, color: s[0], style: s[1], width: s[2] });
+      out.push({ id: l.id, price: Number(l.price), label: l.short + (l.not_live_text ? ' · ' + l.not_live_text : ''),
+                 color: s[0], style: s[1], width: s[2] });
     });
     return out;
   }

@@ -159,15 +159,56 @@ def test_relations_from_a_stopped_price_stand_marked_not_live_with_its_time_and_
         at = time.time()
         down = server.get_terrain(ticker="SPY")
         levels = server.levels_payload("SPY", "1", datetime.fromtimestamp(at, ET))
+        # the matrix of the 2026-10-22 expiry, read that evening (the 18:00 print's instant)
+        matrix = server.confluence_payload("SPY", "2026-10-22",
+                                           datetime.fromtimestamp(SPY_AFTER_HOURS_PRINT["ts_recv"], ET))
     finally:
         _forget()
     assert live["spot_feed_live"] is True and down["spot_feed_live"] is False and levels["spot_feed_live"] is False
+    assert live["spot_not_live_text"] is None
+    for body in (down, levels, matrix):
+        assert body["spot_not_live_text"].startswith(f"not live · last trade {ct_label(trade_ts)}, ")
     assert live["call_wall_lean"] == down["call_wall_lean"] == "BREACHED — spot above"
     for body in (down, levels):
         assert body["spot"] == STRIKE_AWAY and body["spot_time_ct"] == ct_label(trade_ts)
-        assert body["spot_age_sec"] >= at - trade_ts > 0
+    assert down["spot_age_sec"] >= at - trade_ts > 0                     # served after `at`
+    assert levels["spot_age_sec"] == levels["served_ts_utc"] - trade_ts   # at its own served time
     call = next(r for r in levels["levels"] if r["id"] == "call_wall")
     assert call["from_spot_text"] == f"{STRIKE_AWAY - 765.0:.2f} below spot"
+
+
+def stopped_price_levels() -> dict:
+    """/api/levels as the real code serves it on SPY's 2026-10-22 close publication with SPY's
+    16:39 print (773.1269) as the last price and the daemon's connection ended, read at the 18:00
+    print's instant: the answer the browser test renders (tests/fixtures/
+    real_spy_levels_at_a_stopped_price_2026_10_22.json)."""
+    import json
+    from datetime import datetime
+
+    from time_et import ET
+
+    _forget()
+    _publish_close()
+    msg = SPY_PRINT_A_STRIKE_AWAY
+    lmp.record_feed_heartbeat({"ts": msg["ts_recv"], "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": ["SPY"]}})
+    lmp.record_from_level_one_equity("SPY", msg["native"], received_ts=msg["ts_recv"])
+    ofs._price_rows["SPY"] = live_price_rows.price_row("SPY", msg["ts_recv"])
+    lmp.record_feed_down()
+    try:
+        body = server.levels_payload("SPY", "1", datetime.fromtimestamp(SPY_AFTER_HOURS_PRINT["ts_recv"], ET))
+    finally:
+        _forget()
+    return json.loads(json.dumps(body))
+
+
+def test_the_stopped_price_answer_the_browser_renders_is_the_routes_own():
+    """The browser test's /api/levels answer is this route's, on captured data: kept equal to it."""
+    import json
+
+    fx = Path(__file__).parent / "fixtures" / "real_spy_levels_at_a_stopped_price_2026_10_22.json"
+    served = stopped_price_levels()
+    assert json.loads(fx.read_text(encoding="utf-8")) == served
+    assert served["spot_feed_live"] is False and served["spot_not_live_text"].startswith("not live · last trade ")
 
 
 def test_a_stored_cross_is_the_row_read_back(tmp_path: Path) -> None:

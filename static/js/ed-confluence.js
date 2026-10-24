@@ -363,7 +363,9 @@
       selectedStrike = fallback == null ? null : fallback.strike;
     }
     var summary = [
-      ['SPOT', body.spot_text, body.spot_time_ct ? 'last trade ' + body.spot_time_ct : ''],
+      // a price that has stopped: the served mark (time and age) stands for every value from it
+      ['SPOT', body.spot_text, body.spot_not_live_text ? body.spot_not_live_text
+        : body.spot_time_ct ? 'last trade ' + body.spot_time_ct : ''],
       ['GAMMA REGIME · CHAIN', regimeWords(body.regime), ''],
       ['MODELED FLIP · CHAIN', body.flip_text, body.expiry ? body.expiry : ''],
       ['EXPECTED MOVE · LIVE PRICE', body.move_text, body.move_text ? 'one day' : ''],

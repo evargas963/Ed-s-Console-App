@@ -508,26 +508,46 @@ test.describe('Trade Desk renders served values', () => {
     expect(errs).toEqual([]);
   });
 
-  test('Right Now: distances from a price that has stopped are marked not live with its age', async ({ page }) => {
-    // AGENTS rule 5: the served price_mark beside the levels (spot_feed_live false, the price's age)
-    const errs = watchErrors(page);
-    const stopped = { spot_feed_live: false, spot_age_sec: 125 };
+  // AGENTS rule 5: /api/levels as the real code serves it on SPY's 2026-10-22 close publication,
+  // its 16:39 print (773.1269) the last price and the daemon's connection ended, read at 18:00
+  // (tests/test_level_crosses_wire.py keeps this file equal to the route's answer)
+  const STOPPED = require(path.join(__dirname, '..', 'fixtures', 'real_spy_levels_at_a_stopped_price_2026_10_22.json'));
+  async function routeStopped(page) {
+    const terrain = Object.assign({}, TERRAIN, { spot_feed_live: false, spot_not_live_text: STOPPED.spot_not_live_text });
     await page.route('**/api/**', (route) => {
       const url = route.request().url();
       let body = { available: false };
       if (url.includes('/api/terrain/strikes')) body = STRIKES;
-      else if (url.includes('/api/terrain')) body = Object.assign({}, TERRAIN, stopped);
-      else if (url.includes('/api/levels')) body = Object.assign({}, LEVELS, stopped);
+      else if (url.includes('/api/terrain')) body = terrain;
+      else if (url.includes('/api/levels')) body = STOPPED;
       else if (url.includes('/api/order-flow/microstructure')) body = MICRO;
       else if (url.includes('/api/liquidity-snapshot')) body = LIQ;
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
     });
     await routeWatchlist(page, ['SPY']);
+  }
+
+  test('Right Now: distances from a price that has stopped are marked not live with its time and age', async ({ page }) => {
+    const errs = watchErrors(page);
+    await routeStopped(page);
     await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'right-now'); } catch (e) {} });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const row = (id) => STOPPED.levels.find((r) => r.id === id);
+    const nearest = row(STOPPED.by_distance[0]);
     const body = page.locator('#tdBody');
-    await expect(body).toContainText('1.30 below spot · not live 2m');
-    await expect(body).toContainText('Put wall 6.30 below spot, call wall 3.70 above spot · not live 2m');
+    expect(STOPPED.spot_not_live_text).toContain('last trade');
+    await expect(body).toContainText(nearest.from_spot_text + ' · ' + STOPPED.spot_not_live_text);
+    await expect(body).toContainText('Put wall ' + row('put_wall').from_spot_text + ', call wall ' +
+      row('call_wall').from_spot_text + ' · ' + STOPPED.spot_not_live_text);
+    expect(errs).toEqual([]);
+  });
+
+  test('Market Map: the flip side from a price that has stopped is marked not live with its time and age', async ({ page }) => {
+    const errs = watchErrors(page);
+    await routeStopped(page);
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#tdmAgree')).toContainText('Above flip · ' + STOPPED.spot_not_live_text);
     expect(errs).toEqual([]);
   });
 
