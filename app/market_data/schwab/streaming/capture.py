@@ -325,12 +325,6 @@ def _publisher(service: str, bus: MessageBus, health: HealthRegistry):
     return handler
 
 
-def _to_plane(sym: str, msg: dict) -> None:
-    """One equity quote's current record on the bus into the plane, each field at the receive time
-    of the message that carried it."""
-    lmp.record_from_level_one_equity(sym, msg["native"], received_ts=msg["ts_recv"],
-                                     field_received={f: s[1] for f, s in msg["field_ts"].items()})
-
 
 class _RawHandler:
     """schwab-py handler shape for a service it has no helper for (NEWS_HEADLINE). schwab-py
@@ -471,8 +465,8 @@ class Daemon:
         self.wake.set()
 
     def pick_options(self) -> None:
-        """The option rule, every watchlist ticker the same, run on a ticker's new chain, a
-        watchlist change and the Flow panel's selection (never on a price). The contract selected
+        """The option rule, every watchlist ticker the same, run when a ticker's chain is put in
+        the rule's order (_rank), on a watchlist change and on the Flow panel's selection. The contract selected
         on the Flow panel streams on both option services when a watchlist ticker's chain lists
         it, not expired; what is left of Schwab's limit on each option service (OPTION_LIMITS) is
         split evenly across the watchlist, and a ticker's share on each is the first of its
@@ -520,9 +514,16 @@ class Daemon:
             del self._chains[ticker]
             self.pick_options()
 
+    def _took_quote(self, sym: str, msg: dict) -> None:
+        """One equity quote's current record on the bus into the plane, each field at the receive
+        time of the message that carried it, and its price row to the option rule (_took_row)."""
+        if lmp.record_from_level_one_equity(sym, msg["native"], received_ts=msg["ts_recv"],
+                                            field_received={f: s[1] for f, s in msg["field_ts"].items()}):
+            self._took_row(ticker_storage_key(sym))
+
     def _took_row(self, ticker: str) -> None:
-        """The plane published `ticker`'s price row: a watchlist ticker's waiting chain is ordered
-        and its window placed at the price."""
+        """`ticker`'s price row published: a watchlist ticker's waiting chain is ordered and its
+        window placed at the price."""
         if ticker in self.watchlist:
             now = self.clock()
             if ticker in self._chains:
@@ -540,9 +541,9 @@ class Daemon:
             self._place(ticker, now)
 
     async def follow_market(self, stop: asyncio.Event) -> None:
-        """Until `stop`, or a follower's end: each equity quote into the plane (_to_plane), whose
-        rows the browsers and the option rule (_took_row) read, and each ticker's newest whole
-        chain into the option rule (_took_chain)."""
+        """Until `stop`, or a follower's end: each equity quote into the plane, whose rows the
+        browsers and the option rule read (_took_quote), and each ticker's newest whole chain into
+        the option rule (_took_chain)."""
         async def follow(prefix: str, take) -> None:
             sub = self.bus.subscribe(prefix, policy=LATEST)
             try:
@@ -551,13 +552,11 @@ class Daemon:
                     take(topic.split(".", 1)[1], record)
             finally:
                 self.bus.unsubscribe(sub)
-        lmp.add_row_listener(self._took_row)
-        tasks = {asyncio.create_task(follow("quote.", _to_plane)),
+        tasks = {asyncio.create_task(follow("quote.", self._took_quote)),
                  asyncio.create_task(follow("chain.", self._took_chain)), asyncio.ensure_future(stop.wait())}
         try:
             done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
         finally:
-            lmp.remove_row_listener(self._took_row)
             for task in tasks:
                 task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)

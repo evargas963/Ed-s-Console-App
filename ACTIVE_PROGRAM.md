@@ -200,7 +200,15 @@ ticker's stored level crosses are read from `ed_console.db` once, the first time
 (the console's start, or a ticker's first cross), and that read counts as the ticker's startup
 under rule 6. Operator 2026-10-23, later: during a feed outage the console tells each open page
 to read again once a minute (`server.refresh_not_live_pages`), so the not-live mark's age keeps
-counting.
+counting. Operator 2026-10-24: "you must verify everything ... you must fix everything": a report
+labels a statement NOT VERIFIED, or a defect SEEN, NOT FIXED, only with a reason it cannot be
+closed now (it needs market hours, or his yes to a production or rate change); every check that
+can be run is run on the final commit, and every defect a change finds in its area is fixed in it
+(on ONE-23: a daemon task that ends before the stop ends the daemon, and its window restarts it).
+Operator 2026-10-24: "every letter of every word of every code must perform a duty, if it does
+not then it must be removed. at the heart of the repo is a simple wire job": each PR is simplified
+(reuse, simplification, efficiency, altitude) before its reviews, and the repo is simplified
+repo-wide after ONE-23 (a plan to him first).
 
 | ID | Status | Work item |
 |---|---|---|

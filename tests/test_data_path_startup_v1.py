@@ -26,7 +26,7 @@ from app.market_data.schwab.streaming import capture, live_ui
 from app.market_data.schwab.streaming.live_ui import serve_live_ui
 from calibration.complete_chain_capture import chain_messages
 from schwab_client import build_client_from_token
-from stream_spine import CaptureWriter, HealthRegistry, MessageBus
+from stream_spine import CaptureWriter, HealthRegistry, MessageBus, quote_msg
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -115,9 +115,8 @@ def test_a_chain_sweep_that_ends_on_an_error_is_logged(tmp_path, caplog):
 
 
 def test_a_market_follower_that_ends_on_an_error_carries_it_out(tmp_path):
-    """Induced condition: SPY's captured 2026-10-07 0DTE chain with one contract's symbol taken out,
-    so the option rule's strike ladders raise. follow_market ends on that error, which run then
-    names as its cause in the daemon's log."""
+    """Induced condition: SPY's same-day chain captured 2026-09-22 with one contract's symbol taken
+    out, so the option rule's strike ladders raise. follow_market ends on that error."""
     fixture = json.loads((REPO / "tests" / "fixtures" / "real_spy_0dte_chain.json").read_text(encoding="utf-8"))
     contracts = [dict(c) for c in fixture["chain"]]
     del contracts[0]["symbol"]
@@ -133,6 +132,36 @@ def test_a_market_follower_that_ends_on_an_error_carries_it_out(tmp_path):
         await asyncio.wait_for(task, timeout=10)
     with pytest.raises(KeyError, match="symbol"):
         asyncio.run(go())
+
+
+def test_an_option_rule_error_on_a_price_ends_the_market_follower(tmp_path):
+    """Induced condition: SPY's same-day chain captured 2026-09-22 16:46 UTC, at that time, with one
+    contract's putCall taken out, arriving before SPY has a price, so the option rule fails only
+    when SPY's price comes. follow_market ends on that error, instead of the plane swallowing it."""
+    fixture = json.loads((REPO / "tests" / "fixtures" / "real_spy_0dte_chain.json").read_text(encoding="utf-8"))
+    contracts = [dict(c) for c in fixture["chain"]]
+    del contracts[0]["putCall"]
+    bus = MessageBus()
+    now = fixture["ts_utc"]
+    daemon = capture.Daemon(bus, HealthRegistry(), ["SPY"], clock=lambda: now)
+
+    async def go():
+        stop = asyncio.Event()
+        task = asyncio.create_task(daemon.follow_market(stop))
+        await asyncio.sleep(0)
+        for topic, msg in chain_messages("SPY", contracts, now, None, None):
+            bus.publish(topic, msg)
+        await asyncio.sleep(0.1)
+        bus.publish("quote.SPY", quote_msg(symbol="SPY", last=fixture["spot"], src="schwab_l1", ts_recv=now,
+                                           native={"key": "SPY", "LAST_PRICE": fixture["spot"]}))
+        await asyncio.wait_for(task, timeout=10)
+    lmp._by_ticker.pop("SPY", None)
+    try:
+        with pytest.raises(KeyError, match="putCall"):
+            asyncio.run(go())
+    finally:
+        lmp._by_ticker.pop("SPY", None)                      # the plane row its price wrote
+        lmp._fields_by_ticker.pop("SPY", None)
 
 
 def test_why_schwab_is_not_connected_reaches_the_log_and_api_health(tmp_path, caplog):

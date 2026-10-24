@@ -39,15 +39,13 @@ def _free_port() -> int:
 
 @pytest.fixture(autouse=True)
 def _fresh_plane():
-    """Each test starts from an empty quote plane and a short heartbeat, then both are put back."""
-    quotes, fields, beat = lmp._by_ticker, lmp._fields_by_ticker, live_ui.HEARTBEAT_SEC
+    """Each test starts from an empty quote plane, then the plane is put back."""
+    quotes, fields = lmp._by_ticker, lmp._fields_by_ticker
     lmp._by_ticker = {}
     lmp._fields_by_ticker = {}
-    live_ui.HEARTBEAT_SEC = 0.2
     yield
     lmp._by_ticker = quotes
     lmp._fields_by_ticker = fields
-    live_ui.HEARTBEAT_SEC = beat
 
 
 def _trade(sym: str, last: float, ts: float, **extra) -> dict:
@@ -194,7 +192,8 @@ def test_a_closed_schwab_socket_reads_feed_down_within_one_beat(start):
         bus.publish("quote.SPY", _trade("SPY", 583.41, clock()))
         await _next_row(ws, "SPY", lambda r: r["feed_live"] is True)
         feed.open = False
-        msg, row = await _next_row(ws, "SPY", lambda r: r["feed_live"] is False, timeout=1.0)
+        msg, row = await _next_row(ws, "SPY", lambda r: r["feed_live"] is False,
+                                   timeout=1.5 * live_ui.HEARTBEAT_SEC)            # the next beat
         assert msg["type"] == "feed" and msg["feed"]["schwab_socket_open"] is False
         assert row["spot"] == 583.41 and row["bid"] == pytest.approx(583.40)
         assert row["outage"] is not None

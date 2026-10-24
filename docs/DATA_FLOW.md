@@ -234,13 +234,13 @@ from Schwab to the screen (daemon, console, page), are these:
 - **The option contracts streamed (the option rule).** What streams live is the most actionable
   information at any moment (operator 2026-10-08). The daemon picks the contracts from each
   watchlist ticker's newest whole chain on its bus (owner `capture.Daemon.pick_options`, run by
-  `Daemon.follow_market` on each new chain, on a watchlist change and on the Flow panel's
-  selection, never on a price; a chain is put in the rule's order once, as it arrives,
-  `capture.by_gamma`, at the daemon's time and the ticker's live price, the price row's
-  (`live_price_rows.spot`, read when the plane publishes a watchlist ticker's row, its row
-  listener; the rule reads LAST_PRICE nowhere else). The plane is fed by `Daemon.follow_market`
-  (each equity quote on the bus, `capture._to_plane`), the owner of its rows for the browsers
-  (`live_ui.serve_live_ui` reads them) and for this rule. A daemon task that ends before the stop
+  `Daemon.follow_market` when a chain is put in the rule's order, on a watchlist change and on the
+  Flow panel's selection). A chain is put in the rule's order once, `capture.by_gamma`, at the
+  daemon's time and the ticker's live price, the price row's (`live_price_rows.spot`, the rule
+  reads LAST_PRICE nowhere else): as it arrives, or, while the row has no price, at the next price
+  row. The plane is fed by `Daemon.follow_market` (each equity quote on the bus,
+  `Daemon._took_quote`, which then hands the ticker's row to the rule), the owner of its rows for
+  the browsers (`live_ui.serve_live_ui` reads them) and for this rule. A daemon task that ends before the stop
   (a local socket whose port cannot be bound, a follower or the chain sweep ended on an error)
   makes `capture.run` end the daemon with the error in its log, and `start_capture_daemon.bat`
   restarts it (`tests/test_data_path_startup_v1.py`). While the row has no price (none received
