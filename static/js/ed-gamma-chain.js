@@ -51,13 +51,10 @@
     if (!host || !stillChain(tk, exp)) return;
     var mySeq = ++_reqSeq;
     function current() { return mySeq === _reqSeq && stillChain(tk, exp); }
-    return fetch('/api/chain?ticker=' + encodeURIComponent(tk) + (exp ? '&expiry=' + encodeURIComponent(exp) : ''), { cache: 'no-store', signal: signal })
-      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-      .then(function (d) { if (current()) render(host, d); })
-      .catch(function (e) {
-        if (e && e.name === 'AbortError') return;
-        if (current()) host.innerHTML = '<div class="placeholder"><div class="sm">no console serving /api/chain</div></div>';
-      });
+    var G = window.EdL1SseGuards;
+    return G.show(G.readJson('/api/chain?ticker=' + encodeURIComponent(tk) + (exp ? '&expiry=' + encodeURIComponent(exp) : ''), signal), '/api/chain',
+      function (d) { if (current()) render(host, d); },
+      function (words) { if (current()) host.innerHTML = '<div class="placeholder"><div class="sm">' + esc(words) + '</div></div>'; });
   }
   var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(st().ticker || '', curExpiry(), signal); });
   function load() { _loader.trigger((st().ticker || '') + '|' + (curExpiry() || '')); }

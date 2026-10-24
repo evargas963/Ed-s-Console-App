@@ -56,17 +56,49 @@
   }
 
   /**
-   * Concurrent GETs of the same URL share one request; not a cache (the next call after it
-   * settles fetches again). No AbortSignal: one caller leaving must not cancel the others.
+   * One read of a console JSON route. Resolves the answer as sent; a failed read rejects with
+   * `words` naming where it failed: no connection, an error status, a body that is not JSON. A
+   * read superseded by a newer one (its signal aborted) rejects with its AbortError.
    *
    * @param {string} url
-   * @returns {Promise<any>} parsed JSON; rejects on a non-2xx status or a network error.
+   * @param {AbortSignal=} signal
+   * @returns {Promise<any>}
+   */
+  function readJson(url, signal) {
+    var route = new URL(url, 'http://page').pathname;
+    function failed(words) { var e = new Error(words); e.words = words; throw e; }
+    function superseded(e) { if (e && e.name === 'AbortError') throw e; }
+    return fetch(url, { cache: 'no-store', signal: signal }).then(function (r) {
+      if (!r.ok) failed('the console answered ' + route + ' with ' + r.status);
+      return r.json().catch(function (e) {
+        superseded(e);
+        failed('the console answered ' + route + ' with a body that is not JSON');
+      });
+    }, function (e) { superseded(e); failed('no console serving ' + route); });
+  }
+
+  /**
+   * A panel's answer drawn: `draw(answer)`, or `say(words)` for a read that failed or an answer
+   * the page could not draw (that error is then raised again, for the loader to report). A
+   * superseded read draws and says nothing.
+   */
+  function show(read, route, draw, say) {
+    return read.then(function (d) {
+      try { draw(d); } catch (e) { say('the page could not draw the answer of ' + route); throw e; }
+    }, function (e) {
+      if (!e || !e.words) throw e;
+      say(e.words);
+    });
+  }
+
+  /**
+   * Concurrent GETs of the same URL share one request (readJson); not a cache (the next call
+   * after it settles fetches again). No AbortSignal: one caller leaving must not cancel the others.
    */
   var _sharedFetchInFlight = Object.create(null);
   function sharedFetchJson(url) {
     if (_sharedFetchInFlight[url]) return _sharedFetchInFlight[url];
-    var p = fetch(url, { cache: 'no-store' })
-      .then(function (r) { if (!r.ok) throw new Error(String(r.status)); return r.json(); });
+    var p = readJson(url);
     p.then(function () { delete _sharedFetchInFlight[url]; },
            function () { delete _sharedFetchInFlight[url]; });
     _sharedFetchInFlight[url] = p;
@@ -75,6 +107,8 @@
 
   g.EdL1SseGuards = {
     makeCoalescedLoader: makeCoalescedLoader,
+    readJson: readJson,
+    show: show,
     sharedFetchJson: sharedFetchJson,
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

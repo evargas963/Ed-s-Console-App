@@ -244,23 +244,10 @@
   function loadImpl(ticker, signal) {
     var host = document.getElementById('heatBody');
     if (!host || !stillCurrent(ticker)) return;
-    function unavailable(reason) { return { available: false, ticker: ticker, reason: reason }; }
-    function superseded(e) { if (e && e.name === 'AbortError') throw e; }   // a newer read renders
-    return fetch(surfaceUrl(ticker, host), { cache: 'no-store', signal: signal })
-      .then(function (r) {
-        if (!r.ok) return unavailable('the console answered /api/options/gamma-surface with ' + r.status);
-        return r.json().catch(function (e) {
-          superseded(e);
-          return unavailable('the console answered /api/options/gamma-surface with a body that is not JSON');
-        });
-      }, function (e) { superseded(e); return unavailable('no console serving /api/options/gamma-surface'); })
-      .then(function (d) {
-        if (!stillCurrent(ticker)) return;
-        try { renderSurface(host, d); } catch (e) {   // said on screen, then reported by the loader
-          renderSurface(host, unavailable('the page could not draw the answer of /api/options/gamma-surface'));
-          throw e;
-        }
-      });
+    var G = window.EdL1SseGuards;
+    return G.show(G.readJson(surfaceUrl(ticker, host), signal), '/api/options/gamma-surface',
+      function (d) { if (stillCurrent(ticker)) renderSurface(host, d); },
+      function (words) { if (stillCurrent(ticker)) renderSurface(host, { available: false, ticker: ticker, reason: words }); });
   }
   var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(_pendingTicker, signal); });
   function load() {

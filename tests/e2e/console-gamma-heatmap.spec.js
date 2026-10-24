@@ -360,6 +360,52 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     expect(html).toContain('Gamma surface unavailable');
   });
 
+  // Every panel that reads the console names where a read failed, the same words for each
+  // (EdL1SseGuards.readJson). Induced conditions: the panel's route answers 500, or refuses.
+  const PANELS = [
+    { name: 'GEX by strike', host: '#gbsBody', route: '/api/terrain/strikes' },
+    { name: 'the tape', host: '#ofBody', route: '/api/options/tape' },
+    { name: 'Key Levels', host: '#klSrc', route: '/api/terrain' },
+    { name: 'Strike Detail', host: '#sdBody', route: '/api/chain' },
+    { name: 'the levels view', host: '#levelsBody', route: '/api/levels', view: 'levels' },
+    { name: 'the chain', host: '#chainBody', route: '/api/chain', sub: 'chain' },
+    { name: 'Structures', host: '#stBody', route: '/api/chain', sub: 'structures' },
+    { name: 'the vanna bars', host: '#vnBody', route: '/api/options/vanna-by-strike', sub: 'vanna' },
+    { name: 'the flow panel', host: '#flowBody', route: '/api/order-flow/options-microstructure', sub: 'flow',
+      contract: 'SPY   260911C00583000' },
+    { name: 'the order-flow book', host: '#obBody', route: '/api/order-flow/microstructure', ws: 'order-flow', sub: 'book' },
+  ];
+  for (const p of PANELS) {
+    for (const [failure, words] of [['500', 'the console answered ' + p.route + ' with 500'],
+                                    ['refused', 'no console serving ' + p.route]]) {
+      test(`${p.name}: a read that ${failure === '500' ? 'is answered 500' : 'is refused'} reads "${words}"`, async ({ page }) => {
+        await page.route('**' + p.route + '?**', (route) => failure === '500'
+          ? route.fulfill({ status: 500, contentType: 'application/json', body: '{"detail":"Internal Server Error"}' })
+          : route.abort('connectionrefused'));
+        await page.goto('/', { waitUntil: 'domcontentloaded' });
+        await expect(page.locator('#hPx')).not.toHaveText('CHOOSE A SYMBOL');
+        if (p.ws) await page.evaluate((ws) => window.EdShell.setWorkspace(ws), p.ws);
+        if (p.sub) await page.evaluate((sub) => window.EdShell.setSubview(sub), p.sub);
+        if (p.view) await page.locator(`#viewbar .vtab[data-view="${p.view}"]`).click();
+        if (p.contract) await page.evaluate((c) => window.EdFlow.select(c), p.contract);
+        await expect(page.locator(p.host)).toContainText(words);
+      });
+    }
+  }
+
+  test('Right Now says when the page cannot draw its answers, never "no console serving"', async ({ page }) => {
+    // Induced condition: the per-strike answer has a row but no `views`, so drawing the
+    // migration section raises a TypeError after every endpoint has answered.
+    await page.route('**/api/terrain/strikes?**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify({ today: { all: [[583, 1000, 10]] } }) }));
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#hPx')).not.toHaveText('CHOOSE A SYMBOL');
+    const reported = page.waitForEvent('console', (m) => m.type() === 'error' && /TypeError/.test(m.text()));
+    await page.evaluate(() => { window.EdShell.setWorkspace('trade-desk'); window.EdShell.setSubview('right-now'); });
+    await expect(page.locator('#tdBody')).toContainText('the page could not draw the answer of Right Now');
+    await reported;
+  });
+
   test('a console that answers with an error is named with its status; only a failed connection reads "no console serving"', async ({ page }) => {
     // Induced conditions: the surface route answers 500, then the connection to it is refused.
     let answer = 'error';
