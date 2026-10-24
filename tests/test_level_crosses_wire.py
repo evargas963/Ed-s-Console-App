@@ -115,24 +115,24 @@ def test_the_same_cross_within_a_minute_is_stored_once_and_a_reversal_at_once() 
             server._crosses.pop(tk, None)
 
 
-def test_levels_crossed_together_are_one_event_naming_every_level(monkeypatch) -> None:
+def test_levels_crossed_together_are_one_event_naming_every_level() -> None:
     """RC-88: one price crossing a strike where several levels sit is stored as one row per level.
     The one reader (server._merged_recent_crosses) serves one event per (time, value, direction)
-    that names every level. Real SPY rows, tests/fixtures/real_spy_level_crosses.json: 400 rows,
-    243 events, up to 6 levels on one event, loaded as the console's start loads them."""
+    that names every level. Real SPY rows, tests/fixtures/real_spy_level_crosses.json (newest
+    first, as the database returns them): 400 rows, 243 events, up to 6 levels on one event, held
+    oldest first as the console's start holds them."""
     import json
 
     rows = json.loads((Path(__file__).parent / "fixtures" / "real_spy_level_crosses.json")
                       .read_text(encoding="utf-8"))["rows"]
-
-    class _Stored:                                   # stand-in: the stored rows, as the DB returns them
-        def get_recent_crosses(self, ticker, n):
-            return rows[:n]
-
     assert len(rows) == 400
-    monkeypatch.setattr(server, "get_db", lambda: _Stored())
-    monkeypatch.setattr(server, "_crosses", {})
-    server._load_crosses(["SPY"])
-    events = server._merged_recent_crosses("SPY", 400)
+    tk = "ZZRC88"
+    with server._crosses_lock:
+        server._crosses[tk] = rows[::-1]
+    try:
+        events = server._merged_recent_crosses(tk, 400)
+    finally:
+        with server._crosses_lock:
+            server._crosses.pop(tk, None)
     assert len(events) == 243
     assert max(len(e["level_names"]) for e in events) == 6
