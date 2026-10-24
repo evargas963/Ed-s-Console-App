@@ -106,7 +106,7 @@ async def _run(body, heartbeat_fn=None):
     ui_stats: dict = {}
     server = asyncio.create_task(live_push.serve_live_push(bus, stop, port=0, stats=stats))
     ui = asyncio.create_task(live_ui.serve_live_ui(
-        bus, stop, heartbeat_fn=heartbeat_fn if heartbeat_fn is not None else _daemon_heartbeat(),
+        stop, heartbeat_fn=heartbeat_fn if heartbeat_fn is not None else _daemon_heartbeat(),
         host="127.0.0.1", port=0, stats=ui_stats, record_heartbeat=lambda _beat: None))
     assert await _until(lambda: stats.get("listening") and ui_stats.get("listening"))
     ofs._feed_running = True

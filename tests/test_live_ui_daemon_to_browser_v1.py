@@ -1,6 +1,7 @@
 """Prices straight from the capture daemon to the browser (live_ui.py), end to end.
 
-The REAL daemon-side server (serve_live_ui on a real stream_spine.MessageBus) and a REAL
+The REAL daemon-side server (serve_live_ui, its plane fed from a real stream_spine.MessageBus by
+the daemon's follow_market) and a REAL
 WebSocket client standing in for the browser, over a real local socket. No console process,
 no database. Proves:
 
@@ -24,8 +25,8 @@ import time
 import pytest
 
 import live_market_plane as lmp
-from app.market_data.schwab.streaming import live_ui
-from stream_spine import MessageBus, quote_msg
+from app.market_data.schwab.streaming import capture, live_ui
+from stream_spine import HealthRegistry, MessageBus, quote_msg
 
 
 def _free_port() -> int:
@@ -76,7 +77,8 @@ async def _run(body, feed=None):
     stats: dict = {}
     feed = feed if feed is not None else _Feed()
     server = asyncio.create_task(live_ui.serve_live_ui(
-        bus, stop, heartbeat_fn=feed, host="127.0.0.1", port=port, stats=stats))
+        stop, heartbeat_fn=feed, host="127.0.0.1", port=port, stats=stats))
+    follower = asyncio.create_task(capture.Daemon(bus, HealthRegistry(), []).follow_market(stop))
     end = time.monotonic() + 5
     while not stats.get("listening") and time.monotonic() < end:
         await asyncio.sleep(0.01)
@@ -86,7 +88,7 @@ async def _run(body, feed=None):
             await body(bus, ws, feed, stats)
     finally:
         stop.set()
-        await asyncio.wait_for(asyncio.gather(server, return_exceptions=True), 5)
+        await asyncio.wait_for(asyncio.gather(server, follower, return_exceptions=True), 5)
 
 
 async def _next_row(ws, sym, pred=lambda r: True, timeout=3.0):

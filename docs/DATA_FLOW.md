@@ -238,13 +238,15 @@ from Schwab to the screen (daemon, console, page), are these:
   selection, never on a price; a chain is put in the rule's order once, as it arrives,
   `capture.by_gamma`, at the daemon's time and the ticker's live price, the price row's
   (`live_price_rows.spot`, read when the plane publishes a watchlist ticker's row, its row
-  listener; the rule reads LAST_PRICE nowhere else). The plane is fed by `live_ui.serve_live_ui`
-  (its owner, for the price rows and for this rule); it ends before the stop only when its port
-  cannot be bound, at startup, before any quote, and `capture.run` then ends the daemon with the
-  error in its log, which `start_capture_daemon.bat` restarts; any of the daemon's tasks that ends
-  before the stop does the same (`tests/test_data_path_startup_v1.py`). While the row has no price (none received yet, or Schwab sent it
-  invalid) the ticker keeps the order and the recorded window it has, and its newest chain is
-  ordered at the next price (`tests/test_option_contract_rule_v1.py`). The contract
+  listener; the rule reads LAST_PRICE nowhere else). The plane is fed by `Daemon.follow_market`
+  (each equity quote on the bus, `capture._to_plane`), the owner of its rows for the browsers
+  (`live_ui.serve_live_ui` reads them) and for this rule. A daemon task that ends before the stop
+  (a local socket whose port cannot be bound, a follower or the chain sweep ended on an error)
+  makes `capture.run` end the daemon with the error in its log, and `start_capture_daemon.bat`
+  restarts it (`tests/test_data_path_startup_v1.py`). While the row has no price (none received
+  yet, or Schwab sent it invalid) the ticker keeps the order and the recorded window it has, and
+  its newest chain is ordered at the next price; each row places only its own ticker's window
+  (`tests/test_option_contract_rule_v1.py`). The contract
   selected on the Flow panel (`POST /api/flow-contract`, only one Schwab listed in a chain the
   console holds; the console names it to the daemon on every connection, `{"op":
   "flow_contract"}`, §3.2) streams on LEVELONE_OPTIONS and OPTIONS_BOOK. What is left of

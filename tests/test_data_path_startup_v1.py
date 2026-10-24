@@ -127,7 +127,7 @@ def test_why_schwab_is_not_connected_reaches_the_log_and_api_health(tmp_path, ca
 
     async def go():
         stop = asyncio.Event()
-        ui = asyncio.create_task(serve_live_ui(bus, stop, heartbeat_fn=daemon.status, host="127.0.0.1", port=port))
+        ui = asyncio.create_task(serve_live_ui(stop, heartbeat_fn=daemon.status, host="127.0.0.1", port=port))
         run = asyncio.create_task(daemon.run(schwab_client, stop))
         await _until(lambda: daemon.status()["schwab_down"].startswith("NOT CONNECTED"))
         await asyncio.sleep(0.2)
@@ -165,7 +165,7 @@ def test_a_browser_that_stopped_reading_is_dropped_the_others_keep_their_beats_a
         stop = asyncio.Event()
         stats: dict = {}
         daemon_side = asyncio.create_task(serve_live_ui(
-            MessageBus(), stop, heartbeat_fn=lambda: {**daemon.status(), "pad": "x" * 2_000_000},
+            stop, heartbeat_fn=lambda: {**daemon.status(), "pad": "x" * 2_000_000},
             host="127.0.0.1", port=0, stats=stats))
         await _until(lambda: stats.get("listening"), 5)
         beats: list[float] = []
@@ -220,7 +220,7 @@ def test_a_module_that_fails_to_load_leaves_its_reason_in_the_daemons_log(tmp_pa
 def test_a_daemon_whose_live_ui_port_is_held_ends_at_once_with_why_and_its_window_restarts_it(tmp_path):
     """Another socket holds the live UI's port: the daemon, run as its window runs it, ends with
     the bind's error in its log and an exit code its window restarts on (not EXIT_STOPPED), instead
-    of running with no price row and no option contract streamed."""
+    of running with no browser served."""
     with socket.socket() as held:
         held.bind(("127.0.0.1", 0))
         held.listen()

@@ -29,7 +29,6 @@ import live_market_plane as lmp
 import server
 from app.market_data.schwab.streaming import capture
 from app.market_data.schwab.streaming.live_push import serve_live_push
-from app.market_data.schwab.streaming.live_ui import serve_live_ui
 from app.options.order_flow import streaming as ofs
 from calibration.complete_chain_capture import chain_messages
 from schwab_client import flatten_chain_contracts
@@ -113,10 +112,7 @@ class _Market:
     def run(self, steps) -> None:
         async def go():
             stop = asyncio.Event()
-            # the plane fed as production feeds it (serve_live_ui, on a port the system picks)
-            tasks = [asyncio.create_task(serve_live_ui(self.bus, stop, heartbeat_fn=self.daemon.status,
-                                                       host="127.0.0.1", port=0)),
-                     asyncio.create_task(self.daemon.run(lambda: self.client, stop)),
+            tasks = [asyncio.create_task(self.daemon.run(lambda: self.client, stop)),
                      asyncio.create_task(self.daemon.follow_market(stop))]
             try:
                 await steps(self)

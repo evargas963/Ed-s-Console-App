@@ -25,7 +25,6 @@ import push_changes
 import server
 from app.market_data.schwab.streaming import capture
 from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT, serve_live_push
-from app.market_data.schwab.streaming.live_ui import serve_live_ui
 from app.options.order_flow import streaming as ofs
 from calibration.complete_chain_capture import ChainSweep, chain_messages
 from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus, quote_msg
@@ -101,9 +100,7 @@ def test_the_daemon_subscribes_once_and_each_of_schwabs_answers_reaches_its_own_
 
     async def go():
         stop = asyncio.Event()
-        # the plane fed as production feeds it (serve_live_ui, on a port the system picks)
-        tasks = [asyncio.create_task(serve_live_ui(bus, stop, heartbeat_fn=daemon.status, host="127.0.0.1", port=0)),
-                 asyncio.create_task(daemon.run(lambda: schwab.client, stop)),
+        tasks = [asyncio.create_task(daemon.run(lambda: schwab.client, stop)),
                  asyncio.create_task(daemon.follow_market(stop))]
         _market(bus, "SPY", SPY_CHAIN["chain"], SPY_CHAIN["spot"], SPY_CHAIN["capture_ts_utc"])
         await _until(lambda: len(schwab.streamer.answers) >= 9)          # login + 7 requests, one answered twice
@@ -168,8 +165,7 @@ def test_a_subscription_split_under_schwabs_message_limit_keeps_every_part(tmp_p
 
     async def go():
         stop = asyncio.Event()
-        tasks = [asyncio.create_task(serve_live_ui(bus, stop, heartbeat_fn=daemon.status, host="127.0.0.1", port=0)),
-                 asyncio.create_task(daemon.run(lambda: schwab.client, stop)),
+        tasks = [asyncio.create_task(daemon.run(lambda: schwab.client, stop)),
                  asyncio.create_task(daemon.follow_market(stop))]
         _market(bus, "MRVL", contracts, mrvl["full"]["underlying"]["last"], mrvl["captured_utc"])
         await _until(lambda: len(daemon.held["LEVELONE_OPTIONS"]) == len(symbols))

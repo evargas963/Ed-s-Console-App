@@ -54,7 +54,7 @@ def _count(db, table: str) -> int:
 def _beat(daemon: capture.Daemon) -> dict:
     """The heartbeat as the browser's price socket sends it (live_ui's feed beat) and as the
     console records it (live_market_plane.daemon_status); the console's record is cleared after."""
-    beat = LiveUiServer(daemon.bus, daemon.status, {}).beat()
+    beat = LiveUiServer(daemon.status, {}).beat()
     try:
         assert lmp.daemon_status(time.time())["writer"] == beat["writer"]
     finally:
