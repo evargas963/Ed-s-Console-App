@@ -24,6 +24,7 @@ import live_market_plane as lmp
 import server
 from app.market_data.schwab.streaming import capture, live_ui
 from app.market_data.schwab.streaming.live_ui import serve_live_ui
+from calibration.complete_chain_capture import chain_messages
 from schwab_client import build_client_from_token
 from stream_spine import CaptureWriter, HealthRegistry, MessageBus
 
@@ -111,6 +112,27 @@ def test_a_chain_sweep_that_ends_on_an_error_is_logged(tmp_path, caplog):
     record = next(r for r in caplog.records if "chain sweep: ended" in r.getMessage())
     assert record.getMessage() == "chain sweep: ended on ForcedThreadError: forced in a chain sweep thread"
     assert record.exc_info is not None and record.exc_info[0] is ForcedThreadError
+
+
+def test_a_market_follower_that_ends_on_an_error_carries_it_out(tmp_path):
+    """Induced condition: SPY's captured 2026-10-07 0DTE chain with one contract's symbol taken out,
+    so the option rule's strike ladders raise. follow_market ends on that error, which run then
+    names as its cause in the daemon's log."""
+    fixture = json.loads((REPO / "tests" / "fixtures" / "real_spy_0dte_chain.json").read_text(encoding="utf-8"))
+    contracts = [dict(c) for c in fixture["chain"]]
+    del contracts[0]["symbol"]
+    bus = MessageBus()
+    daemon = capture.Daemon(bus, HealthRegistry(), ["SPY"])
+
+    async def go():
+        stop = asyncio.Event()
+        task = asyncio.create_task(daemon.follow_market(stop))
+        await asyncio.sleep(0)
+        for topic, msg in chain_messages("SPY", contracts, time.time(), None, None):
+            bus.publish(topic, msg)
+        await asyncio.wait_for(task, timeout=10)
+    with pytest.raises(KeyError, match="symbol"):
+        asyncio.run(go())
 
 
 def test_why_schwab_is_not_connected_reaches_the_log_and_api_health(tmp_path, caplog):

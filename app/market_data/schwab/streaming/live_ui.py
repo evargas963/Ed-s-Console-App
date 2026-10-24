@@ -62,8 +62,10 @@ class _Client:
 
 
 class LiveUiServer:
-    def __init__(self, heartbeat_fn, stats: dict, record_heartbeat=lmp.record_feed_heartbeat) -> None:
+    def __init__(self, heartbeat_fn, stats: dict, record_heartbeat=lmp.record_feed_heartbeat,
+                 clock=time.time) -> None:
         self.heartbeat_fn = heartbeat_fn
+        self.clock = clock                           # the time each row is finished at
         self.record_heartbeat = record_heartbeat     # where the daemon keeps its own record of each beat
         self.stats = stats
         self.clients: set[_Client] = set()
@@ -103,7 +105,7 @@ class LiveUiServer:
                 identity, c.identity = c.identity, None
                 await self._send(c, {"type": "symbols", "symbols": identity})
             syms, c.pending = c.pending, set()
-            now = time.time()
+            now = self.clock()
             rows = [live_price_rows.price_row(s, now) for s in syms if s in c.symbols]
             if rows:
                 await self._send(c, {"type": "quotes", "rows": rows})
@@ -158,7 +160,7 @@ class LiveUiServer:
             except Exception as e:  # noqa: BLE001 -- a failed beat leaves the feed unproven (it ages out)
                 log.warning("live ui heartbeat: %s: %s", type(e).__name__, e)
                 feed = None
-            now = time.time()
+            now = self.clock()
             for c in list(self.clients):
                 # one browser can neither stop the beat nor hold it: an error is logged and the
                 # next browser still gets its beat; a browser that does not take its beat within
@@ -182,13 +184,14 @@ class LiveUiServer:
 
 async def serve_live_ui(stop: asyncio.Event, *, heartbeat_fn,
                         host: str = LIVE_UI_HOST, port: int = LIVE_UI_PORT,
-                        stats: "dict | None" = None, record_heartbeat=lmp.record_feed_heartbeat) -> None:
+                        stats: "dict | None" = None, record_heartbeat=lmp.record_feed_heartbeat,
+                        clock=time.time) -> None:
     """Run until `stop` is set. Each beat is recorded with `record_heartbeat` (the daemon's own
     plane)."""
     from websockets.asyncio.server import serve
 
     stats = stats if stats is not None else {}
-    srv = LiveUiServer(heartbeat_fn, stats, record_heartbeat)
+    srv = LiveUiServer(heartbeat_fn, stats, record_heartbeat, clock)
     lmp.add_row_listener(srv.on_row)
     tasks = [asyncio.create_task(srv.beat_loop())]
     try:

@@ -300,7 +300,7 @@ def test_push_down_serves_nothing_and_the_feed_recovers_when_it_returns(feed):
     asyncio.run(run())
 
 
-def test_a_message_missing_its_receive_time_is_dropped_whole(monkeypatch):
+def test_a_message_missing_its_receive_time_is_dropped_whole():
     ofs._ingest_pushed("quote.ZZZNOTS", {"symbol": "ZZZNOTS", "native": {"LAST_PRICE": 1.0}})
     msg = _spy_trade(1.0, time.time())
     msg["symbol"] = "ZZZNOPE"

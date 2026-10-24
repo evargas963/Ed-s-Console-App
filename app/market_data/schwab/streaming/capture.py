@@ -328,11 +328,8 @@ def _publisher(service: str, bus: MessageBus, health: HealthRegistry):
 def _to_plane(sym: str, msg: dict) -> None:
     """One equity quote's current record on the bus into the plane, each field at the receive time
     of the message that carried it."""
-    try:
-        lmp.record_from_level_one_equity(sym, msg["native"], received_ts=msg["ts_recv"],
-                                         field_received={f: s[1] for f, s in msg["field_ts"].items()})
-    except Exception as e:  # noqa: BLE001 -- one item the plane cannot take never ends the feed
-        log.warning("plane: %s not taken: %s: %s", sym, type(e).__name__, e)
+    lmp.record_from_level_one_equity(sym, msg["native"], received_ts=msg["ts_recv"],
+                                     field_received={f: s[1] for f, s in msg["field_ts"].items()})
 
 
 class _RawHandler:
@@ -519,7 +516,8 @@ class Daemon:
         and the pick redone; while its row has no price, the chain waits and the order stands."""
         price = live_price_rows.spot(ticker)
         if price is not None:
-            self._ranked[ticker] = by_gamma(self._chains.pop(ticker), price, now, option_close_product(ticker))
+            self._ranked[ticker] = by_gamma(self._chains[ticker], price, now, option_close_product(ticker))
+            del self._chains[ticker]
             self.pick_options()
 
     def _took_row(self, ticker: str) -> None:
@@ -532,9 +530,9 @@ class Daemon:
             self._place(ticker, now)
 
     def _took_chain(self, ticker: str, record: list) -> None:
-        """A ticker's newest whole chain on the bus (its parts), ordered at its live price.
-        A failed fetch carries no contracts and changes nothing."""
-        if all("contracts" in part for part in record):
+        """A watchlist ticker's newest whole chain on the bus (its parts), ordered at its live
+        price. A failed fetch carries no contracts and changes nothing."""
+        if ticker in self.watchlist and all("contracts" in part for part in record):
             now = self.clock()
             self._chains[ticker] = [ct for part in record for ct in part["contracts"]]
             self._ladders[ticker] = strike_ladders(self._chains[ticker])
@@ -557,12 +555,14 @@ class Daemon:
         tasks = {asyncio.create_task(follow("quote.", _to_plane)),
                  asyncio.create_task(follow("chain.", self._took_chain)), asyncio.ensure_future(stop.wait())}
         try:
-            await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
         finally:
             lmp.remove_row_listener(self._took_row)
             for task in tasks:
                 task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
+        for task in done:
+            task.result()                       # a follower's error, raised for run to name
 
     def console_frame(self, req: dict, sender) -> None:
         """A frame from a connection `sender` to the daemon's local socket (live_push, 127.0.0.1): a

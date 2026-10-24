@@ -285,6 +285,28 @@ def test_a_ticker_removed_and_added_again_records_nothing_until_its_next_chain(t
     assert seen["next_chain"] == seen["before"]                    # the same chain at the same price
 
 
+def test_a_chain_that_arrives_after_its_ticker_is_removed_records_nothing(tmp_path):
+    """SPY removed, then its chain sweep's last chain of it arrives (the sweep's batch was taken
+    before the removal): no SPY contract is recorded."""
+    market = _Market(tmp_path, ["MRVL", "SPY"], lambda: CAPTURED)
+    spy = {c["symbol"] for c in CHAINS["SPY"]}
+    seen: dict = {}
+
+    async def steps(m):
+        for tk in ("MRVL", "SPY"):
+            m.chain(tk)
+            m.price(tk, PRICES[tk])
+        await _until(lambda: m.daemon.saved_options & spy)
+        m.daemon.console_frame({"op": "watchlist", "action": "remove", "ticker": "SPY", "id": 1}, None)
+        await _until(lambda: "SPY" not in m.daemon.watchlist)
+        m.chain("SPY")
+        m.price("SPY", PRICES["SPY"])
+        await asyncio.sleep(0.5)
+        seen["after"] = m.daemon.saved_options & spy
+    market.run(steps)
+    assert seen["after"] == set()
+
+
 def test_the_flow_panels_contract_streams_on_both_services_on_top_of_the_rule(tmp_path):
     """Ed selects MRVL's last contract in the rule's order on the Flow panel, through the
     console's route and its socket to the daemon: Schwab streams it on LEVELONE_OPTIONS and
