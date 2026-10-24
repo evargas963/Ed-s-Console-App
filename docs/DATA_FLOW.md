@@ -429,9 +429,10 @@ from Schwab to the screen (daemon, console, page), are these:
   serve that result and read no stored chain. The same publication carries each strike's net
   DEX $ and total OI (`terrain_engine._per_strike_measure_rows`, by the heatmap cell's readers),
   served as `/api/terrain/strikes` `measures` for the Chart view of Delta / DEX and Open
-  Interest. Everything computed from spot (gamma at spot, regime,
-  wall states and leans, wall distances, flip side, headline) is computed in that one publication
-  at that publication's price; `/api/terrain` serves it as published and recomputes nothing.
+  Interest. The book's values at spot (gamma at spot, regime, posture, confidence, headline) are
+  computed in that one publication at that publication's price; `/api/terrain` serves them as
+  published and recomputes none. Each relation of the live price to the levels is served beside
+  them, at the live price (below).
   A publication carries the same fields whatever its chain's source (a live download or a stored
   capture). `/api/terrain` adds the daily, weekly and monthly ATR(14) when it is read (`server._atr`):
   Schwab's daily candles before today, today's candle rolled up live from today's 1-minute bars
@@ -461,7 +462,33 @@ from Schwab to the screen (daemon, console, page), are these:
   (`tests/test_data_path_chain_spot_v1.py`). Every route names that price `priced_at_spot` (with
   `priced_at_spot_source`, `priced_at_spot_as_of_ts_utc` where it serves them) and serves `spot`
   as the live price (`resolve_spot`), one meaning on every route (`tests/test_page_one_faucet_v1.py`
-  checks every GET route that answers a ticker). The one-day move's two prices are the live price
+  checks every GET route that answers a ticker). Every relation of the price to the levels is at
+  that live price, computed when served, never stored with the publication: each wall's state
+  and lean, the price's side of the flip, the pin candidate and the read's lines
+  (`terrain_engine.price_relations`, a `PriceRelations` record, on `/api/terrain`, `/api/levels`
+  and the chart's markers); each level's distance (level minus price), side and the words for
+  both (`from_spot_text`, "1.30 below spot") on `/api/levels`, the one distance the desk's nearest
+  level and its Box line print; the price inside, above or below each liquidity zone
+  (`terrain_read.within`); and the level crosses (below). One side rule, exact values:
+  `terrain_read.level_side` (ABOVE, AT, BELOW), with `price_side` (the price's side of a level),
+  `within` and `crossed` built on it (`tests/test_level_crosses_wire.py`,
+  `tests/test_trade_desk_served_v1.py`). Each route serving them (`/api/terrain`, `/api/levels`,
+  `/api/confluence`) serves the price's mark beside them (`server.price_mark`: whether Schwab's
+  feed delivers the price, why not, its trade time and age, and the words the page prints,
+  `spot_not_live_text`, "not live · last trade Thu 10/22 03:39 PM CT, 81m old", from the one age
+  formatter `time_et.age_text`); `/api/levels` puts it on the pin candidate's row too
+  (`not_live_text`). When the price stops, every relation stands, marked with it: the desk's wall
+  labels, GAMMA cell, pin candidate, nearest level and Box line, and the confluence screen's spot.
+  While the price stays stopped, the levels loop tells each open page on that ticker to read
+  again every minute (`server.refresh_not_live_pages`, its owner `server._terrain_loop`; when that
+  loop stops, the age stays as of the page's last read and the trade time beside it stays true),
+  so the age keeps counting
+  (`tests/test_level_crosses_wire.py::test_relations_from_a_stopped_price_stand_marked_not_live_with_its_time_and_age`,
+  `test_a_page_whose_price_has_stopped_is_told_each_minute_to_read_its_levels_again`;
+  `tests/e2e/console-trade-desk.spec.js` and `tests/e2e/console-confluence.spec.js` render the
+  routes' own answers, `tests/fixtures/real_spy_levels_at_a_stopped_price_2026_10_22.json` and
+  `tests/fixtures/real_spy_confluence_at_a_stopped_price_2026_10_22.json`, kept equal to them by
+  `test_the_stopped_price_answers_the_browser_renders_are_the_routes_own`). The one-day move's two prices are the live price
   plus and minus the publication's implied move (`server.expected_move`, the one producer;
   `/api/levels` and `/api/confluence` carry it). A chain delivered with no spot (the daemon held no
   price) has no levels, with its reason.
@@ -509,8 +536,19 @@ from Schwab to the screen (daemon, console, page), are these:
 - **Tape.** The cumulative delta (PROXY, tick rule) sums every print the tape holds; no clock
   resets it, and the window it sums (its first and last print's Schwab trade time,
   `cum_delta_window`) is served beside it and printed with it. A print of size 0 adds 0.
-- **Level crosses.** Computed by the console at each levels publish; written to `ed_console.db`
-  and kept in the console's memory (§3.3) → the `levels` push → `/api/desk/events`, which serves
+- **Level crosses.** Found by the console at the live price on each streamed equity quote
+  (`server._on_stream_tick`, on the event loop, the owner): each published level the price
+  reached or passed going from the ticker's previous streamed price to this one
+  (`server._last_tick_spot`, kept on every equity quote, since the price row holds only the
+  newest; `terrain_read.crossed`, the one side rule). No quote, no check; a new publication moves
+  the levels, not the price, and is not a cross. Stored on the pricing thread as `LevelCrossEvent`
+  records (`server._log_level_crosses`, `EdDB.record_level_crosses`): a level's cross in the
+  direction the ticker's held crosses have one for from the last minute is not stored again
+  (`server.LEVEL_CROSS_HOLD_S`); a ticker's held crosses are read from `ed_console.db` once, the
+  first time they are needed, so a restart holds back what the last minute stored. A failed store
+  is logged, and that cross is not held or stored. Written to `ed_console.db`
+  and kept in the console's memory (§3.3) → the `levels` push, sent after the cross is held →
+  `/api/desk/events`, which serves
   each cross as recorded, from memory, and flags the
   newest cross at each level, for the newest six levels, as the chart's numbered callouts (one
   served item is both a callout and its queue entry). The window is the timeframe's

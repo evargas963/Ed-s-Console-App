@@ -23,7 +23,7 @@ scheduling live in the caller, so this stays trivially testable.
 from __future__ import annotations
 
 import time as _time
-from dataclasses import asdict, dataclass, field, replace
+from dataclasses import asdict, dataclass, field, fields, replace
 from datetime import datetime
 from typing import Any
 
@@ -53,7 +53,7 @@ from math_levels import (
 from time_et import ET, option_close_product, time_to_expiry_years
 from math_exposure_core import key_level_strikes_with_gamma
 from numeric_contract import schwab_count, schwab_number
-from terrain_read import build_terrain_read
+from terrain_read import LEVEL_ABOVE, LEVEL_BELOW, build_terrain_read, level_side, price_side
 
 #: Payload schema version — bump on any field change so the UI can fail closed.
 #: v2 (2026-07-21): + net_gex_at_spot, key_delta_strike, hvp, lvp.
@@ -76,7 +76,6 @@ class TerrainSnapshot:
     posture: str = "STAND_ASIDE"
     confidence: str = "UNAVAILABLE"
     headline: str = ""
-    lines: list[str] = field(default_factory=list)
 
     # levels — chain scope for every level in this dataclass: FULL_BOOK (the wide
     # multi-expiry capture chain). The analytics summary_rows carry the SELECTED_EXPIRY
@@ -101,13 +100,6 @@ class TerrainSnapshot:
     absolute_gamma_gex_dollars: float | None = None
     absolute_gamma_oi: float | None = None
     book_oi_total: float | None = None
-    #: RC-292 operator disposition: `pin_candidate` is absolute_gamma_strike published as a
-    #: candidate pin ONLY after regime, proximity, DTE, liquidity and completeness
-    #: qualification (qualify_pin_candidate below). None = one or more gates failed;
-    #: pin_candidate_blockers records WHICH, so absence renders with its reason, never as
-    #: an unexplained dash (RC-128 pattern).
-    pin_candidate: float | None = None
-    pin_candidate_blockers: list[str] = field(default_factory=list)
     #: RC-124: the former "pin" — max |net GEX$| (calls minus puts) — kept under its honest
     #: name; a real measure of where the SIGNED book peaks, distinct from the concentration.
     #: Scope: FULL_BOOK here; ExposureRow.net_gex_peak is the SAME definition over the
@@ -178,23 +170,6 @@ class TerrainSnapshot:
     call_delta_wall: float | None = None
     put_delta_wall: float | None = None
 
-    #: RC-130: the wall's GEOMETRY state — "contains" (call wall above spot / put wall below
-    #: spot, the configuration in which support/resistance language is true) or "breached"
-    #: (spot at or through the wall). Institutional basis (researched 2026-07-29): the picker
-    #: is deliberately NOT side-constrained — SpotGamma's wall stays at the concentration max
-    #: and their own SPX stats track breach frequency and closes beyond it; what changes on a
-    #: breach is the LABEL/state, not the strike. None = wall or spot missing (absence, never
-    #: a guessed state). Computed with the snapshot, at its spot.
-    call_wall_state: str | None = None
-    put_wall_state: str | None = None
-    #: the walls' dealer lean (wall_lean), and the spot's distance to each wall and side of the
-    #: flip, at this snapshot's spot
-    call_wall_lean: str | None = None
-    put_wall_lean: str | None = None
-    dist_to_call_wall: float | None = None
-    dist_to_put_wall: float | None = None
-    flip_relation: str | None = None
-
     # provenance — never render a level without knowing where it came from
     contracts_used: int = 0
     strikes_used: int = 0
@@ -257,7 +232,7 @@ def _unavailable(ticker: str, spot: float | None, reason: str) -> TerrainSnapsho
     read = build_terrain_read(spot=spot, flip=None, flip_confidence="UNAVAILABLE")
     return TerrainSnapshot(
         ticker=ticker, spot=spot, regime=read.regime, posture=read.posture,
-        confidence=read.confidence, headline=read.headline, lines=read.lines,
+        confidence=read.confidence, headline=read.headline,
         error=reason,
     )
 
@@ -610,40 +585,85 @@ def per_strike_view(books: dict, exposures: dict) -> dict:
 
 
 
+#: a wall's geometry against the price (wall_geometry_state)
+WALL_CONTAINS, WALL_BREACHED = "contains", "breached"
+
+
 def wall_geometry_state(spot: float | None, wall: float | None,
                         side: str) -> str | None:
-    """RC-130: is this wall in the configuration its support/resistance label claims?
-
-    "contains" = call wall strictly above spot / put wall strictly below spot — the only
-    geometry in which dealer-hedging containment language is true. "breached" = spot at or
-    through the wall — institutionally a DISTINCT state (SpotGamma reports closes beyond the
-    wall and tracks them separately; the strike does not move). Equality counts as breached:
-    a wall at spot is not containing anything. None = absent input, absence stays absence.
-
-    ONE definition, called by both compute_terrain and the server's spot-reprice path, so the
-    state can never disagree with the spot painted beside it.
-    """
-    if spot is None or wall is None:
+    """Whether this wall is in the configuration its support/resistance label claims, by
+    level_side: WALL_CONTAINS = a call wall above the price / a put wall below it, the only
+    geometry in which dealer-hedging containment language is true; WALL_BREACHED = the price at or
+    through the wall (a wall at the price contains nothing). None when the wall or the price is
+    unknown."""
+    where = level_side(wall, spot)
+    if where is None:
         return None
     if side == "call":
-        return "contains" if float(wall) > float(spot) else "breached"
+        return WALL_CONTAINS if where == LEVEL_ABOVE else WALL_BREACHED
     if side == "put":
-        return "contains" if float(wall) < float(spot) else "breached"
+        return WALL_CONTAINS if where == LEVEL_BELOW else WALL_BREACHED
     raise ValueError(f"side must be 'call' or 'put', got {side!r}")
 
 
-def wall_lean(call_wall, put_wall, call_state, put_state, regime, confidence) -> tuple:
-    """(call, put) wall labels as the chart states them: one strike holding both walls is
-    TWO-SIDED (a magnet, not a barrier); a breached wall says so; a containing wall earns the
-    dealer lean (resistance: dealers sell, support: dealers buy) only on a TRUSTED flip with a
-    regime; otherwise None. Moved from the former /chart page (RC-83/RC-130/RC-131)."""
+@dataclass(frozen=True)
+class PriceRelations:
+    """Every relation of a price to the published levels, as the routes serve it beside them."""
+    call_wall_state: str | None
+    put_wall_state: str | None
+    call_wall_lean: str | None
+    put_wall_lean: str | None
+    flip_relation: str | None
+    pin_candidate: float | None
+    pin_candidate_blockers: list[str]
+    lines: list[str]
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+#: the names of the relations served beside the levels
+PRICE_RELATIONS = frozenset(f.name for f in fields(PriceRelations))
+
+
+def price_relations(terrain: dict, price: float | None) -> PriceRelations:
+    """Every relation of `price` to the published levels (`terrain`, a snapshot's to_dict): each
+    wall's state and lean, the price's side of the flip, the pin candidate and the read's lines.
+    The levels are the publication's; the price is the one given, the live price on every route.
+    A level's distance from the price is served with the level (/api/levels)."""
+    call, put, flip = terrain["call_wall"], terrain["put_wall"], terrain["gamma_flip"]
+    call_lean, put_lean = wall_lean(call, put, price, terrain["regime"], terrain["confidence"])
+    read = build_terrain_read(spot=price, flip=flip, flip_confidence=terrain["confidence"], put_wall=put,
+                              call_wall=call, gamma_at_spot=terrain["net_gex_at_spot"],
+                              flip_curve_agrees=terrain["flip_diag"].get("curve_agrees_with_schwab_at_spot"))
+    pin, pin_blockers = qualify_pin_candidate(
+        spot=price, absolute_gamma_strike=terrain["absolute_gamma_strike"],
+        absolute_gamma_strength_pct=terrain["absolute_gamma_strength_pct"],
+        absolute_gamma_gex_dollars=terrain["absolute_gamma_gex_dollars"],
+        absolute_gamma_oi=terrain["absolute_gamma_oi"], book_oi_total=terrain["book_oi_total"],
+        net_gex_at_spot=terrain["net_gex_at_spot"], front_dte=terrain["max_pain_dte"])
+    return PriceRelations(
+        call_wall_state=wall_geometry_state(price, call, "call"),
+        put_wall_state=wall_geometry_state(price, put, "put"),
+        call_wall_lean=call_lean, put_wall_lean=put_lean, flip_relation=price_side(flip, price),
+        pin_candidate=pin, pin_candidate_blockers=list(pin_blockers), lines=read.lines)
+
+
+def wall_lean(call_wall, put_wall, price, regime, confidence) -> tuple:
+    """(call, put) wall labels as the chart states them at `price`: one strike holding both walls
+    is TWO-SIDED (a magnet, not a barrier); a breached wall says where the price is (above, at or
+    below it); a containing wall earns the dealer lean (resistance: dealers sell, support: dealers
+    buy) only on a TRUSTED flip with a regime; otherwise None."""
     if call_wall is not None and call_wall == put_wall:
         return ("TWO-SIDED — magnet, not a barrier",) * 2
     earn = regime != "UNAVAILABLE" and confidence == "TRUSTED"
-    def one(state, breached, lean):
-        return breached if state == "breached" else lean if state == "contains" and earn else None
-    return (one(call_state, "BREACHED — spot above", "DEALERS SELL"),
-            one(put_state, "BREACHED — spot below", "DEALERS BUY"))
+
+    def one(wall, side, lean):
+        state = wall_geometry_state(price, wall, side)
+        if state == WALL_BREACHED:
+            return f"BREACHED — spot {price_side(wall, price).lower()}"
+        return lean if state == WALL_CONTAINS and earn else None
+    return one(call_wall, "call", "DEALERS SELL"), one(put_wall, "put", "DEALERS BUY")
 
 
 #: RC-292 pin-candidate qualification thresholds. Hardwired, not configurable. Each cites
@@ -973,27 +993,12 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
     charm_by_strike = merge_charm_maps(charm_by_expiry)
     call_charm_wall, put_charm_wall = pick_charm_wall_strikes(charm_by_strike)
 
-    # RC-292: _front_dte (the nearest readable DTE; RC-290: a contract that does not state
-    # its maturity is dropped, never defaulted) feeds the DTE gate.
-    _pin_candidate, _pin_candidate_blockers = qualify_pin_candidate(
-        spot=float(spot),
-        absolute_gamma_strike=_abs_gamma_strike,
-        absolute_gamma_strength_pct=_abs_gamma_strength,
-        absolute_gamma_gex_dollars=_abs_gamma_gex_dollars,
-        absolute_gamma_oi=_abs_gamma_oi,
-        book_oi_total=_book_oi_total,
-        net_gex_at_spot=flip_diag.get("gamma_at_spot"),
-        front_dte=_front_dte,
-    )
-
     read = build_terrain_read(
         spot=spot, flip=flip, flip_confidence=confidence,
         put_wall=put_wall, call_wall=call_wall,
         gamma_at_spot=flip_diag.get("gamma_at_spot"),
         flip_curve_agrees=flip_diag.get("curve_agrees_with_schwab_at_spot"),
     )
-    call_state, put_state = wall_geometry_state(spot, call_wall, "call"), wall_geometry_state(spot, put_wall, "put")
-    call_lean, put_lean = wall_lean(call_wall, put_wall, call_state, put_state, read.regime, read.confidence)
 
     return TerrainSnapshot(
         ticker=ticker,
@@ -1002,20 +1007,14 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         posture=read.posture,
         confidence=read.confidence,
         headline=read.headline,
-        lines=read.lines,
         gamma_flip=flip,
         call_wall=call_wall,
         put_wall=put_wall,
-        # RC-124/RC-292: the max-TOTAL-gamma concentration under its metric's name with
-        # its decisiveness; the old net-argmax lives on honestly as net_gex_peak. The pin
-        # CLAIM is pin_candidate, and only qualification can publish it.
         absolute_gamma_strike=_abs_gamma_strike,
         absolute_gamma_strength_pct=_abs_gamma_strength,
         absolute_gamma_gex_dollars=_abs_gamma_gex_dollars,
         absolute_gamma_oi=_abs_gamma_oi,
         book_oi_total=_book_oi_total,
-        pin_candidate=_pin_candidate,
-        pin_candidate_blockers=_pin_candidate_blockers,
         net_gex_peak=pick_net_gex_peak_strike(exposures, strikes),
         key_delta_strike=pick_key_delta_strike(exposures, strikes),
         hvp=hvp,
@@ -1033,16 +1032,6 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         put_wall_range=compute_wall_value_area(exposures, put_wall, "put"),      # RC-115
         call_delta_wall=call_delta_wall,   # RC-128: one book for delta walls too
         put_delta_wall=put_delta_wall,
-        # RC-130: the geometry state ships WITH the wall so no paint site can claim
-        # support/resistance the spot contradicts (live SPY 2026-07-29: put wall 740
-        # painted "dealer support" while spot sat at 735.13 below it).
-        call_wall_state=call_state,
-        put_wall_state=put_state,
-        call_wall_lean=call_lean,
-        put_wall_lean=put_lean,
-        dist_to_call_wall=(call_wall - spot) if call_wall is not None else None,
-        dist_to_put_wall=(spot - put_wall) if put_wall is not None else None,
-        flip_relation=None if flip is None else "ABOVE" if spot >= flip else "BELOW",
         max_pain=_front_max_pain,
         max_pain_dte=_front_dte,
         call_charm_wall=call_charm_wall,

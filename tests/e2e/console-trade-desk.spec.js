@@ -21,12 +21,14 @@ const EVENTS = {
 };
 const SPOT = 771.3;
 const TERRAIN = { ticker: 'SPY', spot: SPOT, gamma_flip: 768, call_wall: 775, put_wall: 765, max_pain: 770, regime: 'LONG_GAMMA',
-  posture: 'PINNED', levels_stale: false, flip_relation: 'ABOVE', dist_to_call_wall: 3.7, dist_to_put_wall: 6.3, pcr_all: 1.1,
+  posture: 'PINNED', levels_stale: false, flip_relation: 'ABOVE', pcr_all: 1.1,
   pcr_by_expiry: { '2026-09-25': 1.1, '2026-10-02': null, '2026-10-09': 0.9 }, atm_iv_pct_by_expiry: { '2026-09-25': 14.2, '2026-10-02': 15.1 } };
 const LEVELS = { ticker: 'SPY', spot: SPOT, tf: '30', generation: 1, vwap_series: [],
   levels: [
     { id: 'PDH', price: 773.5, family: 'prior_day', label: 'Prior Day High', short: 'PDH', evidence_tier: 'MEASURED', distance: 2.2, side: 'ABOVE', },
-    { id: 'max_pain', price: 770, family: 'gamma', label: 'Max pain', short: 'Max pain', evidence_tier: 'DERIVED', distance: -1.3, side: 'BELOW', },
+    { id: 'max_pain', price: 770, family: 'gamma', label: 'Max pain', short: 'Max pain', evidence_tier: 'DERIVED', distance: -1.3, side: 'BELOW', from_spot_text: '1.30 below spot', },
+    { id: 'call_wall', price: 775, family: 'gamma', label: 'Call wall', short: 'Call wall', evidence_tier: 'DERIVED', distance: 3.7, side: 'ABOVE', from_spot_text: '3.70 above spot', },
+    { id: 'put_wall', price: 765, family: 'gamma', label: 'Put wall', short: 'Put wall', evidence_tier: 'DERIVED', distance: -6.3, side: 'BELOW', from_spot_text: '6.30 below spot', },
   ],
   by_distance: ['max_pain', 'PDH'], families_absent: [], degraded: [],
   volume_profile: { basis: 'RTH 1-minute bars, each bar\'s volume spread evenly over its range (not trade prints)', tick_size: 0.01,
@@ -506,6 +508,49 @@ test.describe('Trade Desk renders served values', () => {
     expect(errs).toEqual([]);
   });
 
+  // AGENTS rule 5: /api/levels as the real code serves it on SPY's 2026-10-22 close publication,
+  // its 16:39 print (773.1269) the last price and the daemon's connection ended, read at 18:00
+  // (tests/test_level_crosses_wire.py keeps this file equal to the route's answer)
+  const STOPPED = require(path.join(__dirname, '..', 'fixtures', 'real_spy_levels_at_a_stopped_price_2026_10_22.json'));
+  async function routeStopped(page) {
+    const terrain = Object.assign({}, TERRAIN, { spot_feed_live: false, spot_not_live_text: STOPPED.spot_not_live_text });
+    await page.route('**/api/**', (route) => {
+      const url = route.request().url();
+      let body = { available: false };
+      if (url.includes('/api/terrain/strikes')) body = STRIKES;
+      else if (url.includes('/api/terrain')) body = terrain;
+      else if (url.includes('/api/levels')) body = STOPPED;
+      else if (url.includes('/api/order-flow/microstructure')) body = MICRO;
+      else if (url.includes('/api/liquidity-snapshot')) body = LIQ;
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    });
+    await routeWatchlist(page, ['SPY']);
+  }
+
+  test('Right Now: distances from a price that has stopped are marked not live with its time and age', async ({ page }) => {
+    const errs = watchErrors(page);
+    await routeStopped(page);
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'right-now'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const row = (id) => STOPPED.levels.find((r) => r.id === id);
+    const nearest = row(STOPPED.by_distance[0]);
+    const body = page.locator('#tdBody');
+    expect(STOPPED.spot_not_live_text).toContain('last trade');
+    await expect(body).toContainText(nearest.from_spot_text + ' · ' + STOPPED.spot_not_live_text);
+    await expect(body).toContainText('Put wall ' + row('put_wall').from_spot_text + ', call wall ' +
+      row('call_wall').from_spot_text + ' · ' + STOPPED.spot_not_live_text);
+    expect(errs).toEqual([]);
+  });
+
+  test('Market Map: the flip side from a price that has stopped is marked not live with its time and age', async ({ page }) => {
+    const errs = watchErrors(page);
+    await routeStopped(page);
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#tdmAgree')).toContainText('Above flip · ' + STOPPED.spot_not_live_text);
+    expect(errs).toEqual([]);
+  });
+
   test('Right Now: detect, frame, context and the migration read the served fields', async ({ page }) => {
     const errs = watchErrors(page);
     await intercept(page);
@@ -515,7 +560,7 @@ test.describe('Trade Desk renders served values', () => {
     await expect(body).toContainText('bid-heavy (NASDAQ_BOOK, depth 5)');
     await expect(body).toContainText('Max pain 770.00');           // nearest by the served by_distance
     await expect(body).toContainText('1.30 below spot');
-    await expect(body).toContainText('6.30 above put wall, 3.70 below call wall');
+    await expect(body).toContainText('Put wall 6.30 below spot, call wall 3.70 above spot');   // /api/levels' own rows
     await expect(body).toContainText('Resistance zone above at 772.00');
     await expect(body).toContainText('Pivot / value zone below at 769.00');
     await expect(body).toContainText('moved UP the chain');

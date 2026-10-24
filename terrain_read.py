@@ -51,6 +51,58 @@ POSTURE_STAND_ASIDE = "STAND_ASIDE"
 #: Within this fraction of a wall, price is "at the edge" and the reaction is tradeable.
 EDGE_PROXIMITY_PCT = 0.004
 
+#: where a level sits against a price (level_side)
+LEVEL_ABOVE, LEVEL_AT, LEVEL_BELOW = "ABOVE", "AT", "BELOW"
+#: the way a price moved through a level (crossed)
+CROSSED_UP, CROSSED_DOWN = "up", "down"
+
+
+def level_side(level: float | None, price: float | None) -> str | None:
+    """Where `level` sits against `price`: LEVEL_ABOVE, LEVEL_AT or LEVEL_BELOW, from the exact
+    values (rounding happens only on screen); None when either is unknown. The one side rule of
+    every relation of a price to a level: the wall states, the flip side, the levels' sides and
+    the crosses."""
+    if level is None or price is None:
+        return None
+    if level > price:
+        return LEVEL_ABOVE
+    if level < price:
+        return LEVEL_BELOW
+    return LEVEL_AT
+
+
+def price_side(level: float | None, price: float | None) -> str | None:
+    """Where `price` sits against `level` (the other way round from level_side): LEVEL_ABOVE when
+    the price is over the level, LEVEL_AT, LEVEL_BELOW; None when either is unknown."""
+    return {LEVEL_ABOVE: LEVEL_BELOW, LEVEL_AT: LEVEL_AT, LEVEL_BELOW: LEVEL_ABOVE, None: None}[level_side(level, price)]
+
+
+def from_spot_text(distance: float | None, side: str | None) -> str | None:
+    """A level's distance from the live price (level minus price) and its side (level_side), as
+    the screen words it: "at spot", "1.30 above spot", "1.30 below spot". None when unknown."""
+    if side is None:
+        return None
+    if side == LEVEL_AT:
+        return "at spot"
+    return f"{price_text(abs(distance))} {side.lower()} spot"
+
+
+def within(low: float | None, high: float | None, price: float | None) -> bool:
+    """Whether `price` is inside the range from `low` to `high`, either edge included (level_side)."""
+    return (level_side(low, price) in (LEVEL_BELOW, LEVEL_AT)
+            and level_side(high, price) in (LEVEL_ABOVE, LEVEL_AT))
+
+
+def crossed(level: float | None, before: float | None, after: float | None) -> str | None:
+    """CROSSED_UP when the price moved from under `level` to at or over it, CROSSED_DOWN from over
+    it to at or under it (level_side); None otherwise."""
+    was, now = level_side(level, before), level_side(level, after)
+    if was == LEVEL_ABOVE and now in (LEVEL_AT, LEVEL_BELOW):
+        return CROSSED_UP
+    if was == LEVEL_BELOW and now in (LEVEL_AT, LEVEL_ABOVE):
+        return CROSSED_DOWN
+    return None
+
 
 #: the one wording, shown whenever the flip's modelled curve and Schwab's gamma disagree on the
 #: sign at today's price (the flip is placed by the curve; the regime is Schwab's gamma)
@@ -222,8 +274,9 @@ def build_terrain_read(
 
     if flip is not None:
         distance_pct = _pct_from(spot, flip) * 100.0
+        where = price_side(flip, spot).lower()
         flip_line = (f"Spot {price_text(spot)} vs {_fmt('flip', flip, spot)} — {abs(distance_pct):.2f}% "
-                     f"{'above' if spot > flip else 'below'} the regime line.")
+                     f"{where} the regime line.")
         # Gamma audit: at the middle tier the chain does not reach the measured flip-LEVEL
         # convergence span, so the LEVEL is approximate (~1.4% of spot in the study) even though the
         # regime is sound. Say so on the same line the operator reads the number from — a precise

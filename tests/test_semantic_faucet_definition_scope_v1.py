@@ -166,7 +166,7 @@ def test_terrain_names_carry_their_declared_definitions():
 def test_pin_candidate_is_published_only_through_the_qualification_gates():
     """RC-292 operator disposition, executed: every gate flips the claim off; all five
     passing publishes the strike; the real fixture withholds with named blockers."""
-    from terrain_engine import compute_terrain, qualify_pin_candidate
+    from terrain_engine import compute_terrain, price_relations, qualify_pin_candidate
 
     passing = dict(
         spot=100.0, absolute_gamma_strike=100.2, absolute_gamma_strength_pct=15.0,
@@ -190,9 +190,10 @@ def test_pin_candidate_is_published_only_through_the_qualification_gates():
     # concentration stays.
     chain, spot = _fixture_book()
     snap = compute_terrain("SPY", chain, spot, now=NOW)
+    served = price_relations(snap.to_dict(), spot).to_dict()
     assert snap.net_gex_at_spot is not None and snap.net_gex_at_spot < 0
-    assert snap.pin_candidate is None
-    assert snap.pin_candidate_blockers == ["regime", "liquidity"]
+    assert served["pin_candidate"] is None
+    assert served["pin_candidate_blockers"] == ["regime", "liquidity"]
     assert snap.absolute_gamma_strike is not None, (
         "withholding the CLAIM must never delete the measured concentration (deliver, "
         "never delete)")
@@ -201,10 +202,11 @@ def test_pin_candidate_is_published_only_through_the_qualification_gates():
 def test_every_level_shaped_payload_name_is_declared():
     """Coverage: a new level-bearing field cannot ship without a (definition, scope)
     declaration — the omission RC-303 names as the root becomes a failing test."""
-    from terrain_engine import compute_terrain
+    from terrain_engine import compute_terrain, price_relations
 
     chain, spot = _fixture_book()
-    payload = compute_terrain("SPY", chain, spot, now=NOW).to_dict()
+    published = compute_terrain("SPY", chain, spot, now=NOW).to_dict()
+    payload = published | price_relations(published, spot).to_dict()     # as /api/terrain serves it
     declared_terrain = {n for (s, n) in DECLARED if s == "terrain"}
     same = payload.get("same_day")
     assert isinstance(same, dict)
@@ -213,7 +215,7 @@ def test_every_level_shaped_payload_name_is_declared():
             assert f"same_day.{key}" in declared_terrain, (
                 f"same-day level {key!r} has no declared (definition, chain scope)")
     for key in payload:
-        if key.endswith(("_state", "_range", "_blockers")) or key.startswith("dist_to_"):   # distances, not levels
+        if key.endswith(("_state", "_range", "_blockers")):   # states, ranges and reasons, not levels
             continue
         if key.endswith(_LEVEL_SUFFIXES) or key in _LEVEL_EXTRAS:
             assert key in declared_terrain or key in _SINGLE_SURFACE_FULL_BOOK, (

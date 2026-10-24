@@ -24,6 +24,19 @@ def ct_label(ts_utc: float) -> str:
     return datetime.fromtimestamp(float(ts_utc), CT).strftime("%a %m/%d %I:%M %p CT")
 
 
+def age_text(sec: float) -> str:
+    """An age as the screen shows it: "45s", "12m", "3h", "2d". A negative age (a time after the
+    console's clock) shows as negative, never as 0."""
+    sec = float(sec)
+    if sec < 90:
+        return f"{round(sec)}s"
+    if sec < 5400:
+        return f"{round(sec / 60)}m"
+    if sec < 172800:
+        return f"{round(sec / 3600)}h"
+    return f"{round(sec / 86400)}d"
+
+
 def ct_clock(ts_utc: float) -> str:
     """An instant to the millisecond as the logs show it: "14:01:02.123 CT"."""
     return datetime.fromtimestamp(float(ts_utc), CT).strftime("%H:%M:%S.%f")[:-3] + " CT"
