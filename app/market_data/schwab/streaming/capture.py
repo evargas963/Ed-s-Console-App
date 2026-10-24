@@ -546,8 +546,9 @@ class Daemon:
         """The option rule's inputs until `stop`: each ticker's price row as the plane publishes it
         (its row listener) and newest whole chain, as the bus has it (the chain sweep's); a new
         chain redoes the pick (pick_options). The plane is fed by serve_live_ui, its owner: if
-        that ends (its port cannot be bound), the plane takes no more quotes, every price row
-        stands at the last price, and the rule keeps the order and recorded windows it has."""
+        that ends (its port cannot be bound), the plane takes no more quotes and every price row
+        stands at the last price Schwab sent, so each new chain is ordered, and its recorded
+        window placed, at that last price."""
         async def follow(prefix: str, take) -> None:
             sub = self.bus.subscribe(prefix, policy=LATEST)
             try:
