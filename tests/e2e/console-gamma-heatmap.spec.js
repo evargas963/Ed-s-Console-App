@@ -393,6 +393,32 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     }
   }
 
+  // A panel whose read fails leaves no as-of badge from its last answer beside the failure words.
+  // Induced condition: the first answer marks itself live (the served status labels below).
+  const BADGED = [
+    { name: 'GEX by strike', host: '#gbsBody', badge: '#gbsSrc', route: '/api/terrain/strikes', push: 'levels',
+      answer: Object.assign({}, STRIKES, { today_source: 'terrain_live_cache', levels_stale: false, today_age_sec: 3 }) },
+    { name: 'Strike Detail', host: '#sdBody', badge: '#sdSrc', route: '/api/chain', push: 'levels',
+      answer: Object.assign({}, CHAIN, { scope: { kind: 'complete_single_expiry' } }) },
+    { name: 'the chain', host: '#chainBody', badge: '#chSrc', route: '/api/chain', push: 'chain', sub: 'chain',
+      answer: Object.assign({}, CHAIN, { scope: { kind: 'complete_single_expiry' } }) },
+  ];
+  for (const p of BADGED) {
+    test(`${p.name}: a read that fails after a good one leaves no badge from the last answer`, async ({ page }) => {
+      let failing = false;
+      await page.route('**' + p.route + '?**', (route) => failing
+        ? route.fulfill({ status: 500, contentType: 'application/json', body: '{"detail":"Internal Server Error"}' })
+        : route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(p.answer) }));
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
+      if (p.sub) await page.evaluate((sub) => window.EdShell.setSubview(sub), p.sub);
+      await expect(page.locator(p.badge)).not.toBeEmpty();
+      failing = true;
+      await page.evaluate((kind) => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind } })), p.push);
+      await expect(page.locator(p.host)).toContainText('the console answered ' + p.route + ' with 500');
+      await expect(page.locator(p.badge)).toBeEmpty();
+    });
+  }
+
   test('Right Now says when the page cannot draw its answers, never "no console serving"', async ({ page }) => {
     // Induced condition: the per-strike answer has a row but no `views`, so drawing the
     // migration section raises a TypeError after every endpoint has answered.
