@@ -1,6 +1,7 @@
 /**
- * The page's two load guards: makeCoalescedLoader (one fetch in flight per panel) and
- * sharedFetchJson (one network call for concurrent identical GETs). globalThis.EdL1SseGuards.
+ * The page's reads of the console: makeCoalescedLoader (one read in flight per panel), readJson
+ * (one read, its failure named), show (an answer drawn, or why not) and sharedFetchJson (one
+ * network call for concurrent identical GETs). globalThis.EdL1SseGuards.
  */
 (function (g) {
   'use strict';

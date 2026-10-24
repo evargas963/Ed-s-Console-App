@@ -108,11 +108,11 @@
 
   // ---- render the window the server sent (no math on its values) ----
   function renderSurface(host, surface) {
-    if (!surface || surface.available === false) {
+    if (surface.available === false) {
       _lastSurface = null; _lastRevision = null;
       paintChip(null);
-      host.innerHTML = buildBanner(surface || { live: false }) + '<div class="placeholder"><div class="big">Gamma surface unavailable</div>' +
-        '<div class="sm">' + escapeHtml((surface && surface.reason) || 'the console sent no reason') + '</div></div>';
+      host.innerHTML = buildBanner(surface) + '<div class="placeholder"><div class="big">Gamma surface unavailable</div>' +
+        '<div class="sm">' + escapeHtml(surface.reason || 'the console sent no reason') + '</div></div>';
       return;
     }
     var view = surface.view;

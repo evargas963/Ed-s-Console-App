@@ -63,7 +63,7 @@
     paintPcr(d && !d.error ? d : null);
     if (!d || d.error) {
       ids.forEach(function (id) { txt(id, '—'); });
-      txt('klSrc', failed || (d ? 'terrain not ready' : 'the console sent no terrain'));
+      txt('klSrc', failed || 'terrain not ready');
       return;
     }
     txt('klFlip', px(d.gamma_flip));
@@ -371,7 +371,7 @@
     var pan = window.EdShell.newPan(), panTicker = null;
     function renderIt(host, d) {
       var src = document.getElementById(srcId); if (src) src.textContent = '';
-      if (!d || !d.available || !d.rows || !d.rows.length) {
+      if (!d.available || !d.rows || !d.rows.length) {
         host.innerHTML = '<div class="placeholder"><div class="sm">' +
           esc(d.reason || 'the console sent no reason') + '</div></div>';
         return;
@@ -484,7 +484,7 @@
   function stillOfCtx(tk) { var host = document.getElementById('ofBody'); return isGamma() && !!host && ticker() === tk; }
   function renderOf(host, d) {
     var src = document.getElementById('ofSrc'); if (src) src.textContent = '';
-    var rows = (d && d.rows) || [];
+    var rows = d.rows || [];
     if (!rows.length) {
       host.innerHTML = '<table class="of"><thead><tr><th>Time</th><th>Symbol</th><th>Exp</th><th>Type</th><th>Strike</th>' +
         '<th>Bid×Size</th><th>Ask×Size</th><th>Trade</th><th>Size</th><th>Premium</th>' +

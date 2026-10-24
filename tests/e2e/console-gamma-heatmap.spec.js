@@ -371,14 +371,17 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     { name: 'the chain', host: '#chainBody', route: '/api/chain', sub: 'chain' },
     { name: 'Structures', host: '#stBody', route: '/api/chain', sub: 'structures' },
     { name: 'the vanna bars', host: '#vnBody', route: '/api/options/vanna-by-strike', sub: 'vanna' },
+    { name: 'the charm bars', host: '#chmBody', route: '/api/options/charm-by-strike', sub: 'charm' },
     { name: 'the flow panel', host: '#flowBody', route: '/api/order-flow/options-microstructure', sub: 'flow',
       contract: 'SPY   260911C00583000' },
     { name: 'the order-flow book', host: '#obBody', route: '/api/order-flow/microstructure', ws: 'order-flow', sub: 'book' },
   ];
   for (const p of PANELS) {
-    for (const [failure, words] of [['500', 'the console answered ' + p.route + ' with 500'],
-                                    ['refused', 'no console serving ' + p.route]]) {
-      test(`${p.name}: a read that ${failure === '500' ? 'is answered 500' : 'is refused'} reads "${words}"`, async ({ page }) => {
+    test(`${p.name}: a read answered 500 names the status; only a refused one reads "no console serving"`, async ({ page }) => {
+      for (const [failure, words] of [['500', 'the console answered ' + p.route + ' with 500'],
+                                      ['refused', 'no console serving ' + p.route]]) {
+        await page.unrouteAll();
+        await intercept(page);
         await page.route('**' + p.route + '?**', (route) => failure === '500'
           ? route.fulfill({ status: 500, contentType: 'application/json', body: '{"detail":"Internal Server Error"}' })
           : route.abort('connectionrefused'));
@@ -389,8 +392,8 @@ test.describe('Ed Console shell + gamma heatmap', () => {
         if (p.view) await page.locator(`#viewbar .vtab[data-view="${p.view}"]`).click();
         if (p.contract) await page.evaluate((c) => window.EdFlow.select(c), p.contract);
         await expect(page.locator(p.host)).toContainText(words);
-      });
-    }
+      }
+    });
   }
 
   // A panel whose read fails leaves no as-of badge from its last answer beside the failure words.
@@ -420,10 +423,10 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   }
 
   test('Right Now says when the page cannot draw its answers, never "no console serving"', async ({ page }) => {
-    // Induced condition: the per-strike answer has a row but no `views`, so drawing the
-    // migration section raises a TypeError after every endpoint has answered.
+    // Induced condition: the per-strike answer (this file's STRIKES) without its `views`, so
+    // drawing the migration section raises a TypeError after every endpoint has answered.
     await page.route('**/api/terrain/strikes?**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
-      body: JSON.stringify({ today: { all: [[583, 1000, 10]] } }) }));
+      body: JSON.stringify(Object.assign({}, STRIKES, { views: undefined })) }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#hPx')).not.toHaveText('CHOOSE A SYMBOL');
     const reported = page.waitForEvent('console', (m) => m.type() === 'error' && /TypeError/.test(m.text()));

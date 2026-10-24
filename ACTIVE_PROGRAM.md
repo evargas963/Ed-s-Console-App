@@ -159,7 +159,7 @@ to write it plainly, in the forms `test_a_command_the_reader_cannot_see_into_is_
 
 **Page code (static/js)**
 - P-02 ages formatted and thresholded on the page (`fmtAge`, `Math.round(trade_age_sec)`); the push-silence verdict is the page's clock (`PRICE_SILENCE_MS`).
-- P-09 an absent `live` reads live; first-of and "undefined" reasons; stale cells drawn as normal values.
+- P-09 an absent `live` reads live; first-of and "undefined" reasons; stale cells drawn as normal values; readers outside `EdL1SseGuards.readJson` say a true failure without naming its status (`ed-gamma-chart.js`, `ed-order-flow-heatmap.js`, `ed-confluence.js`, `ed-liquidity-map.js`, `ed-trade-desk-map.js`, the watchlist reads in `ed-core.js`).
 - P-10 six or more page formatters for dollars and volume with different precision.
 - P-12 Strike Detail matches contracts by tolerance, substitutes the put for the call, uses a UTC date and reads the raw contracts (a -999 prints).
 - P-13 Key Levels: a fallback age formatter and a page-computed live badge.
