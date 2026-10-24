@@ -89,8 +89,9 @@ def test_the_stop_takes_only_this_checkouts_processes(tmp_path):
 
 def test_a_chain_sweep_that_ends_on_an_error_is_logged(tmp_path, caplog):
     """A forced thread error: the sweep's client raises an error the sweep does not catch (one
-    not an Exception), its thread ends, and the daemon's log has it with its traceback (a thread
-    has no error output under pythonw)."""
+    not an Exception), its thread ends, the daemon's log has it with its traceback (a thread
+    has no error output under pythonw), and run_chains ends with it, before any stop (run then
+    ends the daemon)."""
     class ForcedThreadError(BaseException):
         pass
 
@@ -103,9 +104,8 @@ def test_a_chain_sweep_that_ends_on_an_error_is_logged(tmp_path, caplog):
         stop = asyncio.Event()
         task = asyncio.create_task(capture.run_chains(daemon, tmp_path / "ed_console.db", client, stop,
                                                       failures=CaptureWriter(tmp_path / "stream_capture.db")))
-        await _until(lambda: any("chain sweep: ended" in r.getMessage() for r in caplog.records))
-        stop.set()
-        await asyncio.wait_for(task, timeout=30)
+        await asyncio.wait_for(task, timeout=30)        # the sweep's end ends it, with no stop
+        assert not stop.is_set()
     with caplog.at_level("ERROR", logger="capture"):
         asyncio.run(go())
     record = next(r for r in caplog.records if "chain sweep: ended" in r.getMessage())
@@ -215,6 +215,26 @@ def test_a_module_that_fails_to_load_leaves_its_reason_in_the_daemons_log(tmp_pa
     assert done.returncode == 1
     assert "capture daemon loading (pid " in log
     assert "ModuleNotFoundError: No module named 'schwab'" in log, log
+
+
+def test_a_daemon_whose_live_ui_port_is_held_ends_at_once_with_why_and_its_window_restarts_it(tmp_path):
+    """Another socket holds the live UI's port: the daemon, run as its window runs it, ends with
+    the bind's error in its log and an exit code its window restarts on (not EXIT_STOPPED), instead
+    of running with no price row and no option contract streamed."""
+    with socket.socket() as held:
+        held.bind(("127.0.0.1", 0))
+        held.listen()
+        env = {**os.environ, "ED_RUNTIME_ROOT": str(tmp_path), "ED_LIVE_UI_HOST": "127.0.0.1",
+               "ED_LIVE_UI_PORT": str(held.getsockname()[1]), "ED_LIVE_PUSH_PORT": "0",
+               "SCHWAB_TOKEN_PATH": str(tmp_path / "missing_token.json")}
+        done = subprocess.run([sys.executable, "-m", "app.market_data.schwab.streaming.capture"],
+                              cwd=REPO, env=env, capture_output=True, timeout=60)
+    (path,) = (tmp_path / "logs").glob("stream_capture.*.log")
+    log = path.read_text(encoding="utf-8")
+    assert done.returncode == 1, (done.returncode, log)
+    assert "capture daemon: ended by an error" in log, log
+    assert "RuntimeError: the capture daemon's live ui ended before the stop" in log, log
+    assert "OSError" in log, log
 
 
 def test_a_database_path_under_backups_is_refused_as_any_other_non_canonical_path(tmp_path):

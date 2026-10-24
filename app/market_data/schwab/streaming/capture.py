@@ -545,10 +545,9 @@ class Daemon:
     async def follow_market(self, stop: asyncio.Event) -> None:
         """The option rule's inputs until `stop`: each ticker's price row as the plane publishes it
         (its row listener) and newest whole chain, as the bus has it (the chain sweep's); a new
-        chain redoes the pick (pick_options). The plane is fed by serve_live_ui, its owner: if
-        that ends (its port cannot be bound), the plane takes no more quotes and every price row
-        stands at the last price Schwab sent, so each new chain is ordered, and its recorded
-        window placed, at that last price."""
+        chain redoes the pick (pick_options). The plane is fed by serve_live_ui, its owner; it
+        ends before the stop only when its port cannot be bound, at startup, before any quote,
+        and run then ends the daemon, which its window restarts."""
         async def follow(prefix: str, take) -> None:
             sub = self.bus.subscribe(prefix, policy=LATEST)
             try:
@@ -980,7 +979,7 @@ async def run_chains(daemon: "Daemon", db_path, schwab_client, stop: asyncio.Eve
     Greeks are its quote's. A chain whose history write
     fails is kept by `failures`, the daemon's writer (its failures ride the heartbeat). A sweep
     that ends on an error is logged with it (_worker_ended): its thread has no error output of
-    its own to reach."""
+    its own to reach. Its end ends this, before the stop or at it (run ends the daemon on it)."""
     loop = asyncio.get_running_loop()
     halt = threading.Event()
     sweep = ChainSweep(db_path, daemon.watchlist,
@@ -989,9 +988,11 @@ async def run_chains(daemon: "Daemon", db_path, schwab_client, stop: asyncio.Eve
     daemon.chains = sweep
     worker = loop.run_in_executor(None, sweep.work, schwab_client, halt)
     worker.add_done_callback(_worker_ended)
+    stopped = asyncio.ensure_future(stop.wait())
     try:
-        await stop.wait()
+        await asyncio.wait({worker, stopped}, return_when=asyncio.FIRST_COMPLETED)
     finally:
+        stopped.cancel()
         halt.set()
         await asyncio.gather(worker, return_exceptions=True)
 
@@ -1018,7 +1019,9 @@ def one_schwab_client(build) -> "callable":
 
 async def run() -> int:
     """The whole daemon: writer, the two local sockets, the chain sweep and the Schwab
-    connection."""
+    connection, each until the stop. One that ends before the stop (a local socket whose port
+    cannot be bound, a chain sweep ended on an error) ends the daemon with an error naming it, so
+    its log has why and start_capture_daemon.bat restarts it."""
     load_dotenv_file()
     cfg = build_config()
     schwab_client = one_schwab_client(lambda: build_client_from_token(
@@ -1031,20 +1034,27 @@ async def run() -> int:
     daemon.writer, daemon.stop = writer, stop
     writer.saves = daemon.saves
     wsub = bus.subscribe("", policy=LOG)                # the record of every message
-    tasks = [asyncio.create_task(writer.run(wsub, stop=stop)),
-             asyncio.create_task(run_chains(daemon, db_path, schwab_client, stop, failures=writer)),
-             asyncio.create_task(record_feed_status(daemon, stop)),
-             asyncio.create_task(keep_sessions(daemon, stop)),
-             asyncio.create_task(daemon.follow_market(stop)),
-             asyncio.create_task(serve_live_push(bus, stop, on_request=daemon.console_frame)),
-             asyncio.create_task(serve_live_ui(bus, stop, heartbeat_fn=daemon.status))]
+    tasks = [asyncio.create_task(writer.run(wsub, stop=stop), name="writer"),
+             asyncio.create_task(run_chains(daemon, db_path, schwab_client, stop, failures=writer),
+                                 name="chain sweep"),
+             asyncio.create_task(record_feed_status(daemon, stop), name="feed status"),
+             asyncio.create_task(keep_sessions(daemon, stop), name="keep"),
+             asyncio.create_task(daemon.follow_market(stop), name="option rule"),
+             asyncio.create_task(serve_live_push(bus, stop, on_request=daemon.console_frame),
+                                 name="live push"),
+             asyncio.create_task(serve_live_ui(bus, stop, heartbeat_fn=daemon.status), name="live ui")]
     try:
         await asyncio.sleep(0)                    # servers subscribe before the first message
-        await daemon.run(schwab_client, stop)
+        tasks.append(asyncio.create_task(daemon.run(schwab_client, stop), name="schwab connection"))
+        done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        ended = None if stop.is_set() else done.pop()
     finally:
         stop.set()
         await asyncio.gather(*tasks, return_exceptions=True)
-    return EXIT_STOPPED                           # daemon.run returns only once stop is set
+    if ended is not None:
+        raise RuntimeError(f"the capture daemon's {ended.get_name()} ended before the stop") \
+            from ended.exception()
+    return EXIT_STOPPED
 
 
 def main() -> int:
