@@ -81,8 +81,9 @@ from Schwab to the screen (daemon, console, page), are these:
   one writer records every message Schwab sends but option quotes and option books, which it
   records only for the contracts the daemon keeps (`capture.Daemon.saves`, operator 2026-10-09):
   each watchlist ticker's soonest expiration not passed (today's when one is listed, else the
-  nearest), at the strike nearest its price and the 5 listed strikes each side
-  (`capture.saved_window`, redone on each price and chain), and the contract selected on the Flow
+  nearest), at the strike nearest its price (the price row's) and the 5 listed strikes each side
+  (`capture.saved_window`, redone on each price and chain; while the price row has no price the
+  ticker keeps the window last computed, so its contracts go on being recorded), and the contract selected on the Flow
   panel. What the daemon streams and pushes, and the levels, are unchanged. Once after each close
   of the last option market the daemon has the writer remove every row received before the newest
   five sessions in Schwab's /markets answers began (`capture.keep_sessions`,
@@ -235,7 +236,11 @@ from Schwab to the screen (daemon, console, page), are these:
   watchlist ticker's newest whole chain on its bus (owner `capture.Daemon.pick_options`, run by
   `Daemon.follow_market` on each new chain, on a watchlist change and on the Flow panel's
   selection, never on a price; a chain is put in the rule's order once, as it arrives,
-  `capture.by_gamma`, at the daemon's time and the ticker's newest LAST_PRICE). The contract
+  `capture.by_gamma`, at the daemon's time and the ticker's live price, the price row's
+  (`live_price_rows.price_row`, read when the plane publishes the row, its row listener; the rule
+  reads LAST_PRICE nowhere else). While the row has no price (none received yet, or Schwab sent it
+  invalid) the ticker keeps the order and the recorded window it has, and its newest chain is
+  ordered at the next price (`tests/test_option_contract_rule_v1.py`). The contract
   selected on the Flow panel (`POST /api/flow-contract`, only one Schwab listed in a chain the
   console holds; the console names it to the daemon on every connection, `{"op":
   "flow_contract"}`, §3.2) streams on LEVELONE_OPTIONS and OPTIONS_BOOK. What is left of
