@@ -970,6 +970,7 @@
       if (e.key === 'Escape') { var g = document.querySelector('.gamma-grid'); if (g && g.classList.contains('maxed')) applyMaximize(false); }
     });
     try { if (localStorage.getItem(MAX_KEY) === '1') applyMaximize(true); } catch (e) {}
+    window.addEventListener('resize', function () { emit('ed:resize', {}); });   // a view event too
     // subnav/viewbar initial — restore persisted workspace/subview/view (D), validated to NAV
     normalizeState();
     // Reflect AGAIN, now that normalizeState() may have just corrected state.measure to
@@ -1026,7 +1027,7 @@
   else document.addEventListener('DOMContentLoaded', init);
 
   // expose for view modules + tests (no trading logic here)
-  window.EdShell = { getState: function () { return Object.assign({}, state); }, setTicker: setTicker,
+  window.EdShell = { getState: function () { return Object.assign({}, state); }, setTicker: setTicker, emit: emit,
     addSymbol: addSymbol, setWorkspace: setWorkspace, setStrike: setStrike,
     setTheme: applyTheme,
     marketContext: function () { return MARKET_CONTEXT.slice(); },   // served [{key, display}]

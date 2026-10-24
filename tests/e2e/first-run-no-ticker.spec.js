@@ -20,3 +20,27 @@ test('first run: no ticker is assumed, no ticker data is requested', async ({ pa
   expect(tickerCalls, 'nothing may be fetched for an unchosen ticker').toEqual([]);
   expect(await page.evaluate(() => window.EdShell.getState().ticker)).toBe('');
 });
+
+test('no symbol chosen: no view asks for a ticker on a view change, a resize, a theme change or its own controls', async ({ page }) => {
+  const tickerCalls = [], asked = [];
+  page.on('request', (req) => { if (/[?&]ticker=/.test(req.url())) tickerCalls.push(req.url()); });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await expect(page.locator('#hPx')).toHaveText('CHOOSE A SYMBOL');
+  for (const ws of await page.locator('.navitem[data-ws]').evaluateAll((ns) => ns.map((n) => n.dataset.ws))) {
+    await page.locator(`.navitem[data-ws="${ws}"]`).click();
+    for (const sub of await page.locator('#subnav button[data-sub]:not(.na)').evaluateAll((bs) => bs.map((b) => b.dataset.sub))) {
+      await page.locator(`#subnav button[data-sub="${sub}"]`).click();
+      const views = await page.locator('#viewbar .vtab:not(.na)').evaluateAll((bs) => bs.map((b) => b.dataset.view));
+      for (const view of views.length ? views : [null]) {
+        if (view) await page.locator(`#viewbar .vtab[data-view="${view}"]`).click();
+        await page.setViewportSize({ width: 1500, height: 900 });
+        await page.setViewportSize({ width: 1280, height: 800 });
+        await page.evaluate(() => { window.EdShell.setTheme('dark'); window.EdShell.setTheme('light'); });
+        for (const control of await page.locator('.cmode:visible, .scbtn:visible').all()) await control.click();
+        await page.waitForTimeout(100);
+        if (tickerCalls.length) asked.push(`${ws} > ${sub} > ${view}: ${tickerCalls.splice(0).join(', ')}`);
+      }
+    }
+  }
+  expect(asked, 'nothing may be fetched for an unchosen ticker').toEqual([]);
+});

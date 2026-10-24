@@ -48,6 +48,17 @@ const SURFACE = {
   view: view(),
   provenance: { producer: 'math_exposure_core.compute_exposures_by_strike', classification: 'DERIVED' },
 };
+// SPY's surface as captured 2026-09-10 pre-market, with the served window the route adds
+function realSpySurface() {
+  const REAL = require('./fixtures/real_spy_gamma_surface_116x16_premarket_20260910.json');
+  return Object.assign({}, REAL, {
+    source: 'terrain_live_cache', live: true, stale: false, degraded: null,
+    session_date_et: '2026-09-10', prior_session: false,
+    expirations: REAL.expirations.map((e) => Object.assign({}, e, { expired: e.expiry < '2026-09-10', front: e.expiry === '2026-09-10' })),
+    cells: REAL.cells.map((c) => Object.assign({}, c, { spot: c.strike === 764 })),
+    view: view({ centre: 764, scope: 'all', max_abs: { gex: 1e9 } }),
+  });
+}
 // A surface WITH real per-cell vendor contract identity (server.py's project_gamma_surface
 // always carries this in production).
 function surfaceWithContracts(nExps, nStrikes) {
@@ -347,6 +358,63 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     const html = await page.locator('#heatBody').innerHTML();
     expect(html).not.toContain('$1.0K');
     expect(html).toContain('Gamma surface unavailable');
+  });
+
+  test('a console that answers with an error is named with its status; only a failed connection reads "no console serving"', async ({ page }) => {
+    // Induced conditions: the surface route answers 500, then the connection to it is refused.
+    let answer = 'error';
+    await page.route('**/api/options/gamma-surface**', (route) => answer === 'error'
+      ? route.fulfill({ status: 500, contentType: 'application/json', body: '{"detail":"Internal Server Error"}' })
+      : route.abort('connectionrefused'));
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#heatBody')).toContainText('the console answered /api/options/gamma-surface with 500');
+    await expect(page.locator('#heatBody')).not.toContainText('no console serving');
+
+    answer = 'refused';
+    await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'levels' } })));
+    await expect(page.locator('#heatBody')).toContainText('no console serving /api/options/gamma-surface');
+  });
+
+  test('an answer the page fails to draw says so, and is never read as "no console serving"', async ({ page }) => {
+    // Induced condition: the console answers 200 with a surface that has no `view`, so drawing
+    // it raises a TypeError after the console has answered.
+    await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json', body: JSON.stringify({ available: true, ticker: 'SPY' }) }));
+    const reported = page.waitForEvent('console', (m) => m.type() === 'error' && /TypeError/.test(m.text()));
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#heatBody')).toContainText('the page could not draw the answer of /api/options/gamma-surface');
+    await reported;                                       // and the loader reports the error itself
+    await expect(page.locator('#heatBody')).not.toContainText('no console serving');
+  });
+
+  test('a ticker switched on another view leaves no old surface for a theme change to redraw', async ({ page }) => {
+    // SPY's captured surface is drawn; AAPL's read is held.
+    await page.route('**/api/options/gamma-surface**', (route) =>
+      new URL(route.request().url()).searchParams.get('ticker') === 'SPY'
+        ? route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(realSpySurface()) })
+        : undefined);
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('.hcell').first()).toBeVisible();
+    await page.locator('#viewbar .vtab[data-view="chart"]').click();
+    await page.evaluate(() => window.EdShell.setTicker('AAPL'));
+    await page.evaluate(() => window.EdShell.setTheme('dark'));
+    expect(await page.evaluate(() => window.EdShell.getState().selStrike)).toBeNull();   // no SPY strike chosen for AAPL
+    await expect(page.locator('#heatBody .hcell')).toHaveCount(0);
+  });
+
+  test('a theme change while a new ticker\'s surface is on its way never redraws the old ticker\'s grid', async ({ page }) => {
+    // SPY's captured surface is drawn; AAPL's read is held, so its answer never arrives.
+    await page.route('**/api/options/gamma-surface**', (route) =>
+      new URL(route.request().url()).searchParams.get('ticker') === 'SPY'
+        ? route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(realSpySurface()) })
+        : undefined);
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('.hcell').first()).toBeVisible();
+    await page.locator('#symInput').fill('AAPL');
+    await page.locator('#symInput').press('Enter');
+    await page.evaluate(() => window.EdShell.setTheme('dark'));
+    await expect(page.locator('#heatBody')).toContainText('reading /api/options/gamma-surface for AAPL');
+    await expect(page.locator('.hcell')).toHaveCount(0);                 // none of SPY's cells under AAPL
   });
 
   test('each column streaming status is the served stream_by_expiry, never a page-side verdict', async ({ page }) => {
@@ -687,14 +755,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   // tests/test_heatmap_window_v1.py proves): every cell is drawn at a legible size, the grid
   // scrolls rather than shrinks, and the expired column is labelled.
   test('REAL-DATA: the 116x16 All window is drawn whole, legible, EXPIRED labelled; the page asks for the columns it fits', async ({ page }) => {
-    const REAL = require('./fixtures/real_spy_gamma_surface_116x16_premarket_20260910.json');
-    const stamped = Object.assign({}, REAL, {
-      source: 'terrain_live_cache', live: true, stale: false, degraded: null,
-      session_date_et: '2026-09-10', prior_session: false,
-      expirations: REAL.expirations.map((e) => Object.assign({}, e, { expired: e.expiry < '2026-09-10', front: e.expiry === '2026-09-10' })),
-      cells: REAL.cells.map((c) => Object.assign({}, c, { spot: c.strike === 764 })),
-      view: view({ centre: 764, scope: 'all', max_abs: { gex: 1e9 } }),
-    });
+    const stamped = realSpySurface();
     expect(stamped.strikes.length).toBe(116); expect(stamped.expirations.length).toBe(16);
     const asked = [];
     await page.route('**/api/options/gamma-surface**', (route) => {
@@ -709,7 +770,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     const fits = Number(asked[0].get('cols'));
     expect(fits).toBeGreaterThanOrEqual(3); expect(fits).toBeLessThanOrEqual(11);
     // highest strike at the top, the price row marked
-    await expect(rows.first().locator('.hstrike')).toHaveText(String(REAL.strikes[REAL.strikes.length - 1]));
+    await expect(rows.first().locator('.hstrike')).toHaveText(String(stamped.strikes[stamped.strikes.length - 1]));
     await expect(page.locator('#heatBody tr.spotrow .hstrike')).toHaveText('764');
     const cellFont = await page.locator('#heatBody .hcell').first().evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
     expect(cellFont).toBeGreaterThanOrEqual(13);
@@ -1000,16 +1061,10 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('.heat-banner.warming')).toContainText('LIVE SURFACE WARMING');
   });
 
-  test('switching ticker while a strike-detail chain fetch is in flight discards the stale response (RC-UI-2 finding #3)', async ({ page }) => {
-    // Independent-review finding (2026-09-12), REPRODUCED: ed-core.js's setTicker() already
-    // clears the SHARED state.selStrike before dispatching 'ed:ticker' (confirmed correct),
-    // but ed-gamma-panels.js's own 'ed:ticker' listener used to be just `loadAll` -- it never
-    // bumped Strike Detail's OWN generation counter (_sgen) or reset its DOM/subscription
-    // state. A /api/chain fetch already in flight for the OLD ticker at switch time still
-    // passed the unchanged `g === _sgen` guard on arrival, rendering the old ticker's stale
-    // OI/Vol/Gamma/Delta/IV UNDER THE NEW TICKER'S CONTEXT. Reproduced here exactly: select
-    // strike 586 on SPY (delayed /api/chain), switch to QQQ before the response arrives, then
-    // deliver it -- Strike Detail must stay reset (no SPY table rendered).
+  test('switching ticker while a strike-detail chain fetch is in flight discards the stale response', async ({ page }) => {
+    // SPY's strike 586 chain read is held; the ticker switches to QQQ (its surface read held, so
+    // no new strike is selected); then SPY's answer arrives and Strike Detail stays reset
+    // (ed-gamma-panels.js: resetStrikeDetailForTickerChange and stillStrikeCtx's ticker check).
     let chainCalls = 0;
     let releaseChain = null;
     function contractsFor(strike) {
@@ -1032,6 +1087,8 @@ test.describe('Ed Console shell + gamma heatmap', () => {
           contracts: contractsFor(strike) }),
       });
     });
+    await page.route('**/api/options/gamma-surface**', (route) =>
+      new URL(route.request().url()).searchParams.get('ticker') === 'SPY' ? route.fallback() : undefined);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
 
     // select strike 583 on SPY -- resolves immediately
@@ -1042,8 +1099,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.locator('.hcell[data-strike="586"][data-expiry="2026-09-11"]').click();
     await expect.poll(() => releaseChain !== null).toBe(true);
 
-    // switch ticker BEFORE the delayed 586 chain response arrives; the reset fires
-    // synchronously off the 'ed:ticker' listener, BEFORE the stale data lands
+    // switch ticker BEFORE the delayed 586 chain response arrives
     await page.evaluate(() => window.EdShell.setTicker('QQQ'));
     await expect(page.locator('#sdBody')).toContainText('Select a strike/expiry');
 

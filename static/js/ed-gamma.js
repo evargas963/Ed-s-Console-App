@@ -112,7 +112,7 @@
       _lastSurface = null; _lastRevision = null;
       paintChip(null);
       host.innerHTML = buildBanner(surface || { live: false }) + '<div class="placeholder"><div class="big">Gamma surface unavailable</div>' +
-        '<div class="sm">' + escapeHtml((surface && surface.reason) || 'no console / no live surface for this symbol') + '</div></div>';
+        '<div class="sm">' + escapeHtml((surface && surface.reason) || 'the console sent no reason') + '</div></div>';
       return;
     }
     var view = surface.view;
@@ -231,8 +231,8 @@
   // gamma, dex and oi are the same heatmap pane under three subview ids
   function _isGammaFamilySubview(sv) { return sv === 'gamma' || sv === 'dex' || sv === 'oi'; }
   function stillCurrent(ticker) {
-    var s = (window.EdShell && window.EdShell.getState()) || {};
-    return s.workspace === 'options' && _isGammaFamilySubview(s.subview) && s.view === 'heatmap' && (s.ticker || '') === ticker;
+    var s = window.EdShell.getState();
+    return s.workspace === 'options' && _isGammaFamilySubview(s.subview) && s.view === 'heatmap' && s.ticker === ticker;
   }
   function surfaceUrl(ticker, host) {
     var expiry = window.EdShell.getExpiry();
@@ -244,32 +244,48 @@
   function loadImpl(ticker, signal) {
     var host = document.getElementById('heatBody');
     if (!host || !stillCurrent(ticker)) return;
+    function unavailable(reason) { return { available: false, ticker: ticker, reason: reason }; }
+    function superseded(e) { if (e && e.name === 'AbortError') throw e; }   // a newer read renders
     return fetch(surfaceUrl(ticker, host), { cache: 'no-store', signal: signal })
-      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-      .then(function (d) { if (stillCurrent(ticker)) renderSurface(host, d); })
-      .catch(function (e) {
-        if (e && e.name === 'AbortError') return;   // superseded by a newer read -- that one renders
-        if (stillCurrent(ticker)) renderSurface(host, { available: false, ticker: ticker, reason: 'no console serving /api/options/gamma-surface' });
+      .then(function (r) {
+        if (!r.ok) return unavailable('the console answered /api/options/gamma-surface with ' + r.status);
+        return r.json().catch(function (e) {
+          superseded(e);
+          return unavailable('the console answered /api/options/gamma-surface with a body that is not JSON');
+        });
+      }, function (e) { superseded(e); return unavailable('no console serving /api/options/gamma-surface'); })
+      .then(function (d) {
+        if (!stillCurrent(ticker)) return;
+        try { renderSurface(host, d); } catch (e) {   // said on screen, then reported by the loader
+          renderSurface(host, unavailable('the page could not draw the answer of /api/options/gamma-surface'));
+          throw e;
+        }
       });
   }
   var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(_pendingTicker, signal); });
   function load() {
     var host = document.getElementById('heatBody');
     if (!host) return;
-    var st = (window.EdShell && window.EdShell.getState()) || {};
+    var st = window.EdShell.getState();
+    var nextTicker = st.ticker;   // the shell's: '' while none is chosen
+    if (_panTicker !== nextTicker) {   // a new ticker, in any view: the last one's grid leaves at once
+      _pan.centre = null; _pan.shift = 0; _panTicker = nextTicker;
+      _lastSurface = null; _lastRevision = null;
+      paintChip(null);
+      host.innerHTML = '<div class="placeholder"><div class="sm">reading /api/options/gamma-surface for ' +
+        escapeHtml(nextTicker) + '</div></div>';
+    }
     if (st.workspace !== 'options' || !_isGammaFamilySubview(st.subview) || st.view !== 'heatmap') {
       _pendingTicker = null;
       return;
     }
-    var nextTicker = st.ticker || '';
-    if (_panTicker !== nextTicker) { _pan.centre = null; _pan.shift = 0; _panTicker = nextTicker; }
     _pendingTicker = nextTicker;
     _loader.trigger(_pendingTicker);
   }
   function rerender() {   // a presentation change on the window on screen: no read needed
     var h = document.getElementById('heatBody'); if (!h) return;
     _lastRevision = null;
-    if (_lastSurface) renderSurface(h, _lastSurface); else load();
+    if (_lastSurface) renderSurface(h, _lastSurface);
   }
 
   if (typeof document !== 'undefined') {
@@ -281,7 +297,7 @@
     document.addEventListener('ed:measure', rerender);
     document.addEventListener('ed:expiry', load);   // a new window: the server picks it
     document.addEventListener('ed:scope', load);
-    if (typeof window !== 'undefined' && window.addEventListener) window.addEventListener('resize', load);
+    document.addEventListener('ed:resize', load);   // the columns it fits change with the width
   }
 
   var _root = (typeof window !== 'undefined') ? window : (typeof globalThis !== 'undefined' ? globalThis : this);
