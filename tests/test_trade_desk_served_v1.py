@@ -185,7 +185,7 @@ def test_one_strike_holding_both_walls_is_two_sided():
     from terrain_engine import wall_lean
     from tests.real_chains import SPY_AFTER_HOURS_PRINT
     price = SPY_AFTER_HOURS_PRINT["native"]["LAST_PRICE"]
-    assert wall_lean(770.0, 770.0, 771.0, "LONG_GAMMA_CHOP", "TRUSTED") == (
+    assert wall_lean(770.0, 770.0, price, "LONG_GAMMA_CHOP", "TRUSTED") == (
         ("TWO-SIDED — magnet, not a barrier",) * 2)
     assert wall_lean(765.0, 764.0, price, "LONG_GAMMA_CHOP", "TRUSTED") == ("DEALERS SELL", "DEALERS BUY")
     for regime, conf in (("UNAVAILABLE", "TRUSTED"), ("LONG_GAMMA_CHOP", "LEVEL_APPROX_NARROW_SPAN")):

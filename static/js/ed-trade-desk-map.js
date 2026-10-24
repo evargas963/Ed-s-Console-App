@@ -60,6 +60,8 @@
     if (sec < 172800) return (sec / 3600).toFixed(1) + 'h';
     return Math.round(sec / 86400) + 'd';
   }
+  // a value computed from the live price, marked when that price is not live (served price_mark)
+  function notLive(d) { return d && d.spot_feed_live === false ? ' · not live ' + age(d.spot_age_sec) : ''; }
   // Schwab's book time stands beside the age words. A book that is not live keeps that
   // time and says so. The words are unchanged when no book time was sent.
   function bookAgeLabel(m, word) {
@@ -251,7 +253,7 @@
       var l = byId[id]; if (!l || l.price == null || S.fam[l.family] === 0) return;
       var g = l.family === 'gamma' && gamma[l.id];
       var lean = S.terrain && S.terrain[l.id + '_lean'];   // served: call_wall_lean / put_wall_lean
-      if (g) { out.push({ id: l.id, price: Number(l.price), label: g[0] + (lean ? ' · ' + lean : ''), color: g[1], style: g[2], width: g[3] }); return; }
+      if (g) { out.push({ id: l.id, price: Number(l.price), label: g[0] + (lean ? ' · ' + lean + notLive(S.terrain) : ''), color: g[1], style: g[2], width: g[3] }); return; }
       var s = style[l.family]; if (!s) return;
       out.push({ id: l.id, price: Number(l.price), label: l.short, color: s[0], style: s[1], width: s[2] });
     });
@@ -500,7 +502,8 @@
       ['VALUE', l && l.summary ? String(l.summary.value_state || '—').replace(/_/g, ' ') : '—', ''],
       ['VWAP', l && l.summary ? String(l.summary.vwap_relation || '—').replace(/_/g, ' ') : '—', ''],
       ['OPTIONS', t && !t.error && t.posture ? String(t.posture).replace(/_/g, ' ') : '—', ''],
-      ['GAMMA', ({ ABOVE: 'Above flip', AT: 'At flip', BELOW: 'Below flip' })[t && t.flip_relation] || '—', t && t.flip_relation === 'ABOVE' ? 'up' : t && t.flip_relation === 'BELOW' ? 'dn' : '']
+      ['GAMMA', t && t.flip_relation ? ({ ABOVE: 'Above flip', AT: 'At flip', BELOW: 'Below flip' })[t.flip_relation] + notLive(t) : '—',
+        t && t.flip_relation === 'ABOVE' ? 'up' : t && t.flip_relation === 'BELOW' ? 'dn' : '']
     ];
     host.innerHTML = cells.map(function (c) {
       return '<div class="tdm-ag"><span>' + c[0] + '</span><b class="' + c[2] + '">' + esc(c[1]) + '</b></div>'; }).join('') +

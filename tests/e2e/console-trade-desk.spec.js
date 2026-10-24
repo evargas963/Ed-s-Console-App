@@ -26,9 +26,9 @@ const TERRAIN = { ticker: 'SPY', spot: SPOT, gamma_flip: 768, call_wall: 775, pu
 const LEVELS = { ticker: 'SPY', spot: SPOT, tf: '30', generation: 1, vwap_series: [],
   levels: [
     { id: 'PDH', price: 773.5, family: 'prior_day', label: 'Prior Day High', short: 'PDH', evidence_tier: 'MEASURED', distance: 2.2, side: 'ABOVE', },
-    { id: 'max_pain', price: 770, family: 'gamma', label: 'Max pain', short: 'Max pain', evidence_tier: 'DERIVED', distance: -1.3, side: 'BELOW', },
-    { id: 'call_wall', price: 775, family: 'gamma', label: 'Call wall', short: 'Call wall', evidence_tier: 'DERIVED', distance: 3.7, side: 'ABOVE', },
-    { id: 'put_wall', price: 765, family: 'gamma', label: 'Put wall', short: 'Put wall', evidence_tier: 'DERIVED', distance: -6.3, side: 'BELOW', },
+    { id: 'max_pain', price: 770, family: 'gamma', label: 'Max pain', short: 'Max pain', evidence_tier: 'DERIVED', distance: -1.3, side: 'BELOW', from_spot_text: '1.30 below spot', },
+    { id: 'call_wall', price: 775, family: 'gamma', label: 'Call wall', short: 'Call wall', evidence_tier: 'DERIVED', distance: 3.7, side: 'ABOVE', from_spot_text: '3.70 above spot', },
+    { id: 'put_wall', price: 765, family: 'gamma', label: 'Put wall', short: 'Put wall', evidence_tier: 'DERIVED', distance: -6.3, side: 'BELOW', from_spot_text: '6.30 below spot', },
   ],
   by_distance: ['max_pain', 'PDH'], families_absent: [], degraded: [],
   volume_profile: { basis: 'RTH 1-minute bars, each bar\'s volume spread evenly over its range (not trade prints)', tick_size: 0.01,
@@ -505,6 +505,29 @@ test.describe('Trade Desk renders served values', () => {
     await expect(nasdaq).toHaveClass(/on/);
     await expect.poll(() => reads.filter((u) => u.includes('venue=NASDAQ_BOOK')).length).toBeGreaterThan(1);
     expect(reads.every((u) => /venue=(NYSE|NASDAQ)_BOOK/.test(u))).toBe(true);
+    expect(errs).toEqual([]);
+  });
+
+  test('Right Now: distances from a price that has stopped are marked not live with its age', async ({ page }) => {
+    // AGENTS rule 5: the served price_mark beside the levels (spot_feed_live false, the price's age)
+    const errs = watchErrors(page);
+    const stopped = { spot_feed_live: false, spot_age_sec: 125 };
+    await page.route('**/api/**', (route) => {
+      const url = route.request().url();
+      let body = { available: false };
+      if (url.includes('/api/terrain/strikes')) body = STRIKES;
+      else if (url.includes('/api/terrain')) body = Object.assign({}, TERRAIN, stopped);
+      else if (url.includes('/api/levels')) body = Object.assign({}, LEVELS, stopped);
+      else if (url.includes('/api/order-flow/microstructure')) body = MICRO;
+      else if (url.includes('/api/liquidity-snapshot')) body = LIQ;
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    });
+    await routeWatchlist(page, ['SPY']);
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'right-now'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const body = page.locator('#tdBody');
+    await expect(body).toContainText('1.30 below spot · not live 2m');
+    await expect(body).toContainText('Put wall 6.30 below spot, call wall 3.70 above spot · not live 2m');
     expect(errs).toEqual([]);
   });
 

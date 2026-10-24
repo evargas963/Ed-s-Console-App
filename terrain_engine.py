@@ -53,7 +53,7 @@ from math_levels import (
 from time_et import ET, option_close_product, time_to_expiry_years
 from math_exposure_core import key_level_strikes_with_gamma
 from numeric_contract import schwab_count, schwab_number
-from terrain_read import LEVEL_ABOVE, LEVEL_AT, LEVEL_BELOW, build_terrain_read, level_side
+from terrain_read import LEVEL_ABOVE, LEVEL_BELOW, build_terrain_read, level_side, price_side
 
 #: Payload schema version — bump on any field change so the UI can fail closed.
 #: v2 (2026-07-21): + net_gex_at_spot, key_delta_strike, hvp, lvp.
@@ -587,8 +587,6 @@ def per_strike_view(books: dict, exposures: dict) -> dict:
 
 #: a wall's geometry against the price (wall_geometry_state)
 WALL_CONTAINS, WALL_BREACHED = "contains", "breached"
-#: where the price is against a level, from the level's side of the price (level_side)
-_SPOT_IS = {LEVEL_BELOW: "above", LEVEL_AT: "at", LEVEL_ABOVE: "below"}
 
 
 def wall_geometry_state(spot: float | None, wall: float | None,
@@ -644,13 +642,10 @@ def price_relations(terrain: dict, price: float | None) -> PriceRelations:
         absolute_gamma_gex_dollars=terrain["absolute_gamma_gex_dollars"],
         absolute_gamma_oi=terrain["absolute_gamma_oi"], book_oi_total=terrain["book_oi_total"],
         net_gex_at_spot=terrain["net_gex_at_spot"], front_dte=terrain["max_pain_dte"])
-    flip_side = level_side(flip, price)
     return PriceRelations(
         call_wall_state=wall_geometry_state(price, call, "call"),
         put_wall_state=wall_geometry_state(price, put, "put"),
-        call_wall_lean=call_lean, put_wall_lean=put_lean,
-        flip_relation=None if flip_side is None else {LEVEL_BELOW: LEVEL_ABOVE, LEVEL_ABOVE: LEVEL_BELOW,
-                                                      LEVEL_AT: LEVEL_AT}[flip_side],
+        call_wall_lean=call_lean, put_wall_lean=put_lean, flip_relation=price_side(flip, price),
         pin_candidate=pin, pin_candidate_blockers=list(pin_blockers), lines=read.lines)
 
 
@@ -666,7 +661,7 @@ def wall_lean(call_wall, put_wall, price, regime, confidence) -> tuple:
     def one(wall, side, lean):
         state = wall_geometry_state(price, wall, side)
         if state == WALL_BREACHED:
-            return f"BREACHED — spot {_SPOT_IS[level_side(wall, price)]}"
+            return f"BREACHED — spot {price_side(wall, price).lower()}"
         return lean if state == WALL_CONTAINS and earn else None
     return one(call_wall, "call", "DEALERS SELL"), one(put_wall, "put", "DEALERS BUY")
 

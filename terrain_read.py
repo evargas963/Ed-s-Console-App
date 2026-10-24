@@ -71,6 +71,22 @@ def level_side(level: float | None, price: float | None) -> str | None:
     return LEVEL_AT
 
 
+def price_side(level: float | None, price: float | None) -> str | None:
+    """Where `price` sits against `level` (the other way round from level_side): LEVEL_ABOVE when
+    the price is over the level, LEVEL_AT, LEVEL_BELOW; None when either is unknown."""
+    return {LEVEL_ABOVE: LEVEL_BELOW, LEVEL_AT: LEVEL_AT, LEVEL_BELOW: LEVEL_ABOVE, None: None}[level_side(level, price)]
+
+
+def from_spot_text(distance: float | None, side: str | None) -> str | None:
+    """A level's distance from the live price (level minus price) and its side (level_side), as
+    the screen words it: "at spot", "1.30 above spot", "1.30 below spot". None when unknown."""
+    if side is None:
+        return None
+    if side == LEVEL_AT:
+        return "at spot"
+    return f"{price_text(abs(distance))} {side.lower()} spot"
+
+
 def within(low: float | None, high: float | None, price: float | None) -> bool:
     """Whether `price` is inside the range from `low` to `high`, either edge included (level_side)."""
     return (level_side(low, price) in (LEVEL_BELOW, LEVEL_AT)
@@ -258,7 +274,7 @@ def build_terrain_read(
 
     if flip is not None:
         distance_pct = _pct_from(spot, flip) * 100.0
-        where = {LEVEL_BELOW: "above", LEVEL_ABOVE: "below", LEVEL_AT: "at"}[level_side(flip, spot)]
+        where = price_side(flip, spot).lower()
         flip_line = (f"Spot {price_text(spot)} vs {_fmt('flip', flip, spot)} — {abs(distance_pct):.2f}% "
                      f"{where} the regime line.")
         # Gamma audit: at the middle tier the chain does not reach the measured flip-LEVEL

@@ -179,7 +179,7 @@ from confluence_composite import at_price, build_matrix
 from terrain_engine import (SCOPES, SAME_DAY_LEVELS, TerrainSnapshot, _dte_of, _per_strike_rows, chain_ladder,
                             compute_terrain, nearest_strike, positioning_migration, PRICE_RELATIONS,
                             price_relations, strike_window)
-from terrain_read import LEVEL_ABOVE, LEVEL_BELOW, crossed, level_side, within
+from terrain_read import LEVEL_ABOVE, LEVEL_BELOW, crossed, from_spot_text, level_side, within
 from math_levels import compute_charm_by_strike
 from terrain_atr import Atr, compute_atrs, roll_up
 
@@ -299,6 +299,16 @@ def _install_signal_handlers() -> None:
         except (ValueError, OSError, AttributeError) as e:
             # Not the main thread, or the platform lacks it — never fatal.
             log.debug("could not install handler for %s: %s", sig, e)
+
+
+def price_mark(ticker: str, spot_ts: float | None, now: float) -> dict:
+    """Whether the live price is live at `now` (Schwab's LEVELONE_EQUITIES feed delivering it), why
+    not, and its trade time and age: served beside every value computed from that price, so a
+    value from a price that has stopped stands marked not live (AGENTS rule 5)."""
+    return {"spot_feed_live": lmp.feed_live_for(ticker, "LEVELONE_EQUITIES", now),
+            "spot_outage": lmp.outage(ticker, "LEVELONE_EQUITIES", now),
+            "spot_time_ct": None if spot_ts is None else ct_label(spot_ts),
+            "spot_age_sec": None if spot_ts is None else now - spot_ts}
 
 
 def resolve_spot(ticker: str, *, now: float) -> tuple[float | None, str, float | None]:
@@ -2408,15 +2418,14 @@ def get_terrain(ticker: str = Query(...)):
         computed = cached.get("computed_ts_utc")
         out["levels_time_ct"] = ct_label(computed) if computed is not None else None
         out.update(_atr_fields(tk, at))     # live: today's candle from the bars held now
-        # the chain's age is levels_stale, above. The price those levels were built from is a
-        # separate fact: the numbers stay, and the rail says OFFLINE when that feed is not live.
-        out["spot_feed_live"] = lmp.feed_live_for(tk, "LEVELONE_EQUITIES", now)
-        out["spot_outage"] = lmp.outage(tk, "LEVELONE_EQUITIES", now)
+        # the chain's age is levels_stale, above. The live price the relations are computed from
+        # is a separate fact: the numbers stay, marked with whether that price is live
+        out.update(price_mark(tk, out["spot_as_of_ts_utc"], now))
         return out
     spot, spot_source, spot_ts = resolve_spot(tk, now=at.timestamp())
     _why = _terrain_refresh_last_error.get(tk)
     unavailable = compute_terrain(tk, None, spot, now=at).to_dict()
-    return unavailable | price_relations(unavailable, spot).to_dict() | {
+    return unavailable | price_relations(unavailable, spot).to_dict() | price_mark(tk, spot_ts, at.timestamp()) | {
         "spot_source": spot_source, "spot_as_of_ts_utc": spot_ts,
         **_atr_fields(tk, at),    # from the candles and bars, which do not wait for a chain
         # RC-126: not_ready carries its REASON when the producer has one — an eternal
@@ -3310,6 +3319,7 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict:
         price = row.get("price")
         row["distance"] = (price - spot) if price is not None and spot is not None else None
         row["side"] = level_side(price, spot)
+        row["from_spot_text"] = from_spot_text(row["distance"], row["side"])
     # the ladder in price order (highest first, unpriced last), and the order by distance to spot
     levels = (sorted((r for r in levels if r.get("price") is not None), key=lambda r: r["price"], reverse=True)
               + [r for r in levels if r.get("price") is None])
@@ -3331,7 +3341,7 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict:
         "spot": spot,
         "spot_source": spot_source,
         "spot_as_of_ts_utc": spot_ts,
-        "spot_time_ct": ct_label(spot_ts) if spot_ts is not None else None,
+        **price_mark(tk, spot_ts, served_ts),     # each level's distance and side are from that price
         "priced_at_spot": t.get("spot") if t is not None else None,
         "generation": snap.generation if snap is not None else None,
         "snapshot_as_of_ts_utc": snap.as_of_ts_utc if snap is not None else None,

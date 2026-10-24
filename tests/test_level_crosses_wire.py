@@ -139,6 +139,37 @@ def test_the_levels_side_of_a_print_on_a_level_is_at():
     assert (put["price"], put["distance"], put["side"]) == (ON_A_STRIKE, 0.0, LEVEL_AT)
 
 
+def test_relations_from_a_stopped_price_stand_marked_not_live_with_its_time_and_age():
+    """The 16:39 print (773.1269) is past the call wall. While the feed delivers it, the wall's
+    state and each level's distance are live. When the daemon's connection ends, they stand,
+    marked not live, with the print's trade time and its age (AGENTS rule 5)."""
+    from datetime import datetime
+
+    from time_et import ET, ct_label
+
+    _forget()
+    _publish_close()
+    msg = SPY_PRINT_A_STRIKE_AWAY
+    lmp.record_from_level_one_equity("SPY", msg["native"], received_ts=msg["ts_recv"])
+    ofs._price_rows["SPY"] = live_price_rows.price_row("SPY", time.time())
+    trade_ts = ofs._price_rows["SPY"]["trade_ts"]
+    try:
+        live = server.get_terrain(ticker="SPY")
+        lmp.record_feed_down()
+        at = time.time()
+        down = server.get_terrain(ticker="SPY")
+        levels = server.levels_payload("SPY", "1", datetime.fromtimestamp(at, ET))
+    finally:
+        _forget()
+    assert live["spot_feed_live"] is True and down["spot_feed_live"] is False and levels["spot_feed_live"] is False
+    assert live["call_wall_lean"] == down["call_wall_lean"] == "BREACHED — spot above"
+    for body in (down, levels):
+        assert body["spot"] == STRIKE_AWAY and body["spot_time_ct"] == ct_label(trade_ts)
+        assert body["spot_age_sec"] >= at - trade_ts > 0
+    call = next(r for r in levels["levels"] if r["id"] == "call_wall")
+    assert call["from_spot_text"] == f"{STRIKE_AWAY - 765.0:.2f} below spot"
+
+
 def test_a_stored_cross_is_the_row_read_back(tmp_path: Path) -> None:
     edb = EdDB(tmp_path / "level_crosses.db")
     event = LevelCrossEvent(ticker="SPY", ts_utc=SPY_PRINT_A_STRIKE_AWAY["ts_recv"], ts_et="2026-10-22 16:39:03 ET",

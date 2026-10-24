@@ -111,12 +111,13 @@
     var nearest = sorted[0];
     var rows = sorted.slice(1, 6).map(function (r) { return [r.label || r.id, num(r.price), r.evidence_tier]; });
     var heroVal = (nearest.label || nearest.id) + ' ' + num(nearest.price);
-    return stage(2, 'td-accent-green', 'Frame — nearest liquidity level', heroVal, fromSpot(nearest), 0, rows, null);
+    return stage(2, 'td-accent-green', 'Frame — nearest liquidity level', heroVal,
+                 nearest.from_spot_text + notLive(levelsD), 0, rows, null);
   }
-  // a served level's distance and side from the live price, in words
-  function fromSpot(r) {
-    return r.side === 'AT' ? 'at spot' : r.side === 'ABOVE' ? num(r.distance) + ' above spot'
-      : r.side === 'BELOW' ? num(-r.distance) + ' below spot' : '';
+  // a value computed from the live price, marked when that price is not live (served price_mark)
+  function notLive(d) {
+    return d && d.spot_feed_live === false
+      ? ' · not live ' + (window.EdShell && window.EdShell.fmtAge ? window.EdShell.fmtAge(d.spot_age_sec) : '') : '';
   }
 
   function confirmStage(d) {
@@ -159,8 +160,9 @@
     }
     var walls = {};   // served: /api/levels' own rows
     if (levelsD && levelsD.levels) levelsD.levels.forEach(function (r) { walls[r.id] = r; });
-    if (walls.put_wall && walls.call_wall && walls.put_wall.side && walls.call_wall.side) {
-      lines.push(['Box', 'Put wall ' + fromSpot(walls.put_wall) + ', call wall ' + fromSpot(walls.call_wall)]);
+    if (walls.put_wall && walls.call_wall && walls.put_wall.from_spot_text && walls.call_wall.from_spot_text) {
+      lines.push(['Box', 'Put wall ' + walls.put_wall.from_spot_text + ', call wall ' + walls.call_wall.from_spot_text +
+        notLive(levelsD)]);
     }
     if (!lines.length) return '';
     return '<div class="td-context"><h4>Context summary</h4>' +

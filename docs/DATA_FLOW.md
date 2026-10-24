@@ -466,11 +466,18 @@ from Schwab to the screen (daemon, console, page), are these:
   that live price, computed when served, never stored with the publication: each wall's state
   and lean, the price's side of the flip, the pin candidate and the read's lines
   (`terrain_engine.price_relations`, a `PriceRelations` record, on `/api/terrain`, `/api/levels`
-  and the chart's markers); each level's distance (level minus price) and side on `/api/levels`,
-  the one distance the desk's nearest level and its Box line read; the price inside, above or
-  below each liquidity zone (`terrain_read.within`); and the level crosses (below). One side rule,
-  exact values: `terrain_read.level_side` (ABOVE, AT, BELOW), with `within` and `crossed` built
-  on it (`tests/test_level_crosses_wire.py`, `tests/test_trade_desk_served_v1.py`). The one-day move's two prices are the live price
+  and the chart's markers); each level's distance (level minus price), side and the words for
+  both (`from_spot_text`, "1.30 below spot") on `/api/levels`, the one distance the desk's nearest
+  level and its Box line print; the price inside, above or below each liquidity zone
+  (`terrain_read.within`); and the level crosses (below). One side rule, exact values:
+  `terrain_read.level_side` (ABOVE, AT, BELOW), with `price_side` (the price's side of a level),
+  `within` and `crossed` built on it (`tests/test_level_crosses_wire.py`,
+  `tests/test_trade_desk_served_v1.py`). Each route serving them serves the price's mark beside
+  them (`server.price_mark`: whether Schwab's feed delivers the price, why not, its trade time and
+  age): when the price stops, every relation stands, marked not live with that time and age, on
+  the desk's wall labels, GAMMA cell, nearest level and Box line
+  (`tests/test_level_crosses_wire.py::test_relations_from_a_stopped_price_stand_marked_not_live_with_its_time_and_age`,
+  `tests/e2e/console-trade-desk.spec.js`). The one-day move's two prices are the live price
   plus and minus the publication's implied move (`server.expected_move`, the one producer;
   `/api/levels` and `/api/confluence` carry it). A chain delivered with no spot (the daemon held no
   price) has no levels, with its reason.
