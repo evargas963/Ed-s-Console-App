@@ -157,7 +157,8 @@
       if (loc.below) parts.push(esc(loc.below.zone_label) + ' zone below at ' + num(loc.below.zone_high) + ' (confluence ' + loc.below.confluence_score + ')');
       lines.push(['Location', parts.length ? 'Between zones — ' + parts.join(', ') : 'No scored zone nearby']);
     }
-    var walls = {}; ((levelsD && levelsD.levels) || []).forEach(function (r) { walls[r.id] = r; });   // served
+    var walls = {};   // served: /api/levels' own rows
+    if (levelsD && levelsD.levels) levelsD.levels.forEach(function (r) { walls[r.id] = r; });
     if (walls.put_wall && walls.call_wall && walls.put_wall.side && walls.call_wall.side) {
       lines.push(['Box', 'Put wall ' + fromSpot(walls.put_wall) + ', call wall ' + fromSpot(walls.call_wall)]);
     }
