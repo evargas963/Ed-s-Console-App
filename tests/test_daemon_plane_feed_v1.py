@@ -12,17 +12,10 @@ from __future__ import annotations
 
 import time
 
-import pytest
-
 import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 from stream_spine import book_msg, quote_msg
-
-
-@pytest.fixture(autouse=True)
-def _isolate_stream_capture_env(monkeypatch):
-    monkeypatch.delenv("STREAM_CAPTURE_DB_PATH", raising=False)
 
 
 def _reset(tmp_path):
