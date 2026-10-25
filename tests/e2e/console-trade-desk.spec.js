@@ -205,8 +205,11 @@ test('Desk: an offline price keeps its last trade time on the map', async ({ pag
 });
 
 test('Desk: a price push that stops reads OFFLINE on the map, not its last row\'s LIVE', async ({ page }) => {
+  // the daemon's own rows for SPY's and $SPX's real messages in regular hours (tests/test_order_flow_book_payload_v1.py)
+  const ROWS = require(path.join(__dirname, 'fixtures', 'price_rows_live.json'));
   await intercept(page);
-  await mockPriceSocket(page, [priceRow('SPY', 771.3, { trade_time_ct: '14:00:03 CT', total_volume: 1000 })]);
+  // SPY's row, nothing for 8 s (the push down), then the push resumes with $SPX's row only
+  await mockPriceSocket(page, [ROWS.SPY], [{ afterMs: 8000, row: ROWS['$SPX'] }]);
   await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
     localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
@@ -215,11 +218,22 @@ test('Desk: a price push that stops reads OFFLINE on the map, not its last row\'
   await expect(page.locator('#tdmTrust')).toContainText('PRICE OFFLINE');
   await expect(page.locator('#tdmTrust')).not.toContainText('PRICE LIVE');
   await expect(page.locator('#tdmCardFlow')).toContainText('OFFLINE');
+  // the push resumes with another symbol's row: SPY's last row is not SPY's state now, here or in
+  // the header, even after the map repaints (the console's flow change re-reads and redraws it)
+  await expect(page.locator('#tdmIdxSPX')).toContainText('last trade ' + ROWS['$SPX'].trade_time_ct, { timeout: 10000 });
+  await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'flow' } })));
+  await page.waitForTimeout(500);
+  // read once, inside the 3 s before the header would call the push down again (no retrying)
+  expect(await page.locator('#hFeed').textContent()).toBe('OFFLINE');
+  const trust = await page.locator('#tdmTrust').textContent();
+  expect(trust).toContain('PRICE OFFLINE');
+  expect(trust).not.toContain('PRICE LIVE');
 });
 
-test('Desk: a book whose market is closed reads BOOK NOT LIVE (the route\'s own answer)', async ({ page }) => {
+test('Desk: a book whose market is closed reads BOOK NOT LIVE and keeps Schwab\'s book time (the route\'s own answer)', async ({ page }) => {
   // SPY's real book and quotes at 22:00 ET as the route serves them (tests/test_order_flow_book_payload_v1.py)
   const CLOSED_BOOK = require(path.join(__dirname, 'fixtures', 'order_flow_book_closed_payload.json'));
+  const errs = watchErrors(page);
   await intercept(page);
   await page.route('**/api/order-flow/microstructure**', (route) => route.fulfill({
     status: 200, contentType: 'application/json', body: JSON.stringify(CLOSED_BOOK) }));
@@ -227,8 +241,12 @@ test('Desk: a book whose market is closed reads BOOK NOT LIVE (the route\'s own 
     localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await expect(page.locator('#tdmCardLiq')).toContainText('BOOK NOT LIVE');
+  await expect(page.locator('#tdmCardLiq .tdm-src')).toContainText('book ' + CLOSED_BOOK.book_time_ct + ' · not live');
+  // Schwab's depth-5 totals as served (800 and 2,160 shares), drawn by the card's volume formatter
+  await expect(page.locator('#tdmCardLiq')).toContainText('800 / 2.2K');
   await expect(page.locator('#tdmTrust')).toContainText('BOOK ' + CLOSED_BOOK.book_time_ct + ' · NOT LIVE');
   await expect(page.locator('#tdmTrust')).not.toContainText('STALE');
+  expect(errs).toEqual([]);
 });
 
 test('Desk: the book age keeps Schwab\'s book time', async ({ page }) => {
@@ -246,26 +264,6 @@ test('Desk: the book age keeps Schwab\'s book time', async ({ page }) => {
   await expect(page.locator('#tdmCardLiq')).toContainText('BID HEAVY');
   await expect(page.locator('#tdmCardLiq')).toContainText('3.0K / 2.0K');
   await expect(page.locator('#tdmTrust')).toContainText('BOOK ' + BOOK_TIME + ' · 1s');
-  expect(errs).toEqual([]);
-});
-
-test('Desk: a book that is not live keeps Schwab\'s book time', async ({ page }) => {
-  const errs = watchErrors(page);
-  const BOOK_TIME = 'Fri 09/25 06:59 PM CT';
-  await intercept(page);
-  await page.route('**/api/order-flow/microstructure**', (route) => route.fulfill({
-    status: 200, contentType: 'application/json',
-    body: JSON.stringify(Object.assign({}, MICRO, {
-      book_time_ct: BOOK_TIME, ages: { book_age_sec: 4, book_stale: true }, book_feed_label: 'NOT LIVE',
-    })),
-  }));
-  await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
-    localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
-  await page.goto('/', { waitUntil: 'domcontentloaded' });
-  await expect(page.locator('#tdmCardLiq')).toContainText('BOOK NOT LIVE');
-  await expect(page.locator('#tdmCardLiq .tdm-src')).toContainText('book ' + BOOK_TIME + ' · not live');
-  await expect(page.locator('#tdmCardLiq')).toContainText('3.0K / 2.0K');
-  await expect(page.locator('#tdmTrust')).toContainText('BOOK ' + BOOK_TIME + ' · NOT LIVE');
   expect(errs).toEqual([]);
 });
 

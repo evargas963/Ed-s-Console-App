@@ -607,7 +607,7 @@
     });
     window.addEventListener('ed:quote_tick', function (e) {
       var q = e.detail; if (!q || !q.ticker) return;
-      S.pushDown = null;
+      if (q.ticker === st().key) S.pushDown = null;   // the selected price's own row ends it, as in the header
       S.quotes[q.ticker] = q;
       if (!onDesk()) return;
       paintHeader();
