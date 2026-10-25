@@ -103,18 +103,24 @@ def test_a_status_stamped_after_the_time_judged_is_not_that_time(after):
 
 def test_a_streamed_cell_is_not_live_after_its_own_option_close():
     """SPY's chain priced at `_AT` (2026-10-05, regular hours) with SYM streaming: its legs are live.
-    At 16:20 ET that day, the feed up and the daemon still holding SYM, SPY's own option market
-    (index-close options, 16:15 in Schwab's /markets answer) has closed: no leg reads live, and the
-    heatmap's answer does not call itself live."""
+    At 16:05 ET that day, after the stock options' 16:00 close, SPY's own option market (index-close
+    options, 16:15 in Schwab's /markets answer) is still open: its legs stay live. At 16:20 it has
+    closed, the feed up and the daemon still holding SYM: no leg reads live, and the heatmap's
+    levels are STALE (the chain was fetched 2026-09-30, not after this close)."""
     assert _states_when_the_status_was_sent(-0.5) == ["live"]
-    after_close = datetime.fromisoformat("2026-10-05T16:20:00-04:00").timestamp()
-    _beat(after_close - 0.5)
-    server.restamp_open_surfaces(after_close)
-    body = server.gamma_surface_payload(TK, "all", None, 0, None, None, datetime.fromtimestamp(after_close, ET))
-    states = [col[side]["state"] for cell in body["cells"] for col, pair in zip(cell["stream"], cell["contracts"])
-              for side in ("call", "put") if col and pair.get(side) == SYM]
-    assert states and "live" not in states
-    assert body["levels_state"] != "LIVE"
+
+    def legs_at(hhmm: str) -> "tuple[list, dict]":
+        at = datetime.fromisoformat(f"2026-10-05T{hhmm}:00-04:00").timestamp()
+        _beat(at - 0.5, options=[SYM])
+        server.restamp_open_surfaces(at)
+        body = server.gamma_surface_payload(TK, "all", None, 0, None, None, datetime.fromtimestamp(at, ET))
+        return [col[side]["state"] for cell in body["cells"] for col, pair in zip(cell["stream"], cell["contracts"])
+                for side in ("call", "put") if col and pair.get(side) == SYM], body
+    open_states, _ = legs_at("16:05")
+    closed_states, body = legs_at("16:20")
+    assert open_states == ["live"]
+    assert closed_states and "live" not in closed_states
+    assert body["levels_state"] == "STALE"
 
 
 def test_a_status_sent_past_the_live_limit_is_not_current():

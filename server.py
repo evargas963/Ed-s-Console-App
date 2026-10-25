@@ -764,9 +764,7 @@ def terrain_cache_get(ticker: str, now: float) -> dict | None:
 TERRAIN_STALE_AFTER_SEC: float = 180.0
 
 
-#: RC-108: Schwab refresh tokens die at 7 days, hard. The 2026-07-28 open went fully dark
-#: because the expiry sat in schwab_token.json for a week with no forward warning — the system
-#: only screamed AFTER the data was lost. Warn from day 5, red from day 6.
+#: Schwab refresh tokens end at 7 days: warned from day 5, red from day 6.
 _SCHWAB_TOKEN_WARN_DAYS = 5.0
 _SCHWAB_TOKEN_RED_DAYS = 6.0
 
@@ -807,7 +805,7 @@ def terrain_staleness(computed_ts_utc: float | None, ticker: str | None = None, 
     ticker's chain (a failed fetch, an incomplete delivery) outranks the age. While its option
     market is open the daemon fetches every watchlist ticker's chain without end, so age past two of
     its delivered rounds is a gap, never a schedule. Served beside it: the age and the chain's time."""
-    token = schwab_token_countdown(_schwab_token_creation_ts(), now)   # RC-108: warn BEFORE death
+    token = schwab_token_countdown(_schwab_token_creation_ts(), now)   # warned before it expires
     failure = str(_terrain_refresh_last_error.get(
         ticker_storage_key(ticker) if ticker else "", "") or "")
     state, reason = _levels_state(computed_ts_utc, ticker, now, failure)
@@ -1054,7 +1052,7 @@ def restamp_open_surfaces(now: float) -> None:
     """Mark every cached heatmap from the daemon's heartbeat at `now`, without repricing.
 
     The last streamed gamma stays. A contract is live by the one live rule on its ticker's own
-    option market (live_market_plane.feed_live_for): a socket that has closed, a contract the daemon
+    option market (live_market_plane.live_symbols): a socket that has closed, a contract the daemon
     no longer holds and an option market that has closed are not live. The page is told only when
     that changes."""
     global _last_feed_stamp
@@ -1715,12 +1713,14 @@ def _wait_for(what: str, ready) -> None:
 
 
 def refresh_not_live_pages(now: float) -> None:
-    """Tell each open page whose ticker's price is not live at `now` (price_state) to read its
-    levels again, so the not-live mark's age (server.price_mark) keeps counting while the price
-    stays stopped. The levels loop calls it every STATUS_EVERY_SEC; a page whose price is live is
-    not told."""
+    """Tell each open page whose ticker's price (price_state) or published levels (levels_state)
+    are not live at `now` to read its levels again, so each not-live age (price_mark,
+    terrain_staleness) keeps counting while nothing new arrives: a stopped price, or the close
+    values after the ticker's own option close. The levels loop calls it every STATUS_EVERY_SEC; a
+    page whose price and levels are both live is told by each new price and chain instead."""
     for tk in push_changes.watched():
-        if price_state(tk, now)[0] != lmp.LIVE:
+        levels = terrain_cache_get(tk, now)
+        if price_state(tk, now)[0] != lmp.LIVE or (levels is not None and levels["levels_state"] != lmp.LIVE):
             push_changes.changed(tk, push_changes.LEVELS)
 
 
@@ -2352,8 +2352,8 @@ def get_options_gamma_surface(ticker: str = Query(...), scope: ScopeQuery = "aut
     `scope`, the panned `centre` and a drag's `shift`, the `cols` the page fits, the selected
     `expiry`), with its `view`: the centre, the coverage words, the contracts to stream and the
     colour scale. With no live surface the answer is "unavailable" with the reason; there is no
-    second source. Exposes chain/spot as-of, source, and stale/degraded so the UI can fail stale
-    visibly."""
+    second source. Served with the levels' verdict (levels_verdict) and the chain's and price's
+    times."""
     return JSONResponse(gamma_surface_payload(ticker_storage_key(_required_ticker(ticker)), scope, centre,
                                               shift, cols, expiry, now_et()))
 
@@ -2528,7 +2528,7 @@ def desk_events_payload(tk: str, venue: str, tf: str, now: datetime) -> dict:
     newest_at = {it["price"]: it for it in items}
     for it in sorted(newest_at.values(), key=lambda it: it["ts"])[-DESK_MARKERS:]:
         it["marker"] = True
-    t = get_terrain(ticker=tk)                       # the same payload the terrain route serves
+    t = terrain_answer(tk, now)                      # the same payload the terrain route serves
     tts = t.get("computed_ts_utc")
     for side, word, key in (("call", "call", "cw"), ("put", "put", "pw")):
         if t.get(f"{side}_wall_state") == "breached":    # at the live price (price_relations)

@@ -6,6 +6,7 @@
  * chain scope and the chart shows the price-bars clock AND the GEX levels clock as two separate
  * badges. Stale server state -> stale badge styling. Offline.
  */
+const path = require('path');
 const { test, expect } = require('@playwright/test');
 const { routeWatchlist } = require('./fixtures/watchlist');
 
@@ -59,12 +60,13 @@ test.describe('#4 per-panel source / as-of / freshness', () => {
     await expect(badge).toContainText('21s');            // the server's own levels_age_text
   });
 
-  test('GEX-by-strike after its option close reads CLOSE with the close values\' time and age', async ({ page }) => {
-    await routes({ strikes: Object.assign({}, STRIKES, { levels_state: 'CLOSE', levels_time_ct: 'Fri 10/23 03:15 PM CT',
-      levels_age_text: '38h' }) })(page);
+  test('GEX-by-strike after its option close reads CLOSE with the close values\' time and age (the route\'s own answer)', async ({ page }) => {
+    // /api/terrain/strikes for SPY's 2026-10-22 close publication, read at 18:00 ET (tests/test_level_crosses_wire.py)
+    const CLOSED = require(path.join(__dirname, '..', 'fixtures', 'real_spy_strikes_at_a_stopped_price_2026_10_22.json'));
+    await routes({ strikes: CLOSED })(page);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const badge = page.locator('#gbsSrc .asof');
-    await expect(badge).toHaveText('terrain · CLOSE · Fri 10/23 03:15 PM CT · 38h');
+    await expect(badge).toHaveText('terrain · CLOSE · ' + CLOSED.levels_time_ct + ' · ' + CLOSED.levels_age_text);
     await expect(badge).not.toHaveClass(/ live/);
   });
 
@@ -118,14 +120,15 @@ test.describe('#4 per-panel source / as-of / freshness', () => {
     await expect(asof).toContainText('21s');
   });
 
-  test('a stale terrain generation makes the GEX-by-strike badge read stale', async ({ page }) => {
-    const staleStrikes = Object.assign({}, STRIKES, { levels_state: 'STALE', levels_age_sec: 900,
-      levels_age_text: '15m', levels_stale_reason: 'levels loop paused' });
-    await routes({ strikes: staleStrikes })(page);
+  test('a stale terrain generation makes the GEX-by-strike badge read stale (the route\'s own answer)', async ({ page }) => {
+    // /api/terrain/strikes for SPY's 2026-10-22 close publication after the next day's close,
+    // 2026-10-23 16:30 ET, no chain fetched since (tests/test_level_crosses_wire.py)
+    const STALE = require(path.join(__dirname, '..', 'fixtures', 'real_spy_strikes_after_the_next_close_2026_10_23.json'));
+    await routes({ strikes: STALE })(page);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const badge = page.locator('#gbsSrc .asof');
     await expect(badge).toHaveClass(/stale/);
-    await expect(badge).toContainText('terrain · STALE');
-    await expect(badge).toHaveAttribute('title', 'levels loop paused');
+    await expect(badge).toHaveText('terrain · STALE · ' + STALE.levels_time_ct + ' · ' + STALE.levels_age_text);
+    await expect(badge).toHaveAttribute('title', STALE.levels_stale_reason);
   });
 });

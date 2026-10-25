@@ -148,8 +148,10 @@ from Schwab to the screen (daemon, console, page), are these:
   the newest by that time is the current one; a reconnect never replays an older value as live. A
   value is live only while it is updating: its feed delivers it and its market trades
   (`live_market_plane.live_state`). Its market trades inside the sessions Schwab's /markets answer
-  sent for today (pre-market, regular, post-market; an option service only inside an option
-  market's regular window), while Schwab's SECURITY_STATUS for it is not Closed or Halted; before
+  sent for today (pre-market, regular, post-market; an option contract only inside its own option
+  market's regular window, the market of the ticker whose chain lists it: stock options to 16:00 ET,
+  index-close options to 16:15; with no chain held that lists it, its market is not known and it
+  reads NOT LIVE), while Schwab's SECURITY_STATUS for it is not Closed or Halted; before
   the 07:00 ET pre-market /markets sends, a stock Schwab streams from 04:00 reads NOT LIVE,
   "outside Schwab's market hours" (operator 2026-10-25), and an option contract whose quotes Schwab
   streams from 07:00 reads NOT LIVE before the 09:30 option window, "outside Schwab's option market
@@ -181,7 +183,10 @@ from Schwab to the screen (daemon, console, page), are these:
   (the desk map's chain age carries the chain's time), `tests/test_data_path_strike_chain_time_v1.py`
   (the GEX-by-strike badge carries the chain's time), `tests/test_data_path_snapshot_time_v1.py`
   (the desk map's LEVELS pill carries the snapshot's time), `tests/test_data_path_level_asof_time_v1.py`
-  (the levels page As-of column carries each level's time); the rest — ENF-22.
+  (the levels page As-of column carries each level's time), `tests/test_data_path_served_verdicts_v1.py`
+  (the levels verdict by the ticker's own option market, an option contract by the market of the
+  chain that lists it, and a page told to read again while its price or its levels are not live);
+  the rest — ENF-22.
 - **D6. No live screen reads the database.** Every live route serves from memory; the database
   is read at startup, after the close and for research only.
   Enforced by: `tests/test_data_path_rules_v1.py`.
@@ -560,8 +565,9 @@ from Schwab to the screen (daemon, console, page), are these:
   that is not LIVE (the feed down, the symbol not held, its market not trading); while it is
   LIVE, the daemon's price row's `feed_label` and `outage`; NOT LIVE until the daemon's first row
   arrives (operator 2026-10-25). The levels, the chain and the heatmap carry the levels verdict
-  (`server.terrain_staleness`, D4 above: LIVE / CLOSE / STALE / NOT LIVE with the chain's time
-  and age), and Key Levels its mark (`server.levels_mark`: the levels' word, or the price's while
+  (`server.terrain_staleness`, §3.4's chain sweep: LIVE / CLOSE / STALE / NOT LIVE with the
+  chain's time and age, its age kept counting by `server.refresh_not_live_pages` while it is not
+  LIVE), and Key Levels its mark (`server.levels_mark`: the levels' word, or the price's while
   the levels are LIVE). A value's age is never the test: Schwab sends a
   field only when it changes. The daemon's status is read from the same heartbeat
   (`live_market_plane.daemon_status`). Owner: the console's price-row connection (`streaming._rows_loop`)

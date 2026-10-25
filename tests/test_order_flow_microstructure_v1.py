@@ -283,19 +283,17 @@ def test_a_one_sided_book_schwab_sent_is_the_latest_book_never_the_older_two_sid
     assert m["depth"]["1"]["ask_total"] == 77.0 and m["depth"]["1"]["bid_total"] is None
 
 
-def test_route_serializes_carried_state_without_recomputing(monkeypatch):
+def test_route_serializes_carried_state_without_recomputing():
     """The /api/order-flow/microstructure route and the engine call the SAME producer. Once the
     structural state is computed for (ticker, BOOK_TIME) it is memoized; a second serialization of
-    the SAME unchanged book must carry that cached state, NOT re-run the structural computation."""
+    the SAME unchanged book must carry that cached state, NOT re-run the structural computation
+    (a recompute stores a new entry)."""
     ofe._MICRO_STRUCTURAL_CACHE.pop("CARRYTEST", None)
     data = _data()
     first = ofe.compute_book_microstructure(data, now_ts=100.0, ticker="CARRYTEST")
-
-    # If the second call recomputed instead of carrying, this would raise.
-    def _boom(_cb):
-        raise AssertionError("structural recomputed instead of carried")
-    monkeypatch.setattr(ofe, "_microstructure_structural", _boom)
+    held = ofe._MICRO_STRUCTURAL_CACHE["CARRYTEST"]
     second = ofe.compute_book_microstructure(data, now_ts=200.0, ticker="CARRYTEST")
+    assert ofe._MICRO_STRUCTURAL_CACHE["CARRYTEST"] is held, "structural recomputed instead of carried"
 
     # structural fields are identical (carried); only wall-clock ages/stamps advance.
     assert second["depth"] == first["depth"]
@@ -344,11 +342,9 @@ def test_changed_ladder_under_same_book_time_is_not_served_stale():
     assert [w["side"] for w in m2["wall_candidates"]] == ["ask"]
 
     # And an unchanged re-read of v2 (same ticker, same content) still carries without recompute.
-    def _boom(_cb):
-        raise AssertionError("recomputed despite identical canonical book")
-    import unittest.mock as _um
-    with _um.patch.object(ofe, "_microstructure_structural", _boom):
-        m2b = ofe.compute_book_microstructure(v2, ticker="STALE", now_ts=3.0)
+    held = ofe._MICRO_STRUCTURAL_CACHE["STALE"]
+    m2b = ofe.compute_book_microstructure(v2, ticker="STALE", now_ts=3.0)
+    assert ofe._MICRO_STRUCTURAL_CACHE["STALE"] is held, "recomputed despite identical canonical book"
     assert m2b["depth"] == m2["depth"]
     ofe._MICRO_STRUCTURAL_CACHE.pop("STALE", None)
 
@@ -444,23 +440,33 @@ def test_an_equity_l1_quote_is_not_stored_a_second_time_in_order_flow_state():
         ofls.clear_symbol("O01EQ")
 
 
-def test_size_g_the_live_push_seam_threads_each_messages_receive_time_into_push_level_one(monkeypatch):
+def test_size_g_the_live_push_seam_threads_each_messages_receive_time_into_push_level_one():
     """The production seam (order_flow_streaming._ingest_pushed, fed by the daemon's live
     push) must hand push_level_one the MESSAGE's own ts_recv for both equity
     (LEVELONE_EQUITIES) and option (LEVELONE_OPTIONS) messages -- never the time the console
-    processed it."""
+    processed it. Real data: GOOGL's TOTAL_VOLUME and SPY 2026-10-30 910 call's GAMMA as Schwab
+    sent them 2026-10-05 14:00 CT (tests/fixtures/real_stream_mix_2026_10_05_1400ct.json)."""
+    import app.options.order_flow.state as ofls
     import app.options.order_flow.streaming as ofs
     from stream_spine import options_quote_msg, quote_msg
 
-    seen = []
-    monkeypatch.setattr(ofs, "push_level_one",
-                        lambda sym, item, *, ts_recv, field_received: seen.append((sym, ts_recv)))
-    ofs._ingest_pushed("quote.SIZEG", quote_msg(
-        symbol="SIZEG", src="schwab_l1", ts_recv=1234.5, native={"LAST_PRICE": 1.0}))
-    ofs._ingest_pushed("optquote.SIZEG  260918C00001000", options_quote_msg(
-        symbol="SIZEG  260918C00001000", content={"BID_PRICE": 1.0}, src="schwab_options_l1",
-        ts_recv=2345.5))
-    assert seen == [("SIZEG", 1234.5), ("SIZEG  260918C00001000", 2345.5)]
+    mix = json.loads((Path(__file__).parent / "fixtures" / "real_stream_mix_2026_10_05_1400ct.json")
+                     .read_text(encoding="utf-8"))["messages"]
+    eq = next(m for m in mix if m["service"] == "LEVELONE_EQUITIES" and "TOTAL_VOLUME" in m["item"])
+    opt = next(m for m in mix if m["service"] == "LEVELONE_OPTIONS" and "GAMMA" in m["item"])
+    eq_sym, opt_sym = eq["item"]["key"], opt["item"]["key"]
+    ofls.clear_symbol(eq_sym)
+    ofls.clear_symbol(opt_sym)
+    try:
+        ofs._ingest_pushed(f"quote.{eq_sym}", quote_msg(symbol=eq_sym, src="schwab_l1", ts_recv=eq["ts_recv"],
+                                                        native=eq["item"]))
+        ofs._ingest_pushed(f"optquote.{opt_sym}", options_quote_msg(symbol=opt_sym, content=opt["item"],
+                                                                    src="schwab_options_l1", ts_recv=opt["ts_recv"]))
+        assert ofls.get_stream_greeks(eq_sym)["total_volume_ts_recv"] == eq["ts_recv"]
+        assert ofls.get_stream_greeks(opt_sym)["gamma_ts_recv"] == opt["ts_recv"]
+    finally:
+        ofls.clear_symbol(eq_sym)
+        ofls.clear_symbol(opt_sym)
 
 
 def test_book_top_never_stands_in_for_a_missing_l1_price():

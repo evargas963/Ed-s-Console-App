@@ -185,10 +185,11 @@ def test_relations_from_a_stopped_price_stand_marked_not_live_with_its_time_and_
 
 
 def test_a_page_whose_price_has_stopped_is_told_each_minute_to_read_its_levels_again():
-    """The not-live mark's age keeps counting: while SPY's last price (the 16:39 print) is live, a
-    page open on SPY is not told anything; once the daemon's connection ends, the levels loop's
-    minute (server.refresh_not_live_pages) tells it to read its levels again, every minute. Judged
-    from the print's receipt on, in that After-Hours session."""
+    """Each not-live age keeps counting: SPY's levels are its close values (its chain fetched after
+    its own 16:15 option close: CLOSE), so while its last price (the 16:39 print) is live a page open
+    on SPY is told by the levels loop's minute (server.refresh_not_live_pages) to read its levels
+    again, and once the daemon's connection ends too, every minute. Judged from the print's receipt
+    on, in that After-Hours session."""
     import asyncio
 
     import push_changes
@@ -218,20 +219,27 @@ def test_a_page_whose_price_has_stopped_is_told_each_minute_to_read_its_levels_a
         seen = asyncio.run(told())
     finally:
         _forget()
-    assert seen == [set(), {push_changes.LEVELS}, {push_changes.LEVELS}]
+    assert seen == [{push_changes.LEVELS}, {push_changes.LEVELS}, {push_changes.LEVELS}]
 
 
 #: the answers the browser tests render, each kept equal to the route's own (stopped_price_answers)
 STOPPED_FIXTURES = {"levels": "real_spy_levels_at_a_stopped_price_2026_10_22.json",
                     "confluence": "real_spy_confluence_at_a_stopped_price_2026_10_22.json",
-                    "terrain": "real_spy_terrain_at_a_stopped_price_2026_10_22.json"}
+                    "terrain": "real_spy_terrain_at_a_stopped_price_2026_10_22.json",
+                    "strikes": "real_spy_strikes_at_a_stopped_price_2026_10_22.json",
+                    "surface": "real_spy_gamma_surface_at_a_stopped_price_2026_10_22.json",
+                    "strikes_next_close": "real_spy_strikes_after_the_next_close_2026_10_23.json"}
+#: the answers that carry the price's mark
+PRICE_MARKED = ("levels", "confluence", "terrain")
 
 
 def stopped_price_answers() -> dict:
-    """/api/levels, /api/confluence (the 2026-10-22 expiry) and /api/terrain as the real code serves them on
-    SPY's 2026-10-22 close publication with SPY's 16:39 print (773.1269) as the last price and the
-    daemon's connection ended, read at the 18:00 print's instant: the answers the browser tests
-    render (STOPPED_FIXTURES)."""
+    """/api/levels, /api/confluence (the 2026-10-22 expiry), /api/terrain, /api/terrain/strikes and
+    /api/options/gamma-surface as the real code serves them on SPY's 2026-10-22 close publication
+    with SPY's 16:39 print (773.1269) as the last price and the daemon's connection ended, read at
+    the 18:00 print's instant; and /api/terrain/strikes on that same publication after the next
+    day's 16:15 option close (2026-10-23 16:30 ET), no chain fetched since: the answers the browser
+    tests render (STOPPED_FIXTURES)."""
     import json
     from datetime import datetime
 
@@ -246,27 +254,40 @@ def stopped_price_answers() -> dict:
     lmp.record_feed_down()
     at = datetime.fromtimestamp(SPY_AFTER_HOURS_PRINT["ts_recv"], ET)
     try:
+        next_close = datetime(2026, 10, 23, 16, 30, tzinfo=ET)
+        surface = server.gamma_surface_payload("SPY", "auto", None, 0, None, None, at)
+        surface.pop("surface_seq")    # the publication's revision, drawn from the wall clock
         bodies = {"levels": server.levels_payload("SPY", "1", at),
                   "confluence": server.confluence_payload("SPY", "2026-10-22", at),
-                  "terrain": server.terrain_answer("SPY", at)}
+                  "terrain": server.terrain_answer("SPY", at),
+                  "strikes": server.terrain_strikes_payload("SPY", "auto", None, 0, at.timestamp()),
+                  "surface": surface,
+                  "strikes_next_close": server.terrain_strikes_payload("SPY", "auto", None, 0, next_close.timestamp())}
     finally:
         _forget()
     return json.loads(json.dumps(bodies))
 
 
 def test_the_stopped_price_answers_the_browser_renders_are_the_routes_own():
-    """The browser tests' /api/levels, /api/confluence and /api/terrain answers are these routes',
-    on captured data: kept equal to them. SPY's chain was fetched at 16:17 ET, after its own 16:15
-    option close, so at 18:00 its levels are the close values: CLOSE."""
+    """The browser tests' answers are these routes', on captured data: kept equal to them. SPY's
+    chain was fetched at 16:17 ET, after its own 16:15 option close, so at 18:00 its levels are the
+    close values: CLOSE on every route. The next day after its close, with no chain fetched since,
+    they are STALE."""
     import json
 
     served = stopped_price_answers()
     for route, name in STOPPED_FIXTURES.items():
         fx = json.loads((Path(__file__).parent / "fixtures" / name).read_text(encoding="utf-8"))
         assert fx == served[route], route
+    for route in PRICE_MARKED:
         assert served[route]["spot_feed_live"] is False
         assert served[route]["spot_not_live_text"].startswith("not live · last trade ")
     assert (served["terrain"]["levels_state"], served["terrain"]["levels_mark"]) == ("CLOSE", "CLOSE")
+    for route in ("levels", "strikes", "surface"):
+        assert served[route]["levels_state"] == "CLOSE", route
+    assert served["surface"]["available"] is True
+    assert (served["strikes_next_close"]["levels_state"], served["strikes_next_close"]["levels_stale_reason"]) == (
+        "STALE", "this ticker's options are closed and its close values have not been fetched")
 
 
 def test_a_stored_cross_is_the_row_read_back(tmp_path: Path) -> None:

@@ -5,13 +5,18 @@ streamer."""
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
+import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
 import stream_spine as ss
 from app.market_data.schwab.streaming import capture as cap
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_requests_are_split_under_schwabs_message_limit():
@@ -60,9 +65,8 @@ def test_news_and_every_subscription_answer_are_written(tmp_path):
 # ------------------------------------------------------------------ the console side
 
 def test_one_live_rule_every_reader_agrees_and_all_fail_closed_at_one_limit():
-    """ONE-15 (2026-09-28 audit): "is it live" had four limits -- 3 s (price), 5 s (daemon
-    status), 10 s (option greeks), 25 s (book) -- plus the daemon's 5 s/30 s message-age states,
-    so one moment could read live on one card and dead on the next. One rule now: the daemon's
+    """One limit for "is it live", so one moment never reads live on one card and dead on the
+    next: the daemon's
     heartbeat is under FEED_HEARTBEAT_MAX_AGE_SEC, its Schwab socket is open, and it holds the
     symbol on that service. A service quiet for 45 s on that feed is live (Schwab sends changes).
     Two of TSLA's captured 2026-10-07 contracts, judged by TSLA's own option market. STAND-IN
@@ -110,7 +114,7 @@ def test_one_live_rule_every_reader_agrees_and_all_fail_closed_at_one_limit():
 
 # ------------------------------------------------------------------ the process
 
-def test_one_daemon_at_a_time_and_a_dead_owners_lock_is_reclaimed(tmp_path, monkeypatch):
+def test_one_daemon_at_a_time_and_a_dead_owners_lock_is_reclaimed(tmp_path):
     db = tmp_path / "stream_capture.db"
     fd, lock = cap.acquire_owner_lock(db)
     try:
@@ -125,13 +129,17 @@ def test_one_daemon_at_a_time_and_a_dead_owners_lock_is_reclaimed(tmp_path, monk
     assert not lock.exists()
 
 
-def test_a_checkout_that_may_not_run_live_refuses_before_opening_anything(monkeypatch):
-    import runtime_layout
-    monkeypatch.setattr(runtime_layout, "live_binding_error", lambda *a, **k: "bound elsewhere")
-    ran = []
-    monkeypatch.setattr(cap, "run", lambda *a, **k: ran.append(a))
-    monkeypatch.setattr(sys, "argv", ["capture"])
-    assert cap.main() == 2
-    assert ran == [], "no lock, no Schwab socket, no stream database"
+def test_a_checkout_that_may_not_run_live_refuses_before_opening_anything(tmp_path):
+    """The daemon started, as launch.py starts it, with its runtime root another checkout (a
+    directory holding `.git`): it refuses and exits 2, with no lock, no log and no stream database
+    written there."""
+    other = tmp_path / "other_checkout"
+    (other / ".git").mkdir(parents=True)
+    env = {**os.environ, "ED_RUNTIME_ROOT": str(other)}
+    r = subprocess.run([sys.executable, "-m", "app.market_data.schwab.streaming.capture"], cwd=str(ROOT), env=env,
+                       capture_output=True, text=True, timeout=60)
+    assert r.returncode == 2, r.stdout + r.stderr
+    assert "CAPTURE DAEMON REFUSED" in r.stderr
+    assert sorted(p.name for p in other.iterdir()) == [".git"], "no lock, no log, no stream database"
 
 
