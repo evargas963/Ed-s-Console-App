@@ -208,8 +208,8 @@ test('Desk: a price push that stops reads OFFLINE on the map, not its last row\'
   // the daemon's own rows for SPY's and $SPX's real messages in regular hours (tests/test_order_flow_book_payload_v1.py)
   const ROWS = require(path.join(__dirname, 'fixtures', 'price_rows_live.json'));
   await intercept(page);
-  // SPY's row, nothing for 8 s (the push down), then the push resumes with $SPX's row, and SPY's at 10 s
-  await mockPriceSocket(page, [ROWS.SPY], [{ afterMs: 8000, row: ROWS['$SPX'] }, { afterMs: 10000, row: ROWS.SPY }]);
+  // SPY's row, nothing for 8 s (the push down), then the push resumes with $SPX's row, and SPY's at 12 s
+  await mockPriceSocket(page, [ROWS.SPY], [{ afterMs: 8000, row: ROWS['$SPX'] }, { afterMs: 12000, row: ROWS.SPY }]);
   await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
     localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
