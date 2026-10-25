@@ -208,8 +208,8 @@ test('Desk: a price push that stops reads OFFLINE on the map, not its last row\'
   // the daemon's own rows for SPY's and $SPX's real messages in regular hours (tests/test_order_flow_book_payload_v1.py)
   const ROWS = require(path.join(__dirname, 'fixtures', 'price_rows_live.json'));
   await intercept(page);
-  // SPY's row, nothing for 8 s (the push down), then the push resumes with $SPX's row only
-  await mockPriceSocket(page, [ROWS.SPY], [{ afterMs: 8000, row: ROWS['$SPX'] }]);
+  // SPY's row, nothing for 8 s (the push down), then the push resumes with $SPX's row, and SPY's at 10 s
+  await mockPriceSocket(page, [ROWS.SPY], [{ afterMs: 8000, row: ROWS['$SPX'] }, { afterMs: 10000, row: ROWS.SPY }]);
   await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
     localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
@@ -228,6 +228,10 @@ test('Desk: a price push that stops reads OFFLINE on the map, not its last row\'
   const trust = await page.locator('#tdmTrust').textContent();
   expect(trust).toContain('PRICE OFFLINE');
   expect(trust).not.toContain('PRICE LIVE');
+  // SPY's own row ends the outage: the header and the map read LIVE again
+  await expect(page.locator('#hFeed')).toHaveText('LIVE', { timeout: 6000 });
+  await expect(page.locator('#tdmTrust')).toContainText('PRICE LIVE');
+  await expect(page.locator('#tdmCardFlow')).not.toContainText('OFFLINE');
 });
 
 test('Desk: a book whose market is closed reads BOOK NOT LIVE and keeps Schwab\'s book time (the route\'s own answer)', async ({ page }) => {

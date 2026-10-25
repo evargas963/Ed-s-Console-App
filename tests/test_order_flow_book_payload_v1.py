@@ -8,7 +8,8 @@ SPY's LEVELONE_EQUITIES messages as sent on 2026-10-23, in order (tests/fixtures
 two real captures that were not received together, so the book is weeks older than the quote; the daemon's
 price row built from it by the daemon's own function, served at 22:00 ET on 2026-10-23, when Schwab's
 /markets answer for that date says the market is closed. STAND-IN (named): the daemon's status, its
-Schwab socket open and holding SPY on LEVELONE_EQUITIES and NYSE_BOOK.
+Schwab socket open and holding SPY on LEVELONE_EQUITIES and NYSE_BOOK (for the books), and SPY or $SPX on
+LEVELONE_EQUITIES (for tests/e2e/fixtures/price_rows_live.json); no status message is captured.
 
 Regenerate (from the repo root, project .venv):
   python -c "from tests.test_order_flow_book_payload_v1 import write_book_e2e_fixture; write_book_e2e_fixture()"
