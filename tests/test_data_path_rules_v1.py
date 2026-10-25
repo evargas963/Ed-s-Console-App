@@ -283,7 +283,8 @@ def _served_at(now: float, feed_live: bool) -> dict:
     push_option_top(_CONTRACT, _EVENTS[0]["content"])
     if feed_live:
         lmp.record_feed_heartbeat({"ts": now, "schwab_socket_open": True,
-                                   "held": {"LEVELONE_EQUITIES": ["SPY"], "LEVELONE_OPTIONS": [_CONTRACT]}})
+                                   "held": {"LEVELONE_EQUITIES": ["SPY"], "NYSE_BOOK": ["SPY"],
+                                            "LEVELONE_OPTIONS": [_CONTRACT]}})
     else:
         lmp.record_feed_down()
     try:
@@ -309,6 +310,7 @@ def test_d5_a_feed_down_in_an_open_session_keeps_the_last_price_and_the_book():
     assert s["option_book"]["top_of_book"]["ask"] == _EVENTS[0]["content"]["ASK_PRICE"]
     assert s["option_book"]["top_outage"] == "Schwab LEVELONE_OPTIONS feed down during RTH"
     assert s["equity_book"]["top_feed_label"] == s["option_book"]["top_feed_label"] == "OFFLINE"
+    assert s["equity_book"]["book_feed_label"] == "OFFLINE"
 
 
 def test_d5_while_closed_a_feed_down_keeps_the_last_values_and_says_so():
@@ -332,6 +334,7 @@ def test_d5_a_live_feed_in_an_open_session_serves_the_newest_values():
     assert s["equity_book"]["top_of_book"]["bid"] == 767.38 and s["equity_book"]["top_outage"] is None
     assert s["option_book"]["top_of_book"]["ask"] == _EVENTS[0]["content"]["ASK_PRICE"]
     assert s["equity_book"]["top_feed_label"] == s["option_book"]["top_feed_label"] == "LIVE"
+    assert s["equity_book"]["book_feed_label"] == "LIVE"
 
 
 def test_d5_while_closed_a_live_feed_keeps_the_last_values_marked_not_live_not_offline():
@@ -344,6 +347,7 @@ def test_d5_while_closed_a_live_feed_keeps_the_last_values_marked_not_live_not_o
     assert s["option_book"]["top_of_book"]["ask"] == _EVENTS[0]["content"]["ASK_PRICE"]
     for book in (s["equity_book"], s["option_book"]):
         assert (book["top_feed_label"], book["top_outage"]) == ("NOT LIVE", "outside Schwab's market hours")
+    assert s["equity_book"]["book_feed_label"] == "NOT LIVE"
 
 
 def test_d5_a_daemon_status_that_waited_in_a_queue_is_not_current():

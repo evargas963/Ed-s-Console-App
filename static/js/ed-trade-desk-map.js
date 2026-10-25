@@ -96,7 +96,8 @@
     fam: (function () { try { return JSON.parse(sget('ed.desk.fam', 'null')) || null; } catch (e) { return null; } })() ||
       { value_area: 1, vwap: 1, gamma: 1, expected_move: 1, prior_day: 1, opening_range: 1, overnight: 1 },
     ticker: null, tb: null, gen: 0, chart: null, bars: [], levels: null, terrain: null, micro: null, crosses: null,
-    analytics: null, liq: null, quotes: {}, queue: [], sel: null
+    analytics: null, liq: null, quotes: {}, queue: [], sel: null,
+    pushDown: null   // the header's word while the daemon's price push is down (ed:price_push_down)
   };
 
   // ------------------------------------------------------------------ layout wiring
@@ -412,7 +413,8 @@
       var q = S.quotes[st().key], tob = m && m.top_of_book;
       var cc = (S.events && S.events.cross_counts) || null;   // served for the window
       // Schwab's values with Schwab's trade time; the outage stays beside that time, and the feed state beside them
-      state(c, !q ? 'WAITING' : q.feed_live ? 'SESSION VOLUME' : q.feed_label, q && q.feed_live ? '' : 'warn');
+      state(c, S.pushDown ? S.pushDown : !q ? 'WAITING' : q.feed_live ? 'SESSION VOLUME' : q.feed_label,
+        q && q.feed_live && !S.pushDown ? '' : 'warn');
       c.querySelector('.tdm-hero').innerHTML = q && q.total_volume != null ? fmtVol(q.total_volume) + ' <small>shares, Schwab TOTAL_VOLUME</small>' : '';
       // Schwab's trade time stands when the feed is down; OFFLINE is the card's state, and the
       // outage stays beside the time instead of replacing it.
@@ -517,7 +519,8 @@
     var host = $('tdmTrust'); if (!host) return;
     var q = S.quotes[st().key], t = S.terrain, m = S.micro, L = S.levels;
     var h = '';
-    h += q ? pill('PRICE', q.feed_label, q.feed_live ? 'ok' : 'bad', 'daemon price socket')
+    h += S.pushDown ? pill('PRICE', S.pushDown, 'bad', 'daemon price socket')
+      : q ? pill('PRICE', q.feed_label, q.feed_live ? 'ok' : 'bad', 'daemon price socket')
       : pill('PRICE', 'WAITING', 'warn', 'no price row yet for this symbol');
     h += m === undefined ? pill('BOOK', '…', '') : !m ? pill('BOOK', 'FAILED', 'bad') : m.status === 'no_book' ? pill('BOOK', 'NONE', 'warn', 'no ' + m.venue)
       : pill('BOOK', bookAgeLabel(m, m.ages && m.ages.book_stale === false ? age(m.ages.book_age_sec) : m.ages && m.ages.book_stale ? m.book_feed_label : 'AGE UNKNOWN'),
@@ -596,8 +599,15 @@
       if (k === 'liquidity') loadBars(false);   // a completed Schwab bar was written
     });
     // Every streamed price row: header + indices. The chart moves only on a completed bar.
+    // the header's word while the daemon's push is down (WAITING, OFFLINE): the last row's
+    // verdict is not the state now; the next row ends it
+    document.addEventListener('ed:price_push_down', function (e) {
+      S.pushDown = e.detail.label;
+      if (onDesk()) { paintTrust(); paintCards(); }
+    });
     window.addEventListener('ed:quote_tick', function (e) {
       var q = e.detail; if (!q || !q.ticker) return;
+      S.pushDown = null;
       S.quotes[q.ticker] = q;
       if (!onDesk()) return;
       paintHeader();

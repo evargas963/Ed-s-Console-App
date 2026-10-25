@@ -215,7 +215,13 @@ ticker switch. Operator 2026-10-25: live is a /markets session open and Schwab's
 not Closed or Halted; 04:00–07:00 ET, when Schwab streams stocks before the pre-market /markets
 sends, reads NOT LIVE, "outside Schwab's market hours". Operator 2026-10-25: "we should not have
 multiple producers anywhere": the state's word (LIVE / OFFLINE / NOT LIVE) is served
-(`live_market_plane.live_state`), never chosen by the page.
+(`live_market_plane.live_state`), never chosen by the page. Operator 2026-10-25: "we use banking
+analogy always and we take what schwab gives us, always." Operator 2026-10-25, on PR A: a symbol
+the daemon stops holding reads NOT LIVE, never its last row's LIVE; a held symbol reads NOT LIVE
+until the daemon's first row; while the daemon's push to the page is down, the header and Key
+Levels' Spot show the trade time without an age (the last served age is not the age now, and the
+page computes none); the equity book's live flag and the book badges take the price row's
+verdict; each option contract's own close (its market from the chain that lists it) is PR B.
 
 | ID | Status | Work item |
 |---|---|---|

@@ -153,10 +153,12 @@ from Schwab to the screen (daemon, console, page), are these:
   the 07:00 ET pre-market /markets sends, a stock Schwab streams from 04:00 reads NOT LIVE,
   "outside Schwab's market hours" (operator 2026-10-25), and an option contract whose quotes Schwab
   streams from 07:00 reads NOT LIVE before the 09:30 option window, "outside Schwab's option market
-  hours". A screen whose push from the daemon has stopped keeps the trade time Schwab sent and no
-  age (the last served age is not the age now; the page computes none). When it stops
+  hours". When it stops
   updating, for any reason (feed down, market closed, an input missing), the last value stands,
-  marked not live with its time and age, and every value computed from it is marked not live too.
+  marked not live with its time and its served age, and every value computed from it is marked not
+  live too. While the daemon's push to the page has stopped, no age is served and the page computes
+  none, so the screen keeps the trade time Schwab sent and no age (operator 2026-10-25: the last
+  served age is not the age now).
   The state's one word is served beside the values (`live_state`): LIVE; OFFLINE, the feed itself
   down (the header during a feed outage); NOT LIVE, the feed up and this symbol not held or its
   market not trading. The page shows the served word. A value never received, or sent invalid, shows as
@@ -545,9 +547,11 @@ from Schwab to the screen (daemon, console, page), are these:
   (`live_market_plane.FEED_HEARTBEAT_MAX_AGE_SEC`), says the Schwab socket is open, and holds the
   symbol on that Schwab service, and its market trades (`live_market_plane.live_state`; the
   header's LIVE / OFFLINE / NOT LIVE, a book's `book_live`). Only the daemon holds Schwab's
-  SECURITY_STATUS, so the console serves a price's state as the daemon's price row states it
-  (`streaming.price_state`: OFFLINE while the daemon's beat does not reach it, else the row's
-  `feed_label` and `outage`). Where today's code differs (a heatmap leg's state, an option's own
+  SECURITY_STATUS, so the console carries the daemon's verdict (`streaming.price_state`, for a
+  symbol's quote and for a venue's equity book): the rule on the beat the console holds while
+  that is not LIVE (the feed down, the symbol not held, its market not trading); while it is
+  LIVE, the daemon's price row's `feed_label` and `outage`; NOT LIVE until the daemon's first row
+  arrives (operator 2026-10-25). Where today's code differs (a heatmap leg's state, an option's own
   close): §3.5 item 7. A value's age is never the test: Schwab sends a
   field only when it changes. The daemon's status is read from the same heartbeat
   (`live_market_plane.daemon_status`). Owner: the console's price-row connection (`streaming._rows_loop`)

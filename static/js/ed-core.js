@@ -918,6 +918,7 @@
     var connecting = Date.now() - _priceSubTs <= PRICE_SILENCE_MS;
     var label = connecting ? 'WAITING' : 'OFFLINE';
     var age = connecting ? 'no push yet' : 'live push down';
+    emit('ed:price_push_down', { label: label });   // every surface of this price says so (the desk map)
     if (_quoteShown) setFeed('stale', label, _tradeShown != null ? _tradeShown : age);
     else paintQuote({ spot: null, spot_disp: null, bid: null, ask: null, chgPct: null, chgPctRegular: null,
       feedCls: 'stale', feedLabel: label, ageLabel: age });

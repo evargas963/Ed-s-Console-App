@@ -204,6 +204,33 @@ test('Desk: an offline price keeps its last trade time on the map', async ({ pag
   await expect(page.locator('#tdmCardFlow .tdm-src')).toContainText('Schwab LEVELONE_EQUITIES feed down during RTH');
 });
 
+test('Desk: a price push that stops reads OFFLINE on the map, not its last row\'s LIVE', async ({ page }) => {
+  await intercept(page);
+  await mockPriceSocket(page, [priceRow('SPY', 771.3, { trade_time_ct: '14:00:03 CT', total_volume: 1000 })]);
+  await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
+    localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await expect(page.locator('#tdmTrust')).toContainText('PRICE LIVE');
+  await expect(page.locator('#hFeed')).toHaveText('OFFLINE', { timeout: 6000 });    // the socket sends nothing more
+  await expect(page.locator('#tdmTrust')).toContainText('PRICE OFFLINE');
+  await expect(page.locator('#tdmTrust')).not.toContainText('PRICE LIVE');
+  await expect(page.locator('#tdmCardFlow')).toContainText('OFFLINE');
+});
+
+test('Desk: a book whose market is closed reads BOOK NOT LIVE (the route\'s own answer)', async ({ page }) => {
+  // SPY's real book and quotes at 22:00 ET as the route serves them (tests/test_order_flow_book_payload_v1.py)
+  const CLOSED_BOOK = require(path.join(__dirname, 'fixtures', 'order_flow_book_closed_payload.json'));
+  await intercept(page);
+  await page.route('**/api/order-flow/microstructure**', (route) => route.fulfill({
+    status: 200, contentType: 'application/json', body: JSON.stringify(CLOSED_BOOK) }));
+  await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
+    localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await expect(page.locator('#tdmCardLiq')).toContainText('BOOK NOT LIVE');
+  await expect(page.locator('#tdmTrust')).toContainText('BOOK ' + CLOSED_BOOK.book_time_ct + ' · NOT LIVE');
+  await expect(page.locator('#tdmTrust')).not.toContainText('STALE');
+});
+
 test('Desk: the book age keeps Schwab\'s book time', async ({ page }) => {
   const errs = watchErrors(page);
   const BOOK_TIME = 'Fri 09/25 06:59 PM CT';
