@@ -329,9 +329,11 @@ from Schwab to the screen (daemon, console, page), are these:
   the map `compute_terrain` stored (`iv_by_strike` once for the expiry). The ranking is
   `score_magnitudes` once for that expiry, stored with the publication. The matrix does not
   call any of them again. Vanna
-  is the book's `net_vanna`. After that ticker's option market has closed, the publication
-  is valued at that close (`time_et.valuation_instant`, the index close for SPY, QQQ, and
-  IWM, the equity-option close for every other ticker), so the close numbers stay. A later
+  is the book's `net_vanna`. While that ticker's option market is not open
+  (`time_et.option_market_open`: after its close, on a day Schwab says is closed, and before the
+  next open), the publication is valued at its newest close (`time_et.valuation_instant`, the
+  index close for SPY, QQQ, and IWM, the equity-option close for every other ticker), so the close
+  numbers stay until the next open (operator 2026-10-25: the last valid number stands). A later
   equity print keeps the price that publication was priced at (`priced_at_spot`); the matrix's
   spot, each row's distance from it and the row it sits under are the live price's
   (`confluence_composite.at_price`). The

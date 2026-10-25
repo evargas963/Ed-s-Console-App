@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sqlite3
 from datetime import datetime
 from pathlib import Path
 
@@ -148,8 +149,12 @@ def test_on_a_closed_day_a_delivered_chain_keeps_the_close_counts_schwab_blanks(
         priced = {c["symbol"]: c for c in server.terrain_cache_get("SPY", at.timestamp())["_priced_chain"]}
     finally:
         _forget()
+        with sqlite3.connect(server.get_db().db_path) as db:   # the session's shared database keeps no SPY capture
+            db.execute("DELETE FROM complete_chain_captures WHERE ticker = 'SPY' AND ts_utc = ?", (friday["ts_utc"],))
     assert len(blanked) == 46
     assert {s: priced[s]["openInterest"] for s in blanked} == {s: close_oi[s] for s in blanked}
+    with sqlite3.connect(server.get_db().db_path) as db:
+        assert db.execute("SELECT COUNT(*) FROM complete_chain_captures WHERE ticker = 'SPY'").fetchone() == (0,)
 
 
 def _told(tk: str, at: datetime) -> set:

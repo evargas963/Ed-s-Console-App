@@ -1,4 +1,4 @@
-/* Ed Console — Trade Desk / "Desk" subview (the operator's 2026-09-25 mockup). PRESENTATION ONLY.
+/* Ed Console — Trade Desk / "Desk" subview. PRESENTATION ONLY.
 
    One page for the SELECTED ticker, one global timeframe:
      MARKET MAP   <- /api/bars1m (completed Schwab 1m bars, server-rolled timeframe),
@@ -434,9 +434,10 @@
         src(c, 'Schwab option chain · ' + (t === undefined ? 'loading…' : esc((t && t.error) || 'terrain request failed')));
         c.querySelector('.tdm-rows').innerHTML = '';
       } else {
+        // the served regime word, and its tone from the one regime table (ed-gamma-panels.js)
         var reg = t.regime ? String(t.regime) : null;
-        state(c, reg != null ? reg.replace(/_/g, ' ') : '—',
-          t.levels_state !== 'LIVE' ? 'warn' : (/LONG/.test(reg) ? 'up' : /SHORT/.test(reg) ? 'dn' : ''));
+        var rm = reg != null ? (window.EdGammaRegime || {})[reg] : null;
+        state(c, reg != null ? reg.replace(/_/g, ' ') : '—', t.levels_state !== 'LIVE' ? 'warn' : (rm ? rm.tone : ''));
         var ng = t.net_gex_at_spot;   // absent is uncoloured, never read as 0
         c.querySelector('.tdm-hero').innerHTML = '<span class="' + (ng == null ? '' : ng >= 0 ? 'up' : 'dn') + '">' + usd(ng) + '</span> <small>net dealer gamma at spot, per 1%</small>';
         src(c, 'Schwab option chain · ' + esc(chainAgeLabel(t)));

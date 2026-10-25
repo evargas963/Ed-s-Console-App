@@ -23,15 +23,14 @@
 
   function curExpiry() { return (window.EdShell && window.EdShell.getExpiry && window.EdShell.getExpiry()) || null; }
   function stillChain(tk, exp) { return isChain() && (st().ticker || '') === tk && curExpiry() === exp; }
-  // Independent-review finding (2026-09-13), REPRODUCED: A -> B -> A can still let the FIRST
-  // A request's response paint over the THIRD (fresh) A request's response. `stillChain`
-  // proves the identity (ticker, expiry) still matches NOW, but two different requests issued
-  // at different times for the identical identity are indistinguishable to it -- whichever
-  // resolves LAST wins, not whichever was issued last. The loader's own AbortController
-  // SHOULD prevent the stale first request from ever resolving normally, but does not
-  // guarantee it (an abort raced against an already-buffered response can still resolve).
-  // Fixed with an explicit monotonic request sequence, independent of AbortController
-  // reliability: only the response whose sequence number is still the LATEST ISSUED one may
+  // A -> B -> A could let the FIRST A request's response paint over the THIRD (fresh) A
+  // request's response. `stillChain` proves the identity (ticker, expiry) still matches NOW,
+  // but two requests issued at different times for the identical identity are
+  // indistinguishable to it -- whichever resolves LAST would win. The loader's own
+  // AbortController does not guarantee the stale first request never resolves (an abort
+  // raced against an already-buffered response can still resolve). An explicit monotonic
+  // request sequence, independent of AbortController: only the response whose sequence
+  // number is still the LATEST ISSUED one may
   // paint, so an old, superseded request for the SAME identity can never win a race against a
   // newer one for that identity, not merely against a DIFFERENT identity.
   var _reqSeq = 0;
@@ -53,7 +52,7 @@
     var rows = (d && d.ladder) || [];   // served: strikes high to low, one row per listed contract
     if (!rows.length) { host.innerHTML = '<div class="placeholder"><div class="sm">' + esc(window.EdShell.chainEmptyText(d)) + '</div></div>'; return; }
     var dup = d.has_duplicate_contracts === true;   // served
-    // null/'' spot is ABSENT: Number(null) is 0, which drew 'spot 0.00' (audit P0, 2026-09-23)
+    // null/'' spot is ABSENT: Number(null) is 0, which would draw 'spot 0.00'
     var spot = (d.spot == null || d.spot === '') ? NaN : Number(d.spot);
     var desired = window.EdFlow.selected();
     // B: /api/chain is a COMPLETE SINGLE-EXPIRY surface — say so, name the exact expiry returned, and
@@ -68,13 +67,8 @@
     function cell(c, k, dg) { var v = c ? c[k] : null; return (v == null) ? '—' : (typeof v === 'number' ? (dg === AS_SENT ? String(v) : v.toFixed(dg == null ? 2 : dg)) : esc(v)); }
     function sym(c) { return c && c.symbol ? String(c.symbol) : ''; }
     function selAttr(c) { var s = sym(c); return s ? (' data-sym="' + esc(s) + '"' + (s === desired ? ' data-selc="1"' : '')) : ''; }
-    // Independent-review finding (2026-09-13), REPRODUCED then narrowed to a two-sticky-row
-    // defect, then a further review confirmed the operator kept seeing a real, moving visual
-    // fault on genuine trackpad scrolling that neither `position:sticky` fix (a compositing-
-    // layer promotion, then overscroll containment) could be proven to address, because
-    // neither could be proven to reproduce the exact mechanism. Root-caused by removing
-    // `position:sticky` entirely: the header table is now a FROZEN (non-scrolling) sibling of
-    // a separate, genuinely scrollable `.chn-scroll` div holding only the body table (see
+    // No `position:sticky`: the header table is a FROZEN (non-scrolling) sibling of a
+    // separate, genuinely scrollable `.chn-scroll` div holding only the body table (see
     // console.html's #chainBody/.chn-scroll rules) -- a standard "frozen header" layout with
     // no sticky positioning anywhere for a compositor or scroll-chaining bug to intermittently
     // mishandle. A shared fixed-percentage <colgroup> on both tables keeps every column
@@ -105,13 +99,10 @@
         side(p, 'chn-put', r.put_itm, PUT) + '</tr>';
     });
     h += '</tbody></table></div>';   // close .chn-scroll
-    // Independent-review finding (2026-09-13), REPRODUCED by the frozen-header redesign's own
-    // new regression test: `.chn-scroll` (the actual scrolling element) is a NEW DOM node on
-    // every render now, unlike the old design where #chainBody itself never got replaced and
-    // so kept its own scrollTop across re-renders for free. Captured here, before the old
-    // `.chn-scroll` is torn out by the innerHTML replacement below, and restored onto the new
-    // one afterward -- same "leave the operator's own scroll position alone on a routine
-    // refresh" contract as before, just made explicit now that nothing does it automatically.
+    // `.chn-scroll` (the actual scrolling element) is a NEW DOM node on every render, so its
+    // scrollTop is captured here, before the old `.chn-scroll` is torn out by the innerHTML
+    // replacement below, and restored onto the new one afterward -- a routine refresh leaves
+    // the operator's own scroll position alone.
     var oldScroll = host.querySelector('.chn-scroll');
     var savedScrollTop = oldScroll ? oldScroll.scrollTop : 0;
     host.innerHTML = h;

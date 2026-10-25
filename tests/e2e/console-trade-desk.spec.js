@@ -20,7 +20,7 @@ const EVENTS = {
   cross_counts: { up: CROSSES.filter((c) => c.direction === 'up').length, down: CROSSES.filter((c) => c.direction !== 'up').length },
 };
 const SPOT = 771.3;
-const TERRAIN = { ticker: 'SPY', spot: SPOT, gamma_flip: 768, call_wall: 775, put_wall: 765, max_pain: 770, regime: 'LONG_GAMMA',
+const TERRAIN = { ticker: 'SPY', spot: SPOT, gamma_flip: 768, call_wall: 775, put_wall: 765, max_pain: 770, regime: 'LONG_GAMMA_CHOP',
   posture: 'PINNED', levels_state: 'LIVE', levels_age_text: '1s', flip_relation: 'ABOVE', pcr_all: 1.1,
   pcr_by_expiry: { '2026-09-25': 1.1, '2026-10-02': null, '2026-10-09': 0.9 }, atm_iv_pct_by_expiry: { '2026-09-25': 14.2, '2026-10-02': 15.1 } };
 const LEVELS = { ticker: 'SPY', spot: SPOT, tf: '30', generation: 1, vwap_series: [],
@@ -290,6 +290,9 @@ test('Desk: the chain age keeps the chain\'s time', async ({ page }) => {
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await expect(page.locator('#tdmCardOpt .tdm-src')).toContainText('Schwab option chain · ' + CHAIN_TIME + ' · LIVE · 4s');
   await expect(page.locator('#tdmCardOpt')).toContainText('775.00');
+  // the served regime word, toned from the one regime table
+  await expect(page.locator('#tdmCardOpt .tdm-state')).toHaveText('LONG GAMMA CHOP');
+  await expect(page.locator('#tdmCardOpt .tdm-state')).toHaveClass('tdm-state up');
   await expect(page.locator('#tdmCardVol .tdm-src')).toContainText(CHAIN_TIME + ' · LIVE · 4s');
   await expect(page.locator('#tdmTrust')).toContainText('GAMMA ' + CHAIN_TIME + ' · LIVE · 4s');
   expect(errs).toEqual([]);

@@ -227,7 +227,8 @@ Operator 2026-10-25, on PR B: the levels, the chain and the heatmap carry one se
 (`server.terrain_staleness`), judged by the ticker's own option market; after that market's close
 the levels read CLOSE with the close values' time and age. Operator 2026-10-25, on PR B's reviews:
 the three readers of Schwab's option windows are one, `time_et.option_market_open` (a day Schwab
-says is closed is outside every window, so the close values stand on it, as after any close); the
+says is closed is outside every window, so the close values stand on it, as after any close, and
+`valuation_instant` values the book at the newest close until the next open); the
 stand-ins PR B adds are recorded in STAND-INS, and the older stand-ins in the files it touches stay
 with STAND-INS.
 
