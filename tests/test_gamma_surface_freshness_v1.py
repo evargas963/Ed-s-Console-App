@@ -35,11 +35,13 @@ def _call(tk):
 
 def _daemon(price: float, at: float, *tickers) -> None:
     """The daemon's status at `at` (Schwab's socket open, `tickers` held, the watchlist [_ON]) and
-    each ticker's price row."""
+    each ticker's price row, with the daemon's verdict on it at `at` (live_state)."""
     lmp.record_feed_heartbeat({"ts": at, "schwab_socket_open": True, "watchlist": [_ON],
                                "held": {"LEVELONE_EQUITIES": list(tickers)}})
     for tk in tickers:
-        ofs._price_rows[tk] = {"ticker": tk, "spot": price, "trade_ts": _AT.timestamp()}
+        label, outage = lmp.live_state(tk, "LEVELONE_EQUITIES", at)
+        ofs._price_rows[tk] = {"ticker": tk, "spot": price, "trade_ts": _AT.timestamp(),
+                               "feed_label": label, "outage": outage}
 
 
 @pytest.fixture
