@@ -3,10 +3,11 @@ from __future__ import annotations
 
 from datetime import datetime
 
+import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 import server as srv
 from terrain_engine import compute_terrain
-from tests.feed_live_helper import RTH_INSTANT, mark_feed_live
+from tests.feed_live_helper import RTH_INSTANT, mark_feed_live, publish_daemon_rows
 from time_et import ET
 from tests.real_chains import CRWD
 
@@ -24,10 +25,12 @@ def test_a_down_price_marks_the_levels_and_the_wall_stays():
     try:
         down = srv.terrain_answer(tk, at)
         mark_feed_live(tk, now=now)
+        publish_daemon_rows(tk, now=now)                          # the daemon's price row, its verdict LIVE
         live = srv.terrain_answer(tk, at)
     finally:
         with srv._terrain_cache_lock:
             srv._terrain_cache.pop(tk, None)
+        ofs._price_rows.pop(tk, None)
         lmp.record_feed_down()
     assert down["call_wall"] == live["call_wall"] == published["call_wall"] is not None
     assert down["levels_stale"] is False

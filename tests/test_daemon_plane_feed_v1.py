@@ -90,7 +90,7 @@ def test_a_book_is_live_by_the_one_rule_on_its_venue_not_by_its_book_time(tmp_pa
     from pathlib import Path
 
     import server
-    from tests.feed_live_helper import RTH_INSTANT
+    from tests.feed_live_helper import RTH_INSTANT, publish_daemon_rows
     _reset(tmp_path)
     fx = json.loads((Path(__file__).parent / "fixtures" / "real_spy_nyse_nasdaq_books.json")
                     .read_text(encoding="utf-8"))["books"]
@@ -101,11 +101,16 @@ def test_a_book_is_live_by_the_one_rule_on_its_venue_not_by_its_book_time(tmp_pa
     def stale(svc):
         return server.order_flow_microstructure("SPY", svc, RTH_INSTANT)["ages"]["book_stale"]
 
-    held = {"schwab_socket_open": True, "held": {"NASDAQ_BOOK": ["SPY"], "NYSE_BOOK": []}}
+    held = {"schwab_socket_open": True,
+            "held": {"LEVELONE_EQUITIES": ["SPY"], "NASDAQ_BOOK": ["SPY"], "NYSE_BOOK": []}}
     lmp.record_feed_heartbeat({**held, "ts": RTH_INSTANT})
-    assert (stale("NASDAQ_BOOK"), stale("NYSE_BOOK")) == (False, True)
-    lmp.record_feed_heartbeat({**held, "ts": RTH_INSTANT - lmp.FEED_HEARTBEAT_MAX_AGE_SEC - 1})
-    assert (stale("NASDAQ_BOOK"), stale("NYSE_BOOK")) == (True, True)
+    publish_daemon_rows("SPY", now=RTH_INSTANT)                 # the daemon's price row, its verdict LIVE
+    try:
+        assert (stale("NASDAQ_BOOK"), stale("NYSE_BOOK")) == (False, True)
+        lmp.record_feed_heartbeat({**held, "ts": RTH_INSTANT - lmp.FEED_HEARTBEAT_MAX_AGE_SEC - 1})
+        assert (stale("NASDAQ_BOOK"), stale("NYSE_BOOK")) == (True, True)
+    finally:
+        ofs._price_rows.pop("SPY", None)
 
 
 def test_each_symbol_lands_in_its_own_state_only(tmp_path, monkeypatch):

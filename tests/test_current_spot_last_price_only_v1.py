@@ -28,7 +28,7 @@ def test_resolve_spot_rejects_mark_close_chain_and_snapshot() -> None:
     ofs._price_rows.pop("SPY", None)   # no daemon price row: a chain, MARK or close is no spot
     spot, source, _ts = server.resolve_spot("SPY", now=RTH_INSTANT)
     assert spot is None
-    assert source == "none"
+    assert source == "no price row from the daemon for SPY yet"
 
 
 def test_plane_mark_only_tick_never_creates_current_spot() -> None:
@@ -42,7 +42,7 @@ def test_plane_mark_only_tick_never_creates_current_spot() -> None:
     assert L.get_quote("MARKNEVER")["spot"] is None     # MARK never stands in for the spot
     spot, source, _ts = server.resolve_spot("MARKNEVER", now=RTH_INSTANT)
     assert spot is None
-    assert source == "none"
+    assert source == "no price row from the daemon for MARKNEVER yet"
 
 
 def test_plane_mark_cannot_replace_prior_last_price() -> None:
@@ -74,6 +74,6 @@ def test_a_rest_written_plane_row_is_not_spot() -> None:
                         "quote_source_detail": {"spot": "LAST_PRICE"},
                         "quote_ingestion": "rest_anchor_lane_refresher"}
     try:
-        assert server.resolve_spot(tk, now=now) == (None, "none", None)
+        assert server.resolve_spot(tk, now=now) == (None, f"no price row from the daemon for {tk} yet", None)
     finally:
         L._by_ticker.pop(tk, None)
