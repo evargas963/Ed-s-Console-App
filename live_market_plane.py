@@ -297,7 +297,7 @@ def not_trading(symbol: str | None, service: str, now: float) -> str | None:
     if session == CLOSED:
         return "outside Schwab's market hours"
     if service in OPTION_SERVICES:
-        return None if options_open(at) else "the option market is closed"
+        return None if options_open(at) else "outside Schwab's option market hours"
     t = ticker_storage_key(symbol)
     row = get_quote(t) if t else None
     status = row.get("security_status") if row is not None else None

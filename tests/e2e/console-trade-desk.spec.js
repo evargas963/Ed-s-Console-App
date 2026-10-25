@@ -36,7 +36,7 @@ const LEVELS = { ticker: 'SPY', spot: SPOT, tf: '30', generation: 1, vwap_series
 const MICRO = { ticker: 'SPY', venue: 'NASDAQ_BOOK', status: 'ok', top_of_book: { bid: 771.29, ask: 771.31, bid_size: 300, ask_size: 200 },
   spread_pts: 0.02, depth: { '1': { imbalance: 0.2, side: 'BID' }, '5': { bid_total: 3000, ask_total: 2000, imbalance: 0.2, side: 'BID' } },
   depth_pressure: { bid: [{ price: 771.29, volume: 300, cum: 300 }, { price: 771.28, volume: 900, cum: 1200 }], ask: [{ price: 771.31, volume: 200, cum: 200 }] },
-  ages: { book_age_sec: 1, book_stale: false }, wall_candidates: [], provenance: { book_source: 'NASDAQ_BOOK' },
+  ages: { book_age_sec: 1, book_stale: false }, book_feed_label: 'LIVE', wall_candidates: [], provenance: { book_source: 'NASDAQ_BOOK' },
   flow: { tape_pressure_5m: 0.3, tape_pressure_30s: 0.1, tape_pressure_2m: 0.2, cum_delta_proxy: 1000 } };
 // the pivot zone below spot was named "support" by type-guessing on the page: each zone's label and
 // side are served (liquidity_models.ZONE_DISPLAY)
@@ -229,16 +229,16 @@ test('Desk: a book that is not live keeps Schwab\'s book time', async ({ page })
   await page.route('**/api/order-flow/microstructure**', (route) => route.fulfill({
     status: 200, contentType: 'application/json',
     body: JSON.stringify(Object.assign({}, MICRO, {
-      book_time_ct: BOOK_TIME, ages: { book_age_sec: 4, book_stale: true },
+      book_time_ct: BOOK_TIME, ages: { book_age_sec: 4, book_stale: true }, book_feed_label: 'NOT LIVE',
     })),
   }));
   await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
     localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
-  await expect(page.locator('#tdmCardLiq')).toContainText('STALE BOOK');
+  await expect(page.locator('#tdmCardLiq')).toContainText('BOOK NOT LIVE');
   await expect(page.locator('#tdmCardLiq .tdm-src')).toContainText('book ' + BOOK_TIME + ' · not live');
   await expect(page.locator('#tdmCardLiq')).toContainText('3.0K / 2.0K');
-  await expect(page.locator('#tdmTrust')).toContainText('BOOK ' + BOOK_TIME + ' · STALE');
+  await expect(page.locator('#tdmTrust')).toContainText('BOOK ' + BOOK_TIME + ' · NOT LIVE');
   expect(errs).toEqual([]);
 });
 

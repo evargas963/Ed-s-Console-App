@@ -73,16 +73,18 @@ def price_row(ticker: str) -> "dict | None":
     return _price_rows.get(ticker_storage_key(ticker) or "")
 
 
-def price_state(ticker: str, now: float) -> "tuple[str, str | None]":
-    """`ticker`'s price state at `now` as the console serves it: OFFLINE while the daemon's beat
-    does not reach the console or reports Schwab down (live_market_plane.live_state on the beat the
-    console holds); otherwise the daemon's own verdict on its price row (`feed_label`, `outage`:
-    live_price_rows.price_row), which alone holds Schwab's SECURITY_STATUS. With no row yet, the
-    rule on what the console holds."""
-    label, why = _lmp.live_state(ticker, "LEVELONE_EQUITIES", now)
-    row = price_row(ticker)
-    if label == _lmp.OFFLINE or row is None:
+def price_state(ticker: str, now: float, service: str = "LEVELONE_EQUITIES") -> "tuple[str, str | None]":
+    """`ticker`'s state on Schwab `service` (its quote, or a venue's book) at `now`, as the console
+    serves it: the rule on the beat the console holds (live_market_plane.live_state) while that is
+    not LIVE (the feed down, the symbol not held, its market not trading); while it is LIVE, the
+    daemon's own verdict on its price row (`feed_label`, `outage`: live_price_rows.price_row), which
+    alone holds Schwab's SECURITY_STATUS; NOT LIVE while no row from the daemon has arrived."""
+    label, why = _lmp.live_state(ticker, service, now)
+    if label != _lmp.LIVE:
         return label, why
+    row = price_row(ticker)
+    if row is None:
+        return _lmp.NOT_LIVE, f"no price row from the daemon for {ticker_storage_key(ticker)} yet"
     return row["feed_label"], row["outage"]
 #: Wait between reconnect attempts when the daemon's push server is down. While it is down
 #: no live value is refreshed -- the freshness checks turn them stale; nothing substitutes.

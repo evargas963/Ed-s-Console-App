@@ -62,7 +62,7 @@ test('the Book panel shows each served wall candidate size', async ({ page }) =>
 
 test('a feed down keeps the last bid and the panel says OFFLINE', async ({ page }) => {
   const BOOK = { status: 'ok', top_of_book: { bid: 767.38, ask: 767.40, bid_size: 3, ask_size: 5 },
-    top_outage: 'Schwab LEVELONE_EQUITIES feed down during RTH', top_feed_label: 'OFFLINE',
+    top_outage: 'Schwab LEVELONE_EQUITIES feed down during RTH', top_feed_label: 'OFFLINE', book_feed_label: 'OFFLINE',
     depth: {}, ages: { book_stale: true }, classification: {}, depth_pressure: { bid: [], ask: [] },
     wall_candidates: [] };
   await page.route('**/api/**', (route) => {
@@ -80,7 +80,7 @@ test('a feed down keeps the last bid and the panel says OFFLINE', async ({ page 
 
 test('a closed market keeps the last bid and the panel says NOT LIVE, not OFFLINE', async ({ page }) => {
   const BOOK = { status: 'ok', top_of_book: { bid: 767.38, ask: 767.40, bid_size: 3, ask_size: 5 },
-    top_outage: "outside Schwab's market hours", top_feed_label: 'NOT LIVE',
+    top_outage: "outside Schwab's market hours", top_feed_label: 'NOT LIVE', book_feed_label: 'NOT LIVE',
     depth: {}, ages: { book_stale: true }, classification: {}, depth_pressure: { bid: [], ask: [] },
     wall_candidates: [] };
   await page.route('**/api/**', (route) => {
@@ -93,12 +93,14 @@ test('a closed market keeps the last bid and the panel says NOT LIVE, not OFFLIN
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await expect(page.locator('#obBody')).toContainText('767.38');
   await expect(page.locator('#obBody')).toContainText('Top of book · NOT LIVE');
+  await expect(page.locator('#obBody .fl-badge')).toHaveText('NOT LIVE');      // the book's served word
   await expect(page.locator('#obBody')).not.toContainText('OFFLINE');
+  await expect(page.locator('#obBody')).not.toContainText('STALE');
 });
 
 test('an offline book keeps Schwab\'s quote time and book time', async ({ page }) => {
   const BOOK = { status: 'ok', top_of_book: { bid: 767.38, ask: 767.40, bid_size: 3, ask_size: 5 },
-    top_outage: 'Schwab LEVELONE_EQUITIES feed down during RTH', top_feed_label: 'OFFLINE',
+    top_outage: 'Schwab LEVELONE_EQUITIES feed down during RTH', top_feed_label: 'OFFLINE', book_feed_label: 'OFFLINE',
     quote_time_ct: 'Fri 09/25 06:59 PM CT', book_time_ct: 'Fri 09/25 06:59 PM CT',
     depth: {}, ages: { book_age_sec: 4, quote_age_sec: 4, book_stale: true }, classification: {},
     depth_pressure: { bid: [], ask: [] }, wall_candidates: [] };

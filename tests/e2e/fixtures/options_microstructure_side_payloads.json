@@ -5,6 +5,7 @@
       "book_stale": null,
       "quote_age_sec": 1.4100570678710938
     },
+    "book_feed_label": "NOT LIVE",
     "book_slope": {
       "ask": null,
       "bid": null
@@ -145,6 +146,7 @@
       "book_stale": null,
       "quote_age_sec": 1.410078763961792
     },
+    "book_feed_label": "NOT LIVE",
     "book_slope": {
       "ask": null,
       "bid": null

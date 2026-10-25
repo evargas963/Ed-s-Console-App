@@ -984,9 +984,9 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#klSpot')).toHaveAttribute('title', 'last trade 14:00:01 CT · 4s');
     await expect(page.locator('#hFeed')).toHaveText('OFFLINE', { timeout: 6000 });
     await expect(page.locator('#hPx')).toHaveText('601.23');
-    await expect(page.locator('#hAge')).toHaveText('last trade 14:00:01 CT · 4s');
+    await expect(page.locator('#hAge')).toHaveText('last trade 14:00:01 CT');        // the 4s age is not the age now
     await expect(page.locator('#klSpot')).toHaveText('601.23');
-    await expect(page.locator('#klSpot')).toHaveAttribute('title', 'OFFLINE · last trade 14:00:01 CT · 4s');
+    await expect(page.locator('#klSpot')).toHaveAttribute('title', 'OFFLINE · last trade 14:00:01 CT');
     expect(await page.locator('#klSpot').evaluate((el) => el.style.color)).toBe('var(--ed-stale)');
   });
 

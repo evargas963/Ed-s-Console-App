@@ -2634,10 +2634,12 @@ def order_flow_microstructure(ticker: str, venue: str, now: float) -> dict:
         data["exchange_quote_ts"] = _row["quote_ts"]
     data["top"] = ({k: _row.get(k) for k in ("bid", "ask", "bid_size", "ask_size", "mark")}
                    if _row and (_row.get("bid") is not None or _row.get("ask") is not None) else None)
-    data["book_live"] = lmp.feed_live_for(t, venue, now)
+    # the venue's book: the same verdict on its own service (price_state), its word served
+    book_label = price_state(t, now, venue)[0]
+    data["book_live"] = book_label == lmp.LIVE
     # ticker=t → serialize the canonical state carried per (ticker, BOOK_TIME); no independent recompute.
     payload = compute_book_microstructure(data, now_ts=now, ticker=t)
-    payload["top_outage"], payload["top_feed_label"] = top_outage, top_label
+    payload["top_outage"], payload["top_feed_label"], payload["book_feed_label"] = top_outage, top_label, book_label
     # The trade-side read the Trade Desk's Order Flow card shows: tick-rule PROXY flow from the
     # same OrderFlowEngine the option book uses (no second classifier).
     try:

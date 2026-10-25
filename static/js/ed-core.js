@@ -766,6 +766,9 @@
   var PRICE_SILENCE_MS = 3000;   // the daemon beats every 1 s; 3 s of nothing = the push is down
   var _priceWs = null, _priceUp = false, _lastPriceTs = 0, _priceSubTs = 0, _priceRetry = 0;
   var _quoteShown = false;
+  // the shown price's served trade time ("last trade <CT>"), kept for a push outage, when no newer
+  // age is served and the page computes none
+  var _tradeShown = null;
   // the port comes from the console (meta ed-live-ui-port = the daemon's ED_LIVE_UI_PORT);
   // an unfilled page opens no socket and its prices read UNAVAILABLE
   function priceSocketUrl() {
@@ -848,6 +851,7 @@
       // throttle -- a few text writes per second. The price is Schwab's last trade with Schwab's
       // trade time, or absent with the served outage reason; the feed state is stated beside it.
       _quoteShown = true;
+      _tradeShown = q.trade_time_ct != null ? 'last trade ' + q.trade_time_ct : null;
       var trade = q.trade_time_ct != null
         ? ('last trade ' + q.trade_time_ct + (q.trade_age_sec != null ? (' · ' + fmtAge(q.trade_age_sec)) : ''))
         : null;
@@ -909,12 +913,12 @@
   // for a replacement. The session label is not a live quote and keeps its own slow read.
   function markHeaderPushDown() {
     // just asked for this ticker (page load or a ticker change): the row is on its way
-    // (WAITING); otherwise the push itself is down (OFFLINE). A price already shown stays,
-    // and so does its last trade time.
+    // (WAITING); otherwise the push itself is down (OFFLINE). A price already shown stays with its
+    // last trade time and no age: the last served age is not the age now.
     var connecting = Date.now() - _priceSubTs <= PRICE_SILENCE_MS;
     var label = connecting ? 'WAITING' : 'OFFLINE';
     var age = connecting ? 'no push yet' : 'live push down';
-    if (_quoteShown) setFeed('stale', label);
+    if (_quoteShown) setFeed('stale', label, _tradeShown != null ? _tradeShown : age);
     else paintQuote({ spot: null, spot_disp: null, bid: null, ask: null, chgPct: null, chgPctRegular: null,
       feedCls: 'stale', feedLabel: label, ageLabel: age });
     paintRecord(null);

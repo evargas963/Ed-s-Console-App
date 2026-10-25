@@ -151,7 +151,10 @@ from Schwab to the screen (daemon, console, page), are these:
   sent for today (pre-market, regular, post-market; an option service only inside an option
   market's regular window), while Schwab's SECURITY_STATUS for it is not Closed or Halted; before
   the 07:00 ET pre-market /markets sends, a stock Schwab streams from 04:00 reads NOT LIVE,
-  "outside Schwab's market hours" (operator 2026-10-25). When it stops
+  "outside Schwab's market hours" (operator 2026-10-25), and an option contract whose quotes Schwab
+  streams from 07:00 reads NOT LIVE before the 09:30 option window, "outside Schwab's option market
+  hours". A screen whose push from the daemon has stopped keeps the trade time Schwab sent and no
+  age (the last served age is not the age now; the page computes none). When it stops
   updating, for any reason (feed down, market closed, an input missing), the last value stands,
   marked not live with its time and age, and every value computed from it is marked not live too.
   The state's one word is served beside the values (`live_state`): LIVE; OFFLINE, the feed itself
@@ -643,7 +646,8 @@ from Schwab to the screen (daemon, console, page), are these:
    `static/js/ed-trade-desk-map.js`). The levels glance shows each price with the
    time the payload already carries for it (`server.levels_payload`,
    `static/js/ed-gamma-levels.js`). The
-   book's top keeps the last bid and ask, and that panel says OFFLINE (`top_outage`).
+   book's top keeps the last bid and ask, and that panel says its served state (`top_feed_label`
+   beside `top_outage`); the book badge says the book's (`book_feed_label`).
    The book's quote time and book time stay on that panel (`server.order_flow_microstructure`,
    `static/js/ed-order-flow.js`). The Flow panel keeps the contract's quote time and book time
    (`server.options_microstructure`, `static/js/ed-gamma-flow.js`). A contract
@@ -674,9 +678,9 @@ from Schwab to the screen (daemon, console, page), are these:
    gamma cell's streamed state is judged by `live_market_plane.live_on` alone (`server.py`), so it
    reads live in a closed market. An option contract is live while any option market is open
    (`live_market_plane.not_trading`, `time_et.options_open`), so a stock option, whose market
-   closes at 16:00 ET, reads live until the index options close at 16:15. Book badges read LIVE
-   from `ages.book_stale` false, Key Levels' line reads "terrain · live" from `levels_stale` false,
-   and `feed_live` is served beside `feed_label`. `ACTIVE_PROGRAM.md` ONE-29.
+   closes at 16:00 ET, reads live until the index options close at 16:15. Key Levels' line reads
+   "terrain · live" from `levels_stale` false, and the desk map's LEVELS pill computes its age on
+   the page (`static/js/ed-trade-desk-map.js`). `ACTIVE_PROGRAM.md` ONE-29.
 
 The work that closes these gaps, in order, is `ACTIVE_PROGRAM.md`.
 
