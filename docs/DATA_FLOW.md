@@ -158,7 +158,7 @@ from Schwab to the screen (daemon, console, page), are these:
   down (the header during a feed outage); NOT LIVE, the feed up and this symbol not held or its
   market not trading. The page shows the served word. A value never received, or sent invalid, shows as
   "-". Calculations keep every digit and every contract; rounding is on screen
-  only. Where today's code differs: §3.5 items 5 and 6.
+  only. Where today's code differs: §3.5 items 5, 6 and 7.
   Enforced by: `tests/test_data_path_rules_v1.py` (newest by Schwab's time, no replay as live),
   `tests/test_data_path_live_status_v1.py` (the daemon's status is current when it is not older
   than 3 s), `tests/test_data_path_strike_counts_v1.py` (a strike's volume and open interest
@@ -541,8 +541,11 @@ from Schwab to the screen (daemon, console, page), are these:
   daemon's heartbeat, sent every second, is not older than 3 s at the time judged
   (`live_market_plane.FEED_HEARTBEAT_MAX_AGE_SEC`), says the Schwab socket is open, and holds the
   symbol on that Schwab service, and its market trades (`live_market_plane.live_state`; the
-  header's LIVE / OFFLINE / NOT LIVE,
-  a book's `book_live`, a heatmap leg's state). A value's age is never the test: Schwab sends a
+  header's LIVE / OFFLINE / NOT LIVE, a book's `book_live`). Only the daemon holds Schwab's
+  SECURITY_STATUS, so the console serves a price's state as the daemon's price row states it
+  (`streaming.price_state`: OFFLINE while the daemon's beat does not reach it, else the row's
+  `feed_label` and `outage`). Where today's code differs (a heatmap leg's state, an option's own
+  close): §3.5 item 7. A value's age is never the test: Schwab sends a
   field only when it changes. The daemon's status is read from the same heartbeat
   (`live_market_plane.daemon_status`). Owner: the console's price-row connection (`streaming._rows_loop`)
   records each heartbeat; the message push yields after each frame, so a backlog of chain parts
@@ -667,6 +670,13 @@ from Schwab to the screen (daemon, console, page), are these:
    are absent (`server._atr_fields`, `terrain_engine.compute_terrain`,
    `server._forces_from_captures`); the screen draws "-". The levels with no price and the
    outage words are still served with their reason (§3 above). The gamma heatmap's cells draw "-".
+7. **Live marks not yet by the one rule** (D5, operator 2026-10-24). A gamma heatmap leg's and a
+   gamma cell's streamed state is judged by `live_market_plane.live_on` alone (`server.py`), so it
+   reads live in a closed market. An option contract is live while any option market is open
+   (`live_market_plane.not_trading`, `time_et.options_open`), so a stock option, whose market
+   closes at 16:00 ET, reads live until the index options close at 16:15. Book badges read LIVE
+   from `ages.book_stale` false, Key Levels' line reads "terrain · live" from `levels_stale` false,
+   and `feed_live` is served beside `feed_label`. `ACTIVE_PROGRAM.md` ONE-29.
 
 The work that closes these gaps, in order, is `ACTIVE_PROGRAM.md`.
 

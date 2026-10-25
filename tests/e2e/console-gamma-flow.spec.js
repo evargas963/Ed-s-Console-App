@@ -291,6 +291,7 @@ test.describe('D — Gamma Flow subview', () => {
       d.ages.book_age_sec = 4;
       d.ages.quote_age_sec = 4;
       d.top_outage = 'Schwab LEVELONE_OPTIONS feed down during RTH';
+      d.top_feed_label = 'OFFLINE';
     };
     await setup(page, ctx);
     await selectCallAndOpenFlow(page);

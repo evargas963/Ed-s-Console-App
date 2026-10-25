@@ -133,7 +133,7 @@
       '<div class="dom-wrap">' +
         '<div class="dom-ladder">' + ladderHtml(bidLevels, askLevels, wallSet) + midHtml + '</div>' +
         '<div class="dom-stats">' +
-          section('Top of book' + (d.top_outage ? ' · OFFLINE' : ''), rowsTob) + section('Imbalance', rowsImb) + section('Freshness', fresh) +
+          section('Top of book' + (d.top_outage ? ' · ' + d.top_feed_label : ''), rowsTob) + section('Imbalance', rowsImb) + section('Freshness', fresh) +
         '</div>' +
       '</div>' +
       '<div class="fl-sec" style="margin-top:14px;"><div class="fl-sec-h">Wall candidates (size-outlier heuristic, displayed book only)</div>' + wallsHtml + '</div>' +

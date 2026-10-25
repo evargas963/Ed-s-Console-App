@@ -94,7 +94,7 @@
     // LIVE only on the server's explicit "not stale" (ages.book_stale, compute_book_microstructure);
     // an unknown book age is not live
     var bs = ages.book_stale;
-    var badge = d.top_outage ? 'OFFLINE' : (bs === false ? 'LIVE' : bs === true ? 'STALE' : 'AGE UNKNOWN');
+    var badge = d.top_outage ? d.top_feed_label : (bs === false ? 'LIVE' : bs === true ? 'STALE' : 'AGE UNKNOWN');
     return stage(1, 'td-accent-blue', 'Detect — book microstructure', heroVal, heroUnit, side === 'BID' ? 1 : side === 'ASK' ? -1 : 0,
       rows, badge, d.top_outage || bs !== false ? 'stale' : 'live');
   }

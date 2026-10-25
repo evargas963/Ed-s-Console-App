@@ -308,6 +308,7 @@ def test_d5_a_feed_down_in_an_open_session_keeps_the_last_price_and_the_book():
     assert s["equity_book"]["top_outage"] == "Schwab LEVELONE_EQUITIES feed down during RTH"
     assert s["option_book"]["top_of_book"]["ask"] == _EVENTS[0]["content"]["ASK_PRICE"]
     assert s["option_book"]["top_outage"] == "Schwab LEVELONE_OPTIONS feed down during RTH"
+    assert s["equity_book"]["top_feed_label"] == s["option_book"]["top_feed_label"] == "OFFLINE"
 
 
 def test_d5_while_closed_a_feed_down_keeps_the_last_values_and_says_so():
@@ -330,6 +331,19 @@ def test_d5_a_live_feed_in_an_open_session_serves_the_newest_values():
     assert s["spot"][0] == 767.39
     assert s["equity_book"]["top_of_book"]["bid"] == 767.38 and s["equity_book"]["top_outage"] is None
     assert s["option_book"]["top_of_book"]["ask"] == _EVENTS[0]["content"]["ASK_PRICE"]
+    assert s["equity_book"]["top_feed_label"] == s["option_book"]["top_feed_label"] == "LIVE"
+
+
+def test_d5_while_closed_a_live_feed_keeps_the_last_values_marked_not_live_not_offline():
+    """22:00 ET, the feed up and holding both symbols: the last price and both tops of book stand,
+    each NOT LIVE, "outside Schwab's market hours" -- not OFFLINE, which is a feed outage."""
+    s = _served_at(_CLOSED, feed_live=True)
+    assert (s["row"]["spot"], s["row"]["feed_label"]) == (767.39, "NOT LIVE")
+    assert s["row"]["outage"] == "outside Schwab's market hours"
+    assert s["equity_book"]["top_of_book"]["bid"] == 767.38
+    assert s["option_book"]["top_of_book"]["ask"] == _EVENTS[0]["content"]["ASK_PRICE"]
+    for book in (s["equity_book"], s["option_book"]):
+        assert (book["top_feed_label"], book["top_outage"]) == ("NOT LIVE", "outside Schwab's market hours")
 
 
 def test_d5_a_daemon_status_that_waited_in_a_queue_is_not_current():

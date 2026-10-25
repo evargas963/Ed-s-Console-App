@@ -136,7 +136,7 @@
     ];
     h.innerHTML = header(desired, ss, d && d.put_call) +
       '<div class="fl-grid">' +
-      section('Top of book' + (d.top_outage ? ' · OFFLINE' : ''), rowsTob, '') +
+      section('Top of book' + (d.top_outage ? ' · ' + d.top_feed_label : ''), rowsTob, '') +
       section('Book microstructure', rowsBook, dim) +
       section('Flow observations', rowsFlow, dim) +
       section('Freshness / health', fresh, '') +

@@ -71,6 +71,19 @@ _price_rows: "dict[str, dict]" = {}
 
 def price_row(ticker: str) -> "dict | None":
     return _price_rows.get(ticker_storage_key(ticker) or "")
+
+
+def price_state(ticker: str, now: float) -> "tuple[str, str | None]":
+    """`ticker`'s price state at `now` as the console serves it: OFFLINE while the daemon's beat
+    does not reach the console or reports Schwab down (live_market_plane.live_state on the beat the
+    console holds); otherwise the daemon's own verdict on its price row (`feed_label`, `outage`:
+    live_price_rows.price_row), which alone holds Schwab's SECURITY_STATUS. With no row yet, the
+    rule on what the console holds."""
+    label, why = _lmp.live_state(ticker, "LEVELONE_EQUITIES", now)
+    row = price_row(ticker)
+    if label == _lmp.OFFLINE or row is None:
+        return label, why
+    return row["feed_label"], row["outage"]
 #: Wait between reconnect attempts when the daemon's push server is down. While it is down
 #: no live value is refreshed -- the freshness checks turn them stale; nothing substitutes.
 PUSH_RECONNECT_SEC = 1.0

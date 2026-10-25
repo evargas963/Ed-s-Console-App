@@ -228,3 +228,29 @@ def test_a_symbol_schwab_marks_closed_is_not_live_in_an_open_session():
         for kept in (lmp._by_ticker, lmp._fields_by_ticker):
             kept.pop("$SPX", None)
             kept.pop("NVDA", None)
+
+
+def test_the_console_serves_the_daemons_verdict_on_a_price_schwab_marks_closed():
+    """The daemon alone holds Schwab's SECURITY_STATUS (its plane); the console holds the daemon's
+    price row. At 17:00 ET on 2026-10-19 (After-Hours, the feed up and holding $SPX) the daemon's
+    row says NOT LIVE, "Schwab marks $SPX Closed"; the levels' price mark, the equity book's top and
+    the not-live refresh, served by the console from an empty plane, say the same."""
+    spx_close = next(m for m in _STATUS if m["symbol"] == "$SPX" and m["item"]["SECURITY_STATUS"] == "Closed")
+    at = _et("2026-10-19", 17)
+    try:
+        lmp.record_from_level_one_equity("$SPX", spx_close["item"], received_ts=spx_close["ts_recv"])
+        _all_held(at, "$SPX")
+        row = live_price_rows.price_row("$SPX", at)                  # the daemon's
+        for kept in (lmp._by_ticker, lmp._fields_by_ticker):          # the console's plane holds no quote
+            kept.pop("$SPX", None)
+        ofs._price_rows["$SPX"] = row
+        assert (row["feed_label"], row["outage"]) == ("NOT LIVE", "Schwab marks $SPX Closed")
+        mark = server.price_mark("$SPX", row["trade_ts"], at)
+        assert (mark["spot_feed_live"], mark["spot_feed_label"], mark["spot_outage"]) == (
+            False, "NOT LIVE", "Schwab marks $SPX Closed")
+        book = server.order_flow_microstructure("$SPX", "NYSE_BOOK", at)
+        assert (book["top_feed_label"], book["top_outage"]) == ("NOT LIVE", "Schwab marks $SPX Closed")
+    finally:
+        ofs._price_rows.pop("$SPX", None)
+        for kept in (lmp._by_ticker, lmp._fields_by_ticker):
+            kept.pop("$SPX", None)
