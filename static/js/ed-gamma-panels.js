@@ -484,8 +484,7 @@
   function stillOfCtx(tk) { var host = document.getElementById('ofBody'); return isGamma() && !!host && ticker() === tk; }
   function renderOf(host, d) {
     var src = document.getElementById('ofSrc'); if (src) src.textContent = '';
-    var rows = d.rows;
-    if (!rows.length) {
+    if (!d.available) {   // served: available exactly when rows were found
       host.innerHTML = '<table class="of"><thead><tr><th>Time</th><th>Symbol</th><th>Exp</th><th>Type</th><th>Strike</th>' +
         '<th>Bid×Size</th><th>Ask×Size</th><th>Trade</th><th>Size</th><th>Premium</th>' +
         '<th>Vol</th><th>OI</th><th>IV%</th><th>Δ</th><th>vs Market</th></tr></thead>' +
@@ -493,7 +492,7 @@
         esc(d.reason || 'the console sent no reason') + '</div></td></tr></tbody></table>';
       return;
     }
-    var body = rows.map(function (r) {
+    var body = d.rows.map(function (r) {
       return '<tr>' +
         '<td>' + fmtOfTime(r.ts_recv) + '</td>' +
         '<td class="of-sym">' + esc(r.symbol || '—') + '</td>' +
@@ -522,7 +521,7 @@
     var G = window.EdL1SseGuards;
     return G.show(G.readJson('/api/options/tape?ticker=' + encodeURIComponent(tk), signal), '/api/options/tape',
       function (d) { if (stillOfCtx(tk)) renderOf(host, d); },
-      function (words) { if (stillOfCtx(tk)) renderOf(host, { rows: [], reason: words }); });
+      function (words) { if (stillOfCtx(tk)) renderOf(host, { available: false, reason: words }); });
   }
   var _ofLoader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadOfImpl(ticker(), signal); });
   function loadOf() { if (isGamma()) _ofLoader.trigger(ticker()); }
