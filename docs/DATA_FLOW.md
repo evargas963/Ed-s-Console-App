@@ -163,7 +163,7 @@ from Schwab to the screen (daemon, console, page), are these:
   down (the header during a feed outage); NOT LIVE, the feed up and this symbol not held or its
   market not trading. The page shows the served word. A value never received, or sent invalid, shows as
   "-". Calculations keep every digit and every contract; rounding is on screen
-  only. Where today's code differs: §3.5 items 5, 6 and 7.
+  only. Where today's code differs: §3.5 items 5 and 6.
   Enforced by: `tests/test_data_path_rules_v1.py` (newest by Schwab's time, no replay as live),
   `tests/test_data_path_live_status_v1.py` (the daemon's status is current when it is not older
   than 3 s), `tests/test_data_path_strike_counts_v1.py` (a strike's volume and open interest
@@ -367,10 +367,14 @@ from Schwab to the screen (daemon, console, page), are these:
   lists nothing has no option market: its chain is asked once per ET date, only to learn whether
   options are listed (operator 2026-10-08). Then no chain is requested
   until its market opens again: the close values stand (D5), and a ticker not on the watchlist is not fetched — it shows
-  its levels absent with the reason (`server.terrain_staleness`: once the last option market has
-  closed, After-Hours included, levels from a chain fetched after that close are current however
-  old, with no stale mark; older ones read "the options are closed and this ticker's close values
-  have not been fetched"), never a zero or a
+  its levels absent with the reason (`server.terrain_staleness`, the one levels verdict every
+  screen shows, `levels_state`: once the ticker's own option market has closed (its
+  `time_et.option_close_product`: stock options at 16:00 ET, index-close options at 16:15),
+  After-Hours included, levels from a chain fetched after that close are its close values and read
+  CLOSE, with their time and age, however old (operator 2026-10-25); older ones read STALE, "this
+  ticker's options are closed and its close values have not been fetched"; while its market is
+  open, LIVE until two of the sweep's rounds pass without its chain, then STALE; NOT LIVE when
+  Schwab's /markets answer for today is not held), never a zero or a
   value from elsewhere. Enforced by: `tests/test_data_path_rules_v1.py` (the D5 sweep and
   staleness tests). Each ticker's chain is asked for as Schwab documents it: its expiration chain
   (`/expirationchain`) once per ET date, then `/chains` once per listed expiry (fromDate = toDate
@@ -546,13 +550,19 @@ from Schwab to the screen (daemon, console, page), are these:
   daemon's heartbeat, sent every second, is not older than 3 s at the time judged
   (`live_market_plane.FEED_HEARTBEAT_MAX_AGE_SEC`), says the Schwab socket is open, and holds the
   symbol on that Schwab service, and its market trades (`live_market_plane.live_state`; the
-  header's LIVE / OFFLINE / NOT LIVE, a book's `book_live`). Only the daemon holds Schwab's
+  header's LIVE / OFFLINE / NOT LIVE, a book's `book_live`, a heatmap leg's and a gamma cell's
+  state). An option contract trades only inside its own option market's regular window
+  (`time_et.option_market_open`), its market that of the ticker whose chain lists it
+  (`server._contract_ticker`, `time_et.option_close_product`); a contract in no chain the console
+  holds has no known market and is not live. Only the daemon holds Schwab's
   SECURITY_STATUS, so the console carries the daemon's verdict (`streaming.price_state`, for a
   symbol's quote and for a venue's equity book): the rule on the beat the console holds while
   that is not LIVE (the feed down, the symbol not held, its market not trading); while it is
   LIVE, the daemon's price row's `feed_label` and `outage`; NOT LIVE until the daemon's first row
-  arrives (operator 2026-10-25). Where today's code differs (a heatmap leg's state, an option's own
-  close): §3.5 item 7. A value's age is never the test: Schwab sends a
+  arrives (operator 2026-10-25). The levels, the chain and the heatmap carry the levels verdict
+  (`server.terrain_staleness`, D4 above: LIVE / CLOSE / STALE / NOT LIVE with the chain's time
+  and age), and Key Levels its mark (`server.levels_mark`: the levels' word, or the price's while
+  the levels are LIVE). A value's age is never the test: Schwab sends a
   field only when it changes. The daemon's status is read from the same heartbeat
   (`live_market_plane.daemon_status`). Owner: the console's price-row connection (`streaming._rows_loop`)
   records each heartbeat; the message push yields after each frame, so a backlog of chain parts
@@ -678,13 +688,6 @@ from Schwab to the screen (daemon, console, page), are these:
    are absent (`server._atr_fields`, `terrain_engine.compute_terrain`,
    `server._forces_from_captures`); the screen draws "-". The levels with no price and the
    outage words are still served with their reason (§3 above). The gamma heatmap's cells draw "-".
-7. **Live marks not yet by the one rule** (D5, operator 2026-10-24). A gamma heatmap leg's and a
-   gamma cell's streamed state is judged by `live_market_plane.live_on` alone (`server.py`), so it
-   reads live in a closed market. An option contract is live while any option market is open
-   (`live_market_plane.not_trading`, `time_et.options_open`), so a stock option, whose market
-   closes at 16:00 ET, reads live until the index options close at 16:15. Key Levels' line reads
-   "terrain · live" from `levels_stale` false, and the desk map's LEVELS pill computes its age on
-   the page (`static/js/ed-trade-desk-map.js`). `ACTIVE_PROGRAM.md` ONE-29.
 
 The work that closes these gaps, in order, is `ACTIVE_PROGRAM.md`.
 

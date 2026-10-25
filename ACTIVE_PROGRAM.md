@@ -162,7 +162,6 @@ to write it plainly, in the forms `test_a_command_the_reader_cannot_see_into_is_
 - P-09 an absent `live` reads live; first-of and "undefined" reasons; stale cells drawn as normal values; readers outside `EdL1SseGuards.readJson` say a true failure without naming its status (`ed-gamma-chart.js`, `ed-order-flow-heatmap.js`, `ed-confluence.js`, `ed-liquidity-map.js`, `ed-trade-desk-map.js`, the watchlist reads in `ed-core.js`).
 - P-10 six or more page formatters for dollars and volume with different precision.
 - P-12 Strike Detail matches contracts by tolerance, substitutes the put for the call, uses a UTC date and reads the raw contracts (a -999 prints).
-- P-13 Key Levels: a fallback age formatter and a page-computed live badge.
 - P-14 the chart drops old tail revisions and markers with no bar uncounted, colours a missing change as up, and picks the levels shown.
 - P-16 Trade Desk ages, dates, percents and the LEVELS age are computed on the page; PD value-area picked by id.
 - P-18 Trade Desk labels first-of, a sign flipped on the page, and strike-to-wall matching on the page.
@@ -222,6 +221,9 @@ until the daemon's first row; while the daemon's push to the page is down, the h
 Levels' Spot show the trade time without an age (the last served age is not the age now, and the
 page computes none); the equity book's live flag and the book badges take the price row's
 verdict; each option contract's own close (its market from the chain that lists it) is PR B.
+Operator 2026-10-25, on PR B: the levels, the chain and the heatmap carry one served levels verdict
+(`server.terrain_staleness`), judged by the ticker's own option market; after that market's close
+the levels read CLOSE with the close values' time and age.
 
 | ID | Status | Work item |
 |---|---|---|
@@ -231,9 +233,8 @@ verdict; each option contract's own close (its market from the chain that lists 
 | ONE-21 | QUEUED | The strike at the price: `terrain_engine.nearest_strike`, `confluence_composite.under_strike` and the daemon's `saved_window` bisect. |
 | ONE-24 | QUEUED | One contract record: open interest, volume, Greeks, volatility, multiplier, strike and expiry each read by several modules with different validity rules (`math_exposure_core`, `math_levels`, `terrain_engine.chain_ladder`, `confluence_composite`, `history`), two keep-the-last-count rules (`_keep_last_reported`, `_last_positive`); the heatmap cell labelled streaming while its Greeks are the /quotes answer. Its candidates are what `tools/check_one_reader.py --list` names; done when each Schwab field it names has one reader of Schwab's message. |
 | ONE-25 | QUEUED | The front expiry: seven definitions (max pain, implied move, risk reversal, same-day levels, 0DTE share, heatmap front, confluence default). |
-| ONE-26 | QUEUED | Options closed: `terrain_staleness` judges by any option market's close, the publication by the ticker's own. |
 | ONE-27 | QUEUED | Prior-day close, high and low and today's candle computed from 1-minute bars while Schwab sends CLOSE_PRICE, the daily candles and OPEN/HIGH/LOW_PRICE (First gate 2). |
-| ONE-29 | QUEUED | Live verdicts not yet by the one rule (PR B of the live work, operator 2026-10-24; `docs/DATA_FLOW.md` §3.5 item 7): an option contract live while any option market is open, so a stock option reads live 16:00–16:15 ET (operator 2026-10-25: each contract's market from the chain that lists it, `server._contract_ticker`, and Schwab's /markets window for that market, with the contract's SECURITY_STATUS as sent; Schwab sends UNDERLYING only on a contract's first message, and an option's SECURITY_STATUS reads Normal again after its close), Key Levels' "terrain · live" from `levels_stale` false (`static/js/ed-gamma-panels.js`), the desk map's LEVELS pill age computed on the page (`static/js/ed-trade-desk-map.js`), the chain's and heatmap's live marks from `server.terrain_staleness` and page-side `today_source` / scope checks, and the heatmap's and gamma cells' streamed legs judged by `lmp.live_on` alone (`server.py`, skipping the market-hours half of `live_state`); done when each is a served verdict from `live_state` and the page shows it. |
+| ONE-30 | QUEUED | An option contract's own SECURITY_STATUS is not read: a contract Schwab marks Halted inside its option market's window reads LIVE (the window rule, `live_market_plane.not_trading`, decides). Measured on production `stream_capture.db` 2026-10-23: NVDA, META and DELL contracts went Halted at 16:00:02, then DELL, TSLA and SPY contracts read Normal again at 16:11–16:14 (re-subscription snapshots), so taking the field as sent needs a rule for which message is current, and the console keeps no option status today (`state.push_option_top`). Operator decision. |
 | ONE-28 | QUEUED | The equity book: two stores, two parsers, two clocks (`state._book` and `engine`, `history.BOOKS` and `history._levels`). |
 
 ## Phase 2 — the rest of the design, then decomposition
