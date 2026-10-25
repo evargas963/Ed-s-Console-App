@@ -641,33 +641,6 @@ def test_a_chain_before_the_next_open_keeps_the_stored_counts():
         datetime(2026, 10, 6, 16, 0, tzinfo=ET))
 
 
-def test_a_closed_day_keeps_a_reported_zero():
-    """A day with no option window keeps a reported zero. The stored capture does not fill it."""
-
-    held = SPY_0DTE
-    tk = "SPYCLOSED"
-    closed = datetime(2026, 10, 4, 12, 0, tzinfo=ET)
-    expiry = str(held.chain[0]["expirationDate"])[:10]
-    fresh = [dict(c) for c in held.chain]
-    try:
-        spot = _chain_spot(tk, _AT_CAPTURE[held.ticker])
-        by_expiry: dict = {}
-        for ct in fresh:
-            by_expiry.setdefault(str(ct["expirationDate"])[:10], []).append(ct)
-        for exp, cts in by_expiry.items():
-            persist_complete_chain_capture(
-                server.get_db().db_path, ticker=tk, expiry=exp,
-                contracts=[dict(c) for c in cts], spot=held.spot,
-                completeness_basis=CAPTURE_BASIS,
-                ts_utc=datetime(2026, 10, 2, 16, 0, tzinfo=ET).timestamp())
-        server._publish_levels(tk, _zero_counts(fresh), closed.timestamp(), chain_spot=spot, now=closed)
-        body = server.confluence_payload(tk, expiry, closed)
-        assert body["rows"]
-        assert all(row["pc_vol_text"] is None for row in body["rows"])
-    finally:
-        _forget(tk)
-
-
 def _no_value_counts(chain):
     """The chain with Schwab's no-value code on open interest and volume."""
     coded = []
@@ -718,8 +691,9 @@ def test_a_chain_begun_inside_the_window_keeps_its_reported_zero():
         _forget(tk)
 
 
-def test_a_closed_day_zero_does_not_hide_the_capture_before_the_open():
-    """Monday before the open, Saturday's zero book is not the last count. The capture is."""
+def test_a_closed_day_zero_book_keeps_the_last_count_through_the_next_open():
+    """A day Schwab says is closed is outside every option window: Sunday's zero book does not
+    replace the last count, the stored capture's; and Monday before the open it still stands."""
 
     held = SPY_0DTE
     tk = "SPYMON"
@@ -745,8 +719,8 @@ def test_a_closed_day_zero_does_not_hide_the_capture_before_the_open():
                 ts_utc=datetime(2026, 10, 2, 16, 0, tzinfo=ET).timestamp())
         closed = datetime(2026, 10, 4, 12, 0, tzinfo=ET)
         server._publish_levels(tk, _zero_counts(fresh), closed.timestamp(), chain_spot=spot, now=closed)
-        wiped = server.confluence_payload(tk, expiry, closed)
-        assert all(row["pc_vol_text"] is None for row in wiped["rows"])
+        held_closed = server.confluence_payload(tk, expiry, closed)
+        assert next(row for row in held_closed["rows"] if row["strike"] == shown["strike"])["pc_vol_text"] == kept
         server._publish_levels(tk, _zero_counts(fresh), before.timestamp(), chain_spot=spot, now=before)
         second = server.confluence_payload(tk, expiry, before)
         again = next(row for row in second["rows"] if row["strike"] == shown["strike"])

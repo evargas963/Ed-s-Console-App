@@ -431,11 +431,12 @@ from Schwab to the screen (daemon, console, page), are these:
   a quote that does not report a greek leaves the greek the last quote reported, and an open
   interest or volume of zero leaves the last count above zero. A missing count and Schwab's
   no-value code are not that zero. That last count is the one this process already published,
-  or, when it has not, the newest stored capture. A day with no option window keeps a reported
-  zero. A chain is judged by when it was fetched: one begun inside the window keeps a reported
+  or, when it has not, the newest stored capture. A day Schwab says is closed is outside every
+  window (`time_et.option_market_open`), so its zeros keep the last count too (operator 2026-10-25:
+  the last valid number stands, as a bank's last balance does while it is closed). A chain is judged by when it was fetched: one begun inside the window keeps a reported
   zero even when it is priced after the close. A streamed zero after the close does not replace
-  the count already on that chain. A zero book from a closed day does not hide the stored capture
-  before the next open. During the window,
+  the count already on that chain. A zero book from a closed day does not replace the last count,
+  through the next open. During the window,
   Schwab's no-value code is not a greek and does not keep an older one, and a count of zero
   replaces the last count. A chain is published once all its quotes are in. A quotes request Schwab refuses
   fails every chain in it with its status and reason, so the levels keep their last good

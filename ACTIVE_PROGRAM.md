@@ -30,10 +30,12 @@ Outside a session day's option window (operator 2026-10-22: the last number stan
 close, the way a balance stands after the bank closes), a reported open interest or volume of
 zero leaves the last count above zero. That count is the one already published, or the newest
 stored capture when this process has not published one. A missing count and Schwab's no-value
-code are not that zero. A day with no option window keeps a reported zero (operator
-2026-09-27: open interest 0 is 0). A chain begun inside the window keeps a reported zero.
-A streamed zero after the close does not replace the count. A zero book from a closed day
-does not hide the stored capture before the next open.
+code are not that zero. A day Schwab says is closed is outside every window, so the same rule holds
+on it (operator 2026-10-25: keep the last valid number, consistently, as a bank shows the last
+balance on its books while it is closed; this replaces 2026-09-27's "a closed day keeps a reported
+zero"). A chain begun inside the window keeps a reported zero. A streamed zero after the close does
+not replace the count. A zero book from a closed day does not replace the last count, through the
+next open.
 
 ## Data path (operator 2026-10-02: one rule the whole way through, end to end)
 
