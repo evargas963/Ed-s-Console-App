@@ -45,8 +45,6 @@
 
   // ---------- Key Levels rail ----------
   function stillLevelsCtx(tk) { return isGamma() && !!document.getElementById('klSpot') && ticker() === tk; }
-  // ROUND 8 (2026-09-13): keyed on ticker so a held/slow fetch for an ABANDONED ticker is
-  // aborted immediately once a different ticker is selected, instead of blocking it.
   function loadLevelsImpl(tk, _signal) {
     if (!stillLevelsCtx(tk)) return;
     // shared with ed-gamma-chart.js's read of the same /api/terrain: one network call
@@ -61,9 +59,11 @@
     var ids = ['klSpot', 'klFlip', 'klCall', 'klPut', 'klAbs', 'klPeak', 'klNet', 'klRegime',
       'kl0Flip', 'kl0Call', 'kl0Put', 'kl0Abs', 'kl0Peak'];
     paintPcr(d && !d.error ? d : null);
-    if (!d || d.error) {
+    if (!d || d.error) {   // nothing current: no tooltip or colour of the last answer stays
       ids.forEach(function (id) { txt(id, '—'); });
       txt('klSrc', failed || 'terrain not ready');
+      var src0 = document.getElementById('klSrc'); if (src0) { src0.title = ''; src0.style.color = ''; }
+      var klb0 = document.getElementById('klBody'); if (klb0) klb0.classList.add('recede');
       return;
     }
     txt('klFlip', px(d.gamma_flip));
@@ -148,8 +148,6 @@
 
   // ---------- GEX by Strike ----------
   function stillGbsCtx(tk) { var host = document.getElementById('gbsBody'); return isGamma() && !!host && ticker() === tk; }
-  // ROUND 8 (2026-09-13): keyed on ticker so a held/slow fetch for an ABANDONED ticker is
-  // aborted immediately once a different ticker is selected, instead of blocking it.
   function loadGbsImpl(tk, _signal) {
     var host = document.getElementById('gbsBody');
     if (!stillGbsCtx(tk)) return;
@@ -224,7 +222,7 @@
 
   function renderGbs(host, d, tk) {
     setGbsAsOf(d);
-    var rows = d && d.today && d.today.all;
+    var rows = d.today && d.today.all;
     if (!rows || !rows.length) {
       host.innerHTML = '<div class="placeholder"><div class="sm">' +
         'no banked per-strike gamma for this symbol</div></div>';
@@ -266,13 +264,6 @@
   function stillStrikeCtx(tk, strike, expiry) {
     return ticker() === tk && _sdDesired.strike === strike && _sdDesired.expiry === expiry;
   }
-  // ROUND 8 (2026-09-13): keyed on ticker+strike+expiry so a held/slow fetch for an
-  // ABANDONED strike is aborted immediately once a different one is selected, instead of
-  // blocking it. Independent-review finding, REPRODUCED ("retain previous contract demand
-  // after a failed chain read"): a network-level failure (this catch) bypassed renderStrike
-  // entirely and never cleared additional-contract demand, unlike a successful-but-empty
-  // chain (renderStrike's own "no chain for this expiry" path already clears it) -- the
-  // PREVIOUS strike's contracts stayed subscribed forever after a genuine fetch failure.
   function loadStrikeImpl(strike, expiry, signal) {
     var host = document.getElementById('sdBody');
     if (!host || !stillStrikeCtx(ticker(), strike, expiry)) return;
@@ -421,7 +412,8 @@
   // ADJUSTED DELIVERABLE: served per contract (Schwab's nonStandard flag, as sent)
   function renderStructures(host, d, tk) {
     var src = document.getElementById('stSrc'); if (src) src.textContent = '';
-    var ladder = ((d && d.ladder) || []).filter(function (r) { return r.first; });   // served: one row per strike, high to low
+    // served: one row per strike, high to low; an 'unavailable' chain answer carries none
+    var ladder = d.ladder ? d.ladder.filter(function (r) { return r.first; }) : [];
     if (!ladder.length) {
       host.innerHTML = '<div class="placeholder"><div class="sm">' +
         esc(window.EdShell.chainEmptyText(d)) + '</div></div>';
@@ -458,10 +450,7 @@
   }
   var _structuresLoader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) {
     return loadStructuresImpl(ticker(), (window.EdShell && window.EdShell.getExpiry && window.EdShell.getExpiry()), signal); });
-  // Keyed on ticker+expiry (ROUND 8 pattern, same as every other loader in this file) so a
-  // context change while a fetch is still in flight ABORTS it immediately instead of merely
-  // marking a trailing re-run pending -- an unkeyed trigger() left Structures frozen on the
-  // old ticker/expiry's placeholder until the abandoned request finally settled.
+  // keyed on ticker+expiry: a context change aborts the read in flight (makeCoalescedLoader)
   function loadStructures() {
     if (!inStructures()) return;
     var exp = (window.EdShell && window.EdShell.getExpiry && window.EdShell.getExpiry()) || '';

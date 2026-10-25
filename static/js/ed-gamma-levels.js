@@ -21,8 +21,6 @@
   function ticker() { return ((window.EdShell && window.EdShell.getState()) || {}).ticker || ''; }
 
   function stillLevels(tk) { return !!activeHostId() && ticker() === tk; }
-  // ROUND 8 (2026-09-13): keyed on ticker so a held/slow fetch for an ABANDONED ticker is
-  // aborted immediately once a different ticker is selected, instead of blocking it.
   function loadImpl(tk, signal) {
     var hostId = activeHostId();
     var host = hostId && document.getElementById(hostId);

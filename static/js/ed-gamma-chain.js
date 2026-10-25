@@ -44,8 +44,6 @@
   // paint, so an old, superseded request for the SAME identity can never win a race against a
   // newer one for that identity, not merely against a DIFFERENT identity.
   var _reqSeq = 0;
-  // ROUND 8 (2026-09-13): keyed on ticker+expiry so a held/slow fetch for an ABANDONED
-  // context is aborted immediately once a different one is selected, instead of blocking it.
   function loadImpl(tk, exp, signal) {
     var host = document.getElementById('chainBody');
     if (!host || !stillChain(tk, exp)) return;

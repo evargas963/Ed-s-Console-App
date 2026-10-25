@@ -422,6 +422,22 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     });
   }
 
+  test('Key Levels: a read that fails after a stale answer keeps none of its tooltip or colour', async ({ page }) => {
+    // Induced condition: the first answer is marked stale with a reason (served status labels).
+    let failing = false;
+    await page.route('**/api/terrain?**', (route) => failing
+      ? route.fulfill({ status: 500, contentType: 'application/json', body: '{"detail":"Internal Server Error"}' })
+      : route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify(Object.assign({}, TERRAIN, { levels_stale: true, levels_stale_reason: 'chain 12m old' })) }));
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#klSrc')).toHaveAttribute('title', 'chain 12m old');
+    failing = true;
+    await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'levels' } })));
+    await expect(page.locator('#klSrc')).toHaveText('the console answered /api/terrain with 500');
+    await expect(page.locator('#klSrc')).toHaveAttribute('title', '');
+    expect(await page.locator('#klSrc').evaluate((el) => el.style.color)).toBe('');
+  });
+
   test('Right Now says when the page cannot draw its answers, never "no console serving"', async ({ page }) => {
     // Induced condition: the per-strike answer (this file's STRIKES) without its `views`, so
     // drawing the migration section raises a TypeError after every endpoint has answered.
