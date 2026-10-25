@@ -7,7 +7,6 @@ from __future__ import annotations
 import json
 import sqlite3
 import sys
-import time
 
 import pytest
 
@@ -60,20 +59,21 @@ def test_news_and_every_subscription_answer_are_written(tmp_path):
 
 # ------------------------------------------------------------------ the console side
 
-def test_one_live_rule_every_reader_agrees_and_all_fail_closed_at_one_limit(rth_clock):
+def test_one_live_rule_every_reader_agrees_and_all_fail_closed_at_one_limit():
     """ONE-15 (2026-09-28 audit): "is it live" had four limits -- 3 s (price), 5 s (daemon
     status), 10 s (option greeks), 25 s (book) -- plus the daemon's 5 s/30 s message-age states,
     so one moment could read live on one card and dead on the next. One rule now: the daemon's
     heartbeat is under FEED_HEARTBEAT_MAX_AGE_SEC, its Schwab socket is open, and it holds the
     symbol on that service. A service quiet for 45 s on that feed is live (Schwab sends changes).
-    STAND-IN (named): the daemon's status."""
+    STAND-IN (named): the daemon's status. Judged in regular hours (RTH_INSTANT)."""
     import live_market_plane as lmp
     from app.options.order_flow import streaming as ofs
+    from tests.feed_live_helper import RTH_INSTANT
     status = {"schwab_socket_open": True,
               "health": {"OPTIONS_BOOK": {"age_sec": 45.0}},
               "held": {"LEVELONE_EQUITIES": ["MU"], "LEVELONE_OPTIONS": ["B", "A"], "OPTIONS_BOOK": ["A"]}}
 
-    now = time.time()
+    now = RTH_INSTANT
 
     def diag(sym):     # the served option-contract diagnostics for `sym`
         return ofs.get_option_contract_streaming_diagnostics(sym, now)

@@ -299,7 +299,8 @@ def not_trading(symbol: str | None, service: str, now: float) -> str | None:
     if service in OPTION_SERVICES:
         return None if options_open(at) else "the option market is closed"
     t = ticker_storage_key(symbol)
-    status = (get_quote(t) or {}).get("security_status") if t else None
+    row = get_quote(t) if t else None
+    status = row.get("security_status") if row is not None else None
     return f"Schwab marks {t} {status}" if status in ("Closed", "Halted") else None
 
 

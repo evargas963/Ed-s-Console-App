@@ -57,10 +57,10 @@ def _trade(sym: str, last: float, ts: float, **extra) -> dict:
 
 
 class _Feed:
-    def __init__(self, held=("SPY", "AAPL"), clock=None):
+    def __init__(self, held=("SPY", "AAPL"), clock=time.time):
         self.open = True
         self.held = list(held)
-        self.clock = time.time if clock is None else clock     # read now: a pinned clock (rth_clock) counts
+        self.clock = clock
 
     def __call__(self) -> dict:
         return {"ts": self.clock(), "schwab_socket_open": self.open,
@@ -100,10 +100,13 @@ async def _next_row(ws, sym, pred=lambda r: True, timeout=3.0):
     raise AssertionError(f"no matching {sym} row within {timeout}s")
 
 
-def test_a_schwab_trade_reaches_the_browser_as_a_finished_live_row(rth_clock):
+def test_a_schwab_trade_reaches_the_browser_as_a_finished_live_row():
+    """In regular hours: the server's clock runs from _RTH."""
+    clock = _clock_from(_RTH)
+
     async def body(bus, ws, feed, stats):
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["spy"]}))
-        now = time.time()
+        now = clock()
         bus.publish("quote.SPY", _trade("SPY", 583.41, now))
         msg, row = await _next_row(ws, "SPY", lambda r: r["spot"] == 583.41)
         assert row["spot_disp"] == "583.41" and row["trade_time_ct"] is not None
@@ -114,11 +117,11 @@ def test_a_schwab_trade_reaches_the_browser_as_a_finished_live_row(rth_clock):
         assert "forming_1m" not in row
         # the next trade moves it, pushed on its own (not on the beat)
         t0 = time.monotonic()
-        bus.publish("quote.SPY", _trade("SPY", 583.90, time.time()))
+        bus.publish("quote.SPY", _trade("SPY", 583.90, clock()))
         msg, row = await _next_row(ws, "SPY", lambda r: r["spot"] == 583.90)
         assert msg["type"] == "quotes"
         assert time.monotonic() - t0 < 0.15, "a change must go out immediately, not on the beat"
-    asyncio.run(_run(body))
+    asyncio.run(_run(body, feed=_Feed(clock=clock)))
 
 
 def test_an_unsubscribed_symbol_is_never_sent():
@@ -164,15 +167,17 @@ def test_a_subscribe_is_answered_with_what_each_symbol_is_before_its_rows():
     asyncio.run(_run(body))
 
 
-def test_an_index_typed_bare_is_served_under_its_storage_key(rth_clock):
+def test_an_index_typed_bare_is_served_under_its_storage_key():
     """The operator types "SPX"; Schwab keys "$SPX". The subscription goes through
-    ticker_storage_key, so the typed form gets the index's rows."""
+    ticker_storage_key, so the typed form gets the index's rows. In regular hours (_RTH)."""
+    clock = _clock_from(_RTH)
+
     async def body(bus, ws, feed, stats):
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPX"]}))
-        bus.publish("quote.$SPX", _trade("$SPX", 6512.25, time.time()))
+        bus.publish("quote.$SPX", _trade("$SPX", 6512.25, clock()))
         _, row = await _next_row(ws, "$SPX", lambda r: r["spot"] == 6512.25)
         assert row["feed_live"] is True
-    asyncio.run(_run(body, feed=_Feed(held=("$SPX",))))
+    asyncio.run(_run(body, feed=_Feed(held=("$SPX",), clock=clock)))
 
 
 #: Wednesday 2026-09-30, 11:00 ET (RTH) and 22:00 ET (Closed), as epoch seconds

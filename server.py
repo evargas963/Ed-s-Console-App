@@ -2421,9 +2421,12 @@ def gamma_surface_payload(tk: str, scope: str, centre, shift: int, cols: "int | 
 
 @app.get("/api/terrain")
 def get_terrain(ticker: str = Query(...)):
-    """The ticker's published levels."""
-    tk = ticker_storage_key(_required_ticker(ticker))   # RC-126: SPX -> $SPX etc., ONE authority
-    at = now_et()
+    """The ticker's published levels, now."""
+    return terrain_answer(ticker_storage_key(_required_ticker(ticker)), now_et())   # RC-126: SPX -> $SPX etc.
+
+
+def terrain_answer(tk: str, at: datetime) -> dict:
+    """`tk`'s published levels as served at `at`."""
     cached = terrain_cache_get(tk, at.timestamp())
     if cached is not None:
         # the levels as the producer published them, at the publication's price (priced_at_spot);

@@ -9,12 +9,12 @@ import pytest
 
 import live_market_plane as L
 import server
-from tests.feed_live_helper import mark_feed_down, mark_feed_live
+from tests.feed_live_helper import RTH_INSTANT, mark_feed_down, mark_feed_live
 
 
 @pytest.fixture(autouse=True)
-def _feed_live(rth_clock):
-    mark_feed_live("SPY", "MARKNEVER", "KEEPLAST", "ZZRESTROW")
+def _feed_live():
+    mark_feed_live("SPY", "MARKNEVER", "KEEPLAST", "ZZRESTROW", now=RTH_INSTANT)
     yield
     mark_feed_down()
 
@@ -26,7 +26,7 @@ def test_resolve_spot_rejects_mark_close_chain_and_snapshot() -> None:
     L._by_ticker.pop("SPY", None)
     from app.options.order_flow import streaming as ofs
     ofs._price_rows.pop("SPY", None)   # no daemon price row: a chain, MARK or close is no spot
-    spot, source, _ts = server.resolve_spot("SPY", now=time.time())
+    spot, source, _ts = server.resolve_spot("SPY", now=RTH_INSTANT)
     assert spot is None
     assert source == "none"
 
@@ -40,7 +40,7 @@ def test_plane_mark_only_tick_never_creates_current_spot() -> None:
     )
     assert ok is True                                   # the quote Schwab sent is published
     assert L.get_quote("MARKNEVER")["spot"] is None     # MARK never stands in for the spot
-    spot, source, _ts = server.resolve_spot("MARKNEVER", now=time.time())
+    spot, source, _ts = server.resolve_spot("MARKNEVER", now=RTH_INSTANT)
     assert spot is None
     assert source == "none"
 
@@ -68,7 +68,7 @@ def test_a_rest_written_plane_row_is_not_spot() -> None:
     """Spot is the daemon's streamed price row only -- a REST-written plane row is never spot,
     labelled or not (operator rule 2026-09-23: no fallbacks, a broken feed must look broken)."""
     tk = "ZZRESTROW"
-    now = time.time()
+    now = RTH_INSTANT
     L._by_ticker[tk] = {"ticker": tk, "spot": 700.42, "server_received_ts": now - 1.0,
                         "spot_received_ts": now - 1.0, "exchange_quote_ts": now - 1.0,
                         "quote_source_detail": {"spot": "LAST_PRICE"},

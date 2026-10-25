@@ -38,8 +38,21 @@ def price_history(symbol: str, series: str) -> dict:
     return next(a for a in fx["answers"] if a["symbol"] == symbol and a["series"] == series)
 
 
-def mark_feed_live(*tickers: str) -> None:
-    lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True,
+#: Wednesday 2026-09-30, 11:00 ET: regular hours in Schwab's /markets answer held for that date
+#: (tests/conftest.py MARKETS_ANSWERS), the instant a live-feed test is judged at, whatever day it runs
+RTH_INSTANT = 1790780400.0
+
+
+def clock_from(start: float):
+    """A clock running from `start`, time still passing: what a test hands the code it calls as `now`."""
+    began = time.monotonic()
+    return lambda: start + time.monotonic() - began
+
+
+def mark_feed_live(*tickers: str, now: "float | None" = None) -> None:
+    """The daemon's heartbeat stamped `now` (the wall clock when not given), holding `tickers` on
+    LEVELONE_EQUITIES."""
+    lmp.record_feed_heartbeat({"ts": time.time() if now is None else now, "schwab_socket_open": True,
                                "held": {"LEVELONE_EQUITIES": list(tickers)}})
 
 
@@ -47,14 +60,14 @@ def mark_feed_down() -> None:
     lmp.record_feed_down()
 
 
-def publish_daemon_rows(*tickers: str) -> None:
-    """What the daemon's price push hands the console: its price row per ticker, built by the
-    daemon's own function from the daemon's plane (the test's live_market_plane stands in for
-    the daemon's)."""
+def publish_daemon_rows(*tickers: str, now: "float | None" = None) -> None:
+    """What the daemon's price push hands the console: its price row per ticker at `now` (the wall
+    clock when not given), built by the daemon's own function from the daemon's plane (the test's
+    live_market_plane stands in for the daemon's)."""
     import live_price_rows
     from app.options.order_flow import streaming as ofs
     for tk in tickers:
-        row = live_price_rows.price_row(tk, time.time())
+        row = live_price_rows.price_row(tk, time.time() if now is None else now)
         ofs._price_rows[row["ticker"]] = row
 
 
