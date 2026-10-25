@@ -436,7 +436,7 @@
       } else {
         // the served regime word, and its tone from the one regime table (ed-gamma-panels.js)
         var reg = t.regime ? String(t.regime) : null;
-        var rm = reg != null ? (window.EdGammaRegime || {})[reg] : null;
+        var rm = reg != null ? window.EdGammaRegime[reg] : null;
         state(c, reg != null ? reg.replace(/_/g, ' ') : '—', t.levels_state !== 'LIVE' ? 'warn' : (rm ? rm.tone : ''));
         var ng = t.net_gex_at_spot;   // absent is uncoloured, never read as 0
         c.querySelector('.tdm-hero').innerHTML = '<span class="' + (ng == null ? '' : ng >= 0 ? 'up' : 'dn') + '">' + usd(ng) + '</span> <small>net dealer gamma at spot, per 1%</small>';
