@@ -162,8 +162,9 @@ def test_relations_from_a_stopped_price_stand_marked_not_live_with_its_time_and_
     try:
         live = server.terrain_answer("SPY", datetime.fromtimestamp(clock(), ET))
         lmp.record_feed_down()
-        at = clock()
-        down = server.terrain_answer("SPY", datetime.fromtimestamp(at, ET))
+        at_et = datetime.fromtimestamp(clock(), ET)
+        at = at_et.timestamp()                       # the instant as the route holds it
+        down = server.terrain_answer("SPY", at_et)
         levels = server.levels_payload("SPY", "1", datetime.fromtimestamp(at, ET))
         # the matrix of the 2026-10-22 expiry, read that evening (the 18:00 print's instant)
         matrix = server.confluence_payload("SPY", "2026-10-22",
