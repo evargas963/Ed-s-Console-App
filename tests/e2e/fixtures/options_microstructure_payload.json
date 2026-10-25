@@ -148,6 +148,7 @@
     "streaming_last_update_ts": 1788202221.7171052,
     "subscription_state": "SUBSCRIBED"
   },
+  "top_feed_label": "NOT LIVE",
   "top_of_book": {
     "ask": 0.61,
     "ask_size": 14.0,

@@ -122,6 +122,7 @@
       "streaming_last_update_ts": 1792762339.431057,
       "subscription_state": "SUBSCRIBED"
     },
+    "top_feed_label": "LIVE",
     "top_of_book": {
       "ask": 2.03,
       "ask_size": 79.0,
@@ -261,6 +262,7 @@
       "streaming_last_update_ts": 1792762339.4350789,
       "subscription_state": "SUBSCRIBED"
     },
+    "top_feed_label": "LIVE",
     "top_of_book": {
       "ask": 3.06,
       "ask_size": 57.0,
