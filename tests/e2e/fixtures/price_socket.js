@@ -12,7 +12,7 @@ function served(s) {
 }
 function priceRow(ticker, spot, extra) {
   return Object.assign({ ticker: ticker, spot: spot, spot_disp: spot.toFixed(2), spot_state: 'live',
-    feed_live: true, spot_source: 'streaming_plane', server_ts: Date.now() / 1000,
+    feed_live: true, feed_label: 'LIVE', spot_source: 'streaming_plane', server_ts: Date.now() / 1000,
     trade_age_sec: 1 }, extra || {});
 }
 async function mockPriceSocket(page, rows) {

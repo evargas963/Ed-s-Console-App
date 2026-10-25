@@ -139,7 +139,7 @@ def test_the_levels_side_of_a_print_on_a_level_is_at():
     assert (put["price"], put["distance"], put["side"]) == (ON_A_STRIKE, 0.0, LEVEL_AT)
 
 
-def test_relations_from_a_stopped_price_stand_marked_not_live_with_its_time_and_age():
+def test_relations_from_a_stopped_price_stand_marked_not_live_with_its_time_and_age(market_trading):
     """The 16:39 print (773.1269) is past the call wall. While the feed delivers it, the wall's
     state and each level's distance are live. When the daemon's connection ends, they stand,
     marked not live, with the print's trade time and its age (AGENTS rule 5)."""
@@ -177,7 +177,7 @@ def test_relations_from_a_stopped_price_stand_marked_not_live_with_its_time_and_
     assert call["from_spot_text"] == f"{STRIKE_AWAY - 765.0:.2f} below spot"
 
 
-def test_a_page_whose_price_has_stopped_is_told_each_minute_to_read_its_levels_again():
+def test_a_page_whose_price_has_stopped_is_told_each_minute_to_read_its_levels_again(market_trading):
     """The not-live mark's age keeps counting: while SPY's last price (the 16:39 print) is live, a
     page open on SPY is not told anything; once the daemon's connection ends, the levels loop's
     minute (server.refresh_not_live_pages) tells it to read its levels again, every minute."""

@@ -130,7 +130,7 @@ def _received(ts):
 
 
 
-def test_the_daemon_heartbeat_decides_liveness_end_to_end(feed):
+def test_the_daemon_heartbeat_decides_liveness_end_to_end(feed, market_trading):
     """Real daemon servers -> real console feed loop. Live only while the daemon's status beats
     arrive, the Schwab socket is open and the daemon holds the symbol; the feed is down the
     moment the daemon's connections end."""
@@ -150,7 +150,7 @@ def test_the_daemon_heartbeat_decides_liveness_end_to_end(feed):
     assert lmp.daemon_status(now) is None
 
 
-def test_a_live_feed_stays_live_while_the_console_works_through_a_backlog_of_chains(feed):
+def test_a_live_feed_stays_live_while_the_console_works_through_a_backlog_of_chains(feed, market_trading):
     """Measured 2026-10-02 after the close: the console spent 79% of its event loop decoding
     chain parts and read 25 of 60 one-second samples of DELL as "feed down" on a healthy feed,
     the daemon's status waiting behind the chains. 300 chains arrive at once and each takes the

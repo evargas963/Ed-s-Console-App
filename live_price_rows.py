@@ -60,7 +60,7 @@ def price_row(ticker: str, now: float) -> dict[str, Any]:
     last value Schwab sent. A feed down sets `outage` and `feed_live` false, the market open
     or closed; the fields stay (docs/DATA_FLOW.md §2 D5)."""
     tk = ticker_storage_key(ticker)
-    outage = lmp.outage(tk, "LEVELONE_EQUITIES", now)
+    label, outage = lmp.live_state(tk, "LEVELONE_EQUITIES", now)
     row = lmp.get_quote(tk) if tk else None
     streamed = bool(row) and lmp.plane_row_is_streamed(row)
     spot = _spot_of(row)
@@ -75,8 +75,10 @@ def price_row(ticker: str, now: float) -> dict[str, Any]:
         "spot": spot,
         "spot_disp": price_text(spot),
         "spot_source": SPOT_SOURCE if spot is not None else None,
-        # the feed itself (heartbeat, socket open, symbol held), and why the values are absent
-        "feed_live": lmp.feed_live_for(tk, "LEVELONE_EQUITIES", now),
+        # whether the values are updating now (the feed delivering them, their market trading),
+        # the word for that state, and why they are not
+        "feed_live": label == lmp.LIVE,
+        "feed_label": label,
         "outage": outage,
         "bid": field("bid"),
         "ask": field("ask"),

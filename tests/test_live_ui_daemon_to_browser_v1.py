@@ -100,7 +100,7 @@ async def _next_row(ws, sym, pred=lambda r: True, timeout=3.0):
     raise AssertionError(f"no matching {sym} row within {timeout}s")
 
 
-def test_a_schwab_trade_reaches_the_browser_as_a_finished_live_row():
+def test_a_schwab_trade_reaches_the_browser_as_a_finished_live_row(market_trading):
     async def body(bus, ws, feed, stats):
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["spy"]}))
         now = time.time()
@@ -164,7 +164,7 @@ def test_a_subscribe_is_answered_with_what_each_symbol_is_before_its_rows():
     asyncio.run(_run(body))
 
 
-def test_an_index_typed_bare_is_served_under_its_storage_key():
+def test_an_index_typed_bare_is_served_under_its_storage_key(market_trading):
     """The operator types "SPX"; Schwab keys "$SPX". The subscription goes through
     ticker_storage_key, so the typed form gets the index's rows."""
     async def body(bus, ws, feed, stats):
@@ -186,7 +186,7 @@ def _clock_from(start: float):
 
 
 @pytest.mark.parametrize("start", [_RTH, _CLOSED], ids=["rth", "closed"])
-def test_a_closed_schwab_socket_reads_feed_down_within_one_beat(start):
+def test_a_closed_schwab_socket_reads_feed_down_within_one_beat(start, market_trading):
     """Nothing from Schwab; only the beat knows (docs/DATA_FLOW.md §2 D5): the last price and
     bid stand, and the row names the outage, the market open or closed. The server's clock runs
     from `start` so the session is that hour, and time still passes."""

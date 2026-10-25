@@ -7,9 +7,9 @@ import live_market_plane as lmp
 from app.options.order_flow import streaming as ofs
 
 
-def test_a_missing_heartbeat_keeps_the_last_subscription():
+def test_a_missing_heartbeat_keeps_the_last_subscription(market_trading):
     """The last beat held the contract. When that beat is gone the contract is still the one the
-    daemon held, and the feed is not live. The page says OFFLINE. It does not say the daemon
+    daemon held, and the feed is down. The page says OFFLINE. It does not say the daemon
     released the contract."""
     now = time.time()
     lmp.record_feed_heartbeat({
@@ -25,4 +25,4 @@ def test_a_missing_heartbeat_keeps_the_last_subscription():
     assert live["subscription_state"] == ofs.SUBSCRIBED
     assert live["feed_health"]["l1"]["state"] == "LIVE"
     assert down["subscription_state"] == ofs.SUBSCRIBED
-    assert down["feed_health"]["l1"]["state"] == "NOT LIVE"
+    assert down["feed_health"]["l1"]["state"] == "OFFLINE"

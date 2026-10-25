@@ -477,7 +477,7 @@ def test_book_top_never_stands_in_for_a_missing_l1_price():
     assert (bid, ask, bid_leaf, ask_leaf) == (None, None, None, None)
 
 
-def test_an_option_contracts_top_is_what_schwab_sent_on_a_live_feed():
+def test_an_option_contracts_top_is_what_schwab_sent_on_a_live_feed(market_trading):
     """The option top of book is the newest value Schwab sent, merged per field, while the
     daemon holds the contract (a feed down: docs/DATA_FLOW.md §2 D5,
     tests/test_data_path_rules_v1.py). Real TSLA 260831C00367500 ticks (tests/fixtures)."""
@@ -500,7 +500,7 @@ def test_an_option_contracts_top_is_what_schwab_sent_on_a_live_feed():
         state.clear_all_live_state()
 
 
-def test_the_equity_book_reads_the_daemons_price_row_for_its_top_of_book():
+def test_the_equity_book_reads_the_daemons_price_row_for_its_top_of_book(market_trading):
     """O-01: /api/order-flow/microstructure takes the equity top of book from the daemon's price
     row (the header's): the newest quote Schwab sent, its feed live (a feed down: docs/DATA_FLOW.md
     §2 D5, tests/test_data_path_rules_v1.py). Stand-in quote (named): bid 10.00 x 3, ask 10.02 x 5."""

@@ -306,12 +306,14 @@ def price_mark(ticker: str, spot_ts: float | None, now: float) -> dict:
     not, and its trade time and age: served beside every value computed from that price, so a
     value from a price that has stopped stands marked not live (AGENTS rule 5): `spot_not_live_text`
     is the mark the page prints beside each such value, None while the price is live."""
-    live = lmp.feed_live_for(ticker, "LEVELONE_EQUITIES", now)
+    label, outage = lmp.live_state(ticker, "LEVELONE_EQUITIES", now)
+    live = label == lmp.LIVE
     mark = ["not live"]
     if spot_ts is not None:
         mark.append(f"last trade {ct_label(spot_ts)}, {age_text(now - spot_ts)} old")
     return {"spot_feed_live": live,
-            "spot_outage": lmp.outage(ticker, "LEVELONE_EQUITIES", now),
+            "spot_feed_label": label,
+            "spot_outage": outage,
             "spot_time_ct": None if spot_ts is None else ct_label(spot_ts),
             "spot_age_sec": None if spot_ts is None else now - spot_ts,
             "spot_not_live_text": None if live else " · ".join(mark)}

@@ -208,7 +208,14 @@ can be run is run on the final commit, and every defect a change finds in its ar
 Operator 2026-10-24: "every letter of every word of every code must perform a duty, if it does
 not then it must be removed. at the heart of the repo is a simple wire job": each PR is simplified
 (reuse, simplification, efficiency, altitude) before its reviews, and the repo is simplified
-repo-wide after ONE-23 (a plan to him first).
+repo-wide after ONE-23 (a plan to him first). Operator 2026-10-24, "this needs to follow banking
+app rules": every live mark on every screen means the value is updating now; a closed market or a
+feed down reads not live with its time and age, Key Levels' Spot included after an outage and a
+ticker switch. Operator 2026-10-25: live is a /markets session open and Schwab's SECURITY_STATUS
+not Closed or Halted; 04:00–07:00 ET, when Schwab streams stocks before the pre-market /markets
+sends, reads NOT LIVE, "outside Schwab's market hours". Operator 2026-10-25: "we should not have
+multiple producers anywhere": the state's word (LIVE / OFFLINE / NOT LIVE) is served
+(`live_market_plane.live_state`), never chosen by the page.
 
 | ID | Status | Work item |
 |---|---|---|
@@ -220,6 +227,7 @@ repo-wide after ONE-23 (a plan to him first).
 | ONE-25 | QUEUED | The front expiry: seven definitions (max pain, implied move, risk reversal, same-day levels, 0DTE share, heatmap front, confluence default). |
 | ONE-26 | QUEUED | Options closed: `terrain_staleness` judges by any option market's close, the publication by the ticker's own. |
 | ONE-27 | QUEUED | Prior-day close, high and low and today's candle computed from 1-minute bars while Schwab sends CLOSE_PRICE, the daily candles and OPEN/HIGH/LOW_PRICE (First gate 2). |
+| ONE-29 | QUEUED | Live verdicts the page still chooses (PR B of the live work, operator 2026-10-24): the order-flow book badge and the Right Now book badge read LIVE from `book_stale` false (`static/js/ed-order-flow.js`, `static/js/ed-trade-desk.js`, which also chooses OFFLINE from `top_outage`), Key Levels' "terrain · live" from `levels_stale` false (`static/js/ed-gamma-panels.js`), the chain's and heatmap's live marks from `server.terrain_staleness` and page-side `today_source` / scope checks; done when each is a served verdict from `live_state` and the page shows it. |
 | ONE-28 | QUEUED | The equity book: two stores, two parsers, two clocks (`state._book` and `engine`, `history.BOOKS` and `history._levels`). |
 
 ## Phase 2 — the rest of the design, then decomposition

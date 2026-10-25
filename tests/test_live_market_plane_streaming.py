@@ -92,7 +92,7 @@ def test_received_ts_is_required_and_is_what_freshness_judges():
     assert row["server_received_ts"] == old and row["spot_received_ts"] == old
 
 
-def test_a_carried_last_price_is_the_current_price_on_a_live_feed():
+def test_a_carried_last_price_is_the_current_price_on_a_live_feed(market_trading):
     """The unchanged LAST_PRICE keeps its own receive time; with the feed live the price row
     carries it and the quote as Schwab last sent them, and it is the console's spot. (A feed down:
     docs/DATA_FLOW.md §2 D5, tests/test_data_path_rules_v1.py.)"""

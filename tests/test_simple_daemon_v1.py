@@ -60,7 +60,7 @@ def test_news_and_every_subscription_answer_are_written(tmp_path):
 
 # ------------------------------------------------------------------ the console side
 
-def test_one_live_rule_every_reader_agrees_and_all_fail_closed_at_one_limit():
+def test_one_live_rule_every_reader_agrees_and_all_fail_closed_at_one_limit(market_trading):
     """ONE-15 (2026-09-28 audit): "is it live" had four limits -- 3 s (price), 5 s (daemon
     status), 10 s (option greeks), 25 s (book) -- plus the daemon's 5 s/30 s message-age states,
     so one moment could read live on one card and dead on the next. One rule now: the daemon's
@@ -94,11 +94,11 @@ def test_one_live_rule_every_reader_agrees_and_all_fail_closed_at_one_limit():
         schwab_down = readers()
     finally:
         lmp.record_feed_down()
-    assert down == (False, False, "NOT LIVE", "NOT STREAMED")
-    assert late == (False, False, "NOT LIVE", "SUBSCRIBED")
+    assert down == (False, False, "OFFLINE", "NOT STREAMED")
+    assert late == (False, False, "OFFLINE", "SUBSCRIBED")
     assert live == (True, True, "LIVE", "SUBSCRIBED") and book_age == 45.0
     assert b_book is False                                            # B held on L1 only
-    assert schwab_down == (False, False, "NOT LIVE", "SUBSCRIBED")    # the daemon is up, Schwab is not
+    assert schwab_down == (False, False, "OFFLINE", "SUBSCRIBED")     # the daemon is up, Schwab is not
 
 
 # ------------------------------------------------------------------ the process

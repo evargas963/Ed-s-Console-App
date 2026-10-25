@@ -146,10 +146,17 @@ from Schwab to the screen (daemon, console, page), are these:
   Enforced by: `tests/test_data_path_rules_v1.py`, `tests/test_data_path_writer_failures_v1.py`.
 - **D5. The last value stands, marked** (`AGENTS.md` rule 5). Every value carries Schwab's time and
   the newest by that time is the current one; a reconnect never replays an older value as live. A
-  value is live only while its feed delivers it (`live_market_plane.feed_live_for`). When it stops
+  value is live only while it is updating: its feed delivers it and its market trades
+  (`live_market_plane.live_state`). Its market trades inside the sessions Schwab's /markets answer
+  sent for today (pre-market, regular, post-market; an option service only inside an option
+  market's regular window), while Schwab's SECURITY_STATUS for it is not Closed or Halted; before
+  the 07:00 ET pre-market /markets sends, a stock Schwab streams from 04:00 reads NOT LIVE,
+  "outside Schwab's market hours" (operator 2026-10-25). When it stops
   updating, for any reason (feed down, market closed, an input missing), the last value stands,
-  marked not live with its time and age, and every value computed from it is marked not live too;
-  during a feed outage the header says OFFLINE. A value never received, or sent invalid, shows as
+  marked not live with its time and age, and every value computed from it is marked not live too.
+  The state's one word is served beside the values (`live_state`): LIVE; OFFLINE, the feed itself
+  down (the header during a feed outage); NOT LIVE, the feed up and this symbol not held or its
+  market not trading. The page shows the served word. A value never received, or sent invalid, shows as
   "-". Calculations keep every digit and every contract; rounding is on screen
   only. Where today's code differs: §3.5 items 5 and 6.
   Enforced by: `tests/test_data_path_rules_v1.py` (newest by Schwab's time, no replay as live),
@@ -533,7 +540,8 @@ from Schwab to the screen (daemon, console, page), are these:
   the feed is delivering a symbol now is stated beside its values: the
   daemon's heartbeat, sent every second, is not older than 3 s at the time judged
   (`live_market_plane.FEED_HEARTBEAT_MAX_AGE_SEC`), says the Schwab socket is open, and holds the
-  symbol on that Schwab service (`live_market_plane.feed_live_for`; the header's LIVE / OFFLINE,
+  symbol on that Schwab service, and its market trades (`live_market_plane.live_state`; the
+  header's LIVE / OFFLINE / NOT LIVE,
   a book's `book_live`, a heatmap leg's state). A value's age is never the test: Schwab sends a
   field only when it changes. The daemon's status is read from the same heartbeat
   (`live_market_plane.daemon_status`). Owner: the console's price-row connection (`streaming._rows_loop`)
@@ -610,7 +618,8 @@ from Schwab to the screen (daemon, console, page), are these:
 5. **Values blank when they stop** (D5, operator 2026-10-11): the price row keeps the last
    values and the header says OFFLINE (`live_price_rows.price_row`, the page's feed chip). The
    age line keeps that price's last trade time (`static/js/ed-core.js`). The key levels
-   spot carries that same time (`#klSpot`). The chain ladder's spot carries it too
+   spot carries that same time and the header's state, and clears on a ticker switch (`#klSpot`,
+   painted by the header's `static/js/ed-core.js`). The chain ladder's spot carries it too
    (`server.get_chain`, the chain head). The trade desk's spot carries it too
    (`server.levels_payload`, the Right Now line). The levels page's spot carries it too
    (`static/js/ed-gamma-levels.js`). The gamma chart's spot and its live price line carry it too
@@ -623,8 +632,8 @@ from Schwab to the screen (daemon, console, page), are these:
    book-age row keeps that same time (`static/js/ed-trade-desk.js`). The desk map's
    options card, volatility card, and GAMMA pill keep the chain's time beside that
    age (`server.get_terrain`, `static/js/ed-trade-desk-map.js`). The key levels
-   keep the last wall when that price has stopped, and the rail says OFFLINE
-   beside the chain's time (`server.get_terrain`, `#klSrc`, `static/js/ed-gamma-panels.js`); the chain's own age stays `levels_stale`. The
+   keep the last wall when that price has stopped, and the rail says that price's served state
+   (`spot_feed_label`) beside the chain's time (`server.get_terrain`, `#klSrc`, `static/js/ed-gamma-panels.js`); the chain's own age stays `levels_stale`. The
    GEX-by-strike badge keeps that same time beside its age (`server.terrain_strikes_payload`, `#gbsSrc`). The
    gamma chart's GEX badge keeps it too (`static/js/ed-gamma-chart.js`). The desk map's
    LEVELS pill keeps the snapshot's time beside that age (`server.levels_payload`,
@@ -636,8 +645,9 @@ from Schwab to the screen (daemon, console, page), are these:
    `static/js/ed-order-flow.js`). The Flow panel keeps the contract's quote time and book time
    (`server.options_microstructure`, `static/js/ed-gamma-flow.js`). A contract
    the daemon stops holding keeps its last quote; the Flow panel marks it NOT STREAMED. A missing
-   heartbeat keeps that last subscription, and the panel says OFFLINE
-   (`streaming.get_option_contract_streaming_diagnostics`, the Flow badge). A missing
+   heartbeat keeps that last subscription, and the panel says OFFLINE; a held contract whose option
+   market is closed says NOT LIVE (`streaming.get_option_contract_streaming_diagnostics`, the Flow
+   badge). A missing
    heartbeat keeps the quote's greeks on the levels; the cells are not live. A feed
    down while the market is closed keeps the last price and the book, and that panel says
    OFFLINE (`live_market_plane.outage`). A strike's session volume and open interest keep

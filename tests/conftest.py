@@ -109,6 +109,16 @@ def _live_feed_starts_down():
         _lmp_feed._feed["watchlist"] = None
 
 
+@pytest.fixture
+def market_trading(monkeypatch):
+    """STAND-IN (named): the symbol's market trading, whatever the clock reads. A test of a live
+    feed whose routes read the wall clock may run on a weekend or at night; this holds the
+    market-hours half of the live rule (live_market_plane.not_trading) open for it. That half is
+    proven on Schwab's /markets answers and SECURITY_STATUS by tests/test_data_path_live_status_v1.py."""
+    import live_market_plane as lmp
+    monkeypatch.setattr(lmp, "not_trading", lambda symbol, service, now: None)
+
+
 def most_recent_trading_day_et(*, on_or_before: date | None = None) -> date:
     """The newest ET date at or before `on_or_before` (today) that Schwab's /markets answers
     held say the market was open (the same answers the code reads, so the test cannot disagree

@@ -189,9 +189,9 @@ function watchErrors(page) {
 test('Desk: an offline price keeps its last trade time on the map', async ({ page }) => {
   await intercept(page);
   await mockPriceSocket(page, [
-    priceRow('$SPX', 5800.12, { trade_time_ct: '14:00:01 CT', feed_live: false, outage: 'Schwab LEVELONE_EQUITIES feed down during RTH' }),
-    priceRow('$VIX', 16.4, { trade_time_ct: '14:00:02 CT', chg_pct: 1.2, feed_live: false, outage: 'Schwab LEVELONE_EQUITIES feed down during RTH' }),
-    priceRow('SPY', 771.3, { trade_time_ct: '14:00:03 CT', feed_live: false, outage: 'Schwab LEVELONE_EQUITIES feed down during RTH', total_volume: 1000 }),
+    priceRow('$SPX', 5800.12, { trade_time_ct: '14:00:01 CT', feed_live: false, feed_label: 'OFFLINE', outage: 'Schwab LEVELONE_EQUITIES feed down during RTH' }),
+    priceRow('$VIX', 16.4, { trade_time_ct: '14:00:02 CT', chg_pct: 1.2, feed_live: false, feed_label: 'OFFLINE', outage: 'Schwab LEVELONE_EQUITIES feed down during RTH' }),
+    priceRow('SPY', 771.3, { trade_time_ct: '14:00:03 CT', feed_live: false, feed_label: 'OFFLINE', outage: 'Schwab LEVELONE_EQUITIES feed down during RTH', total_volume: 1000 }),
   ]);
   await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
     localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
@@ -433,7 +433,7 @@ test.describe('Trade Desk renders served values', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().bars)).toBeGreaterThan(0);
     await page.evaluate((spot) => window.dispatchEvent(new CustomEvent('ed:quote_tick', { detail: {
-      ticker: 'SPY', spot: spot, feed_live: false, trade_age_sec: 1, trade_time_ct: '14:00:01 CT',
+      ticker: 'SPY', spot: spot, feed_live: false, feed_label: 'OFFLINE', trade_age_sec: 1, trade_time_ct: '14:00:01 CT',
       outage: 'Schwab LEVELONE_EQUITIES feed down during RTH' } })), SPOT);
     await expect.poll(() => page.evaluate(() => (window.EdTradeDeskMap.state().chart || {}).liveTitle)).toBe('LAST · last trade 14:00:01 CT');
     await expect.poll(() => page.evaluate(() => (window.EdTradeDeskMap.state().chart || {}).livePrice)).toBe(SPOT);
@@ -460,7 +460,7 @@ test.describe('Trade Desk renders served values', () => {
     expect((await chartState()).liveTitle).toBe('LAST · 1s');
     expect((await chartState()).bars).toBe(BARS.bars.length);          // the candles are untouched
     await page.evaluate(() => window.dispatchEvent(new CustomEvent('ed:quote_tick', { detail: { ticker: 'SPY', spot: null,
-      spot_disp: null, feed_live: false, trade_age_sec: null } })));
+      spot_disp: null, feed_live: false, feed_label: 'OFFLINE', trade_age_sec: null } })));
     await expect.poll(async () => (await chartState()).livePrice).toBeNull();   // Schwab sent no price: no line
     await page.waitForTimeout(1500);
     expect(barReads.length).toBe(before);

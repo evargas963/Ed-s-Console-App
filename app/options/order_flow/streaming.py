@@ -185,13 +185,13 @@ def _tick(sym: str) -> None:
 
 
 def _service_feed(symbol: "str | None", service: str, now: float) -> dict:
-    """One Schwab service's feed for `symbol` at `now`, as the page shows it: LIVE by the one
-    live rule (live_market_plane.feed_live_for), and how long ago the daemon last received
-    anything on that service (its own report)."""
+    """One Schwab service's feed for `symbol` at `now`, as the page shows it: its state by the one
+    live rule (live_market_plane.live_state: LIVE, OFFLINE or NOT LIVE), and how long ago the daemon
+    last received anything on that service (its own report)."""
     status = _lmp.daemon_status(now)
     reports = status.get("health") if status is not None else None
     health = reports.get(service) if reports is not None else None
-    return {"state": "LIVE" if _lmp.feed_live_for(symbol, service, now) else "NOT LIVE",
+    return {"state": _lmp.live_state(symbol, service, now)[0],
             "age_sec": health.get("age_sec") if health is not None else None}
 
 

@@ -7,7 +7,8 @@ written, from real Schwab messages: TSLA 2026-08-31 367.5 call's 12 LEVELONE_OPT
 OPTIONS_BOOK messages as Schwab sent them (tests/fixtures/real_options_stream_history_samples.json,
 observed 2026-08-31), applied by the console's own intake (streaming._ingest_pushed), valued at the
 newest message's time. STAND-IN (named): the daemon's status, holding the contract on both
-services. Those messages carry no CONTRACT_TYPE, so the side the header shows is proven by
+services, and the option market trading at that time (Schwab's /markets answers held start
+2026-09-30, so 2026-08-31's session is unknown). Those messages carry no CONTRACT_TYPE, so the side the header shows is proven by
 tests/e2e/fixtures/options_microstructure_side_payloads.json: the route's payloads for SPY 2026-10-23
 761 call and 762 put after their stored messages, the first carrying CONTRACT_TYPE
 (tests/fixtures/real_spy_option_contract_type_2026_10_23.json). STAND-IN (named): the daemon's
@@ -32,6 +33,8 @@ FLOW_CONTRACT = "TSLA  260831C00367500"
 
 def build_flow_e2e_fixture_response() -> dict:
     """The route's payload for FLOW_CONTRACT after its real messages, at the newest one's time."""
+    from unittest import mock
+
     import app.options.order_flow.state as ofls
     import live_market_plane as lmp
     import server as srv
@@ -42,6 +45,8 @@ def build_flow_e2e_fixture_response() -> dict:
                   if c["symbol"] == FLOW_CONTRACT)["events"]
     ofls.clear_all_live_state()
     at = max(e["ts_recv"] for e in events)
+    trading = mock.patch.object(lmp, "not_trading", lambda symbol, service, now: None)
+    trading.start()
     try:
         lmp.record_feed_heartbeat({"ts": at, "schwab_socket_open": True,
                                    "held": {"LEVELONE_OPTIONS": [FLOW_CONTRACT], "OPTIONS_BOOK": [FLOW_CONTRACT]}})
@@ -55,6 +60,7 @@ def build_flow_e2e_fixture_response() -> dict:
                     symbol=FLOW_CONTRACT, content=e["content"], src="schwab_options_l1", ts_recv=e["ts_recv"]))
         return srv.options_microstructure(FLOW_CONTRACT, at)
     finally:
+        trading.stop()
         lmp.record_feed_down()
         ofls.clear_all_live_state()
 

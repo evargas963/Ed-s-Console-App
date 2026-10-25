@@ -10,7 +10,7 @@ from tests.feed_live_helper import mark_feed_live
 from tests.real_chains import CRWD
 
 
-def test_a_down_price_marks_the_levels_and_the_wall_stays():
+def test_a_down_price_marks_the_levels_and_the_wall_stays(market_trading):
     """The chain is current, so the levels are not stale. The equity feed is down, so the rail
     is told the price they were built from has stopped. The wall is the last one published
     (CRWD's real chain)."""
@@ -29,8 +29,8 @@ def test_a_down_price_marks_the_levels_and_the_wall_stays():
         lmp.record_feed_down()
     assert down["call_wall"] == live["call_wall"] == published["call_wall"] is not None
     assert down["levels_stale"] is False
-    assert down["spot_feed_live"] is False
+    assert (down["spot_feed_live"], down["spot_feed_label"]) == (False, "OFFLINE")
     assert down["spot_outage"].startswith("Schwab LEVELONE_EQUITIES feed down during ")
-    assert live["spot_feed_live"] is True
+    assert (live["spot_feed_live"], live["spot_feed_label"]) == (True, "LIVE")
     assert live["spot_outage"] is None
     assert live["levels_stale"] is False
