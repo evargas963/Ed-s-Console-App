@@ -56,7 +56,7 @@
   var _levelsLoader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadLevelsImpl(ticker(), signal); });
   function loadLevels() { _levelsLoader.trigger(ticker()); }
   function renderLevels(d, failed) {   // failed: the words of a read that failed
-    var ids = ['klSpot', 'klFlip', 'klCall', 'klPut', 'klAbs', 'klPeak', 'klNet', 'klRegime',
+    var ids = ['klFlip', 'klCall', 'klPut', 'klAbs', 'klPeak', 'klNet', 'klRegime',   // terrain's (Spot is the price row's)
       'kl0Flip', 'kl0Call', 'kl0Put', 'kl0Abs', 'kl0Peak'];
     paintPcr(d && !d.error ? d : null);
     if (!d || d.error) {   // nothing current: no tooltip or colour of the last answer stays

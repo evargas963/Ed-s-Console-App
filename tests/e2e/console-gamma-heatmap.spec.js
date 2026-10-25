@@ -429,8 +429,10 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       ? route.fulfill({ status: 500, contentType: 'application/json', body: '{"detail":"Internal Server Error"}' })
       : route.fulfill({ status: 200, contentType: 'application/json',
         body: JSON.stringify(Object.assign({}, TERRAIN, { levels_stale: true, levels_stale_reason: 'chain 12m old' })) }));
+    await mockPriceSocket(page, [priceRow('SPY', 601.23)]);                    // the pushed price
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#klSrc')).toHaveAttribute('title', 'chain 12m old');
+    await expect(page.locator('#klSpot')).toHaveText('601.23');
     failing = true;
     await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'levels' } })));
     await expect(page.locator('#klSrc')).toHaveText('the console answered /api/terrain with 500');
@@ -439,6 +441,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       expect(await page.locator(id).evaluate((el) => el.style.color), id).toBe('');
     }
     await expect(page.locator('#klBody')).toHaveClass(/recede/);
+    await expect(page.locator('#klSpot')).toHaveText('601.23');            // the price row's, not terrain's
   });
 
   test('Right Now says when the page cannot draw its answers, never "no console serving"', async ({ page }) => {
