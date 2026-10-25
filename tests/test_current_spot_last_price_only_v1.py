@@ -13,7 +13,7 @@ from tests.feed_live_helper import mark_feed_down, mark_feed_live
 
 
 @pytest.fixture(autouse=True)
-def _feed_live():
+def _feed_live(rth_clock):
     mark_feed_live("SPY", "MARKNEVER", "KEEPLAST", "ZZRESTROW")
     yield
     mark_feed_down()
@@ -22,7 +22,7 @@ def _feed_live():
 
 
 
-def test_resolve_spot_rejects_mark_close_chain_and_snapshot(market_trading) -> None:
+def test_resolve_spot_rejects_mark_close_chain_and_snapshot() -> None:
     L._by_ticker.pop("SPY", None)
     from app.options.order_flow import streaming as ofs
     ofs._price_rows.pop("SPY", None)   # no daemon price row: a chain, MARK or close is no spot
@@ -31,7 +31,7 @@ def test_resolve_spot_rejects_mark_close_chain_and_snapshot(market_trading) -> N
     assert source == "none"
 
 
-def test_plane_mark_only_tick_never_creates_current_spot(market_trading) -> None:
+def test_plane_mark_only_tick_never_creates_current_spot() -> None:
     L._by_ticker.pop("MARKNEVER", None)
     ok = L.record_from_level_one_equity(
         "MARKNEVER",
@@ -64,7 +64,7 @@ def test_plane_mark_cannot_replace_prior_last_price() -> None:
     L._by_ticker.pop("KEEPLAST", None)
 
 
-def test_a_rest_written_plane_row_is_not_spot(market_trading) -> None:
+def test_a_rest_written_plane_row_is_not_spot() -> None:
     """Spot is the daemon's streamed price row only -- a REST-written plane row is never spot,
     labelled or not (operator rule 2026-09-23: no fallbacks, a broken feed must look broken)."""
     tk = "ZZRESTROW"

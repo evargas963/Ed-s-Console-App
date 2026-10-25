@@ -520,7 +520,6 @@
   function loadAll() { loadLevels(); loadGbs(); loadVanna(); loadCharm(); loadStructures(); loadOf(); }
   document.addEventListener('ed:ticker', function () { resetStrikeDetailForTickerChange(); loadAll(); });
   document.addEventListener('ed:expiry', loadLevels);   // the ratio is scoped to the selected expiry
-  // Key Levels' Spot is the header's price, painted by the header (ed-core.js paintQuote/setFeed)
   document.addEventListener('ed:view', loadAll);
   // a new scope is a new window: every per-strike panel re-reads it from the server
   document.addEventListener('ed:scope', function () { loadGbs(); loadVanna(); loadCharm(); });

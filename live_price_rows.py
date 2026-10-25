@@ -1,17 +1,16 @@
 """THE displayed price row -- one producer for every price the operator sees.
 
-Built only from live_market_plane (the per-field Schwab LEVELONE_EQUITIES state) and its feed
-state (feed_live_for). Imported by the capture daemon, which pushes these rows straight to
+Built only from live_market_plane (the per-field Schwab LEVELONE_EQUITIES state) and its live
+rule (live_state). Imported by the capture daemon, which pushes these rows straight to
 the browser (app/market_data/schwab/streaming/live_ui.py) and orders and records its option
 contracts at their price (`spot`, capture.Daemon's option rule), and by the console, whose
 analytics read the same function -- so a price on screen and a price in a calculation can
 never come from two different rules.
 
 Nothing here computes a market value: every number is a Schwab field or its receive time, with
-Schwab's own trade time; the only derivations are the trade age and its label. Whether the feed
-is delivering the symbol now (`feed_live`) is stated beside the values. A down feed sets
-`outage` and leaves the last values Schwab sent, the market open or closed
-(docs/DATA_FLOW.md §2 D5).
+Schwab's own trade time; the only derivations are the trade age and its label. Whether the
+values are live now, the word for that (`feed_label`) and why not (`outage`) are stated beside
+them; the last values Schwab sent stay (docs/DATA_FLOW.md §2 D5).
 """
 from __future__ import annotations
 
@@ -57,8 +56,8 @@ def spot(ticker: str) -> Optional[float]:
 
 def price_row(ticker: str, now: float) -> dict[str, Any]:
     """The finished row the screen paints for one symbol, as it is at `now`: each field the
-    last value Schwab sent. A feed down sets `outage` and `feed_live` false, the market open
-    or closed; the fields stay (docs/DATA_FLOW.md §2 D5)."""
+    last value Schwab sent. Not live, it sets `feed_live` false, `feed_label` and `outage`; the
+    fields stay (docs/DATA_FLOW.md §2 D5)."""
     tk = ticker_storage_key(ticker)
     label, outage = lmp.live_state(tk, "LEVELONE_EQUITIES", now)
     row = lmp.get_quote(tk) if tk else None

@@ -60,7 +60,7 @@ def test_news_and_every_subscription_answer_are_written(tmp_path):
 
 # ------------------------------------------------------------------ the console side
 
-def test_one_live_rule_every_reader_agrees_and_all_fail_closed_at_one_limit(market_trading):
+def test_one_live_rule_every_reader_agrees_and_all_fail_closed_at_one_limit(rth_clock):
     """ONE-15 (2026-09-28 audit): "is it live" had four limits -- 3 s (price), 5 s (daemon
     status), 10 s (option greeks), 25 s (book) -- plus the daemon's 5 s/30 s message-age states,
     so one moment could read live on one card and dead on the next. One rule now: the daemon's

@@ -123,7 +123,7 @@ def test_daily_roll_up_is_keyed_on_the_et_trading_date():
     assert len(out) == 2 and out[0]["h"] == 3 and out[0]["v"] == 2
 
 
-def test_the_price_row_carries_feed_state_and_trade_age_and_no_bar(market_trading):
+def test_the_price_row_carries_feed_state_and_trade_age_and_no_bar(rth_clock):
     import time as _t
 
     import live_market_plane as lmp

@@ -202,7 +202,7 @@ def test_a_symbol_schwab_marks_closed_is_not_live_in_an_open_session():
     """$SPX as Schwab streamed it 2026-10-19: SECURITY_STATUS Normal at the 09:30 open, Closed at
     the 16:00 close. At 17:00 ET (After-Hours, the stock market still trading) $SPX is not live
     and says Schwab marks it Closed. NVDA, Normal from 04:00, is not live at 04:30, before the
-    07:00 pre-market Schwab's /markets sent (operator 2026-10-25), and live at 07:30."""
+    07:00 pre-market Schwab's /markets sent, and live at 07:30."""
     spx_open, spx_close = (m for m in _STATUS if m["symbol"] == "$SPX")
     nvda_normal = next(m for m in _STATUS if m["symbol"] == "NVDA" and m["item"]["SECURITY_STATUS"] == "Normal")
     try:

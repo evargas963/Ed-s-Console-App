@@ -7,7 +7,7 @@ import live_market_plane as lmp
 from app.options.order_flow import streaming as ofs
 
 
-def test_a_missing_heartbeat_keeps_the_last_subscription(market_trading):
+def test_a_missing_heartbeat_keeps_the_last_subscription(rth_clock):
     """The last beat held the contract. When that beat is gone the contract is still the one the
     daemon held, and the feed is down. The page says OFFLINE. It does not say the daemon
     released the contract."""

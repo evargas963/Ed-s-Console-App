@@ -57,7 +57,7 @@ def test_with_no_book_from_schwab_the_flow_panel_says_so():
     assert _route()["status"] == "no_book"
 
 
-def test_the_flow_panel_says_whether_the_daemon_streams_the_contract(market_trading):
+def test_the_flow_panel_says_whether_the_daemon_streams_the_contract(rth_clock):
     """SUBSCRIBED while the daemon holds the contract on LEVELONE_OPTIONS; NOT STREAMED when it
     does not, and when its status is gone (a daemon that stopped reporting holds nothing)."""
     try:

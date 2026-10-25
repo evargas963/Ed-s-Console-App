@@ -57,10 +57,10 @@ def _trade(sym: str, last: float, ts: float, **extra) -> dict:
 
 
 class _Feed:
-    def __init__(self, held=("SPY", "AAPL"), clock=time.time):
+    def __init__(self, held=("SPY", "AAPL"), clock=None):
         self.open = True
         self.held = list(held)
-        self.clock = clock
+        self.clock = time.time if clock is None else clock     # read now: a pinned clock (rth_clock) counts
 
     def __call__(self) -> dict:
         return {"ts": self.clock(), "schwab_socket_open": self.open,
@@ -100,7 +100,7 @@ async def _next_row(ws, sym, pred=lambda r: True, timeout=3.0):
     raise AssertionError(f"no matching {sym} row within {timeout}s")
 
 
-def test_a_schwab_trade_reaches_the_browser_as_a_finished_live_row(market_trading):
+def test_a_schwab_trade_reaches_the_browser_as_a_finished_live_row(rth_clock):
     async def body(bus, ws, feed, stats):
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["spy"]}))
         now = time.time()
@@ -164,7 +164,7 @@ def test_a_subscribe_is_answered_with_what_each_symbol_is_before_its_rows():
     asyncio.run(_run(body))
 
 
-def test_an_index_typed_bare_is_served_under_its_storage_key(market_trading):
+def test_an_index_typed_bare_is_served_under_its_storage_key(rth_clock):
     """The operator types "SPX"; Schwab keys "$SPX". The subscription goes through
     ticker_storage_key, so the typed form gets the index's rows."""
     async def body(bus, ws, feed, stats):
@@ -186,22 +186,24 @@ def _clock_from(start: float):
 
 
 @pytest.mark.parametrize("start", [_RTH, _CLOSED], ids=["rth", "closed"])
-def test_a_closed_schwab_socket_reads_feed_down_within_one_beat(start, market_trading):
+def test_a_closed_schwab_socket_reads_feed_down_within_one_beat(start):
     """Nothing from Schwab; only the beat knows (docs/DATA_FLOW.md §2 D5): the last price and
-    bid stand, and the row names the outage, the market open or closed. The server's clock runs
-    from `start` so the session is that hour, and time still passes."""
+    bid stand, and the row reads OFFLINE and names the outage, the market open or closed. Before
+    the socket closes the row is LIVE in regular hours and NOT LIVE at 22:00, the market closed.
+    The server's clock runs from `start` so the session is that hour, and time still passes."""
     clock = _clock_from(start)
 
     async def body(bus, ws, feed, stats):
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"]}))
         bus.publish("quote.SPY", _trade("SPY", 583.41, clock()))
-        await _next_row(ws, "SPY", lambda r: r["feed_live"] is True)
+        _, row = await _next_row(ws, "SPY", lambda r: r["spot"] == 583.41)
+        assert row["feed_label"] == ("LIVE" if start == _RTH else "NOT LIVE")
         feed.open = False
-        msg, row = await _next_row(ws, "SPY", lambda r: r["feed_live"] is False,
+        msg, row = await _next_row(ws, "SPY", lambda r: r["feed_label"] == "OFFLINE",
                                    timeout=1.5 * live_ui.HEARTBEAT_SEC)            # the next beat
         assert msg["type"] == "feed" and msg["feed"]["schwab_socket_open"] is False
         assert row["spot"] == 583.41 and row["bid"] == pytest.approx(583.40)
-        assert row["outage"] is not None
+        assert row["feed_live"] is False and row["outage"].startswith("Schwab LEVELONE_EQUITIES feed down during ")
     asyncio.run(_run(body, feed=_Feed(clock=clock)))
 
 

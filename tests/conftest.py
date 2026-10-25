@@ -109,14 +109,36 @@ def _live_feed_starts_down():
         _lmp_feed._feed["watchlist"] = None
 
 
+#: Wednesday 2026-09-30, 11:00 ET: regular hours in Schwab's /markets answer held for that date
+RTH_INSTANT = 1790780400.0
+
+
 @pytest.fixture
-def market_trading(monkeypatch):
-    """STAND-IN (named): the symbol's market trading, whatever the clock reads. A test of a live
-    feed whose routes read the wall clock may run on a weekend or at night; this holds the
-    market-hours half of the live rule (live_market_plane.not_trading) open for it. That half is
-    proven on Schwab's /markets answers and SECURITY_STATUS by tests/test_data_path_live_status_v1.py."""
-    import live_market_plane as lmp
-    monkeypatch.setattr(lmp, "not_trading", lambda symbol, service, now: None)
+def clock_at(monkeypatch):
+    """Run the clocks from an instant: `clock_at(ts)` sets the wall clock (time.time) and the ET
+    clock (time_et.now_et, in every module holding it) running from `ts`, time still passing, so a
+    test of a live feed whose routes read the clock is in the session Schwab's /markets says `ts`
+    is, whatever day the suite runs. Returns `ts`."""
+    import time
+
+    import time_et
+
+    real_now_et, monotonic = time_et.now_et, time.monotonic
+    holders = [m for m in list(sys.modules.values()) if m is not None and getattr(m, "now_et", None) is real_now_et]
+
+    def at(ts: float) -> float:
+        began = monotonic()
+        monkeypatch.setattr(time, "time", lambda: ts + monotonic() - began)
+        for mod in holders:
+            monkeypatch.setattr(mod, "now_et", lambda: datetime.fromtimestamp(ts + monotonic() - began, time_et.ET))
+        return ts
+    return at
+
+
+@pytest.fixture
+def rth_clock(clock_at):
+    """The clocks running from RTH_INSTANT, regular hours (clock_at). Returns RTH_INSTANT."""
+    return clock_at(RTH_INSTANT)
 
 
 def most_recent_trading_day_et(*, on_or_before: date | None = None) -> date:

@@ -2,8 +2,8 @@
 /**
  * D — Options/Gamma "Flow" subview: ONE explicitly-selected option contract (a Chain click), named to
  * the console so the daemon streams it (POST /api/flow-contract), observed through the route. The
- * badge is the served subscription state: ACTIVE while the daemon streams the contract, NOT STREAMED
- * otherwise; every NATIVE/DERIVED/PROXY tag is the backend's own classification;
+ * badge is the served subscription state: ACTIVE while the daemon streams the contract live, its
+ * served state (OFFLINE, NOT LIVE) while it streams it not live, NOT STREAMED otherwise; every NATIVE/DERIVED/PROXY tag is the backend's own classification;
  * native_aggressor_available=false => no signed flow.
  *
  * PAYLOAD CONTRACT — the /api/order-flow/options-microstructure stub is the committed fixture
@@ -131,6 +131,7 @@ test.describe('D — Gamma Flow subview', () => {
     await page.locator('#chainBody tr[data-csym="' + SPY_CALL + '"] td.chn-call').first().click();
     await page.locator('#subnav .tab', { hasText: 'Flow' }).click();
     await expect(page.locator('#flowBody .fl-sym')).toHaveText(SPY_CALL);
+    await expect(page.locator('#flowBody .fl-badge')).toHaveText('ACTIVE');   // 10-23 09:32 ET: held, regular hours
     expect(SPY_CHAIN.contracts.map((c) => [c.symbol, c.strikePrice])).toEqual(expect.arrayContaining([[SPY_CALL, 761], [SPY_PUT, 762]]));
     await expect(page.locator('#flowBody .fl-meta')).toHaveText(/^Call · 761/);
     await page.locator('#subnav .tab', { hasText: 'Chain' }).click();
@@ -143,10 +144,10 @@ test.describe('D — Gamma Flow subview', () => {
     await expect(other.locator('#flowBody .fl-meta')).toHaveText(/^— · 367.5/);
   });
 
-  test('the selected contract is named once to stream; ACTIVE while the daemon streams it; classifications + no signed flow', async ({ page }) => {
-    const ctx = makeContext(); await setup(page, ctx);   // the fixture's plane: SUBSCRIBED
+  test('the selected contract is named once to stream; its served state on the badge; classifications + no signed flow', async ({ page }) => {
+    const ctx = makeContext(); await setup(page, ctx);   // the fixture's plane: SUBSCRIBED, NOT LIVE
     await selectCallAndOpenFlow(page);
-    await expect(page.locator('#flowBody .fl-badge')).toHaveText('ACTIVE');
+    await expect(page.locator('#flowBody .fl-badge')).toHaveText('NOT LIVE');   // 2026-08-31: no /markets answer held
     await expect(page.locator('#flowBody .fl-sym')).toHaveText(SELECTED);
     await expect(rowV(page, 'top_of_book.bid')).toHaveText(fmt(FIXTURE.top_of_book.bid, 2));   // Schwab's bid as sent
     await expect(page.locator('#flowBody .fl-tag.native').first()).toBeVisible();  // NATIVE/DERIVED/PROXY labels
@@ -172,7 +173,7 @@ test.describe('D — Gamma Flow subview', () => {
     expect(FIXTURE.ages.book_age_sec).not.toBeNull();
     const ctx = makeContext(); await setup(page, ctx);
     await selectCallAndOpenFlow(page);
-    await expect(page.locator('#flowBody .fl-badge')).toHaveText('ACTIVE');
+    await expect(page.locator('#flowBody .fl-badge')).toHaveText('NOT LIVE');   // 2026-08-31: no /markets answer held
     await expect(rowV(page, 'flow.tape_pressure_30s')).toHaveText(fmt(FIXTURE.flow.tape_pressure_30s, 3));
     await expect(rowV(page, 'flow.tape_pressure_2m')).toHaveText(fmt(FIXTURE.flow.tape_pressure_2m, 3));
     await expect(rowV(page, 'flow.tape_pressure_5m')).toHaveText(fmt(FIXTURE.flow.tape_pressure_5m, 3));
@@ -201,7 +202,7 @@ test.describe('D — Gamma Flow subview', () => {
     };
     await setup(page, ctx);
     await selectCallAndOpenFlow(page);
-    await expect(page.locator('#flowBody .fl-badge')).toHaveText('ACTIVE');
+    await expect(page.locator('#flowBody .fl-badge')).toHaveText('NOT LIVE');   // 2026-08-31: no /markets answer held
     await expect(rowV(page, 'flow.tape_pressure_30s')).toHaveText(fmt(FIXTURE.flow.tape_pressure_30s, 3));
     await expect(rowV(page, 'flow.cum_delta_proxy')).toHaveText(fmt(FIXTURE.flow.cum_delta_proxy, 1) + ' · ' + FIXTURE.flow.cum_delta_window);
     await expect(rowV(page, 'flow.top_book_pressure')).toHaveText(fmt(FIXTURE.flow.top_book_pressure, 3));
@@ -215,7 +216,7 @@ test.describe('D — Gamma Flow subview', () => {
   test('every classification tag equals the backend classification EXACTLY (flow + book)', async ({ page }) => {
     const ctx = makeContext(); await setup(page, ctx);
     await selectCallAndOpenFlow(page);
-    await expect(page.locator('#flowBody .fl-badge')).toHaveText('ACTIVE');
+    await expect(page.locator('#flowBody .fl-badge')).toHaveText('NOT LIVE');   // 2026-08-31: no /markets answer held
     // flow.classification -> rows data-k="flow.<key>"
     const fc = FIXTURE.flow.classification;
     expect(Object.keys(fc).length).toBeGreaterThan(0);
@@ -250,7 +251,7 @@ test.describe('D — Gamma Flow subview', () => {
     };
     await setup(page, ctx);
     await selectCallAndOpenFlow(page);
-    await expect(page.locator('#flowBody .fl-badge')).toHaveText('ACTIVE');
+    await expect(page.locator('#flowBody .fl-badge')).toHaveText('NOT LIVE');   // 2026-08-31: no /markets answer held
     await expect(rowTag(page, 'flow.tape_pressure_30s')).toHaveText('NATIVE');
     await expect(rowTag(page, 'flow.top_book_pressure')).toHaveText('PROXY');
     await expect(rowTag(page, 'mid')).toHaveText('PROXY');
@@ -311,7 +312,7 @@ test.describe('D — Gamma Flow subview', () => {
   test('a ticker change releases the selection once; Flow -> Gamma -> Flow names nothing again', async ({ page }) => {
     const ctx = makeContext(); await setup(page, ctx);
     await selectCallAndOpenFlow(page);
-    await expect(page.locator('#flowBody .fl-badge')).toHaveText('ACTIVE');
+    await expect(page.locator('#flowBody .fl-badge')).toHaveText('NOT LIVE');   // 2026-08-31: no /markets answer held
     await page.locator('#subnav .tab', { hasText: 'Gamma' }).click();
     await page.locator('#subnav .tab', { hasText: 'Flow' }).click();
     expect(ctx.posts).toEqual([SELECTED]);
