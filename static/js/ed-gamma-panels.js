@@ -60,7 +60,7 @@
       'kl0Flip', 'kl0Call', 'kl0Put', 'kl0Abs', 'kl0Peak'];
     paintPcr(d && !d.error ? d : null);
     if (!d || d.error) {   // nothing current: no tooltip or colour of the last answer stays
-      ids.forEach(function (id) { txt(id, '—'); });
+      ids.forEach(function (id) { txt(id, '—'); var el = document.getElementById(id); if (el) el.style.color = ''; });
       txt('klSrc', failed || 'terrain not ready');
       var src0 = document.getElementById('klSrc'); if (src0) { src0.title = ''; src0.style.color = ''; }
       var klb0 = document.getElementById('klBody'); if (klb0) klb0.classList.add('recede');

@@ -435,7 +435,10 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'levels' } })));
     await expect(page.locator('#klSrc')).toHaveText('the console answered /api/terrain with 500');
     await expect(page.locator('#klSrc')).toHaveAttribute('title', '');
-    expect(await page.locator('#klSrc').evaluate((el) => el.style.color)).toBe('');
+    for (const id of ['#klSrc', '#klNet', '#klRegime']) {
+      expect(await page.locator(id).evaluate((el) => el.style.color), id).toBe('');
+    }
+    await expect(page.locator('#klBody')).toHaveClass(/recede/);
   });
 
   test('Right Now says when the page cannot draw its answers, never "no console serving"', async ({ page }) => {
