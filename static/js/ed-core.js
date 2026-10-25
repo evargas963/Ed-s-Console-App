@@ -462,17 +462,18 @@
     s = Math.round(Number(s));
     return s < 90 ? (s + 's') : s < 5400 ? (Math.round(s / 60) + 'm') : (Math.round(s / 3600) + 'h');
   }
+  // A panel's as-of badge: its label, the served state word (o.state: LIVE, CLOSE, STALE, NOT LIVE,
+  // the levels verdict), the served time and the served age text. The word's style follows the word.
   function asOfBadge(o) {
     o = o || {};
-    var age = fmtAge(o.ageSec);
-    var cls = 'asof' + (o.stale ? ' stale' : (o.ref ? ' ref' : (o.live ? ' live' : '')));
+    var cls = 'asof' + (o.state === 'LIVE' ? ' live' : o.state === 'STALE' ? ' stale' : o.state ? ' ref' : '');
     var parts = [];
     if (o.label) parts.push(_escBadge(o.label));
+    if (o.state) parts.push(_escBadge(o.state));
     if (o.when != null) parts.push(_escBadge(o.when));
-    if (age) parts.push(age);
-    if (o.stale) parts.push('STALE');
+    if (o.age) parts.push(_escBadge(o.age));
     // the detailed reason is DISCLOSED in the tooltip — never as a paragraph inside an analytical panel
-    var title = (o.stale && o.reason) ? o.reason : (o.title || o.label || '');
+    var title = o.reason ? o.reason : (o.title || o.label || '');
     return '<span class="' + cls + '" title="' + _escBadge(title) + '">' + parts.join(' · ') + '</span>';
   }
 

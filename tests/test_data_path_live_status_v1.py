@@ -26,7 +26,7 @@ import live_market_plane as lmp
 import live_price_rows
 import server
 from stream_spine import options_quote_msg
-from time_et import ET
+from time_et import ET, INDEX_OPTIONS
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 _CAPTURE = json.loads((_FX / "real_spy_2026_11_20_chain_and_quotes.json").read_text(encoding="utf-8"))
@@ -101,11 +101,27 @@ def test_a_status_stamped_after_the_time_judged_is_not_that_time(after):
     assert states and "live" not in states
 
 
+def test_a_streamed_cell_is_not_live_after_its_own_option_close():
+    """SPY's chain priced at `_AT` (2026-10-05, regular hours) with SYM streaming: its legs are live.
+    At 16:20 ET that day, the feed up and the daemon still holding SYM, SPY's own option market
+    (index-close options, 16:15 in Schwab's /markets answer) has closed: no leg reads live, and the
+    heatmap's answer does not call itself live."""
+    assert _states_when_the_status_was_sent(-0.5) == ["live"]
+    after_close = datetime.fromisoformat("2026-10-05T16:20:00-04:00").timestamp()
+    _beat(after_close - 0.5)
+    server.restamp_open_surfaces(after_close)
+    body = server.gamma_surface_payload(TK, "all", None, 0, None, None, datetime.fromtimestamp(after_close, ET))
+    states = [col[side]["state"] for cell in body["cells"] for col, pair in zip(cell["stream"], cell["contracts"])
+              for side in ("call", "put") if col and pair.get(side) == SYM]
+    assert states and "live" not in states
+    assert body["live"] is False and body["levels_state"] != "LIVE"
+
+
 def test_a_status_sent_past_the_live_limit_is_not_current():
     _beat(_AT - lmp.FEED_HEARTBEAT_MAX_AGE_SEC)
-    assert lmp.daemon_status(_AT) is None and not lmp.feed_live_for(SYM, "LEVELONE_OPTIONS", _AT)
+    assert lmp.daemon_status(_AT) is None and not lmp.feed_live_for(SYM, "LEVELONE_OPTIONS", _AT, INDEX_OPTIONS)
     _beat(_AT - 1.0)
-    assert lmp.feed_live_for(SYM, "LEVELONE_OPTIONS", _AT)
+    assert lmp.feed_live_for(SYM, "LEVELONE_OPTIONS", _AT, INDEX_OPTIONS)
 
 
 def test_a_closed_socket_keeps_the_last_option_value_and_names_its_time():
@@ -166,10 +182,10 @@ def test_a_value_is_live_only_while_its_market_trades(at, equities, options, why
     _all_held(at, TK)
     assert lmp.feed_live_for(TK, "LEVELONE_EQUITIES", at) is equities
     assert lmp.feed_live_for(TK, "NYSE_BOOK", at) is equities
-    assert lmp.feed_live_for(SYM, "LEVELONE_OPTIONS", at) is options
-    assert lmp.feed_live_for(SYM, "OPTIONS_BOOK", at) is options
+    assert lmp.feed_live_for(SYM, "LEVELONE_OPTIONS", at, INDEX_OPTIONS) is options      # an SPY option
+    assert lmp.feed_live_for(SYM, "OPTIONS_BOOK", at, INDEX_OPTIONS) is options
     assert lmp.outage(TK, "LEVELONE_EQUITIES", at) == (None if equities else why)
-    assert lmp.outage(SYM, "LEVELONE_OPTIONS", at) == (None if options else why)
+    assert lmp.outage(SYM, "LEVELONE_OPTIONS", at, INDEX_OPTIONS) == (None if options else why)
     row = live_price_rows.price_row(TK, at)
     assert (row["feed_live"], row["feed_label"]) == ((True, "LIVE") if equities else (False, "NOT LIVE"))
 

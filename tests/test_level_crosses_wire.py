@@ -223,11 +223,12 @@ def test_a_page_whose_price_has_stopped_is_told_each_minute_to_read_its_levels_a
 
 #: the answers the browser tests render, each kept equal to the route's own (stopped_price_answers)
 STOPPED_FIXTURES = {"levels": "real_spy_levels_at_a_stopped_price_2026_10_22.json",
-                    "confluence": "real_spy_confluence_at_a_stopped_price_2026_10_22.json"}
+                    "confluence": "real_spy_confluence_at_a_stopped_price_2026_10_22.json",
+                    "terrain": "real_spy_terrain_at_a_stopped_price_2026_10_22.json"}
 
 
 def stopped_price_answers() -> dict:
-    """/api/levels and /api/confluence (the 2026-10-22 expiry) as the real code serves them on
+    """/api/levels, /api/confluence (the 2026-10-22 expiry) and /api/terrain as the real code serves them on
     SPY's 2026-10-22 close publication with SPY's 16:39 print (773.1269) as the last price and the
     daemon's connection ended, read at the 18:00 print's instant: the answers the browser tests
     render (STOPPED_FIXTURES)."""
@@ -246,15 +247,17 @@ def stopped_price_answers() -> dict:
     at = datetime.fromtimestamp(SPY_AFTER_HOURS_PRINT["ts_recv"], ET)
     try:
         bodies = {"levels": server.levels_payload("SPY", "1", at),
-                  "confluence": server.confluence_payload("SPY", "2026-10-22", at)}
+                  "confluence": server.confluence_payload("SPY", "2026-10-22", at),
+                  "terrain": server.terrain_answer("SPY", at)}
     finally:
         _forget()
     return json.loads(json.dumps(bodies))
 
 
 def test_the_stopped_price_answers_the_browser_renders_are_the_routes_own():
-    """The browser tests' /api/levels and /api/confluence answers are these routes', on captured
-    data: kept equal to them."""
+    """The browser tests' /api/levels, /api/confluence and /api/terrain answers are these routes',
+    on captured data: kept equal to them. SPY's chain was fetched at 16:17 ET, after its own 16:15
+    option close, so at 18:00 its levels are the close values: CLOSE."""
     import json
 
     served = stopped_price_answers()
@@ -263,6 +266,7 @@ def test_the_stopped_price_answers_the_browser_renders_are_the_routes_own():
         assert fx == served[route], route
         assert served[route]["spot_feed_live"] is False
         assert served[route]["spot_not_live_text"].startswith("not live · last trade ")
+    assert (served["terrain"]["levels_state"], served["terrain"]["levels_mark"]) == ("CLOSE", "CLOSE")
 
 
 def test_a_stored_cross_is_the_row_read_back(tmp_path: Path) -> None:

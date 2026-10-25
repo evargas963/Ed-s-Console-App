@@ -110,4 +110,4 @@ def test_a_contract_the_daemon_stops_streaming_keeps_its_last_bid():
         lmp.record_feed_down()
     assert held["bid"] == m["item"]["BID_PRICE"]
     assert released["bid"] == m["item"]["BID_PRICE"]
-    assert ofs.get_option_contract_streaming_diagnostics(sym, time.time())["subscription_state"] == ofs.NOT_STREAMED
+    assert ofs.get_option_contract_streaming_diagnostics(sym, time.time(), None)["subscription_state"] == ofs.NOT_STREAMED

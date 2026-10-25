@@ -36,6 +36,7 @@ function view(over) {
 const SURFACE = {
   ticker: '$SPX', symbol: '$SPX', available: true, spot: 583.41, front_expiry: '2026-09-11',
   source: 'terrain_live_cache', live: true, stale: false, age_sec: 3, chain_basis: 'full',
+  levels_state: 'LIVE', levels_age_text: '3s', levels_stale_reason: '',
   complete: false,
   chain_as_of_ts_utc: 1757000200, spot_as_of_ts_utc: 1757000200, spot_source: 'last',
   expirations: [{ expiry: '2026-09-11', dte: 2, front: true }, { expiry: '2026-09-18', dte: 9, front: false }],
@@ -117,7 +118,7 @@ function surfaceWithStreamState(perCol) {
 const TERRAIN = {
   ticker: '$SPX', spot: 583.41, gamma_flip: 582.90, call_wall: 586, put_wall: 580,
   absolute_gamma_strike: 583, net_gex_peak: 583, net_gex_at_spot: 2140000000,
-  regime: 'LONG_GAMMA_CHOP', levels_stale: false,
+  regime: 'LONG_GAMMA_CHOP', levels_stale: false, levels_state: 'LIVE', levels_mark: 'LIVE', levels_mark_reason: null,
   expiries: ['2026-09-11', '2026-09-18'], pcr_by_expiry: { '2026-09-11': 0.87, '2026-09-18': 1.13 },
   pcr_volume_by_expiry: { '2026-09-11': 1.42, '2026-09-18': 0.64 },
   pcr_all: 1.02, pcr_volume_all: 0.93,
@@ -428,7 +429,8 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.route('**/api/terrain?**', (route) => failing
       ? route.fulfill({ status: 500, contentType: 'application/json', body: '{"detail":"Internal Server Error"}' })
       : route.fulfill({ status: 200, contentType: 'application/json',
-        body: JSON.stringify(Object.assign({}, TERRAIN, { levels_stale: true, levels_stale_reason: 'chain 12m old' })) }));
+        body: JSON.stringify(Object.assign({}, TERRAIN, { levels_stale: true, levels_state: 'STALE', levels_mark: 'STALE',
+          levels_stale_reason: 'chain 12m old', levels_mark_reason: 'chain 12m old' })) }));
     await mockPriceSocket(page, [priceRow('SPY', 601.23)]);                    // the pushed price
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#klSrc')).toHaveAttribute('title', 'chain 12m old');
@@ -807,8 +809,9 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   test('a level built from a price that has stopped stays, and the rail says OFFLINE', async ({ page }) => {
     await page.route('**/api/terrain?**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
       body: JSON.stringify(Object.assign({}, TERRAIN, {
-        levels_stale: false, call_wall: 586, spot_feed_live: false, spot_feed_label: 'OFFLINE',
-        spot_outage: 'Schwab LEVELONE_EQUITIES feed down during RTH' })) }));
+        levels_stale: false, call_wall: 586, spot_feed_live: false, spot_feed_label: 'OFFLINE', levels_mark: 'OFFLINE',
+        spot_outage: 'Schwab LEVELONE_EQUITIES feed down during RTH',
+        levels_mark_reason: 'Schwab LEVELONE_EQUITIES feed down during RTH' })) }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#klCall')).toHaveText('586.00');
     await expect(page.locator('#klSrc')).toHaveText('OFFLINE');
@@ -820,23 +823,23 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     const CHAIN_TIME = 'Fri 09/25 06:59 PM CT';
     await page.route('**/api/terrain?**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
       body: JSON.stringify(Object.assign({}, TERRAIN, {
-        levels_stale: false, levels_age_sec: 4, levels_time_ct: CHAIN_TIME, call_wall: 586,
-        spot_feed_live: false, spot_feed_label: 'OFFLINE', spot_outage: 'Schwab LEVELONE_EQUITIES feed down during RTH' })) }));
+        levels_stale: false, levels_age_sec: 4, levels_age_text: '4s', levels_time_ct: CHAIN_TIME, call_wall: 586,
+        spot_feed_live: false, spot_feed_label: 'OFFLINE', spot_outage: 'Schwab LEVELONE_EQUITIES feed down during RTH',
+        levels_mark: 'OFFLINE', levels_mark_reason: 'Schwab LEVELONE_EQUITIES feed down during RTH' })) }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#klCall')).toHaveText('586.00');
-    await expect(page.locator('#klSrc')).toHaveText(CHAIN_TIME + ' · OFFLINE');
+    await expect(page.locator('#klSrc')).toHaveText(CHAIN_TIME + ' · OFFLINE · 4s');
     await expect(page.locator('#klSrc')).toHaveAttribute('title', 'Schwab LEVELONE_EQUITIES feed down during RTH');
   });
 
-  test('key levels rail says NOT LIVE, not OFFLINE, when the price\'s market is not trading', async ({ page }) => {
-    const CHAIN_TIME = 'Fri 10/23 03:59 PM CT';
+  test('key levels rail after its own option close reads CLOSE with the close values\' time and age (the route\'s own answer)', async ({ page }) => {
+    // /api/terrain for SPY's 2026-10-22 close publication, read at 18:00 ET (tests/test_level_crosses_wire.py)
+    const CLOSED = require(path.join(__dirname, '..', 'fixtures', 'real_spy_terrain_at_a_stopped_price_2026_10_22.json'));
     await page.route('**/api/terrain?**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
-      body: JSON.stringify(Object.assign({}, TERRAIN, {
-        levels_stale: false, levels_age_sec: 4, levels_time_ct: CHAIN_TIME, call_wall: 586,
-        spot_feed_live: false, spot_feed_label: 'NOT LIVE', spot_outage: "outside Schwab's market hours" })) }));
+      body: JSON.stringify(CLOSED) }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('#klSrc')).toHaveText(CHAIN_TIME + ' · NOT LIVE');
-    await expect(page.locator('#klSrc')).toHaveAttribute('title', "outside Schwab's market hours");
+    await expect(page.locator('#klSrc')).toHaveText(CLOSED.levels_time_ct + ' · CLOSE · ' + CLOSED.levels_age_text);
+    await expect(page.locator('#klSrc')).not.toContainText('live');
   });
 
   test('PCR: the selected expiry re-scopes the ratio; an expiry the chain has no ratio for shows none', async ({ page }) => {
@@ -1150,8 +1153,9 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   });
 
   test('#1 revision: DATA change rebuilds; STATUS change updates without rebuild (A-D)', async ({ page }) => {
-    const live = (age, stale) => ({ available: true, source: 'terrain_live_cache', live: true, stale: !!stale, warming: false, spot: 583.41,
+    const live = (age, stale) => ({ available: true, source: 'terrain_live_cache', live: !stale, stale: !!stale, warming: false, spot: 583.41,
       complete: false, chain_as_of_ts_utc: 1000, spot_as_of_ts_utc: 1000, chain_basis: 'full', age_sec: age,
+      levels_state: stale ? 'STALE' : 'LIVE', levels_age_text: age + 's', levels_stale_reason: stale ? 'chain overdue' : '',
       expirations: [{ expiry: '2026-09-11', dte: 2 }], strikes: [583], cells: [{ strike: 583, gex: [958600], spot: true }],
       view: view({ coverage: served.cov }) });
     const served = { cov: { state: 'partial', label: '50% STREAMING', title: '1 of 2 cells streaming · 1 stale' } };
@@ -1174,6 +1178,12 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await mark();
     served.s = live(3, true); await reload();
     await expect(page.locator('#heatBody .heat-banner')).toContainText('STALE');
+    await expect(marked()).toHaveCount(1);
+    // E: the close values after the ticker's own option close: the banner says CLOSE, its time and age
+    await mark();
+    served.s = Object.assign(live(3), { live: false, levels_state: 'CLOSE', levels_time_ct: 'Fri 10/23 03:15 PM CT',
+      levels_age_text: '38h' }); await reload();
+    await expect(page.locator('#heatBody .heat-banner')).toHaveText(/CLOSE · Fri 10\/23 03:15 PM CT · 38h/);
     await expect(marked()).toHaveCount(1);
   });
 

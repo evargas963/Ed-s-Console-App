@@ -74,6 +74,10 @@ def build_side_e2e_fixture_response() -> dict:
     contracts = json.loads(_SIDES.read_text(encoding="utf-8"))["contracts"]
     out = {}
     ofls.clear_all_live_state()
+    # SPY's chain lists both, so each is judged by SPY's option market (STAND-IN, named: the chain
+    # held reduced to its listing of the two contracts)
+    with srv._terrain_cache_lock:
+        srv._terrain_cache["SPY"] = {"_contract_symbols": frozenset(contracts)}
     try:
         for sym, msgs in contracts.items():
             at = max(m["ts_recv"] for m in msgs)
@@ -87,6 +91,8 @@ def build_side_e2e_fixture_response() -> dict:
         for sym in contracts:
             TAPE.forget(sym)
             ofs._option_contract_last_update_ts.pop(sym, None)
+        with srv._terrain_cache_lock:
+            srv._terrain_cache.pop("SPY", None)
         lmp.record_feed_down()
         ofls.clear_all_live_state()
 

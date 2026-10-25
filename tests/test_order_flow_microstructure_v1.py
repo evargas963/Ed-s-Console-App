@@ -486,6 +486,7 @@ def test_an_option_contracts_top_is_what_schwab_sent_on_a_live_feed():
     from app.options.order_flow import state
     from app.options.order_flow.live_payload import options_live_payload
     from tests.feed_live_helper import RTH_INSTANT
+    from time_et import EQUITY_OPTIONS
     c = json.loads(FIXTURE.read_text(encoding="utf-8"))["contracts"][0]
     sym = c["symbol"]
     for ev in c["events"][:4]:
@@ -494,7 +495,7 @@ def test_an_option_contracts_top_is_what_schwab_sent_on_a_live_feed():
     try:
         lmp.record_feed_heartbeat({"ts": RTH_INSTANT, "schwab_socket_open": True,
                                    "held": {"LEVELONE_OPTIONS": [sym]}})
-        payload = options_live_payload(sym, RTH_INSTANT)
+        payload = options_live_payload(sym, RTH_INSTANT, EQUITY_OPTIONS)        # a TSLA option
         assert payload["flow"]["top_book_pressure"] is not None and payload["top_outage"] is None
     finally:
         lmp.record_feed_down()

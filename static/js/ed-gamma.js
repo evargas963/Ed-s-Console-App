@@ -86,16 +86,23 @@
     el.className = 'sub cov' + (cov ? ' cov-' + cov.state : '');
   }
   function buildBanner(surface) {
-    var live = surface.live !== false, stale = !!surface.stale;
-    if (live && !stale) return '';
-    var warming = !live && surface.warming === true;
-    var requested = !live && !warming && surface.requested === true;
-    var stateLabel = warming ? 'LIVE SURFACE WARMING' : requested ? 'LIVE SURFACE REQUESTED' : (live ? 'STALE' : '');
-    var cls = (warming || requested) ? 'warming' : (live ? 'stale' : '');
-    var brief = !live ? 'no live surface for this symbol' : 'live surface is stale';
-    var detail = surface.degraded || surface.reason || brief;
-    return '<div class="heat-banner ' + cls + '" title="' + escapeHtml(detail) + '"><span class="hb-main">' +
-      (stateLabel ? stateLabel + ' · ' : '') + brief + '</span><span class="hb-more" aria-label="details">details</span></div>';
+    if (surface.available !== false) {
+      // a surface is shown: its levels' served word (levels_state: CLOSE, STALE, NOT LIVE), the
+      // chain's time and age; nothing while it is LIVE
+      if (surface.levels_state === 'LIVE') return '';
+      var words = [surface.levels_state, surface.levels_time_ct, surface.levels_age_text]
+        .filter(function (w) { return w; }).join(' · ');
+      return '<div class="heat-banner ' + (surface.levels_state === 'STALE' ? 'stale' : '') + '" title="' +
+        escapeHtml(surface.levels_stale_reason || surface.levels_state) + '"><span class="hb-main">' + escapeHtml(words) +
+        '</span><span class="hb-more" aria-label="details">details</span></div>';
+    }
+    // no surface: why, from the served flags (warming: its chain is coming; requested: a page asked)
+    var warming = surface.warming === true, requested = !warming && surface.requested === true;
+    var stateLabel = warming ? 'LIVE SURFACE WARMING' : requested ? 'LIVE SURFACE REQUESTED' : '';
+    var brief = 'no live surface for this symbol';
+    return '<div class="heat-banner ' + (stateLabel ? 'warming' : '') + '" title="' + escapeHtml(surface.reason || brief) +
+      '"><span class="hb-main">' + (stateLabel ? stateLabel + ' · ' : '') + brief +
+      '</span><span class="hb-more" aria-label="details">details</span></div>';
   }
   function applyStatus(host, surface) {   // refresh status WITHOUT rebuilding the table
     Array.prototype.slice.call(host.querySelectorAll('.heat-banner')).forEach(function (n) { n.remove(); });

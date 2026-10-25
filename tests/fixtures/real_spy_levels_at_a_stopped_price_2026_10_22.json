@@ -291,9 +291,15 @@
    }
   }
  ],
+ "levels_age_sec": 6176.727853059769,
+ "levels_age_text": "2h",
+ "levels_stale_reason": "",
+ "levels_state": "CLOSE",
+ "levels_time_ct": "Thu 10/22 03:17 PM CT",
  "priced_at_spot": 764.04,
  "schema_version": 1,
  "served_ts_utc": 1792706401.090255,
+ "snapshot_age_text": null,
  "snapshot_as_of_ts_utc": null,
  "snapshot_time_ct": null,
  "spot": 773.1269,

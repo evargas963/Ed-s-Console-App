@@ -21,7 +21,7 @@ const EVENTS = {
 };
 const SPOT = 771.3;
 const TERRAIN = { ticker: 'SPY', spot: SPOT, gamma_flip: 768, call_wall: 775, put_wall: 765, max_pain: 770, regime: 'LONG_GAMMA',
-  posture: 'PINNED', levels_stale: false, flip_relation: 'ABOVE', pcr_all: 1.1,
+  posture: 'PINNED', levels_stale: false, levels_state: 'LIVE', levels_age_text: '1s', flip_relation: 'ABOVE', pcr_all: 1.1,
   pcr_by_expiry: { '2026-09-25': 1.1, '2026-10-02': null, '2026-10-09': 0.9 }, atm_iv_pct_by_expiry: { '2026-09-25': 14.2, '2026-10-02': 15.1 } };
 const LEVELS = { ticker: 'SPY', spot: SPOT, tf: '30', generation: 1, vwap_series: [],
   levels: [
@@ -282,16 +282,16 @@ test('Desk: the chain age keeps the chain\'s time', async ({ page }) => {
     }
     return route.fulfill({ status: 200, contentType: 'application/json',
       body: JSON.stringify(Object.assign({}, TERRAIN, {
-        levels_age_sec: 4, levels_stale: false, levels_time_ct: CHAIN_TIME,
+        levels_age_sec: 4, levels_age_text: '4s', levels_stale: false, levels_state: 'LIVE', levels_time_ct: CHAIN_TIME,
       })) });
   });
   await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
     localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
-  await expect(page.locator('#tdmCardOpt .tdm-src')).toContainText('Schwab option chain · ' + CHAIN_TIME + ' · 4s old');
+  await expect(page.locator('#tdmCardOpt .tdm-src')).toContainText('Schwab option chain · ' + CHAIN_TIME + ' · LIVE · 4s');
   await expect(page.locator('#tdmCardOpt')).toContainText('775.00');
-  await expect(page.locator('#tdmCardVol .tdm-src')).toContainText(CHAIN_TIME + ' · 4s old');
-  await expect(page.locator('#tdmTrust')).toContainText('GAMMA ' + CHAIN_TIME + ' · 4s');
+  await expect(page.locator('#tdmCardVol .tdm-src')).toContainText(CHAIN_TIME + ' · LIVE · 4s');
+  await expect(page.locator('#tdmTrust')).toContainText('GAMMA ' + CHAIN_TIME + ' · LIVE 4s');
   expect(errs).toEqual([]);
 });
 
@@ -302,12 +302,12 @@ test('Desk: the levels pill keeps the snapshot time', async ({ page }) => {
   await intercept(page);
   await page.route('**/api/levels**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
     body: JSON.stringify(Object.assign({}, LEVELS, {
-      snapshot_as_of_ts_utc: 1790380799.830, snapshot_time_ct: SNAP_TIME,
+      snapshot_as_of_ts_utc: 1790380799.830, snapshot_time_ct: SNAP_TIME, snapshot_age_text: '2d',
     })) }));
   await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
     localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
-  await expect(page.locator('#tdmTrust')).toContainText('LEVELS ' + SNAP_TIME);
+  await expect(page.locator('#tdmTrust')).toContainText('LEVELS ' + SNAP_TIME + ' · 2d');   // the served age, not the page's clock
   expect(errs).toEqual([]);
 });
 

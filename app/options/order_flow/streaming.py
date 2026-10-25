@@ -199,14 +199,15 @@ def _tick(sym: str) -> None:
                         sym, _tick_callback_failures, e)
 
 
-def _service_feed(symbol: "str | None", service: str, now: float) -> dict:
-    """One Schwab service's feed for `symbol` at `now`, as the page shows it: its state by the one
-    live rule (live_market_plane.live_state: LIVE, OFFLINE or NOT LIVE), and how long ago the daemon
-    last received anything on that service (its own report)."""
+def _service_feed(symbol: "str | None", service: str, now: float, product: "str | None") -> dict:
+    """One Schwab option service's feed for contract `symbol` at `now`, as the page shows it: its
+    state by the one live rule on its own option market `product` (live_market_plane.live_state:
+    LIVE, OFFLINE or NOT LIVE), and how long ago the daemon last received anything on that service
+    (its own report)."""
     status = _lmp.daemon_status(now)
     reports = status.get("health") if status is not None else None
     health = reports.get(service) if reports is not None else None
-    return {"state": _lmp.live_state(symbol, service, now)[0],
+    return {"state": _lmp.live_state(symbol, service, now, product)[0],
             "age_sec": health.get("age_sec") if health is not None else None}
 
 
@@ -418,22 +419,23 @@ def _drop_released_options(now: float) -> None:
 SUBSCRIBED, NOT_STREAMED = "SUBSCRIBED", "NOT STREAMED"
 
 
-def get_option_contract_streaming_diagnostics(for_contract: str, now: float) -> dict[str, Any]:
+def get_option_contract_streaming_diagnostics(for_contract: str, now: float, product: "str | None") -> dict[str, Any]:
     """Whether the daemon streams `for_contract` and is receiving it at `now`, distinct from the
     book's own content ages (options_live_payload): its subscription (SUBSCRIBED / NOT STREAMED,
-    from the symbols on the latest beat), and each feed by the one live rule
-    (live_market_plane.feed_live_for). A missing beat keeps that last subscription. The feed
-    health says whether it is live. The page paints ACTIVE only while that feed is live."""
+    from the symbols on the latest beat), and each feed by the one live rule on its own option
+    market `product` (live_market_plane.live_state). A missing beat keeps that last subscription.
+    The feed health says whether it is live. The page paints ACTIVE only while that feed is live."""
     c = ticker_storage_key(for_contract)
     levelone = _lmp.feed_now(now).held.get("LEVELONE_OPTIONS")
-    healthy = bool(_feed_running and _lmp.feed_live_for(c, "LEVELONE_OPTIONS", now))
+    l1 = _service_feed(c, "LEVELONE_OPTIONS", now, product)
+    healthy = bool(_feed_running and l1["state"] == _lmp.LIVE)
     return {
         "queried_contract": c,
         "subscription_state": SUBSCRIBED if levelone is not None and c in levelone else NOT_STREAMED,
         "streaming_last_update_ts": _option_contract_last_update_ts.get(c),
         "feed_health": {"replay": "healthy" if healthy else "stale" if _feed_running else "not connected",
-                        "l1": _service_feed(c, "LEVELONE_OPTIONS", now),
-                        "book": _service_feed(c, "OPTIONS_BOOK", now)},
+                        "l1": l1,
+                        "book": _service_feed(c, "OPTIONS_BOOK", now, product)},
     }
 
 

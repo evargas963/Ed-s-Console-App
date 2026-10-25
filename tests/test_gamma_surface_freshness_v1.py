@@ -65,7 +65,8 @@ def test_the_live_surface_is_served_with_the_live_price_and_its_own_price_named(
     d = server.gamma_surface_payload(_ON, "all", None, 0, None, None, _AT)
     with server._terrain_cache_lock:
         surface = server._terrain_cache[_ON]["_gamma_surface"]
-    assert d["source"] == "terrain_live_cache" and d["live"] is True
+    # 2026-09-02 has no /markets answer held: the levels, and so the surface, are not live
+    assert d["source"] == "terrain_live_cache" and (d["live"], d["levels_state"]) == (False, "NOT LIVE")
     assert [c["gex"] for c in d["cells"]] == [c["gex"] for c in surface["cells"]]      # served verbatim
     assert d["spot"] == 206.0 and d["priced_at_spot"] == _CRWD["spot"]
     assert [c["strike"] for c in d["cells"] if c["spot"]] == [min(surface["strikes"], key=lambda k: abs(k - 206.0))]

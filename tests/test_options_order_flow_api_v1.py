@@ -61,20 +61,28 @@ def test_with_no_book_from_schwab_the_flow_panel_says_so():
 def test_the_flow_panel_says_whether_the_daemon_streams_the_contract():
     """SUBSCRIBED while the daemon holds the contract on LEVELONE_OPTIONS; NOT STREAMED when it
     does not, and when its status is gone (a daemon that stopped reporting holds nothing). Served in
-    regular hours, the option market open (RTH_INSTANT)."""
+    regular hours, the option market open (RTH_INSTANT). The contract's market is that of the chain
+    that lists it: SPY's (STAND-IN, named: the chain held reduced to its listing of the contract);
+    with no chain held that lists it, its market is not known and it is not live."""
     from tests.feed_live_helper import RTH_INSTANT
 
-    def plane() -> dict:
-        return server.options_microstructure(CONTRACT, RTH_INSTANT)["streaming_plane"]
+    def served() -> dict:
+        return server.options_microstructure(CONTRACT, RTH_INSTANT)
     try:
         _daemon_holds("LEVELONE_OPTIONS", "OPTIONS_BOOK", now=RTH_INSTANT)
-        held = plane()
+        unlisted = served()
+        with server._terrain_cache_lock:
+            server._terrain_cache["SPY"] = {"_contract_symbols": frozenset({CONTRACT})}
+        held = served()["streaming_plane"]
         _daemon_holds(now=RTH_INSTANT)
-        not_held = plane()
+        not_held = served()["streaming_plane"]
         lmp.record_feed_down()
-        down = plane()
+        down = served()["streaming_plane"]
     finally:
         lmp.record_feed_down()
+        with server._terrain_cache_lock:
+            server._terrain_cache.pop("SPY", None)
+    assert (unlisted["top_feed_label"], unlisted["top_outage"]) == ("NOT LIVE", "the contract's option market is not known")
     assert held["subscription_state"] == "SUBSCRIBED"
     assert (held["feed_health"]["l1"]["state"], held["feed_health"]["book"]["state"]) == ("LIVE", "LIVE")
     assert not_held["subscription_state"] == down["subscription_state"] == "NOT STREAMED"

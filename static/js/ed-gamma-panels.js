@@ -101,30 +101,11 @@
       return words;
     }
     if (src) {
-      if (d.levels_stale) {
-        // compact status grammar: state + age on the panel; the full reason is disclosed in the
-        // tooltip (title) rather than as a paragraph that consumes the Key Levels rail
-        var age = (window.EdShell && window.EdShell.fmtAge) ? window.EdShell.fmtAge(d.levels_age_sec)
-          : (d.levels_age_sec != null ? Math.round(d.levels_age_sec) + 's' : '');
-        src.textContent = chainMarked('STALE' + (age ? ' · ' + age : ''));
-        src.title = d.levels_stale_reason || 'terrain levels are stale';
-        src.style.color = 'var(--ed-stale)';
-      } else if (d.levels_stale === false && d.spot_feed_live === false) {
-        // the chain is current and the wall stays; the price it was built from is not live (its
-        // served state: OFFLINE, the feed down; NOT LIVE, its market not trading)
-        src.textContent = chainMarked(d.spot_feed_label);
-        src.title = d.spot_outage == null ? '' : d.spot_outage;
-        src.style.color = 'var(--ed-stale)';
-      } else if (d.levels_stale === false) {
-        src.textContent = chainMarked('terrain · live');
-        src.title = '';
-        src.style.color = '';
-      } else {
-        // no freshness verdict served: never read as live
-        src.textContent = chainMarked('freshness not reported');
-        src.title = '';
-        src.style.color = 'var(--ed-stale)';
-      }
+      // the served mark (levels_mark: the levels' state, or the price's while the levels are LIVE)
+      // with the levels' age; the reason is disclosed in the tooltip, not as a paragraph
+      src.textContent = chainMarked(d.levels_mark + (d.levels_age_text ? ' · ' + d.levels_age_text : ''));
+      src.title = d.levels_mark_reason == null ? '' : d.levels_mark_reason;
+      src.style.color = d.levels_mark === 'LIVE' ? '' : 'var(--ed-stale)';
       // #5: terrain levels are AGGREGATE across expiries; if the workspace filters to one expiry,
       // disclose that these levels are still all-exp (never silently relabel them as selected-expiry).
       if (window.EdShell && window.EdShell.getExpiry && window.EdShell.getExpiry()) src.textContent += ' · all-exp';
@@ -162,22 +143,13 @@
   }
   var _gbsLoader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadGbsImpl(ticker(), signal); });
   function loadGbs() { _gbsLoader.trigger(ticker()); }
-  var SRC_LABEL = { terrain_live_cache: 'terrain live' };
-  function srcLabel(s) {
-    if (!s) return '';
-    if (SRC_LABEL[s]) return SRC_LABEL[s];
-    return s;
-  }
   function setGbsAsOf(d) {
     var el = document.getElementById('gbsSrc'); if (!el) return;
-    if (!d || d.today_source == null) { el.innerHTML = ''; return; }
-    // reuse the terrain authority the server already merged (today_age_sec / levels_stale) - no
-    // client-side freshness computation; the badge only formats those server-owned fields.
+    if (!d) { el.innerHTML = ''; return; }
+    // the levels verdict the server serves (levels_state, its time and age); the badge formats it
     el.innerHTML = (window.EdShell && window.EdShell.asOfBadge)
-      ? window.EdShell.asOfBadge({ label: srcLabel(d.today_source), ageSec: d.today_age_sec,
-          when: d.levels_time_ct,
-          stale: !!d.levels_stale, reason: d.levels_stale_reason,
-          live: (d.today_source === 'terrain_live_cache' && d.levels_stale === false) })
+      ? window.EdShell.asOfBadge({ label: 'terrain', state: d.levels_state, when: d.levels_time_ct,
+          age: d.levels_age_text, reason: d.levels_stale_reason })
       : '';
   }
   // A per-strike bar list (GEX, vanna, charm by strike): the window of `rows` the server sent
@@ -282,17 +254,15 @@
     _sdDesired = { strike: strike, expiry: expiry };
     _sdLoader.trigger(ticker() + '|' + strike + '|' + (expiry || ''));
   }
-  var SCOPE_LABEL = {
-    complete_single_expiry: { t: 'vendor · complete (ALL)', live: true },
-    unavailable: { t: 'vendor · unavailable', stale: true },
-  };
+  var SCOPE_LABEL = { complete_single_expiry: 'vendor · complete (ALL)', unavailable: 'vendor · unavailable' };
   function setSdAsOf(d) {
     var el = document.getElementById('sdSrc'); if (!el) return;
     var sc = d && d.scope, kind = sc && sc.kind;
     if (!kind) { el.innerHTML = ''; return; }
-    var m = SCOPE_LABEL[kind] || { t: kind };
+    // the chain's scope, and the levels verdict the server serves for it (levels_state, time, age)
     el.innerHTML = (window.EdShell && window.EdShell.asOfBadge)
-      ? window.EdShell.asOfBadge({ label: m.t, live: !!m.live, stale: !!m.stale,
+      ? window.EdShell.asOfBadge({ label: SCOPE_LABEL[kind] || kind, state: d.levels_state,
+          when: d.levels_time_ct, age: d.levels_age_text, reason: d.levels_stale_reason,
           title: 'chain scope: ' + kind + (sc.reason ? ' — ' + sc.reason : '') })
       : '';
   }

@@ -13,18 +13,16 @@
   function st() { return (window.EdShell && window.EdShell.getState()) || {}; }
   function isChain() { var s = st(); return s.workspace === 'options' && s.subview === 'chain'; }
 
-  var SCOPE = {
-    complete_single_expiry: { t: 'complete (ALL)', live: true },
-    unavailable: { t: 'unavailable', stale: true },
-  };
+  var SCOPE = { complete_single_expiry: 'complete (ALL)', unavailable: 'unavailable' };
   function setSrc(d) {
     var el = document.getElementById('chSrc'); if (!el) return;
     var sc = d && d.scope, kind = sc && sc.kind;
     if (!kind) { el.innerHTML = ''; return; }
-    var m = SCOPE[kind] || { t: kind };
+    // the chain's scope, and the levels verdict the server serves for it (levels_state, time, age)
     el.innerHTML = (window.EdShell && window.EdShell.asOfBadge)
-      ? window.EdShell.asOfBadge({ label: 'vendor · ' + m.t,
-          live: !!m.live, ref: !!m.ref, stale: !!m.stale, title: 'chain scope: ' + kind + (sc.reason ? ' — ' + sc.reason : '') }) : '';
+      ? window.EdShell.asOfBadge({ label: 'vendor · ' + (SCOPE[kind] || kind), state: d.levels_state,
+          when: d.levels_time_ct, age: d.levels_age_text, reason: d.levels_stale_reason,
+          title: 'chain scope: ' + kind + (sc.reason ? ' — ' + sc.reason : '') }) : '';
   }
 
   // auto-scroll to spot only the first time a ticker+expiry is rendered
