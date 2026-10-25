@@ -136,11 +136,21 @@ def test_the_label_follows_schwabs_windows():
 def test_the_options_are_open_until_the_last_option_market_closes():
     """Schwab's /markets: EQO to 16:00 ET, IND to 16:15 ET (SPY's, QQQ's and IWM's options trade
     to 16:15 too); the options are open until the last of them closes."""
-    assert time_et.options_open(_et("2026-10-07 16:05")) is True
-    assert time_et.options_open(_et("2026-10-07 16:15")) is False
+    assert time_et.option_market_open(_et("2026-10-07 16:05")) is True
+    assert time_et.option_market_open(_et("2026-10-07 16:15")) is False
     assert time_et.options_closed_at(_et("2026-10-07 16:20")) == _et("2026-10-07 16:15")
     assert time_et.options_closed_at(_et("2026-10-10 12:00")) == _et("2026-10-09 16:15")
-    assert time_et.options_open(_et("2027-10-09 12:00")) is None
+    assert time_et.option_market_open(_et("2027-10-09 12:00")) is None
+
+
+def test_a_closed_day_is_outside_every_option_market():
+    """Saturday 2026-10-10, held: Schwab's /markets answer for it is a closed day with no option
+    window, so no option market, and neither EQO nor IND, is open at any hour of it."""
+    for hour in (9, 12, 16):
+        at = _et(f"2026-10-10 {hour:02d}:00")
+        assert time_et.session("2026-10-10") is not None
+        assert [time_et.option_market_open(at, p) for p in (None, time_et.EQUITY_OPTIONS, time_et.INDEX_OPTIONS)] == [
+            False, False, False]
 
 
 def test_time_to_expiry_runs_to_schwabs_close_of_the_expiry_date():

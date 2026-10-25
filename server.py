@@ -23,7 +23,7 @@ from dataclasses import asdict, dataclass
 
 from time_et import (ET, now_et, age_text, ct_label, et_date_str_from_ts_utc, last_open,
                      market_session_date, option_close_product, option_market_open, options_closed_at,
-                     outside_option_window, session, session_label, valuation_instant,
+                     session, session_label, valuation_instant,
                      EQUITY_OPTIONS, INDEX_OPTIONS)
 from math_exposure_core import (
     bucket_metric,
@@ -1242,7 +1242,7 @@ def _keep_last_reported(chain, previous, at, product, price):
     greek the last quote reported, and a count of zero leaves the last count above zero.
     During the window the quote stands, and Schwab's no-value code does not keep an older
     greek. A gamma is reported by gamma_reported at `price`."""
-    if not outside_option_window(at, product) or not previous:
+    if option_market_open(at, product) is not False or not previous:
         return chain
     prior = {}
     for ct in previous:
@@ -1365,7 +1365,7 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
     product = option_close_product(tk)
     valued_at = valuation_instant(clock, product)
     begun = datetime.fromtimestamp(fetched_ts, ET) if isinstance(fetched_ts, (int, float)) else at
-    if new_chain and capture is None and outside_option_window(begun, product):
+    if new_chain and capture is None and option_market_open(begun, product) is False:
         memory = payload.get("_priced_chain")
         if memory is None:
             memory = payload.get("_chain")
@@ -1411,7 +1411,7 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
     # each field the newest Schwab sent: the last streamed value received after this chain, else
     # the chain's. The cell stamp says whether that stream is live.
     priced, n_live = overlay_streamed_contract_fields(chain, streamed, fetched_ts)
-    if outside_option_window(at, product):
+    if option_market_open(at, product) is False:
         priced = _keep_last_reported(priced, chain, at, product, spot)
     live_syms = _overlaid_symbols(chain, priced)
     snap = compute_terrain(tk, priced, spot, now=valued_at)

@@ -122,6 +122,36 @@ def test_a_contract_no_chain_lists_has_no_known_market(published):
     assert (body["top_feed_label"], body["top_outage"]) == ("NOT LIVE", "the contract's option market is not known")
 
 
+_SUNDAY = json.loads((Path(__file__).parent / "fixtures" / "real_spy_2026_10_26_expiry_friday_close_and_sunday_chain.json")
+                     .read_text(encoding="utf-8"))
+
+
+def test_on_a_closed_day_a_delivered_chain_keeps_the_close_counts_schwab_blanks():
+    """Sunday 2026-10-25, a day Schwab's /markets answer says is closed: the daemon, restarted, fetches
+    SPY's chain again (09:37 ET) and Schwab sends open interest 0 for contracts Friday's 16:16 close had
+    above 0. A closed day is outside every option market's window (time_et.option_market_open), so the
+    close counts stand (server._keep_last_reported, the stored close capture), as after any close.
+    STAND-IN (named): the chain's price is Friday's close capture's underlying price, not Schwab's
+    LAST_PRICE with its trade time."""
+    from calibration.complete_chain_capture import CAPTURE_BASIS, persist_complete_chain_capture
+    friday, sunday = _SUNDAY["friday_close"], _SUNDAY["sunday"]
+    close_oi = {c["symbol"]: c["openInterest"] for c in friday["chain"]}
+    blanked = [c["symbol"] for c in sunday["chain"] if c["openInterest"] == 0 and close_oi[c["symbol"]] > 0]
+    at = datetime.fromtimestamp(sunday["ts_utc"], ET)
+    _forget()
+    try:
+        persist_complete_chain_capture(server.get_db().db_path, ticker="SPY", expiry=_SUNDAY["expiry"],
+                                       contracts=[dict(c) for c in friday["chain"]], spot=friday["spot"],
+                                       completeness_basis=CAPTURE_BASIS, ts_utc=friday["ts_utc"])
+        server._publish_levels("SPY", [dict(c) for c in sunday["chain"]], sunday["ts_utc"],
+                               chain_spot=(friday["spot"], friday["ts_utc"]), now=at)
+        priced = {c["symbol"]: c for c in server.terrain_cache_get("SPY", at.timestamp())["_priced_chain"]}
+    finally:
+        _forget()
+    assert len(blanked) == 46
+    assert {s: priced[s]["openInterest"] for s in blanked} == {s: close_oi[s] for s in blanked}
+
+
 def _told(tk: str, at: datetime) -> set:
     """What a page open on `tk` is told by the levels loop's minute (server.refresh_not_live_pages)."""
     async def run():

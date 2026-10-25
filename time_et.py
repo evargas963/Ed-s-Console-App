@@ -144,23 +144,15 @@ def session_label(now: datetime) -> str:
     return CLOSED
 
 
-def options_open(now: datetime) -> bool | None:
-    """Whether any option market is in a regular window Schwab sent for today (the last, IND, runs
-    to 16:15 ET, when SPY's, QQQ's and IWM's options stop too); None when Schwab's answer for today
-    is not held."""
+def option_market_open(now: datetime, product: str | None = None) -> bool | None:
+    """THE option-market reader: whether option market `product` (EQO, IND), or any option market
+    when none is named (the last, IND, runs to 16:15 ET), is in a regular window Schwab sent for
+    today. False outside its windows and all day on a day Schwab says is closed; None when Schwab's
+    answer for today is not held."""
     s = session(now.astimezone(ET).date().isoformat())
     if s is None:
         return None
-    return any(start <= now < end for _p, windows in s.options for start, end in windows)
-
-
-def option_market_open(now: datetime, product: str) -> bool | None:
-    """Whether option market `product` (EQO, IND) is in a regular window Schwab sent for today;
-    None when Schwab's answer for today is not held."""
-    s = session(now.astimezone(ET).date().isoformat())
-    if s is None:
-        return None
-    return any(start <= now < end for start, end in s.option_windows(product))
+    return any(start <= now < end for p, windows in s.options if product in (None, p) for start, end in windows)
 
 
 def options_closed_at(now: datetime, product: str | None = None) -> datetime | None:
@@ -185,17 +177,6 @@ def valuation_instant(now: datetime, product: str = EQUITY_OPTIONS) -> datetime:
     if now >= end:
         return end
     return now
-
-
-def outside_option_window(now: datetime, product: str = EQUITY_OPTIONS) -> bool:
-    """True when `product`'s regular window is held and not open at `now`: before it opens,
-    and after it has ended. A day with no window, and a date whose session is not held, are
-    not that."""
-    held = session(now.astimezone(ET).date().isoformat())
-    windows = held.option_windows(product) if held is not None else None
-    if not windows:
-        return False
-    return now < windows[0][0] or now >= windows[-1][1]
 
 
 def closed_since(now: datetime) -> "datetime | None":

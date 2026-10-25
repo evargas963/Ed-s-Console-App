@@ -359,7 +359,8 @@ from Schwab to the screen (daemon, console, page), are these:
   chain waits behind a stored one). The daemon's bus keeps each ticker's newest whole chain:
   once all its parts are in it replaces the older one, which is never sent again. The sweep runs on
   one thread on the daemon's one Schwab client (§1), one request at a time, by the option markets
-  Schwab's /markets sends (`ChainSweep.chain_due`, `time_et.options_open`): open while any of them
+  Schwab's /markets sends (`ChainSweep.chain_due`, `time_et.option_market_open`, the one option-market
+  reader, which every caller asks; a day Schwab says is closed is outside every window): open while any of them
   is, to the last close (IND, 16:15 ET, when SPY's, QQQ's and IWM's options stop too; Schwab's EQO
   window ends at 16:00 and has no window of its own for them; operator 2026-10-09). While one is
   open (and while today's answer, or a ticker before its first chain, is not known) the
