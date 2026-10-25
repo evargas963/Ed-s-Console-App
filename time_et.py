@@ -94,7 +94,7 @@ class Session:
         return next((w for p, w in self.options if p == product), ())
 
 
-_sessions: dict[str, Session] = {}       # ET date (YYYY-MM-DD) -> Schwab's answer for it
+_sessions: dict[str, Session] = {}       # ET date (YYYY-MM-DD) -> Schwab's answer for it; replaced, never mutated
 
 
 def _windows(hours: dict, name: str) -> Windows:
@@ -119,7 +119,9 @@ def record_markets(answer: dict) -> Session:
                 _windows(hours, "postMarket"),
                 tuple((product, _windows(_hours(entry), "regularMarket"))
                       for product, entry in answer["option"].items()))
-    _sessions[s.day] = s
+    global _sessions
+    # a new dict, never an insert: a reader on another thread keeps iterating the one it began with
+    _sessions = {**_sessions, s.day: s}
     return s
 
 

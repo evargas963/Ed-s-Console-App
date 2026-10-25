@@ -439,10 +439,8 @@
     }, { passive: false });
   }
 
-  // #4: format a compact per-panel source/as-of badge. This ONLY formats server-owned fields
-  // (a source label + the server's own age_sec + its stale flag) - it never computes freshness and
-  // never merges panels into one global "LIVE". Panels that read the same canonical generation pass
-  // the same server age here, so their badges agree without a second computation.
+  // the as-of badges print only served fields (asOfBadge): never a computed freshness, never one
+  // global "LIVE"
   function _escBadge(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
     return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
   // a panel's placeholder: one line of words, drawn as text

@@ -628,7 +628,7 @@ def test_d5_while_closed_levels_as_of_the_close_stand_and_older_ones_are_absent_
     sat, monday_early = _et("2026-10-03 12:00"), _et("2026-10-05 03:00")
     for now in (sat, monday_early):
         st = server.terrain_staleness(_et("2026-10-02 20:00") + 30, "ZZCLOSED", now=now)
-        assert st["levels_state"] != "STALE" and st["levels_stale_reason"] == "", st
+        assert (st["levels_state"], st["levels_stale_reason"]) == ("CLOSE", ""), st
         # ZZCLOSED's options are stock options, whose own market closes at 16:00: a chain fetched at
         # 16:14 is its close values, one fetched at 15:59 is not
         st = server.terrain_staleness(_et("2026-10-02 16:14"), "ZZCLOSED", now=now)

@@ -1727,7 +1727,7 @@ def refresh_not_live_pages(now: float) -> None:
 def _terrain_loop() -> None:
     """The watchlist's stored levels once the daemon has said what the watchlist is (queued behind
     the delivered chains: _load_stored_levels); then every STATUS_EVERY_SEC the status line is logged,
-    each open page whose price is not live is told to read its levels again
+    each open page whose price or levels are not live is told to read its levels again
     (refresh_not_live_pages) and the price levels of a new session or a new ticker are published.
     The chains, and the bars
     each ticker's price levels are built from, arrive from the daemon (_on_chain, _bar_writer)."""
@@ -2427,16 +2427,10 @@ def gamma_surface_payload(tk: str, scope: str, centre, shift: int, cols: "int | 
             "requested": _requested, "reason": " — ".join(r for r in _why if r)}
 
 
-# RC-UI-1's dev route (/console) converged into `/` here (operator directive 2026-09-14):
-# static/console.html was renamed to static/index.html in this same commit, so the existing
-# `/` route above (root(), reading static_dir/index.html) now serves it directly. No
-# transitional dual-serving period -- /console is gone, not aliased.
-
-
 @app.get("/api/terrain")
 def get_terrain(ticker: str = Query(...)):
     """The ticker's published levels, now."""
-    return terrain_answer(ticker_storage_key(_required_ticker(ticker)), now_et())   # RC-126: SPX -> $SPX etc.
+    return terrain_answer(ticker_storage_key(_required_ticker(ticker)), now_et())   # SPX -> $SPX
 
 
 def terrain_answer(tk: str, at: datetime) -> dict:
@@ -2466,12 +2460,9 @@ def terrain_answer(tk: str, at: datetime) -> dict:
     return unavailable | price_relations(unavailable, spot).to_dict() | mark | levels_mark(staleness | mark) | {
         "spot_source": spot_source, "spot_as_of_ts_utc": spot_ts,
         **_atr_fields(tk, at),    # from the candles and bars, which do not wait for a chain
-        # RC-126: not_ready carries its REASON when the producer has one — an eternal
-        # unexplained shrug is how $SPX stayed dark for a session.
+        # not ready, with the producer's reason when it has one, and the levels' verdict
         "error": ("terrain_not_ready: no chain from the daemon yet for this ticker"
                   + (f" (last chain error: {_why})" if _why else "")),
-        # RC-151: and it carries the STRUCTURED state too, so a consumer never parses English
-        # to learn the ticker is failing
         **staleness,
     }
 
