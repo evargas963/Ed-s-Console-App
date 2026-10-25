@@ -434,8 +434,9 @@
         src(c, 'Schwab option chain · ' + (t === undefined ? 'loading…' : esc((t && t.error) || 'terrain request failed')));
         c.querySelector('.tdm-rows').innerHTML = '';
       } else {
-        var reg = String(t.regime || '').replace(/_/g, ' ');
-        state(c, reg || '—', t.levels_state !== 'LIVE' ? 'warn' : (/LONG/.test(t.regime || '') ? 'up' : /SHORT/.test(t.regime || '') ? 'dn' : ''));
+        var reg = t.regime ? String(t.regime) : null;
+        state(c, reg != null ? reg.replace(/_/g, ' ') : '—',
+          t.levels_state !== 'LIVE' ? 'warn' : (/LONG/.test(reg) ? 'up' : /SHORT/.test(reg) ? 'dn' : ''));
         var ng = t.net_gex_at_spot;   // absent is uncoloured, never read as 0
         c.querySelector('.tdm-hero').innerHTML = '<span class="' + (ng == null ? '' : ng >= 0 ? 'up' : 'dn') + '">' + usd(ng) + '</span> <small>net dealer gamma at spot, per 1%</small>';
         src(c, 'Schwab option chain · ' + esc(chainAgeLabel(t)));

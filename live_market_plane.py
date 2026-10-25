@@ -285,6 +285,12 @@ def held_by_daemon(service: str, now: float) -> frozenset[str]:
     return feed.held.get(service, frozenset())
 
 
+#: why an option contract is not trading, by whether its own option market is open (None: the
+#: contract's market is not known, no chain held lists it)
+_OPTION_MARKET_WHY = {True: None, False: "outside Schwab's option market hours",
+                      None: "the contract's option market is not known"}
+
+
 def not_trading(symbol: str | None, service: str, now: float, product: str | None = None) -> str | None:
     """Why `symbol`'s values on Schwab `service` are not changing at `now`, or None while its
     market trades: the stock market outside the sessions Schwab's /markets answer sent for today
@@ -298,9 +304,7 @@ def not_trading(symbol: str | None, service: str, now: float, product: str | Non
     if session == CLOSED:
         return "outside Schwab's market hours"
     if service in OPTION_SERVICES:
-        if product is None:
-            return "the contract's option market is not known"
-        return None if option_market_open(at, product) else "outside Schwab's option market hours"
+        return _OPTION_MARKET_WHY[None if product is None else option_market_open(at, product)]
     t = ticker_storage_key(symbol)
     row = get_quote(t) if t else None
     status = row.get("security_status") if row is not None else None

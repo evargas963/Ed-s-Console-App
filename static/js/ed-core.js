@@ -473,7 +473,7 @@
     if (o.when != null) parts.push(_escBadge(o.when));
     if (o.age) parts.push(_escBadge(o.age));
     // the detailed reason is DISCLOSED in the tooltip — never as a paragraph inside an analytical panel
-    var title = o.reason ? o.reason : (o.title || o.label || '');
+    var title = o.reason || o.title || o.label;
     return '<span class="' + cls + '" title="' + _escBadge(title) + '">' + parts.join(' · ') + '</span>';
   }
   // A chain answer's badge: its served scope and the levels verdict served with it; '' with no scope.
