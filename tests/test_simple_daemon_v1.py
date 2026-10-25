@@ -65,33 +65,36 @@ def test_one_live_rule_every_reader_agrees_and_all_fail_closed_at_one_limit():
     so one moment could read live on one card and dead on the next. One rule now: the daemon's
     heartbeat is under FEED_HEARTBEAT_MAX_AGE_SEC, its Schwab socket is open, and it holds the
     symbol on that service. A service quiet for 45 s on that feed is live (Schwab sends changes).
-    STAND-IN (named): the daemon's status, and contracts A and B stock options (EQO). Judged in
-    regular hours (RTH_INSTANT)."""
+    Two of TSLA's captured 2026-10-07 contracts, judged by TSLA's own option market. STAND-IN
+    (named): the daemon's status. Judged in regular hours (RTH_INSTANT)."""
     import live_market_plane as lmp
     from app.options.order_flow import streaming as ofs
     from tests.feed_live_helper import RTH_INSTANT
-    from time_et import EQUITY_OPTIONS
+    from tests.real_chains import TSLA
+    from time_et import option_close_product
+    a, b = TSLA.chain[0]["symbol"], TSLA.chain[1]["symbol"]
+    product = option_close_product(TSLA.ticker)
     status = {"schwab_socket_open": True,
               "health": {"OPTIONS_BOOK": {"age_sec": 45.0}},
-              "held": {"LEVELONE_EQUITIES": ["MU"], "LEVELONE_OPTIONS": ["B", "A"], "OPTIONS_BOOK": ["A"]}}
+              "held": {"LEVELONE_EQUITIES": ["MU"], "LEVELONE_OPTIONS": [b, a], "OPTIONS_BOOK": [a]}}
 
     now = RTH_INSTANT
 
     def diag(sym):     # the served option-contract diagnostics for `sym`
-        return ofs.get_option_contract_streaming_diagnostics(sym, now, EQUITY_OPTIONS)
+        return ofs.get_option_contract_streaming_diagnostics(sym, now, product)
 
     def readers():
         return (lmp.feed_live_for("MU", "LEVELONE_EQUITIES", now),
-                lmp.feed_live_for("A", "LEVELONE_OPTIONS", now, EQUITY_OPTIONS),
-                diag("A")["feed_health"]["book"]["state"], diag("B")["subscription_state"])
+                lmp.feed_live_for(a, "LEVELONE_OPTIONS", now, product),
+                diag(a)["feed_health"]["book"]["state"], diag(b)["subscription_state"])
 
     lmp.record_feed_down()
     try:
         down = readers()
         limit = lmp.FEED_HEARTBEAT_MAX_AGE_SEC
         lmp.record_feed_heartbeat({**status, "ts": now - limit + 0.5})
-        live, book_age, b_book = (readers(), diag("A")["feed_health"]["book"]["age_sec"],
-                                  lmp.feed_live_for("B", "OPTIONS_BOOK", now, EQUITY_OPTIONS))
+        live, book_age, b_book = (readers(), diag(a)["feed_health"]["book"]["age_sec"],
+                                  lmp.feed_live_for(b, "OPTIONS_BOOK", now, product))
         lmp.record_feed_heartbeat({**status, "ts": now - limit - 0.5})
         late = readers()
         lmp.record_feed_heartbeat({**status, "schwab_socket_open": False, "ts": now})
