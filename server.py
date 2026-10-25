@@ -746,9 +746,8 @@ _terrain_loop_thread: threading.Thread | None = None
 def terrain_cache_get(ticker: str, now: float) -> dict | None:
     """Return the cached wide-chain terrain snapshot with its staleness at `now` merged.
 
-    RC-424: the loop stores computed_ts_utc, not levels_stale. Every consumer that
-    gates pin/wall/overlay freshness must derive staleness from terrain_staleness
-    (the production authority), never treat a missing levels_stale key as fresh.
+    The loop stores computed_ts_utc, not a verdict: every consumer reads the levels' state
+    (levels_state) terrain_staleness merges here, never a missing key as LIVE.
     """
     tk = ticker_storage_key(ticker)
     with _terrain_cache_lock:
@@ -803,8 +802,7 @@ def terrain_staleness(computed_ts_utc: float | None, ticker: str | None = None, 
     """The levels' state at `now`, THE levels verdict every screen shows (`levels_state`): LIVE while
     the ticker's own option market (time_et.option_close_product: stock options close at 16:00 ET,
     index-close options at 16:15) is open and its chain current; CLOSE once that market has closed
-    and a chain fetched after its close stands, however old (docs/DATA_FLOW.md §2 D5, operator
-    2026-10-25); STALE, with WHY, when the chain is overdue or the close values were never fetched;
+    and a chain fetched after its close stands, however old (docs/DATA_FLOW.md §2 D5); STALE, with WHY, when the chain is overdue or the close values were never fetched;
     NOT LIVE when Schwab's /markets answer for today is not held. The daemon's last answer for the
     ticker's chain (a failed fetch, an incomplete delivery) outranks the age. While its option
     market is open the daemon fetches every watchlist ticker's chain without end, so age past two of
@@ -812,29 +810,32 @@ def terrain_staleness(computed_ts_utc: float | None, ticker: str | None = None, 
     token = schwab_token_countdown(_schwab_token_creation_ts(), now)   # RC-108: warn BEFORE death
     failure = str(_terrain_refresh_last_error.get(
         ticker_storage_key(ticker) if ticker else "", "") or "")
+    state, reason = _levels_state(computed_ts_utc, ticker, now, failure)
+    age = None if computed_ts_utc is None else now - float(computed_ts_utc)
+    return {"levels_state": state, "levels_stale_reason": reason,
+            "levels_age_sec": age, "levels_age_text": None if age is None else age_text(age),
+            "levels_time_ct": None if computed_ts_utc is None else ct_label(computed_ts_utc),
+            # actively FAILING is a different action (the chain fetch is erroring, the levels
+            # will not come back on their own)
+            "levels_failing": bool(state == LEVELS_STALE and failure), **token}
+
+
+def _levels_state(computed_ts_utc: float | None, ticker: str | None, now: float, failure: str) -> tuple[str, str]:
+    """(levels_state, why it is not LIVE or CLOSE) for terrain_staleness."""
+    sep = f" — {failure}" if failure else ""
     if computed_ts_utc is None:
-        return {"levels_state": LEVELS_STALE, "levels_stale": True, "levels_age_sec": None, "levels_age_text": None,
-                "levels_time_ct": None,
-                "levels_stale_reason": (f"no terrain snapshot has been computed yet — {failure}"
-                                        if failure else "no terrain snapshot has been computed yet"),
-                "levels_failing": bool(failure), **token}
-    age = now - float(computed_ts_utc)
-    when = {"levels_age_sec": age, "levels_age_text": age_text(age), "levels_time_ct": ct_label(computed_ts_utc)}
+        return LEVELS_STALE, "no terrain snapshot has been computed yet" + sep
     at = datetime.fromtimestamp(now, ET)
     product = option_close_product(ticker)
     market_open = option_market_open(at, product)
     if market_open is None:
-        return {"levels_state": lmp.NOT_LIVE, "levels_stale": False, **when,
-                "levels_stale_reason": "the market session is unknown", "levels_failing": False, **token}
+        return lmp.NOT_LIVE, "the market session is unknown"
     if not market_open:
         closed = options_closed_at(at, product)
-        stale = closed is None or float(computed_ts_utc) < closed.timestamp()
-        reason = ""
-        if stale:
-            reason = ("this ticker's options are closed and its close values have not been fetched"
-                      + (f" — {failure}" if failure else ""))
-        return {"levels_state": LEVELS_STALE if stale else LEVELS_CLOSE, "levels_stale": stale, **when,
-                "levels_stale_reason": reason, "levels_failing": bool(stale and failure), **token}
+        if closed is None or float(computed_ts_utc) < closed.timestamp():
+            return LEVELS_STALE, "this ticker's options are closed and its close values have not been fetched" + sep
+        return LEVELS_CLOSE, ""
+    age = now - float(computed_ts_utc)
     # judged against the round the daemon's chain sweep delivers (every watchlist ticker once)
     status = lmp.daemon_status(now)
     round_sec = status.get("chain_round_sec") if status is not None else None
@@ -843,19 +844,13 @@ def terrain_staleness(computed_ts_utc: float | None, ticker: str | None = None, 
     # with no round delivered (or no current status) the floor alone.
     stale_after = (float(TERRAIN_STALE_AFTER_SEC) if round_sec is None
                    else max(float(TERRAIN_STALE_AFTER_SEC), 2.0 * float(round_sec)))
-    stale = age > stale_after
-    reason = ""
-    if stale:
-        reason = (f"levels are {age:.0f}s old and every chain since has failed — {failure}"
-                  if failure else
-                  f"levels are {age:.0f}s old; the daemon's chain sweep has not delivered this "
-                  + (f"ticker in two of its rounds ({float(round_sec):.0f}s each)" if round_sec is not None
-                     else f"ticker in {float(TERRAIN_STALE_AFTER_SEC):.0f}s (the daemon reports no round of its sweep)"))
-    return {"levels_state": LEVELS_STALE if stale else lmp.LIVE, "levels_stale": stale, **when,
-            "levels_stale_reason": reason,
-            # actively FAILING is a different action (the chain fetch is erroring, the levels
-            # will not come back on their own)
-            "levels_failing": bool(stale and failure), **token}
+    if age <= stale_after:
+        return lmp.LIVE, ""
+    if failure:
+        return LEVELS_STALE, f"levels are {age:.0f}s old and every chain since has failed — {failure}"
+    return LEVELS_STALE, (f"levels are {age:.0f}s old; the daemon's chain sweep has not delivered this "
+                          + (f"ticker in two of its rounds ({float(round_sec):.0f}s each)" if round_sec is not None
+                             else f"ticker in {float(TERRAIN_STALE_AFTER_SEC):.0f}s (the daemon reports no round of its sweep)"))
 
 
 #: the levels' words beside the price's (live_market_plane LIVE / NOT_LIVE): the close values of the
@@ -1093,8 +1088,7 @@ def restamp_open_surfaces(now: float) -> None:
                 if greeks:
                     streamed[sym] = greeks
             held = set(symbols) & set(held_now)
-            product = option_close_product(tk)
-            live = {s for s in streamed if lmp.feed_live_for(s, "LEVELONE_OPTIONS", now, product)}
+            live = lmp.live_symbols(feed, streamed, "LEVELONE_OPTIONS", now, option_close_product(tk))
             _stamp_gamma_surface_cell_stream_state(surface, streamed, live, held, now)
             surface["surface_seq"] = _next_gamma_surface_seq(tk)
             bumped.append(tk)
@@ -1414,7 +1408,7 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
     # one read of the heartbeat: pricing and the cell stamp share it
     feed = lmp.feed_now(at.timestamp())
     streamed = _streamed_greeks_for_ticker(listed, at.timestamp(), feed)
-    feed_live = {s for s in streamed if lmp.feed_live_for(s, "LEVELONE_OPTIONS", at.timestamp(), product)}
+    feed_live = lmp.live_symbols(feed, streamed, "LEVELONE_OPTIONS", at.timestamp(), product)
     held = set(_held_option_symbols_for_ticker(listed, at.timestamp(), feed))
     # each field the newest Schwab sent: the last streamed value received after this chain, else
     # the chain's. The cell stamp says whether that stream is live.
@@ -2372,9 +2366,6 @@ def gamma_surface_payload(tk: str, scope: str, centre, shift: int, cols: "int | 
     surf = (live or {}).get("_gamma_surface")
     _surface_live_spot = resolve_spot(tk, now=now.timestamp())
     if live and surf:
-        # ONE freshness authority: terrain_staleness (RC-424) already merged onto the cache by
-        # terrain_cache_get — serialize it verbatim, never a second age policy for the same truth.
-        stale = bool(live.get("levels_stale"))
         spot_strike = nearest_strike(surf.get("strikes"), _surface_live_spot[0])
         # the surface's state is the levels' (terrain_staleness: LIVE, CLOSE, STALE, NOT LIVE);
         # whether the cells on screen are streaming is the view's coverage
@@ -2382,18 +2373,15 @@ def gamma_surface_payload(tk: str, scope: str, centre, shift: int, cols: "int | 
         return {
             # every cell Schwab listed is drawn: a cell without a value is None, drawn "-"
             "ticker": tk, "symbol": tk, "available": True, "reason": None,
-            "source": "terrain_live_cache", "live": live["levels_state"] == lmp.LIVE, "stale": stale,
+            "source": "terrain_live_cache",
             **levels_verdict(live),
-            "degraded": live.get("levels_stale_reason") if stale else None,
             "chain_as_of_ts_utc": live.get("computed_ts_utc"),
-            "age_sec": live.get("levels_age_sec"),            # terrain's canonical age
             "chain_basis": live.get("chain_basis"),
             **window,
             "view": view,
-            # one spot on every screen (2026-09-27): the live price, the header's own rule, after
-            # the surface's own keys so its stamp cannot overwrite it. The
-            # price this surface's cells were computed at is named on its own (operator directive
-            # 2026-09-15: the cells and their stamp travel together) -- two names, no switching.
+            # one spot on every screen: the live price, the header's own rule, after the surface's
+            # own keys so its stamp cannot overwrite it. The price this surface's cells were
+            # computed at is named on its own (the cells and their stamp travel together).
             "spot": _surface_live_spot[0],
             "spot_source": _surface_live_spot[1],
             "spot_as_of_ts_utc": _surface_live_spot[2],
@@ -2435,7 +2423,7 @@ def gamma_surface_payload(tk: str, scope: str, centre, shift: int, cols: "int | 
     else:
         _why = ["no chain is fetched for this ticker: it is not on the watchlist"]
     return {"ticker": tk, "symbol": tk, "available": False, "source": "unavailable",
-            "live": False, "stale": True, "warming": _requested and _warming,
+            "warming": _requested and _warming,
             "requested": _requested, "reason": " — ".join(r for r in _why if r)}
 
 
@@ -2466,7 +2454,7 @@ def terrain_answer(tk: str, at: datetime) -> dict:
         out["spot"], out["spot_source"], out["spot_as_of_ts_utc"] = resolve_spot(tk, now=now)
         out.update(price_relations(out, out["spot"]).to_dict())
         out.update(_atr_fields(tk, at))     # live: today's candle from the bars held now
-        # the chain's age is levels_stale, above. The live price the relations are computed from
+        # the chain's verdict is levels_state, above. The live price the relations are computed from
         # is a separate fact: the numbers stay, marked with whether that price is live
         out.update(price_mark(tk, out["spot_as_of_ts_utc"], now))
         return out | levels_mark(out)
@@ -2550,7 +2538,7 @@ def desk_events_payload(tk: str, venue: str, tf: str, now: datetime) -> dict:
                           "detail": f"{word} wall {price_text(t[f'{side}_wall'])} · spot "
                                     f"{price_text(t['spot'])}",
                           "src": "/api/terrain"})
-    if t.get("levels_stale"):
+    if t.get("levels_state") == LEVELS_STALE:
         items.append({"key": "ls", "ts": tts, "dom": "DATA", "dir": None, "warn": True,
                       "title": "Gamma levels are stale", "detail": t.get("levels_stale_reason") or "",
                       "src": "/api/terrain"})
@@ -3346,8 +3334,6 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict:
             "as_of_ts_utc": as_of,
             "as_of_time_ct": ct_label(as_of) if as_of is not None else None,
             "age_sec": None if as_of is None else served_ts - as_of,
-            "stale_after_sec": None,
-            "stale": None,
             "reason": f"carried from canonical snapshot generation {snap.generation}; a session "
                       "price level has no staleness rule, its age is shown",
         }
@@ -3373,7 +3359,6 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict:
                            "staleness": {"as_of_ts_utc": as_of,
                                          "as_of_time_ct": ct_label(as_of) if as_of is not None else None,
                                          "age_sec": None if as_of is None else served_ts - as_of,
-                                         "stale_after_sec": None, "stale": bool(t.get("levels_stale")),
                                          "reason": "carried from the terrain"},
                            # a level placed at the live price (the pin candidate) is marked with it
                            "not_live_text": mark["spot_not_live_text"] if gid in PRICE_RELATIONS else None})
@@ -3426,8 +3411,6 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict:
                            else ct_label(t.get("computed_ts_utc")),
                            "age_sec": None if t is None or t.get("computed_ts_utc") is None
                            else served_ts - t.get("computed_ts_utc"),
-                           "stale_after_sec": None,
-                           "stale": bool(t is not None and t.get("levels_stale")),
                            "reason": "carried from the terrain"}}
             for gid, label in SAME_DAY_LEVELS
         ],

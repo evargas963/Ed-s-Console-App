@@ -317,7 +317,16 @@ def live_state(symbol: str | None, service: str, now: float, product: str | None
     Not "did a value arrive recently": Schwab sends a field only when it CHANGES (measured: 11%
     of 4,039 messages carried bid+ask+last together), so a quiet symbol's unchanged value is its
     current value; judging by arrival age blanks quiet names on a healthy feed."""
-    feed = feed_now(now)
+    return _judge(feed_now(now), symbol, service, now, product)
+
+
+def live_symbols(feed: FeedNow, symbols, service: str, now: float, product: str | None = None) -> set[str]:
+    """The `symbols` live on Schwab `service` at `now` by the live rule, judged on one read of
+    the heartbeat (`feed`)."""
+    return {s for s in symbols if _judge(feed, s, service, now, product)[0] == LIVE}
+
+
+def _judge(feed: FeedNow, symbol: str | None, service: str, now: float, product: str | None) -> tuple[str, str | None]:
     if not feed_up(feed):
         return OFFLINE, f"Schwab {service} feed down during {session_label(datetime.fromtimestamp(now, ET))}"
     if not live_on(feed, symbol, service):

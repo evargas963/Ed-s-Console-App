@@ -277,11 +277,11 @@
       return '<span class="mig-chip' + (s[0] === _migScope ? ' on' : '') + '" data-mig-scope="' + s[0] + '">' + s[1] + '</span>';
     }).join('') + '<span class="mig-chip' + (_migGhost ? ' on' : '') + '" data-mig-ghost="1">GHOST</span></div>';
     // A zero here has two causes: the session has traded nothing yet, or the chain behind these
-    // rows is stale (the served levels_stale)
+    // rows is stale (the served levels_state)
     var totVol = mig ? mig.volume_total : null;   // served: the scope's session volume
     var volNote = '';
     if (totVol === 0) {
-      volNote = strikesD.levels_stale
+      volNote = strikesD.levels_state === 'STALE'
         ? '<div class="mig-vol-note stale">zero volume here is the SNAPSHOT, not the session — this chain is stale; see the source badge above</div>'
         : '<div class="mig-vol-note">no option volume yet this session — the counter resets at the new session and fills from the open</div>';
     }

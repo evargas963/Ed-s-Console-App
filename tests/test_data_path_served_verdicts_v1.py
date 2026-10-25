@@ -56,7 +56,6 @@ def test_the_levels_are_judged_by_the_tickers_own_option_market(published, tk, c
     published(tk, chain, delivered)
     body = server.terrain_answer(tk, at)
     assert body["levels_state"] == state
-    assert body["levels_stale"] is (state == "STALE")
     assert body["levels_age_sec"] == pytest.approx(at.timestamp() - delivered.timestamp())
     assert body["levels_time_ct"] is not None
 

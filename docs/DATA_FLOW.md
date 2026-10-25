@@ -653,7 +653,7 @@ from Schwab to the screen (daemon, console, page), are these:
    options card, volatility card, and GAMMA pill keep the chain's time beside that
    age (`server.get_terrain`, `static/js/ed-trade-desk-map.js`). The key levels
    keep the last wall when that price has stopped, and the rail says that price's served state
-   (`spot_feed_label`) beside the chain's time (`server.get_terrain`, `#klSrc`, `static/js/ed-gamma-panels.js`); the chain's own age stays `levels_stale`. The
+   (`spot_feed_label`) beside the chain's time (`server.get_terrain`, `#klSrc`, `static/js/ed-gamma-panels.js`); the chain's own verdict stays `levels_state`. The
    GEX-by-strike badge keeps that same time beside its age (`server.terrain_strikes_payload`, `#gbsSrc`). The
    gamma chart's GEX badge keeps it too (`static/js/ed-gamma-chart.js`). The desk map's
    LEVELS pill keeps the snapshot's time beside that age (`server.levels_payload`,

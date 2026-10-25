@@ -12,10 +12,10 @@ const { test, expect } = require('@playwright/test');
 const { routeWatchlist } = require('./fixtures/watchlist');
 
 const TERRAIN = { ticker: 'SPY', spot: 100, gamma_flip: 99.5, call_wall: 106, put_wall: 94,
-  absolute_gamma_strike: 100, net_gex_peak: 100, net_gex_at_spot: 5e8, regime: 'LONG_GAMMA_CHOP', levels_stale: false };
+  absolute_gamma_strike: 100, net_gex_peak: 100, net_gex_at_spot: 5e8, regime: 'LONG_GAMMA_CHOP', levels_state: 'LIVE', levels_mark: 'LIVE' };
 const BARS = { ticker: 'SPY', bars: [] };
 const SURFACE = { ticker: 'SPY', symbol: 'SPY', available: true, spot: 100, source: 'terrain_live_cache',
-  live: true, stale: false, age_sec: 3, chain_basis: 'full', complete: false,
+  levels_state: 'LIVE', levels_age_sec: 3, chain_basis: 'full', complete: false,
   expirations: [{ expiry: '2026-09-18', dte: 2 }], strikes: [100],
   cells: [{ strike: 100, gex: [958600], contracts: [{ call: null, put: null }] }],
   view: { centre: 100, scope: 'auto', coverage: null, max_abs: { gex: 958600 }, missing_expiry: null } };

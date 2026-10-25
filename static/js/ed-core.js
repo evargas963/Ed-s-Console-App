@@ -476,6 +476,15 @@
     var title = o.reason ? o.reason : (o.title || o.label || '');
     return '<span class="' + cls + '" title="' + _escBadge(title) + '">' + parts.join(' · ') + '</span>';
   }
+  // A chain answer's badge: its served scope and the levels verdict served with it; '' with no scope.
+  var CHAIN_SCOPE = { complete_single_expiry: 'complete (ALL)', unavailable: 'unavailable' };
+  function chainScopeBadge(d) {
+    var sc = d && d.scope, kind = sc && sc.kind;
+    if (!kind) return '';
+    return asOfBadge({ label: 'vendor · ' + (CHAIN_SCOPE[kind] || kind), state: d.levels_state,
+      when: d.levels_time_ct, age: d.levels_age_text, reason: d.levels_stale_reason,
+      title: 'chain scope: ' + kind + (sc.reason ? ' — ' + sc.reason : '') });
+  }
 
   // ================= watchlist: the one list, kept by the capture daemon =================
   // The page holds the list as the console last served it (/api/watchlist); an add or a removal
@@ -1052,7 +1061,7 @@
     setTheme: applyTheme,
     marketContext: function () { return MARKET_CONTEXT.slice(); },   // served [{key, display}]
     setScope: setScope, getScope: function () { return state.scope; },
-    windowQuery: windowQuery, newPan: newPan, panServed: panServed, wireStrikeAxis: wireStrikeAxis, asOfBadge: asOfBadge, fmtAge: fmtAge, chainEmptyText: chainEmptyText, placeholder: placeholder,
+    windowQuery: windowQuery, newPan: newPan, panServed: panServed, wireStrikeAxis: wireStrikeAxis, asOfBadge: asOfBadge, chainScopeBadge: chainScopeBadge, fmtAge: fmtAge, chainEmptyText: chainEmptyText, placeholder: placeholder,
     setExpiry: setExpiry, getExpiry: function () { return state.expiryFilter; },
     getMeasure: function () { return state.measure; },
     setSubview: setSubview };

@@ -89,9 +89,9 @@
       var rm = REGIME[d.regime] || { t: (d.regime || '—'), c: 'var(--ed-ink-2)' };
       reg.textContent = rm.t; reg.style.color = rm.c;
     }
-    // B: the levels rail recedes when terrain reports stale
+    // the levels rail recedes while the served levels are STALE
     var klb = document.getElementById('klBody');
-    if (klb) klb.classList.toggle('recede', !!d.levels_stale);
+    if (klb) klb.classList.toggle('recede', d.levels_state === 'STALE');
     // freshness / provenance line. The chain's time stands beside the mark. The mark is
     // unchanged when no chain time was sent.
     var src = document.getElementById('klSrc');
@@ -254,17 +254,9 @@
     _sdDesired = { strike: strike, expiry: expiry };
     _sdLoader.trigger(ticker() + '|' + strike + '|' + (expiry || ''));
   }
-  var SCOPE_LABEL = { complete_single_expiry: 'vendor · complete (ALL)', unavailable: 'vendor · unavailable' };
   function setSdAsOf(d) {
     var el = document.getElementById('sdSrc'); if (!el) return;
-    var sc = d && d.scope, kind = sc && sc.kind;
-    if (!kind) { el.innerHTML = ''; return; }
-    // the chain's scope, and the levels verdict the server serves for it (levels_state, time, age)
-    el.innerHTML = (window.EdShell && window.EdShell.asOfBadge)
-      ? window.EdShell.asOfBadge({ label: SCOPE_LABEL[kind] || kind, state: d.levels_state,
-          when: d.levels_time_ct, age: d.levels_age_text, reason: d.levels_stale_reason,
-          title: 'chain scope: ' + kind + (sc.reason ? ' — ' + sc.reason : '') })
-      : '';
+    el.innerHTML = (window.EdShell && window.EdShell.chainScopeBadge) ? window.EdShell.chainScopeBadge(d) : '';
   }
   function renderStrike(host, d, strike, expiry) {
     setSdAsOf(d);

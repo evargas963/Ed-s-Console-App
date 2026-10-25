@@ -114,7 +114,7 @@ def test_a_streamed_cell_is_not_live_after_its_own_option_close():
     states = [col[side]["state"] for cell in body["cells"] for col, pair in zip(cell["stream"], cell["contracts"])
               for side in ("call", "put") if col and pair.get(side) == SYM]
     assert states and "live" not in states
-    assert body["live"] is False and body["levels_state"] != "LIVE"
+    assert body["levels_state"] != "LIVE"
 
 
 def test_a_status_sent_past_the_live_limit_is_not_current():

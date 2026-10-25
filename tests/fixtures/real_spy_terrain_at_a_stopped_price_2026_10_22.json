@@ -64,7 +64,6 @@
  "levels_mark": "CLOSE",
  "levels_mark_reason": "",
  "levels_source": "wide_chain_loop",
- "levels_stale": false,
  "levels_stale_reason": "",
  "levels_state": "CLOSE",
  "levels_time_ct": "Thu 10/22 03:17 PM CT",

@@ -109,7 +109,7 @@
     var b = buildBanner(surface);
     if (b) host.insertAdjacentHTML('afterbegin', b);
     var wrap = host.querySelector('.heat-wrap');
-    if (wrap) wrap.classList.toggle('recede', surface.live === false || !!surface.stale);
+    if (wrap) wrap.classList.toggle('recede', surface.levels_state !== 'LIVE');
     paintChip(surface.view.coverage);
   }
 
@@ -144,7 +144,6 @@
     var words = WORDS;
     var exps = surface.expirations || [], cells = surface.cells || [];
     var maxAbs = view.max_abs[measure], heat = readHeatColors();
-    var live = surface.live !== false, stale = !!surface.stale;
     var tbl = '<table class="heat"><thead><tr><th class="hcorner">Strike</th>';
     exps.forEach(function (e, j) {
       var dte = e.expired ? 'EXPIRED' : (e.dte === 0) ? '0DTE' : (e.dte != null ? e.dte + 'DTE' : '');
@@ -191,7 +190,7 @@
       '<span class="caps"><span class="t">' + legendPair[0] + '</span><span class="m">0</span>' +
       '<span class="b">' + legendPair[1] + '</span></span></div>';
     host.innerHTML = buildBanner(surface) + note +
-      '<div class="heat-host"><div class="heat-main"><div class="heat-wrap' + ((!live || stale) ? ' recede' : '') + '">' +
+      '<div class="heat-host"><div class="heat-main"><div class="heat-wrap' + (surface.levels_state !== 'LIVE' ? ' recede' : '') + '">' +
       tbl + '</div></div>' + vlegend + '</div>';
 
     var srow = host.querySelector('.spotrow');
