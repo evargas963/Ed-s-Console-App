@@ -110,8 +110,9 @@
         src.title = d.levels_stale_reason || 'terrain levels are stale';
         src.style.color = 'var(--ed-stale)';
       } else if (d.levels_stale === false && d.spot_feed_live === false) {
-        // the chain is current and the wall stays; the price it was built from has stopped
-        src.textContent = chainMarked('OFFLINE');
+        // the chain is current and the wall stays; the price it was built from is not live (its
+        // served state: OFFLINE, the feed down; NOT LIVE, its market not trading)
+        src.textContent = chainMarked(d.spot_feed_label);
         src.title = d.spot_outage == null ? '' : d.spot_outage;
         src.style.color = 'var(--ed-stale)';
       } else if (d.levels_stale === false) {
@@ -519,16 +520,6 @@
   function loadAll() { loadLevels(); loadGbs(); loadVanna(); loadCharm(); loadStructures(); loadOf(); }
   document.addEventListener('ed:ticker', function () { resetStrikeDetailForTickerChange(); loadAll(); });
   document.addEventListener('ed:expiry', loadLevels);   // the ratio is scoped to the selected expiry
-  // Key Levels' Spot is the header's price row, painted on every push (the daemon's
-  // live_price_rows.price_row), never the levels fetch's copy
-  window.addEventListener('ed:quote_tick', function (e) {
-    var q = e.detail;
-    if (!q || q.ticker !== ((window.EdShell && window.EdShell.getState()) || {}).key) return;   // the served key
-    var el = document.getElementById('klSpot');
-    if (!el) return;
-    el.textContent = q.spot_disp != null ? q.spot_disp : '—';
-    el.title = q.trade_time_ct ? ('last trade ' + q.trade_time_ct) : '';
-  });
   document.addEventListener('ed:view', loadAll);
   // a new scope is a new window: every per-strike panel re-reads it from the server
   document.addEventListener('ed:scope', function () { loadGbs(); loadVanna(); loadCharm(); });

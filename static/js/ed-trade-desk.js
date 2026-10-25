@@ -91,10 +91,10 @@
     var heroVal = (imb == null || isNaN(imb)) ? '—' : (imb >= 0 ? '+' : '') + num(imb, 3);
     var side = dep(5, 'side');   // served: BID / ASK / EVEN by the imbalance's sign
     var heroUnit = side == null ? '' : (side === 'BID' ? 'bid-heavy' : side === 'ASK' ? 'ask-heavy' : 'balanced') + ' (' + esc(d.venue) + ', depth 5)';
-    // LIVE only on the server's explicit "not stale" (ages.book_stale, compute_book_microstructure);
-    // an unknown book age is not live
+    // the served words: the top of book's while it is not live, else the book's (book_feed_label);
+    // no book age served reads AGE UNKNOWN, never live
     var bs = ages.book_stale;
-    var badge = d.top_outage ? 'OFFLINE' : (bs === false ? 'LIVE' : bs === true ? 'STALE' : 'AGE UNKNOWN');
+    var badge = d.top_outage ? d.top_feed_label : (bs == null ? 'AGE UNKNOWN' : d.book_feed_label);
     return stage(1, 'td-accent-blue', 'Detect — book microstructure', heroVal, heroUnit, side === 'BID' ? 1 : side === 'ASK' ? -1 : 0,
       rows, badge, d.top_outage || bs !== false ? 'stale' : 'live');
   }

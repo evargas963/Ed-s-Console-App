@@ -17,6 +17,7 @@ import server
 from app.options.order_flow import streaming as ofs
 from db import EdDB, LevelCrossEvent
 from terrain_read import CROSSED_DOWN, CROSSED_UP, LEVEL_AT, crossed
+from tests.feed_live_helper import clock_from
 from tests.real_chains import SPY_AFTER_HOURS_PRINT, SPY_CLOSE, SPY_PRINT_A_STRIKE_AWAY, SPY_PRINT_ON_A_STRIKE
 
 ON_A_STRIKE = SPY_PRINT_ON_A_STRIKE["native"]["LAST_PRICE"]
@@ -27,12 +28,15 @@ AFTER_HOURS = SPY_AFTER_HOURS_PRINT["native"]["LAST_PRICE"]
 BETWEEN = {"Call g-Wall", "Gamma Flip", "Max Pain", "Put d-Wall"}
 
 
-def _publish_close(tk: str = "SPY") -> dict:
+def _publish_close(tk: str = "SPY", now: "float | None" = None) -> dict:
+    """SPY's 2026-10-22 close publication, and the daemon's heartbeat holding `tk` stamped `now`
+    (the wall clock when not given)."""
     server._publish_levels(tk, captures=[{
         "contracts": [dict(c) for c in SPY_CLOSE.chain], "ts_utc": SPY_CLOSE.now.timestamp(),
         "spot": SPY_CLOSE.spot, "et_date": SPY_CLOSE.now.date().isoformat(), "basis": server.CAPTURE_BASIS,
         "spot_ts": None, "spot_from_chain": False}], now=SPY_CLOSE.now)
-    lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [tk]}})
+    lmp.record_feed_heartbeat({"ts": time.time() if now is None else now, "schwab_socket_open": True,
+                               "held": {"LEVELONE_EQUITIES": [tk]}})
     with server._terrain_cache_lock:
         return {name: server._terrain_cache[tk][k] for k, name in server.CROSS_LEVELS}
 
@@ -142,22 +146,25 @@ def test_the_levels_side_of_a_print_on_a_level_is_at():
 def test_relations_from_a_stopped_price_stand_marked_not_live_with_its_time_and_age():
     """The 16:39 print (773.1269) is past the call wall. While the feed delivers it, the wall's
     state and each level's distance are live. When the daemon's connection ends, they stand,
-    marked not live, with the print's trade time and its age (AGENTS rule 5)."""
+    marked not live, with the print's trade time and its age (AGENTS rule 5). Judged from the
+    print's receipt on, in that After-Hours session."""
     from datetime import datetime
 
     from time_et import ET, ct_label
 
-    _forget()
-    _publish_close()
     msg = SPY_PRINT_A_STRIKE_AWAY
+    clock = clock_from(msg["ts_recv"])
+    _forget()
+    _publish_close(now=clock())
     lmp.record_from_level_one_equity("SPY", msg["native"], received_ts=msg["ts_recv"])
-    ofs._price_rows["SPY"] = live_price_rows.price_row("SPY", time.time())
+    ofs._price_rows["SPY"] = live_price_rows.price_row("SPY", clock())
     trade_ts = ofs._price_rows["SPY"]["trade_ts"]
     try:
-        live = server.get_terrain(ticker="SPY")
+        live = server.terrain_answer("SPY", datetime.fromtimestamp(clock(), ET))
         lmp.record_feed_down()
-        at = time.time()
-        down = server.get_terrain(ticker="SPY")
+        at_et = datetime.fromtimestamp(clock(), ET)
+        at = at_et.timestamp()                       # the instant as the route holds it
+        down = server.terrain_answer("SPY", at_et)
         levels = server.levels_payload("SPY", "1", datetime.fromtimestamp(at, ET))
         # the matrix of the 2026-10-22 expiry, read that evening (the 18:00 print's instant)
         matrix = server.confluence_payload("SPY", "2026-10-22",
@@ -180,16 +187,18 @@ def test_relations_from_a_stopped_price_stand_marked_not_live_with_its_time_and_
 def test_a_page_whose_price_has_stopped_is_told_each_minute_to_read_its_levels_again():
     """The not-live mark's age keeps counting: while SPY's last price (the 16:39 print) is live, a
     page open on SPY is not told anything; once the daemon's connection ends, the levels loop's
-    minute (server.refresh_not_live_pages) tells it to read its levels again, every minute."""
+    minute (server.refresh_not_live_pages) tells it to read its levels again, every minute. Judged
+    from the print's receipt on, in that After-Hours session."""
     import asyncio
 
     import push_changes
 
-    _forget()
-    _publish_close()
     msg = SPY_PRINT_A_STRIKE_AWAY
+    clock = clock_from(msg["ts_recv"])
+    _forget()
+    _publish_close(now=clock())
     lmp.record_from_level_one_equity("SPY", msg["native"], received_ts=msg["ts_recv"])
-    ofs._price_rows["SPY"] = live_price_rows.price_row("SPY", time.time())
+    ofs._price_rows["SPY"] = live_price_rows.price_row("SPY", clock())
 
     async def told():
         push_changes.bind(asyncio.get_running_loop())
@@ -199,7 +208,7 @@ def test_a_page_whose_price_has_stopped_is_told_each_minute_to_read_its_levels_a
             for down in (False, True, True):
                 if down:
                     lmp.record_feed_down()
-                server.refresh_not_live_pages(time.time())
+                server.refresh_not_live_pages(clock())
                 seen.append(await push_changes.next_changes(page, 0.3))
             return seen
         finally:

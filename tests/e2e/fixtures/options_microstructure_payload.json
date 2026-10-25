@@ -1,7 +1,7 @@
 {
   "ages": {
     "book_age_sec": 0.28710508346557617,
-    "book_stale": false,
+    "book_stale": true,
     "quote_age_sec": 0.44310522079467773
   },
   "book_slope": {
@@ -136,11 +136,11 @@
     "feed_health": {
       "book": {
         "age_sec": null,
-        "state": "LIVE"
+        "state": "NOT LIVE"
       },
       "l1": {
         "age_sec": null,
-        "state": "LIVE"
+        "state": "NOT LIVE"
       },
       "replay": "not connected"
     },
@@ -148,13 +148,14 @@
     "streaming_last_update_ts": 1788202221.7171052,
     "subscription_state": "SUBSCRIBED"
   },
+  "top_feed_label": "NOT LIVE",
   "top_of_book": {
     "ask": 0.61,
     "ask_size": 14.0,
     "bid": 0.58,
     "bid_size": 55.0
   },
-  "top_outage": null,
+  "top_outage": "the market session is unknown",
   "wall_candidates": [],
   "wall_method": {
     "basis": "displayed level TOTAL_VOLUME >= mult x median top-N level size",

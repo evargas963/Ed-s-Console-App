@@ -36,7 +36,7 @@ const LEVELS = { ticker: 'SPY', spot: SPOT, tf: '30', generation: 1, vwap_series
 const MICRO = { ticker: 'SPY', venue: 'NASDAQ_BOOK', status: 'ok', top_of_book: { bid: 771.29, ask: 771.31, bid_size: 300, ask_size: 200 },
   spread_pts: 0.02, depth: { '1': { imbalance: 0.2, side: 'BID' }, '5': { bid_total: 3000, ask_total: 2000, imbalance: 0.2, side: 'BID' } },
   depth_pressure: { bid: [{ price: 771.29, volume: 300, cum: 300 }, { price: 771.28, volume: 900, cum: 1200 }], ask: [{ price: 771.31, volume: 200, cum: 200 }] },
-  ages: { book_age_sec: 1, book_stale: false }, wall_candidates: [], provenance: { book_source: 'NASDAQ_BOOK' },
+  ages: { book_age_sec: 1, book_stale: false }, book_feed_label: 'LIVE', wall_candidates: [], provenance: { book_source: 'NASDAQ_BOOK' },
   flow: { tape_pressure_5m: 0.3, tape_pressure_30s: 0.1, tape_pressure_2m: 0.2, cum_delta_proxy: 1000 } };
 // the pivot zone below spot was named "support" by type-guessing on the page: each zone's label and
 // side are served (liquidity_models.ZONE_DISPLAY)
@@ -189,9 +189,9 @@ function watchErrors(page) {
 test('Desk: an offline price keeps its last trade time on the map', async ({ page }) => {
   await intercept(page);
   await mockPriceSocket(page, [
-    priceRow('$SPX', 5800.12, { trade_time_ct: '14:00:01 CT', feed_live: false, outage: 'Schwab LEVELONE_EQUITIES feed down during RTH' }),
-    priceRow('$VIX', 16.4, { trade_time_ct: '14:00:02 CT', chg_pct: 1.2, feed_live: false, outage: 'Schwab LEVELONE_EQUITIES feed down during RTH' }),
-    priceRow('SPY', 771.3, { trade_time_ct: '14:00:03 CT', feed_live: false, outage: 'Schwab LEVELONE_EQUITIES feed down during RTH', total_volume: 1000 }),
+    priceRow('$SPX', 5800.12, { trade_time_ct: '14:00:01 CT', feed_live: false, feed_label: 'OFFLINE', outage: 'Schwab LEVELONE_EQUITIES feed down during RTH' }),
+    priceRow('$VIX', 16.4, { trade_time_ct: '14:00:02 CT', chg_pct: 1.2, feed_live: false, feed_label: 'OFFLINE', outage: 'Schwab LEVELONE_EQUITIES feed down during RTH' }),
+    priceRow('SPY', 771.3, { trade_time_ct: '14:00:03 CT', feed_live: false, feed_label: 'OFFLINE', outage: 'Schwab LEVELONE_EQUITIES feed down during RTH', total_volume: 1000 }),
   ]);
   await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
     localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
@@ -202,6 +202,55 @@ test('Desk: an offline price keeps its last trade time on the map', async ({ pag
   await expect(page.locator('#tdmCardFlow')).toContainText('OFFLINE');
   await expect(page.locator('#tdmCardFlow .tdm-src')).toContainText('last trade 14:00:03 CT');
   await expect(page.locator('#tdmCardFlow .tdm-src')).toContainText('Schwab LEVELONE_EQUITIES feed down during RTH');
+});
+
+test('Desk: a price push that stops reads OFFLINE on the map, not its last row\'s LIVE', async ({ page }) => {
+  // the daemon's own rows for SPY's and $SPX's real messages in regular hours (tests/test_order_flow_book_payload_v1.py)
+  const ROWS = require(path.join(__dirname, 'fixtures', 'price_rows_live.json'));
+  await intercept(page);
+  // SPY's row, nothing for 8 s (the push down), then the push resumes with $SPX's row, and SPY's at 12 s
+  await mockPriceSocket(page, [ROWS.SPY], [{ afterMs: 8000, row: ROWS['$SPX'] }, { afterMs: 12000, row: ROWS.SPY }]);
+  await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
+    localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await expect(page.locator('#tdmTrust')).toContainText('PRICE LIVE');
+  await expect(page.locator('#hFeed')).toHaveText('OFFLINE', { timeout: 6000 });    // the socket sends nothing more
+  await expect(page.locator('#tdmTrust')).toContainText('PRICE OFFLINE');
+  await expect(page.locator('#tdmTrust')).not.toContainText('PRICE LIVE');
+  await expect(page.locator('#tdmCardFlow')).toContainText('OFFLINE');
+  // the push resumes with another symbol's row: SPY's last row is not SPY's state now, here or in
+  // the header, even after the map repaints (the console's flow change re-reads and redraws it)
+  await expect(page.locator('#tdmIdxSPX')).toContainText('last trade ' + ROWS['$SPX'].trade_time_ct, { timeout: 10000 });
+  await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'flow' } })));
+  await page.waitForTimeout(500);
+  // read once, before SPY's row at 12 s ends the outage (no retrying: a retry would wait for it)
+  expect(await page.locator('#hFeed').textContent()).toBe('OFFLINE');
+  const trust = await page.locator('#tdmTrust').textContent();
+  expect(trust).toContain('PRICE OFFLINE');
+  expect(trust).not.toContain('PRICE LIVE');
+  // SPY's own row ends the outage: the header and the map read LIVE again
+  await expect(page.locator('#hFeed')).toHaveText('LIVE', { timeout: 6000 });
+  await expect(page.locator('#tdmTrust')).toContainText('PRICE LIVE');
+  await expect(page.locator('#tdmCardFlow')).not.toContainText('OFFLINE');
+});
+
+test('Desk: a book whose market is closed reads BOOK NOT LIVE and keeps Schwab\'s book time (the route\'s own answer)', async ({ page }) => {
+  // SPY's real book and quotes at 22:00 ET as the route serves them (tests/test_order_flow_book_payload_v1.py)
+  const CLOSED_BOOK = require(path.join(__dirname, 'fixtures', 'order_flow_book_closed_payload.json'));
+  const errs = watchErrors(page);
+  await intercept(page);
+  await page.route('**/api/order-flow/microstructure**', (route) => route.fulfill({
+    status: 200, contentType: 'application/json', body: JSON.stringify(CLOSED_BOOK) }));
+  await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
+    localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await expect(page.locator('#tdmCardLiq')).toContainText('BOOK NOT LIVE');
+  await expect(page.locator('#tdmCardLiq .tdm-src')).toContainText('book ' + CLOSED_BOOK.book_time_ct + ' · not live');
+  // Schwab's depth-5 totals as served (800 and 2,160 shares), drawn by the card's volume formatter
+  await expect(page.locator('#tdmCardLiq')).toContainText('800 / 2.2K');
+  await expect(page.locator('#tdmTrust')).toContainText('BOOK ' + CLOSED_BOOK.book_time_ct + ' · NOT LIVE');
+  await expect(page.locator('#tdmTrust')).not.toContainText('STALE');
+  expect(errs).toEqual([]);
 });
 
 test('Desk: the book age keeps Schwab\'s book time', async ({ page }) => {
@@ -219,26 +268,6 @@ test('Desk: the book age keeps Schwab\'s book time', async ({ page }) => {
   await expect(page.locator('#tdmCardLiq')).toContainText('BID HEAVY');
   await expect(page.locator('#tdmCardLiq')).toContainText('3.0K / 2.0K');
   await expect(page.locator('#tdmTrust')).toContainText('BOOK ' + BOOK_TIME + ' · 1s');
-  expect(errs).toEqual([]);
-});
-
-test('Desk: a book that is not live keeps Schwab\'s book time', async ({ page }) => {
-  const errs = watchErrors(page);
-  const BOOK_TIME = 'Fri 09/25 06:59 PM CT';
-  await intercept(page);
-  await page.route('**/api/order-flow/microstructure**', (route) => route.fulfill({
-    status: 200, contentType: 'application/json',
-    body: JSON.stringify(Object.assign({}, MICRO, {
-      book_time_ct: BOOK_TIME, ages: { book_age_sec: 4, book_stale: true },
-    })),
-  }));
-  await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
-    localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
-  await page.goto('/', { waitUntil: 'domcontentloaded' });
-  await expect(page.locator('#tdmCardLiq')).toContainText('STALE BOOK');
-  await expect(page.locator('#tdmCardLiq .tdm-src')).toContainText('book ' + BOOK_TIME + ' · not live');
-  await expect(page.locator('#tdmCardLiq')).toContainText('3.0K / 2.0K');
-  await expect(page.locator('#tdmTrust')).toContainText('BOOK ' + BOOK_TIME + ' · STALE');
   expect(errs).toEqual([]);
 });
 
@@ -433,7 +462,7 @@ test.describe('Trade Desk renders served values', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().bars)).toBeGreaterThan(0);
     await page.evaluate((spot) => window.dispatchEvent(new CustomEvent('ed:quote_tick', { detail: {
-      ticker: 'SPY', spot: spot, feed_live: false, trade_age_sec: 1, trade_time_ct: '14:00:01 CT',
+      ticker: 'SPY', spot: spot, feed_live: false, feed_label: 'OFFLINE', trade_age_sec: 1, trade_time_ct: '14:00:01 CT',
       outage: 'Schwab LEVELONE_EQUITIES feed down during RTH' } })), SPOT);
     await expect.poll(() => page.evaluate(() => (window.EdTradeDeskMap.state().chart || {}).liveTitle)).toBe('LAST · last trade 14:00:01 CT');
     await expect.poll(() => page.evaluate(() => (window.EdTradeDeskMap.state().chart || {}).livePrice)).toBe(SPOT);
@@ -460,7 +489,7 @@ test.describe('Trade Desk renders served values', () => {
     expect((await chartState()).liveTitle).toBe('LAST · 1s');
     expect((await chartState()).bars).toBe(BARS.bars.length);          // the candles are untouched
     await page.evaluate(() => window.dispatchEvent(new CustomEvent('ed:quote_tick', { detail: { ticker: 'SPY', spot: null,
-      spot_disp: null, feed_live: false, trade_age_sec: null } })));
+      spot_disp: null, feed_live: false, feed_label: 'OFFLINE', trade_age_sec: null } })));
     await expect.poll(async () => (await chartState()).livePrice).toBeNull();   // Schwab sent no price: no line
     await page.waitForTimeout(1500);
     expect(barReads.length).toBe(before);
@@ -576,7 +605,7 @@ test.describe('Trade Desk renders served values', () => {
     await page.route('**/api/order-flow/microstructure**', (route) => route.fulfill({
       status: 200, contentType: 'application/json',
       body: JSON.stringify(Object.assign({}, MICRO, {
-        book_time_ct: BOOK_TIME, top_outage: 'Schwab NASDAQ_BOOK feed down during RTH',
+        book_time_ct: BOOK_TIME, top_outage: 'Schwab NASDAQ_BOOK feed down during RTH', top_feed_label: 'OFFLINE',
       })),
     }));
     await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');

@@ -194,7 +194,7 @@ from app.options.order_flow.history import TAPE, book_heatmap_for_ticker
 from app.options.order_flow.live_payload import flow_block, options_live_payload
 from app.options.order_flow.state import get_content_for_symbol, get_stream_greeks
 from app.options.order_flow.streaming import (
-    get_option_contract_streaming_diagnostics, price_row, select_flow_contract,
+    get_option_contract_streaming_diagnostics, price_row, price_state, select_flow_contract,
     start_order_flow_stream, stop_order_flow_stream, streamed_bars, watchlist_request,
 )
 
@@ -302,16 +302,18 @@ def _install_signal_handlers() -> None:
 
 
 def price_mark(ticker: str, spot_ts: float | None, now: float) -> dict:
-    """Whether the live price is live at `now` (Schwab's LEVELONE_EQUITIES feed delivering it), why
-    not, and its trade time and age: served beside every value computed from that price, so a
-    value from a price that has stopped stands marked not live (AGENTS rule 5): `spot_not_live_text`
-    is the mark the page prints beside each such value, None while the price is live."""
-    live = lmp.feed_live_for(ticker, "LEVELONE_EQUITIES", now)
+    """Whether the live price is live at `now` (price_state), its word, why not, and its trade
+    time and age: served beside every value computed from that price, so a value from a price
+    that has stopped stands marked not live (AGENTS rule 5): `spot_not_live_text` is the mark the
+    page prints beside each such value, None while the price is live."""
+    label, outage = price_state(ticker, now)
+    live = label == lmp.LIVE
     mark = ["not live"]
     if spot_ts is not None:
         mark.append(f"last trade {ct_label(spot_ts)}, {age_text(now - spot_ts)} old")
     return {"spot_feed_live": live,
-            "spot_outage": lmp.outage(ticker, "LEVELONE_EQUITIES", now),
+            "spot_feed_label": label,
+            "spot_outage": outage,
             "spot_time_ct": None if spot_ts is None else ct_label(spot_ts),
             "spot_age_sec": None if spot_ts is None else now - spot_ts,
             "spot_not_live_text": None if live else " · ".join(mark)}
@@ -319,12 +321,12 @@ def price_mark(ticker: str, spot_ts: float | None, now: float) -> dict:
 
 def resolve_spot(ticker: str, *, now: float) -> tuple[float | None, str, float | None]:
     """(spot, source, as_of_ts_utc): the daemon's price row's Schwab LAST_PRICE as sent and its
-    trade time. The row's own `outage` says the feed is not delivering it; the number stays.
+    trade time. Why it is not live (price_state) does not remove it; the number stays.
     (None, the outage reason or SPOT_SOURCE_NONE, None) until Schwab has sent one."""
     row = price_row(ticker)
     if row and row.get("spot") is not None:
         return row["spot"], SPOT_SOURCE_PLANE, row.get("trade_ts")
-    outage = lmp.outage(ticker, "LEVELONE_EQUITIES", now)
+    outage = price_state(ticker, now)[1]
     if outage is None:
         return None, SPOT_SOURCE_NONE, None
     return None, outage, None
@@ -1683,12 +1685,12 @@ def _wait_for(what: str, ready) -> None:
 
 
 def refresh_not_live_pages(now: float) -> None:
-    """Tell each open page whose ticker's live price is not live at `now` (Schwab's
-    LEVELONE_EQUITIES feed not delivering it) to read its levels again, so the not-live mark's age
-    (server.price_mark) keeps counting while the price stays stopped. The levels loop calls it
-    every STATUS_EVERY_SEC; a page whose price is live is not told."""
+    """Tell each open page whose ticker's price is not live at `now` (price_state) to read its
+    levels again, so the not-live mark's age (server.price_mark) keeps counting while the price
+    stays stopped. The levels loop calls it every STATUS_EVERY_SEC; a page whose price is live is
+    not told."""
     for tk in push_changes.watched():
-        if not lmp.feed_live_for(tk, "LEVELONE_EQUITIES", now):
+        if price_state(tk, now)[0] != lmp.LIVE:
             push_changes.changed(tk, push_changes.LEVELS)
 
 
@@ -2419,9 +2421,12 @@ def gamma_surface_payload(tk: str, scope: str, centre, shift: int, cols: "int | 
 
 @app.get("/api/terrain")
 def get_terrain(ticker: str = Query(...)):
-    """The ticker's published levels."""
-    tk = ticker_storage_key(_required_ticker(ticker))   # RC-126: SPX -> $SPX etc., ONE authority
-    at = now_et()
+    """The ticker's published levels, now."""
+    return terrain_answer(ticker_storage_key(_required_ticker(ticker)), now_et())   # RC-126: SPX -> $SPX etc.
+
+
+def terrain_answer(tk: str, at: datetime) -> dict:
+    """`tk`'s published levels as served at `at`."""
     cached = terrain_cache_get(tk, at.timestamp())
     if cached is not None:
         # the levels as the producer published them, at the publication's price (priced_at_spot);
@@ -2621,18 +2626,20 @@ def order_flow_microstructure(ticker: str, venue: str, now: float) -> dict:
             data["content"] = _content
     except Exception as e:  # streaming state optional — fail closed to 'no_book', never fabricate
         log.debug("microstructure content build failed for %s: %s", t, e)
-    # top of book: the daemon's price row. The last bid and ask stand when the feed is down;
-    # top_outage names that, and the page says OFFLINE (docs/DATA_FLOW.md §2 D5)
-    top_outage = lmp.outage(t, "LEVELONE_EQUITIES", now)
+    # top of book: the daemon's price row. The last bid and ask stand when it is not live;
+    # top_outage says why and top_feed_label is the page's word for it (docs/DATA_FLOW.md §2 D5)
+    top_label, top_outage = price_state(t, now)
     _row = price_row(t)
     if _row and _row.get("quote_ts") is not None:
         data["exchange_quote_ts"] = _row["quote_ts"]
     data["top"] = ({k: _row.get(k) for k in ("bid", "ask", "bid_size", "ask_size", "mark")}
                    if _row and (_row.get("bid") is not None or _row.get("ask") is not None) else None)
-    data["book_live"] = lmp.feed_live_for(t, venue, now)
+    # the venue's book: the same verdict on its own service (price_state), its word served
+    book_label = price_state(t, now, venue)[0]
+    data["book_live"] = book_label == lmp.LIVE
     # ticker=t → serialize the canonical state carried per (ticker, BOOK_TIME); no independent recompute.
     payload = compute_book_microstructure(data, now_ts=now, ticker=t)
-    payload["top_outage"] = top_outage
+    payload["top_outage"], payload["top_feed_label"], payload["book_feed_label"] = top_outage, top_label, book_label
     # The trade-side read the Trade Desk's Order Flow card shows: tick-rule PROXY flow from the
     # same OrderFlowEngine the option book uses (no second classifier).
     try:

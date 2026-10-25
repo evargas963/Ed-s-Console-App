@@ -60,39 +60,46 @@ test('the Book panel shows each served wall candidate size', async ({ page }) =>
   await expect(page.locator('#obBody')).toContainText('12500');
 });
 
-test('a feed down keeps the last bid and the panel says OFFLINE', async ({ page }) => {
-  const BOOK = { status: 'ok', top_of_book: { bid: 767.38, ask: 767.40, bid_size: 3, ask_size: 5 },
-    top_outage: 'Schwab LEVELONE_EQUITIES feed down during RTH',
-    depth: {}, ages: { book_stale: true }, classification: {}, depth_pressure: { bid: [], ask: [] },
-    wall_candidates: [] };
+// the route's own answers for SPY's real book and quotes at 22:00 ET, the daemon's connection up and
+// ended (tests/test_order_flow_book_payload_v1.py)
+const CLOSED_BOOK = require(path.join(__dirname, 'fixtures', 'order_flow_book_closed_payload.json'));
+const OFFLINE_BOOK = require(path.join(__dirname, 'fixtures', 'order_flow_book_offline_payload.json'));
+
+async function openBook(page, book) {
   await page.route('**/api/**', (route) => {
     const url = route.request().url();
-    const body = url.includes('/api/order-flow/microstructure') ? BOOK : { available: false };
+    const body = url.includes('/api/order-flow/microstructure') ? book : { available: false };
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
-  await routeWatchlist(page, ['TSLA']);
-  await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'TSLA'); localStorage.setItem('ed_ws', 'order-flow'); localStorage.setItem('ed_sub', 'book'); } catch (e) {} });
+  await routeWatchlist(page, ['SPY']);
+  await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'order-flow'); localStorage.setItem('ed_sub', 'book'); } catch (e) {} });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
-  await expect(page.locator('#obBody')).toContainText('767.38');
-  await expect(page.locator('#obBody')).toContainText('OFFLINE');
+}
+
+test('a feed down keeps the last bid and the panel says OFFLINE', async ({ page }) => {
+  await openBook(page, OFFLINE_BOOK);
+  await expect(page.locator('#obBody')).toContainText(OFFLINE_BOOK.top_of_book.bid.toFixed(2));
+  await expect(page.locator('#obBody')).toContainText('Top of book · OFFLINE');
+  await expect(page.locator('#obBody .fl-badge')).toHaveText('OFFLINE');
   await expect(page.locator('#obBody')).not.toContainText('feed down');
 });
 
+test('a closed market keeps the last bid and the panel says NOT LIVE, not OFFLINE', async ({ page }) => {
+  await openBook(page, CLOSED_BOOK);
+  await expect(page.locator('#obBody')).toContainText(CLOSED_BOOK.top_of_book.bid.toFixed(2));
+  await expect(page.locator('#obBody')).toContainText('Top of book · NOT LIVE');
+  await expect(page.locator('#obBody .fl-badge')).toHaveText('NOT LIVE');      // the book's served word
+  await expect(page.locator('#obBody')).not.toContainText('OFFLINE');
+  await expect(page.locator('#obBody')).not.toContainText('STALE');
+});
+
 test('an offline book keeps Schwab\'s quote time and book time', async ({ page }) => {
-  const BOOK = { status: 'ok', top_of_book: { bid: 767.38, ask: 767.40, bid_size: 3, ask_size: 5 },
-    top_outage: 'Schwab LEVELONE_EQUITIES feed down during RTH',
-    quote_time_ct: 'Fri 09/25 06:59 PM CT', book_time_ct: 'Fri 09/25 06:59 PM CT',
-    depth: {}, ages: { book_age_sec: 4, quote_age_sec: 4, book_stale: true }, classification: {},
-    depth_pressure: { bid: [], ask: [] }, wall_candidates: [] };
-  await page.route('**/api/**', (route) => {
-    const url = route.request().url();
-    const body = url.includes('/api/order-flow/microstructure') ? BOOK : { available: false };
-    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
-  });
-  await routeWatchlist(page, ['TSLA']);
-  await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'TSLA'); localStorage.setItem('ed_ws', 'order-flow'); localStorage.setItem('ed_sub', 'book'); } catch (e) {} });
-  await page.goto('/', { waitUntil: 'domcontentloaded' });
-  await expect(page.locator('#obBody')).toContainText('767.38');
+  await openBook(page, OFFLINE_BOOK);
+  await expect(page.locator('#obBody')).toContainText(OFFLINE_BOOK.top_of_book.bid.toFixed(2));
   await expect(page.locator('#obBody')).toContainText('OFFLINE');
-  await expect(page.locator('#obBody')).toContainText('Fri 09/25 06:59 PM CT · 4s');
+  // each time with its served age (whenAge: the age rounded to whole seconds)
+  await expect(page.locator('#obBody')).toContainText(
+    OFFLINE_BOOK.quote_time_ct + ' · ' + Math.round(OFFLINE_BOOK.ages.quote_age_sec) + 's');
+  await expect(page.locator('#obBody')).toContainText(
+    OFFLINE_BOOK.book_time_ct + ' · ' + Math.round(OFFLINE_BOOK.ages.book_age_sec) + 's');
 });

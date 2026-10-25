@@ -71,6 +71,21 @@ _price_rows: "dict[str, dict]" = {}
 
 def price_row(ticker: str) -> "dict | None":
     return _price_rows.get(ticker_storage_key(ticker) or "")
+
+
+def price_state(ticker: str, now: float, service: str = "LEVELONE_EQUITIES") -> "tuple[str, str | None]":
+    """`ticker`'s state on Schwab `service` (its quote, or a venue's book) at `now`, as the console
+    serves it: the rule on the beat the console holds (live_market_plane.live_state) while that is
+    not LIVE (the feed down, the symbol not held, its market not trading); while it is LIVE, the
+    daemon's own verdict on its price row (`feed_label`, `outage`: live_price_rows.price_row), which
+    alone holds Schwab's SECURITY_STATUS; NOT LIVE while no row from the daemon has arrived."""
+    label, why = _lmp.live_state(ticker, service, now)
+    if label != _lmp.LIVE:
+        return label, why
+    row = price_row(ticker)
+    if row is None:
+        return _lmp.NOT_LIVE, f"no price row from the daemon for {ticker_storage_key(ticker)} yet"
+    return row["feed_label"], row["outage"]
 #: Wait between reconnect attempts when the daemon's push server is down. While it is down
 #: no live value is refreshed -- the freshness checks turn them stale; nothing substitutes.
 PUSH_RECONNECT_SEC = 1.0
@@ -185,13 +200,13 @@ def _tick(sym: str) -> None:
 
 
 def _service_feed(symbol: "str | None", service: str, now: float) -> dict:
-    """One Schwab service's feed for `symbol` at `now`, as the page shows it: LIVE by the one
-    live rule (live_market_plane.feed_live_for), and how long ago the daemon last received
-    anything on that service (its own report)."""
+    """One Schwab service's feed for `symbol` at `now`, as the page shows it: its state by the one
+    live rule (live_market_plane.live_state: LIVE, OFFLINE or NOT LIVE), and how long ago the daemon
+    last received anything on that service (its own report)."""
     status = _lmp.daemon_status(now)
     reports = status.get("health") if status is not None else None
     health = reports.get(service) if reports is not None else None
-    return {"state": "LIVE" if _lmp.feed_live_for(symbol, service, now) else "NOT LIVE",
+    return {"state": _lmp.live_state(symbol, service, now)[0],
             "age_sec": health.get("age_sec") if health is not None else None}
 
 

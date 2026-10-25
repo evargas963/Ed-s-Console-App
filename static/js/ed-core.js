@@ -603,6 +603,7 @@
     loadExpiries(state.ticker);       // refresh the expiry dropdown from /api/expiries for the new ticker
     openChangeStream(state.ticker);      // levels / flow / liquidity changes and the session
     _priceSubTs = Date.now();
+    _quoteShown = false;                 // the last ticker's price is not this one's
     subscribePrices();                   // the daemon answers with this ticker's row at once
     markHeaderPushDown();                // WAITING until that row lands (milliseconds)
     emit('ed:ticker', { ticker: state.ticker });
@@ -688,6 +689,12 @@
     }
     var shown = age != null ? age : (a ? a.textContent : '');
     var fresh = document.getElementById('aiCtxFresh'); if (fresh) fresh.textContent = label + (shown && shown !== '—' ? ' · ' + shown : '');
+    // Key Levels' Spot is this price: not live, it says so with the reason, the trade time and age
+    var spot = document.getElementById('klSpot');
+    if (spot) {
+      spot.style.color = cls ? 'var(--ed-stale)' : '';
+      spot.title = [cls ? label + (ageTitle != null ? ': ' + ageTitle : '') : '', shown].filter(Boolean).join(' · ');
+    }
   }
   // ---- header quote + watchlist: PUSHED BY THE CAPTURE DAEMON over WebSocket (port 8800,
   //      app/market_data/schwab/streaming/live_ui.py) -- the finished row (live_price_rows.
@@ -711,6 +718,8 @@
       var srcLbl = q.quoteIngestion ? (QUOTE_INGESTION_LABEL[q.quoteIngestion] || q.quoteIngestion) : '';
       px.title = srcLbl ? ('spot source: ' + srcLbl) : '';
     }
+    var spot = document.getElementById('klSpot');
+    if (spot) spot.textContent = q.spot_disp == null ? '—' : q.spot_disp;
     if (ba) {
       ba.textContent = fmt(q.bid) + ' × ' + fmt(q.ask);
       ba.title = q.quoteTime ? ('quote ' + q.quoteTime) : '';
@@ -757,6 +766,9 @@
   var PRICE_SILENCE_MS = 3000;   // the daemon beats every 1 s; 3 s of nothing = the push is down
   var _priceWs = null, _priceUp = false, _lastPriceTs = 0, _priceSubTs = 0, _priceRetry = 0;
   var _quoteShown = false;
+  // the shown price's served trade time ("last trade <CT>"), kept for a push outage, when no newer
+  // age is served and the page computes none
+  var _tradeShown = null;
   // the port comes from the console (meta ed-live-ui-port = the daemon's ED_LIVE_UI_PORT);
   // an unfilled page opens no socket and its prices read UNAVAILABLE
   function priceSocketUrl() {
@@ -839,6 +851,7 @@
       // throttle -- a few text writes per second. The price is Schwab's last trade with Schwab's
       // trade time, or absent with the served outage reason; the feed state is stated beside it.
       _quoteShown = true;
+      _tradeShown = q.trade_time_ct != null ? 'last trade ' + q.trade_time_ct : null;
       var trade = q.trade_time_ct != null
         ? ('last trade ' + q.trade_time_ct + (q.trade_age_sec != null ? (' · ' + fmtAge(q.trade_age_sec)) : ''))
         : null;
@@ -846,7 +859,7 @@
         chgPct: q.chg_pct, chgPctRegular: q.chg_pct_regular, quoteIngestion: q.quote_ingestion,
         quoteTime: q.quote_time_ct,
         feedCls: q.feed_live ? '' : 'stale',
-        feedLabel: q.feed_live ? 'LIVE' : 'OFFLINE',
+        feedLabel: q.feed_label,
         ageLabel: trade || q.outage || 'no trade sent',
         ageTitle: q.outage });
     }
@@ -900,12 +913,13 @@
   // for a replacement. The session label is not a live quote and keeps its own slow read.
   function markHeaderPushDown() {
     // just asked for this ticker (page load or a ticker change): the row is on its way
-    // (WAITING); otherwise the push itself is down (OFFLINE). A price already shown stays,
-    // and so does its last trade time.
+    // (WAITING); otherwise the push itself is down (OFFLINE). A price already shown stays with its
+    // last trade time and no age: the last served age is not the age now.
     var connecting = Date.now() - _priceSubTs <= PRICE_SILENCE_MS;
     var label = connecting ? 'WAITING' : 'OFFLINE';
     var age = connecting ? 'no push yet' : 'live push down';
-    if (_quoteShown) setFeed('stale', label);
+    emit('ed:price_push_down', { label: label });   // every surface of this price says so (the desk map)
+    if (_quoteShown) setFeed('stale', label, _tradeShown != null ? _tradeShown : age);
     else paintQuote({ spot: null, spot_disp: null, bid: null, ask: null, chgPct: null, chgPctRegular: null,
       feedCls: 'stale', feedLabel: label, ageLabel: age });
     paintRecord(null);

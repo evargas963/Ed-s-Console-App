@@ -95,23 +95,23 @@ def test_received_ts_is_required_and_is_what_freshness_judges():
 def test_a_carried_last_price_is_the_current_price_on_a_live_feed():
     """The unchanged LAST_PRICE keeps its own receive time; with the feed live the price row
     carries it and the quote as Schwab last sent them, and it is the console's spot. (A feed down:
-    docs/DATA_FLOW.md §2 D5, tests/test_data_path_rules_v1.py.)"""
+    docs/DATA_FLOW.md §2 D5, tests/test_data_path_rules_v1.py.) Judged in regular hours."""
     import live_price_rows
     import server
     from app.options.order_flow import streaming as ofs
-    from tests.feed_live_helper import mark_feed_down, mark_feed_live, publish_daemon_rows
-    t_trade = time.time() - 45.0
+    from tests.feed_live_helper import RTH_INSTANT, mark_feed_down, mark_feed_live, publish_daemon_rows
+    now = RTH_INSTANT
+    t_trade = now - 45.0
     _rec("CARRY", {"key": "CARRY", "LAST_PRICE": 10.0, "BID_PRICE": 9.9, "ASK_PRICE": 10.1},
          received_ts=t_trade)
-    _rec("CARRY", {"key": "CARRY", "BID_PRICE": 9.95, "ASK_PRICE": 10.05})
+    _rec("CARRY", {"key": "CARRY", "BID_PRICE": 9.95, "ASK_PRICE": 10.05}, received_ts=now)
     row = lmp.get_quote("CARRY")
     assert row["spot"] == 10.0 and row["spot_received_ts"] == t_trade
-    mark_feed_live("CARRY")
+    mark_feed_live("CARRY", now=now)
     try:
-        now = time.time()
         price = live_price_rows.price_row("CARRY", now)
         assert (price["spot"], price["bid"], price["ask"], price["feed_live"]) == (10.0, 9.95, 10.05, True)
-        publish_daemon_rows("CARRY")
+        publish_daemon_rows("CARRY", now=now)
         assert server.resolve_spot("CARRY", now=now) == (10.0, server.SPOT_SOURCE_PLANE, price["trade_ts"])
     finally:
         ofs._price_rows.pop("CARRY", None)

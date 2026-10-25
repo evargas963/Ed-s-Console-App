@@ -120,20 +120,16 @@
       : '<div class="sm" style="padding:4px 0;">no size-outlier candidates in the current displayed book</div>';
     var deferred = (d.deferred || []).join(' · ');
 
-    // Operator-reproduced defect (2026-09-14): this badge was a hardcoded literal, never gated
-    // on ages.book_age_sec even though the exact same number is displayed two lines below it in
-    // the Freshness section -- a book observation aged to 3,600s still rendered LIVE. book_stale
-    // is server-computed (app.options.order_flow.engine.compute_book_microstructure); this only
-    // reads the verdict.
-    // LIVE only on the server's explicit "not stale"; an unknown book age is not live
-    var bs = ages.book_stale, badge = bs === false ? 'LIVE' : bs === true ? 'STALE' : 'AGE UNKNOWN';
+    // the book's served word (book_feed_label: LIVE, OFFLINE, NOT LIVE); no book age served reads
+    // AGE UNKNOWN, never live
+    var bs = ages.book_stale, badge = bs == null ? 'AGE UNKNOWN' : d.book_feed_label;
     h.innerHTML =
       '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Ticker</span><span class="fl-sym">' + esc(tk) + '</span></div>' +
       '<div class="fl-sub"><span class="fl-lab">Book</span><span class="fl-badge ' + (bs === false ? 'live' : 'stale') + '">' + badge + '</span></div></div>' +
       '<div class="dom-wrap">' +
         '<div class="dom-ladder">' + ladderHtml(bidLevels, askLevels, wallSet) + midHtml + '</div>' +
         '<div class="dom-stats">' +
-          section('Top of book' + (d.top_outage ? ' · OFFLINE' : ''), rowsTob) + section('Imbalance', rowsImb) + section('Freshness', fresh) +
+          section('Top of book' + (d.top_outage ? ' · ' + d.top_feed_label : ''), rowsTob) + section('Imbalance', rowsImb) + section('Freshness', fresh) +
         '</div>' +
       '</div>' +
       '<div class="fl-sec" style="margin-top:14px;"><div class="fl-sec-h">Wall candidates (size-outlier heuristic, displayed book only)</div>' + wallsHtml + '</div>' +

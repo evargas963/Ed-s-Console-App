@@ -7,7 +7,9 @@ written, from real Schwab messages: TSLA 2026-08-31 367.5 call's 12 LEVELONE_OPT
 OPTIONS_BOOK messages as Schwab sent them (tests/fixtures/real_options_stream_history_samples.json,
 observed 2026-08-31), applied by the console's own intake (streaming._ingest_pushed), valued at the
 newest message's time. STAND-IN (named): the daemon's status, holding the contract on both
-services. Those messages carry no CONTRACT_TYPE, so the side the header shows is proven by
+services. No /markets answer is held for 2026-08-31, so the route serves that contract NOT LIVE,
+"the market session is unknown"; the spec states the feed it draws in each test (its `plane`).
+Those messages carry no CONTRACT_TYPE, so the side the header shows is proven by
 tests/e2e/fixtures/options_microstructure_side_payloads.json: the route's payloads for SPY 2026-10-23
 761 call and 762 put after their stored messages, the first carrying CONTRACT_TYPE
 (tests/fixtures/real_spy_option_contract_type_2026_10_23.json). STAND-IN (named): the daemon's
@@ -105,7 +107,10 @@ def write_flow_e2e_fixture() -> None:
                 "ED_CONSOLE_ALLOW_NONCANONICAL_DB": "1", "ED_CI_OFFLINE": "1",
                 "SCHWAB_API_KEY": "ci-placeholder-api-key", "SCHWAB_APP_SECRET": "ci-placeholder-app-secret",
                 "SCHWAB_CALLBACK_URL": "https://127.0.0.1:8182"})
-    code = ("import json, sys; from tests.test_options_order_flow_production_v1 import "
+    code = ("import json, sys; from tests.conftest import MARKETS_ANSWERS; from time_et import record_markets; "
+            "[record_markets(json.loads(a['body'])) for a in json.loads(MARKETS_ANSWERS.read_text(encoding='utf-8'))"
+            "['answers'].values() if a['status'] == 200]; "
+            "from tests.test_options_order_flow_production_v1 import "
             "build_flow_e2e_fixture_response as b, build_side_e2e_fixture_response as s; "
             "sys.stdout.write(json.dumps({'flow': b(), 'sides': s()}))")
     try:

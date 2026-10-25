@@ -124,15 +124,13 @@ def test_daily_roll_up_is_keyed_on_the_et_trading_date():
 
 
 def test_the_price_row_carries_feed_state_and_trade_age_and_no_bar():
-    import time as _t
-
     import live_market_plane as lmp
     import live_price_rows
     import server as srv
-    from tests.feed_live_helper import mark_feed_live
+    from tests.feed_live_helper import RTH_INSTANT, mark_feed_live
 
-    mark_feed_live("ZZQF")
-    now = _t.time()
+    now = RTH_INSTANT                               # regular hours: the market trades
+    mark_feed_live("ZZQF", now=now)
     lmp.record_from_level_one_equity("ZZQF", {"LAST_PRICE": 42.0, "TRADE_TIME_MILLIS": int((now - 7) * 1000)},
                                      received_ts=now)
     ev = live_price_rows.price_row("ZZQF", now)

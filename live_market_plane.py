@@ -1,6 +1,7 @@
 """The quote per ticker, from Schwab's streamed LEVEL_ONE_EQUITY rows
 (`record_from_level_one_equity`): each field the last value Schwab sent, at any hour, and
-whether the feed is delivering the symbol now (`feed_live_for`)."""
+whether the symbol's values are live now (`live_state`): the feed delivers it and its market
+trades."""
 
 from __future__ import annotations
 
@@ -11,7 +12,13 @@ from typing import Any, Optional
 
 from instrument_identity import ticker_storage_key
 from numeric_contract import float_finite_or_none, schwab_count, schwab_number
-from time_et import ET, session_label
+from time_et import CLOSED, ET, UNKNOWN, options_open, session_label
+
+#: the services the capture daemon streams the option rule's contracts on (capture.Daemon.pick_options):
+#: they trade only while an option market is open
+OPTION_SERVICES = ("LEVELONE_OPTIONS", "OPTIONS_BOOK")
+#: the words of a value's state, served to the page: updating now; its feed down; its market not trading
+LIVE, OFFLINE, NOT_LIVE = "LIVE", "OFFLINE", "NOT LIVE"
 
 
 
@@ -36,11 +43,17 @@ _CLOCK_FIELDS = ("QUOTE_TIME_MILLIS", "TRADE_TIME_MILLIS")
 #: with every LAST_PRICE in the regular session (2026-09-28: SPY 113/113, MU 112/112, PCG 17/17)
 #: and outside it only on a full refresh; CHANGE_PERCENT never.
 _SIGNED_FIELDS = ("NET_CHANGE", "NET_CHANGE_PERCENT", "REGULAR_MARKET_CHANGE_PERCENT")
+#: text as sent: Schwab's SECURITY_STATUS (field 32: "Normal, Halted, Closed"), the symbol's own
+#: trading status (measured: $SPX Closed outside regular hours, stocks Closed 20:00-04:00 ET, SPY
+#: Normal on a Saturday)
+_TEXT_FIELDS = ("SECURITY_STATUS",)
 _fields_by_ticker: dict[str, dict[str, tuple[float, float]]] = {}
 
 
-def _read_stream_field(name: str, raw: Any) -> Optional[float]:
+def _read_stream_field(name: str, raw: Any) -> "float | str | None":
     """Each field as Schwab sent it (AGENTS.md rule 2); a reported 0 is 0."""
+    if name in _TEXT_FIELDS:
+        return raw if isinstance(raw, str) and raw else None
     if name in _COUNT_FIELDS:
         return schwab_count(raw)
     v = schwab_number(raw)
@@ -73,7 +86,7 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
     seen = False
     with _lock:
         fs = _fields_by_ticker.setdefault(t, {})
-        for name in _PRICE_FIELDS + _COUNT_FIELDS + _CLOCK_FIELDS + _SIGNED_FIELDS:
+        for name in _PRICE_FIELDS + _COUNT_FIELDS + _CLOCK_FIELDS + _SIGNED_FIELDS + _TEXT_FIELDS:
             if name not in item:
                 continue
             seen = True
@@ -86,7 +99,7 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
     if not seen:
         return False
 
-    def val(name: str) -> Optional[float]:
+    def val(name: str) -> "float | str | None":
         return snapshot[name][0] if name in snapshot else None
 
     spot_f = val("LAST_PRICE")
@@ -115,6 +128,7 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
         #: TRADE_TIME_MILLIS (epoch s): the exchange time of the last trade -- the clock a
         #: LAST_PRICE tick belongs to (candles); never used as the quote time.
         "trade_ts": val("TRADE_TIME_MILLIS"),
+        "security_status": val("SECURITY_STATUS"),
         "quote_time_source": "schwab_streaming_level_one" if quote_ts is not None else "unavailable",
         "server_received_ts": rts,
         "spot_received_ts": snapshot["LAST_PRICE"][1] if "LAST_PRICE" in snapshot else None,
@@ -243,9 +257,14 @@ def feed_now(now: float) -> FeedNow:
     return FeedNow(status, held) if current else FeedNow(None, held)
 
 
+def feed_up(feed: FeedNow) -> bool:
+    """Whether `feed` is a current heartbeat reporting the Schwab socket open."""
+    return feed.status is not None and feed.status.get("schwab_socket_open") is True
+
+
 def live_on(feed: FeedNow, symbol: str | None, service: str) -> bool:
     """Whether `feed` says Schwab `service` is delivering `symbol`."""
-    if symbol is None or feed.status is None or feed.status.get("schwab_socket_open") is not True:
+    if symbol is None or not feed_up(feed):
         return False
     t = ticker_storage_key(symbol)
     symbols = feed.held.get(service)
@@ -266,24 +285,51 @@ def held_by_daemon(service: str, now: float) -> frozenset[str]:
     return feed.held.get(service, frozenset())
 
 
-def feed_live_for(symbol: str | None, service: str, now: float) -> bool:
-    """THE live rule, for every streamed value: is Schwab `service` delivering `symbol` right
-    now -- the daemon's heartbeat is current (feed_now), it reports the Schwab socket open,
-    and it holds the symbol on that service.
+def not_trading(symbol: str | None, service: str, now: float) -> str | None:
+    """Why `symbol`'s values on Schwab `service` are not changing at `now`, or None while its
+    market trades: the stock market outside the sessions Schwab's /markets answer sent for today
+    (or that answer not held), an option service outside every option market's regular window, or
+    Schwab's own SECURITY_STATUS for the symbol Closed or Halted."""
+    at = datetime.fromtimestamp(now, ET)
+    session = session_label(at)
+    if session == UNKNOWN:
+        return "the market session is unknown"
+    if session == CLOSED:
+        return "outside Schwab's market hours"
+    if service in OPTION_SERVICES:
+        return None if options_open(at) else "outside Schwab's option market hours"
+    t = ticker_storage_key(symbol)
+    row = get_quote(t) if t else None
+    status = row.get("security_status") if row is not None else None
+    return f"Schwab marks {t} {status}" if status in ("Closed", "Halted") else None
+
+
+def live_state(symbol: str | None, service: str, now: float) -> tuple[str, str | None]:
+    """THE live rule, for every streamed value: `symbol`'s state on Schwab `service` at `now` and
+    why it is not live (docs/DATA_FLOW.md §2 D5). LIVE while it is updating: the daemon's heartbeat
+    current (feed_now) reporting the Schwab socket open, the symbol held on that service, and its
+    market trading (not_trading). OFFLINE while the feed itself is down; NOT LIVE while the feed is
+    up and this symbol is not held or its market is not trading. The last values stand either way.
 
     Not "did a value arrive recently": Schwab sends a field only when it CHANGES (measured: 11%
     of 4,039 messages carried bid+ask+last together), so a quiet symbol's unchanged value is its
     current value; judging by arrival age blanks quiet names on a healthy feed."""
-    return live_on(feed_now(now), symbol, service)
+    feed = feed_now(now)
+    if not feed_up(feed):
+        return OFFLINE, f"Schwab {service} feed down during {session_label(datetime.fromtimestamp(now, ET))}"
+    if not live_on(feed, symbol, service):
+        return NOT_LIVE, f"{ticker_storage_key(symbol)} is not streamed on Schwab {service}"
+    why = not_trading(symbol, service, now)
+    return (LIVE, None) if why is None else (NOT_LIVE, why)
+
+
+def feed_live_for(symbol: str | None, service: str, now: float) -> bool:
+    """Whether `symbol` on Schwab `service` is live at `now` (live_state)."""
+    return live_state(symbol, service, now)[0] == LIVE
 
 
 def outage(symbol: str | None, service: str, now: float) -> str | None:
-    """Why `symbol`'s feed from Schwab `service` is not delivering at `now`, or None when it
-    is (docs/DATA_FLOW.md §2 D5). The last values stand either way. A closed market is the
-    same stop as any other: the numbers stay and this says the feed is down."""
-    if feed_live_for(symbol, service, now):
-        return None
-    session = session_label(datetime.fromtimestamp(now, ET))
-    return f"Schwab {service} feed down during {session}"
+    """Why `symbol` on Schwab `service` is not live at `now`, or None when it is (live_state)."""
+    return live_state(symbol, service, now)[1]
 
 

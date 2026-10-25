@@ -26,6 +26,7 @@ import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 from app.market_data.schwab.streaming import capture, live_push, live_ui
+from tests.feed_live_helper import RTH_INSTANT, clock_from
 from stream_spine import HealthRegistry, MessageBus, book_msg, options_quote_msg, quote_msg
 
 _CONTRACT = "SPY   260918C00500000"
@@ -88,9 +89,10 @@ async def _until(pred, timeout=5.0):
     return False
 
 
-def _daemon_heartbeat(socket_open=True, held=("SPY",)):
-    """What capture.py's heartbeat reports for a session holding `held` on LEVELONE_EQUITIES."""
-    return lambda: {"ts": time.time(), "schwab_socket_open": socket_open,
+def _daemon_heartbeat(socket_open=True, held=("SPY",), clock=time.time):
+    """What capture.py's heartbeat reports for a session holding `held` on LEVELONE_EQUITIES, each
+    beat stamped by `clock`."""
+    return lambda: {"ts": clock(), "schwab_socket_open": socket_open,
                     "held": {"LEVELONE_EQUITIES": list(held)}, "health": {}}
 
 
@@ -133,19 +135,22 @@ def _received(ts):
 def test_the_daemon_heartbeat_decides_liveness_end_to_end(feed):
     """Real daemon servers -> real console feed loop. Live only while the daemon's status beats
     arrive, the Schwab socket is open and the daemon holds the symbol; the feed is down the
-    moment the daemon's connections end."""
+    moment the daemon's connections end. In regular hours: the beats and the reads run from
+    RTH_INSTANT."""
+    clock = clock_from(RTH_INSTANT)
+
     async def body(bus, stats):
         assert await _until(lambda: stats["clients"] == 1)
-        ts = time.time()
+        ts = clock()
         bus.publish("quote.SPY", _spy_trade(501.0, ts))
         assert await _until(_received(ts))
-        assert await _until(lambda: lmp.feed_live_for("SPY", "LEVELONE_EQUITIES", time.time()))
-        now = time.time()
+        assert await _until(lambda: lmp.feed_live_for("SPY", "LEVELONE_EQUITIES", clock()))
+        now = clock()
         assert not lmp.feed_live_for("QQQ", "LEVELONE_EQUITIES", now)   # not held by the daemon
         assert not lmp.feed_live_for("SPY", "NYSE_BOOK", now)           # held on another service only
         assert lmp.daemon_status(now) is not None
-    asyncio.run(_run(body))
-    now = time.time()
+    asyncio.run(_run(body, heartbeat_fn=_daemon_heartbeat(clock=clock)))
+    now = clock()
     assert not lmp.feed_live_for("SPY", "LEVELONE_EQUITIES", now)       # push ended -> feed down
     assert lmp.daemon_status(now) is None
 
@@ -156,7 +161,8 @@ def test_a_live_feed_stays_live_while_the_console_works_through_a_backlog_of_cha
     the daemon's status waiting behind the chains. 300 chains arrive at once and each takes the
     console 20 ms to apply on its event loop (a named stand-in for pricing it: the console's chain
     callback, as start_order_flow_stream sets it, sleeps); the feed, live and holding SPY, reads
-    live at every sample a route thread takes while it works through them."""
+    live at every sample a route thread takes while it works through them. In regular hours: the
+    beats and the reads run from RTH_INSTANT."""
     import json as _json
     import threading
 
@@ -165,15 +171,16 @@ def test_a_live_feed_stays_live_while_the_console_works_through_a_backlog_of_cha
     contracts = _json.loads((Path(__file__).parent / "fixtures" / "real_spy_0dte_chain.json")
                             .read_text(encoding="utf-8"))["chain"][:1]
     samples: list = []
+    clock = clock_from(RTH_INSTANT)
 
     def sample(seconds):                   # a route, on its own thread, as the console serves them
         end = time.monotonic() + seconds
         while time.monotonic() < end:
-            samples.append(lmp.feed_live_for("SPY", "LEVELONE_EQUITIES", time.time()))
+            samples.append(lmp.feed_live_for("SPY", "LEVELONE_EQUITIES", clock()))
             time.sleep(0.05)
 
     async def body(bus, stats):
-        assert await _until(lambda: lmp.feed_live_for("SPY", "LEVELONE_EQUITIES", time.time()))
+        assert await _until(lambda: lmp.feed_live_for("SPY", "LEVELONE_EQUITIES", clock()))
         for i in range(300):
             for topic, msg in chain_messages(f"ZZ{i:03d}", contracts, time.time(), None, None):
                 bus.publish(topic, msg)
@@ -183,7 +190,7 @@ def test_a_live_feed_stays_live_while_the_console_works_through_a_backlog_of_cha
             await asyncio.sleep(0.05)
     ofs._on_chain_callback = lambda *_chain: time.sleep(0.02)
     try:
-        asyncio.run(_run(body))
+        asyncio.run(_run(body, heartbeat_fn=_daemon_heartbeat(clock=clock)))
     finally:
         ofs._on_chain_callback = None
     assert samples and all(samples), f"read down in {samples.count(False)} of {len(samples)} samples"

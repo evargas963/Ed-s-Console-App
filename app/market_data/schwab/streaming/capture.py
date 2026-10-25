@@ -126,8 +126,6 @@ SERVICES = ("LEVELONE_EQUITIES", "CHART_EQUITY", "NYSE_BOOK", "NASDAQ_BOOK",
             "LEVELONE_OPTIONS", "OPTIONS_BOOK", "NEWS_HEADLINE")
 #: every watchlist ticker is streamed on each of these
 EQUITY_SERVICES = ("LEVELONE_EQUITIES", "CHART_EQUITY", "NEWS_HEADLINE", "NYSE_BOOK", "NASDAQ_BOOK")
-#: the option contracts the option rule picks are streamed on these (OptionPick)
-OPTION_SERVICES = ("LEVELONE_OPTIONS", "OPTIONS_BOOK")
 #: Schwab's limit on each option service, as its own refusals on the daemon's connection state it
 #: ("(LEVELONE_OPTIONS=3000, DISCARDED=1)", "(OPTIONS_BOOK=100, DISCARDED=1)")
 OPTION_LIMITS = {"LEVELONE_OPTIONS": 3000, "OPTIONS_BOOK": 100}
@@ -408,7 +406,7 @@ class Daemon:
         #: the one list of tickers Schwab is asked for, in its order (stored_watchlist at startup)
         self.watchlist: "list[str]" = list(watchlist)
         #: the option contracts the option rule picked, per option service (pick_options)
-        self.options: "dict[str, frozenset[str]]" = {s: frozenset() for s in OPTION_SERVICES}
+        self.options: "dict[str, frozenset[str]]" = {s: frozenset() for s in lmp.OPTION_SERVICES}
         #: the contract Ed selected on the Flow panel (the console's {"op": "flow_contract"}),
         #: streamed on both option services on top of the rule
         self.flow_contract: "str | None" = None
@@ -476,12 +474,12 @@ class Daemon:
         ranked = [self._ranked[tk] for tk in self.watchlist if tk in self._ranked]
         flow = frozenset(c for c in [self.flow_contract] if any(c in r for r in ranked))
         new = {svc: flow | frozenset(s for r in ranked for s in r[:(OPTION_LIMITS[svc] - len(flow)) // len(self.watchlist)])
-               for svc in OPTION_SERVICES}
+               for svc in lmp.OPTION_SERVICES}
         if new == self.options:
             return
         log.info("option rule: %s", "; ".join(
             f"{svc} {len(new[svc])} (+{len(new[svc] - self.options[svc])} -{len(self.options[svc] - new[svc])})"
-            for svc in OPTION_SERVICES))
+            for svc in lmp.OPTION_SERVICES))
         self.options = new
         self.ask()
 

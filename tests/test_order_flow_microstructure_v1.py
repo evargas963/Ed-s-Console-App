@@ -480,20 +480,21 @@ def test_book_top_never_stands_in_for_a_missing_l1_price():
 def test_an_option_contracts_top_is_what_schwab_sent_on_a_live_feed():
     """The option top of book is the newest value Schwab sent, merged per field, while the
     daemon holds the contract (a feed down: docs/DATA_FLOW.md §2 D5,
-    tests/test_data_path_rules_v1.py). Real TSLA 260831C00367500 ticks (tests/fixtures)."""
-    import time
+    tests/test_data_path_rules_v1.py). Real TSLA 260831C00367500 ticks (tests/fixtures), judged in
+    regular hours, the option market open (RTH_INSTANT)."""
     import live_market_plane as lmp
     from app.options.order_flow import state
     from app.options.order_flow.live_payload import options_live_payload
+    from tests.feed_live_helper import RTH_INSTANT
     c = json.loads(FIXTURE.read_text(encoding="utf-8"))["contracts"][0]
     sym = c["symbol"]
     for ev in c["events"][:4]:
         if ev["kind"] == "l1":
             state.push_option_top(sym, ev["content"])
     try:
-        lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True,
+        lmp.record_feed_heartbeat({"ts": RTH_INSTANT, "schwab_socket_open": True,
                                    "held": {"LEVELONE_OPTIONS": [sym]}})
-        payload = options_live_payload(sym, time.time())
+        payload = options_live_payload(sym, RTH_INSTANT)
         assert payload["flow"]["top_book_pressure"] is not None and payload["top_outage"] is None
     finally:
         lmp.record_feed_down()
@@ -503,17 +504,18 @@ def test_an_option_contracts_top_is_what_schwab_sent_on_a_live_feed():
 def test_the_equity_book_reads_the_daemons_price_row_for_its_top_of_book():
     """O-01: /api/order-flow/microstructure takes the equity top of book from the daemon's price
     row (the header's): the newest quote Schwab sent, its feed live (a feed down: docs/DATA_FLOW.md
-    §2 D5, tests/test_data_path_rules_v1.py). Stand-in quote (named): bid 10.00 x 3, ask 10.02 x 5."""
-    import time
+    §2 D5, tests/test_data_path_rules_v1.py). Stand-in quote (named): bid 10.00 x 3, ask 10.02 x 5.
+    Served in regular hours (RTH_INSTANT)."""
     import live_market_plane as lmp
     import server
-    from tests.feed_live_helper import mark_feed_live, publish_daemon_rows
-    mark_feed_live("ZZTB")
+    from tests.feed_live_helper import RTH_INSTANT, mark_feed_live, publish_daemon_rows
+    now = RTH_INSTANT
+    mark_feed_live("ZZTB", now=now)
     try:
         lmp.record_from_level_one_equity("ZZTB", {"LAST_PRICE": 10.01, "BID_PRICE": 10.0, "ASK_PRICE": 10.02,
-                                                  "BID_SIZE": 3, "ASK_SIZE": 5, "MARK": 10.01}, received_ts=time.time())
-        publish_daemon_rows("ZZTB")
-        body = json.loads(server.api_order_flow_microstructure(ticker="ZZTB", venue="NYSE_BOOK").body)
+                                                  "BID_SIZE": 3, "ASK_SIZE": 5, "MARK": 10.01}, received_ts=now)
+        publish_daemon_rows("ZZTB", now=now)
+        body = server.order_flow_microstructure("ZZTB", "NYSE_BOOK", now)
         assert body["flow"]["top_book_pressure"] == (3 - 5) / 8 and body["top_outage"] is None
     finally:
         lmp.record_feed_down()

@@ -807,7 +807,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   test('a level built from a price that has stopped stays, and the rail says OFFLINE', async ({ page }) => {
     await page.route('**/api/terrain?**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
       body: JSON.stringify(Object.assign({}, TERRAIN, {
-        levels_stale: false, call_wall: 586, spot_feed_live: false,
+        levels_stale: false, call_wall: 586, spot_feed_live: false, spot_feed_label: 'OFFLINE',
         spot_outage: 'Schwab LEVELONE_EQUITIES feed down during RTH' })) }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#klCall')).toHaveText('586.00');
@@ -821,11 +821,22 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.route('**/api/terrain?**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
       body: JSON.stringify(Object.assign({}, TERRAIN, {
         levels_stale: false, levels_age_sec: 4, levels_time_ct: CHAIN_TIME, call_wall: 586,
-        spot_feed_live: false, spot_outage: 'Schwab LEVELONE_EQUITIES feed down during RTH' })) }));
+        spot_feed_live: false, spot_feed_label: 'OFFLINE', spot_outage: 'Schwab LEVELONE_EQUITIES feed down during RTH' })) }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#klCall')).toHaveText('586.00');
     await expect(page.locator('#klSrc')).toHaveText(CHAIN_TIME + ' · OFFLINE');
     await expect(page.locator('#klSrc')).toHaveAttribute('title', 'Schwab LEVELONE_EQUITIES feed down during RTH');
+  });
+
+  test('key levels rail says NOT LIVE, not OFFLINE, when the price\'s market is not trading', async ({ page }) => {
+    const CHAIN_TIME = 'Fri 10/23 03:59 PM CT';
+    await page.route('**/api/terrain?**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify(Object.assign({}, TERRAIN, {
+        levels_stale: false, levels_age_sec: 4, levels_time_ct: CHAIN_TIME, call_wall: 586,
+        spot_feed_live: false, spot_feed_label: 'NOT LIVE', spot_outage: "outside Schwab's market hours" })) }));
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#klSrc')).toHaveText(CHAIN_TIME + ' · NOT LIVE');
+    await expect(page.locator('#klSrc')).toHaveAttribute('title', "outside Schwab's market hours");
   });
 
   test('PCR: the selected expiry re-scopes the ratio; an expiry the chain has no ratio for shows none', async ({ page }) => {
@@ -970,12 +981,32 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#hAge')).toHaveText('last trade 14:00:01 CT · 4s');
     await expect(page.locator('#hBidAsk')).toHaveAttribute('title', 'quote 14:00:02 CT');
     await expect(page.locator('#klSpot')).toHaveText('601.23');
-    await expect(page.locator('#klSpot')).toHaveAttribute('title', 'last trade 14:00:01 CT');
+    await expect(page.locator('#klSpot')).toHaveAttribute('title', 'last trade 14:00:01 CT · 4s');
     await expect(page.locator('#hFeed')).toHaveText('OFFLINE', { timeout: 6000 });
     await expect(page.locator('#hPx')).toHaveText('601.23');
-    await expect(page.locator('#hAge')).toHaveText('last trade 14:00:01 CT · 4s');
+    await expect(page.locator('#hAge')).toHaveText('last trade 14:00:01 CT');        // the 4s age is not the age now
     await expect(page.locator('#klSpot')).toHaveText('601.23');
-    await expect(page.locator('#klSpot')).toHaveAttribute('title', 'last trade 14:00:01 CT');
+    await expect(page.locator('#klSpot')).toHaveAttribute('title', 'OFFLINE · last trade 14:00:01 CT');
+    expect(await page.locator('#klSpot').evaluate((el) => el.style.color)).toBe('var(--ed-stale)');
+  });
+
+  test('a price whose market is not trading reads NOT LIVE in the header and on Key Levels\' Spot', async ({ page }) => {
+    await mockPriceSocket(page, [priceRow('SPY', 601.23, { trade_time_ct: '14:00:01 CT', trade_age_sec: 4,
+      feed_live: false, feed_label: 'NOT LIVE', outage: "outside Schwab's market hours" })]);
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#hFeed')).toHaveText('NOT LIVE');
+    await expect(page.locator('#klSpot')).toHaveText('601.23');
+    await expect(page.locator('#klSpot')).toHaveAttribute('title', "NOT LIVE: outside Schwab's market hours · last trade 14:00:01 CT · 4s");
+  });
+
+  test('a ticker switch clears the last ticker\'s price from the header and Key Levels\' Spot', async ({ page }) => {
+    await mockPriceSocket(page, [priceRow('SPY', 601.23)]);
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#klSpot')).toHaveText('601.23');
+    await page.evaluate(() => window.EdShell.setTicker('QQQ'));
+    await expect(page.locator('#hPx')).toHaveText('UNAVAILABLE');
+    await expect(page.locator('#klSpot')).toHaveText('—');
+    await expect(page.locator('#hFeed')).toHaveText('WAITING');
   });
 
   test('a watchlist symbol paints from its own row on the same socket', async ({ page }) => {

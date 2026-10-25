@@ -61,13 +61,14 @@
   }
 
   // the queried contract's subscription, served (streaming_plane.subscription_state): ACTIVE
-  // only while the daemon holds it and that feed is live. A held contract whose feed is down
-  // reads OFFLINE. The numbers stay. Anything else shows the served words.
+  // only while the daemon holds it and that feed is live. A held contract that is not live reads
+  // its served state (OFFLINE: its feed down; NOT LIVE: its market not trading). The numbers stay.
+  // Anything else shows the served words.
   function subState(plane) {
     var s = (plane || {}).subscription_state;
     var l1 = plane && plane.feed_health && plane.feed_health.l1;
     if (s === 'SUBSCRIBED' && l1 && l1.state === 'LIVE') return { label: 'ACTIVE', cls: 'live' };
-    if (s === 'SUBSCRIBED') return { label: 'OFFLINE', cls: 'stale' };
+    if (s === 'SUBSCRIBED' && l1) return { label: l1.state, cls: 'stale' };
     return { label: s || '—', cls: 'stale' };
   }
 
@@ -135,7 +136,7 @@
     ];
     h.innerHTML = header(desired, ss, d && d.put_call) +
       '<div class="fl-grid">' +
-      section('Top of book' + (d.top_outage ? ' · OFFLINE' : ''), rowsTob, '') +
+      section('Top of book' + (d.top_outage ? ' · ' + d.top_feed_label : ''), rowsTob, '') +
       section('Book microstructure', rowsBook, dim) +
       section('Flow observations', rowsFlow, dim) +
       section('Freshness / health', fresh, '') +

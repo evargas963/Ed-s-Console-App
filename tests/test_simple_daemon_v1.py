@@ -7,7 +7,6 @@ from __future__ import annotations
 import json
 import sqlite3
 import sys
-import time
 
 import pytest
 
@@ -66,14 +65,15 @@ def test_one_live_rule_every_reader_agrees_and_all_fail_closed_at_one_limit():
     so one moment could read live on one card and dead on the next. One rule now: the daemon's
     heartbeat is under FEED_HEARTBEAT_MAX_AGE_SEC, its Schwab socket is open, and it holds the
     symbol on that service. A service quiet for 45 s on that feed is live (Schwab sends changes).
-    STAND-IN (named): the daemon's status."""
+    STAND-IN (named): the daemon's status. Judged in regular hours (RTH_INSTANT)."""
     import live_market_plane as lmp
     from app.options.order_flow import streaming as ofs
+    from tests.feed_live_helper import RTH_INSTANT
     status = {"schwab_socket_open": True,
               "health": {"OPTIONS_BOOK": {"age_sec": 45.0}},
               "held": {"LEVELONE_EQUITIES": ["MU"], "LEVELONE_OPTIONS": ["B", "A"], "OPTIONS_BOOK": ["A"]}}
 
-    now = time.time()
+    now = RTH_INSTANT
 
     def diag(sym):     # the served option-contract diagnostics for `sym`
         return ofs.get_option_contract_streaming_diagnostics(sym, now)
@@ -94,11 +94,11 @@ def test_one_live_rule_every_reader_agrees_and_all_fail_closed_at_one_limit():
         schwab_down = readers()
     finally:
         lmp.record_feed_down()
-    assert down == (False, False, "NOT LIVE", "NOT STREAMED")
-    assert late == (False, False, "NOT LIVE", "SUBSCRIBED")
+    assert down == (False, False, "OFFLINE", "NOT STREAMED")
+    assert late == (False, False, "OFFLINE", "SUBSCRIBED")
     assert live == (True, True, "LIVE", "SUBSCRIBED") and book_age == 45.0
     assert b_book is False                                            # B held on L1 only
-    assert schwab_down == (False, False, "NOT LIVE", "SUBSCRIBED")    # the daemon is up, Schwab is not
+    assert schwab_down == (False, False, "OFFLINE", "SUBSCRIBED")     # the daemon is up, Schwab is not
 
 
 # ------------------------------------------------------------------ the process

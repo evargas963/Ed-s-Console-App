@@ -45,12 +45,13 @@ def flow_block(of: dict[str, Any]) -> dict[str, Any]:
 def options_live_payload(contract: str, now: float) -> dict[str, Any]:
     """Book microstructure + labeled PROXY flow for one option contract at `now`."""
     items = get_content_for_symbol(contract)
-    # the contract's top of book stands when its feed is down; top_outage names that and the
-    # page says OFFLINE. book_live is whether the book feed delivers now (docs/DATA_FLOW.md §2 D5).
+    # the contract's top of book stands when it is not live; top_outage says why and
+    # top_feed_label is the page's word for it. book_live is whether the book feed delivers now
+    # (docs/DATA_FLOW.md §2 D5).
     # QUOTE_TIME_MILLIS stays on the top; the book ages from that clock.
     top = option_top(contract)
     quote_ms = top.get("quote_time_ms") if isinstance(top, dict) else None
-    top_outage = lmp.outage(contract, "LEVELONE_OPTIONS", now)
+    top_label, top_outage = lmp.live_state(contract, "LEVELONE_OPTIONS", now)
     of = OrderFlowEngine().compute({"content": items,
                                     "top": top,
                                     "book_live": lmp.feed_live_for(contract, "OPTIONS_BOOK", now),
@@ -58,5 +59,5 @@ def options_live_payload(contract: str, now: float) -> dict[str, Any]:
                                    now=now, ticker=contract)
     book = dict(of["book_microstructure"])
     book["flow"] = flow_block(of)
-    book["top_outage"] = top_outage
+    book["top_outage"], book["top_feed_label"] = top_outage, top_label
     return book

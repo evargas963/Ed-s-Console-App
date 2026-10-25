@@ -299,6 +299,7 @@
  "spot": 773.1269,
  "spot_age_sec": 4859.43825507164,
  "spot_as_of_ts_utc": 1792701541.652,
+ "spot_feed_label": "OFFLINE",
  "spot_feed_live": false,
  "spot_not_live_text": "not live \u00b7 last trade Thu 10/22 03:39 PM CT, 81m old",
  "spot_outage": "Schwab LEVELONE_EQUITIES feed down during After-Hours",
