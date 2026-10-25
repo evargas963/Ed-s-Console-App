@@ -145,4 +145,43 @@ assert(typeof G.makeCoalescedLoader === 'function', 'makeCoalescedLoader missing
   assert.strictEqual(calls, 5, 'the loader is usable again immediately after reset()');
 }
 
+// readJson and show: a failed read names where it failed, from a real local HTTP server
+{
+  const http = await import('http');
+  const server = http.createServer((req, res) => {
+    if (req.url.startsWith('/api/ok')) { res.setHeader('content-type', 'application/json'); return res.end('{"a":1}'); }
+    if (req.url.startsWith('/api/error')) { res.statusCode = 500; return res.end('{"detail":"Internal Server Error"}'); }
+    res.setHeader('content-type', 'text/html'); res.end('<html>not json</html>');
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const base = 'http://127.0.0.1:' + server.address().port;
+  const closed = http.createServer();
+  await new Promise((r) => closed.listen(0, '127.0.0.1', r));
+  const refused = 'http://127.0.0.1:' + closed.address().port;
+  await new Promise((r) => closed.close(r));
+  async function words(url) {
+    try { await G.readJson(url); return null; } catch (e) { return e.words; }
+  }
+  assert.deepStrictEqual(await G.readJson(base + '/api/ok?ticker=SPY'), { a: 1 }, 'an answer resolves as sent');
+  assert.strictEqual(await words(base + '/api/error?ticker=SPY'), 'the console answered /api/error with 500');
+  assert.strictEqual(await words(base + '/api/page?ticker=SPY'), 'the console answered /api/page with a body that is not JSON');
+  assert.strictEqual(await words(refused + '/api/ok?ticker=SPY'), 'no console serving /api/ok');
+  const aborted = new AbortController(); aborted.abort();
+  await assert.rejects(G.readJson(base + '/api/ok', aborted.signal), (e) => e.name === 'AbortError' && !e.words,
+    'a read superseded by a newer one rejects with its AbortError, not words');
+
+  const said = [];
+  await G.show(G.readJson(base + '/api/error'), '/api/error', () => said.push('drawn'), (w) => said.push(w));
+  assert.deepStrictEqual(said.splice(0), ['the console answered /api/error with 500'], 'a failed read is said');
+  await assert.rejects(G.show(G.readJson(base + '/api/ok'), '/api/ok', () => { throw new TypeError('x.y'); }, (w) => said.push(w)),
+    TypeError, 'an answer the page cannot draw is reported');
+  assert.deepStrictEqual(said.splice(0), ['the page could not draw the answer of /api/ok'], '... and said');
+  await assert.rejects(G.show(G.readJson(base + '/api/ok', aborted.signal), '/api/ok', () => said.push('drawn'), (w) => said.push(w)),
+    (e) => e.name === 'AbortError');
+  assert.deepStrictEqual(said, [], 'a superseded read says nothing');
+  await assert.rejects(G.sharedFetchJson(base + '/api/error?x=1'), (e) => e.words === 'the console answered /api/error with 500',
+    'the shared read names where it failed too');
+  server.close();
+}
+
 console.log('l1_sse_guards_node: ok');

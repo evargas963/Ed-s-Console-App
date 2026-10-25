@@ -44,20 +44,15 @@
   // paint, so an old, superseded request for the SAME identity can never win a race against a
   // newer one for that identity, not merely against a DIFFERENT identity.
   var _reqSeq = 0;
-  // ROUND 8 (2026-09-13): keyed on ticker+expiry so a held/slow fetch for an ABANDONED
-  // context is aborted immediately once a different one is selected, instead of blocking it.
   function loadImpl(tk, exp, signal) {
     var host = document.getElementById('chainBody');
     if (!host || !stillChain(tk, exp)) return;
     var mySeq = ++_reqSeq;
     function current() { return mySeq === _reqSeq && stillChain(tk, exp); }
-    return fetch('/api/chain?ticker=' + encodeURIComponent(tk) + (exp ? '&expiry=' + encodeURIComponent(exp) : ''), { cache: 'no-store', signal: signal })
-      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-      .then(function (d) { if (current()) render(host, d); })
-      .catch(function (e) {
-        if (e && e.name === 'AbortError') return;
-        if (current()) host.innerHTML = '<div class="placeholder"><div class="sm">no console serving /api/chain</div></div>';
-      });
+    var G = window.EdL1SseGuards;
+    return G.show(G.readJson('/api/chain?ticker=' + encodeURIComponent(tk) + (exp ? '&expiry=' + encodeURIComponent(exp) : ''), signal), '/api/chain',
+      function (d) { if (current()) render(host, d); },
+      function (words) { if (current()) { setSrc(null); window.EdShell.placeholder(host, words); } });
   }
   var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(st().ticker || '', curExpiry(), signal); });
   function load() { _loader.trigger((st().ticker || '') + '|' + (curExpiry() || '')); }

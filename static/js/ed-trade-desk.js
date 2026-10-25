@@ -31,10 +31,8 @@
     return '<span class="fl-tag ' + hook + '" data-cls="' + esc(c) + '">' + esc(c) + '</span>';
   }
   // a read that failed is absent (null); a read cut short by a newer one rejects, so it never draws
-  function fetchJson(url, signal) {
-    return fetch(url, { cache: 'no-store', signal: signal })
-      .then(function (r) { return r.ok ? r.json() : null; })
-      .catch(function (e) { if (e && e.name === 'AbortError') throw e; return null; });
+  function fetchJson(url, signal) {   // a failed read is that endpoint's answer absent
+    return window.EdL1SseGuards.readJson(url, signal).catch(function (e) { if (!e.words) throw e; return null; });
   }
   var usd = function (n) {
     if (n == null || isNaN(n)) return '—';
@@ -314,14 +312,14 @@
   function loadImpl(tk, signal) {
     var h = host();
     if (!h || !stillRightNow(tk)) return;
-    return Promise.all([
+    return window.EdL1SseGuards.show(Promise.all([
       fetchJson('/api/order-flow/microstructure?ticker=' + encodeURIComponent(tk) + '&venue=' + st().bookVenue, signal),
       fetchJson('/api/levels?ticker=' + encodeURIComponent(tk), signal),
       fetchJson('/api/terrain?ticker=' + encodeURIComponent(tk), signal),
       fetchJson('/api/liquidity-snapshot?ticker=' + encodeURIComponent(tk), signal),
       // the migration/volume section's window of the per-strike rows
       fetchJson(migStrikesUrl(tk), signal),
-    ]).then(function (results) {
+    ]), 'Right Now', function (results) {
       if (!stillRightNow(tk)) return;
       var detect = results[0], levelsD = results[1], terrain = results[2], snap = results[3], strikesD = results[4];
       // the spot is /api/levels' alone; a failed read or a null/'' spot is absent, never 0
@@ -338,9 +336,8 @@
         'THE CALL and 1m/5m/15m/60m horizons remain excluded until ticker-universal evidence earns them.</div>';
       var migEl = document.getElementById('tdMigration');
       if (migEl) wireMigration(migEl, tk);
-    }).catch(function (e) {
-      if (e && e.name === 'AbortError') return;   // the newer read draws
-      if (stillRightNow(tk)) h.innerHTML = '<div class="placeholder"><div class="sm">no console serving Right Now — one of its endpoints failed to render</div></div>';
+    }, function (words) {
+      if (stillRightNow(tk)) window.EdShell.placeholder(h, words);
     });
   }
   var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(ticker(), signal); });

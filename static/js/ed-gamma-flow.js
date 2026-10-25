@@ -45,13 +45,11 @@
   function loadImpl(desired, signal) {
     var h = host();
     if (!h || !stillFlow(desired)) return;
-    return fetch('/api/order-flow/options-microstructure?contract=' + encodeURIComponent(desired), { cache: 'no-store', signal: signal })
-      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-      .then(function (d) { if (stillFlow(desired)) render(h, desired, d); })
-      .catch(function (e) {
-        if (e && e.name === 'AbortError') return;   // superseded by a newer contract -- that load renders instead
-        if (stillFlow(desired)) shell(h, desired, 'DEGRADED', 'no console serving options-microstructure', null);
-      });
+    var G = window.EdL1SseGuards;
+    return G.show(G.readJson('/api/order-flow/options-microstructure?contract=' + encodeURIComponent(desired), signal),
+      '/api/order-flow/options-microstructure',
+      function (d) { if (stillFlow(desired)) render(h, desired, d); },
+      function (words) { if (stillFlow(desired)) shell(h, desired, 'DEGRADED', words, null); });
   }
   var _pendingDesired = null;
   var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(_pendingDesired, signal); });

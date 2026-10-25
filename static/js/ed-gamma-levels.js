@@ -21,19 +21,14 @@
   function ticker() { return ((window.EdShell && window.EdShell.getState()) || {}).ticker || ''; }
 
   function stillLevels(tk) { return !!activeHostId() && ticker() === tk; }
-  // ROUND 8 (2026-09-13): keyed on ticker so a held/slow fetch for an ABANDONED ticker is
-  // aborted immediately once a different ticker is selected, instead of blocking it.
   function loadImpl(tk, signal) {
     var hostId = activeHostId();
     var host = hostId && document.getElementById(hostId);
     if (!host || !stillLevels(tk)) return;
-    return fetch('/api/levels?ticker=' + encodeURIComponent(tk), { cache: 'no-store', signal: signal })
-      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-      .then(function (d) { if (stillLevels(tk)) render(host, d); })
-      .catch(function (e) {
-        if (e && e.name === 'AbortError') return;
-        if (stillLevels(tk)) host.innerHTML = '<div class="placeholder"><div class="sm">no console serving /api/levels</div></div>';
-      });
+    var G = window.EdL1SseGuards;
+    return G.show(G.readJson('/api/levels?ticker=' + encodeURIComponent(tk), signal), '/api/levels',
+      function (d) { if (stillLevels(tk)) render(host, d); },
+      function (words) { if (stillLevels(tk)) window.EdShell.placeholder(host, words); });
   }
   var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(ticker(), signal); });
   function load() { _loader.trigger(ticker()); }

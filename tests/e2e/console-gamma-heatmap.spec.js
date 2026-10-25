@@ -360,6 +360,103 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     expect(html).toContain('Gamma surface unavailable');
   });
 
+  // Every panel that reads the console names where a read failed, the same words for each
+  // (EdL1SseGuards.readJson). Induced conditions: the panel's route answers 500, or refuses.
+  const PANELS = [
+    { name: 'GEX by strike', host: '#gbsBody', route: '/api/terrain/strikes' },
+    { name: 'the tape', host: '#ofBody', route: '/api/options/tape' },
+    { name: 'Key Levels', host: '#klSrc', route: '/api/terrain' },
+    { name: 'Strike Detail', host: '#sdBody', route: '/api/chain' },
+    { name: 'the levels view', host: '#levelsBody', route: '/api/levels', view: 'levels' },
+    { name: 'the chain', host: '#chainBody', route: '/api/chain', sub: 'chain' },
+    { name: 'Structures', host: '#stBody', route: '/api/chain', sub: 'structures' },
+    { name: 'the vanna bars', host: '#vnBody', route: '/api/options/vanna-by-strike', sub: 'vanna' },
+    { name: 'the charm bars', host: '#chmBody', route: '/api/options/charm-by-strike', sub: 'charm' },
+    { name: 'the flow panel', host: '#flowBody', route: '/api/order-flow/options-microstructure', sub: 'flow',
+      contract: 'SPY   260911C00583000' },
+    { name: 'the order-flow book', host: '#obBody', route: '/api/order-flow/microstructure', ws: 'order-flow', sub: 'book' },
+  ];
+  for (const p of PANELS) {
+    test(`${p.name}: a read answered 500 names the status; only a refused one reads "no console serving"`, async ({ page }) => {
+      for (const [failure, words] of [['500', 'the console answered ' + p.route + ' with 500'],
+                                      ['refused', 'no console serving ' + p.route]]) {
+        await page.unrouteAll();
+        await intercept(page);
+        await page.route('**' + p.route + '?**', (route) => failure === '500'
+          ? route.fulfill({ status: 500, contentType: 'application/json', body: '{"detail":"Internal Server Error"}' })
+          : route.abort('connectionrefused'));
+        await page.goto('/', { waitUntil: 'domcontentloaded' });
+        await expect(page.locator('#hPx')).not.toHaveText('CHOOSE A SYMBOL');
+        if (p.ws) await page.evaluate((ws) => window.EdShell.setWorkspace(ws), p.ws);
+        if (p.sub) await page.evaluate((sub) => window.EdShell.setSubview(sub), p.sub);
+        if (p.view) await page.locator(`#viewbar .vtab[data-view="${p.view}"]`).click();
+        if (p.contract) await page.evaluate((c) => window.EdFlow.select(c), p.contract);
+        await expect(page.locator(p.host)).toContainText(words);
+      }
+    });
+  }
+
+  // A panel whose read fails leaves no as-of badge from its last answer beside the failure words.
+  // Induced condition: the first answer marks itself live (the served status labels below).
+  const BADGED = [
+    { name: 'GEX by strike', host: '#gbsBody', badge: '#gbsSrc', route: '/api/terrain/strikes', push: 'levels',
+      answer: Object.assign({}, STRIKES, { today_source: 'terrain_live_cache', levels_stale: false, today_age_sec: 3 }) },
+    { name: 'Strike Detail', host: '#sdBody', badge: '#sdSrc', route: '/api/chain', push: 'levels',
+      answer: Object.assign({}, CHAIN, { scope: { kind: 'complete_single_expiry' } }) },
+    { name: 'the chain', host: '#chainBody', badge: '#chSrc', route: '/api/chain', push: 'chain', sub: 'chain',
+      answer: Object.assign({}, CHAIN, { scope: { kind: 'complete_single_expiry' } }) },
+  ];
+  for (const p of BADGED) {
+    test(`${p.name}: a read that fails after a good one leaves no badge from the last answer`, async ({ page }) => {
+      let failing = false;
+      await page.route('**' + p.route + '?**', (route) => failing
+        ? route.fulfill({ status: 500, contentType: 'application/json', body: '{"detail":"Internal Server Error"}' })
+        : route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(p.answer) }));
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
+      if (p.sub) await page.evaluate((sub) => window.EdShell.setSubview(sub), p.sub);
+      await expect(page.locator(p.badge)).not.toBeEmpty();
+      failing = true;
+      await page.evaluate((kind) => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind } })), p.push);
+      await expect(page.locator(p.host)).toContainText('the console answered ' + p.route + ' with 500');
+      await expect(page.locator(p.badge)).toBeEmpty();
+    });
+  }
+
+  test('Key Levels: a read that fails after a stale answer keeps none of its tooltip or colour', async ({ page }) => {
+    // Induced condition: the first answer is marked stale with a reason (served status labels).
+    let failing = false;
+    await page.route('**/api/terrain?**', (route) => failing
+      ? route.fulfill({ status: 500, contentType: 'application/json', body: '{"detail":"Internal Server Error"}' })
+      : route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify(Object.assign({}, TERRAIN, { levels_stale: true, levels_stale_reason: 'chain 12m old' })) }));
+    await mockPriceSocket(page, [priceRow('SPY', 601.23)]);                    // the pushed price
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#klSrc')).toHaveAttribute('title', 'chain 12m old');
+    await expect(page.locator('#klSpot')).toHaveText('601.23');
+    failing = true;
+    await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'levels' } })));
+    await expect(page.locator('#klSrc')).toHaveText('the console answered /api/terrain with 500');
+    await expect(page.locator('#klSrc')).toHaveAttribute('title', '');
+    for (const id of ['#klSrc', '#klNet', '#klRegime']) {
+      expect(await page.locator(id).evaluate((el) => el.style.color), id).toBe('');
+    }
+    await expect(page.locator('#klBody')).toHaveClass(/recede/);
+    await expect(page.locator('#klSpot')).toHaveText('601.23');            // the price row's, not terrain's
+  });
+
+  test('Right Now says when the page cannot draw its answers, never "no console serving"', async ({ page }) => {
+    // Induced condition: the per-strike answer (this file's STRIKES) without its `views`, so
+    // drawing the migration section raises a TypeError after every endpoint has answered.
+    await page.route('**/api/terrain/strikes?**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify(Object.assign({}, STRIKES, { views: undefined })) }));
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#hPx')).not.toHaveText('CHOOSE A SYMBOL');
+    const reported = page.waitForEvent('console', (m) => m.type() === 'error' && /TypeError/.test(m.text()));
+    await page.evaluate(() => { window.EdShell.setWorkspace('trade-desk'); window.EdShell.setSubview('right-now'); });
+    await expect(page.locator('#tdBody')).toContainText('the page could not draw the answer of Right Now');
+    await reported;
+  });
+
   test('a console that answers with an error is named with its status; only a failed connection reads "no console serving"', async ({ page }) => {
     // Induced conditions: the surface route answers 500, then the connection to it is refused.
     let answer = 'error';

@@ -24,13 +24,11 @@
   function loadImpl(tk, signal) {
     var h = host();
     if (!h || !stillBook(tk)) return;
-    return fetch('/api/order-flow/microstructure?ticker=' + encodeURIComponent(tk) + '&venue=' + st().bookVenue, { cache: 'no-store', signal: signal })
-      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-      .then(function (d) { if (stillBook(tk)) render(h, tk, d); })
-      .catch(function (e) {
-        if (e && e.name === 'AbortError') return;
-        if (stillBook(tk)) h.innerHTML = '<div class="placeholder"><div class="sm">no console serving /api/order-flow/microstructure</div></div>';
-      });
+    var G = window.EdL1SseGuards;
+    return G.show(G.readJson('/api/order-flow/microstructure?ticker=' + encodeURIComponent(tk) + '&venue=' + st().bookVenue, signal),
+      '/api/order-flow/microstructure',
+      function (d) { if (stillBook(tk)) render(h, tk, d); },
+      function (words) { if (stillBook(tk)) window.EdShell.placeholder(h, words); });
   }
   var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(ticker(), signal); });
   function load() {
