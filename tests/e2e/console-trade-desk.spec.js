@@ -223,7 +223,7 @@ test('Desk: a price push that stops reads OFFLINE on the map, not its last row\'
   await expect(page.locator('#tdmIdxSPX')).toContainText('last trade ' + ROWS['$SPX'].trade_time_ct, { timeout: 10000 });
   await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'flow' } })));
   await page.waitForTimeout(500);
-  // read once, inside the 3 s before the header would call the push down again (no retrying)
+  // read once, before SPY's row at 12 s ends the outage (no retrying: a retry would wait for it)
   expect(await page.locator('#hFeed').textContent()).toBe('OFFLINE');
   const trust = await page.locator('#tdmTrust').textContent();
   expect(trust).toContain('PRICE OFFLINE');
