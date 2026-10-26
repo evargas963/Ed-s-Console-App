@@ -119,7 +119,8 @@ Drawn from python.org (PEP 20, PEP 8, PEP 484, the standard library docs, the CP
 
 20. **Every fix comes with a test that failed before.**
     - Source: CPython Developer's Guide.
-    - Repo today: enforced by `check_fails_before.py` (CONFIRMED).
+    - Repo today: enforced by `check_fails_before.py` (CONFIRMED); a change whose code is identical
+      once comments and docstrings are set aside is not a fix and needs none.
 
 ## E. Concurrency, logs, operations
 

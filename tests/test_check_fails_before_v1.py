@@ -119,3 +119,78 @@ def test_a_page_fix_whose_spec_already_passed_before_is_refused(page_repo):
 def test_a_page_fix_with_no_test_change_is_refused(page_repo):
     root = page_repo({"calc.js": JS_FIX})
     assert cfb.violations(root, "main") == ["product code changed (calc.js) but no test under tests/ changed"]
+
+
+# The code before and after a cleanup that only rewrites comments and docstrings: the same code, so
+# nothing for a test to fail on.
+NOTED = {"calc.py": ('"""Spot, from the row (RC-12, 2026-09-01)."""\n\n\n'
+                     "def spot(row):\n    \"\"\"The bid (used to be the mark).\"\"\"\n"
+                     "    return row['bid']  # audit 2026-09-02\n"),
+         "page.js": "// RC-9 2026-09-01: drawn here\nvar url = 'http://x/*y*/';  /* was a fallback */\nvar re = /\\/\\//;\n"}
+CLEANED = {"calc.py": ('"""Spot, from the row."""\n\n\n'
+                       "def spot(row):\n    \"\"\"The bid.\"\"\"\n"
+                       "    return row['bid']\n"),
+           "page.js": "// drawn here\nvar url = 'http://x/*y*/';\nvar re = /\\/\\//;\n"}
+
+
+def test_a_change_to_comments_and_docstrings_only_needs_no_test(tmp_path):
+    root = _repo(tmp_path, CLEANED, base={**BASE, **NOTED})
+    assert cfb.violations(root, "main") == []
+
+
+@pytest.mark.parametrize("path, text", [
+    ("calc.py", '"""Spot, from the row."""\n\n\ndef spot(row):\n    """The bid."""\n    return row["ask"]\n'),
+    ("page.js", "// drawn here\nvar url = 'http://x/*z*/';\nvar re = /\\/\\//;\n"),        # inside a string
+    ("page.js", "// drawn here\nvar url = 'http://x/*y*/';\nvar re = /\\/\\/x/;\n"),      # inside a regex
+    # an encoding line: imported, the strings read otherwise
+    ("calc.py", '# -*- coding: latin-1 -*-\n"""Spot, from the row."""\n\n\ndef spot(row):\n    """The bid."""\n'
+                "    return row['bid']\n"),
+])
+def test_a_code_change_beside_the_comments_still_needs_a_failing_test(tmp_path, path, text):
+    root = _repo(tmp_path, {**CLEANED, path: text}, base={**BASE, **NOTED})
+    assert cfb.violations(root, "main") == [
+        f"product code changed ({path}) but no test under tests/ changed"]
+
+
+def test_a_comment_only_change_to_an_html_page_still_needs_a_test(tmp_path):
+    """A browser's reading of a page's whitespace, entities and comments depends on CSS and parser
+    details, so a page is never judged unchanged by its comments."""
+    root = _repo(tmp_path, {"page.html": "<p>a</p>\n"}, base={**BASE, "page.html": "<!-- RC-UI-1 -->\n<p>a</p>\n"})
+    assert cfb.violations(root, "main") == ["product code changed (page.html) but no test under tests/ changed"]
+
+
+def test_deleting_a_product_file_still_needs_a_test(tmp_path):
+    root = _repo(tmp_path, {"notes.md": "words\n"}, base={**BASE, "dead.py": "def unused(row):\n    return row['ask']\n"})
+    _git(root, "rm", "-q", "dead.py")
+    _git(root, "commit", "-q", "-m", "remove dead.py")
+    assert cfb.violations(root, "main") == ["product code changed (dead.py) but no test under tests/ changed"]
+
+
+def test_moving_a_product_file_out_of_product_paths_still_needs_a_test(tmp_path):
+    root = _repo(tmp_path, {"notes.md": "words\n"}, base={**BASE, "dead.py": "def unused(row):\n    return row['ask']\n"})
+    (root / "docs").mkdir()
+    _git(root, "mv", "dead.py", "docs/dead.py")
+    _git(root, "commit", "-q", "-m", "move dead.py")
+    assert cfb.violations(root, "main") == ["product code changed (dead.py) but no test under tests/ changed"]
+
+
+@pytest.mark.parametrize("path", ["my calc.py", "café.py"])
+def test_a_product_file_whose_name_git_quotes_still_needs_a_test(tmp_path, path):
+    root = _repo(tmp_path, {path: FIX}, base={**BASE, path: BASE["calc.py"]})
+    assert cfb.violations(root, "main") == [f"product code changed ({path}) but no test under tests/ changed"]
+
+
+def test_a_product_file_replaced_by_a_link_still_needs_a_test(tmp_path):
+    root = _repo(tmp_path, {"notes.md": "words\n"})
+    (tmp_path / "target.txt").write_text("calc_impl.py", encoding="utf-8")
+    sha = subprocess.run(["git", "hash-object", "-w", str(tmp_path / "target.txt")], cwd=root, check=True,
+                         capture_output=True, text=True).stdout.strip()
+    _git(root, "update-index", "--cacheinfo", f"120000,{sha},calc.py")
+    _git(root, "commit", "-q", "-m", "calc.py becomes a link")
+    assert cfb.violations(root, "main") == ["product code changed (calc.py) but no test under tests/ changed"]
+
+
+def test_removing_a_function_nothing_calls_still_needs_a_test(tmp_path):
+    base = {**BASE, "calc.py": BASE["calc.py"] + "\n\ndef unused(row):\n    return row['ask']\n"}
+    root = _repo(tmp_path, {"calc.py": BASE["calc.py"]}, base=base)
+    assert cfb.violations(root, "main") == ["product code changed (calc.py) but no test under tests/ changed"]

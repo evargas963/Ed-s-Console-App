@@ -4,7 +4,10 @@ A check of shapes only. It cannot see a design-level patch, and it cannot tell w
 test covers the changed behavior; those are proven by behavior tests and review.
 
 1. A PR that changes product code also adds real lines (not blank, not a comment) to an
-   end-to-end path test: `tests/test_data_path_*.py` or `tests/e2e/*.spec.js`.
+   end-to-end path test: `tests/test_data_path_*.py` or `tests/e2e/*.spec.js`. A file whose code
+   is the same once comments and docstrings are set aside (code_identical: the Python syntax tree;
+   page code's syntax tree from Babel, tools/js_code_tree.js) is not a change of product code. An
+   .html page is always one, and so is removing code nothing calls, a deleted file included.
 2. The product lines it adds carry no patch shape:
    - an except that catches everything (bare, `Exception`, `BaseException`, or a tuple holding
      one), or one whose only statement swallows the error: `pass`, `continue`, a return or an
@@ -36,6 +39,9 @@ import ast
 import re
 import subprocess
 import sys
+import io
+import tempfile
+import tokenize
 from pathlib import Path
 
 PRODUCT_SUFFIXES = (".py", ".js", ".mjs", ".html")
@@ -64,25 +70,49 @@ class ToolError(Exception):
 
 def _git(root: Path, *args: str) -> str:
     try:
-        return subprocess.run(["git", *args], cwd=root, capture_output=True,
-                              text=True, encoding="utf-8", check=True).stdout
-    except (subprocess.CalledProcessError, FileNotFoundError) as e:
+        return subprocess.run(["git", *args], cwd=root, capture_output=True, check=True).stdout.decode("utf-8")
+    except (subprocess.CalledProcessError, FileNotFoundError, UnicodeDecodeError) as e:
         raise ToolError(f"git {' '.join(args)} failed: {e}") from e
 
 
-def pr_added_lines(root: Path, base: str) -> dict[str, set[int]]:
-    """{path: the line numbers, in the PR's version, of the lines the PR adds}, one diff."""
+def pr_files(root: Path, base: str, kinds: str) -> list[str]:
+    """The paths the PR changes in the ways `kinds` names (git's --diff-filter letters), each as
+    written (NUL-separated, never quoted), a rename read as its deletion and its addition."""
+    out = _git(root, "diff", "--name-only", "-z", "--no-renames", f"--diff-filter={kinds}", f"{base}...HEAD")
+    return [f for f in out.split("\0") if f]
+
+
+def _diff_path(header: str) -> str:
+    """The path of a diff's `+++ ` header: git C-quotes a name holding a quote, backslash or
+    non-ASCII character, and ends one holding a space with a tab."""
+    name = header.removesuffix("\t")
+    if name.startswith('"'):
+        try:
+            name = ast.literal_eval("b" + name).decode("utf-8")
+        except (SyntaxError, ValueError, UnicodeDecodeError) as e:
+            raise ToolError(f"git diff header {header!r} could not be read: {e}") from e
+    return name.removeprefix("b/")
+
+
+def pr_added_lines(root: Path, base: str, renames: bool) -> dict[str, set[int]]:
+    """{path: the line numbers, in the PR's version, of the lines the PR adds}, one diff. With
+    `renames`, a file renamed with no edit adds no line (git's rename detection: the end-to-end
+    evidence); without, a moved file adds every line it holds (the patch scan)."""
     out: dict[str, set[int]] = {}
     path: str | None = None
-    for line in _git(root, "diff", "-U0", "--diff-filter=AMR", f"{base}...HEAD").splitlines():
+    header = False      # between a file's `diff --git` and its first hunk: an added line is not a header
+    # core.quotePath=true: a quoted name is all escapes, whatever the repository's own setting
+    for line in _git(root, "-c", "core.quotePath=true", "diff", "-U0", "-M" if renames else "--no-renames", "--src-prefix=a/",
+                     "--dst-prefix=b/", "--diff-filter=AMRT", f"{base}...HEAD").split("\n"):
         if line.startswith("diff --git "):
-            path = None
-        elif line.startswith("+++ b/"):
-            path = line[len("+++ b/"):]
+            path, header = None, True
+        elif header and line.startswith("+++ ") and line != "+++ /dev/null":
+            path = _diff_path(line[len("+++ "):])
             out[path] = set()
-        elif line.startswith("@@ ") and path is not None:
+        elif line.startswith("@@ "):
+            header = False
             m = HUNK.match(line)
-            if m:
+            if m and path is not None:
                 start, count = int(m.group(1)), int(m.group(2) or 1)
                 out[path].update(range(start, start + count))
     return out
@@ -95,6 +125,82 @@ def pr_source(root: Path, path: str) -> str:
 
 def is_product(path: str) -> bool:
     return path.endswith(PRODUCT_SUFFIXES) and not path.startswith(NOT_PRODUCT)
+
+
+JS_CODE_TREE = Path(__file__).resolve().parent / "js_code_tree.js"
+#: the files whose code a syntax tree reads exactly; an .html page is not one (a browser's reading of
+#: its whitespace, entities and comments depends on CSS and parser details), so every change to one
+#: is a change of product code
+CODE_TREE_SUFFIXES = (".py", ".js", ".mjs")
+
+
+def _python_code(source: str) -> str | None:
+    """The module's code with its comments and docstrings set aside (its syntax tree), or None when
+    it does not parse or declares an encoding other than UTF-8 (imported, its strings would read
+    otherwise than this tree)."""
+    try:
+        encoding, _ = tokenize.detect_encoding(io.BytesIO(source.encode("utf-8")).readline)
+        tree = ast.parse(source)
+    except (SyntaxError, UnicodeError):
+        return None
+    if encoding not in ("utf-8", "utf-8-sig"):
+        return None
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            first = node.body[0] if node.body else None
+            if (isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant)
+                    and isinstance(first.value.value, str)):
+                node.body = node.body[1:] or [ast.Pass()]
+    return ast.dump(tree)
+
+
+def _js_code(text: str, module: bool = False) -> str | None:
+    """Page code's syntax tree, comments and positions set aside (Babel, through js_code_tree.js);
+    None when it does not parse or Node cannot run it, which counts as changed."""
+    with tempfile.TemporaryDirectory() as tmp:
+        src = Path(tmp) / ("code.mjs" if module else "code.js")
+        src.write_bytes(text.encode("utf-8"))      # as written: no line ending translated
+        try:
+            run = subprocess.run(["node", str(JS_CODE_TREE), str(src)], capture_output=True, text=True,
+                                 encoding="utf-8", timeout=120)
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+    return run.stdout if run.returncode == 0 and run.stdout else None
+
+
+def code_tree(path: str, text: str) -> str | None:
+    """`path`'s code, comments and docstrings set aside: Python's syntax tree, or page code's syntax
+    tree; None when it cannot be read or `path` is not one of CODE_TREE_SUFFIXES."""
+    if path.endswith(".py"):
+        return _python_code(text)
+    if path.endswith((".js", ".mjs")):
+        return _js_code(text, module=path.endswith(".mjs"))
+    return None
+
+
+def code_identical(root: Path, base: str, path: str) -> bool:
+    """Whether the PR leaves `path`'s code as it is on `base` once comments and docstrings are set
+    aside: such a change has nothing for a test to fail on, so it needs none. A file new to the PR,
+    renamed, deleted, not one of CODE_TREE_SUFFIXES, or one either version of which cannot be read
+    is not that."""
+    try:
+        old = _git(root, "show", f"{_git(root, 'merge-base', base, 'HEAD').strip()}:{path}")
+        new = pr_source(root, path)
+    except ToolError:
+        return False
+    before, after = code_tree(path, old), code_tree(path, new)
+    return before is not None and before == after
+
+
+def behavior_change(root: Path, base: str, path: str) -> bool:
+    """A product file whose code the PR changes (is_product, and not code_identical)."""
+    return is_product(path) and not code_identical(root, base, path)
+
+
+def deleted_product(root: Path, base: str) -> list[str]:
+    """The product files the PR deletes, a file moved away included: removing code is a change of
+    it, whatever called it."""
+    return [f for f in pr_files(root, base, "D") if is_product(f)]
 
 
 def _spans_added(node: ast.AST, added: set[int]) -> bool:
@@ -227,8 +333,10 @@ def js_patches(path: str, source: str, added: set[int]) -> list[tuple[int, str]]
 
 
 def adds_real_lines(source: str, added: set[int]) -> bool:
+    """Whether a line the PR adds holds code, not only a comment; lines numbered as git numbers
+    them (by line feed alone)."""
     return any(n in added and (s := text.strip()) and not s.startswith(("#", "//"))
-               for n, text in enumerate(source.splitlines(), start=1))
+               for n, text in enumerate(source.split("\n"), start=1))
 
 
 def body_violations(body: str) -> list[str]:
@@ -244,16 +352,19 @@ def body_violations(body: str) -> list[str]:
 
 
 def violations(root: Path, base: str, body: str | None) -> list[str]:
-    added = pr_added_lines(root, base)
-    product = sorted(f for f in added if is_product(f))
+    evidence = pr_added_lines(root, base, renames=True)
+    added = pr_added_lines(root, base, renames=False)
+    changed_code = sorted(f for f in pr_files(root, base, "AMT") if behavior_change(root, base, f))
+    product = sorted(changed_code + deleted_product(root, base))
     out = []
-    if product and not any(p.match(f) and adds_real_lines(pr_source(root, f), added[f])
-                           for f in added for p in END_TO_END):
+    if product and not any(p.match(f) and adds_real_lines(pr_source(root, f), evidence[f])
+                           for f in evidence for p in END_TO_END):
         out.append(f"product code changed ({', '.join(product)}) but no end-to-end path test "
                    "(tests/test_data_path_*.py or tests/e2e/*.spec.js) gained a real line")
-    for f in product:
+    for f in changed_code:
         source = pr_source(root, f)
-        found = python_patches(source, added[f]) if f.endswith(".py") else js_patches(f, source, added[f])
+        lines = added.get(f, set())
+        found = python_patches(source, lines) if f.endswith(".py") else js_patches(f, source, lines)
         out.extend(f"{f}:{line}: {what}" for line, what in found)
     if body is not None:
         out.extend(body_violations(body))

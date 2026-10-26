@@ -17,10 +17,15 @@ jobs:
         with:
           python-version: "3.13"
           cache: pip
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
+        with:
+          node-version: "22"
+          cache: npm
       - name: Install tools
         run: |
           python -m pip install --upgrade pip
           python -m pip install ruff
+          npm ci        # the end-to-end check reads page code with Playwright's Babel (tools/js_code_tree.js)
       - name: ruff (correctness)
         run: python -m ruff check . --select F401,F821,E9
       - name: compileall
