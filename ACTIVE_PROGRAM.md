@@ -237,11 +237,13 @@ stand-ins PR B adds are recorded in STAND-INS, and the older stand-ins in the fi
 with STAND-INS. Operator 2026-10-26, for the repo-wide simplify (his 2026-10-24 request, started
 without a second yes): a product file whose code is the same once comments and docstrings are set
 aside needs no failing test and no end-to-end line (`check_end_to_end.code_identical`, read by
-`check_fails_before`), proven by tests of the two checkers; removing code nothing calls still needs a
-test or a no-callers proof.
+`check_fails_before`: Python's syntax tree, page code's syntax tree from Babel through
+`tools/js_code_tree.js`, an HTML page's tags, attributes and text), proven by tests of the two
+checkers; removing code nothing calls still needs a test or a no-callers proof (SIMPLIFY (2)).
 
 | ID | Status | Work item |
 |---|---|---|
+| SIMPLIFY | ACTIVE | **The repo-wide simplify** (operator 2026-10-24, "every letter of every word of every code must perform a duty"), one small PR per slice, mapped 2026-10-26 by four read-only reviews (server.py; the engines; the daemon and streaming; the pages). (1) History notes in comments and docstrings, by area: the engines (terrain_engine, math_levels, liquidity_value_engine, math_exposure_core, terrain_read, the empty section headers of math_probabilities and math_volatility), server.py, the daemon and streaming modules, the pages (index.html, static/js). (2) Code nothing calls, each removal proven by a test or a no-callers proof: `check_fails_before` takes a no-callers proof once this slice needs one (a removal whose removed names no file still references). (3) Served fields nothing reads (rr_25d, vanna_agg, zero_dte_gamma_share_pct, the wall ranges, gsf_state, the liquidity snapshot's unread keys, the price row's unread fields), each with a test that it is no longer served. (4) One computation where there are two (ATM sigma per terrain, the expiry key, the d1 formula, the tick-rule walk, the streamed-greeks loop, single-use wrappers). (5) One store where there are several (ONE-02, ONE-03; the equity quote kept three times in the daemon; the two option tapes). (6) The page formats nothing (ENF-03): ages, numbers, prices, Central Time and escaping from one server formatter each. Operator decisions owed on the way: `/api/build` (no page reads it) and the matrices rebuilt on every streamed tick. |
 | ONE-02 | QUEUED | Equity last price and size kept a second time in the console's order-flow tape (`state.py` tape and receive log). |
 | ONE-03 | QUEUED | Feed liveness judged in both processes: the daemon applies its own heartbeat to its price rows (`live_ui.beat`), and the console applies the pushed copy again (`feed_live_for`); one rule since ONE-15, two places it runs. The console's run cannot see Schwab's SECURITY_STATUS (only the daemon's plane holds it), so for a price it serves the daemon row's verdict while its own reads LIVE (`streaming.price_state`). |
 | ONE-12 | QUEUED | Trade side: history's quote rule beside the live tick rule (with the trade-side decision, directive 3). |

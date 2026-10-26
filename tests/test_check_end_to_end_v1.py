@@ -168,6 +168,41 @@ def test_a_code_change_beside_comment_changes_still_needs_an_end_to_end_test(tmp
         "(tests/test_data_path_*.py or tests/e2e/*.spec.js) gained a real line"]
 
 
+@pytest.mark.parametrize("path, before, after", [
+    # a template literal nested in ${...} after a brace: its text is the shown string
+    ("static/js/page.js", "s = `${ f({}) + `a  b` }`;\n", "s = `${ f({}) + `a b` }`;\n"),
+    ("static/js/page.js", "h = `${ u({}) + `https://a.com/x` }`;\n", "h = `${ u({}) + `https://b.com/y` }`;\n"),
+    # division after ++, then a string holding //
+    ("static/js/page.js", 'x = i++ / 2 + "a/" + "//" + "b";\n', 'x = i++ / 2 + "a/" + "//" + "c";\n'),
+    # a regular expression after ) holding \/\/
+    ("static/js/page.js", "if (u) /^https?:\\/\\//.test(u) && go(1);\n", "if (u) /^https?:\\/\\//.test(u) && go(2);\n"),
+    # a block comment holding a line break ends the return
+    ("static/js/page.js", "function f(){ return /*\n note */ 1 }\n", "function f(){ return 1 }\n"),
+    # whitespace a page shows, a comment inside an attribute, a no-break space
+    ("static/page.html", "<pre>a  b</pre>\n", "<pre>a b</pre>\n"),
+    ("static/page.html", '<p title="<!-- x -->">a</p>\n', '<p title="">a</p>\n'),
+    ("static/page.html", "<p>a b</p>\n", "<p>a b</p>\n"),
+])
+def test_a_code_change_a_comment_reader_could_miss_still_needs_an_end_to_end_test(tmp_path, path, before, after):
+    """The pairs differ in code, though a reader that guesses comments from characters reads them the
+    same: each is a change of product code."""
+    root = _repo(tmp_path, {**BASE, path: before})
+    _commit(root, {path: after})
+    assert cee.violations(root, "main", BODY) == [
+        f"product code changed ({path}) but no end-to-end path test "
+        "(tests/test_data_path_*.py or tests/e2e/*.spec.js) gained a real line"]
+
+
+def test_every_product_file_in_the_repo_is_read():
+    """Every product file of this repository reads (code_tree is not None), so a cleanup of its
+    comments is judged by its code, never refused as unreadable."""
+    root = Path(__file__).resolve().parent.parent
+    files = subprocess.run(["git", "ls-files"], cwd=root, capture_output=True, text=True, check=True).stdout.split()
+    product = [f for f in files if cee.is_product(f)]
+    unread = [f for f in product if cee.code_tree(f, (root / f).read_text(encoding="utf-8")) is None]
+    assert product and unread == []
+
+
 def test_a_required_section_left_empty_is_refused(tmp_path):
     body = "Schwab → screen: the quote.\nDeleted:\nEnd-to-end test: tests/test_data_path_x.py\n"
     assert _found(tmp_path, {}, body) == ["the PR description's Deleted: is empty"]

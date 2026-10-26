@@ -6,9 +6,8 @@ test covers the changed behavior; those are proven by behavior tests and review.
 1. A PR that changes product code also adds real lines (not blank, not a comment) to an
    end-to-end path test: `tests/test_data_path_*.py` or `tests/e2e/*.spec.js`. A file whose code
    is the same once comments and docstrings are set aside (code_identical: the Python syntax tree;
-   page code read with its strings, template literals and regular expressions whole) is not a
-   change of product code (operator 2026-10-25). Removing code nothing calls changes the code, so
-   it is.
+   page code's syntax tree from Babel, tools/js_code_tree.js; an HTML page's tags, attributes and
+   text) is not a change of product code. Removing code nothing calls changes the code, so it is.
 2. The product lines it adds carry no patch shape:
    - an except that catches everything (bare, `Exception`, `BaseException`, or a tuple holding
      one), or one whose only statement swallows the error: `pass`, `continue`, a return or an
@@ -40,6 +39,8 @@ import ast
 import re
 import subprocess
 import sys
+import tempfile
+from html.parser import HTMLParser
 from pathlib import Path
 
 PRODUCT_SUFFIXES = (".py", ".js", ".mjs", ".html")
@@ -101,9 +102,9 @@ def is_product(path: str) -> bool:
     return path.endswith(PRODUCT_SUFFIXES) and not path.startswith(NOT_PRODUCT)
 
 
-JS_KEYWORDS_BEFORE_REGEX = {"return", "typeof", "case", "in", "of", "new", "delete", "void", "throw", "do", "else",
-                            "instanceof", "yield", "await"}
-HTML_COMMENT = re.compile(r"<!--.*?-->", re.S)
+JS_CODE_TREE = Path(__file__).resolve().parent / "js_code_tree.js"
+#: elements whose text keeps its whitespace as written
+VERBATIM_TEXT = {"pre", "textarea"}
 
 
 def _python_code(source: str) -> str | None:
@@ -122,102 +123,115 @@ def _python_code(source: str) -> str | None:
     return ast.dump(tree)
 
 
-def _space(run: str) -> str:
-    """A run of whitespace as code reads it: a line break, or a space."""
-    return "\n" if "\n" in run else " "
+def _js_code(text: str, module: bool = False) -> str | None:
+    """Page code's syntax tree, comments and positions set aside (Babel, through js_code_tree.js);
+    None when it does not parse or Node cannot run it, which counts as changed."""
+    with tempfile.TemporaryDirectory() as tmp:
+        src = Path(tmp) / ("code.mjs" if module else "code.js")
+        src.write_text(text, encoding="utf-8")
+        try:
+            run = subprocess.run(["node", str(JS_CODE_TREE), str(src)], capture_output=True, text=True,
+                                 encoding="utf-8", timeout=120)
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+    return run.stdout if run.returncode == 0 and run.stdout else None
 
 
-def _js_code(text: str) -> str | None:
-    """Page code with its comments set aside, strings, template literals and regular expressions kept
-    whole, and each run of whitespace read as a line break or a space; None when it cannot be read
-    (an unterminated string, comment or expression), which counts as changed."""
-    out: list[str] = []
-    gap = ""       # whitespace and comments since the last code: read as one run
-    i, n, prev, word = 0, len(text), "", ""
-    while i < n:
-        c = text[i]
-        if c.isspace():
-            gap += c
-            i += 1
-            continue
-        if text.startswith("//", i):
-            j = text.find("\n", i)
-            i = n if j < 0 else j
-            gap += " "
-            continue
-        if text.startswith("/*", i):
-            j = text.find("*/", i + 2)
-            if j < 0:
-                return None
-            gap += " "
-            i = j + 2
-            continue
-        if gap:
-            out.append(_space(gap))
-            gap = ""
-        if c in "'\"`" or (c == "/" and (prev in "" "(,=:[!&|?{};+-*%<>~^" or word in JS_KEYWORDS_BEFORE_REGEX)):
-            j, depth, in_class = i + 1, 0, False
-            while j < n:
-                ch = text[j]
-                if ch == "\\":
-                    j += 2
-                    continue
-                if c == "`" and text.startswith("${", j):
-                    depth += 1
-                    j += 2
-                    continue
-                if c == "`" and depth and ch == "}":
-                    depth -= 1
-                elif c == "/" and ch == "[":
-                    in_class = True
-                elif c == "/" and ch == "]":
-                    in_class = False
-                elif ch == c and not depth and not in_class:
-                    break
-                elif ch == "\n" and c != "`":
-                    return None
-                j += 1
-            if j >= n:
-                return None
-            if c == "/":
-                while j + 1 < n and text[j + 1].isalpha():
-                    j += 1
-            out.append(text[i:j + 1])
-            prev, word = "a", ""
-            i = j + 1
-            continue
-        out.append(c)
-        prev = c
-        word = word + c if (c.isalnum() or c in "_$") else ""
-        i += 1
-    return "".join(out).strip()
+class _Page(HTMLParser):
+    """An HTML page as the browser reads it, comments set aside: tags and attributes as written, text
+    as written (a run of whitespace alone between tags read as one gap, except in pre and textarea),
+    each script as its syntax tree."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=False)
+        self.parts: list = []
+        self.text = ""
+        self.open: list[str] = []
+        self.readable = True
+
+    def _flush(self) -> None:
+        if self.text:
+            verbatim = any(t in VERBATIM_TEXT for t in self.open)
+            self.parts.append(("text", self.text if verbatim or self.text.strip() else " "))
+            self.text = ""
+
+    def handle_starttag(self, tag, attrs):
+        self._flush()
+        self.parts.append(("start", tag, attrs))
+        self.open.append(tag)
+
+    def handle_startendtag(self, tag, attrs):
+        self._flush()
+        self.parts.append(("startend", tag, attrs))
+
+    def handle_endtag(self, tag):
+        self._flush()
+        self.parts.append(("end", tag))
+        if tag in self.open:
+            del self.open[len(self.open) - 1 - self.open[::-1].index(tag)]
+
+    def handle_data(self, data):
+        if self.open and self.open[-1] == "script":
+            self._flush()
+            tree = _js_code(data) if data.strip() else ""
+            self.readable = self.readable and tree is not None
+            self.parts.append(("script", tree))
+        else:
+            self.text += data
+
+    def handle_entityref(self, name):
+        self.text += f"&{name};"
+
+    def handle_charref(self, name):
+        self.text += f"&#{name};"
+
+    def handle_decl(self, decl):
+        self._flush()
+        self.parts.append(("decl", decl))
+
+    def handle_pi(self, data):
+        self._flush()
+        self.parts.append(("pi", data))
+
+    def unknown_decl(self, data):
+        self._flush()
+        self.parts.append(("unknown", data))
 
 
 def _html_code(text: str) -> str | None:
-    """A page with its HTML comments and its scripts' comments set aside, whitespace read as in
-    _js_code; None when a script cannot be read."""
-    parts, at = [], 0
-    for m in SCRIPT_BLOCK.finditer(text):
-        outside = HTML_COMMENT.sub(" ", text[at:m.start(1)])
-        script = _js_code(m.group(1))
-        if script is None:
-            return None
-        parts += [re.sub(r"\s+", lambda r: _space(r.group(0)), outside), script]
-        at = m.end(1)
-    parts.append(re.sub(r"\s+", lambda r: _space(r.group(0)), HTML_COMMENT.sub(" ", text[at:])))
-    return "".join(parts).strip()
+    """A page with its HTML comments and its scripts' comments set aside (_Page); None when a script
+    cannot be read."""
+    page = _Page()
+    page.feed(text)
+    page.close()
+    page._flush()
+    parts = page.parts
+    while parts and parts[0] == ("text", " "):     # whitespace before the first tag is not shown
+        parts = parts[1:]
+    while parts and parts[-1] == ("text", " "):    # nor after the last
+        parts = parts[:-1]
+    return repr(parts) if page.readable else None
+
+
+def code_tree(path: str, text: str) -> str | None:
+    """`path`'s code, comments and docstrings set aside: the Python syntax tree, a page's parts
+    (_html_code) or page code's syntax tree; None when it cannot be read."""
+    if path.endswith(".py"):
+        return _python_code(text)
+    if path.endswith(".html"):
+        return _html_code(text)
+    return _js_code(text, module=path.endswith(".mjs"))
 
 
 def code_identical(root: Path, base: str, path: str) -> bool:
     """Whether the PR leaves `path`'s code as it is on `base` once comments and docstrings are set
-    aside (operator 2026-10-25): such a change has nothing for a test to fail on, so it needs none.
-    A file new to the PR, renamed, or one either version of which cannot be read is not that."""
+    aside: such a change has nothing for a test to fail on, so it needs none. A file new to the PR,
+    renamed, or one either version of which cannot be read is not that."""
     try:
         old = _git(root, "show", f"{_git(root, 'merge-base', base, 'HEAD').strip()}:{path}")
     except ToolError:
         return False
-    read = _python_code if path.endswith(".py") else _html_code if path.endswith(".html") else _js_code
-    before, after = read(old), read(pr_source(root, path))
+    before, after = code_tree(path, old), code_tree(path, pr_source(root, path))
     return before is not None and before == after
 
 

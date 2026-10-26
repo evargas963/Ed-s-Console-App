@@ -121,8 +121,8 @@ def test_a_page_fix_with_no_test_change_is_refused(page_repo):
     assert cfb.violations(root, "main") == ["product code changed (calc.js) but no test under tests/ changed"]
 
 
-# The code before and after a cleanup that only rewrites comments and docstrings (operator 2026-10-25):
-# the same code, so nothing for a test to fail on.
+# The code before and after a cleanup that only rewrites comments and docstrings: the same code, so
+# nothing for a test to fail on.
 NOTED = {"calc.py": ('"""Spot, from the row (RC-12, 2026-09-01)."""\n\n\n'
                      "def spot(row):\n    \"\"\"The bid (used to be the mark).\"\"\"\n"
                      "    return row['bid']  # audit 2026-09-02\n"),
