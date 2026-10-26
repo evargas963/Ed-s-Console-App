@@ -179,6 +179,8 @@ def test_a_code_change_beside_comment_changes_still_needs_an_end_to_end_test(tmp
     # a block comment holding a line break ends the return
     ("static/js/page.js", "function f(){ return /*\n note */ 1 }\n", "function f(){ return 1 }\n"),
     # whitespace a page shows, a comment inside an attribute, a no-break space
+    # an encoding line: imported, the strings read otherwise
+    ("server.py", 'ARROW = "→"\n', '# -*- coding: latin-1 -*-\nARROW = "→"\n'),
     ("static/page.html", "<pre>a  b</pre>\n", "<pre>a b</pre>\n"),
     ("static/page.html", '<p title="<!-- x -->">a</p>\n', '<p title="">a</p>\n'),
     ("static/page.html", "<p>a b</p>\n", "<p>a b</p>\n"),
@@ -193,14 +195,31 @@ def test_a_code_change_a_comment_reader_could_miss_still_needs_an_end_to_end_tes
         "(tests/test_data_path_*.py or tests/e2e/*.spec.js) gained a real line"]
 
 
-def test_every_product_file_in_the_repo_is_read():
-    """Every product file of this repository reads (code_tree is not None), so a cleanup of its
-    comments is judged by its code, never refused as unreadable."""
+def test_every_python_and_page_code_file_in_the_repo_is_read():
+    """Every .py, .js and .mjs product file of this repository reads (code_tree is not None), so a
+    cleanup of its comments is judged by its code, never refused as unreadable."""
     root = Path(__file__).resolve().parent.parent
     files = subprocess.run(["git", "ls-files"], cwd=root, capture_output=True, text=True, check=True).stdout.split()
-    product = [f for f in files if cee.is_product(f)]
+    product = [f for f in files if cee.is_product(f) and f.endswith(cee.CODE_TREE_SUFFIXES)]
     unread = [f for f in product if cee.code_tree(f, (root / f).read_text(encoding="utf-8")) is None]
     assert product and unread == []
+
+
+def test_a_comment_only_change_to_an_html_page_still_needs_an_end_to_end_test(tmp_path):
+    root = _repo(tmp_path, {**BASE, "static/page.html": "<!-- RC-UI-1 -->\n<p>a</p>\n"})
+    _commit(root, {"static/page.html": "<p>a</p>\n"})
+    assert cee.violations(root, "main", BODY) == [
+        "product code changed (static/page.html) but no end-to-end path test "
+        "(tests/test_data_path_*.py or tests/e2e/*.spec.js) gained a real line"]
+
+
+def test_deleting_a_product_file_still_needs_an_end_to_end_test(tmp_path):
+    root = _repo(tmp_path, {**BASE, "dead.py": "def unused(row):\n    return row['ask']\n"})
+    subprocess.run(["git", "rm", "-q", "dead.py"], cwd=root, check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-q", "-m", "remove dead.py"], cwd=root, check=True, capture_output=True)
+    assert cee.violations(root, "main", BODY) == [
+        "product code changed (dead.py) but no end-to-end path test "
+        "(tests/test_data_path_*.py or tests/e2e/*.spec.js) gained a real line"]
 
 
 def test_a_required_section_left_empty_is_refused(tmp_path):

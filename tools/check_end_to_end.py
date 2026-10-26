@@ -6,8 +6,8 @@ test covers the changed behavior; those are proven by behavior tests and review.
 1. A PR that changes product code also adds real lines (not blank, not a comment) to an
    end-to-end path test: `tests/test_data_path_*.py` or `tests/e2e/*.spec.js`. A file whose code
    is the same once comments and docstrings are set aside (code_identical: the Python syntax tree;
-   page code's syntax tree from Babel, tools/js_code_tree.js; an HTML page's tags, attributes and
-   text) is not a change of product code. Removing code nothing calls changes the code, so it is.
+   page code's syntax tree from Babel, tools/js_code_tree.js) is not a change of product code. An
+   .html page is always one, and so is removing code nothing calls, a deleted file included.
 2. The product lines it adds carry no patch shape:
    - an except that catches everything (bare, `Exception`, `BaseException`, or a tuple holding
      one), or one whose only statement swallows the error: `pass`, `continue`, a return or an
@@ -39,8 +39,9 @@ import ast
 import re
 import subprocess
 import sys
+import io
 import tempfile
-from html.parser import HTMLParser
+import tokenize
 from pathlib import Path
 
 PRODUCT_SUFFIXES = (".py", ".js", ".mjs", ".html")
@@ -103,16 +104,22 @@ def is_product(path: str) -> bool:
 
 
 JS_CODE_TREE = Path(__file__).resolve().parent / "js_code_tree.js"
-#: elements whose text keeps its whitespace as written
-VERBATIM_TEXT = {"pre", "textarea"}
+#: the files whose code a syntax tree reads exactly; an .html page is not one (a browser's reading of
+#: its whitespace, entities and comments depends on CSS and parser details), so every change to one
+#: is a change of product code (operator 2026-10-26)
+CODE_TREE_SUFFIXES = (".py", ".js", ".mjs")
 
 
 def _python_code(source: str) -> str | None:
     """The module's code with its comments and docstrings set aside (its syntax tree), or None when
-    it does not parse."""
+    it does not parse or declares an encoding other than UTF-8 (imported, its strings would read
+    otherwise than this tree)."""
     try:
+        encoding, _ = tokenize.detect_encoding(io.BytesIO(source.encode("utf-8")).readline)
         tree = ast.parse(source)
-    except SyntaxError:
+    except (SyntaxError, UnicodeError):
+        return None
+    if encoding not in ("utf-8", "utf-8-sig"):
         return None
     for node in ast.walk(tree):
         if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -137,107 +144,39 @@ def _js_code(text: str, module: bool = False) -> str | None:
     return run.stdout if run.returncode == 0 and run.stdout else None
 
 
-class _Page(HTMLParser):
-    """An HTML page as the browser reads it, comments set aside: tags and attributes as written, text
-    as written (a run of whitespace alone between tags read as one gap, except in pre and textarea),
-    each script as its syntax tree."""
-
-    def __init__(self) -> None:
-        super().__init__(convert_charrefs=False)
-        self.parts: list = []
-        self.text = ""
-        self.open: list[str] = []
-        self.readable = True
-
-    def _flush(self) -> None:
-        if self.text:
-            verbatim = any(t in VERBATIM_TEXT for t in self.open)
-            self.parts.append(("text", self.text if verbatim or self.text.strip() else " "))
-            self.text = ""
-
-    def handle_starttag(self, tag, attrs):
-        self._flush()
-        self.parts.append(("start", tag, attrs))
-        self.open.append(tag)
-
-    def handle_startendtag(self, tag, attrs):
-        self._flush()
-        self.parts.append(("startend", tag, attrs))
-
-    def handle_endtag(self, tag):
-        self._flush()
-        self.parts.append(("end", tag))
-        if tag in self.open:
-            del self.open[len(self.open) - 1 - self.open[::-1].index(tag)]
-
-    def handle_data(self, data):
-        if self.open and self.open[-1] == "script":
-            self._flush()
-            tree = _js_code(data) if data.strip() else ""
-            self.readable = self.readable and tree is not None
-            self.parts.append(("script", tree))
-        else:
-            self.text += data
-
-    def handle_entityref(self, name):
-        self.text += f"&{name};"
-
-    def handle_charref(self, name):
-        self.text += f"&#{name};"
-
-    def handle_decl(self, decl):
-        self._flush()
-        self.parts.append(("decl", decl))
-
-    def handle_pi(self, data):
-        self._flush()
-        self.parts.append(("pi", data))
-
-    def unknown_decl(self, data):
-        self._flush()
-        self.parts.append(("unknown", data))
-
-
-def _html_code(text: str) -> str | None:
-    """A page with its HTML comments and its scripts' comments set aside (_Page); None when a script
-    cannot be read."""
-    page = _Page()
-    page.feed(text)
-    page.close()
-    page._flush()
-    parts = page.parts
-    while parts and parts[0] == ("text", " "):     # whitespace before the first tag is not shown
-        parts = parts[1:]
-    while parts and parts[-1] == ("text", " "):    # nor after the last
-        parts = parts[:-1]
-    return repr(parts) if page.readable else None
-
-
 def code_tree(path: str, text: str) -> str | None:
-    """`path`'s code, comments and docstrings set aside: the Python syntax tree, a page's parts
-    (_html_code) or page code's syntax tree; None when it cannot be read."""
+    """`path`'s code, comments and docstrings set aside: Python's syntax tree, or page code's syntax
+    tree; None when it cannot be read or `path` is not one of CODE_TREE_SUFFIXES."""
     if path.endswith(".py"):
         return _python_code(text)
-    if path.endswith(".html"):
-        return _html_code(text)
-    return _js_code(text, module=path.endswith(".mjs"))
+    if path.endswith((".js", ".mjs")):
+        return _js_code(text, module=path.endswith(".mjs"))
+    return None
 
 
 def code_identical(root: Path, base: str, path: str) -> bool:
     """Whether the PR leaves `path`'s code as it is on `base` once comments and docstrings are set
     aside: such a change has nothing for a test to fail on, so it needs none. A file new to the PR,
-    renamed, or one either version of which cannot be read is not that."""
+    renamed, deleted, not one of CODE_TREE_SUFFIXES, or one either version of which cannot be read
+    is not that."""
     try:
         old = _git(root, "show", f"{_git(root, 'merge-base', base, 'HEAD').strip()}:{path}")
+        new = pr_source(root, path)
     except ToolError:
         return False
-    before, after = code_tree(path, old), code_tree(path, pr_source(root, path))
+    before, after = code_tree(path, old), code_tree(path, new)
     return before is not None and before == after
 
 
 def behavior_change(root: Path, base: str, path: str) -> bool:
     """A product file whose code the PR changes (is_product, and not code_identical)."""
     return is_product(path) and not code_identical(root, base, path)
+
+
+def deleted_product(root: Path, base: str) -> list[str]:
+    """The product files the PR deletes: removing code is a change of it, whatever called it."""
+    return [f for f in _git(root, "diff", "--name-only", "--diff-filter=D", f"{base}...HEAD").splitlines()
+            if f and is_product(f)]
 
 
 def _spans_added(node: ast.AST, added: set[int]) -> bool:
@@ -388,13 +327,14 @@ def body_violations(body: str) -> list[str]:
 
 def violations(root: Path, base: str, body: str | None) -> list[str]:
     added = pr_added_lines(root, base)
-    product = sorted(f for f in added if behavior_change(root, base, f))
+    changed_code = sorted(f for f in added if behavior_change(root, base, f))
+    product = sorted(changed_code + deleted_product(root, base))
     out = []
     if product and not any(p.match(f) and adds_real_lines(pr_source(root, f), added[f])
                            for f in added for p in END_TO_END):
         out.append(f"product code changed ({', '.join(product)}) but no end-to-end path test "
                    "(tests/test_data_path_*.py or tests/e2e/*.spec.js) gained a real line")
-    for f in product:
+    for f in changed_code:
         source = pr_source(root, f)
         found = python_patches(source, added[f]) if f.endswith(".py") else js_patches(f, source, added[f])
         out.extend(f"{f}:{line}: {what}" for line, what in found)

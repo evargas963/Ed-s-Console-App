@@ -7,8 +7,8 @@ specs (tests/e2e/*.spec.js) with the repository's installed Playwright, against 
 from the base. At least one test must fail or error on the base; a change whose every test
 already passed before proves nothing about that change. The same tests passing on the PR is the
 full suite's job (the required pytest-full check). A product file whose code is the same once
-comments and docstrings are set aside (check_end_to_end.code_identical) has nothing for a test to
-fail on, and needs none.
+comments and docstrings are set aside (check_end_to_end.code_identical: .py, .js, .mjs) has nothing
+for a test to fail on, and needs none; a deleted product file is a change.
 
 The base checkout sits inside the repository so that Node finds the repository's node_modules
 from it, and runs on the same Python as this check (first on PATH for the spec's console).
@@ -30,7 +30,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from check_end_to_end import ToolError, _git, behavior_change  # noqa: E402
+from check_end_to_end import ToolError, _git, behavior_change, deleted_product  # noqa: E402
 
 
 def changed(root: Path, base: str) -> list[str]:
@@ -111,7 +111,7 @@ def failures_on_base(root: Path, base: str, files: list[str], tests: list[str]) 
 
 def violations(root: Path, base: str) -> list[str]:
     files = changed(root, base)
-    product = [f for f in files if behavior_change(root, base, f)]
+    product = [f for f in files if behavior_change(root, base, f)] + deleted_product(root, base)
     if not product:
         return []
     tests = [f for f in files if is_test(f)]

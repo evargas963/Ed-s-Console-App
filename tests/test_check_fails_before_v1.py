@@ -126,13 +126,11 @@ def test_a_page_fix_with_no_test_change_is_refused(page_repo):
 NOTED = {"calc.py": ('"""Spot, from the row (RC-12, 2026-09-01)."""\n\n\n'
                      "def spot(row):\n    \"\"\"The bid (used to be the mark).\"\"\"\n"
                      "    return row['bid']  # audit 2026-09-02\n"),
-         "page.js": "// RC-9 2026-09-01: drawn here\nvar url = 'http://x/*y*/';  /* was a fallback */\nvar re = /\\/\\//;\n",
-         "page.html": "<!-- RC-UI-1 (2026-09-13) -->\n<p>a</p>\n<script>\n// 2026-09-13 history\nvar a = 1;\n</script>\n"}
+         "page.js": "// RC-9 2026-09-01: drawn here\nvar url = 'http://x/*y*/';  /* was a fallback */\nvar re = /\\/\\//;\n"}
 CLEANED = {"calc.py": ('"""Spot, from the row."""\n\n\n'
                        "def spot(row):\n    \"\"\"The bid.\"\"\"\n"
                        "    return row['bid']\n"),
-           "page.js": "// drawn here\nvar url = 'http://x/*y*/';\nvar re = /\\/\\//;\n",
-           "page.html": "<p>a</p>\n<script>\nvar a = 1;\n</script>\n"}
+           "page.js": "// drawn here\nvar url = 'http://x/*y*/';\nvar re = /\\/\\//;\n"}
 
 
 def test_a_change_to_comments_and_docstrings_only_needs_no_test(tmp_path):
@@ -144,13 +142,28 @@ def test_a_change_to_comments_and_docstrings_only_needs_no_test(tmp_path):
     ("calc.py", '"""Spot, from the row."""\n\n\ndef spot(row):\n    """The bid."""\n    return row["ask"]\n'),
     ("page.js", "// drawn here\nvar url = 'http://x/*z*/';\nvar re = /\\/\\//;\n"),        # inside a string
     ("page.js", "// drawn here\nvar url = 'http://x/*y*/';\nvar re = /\\/\\/x/;\n"),      # inside a regex
-    ("page.html", "<p>b</p>\n<script>\nvar a = 1;\n</script>\n"),
-    ("page.html", "<p>a</p>\n<script>\nvar a = 2;\n</script>\n"),
+    # an encoding line: imported, the strings read otherwise
+    ("calc.py", '# -*- coding: latin-1 -*-\n"""Spot, from the row."""\n\n\ndef spot(row):\n    """The bid."""\n'
+                "    return row['bid']\n"),
 ])
 def test_a_code_change_beside_the_comments_still_needs_a_failing_test(tmp_path, path, text):
     root = _repo(tmp_path, {**CLEANED, path: text}, base={**BASE, **NOTED})
     assert cfb.violations(root, "main") == [
         f"product code changed ({path}) but no test under tests/ changed"]
+
+
+def test_a_comment_only_change_to_an_html_page_still_needs_a_test(tmp_path):
+    """A browser's reading of a page's whitespace, entities and comments depends on CSS and parser
+    details, so a page is never judged unchanged by its comments (operator 2026-10-26)."""
+    root = _repo(tmp_path, {"page.html": "<p>a</p>\n"}, base={**BASE, "page.html": "<!-- RC-UI-1 -->\n<p>a</p>\n"})
+    assert cfb.violations(root, "main") == ["product code changed (page.html) but no test under tests/ changed"]
+
+
+def test_deleting_a_product_file_still_needs_a_test(tmp_path):
+    root = _repo(tmp_path, {"notes.md": "words\n"}, base={**BASE, "dead.py": "def unused(row):\n    return row['ask']\n"})
+    _git(root, "rm", "-q", "dead.py")
+    _git(root, "commit", "-q", "-m", "remove dead.py")
+    assert cfb.violations(root, "main") == ["product code changed (dead.py) but no test under tests/ changed"]
 
 
 def test_removing_a_function_nothing_calls_still_needs_a_test(tmp_path):

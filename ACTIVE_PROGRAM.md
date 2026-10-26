@@ -237,9 +237,13 @@ stand-ins PR B adds are recorded in STAND-INS, and the older stand-ins in the fi
 with STAND-INS. Operator 2026-10-26, for the repo-wide simplify (his 2026-10-24 request, started
 without a second yes): a product file whose code is the same once comments and docstrings are set
 aside needs no failing test and no end-to-end line (`check_end_to_end.code_identical`, read by
-`check_fails_before`: Python's syntax tree, page code's syntax tree from Babel through
-`tools/js_code_tree.js`, an HTML page's tags, attributes and text), proven by tests of the two
-checkers; removing code nothing calls still needs a test or a no-callers proof (SIMPLIFY (2)).
+`check_fails_before`), proven by tests of the two checkers; removing code nothing calls, a deleted
+file included, still needs a test or a no-callers proof (SIMPLIFY (2)). Operator 2026-10-26, after
+both reviews: only `.py` (its syntax tree; a declared encoding other than UTF-8 is a change) and
+`.js` / `.mjs` (Babel's syntax tree, `tools/js_code_tree.js`) are judged so; an `.html` page is
+always a change of product code, because a browser's reading of its whitespace, entities and
+comments depends on CSS and parser details. The history notes in `static/index.html` go in a PR the
+operator approves on its diff, or with a browser test that the page's DOM and styles read the same.
 
 | ID | Status | Work item |
 |---|---|---|
