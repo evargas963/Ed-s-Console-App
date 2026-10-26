@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Credential / secret leak firewall on staged (and optional) text diffs.
+"""Credential / secret leak firewall on the staged diff.
 
 Refuses Bearer tokens, API keys, private keys and operator-home paths (Windows, posix and Git
-Bash spellings) in `git diff --cached` (what a commit would publish). The scanner's own suite
-and this module are path-skipped
-(injected payloads must live there). Other fixtures mark a line with
-`# credential-leak-ok` or `# credential-leak-fixture-ok`.
+Bash spellings) on any line `git diff --cached` adds, every staged file read as text (what a
+commit would publish). The scanner's own suite and this module are path-skipped (injected
+payloads must live there). Other fixtures mark a line with `# credential-leak-ok` or
+`# credential-leak-fixture-ok`.
 
     python tools/check_credential_leak.py
 """
@@ -15,6 +15,9 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from check_end_to_end import ToolError, _diff_path  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -48,52 +51,53 @@ class StagedDiffUnreadable(RuntimeError):
     """`git diff --cached` did not run. An unread diff is not an empty diff."""
 
 
-def _staged_text() -> str:
+def _staged_text(root: Path) -> str:
     """The staged diff, RAISING when git could not produce it.
 
     Any failure of git — a broken or locked index, a corrupt object, git absent from PATH —
     raises: an unread diff would scan clean and let the commit through unread. "I could not
     look" is not "there is nothing".
     """
+    # core.quotePath=true: a quoted name is all escapes, whatever the repository's own setting.
+    # --text, --no-textconv, --no-ext-diff: the bytes the commit publishes, whatever its attributes
+    # or diff settings. Read as bytes: git ends a line only at a line feed.
     p = subprocess.run(
-        ["git", "diff", "--cached", "--unified=0", "--no-color"],
-        cwd=REPO,
+        ["git", "-c", "core.quotePath=true", "diff", "--cached", "--unified=0", "--no-color",
+         "--text", "--no-textconv", "--no-ext-diff", "--src-prefix=a/", "--dst-prefix=b/"],
+        cwd=root,
         capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
     )
     if p.returncode != 0:
         raise StagedDiffUnreadable(
             f"git diff --cached exited {p.returncode}: "
-            f"{((p.stderr or '').strip().splitlines() or [''])[0]}"
+            f"{(p.stderr.decode('utf-8', errors='replace').strip().splitlines() or [''])[0]}"
         )
-    return p.stdout or ""
+    return p.stdout.decode("utf-8", errors="replace")
 
 
-def _norm_path(path: str) -> str:
-    """The ONE repo-relative spelling; a leading dot (`.github/...`) is kept, so a dot-prefixed
-    skip entry matches."""
-    if str(REPO) not in sys.path:
-        sys.path.insert(0, str(REPO))
-    from tools.pretooluse_guard import normalize_repo_relative
-
-    return normalize_repo_relative(path)
-
-
-def find_credential_leaks(diff_text: str | None = None) -> list[str]:
-    text = _staged_text() if diff_text is None else diff_text
+def find_credential_leaks(root: Path = REPO) -> list[str]:
+    """Every secret or operator-home path on a line `root`'s staged diff adds."""
+    text = _staged_text(root)
     hits: list[str] = []
     current_file = "?"
     skip_file = False
-    for line in text.splitlines():
-        if line.startswith("+++ b/"):
-            current_file = _norm_path(line[6:].strip() or "?")
-            skip_file = current_file in _SKIP_PATHS
+    header = False      # between a file's `diff --git` and its first hunk: an added line is not a header
+    for line in text.split("\n"):
+        if line.startswith("diff --git "):
+            current_file, skip_file, header = "?", False, True
             continue
-        if skip_file:
+        if line.startswith("@@ "):
+            header = False
             continue
-        if not line.startswith("+") or line.startswith("+++"):
+        if header:
+            if line.startswith("+++ ") and line != "+++ /dev/null":
+                try:
+                    current_file = _diff_path(line[len("+++ "):])
+                except ToolError as e:
+                    raise StagedDiffUnreadable(str(e)) from e
+                skip_file = current_file in _SKIP_PATHS
+            continue
+        if skip_file or not line.startswith("+"):
             continue
         body = line[1:]
         if any(m in body for m in _FIXTURE_MARKERS):
