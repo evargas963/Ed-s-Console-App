@@ -119,3 +119,41 @@ def test_a_page_fix_whose_spec_already_passed_before_is_refused(page_repo):
 def test_a_page_fix_with_no_test_change_is_refused(page_repo):
     root = page_repo({"calc.js": JS_FIX})
     assert cfb.violations(root, "main") == ["product code changed (calc.js) but no test under tests/ changed"]
+
+
+# The code before and after a cleanup that only rewrites comments and docstrings (operator 2026-10-25):
+# the same code, so nothing for a test to fail on.
+NOTED = {"calc.py": ('"""Spot, from the row (RC-12, 2026-09-01)."""\n\n\n'
+                     "def spot(row):\n    \"\"\"The bid (used to be the mark).\"\"\"\n"
+                     "    return row['bid']  # audit 2026-09-02\n"),
+         "page.js": "// RC-9 2026-09-01: drawn here\nvar url = 'http://x/*y*/';  /* was a fallback */\nvar re = /\\/\\//;\n",
+         "page.html": "<!-- RC-UI-1 (2026-09-13) -->\n<p>a</p>\n<script>\n// 2026-09-13 history\nvar a = 1;\n</script>\n"}
+CLEANED = {"calc.py": ('"""Spot, from the row."""\n\n\n'
+                       "def spot(row):\n    \"\"\"The bid.\"\"\"\n"
+                       "    return row['bid']\n"),
+           "page.js": "// drawn here\nvar url = 'http://x/*y*/';\nvar re = /\\/\\//;\n",
+           "page.html": "<p>a</p>\n<script>\nvar a = 1;\n</script>\n"}
+
+
+def test_a_change_to_comments_and_docstrings_only_needs_no_test(tmp_path):
+    root = _repo(tmp_path, CLEANED, base={**BASE, **NOTED})
+    assert cfb.violations(root, "main") == []
+
+
+@pytest.mark.parametrize("path, text", [
+    ("calc.py", '"""Spot, from the row."""\n\n\ndef spot(row):\n    """The bid."""\n    return row["ask"]\n'),
+    ("page.js", "// drawn here\nvar url = 'http://x/*z*/';\nvar re = /\\/\\//;\n"),        # inside a string
+    ("page.js", "// drawn here\nvar url = 'http://x/*y*/';\nvar re = /\\/\\/x/;\n"),      # inside a regex
+    ("page.html", "<p>b</p>\n<script>\nvar a = 1;\n</script>\n"),
+    ("page.html", "<p>a</p>\n<script>\nvar a = 2;\n</script>\n"),
+])
+def test_a_code_change_beside_the_comments_still_needs_a_failing_test(tmp_path, path, text):
+    root = _repo(tmp_path, {**CLEANED, path: text}, base={**BASE, **NOTED})
+    assert cfb.violations(root, "main") == [
+        f"product code changed ({path}) but no test under tests/ changed"]
+
+
+def test_removing_a_function_nothing_calls_still_needs_a_test(tmp_path):
+    base = {**BASE, "calc.py": BASE["calc.py"] + "\n\ndef unused(row):\n    return row['ask']\n"}
+    root = _repo(tmp_path, {"calc.py": BASE["calc.py"]}, base=base)
+    assert cfb.violations(root, "main") == ["product code changed (calc.py) but no test under tests/ changed"]

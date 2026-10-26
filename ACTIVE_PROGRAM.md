@@ -234,7 +234,11 @@ Schwab ever sends one, counts as closed, like the counts and the levels word); i
 file-wide cleanup is a separate pass; AGENTS.md rule 2's wording ("a reported 0 is 0") against the
 closed-day count rule is the operator's to amend; the
 stand-ins PR B adds are recorded in STAND-INS, and the older stand-ins in the files it touches stay
-with STAND-INS.
+with STAND-INS. Operator 2026-10-26, for the repo-wide simplify (his 2026-10-24 request, started
+without a second yes): a product file whose code is the same once comments and docstrings are set
+aside needs no failing test and no end-to-end line (`check_end_to_end.code_identical`, read by
+`check_fails_before`), proven by tests of the two checkers; removing code nothing calls still needs a
+test or a no-callers proof.
 
 | ID | Status | Work item |
 |---|---|---|

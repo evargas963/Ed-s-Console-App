@@ -149,6 +149,25 @@ def test_a_comment_added_to_a_path_test_is_not_an_end_to_end_test(tmp_path):
     assert cee.violations(root, "main", BODY)[0].startswith("product code changed")
 
 
+def test_a_change_to_comments_and_docstrings_only_needs_no_end_to_end_test(tmp_path):
+    """The same code once comments and docstrings are set aside: nothing for a path test to cover."""
+    root = _repo(tmp_path, {**BASE, "server.py": '"""Spot (RC-12, 2026-09-01)."""\n\n\ndef spot(row):\n'
+                                                  "    return row['last']  # used to be the bid\n",
+                            "static/js/page.js": "/* RC-UI-1 */\nfunction draw(v) { return v; }  // 2026-09-13\n"})
+    _commit(root, {"server.py": '"""Spot."""\n\n\ndef spot(row):\n    return row[\'last\']\n',
+                   "static/js/page.js": "function draw(v) { return v; }\n"})
+    assert cee.violations(root, "main", BODY) == []
+
+
+def test_a_code_change_beside_comment_changes_still_needs_an_end_to_end_test(tmp_path):
+    root = _repo(tmp_path, {**BASE, "static/js/page.js": "/* RC-UI-1 */\nfunction draw(v) { return v; }\n"})
+    _commit(root, {"server.py": "def spot(row):\n    return row['bid']\n",
+                   "static/js/page.js": "function draw(v) { return v; }\n"})
+    assert cee.violations(root, "main", BODY) == [
+        "product code changed (server.py) but no end-to-end path test "
+        "(tests/test_data_path_*.py or tests/e2e/*.spec.js) gained a real line"]
+
+
 def test_a_required_section_left_empty_is_refused(tmp_path):
     body = "Schwab → screen: the quote.\nDeleted:\nEnd-to-end test: tests/test_data_path_x.py\n"
     assert _found(tmp_path, {}, body) == ["the PR description's Deleted: is empty"]
