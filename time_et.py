@@ -164,15 +164,16 @@ def options_closed_at(now: datetime, product: str | None = None) -> datetime | N
 
 
 def valuation_instant(now: datetime, product: str = EQUITY_OPTIONS) -> datetime:
-    """The instant a live chain is priced. Once `product`'s option market has closed for the day
-    (option_market_open), that day's close, so the close numbers stand for the rest of it. While
-    it is open, before it opens, on a day with no window, and on a date whose session is not held,
-    it is `now`: the time to each expiry runs on the clock, and a day with no session has no
+    """The instant a live chain is priced. While `product`'s option market is not open
+    (option_market_open) after a close earlier that day (options_closed_at, the one close
+    instant; a gap between two windows counts as closed), that close, so the close numbers stand.
+    While it is open, before it opens, on a day with no window, and on a date whose session is not
+    held, it is `now`: the time to each expiry runs on the clock, and a day with no session has no
     same-day close."""
     if option_market_open(now, product) is not False:
         return now
-    windows = session(now.astimezone(ET).date().isoformat()).option_windows(product)
-    return windows[-1][1] if windows and now >= windows[-1][1] else now
+    closed = options_closed_at(now, product)
+    return closed if closed is not None and closed.astimezone(ET).date() == now.astimezone(ET).date() else now
 
 
 def closed_since(now: datetime) -> "datetime | None":
