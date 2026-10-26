@@ -267,6 +267,30 @@ def test_a_path_test_whose_name_git_quotes_is_an_end_to_end_test(tmp_path):
     assert cee.violations(root, "main", BODY) == []
 
 
+def test_a_name_git_quotes_with_raw_characters_is_still_read(tmp_path):
+    """With the repository's core.quotePath off, git would put a name's non-ASCII characters inside
+    its quotes as they are; the checker asks git for escapes, so the name reads back exactly."""
+    path = 'static/js/a"é.js'
+    root = _repo(tmp_path, BASE)
+    _git_in(root, "config", "core.quotePath", "false")
+    _git_in(root, "config", "core.protectNTFS", "false")      # a name Windows cannot hold on disk
+    (tmp_path / "blob.txt").write_text("var y = v || 0;\n", encoding="utf-8")
+    sha = subprocess.run(["git", "hash-object", "-w", "blob.txt"], cwd=root, check=True,
+                         capture_output=True, text=True).stdout.strip()
+    _git_in(root, "update-index", "--add", "--cacheinfo", f"100644,{sha},{path}")
+    _commit(root, REAL_TEST)
+    assert cee.violations(root, "main", BODY) == [
+        f"{path}:1: a missing value replaced by a literal, an empty catch, or a swallowing .catch"]
+
+
+def test_a_renamed_path_test_with_a_real_line_added_is_an_end_to_end_test(tmp_path):
+    root = _repo(tmp_path, BASE)
+    _git_in(root, "mv", TEST, "tests/test_data_path_y.py")
+    _commit(root, {"server.py": "def spot(row):\n    return row['bid']\n",
+                   "tests/test_data_path_y.py": "def test_x():\n    pass\n    assert spot({'bid': 1.0}) == 1.0\n"})
+    assert cee.violations(root, "main", BODY) == []
+
+
 def test_a_patch_moved_into_product_code_is_refused_at_its_line(tmp_path):
     """A file moved from outside product paths into them brings every line it holds into product
     code, so its patch shapes are refused there, edited or not."""

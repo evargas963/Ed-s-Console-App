@@ -101,7 +101,8 @@ def pr_added_lines(root: Path, base: str, renames: bool) -> dict[str, set[int]]:
     out: dict[str, set[int]] = {}
     path: str | None = None
     header = False      # between a file's `diff --git` and its first hunk: an added line is not a header
-    for line in _git(root, "diff", "-U0", "-M" if renames else "--no-renames", "--src-prefix=a/",
+    # core.quotePath=true: a quoted name is all escapes, whatever the repository's own setting
+    for line in _git(root, "-c", "core.quotePath=true", "diff", "-U0", "-M" if renames else "--no-renames", "--src-prefix=a/",
                      "--dst-prefix=b/", "--diff-filter=AMRT", f"{base}...HEAD").split("\n"):
         if line.startswith("diff --git "):
             path, header = None, True
