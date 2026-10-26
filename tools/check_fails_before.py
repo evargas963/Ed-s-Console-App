@@ -30,12 +30,11 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from check_end_to_end import ToolError, _git, behavior_change, deleted_product  # noqa: E402
+from check_end_to_end import ToolError, _git, behavior_change, deleted_product, pr_files  # noqa: E402
 
 
 def changed(root: Path, base: str) -> list[str]:
-    return [f for f in _git(root, "diff", "--name-only", "--no-renames", "--diff-filter=AMT",
-                            f"{base}...HEAD").splitlines() if f]
+    return pr_files(root, base, "AMT")
 
 
 def is_pytest(path: str) -> bool:

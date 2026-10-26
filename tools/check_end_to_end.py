@@ -75,15 +75,32 @@ def _git(root: Path, *args: str) -> str:
         raise ToolError(f"git {' '.join(args)} failed: {e}") from e
 
 
+def pr_files(root: Path, base: str, kinds: str) -> list[str]:
+    """The paths the PR changes in the ways `kinds` names (git's --diff-filter letters), each as
+    written (NUL-separated, never quoted), a rename read as its deletion and its addition."""
+    out = _git(root, "diff", "--name-only", "-z", "--no-renames", f"--diff-filter={kinds}", f"{base}...HEAD")
+    return [f for f in out.split("\0") if f]
+
+
+def _diff_path(header: str) -> str:
+    """The path of a diff's `+++ ` header: git C-quotes a name holding a quote, backslash or
+    non-ASCII character, and ends one holding a space with a tab."""
+    name = header.removesuffix("\t")
+    if name.startswith('"'):
+        name = ast.literal_eval("b" + name).decode("utf-8")
+    return name.removeprefix("b/")
+
+
 def pr_added_lines(root: Path, base: str) -> dict[str, set[int]]:
-    """{path: the line numbers, in the PR's version, of the lines the PR adds}, one diff."""
+    """{path: the line numbers, in the PR's version, of the lines the PR adds}, one diff. A file
+    renamed with no edit adds no line (git's rename detection)."""
     out: dict[str, set[int]] = {}
     path: str | None = None
-    for line in _git(root, "diff", "-U0", "--no-renames", "--diff-filter=AMT", f"{base}...HEAD").splitlines():
+    for line in _git(root, "diff", "-U0", "-M", "--diff-filter=AMRT", f"{base}...HEAD").split("\n"):
         if line.startswith("diff --git "):
             path = None
-        elif line.startswith("+++ b/"):
-            path = line[len("+++ b/"):]
+        elif line.startswith("+++ ") and line != "+++ /dev/null":
+            path = _diff_path(line[len("+++ "):])
             out[path] = set()
         elif line.startswith("@@ ") and path is not None:
             m = HUNK.match(line)
@@ -134,7 +151,7 @@ def _js_code(text: str, module: bool = False) -> str | None:
     None when it does not parse or Node cannot run it, which counts as changed."""
     with tempfile.TemporaryDirectory() as tmp:
         src = Path(tmp) / ("code.mjs" if module else "code.js")
-        src.write_text(text, encoding="utf-8")
+        src.write_bytes(text.encode("utf-8"))      # as written: no line ending translated
         try:
             run = subprocess.run(["node", str(JS_CODE_TREE), str(src)], capture_output=True, text=True,
                                  encoding="utf-8", timeout=120)
@@ -173,11 +190,9 @@ def behavior_change(root: Path, base: str, path: str) -> bool:
 
 
 def deleted_product(root: Path, base: str) -> list[str]:
-    """The product files the PR deletes, a file moved away included (a rename is read as its
-    deletion and an addition): removing code is a change of it, whatever called it."""
-    return [f for f in _git(root, "diff", "--name-only", "--no-renames", "--diff-filter=D",
-                            f"{base}...HEAD").splitlines()
-            if f and is_product(f)]
+    """The product files the PR deletes, a file moved away included: removing code is a change of
+    it, whatever called it."""
+    return [f for f in pr_files(root, base, "D") if is_product(f)]
 
 
 def _spans_added(node: ast.AST, added: set[int]) -> bool:
@@ -310,8 +325,10 @@ def js_patches(path: str, source: str, added: set[int]) -> list[tuple[int, str]]
 
 
 def adds_real_lines(source: str, added: set[int]) -> bool:
+    """Whether a line the PR adds holds code, not only a comment; lines numbered as git numbers
+    them (by line feed alone)."""
     return any(n in added and (s := text.strip()) and not s.startswith(("#", "//"))
-               for n, text in enumerate(source.splitlines(), start=1))
+               for n, text in enumerate(source.split("\n"), start=1))
 
 
 def body_violations(body: str) -> list[str]:
@@ -328,7 +345,7 @@ def body_violations(body: str) -> list[str]:
 
 def violations(root: Path, base: str, body: str | None) -> list[str]:
     added = pr_added_lines(root, base)
-    changed_code = sorted(f for f in added if behavior_change(root, base, f))
+    changed_code = sorted(f for f in pr_files(root, base, "AMT") if behavior_change(root, base, f))
     product = sorted(changed_code + deleted_product(root, base))
     out = []
     if product and not any(p.match(f) and adds_real_lines(pr_source(root, f), added[f])
@@ -337,7 +354,8 @@ def violations(root: Path, base: str, body: str | None) -> list[str]:
                    "(tests/test_data_path_*.py or tests/e2e/*.spec.js) gained a real line")
     for f in changed_code:
         source = pr_source(root, f)
-        found = python_patches(source, added[f]) if f.endswith(".py") else js_patches(f, source, added[f])
+        lines = added.get(f, set())
+        found = python_patches(source, lines) if f.endswith(".py") else js_patches(f, source, lines)
         out.extend(f"{f}:{line}: {what}" for line, what in found)
     if body is not None:
         out.extend(body_violations(body))

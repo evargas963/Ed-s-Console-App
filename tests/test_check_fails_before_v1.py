@@ -174,6 +174,22 @@ def test_moving_a_product_file_out_of_product_paths_still_needs_a_test(tmp_path)
     assert cfb.violations(root, "main") == ["product code changed (dead.py) but no test under tests/ changed"]
 
 
+@pytest.mark.parametrize("path", ["my calc.py", "café.py"])
+def test_a_product_file_whose_name_git_quotes_still_needs_a_test(tmp_path, path):
+    root = _repo(tmp_path, {path: FIX}, base={**BASE, path: BASE["calc.py"]})
+    assert cfb.violations(root, "main") == [f"product code changed ({path}) but no test under tests/ changed"]
+
+
+def test_a_product_file_replaced_by_a_link_still_needs_a_test(tmp_path):
+    root = _repo(tmp_path, {"notes.md": "words\n"})
+    (tmp_path / "target.txt").write_text("calc_impl.py", encoding="utf-8")
+    sha = subprocess.run(["git", "hash-object", "-w", str(tmp_path / "target.txt")], cwd=root, check=True,
+                         capture_output=True, text=True).stdout.strip()
+    _git(root, "update-index", "--cacheinfo", f"120000,{sha},calc.py")
+    _git(root, "commit", "-q", "-m", "calc.py becomes a link")
+    assert cfb.violations(root, "main") == ["product code changed (calc.py) but no test under tests/ changed"]
+
+
 def test_removing_a_function_nothing_calls_still_needs_a_test(tmp_path):
     base = {**BASE, "calc.py": BASE["calc.py"] + "\n\ndef unused(row):\n    return row['ask']\n"}
     root = _repo(tmp_path, {"calc.py": BASE["calc.py"]}, base=base)

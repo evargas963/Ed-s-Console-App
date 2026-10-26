@@ -227,6 +227,56 @@ def test_moving_a_product_file_still_needs_an_end_to_end_test(tmp_path, old, new
         "(tests/test_data_path_*.py or tests/e2e/*.spec.js) gained a real line"]
 
 
+NO_PATH_TEST = ("but no end-to-end path test (tests/test_data_path_*.py or tests/e2e/*.spec.js) gained a real line")
+
+
+def _git_in(root: Path, *args: str) -> None:
+    subprocess.run(["git", *args], cwd=root, check=True, capture_output=True)
+
+
+def test_renaming_a_path_test_is_not_an_end_to_end_test(tmp_path):
+    root = _repo(tmp_path, BASE)
+    (root / "server.py").write_text("def spot(row):\n    return row['bid']\n", encoding="utf-8")
+    _git_in(root, "mv", TEST, "tests/test_data_path_y.py")
+    _git_in(root, "commit", "-q", "-am", "a product change and a renamed path test")
+    assert cee.violations(root, "main", BODY) == [f"product code changed (server.py) {NO_PATH_TEST}"]
+
+
+@pytest.mark.parametrize("path", ["static/js/my page.js", "static/js/café.js"])
+def test_a_product_file_whose_name_git_quotes_is_still_read(tmp_path, path):
+    root = _repo(tmp_path, {**BASE, path: "function draw(v) { return v; }\n"})
+    _commit(root, {path: "function draw(v) { return -v; }\n"})
+    assert cee.violations(root, "main", BODY) == [f"product code changed ({path}) {NO_PATH_TEST}"]
+
+
+def test_a_product_file_replaced_by_a_link_is_a_change(tmp_path):
+    root = _repo(tmp_path, BASE)
+    (tmp_path / "target.txt").write_text("server_impl.py", encoding="utf-8")
+    sha = subprocess.run(["git", "hash-object", "-w", "target.txt"], cwd=root, check=True,
+                         capture_output=True, text=True).stdout.strip()
+    _git_in(root, "update-index", "--cacheinfo", f"120000,{sha},server.py")
+    _git_in(root, "commit", "-q", "-m", "server.py becomes a link")
+    assert cee.violations(root, "main", BODY) == [f"product code changed (server.py) {NO_PATH_TEST}"]
+
+
+def test_crlf_page_code_reaches_the_reader_as_written(tmp_path):
+    """A template literal's line breaks are the shown string: CRLF against two line feeds is a change."""
+    root = _repo(tmp_path, BASE)
+    (root / "static/js/page.js").write_bytes(b"var s = `a\r\nb`;\r\n")
+    _git_in(root, "commit", "-q", "-am", "crlf")
+    _git_in(root, "branch", "-f", "main")
+    (root / "static/js/page.js").write_bytes(b"var s = `a\n\nb`;\n")
+    _git_in(root, "commit", "-q", "-am", "two line feeds")
+    assert cee.violations(root, "main", BODY) == [f"product code changed (static/js/page.js) {NO_PATH_TEST}"]
+
+
+def test_a_comment_after_a_unicode_line_separator_is_not_an_end_to_end_test(tmp_path):
+    """git numbers lines by line feed alone; a U+2028 inside a string does not start a line."""
+    root = _repo(tmp_path, {**BASE, TEST: 'T = "a b"\n'})
+    _commit(root, {"server.py": "def spot(row):\n    return row['bid']\n", TEST: 'T = "a b"\n# covers spot\n'})
+    assert cee.violations(root, "main", BODY) == [f"product code changed (server.py) {NO_PATH_TEST}"]
+
+
 def test_a_file_that_is_not_utf8_fails_the_check_itself(tmp_path):
     """Exit 2 (the check itself failed), never a judgment on code it could not read."""
     root = _repo(tmp_path, {**BASE, "calc.py": "x = 1\n"})
