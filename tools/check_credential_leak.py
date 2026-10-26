@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Credential / secret leak firewall on staged (and optional) text diffs.
+"""Credential / secret leak firewall on the staged diff.
 
 Refuses Bearer tokens, API keys, private keys and operator-home paths (Windows, posix and Git
-Bash spellings) in `git diff --cached` (what a commit would publish). The scanner's own suite
-and this module are path-skipped
-(injected payloads must live there). Other fixtures mark a line with
-`# credential-leak-ok` or `# credential-leak-fixture-ok`.
+Bash spellings) on any line `git diff --cached` adds, every staged file read as text (what a
+commit would publish). The scanner's own suite and this module are path-skipped (injected
+payloads must live there). Other fixtures mark a line with `# credential-leak-ok` or
+`# credential-leak-fixture-ok`.
 
     python tools/check_credential_leak.py
 """
