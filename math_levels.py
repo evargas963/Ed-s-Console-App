@@ -263,9 +263,9 @@ def _gamma_profile_totals(parsed: list, grid: List[float]) -> List[float]:
 
     The same Black-Scholes gamma bs_gamma computes (r = q = 0, as every production caller
     passes), evaluated as arrays instead of one Python call per (price, contract) pair: on SPY's
-    full chain (13,290 contracts x 241 prices) a per-call loop is 2.27M bs_gamma calls, 82% of
-    compute_terrain's 17.8 s. A gamma that is not finite contributes nothing, matching bs_gamma's
-    None."""
+    full chain (13,290 contracts, 241 prices) a per-call loop over the contracts it could price
+    made 2.27M bs_gamma calls, 82% of compute_terrain's 17.8 s with that loop. A gamma that is not
+    finite contributes nothing, matching bs_gamma's None."""
     import numpy as np
 
     arr = np.asarray(parsed, dtype=float)
@@ -524,10 +524,10 @@ GAMMA_FLIP_LEVEL_APPROX = "LEVEL_APPROX_NARROW_SPAN"
 #: and 0.257% at +/-15%; no ladder point reaches 95% of chains inside a 0.05%-of-spot tolerance.
 #: So 0.05 is measurably INSUFFICIENT, not merely unjustified.
 #: HELD AT 0.05 PENDING, deliberately not silently re-tuned: the cohort is only n=15 and the
-#: reference is our WIDEST AVAILABLE chain (Schwab caps strikeCount), so the study bounds the
+#: reference is the widest chain we captured (Schwab's documentation states no strikeCount cap), so the study bounds the
 #: requirement from below rather than pinning it. Raising it also widens every fetch, which is a
-#: cost/latency decision. Re-set it once a chain-depth probe establishes the real vendor ceiling
-#: and the cohort is large enough to pin a value.
+#: cost/latency decision. Re-set it once a chain-depth probe measures how many strikes Schwab
+#: delivers and the cohort is large enough to pin a value.
 GAMMA_FLIP_MIN_SPAN_PCT = 0.05
 #: The 0.05 above is the live chain-fetch width, a real cost/latency decision; the study refutes it
 #: as the TRUSTED-vs-NARROW verdict on the flip LEVEL, so a fetch-width compromise does not set the
@@ -550,7 +550,7 @@ GAMMA_FLIP_MIN_SPAN_PCT = 0.05
 #:  (2) for SPY/QQQ the study's own REFERENCE chain (SPY 8.9%/110
 #:      strikes, QQQ 9.6%/123) is ~3x NARROWER than the production chain it is used to certify, so
 #:      the ±10% and ±15% ladder points cannot even truncate those rows (they pass through at
-#:      zero error by construction — 5.1% of the n=992 cohort at ±10%). The knee is therefore
+#:      zero error by construction — 5.1% of the study's 992 usable chains at ±10%). The knee is therefore
 #:      measured predominantly on non-SPY/QQQ chains, and the 9%->30% region is UNMEASURED for
 #:      exactly the two tickers that matter most.
 #: So 0.10 is an evidence-backed FLOOR, never a certified sufficiency. Settle it by re-running the
