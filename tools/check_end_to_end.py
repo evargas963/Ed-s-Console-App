@@ -87,18 +87,22 @@ def _diff_path(header: str) -> str:
     non-ASCII character, and ends one holding a space with a tab."""
     name = header.removesuffix("\t")
     if name.startswith('"'):
-        name = ast.literal_eval("b" + name).decode("utf-8")
+        try:
+            name = ast.literal_eval("b" + name).decode("utf-8")
+        except (SyntaxError, ValueError, UnicodeDecodeError) as e:
+            raise ToolError(f"git diff header {header!r} could not be read: {e}") from e
     return name.removeprefix("b/")
 
 
-def pr_added_lines(root: Path, base: str) -> dict[str, set[int]]:
-    """{path: the line numbers, in the PR's version, of the lines the PR adds}, one diff. A file
-    renamed with no edit adds no line (git's rename detection)."""
+def pr_added_lines(root: Path, base: str, renames: bool) -> dict[str, set[int]]:
+    """{path: the line numbers, in the PR's version, of the lines the PR adds}, one diff. With
+    `renames`, a file renamed with no edit adds no line (git's rename detection: the end-to-end
+    evidence); without, a moved file adds every line it holds (the patch scan)."""
     out: dict[str, set[int]] = {}
     path: str | None = None
     header = False      # between a file's `diff --git` and its first hunk: an added line is not a header
-    for line in _git(root, "diff", "-U0", "-M", "--src-prefix=a/", "--dst-prefix=b/", "--diff-filter=AMRT",
-                     f"{base}...HEAD").split("\n"):
+    for line in _git(root, "diff", "-U0", "-M" if renames else "--no-renames", "--src-prefix=a/",
+                     "--dst-prefix=b/", "--diff-filter=AMRT", f"{base}...HEAD").split("\n"):
         if line.startswith("diff --git "):
             path, header = None, True
         elif header and line.startswith("+++ ") and line != "+++ /dev/null":
@@ -347,12 +351,13 @@ def body_violations(body: str) -> list[str]:
 
 
 def violations(root: Path, base: str, body: str | None) -> list[str]:
-    added = pr_added_lines(root, base)
+    evidence = pr_added_lines(root, base, renames=True)
+    added = pr_added_lines(root, base, renames=False)
     changed_code = sorted(f for f in pr_files(root, base, "AMT") if behavior_change(root, base, f))
     product = sorted(changed_code + deleted_product(root, base))
     out = []
-    if product and not any(p.match(f) and adds_real_lines(pr_source(root, f), added[f])
-                           for f in added for p in END_TO_END):
+    if product and not any(p.match(f) and adds_real_lines(pr_source(root, f), evidence[f])
+                           for f in evidence for p in END_TO_END):
         out.append(f"product code changed ({', '.join(product)}) but no end-to-end path test "
                    "(tests/test_data_path_*.py or tests/e2e/*.spec.js) gained a real line")
     for f in changed_code:

@@ -267,6 +267,17 @@ def test_a_path_test_whose_name_git_quotes_is_an_end_to_end_test(tmp_path):
     assert cee.violations(root, "main", BODY) == []
 
 
+def test_a_patch_moved_into_product_code_is_refused_at_its_line(tmp_path):
+    """A file moved from outside product paths into them brings every line it holds into product
+    code, so its patch shapes are refused there, edited or not."""
+    root = _repo(tmp_path, {**BASE, "tools/helper.py": "try:\n    x()\nexcept Exception:\n    pass\n"})
+    (root / "app").mkdir()
+    _git_in(root, "mv", "tools/helper.py", "app/helper.py")
+    _commit(root, REAL_TEST)
+    assert cee.violations(root, "main", BODY) == ["app/helper.py:3: an except that catches everything",
+                                                  "app/helper.py:3: an except that swallows the error"]
+
+
 def test_a_product_file_replaced_by_a_link_is_a_change(tmp_path):
     root = _repo(tmp_path, BASE)
     (tmp_path / "target.txt").write_text("server_impl.py", encoding="utf-8")
