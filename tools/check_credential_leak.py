@@ -58,36 +58,26 @@ def _staged_text(root: Path) -> str:
     raises: an unread diff would scan clean and let the commit through unread. "I could not
     look" is not "there is nothing".
     """
-    # core.quotePath=true: a quoted name is all escapes, whatever the repository's own setting
+    # core.quotePath=true: a quoted name is all escapes, whatever the repository's own setting.
+    # --text, --no-textconv, --no-ext-diff: the bytes the commit publishes, whatever its attributes
+    # or diff settings. Read as bytes: git ends a line only at a line feed.
     p = subprocess.run(
         ["git", "-c", "core.quotePath=true", "diff", "--cached", "--unified=0", "--no-color",
-         "--src-prefix=a/", "--dst-prefix=b/"],
+         "--text", "--no-textconv", "--no-ext-diff", "--src-prefix=a/", "--dst-prefix=b/"],
         cwd=root,
         capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
     )
     if p.returncode != 0:
         raise StagedDiffUnreadable(
             f"git diff --cached exited {p.returncode}: "
-            f"{((p.stderr or '').strip().splitlines() or [''])[0]}"
+            f"{(p.stderr.decode('utf-8', errors='replace').strip().splitlines() or [''])[0]}"
         )
-    return p.stdout or ""
+    return p.stdout.decode("utf-8", errors="replace")
 
 
-def _norm_path(path: str) -> str:
-    """The ONE repo-relative spelling; a leading dot (`.github/...`) is kept, so a dot-prefixed
-    skip entry matches."""
-    if str(REPO) not in sys.path:
-        sys.path.insert(0, str(REPO))
-    from tools.pretooluse_guard import normalize_repo_relative
-
-    return normalize_repo_relative(path)
-
-
-def find_credential_leaks(diff_text: str | None = None) -> list[str]:
-    text = _staged_text(REPO) if diff_text is None else diff_text
+def find_credential_leaks(root: Path = REPO) -> list[str]:
+    """Every secret or operator-home path on a line `root`'s staged diff adds."""
+    text = _staged_text(root)
     hits: list[str] = []
     current_file = "?"
     skip_file = False
@@ -102,7 +92,7 @@ def find_credential_leaks(diff_text: str | None = None) -> list[str]:
         if header:
             if line.startswith("+++ ") and line != "+++ /dev/null":
                 try:
-                    current_file = _norm_path(_diff_path(line[len("+++ "):]))
+                    current_file = _diff_path(line[len("+++ "):])
                 except ToolError as e:
                     raise StagedDiffUnreadable(str(e)) from e
                 skip_file = current_file in _SKIP_PATHS

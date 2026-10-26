@@ -1,18 +1,7 @@
-"""PATH FACTS — the ONE owner of "is this path ours / production / a compliance surface".
-
-HISTORY: born as the RC-66 lane (a root-cause row demanded before editing any production
-file), retired under RC-470; then the RC-160/RC-163/RC-186 content gates and the RC-498
-mutation-side mission latch lived here. BEDROCK 2026-09-06 (dual-signoff Claude + ChatGPT,
-operator order to REPAIR): all of those are removed and this module is OFF the hook rosters.
-KEEP/MERGE/DELETE 2026-09-10: the inert hook shape (`main`/`decide`, which returned 0 for
-every event, and an unreadable payload too) is deleted — a file called *_guard that judges
-nothing is a superseded mechanism wearing a name. What remains is a LIBRARY, not a guard:
-`classify_path`, consumed by process_lock_guard (production-checkout rails), and
-`normalize_repo_relative`, the ONE spelling of a repo-relative path (RC-527).
-"""
+"""Path facts: `classify_path`, the one owner of "is this path ours / production / a compliance
+surface", read by process_lock_guard (production-checkout rails). A library, not a hook."""
 from __future__ import annotations
 
-import posixpath
 from pathlib import Path
 from typing import NamedTuple
 
@@ -90,17 +79,3 @@ def classify_path(p: str, repo: str | Path | None = None) -> PathFacts:
     )
 
 
-def normalize_repo_relative(p: str) -> str:
-    """THE spelling of a repo-relative path (FC-13 / RC-527).
-
-    Forward slashes, dot-segments and duplicate separators collapsed, no leading `./`. A
-    leading dot that is part of a NAME — `.github`, `.claude`, `.cursor` — is preserved. Call
-    sites once hand-rolled this with `str.lstrip("./")`, which strips CHARACTERS rather than a
-    prefix and ate the leading dot of every dot-prefixed path. Foreign and escaping paths are
-    NOT judged here (`../x/y.py` stays the caller's problem; `classify_path` decides ours).
-    """
-    s = str(p or "").strip().replace("\\", "/")
-    if not s:
-        return ""
-    out = posixpath.normpath(s)
-    return "" if out == "." else out
