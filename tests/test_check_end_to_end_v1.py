@@ -213,6 +213,30 @@ def test_a_comment_only_change_to_an_html_page_still_needs_an_end_to_end_test(tm
         "(tests/test_data_path_*.py or tests/e2e/*.spec.js) gained a real line"]
 
 
+@pytest.mark.parametrize("old, new, named", [
+    ("dead.py", "docs/dead.py", "dead.py"),                                   # moved out of product paths
+    ("static/js/page.js", "static/js/page2.js", "static/js/page.js, static/js/page2.js"),   # renamed, not edited
+])
+def test_moving_a_product_file_still_needs_an_end_to_end_test(tmp_path, old, new, named):
+    root = _repo(tmp_path, {**BASE, "dead.py": "def unused(row):\n    return row['ask']\n"})
+    (root / new).parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["git", "mv", old, new], cwd=root, check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-q", "-m", f"move {old}"], cwd=root, check=True, capture_output=True)
+    assert cee.violations(root, "main", BODY) == [
+        f"product code changed ({named}) but no end-to-end path test "
+        "(tests/test_data_path_*.py or tests/e2e/*.spec.js) gained a real line"]
+
+
+def test_a_file_that_is_not_utf8_fails_the_check_itself(tmp_path):
+    """Exit 2 (the check itself failed), never a judgment on code it could not read."""
+    root = _repo(tmp_path, {**BASE, "calc.py": "x = 1\n"})
+    (root / "calc.py").write_bytes(b"# -*- coding: latin-1 -*-\nx = '\xe9'\n")
+    subprocess.run(["git", "commit", "-q", "-am", "latin-1"], cwd=root, check=True, capture_output=True)
+    run = subprocess.run([sys.executable, str(Path(cee.__file__)), "--base", "main"], cwd=root,
+                         capture_output=True, text=True)
+    assert run.returncode == 2, run.stdout + run.stderr
+
+
 def test_deleting_a_product_file_still_needs_an_end_to_end_test(tmp_path):
     root = _repo(tmp_path, {**BASE, "dead.py": "def unused(row):\n    return row['ask']\n"})
     subprocess.run(["git", "rm", "-q", "dead.py"], cwd=root, check=True, capture_output=True)

@@ -154,7 +154,7 @@ def test_a_code_change_beside_the_comments_still_needs_a_failing_test(tmp_path, 
 
 def test_a_comment_only_change_to_an_html_page_still_needs_a_test(tmp_path):
     """A browser's reading of a page's whitespace, entities and comments depends on CSS and parser
-    details, so a page is never judged unchanged by its comments (operator 2026-10-26)."""
+    details, so a page is never judged unchanged by its comments."""
     root = _repo(tmp_path, {"page.html": "<p>a</p>\n"}, base={**BASE, "page.html": "<!-- RC-UI-1 -->\n<p>a</p>\n"})
     assert cfb.violations(root, "main") == ["product code changed (page.html) but no test under tests/ changed"]
 
@@ -163,6 +163,14 @@ def test_deleting_a_product_file_still_needs_a_test(tmp_path):
     root = _repo(tmp_path, {"notes.md": "words\n"}, base={**BASE, "dead.py": "def unused(row):\n    return row['ask']\n"})
     _git(root, "rm", "-q", "dead.py")
     _git(root, "commit", "-q", "-m", "remove dead.py")
+    assert cfb.violations(root, "main") == ["product code changed (dead.py) but no test under tests/ changed"]
+
+
+def test_moving_a_product_file_out_of_product_paths_still_needs_a_test(tmp_path):
+    root = _repo(tmp_path, {"notes.md": "words\n"}, base={**BASE, "dead.py": "def unused(row):\n    return row['ask']\n"})
+    (root / "docs").mkdir()
+    _git(root, "mv", "dead.py", "docs/dead.py")
+    _git(root, "commit", "-q", "-m", "move dead.py")
     assert cfb.violations(root, "main") == ["product code changed (dead.py) but no test under tests/ changed"]
 
 

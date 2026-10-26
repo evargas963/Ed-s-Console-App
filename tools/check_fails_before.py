@@ -34,7 +34,8 @@ from check_end_to_end import ToolError, _git, behavior_change, deleted_product  
 
 
 def changed(root: Path, base: str) -> list[str]:
-    return [f for f in _git(root, "diff", "--name-only", "--diff-filter=AMR", f"{base}...HEAD").splitlines() if f]
+    return [f for f in _git(root, "diff", "--name-only", "--no-renames", "--diff-filter=AMT",
+                            f"{base}...HEAD").splitlines() if f]
 
 
 def is_pytest(path: str) -> bool:

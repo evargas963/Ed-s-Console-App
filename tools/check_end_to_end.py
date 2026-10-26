@@ -70,9 +70,8 @@ class ToolError(Exception):
 
 def _git(root: Path, *args: str) -> str:
     try:
-        return subprocess.run(["git", *args], cwd=root, capture_output=True,
-                              text=True, encoding="utf-8", check=True).stdout
-    except (subprocess.CalledProcessError, FileNotFoundError) as e:
+        return subprocess.run(["git", *args], cwd=root, capture_output=True, check=True).stdout.decode("utf-8")
+    except (subprocess.CalledProcessError, FileNotFoundError, UnicodeDecodeError) as e:
         raise ToolError(f"git {' '.join(args)} failed: {e}") from e
 
 
@@ -80,7 +79,7 @@ def pr_added_lines(root: Path, base: str) -> dict[str, set[int]]:
     """{path: the line numbers, in the PR's version, of the lines the PR adds}, one diff."""
     out: dict[str, set[int]] = {}
     path: str | None = None
-    for line in _git(root, "diff", "-U0", "--diff-filter=AMR", f"{base}...HEAD").splitlines():
+    for line in _git(root, "diff", "-U0", "--no-renames", "--diff-filter=AMT", f"{base}...HEAD").splitlines():
         if line.startswith("diff --git "):
             path = None
         elif line.startswith("+++ b/"):
@@ -106,7 +105,7 @@ def is_product(path: str) -> bool:
 JS_CODE_TREE = Path(__file__).resolve().parent / "js_code_tree.js"
 #: the files whose code a syntax tree reads exactly; an .html page is not one (a browser's reading of
 #: its whitespace, entities and comments depends on CSS and parser details), so every change to one
-#: is a change of product code (operator 2026-10-26)
+#: is a change of product code
 CODE_TREE_SUFFIXES = (".py", ".js", ".mjs")
 
 
@@ -174,8 +173,10 @@ def behavior_change(root: Path, base: str, path: str) -> bool:
 
 
 def deleted_product(root: Path, base: str) -> list[str]:
-    """The product files the PR deletes: removing code is a change of it, whatever called it."""
-    return [f for f in _git(root, "diff", "--name-only", "--diff-filter=D", f"{base}...HEAD").splitlines()
+    """The product files the PR deletes, a file moved away included (a rename is read as its
+    deletion and an addition): removing code is a change of it, whatever called it."""
+    return [f for f in _git(root, "diff", "--name-only", "--no-renames", "--diff-filter=D",
+                            f"{base}...HEAD").splitlines()
             if f and is_product(f)]
 
 
