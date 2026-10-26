@@ -42,8 +42,7 @@ def test_rows_are_the_shape_the_panel_renders():
     """The per-strike rows are the producer's own, in the shape the panel renders: never rebuilt
     from these numbers into contracts and run through the exposure engine again."""
     ps = compute_terrain(TICKER, CHAIN, SPOT, now=NOW).per_strike
-    # the three GEX scopes, and the Chart view's DEX and OI rows (operator 2026-09-29: those views
-    # were blank)
+    # the three GEX scopes, and the Chart view's DEX and OI rows
     assert set(ps) == {"all", "near", "far", "dex", "oi"}, (
         "the ALL / <=7DTE / MONTHLY+ chips each need their own rows; a missing scope is an "
         f"empty panel on that chip. got {sorted(ps)}"

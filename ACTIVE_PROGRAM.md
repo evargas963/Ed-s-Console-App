@@ -51,7 +51,7 @@ next open.
 |---|---|---|
 | ENF-01 | QUEUED | No patches, end to end only (AGENTS rule 1): `tools/check_end_to_end.py` refuses the code shapes it knows and a PR whose end-to-end test gains no real line. Left for the operator's review: a design-level patch; a test that does not cover the change (an `assert True` satisfies the check); a clamp (`max(0, x)`) and a bare `if x is None: return`, which the check passes. An except that logs and carries on is not a patch (operator); the check passes it. |
 | ENF-02 | QUEUED | One authority (rule 3), the second producers found 2026-10-02: `/api/chain` re-overlays the chain the publication already priced; the book microstructure is extracted twice per request; the tape prints are computed six times per request; exposures are merged three times per publication; `terrain_staleness` runs twice per route; LEVELS is pushed by three producers (the heatmap restamp, the levels, the price-level snapshot, counted 2026-10-23); `flow` is pushed on every equity quote and book; the Chain and Strike Detail reload on different signals. Each removed at its source, each with a test. |
-| ENF-03 | QUEUED | The UI computes nothing (rule 4): the page review of 2026-10-02 found freshness math on the browser clock, client-side scales and maxima, strike matching by tolerance, the regime colour from a regex, the DTE label, and two different dollar formatters. A browser test that fails when page code computes a shown value. |
+| ENF-03 | QUEUED | The UI computes nothing (rule 4): the page review of 2026-10-02 found freshness math on the browser clock, client-side scales and maxima, strike matching by tolerance, the DTE label, and two different dollar formatters. A browser test that fails when page code computes a shown value. |
 | ENF-04 | QUEUED | Nothing without a job (rule 7): the readerless pieces found 2026-10-02 (the contracts copy in each chain part, the console's receive log, news frames, nine terrain fields no screen shows, dead CSS and JS); a check that finds served fields and code with no reader. |
 | ENF-05 | QUEUED | All tickers (rule 8): measurements and reports cover every watchlist ticker; a check of the report scripts. |
 | ENF-06 | QUEUED | The UI shows Central Time (rule 9): a browser test of every shown time. |
@@ -227,8 +227,10 @@ Operator 2026-10-25, on PR B: the levels, the chain and the heatmap carry one se
 (`server.terrain_staleness`), judged by the ticker's own option market; after that market's close
 the levels read CLOSE with the close values' time and age. Operator 2026-10-25, on PR B's reviews:
 the three readers of Schwab's option windows are one, `time_et.option_market_open` (a day Schwab
-says is closed is outside every window, so the close values stand on it, as after any close, and
-`valuation_instant` values the book at the newest close until the next open); the
+says is closed is outside every window, so Schwab's close counts stand on it, as after any close;
+`valuation_instant` keeps main's clock, the day's close only for the rest of that day, read through
+`option_market_open`); in PR B only the functions it changes lose their history notes, the
+file-wide cleanup is a separate pass; the
 stand-ins PR B adds are recorded in STAND-INS, and the older stand-ins in the files it touches stay
 with STAND-INS.
 

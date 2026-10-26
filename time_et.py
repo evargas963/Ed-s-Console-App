@@ -145,7 +145,7 @@ def session_label(now: datetime) -> str:
 
 
 def option_market_open(now: datetime, product: str | None = None) -> bool | None:
-    """THE option-market reader: whether option market `product` (EQO, IND), or any option market
+    """Whether option market `product` (EQO, IND), or any option market
     when none is named (the last, IND, runs to 16:15 ET), is in a regular window Schwab sent for
     today. False outside its windows and all day on a day Schwab says is closed; None when Schwab's
     answer for today is not held."""
@@ -164,14 +164,16 @@ def options_closed_at(now: datetime, product: str | None = None) -> datetime | N
 
 
 def valuation_instant(now: datetime, product: str = EQUITY_OPTIONS) -> datetime:
-    """The instant a live chain is priced. While `product`'s option market is not open
-    (option_market_open: after its close, on a closed day, before the next open), that market's
-    newest close, so the close numbers stand. While it is open, or that date's session is not held
-    (or no close is held), it is `now`."""
+    """The instant a live chain is priced. Once `product`'s option market has closed for the day
+    (option_market_open), that day's close, so the close numbers stand for the rest of it. While
+    it is open, before it opens, on a day with no window, and on a date whose session is not held,
+    it is `now`: the time to each expiry runs on the clock, and a day with no session has no
+    same-day close."""
     if option_market_open(now, product) is not False:
         return now
     closed = options_closed_at(now, product)
-    return now if closed is None else closed
+    today = now.astimezone(ET).date()
+    return closed if closed is not None and closed.astimezone(ET).date() == today else now
 
 
 def closed_since(now: datetime) -> "datetime | None":

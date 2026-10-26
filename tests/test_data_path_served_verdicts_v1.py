@@ -23,6 +23,7 @@ import live_market_plane as lmp
 import live_price_rows
 import push_changes
 import server
+from calibration.complete_chain_capture import CAPTURE_BASIS, persist_complete_chain_capture
 from tests.real_chains import SPY_0DTE, TSLA
 from time_et import ET
 
@@ -134,7 +135,6 @@ def test_on_a_closed_day_a_delivered_chain_keeps_the_close_counts_schwab_blanks(
     close counts stand (server._keep_last_reported, the stored close capture), as after any close.
     STAND-IN (named): the chain's price is Friday's close capture's underlying price, not Schwab's
     LAST_PRICE with its trade time."""
-    from calibration.complete_chain_capture import CAPTURE_BASIS, persist_complete_chain_capture
     friday, sunday = _SUNDAY["friday_close"], _SUNDAY["sunday"]
     close_oi = {c["symbol"]: c["openInterest"] for c in friday["chain"]}
     blanked = [c["symbol"] for c in sunday["chain"] if c["openInterest"] == 0 and close_oi[c["symbol"]] > 0]
@@ -147,12 +147,16 @@ def test_on_a_closed_day_a_delivered_chain_keeps_the_close_counts_schwab_blanks(
         server._publish_levels("SPY", [dict(c) for c in sunday["chain"]], sunday["ts_utc"],
                                chain_spot=(friday["spot"], friday["ts_utc"]), now=at)
         priced = {c["symbol"]: c for c in server.terrain_cache_get("SPY", at.timestamp())["_priced_chain"]}
+        same_day = server.terrain_answer("SPY", at)["same_day"]
     finally:
         _forget()
         with sqlite3.connect(server.get_db().db_path) as db:   # the session's shared database keeps no SPY capture
             db.execute("DELETE FROM complete_chain_captures WHERE ticker = 'SPY' AND ts_utc = ?", (friday["ts_utc"],))
     assert len(blanked) == 46
     assert {s: priced[s]["openInterest"] for s in blanked} == {s: close_oi[s] for s in blanked}
+    # no option market trades on Sunday, so there is no same-day close to reprice to: no 0DTE level
+    # is made from the next expiry
+    assert same_day and all(v is None for v in same_day.values()), same_day
     with sqlite3.connect(server.get_db().db_path) as db:
         assert db.execute("SELECT COUNT(*) FROM complete_chain_captures WHERE ticker = 'SPY'").fetchone() == (0,)
 

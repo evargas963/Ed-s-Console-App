@@ -3405,10 +3405,8 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict:
                            "reason": "carried from the terrain"}}
             for gid, label in SAME_DAY_LEVELS
         ],
-        # The VWAP curve and its σ bands, CARRIED. The standalone pages each
-        # used to accumulate their own from /api/bars1m — two more VWAPs for one
-        # session, drawn beside a level neither of them agreed with.
-        # [epoch_sec, vwap, +1σ, -1σ, +2σ, -2σ]
+        # The VWAP curve and its σ bands, CARRIED: the one VWAP of the session, which no page
+        # accumulates for itself. [epoch_sec, vwap, +1σ, -1σ, +2σ, -2σ]
         "vwap_series": aggregate_vwap(snap.vwap_series, tf) if snap is not None else [],   # one point per chart bar of `tf`
         # the session's volume profile the value area is read from (absent: families_absent
         # names the value_area reason)

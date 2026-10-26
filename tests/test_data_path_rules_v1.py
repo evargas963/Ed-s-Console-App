@@ -544,7 +544,7 @@ def test_d5_the_chain_is_asked_until_the_last_option_close_and_its_close_values_
     values), then not. Levels from that chain stand at 17:00 (After-Hours), not stale; levels
     from 15:00 are stale at 16:10, while the options are open. The clock moves with the sweep at
     rest (_Swept.move): a request is counted by the clock it was made at, never by when it arrived
-    (CI 2026-10-10 counted a 16:10 request that landed after the clock moved as one at 16:20)."""
+    (a 16:10 request that lands after the clock moves is not one at 16:20)."""
     chains = "/marketdata/v1/chains"
     swept = _Swept(tmp_path, "2026-10-07 16:10", ["SPY"])
     try:

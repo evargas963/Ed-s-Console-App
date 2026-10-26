@@ -15,6 +15,8 @@ import pytest
 
 import stream_spine as ss
 from app.market_data.schwab.streaming import capture as cap
+from tests.real_chains import TSLA
+from time_et import option_close_product
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -74,8 +76,6 @@ def test_one_live_rule_every_reader_agrees_and_all_fail_closed_at_one_limit():
     import live_market_plane as lmp
     from app.options.order_flow import streaming as ofs
     from tests.feed_live_helper import RTH_INSTANT
-    from tests.real_chains import TSLA
-    from time_et import option_close_product
     a, b = TSLA.chain[0]["symbol"], TSLA.chain[1]["symbol"]
     product = option_close_product(TSLA.ticker)
     status = {"schwab_socket_open": True,

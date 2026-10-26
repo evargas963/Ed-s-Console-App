@@ -17,7 +17,9 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import app.options.order_flow.engine as ofe
+import app.options.order_flow.state as ofls
 from app.options.order_flow.state import OrderFlowState
+from time_et import EQUITY_OPTIONS
 
 FIXTURE = ROOT / "tests" / "fixtures" / "real_options_stream_history_samples.json"
 
@@ -430,7 +432,6 @@ def test_size_g_the_live_push_seam_threads_each_messages_receive_time_into_push_
     (LEVELONE_EQUITIES) and option (LEVELONE_OPTIONS) messages -- never the time the console
     processed it. Real data: GOOGL's TOTAL_VOLUME and SPY 2026-10-30 910 call's GAMMA as Schwab
     sent them 2026-10-05 14:00 CT (tests/fixtures/real_stream_mix_2026_10_05_1400ct.json)."""
-    import app.options.order_flow.state as ofls
     import app.options.order_flow.streaming as ofs
     from stream_spine import options_quote_msg, quote_msg
 
@@ -476,7 +477,6 @@ def test_an_option_contracts_top_is_what_schwab_sent_on_a_live_feed():
     from app.options.order_flow import state
     from app.options.order_flow.live_payload import options_live_payload
     from tests.feed_live_helper import RTH_INSTANT
-    from time_et import EQUITY_OPTIONS
     c = json.loads(FIXTURE.read_text(encoding="utf-8"))["contracts"][0]
     sym = c["symbol"]
     for ev in c["events"][:4]:

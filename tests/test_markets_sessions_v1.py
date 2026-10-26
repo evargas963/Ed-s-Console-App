@@ -143,19 +143,17 @@ def test_the_options_are_open_until_the_last_option_market_closes():
     assert time_et.option_market_open(_et("2027-10-09 12:00")) is None
 
 
-def test_outside_its_window_a_chain_is_valued_at_the_last_close():
-    """While an option market is not open, the book is valued at that market's newest close, so the
-    close numbers stand: after Friday 2026-10-09's close, through the weekend, and Monday 2026-10-12
-    before the open (IND closes at 16:15 ET, EQO at 16:00). Inside the window, and on a date whose
-    answer is not held, it is the clock."""
-    fri_ind, fri_eqo = _et("2026-10-09 16:15"), _et("2026-10-09 16:00")
-    for at in (_et("2026-10-09 18:00"), _et("2026-10-10 12:00"), _et("2026-10-11 20:00"), _et("2026-10-12 08:00")):
-        assert time_et.valuation_instant(at, time_et.INDEX_OPTIONS) == fri_ind, at
-        assert time_et.valuation_instant(at, time_et.EQUITY_OPTIONS) == fri_eqo, at
-    inside = _et("2026-10-12 11:00")
-    assert time_et.valuation_instant(inside, time_et.INDEX_OPTIONS) == inside
-    unknown = _et("2027-10-09 12:00")
-    assert time_et.valuation_instant(unknown, time_et.INDEX_OPTIONS) == unknown
+def test_a_chain_is_valued_at_its_close_for_the_rest_of_that_day_and_on_the_clock_otherwise():
+    """After Friday 2026-10-09's close the book is valued at that close (IND 16:15 ET, EQO 16:00)
+    for the rest of Friday. On the weekend, on Monday 2026-10-12 before the open, inside the window
+    and on a date whose answer is not held, it is the clock."""
+    after = _et("2026-10-09 18:00")
+    assert time_et.valuation_instant(after, time_et.INDEX_OPTIONS) == _et("2026-10-09 16:15")
+    assert time_et.valuation_instant(after, time_et.EQUITY_OPTIONS) == _et("2026-10-09 16:00")
+    for at in (_et("2026-10-10 12:00"), _et("2026-10-11 20:00"), _et("2026-10-12 08:00"), _et("2026-10-12 11:00"),
+               _et("2027-10-09 12:00")):
+        for product in (time_et.INDEX_OPTIONS, time_et.EQUITY_OPTIONS):
+            assert time_et.valuation_instant(at, product) == at, (at, product)
 
 
 def test_a_closed_day_is_outside_every_option_market():

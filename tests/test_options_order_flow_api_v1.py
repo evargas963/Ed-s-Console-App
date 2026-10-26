@@ -17,6 +17,7 @@ import live_market_plane as lmp
 import server
 from app.options.order_flow import streaming as ofs
 from stream_spine import book_msg
+from tests.real_chains import SPY_0DTE
 
 CONTRACT = "SPY   261005C00774000"
 _MIX = json.loads((Path(__file__).parent / "fixtures" / "real_stream_mix_2026_10_05_1400ct.json")
@@ -64,7 +65,6 @@ def test_the_flow_panel_says_whether_the_daemon_streams_the_contract():
     of SPY's 2026-10-07 0DTE chain, served at that chain's capture (12:32 ET, the option market open).
     The contract's market is that of the chain that lists it: with no chain held that lists it, its
     market is not known and it is not live; once the levels producer publishes SPY's chain, SPY's."""
-    from tests.real_chains import SPY_0DTE
     contract, at = SPY_0DTE.chain[0]["symbol"], SPY_0DTE.now.timestamp()
 
     def holds(*services: str) -> None:
