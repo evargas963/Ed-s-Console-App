@@ -96,15 +96,18 @@ def pr_added_lines(root: Path, base: str) -> dict[str, set[int]]:
     renamed with no edit adds no line (git's rename detection)."""
     out: dict[str, set[int]] = {}
     path: str | None = None
-    for line in _git(root, "diff", "-U0", "-M", "--diff-filter=AMRT", f"{base}...HEAD").split("\n"):
+    header = False      # between a file's `diff --git` and its first hunk: an added line is not a header
+    for line in _git(root, "diff", "-U0", "-M", "--src-prefix=a/", "--dst-prefix=b/", "--diff-filter=AMRT",
+                     f"{base}...HEAD").split("\n"):
         if line.startswith("diff --git "):
-            path = None
-        elif line.startswith("+++ ") and line != "+++ /dev/null":
+            path, header = None, True
+        elif header and line.startswith("+++ ") and line != "+++ /dev/null":
             path = _diff_path(line[len("+++ "):])
             out[path] = set()
-        elif line.startswith("@@ ") and path is not None:
+        elif line.startswith("@@ "):
+            header = False
             m = HUNK.match(line)
-            if m:
+            if m and path is not None:
                 start, count = int(m.group(1)), int(m.group(2) or 1)
                 out[path].update(range(start, start + count))
     return out

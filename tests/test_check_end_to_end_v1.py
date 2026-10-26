@@ -249,6 +249,24 @@ def test_a_product_file_whose_name_git_quotes_is_still_read(tmp_path, path):
     assert cee.violations(root, "main", BODY) == [f"product code changed ({path}) {NO_PATH_TEST}"]
 
 
+@pytest.mark.parametrize("path", ["static/js/page.js", "static/js/my page.js", "static/js/café.js"])
+def test_a_patch_after_a_line_starting_with_plus_plus_is_still_refused_at_its_line(tmp_path, path):
+    """An added `++ x;` reads in the diff as `+++ x;`: it is a line of the file, not a file header, and
+    every name git quotes or ends with a tab is read back as written."""
+    root = _repo(tmp_path, {**BASE, path: "var x = 0;\nvar a = 1;\nvar b = 2;\n"})
+    _commit(root, {**REAL_TEST, path: "var x = 0;\n++ x;\nvar a = 1;\nvar b = 2;\nvar y = v || 0;\n"})
+    assert cee.violations(root, "main", BODY) == [
+        f"{path}:5: a missing value replaced by a literal, an empty catch, or a swallowing .catch"]
+
+
+def test_a_path_test_whose_name_git_quotes_is_an_end_to_end_test(tmp_path):
+    test = "tests/test_data_path_my x.py"
+    root = _repo(tmp_path, {**BASE, test: "def test_x():\n    pass\n"})
+    _commit(root, {"server.py": "def spot(row):\n    return row['bid']\n",
+                   test: "def test_x():\n    assert spot({'bid': 1.0}) == 1.0\n"})
+    assert cee.violations(root, "main", BODY) == []
+
+
 def test_a_product_file_replaced_by_a_link_is_a_change(tmp_path):
     root = _repo(tmp_path, BASE)
     (tmp_path / "target.txt").write_text("server_impl.py", encoding="utf-8")
