@@ -230,7 +230,8 @@ the three readers of Schwab's option windows are one, `time_et.option_market_ope
 says is closed is outside every window, so Schwab's close counts stand on it, as after any close;
 `valuation_instant` keeps main's clock, the day's close only for the rest of that day, read through
 `option_market_open`); in PR B only the functions it changes lose their history notes, the
-file-wide cleanup is a separate pass; the
+file-wide cleanup is a separate pass; AGENTS.md rule 2's wording ("a reported 0 is 0") against the
+closed-day count rule is the operator's to amend; the
 stand-ins PR B adds are recorded in STAND-INS, and the older stand-ins in the files it touches stay
 with STAND-INS.
 

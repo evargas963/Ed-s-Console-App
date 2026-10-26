@@ -171,9 +171,8 @@ def valuation_instant(now: datetime, product: str = EQUITY_OPTIONS) -> datetime:
     same-day close."""
     if option_market_open(now, product) is not False:
         return now
-    closed = options_closed_at(now, product)
-    today = now.astimezone(ET).date()
-    return closed if closed is not None and closed.astimezone(ET).date() == today else now
+    windows = session(now.astimezone(ET).date().isoformat()).option_windows(product)
+    return windows[-1][1] if windows and now >= windows[-1][1] else now
 
 
 def closed_since(now: datetime) -> "datetime | None":
