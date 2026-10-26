@@ -34,7 +34,7 @@ from numeric_contract import schwab_number
 from schwab_client import (GREEK_FIELDS, QUOTES_BATCH_MAX, flatten_chain_contracts, option_expiries,
                            safe_get_chain, safe_get_quotes)
 from stream_spine import CaptureWriter
-from time_et import ET, options_closed_at, options_open, record_markets, session
+from time_et import ET, option_market_open, options_closed_at, record_markets, session
 
 log = logging.getLogger("chain_history")
 
@@ -334,7 +334,7 @@ class ChainSweep:
         yet (none asked, or no option listed) is asked once per ET date."""
         if ticker not in self._optioned:
             return ticker not in self._fetched or datetime.fromtimestamp(self._fetched[ticker], ET).date() < now.date()
-        if options_open(now) is not False:
+        if option_market_open(now) is not False:
             return True
         closed = options_closed_at(now)
         return closed is not None and (ticker not in self._fetched or self._fetched[ticker] < closed.timestamp())

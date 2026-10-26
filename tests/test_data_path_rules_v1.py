@@ -32,7 +32,7 @@ from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS, bars_from_candles
 from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus, bar_msg
 from tests.feed_live_helper import daemon_bars, price_history, stream_daemon_bars
 from tests.schwab_rest_standin import SPY_QUOTES, TOKEN, LocalSchwab
-from time_et import ET, now_et
+from time_et import EQUITY_OPTIONS, ET, now_et
 
 FX = Path(__file__).resolve().parent / "fixtures"
 _OPT = json.loads((FX / "real_options_stream_history_samples.json").read_text(encoding="utf-8"))
@@ -291,7 +291,7 @@ def _served_at(now: float, feed_live: bool) -> dict:
         row = ofs._price_rows["SPY"] = live_price_rows.price_row("SPY", now)
         return {"row": row, "spot": server.resolve_spot("SPY", now=now),
                 "equity_book": server.order_flow_microstructure("SPY", "NYSE_BOOK", now),
-                "option_book": live_payload.options_live_payload(_CONTRACT, now)}
+                "option_book": live_payload.options_live_payload(_CONTRACT, now, EQUITY_OPTIONS)}   # a TSLA option
     finally:
         ofs._price_rows.pop("SPY", None)
         lmp.record_feed_down()
@@ -544,7 +544,7 @@ def test_d5_the_chain_is_asked_until_the_last_option_close_and_its_close_values_
     values), then not. Levels from that chain stand at 17:00 (After-Hours), not stale; levels
     from 15:00 are stale at 16:10, while the options are open. The clock moves with the sweep at
     rest (_Swept.move): a request is counted by the clock it was made at, never by when it arrived
-    (CI 2026-10-10 counted a 16:10 request that landed after the clock moved as one at 16:20)."""
+    (a 16:10 request that lands after the clock moves is not one at 16:20)."""
     chains = "/marketdata/v1/chains"
     swept = _Swept(tmp_path, "2026-10-07 16:10", ["SPY"])
     try:
@@ -560,8 +560,8 @@ def test_d5_the_chain_is_asked_until_the_last_option_close_and_its_close_values_
     assert sorted(after_close) == sorted(set(before_close)), "each expiry once more after the 16:15 close"
 
     stands = server.terrain_staleness(_et("2026-10-07 16:20"), "SPY", now=_et("2026-10-07 17:00"))
-    assert (stands["levels_stale"], stands["levels_stale_reason"]) == (False, "")
-    assert server.terrain_staleness(_et("2026-10-07 15:00"), "SPY", now=_et("2026-10-07 16:10"))["levels_stale"] is True
+    assert (stands["levels_state"], stands["levels_stale_reason"]) == ("CLOSE", "")
+    assert server.terrain_staleness(_et("2026-10-07 15:00"), "SPY", now=_et("2026-10-07 16:10"))["levels_state"] == "STALE"
 
 
 def test_d5_a_chain_in_flight_at_the_close_keeps_its_begin_time_and_the_close_chain_follows(tmp_path):
@@ -628,14 +628,18 @@ def test_d5_while_closed_levels_as_of_the_close_stand_and_older_ones_are_absent_
     sat, monday_early = _et("2026-10-03 12:00"), _et("2026-10-05 03:00")
     for now in (sat, monday_early):
         st = server.terrain_staleness(_et("2026-10-02 20:00") + 30, "ZZCLOSED", now=now)
-        assert st["levels_stale"] is False and st["levels_stale_reason"] == "", st
+        assert (st["levels_state"], st["levels_stale_reason"]) == ("CLOSE", ""), st
+        # ZZCLOSED's options are stock options, whose own market closes at 16:00: a chain fetched at
+        # 16:14 is its close values, one fetched at 15:59 is not
         st = server.terrain_staleness(_et("2026-10-02 16:14"), "ZZCLOSED", now=now)
-        assert st["levels_stale"] is True and st["levels_stale_reason"] == (
-            "the options are closed and this ticker's close values have not been fetched"), st
+        assert st["levels_state"] == "CLOSE", st
+        st = server.terrain_staleness(_et("2026-10-02 15:59"), "ZZCLOSED", now=now)
+        assert st["levels_state"] == "STALE" and st["levels_stale_reason"] == (
+            "this ticker's options are closed and its close values have not been fetched"), st
         st = server.terrain_staleness(None, "ZZCLOSED", now=now)
-        assert st["levels_stale"] is True and st["levels_age_sec"] is None    # absent, not zero
+        assert st["levels_state"] == "STALE" and st["levels_age_sec"] is None    # absent, not zero
     st = server.terrain_staleness(_et("2026-10-01 10:00"), "ZZCLOSED", now=_et("2026-10-01 11:00"))
-    assert st["levels_stale"] is True and "has not delivered this ticker" in st["levels_stale_reason"], \
+    assert st["levels_state"] == "STALE" and "has not delivered this ticker" in st["levels_stale_reason"], \
         "in session, an hour-old chain is a gap"
 
 

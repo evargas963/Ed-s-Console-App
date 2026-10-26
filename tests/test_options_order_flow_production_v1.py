@@ -12,8 +12,9 @@ services. No /markets answer is held for 2026-08-31, so the route serves that co
 Those messages carry no CONTRACT_TYPE, so the side the header shows is proven by
 tests/e2e/fixtures/options_microstructure_side_payloads.json: the route's payloads for SPY 2026-10-23
 761 call and 762 put after their stored messages, the first carrying CONTRACT_TYPE
-(tests/fixtures/real_spy_option_contract_type_2026_10_23.json). STAND-IN (named): the daemon's
-status, holding each contract on LEVELONE_OPTIONS.
+(tests/fixtures/real_spy_option_contract_type_2026_10_23.json), with SPY's 2026-10-22 close
+capture published as the chain that lists them. STAND-IN (named): the daemon's status, holding
+each contract on LEVELONE_OPTIONS.
 
 Regenerate (from the repo root, project .venv):
   python -c "from tests.test_options_order_flow_production_v1 import write_flow_e2e_fixture; write_flow_e2e_fixture()"
@@ -21,14 +22,18 @@ Regenerate (from the repo root, project .venv):
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from pathlib import Path
 
 import pytest
 
+from time_et import ET
+
 _HISTORY = Path(__file__).resolve().parent / "fixtures" / "real_options_stream_history_samples.json"
 _FLOW_E2E_FIXTURE = Path(__file__).resolve().parent / "e2e" / "fixtures" / "options_microstructure_payload.json"
 _SIDES = Path(__file__).resolve().parent / "fixtures" / "real_spy_option_contract_type_2026_10_23.json"
-_SIDES_E2E_FIXTURE = _FLOW_E2E_FIXTURE.with_name("options_microstructure_side_payloads.json")
+_SPY_CLOSE = _SIDES.with_name("real_spy_2026_10_23_expiry_two_closes_2026_10_21_22.json")
+_SIDES_E2E_FIXTURE =_FLOW_E2E_FIXTURE.with_name("options_microstructure_side_payloads.json")
 FLOW_CONTRACT = "TSLA  260831C00367500"
 
 
@@ -74,6 +79,13 @@ def build_side_e2e_fixture_response() -> dict:
     contracts = json.loads(_SIDES.read_text(encoding="utf-8"))["contracts"]
     out = {}
     ofls.clear_all_live_state()
+    # SPY's 2026-10-22 close capture lists both, so each is judged by SPY's option market
+    close = json.loads(_SPY_CLOSE.read_text(encoding="utf-8"))["newer"]
+    at_close = datetime.fromtimestamp(close["ts_utc"], ET)
+    srv._publish_levels("SPY", captures=[{"contracts": close["chain"], "ts_utc": close["ts_utc"], "spot": close["spot"],
+                                          "spot_ts": None, "spot_from_chain": False,
+                                          "et_date": at_close.date().isoformat(), "basis": srv.CAPTURE_BASIS}],
+                        now=at_close)
     try:
         for sym, msgs in contracts.items():
             at = max(m["ts_recv"] for m in msgs)
@@ -87,6 +99,8 @@ def build_side_e2e_fixture_response() -> dict:
         for sym in contracts:
             TAPE.forget(sym)
             ofs._option_contract_last_update_ts.pop(sym, None)
+        with srv._terrain_cache_lock:
+            srv._terrain_cache.pop("SPY", None)
         lmp.record_feed_down()
         ofls.clear_all_live_state()
 

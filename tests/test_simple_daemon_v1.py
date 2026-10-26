@@ -5,13 +5,20 @@ streamer."""
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
+import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
 import stream_spine as ss
 from app.market_data.schwab.streaming import capture as cap
+from tests.real_chains import TSLA
+from time_et import option_close_product
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_requests_are_split_under_schwabs_message_limit():
@@ -60,34 +67,38 @@ def test_news_and_every_subscription_answer_are_written(tmp_path):
 # ------------------------------------------------------------------ the console side
 
 def test_one_live_rule_every_reader_agrees_and_all_fail_closed_at_one_limit():
-    """ONE-15 (2026-09-28 audit): "is it live" had four limits -- 3 s (price), 5 s (daemon
-    status), 10 s (option greeks), 25 s (book) -- plus the daemon's 5 s/30 s message-age states,
-    so one moment could read live on one card and dead on the next. One rule now: the daemon's
+    """One limit for "is it live", so one moment never reads live on one card and dead on the
+    next: the daemon's
     heartbeat is under FEED_HEARTBEAT_MAX_AGE_SEC, its Schwab socket is open, and it holds the
     symbol on that service. A service quiet for 45 s on that feed is live (Schwab sends changes).
-    STAND-IN (named): the daemon's status. Judged in regular hours (RTH_INSTANT)."""
+    Two of TSLA's captured 2026-10-07 contracts, judged by TSLA's own option market. STAND-IN
+    (named): the daemon's status. Judged in regular hours (RTH_INSTANT)."""
     import live_market_plane as lmp
     from app.options.order_flow import streaming as ofs
     from tests.feed_live_helper import RTH_INSTANT
+    a, b = TSLA.chain[0]["symbol"], TSLA.chain[1]["symbol"]
+    product = option_close_product(TSLA.ticker)
     status = {"schwab_socket_open": True,
               "health": {"OPTIONS_BOOK": {"age_sec": 45.0}},
-              "held": {"LEVELONE_EQUITIES": ["MU"], "LEVELONE_OPTIONS": ["B", "A"], "OPTIONS_BOOK": ["A"]}}
+              "held": {"LEVELONE_EQUITIES": ["MU"], "LEVELONE_OPTIONS": [b, a], "OPTIONS_BOOK": [a]}}
 
     now = RTH_INSTANT
 
     def diag(sym):     # the served option-contract diagnostics for `sym`
-        return ofs.get_option_contract_streaming_diagnostics(sym, now)
+        return ofs.get_option_contract_streaming_diagnostics(sym, now, product)
 
     def readers():
-        return (lmp.feed_live_for("MU", "LEVELONE_EQUITIES", now), lmp.feed_live_for("A", "LEVELONE_OPTIONS", now),
-                diag("A")["feed_health"]["book"]["state"], diag("B")["subscription_state"])
+        return (lmp.feed_live_for("MU", "LEVELONE_EQUITIES", now),
+                lmp.feed_live_for(a, "LEVELONE_OPTIONS", now, product),
+                diag(a)["feed_health"]["book"]["state"], diag(b)["subscription_state"])
 
     lmp.record_feed_down()
     try:
         down = readers()
         limit = lmp.FEED_HEARTBEAT_MAX_AGE_SEC
         lmp.record_feed_heartbeat({**status, "ts": now - limit + 0.5})
-        live, book_age, b_book = readers(), diag("A")["feed_health"]["book"]["age_sec"], lmp.feed_live_for("B", "OPTIONS_BOOK", now)
+        live, book_age, b_book = (readers(), diag(a)["feed_health"]["book"]["age_sec"],
+                                  lmp.feed_live_for(b, "OPTIONS_BOOK", now, product))
         lmp.record_feed_heartbeat({**status, "ts": now - limit - 0.5})
         late = readers()
         lmp.record_feed_heartbeat({**status, "schwab_socket_open": False, "ts": now})
@@ -103,7 +114,7 @@ def test_one_live_rule_every_reader_agrees_and_all_fail_closed_at_one_limit():
 
 # ------------------------------------------------------------------ the process
 
-def test_one_daemon_at_a_time_and_a_dead_owners_lock_is_reclaimed(tmp_path, monkeypatch):
+def test_one_daemon_at_a_time_and_a_dead_owners_lock_is_reclaimed(tmp_path):
     db = tmp_path / "stream_capture.db"
     fd, lock = cap.acquire_owner_lock(db)
     try:
@@ -118,13 +129,17 @@ def test_one_daemon_at_a_time_and_a_dead_owners_lock_is_reclaimed(tmp_path, monk
     assert not lock.exists()
 
 
-def test_a_checkout_that_may_not_run_live_refuses_before_opening_anything(monkeypatch):
-    import runtime_layout
-    monkeypatch.setattr(runtime_layout, "live_binding_error", lambda *a, **k: "bound elsewhere")
-    ran = []
-    monkeypatch.setattr(cap, "run", lambda *a, **k: ran.append(a))
-    monkeypatch.setattr(sys, "argv", ["capture"])
-    assert cap.main() == 2
-    assert ran == [], "no lock, no Schwab socket, no stream database"
+def test_a_checkout_that_may_not_run_live_refuses_before_opening_anything(tmp_path):
+    """The daemon started, as launch.py starts it, with its runtime root another checkout (a
+    directory holding `.git`): it refuses and exits 2, with no lock, no log and no stream database
+    written there."""
+    other = tmp_path / "other_checkout"
+    (other / ".git").mkdir(parents=True)
+    env = {**os.environ, "ED_RUNTIME_ROOT": str(other)}
+    r = subprocess.run([sys.executable, "-m", "app.market_data.schwab.streaming.capture"], cwd=str(ROOT), env=env,
+                       capture_output=True, text=True, timeout=60)
+    assert r.returncode == 2, r.stdout + r.stderr
+    assert "CAPTURE DAEMON REFUSED" in r.stderr
+    assert sorted(p.name for p in other.iterdir()) == [".git"], "no lock, no log, no stream database"
 
 

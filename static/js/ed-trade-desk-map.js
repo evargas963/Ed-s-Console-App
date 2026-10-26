@@ -1,4 +1,4 @@
-/* Ed Console — Trade Desk / "Desk" subview (the operator's 2026-09-25 mockup). PRESENTATION ONLY.
+/* Ed Console — Trade Desk / "Desk" subview. PRESENTATION ONLY.
 
    One page for the SELECTED ticker, one global timeframe:
      MARKET MAP   <- /api/bars1m (completed Schwab 1m bars, server-rolled timeframe),
@@ -70,10 +70,10 @@
     return word;
   }
   // The chain's time stands beside its age. The age words are unchanged when no chain time was sent.
-  function chainAgeLabel(t, word) {
-    var when = (t && t.levels_time_ct != null) ? t.levels_time_ct : null;
-    if (when != null) return when + ' · ' + word;
-    return word;
+  // the gamma levels' served time, word (LIVE, CLOSE, STALE, NOT LIVE) and age, each when sent
+  function chainAgeLabel(t) {
+    return [t.levels_time_ct, t.levels_state, t.levels_age_text]
+      .filter(function (w) { return w != null; }).join(' · ');
   }
   function whenCT(ts) {
     var d = new Date(ts * 1000);
@@ -434,11 +434,13 @@
         src(c, 'Schwab option chain · ' + (t === undefined ? 'loading…' : esc((t && t.error) || 'terrain request failed')));
         c.querySelector('.tdm-rows').innerHTML = '';
       } else {
-        var reg = String(t.regime || '').replace(/_/g, ' ');
-        state(c, reg || '—', t.levels_stale ? 'warn' : (/LONG/.test(t.regime || '') ? 'up' : /SHORT/.test(t.regime || '') ? 'dn' : ''));
+        // the served regime word, and its tone from the one regime table (ed-gamma-panels.js)
+        var reg = t.regime ? String(t.regime) : null;
+        var rm = reg != null ? window.EdGammaRegime[reg] : null;
+        state(c, reg != null ? reg.replace(/_/g, ' ') : '—', t.levels_state !== 'LIVE' ? 'warn' : (rm ? rm.tone : ''));
         var ng = t.net_gex_at_spot;   // absent is uncoloured, never read as 0
         c.querySelector('.tdm-hero').innerHTML = '<span class="' + (ng == null ? '' : ng >= 0 ? 'up' : 'dn') + '">' + usd(ng) + '</span> <small>net dealer gamma at spot, per 1%</small>';
-        src(c, 'Schwab option chain · ' + esc(chainAgeLabel(t, t.levels_stale ? ('stale ' + age(t.levels_age_sec)) : (age(t.levels_age_sec) + ' old'))));
+        src(c, 'Schwab option chain · ' + esc(chainAgeLabel(t)));
         c.querySelector('.tdm-rows').innerHTML = row('Call wall', num(t.call_wall), 'up') + row('Put wall', num(t.put_wall), 'dn') +
           row('Flip', num(t.gamma_flip)) + row('P/C OI', num(t.pcr_all, 2)) + row('Max pain', num(t.max_pain)) +
           row('Contracts', t.contracts_used != null ? t.contracts_used.toLocaleString() : '—') + forcesRows();
@@ -455,7 +457,7 @@
         state(c, 'ATM IV ' + num(im.iv_pct_atm, 1) + '%', '');
         c.querySelector('.tdm-hero').innerHTML = '±' + num(im.points, 2) + ' <small>implied 1-day move, 1σ</small>';
       }
-      src(c, 'Schwab option chain · ' + (!t || t.error ? '—' : esc(chainAgeLabel(t, age(t.levels_age_sec) + ' old'))));
+      src(c, 'Schwab option chain · ' + (!t || t.error ? '—' : esc(chainAgeLabel(t))));
       c.querySelector('.tdm-rows').innerHTML =
         (im && im.dte_used != null ? row('Move from', 'first expiry ≥1 day out (' + num(im.dte_used, 0) + 'd)') : '') +
         row('ATR daily', num(t && t.atr_daily)) +
@@ -525,16 +527,16 @@
     h += m === undefined ? pill('BOOK', '…', '') : !m ? pill('BOOK', 'FAILED', 'bad') : m.status === 'no_book' ? pill('BOOK', 'NONE', 'warn', 'no ' + m.venue)
       : pill('BOOK', bookAgeLabel(m, m.ages && m.ages.book_stale === false ? age(m.ages.book_age_sec) : m.ages && m.ages.book_stale ? m.book_feed_label : 'AGE UNKNOWN'),
           m.ages && m.ages.book_stale === false ? 'ok' : 'bad');
-    var la = L && L.snapshot_as_of_ts_utc ? Date.now() / 1000 - L.snapshot_as_of_ts_utc : null;
-    var levelWord = age(la);
+    // the session levels snapshot's served time and age
+    var levelWord = L && L.snapshot_age_text != null ? L.snapshot_age_text : '—';
     var levelWhen = (L && L.snapshot_time_ct != null) ? L.snapshot_time_ct : null;
     var levelShown = levelWhen != null ? (levelWhen + ' · ' + levelWord) : levelWord;
     h += L === undefined ? pill('LEVELS', '…', '') : !L ? pill('LEVELS', 'FAILED', 'bad') : pill('LEVELS', levelShown, (L.degraded && L.degraded.length) ? 'warn' : 'ok', 'session levels snapshot age');
-    var gammaWhen = t ? chainAgeLabel(t, t.levels_stale ? ('STALE ' + age(t.levels_age_sec)) : age(t.levels_age_sec)) : null;
-    var gammaWhy = (t && t.levels_stale_reason != null) ? t.levels_stale_reason : null;
+    var gammaWhen = t ? chainAgeLabel(t) : null;
+    var gammaWhy = (t && t.levels_stale_reason) ? t.levels_stale_reason : null;
     h += t === undefined ? pill('GAMMA', '…', '')
       : !t || t.error ? pill('GAMMA', 'DOWN', 'bad', (t && t.error) ? t.error : 'terrain request failed')
-      : pill('GAMMA', gammaWhen, t.levels_stale ? 'warn' : 'ok', gammaWhy);
+      : pill('GAMMA', gammaWhen, t.levels_state === 'LIVE' ? 'ok' : 'warn', gammaWhy);
     host.innerHTML = h;
   }
   function paintFooter() {

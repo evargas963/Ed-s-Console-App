@@ -6,20 +6,21 @@
  * chain scope and the chart shows the price-bars clock AND the GEX levels clock as two separate
  * badges. Stale server state -> stale badge styling. Offline.
  */
+const path = require('path');
 const { test, expect } = require('@playwright/test');
 const { routeWatchlist } = require('./fixtures/watchlist');
 
 const SURFACE = { ticker: 'SPY', symbol: 'SPY', available: true, spot: 100, front_expiry: '2026-09-11', source: 'terrain_live_cache',
-  live: true, stale: false, age_sec: 6, chain_basis: 'full', complete: false,
+  levels_state: 'LIVE', levels_age_sec: 6, chain_basis: 'full', complete: false,
   expirations: [{ expiry: '2026-09-11', dte: 2, front: true }], strikes: [98, 100, 102],
   cells: [{ strike: 98, gex: [-90000], spot: false }, { strike: 100, gex: [958600], spot: true },
     { strike: 102, gex: [-264500], spot: false }],
   view: { centre: 100, scope: 'auto', coverage: null, max_abs: { gex: 958600 }, missing_expiry: null } };
 const TERRAIN = { ticker: 'SPY', spot: 100, gamma_flip: 99.5, call_wall: 102, put_wall: 98,
   absolute_gamma_strike: 100, net_gex_peak: 100, net_gex_at_spot: 5e8, regime: 'LONG_GAMMA_CHOP',
-  levels_stale: false, levels_age_sec: 21 };
+  levels_state: 'LIVE', levels_mark: 'LIVE', levels_age_sec: 21 };
 const STRIKES = { ticker: 'SPY', spot: 100, spot_strike: 100, spot_source: 'schwab_quote_last',
-  today_source: 'terrain_live_cache', today_age_sec: 21, levels_stale: false, levels_age_sec: 21,
+  levels_state: 'LIVE', levels_age_sec: 21, levels_age_text: '21s', levels_stale_reason: '',
   today: { all: [[98, -90000, 10], [100, 958600, 50], [102, -264500, 12]] },
   views: { all: { centre: 100, note: null, max_abs: 958600 } } };
 const BARS = { ticker: 'SPY', bars: [99.6, 99.9, 100.1, 100.0].map(function (c, i) {
@@ -55,8 +56,18 @@ test.describe('#4 per-panel source / as-of / freshness', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const badge = page.locator('#gbsSrc .asof');
     await expect(badge).toBeVisible();
-    await expect(badge).toContainText('terrain live');
-    await expect(badge).toContainText('21s');            // the server's own today_age_sec, formatted
+    await expect(badge).toContainText('terrain · LIVE');   // the served levels_state
+    await expect(badge).toContainText('21s');            // the server's own levels_age_text
+  });
+
+  test('GEX-by-strike after its option close reads CLOSE with the close values\' time and age (the route\'s own answer)', async ({ page }) => {
+    // /api/terrain/strikes for SPY's 2026-10-22 close publication, read at 18:00 ET (tests/test_level_crosses_wire.py)
+    const CLOSED = require(path.join(__dirname, '..', 'fixtures', 'real_spy_strikes_at_a_stopped_price_2026_10_22.json'));
+    await routes({ strikes: CLOSED })(page);
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const badge = page.locator('#gbsSrc .asof');
+    await expect(badge).toHaveText('terrain · CLOSE · ' + CLOSED.levels_time_ct + ' · ' + CLOSED.levels_age_text);
+    await expect(badge).not.toHaveClass(/ live/);
   });
 
   test('GEX-by-strike keeps the chain time beside its age', async ({ page }) => {
@@ -64,7 +75,7 @@ test.describe('#4 per-panel source / as-of / freshness', () => {
     await routes({ strikes: Object.assign({}, STRIKES, { levels_time_ct: CHAIN_TIME }) })(page);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const badge = page.locator('#gbsSrc .asof');
-    await expect(badge).toContainText('terrain live');
+    await expect(badge).toContainText('terrain · LIVE');
     await expect(badge).toContainText(CHAIN_TIME);
     await expect(badge).toContainText('21s');
     await expect(page.locator('#gbsBody')).toContainText('100');
@@ -82,7 +93,7 @@ test.describe('#4 per-panel source / as-of / freshness', () => {
   test('the two panels show DIFFERENT source truths, not one merged status', async ({ page }) => {
     await routes()(page);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('#gbsSrc .asof')).toContainText('terrain live');
+    await expect(page.locator('#gbsSrc .asof')).toContainText('terrain · LIVE');
     await expect(page.locator('#sdSrc .asof')).toContainText('vendor');
     const gbs = await page.locator('#gbsSrc .asof').innerText();
     const sd = await page.locator('#sdSrc .asof').innerText();
@@ -95,7 +106,7 @@ test.describe('#4 per-panel source / as-of / freshness', () => {
     await page.locator('.vtab', { hasText: 'Chart' }).click();
     const asof = page.locator('#chartBody .chart-asof');
     await expect(asof).toContainText('price 1m');       // bars clock
-    await expect(asof).toContainText('GEX terrain live'); // levels clock (separate)
+    await expect(asof).toContainText('GEX terrain · LIVE'); // levels clock (separate)
   });
 
   test('the Chart GEX badge keeps the chain time', async ({ page }) => {
@@ -104,18 +115,20 @@ test.describe('#4 per-panel source / as-of / freshness', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.locator('.vtab', { hasText: 'Chart' }).click();
     const asof = page.locator('#chartBody .chart-asof');
-    await expect(asof).toContainText('GEX terrain live');
+    await expect(asof).toContainText('GEX terrain · LIVE');
     await expect(asof).toContainText(CHAIN_TIME);
     await expect(asof).toContainText('21s');
   });
 
-  test('a stale terrain generation makes the GEX-by-strike badge read stale', async ({ page }) => {
-    const staleStrikes = Object.assign({}, STRIKES, { levels_stale: true, levels_age_sec: 900,
-      today_age_sec: 900, levels_stale_reason: 'levels loop paused' });
-    await routes({ strikes: staleStrikes })(page);
+  test('a stale terrain generation makes the GEX-by-strike badge read stale (the route\'s own answer)', async ({ page }) => {
+    // /api/terrain/strikes for SPY's 2026-10-22 close publication after the next day's close,
+    // 2026-10-23 16:30 ET, no chain fetched since (tests/test_level_crosses_wire.py)
+    const STALE = require(path.join(__dirname, '..', 'fixtures', 'real_spy_strikes_after_the_next_close_2026_10_23.json'));
+    await routes({ strikes: STALE })(page);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const badge = page.locator('#gbsSrc .asof');
     await expect(badge).toHaveClass(/stale/);
-    await expect(badge).toContainText('terrain live');
+    await expect(badge).toHaveText('terrain · STALE · ' + STALE.levels_time_ct + ' · ' + STALE.levels_age_text);
+    await expect(badge).toHaveAttribute('title', STALE.levels_stale_reason);
   });
 });

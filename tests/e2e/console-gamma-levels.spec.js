@@ -14,11 +14,11 @@ const LEVELS = {
   // served in ladder order (price, highest first) with distance (server.py get_levels)
   levels: [
     { id: 'PDH', price: 101.5, family: 'session', label: 'Prior Day High', evidence_tier: 'MEASURED', distance: 1.5,
-      provenance: { producer: 'session_levels' }, staleness: { as_of_ts_utc: 1757000000, age_sec: 12, stale: false } },
+      provenance: { producer: 'session_levels' }, staleness: { as_of_ts_utc: 1757000000, age_sec: 12 } },
     { id: 'VWAP', price: 100.02, family: 'vwap', label: 'VWAP', evidence_tier: 'MEASURED', distance: 0.02,
-      provenance: { producer: 'liquidity_value_engine' }, staleness: { as_of_ts_utc: 1757000000, age_sec: 12, stale: false } },
+      provenance: { producer: 'liquidity_value_engine' }, staleness: { as_of_ts_utc: 1757000000, age_sec: 12 } },
     { id: 'POC', price: 99.4, family: 'value', label: 'Point of Control', evidence_tier: 'DERIVED', distance: -0.6,
-      provenance: { producer: 'value_area' }, staleness: { as_of_ts_utc: 1757000000, age_sec: 12, stale: false } },
+      provenance: { producer: 'value_area' }, staleness: { as_of_ts_utc: 1757000000, age_sec: 12 } },
   ],
   by_distance: ['VWAP', 'POC', 'PDH'],
   vwap_series: [[1757000000, 100.0, 100.5, 99.5, 101.0, 99.0]],
@@ -32,12 +32,12 @@ async function intercept(page) {
     let body = { available: false };
     if (url.includes('/api/levels')) body = LEVELS;
     else if (url.includes('/api/options/gamma-surface')) body = { ticker: 'SPY', available: true, spot: 100,
-      source: 'terrain_live_cache', live: true, stale: false, expirations: [{ expiry: '2026-09-11', dte: 2 }],
+      source: 'terrain_live_cache', levels_state: 'LIVE', expirations: [{ expiry: '2026-09-11', dte: 2 }],
       strikes: [100], cells: [{ strike: 100, gex: [1] }],
       view: { centre: 100, scope: 'auto', coverage: null, max_abs: { gex: 1 }, missing_expiry: null } };
-    else if (url.includes('/api/terrain/strikes')) body = { spot: 100, today_source: 'terrain_live_cache', today_age_sec: 5, levels_stale: false, today: { all: [[100, 1, 1]] },
+    else if (url.includes('/api/terrain/strikes')) body = { spot: 100, levels_state: 'LIVE', today: { all: [[100, 1, 1]] },
       views: { all: { centre: 100, note: null, max_abs: 1 } } };
-    else if (url.includes('/api/terrain')) body = { spot: 100, gamma_flip: 99.5, regime: 'LONG_GAMMA_CHOP', levels_stale: false };
+    else if (url.includes('/api/terrain')) body = { spot: 100, gamma_flip: 99.5, regime: 'LONG_GAMMA_CHOP', levels_state: 'LIVE', levels_mark: 'LIVE' };
     else if (url.includes('/api/expiries')) body = { expiries: ['2026-09-11'] };    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
   await routeWatchlist(page, ['SPY']);
@@ -109,7 +109,7 @@ test.describe('D — Gamma Levels view', () => {
       status: 200, contentType: 'application/json',
       body: JSON.stringify(Object.assign({}, LEVELS, {
         zero_dte: [{ id: 'call_wall', label: 'Call wall', carried: 600, price: 580,
-          staleness: { as_of_time_ct: '12:32:07 CT', age_sec: 4, stale: false } }],
+          staleness: { as_of_time_ct: '12:32:07 CT', age_sec: 4 } }],
       })),
     }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
@@ -125,7 +125,7 @@ test.describe('D — Gamma Levels view', () => {
       body: JSON.stringify(Object.assign({}, LEVELS, {
         levels: [],
         zero_dte: [{ id: 'call_wall', label: 'Call wall', carried: 600, price: 580,
-          staleness: { as_of_time_ct: '12:32:07 CT', stale: false } }],
+          staleness: { as_of_time_ct: '12:32:07 CT' } }],
       })),
     }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });

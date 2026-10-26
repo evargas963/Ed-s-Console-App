@@ -105,7 +105,7 @@ from math_exposure_core import gamma_reported  # noqa: E402
 from numeric_contract import schwab_number  # noqa: E402
 from schwab.streaming import StreamClient  # noqa: E402
 from schwab_client import build_client_from_token, safe_get_quotes  # noqa: E402
-from time_et import ET, ct_label, option_close_product, options_closed_at, options_open, sessions_since  # noqa: E402
+from time_et import ET, ct_label, option_close_product, option_market_open, options_closed_at, sessions_since  # noqa: E402
 from websockets.exceptions import ConnectionClosed  # noqa: E402
 
 log = logging.getLogger("capture")
@@ -940,7 +940,7 @@ async def keep_sessions(daemon: "Daemon", stop: asyncio.Event) -> None:
     try:
         while not stopped.done():
             now = datetime.fromtimestamp(daemon.clock(), ET)
-            closed = options_closed_at(now) if options_open(now) is False else None
+            closed = options_closed_at(now) if option_market_open(now) is False else None
             if closed is not None and closed != kept_for:
                 since = sessions_since(now, SESSIONS_KEPT)
                 if since is not None:

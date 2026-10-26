@@ -122,11 +122,9 @@
     var n = prof.name;
     var ab = (window.EdShell && window.EdShell.asOfBadge) || function () { return ''; };
     var lastT = bars.length ? bars[bars.length - 1].t : null;
-    var src = sd && sd.today_source;
     var asof = (lastT ? '<span class="asof">price ' + tfLabel() + ' · ' + ctTime(lastT) + ' CT</span>' : '') +
-      (src ? ab({ label: n + ' ' + (src === 'terrain_live_cache' ? 'terrain live' : src), ageSec: sd.today_age_sec,
-        when: sd.levels_time_ct,
-        stale: !!sd.levels_stale, reason: sd.levels_stale_reason, live: src === 'terrain_live_cache' && sd.levels_stale === false }) : '');
+      (sd ? ab({ label: n + ' terrain', state: sd.levels_state, when: sd.levels_time_ct,
+        age: sd.levels_age_text, reason: sd.levels_stale_reason }) : '');
     var top = prof.max_abs_row;   // served: the largest-magnitude row
     var shown = top ? (prof.signed ? usd(top[1]) : Number(top[1]).toLocaleString('en-US') + ' contracts') : '';
     el.innerHTML = (asof ? '<div class="chart-asof">' + asof + '</div>' : '') +

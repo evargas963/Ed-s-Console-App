@@ -86,23 +86,30 @@
     el.className = 'sub cov' + (cov ? ' cov-' + cov.state : '');
   }
   function buildBanner(surface) {
-    var live = surface.live !== false, stale = !!surface.stale;
-    if (live && !stale) return '';
-    var warming = !live && surface.warming === true;
-    var requested = !live && !warming && surface.requested === true;
-    var stateLabel = warming ? 'LIVE SURFACE WARMING' : requested ? 'LIVE SURFACE REQUESTED' : (live ? 'STALE' : '');
-    var cls = (warming || requested) ? 'warming' : (live ? 'stale' : '');
-    var brief = !live ? 'no live surface for this symbol' : 'live surface is stale';
-    var detail = surface.degraded || surface.reason || brief;
-    return '<div class="heat-banner ' + cls + '" title="' + escapeHtml(detail) + '"><span class="hb-main">' +
-      (stateLabel ? stateLabel + ' · ' : '') + brief + '</span><span class="hb-more" aria-label="details">details</span></div>';
+    if (surface.available !== false) {
+      // a surface is shown: its levels' served word (levels_state: CLOSE, STALE, NOT LIVE), the
+      // chain's time and age; nothing while it is LIVE
+      if (surface.levels_state === 'LIVE') return '';
+      var words = [surface.levels_state, surface.levels_time_ct, surface.levels_age_text]
+        .filter(function (w) { return w; }).join(' · ');
+      return '<div class="heat-banner ' + (surface.levels_state === 'STALE' ? 'stale' : '') + '" title="' +
+        escapeHtml(surface.levels_stale_reason || surface.levels_state) + '"><span class="hb-main">' + escapeHtml(words) +
+        '</span><span class="hb-more" aria-label="details">details</span></div>';
+    }
+    // no surface: why, from the served flags (warming: its chain is coming; requested: a page asked)
+    var warming = surface.warming === true, requested = !warming && surface.requested === true;
+    var stateLabel = warming ? 'LIVE SURFACE WARMING' : requested ? 'LIVE SURFACE REQUESTED' : '';
+    var brief = 'no live surface for this symbol';
+    return '<div class="heat-banner ' + (stateLabel ? 'warming' : '') + '" title="' + escapeHtml(surface.reason || brief) +
+      '"><span class="hb-main">' + (stateLabel ? stateLabel + ' · ' : '') + brief +
+      '</span><span class="hb-more" aria-label="details">details</span></div>';
   }
   function applyStatus(host, surface) {   // refresh status WITHOUT rebuilding the table
     Array.prototype.slice.call(host.querySelectorAll('.heat-banner')).forEach(function (n) { n.remove(); });
     var b = buildBanner(surface);
     if (b) host.insertAdjacentHTML('afterbegin', b);
     var wrap = host.querySelector('.heat-wrap');
-    if (wrap) wrap.classList.toggle('recede', surface.live === false || !!surface.stale);
+    if (wrap) wrap.classList.toggle('recede', surface.levels_state !== 'LIVE');
     paintChip(surface.view.coverage);
   }
 
@@ -137,7 +144,6 @@
     var words = WORDS;
     var exps = surface.expirations || [], cells = surface.cells || [];
     var maxAbs = view.max_abs[measure], heat = readHeatColors();
-    var live = surface.live !== false, stale = !!surface.stale;
     var tbl = '<table class="heat"><thead><tr><th class="hcorner">Strike</th>';
     exps.forEach(function (e, j) {
       var dte = e.expired ? 'EXPIRED' : (e.dte === 0) ? '0DTE' : (e.dte != null ? e.dte + 'DTE' : '');
@@ -184,7 +190,7 @@
       '<span class="caps"><span class="t">' + legendPair[0] + '</span><span class="m">0</span>' +
       '<span class="b">' + legendPair[1] + '</span></span></div>';
     host.innerHTML = buildBanner(surface) + note +
-      '<div class="heat-host"><div class="heat-main"><div class="heat-wrap' + ((!live || stale) ? ' recede' : '') + '">' +
+      '<div class="heat-host"><div class="heat-main"><div class="heat-wrap' + (surface.levels_state !== 'LIVE' ? ' recede' : '') + '">' +
       tbl + '</div></div>' + vlegend + '</div>';
 
     var srow = host.querySelector('.spotrow');

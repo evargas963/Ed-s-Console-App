@@ -3,7 +3,7 @@
 Pins `order_flow_engine.compute_book_microstructure`: the single producer of the Order
 Flow UI's book-state metrics. Deterministic synthetic book (best-first levels, a bid wall
 at the touch). Asserts NATIVE/DERIVED values, ONE FAUCET (imbalance == the depth-total
-ratio, i.e. the engine authority and the new totals agree), explicit classification of
+ratio, i.e. the engine authority and the depth totals agree), explicit classification of
 every output, fail-closed on no book, and that temporal PROXY metrics are NOT produced.
 """
 
@@ -17,7 +17,9 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import app.options.order_flow.engine as ofe
+import app.options.order_flow.state as ofls
 from app.options.order_flow.state import OrderFlowState
+from time_et import EQUITY_OPTIONS
 
 FIXTURE = ROOT / "tests" / "fixtures" / "real_options_stream_history_samples.json"
 
@@ -64,7 +66,7 @@ def test_derived_scalars():
     assert m["mid"] == 712.48
     # microprice weights each price by the OPPOSITE size: (712.47*500 + 712.49*300)/800.
     assert abs(m["microprice"] - 712.4775) < 1e-6
-    assert m["spread_pts"] == 712.49 - 712.47          # exact, unrounded (operator 2026-10-01)
+    assert m["spread_pts"] == 712.49 - 712.47          # exact, unrounded
     assert m["classification"]["microprice"] == "DERIVED"
 
 
@@ -105,9 +107,9 @@ def test_wall_candidates_are_flagged_heuristic():
 
 
 def test_microprice_is_computed_from_every_quote_schwab_sent():
-    """Operator 2026-10-01: "we use what schwab gives us and we display it" -- a crossed book's
-    quotes are Schwab's and compute (the book says it is crossed); absent only with a leg Schwab
-    did not send, or no size to weight."""
+    """A crossed book's quotes are Schwab's and compute (the book says it is crossed): "we use
+    what schwab gives us and we display it". Absent only with a leg Schwab did not send, or no
+    size to weight."""
     ok = ofe._microprice(712.47, 712.49, 300, 500)
     assert abs(ok - 712.4775) < 1e-9
     assert ofe._microprice(712.50, 712.49, 300, 500) == (712.50 * 500 + 712.49 * 300) / 800   # crossed
@@ -147,24 +149,10 @@ def test_fail_closed_no_book():
 
 
 def test_every_emitted_metric_is_classified():
-    """TEST_SYSTEM_REHAB_V2_RESIDUAL_CLOSURE (weak-assertion item 10): was a
-    hardcoded 8-key list checked with `key in cls or f"{key}.*" in cls or
-    any(c.startswith(key) for c in cls)`. Two defects:
-
-      (a) the third arm SUBSUMES the first two (an exact `key` entry, and a
-          `"{key}.*"` entry, both satisfy `startswith(key)`), and it is a BARE
-          prefix match -- so deleting the real `mid` classification while any
-          unrelated `mid*` key existed still passed. Measured negative control:
-          drop "mid", add "mid_price" -> old assertion PASSES, this one FAILS.
-      (b) the test's NAME claims EVERY emitted metric is classified, but it only
-          ever checked 8 hand-listed keys out of the 13 real metric keys the
-          payload emits -- a NEW emitted metric shipped with no classification
-          entry could never be caught, which is the entire defect the name
-          promises to guard.
-
-    Now the metric set is DERIVED from the actual payload, and the family match
-    requires a dotted boundary (`key + "."`), so a prefix collision cannot stand
-    in for the real entry."""
+    """The metric set is taken from the actual payload, so a newly emitted metric with no
+    classification entry fails. A family match requires a dotted boundary (`key + "."`), so a
+    bare prefix collision (an unrelated `mid_price` entry) cannot stand in for the real `mid`
+    entry."""
     m = ofe.compute_book_microstructure(_data(), now_ts=1787233772.0)
     cls = m["classification"]
     # Self-describing meta blocks, not emitted metrics: the classification map
@@ -243,8 +231,7 @@ def test_invalid_sizes_are_rejected():
 
 def test_a_crossed_book_computes_mid_and_microprice_and_says_it_is_crossed():
     """A crossed book (bid > ask): Schwab sent both quotes, so mid and microprice are computed
-    from them and the payload flags crossed (operator 2026-10-01: "we use what schwab gives us
-    and we display it"; they used to be withheld)."""
+    from them and the payload flags crossed ("we use what schwab gives us and we display it")."""
     crossed = {"content": [
         {"BIDS": [{"BID_PRICE": 712.60, "TOTAL_VOLUME": 1000}],
          "ASKS": [{"ASK_PRICE": 712.49, "TOTAL_VOLUME": 960}],
@@ -270,9 +257,8 @@ def test_one_sided_book_fails_closed():
 
 def test_a_one_sided_book_schwab_sent_is_the_latest_book_never_the_older_two_sided_one():
     """A book message with asks and no bids (as Schwab sends a side with no displayed orders) is
-    the latest book: its asks are served. It used to be dropped, and the previous two-sided book
-    stayed on screen as current (operator 2026-10-01: "we use what schwab gives us and we display
-    it")."""
+    the latest book: its asks are served, and the previous two-sided book does not stand as
+    current ("we use what schwab gives us and we display it")."""
     st = OrderFlowState()
     snap = _book_snapshot()
     st.push_book("ONESIDE", snap, "NASDAQ_BOOK")
@@ -283,19 +269,17 @@ def test_a_one_sided_book_schwab_sent_is_the_latest_book_never_the_older_two_sid
     assert m["depth"]["1"]["ask_total"] == 77.0 and m["depth"]["1"]["bid_total"] is None
 
 
-def test_route_serializes_carried_state_without_recomputing(monkeypatch):
+def test_route_serializes_carried_state_without_recomputing():
     """The /api/order-flow/microstructure route and the engine call the SAME producer. Once the
     structural state is computed for (ticker, BOOK_TIME) it is memoized; a second serialization of
-    the SAME unchanged book must carry that cached state, NOT re-run the structural computation."""
+    the SAME unchanged book must carry that cached state, NOT re-run the structural computation
+    (a recompute stores a new entry)."""
     ofe._MICRO_STRUCTURAL_CACHE.pop("CARRYTEST", None)
     data = _data()
     first = ofe.compute_book_microstructure(data, now_ts=100.0, ticker="CARRYTEST")
-
-    # If the second call recomputed instead of carrying, this would raise.
-    def _boom(_cb):
-        raise AssertionError("structural recomputed instead of carried")
-    monkeypatch.setattr(ofe, "_microstructure_structural", _boom)
+    held = ofe._MICRO_STRUCTURAL_CACHE["CARRYTEST"]
     second = ofe.compute_book_microstructure(data, now_ts=200.0, ticker="CARRYTEST")
+    assert ofe._MICRO_STRUCTURAL_CACHE["CARRYTEST"] is held, "structural recomputed instead of carried"
 
     # structural fields are identical (carried); only wall-clock ages/stamps advance.
     assert second["depth"] == first["depth"]
@@ -344,11 +328,9 @@ def test_changed_ladder_under_same_book_time_is_not_served_stale():
     assert [w["side"] for w in m2["wall_candidates"]] == ["ask"]
 
     # And an unchanged re-read of v2 (same ticker, same content) still carries without recompute.
-    def _boom(_cb):
-        raise AssertionError("recomputed despite identical canonical book")
-    import unittest.mock as _um
-    with _um.patch.object(ofe, "_microstructure_structural", _boom):
-        m2b = ofe.compute_book_microstructure(v2, ticker="STALE", now_ts=3.0)
+    held = ofe._MICRO_STRUCTURAL_CACHE["STALE"]
+    m2b = ofe.compute_book_microstructure(v2, ticker="STALE", now_ts=3.0)
+    assert ofe._MICRO_STRUCTURAL_CACHE["STALE"] is held, "recomputed despite identical canonical book"
     assert m2b["depth"] == m2["depth"]
     ofe._MICRO_STRUCTURAL_CACHE.pop("STALE", None)
 
@@ -429,8 +411,8 @@ def test_push_option_top_merges_real_partial_ticks_per_field():
 
 
 def test_an_equity_l1_quote_is_not_stored_a_second_time_in_order_flow_state():
-    """O-01: an equity's Level-1 quote lives in live_market_plane only. push_level_one no longer
-    writes a top-of-book item beside the book and tape. Stand-in (named): a hand-built
+    """An equity's Level-1 quote lives in live_market_plane only. push_level_one writes no
+    top-of-book item beside the book and tape. Stand-in (named): a hand-built
     LEVELONE_EQUITIES tick."""
     import app.options.order_flow.state as ofls
     ofls.clear_symbol("O01EQ")
@@ -444,28 +426,37 @@ def test_an_equity_l1_quote_is_not_stored_a_second_time_in_order_flow_state():
         ofls.clear_symbol("O01EQ")
 
 
-def test_size_g_the_live_push_seam_threads_each_messages_receive_time_into_push_level_one(monkeypatch):
+def test_size_g_the_live_push_seam_threads_each_messages_receive_time_into_push_level_one():
     """The production seam (order_flow_streaming._ingest_pushed, fed by the daemon's live
     push) must hand push_level_one the MESSAGE's own ts_recv for both equity
     (LEVELONE_EQUITIES) and option (LEVELONE_OPTIONS) messages -- never the time the console
-    processed it."""
+    processed it. Real data: GOOGL's TOTAL_VOLUME and SPY 2026-10-30 910 call's GAMMA as Schwab
+    sent them 2026-10-05 14:00 CT (tests/fixtures/real_stream_mix_2026_10_05_1400ct.json)."""
     import app.options.order_flow.streaming as ofs
     from stream_spine import options_quote_msg, quote_msg
 
-    seen = []
-    monkeypatch.setattr(ofs, "push_level_one",
-                        lambda sym, item, *, ts_recv, field_received: seen.append((sym, ts_recv)))
-    ofs._ingest_pushed("quote.SIZEG", quote_msg(
-        symbol="SIZEG", src="schwab_l1", ts_recv=1234.5, native={"LAST_PRICE": 1.0}))
-    ofs._ingest_pushed("optquote.SIZEG  260918C00001000", options_quote_msg(
-        symbol="SIZEG  260918C00001000", content={"BID_PRICE": 1.0}, src="schwab_options_l1",
-        ts_recv=2345.5))
-    assert seen == [("SIZEG", 1234.5), ("SIZEG  260918C00001000", 2345.5)]
+    mix = json.loads((Path(__file__).parent / "fixtures" / "real_stream_mix_2026_10_05_1400ct.json")
+                     .read_text(encoding="utf-8"))["messages"]
+    eq = next(m for m in mix if m["service"] == "LEVELONE_EQUITIES" and "TOTAL_VOLUME" in m["item"])
+    opt = next(m for m in mix if m["service"] == "LEVELONE_OPTIONS" and "GAMMA" in m["item"])
+    eq_sym, opt_sym = eq["item"]["key"], opt["item"]["key"]
+    ofls.clear_symbol(eq_sym)
+    ofls.clear_symbol(opt_sym)
+    try:
+        ofs._ingest_pushed(f"quote.{eq_sym}", quote_msg(symbol=eq_sym, src="schwab_l1", ts_recv=eq["ts_recv"],
+                                                        native=eq["item"]))
+        ofs._ingest_pushed(f"optquote.{opt_sym}", options_quote_msg(symbol=opt_sym, content=opt["item"],
+                                                                    src="schwab_options_l1", ts_recv=opt["ts_recv"]))
+        assert ofls.get_stream_greeks(eq_sym)["total_volume_ts_recv"] == eq["ts_recv"]
+        assert ofls.get_stream_greeks(opt_sym)["gamma_ts_recv"] == opt["ts_recv"]
+    finally:
+        ofls.clear_symbol(eq_sym)
+        ofls.clear_symbol(opt_sym)
 
 
 def test_book_top_never_stands_in_for_a_missing_l1_price():
-    """2026-09-24 (no fallbacks): the book's top level is a DIFFERENT feed (one venue's
-    depth) and no longer stands in when L1 carries no price -- bid/ask stay absent.
+    """No fallbacks: the book's top level is a DIFFERENT feed (one venue's depth) and does
+    not stand in when L1 carries no price -- bid/ask stay absent.
     # universal-scope-ok: book shape fixture, not a SPY-only product claim.
     """
     items = [{
@@ -494,7 +485,7 @@ def test_an_option_contracts_top_is_what_schwab_sent_on_a_live_feed():
     try:
         lmp.record_feed_heartbeat({"ts": RTH_INSTANT, "schwab_socket_open": True,
                                    "held": {"LEVELONE_OPTIONS": [sym]}})
-        payload = options_live_payload(sym, RTH_INSTANT)
+        payload = options_live_payload(sym, RTH_INSTANT, EQUITY_OPTIONS)        # a TSLA option
         assert payload["flow"]["top_book_pressure"] is not None and payload["top_outage"] is None
     finally:
         lmp.record_feed_down()
@@ -502,7 +493,7 @@ def test_an_option_contracts_top_is_what_schwab_sent_on_a_live_feed():
 
 
 def test_the_equity_book_reads_the_daemons_price_row_for_its_top_of_book():
-    """O-01: /api/order-flow/microstructure takes the equity top of book from the daemon's price
+    """/api/order-flow/microstructure takes the equity top of book from the daemon's price
     row (the header's): the newest quote Schwab sent, its feed live (a feed down: docs/DATA_FLOW.md
     §2 D5, tests/test_data_path_rules_v1.py). Stand-in quote (named): bid 10.00 x 3, ask 10.02 x 5.
     Served in regular hours (RTH_INSTANT)."""

@@ -17,6 +17,7 @@ import live_market_plane as lmp
 import server
 from app.options.order_flow import streaming as ofs
 from stream_spine import book_msg
+from tests.real_chains import SPY_0DTE
 
 CONTRACT = "SPY   261005C00774000"
 _MIX = json.loads((Path(__file__).parent / "fixtures" / "real_stream_mix_2026_10_05_1400ct.json")
@@ -60,21 +61,37 @@ def test_with_no_book_from_schwab_the_flow_panel_says_so():
 
 def test_the_flow_panel_says_whether_the_daemon_streams_the_contract():
     """SUBSCRIBED while the daemon holds the contract on LEVELONE_OPTIONS; NOT STREAMED when it
-    does not, and when its status is gone (a daemon that stopped reporting holds nothing). Served in
-    regular hours, the option market open (RTH_INSTANT)."""
-    from tests.feed_live_helper import RTH_INSTANT
+    does not, and when its status is gone (a daemon that stopped reporting holds nothing). A contract
+    of SPY's 2026-10-07 0DTE chain, served at that chain's capture (12:32 ET, the option market open).
+    The contract's market is that of the chain that lists it: with no chain held that lists it, its
+    market is not known and it is not live; once the levels producer publishes SPY's chain, SPY's."""
+    contract, at = SPY_0DTE.chain[0]["symbol"], SPY_0DTE.now.timestamp()
 
-    def plane() -> dict:
-        return server.options_microstructure(CONTRACT, RTH_INSTANT)["streaming_plane"]
+    def holds(*services: str) -> None:
+        lmp.record_feed_heartbeat({"ts": at, "schwab_socket_open": True,
+                                   "held": {svc: [contract] for svc in services}})
+
+    def served() -> dict:
+        return server.options_microstructure(contract, at)
+    with server._terrain_cache_lock:
+        server._terrain_cache.pop("SPY", None)
     try:
-        _daemon_holds("LEVELONE_OPTIONS", "OPTIONS_BOOK", now=RTH_INSTANT)
-        held = plane()
-        _daemon_holds(now=RTH_INSTANT)
-        not_held = plane()
+        holds("LEVELONE_OPTIONS", "OPTIONS_BOOK")
+        unlisted = served()
+        server._publish_levels("SPY", captures=[{"contracts": [dict(c) for c in SPY_0DTE.chain], "ts_utc": at,
+                                                 "spot": SPY_0DTE.spot, "spot_ts": None, "spot_from_chain": False,
+                                                 "et_date": SPY_0DTE.now.date().isoformat(),
+                                                 "basis": server.CAPTURE_BASIS}], now=SPY_0DTE.now)
+        held = served()["streaming_plane"]
+        holds()
+        not_held = served()["streaming_plane"]
         lmp.record_feed_down()
-        down = plane()
+        down = served()["streaming_plane"]
     finally:
         lmp.record_feed_down()
+        with server._terrain_cache_lock:
+            server._terrain_cache.pop("SPY", None)
+    assert (unlisted["top_feed_label"], unlisted["top_outage"]) == ("NOT LIVE", "the contract's option market is not known")
     assert held["subscription_state"] == "SUBSCRIBED"
     assert (held["feed_health"]["l1"]["state"], held["feed_health"]["book"]["state"]) == ("LIVE", "LIVE")
     assert not_held["subscription_state"] == down["subscription_state"] == "NOT STREAMED"

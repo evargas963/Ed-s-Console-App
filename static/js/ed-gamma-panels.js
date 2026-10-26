@@ -1,4 +1,4 @@
-/* Ed Console — Options/Gamma supporting panels (RC-UI-1). PRESENTATION ONLY.
+/* Ed Console — Options/Gamma supporting panels. PRESENTATION ONLY.
    Key Levels rail  <- GET /api/terrain      (canonical levels SSOT)
    GEX by Strike    <- GET /api/terrain/strikes  (per-strike net_gex_1pct$)
    Strike Detail    <- GET /api/chain         (vendor per-contract OI/vol/greeks)
@@ -24,12 +24,10 @@
 
   // Delta/DEX and Open Interest fall back to displaying the SAME gamma `.sub-pane` (they have
   // no dedicated pane of their own -- showSubPane()'s fallback rule), which is where Key
-  // Levels/GEX-by-Strike/PCR/the Options Flow tape all physically live. This check used to be
-  // 'gamma' only, from before dex/oi existed as real subviews; ed-gamma.js's own
-  // _isGammaFamilySubview was correctly generalized when they were added, but this sibling
-  // file's gate was not, leaving all four panels frozen (reproduced live, 2026-09-13: switching
-  // ticker while on Delta/DEX left Key Levels showing the PREVIOUS ticker's spot/flip/wall
-  // values) -- every check in this file must recognize all three, exactly like ed-gamma.js's.
+  // Levels/GEX-by-Strike/PCR/the Options Flow tape all physically live. A 'gamma'-only check
+  // would freeze all four panels on Delta/DEX or OI (a ticker switch there would leave the
+  // PREVIOUS ticker's spot/flip/wall values) -- every check in this file recognizes all
+  // three, exactly like ed-gamma.js's _isGammaFamilySubview.
   function isGamma() {
     var s = (window.EdShell && window.EdShell.getState()) || {};
     return s.workspace === 'options' && (s.subview === 'gamma' || s.subview === 'dex' || s.subview === 'oi');
@@ -37,9 +35,9 @@
   function ticker() { return ((window.EdShell && window.EdShell.getState()) || {}).ticker || ''; }
 
   var REGIME = {
-    LONG_GAMMA_CHOP: { t: 'Long γ · chop', c: 'var(--ed-pos-ink)' },
-    SHORT_GAMMA_TREND: { t: 'Short γ · trend', c: 'var(--ed-warn)' },
-    UNAVAILABLE: { t: 'unavailable', c: 'var(--ed-ink-3)' },
+    LONG_GAMMA_CHOP: { t: 'Long γ · chop', c: 'var(--ed-pos-ink)', tone: 'up' },
+    SHORT_GAMMA_TREND: { t: 'Short γ · trend', c: 'var(--ed-warn)', tone: 'dn' },
+    UNAVAILABLE: { t: 'unavailable', c: 'var(--ed-ink-3)', tone: '' },
   };
   window.EdGammaRegime = REGIME;
 
@@ -89,9 +87,9 @@
       var rm = REGIME[d.regime] || { t: (d.regime || '—'), c: 'var(--ed-ink-2)' };
       reg.textContent = rm.t; reg.style.color = rm.c;
     }
-    // B: the levels rail recedes when terrain reports stale
+    // the levels rail recedes while the served levels are STALE
     var klb = document.getElementById('klBody');
-    if (klb) klb.classList.toggle('recede', !!d.levels_stale);
+    if (klb) klb.classList.toggle('recede', d.levels_state === 'STALE');
     // freshness / provenance line. The chain's time stands beside the mark. The mark is
     // unchanged when no chain time was sent.
     var src = document.getElementById('klSrc');
@@ -101,30 +99,11 @@
       return words;
     }
     if (src) {
-      if (d.levels_stale) {
-        // compact status grammar: state + age on the panel; the full reason is disclosed in the
-        // tooltip (title) rather than as a paragraph that consumes the Key Levels rail
-        var age = (window.EdShell && window.EdShell.fmtAge) ? window.EdShell.fmtAge(d.levels_age_sec)
-          : (d.levels_age_sec != null ? Math.round(d.levels_age_sec) + 's' : '');
-        src.textContent = chainMarked('STALE' + (age ? ' · ' + age : ''));
-        src.title = d.levels_stale_reason || 'terrain levels are stale';
-        src.style.color = 'var(--ed-stale)';
-      } else if (d.levels_stale === false && d.spot_feed_live === false) {
-        // the chain is current and the wall stays; the price it was built from is not live (its
-        // served state: OFFLINE, the feed down; NOT LIVE, its market not trading)
-        src.textContent = chainMarked(d.spot_feed_label);
-        src.title = d.spot_outage == null ? '' : d.spot_outage;
-        src.style.color = 'var(--ed-stale)';
-      } else if (d.levels_stale === false) {
-        src.textContent = chainMarked('terrain · live');
-        src.title = '';
-        src.style.color = '';
-      } else {
-        // no freshness verdict served: never read as live
-        src.textContent = chainMarked('freshness not reported');
-        src.title = '';
-        src.style.color = 'var(--ed-stale)';
-      }
+      // the served mark (levels_mark: the levels' state, or the price's while the levels are LIVE)
+      // with the levels' age; the reason is disclosed in the tooltip, not as a paragraph
+      src.textContent = chainMarked(d.levels_mark + (d.levels_age_text ? ' · ' + d.levels_age_text : ''));
+      src.title = d.levels_mark_reason == null ? '' : d.levels_mark_reason;
+      src.style.color = d.levels_mark === 'LIVE' ? '' : 'var(--ed-stale)';
       // #5: terrain levels are AGGREGATE across expiries; if the workspace filters to one expiry,
       // disclose that these levels are still all-exp (never silently relabel them as selected-expiry).
       if (window.EdShell && window.EdShell.getExpiry && window.EdShell.getExpiry()) src.textContent += ' · all-exp';
@@ -162,22 +141,13 @@
   }
   var _gbsLoader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadGbsImpl(ticker(), signal); });
   function loadGbs() { _gbsLoader.trigger(ticker()); }
-  var SRC_LABEL = { terrain_live_cache: 'terrain live' };
-  function srcLabel(s) {
-    if (!s) return '';
-    if (SRC_LABEL[s]) return SRC_LABEL[s];
-    return s;
-  }
   function setGbsAsOf(d) {
     var el = document.getElementById('gbsSrc'); if (!el) return;
-    if (!d || d.today_source == null) { el.innerHTML = ''; return; }
-    // reuse the terrain authority the server already merged (today_age_sec / levels_stale) - no
-    // client-side freshness computation; the badge only formats those server-owned fields.
+    if (!d) { el.innerHTML = ''; return; }
+    // the levels verdict the server serves (levels_state, its time and age); the badge formats it
     el.innerHTML = (window.EdShell && window.EdShell.asOfBadge)
-      ? window.EdShell.asOfBadge({ label: srcLabel(d.today_source), ageSec: d.today_age_sec,
-          when: d.levels_time_ct,
-          stale: !!d.levels_stale, reason: d.levels_stale_reason,
-          live: (d.today_source === 'terrain_live_cache' && d.levels_stale === false) })
+      ? window.EdShell.asOfBadge({ label: 'terrain', state: d.levels_state, when: d.levels_time_ct,
+          age: d.levels_age_text, reason: d.levels_stale_reason })
       : '';
   }
   // A per-strike bar list (GEX, vanna, charm by strike): the window of `rows` the server sent
@@ -282,19 +252,9 @@
     _sdDesired = { strike: strike, expiry: expiry };
     _sdLoader.trigger(ticker() + '|' + strike + '|' + (expiry || ''));
   }
-  var SCOPE_LABEL = {
-    complete_single_expiry: { t: 'vendor · complete (ALL)', live: true },
-    unavailable: { t: 'vendor · unavailable', stale: true },
-  };
   function setSdAsOf(d) {
     var el = document.getElementById('sdSrc'); if (!el) return;
-    var sc = d && d.scope, kind = sc && sc.kind;
-    if (!kind) { el.innerHTML = ''; return; }
-    var m = SCOPE_LABEL[kind] || { t: kind };
-    el.innerHTML = (window.EdShell && window.EdShell.asOfBadge)
-      ? window.EdShell.asOfBadge({ label: m.t, live: !!m.live, stale: !!m.stale,
-          title: 'chain scope: ' + kind + (sc.reason ? ' — ' + sc.reason : '') })
-      : '';
+    el.innerHTML = (window.EdShell && window.EdShell.chainScopeBadge) ? window.EdShell.chainScopeBadge(d) : '';
   }
   function renderStrike(host, d, strike, expiry) {
     setSdAsOf(d);
@@ -314,8 +274,7 @@
     function cell(c, k, d2) { var v = c ? c[k] : null; return (v == null) ? '—' : (typeof v === 'number' ? (d2 == null ? String(v) : v.toFixed(d2)) : esc(v)); }
     // GEX ($) column: per-side GEX$ is not served (computing it would be frontend math) -> "—"; the
     // NET row is this expiry's net GEX at this strike, served on the same /api/chain response --
-    // the heatmap's own cell (2026-09-27: it was GEX-by-Strike's all-expiry total, beside one
-    // expiry's contracts).
+    // the heatmap's own cell, not GEX-by-Strike's all-expiry total beside one expiry's contracts.
     var net = null;
     ((d && d.net_gex_by_strike) || []).forEach(function (r) {
       if (Math.abs(Number(r[0]) - Number(strike)) < 0.01) net = Number(r[1]);
@@ -332,18 +291,14 @@
       '</tbody></table><div class="sd-src">vendor per-contract · net GEX$ this expiry · /api/chain</div>';
   }
 
-  // Independent-review finding (2026-09-12), REPRODUCED: switching the active ticker did
-  // not invalidate Strike Detail's in-flight /api/chain fetch or reset its rendered content
-  // -- ed-core.js's setTicker() already clears the SHARED selStrike (a fresh strike click is
-  // required before loadStrike fires again), but a chain fetch for the OLD ticker that was
-  // already in flight when the switch happened still landed under the NEW ticker's context.
-  // Reproduced: request AMD's chain, switch to NVDA, deliver the delayed AMD response --
-  // Strike Detail rendered AMD's values and requested AMD's contracts. Fixed by clearing the
-  // desired (strike, expiry) so `stillStrikeCtx`'s ticker check discards any in-flight
-  // response for the OLD ticker (2026-09-13: this now doubles as the fix's context-identity
-  // check, replacing the old `_sgen` generation counter) and no pending strike is left to
-  // fetch under the new ticker without a fresh click, plus clearing the Strike Detail
-  // placeholder the instant the ticker changes.
+  // A ticker switch must drop Strike Detail's in-flight /api/chain fetch and its rendered
+  // content: ed-core.js's setTicker() clears the SHARED selStrike (a fresh strike click is
+  // required before loadStrike fires again), but a chain fetch for the OLD ticker already in
+  // flight would otherwise land under the NEW ticker's context (AMD's values shown after a
+  // switch to NVDA). Clearing the desired (strike, expiry) makes `stillStrikeCtx`'s ticker
+  // check (the context-identity check) discard any in-flight response for the OLD ticker and
+  // leaves no pending strike to fetch under the new ticker without a fresh click; the Strike
+  // Detail placeholder is cleared the instant the ticker changes.
   function resetStrikeDetailForTickerChange() {
     _sdDesired = { strike: null, expiry: null };
     var host = document.getElementById('sdBody');
@@ -386,8 +341,8 @@
   var loadVanna = _mkStrikeBar('vanna', '/api/options/vanna-by-strike', 'vnBody', 'vnSrc');
   var loadCharm = _mkStrikeBar('charm', '/api/options/charm-by-strike', 'chmBody', 'chmSrc');
 
-  // ---------- Structures — contract-safety metadata (operator field-inventory audit) ------
-  // Already-flowing /api/chain fields (multiplier/nonStandard/deliverables/settlementType/
+  // ---------- Structures — contract-safety metadata ------
+  // /api/chain fields (multiplier/nonStandard/deliverables/settlementType/
   // exerciseType/expirationType/lastTradingDay/pennyPilot) that the Chain ladder never
   // surfaces -- one strike per row, both sides, no new computation, no second fetch shape
   // (same /api/chain response Chain and Strike Detail already read).
@@ -402,8 +357,8 @@
   }
   function _flag(label, on) { return '<span class="st-flag' + (on ? ' on' : '') + '">' + esc(label) + '</span>'; }
   // lastTradingDay is native epoch MILLISECONDS (the same convention as quoteTimeInLong/
-  // tradeTimeInLong), not an ISO date string -- reproduced live: String(...).slice(0,10) on
-  // 1789430400000 printed the meaningless digit-string "1789430400", not a date.
+  // tradeTimeInLong), not an ISO date string -- String(...).slice(0,10) on 1789430400000
+  // would print the meaningless digit-string "1789430400", not a date.
   function fmtEpochMs(ms) {
     if (ms == null || isNaN(ms)) return '—';
     var d = new Date(Number(ms));
@@ -458,7 +413,7 @@
     _structuresLoader.trigger(ticker() + '|' + exp);
   }
 
-  // ---------- Options Flow tape (operator field-inventory audit, 2026-09-13) ------------
+  // ---------- Options Flow tape ------------
   // The embedded tape widget on the Gamma pane (#ofBody) -- real native trade prints for
   // every contract of the ticker the daemon streams (its option rule), never a fabricated
   // buy/sell side.
@@ -540,7 +495,6 @@
     var sel = ((window.EdShell && window.EdShell.getState()) || {}).selStrike;
     if (sel != null) loadStrike(sel, strikeDetailExpiry());
   });
-  // Audit finding #4 (2026-09-16): initial hydration now comes SOLELY from ed-core.js's
-  // deferred ed:ticker/ed:view dispatch -- see that file's init() comment and ed-gamma.js's
-  // identical removal.
+  // Initial hydration comes SOLELY from ed-core.js's deferred ed:ticker/ed:view dispatch --
+  // see that file's init() comment.
 })();

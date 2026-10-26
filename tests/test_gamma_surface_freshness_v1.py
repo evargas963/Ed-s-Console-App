@@ -65,7 +65,8 @@ def test_the_live_surface_is_served_with_the_live_price_and_its_own_price_named(
     d = server.gamma_surface_payload(_ON, "all", None, 0, None, None, _AT)
     with server._terrain_cache_lock:
         surface = server._terrain_cache[_ON]["_gamma_surface"]
-    assert d["source"] == "terrain_live_cache" and d["live"] is True
+    # 2026-09-02 has no /markets answer held: the levels, and so the surface, are not live
+    assert d["source"] == "terrain_live_cache" and d["levels_state"] == "NOT LIVE"
     assert [c["gex"] for c in d["cells"]] == [c["gex"] for c in surface["cells"]]      # served verbatim
     assert d["spot"] == 206.0 and d["priced_at_spot"] == _CRWD["spot"]
     assert [c["strike"] for c in d["cells"] if c["spot"]] == [min(surface["strikes"], key=lambda k: abs(k - 206.0))]
@@ -75,9 +76,8 @@ def test_the_live_surface_is_served_with_the_live_price_and_its_own_price_named(
 def test_freshness_is_the_one_terrain_authority_not_a_second_policy(published):
     live = server.terrain_cache_get(_ON, time.time())             # the one authority
     d = _call(_ON)
-    assert d["stale"] == bool(live.get("levels_stale"))
-    assert d["age_sec"] == pytest.approx(live.get("levels_age_sec"), abs=5.0)
-    assert (d["degraded"] or None) == (live.get("levels_stale_reason") if live.get("levels_stale") else None)
+    assert (d["levels_state"], d["levels_stale_reason"]) == (live["levels_state"], live["levels_stale_reason"])
+    assert d["levels_age_sec"] == pytest.approx(live["levels_age_sec"], abs=5.0)
     assert d["chain_as_of_ts_utc"] == _AT.timestamp()
 
 
@@ -120,7 +120,4 @@ def test_fallback_is_labelled_not_live_never_intraday():
     with server._terrain_cache_lock:
         server._terrain_cache.pop(tk, None)
     d = _call(tk)
-    assert d["live"] is False and d["stale"] is True
-    assert d["source"] in ("unavailable", "banked_morning_reference")
-    if d["source"] == "banked_morning_reference":
-        assert "not intraday" in d["degraded"].lower() or "morning" in d["degraded"].lower()
+    assert (d["available"], d["source"]) == (False, "unavailable")

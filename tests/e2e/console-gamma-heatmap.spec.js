@@ -35,7 +35,8 @@ function view(over) {
 }
 const SURFACE = {
   ticker: '$SPX', symbol: '$SPX', available: true, spot: 583.41, front_expiry: '2026-09-11',
-  source: 'terrain_live_cache', live: true, stale: false, age_sec: 3, chain_basis: 'full',
+  source: 'terrain_live_cache', levels_age_sec: 3, chain_basis: 'full',
+  levels_state: 'LIVE', levels_age_text: '3s', levels_stale_reason: '',
   complete: false,
   chain_as_of_ts_utc: 1757000200, spot_as_of_ts_utc: 1757000200, spot_source: 'last',
   expirations: [{ expiry: '2026-09-11', dte: 2, front: true }, { expiry: '2026-09-18', dte: 9, front: false }],
@@ -52,7 +53,7 @@ const SURFACE = {
 function realSpySurface() {
   const REAL = require('./fixtures/real_spy_gamma_surface_116x16_premarket_20260910.json');
   return Object.assign({}, REAL, {
-    source: 'terrain_live_cache', live: true, stale: false, degraded: null,
+    source: 'terrain_live_cache', levels_state: 'LIVE',
     session_date_et: '2026-09-10', prior_session: false,
     expirations: REAL.expirations.map((e) => Object.assign({}, e, { expired: e.expiry < '2026-09-10', front: e.expiry === '2026-09-10' })),
     cells: REAL.cells.map((c) => Object.assign({}, c, { spot: c.strike === 764 })),
@@ -117,7 +118,7 @@ function surfaceWithStreamState(perCol) {
 const TERRAIN = {
   ticker: '$SPX', spot: 583.41, gamma_flip: 582.90, call_wall: 586, put_wall: 580,
   absolute_gamma_strike: 583, net_gex_peak: 583, net_gex_at_spot: 2140000000,
-  regime: 'LONG_GAMMA_CHOP', levels_stale: false,
+  regime: 'LONG_GAMMA_CHOP', levels_state: 'LIVE', levels_mark: 'LIVE', levels_mark_reason: null,
   expiries: ['2026-09-11', '2026-09-18'], pcr_by_expiry: { '2026-09-11': 0.87, '2026-09-18': 1.13 },
   pcr_volume_by_expiry: { '2026-09-11': 1.42, '2026-09-18': 0.64 },
   pcr_all: 1.02, pcr_volume_all: 0.93,
@@ -400,7 +401,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   // Induced condition: the first answer marks itself live (the served status labels below).
   const BADGED = [
     { name: 'GEX by strike', host: '#gbsBody', badge: '#gbsSrc', route: '/api/terrain/strikes', push: 'levels',
-      answer: Object.assign({}, STRIKES, { today_source: 'terrain_live_cache', levels_stale: false, today_age_sec: 3 }) },
+      answer: STRIKES },
     { name: 'Strike Detail', host: '#sdBody', badge: '#sdSrc', route: '/api/chain', push: 'levels',
       answer: Object.assign({}, CHAIN, { scope: { kind: 'complete_single_expiry' } }) },
     { name: 'the chain', host: '#chainBody', badge: '#chSrc', route: '/api/chain', push: 'chain', sub: 'chain',
@@ -428,7 +429,8 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.route('**/api/terrain?**', (route) => failing
       ? route.fulfill({ status: 500, contentType: 'application/json', body: '{"detail":"Internal Server Error"}' })
       : route.fulfill({ status: 200, contentType: 'application/json',
-        body: JSON.stringify(Object.assign({}, TERRAIN, { levels_stale: true, levels_stale_reason: 'chain 12m old' })) }));
+        body: JSON.stringify(Object.assign({}, TERRAIN, { levels_state: 'STALE', levels_mark: 'STALE',
+          levels_stale_reason: 'chain 12m old', levels_mark_reason: 'chain 12m old' })) }));
     await mockPriceSocket(page, [priceRow('SPY', 601.23)]);                    // the pushed price
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#klSrc')).toHaveAttribute('title', 'chain 12m old');
@@ -765,7 +767,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // in place of the live surface; the heatmap says it is unavailable and why.
     await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
       status: 200, contentType: 'application/json',
-      body: JSON.stringify({ ticker: 'SPY', available: false, source: 'unavailable', live: false, stale: true,
+      body: JSON.stringify({ ticker: 'SPY', available: false, source: 'unavailable',
         warming: false, requested: true,
         reason: 'no live gamma surface for this ticker yet' }),
     }));
@@ -807,8 +809,9 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   test('a level built from a price that has stopped stays, and the rail says OFFLINE', async ({ page }) => {
     await page.route('**/api/terrain?**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
       body: JSON.stringify(Object.assign({}, TERRAIN, {
-        levels_stale: false, call_wall: 586, spot_feed_live: false, spot_feed_label: 'OFFLINE',
-        spot_outage: 'Schwab LEVELONE_EQUITIES feed down during RTH' })) }));
+        call_wall: 586, spot_feed_live: false, spot_feed_label: 'OFFLINE', levels_mark: 'OFFLINE',
+        spot_outage: 'Schwab LEVELONE_EQUITIES feed down during RTH',
+        levels_mark_reason: 'Schwab LEVELONE_EQUITIES feed down during RTH' })) }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#klCall')).toHaveText('586.00');
     await expect(page.locator('#klSrc')).toHaveText('OFFLINE');
@@ -820,23 +823,23 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     const CHAIN_TIME = 'Fri 09/25 06:59 PM CT';
     await page.route('**/api/terrain?**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
       body: JSON.stringify(Object.assign({}, TERRAIN, {
-        levels_stale: false, levels_age_sec: 4, levels_time_ct: CHAIN_TIME, call_wall: 586,
-        spot_feed_live: false, spot_feed_label: 'OFFLINE', spot_outage: 'Schwab LEVELONE_EQUITIES feed down during RTH' })) }));
+        levels_age_sec: 4, levels_age_text: '4s', levels_time_ct: CHAIN_TIME, call_wall: 586,
+        spot_feed_live: false, spot_feed_label: 'OFFLINE', spot_outage: 'Schwab LEVELONE_EQUITIES feed down during RTH',
+        levels_mark: 'OFFLINE', levels_mark_reason: 'Schwab LEVELONE_EQUITIES feed down during RTH' })) }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#klCall')).toHaveText('586.00');
-    await expect(page.locator('#klSrc')).toHaveText(CHAIN_TIME + ' · OFFLINE');
+    await expect(page.locator('#klSrc')).toHaveText(CHAIN_TIME + ' · OFFLINE · 4s');
     await expect(page.locator('#klSrc')).toHaveAttribute('title', 'Schwab LEVELONE_EQUITIES feed down during RTH');
   });
 
-  test('key levels rail says NOT LIVE, not OFFLINE, when the price\'s market is not trading', async ({ page }) => {
-    const CHAIN_TIME = 'Fri 10/23 03:59 PM CT';
+  test('key levels rail after its own option close reads CLOSE with the close values\' time and age (the route\'s own answer)', async ({ page }) => {
+    // /api/terrain for SPY's 2026-10-22 close publication, read at 18:00 ET (tests/test_level_crosses_wire.py)
+    const CLOSED = require(path.join(__dirname, '..', 'fixtures', 'real_spy_terrain_at_a_stopped_price_2026_10_22.json'));
     await page.route('**/api/terrain?**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
-      body: JSON.stringify(Object.assign({}, TERRAIN, {
-        levels_stale: false, levels_age_sec: 4, levels_time_ct: CHAIN_TIME, call_wall: 586,
-        spot_feed_live: false, spot_feed_label: 'NOT LIVE', spot_outage: "outside Schwab's market hours" })) }));
+      body: JSON.stringify(CLOSED) }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('#klSrc')).toHaveText(CHAIN_TIME + ' · NOT LIVE');
-    await expect(page.locator('#klSrc')).toHaveAttribute('title', "outside Schwab's market hours");
+    await expect(page.locator('#klSrc')).toHaveText(CLOSED.levels_time_ct + ' · CLOSE · ' + CLOSED.levels_age_text);
+    await expect(page.locator('#klSrc')).not.toContainText('live');
   });
 
   test('PCR: the selected expiry re-scopes the ratio; an expiry the chain has no ratio for shows none', async ({ page }) => {
@@ -1130,7 +1133,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.addInitScript(() => { try { localStorage.setItem('ed_scope', 'all'); } catch (e) {} });   // every strike on screen
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#heatBody .hcell').first()).toBeVisible();
-    served.s = { available: true, source: 'terrain_live_cache', live: true, spot: 600, complete: false,
+    served.s = { available: true, source: 'terrain_live_cache', levels_state: 'LIVE', spot: 600, complete: false,
       expirations: exps, strikes, cells, view: view({ centre: 600, scope: 'all', max_abs: { gex: 50000 } }) };   // 200 strikes x 20 expiries
     // the page's own reload (a levels push); the time runs from the push to the drawn table
     const before = await page.locator('#heatBody .hcell').count();
@@ -1150,8 +1153,9 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   });
 
   test('#1 revision: DATA change rebuilds; STATUS change updates without rebuild (A-D)', async ({ page }) => {
-    const live = (age, stale) => ({ available: true, source: 'terrain_live_cache', live: true, stale: !!stale, warming: false, spot: 583.41,
-      complete: false, chain_as_of_ts_utc: 1000, spot_as_of_ts_utc: 1000, chain_basis: 'full', age_sec: age,
+    const live = (age, stale) => ({ available: true, source: 'terrain_live_cache', warming: false, spot: 583.41,
+      complete: false, chain_as_of_ts_utc: 1000, spot_as_of_ts_utc: 1000, chain_basis: 'full', levels_age_sec: age,
+      levels_state: stale ? 'STALE' : 'LIVE', levels_age_text: age + 's', levels_stale_reason: stale ? 'chain overdue' : '',
       expirations: [{ expiry: '2026-09-11', dte: 2 }], strikes: [583], cells: [{ strike: 583, gex: [958600], spot: true }],
       view: view({ coverage: served.cov }) });
     const served = { cov: { state: 'partial', label: '50% STREAMING', title: '1 of 2 cells streaming · 1 stale' } };
@@ -1177,11 +1181,24 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(marked()).toHaveCount(1);
   });
 
+  test('after its own option close the heatmap banner reads CLOSE with the close values\' time and age (the route\'s own answer)', async ({ page }) => {
+    // /api/options/gamma-surface for SPY's 2026-10-22 close publication, read at 18:00 ET
+    // (tests/test_level_crosses_wire.py)
+    const CLOSED = require(path.join(__dirname, '..', 'fixtures', 'real_spy_gamma_surface_at_a_stopped_price_2026_10_22.json'));
+    await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify(CLOSED) }));
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#heatBody .hcell').first()).toBeVisible();
+    await expect(page.locator('#heatBody .heat-banner')).toContainText(
+      'CLOSE · ' + CLOSED.levels_time_ct + ' · ' + CLOSED.levels_age_text);
+    await expect(page.locator('#heatBody .heat-wrap')).toHaveClass(/recede/);
+  });
+
   test('#1.3 a warming (not yet live) surface shows LIVE SURFACE WARMING (never a final state)', async ({ page }) => {
     await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
       status: 200, contentType: 'application/json',
       body: JSON.stringify(Object.assign({}, SURFACE, {
-        available: false, source: 'unavailable', live: false, stale: true, warming: true,
+        available: false, source: 'unavailable', warming: true,
         requested: true, reason: 'no live gamma surface for this ticker yet',
       })),
     }));

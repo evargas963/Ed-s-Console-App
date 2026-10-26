@@ -20,8 +20,8 @@ const EVENTS = {
   cross_counts: { up: CROSSES.filter((c) => c.direction === 'up').length, down: CROSSES.filter((c) => c.direction !== 'up').length },
 };
 const SPOT = 771.3;
-const TERRAIN = { ticker: 'SPY', spot: SPOT, gamma_flip: 768, call_wall: 775, put_wall: 765, max_pain: 770, regime: 'LONG_GAMMA',
-  posture: 'PINNED', levels_stale: false, flip_relation: 'ABOVE', pcr_all: 1.1,
+const TERRAIN = { ticker: 'SPY', spot: SPOT, gamma_flip: 768, call_wall: 775, put_wall: 765, max_pain: 770, regime: 'LONG_GAMMA_CHOP',
+  posture: 'PINNED', levels_state: 'LIVE', levels_age_text: '1s', flip_relation: 'ABOVE', pcr_all: 1.1,
   pcr_by_expiry: { '2026-09-25': 1.1, '2026-10-02': null, '2026-10-09': 0.9 }, atm_iv_pct_by_expiry: { '2026-09-25': 14.2, '2026-10-02': 15.1 } };
 const LEVELS = { ticker: 'SPY', spot: SPOT, tf: '30', generation: 1, vwap_series: [],
   levels: [
@@ -43,7 +43,7 @@ const MICRO = { ticker: 'SPY', venue: 'NASDAQ_BOOK', status: 'ok', top_of_book: 
 const LIQ = { ticker: 'SPY', zones: [{ zone_low: 772, zone_high: 773, zone_type: 'resistance_liquidity', zone_label: 'Resistance', zone_side: 'resistance', confluence_score: 3 },
   { zone_low: 768, zone_high: 769, zone_type: 'pivot_value', zone_label: 'Pivot / value', zone_side: 'value', confluence_score: 2 }],
   spot_location: { inside: null, above: 0, below: 1 }, summary: null };
-const STRIKES = { ticker: 'SPY', spot: SPOT, spot_strike: 771, today_source: 'terrain_live_cache', levels_stale: false,
+const STRIKES = { ticker: 'SPY', spot: SPOT, spot_strike: 771, levels_state: 'LIVE',
   today: { all: [[770, 500000, 1000], [771, 900000, 5000], [772, -200000, 3000]] }, prior: { all: [[770, 400000, 800], [771, 700000, 2000], [772, -100000, 900]] },
   migration: { all: { compared: true, drift: 'UP', grew: [771, 770], shrank: [772], busiest: [771, 772], busiest_vs_walls: 'INSIDE_WALLS',
     volume_total: 9000, rows: [[770, 500000, 400000, 100000], [771, 900000, 700000, 200000], [772, -200000, -100000, -100000]] } },
@@ -282,16 +282,19 @@ test('Desk: the chain age keeps the chain\'s time', async ({ page }) => {
     }
     return route.fulfill({ status: 200, contentType: 'application/json',
       body: JSON.stringify(Object.assign({}, TERRAIN, {
-        levels_age_sec: 4, levels_stale: false, levels_time_ct: CHAIN_TIME,
+        levels_age_sec: 4, levels_age_text: '4s', levels_state: 'LIVE', levels_time_ct: CHAIN_TIME,
       })) });
   });
   await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
     localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
-  await expect(page.locator('#tdmCardOpt .tdm-src')).toContainText('Schwab option chain · ' + CHAIN_TIME + ' · 4s old');
+  await expect(page.locator('#tdmCardOpt .tdm-src')).toContainText('Schwab option chain · ' + CHAIN_TIME + ' · LIVE · 4s');
   await expect(page.locator('#tdmCardOpt')).toContainText('775.00');
-  await expect(page.locator('#tdmCardVol .tdm-src')).toContainText(CHAIN_TIME + ' · 4s old');
-  await expect(page.locator('#tdmTrust')).toContainText('GAMMA ' + CHAIN_TIME + ' · 4s');
+  // the served regime word, toned from the one regime table
+  await expect(page.locator('#tdmCardOpt .tdm-state')).toHaveText('LONG GAMMA CHOP');
+  await expect(page.locator('#tdmCardOpt .tdm-state')).toHaveClass('tdm-state up');
+  await expect(page.locator('#tdmCardVol .tdm-src')).toContainText(CHAIN_TIME + ' · LIVE · 4s');
+  await expect(page.locator('#tdmTrust')).toContainText('GAMMA ' + CHAIN_TIME + ' · LIVE · 4s');
   expect(errs).toEqual([]);
 });
 
@@ -302,12 +305,12 @@ test('Desk: the levels pill keeps the snapshot time', async ({ page }) => {
   await intercept(page);
   await page.route('**/api/levels**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
     body: JSON.stringify(Object.assign({}, LEVELS, {
-      snapshot_as_of_ts_utc: 1790380799.830, snapshot_time_ct: SNAP_TIME,
+      snapshot_as_of_ts_utc: 1790380799.830, snapshot_time_ct: SNAP_TIME, snapshot_age_text: '2d',
     })) }));
   await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
     localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
-  await expect(page.locator('#tdmTrust')).toContainText('LEVELS ' + SNAP_TIME);
+  await expect(page.locator('#tdmTrust')).toContainText('LEVELS ' + SNAP_TIME + ' · 2d');   // the served age, not the page's clock
   expect(errs).toEqual([]);
 });
 

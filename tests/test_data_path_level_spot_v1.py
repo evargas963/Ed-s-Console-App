@@ -33,9 +33,9 @@ def test_a_down_price_marks_the_levels_and_the_wall_stays():
         ofs._price_rows.pop(tk, None)
         lmp.record_feed_down()
     assert down["call_wall"] == live["call_wall"] == published["call_wall"] is not None
-    assert down["levels_stale"] is False
+    assert down["levels_state"] == "LIVE"
     assert (down["spot_feed_live"], down["spot_feed_label"]) == (False, "OFFLINE")
     assert down["spot_outage"].startswith("Schwab LEVELONE_EQUITIES feed down during ")
     assert (live["spot_feed_live"], live["spot_feed_label"]) == (True, "LIVE")
     assert live["spot_outage"] is None
-    assert live["levels_stale"] is False
+    assert live["levels_state"] == "LIVE"

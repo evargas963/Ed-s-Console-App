@@ -15,7 +15,7 @@ function surfaceFor(tk, spot, expiry) {
   const gex = [-90000, 958600, -264500];
   const cols = EXPS.map(function (e, i) { return i; }).filter(function (i) { return !expiry || EXPS[i] === expiry; });
   return { ticker: tk, symbol: tk, available: true, spot: spot, source: 'terrain_live_cache',
-    live: true, stale: false, age_sec: 5, chain_basis: 'full', complete: false,
+    levels_state: 'LIVE', levels_age_sec: 5, chain_basis: 'full', complete: false,
     expirations: cols.map(function (i) { return { expiry: EXPS[i], dte: [2, 3, 9][i], front: i === 0 }; }),
     strikes: [spot - 2, spot, spot + 2],
     cells: [spot - 2, spot, spot + 2].map(function (k) {
@@ -23,8 +23,8 @@ function surfaceFor(tk, spot, expiry) {
     view: { centre: spot, scope: 'auto', coverage: null, max_abs: { gex: 958600 }, missing_expiry: null } };
 }
 const TERRAIN = { spot: 100, gamma_flip: 99.5, call_wall: 102, put_wall: 98, absolute_gamma_strike: 100,
-  net_gex_peak: 100, net_gex_at_spot: 5e8, regime: 'LONG_GAMMA_CHOP', levels_stale: false, levels_age_sec: 10 };
-const STRIKES = { spot: 100, today_source: 'terrain_live_cache', today_age_sec: 10, levels_stale: false,
+  net_gex_peak: 100, net_gex_at_spot: 5e8, regime: 'LONG_GAMMA_CHOP', levels_state: 'LIVE', levels_mark: 'LIVE', levels_age_sec: 10 };
+const STRIKES = { spot: 100, levels_state: 'LIVE',
   today: { all: [[98, -90000, 10], [100, 958600, 50], [102, -264500, 12]] },
   views: { all: { centre: 100, note: null, max_abs: 958600 } } };
 const BARS = { bars: [{ t: 1757000000, o: 99, h: 101, l: 98, c: 100, v: 1000 }] };

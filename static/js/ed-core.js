@@ -1,4 +1,4 @@
-/* Ed Console shell core (RC-UI-1) — navigation, watchlist foundation, ticker store,
+/* Ed Console shell core — navigation, watchlist foundation, ticker store,
    header live-data, CT clock, AI drawer. NO trading semantics are computed here: this
    file only fetches canonical endpoints and formats/arranges the results (ONE FAUCET).
    View-specific rendering (heatmap, levels, order flow) is wired in per-view modules. */
@@ -14,24 +14,18 @@
   // ---- 3-tier navigation config (workspace -> subnav -> views).
   //      `state:'na'` marks a tab whose canonical capability is absent/partial.
   // A workspace with no view-tab family uses `Object.create(null)`, never a plain `[]` or
-  // `{}` -- reproduced live (2026-09-13): Liquidity's `views: []` made `cfg.views['map']`
-  // resolve to the INHERITED Array.prototype.map function (truthy) instead of undefined,
-  // the moment a sub was named 'map' -- renderViewbar's `views.forEach` then threw on every
-  // switch INTO Liquidity, and because the throw happened before showPane()/syncAttrs() ran,
-  // the workspace silently never became visible (state updated, DOM never did). A null-
-  // prototype object has no inherited properties to collide with, for this or any future
-  // sub id (map/filter/find/sort/... are all real Array.prototype methods). ----
+  // `{}`: with `views: []`, `cfg.views['map']` resolves to the INHERITED Array.prototype.map
+  // function (truthy) instead of undefined, so renderViewbar's `views.forEach` throws before
+  // showPane()/syncAttrs() run and the workspace never becomes visible. A null-prototype
+  // object has no inherited properties to collide with, for any sub id
+  // (map/filter/find/sort/... are all real Array.prototype methods). ----
   var NAV = {
     'trade-desk': { title: 'TRADE DESK', subs: [
       { id: 'desk', label: 'Desk' }, { id: 'confluence', label: 'Confluence Matrix' },
       { id: 'right-now', label: 'Right Now' }, { id: 'plan', label: 'Plan' },
       { id: 'expression', label: 'Expression', state: 'na' } ], views: Object.create(null) },
-    // Book/DOM first (real, wired 2026-09-13 to /api/order-flow/microstructure); the rest stay
-    // `na` until they have their own real wiring -- Overview/Heatmap/Tape/Options Book/History
-    // were never anything but a labelled placeholder div, same as Book was before this pass.
-    // Book/DOM + Heatmap real (2026-09-13); the rest stay `na` until they have their own real
-    // wiring -- Overview/Tape/Options Book/History were never anything but a labelled
-    // placeholder div, same as Book/Heatmap were before this pass.
+    // Book/DOM (/api/order-flow/microstructure) and Heatmap are wired; the rest stay `na`
+    // (a labelled placeholder) until they have their own real wiring.
     'order-flow': { title: 'ORDER FLOW', subs: [
       { id: 'book', label: 'Book / DOM' }, { id: 'heatmap', label: 'Heatmap' },
       { id: 'overview', label: 'Overview', state: 'na' },
@@ -53,10 +47,10 @@
           { id: 'term', label: 'Term Structure', state: 'na' }, { id: 'analytics', label: 'Analytics', state: 'na' } ];
         return { gamma: gammaViews, dex: gammaViews, oi: gammaViews };
       })() },
-    // Map + Levels real (2026-09-13: Map is the "visual liquidity map, not a table" the
-    // original placeholder always named -- /api/liquidity-snapshot's own confluence-scored
-    // zones on a price axis; Levels reuses ed-gamma-levels.js's /api/levels renderer
-    // verbatim). The rest stay `na` until they have their own real wiring.
+    // Map and Levels are wired: Map is a visual liquidity map, not a table --
+    // /api/liquidity-snapshot's own confluence-scored zones on a price axis; Levels reuses
+    // ed-gamma-levels.js's /api/levels renderer verbatim. The rest stay `na` until they have
+    // their own real wiring.
     'liquidity': { title: 'LIQUIDITY', subs: [
       { id: 'map', label: 'Map' }, { id: 'levels', label: 'Levels' },
       { id: 'profile', label: 'Profile', state: 'na' },
@@ -96,34 +90,31 @@
     bookVenue: _ls('ed_book_venue', 'NYSE_BOOK') === 'NASDAQ_BOOK' ? 'NASDAQ_BOOK' : 'NYSE_BOOK',
     expiryFilter: null,   // null = All Expirations; else a single 'YYYY-MM-DD' from /api/expiries
     selStrike: null, selExpiry: null,
-    // Operator field-inventory audit (2026-09-13): the Gamma heatmap grid, Strike Detail's
-    // native fields, and the strike x expiry PROJECTION (server.py project_gamma_surface)
-    // already carry dex/vanna/oi/volume per cell alongside gex -- one canonical faucet, four
-    // more measures the SAME grid can present, not a second computation or a second UI. This
-    // is that ONE measure switch: 'gex' | 'dex' | 'oi' | 'volume'. Vanna stays aggregate-only
-    // today (see the Key Levels 'AGG $ ONLY' badge) since it has no per-expiry column yet.
+    // The Gamma heatmap grid, Strike Detail's native fields, and the strike x expiry
+    // PROJECTION (server.py project_gamma_surface) carry dex/vanna/oi/volume per cell
+    // alongside gex -- one canonical faucet, more measures the SAME grid can present, not a
+    // second computation or a second UI. This is that ONE measure switch: 'gex' | 'dex' |
+    // 'oi' | 'volume'. Vanna stays aggregate-only (see the Key Levels 'AGG $ ONLY' badge)
+    // since it has no per-expiry column.
     measure: 'gex'
   };
   function normalizeState() {   // restored state must be valid for the current NAV config
     if (!NAV[state.workspace]) state.workspace = 'options';
     var subDefs = NAV[state.workspace].subs;
     var enabledIds = subDefs.filter(function (s) { return s.state !== 'na'; }).map(function (s) { return s.id; });
-    // Membership alone isn't enough: a sub can still be a real, listed id (subDefs still
-    // names it) while `state:'na'` now marks it disabled -- localStorage['ed_sub'] persists
-    // across a NAV reshuffle, so a returning user whose cached subview was demoted to `na`
-    // (several were, this pass) would otherwise restore onto a selected-but-disabled tab with
-    // no matching .sub-pane and no fallback outside Options, rendering that workspace blank.
+    // Membership alone isn't enough: a sub can be a real, listed id while `state:'na'` marks
+    // it disabled -- localStorage['ed_sub'] persists across a NAV change, so a cached subview
+    // that is `na` would otherwise restore onto a selected-but-disabled tab with no matching
+    // .sub-pane and no fallback outside Options, rendering that workspace blank.
     if (enabledIds.indexOf(state.subview) === -1) state.subview = enabledIds[0] || subDefs[0].id;
     var v0 = NAV[state.workspace].views && NAV[state.workspace].views[state.subview];
     var v = Array.isArray(v0) ? v0 : [];
     var vids = v.map(function (x) { return x.id; });
     state.view = vids.indexOf(state.view) !== -1 ? state.view : (vids[0] || '');
-    // A page reload restores `subview` from localStorage (ed_sub) but `measure` was never
-    // itself persisted -- reproduced live: reloading on the Open Interest tab showed GEX's
-    // own dollar values under an "Open Interest Heatmap" title, because state.measure
-    // defaulted back to 'gex' while state.subview correctly restored to 'oi'. Re-derived
-    // from the restored subview here, the same rule setSubview's own click path already
-    // applies, so a reload and a click land on the identical measure for the same tab.
+    // A page reload restores `subview` from localStorage (ed_sub) but `measure` is not
+    // persisted, so it would default to 'gex' (GEX dollars under an "Open Interest Heatmap"
+    // title on the 'oi' tab). It is re-derived from the restored subview here, the same rule
+    // setSubview's click path applies, so a reload and a click land on the same measure.
     if (MEASURE_BY_SUBVIEW[state.subview]) state.measure = MEASURE_BY_SUBVIEW[state.subview];
   }
 
@@ -165,8 +156,8 @@
   function renderViewbar() {
     var cfg = NAV[state.workspace];
     // Array.isArray, not a truthy/`||` check: `cfg.views` being a plain object or array (both
-    // truthy, both able to resolve a lookup to something other than undefined -- see this
-    // block's own history, 2026-09-13) must never reach `.forEach` on anything but a real array.
+    // truthy, both able to resolve a lookup to something other than undefined -- see NAV's
+    // comment) must never reach `.forEach` on anything but a real array.
     var v0 = cfg.views && cfg.views[state.subview];
     var views = Array.isArray(v0) ? v0 : [];
     var bar = document.getElementById('viewbar');
@@ -196,7 +187,7 @@
       w.classList.toggle('on', w.getAttribute('data-ws-pane') === state.workspace);
     });
   }
-  // Subview panes (Gamma grid / Chain ladder / Flow, and now Liquidity / Order Flow / Trade
+  // Subview panes (Gamma grid / Chain ladder / Flow, and Liquidity / Order Flow / Trade
   // Desk's own sub-panes) swap in the one workspace canvas; scoped to the CURRENT workspace's
   // own <section data-ws-pane="..."> so two different workspaces reusing the same sub id (e.g.
   // both Liquidity and Order Flow have a "history" sub) never resolve to the wrong pane. Within
@@ -283,7 +274,7 @@
     if (!scp.hidden) reflectScope();
   }
 
-  // Audit finding #4 (2026-09-16): suppresses syncAttrs()'s ed:view dispatch during init()'s
+  // Suppresses syncAttrs()'s ed:view dispatch during init()'s
   // own cold-boot pass -- see that dispatch's own comment for why.
   var _booting = true;
 
@@ -302,13 +293,12 @@
     showMainView();
     reflectScopeVisibility();
     renderRailChildren();
-    // Audit finding #4 (2026-09-16): init() below calls syncAttrs() AND setTicker() during
-    // the SAME cold-boot pass, each dispatching its own event (ed:view / ed:ticker) into
-    // every view module's now-live listener (see init()'s own comment on why this dispatch
-    // used to reach nobody). Every module treats ed:view and ed:ticker as equally sufficient
+    // init() below calls syncAttrs() AND setTicker() during the SAME cold-boot pass, each
+    // dispatching its own event (ed:view / ed:ticker) into every view module's listener (see
+    // init()'s own comment). Every module treats ed:view and ed:ticker as equally sufficient
     // triggers for a full reload, so firing BOTH during boot -- when neither the view nor the
-    // ticker has actually CHANGED from anything, there is simply no prior state yet -- causes
-    // a genuine duplicate hydration this fix exists to eliminate. `_booting` suppresses this
+    // ticker has CHANGED from anything, there is no prior state yet -- would hydrate twice.
+    // `_booting` suppresses this
     // dispatch only during that one initial pass; setTicker's OWN ed:ticker dispatch (below,
     // unconditional) is the single signal every module hydrates from at cold start, and
     // ed:view fires normally, exactly once per call, on every REAL subsequent view change.
@@ -439,10 +429,8 @@
     }, { passive: false });
   }
 
-  // #4: format a compact per-panel source/as-of badge. This ONLY formats server-owned fields
-  // (a source label + the server's own age_sec + its stale flag) - it never computes freshness and
-  // never merges panels into one global "LIVE". Panels that read the same canonical generation pass
-  // the same server age here, so their badges agree without a second computation.
+  // the as-of badges print only served fields (asOfBadge): never a computed freshness, never one
+  // global "LIVE"
   function _escBadge(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
     return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
   // a panel's placeholder: one line of words, drawn as text
@@ -452,7 +440,7 @@
   }
   // The one empty-chain message for every /api/chain panel (Chain, Strike Detail, contract
   // specs). /api/chain answers the live chain or status 'unavailable' with a named reason --
-  // no stored or captured substitute (fallback register R-01) -- so the reason IS the message.
+  // no stored or captured substitute -- so the reason IS the message.
   function chainEmptyText(d) {
     var why = d && d.status === 'unavailable' && d.scope && d.scope.reason;
     return why ? ('chain unavailable — ' + why) : 'no chain for this expiry';
@@ -462,18 +450,28 @@
     s = Math.round(Number(s));
     return s < 90 ? (s + 's') : s < 5400 ? (Math.round(s / 60) + 'm') : (Math.round(s / 3600) + 'h');
   }
+  // A panel's as-of badge: its label, the served state word (o.state: LIVE, CLOSE, STALE, NOT LIVE,
+  // the levels verdict), the served time and the served age text. The word's style follows the word.
   function asOfBadge(o) {
     o = o || {};
-    var age = fmtAge(o.ageSec);
-    var cls = 'asof' + (o.stale ? ' stale' : (o.ref ? ' ref' : (o.live ? ' live' : '')));
+    var cls = 'asof' + (o.state === 'LIVE' ? ' live' : o.state === 'STALE' ? ' stale' : o.state ? ' ref' : '');
     var parts = [];
     if (o.label) parts.push(_escBadge(o.label));
+    if (o.state) parts.push(_escBadge(o.state));
     if (o.when != null) parts.push(_escBadge(o.when));
-    if (age) parts.push(age);
-    if (o.stale) parts.push('STALE');
+    if (o.age) parts.push(_escBadge(o.age));
     // the detailed reason is DISCLOSED in the tooltip — never as a paragraph inside an analytical panel
-    var title = (o.stale && o.reason) ? o.reason : (o.title || o.label || '');
+    var title = o.reason || o.title || o.label;
     return '<span class="' + cls + '" title="' + _escBadge(title) + '">' + parts.join(' · ') + '</span>';
+  }
+  // A chain answer's badge: its served scope and the levels verdict served with it; '' with no scope.
+  var CHAIN_SCOPE = { complete_single_expiry: 'complete (ALL)', unavailable: 'unavailable' };
+  function chainScopeBadge(d) {
+    var sc = d && d.scope, kind = sc && sc.kind;
+    if (!kind) return '';
+    return asOfBadge({ label: 'vendor · ' + (CHAIN_SCOPE[kind] || kind), state: d.levels_state,
+      when: d.levels_time_ct, age: d.levels_age_text, reason: d.levels_stale_reason,
+      title: 'chain scope: ' + kind + (sc.reason ? ' — ' + sc.reason : '') });
   }
 
   // ================= watchlist: the one list, kept by the capture daemon =================
@@ -700,13 +698,11 @@
   //      app/market_data/schwab/streaming/live_ui.py) -- the finished row (live_price_rows.
   //      price_row) the instant a Schwab message changes it, plus a feed verdict every second.
   //      No web server is in this path, so no analytics load can delay a price. It is the
-  //      ONLY source of the header quote and the watchlist rows (operator rule 2026-09-23: no
-  //      fallbacks): when it is not delivering, the header says so -- nothing polls a quote. ----
-  // Operator directive (2026-09-14, spot 360 audit): the source that answered THIS number
-  // was already on every payload (quote_ingestion / _quote_authority) but never surfaced —
-  // a hover tooltip, not new chrome, so the next divergence (if the plane/REST hierarchy
-  // ever disagrees again) is diagnosable on the spot the operator is already looking at,
-  // not something that needs a screenshot comparison to notice.
+  //      ONLY source of the header quote and the watchlist rows (no fallbacks): when it is
+  //      not delivering, the header says so -- nothing polls a quote. ----
+  // The source that answered THIS number (quote_ingestion / _quote_authority, on every
+  // payload) shows as a hover tooltip, not new chrome, so a divergence between sources is
+  // diagnosable on the spot the operator is already looking at.
   var QUOTE_INGESTION_LABEL = {
     schwab_streaming_level_one: 'streaming', rest_tier_a: 'REST (header bootstrap)',
     rest_watchlist_batch: 'REST (watchlist batch)', live_market_plane: 'streaming plane',
@@ -846,7 +842,7 @@
     if (!q || !q.ticker) return;
     if (q.ticker === state.key) {
       // painted NOW, not on requestAnimationFrame: the browser slows or pauses rAF for a
-      // window it considers covered (measured 2026-09-24: row in at 6 ms, rAF paint at 773 ms).
+      // window it considers covered (measured: row in at 6 ms, rAF paint at 773 ms).
       // The daemon already conflates to the newest row per symbol, so there is no burst to
       // throttle -- a few text writes per second. The price is Schwab's last trade with Schwab's
       // trade time, or absent with the served outage reason; the feed state is stated beside it.
@@ -995,8 +991,7 @@
     // Reflect AGAIN, now that normalizeState() may have just corrected state.measure to
     // match a persisted subview (e.g. a reload landing on Open Interest) -- the earlier
     // reflectMeasure() at bind time ran before normalizeState() and would otherwise leave
-    // the dropdown showing "GEX" while the grid itself correctly renders OI (reproduced
-    // live: reloading on the Open Interest tab left the control reading GEX).
+    // the dropdown showing "GEX" while the grid itself correctly renders OI.
     reflectMeasure();
     renderSubnav(); renderViewbar(); showPane(); syncAttrs();
     // subnav/view tabs already in HTML are re-bound by renderSubnav/renderViewbar
@@ -1026,20 +1021,14 @@
     setInterval(checkPriceSilence, 1000);
   }
 
-  // Audit finding #4 (2026-09-16): every view module (ed-gamma.js, ed-gamma-panels.js, etc.)
-  // loads with `defer`, and per the HTML spec a deferred script executes AFTER parsing
-  // finishes, while `document.readyState` is already 'interactive' -- so `init()` used to
-  // ALWAYS take this file's own "not loading, run immediately" branch, firing `ed:ticker`/
-  // `ed:view` (setTicker/syncAttrs, below) before any LATER script tag had even executed,
-  // let alone registered its own `ed:ticker`/`ed:view` listener. Every view module's initial
-  // render therefore came from its OWN separate bottom-of-file self-call
-  // (`else load()`/`else loadAll()`), never from this dispatch -- two independent hydration
-  // mechanisms that happened to avoid colliding only because of that ordering coincidence,
-  // not because either one was designed to be the sole owner. `init()` now ALWAYS waits for
-  // `DOMContentLoaded`, which the HTML spec guarantees fires strictly after every deferred
-  // script has executed -- making this dispatch the one hydration trigger every module can
-  // reliably listen for, and letting each module's own self-call be removed (see those
-  // files) rather than duplicate it. `readyState === 'complete'` is the one case where
+  // Every view module (ed-gamma.js, ed-gamma-panels.js, etc.) loads with `defer`, and per the
+  // HTML spec a deferred script executes AFTER parsing finishes, while `document.readyState`
+  // is already 'interactive' -- running `init()` then would fire `ed:ticker`/`ed:view`
+  // (setTicker/syncAttrs, below) before any LATER script tag had registered its listener.
+  // `init()` therefore waits for `DOMContentLoaded`, which the HTML spec guarantees fires
+  // strictly after every deferred script has executed -- making this dispatch the one
+  // hydration trigger every module listens for, with no self-call of its own.
+  // `readyState === 'complete'` is the one case where
   // DOMContentLoaded has already fired (a very late/dynamic script insertion) and must run
   // immediately instead of waiting for an event that will never come again.
   if (document.readyState === 'complete') init();
@@ -1051,7 +1040,7 @@
     setTheme: applyTheme,
     marketContext: function () { return MARKET_CONTEXT.slice(); },   // served [{key, display}]
     setScope: setScope, getScope: function () { return state.scope; },
-    windowQuery: windowQuery, newPan: newPan, panServed: panServed, wireStrikeAxis: wireStrikeAxis, asOfBadge: asOfBadge, fmtAge: fmtAge, chainEmptyText: chainEmptyText, placeholder: placeholder,
+    windowQuery: windowQuery, newPan: newPan, panServed: panServed, wireStrikeAxis: wireStrikeAxis, asOfBadge: asOfBadge, chainScopeBadge: chainScopeBadge, fmtAge: fmtAge, chainEmptyText: chainEmptyText, placeholder: placeholder,
     setExpiry: setExpiry, getExpiry: function () { return state.expiryFilter; },
     getMeasure: function () { return state.measure; },
     setSubview: setSubview };

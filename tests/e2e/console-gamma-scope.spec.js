@@ -19,11 +19,11 @@ function strikesFor(scope) {
     views: { all: { centre: 100, max_abs: 101200 } }, max_abs_row: [120, 101200, 1000] };
 }
 const TERRAIN = { ticker: 'SPY', spot: 100, gamma_flip: 99.5, call_wall: 106, put_wall: 94,
-  absolute_gamma_strike: 100, net_gex_peak: 100, net_gex_at_spot: 5e8, regime: 'LONG_GAMMA_CHOP', levels_stale: false };
+  absolute_gamma_strike: 100, net_gex_peak: 100, net_gex_at_spot: 5e8, regime: 'LONG_GAMMA_CHOP', levels_state: 'LIVE', levels_mark: 'LIVE' };
 const BARS = { ticker: 'SPY', bars: [99.6, 99.9, 100.1, 99.8, 100.3, 100.5, 100.2, 100.0].map(function (c, i) {
   return { t: 1757000000 + i * 60, o: c - 0.1, h: c + 0.2, l: c - 0.2, c: c, v: 1000 + i }; }) };
 const SURFACE = { ticker: 'SPY', symbol: 'SPY', available: true, spot: 100, front_expiry: '2026-09-11', source: 'terrain_live_cache',
-  live: true, stale: false, age_sec: 3, chain_basis: 'full', complete: false,
+  levels_state: 'LIVE', levels_age_sec: 3, chain_basis: 'full', complete: false,
   expirations: [{ expiry: '2026-09-11', dte: 2, front: true }], strikes: [99, 100, 101],
   cells: [{ strike: 99, gex: [-90000], spot: false }, { strike: 100, gex: [958600], spot: true },
     { strike: 101, gex: [-264500], spot: false }],
