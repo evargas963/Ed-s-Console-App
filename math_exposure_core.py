@@ -2,8 +2,6 @@
 math_exposure_core.py
 Base exposure engine — raw and normalized exposure values derived
 from the chain and position structure.
-
-Phase 2 extraction from math_exposure.py per Extraction Blueprint v1.
 """
 from __future__ import annotations
 
@@ -20,14 +18,11 @@ from time_et import EQUITY_OPTIONS, MIN_TIME_TO_EXPIRY_YEARS, time_to_expiry_yea
 MISSING_GREEK_SENTINEL: float = -999.0
 
 
-
-
 def schwab_iv_to_sigma(iv: float | None) -> float | None:
     """The ONE conversion from Schwab's `volatility` field (a PERCENT) to a decimal sigma.
 
-    MEASURED 2026-09-27 on 49,244 contracts across the 43-ticker board: min 7.967, median 51.0,
-    max 4,256.8 -- every value a percent. One fixed conversion; the old "> 3.0 means percent"
-    guess would have read a real 2.5% IV as 250%. Schwab's IV is carried as sent; a model input
+    Measured on 49,244 contracts across the 43-ticker board: min 7.967, median 51.0, max 4,256.8
+    -- every value a percent, so one fixed conversion. Schwab's IV is carried as sent; a model input
     needs sigma > 0, so 0 or less gives no sigma."""
     if iv is None or iv <= 0:
         return None
@@ -55,8 +50,8 @@ def greek_reported(value: float | None, *, iv: float | None = None) -> bool:
 
 def gamma_reported(ct: dict, price: float | None, *, product: str = EQUITY_OPTIONS) -> bool:
     """True when the contract's gamma is a value: greek_reported, and not more than twice the
-    largest gamma any option can have at its own volatility, `price` and time left (largest_gamma;
-    operator 2026-10-23). The one test of a gamma; unknown inputs leave it as sent."""
+    largest gamma any option can have at its own volatility, `price` and time left
+    (largest_gamma). The one test of a gamma; unknown inputs leave it as sent."""
     gamma = schwab_number(ct.get("gamma"))
     if not greek_reported(gamma, iv=ct.get("volatility")):
         return False
@@ -79,7 +74,6 @@ def largest_gamma(ct: dict, price: float | None, *, product: str = EQUITY_OPTION
     if t is None or t <= MIN_TIME_TO_EXPIRY_YEARS:
         return None
     return 1.0 / (price * sigma * math.sqrt(2.0 * math.pi * t))
-
 
 
 #: Bucket fields priced from Schwab's gamma / delta / volatility -> the counts of contracts on the
@@ -189,7 +183,7 @@ def compute_exposures_by_strike(
     used = 0
     missing = 0
 
-    # RC-345 / F13: T for the BS-vanna faucet comes from the ONE valuation-T authority,
+    # T for the BS-vanna faucet comes from the ONE valuation-T authority,
     # time_et.time_to_expiry_years (intraday ACT/365 to session close), NOT a local
     # whole-day `dte / 365.0`. Every contract in the aggregate is priced at the caller's one
     # valuation instant `now` (a replay of a stored chain prices at the snapshot's time), and T
@@ -266,7 +260,7 @@ def compute_exposures_by_strike(
                 b[f"{leg}_dex_dollars"] += delta * oi * mult * spt
             if gamma_ok:
                 b[f"{leg}_gex_1pct"] += gamma * oi * mult * spt * spt * 0.01  # $-GEX per 1% spot move
-            # RC-211: exact BS vanna from the shared d1/d2 faucet (math_levels.bs_vanna), per
+            # exact BS vanna from the shared d1/d2 faucet (math_levels.bs_vanna), per
             # vol point; vanna is the same for a call and a put at a strike and expiry.
             _iv_ok = iv is not None and iv > 0 and iv != MISSING_GREEK_SENTINEL and math.isfinite(iv)
             _T = _tte_memo(ct)
@@ -419,26 +413,12 @@ def overlay_streamed_contract_fields(
     return out, overlaid
 
 
-# ── Strike selection helpers ─────────────────────────────────────────────────
-# (foundational — used by both levels and volatility modules)
-
-
-
-
-
-# Dollar GEX per 1% spot move: gamma × OI × mult × spot² × 0.01 (see compute_exposures_by_strike).
-
-
-
-
 def strike_total_oi(bucket: dict) -> float | None:
     """THE total open interest at one strike, or None when it is not known.
 
     Known = every contract at the strike reported openInterest (oi_unreported == 0). A leg
     with no positive-OI contract then contributes a real 0 (its contracts reported 0 OI, or
-    none is listed). Replaces three readers that disagreed: one required BOTH legs (dropping
-    every one-sided strike from PCR / OI center / max pain), two counted a missing leg as 0
-    whether or not its OI was reported (audit T-04 / M-06 / M-07 / M-08, 2026-09-24)."""
+    none is listed)."""
     legs = strike_oi_legs(bucket)
     if legs is None:
         return None
@@ -519,9 +499,8 @@ def put_call_volume_ratio(exposures: Dict[float, dict]) -> float | None:
 
 def exposures_have_dollar_gex(exposures: Dict[float, dict]) -> bool:
     """True when the book was built WITH spot (its dollar fields are real). Read from the
-    explicit `dollarized` flag -- it used to be inferred from "any strike has non-zero dollar
-    GEX", so a spot-built book whose gammas were all invalid looked un-dollarized and every
-    consumer silently fell through to raw-gamma units (audit, 2026-09-24)."""
+    explicit `dollarized` flag, never inferred from the dollar GEX values, so a spot-built book
+    whose gammas are all invalid still reads as dollarized."""
     for b in exposures.values():
         if isinstance(b, dict) and "dollarized" in b:
             return bool(b["dollarized"])
@@ -529,8 +508,7 @@ def exposures_have_dollar_gex(exposures: Dict[float, dict]) -> bool:
 
 
 def key_level_strikes_with_oi(exposures: Dict[float, dict]) -> List[float]:
-    """Strikes whose OI is KNOWN and positive (strike_total_oi -- the one reader). It used to
-    require BOTH legs, silently dropping every one-sided strike from the grid (M-06/M-08)."""
+    """Strikes whose OI is KNOWN and positive (strike_total_oi -- the one reader)."""
     out: List[float] = []
     for s in sorted(float(k) for k in exposures.keys()):
         tot = strike_total_oi(exposures.get(s, {}))
@@ -573,7 +551,7 @@ def net_gex_dollars_at_strike(bucket: dict) -> float | None:
 
 
 def compute_net_vanna(exposures: dict, spot: float | None) -> dict | None:
-    """RC-362: aggregate dealer vanna — how much dealer DELTA shifts per IV point.
+    """Aggregate dealer vanna — how much dealer DELTA shifts per IV point.
 
     Same naive dealer-sign model (dealer +calls/−puts): net vanna Δ-shares per 1.00 vol
     = Σ net_vanna over the ONE exposures book (each strike's net_vanna from
@@ -595,7 +573,7 @@ def compute_net_vanna(exposures: dict, spot: float | None) -> dict | None:
 def compute_zero_dte_gamma_share(
     exposures_all: dict, exposures_0dte: dict
 ) -> float | None:
-    """RC-357: % of the dealer gamma book from SAME-DAY expiry — the level-persistence read.
+    """% of the dealer gamma book from SAME-DAY expiry — the level-persistence read.
 
     share = sum(|net_gex_1pct|) over the 0DTE book / sum(|net_gex_1pct|) over the full book,
     BOTH books from the ONE producer (compute_exposures_by_strike; the 0DTE book merges
@@ -606,7 +584,7 @@ def compute_zero_dte_gamma_share(
     """
     if not exposures_all:
         return None
-    # RC-369: a bucket MISSING its net-GEX field must not contribute a fabricated zero
+    # a bucket MISSING its net-GEX field must not contribute a fabricated zero
     # weight to a share-of-book ratio — absence WITHHOLDS the whole metric.
     total = 0.0
     for v in exposures_all.values():
@@ -627,8 +605,6 @@ def total_gamma_raw_at_strike(bucket: dict) -> float | None:
     c = bucket_metric_abs(bucket, "call_gamma")
     p = bucket_metric_abs(bucket, "put_gamma")
     return None if c is None or p is None else c + p
-
-
 
 
 def _pick_strike_max_metric(
@@ -652,16 +628,15 @@ def _pick_strike_max_metric(
 def pick_pin_and_strength(
     exposures: Dict[float, dict], strikes: List[float]
 ) -> tuple[float | None, float | None]:
-    """RC-124/RC-315/RC-320: max TOTAL gamma — a GROSS GAMMA CONCENTRATION, plus its
+    """Max TOTAL gamma — a GROSS GAMMA CONCENTRATION, plus its
     decisiveness. NOT a demonstrated magnet.
 
     WHAT IT MEASURES. The strike carrying the largest absolute call GEX dollars plus
     absolute put GEX dollars — i.e. where the most dealer re-hedging activity sits. This is
     the quantity SpotGamma publishes as Absolute Gamma.
 
-    WHAT IT DOES NOT ESTABLISH, and what this docstring wrongly claimed until RC-320. The
-    previous text read "hedging MAGNITUDE pins price regardless of net sign, so
-    calls-plus-puts is the magnet measure". That does not follow. Magnitude sets the SIZE of
+    WHAT IT DOES NOT ESTABLISH: that hedging MAGNITUDE pins price regardless of net sign, so
+    calls-plus-puts is the magnet measure. That does not follow. Magnitude sets the SIZE of
     the hedging flow at a strike; the SIGN of the dealer position sets whether that flow is
     stabilising or destabilising — a dealer long gamma sells rallies and buys dips, a dealer
     short gamma does the opposite — and this metric discards the sign. Two strikes with equal
@@ -671,9 +646,7 @@ def pick_pin_and_strength(
     Expiration-date clustering in the literature turns on NET positioning — Ni, Pearson and
     Poteshman, Journal of Financial Economics, doi:10.1016/j.jfineco.2004.08.005.
 
-    Cursor's independent audit refuted the original sentence on 2026-08-09; RC-315 corrected
-    the derivation register and MISSED this docstring, which is where the register's wording
-    came from. Treat the result as a pin CANDIDATE.
+    Treat the result as a pin CANDIDATE.
 
     The NET book (calls minus puts) is a different question — where the signed book leans —
     and lives under its own name as net_gex_peak (pick_net_gex_peak_strike below).
@@ -782,40 +755,3 @@ def pick_delta_wall_strikes(
         _pick_strike_max_metric(exposures, strikes, lambda b: bucket_metric_abs(b, "call_dex_dollars")),
         _pick_strike_max_metric(exposures, strikes, lambda b: bucket_metric_abs(b, "put_dex_dollars")),
     )
-
-
-
-
-
-
-
-
-
-
-# ── Validation / sanitization ────────────────────────────────────────────────
-
-
-
-
-
-# ── Exposure aggregation ─────────────────────────────────────────────────────
-
-
-
-
-# ── Charm ─────────────────────────────────────────────────────────────────────
-
-
-
-# ── Greek bias ────────────────────────────────────────────────────────────────
-
-
-
-
-# ── Beta / returns ────────────────────────────────────────────────────────────
-
-
-
-
-
-

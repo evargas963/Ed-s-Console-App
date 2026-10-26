@@ -1,9 +1,6 @@
 """
 math_volatility.py
-Volatility-derived transforms — expected move, IV extraction,
-movement envelopes, and time/session context.
-
-Phase 2 extraction from math_exposure.py per Extraction Blueprint v1.
+Volatility-derived transforms: the 25-delta risk reversal and the average true range.
 """
 from __future__ import annotations
 
@@ -12,13 +9,7 @@ from typing import List
 from numeric_contract import schwab_number
 
 
-
-# ── Constants ─────────────────────────────────────────────────────────────────
-
-
-
-
-# ── RC-358: 25-delta risk reversal (skew steepness) ──────────────────────────
+# ── 25-delta risk reversal (skew steepness) ──────────────────────────────────
 
 #: A wing quote only counts as "the 25Δ option" if its delta is within this distance of
 #: the ±0.25 target; farther than this and the chain has no usable 25Δ wing — fail closed.
@@ -26,13 +17,13 @@ RR25_DELTA_TOL = 0.10
 
 
 def compute_25d_risk_reversal(contracts: List[dict]) -> dict | None:
-    """RC-358: IV(25Δ call) − IV(25Δ put) on the expiry nearest 30 days out, in vol points
+    """IV(25Δ call) − IV(25Δ put) on the expiry nearest 30 days out, in vol points
     (the fixed ~30-day tenor the published risk reversal uses -- SpotGamma; the front expiry is
     often a same-day one, whose skew is hours wide).
 
     The skew-steepness read: SPX-typical is −2..−4 (puts richer); deterioration toward
     −6 and beyond = the put bid building — the same-session confirm for a Gamma Support
-    Floor breach. Selection: the front expiry (smallest usable dte ≥ 0), then the call
+    Floor breach. Selection: the expiry nearest 30 days out (dte ≥ 1), then the call
     whose delta is nearest +0.25 and the put nearest −0.25, each tolerance-gated
     (|delta − target| ≤ RR25_DELTA_TOL, else the wing is unusable). Schwab `volatility`
     is in PERCENT and stays in vol points here. FAIL-CLOSED: None when either wing is
@@ -73,48 +64,6 @@ def compute_25d_risk_reversal(contracts: List[dict]) -> dict | None:
         "put_iv_25d": p[3],
         "dte": front_dte,
     }
-
-
-# ── ATM strike / IV extraction ────────────────────────────────────────────────
-
-
-
-
-# ── Charm intraday context ───────────────────────────────────────────────────
-
-
-
-# ── Session / VIX bucketing ──────────────────────────────────────────────────
-
-
-
-
-
-
-
-
-
-# ── Expected move calculations ───────────────────────────────────────────────
-
-
-
-
-
-
-
-
-
-
-
-
-# ── IV Skew ──────────────────────────────────────────────────────────────────
-
-
-
-# ── Realized Volatility ─────────────────────────────────────────────────────
-
-
-
 
 
 # ── ATR (Average True Range) ────────────────────────────────────────────────
@@ -166,50 +115,3 @@ def compute_atr(candles: list, *, period: int = 14) -> float | None:
         return None
 
     return sum(trs[-period:]) / period
-
-
-# ── IV Rank and IV Percentile ────────────────────────────────────────────────
-
-
-
-
-
-# ── Volatility Envelope (ATR Bands) ─────────────────────────────────────────
-
-
-
-
-# ── GARCH(1,1) Volatility Forecasting ────────────────────────────────────────
-#
-# Per consultant Phase 2 recommendation + corrections:
-#   - Uses consistent 5-minute log returns
-#   - Produces per-bar forward sigma forecast (horizon bars)
-#   - Blended with IV + RV before feeding MC (don't fully replace)
-#   - Sigma floor prevents collapse
-#   - Regime multiplier applied downstream in monte_carlo.py (already built)
-#
-# GARCH(1,1) model:
-#   sigma²[t] = omega + alpha * epsilon²[t-1] + beta * sigma²[t-1]
-#
-# where:
-#   omega = long-run variance weight
-#   alpha = shock reactivity (how much yesterday's surprise matters)
-#   beta  = persistence (how sticky is current vol level)
-#   alpha + beta < 1 for stationarity
-#
-# No ML training needed — parameters estimated analytically from recent returns.
-
-
-# alpha + beta = 0.95 < 1.0 (stationary, moderate persistence)
-
-
-
-
-
-
-
-
-
-
-# ── Theoretical IV Model Spread ──────────────────────────────────────────────
-

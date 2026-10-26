@@ -73,9 +73,6 @@ LEVEL_NAMES = {
 }
 
 
-
-
-
 def liquidity_zone_tradeable_score(
     *,
     n_tags: int,
@@ -84,7 +81,7 @@ def liquidity_zone_tradeable_score(
     dist_pen: float,
     spot: Optional[float] = None,
 ) -> float:
-    """Spot-normalized liquidity zone tradeability score (LM-1 authority)."""
+    """Spot-normalized liquidity zone tradeability score."""
     if spot is None:
         return 3.0 * n_tags + 2.5 * n_opt
     return 3.0 * n_tags + 2.5 * n_opt + (1.5 if inside else 0.0) - dist_pen
@@ -98,8 +95,6 @@ def bars_from_candles(candles) -> list[dict]:
              "high": c.high, "low": c.low, "close": c.close, "volume": c.volume} for c in candles]
 
 
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # PREVIOUS DAY / OVERNIGHT
 # ─────────────────────────────────────────────────────────────────────────────
@@ -108,7 +103,7 @@ def bars_from_candles(candles) -> list[dict]:
 def prior_trading_session_date(bars_norm: list, session_date: date) -> Optional[date]:
     """The most recent date BEFORE `session_date` that actually traded an RTH session.
 
-    LP-01 Step 2 (RC-153) — THE single definition of "the prior session", for both the
+    THE single definition of "the prior session", for both the
     previous-day levels and the overnight window. The calendar cannot answer this question:
     `session_date - 1 day` is Sunday on a Monday and a closed holiday after one, and a market
     that was shut has no close for an overnight range to start from.
@@ -252,8 +247,6 @@ def compute_session_vwap_series(
     return series
 
 
-
-
 def count_session_rth_positive_volume_bars(bars_norm: list, session_date: date) -> int:
     """INPUT RTH bars with positive volume on session_date — independent of the VWAP series."""
     return sum(1 for b in _filter_rth_bars(bars_norm, session_date) if b["volume"] is not None and b["volume"] > 0)
@@ -353,7 +346,7 @@ def build_premarket_snapshot(
 
     The families are CARRIED from the one materialized snapshot (``canonical``); no level
     helper runs here. Absent stays absent: a family missing from the snapshot is missing here,
-    never replaced by spot, zero or a neighbouring level (RC-68).
+    never replaced by spot, zero or a neighbouring level.
     """
     prev, over, _orb, _poc, _vah, _val, _vwap, _bands = _phase2a_families_from_canonical(canonical)
 
@@ -394,10 +387,9 @@ def build_premarket_snapshot(
         )
         zones.append(z)
 
-    # Canonical taxonomy (RC-154, LP-01 Step 3): downside extremes -> low_extreme; PDL/VAL ->
+    # Canonical taxonomy: downside extremes -> low_extreme; PDL/VAL ->
     # support_liquidity; POC/balance -> pivot_value; PDH/overnight high -> resistance_liquidity.
-    # The GEOMETRY of each branch is unchanged; only the claim attached to it is. Notes state
-    # WHERE the level came from — never that stops rest there or that price is drawn to it.
+    # Notes state WHERE the level came from — never that stops rest there or that price is drawn to it.
     out_zones = []
     if prev and over:
         pdh, pdl = prev.get("pdh"), prev.get("pdl")
@@ -444,9 +436,7 @@ def build_premarket_snapshot(
 def _classify_value_state_and_vwap_relation(
     poc: Optional[float], prev_pd_poc: Optional[float], vwap: Optional[float],
 ) -> tuple[str, str, str]:
-    """Value-area shift + VWAP-vs-value relation + auction interpretation — the ONE
-    classification shared by the midday/afternoon/live snapshots (was copy-pasted
-    identically three times)."""
+    """Value-area shift + VWAP-vs-value relation + auction interpretation."""
     value_state = "unchanged"
     if poc and prev_pd_poc:
         d = (poc - prev_pd_poc) / prev_pd_poc if prev_pd_poc else 0
@@ -497,18 +487,16 @@ def _classify_live_cluster(tags: list[str], orb: dict) -> tuple[ZoneType, str]:
         return ZoneType.SUPPORT_LIQUIDITY, "Support / lower structure"
     if "TODAY_POC" in ts or "VWAP" in ts or "ORB_MID" in ts or "PD_POC" in ts or "PDC" in ts:
         return ZoneType.PIVOT_VALUE, "Fair value / pivot"
-    # RC-155: the FALLTHROUGH note — no tag matched any branch above, so nothing is known about
-    # this cluster beyond the fact that it exists in this session. The retired wording named a
-    # pool mechanism precisely where the code had run out of classifications, and it reached the
-    # payload by RETURN TUPLE, which the first note-sweep (assignments only) could not see.
+    # The FALLTHROUGH note — no tag matched any branch above, so nothing is known about
+    # this cluster beyond the fact that it exists in this session.
     return ZoneType.PIVOT_VALUE, "Unclassified session zone"
 
 
 def _phase2a_families_from_canonical(canonical: "PriceLevelSnapshot"):
-    """Unpack the canonical snapshot into the legacy family shapes, values UNCHANGED.
+    """Unpack the canonical snapshot into the family shapes, values UNCHANGED.
 
     Absent stays absent: a level missing from the snapshot is missing here, never
-    replaced by zero, spot or a neighbouring level (RC-68).
+    replaced by zero, spot or a neighbouring level.
     """
     p = canonical.price
     prev = {k: v for k, v in (
@@ -661,35 +649,20 @@ def build_live_snapshot(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PLAYBOOK STATE
+# The canonical materialized PriceLevelSnapshot
 # ─────────────────────────────────────────────────────────────────────────────
-
-
-
-
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# PHASE 2A — the canonical materialized PriceLevelSnapshot
-# ─────────────────────────────────────────────────────────────────────────────
-# THE INVARIANT (operator, 2026-08-08): exactly ONE authoritative computation and
+# THE INVARIANT: exactly ONE authoritative computation and
 # ONE materialized result per (ticker, level_id, semantic_scope, generation). Every
 # API, UI, decision path, model feature, persistence write and report consumes THAT
 # result unchanged. A new market generation may invoke the producer once; endpoints
 # and consumers may not independently invoke or reconstruct the computation.
-#
-# WHY THIS EXISTS, measured: /api/levels served overnight 773.3975/773.3975 while
-# /api/liquidity-snapshot served 773.40/772.55 for the same ticker at the same
-# instant, and the prior-day value area disagreed intermittently. Neither endpoint
-# was wrong about its own arithmetic — they ran the same helpers over DIFFERENT bar
-# inputs (live accumulator vs a synchronous Schwab fetch), which is a second
-# materialization, not a second formula. Collapsing the formulas was never going to
-# fix it; collapsing the MATERIALIZATION is.
+# The same helpers run over DIFFERENT bar inputs are a second materialization, not a
+# second formula, so the MATERIALIZATION is what is single.
 
-#: level_id -> (family, semantic_scope, evidence_tier). The Phase 2A registry: an id
+#: level_id -> (family, semantic_scope, evidence_tier). The registry: an id
 #: in this table has exactly one canonical producer and one materialized value per
 #: generation. A checkpoint-scoped or otherwise differently-windowed metric must NOT
-#: reuse these ids — it carries its own explicit scope suffix (see `scoped_level_id`).
+#: reuse these ids — it carries its own explicit scope suffix.
 PHASE2A_LEVEL_IDS: dict[str, tuple[str, str, str]] = {
     "PDH": ("prior_day", "prior_rth_session", "price_fact"),
     "PDL": ("prior_day", "prior_rth_session", "price_fact"),
@@ -712,21 +685,14 @@ PHASE2A_LEVEL_IDS: dict[str, tuple[str, str, str]] = {
     "TODAY_VAL": ("value_area", "session_rth", "derived_certified"),
 }
 
-#: The engine helpers that ARE the Phase 2A computation. `build_price_level_snapshot`
-#: is the only production call site; the static guard
-#: (tools/check_institutional_correctness.check_phase2a_single_level_computation)
-#: enforces that, alias-resolved, so a second invocation under another name still fires.
-#: This module's own name, read rather than spelled: RC-154's Step-3 lock bans the
-#: literal "liquidity" in any non-docstring engine string, and a provenance stamp is
-#: not a market claim — reading __name__ keeps the stamp honest and the lock intact.
+#: The engine helpers that ARE the level computation. `build_price_level_snapshot`
+#: is the only production call site.
+#: This module's own name, read rather than spelled: the provenance stamp of each level.
 _PRODUCER_NS: str = __name__
 
 
-
-
-
-#: semantic_scope -> the trading-session character the /api/levels contract has always
-#: published as provenance.session_scope (RTH vs full/extended session). The two are
+#: semantic_scope -> the trading-session character the /api/levels contract
+#: publishes as provenance.session_scope (RTH vs full/extended session). The two are
 #: different questions: `semantic_scope` identifies WHICH measurement this is,
 #: `session_scope` says which hours it was measured over.
 _SESSION_SCOPE_OF: dict[str, str] = {
@@ -821,7 +787,6 @@ class PriceLevelSnapshot:
         return None if lv is None else lv.price
 
 
-
 # A reported volume and a missing one are different inputs (a reported 0 is 0). They are
 # packed with different layouts so the digest cannot treat an absent volume as zero.
 _BAR_PRESENT = struct.Struct("<qdddddB")
@@ -835,13 +800,9 @@ def _snapshot_input_fingerprint(ticker: str, session_date: date, bars_norm: list
     Bar identity, not wall-clock: re-asking within a generation must return the very
     result already materialized, or "one result per generation" is prose.
 
-    RC-324: this used to be (ticker, date, source, len, first_ts, last_ts, last_close) — a
-    SAMPLE of the input, not a cover of it. Cursor proved the consequence by execution:
-    changing PDH from 105 to 999 leaves the length, both endpoints and the last close
-    untouched, so the fingerprint matched, the cached object was returned, and the stale 105
-    was served under generation 1. A cache key shorter than its input is a claim of equality
-    that cannot always hold. Every bar now enters a stable digest, so no interior edit can
-    survive it, and the digest is fixed-width so the key stays cheap to compare.
+    A cache key shorter than its input is a claim of equality that cannot always hold.
+    Every bar enters a stable digest, so no interior edit can survive it, and the digest
+    is fixed-width so the key stays cheap to compare.
     """
     h = hashlib.blake2b(digest_size=16)
     h.update(f"{ticker}\x1f{session_date.isoformat()}\x1f{bar_source}\x1f"
@@ -867,16 +828,16 @@ def build_price_level_snapshot(
     config: Optional[PlaybookConfig] = None,
     generation: int = 0,
 ) -> PriceLevelSnapshot:
-    """THE Phase 2A producer, from normalized bars (bars_from_candles). The only production caller
+    """THE level producer, from normalized bars (bars_from_candles). The only production caller
     of the canonical helpers.
 
     Absent input stays absent: a family with no bars in its window is declared in
     `families_absent` and its ids are simply not present. Nothing substitutes spot,
-    zero, or a neighbouring level (RC-68). A prior session with fewer than
+    zero, or a neighbouring level. A prior session with fewer than
     LEVELS_PRIOR_SESSION_MIN_BARS RTH bars is disclosed in `degraded`, never filled.
     """
     cfg = config or PlaybookConfig()
-    tk = ticker_storage_key(ticker)  # RC-345/F25: canonical liquidity snapshot/ledger identity
+    tk = ticker_storage_key(ticker)  # canonical liquidity snapshot/ledger identity
     produced_ts = datetime.now(tz=ET).timestamp()
     levels: dict[str, PriceLevelValue] = {}
     families_absent: list[dict] = []
@@ -1001,7 +962,7 @@ def build_price_level_snapshot(
 
 #: (ticker, session_date_iso) -> the ONE materialized snapshot for the current generation.
 _MATERIALIZED_SNAPSHOTS: dict[tuple[str, str], PriceLevelSnapshot] = {}
-#: RC-324: guards the whole read-decide-build-write of materialize_price_level_snapshot.
+#: Guards the whole read-decide-build-write of materialize_price_level_snapshot.
 #: Deciding a generation from a value you then overwrite is a check-then-act, and a
 #: check-then-act is a race unless something serialises it.
 _MATERIALIZE_LOCK = threading.Lock()
@@ -1021,14 +982,12 @@ def materialize_price_level_snapshot(
     A new market generation (the bar input changed) invokes the producer exactly once.
     Every later ask in that generation is a read, never a recomputation.
     """
-    tk = ticker_storage_key(ticker)  # RC-345/F25: canonical liquidity snapshot/ledger identity
+    tk = ticker_storage_key(ticker)  # canonical liquidity snapshot/ledger identity
     key = (tk, session_date.isoformat())
     fingerprint = _snapshot_input_fingerprint(tk, session_date, bars_norm, bar_source)
-    # RC-324: the read, the generation decision, the build and the write-back are ONE
-    # critical section. Unguarded, this is a check-then-act: Cursor proved two concurrent
-    # callers both observed `existing is None`, both computed generation 1, and produced two
-    # different objects carrying PDH 105 and 205 — two results under one generation, which
-    # is the exact half of the invariant this producer exists to guarantee.
+    # The read, the generation decision, the build and the write-back are ONE
+    # critical section. Unguarded, two concurrent callers can both see `existing is None`,
+    # both compute generation 1 and produce two results under one generation.
     with _MATERIALIZE_LOCK:
         existing = _MATERIALIZED_SNAPSHOTS.get(key)
         if existing is not None and existing.input_fingerprint == fingerprint:
@@ -1041,9 +1000,3 @@ def materialize_price_level_snapshot(
         snap.input_fingerprint = fingerprint
         _MATERIALIZED_SNAPSHOTS[key] = snap
         return snap
-
-
-
-
-
-

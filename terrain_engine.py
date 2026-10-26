@@ -1,21 +1,5 @@
 """Terrain pipeline — levels only, no model stack.
 
-WHY THIS EXISTS (5-whys root cause, 2026-07-19):
-  1. 24 of 31 tickers refreshed only every ~11 minutes.
-  2. They were being SKIPPED, not computed slowly — `_live_operator_mode_active()`
-     hard-skips non-SPY/QQQ/IWM background rotation whenever a viewer is connected.
-  3. That gate exists because background collection competed with the live UI.
-  4. It competed because `_fetch_state` is ONE pipeline — chain + greeks + the full ML
-     stack (xgb/lstm/transformer x 4 horizons, fusion, decision bundle) — shared by the
-     UI request path and the background logger, capped at 2 global chain slots.
-  5. ROOT: the model stack made the data path so expensive that the only way to keep the
-     UI responsive was to starve most of the board.
-
-Terrain needs none of that. Measured: the entire levels computation is ~4.8 ms per
-ticker (~0.15 s for all 31), and one chain call per ticker per minute is ~31 req/min
-against a ~120 req/min Schwab budget. So terrain gets its OWN path: same app, same
-process, same chain data — separate pipeline, no inference, no starvation.
-
 This module is pure: it takes contracts + spot and returns a payload. Fetching and
 scheduling live in the caller, so this stays trivially testable.
 """
@@ -56,10 +40,6 @@ from numeric_contract import schwab_count, schwab_number
 from terrain_read import LEVEL_ABOVE, LEVEL_BELOW, build_terrain_read, level_side, price_side
 
 #: Payload schema version — bump on any field change so the UI can fail closed.
-#: v2 (2026-07-21): + net_gex_at_spot, key_delta_strike, hvp, lvp.
-#: v3 (2026-08-24, RC-292): gamma_pin* renamed absolute_gamma_* (total-gamma concentration
-#: under its metric's name, not a pin claim); + pin_candidate / pin_candidate_blockers
-#: (the qualified pin claim, fail-closed with reasons).
 TERRAIN_SCHEMA_VERSION = 3
 
 
@@ -79,40 +59,36 @@ class TerrainSnapshot:
 
     # levels — chain scope for every level in this dataclass: FULL_BOOK (the wide
     # multi-expiry capture chain). The analytics summary_rows carry the SELECTED_EXPIRY
-    # scope; the two scopes never share a payload field (RC-292/RC-303).
+    # scope; the two scopes never share a payload field.
     gamma_flip: float | None = None
     call_wall: float | None = None
     put_wall: float | None = None
-    #: RC-124/RC-292/RC-315: max TOTAL gamma — |call GEX$| + |put GEX$| — over the full
+    #: Max TOTAL gamma — |call GEX$| + |put GEX$| — over the full
     #: book. A GROSS GAMMA CONCENTRATION (SpotGamma's "Absolute Gamma" measure): where the
     #: most dealer re-hedging activity sits. It is a pin CANDIDATE input, NOT a demonstrated
     #: magnet — magnitude sets the SIZE of the hedging flow while the unobservable dealer
-    #: SIGN decides pin vs repel (RC-315). Renamed from `gamma_pin` per the operator's
-    #: RC-292 disposition: the raw value carries the metric's name; the word "pin" is
+    #: SIGN decides pin vs repel. The raw value carries the metric's name; the word "pin" is
     #: reserved for `pin_candidate` below, which must earn it. Strength = leader's margin
     #: over the runner-up on the same metric (a 1% lead is a coin flip; the label says so).
     absolute_gamma_strike: float | None = None
     absolute_gamma_strength_pct: float | None = None
-    #: RC-413: GEX$ / OI at absolute_gamma_strike plus book OI, from the SAME exposures
+    #: GEX$ / OI at absolute_gamma_strike plus book OI, from the SAME exposures
     #: book that picked the strike. pin_score reads these so strike and magnitude cannot
     #: split onto the analytics selected-expiry book. None = fail-closed
     #: (absent/stale/undollarized).
     absolute_gamma_gex_dollars: float | None = None
     absolute_gamma_oi: float | None = None
     book_oi_total: float | None = None
-    #: RC-124: the former "pin" — max |net GEX$| (calls minus puts) — kept under its honest
-    #: name; a real measure of where the SIGNED book peaks, distinct from the concentration.
+    #: Max |net GEX$| (calls minus puts): where the SIGNED book peaks, distinct from the
+    #: concentration.
     #: Scope: FULL_BOOK here; ExposureRow.net_gex_peak is the SAME definition over the
-    #: SELECTED_EXPIRY chain (declared, distinct surface — RC-303).
+    #: SELECTED_EXPIRY chain (declared, distinct surface).
     net_gex_peak: float | None = None
-    #: RC-134: terrain `hvl` REMOVED — it equaled the absolute-gamma strike by construction
-    #: (same total-GEX$ metric as pick_hvl_strike / pick_pin_and_strength). Total-gamma
-    #: renders once as ABS GAMMA. Analytics `kl_hvl` remains a DIFFERENT book
+    #: Total-gamma renders once as ABS GAMMA. Analytics `kl_hvl` is a DIFFERENT book
     #: (net_gex_peak → "Net Γ peak").
     #: Max pain is defined PER EXPIRY (standard: the settlement price minimising intrinsic
-    #: payout on ONE expiry's open interest). It used to be computed over the whole wide
-    #: chain -- every expiry pooled (research check, 2026-09-24). Now: the FRONT expiry only,
-    #: and max_pain_dte says which.
+    #: payout on ONE expiry's open interest): the FRONT expiry only, and max_pain_dte says
+    #: which.
     max_pain: float | None = None
     max_pain_dte: float | None = None
     call_charm_wall: float | None = None
@@ -125,8 +101,8 @@ class TerrainSnapshot:
     #: (regime = its sign). Disambiguates walls that share a strike.
     net_gex_at_spot: float | None = None
 
-    #: RC-354: Gamma Support Floor / Gamma Resistance Ceiling — computed from the SAME
-    #: materialized profile as the flip (RC-345 one-profile rule). GSF = highest level
+    #: Gamma Support Floor / Gamma Resistance Ceiling — computed from the SAME
+    #: materialized profile as the flip. GSF = highest level
     #: below spot where the positive-gamma cushion has decayed to half its at-spot value
     #: (support ends BEFORE the flip's zero-crossing); GRC = the upside mirror, often
     #: at/beyond the call wall (resistance strengthens before it exhausts). gsf_state is
@@ -136,7 +112,7 @@ class TerrainSnapshot:
     grc: float | None = None
     gsf_state: str = "UNAVAILABLE"
 
-    #: RC-357: % of |net GEX$| from SAME-DAY expiry — level persistence. High = today's
+    #: % of |net GEX$| from SAME-DAY expiry — level persistence. High = today's
     #: walls/flip decay into the close (0DTE gamma dies at 4pm); low = levels persist.
     #: None (fail-closed) when the book is empty, never a fabricated 0%.
     zero_dte_gamma_share_pct: float | None = None
@@ -144,27 +120,27 @@ class TerrainSnapshot:
     #: absolute_gamma_strike in this dict is the one 0DTE pin.
     same_day: dict[str, float | None] = field(default_factory=dict)
 
-    #: RC-358: 25Δ risk reversal — {rr_pts, call_iv_25d, put_iv_25d, dte} or None.
-    #: Skew steepness on the front expiry; deterioration toward −6 = the put bid
+    #: 25Δ risk reversal — {rr_pts, call_iv_25d, put_iv_25d, dte} or None.
+    #: Skew steepness on the expiry nearest 30 days out; deterioration toward −6 = the put bid
     #: building (the same-session GSF-breach confirm). Fail-closed None, never fabricated.
     rr_25d: dict | None = None
 
-    #: RC-362: aggregate dealer vanna — {net_vanna_dollars_per_volpt, net_vanna_shares_per_volpt}
+    #: Aggregate dealer vanna — {net_vanna_dollars_per_volpt, net_vanna_shares_per_volpt}
     #: or None. Sizes the IV-driven hedge flow (vol-crush tailwind / vol-spike selling).
     vanna_agg: dict | None = None
 
-    #: RC-113: the institutional sigma band — {points, iv_pct_atm, dte_used, method} or None
+    #: The institutional sigma band — {points, iv_pct_atm, dte_used, method} or None
     #: when ATM IV is unusable (fail-closed, never a fabricated band). `points` is the
     #: one-sigma half-width; the client centers it on the live spot. The wall RANGE itself
     #: is the put_wall↔call_wall corridor — already carried above, drawn client-side.
     implied_1d_move: dict[str, Any] | None = None
 
-    #: RC-115: each wall's EARNED per-side range — {lo, hi, coverage_pct, method} or None —
+    #: Each wall's EARNED per-side range — {lo, hi, coverage_pct, method} or None —
     #: the value-area of the wall's own side-gamma mass (never the strike grid).
     call_wall_range: dict[str, Any] | None = None
     put_wall_range: dict[str, Any] | None = None
 
-    #: RC-128 (One Levels Faucet): delta walls owned by THIS producer — same wide chain,
+    #: Delta walls owned by THIS producer — same wide chain,
     #: one book. Concepts terrain does not compute (OI/vanna walls, inflections) do not
     #: get fields here and render BLANK with a withheld reason, never an analytics book.
     call_delta_wall: float | None = None
@@ -180,13 +156,9 @@ class TerrainSnapshot:
     #: (price, net dealer gamma) samples; kept OUT of to_dict() (~240 pairs).
     profile: list[tuple[float, float]] = field(default_factory=list, repr=False)
 
-    #: RC-68 — the LIVE per-strike map, kept instead of discarded. compute_exposures_by_strike
-    #: already runs on every ~60s terrain refresh and its result was used to pick the walls and
-    #: then thrown away, which forced /api/terrain/strikes to render the per-strike histogram from
-    #: the FROZEN option_chain_morning_full archive (MEASURED 2026-07-27: 09:47 capture served at
-    #: 11:31, session volume understated 281 percent). Retaining it makes that panel live at ZERO
-    #: additional vendor cost — the chain is already in hand. Kept OUT of to_dict() for the same
-    #: reason as `profile`: too heavy for every poll; the strikes endpoint reads it directly.
+    #: The LIVE per-strike map the walls were picked from; the per-strike panel reads it, at
+    #: no additional vendor cost — the chain is already in hand. Kept OUT of to_dict() for the
+    #: same reason as `profile`: too heavy for every poll; the strikes endpoint reads it directly.
     per_strike: dict[float, dict[str, Any]] = field(default_factory=dict, repr=False)
     #: The exposure_books every number above was priced from ({(expiry, dte): (book, diag)}):
     #: the gamma-surface grid is shaped from them, so levels, per-strike rows and heatmap
@@ -240,16 +212,14 @@ def _unavailable(ticker: str, spot: float | None, reason: str) -> TerrainSnapsho
 def _per_strike_rows(exposures: dict) -> list[list]:
     """`[[strike, net_gex_1pct$, session_volume], …]` — the EXACT shape the panel renders.
 
-    THE one producer of GEX-by-strike rows (live panel AND the prior-day ghost -- server.py
-    carried a second copy, removed 2026-09-24).
+    THE one producer of GEX-by-strike rows (live panel AND the prior-day ghost).
 
-    RC-79: the finished numbers are handed over as-is, never reassembled into synthetic
+    The finished numbers are handed over as-is, never reassembled into synthetic
     contracts and recomputed.
 
-    Audit T-01 / T-02 (2026-09-24, operator rule: no fallbacks):
+    No fallbacks:
       * the bar is net GEX$ from a DOLLARIZED book, exact (a strike whose contracts have open
-        interest 0 is a $0 bar). It used to fall back to total_gamma_raw_at_strike -- UNSIGNED
-        raw gamma drawn on the signed GEX$ axis. A strike whose GEX is not known
+        interest 0 is a $0 bar). A strike whose GEX is not known
         (bucket_metric), or a book built without spot, has no bar.
       * volume is strike_total_volume, the one reader: Schwab's volumes as sent (0 is a real
         zero); None ("—") when a contract at the strike did not report it, never a partial sum.
@@ -274,8 +244,8 @@ def _per_strike_rows(exposures: dict) -> list[list]:
     return rows
 
 
-#: Weighted positive-gamma strike move below which drift reads as none. Carried unchanged from
-#: the former /chart page's gamma panel (2026-09-27); its origin is not recorded -- NOT_PROVEN.
+#: Weighted positive-gamma strike move below which drift reads as none. Its origin is not
+#: recorded -- NOT_PROVEN.
 MIGRATION_DRIFT_STRIKES = 0.15
 
 
@@ -393,12 +363,6 @@ def chain_ladder(contracts, spot) -> tuple[list[dict], int]:
 def _dte_of(ct: object) -> float | None:
     """Days to expiration, or None when the contract does not say.
 
-    RC-290: this returned 999.0 for an unreadable DTE and I annotated it "SORT KEY only,
-    never rendered". Cursor executed the claim: the per-strike maturity split classifies contracts
-    with `_dte_of(c) > 7` as `far`, so 999.0 put every unknown-maturity contract into the
-    FAR scope and rendered it there. The reason was false and the fabricated number was
-    reaching the operator as a maturity claim.
-
     None cannot be compared to 7 by accident — a caller must decide what unknown means,
     which for a maturity SPLIT is "belongs to neither side".
     """
@@ -409,21 +373,20 @@ def _dte_of(ct: object) -> float | None:
 def compute_wall_value_area(
     exposures: dict, wall: float | None, side: str, frac: float = 0.682
 ) -> dict | None:
-    """RC-115: the wall's EARNED range — Market-Profile value-area math on SIDE gamma mass.
+    """The wall's EARNED range — Market-Profile value-area math on SIDE gamma mass.
 
     THE STANDARD, named: the Value Area algorithm (CQG-documented, the Market/Volume Profile
     industry method) — start at the point of control and expand one strike at a time toward
     whichever neighbor holds more mass, until 68.2 percent (one sigma) is enclosed. Here the
     distribution is the wall's own SIDE gamma (call gamma for the call wall, put gamma for
     the put wall), so the range is a property of the POSITIONING — different every day and
-    every ticker — never of the strike grid (the RC-86 falsehood this replaces).
+    every ticker — never of the strike grid.
 
     Fail-closed: no wall, wall absent from the mass, or degenerate mass -> None.
     """
     from math_exposure_core import bucket_metric_abs, exposures_have_dollar_gex
 
-    # SIDE GEX$ mass on a dollarized book, valid-gamma strikes only. It used to switch to RAW
-    # side gamma when the book had no spot -- still labelled "GEX mass" (audit T-05).
+    # SIDE GEX$ mass on a dollarized book, valid-gamma strikes only.
     if wall is None or not exposures or not exposures_have_dollar_gex(exposures):
         return None
     key = f"{side}_gex_1pct"
@@ -462,7 +425,7 @@ def compute_wall_value_area(
 def atm_sigma_by_expiry(contracts: list[dict], spot: float) -> dict[tuple[str, float | None], float | None]:
     """Each expiry's ATM implied vol as a fraction, keyed like exposure_books ((expirationDate,
     daysToExpiration)): the mean of the call and the put IV, each at its side's strike nearest
-    spot. Both legs or None: one side's IV never stands in for the mean (audit T-06, 2026-09-24),
+    spot. Both legs or None: one side's IV never stands in for the mean,
     and a leg whose nearest contract has no IV from Schwab (-999, or 0: no sigma) has none --
     the next strike's IV never stands in for it. Schwab `volatility` is a percent, converted by
     schwab_iv_to_sigma."""
@@ -490,7 +453,7 @@ def atm_sigma_by_expiry(contracts: list[dict], spot: float) -> dict[tuple[str, f
 
 
 def compute_implied_one_day_move(contracts: list[dict], spot: float | None) -> dict | None:
-    """The institutional sigma band (RC-113): EM_1d = S x sigma_ATM x sqrt(1/252).
+    """The institutional sigma band: EM_1d = S x sigma_ATM x sqrt(1/252).
 
     THE STANDARD, named: SpotGamma — whose levels product ships on Bloomberg — treats the
     wall as a single strike, the RANGE as the put-wall-to-call-wall corridor, and overlays
@@ -498,22 +461,20 @@ def compute_implied_one_day_move(contracts: list[dict], spot: float | None) -> d
     textbook EM uses front-expiry ATM implied volatility, annualized, scaled by
     sqrt(1/252) for one trading day.
 
-    IV source: the nearest-expiry call+put pair closest to spot. Schwab `volatility` is
-    PERCENT, not a fraction (unproven-register row 50, PROVEN on 1,600 sampled contracts)
-    — divided by 100 here. Fails closed: no usable ATM IV means None, never a fabricated
-    band (a made-up sigma is worse than no sigma).
+    IV source: the call+put pair closest to spot on the first expiry at least one day out (a
+    same-day expiry's IV prices hours, not a day). Schwab `volatility` is PERCENT, not a fraction
+    (measured on 1,600 sampled contracts); atm_sigma_by_expiry converts it through
+    schwab_iv_to_sigma. Fails closed: no usable ATM IV means None, never a fabricated band (a
+    made-up sigma is worse than no sigma).
 
     Returns {points, iv_pct_atm, dte_used, method} — `points` is the one-sigma HALF-width
     in price points; the client centers it on the LIVE spot so the band can never disagree
-    with the price beside it (the RC-28/RC-77 one-spot discipline).
+    with the price beside it.
     """
     if spot is None or spot <= 0 or not contracts:
         return None
-    # RC-290: nearest expiry present in the chain. `_dte_of` now returns None for a contract
-    # that does not state its DTE instead of a 999.0 stand-in, so those are dropped BEFORE
-    # the min rather than being carried through it and screened out afterwards by a
-    # magic-number comparison — which also means an all-unreadable chain yields None here
-    # (no front expiry) rather than a confident 999.
+    # A contract that does not state its DTE is dropped BEFORE the min, so an all-unreadable
+    # chain yields None here (no front expiry).
     # the first expiry at least one day out: a same-day expiry's IV prices hours, not a day
     _dtes = [d for d in (_dte_of(c) for c in contracts if isinstance(c, dict))
              if d is not None and d >= 1]
@@ -565,7 +526,7 @@ def per_strike_view(books: dict, exposures: dict) -> dict:
     exposure_books and their merged full book `exposures` (one pricing pass), and the full
     book's DEX and OI rows (`dex`, `oi`: _per_strike_measure_rows). A contract whose
     days-to-expiry cannot be read belongs to `all` only: a maturity split it cannot answer is
-    not answered for it (RC-290)."""
+    not answered for it."""
     from math_exposure_core import merge_exposure_books
 
     def rows(keep) -> list:
@@ -579,10 +540,6 @@ def per_strike_view(books: dict, exposures: dict) -> dict:
             "near": rows(lambda d: d is not None and d <= 7),
             "far": rows(lambda d: d is not None and d > 7),
             **_per_strike_measure_rows(exposures)}
-
-
-
-
 
 
 #: a wall's geometry against the price (wall_geometry_state)
@@ -666,14 +623,13 @@ def wall_lean(call_wall, put_wall, price, regime, confidence) -> tuple:
     return one(call_wall, "call", "DEALERS SELL"), one(put_wall, "put", "DEALERS BUY")
 
 
-#: RC-292 pin-candidate qualification thresholds. Hardwired, not configurable. Each cites
-#: its source; neither is a new invention:
-#: — proximity: strike within 0.5% of spot — the "strike near spot" cut of the operator's
-#:   pinning framework as committed in tools/study_pin_residence_v1.py (`near`, 0.005).
+#: Pin-candidate qualification thresholds. Hardwired, not configurable.
+#: — proximity: strike within 0.5% of spot — the "strike near spot" cut of a pin-residence
+#:   study that is not in this repository, so the value is NOT_PROVEN here.
 PIN_CANDIDATE_PROXIMITY_MAX_FRAC = 0.005
 #: — DTE: pinning is an expiration effect (expiration-date clustering turns on positioning
 #:   into expiry — Ni, Pearson & Poteshman, JFE 2005, doi:10.1016/j.jfineco.2004.08.005);
-#:   the framework's committed cut is dte <= 1 (tools/study_pin_residence_v1.py `exp`).
+#:   the cut is dte <= 1 (from the same study, NOT_PROVEN here).
 PIN_CANDIDATE_DTE_MAX = 1.0
 
 
@@ -688,22 +644,21 @@ def qualify_pin_candidate(
     net_gex_at_spot: float | None,
     front_dte: float | None,
 ) -> tuple[float | None, list[str]]:
-    """RC-292 operator disposition: publish `pin_candidate` ONLY after regime, proximity,
+    """Publish `pin_candidate` ONLY after regime, proximity,
     DTE, liquidity and completeness qualification.
 
     The raw absolute-gamma strike is a gross gamma concentration — a pin CANDIDATE input,
-    never a demonstrated magnet (RC-315: magnitude sizes the hedging flow; the unobservable
+    never a demonstrated magnet (magnitude sizes the hedging flow; the unobservable
     dealer sign decides pin vs repel). This gate is the difference between the metric and
     the claim. Gates, each fail-closed (missing input = gate failed, never assumed passed):
 
-    — completeness: the RC-413 magnitude bundle (strike, strength, GEX$, OI, book OI) is
+    — completeness: the magnitude bundle (strike, strength, GEX$, OI, book OI) is
       present from the SAME book that picked the strike.
     — regime: dealers net LONG gamma at spot (net_gex_at_spot > 0). A long-gamma dealer
-      sells rallies and buys dips, which pins; short gamma repels (RC-315). The framework
-      cut committed in tools/study_pin_residence_v1.py (`lng`).
+      sells rallies and buys dips, which pins; short gamma repels.
     — proximity: |strike − spot| / spot <= PIN_CANDIDATE_PROXIMITY_MAX_FRAC.
     — DTE: front expiry of THIS book within PIN_CANDIDATE_DTE_MAX days (pinning is an
-      expiration effect); unknown maturity fails, never passes (RC-290).
+      expiration effect); unknown maturity fails, never passes.
     — liquidity: the committed pin-score thresholds (math_probabilities.compute_pin_score,
       GEX magnitude × OI concentration) grade the strike above "negligible". No new
       threshold is invented here — the gate reuses the one already on the operator's
@@ -892,12 +847,11 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
     caller's entry point (the live reprice: its own instant; a replay of a stored chain: the
     snapshot's time, so it reproduces what the live reprice saw).
 
-    SINGLE SOURCE OF TRUTH (RC-33, 2026-07-24): this is the ONE terrain engine;
-    /api/analytics/state no longer computes a competing terrain read. It must be
-    fed the wide-capture multi-expiry chain — the operator-locked full-chain
+    This is the ONE terrain engine. It must be
+    fed the wide-capture multi-expiry chain — the full-chain
     basis (dealers hedge the whole delta book across weekly/monthly expiries, not
     just the 0DTE slice). The narrow-chain confidence gate in compute_gamma_flip_v2
-    is RETAINED as the fail-closed backstop: a genuinely narrow chain (e.g. wide
+    is the fail-closed backstop: a genuinely narrow chain (e.g. wide
     capture unavailable) still yields STAND_ASIDE, never a trusted-looking verdict.
     """
     if not ticker:
@@ -918,17 +872,15 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
     if not exposures:
         return _unavailable(ticker, spot, "chain produced no exposures")
 
-    # key levels only on strikes with usable gamma -- no all-strikes fallback (T-03): with
+    # key levels only on strikes with usable gamma -- no all-strikes fallback: with
     # none the pickers return None instead of ranking initialiser zeros.
     strikes = key_level_strikes_with_gamma(exposures)
     (call_wall, _cw_str), (put_wall, _pw_str) = pick_gamma_wall_strikes(exposures, strikes)
     hvp, lvp = pick_volatility_point_strikes(exposures, strikes)
-    # RC-124/RC-292: max TOTAL gamma — the absolute-gamma concentration, full book.
+    # max TOTAL gamma — the absolute-gamma concentration, full book.
     _abs_gamma_strike, _abs_gamma_strength = pick_pin_and_strength(exposures, strikes)
-    # RC-413: pin_score GEX/OI from THIS same exposures book — never a second analytics book.
-    # T-04 (2026-09-24): OI from the ONE reader -- unknown (a contract that never reported
-    # OI) is None, never 0; the old loop added a missing leg as 0 and silently skipped
-    # unparsable ones.
+    # pin_score GEX/OI from THIS same exposures book — never a second analytics book.
+    # OI from the ONE reader -- unknown (a contract that never reported OI) is None, never 0.
     from math_exposure_core import book_total_oi, strike_total_oi
     _book_oi_total = book_total_oi(exposures)
     _abs_gamma_gex_dollars = None
@@ -938,7 +890,7 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
     if isinstance(_abs_gamma_bucket, dict):
         _abs_gamma_gex_dollars = total_gex_dollars_at_strike(_abs_gamma_bucket)
         _abs_gamma_oi = strike_total_oi(_abs_gamma_bucket)
-    # RC-128 (One Levels Faucet): the SSOT producer owns the delta walls too — same wide
+    # the SSOT producer owns the delta walls too — same wide
     # chain, same exposures, one book. OI/vanna walls stay unowned and therefore BLANK on
     # every operator surface until this producer computes them.
     (call_delta_wall, _cdw_str), (put_delta_wall, _pdw_str) = pick_delta_wall_strikes(
@@ -957,13 +909,11 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
                  "curve_agrees_with_schwab_at_spot": (
                      None if _gamma_at_spot is None or _curve_at_spot is None
                      else (_gamma_at_spot > 0) == (_curve_at_spot > 0))}
-    # RC-354: GSF/GRC from the SAME materialized profile — no second materialization.
-    # Snap-to-shelf deliberately deferred until strike-GEX history is banked (theta wants a
-    # trailing-60-session percentile; a session-local stand-in would be a fake calibration).
+    # GSF/GRC from the SAME materialized profile — no second materialization.
     _gsl = compute_gamma_support_levels(profile, spot)
-    # RC-357: the 0DTE book from the SAME producer with the dte filter — same parser,
+    # the 0DTE book from the SAME producer with the dte filter — same parser,
     # same sign model; the share is pure attribution, zero new math.
-    # a contract with no readable DTE belongs to no expiry's book (it was counted as 0DTE)
+    # a contract with no readable DTE belongs to no expiry's book
     _exp_0dte, _ = merge_exposure_books(b for (_e, d), b in books.items() if d is not None and d <= 0)
     _zero_dte_share = compute_zero_dte_gamma_share(exposures, _exp_0dte)
     # Max pain on the FRONT expiry only.
@@ -972,7 +922,7 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         _exp_front, _ = merge_exposure_books(
             b for (_e, d), b in books.items() if d is not None and d <= _front_dte)
         _front_max_pain = compute_max_pain(_exp_front)
-    # RC-358: 25Δ risk reversal from the same wide chain (front expiry, tolerance-gated).
+    # 25Δ risk reversal from the same wide chain (the expiry nearest 30 days out, tolerance-gated).
     from math_volatility import compute_25d_risk_reversal
     _rr25 = compute_25d_risk_reversal(contracts)
     from confluence_composite import iv_by_strike
@@ -1026,28 +976,23 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         zero_dte_gamma_share_pct=_zero_dte_share,
         same_day=same_day_levels(ticker, contracts, spot, now=_terrain_now, held_charm=charm_by_expiry),
         rr_25d=_rr25,
-        vanna_agg=compute_net_vanna(exposures, spot),     # RC-362: same book, one sum
-        implied_1d_move=compute_implied_one_day_move(contracts, spot),   # RC-113
-        call_wall_range=compute_wall_value_area(exposures, call_wall, "call"),   # RC-115
-        put_wall_range=compute_wall_value_area(exposures, put_wall, "put"),      # RC-115
-        call_delta_wall=call_delta_wall,   # RC-128: one book for delta walls too
+        vanna_agg=compute_net_vanna(exposures, spot),     # same book, one sum
+        implied_1d_move=compute_implied_one_day_move(contracts, spot),
+        call_wall_range=compute_wall_value_area(exposures, call_wall, "call"),
+        put_wall_range=compute_wall_value_area(exposures, put_wall, "put"),
+        call_delta_wall=call_delta_wall,   # one book for delta walls too
         put_delta_wall=put_delta_wall,
         max_pain=_front_max_pain,
         max_pain_dte=_front_dte,
         call_charm_wall=call_charm_wall,
         put_charm_wall=put_charm_wall,
         # ExposureDiagnostics is a frozen dataclass; contracts_used is ALWAYS an int.
-        # The old getattr(...,0) or 0 fabricated a neutral where absence is impossible —
-        # a broken diag would silently report "0 contracts" instead of failing (CAPS).
         contracts_used=diag.contracts_used,
         strikes_used=len(exposures),
         dollarized=exposures_have_dollar_gex(exposures),
         flip_diag=dict(flip_diag or {}),
         profile=profile,
-        # RC-68: keep the LIVE per-strike map instead of discarding it. `exposures` was just
-        # computed from THIS chain; the per-strike histogram was previously rendered from the
-        # frozen morning archive purely because nothing persisted this. Session volume is carried
-        # alongside so the volume panel stops serving a 09:47 corpse at 11:31.
+        # the LIVE per-strike map, computed from THIS chain; session volume is carried alongside.
         per_strike=per_strike_view(books, exposures),
         books=books,
         charm_by_strike=charm_by_strike,

@@ -6,23 +6,18 @@ can hallucinate a level.
 
 Two institutional invariants:
 
-1. **Fail-closed — on the SIGN, which is what a posture rests on.** Corrected 2026-08-26: this
-   invariant used to read "when the confidence is not TRUSTED, the read withholds regime and
-   posture". That is no longer what the code does, and the old wording conflated two questions.
+1. **Fail-closed — on the SIGN, which is what a posture rests on.**
    The regime is the SIGN of dealer gamma AT SPOT, which needs strikes NEAR spot; the flip LEVEL
    is what needs a wide chain. So:
      * confidence TRUSTED or LEVEL_APPROX -> regime and posture are issued; at LEVEL_APPROX the
        flip LEVEL is explicitly disclosed as approximate on the line that prints it.
      * confidence NARROW or UNAVAILABLE -> everything is withheld, with the reason stated. This is a
-       conservative DECLINE-TO-SPEAK bound, not a finding about the sign: "a chain that narrow
-       cannot support even the sign" was asserted here and is WITHDRAWN (2026-08-26, second pass) —
-       span was never measured against sign reliability, and when it finally was, no cliff appeared
-       at the floor (see math_levels.GAMMA_FLIP_MIN_SPAN_PCT). Passing this bound means we are
+       conservative DECLINE-TO-SPEAK bound, not a finding about the sign: measured against sign
+       reliability, span shows no cliff at the floor (see math_levels.GAMMA_FLIP_MIN_SPAN_PCT). Passing this bound means we are
        willing to speak; it does not mean the sign is verified.
      * missing spot, or dealer gamma at spot absent or exactly zero -> withheld, with the reason.
-   It never presents a posture derived from a level we know is unreliable (a narrow chain
-   misplaces the flip by ~3.6% — measured 2026-07-19: 770.35 against a full-chain reference of
-   745.61), and it never presents a coverage verdict as proof the level is right.
+   It never presents a posture derived from a level we know is unreliable (a 40-contract chain
+   placed the flip at 770.35 against a full-chain 745.61), and it never presents a coverage verdict as proof the level is right.
 2. **Absence reads as absence.** A missing level is reported missing, never defaulted to a
    neutral-looking number.
 
@@ -125,7 +120,6 @@ class TerrainRead:
     call_wall: float | None = None
 
 
-
 def _pct_from(spot: float, level: float) -> float:
     return (level - spot) / spot
 
@@ -137,7 +131,7 @@ def _fmt(label: str, level: float | None, spot: float) -> str:
 
 
 def regime_from_signed_gamma(signed_gamma: float | None) -> str | None:
-    """THE authority for the gamma-regime SIGN THRESHOLD (RC-345 / F07). Positive dealer
+    """THE authority for the gamma-regime SIGN THRESHOLD. Positive dealer
     gamma is LONG_GAMMA_CHOP (dealers damp moves); negative is SHORT_GAMMA_TREND (dealers
     amplify). Returns None when the sign is absent or exactly zero, so every caller shares
     one threshold instead of re-deriving `> 0` locally. build_terrain_read and
@@ -203,34 +197,31 @@ def build_terrain_read(
     conservative floor at which this repo declines to speak at all (NARROW / UNAVAILABLE).
 
     That floor is NOT evidence that the sign is otherwise sound — see
-    math_levels.GAMMA_FLIP_MIN_SPAN_PCT for the measurement that withdrew that claim.
+    math_levels.GAMMA_FLIP_MIN_SPAN_PCT for the measurement.
 
-    NOT "fail-closed on untrusted levels" — corrected 2026-08-26. LEVEL_APPROX is untrusted by
+    NOT "fail-closed on untrusted levels". LEVEL_APPROX is untrusted by
     construction (it is named so no surface can print it as TRUSTED) and it deliberately PASSES:
     its regime and posture are issued, and the flip LEVEL it prints carries an explicit
     APPROXIMATE disclosure. What fails closed is the SIGN being unsupportable, not the level
     being uncertified.
 
     The regime comes from the SIGN OF DEALER GAMMA AT SPOT (`gamma_at_spot`), not from
-    comparing spot to the flip. Corrected 2026-07-19 (RC-11): requiring a flip meant a
-    chain whose profile never crosses zero reported "unavailable" even though its regime
-    was unambiguous at every price. The flip is a landmark to display when it exists.
+    comparing spot to the flip, so a chain whose profile never crosses zero still has a
+    regime, unambiguous at every price. The flip is a landmark to display when it exists.
     """
     if spot is None or spot <= 0:
         return _unavailable("Spot price is unavailable.", None, flip_confidence, None, None)
     if flip is None and gamma_at_spot is None:
         return _unavailable("Dealer gamma is unavailable, so the regime cannot be determined.",
                             spot, flip_confidence, put_wall, call_wall)
-    # Gamma audit 2026-08-26: the REGIME is the sign of dealer gamma AT SPOT (see this function's
+    # The REGIME is the sign of dealer gamma AT SPOT (see this function's
     # docstring) — it does NOT depend on how precisely the flip LEVEL is placed. Gating it on the
     # level-trust verdict conflates two different questions: coverage wide enough to PLACE the flip
-    # level, versus enough strikes near spot to know its SIGN. (An earlier version of this comment
-    # justified the split with "SPY/QQQ measured 8.49%/8.84%" — that was the ARCHIVE capture, not the
-    # production chain; live spans are ~29%, so no ticker was actually at risk. The split stands on
-    # the semantic argument above, which does not depend on any ticker's current span.)
+    # level, versus enough strikes near spot to know its SIGN. The split does not depend on any
+    # ticker's current span.
     # So the middle tier LEVEL_APPROX keeps the regime and posture, and discloses the LEVEL below.
     # Only a chain below the conservative decline-to-speak floor (NARROW/UNAVAILABLE) stands aside.
-    # NOTE (measured 2026-08-26): clearing that floor does NOT mean the at-spot sign is verified.
+    # NOTE: clearing that floor does NOT mean the at-spot sign is verified.
     # What was measured is agreement between the MODELLED +call/-put sign on a truncated window and
     # the MODELLED sign on the full delivered chain — both sides modelled, so this bounds truncation
     # sensitivity, not correctness against real dealer positioning. Agreement improves with width
@@ -238,8 +229,8 @@ def build_terrain_read(
     # overlap, the rungs re-window largely the same chains (paired observations), and no paired test
     # or power analysis was run. There is no visible threshold effect at the floor, so passing it
     # certifies nothing. Separately, AT THE FLOOR ONLY, a nearly balanced book (net/gross < 10%) sat
-    # near 50%; whether width rescues such a book is UNMEASURED. Recorded in unproven_register as
-    # research-only; deliberately NOT gated on here — changing when advice is withheld is the
+    # near 50%; whether width rescues such a book is UNMEASURED. It is deliberately NOT gated on
+    # here — changing when advice is withheld is the
     # operator's call, not a silent threshold edit from one study.
     if flip_confidence not in (GAMMA_FLIP_TRUSTED, GAMMA_FLIP_LEVEL_APPROX):
         return _unavailable(
@@ -255,7 +246,7 @@ def build_terrain_read(
                             "determined.", spot, flip_confidence, put_wall, call_wall)
     posture = _posture_for(regime)
 
-    # Gamma-audit (operator requirement): dealer positioning is MODELLED from public OI under the
+    # Dealer positioning is MODELLED from public OI under the
     # +call/-put convention — OI does not reveal who owns the contracts — so the mechanism line says
     # "modelled net long/short", never a bare "Dealers ARE" -- on every ticker alike, which keeps
     # the claim honest rather than certain.
@@ -277,9 +268,9 @@ def build_terrain_read(
         where = price_side(flip, spot).lower()
         flip_line = (f"Spot {price_text(spot)} vs {_fmt('flip', flip, spot)} — {abs(distance_pct):.2f}% "
                      f"{where} the regime line.")
-        # Gamma audit: at the middle tier the chain does not reach the measured flip-LEVEL
-        # convergence span, so the LEVEL is approximate (~1.4% of spot in the study) even though the
-        # regime is sound. Say so on the same line the operator reads the number from — a precise
+        # At the middle tier the chain does not reach the measured flip-LEVEL
+        # convergence span, so the LEVEL is approximate (~1.4% of spot in the study); the regime
+        # still stands on the at-spot sign, which no span verifies. Say so on the same line the operator reads the number from — a precise
         # "-0.42%" beside an unqualified level is exactly the overstatement this tier exists to end.
         if flip_confidence == GAMMA_FLIP_LEVEL_APPROX:
             flip_line += (" APPROXIMATE: the chain is too narrow to place this level precisely "
