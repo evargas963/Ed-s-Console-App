@@ -284,11 +284,31 @@ def test_a_name_git_quotes_with_raw_characters_is_still_read(tmp_path):
 
 
 def test_a_renamed_path_test_with_a_real_line_added_is_an_end_to_end_test(tmp_path):
-    root = _repo(tmp_path, BASE)
+    test = ("def test_x():\n    a = 1\n    b = 2\n    c = 3\n    d = 4\n    e = 5\n"
+            "    assert a + b + c + d + e == 15\n")
+    root = _repo(tmp_path, {**BASE, TEST: test})
     _git_in(root, "mv", TEST, "tests/test_data_path_y.py")
     _commit(root, {"server.py": "def spot(row):\n    return row['bid']\n",
-                   "tests/test_data_path_y.py": "def test_x():\n    pass\n    assert spot({'bid': 1.0}) == 1.0\n"})
+                   "tests/test_data_path_y.py": test + "    assert spot({'bid': 1.0}) == 1.0\n"})
+    status = subprocess.run(["git", "diff", "-M", "--name-status", "main...HEAD"], cwd=root, check=True,
+                            capture_output=True, text=True).stdout
+    assert any(line.startswith("R") and line.endswith(f"\t{TEST}\ttests/test_data_path_y.py")
+               for line in status.splitlines()), status
     assert cee.violations(root, "main", BODY) == []
+
+
+def test_a_file_name_that_is_not_utf8_fails_the_check_itself(tmp_path):
+    """Exit 2 (the check itself failed), never a judgment on a file it could not name."""
+    root = _repo(tmp_path, BASE)
+    (tmp_path / "blob.txt").write_text("var y = v || 0;\n", encoding="utf-8")
+    sha = subprocess.run(["git", "hash-object", "-w", "blob.txt"], cwd=root, check=True,
+                         capture_output=True, text=True).stdout.strip()
+    subprocess.run(["git", "update-index", "--add", "-z", "--index-info"], cwd=root, check=True,
+                   capture_output=True, input=f"100644 {sha}\t".encode() + b"static/js/a\xff.js\0")
+    _commit(root, REAL_TEST)
+    run = subprocess.run([sys.executable, str(Path(cee.__file__)), "--base", "main"], cwd=root,
+                         capture_output=True, text=True)
+    assert run.returncode == 2 and "could not be read" in run.stdout + run.stderr, run.stdout + run.stderr
 
 
 def test_a_patch_moved_into_product_code_is_refused_at_its_line(tmp_path):
