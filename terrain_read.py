@@ -16,8 +16,8 @@ Two institutional invariants:
        reliability, span shows no cliff at the floor (see math_levels.GAMMA_FLIP_MIN_SPAN_PCT). Passing this bound means we are
        willing to speak; it does not mean the sign is verified.
      * missing spot, or dealer gamma at spot absent or exactly zero -> withheld, with the reason.
-   It never presents a posture derived from a level we know is unreliable (a narrow chain
-   misplaces the flip by ~3.6%), and it never presents a coverage verdict as proof the level is right.
+   It never presents a posture derived from a level we know is unreliable (a 40-contract chain
+   placed the flip at 770.35 against a full-chain 745.61), and it never presents a coverage verdict as proof the level is right.
 2. **Absence reads as absence.** A missing level is reported missing, never defaulted to a
    neutral-looking number.
 
@@ -269,8 +269,8 @@ def build_terrain_read(
         flip_line = (f"Spot {price_text(spot)} vs {_fmt('flip', flip, spot)} — {abs(distance_pct):.2f}% "
                      f"{where} the regime line.")
         # At the middle tier the chain does not reach the measured flip-LEVEL
-        # convergence span, so the LEVEL is approximate (~1.4% of spot in the study) even though the
-        # regime is sound. Say so on the same line the operator reads the number from — a precise
+        # convergence span, so the LEVEL is approximate (~1.4% of spot in the study); the regime
+        # still stands on the at-spot sign, which no span verifies. Say so on the same line the operator reads the number from — a precise
         # "-0.42%" beside an unqualified level is exactly the overstatement this tier exists to end.
         if flip_confidence == GAMMA_FLIP_LEVEL_APPROX:
             flip_line += (" APPROXIMATE: the chain is too narrow to place this level precisely "

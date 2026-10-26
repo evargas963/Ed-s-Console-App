@@ -461,9 +461,11 @@ def compute_implied_one_day_move(contracts: list[dict], spot: float | None) -> d
     textbook EM uses front-expiry ATM implied volatility, annualized, scaled by
     sqrt(1/252) for one trading day.
 
-    IV source: the nearest-expiry call+put pair closest to spot. Schwab `volatility` is
-    PERCENT, not a fraction (measured on 1,600 sampled contracts) — divided by 100 here. Fails closed: no usable ATM IV means None, never a fabricated
-    band (a made-up sigma is worse than no sigma).
+    IV source: the call+put pair closest to spot on the first expiry at least one day out (a
+    same-day expiry's IV prices hours, not a day). Schwab `volatility` is PERCENT, not a fraction
+    (measured on 1,600 sampled contracts); atm_sigma_by_expiry converts it through
+    schwab_iv_to_sigma. Fails closed: no usable ATM IV means None, never a fabricated band (a
+    made-up sigma is worse than no sigma).
 
     Returns {points, iv_pct_atm, dte_used, method} — `points` is the one-sigma HALF-width
     in price points; the client centers it on the LIVE spot so the band can never disagree
@@ -621,14 +623,13 @@ def wall_lean(call_wall, put_wall, price, regime, confidence) -> tuple:
     return one(call_wall, "call", "DEALERS SELL"), one(put_wall, "put", "DEALERS BUY")
 
 
-#: Pin-candidate qualification thresholds. Hardwired, not configurable. Each cites
-#: its source; neither is a new invention:
-#: — proximity: strike within 0.5% of spot — the "strike near spot" cut of the
-#:   pinning framework's pin-residence study (`near`, 0.005).
+#: Pin-candidate qualification thresholds. Hardwired, not configurable.
+#: — proximity: strike within 0.5% of spot — the "strike near spot" cut of a pin-residence
+#:   study that is not in this repository, so the value is NOT_PROVEN here.
 PIN_CANDIDATE_PROXIMITY_MAX_FRAC = 0.005
 #: — DTE: pinning is an expiration effect (expiration-date clustering turns on positioning
 #:   into expiry — Ni, Pearson & Poteshman, JFE 2005, doi:10.1016/j.jfineco.2004.08.005);
-#:   the framework's cut is dte <= 1 (the pin-residence study's `exp`).
+#:   the cut is dte <= 1 (from the same study, NOT_PROVEN here).
 PIN_CANDIDATE_DTE_MAX = 1.0
 
 
@@ -654,8 +655,7 @@ def qualify_pin_candidate(
     — completeness: the magnitude bundle (strike, strength, GEX$, OI, book OI) is
       present from the SAME book that picked the strike.
     — regime: dealers net LONG gamma at spot (net_gex_at_spot > 0). A long-gamma dealer
-      sells rallies and buys dips, which pins; short gamma repels. The framework
-      cut of the pin-residence study (`lng`).
+      sells rallies and buys dips, which pins; short gamma repels.
     — proximity: |strike − spot| / spot <= PIN_CANDIDATE_PROXIMITY_MAX_FRAC.
     — DTE: front expiry of THIS book within PIN_CANDIDATE_DTE_MAX days (pinning is an
       expiration effect); unknown maturity fails, never passes.

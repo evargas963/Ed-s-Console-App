@@ -662,7 +662,7 @@ def build_live_snapshot(
 #: level_id -> (family, semantic_scope, evidence_tier). The registry: an id
 #: in this table has exactly one canonical producer and one materialized value per
 #: generation. A checkpoint-scoped or otherwise differently-windowed metric must NOT
-#: reuse these ids — it carries its own explicit scope suffix (see `scoped_level_id`).
+#: reuse these ids — it carries its own explicit scope suffix.
 PHASE2A_LEVEL_IDS: dict[str, tuple[str, str, str]] = {
     "PDH": ("prior_day", "prior_rth_session", "price_fact"),
     "PDL": ("prior_day", "prior_rth_session", "price_fact"),

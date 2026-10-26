@@ -19,7 +19,8 @@ from math_exposure_core import (
 
 # ── Gamma Exposure Profile — total dealer gamma recomputed at hypothetical spot ──
 # Every contract's gamma is recomputed at each candidate price; a cumulative sum does NOT
-# reproduce the profile (against a real SPY reference chain: corr 0.086, never crosses zero).
+# reproduce the profile (against a real SPY reference chain: corr 0.086, never crosses zero);
+# recomputing reproduces the published flip (SPY 745.61, SKHY 124.44).
 
 _SQRT_2PI = math.sqrt(2.0 * math.pi)
 
@@ -261,8 +262,10 @@ def _gamma_profile_totals(parsed: list, grid: List[float]) -> List[float]:
     """sum over contracts of side_sign * bs_gamma(s) * oi * mult * s^2 * 0.01, per s in grid.
 
     The same Black-Scholes gamma bs_gamma computes (r = q = 0, as every production caller
-    passes), evaluated as arrays instead of one Python call per (price, contract) pair.
-    A gamma that is not finite contributes nothing, matching bs_gamma's None."""
+    passes), evaluated as arrays instead of one Python call per (price, contract) pair: on SPY's
+    full chain (13,290 contracts x 241 prices) a per-call loop is 2.27M bs_gamma calls, 82% of
+    compute_terrain's 17.8 s. A gamma that is not finite contributes nothing, matching bs_gamma's
+    None."""
     import numpy as np
 
     arr = np.asarray(parsed, dtype=float)
@@ -474,7 +477,7 @@ GAMMA_FLIP_LEVEL_APPROX = "LEVEL_APPROX_NARROW_SPAN"
 #: LOW_CONFIDENCE_NARROW_CHAIN and terrain stands everything aside).
 #: The floor makes no claim about the at-spot SIGN: the flip-LEVEL convergence study measures
 #: |windowed flip - full-chain flip|, a LEVEL distance, and is silent about the SIGN of gamma at spot.
-#: MEASURED (260 seed-fixed chains from the same option_chain_morning_full cohort, at-spot gamma recomputed on truncated windows via
+#: MEASURED (260 seed-fixed chains from the study's reference cohort, at-spot gamma recomputed on truncated windows via
 #: _contract_inputs/bs_gamma, counting ONLY genuinely truncated chains):
 #:   sign agreement with the full delivered chain — +/-1% 79.8% (n=233), +/-5% 86.2% (n=253,
 #:   95% CI [0.814, 0.899]), +/-10% 90.2% (n=254), +/-15% 92.7% (n=248).
@@ -531,27 +534,27 @@ GAMMA_FLIP_MIN_SPAN_PCT = 0.05
 #: trust bar. This constant governs the flip-LEVEL trust ONLY, and is set at the measured convergence knee:
 #: median error vs the full-chain flip falls from 1.38% of spot at ±5% to 0.117% at ±10% (~10x) and
 #: does not improve at ±15% (0.257%, reference noise).
-#: Read this before quoting any span number: option_chain_morning_full ARCHIVE captures are NOT
-#: the production terrain chain.
+#: Read this before quoting any span number: the study's reference chains are NOT the production
+#: terrain chain.
 #: MEASURED against the LIVE fetch (`/api/terrain` flip_diag span_below/above_pct):
 #:   SPY 29.4% (216 strikes), QQQ 29.5% (216), IWM 29.8% (87), NVDA 21.7% (44), AAPL 29.4%, TSLA 25.9%
 #: — every sampled production chain clears this bar with ~3x headroom and reads TRUSTED.
 #: The middle tier is the honest verdict for a chain that
 #: genuinely lands between GAMMA_FLIP_MIN_SPAN_PCT and this bar (the regime is the SIGN OF GAMMA AT
 #: SPOT, which needs strikes NEAR spot; only the flip LEVEL needs the wide wing) — it simply is not
-#: SPY/QQQ's situation. WHEN MEASURING DELIVERED SPAN, READ THE LIVE TERRAIN FETCH, NOT THE ARCHIVE.
+#: SPY/QQQ's situation. WHEN MEASURING DELIVERED SPAN, READ THE LIVE TERRAIN FETCH, NOT THE STUDY'S
+#: REFERENCE CHAINS.
 #: NOT_PROVEN, on TWO counts — see GAMMA_FLIP_TRUSTED semantics above:
 #:  (1) the study's justified_span is None (no ladder point reaches 95% of chains inside the
 #:      0.05%-of-spot tolerance) on an n=15 fixed cohort; and
-#:  (2) for SPY/QQQ the study's own REFERENCE chain (archive: SPY 8.9%/110
+#:  (2) for SPY/QQQ the study's own REFERENCE chain (SPY 8.9%/110
 #:      strikes, QQQ 9.6%/123) is ~3x NARROWER than the production chain it is used to certify, so
 #:      the ±10% and ±15% ladder points cannot even truncate those rows (they pass through at
 #:      zero error by construction — 5.1% of the n=992 cohort at ±10%). The knee is therefore
 #:      measured predominantly on non-SPY/QQQ chains, and the 9%->30% region is UNMEASURED for
 #:      exactly the two tickers that matter most.
-#: So 0.10 is an evidence-backed FLOOR, never a certified sufficiency. Settle it by widening the
-#: archive capture for dense-strike ETFs (see calibration/option_chain_morning_full) so the research
-#: reference is at least as wide as production, then re-running the ladder.
+#: So 0.10 is an evidence-backed FLOOR, never a certified sufficiency. Settle it by re-running the
+#: ladder against reference chains at least as wide as production for the dense-strike ETFs.
 GAMMA_FLIP_TRUSTED_SPAN_PCT = 0.10
 
 
@@ -604,7 +607,7 @@ def compute_gamma_flip_v2(
                                             narrow to place the LEVEL — consumers must disclose that)
       * < GAMMA_FLIP_MIN_SPAN_PCT        -> GAMMA_FLIP_NARROW (nothing is claimed)
     Why the floor exists at all: a narrow chain misplaces the flip (a 40-contract chain placed it
-    3.6% from the full-chain reference).
+    at 770.35 against a full-chain reference of 745.61).
     """
     if not contracts or not spot or spot <= 0:
         return None, GAMMA_FLIP_UNAVAILABLE, {"reason": "no_contracts_or_spot"}
