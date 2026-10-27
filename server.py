@@ -1569,10 +1569,13 @@ def _wait_to_price(tk: str, what: str, contracts: "list | None" = None, ts: "flo
 
 
 def _price_waiting_chain() -> None:
-    """Price one waiting ticker, every ticker the same: the longest waiting, stored captures last."""
+    """Price one waiting ticker, every ticker the same: the longest waiting, a stored capture after
+    every delivered chain. A reprice takes its turn behind the stored captures queued before it: a
+    viewed ticker's ticks queue one again during each of its pricings."""
     with _chains_waiting_lock:
         waiting = list(_chains_waiting)
-        tk = next((t for t in waiting if _chains_waiting[t][0] != STORED), waiting[0])
+        delivered = any(what == DELIVERED for what, *_ in _chains_waiting.values())
+        tk = next(t for t in waiting if not (delivered and _chains_waiting[t][0] == STORED))
         what, contracts, ts, spot = _chains_waiting.pop(tk)
     _price_chain(tk, what, contracts, ts, spot)
 

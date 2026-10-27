@@ -11,6 +11,7 @@ import socket
 import sqlite3
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -21,12 +22,14 @@ from websockets.asyncio.client import connect
 import db
 import launch
 import live_market_plane as lmp
+import push_changes
 import server
 from app.market_data.schwab.streaming import capture, live_ui
 from app.market_data.schwab.streaming.live_ui import serve_live_ui
-from calibration.complete_chain_capture import chain_messages
+from calibration.complete_chain_capture import CAPTURE_BASIS, chain_messages, persist_complete_chain_capture
 from schwab_client import build_client_from_token
 from stream_spine import CaptureWriter, HealthRegistry, MessageBus, quote_msg
+from tests.real_chains import CRWD
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -315,6 +318,59 @@ def test_a_daemon_whose_live_ui_port_is_held_ends_at_once_with_why_and_its_windo
     assert "capture daemon: ended by an error" in log, log
     assert "RuntimeError: the capture daemon's live ui ended before the stop" in log, log
     assert "OSError" in log, log
+
+
+def test_the_stored_levels_are_priced_while_a_page_on_another_ticker_takes_ticks():
+    """2026-10-27 07:37 CT start: a page viewed a ticker whose options streamed, and the stored
+    captures of the tickers the daemon had not delivered yet were priced only when their chain was
+    delivered, minutes later. Through the real code: CRWD's chain captured 2026-10-07 10:38:40 ET
+    (tests/real_chains.py) delivered and priced; a page open on it (push_changes); two other
+    tickers' newest captures (CRWD's contracts, stored under ZZ names) queued by the startup load;
+    then one of CRWD's contracts streams back to back (_on_stream_tick, a reprice on each), so a
+    tick lands during every pricing, as the pre-market quotes did during SPY's seconds-long
+    reprices. Both stored captures are priced within 10 s."""
+    tk, stored = "CRWD", ("ZZSTOREDA", "ZZSTOREDB")
+    contracts = [dict(ct) for ct in CRWD.chain]
+    for name in stored:
+        persist_complete_chain_capture(server.get_db().db_path, ticker=name, expiry=contracts[0]["expirationDate"][:10],
+                                       contracts=contracts, spot=CRWD.spot, completeness_basis=CAPTURE_BASIS,
+                                       ts_utc=CRWD.now.timestamp())
+    page = push_changes.subscribe(tk)
+    ticking = threading.Event()
+
+    def ticks():
+        while not ticking.is_set():
+            server._on_stream_tick(contracts[0]["symbol"])
+            time.sleep(0)
+    ticker = threading.Thread(target=ticks, daemon=True)
+
+    def priced() -> "set[str]":
+        with server._terrain_cache_lock:
+            return {name for name in stored if name in server._terrain_cache}
+    try:
+        server._on_chain(tk, contracts, CRWD.now.timestamp(), None, (CRWD.spot, CRWD.now.timestamp()))
+        server._chain_pricing.submit(lambda: None).result(timeout=60)
+        ticker.start()
+        assert server._load_stored_levels(list(stored)) == 2
+        deadline = time.monotonic() + 10
+        while priced() != set(stored) and time.monotonic() < deadline:
+            time.sleep(0.05)
+        done = priced()
+    finally:
+        ticking.set()
+        ticker.join(10)
+        push_changes.unsubscribe(tk, page)
+        while True:                                     # what still waits is priced
+            server._chain_pricing.submit(lambda: None).result(timeout=60)
+            with server._chains_waiting_lock:
+                if not server._chains_waiting:
+                    break
+        with server._terrain_cache_lock:
+            for name in (tk, *stored):
+                server._terrain_cache.pop(name, None)
+        with server._chains_waiting_lock:
+            server._chains_delivered.discard(tk)
+    assert done == set(stored), f"priced while the page's ticker took ticks: {sorted(done)}"
 
 
 def test_a_database_path_under_backups_is_refused_as_any_other_non_canonical_path(tmp_path):
