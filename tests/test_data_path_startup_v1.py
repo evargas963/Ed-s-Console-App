@@ -385,6 +385,9 @@ def test_the_stored_levels_are_priced_while_a_page_on_another_ticker_takes_ticks
                 server._terrain_cache.pop(name, None)
         with server._chains_waiting_lock:
             server._chains_delivered.discard(tk)
+        with sqlite3.connect(server.get_db().db_path) as conn:     # later tests read the newest capture
+            conn.executemany("DELETE FROM complete_chain_captures WHERE ticker=? AND ts_utc=?",
+                             [(c.ticker, c.now.timestamp()) for c in stored])
     assert repriced > 0, "CRWD took no reprice from its ticks"
     assert done == set(names), f"priced while the page's ticker took ticks: {sorted(done)}"
 
