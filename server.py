@@ -83,9 +83,8 @@ class _LevelMarkerFormatter(logging.Formatter):
         return marker + super().format(record)
 
 
-# Quiet-window / LIVE closeout sink. Root handler so ANY logger (db, ed_server,
-# uvicorn, …) at INFO+ lands here; gate fails on WARNING+ / traceback.
-# Under the RUNTIME root (runtime_layout), which is this checkout unless ED_RUNTIME_ROOT
+# The console's log file (install_ed_server_file_sink): every logger (db, ed_server, uvicorn, …)
+# at INFO+, under the RUNTIME root (runtime_layout), which is this checkout unless ED_RUNTIME_ROOT
 # moves it (docs/ARCHITECTURE.md "Runtime state lives outside the source").
 import runtime_layout  # noqa: E402
 from runtime_layout import logs_dir as _runtime_logs_dir  # noqa: E402
@@ -111,9 +110,8 @@ def install_ed_server_file_sink(
     previous file kept, the capture daemon's own policy (unrotated, the file reached 1.3 GB).
     Every record is flushed as it is written (logging.StreamHandler.emit).
 
-    Captures all loggers (root). INFO+ so a healthy process proves the sink is
-    alive (gate fail-closes on a stale file); WARNING+/ERROR/CRITICAL still
-    appear for the quiet-window matcher. Idempotent for this path.
+    Captures all loggers (root) at INFO+, so a healthy process keeps writing it.
+    Idempotent for this path.
     """
     path = Path(log_path) if log_path is not None else ED_SERVER_LOG_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -540,10 +538,10 @@ async def _app_lifespan(app):
     yield
 
     # ── Shutdown ───────────────────────────────────────────────────────────
-    # BOUNDED BY CONSTRUCTION. stop_bar_writer joins the bar writer, and concurrent.futures'
-    # atexit hook joins the pricing thread (_chain_pricing): neither can interrupt a RUNNING
-    # piece of work, so one blocked worker would hold the exit, and abandoning the lifespan
-    # would not free the interpreter. The watchdog ends the process whether or not they return.
+    # BOUNDED BY CONSTRUCTION. stop_bar_writer waits up to 10 s for the bar writer; at interpreter
+    # exit concurrent.futures joins the pricing thread (_chain_pricing) with no limit and cannot
+    # interrupt a RUNNING pricing, so one blocked pricing would hold the exit, and abandoning the
+    # lifespan would not free the interpreter. The watchdog ends the process whether or not it returns.
     _arm_shutdown_watchdog()
     # the daemon's feed task; the console holds no Schwab socket of its own
     try:
@@ -3246,7 +3244,8 @@ def get_confluence(ticker: str = Query(...),
 
 @app.get("/api/levels")
 # /api/levels serves the one published PriceLevelSnapshot: it serializes, it does not
-# compute. /api/liquidity-snapshot carries its values from the same snapshot and generation.
+# compute. /api/liquidity-snapshot and /api/confluence's session levels carry their values from
+# the same snapshot (canonical_price_level_snapshot).
 def get_levels(ticker: str = Query(...),
                tf: Annotated[str, Query(pattern=r"^(1|3|5|15|30|60|D)$")] = "1"):
     """Single levels contract (schema v1): id/price/family/evidence_tier/provenance/staleness."""
