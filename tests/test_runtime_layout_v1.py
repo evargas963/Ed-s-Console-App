@@ -1,11 +1,7 @@
 # institutional-synthetic-ok: temp directories stand in for a relocated runtime root.
-"""RC-523 — runtime state is rooted in `runtime_layout`, not the source checkout.
-
-Before this, every runtime path was `Path(__file__).parent / "data" | "logs" | "reports"`,
-with an override for the database alone, so the production checkout had to be the desk's
-cwd and runtime output polluted the source tree (docs/ARCHITECTURE.md "Runtime state lives outside the source"). These controls
-drive the real modules through a subprocess with the two variables set and unset, because
-the roots are read at import.
+"""Runtime state is rooted in `runtime_layout`, not the source files (docs/ARCHITECTURE.md
+"Runtime state is not source"). These controls drive the real modules through a subprocess
+with the two variables set and unset, because the roots are read at import.
 """
 from __future__ import annotations
 
