@@ -576,9 +576,9 @@ GREEK_FIELDS = ("gamma", "delta", "theta", "vega", "rho", "volatility")
 def flatten_chain_contracts(c_json: dict) -> list[dict]:
     """Flatten a Schwab chain response into a flat contract list.
 
-    Single source: this was inline inside _fetch_state and is now shared with the
-    terrain loop, so both consume the chain identically. Schwab CSV authority: reads
-    chains.callExpDateMap.* / chains.putExpDateMap.* only; no derivation.
+    The chain sweep's one reader of a chain answer (ChainSweep.fetch_chain). It reads
+    callExpDateMap.* / putExpDateMap.* and the chain's interestRate and dividendYield, which
+    each contract carries as sent; no derivation.
     """
     out: list[dict] = []
     if not isinstance(c_json, dict):

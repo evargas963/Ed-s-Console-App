@@ -6,12 +6,13 @@ Source, runtime state and generated artifacts are separate concerns:
     RUNTIME     the live database, logs, tokens            ED_RUNTIME_ROOT
     ARTIFACTS   generated reports and scorecards           ED_ARTIFACTS_ROOT (default: RUNTIME)
 
-Runtime paths are not rooted in the source tree, so a source update cannot endanger the live
-database and runtime output never lands in a checkout (docs/ARCHITECTURE.md §5), whatever the
-process's working directory. A linked Git worktree resolves runtime state to its primary
-worktree by reading Git's own ``.git`` / ``commondir`` metadata. A standalone checkout owns its
-own runtime root. ``ED_RUNTIME_ROOT`` may move runtime state to a dedicated non-checkout
-directory, but may not select a linked source worktree.
+Runtime state lives in the runtime root's ``data/`` and ``logs/`` (data_dir, logs_dir), which
+git ignores, so a source update never touches it (docs/ARCHITECTURE.md §5), whatever the
+process's working directory. A standalone checkout is its own runtime root, so production's
+database and logs sit in those folders of its checkout. A linked Git worktree resolves runtime
+state to its primary worktree by reading Git's own ``.git`` / ``commondir`` metadata.
+``ED_RUNTIME_ROOT`` may move runtime state to a dedicated non-checkout directory, but may not
+select a linked source worktree.
 
 This module imports nothing from `tools/` or `governance/`: it is on the runtime path and
 governance does not decide whether the desk may run. It reads the environment only: an

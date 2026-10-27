@@ -7,7 +7,7 @@ The daemon forwards every Schwab stream message to this module over a local WebS
 (app.market_data.schwab.streaming.live_push, ws://127.0.0.1:8799) the moment it arrives, and
 this module applies it to the in-process planes (`app.options.order_flow.state`,
 `live_market_plane`). The database is not in the live path: stream_capture.db is the
-permanent record (options history reads it); nothing live reads it. If the push connection
+daemon's record, and no screen value is read from it. If the push connection
 drops, the live values go stale and the screen says so; nothing falls back to the database.
 
 The daemon streams every ticker on its watchlist (capture.Daemon.watchlist, the one list), and

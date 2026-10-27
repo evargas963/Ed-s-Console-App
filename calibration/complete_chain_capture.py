@@ -39,9 +39,8 @@ from time_et import ET, option_market_open, options_closed_at, record_markets, s
 log = logging.getLogger("chain_history")
 
 CAPTURE_EVERY_MIN = 30
-#: why the daemon's captures are complete: every listed expiry, every strike. Rows of the
-#: "strike_range=ALL" basis (one or two expiries at scattered times, written by the console) are
-#: not full chains, so they are not read. The basis is stored before the chain blob, so filtering
+#: why the daemon's captures are complete: every listed expiry, every strike. The daemon writes
+#: only this basis, and rows of any other are not read. The basis is stored before the chain blob, so filtering
 #: on it never reads a chain (measured: filtering on `source`, stored after the blob, read every
 #: chain -- 15 s for SPY, 80 s at startup).
 CAPTURE_BASIS = "every_expiry_strike_range_ALL"     # the only basis read: rows of any other are partial

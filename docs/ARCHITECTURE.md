@@ -77,5 +77,6 @@ environment, core code that will not load).
 The database, the Schwab token, logs and diagnostics are runtime state, not source.
 `runtime_layout.py` is the one owner of where they live: `ED_RUNTIME_ROOT` moves them; unset, a
 standalone checkout uses itself and a linked worktree uses the primary checkout's runtime (it
-reads, and never starts a live console or daemon on it). Source changes never touch runtime state,
-and runtime output never lands in the source tree.
+reads, and never starts a live console or daemon on it). Runtime state lives in the runtime root's
+`data/` and `logs/`, which git ignores, so source changes never touch it; in a standalone checkout
+those folders sit inside the checkout.
