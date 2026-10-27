@@ -1,9 +1,8 @@
 """Transparent gzip compression for large JSON blob columns stored in SQLite.
 
-RC-REHAB-3 (2026-09-23, operator-directed DB size reduction): `ed_console.db` measured
-74.6 GB, of which 69.78 GB (93.5%) is JSON TEXT columns storing full option chains and
-decision-record payloads, uncompressed, forever. A real sample compressed 13.8x with
-plain gzip (396.2 KB -> 28.7 KB). This module is the ONE shared codec every writer/reader
+Measured: 93.5% of `ed_console.db` was JSON TEXT columns storing full option chains and
+decision-record payloads, uncompressed. A real sample compressed 13.8x with plain gzip
+(396.2 KB -> 28.7 KB). This module is the ONE shared codec every writer/reader
 of those columns uses, so there is exactly one compression format across every table.
 
 SQLite is dynamically typed per VALUE, not per column: a column declared TEXT can hold

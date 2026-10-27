@@ -5,7 +5,7 @@ Policy (encoded here and in db.EdDB / stream_spine):
 
 - **Permanent production files:** exactly ``ed_console.db`` and ``stream_capture.db``
   under ``runtime_layout.data_dir()``. Linked source worktrees resolve to the primary
-  worktree's runtime root (RC-534).
+  worktree's runtime root.
 - **Ambient DB overrides:** never select a production authority. Recovery and tests pass
   explicit paths to the owning API, with explicit non-canonical acknowledgement.
 - **Harness / proof:** Must never be targeted by mistake. CLI tools default
@@ -29,8 +29,8 @@ PermanentDatabaseIdentity = Literal["ed_console", "stream_capture"]
 def canonical_console_db_path() -> Path:
     """The one intended canonical production database file on disk.
 
-    Rooted in the RUNTIME root (RC-523), not the source checkout: with `ED_RUNTIME_ROOT`
-    unset the two are the same directory, so nothing moves until the operator moves it.
+    Rooted in the RUNTIME root, not the source checkout: with `ED_RUNTIME_ROOT` unset, a
+    standalone checkout is its own runtime root and a linked worktree uses its primary's.
     """
     from runtime_layout import data_dir
 
@@ -57,26 +57,9 @@ def permanent_database_identity(p: Path | str) -> PermanentDatabaseIdentity | No
 
 
 def default_console_db_path() -> Path:
-    """Resolved default DB for this process. ONE APP, ONE MAIN, ONE DB (RC-401).
-
-    This used to fork on ``ED_AGENT_ROLE`` / a ``*-Claude`` directory name and return
-    ``data/ed_console_claude.db``. The split was written when two agents ran two desks;
-    it outlived that premise and what it produced was a SECOND money-path data source.
-    MEASURED 2026-08-18: canonical ``EdWebConsole/data/ed_console.db`` = 34.28 GB, while
-    the split had scattered ``EdWebConsole/data/ed_console_claude.db`` = 35.78 MB (503
-    snapshots, 954 decision_persistence_ledger rows, 49,173 confluence_quote_ticks),
-    ``_stack125/data/ed_console_claude.db`` = 0.21 MB and
-    ``_runtime_main/data/ed_console_claude.db`` = 0 bytes.
-
-    The routing also contradicted itself: ``EdDB.__init__`` admits only
-    ``is_canonical_db_path``, so the path this function returned was refused by the only
-    class that opens it. A desk started from ``_runtime_main`` died on exactly that.
-    Honouring the fork would have been worse than the crash — the desk would have come up
-    serving an empty history as if it were the record.
-
-    Existing ``ed_console_claude.db`` files are left on disk untouched; merging or
-    removing operator data is not this call to make.
-    """
+    """Resolved default DB for this process: the canonical one, for every process. No agent
+    role or directory name selects another; ``EdDB.__init__`` admits only the canonical path
+    unless its caller opts in (``allow_noncanonical``, ``ED_CONSOLE_ALLOW_NONCANONICAL_DB``)."""
     return canonical_console_db_path()
 
 
