@@ -538,6 +538,21 @@ def test_d5_the_price_history_once_a_day_and_the_chain_the_options_session(tmp_p
     assert _asked_since(swept, chains, after_hours) == [], "the chain waits for the option open"
 
 
+def test_d5_a_start_asks_every_tickers_price_history_before_any_chain(tmp_path):
+    """The price-built levels need the price history; a rotation of the chains takes minutes.
+    Thursday 2026-10-01 10:00 ET (RTH, both tickers' options open): the daemon's first pass asks
+    SPY's and TSLA's price history (two series each) before its first chain request."""
+    history = "/marketdata/v1/pricehistory"
+    swept = _Swept(tmp_path, "2026-10-01 10:00", ["SPY", "TSLA"])
+    try:
+        swept.until(2)
+    finally:
+        swept.close()
+    asked = [(p, q.get("symbol")) for p, q, *_ in swept.schwab.requests if p != "/marketdata/v1/markets"]
+    first_chain = next(i for i, (p, _) in enumerate(asked) if p != history)
+    assert asked[:first_chain] == [(history, "SPY")] * 2 + [(history, "TSLA")] * 2, asked[:6]
+
+
 def test_d5_the_chain_is_asked_until_the_last_option_close_and_its_close_values_then_stand(tmp_path):
     """SPY's options trade to 16:15 ET; Schwab's /markets sends EQO to 16:00 and IND to 16:15
     (2026-10-07). At 16:10 SPY's chain is asked again and again; at 16:20 once more (its close
@@ -989,7 +1004,9 @@ def test_the_daemon_builds_one_schwab_client_and_a_failed_refresh_never_rebuilds
     worker = threading.Thread(target=sweep.work, args=(schwab_client, halt), daemon=True)
     try:
         worker.start()
-        halt.wait(0.5)
+        deadline = time.monotonic() + 10
+        while not failed and time.monotonic() < deadline:     # each ticker's price history fails first
+            halt.wait(0.02)
     finally:
         halt.set()
         worker.join(10)
@@ -1012,12 +1029,12 @@ def test_a_403_from_schwabs_edge_reaches_the_console_and_the_next_ticker_is_aske
                        failures=CaptureWriter(tmp_path / "stream_capture.db"), streamed=lambda symbol: None)
     client = schwab.client(tmp_path)
     try:
+        sweep.candles(lambda: client, ["AAA", "BBB"], threading.Event())
         assert sweep.rotation(lambda: client, ["AAA", "BBB"], threading.Event()) == set()
-        sweep.candles(lambda: client, ["AAA", "BBB"], threading.Event())      # the stock session's turn
     finally:
         schwab.close()
     assert [(m["ticker"], m["failed"]) for m in published] == [
         ("AAA", "expiration chain returned HTTP 403"), ("BBB", "expiration chain returned HTTP 403")]
     gets = _gets(schwab)
-    assert [r[0] for r in gets] == ["/marketdata/v1/expirationchain"] * 2 + ["/marketdata/v1/pricehistory"] * 4
+    assert [r[0] for r in gets] == ["/marketdata/v1/pricehistory"] * 4 + ["/marketdata/v1/expirationchain"] * 2
     assert all(b[2] - a[2] < 1.0 for a, b in zip(gets, gets[1:])), "no pause after a 403"
