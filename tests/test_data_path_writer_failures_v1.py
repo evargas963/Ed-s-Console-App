@@ -23,6 +23,8 @@ import time
 import tracemalloc
 from pathlib import Path
 
+import pytest
+
 import launch
 import live_market_plane as lmp
 from app.market_data.schwab.streaming import capture
@@ -72,6 +74,16 @@ async def _until(pred, limit: float = 10.0) -> None:
     deadline = time.monotonic() + limit
     while not pred() and time.monotonic() < deadline:
         await asyncio.sleep(0.05)
+
+
+def test_the_writer_handed_the_consoles_database_refuses_it_naming_the_file(tmp_path):
+    """The one writer records into stream_capture.db only: handed the console's database, it
+    refuses before opening it, and says which file in plain words."""
+    db = tmp_path / "ed_console.db"
+    with pytest.raises(ValueError) as refused:
+        CaptureWriter(db)
+    assert str(refused.value) == f"the stream writer never writes the console's database ({db.resolve()})"
+    assert not db.exists(), "the refused file was created"
 
 
 def test_a_message_the_writer_cannot_store_is_kept_as_sent_and_its_error_reaches_the_heartbeat(tmp_path):

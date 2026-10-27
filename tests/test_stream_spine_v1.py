@@ -1,4 +1,5 @@
-"""CR-01 spine contracts: current record before delivery, LATEST readers, RC-6 guard."""
+"""The spine's contracts: the current record before delivery, LATEST readers, and the writer's
+refusal of the console's database."""
 
 from __future__ import annotations
 
@@ -237,8 +238,8 @@ def test_insert_failure_is_kept_as_sent_never_kills_writer(tmp_path):
     asyncio.run(go())
 
 
-def test_rc6_guard_survives_path_tricks():
-    """Cursor review MEDIUM: `data/x/../ed_console.db` must not slip past the guard."""
+def test_writer_refuses_the_consoles_database_through_a_relative_path():
+    """`data/x/../ed_console.db` resolves to the console's database and is refused too."""
     with pytest.raises(ValueError):
         CaptureWriter("data/nosuchdir/../ed_console.db")
 

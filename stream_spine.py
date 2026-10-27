@@ -808,7 +808,7 @@ class CaptureWriter:
                  hold_cap_bytes: int = HOLD_CAP_BYTES) -> None:
         p = resolve_stream_db_path() if db_path is None else Path(db_path).resolve()
         if p.name == "ed_console.db":
-            raise ValueError("CaptureWriter must never write the operational DB (RC-6 law)")
+            raise ValueError(f"the stream writer never writes the console's database ({p})")
         p.parent.mkdir(parents=True, exist_ok=True)
         self.db_path = p
         self.batch_rows = int(batch_rows)
