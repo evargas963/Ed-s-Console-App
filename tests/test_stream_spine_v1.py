@@ -4,9 +4,10 @@ refusal of the console's database."""
 from __future__ import annotations
 
 import asyncio
-import gc
 import sqlite3
-import warnings
+import subprocess
+import sys
+from pathlib import Path
 
 import pytest
 
@@ -243,18 +244,22 @@ def test_writer_refuses_the_consoles_database_through_a_relative_path():
 
 def test_writer_init_closes_conn_if_schema_setup_fails(tmp_path):
     """A schema setup that fails after the connect closes the SQLite connection it opened: no
-    connection is left for the collector (Python 3.13 warns of an unclosed one). INDUCED
+    connection is left for the collector, which Python 3.13 reports ("unclosed database"). The
+    writer runs in a Python of its own, so no other code's connection can be counted. INDUCED
     CONDITION: the database file holds bytes that are not a database, so SQLite connects and the
     first statement fails."""
     db = tmp_path / "s.db"
     db.write_bytes(b"not a database, " * 64)
-    gc.collect()                       # what earlier code left is not this writer's
-    with warnings.catch_warnings(record=True) as seen:
-        warnings.simplefilter("always")
-        with pytest.raises(sqlite3.DatabaseError, match="file is not a database"):
-            CaptureWriter(db)
-        gc.collect()
-    assert not [w for w in seen if issubclass(w.category, ResourceWarning)], "a connection was left open"
+    code = ("import gc, sqlite3, sys\n"
+            "from stream_spine import CaptureWriter\n"
+            "try:\n    CaptureWriter(sys.argv[1])\n"
+            "except sqlite3.DatabaseError as e:\n    print('refused:', e)\n"
+            "gc.collect()\n")
+    done = subprocess.run([sys.executable, "-W", "always::ResourceWarning", "-c", code, str(db)],
+                          cwd=Path(__file__).resolve().parent.parent, capture_output=True, text=True,
+                          timeout=60)
+    assert done.stdout.strip() == "refused: file is not a database", (done.stdout, done.stderr)
+    assert "unclosed database" not in done.stderr, done.stderr
 
 
 # ─────────────────────────────────────────────────────────────────────────────
