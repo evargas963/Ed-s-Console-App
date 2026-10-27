@@ -1525,11 +1525,11 @@ _chain_pricing = ThreadPoolExecutor(max_workers=1, thread_name_prefix="chain-pri
 #: captures (startup, for a ticker the daemon has not delivered yet), or a REPRICE of its held
 #: chain (a streamed tick on a viewed ticker)
 DELIVERED, STORED, REPRICE = "delivered", "stored", "reprice"
-#: ticker -> (what, contracts, fetched time): at most one per ticker however far pricing falls
+#: ticker -> (what, contracts, fetched time, the chain's spot): at most one per ticker however far pricing falls
 #: behind; a delivered chain replaces what waits, and whatever waits already prices the newest
 #: ticks. Every pricing runs on the one pricing thread, so each ticker's chains are priced in the
 #: order they were fetched.
-_chains_waiting: "dict[str, tuple[str, list | None, float | None]]" = {}
+_chains_waiting: "dict[str, tuple[str, list | None, float | None, tuple | None]]" = {}
 _chains_waiting_lock = threading.Lock()
 #: the tickers the daemon has delivered a chain for since the console started: their stored
 #: capture is older and is not priced as the book. Outside the option window that capture's
