@@ -15,9 +15,9 @@ ALWAYS_ALLOWED_PREFIXES = (
 #: Production surfaces across the whole continuum, not just backend.
 PRODUCTION_SUFFIXES = (".py", ".html", ".js", ".css", ".sql", ".ts", ".jsx", ".tsx")
 #: NOT part of the PRODUCT surface. Deliberately NOT the same list as
-#: ALWAYS_ALLOWED_PREFIXES: that one answers "is editing this HOW you comply with RC-66",
-#: this one answers "is this file part of the product". They diverge on `scratchpad/`
-#: (not product, but writing scratch is not RC-66 compliance either) and on `.cursor/`.
+#: ALWAYS_ALLOWED_PREFIXES: that one answers "is editing this HOW you comply", this one
+#: answers "is this file part of the product". They diverge on `scratchpad/` (not product,
+#: but writing scratch is not complying either) and on `.cursor/`.
 NOT_PRODUCT_PREFIXES = (
     "tests/", "governance/", "docs/", "reports/", ".claude/", ".cursor/",
     "scratchpad/", "calibration/",
@@ -30,7 +30,7 @@ class PathFacts(NamedTuple):
     governed: bool      # Q1 — does THIS repository's law apply to this path
     rel: str            # repo-relative posix when governed and resolvable, else normalised input
     production: bool    # Q2 — governed AND part of the product surface
-    rc66_exempt: bool   # governed AND editing it is how you comply with RC-66
+    compliance_surface: bool   # governed AND editing it is how you comply (ALWAYS_ALLOWED_PREFIXES)
 
 
 def _resolve_for_repo(p: str, root: Path) -> tuple[Path | None, bool]:
@@ -47,12 +47,12 @@ def _resolve_for_repo(p: str, root: Path) -> tuple[Path | None, bool]:
 
 
 def classify_path(p: str, repo: str | Path | None = None) -> PathFacts:
-    """THE path authority (FC-13). Every caller consumes this; nobody re-derives it.
+    """THE path authority. Every caller consumes this; nobody re-derives it.
 
-    Q1 governance is answered by resolve-and-compare against the governing root (RC-259). Q2
-    is only meaningful once Q1 is true — a relative-prefix `startswith` test can never match
-    an absolute path, which is how an absolute scratchpad file was once classified as
-    production. `repo` names the governing root and defaults to this repository.
+    Q1 governance is answered by resolve-and-compare against the governing root. Q2 is only
+    meaningful once Q1 is true — a relative-prefix `startswith` test can never match an
+    absolute path, so it would class an absolute scratchpad file as production. `repo` names
+    the governing root and defaults to this repository.
 
     Fails CLOSED: an unresolvable path is governed, is production, and is not exempt.
     """
@@ -64,18 +64,18 @@ def classify_path(p: str, repo: str | Path | None = None) -> PathFacts:
     resolved, resolvable = _resolve_for_repo(p, root)
     if not resolvable:
         return PathFacts(governed=True, rel=Path(p).as_posix(),
-                         production=True, rc66_exempt=False)
+                         production=True, compliance_surface=False)
     try:
         rel = resolved.relative_to(root).as_posix()
     except ValueError:
         # Genuinely outside the governing tree — governed by that tree's own rules, not ours.
         return PathFacts(governed=False, rel=resolved.as_posix(),
-                         production=False, rc66_exempt=False)
+                         production=False, compliance_surface=False)
     return PathFacts(
         governed=True,
         rel=rel,
         production=rel.endswith(PRODUCTION_SUFFIXES) and not rel.startswith(NOT_PRODUCT_PREFIXES),
-        rc66_exempt=rel.startswith(ALWAYS_ALLOWED_PREFIXES),
+        compliance_surface=rel.startswith(ALWAYS_ALLOWED_PREFIXES),
     )
 
 

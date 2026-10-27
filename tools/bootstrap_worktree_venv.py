@@ -7,8 +7,8 @@ Claude cannot collide on site-packages or interpreter identity.
     python tools/bootstrap_worktree_venv.py
     python tools/bootstrap_worktree_venv.py --venv-only   # create, skip pip
 
-OBSERVED (2026-07-25): multi-agent worktrees without per-tree venvs fell back
-to global Python313 and drifted. VALIDATED: path checks in check_venv_parity.
+A worktree without its own venv falls back to the global Python and drifts;
+check_venv_parity checks the path.
 """
 from __future__ import annotations
 

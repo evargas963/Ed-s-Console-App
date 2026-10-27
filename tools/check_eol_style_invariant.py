@@ -1,24 +1,12 @@
-"""RC-382 — a file's line-ending style must survive an edit.
+"""A file's line-ending style must survive an edit.
 
-WHY THIS EXISTS. Three times in one session a one-line intent produced a whole-file
-diff, because the writer reconstructed the file and re-chose its terminator:
+A writer that reconstructs a file can re-choose its terminator, so a one-line edit lands as a
+whole-file diff that buries the intended change (an 8-line addition to .claude/settings.json
+committed as 78 insertions / 71 deletions). This check refuses that before the commit.
 
-  RC-372  a test restored the real AGENTS.md through a platform-newline text write,
-          flipping the charter LF->CRLF on every run and breaking audit identity.
-  .claude/settings.json   an 8-line addition committed as 78 insertions / 71 deletions.
-  RC-381 slice 1          a 15-line declaration pass committed as 2428 / 2427, because
-          three files were LF in the blob and landed as CRLF.
-
-Each was caught by reading `git diff --numstat` AFTER committing, which is a human
-choosing to look. That is not a control.
-
-WHAT THIS LOCKS, and why it is stated as an outcome. The rule is not "use newline=''"
-or "pass lineterminator" — those bind one library at a time, and the class already
-arrived through three different writers (a text-mode restore, an editor, and a hand
-script) plus a near-miss through a fourth (csv.DictWriter emits CRLF regardless of how
-the handle was opened). So the invariant is tested on the BYTES: whatever produced the
-change, the file's terminator may not change. A writer nobody anticipated is covered by
-construction.
+The rule is tested on the BYTES, not as "use newline=''" or "pass lineterminator", which bind
+one library at a time: whatever produced the change (a text-mode write, an editor, a script,
+csv.DictWriter's CRLF), the file's terminator may not change.
 
 Two refusals:
   PURE EOL REFLOW  — EOL-normalised content is IDENTICAL to HEAD but raw bytes differ.
@@ -75,13 +63,11 @@ def is_text_governed(path: str) -> bool:
 def pinned_eol(path: str) -> str | None:
     """'lf'/'crlf' when .gitattributes pins this path's committed terminator, else None.
 
-    RC-383. A pinned path is one git NORMALISES on the way into the blob, so its worktree
-    bytes are ALLOWED to differ from HEAD — that is the entire point of the pin.
-    .claude/settings.json is 78 CRLF on disk and 78 LF in the index by design, and
-    reports/artifacts/*.json has been pinned the same way for months. Comparing raw
-    worktree bytes for such a path reports a flip on a file that is behaving exactly as
-    configured, and a gate that cries wolf on a governed path gets switched off — taking
-    the real protection with it. So the comparison is made on the form git will STORE.
+    A pinned path is one git NORMALISES on the way into the blob, so its worktree bytes are
+    ALLOWED to differ from HEAD — that is the point of the pin (.claude/settings.json is CRLF
+    on disk and LF in the index by design). Comparing raw worktree bytes for such a path would
+    report a flip on a file behaving exactly as configured, so the comparison is made on the
+    form git will STORE.
     """
     line = _text("check-attr", "eol", "--", path).strip()
     value = line.rsplit(":", 1)[-1].strip() if ":" in line else ""
@@ -139,18 +125,10 @@ def violations(staged: bool = True) -> list[str]:
         after = current_bytes(path, staged)
         if after is None:
             continue
-        # RC-383: judge a pinned path on the form git will STORE, not on what the harness
-        # left on disk — for those paths a worktree/blob terminator difference is the
-        # configured behaviour, not a violation.
-        #
-        # RC-528 (ported from #221's row 511): apply the pin to BOTH sides. This normalised
-        # `after` only, so a pinned path was compared stored-form against HEAD's raw form.
-        # While every blob obeyed its pin the two agreed and the asymmetry was invisible; the
-        # moment a blob VIOLATED its pin (a file committed CRLF before its pattern was pinned,
-        # or moved out from under a pin and back), the check reported PURE EOL REFLOW on the
-        # commit that restores it — demanding "restore the original terminator" while refusing
-        # the restoration. The pin defines what a path's committed bytes MEAN, so it binds
-        # wherever those bytes are read.
+        # judge a pinned path on the form git will STORE, not on what the harness left on
+        # disk, and apply the pin to BOTH sides: a blob committed against its pin (CRLF before
+        # its pattern was pinned) compared raw would read as PURE EOL REFLOW on the commit that
+        # restores it. The pin defines what a path's committed bytes MEAN wherever they are read.
         pin = pinned_eol(path)
         before, after = apply_pin(before, pin), apply_pin(after, pin)
         if before == after:
@@ -163,7 +141,7 @@ def violations(staged: bool = True) -> list[str]:
             out.append(
                 f"{path}: PURE EOL REFLOW — every changed line is a line-ending change and "
                 f"nothing else ({before_style} -> {after_style}). The diff is 100% noise; "
-                f"restore the original terminator (RC-382)."
+                f"restore the original terminator."
             )
             continue
         if before_style and after_style and before_style != after_style:
@@ -174,7 +152,7 @@ def violations(staged: bool = True) -> list[str]:
                 f"{path}: EOL STYLE FLIP — the content change is real, but the file's "
                 f"terminator also switched {before_style} -> {after_style}, so ~{changed_lines} "
                 f"lines report as changed and bury the intended edit. Write the file back with "
-                f"its original terminator (RC-382)."
+                f"its original terminator."
             )
     return out
 

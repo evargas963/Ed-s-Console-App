@@ -1,20 +1,13 @@
 #!/usr/bin/env python3
 """Fail-closed privacy guard: no operator-home absolute paths in tracked evidence.
 
-PR41_OPERATOR_PATH_PRIVACY_SCRUB_V1: evidence must use stable abstractions
-(<WORKTREE_ROOT>, <TEMP_WORKTREE_ROOT>, <PYTEST_TMP>, <TEMP>, <USER_HOME>,
-<EXTERNAL_EVIDENCE_ROOT>) or repository-relative paths.
+Evidence must use stable abstractions (<WORKTREE_ROOT>, <TEMP_WORKTREE_ROOT>, <PYTEST_TMP>,
+<TEMP>, <USER_HOME>, <EXTERNAL_EVIDENCE_ROOT>) or repository-relative paths.
 
-Enforcement layers: pre-commit hook (early lock, this CLI) + required-CI
-pytest-full (tests/test_operator_path_privacy.py imports this module — single
-pattern source, no duplicated regex list).
+Enforcement layers: pre-commit hook (this CLI) + required-CI pytest-full
+(tests/test_operator_path_privacy.py imports this module — one pattern source).
 
-Scope: git-tracked files under reports/scoreboard_forensic/. Base-era reports/**
-outside scoreboard_forensic carry pre-existing machine paths (1016 lines measured
-2026-07-14) not attributable to Lane-A; widening the scope is a separate mission.
-
-Allowlist: empty (ED CONSOLE SLIMMING) — the mission-authorization consumed
-contracts and Schwab V4 artifacts it covered were retired; the guard now fails
+Scope: git-tracked files under reports/scoreboard_forensic/. Allowlist: empty; the guard fails
 closed on any private path in scope.
 """
 from __future__ import annotations

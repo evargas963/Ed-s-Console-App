@@ -18,14 +18,12 @@ REPO = Path(__file__).resolve().parents[1]
 
 
 def _run(argv: list[str]) -> int:
-    """RC-254: run the target and PROPAGATE its exit code.
+    """Run the target and PROPAGATE its exit code.
 
-    This used to be os.execv. On POSIX that replaces the process, so the target's status
-    becomes ours. On Windows there is no exec — CPython maps os.execv onto the CRT spawn
-    family, so the parent returned to its caller immediately with status 0 while the target
-    ran detached and its exit code was discarded. Every pre-commit hook routed through here
-    reported "Passed" unconditionally, including the institutional gate. A no-op gate and a
-    passing gate are indistinguishable from the outside, which is why it went unseen.
+    Not os.execv: on Windows there is no exec — CPython maps os.execv onto the CRT spawn
+    family, so the parent would return immediately with status 0 while the target ran
+    detached, and every pre-commit hook routed through here would report "Passed"
+    whatever the gate found.
 
     subprocess.run inherits stdout/stderr, so hook output still reaches the operator, and it
     waits — which is the whole point.

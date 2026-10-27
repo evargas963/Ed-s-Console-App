@@ -2,24 +2,20 @@
 
 Wired by `.claude/settings.json` / `.cursor/hooks.json` as
     python tools/hook_chain.py tools/<guard>.py [tools/<guard>.py ...]
-for PreToolUse (operator_law_guard + process_lock_guard). One process
-instead of one interpreter per guard (SIMPLICITY REHAB, 2026-08-24: ~300ms vs 2.8-6s).
+for PreToolUse (operator_law_guard + process_lock_guard). One process instead of one
+interpreter per guard (measured: ~300 ms vs 2.8-6 s).
 
-What it does, entirely: read the payload; refuse one that is not a JSON object (RC-541 —
-"cannot judge" and "judged clean" must not share an exit code); import each guard and call its
-`main()` on the identical stdin; a guard that crashes is a BLOCK (unmeasurable is never
-compliant, RC-57); on any block, print which checkout and commit judged the event, so a stale
-checkout's rule never reads as a mystery (RC-512).
+What it does, entirely: read the payload; refuse one that is not a JSON object ("cannot judge"
+and "judged clean" must not share an exit code); import each guard and call its `main()` on
+the identical stdin; a guard that crashes is a BLOCK (unmeasurable is never compliant); on any
+block, print which checkout and commit judged the event, so a stale checkout's rule never reads
+as a mystery.
 
-What it deliberately does NOT do (deleted 2026-09-10, RC-544/RC-546). It keeps no state
-between events and it never chooses another tree to judge: the earlier executor resolved
-"authority" from the session transcript and delegated to other worktrees' chains, with a
-crashed-delegate recovery door and an uncommitted-guard refusal on top. A transcript cannot
-tell an executed mutation from one the hook refused, so one BLOCKED command poisoned every
-later event; and none of that machinery protected anything the checkout's own guards, the
-pre-commit hooks of the target tree and required CI do not already protect. The guards judge
-the ACTION in the payload; the checkout that runs the session is the checkout whose guards
-run, and the operator launches sessions in the tree they work in (AGENTS.md, Authority: work in a worktree).
+It keeps no state between events and never chooses another tree to judge: a session
+transcript cannot tell an executed mutation from one the hook refused, so state carried from
+it would let one BLOCKED command affect every later event. The guards judge the ACTION in the
+payload; the checkout that runs the session is the checkout whose guards run (AGENTS.md,
+Authority: work in a worktree).
 
 INVARIANT: BLOCKED OR UNEXECUTED ACTION => ZERO MUTATION => ZERO EFFECT ON ANY LATER EVENT.
 There is no place for an effect to live.
@@ -37,12 +33,12 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-#: RC-520: THE roster of tools that carry a shell `command`; both shell guards import it.
+#: THE roster of tools that carry a shell `command`; both shell guards import it.
 BASH_TOOLS = frozenset({"Bash", "PowerShell", "Shell", "Monitor"})
 
 #: THE roster of file-target tools that MODIFY a tree: Claude's Edit/Write/MultiEdit/
-#: NotebookEdit and Cursor's StrReplace/Delete (RC-226). Imported by every guard that decides
-#: the class; the four private copies that existed until 2026-09-10 were the RC-520 shape.
+#: NotebookEdit and Cursor's StrReplace/Delete. Imported by every guard that decides the class;
+#: no guard keeps a private copy.
 MUTATING_TOOLS = frozenset({"Edit", "Write", "MultiEdit", "NotebookEdit", "StrReplace", "Delete"})
 
 

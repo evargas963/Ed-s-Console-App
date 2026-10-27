@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """Virtual-environment parity gate — Claude and Cursor must share one interpreter.
 
-OBSERVED (2026-07-25): multi-agent fracture when one agent runs global
-Python (e.g. AppData\\…\\Python313) and another assumes a project venv —
-packages, entry points, and hook installs drift silently.
-VALIDATED: path check is deterministic (resolve + relative_to); CI runners
-have no repo .venv so GITHUB_ACTIONS/CI skip; local/pre-commit fail closed.
+When one agent runs the global Python (e.g. AppData\\…\\Python313) and another the project
+venv, packages, entry points and hook installs drift silently. The path check is
+deterministic (resolve + relative_to); CI runners have no repo .venv, so GITHUB_ACTIONS/CI
+skip it; local and pre-commit runs fail closed.
 
     python tools/check_venv_parity.py
 """
