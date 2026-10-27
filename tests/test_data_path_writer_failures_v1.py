@@ -77,8 +77,10 @@ async def _until(pred, limit: float = 10.0) -> None:
 
 
 def test_the_writer_handed_the_consoles_database_refuses_it_naming_the_file(tmp_path):
-    """The one writer records into stream_capture.db only: handed the console's database, it
-    refuses before opening it, and says which file in plain words."""
+    """The one writer records into stream_capture.db only: handed a file named ed_console.db, it
+    refuses before opening it, and says which file in plain words. INDUCED CONDITION: the writer
+    handed a file named ed_console.db (in a temp folder), which the daemon's own path
+    (resolve_stream_db_path) never resolves to."""
     db = tmp_path / "ed_console.db"
     with pytest.raises(ValueError) as refused:
         CaptureWriter(db)

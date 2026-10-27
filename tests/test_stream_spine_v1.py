@@ -54,11 +54,6 @@ def test_latest_reader_gets_one_newest_record_per_topic():
     asyncio.run(go())
 
 
-def test_writer_refuses_operational_db():
-    with pytest.raises(ValueError):
-        CaptureWriter("data/ed_console.db")
-
-
 def test_writer_batches_into_stream_capture_db(tmp_path):
     db = tmp_path / "stream_capture.db"
     w = CaptureWriter(db, batch_rows=2, batch_sec=10.0)
@@ -239,13 +234,13 @@ def test_insert_failure_is_kept_as_sent_never_kills_writer(tmp_path):
 
 
 def test_writer_refuses_the_consoles_database_through_a_relative_path():
-    """`data/x/../ed_console.db` resolves to the console's database and is refused too."""
+    """A relative path whose file is `ed_console.db` (`data/x/../ed_console.db`) is refused too."""
     with pytest.raises(ValueError):
         CaptureWriter("data/nosuchdir/../ed_console.db")
 
 
 def test_writer_init_closes_conn_if_schema_setup_fails(tmp_path, monkeypatch):
-    """Bugbot HIGH: connect-then-fail must not leak the SQLite handle."""
+    """A schema setup that fails after the connect closes the SQLite connection it opened."""
     real_connect = __import__("sqlite3").connect
     closed = {"n": 0}
 
@@ -276,16 +271,9 @@ def test_writer_init_closes_conn_if_schema_setup_fails(tmp_path, monkeypatch):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PR214_RTH_DEFECT_REMEDIATION_V1 (2026-08-31) — ONE canonical stream DB path
-# authority. Live RTH proof: the daemon was launched with an explicit --db against
-# the PRODUCTION checkout's stream_capture.db and was healthy; the server, run
-# from the DEV checkout, defaulted to STREAM_DB_DEFAULT (checkout-relative, no
-# override) and was ALSO healthy -- both processes reported RUNNING while
-# attached to two different files, and the API truthfully returned `no_book`
-# because they never shared an actual data plane. resolve_stream_db_path is the
-# RC-534 removes that override after runtime_layout learned to resolve every linked
-# worktree through Git's primary worktree. Production now has no process-local path
-# switch; explicit paths exist only on direct test/recovery APIs.
+# One stream-database path for every process (resolve_stream_db_path), so the daemon
+# and the console never attach to two different files. No process-local setting moves
+# it; explicit paths exist only on direct test and recovery APIs.
 # ─────────────────────────────────────────────────────────────────────────────
 
 def test_db_path_a_resolves_the_canonical_default():
