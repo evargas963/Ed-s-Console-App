@@ -1,10 +1,14 @@
-"""One path authority: governance and product surface from one resolve-and-compare
-(tools/pretooluse_guard.classify_path). A relative-prefix `startswith` test can never match an
-absolute path, so it would class `<tmp>/scratchpad/x.py` as production; these controls pin the
-answers for absolute and relative paths alike.
+"""FC-13 — one path authority: governance and product-surface from one resolve-and-compare.
 
-The oracle is independent of the implementation: the expectations are literal path/answer
-pairs, not recomputed from the prefix tuples the implementation reads.
+These tests fail against the pre-fix tree. Before `classify_path` existed,
+`turn_self_audit.is_production_path` normalised only a leading "./" and then applied a
+RELATIVE-prefix `startswith` exemption, which an absolute path can never match. So
+`<tmp>/scratchpad/x.py` was classified PRODUCTION even though "scratchpad/" was already in
+the exemption list, and the governance question ("is this path even ours") was never asked.
+
+The oracle here is deliberately independent of the implementation: the expectations are
+stated as literal path/answer pairs derived from the mission's required controls, not
+recomputed from the same prefix tuples the implementation reads.
 """
 from __future__ import annotations
 
@@ -14,6 +18,8 @@ from pathlib import Path
 import pytest
 
 G = importlib.import_module("tools.pretooluse_guard")
+# BEDROCK 2026-09-06: tools/turn_self_audit.py (the consumer these controls compared against
+# the authority) is deleted; the controls below pin the authority alone.
 
 REPO = Path(G.__file__).resolve().parent.parent
 
@@ -71,16 +77,17 @@ def test_fail_closed_unresolvable_path_is_not_silently_ungoverned(monkeypatch):
     assert facts.rc66_exempt is False, "unresolvable must not acquire a compliance exemption"
 
 
-def test_the_compliance_surface_and_the_product_surface_are_distinct_questions():
-    """scratchpad/ is NOT the product, but writing scratch is not complying either.
+def test_rc66_lane_and_product_surface_are_distinct_questions():
+    """scratchpad/ is NOT the product, but writing scratch is NOT RC-66 compliance either.
 
-    Guards the deliberate divergence between the two prefix lists: collapsing them would either
-    let every product file be edited as a compliance surface or widen the product surface.
+    Guards the deliberate divergence between the two prefix lists. Collapsing them would
+    either loosen RC-66 over 3000+ in-repo files or widen the product surface; this test
+    fails if a later change quietly does the collapse.
     """
     facts = G.classify_path("scratchpad/_probe.py")
     assert facts.governed is True
     assert facts.production is False, "scratchpad is not the product surface"
-    assert facts.rc66_exempt is False, "scratchpad is not a compliance surface"
+    assert facts.rc66_exempt is False, "scratchpad is not an RC-66 compliance lane"
 
     lane = G.classify_path("tests/test_x.py")
     assert lane.production is False and lane.rc66_exempt is True
