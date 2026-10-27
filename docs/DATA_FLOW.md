@@ -358,8 +358,12 @@ from Schwab to the screen (daemon, console, page), are these:
   one that arrived incomplete, or a fetch that failed, keeps the last levels with that reason) →
   `_on_chain` → priced on one pricing thread (`_price_chain`, the only caller of
   `_publish_levels`: delivered chains, stored captures and the tick reprices all wait in one
-  queue, at most one entry per ticker, every ticker the same: the delivered chains and reprices,
-  longest waiting first, then the stored ones; the startup load queues a ticker's stored captures, read from the database when
+  queue, at most one entry per ticker, every ticker the same: longest waiting first, a stored
+  capture after every delivered chain waiting, and a reprice in its turn behind the stored
+  captures queued before it (a viewed ticker's ticks queue another during each of its pricings, so
+  a reprice put first would leave the stored ones waiting until their chain was delivered:
+  Enforced by: `tests/test_data_path_startup_v1.py::test_the_stored_levels_are_priced_while_a_page_on_another_ticker_takes_ticks`);
+  the startup load queues a ticker's stored captures, read from the database when
   priced, only while the daemon has delivered no chain of that ticker, and a chain delivered while
   they wait replaces them, so a stored capture never replaces a delivered chain and no delivered
   chain waits behind a stored one). The daemon's bus keeps each ticker's newest whole chain:
