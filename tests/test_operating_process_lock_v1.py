@@ -85,7 +85,7 @@ def test_rail_fails_open_on_unreadable_topology(tmp_path):
 
 
 def test_reset_guard_blocks_destructive_git_on_product():
-    """LOCK-2 (RC-231): soft tree-destructive git against product scope BLOCKS.
+    """The reset guard: soft tree-destructive git against product scope BLOCKS.
 
     The guard's own static inventory (PRODUCT_WIPE_PROTECTED) is the only thing that can
     satisfy it."""
@@ -100,7 +100,7 @@ def test_reset_guard_blocks_destructive_git_on_product():
 
 
 def test_reset_guard_permits_safe_git():
-    """LOCK-2 negative control: index-only and read-only git stays legal."""
+    """The reset guard's negative control: index-only and read-only git stays legal."""
     for cmd in ("git status", "git log --oneline -3",
                 "git restore --staged governance/root_cause_log.md",
                 "git stash list", "git checkout -b feature/x"):
@@ -108,7 +108,7 @@ def test_reset_guard_permits_safe_git():
 
 
 # ---------------------------------------------------------------------------
-# RC-234 — pipe-masked commits: a `git commit` piped into a filter reports the filter's
+# Pipe-masked commits: a `git commit` piped into a filter reports the filter's
 # exit code, not the commit's.
 # ---------------------------------------------------------------------------
 

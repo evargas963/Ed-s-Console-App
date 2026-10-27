@@ -1,5 +1,5 @@
-# institutional-synthetic-ok: inject destructive git commands to prove LOCK-2 BLOCKs.
-"""LOCK-2 reset-guard (RC-231) — dedicated acceptance suite.
+# institutional-synthetic-ok: inject destructive git commands to prove the reset guard BLOCKs.
+"""The reset guard — dedicated acceptance suite.
 
 Tree-destructive git blocks at PreToolUse: reset --hard, checkout -- <path>, clean -f,
 push --force and every stash but `stash list` on any target; the wider reset, restore,
@@ -28,7 +28,7 @@ def test_destructive_class_blocks():
         "git clean -fd",
         "git stash",
     ):
-        assert OPL.reset_guard_violations(cmd), f"LOCK-2 silent on: {cmd}"
+        assert OPL.reset_guard_violations(cmd), f"reset guard silent on: {cmd}"
 
 
 def test_safe_forms_allow():
@@ -40,7 +40,7 @@ def test_safe_forms_allow():
         "git checkout -b feature/next",
         "git clean -n",
     ):
-        assert not OPL.reset_guard_violations(cmd), f"LOCK-2 false-fired on: {cmd}"
+        assert not OPL.reset_guard_violations(cmd), f"reset guard false-fired on: {cmd}"
 
 
 # ── Judge the ACTION, not the data the command carries ──────────────────────────────────
@@ -56,7 +56,7 @@ def test_a_commit_message_quoting_destructive_git_is_not_an_action():
         "MSG"
     )
     assert not OPL.reset_guard_violations(heredoc), (
-        "LOCK-2 blocked a commit whose only destructive git is prose in the message — "
+        "the reset guard blocked a commit whose only destructive git is prose in the message — "
         "banning the word, not the action"
     )
     inline = "git commit -m 'RC-231 was opened after a git reset --hard wiped static/chart.html'"
@@ -170,7 +170,7 @@ def test_an_interpreter_heredoc_is_judged_per_line():
 
 
 def test_the_safe_reset_is_live_on_the_pretooluse_path():
-    """The seam that actually runs: LOCK-2 lets --soft through and still refuses --hard.
+    """The seam that actually runs: the reset guard lets --soft through and still refuses --hard.
 
     Asserted on the RESET_GUARD verdict, not on an empty result: the Bash seam also carries
     PROD_CHECKOUT_LOCK, which legitimately refuses HEAD-moving git in the production primary
@@ -179,7 +179,7 @@ def test_the_safe_reset_is_live_on_the_pretooluse_path():
     """
     soft = PLG.pretooluse_block("Bash", {"command": "git reset --soft HEAD~1"})
     assert not any("RESET_GUARD" in b for b in soft), (
-        f"LOCK-2 still refuses a reset that cannot touch index or worktree: {soft}")
+        f"the reset guard still refuses a reset that cannot touch index or worktree: {soft}")
     hard = PLG.pretooluse_block("Bash", {"command": "git reset --hard HEAD~1"})
     assert any("RESET_GUARD" in b for b in hard), "the destructive form stopped blocking"
 

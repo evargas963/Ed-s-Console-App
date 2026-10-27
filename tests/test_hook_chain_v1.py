@@ -1,14 +1,12 @@
-"""tools/hook_chain.py — the ONE hook executor, and the adversarial proofs of RC-544.
+"""tools/hook_chain.py — the ONE hook executor, and the adversarial proofs of its invariant.
 
 Every proof drives the REAL executor and the REAL wired guards over a subprocess boundary
 with the payload on stdin, exactly as the hosts run it. Nothing is mocked.
 
-THE INVARIANT (RC-544): BLOCKED OR UNEXECUTED ACTION => ZERO MUTATION => ZERO EFFECT ON ANY
-LATER EVENT. The earlier executor (tools/stop_chain.py, deleted) resolved "authority" from
-the session transcript and delegated to other worktrees' chains; a transcript record cannot
-tell an executed mutation from one the hook refused, so one BLOCKED command poisoned every
-later event of the session. The executor now keeps no state and chooses no other tree: the
-checkout running the session judges every event from that event's payload alone.
+THE INVARIANT: BLOCKED OR UNEXECUTED ACTION => ZERO MUTATION => ZERO EFFECT ON ANY LATER
+EVENT. The executor keeps no state and chooses no other tree: the checkout running the session
+judges every event from that event's payload alone (a session transcript cannot tell an
+executed mutation from one the hook refused).
 """
 from __future__ import annotations
 
@@ -128,7 +126,7 @@ def test_both_hosts_wire_the_one_executor_with_the_same_rosters():
 
 
 def test_every_wired_executable_refuses_an_unreadable_payload():
-    """RC-541: 'cannot judge' and 'judged clean' must not share an exit code — measured for
+    """'Cannot judge' and 'judged clean' must not share an exit code — measured for
     every executable the wiring names, not a hand list."""
     members = {t for cmds in _wired_commands().values() for c in cmds for t in c.split() if t.startswith("tools/")}
     assert members >= {"tools/hook_chain.py", "tools/operator_law_guard.py", "tools/process_lock_guard.py"}
@@ -154,7 +152,7 @@ def test_a_member_block_reaches_the_host_with_the_members_stderr_and_the_judge_b
     assert "JUDGED BY:" in chain.stderr and str(ROOT.resolve()) in chain.stderr.replace("\\\\", "\\"), chain.stderr
 
 
-# ============================================================ RC-544 adversarial proofs
+# ============================================================ the invariant's adversarial proofs
 
 def test_1_a_blocked_mutation_has_zero_effect_on_the_next_event(tmp_path):
     """Attempt a blocked destructive command, then an ordinary edit and an ordinary read:
