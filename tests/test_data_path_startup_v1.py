@@ -22,6 +22,7 @@ from websockets.asyncio.client import connect
 import db
 import launch
 import live_market_plane as lmp
+import push_changes
 import server
 from app.market_data.schwab.streaming import capture, live_ui
 from app.market_data.schwab.streaming.live_ui import serve_live_ui
@@ -319,7 +320,7 @@ def test_a_daemon_whose_live_ui_port_is_held_ends_at_once_with_why_and_its_windo
     assert "OSError" in log, log
 
 
-def test_the_stored_levels_are_priced_while_a_page_on_another_ticker_takes_ticks(view):
+def test_the_stored_levels_are_priced_while_a_page_on_another_ticker_takes_ticks():
     """At a console start, the stored captures of the tickers the daemon has not delivered yet are
     priced while a page views a ticker whose options stream. Through the real code, on Schwab's
     captures (tests/real_chains.py): CRWD's chain delivered and priced, a page open on it
@@ -344,7 +345,8 @@ def test_the_stored_levels_are_priced_while_a_page_on_another_ticker_takes_ticks
             server._terrain_cache.pop(name, None)
     with server._chains_waiting_lock:
         server._chains_delivered.difference_update(names)
-    view(tk)
+    push_changes.bind(None)                             # no event loop: another test's may be closed
+    page = push_changes.subscribe(tk)
     ticking = threading.Event()
 
     def ticks():
@@ -372,6 +374,7 @@ def test_the_stored_levels_are_priced_while_a_page_on_another_ticker_takes_ticks
             ticking.set()
             ticker.join(10)
     finally:
+        push_changes.unsubscribe(tk, page)
         while True:                                     # what still waits is priced
             server._chain_pricing.submit(lambda: None).result(timeout=60)
             with server._chains_waiting_lock:
