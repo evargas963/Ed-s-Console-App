@@ -19,8 +19,7 @@ def load_dotenv_file(path: Path = ENV_FILE) -> None:
         load_dotenv(path, override=False)
 
 
-# No default ticker (universality, operator 2026-09-23): every endpoint and CLI requires the
-# ticker it acts on -- a missing one used to silently become SPY.
+# No default ticker: every endpoint and CLI requires the ticker it acts on.
 
 # Schwab Dev Portal requires HTTPS callback URL (non-secret default).
 SCHWAB_CALLBACK_URL = "https://127.0.0.1:8182"
@@ -54,16 +53,13 @@ def schwab_live_blocked_for(
 
     ED_CI_OFFLINE with explicit non-placeholder credentials (unit tests) does not block.
 
-    RC-514: absent credentials block too, and did not before. That was the hole under the
-    failure-domain architecture (docs/ARCHITECTURE.md "Failure domains").
-    `schwab_credentials_are_ci_placeholders` returns False for an empty value, so with NO
-    credentials this returned False: `build_client_from_token` built a client, and the
-    capability presented itself as live while failing one unauthenticated request at a time.
-    The launcher compensated by refusing to start the WHOLE application — the wrong boundary.
-
-    Blocking here is what lets the launcher stop doing that: the one fail-closed site,
-    `schwab_client.build_client_from_token`, then builds no client and reports the capability
-    unavailable instead of pretending; with no client, no Schwab call can be made.
+    Absent credentials block too (docs/ARCHITECTURE.md "Failure domains"):
+    `schwab_credentials_are_ci_placeholders` returns False for an empty value, so without this
+    check a client would be built with no credentials and the capability would read as live
+    while failing one unauthenticated request at a time. With it, the one fail-closed site,
+    `schwab_client.build_client_from_token`, builds no client and reports the capability
+    unavailable; with no client, no Schwab call can be made, and the rest of the application
+    still starts.
     """
     if schwab_credentials_are_ci_placeholders(api_key, app_secret):
         return True
