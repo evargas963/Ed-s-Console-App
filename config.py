@@ -83,7 +83,8 @@ class AppConfig:
 
 def token_path() -> str:
     """The Schwab token file, absolute: SCHWAB_TOKEN_PATH, else schwab_token.json under the
-    runtime root (this checkout unless ED_RUNTIME_ROOT moves it). The console reads only this
+    runtime root (this checkout, or the primary checkout for a linked worktree, unless
+    ED_RUNTIME_ROOT moves it). The console reads only this
     (the token's age); it holds no Schwab credential."""
     env_token = os.getenv("SCHWAB_TOKEN_PATH")
     if env_token:

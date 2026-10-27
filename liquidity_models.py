@@ -38,8 +38,8 @@ MAX_BINS_PER_BAR: int = 5000
 @dataclass(frozen=True)
 class VolumeProfile:
     """Volume by price from bars, each bar's volume spread evenly over its [low, high] in tick
-    bins -- a derived distribution, not traded volume at a price (Schwab sends no trade prints)
-    -- and the value area read from it. `bins`: ((price, volume), ...) in price order. `bars`:
+    bins -- a derived distribution from 1-minute bars, not traded volume at a price from trade
+    prints -- and the value area read from it. `bins`: ((price, volume), ...) in price order. `bars`:
     the bars given; `bars_without_volume`: those Schwab sent with no volume, which the profile
     cannot place and does not contain."""
     tick_size: float

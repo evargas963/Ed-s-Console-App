@@ -58,8 +58,8 @@ def permanent_database_identity(p: Path | str) -> PermanentDatabaseIdentity | No
 
 def default_console_db_path() -> Path:
     """Resolved default DB for this process: the canonical one, for every process. No agent
-    role or directory name selects another; ``EdDB.__init__`` admits only
-    ``is_canonical_db_path``."""
+    role or directory name selects another; ``EdDB.__init__`` admits only the canonical path
+    unless its caller opts in (``allow_noncanonical``, ``ED_CONSOLE_ALLOW_NONCANONICAL_DB``)."""
     return canonical_console_db_path()
 
 
