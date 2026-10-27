@@ -1,7 +1,8 @@
-/* Ed Console design tokens — ONE semantic contract, TWO palettes (RC-UI-1).
+/* Ed Console design tokens — ONE semantic contract, TWO palettes.
    Components consume ONLY the semantic --ed-* names; theme is a token-value swap, never a second
    stylesheet or forked component. The effective theme is ALWAYS resolved to a single data-theme
-   value on <html> (light or dark) — by the first-paint guard and the one theme owner in ed-core —
+   value on <html> (light or dark) — by the one theme owner, window.EdTheme, the pre-CSS bootstrap
+   in index.html, which ed-core only consumes —
    so the CSS needs exactly two palette blocks and there is no duplicated light/dark definition.
    Financial semantics never invert: --ed-pos/--ed-heat-pos are GREEN and --ed-neg/--ed-heat-neg
    are RED in BOTH themes; blue is interaction; amber is warning/stale. */

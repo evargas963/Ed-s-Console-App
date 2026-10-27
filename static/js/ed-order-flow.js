@@ -1,8 +1,8 @@
 /* Ed Console — Order Flow / "Book · DOM" subview. PRESENTATION ONLY.
    Real L2 book microstructure for the UNDERLYING ticker itself (NASDAQ_BOOK/NYSE_BOOK), via
    /api/order-flow/microstructure -- the SAME canonical app.options.order_flow.engine.
-   compute_book_microstructure the options Flow tab already reads (server.py:15093 delegates
-   to the identical function server.py:15124 does for one option contract's book). Reuses that
+   compute_book_microstructure the options Flow tab already reads (the route and the engine's
+   option-contract book call the one function). Reuses that
    view's exact .fl-* CSS grammar so a book reads the same whether it's an option contract's
    or the ticker's own -- one visual language, not a second one invented here.
 
