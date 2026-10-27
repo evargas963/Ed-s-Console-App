@@ -59,9 +59,7 @@ sys.path.insert(0, APP_DIR)
 # Visual severity marker: WARNING / ERROR / CRITICAL get a bracket-tag prefix
 # (ANSI-colored on a TTY; plain ASCII otherwise) so operator-actionable events
 # stand out in the dense INFO/DEBUG console stream. Steady-state DEBUG/INFO
-# remain unmarked. The operator-flagged regression was post-LIVE-UI-A: charm/
-# IV/seq_len logs were correctly demoted to DEBUG, but the residual WARNINGs
-# then sat in the same visual stream as INFO — easy to miss.
+# remain unmarked.
 class _LevelMarkerFormatter(logging.Formatter):
     _ANSI_BY_LEVEL = {
         logging.WARNING:  "\033[33m[WARN]\033[0m ",   # yellow
@@ -87,8 +85,8 @@ class _LevelMarkerFormatter(logging.Formatter):
 
 # Quiet-window / LIVE closeout sink. Root handler so ANY logger (db, ed_server,
 # uvicorn, …) at INFO+ lands here; gate fails on WARNING+ / traceback.
-# RC-523: under the RUNTIME root (runtime_layout), which is this checkout unless
-# ED_RUNTIME_ROOT moves it — runtime output must not pollute the source tree (§8).
+# Under the RUNTIME root (runtime_layout), which is this checkout unless ED_RUNTIME_ROOT
+# moves it (docs/ARCHITECTURE.md "Runtime state lives outside the source").
 import runtime_layout  # noqa: E402
 from runtime_layout import logs_dir as _runtime_logs_dir  # noqa: E402
 
@@ -110,7 +108,7 @@ def install_ed_server_file_sink(
     level: int = logging.INFO,
 ) -> logging.Handler:
     """Attach the log file on the root logger for logs/ed_server.log: rotated at 50 MB with one
-    previous file kept, the capture daemon's own policy (the plain file reached 1.3 GB, 2026-09-27).
+    previous file kept, the capture daemon's own policy (unrotated, the file reached 1.3 GB).
     Every record is flushed as it is written (logging.StreamHandler.emit).
 
     Captures all loggers (root). INFO+ so a healthy process proves the sink is
@@ -150,16 +148,11 @@ def _install_visual_severity_markers(level: int = logging.INFO) -> None:
         root.removeHandler(h)
     root.addHandler(handler)
     root.setLevel(level)
-    # t6/RC-232 board (quiet-gate finding, root-caused): `import server` under pytest
-    # attached this SAME live-log file sink, so TEST-emitted warnings (the deliberate
-    # ZZQD/ZZQE failure fixtures, fresh-DB migration notices) appended to logs/ed_server.log
-    # and the quiet-window gate read them as live console noise. The ZZQD "leak" was never
-    # in any DB — it was test log pollution through the shared sink. Tests keep the stream
-    # handler; only the FILE sink is skipped under pytest (the sink's own unit test calls
-    # install_ed_server_file_sink directly with a tmp path and is unaffected).
-    # A checkout bound to ANOTHER checkout's runtime (runtime_layout.live_binding_error) must
-    # not write that checkout's live log -- measured 2026-09-23: a worktree console appended
-    # 15,451 errors to the production logs/ed_server.log. The stream handler still prints.
+    # Under pytest only the FILE sink is skipped: a test's deliberate warnings would land in
+    # logs/ed_server.log and read as live console noise (the sink's own test calls
+    # install_ed_server_file_sink with a tmp path). A checkout bound to ANOTHER checkout's
+    # runtime (runtime_layout.live_binding_error) does not write that checkout's live log: a
+    # worktree console appended 15,451 errors to production's. The stream handler still prints.
     if ("pytest" not in sys.modules and not os.environ.get("PYTEST_CURRENT_TEST")
             and runtime_layout.live_binding_error() is None):
         install_ed_server_file_sink(ED_SERVER_LOG_PATH, level=level)
@@ -169,7 +162,7 @@ _install_visual_severity_markers(logging.INFO)
 log = logging.getLogger("ed_server")
 
 
-# ── Import all existing Ed Console modules (unchanged) ───────────────────────
+# ── Ed Console modules ───────────────────────────────────────────────────────
 from config import token_path
 from db_authority import canonical_stream_db_path
 
@@ -212,8 +205,8 @@ SPOT_SOURCE_NONE = "none"                       # Schwab has sent no price
 
 
 #: Seconds the graceful shutdown gets before the process is killed outright. Generous
-#: enough for real teardown (the executors above cancel queued work immediately), short
-#: enough that the operator is never held hostage by one wedged vendor call.
+#: enough for real teardown, short enough that the operator is never held hostage by one
+#: blocked worker.
 SHUTDOWN_DEADLINE_SEC: float = 12.0
 _shutdown_watchdog_armed = threading.Event()
 
@@ -242,12 +235,10 @@ def _hard_exit(reason: str) -> None:
 def _arm_shutdown_watchdog(deadline_sec: float = SHUTDOWN_DEADLINE_SEC) -> None:
     """Kill the process if graceful shutdown has not finished within the deadline.
 
-    REFUSES under pytest (RC-10 class). TestClient runs the lifespan inside the TEST
-    process; arming here left a daemon thread that outlived the test and os._exit(0)'d
-    PYTEST ITSELF 12 s later -- mid-suite, silently, exit code 0, all captured output
-    lost. OBSERVED 2026-07-20: tests/adversarial/test_remaining_route_inventory.py
-    "passed" with zero output; Cursor's full-suite run died the same way and read as a
-    hang. A watchdog that can kill the test runner is worse than the hang it prevents.
+    REFUSES under pytest. TestClient runs the lifespan inside the TEST process; an armed
+    watchdog outlives the test and os._exit(0)s PYTEST ITSELF 12 s later -- mid-suite,
+    silently, exit code 0, all captured output lost. A watchdog that can kill the test
+    runner is worse than the hang it prevents.
     """
     if os.environ.get("PYTEST_CURRENT_TEST"):
         return
@@ -268,8 +259,8 @@ def _arm_shutdown_watchdog(deadline_sec: float = SHUTDOWN_DEADLINE_SEC) -> None:
 def _install_signal_handlers() -> None:
     """First Ctrl+C asks politely; a second one is not a request.
 
-    Without this the operator's only recourse was killing the process from another
-    window, because uvicorn's graceful path was blocked downstream of the signal.
+    Without this, a console whose uvicorn graceful path is blocked downstream of the signal
+    stops only when it is killed from another window.
     """
     def _on_signal(signum, _frame):
         if _shutdown_watchdog_armed.is_set():
@@ -280,12 +271,10 @@ def _install_signal_handlers() -> None:
         _arm_shutdown_watchdog()
         raise KeyboardInterrupt
 
-    # RC-166: SIGBREAK (Ctrl+Break on Windows) was NOT registered, so it bypassed this handler
-    # entirely and the 12s hard-exit watchdog never armed. MEASURED 2026-07-31: a console sent
-    # CTRL_BREAK_EVENT took 24.8s to exit — twice the deadline that exists to bound it — because
-    # the exit fell through to Python's default and waited on whatever background worker was
-    # blocked. Ctrl+Break is the operator's second lever when Ctrl+C is being swallowed, so it
-    # must reach the same bounded path. `getattr` because SIGBREAK is Windows-only.
+    # SIGBREAK (Ctrl+Break on Windows) takes the same bounded path: unregistered, it falls through
+    # to Python's default and waits on whatever background worker is blocked (measured: 24.8 s to
+    # exit, twice the deadline). Ctrl+Break is the operator's second lever when Ctrl+C is being
+    # swallowed. `getattr` because SIGBREAK is Windows-only.
     # The launcher starts the console in a process group of its own (launch.start_console), which
     # Windows starts with Ctrl+C switched off; switched back on, the operator's Ctrl+C stops it.
     if sys.platform == "win32":
@@ -333,26 +322,6 @@ def resolve_spot(ticker: str, *, now: float) -> tuple[float | None, str, float |
     return None, outage, None
 
 
-# (REST fast-quote writer DELETED 2026-09-24, independent-audit finding #3: it wrote REST
-# quotes into live_market_plane by REPLACING the ticker's row -- and streamed LEVELONE deltas
-# merge onto the prior row, so the next streamed delta could inherit REST bid/ask under the
-# schwab_streaming_level_one label. It also served a stale row "carried forward" on auth
-# failure. The plane now has ONE writer: the stream. /api/fast-quote reads it.)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# NAMED CONSTANTS — every tunable in one place.
-# Nothing below should contain a raw magic number for these parameters.
-# ─────────────────────────────────────────────────────────────────────────────
-
-# ETF zone classification (spy_zone / qqq_zone / iwm_zone)
-
-
-# Builds OHLC bars from spot price ticks. Server polls every ~30s, so:
-#   5-min bars = ~10 ticks per bar
-#   1-min bars = ~2 ticks per bar
-# Bars are keyed by ticker. Completed bars stored in ring buffer; maxlen from math_exposure.
-# ─────────────────────────────────────────────────────────────────────────────
 #: one RTH day of 1-minute bars
 CANDLE_1M_MAX_BARS: int = 390
 from micro_structure import Candle
@@ -531,8 +500,6 @@ def _watchlist(now: float) -> "list[str] | None":
     return lmp.last_watchlist()
 
 
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # FastAPI app
 # ─────────────────────────────────────────────────────────────────────────────
@@ -541,12 +508,12 @@ from contextlib import asynccontextmanager
 
 @asynccontextmanager
 async def _app_lifespan(app):
-    """Startup and shutdown: logger, order flow, SSE, ML scheduler."""
+    """Startup and shutdown: the live-binding check, the signal handlers, the levels loop, the bar
+    writer, the daemon's feed and the page push."""
     # ── Startup ─────────────────────────────────────────────────────────────
     # FIRST, before any worker, client or database is touched: a checkout whose runtime is
     # ANOTHER checkout (a worktree converging on production) does not start a live console
-    # (runtime_layout.live_binding_error -- a worktree console ran against production on
-    # 2026-09-23). Refusing here stops uvicorn before it serves anything.
+    # (runtime_layout.live_binding_error). Refusing here stops uvicorn before it serves anything.
     _binding = runtime_layout.live_binding_error()
     if _binding is not None:
         log.critical("LIVE CONSOLE REFUSED: %s", _binding)
@@ -558,7 +525,7 @@ async def _app_lifespan(app):
     # The levels loop: the stored levels at startup, then the status line and the price levels
     # (the chains arrive from the daemon, _on_chain).
     start_terrain_loop()
-    # RC-69: bar collection is its own always-on service — never a side-effect of rendering.
+    # bar collection is its own always-on service, never a side-effect of rendering
     start_bar_writer()
 
     # The live feed from the capture daemon (the only Schwab client): every streamed equity
@@ -570,21 +537,15 @@ async def _app_lifespan(app):
 
     push_changes.bind(asyncio.get_running_loop())
 
-
     yield
 
     # ── Shutdown ───────────────────────────────────────────────────────────
-    # BOUNDED BY CONSTRUCTION. Everything below joins background workers
-    # (`shutdown(wait=True)`, `join_timeout=40`), and `cancel_futures=True` only drops
-    # QUEUED work -- it cannot interrupt a RUNNING one. A single worker inside a slow
-    # Schwab call or a long query therefore blocked the whole chain, so Ctrl+C was
-    # accepted and the console never exited (operator, 2026-07-20). Python then makes it
-    # worse: concurrent.futures registers an atexit hook that joins every executor's
-    # non-daemon workers, so even abandoning the lifespan would not free the interpreter.
-    # The watchdog guarantees the process dies whether or not the joins below return.
+    # BOUNDED BY CONSTRUCTION. stop_bar_writer joins the bar writer, and concurrent.futures'
+    # atexit hook joins the pricing thread (_chain_pricing): neither can interrupt a RUNNING
+    # piece of work, so one blocked worker would hold the exit, and abandoning the lifespan
+    # would not free the interpreter. The watchdog ends the process whether or not they return.
     _arm_shutdown_watchdog()
-    # Live-plane feed task (reads the canonical capture daemon's DB — no Schwab socket
-    # of its own to close here since single-stream-authority root fix 2026-08-30).
+    # the daemon's feed task; the console holds no Schwab socket of its own
     try:
         stop_order_flow_stream(join_timeout=40.0)
     except Exception as e:
@@ -599,11 +560,10 @@ app = FastAPI(title="Ed Console API", version="1.0", lifespan=_app_lifespan)
 
 class _RevalidateStaticFiles(StaticFiles):
     """StaticFiles sends no Cache-Control at all, leaving freshness to each browser's own
-    heuristic (commonly ~10% of Last-Modified age, RFC 7234). MEASURED (2026-09-11): after a
-    real code change + server restart, a browser served a stale ed-gamma.js across THREE
-    separate full navigations (not just a soft reload) with zero requests reaching this
-    server for that file -- silent staleness a `curl` or a direct no-store fetch never
-    reveals, because it only affects the browser's own normal navigation path. `no-cache`
+    heuristic (commonly ~10% of Last-Modified age, RFC 7234). MEASURED: after a code change
+    and a server restart, a browser served a stale ed-gamma.js across THREE separate full
+    navigations with zero requests reaching this server for that file -- staleness a `curl`
+    or a direct no-store fetch never reveals. `no-cache`
     forces revalidation on every load (the existing ETag/Last-Modified still make an
     unchanged file a cheap 304, so this costs nothing beyond a round trip) instead of
     trusting a heuristic a shipped fix cannot control.
@@ -655,7 +615,7 @@ def root():
     html_path = static_dir / "index.html"
     if not html_path.exists():
         return HTMLResponse("<h1>static/index.html not found</h1>", status_code=404)
-    # Avoid stale shell JS after edits (browser disk cache of "/" was masking localForce→force fix).
+    # "/" is never cached: a cached page would run stale page code after an edit
     return HTMLResponse(
         content=_with_live_ui_port(html_path.read_text(encoding="utf-8")),
         headers={
@@ -724,8 +684,8 @@ def _merged_recent_crosses(ticker: str, n: int) -> "list[dict]":
 
 
 def _required_ticker(ticker: Optional[str]) -> str:
-    """The ticker the caller asked for -- never a default one (universality, operator
-    2026-09-23: a missing ticker used to silently become SPY). Blank -> HTTP 400."""
+    """The ticker the caller asked for -- never a default one: every ticker is treated the same.
+    Blank -> HTTP 400."""
     t = str(ticker or "").strip()
     if not t:
         raise HTTPException(status_code=400, detail="ticker is required")
@@ -1805,21 +1765,19 @@ def _atr_fields(tk: str, now: datetime) -> dict:
     return {"atr_daily": a.daily, "atr_weekly": a.weekly, "atr_monthly": a.monthly}
 
 
-#: WHICH producer computed a set of levels. The radar deliberately merges two of them, and an
-#: unlabelled merge is how systematically-different numbers get ranked as peers (RC-82).
+#: which producer computed a set of levels, served with them (levels_source)
 LEVELS_SOURCE_WIDE_CHAIN = "wide_chain_loop"      # _publish_levels, the single producer
 
 
-# ── CR-03 screen 1 — per-strike gamma/volume bars for the histogram panel ────
-# Feeds the /chart sidebar: today's per-strike dealer gamma + traded volume, plus
-# the previous market day's last chain capture (the day-over-day migration ghosts), each in
-# three expiry scopes (all / near<=7DTE / far). Read-only, no Schwab call. Bar heights use the
-# same exposure math as terrain.
+# ── Per-strike gamma and volume bars for the histogram panel ─────────────────
+# Today's per-strike dealer gamma and traded volume, plus the previous market day's last chain
+# capture (the day-over-day migration), each in three expiry scopes (all / near<=7DTE / far).
+# Read-only, no Schwab call. Bar heights use the same exposure math as the levels.
 def _prior_strikes(captures: list, chain_ts: float, product: str) -> "tuple[dict | None, str | None]":
     """The previous market day's close before the day of the chain the ticker's rows came from,
     as per-strike rows ({all, near, far}), with its source. On a closed market today's rows ARE
-    the newest capture; the wall clock's date picked that same capture and compared it with
-    itself (every change 0, `compared` true -- 2026-09-27). Run by _publish_levels when the
+    the newest capture, so the day before is the chain's day's, not the wall clock's (which
+    picks that same capture and compares it with itself). Run by _publish_levels when the
     ticker's newest capture or its chain's day changes, on the same two newest market days'
     captures the forces read: the chain's day is today or the newest capture's, so the day
     before it is one of those two."""
@@ -1979,7 +1937,7 @@ def get_bars1m(ticker: str = Query(...),
                tf: str = Query(default="1", pattern=r"^(1|3|5|15|30|60|D)$")):
     """Completed Schwab 1m bars, newest-last: [{t,o,h,l,c,v}] epoch-seconds bar starts, rolled
     up to `tf` by aggregate_bars. `last_bar`: the newest completed minute and its label."""
-    tk = ticker_storage_key(_required_ticker(ticker))   # RC-126: SPX -> $SPX etc., ONE authority
+    tk = ticker_storage_key(_required_ticker(ticker))   # SPX -> $SPX
     bars = [_bar_dict(c) for c in _bars_1m(tk, int(limit))]
     out = [_lpr.with_change(b) for b in aggregate_bars(bars, tf)]
     last = bars[-1]["t"] if bars else None
@@ -2087,8 +2045,8 @@ def get_charm_by_strike(ticker: str = Query(...), scope: ScopeQuery = "auto", ce
 def get_options_tape(ticker: str = Query(...),
                      contract: Optional[str] = Query(default=None),
                      limit: int = Query(default=100)):
-    """Discrete option TRADE prints (operator field-inventory audit, 2026-09-13) — the
-    Options Flow tape, locked to the operator's own required schema: Time/Symbol/Expiry/
+    """Discrete option TRADE prints — the Options Flow tape, in the operator's required
+    columns: Time/Symbol/Expiry/
     Type/Strike/Bid x Size/Ask x Size/Trade/Size/Premium/Volume/OI/IV/Delta/provenance.
     Sourced from app.options.order_flow.history.TAPE, the prints the console builds from
     Schwab's LEVELONE_OPTIONS as the daemon pushes them — no derived/estimated field, no
@@ -2149,12 +2107,6 @@ def get_order_flow_book_heatmap(ticker: str = Query(...),
     return JSONResponse(payload)
 
 
-#: RC-192/RC-199 FORCES (RE-LANDED 2026-08-02 after a worktree reset destroyed the
-#: uncommitted originals — RC-210): ΔOI/DEX from the two newest banked wide chains; the
-#: strip's GEX/OV rows come from the live strikes payload client-side; ΔOI and DEX need the
-#: two newest wide captures, which only the server can read.
-
-
 @app.get("/api/forces")
 def get_forces(ticker: str = Query(...)):
     """The ticker's forces, as the levels producer computed them from its chain captures."""
@@ -2174,14 +2126,12 @@ def _forces_absent(tk: str) -> dict:
 
 
 def _forces_from_captures(tk: str, captures: list, charm_by_strike: dict | None = None) -> dict:
-    """Forces rows from banked chains (RC-192/RC-199): per-strike OI delta FIRST, then
-    bucketed by the NEWER capture's spot — bucketing each day by its own spot lets the moving
-    boundary masquerade as OI change (measured inversion, OPEN_ITEMS DIR-01 method note).
-    DEX is the newer capture's net_dex_dollars side sums. CHARM side sums (RC-199): operator
-    2026-08-02 revoked the DIR-01(i) vote-lock — serve dealer-signed net_charm below/above
-    spot from the newer banked chain. `charm_by_strike` is that capture's map when this
-    publication just priced it. Otherwise the same function runs once, at that capture's
-    valuation instant.
+    """Forces rows from banked chains: per-strike OI delta FIRST, then bucketed by the NEWER
+    capture's spot — bucketing each day by its own spot lets the moving boundary masquerade as
+    OI change. DEX is the newer capture's net_dex_dollars side sums; CHARM the dealer-signed
+    net_charm below and above spot on the newer banked chain. `charm_by_strike` is that
+    capture's map when this publication just priced it. Otherwise the same function runs once,
+    at that capture's valuation instant.
     Run by _publish_levels when the ticker's newest capture changes, on `captures`: the two
     newest market days' captures (last_capture_per_day, newest first), read once for it.
     """
@@ -2204,8 +2154,8 @@ def _forces_from_captures(tk: str, captures: list, charm_by_strike: dict | None 
             doi = {k: oi1[k] - oi0[k] for k in oi1 if k in oi0}
             dex1 = {k: d for k, v in per1.items() if (d := bucket_metric(v, "net_dex_dollars")) is not None}
             spot1 = float(s1)
-            # RC-199: CHARM below/above from the NEWER banked wide chain (full book).
-            # Dealer-signed net_charm = call_charm - put_charm per strike (RC-179).
+            # CHARM below/above from the NEWER banked wide chain (full book).
+            # Dealer-signed net_charm = call_charm - put_charm per strike.
             charm_below = charm_above = None
             try:
                 if isinstance(charm_by_strike, dict):
@@ -2213,9 +2163,8 @@ def _forces_from_captures(tk: str, captures: list, charm_by_strike: dict | None 
                 else:
                     per_ch = compute_charm_by_strike(c1, spot1, now=clock1, product=product)
                 if per_ch:
-                    # RC-276: a strike with no net_charm is not a strike with zero charm.
-                    # Summed as 0.0 it silently tilted the below/above pair the console
-                    # renders as dealer charm pressure.
+                    # a strike with no net_charm is not a strike with zero charm: it is left
+                    # out of the below/above sums, never summed as 0.0
                     def _ch(v: dict) -> float | None:
                         return float_finite_or_none(v.get("net_charm"))
 
@@ -2665,10 +2614,9 @@ def api_order_flow_options_microstructure(contract: str = Query(...)):
     app.options.order_flow.live_payload.options_live_payload, which reads
     the SAME app.options.order_flow.engine.compute_book_microstructure the equity route reads — no
     parallel book-imbalance computation for options. `contract` MUST be a chain response's
-    own "symbol" field (OSI format, e.g. "SPY   260820C00767000"); this route does not
-    construct or validate that format, it only serializes whatever content has been
-    replayed for the literal string given. No ticker-roster touch here — a contract symbol
-    is not a ticker and does not participate in that enrollment concept."""
+    own "symbol" field (OSI format, e.g. "SPY   260820C00767000"); this route neither builds
+    nor checks that format, it serializes what the console holds for the literal string given.
+    A contract symbol is not a ticker."""
     c = (contract or "").strip()
     if not c:
         return JSONResponse({"error": "contract is required"}, status_code=400)
@@ -2759,7 +2707,6 @@ def get_expiries(ticker: str = Query(...)):
     return JSONResponse({"expiries": exps, "dte": dte, "labels": labels,
                          "reason": None if exps else (terrain_staleness(None, ticker, now=now)["levels_stale_reason"]
                                                       if not t else "no expiry listed in the published chain")})
-
 
 
 #: /api/chain's reason while no chain of the ticker is held and no chain error is recorded
@@ -2982,7 +2929,7 @@ def api_build():
 
 
 def _publish_price_levels(ticker: str, now: datetime) -> None:
-    """THE producer of a ticker's price-level snapshot (Phase 2A): materialized for the market's
+    """THE producer of a ticker's price-level snapshot: materialized for the market's
     session at `now` (market_session_date: today's while a session is open, the newest one's
     while Closed) from its completed Schwab 1m bars, by the bar writer after each of the
     ticker's bars, and by the levels loop for a ticker with none yet for the session (a restart,
@@ -3020,7 +2967,6 @@ def canonical_price_level_snapshot(ticker: str, now: datetime):
 #: why a route serves no price levels for a ticker
 NO_PRICE_LEVELS_REASON = ("no price levels published for this ticker for the market's session yet (they are "
                           "built from its 1-minute bars on each new bar and at the console's start)")
-
 
 
 #: the terrain's price levels the chart draws (terrain_engine.compute_terrain), in its words
@@ -3299,10 +3245,8 @@ def get_confluence(ticker: str = Query(...),
 
 
 @app.get("/api/levels")
-# Phase 2A (operator 2026-08-08): /api/levels is the canonical SERVING CONTRACT for the
-# one materialized PriceLevelSnapshot — it serializes, it does not compute. Every other
-# surface (liquidity-snapshot, market_context, /api/state, ML features, persistence,
-# chart) carries the values out of the same snapshot object and generation.
+# /api/levels serves the one published PriceLevelSnapshot: it serializes, it does not
+# compute. /api/liquidity-snapshot carries its values from the same snapshot and generation.
 def get_levels(ticker: str = Query(...),
                tf: Annotated[str, Query(pattern=r"^(1|3|5|15|30|60|D)$")] = "1"):
     """Single levels contract (schema v1): id/price/family/evidence_tier/provenance/staleness."""
@@ -3531,9 +3475,7 @@ def _spot_location(zones: list, spot) -> "dict | None":
 
 
 @app.get("/api/liquidity-snapshot")
-# SWITCH-LATENCY FIX: sync def → threadpool. This fires on every ticker switch (client
-# setTimeout pollLiquiditySnapshot) and every 60s; it does a blocking Schwab bar fetch with
-# no await, so as async it stalled the event loop on each switch.
+# a plain def: FastAPI runs it on its threadpool, so building the zones never holds the event loop
 def get_liquidity_snapshot(ticker: str = Query(...)):
     return liquidity_snapshot(ticker, now_et())
 
@@ -3547,8 +3489,7 @@ def liquidity_snapshot(ticker: str, now: datetime):
         ticker_upper = ticker_storage_key(ticker)
         config = PlaybookConfig(max_zone_width=2.0)
         extra, fusion_status = _liquidity_option_levels(ticker_upper, now.timestamp())
-        # the one spot (resolve_spot); a stale side-cache served 759.725 beside a 760.13 header
-        # (2026-09-14, RC spot-360-audit)
+        # the one spot (resolve_spot), the header's own
         spot_for_zones, _, _ = resolve_spot(ticker_upper, now=now.timestamp())
         if spot_for_zones is not None:
             extra = list(extra) + [(spot_for_zones, "SPOT_LIVE")]
