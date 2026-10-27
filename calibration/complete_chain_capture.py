@@ -285,9 +285,10 @@ class ChainSweep:
 
     def work(self, schwab_client, stop: threading.Event) -> None:
         """The thread's life, until `stop`: on the daemon's client (`schwab_client()`), the
-        market's sessions for today and the days before it, then a rotation of the watchlist
-        tickers whose chain is due and the price history of those whose candles are due; with
-        none due, it looks again each second. With the watchlist empty, or no sign-in held
+        market's sessions for today and the days before it, then the price history of the
+        watchlist tickers whose candles are due (the price-built levels wait for it, a rotation
+        takes minutes) and a rotation of those whose chain is due; with none due, it looks again
+        each second. With the watchlist empty, or no sign-in held
         (signed_in), it asks Schwab for nothing and looks again each second: a sign-in Schwab
         refused fails every request at once, and a round of them would only log each failure."""
         while not stop.is_set():
@@ -300,10 +301,10 @@ class ChainSweep:
             now = datetime.fromtimestamp(self.clock(), ET)
             chains = [t for t in sorted(self.watchlist) if self.chain_due(t, now)]
             candles = [t for t in sorted(self.watchlist) if self.candles_due(t, now)]
-            if chains:
-                self.rotation(schwab_client, chains, stop)
             if candles:
                 self.candles(schwab_client, candles, stop)
+            if chains:
+                self.rotation(schwab_client, chains, stop)
             if not chains and not candles:
                 stop.wait(1.0)
 
