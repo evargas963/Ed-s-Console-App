@@ -30,7 +30,7 @@ class PathFacts(NamedTuple):
     governed: bool      # Q1 — does THIS repository's law apply to this path
     rel: str            # repo-relative posix when governed and resolvable, else normalised input
     production: bool    # Q2 — governed AND part of the product surface
-    compliance_surface: bool   # governed AND editing it is how you comply (ALWAYS_ALLOWED_PREFIXES)
+    rc66_exempt: bool   # governed AND editing it is how you comply (ALWAYS_ALLOWED_PREFIXES)
 
 
 def _resolve_for_repo(p: str, root: Path) -> tuple[Path | None, bool]:
@@ -54,7 +54,8 @@ def classify_path(p: str, repo: str | Path | None = None) -> PathFacts:
     absolute path, so it would class an absolute scratchpad file as production. `repo` names
     the governing root and defaults to this repository.
 
-    Fails CLOSED: an unresolvable path is governed, is production, and is not exempt.
+    Fails CLOSED: an unresolvable path is governed, is production, and is not a compliance
+    surface.
     """
     root = REPO if repo is None else Path(repo)
     try:
@@ -64,18 +65,18 @@ def classify_path(p: str, repo: str | Path | None = None) -> PathFacts:
     resolved, resolvable = _resolve_for_repo(p, root)
     if not resolvable:
         return PathFacts(governed=True, rel=Path(p).as_posix(),
-                         production=True, compliance_surface=False)
+                         production=True, rc66_exempt=False)
     try:
         rel = resolved.relative_to(root).as_posix()
     except ValueError:
         # Genuinely outside the governing tree — governed by that tree's own rules, not ours.
         return PathFacts(governed=False, rel=resolved.as_posix(),
-                         production=False, compliance_surface=False)
+                         production=False, rc66_exempt=False)
     return PathFacts(
         governed=True,
         rel=rel,
         production=rel.endswith(PRODUCTION_SUFFIXES) and not rel.startswith(NOT_PRODUCT_PREFIXES),
-        compliance_surface=rel.startswith(ALWAYS_ALLOWED_PREFIXES),
+        rc66_exempt=rel.startswith(ALWAYS_ALLOWED_PREFIXES),
     )
 
 

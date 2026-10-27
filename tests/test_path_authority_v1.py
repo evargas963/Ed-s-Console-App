@@ -49,15 +49,26 @@ def test_legitimate_control_repo_non_production_paths(rel):
     assert facts.production is False, rel
 
 
-def test_fail_closed_unresolvable_path_is_not_silently_ungoverned():
-    """FAIL-CLOSED: a purported repo path that cannot be resolved stays ours AND production;
-    unmeasurable is never ungoverned. INDUCED CONDITION: a path holding a NUL byte, which no
-    filesystem resolves."""
-    facts = G.classify_path("tools/\x00server.py")
+def test_fail_closed_unresolvable_path_is_not_silently_ungoverned(monkeypatch):
+    """FAIL-CLOSED: a purported repo path that cannot be resolved stays ours AND production.
+
+    Unmeasurable is never ungoverned. Resolution is forced to raise so the branch is
+    exercised for real rather than asserted about.
+    """
+    real_resolve = Path.resolve
+
+    def boom(self, *a, **k):
+        raise OSError("resolution unavailable")
+
+    monkeypatch.setattr(Path, "resolve", boom)
+    try:
+        facts = G.classify_path("tools/server.py")
+    finally:
+        monkeypatch.setattr(Path, "resolve", real_resolve)
 
     assert facts.governed is True, "unresolvable must not become ungoverned"
     assert facts.production is True, "unresolvable must not become non-production"
-    assert facts.compliance_surface is False, "unresolvable must not become a compliance surface"
+    assert facts.rc66_exempt is False, "unresolvable must not acquire a compliance exemption"
 
 
 def test_the_compliance_surface_and_the_product_surface_are_distinct_questions():
@@ -69,7 +80,7 @@ def test_the_compliance_surface_and_the_product_surface_are_distinct_questions()
     facts = G.classify_path("scratchpad/_probe.py")
     assert facts.governed is True
     assert facts.production is False, "scratchpad is not the product surface"
-    assert facts.compliance_surface is False, "scratchpad is not a compliance surface"
+    assert facts.rc66_exempt is False, "scratchpad is not a compliance surface"
 
     lane = G.classify_path("tests/test_x.py")
-    assert lane.production is False and lane.compliance_surface is True
+    assert lane.production is False and lane.rc66_exempt is True

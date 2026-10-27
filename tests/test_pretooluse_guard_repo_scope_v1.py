@@ -26,4 +26,4 @@ def test_foreign_test_file_is_not_our_compliance_lane_either(tmp_path):
     target = other / "test_something.py"
     target.write_text("", encoding="utf-8")
     facts = G.classify_path(str(target))
-    assert not facts.governed and not facts.production and not facts.compliance_surface
+    assert not facts.governed and not facts.production and not facts.rc66_exempt
