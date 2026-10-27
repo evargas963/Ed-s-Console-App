@@ -4,14 +4,14 @@ refusal of the console's database."""
 from __future__ import annotations
 
 import asyncio
+import json
+import os
 import sqlite3
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
-
-import json
 
 from stream_spine import (
     LATEST,
@@ -274,11 +274,22 @@ def test_db_path_a_resolves_the_canonical_default():
     assert ss.resolve_stream_db_path() == ss.canonical_stream_db_path()
 
 
-def test_db_path_b_ambient_override_cannot_move_production(monkeypatch, tmp_path):
-    target = (tmp_path / "override.db").resolve()
-    monkeypatch.setenv("STREAM_CAPTURE_DB_PATH", str(target))
-    import stream_spine as ss
-    assert ss.resolve_stream_db_path() == ss.canonical_stream_db_path()
+def _in_own_python(code: str, **env: str) -> subprocess.CompletedProcess:
+    """`code` run in a Python of its own from the repository, with `env` added to this process's
+    environment (the test runtime root tests/conftest.py sets included)."""
+    return subprocess.run([sys.executable, "-c", code], cwd=Path(__file__).resolve().parent.parent,
+                          env={**os.environ, **env}, capture_output=True, text=True, timeout=60)
+
+
+def test_db_path_b_ambient_override_cannot_move_production(tmp_path):
+    """A process started with STREAM_CAPTURE_DB_PATH set still resolves the canonical path."""
+    done = _in_own_python("import stream_spine as ss\n"
+                          "print(ss.resolve_stream_db_path() == ss.canonical_stream_db_path(),"
+                          " ss.resolve_stream_db_path())\n",
+                          STREAM_CAPTURE_DB_PATH=str(tmp_path / "override.db"))
+    assert done.returncode == 0, done.stderr
+    same, path = done.stdout.split(maxsplit=1)
+    assert same == "True" and "override.db" not in path, done.stdout
 
 
 def test_db_path_c_reader_test_default_is_explicit(tmp_path):
@@ -287,12 +298,15 @@ def test_db_path_c_reader_test_default_is_explicit(tmp_path):
     assert ss.resolve_stream_db_path(target) == target.resolve()
 
 
-def test_db_path_d_capture_writer_default_resolves_fresh(monkeypatch, tmp_path):
-    import stream_spine as ss
-    target = (tmp_path / "fresh_each_call.db").resolve()
-    monkeypatch.setattr(ss, "canonical_stream_db_path", lambda: target)
-    w = CaptureWriter()  # no explicit db_path -- must go through resolve_stream_db_path NOW
-    assert w.db_path == target
+def test_db_path_d_capture_writer_default_is_its_runtime_roots_stream_database(tmp_path):
+    """A writer given no path writes the stream database of the runtime root its process was
+    started with (ED_RUNTIME_ROOT, runtime_layout)."""
+    root = tmp_path / "runtime"
+    done = _in_own_python("from stream_spine import CaptureWriter\n"
+                          "print(CaptureWriter().db_path)\n",
+                          ED_RUNTIME_ROOT=str(root))
+    assert done.returncode == 0, done.stderr
+    assert Path(done.stdout.strip()) == (root / "data" / "stream_capture.db").resolve(), done.stdout
 
 
 def test_db_path_e_explicit_test_path_still_bypasses_the_resolver(tmp_path):
@@ -301,26 +315,13 @@ def test_db_path_e_explicit_test_path_still_bypasses_the_resolver(tmp_path):
     assert w.db_path == explicit.resolve()
 
 
-def test_production_stream_daemon_exposes_no_database_path_switch(monkeypatch, tmp_path):
-    import sys
-
-    from app.market_data.schwab.streaming import capture
-
-    monkeypatch.setattr(
-        sys,
-        "argv",
-        ["capture.py", "--db", str(tmp_path / "fork.db")],
-    )
-    ran = []
-    monkeypatch.setattr(capture, "run", lambda *a, **k: ran.append(a))
-    assert capture.main() == 2, "any argument, a database path included, is refused"
-    assert ran == []
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# PR214_FINAL_MERGE_BLOCKERS_V2 — Blocker 2: COVERAGE EPOCH CRASH/RESTART TRUTH.
-# stream_coverage_epochs separates "NOT SUBSCRIBED" from "SUBSCRIBED BUT VENDOR
-# SILENT". A clean shutdown closes epochs; a HARD death never runs that cleanup, so
-# `ended_ts IS NULL` rows survive into the next lifetime and read as indefinitely
-# subscribed across a window the daemon was not even running. 2A reconciles them at
-# startup; 2B refuses a second concurrently-open epoch for one (symbol, service).
+def test_production_stream_daemon_exposes_no_database_path_switch(tmp_path):
+    """The daemon started with a database path refuses it and exits 2 before it starts: no
+    log, no owner lock, no connection."""
+    done = _in_own_python("import sys\n"
+                          "from app.market_data.schwab.streaming import capture\n"
+                          f"sys.argv = ['capture.py', '--db', {str(tmp_path / 'fork.db')!r}]\n"
+                          "sys.exit(capture.main())\n")
+    assert done.returncode == 2, (done.stdout, done.stderr)
+    assert "takes no arguments" in done.stderr, done.stderr
+    assert not (tmp_path / "fork.db").exists()

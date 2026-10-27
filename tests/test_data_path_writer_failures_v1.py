@@ -22,6 +22,7 @@ import sys
 import threading
 import time
 import tracemalloc
+from contextlib import closing
 from pathlib import Path
 
 import pytest
@@ -43,14 +44,14 @@ _TSLA = json.loads((Path(__file__).parent / "fixtures" / "real_equity_book.json"
 
 def _failures(db) -> list:
     """The kept failures, (topic, message as stored, error); none where no table keeps them."""
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn, conn:
         if not conn.execute("SELECT 1 FROM sqlite_master WHERE name='stream_write_failures'").fetchone():
             return []
         return conn.execute("SELECT topic, msg_json, error FROM stream_write_failures").fetchall()
 
 
 def _count(db, table: str) -> int:
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn, conn:
         return conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
 
 
@@ -351,7 +352,7 @@ def test_a_row_only_the_database_refuses_is_kept_and_the_writer_is_not_blocked(t
     are stored; the writer is never blocked."""
     db = tmp_path / "stream_capture.db"
     writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01)
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn, conn:
         conn.execute("CREATE TRIGGER refuse_tsla BEFORE INSERT ON stream_quotes_raw "
                      "WHEN NEW.symbol = 'TSLA' BEGIN SELECT abs(-9223372036854775808); END")
 
@@ -375,11 +376,11 @@ def test_a_row_only_the_database_refuses_is_kept_and_the_writer_is_not_blocked(t
 def test_a_chain_whose_history_write_fails_is_kept_as_sent_and_is_never_a_chain_failure(tmp_path):
     """INDUCED CONDITION: the chain history table carries an extra NOT NULL column the writer
     does not fill, so SQLite refuses each row with IntegrityError, standing in for the refusal of
-    a repeated capture key (PR #465). The chain is delivered and never published as failed, the
+    a repeated capture key. The chain is delivered and never published as failed, the
     sweep fetches the next chain at once (no pause: a second chain request reaches the host), and
     the daemon's writer keeps the chain as delivered."""
     db = tmp_path / "ed_console.db"
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn, conn:
         conn.execute("CREATE TABLE complete_chain_captures (ticker TEXT NOT NULL, expiry TEXT NOT NULL, "
                      "ts_utc REAL NOT NULL, spot REAL, n_contracts INTEGER NOT NULL, "
                      "completeness_basis TEXT NOT NULL, chain_json TEXT NOT NULL, source TEXT NOT NULL, "
@@ -485,7 +486,7 @@ def test_a_block_past_the_hold_cap_spills_to_disk_and_writes_back_in_arrival_ord
     assert path.name.startswith("stream_capture.") and path.suffix == ".spill"
     assert during["line"].startswith("BLOCKED, SPILLING TO DISK · ")
     assert f"spilled to disk: {spill['messages']} messages, {on_disk:,} bytes in {path.name}" in during["line"]
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn, conn:
         stored = [json.loads(r[0]) for r in conn.execute(
             "SELECT native_json FROM stream_options_quotes_raw ORDER BY rowid")]
     assert stored == [e["content"] for e in _EVENTS], "not every quote exactly once, in arrival order"
@@ -516,7 +517,7 @@ def test_a_database_refusing_writes_at_start_never_stops_the_writer_starting(tmp
         symbol=_CONTRACT, content=_EVENTS[0]["content"], src="schwab_stream", ts_recv=1790863200.0)}).encode()
     spill = db.with_name("stream_capture.1.spill")
     spill.write_bytes(len(record).to_bytes(4, "big") + record)
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn, conn:
         conn.execute("INSERT INTO stream_spill_progress(spill, written_back) VALUES(?, 1)", (spill.name,))
     os.chmod(db, stat.S_IREAD)
     try:
@@ -524,7 +525,7 @@ def test_a_database_refusing_writes_at_start_never_stops_the_writer_starting(tmp
     finally:
         os.chmod(db, stat.S_IREAD | stat.S_IWRITE)
     after = _run_until_no_spill(writer)
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn, conn:
         assert conn.execute("SELECT COUNT(*) FROM stream_spill_progress").fetchone()[0] == 0
     assert not spill.exists() and _count(db, "stream_options_quotes_raw") == 0
     assert after["state"] == "stopped"
@@ -578,7 +579,7 @@ def test_a_written_back_spill_the_disk_will_not_delete_is_deleted_at_the_next_st
     assert after["state"] == "recording", "the writer did not go on after the disk refused the delete"
     assert path.exists() and [Path(k["path"]) for k in after["left_on_disk"]] == [path]
     _run_until_no_spill(CaptureWriter(db, batch_rows=1, batch_sec=0.01))
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn, conn:
         assert conn.execute("SELECT COUNT(*) FROM stream_spill_progress").fetchone()[0] == 0
     assert not path.exists(), "the next start did not delete the written-back spill"
     assert _count(db, "stream_options_quotes_raw") == len(_EVENTS) + 1, "the next start wrote it again"
@@ -599,7 +600,7 @@ def test_a_spill_file_is_resumed_after_its_committed_part_and_a_crash_cut_record
     older, newer = db.with_name("stream_capture.1.spill"), db.with_name("stream_capture.2.spill")
     older.write_bytes(b"".join(len(r).to_bytes(4, "big") + r for r in records) + b"\x00\x00\x01")
     newer.write_bytes(b"".join(len(r).to_bytes(4, "big") + r for r in records[:2]))
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn, conn:
         conn.executemany("INSERT INTO stream_spill_progress(spill, written_back) VALUES(?,?)",
                          [(older.name, 4), (newer.name, 2)])
 
@@ -613,7 +614,7 @@ def test_a_spill_file_is_resumed_after_its_committed_part_and_a_crash_cut_record
         return writer.status()
     after = asyncio.run(go())
 
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn, conn:
         stored = [ts for (ts,) in conn.execute("SELECT ts_recv FROM stream_options_quotes_raw ORDER BY rowid")]
         progress = conn.execute("SELECT COUNT(*) FROM stream_spill_progress").fetchone()[0]
         kept = conn.execute("SELECT topic, msg_json, error FROM stream_write_failures").fetchall()
@@ -655,7 +656,7 @@ def test_what_arrives_while_a_found_spill_waits_is_never_written_behind_its_cut_
         after = asyncio.run(go())
     finally:
         holder.close()
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn, conn:
         stored = [json.loads(r[0]) for r in conn.execute(
             "SELECT native_json FROM stream_options_quotes_raw ORDER BY rowid")]
         kept = conn.execute("SELECT COUNT(*) FROM stream_write_failures").fetchone()[0]
@@ -674,10 +675,10 @@ def test_a_found_spill_whose_cut_bytes_were_kept_is_deleted_without_keeping_them
         symbol=_CONTRACT, content=_EVENTS[0]["content"], src="schwab_stream", ts_recv=1790863200.0)}).encode()
     spill = db.with_name("stream_capture.1.1.spill")
     spill.write_bytes(len(record).to_bytes(4, "big") + record + b"\x00\x00\x01")
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn, conn:
         conn.execute("INSERT INTO stream_spill_progress(spill, written_back) VALUES(?, 2)", (spill.name,))
     _run_until_no_spill(CaptureWriter(db, batch_rows=1, batch_sec=0.01))
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn, conn:
         assert conn.execute("SELECT COUNT(*) FROM stream_spill_progress").fetchone()[0] == 0
         assert conn.execute("SELECT COUNT(*) FROM stream_write_failures").fetchone()[0] == 0, "the cut bytes were kept again"
     assert not spill.exists() and _count(db, "stream_options_quotes_raw") == 0
@@ -708,7 +709,7 @@ def test_a_damaged_length_found_at_start_keeps_every_byte_after_it(tmp_path):
         return writer.status()
     after = asyncio.run(go())
 
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn, conn:
         stored = [ts for (ts,) in conn.execute("SELECT ts_recv FROM stream_options_quotes_raw ORDER BY rowid")]
         kept = [json.loads(m).encode("latin-1") for (m,) in conn.execute("SELECT msg_json FROM stream_write_failures")]
     assert stored == [1790863200.0]
@@ -754,7 +755,7 @@ def test_a_damaged_length_in_a_live_write_back_keeps_the_rest_and_the_spill_fini
         after = asyncio.run(go())
     finally:
         holder.close()
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn, conn:
         stored = [json.loads(r[0]) for r in conn.execute(
             "SELECT native_json FROM stream_options_quotes_raw ORDER BY rowid")]
         kept = conn.execute("SELECT COUNT(*) FROM stream_write_failures").fetchone()[0]
@@ -814,7 +815,7 @@ def test_a_database_made_before_the_receipt_time_indexes_is_not_reindexed_at_sta
     CaptureWriter(new)
     old = tmp_path / "old" / "stream_capture.db"
     old.parent.mkdir()
-    with sqlite3.connect(old) as conn:
+    with closing(sqlite3.connect(old)) as conn, conn:
         conn.executescript(
             "CREATE TABLE stream_quotes_raw (ts_recv REAL NOT NULL, symbol TEXT NOT NULL, bid REAL, ask REAL, "
             "last REAL, bid_size INTEGER, ask_size INTEGER, last_size INTEGER, total_volume INTEGER, "
@@ -829,7 +830,7 @@ def test_a_database_made_before_the_receipt_time_indexes_is_not_reindexed_at_sta
     CaptureWriter(old)
 
     def indexes(db) -> dict:
-        with sqlite3.connect(db) as conn:
+        with closing(sqlite3.connect(db)) as conn, conn:
             return {t: sorted(n for (n,) in conn.execute(
                 "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name=?", (t,)))
                 for t in ("stream_quotes_raw", "stream_book_raw", "stream_options_quotes_raw")}
@@ -864,7 +865,7 @@ def _pages_for_the_mix(db, *, indexes: bool) -> int:
     a reader holding its snapshot from before so no checkpoint resets the WAL. `indexes` False:
     the mix's tables without their indexes, the rows' own pages."""
     writer = CaptureWriter(db)
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn, conn:
         for table in [] if indexes else _MIX_TABLES:
             for (name,) in conn.execute("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name=?", (table,)):
                 conn.execute(f"DROP INDEX {name}")
@@ -1075,7 +1076,7 @@ def test_a_damaged_spill_record_is_kept_as_sent_and_every_record_after_it_is_wri
         holder.close()
 
     path = Path(during["spill"]["path"])
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn, conn:
         stored = [json.loads(r[0]) for r in conn.execute(
             "SELECT native_json FROM stream_options_quotes_raw ORDER BY rowid")]
         kept = conn.execute("SELECT topic, error FROM stream_write_failures").fetchall()
@@ -1133,7 +1134,7 @@ def test_spill_files_left_beside_the_database_are_written_back_at_start(tmp_path
         return second.status()
     after = asyncio.run(restart())
 
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn, conn:
         stored = [(ts, json.loads(native)) for ts, native in conn.execute(
             "SELECT ts_recv, native_json FROM stream_options_quotes_raw ORDER BY rowid")]
         assert conn.execute("SELECT COUNT(*) FROM stream_spill_progress").fetchone()[0] == 0
