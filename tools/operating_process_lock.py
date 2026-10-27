@@ -28,7 +28,7 @@ PROTECTED_PATHS: tuple[str, ...] = (
     "tools/process_lock_guard.py",
 )
 
-#: LOCK-2: the tree-destructive git class, not just `reset --hard`. The hard forms (reset --hard,
+#: The reset guard's class: tree-destructive git, not just `reset --hard`. The hard forms (reset --hard,
 #: checkout -- <any path>, clean -f, push --force without lease, short -f included, and every git
 #: stash but `stash list`) are `_hard` below and refuse on any target. The class rule covers the
 #: reset/restore/checkout--/clean
