@@ -251,6 +251,9 @@ def test_overnight_without_a_prior_session_uses_only_this_session_premarket():
     assert out == {"overnight_high": 99.0, "overnight_low": 98.0}, (
         f"an unbounded window swept bars from a session that was never established: {out}"
     )
+    from liquidity_value_engine import bars_from_candles, build_price_level_snapshot
+    snap = build_price_level_snapshot("SPY", tuesday, bars_from_candles(bars), bar_source="test")
+    assert snap.levels["OVERNIGHT_HIGH"].window == "2026-10-06 before the RTH open (no prior session)"
 
 
 # ── No liquidity-pool claim on untested extremes ─────────────────────────────────────────

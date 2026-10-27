@@ -248,7 +248,7 @@ def _arm_shutdown_watchdog(deadline_sec: float = SHUTDOWN_DEADLINE_SEC) -> None:
         time.sleep(deadline_sec)
         _hard_exit(
             f"graceful shutdown exceeded {deadline_sec:.0f}s - a background worker is "
-            f"blocked (slow vendor call or long query) and cannot be interrupted"
+            f"still running (the chain pricing or the bar writer) and cannot be interrupted"
         )
 
     threading.Thread(target=_watch, name="shutdown-watchdog", daemon=True).start()
@@ -545,7 +545,7 @@ async def _app_lifespan(app):
     _arm_shutdown_watchdog()
     # the daemon's feed task; the console holds no Schwab socket of its own
     try:
-        stop_order_flow_stream(join_timeout=40.0)
+        stop_order_flow_stream()
     except Exception as e:
         log.warning("Order flow streaming shutdown: %s", e)
 
@@ -2341,9 +2341,6 @@ def gamma_surface_payload(tk: str, scope: str, centre, shift: int, cols: "int | 
                 "classification": "DERIVED", "cell_metric": "net_gex_1pct",
                 "spot_basis": "live_resolve_spot",
             },
-            "method": ("live terrain wide chain (current Greeks + live spot, this refresh cycle) -> "
-                       "partition by native expirationDate -> compute_exposures_by_strike per expiry "
-                       "-> net_gex_1pct cell; one producer, zero extra vendor calls"),
         }
 
     # ---- no live surface: unavailable, with the reason. Nothing stands in for it. ----
