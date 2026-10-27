@@ -464,7 +464,8 @@ def start_order_flow_stream(on_tick_callback: Optional[Callable[[str], None]] = 
 
 
 def stop_order_flow_stream() -> None:
-    """Stop the feed task and clear the live state it fed."""
+    """Clear the live state the feed fed and cancel its task; the task logs FEED_LOOP_STOP_DONE
+    when it ends."""
     global _feed_running, _feed_task
     _feed_running = False
     _option_contract_last_update_ts.clear()
@@ -473,6 +474,6 @@ def stop_order_flow_stream() -> None:
     if task is not None and not task.done():
         task.cancel()
     _feed_task = None
-    _log_stream("FEED_STOPPED")
+    _log_stream("FEED_CANCEL_REQUESTED")
 
 

@@ -77,9 +77,8 @@ def _states_when_the_status_was_sent(offset: float) -> list[str]:
             for side in ("call", "put") if col and pair.get(side) == SYM]
 
 
-def test_the_heatmap_names_its_producer_and_no_vendor_calls():
-    """The heatmap's provenance names its one producer. It serves no `method` text, which said
-    "zero extra vendor calls" in a console that makes no Schwab call."""
+def test_the_heatmap_names_its_producer_and_serves_no_method_text():
+    """The heatmap's provenance names its one producer, and it serves no `method` text."""
     _beat(_AT - 0.5)
     lmp.record_from_level_one_equity(TK, _QUOTE["item"], received_ts=_QUOTE["ts_recv"])
     row = ofs._price_rows[TK] = live_price_rows.price_row(TK, _AT)
