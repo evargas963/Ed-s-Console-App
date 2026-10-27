@@ -298,7 +298,8 @@ from Schwab to the screen (daemon, console, page), are these:
   none changes nothing, pushes nothing and rebuilds no level; daily candles the same as those
   held push nothing, new ones push like a new bar); `_daily`, the daily candles (the console reads no database
   for them, and writes no bar) → a `liquidity` push on `/api/changes` → the browser reads
-  `/api/bars1m`. Enforced by: `tests/test_data_path_pricehistory_v1.py`. Charts show completed Schwab bars only, exactly as Schwab sent them, with
+  `/api/bars1m`. Enforced by: `tests/test_data_path_pricehistory_v1.py`; the order,
+  `tests/test_data_path_rules_v1.py::test_d5_a_start_asks_every_tickers_price_history_before_any_chain`. Charts show completed Schwab bars only, exactly as Schwab sent them, with
   the newest bar's minute (`last_bar`). The live Schwab LAST_PRICE (the header's price row, with
   its age since the trade) is drawn on the chart as its own line and moves with every update; no
   candle is built from quotes (level-one prices do not reproduce a bar's high and low).

@@ -1004,7 +1004,9 @@ def test_the_daemon_builds_one_schwab_client_and_a_failed_refresh_never_rebuilds
     worker = threading.Thread(target=sweep.work, args=(schwab_client, halt), daemon=True)
     try:
         worker.start()
-        halt.wait(0.5)
+        deadline = time.monotonic() + 10
+        while not failed and time.monotonic() < deadline:     # each ticker's price history fails first
+            halt.wait(0.02)
     finally:
         halt.set()
         worker.join(10)

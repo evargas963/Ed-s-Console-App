@@ -409,7 +409,7 @@ class ChainSweep:
                     whole = False
                     continue
                 answer = resp.json()
-            except Exception as e:  # noqa: BLE001 -- that series' answer is the failure; the rotation goes on
+            except Exception as e:  # noqa: BLE001 -- that series' answer is the failure; the next series is asked
                 log.warning("price history %s %s failed: %s: %s", ticker, series, type(e).__name__, e)
                 whole = False
                 continue
