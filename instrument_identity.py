@@ -16,7 +16,7 @@ from __future__ import annotations
 
 # Index roots an operator types bare, mapped to Schwab's own name for the index ("$" + root).
 # Schwab names indexes only with "$" and knows none of these bare (instruments symbol-search and
-# quotes, 2026-09-28, tests/fixtures/real_schwab_index_identity_2026_09_28.json); a root joins
+# quotes, tests/fixtures/real_schwab_index_identity_2026_09_28.json); a root joins
 # only with that evidence (test_every_bare_index_root_is_what_schwab_names_an_index_with_dollar).
 BROKER_INDEX_BARE_ROOTS: frozenset[str] = frozenset(
     {"SPX", "DJI", "COMPX", "VIX", "VXN", "RVX", "NDX", "RUT", "DJX", "XSP", "OEX"},
