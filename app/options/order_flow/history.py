@@ -111,7 +111,8 @@ def put_call_side(contract_type) -> "str | None":
 
 
 #: The default price window drops this share of displayed size at each end: one thin resting order
-#: far from the touch would otherwise stretch the axis. Its origin is not recorded -- NOT_PROVEN.
+#: far from the touch would otherwise stretch the axis. It sets the default view only: every cell
+#: is served, and the chart rescales past it.
 DISPLAY_TAIL_SHARE = 0.01
 
 
