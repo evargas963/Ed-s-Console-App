@@ -5,7 +5,7 @@ start_ed_console.bat runs it with the project's .venv Python. Its start stops no
    from the same commit, the newest merged: moved, it runs the new launch.py as its child and ends
    with it. With local changes, not on main, split from origin/main or origin out of reach, both
    start from the commit the checkout is at, the check not passed and why said: whether the app
-   starts is never the repository's to decide (RC-512). With either running it is not run: the
+   starts is never the repository's to decide. With either running it is not run: the
    other starts from the commit the running one loaded.
 1. The capture daemon, in its own window (start_capture_daemon.bat restarts it), unless its price
    socket's port is in use. It reads its own .env (the Schwab credentials); its log, and

@@ -1,21 +1,14 @@
 """
-Live-plane feed for the single active UI ticker — READ-ONLY consumer of the canonical
-capture daemon (app.market_data.schwab.streaming.capture), never a second Schwab session.
+The console's live-plane feed for every watchlist ticker — READ-ONLY consumer of the capture
+daemon (app.market_data.schwab.streaming.capture). It opens no Schwab connection: the daemon
+holds the one Schwab socket and is the one producer.
 
-SINGLE-STREAM-AUTHORITY LAW (root-fixed here): this module used to own its own
-`schwab.streaming.StreamClient`, logging into Schwab independently of the canonical
-capture daemon — two authenticated sockets on one account, racing each other for the
-same market truth. It now opens ZERO Schwab connections. The daemon is the one producer.
-
-LIVE PUSH (2026-09-23): the daemon forwards every Schwab stream message to this module over
-a local WebSocket (app.market_data.schwab.streaming.live_push, ws://127.0.0.1:8799) the
-moment it arrives, and this module applies it to the in-process planes
-(`app.options.order_flow.state`, `live_market_plane`). The database is NOT in the live
-path: it used to be -- this module polled `stream_capture.db` every 0.5s -- which put a
-disk write, a commit and a poll between Schwab and the screen. stream_capture.db stays the
+The daemon forwards every Schwab stream message to this module over a local WebSocket
+(app.market_data.schwab.streaming.live_push, ws://127.0.0.1:8799) the moment it arrives, and
+this module applies it to the in-process planes (`app.options.order_flow.state`,
+`live_market_plane`). The database is not in the live path: stream_capture.db is the
 permanent record (options history reads it); nothing live reads it. If the push connection
-drops, the live values go stale and the screen says so; nothing falls back to the database
-(operator rule 2026-09-23: no fallbacks).
+drops, the live values go stale and the screen says so; nothing falls back to the database.
 
 The daemon streams every ticker on its watchlist (capture.Daemon.watchlist, the one list), and
 picks the option contracts it streams itself (capture.Daemon.pick_options, the option rule).
@@ -226,10 +219,9 @@ _REPRICE_FIELDS = ("GAMMA", "DELTA", "OPEN_INTEREST", "TOTAL_VOLUME", "VOLUME")
 def _ingest_pushed(topic: str, msg: Any) -> None:
     """Apply ONE daemon-pushed Schwab stream message to the live planes.
 
-    The same plane-ingest calls the DB replay made, now fed straight from the daemon's
-    bus. Every timestamp written is the message's own `ts_recv` -- the daemon's receive
-    time for it -- never the time this console processed it (a delayed message must not
-    read as fresh; 2026-09-23 audit P0).
+    Every timestamp written is the message's own `ts_recv` -- the daemon's receive time for
+    it -- never the time this console processed it (a delayed message must not read as
+    fresh).
 
       quote.SYM    LEVELONE_EQUITIES -> order-flow state (the tape); the live price is the
                    daemon's price row (_rows_loop), never rebuilt here

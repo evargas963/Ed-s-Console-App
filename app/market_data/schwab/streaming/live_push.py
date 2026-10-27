@@ -47,8 +47,8 @@ LIVE_PUSH_HOST = "127.0.0.1"
 #: receive the real daemon's live data.
 LIVE_PUSH_PORT = int(os.environ.get("ED_LIVE_PUSH_PORT", "8799"))  # caps-ok: operator port config with its declared default, not market data
 
-#: The market context every page's header shows beside the selected ticker (Trade Desk,
-#: operator 2026-09-25): the daemon streams it whatever the watchlist holds.
+#: The market context every page's header shows beside the selected ticker (Trade Desk): the
+#: daemon streams it whatever the watchlist holds.
 MARKET_CONTEXT = ("$SPX", "$NDX", "$VIX")
 
 #: topic prefix -> the only `src` forwarded for it

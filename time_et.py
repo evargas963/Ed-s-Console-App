@@ -239,11 +239,11 @@ def time_to_expiry_years(expiration_date: str, now: datetime, *,
     expiry date (`product`, EQO unless the caller names another), or its open for Schwab's
     settlementType "A".
     Schwab's own expirationDate is not the settlement of an AM-settled contract (an AM-settled
-    $SPX monthly carries the 16:00 ET of its date, captured 2026-10-08). For a date /markets does
+    $SPX monthly carries the 16:00 ET of its date, as captured). For a date /markets does
     not answer (beyond the year it answers, or before the 7 days back) a PM-settled contract
-    settles at Schwab's expirationDate (operator 2026-10-08); an AM-settled one has no T.
+    settles at Schwab's expirationDate; an AM-settled one has no T.
 
-    VALIDATED 2026-07-26 against Schwab-reported gamma on real chains: intraday-to-close matches
+    Validated against Schwab-reported gamma on real chains: intraday-to-close matches
     Schwab to a MEASURED median ratio 0.987 (94% of ATM strikes within 10%) in the 2-6h window.
 
     None for an AM-settled contract whose expiry date /markets does not answer, for a date it
