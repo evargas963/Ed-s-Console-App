@@ -67,12 +67,11 @@
     function cell(c, k, dg) { var v = c ? c[k] : null; return (v == null) ? '—' : (typeof v === 'number' ? (dg === AS_SENT ? String(v) : v.toFixed(dg == null ? 2 : dg)) : esc(v)); }
     function sym(c) { return c && c.symbol ? String(c.symbol) : ''; }
     function selAttr(c) { var s = sym(c); return s ? (' data-sym="' + esc(s) + '"' + (s === desired ? ' data-selc="1"' : '')) : ''; }
-    // No `position:sticky`: the header table is a FROZEN (non-scrolling) sibling of a
-    // separate, genuinely scrollable `.chn-scroll` div holding only the body table (see
-    // console.html's #chainBody/.chn-scroll rules) -- a standard "frozen header" layout with
-    // no sticky positioning anywhere for a compositor or scroll-chaining bug to intermittently
-    // mishandle. A shared fixed-percentage <colgroup> on both tables keeps every column
-    // pixel-aligned between them despite being unrelated table layouts.
+    // No `position:sticky`: the header table is a FROZEN (non-scrolling) sibling of a separate
+    // scrollable `.chn-scroll` div holding only the body table (index.html's
+    // #chainBody/.chn-scroll rules), the standard "frozen header" layout. A shared
+    // fixed-percentage <colgroup> on both tables keeps every column pixel-aligned between them
+    // despite being unrelated table layouts.
     var COLGROUP = '<colgroup>' + new Array(8).join('<col style="width:6.25%">') + '<col style="width:12.5%">' +
       new Array(8).join('<col style="width:6.25%">') + '</colgroup>';
     var h = '<table class="chn chn-headtbl">' + COLGROUP + '<thead><tr>' +

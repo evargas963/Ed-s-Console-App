@@ -7,7 +7,7 @@
    are RED in BOTH themes; blue is interaction; amber is warning/stale. */
 :root {
   /* ---- shared, theme-independent ---- */
-  /* the Trade Desk reference (2026-09-28) is set in one DIN-style face everywhere, with tabular
+  /* the Trade Desk reference is set in one DIN-style face everywhere, with tabular
      figures for numeric columns; Bahnschrift is Windows' own DIN, so no font is fetched. Panel and
      card titles are the same face condensed, in capitals. */
   --ed-sans: 'Bahnschrift', 'DIN Alternate', 'Barlow', 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;

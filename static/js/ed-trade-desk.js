@@ -1,7 +1,6 @@
 /* Ed Console — Trade Desk / "Right Now" subview. PRESENTATION ONLY, computes nothing.
-   The architectural home console.html has preserved verbatim since the rebuild started:
-   "Detect -> Frame -> Confirm -> Execute reasoning flow." This module builds the first three
-   stages from five already-canonical endpoints other workspaces already own -- one page, zero
+   The page's reasoning flow is Detect -> Frame -> Confirm -> Execute; this module builds the
+   first three stages from five already-canonical endpoints other workspaces already own -- one page, zero
    new math, zero new producers:
      DETECT  <- /api/order-flow/microstructure  (same engine the Order Flow > Book/DOM tab reads)
      FRAME   <- /api/levels + /api/liquidity-snapshot (same contracts Liquidity > Levels/Map read)
