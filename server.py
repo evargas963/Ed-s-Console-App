@@ -84,8 +84,8 @@ class _LevelMarkerFormatter(logging.Formatter):
 
 
 # The console's log file (install_ed_server_file_sink): every logger (db, ed_server, uvicorn, …)
-# at INFO+, under the RUNTIME root (runtime_layout), which is this checkout unless ED_RUNTIME_ROOT
-# moves it (docs/ARCHITECTURE.md "Runtime state lives outside the source").
+# at INFO+, under the RUNTIME root (runtime_layout): this checkout, or the primary checkout for a
+# linked worktree, unless ED_RUNTIME_ROOT moves it (docs/ARCHITECTURE.md "Runtime state is not source").
 import runtime_layout  # noqa: E402
 from runtime_layout import logs_dir as _runtime_logs_dir  # noqa: E402
 

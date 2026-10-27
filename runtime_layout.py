@@ -1,4 +1,4 @@
-"""RUNTIME LAYOUT — the ONE owner of where runtime state lives (docs/ARCHITECTURE.md "Runtime state lives outside the source").
+"""RUNTIME LAYOUT — the ONE owner of where runtime state lives (docs/ARCHITECTURE.md "Runtime state is not source").
 
 Source, runtime state and generated artifacts are separate concerns:
 
@@ -6,17 +6,16 @@ Source, runtime state and generated artifacts are separate concerns:
     RUNTIME     the live database, logs, tokens            ED_RUNTIME_ROOT
     ARTIFACTS   generated reports and scorecards           ED_ARTIFACTS_ROOT (default: RUNTIME)
 
-RC-523 (2026-09-06, bedrock step 7). Every runtime path was rooted in the source checkout
-(`Path(__file__).parent / "data"`, `/ "logs"`, `/ "reports"`) with an override for the
-database alone, so a source update could endanger the live database and runtime output
-polluted the checkout — the two things §8 forbids — and the production checkout had to be
-the desk's cwd. RC-534 closes the remaining worktree split: a linked Git worktree resolves
-runtime state to its primary worktree by reading Git's own ``.git`` / ``commondir`` metadata.
-A standalone checkout still owns its own runtime root. ``ED_RUNTIME_ROOT`` may move runtime
-state to a dedicated non-checkout directory, but may not select a linked source worktree.
+Runtime state lives in the runtime root's ``data/`` and ``logs/`` (data_dir, logs_dir) and its
+``schwab_token.json`` (config.token_path), each ignored by git, so a source update never touches it (docs/ARCHITECTURE.md §5), whatever the
+process's working directory. A standalone checkout is its own runtime root, so production's
+database, logs and token sit in its checkout. A linked Git worktree resolves runtime
+state to its primary worktree by reading Git's own ``.git`` / ``commondir`` metadata.
+``ED_RUNTIME_ROOT`` may move runtime state to a dedicated non-checkout directory, but may not
+select a linked source worktree.
 
 This module imports nothing from `tools/` or `governance/`: it is on the runtime path and
-governance does not decide whether the desk may run (RC-512). It reads the environment only: an
+governance does not decide whether the desk may run. It reads the environment only: an
 `ED_RUNTIME_ROOT` in `.env` reaches it when an entry point loads `.env` (config.load_dotenv_file)
 before importing it.
 """
@@ -98,13 +97,9 @@ def live_binding_error(source_root: "Path | None" = None,
     """Why THIS checkout may not run a LIVE process (the console server, the capture daemon)
     against the runtime root -- or None when it may.
 
-    MEASURED 2026-09-23 (found 2026-09-25): a console started from the EdWebConsole-phase1
-    worktree (unmerged commit ce375cae) resolved its runtime to the primary checkout -- the
-    linked-worktree convergence above, RC-534 -- and ran for hours against PRODUCTION: the
-    production ed_console.db, token and logs/ed_server.log, into which it wrote 15,451
-    "Schwab capability UNAVAILABLE" errors (the worktree had no .env). Convergence exists so
-    a worktree can never become a SECOND production data root; it must not let unmerged code
-    RUN as the first one.
+    A linked worktree resolves its runtime to the primary checkout (above), so a worktree can
+    never become a second production data root; that must not let unmerged code run as the
+    first one, against production's database, token and logs.
 
     Allowed: the runtime root IS this checkout (production running itself), or the runtime
     root is a dedicated directory that is not a git checkout (an explicit ED_RUNTIME_ROOT

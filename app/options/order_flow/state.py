@@ -95,16 +95,14 @@ class OrderFlowState:
         if not sym:
             return
         if ts_recv is None:
-            # the daemon's receive time is REQUIRED -- stamping "now" made a replayed or
-            # delayed message read as live (same P0 as the live plane, 2026-09-23)
+            # the daemon's receive time is required: stamping "now" would make a replayed or
+            # delayed message read as live
             raise TypeError("push_level_one: ts_recv (the daemon receive time) is required")
 
         # TOTAL_VOLUME as sent; a reported 0 is 0 (AGENTS.md rule 2).
         vf = schwab_count(content_item.get("TOTAL_VOLUME"))
 
-        # (change percent lives on the live plane only: NET_CHANGE_PERCENT, one store. This
-        # held REGULAR_MARKET_CHANGE_PERCENT with a CHANGE_PERCENT fallback -- a field Schwab
-        # never sends, measured 2026-09-24.)
+        # (change percent lives on the live plane only: NET_CHANGE_PERCENT, one store.)
 
         # GAMMA/DELTA/OPEN_INTEREST/TOTAL_VOLUME: native Schwab LEVELONE_OPTIONS fields
         # (confirmed in the installed SDK's field enum, schwab/streaming.py

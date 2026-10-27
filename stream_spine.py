@@ -37,7 +37,7 @@ log = logging.getLogger(__name__)
 
 
 def resolve_stream_db_path(default: "Path | str | None" = None) -> Path:
-    """The one stream-database path (runtime_layout / RC-534). `default` is for tests."""
+    """The one stream-database path (runtime_layout). `default` is for tests."""
     if default is not None:
         return Path(default).resolve()
     return canonical_stream_db_path()

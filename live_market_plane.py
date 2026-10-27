@@ -29,7 +29,7 @@ _by_ticker: dict[str, dict[str, Any]] = {}
 
 
 #: Schwab LEVELONE_EQUITIES sends only the fields that CHANGED since the last message for a
-#: symbol. Measured on 4,039 real captured messages (stream_quotes_raw, 2026-09-24): only 11%
+#: symbol. Measured on 4,039 real captured messages (stream_quotes_raw): only 11%
 #: carried bid, ask and last together; 17% were ask-only, 15% bid-only, 23% none of the three.
 #: So a field absent from a message is UNCHANGED, not missing -- the current value of each
 #: field is the last one Schwab sent, and its age is the age of THAT message. This table holds
@@ -40,7 +40,7 @@ _COUNT_FIELDS = ("BID_SIZE", "ASK_SIZE", "LAST_SIZE", "TOTAL_VOLUME")
 _CLOCK_FIELDS = ("QUOTE_TIME_MILLIS", "TRADE_TIME_MILLIS")
 #: signed values (any finite number): Schwab's own change of the LAST_PRICE vs the prior close.
 #: Measured: NET_CHANGE_PERCENT arrives with every LAST_PRICE; REGULAR_MARKET_CHANGE_PERCENT
-#: with every LAST_PRICE in the regular session (2026-09-28: SPY 113/113, MU 112/112, PCG 17/17)
+#: with every LAST_PRICE in the regular session (SPY 113/113, MU 112/112, PCG 17/17)
 #: and outside it only on a full refresh; CHANGE_PERCENT never.
 _SIGNED_FIELDS = ("NET_CHANGE", "NET_CHANGE_PERCENT", "REGULAR_MARKET_CHANGE_PERCENT")
 #: text as sent: Schwab's SECURITY_STATUS (field 32: "Normal, Halted, Closed"), the symbol's own
@@ -79,7 +79,7 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
     """
     if not item or not isinstance(item, dict):
         return False
-    t = ticker_storage_key(ticker)  # RC-345/F25: canonical quote-plane key
+    t = ticker_storage_key(ticker)  # the plane's key
     if not t:
         return False
     rts = float(received_ts)
@@ -165,7 +165,7 @@ def remove_row_listener(fn) -> None:
 
 def get_quote(ticker: str) -> Optional[dict[str, Any]]:
     """Copy of latest plane row for ticker, or None."""
-    t = ticker_storage_key(ticker)  # RC-345/F25: canonical quote-plane key (write+read consistent; idempotent on Schwab stream symbols)
+    t = ticker_storage_key(ticker)  # the plane's key, the same as the write's
     with _lock:
         row = _by_ticker.get(t)
         return dict(row) if row else None

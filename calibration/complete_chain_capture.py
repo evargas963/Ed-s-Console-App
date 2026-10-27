@@ -39,11 +39,10 @@ from time_et import ET, option_market_open, options_closed_at, record_markets, s
 log = logging.getLogger("chain_history")
 
 CAPTURE_EVERY_MIN = 30
-#: why the daemon's captures are complete: every listed expiry, every strike. Older rows (one or
-#: two expiries at scattered times, written by the console before 2026-09-27) carry
-#: "strike_range=ALL" and are not full chains, so they are not read. The basis is stored before
-#: the chain blob, so filtering on it never reads a chain (MEASURED 2026-09-26: filtering on
-#: `source`, stored after the blob, read every old chain -- 15 s for SPY, 80 s at startup).
+#: why the daemon's captures are complete: every listed expiry, every strike. The daemon writes
+#: only this basis, and rows of any other are not read. The basis is stored before the chain blob, so filtering
+#: on it never reads a chain (measured: filtering on `source`, stored after the blob, read every
+#: chain -- 15 s for SPY, 80 s at startup).
 CAPTURE_BASIS = "every_expiry_strike_range_ALL"     # the only basis read: rows of any other are partial
 
 TABLE_SQL = """
@@ -153,7 +152,7 @@ def capture_slot(now_ts: float) -> float | None:
 
 
 #: contracts per chain message to the console: one message is encoded and decoded whole, so a
-#: whole chain in one ($SPX, 29,394 contracts: 40.7 MB, 924 ms to encode, measured 2026-10-01)
+#: whole chain in one ($SPX, 29,394 contracts: 40.7 MB, 924 ms to encode, measured)
 #: would hold the daemon's event loop; 500 contracts take tens of milliseconds
 CHAIN_PART_CONTRACTS = 500
 
@@ -195,7 +194,7 @@ def price_history_message(ticker: str, series: str, answer: dict, fetched_ts: fl
 
 
 #: Schwab answers GET /markets for a date as far as 7 days back ("Date cannot be more than 7 days
-#: in the past.", its 400 for 2026-09-29 asked on 2026-10-07; 2026-10-06 answered 200)
+#: in the past.", its 400 for a date 8 days back; 1 day back answered 200)
 MARKETS_DAYS_BACK = 7
 #: Schwab's answer for a date, asked once per ET date: its sessions (200), or why it has none
 #: (400, e.g. "Date cannot be beyond 1 year from today."). Any other answer is asked again.
@@ -454,7 +453,7 @@ class ChainSweep:
         """One quotes request for the next QUOTES_BATCH_MAX queued contracts, which take their
         quote's Greeks; each chain it completes is delivered. A request that fails fails every
         ticker in it. Schwab's answer carries a quote per symbol it knows and, beside them, an
-        `errors` entry naming the symbols it does not (`invalidSymbols`; measured 2026-10-07: 8
+        `errors` entry naming the symbols it does not (`invalidSymbols`; measured: 8
         SPY contracts its own chain lists, every one never quoted or traded): those contracts get
         no Greeks, logged once with their count, and the rest of the request is delivered."""
         self._queue = [(chain, ct) for chain, ct in self._queue if chain.ticker in self.watchlist]  # removed: not asked
