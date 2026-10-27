@@ -510,7 +510,8 @@ def test_a_database_refusing_writes_at_start_never_stops_the_writer_starting(tmp
     """INDUCED CONDITIONS: a fully written-back spill file left beside the database (its progress
     row counts every record: a kill between its last part and its deletion), and the database
     read-only. The writer starts; once the database takes writes it deletes the file and its row
-    without writing it again."""
+    without writing it again. SQLite makes the -wal and -shm files a connection opens with the
+    database file's mode, so the database takes writes again when all three are writable."""
     db = tmp_path / "stream_capture.db"
     CaptureWriter(db)
     record = json.dumps({"topic": f"optquote.{_CONTRACT}", "msg": options_quote_msg(
@@ -523,7 +524,9 @@ def test_a_database_refusing_writes_at_start_never_stops_the_writer_starting(tmp
     try:
         writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01, timeout_sec=0.2, retry_sec=0.1)
     finally:
-        os.chmod(db, stat.S_IREAD | stat.S_IWRITE)
+        for f in (db, db.with_name(f"{db.name}-wal"), db.with_name(f"{db.name}-shm")):
+            if f.exists():
+                os.chmod(f, stat.S_IREAD | stat.S_IWRITE)
     after = _run_until_no_spill(writer)
     with closing(sqlite3.connect(db)) as conn, conn:
         assert conn.execute("SELECT COUNT(*) FROM stream_spill_progress").fetchone()[0] == 0
