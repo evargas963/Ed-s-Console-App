@@ -12,6 +12,7 @@ rebuilt from the captured contracts. Each induced failure is named in its test.
 from __future__ import annotations
 
 import asyncio
+import gc
 import json
 import os
 import socket
@@ -21,6 +22,7 @@ import sys
 import threading
 import time
 import tracemalloc
+import warnings
 from pathlib import Path
 
 import pytest
@@ -86,6 +88,28 @@ def test_the_writer_handed_the_consoles_database_refuses_it_naming_the_file(tmp_
         CaptureWriter(db)
     assert str(refused.value) == f"the stream writer never writes the console's database ({db.resolve()})"
     assert not db.exists(), "the refused file was created"
+
+
+def test_a_writer_whose_thread_is_not_running_records_on_connections_it_closes(tmp_path):
+    """A writer whose thread is not running (not started) records a message itself (insert) and
+    keeps a failure itself (keep_failure), each on a connection of its own that it closes: no
+    connection is left for the collector (Python 3.13 warns of an unclosed one). Real data:
+    the captured TSLA LEVELONE_EQUITIES item."""
+    db = tmp_path / "stream_capture.db"
+    writer = CaptureWriter(db)
+    gc.collect()                       # what earlier code left is not this writer's
+    with warnings.catch_warnings(record=True) as seen:
+        warnings.simplefilter("always")
+        writer.insert("quote.TSLA", quote_msg(symbol="TSLA", src="schwab_stream", ts_recv=1.0,
+                                              native=_TSLA["native"]))
+        writer.keep_failure("chain.TSLA", {"native": _TSLA["native"]}, OSError("disk full"), 2.0)
+        gc.collect()
+    with sqlite3.connect(db) as conn:
+        counts = [conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
+                  for t in ("stream_quotes_raw", "stream_write_failures")]
+    conn.close()
+    assert counts == [1, 1], counts
+    assert not [w for w in seen if issubclass(w.category, ResourceWarning)], "a connection was left open"
 
 
 def test_a_message_the_writer_cannot_store_is_kept_as_sent_and_its_error_reaches_the_heartbeat(tmp_path):

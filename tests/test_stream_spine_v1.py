@@ -258,9 +258,10 @@ def test_writer_init_closes_conn_if_schema_setup_fails(tmp_path):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# One stream-database path for every process (resolve_stream_db_path), so the daemon
-# and the console never attach to two different files. No process-local setting moves
-# it; explicit paths exist only on direct test and recovery APIs.
+# One stream-database path (resolve_stream_db_path): the runtime root's
+# data/stream_capture.db. No setting but the runtime root (ED_RUNTIME_ROOT, runtime_layout)
+# moves it, and STREAM_CAPTURE_DB_PATH does not; explicit paths exist only on direct test and
+# recovery APIs.
 # ─────────────────────────────────────────────────────────────────────────────
 
 def test_db_path_a_resolves_the_canonical_default():

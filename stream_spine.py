@@ -886,8 +886,12 @@ class CaptureWriter:
         if isinstance(msg, dict) and kind in _VERBATIM and msg.get("content") is None:
             return None
         if conn is None:
-            with sqlite3.connect(str(self.db_path), timeout=self.timeout_sec) as own:
-                out = self.insert(topic, msg, conn=own)
+            own = sqlite3.connect(str(self.db_path), timeout=self.timeout_sec)
+            try:
+                with own:                   # commits, or rolls back on an error
+                    out = self.insert(topic, msg, conn=own)
+            finally:
+                own.close()
             with self._lock:
                 self._committed([((topic, msg), out)])
             return out
@@ -933,8 +937,12 @@ class CaptureWriter:
                 self._q.put(kept)
         if not standalone:
             return
-        with sqlite3.connect(str(self.db_path), timeout=self.timeout_sec) as own:
-            self._keep(own, kept)
+        own = sqlite3.connect(str(self.db_path), timeout=self.timeout_sec)
+        try:
+            with own:                       # commits, or rolls back on an error
+                self._keep(own, kept)
+        finally:
+            own.close()
         with self._lock:
             self._committed([(kept, kept)])
 
