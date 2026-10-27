@@ -1,7 +1,7 @@
 # institutional-synthetic-ok: temp directories stand in for a relocated runtime root.
 """Runtime state is rooted in `runtime_layout`, not the source files (docs/ARCHITECTURE.md
-"Runtime state is not source"). These controls drive the real modules through a subprocess
-with the two variables set and unset, because the roots are read at import.
+"Runtime state is not source"). The controls of an environment variable drive the real modules
+through a subprocess with it set and unset, because the roots are read at import.
 """
 from __future__ import annotations
 
