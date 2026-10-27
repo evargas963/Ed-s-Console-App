@@ -142,7 +142,7 @@
     document.addEventListener('ed:ticker', load);
     document.addEventListener('ed:book_venue', load);
     document.addEventListener('ed:changed', function (e) { if (e.detail.kind === 'flow') load(); });
-    // Audit finding #4 (2026-09-16): initial hydration now comes SOLELY from ed-core.js's
-    // deferred ed:ticker/ed:view dispatch -- see that file's init() comment.
+    // initial hydration comes only from ed-core.js's deferred ed:ticker/ed:view dispatch
+    // (that file's init() comment)
   }
 })();

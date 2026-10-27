@@ -1,5 +1,5 @@
-// Universality (operator 2026-09-23): no built-in ticker or watchlist. A first run with
-// nothing chosen asks for a symbol and asks the server for nothing about any ticker.
+// No built-in ticker or watchlist: a first run with nothing chosen asks for a symbol and asks
+// the server for nothing about any ticker. The page itself carries no history notes.
 const { test, expect } = require('@playwright/test');
 
 test.use({ storageState: { cookies: [], origins: [] } });
@@ -13,12 +13,20 @@ test('first run: no ticker is assumed, no ticker data is requested', async ({ pa
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await expect(page.locator('#hPx')).toHaveText('CHOOSE A SYMBOL');
   await expect(page.locator('#hFeed')).toHaveText('NO SYMBOL');
-  // no panel header names a ticker nobody chose (eleven read "SPX": register P-05)
+  // no panel header names a ticker nobody chose
   expect(await page.locator('.hticker').allTextContents()).toEqual(
     Array(await page.locator('.hticker').count()).fill('—'));
   await page.waitForTimeout(3500);                     // a full scheduler tick
   expect(tickerCalls, 'nothing may be fetched for an unchosen ticker').toEqual([]);
   expect(await page.evaluate(() => window.EdShell.getState().ticker)).toBe('');
+});
+
+test('the page the console serves carries no dates or ticket ids in its comments', async ({ request }) => {
+  const page = await (await request.get('/')).text();
+  const comments = [...page.matchAll(/<!--[\s\S]*?-->|\/\*[\s\S]*?\*\//g)].map((m) => m[0]);
+  expect(comments.length, 'the page has comments to read').toBeGreaterThan(0);
+  const history = comments.filter((c) => /\b20\d\d-\d\d-\d\d\b|\bRC-\d|\boperator,? 20\d\d|\baudit P\d/i.test(c));
+  expect(history, 'history belongs in the commit message (AGENTS.md rule 1)').toEqual([]);
 });
 
 test('no symbol chosen: no view asks for a ticker on a view change, a resize, a theme change or its own controls', async ({ page }) => {

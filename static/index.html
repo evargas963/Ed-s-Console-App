@@ -12,10 +12,8 @@
 <!-- the words for each streaming state, {cell, column}: filled in by the console -->
 <meta name="ed-stream-words" content="">
 <title>Ed Console</title>
-<!-- Carried forward from legacy static/index.html during the /console cutover (operator
-     directive 2026-09-14): the PWA manifest and icons are a real, currently-served capability
-     with no equivalent here otherwise (install/pin identity would silently break without
-     them). The retired splash screen's files are deleted. -->
+<!-- The PWA manifest and icons: the console's install/pin identity, which would break without
+     them. -->
 <link rel="icon" href="/static/icons/axiom.ico" sizes="any">
 <link rel="icon" type="image/png" sizes="192x192" href="/static/icons/axiom-192.png">
 <link rel="icon" type="image/png" sizes="512x512" href="/static/icons/axiom-512.png">
@@ -40,13 +38,9 @@
   if(mq){var onOs=function(){if(getPref()==='system'){var eff=apply('system');notify('system',eff);}};
     if(mq.addEventListener)mq.addEventListener('change',onOs);else if(mq.addListener)mq.addListener(onOs);}
 })();</script>
-<!-- Operator finding (2026-09-11): this page loaded Inter from Google's CDN, a
-     render-blocking dependency on a third-party origin during first paint. The
-     --ed-sans/--ed-mono token stack (ed-tokens.css) already lists a full native
-     fallback -- system-ui, Segoe UI (Windows), Roboto, Helvetica, Arial -- so
-     removing the external request changes typography (no Inter glyphs) but
-     never blocks or breaks rendering; a workstation with no network path to
-     Google now paints exactly as fast as one with it. -->
+<!-- No font is fetched from a third-party origin, so nothing blocks first paint: the
+     --ed-sans/--ed-mono token stack (ed-tokens.css) names local faces with a full native
+     fallback (system-ui, Segoe UI, Roboto, Helvetica, Arial). -->
 <link rel="stylesheet" href="/static/css/ed-tokens.css">
 <link rel="stylesheet" href="/static/css/ed-trade-desk.css">
 <style>
@@ -153,11 +147,10 @@
   #app:not(.rail-open) .wl-empty{display:none}
   .wl-msg{padding:0 15px 4px;font-size:11px;color:var(--ed-ink-3);min-height:14px}
   #app:not(.rail-open) .wl-msg{display:none}
-  /* A degraded poll keeps the last real numbers on screen (blanking them would be its own
-     kind of dishonesty) but must not look identical to a healthy one. Operator finding
-     (2026-09-11): opacity:.4 on the numbers themselves made real values hard to read right
-     when the operator most needs to trust what they can see. The status lives in the
-     message text (below) and a persistent border on the list, not in dimmed numbers. */
+  /* A degraded poll keeps the last real numbers on screen but must not look identical to a
+     healthy one. The status lives in the message text (below) and a persistent border on the
+     list, never in dimmed numbers: dimmed values are hard to read when the operator most needs
+     to judge them. */
   .wl.wl-degraded{outline:1px dashed var(--ed-stale);outline-offset:-1px}
   .wl.wl-degraded .wl-msg{color:var(--ed-stale)}
   .wl-add{display:flex;align-items:center;gap:10px;height:32px;padding:0 15px;color:var(--ed-ink-3);
@@ -212,28 +205,11 @@
   .sub-pane{display:none;height:100%}
   .sub-pane.on{display:block;height:100%}
   .sub-pane>.panel{height:100%}
-  /* chain ladder (D) — full vendor chain, one expiry.
-     Independent-review finding (2026-09-13), REPRODUCED by direct browser measurement, then
-     CORRECTED by a fourth review's challenge: single-row sticky <thead><tr> DOES work
-     (Chromium's TablesNG genuinely supports it); the real, narrower defect was a <thead> with
-     TWO stacked sticky rows, which fails to stick EITHER row. That was fixed with one sticky
-     <div> wrapping a small header-only table beside a separate body table -- but the operator
-     kept reproducing a real, moving visual fault (a shifting header with a gap opening above
-     it) on real trackpad/wheel scrolling that no programmatic or synthetic scroll event in
-     this session's own testing ever reproduced, surviving TWO follow-up fixes (a compositing-
-     layer promotion, then an overscroll-behavior containment) neither of which could be
-     proven to address the actual mechanism, because neither could be proven to reproduce it
-     in the first place.
-     Root-caused instead of patched again: `position:sticky` is fundamentally the wrong tool
-     here regardless of which of ITS OWN failure modes was actually firing (compositing,
-     scroll-chaining, or something else never isolated) -- it is a well-documented source of
-     exactly this class of intermittent, hard-to-reproduce, engine/driver-dependent visual bug
-     across browsers. The header does not need to LOOK stuck via a positioning trick; it can
-     simply never be part of the scrolling region at all -- the standard "frozen header"
-     pattern: #chainBody is now a non-scrolling flex column holding the (non-sticky) header
-     table directly, with a SEPARATE, genuinely scrollable `.chn-scroll` div beneath it holding
-     only the body table. There is no sticky positioning anywhere in this design, so there is
-     nothing left for a compositor or scroll-chaining bug to intermittently get wrong. */
+  /* chain ladder (D) — full vendor chain, one expiry. The header is never part of the scrolling
+     region (the "frozen header" pattern): #chainBody is a non-scrolling flex column holding the
+     header table, with a separate scrollable `.chn-scroll` div beneath it holding only the body
+     table. Nothing uses position:sticky, whose intermittent, engine-dependent scroll faults a
+     header-only table cannot have. */
   .chn{width:100%;border-collapse:collapse;table-layout:fixed;font-family:var(--ed-sans);font-size:13px;font-variant-numeric:tabular-nums}
   #chainBody{display:flex;flex-direction:column;overflow:hidden}
   .chn-scroll{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain}
@@ -459,13 +435,9 @@
   .heat-banner.degraded{background:var(--ed-proxy-bg);color:var(--ed-warn);border:1px solid var(--ed-warn)}
   .heat-banner.warming{background:var(--ed-accent-bg);color:var(--ed-accent-2);border:1px solid var(--ed-accent-edge)}
   /* B: freshness-coupled dimming — stale/reference content recedes */
-  /* Operator finding (2026-09-11): opacity:.5 + saturate(.6) here blanket-dimmed every
-     cell's TEXT and COLOR, making the actual numbers hard to read whenever a surface was
-     stale/reference -- exactly when an operator most needs to read them clearly to judge
-     whether to trust what's on screen. The banner (buildBanner) is the truthful status
-     disclosure; this class's only job is a persistent, unmistakable-but-non-obscuring
-     visual mark. A dashed --ed-stale outline reads as "this container is flagged" without
-     touching a single cell's contrast. */
+  /* The banner (buildBanner) is the status disclosure; this class only marks the container,
+     with a dashed --ed-stale outline that touches no cell's contrast, so the numbers stay as
+     readable stale as live. */
   .recede{outline:2px dashed var(--ed-stale);outline-offset:-2px;border-radius:6px}
   /* A: shared selected-strike highlight across panels */
   .heat .hcell.sel-strike{outline:2px solid var(--ed-accent);outline-offset:-2px}
@@ -473,11 +445,9 @@
   /* C: nearest-expiry (front) column emphasis — presentation only */
   .heat .hexp.col-front{background:var(--ed-panel-3);box-shadow:inset 0 -2px 0 var(--ed-accent-edge)}
   .heat .hcell.col-front{box-shadow:inset 1px 0 0 var(--ed-edge-strong),inset -1px 0 0 var(--ed-edge-strong)}
-  /* Always-live heatmap mandate (2026-09-15, operator directive), FINAL: every cell keeps
-     showing its real, valid, already-computed value regardless of stream state -- these
-     marks are DISCLOSURE ONLY, layered beside the value (never dimming/obscuring it, same
-     lesson as .recede above), so a trader can tell live from a held snapshot at a glance
-     without the number itself ever being withheld, narrowed, or replaced with '—'. */
+  /* Every heatmap cell keeps showing its value whatever the stream's state: these marks are
+     disclosure only, beside the value (never dimming it, as .recede above), so live and held
+     values tell apart at a glance and a held value is never withheld. */
   .heat .hcell.state-partial{box-shadow:inset 0 0 0 1px var(--ed-warn)}
   .heat .hcell.state-stale,.heat .hcell.state-unavailable{box-shadow:inset 0 0 0 1px var(--ed-stale)}
 
@@ -523,11 +493,8 @@
   .gbs-bar.neg{background:var(--ed-neg);transform:translateX(-100%)}
   .gbs-v{width:70px;text-align:right;font-weight:500}
   .gbs-v.pos{color:var(--ed-pos-ink)} .gbs-v.neg{color:var(--ed-neg-ink)}
-  /* Independent-review finding (2026-09-12): the per-strike volume field (already computed
-     and, for the actively-streamed contract, kept fresh by server.py's overlay) reached this
-     row's own data but was never rendered -- "the GEX bar renderer does not display the newly
-     updated per-strike volume field." Compact, muted -- a secondary number beside the primary
-     signed GEX$ value, not competing with it. */
+  /* the row's per-strike volume (served, with the streamed contracts' overlay): compact, a
+     secondary number beside the primary signed GEX$ value. */
   .gbs-vol{width:52px;text-align:right;color:var(--ed-ink-2);font-size:10px;font-variant-numeric:tabular-nums}
   .gbs-chg{width:58px;text-align:right;color:var(--ed-ink-2);font-size:10px;font-variant-numeric:tabular-nums}
   .gbs-allexp{font-family:var(--ed-sans);font-size:10px;color:var(--ed-stale);padding:0 0 5px}
@@ -577,12 +544,12 @@
   .mig-coach + .mig-coach{margin-top:6px;border-left-color:var(--ed-proxy);background:var(--ed-proxy-bg)}
   .mig-coach b{display:block;color:var(--ed-ink);font-size:12.5px;margin-bottom:2px}
 
-  /* REAL-DATA DENSITY REPAIR (2026-09-10): the approved workstation shows ~11 legible strike rows in
-     the hero. Rows keep this height in every scope; All available scrolls the complete population. */
+  /* the hero shows ~11 legible strike rows, as the approved workstation does. Rows keep this height
+     in every scope; All available scrolls the complete population. */
   .heat{font-size:13.5px;width:max-content;min-width:100%}
   .heat th,.heat td{height:31px}
-  /* MEASURED on the live 216x34 surface (2026-09-10): without a floor, 34 expiration columns compressed
-     into the panel width and overprinted. A column never renders narrower than a legible signed value;
+  /* measured on a live 216x34 surface: without a floor, 34 expiration columns compress into the panel
+     width and overprint. A column never renders narrower than a legible signed value;
      the grid grows past the panel and .heat-wrap scrolls horizontally (Wider / All available). */
   .heat .hexp,.heat .hcell{min-width:84px}
   .heat .hstrike,.heat .hcorner{min-width:70px}
@@ -616,7 +583,7 @@
   .sd td.dim{color:var(--ed-ink-4)}
   .sd tr.sd-net td{border-top:1px solid var(--ed-edge);border-bottom:none;color:var(--ed-ink-2);font-weight:600}
   .sd-src{font-family:var(--ed-sans);font-size:10px;color:var(--ed-ink-3);margin-top:8px}
-  /* Structures (contract-safety metadata, operator field-inventory audit) — reuses .sd's
+  /* Structures (contract-safety metadata) — reuses .sd's
      table styling; strike is the row label (like .sd td.side), flags are quiet unless ON */
   .st-tbl td:first-child{text-align:left;font-weight:600}
   .st-tbl th:first-child{text-align:left}
@@ -644,7 +611,7 @@
   .of .of-empty td{text-align:center;padding:26px 12px;vertical-align:middle}
   .of .oe-sub{font-size:11px;color:var(--ed-ink-4);margin-top:10px;max-width:44ch;margin-left:auto;margin-right:auto;line-height:1.5}
   .of .notproven{display:inline-block}
-  /* Options Flow tape rows (operator field-inventory audit, 2026-09-13) — native trade
+  /* Options Flow tape rows — native trade
      prints; classification is a mechanical bid/ask comparison, never an aggressor side. */
   .of td{padding:5px 8px;text-align:right;border-bottom:1px solid var(--ed-edge-soft);color:var(--ed-ink)}
   .of td:first-child,.of td.of-sym{text-align:left}
@@ -871,11 +838,10 @@
           </div>
         </div>
 
-        <!-- OPTIONS / VANNA subview — dealer vanna exposure by strike (operator field-inventory
-             audit, 2026-09-13). Aggregate-by-strike tier only: Vanna has no per-expiry strike x
-             expiry SURFACE yet (see the Gamma > Multi-Map subview's own note) — this reuses the
-             SAME diverging-bar grammar GEX by Strike already uses, on math_exposure_core's
-             already-canonical call_vanna/put_vanna (RC-211's exact BS-vanna faucet). -->
+        <!-- OPTIONS / VANNA subview — dealer vanna exposure by strike. Aggregate-by-strike tier
+             only: Vanna has no per-expiry strike x expiry surface (see the Gamma > Multi-Map
+             subview's own note); it uses the diverging-bar grammar GEX by Strike uses, on
+             math_exposure_core's call_vanna/put_vanna. -->
         <div class="sub-pane" data-sub-pane="vanna">
           <div class="panel">
             <div class="panel-h"><span class="hticker" id="vnTicker">—</span><span class="t">Vanna by Strike</span><span class="sub">dealer net vanna · delta-shares per vol point · agg all expiries</span>
@@ -895,8 +861,8 @@
         </div>
 
         <!-- OPTIONS / STRUCTURES subview — contract-safety/identity metadata that is already
-             flowing through every /api/chain contract dict verbatim (operator field-inventory
-             audit, 2026-09-13): multiplier, non-standard/deliverable flags, settlement/exercise/
+             flowing through every /api/chain contract dict verbatim: multiplier,
+             non-standard/deliverable flags, settlement/exercise/
              expiration type, last trading day, penny-pilot. Prevents an adjusted or specially-
              settled contract from silently being treated like an ordinary 100-share monthly. -->
         <div class="sub-pane" data-sub-pane="structures">
@@ -908,10 +874,10 @@
         </div>
       </section>
 
-      <!-- TRADE DESK / RIGHT NOW — the one Detect->Frame->Confirm synthesis page (operator,
-           2026-09-13). Execute is deliberately absent; see ed-trade-desk.js's own docstring. -->
+      <!-- TRADE DESK / RIGHT NOW — the one Detect->Frame->Confirm synthesis page. Execute is
+           deliberately absent; see ed-trade-desk.js's own docstring. -->
       <section class="workspace" data-ws-pane="trade-desk">
-        <!-- DESK (operator mockup 2026-09-25): Market Map + Attention Queue + four domain cards for
+        <!-- DESK: Market Map + Attention Queue + four domain cards for
              the SELECTED ticker, one global timeframe. ed-trade-desk-map.js fills it; the chart is
              the shared TradingView-style chart (ed-tv-chart.js on Lightweight Charts). -->
         <div class="sub-pane" data-sub-pane="desk">
@@ -957,8 +923,8 @@
         </div>
       </section>
 
-      <!-- ORDER FLOW / BOOK · DOM — real L2 book microstructure for the underlying ticker
-           (operator, 2026-09-13). Other subs (Overview/Heatmap/Tape/Options Book/History) stay
+      <!-- ORDER FLOW / BOOK · DOM — real L2 book microstructure for the underlying ticker.
+           Other subs (Overview/Heatmap/Tape/Options Book/History) stay
            `state:'na'` in ed-core.js's NAV until they have their own real wiring. -->
       <section class="workspace" data-ws-pane="order-flow">
         <div class="sub-pane" data-sub-pane="book">
@@ -986,7 +952,7 @@
       </section>
 
       <!-- LIQUIDITY / LEVELS — reuses the EXACT /api/levels renderer ed-gamma-levels.js already
-           built for Options > Gamma > Levels (operator, 2026-09-13). Other subs (Map/Profile/
+           built for Options > Gamma > Levels. Other subs (Map/Profile/
            VWAP-Value/Session/History) stay `state:'na'` until they have their own real wiring. -->
       <section class="workspace" data-ws-pane="liquidity">
         <div class="sub-pane" data-sub-pane="map">
