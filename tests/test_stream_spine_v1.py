@@ -4,7 +4,9 @@ refusal of the console's database."""
 from __future__ import annotations
 
 import asyncio
+import gc
 import sqlite3
+import warnings
 
 import pytest
 
@@ -239,35 +241,20 @@ def test_writer_refuses_the_consoles_database_through_a_relative_path():
         CaptureWriter("data/nosuchdir/../ed_console.db")
 
 
-def test_writer_init_closes_conn_if_schema_setup_fails(tmp_path, monkeypatch):
-    """A schema setup that fails after the connect closes the SQLite connection it opened."""
-    real_connect = __import__("sqlite3").connect
-    closed = {"n": 0}
-
-    class TrackingConn:
-        def __init__(self, inner):
-            self._inner = inner
-
-        def executescript(self, *_a, **_k):
-            raise RuntimeError("schema boom")
-
-        def commit(self):
-            return self._inner.commit()
-
-        def close(self):
-            closed["n"] += 1
-            return self._inner.close()
-
-        def __getattr__(self, name):
-            return getattr(self._inner, name)
-
-    def wrap(path, *a, **k):
-        return TrackingConn(real_connect(path, *a, **k))
-
-    monkeypatch.setattr("stream_spine.sqlite3.connect", wrap)
-    with pytest.raises(RuntimeError, match="schema boom"):
-        CaptureWriter(tmp_path / "s.db")
-    assert closed["n"] == 1
+def test_writer_init_closes_conn_if_schema_setup_fails(tmp_path):
+    """A schema setup that fails after the connect closes the SQLite connection it opened: no
+    connection is left for the collector (Python 3.13 warns of an unclosed one). INDUCED
+    CONDITION: the database file holds bytes that are not a database, so SQLite connects and the
+    first statement fails."""
+    db = tmp_path / "s.db"
+    db.write_bytes(b"not a database, " * 64)
+    gc.collect()                       # what earlier code left is not this writer's
+    with warnings.catch_warnings(record=True) as seen:
+        warnings.simplefilter("always")
+        with pytest.raises(sqlite3.DatabaseError, match="file is not a database"):
+            CaptureWriter(db)
+        gc.collect()
+    assert not [w for w in seen if issubclass(w.category, ResourceWarning)], "a connection was left open"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
