@@ -248,7 +248,8 @@ def _arm_shutdown_watchdog(deadline_sec: float = SHUTDOWN_DEADLINE_SEC) -> None:
         time.sleep(deadline_sec)
         _hard_exit(
             f"graceful shutdown exceeded {deadline_sec:.0f}s - a background worker is "
-            f"blocked (slow vendor call or long query) and cannot be interrupted"
+            "still running (a chain pricing or a request on a route's worker thread) and cannot be "
+            "interrupted"
         )
 
     threading.Thread(target=_watch, name="shutdown-watchdog", daemon=True).start()
@@ -539,13 +540,14 @@ async def _app_lifespan(app):
 
     # ── Shutdown ───────────────────────────────────────────────────────────
     # BOUNDED BY CONSTRUCTION. stop_bar_writer waits up to 10 s for the bar writer; at interpreter
-    # exit concurrent.futures joins the pricing thread (_chain_pricing) with no limit and cannot
-    # interrupt a RUNNING pricing, so one blocked pricing would hold the exit, and abandoning the
-    # lifespan would not free the interpreter. The watchdog ends the process whether or not it returns.
+    # exit Python joins every non-daemon thread with no limit: the pricing thread (_chain_pricing)
+    # and AnyIO's worker threads, which run the plain-def routes. Neither can be interrupted, so one
+    # blocked pricing or request would hold the exit, and abandoning the lifespan would not free the
+    # interpreter. The watchdog ends the process whether or not it returns.
     _arm_shutdown_watchdog()
     # the daemon's feed task; the console holds no Schwab socket of its own
     try:
-        stop_order_flow_stream(join_timeout=40.0)
+        stop_order_flow_stream()
     except Exception as e:
         log.warning("Order flow streaming shutdown: %s", e)
 
@@ -2341,9 +2343,6 @@ def gamma_surface_payload(tk: str, scope: str, centre, shift: int, cols: "int | 
                 "classification": "DERIVED", "cell_metric": "net_gex_1pct",
                 "spot_basis": "live_resolve_spot",
             },
-            "method": ("live terrain wide chain (current Greeks + live spot, this refresh cycle) -> "
-                       "partition by native expirationDate -> compute_exposures_by_strike per expiry "
-                       "-> net_gex_1pct cell; one producer, zero extra vendor calls"),
         }
 
     # ---- no live surface: unavailable, with the reason. Nothing stands in for it. ----

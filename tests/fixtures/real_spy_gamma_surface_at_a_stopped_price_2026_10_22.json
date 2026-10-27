@@ -592,7 +592,6 @@
  "levels_stale_reason": "",
  "levels_state": "CLOSE",
  "levels_time_ct": "Thu 10/22 03:17 PM CT",
- "method": "live terrain wide chain (current Greeks + live spot, this refresh cycle) -> partition by native expirationDate -> compute_exposures_by_strike per expiry -> net_gex_1pct cell; one producer, zero extra vendor calls",
  "priced_at_spot": 764.04,
  "priced_at_spot_as_of_ts_utc": 1792700224.362402,
  "provenance": {

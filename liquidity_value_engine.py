@@ -931,10 +931,12 @@ def build_price_level_snapshot(
         families_absent.append({
             "family": "overnight", "reason": "no overnight-window bars in available tape"})
     else:
+        overnight_window = (f"{session_date.isoformat()} before the RTH open (no prior session)"
+                            if prior_date is None else
+                            f"{prior_date.isoformat()} RTH close -> {session_date.isoformat()} RTH open")
         for lid, key in (("OVERNIGHT_HIGH", "overnight_high"), ("OVERNIGHT_LOW", "overnight_low")):
             _put(lid, overnight.get(key),
-                 producer=f"{_PRODUCER_NS}.get_overnight_levels",
-                 window="prior RTH close -> session RTH open (RC-153)")
+                 producer=f"{_PRODUCER_NS}.get_overnight_levels", window=overnight_window)
 
     # ── current-session value area ───────────────────────────────────────────
     profile = compute_volume_profile_levels(bars_norm, session_date, cfg)

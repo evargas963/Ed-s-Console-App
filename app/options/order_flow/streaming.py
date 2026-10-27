@@ -463,12 +463,10 @@ def start_order_flow_stream(on_tick_callback: Optional[Callable[[str], None]] = 
     return True
 
 
-STREAM_THREAD_JOIN_TIMEOUT_SEC = 35.0
-
-
-def stop_order_flow_stream(*, join_timeout: float = STREAM_THREAD_JOIN_TIMEOUT_SEC) -> None:
+def stop_order_flow_stream() -> None:
+    """Clear the live state the feed fed and cancel its task; the task logs FEED_LOOP_STOP_DONE
+    when it ends."""
     global _feed_running, _feed_task
-    _log_stream("STREAM_THREAD_JOIN_START", join_timeout_sec=join_timeout)
     _feed_running = False
     _option_contract_last_update_ts.clear()
     clear_all_live_state()
@@ -476,6 +474,6 @@ def stop_order_flow_stream(*, join_timeout: float = STREAM_THREAD_JOIN_TIMEOUT_S
     if task is not None and not task.done():
         task.cancel()
     _feed_task = None
-    _log_stream("STREAM_THREAD_JOIN_DONE")
+    _log_stream("FEED_CANCEL_REQUESTED")
 
 
