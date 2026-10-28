@@ -9,6 +9,7 @@ import os
 import sqlite3
 import subprocess
 import sys
+from contextlib import closing
 from pathlib import Path
 
 import pytest
@@ -65,10 +66,10 @@ def test_writer_batches_into_stream_capture_db(tmp_path):
                                     quote_time_ms=5, trade_time_ms=6, src="t", ts_recv=1.0))
     w.insert("bar1m.SPY", bar_msg(symbol="SPY", bar_start_ms=0, open=1, high=2, low=0.5,
                                   close=1.5, volume=999, src="t", ts_recv=2.0))
-    con = sqlite3.connect(db)
-    assert con.execute("SELECT COUNT(*) FROM stream_quotes_raw").fetchone()[0] == 1
-    assert con.execute("SELECT COUNT(*) FROM stream_bars_raw").fetchone()[0] == 1
-    assert con.execute("PRAGMA journal_mode").fetchone()[0].lower() == "wal"
+    with closing(sqlite3.connect(db)) as con:
+        assert con.execute("SELECT COUNT(*) FROM stream_quotes_raw").fetchone()[0] == 1
+        assert con.execute("SELECT COUNT(*) FROM stream_bars_raw").fetchone()[0] == 1
+        assert con.execute("PRAGMA journal_mode").fetchone()[0].lower() == "wal"
 
 
 def test_quote_native_content_stored_with_field_fidelity(tmp_path):
@@ -81,8 +82,8 @@ def test_quote_native_content_stored_with_field_fidelity(tmp_path):
              "REGULAR_MARKET_CHANGE_PERCENT": 0.42}
     w.insert("quote.SPY", quote_msg(symbol="SPY", bid=1.0, src="schwab_l1", ts_recv=1.0,
                                     native=native))
-    con = sqlite3.connect(db)
-    row = con.execute("SELECT native_json FROM stream_quotes_raw").fetchone()
+    with closing(sqlite3.connect(db)) as con:
+        row = con.execute("SELECT native_json FROM stream_quotes_raw").fetchone()
     assert json.loads(row[0]) == native
 
 
@@ -92,31 +93,30 @@ def test_quote_without_native_stores_null_not_a_fabricated_value(tmp_path):
     db = tmp_path / "stream_capture.db"
     w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
     w.insert("quote.SPY", quote_msg(symbol="SPY", bid=1.0, src="t", ts_recv=1.0))
-    con = sqlite3.connect(db)
-    assert con.execute("SELECT native_json FROM stream_quotes_raw").fetchone()[0] is None
+    with closing(sqlite3.connect(db)) as con:
+        assert con.execute("SELECT native_json FROM stream_quotes_raw").fetchone()[0] is None
 
 
 def test_existing_stream_capture_db_migrates_native_json_column(tmp_path):
-    """A daemon restart against a DB written by the PRE-repair schema must not crash —
+    """A daemon restart against a DB written without the native_json column must not crash —
     ALTER TABLE ADD COLUMN is idempotent forward migration, not a fresh-DB assumption."""
     db = tmp_path / "stream_capture.db"
-    con = sqlite3.connect(db)
-    con.executescript("""
-        CREATE TABLE stream_quotes_raw (
-            ts_recv REAL NOT NULL, symbol TEXT NOT NULL,
-            bid REAL, ask REAL, last REAL,
-            bid_size INTEGER, ask_size INTEGER, last_size INTEGER,
-            total_volume INTEGER, quote_time_ms INTEGER, trade_time_ms INTEGER,
-            src TEXT NOT NULL
-        );
-    """)
-    con.commit()
-    con.close()
+    with closing(sqlite3.connect(db)) as con:
+        con.executescript("""
+            CREATE TABLE stream_quotes_raw (
+                ts_recv REAL NOT NULL, symbol TEXT NOT NULL,
+                bid REAL, ask REAL, last REAL,
+                bid_size INTEGER, ask_size INTEGER, last_size INTEGER,
+                total_volume INTEGER, quote_time_ms INTEGER, trade_time_ms INTEGER,
+                src TEXT NOT NULL
+            );
+        """)
+        con.commit()
     w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
     w.insert("quote.SPY", quote_msg(symbol="SPY", bid=1.0, src="t", ts_recv=1.0,
                                     native={"key": "SPY"}))
-    con = sqlite3.connect(db)
-    assert con.execute("SELECT native_json FROM stream_quotes_raw").fetchone()[0] is not None
+    with closing(sqlite3.connect(db)) as con:
+        assert con.execute("SELECT native_json FROM stream_quotes_raw").fetchone()[0] is not None
 
 
 def test_book_content_stored_verbatim_never_flattened(tmp_path):
@@ -126,9 +126,9 @@ def test_book_content_stored_verbatim_never_flattened(tmp_path):
               "BOOK_TIME": 999}
     w.insert("book.SPY", book_msg(symbol="SPY", service="NASDAQ_BOOK", content=content,
                                   src="schwab_book", ts_recv=1.0))
-    con = sqlite3.connect(db)
-    row = con.execute(
-        "SELECT symbol, service, native_json, src FROM stream_book_raw").fetchone()
+    with closing(sqlite3.connect(db)) as con:
+        row = con.execute(
+            "SELECT symbol, service, native_json, src FROM stream_book_raw").fetchone()
     assert row[0] == "SPY" and row[1] == "NASDAQ_BOOK" and row[3] == "schwab_book"
     assert json.loads(row[2]) == content
 
@@ -140,12 +140,11 @@ def test_book_msg_with_no_content_is_not_inserted(tmp_path):
     w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
     w.insert("book.SPY", {"ts_recv": 1.0, "symbol": "SPY", "service": "NASDAQ_BOOK",
                           "content": None, "src": "t"})
-    con = sqlite3.connect(db)
-    assert con.execute("SELECT COUNT(*) FROM stream_book_raw").fetchone()[0] == 0
+    with closing(sqlite3.connect(db)) as con:
+        assert con.execute("SELECT COUNT(*) FROM stream_book_raw").fetchone()[0] == 0
 
 
-#: Real content shape from the live-proven probe (reports/of_capability_probe/
-#: options_20260820T1354Z/frames/LEVELONE_OPTIONS_001_decoded.json) — not invented.
+#: The content shape of a LEVELONE_OPTIONS message as Schwab sends it.
 _REAL_LEVELONE_OPTIONS_CONTENT = {
     "key": "SPY   260820C00767000", "delayed": False, "assetMainType": "OPTION",
     "DESCRIPTION": "SPY 08/20/2026 767.00 C", "BID_PRICE": 1.26, "ASK_PRICE": 1.28,
@@ -154,7 +153,7 @@ _REAL_LEVELONE_OPTIONS_CONTENT = {
     "DAYS_TO_EXPIRATION": 0, "CONTRACT_TYPE": "C", "UNDERLYING": "SPY",
 }
 
-#: Real content shape from OPTIONS_BOOK_001_decoded.json — per-MM/exchange depth.
+#: The content shape of an OPTIONS_BOOK message as Schwab sends it — per-MM/exchange depth.
 _REAL_OPTIONS_BOOK_CONTENT = {
     "key": "SPY   260820C00767000", "BOOK_TIME": 1787234093764,
     "BIDS": [{"BID_PRICE": 1.28, "TOTAL_VOLUME": 1746, "NUM_BIDS": 12,
@@ -170,9 +169,9 @@ def test_options_quote_content_stored_verbatim_never_flattened(tmp_path):
     w.insert("optquote.SPY   260820C00767000", options_quote_msg(
         symbol="SPY   260820C00767000", content=_REAL_LEVELONE_OPTIONS_CONTENT,
         src="schwab_options_l1", ts_recv=1.0))
-    con = sqlite3.connect(db)
-    row = con.execute(
-        "SELECT symbol, native_json, src FROM stream_options_quotes_raw").fetchone()
+    with closing(sqlite3.connect(db)) as con:
+        row = con.execute(
+            "SELECT symbol, native_json, src FROM stream_options_quotes_raw").fetchone()
     assert row[0] == "SPY   260820C00767000" and row[2] == "schwab_options_l1"
     assert json.loads(row[1]) == _REAL_LEVELONE_OPTIONS_CONTENT
 
@@ -181,8 +180,8 @@ def test_options_quote_with_no_content_is_not_inserted(tmp_path):
     db = tmp_path / "stream_capture.db"
     w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
     w.insert("optquote.SPY", {"ts_recv": 1.0, "symbol": "SPY", "content": None, "src": "t"})
-    con = sqlite3.connect(db)
-    assert con.execute("SELECT COUNT(*) FROM stream_options_quotes_raw").fetchone()[0] == 0
+    with closing(sqlite3.connect(db)) as con:
+        assert con.execute("SELECT COUNT(*) FROM stream_options_quotes_raw").fetchone()[0] == 0
 
 
 def test_options_book_reuses_the_generic_book_table_by_service(tmp_path):
@@ -193,15 +192,15 @@ def test_options_book_reuses_the_generic_book_table_by_service(tmp_path):
     w.insert("book.SPY   260820C00767000", book_msg(
         symbol="SPY   260820C00767000", service="OPTIONS_BOOK",
         content=_REAL_OPTIONS_BOOK_CONTENT, src="schwab_options_book", ts_recv=1.0))
-    con = sqlite3.connect(db)
-    row = con.execute(
-        "SELECT symbol, service, native_json FROM stream_book_raw").fetchone()
+    with closing(sqlite3.connect(db)) as con:
+        row = con.execute(
+            "SELECT symbol, service, native_json FROM stream_book_raw").fetchone()
     assert row[1] == "OPTIONS_BOOK"
     assert json.loads(row[2]) == _REAL_OPTIONS_BOOK_CONTENT
 
 
 def test_writer_drains_full_queue_on_stop(tmp_path):
-    """Cursor review HIGH: stop must not vaporize buffered rows."""
+    """A stop writes every row still buffered before the writer returns."""
     async def go():
         bus = MessageBus()
         sub = bus.subscribe("", policy=LOG)
@@ -211,8 +210,8 @@ def test_writer_drains_full_queue_on_stop(tmp_path):
         stop = asyncio.Event()
         stop.set()                      # stop BEFORE the writer ever runs
         await w.run(sub, stop=stop)
-        con = sqlite3.connect(tmp_path / "s.db")
-        n = con.execute("SELECT COUNT(*) FROM stream_quotes_raw").fetchone()[0]
+        with closing(sqlite3.connect(tmp_path / "s.db")) as con:
+            n = con.execute("SELECT COUNT(*) FROM stream_quotes_raw").fetchone()[0]
         assert n == 50, f"drain lost rows: {n}/50"
         assert w.status()["failures"] == 0
     asyncio.run(go())
@@ -229,10 +228,10 @@ def test_insert_failure_is_kept_as_sent_never_kills_writer(tmp_path):
         stop = asyncio.Event(); stop.set()
         await w.run(sub, stop=stop)
         assert (w.status()["failures"], w.status()["state"]) == (1, "stopped")
-        con = sqlite3.connect(tmp_path / "s.db")
-        assert con.execute("SELECT COUNT(*) FROM stream_quotes_raw").fetchone()[0] == 1
-        assert con.execute("SELECT topic, msg_json FROM stream_write_failures").fetchall() == [
-            ("quote.SPY", json.dumps(repr(bad)))]
+        with closing(sqlite3.connect(tmp_path / "s.db")) as con:
+            assert con.execute("SELECT COUNT(*) FROM stream_quotes_raw").fetchone()[0] == 1
+            assert con.execute("SELECT topic, msg_json FROM stream_write_failures").fetchall() == [
+                ("quote.SPY", json.dumps(repr(bad)))]
     asyncio.run(go())
 
 
