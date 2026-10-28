@@ -153,6 +153,25 @@ def test_an_edit_target_is_placed_once_whatever_its_spelling(tmp_path):
         assert PLG.production_checkout_app_edit_violations({"file_path": target}, primary) == [], target
 
 
+def test_every_file_the_console_and_daemon_run_is_app_code_to_the_rails():
+    """The rails' list of what is app code is checked against what runs: every repository file
+    the console (server) and the capture daemon load is app code in the production checkout, so
+    an edit to it there is refused. A folder of running code left off the list fails here."""
+    import importlib
+    import sys
+
+    from tools.pretooluse_guard import production_path
+
+    importlib.import_module("server")
+    importlib.import_module("app.market_data.schwab.streaming.capture")
+    files = {Path(m.__file__).resolve() for m in list(sys.modules.values())
+             if getattr(m, "__file__", None) and Path(m.__file__).resolve().is_relative_to(ROOT)
+             and not {".venv", "tests"} & set(Path(m.__file__).resolve().relative_to(ROOT).parts[:1])}
+    assert any(f.parent.name == "calibration" for f in files)          # the daemon's chain sweep
+    missed = sorted(str(f.relative_to(ROOT)) for f in files if production_path(str(f), ROOT, ROOT) is None)
+    assert missed == [], missed
+
+
 def test_an_edit_target_that_cannot_be_placed_is_refused(tmp_path):
     """INDUCED CONDITION: a target holding a NUL byte, inside the production checkout. Where the
     filesystem cannot place it (Linux), the guard raises and hook_chain refuses the event; where
@@ -164,4 +183,27 @@ def test_an_edit_target_that_cannot_be_placed_is_refused(tmp_path):
     except ValueError:
         return                                   # a raising guard is a block (test_hook_chain_v1)
     assert any("PROD_CHECKOUT_APP_EDIT" in b for b in bad), bad
+
+
+def test_a_cross_checkout_target_that_cannot_be_placed_is_refused(tmp_path):
+    """INDUCED CONDITION: a linked worktree's edit target in the production checkout holding a NUL
+    byte. The cross-checkout rail places it with the same function as the other rails: it raises
+    (a block) or it is refused; the old rail skipped it and let it through."""
+    primary, wt = _linked_worktree_layout(tmp_path)
+    try:
+        bad = PLG.cross_checkout_edit_violations({"file_path": str(primary / "x\x00.md")}, repo=wt)
+    except ValueError:
+        return                                   # a raising guard is a block (test_hook_chain_v1)
+    assert len(bad) == 1 and "CROSS_CHECKOUT_EDIT" in bad[0], bad
+
+
+def test_a_shell_write_to_the_production_checkouts_app_code_is_refused_and_devices_are_not():
+    """The shell rail places each write destination with `production_path`, against this
+    repository's own production checkout: a redirect into static/ is refused; a device, stdout or
+    an empty name is not app code there, and placing it does not raise."""
+    primary = PLG._primary_worktree_root(ROOT) or ROOT
+    bad = PLG.production_checkout_shell_app_write_violations(PLG.read("echo x > static/x.js", str(primary)))
+    assert len(bad) == 1 and "PROD_CHECKOUT_APP_EDIT" in bad[0], bad
+    for cmd in ("echo x > /dev/null", "echo x > NUL", "echo x > nul", "tee - < a", 'echo x > ""'):
+        assert PLG.production_checkout_shell_app_write_violations(PLG.read(cmd, str(primary))) == [], cmd
 

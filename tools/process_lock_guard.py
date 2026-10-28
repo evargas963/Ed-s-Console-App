@@ -38,7 +38,7 @@ from tools.shell_parse import (  # noqa: E402 — the ONE shell reader
     normalize_repo,
     read,
 )
-from tools.pretooluse_guard import production_path  # noqa: E402
+from tools.pretooluse_guard import checkout_path, production_path  # noqa: E402
 from tools.hook_chain import BASH_TOOLS, MUTATING_TOOLS  # noqa: E402 — the ONE roster of each class
 
 #: The file-mutating tool class is decided ONCE (tools.hook_chain.MUTATING_TOOLS, Cursor's
@@ -81,8 +81,8 @@ def cross_checkout_edit_violations(tool_input: dict, repo: Path = REPO) -> list[
     topology (which checkout am I, where does the target resolve) and names no agent. The
     primary session editing a linked worktree is not blocked — that is the operator-visible
     direction. A worktree nested under the primary's root (`.claude/worktrees/<name>`) owns
-    the files under its own root; they are not the primary's. Fail-open on unresolvable paths:
-    this rail blocks only on an affirmative cross-checkout hit."""
+    the files under its own root; they are not the primary's. A target `checkout_path` cannot
+    place raises, and hook_chain refuses the event."""
     primary = _primary_worktree_root(repo)
     if primary is None:
         return []
@@ -91,15 +91,8 @@ def cross_checkout_edit_violations(tool_input: dict, repo: Path = REPO) -> list[
         raw = tool_input.get(key)
         if not raw or not isinstance(raw, str):
             continue
-        try:
-            target = Path(raw)
-            if not target.is_absolute():
-                target = repo / target
-            resolved = target.resolve()
-            resolved.relative_to(primary.resolve())
-        except (OSError, ValueError):
-            continue
-        if resolved.is_relative_to(repo.resolve()):
+        resolved = checkout_path(raw, repo, primary)
+        if resolved is None or resolved.is_relative_to(repo.resolve()):
             continue                     # this session's own worktree, nested inside the primary
         out.append(
             f"CROSS_CHECKOUT_EDIT: this session runs in the linked worktree "
