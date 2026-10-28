@@ -2,6 +2,7 @@
 """Operating process lock — negative controls + quiet paths."""
 from __future__ import annotations
 
+import subprocess
 import sys
 from pathlib import Path
 
@@ -158,10 +159,6 @@ def test_every_file_the_console_and_daemon_run_is_app_code_to_the_rails():
     the console (server) and the capture daemon load is app code in the production checkout, so
     an edit to it there is refused. A folder of running code left off the list fails here. The two
     load in a fresh process, so what other tests imported into this worker is not counted."""
-    import subprocess
-
-    from tools.pretooluse_guard import production_path
-
     loaded = subprocess.run(
         [sys.executable, "-c", "import sys, server, app.market_data.schwab.streaming.capture; "
          "print('\\n'.join(m.__file__ for m in list(sys.modules.values()) if getattr(m, '__file__', None)))"],
@@ -169,7 +166,7 @@ def test_every_file_the_console_and_daemon_run_is_app_code_to_the_rails():
     files = {Path(f).resolve() for f in loaded if Path(f).resolve().is_relative_to(ROOT)
              and not {".venv", "tests"} & set(Path(f).resolve().relative_to(ROOT).parts[:1])}
     assert any(f.parent.name == "calibration" for f in files)          # the daemon's chain sweep
-    missed = sorted(str(f.relative_to(ROOT)) for f in files if production_path(str(f), ROOT, ROOT) is None)
+    missed = sorted(str(f.relative_to(ROOT)) for f in files if PLG.production_path(str(f), ROOT, ROOT) is None)
     assert missed == [], missed
 
 
@@ -205,6 +202,8 @@ def test_a_shell_write_to_the_production_checkouts_app_code_is_refused_and_devic
     primary = PLG._primary_worktree_root(ROOT) or ROOT
     bad = PLG.production_checkout_shell_app_write_violations(PLG.read("echo x > static/x.js", str(primary)))
     assert len(bad) == 1 and "PROD_CHECKOUT_APP_EDIT" in bad[0], bad
-    for cmd in ("echo x > /dev/null", "echo x > NUL", "echo x > nul", "tee - < a", 'echo x > ""'):
-        assert PLG.production_checkout_shell_app_write_violations(PLG.read(cmd, str(primary))) == [], cmd
+    for cmd in ("echo x > /dev/null", "echo x > NUL", "echo x > nul", 'echo x > ""'):
+        statements = PLG.read(cmd, str(primary))
+        assert any(PLG._shell_write_dest_paths(st) for st in statements), cmd   # it reaches the placer
+        assert PLG.production_checkout_shell_app_write_violations(statements) == [], cmd
 
