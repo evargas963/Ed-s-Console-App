@@ -66,7 +66,10 @@ def _added_text(root: Path, base: str | None = None) -> str:
     # core.quotePath=true: a quoted name is all escapes, whatever the repository's own setting.
     # --text, --no-textconv, --no-ext-diff: the bytes the commit publishes, whatever its attributes
     # or diff settings. Read as bytes: git ends a line only at a line feed.
-    which = ["log", "-p", "--format=", f"{base}..HEAD"] if base else ["diff", "--cached"]
+    # --diff-merges=remerge: a merge commit shows only what it adds beyond git's own merge of its
+    # parents (a conflict resolved by hand), never the lines its other parent brings in.
+    which = (["log", "-p", "--diff-merges=remerge", "--format=", f"{base}..HEAD"] if base
+             else ["diff", "--cached"])
     p = subprocess.run(
         ["git", "-c", "core.quotePath=true", *which, "--unified=0", "--no-color",
          "--text", "--no-textconv", "--no-ext-diff", "--src-prefix=a/", "--dst-prefix=b/"],

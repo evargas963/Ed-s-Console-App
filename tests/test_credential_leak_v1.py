@@ -130,3 +130,25 @@ def test_a_secret_a_pull_request_commits_is_refused_against_its_base(tmp_path):
     git("commit", "-q", "-am", "removes it again")
     assert find_credential_leaks(root) == []                     # nothing staged
     assert [h.split(": ")[:2] for h in find_credential_leaks(root, base="base")] == [["app.py", "bearer_token"]]
+
+
+def test_a_secret_typed_into_a_merge_resolution_is_refused(tmp_path):
+    """A conflict resolved in a merge commit (GitHub's web conflict editor runs no hook) is read for
+    what the resolution adds; the lines main brings in through the merge are not the PR's."""
+    root = _staged(tmp_path, {"app.py": "x = 1\n"})
+    git = lambda *a: subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", *a],  # noqa: E731
+                                    cwd=root, capture_output=True)
+    git("commit", "-q", "-m", "base")
+    git("branch", "-M", "main")
+    git("checkout", "-q", "-b", "pr")
+    (root / "app.py").write_text("x = 2\n", encoding="utf-8")
+    git("commit", "-q", "-am", "pr side")
+    git("checkout", "-q", "main")
+    (root / "app.py").write_text("x = 3\ny = 'from main'\n", encoding="utf-8")
+    git("commit", "-q", "-am", "main side")
+    git("checkout", "-q", "pr")
+    assert git("merge", "main").returncode != 0, "the merge must conflict"
+    (root / "app.py").write_text("x = 4\n" + SECRET, encoding="utf-8")
+    git("add", "app.py")
+    assert git("commit", "-q", "--no-edit").returncode == 0
+    assert [h.split(": ")[:2] for h in find_credential_leaks(root, base="main")] == [["app.py", "bearer_token"]]

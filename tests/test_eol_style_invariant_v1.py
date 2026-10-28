@@ -137,6 +137,20 @@ def test_a_rename_carrying_a_reflow_is_refused(repo):
     assert rc == 1 and "moved_file.py: PURE EOL REFLOW" in out, out
 
 
+def test_a_base_git_cannot_find_is_a_refusal_not_a_pass(repo):
+    root, _git = repo
+    rc, out = run_in(root, "--base", "no-such-branch")
+    assert rc == 1 and "no merge base" in out, out
+
+
+def test_changes_git_cannot_list_are_a_refusal_not_a_pass(tmp_path):
+    """INDUCED CONDITION: the check run where git finds no repository."""
+    root = tmp_path / "not_a_repo"
+    root.mkdir()
+    rc, out = run_in(root)
+    assert rc == 1 and "git could not list the changed files" in out, out
+
+
 def test_staged_mode_blocks_with_nonzero_exit(repo):
     """--measure reports; the pre-commit path must actually FAIL."""
     root, git = repo
