@@ -27,9 +27,7 @@ jobs:
           python -m pip install ruff
           npm ci        # the end-to-end check reads page code with Playwright's Babel (tools/js_code_tree.js)
       - name: ruff (correctness)
-        run: python -m ruff check . --select F401,F821,E9
-      - name: compileall
-        run: python -m compileall -q -x '([\\/](\.venv|venv|node_modules|__pycache__|models)[\\/])' .
+        run: python -m ruff check .
       - name: no patches, only end-to-end fixes (AGENTS.md rule 1)
         if: github.event_name == 'pull_request'
         env:

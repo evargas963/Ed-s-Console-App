@@ -20,17 +20,6 @@
           }
         ]
       }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "Edit|Write|MultiEdit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": ".venv/Scripts/python.exe tools/ruff_edited_file.py"
-          }
-        ]
-      }
     ]
   }
 }

@@ -1,10 +1,10 @@
-"""AGENTS.md, Before writing code: a pull request that changes product code proves it with a test that
-fails on the old code.
+"""AGENTS.md rule 1 and Before writing code: a pull request that changes product code proves it with
+an end-to-end path test that fails on the old code.
 
 The PR's changed and added files under tests/ are laid over a checkout of the base, and the PR's
-changed test files run there: pytest files (tests/**/test_*.py) with this interpreter, Playwright
-specs (tests/e2e/*.spec.js) with the repository's installed Playwright, against a console served
-from the base. At least one test must fail or error on the base; a change whose every test
+changed end-to-end path tests run there: pytest files (tests/test_data_path_*.py) with this
+interpreter, Playwright specs (tests/e2e/*.spec.js) with the repository's installed Playwright,
+against a console served from the base. At least one of them must fail or error on the base; a change whose every test
 already passed before proves nothing about that change. The same tests passing on the PR is the
 full suite's job (the required pytest-full check). A product file whose code is the same once
 comments and docstrings are set aside (check_end_to_end.code_identical: .py, .js, .mjs) has nothing
@@ -38,8 +38,10 @@ def changed(root: Path, base: str) -> list[str]:
 
 
 def is_pytest(path: str) -> bool:
+    """An end-to-end path test in pytest: tests/test_data_path_*.py (docs/DATA_FLOW.md §2)."""
     name = path.rsplit("/", 1)[-1]
-    return path.startswith("tests/") and name.startswith("test_") and name.endswith(".py")
+    return path.startswith("tests/") and "/" not in path[len("tests/"):] and name.startswith("test_data_path_") \
+        and name.endswith(".py")
 
 
 def is_spec(path: str) -> bool:
@@ -116,7 +118,8 @@ def violations(root: Path, base: str) -> list[str]:
         return []
     tests = [f for f in files if is_test(f)]
     if not tests:
-        return [f"product code changed ({', '.join(product)}) but no test under tests/ changed"]
+        return [f"product code changed ({', '.join(product)}) but no end-to-end path test "
+                "(tests/test_data_path_*.py or tests/e2e/*.spec.js) changed"]
     run, failed = failures_on_base(root, base, files, tests)
     if not failed:
         return [f"every changed test passes on the old code ({run} run: {', '.join(tests)}): "

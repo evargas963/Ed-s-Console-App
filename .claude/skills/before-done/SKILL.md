@@ -10,12 +10,12 @@ First gate 4), then start again from step 1.
 
 1. `git fetch -q origin && git merge-base --is-ancestor origin/main HEAD` — the branch is current with
    `main` (exit 0). Otherwise merge `origin/main` and start again.
-2. `.venv/Scripts/python.exe -m ruff check . --select F401,F821,E9` — no findings; then
-   `.venv/Scripts/python.exe -m compileall -q -x '([\\/](\.venv|venv|node_modules|__pycache__|models)[\\/])' .`
-   — exit 0 (both as the `hardening` job runs them).
+2. `.venv/Scripts/python.exe -m ruff check .` — no findings (as the commit hook and the `hardening`
+   job run it).
 3. `npm run test:all` — Playwright, then the full pytest suite; both counts shown, no failure.
 4. `.venv/Scripts/python.exe tools/check_fails_before.py --base origin/main` — exit 0; for a pull
-   request that changes product code it prints "proven", naming the test that fails on the old code.
+   request that changes product code it prints "proven", naming the end-to-end path test that fails on
+   the old code.
 5. `.venv/Scripts/python.exe tools/check_no_new_patches.py --base origin/main` — exit 0; then
    `.venv/Scripts/python.exe tools/check_one_reader.py --base origin/main` — exit 0; then
    `.venv/Scripts/python.exe tools/check_credential_leak.py --base origin/main` and

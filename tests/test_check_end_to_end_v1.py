@@ -1,6 +1,7 @@
 """tools/check_end_to_end.py (AGENTS.md rule 1) on real git repositories: each patch shape a pull
-request adds is refused and named; an end-to-end change, a missing value served as missing, a
-container started empty and an old block with a line added inside it pass."""
+request adds is refused and named; a change with none, a missing value served as missing, a
+container started empty and an old block with a line added inside it pass. What counts as a change
+of product code (shared with check_fails_before) is read by its code, not its comments."""
 from __future__ import annotations
 
 import subprocess
@@ -51,7 +52,13 @@ def _found(tmp_path, files: dict[str, str]) -> list[str]:
     return cee.violations(root, "main")
 
 
-def test_a_patch_with_no_end_to_end_test_is_refused_with_each_violation_named(tmp_path):
+def _changed(root: Path) -> list[str]:
+    """The product files a PR changes, as check_fails_before counts them."""
+    return sorted([f for f in cee.pr_files(root, "main", "AMT") if cee.behavior_change(root, "main", f)]
+                  + cee.deleted_product(root, "main"))
+
+
+def test_a_patch_is_refused_with_each_violation_named(tmp_path):
     root = _repo(tmp_path, BASE)
     _commit(root, {
         "server.py": ("def spot(row):\n"
@@ -60,9 +67,7 @@ def test_a_patch_with_no_end_to_end_test_is_refused_with_each_violation_named(tm
                       "    except Exception:\n"
                       "        return None\n"),
         "static/js/page.js": "function draw(v) { return v || 0; }\n"})
-    found = cee.violations(root, "main")
-    assert found[0].startswith("product code changed")
-    text = "\n".join(found)
+    text = "\n".join(cee.violations(root, "main"))
     assert "server.py:3: a missing value replaced by a literal (`.get(key, <literal>)`)" in text
     assert "server.py:3: a missing value replaced by a literal (`or <literal>`)" in text
     assert "server.py:4: an except that catches everything" in text
@@ -70,7 +75,7 @@ def test_a_patch_with_no_end_to_end_test_is_refused_with_each_violation_named(tm
     assert "static/js/page.js:1: a missing value replaced by a literal, an empty catch, or a swallowing .catch" in text
 
 
-def test_an_end_to_end_change_passes(tmp_path):
+def test_a_change_with_no_patch_shape_passes(tmp_path):
     assert _found(tmp_path, {"server.py": "def spot(row):\n    return row['last'] if row['live'] else None\n"}) == []
 
 
@@ -139,30 +144,21 @@ def test_a_line_added_inside_an_old_block_does_not_charge_the_block_to_the_pr(tm
     assert cee.violations(root, "main") == []
 
 
-def test_a_comment_added_to_a_path_test_is_not_an_end_to_end_test(tmp_path):
-    root = _repo(tmp_path, BASE)
-    _commit(root, {"server.py": "def spot(row):\n    return row['last'] if row['live'] else None\n",
-                   TEST: "def test_x():\n    pass\n# covers spot\n"})
-    assert cee.violations(root, "main")[0].startswith("product code changed")
-
-
-def test_a_change_to_comments_and_docstrings_only_needs_no_end_to_end_test(tmp_path):
+def test_a_change_to_comments_and_docstrings_only_is_not_a_product_change(tmp_path):
     """The same code once comments and docstrings are set aside: nothing for a path test to cover."""
     root = _repo(tmp_path, {**BASE, "server.py": '"""Spot (RC-12, 2026-09-01)."""\n\n\ndef spot(row):\n'
                                                   "    return row['last']  # used to be the bid\n",
                             "static/js/page.js": "/* RC-UI-1 */\nfunction draw(v) { return v; }  // 2026-09-13\n"})
     _commit(root, {"server.py": '"""Spot."""\n\n\ndef spot(row):\n    return row[\'last\']\n',
                    "static/js/page.js": "function draw(v) { return v; }\n"})
-    assert cee.violations(root, "main") == []
+    assert _changed(root) == []
 
 
-def test_a_code_change_beside_comment_changes_still_needs_an_end_to_end_test(tmp_path):
+def test_a_code_change_beside_comment_changes_is_a_product_change(tmp_path):
     root = _repo(tmp_path, {**BASE, "static/js/page.js": "/* RC-UI-1 */\nfunction draw(v) { return v; }\n"})
     _commit(root, {"server.py": "def spot(row):\n    return row['bid']\n",
                    "static/js/page.js": "function draw(v) { return v; }\n"})
-    assert cee.violations(root, "main") == [
-        "product code changed (server.py) but no end-to-end path test "
-        "(tests/test_data_path_*.py or tests/e2e/*.spec.js) gained a real line"]
+    assert _changed(root) == ["server.py"]
 
 
 @pytest.mark.parametrize("path, before, after", [
@@ -182,14 +178,12 @@ def test_a_code_change_beside_comment_changes_still_needs_an_end_to_end_test(tmp
     ("static/page.html", '<p title="<!-- x -->">a</p>\n', '<p title="">a</p>\n'),
     ("static/page.html", "<p>a b</p>\n", "<p>a b</p>\n"),
 ])
-def test_a_code_change_a_comment_reader_could_miss_still_needs_an_end_to_end_test(tmp_path, path, before, after):
+def test_a_code_change_a_comment_reader_could_miss_is_a_product_change(tmp_path, path, before, after):
     """The pairs differ in code, though a reader that guesses comments from characters reads them the
     same: each is a change of product code."""
     root = _repo(tmp_path, {**BASE, path: before})
     _commit(root, {path: after})
-    assert cee.violations(root, "main") == [
-        f"product code changed ({path}) but no end-to-end path test "
-        "(tests/test_data_path_*.py or tests/e2e/*.spec.js) gained a real line"]
+    assert _changed(root) == [path]
 
 
 def test_every_python_and_page_code_file_in_the_repo_is_read():
@@ -202,48 +196,33 @@ def test_every_python_and_page_code_file_in_the_repo_is_read():
     assert product and unread == []
 
 
-def test_a_comment_only_change_to_an_html_page_still_needs_an_end_to_end_test(tmp_path):
+def test_a_comment_only_change_to_an_html_page_is_a_product_change(tmp_path):
     root = _repo(tmp_path, {**BASE, "static/page.html": "<!-- RC-UI-1 -->\n<p>a</p>\n"})
     _commit(root, {"static/page.html": "<p>a</p>\n"})
-    assert cee.violations(root, "main") == [
-        "product code changed (static/page.html) but no end-to-end path test "
-        "(tests/test_data_path_*.py or tests/e2e/*.spec.js) gained a real line"]
+    assert _changed(root) == ["static/page.html"]
 
 
 @pytest.mark.parametrize("old, new, named", [
     ("dead.py", "docs/dead.py", "dead.py"),                                   # moved out of product paths
     ("static/js/page.js", "static/js/page2.js", "static/js/page.js, static/js/page2.js"),   # renamed, not edited
 ])
-def test_moving_a_product_file_still_needs_an_end_to_end_test(tmp_path, old, new, named):
+def test_moving_a_product_file_is_a_product_change(tmp_path, old, new, named):
     root = _repo(tmp_path, {**BASE, "dead.py": "def unused(row):\n    return row['ask']\n"})
     (root / new).parent.mkdir(parents=True, exist_ok=True)
     subprocess.run(["git", "mv", old, new], cwd=root, check=True, capture_output=True)
     subprocess.run(["git", "commit", "-q", "-m", f"move {old}"], cwd=root, check=True, capture_output=True)
-    assert cee.violations(root, "main") == [
-        f"product code changed ({named}) but no end-to-end path test "
-        "(tests/test_data_path_*.py or tests/e2e/*.spec.js) gained a real line"]
-
-
-NO_PATH_TEST = ("but no end-to-end path test (tests/test_data_path_*.py or tests/e2e/*.spec.js) gained a real line")
+    assert _changed(root) == sorted(named.split(", "))
 
 
 def _git_in(root: Path, *args: str) -> None:
     subprocess.run(["git", *args], cwd=root, check=True, capture_output=True)
 
 
-def test_renaming_a_path_test_is_not_an_end_to_end_test(tmp_path):
-    root = _repo(tmp_path, BASE)
-    (root / "server.py").write_text("def spot(row):\n    return row['bid']\n", encoding="utf-8")
-    _git_in(root, "mv", TEST, "tests/test_data_path_y.py")
-    _git_in(root, "commit", "-q", "-am", "a product change and a renamed path test")
-    assert cee.violations(root, "main") == [f"product code changed (server.py) {NO_PATH_TEST}"]
-
-
 @pytest.mark.parametrize("path", ["static/js/my page.js", "static/js/café.js"])
 def test_a_product_file_whose_name_git_quotes_is_still_read(tmp_path, path):
     root = _repo(tmp_path, {**BASE, path: "function draw(v) { return v; }\n"})
     _commit(root, {path: "function draw(v) { return -v; }\n"})
-    assert cee.violations(root, "main") == [f"product code changed ({path}) {NO_PATH_TEST}"]
+    assert _changed(root) == [path]
 
 
 @pytest.mark.parametrize("path", ["static/js/page.js", "static/js/my page.js", "static/js/café.js"])
@@ -254,14 +233,6 @@ def test_a_patch_after_a_line_starting_with_plus_plus_is_still_refused_at_its_li
     _commit(root, {**REAL_TEST, path: "var x = 0;\n++ x;\nvar a = 1;\nvar b = 2;\nvar y = v || 0;\n"})
     assert cee.violations(root, "main") == [
         f"{path}:5: a missing value replaced by a literal, an empty catch, or a swallowing .catch"]
-
-
-def test_a_path_test_whose_name_git_quotes_is_an_end_to_end_test(tmp_path):
-    test = "tests/test_data_path_my x.py"
-    root = _repo(tmp_path, {**BASE, test: "def test_x():\n    pass\n"})
-    _commit(root, {"server.py": "def spot(row):\n    return row['bid']\n",
-                   test: "def test_x():\n    assert spot({'bid': 1.0}) == 1.0\n"})
-    assert cee.violations(root, "main") == []
 
 
 def test_a_name_git_quotes_with_raw_characters_is_still_read(tmp_path):
@@ -278,20 +249,6 @@ def test_a_name_git_quotes_with_raw_characters_is_still_read(tmp_path):
     _commit(root, REAL_TEST)
     assert cee.violations(root, "main") == [
         f"{path}:1: a missing value replaced by a literal, an empty catch, or a swallowing .catch"]
-
-
-def test_a_renamed_path_test_with_a_real_line_added_is_an_end_to_end_test(tmp_path):
-    test = ("def test_x():\n    a = 1\n    b = 2\n    c = 3\n    d = 4\n    e = 5\n"
-            "    assert a + b + c + d + e == 15\n")
-    root = _repo(tmp_path, {**BASE, TEST: test})
-    _git_in(root, "mv", TEST, "tests/test_data_path_y.py")
-    _commit(root, {"server.py": "def spot(row):\n    return row['bid']\n",
-                   "tests/test_data_path_y.py": test + "    assert spot({'bid': 1.0}) == 1.0\n"})
-    status = subprocess.run(["git", "diff", "-M", "--name-status", "main...HEAD"], cwd=root, check=True,
-                            capture_output=True, text=True).stdout
-    assert any(line.startswith("R") and line.endswith(f"\t{TEST}\ttests/test_data_path_y.py")
-               for line in status.splitlines()), status
-    assert cee.violations(root, "main") == []
 
 
 def test_a_file_name_that_is_not_utf8_fails_the_check_itself(tmp_path):
@@ -326,7 +283,7 @@ def test_a_product_file_replaced_by_a_link_is_a_change(tmp_path):
                          capture_output=True, text=True).stdout.strip()
     _git_in(root, "update-index", "--cacheinfo", f"120000,{sha},server.py")
     _git_in(root, "commit", "-q", "-m", "server.py becomes a link")
-    assert cee.violations(root, "main") == [f"product code changed (server.py) {NO_PATH_TEST}"]
+    assert _changed(root) == ["server.py"]
 
 
 def test_crlf_page_code_reaches_the_reader_as_written(tmp_path):
@@ -337,14 +294,14 @@ def test_crlf_page_code_reaches_the_reader_as_written(tmp_path):
     _git_in(root, "branch", "-f", "main")
     (root / "static/js/page.js").write_bytes(b"var s = `a\n\nb`;\n")
     _git_in(root, "commit", "-q", "-am", "two line feeds")
-    assert cee.violations(root, "main") == [f"product code changed (static/js/page.js) {NO_PATH_TEST}"]
+    assert _changed(root) == ["static/js/page.js"]
 
 
-def test_a_comment_after_a_unicode_line_separator_is_not_an_end_to_end_test(tmp_path):
+def test_a_patch_after_a_unicode_line_separator_is_refused_at_its_line(tmp_path):
     """git numbers lines by line feed alone; a U+2028 inside a string does not start a line."""
-    root = _repo(tmp_path, {**BASE, TEST: 'T = "a b"\n'})
-    _commit(root, {"server.py": "def spot(row):\n    return row['bid']\n", TEST: 'T = "a b"\n# covers spot\n'})
-    assert cee.violations(root, "main") == [f"product code changed (server.py) {NO_PATH_TEST}"]
+    root = _repo(tmp_path, {**BASE, "server.py": 'T = "a b"\n'})
+    _commit(root, {"server.py": 'T = "a b"\nx = y or 0\n'})
+    assert cee.violations(root, "main") == ["server.py:2: a missing value replaced by a literal (`or <literal>`)"]
 
 
 def test_a_file_that_is_not_utf8_fails_the_check_itself(tmp_path):
@@ -357,10 +314,8 @@ def test_a_file_that_is_not_utf8_fails_the_check_itself(tmp_path):
     assert run.returncode == 2, run.stdout + run.stderr
 
 
-def test_deleting_a_product_file_still_needs_an_end_to_end_test(tmp_path):
+def test_deleting_a_product_file_is_a_product_change(tmp_path):
     root = _repo(tmp_path, {**BASE, "dead.py": "def unused(row):\n    return row['ask']\n"})
     subprocess.run(["git", "rm", "-q", "dead.py"], cwd=root, check=True, capture_output=True)
     subprocess.run(["git", "commit", "-q", "-m", "remove dead.py"], cwd=root, check=True, capture_output=True)
-    assert cee.violations(root, "main") == [
-        "product code changed (dead.py) but no end-to-end path test "
-        "(tests/test_data_path_*.py or tests/e2e/*.spec.js) gained a real line"]
+    assert _changed(root) == ["dead.py"]

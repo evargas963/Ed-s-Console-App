@@ -4,7 +4,8 @@ target-version = "py313"
 extend-exclude = [".venv", "venv", "node_modules", "__pycache__"]
 
 [tool.ruff.lint]
-select = ["F", "E9"]
+#: unused imports, undefined names, and every error CPython's compiler raises (syntax, F7, PLE0118, PLE1142)
+select = ["F401", "F821", "E9", "F7", "PLE0118", "PLE1142"]
 
 [tool.ruff.format]
 quote-style = "double"

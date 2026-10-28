@@ -1,5 +1,5 @@
-"""tools/check_fails_before.py (AGENTS.md, Before writing code) on real git repositories: a product change is
-proven only by a changed test that fails on the old code."""
+"""tools/check_fails_before.py (AGENTS.md rule 1, Before writing code) on real git repositories: a product
+change is proven only by a changed end-to-end path test that fails on the old code."""
 from __future__ import annotations
 
 import os
@@ -14,7 +14,7 @@ sys.path.insert(0, str(REPO / "tools"))
 import check_fails_before as cfb  # noqa: E402
 
 BASE = {"calc.py": "def spot(row):\n    return row['bid']\n",
-        "tests/test_calc.py": "from calc import spot\n\n\ndef test_spot_reads_a_row():\n    assert spot({'bid': 1, 'last': 2}) in (1, 2)\n"}
+        "tests/test_data_path_calc.py": "from calc import spot\n\n\ndef test_spot_reads_a_row():\n    assert spot({'bid': 1, 'last': 2}) in (1, 2)\n"}
 SPEC = "const { test, expect } = require('@playwright/test');\nconst { spot } = require('../../calc.js');\n\n"
 JS_BASE = {"calc.js": "exports.spot = (row) => row.bid;\n",
            "playwright.config.mjs": ("import { defineConfig } from '@playwright/test';\n\n"
@@ -51,13 +51,13 @@ FIX = "def spot(row):\n    return row['last']\n"
 
 
 def test_a_fix_with_a_test_that_fails_on_the_old_code_is_proven(tmp_path):
-    root = _repo(tmp_path, {"calc.py": FIX, "tests/test_calc.py": (
+    root = _repo(tmp_path, {"calc.py": FIX, "tests/test_data_path_calc.py": (
         "from calc import spot\n\n\ndef test_spot_is_the_last_trade():\n    assert spot({'bid': 1, 'last': 2}) == 2\n")})
     assert cfb.violations(root, "main") == []
 
 
 def test_a_fix_whose_test_already_passed_before_is_refused(tmp_path):
-    root = _repo(tmp_path, {"calc.py": FIX, "tests/test_calc.py": (
+    root = _repo(tmp_path, {"calc.py": FIX, "tests/test_data_path_calc.py": (
         "from calc import spot\n\n\ndef test_spot_reads_a_row():\n    assert spot({'bid': 1, 'last': 2}) in (1, 2)\n\n"
         "def test_nothing():\n    assert True\n")})
     found = cfb.violations(root, "main")
@@ -66,12 +66,19 @@ def test_a_fix_whose_test_already_passed_before_is_refused(tmp_path):
 
 def test_a_fix_with_no_test_change_is_refused(tmp_path):
     root = _repo(tmp_path, {"calc.py": FIX})
-    assert cfb.violations(root, "main") == ["product code changed (calc.py) but no test under tests/ changed"]
+    assert cfb.violations(root, "main") == ["product code changed (calc.py) but no end-to-end path test (tests/test_data_path_*.py or tests/e2e/*.spec.js) changed"]
+
+
+def test_a_fix_proven_only_by_a_test_that_is_not_an_end_to_end_path_test_is_refused(tmp_path):
+    """AGENTS.md rule 1: every fix is end to end. A unit test that fails on the old code does not prove it."""
+    root = _repo(tmp_path, {"calc.py": FIX, "tests/test_calc_unit.py": (
+        "from calc import spot\n\n\ndef test_spot_is_the_last_trade():\n    assert spot({'bid': 1, 'last': 2}) == 2\n")})
+    assert cfb.violations(root, "main") == ["product code changed (calc.py) but no end-to-end path test (tests/test_data_path_*.py or tests/e2e/*.spec.js) changed"]
 
 
 def test_a_test_of_new_code_that_cannot_import_on_the_old_code_counts_as_failing_before(tmp_path):
     root = _repo(tmp_path, {"calc.py": FIX + "\n\ndef mid(row):\n    return (row['bid'] + row['ask']) / 2\n",
-                            "tests/test_mid.py": "from calc import mid\n\n\ndef test_mid():\n    assert mid({'bid': 1, 'ask': 3}) == 2\n"})
+                            "tests/test_data_path_mid.py": "from calc import mid\n\n\ndef test_mid():\n    assert mid({'bid': 1, 'ask': 3}) == 2\n"})
     assert cfb.violations(root, "main") == []
 
 
@@ -118,7 +125,7 @@ def test_a_page_fix_whose_spec_already_passed_before_is_refused(page_repo):
 
 def test_a_page_fix_with_no_test_change_is_refused(page_repo):
     root = page_repo({"calc.js": JS_FIX})
-    assert cfb.violations(root, "main") == ["product code changed (calc.js) but no test under tests/ changed"]
+    assert cfb.violations(root, "main") == ["product code changed (calc.js) but no end-to-end path test (tests/test_data_path_*.py or tests/e2e/*.spec.js) changed"]
 
 
 # The code before and after a cleanup that only rewrites comments and docstrings: the same code, so
@@ -149,21 +156,21 @@ def test_a_change_to_comments_and_docstrings_only_needs_no_test(tmp_path):
 def test_a_code_change_beside_the_comments_still_needs_a_failing_test(tmp_path, path, text):
     root = _repo(tmp_path, {**CLEANED, path: text}, base={**BASE, **NOTED})
     assert cfb.violations(root, "main") == [
-        f"product code changed ({path}) but no test under tests/ changed"]
+        f"product code changed ({path}) but no end-to-end path test (tests/test_data_path_*.py or tests/e2e/*.spec.js) changed"]
 
 
 def test_a_comment_only_change_to_an_html_page_still_needs_a_test(tmp_path):
     """A browser's reading of a page's whitespace, entities and comments depends on CSS and parser
     details, so a page is never judged unchanged by its comments."""
     root = _repo(tmp_path, {"page.html": "<p>a</p>\n"}, base={**BASE, "page.html": "<!-- RC-UI-1 -->\n<p>a</p>\n"})
-    assert cfb.violations(root, "main") == ["product code changed (page.html) but no test under tests/ changed"]
+    assert cfb.violations(root, "main") == ["product code changed (page.html) but no end-to-end path test (tests/test_data_path_*.py or tests/e2e/*.spec.js) changed"]
 
 
 def test_deleting_a_product_file_still_needs_a_test(tmp_path):
     root = _repo(tmp_path, {"notes.md": "words\n"}, base={**BASE, "dead.py": "def unused(row):\n    return row['ask']\n"})
     _git(root, "rm", "-q", "dead.py")
     _git(root, "commit", "-q", "-m", "remove dead.py")
-    assert cfb.violations(root, "main") == ["product code changed (dead.py) but no test under tests/ changed"]
+    assert cfb.violations(root, "main") == ["product code changed (dead.py) but no end-to-end path test (tests/test_data_path_*.py or tests/e2e/*.spec.js) changed"]
 
 
 def test_moving_a_product_file_out_of_product_paths_still_needs_a_test(tmp_path):
@@ -171,13 +178,13 @@ def test_moving_a_product_file_out_of_product_paths_still_needs_a_test(tmp_path)
     (root / "docs").mkdir()
     _git(root, "mv", "dead.py", "docs/dead.py")
     _git(root, "commit", "-q", "-m", "move dead.py")
-    assert cfb.violations(root, "main") == ["product code changed (dead.py) but no test under tests/ changed"]
+    assert cfb.violations(root, "main") == ["product code changed (dead.py) but no end-to-end path test (tests/test_data_path_*.py or tests/e2e/*.spec.js) changed"]
 
 
 @pytest.mark.parametrize("path", ["my calc.py", "café.py"])
 def test_a_product_file_whose_name_git_quotes_still_needs_a_test(tmp_path, path):
     root = _repo(tmp_path, {path: FIX}, base={**BASE, path: BASE["calc.py"]})
-    assert cfb.violations(root, "main") == [f"product code changed ({path}) but no test under tests/ changed"]
+    assert cfb.violations(root, "main") == [f"product code changed ({path}) but no end-to-end path test (tests/test_data_path_*.py or tests/e2e/*.spec.js) changed"]
 
 
 def test_a_product_file_replaced_by_a_link_still_needs_a_test(tmp_path):
@@ -187,10 +194,10 @@ def test_a_product_file_replaced_by_a_link_still_needs_a_test(tmp_path):
                          capture_output=True, text=True).stdout.strip()
     _git(root, "update-index", "--cacheinfo", f"120000,{sha},calc.py")
     _git(root, "commit", "-q", "-m", "calc.py becomes a link")
-    assert cfb.violations(root, "main") == ["product code changed (calc.py) but no test under tests/ changed"]
+    assert cfb.violations(root, "main") == ["product code changed (calc.py) but no end-to-end path test (tests/test_data_path_*.py or tests/e2e/*.spec.js) changed"]
 
 
 def test_removing_a_function_nothing_calls_still_needs_a_test(tmp_path):
     base = {**BASE, "calc.py": BASE["calc.py"] + "\n\ndef unused(row):\n    return row['ask']\n"}
     root = _repo(tmp_path, {"calc.py": BASE["calc.py"]}, base=base)
-    assert cfb.violations(root, "main") == ["product code changed (calc.py) but no test under tests/ changed"]
+    assert cfb.violations(root, "main") == ["product code changed (calc.py) but no end-to-end path test (tests/test_data_path_*.py or tests/e2e/*.spec.js) changed"]

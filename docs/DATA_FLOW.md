@@ -741,12 +741,11 @@ The work that closes these gaps, in order, is `ACTIVE_PROGRAM.md`.
 
 ## 5. Checks
 
-ruff (F401, F821, E9) at commit and in CI; a compile pass in CI; the behavior tests (`pytest`,
-`tests/`) and the browser tests (Playwright, `tests/e2e/`) in CI; the secrets and home-path scan
-at commit and in CI (each commit of a pull request, merge resolutions included); the line-ending
-check at commit and in CI (the pull request's change); at commit, the virtualenv check; for
-agents, the hooks that
-block destructive git. A passing check proves only what its tests exercise; every rule beyond
+ruff at commit and in CI, with `pyproject.toml`'s one selection (unused imports, undefined names
+and every error CPython's compiler raises); the behavior tests (`pytest`, `tests/`) and the
+browser tests (Playwright, `tests/e2e/`) in CI; the secrets and home-path scan at commit and in CI
+(each commit of a pull request, merge resolutions included); the line-ending check at commit and
+in CI (the pull request's change); for agents, the hooks that block destructive git. A passing check proves only what its tests exercise; every rule beyond
 them stays NOT_PROVEN.
 
 A gap gets a check only when a failure it would have caught has happened; the check is a test of
