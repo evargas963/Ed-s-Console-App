@@ -120,12 +120,15 @@ def test_existing_stream_capture_db_migrates_native_json_column(tmp_path):
 
 
 def test_book_content_stored_verbatim_never_flattened(tmp_path):
+    """Schwab's SPY NASDAQ_BOOK message as the capture daemon stored it
+    (tests/fixtures/real_spy_nyse_nasdaq_books.json)."""
     db = tmp_path / "stream_capture.db"
     w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
-    content = {"key": "SPY", "BIDS": [{"BID_PRICE": 1.0}], "ASKS": [{"ASK_PRICE": 1.1}],
-              "BOOK_TIME": 999}
+    sent = json.loads((Path(__file__).parent / "fixtures" / "real_spy_nyse_nasdaq_books.json")
+                      .read_text(encoding="utf-8"))["books"]["NASDAQ_BOOK"]
+    content = sent["content"]
     w.insert("book.SPY", book_msg(symbol="SPY", service="NASDAQ_BOOK", content=content,
-                                  src="schwab_book", ts_recv=1.0))
+                                  src="schwab_book", ts_recv=sent["ts_recv"]))
     with closing(sqlite3.connect(db)) as con:
         row = con.execute(
             "SELECT symbol, service, native_json, src FROM stream_book_raw").fetchone()
@@ -144,36 +147,26 @@ def test_book_msg_with_no_content_is_not_inserted(tmp_path):
         assert con.execute("SELECT COUNT(*) FROM stream_book_raw").fetchone()[0] == 0
 
 
-#: The content shape of a LEVELONE_OPTIONS message as Schwab sends it.
-_REAL_LEVELONE_OPTIONS_CONTENT = {
-    "key": "SPY   260820C00767000", "delayed": False, "assetMainType": "OPTION",
-    "DESCRIPTION": "SPY 08/20/2026 767.00 C", "BID_PRICE": 1.26, "ASK_PRICE": 1.28,
-    "LAST_PRICE": 1.27, "OPEN_INTEREST": 2097, "VOLATILITY": 16.50358958,
-    "DELTA": 0.45644607, "GAMMA": 0.1165604, "THETA": -1.17543886, "VEGA": 0.08171809,
-    "DAYS_TO_EXPIRATION": 0, "CONTRACT_TYPE": "C", "UNDERLYING": "SPY",
-}
-
-#: The content shape of an OPTIONS_BOOK message as Schwab sends it — per-MM/exchange depth.
-_REAL_OPTIONS_BOOK_CONTENT = {
-    "key": "SPY   260820C00767000", "BOOK_TIME": 1787234093764,
-    "BIDS": [{"BID_PRICE": 1.28, "TOTAL_VOLUME": 1746, "NUM_BIDS": 12,
-             "BIDS": [{"EXCHANGE": "NYSE", "BID_VOLUME": 262, "SEQUENCE": 35693547}]}],
-    "ASKS": [{"ASK_PRICE": 1.3, "TOTAL_VOLUME": 1533, "NUM_ASKS": 10,
-             "ASKS": [{"EXCHANGE": "EDGX", "ASK_VOLUME": 346, "SEQUENCE": 35693726}]}],
-}
+#: Schwab's LEVELONE_OPTIONS and OPTIONS_BOOK messages for one TSLA contract, as the capture daemon
+#: stored them (tests/fixtures/real_options_stream_history_samples.json): the first of each
+_CAPTURED = json.loads((Path(__file__).parent / "fixtures" / "real_options_stream_history_samples.json")
+                       .read_text(encoding="utf-8"))["contracts"][0]
+_OPTION_QUOTE = next(e for e in _CAPTURED["events"] if e["kind"] == "l1")
+_OPTION_BOOK = next(e for e in _CAPTURED["events"] if e["kind"] == "book")
 
 
 def test_options_quote_content_stored_verbatim_never_flattened(tmp_path):
     db = tmp_path / "stream_capture.db"
     w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
-    w.insert("optquote.SPY   260820C00767000", options_quote_msg(
-        symbol="SPY   260820C00767000", content=_REAL_LEVELONE_OPTIONS_CONTENT,
-        src="schwab_options_l1", ts_recv=1.0))
+    contract = _CAPTURED["symbol"]
+    w.insert(f"optquote.{contract}", options_quote_msg(
+        symbol=contract, content=_OPTION_QUOTE["content"], src=_OPTION_QUOTE["source"],
+        ts_recv=_OPTION_QUOTE["ts_recv"]))
     with closing(sqlite3.connect(db)) as con:
         row = con.execute(
             "SELECT symbol, native_json, src FROM stream_options_quotes_raw").fetchone()
-    assert row[0] == "SPY   260820C00767000" and row[2] == "schwab_options_l1"
-    assert json.loads(row[1]) == _REAL_LEVELONE_OPTIONS_CONTENT
+    assert row[0] == contract and row[2] == _OPTION_QUOTE["source"]
+    assert json.loads(row[1]) == _OPTION_QUOTE["content"]
 
 
 def test_options_quote_with_no_content_is_not_inserted(tmp_path):
@@ -189,14 +182,15 @@ def test_options_book_reuses_the_generic_book_table_by_service(tmp_path):
     (NASDAQ_BOOK/NYSE_BOOK/OPTIONS_BOOK all coexist by `service` value)."""
     db = tmp_path / "stream_capture.db"
     w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
-    w.insert("book.SPY   260820C00767000", book_msg(
-        symbol="SPY   260820C00767000", service="OPTIONS_BOOK",
-        content=_REAL_OPTIONS_BOOK_CONTENT, src="schwab_options_book", ts_recv=1.0))
+    contract = _CAPTURED["symbol"]
+    w.insert(f"book.{contract}", book_msg(
+        symbol=contract, service="OPTIONS_BOOK", content=_OPTION_BOOK["content"],
+        src=_OPTION_BOOK["source"], ts_recv=_OPTION_BOOK["ts_recv"]))
     with closing(sqlite3.connect(db)) as con:
         row = con.execute(
             "SELECT symbol, service, native_json FROM stream_book_raw").fetchone()
-    assert row[1] == "OPTIONS_BOOK"
-    assert json.loads(row[2]) == _REAL_OPTIONS_BOOK_CONTENT
+    assert (row[0], row[1]) == (contract, "OPTIONS_BOOK")
+    assert json.loads(row[2]) == _OPTION_BOOK["content"]
 
 
 def test_writer_drains_full_queue_on_stop(tmp_path):
