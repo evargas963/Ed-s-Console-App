@@ -42,15 +42,30 @@ def _text(*args: str) -> str:
     return out.decode("utf-8", errors="replace")
 
 
-def changed_paths(staged: bool, base: str | None = None) -> list[str]:
-    """Paths modified against HEAD: staged for pre-commit, worktree for --measure; with `base`,
-    the paths a pull request changes against it."""
-    args = ["diff", "--name-only", "--diff-filter=ACMR"]
+def changed_paths(staged: bool, base: str | None = None) -> list[tuple[str, str]] | None:
+    """(path before, path after) of each file modified against HEAD: staged for pre-commit,
+    worktree for --measure; with `base`, each file a pull request changes against it. A renamed
+    file pairs its old path with its new one, so a rename cannot carry a reflow past the check;
+    names are read NUL-separated, never quoted. None when git could not list them."""
+    args = ["diff", "--name-status", "-z", "-M", "--diff-filter=ACMR"]
     if base:
         args.append(f"{base}...HEAD")
     elif staged:
         args.insert(1, "--cached")
-    return [p for p in _text(*args).splitlines() if p.strip()]
+    proc = _git(*args)
+    if proc.returncode != 0:
+        return None
+    fields = proc.stdout.decode("utf-8", errors="surrogateescape").split("\0")
+    out, i = [], 0
+    while i < len(fields) and fields[i]:
+        status = fields[i]
+        if status.startswith("R"):
+            out.append((fields[i + 1], fields[i + 2]))
+            i += 3
+        else:
+            out.append((fields[i + 1], fields[i + 1]))
+            i += 2
+    return out
 
 
 def is_text_governed(path: str) -> bool:
@@ -127,8 +142,11 @@ def violations(staged: bool = True, base: str | None = None) -> list[str]:
     old = _text("merge-base", base, "HEAD").strip() if base else "HEAD"
     if base and not old:
         return [f"no merge base between {base} and HEAD: the pull request's changes cannot be read"]
-    for path in changed_paths(staged, base):
-        before = head_bytes(path, old)
+    changed = changed_paths(staged, base)
+    if changed is None:
+        return ["git could not list the changed files: the change cannot be read, so it is not clean"]
+    for was, path in changed:
+        before = head_bytes(was, old)
         if before is None:          # newly added file: no prior style to preserve
             continue
         after = current_bytes(path, staged, base)

@@ -17,7 +17,9 @@ First gate 4), then start again from step 1.
 4. `.venv/Scripts/python.exe tools/check_fails_before.py --base origin/main` — exit 0; for a pull
    request that changes product code it prints "proven", naming the test that fails on the old code.
 5. `.venv/Scripts/python.exe tools/check_no_new_patches.py --base origin/main` — exit 0; then
-   `.venv/Scripts/python.exe tools/check_one_reader.py --base origin/main` — exit 0.
+   `.venv/Scripts/python.exe tools/check_one_reader.py --base origin/main` — exit 0; then
+   `.venv/Scripts/python.exe tools/check_credential_leak.py --base origin/main` and
+   `.venv/Scripts/python.exe tools/check_eol_style_invariant.py --base origin/main` — exit 0 each.
 6. Write the PR description to a file, then
    `.venv/Scripts/python.exe tools/check_end_to_end.py --base origin/main --body-file <file>` — exit 0.
 7. Four eyes: run the `correctness-reviewer` and `requirements-reviewer` agents on the PR's final

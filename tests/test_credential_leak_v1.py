@@ -3,7 +3,7 @@ import subprocess
 
 import pytest
 
-from tools.check_credential_leak import StagedDiffUnreadable, find_credential_leaks
+from tools.check_credential_leak import DiffUnreadable, find_credential_leaks
 
 SECRET = "Authorization: Bearer supersecrettokenvalue99\n"
 
@@ -82,7 +82,7 @@ def test_a_file_name_that_is_not_utf8_is_not_a_clean_diff(tmp_path):
     """A header that cannot be read names no file, so nothing after it was scanned under its name:
     the diff is unread, never clean."""
     root = _staged_as(_staged(tmp_path, {}), b"a\xff.py", SECRET)
-    with pytest.raises(StagedDiffUnreadable, match="could not be read"):
+    with pytest.raises(DiffUnreadable, match="could not be read"):
         find_credential_leaks(root)
 
 
@@ -116,14 +116,17 @@ def test_clean_addition_passes(tmp_path):
 
 
 def test_a_secret_a_pull_request_commits_is_refused_against_its_base(tmp_path):
-    """CI runs the scanner on the pull request's commits (`--base`): a commit made where the
-    pre-commit hook does not run (GitHub's editor, a skipped hook) is still read."""
+    """CI runs the scanner on each commit of the pull request (`--base`): a commit made where the
+    pre-commit hook does not run (GitHub's editor, a skipped hook) is still read, and so is a
+    secret a later commit removes again, since the merge publishes every commit."""
     root = _staged(tmp_path, {"app.py": "x = 1\n"})
     git = lambda *a: subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", *a],  # noqa: E731
                                     cwd=root, check=True, capture_output=True)
     git("commit", "-q", "-m", "base")
     git("branch", "base")
     (root / "app.py").write_text("x = 1\n" + SECRET, encoding="utf-8")
-    git("commit", "-q", "-am", "pr")
+    git("commit", "-q", "-am", "adds a secret")
+    (root / "app.py").write_text("x = 1\n", encoding="utf-8")
+    git("commit", "-q", "-am", "removes it again")
     assert find_credential_leaks(root) == []                     # nothing staged
     assert [h.split(": ")[:2] for h in find_credential_leaks(root, base="base")] == [["app.py", "bearer_token"]]

@@ -125,6 +125,18 @@ def test_a_reflow_a_pull_request_commits_is_refused_against_its_base(repo):
     assert rc == 1 and "PURE EOL REFLOW" in out, out
 
 
+def test_a_rename_carrying_a_reflow_is_refused(repo):
+    """A file renamed and reflowed in one change is judged against its old path's bytes."""
+    root, git = repo
+    git("branch", "base")
+    git("mv", "lf_file.py", "moved_file.py")
+    p = root / "moved_file.py"
+    p.write_bytes(p.read_bytes().replace(b"\n", b"\r\n"))
+    git("commit", "-q", "-am", "pr")
+    rc, out = run_in(root, "--base", "base")
+    assert rc == 1 and "moved_file.py: PURE EOL REFLOW" in out, out
+
+
 def test_staged_mode_blocks_with_nonzero_exit(repo):
     """--measure reports; the pre-commit path must actually FAIL."""
     root, git = repo

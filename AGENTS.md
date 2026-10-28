@@ -192,8 +192,8 @@ Hold EdWebConsole to how a financial institution handles systems with real money
   forms ENF-13 lists as known open, a script file's contents among them — no machine check, ENF-13.
 - Edit source one edit at a time, never through a script. Enforced by: `tools/sed_edit_guard.py`
   (`tests/test_sed_edit_guard_v1.py`); the other in-place editors — ENF-14.
-- A file keeps its line endings. Enforced by: `tools/check_eol_style_invariant.py`
-  (`tests/test_eol_style_invariant_v1.py`).
-- No credential or operator-home path is committed. Enforced by: `tools/check_credential_leak.py`
-  (`tests/test_credential_leak_v1.py`).
+- A file keeps its line endings. Enforced by: `tools/check_eol_style_invariant.py` at commit and in
+  the required `hardening` job (`tests/test_eol_style_invariant_v1.py`).
+- No credential or operator-home path is committed. Enforced by: `tools/check_credential_leak.py` at
+  commit and on each commit of a pull request in the required `hardening` job (`tests/test_credential_leak_v1.py`).
 - Shell steps that depend on each other are joined with `&&`. Enforced by: no machine check — ENF-12.

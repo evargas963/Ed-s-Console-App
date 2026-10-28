@@ -2,7 +2,8 @@
 """Credential / secret leak firewall on the staged diff, or on a pull request's diff.
 
 Refuses Bearer tokens, API keys, private keys and operator-home paths (Windows, posix and Git
-Bash spellings) on any line `git diff --cached` adds (`git diff <base>...HEAD` with --base),
+Bash spellings) on any line `git diff --cached` adds (with --base, on any line any commit in
+`<base>..HEAD` adds, since a line removed again later is still published in main's history),
 every file read as text (what a commit would publish). The scanner's own suite and this module
 are path-skipped (injected payloads must live there). Other fixtures mark a line with
 `# credential-leak-ok` or `# credential-leak-fixture-ok`.
@@ -12,6 +13,7 @@ are path-skipped (injected payloads must live there). Other fixtures mark a line
 """
 from __future__ import annotations
 
+import argparse
 import re
 import subprocess
 import sys
@@ -48,38 +50,41 @@ SECRET_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
 )
 
 
-class StagedDiffUnreadable(RuntimeError):
-    """`git diff --cached` did not run. An unread diff is not an empty diff."""
+class DiffUnreadable(RuntimeError):
+    """git could not produce the diff. An unread diff is not an empty diff."""
 
 
-def _staged_text(root: Path, base: str | None = None) -> str:
-    """The staged diff (with `base`, the diff `base...HEAD`), RAISING when git could not produce it.
+def _added_text(root: Path, base: str | None = None) -> str:
+    """The staged diff, or with `base` every commit's diff in `base..HEAD` (a line one commit adds
+    and a later one removes is still published in main's history), RAISING when git could not
+    produce it.
 
-    Any failure of git — a broken or locked index, a corrupt object, git absent from PATH —
-    raises: an unread diff would scan clean and let the commit through unread. "I could not
-    look" is not "there is nothing".
+    Any failure of git — a broken or locked index, a corrupt object, an unknown base, git absent
+    from PATH — raises: an unread diff would scan clean and let the change through unread. "I
+    could not look" is not "there is nothing".
     """
     # core.quotePath=true: a quoted name is all escapes, whatever the repository's own setting.
     # --text, --no-textconv, --no-ext-diff: the bytes the commit publishes, whatever its attributes
     # or diff settings. Read as bytes: git ends a line only at a line feed.
-    which = [f"{base}...HEAD"] if base else ["--cached"]
+    which = ["log", "-p", "--format=", f"{base}..HEAD"] if base else ["diff", "--cached"]
     p = subprocess.run(
-        ["git", "-c", "core.quotePath=true", "diff", *which, "--unified=0", "--no-color",
+        ["git", "-c", "core.quotePath=true", *which, "--unified=0", "--no-color",
          "--text", "--no-textconv", "--no-ext-diff", "--src-prefix=a/", "--dst-prefix=b/"],
         cwd=root,
         capture_output=True,
     )
     if p.returncode != 0:
-        raise StagedDiffUnreadable(
-            f"git diff {which[0]} exited {p.returncode}: "
+        raise DiffUnreadable(
+            f"git {' '.join(which)} exited {p.returncode}: "
             f"{(p.stderr.decode('utf-8', errors='replace').strip().splitlines() or [''])[0]}"
         )
     return p.stdout.decode("utf-8", errors="replace")
 
 
 def find_credential_leaks(root: Path = REPO, base: str | None = None) -> list[str]:
-    """Every secret or operator-home path on a line `root`'s staged diff (or `base...HEAD`) adds."""
-    text = _staged_text(root, base)
+    """Every secret or operator-home path on a line `root`'s staged diff adds (with `base`, a line
+    any commit in `base..HEAD` adds)."""
+    text = _added_text(root, base)
     hits: list[str] = []
     current_file = "?"
     skip_file = False
@@ -96,7 +101,7 @@ def find_credential_leaks(root: Path = REPO, base: str | None = None) -> list[st
                 try:
                     current_file = _diff_path(line[len("+++ "):])
                 except ToolError as e:
-                    raise StagedDiffUnreadable(str(e)) from e
+                    raise DiffUnreadable(str(e)) from e
                 skip_file = current_file in _SKIP_PATHS
             continue
         if skip_file or not line.startswith("+"):
@@ -111,17 +116,18 @@ def find_credential_leaks(root: Path = REPO, base: str | None = None) -> list[st
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = sys.argv[1:] if argv is None else argv
-    base = args[args.index("--base") + 1] if "--base" in args else None
+    ap = argparse.ArgumentParser(description="Refuse secrets and operator-home paths a change adds")
+    ap.add_argument("--base", help="read every commit of a pull request against this base (CI)")
+    base = ap.parse_args(argv).base
     try:
         hits = find_credential_leaks(base=base)
-    except StagedDiffUnreadable as e:
+    except DiffUnreadable as e:
         # Fail CLOSED: "clean" for a diff nobody read is the one outcome a secrets gate must
         # never produce.
         print("check_credential_leak: FAIL — the diff could not be read, so nothing "
               "was scanned:", file=sys.stderr)
         print(f"  {e}", file=sys.stderr)
-        print("  This is NOT a clean result. Fix the repository state and commit again.",
+        print("  This is NOT a clean result. Fix the repository state and run it again.",
               file=sys.stderr)
         return 1
     rc = 0
