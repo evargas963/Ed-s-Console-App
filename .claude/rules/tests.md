@@ -12,6 +12,6 @@ paths:
   one is cleaned when its file is touched. Enforced by: `tools/check_no_new_patches.py` in the required
   `hardening` job (`tests/test_check_no_new_patches_v1.py`); the existing ones — TEST-PATCHES.
 - A flaky test is fixed in app code with the test unchanged, or in the test with its assertions
-  unchanged and evidence the timing can't occur in real use; loosened expectations, removed checks and
+  unchanged and evidence the timing can't occur in real use (the code that rules it out); loosened expectations, removed checks and
   retries are refused. Its report follows the `flaky-test-fix` skill. Enforced by: no machine check —
   ENF-12.
