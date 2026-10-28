@@ -1,10 +1,10 @@
 /* Ed Console — the ONE TradingView-style chart (window.EdTvChart). PRESENTATION ONLY.
 
    Engine: TradingView Lightweight Charts 5.2.1 (Apache-2.0), vendored unmodified at
-   /static/vendor/lightweight-charts/ (npm tarball sha512 verified 2026-09-25). Its license asks
-   for a link to tradingview.com; `attributionLogo: true` renders that link on every chart.
+   /static/vendor/lightweight-charts/. Its license asks for a link to tradingview.com;
+   `attributionLogo: true` renders that link on every chart.
 
-   The operator's chart standard (feedback_chart_interactions_mirror_tradingview), measured
+   The operator's chart standard (interactions mirror TradingView), measured
    against the library on real SPY bars before use:
      - plot drag pans BOTH ways. The library pans price vertically only once the price scale is
        out of auto-fit; TradingView turns auto-fit off the moment you drag vertically. The two
@@ -160,7 +160,7 @@
   }
   // Served price zones across the pane: [{lo, hi, color, label}], each a shaded band with its
   // edges and label, where it falls in the price range the candles set (a zone far from price does
-  // not widen the scale: SPY's zones at 750 and 800 flattened its candles, 2026-09-29).
+  // not widen the scale: SPY's zones at 750 and 800 would flatten its candles).
   function ZonesPrimitive() {
     var self = this;
     this._series = null; this._req = null; this.zones = [];

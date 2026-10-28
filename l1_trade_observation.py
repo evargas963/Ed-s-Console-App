@@ -1,6 +1,6 @@
 """ONE FAUCET: Schwab LEVELONE trade-observation identity and signed-flow math.
 
-Vendor contract (authenticated LEVELONE_EQUITIES, RTH probe 2026-08-20):
+Vendor contract (authenticated LEVELONE_EQUITIES, probed in RTH):
   LAST_PRICE, LAST_SIZE, TRADE_TIME_MILLIS are NATIVE last-print fields.
   SEQUENCE is absent at L1. TIMESALE_EQUITY returns code 11 (UNAVAILABLE).
   No aggressor / buy-sell / trade-condition field exists on L1, book, or REST.

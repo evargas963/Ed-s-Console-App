@@ -14,19 +14,18 @@ from typing import Optional
 
 from numeric_contract import schwab_count, schwab_number
 
-#: LP-01 Step 1 (RC-152) — the ONE volume-profile construction.
+#: The ONE volume-profile construction.
 #: A bar's volume did not trade at one price. It traded ACROSS [low, high], and the profile is
-#: the record of where. Both prior implementations dumped a bar's entire volume into a single
-#: bin at the typical price (H+L+C)/3, which is not a volume profile at all — it is a
-#: typical-price histogram wearing the name. Auction Market Theory / Volume Profile practice
+#: the record of where; a bar's whole volume put in one bin at the typical price (H+L+C)/3 would
+#: be a typical-price histogram, not a volume profile. Auction Market Theory / Volume Profile practice
 #: distributes the bar's volume across every price the bar traded through; POC is then the price
 #: that actually saw the most volume, and the value area is the smallest contiguous band holding
 #: `value_area_pct` of it.
 #:
 #: Uniform distribution across the spanned bins is the standard first-order model (it is what
-#: TPO-style and most charting-package volume profiles do without tick-level trade data). We do
-#: not have per-trade prints (the Schwab streamer carries no trade prints — see
-#: project_console_rebuild_program), so a within-bar shape would be invented, not measured.
+#: TPO-style and most charting-package volume profiles do without tick-level trade data). The
+#: profile is built from 1-minute bars, which carry no within-bar distribution, so a within-bar
+#: shape would be invented, not measured.
 #: Uniform is the honest choice: it asserts only what the bar actually tells us — this volume
 #: traded somewhere in [low, high].
 
@@ -39,8 +38,8 @@ MAX_BINS_PER_BAR: int = 5000
 @dataclass(frozen=True)
 class VolumeProfile:
     """Volume by price from bars, each bar's volume spread evenly over its [low, high] in tick
-    bins -- a derived distribution, not traded volume at a price (Schwab sends no trade prints)
-    -- and the value area read from it. `bins`: ((price, volume), ...) in price order. `bars`:
+    bins -- a derived distribution from 1-minute bars, not traded volume at a price from trade
+    prints -- and the value area read from it. `bins`: ((price, volume), ...) in price order. `bars`:
     the bars given; `bars_without_volume`: those Schwab sent with no volume, which the profile
     cannot place and does not contain."""
     tick_size: float
@@ -76,7 +75,7 @@ def volume_profile(
             continue
         hi, lo, vol = schwab_number(b.get("high")), schwab_number(b.get("low")), schwab_count(b.get("volume"))
         no_volume += vol is None
-        # high < low has no range to spread over (measured 2026-09-27: 0 of 2,166,115 bars)
+        # high < low has no range to spread over (measured: 0 of 2,166,115 bars)
         if hi is None or lo is None or vol is None or vol == 0 or hi < lo:
             continue
         lo_i = int(round(lo / tick_size))
@@ -139,16 +138,10 @@ class ZoneType(str, Enum):
     """
     Canonical zone types for structure/value mapping.
 
-    LP-01 Step 3 (RC-154) — `sell_side_liquidity` / `buy_side_liquidity` are RETIRED. Those
-    names make an SMC claim: that resting stop orders pool beyond a prior extreme and that
-    price is drawn to them. We have measured no such thing. There is no equal-extreme
-    stop-cluster detector in this repo, no touch study, and no forward test — the zones were
-    built from ordinary session extremes (overnight low, prior-day low, below the opening
-    range) and then given a name that asserts a mechanism.
-
-    What we can honestly say is geometric: this is the LOW extreme of the prior session /
-    overnight window, or the HIGH one. `low_extreme` / `high_extreme` say exactly that and
-    nothing more. If stop-cluster levels are ever built and proven, they earn their own type.
+    The extremes are named for what they are, geometrically: the LOW extreme of the prior
+    session / overnight window, or the HIGH one. No name claims a mechanism (resting stop
+    orders pooling beyond an extreme): no stop-cluster detector, touch study or forward test
+    has measured one. If stop-cluster levels are ever built and proven, they earn their own type.
 
     Taxonomy: low_extreme | support_liquidity | pivot_value | breakdown_trigger |
     breakout_trigger | resistance_liquidity | high_extreme
@@ -165,9 +158,8 @@ class ZoneType(str, Enum):
 def zone_class_for_type(zone_type: ZoneType) -> str:
     """Return zone_class from zone_type: structure | trigger | value.
 
-    RC-154: the `liquidity` CLASS is retired with the two types that carried it. No zone in
-    this taxonomy is a measured liquidity pool, so no zone may be classed as one — a class is
-    read as a category of evidence, and there is no evidence in that category yet.
+    There is no `liquidity` class: no zone in this taxonomy is a measured liquidity pool, and a
+    class is read as a category of evidence.
     """
     _class_map = {
         ZoneType.LOW_EXTREME: "structure",
