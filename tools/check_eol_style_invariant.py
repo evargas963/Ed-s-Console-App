@@ -17,8 +17,9 @@ Two refusals:
 Exemptions are read from git, never guessed: binary blobs and paths marked `-text`.
 
 Usage:
-    python tools/check_eol_style_invariant.py            # staged changes (pre-commit)
-    python tools/check_eol_style_invariant.py --measure  # worktree vs HEAD, reports only
+    python tools/check_eol_style_invariant.py                    # staged changes (pre-commit)
+    python tools/check_eol_style_invariant.py --base origin/main # a pull request's changes (CI)
+    python tools/check_eol_style_invariant.py --measure          # worktree vs HEAD, reports only
 """
 from __future__ import annotations
 
@@ -41,12 +42,30 @@ def _text(*args: str) -> str:
     return out.decode("utf-8", errors="replace")
 
 
-def changed_paths(staged: bool) -> list[str]:
-    """Paths modified against HEAD. Staged for pre-commit, worktree for --measure."""
-    args = ["diff", "--name-only", "--diff-filter=ACMR"]
-    if staged:
+def changed_paths(staged: bool, base: str | None = None) -> list[tuple[str, str]] | None:
+    """(path before, path after) of each file modified against HEAD: staged for pre-commit,
+    worktree for --measure; with `base`, each file a pull request changes against it. A renamed
+    file pairs its old path with its new one, so a rename cannot carry a reflow past the check;
+    names are read NUL-separated, never quoted. None when git could not list them."""
+    args = ["diff", "--name-status", "-z", "-M", "--diff-filter=ACMR"]
+    if base:
+        args.append(f"{base}...HEAD")
+    elif staged:
         args.insert(1, "--cached")
-    return [p for p in _text(*args).splitlines() if p.strip()]
+    proc = _git(*args)
+    if proc.returncode != 0:
+        return None
+    fields = proc.stdout.decode("utf-8", errors="surrogateescape").split("\0")
+    out, i = [], 0
+    while i < len(fields) and fields[i]:
+        status = fields[i]
+        if status.startswith("R"):
+            out.append((fields[i + 1], fields[i + 2]))
+            i += 3
+        else:
+            out.append((fields[i + 1], fields[i + 1]))
+            i += 2
+    return out
 
 
 def is_text_governed(path: str) -> bool:
@@ -83,12 +102,14 @@ def apply_pin(data: bytes, pin: str | None) -> bytes:
     return data
 
 
-def head_bytes(path: str) -> bytes | None:
-    proc = _git("show", f"HEAD:{path}")
+def head_bytes(path: str, rev: str = "HEAD") -> bytes | None:
+    proc = _git("show", f"{rev}:{path}")
     return proc.stdout if proc.returncode == 0 else None
 
 
-def current_bytes(path: str, staged: bool) -> bytes | None:
+def current_bytes(path: str, staged: bool, base: str | None = None) -> bytes | None:
+    if base:
+        return head_bytes(path)
     if staged:
         proc = _git("show", f":{path}")
         return proc.stdout if proc.returncode == 0 else None
@@ -116,13 +137,19 @@ def is_binary(data: bytes) -> bool:
     return b"\x00" in data[:8000]
 
 
-def violations(staged: bool = True) -> list[str]:
+def violations(staged: bool = True, base: str | None = None) -> list[str]:
     out: list[str] = []
-    for path in changed_paths(staged):
-        before = head_bytes(path)
+    old = _text("merge-base", base, "HEAD").strip() if base else "HEAD"
+    if base and not old:
+        return [f"no merge base between {base} and HEAD: the pull request's changes cannot be read"]
+    changed = changed_paths(staged, base)
+    if changed is None:
+        return ["git could not list the changed files: the change cannot be read, so it is not clean"]
+    for was, path in changed:
+        before = head_bytes(was, old)
         if before is None:          # newly added file: no prior style to preserve
             continue
-        after = current_bytes(path, staged)
+        after = current_bytes(path, staged, base)
         if after is None:
             continue
         # judge a pinned path on the form git will STORE, not on what the harness left on
@@ -161,11 +188,12 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Refuse commits that change a file's line-ending style")
     ap.add_argument("--measure", action="store_true",
                     help="check the worktree against HEAD and report without failing the gate")
+    ap.add_argument("--base", help="check a pull request's changes against this base (CI)")
     args = ap.parse_args(argv)
 
-    bad = violations(staged=not args.measure)
+    bad = violations(staged=not args.measure, base=args.base)
     if not bad:
-        scope = "worktree" if args.measure else "staged"
+        scope = "pull request" if args.base else "worktree" if args.measure else "staged"
         print(f"[PASS] eol_style_invariant — no line-ending flips in {scope} changes")
         return 0
     print(f"[FAIL] eol_style_invariant — {len(bad)} violation(s):")

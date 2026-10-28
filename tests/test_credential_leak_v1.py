@@ -3,7 +3,7 @@ import subprocess
 
 import pytest
 
-from tools.check_credential_leak import StagedDiffUnreadable, find_credential_leaks
+from tools.check_credential_leak import DiffUnreadable, find_credential_leaks
 
 SECRET = "Authorization: Bearer supersecrettokenvalue99\n"
 
@@ -82,7 +82,7 @@ def test_a_file_name_that_is_not_utf8_is_not_a_clean_diff(tmp_path):
     """A header that cannot be read names no file, so nothing after it was scanned under its name:
     the diff is unread, never clean."""
     root = _staged_as(_staged(tmp_path, {}), b"a\xff.py", SECRET)
-    with pytest.raises(StagedDiffUnreadable, match="could not be read"):
+    with pytest.raises(DiffUnreadable, match="could not be read"):
         find_credential_leaks(root)
 
 
@@ -113,3 +113,46 @@ def test_scanner_own_suite_path_is_skipped(tmp_path):
 def test_clean_addition_passes(tmp_path):
     root = _staged(tmp_path, {"tools/run_provenance.py": 'return {"git_commit": sha}\n'})
     assert find_credential_leaks(root) == []
+
+
+def test_a_secret_a_pull_request_commits_is_refused_against_its_base(tmp_path):
+    """CI runs the scanner on each commit of the pull request (`--base`): a commit made where the
+    pre-commit hook does not run (GitHub's editor, a skipped hook) is still read, and so is a
+    secret a later commit removes again, since the merge publishes every commit."""
+    root = _staged(tmp_path, {"app.py": "x = 1\n"})
+    git = lambda *a: subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", *a],  # noqa: E731
+                                    cwd=root, check=True, capture_output=True)
+    git("commit", "-q", "-m", "base")
+    git("branch", "base")
+    (root / "app.py").write_text("x = 1\n" + SECRET, encoding="utf-8")
+    git("commit", "-q", "-am", "adds a secret")
+    (root / "app.py").write_text("x = 1\n", encoding="utf-8")
+    git("commit", "-q", "-am", "removes it again")
+    assert find_credential_leaks(root) == []                     # nothing staged
+    assert [h.split(": ")[:2] for h in find_credential_leaks(root, base="base")] == [["app.py", "bearer_token"]]
+
+
+def test_a_secret_typed_into_a_merge_resolution_is_refused(tmp_path):
+    """A conflict resolved in a merge commit (GitHub's web conflict editor runs no hook) is read for
+    what the resolution adds; the lines main brings in through the merge are not the PR's."""
+    root = _staged(tmp_path, {"app.py": "x = 1\n"})
+    git = lambda *a: subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", *a],  # noqa: E731
+                                    cwd=root, capture_output=True)
+    git("commit", "-q", "-m", "base")
+    git("branch", "-M", "main")
+    git("checkout", "-q", "-b", "pr")
+    (root / "app.py").write_text("x = 2\n", encoding="utf-8")
+    git("commit", "-q", "-am", "pr side")
+    git("checkout", "-q", "main")
+    # main's side carries a flagged line of its own (another label): the merge brings it in, and a
+    # scan that reported main's lines would list it beside the resolution's token
+    (root / "app.py").write_text("x = 3\n", encoding="utf-8")
+    (root / "main_only.py").write_text("k = 'AKIA" + "ABCDEFGHIJKLMNOP'\n", encoding="utf-8")
+    git("add", "main_only.py")
+    git("commit", "-q", "-am", "main side")
+    git("checkout", "-q", "pr")
+    assert git("merge", "main").returncode != 0, "the merge must conflict"
+    (root / "app.py").write_text("x = 4\n" + SECRET, encoding="utf-8")
+    git("add", "app.py")
+    assert git("commit", "-q", "--no-edit").returncode == 0
+    assert [h.split(": ")[:2] for h in find_credential_leaks(root, base="main")] == [["app.py", "bearer_token"]]
