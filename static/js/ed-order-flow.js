@@ -1,8 +1,8 @@
 /* Ed Console — Order Flow / "Book · DOM" subview. PRESENTATION ONLY.
    Real L2 book microstructure for the UNDERLYING ticker itself (NASDAQ_BOOK/NYSE_BOOK), via
    /api/order-flow/microstructure -- the SAME canonical app.options.order_flow.engine.
-   compute_book_microstructure the options Flow tab already reads (server.py:15093 delegates
-   to the identical function server.py:15124 does for one option contract's book). Reuses that
+   compute_book_microstructure the options Flow tab already reads (the route and the engine's
+   option-contract book call the one function). Reuses that
    view's exact .fl-* CSS grammar so a book reads the same whether it's an option contract's
    or the ticker's own -- one visual language, not a second one invented here.
 
@@ -51,11 +51,8 @@
     return h + '</div>';
   }
 
-  // Real per-level DOM ladder from d.depth_pressure.{bid,ask} -- [{price,volume,cum}], best-
-  // first, up to OF_BOOK_DEPTH_DEEP (5) levels. This is genuine displayed-book data the first
-  // build of this view fetched but never rendered (only the aggregate depth.{1,3,5} totals
-  // were shown) -- the operator's "this sucks, it's just numbers" is fixed by using the level
-  // array that was already on the wire.
+  // Per-level DOM ladder from d.depth_pressure.{bid,ask} -- [{price,volume,cum}], best-first,
+  // up to OF_BOOK_DEPTH_DEEP (5) levels of the displayed book, as served.
   function ladderHtml(bidLevels, askLevels, wallSet) {
     var maxVol = 0;
     bidLevels.concat(askLevels).forEach(function (l) { if (l.volume > maxVol) maxVol = l.volume; });
@@ -142,7 +139,7 @@
     document.addEventListener('ed:ticker', load);
     document.addEventListener('ed:book_venue', load);
     document.addEventListener('ed:changed', function (e) { if (e.detail.kind === 'flow') load(); });
-    // Audit finding #4 (2026-09-16): initial hydration now comes SOLELY from ed-core.js's
-    // deferred ed:ticker/ed:view dispatch -- see that file's init() comment.
+    // initial hydration comes only from ed-core.js's deferred ed:ticker/ed:view dispatch
+    // (that file's init() comment)
   }
 })();

@@ -9,9 +9,8 @@
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
     return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
   // Two homes render the SAME canonical /api/levels contract, same function, same host-id
-  // resolution pattern -- Options > Gamma > Levels (the original) and Liquidity > Levels
-  // (operator, 2026-09-13: "one page" work owes Liquidity a real view, not another
-  // placeholder). Never two renderers for one contract -- see this file's own docstring.
+  // resolution pattern -- Options > Gamma > Levels and Liquidity > Levels. Never two renderers
+  // for one contract -- see this file's own docstring.
   function activeHostId() {
     var s = (window.EdShell && window.EdShell.getState()) || {};
     if (s.workspace === 'options' && s.subview === 'gamma' && s.view === 'levels') return 'levelsBody';
@@ -80,7 +79,7 @@
         '<div class="sm">' + esc(note) + '</div></div>';
       return;
     }
-    // null/'' spot is ABSENT: Number(null) is 0, which drew 'spot 0.00' (audit P0, 2026-09-23)
+    // null/'' spot is ABSENT: Number(null) is 0, which would draw 'spot 0.00'
     var spot = (d.spot == null || d.spot === '') ? NaN : Number(d.spot);
     var trade = '';
     if (d.spot_time_ct) trade = ' · last trade ' + esc(d.spot_time_ct);
@@ -127,7 +126,7 @@
     document.addEventListener('ed:view', load);
     document.addEventListener('ed:ticker', load);
     document.addEventListener('ed:changed', function (e) { if (e.detail.kind === 'levels') load(); });
-    // Audit finding #4 (2026-09-16): initial hydration now comes SOLELY from ed-core.js's
-    // deferred ed:ticker/ed:view dispatch -- see that file's init() comment.
+    // initial hydration comes only from ed-core.js's deferred ed:ticker/ed:view dispatch
+    // (that file's init() comment)
   }
 })();

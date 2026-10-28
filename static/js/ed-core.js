@@ -5,7 +5,7 @@
 (function () {
   'use strict';
 
-  // ---- shared ticker key (compatible with the legacy shell) ----
+  // ---- shared ticker key ----
   var TICKER_KEY = 'ed_ticker';
   var RAIL_KEY = 'ed_rail_open';
 
@@ -120,7 +120,7 @@
 
   // ---- theme: SYSTEM / LIGHT / DARK — one token contract, two palettes (dark primary) ----
   // Theme resolution/first-paint/OS-change is owned by window.EdTheme (the pre-CSS bootstrap in
-  // console.html). ed-core only CONSUMES it — delegates changes and reflects the control — so there
+  // index.html). ed-core only CONSUMES it — delegates changes and reflects the control — so there
   // is one canonical resolution path shared by first paint and runtime.
   var THEME_ICON = { system: '◐', light: '☀', dark: '☾' };
   function reflectThemeIcon() {
