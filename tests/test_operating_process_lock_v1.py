@@ -140,3 +140,28 @@ def test_rc234_pipe_ok_escape_allows():
     assert OPL.commit_pipe_violations(
         'git commit -m "x" | tail -1  # pipe-ok: operator demo') == []
 
+
+def test_an_edit_target_is_placed_once_whatever_its_spelling(tmp_path):
+    """The production checkout's app code is refused whether the target is spelled absolute or
+    relative to the checkout; tests/, docs/ and scratch files there are not app code; a file in
+    another checkout is not the production checkout's."""
+    primary, wt = _linked_worktree_layout(tmp_path)
+    for target in (str(primary / "db.py"), "db.py", "tools/x.py"):
+        bad = PLG.production_checkout_app_edit_violations({"file_path": target}, primary)
+        assert any("PROD_CHECKOUT_APP_EDIT" in b for b in bad), (target, bad)
+    for target in ("tests/test_x.py", "docs/x.py", "scratchpad/x.py", str(wt / "own.py")):
+        assert PLG.production_checkout_app_edit_violations({"file_path": target}, primary) == [], target
+
+
+def test_an_edit_target_that_cannot_be_placed_is_refused(tmp_path):
+    """INDUCED CONDITION: a target holding a NUL byte, inside the production checkout. Where the
+    filesystem cannot place it (Linux), the guard raises and hook_chain refuses the event; where
+    it can (Windows), it is app code and refused. It is never let through."""
+    primary, _wt = _linked_worktree_layout(tmp_path)
+    try:
+        bad = PLG.production_checkout_app_edit_violations(
+            {"file_path": str(primary / "tools" / "x\x00.py")}, primary)
+    except ValueError:
+        return                                   # a raising guard is a block (test_hook_chain_v1)
+    assert any("PROD_CHECKOUT_APP_EDIT" in b for b in bad), bad
+

@@ -1,82 +1,31 @@
-"""Path facts: `classify_path`, the one owner of "is this path ours / production / a compliance
-surface", read by process_lock_guard (production-checkout rails). A library, not a hook."""
+"""Whether an edit target is the production checkout's app code: `production_path`, the one place
+a guard places a path, read by process_lock_guard (the production-checkout rails). A library, not
+a hook."""
 from __future__ import annotations
 
 from pathlib import Path
-from typing import NamedTuple
 
-REPO = Path(__file__).resolve().parent.parent
-
-#: Editing these is how you COMPLY (open the row, write the test, record evidence) — never blocked
-#: by path class.
-ALWAYS_ALLOWED_PREFIXES = (
-    "governance/", "docs/", "reports/", "tests/", ".claude/", "calibration/",
-)
 #: Production surfaces across the whole continuum, not just backend.
 PRODUCTION_SUFFIXES = (".py", ".html", ".js", ".css", ".sql", ".ts", ".jsx", ".tsx")
-#: NOT part of the PRODUCT surface. Deliberately NOT the same list as
-#: ALWAYS_ALLOWED_PREFIXES: that one answers "is editing this HOW you comply", this one
-#: answers "is this file part of the product". They diverge on `scratchpad/` (not product,
-#: but writing scratch is not complying either) and on `.cursor/`.
+#: Not part of the product surface.
 NOT_PRODUCT_PREFIXES = (
     "tests/", "governance/", "docs/", "reports/", ".claude/", ".cursor/",
     "scratchpad/", "calibration/",
 )
 
 
-class PathFacts(NamedTuple):
-    """The answers a caller may ask about a path. One computation, three questions."""
-
-    governed: bool      # Q1 — does THIS repository's law apply to this path
-    rel: str            # repo-relative posix when governed and resolvable, else normalised input
-    production: bool    # Q2 — governed AND part of the product surface
-    rc66_exempt: bool   # governed AND editing it is how you comply (ALWAYS_ALLOWED_PREFIXES)
-
-
-def _resolve_for_repo(p: str, root: Path) -> tuple[Path | None, bool]:
-    """Resolve `p` for governance. Relative input is joined to `root`, never to the CWD.
-    A path that cannot be resolved returns (None, False) and every caller must treat that as
-    OURS — unmeasurable is never ungoverned."""
+def production_path(target: str, base: Path, primary: Path) -> Path | None:
+    """`target` resolved (joined to `base` when relative) when it is app code inside the checkout
+    `primary`; None when it is outside it or not app code. A path that cannot be resolved raises:
+    the guard that asked cannot decide, and hook_chain refuses an event a guard raises on."""
+    path = Path(target)
+    resolved = (path if path.is_absolute() else base / path).resolve()
     try:
-        raw = Path(p)
-        if not raw.is_absolute():
-            raw = root / raw
-        return raw.resolve(), True
-    except (OSError, ValueError):
-        return None, False
-
-
-def classify_path(p: str, repo: str | Path | None = None) -> PathFacts:
-    """THE path authority. Every caller consumes this; nobody re-derives it.
-
-    Q1 governance is answered by resolve-and-compare against the governing root. Q2 is only
-    meaningful once Q1 is true — a relative-prefix `startswith` test can never match an
-    absolute path, so it would class an absolute scratchpad file as production. `repo` names
-    the governing root and defaults to this repository.
-
-    Fails CLOSED: an unresolvable path is governed, is production, and is not a compliance
-    surface.
-    """
-    root = REPO if repo is None else Path(repo)
-    try:
-        root = root.resolve()
-    except (OSError, ValueError):
-        root = REPO
-    resolved, resolvable = _resolve_for_repo(p, root)
-    if not resolvable:
-        return PathFacts(governed=True, rel=Path(p).as_posix(),
-                         production=True, rc66_exempt=False)
-    try:
-        rel = resolved.relative_to(root).as_posix()
+        rel = resolved.relative_to(primary.resolve()).as_posix()
     except ValueError:
-        # Genuinely outside the governing tree — governed by that tree's own rules, not ours.
-        return PathFacts(governed=False, rel=resolved.as_posix(),
-                         production=False, rc66_exempt=False)
-    return PathFacts(
-        governed=True,
-        rel=rel,
-        production=rel.endswith(PRODUCTION_SUFFIXES) and not rel.startswith(NOT_PRODUCT_PREFIXES),
-        rc66_exempt=rel.startswith(ALWAYS_ALLOWED_PREFIXES),
-    )
+        return None
+    if rel.endswith(PRODUCTION_SUFFIXES) and not rel.startswith(NOT_PRODUCT_PREFIXES):
+        return resolved
+    return None
 
 
