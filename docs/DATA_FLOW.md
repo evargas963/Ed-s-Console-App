@@ -741,8 +741,8 @@ The work that closes these gaps, in order, is `ACTIVE_PROGRAM.md`.
 
 ## 5. Checks
 
-ruff at commit and in CI, with `pyproject.toml`'s one selection (unused imports, undefined names
-and every error CPython's compiler raises); the behavior tests (`pytest`, `tests/`) and the
+ruff at commit and in CI, with `pyproject.toml`'s one selection (unused imports, undefined names,
+syntax errors); a compile pass in CI (every file CPython compiles); the behavior tests (`pytest`, `tests/`) and the
 browser tests (Playwright, `tests/e2e/`) in CI; the secrets and home-path scan at commit and in CI
 (each commit of a pull request, merge resolutions included); the line-ending check at commit and
 in CI (the pull request's change); for agents, the hooks that block destructive git. A passing check proves only what its tests exercise; every rule beyond

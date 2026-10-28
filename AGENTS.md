@@ -122,7 +122,7 @@ Hold EdWebConsole to how a financial institution handles systems with real money
 - The `before-done` skill's checks pass on the PR's final commit, their output shown, before the PR
   is offered. Enforced by: branch protection on `main` requires `pytest-full`
   (`.github/workflows/pytest.yml`) and `hardening` (`.github/workflows/hardening.yml`) on the final
-  commit, current with `main`; the commit hook runs ruff (`tests/test_ruff_config_v1.py`).
+  commit, current with `main`; the commit hook and the `hardening` job run ruff, and the job compiles every file.
 - Claims. Every statement about how something is now (a process, a file, a branch, a pull request, a test result,
   data, the screen) is CONFIRMED only by command output shown in the same reply. Anything else is NOT VERIFIED, with
   when it was last checked. An earlier check is not current evidence; state changes. This applies to every part of a
