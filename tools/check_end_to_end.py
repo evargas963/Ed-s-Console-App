@@ -363,6 +363,7 @@ def main(argv: list[str] | None = None) -> int:
     except ToolError as e:
         print(f"the check failed: {e}", file=sys.stderr)
         return 2
+    sys.stdout.reconfigure(encoding="utf-8")       # a file name may hold any character
     for v in found:
         print(v)
     return 1 if found else 0
