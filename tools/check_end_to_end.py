@@ -1,14 +1,12 @@
 """AGENTS.md rule 1, no patches: the code shapes a machine can refuse on a pull request.
 
-A check of shapes only. It cannot see a design-level patch, and it cannot tell whether a changed
-test covers the changed behavior; those are proven by behavior tests and review.
+A check of shapes only. It cannot see a design-level patch; that is review's. That a product change
+is proven end to end is check_fails_before's: an end-to-end path test that fails on the old code. A
+file whose code is the same once comments and docstrings are set aside (code_identical: the Python
+syntax tree; page code's syntax tree from Babel, tools/js_code_tree.js) is not a change of product
+code. An .html page is always one, and so is removing code nothing calls, a deleted file included.
 
-1. A PR that changes product code also adds real lines (not blank, not a comment) to an
-   end-to-end path test: `tests/test_data_path_*.py` or `tests/e2e/*.spec.js`. A file whose code
-   is the same once comments and docstrings are set aside (code_identical: the Python syntax tree;
-   page code's syntax tree from Babel, tools/js_code_tree.js) is not a change of product code. An
-   .html page is always one, and so is removing code nothing calls, a deleted file included.
-2. The product lines it adds carry no patch shape:
+The product lines a PR adds carry no patch shape:
    - an except that catches everything (bare, `Exception`, `BaseException`, or a tuple holding
      one), or one whose only statement swallows the error: `pass`, `continue`, a return or an
      assignment of None or a literal, or a call with no re-raise. An except that logs the error
@@ -44,8 +42,6 @@ from pathlib import Path
 
 PRODUCT_SUFFIXES = (".py", ".js", ".mjs", ".html")
 NOT_PRODUCT = ("tests/", "tools/", ".github/", "docs/", "playwright.config.mjs")
-END_TO_END = (re.compile(r"^tests/test_data_path_[^/]+\.py$"),
-              re.compile(r"^tests/e2e/[^/]+\.spec\.js$"))
 CATCH_ALL = ("Exception", "BaseException")
 LOG_METHODS = {"debug", "info", "warning", "warn", "error", "exception", "critical", "log"}
 JS_LITERAL = r"(0(?!\w)|''|\"\"|\[\]|\{\}|null(?!\w))"
@@ -91,15 +87,14 @@ def _diff_path(header: str) -> str:
     return name.removeprefix("b/")
 
 
-def pr_added_lines(root: Path, base: str, renames: bool) -> dict[str, set[int]]:
-    """{path: the line numbers, in the PR's version, of the lines the PR adds}, one diff. With
-    `renames`, a file renamed with no edit adds no line (git's rename detection: the end-to-end
-    evidence); without, a moved file adds every line it holds (the patch scan)."""
+def pr_added_lines(root: Path, base: str) -> dict[str, set[int]]:
+    """{path: the line numbers, in the PR's version, of the lines the PR adds}, one diff; a moved
+    file adds every line it holds."""
     out: dict[str, set[int]] = {}
     path: str | None = None
     header = False      # between a file's `diff --git` and its first hunk: an added line is not a header
     # core.quotePath=true: a quoted name is all escapes, whatever the repository's own setting
-    for line in _git(root, "-c", "core.quotePath=true", "diff", "-U0", "-M" if renames else "--no-renames", "--src-prefix=a/",
+    for line in _git(root, "-c", "core.quotePath=true", "diff", "-U0", "--no-renames", "--src-prefix=a/",
                      "--dst-prefix=b/", "--diff-filter=AMRT", f"{base}...HEAD").split("\n"):
         if line.startswith("diff --git "):
             path, header = None, True
@@ -329,23 +324,10 @@ def js_patches(path: str, source: str, added: set[int]) -> list[tuple[int, str]]
     return sorted(set(found))
 
 
-def adds_real_lines(source: str, added: set[int]) -> bool:
-    """Whether a line the PR adds holds code, not only a comment; lines numbered as git numbers
-    them (by line feed alone)."""
-    return any(n in added and (s := text.strip()) and not s.startswith(("#", "//"))
-               for n, text in enumerate(source.split("\n"), start=1))
-
-
 def violations(root: Path, base: str) -> list[str]:
-    evidence = pr_added_lines(root, base, renames=True)
-    added = pr_added_lines(root, base, renames=False)
+    added = pr_added_lines(root, base)
     changed_code = sorted(f for f in pr_files(root, base, "AMT") if behavior_change(root, base, f))
-    product = sorted(changed_code + deleted_product(root, base))
     out = []
-    if product and not any(p.match(f) and adds_real_lines(pr_source(root, f), evidence[f])
-                           for f in evidence for p in END_TO_END):
-        out.append(f"product code changed ({', '.join(product)}) but no end-to-end path test "
-                   "(tests/test_data_path_*.py or tests/e2e/*.spec.js) gained a real line")
     for f in changed_code:
         source = pr_source(root, f)
         lines = added.get(f, set())

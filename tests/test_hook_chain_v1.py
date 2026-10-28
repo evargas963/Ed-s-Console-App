@@ -108,8 +108,8 @@ def test_no_guard_named_is_refused_not_passed():
 
 
 def test_both_hosts_wire_the_one_executor_with_the_same_rosters():
-    """The guards run before a tool on both hosts, through the one executor, with one roster. Claude's
-    host also runs ruff after each edit."""
+    """The guards run before a tool on both hosts, through the one executor, with one roster, and
+    nothing else is wired."""
     wired = _wired_commands()
     guards = wired["PreToolUse"] + wired["preToolUse"]
     commands = [c for cmds in wired.values() for c in cmds]
@@ -119,9 +119,8 @@ def test_both_hosts_wire_the_one_executor_with_the_same_rosters():
         assert not (ROOT / "tools" / retired.split(".")[0]).with_suffix(".py").exists() or retired.endswith("guard"), retired
     def roster(c: str) -> set[str]:
         return {t for t in c.split() if t.startswith("tools/") and "chain" not in t}
-    assert set(wired) == {"PreToolUse", "preToolUse", "PostToolUse"}, wired
+    assert set(wired) == {"PreToolUse", "preToolUse"}, wired
     assert all(roster(c) == set(WIRED_ROSTER) for c in guards), wired
-    assert [roster(c) for c in wired["PostToolUse"]] == [{"tools/ruff_edited_file.py"}], wired
 
 
 def test_every_wired_executable_refuses_an_unreadable_payload():

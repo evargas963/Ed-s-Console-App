@@ -52,11 +52,12 @@ Hold EdWebConsole to how a financial institution handles systems with real money
    guard, wrapper, flag, special case or check around it. If that takes a restructure, the restructure is the fix. Every
    fix is end to end: Schwab to the screen. Nothing new (process, cache, helper, file, check) without a job its existing
    owner cannot do, shown in the PR; an existing piece that cannot show one is removed.
-   Enforced by: `tools/check_end_to_end.py` in the required `hardening` job (`.github/workflows/hardening.yml`,
-   `tests/test_check_end_to_end_v1.py`) refuses a pull request that changes product code without a real line added to an
-   end-to-end path test, that adds a patch shape (a catch-all or swallowing except that does not log,
-   `contextlib.suppress`, a literal standing in for a missing value); the path tests of `docs/DATA_FLOW.md` §2 fail a
-   broken path; a design-level patch and a new piece's job shown in the PR — ENF-01.
+   Enforced by: `tools/check_fails_before.py` in the required `pytest-full` job (`tests/test_check_fails_before_v1.py`)
+   refuses a pull request that changes product code unless an end-to-end path test it changes fails on the old code;
+   `tools/check_end_to_end.py` in the required `hardening` job (`.github/workflows/hardening.yml`,
+   `tests/test_check_end_to_end_v1.py`) refuses one that adds a patch shape (a catch-all or swallowing except that does
+   not log, `contextlib.suppress`, a literal standing in for a missing value); the path tests of `docs/DATA_FLOW.md` §2
+   fail a broken path; a design-level patch and a new piece's job shown in the PR — ENF-01.
 2. **Schwab fields as sent.** Not a number: absent, -999, text, NaN or infinity, a value Schwab's own field
    definition excludes (a negative volume or size), and a gamma more than twice the largest any option can have at its
    own volatility, price and time left (operator 2026-10-23). Everything else is taken as sent; a reported 0 is 0. No other bounds, no substitution. What Schwab sends or accepts is settled by Schwab's own documentation, cited by section:
@@ -121,7 +122,7 @@ Hold EdWebConsole to how a financial institution handles systems with real money
 - The `before-done` skill's checks pass on the PR's final commit, their output shown, before the PR
   is offered. Enforced by: branch protection on `main` requires `pytest-full`
   (`.github/workflows/pytest.yml`) and `hardening` (`.github/workflows/hardening.yml`) on the final
-  commit, current with `main`; the commit hook and `tools/ruff_edited_file.py` run ruff.
+  commit, current with `main`; the commit hook and the `hardening` job run ruff, and the job compiles every file.
 - Claims. Every statement about how something is now (a process, a file, a branch, a pull request, a test result,
   data, the screen) is CONFIRMED only by command output shown in the same reply. Anything else is NOT VERIFIED, with
   when it was last checked. An earlier check is not current evidence; state changes. This applies to every part of a

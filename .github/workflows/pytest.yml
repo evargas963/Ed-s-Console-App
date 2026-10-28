@@ -164,7 +164,7 @@ jobs:
           compression-level: 0
           retention-days: 14
 
-      - name: A changed test fails on the old code (AGENTS.md, Before writing code)
+      - name: A changed end-to-end path test fails on the old code (AGENTS.md rule 1, Before writing code)
         if: github.event_name == 'pull_request'
         env:
           ED_CI_OFFLINE: "1"
