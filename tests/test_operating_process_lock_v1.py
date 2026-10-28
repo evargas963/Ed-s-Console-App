@@ -15,22 +15,21 @@ import tools.process_lock_guard as PLG  # noqa: E402
 
 
 def test_edit_branch_topology_rails_only_no_role_denylist(tmp_path):
-    """No role/mission/authority edit denylist exists. The Edit branch carries only topology
-    rails that name no agent — cross-checkout (a LINKED worktree editing the primary), and the live-checkout invariant #4
-    (a session that IS the production primary editing its OWN app code). A linked worktree
-    editing its own files stays unblocked: that is where development belongs. Deterministic
-    against a temp topology, so it holds in a primary clone (CI) and a linked worktree alike."""
+    """No role/mission/authority edit denylist exists. The Edit branch carries one topology rail
+    that names no agent: an edit whose target belongs to the production checkout. A linked
+    worktree editing its own files stays unblocked: that is where development belongs.
+    Deterministic against a temp topology, so it holds in a primary clone (CI) and a linked
+    worktree alike."""
     primary, wt = _linked_worktree_layout(tmp_path)
     (wt / "server.py").write_text("# mine\n", encoding="utf-8")
     (primary / "notes.md").write_text("# doc\n", encoding="utf-8")
     # a LINKED-worktree session editing its OWN app code → unblocked (ordinary dev work)
-    assert PLG.production_checkout_app_edit_violations({"file_path": str(wt / "server.py")}, wt) == []
-    assert PLG.cross_checkout_edit_violations({"file_path": str(wt / "server.py")}, wt) == []
+    assert PLG.production_checkout_edit_violations({"file_path": str(wt / "server.py")}, wt) == []
     # a session that IS the production primary editing its OWN app code → BLOCKED (invariant #4)
-    bad = PLG.production_checkout_app_edit_violations({"file_path": str(primary / "db.py")}, primary)
-    assert any("PROD_CHECKOUT_APP_EDIT" in b for b in bad), bad
+    bad = PLG.production_checkout_edit_violations({"file_path": str(primary / "db.py")}, primary)
+    assert any("PROD_CHECKOUT_EDIT" in b for b in bad), bad
     # ...but a non-app file (docs/governance) in the primary is NOT gated
-    assert PLG.production_checkout_app_edit_violations({"file_path": str(primary / "notes.md")}, primary) == []
+    assert PLG.production_checkout_edit_violations({"file_path": str(primary / "notes.md")}, primary) == []
 
 
 def _linked_worktree_layout(tmp_path: Path) -> tuple[Path, Path]:
@@ -52,27 +51,27 @@ def test_cross_checkout_edit_into_primary_blocks(tmp_path):
     """A linked-worktree session editing the PRIMARY working tree: the rail fires on that
     exact topology."""
     primary, wt = _linked_worktree_layout(tmp_path)
-    bad = PLG.cross_checkout_edit_violations(
+    bad = PLG.production_checkout_edit_violations(
         {"file_path": str(primary / "db.py")}, repo=wt)
-    assert len(bad) == 1 and "CROSS_CHECKOUT_EDIT" in bad[0], bad
+    assert len(bad) == 1 and "PROD_CHECKOUT_EDIT" in bad[0], bad
 
 
 def test_own_worktree_edit_stays_unblocked(tmp_path):
     primary, wt = _linked_worktree_layout(tmp_path)
-    assert PLG.cross_checkout_edit_violations(
+    assert PLG.production_checkout_edit_violations(
         {"file_path": str(wt / "own.py")}, repo=wt) == []
     # Relative paths resolve against the session checkout, not the primary.
-    assert PLG.cross_checkout_edit_violations({"file_path": "own.py"}, repo=wt) == []
+    assert PLG.production_checkout_edit_violations({"file_path": "own.py"}, repo=wt) == []
 
 
-def test_primary_session_is_never_gated_by_the_rail(tmp_path):
-    """The primary checkout editing anywhere (including a linked worktree) is the
-    operator-visible direction — the rail is inert when .git is a directory."""
+def test_the_primary_session_is_refused_only_its_own_app_code(tmp_path):
+    """From the production checkout (.git a directory), a linked worktree's file is not the
+    production checkout's, and only the production checkout's app code is refused."""
     primary, wt = _linked_worktree_layout(tmp_path)
-    assert PLG.cross_checkout_edit_violations(
+    assert PLG.production_checkout_edit_violations(
         {"file_path": str(wt / "own.py")}, repo=primary) == []
-    assert PLG.cross_checkout_edit_violations(
-        {"file_path": str(primary / "db.py")}, repo=primary) == []
+    bad = PLG.production_checkout_edit_violations({"file_path": str(primary / "db.py")}, repo=primary)
+    assert len(bad) == 1 and "PROD_CHECKOUT_EDIT" in bad[0], bad
 
 
 def test_rail_fails_open_on_unreadable_topology(tmp_path):
@@ -81,7 +80,7 @@ def test_rail_fails_open_on_unreadable_topology(tmp_path):
     wt = tmp_path / "wt2"
     wt.mkdir()
     (wt / ".git").write_text("not a gitdir line\n", encoding="utf-8")
-    assert PLG.cross_checkout_edit_violations(
+    assert PLG.production_checkout_edit_violations(
         {"file_path": str(tmp_path / "anything.py")}, repo=wt) == []
 
 
@@ -148,10 +147,10 @@ def test_an_edit_target_is_placed_once_whatever_its_spelling(tmp_path):
     another checkout is not the production checkout's."""
     primary, wt = _linked_worktree_layout(tmp_path)
     for target in (str(primary / "db.py"), "db.py", "tools/x.py"):
-        bad = PLG.production_checkout_app_edit_violations({"file_path": target}, primary)
-        assert any("PROD_CHECKOUT_APP_EDIT" in b for b in bad), (target, bad)
+        bad = PLG.production_checkout_edit_violations({"file_path": target}, primary)
+        assert any("PROD_CHECKOUT_EDIT" in b for b in bad), (target, bad)
     for target in ("tests/test_x.py", "docs/x.py", "scratchpad/x.py", str(wt / "own.py")):
-        assert PLG.production_checkout_app_edit_violations({"file_path": target}, primary) == [], target
+        assert PLG.production_checkout_edit_violations({"file_path": target}, primary) == [], target
 
 
 def test_every_file_the_console_and_daemon_run_is_app_code_to_the_rails():
@@ -176,23 +175,23 @@ def test_an_edit_target_that_cannot_be_placed_is_refused(tmp_path):
     it can (Windows), it is app code and refused. It is never let through."""
     primary, _wt = _linked_worktree_layout(tmp_path)
     try:
-        bad = PLG.production_checkout_app_edit_violations(
+        bad = PLG.production_checkout_edit_violations(
             {"file_path": str(primary / "tools" / "x\x00.py")}, primary)
     except ValueError:
         return                                   # a raising guard is a block (test_hook_chain_v1)
-    assert any("PROD_CHECKOUT_APP_EDIT" in b for b in bad), bad
+    assert any("PROD_CHECKOUT_EDIT" in b for b in bad), bad
 
 
 def test_a_cross_checkout_target_that_cannot_be_placed_is_refused(tmp_path):
     """INDUCED CONDITION: a linked worktree's edit target in the production checkout holding a NUL
-    byte. The cross-checkout rail places it with the same function as the other rails: it raises
-    (a block) or it is refused; the old rail skipped it and let it through."""
+    byte. The rail places it with the same function as the shell rail: it raises (a block) or it is
+    refused, never let through."""
     primary, wt = _linked_worktree_layout(tmp_path)
     try:
-        bad = PLG.cross_checkout_edit_violations({"file_path": str(primary / "x\x00.md")}, repo=wt)
+        bad = PLG.production_checkout_edit_violations({"file_path": str(primary / "x\x00.md")}, repo=wt)
     except ValueError:
         return                                   # a raising guard is a block (test_hook_chain_v1)
-    assert len(bad) == 1 and "CROSS_CHECKOUT_EDIT" in bad[0], bad
+    assert len(bad) == 1 and "PROD_CHECKOUT_EDIT" in bad[0], bad
 
 
 def test_a_shell_write_to_the_production_checkouts_app_code_is_refused_and_devices_are_not():
@@ -201,7 +200,7 @@ def test_a_shell_write_to_the_production_checkouts_app_code_is_refused_and_devic
     empty name is not app code there, and placing it does not raise."""
     primary = PLG._primary_worktree_root(ROOT) or ROOT
     bad = PLG.production_checkout_shell_app_write_violations(PLG.read("echo x > static/x.js", str(primary)))
-    assert len(bad) == 1 and "PROD_CHECKOUT_APP_EDIT" in bad[0], bad
+    assert len(bad) == 1 and "PROD_CHECKOUT_EDIT" in bad[0], bad
     for cmd in ("echo x > /dev/null", "echo x > NUL", "echo x > nul", 'echo x > ""'):
         assert PLG.production_checkout_shell_app_write_violations(PLG.read(cmd, str(primary))) == [], cmd
 

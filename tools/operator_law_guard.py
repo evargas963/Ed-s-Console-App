@@ -33,7 +33,7 @@ if str(REPO) not in sys.path:
 
 from tools.hook_chain import BASH_TOOLS  # noqa: E402 — the ONE shell-tool roster
 from tools.shell_parse import (  # noqa: E402 — the ONE shell reader
-    IEX, PWSH, PYTHON, Statement, git_parts, git_subcommand, parse_python, pwsh_option, python_code, read, reads_stdin)
+    PYTHON, Statement, git_parts, git_subcommand, parse_python, python_code, read, reads_stdin, unseen)
 
 #: The gitignored tree with no history. A path SEGMENT: `AppData/`, `mydata/`, `_data/`
 #: do not match; `data/x`, `./data/x`, `C:/repo/data/x` do.
@@ -97,32 +97,6 @@ def _destroys_protected(st: Statement) -> bool:
     return False
 
 
-def _unseen(st: Statement) -> str:
-    """What the reader cannot see into in this statement, or "": a program built at run time (a
-    `$` or substitution anywhere in a bash program word: `$cmd`, `./$cmd`, `g$(echo h)`; in
-    PowerShell `& $x`, `. $x`, `& (...)`, where a bare `$x...` is an expression, or a script block
-    made from text), text piped into a shell, cmd or node (python has its own ban), a PowerShell
-    -EncodedCommand, Invoke-Expression."""
-    if not st.words:                     # an assignment or a redirect alone runs no program
-        return ""
-    name, args, first = st.program, st.words[1:], st.words[0]
-    if name in IEX:
-        return "Invoke-Expression runs text"
-    if name in PWSH and (pwsh_option(args, "-encodedcommand") is not None or "-ec" in (a.lower() for a in args)):
-        return "-EncodedCommand"
-    called = st.raw[0].startswith(("& ", ". "))     # PowerShell's call or dot-source operator, as written
-    if called and first.startswith(("$", "(")):
-        return f"the program is built at run time ({first})"
-    if not called and not st.powershell and ("$" in first or "`" in first):
-        return f"the program is built at run time ({first})"
-    if st.powershell and any(t in r.lower() for r in st.raw if r[:1] not in "\"'@"
-                             for t in ("[scriptblock]::create", ".invokescript(")):
-        return "a script block made from text"
-    if st.upstream is not None and not PYTHON.fullmatch(name) and reads_stdin(st):
-        return f"text piped into {name}"
-    return ""
-
-
 #: Blind staging: `-A`, `--all`, `-u`, `--update`, `*`, `.` are the same action in other flags.
 _BLIND = frozenset({"-A", "--all", "-u", "--update", "*", "."})
 
@@ -169,9 +143,9 @@ def bash_violations(cmd: str, powershell: bool = False) -> list[str]:
                    "a pipe or </dev/null). On Windows an empty heredoc or </dev/null looks like a "
                    "console and Python 3.13's REPL retries forever. Put the code in a script file and "
                    "run it, or use `python -c`.")
-    unseen = list(filter(None, (_unseen(st) for st in statements)))
-    if unseen:
-        out.append(f"ACTION BLOCKED: the guards cannot see what this runs ({'; '.join(unseen)}). Write the "
+    hidden = list(filter(None, (unseen(st) for st in statements)))
+    if hidden:
+        out.append(f"ACTION BLOCKED: the guards cannot see what this runs ({'; '.join(hidden)}). Write the "
                    "command plainly: the program and its arguments as literal words — no $variable or "
                    "substitution as the program, no text piped into a shell or interpreter, no "
                    "-EncodedCommand, no Invoke-Expression.")

@@ -715,6 +715,32 @@ def reads_stdin(st: Statement) -> bool:
     return False
 
 
+def unseen(st: Statement) -> str:
+    """What this reader cannot see into in `st`, or "": a program built at run time (a `$` or
+    substitution anywhere in a bash program word: `$cmd`, `./$cmd`, `g$(echo h)`; in PowerShell
+    `& $x`, `. $x`, `& (...)`, where a bare `$x...` is an expression, or a script block made from
+    text), text piped into a shell, cmd or node (python has its own ban), a PowerShell
+    -EncodedCommand, Invoke-Expression. The guards refuse a statement this names."""
+    if not st.words:                     # an assignment or a redirect alone runs no program
+        return ""
+    name, args, first = st.program, st.words[1:], st.words[0]
+    if name in IEX:
+        return "Invoke-Expression runs text"
+    if name in PWSH and (pwsh_option(args, "-encodedcommand") is not None or "-ec" in (a.lower() for a in args)):
+        return "-EncodedCommand"
+    called = st.raw[0].startswith(("& ", ". "))     # PowerShell's call or dot-source operator, as written
+    if called and first.startswith(("$", "(")):
+        return f"the program is built at run time ({first})"
+    if not called and not st.powershell and ("$" in first or "`" in first):
+        return f"the program is built at run time ({first})"
+    if st.powershell and any(t in r.lower() for r in st.raw if r[:1] not in "\"'@"
+                             for t in ("[scriptblock]::create", ".invokescript(")):
+        return "a script block made from text"
+    if st.upstream is not None and not PYTHON.fullmatch(name) and reads_stdin(st):
+        return f"text piped into {name}"
+    return ""
+
+
 def parse_python(code: str) -> ast.Module | None:
     """The syntax tree of python source, or None when Python could not compile it either: a
     syntax error, a null byte or an unencodable character (ValueError), or nesting too deep for

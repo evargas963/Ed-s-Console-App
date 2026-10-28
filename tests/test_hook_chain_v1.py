@@ -208,13 +208,13 @@ def test_5_legitimate_edits_pass_in_every_topology_and_only_production_app_code_
         free = _chain(edit(linked / rel), root=linked)
         assert free.returncode == 0, (rel, free.stderr)
         prod = _chain(edit(primary / rel), root=primary)
-        assert prod.returncode == 2 and "PROD_CHECKOUT_APP_EDIT" in prod.stderr, (rel, prod.stderr)
+        assert prod.returncode == 2 and "PROD_CHECKOUT_EDIT" in prod.stderr, (rel, prod.stderr)
         cross = _chain(edit(primary / rel), root=linked)
-        assert cross.returncode == 2 and "CROSS_CHECKOUT_EDIT" in cross.stderr, (rel, cross.stderr)
+        assert cross.returncode == 2 and "PROD_CHECKOUT_EDIT" in cross.stderr, (rel, cross.stderr)
     garbage = _checkout_with_the_wired_guards(tmp_path / "garbage")
     (garbage / ".git").write_text("this is not a gitdir pointer\n", encoding="utf-8")
     r = _chain(edit(garbage / "server.py"), root=garbage)
-    assert r.returncode == 2 and "PROD_CHECKOUT_APP_EDIT" in r.stderr, r.stderr
+    assert r.returncode == 2 and "PROD_CHECKOUT_EDIT" in r.stderr, r.stderr
     assert _chain(edit(garbage / "tests" / "t.py"), root=garbage).returncode == 0
 
 
@@ -233,7 +233,7 @@ def test_5b_a_worktree_nested_inside_the_primary_edits_its_own_files_and_never_t
     for target in (primary / "server.py", primary / "tools" / "operator_law_guard.py",
                    primary / "static" / "index.html", sibling / "server.py"):
         cross = _chain(edit(target), root=nested)
-        assert cross.returncode == 2 and "CROSS_CHECKOUT_EDIT" in cross.stderr, (target, cross.stderr)
+        assert cross.returncode == 2 and "PROD_CHECKOUT_EDIT" in cross.stderr, (target, cross.stderr)
 
 
 def test_6_a_dev_worktree_commits_freely_the_production_primary_refuses_moves_and_masked_forms_block(tmp_path):
