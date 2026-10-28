@@ -38,7 +38,7 @@ from tools.shell_parse import (  # noqa: E402 — the ONE shell reader
     normalize_repo,
     read,
 )
-from tools.pretooluse_guard import classify_path  # noqa: E402
+from tools.pretooluse_guard import checkout_path, production_path  # noqa: E402
 from tools.hook_chain import BASH_TOOLS, MUTATING_TOOLS  # noqa: E402 — the ONE roster of each class
 
 #: The file-mutating tool class is decided ONCE (tools.hook_chain.MUTATING_TOOLS, Cursor's
@@ -81,8 +81,8 @@ def cross_checkout_edit_violations(tool_input: dict, repo: Path = REPO) -> list[
     topology (which checkout am I, where does the target resolve) and names no agent. The
     primary session editing a linked worktree is not blocked — that is the operator-visible
     direction. A worktree nested under the primary's root (`.claude/worktrees/<name>`) owns
-    the files under its own root; they are not the primary's. Fail-open on unresolvable paths:
-    this rail blocks only on an affirmative cross-checkout hit."""
+    the files under its own root; they are not the primary's. A target `checkout_path` cannot
+    place raises, and hook_chain refuses the event."""
     primary = _primary_worktree_root(repo)
     if primary is None:
         return []
@@ -91,15 +91,8 @@ def cross_checkout_edit_violations(tool_input: dict, repo: Path = REPO) -> list[
         raw = tool_input.get(key)
         if not raw or not isinstance(raw, str):
             continue
-        try:
-            target = Path(raw)
-            if not target.is_absolute():
-                target = repo / target
-            resolved = target.resolve()
-            resolved.relative_to(primary.resolve())
-        except (OSError, ValueError):
-            continue
-        if resolved.is_relative_to(repo.resolve()):
+        resolved = checkout_path(raw, repo, primary)
+        if resolved is None or resolved.is_relative_to(repo.resolve()):
             continue                     # this session's own worktree, nested inside the primary
         out.append(
             f"CROSS_CHECKOUT_EDIT: this session runs in the linked worktree "
@@ -223,24 +216,14 @@ def production_checkout_app_edit_violations(tool_input: dict, repo: Path = REPO)
     and is not blocked. Not subject-disableable."""
     if _primary_worktree_root(repo) is not None:
         return []                        # this session is a linked dev worktree — unconstrained
-    try:
-        primary = repo.resolve()
-    except (OSError, ValueError):
-        return []
+    primary = repo
     out: list[str] = []
     for key in _EDIT_TARGET_KEYS:
         raw = tool_input.get(key)
         if not raw or not isinstance(raw, str):
             continue
-        try:
-            target = Path(raw)
-            if not target.is_absolute():
-                target = repo / target
-            resolved = target.resolve()
-            resolved.relative_to(primary)    # must be inside the production tree
-        except (OSError, ValueError):
-            continue
-        if classify_path(str(resolved), repo=str(primary)).production:
+        resolved = production_path(raw, repo, primary)
+        if resolved is not None:
             out.append(
                 f"PROD_CHECKOUT_APP_EDIT (live-checkout invariant): {resolved} is app code in the "
                 f"PRODUCTION checkout {primary}. Development does not edit the live checkout — make "
@@ -340,19 +323,11 @@ def production_checkout_shell_app_write_violations(statements: list[Statement]) 
     .py-only redirect ban misses. Dev-worktree paths resolve outside and stay free. Not
     subject-disableable."""
     primary = _primary_worktree_root(REPO) or REPO
-    try:
-        primary_res = primary.resolve()
-    except (OSError, ValueError):
-        return []
     out: list[str] = []
     for st in statements:                # each destination against its statement's cwd
         for dest in _shell_write_dest_paths(st):
-            try:
-                resolved = Path(_join_dir(st.cwd or str(primary_res), dest)).resolve()
-                resolved.relative_to(primary_res)
-            except (OSError, ValueError):
-                continue
-            if classify_path(str(resolved), repo=str(primary_res)).production:
+            resolved = production_path(_join_dir(st.cwd or str(primary), dest), primary, primary)
+            if resolved is not None:
                 out.append(
                     f"PROD_CHECKOUT_APP_EDIT (shell, live-checkout invariant): a shell command "
                     f"writes {resolved} — app code in the PRODUCTION checkout {primary}. "

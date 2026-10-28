@@ -2,6 +2,7 @@
 """Operating process lock — negative controls + quiet paths."""
 from __future__ import annotations
 
+import subprocess
 import sys
 from pathlib import Path
 
@@ -139,4 +140,68 @@ def test_rc234_pipe_on_other_segment_allows():
 def test_rc234_pipe_ok_escape_allows():
     assert OPL.commit_pipe_violations(
         'git commit -m "x" | tail -1  # pipe-ok: operator demo') == []
+
+
+def test_an_edit_target_is_placed_once_whatever_its_spelling(tmp_path):
+    """The production checkout's app code is refused whether the target is spelled absolute or
+    relative to the checkout; tests/, docs/ and scratch files there are not app code; a file in
+    another checkout is not the production checkout's."""
+    primary, wt = _linked_worktree_layout(tmp_path)
+    for target in (str(primary / "db.py"), "db.py", "tools/x.py"):
+        bad = PLG.production_checkout_app_edit_violations({"file_path": target}, primary)
+        assert any("PROD_CHECKOUT_APP_EDIT" in b for b in bad), (target, bad)
+    for target in ("tests/test_x.py", "docs/x.py", "scratchpad/x.py", str(wt / "own.py")):
+        assert PLG.production_checkout_app_edit_violations({"file_path": target}, primary) == [], target
+
+
+def test_every_file_the_console_and_daemon_run_is_app_code_to_the_rails():
+    """The rails' list of what is app code is checked against what runs: every repository file
+    the console (server) and the capture daemon load is app code in the production checkout, so
+    an edit to it there is refused. A folder of running code left off the list fails here. The two
+    load in a fresh process, so what other tests imported into this worker is not counted."""
+    loaded = subprocess.run(
+        [sys.executable, "-c", "import sys, server, app.market_data.schwab.streaming.capture; "
+         "print('\\n'.join(m.__file__ for m in list(sys.modules.values()) if getattr(m, '__file__', None)))"],
+        cwd=ROOT, check=True, capture_output=True, text=True).stdout.splitlines()
+    files = {Path(f).resolve() for f in loaded if Path(f).resolve().is_relative_to(ROOT)
+             and not {".venv", "tests"} & set(Path(f).resolve().relative_to(ROOT).parts[:1])}
+    assert any(f.parent.name == "calibration" for f in files)          # the daemon's chain sweep
+    missed = sorted(str(f.relative_to(ROOT)) for f in files if PLG.production_path(str(f), ROOT, ROOT) is None)
+    assert missed == [], missed
+
+
+def test_an_edit_target_that_cannot_be_placed_is_refused(tmp_path):
+    """INDUCED CONDITION: a target holding a NUL byte, inside the production checkout. Where the
+    filesystem cannot place it (Linux), the guard raises and hook_chain refuses the event; where
+    it can (Windows), it is app code and refused. It is never let through."""
+    primary, _wt = _linked_worktree_layout(tmp_path)
+    try:
+        bad = PLG.production_checkout_app_edit_violations(
+            {"file_path": str(primary / "tools" / "x\x00.py")}, primary)
+    except ValueError:
+        return                                   # a raising guard is a block (test_hook_chain_v1)
+    assert any("PROD_CHECKOUT_APP_EDIT" in b for b in bad), bad
+
+
+def test_a_cross_checkout_target_that_cannot_be_placed_is_refused(tmp_path):
+    """INDUCED CONDITION: a linked worktree's edit target in the production checkout holding a NUL
+    byte. The cross-checkout rail places it with the same function as the other rails: it raises
+    (a block) or it is refused; the old rail skipped it and let it through."""
+    primary, wt = _linked_worktree_layout(tmp_path)
+    try:
+        bad = PLG.cross_checkout_edit_violations({"file_path": str(primary / "x\x00.md")}, repo=wt)
+    except ValueError:
+        return                                   # a raising guard is a block (test_hook_chain_v1)
+    assert len(bad) == 1 and "CROSS_CHECKOUT_EDIT" in bad[0], bad
+
+
+def test_a_shell_write_to_the_production_checkouts_app_code_is_refused_and_devices_are_not():
+    """The shell rail places each write destination with `production_path`, against this
+    repository's own production checkout: a redirect into static/ is refused; a device or an
+    empty name is not app code there, and placing it does not raise."""
+    primary = PLG._primary_worktree_root(ROOT) or ROOT
+    bad = PLG.production_checkout_shell_app_write_violations(PLG.read("echo x > static/x.js", str(primary)))
+    assert len(bad) == 1 and "PROD_CHECKOUT_APP_EDIT" in bad[0], bad
+    for cmd in ("echo x > /dev/null", "echo x > NUL", "echo x > nul", 'echo x > ""'):
+        assert PLG.production_checkout_shell_app_write_violations(PLG.read(cmd, str(primary))) == [], cmd
 
