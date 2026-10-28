@@ -75,34 +75,6 @@ def _primary_worktree_root(repo: Path) -> Path | None:
     return None
 
 
-def cross_checkout_edit_violations(tool_input: dict, repo: Path = REPO) -> list[str]:
-    """A session running in a LINKED worktree may not Edit/Write a file inside the PRIMARY
-    working tree — that is the live/production checkout. This reads only the filesystem
-    topology (which checkout am I, where does the target resolve) and names no agent. The
-    primary session editing a linked worktree is not blocked — that is the operator-visible
-    direction. A worktree nested under the primary's root (`.claude/worktrees/<name>`) owns
-    the files under its own root; they are not the primary's. A target `checkout_path` cannot
-    place raises, and hook_chain refuses the event."""
-    primary = _primary_worktree_root(repo)
-    if primary is None:
-        return []
-    out: list[str] = []
-    for key in _EDIT_TARGET_KEYS:
-        raw = tool_input.get(key)
-        if not raw or not isinstance(raw, str):
-            continue
-        resolved = checkout_path(raw, repo, primary)
-        if resolved is None or resolved.is_relative_to(repo.resolve()):
-            continue                     # this session's own worktree, nested inside the primary
-        out.append(
-            f"CROSS_CHECKOUT_EDIT: this session runs in the linked worktree "
-            f"{repo} but targets {resolved} inside the PRIMARY working tree {primary} — the "
-            f"live checkout. Edit it from its own session, or hand the change over via "
-            f"branch/PR."
-        )
-    return out
-
-
 #: Git subcommands that move HEAD, create/re-point/delete a branch, or write history in the
 #: checkout they run against. On the production primary these are refused; reads, fetch, the
 #: fast-forward-to-origin/main update, and return-to-main are allowed (_prod_forbidden_git_reason).
@@ -204,32 +176,29 @@ def main_ref_write_violations(statements: list[Statement]) -> list[str]:
             for st in statements if _writes_main(st.words)]
 
 
-def production_checkout_app_edit_violations(tool_input: dict, repo: Path = REPO) -> list[str]:
-    """PREVENT an assigned agent EDITING app code in the PRODUCTION checkout (invariant #4).
-
-    The symmetric companion to cross_checkout_edit_violations: that rail stops a LINKED worktree
-    reaching INTO the primary; this stops the session that IS the primary from editing product
-    code in place. Fires only when this session runs in the production primary
-    (`_primary_worktree_root` is None) and the Edit/Write target resolves INSIDE it AND is a
-    production path (server.py, *.py, static/*.html|*.js — governance/docs/reports/tests are not
-    app code). A dev-worktree file edited from the primary session resolves OUTSIDE the primary
-    and is not blocked. Not subject-disableable."""
-    if _primary_worktree_root(repo) is not None:
-        return []                        # this session is a linked dev worktree — unconstrained
-    primary = repo
+def production_checkout_edit_violations(tool_input: dict, repo: Path = REPO) -> list[str]:
+    """An Edit or Write whose target belongs to the production checkout, the live one. From a
+    linked worktree: any file inside the production checkout that is not under this worktree's
+    own root (a worktree nested at `<primary>/.claude/worktrees/<name>` owns its files). From the
+    production checkout itself: its app code (`production_path`). The topology is file logic
+    only (`_primary_worktree_root`); a target that cannot be placed raises, and hook_chain refuses
+    the event."""
+    linked_to = _primary_worktree_root(repo)
+    primary = linked_to or repo
     out: list[str] = []
     for key in _EDIT_TARGET_KEYS:
         raw = tool_input.get(key)
         if not raw or not isinstance(raw, str):
             continue
-        resolved = production_path(raw, repo, primary)
+        if linked_to is None:
+            resolved = production_path(raw, repo, primary)
+        else:
+            resolved = checkout_path(raw, repo, primary)
+            if resolved is not None and resolved.is_relative_to(repo.resolve()):
+                resolved = None
         if resolved is not None:
-            out.append(
-                f"PROD_CHECKOUT_APP_EDIT (live-checkout invariant): {resolved} is app code in the "
-                f"PRODUCTION checkout {primary}. Development does not edit the live checkout — make "
-                f"the change in the separate dev worktree and land via PR. "
-                f"See AGENTS.md."
-            )
+            out.append(f"PROD_CHECKOUT_EDIT: {resolved} belongs to the PRODUCTION checkout {primary}, the "
+                       f"live one. Make the change in a dev worktree and land it by PR. See AGENTS.md.")
     return out
 
 
@@ -314,7 +283,7 @@ def _ps_write_dest_paths(st: Statement) -> list[str]:
 
 def production_checkout_shell_app_write_violations(statements: list[Statement]) -> list[str]:
     """PREVENT a materially-equivalent SHELL edit to app code in the PRODUCTION checkout — the
-    Bash companion to production_checkout_app_edit_violations (Edit/Write) and to the universal
+    Bash companion to production_checkout_edit_violations (Edit/Write) and to the universal
     shell source-write bans (redirect/heredoc/-c payload in operator_law_guard). For EACH segment
     of a chained command (cwd tracked, so a leading `cd` cannot mislocate a later write), blocks
     a `>`/`>>` redirect or cp/mv/install/tee/sed -i/perl -i/truncate/dd whose destination resolves
@@ -329,7 +298,7 @@ def production_checkout_shell_app_write_violations(statements: list[Statement]) 
             resolved = production_path(_join_dir(st.cwd or str(primary), dest), primary, primary)
             if resolved is not None:
                 out.append(
-                    f"PROD_CHECKOUT_APP_EDIT (shell, live-checkout invariant): a shell command "
+                    f"PROD_CHECKOUT_EDIT (shell): a shell command "
                     f"writes {resolved} — app code in the PRODUCTION checkout {primary}. "
                     f"Development does not modify the live checkout by ANY means; make the change "
                     f"in the separate dev worktree and land via PR. "
@@ -340,10 +309,7 @@ def production_checkout_shell_app_write_violations(statements: list[Statement]) 
 def pretooluse_block(tool: str, tool_input: dict, payload_cwd: str = "") -> list[str]:
     out: list[str] = []
     if tool in _EDIT_TOOLS:
-        out.extend(cross_checkout_edit_violations(tool_input))
-        # Live-checkout invariant #4: the primary SESSION may not edit app code in the production
-        # checkout (the symmetric companion to the linked->primary rail above).
-        out.extend(production_checkout_app_edit_violations(tool_input))
+        out.extend(production_checkout_edit_violations(tool_input))
     if tool in BASH_TOOLS:                # one roster (hook_chain.BASH_TOOLS)
         cmd = tool_input.get("command") or ""
         ps = tool == "PowerShell"

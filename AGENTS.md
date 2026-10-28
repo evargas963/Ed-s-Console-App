@@ -51,13 +51,17 @@ Hold EdWebConsole to how a financial institution handles systems with real money
    the commit message. No patches: a defect is fixed where it is produced, by changing or deleting that code, never by a
    guard, wrapper, flag, special case or check around it. If that takes a restructure, the restructure is the fix. Every
    fix is end to end: Schwab to the screen. Nothing new (process, cache, helper, file, check) without a job its existing
-   owner cannot do, shown in the PR; an existing piece that cannot show one is removed.
+   owner cannot do, shown in the PR; an existing piece that cannot show one is removed. A change deletes what it
+   replaces, in the same PR; a register, audit, report or check lives only while it has a job, and once answered, it
+   is deleted.
    Enforced by: `tools/check_fails_before.py` in the required `pytest-full` job (`tests/test_check_fails_before_v1.py`)
    refuses a pull request that changes product code unless an end-to-end path test it changes fails on the old code;
    `tools/check_end_to_end.py` in the required `hardening` job (`.github/workflows/hardening.yml`,
    `tests/test_check_end_to_end_v1.py`) refuses one that adds a patch shape (a catch-all or swallowing except that does
    not log, `contextlib.suppress`, a literal standing in for a missing value); the path tests of `docs/DATA_FLOW.md` §2
-   fail a broken path; a design-level patch and a new piece's job shown in the PR — ENF-01.
+   fail a broken path; ruff F401 at commit and in the required `hardening` job refuses an unused import; a
+   design-level patch and a new piece's job shown in the PR — ENF-01; what a change replaces and a piece with no job
+   left — ENF-04.
 2. **Schwab fields as sent.** Not a number: absent, -999, text, NaN or infinity, a value Schwab's own field
    definition excludes (a negative volume or size), and a gamma more than twice the largest any option can have at its
    own volatility, price and time left (operator 2026-10-23). Everything else is taken as sent; a reported 0 is 0. No other bounds, no substitution. What Schwab sends or accepts is settled by Schwab's own documentation, cited by section:
@@ -71,7 +75,8 @@ Hold EdWebConsole to how a financial institution handles systems with real money
    for the same value is banned whatever it is called: helper, parser, resolver or cache.
    Enforced by: `tests/test_page_one_faucet_v1.py` (every ticker route found from the app serves `spot` live, `priced_at_spot` computed), `tests/test_one_levels_producer_v1.py` (one publication), `tests/test_data_path_confluence_v1.py` (one one-day move, distances from the live price), `tools/check_one_reader.py` in the required `hardening` job (no pull request makes a module a raw reader of a Schwab-spelled field another module reads, in the forms `tests/test_check_one_reader_v1.py` checks); plain-word fields, other read forms, page code and a served value outside the register — no machine check, ENF-23; the rest — ENF-02.
 4. **The UI computes nothing.** Page code formats and draws. Every number, total, choice,
-   comparison and date the page shows is served.
+   comparison and date the page shows is served: no arithmetic, sum, min/max, sort by value or date math on served data
+   in page code.
    Enforced by: no machine check — ENF-03.
 5. **The numbers.** The Standard of care applies to every value the app shows or calculates, at all times. Every value
    comes from its one producer (First gate) and matches what Schwab sent (System of record). Calculations keep every
@@ -87,17 +92,14 @@ Hold EdWebConsole to how a financial institution handles systems with real money
    sessions (DATA_FLOW D4); `ed_console.db` the chain captures and level crosses; read at
    startup, after the close and for research; never for a live screen.
    Enforced by: the tests `docs/DATA_FLOW.md` §2 D1–D6 each name.
-7. **Nothing without a job.** A change deletes what it replaces, in the same PR. A register, audit,
-   report or check lives only while it has a job; once answered, it is deleted.
-   Enforced by: ruff F401 at commit and in the required `hardening` job; the rest — ENF-04.
-8. **All tickers.** Measure and report across every watchlist ticker, never one ticker.
+7. **All tickers.** Measure and report across every watchlist ticker, never one ticker.
    Enforced by: no machine check — ENF-05.
-9. **Clocks.** Market logic in ET; the UI shows Central Time. The market's sessions are Schwab's
+8. **Clocks.** Market logic in ET; the UI shows Central Time. The market's sessions are Schwab's
    /markets answers; no session table is typed by hand.
    Enforced by: `tests/test_time_et_authority.py`, `tests/test_markets_sessions_v1.py`; the Central
    Time display — ENF-06.
-10. **Real data.** Tests run on captured Schwab data (`tests/fixtures/`) through the real code; no stand-ins.
-    Enforced by: no machine check — ENF-07.
+9. **Real data.** Tests run on captured Schwab data (`tests/fixtures/`) through the real code; no stand-ins.
+   Enforced by: no machine check — ENF-07.
 
 ## Before writing code (enforced)
 
