@@ -379,7 +379,7 @@
         if (r.length === 1) svg += '<circle cx="' + r[0][0].toFixed(1) + '" cy="' + r[0][1].toFixed(1) + '" r="2" fill="' + s.color + '"/>';
       });
     });
-    // no axis numbers: a number the page derives from the series is not printed (register P-11)
+    // no axis numbers: a number the page derives from the series is not printed
     plot.innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">' + svg + '</svg>';
   }
   function paintCards() {

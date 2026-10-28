@@ -23,7 +23,7 @@ log = logging.getLogger(__name__)
 _SCHEMA_INIT_LOCK = threading.Lock()
 
 
-#: RC-50 SQLite access tuning (read-side accelerants for the ~30 GB WAL DB).
+#: SQLite access tuning (read-side accelerants for the large WAL DB).
 #: mmap_size is a memory-mapped window over the DB file, backed by the shared OS page
 #: cache (NOT per-connection heap), so a large value is cheap; 2 GiB covers the hot
 #: index/recent-rows working set. cache_size is per-connection page cache — SQLite reads
@@ -50,13 +50,12 @@ def configure_sqlite_connection(
         "PRAGMA synchronous=NORMAL",
         f"PRAGMA busy_timeout={int(busy_timeout_ms)}",
         "PRAGMA foreign_keys=ON",
-        # RC-50 access tuning for a ~30 GB DB: the defaults (2 MB page cache, no
+        # access tuning for a large DB: the defaults (2 MB page cache, no
         # memory-mapping) re-fault every read from disk through a tiny per-connection
         # cache. mmap_size maps the hot working set (shared via the OS page cache — not
         # per-connection RAM), and a 128 MB page cache holds hot index/data pages across
         # a query. Both are read-side accelerants; neither changes durability (WAL +
-        # synchronous=NORMAL unchanged). Measured: wide-row read 8.55 -> 6.59 ms; the
-        # larger win is cold-start / concurrency, which the 2 MB default starved.
+        # synchronous=NORMAL unchanged). Measured: wide-row read 8.55 -> 6.59 ms.
         f"PRAGMA mmap_size={SQLITE_MMAP_SIZE_BYTES}",
         f"PRAGMA cache_size={SQLITE_CACHE_SIZE_KIB}",
     ):
@@ -72,14 +71,9 @@ def configure_sqlite_connection(
 
 
 # ── Database location (ONE APP, ONE MAIN, ONE DB) ───────────────────────────
-# Default: data/ed_console.db, for every process and every worktree.
-# RC-401 removed the per-agent fork that returned data/ed_console_claude.db under
-# ED_AGENT_ROLE=claude — ambient process state was deciding which database the money
-# path addressed, and it had already scattered rows into three sibling files.
-# RC-534 removed ED_CONSOLE_DB / ED_DB_PATH from default production selection after an
-# acknowledged override created an actively written worktree-local console authority.
-# Recovery and tests pass explicit paths to EdDB; runtime placement belongs only to
-# runtime_layout.
+# Default: data/ed_console.db, for every process and every worktree. No ambient setting
+# (an agent role, ED_CONSOLE_DB, ED_DB_PATH) selects the production database: recovery and
+# tests pass explicit paths to EdDB; runtime placement belongs only to runtime_layout.
 
 
 

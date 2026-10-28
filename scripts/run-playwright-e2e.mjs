@@ -1,5 +1,5 @@
 /**
- * Single entrypoint for Playwright E2E (Issue 40 & 46):
+ * Single entrypoint for Playwright E2E:
  * 1) Fail-fast environment validation (Node, npm, deps, CLI, Chromium)
  * 2) npx playwright test
  *
@@ -15,30 +15,9 @@ import { logDir, runWithFileSink } from "./run-pytest-full.mjs";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-// Independent-review finding (2026-09-12), REPRODUCED and partially fixed, then found
-// STILL BROKEN by a second independent review (2026-09-13): this runner used to hardcode
-// ["playwright", "test"] regardless of any CLI arguments it was itself invoked with,
-// silently running the FULL, unfiltered suite. The 2026-09-12 fix forwarded the caller's
-// argv but still routed it through `npx` via `runWithFileSink(..., shell: true)`, which
-// joins `["npx", "playwright", "test", ...args]` into ONE STRING and hands it to a shell
-// to re-parse (`/bin/sh -c` on POSIX, `cmd.exe /c` on this repo's actual Windows host).
-// The `shellQuoteArg` helper that used to live here only wrapped a value in double quotes
-// and backslash-escaped an embedded `"` -- POSIX double quotes do not suppress
-// `$(...)`/backtick command substitution, and cmd.exe does not even use backslash-escaped
-// double quotes as its escaping convention, so a forwarded argument containing either
-// could still be reinterpreted rather than forwarded verbatim.
-//
-// ROOT FIX (2026-09-13): stop going through a shell (or npx) at all. `npx playwright` is
-// itself just a wrapper -- this repo's own node_modules/.bin/playwright.cmd (read
-// directly) resolves to `node "<repo>/node_modules/@playwright/test/cli.js" %*`. Spawning
-// that same cli.js with `process.execPath` (this exact Node binary) and a real argv array
-// under runWithFileSink's shell:false branch (`spawnSync(cmd, args, {stdio})`, no shell at
-// all) hands every forwarded argument to the child as one opaque array element -- nothing
-// ever re-parses it, on any platform, regardless of what characters it contains. No
-// quoting function is needed any more; this DELETES shellQuoteArg rather than repairing it
-// again, since the safety property it was hand-rolling is what array-based shell:false
-// spawning already guarantees natively -- "check existing canonical/native capabilities
-// before adding custom machinery."
+// The Playwright CLI itself, spawned with this Node binary and a real argv array, no shell
+// and no npx (`npx playwright` resolves to this same cli.js): every argument the caller
+// forwards reaches it as one exact array element that nothing re-parses, on any platform.
 const PLAYWRIGHT_CLI = path.join(root, "node_modules", "@playwright", "test", "cli.js");
 
 function fail(msg) {
@@ -55,7 +34,7 @@ function ensurePlaywrightReady() {
     fail("node not on PATH. Install Node.js LTS from https://nodejs.org/");
   }
   // Shell commands are handed over as one string: Node 24 (DEP0190) warns on an args
-  // array under `shell: true`, and that warning would land on the terminal (RC-535).
+  // array under `shell: true`, and that warning would land on the terminal.
   r = spawnSync("npm --version", { encoding: "utf8", shell: true });
   if (r.status !== 0) {
     fail("npm not on PATH — Node.js install should include npm.");
@@ -76,7 +55,7 @@ function ensurePlaywrightReady() {
         "\nFix: npm install in repo root."
     );
   }
-  // RC-535: a browser download prints unbounded progress; it goes to the log too.
+  // a browser download prints unbounded progress; it goes to the log too
   const installCode = runWithFileSink("playwright-install", "npx", ["playwright", "install", "chromium"], {
     logPath: path.join(logDir(), "test_e2e_install_last.log"),
     cwd: root,
@@ -109,13 +88,9 @@ function main() {
   if (forwardedArgs.length) {
     console.log(`[test:e2e] forwarding native selection arguments: ${forwardedArgs.join(" ")}`);
   }
-  // RC-535: the Playwright run (and the uvicorn webServer output it relays) goes to a log
-  // file, never to this process's terminal pipe — a reader that stops draining cannot
-  // block the run. Only the bounded tail is echoed.
-  //
-  // shell:false here is load-bearing (2026-09-13, see PLAYWRIGHT_CLI comment above): a
-  // forwarded argument reaches the Playwright CLI as one exact argv element, never
-  // re-parsed by any shell.
+  // The Playwright run (and the uvicorn webServer output it relays) goes to a log file, never
+  // to this process's terminal pipe — a reader that stops draining cannot block the run. Only
+  // the bounded tail is echoed. No shell (see PLAYWRIGHT_CLI above).
   let exitCode;
   try {
     exitCode = runWithFileSink("test:e2e", process.execPath, [PLAYWRIGHT_CLI, "test", ...forwardedArgs], {
@@ -131,11 +106,8 @@ function main() {
   if (exitCode !== 0) {
     process.exit(exitCode);
   }
-  // UNIVERSAL_QUANTITATIVE_CLOSURE_V1 (RC-542): the `.playwright_last_run_success` marker this
-  // runner used to write (Issue 40/46) is retired. The run's exit code is its proof, and
-  // required CI executes this runner directly; a tracked, hand-editable stamp compared to
-  // spec mtimes was a proxy that could be edited into a pass (its tracked copy was dated
-  // 2026-05-25 while CI had run E2E daily). `npm run test:all` still runs E2E first.
+  // The run's exit code is its proof, and required CI executes this runner directly; no
+  // success marker is written. `npm run test:all` runs E2E first.
 }
 
 // Run only when invoked directly (`node scripts/run-playwright-e2e.mjs ...`), never as a

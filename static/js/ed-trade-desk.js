@@ -1,7 +1,6 @@
 /* Ed Console — Trade Desk / "Right Now" subview. PRESENTATION ONLY, computes nothing.
-   The architectural home console.html has preserved verbatim since the rebuild started:
-   "Detect -> Frame -> Confirm -> Execute reasoning flow." This module builds the first three
-   stages from five already-canonical endpoints other workspaces already own -- one page, zero
+   The page's reasoning flow is Detect -> Frame -> Confirm -> Execute; this module builds the
+   first three stages from five already-canonical endpoints other workspaces already own -- one page, zero
    new math, zero new producers:
      DETECT  <- /api/order-flow/microstructure  (same engine the Order Flow > Book/DOM tab reads)
      FRAME   <- /api/levels + /api/liquidity-snapshot (same contracts Liquidity > Levels/Map read)
@@ -168,9 +167,8 @@
   // ---- Positioning Migration & Volume: today's per-strike net GEX$ (solid) vs yesterday's
   // (ghost outline), plus today's per-strike option volume -- the SAME real fields
   // /api/terrain/strikes already serves to the GEX-by-Strike panel (today.{all,near,far} and
-  // prior.{all,near,far}, both [strike, net_gex_1pct$, volume] rows), ported from the former
-  // /chart page's gamma panel's exact math. No new backend computation: this is a second, in-context
-  // rendering of an already-canonical endpoint, same as the former /chart page's own reuse of it. ----
+  // prior.{all,near,far}, both [strike, net_gex_1pct$, volume] rows). No new backend computation:
+  // this is a second, in-context rendering of an already-canonical endpoint. ----
   var _migScope = 'all';   // 'all' | 'near' (<=7 DTE) | 'far' (monthly+) -- a DTE filter, distinct
                              // from EdShell's own auto/wider/all row-DENSITY scope used below.
   var _migGhost = true;

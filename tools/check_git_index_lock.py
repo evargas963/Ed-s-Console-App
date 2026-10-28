@@ -8,9 +8,8 @@ locks older than STALE_SEC (default 60).
     python tools/check_git_index_lock.py
     python tools/check_git_index_lock.py --clear
 
-OBSERVED (2026-07-25): concurrent Cursor/Claude git ops hit index.lock
-starvation after aborted commits. VALIDATED: mtime threshold; never deletes
-fresh locks.
+An aborted commit can leave index.lock behind and starve later git operations; only a lock
+older than the mtime threshold is cleared, never a fresh one.
 """
 from __future__ import annotations
 

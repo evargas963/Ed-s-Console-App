@@ -187,7 +187,7 @@
     function clearSelected() { if (_selected) setSelected(null); else load(); }
     document.addEventListener('ed:ticker', clearSelected);
     document.addEventListener('ed:expiry', clearSelected);
-    // Audit finding #4 (2026-09-16): initial hydration now comes SOLELY from ed-core.js's
-    // deferred ed:ticker/ed:view dispatch -- see that file's init() comment.
+    // initial hydration comes only from ed-core.js's deferred ed:ticker/ed:view dispatch
+    // (that file's init() comment)
   }
 })();

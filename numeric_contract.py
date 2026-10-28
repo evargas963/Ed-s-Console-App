@@ -44,8 +44,8 @@ def schwab_number(value: Any) -> float | None:
 
 def schwab_count(value: Any) -> float | None:
     """A Schwab volume, size or open interest as sent: schwab_number, and None when negative
-    (Schwab's field definition excludes it; none was ever sent -- measured 2026-09-27 over
-    108 million captured messages); a reported 0 is 0."""
+    (Schwab's field definition excludes it; none was sent in 108 million captured messages,
+    measured); a reported 0 is 0."""
     v = schwab_number(value)
     return v if v is not None and v >= 0.0 else None
 
