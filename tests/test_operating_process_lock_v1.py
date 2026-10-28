@@ -197,8 +197,8 @@ def test_a_cross_checkout_target_that_cannot_be_placed_is_refused(tmp_path):
 
 def test_a_shell_write_to_the_production_checkouts_app_code_is_refused_and_devices_are_not():
     """The shell rail places each write destination with `production_path`, against this
-    repository's own production checkout: a redirect into static/ is refused; a device, stdout or
-    an empty name is not app code there, and placing it does not raise."""
+    repository's own production checkout: a redirect into static/ is refused; a device or an
+    empty name is not app code there, and placing it does not raise."""
     primary = PLG._primary_worktree_root(ROOT) or ROOT
     bad = PLG.production_checkout_shell_app_write_violations(PLG.read("echo x > static/x.js", str(primary)))
     assert len(bad) == 1 and "PROD_CHECKOUT_APP_EDIT" in bad[0], bad
