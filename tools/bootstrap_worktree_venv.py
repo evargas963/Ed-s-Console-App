@@ -7,8 +7,7 @@ Claude cannot collide on site-packages or interpreter identity.
     python tools/bootstrap_worktree_venv.py
     python tools/bootstrap_worktree_venv.py --venv-only   # create, skip pip
 
-A worktree without its own venv falls back to the global Python and drifts;
-check_venv_parity checks the path.
+A worktree without its own venv falls back to the global Python and drifts.
 """
 from __future__ import annotations
 
