@@ -156,17 +156,18 @@ def test_an_edit_target_is_placed_once_whatever_its_spelling(tmp_path):
 def test_every_file_the_console_and_daemon_run_is_app_code_to_the_rails():
     """The rails' list of what is app code is checked against what runs: every repository file
     the console (server) and the capture daemon load is app code in the production checkout, so
-    an edit to it there is refused. A folder of running code left off the list fails here."""
-    import importlib
-    import sys
+    an edit to it there is refused. A folder of running code left off the list fails here. The two
+    load in a fresh process, so what other tests imported into this worker is not counted."""
+    import subprocess
 
     from tools.pretooluse_guard import production_path
 
-    importlib.import_module("server")
-    importlib.import_module("app.market_data.schwab.streaming.capture")
-    files = {Path(m.__file__).resolve() for m in list(sys.modules.values())
-             if getattr(m, "__file__", None) and Path(m.__file__).resolve().is_relative_to(ROOT)
-             and not {".venv", "tests"} & set(Path(m.__file__).resolve().relative_to(ROOT).parts[:1])}
+    loaded = subprocess.run(
+        [sys.executable, "-c", "import sys, server, app.market_data.schwab.streaming.capture; "
+         "print('\\n'.join(m.__file__ for m in list(sys.modules.values()) if getattr(m, '__file__', None)))"],
+        cwd=ROOT, check=True, capture_output=True, text=True).stdout.splitlines()
+    files = {Path(f).resolve() for f in loaded if Path(f).resolve().is_relative_to(ROOT)
+             and not {".venv", "tests"} & set(Path(f).resolve().relative_to(ROOT).parts[:1])}
     assert any(f.parent.name == "calibration" for f in files)          # the daemon's chain sweep
     missed = sorted(str(f.relative_to(ROOT)) for f in files if production_path(str(f), ROOT, ROOT) is None)
     assert missed == [], missed
