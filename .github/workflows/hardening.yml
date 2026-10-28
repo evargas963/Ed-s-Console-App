@@ -48,3 +48,13 @@ jobs:
         env:
           BASE_REF: ${{ github.base_ref }}
         run: python tools/check_one_reader.py --base "origin/$BASE_REF"
+      - name: no credential or operator-home path is committed (AGENTS.md Authority)
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: python tools/check_credential_leak.py --base "origin/$BASE_REF"
+      - name: a file keeps its line endings (AGENTS.md Authority)
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: python tools/check_eol_style_invariant.py --base "origin/$BASE_REF"
