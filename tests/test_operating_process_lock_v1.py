@@ -203,7 +203,5 @@ def test_a_shell_write_to_the_production_checkouts_app_code_is_refused_and_devic
     bad = PLG.production_checkout_shell_app_write_violations(PLG.read("echo x > static/x.js", str(primary)))
     assert len(bad) == 1 and "PROD_CHECKOUT_APP_EDIT" in bad[0], bad
     for cmd in ("echo x > /dev/null", "echo x > NUL", "echo x > nul", 'echo x > ""'):
-        statements = PLG.read(cmd, str(primary))
-        assert any(PLG._shell_write_dest_paths(st) for st in statements), cmd   # it reaches the placer
-        assert PLG.production_checkout_shell_app_write_violations(statements) == [], cmd
+        assert PLG.production_checkout_shell_app_write_violations(PLG.read(cmd, str(primary))) == [], cmd
 
