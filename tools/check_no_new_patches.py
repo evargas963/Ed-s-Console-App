@@ -1,4 +1,4 @@
-"""TEST-PATCHES (operator 2026-10-04): no new or changed test patches the code it tests.
+"""No new or changed test patches the code it tests.
 
 A pull request's test files (tests/**/*.py) are compared function by function with the base. A
 test, fixture or helper the PR adds or changes is refused when it patches: it takes or uses

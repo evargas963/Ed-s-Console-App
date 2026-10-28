@@ -1,10 +1,10 @@
 /**
- * Canonical full-pytest runner (RC-535).
+ * Canonical full-pytest runner.
  *
  * The child's stdout and stderr are file descriptors on a regular log file — never the
  * caller's terminal or pipe. A terminal, agent harness, or captured pipe that stops draining
  * therefore cannot block the pytest controller, and xdist workers cannot idle behind a
- * controller stuck in a terminal write (the 2026-09-08 hours-long "stall" at ~94% executed).
+ * controller stuck in a terminal write (measured: an hours-long "stall" at ~94% executed).
  *
  * Only bounded output reaches the terminal: two lines at start, a TAIL_BYTES-bounded tail
  * of the log, and the exit code at the end — under 4 KiB in total, the smallest pipe buffer
@@ -29,7 +29,7 @@ export const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "
 /**
  * Byte budget for the log tail echoed to the terminal after the child exits.
  *
- * MEASURED 2026-09-08: a 60-line tail of 100-character lines (6 KB) blocked this runner
+ * Measured: a 60-line tail of 100-character lines (6 KB) blocked this runner
  * behind a reader that never drained, after the child had already completed — Windows
  * anonymous pipes hold 4 KiB. Everything this runner writes to the terminal for one run
  * (two start lines, the tail header, the tail, the exit line) stays under that, so even a

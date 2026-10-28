@@ -1,14 +1,6 @@
-"""RC-259 — the path authority must not govern another repository.
-
-WHAT WAS MEASURED (2026-08-05, deepened 2026-08-06). The guard classified an edit target by
-file suffix alone, with no repository-root predicate: an Edit to <other-checkout>/ieos/
-__init__.py was refused as a PRODUCTION file, and `_rel()` fell back to the ABSOLUTE path,
-which matches NO entry in ALWAYS_ALLOWED_PREFIXES — so a foreign tests/ file was refused too.
-
-KEEP/MERGE/DELETE 2026-09-10: the inert hook shape (`decide`/`main`, returning 0 for every
-event) and the `is_foreign_path` accessor are gone; `classify_path(...).governed` is the ONE
-predicate and these controls drive it directly.
-"""
+"""The path authority does not govern another repository: `classify_path(...).governed`, the
+one predicate, is false for a path outside this checkout, whatever its suffix or folder (a
+foreign tests/ file is neither production nor a compliance surface here)."""
 
 from __future__ import annotations
 
@@ -28,8 +20,7 @@ def test_paths_inside_this_repository_are_ours():
 
 
 def test_foreign_test_file_is_not_our_compliance_lane_either(tmp_path):
-    """The compounding defect: the tests/ escape hatch was void for foreign paths. A foreign
-    path is simply not ours — neither production nor an RC-66 lane."""
+    """A foreign path is not ours — neither production nor a compliance surface."""
     other = tmp_path / "OtherRepo" / "tests"
     other.mkdir(parents=True)
     target = other / "test_something.py"

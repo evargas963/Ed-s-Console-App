@@ -91,9 +91,12 @@ def market_session(now: datetime, db: Path) -> str:
     none is held or the database cannot be read."""
     day = now.astimezone(time_et.ET).date().isoformat()
     try:
-        with sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=2) as conn:
+        conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=2)
+        try:
             row = conn.execute("SELECT native_json FROM stream_markets_raw WHERE date = ? AND status = 200 "
                                "ORDER BY ts_recv DESC LIMIT 1", (day,)).fetchone()
+        finally:
+            conn.close()
     except sqlite3.Error as e:
         sys.stderr.write(f"operator_yes_guard: the market session is unknown: {type(e).__name__}: {e}\n")
         return time_et.UNKNOWN

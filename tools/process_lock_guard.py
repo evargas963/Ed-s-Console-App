@@ -313,9 +313,8 @@ _PS_DEST_PARAM = {
 def _ps_write_dest_paths(st: Statement) -> list[str]:
     """Destination path a PowerShell write cmdlet targets in one statement, named or positional.
 
-    A residual, documented limit: a destination built from a bare `$variable` (no literal path
-    token) is not resolvable by this or any static table — the same limit the retired universal
-    ban carried."""
+    A documented limit: a destination built from a bare `$variable` (no literal path token) is
+    not resolvable by this or any static table."""
     verb = st.program
     dest_flag = _PS_DEST_PARAM.get(verb)
     if not dest_flag:

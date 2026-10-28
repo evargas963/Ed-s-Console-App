@@ -55,10 +55,29 @@ def markets(tmp_path_factory) -> Path:
     db = tmp_path_factory.mktemp("stream") / "stream_capture.db"
     CaptureWriter(db)
     answer = MARKETS["answers"]["2026-10-07"]
-    with sqlite3.connect(db) as conn:
-        conn.execute("INSERT INTO stream_markets_raw(ts_recv,date,status,native_json,src) VALUES(?,?,?,?,?)",
-                     (1791367200.0, "2026-10-07", answer["status"], answer["body"], "schwab_rest"))
+    conn = sqlite3.connect(db)
+    try:
+        with conn:
+            conn.execute("INSERT INTO stream_markets_raw(ts_recv,date,status,native_json,src) VALUES(?,?,?,?,?)",
+                         (1791367200.0, "2026-10-07", answer["status"], answer["body"], "schwab_rest"))
+    finally:
+        conn.close()
     return db
+
+
+def test_the_session_is_read_on_a_connection_the_guard_closes(markets):
+    """The guard reads Schwab's /markets answer for the session (captured 2026-10-07, RTH at 10:00
+    ET) on a read-only connection it closes: no connection is left for the collector, which
+    Python 3.13 reports ("unclosed database"). It runs in a Python of its own, so no other
+    code's connection is counted."""
+    code = ("import gc, sys\nfrom datetime import datetime\nimport time_et\n"
+            "from tools import operator_yes_guard as guard\n"
+            "print(guard.market_session(datetime(2026, 10, 7, 10, 0, tzinfo=time_et.ET), sys.argv[1]))\n"
+            "gc.collect()\n")
+    done = subprocess.run([sys.executable, "-W", "always::ResourceWarning", "-c", code, str(markets)],
+                          cwd=REPO, capture_output=True, text=True, timeout=60)
+    assert done.stdout.strip() == time_et.session_label(RTH), (done.stdout, done.stderr)
+    assert "unclosed database" not in done.stderr, done.stderr
 
 
 def _stand_in(*marks: str, exe: str = sys.executable, cwd: Path = runtime_layout.RUNTIME_ROOT) -> subprocess.Popen:
