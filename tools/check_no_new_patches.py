@@ -1,11 +1,13 @@
-"""No new or changed test patches the code it tests.
+"""No pull request adds a patch to a test.
 
 A pull request's test files (tests/**/*.py) are compared function by function with the base. A
-test, fixture or helper the PR adds or changes is refused when it patches: it takes or uses
-pytest's `monkeypatch`, uses unittest.mock's patch (`patch(...)`, `mock.patch`, `patch.object`,
-`patch.dict`) or pytest-mock's `mocker`, or requests a fixture that does (in its own file or a
-conftest.py). A test the PR adds or changes is also refused when its file has an autouse fixture
-that patches: it would run under that patch. A function the PR leaves unchanged is not judged.
+test, fixture or helper is refused when the PR adds a patch to it: a use of pytest's
+`monkeypatch` or pytest-mock's `mocker`, a call of unittest.mock's patch (`patch(...)`,
+`mock.patch`, `patch.object`, `patch.dict`), or a request or call of a fixture or helper that
+patches (in its own file or a conftest.py), counted in the base and in the PR. A test the PR adds
+is also refused when its file has an autouse fixture that patches: it would run under that patch.
+A patch already there stays its own work (TEST-PATCHES): a PR that edits an old patching test
+elsewhere (a docstring, a renamed field) adds none and is not refused.
 
     python tools/check_no_new_patches.py --base origin/main
 Exit 0: nothing patches in what the PR adds or changes. Exit 1: refused, each function named.
@@ -17,6 +19,7 @@ import argparse
 import ast
 import subprocess
 import sys
+from collections import Counter
 from pathlib import Path
 
 PATCH_CALLS = {"patch", "patch.object", "patch.dict", "patch.multiple", "mock.patch", "mock.patch.object",
@@ -103,6 +106,18 @@ def _patching(funcs: dict[str, ast.FunctionDef], shared: set[str]) -> set[str]:
         out |= more
 
 
+def _patch_uses(fn: ast.FunctionDef, patching: set[str]) -> Counter:
+    """Each patch `fn` holds, counted: patching fixtures it requests, uses of `monkeypatch` or
+    `mocker`, patch calls (decorators included), and uses of a fixture or helper in `patching`."""
+    uses = Counter(a for a in _params(fn) if a in PATCH_FIXTURES or a in patching)
+    for n in ast.walk(fn):
+        if isinstance(n, ast.Name) and (n.id in PATCH_FIXTURES or n.id in patching) and n.id != fn.name:
+            uses[n.id] += 1
+        elif isinstance(n, ast.Call) and _dotted(n.func) in PATCH_CALLS:
+            uses[_dotted(n.func)] += 1
+    return uses
+
+
 def _conftest_patching(root: Path, rev: str) -> set[str]:
     out: set[str] = set()
     for path in _git(root, "ls-tree", "-r", "--name-only", rev, "tests").splitlines():
@@ -126,16 +141,16 @@ def violations(root: Path, base: str) -> list[str]:
         if head is None:
             continue
         old = _source(root, base, path)
-        old_funcs = {n: ast.dump(f) for n, f in _functions(old).items()} if old else {}
+        old_funcs = _functions(old) if old else {}
+        old_patching = _patching(old_funcs, shared)
         funcs = _functions(head)
         patching = _patching(funcs, shared)
         autouse = sorted(n for n in patching if _is_fixture(funcs[n]) == (True, True))
         for name, fn in funcs.items():
-            if old_funcs.get(name) == ast.dump(fn):
-                continue                                  # unchanged by this PR: not judged
-            if name in patching:
-                out.append(f"{path}::{name} patches (monkeypatch, mock.patch or a fixture that does)")
-            elif autouse and name.split(".")[-1].startswith("test"):
+            was = _patch_uses(old_funcs[name], old_patching | shared) if name in old_funcs else Counter()
+            if _patch_uses(fn, patching | shared) - was:
+                out.append(f"{path}::{name} adds a patch (monkeypatch, mock.patch or a fixture that does)")
+            elif autouse and name not in old_funcs and name.split(".")[-1].startswith("test"):
                 out.append(f"{path}::{name} runs under the file's patching autouse fixture {', '.join(autouse)}")
     return out
 
