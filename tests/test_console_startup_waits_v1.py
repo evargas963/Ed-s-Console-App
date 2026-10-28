@@ -20,8 +20,7 @@ def test_the_console_says_what_it_waits_for_and_for_how_long(tmp_path):
         s.bind(("127.0.0.1", 0))
         port = s.getsockname()[1]
     env = {k: v for k, v in os.environ.items() if k != "PYTEST_CURRENT_TEST"}   # its loops start
-    env.update(ED_RUNTIME_ROOT=str(tmp_path), ED_ARTIFACTS_ROOT=str(tmp_path / "artifacts"),
-               ED_LIVE_PUSH_PORT="1", ED_LIVE_UI_PORT="1",
+    env.update(ED_RUNTIME_ROOT=str(tmp_path), ED_LIVE_PUSH_PORT="1", ED_LIVE_UI_PORT="1",
                SCHWAB_TOKEN_PATH=str(tmp_path / "missing_schwab_token.json"), PYTHONIOENCODING="utf-8")
     console = subprocess.Popen([sys.executable, "-m", "uvicorn", "server:app", "--host", "127.0.0.1",
                                 "--port", str(port)], cwd=REPO, env=env, text=True, encoding="utf-8",

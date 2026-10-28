@@ -190,7 +190,27 @@ def test_a_product_file_replaced_by_a_link_still_needs_a_test(tmp_path):
     assert cfb.violations(root, "main") == ["product code changed (calc.py) but no test under tests/ changed"]
 
 
-def test_removing_a_function_nothing_calls_still_needs_a_test(tmp_path):
-    base = {**BASE, "calc.py": BASE["calc.py"] + "\n\ndef unused(row):\n    return row['ask']\n"}
+UNCALLED = BASE["calc.py"] + ("\n\nimport math\n\n#: the ask, kept for a page that no longer exists\n"
+                               "ASK_FIELD = 'ask'\n\n\ndef unused_ask(row):\n    return math.fabs(row[ASK_FIELD])\n")
+
+
+def test_removing_code_no_file_names_is_proven_without_a_test(tmp_path, capsys):
+    root = _repo(tmp_path, {"calc.py": BASE["calc.py"]}, base={**BASE, "calc.py": UNCALLED})
+    assert cfb.violations(root, "main") == []
+    assert "proven: calc.py only removes ASK_FIELD, unused_ask, which no tracked file names" in capsys.readouterr().out
+
+
+def test_removing_code_another_file_still_names_needs_a_test(tmp_path):
+    base = {**BASE, "calc.py": UNCALLED, "page.py": "from calc import unused_ask\n"}
     root = _repo(tmp_path, {"calc.py": BASE["calc.py"]}, base=base)
+    assert cfb.violations(root, "main") == ["product code changed (calc.py) but no test under tests/ changed"]
+
+
+def test_removing_code_beside_a_changed_line_needs_a_test(tmp_path):
+    root = _repo(tmp_path, {"calc.py": FIX}, base={**BASE, "calc.py": UNCALLED})
+    assert cfb.violations(root, "main") == ["product code changed (calc.py) but no test under tests/ changed"]
+
+
+def test_removing_a_statement_that_binds_no_name_needs_a_test(tmp_path):
+    root = _repo(tmp_path, {"calc.py": BASE["calc.py"]}, base={**BASE, "calc.py": BASE["calc.py"] + "\nprint('loaded')\n"})
     assert cfb.violations(root, "main") == ["product code changed (calc.py) but no test under tests/ changed"]

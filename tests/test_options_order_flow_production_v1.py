@@ -117,8 +117,7 @@ def write_flow_e2e_fixture() -> None:
     root = tempfile.mkdtemp(prefix="ed-e2e-fixture-regen-")
     env = {k: v for k, v in os.environ.items()
            if k not in ("ED_CONSOLE_DB", "ED_DB_PATH", "STREAM_CAPTURE_DB_PATH")}
-    env.update({"ED_RUNTIME_ROOT": root, "ED_ARTIFACTS_ROOT": os.path.join(root, "artifacts"),
-                "ED_CONSOLE_ALLOW_NONCANONICAL_DB": "1", "ED_CI_OFFLINE": "1",
+    env.update({"ED_RUNTIME_ROOT": root, "ED_CONSOLE_ALLOW_NONCANONICAL_DB": "1", "ED_CI_OFFLINE": "1",
                 "SCHWAB_API_KEY": "ci-placeholder-api-key", "SCHWAB_APP_SECRET": "ci-placeholder-app-secret",
                 "SCHWAB_CALLBACK_URL": "https://127.0.0.1:8182"})
     code = ("import json, sys; from tests.conftest import MARKETS_ANSWERS; from time_et import record_markets; "
