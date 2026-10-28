@@ -1,6 +1,6 @@
-"""tools/check_no_new_patches.py (TEST-PATCHES) on real git repositories: a pull request may not add
-a patch to a test, fixture or helper; a patch already there, in a function edited elsewhere or left
-as it was, is not refused."""
+"""tools/check_no_new_patches.py (TEST-PATCHES) on real git repositories: a test, fixture or helper
+whose code a pull request adds or changes may not patch; one whose docstrings and comments alone
+change, or that the PR leaves as it was, is not judged."""
 from __future__ import annotations
 
 import subprocess
@@ -47,20 +47,20 @@ def test_a_new_test_using_monkeypatch_is_refused(tmp_path):
     root = _pr(tmp_path, {"tests/test_new.py": (
         "import calc\n\n\ndef test_new(monkeypatch):\n    monkeypatch.setattr(calc, 'spot', lambda r: 3)\n")})
     assert cnp.violations(root, "main") == [
-        "tests/test_new.py::test_new adds a patch (monkeypatch, mock.patch or a fixture that does)"]
+        "tests/test_new.py::test_new patches (monkeypatch, mock.patch or a fixture that does)"]
 
 
 def test_a_new_test_using_mock_patch_is_refused(tmp_path):
     root = _pr(tmp_path, {"tests/test_new.py": (
         "from unittest import mock\n\n\ndef test_new():\n    with mock.patch('calc.spot', return_value=3):\n        pass\n")})
     assert cnp.violations(root, "main") == [
-        "tests/test_new.py::test_new adds a patch (monkeypatch, mock.patch or a fixture that does)"]
+        "tests/test_new.py::test_new patches (monkeypatch, mock.patch or a fixture that does)"]
 
 
 def test_a_new_test_that_requests_a_patching_fixture_is_refused(tmp_path):
     root = _pr(tmp_path, {"tests/test_new.py": "def test_new(pinned):\n    assert True\n"})
     assert cnp.violations(root, "main") == [
-        "tests/test_new.py::test_new adds a patch (monkeypatch, mock.patch or a fixture that does)"]
+        "tests/test_new.py::test_new patches (monkeypatch, mock.patch or a fixture that does)"]
 
 
 def test_a_new_test_in_a_file_with_a_patching_autouse_fixture_is_refused(tmp_path):
@@ -68,30 +68,49 @@ def test_a_new_test_in_a_file_with_a_patching_autouse_fixture_is_refused(tmp_pat
         "import pytest\n\n\n@pytest.fixture(autouse=True)\ndef _pin(monkeypatch):\n    monkeypatch.setattr('time.time', lambda: 1.0)\n\n\n"
         "def test_new():\n    assert True\n")})
     assert cnp.violations(root, "main") == [
-        "tests/test_new.py::_pin adds a patch (monkeypatch, mock.patch or a fixture that does)",
+        "tests/test_new.py::_pin patches (monkeypatch, mock.patch or a fixture that does)",
         "tests/test_new.py::test_new runs under the file's patching autouse fixture _pin"]
 
 
-def test_an_old_patching_test_edited_elsewhere_adds_no_patch_and_passes(tmp_path):
-    """A docstring cleaned or a value renamed in an old patching test adds no patch; the patch
-    already there is TEST-PATCHES' work."""
+def test_an_old_patching_test_whose_docstring_and_comments_alone_change_passes(tmp_path):
+    """Operator 2026-10-28: a patching test may change in its docstrings and comments; its code may not."""
     root = _pr(tmp_path, {"tests/test_old.py": OLD_FILE.replace(
         "def test_old_one(monkeypatch):\n", 'def test_old_one(monkeypatch):\n    """The spot reader."""\n').replace(
-        "lambda row: 1)\n    assert calc.spot({}) == 1", "lambda row: 5)\n    assert calc.spot({}) == 5")})
+        "    assert calc.spot({}) == 1", "    assert calc.spot({}) == 1  # the patched value")})
     assert cnp.violations(root, "main") == []
+
+
+def test_an_old_patching_test_whose_code_changes_is_refused(tmp_path):
+    root = _pr(tmp_path, {"tests/test_old.py": OLD_FILE.replace(
+        "lambda row: 1)\n    assert calc.spot({}) == 1", "lambda row: 5)\n    assert calc.spot({}) == 5")})
+    assert cnp.violations(root, "main") == [
+        "tests/test_old.py::test_old_one patches (monkeypatch, mock.patch or a fixture that does)"]
+
+
+def test_a_patching_fixture_made_autouse_is_refused(tmp_path):
+    root = _pr(tmp_path, {"tests/conftest.py": CONFTEST.replace("@pytest.fixture\n", "@pytest.fixture(autouse=True)\n")})
+    assert cnp.violations(root, "main") == [
+        "tests/conftest.py::pinned patches (monkeypatch, mock.patch or a fixture that does)"]
 
 
 def test_an_old_test_given_another_patch_is_refused(tmp_path):
     root = _pr(tmp_path, {"tests/test_old.py": OLD_FILE.replace(
         '    assert calc.spot({}) == 1', '    monkeypatch.setattr(calc, "bid", lambda row: 2)\n    assert calc.spot({}) == 1')})
     assert cnp.violations(root, "main") == [
-        "tests/test_old.py::test_old_one adds a patch (monkeypatch, mock.patch or a fixture that does)"]
+        "tests/test_old.py::test_old_one patches (monkeypatch, mock.patch or a fixture that does)"]
+
+
+def test_an_old_test_whose_patch_becomes_another_kind_is_refused(tmp_path):
+    root = _pr(tmp_path, {"tests/test_old.py": OLD_FILE.replace(
+        'monkeypatch.setattr(calc, "spot", lambda row: 1)', 'monkeypatch.setenv("SPOT", "1")')})
+    assert cnp.violations(root, "main") == [
+        "tests/test_old.py::test_old_one patches (monkeypatch, mock.patch or a fixture that does)"]
 
 
 def test_an_old_unpatched_test_given_a_patching_fixture_is_refused(tmp_path):
     root = _pr(tmp_path, {"tests/test_old.py": OLD_FILE.replace("def test_old_two():", "def test_old_two(pinned):")})
     assert cnp.violations(root, "main") == [
-        "tests/test_old.py::test_old_two adds a patch (monkeypatch, mock.patch or a fixture that does)"]
+        "tests/test_old.py::test_old_two patches (monkeypatch, mock.patch or a fixture that does)"]
 
 
 def test_an_untouched_old_patching_test_is_allowed_when_its_file_changes_elsewhere(tmp_path):

@@ -16,7 +16,8 @@ First gate 4), then start again from step 1.
 3. `npm run test:all` — Playwright, then the full pytest suite; both counts shown, no failure.
 4. `.venv/Scripts/python.exe tools/check_fails_before.py --base origin/main` — exit 0; for a pull
    request that changes product code it prints "proven", naming the end-to-end path test that fails on
-   the old code.
+   the old code, or, for a change that only removes whole undecorated Python functions or classes,
+   naming the files.
 5. `.venv/Scripts/python.exe tools/check_no_new_patches.py --base origin/main` — exit 0; then
    `.venv/Scripts/python.exe tools/check_one_reader.py --base origin/main` — exit 0; then
    `.venv/Scripts/python.exe tools/check_credential_leak.py --base origin/main` and

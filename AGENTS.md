@@ -56,7 +56,8 @@ Hold EdWebConsole to how a financial institution handles systems with real money
    is deleted.
    Enforced by: `tools/check_fails_before.py` in the required `pytest-full` job (`tests/test_check_fails_before_v1.py`)
    refuses a pull request that changes product code unless an end-to-end path test it changes fails on the old code,
-   or the change only deletes Python code, none of it decorated (then the full suite and the browser tests are the proof);
+   or the change only removes whole undecorated Python functions or classes (then the full suite and the browser tests
+   are the proof);
    `tools/check_end_to_end.py` in the required `hardening` job (`.github/workflows/hardening.yml`,
    `tests/test_check_end_to_end_v1.py`) refuses one that adds a patch shape (a catch-all or swallowing except that does
    not log, `contextlib.suppress`, a literal standing in for a missing value); the path tests of `docs/DATA_FLOW.md` §2

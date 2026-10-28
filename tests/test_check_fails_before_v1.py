@@ -167,7 +167,7 @@ def test_a_comment_only_change_to_an_html_page_still_needs_a_test(tmp_path):
 
 
 def test_deleting_a_product_file_is_proven_by_the_suite(tmp_path):
-    """Operator 2026-10-28: a change that only deletes Python product code, none of it decorated, is
+    """Operator 2026-10-28: a change that only removes whole undecorated Python functions or classes is
     proven by the full suite and the browser tests passing."""
     root = _repo(tmp_path, {"notes.md": "words\n"}, base={**BASE, "dead.py": "def unused(row):\n    return row['ask']\n"})
     _git(root, "rm", "-q", "dead.py")
@@ -191,10 +191,30 @@ NEEDS = "but no end-to-end path test (tests/test_data_path_*.py or tests/e2e/*.s
     ("routes.py", ROUTE, "app = object()\n"),                              # a decorated route deleted
     ("page.js", "function a() { return 1; }\nfunction b() { return 2; }\n", "function a() { return 1; }\n"),
     ("calc.py", BASE["calc.py"] + "\n\ndef unused(row):\n    return row['ask']\n", FIX),   # a deletion and a changed line
+    ("num.py", "def number(v):\n    if isinstance(v, str):\n        return None\n    return float(v)\n",
+     "def number(v):\n    return float(v)\n"),                               # a guard line inside a function
+    ("app.py", "app = object()\napp.mount('/static')\n", "app = object()\n"),   # a module-level call (a route)
+    ("fields.py", "FIELDS = (\n    'bid',\n    'ask',\n)\n", "FIELDS = (\n    'bid',\n)\n"),   # an entry of a list
 ])
-def test_a_deletion_that_is_not_python_only_losing_undecorated_code_still_needs_a_test(tmp_path, name, before, after):
+def test_a_deletion_that_is_not_whole_undecorated_python_units_still_needs_a_test(tmp_path, name, before, after):
+    """Operator 2026-10-28: the suite proves only a removal of whole undecorated functions or classes;
+    a line removed inside one, a module-level call or a decorated one changes behavior."""
     root = _repo(tmp_path, {name: after}, base={**BASE, name: before})
     assert cfb.violations(root, "main") == [f"product code changed ({name}) {NEEDS}"]
+
+
+def test_a_deleted_file_with_a_module_level_call_still_needs_a_test(tmp_path):
+    root = _repo(tmp_path, {"notes.md": "words\n"}, base={**BASE, "boot.py": "import os\n\nos.environ['X'] = '1'\n"})
+    _git(root, "rm", "-q", "boot.py")
+    _git(root, "commit", "-q", "-m", "remove boot.py")
+    assert cfb.violations(root, "main") == [f"product code changed (boot.py) {NEEDS}"]
+
+
+def test_an_added_empty_file_is_judged_not_failed(tmp_path):
+    """A new file is no deletion: the check judges the PR's tests, and does not fail itself."""
+    root = _repo(tmp_path, {"pkg/__init__.py": "", "calc.py": FIX, "tests/test_data_path_calc.py": (
+        "from calc import spot\n\n\ndef test_spot_is_the_last_trade():\n    assert spot({'bid': 1, 'last': 2}) == 2\n")})
+    assert cfb.violations(root, "main") == []
 
 
 @pytest.mark.parametrize("path", ["my calc.py", "café.py"])

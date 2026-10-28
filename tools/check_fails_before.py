@@ -1,5 +1,7 @@
 """AGENTS.md rule 1 and Before writing code: a pull request that changes product code proves it with
-an end-to-end path test that fails on the old code.
+an end-to-end path test that fails on the old code, unless it only removes whole undecorated Python
+functions or classes (`deletes_only`): then the full suite and the browser tests, which the same job
+runs, are the proof (operator 2026-10-28).
 
 The PR's changed and added files under tests/ are laid over a checkout of the base, and the PR's
 changed end-to-end path tests run there: pytest files (tests/test_data_path_*.py) with this
@@ -28,12 +30,10 @@ import subprocess
 import sys
 import tempfile
 import xml.etree.ElementTree as ET
-from collections import Counter
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from check_end_to_end import (  # noqa: E402
-    ToolError, _git, behavior_change, deleted_product, pr_added_lines, pr_files)
+from check_end_to_end import ToolError, _git, behavior_change, deleted_product, pr_files  # noqa: E402
 
 
 def changed(root: Path, base: str) -> list[str]:
@@ -114,26 +114,60 @@ def failures_on_base(root: Path, base: str, files: list[str], tests: list[str]) 
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-def _decorated(source: str) -> Counter:
-    """The decorated functions and classes of a module, a class's methods included, counted by
-    name: what a framework reaches by its decorator (a route, a fixture) rather than by its name."""
-    return Counter(node.name for node in ast.walk(ast.parse(source))
-                   if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and node.decorator_list)
+_DEFS = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+
+
+def _units(tree: ast.Module) -> dict[str, ast.stmt]:
+    """A module's top-level functions and classes, and its classes' methods (Class.method)."""
+    out: dict[str, ast.stmt] = {}
+    for node in tree.body:
+        if isinstance(node, _DEFS):
+            out[node.name] = node
+            if isinstance(node, ast.ClassDef):
+                out |= {f"{node.name}.{s.name}": s for s in node.body if isinstance(s, _DEFS)}
+    return out
+
+
+def _code_lines(text: str, drop: set[int]) -> list[str]:
+    """The lines of `text` not in `drop`, blank lines and comment lines left out."""
+    return [line for n, line in enumerate(text.split("\n"), start=1)
+            if n not in drop and line.strip() and not line.lstrip().startswith("#")]
+
+
+def _removes_whole_units(was: str, now: str | None) -> bool:
+    """Whether `now` is `was` with whole undecorated functions or classes removed and nothing else
+    (blank lines and comments aside); `now` None is the file deleted, which holds only imports, a
+    docstring and undecorated functions and classes."""
+    tree = ast.parse(was)
+    if now is None:
+        return (not any(isinstance(n, _DEFS) and n.decorator_list for n in ast.walk(tree))
+                and all(isinstance(n, (ast.Import, ast.ImportFrom, *_DEFS))
+                        or (isinstance(n, ast.Expr) and isinstance(n.value, ast.Constant)) for n in tree.body))
+    kept = _units(ast.parse(now))
+    removed = [u for name, u in _units(tree).items() if name not in kept]
+    if not removed or any(u.decorator_list for u in removed):
+        return False
+    drop = {n for u in removed for n in range(u.lineno, u.end_lineno + 1)}
+    return _code_lines(was, drop) == _code_lines(now, set())
 
 
 def deletes_only(root: Path, base: str, product: list[str]) -> bool:
-    """Whether every changed product file is Python that only loses lines, and no decorated
-    function or class is among what it loses. Removing code adds no value to check; what could
-    break is a caller, which the full suite and the browser tests run."""
+    """Whether every changed product file is Python that loses whole undecorated functions or
+    classes and nothing else (operator 2026-10-28). Removing code nothing calls adds no value to
+    check; what could break is a caller, which the full suite and the browser tests run. A line
+    removed inside a function, a module-level call (`app.mount`) or a decorated one (a route) is
+    a change of behavior, and needs its end-to-end test."""
     if not all(f.endswith(".py") for f in product):
         return False
-    added = pr_added_lines(root, base)
-    if any(added.get(f) for f in product):
-        return False
+    fork = _git(root, "merge-base", base, "HEAD").strip()
     deleted = set(deleted_product(root, base))
     for f in product:
-        now = "" if f in deleted else _git(root, "show", f"HEAD:{f}")
-        if _decorated(_git(root, "show", f"{base}:{f}")) - _decorated(now):
+        try:
+            was = _git(root, "show", f"{fork}:{f}")
+            now = None if f in deleted else _git(root, "show", f"HEAD:{f}")
+            if not _removes_whole_units(was, now):
+                return False
+        except (ToolError, SyntaxError):           # a new file, or one Python cannot read
             return False
     return True
 
@@ -144,7 +178,7 @@ def violations(root: Path, base: str) -> list[str]:
     if not product:
         return []
     if deletes_only(root, base, product):
-        print(f"proven: {', '.join(product)} only lose code, none of it decorated; the full suite and "
+        print(f"proven: {', '.join(product)} only lose whole undecorated functions or classes; the full suite and "
               "the browser tests are the proof (operator 2026-10-28)")
         return []
     tests = [f for f in files if is_test(f)]
