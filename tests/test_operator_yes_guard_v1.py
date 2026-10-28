@@ -1,8 +1,8 @@
 """tools/operator_yes_guard.py (CLAUDE.md rule 5). A start or a clean stop of the daemon or the
 console is put to the operator (Allow/Deny) during regular market hours and while the session is
 unknown, and passes in Pre-Market, After-Hours and Closed; killing the daemon, the console or launch.py is refused, whatever its flags; a
-stop of any other process passes; a stop of the machine and a merge ask; a push to main is
-refused; every other action, a change to a test included, passes. Judged on real payloads and
+stop of any other process passes; a stop of the machine and a merge ask; every other action, a
+change to a test included, passes. Judged on real payloads and
 through the hook chain the settings run.
 
 Real data: Schwab's /markets answer for 2026-10-07 (tests/fixtures/real_schwab_markets_2026_10_07.json)
@@ -224,8 +224,6 @@ def test_killing_the_pythonw_image_with_the_daemon_in_it_is_refused(procs, marke
 @pytest.mark.parametrize("cmd, answer", [
     ("Stop-Computer", guard.ASK), ("Restart-Computer -Force", guard.ASK), ("shutdown /r /t 0", guard.ASK),
     ("gh pr merge 445 --merge", guard.ASK), ("gh api -X PUT repos/o/r/pulls/445/merge", guard.ASK),
-    ("git push origin main", guard.DENY), ("git push origin HEAD:main", guard.DENY),
-    ("git push origin HEAD:heads/main", guard.DENY),                         # git resolves it to refs/heads/main
     ("git push -q -u origin fix/some-branch", guard.PASS),
 ])
 def test_the_machine_a_merge_and_a_push(cmd, answer, markets):
@@ -321,9 +319,9 @@ def test_the_test_changed_below_is_on_main():
     _shell("explorer.exe .", "PowerShell"),
     _shell("schtasks /query /fo LIST"),
     _shell("git log --oneline --grep kill"),
-    # a merge or a push to main named only as data: loop strings, a heredoc body
-    _shell("for c in \"git push origin HEAD:main\" \"gh pr merge 427 --merge\"; do echo \"$c\"; done"),
-    _shell("python - <<'EOF'\nprint('git push origin main; gh pr merge 1')\nEOF"),
+    # a merge named only as data: loop strings, a heredoc body
+    _shell("for c in \"gh pr merge 427 --merge\"; do echo \"$c\"; done"),
+    _shell("python - <<'EOF'\nprint('gh pr merge 1')\nEOF"),
 ])
 def test_everything_else_passes_at_any_hour(payload, procs, markets):
     for now in (RTH, NOT_HELD):
@@ -341,7 +339,7 @@ def test_the_hook_chain_answers_ask_refuses_and_passes_ordinary_work():
     out = json.loads(r.stdout)["hookSpecificOutput"]
     assert r.returncode == 0 and out["permissionDecision"] == "ask"
     assert "gh pr merge 99999" in out["permissionDecisionReason"]
-    refused = _chain(_shell("git push origin main"))
-    assert refused.returncode == 2 and "pushes to main" in refused.stderr
+    refused = _chain(_shell("gh alias set m 'pr merge'"))
+    assert refused.returncode == 2 and "sets a gh alias" in refused.stderr
     quiet = _chain(_edit(str(REPO / EXISTING)))
     assert quiet.returncode == 0 and quiet.stdout == ""

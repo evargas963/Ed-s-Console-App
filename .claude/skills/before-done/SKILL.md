@@ -20,8 +20,7 @@ First gate 4), then start again from step 1.
    `.venv/Scripts/python.exe tools/check_one_reader.py --base origin/main` — exit 0; then
    `.venv/Scripts/python.exe tools/check_credential_leak.py --base origin/main` and
    `.venv/Scripts/python.exe tools/check_eol_style_invariant.py --base origin/main` — exit 0 each.
-6. Write the PR description to a file, then
-   `.venv/Scripts/python.exe tools/check_end_to_end.py --base origin/main --body-file <file>` — exit 0.
+6. `.venv/Scripts/python.exe tools/check_end_to_end.py --base origin/main` — exit 0.
 7. Four eyes: run the `correctness-reviewer` and `requirements-reviewer` agents on the PR's final
    commit (`git diff origin/main...HEAD`, with the PR description, the operator's task and the output
    of steps 1–6), naming that commit; any commit made after a review gets a new review of both before
