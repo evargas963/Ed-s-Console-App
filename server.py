@@ -377,8 +377,11 @@ def _write_price_history(msg: dict) -> "str | None":
     held_minutes = {b.ts for b in held}
     taken = {}
     for c in sent:
-        b = _schwab_bar(c.get("datetime"), c.get("open"), c.get("high"), c.get("low"), c.get("close"), c.get("volume"))
-        if b is not None and b.ts not in held_minutes:
+        start = schwab_number(c.get("datetime"))
+        if start is None or start / 1000.0 in held_minutes:
+            continue
+        b = _schwab_bar(start, c.get("open"), c.get("high"), c.get("low"), c.get("close"), c.get("volume"))
+        if b is not None:
             taken[b.ts] = b
     if not taken:
         return None
