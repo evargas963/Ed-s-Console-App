@@ -166,19 +166,35 @@ def test_a_comment_only_change_to_an_html_page_still_needs_a_test(tmp_path):
     assert cfb.violations(root, "main") == ["product code changed (page.html) but no end-to-end path test (tests/test_data_path_*.py or tests/e2e/*.spec.js) changed"]
 
 
-def test_deleting_a_product_file_still_needs_a_test(tmp_path):
+def test_deleting_a_product_file_is_proven_by_the_suite(tmp_path):
+    """Operator 2026-10-28: a change that only deletes Python product code, none of it decorated, is
+    proven by the full suite and the browser tests passing."""
     root = _repo(tmp_path, {"notes.md": "words\n"}, base={**BASE, "dead.py": "def unused(row):\n    return row['ask']\n"})
     _git(root, "rm", "-q", "dead.py")
     _git(root, "commit", "-q", "-m", "remove dead.py")
-    assert cfb.violations(root, "main") == ["product code changed (dead.py) but no end-to-end path test (tests/test_data_path_*.py or tests/e2e/*.spec.js) changed"]
+    assert cfb.violations(root, "main") == []
 
 
-def test_moving_a_product_file_out_of_product_paths_still_needs_a_test(tmp_path):
+def test_moving_a_product_file_out_of_product_paths_is_a_deletion(tmp_path):
     root = _repo(tmp_path, {"notes.md": "words\n"}, base={**BASE, "dead.py": "def unused(row):\n    return row['ask']\n"})
     (root / "docs").mkdir()
     _git(root, "mv", "dead.py", "docs/dead.py")
     _git(root, "commit", "-q", "-m", "move dead.py")
-    assert cfb.violations(root, "main") == ["product code changed (dead.py) but no end-to-end path test (tests/test_data_path_*.py or tests/e2e/*.spec.js) changed"]
+    assert cfb.violations(root, "main") == []
+
+
+ROUTE = "app = object()\n\n\n@app.get('/api/x')\ndef x():\n    return 1\n"
+NEEDS = "but no end-to-end path test (tests/test_data_path_*.py or tests/e2e/*.spec.js) changed"
+
+
+@pytest.mark.parametrize("name, before, after", [
+    ("routes.py", ROUTE, "app = object()\n"),                              # a decorated route deleted
+    ("page.js", "function a() { return 1; }\nfunction b() { return 2; }\n", "function a() { return 1; }\n"),
+    ("calc.py", BASE["calc.py"] + "\n\ndef unused(row):\n    return row['ask']\n", FIX),   # a deletion and a changed line
+])
+def test_a_deletion_that_is_not_python_only_losing_undecorated_code_still_needs_a_test(tmp_path, name, before, after):
+    root = _repo(tmp_path, {name: after}, base={**BASE, name: before})
+    assert cfb.violations(root, "main") == [f"product code changed ({name}) {NEEDS}"]
 
 
 @pytest.mark.parametrize("path", ["my calc.py", "café.py"])
@@ -197,7 +213,7 @@ def test_a_product_file_replaced_by_a_link_still_needs_a_test(tmp_path):
     assert cfb.violations(root, "main") == ["product code changed (calc.py) but no end-to-end path test (tests/test_data_path_*.py or tests/e2e/*.spec.js) changed"]
 
 
-def test_removing_a_function_nothing_calls_still_needs_a_test(tmp_path):
+def test_removing_a_function_nothing_calls_is_proven_by_the_suite(tmp_path):
     base = {**BASE, "calc.py": BASE["calc.py"] + "\n\ndef unused(row):\n    return row['ask']\n"}
     root = _repo(tmp_path, {"calc.py": BASE["calc.py"]}, base=base)
-    assert cfb.violations(root, "main") == ["product code changed (calc.py) but no end-to-end path test (tests/test_data_path_*.py or tests/e2e/*.spec.js) changed"]
+    assert cfb.violations(root, "main") == []

@@ -20,6 +20,7 @@ check itself failed (git unavailable, the base unknown).
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import os
 import shutil
@@ -27,10 +28,12 @@ import subprocess
 import sys
 import tempfile
 import xml.etree.ElementTree as ET
+from collections import Counter
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from check_end_to_end import ToolError, _git, behavior_change, deleted_product, pr_files  # noqa: E402
+from check_end_to_end import (  # noqa: E402
+    ToolError, _git, behavior_change, deleted_product, pr_added_lines, pr_files)
 
 
 def changed(root: Path, base: str) -> list[str]:
@@ -111,10 +114,38 @@ def failures_on_base(root: Path, base: str, files: list[str], tests: list[str]) 
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def _decorated(source: str) -> Counter:
+    """The decorated functions and classes of a module, a class's methods included, counted by
+    name: what a framework reaches by its decorator (a route, a fixture) rather than by its name."""
+    return Counter(node.name for node in ast.walk(ast.parse(source))
+                   if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and node.decorator_list)
+
+
+def deletes_only(root: Path, base: str, product: list[str]) -> bool:
+    """Whether every changed product file is Python that only loses lines, and no decorated
+    function or class is among what it loses. Removing code adds no value to check; what could
+    break is a caller, which the full suite and the browser tests run."""
+    if not all(f.endswith(".py") for f in product):
+        return False
+    added = pr_added_lines(root, base)
+    if any(added.get(f) for f in product):
+        return False
+    deleted = set(deleted_product(root, base))
+    for f in product:
+        now = "" if f in deleted else _git(root, "show", f"HEAD:{f}")
+        if _decorated(_git(root, "show", f"{base}:{f}")) - _decorated(now):
+            return False
+    return True
+
+
 def violations(root: Path, base: str) -> list[str]:
     files = changed(root, base)
     product = [f for f in files if behavior_change(root, base, f)] + deleted_product(root, base)
     if not product:
+        return []
+    if deletes_only(root, base, product):
+        print(f"proven: {', '.join(product)} only lose code, none of it decorated; the full suite and "
+              "the browser tests are the proof (operator 2026-10-28)")
         return []
     tests = [f for f in files if is_test(f)]
     if not tests:
