@@ -195,6 +195,8 @@ NEEDS = "but no end-to-end path test (tests/test_data_path_*.py or tests/e2e/*.s
      "def number(v):\n    return float(v)\n"),                               # a guard line inside a function
     ("app.py", "app = object()\napp.mount('/static')\n", "app = object()\n"),   # a module-level call (a route)
     ("fields.py", "FIELDS = (\n    'bid',\n    'ask',\n)\n", "FIELDS = (\n    'bid',\n)\n"),   # an entry of a list
+    ("page_text.py", 'T = """\n#a {}\n"""\n\n\ndef unused():\n    return 1\n', 'T = """\n#b {}\n"""\n'),   # a string's `#` line
+    ("latin.py", "T = 'x'\n\n\ndef unused():\n    return 1\n", "# -*- coding: latin-1 -*-\nT = 'x'\n"),   # an encoding added
 ])
 def test_a_deletion_that_is_not_whole_undecorated_python_units_still_needs_a_test(tmp_path, name, before, after):
     """Operator 2026-10-28: the suite proves only a removal of whole undecorated functions or classes;

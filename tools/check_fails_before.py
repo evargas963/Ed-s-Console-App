@@ -33,7 +33,8 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from check_end_to_end import ToolError, _git, behavior_change, deleted_product, pr_files  # noqa: E402
+from check_end_to_end import (  # noqa: E402
+    ToolError, _git, _python_code, behavior_change, deleted_product, pr_files)
 
 
 def changed(root: Path, base: str) -> list[str]:
@@ -128,16 +129,11 @@ def _units(tree: ast.Module) -> dict[str, ast.stmt]:
     return out
 
 
-def _code_lines(text: str, drop: set[int]) -> list[str]:
-    """The lines of `text` not in `drop`, blank lines and comment lines left out."""
-    return [line for n, line in enumerate(text.split("\n"), start=1)
-            if n not in drop and line.strip() and not line.lstrip().startswith("#")]
-
-
 def _removes_whole_units(was: str, now: str | None) -> bool:
     """Whether `now` is `was` with whole undecorated functions or classes removed and nothing else
-    (blank lines and comments aside); `now` None is the file deleted, which holds only imports, a
-    docstring and undecorated functions and classes."""
+    (its code compared as a syntax tree, so comments and docstrings aside, every string as written);
+    `now` None is the file deleted, which holds only imports, a docstring and undecorated functions
+    and classes."""
     tree = ast.parse(was)
     if now is None:
         return (not any(isinstance(n, _DEFS) and n.decorator_list for n in ast.walk(tree))
@@ -148,7 +144,8 @@ def _removes_whole_units(was: str, now: str | None) -> bool:
     if not removed or any(u.decorator_list for u in removed):
         return False
     drop = {n for u in removed for n in range(u.lineno, u.end_lineno + 1)}
-    return _code_lines(was, drop) == _code_lines(now, set())
+    left = _python_code("\n".join(line for n, line in enumerate(was.split("\n"), start=1) if n not in drop))
+    return left is not None and left == _python_code(now)
 
 
 def deletes_only(root: Path, base: str, product: list[str]) -> bool:
