@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-"""Credential / secret leak firewall on the staged diff.
+"""Credential / secret leak firewall on the staged diff, or on a pull request's diff.
 
 Refuses Bearer tokens, API keys, private keys and operator-home paths (Windows, posix and Git
-Bash spellings) on any line `git diff --cached` adds, every staged file read as text (what a
-commit would publish). The scanner's own suite and this module are path-skipped (injected
-payloads must live there). Other fixtures mark a line with `# credential-leak-ok` or
-`# credential-leak-fixture-ok`.
+Bash spellings) on any line `git diff --cached` adds (`git diff <base>...HEAD` with --base),
+every file read as text (what a commit would publish). The scanner's own suite and this module
+are path-skipped (injected payloads must live there). Other fixtures mark a line with
+`# credential-leak-ok` or `# credential-leak-fixture-ok`.
 
-    python tools/check_credential_leak.py
+    python tools/check_credential_leak.py                       (pre-commit)
+    python tools/check_credential_leak.py --base origin/main    (CI)
 """
 from __future__ import annotations
 
@@ -51,8 +52,8 @@ class StagedDiffUnreadable(RuntimeError):
     """`git diff --cached` did not run. An unread diff is not an empty diff."""
 
 
-def _staged_text(root: Path) -> str:
-    """The staged diff, RAISING when git could not produce it.
+def _staged_text(root: Path, base: str | None = None) -> str:
+    """The staged diff (with `base`, the diff `base...HEAD`), RAISING when git could not produce it.
 
     Any failure of git — a broken or locked index, a corrupt object, git absent from PATH —
     raises: an unread diff would scan clean and let the commit through unread. "I could not
@@ -61,23 +62,24 @@ def _staged_text(root: Path) -> str:
     # core.quotePath=true: a quoted name is all escapes, whatever the repository's own setting.
     # --text, --no-textconv, --no-ext-diff: the bytes the commit publishes, whatever its attributes
     # or diff settings. Read as bytes: git ends a line only at a line feed.
+    which = [f"{base}...HEAD"] if base else ["--cached"]
     p = subprocess.run(
-        ["git", "-c", "core.quotePath=true", "diff", "--cached", "--unified=0", "--no-color",
+        ["git", "-c", "core.quotePath=true", "diff", *which, "--unified=0", "--no-color",
          "--text", "--no-textconv", "--no-ext-diff", "--src-prefix=a/", "--dst-prefix=b/"],
         cwd=root,
         capture_output=True,
     )
     if p.returncode != 0:
         raise StagedDiffUnreadable(
-            f"git diff --cached exited {p.returncode}: "
+            f"git diff {which[0]} exited {p.returncode}: "
             f"{(p.stderr.decode('utf-8', errors='replace').strip().splitlines() or [''])[0]}"
         )
     return p.stdout.decode("utf-8", errors="replace")
 
 
-def find_credential_leaks(root: Path = REPO) -> list[str]:
-    """Every secret or operator-home path on a line `root`'s staged diff adds."""
-    text = _staged_text(root)
+def find_credential_leaks(root: Path = REPO, base: str | None = None) -> list[str]:
+    """Every secret or operator-home path on a line `root`'s staged diff (or `base...HEAD`) adds."""
+    text = _staged_text(root, base)
     hits: list[str] = []
     current_file = "?"
     skip_file = False
@@ -108,13 +110,15 @@ def find_credential_leaks(root: Path = REPO) -> list[str]:
     return hits
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    args = sys.argv[1:] if argv is None else argv
+    base = args[args.index("--base") + 1] if "--base" in args else None
     try:
-        hits = find_credential_leaks()
+        hits = find_credential_leaks(base=base)
     except StagedDiffUnreadable as e:
         # Fail CLOSED: "clean" for a diff nobody read is the one outcome a secrets gate must
         # never produce.
-        print("check_credential_leak: FAIL — the staged diff could not be read, so nothing "
+        print("check_credential_leak: FAIL — the diff could not be read, so nothing "
               "was scanned:", file=sys.stderr)
         print(f"  {e}", file=sys.stderr)
         print("  This is NOT a clean result. Fix the repository state and commit again.",
@@ -122,14 +126,14 @@ def main() -> int:
         return 1
     rc = 0
     if hits:
-        print("check_credential_leak: FAIL — secrets or private paths in staged diff:")
+        print("check_credential_leak: FAIL — secrets or private paths in the diff:")
         for h in hits[:40]:
             print(f"  {h}")
         if len(hits) > 40:
             print(f"  … and {len(hits) - 40} more")
         rc = 1
     else:
-        print("check_credential_leak: PASS (staged diff clean)")
+        print("check_credential_leak: PASS (diff clean)")
     return rc
 
 

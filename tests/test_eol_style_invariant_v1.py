@@ -113,6 +113,18 @@ def test_crlf_file_edited_as_crlf_passes_and_flipped_to_lf_fails(repo):
     assert "crlf -> lf" in out2, out2
 
 
+def test_a_reflow_a_pull_request_commits_is_refused_against_its_base(repo):
+    """CI runs the check on the pull request's commits (`--base`): a commit made where the
+    pre-commit hook does not run is still read."""
+    root, git = repo
+    git("branch", "base")
+    p = root / "lf_file.py"
+    p.write_bytes(p.read_bytes().replace(b"\n", b"\r\n"))
+    git("commit", "-q", "-am", "pr")
+    rc, out = run_in(root, "--base", "base")
+    assert rc == 1 and "PURE EOL REFLOW" in out, out
+
+
 def test_staged_mode_blocks_with_nonzero_exit(repo):
     """--measure reports; the pre-commit path must actually FAIL."""
     root, git = repo

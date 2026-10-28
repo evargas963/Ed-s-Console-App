@@ -113,3 +113,17 @@ def test_scanner_own_suite_path_is_skipped(tmp_path):
 def test_clean_addition_passes(tmp_path):
     root = _staged(tmp_path, {"tools/run_provenance.py": 'return {"git_commit": sha}\n'})
     assert find_credential_leaks(root) == []
+
+
+def test_a_secret_a_pull_request_commits_is_refused_against_its_base(tmp_path):
+    """CI runs the scanner on the pull request's commits (`--base`): a commit made where the
+    pre-commit hook does not run (GitHub's editor, a skipped hook) is still read."""
+    root = _staged(tmp_path, {"app.py": "x = 1\n"})
+    git = lambda *a: subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", *a],  # noqa: E731
+                                    cwd=root, check=True, capture_output=True)
+    git("commit", "-q", "-m", "base")
+    git("branch", "base")
+    (root / "app.py").write_text("x = 1\n" + SECRET, encoding="utf-8")
+    git("commit", "-q", "-am", "pr")
+    assert find_credential_leaks(root) == []                     # nothing staged
+    assert [h.split(": ")[:2] for h in find_credential_leaks(root, base="base")] == [["app.py", "bearer_token"]]
