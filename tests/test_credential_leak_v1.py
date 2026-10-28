@@ -144,7 +144,11 @@ def test_a_secret_typed_into_a_merge_resolution_is_refused(tmp_path):
     (root / "app.py").write_text("x = 2\n", encoding="utf-8")
     git("commit", "-q", "-am", "pr side")
     git("checkout", "-q", "main")
-    (root / "app.py").write_text("x = 3\ny = 'from main'\n", encoding="utf-8")
+    # main's side carries a flagged line of its own (another label): the merge brings it in, and a
+    # scan that reported main's lines would list it beside the resolution's token
+    (root / "app.py").write_text("x = 3\n", encoding="utf-8")
+    (root / "main_only.py").write_text("k = 'AKIA" + "ABCDEFGHIJKLMNOP'\n", encoding="utf-8")
+    git("add", "main_only.py")
     git("commit", "-q", "-am", "main side")
     git("checkout", "-q", "pr")
     assert git("merge", "main").returncode != 0, "the merge must conflict"
