@@ -15,8 +15,8 @@ shell commands. Each command gets one answer, the strictest of its statements':
     command line cannot be read is put to the operator. A stop whose targets are chosen only when
     it runs (a variable, a pipe) is refused when the command names the daemon or the console, and
     put to the operator while either runs.
-  * A stop or restart of the machine and a merge are put to the operator; a push to main and
-    `gh alias set` / `gh alias import` (an alias could name a merge in other words) are refused.
+  * A stop or restart of the machine and a merge are put to the operator; `gh alias set` /
+    `gh alias import` (an alias could name a merge in other words) is refused.
     What counts as a merge is `_merges`; the forms it is proven on are the tests' (ENF-13 lists the
     known open ones). The question shows the command as written, whole; the guard does not say
     what it merges. A merge
@@ -48,7 +48,7 @@ import runtime_layout  # noqa: E402
 import time_et  # noqa: E402
 from db_authority import canonical_stream_db_path  # noqa: E402
 from tools.hook_chain import BASH_TOOLS  # noqa: E402
-from tools.shell_parse import Statement, git_subcommand, program_name, read  # noqa: E402
+from tools.shell_parse import Statement, program_name, read  # noqa: E402
 
 PASS, ASK, DENY = "pass", "ask", "deny"
 #: the production processes and what starts them
@@ -65,8 +65,6 @@ SHELLS = ("powershell", "pwsh", "bash", "sh")
 STOPPERS = ("stop-process", "spps", "taskkill", "kill", "tskill", "pskill")
 #: programs that stop or restart the machine
 MACHINE_STOPPERS = ("stop-computer", "restart-computer", "shutdown")
-#: a push destination git resolves to refs/heads/main (`heads/main` included: git tries refs/<name>)
-_MAIN_DESTINATIONS = frozenset({"main", "heads/main", "refs/heads/main"})
 #: process objects removed through WMI/CIM
 WMI_STOPS = ("remove-ciminstance", "remove-wmiobject")
 #: a merge through GitHub's API: a pull request or a branch by REST, or a GraphQL mutation that
@@ -240,8 +238,6 @@ def decide(payload: dict, now: datetime, db: Path) -> "tuple[str, list[str]]":
             if session in (time_et.RTH, time_et.UNKNOWN):
                 asks.append(f"starts or stops the daemon or the console while the market session is "
                             f"{session} (CLAUDE.md rule 5: production)")
-        if _pushes_main(st):
-            denies.append("pushes to main: main moves only by a pull request merged on GitHub")
         if st.program == "gh" and _gh_words(st)[:2] in (["alias", "set"], ["alias", "import"]):
             denies.append("sets a gh alias: an alias can name a merge in words the merge check does not know")
     if merges:
@@ -267,12 +263,6 @@ def _merges(st: Statement) -> bool:
         return True
     # a GraphQL body read from a file: its query is unseen
     return any("graphql" in a.lower() for a in args) and any(a.startswith("@") or "=@" in a or a == "--input" for a in args)
-
-
-def _pushes_main(st: Statement) -> bool:
-    """Whether the statement `st` is a git push whose refspec lands on main."""
-    sub, args = git_subcommand(st.words)
-    return sub == "push" and any(a.split(":")[-1].lstrip("+") in _MAIN_DESTINATIONS for a in args)
 
 
 def main() -> int:

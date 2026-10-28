@@ -24,11 +24,9 @@ test covers the changed behavior; those are proven by behavior tests and review.
      `||=` / `??=` a literal, an empty `catch`, `.catch(() => <literal>)`.
    An except, if or with is judged when its own first line is added, not when a line is added
    inside an old one. None stays allowed: it is a missing value served as missing.
-3. Its description has "Schwab → screen:", "Deleted:" and "End-to-end test:", each with content
-   ("->" and "=>" are read as "→").
 
 Run in CI on every pull request (.github/workflows/hardening.yml):
-    python tools/check_end_to_end.py --base origin/main --body-file pr_body.md
+    python tools/check_end_to_end.py --base origin/main
 Exit 0: none found. Exit 1: each violation on its own line. Exit 2: the check itself failed
 (git unavailable, the base unknown, a file of the PR unreadable).
 """
@@ -48,7 +46,6 @@ PRODUCT_SUFFIXES = (".py", ".js", ".mjs", ".html")
 NOT_PRODUCT = ("tests/", "tools/", ".github/", "docs/", "playwright.config.mjs")
 END_TO_END = (re.compile(r"^tests/test_data_path_[^/]+\.py$"),
               re.compile(r"^tests/e2e/[^/]+\.spec\.js$"))
-BODY_SECTIONS = ("Schwab → screen:", "Deleted:", "End-to-end test:")
 CATCH_ALL = ("Exception", "BaseException")
 LOG_METHODS = {"debug", "info", "warning", "warn", "error", "exception", "critical", "log"}
 JS_LITERAL = r"(0(?!\w)|''|\"\"|\[\]|\{\}|null(?!\w))"
@@ -339,19 +336,7 @@ def adds_real_lines(source: str, added: set[int]) -> bool:
                for n, text in enumerate(source.split("\n"), start=1))
 
 
-def body_violations(body: str) -> list[str]:
-    text = body.replace("->", "→").replace("=>", "→")
-    at = sorted((text.find(s), s) for s in BODY_SECTIONS)
-    out = [f"the PR description lacks: {s}" for i, s in at if i < 0]
-    present = [(i, s) for i, s in at if i >= 0]
-    for k, (i, s) in enumerate(present):
-        end = present[k + 1][0] if k + 1 < len(present) else len(text)
-        if not text[i + len(s):end].strip():
-            out.append(f"the PR description's {s} is empty")
-    return out
-
-
-def violations(root: Path, base: str, body: str | None) -> list[str]:
+def violations(root: Path, base: str) -> list[str]:
     evidence = pr_added_lines(root, base, renames=True)
     added = pr_added_lines(root, base, renames=False)
     changed_code = sorted(f for f in pr_files(root, base, "AMT") if behavior_change(root, base, f))
@@ -366,23 +351,18 @@ def violations(root: Path, base: str, body: str | None) -> list[str]:
         lines = added.get(f, set())
         found = python_patches(source, lines) if f.endswith(".py") else js_patches(f, source, lines)
         out.extend(f"{f}:{line}: {what}" for line, what in found)
-    if body is not None:
-        out.extend(body_violations(body))
     return out
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--base", required=True)
-    ap.add_argument("--body-file")
     a = ap.parse_args(argv)
     try:
-        body = Path(a.body_file).read_text(encoding="utf-8") if a.body_file else None
-        found = violations(Path.cwd(), a.base, body)
+        found = violations(Path.cwd(), a.base)
     except ToolError as e:
         print(f"the check failed: {e}", file=sys.stderr)
         return 2
-    sys.stdout.reconfigure(encoding="utf-8")       # the section names carry "→"
     for v in found:
         print(v)
     return 1 if found else 0

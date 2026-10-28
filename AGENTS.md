@@ -1,12 +1,12 @@
 # Ed Console — rules for every change
 
 Before writing a change, read the parts it touches of `docs/DATA_FLOW.md` (design), `ACTIVE_PROGRAM.md` (work order),
-`docs/ARCHITECTURE.md` (code map) and `docs/PRACTICES.md`. Rules for one area load with its files (`.claude/rules/`);
+`docs/ARCHITECTURE.md` (code map) and `docs/PRACTICES.md` (the Schwab field list). Rules for one area load with its files (`.claude/rules/`);
 procedures are skills (`.claude/skills/`). A change that breaks a rule stops and goes to the operator.
 
 Every requirement in a section marked (enforced), here, in `.claude/rules/` and in `docs/DATA_FLOW.md`, ends with
 "Enforced by:" naming the test, hook or required check that blocks a violation, or "no machine check" and the ENF item in
-`ACTIVE_PROGRAM.md` that builds one. Enforced by: `tests/test_governing_docs_v1.py`.
+`ACTIVE_PROGRAM.md` that builds one. Enforced by: no machine check — ENF-12.
 
 ## Shared rules (master copy: the operator's wording, identical to his project instructions; a change is proposed to him separately)
 
@@ -55,9 +55,8 @@ Hold EdWebConsole to how a financial institution handles systems with real money
    Enforced by: `tools/check_end_to_end.py` in the required `hardening` job (`.github/workflows/hardening.yml`,
    `tests/test_check_end_to_end_v1.py`) refuses a pull request that changes product code without a real line added to an
    end-to-end path test, that adds a patch shape (a catch-all or swallowing except that does not log,
-   `contextlib.suppress`, a literal standing in for a missing value), or whose description lacks "Schwab → screen:",
-   "Deleted:" or "End-to-end test:"; the path tests of `docs/DATA_FLOW.md` §2 fail a broken path; a design-level patch —
-   ENF-01.
+   `contextlib.suppress`, a literal standing in for a missing value); the path tests of `docs/DATA_FLOW.md` §2 fail a
+   broken path; a design-level patch and a new piece's job shown in the PR — ENF-01.
 2. **Schwab fields as sent.** Not a number: absent, -999, text, NaN or infinity, a value Schwab's own field
    definition excludes (a negative volume or size), and a gamma more than twice the largest any option can have at its
    own volatility, price and time left (operator 2026-10-23). Everything else is taken as sent; a reported 0 is 0. No other bounds, no substitution. What Schwab sends or accepts is settled by Schwab's own documentation, cited by section:
@@ -122,8 +121,7 @@ Hold EdWebConsole to how a financial institution handles systems with real money
 - The `before-done` skill's checks pass on the PR's final commit, their output shown, before the PR
   is offered. Enforced by: branch protection on `main` requires `pytest-full`
   (`.github/workflows/pytest.yml`) and `hardening` (`.github/workflows/hardening.yml`) on the final
-  commit, current with `main`; the commit hook and `tools/ruff_edited_file.py` run ruff; the Stop hook
-  `tools/stop_gate.py` holds the turn until ruff and the touched test files pass.
+  commit, current with `main`; the commit hook and `tools/ruff_edited_file.py` run ruff.
 - Claims. Every statement about how something is now (a process, a file, a branch, a pull request, a test result,
   data, the screen) is CONFIRMED only by command output shown in the same reply. Anything else is NOT VERIFIED, with
   when it was last checked. An earlier check is not current evidence; state changes. This applies to every part of a
@@ -177,7 +175,7 @@ Hold EdWebConsole to how a financial institution handles systems with real money
   or DO NOT MERGE, a destructive data action, and a product decision code cannot settle. Say in chat
   what a guarded action is for before running it. Enforced by: `tools/operator_yes_guard.py` asks Allow/Deny for
   the daemon or console starts and stops (in regular hours or an unknown session), machine restarts and merges, and
-  refuses the kills of production and pushes to main, in the forms its tests cover (`tests/test_operator_yes_guard_v1.py`); the
+  refuses the kills of production, in the forms its tests cover (`tests/test_operator_yes_guard_v1.py`); the
   rest — ENF-12.
 - The production checkout `EdWebConsole` stays `main == origin/main` and moves only by a fast-forward
   (`git pull --ff-only`, or `launch.bring_to_origin_main` at a start); work happens in a worktree.

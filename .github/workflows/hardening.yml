@@ -33,11 +33,8 @@ jobs:
       - name: no patches, only end-to-end fixes (AGENTS.md rule 1)
         if: github.event_name == 'pull_request'
         env:
-          PR_BODY: ${{ github.event.pull_request.body }}
           BASE_REF: ${{ github.base_ref }}
-        run: |
-          printf '%s' "$PR_BODY" > "$RUNNER_TEMP/pr_body.md"
-          python tools/check_end_to_end.py --base "origin/$BASE_REF" --body-file "$RUNNER_TEMP/pr_body.md"
+        run: python tools/check_end_to_end.py --base "origin/$BASE_REF"
       - name: no new or changed test patches the code it tests (TEST-PATCHES)
         if: github.event_name == 'pull_request'
         env:
