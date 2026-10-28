@@ -318,6 +318,8 @@ def test_a_daemon_whose_live_ui_port_is_held_ends_at_once_with_why_and_its_windo
     assert "capture daemon: ended by an error" in log, log
     assert "RuntimeError: the capture daemon's live ui ended before the stop" in log, log
     assert "OSError" in log, log
+    # its runtime state is the runtime root's data/ and logs/ (runtime_layout), nothing else
+    assert {p.name for p in tmp_path.iterdir()} == {"data", "logs"}, sorted(tmp_path.iterdir())
 
 
 def test_the_stored_levels_are_priced_while_a_page_on_another_ticker_takes_ticks():

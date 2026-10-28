@@ -134,8 +134,8 @@ JS_CODE_TREE = Path(__file__).resolve().parent / "js_code_tree.js"
 CODE_TREE_SUFFIXES = (".py", ".js", ".mjs")
 
 
-def _python_code(source: str) -> str | None:
-    """The module's code with its comments and docstrings set aside (its syntax tree), or None when
+def python_tree(source: str) -> ast.Module | None:
+    """The module's syntax tree with its docstrings set aside (comments are not in it), or None when
     it does not parse or declares an encoding other than UTF-8 (imported, its strings would read
     otherwise than this tree)."""
     try:
@@ -151,7 +151,13 @@ def _python_code(source: str) -> str | None:
             if (isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant)
                     and isinstance(first.value.value, str)):
                 node.body = node.body[1:] or [ast.Pass()]
-    return ast.dump(tree)
+    return tree
+
+
+def _python_code(source: str) -> str | None:
+    """The module's code with its comments and docstrings set aside (python_tree, dumped)."""
+    tree = python_tree(source)
+    return None if tree is None else ast.dump(tree)
 
 
 def _js_code(text: str, module: bool = False) -> str | None:
