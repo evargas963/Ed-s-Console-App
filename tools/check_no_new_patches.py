@@ -4,11 +4,11 @@ A pull request's test files (tests/**/*.py) are compared with the base unit by u
 code read with its docstrings and comments set aside: every function not inside another (by name,
 at any class depth or under an `if` or `try`, carrying its classes' decorators) and every other
 statement. The suite's run, recorded by tools/patch_record.py, says what patched, however it was
-written: a test the PR adds or changes is refused when it ran with a patch applied (its own, or a
-fixture's, helper's, setup function's, conftest.py's or a statement's), and any unit the PR adds or
-changes is refused when a patch was applied from one of its lines. A patching test whose
-docstrings or comments alone change is not judged (operator 2026-10-28); a change to its code
-needs its patch removed.
+written. A test the PR adds or changes is refused when it ran with a patch applied (applied while
+it ran, or still applied from its own file or a conftest.py above it), or when it did not run, so
+what it runs under is unknown. A unit the PR adds or changes is refused when a patch was applied
+from one of its lines. A patching test whose docstrings or comments alone change is not judged; a
+change to its code needs its patch removed.
 
     ED_PATCH_RECORD=<dir> python -m pytest -p tools.patch_record
     python tools/check_no_new_patches.py --base origin/main --record <dir>
@@ -19,15 +19,17 @@ from __future__ import annotations
 
 import argparse
 import ast
-import json
 import subprocess
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from check_end_to_end import _python_code  # noqa: E402
+from patch_record import ACTIVE, APPLIED, SKIPPED, read  # noqa: E402
 
 _DEFS = (ast.FunctionDef, ast.AsyncFunctionDef)
+RAN = "it ran with a patch applied"
+UNRUN = "it did not run, so what it runs under is unknown"
 
 
 class ToolError(Exception):
@@ -36,15 +38,17 @@ class ToolError(Exception):
 
 def _git(root: Path, *args: str) -> str:
     try:
-        return subprocess.run(["git", *args], cwd=root, capture_output=True, text=True, encoding="utf-8",
-                              check=True).stdout
-    except (subprocess.CalledProcessError, FileNotFoundError) as e:
+        return subprocess.run(["git", "-c", "core.quotePath=false", *args], cwd=root, capture_output=True,
+                              text=True, encoding="utf-8", check=True).stdout
+    except (subprocess.CalledProcessError, FileNotFoundError, UnicodeDecodeError) as e:
         raise ToolError(f"git {' '.join(args)} failed: {e}") from e
 
 
 def _source(root: Path, rev: str, path: str) -> str | None:
-    r = subprocess.run(["git", "show", f"{rev}:{path}"], cwd=root, capture_output=True, text=True, encoding="utf-8")
-    return r.stdout if r.returncode == 0 else None
+    try:
+        return _git(root, "show", f"{rev}:{path}")
+    except ToolError:
+        return None
 
 
 def _units(src: str) -> tuple[dict[str, ast.stmt], list[ast.stmt]]:
@@ -77,43 +81,60 @@ def _code(node: ast.AST) -> str | None:
     return _python_code(ast.unparse(node))
 
 
-def _changed(root: Path, base: str, path: str) -> list[tuple[str, ast.stmt]]:
-    """The units of `path` the PR adds or changes, by name (a statement as "line N")."""
+def _file_units(root: Path, base: str, path: str, was_path: str) -> list[tuple[str, ast.stmt, bool]]:
+    """Every unit of `path` as (name, node, whether the PR adds or changes it); a statement is
+    named "line N". `was_path` is the file's path on the base (a rename's old path)."""
     head = _source(root, "HEAD", path)
     if head is None:
         return []
-    old = _source(root, base, path)
+    old = _source(root, base, was_path)
     was_funcs, was_rest = _units(old) if old else ({}, [])
     was = {n: _code(f) for n, f in was_funcs.items()}
     was_statements = {_code(s) for s in was_rest}
     funcs, rest = _units(head)
-    return ([(n, f) for n, f in funcs.items() if was.get(n) != _code(f)]
-            + [(f"line {s.lineno}", s) for s in rest if _code(s) not in was_statements])
+    return ([(n, f, was.get(n) != _code(f)) for n, f in funcs.items()]
+            + [(f"line {s.lineno}", s, _code(s) not in was_statements) for s in rest])
 
 
-def _record(where: Path) -> list[dict]:
-    files = sorted(where.glob("*.jsonl")) if where.is_dir() else []
-    if not files:
-        raise ToolError(f"no patch record in {where}: run the suite with ED_PATCH_RECORD={where} "
-                        "python -m pytest -p tools.patch_record")
-    return [json.loads(line) for f in files for line in f.read_text(encoding="utf-8").splitlines() if line]
+def _changed_files(root: Path, base: str) -> dict[str, str]:
+    """The PR's added, changed and renamed test files, each with its path on the base."""
+    out = {}
+    for row in _git(root, "diff", "--name-status", "-M", "--diff-filter=AMR", f"{base}...HEAD").splitlines():
+        status, *paths = row.split("\t")
+        if paths[-1].startswith("tests/") and paths[-1].endswith(".py"):
+            out[paths[-1]] = paths[0]
+    return out
+
+
+def _covers(site: str, test: str) -> bool:
+    """Whether a patch applied from file `site` and left applied reaches a test in file `test`."""
+    if site.rsplit("/", 1)[-1] == "conftest.py":
+        return test.startswith(site[:-len("conftest.py")])
+    return site == test
 
 
 def violations(root: Path, base: str, record: Path) -> list[str]:
-    runs = _record(record)
-    changed = [f for f in _git(root, "diff", "--name-only", "--diff-filter=AMR", f"{base}...HEAD").splitlines()
-               if f.startswith("tests/") and f.endswith(".py")]
-    units = {path: _changed(root, base, path) for path in changed}
+    try:
+        events = read(record)
+    except FileNotFoundError as e:
+        raise ToolError(str(e)) from e
+    units = {path: _file_units(root, base, path, was) for path, was in _changed_files(root, base).items()}
     reasons: dict[str, set[str]] = {}
-    for run in runs:
-        if run["test"]:
-            path, _, name = run["test"].split("[")[0].partition("::")
-            if any(n == name.replace("::", ".") for n, _ in units.get(path, [])):
-                reasons.setdefault(f"{path}::{name.replace('::', '.')}", set()).add("it ran with a patch applied")
-        for path, line in run["sites"]:
-            inside = [(u.end_lineno - getattr(u, "first", u.lineno), n) for n, u in units.get(path, [])
+    for e in events:
+        if e.test:
+            path, _, name = e.test.split("[")[0].partition("::")
+            name = name.replace("::", ".")
+            if any(n == name and changed for n, _, changed in units.get(path, [])):
+                if e.kind == SKIPPED:
+                    reasons.setdefault(f"{path}::{name}", set()).add(UNRUN)
+                elif e.kind == APPLIED or (e.kind == ACTIVE and any(_covers(p, path) for p, _ in e.sites)):
+                    reasons.setdefault(f"{path}::{name}", set()).add(RAN)
+        if e.kind != APPLIED:
+            continue
+        for path, line in e.sites:
+            inside = [(u.end_lineno - getattr(u, "first", u.lineno), n, changed) for n, u, changed in units.get(path, [])
                       if getattr(u, "first", u.lineno) <= line <= u.end_lineno]
-            if inside:
+            if inside and min(inside)[2]:
                 reasons.setdefault(f"{path}::{min(inside)[1]}", set()).add(f"line {line} applies one")
     return [f"{unit} patches: {', '.join(sorted(why))}" for unit, why in sorted(reasons.items())]
 

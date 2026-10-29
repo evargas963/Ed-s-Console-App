@@ -33,8 +33,9 @@ def _line(text: str, needle: str) -> int:
     return text[:text.index(needle)].count("\n") + 1
 
 
-def _check(tmp_path: Path, files: dict[str, str], base: dict[str, str] = BASE) -> list[str]:
-    """The check's verdict on a PR of `files` over `base`, after the PR's suite ran with the recorder."""
+def _check(tmp_path: Path, files: dict[str, str | None], base: dict[str, str] = BASE) -> list[str]:
+    """The check's verdict on a PR of `files` (None deletes one) over `base`, after the PR's suite
+    ran with the recorder."""
     root = tmp_path / "repo"
     root.mkdir()
     _git(root, "init", "-q", "-b", "main")
@@ -43,7 +44,10 @@ def _check(tmp_path: Path, files: dict[str, str], base: dict[str, str] = BASE) -
     for commit in (base, files):
         for name, text in commit.items():
             (root / name).parent.mkdir(parents=True, exist_ok=True)
-            (root / name).write_text(text, encoding="utf-8")
+            if text is None:
+                (root / name).unlink()
+            else:
+                (root / name).write_text(text, encoding="utf-8")
         _git(root, "add", *commit)
         _git(root, "commit", "-q", "-m", "pr" if commit is files else "base")
         if commit is base:
@@ -118,7 +122,7 @@ def test_a_fixture_changed_to_patch_is_refused_though_its_tests_are_unchanged(tm
 
 
 def test_an_old_patching_test_whose_docstring_and_comments_alone_change_passes(tmp_path):
-    """Operator 2026-10-28: a patching test may change in its docstrings and comments; its code may not."""
+    """A patching test may change in its docstrings and comments; its code may not."""
     assert _check(tmp_path, {"tests/test_old.py": OLD_FILE.replace(
         "def test_old_one(monkeypatch):\n", 'def test_old_one(monkeypatch):\n    """The spot reader."""\n').replace(
         "    assert calc.spot({}) == 1", "    assert calc.spot({}) == 1  # the patched value")}) == []
@@ -139,6 +143,53 @@ def test_names_that_only_look_like_patches_are_not_patches(tmp_path):
     new = ("class Client:\n    def patch(self, url):\n        return url\n\n\n"
            "def test_new(request):\n    request.getfixturevalue('tmp_path')\n    patch = Client().patch('/x')\n    assert patch == '/x'\n")
     assert _check(tmp_path, {"tests/test_new.py": new}) == []
+
+
+def test_a_patch_dict_decorator_under_a_patch_decorator_is_refused(tmp_path):
+    new = ("import os\nfrom unittest import mock\n\n\n@mock.patch('calc.spot', return_value=3)\n"
+           "@mock.patch.dict(os.environ, {'X': '1'})\ndef test_new(spot):\n    assert os.environ['X'] == '1'\n")
+    assert _check(tmp_path, {"tests/test_new.py": new}) == [
+        f"tests/test_new.py::test_new patches: {RAN}, line {_line(new, '@mock.patch(')} applies one"]
+
+
+def test_a_patch_applied_when_the_conftest_is_imported_is_refused(tmp_path):
+    now = CONFTEST.replace("import pytest\n", "import pytest\nfrom unittest import mock\n\nmock.patch('time.time', lambda: 1.0).start()\n")
+    line = _line(now, "mock.patch(")
+    assert _check(tmp_path, {"tests/conftest.py": now}) == [f"tests/conftest.py::line {line} patches: line {line} applies one"]
+
+
+def test_a_new_test_that_did_not_run_is_refused(tmp_path):
+    """Skipped here, it would patch where it runs; what it runs under is unknown."""
+    new = "import pytest\n\n\n@pytest.mark.skipif(True, reason='elsewhere')\ndef test_new(monkeypatch):\n    monkeypatch.setenv('X', '1')\n"
+    assert _check(tmp_path, {"tests/test_new.py": new}) == [f"tests/test_new.py::test_new patches: {cnp.UNRUN}"]
+
+
+def test_a_new_test_fetching_a_patching_fixture_by_name_is_refused(tmp_path):
+    new = "def test_new(request):\n    request.getfixturevalue('pinned')\n"
+    assert _check(tmp_path, {"tests/test_new.py": new}) == [
+        f"tests/test_new.py::test_new patches: {RAN}, line 2 applies one"]
+
+
+def test_a_renamed_file_keeps_its_old_patching_test_unjudged(tmp_path):
+    assert _check(tmp_path, {"tests/test_moved.py": OLD_FILE, "tests/test_old.py": None}) == []
+
+
+def test_an_unchanged_patching_function_in_a_changed_block_is_not_judged(tmp_path):
+    was = "import os\n\nif True:\n    def test_one(monkeypatch):\n        monkeypatch.setenv('X', '1')\n"
+    assert _check(tmp_path, {"tests/test_block.py": was + "\n    def test_two():\n        assert True\n"},
+                  base={**BASE, "tests/test_block.py": was}) == []
+
+
+def test_a_patch_left_applied_by_another_file_does_not_judge_a_new_test(tmp_path):
+    """A leak from another file reaches a test only by the order its worker runs them in."""
+    base = {**BASE, "tests/test_a_leak.py": "import pytest\n\npytest.MonkeyPatch().setenv('X', '1')\n\n\ndef test_a():\n    assert True\n"}
+    assert _check(tmp_path, {"tests/test_new.py": "def test_new():\n    assert True\n"}, base=base) == []
+
+
+def test_a_patch_left_applied_by_its_own_file_judges_a_new_test(tmp_path):
+    was = "import pytest\n\npytest.MonkeyPatch().setenv('X', '1')\n\n\ndef test_a():\n    assert True\n"
+    assert _check(tmp_path, {"tests/test_held.py": was + "\n\ndef test_new():\n    assert True\n"},
+                  base={**BASE, "tests/test_held.py": was}) == [f"tests/test_held.py::test_new patches: {RAN}"]
 
 
 def test_a_new_test_that_patches_nothing_is_allowed(tmp_path):
