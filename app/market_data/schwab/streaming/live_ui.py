@@ -71,10 +71,8 @@ class LiveUiServer:
         self, heartbeat_fn, stats: dict, record_heartbeat=lmp.record_feed_heartbeat, clock=time.time
     ) -> None:
         self.heartbeat_fn = heartbeat_fn
-        self.clock = clock  # the time each row is finished at
-        self.record_heartbeat = (
-            record_heartbeat  # where the daemon keeps its own record of each beat
-        )
+        self.clock = clock                           # the time each row is finished at, and each beat
+        self.record_heartbeat = record_heartbeat     # where the daemon keeps its own record of each beat
         self.stats = stats
         self.clients: set[_Client] = set()
         stats.update(
@@ -98,7 +96,7 @@ class LiveUiServer:
     def beat(self) -> dict:
         """The daemon's whole status (Schwab socket, symbols held and refused per service, the
         watchlist, health), recorded here and sent with every beat: the console's one record of it."""
-        hb = self.heartbeat_fn()
+        hb = self.heartbeat_fn(self.clock())
         self.record_heartbeat(hb)
         return hb
 

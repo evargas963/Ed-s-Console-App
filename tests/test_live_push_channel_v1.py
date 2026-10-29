@@ -108,12 +108,8 @@ async def _until(pred, timeout=5.0):
 def _daemon_heartbeat(socket_open=True, held=("SPY",), clock=time.time):
     """What capture.py's heartbeat reports for a session holding `held` on LEVELONE_EQUITIES, each
     beat stamped by `clock`."""
-    return lambda: {
-        "ts": clock(),
-        "schwab_socket_open": socket_open,
-        "held": {"LEVELONE_EQUITIES": list(held)},
-        "health": {},
-    }
+    return lambda _now: {"ts": clock(), "schwab_socket_open": socket_open,
+                    "held": {"LEVELONE_EQUITIES": list(held)}, "health": {}}
 
 
 async def _run(body, heartbeat_fn=None):

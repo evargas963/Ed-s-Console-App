@@ -76,13 +76,9 @@ class _Feed:
         self.held = list(held)
         self.clock = clock
 
-    def __call__(self) -> dict:
-        return {
-            "ts": self.clock(),
-            "schwab_socket_open": self.open,
-            "held": {"LEVELONE_EQUITIES": self.held},
-            "health": {},
-        }
+    def __call__(self, now: float) -> dict:
+        return {"ts": now, "schwab_socket_open": self.open,
+                "held": {"LEVELONE_EQUITIES": self.held}, "health": {}}
 
 
 async def _run(body, feed=None):

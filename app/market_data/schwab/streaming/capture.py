@@ -776,20 +776,18 @@ class Daemon:
         held = symbol in self.held["LEVELONE_OPTIONS"]
         return self.bus.current.get(_current_key("LEVELONE_OPTIONS", symbol)) if held else None
 
-    def status(self) -> dict:
-        """What the console and browsers are told every second (live_push / live_ui)."""
-        now = time.time()
+    def status(self, now: float) -> dict:
+        """What the console and browsers are told every second (live_push / live_ui), at `now`."""
         last = self.stream.last_frame_ts if self.stream is not None else 0.0
-        return {
-            "ts": now,
-            "schwab_socket_open": bool(last) and now - last < DEAD_SEC,
-            "schwab_down": self.schwab_down,
-            "watchlist": list(self.watchlist),
-            "chain_round_sec": self.chains.round_sec if self.chains is not None else None,
-            "held": {k: sorted(v) for k, v in self.held.items()},
-            "health": self.health.report(now),
-            "writer": self.writer.status() if self.writer is not None else None,
-        }
+        return {"ts": now,
+                "schwab_socket_open": bool(last) and now - last < DEAD_SEC,
+                "schwab_down": self.schwab_down,
+                "watchlist": list(self.watchlist),
+                "chain_round_sec": self.chains.round_sec if self.chains is not None else None,
+                "chains_waiting": self.chains.waiting if self.chains is not None else None,
+                "held": {k: sorted(v) for k, v in self.held.items()},
+                "health": self.health.report(now),
+                "writer": self.writer.status() if self.writer is not None else None}
 
     async def send_requests(self) -> None:
         """Send every queued request, each split under Schwab's message limit, without waiting
@@ -1092,15 +1090,16 @@ def _start_log() -> None:
 FEED_STATUS_EVERY_SEC = 60.0
 
 
-async def record_feed_status(daemon: "Daemon", stop: asyncio.Event) -> None:
-    """Once a minute, per Schwab feed: checked at X (the same X for every feed), is the socket
+async def record_feed_status(daemon: "Daemon", stop: asyncio.Event,
+                             every: float = FEED_STATUS_EVERY_SEC) -> None:
+    """Every `every` seconds (once a minute), per Schwab feed: checked at X (the same X for every feed), is the socket
     open, when Schwab last sent anything, how many symbols are subscribed, and when this feed
     last carried data -- so a quiet feed and a dead one read differently in the database."""
     while True:
         now = time.time()
         try:
             last_frame = daemon.stream.last_frame_ts if daemon.stream is not None else None
-            st = daemon.status()
+            st = daemon.status(now)
             for svc in SERVICES:
                 daemon.bus.publish(
                     f"feedstatus.{svc}",
@@ -1117,7 +1116,7 @@ async def record_feed_status(daemon: "Daemon", stop: asyncio.Event) -> None:
             # why; the next round still runs (the console's status line reports the record's age)
             log.warning("feed status round failed: %s: %s", type(e).__name__, e)
         try:
-            await asyncio.wait_for(stop.wait(), timeout=FEED_STATUS_EVERY_SEC)
+            await asyncio.wait_for(stop.wait(), timeout=every)
             return
         except asyncio.TimeoutError:
             pass

@@ -97,9 +97,7 @@ def test_health_reports_the_daemons_schwab_socket_and_the_app_stays_ok():
     }
     assert payload["watchlist_tickers"] is None
 
-    lmp.record_feed_heartbeat(
-        capture.Daemon(MessageBus(), HealthRegistry(), ["SPY", "$SPX"]).status()
-    )
+    lmp.record_feed_heartbeat(capture.Daemon(MessageBus(), HealthRegistry(), ["SPY", "$SPX"]).status(time.time()))
     payload = server.health()
     assert payload["capabilities"] == {
         "schwab": "UNAVAILABLE",
