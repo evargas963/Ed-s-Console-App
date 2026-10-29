@@ -295,6 +295,21 @@ def test_a_name_bound_by_unread_code_in_a_changed_file_is_refused(tmp_path):
     assert _check(tmp_path, {"tests/test_old.py": now}) == [f"tests/test_old.py::test_again patches: {cnp.UNBOUND}"]
 
 
+def test_a_new_class_inheriting_old_patching_tests_is_refused(tmp_path):
+    was = "import pytest\n\n\nclass TestOld:\n    def test_x(self, monkeypatch):\n        monkeypatch.setenv('X', '1')\n"
+    now = was + "\n\nclass TestAgain(TestOld):\n    pass\n"
+    assert _check(tmp_path, {"tests/test_cls.py": now}, base={**BASE, "tests/test_cls.py": was}) == [
+        f"tests/test_cls.py::TestAgain patches: {RAN}"]
+
+
+def test_a_class_of_only_a_docstring_inheriting_tests_is_judged_by_its_header(tmp_path):
+    """A change elsewhere in the file leaves the class and its inherited tests unjudged."""
+    was = ("class _Base:\n    def test_x(self):\n        assert True\n\n\n"
+           "class TestFoo(_Base):\n    \"\"\"Runs the base tests.\"\"\"\n\n\nVALUE = 1\n")
+    assert _check(tmp_path, {"tests/test_base.py": was.replace("VALUE = 1", "VALUE = 2")},
+                  base={**BASE, "tests/test_base.py": was}) == []
+
+
 def test_a_local_named_like_another_test_does_not_take_its_runs(tmp_path):
     """test_x, changed and skipped, keeps its own 'did not run' though its local is named test_b."""
     now = ("import pytest\n\n\n@pytest.mark.skip\ndef test_x():\n    test_b = 1\n    assert test_b\n\n\n"

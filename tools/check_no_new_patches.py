@@ -57,20 +57,25 @@ def _outside_defs(node: ast.AST) -> list[ast.AST]:
 
 
 def _units(src: bytes) -> tuple[dict[str, ast.stmt], list[ast.stmt]]:
-    """A module's functions by name (Class.name at any class depth; one under an `if` or `try` by
-    its own name), each carrying its classes' decorators, and its other statements, docstrings
-    aside (a compound statement holds the functions under it)."""
+    """A module's functions and class headers (name, bases, decorators) by name (Class.name at any
+    class depth; one under an `if` or `try` by its own name), each carrying its classes'
+    decorators, and its other statements, docstrings aside (a compound statement holds the
+    functions under it)."""
     funcs: dict[str, ast.stmt] = {}
     rest: list[ast.stmt] = []
 
     def walk(body: list[ast.stmt], prefix: str, decorators: list[ast.expr], top: bool) -> None:
         for node in body:
-            node.prefix = prefix
             if isinstance(node, _DEFS):
                 node.first = min([d.lineno for d in node.decorator_list] + [node.lineno])
                 node.decorator_list = decorators + node.decorator_list
                 funcs[prefix + node.name] = node
             elif isinstance(node, ast.ClassDef):
+                header = ast.ClassDef(name=node.name, bases=node.bases, keywords=node.keywords, body=[ast.Pass()],
+                                      decorator_list=decorators + node.decorator_list, type_params=node.type_params)
+                header.lineno, header.end_lineno = node.lineno, node.end_lineno
+                header.first = min([d.lineno for d in node.decorator_list] + [node.lineno])
+                funcs[prefix + node.name] = header
                 walk(node.body, f"{prefix}{node.name}.", decorators + node.decorator_list, True)
             elif not (isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant)):
                 if top:
@@ -141,7 +146,8 @@ def _resolve(units: dict, path: str, at: str | int) -> tuple[str, str] | None:
     for n, u, _ in units.get(path, []):
         if n == at or at in getattr(u, "binds", ()):
             return path, n
-    return None
+    cls = at.rpartition(".")[0]
+    return _resolve(units, path, cls) if cls else None    # a method the class inherits: its class
 
 
 def violations(root: Path, base: str, record: Path) -> list[str]:
@@ -160,9 +166,7 @@ def violations(root: Path, base: str, record: Path) -> list[str]:
             collected |= tests
             collected_files |= {path for path, _ in e.test}
             path, name = e.test[0]
-            cls = name.rpartition(".")[0]
-            inherited = cls and any(getattr(u, "prefix", "") == cls + "." for _, u, _ in units.get(path, []))
-            if path in units and not _resolve(units, path, name) and not inherited:
+            if path in units and not _resolve(units, path, name):
                 reasons.setdefault(f"{path}::{name}", set()).add(UNBOUND)
         for path, name in tests:
             if (e.kind == APPLIED or e.sites) and any(n == name and changed for n, _, changed in units[path]):

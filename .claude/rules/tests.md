@@ -15,7 +15,8 @@ paths:
   run as `tools/patch_record.py` records it, in the required `pytest-full` job
   (`tests/test_check_no_new_patches_v1.py`); a patch in a branch CI does not take, a patch another
   file's test leaves applied, a `unittest.TestCase` class not named `Test*` in a file pytest
-  collects nothing from (skipped whole, ignored, or in a package that skips),
+  collects nothing from (skipped whole, ignored, or in a package that skips), a test set onto a class
+  with `setattr`,
   direct assignment over product code, and the existing ones — no machine check, TEST-PATCHES.
 - A flaky test is fixed in app code with the test unchanged, or in the test with its assertions
   unchanged and evidence the timing can't occur in real use (the code that rules it out); loosened expectations, removed checks and
