@@ -1191,9 +1191,20 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#heatBody .hcell').first()).toBeVisible();
     await expect(page.locator('#heatBody .heat-banner')).toContainText(
       'CLOSE · ' + CLOSED.levels_time_ct + ' · ' + CLOSED.levels_age_text);
-    await expect(page.locator('#heatBody .heat-banner')).toHaveAttribute('title',
-      CLOSED.levels_stale_reason || CLOSED.levels_state);
     await expect(page.locator('#heatBody .heat-wrap')).toHaveClass(/recede/);
+  });
+
+  test('the next day after its close the heatmap banner reads STALE with the served reason (the route\'s own answer)', async ({ page }) => {
+    // /api/options/gamma-surface for SPY's 2026-10-22 close publication after the next day's close,
+    // 2026-10-23 16:30 ET, no chain fetched since (tests/test_level_crosses_wire.py)
+    const STALE = require(path.join(__dirname, '..', 'fixtures', 'real_spy_gamma_surface_after_the_next_close_2026_10_23.json'));
+    await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify(STALE) }));
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#heatBody .hcell').first()).toBeVisible();
+    const banner = page.locator('#heatBody .heat-banner');
+    await expect(banner).toContainText('STALE · ' + STALE.levels_time_ct + ' · ' + STALE.levels_age_text);
+    await expect(banner).toHaveAttribute('title', STALE.levels_stale_reason);
   });
 
   test('#1.3 a warming (not yet live) surface shows LIVE SURFACE WARMING (never a final state)', async ({ page }) => {
