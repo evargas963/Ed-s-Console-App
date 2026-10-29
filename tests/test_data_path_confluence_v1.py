@@ -253,6 +253,13 @@ def test_a_served_strike_with_no_open_interest_shows_zero_charm_and_says_why_it_
     assert all(r["score"] is None and r["missing"] == ["no open interest and no volume"] for r in shown)
 
 
+def _around(listed: list[float], price: float) -> list[float]:
+    """The window as defined: the five listed strikes below the price, the one on it, the five
+    above, lowest first."""
+    return ([s for s in listed if s < price][-5:] + [s for s in listed if s == price]
+            + [s for s in listed if s > price][:5])
+
+
 def test_the_window_is_five_strikes_each_side_of_the_price():
     """IWM's same-day expiry captured 2026-10-23 15:37:16 ET, priced at the underlyingPrice Schwab
     sent in it, 276.00, itself a listed strike: the matrix shows the five listed strikes below the
@@ -290,12 +297,8 @@ def test_the_window_follows_the_live_price_off_the_chains_price():
         _forget(tk)
     listed = sorted({float(c["strikePrice"]) for c in SPY_CLOSE.chain
                      if str(c["expirationDate"])[:10] == "2026-10-22"})
-    around = sorted([s for s in listed if s < live][-5:] + [s for s in listed if s == live]
-                    + [s for s in listed if s > live][:5])
     assert (body["spot"], body["priced_at_spot"]) == (live, SPY_CLOSE.spot)
-    assert sorted(r["strike"] for r in body["rows"]) == around
-    assert around != sorted([s for s in listed if s < SPY_CLOSE.spot][-5:] + [s for s in listed if s == SPY_CLOSE.spot]
-                            + [s for s in listed if s > SPY_CLOSE.spot][:5])
+    assert sorted(r["strike"] for r in body["rows"]) == _around(listed, live) != _around(listed, SPY_CLOSE.spot)
 
 
 def test_a_price_on_a_listed_strike_puts_the_spot_line_on_that_strike():
@@ -323,11 +326,12 @@ def test_a_price_above_every_listed_strike_has_no_spot_line():
     is still shown."""
     held, price = SPY_0DTE, _SPY_PRINT_ABOVE["native"]["LAST_PRICE"]
     book, _diag = compute_exposures_by_strike(held.chain, spot=held.spot, now=held.now, product=INDEX_OPTIONS)
-    body = build_matrix(book, {}, iv_by_strike(held.chain), held.spot, 0.0)
-    assert price > max(body["strikes"])
-    assert under_strike(price, body["strikes"]) is None
-    assert at_price(body["rows"], body["strikes"], price) == {"spot": price, "spot_text": price_text(price)}
-    assert body["rows"] and not any(r["spot_line"] for r in body["rows"])
+    matrix = build_matrix(book, {}, iv_by_strike(held.chain), held.spot, 0.0)
+    rows = window_rows(matrix, price)
+    assert price > max(matrix["strikes"])
+    assert under_strike(price, matrix["strikes"]) is None
+    assert at_price(rows, matrix["strikes"], price) == {"spot": price, "spot_text": price_text(price)}
+    assert rows and not any(r["spot_line"] for r in rows)
 
 
 def test_a_passed_expiry_is_not_the_one_the_matrix_opens_on():
@@ -430,12 +434,14 @@ def test_the_matrix_request_returns_the_ranking_stored_with_the_book():
         body = server.confluence_payload("SPY", expiry, held.now)
     finally:
         server._terrain_cache.pop("SPY", None)
-    shown = window_rows(other["rows"], held.spot)   # no live price is held: the book's price
+    ranked = other["ranked"]
+    shown = _around(sorted(ranked), held.spot)   # no live price is held: the book's price
     assert body["spot"] is None
-    assert not {r["strike"] for r in other["rows"]} <= set(book)
-    assert [r["strike"] for r in body["rows"]] == [r["strike"] for r in shown]
-    assert [(r["score_text"], r["iv_text"], r["charm_text"]) for r in body["rows"]] == [
-        (r["score_text"], r["iv_text"], r["charm_text"]) for r in shown]
+    assert not set(ranked) <= set(book)
+    assert [r["strike"] for r in body["rows"]] == shown[::-1]
+    assert [(r["score"], r["iv_text"]) for r in body["rows"]] == [
+        (ranked[s][1]["score"], None if ranked[s][0]["IV"] is None else f"{ranked[s][0]['IV']:.1f}")
+        for s in shown[::-1]]
 
 
 def _window_has(rows: list, key: str) -> bool:
@@ -459,8 +465,8 @@ def test_the_close_keeps_the_vanna_a_settled_clock_drops():
     iv = iv_by_strike(held.chain)
     charm_close = compute_charm_by_strike(held.chain, held.spot, now=valued, product=INDEX_OPTIONS)
     charm_late = compute_charm_by_strike(held.chain, held.spot, now=at, product=INDEX_OPTIONS)
-    close_rows = build_matrix(at_close, charm_close, iv, held.spot, 0.0)["rows"]
-    late_rows = build_matrix(after, charm_late, iv, held.spot, 0.0)["rows"]
+    close_rows = window_rows(build_matrix(at_close, charm_close, iv, held.spot, 0.0), held.spot)
+    late_rows = window_rows(build_matrix(after, charm_late, iv, held.spot, 0.0), held.spot)
     assert _window_has(close_rows, "vanna_text")
     assert _window_has(close_rows, "charm_text")
     assert _window_has(close_rows, "score")
@@ -1015,8 +1021,7 @@ def test_the_matrix_shows_the_live_price_and_the_one_day_move_levels_serves():
     moves = {lv["abbrev"]: lv["price"] for lv in body["levels"] if lv["abbrev"] in ("EM+", "EM−")}
     listed = sorted({float(c["strikePrice"]) for c in CRWD.chain})
     assert live not in listed
-    assert sorted(r["strike"] for r in body["rows"]) == (
-        [s for s in listed if s < live][-5:] + [s for s in listed if s > live][:5])
+    assert sorted(r["strike"] for r in body["rows"]) == _around(listed, live)
     assert (body["spot"], body["spot_text"], body["priced_at_spot"]) == (live, f"{live:.2f}", CRWD.spot)
     assert body["spot_time_ct"] == ct_label(_QUOTE["native"]["TRADE_TIME_MILLIS"] / 1000.0)
     assert moves == {"EM+": levels["em_up"], "EM−": levels["em_dn"]}

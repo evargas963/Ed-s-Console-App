@@ -3201,11 +3201,9 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict:
     pin = _level_named(levels, "0D Pin")
     em_up = _level_named(levels, "EM+")
     em_dn = _level_named(levels, "EM−")
-    rows = stored.get("rows")
-    body = {key: value for key, value in stored.items() if key not in ("rows", "strikes")}
+    body = {key: value for key, value in stored.items() if key not in ("ranked", "peaks", "strikes")}
     # the window follows the live price; without one, the price the chain was ranked at
-    shown = window_rows(rows, live_spot if live_spot is not None else float(spot)) if isinstance(rows, list) else []
-    body["rows"] = [dict(row) for row in shown]
+    body["rows"] = window_rows(stored, live_spot if live_spot is not None else float(spot))
     body.update(at_price(body["rows"], stored["strikes"], live_spot))
     low = None
     high = None

@@ -330,8 +330,9 @@ from Schwab to the screen (daemon, console, page), are these:
   every pane. Charm for that expiry is the map `compute_terrain` stored
   (`compute_charm_by_strike` once for the expiry). The volatility blend for that expiry is
   the map `compute_terrain` stored (`iv_by_strike` once for the expiry). The ranking is
-  `score_magnitudes` once for that expiry, stored with the publication. The matrix does not
-  call any of them again. Vanna
+  `score_magnitudes` once for that expiry, every strike of it, stored with the publication. The
+  matrix does not call any of them again; the request draws only its window's rows
+  (`confluence_composite.window_rows`). Vanna
   is the book's `net_vanna`. After that ticker's option market has closed for the day
   (`time_et.option_market_open`), the publication is valued at that day's close
   (`time_et.valuation_instant`, the index close for SPY, QQQ, and IWM, the equity-option close for
@@ -339,8 +340,11 @@ from Schwab to the screen (daemon, console, page), are these:
   and before the next open it is valued at the clock: a closed day has no same-day close, so no
   0DTE level is made from a later expiry (operator 2026-10-25). A later
   equity print keeps the price that publication was priced at (`priced_at_spot`); the matrix's
-  spot, each row's distance from it and the row it sits under are the live price's
-  (`confluence_composite.at_price`). The
+  window (five listed strikes below the price, five above and one on it,
+  `confluence_composite.window_strikes`), its spot, each row's distance from it and the row it
+  sits under are the live price's (`confluence_composite.at_price`). With no live price held, the
+  window is around `priced_at_spot` and no row has the spot line (a decision owed by the operator,
+  `ACTIVE_PROGRAM.md` Confluence matrix). The
   chain's own time stays `computed_ts_utc` and is the line above the matrix. The expiry is a dropdown; a same-day expiry is labeled 0DTE. Each level is sent at its own price and drawn on the rail. An expiry dated before today is not offered. A request that names a date before
   today opens on the next expiry, and the page keeps that one. When every expiry
   on the held chain is before today, the route says no expiry on this chain is

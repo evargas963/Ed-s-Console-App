@@ -242,10 +242,12 @@ def window_strikes(strikes: list[float], spot: float) -> list[float]:
     return sorted(below + at + above)
 
 
-def window_rows(rows: list[dict], price: float) -> list[dict]:
-    """The rows of the strikes window_strikes chooses at `price`, in the rows' order."""
-    shown = set(window_strikes([row["strike"] for row in rows], price))
-    return [row for row in rows if row["strike"] in shown]
+def window_rows(matrix: dict, price: float) -> list[dict]:
+    """The rows of the strikes window_strikes chooses at `price`, highest strike first, each
+    coloured on its whole expiry's scale."""
+    ranked = matrix["ranked"]
+    shown = window_strikes(list(ranked), price)
+    return [_row(strike, ranked[strike], matrix["peaks"]) for strike in sorted(shown, reverse=True)]
 
 
 def under_strike(price: float, strikes: list[float]) -> float | None:
@@ -376,8 +378,8 @@ def _factor_row(part: dict) -> dict:
 
 def build_matrix(exposures: dict, charm_by_strike: dict, ivs: dict[float, float | None],
                  spot: float, dte: float) -> dict:
-    """The rows and the score for one expiry's book: a row for every strike, the window the page
-    shows chosen from them at the price (window_rows)."""
+    """The ranking of one expiry's book: every strike's factors and score and the expiry's colour
+    scales. The rows the page shows are drawn from it at the price (window_rows)."""
     name = preset_name(dte)
     weights = in_score_weights(name)
     strikes = sorted(float(s) for s in exposures.keys())
@@ -392,71 +394,11 @@ def build_matrix(exposures: dict, charm_by_strike: dict, ivs: dict[float, float 
         weights,
     )
     cap = ceiling(weights)
-    net_peak = _peak(f["_net_gex"] for f in mags.values())
-    oi_peak = _peak(f["OI"] for f in mags.values())
-    gross_peak = _peak(f["_gross"] for f in mags.values())
-    vol_peak = _peak(f["VOL"] for f in mags.values())
-    dex_peak = _peak(f["_dex"] for f in mags.values())
-    vanna_peak = _peak(f["_vanna"] for f in mags.values())
-    iv_peak = _peak(f["IV"] for f in mags.values())
-    charm_peak = _peak(f["_charm"] for f in mags.values())
-    vol_oi_peak = _peak(f["_vol_oi"] for f in mags.values())
-    pc_gex_peak = _peak(None if f["_pc_gex"] is None else 1 - f["_pc_gex"] for f in mags.values())
-    pc_vol_peak = _peak(None if f["_pc_vol"] is None else 1 - f["_pc_vol"] for f in mags.values())
-    rows = []
-    for strike in sorted(mags, reverse=True):
-        factors = mags[strike]
-        result = scored[strike]
-        score = result["score"]
-        pc_gex = factors["_pc_gex"]
-        pc_vol = factors["_pc_vol"]
-        rows.append({
-            "strike": strike,
-            "strike_text": price_text(strike),
-            "net_gex_text": _signed_millions(factors["_net_gex"]),
-            "net_style": _ramp(factors["_net_gex"], net_peak, True),
-            "net_reason": _absent(factors["_net_gex"], "net gamma is missing"),
-            "oi_text": None if factors["OI"] is None else f"{factors['OI']:.0f}",
-            "oi_style": _ramp(factors["OI"], oi_peak, False),
-            "oi_reason": _absent(factors["OI"], "open interest is missing"),
-            "pc_gex_text": _text(pc_gex, 2),
-            "pc_gex_style": _ramp(None if pc_gex is None else 1 - pc_gex, pc_gex_peak, True),
-            "pc_gex_reason": _absent(pc_gex, "put/call gamma is missing"),
-            "gross_text": _millions(factors["_gross"]),
-            "gross_style": _ramp(factors["_gross"], gross_peak, False),
-            "gross_reason": _absent(factors["_gross"], "gross gamma is missing"),
-            "dgex_text": None,
-            "dgex_reason": DGEX_REASON,
-            "volume_text": None if factors["VOL"] is None else f"{factors['VOL']:.0f}",
-            "volume_style": _ramp(factors["VOL"], vol_peak, False),
-            "volume_reason": _absent(factors["VOL"], "volume is missing"),
-            "pc_vol_text": _text(pc_vol, 2),
-            "pc_vol_style": _ramp(None if pc_vol is None else 1 - pc_vol, pc_vol_peak, True),
-            "pc_vol_reason": _absent(pc_vol, "put/call volume is missing"),
-            "vol_oi_text": _text(factors["_vol_oi"], 2),
-            "vol_oi_style": _ramp(factors["_vol_oi"], vol_oi_peak, False),
-            "vol_oi_reason": _absent(factors["_vol_oi"], "volume/open interest is missing"),
-            "flow_text": None,
-            "flow_reason": FLOW_REASON,
-            "dex_text": _signed_millions(factors["_dex"]),
-            "dex_style": _ramp(factors["_dex"], dex_peak, True),
-            "dex_reason": _absent(factors["_dex"], "delta exposure is missing"),
-            "vanna_text": _signed_millions(factors["_vanna"]),
-            "vanna_style": _ramp(factors["_vanna"], vanna_peak, True),
-            "vanna_reason": _absent(factors["_vanna"], "vanna is missing"),
-            "iv_text": _text(factors["IV"], 1),
-            "iv_style": _ramp(factors["IV"], iv_peak, False),
-            "iv_reason": _absent(factors["IV"], "implied volatility is missing"),
-            "charm_text": _signed_thousands(factors["_charm"]),
-            "charm_style": _ramp(factors["_charm"], charm_peak, True),
-            "charm_reason": _absent(factors["_charm"], "charm is missing"),
-            "score": score,
-            "score_text": None if score is None else str(int(round(score))),
-            "heat_background": _ramp(score, cap, False),
-            "missing": result["missing"],
-            "contributions": [_factor_row(p) for p in result["contributions"]],
-            "factors": [_factor_row(p) for p in result["factors"]],
-        })
+    peaks = {key: _peak(f[key] for f in mags.values())
+             for key in ("_net_gex", "OI", "_gross", "VOL", "_dex", "_vanna", "IV", "_charm", "_vol_oi")}
+    peaks.update({key: _peak(None if f[key] is None else 1 - f[key] for f in mags.values())
+                  for key in ("_pc_gex", "_pc_vol")})
+    peaks["score"] = cap
     universe_n = sum(1 for s in mags if _in_universe(
         {k: v for k, v in mags[s].items() if not k.startswith("_")}))
     flat_labels = [_LABEL[k] for k in flat]
@@ -476,6 +418,62 @@ def build_matrix(exposures: dict, charm_by_strike: dict, ivs: dict[float, float 
             {"label": _LABEL[k], "text": f"{100.0 * weights[k] / span:.2f}"}
             for k, span in spans.items() if span is not None and span != 0
         ],
-        "rows": rows,
+        "ranked": {strike: (mags[strike], scored[strike]) for strike in mags},
+        "peaks": peaks,
         "strikes": strikes,
+    }
+
+
+def _row(strike: float, ranked: tuple[dict, dict], peaks: dict) -> dict:
+    """One strike's row of the matrix, its colours on the expiry's scales."""
+    factors, result = ranked
+    score = result["score"]
+    pc_gex = factors["_pc_gex"]
+    pc_vol = factors["_pc_vol"]
+    return {
+        "strike": strike,
+        "strike_text": price_text(strike),
+        "net_gex_text": _signed_millions(factors["_net_gex"]),
+        "net_style": _ramp(factors["_net_gex"], peaks["_net_gex"], True),
+        "net_reason": _absent(factors["_net_gex"], "net gamma is missing"),
+        "oi_text": None if factors["OI"] is None else f"{factors['OI']:.0f}",
+        "oi_style": _ramp(factors["OI"], peaks["OI"], False),
+        "oi_reason": _absent(factors["OI"], "open interest is missing"),
+        "pc_gex_text": _text(pc_gex, 2),
+        "pc_gex_style": _ramp(None if pc_gex is None else 1 - pc_gex, peaks["_pc_gex"], True),
+        "pc_gex_reason": _absent(pc_gex, "put/call gamma is missing"),
+        "gross_text": _millions(factors["_gross"]),
+        "gross_style": _ramp(factors["_gross"], peaks["_gross"], False),
+        "gross_reason": _absent(factors["_gross"], "gross gamma is missing"),
+        "dgex_text": None,
+        "dgex_reason": DGEX_REASON,
+        "volume_text": None if factors["VOL"] is None else f"{factors['VOL']:.0f}",
+        "volume_style": _ramp(factors["VOL"], peaks["VOL"], False),
+        "volume_reason": _absent(factors["VOL"], "volume is missing"),
+        "pc_vol_text": _text(pc_vol, 2),
+        "pc_vol_style": _ramp(None if pc_vol is None else 1 - pc_vol, peaks["_pc_vol"], True),
+        "pc_vol_reason": _absent(pc_vol, "put/call volume is missing"),
+        "vol_oi_text": _text(factors["_vol_oi"], 2),
+        "vol_oi_style": _ramp(factors["_vol_oi"], peaks["_vol_oi"], False),
+        "vol_oi_reason": _absent(factors["_vol_oi"], "volume/open interest is missing"),
+        "flow_text": None,
+        "flow_reason": FLOW_REASON,
+        "dex_text": _signed_millions(factors["_dex"]),
+        "dex_style": _ramp(factors["_dex"], peaks["_dex"], True),
+        "dex_reason": _absent(factors["_dex"], "delta exposure is missing"),
+        "vanna_text": _signed_millions(factors["_vanna"]),
+        "vanna_style": _ramp(factors["_vanna"], peaks["_vanna"], True),
+        "vanna_reason": _absent(factors["_vanna"], "vanna is missing"),
+        "iv_text": _text(factors["IV"], 1),
+        "iv_style": _ramp(factors["IV"], peaks["IV"], False),
+        "iv_reason": _absent(factors["IV"], "implied volatility is missing"),
+        "charm_text": _signed_thousands(factors["_charm"]),
+        "charm_style": _ramp(factors["_charm"], peaks["_charm"], True),
+        "charm_reason": _absent(factors["_charm"], "charm is missing"),
+        "score": score,
+        "score_text": None if score is None else str(int(round(score))),
+        "heat_background": _ramp(score, peaks["score"], False),
+        "missing": result["missing"],
+        "contributions": [_factor_row(p) for p in result["contributions"]],
+        "factors": [_factor_row(p) for p in result["factors"]],
     }
