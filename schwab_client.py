@@ -233,8 +233,10 @@ class OneRefreshSession(OAuth2Client):
             return None if self._refused is None else self._refusal_text()
 
     def _refusal_text(self) -> str:
-        return (f"Schwab refused the sign-in ({self._refused}); nothing is sent to Schwab until a "
-                "new sign-in is saved: python reauth_schwab.py")
+        return (
+            f"Schwab refused the sign-in ({self._refused}); nothing is sent to Schwab until a "
+            "new sign-in is saved: python reauth_schwab.py"
+        )
 
     def _take_saved(self) -> None:
         """Take the sign-in saved to the token file when it is a new one (a creation time not the

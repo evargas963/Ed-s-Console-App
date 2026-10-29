@@ -779,15 +779,17 @@ class Daemon:
     def status(self, now: float) -> dict:
         """What the console and browsers are told every second (live_push / live_ui), at `now`."""
         last = self.stream.last_frame_ts if self.stream is not None else 0.0
-        return {"ts": now,
-                "schwab_socket_open": bool(last) and now - last < DEAD_SEC,
-                "schwab_down": self.schwab_down,
-                "watchlist": list(self.watchlist),
-                "chain_round_sec": self.chains.round_sec if self.chains is not None else None,
-                "chains_waiting": self.chains.waiting if self.chains is not None else None,
-                "held": {k: sorted(v) for k, v in self.held.items()},
-                "health": self.health.report(now),
-                "writer": self.writer.status() if self.writer is not None else None}
+        return {
+            "ts": now,
+            "schwab_socket_open": bool(last) and now - last < DEAD_SEC,
+            "schwab_down": self.schwab_down,
+            "watchlist": list(self.watchlist),
+            "chain_round_sec": self.chains.round_sec if self.chains is not None else None,
+            "chains_waiting": self.chains.waiting if self.chains is not None else None,
+            "held": {k: sorted(v) for k, v in self.held.items()},
+            "health": self.health.report(now),
+            "writer": self.writer.status() if self.writer is not None else None,
+        }
 
     async def send_requests(self) -> None:
         """Send every queued request, each split under Schwab's message limit, without waiting
@@ -1090,8 +1092,9 @@ def _start_log() -> None:
 FEED_STATUS_EVERY_SEC = 60.0
 
 
-async def record_feed_status(daemon: "Daemon", stop: asyncio.Event,
-                             every: float = FEED_STATUS_EVERY_SEC) -> None:
+async def record_feed_status(
+    daemon: "Daemon", stop: asyncio.Event, every: float = FEED_STATUS_EVERY_SEC
+) -> None:
     """Every `every` seconds (once a minute), per Schwab feed: checked at X (the same X for every feed), is the socket
     open, when Schwab last sent anything, how many symbols are subscribed, and when this feed
     last carried data -- so a quiet feed and a dead one read differently in the database."""

@@ -343,15 +343,15 @@ class ChainSweep:
         self.failures = failures  # the daemon's writer: keeps a failed history write
         self.streamed = streamed  # not read: every greek is the quote's
         self.round_sec: float | None = None
-        self.waiting: "str | None" = None              # why no chain is asked for (waits), else None
-        self._expiries: "dict[str, tuple[date, list[date]]]" = {}   # ticker -> (ET date, expiries)
-        self._markets_day: "dict[str, date]" = {}          # market date -> the ET date Schwab answered it
-        self._optioned: "set[str]" = set()                 # tickers Schwab has answered a chain for
-        self._fetched: "dict[str, float]" = {}             # ticker -> when its newest delivered chain began
-        self._candled: "dict[str, float]" = {}             # ticker -> when its newest whole price history began
-        self._queue: "list[tuple[_Chain, dict]]" = []     # contracts whose quote is not asked for
-        self._delivered: "set[str]" = set()                # the tickers this rotation delivered
-        self._written: "dict[str, float | None]" = {}       # ticker -> its newest history capture
+        self.waiting: "str | None" = None  # why no chain is asked for (waits), else None
+        self._expiries: "dict[str, tuple[date, list[date]]]" = {}  # ticker -> (ET date, expiries)
+        self._markets_day: "dict[str, date]" = {}  # market date -> the ET date Schwab answered it
+        self._optioned: "set[str]" = set()  # tickers Schwab has answered a chain for
+        self._fetched: "dict[str, float]" = {}  # ticker -> when its newest delivered chain began
+        self._candled: "dict[str, float]" = {}  # ticker -> when its newest whole price history began
+        self._queue: "list[tuple[_Chain, dict]]" = []  # contracts whose quote is not asked for
+        self._delivered: "set[str]" = set()  # the tickers this rotation delivered
+        self._written: "dict[str, float | None]" = {}  # ticker -> its newest history capture
 
     def work(self, schwab_client, stop: threading.Event) -> None:
         """The thread's life, until `stop`: on the daemon's client (`schwab_client()`), the
@@ -389,8 +389,10 @@ class ChainSweep:
         try:
             self.waiting = schwab_client().session.refusal()
         except (ConnectionError, TimeoutError) as e:
-            why = (f"the daemon holds no Schwab sign-in to ask with ({e}); a new one is saved by "
-                   "python reauth_schwab.py")
+            why = (
+                f"the daemon holds no Schwab sign-in to ask with ({e}); a new one is saved by "
+                "python reauth_schwab.py"
+            )
             if why != self.waiting:
                 log.warning("chain sweep waits for the daemon's Schwab client: %s", e)
             self.waiting = why

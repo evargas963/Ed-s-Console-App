@@ -96,4 +96,6 @@ def test_a_failed_round_is_logged_and_the_next_round_runs(caplog):
     asyncio.run(go())
     written = {topic for topic, _record in bus.current.values() if topic.startswith("feedstatus.")}
     assert "feed status round failed: RuntimeError: boom" in caplog.text
-    assert written == {f"feedstatus.{svc}" for svc in capture.SERVICES}, "the round after the failure still wrote"
+    assert written == {f"feedstatus.{svc}" for svc in capture.SERVICES}, (
+        "the round after the failure still wrote"
+    )

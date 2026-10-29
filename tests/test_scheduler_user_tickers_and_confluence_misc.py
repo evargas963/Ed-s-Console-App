@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 
+
 def test_the_console_and_the_daemon_hold_one_watchlist(tmp_path):
     """ONE-13 (2026-09-28 audit), and one list (2026-10-07): the console carries the daemon's
     watchlist from its heartbeat, and the daemon starts from the newest list its writer stored

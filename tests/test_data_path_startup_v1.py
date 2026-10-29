@@ -314,9 +314,15 @@ def test_a_browser_that_stopped_reading_is_dropped_the_others_keep_their_beats_a
     async def go():
         stop = asyncio.Event()
         stats: dict = {}
-        daemon_side = asyncio.create_task(serve_live_ui(
-            stop, heartbeat_fn=lambda now: {**daemon.status(now), "pad": "x" * 2_000_000},
-            host="127.0.0.1", port=0, stats=stats))
+        daemon_side = asyncio.create_task(
+            serve_live_ui(
+                stop,
+                heartbeat_fn=lambda now: {**daemon.status(now), "pad": "x" * 2_000_000},
+                host="127.0.0.1",
+                port=0,
+                stats=stats,
+            )
+        )
         await _until(lambda: stats.get("listening"), 5)
         beats: list[float] = []
         async with (

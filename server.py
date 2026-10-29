@@ -891,7 +891,9 @@ def terrain_staleness(
     }
 
 
-def _levels_state(computed_ts_utc: float | None, ticker: str | None, now: float, failure: str) -> tuple[str, str]:
+def _levels_state(
+    computed_ts_utc: float | None, ticker: str | None, now: float, failure: str
+) -> tuple[str, str]:
     """(levels_state, why it is not LIVE or CLOSE) for terrain_staleness. While the daemon asks
     Schwab for nothing (its status's `chains_waiting`: a refused sign-in), that is the why."""
     status = lmp.daemon_status(now)

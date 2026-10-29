@@ -71,8 +71,10 @@ class LiveUiServer:
         self, heartbeat_fn, stats: dict, record_heartbeat=lmp.record_feed_heartbeat, clock=time.time
     ) -> None:
         self.heartbeat_fn = heartbeat_fn
-        self.clock = clock                           # the time each row is finished at, and each beat
-        self.record_heartbeat = record_heartbeat     # where the daemon keeps its own record of each beat
+        self.clock = clock  # the time each row is finished at, and each beat
+        self.record_heartbeat = (
+            record_heartbeat  # where the daemon keeps its own record of each beat
+        )
         self.stats = stats
         self.clients: set[_Client] = set()
         stats.update(
