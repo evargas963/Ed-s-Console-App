@@ -242,6 +242,12 @@ def window_strikes(strikes: list[float], spot: float) -> list[float]:
     return sorted(below + at + above)
 
 
+def window_rows(rows: list[dict], price: float) -> list[dict]:
+    """The rows of the strikes window_strikes chooses at `price`, in the rows' order."""
+    shown = set(window_strikes([row["strike"] for row in rows], price))
+    return [row for row in rows if row["strike"] in shown]
+
+
 def under_strike(price: float, strikes: list[float]) -> float | None:
     """The lowest listed strike at or above `price`, where a marker sits."""
     at_or_above = [s for s in strikes if s >= price]
@@ -370,7 +376,8 @@ def _factor_row(part: dict) -> dict:
 
 def build_matrix(exposures: dict, charm_by_strike: dict, ivs: dict[float, float | None],
                  spot: float, dte: float) -> dict:
-    """The rows and the score for one expiry's book."""
+    """The rows and the score for one expiry's book: a row for every strike, the window the page
+    shows chosen from them at the price (window_rows)."""
     name = preset_name(dte)
     weights = in_score_weights(name)
     strikes = sorted(float(s) for s in exposures.keys())
@@ -384,7 +391,6 @@ def build_matrix(exposures: dict, charm_by_strike: dict, ivs: dict[float, float 
         {s: {k: v for k, v in f.items() if not str(k).startswith("_")} for s, f in mags.items()},
         weights,
     )
-    shown = window_strikes(list(mags), spot)
     cap = ceiling(weights)
     net_peak = _peak(f["_net_gex"] for f in mags.values())
     oi_peak = _peak(f["OI"] for f in mags.values())
@@ -398,7 +404,7 @@ def build_matrix(exposures: dict, charm_by_strike: dict, ivs: dict[float, float 
     pc_gex_peak = _peak(None if f["_pc_gex"] is None else 1 - f["_pc_gex"] for f in mags.values())
     pc_vol_peak = _peak(None if f["_pc_vol"] is None else 1 - f["_pc_vol"] for f in mags.values())
     rows = []
-    for strike in sorted(shown, reverse=True):
+    for strike in sorted(mags, reverse=True):
         factors = mags[strike]
         result = scored[strike]
         score = result["score"]

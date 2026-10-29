@@ -173,6 +173,1104 @@
   {
    "charm_reason": null,
    "charm_style": "background:rgb(17,24,34);font-weight:550",
+   "charm_text": "-1.03",
+   "contributions": [
+    {
+     "label": "open interest",
+     "normalized_text": "0.59",
+     "raw_text": "7113",
+     "text": "5.9",
+     "weight_text": "0.10"
+    },
+    {
+     "label": "net gamma",
+     "normalized_text": "0.09",
+     "raw_text": "5.62",
+     "text": "1.4",
+     "weight_text": "0.15"
+    },
+    {
+     "label": "delta",
+     "normalized_text": "0.21",
+     "raw_text": "82.30",
+     "text": "1.1",
+     "weight_text": "0.05"
+    }
+   ],
+   "dex_reason": null,
+   "dex_style": "background:rgb(16,42,38);font-weight:550",
+   "dex_text": "+82.30",
+   "dgex_reason": "no change in gamma is produced",
+   "dgex_text": null,
+   "distance_text": "+4.87",
+   "factors": [
+    {
+     "label": "open interest",
+     "normalized_text": "0.59",
+     "raw_text": "7113",
+     "text": "5.9",
+     "weight_text": "0.10"
+    },
+    {
+     "label": "net gamma",
+     "normalized_text": "0.09",
+     "raw_text": "5.62",
+     "text": "1.4",
+     "weight_text": "0.15"
+    },
+    {
+     "label": "delta",
+     "normalized_text": "0.21",
+     "raw_text": "82.30",
+     "text": "1.1",
+     "weight_text": "0.05"
+    },
+    {
+     "label": "charm",
+     "normalized_text": "0.02",
+     "raw_text": "1.03",
+     "text": "0.3",
+     "weight_text": "0.22"
+    },
+    {
+     "label": "volume",
+     "normalized_text": "0.03",
+     "raw_text": "17001",
+     "text": "0.3",
+     "weight_text": "0.10"
+    },
+    {
+     "label": "volatility",
+     "normalized_text": "0.06",
+     "raw_text": "88.1",
+     "text": "0.3",
+     "weight_text": "0.05"
+    },
+    {
+     "label": "vanna",
+     "normalized_text": "0.00",
+     "raw_text": "0.00",
+     "text": "0.0",
+     "weight_text": "0.05"
+    }
+   ],
+   "flow_reason": "no signed flow is produced",
+   "flow_text": null,
+   "gross_reason": null,
+   "gross_style": "background:rgb(17,25,34);font-weight:550",
+   "gross_text": "8.01",
+   "heat_background": "background:rgb(16,43,38);font-weight:550",
+   "inside": false,
+   "iv_reason": null,
+   "iv_style": "background:rgb(16,34,36);font-weight:550",
+   "iv_text": "88.1",
+   "missing": [],
+   "net_gex_text": "+5.62",
+   "net_reason": null,
+   "net_style": "background:rgb(17,25,34);font-weight:550",
+   "oi_reason": null,
+   "oi_style": "background:rgb(14,79,47);font-weight:550",
+   "oi_text": "7113",
+   "pc_gex_reason": null,
+   "pc_gex_style": "background:rgb(17,32,36);font-weight:550",
+   "pc_gex_text": "0.18",
+   "pc_vol_reason": null,
+   "pc_vol_style": "background:rgb(17,24,34);font-weight:550",
+   "pc_vol_text": "0.02",
+   "score": 9.382084415559843,
+   "score_text": "9",
+   "spot_line": false,
+   "strike": 778.0,
+   "strike_text": "778.00",
+   "vanna_reason": null,
+   "vanna_style": "background:rgb(17,24,34);font-weight:550",
+   "vanna_text": "0.00",
+   "vol_oi_reason": null,
+   "vol_oi_style": "background:rgb(17,25,34);font-weight:550",
+   "vol_oi_text": "2.39",
+   "volume_reason": null,
+   "volume_style": "background:rgb(17,26,35);font-weight:550",
+   "volume_text": "17001"
+  },
+  {
+   "charm_reason": null,
+   "charm_style": "background:rgb(17,24,34);font-weight:550",
+   "charm_text": "-1.00",
+   "contributions": [
+    {
+     "label": "open interest",
+     "normalized_text": "0.48",
+     "raw_text": "5714",
+     "text": "4.8",
+     "weight_text": "0.10"
+    },
+    {
+     "label": "net gamma",
+     "normalized_text": "0.09",
+     "raw_text": "5.28",
+     "text": "1.3",
+     "weight_text": "0.15"
+    },
+    {
+     "label": "delta",
+     "normalized_text": "0.16",
+     "raw_text": "60.69",
+     "text": "0.8",
+     "weight_text": "0.05"
+    }
+   ],
+   "dex_reason": null,
+   "dex_style": "background:rgb(16,38,37);font-weight:550",
+   "dex_text": "+60.69",
+   "dgex_reason": "no change in gamma is produced",
+   "dgex_text": null,
+   "distance_text": "+3.87",
+   "factors": [
+    {
+     "label": "open interest",
+     "normalized_text": "0.48",
+     "raw_text": "5714",
+     "text": "4.8",
+     "weight_text": "0.10"
+    },
+    {
+     "label": "net gamma",
+     "normalized_text": "0.09",
+     "raw_text": "5.28",
+     "text": "1.3",
+     "weight_text": "0.15"
+    },
+    {
+     "label": "delta",
+     "normalized_text": "0.16",
+     "raw_text": "60.69",
+     "text": "0.8",
+     "weight_text": "0.05"
+    },
+    {
+     "label": "volume",
+     "normalized_text": "0.04",
+     "raw_text": "20667",
+     "text": "0.4",
+     "weight_text": "0.10"
+    },
+    {
+     "label": "charm",
+     "normalized_text": "0.02",
+     "raw_text": "1.00",
+     "text": "0.3",
+     "weight_text": "0.22"
+    },
+    {
+     "label": "volatility",
+     "normalized_text": "0.05",
+     "raw_text": "82.5",
+     "text": "0.3",
+     "weight_text": "0.05"
+    },
+    {
+     "label": "vanna",
+     "normalized_text": "0.00",
+     "raw_text": "0.00",
+     "text": "0.0",
+     "weight_text": "0.05"
+    }
+   ],
+   "flow_reason": "no signed flow is produced",
+   "flow_text": null,
+   "gross_reason": null,
+   "gross_style": "background:rgb(17,25,34);font-weight:550",
+   "gross_text": "7.26",
+   "heat_background": "background:rgb(16,40,38);font-weight:550",
+   "inside": false,
+   "iv_reason": null,
+   "iv_style": "background:rgb(16,33,36);font-weight:550",
+   "iv_text": "82.5",
+   "missing": [],
+   "net_gex_text": "+5.28",
+   "net_reason": null,
+   "net_style": "background:rgb(17,25,34);font-weight:550",
+   "oi_reason": null,
+   "oi_style": "background:rgb(14,68,44);font-weight:550",
+   "oi_text": "5714",
+   "pc_gex_reason": null,
+   "pc_gex_style": "background:rgb(17,33,36);font-weight:550",
+   "pc_gex_text": "0.16",
+   "pc_vol_reason": null,
+   "pc_vol_style": "background:rgb(17,24,34);font-weight:550",
+   "pc_vol_text": "0.03",
+   "score": 7.880815822427992,
+   "score_text": "8",
+   "spot_line": false,
+   "strike": 777.0,
+   "strike_text": "777.00",
+   "vanna_reason": null,
+   "vanna_style": "background:rgb(17,24,34);font-weight:550",
+   "vanna_text": "0.00",
+   "vol_oi_reason": null,
+   "vol_oi_style": "background:rgb(17,26,34);font-weight:550",
+   "vol_oi_text": "3.62",
+   "volume_reason": null,
+   "volume_style": "background:rgb(17,27,35);font-weight:550",
+   "volume_text": "20667"
+  },
+  {
+   "charm_reason": null,
+   "charm_style": "background:rgb(17,24,34);font-weight:550",
+   "charm_text": "-4.60",
+   "contributions": [
+    {
+     "label": "open interest",
+     "normalized_text": "1.00",
+     "raw_text": "18268",
+     "text": "10.0",
+     "weight_text": "0.10"
+    },
+    {
+     "label": "net gamma",
+     "normalized_text": "0.39",
+     "raw_text": "23.17",
+     "text": "5.8",
+     "weight_text": "0.15"
+    },
+    {
+     "label": "charm",
+     "normalized_text": "0.07",
+     "raw_text": "4.60",
+     "text": "1.5",
+     "weight_text": "0.22"
+    }
+   ],
+   "dex_reason": null,
+   "dex_style": "background:rgb(16,44,39);font-weight:550",
+   "dex_text": "+90.30",
+   "dgex_reason": "no change in gamma is produced",
+   "dgex_text": null,
+   "distance_text": "+2.87",
+   "factors": [
+    {
+     "label": "open interest",
+     "normalized_text": "1.00",
+     "raw_text": "18268",
+     "text": "10.0",
+     "weight_text": "0.10"
+    },
+    {
+     "label": "net gamma",
+     "normalized_text": "0.39",
+     "raw_text": "23.17",
+     "text": "5.8",
+     "weight_text": "0.15"
+    },
+    {
+     "label": "charm",
+     "normalized_text": "0.07",
+     "raw_text": "4.60",
+     "text": "1.5",
+     "weight_text": "0.22"
+    },
+    {
+     "label": "delta",
+     "normalized_text": "0.23",
+     "raw_text": "90.30",
+     "text": "1.2",
+     "weight_text": "0.05"
+    },
+    {
+     "label": "volume",
+     "normalized_text": "0.07",
+     "raw_text": "35540",
+     "text": "0.7",
+     "weight_text": "0.10"
+    },
+    {
+     "label": "volatility",
+     "normalized_text": "0.05",
+     "raw_text": "76.8",
+     "text": "0.2",
+     "weight_text": "0.05"
+    },
+    {
+     "label": "vanna",
+     "normalized_text": "0.02",
+     "raw_text": "0.00",
+     "text": "0.1",
+     "weight_text": "0.05"
+    }
+   ],
+   "flow_reason": "no signed flow is produced",
+   "flow_text": null,
+   "gross_reason": null,
+   "gross_style": "background:rgb(17,26,35);font-weight:550",
+   "gross_text": "26.42",
+   "heat_background": "background:rgb(15,62,43);font-weight:550",
+   "inside": false,
+   "iv_reason": null,
+   "iv_style": "background:rgb(17,33,36);font-weight:550",
+   "iv_text": "76.8",
+   "missing": [],
+   "net_gex_text": "+23.17",
+   "net_reason": null,
+   "net_style": "background:rgb(17,26,35);font-weight:550",
+   "oi_reason": null,
+   "oi_style": "background:rgb(9,166,67);font-weight:750",
+   "oi_text": "18268",
+   "pc_gex_reason": null,
+   "pc_gex_style": "background:rgb(16,34,36);font-weight:550",
+   "pc_gex_text": "0.07",
+   "pc_vol_reason": null,
+   "pc_vol_style": "background:rgb(17,24,34);font-weight:550",
+   "pc_vol_text": "0.04",
+   "score": 19.50160842664255,
+   "score_text": "20",
+   "spot_line": false,
+   "strike": 776.0,
+   "strike_text": "776.00",
+   "vanna_reason": null,
+   "vanna_style": "background:rgb(17,24,34);font-weight:550",
+   "vanna_text": "0.00",
+   "vol_oi_reason": null,
+   "vol_oi_style": "background:rgb(17,25,34);font-weight:550",
+   "vol_oi_text": "1.95",
+   "volume_reason": null,
+   "volume_style": "background:rgb(17,29,35);font-weight:550",
+   "volume_text": "35540"
+  },
+  {
+   "charm_reason": null,
+   "charm_style": "background:rgb(17,24,34);font-weight:550",
+   "charm_text": "-2.52",
+   "contributions": [
+    {
+     "label": "open interest",
+     "normalized_text": "1.00",
+     "raw_text": "13047",
+     "text": "10.0",
+     "weight_text": "0.10"
+    },
+    {
+     "label": "net gamma",
+     "normalized_text": "0.20",
+     "raw_text": "12.16",
+     "text": "3.0",
+     "weight_text": "0.15"
+    },
+    {
+     "label": "delta",
+     "normalized_text": "0.57",
+     "raw_text": "221.70",
+     "text": "2.9",
+     "weight_text": "0.05"
+    }
+   ],
+   "dex_reason": null,
+   "dex_style": "background:rgb(14,74,46);font-weight:550",
+   "dex_text": "+221.70",
+   "dgex_reason": "no change in gamma is produced",
+   "dgex_text": null,
+   "distance_text": "+1.87",
+   "factors": [
+    {
+     "label": "open interest",
+     "normalized_text": "1.00",
+     "raw_text": "13047",
+     "text": "10.0",
+     "weight_text": "0.10"
+    },
+    {
+     "label": "net gamma",
+     "normalized_text": "0.20",
+     "raw_text": "12.16",
+     "text": "3.0",
+     "weight_text": "0.15"
+    },
+    {
+     "label": "delta",
+     "normalized_text": "0.57",
+     "raw_text": "221.70",
+     "text": "2.9",
+     "weight_text": "0.05"
+    },
+    {
+     "label": "volume",
+     "normalized_text": "0.10",
+     "raw_text": "54431",
+     "text": "1.0",
+     "weight_text": "0.10"
+    },
+    {
+     "label": "charm",
+     "normalized_text": "0.04",
+     "raw_text": "2.52",
+     "text": "0.8",
+     "weight_text": "0.22"
+    },
+    {
+     "label": "volatility",
+     "normalized_text": "0.04",
+     "raw_text": "71.1",
+     "text": "0.2",
+     "weight_text": "0.05"
+    },
+    {
+     "label": "vanna",
+     "normalized_text": "0.01",
+     "raw_text": "0.00",
+     "text": "0.1",
+     "weight_text": "0.05"
+    }
+   ],
+   "flow_reason": "no signed flow is produced",
+   "flow_text": null,
+   "gross_reason": null,
+   "gross_style": "background:rgb(17,26,34);font-weight:550",
+   "gross_text": "21.73",
+   "heat_background": "background:rgb(15,60,42);font-weight:550",
+   "inside": false,
+   "iv_reason": null,
+   "iv_style": "background:rgb(17,32,36);font-weight:550",
+   "iv_text": "71.1",
+   "missing": [],
+   "net_gex_text": "+12.16",
+   "net_reason": null,
+   "net_style": "background:rgb(17,25,34);font-weight:550",
+   "oi_reason": null,
+   "oi_style": "background:rgb(11,125,58);font-weight:750",
+   "oi_text": "13047",
+   "pc_gex_reason": null,
+   "pc_gex_style": "background:rgb(17,31,36);font-weight:550",
+   "pc_gex_text": "0.28",
+   "pc_vol_reason": null,
+   "pc_vol_style": "background:rgb(17,24,34);font-weight:550",
+   "pc_vol_text": "0.07",
+   "score": 18.04221500205004,
+   "score_text": "18",
+   "spot_line": false,
+   "strike": 775.0,
+   "strike_text": "775.00",
+   "vanna_reason": null,
+   "vanna_style": "background:rgb(17,24,34);font-weight:550",
+   "vanna_text": "0.00",
+   "vol_oi_reason": null,
+   "vol_oi_style": "background:rgb(17,26,35);font-weight:550",
+   "vol_oi_text": "4.17",
+   "volume_reason": null,
+   "volume_style": "background:rgb(17,31,36);font-weight:550",
+   "volume_text": "54431"
+  },
+  {
+   "charm_reason": null,
+   "charm_style": "background:rgb(17,24,34);font-weight:550",
+   "charm_text": "-1.13",
+   "contributions": [
+    {
+     "label": "open interest",
+     "normalized_text": "0.85",
+     "raw_text": "10140",
+     "text": "8.5",
+     "weight_text": "0.10"
+    },
+    {
+     "label": "delta",
+     "normalized_text": "0.74",
+     "raw_text": "286.00",
+     "text": "3.7",
+     "weight_text": "0.05"
+    },
+    {
+     "label": "volume",
+     "normalized_text": "0.19",
+     "raw_text": "99846",
+     "text": "1.9",
+     "weight_text": "0.10"
+    }
+   ],
+   "dex_reason": null,
+   "dex_style": "background:rgb(13,88,49);font-weight:550",
+   "dex_text": "+286.00",
+   "dgex_reason": "no change in gamma is produced",
+   "dgex_text": null,
+   "distance_text": "+0.87",
+   "factors": [
+    {
+     "label": "open interest",
+     "normalized_text": "0.85",
+     "raw_text": "10140",
+     "text": "8.5",
+     "weight_text": "0.10"
+    },
+    {
+     "label": "delta",
+     "normalized_text": "0.74",
+     "raw_text": "286.00",
+     "text": "3.7",
+     "weight_text": "0.05"
+    },
+    {
+     "label": "volume",
+     "normalized_text": "0.19",
+     "raw_text": "99846",
+     "text": "1.9",
+     "weight_text": "0.10"
+    },
+    {
+     "label": "net gamma",
+     "normalized_text": "0.09",
+     "raw_text": "5.20",
+     "text": "1.3",
+     "weight_text": "0.15"
+    },
+    {
+     "label": "charm",
+     "normalized_text": "0.02",
+     "raw_text": "1.13",
+     "text": "0.4",
+     "weight_text": "0.22"
+    },
+    {
+     "label": "volatility",
+     "normalized_text": "0.04",
+     "raw_text": "65.3",
+     "text": "0.2",
+     "weight_text": "0.05"
+    },
+    {
+     "label": "vanna",
+     "normalized_text": "0.01",
+     "raw_text": "0.00",
+     "text": "0.0",
+     "weight_text": "0.05"
+    }
+   ],
+   "flow_reason": "no signed flow is produced",
+   "flow_text": null,
+   "gross_reason": null,
+   "gross_style": "background:rgb(17,26,34);font-weight:550",
+   "gross_text": "19.71",
+   "heat_background": "background:rgb(15,55,41);font-weight:550",
+   "inside": false,
+   "iv_reason": null,
+   "iv_style": "background:rgb(17,31,36);font-weight:550",
+   "iv_text": "65.3",
+   "missing": [],
+   "net_gex_text": "+5.20",
+   "net_reason": null,
+   "net_style": "background:rgb(17,25,34);font-weight:550",
+   "oi_reason": null,
+   "oi_style": "background:rgb(13,103,52);font-weight:550",
+   "oi_text": "10140",
+   "pc_gex_reason": null,
+   "pc_gex_style": "background:rgb(17,28,35);font-weight:550",
+   "pc_gex_text": "0.58",
+   "pc_vol_reason": null,
+   "pc_vol_style": "background:rgb(17,24,34);font-weight:550",
+   "pc_vol_text": "0.04",
+   "score": 15.958252155616465,
+   "score_text": "16",
+   "spot_line": true,
+   "strike": 774.0,
+   "strike_text": "774.00",
+   "vanna_reason": null,
+   "vanna_style": "background:rgb(17,24,34);font-weight:550",
+   "vanna_text": "0.00",
+   "vol_oi_reason": null,
+   "vol_oi_style": "background:rgb(17,29,35);font-weight:550",
+   "vol_oi_text": "9.85",
+   "volume_reason": null,
+   "volume_style": "background:rgb(16,37,37);font-weight:550",
+   "volume_text": "99846"
+  },
+  {
+   "charm_reason": null,
+   "charm_style": "background:rgb(17,24,34);font-weight:550",
+   "charm_text": "-0.22",
+   "contributions": [
+    {
+     "label": "open interest",
+     "normalized_text": "0.89",
+     "raw_text": "10648",
+     "text": "8.9",
+     "weight_text": "0.10"
+    },
+    {
+     "label": "delta",
+     "normalized_text": "1.00",
+     "raw_text": "391.24",
+     "text": "5.0",
+     "weight_text": "0.05"
+    },
+    {
+     "label": "volume",
+     "normalized_text": "0.18",
+     "raw_text": "95213",
+     "text": "1.8",
+     "weight_text": "0.10"
+    }
+   ],
+   "dex_reason": null,
+   "dex_style": "background:rgb(12,112,54);font-weight:550",
+   "dex_text": "+391.24",
+   "dgex_reason": "no change in gamma is produced",
+   "dgex_text": null,
+   "distance_text": "-0.13",
+   "factors": [
+    {
+     "label": "open interest",
+     "normalized_text": "0.89",
+     "raw_text": "10648",
+     "text": "8.9",
+     "weight_text": "0.10"
+    },
+    {
+     "label": "delta",
+     "normalized_text": "1.00",
+     "raw_text": "391.24",
+     "text": "5.0",
+     "weight_text": "0.05"
+    },
+    {
+     "label": "volume",
+     "normalized_text": "0.18",
+     "raw_text": "95213",
+     "text": "1.8",
+     "weight_text": "0.10"
+    },
+    {
+     "label": "net gamma",
+     "normalized_text": "0.02",
+     "raw_text": "0.94",
+     "text": "0.2",
+     "weight_text": "0.15"
+    },
+    {
+     "label": "volatility",
+     "normalized_text": "0.03",
+     "raw_text": "59.4",
+     "text": "0.2",
+     "weight_text": "0.05"
+    },
+    {
+     "label": "charm",
+     "normalized_text": "0.00",
+     "raw_text": "0.22",
+     "text": "0.1",
+     "weight_text": "0.22"
+    },
+    {
+     "label": "vanna",
+     "normalized_text": "0.00",
+     "raw_text": "0.00",
+     "text": "0.0",
+     "weight_text": "0.05"
+    }
+   ],
+   "flow_reason": "no signed flow is produced",
+   "flow_text": null,
+   "gross_reason": null,
+   "gross_style": "background:rgb(17,26,35);font-weight:550",
+   "gross_text": "24.53",
+   "heat_background": "background:rgb(15,56,41);font-weight:550",
+   "inside": false,
+   "iv_reason": null,
+   "iv_style": "background:rgb(17,31,36);font-weight:550",
+   "iv_text": "59.4",
+   "missing": [],
+   "net_gex_text": "+0.94",
+   "net_reason": null,
+   "net_style": "background:rgb(17,24,34);font-weight:550",
+   "oi_reason": null,
+   "oi_style": "background:rgb(12,107,53);font-weight:550",
+   "oi_text": "10648",
+   "pc_gex_reason": null,
+   "pc_gex_style": "background:rgb(17,25,34);font-weight:550",
+   "pc_gex_text": "0.93",
+   "pc_vol_reason": null,
+   "pc_vol_style": "background:rgb(17,24,34);font-weight:550",
+   "pc_vol_text": "0.06",
+   "score": 16.194770134123935,
+   "score_text": "16",
+   "spot_line": false,
+   "strike": 773.0,
+   "strike_text": "773.00",
+   "vanna_reason": null,
+   "vanna_style": "background:rgb(17,24,34);font-weight:550",
+   "vanna_text": "0.00",
+   "vol_oi_reason": null,
+   "vol_oi_style": "background:rgb(17,29,35);font-weight:550",
+   "vol_oi_text": "8.94",
+   "volume_reason": null,
+   "volume_style": "background:rgb(16,37,37);font-weight:550",
+   "volume_text": "95213"
+  },
+  {
+   "charm_reason": null,
+   "charm_style": "background:rgb(17,24,34);font-weight:550",
+   "charm_text": "+2.65",
+   "contributions": [
+    {
+     "label": "open interest",
+     "normalized_text": "1.00",
+     "raw_text": "12716",
+     "text": "10.0",
+     "weight_text": "0.10"
+    },
+    {
+     "label": "delta",
+     "normalized_text": "1.00",
+     "raw_text": "633.52",
+     "text": "5.0",
+     "weight_text": "0.05"
+    },
+    {
+     "label": "volume",
+     "normalized_text": "0.30",
+     "raw_text": "156732",
+     "text": "3.0",
+     "weight_text": "0.10"
+    }
+   ],
+   "dex_reason": null,
+   "dex_style": "background:rgb(9,166,67);font-weight:750",
+   "dex_text": "+633.52",
+   "dgex_reason": "no change in gamma is produced",
+   "dgex_text": null,
+   "distance_text": "-1.13",
+   "factors": [
+    {
+     "label": "open interest",
+     "normalized_text": "1.00",
+     "raw_text": "12716",
+     "text": "10.0",
+     "weight_text": "0.10"
+    },
+    {
+     "label": "delta",
+     "normalized_text": "1.00",
+     "raw_text": "633.52",
+     "text": "5.0",
+     "weight_text": "0.05"
+    },
+    {
+     "label": "volume",
+     "normalized_text": "0.30",
+     "raw_text": "156732",
+     "text": "3.0",
+     "weight_text": "0.10"
+    },
+    {
+     "label": "net gamma",
+     "normalized_text": "0.18",
+     "raw_text": "10.89",
+     "text": "2.7",
+     "weight_text": "0.15"
+    },
+    {
+     "label": "charm",
+     "normalized_text": "0.04",
+     "raw_text": "2.65",
+     "text": "0.9",
+     "weight_text": "0.22"
+    },
+    {
+     "label": "volatility",
+     "normalized_text": "0.02",
+     "raw_text": "53.5",
+     "text": "0.1",
+     "weight_text": "0.05"
+    },
+    {
+     "label": "vanna",
+     "normalized_text": "0.02",
+     "raw_text": "0.00",
+     "text": "0.1",
+     "weight_text": "0.05"
+    }
+   ],
+   "flow_reason": "no signed flow is produced",
+   "flow_text": null,
+   "gross_reason": null,
+   "gross_style": "background:rgb(17,27,35);font-weight:550",
+   "gross_text": "35.42",
+   "heat_background": "background:rgb(15,67,44);font-weight:550",
+   "inside": false,
+   "iv_reason": null,
+   "iv_style": "background:rgb(17,30,35);font-weight:550",
+   "iv_text": "53.5",
+   "missing": [],
+   "net_gex_text": "-10.89",
+   "net_reason": null,
+   "net_style": "background:rgb(19,24,34);font-weight:550",
+   "oi_reason": null,
+   "oi_style": "background:rgb(11,123,57);font-weight:750",
+   "oi_text": "12716",
+   "pc_gex_reason": null,
+   "pc_gex_style": "background:rgb(30,25,35);font-weight:550",
+   "pc_gex_text": "1.89",
+   "pc_vol_reason": null,
+   "pc_vol_style": "background:rgb(17,24,34);font-weight:550",
+   "pc_vol_text": "0.06",
+   "score": 21.81712846035445,
+   "score_text": "22",
+   "spot_line": false,
+   "strike": 772.0,
+   "strike_text": "772.00",
+   "vanna_reason": null,
+   "vanna_style": "background:rgb(17,24,34);font-weight:550",
+   "vanna_text": "0.00",
+   "vol_oi_reason": null,
+   "vol_oi_style": "background:rgb(17,31,36);font-weight:550",
+   "vol_oi_text": "12.33",
+   "volume_reason": null,
+   "volume_style": "background:rgb(16,45,39);font-weight:550",
+   "volume_text": "156732"
+  },
+  {
+   "charm_reason": null,
+   "charm_style": "background:rgb(17,24,34);font-weight:550",
+   "charm_text": "-1.26",
+   "contributions": [
+    {
+     "label": "open interest",
+     "normalized_text": "1.00",
+     "raw_text": "12531",
+     "text": "10.0",
+     "weight_text": "0.10"
+    },
+    {
+     "label": "delta",
+     "normalized_text": "1.00",
+     "raw_text": "425.55",
+     "text": "5.0",
+     "weight_text": "0.05"
+    },
+    {
+     "label": "volume",
+     "normalized_text": "0.44",
+     "raw_text": "230826",
+     "text": "4.4",
+     "weight_text": "0.10"
+    }
+   ],
+   "dex_reason": null,
+   "dex_style": "background:rgb(12,119,56);font-weight:750",
+   "dex_text": "+425.55",
+   "dgex_reason": "no change in gamma is produced",
+   "dgex_text": null,
+   "distance_text": "-2.13",
+   "factors": [
+    {
+     "label": "open interest",
+     "normalized_text": "1.00",
+     "raw_text": "12531",
+     "text": "10.0",
+     "weight_text": "0.10"
+    },
+    {
+     "label": "delta",
+     "normalized_text": "1.00",
+     "raw_text": "425.55",
+     "text": "5.0",
+     "weight_text": "0.05"
+    },
+    {
+     "label": "volume",
+     "normalized_text": "0.44",
+     "raw_text": "230826",
+     "text": "4.4",
+     "weight_text": "0.10"
+    },
+    {
+     "label": "net gamma",
+     "normalized_text": "0.08",
+     "raw_text": "4.85",
+     "text": "1.2",
+     "weight_text": "0.15"
+    },
+    {
+     "label": "charm",
+     "normalized_text": "0.02",
+     "raw_text": "1.26",
+     "text": "0.4",
+     "weight_text": "0.22"
+    },
+    {
+     "label": "volatility",
+     "normalized_text": "0.02",
+     "raw_text": "47.6",
+     "text": "0.1",
+     "weight_text": "0.05"
+    },
+    {
+     "label": "vanna",
+     "normalized_text": "0.01",
+     "raw_text": "0.00",
+     "text": "0.1",
+     "weight_text": "0.05"
+    }
+   ],
+   "flow_reason": "no signed flow is produced",
+   "flow_text": null,
+   "gross_reason": null,
+   "gross_style": "background:rgb(17,28,35);font-weight:550",
+   "gross_text": "43.26",
+   "heat_background": "background:rgb(15,66,44);font-weight:550",
+   "inside": false,
+   "iv_reason": null,
+   "iv_style": "background:rgb(17,29,35);font-weight:550",
+   "iv_text": "47.6",
+   "missing": [],
+   "net_gex_text": "+4.85",
+   "net_reason": null,
+   "net_style": "background:rgb(17,25,34);font-weight:550",
+   "oi_reason": null,
+   "oi_style": "background:rgb(12,121,57);font-weight:750",
+   "oi_text": "12531",
+   "pc_gex_reason": null,
+   "pc_gex_style": "background:rgb(17,26,34);font-weight:550",
+   "pc_gex_text": "0.80",
+   "pc_vol_reason": null,
+   "pc_vol_style": "background:rgb(17,24,34);font-weight:550",
+   "pc_vol_text": "0.03",
+   "score": 21.191764182857646,
+   "score_text": "21",
+   "spot_line": false,
+   "strike": 771.0,
+   "strike_text": "771.00",
+   "vanna_reason": null,
+   "vanna_style": "background:rgb(17,24,34);font-weight:550",
+   "vanna_text": "0.00",
+   "vol_oi_reason": null,
+   "vol_oi_style": "background:rgb(16,34,36);font-weight:550",
+   "vol_oi_text": "18.42",
+   "volume_reason": null,
+   "volume_style": "background:rgb(15,55,41);font-weight:550",
+   "volume_text": "230826"
+  },
+  {
+   "charm_reason": null,
+   "charm_style": "background:rgb(17,24,34);font-weight:550",
+   "charm_text": "+1.50",
+   "contributions": [
+    {
+     "label": "open interest",
+     "normalized_text": "1.00",
+     "raw_text": "14748",
+     "text": "10.0",
+     "weight_text": "0.10"
+    },
+    {
+     "label": "volume",
+     "normalized_text": "0.56",
+     "raw_text": "291441",
+     "text": "5.6",
+     "weight_text": "0.10"
+    },
+    {
+     "label": "delta",
+     "normalized_text": "1.00",
+     "raw_text": "609.15",
+     "text": "5.0",
+     "weight_text": "0.05"
+    }
+   ],
+   "dex_reason": null,
+   "dex_style": "background:rgb(9,161,66);font-weight:750",
+   "dex_text": "+609.15",
+   "dgex_reason": "no change in gamma is produced",
+   "dgex_text": null,
+   "distance_text": "-3.13",
+   "factors": [
+    {
+     "label": "open interest",
+     "normalized_text": "1.00",
+     "raw_text": "14748",
+     "text": "10.0",
+     "weight_text": "0.10"
+    },
+    {
+     "label": "volume",
+     "normalized_text": "0.56",
+     "raw_text": "291441",
+     "text": "5.6",
+     "weight_text": "0.10"
+    },
+    {
+     "label": "delta",
+     "normalized_text": "1.00",
+     "raw_text": "609.15",
+     "text": "5.0",
+     "weight_text": "0.05"
+    },
+    {
+     "label": "net gamma",
+     "normalized_text": "0.09",
+     "raw_text": "5.38",
+     "text": "1.3",
+     "weight_text": "0.15"
+    },
+    {
+     "label": "charm",
+     "normalized_text": "0.02",
+     "raw_text": "1.50",
+     "text": "0.5",
+     "weight_text": "0.22"
+    },
+    {
+     "label": "vanna",
+     "normalized_text": "0.01",
+     "raw_text": "0.00",
+     "text": "0.1",
+     "weight_text": "0.05"
+    },
+    {
+     "label": "volatility",
+     "normalized_text": "0.01",
+     "raw_text": "41.5",
+     "text": "0.1",
+     "weight_text": "0.05"
+    }
+   ],
+   "flow_reason": "no signed flow is produced",
+   "flow_text": null,
+   "gross_reason": null,
+   "gross_style": "background:rgb(17,30,35);font-weight:550",
+   "gross_text": "65.17",
+   "heat_background": "background:rgb(14,68,44);font-weight:550",
+   "inside": false,
+   "iv_reason": null,
+   "iv_style": "background:rgb(17,29,35);font-weight:550",
+   "iv_text": "41.5",
+   "missing": [],
+   "net_gex_text": "-5.38",
+   "net_reason": null,
+   "net_style": "background:rgb(18,24,34);font-weight:550",
+   "oi_reason": null,
+   "oi_style": "background:rgb(11,139,61);font-weight:750",
+   "oi_text": "14748",
+   "pc_gex_reason": null,
+   "pc_gex_style": "background:rgb(20,24,34);font-weight:550",
+   "pc_gex_text": "1.18",
+   "pc_vol_reason": null,
+   "pc_vol_style": "background:rgb(17,24,34);font-weight:550",
+   "pc_vol_text": "0.06",
+   "score": 22.553854270245225,
+   "score_text": "23",
+   "spot_line": false,
+   "strike": 770.0,
+   "strike_text": "770.00",
+   "vanna_reason": null,
+   "vanna_style": "background:rgb(17,24,34);font-weight:550",
+   "vanna_text": "0.00",
+   "vol_oi_reason": null,
+   "vol_oi_style": "background:rgb(16,35,37);font-weight:550",
+   "vol_oi_text": "19.76",
+   "volume_reason": null,
+   "volume_style": "background:rgb(15,63,43);font-weight:550",
+   "volume_text": "291441"
+  },
+  {
+   "charm_reason": null,
+   "charm_style": "background:rgb(17,24,34);font-weight:550",
    "charm_text": "+5.04",
    "contributions": [
     {
@@ -291,1104 +1389,6 @@
    "volume_reason": null,
    "volume_style": "background:rgb(15,63,43);font-weight:550",
    "volume_text": "288663"
-  },
-  {
-   "charm_reason": null,
-   "charm_style": "background:rgb(17,24,34);font-weight:550",
-   "charm_text": "+13.49",
-   "contributions": [
-    {
-     "label": "net gamma",
-     "normalized_text": "0.66",
-     "raw_text": "39.93",
-     "text": "10.0",
-     "weight_text": "0.15"
-    },
-    {
-     "label": "volume",
-     "normalized_text": "0.81",
-     "raw_text": "422376",
-     "text": "8.1",
-     "weight_text": "0.10"
-    },
-    {
-     "label": "open interest",
-     "normalized_text": "0.61",
-     "raw_text": "7291",
-     "text": "6.1",
-     "weight_text": "0.10"
-    }
-   ],
-   "dex_reason": null,
-   "dex_style": "background:rgb(11,126,58);font-weight:750",
-   "dex_text": "+456.84",
-   "dgex_reason": "no change in gamma is produced",
-   "dgex_text": null,
-   "distance_text": "-5.13",
-   "factors": [
-    {
-     "label": "net gamma",
-     "normalized_text": "0.66",
-     "raw_text": "39.93",
-     "text": "10.0",
-     "weight_text": "0.15"
-    },
-    {
-     "label": "volume",
-     "normalized_text": "0.81",
-     "raw_text": "422376",
-     "text": "8.1",
-     "weight_text": "0.10"
-    },
-    {
-     "label": "open interest",
-     "normalized_text": "0.61",
-     "raw_text": "7291",
-     "text": "6.1",
-     "weight_text": "0.10"
-    },
-    {
-     "label": "delta",
-     "normalized_text": "1.00",
-     "raw_text": "456.84",
-     "text": "5.0",
-     "weight_text": "0.05"
-    },
-    {
-     "label": "charm",
-     "normalized_text": "0.20",
-     "raw_text": "13.49",
-     "text": "4.5",
-     "weight_text": "0.22"
-    },
-    {
-     "label": "vanna",
-     "normalized_text": "0.19",
-     "raw_text": "0.00",
-     "text": "0.9",
-     "weight_text": "0.05"
-    },
-    {
-     "label": "volatility",
-     "normalized_text": "0.00",
-     "raw_text": "29.0",
-     "text": "0.0",
-     "weight_text": "0.05"
-    }
-   ],
-   "flow_reason": "no signed flow is produced",
-   "flow_text": null,
-   "gross_reason": null,
-   "gross_style": "background:rgb(17,30,35);font-weight:550",
-   "gross_text": "61.25",
-   "heat_background": "background:rgb(13,92,50);font-weight:550",
-   "inside": false,
-   "iv_reason": null,
-   "iv_style": "background:rgb(17,27,35);font-weight:550",
-   "iv_text": "29.0",
-   "missing": [],
-   "net_gex_text": "-39.93",
-   "net_reason": null,
-   "net_style": "background:rgb(23,24,34);font-weight:550",
-   "oi_reason": null,
-   "oi_style": "background:rgb(14,81,47);font-weight:550",
-   "oi_text": "7291",
-   "pc_gex_reason": null,
-   "pc_gex_style": "background:rgb(73,27,38);font-weight:550",
-   "pc_gex_text": "4.75",
-   "pc_vol_reason": null,
-   "pc_vol_style": "background:rgb(17,24,34);font-weight:550",
-   "pc_vol_text": "0.08",
-   "score": 34.553383114785646,
-   "score_text": "35",
-   "spot_line": false,
-   "strike": 768.0,
-   "strike_text": "768.00",
-   "vanna_reason": null,
-   "vanna_style": "background:rgb(17,24,34);font-weight:550",
-   "vanna_text": "0.00",
-   "vol_oi_reason": null,
-   "vol_oi_style": "background:rgb(15,56,41);font-weight:550",
-   "vol_oi_text": "57.93",
-   "volume_reason": null,
-   "volume_style": "background:rgb(14,81,47);font-weight:550",
-   "volume_text": "422376"
-  },
-  {
-   "charm_reason": null,
-   "charm_style": "background:rgb(17,27,35);font-weight:550",
-   "charm_text": "+92.89",
-   "contributions": [
-    {
-     "label": "charm",
-     "normalized_text": "1.00",
-     "raw_text": "92.89",
-     "text": "22.0",
-     "weight_text": "0.22"
-    },
-    {
-     "label": "net gamma",
-     "normalized_text": "0.98",
-     "raw_text": "59.17",
-     "text": "14.7",
-     "weight_text": "0.15"
-    },
-    {
-     "label": "volume",
-     "normalized_text": "0.90",
-     "raw_text": "468366",
-     "text": "9.0",
-     "weight_text": "0.10"
-    }
-   ],
-   "dex_reason": null,
-   "dex_style": "background:rgb(13,87,49);font-weight:550",
-   "dex_text": "+282.55",
-   "dgex_reason": "no change in gamma is produced",
-   "dgex_text": null,
-   "distance_text": "-6.13",
-   "factors": [
-    {
-     "label": "charm",
-     "normalized_text": "1.00",
-     "raw_text": "92.89",
-     "text": "22.0",
-     "weight_text": "0.22"
-    },
-    {
-     "label": "net gamma",
-     "normalized_text": "0.98",
-     "raw_text": "59.17",
-     "text": "14.7",
-     "weight_text": "0.15"
-    },
-    {
-     "label": "volume",
-     "normalized_text": "0.90",
-     "raw_text": "468366",
-     "text": "9.0",
-     "weight_text": "0.10"
-    },
-    {
-     "label": "vanna",
-     "normalized_text": "1.00",
-     "raw_text": "0.04",
-     "text": "5.0",
-     "weight_text": "0.05"
-    },
-    {
-     "label": "open interest",
-     "normalized_text": "0.41",
-     "raw_text": "4960",
-     "text": "4.1",
-     "weight_text": "0.10"
-    },
-    {
-     "label": "delta",
-     "normalized_text": "0.73",
-     "raw_text": "282.55",
-     "text": "3.6",
-     "weight_text": "0.05"
-    },
-    {
-     "label": "volatility",
-     "normalized_text": "0.00",
-     "raw_text": "26.5",
-     "text": "0.0",
-     "weight_text": "0.05"
-    }
-   ],
-   "flow_reason": "no signed flow is produced",
-   "flow_text": null,
-   "gross_reason": null,
-   "gross_style": "background:rgb(16,34,36);font-weight:550",
-   "gross_text": "114.22",
-   "heat_background": "background:rgb(11,139,61);font-weight:750",
-   "inside": false,
-   "iv_reason": null,
-   "iv_style": "background:rgb(17,27,35);font-weight:550",
-   "iv_text": "26.5",
-   "missing": [],
-   "net_gex_text": "-59.17",
-   "net_reason": null,
-   "net_style": "background:rgb(26,24,35);font-weight:550",
-   "oi_reason": null,
-   "oi_style": "background:rgb(15,63,43);font-weight:550",
-   "oi_text": "4960",
-   "pc_gex_reason": null,
-   "pc_gex_style": "background:rgb(49,26,36);font-weight:550",
-   "pc_gex_text": "3.15",
-   "pc_vol_reason": null,
-   "pc_vol_style": "background:rgb(17,24,34);font-weight:550",
-   "pc_vol_text": "0.24",
-   "score": 58.478375339244394,
-   "score_text": "58",
-   "spot_line": false,
-   "strike": 767.0,
-   "strike_text": "767.00",
-   "vanna_reason": null,
-   "vanna_style": "background:rgb(20,24,34);font-weight:550",
-   "vanna_text": "-0.04",
-   "vol_oi_reason": null,
-   "vol_oi_style": "background:rgb(14,76,46);font-weight:550",
-   "vol_oi_text": "94.43",
-   "volume_reason": null,
-   "volume_style": "background:rgb(13,87,49);font-weight:550",
-   "volume_text": "468366"
-  },
-  {
-   "charm_reason": null,
-   "charm_style": "background:rgb(16,50,40);font-weight:550",
-   "charm_text": "+730.73",
-   "contributions": [
-    {
-     "label": "charm",
-     "normalized_text": "1.00",
-     "raw_text": "730.73",
-     "text": "22.0",
-     "weight_text": "0.22"
-    },
-    {
-     "label": "net gamma",
-     "normalized_text": "1.00",
-     "raw_text": "235.92",
-     "text": "15.0",
-     "weight_text": "0.15"
-    },
-    {
-     "label": "volume",
-     "normalized_text": "1.00",
-     "raw_text": "644106",
-     "text": "10.0",
-     "weight_text": "0.10"
-    }
-   ],
-   "dex_reason": null,
-   "dex_style": "background:rgb(12,117,56);font-weight:750",
-   "dex_text": "+414.34",
-   "dgex_reason": "no change in gamma is produced",
-   "dgex_text": null,
-   "distance_text": "-7.13",
-   "factors": [
-    {
-     "label": "charm",
-     "normalized_text": "1.00",
-     "raw_text": "730.73",
-     "text": "22.0",
-     "weight_text": "0.22"
-    },
-    {
-     "label": "net gamma",
-     "normalized_text": "1.00",
-     "raw_text": "235.92",
-     "text": "15.0",
-     "weight_text": "0.15"
-    },
-    {
-     "label": "volume",
-     "normalized_text": "1.00",
-     "raw_text": "644106",
-     "text": "10.0",
-     "weight_text": "0.10"
-    },
-    {
-     "label": "open interest",
-     "normalized_text": "0.55",
-     "raw_text": "6628",
-     "text": "5.5",
-     "weight_text": "0.10"
-    },
-    {
-     "label": "vanna",
-     "normalized_text": "1.00",
-     "raw_text": "0.37",
-     "text": "5.0",
-     "weight_text": "0.05"
-    },
-    {
-     "label": "delta",
-     "normalized_text": "1.00",
-     "raw_text": "414.34",
-     "text": "5.0",
-     "weight_text": "0.05"
-    },
-    {
-     "label": "volatility",
-     "normalized_text": "0.00",
-     "raw_text": "20.9",
-     "text": "0.0",
-     "weight_text": "0.05"
-    }
-   ],
-   "flow_reason": "no signed flow is produced",
-   "flow_text": null,
-   "gross_reason": null,
-   "gross_style": "background:rgb(15,54,41);font-weight:550",
-   "gross_text": "333.32",
-   "heat_background": "background:rgb(10,147,63);font-weight:750",
-   "inside": false,
-   "iv_reason": null,
-   "iv_style": "background:rgb(17,26,35);font-weight:550",
-   "iv_text": "20.9",
-   "missing": [],
-   "net_gex_text": "-235.92",
-   "net_reason": null,
-   "net_style": "background:rgb(54,26,36);font-weight:550",
-   "oi_reason": null,
-   "oi_style": "background:rgb(14,76,46);font-weight:550",
-   "oi_text": "6628",
-   "pc_gex_reason": null,
-   "pc_gex_style": "background:rgb(90,28,39);font-weight:550",
-   "pc_gex_text": "5.84",
-   "pc_vol_reason": null,
-   "pc_vol_style": "background:rgb(17,24,34);font-weight:550",
-   "pc_vol_text": "0.32",
-   "score": 62.53518474244275,
-   "score_text": "63",
-   "spot_line": false,
-   "strike": 766.0,
-   "strike_text": "766.00",
-   "vanna_reason": null,
-   "vanna_style": "background:rgb(50,26,36);font-weight:550",
-   "vanna_text": "-0.37",
-   "vol_oi_reason": null,
-   "vol_oi_style": "background:rgb(14,77,46);font-weight:550",
-   "vol_oi_text": "97.18",
-   "volume_reason": null,
-   "volume_style": "background:rgb(12,111,54);font-weight:550",
-   "volume_text": "644106"
-  },
-  {
-   "charm_reason": null,
-   "charm_style": "background:rgb(9,166,67);font-weight:750",
-   "charm_text": "+4050.54",
-   "contributions": [
-    {
-     "label": "charm",
-     "normalized_text": "1.00",
-     "raw_text": "4050.54",
-     "text": "22.0",
-     "weight_text": "0.22"
-    },
-    {
-     "label": "net gamma",
-     "normalized_text": "1.00",
-     "raw_text": "430.39",
-     "text": "15.0",
-     "weight_text": "0.15"
-    },
-    {
-     "label": "volume",
-     "normalized_text": "1.00",
-     "raw_text": "779938",
-     "text": "10.0",
-     "weight_text": "0.10"
-    }
-   ],
-   "dex_reason": null,
-   "dex_style": "background:rgb(11,134,59);font-weight:750",
-   "dex_text": "+489.00",
-   "dgex_reason": "no change in gamma is produced",
-   "dgex_text": null,
-   "distance_text": "-8.13",
-   "factors": [
-    {
-     "label": "charm",
-     "normalized_text": "1.00",
-     "raw_text": "4050.54",
-     "text": "22.0",
-     "weight_text": "0.22"
-    },
-    {
-     "label": "net gamma",
-     "normalized_text": "1.00",
-     "raw_text": "430.39",
-     "text": "15.0",
-     "weight_text": "0.15"
-    },
-    {
-     "label": "volume",
-     "normalized_text": "1.00",
-     "raw_text": "779938",
-     "text": "10.0",
-     "weight_text": "0.10"
-    },
-    {
-     "label": "open interest",
-     "normalized_text": "0.91",
-     "raw_text": "10872",
-     "text": "9.1",
-     "weight_text": "0.10"
-    },
-    {
-     "label": "vanna",
-     "normalized_text": "1.00",
-     "raw_text": "2.31",
-     "text": "5.0",
-     "weight_text": "0.05"
-    },
-    {
-     "label": "delta",
-     "normalized_text": "1.00",
-     "raw_text": "489.00",
-     "text": "5.0",
-     "weight_text": "0.05"
-    },
-    {
-     "label": "volatility",
-     "normalized_text": "0.00",
-     "raw_text": "18.6",
-     "text": "0.0",
-     "weight_text": "0.05"
-    }
-   ],
-   "flow_reason": "no signed flow is produced",
-   "flow_text": null,
-   "gross_reason": null,
-   "gross_style": "background:rgb(9,166,67);font-weight:750",
-   "gross_text": "1555.13",
-   "heat_background": "background:rgb(10,154,64);font-weight:750",
-   "inside": false,
-   "iv_reason": null,
-   "iv_style": "background:rgb(17,26,34);font-weight:550",
-   "iv_text": "18.6",
-   "missing": [],
-   "net_gex_text": "-430.39",
-   "net_reason": null,
-   "net_style": "background:rgb(85,28,38);font-weight:550",
-   "oi_reason": null,
-   "oi_style": "background:rgb(12,109,54);font-weight:550",
-   "oi_text": "10872",
-   "pc_gex_reason": null,
-   "pc_gex_style": "background:rgb(28,25,35);font-weight:550",
-   "pc_gex_text": "1.77",
-   "pc_vol_reason": null,
-   "pc_vol_style": "background:rgb(17,24,34);font-weight:550",
-   "pc_vol_text": "0.56",
-   "score": 66.0953932881177,
-   "score_text": "66",
-   "spot_line": false,
-   "strike": 765.0,
-   "strike_text": "765.00",
-   "vanna_reason": null,
-   "vanna_style": "background:rgb(224,35,47);font-weight:750",
-   "vanna_text": "-2.31",
-   "vol_oi_reason": null,
-   "vol_oi_style": "background:rgb(15,63,43);font-weight:550",
-   "vol_oi_text": "71.74",
-   "volume_reason": null,
-   "volume_style": "background:rgb(11,129,58);font-weight:750",
-   "volume_text": "779938"
-  },
-  {
-   "charm_reason": null,
-   "charm_style": "background:rgb(74,27,38);font-weight:550",
-   "charm_text": "-1117.03",
-   "contributions": [
-    {
-     "label": "charm",
-     "normalized_text": "1.00",
-     "raw_text": "1117.03",
-     "text": "22.0",
-     "weight_text": "0.22"
-    },
-    {
-     "label": "net gamma",
-     "normalized_text": "1.00",
-     "raw_text": "1316.80",
-     "text": "15.0",
-     "weight_text": "0.15"
-    },
-    {
-     "label": "volume",
-     "normalized_text": "1.00",
-     "raw_text": "814582",
-     "text": "10.0",
-     "weight_text": "0.10"
-    }
-   ],
-   "dex_reason": null,
-   "dex_style": "background:rgb(14,79,47);font-weight:550",
-   "dex_text": "+247.12",
-   "dgex_reason": "no change in gamma is produced",
-   "dgex_text": null,
-   "distance_text": "-9.13",
-   "factors": [
-    {
-     "label": "charm",
-     "normalized_text": "1.00",
-     "raw_text": "1117.03",
-     "text": "22.0",
-     "weight_text": "0.22"
-    },
-    {
-     "label": "net gamma",
-     "normalized_text": "1.00",
-     "raw_text": "1316.80",
-     "text": "15.0",
-     "weight_text": "0.15"
-    },
-    {
-     "label": "volume",
-     "normalized_text": "1.00",
-     "raw_text": "814582",
-     "text": "10.0",
-     "weight_text": "0.10"
-    },
-    {
-     "label": "open interest",
-     "normalized_text": "0.55",
-     "raw_text": "6553",
-     "text": "5.5",
-     "weight_text": "0.10"
-    },
-    {
-     "label": "vanna",
-     "normalized_text": "1.00",
-     "raw_text": "0.68",
-     "text": "5.0",
-     "weight_text": "0.05"
-    },
-    {
-     "label": "delta",
-     "normalized_text": "0.64",
-     "raw_text": "247.12",
-     "text": "3.2",
-     "weight_text": "0.05"
-    },
-    {
-     "label": "volatility",
-     "normalized_text": "0.00",
-     "raw_text": "17.6",
-     "text": "0.0",
-     "weight_text": "0.05"
-    }
-   ],
-   "flow_reason": "no signed flow is produced",
-   "flow_text": null,
-   "gross_reason": null,
-   "gross_style": "background:rgb(9,162,66);font-weight:750",
-   "gross_text": "1507.22",
-   "heat_background": "background:rgb(10,144,62);font-weight:750",
-   "inside": false,
-   "iv_reason": null,
-   "iv_style": "background:rgb(17,26,34);font-weight:550",
-   "iv_text": "17.6",
-   "missing": [],
-   "net_gex_text": "-1316.80",
-   "net_reason": null,
-   "net_style": "background:rgb(224,35,47);font-weight:750",
-   "oi_reason": null,
-   "oi_style": "background:rgb(14,75,46);font-weight:550",
-   "oi_text": "6553",
-   "pc_gex_reason": null,
-   "pc_gex_style": "background:rgb(224,35,47);font-weight:750",
-   "pc_gex_text": "14.83",
-   "pc_vol_reason": null,
-   "pc_vol_style": "background:rgb(17,24,34);font-weight:550",
-   "pc_vol_text": "0.78",
-   "score": 60.651634553389655,
-   "score_text": "61",
-   "spot_line": false,
-   "strike": 764.0,
-   "strike_text": "764.00",
-   "vanna_reason": null,
-   "vanna_style": "background:rgb(15,65,44);font-weight:550",
-   "vanna_text": "+0.68",
-   "vol_oi_reason": null,
-   "vol_oi_style": "background:rgb(13,92,50);font-weight:550",
-   "vol_oi_text": "124.31",
-   "volume_reason": null,
-   "volume_style": "background:rgb(11,134,60);font-weight:750",
-   "volume_text": "814582"
-  },
-  {
-   "charm_reason": null,
-   "charm_style": "background:rgb(140,31,42);font-weight:550",
-   "charm_text": "-2397.82",
-   "contributions": [
-    {
-     "label": "charm",
-     "normalized_text": "1.00",
-     "raw_text": "2397.82",
-     "text": "22.0",
-     "weight_text": "0.22"
-    },
-    {
-     "label": "net gamma",
-     "normalized_text": "1.00",
-     "raw_text": "279.57",
-     "text": "15.0",
-     "weight_text": "0.15"
-    },
-    {
-     "label": "volume",
-     "normalized_text": "1.00",
-     "raw_text": "1053494",
-     "text": "10.0",
-     "weight_text": "0.10"
-    }
-   ],
-   "dex_reason": null,
-   "dex_style": "background:rgb(16,47,39);font-weight:550",
-   "dex_text": "+103.84",
-   "dgex_reason": "no change in gamma is produced",
-   "dgex_text": null,
-   "distance_text": "-10.13",
-   "factors": [
-    {
-     "label": "charm",
-     "normalized_text": "1.00",
-     "raw_text": "2397.82",
-     "text": "22.0",
-     "weight_text": "0.22"
-    },
-    {
-     "label": "net gamma",
-     "normalized_text": "1.00",
-     "raw_text": "279.57",
-     "text": "15.0",
-     "weight_text": "0.15"
-    },
-    {
-     "label": "volume",
-     "normalized_text": "1.00",
-     "raw_text": "1053494",
-     "text": "10.0",
-     "weight_text": "0.10"
-    },
-    {
-     "label": "vanna",
-     "normalized_text": "1.00",
-     "raw_text": "1.38",
-     "text": "5.0",
-     "weight_text": "0.05"
-    },
-    {
-     "label": "open interest",
-     "normalized_text": "0.34",
-     "raw_text": "4078",
-     "text": "3.4",
-     "weight_text": "0.10"
-    },
-    {
-     "label": "delta",
-     "normalized_text": "0.27",
-     "raw_text": "103.84",
-     "text": "1.3",
-     "weight_text": "0.05"
-    },
-    {
-     "label": "volatility",
-     "normalized_text": "0.00",
-     "raw_text": "18.4",
-     "text": "0.0",
-     "weight_text": "0.05"
-    }
-   ],
-   "flow_reason": "no signed flow is produced",
-   "flow_text": null,
-   "gross_reason": null,
-   "gross_style": "background:rgb(14,76,46);font-weight:550",
-   "gross_text": "572.36",
-   "heat_background": "background:rgb(11,136,60);font-weight:750",
-   "inside": false,
-   "iv_reason": null,
-   "iv_style": "background:rgb(17,26,34);font-weight:550",
-   "iv_text": "18.4",
-   "missing": [],
-   "net_gex_text": "-279.57",
-   "net_reason": null,
-   "net_style": "background:rgb(61,26,37);font-weight:550",
-   "oi_reason": null,
-   "oi_style": "background:rgb(15,56,41);font-weight:550",
-   "oi_text": "4078",
-   "pc_gex_reason": null,
-   "pc_gex_style": "background:rgb(46,26,36);font-weight:550",
-   "pc_gex_text": "2.91",
-   "pc_vol_reason": null,
-   "pc_vol_style": "background:rgb(17,24,34);font-weight:550",
-   "pc_vol_text": "1.01",
-   "score": 56.73188857171283,
-   "score_text": "57",
-   "spot_line": false,
-   "strike": 763.0,
-   "strike_text": "763.00",
-   "vanna_reason": null,
-   "vanna_style": "background:rgb(12,109,54);font-weight:550",
-   "vanna_text": "+1.38",
-   "vol_oi_reason": null,
-   "vol_oi_style": "background:rgb(9,166,67);font-weight:750",
-   "vol_oi_text": "258.34",
-   "volume_reason": null,
-   "volume_style": "background:rgb(9,166,67);font-weight:750",
-   "volume_text": "1053494"
-  },
-  {
-   "charm_reason": null,
-   "charm_style": "background:rgb(41,25,36);font-weight:550",
-   "charm_text": "-475.01",
-   "contributions": [
-    {
-     "label": "charm",
-     "normalized_text": "1.00",
-     "raw_text": "475.01",
-     "text": "22.0",
-     "weight_text": "0.22"
-    },
-    {
-     "label": "net gamma",
-     "normalized_text": "1.00",
-     "raw_text": "179.66",
-     "text": "15.0",
-     "weight_text": "0.15"
-    },
-    {
-     "label": "volume",
-     "normalized_text": "1.00",
-     "raw_text": "992623",
-     "text": "10.0",
-     "weight_text": "0.10"
-    }
-   ],
-   "dex_reason": null,
-   "dex_style": "background:rgb(16,35,36);font-weight:550",
-   "dex_text": "+47.87",
-   "dgex_reason": "no change in gamma is produced",
-   "dgex_text": null,
-   "distance_text": "-11.13",
-   "factors": [
-    {
-     "label": "charm",
-     "normalized_text": "1.00",
-     "raw_text": "475.01",
-     "text": "22.0",
-     "weight_text": "0.22"
-    },
-    {
-     "label": "net gamma",
-     "normalized_text": "1.00",
-     "raw_text": "179.66",
-     "text": "15.0",
-     "weight_text": "0.15"
-    },
-    {
-     "label": "volume",
-     "normalized_text": "1.00",
-     "raw_text": "992623",
-     "text": "10.0",
-     "weight_text": "0.10"
-    },
-    {
-     "label": "vanna",
-     "normalized_text": "1.00",
-     "raw_text": "0.24",
-     "text": "5.0",
-     "weight_text": "0.05"
-    },
-    {
-     "label": "open interest",
-     "normalized_text": "0.38",
-     "raw_text": "4545",
-     "text": "3.8",
-     "weight_text": "0.10"
-    },
-    {
-     "label": "delta",
-     "normalized_text": "0.12",
-     "raw_text": "47.87",
-     "text": "0.6",
-     "weight_text": "0.05"
-    },
-    {
-     "label": "volatility",
-     "normalized_text": "0.00",
-     "raw_text": "21.3",
-     "text": "0.0",
-     "weight_text": "0.05"
-    }
-   ],
-   "flow_reason": "no signed flow is produced",
-   "flow_text": null,
-   "gross_reason": null,
-   "gross_style": "background:rgb(16,44,39);font-weight:550",
-   "gross_text": "221.14",
-   "heat_background": "background:rgb(11,135,60);font-weight:750",
-   "inside": false,
-   "iv_reason": null,
-   "iv_style": "background:rgb(17,26,35);font-weight:550",
-   "iv_text": "21.3",
-   "missing": [],
-   "net_gex_text": "-179.66",
-   "net_reason": null,
-   "net_style": "background:rgb(45,26,36);font-weight:550",
-   "oi_reason": null,
-   "oi_style": "background:rgb(15,59,42);font-weight:550",
-   "oi_text": "4545",
-   "pc_gex_reason": null,
-   "pc_gex_style": "background:rgb(147,31,42);font-weight:550",
-   "pc_gex_text": "9.66",
-   "pc_vol_reason": null,
-   "pc_vol_style": "background:rgb(17,24,34);font-weight:550",
-   "pc_vol_text": "2.71",
-   "score": 56.403567732068005,
-   "score_text": "56",
-   "spot_line": false,
-   "strike": 762.0,
-   "strike_text": "762.00",
-   "vanna_reason": null,
-   "vanna_style": "background:rgb(16,39,37);font-weight:550",
-   "vanna_text": "+0.24",
-   "vol_oi_reason": null,
-   "vol_oi_style": "background:rgb(10,144,62);font-weight:750",
-   "vol_oi_text": "218.40",
-   "volume_reason": null,
-   "volume_style": "background:rgb(9,158,65);font-weight:750",
-   "volume_text": "992623"
-  },
-  {
-   "charm_reason": null,
-   "charm_style": "background:rgb(23,24,34);font-weight:550",
-   "charm_text": "-114.68",
-   "contributions": [
-    {
-     "label": "charm",
-     "normalized_text": "1.00",
-     "raw_text": "114.68",
-     "text": "22.0",
-     "weight_text": "0.22"
-    },
-    {
-     "label": "net gamma",
-     "normalized_text": "1.00",
-     "raw_text": "88.44",
-     "text": "15.0",
-     "weight_text": "0.15"
-    },
-    {
-     "label": "volume",
-     "normalized_text": "1.00",
-     "raw_text": "552078",
-     "text": "10.0",
-     "weight_text": "0.10"
-    }
-   ],
-   "dex_reason": null,
-   "dex_style": "background:rgb(17,28,35);font-weight:550",
-   "dex_text": "+19.71",
-   "dgex_reason": "no change in gamma is produced",
-   "dgex_text": null,
-   "distance_text": "-12.13",
-   "factors": [
-    {
-     "label": "charm",
-     "normalized_text": "1.00",
-     "raw_text": "114.68",
-     "text": "22.0",
-     "weight_text": "0.22"
-    },
-    {
-     "label": "net gamma",
-     "normalized_text": "1.00",
-     "raw_text": "88.44",
-     "text": "15.0",
-     "weight_text": "0.15"
-    },
-    {
-     "label": "volume",
-     "normalized_text": "1.00",
-     "raw_text": "552078",
-     "text": "10.0",
-     "weight_text": "0.10"
-    },
-    {
-     "label": "vanna",
-     "normalized_text": "1.00",
-     "raw_text": "0.05",
-     "text": "5.0",
-     "weight_text": "0.05"
-    },
-    {
-     "label": "open interest",
-     "normalized_text": "0.34",
-     "raw_text": "4099",
-     "text": "3.4",
-     "weight_text": "0.10"
-    },
-    {
-     "label": "delta",
-     "normalized_text": "0.05",
-     "raw_text": "19.71",
-     "text": "0.3",
-     "weight_text": "0.05"
-    },
-    {
-     "label": "volatility",
-     "normalized_text": "0.00",
-     "raw_text": "26.9",
-     "text": "0.0",
-     "weight_text": "0.05"
-    }
-   ],
-   "flow_reason": "no signed flow is produced",
-   "flow_text": null,
-   "gross_reason": null,
-   "gross_style": "background:rgb(17,32,36);font-weight:550",
-   "gross_text": "88.44",
-   "heat_background": "background:rgb(11,134,60);font-weight:750",
-   "inside": false,
-   "iv_reason": null,
-   "iv_style": "background:rgb(17,27,35);font-weight:550",
-   "iv_text": "26.9",
-   "missing": [],
-   "net_gex_text": "-88.44",
-   "net_reason": null,
-   "net_style": "background:rgb(31,25,35);font-weight:550",
-   "oi_reason": null,
-   "oi_style": "background:rgb(15,56,41);font-weight:550",
-   "oi_text": "4099",
-   "pc_gex_reason": "put/call gamma is missing",
-   "pc_gex_style": null,
-   "pc_gex_text": null,
-   "pc_vol_reason": null,
-   "pc_vol_style": "background:rgb(18,24,34);font-weight:550",
-   "pc_vol_text": "6.13",
-   "score": 55.667141432813494,
-   "score_text": "56",
-   "spot_line": false,
-   "strike": 761.0,
-   "strike_text": "761.00",
-   "vanna_reason": null,
-   "vanna_style": "background:rgb(17,27,35);font-weight:550",
-   "vanna_text": "+0.05",
-   "vol_oi_reason": null,
-   "vol_oi_style": "background:rgb(13,98,51);font-weight:550",
-   "vol_oi_text": "134.69",
-   "volume_reason": null,
-   "volume_style": "background:rgb(13,98,51);font-weight:550",
-   "volume_text": "552078"
-  },
-  {
-   "charm_reason": null,
-   "charm_style": "background:rgb(18,24,34);font-weight:550",
-   "charm_text": "-16.62",
-   "contributions": [
-    {
-     "label": "net gamma",
-     "normalized_text": "1.00",
-     "raw_text": "60.73",
-     "text": "15.0",
-     "weight_text": "0.15"
-    },
-    {
-     "label": "volume",
-     "normalized_text": "1.00",
-     "raw_text": "693935",
-     "text": "10.0",
-     "weight_text": "0.10"
-    },
-    {
-     "label": "open interest",
-     "normalized_text": "0.64",
-     "raw_text": "7703",
-     "text": "6.4",
-     "weight_text": "0.10"
-    }
-   ],
-   "dex_reason": null,
-   "dex_style": "background:rgb(17,30,35);font-weight:550",
-   "dex_text": "+27.22",
-   "dgex_reason": "no change in gamma is produced",
-   "dgex_text": null,
-   "distance_text": "-13.13",
-   "factors": [
-    {
-     "label": "net gamma",
-     "normalized_text": "1.00",
-     "raw_text": "60.73",
-     "text": "15.0",
-     "weight_text": "0.15"
-    },
-    {
-     "label": "volume",
-     "normalized_text": "1.00",
-     "raw_text": "693935",
-     "text": "10.0",
-     "weight_text": "0.10"
-    },
-    {
-     "label": "open interest",
-     "normalized_text": "0.64",
-     "raw_text": "7703",
-     "text": "6.4",
-     "weight_text": "0.10"
-    },
-    {
-     "label": "charm",
-     "normalized_text": "0.25",
-     "raw_text": "16.62",
-     "text": "5.5",
-     "weight_text": "0.22"
-    },
-    {
-     "label": "vanna",
-     "normalized_text": "0.23",
-     "raw_text": "0.01",
-     "text": "1.1",
-     "weight_text": "0.05"
-    },
-    {
-     "label": "delta",
-     "normalized_text": "0.07",
-     "raw_text": "27.22",
-     "text": "0.4",
-     "weight_text": "0.05"
-    },
-    {
-     "label": "volatility",
-     "normalized_text": "0.00",
-     "raw_text": "29.4",
-     "text": "0.0",
-     "weight_text": "0.05"
-    }
-   ],
-   "flow_reason": "no signed flow is produced",
-   "flow_text": null,
-   "gross_reason": null,
-   "gross_style": "background:rgb(17,30,35);font-weight:550",
-   "gross_text": "60.73",
-   "heat_background": "background:rgb(13,100,52);font-weight:550",
-   "inside": false,
-   "iv_reason": null,
-   "iv_style": "background:rgb(17,27,35);font-weight:550",
-   "iv_text": "29.4",
-   "missing": [],
-   "net_gex_text": "-60.73",
-   "net_reason": null,
-   "net_style": "background:rgb(27,25,35);font-weight:550",
-   "oi_reason": null,
-   "oi_style": "background:rgb(14,84,48);font-weight:550",
-   "oi_text": "7703",
-   "pc_gex_reason": "put/call gamma is missing",
-   "pc_gex_style": null,
-   "pc_gex_text": null,
-   "pc_vol_reason": null,
-   "pc_vol_style": "background:rgb(19,24,34);font-weight:550",
-   "pc_vol_text": "10.45",
-   "score": 38.46130266434085,
-   "score_text": "38",
-   "spot_line": false,
-   "strike": 760.0,
-   "strike_text": "760.00",
-   "vanna_reason": null,
-   "vanna_style": "background:rgb(17,24,34);font-weight:550",
-   "vanna_text": "+0.01",
-   "vol_oi_reason": null,
-   "vol_oi_style": "background:rgb(14,74,46);font-weight:550",
-   "vol_oi_text": "90.09",
-   "volume_reason": null,
-   "volume_style": "background:rgb(12,118,56);font-weight:750",
-   "volume_text": "693935"
   }
  ],
  "scale_text": "0\u201372",

@@ -167,7 +167,7 @@ from db_authority import canonical_stream_db_path
 from instrument_identity import display_symbol, ticker_storage_key, vendor_option_root
 import live_market_plane as lmp
 from numeric_contract import float_finite_or_none, price_text, schwab_count, schwab_number
-from confluence_composite import at_price, build_matrix
+from confluence_composite import at_price, build_matrix, window_rows
 from terrain_engine import (SCOPES, SAME_DAY_LEVELS, TerrainSnapshot, _dte_of, _per_strike_rows, chain_ladder,
                             compute_terrain, nearest_strike, positioning_migration, PRICE_RELATIONS,
                             price_relations, strike_window)
@@ -3203,7 +3203,9 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict:
     em_dn = _level_named(levels, "EM−")
     rows = stored.get("rows")
     body = {key: value for key, value in stored.items() if key not in ("rows", "strikes")}
-    body["rows"] = [dict(row) for row in rows] if isinstance(rows, list) else []
+    # the window follows the live price; without one, the price the chain was ranked at
+    shown = window_rows(rows, live_spot if live_spot is not None else float(spot)) if isinstance(rows, list) else []
+    body["rows"] = [dict(row) for row in shown]
     body.update(at_price(body["rows"], stored["strikes"], live_spot))
     low = None
     high = None
