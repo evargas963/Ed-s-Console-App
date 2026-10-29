@@ -1178,7 +1178,6 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await mark();
     served.s = live(3, true); await reload();
     await expect(page.locator('#heatBody .heat-banner')).toContainText('STALE');
-    await expect(page.locator('#heatBody .heat-banner')).toHaveAttribute('title', served.s.levels_stale_reason);
     await expect(marked()).toHaveCount(1);
   });
 
@@ -1192,6 +1191,8 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#heatBody .hcell').first()).toBeVisible();
     await expect(page.locator('#heatBody .heat-banner')).toContainText(
       'CLOSE · ' + CLOSED.levels_time_ct + ' · ' + CLOSED.levels_age_text);
+    await expect(page.locator('#heatBody .heat-banner')).toHaveAttribute('title',
+      CLOSED.levels_stale_reason || CLOSED.levels_state);
     await expect(page.locator('#heatBody .heat-wrap')).toHaveClass(/recede/);
   });
 
