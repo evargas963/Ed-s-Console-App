@@ -7,6 +7,7 @@ for that expiry. This module ranks them. It does not recompute a greek or the bl
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 from typing import Any
 
 from math_exposure_core import (
@@ -15,8 +16,15 @@ from math_exposure_core import (
 from numeric_contract import price_text, schwab_count, schwab_number
 
 ABSENT = ("DGEXM", "FLOWM")
-WINDOW = 5
 THIN_BOOK = 10
+
+
+@dataclass(frozen=True)
+class RankedStrike:
+    """One strike of an expiry's ranking: its factor magnitudes (magnitudes) and its score with
+    what it is missing (score_magnitudes)."""
+    factors: dict
+    result: dict
 
 WRITTEN = {
     "0DTE": {
@@ -234,19 +242,10 @@ def iv_by_strike(contracts: list) -> dict[float, float | None]:
     return out
 
 
-def window_strikes(strikes: list[float], spot: float) -> list[float]:
-    """Five listed strikes below the price, five above, and the strike on the price."""
-    below = sorted((s for s in strikes if s < spot), reverse=True)[:WINDOW]
-    above = sorted(s for s in strikes if s > spot)[:WINDOW]
-    at = [s for s in strikes if s == spot]
-    return sorted(below + at + above)
-
-
-def window_rows(matrix: dict, price: float) -> list[dict]:
-    """The rows of the strikes window_strikes chooses at `price`, highest strike first, each
-    coloured on its whole expiry's scale."""
+def window_rows(matrix: dict, shown: list[float]) -> list[dict]:
+    """The rows of the ranked strikes `shown`, highest strike first, each coloured on its whole
+    expiry's scale."""
     ranked = matrix["ranked"]
-    shown = window_strikes(list(ranked), price)
     return [_row(strike, ranked[strike], matrix["peaks"]) for strike in sorted(shown, reverse=True)]
 
 
@@ -379,7 +378,7 @@ def _factor_row(part: dict) -> dict:
 def build_matrix(exposures: dict, charm_by_strike: dict, ivs: dict[float, float | None],
                  spot: float, dte: float) -> dict:
     """The ranking of one expiry's book: every strike's factors and score and the expiry's colour
-    scales. The rows the page shows are drawn from it at the price (window_rows)."""
+    scales. The rows the page shows are drawn from it (window_rows)."""
     name = preset_name(dte)
     weights = in_score_weights(name)
     strikes = sorted(float(s) for s in exposures.keys())
@@ -418,15 +417,15 @@ def build_matrix(exposures: dict, charm_by_strike: dict, ivs: dict[float, float 
             {"label": _LABEL[k], "text": f"{100.0 * weights[k] / span:.2f}"}
             for k, span in spans.items() if span is not None and span != 0
         ],
-        "ranked": {strike: (mags[strike], scored[strike]) for strike in mags},
+        "ranked": {strike: RankedStrike(mags[strike], scored[strike]) for strike in mags},
         "peaks": peaks,
         "strikes": strikes,
     }
 
 
-def _row(strike: float, ranked: tuple[dict, dict], peaks: dict) -> dict:
+def _row(strike: float, ranked: RankedStrike, peaks: dict) -> dict:
     """One strike's row of the matrix, its colours on the expiry's scales."""
-    factors, result = ranked
+    factors, result = ranked.factors, ranked.result
     score = result["score"]
     pc_gex = factors["_pc_gex"]
     pc_vol = factors["_pc_vol"]

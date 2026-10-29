@@ -3202,8 +3202,11 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict:
     em_up = _level_named(levels, "EM+")
     em_dn = _level_named(levels, "EM−")
     body = {key: value for key, value in stored.items() if key not in ("ranked", "peaks", "strikes")}
-    # the window follows the live price; without one, the price the chain was ranked at
-    body["rows"] = window_rows(stored, live_spot if live_spot is not None else float(spot))
+    ranked = sorted(stored["ranked"])
+    lo, hi, view = _window(ranked, nearest_strike(ranked, live_spot), "auto", None, 0)
+    body["rows"] = window_rows(stored, ranked[lo:hi + 1])
+    if view["note"] is not None:
+        body["notes"] = [*body["notes"], view["note"]]
     body.update(at_price(body["rows"], stored["strikes"], live_spot))
     low = None
     high = None

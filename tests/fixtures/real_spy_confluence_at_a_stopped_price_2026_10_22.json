@@ -1389,6 +1389,128 @@
    "volume_reason": null,
    "volume_style": "background:rgb(15,63,43);font-weight:550",
    "volume_text": "288663"
+  },
+  {
+   "charm_reason": null,
+   "charm_style": "background:rgb(17,24,34);font-weight:550",
+   "charm_text": "+13.49",
+   "contributions": [
+    {
+     "label": "net gamma",
+     "normalized_text": "0.66",
+     "raw_text": "39.93",
+     "text": "10.0",
+     "weight_text": "0.15"
+    },
+    {
+     "label": "volume",
+     "normalized_text": "0.81",
+     "raw_text": "422376",
+     "text": "8.1",
+     "weight_text": "0.10"
+    },
+    {
+     "label": "open interest",
+     "normalized_text": "0.61",
+     "raw_text": "7291",
+     "text": "6.1",
+     "weight_text": "0.10"
+    }
+   ],
+   "dex_reason": null,
+   "dex_style": "background:rgb(11,126,58);font-weight:750",
+   "dex_text": "+456.84",
+   "dgex_reason": "no change in gamma is produced",
+   "dgex_text": null,
+   "distance_text": "-5.13",
+   "factors": [
+    {
+     "label": "net gamma",
+     "normalized_text": "0.66",
+     "raw_text": "39.93",
+     "text": "10.0",
+     "weight_text": "0.15"
+    },
+    {
+     "label": "volume",
+     "normalized_text": "0.81",
+     "raw_text": "422376",
+     "text": "8.1",
+     "weight_text": "0.10"
+    },
+    {
+     "label": "open interest",
+     "normalized_text": "0.61",
+     "raw_text": "7291",
+     "text": "6.1",
+     "weight_text": "0.10"
+    },
+    {
+     "label": "delta",
+     "normalized_text": "1.00",
+     "raw_text": "456.84",
+     "text": "5.0",
+     "weight_text": "0.05"
+    },
+    {
+     "label": "charm",
+     "normalized_text": "0.20",
+     "raw_text": "13.49",
+     "text": "4.5",
+     "weight_text": "0.22"
+    },
+    {
+     "label": "vanna",
+     "normalized_text": "0.19",
+     "raw_text": "0.00",
+     "text": "0.9",
+     "weight_text": "0.05"
+    },
+    {
+     "label": "volatility",
+     "normalized_text": "0.00",
+     "raw_text": "29.0",
+     "text": "0.0",
+     "weight_text": "0.05"
+    }
+   ],
+   "flow_reason": "no signed flow is produced",
+   "flow_text": null,
+   "gross_reason": null,
+   "gross_style": "background:rgb(17,30,35);font-weight:550",
+   "gross_text": "61.25",
+   "heat_background": "background:rgb(13,92,50);font-weight:550",
+   "inside": false,
+   "iv_reason": null,
+   "iv_style": "background:rgb(17,27,35);font-weight:550",
+   "iv_text": "29.0",
+   "missing": [],
+   "net_gex_text": "-39.93",
+   "net_reason": null,
+   "net_style": "background:rgb(23,24,34);font-weight:550",
+   "oi_reason": null,
+   "oi_style": "background:rgb(14,81,47);font-weight:550",
+   "oi_text": "7291",
+   "pc_gex_reason": null,
+   "pc_gex_style": "background:rgb(73,27,38);font-weight:550",
+   "pc_gex_text": "4.75",
+   "pc_vol_reason": null,
+   "pc_vol_style": "background:rgb(17,24,34);font-weight:550",
+   "pc_vol_text": "0.08",
+   "score": 34.553383114785646,
+   "score_text": "35",
+   "spot_line": false,
+   "strike": 768.0,
+   "strike_text": "768.00",
+   "vanna_reason": null,
+   "vanna_style": "background:rgb(17,24,34);font-weight:550",
+   "vanna_text": "0.00",
+   "vol_oi_reason": null,
+   "vol_oi_style": "background:rgb(15,56,41);font-weight:550",
+   "vol_oi_text": "57.93",
+   "volume_reason": null,
+   "volume_style": "background:rgb(14,81,47);font-weight:550",
+   "volume_text": "422376"
   }
  ],
  "scale_text": "0\u201372",

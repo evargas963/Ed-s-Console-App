@@ -340,11 +340,8 @@ from Schwab to the screen (daemon, console, page), are these:
   and before the next open it is valued at the clock: a closed day has no same-day close, so no
   0DTE level is made from a later expiry (operator 2026-10-25). A later
   equity print keeps the price that publication was priced at (`priced_at_spot`); the matrix's
-  window (five listed strikes below the price, five above and one on it,
-  `confluence_composite.window_strikes`), its spot, each row's distance from it and the row it
-  sits under are the live price's (`confluence_composite.at_price`). With no live price held, the
-  window is around `priced_at_spot` and no row has the spot line (a decision owed by the operator,
-  `ACTIVE_PROGRAM.md` Confluence matrix). The
+  window (every per-strike panel's, Auto; "Strike windows" below), its spot, each row's distance
+  from it and the row it sits under are the live price's (`confluence_composite.at_price`). The
   chain's own time stays `computed_ts_utc` and is the line above the matrix. The expiry is a dropdown; a same-day expiry is labeled 0DTE. Each level is sent at its own price and drawn on the rail. An expiry dated before today is not offered. A request that names a date before
   today opens on the next expiry, and the page keeps that one. When every expiry
   on the held chain is before today, the route says no expiry on this chain is
@@ -546,12 +543,13 @@ from Schwab to the screen (daemon, console, page), are these:
   draws "-" (operator 2026-10-12). The surface is served whenever the levels projected one; no
   count of cells withholds it.
 - **Strike windows.** Every per-strike panel (the heatmap, GEX by strike, the chart's profiles,
-  vanna, charm, the migration) shows the window the server sends: `terrain_engine.strike_window`
+  vanna, charm, the migration, the confluence matrix at Auto) shows the window the server sends: `terrain_engine.strike_window`
   picks the scope's strikes (Auto 11, Wider 23, All every one) around the strike nearest the
   live price, or around the strike the operator panned to (`centre`, moved `shift` rows by a
   drag), and each answer carries its `view`: the centre, the largest |value| drawn (the bar and
   colour scale) and `note`: with no live price and no pan the rows are the middle of the chain,
-  and the note says so (`WINDOW_NO_PRICE`, drawn on the panel; no row is marked as the price).
+  and the note says so (`WINDOW_NO_PRICE`, drawn on the panel, on the matrix among its `notes`;
+  no row is marked as the price).
   The heatmap's view (`server._surface_view`) also picks the columns (the selected expiry
   alone; for Auto the nearest unexpired the page fits, `cols`; Wider twice that; All every one;
   an expired column is a past observation, drawn labelled EXPIRED, and with none unexpired Auto

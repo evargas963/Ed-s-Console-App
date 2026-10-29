@@ -17,11 +17,12 @@ weekly distance check that would later move a weight is not part of this.
 A negative gamma leg leaves that factor missing. When open interest plus volume weights sum to
 zero, the volatility blend is the simple mean of the contracts that have a volatility. The header
 chip is the only not-live mark. The matrix shows the chain's time. It does not show chain age or a
-STALE word. The window is five strikes below the live price and five above, plus a strike on the
-price, chosen at each request from every strike the publication ranked, so it follows the
-price between chains (operator 2026-10-29: "for the confluence matrix it is not shifting so that
-we have 5+/- strikes around spot"). Decision owed by the operator: with no live price held, the
-window is around the price the chain was ranked at, as before 2026-10-29, with no spot line. The strike column shows two decimals. Percentiles use the whole expiry. Each level is drawn at its own price on the rail.
+STALE word. The window is every per-strike panel's (`docs/DATA_FLOW.md` "Strike windows", Auto:
+eleven strikes centred on the one nearest the live price; with no live price, the middle of the
+chain and the note saying so), chosen at each request from every strike the publication ranked,
+so it follows the price between chains (operator 2026-10-29: "for the confluence matrix it is not
+shifting so that we have 5+/- strikes around spot"; asked whether the matrix uses the same strike
+window as the heatmap and the other panels: "Yes, one window"). The strike column shows two decimals. Percentiles use the whole expiry. Each level is drawn at its own price on the rail.
 A price outside the visible strikes is a button above or below the matrix. The page's placement
 of those served prices, and of the spot line, is display geometry from the design spec. It is
 not a second price. The expiry, including
