@@ -167,7 +167,7 @@ def _removes_whole_units(was: str, now: str | None) -> bool:
         return (not any(isinstance(n, _DEFS) and n.decorator_list for n in ast.walk(tree))
                 and all(isinstance(n, (ast.Import, ast.ImportFrom, *_DEFS))
                         or (isinstance(n, ast.Expr) and isinstance(n.value, ast.Constant)) for n in tree.body))
-    if _python_code(now) is None:                  # it does not parse, or declares another encoding
+    if _python_code(was) is None or _python_code(now) is None:   # one declares another encoding
         return False
     after = ast.parse(now)
     kept = _units(after)
