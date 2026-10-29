@@ -1,21 +1,32 @@
 # Ed Console — Data Flow
 
-How data moves from Schwab to the screen: the processes, how they talk, where data lives, and the
-journey of each kind of data. The operator's decisions are in §6. Where the code lives is `docs/ARCHITECTURE.md`. Every change
-is built to this document and checked against it; a change that does not fit stops and goes to the
-operator.
+How data moves from Schwab to the screen: the design (§1), the rules for the data (§2), today's
+code (§3, being replaced step by step), and the journey of each kind of data. The operator's
+decisions are in §6. Where the code lives is `docs/ARCHITECTURE.md`. Every change is built to this
+document and checked against it; a change that does not fit stops and goes to the operator.
 
-## 1. The agreed design (enforced)
+## 1. The design (operator 2026-10-29)
 
 ```
-[Schwab] ─ one WebSocket ─► [Capture daemon: the newest of everything] ─ push ─► [Browser]
-                                        │
-                        every message, in the background
-                                        ▼
-                             [The one database writer] ─► [Databases: history]
+[Schwab] ─ stream + REST ─► [ one program:  Feed ─► State ─► Calculators ─► State ─► Push ] ─ one WebSocket ─► [page]
+                                                      │
+                                                      └─► Recorder ─► [databases: history]
 ```
 
-- One Schwab connection, owned by the daemon (Schwab allows one streamer connection per user).
+One program in five parts (`AGENTS.md` "The shape"): **Feed** talks to Schwab and takes each field
+as sent; **State** holds the newest value of everything with its time; **Calculators** compute each
+derived value once, as pure functions; **Push** sends the page a snapshot, then every change, on one
+WebSocket, and the page draws it; **Recorder** writes every message to the databases, which no live
+screen reads. Hops: Schwab → program → page.
+
+Today the program is two (the capture daemon and the console, §3.1) joined by two local sockets,
+and the page re-reads routes after each push (§3.2). `ACTIVE_PROGRAM.md` SHAPE step 3 makes them
+one program and step 4 makes the push the page's only data; each step rewrites the sections of §3
+it replaces, in the same PR.
+
+The facts below hold in both:
+
+- One Schwab connection, owned by Feed (today the daemon; Schwab allows one streamer connection per user).
   Enforced by: `tests/test_schwab_client_import_boundary.py` (the console makes no Schwab call).
 - One owner of the Schwab token while the app runs: the daemon's one client
   (`capture.one_schwab_client`), used by the stream and every chain request, built from
@@ -192,6 +203,11 @@ from Schwab to the screen (daemon, console, page), are these:
   Enforced by: `tests/test_data_path_rules_v1.py`.
 
 ## 3. Today
+
+Today's code, accurate as of the last PR that touched each part. It is being replaced by the
+design of §1: §3.1's two processes become one program (SHAPE step 3), §3.2's channels between them
+are deleted and the page's `/api` reads and `/api/changes` give way to the one push (step 4), and
+§3.3's console memory becomes the one State.
 
 ### 3.1 The processes
 
@@ -712,40 +728,42 @@ from Schwab to the screen (daemon, console, page), are these:
 
 The work that closes these gaps, in order, is `ACTIVE_PROGRAM.md`.
 
-## 4. The target
+## 4. The target, in the one program (§1)
 
-### 4.1 The processes
+### 4.1 Where each part runs
 
-| Process | What it does |
-|---|---|
-| **Capture daemon** | Holds the one Schwab connection: the streamer, and the REST chain fetch. Holds the one in-memory state: latest quotes, books, bars, chains. Pushes every change. Its writer thread is the one database writer. At startup it loads the latest stored values into memory. |
-| **Levels producer** | Its own process. Receives the chain and quotes from the daemon, computes each derived value once, and hands the results back to the daemon to push and write. The daemon never waits on it: it sends and moves on, and results arrive as their own message. Kept out of the daemon because heavy computing in the daemon's process stalls its event loop and Schwab drops the socket. |
-| **Console** | Serves the page and the read routes, from the daemon's state. Computes nothing and holds no copy. |
-| **Browser** | One page, two push connections: the daemon's (prices, bars) and the console's (levels, flow and liquidity changed). No refresh timer. Every panel reads from what is pushed; opening the Chain view reads one expiry from the state. |
+| Part | Runs on | Why |
+|---|---|---|
+| **Feed** | the program's event loop (the Schwab stream) and one thread (the REST chain sweep, one request at a time) | the stream must read every frame as it comes |
+| **Calculators** | a worker pool the program owns, never the event loop | heavy computing on the daemon's event loop stalled it until Schwab dropped the socket; a process pool, because Python threads share one interpreter lock, so a CPU-bound thread still stalls the loop. Feed and Push never wait on a calculation: it is handed off, and its result returns to State as its own update. Which pool is measured in step 3 (the Schwab socket's heartbeat kept while every watchlist ticker's chain is priced) |
+| **State** | the event loop | one writer of each value, read by Push and the Recorder |
+| **Push** | the event loop | a snapshot on connect, then every change |
+| **Recorder** | its own thread (the writer) | the page never waits on a database |
+| **Page** | the browser | one WebSocket; it draws what is pushed, with no refresh timer and no route reads |
 
 ### 4.2 The journey of each kind of data
 
-- **Quote, option quote, book, bar:** Schwab → daemon state → pushed to the browser; written by the
-  one writer.
-- **Chain:** Schwab REST, fetched by the daemon → daemon state → the producer. The browser is never
-  pushed a whole chain.
+- **Quote, option quote, book, bar:** Schwab → Feed → State → pushed to the page; written by the
+  Recorder.
+- **Chain:** Schwab REST, fetched by Feed → State → Calculators → State. The page is never pushed a
+  whole chain.
 - **Chain history:** in each capture window of the option markets as Schwab's /markets sent them
   -- every 30 minutes from their open, and at the last close (the close capture: 16:15 ET, 13:15
-  on an early close) -- the daemon
-  writes the first full chain (every expiry) it begins of each watchlist ticker, compressed, one
-  row per expiry, into `ed_console.db` (its chain sweep writes it). Nothing is captured
-  outside those windows. This is what research reads and what startup loads (the newest
-  capture per ticker).
-- **Levels:** producer → daemon state → pushed to the browser; not stored (decision 7).
-- **Level crosses:** producer → written by the one writer.
-- **After a restart, a weekend or the close:** at startup the newest stored chain per ticker and the
-  bars are loaded, the levels are computed from them once, and the screens show them with their
-  time.
+  on an early close) -- the Recorder
+  writes the first full chain (every expiry) Feed begins of each watchlist ticker, compressed, one
+  row per expiry, into `ed_console.db`. Nothing is captured outside those windows. This is what
+  research reads and what startup loads (the newest capture per ticker).
+- **Levels:** Calculators → State → pushed to the page; not stored (decision 7).
+- **Level crosses:** Calculators → State → written by the Recorder.
+- **After a restart, a weekend or the close:** at startup the Recorder's loader reads the newest
+  stored chain per ticker and the bars once, the levels are computed from them once, and the
+  screens show them with their time.
 
 ## 5. Checks
 
-ruff at commit and in CI, with `pyproject.toml`'s one selection (unused imports, undefined names,
-syntax errors); a compile pass in CI (every file CPython compiles); the behavior tests (`pytest`, `tests/`) and the
+The rules and the tool that enforces each are `AGENTS.md` "Rules and what enforces them". Today:
+ruff at commit and in CI, with `pyproject.toml`'s selection, and `ruff format` (the one Python
+formatter); a compile pass in CI (every file CPython compiles); the behavior tests (`pytest`, `tests/`) and the
 browser tests (Playwright, `tests/e2e/`) in CI; the secrets and home-path scan at commit and in CI
 (each commit of a pull request, merge resolutions included); the line-ending check at commit and
 in CI (the pull request's change); for agents, the hooks that block destructive git. A passing check proves only what its tests exercise; every rule beyond
