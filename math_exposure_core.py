@@ -170,13 +170,15 @@ def compute_exposures_by_strike(
       - call/put OI
       - call/put delta exposure (scaled)
       - call/put gamma exposure (scaled)
-      - net delta, net gamma (Call + Put; puts keep signed delta)
+      - net delta, net gamma: call minus put (_finish_bucket), the dealer's position under the
+        one assumption every net field makes (dealers long calls, short puts); a put keeps
+        Schwab's signed delta, so a short put adds positive delta
 
-    Scaling (Option A):
+    Scaling:
       delta_exposure = delta * OI * multiplier
       gamma_exposure = gamma * OI * multiplier
 
-    NOTE: Dollarized fields (DEX$, GEX$ per 1%) are computed when `spot` is provided. Net gamma follows Call - Put convention.
+    The dollar fields (DEX$, GEX$ per 1%) are computed when `spot` is provided.
     """
     exposures: Dict[float, dict] = {}
     total = 0
