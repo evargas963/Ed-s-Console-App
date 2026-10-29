@@ -62,11 +62,11 @@ def test_a_failed_round_is_logged_and_the_next_round_runs(tmp_path, monkeypatch,
     calls = {"n": 0}
     real = daemon.status
 
-    def flaky():
+    def flaky(now):
         calls["n"] += 1
         if calls["n"] == 1:
             raise RuntimeError("boom")
-        return real()
+        return real(now)
     monkeypatch.setattr(daemon, "status", flaky)
     got = []
     monkeypatch.setattr(bus, "publish", lambda topic, msg: got.append(topic))
