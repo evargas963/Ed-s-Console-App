@@ -627,9 +627,8 @@ class Daemon:
         held = symbol in self.held["LEVELONE_OPTIONS"]
         return self.bus.current.get(_current_key("LEVELONE_OPTIONS", symbol)) if held else None
 
-    def status(self) -> dict:
-        """What the console and browsers are told every second (live_push / live_ui)."""
-        now = time.time()
+    def status(self, now: float) -> dict:
+        """What the console and browsers are told every second (live_push / live_ui), at `now`."""
         last = self.stream.last_frame_ts if self.stream is not None else 0.0
         return {"ts": now,
                 "schwab_socket_open": bool(last) and now - last < DEAD_SEC,
@@ -909,7 +908,7 @@ async def record_feed_status(daemon: "Daemon", stop: asyncio.Event) -> None:
         now = time.time()
         try:
             last_frame = daemon.stream.last_frame_ts if daemon.stream is not None else None
-            st = daemon.status()
+            st = daemon.status(now)
             for svc in SERVICES:
                 daemon.bus.publish(f"feedstatus.{svc}", {
                     "ts": now, "service": svc, "socket_open": st["schwab_socket_open"],
