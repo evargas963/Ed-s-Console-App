@@ -243,6 +243,22 @@ def test_an_inherited_test_is_judged_as_the_code_that_defines_it(tmp_path):
         f"tests/test_held.py::_Base.test_x patches: {RAN}"]
 
 
+def test_a_new_test_under_a_decorator_that_does_not_wrap_is_refused(tmp_path):
+    was = ("from unittest import mock\n\n\ndef pinned(f):\n    def wrapper(*a, **k):\n"
+           "        with mock.patch('calc.spot', return_value=3):\n            return f(*a, **k)\n    return wrapper\n\n\n"
+           "@pinned\ndef test_old():\n    pass\n")
+    assert _check(tmp_path, {"tests/test_deco.py": was + "\n\n@pinned\ndef test_new():\n    pass\n"},
+                  base={**BASE, "tests/test_deco.py": was}) == [f"tests/test_deco.py::test_new patches: {RAN}"]
+
+
+def test_a_new_test_made_inside_a_function_is_judged_as_that_function(tmp_path):
+    was = ("import pytest\n\n\n@pytest.fixture(autouse=True)\ndef _pin(monkeypatch):\n    monkeypatch.setenv('X', '1')\n\n\n"
+           "def make():\n    def test_x():\n        assert True\n    return test_x\n\n\ntest_made = make()\n")
+    now = was.replace("        assert True\n", "        assert 1 == 1\n")
+    assert _check(tmp_path, {"tests/test_made.py": now}, base={**BASE, "tests/test_made.py": was}) == [
+        f"tests/test_made.py::make patches: {RAN}"]
+
+
 def test_a_changed_fixture_named_like_a_test_is_not_taken_for_one(tmp_path):
     """pytest collects no fixture, so one named test_* is judged only by the patches it applies."""
     new = "import pytest\n\n\n@pytest.fixture\ndef test_data():\n    return 1\n\n\ndef test_new(test_data):\n    assert test_data == 1\n"

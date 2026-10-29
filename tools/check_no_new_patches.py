@@ -107,6 +107,23 @@ def _named_as_test(path: str, name: str) -> bool:
             and all(c.startswith("Test") for c in classes))
 
 
+def _innermost(units: dict, path: str, line: int) -> tuple[str, bool] | None:
+    """The innermost unit of `path` holding `line`, as (name, changed); None outside every unit or
+    for a file the PR does not change."""
+    inside = [(u.end_lineno - getattr(u, "first", u.lineno), n, changed) for n, u, changed in units.get(path, [])
+              if getattr(u, "first", u.lineno) <= line <= u.end_lineno]
+    return min(inside)[1:] if inside else None
+
+
+def _resolve(units: dict, path: str, at: str | int) -> tuple[str, str] | None:
+    """The changed file's unit a test identity names, as (path, name): a name pytest collected it
+    under, or the innermost unit holding the line its code starts on."""
+    if isinstance(at, int):
+        inside = _innermost(units, path, at)
+        return (path, inside[0]) if inside else None
+    return (path, at) if any(n == at for n, _, _ in units.get(path, [])) else None
+
+
 def violations(root: Path, base: str, record: Path) -> list[str]:
     try:
         events = read(record)
@@ -114,24 +131,23 @@ def violations(root: Path, base: str, record: Path) -> list[str]:
         raise ToolError(str(e)) from e
     units = {path: _file_units(root, base, path, was) for path, was in _changed_files(root, base).items()}
     reasons: dict[str, set[str]] = {}
-    ran, collected = set(), set()
+    ran, collected, collected_files = set(), set(), set()
     for e in events:
-        if e.test:
-            path, _, name = e.test.partition("::")
-            if e.kind == RAN:
-                ran.add((path, name))
-            if e.kind == COLLECTED:
-                collected.add((path, name))
-            if any(n == name and changed for n, _, changed in units.get(path, [])) and (e.kind == APPLIED or e.sites):
+        tests = {t for at in e.test or () if (t := _resolve(units, *at))}
+        if e.kind == RAN:
+            ran |= tests
+        if e.kind == COLLECTED:
+            collected |= tests
+            collected_files |= {path for path, _ in e.test}
+        for path, name in tests:
+            if (e.kind == APPLIED or e.sites) and any(n == name and changed for n, _, changed in units[path]):
                 reasons.setdefault(f"{path}::{name}", set()).add(PATCHED)
         if e.kind != APPLIED:
             continue
         for path, line in e.sites:
-            inside = [(u.end_lineno - getattr(u, "first", u.lineno), n, changed) for n, u, changed in units.get(path, [])
-                      if getattr(u, "first", u.lineno) <= line <= u.end_lineno]
-            if inside and min(inside)[2]:
-                reasons.setdefault(f"{path}::{min(inside)[1]}", set()).add(f"line {line} applies one")
-    collected_files = {path for path, _ in collected}
+            inside = _innermost(units, path, line)
+            if inside and inside[1]:
+                reasons.setdefault(f"{path}::{inside[0]}", set()).add(f"line {line} applies one")
     for path, file_units in units.items():
         for name, _, changed in file_units:
             is_test = (path, name) in collected or (path not in collected_files and _named_as_test(path, name))

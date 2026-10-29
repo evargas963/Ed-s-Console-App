@@ -31,11 +31,10 @@ UNDO = {MonkeyPatch: "undo", mock._patch: "__exit__", mock._patch_dict: "_unpatc
 
 @dataclass(frozen=True)
 class Event:
-    """One line of the record: its kind (APPLIED, RAN or COLLECTED), the test as the code it runs
-    (path::qualname of its defining function; None outside a test) and the test code that applied
-    the patches, as (path, line)."""
+    """One line of the record: its kind (APPLIED, RAN or COLLECTED), the test's identities (see
+    `_unit`; None outside a test) and the test code that applied the patches, as (path, line)."""
     kind: str
-    test: str | None
+    test: tuple[tuple[str, str | int], ...] | None
     sites: tuple[tuple[str, int], ...]
 
 
@@ -45,7 +44,8 @@ def read(where: Path) -> list[Event]:
     if not files:
         raise FileNotFoundError(f"no patch record in {where}: run the suite with ED_PATCH_RECORD={where} "
                                 "python -m pytest -p tools.patch_record")
-    return [Event(d["kind"], d["test"], tuple((p, n) for p, n in d["sites"]))
+    return [Event(d["kind"], tuple((p, at) for p, at in d["test"]) if d["test"] else None,
+                  tuple((p, n) for p, n in d["sites"]))
             for f in files for line in f.read_text(encoding="utf-8").splitlines() if line
             for d in [json.loads(line)]]
 
@@ -54,28 +54,30 @@ def read(where: Path) -> list[Event]:
 class _Applied:
     """A patch still applied: the test running when it was applied (None while modules were
     imported), the fixture being set up then (None outside one), and the test code that applied it."""
-    test: str | None
+    test: tuple[tuple[str, str | int], ...] | None
     fixture: str | None
     sites: list[tuple[str, int]]
 
 
 _tests: Path | None = None
 _out = None
-_test: str | None = None
+_test: tuple[tuple[str, str | int], ...] | None = None
 _fixtures: list[str] = []
 _active: dict[object, _Applied] = {}
-_calls: dict[str, tuple[str, list[tuple[str, int]]]] = {}
+_calls: dict[str, tuple[tuple[tuple[str, str | int], ...], list[tuple[str, int]]]] = {}
 
 
-def _unit(item: pytest.Item) -> str:
-    """The code a test item runs, as path::qualname of its defining function (an inherited test's
-    base, a decorated test's own); its node id when that code is not under tests/."""
+def _unit(item: pytest.Item) -> tuple[tuple[str, str | int], ...]:
+    """A test item's two identities: (its file, the name pytest collected it under, Class.name),
+    and (the file, the line) where the code it runs starts, when under tests/ (an inherited test's
+    base, a test made inside another function, a test under a decorator that does not wrap)."""
+    path, _, name = item.nodeid.partition("::")
+    out: list[tuple[str, str | int]] = [(path, name.split("[")[0].replace("::", "."))]
     obj = getattr(item, "obj", None)
-    fn = inspect.unwrap(getattr(obj, "__func__", obj)) if callable(obj) else None
-    code = getattr(fn, "__code__", None)
-    if code is None or not Path(code.co_filename).is_relative_to(_tests):
-        return item.nodeid
-    return f"{Path(code.co_filename).relative_to(_tests.parent).as_posix()}::{fn.__qualname__}"
+    code = getattr(inspect.unwrap(getattr(obj, "__func__", obj)), "__code__", None) if callable(obj) else None
+    if code is not None and Path(code.co_filename).is_relative_to(_tests):
+        out.append((Path(code.co_filename).relative_to(_tests.parent).as_posix(), code.co_firstlineno))
+    return tuple(out)
 
 
 def _sites() -> list[tuple[str, int]]:
@@ -96,7 +98,7 @@ def _sites() -> list[tuple[str, int]]:
     return out
 
 
-def _write(kind: str, test: str | None, sites: list[tuple[str, int]]) -> None:
+def _write(kind: str, test: tuple[tuple[str, str | int], ...] | None, sites: list[tuple[str, int]]) -> None:
     _out.write(json.dumps({"kind": kind, "test": test, "sites": sites}) + "\n")
     _out.flush()
 
