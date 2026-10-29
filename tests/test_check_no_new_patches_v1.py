@@ -221,6 +221,28 @@ def test_a_new_unittest_test_that_skips_partway_is_refused(tmp_path):
     assert _check(tmp_path, {"tests/test_new.py": new}) == [f"tests/test_new.py::Spot.test_new patches: {cnp.UNRUN}"]
 
 
+def test_a_new_test_in_a_file_pytest_ignores_is_refused(tmp_path):
+    files = {"tests/conftest.py": CONFTEST + "\ncollect_ignore = ['test_new.py']\n",
+             "tests/test_new.py": "def test_new(monkeypatch):\n    monkeypatch.setenv('X', '1')\n"}
+    assert _check(tmp_path, files) == [f"tests/test_new.py::test_new patches: {cnp.UNRUN}"]
+
+
+def test_a_new_test_in_a_package_that_skips_is_refused(tmp_path):
+    files = {"tests/sub/__init__.py": "import pytest\n\npytest.importorskip('no_such_module')\n",
+             "tests/sub/test_new.py": "def test_new(monkeypatch):\n    monkeypatch.setenv('X', '1')\n"}
+    assert _check(tmp_path, files) == [f"tests/sub/test_new.py::test_new patches: {cnp.UNRUN}"]
+
+
+def test_an_inherited_test_is_judged_as_the_code_that_defines_it(tmp_path):
+    """TestHeld runs test_x, defined in _Base, under its patching autouse fixture."""
+    was = ("import pytest\n\n\nclass _Base:\n    def test_x(self):\n        assert True\n\n\n"
+           "class TestHeld(_Base):\n    @pytest.fixture(autouse=True)\n    def _pin(self, monkeypatch):\n"
+           "        monkeypatch.setenv('X', '1')\n")
+    now = was.replace("        assert True\n", "        assert 1 == 1\n")
+    assert _check(tmp_path, {"tests/test_held.py": now}, base={**BASE, "tests/test_held.py": was}) == [
+        f"tests/test_held.py::_Base.test_x patches: {RAN}"]
+
+
 def test_a_changed_fixture_named_like_a_test_is_not_taken_for_one(tmp_path):
     """pytest collects no fixture, so one named test_* is judged only by the patches it applies."""
     new = "import pytest\n\n\n@pytest.fixture\ndef test_data():\n    return 1\n\n\ndef test_new(test_data):\n    assert test_data == 1\n"

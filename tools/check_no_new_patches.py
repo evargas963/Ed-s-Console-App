@@ -26,7 +26,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from check_end_to_end import _python_code  # noqa: E402
-from patch_record import APPLIED, COLLECTED, FILE_SKIPPED, RAN, read  # noqa: E402
+from patch_record import APPLIED, COLLECTED, RAN, read  # noqa: E402
 
 _DEFS = (ast.FunctionDef, ast.AsyncFunctionDef)
 PATCHED = "it ran with a patch applied"
@@ -100,8 +100,8 @@ def _changed_files(root: Path, base: str) -> dict[str, str | None]:
 
 def _named_as_test(path: str, name: str) -> bool:
     """Whether pytest's default names make `name` in `path` a test (test_*.py or *_test.py, a test*
-    function in Test* classes): read only for a file pytest skipped whole, whose items it never
-    collected."""
+    function in Test* classes): read only for a file pytest collected nothing from (skipped whole,
+    ignored, or in a package that skipped)."""
     file, *classes, function = [path.rsplit("/", 1)[-1], *name.split(".")]
     return ((file.startswith("test_") or file.endswith("_test.py")) and function.startswith("test")
             and all(c.startswith("Test") for c in classes))
@@ -115,11 +115,9 @@ def violations(root: Path, base: str, record: Path) -> list[str]:
     units = {path: _file_units(root, base, path, was) for path, was in _changed_files(root, base).items()}
     reasons: dict[str, set[str]] = {}
     ran, collected = set(), set()
-    skipped_files = {e.test for e in events if e.kind == FILE_SKIPPED}
     for e in events:
-        if e.test and e.kind != FILE_SKIPPED:
-            path, _, name = e.test.split("[")[0].partition("::")
-            name = name.replace("::", ".")
+        if e.test:
+            path, _, name = e.test.partition("::")
             if e.kind == RAN:
                 ran.add((path, name))
             if e.kind == COLLECTED:
@@ -133,9 +131,10 @@ def violations(root: Path, base: str, record: Path) -> list[str]:
                       if getattr(u, "first", u.lineno) <= line <= u.end_lineno]
             if inside and min(inside)[2]:
                 reasons.setdefault(f"{path}::{min(inside)[1]}", set()).add(f"line {line} applies one")
+    collected_files = {path for path, _ in collected}
     for path, file_units in units.items():
         for name, _, changed in file_units:
-            is_test = (path, name) in collected or (path in skipped_files and _named_as_test(path, name))
+            is_test = (path, name) in collected or (path not in collected_files and _named_as_test(path, name))
             if changed and is_test and (path, name) not in ran:
                 reasons.setdefault(f"{path}::{name}", set()).add(UNRUN)
     return [f"{unit} patches: {', '.join(sorted(why))}" for unit, why in sorted(reasons.items())]
