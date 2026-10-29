@@ -15,6 +15,7 @@ from app.options.order_flow import streaming as ofs
 from calibration.complete_chain_capture import CAPTURE_BASIS, persist_complete_chain_capture
 from confluence_composite import (
     at_price, build_matrix, in_score_weights, iv_by_strike, magnitudes, score_magnitudes, under_strike,
+    window_rows,
 )
 from math_exposure_core import bucket_metric, compute_exposures_by_strike
 from math_levels import compute_charm_by_strike
@@ -24,7 +25,7 @@ from terrain_engine import compute_terrain
 from time_et import ET, INDEX_OPTIONS, ct_label, valuation_instant
 
 import server
-from tests.real_chains import CRWD, MRVL, NFLX, SPY_0DTE, SPY_AFTER_HOURS_PRINT, SPY_CLOSE, TSLA
+from tests.real_chains import CRWD, MRVL, NFLX, SPY_0DTE, SPY_AFTER_HOURS_PRINT, SPY_CLOSE, SPY_PRINT_A_STRIKE_AWAY, TSLA
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 
@@ -252,10 +253,20 @@ def test_a_served_strike_with_no_open_interest_shows_zero_charm_and_says_why_it_
     assert all(r["score"] is None and r["missing"] == ["no open interest and no volume"] for r in shown)
 
 
-def test_the_window_is_five_strikes_each_side_of_the_price():
+def _around(listed: list[float], price: float) -> list[float]:
+    """The window as defined for every per-strike panel (docs/DATA_FLOW.md "Strike windows", Auto):
+    the eleven listed strikes centred on the one nearest the price, held inside the list, lowest
+    first."""
+    on = min(range(len(listed)), key=lambda i: abs(listed[i] - price))
+    first = min(max(0, on - 5), len(listed) - 11)
+    return listed[first:first + 11]
+
+
+def test_with_no_live_price_the_window_is_the_chains_middle_and_says_so():
     """IWM's same-day expiry captured 2026-10-23 15:37:16 ET, priced at the underlyingPrice Schwab
-    sent in it, 276.00, itself a listed strike: the matrix shows the five listed strikes below the
-    price, the strike on the price, and the five above."""
+    sent in it, 276.00, with no live price held: the rows are the eleven middle strikes of the
+    chain, not those around the chain's price, and the notes say why (operator 2026-10-29: one
+    window for every per-strike panel)."""
     fx = _IWM_ON_A_STRIKE
     tk, at = fx["ticker"], datetime.fromtimestamp(fx["ts_utc"], ET)
     listed = sorted({float(c["strikePrice"]) for c in fx["chain"]})
@@ -266,16 +277,40 @@ def test_the_window_is_five_strikes_each_side_of_the_price():
         body = server.confluence_payload(tk, "2026-10-23", at)
     finally:
         _forget(tk)
-    on = listed.index(fx["spot"])
-    assert on >= 5 and on + 5 < len(listed)
-    assert body["priced_at_spot"] == fx["spot"]
-    assert sorted(r["strike"] for r in body["rows"]) == listed[on - 5:on + 6]
+    on, middle = listed.index(fx["spot"]), len(listed) // 2
+    assert abs(on - middle) > 10
+    assert (body["spot"], body["priced_at_spot"]) == (None, fx["spot"])
+    assert sorted(r["strike"] for r in body["rows"]) == listed[middle - 5:middle + 6]
+    assert body["notes"][-1] == server.WINDOW_NO_PRICE
+    assert not any(r["spot_line"] for r in body["rows"])
+
+
+def test_the_window_follows_the_live_price_off_the_chains_price():
+    """SPY's 2026-10-22 close capture, priced at Schwab's price in it, and SPY's first print after
+    it a whole strike away (SPY_PRINT_A_STRIKE_AWAY), taken in by the plane and made the price row
+    by the daemon's own function: the window is every panel's, centred on the strike nearest that
+    live price, not on the price the chain was ranked at (operator 2026-10-29)."""
+    tk, quote = "SPY", SPY_PRINT_A_STRIKE_AWAY
+    at = datetime.fromtimestamp(quote["ts_recv"], ET)
+    live = quote["native"]["LAST_PRICE"]
+    try:
+        _publish_close(tk)
+        _chain_spot(tk, quote)
+        ofs._price_rows[tk] = live_price_rows.price_row(tk, at.timestamp())
+        body = server.confluence_payload(tk, "2026-10-22", at)
+    finally:
+        _forget(tk)
+    listed = sorted({float(c["strikePrice"]) for c in SPY_CLOSE.chain
+                     if str(c["expirationDate"])[:10] == "2026-10-22"})
+    assert (body["spot"], body["priced_at_spot"]) == (live, SPY_CLOSE.spot)
+    assert sorted(r["strike"] for r in body["rows"]) == _around(listed, live) != _around(listed, SPY_CLOSE.spot)
 
 
 def test_a_price_on_a_listed_strike_puts_the_spot_line_on_that_strike():
     """SPY's 2026-10-22 close capture, and SPY's first print after it on one of its strikes
     (LAST_PRICE 764.00, received 16:33:27 ET), taken in by the plane and made the price row by the
-    daemon's own function: the spot line is that strike's row, not the one above it."""
+    daemon's own function: the window is that strike and the five listed strikes each side of it,
+    and the spot line is that strike's row, not the one above it."""
     tk, quote = "SPY", _SPY_PRINT_ON_A_STRIKE
     at = datetime.fromtimestamp(quote["ts_recv"], ET)
     on = quote["native"]["LAST_PRICE"]
@@ -286,7 +321,11 @@ def test_a_price_on_a_listed_strike_puts_the_spot_line_on_that_strike():
         body = server.confluence_payload(tk, "2026-10-22", at)
     finally:
         _forget(tk)
-    assert on in {r["strike"] for r in body["rows"]} and body["spot"] == on
+    listed = sorted({float(c["strikePrice"]) for c in SPY_CLOSE.chain
+                     if str(c["expirationDate"])[:10] == "2026-10-22"})
+    k = listed.index(on)
+    assert body["spot"] == on and k >= 5
+    assert sorted(r["strike"] for r in body["rows"]) == listed[k - 5:k + 6]
     assert [r["strike"] for r in body["rows"] if r["spot_line"]] == [on]
 
 
@@ -297,11 +336,12 @@ def test_a_price_above_every_listed_strike_has_no_spot_line():
     is still shown."""
     held, price = SPY_0DTE, _SPY_PRINT_ABOVE["native"]["LAST_PRICE"]
     book, _diag = compute_exposures_by_strike(held.chain, spot=held.spot, now=held.now, product=INDEX_OPTIONS)
-    body = build_matrix(book, {}, iv_by_strike(held.chain), held.spot, 0.0)
-    assert price > max(body["strikes"])
-    assert under_strike(price, body["strikes"]) is None
-    assert at_price(body["rows"], body["strikes"], price) == {"spot": price, "spot_text": price_text(price)}
-    assert body["rows"] and not any(r["spot_line"] for r in body["rows"])
+    matrix = build_matrix(book, {}, iv_by_strike(held.chain), held.spot, 0.0)
+    rows = window_rows(matrix, _around(sorted(matrix["ranked"]), price))
+    assert price > max(matrix["strikes"])
+    assert under_strike(price, matrix["strikes"]) is None
+    assert at_price(rows, matrix["strikes"], price) == {"spot": price, "spot_text": price_text(price)}
+    assert rows and not any(r["spot_line"] for r in rows)
 
 
 def test_a_passed_expiry_is_not_the_one_the_matrix_opens_on():
@@ -404,10 +444,16 @@ def test_the_matrix_request_returns_the_ranking_stored_with_the_book():
         body = server.confluence_payload("SPY", expiry, held.now)
     finally:
         server._terrain_cache.pop("SPY", None)
-    assert not {r["strike"] for r in other["rows"]} <= set(book)
-    assert [r["strike"] for r in body["rows"]] == [r["strike"] for r in other["rows"]]
-    assert [(r["score_text"], r["iv_text"], r["charm_text"]) for r in body["rows"]] == [
-        (r["score_text"], r["iv_text"], r["charm_text"]) for r in other["rows"]]
+    ranked = other["ranked"]
+    listed = sorted(ranked)
+    middle = len(listed) // 2                      # no live price is held: the chain's middle strikes
+    shown = listed[middle - 5:middle + 6]
+    assert body["spot"] is None and body["notes"][-1] == server.WINDOW_NO_PRICE
+    assert not set(ranked) <= set(book)
+    assert [r["strike"] for r in body["rows"]] == shown[::-1]
+    assert [(r["score"], r["iv_text"]) for r in body["rows"]] == [
+        (ranked[s].result["score"], None if ranked[s].factors["IV"] is None else f"{ranked[s].factors['IV']:.1f}")
+        for s in shown[::-1]]
 
 
 def _window_has(rows: list, key: str) -> bool:
@@ -431,8 +477,10 @@ def test_the_close_keeps_the_vanna_a_settled_clock_drops():
     iv = iv_by_strike(held.chain)
     charm_close = compute_charm_by_strike(held.chain, held.spot, now=valued, product=INDEX_OPTIONS)
     charm_late = compute_charm_by_strike(held.chain, held.spot, now=at, product=INDEX_OPTIONS)
-    close_rows = build_matrix(at_close, charm_close, iv, held.spot, 0.0)["rows"]
-    late_rows = build_matrix(after, charm_late, iv, held.spot, 0.0)["rows"]
+    close = build_matrix(at_close, charm_close, iv, held.spot, 0.0)
+    late = build_matrix(after, charm_late, iv, held.spot, 0.0)
+    close_rows = window_rows(close, _around(sorted(close["ranked"]), held.spot))
+    late_rows = window_rows(late, _around(sorted(late["ranked"]), held.spot))
     assert _window_has(close_rows, "vanna_text")
     assert _window_has(close_rows, "charm_text")
     assert _window_has(close_rows, "score")
@@ -968,8 +1016,8 @@ def test_the_matrix_shows_the_live_price_and_the_one_day_move_levels_serves():
     price Schwab sent in that chain answer (its stored capture's spot, 269.04), and CRWD's
     LEVELONE_EQUITIES message the daemon received at 10:38:00 ET (LAST_PRICE 269.395), taken in by
     the plane and made the price row by the daemon's own function. The matrix stays ranked at the
-    chain's price (priced_at_spot); its spot, its one-day move and each row's distance are the
-    live price's, the move the same two prices /api/levels serves (server.expected_move)."""
+    chain's price (priced_at_spot); its window, its spot, its one-day move and each row's distance
+    are the live price's, the move the same two prices /api/levels serves (server.expected_move)."""
     tk, at = server.ticker_storage_key(CRWD.ticker), CRWD.now
     live = _QUOTE["native"]["LAST_PRICE"]
     lmp.record_from_level_one_equity(tk, _QUOTE["native"], received_ts=_QUOTE["ts_recv"])
@@ -986,9 +1034,8 @@ def test_the_matrix_shows_the_live_price_and_the_one_day_move_levels_serves():
         _forget(tk)
     moves = {lv["abbrev"]: lv["price"] for lv in body["levels"] if lv["abbrev"] in ("EM+", "EM−")}
     listed = sorted({float(c["strikePrice"]) for c in CRWD.chain})
-    assert CRWD.spot not in listed
-    assert sorted(r["strike"] for r in body["rows"]) == (
-        [s for s in listed if s < CRWD.spot][-5:] + [s for s in listed if s > CRWD.spot][:5])
+    assert live not in listed
+    assert sorted(r["strike"] for r in body["rows"]) == _around(listed, live)
     assert (body["spot"], body["spot_text"], body["priced_at_spot"]) == (live, f"{live:.2f}", CRWD.spot)
     assert body["spot_time_ct"] == ct_label(_QUOTE["native"]["TRADE_TIME_MILLIS"] / 1000.0)
     assert moves == {"EM+": levels["em_up"], "EM−": levels["em_dn"]}

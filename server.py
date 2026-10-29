@@ -167,7 +167,7 @@ from db_authority import canonical_stream_db_path
 from instrument_identity import display_symbol, ticker_storage_key, vendor_option_root
 import live_market_plane as lmp
 from numeric_contract import float_finite_or_none, price_text, schwab_count, schwab_number
-from confluence_composite import at_price, build_matrix
+from confluence_composite import at_price, build_matrix, window_rows
 from terrain_engine import (SCOPES, SAME_DAY_LEVELS, TerrainSnapshot, _dte_of, _per_strike_rows, chain_ladder,
                             compute_terrain, nearest_strike, positioning_migration, PRICE_RELATIONS,
                             price_relations, strike_window)
@@ -3201,9 +3201,12 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict:
     pin = _level_named(levels, "0D Pin")
     em_up = _level_named(levels, "EM+")
     em_dn = _level_named(levels, "EM−")
-    rows = stored.get("rows")
-    body = {key: value for key, value in stored.items() if key not in ("rows", "strikes")}
-    body["rows"] = [dict(row) for row in rows] if isinstance(rows, list) else []
+    body = {key: value for key, value in stored.items() if key not in ("ranked", "peaks", "strikes")}
+    ranked = sorted(stored["ranked"])
+    lo, hi, view = _window(ranked, nearest_strike(ranked, live_spot), "auto", None, 0)
+    body["rows"] = window_rows(stored, ranked[lo:hi + 1])
+    if view["note"] is not None:
+        body["notes"] = [*body["notes"], view["note"]]
     body.update(at_price(body["rows"], stored["strikes"], live_spot))
     low = None
     high = None

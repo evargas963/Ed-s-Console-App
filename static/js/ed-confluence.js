@@ -17,7 +17,7 @@
     ['Price / session', 'exact price', 'Session reference levels. POC keeps its est mark.', false],
     ['Options levels', 'chain + same-day', 'Chain levels and the same-day levels, each at its own price.', false],
     ['Strike', '', 'Listed strike.', false],
-    ['Δ spot', 'points', 'Strike minus the chain spot. Blue marks the one-day expected move.', false],
+    ['Δ spot', 'points', 'Strike minus the live price. Blue marks the one-day expected move.', false],
     ['Composite', '', 'The score for this strike, up to the preset ceiling.', true],
     ['Net GEX', '$M / 1%', 'Net gamma exposure in millions of dollars per 1% move.', false],
     ['OI', 'contracts', 'Open interest in contracts. Green intensity shows size.', false],
