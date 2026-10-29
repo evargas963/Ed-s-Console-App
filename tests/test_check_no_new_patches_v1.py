@@ -214,6 +214,19 @@ def test_a_new_test_that_skips_partway_is_refused(tmp_path):
     assert _check(tmp_path, {"tests/test_new.py": new}) == [f"tests/test_new.py::test_new patches: {cnp.UNRUN}"]
 
 
+def test_a_new_unittest_test_that_skips_partway_is_refused(tmp_path):
+    """pytest reports a unittest skipTest() after the call returns, not as an exception from it."""
+    new = ("import os\nimport unittest\n\n\nclass Spot(unittest.TestCase):\n    def test_new(self):\n"
+           "        self.skipTest('elsewhere')\n        os.environ['X'] = '1'\n")
+    assert _check(tmp_path, {"tests/test_new.py": new}) == [f"tests/test_new.py::Spot.test_new patches: {cnp.UNRUN}"]
+
+
+def test_a_changed_fixture_named_like_a_test_is_not_taken_for_one(tmp_path):
+    """pytest collects no fixture, so one named test_* is judged only by the patches it applies."""
+    new = "import pytest\n\n\n@pytest.fixture\ndef test_data():\n    return 1\n\n\ndef test_new(test_data):\n    assert test_data == 1\n"
+    assert _check(tmp_path, {"tests/test_new.py": new}) == []
+
+
 def test_a_new_test_marked_not_to_run_is_refused(tmp_path):
     new = "import pytest\n\n\n@pytest.mark.xfail(run=False)\ndef test_new(monkeypatch):\n    monkeypatch.setenv('X', '1')\n"
     assert _check(tmp_path, {"tests/test_new.py": new}) == [f"tests/test_new.py::test_new patches: {cnp.UNRUN}"]

@@ -5,8 +5,9 @@
 Every pytest `MonkeyPatch` change and every unittest.mock patch (`patch` in any form, `patch.dict`,
 started, entered or as a decorator; pytest-mock's `mocker` is built on them) is wrapped before the
 first conftest.py is imported. Each process writes <dir>/<xdist worker or "main">.jsonl, one Event
-per line: each patch APPLIED, and each test that RAN (its call ended other than by a skip) with the
-patches still applied that reach it: one applied while modules were imported, by a fixture the test requests, or
+per line: each test pytest COLLECTED (before any deselection), each test file it skipped whole at
+collection (FILE_SKIPPED), each patch APPLIED, and each test that RAN (pytest reported its call
+other than as skipped) with the patches still applied that reach it: one applied while modules were imported, by a fixture the test requests, or
 from its own file or a conftest.py above it. A patch with no test code on its stack (pytest's own
 set-up) is not recorded. Without ED_PATCH_RECORD the plugin records nothing.
 """
@@ -23,7 +24,7 @@ from unittest import mock
 import pytest
 from _pytest.monkeypatch import MonkeyPatch
 
-APPLIED, RAN = "applied", "ran"
+APPLIED, RAN, COLLECTED, FILE_SKIPPED = "applied", "ran", "collected", "file_skipped"
 APPLY = {MonkeyPatch: ("setattr", "delattr", "setitem", "delitem", "setenv", "delenv", "syspath_prepend", "chdir"),
          mock._patch: ("__enter__",), mock._patch_dict: ("_patch_dict",)}
 UNDO = {MonkeyPatch: "undo", mock._patch: "__exit__", mock._patch_dict: "_unpatch_dict"}
@@ -31,8 +32,9 @@ UNDO = {MonkeyPatch: "undo", mock._patch: "__exit__", mock._patch_dict: "_unpatc
 
 @dataclass(frozen=True)
 class Event:
-    """One line of the record: its kind (APPLIED or RAN), the test's node id (None outside a test)
-    and the test code that applied the patches, as (path, line)."""
+    """One line of the record: its kind (APPLIED, RAN, COLLECTED or FILE_SKIPPED), the test's node
+    id (a skipped file's path; None outside a test) and the test code that applied the patches, as
+    (path, line)."""
     kind: str
     test: str | None
     sites: tuple[tuple[str, int], ...]
@@ -63,6 +65,7 @@ _out = None
 _test: str | None = None
 _fixtures: list[str] = []
 _active: dict[object, _Applied] = {}
+_calls: dict[str, list[tuple[str, int]]] = {}
 
 
 def _sites() -> list[tuple[str, int]]:
@@ -162,16 +165,25 @@ def _reaches(applied: _Applied, item: pytest.Item) -> bool:
         for site, _ in applied.sites)
 
 
-@pytest.hookimpl(wrapper=True)
-def pytest_runtest_call(item: pytest.Item):
-    """A test RAN when its call ends other than by a skip or an imperative xfail, which stop it
-    partway, with the patches that reached it when the call began."""
-    sites = [s for a in _active.values() if _reaches(a, item) for s in a.sites]
-    try:
-        return (yield)
-    except (pytest.skip.Exception, pytest.xfail.Exception):
-        sites = None
-        raise
-    finally:
-        if _out is not None and sites is not None:
-            _write(RAN, item.nodeid, sites)
+def pytest_itemcollected(item: pytest.Item) -> None:
+    if _out is not None:
+        _write(COLLECTED, item.nodeid, [])
+
+
+def pytest_collectreport(report: pytest.CollectReport) -> None:
+    if _out is not None and report.skipped and report.nodeid.endswith(".py"):
+        _write(FILE_SKIPPED, report.nodeid, [])
+
+
+def pytest_runtest_call(item: pytest.Item) -> None:
+    if _out is not None:
+        _calls[item.nodeid] = [s for a in _active.values() if _reaches(a, item) for s in a.sites]
+
+
+def pytest_runtest_logreport(report: pytest.TestReport) -> None:
+    """A test RAN when pytest reports its call other than as skipped (a skip in any form, or an
+    xfail, stops it partway), with the patches that reached it when the call began."""
+    if report.when == "call" and report.nodeid in _calls:
+        sites = _calls.pop(report.nodeid)
+        if not report.skipped:
+            _write(RAN, report.nodeid, sites)
