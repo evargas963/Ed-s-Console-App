@@ -310,6 +310,21 @@ def test_a_class_of_only_a_docstring_inheriting_tests_is_judged_by_its_header(tm
                   base={**BASE, "tests/test_base.py": was}) == []
 
 
+def test_a_pytestmark_putting_old_tests_under_a_patching_fixture_is_refused(tmp_path):
+    was = "def test_m():\n    assert True\n"
+    now = "import pytest\n\npytestmark = pytest.mark.usefixtures('pinned')\n\n\n" + was
+    assert _check(tmp_path, {"tests/test_m.py": now}, base={**BASE, "tests/test_m.py": was}) == [
+        f"tests/test_m.py::line {_line(now, 'pytestmark')} patches: {RAN}"]
+
+
+def test_a_class_given_a_patching_base_is_refused(tmp_path):
+    was = ("import pytest\n\n\nclass Held:\n    @pytest.fixture(autouse=True)\n    def _pin(self, monkeypatch):\n"
+           "        monkeypatch.setenv('X', '1')\n\n\nclass TestSpot:\n    def test_x(self):\n        assert True\n")
+    now = was.replace("class TestSpot:", "class TestSpot(Held):")
+    assert _check(tmp_path, {"tests/test_cls.py": now}, base={**BASE, "tests/test_cls.py": was}) == [
+        f"tests/test_cls.py::TestSpot patches: {RAN}"]
+
+
 def test_a_local_named_like_another_test_does_not_take_its_runs(tmp_path):
     """test_x, changed and skipped, keeps its own 'did not run' though its local is named test_b."""
     now = ("import pytest\n\n\n@pytest.mark.skip\ndef test_x():\n    test_b = 1\n    assert test_b\n\n\n"

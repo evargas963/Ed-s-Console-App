@@ -150,6 +150,16 @@ def _resolve(units: dict, path: str, at: str | int) -> tuple[str, str] | None:
     return _resolve(units, path, cls) if cls else None    # a method the class inherits: its class
 
 
+def _over(units: dict, path: str, name: str) -> set[tuple[str, str]]:
+    """The units that put a test under what it runs with, besides its own code: the headers of the
+    classes holding it (their bases and decorators) and a `pytestmark` over it, in its module or
+    one of those classes."""
+    parts = name.split(".")
+    classes = {".".join(parts[:i]) for i in range(1, len(parts))}
+    marks = {"pytestmark"} | {c + ".pytestmark" for c in classes}
+    return {(path, n) for n, u, _ in units.get(path, []) if n in classes or marks & getattr(u, "binds", set())}
+
+
 def violations(root: Path, base: str, record: Path) -> list[str]:
     try:
         events = read(record)
@@ -160,6 +170,8 @@ def violations(root: Path, base: str, record: Path) -> list[str]:
     ran, collected, collected_files = set(), set(), set()
     for e in events:
         tests = {t for at in e.test or () if (t := _resolve(units, *at))}
+        if tests and not any(changed for p, n in tests for m, _, changed in units[p] if m == n):
+            tests |= {o for p, n in tests for o in _over(units, p, n)}   # unchanged code put under a changed mark
         if e.kind == RAN:
             ran |= tests
         if e.kind == COLLECTED:
