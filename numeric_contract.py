@@ -9,6 +9,8 @@ from typing import (
 )
 
 
+
+
 def float_finite_or_none(value: Any) -> float | None:
     """Parse float; reject None, non-numeric, NaN, and ±inf."""
     if value is None or value == "":
@@ -60,3 +62,12 @@ def price_text(value: float | None) -> str | None:
     if value is None:
         return None
     return f"{float(value):.2f}"
+
+
+
+
+
+
+
+
+

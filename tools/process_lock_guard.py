@@ -18,7 +18,6 @@
 
 Exit 2 BLOCKS. No env kill-switch. No Stop path. Reads nothing but the payload.
 """
-
 from __future__ import annotations
 
 import json
@@ -31,8 +30,6 @@ if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
 import tools.operating_process_lock as OPL  # noqa: E402
-from tools.hook_chain import BASH_TOOLS, MUTATING_TOOLS  # noqa: E402 — the ONE roster of each class
-from tools.pretooluse_guard import checkout_path, production_path  # noqa: E402
 from tools.shell_parse import (  # noqa: E402 — the ONE shell reader
     Statement,
     _join_dir,
@@ -41,6 +38,8 @@ from tools.shell_parse import (  # noqa: E402 — the ONE shell reader
     normalize_repo,
     read,
 )
+from tools.pretooluse_guard import checkout_path, production_path  # noqa: E402
+from tools.hook_chain import BASH_TOOLS, MUTATING_TOOLS  # noqa: E402 — the ONE roster of each class
 
 #: The file-mutating tool class is decided ONCE (tools.hook_chain.MUTATING_TOOLS, Cursor's
 #: StrReplace/Delete included) and imported here; no private copy.
@@ -79,21 +78,10 @@ def _primary_worktree_root(repo: Path) -> Path | None:
 #: Git subcommands that move HEAD, create/re-point/delete a branch, or write history in the
 #: checkout they run against. On the production primary these are refused; reads, fetch, the
 #: fast-forward-to-origin/main update, and return-to-main are allowed (_prod_forbidden_git_reason).
-_PROD_MOVE_SUBCOMMANDS = frozenset(
-    {
-        "commit",
-        "reset",
-        "rebase",
-        "cherry-pick",
-        "revert",
-        "am",
-        "merge",
-        "pull",
-        "checkout",
-        "switch",
-        "branch",
-    }
-)
+_PROD_MOVE_SUBCOMMANDS = frozenset({
+    "commit", "reset", "rebase", "cherry-pick", "revert", "am",
+    "merge", "pull", "checkout", "switch", "branch",
+})
 #: `git branch` listings that read, aimed at production: `--list` (`-l`) and `--contains`
 _BRANCH_LISTING = frozenset({"-l", "--list", "--contains"})
 
@@ -108,14 +96,14 @@ def _prod_forbidden_git_reason(words: tuple[str, ...]) -> str | None:
     if not sub:
         return None
     if sub not in _PROD_MOVE_SUBCOMMANDS:
-        return None  # status/log/diff/show/add/fetch/worktree/stash/... allowed
+        return None                      # status/log/diff/show/add/fetch/worktree/stash/... allowed
     if sub in ("checkout", "switch"):
         if "--" in args:
-            return None  # file-restore, not a branch move
+            return None                  # file-restore, not a branch move
         creates = any(a in ("-b", "-B", "-c", "-C") for a in args)
         refs = [a for a in args if not a.startswith("-")]
         if not creates and refs == ["main"]:
-            return None  # return-to-main recovery is sanctioned
+            return None                  # return-to-main recovery is sanctioned
         if creates:
             return f"`git {sub} -b` creates/moves onto a new branch"
         return f"`git {sub} {refs[0] if refs else ''}`".rstrip() + " moves the checkout off main"
@@ -123,30 +111,12 @@ def _prod_forbidden_git_reason(words: tuple[str, ...]) -> str | None:
         ff = "--ff-only" in args
         refs = [a for a in args if not a.startswith("-")]
         if ff and refs in ([], ["origin/main"], ["origin", "main"]):
-            return None  # the fast-forward-to-origin/main production update
+            return None                  # the fast-forward-to-origin/main production update
         return f"`git {sub}` (only `--ff-only origin/main` is allowed on production)"
     if sub == "branch":
-        mutating = any(
-            a
-            in (
-                "-m",
-                "-M",
-                "-c",
-                "-C",
-                "-d",
-                "-D",
-                "-f",
-                "--force",
-                "--move",
-                "--copy",
-                "--delete",
-                "--edit-description",
-            )
-            for a in args
-        )
-        lists = any(
-            a.split("=")[0] in _BRANCH_LISTING for a in args
-        )  # a pattern or a commit, not a name
+        mutating = any(a in ("-m", "-M", "-c", "-C", "-d", "-D", "-f", "--force", "--move",
+                             "--copy", "--delete", "--edit-description") for a in args)
+        lists = any(a.split("=")[0] in _BRANCH_LISTING for a in args)   # a pattern or a commit, not a name
         creates = not lists and any(not a.startswith("-") for a in args)
         return "`git branch` creates/moves/deletes a branch" if (mutating or creates) else None
     return f"`git {sub}` writes history / moves HEAD in the checkout"
@@ -167,25 +137,19 @@ def prod_checkout_git_move_violations(statements: list[Statement]) -> list[str]:
     out: list[str] = []
     for st in statements:
         reason = _prod_forbidden_git_reason(st.words)
-        if reason and git_repo(st) == primary_norm:  # a git aimed at a dev worktree is not refused
+        if reason and git_repo(st) == primary_norm:    # a git aimed at a dev worktree is not refused
             out.append(
                 f"PROD_CHECKOUT_LOCK (live-checkout invariant): {reason} in the "
                 f"PRODUCTION checkout {primary}. That checkout is production ONLY — always "
                 f"main == origin/main. Do this in the separate dev worktree and land via PR; "
                 f"production updates by fast-forward to origin/main. See "
-                f"AGENTS.md."
-            )
+                f"AGENTS.md.")
     return out
 
 
-_MAIN_REFS = (
-    "main",
-    "heads/main",
-    "refs/heads/main",
-)  # git resolves a destination `heads/main` to refs/heads/main
-_BRANCH_WRITE_FLAGS = frozenset(
-    {"-f", "--force", "-d", "-D", "--delete", "-m", "-M", "--move", "-c", "-C", "--copy"}
-)
+_MAIN_REFS = ("main", "heads/main", "refs/heads/main")   # git resolves a destination `heads/main` to refs/heads/main
+_BRANCH_WRITE_FLAGS = frozenset({"-f", "--force", "-d", "-D", "--delete", "-m", "-M", "--move",
+                                 "-c", "-C", "--copy"})
 
 
 def _writes_main(words: tuple[str, ...]) -> bool:
@@ -198,7 +162,7 @@ def _writes_main(words: tuple[str, ...]) -> bool:
         return any(a in _BRANCH_WRITE_FLAGS for a in args) and any(r in _MAIN_REFS for r in refs)
     if sub in ("fetch", "push"):
         if sub == "push" and refs[:1] != ["."]:
-            return False  # a push to a remote: operator_yes_guard's
+            return False                 # a push to a remote: operator_yes_guard's
         return any(r.split(":", 1)[1] in _MAIN_REFS for r in refs[1:] if ":" in r)
     return False
 
@@ -206,13 +170,10 @@ def _writes_main(words: tuple[str, ...]) -> bool:
 def main_ref_write_violations(statements: list[Statement]) -> list[str]:
     """A git command that writes refs/heads/main, from any checkout: every checkout shares the
     branch the production checkout runs, so the checkout a command runs in cannot protect it."""
-    return [
-        f"MAIN_REF_LOCK: `{st.text}` writes refs/heads/main, the branch the production "
-        f"checkout runs, shared by every checkout. main moves only by a PR merged on GitHub, "
-        f"then `git pull --ff-only` in production."
-        for st in statements
-        if _writes_main(st.words)
-    ]
+    return [f"MAIN_REF_LOCK: `{st.text}` writes refs/heads/main, the branch the production "
+            f"checkout runs, shared by every checkout. main moves only by a PR merged on GitHub, "
+            f"then `git pull --ff-only` in production."
+            for st in statements if _writes_main(st.words)]
 
 
 def production_checkout_edit_violations(tool_input: dict, repo: Path = REPO) -> list[str]:
@@ -236,10 +197,8 @@ def production_checkout_edit_violations(tool_input: dict, repo: Path = REPO) -> 
             if resolved is not None and resolved.is_relative_to(repo.resolve()):
                 resolved = None
         if resolved is not None:
-            out.append(
-                f"PROD_CHECKOUT_EDIT: {resolved} belongs to the PRODUCTION checkout {primary}, the "
-                f"live one. Make the change in a dev worktree and land it by PR. See AGENTS.md."
-            )
+            out.append(f"PROD_CHECKOUT_EDIT: {resolved} belongs to the PRODUCTION checkout {primary}, the "
+                       f"live one. Make the change in a dev worktree and land it by PR. See AGENTS.md.")
     return out
 
 
@@ -256,18 +215,14 @@ def _shell_write_dest_paths(st: Statement) -> list[str]:
     args = list(st.words[1:])
     positionals = [a for a in args if not a.startswith("-")]
     if verb in ("cp", "mv", "install", "rsync", "ln"):
-        dests += positionals[-1:]  # DEST is the last operand; sources are reads
+        dests += positionals[-1:]                            # DEST is the last operand; sources are reads
     elif verb in ("tee", "truncate"):
         dests += positionals
     elif verb in ("sed", "gsed", "perl"):
         # in-place: -i / -i.bak / a combined short flag carrying 'i' (perl -pi, sed -ni) / --in-place
-        if any(
-            (a.startswith("-") and not a.startswith("--") and "i" in a)
-            or a == "--in-place"
-            or a.startswith("--in-place=")
-            for a in args
-        ):
-            dests += positionals  # in-place edit of every file operand
+        if any((a.startswith("-") and not a.startswith("--") and "i" in a)
+               or a == "--in-place" or a.startswith("--in-place=") for a in args):
+            dests += positionals                             # in-place edit of every file operand
     elif verb == "dd":
         dests += [a[3:] for a in args if a.startswith("of=")]
     elif verb in ("curl", "wget"):
@@ -289,7 +244,7 @@ def _shell_write_dest_paths(st: Statement) -> list[str]:
             continue
         if inline:
             dests.append(inline)
-        dests += [t for t in args[idx + 1 :] if not t.startswith("-")]
+        dests += [t for t in args[idx + 1:] if not t.startswith("-")]
         break
     dests += _ps_write_dest_paths(st)
     return dests
@@ -302,11 +257,8 @@ def _shell_write_dest_paths(st: Statement) -> list[str]:
 #: CI, so this rail is its only guard; in a dev worktree ruff and pytest catch a mangled write
 #: once it is committed.
 _PS_DEST_PARAM = {
-    "set-content": "-path",
-    "add-content": "-path",
-    "out-file": "-filepath",
-    "copy-item": "-destination",
-    "move-item": "-destination",
+    "set-content": "-path", "add-content": "-path", "out-file": "-filepath",
+    "copy-item": "-destination", "move-item": "-destination",
 }
 
 
@@ -325,7 +277,7 @@ def _ps_write_dest_paths(st: Statement) -> list[str]:
             return [args[i + 1]]
     positionals = [a for a in args if not a.startswith("-")]
     if verb in ("copy-item", "move-item"):
-        return positionals[1:2]  # first positional is -Path (the source, a read)
+        return positionals[1:2]              # first positional is -Path (the source, a read)
     return positionals[:1]
 
 
@@ -341,7 +293,7 @@ def production_checkout_shell_app_write_violations(statements: list[Statement]) 
     subject-disableable."""
     primary = _primary_worktree_root(REPO) or REPO
     out: list[str] = []
-    for st in statements:  # each destination against its statement's cwd
+    for st in statements:                # each destination against its statement's cwd
         for dest in _shell_write_dest_paths(st):
             resolved = production_path(_join_dir(st.cwd or str(primary), dest), primary, primary)
             if resolved is not None:
@@ -350,8 +302,7 @@ def production_checkout_shell_app_write_violations(statements: list[Statement]) 
                     f"writes {resolved} — app code in the PRODUCTION checkout {primary}. "
                     f"Development does not modify the live checkout by ANY means; make the change "
                     f"in the separate dev worktree and land via PR. "
-                    f"See AGENTS.md."
-                )
+                    f"See AGENTS.md.")
     return out
 
 
@@ -359,7 +310,7 @@ def pretooluse_block(tool: str, tool_input: dict, payload_cwd: str = "") -> list
     out: list[str] = []
     if tool in _EDIT_TOOLS:
         out.extend(production_checkout_edit_violations(tool_input))
-    if tool in BASH_TOOLS:  # one roster (hook_chain.BASH_TOOLS)
+    if tool in BASH_TOOLS:                # one roster (hook_chain.BASH_TOOLS)
         cmd = tool_input.get("command") or ""
         ps = tool == "PowerShell"
         statements = read(cmd, payload_cwd or "", ps)
@@ -382,10 +333,8 @@ def main() -> int:
     try:
         payload = json.load(sys.stdin)
     except (json.JSONDecodeError, ValueError):
-        sys.stderr.write(
-            "BLOCKED by operating process lock: the hook payload is not readable "
-            "JSON, so the tool call cannot be judged. Unreadable is not clean.\n"
-        )
+        sys.stderr.write("BLOCKED by operating process lock: the hook payload is not readable "
+                         "JSON, so the tool call cannot be judged. Unreadable is not clean.\n")
         return 2
     if not isinstance(payload, dict):
         sys.stderr.write("BLOCKED by operating process lock: the hook payload is not an object.\n")
@@ -398,7 +347,7 @@ def main() -> int:
     if tool in _EDIT_TOOLS or tool in BASH_TOOLS:
         bad = pretooluse_block(tool, ti, payload_cwd)
     else:
-        return 0  # no Stop path
+        return 0                          # no Stop path
 
     if not bad:
         return 0

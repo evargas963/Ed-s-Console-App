@@ -13,7 +13,6 @@ the message shapes, the in-process message bus, feed health, and the database wr
     order when it can, at its next start when it stopped first; its state (WriterStatus) rides
     the daemon's heartbeat.
 """
-
 from __future__ import annotations
 
 import asyncio
@@ -168,7 +167,6 @@ WAL_SIZE_LIMIT_BYTES = 256 * 1024 * 1024
 # ---------------------------------------------------------------------------- message shapes
 # The one shape per topic; the daemon builds through these and the writer reads them.
 
-
 def _now(ts_recv: "float | None") -> float:
     return ts_recv if ts_recv is not None else time.time()
 
@@ -176,148 +174,54 @@ def _now(ts_recv: "float | None") -> float:
 #: Every Schwab message carries `schwab_ts`: the timestamp (ms) Schwab put on the frame that
 #: delivered it. Which value is current is decided by it (docs/DATA_FLOW.md §2 D1).
 
-
-def quote_msg(
-    *,
-    symbol: str,
-    bid=None,
-    ask=None,
-    last=None,
-    bid_size=None,
-    ask_size=None,
-    last_size=None,
-    total_volume=None,
-    quote_time_ms=None,
-    trade_time_ms=None,
-    src: str,
-    ts_recv: float | None = None,
-    native: dict | None = None,
-    schwab_ts: int | None = None,
-) -> dict:
+def quote_msg(*, symbol: str, bid=None, ask=None, last=None, bid_size=None, ask_size=None,
+              last_size=None, total_volume=None, quote_time_ms=None, trade_time_ms=None,
+              src: str, ts_recv: float | None = None, native: dict | None = None,
+              schwab_ts: int | None = None) -> dict:
     """quote.* (LEVELONE_EQUITIES). `native` is Schwab's item verbatim -- readers need fields
     the flat columns do not carry (BID_TIME_MILLIS, LAST_MIC_ID, ...)."""
-    return {
-        "ts_recv": _now(ts_recv),
-        "schwab_ts": schwab_ts,
-        "symbol": symbol,
-        "bid": bid,
-        "ask": ask,
-        "last": last,
-        "bid_size": bid_size,
-        "ask_size": ask_size,
-        "last_size": last_size,
-        "total_volume": total_volume,
-        "quote_time_ms": quote_time_ms,
-        "trade_time_ms": trade_time_ms,
-        "src": src,
-        "native": native,
-    }
+    return {"ts_recv": _now(ts_recv), "schwab_ts": schwab_ts, "symbol": symbol,
+            "bid": bid, "ask": ask, "last": last, "bid_size": bid_size,
+            "ask_size": ask_size, "last_size": last_size, "total_volume": total_volume,
+            "quote_time_ms": quote_time_ms, "trade_time_ms": trade_time_ms, "src": src,
+            "native": native}
 
 
-def book_msg(
-    *,
-    symbol: str,
-    service: str,
-    content: dict,
-    src: str,
-    ts_recv: float | None = None,
-    schwab_ts: int | None = None,
-) -> dict:
+def book_msg(*, symbol: str, service: str, content: dict, src: str,
+             ts_recv: float | None = None, schwab_ts: int | None = None) -> dict:
     """book.* (NYSE_BOOK / NASDAQ_BOOK / OPTIONS_BOOK), Schwab's item verbatim."""
-    return {
-        "ts_recv": _now(ts_recv),
-        "schwab_ts": schwab_ts,
-        "symbol": symbol,
-        "service": service,
-        "content": content,
-        "src": src,
-    }
+    return {"ts_recv": _now(ts_recv), "schwab_ts": schwab_ts, "symbol": symbol,
+            "service": service, "content": content, "src": src}
 
 
-def options_quote_msg(
-    *,
-    symbol: str,
-    content: dict,
-    src: str,
-    ts_recv: float | None = None,
-    schwab_ts: int | None = None,
-) -> dict:
+def options_quote_msg(*, symbol: str, content: dict, src: str,
+                      ts_recv: float | None = None, schwab_ts: int | None = None) -> dict:
     """optquote.* (LEVELONE_OPTIONS), Schwab's item verbatim."""
-    return {
-        "ts_recv": _now(ts_recv),
-        "schwab_ts": schwab_ts,
-        "symbol": symbol,
-        "content": content,
-        "src": src,
-    }
+    return {"ts_recv": _now(ts_recv), "schwab_ts": schwab_ts, "symbol": symbol,
+            "content": content, "src": src}
 
 
-def bar_msg(
-    *,
-    symbol: str,
-    bar_start_ms=None,
-    open=None,
-    high=None,
-    low=None,
-    close=None,  # noqa: A002
-    volume=None,
-    src: str,
-    ts_recv: float | None = None,
-    native: dict | None = None,
-    schwab_ts: int | None = None,
-) -> dict:
+def bar_msg(*, symbol: str, bar_start_ms=None, open=None, high=None, low=None, close=None,  # noqa: A002
+            volume=None, src: str, ts_recv: float | None = None, native: dict | None = None,
+            schwab_ts: int | None = None) -> dict:
     """bar1m.* (CHART_EQUITY). `native` is Schwab's item verbatim (SEQUENCE, CHART_DAY, ...)."""
-    return {
-        "ts_recv": _now(ts_recv),
-        "schwab_ts": schwab_ts,
-        "symbol": symbol,
-        "bar_start_ms": bar_start_ms,
-        "open": open,
-        "high": high,
-        "low": low,
-        "close": close,
-        "volume": volume,
-        "src": src,
-        "native": native,
-    }
+    return {"ts_recv": _now(ts_recv), "schwab_ts": schwab_ts, "symbol": symbol,
+            "bar_start_ms": bar_start_ms, "open": open, "high": high, "low": low,
+            "close": close, "volume": volume, "src": src, "native": native}
 
 
-def news_msg(
-    *,
-    symbol: str,
-    content: dict,
-    src: str,
-    ts_recv: float | None = None,
-    schwab_ts: int | None = None,
-) -> dict:
+def news_msg(*, symbol: str, content: dict, src: str, ts_recv: float | None = None,
+             schwab_ts: int | None = None) -> dict:
     """news.* (NEWS_HEADLINE), Schwab's item verbatim."""
-    return {
-        "ts_recv": _now(ts_recv),
-        "schwab_ts": schwab_ts,
-        "symbol": symbol,
-        "content": content,
-        "src": src,
-    }
+    return {"ts_recv": _now(ts_recv), "schwab_ts": schwab_ts, "symbol": symbol,
+            "content": content, "src": src}
 
 
-def subscription_msg(
-    *,
-    service: str,
-    command: str,
-    symbols: "list[str]",
-    code: "int | None",
-    reason: str,
-    ts: float | None = None,
-) -> dict:
+def subscription_msg(*, service: str, command: str, symbols: "list[str]", code: "int | None",
+                     reason: str, ts: float | None = None) -> dict:
     """sub.* -- one request the daemon sent and Schwab's answer."""
-    return {
-        "ts": _now(ts),
-        "service": service,
-        "command": command,
-        "symbols": list(symbols),
-        "code": code,
-        "reason": reason,
-    }
+    return {"ts": _now(ts), "service": service, "command": command,
+            "symbols": list(symbols), "code": code, "reason": reason}
 
 
 # ---------------------------------------------------------------------------- the bus
@@ -353,9 +257,9 @@ def _older(t: "float | None", than: "float | None") -> bool:
 class Subscription:
     prefix: str
     policy: str
-    current: dict  # the bus's current state
-    queue: asyncio.Queue = field(default_factory=asyncio.Queue)  # LOG: every message
-    changed: dict = field(default_factory=dict)  # LATEST: keys, in order
+    current: dict                                                     # the bus's current state
+    queue: asyncio.Queue = field(default_factory=asyncio.Queue)      # LOG: every message
+    changed: dict = field(default_factory=dict)                      # LATEST: keys, in order
     wake: asyncio.Event = field(default_factory=asyncio.Event)
 
     def deliver(self, key: str, topic: str, msg: Any) -> None:
@@ -398,9 +302,7 @@ class MessageBus:
         """A LATEST reader starts with every current record under `prefix` to read."""
         sub = Subscription(prefix=prefix, policy=policy, current=self.current)
         if policy == LATEST:
-            sub.changed.update(
-                (k, None) for k, (t, _r) in self.current.items() if t.startswith(prefix)
-            )
+            sub.changed.update((k, None) for k, (t, _r) in self.current.items() if t.startswith(prefix))
             if sub.changed:
                 sub.wake.set()
         self._subs.append(sub)
@@ -433,21 +335,14 @@ class MessageBus:
         t = msg.get("schwab_ts") if isinstance(msg, dict) else None
         body_key = _FIELD_DELTA.get(topic.split(".", 1)[0])
         body = msg.get(body_key) if body_key is not None and isinstance(msg, dict) else None
-        if not isinstance(body, dict):  # a whole record: replaced whole
-            if (
-                held is not None
-                and isinstance(held[1], dict)
-                and _older(t, held[1].get("schwab_ts"))
-            ):
+        if not isinstance(body, dict):                       # a whole record: replaced whole
+            if held is not None and isinstance(held[1], dict) and _older(t, held[1].get("schwab_ts")):
                 return False
             self.current[key] = (topic, msg)
             return True
         stamp = (t, msg.get("ts_recv"))
         if held is None:
-            self.current[key] = (
-                topic,
-                {**msg, body_key: dict(body), "field_ts": dict.fromkeys(body, stamp)},
-            )
+            self.current[key] = (topic, {**msg, body_key: dict(body), "field_ts": dict.fromkeys(body, stamp)})
             return True
         rec = held[1]
         merged, stamps = dict(rec[body_key]), dict(rec["field_ts"])
@@ -456,7 +351,7 @@ class MessageBus:
             return False
         for f in took:
             merged[f], stamps[f] = body[f], stamp
-        top = rec if _older(t, rec.get("schwab_ts")) else msg  # the record's own time: its newest
+        top = rec if _older(t, rec.get("schwab_ts")) else msg   # the record's own time: its newest
         self.current[key] = (topic, {**top, body_key: merged, "field_ts": stamps})
         return True
 
@@ -466,7 +361,7 @@ class MessageBus:
         ts, part = msg.get("ts_recv"), msg.get("part")
         held = self._chains.get(key)
         if held is not None and ts < held[0]:
-            return False  # an older fetch: never current
+            return False                                      # an older fetch: never current
         if held is None or ts > held[0]:
             held = (ts, {}, msg.get("parts") if part is not None else 1)
             self._chains[key] = held
@@ -475,6 +370,7 @@ class MessageBus:
             return False
         self.current[key] = (topic, [held[1][i] for i in sorted(held[1])])
         return True
+
 
 
 class HealthRegistry:
@@ -499,134 +395,55 @@ class HealthRegistry:
 # ---------------------------------------------------------------------------- the writer
 
 #: columns added after a table was first made: (table, column, type)
-_ADDED_COLUMNS = (
-    ("stream_quotes_raw", "native_json", "TEXT"),
-    ("stream_quotes_raw", "schwab_ts", "INTEGER"),
-    ("stream_book_raw", "schwab_ts", "INTEGER"),
-    ("stream_options_quotes_raw", "schwab_ts", "INTEGER"),
-    ("stream_bars_raw", "schwab_ts", "INTEGER"),
-    ("stream_bars_raw", "native_json", "TEXT"),
-    ("stream_news_raw", "schwab_ts", "INTEGER"),
-)
+_ADDED_COLUMNS = (("stream_quotes_raw", "native_json", "TEXT"),
+                  ("stream_quotes_raw", "schwab_ts", "INTEGER"),
+                  ("stream_book_raw", "schwab_ts", "INTEGER"),
+                  ("stream_options_quotes_raw", "schwab_ts", "INTEGER"),
+                  ("stream_bars_raw", "schwab_ts", "INTEGER"),
+                  ("stream_bars_raw", "native_json", "TEXT"),
+                  ("stream_news_raw", "schwab_ts", "INTEGER"))
 
 _INSERTS = {
-    "feedstatus": (
-        "INSERT INTO stream_feed_status(ts,service,socket_open,schwab_last_frame_ts,"
-        "held,last_data_ts) VALUES(?,?,?,?,?,?)",
-        lambda m: (
-            m["ts"],
-            m["service"],
-            int(m["socket_open"]),
-            m.get("schwab_last_frame_ts"),
-            m["held"],
-            m.get("last_data_ts"),
-        ),
-    ),
-    "quote": (
-        "INSERT INTO stream_quotes_raw(ts_recv,symbol,bid,ask,last,bid_size,ask_size,"
-        "last_size,total_volume,quote_time_ms,trade_time_ms,src,native_json,schwab_ts) "
-        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        lambda m: (
-            m.get("ts_recv"),
-            m.get("symbol"),
-            m.get("bid"),
-            m.get("ask"),
-            m.get("last"),
-            m.get("bid_size"),
-            m.get("ask_size"),
-            m.get("last_size"),
-            m.get("total_volume"),
-            m.get("quote_time_ms"),
-            m.get("trade_time_ms"),
-            m["src"],
-            _json(m.get("native")),
-            m.get("schwab_ts"),
-        ),
-    ),
-    "book": (
-        "INSERT INTO stream_book_raw(ts_recv,symbol,service,native_json,src,schwab_ts) "
-        "VALUES(?,?,?,?,?,?)",
-        lambda m: (
-            m.get("ts_recv"),
-            m.get("symbol"),
-            m.get("service"),
-            json.dumps(m["content"]),
-            m["src"],
-            m.get("schwab_ts"),
-        ),
-    ),
-    "optquote": (
-        "INSERT INTO stream_options_quotes_raw(ts_recv,symbol,native_json,src,schwab_ts) "
-        "VALUES(?,?,?,?,?)",
-        lambda m: (
-            m.get("ts_recv"),
-            m.get("symbol"),
-            json.dumps(m["content"]),
-            m["src"],
-            m.get("schwab_ts"),
-        ),
-    ),
-    "bar1m": (
-        "INSERT INTO stream_bars_raw(ts_recv,symbol,bar_start_ms,open,high,low,close,"
-        "volume,src,native_json,schwab_ts) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
-        lambda m: (
-            m.get("ts_recv"),
-            m.get("symbol"),
-            m.get("bar_start_ms"),
-            m.get("open"),
-            m.get("high"),
-            m.get("low"),
-            m.get("close"),
-            m.get("volume"),
-            m["src"],
-            _json(m.get("native")),
-            m.get("schwab_ts"),
-        ),
-    ),
-    "news": (
-        "INSERT INTO stream_news_raw(ts_recv,symbol,native_json,src,schwab_ts) VALUES(?,?,?,?,?)",
-        lambda m: (
-            m.get("ts_recv"),
-            m.get("symbol"),
-            json.dumps(m["content"]),
-            m["src"],
-            m.get("schwab_ts"),
-        ),
-    ),
-    "pricehistory": (
-        "INSERT INTO stream_pricehistory_raw(ts_recv,symbol,series,native_json,src) "
-        "VALUES(?,?,?,?,?)",
-        lambda m: (m["ts_recv"], m["symbol"], m["series"], json.dumps(m["answer"]), m["src"]),
-    ),
-    "markets": (
-        "INSERT INTO stream_markets_raw(ts_recv,date,status,native_json,src) VALUES(?,?,?,?,?)",
-        lambda m: (m["ts_recv"], m["date"], m["status"], json.dumps(m["answer"]), m["src"]),
-    ),
-    "watchlist": (
-        "INSERT INTO stream_watchlist(ts_recv,symbol,op,tickers_json,status,native_json,src) "
-        "VALUES(?,?,?,?,?,?,?)",
-        lambda m: (
-            m["ts_recv"],
-            m["ticker"],
-            m["op"],
-            json.dumps(m["tickers"]),
-            m["status"],
-            json.dumps(m["answer"]),
-            m["src"],
-        ),
-    ),
-    "sub": (
-        "INSERT INTO stream_subscriptions(ts,service,command,symbols_json,code,reason) "
-        "VALUES(?,?,?,?,?,?)",
-        lambda m: (
-            m.get("ts"),
-            m.get("service"),
-            m.get("command"),
-            json.dumps(m.get("symbols") or []),
-            m.get("code"),
-            m.get("reason"),
-        ),
-    ),
+    "feedstatus": ("INSERT INTO stream_feed_status(ts,service,socket_open,schwab_last_frame_ts,"
+                   "held,last_data_ts) VALUES(?,?,?,?,?,?)",
+                   lambda m: (m["ts"], m["service"], int(m["socket_open"]),
+                              m.get("schwab_last_frame_ts"), m["held"], m.get("last_data_ts"))),
+    "quote": ("INSERT INTO stream_quotes_raw(ts_recv,symbol,bid,ask,last,bid_size,ask_size,"
+              "last_size,total_volume,quote_time_ms,trade_time_ms,src,native_json,schwab_ts) "
+              "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+              lambda m: (m.get("ts_recv"), m.get("symbol"), m.get("bid"), m.get("ask"),
+                         m.get("last"), m.get("bid_size"), m.get("ask_size"), m.get("last_size"),
+                         m.get("total_volume"), m.get("quote_time_ms"), m.get("trade_time_ms"),
+                         m["src"], _json(m.get("native")), m.get("schwab_ts"))),
+    "book": ("INSERT INTO stream_book_raw(ts_recv,symbol,service,native_json,src,schwab_ts) "
+             "VALUES(?,?,?,?,?,?)",
+             lambda m: (m.get("ts_recv"), m.get("symbol"), m.get("service"),
+                        json.dumps(m["content"]), m["src"], m.get("schwab_ts"))),
+    "optquote": ("INSERT INTO stream_options_quotes_raw(ts_recv,symbol,native_json,src,schwab_ts) "
+                 "VALUES(?,?,?,?,?)",
+                 lambda m: (m.get("ts_recv"), m.get("symbol"), json.dumps(m["content"]), m["src"],
+                            m.get("schwab_ts"))),
+    "bar1m": ("INSERT INTO stream_bars_raw(ts_recv,symbol,bar_start_ms,open,high,low,close,"
+              "volume,src,native_json,schwab_ts) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+              lambda m: (m.get("ts_recv"), m.get("symbol"), m.get("bar_start_ms"), m.get("open"),
+                         m.get("high"), m.get("low"), m.get("close"), m.get("volume"), m["src"],
+                         _json(m.get("native")), m.get("schwab_ts"))),
+    "news": ("INSERT INTO stream_news_raw(ts_recv,symbol,native_json,src,schwab_ts) VALUES(?,?,?,?,?)",
+             lambda m: (m.get("ts_recv"), m.get("symbol"), json.dumps(m["content"]), m["src"],
+                        m.get("schwab_ts"))),
+    "pricehistory": ("INSERT INTO stream_pricehistory_raw(ts_recv,symbol,series,native_json,src) "
+                     "VALUES(?,?,?,?,?)",
+                     lambda m: (m["ts_recv"], m["symbol"], m["series"], json.dumps(m["answer"]), m["src"])),
+    "markets": ("INSERT INTO stream_markets_raw(ts_recv,date,status,native_json,src) VALUES(?,?,?,?,?)",
+                lambda m: (m["ts_recv"], m["date"], m["status"], json.dumps(m["answer"]), m["src"])),
+    "watchlist": ("INSERT INTO stream_watchlist(ts_recv,symbol,op,tickers_json,status,native_json,src) "
+                  "VALUES(?,?,?,?,?,?,?)",
+                  lambda m: (m["ts_recv"], m["ticker"], m["op"], json.dumps(m["tickers"]), m["status"],
+                             json.dumps(m["answer"]), m["src"])),
+    "sub": ("INSERT INTO stream_subscriptions(ts,service,command,symbols_json,code,reason) "
+            "VALUES(?,?,?,?,?,?)",
+            lambda m: (m.get("ts"), m.get("service"), m.get("command"),
+                       json.dumps(m.get("symbols") or []), m.get("code"), m.get("reason"))),
 }
 
 
@@ -641,18 +458,9 @@ def _json(v) -> "str | None":
 #: what one message's row can raise while it is built and written: the row refused by the
 #: database (a constraint, a value it cannot bind or store) or a message without the shape its
 #: table needs. Each belongs to that message alone: it is kept as sent and the writer goes on.
-ROW_FAILURES = (
-    sqlite3.IntegrityError,
-    sqlite3.DataError,
-    sqlite3.InterfaceError,
-    sqlite3.ProgrammingError,
-    sqlite3.NotSupportedError,
-    KeyError,
-    TypeError,
-    ValueError,
-    AttributeError,
-    OverflowError,
-)
+ROW_FAILURES = (sqlite3.IntegrityError, sqlite3.DataError, sqlite3.InterfaceError,
+                sqlite3.ProgrammingError, sqlite3.NotSupportedError, KeyError, TypeError,
+                ValueError, AttributeError, OverflowError)
 #: an error from the database while writing (opening, a row, a commit); a row's error is the
 #: database refusing every write when its SQLite code is one of REFUSAL_CODES, else that row's own
 DATABASE_REFUSALS = (sqlite3.DatabaseError,)
@@ -665,49 +473,29 @@ REFUSAL_CODES = frozenset({3, 5, 6, 7, 8, 10, 11, 13, 14, 15, 26})
 def _refuses_every_write(error: sqlite3.DatabaseError) -> bool:
     return error.sqlite_errorcode is None or error.sqlite_errorcode & 0xFF in REFUSAL_CODES
 
-
 #: the writer's states, on the heartbeat
 WRITER_NOT_STARTED, WRITER_RECORDING, WRITER_BLOCKED, WRITER_DEAD, WRITER_STOPPED = (
-    "not_started",
-    "recording",
-    "blocked",
-    "dead",
-    "stopped",
-)
-_STATE_WORD = {
-    WRITER_NOT_STARTED: "NOT STARTED",
-    WRITER_RECORDING: "RECORDING",
-    WRITER_BLOCKED: "BLOCKED",
-    WRITER_DEAD: "DEAD",
-    WRITER_STOPPED: "STOPPED",
-}
+    "not_started", "recording", "blocked", "dead", "stopped")
+_STATE_WORD = {WRITER_NOT_STARTED: "NOT STARTED", WRITER_RECORDING: "RECORDING",
+               WRITER_BLOCKED: "BLOCKED", WRITER_DEAD: "DEAD", WRITER_STOPPED: "STOPPED"}
 #: each table's name and columns, from its insert
-_TABLES = {
-    kind: (m.group(1), tuple(c.strip() for c in m.group(2).split(",")))
-    for kind, (sql, _row) in _INSERTS.items()
-    for m in [re.match(r"INSERT INTO (\w+)\(([^)]*)\)", sql)]
-}
+_TABLES = {kind: (m.group(1), tuple(c.strip() for c in m.group(2).split(",")))
+           for kind, (sql, _row) in _INSERTS.items()
+           for m in [re.match(r"INSERT INTO (\w+)\(([^)]*)\)", sql)]}
 #: what the writer holds in memory while the database refuses writes, before newer messages go to
 #: a spill file (the operator's setting: about 2 GB of memory), each held message counted once at
 #: its memory size (_held_size)
-HOLD_CAP_BYTES = 2 * 1024**3
+HOLD_CAP_BYTES = 2 * 1024 ** 3
 #: spill records written back in one transaction
 SPILL_CHUNK = 5000
 #: the tables the daily keep (CaptureWriter.prune) removes old rows from, each by its receipt time
 #: (the newest stream_watchlist row always stays: the daemon reads it at its start)
-KEPT_BY_TIME = (
-    ("stream_quotes_raw", "ts_recv"),
-    ("stream_book_raw", "ts_recv"),
-    ("stream_options_quotes_raw", "ts_recv"),
-    ("stream_bars_raw", "ts_recv"),
-    ("stream_news_raw", "ts_recv"),
-    ("stream_pricehistory_raw", "ts_recv"),
-    ("stream_markets_raw", "ts_recv"),
-    ("stream_watchlist", "ts_recv"),
-    ("stream_subscriptions", "ts"),
-    ("stream_feed_status", "ts"),
-    ("stream_write_failures", "ts"),
-)
+KEPT_BY_TIME = (("stream_quotes_raw", "ts_recv"), ("stream_book_raw", "ts_recv"),
+                ("stream_options_quotes_raw", "ts_recv"), ("stream_bars_raw", "ts_recv"),
+                ("stream_news_raw", "ts_recv"), ("stream_pricehistory_raw", "ts_recv"),
+                ("stream_markets_raw", "ts_recv"),
+                ("stream_watchlist", "ts_recv"), ("stream_subscriptions", "ts"),
+                ("stream_feed_status", "ts"), ("stream_write_failures", "ts"))
 #: rows removed in one transaction, so a live write never waits behind a long delete
 PRUNE_ROWS = 20000
 
@@ -720,7 +508,6 @@ def _every_message(topic: str, msg: Any) -> bool:
 @dataclass(frozen=True)
 class RowWritten:
     """A message's row written to its table, with the values bound."""
-
     table: str
     values: tuple
 
@@ -729,7 +516,6 @@ class RowWritten:
 class KeptFailure:
     """A message kept as sent in stream_write_failures: its topic, the message, the error (type
     and text) and when the write failed."""
-
     topic: str
     msg: Any
     error: str
@@ -752,7 +538,6 @@ class WriterStatus:
     `unrecorded`: messages a dead writer could not write; `error`: the database's refusal
     (blocked) or what ended the thread (dead), from `error_ct`. `line` and `cls`: the header's
     Record, as the page prints it."""
-
     state: str
     rows_written: int
     failures: int
@@ -787,41 +572,26 @@ def _record_line(s: dict) -> "tuple[str, str]":
         word = "WRITING BACK THE SPILL"
     parts = [word]
     if s["error"] is not None:
-        parts.append(
-            f"{'since' if s['state'] == WRITER_BLOCKED else 'at'} {s['error_ct']}: {s['error']}"
-        )
+        parts.append(f"{'since' if s['state'] == WRITER_BLOCKED else 'at'} {s['error_ct']}: {s['error']}")
     parts += [f"{s['rows_written']} rows", f"{s['failures']} failed, kept as sent"]
     if s["last_failure"] is not None:
         parts.append(f"last {s['last_failure_ct']}: {s['last_failure']}")
-    parts.append(
-        f"held in memory: {s['held']} messages, {s['held_bytes'] / 1e6:.1f} MB "
-        f"({s['waiting']} waiting for the database)"
-    )
+    parts.append(f"held in memory: {s['held']} messages, {s['held_bytes'] / 1e6:.1f} MB "
+                 f"({s['waiting']} waiting for the database)")
     if spill is not None:
-        parts += [
-            f"spilled to disk: {f['messages']} messages, {f['bytes']:,} bytes in "
-            f"{Path(f['path']).name}, {f['written_back']} written back"
-            for f in [spill, *s["spills_after"]]
-        ]
-    parts += [
-        f"left on disk: {Path(k['path']).name} ({k['messages']} messages, "
-        f"{k['bytes']:,} bytes, {k['written_back']} written back)"
-        for k in s["left_on_disk"]
-    ]
+        parts += [f"spilled to disk: {f['messages']} messages, {f['bytes']:,} bytes in "
+                  f"{Path(f['path']).name}, {f['written_back']} written back" for f in [spill, *s["spills_after"]]]
+    parts += [f"left on disk: {Path(k['path']).name} ({k['messages']} messages, "
+              f"{k['bytes']:,} bytes, {k['written_back']} written back)" for k in s["left_on_disk"]]
     if s["lost"]:
         lost = f"LOST {s['lost']} messages"
-        if s["lost_first_ts"] is not None:  # the window of those whose receipt time is known
+        if s["lost_first_ts"] is not None:   # the window of those whose receipt time is known
             lost += f", received {ct_label(s['lost_first_ts'])} to {ct_label(s['lost_last_ts'])}"
         parts.append(lost)
     parts.append(f"{s['unrecorded']} not recorded")
-    ok = (
-        s["state"] == WRITER_RECORDING
-        and s["failures"] == 0
-        and s["unrecorded"] == 0
-        and spill is None
-        and not s["left_on_disk"]
-        and s["lost"] == 0
-    )
+    ok = (s["state"] == WRITER_RECORDING and s["failures"] == 0 and s["unrecorded"] == 0
+          and spill is None and not s["left_on_disk"]
+          and s["lost"] == 0)
     return " · ".join(parts), "" if ok else "neg"
 
 
@@ -853,9 +623,7 @@ def _held_size(item) -> int:
     tests/test_data_path_writer_failures_v1.py::test_the_hold_cap_holds_memory_to_its_size."""
     seen: set = set()
     if isinstance(item, KeptFailure):
-        return sys.getsizeof(item) + sum(
-            _object_bytes(v, seen) for v in (item.topic, item.msg, item.error)
-        )
+        return sys.getsizeof(item) + sum(_object_bytes(v, seen) for v in (item.topic, item.msg, item.error))
     topic, msg = item
     total = sys.getsizeof(item) + _object_bytes(topic, seen)
     if not isinstance(msg, dict):
@@ -906,12 +674,10 @@ class _Spill:
 
     def __init__(self, path: Path, mode: "str | None" = "ab"):
         self.path = path
-        self.out = (
-            open(path, mode, buffering=0) if mode is not None else None
-        )  # None: read only (found)
-        self.size = 0  # bytes of whole records written
+        self.out = open(path, mode, buffering=0) if mode is not None else None   # None: read only (found)
+        self.size = 0                  # bytes of whole records written
         self.messages = 0
-        self.read_at = 0  # bytes written back and committed
+        self.read_at = 0               # bytes written back and committed
         self.written_back = 0
         self._in = None
 
@@ -934,9 +700,9 @@ class _Spill:
             if self.out.write(data) != len(data):
                 raise OSError(f"short write to {self.path}")
         except OSError as e:
-            self.out.truncate(self.size)  # no partial record stays behind the whole ones
+            self.out.truncate(self.size)   # no partial record stays behind the whole ones
             return e
-        self.size += len(data)  # its message is counted by the writer (_spilled)
+        self.size += len(data)             # its message is counted by the writer (_spilled)
         return None
 
     def read(self, n: int) -> list:
@@ -959,13 +725,8 @@ class _Spill:
             try:
                 item = _from_spill(raw)
             except (ValueError, KeyError, TypeError) as e:
-                item = KeptFailure(
-                    "spill",
-                    raw.decode("latin-1"),
-                    f"{self.path.name}: the record at byte {at} "
-                    f"does not decode, kept as its bytes (latin-1): {type(e).__name__}: {e}",
-                    time.time(),
-                )
+                item = KeptFailure("spill", raw.decode("latin-1"), f"{self.path.name}: the record at byte {at} "
+                                   f"does not decode, kept as its bytes (latin-1): {type(e).__name__}: {e}", time.time())
             at += 4 + length
             out.append((item, at))
         return out
@@ -973,13 +734,8 @@ class _Spill:
     def _unframed(self, at: int, raw: bytes) -> KeptFailure:
         """Bytes from `at` that make no whole record (a damaged length, or a crash cut a record off),
         as one KeptFailure: kept as sent, never cut away unrecorded."""
-        return KeptFailure(
-            "spill",
-            raw.decode("latin-1"),
-            f"{self.path.name}: the {len(raw)} bytes from byte "
-            f"{at} make no whole record, kept as their bytes (latin-1)",
-            time.time(),
-        )
+        return KeptFailure("spill", raw.decode("latin-1"), f"{self.path.name}: the {len(raw)} bytes from byte "
+                           f"{at} make no whole record, kept as their bytes (latin-1)", time.time())
 
     def committed(self, records: int, end: int) -> None:
         """A written-back part of `records` records is in the database; the next starts at `end`."""
@@ -1007,27 +763,19 @@ class _Spill:
                     spill.read_at = end
         spill.messages += whole < disk
         spill.size, spill.written_back = disk, min(written_back, spill.messages)
-        if spill.written_back == spill.messages:  # its cut bytes, if any, were kept too
+        if spill.written_back == spill.messages:       # its cut bytes, if any, were kept too
             spill.read_at = disk
         return spill
 
     def left(self) -> dict:
         """The spill file as listed when it is left on disk."""
-        return {
-            "path": str(self.path),
-            "messages": self.messages,
-            "bytes": self.size,
-            "written_back": self.written_back,
-        }
+        return {"path": str(self.path), "messages": self.messages, "bytes": self.size,
+                "written_back": self.written_back}
 
     def status(self) -> dict:
         """The spill file as the heartbeat carries it."""
-        return {
-            "path": str(self.path),
-            "bytes": self.size,
-            "messages": self.messages,
-            "written_back": self.written_back,
-        }
+        return {"path": str(self.path), "bytes": self.size, "messages": self.messages,
+                "written_back": self.written_back}
 
     def close(self) -> None:
         if self.out is not None:
@@ -1054,16 +802,10 @@ class CaptureWriter:
     when it was received. Only an error outside these ends the thread (dead): what it held in
     memory and what reaches it after are counted unrecorded."""
 
-    def __init__(
-        self,
-        db_path: "Path | str | None" = None,
-        *,
-        batch_rows: int = 500,
-        batch_sec: float = 0.25,
-        timeout_sec: float = 30.0,
-        retry_sec: float = 1.0,
-        hold_cap_bytes: int = HOLD_CAP_BYTES,
-    ) -> None:
+    def __init__(self, db_path: "Path | str | None" = None, *,
+                 batch_rows: int = 500, batch_sec: float = 0.25,
+                 timeout_sec: float = 30.0, retry_sec: float = 1.0,
+                 hold_cap_bytes: int = HOLD_CAP_BYTES) -> None:
         p = resolve_stream_db_path() if db_path is None else Path(db_path).resolve()
         if p.name == "ed_console.db":
             raise ValueError(f"the stream writer never writes the console's database ({p})")
@@ -1076,20 +818,20 @@ class CaptureWriter:
         self.hold_cap_bytes = int(hold_cap_bytes)
         self._lock = threading.Lock()
         self._q: "queue.SimpleQueue" = queue.SimpleQueue()
-        self._batch: list = []  # (message, outcome) in the open transaction
-        self._batch_spilled = False  # the open batch is spill records (they stay in the file)
-        self._waiting: list = []  # messages held while the database refuses writes
+        self._batch: list = []         # (message, outcome) in the open transaction
+        self._batch_spilled = False    # the open batch is spill records (they stay in the file)
+        self._waiting: list = []       # messages held while the database refuses writes
         self._waiting_bytes = 0
         #: spill files, oldest first: the first is written back, new messages go to the last
         self._spills: "list[_Spill]" = []
         self.lost = 0
         self.lost_first_ts: "float | None" = None
         self.lost_last_ts: "float | None" = None
-        self._round: list = []  # the messages the writer is writing now, in order
-        self._stored = 0  # how many of them are in the open batch
-        self._admitting: list = []  # the messages _admit or the stop's spill is holding now
-        self._admitted = 0  # how many of them are held (in memory, on disk or lost)
-        self._logged: dict = {}  # log line kind -> [minute last logged, count since]
+        self._round: list = []         # the messages the writer is writing now, in order
+        self._stored = 0               # how many of them are in the open batch
+        self._admitting: list = []     # the messages _admit or the stop's spill is holding now
+        self._admitted = 0             # how many of them are held (in memory, on disk or lost)
+        self._logged: dict = {}        # log line kind -> [minute last logged, count since]
         self.state = WRITER_NOT_STARTED
         self.rows_written = 0
         self.failures = 0
@@ -1111,15 +853,12 @@ class CaptureWriter:
         try:
             conn.executescript("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;")
             conn.execute(f"PRAGMA journal_size_limit={WAL_SIZE_LIMIT_BYTES}")
-            tables = {
-                name
-                for (name,) in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
-            }
+            tables = {name for (name,) in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
             conn.executescript(STREAM_SCHEMA_SQL)
             for table, index in RECEIPT_TIME_INDEXES.items():
                 if table not in tables:
                     conn.execute(index)
-            for table, column, kind in _ADDED_COLUMNS:  # a database made before them
+            for table, column, kind in _ADDED_COLUMNS:          # a database made before them
                 if column not in {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}:
                     conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {kind}")
             conn.commit()
@@ -1130,10 +869,8 @@ class CaptureWriter:
             # (ended between its last part and its deletion) without writing it again; new messages
             # go after the newest. Nothing is written here: a database that refuses writes at the
             # start never stops the daemon starting.
-            self._spills = [
-                _Spill.found(f, progress[f.name] if f.name in progress else 0)
-                for f in sorted(p.parent.glob(f"{p.stem}.*.spill"), key=_spill_order)
-            ]
+            self._spills = [_Spill.found(f, progress[f.name] if f.name in progress else 0)
+                            for f in sorted(p.parent.glob(f"{p.stem}.*.spill"), key=_spill_order)]
         finally:
             conn.close()
 
@@ -1151,7 +888,7 @@ class CaptureWriter:
         if conn is None:
             own = sqlite3.connect(str(self.db_path), timeout=self.timeout_sec)
             try:
-                with own:  # commits, or rolls back on an error
+                with own:                   # commits, or rolls back on an error
                     out = self.insert(topic, msg, conn=own)
             finally:
                 own.close()
@@ -1169,16 +906,10 @@ class CaptureWriter:
             return self._kept_row(conn, topic, msg, e)
         return RowWritten(_TABLES[kind][0], values)
 
-    def _kept_row(
-        self, conn: sqlite3.Connection, topic: str, msg: Any, error: BaseException
-    ) -> "KeptFailure":
+    def _kept_row(self, conn: sqlite3.Connection, topic: str, msg: Any, error: BaseException) -> "KeptFailure":
         reason = f"{type(error).__name__}: {error}"
-        self._log_once_a_minute(
-            ("row", reason),
-            "stream writer: %s not stored as a row, kept as sent: %s",
-            topic,
-            reason,
-        )
+        self._log_once_a_minute(("row", reason), "stream writer: %s not stored as a row, kept as sent: %s",
+                                topic, reason)
         return self._keep(conn, KeptFailure(topic, msg, reason, time.time()))
 
     def _log_once_a_minute(self, key: tuple, fmt: str, *args) -> None:
@@ -1208,7 +939,7 @@ class CaptureWriter:
             return
         own = sqlite3.connect(str(self.db_path), timeout=self.timeout_sec)
         try:
-            with own:  # commits, or rolls back on an error
+            with own:                       # commits, or rolls back on an error
                 self._keep(own, kept)
         finally:
             own.close()
@@ -1223,10 +954,8 @@ class CaptureWriter:
         except (ValueError, TypeError, RecursionError) as e:
             log.warning("stream writer: %s is not JSON (%s), kept as its repr", kept.topic, e)
             sent = repr(kept.msg)
-        conn.execute(
-            "INSERT INTO stream_write_failures(ts,topic,msg_json,error) VALUES(?,?,?,?)",
-            (kept.ts, kept.topic, sent, kept.error),
-        )
+        conn.execute("INSERT INTO stream_write_failures(ts,topic,msg_json,error) VALUES(?,?,?,?)",
+                     (kept.ts, kept.topic, sent, kept.error))
         return kept
 
     def _committed(self, batch: list) -> None:
@@ -1244,38 +973,25 @@ class CaptureWriter:
     def status(self) -> dict:
         """The writer's WriterStatus, as the heartbeat carries it."""
         with self._lock:
-            s = {
-                "state": self.state,
-                "rows_written": self.rows_written,
-                "failures": self.failures,
-                "last_failure": self.last_failure,
-                "last_failure_ct": (
-                    ct_label(self.last_failure_ts) if self.last_failure_ts is not None else None
-                ),
-                "queue_depth": self._q.qsize(),
-                "waiting": len(self._waiting),
-                # the open batch and the round's messages not yet in it; a retry's are part of what
-                # is waiting; those _admit has not yet held; spill records are on disk
-                "held": self._q.qsize()
-                + max(
-                    len(self._waiting),
-                    (0 if self._batch_spilled else len(self._batch))
-                    + len(self._round)
-                    - self._stored,
-                )
-                + len(self._admitting)
-                - self._admitted,
-                "held_bytes": self._waiting_bytes,
-                "spill": self._spills[0].status() if self._spills else None,
-                "spills_after": [s.status() for s in self._spills[1:]],
-                "left_on_disk": [dict(k) for k in self.left_on_disk],
-                "lost": self.lost,
-                "lost_first_ts": self.lost_first_ts,
-                "lost_last_ts": self.lost_last_ts,
-                "unrecorded": self.unrecorded,
-                "error": self.error,
-                "error_ct": ct_label(self.error_ts) if self.error_ts is not None else None,
-            }
+            s = {"state": self.state, "rows_written": self.rows_written,
+                 "failures": self.failures, "last_failure": self.last_failure,
+                 "last_failure_ct": (ct_label(self.last_failure_ts)
+                                     if self.last_failure_ts is not None else None),
+                 "queue_depth": self._q.qsize(), "waiting": len(self._waiting),
+                 # the open batch and the round's messages not yet in it; a retry's are part of what
+                 # is waiting; those _admit has not yet held; spill records are on disk
+                 "held": self._q.qsize() + max(len(self._waiting),
+                                               (0 if self._batch_spilled else len(self._batch))
+                                               + len(self._round) - self._stored)
+                         + len(self._admitting) - self._admitted,
+                 "held_bytes": self._waiting_bytes,
+                 "spill": self._spills[0].status() if self._spills else None,
+                 "spills_after": [s.status() for s in self._spills[1:]],
+                 "left_on_disk": [dict(k) for k in self.left_on_disk],
+                 "lost": self.lost, "lost_first_ts": self.lost_first_ts,
+                 "lost_last_ts": self.lost_last_ts,
+                 "unrecorded": self.unrecorded, "error": self.error,
+                 "error_ct": ct_label(self.error_ts) if self.error_ts is not None else None}
         line, cls = _record_line(s)
         return asdict(WriterStatus(**s, line=line, cls=cls))
 
@@ -1283,9 +999,8 @@ class CaptureWriter:
         """Hand every bus message to the writer thread until `stop`; everything delivered
         before the stop is written and committed before this returns. Once the thread is dead,
         each message is counted unrecorded instead of queued for a thread that will not take it."""
-        thread = threading.Thread(
-            target=self._thread, args=(self._q,), name="stream-capture-writer", daemon=True
-        )
+        thread = threading.Thread(target=self._thread, args=(self._q,),
+                                  name="stream-capture-writer", daemon=True)
         with self._lock:
             self.state = WRITER_RECORDING
         thread.start()
@@ -1298,7 +1013,7 @@ class CaptureWriter:
             while not sub.queue.empty():
                 self._hand(await sub.get())
         finally:
-            with self._lock:  # a dead thread takes no stop message
+            with self._lock:               # a dead thread takes no stop message
                 if self.state != WRITER_DEAD:
                     self._q.put(None)
             await asyncio.to_thread(thread.join)
@@ -1318,30 +1033,20 @@ class CaptureWriter:
         except Exception as e:  # noqa: BLE001 -- recorded as the writer's death, then raised
             log.error("stream writer died: %s: %s", type(e).__name__, e)
             with self._lock:
-                self.state, self.error, self.error_ts = (
-                    WRITER_DEAD,
-                    f"{type(e).__name__}: {e}",
-                    time.time(),
-                )
+                self.state, self.error, self.error_ts = WRITER_DEAD, f"{type(e).__name__}: {e}", time.time()
                 # not recorded: the open batch, the round's messages not yet in it (the one that
                 # ended the thread first; a retry's round holds its batch and what was waiting),
                 # those _admit had not yet held, and the queue. A spill file's messages are on
                 # disk: the file stays, listed as left
                 batch = 0 if self._batch_spilled else len(self._batch)
-                self.unrecorded += (
-                    batch
-                    + len(self._round)
-                    - self._stored
-                    + len(self._admitting)
-                    - self._admitted
-                    + self._drained(q)
-                )
+                self.unrecorded += (batch + len(self._round) - self._stored
+                                    + len(self._admitting) - self._admitted + self._drained(q))
                 self._leave_spills()
                 self._batch, self._waiting, self._round, self._stored = [], [], [], 0
                 self._admitting, self._admitted = [], 0
                 self._batch_spilled = False
             raise
-        with self._lock:  # anything handed in after the stop is not written
+        with self._lock:                   # anything handed in after the stop is not written
             self.state = WRITER_STOPPED
             self.unrecorded += self._drained(q)
 
@@ -1374,20 +1079,15 @@ class CaptureWriter:
         try:
             last_commit, stopping = time.monotonic(), False
             while not (stopping and not self._waiting and not self._spills):
-                unread = (
-                    bool(self._spills) and self._spills[0].read_at < self._spills[0].size
-                ) or bool(self._prune)
+                unread = (bool(self._spills) and self._spills[0].read_at < self._spills[0].size) or bool(self._prune)
                 try:
-                    item = q.get(
-                        timeout=0.001
-                        if unread
-                        else max(self.batch_sec - (time.monotonic() - last_commit), 0.01)
-                    )
+                    item = q.get(timeout=0.001 if unread else
+                                 max(self.batch_sec - (time.monotonic() - last_commit), 0.01))
                 except queue.Empty:
                     item = False
                 stopping = stopping or item is None
                 incoming = [item] if item else []
-                while not stopping:  # every message already queued is taken in this round
+                while not stopping:        # every message already queued is taken in this round
                     try:
                         item = q.get_nowait()
                     except queue.Empty:
@@ -1397,9 +1097,9 @@ class CaptureWriter:
                 holding = bool(self._waiting) or bool(self._spills)
                 with self._lock:
                     self._round, self._stored = self._waiting if holding else incoming, 0
-                if holding:  # the round's messages join the held ones, in order
+                if holding:                # the round's messages join the held ones, in order
                     self._admit(incoming)
-                del incoming  # the round is held by _round only; what was spilled, on disk only
+                del incoming               # the round is held by _round only; what was spilled, on disk only
                 try:
                     if conn is None:
                         conn = self._open()
@@ -1408,12 +1108,8 @@ class CaptureWriter:
                         with self._lock:
                             self._batch.append((item, out))
                             self._stored += 1
-                    if self._batch and (
-                        holding
-                        or stopping
-                        or len(self._batch) >= self.batch_rows
-                        or time.monotonic() - last_commit >= self.batch_sec
-                    ):
+                    if self._batch and (holding or stopping or len(self._batch) >= self.batch_rows
+                                        or time.monotonic() - last_commit >= self.batch_sec):
                         conn.commit()
                         last_commit = time.monotonic()
                         with self._lock:
@@ -1422,21 +1118,14 @@ class CaptureWriter:
                     if self._spills and not self._waiting:
                         self._write_back(conn)
                     if self._prune and not stopping and not self._spills and not self._batch:
-                        self._prune_part(
-                            conn
-                        )  # one part between rounds, none once the stop is taken
+                        self._prune_part(conn)  # one part between rounds, none once the stop is taken
                 except DATABASE_REFUSALS as e:
                     if conn is not None:
-                        conn.close()  # its open transaction is rolled back
+                        conn.close()       # its open transaction is rolled back
                     conn = None
-                    self._refused(
-                        e,
-                        ([] if self._batch_spilled else [item for item, _out in self._batch])
-                        + self._round[self._stored :],
-                        holding,
-                        stopping,
-                    )
-                with self._lock:  # a finished round's messages are not kept
+                    self._refused(e, ([] if self._batch_spilled else [item for item, _out in self._batch])
+                                  + self._round[self._stored:], holding, stopping)
+                with self._lock:           # a finished round's messages are not kept
                     self._round, self._stored = [], 0
         finally:
             if conn is not None:
@@ -1447,23 +1136,18 @@ class CaptureWriter:
         and the ones not yet written, in order; spill records stay in their file) is written
         again after `retry_sec`. At the stop what is held is left on disk."""
         reason = f"{type(error).__name__}: {error}"
-        self._log_once_a_minute(
-            ("refused", reason),
-            "stream writer: the database refused a write, %d messages held: %s",
-            len(held),
-            reason,
-        )
-        with self._lock:  # rolled back: none of the round is stored
+        self._log_once_a_minute(("refused", reason),
+                                "stream writer: the database refused a write, %d messages held: %s",
+                                len(held), reason)
+        with self._lock:                   # rolled back: none of the round is stored
             self._batch, self._batch_spilled, self._stored = [], False, 0
             if self.state != WRITER_BLOCKED:
                 self.error_ts = time.time()
             self.state, self.error = WRITER_BLOCKED, reason
-            if not holding:  # held now: in memory up to the cap, then spilled
+            if not holding:                # held now: in memory up to the cap, then spilled
                 self._waiting, self._waiting_bytes = [], 0
                 self._admitting, self._admitted = held, 0
-            self._round = (
-                self._waiting
-            )  # the round is what memory holds (a commit may have emptied it)
+            self._round = self._waiting    # the round is what memory holds (a commit may have emptied it)
         if not holding:
             self._admit(held)
         if stopping:
@@ -1526,20 +1210,12 @@ class CaptureWriter:
             else:
                 self.lost += 1
                 if ts is not None:
-                    self.lost_first_ts = (
-                        ts if self.lost_first_ts is None else min(self.lost_first_ts, ts)
-                    )
-                    self.lost_last_ts = (
-                        ts if self.lost_last_ts is None else max(self.lost_last_ts, ts)
-                    )
+                    self.lost_first_ts = ts if self.lost_first_ts is None else min(self.lost_first_ts, ts)
+                    self.lost_last_ts = ts if self.lost_last_ts is None else max(self.lost_last_ts, ts)
             self._admitted += 1
         if refused is not None:
-            self._log_once_a_minute(
-                ("lost", type(refused).__name__),
-                "stream writer: a message is lost: %s: %s",
-                type(refused).__name__,
-                refused,
-            )
+            self._log_once_a_minute(("lost", type(refused).__name__),
+                                    "stream writer: a message is lost: %s: %s", type(refused).__name__, refused)
 
     def prune(self, before: float) -> None:
         """Remove every row received before `before` from the tables of KEPT_BY_TIME (the newest
@@ -1552,14 +1228,9 @@ class CaptureWriter:
     def _prune_part(self, conn: sqlite3.Connection) -> None:
         """The next part of the keep in progress (prune), in one transaction."""
         table, column = self._prune[0]
-        newest = (
-            f" AND rowid < (SELECT MAX(rowid) FROM {table})" if table == "stream_watchlist" else ""
-        )
-        removed = conn.execute(
-            f"DELETE FROM {table} WHERE rowid IN (SELECT rowid FROM {table} "
-            f"WHERE {column} < ?{newest} LIMIT ?)",
-            (self._prune_before, PRUNE_ROWS),
-        ).rowcount
+        newest = f" AND rowid < (SELECT MAX(rowid) FROM {table})" if table == "stream_watchlist" else ""
+        removed = conn.execute(f"DELETE FROM {table} WHERE rowid IN (SELECT rowid FROM {table} "
+                               f"WHERE {column} < ?{newest} LIMIT ?)", (self._prune_before, PRUNE_ROWS)).rowcount
         conn.commit()
         with self._lock:
             self._pruned[table] += removed
@@ -1567,11 +1238,8 @@ class CaptureWriter:
                 self._prune.pop(0)
             done = not self._prune
         if done:
-            log.info(
-                "stream writer: rows received before %s removed: %s",
-                ct_label(self._prune_before),
-                ", ".join(f"{t} {n}" for t, n in self._pruned.items()),
-            )
+            log.info("stream writer: rows received before %s removed: %s", ct_label(self._prune_before),
+                     ", ".join(f"{t} {n}" for t, n in self._pruned.items()))
 
     def _write_back(self, conn: sqlite3.Connection) -> None:
         """The next part of the oldest spill file into the database, in one transaction with how
@@ -1583,11 +1251,9 @@ class CaptureWriter:
             for item, _end in records:
                 self._batch.append((item, self._store(conn, item)))
             end = records[-1][1]
-            conn.execute(
-                "INSERT INTO stream_spill_progress(spill, written_back) VALUES(?,?) "
-                "ON CONFLICT(spill) DO UPDATE SET written_back=excluded.written_back",
-                (spill.path.name, spill.written_back + len(records)),
-            )
+            conn.execute("INSERT INTO stream_spill_progress(spill, written_back) VALUES(?,?) "
+                         "ON CONFLICT(spill) DO UPDATE SET written_back=excluded.written_back",
+                         (spill.path.name, spill.written_back + len(records)))
             conn.commit()
             with self._lock:
                 self._committed(self._batch)
@@ -1606,21 +1272,14 @@ class CaptureWriter:
         try:
             os.remove(spill.path)
         except OSError as e:
-            log.error(
-                "stream writer: %s written back (%d messages), not deleted, deleted at the next start: %s: %s",
-                spill.path,
-                spill.messages,
-                type(e).__name__,
-                e,
-            )
+            log.error("stream writer: %s written back (%d messages), not deleted, deleted at the next start: %s: %s",
+                      spill.path, spill.messages, type(e).__name__, e)
             with self._lock:
                 self.left_on_disk.append(spill.left())
             return
         conn.execute("DELETE FROM stream_spill_progress WHERE spill = ?", (spill.path.name,))
         conn.commit()
-        log.info(
-            "stream writer: %s written back (%d messages); deleted", spill.path, spill.messages
-        )
+        log.info("stream writer: %s written back (%d messages); deleted", spill.path, spill.messages)
 
     def _leave_on_disk(self) -> None:
         """At a stop while the database refuses writes: what is held in memory goes to a spill

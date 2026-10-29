@@ -1,5 +1,4 @@
 """Schwab import boundary — CI-safe module load without live auth or network."""
-
 from __future__ import annotations
 
 import os
@@ -12,7 +11,6 @@ REPO = Path(__file__).resolve().parent.parent
 
 def test_schwab_py_package_importable() -> None:
     import schwab.auth
-
     assert schwab.auth.__name__ == "schwab.auth"
 
 
@@ -43,18 +41,14 @@ def test_build_config_fail_closed_without_secrets(tmp_path: Path) -> None:
     (`schwab_live_blocked_for`, which `build_client_from_token` refuses on) builds no client: no
     live Schwab without credentials (docs/ARCHITECTURE.md "Failure domains"). Run in a fresh
     interpreter whose environment has no Schwab credential."""
-    code = (
-        "import config, schwab_client\n"
-        "cfg = config.build_config()\n"
-        "assert cfg.api_key == '' and cfg.app_secret == '', cfg\n"
-        "assert config.schwab_live_blocked_for() is True\n"
-        f"state = schwab_client.build_client_from_token({str(tmp_path / 'token.json')!r}, cfg.api_key, cfg.app_secret)\n"
-        "assert state.ok is False and state.client is None and 'UNAVAILABLE' in state.message, state\n"
-    )
+    code = ("import config, schwab_client\n"
+            "cfg = config.build_config()\n"
+            "assert cfg.api_key == '' and cfg.app_secret == '', cfg\n"
+            "assert config.schwab_live_blocked_for() is True\n"
+            f"state = schwab_client.build_client_from_token({str(tmp_path / 'token.json')!r}, cfg.api_key, cfg.app_secret)\n"
+            "assert state.ok is False and state.client is None and 'UNAVAILABLE' in state.message, state\n")
     env = {k: v for k, v in os.environ.items() if k not in ("SCHWAB_API_KEY", "SCHWAB_APP_SECRET")}
-    r = subprocess.run(
-        [sys.executable, "-c", code], cwd=REPO, env=env, capture_output=True, text=True, timeout=300
-    )
+    r = subprocess.run([sys.executable, "-c", code], cwd=REPO, env=env, capture_output=True, text=True, timeout=300)
     assert r.returncode == 0, r.stdout + r.stderr
 
 
@@ -65,11 +59,8 @@ def test_server_import_does_not_build_client_or_run_login_flow() -> None:
         "with patch('schwab_client.build_client_from_token') as b, patch('schwab_client.run_login_flow') as lf:\n"
         "    import server\n"
         "    b.assert_not_called(); lf.assert_not_called()\n"
-        "    assert server.app is not None\n"
-    )
-    r = subprocess.run(
-        [sys.executable, "-c", code], cwd=REPO, capture_output=True, text=True, timeout=300
-    )
+        "    assert server.app is not None\n")
+    r = subprocess.run([sys.executable, "-c", code], cwd=REPO, capture_output=True, text=True, timeout=300)
     assert r.returncode == 0, r.stdout + r.stderr
 
 
@@ -121,44 +112,18 @@ def test_the_console_makes_no_schwab_call(tmp_path: Path) -> None:
                 continue
             reached.append(conn.recv(200))
             conn.close()
-
     threading.Thread(target=record, daemon=True).start()
-    (tmp_path / "schwab_token.json").write_text(
-        _json.dumps(
-            {
-                "creation_timestamp": int(_time.time()),
-                "token": {
-                    "access_token": "a",
-                    "refresh_token": "r",
-                    "token_type": "Bearer",
-                    "expires_in": 1800,
-                    "expires_at": int(_time.time() + 3600),
-                },
-            }
-        )
-    )
-    env = {
-        k: v for k, v in os.environ.items() if k not in ("ED_CI_OFFLINE", "NO_PROXY", "no_proxy")
-    }
-    env.update(
-        {
-            "ED_RUNTIME_ROOT": str(tmp_path),
-            "HTTPS_PROXY": f"http://127.0.0.1:{proxy.getsockname()[1]}",
-            "NO_PROXY": "127.0.0.1",  # the console's own link to the daemon
-            "SCHWAB_API_KEY": "fake-key-not-ci-placeholder",
-            "SCHWAB_APP_SECRET": "fake-secret-not-ci-placeholder",
-        }
-    )
+    (tmp_path / "schwab_token.json").write_text(_json.dumps({"creation_timestamp": int(_time.time()), "token": {
+        "access_token": "a", "refresh_token": "r", "token_type": "Bearer", "expires_in": 1800,
+        "expires_at": int(_time.time() + 3600)}}))
+    env = {k: v for k, v in os.environ.items() if k not in ("ED_CI_OFFLINE", "NO_PROXY", "no_proxy")}
+    env.update({"ED_RUNTIME_ROOT": str(tmp_path), "HTTPS_PROXY": f"http://127.0.0.1:{proxy.getsockname()[1]}",
+                "NO_PROXY": "127.0.0.1",                     # the console's own link to the daemon
+                "SCHWAB_API_KEY": "fake-key-not-ci-placeholder", "SCHWAB_APP_SECRET": "fake-secret-not-ci-placeholder"})
     fx = Path(__file__).resolve().parent / "fixtures" / "real_spy_2026_11_20_chain_and_quotes.json"
     try:
-        r = subprocess.run(
-            [sys.executable, "-c", _CONSOLE_WALK, str(fx)],
-            cwd=REPO,
-            env=env,
-            capture_output=True,
-            text=True,
-            timeout=600,
-        )
+        r = subprocess.run([sys.executable, "-c", _CONSOLE_WALK, str(fx)], cwd=REPO, env=env,
+                           capture_output=True, text=True, timeout=600)
     finally:
         done.set()
         proxy.close()

@@ -9,7 +9,6 @@ Claude cannot collide on site-packages or interpreter identity.
 
 A worktree without its own venv falls back to the global Python and drifts.
 """
-
 from __future__ import annotations
 
 import argparse
@@ -43,7 +42,9 @@ def ensure_venv(
     vpy = venv_python(root)
     if not vpy.is_file():
         print(f"bootstrap_worktree_venv: creating {root / '.venv'} …")
-        venv.EnvBuilder(with_pip=with_pip, clear=False, upgrade=False).create(str(root / ".venv"))
+        venv.EnvBuilder(with_pip=with_pip, clear=False, upgrade=False).create(
+            str(root / ".venv")
+        )
     if not vpy.is_file():
         raise RuntimeError(f"venv python missing after create: {vpy}")
     if install_requirements:

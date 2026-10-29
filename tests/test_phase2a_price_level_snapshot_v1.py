@@ -27,26 +27,19 @@ SESSION = datetime(2026, 10, 5, 12, 0, tzinfo=ET).date()
 
 def _bar(y, mo, d, h, mi, o, hi, lo, c, v=1000.0):
     # institutional-synthetic-ok: window selection needs bars placed in known sessions
-    return Candle(
-        ts=datetime(y, mo, d, h, mi, tzinfo=ET).timestamp(),
-        open=o,
-        high=hi,
-        low=lo,
-        close=c,
-        volume=v,
-    )
+    return Candle(ts=datetime(y, mo, d, h, mi, tzinfo=ET).timestamp(), open=o, high=hi, low=lo, close=c, volume=v)
 
 
 def _tape():
     """Two prior sessions plus a today session, so window selection is observable."""
     bars = [
-        _bar(2026, 10, 1, 10, 0, 100, 110, 90, 100),  # older prior session
+        _bar(2026, 10, 1, 10, 0, 100, 110, 90, 100),     # older prior session
         _bar(2026, 10, 1, 14, 0, 100, 101, 99, 100),
-        _bar(2026, 10, 2, 10, 0, 96, 105, 95, 97),  # most recent prior session
+        _bar(2026, 10, 2, 10, 0, 96, 105, 95, 97),       # most recent prior session
         _bar(2026, 10, 2, 15, 59, 101, 103, 100, 102),
-        _bar(2026, 10, 5, 4, 0, 102, 104, 101, 103),  # overnight (pre-open)
-        _bar(2026, 10, 5, 9, 31, 103, 106, 102, 105),  # today, inside ORB
-        _bar(2026, 10, 5, 9, 50, 105, 107, 104, 106),  # today, post-ORB
+        _bar(2026, 10, 5, 4, 0, 102, 104, 101, 103),     # overnight (pre-open)
+        _bar(2026, 10, 5, 9, 31, 103, 106, 102, 105),    # today, inside ORB
+        _bar(2026, 10, 5, 9, 50, 105, 107, 104, 106),    # today, post-ORB
         _bar(2026, 10, 5, 11, 0, 106, 108, 105, 107),
     ]
     return bars
@@ -56,24 +49,21 @@ def _daemon_bars(name: str, tk: str) -> list:
     """The capture daemon's newest receipt of each of `tk`'s minutes in fixture `name`, taken in
     by the bar writer's own check (server._schwab_bar)."""
     from tests.feed_live_helper import daemon_bars
-
     newest = {}
     for r in sorted(daemon_bars(name, tk), key=lambda r: r["ts_recv"]):
         newest[r["bar_start_ms"]] = r
-    taken = [
-        _schwab_bar(ms, r["open"], r["high"], r["low"], r["close"], r["volume"])
-        for ms, r in sorted(newest.items())
-    ]
+    taken = [_schwab_bar(ms, r["open"], r["high"], r["low"], r["close"], r["volume"]) for ms, r in sorted(newest.items())]
     return [b for b in taken if b is not None]
 
 
 @pytest.fixture(autouse=True)
 def _clean_snapshots():
     import liquidity_value_engine as lve
-
     lve._MATERIALIZED_SNAPSHOTS.clear()
     yield
     lve._MATERIALIZED_SNAPSHOTS.clear()
+
+
 
 
 # ── the materialized snapshot ────────────────────────────────────────────────
@@ -81,8 +71,7 @@ def _clean_snapshots():
 
 def test_snapshot_carries_value_scope_generation_provenance_and_as_of():
     snap = build_price_level_snapshot(
-        "SPY", SESSION, bars_from_candles(_tape()), bar_source="unit_tape", generation=7
-    )
+        "SPY", SESSION, bars_from_candles(_tape()), bar_source="unit_tape", generation=7)
     for lid, value in snap.levels.items():
         assert lid in PHASE2A_LEVEL_IDS, f"{lid} is not a declared Phase 2A id"
         assert value.generation == 7
@@ -118,13 +107,9 @@ def test_an_index_has_no_volume_levels_and_says_so_an_etf_has_them():
     bars" over 278 RTH bars (2026-09-28, the running app). SPY's real bars of the same days have
     volume and get both. The prior day (Thursday 10-01) is price-only and present for both."""
     friday = datetime(2026, 10, 2, tzinfo=ET).date()
-    for name, tk, has_volume in (
-        ("real_daemon_bars_spx_2026_10_01_02.json", "$SPX", False),
-        ("real_daemon_bars_spy_tsla_2026_10_01_02.json", "SPY", True),
-    ):
-        snap = build_price_level_snapshot(
-            tk, friday, bars_from_candles(_daemon_bars(name, tk)), bar_source=name
-        )
+    for name, tk, has_volume in (("real_daemon_bars_spx_2026_10_01_02.json", "$SPX", False),
+                                 ("real_daemon_bars_spy_tsla_2026_10_01_02.json", "SPY", True)):
+        snap = build_price_level_snapshot(tk, friday, bars_from_candles(_daemon_bars(name, tk)), bar_source=name)
         absent = {f["family"]: f["reason"] for f in snap.families_absent}
         assert snap.price("PDH") is not None and "prior_day" not in absent, tk
         if has_volume:
@@ -143,12 +128,12 @@ def test_absent_input_stays_absent_and_is_declared():
     assert snap.price("VWAP") is None
 
 
+
+
 def test_one_vwap_accumulation_feeds_the_scalar_and_the_curve():
     """The drawn line must END on the served level — one accumulation, one number."""
     tape = bars_from_candles(_tape())
-    assert compute_session_vwap_series(tape, SESSION), (
-        "no VWAP series for a session with RTH volume"
-    )
+    assert compute_session_vwap_series(tape, SESSION), "no VWAP series for a session with RTH volume"
 
     snap = build_price_level_snapshot("SPY", SESSION, tape, bar_source="unit_tape")
     assert snap.price("VWAP") == snap.vwap_series[-1][1]
@@ -156,6 +141,8 @@ def test_one_vwap_accumulation_feeds_the_scalar_and_the_curve():
         assert snap.price(lid) == snap.vwap_series[-1][idx], (
             f"{lid} differs from the last point of the curve the browser draws"
         )
+
+
 
 
 # ── the surfaces ─────────────────────────────────────────────────────────────
@@ -189,8 +176,7 @@ def test_api_levels_serializes_the_snapshot_and_does_not_compute():
     assert by_id["PDH"]["price"] == 105 and by_id["PDL"]["price"] == 95
     for lv in payload["levels"]:
         assert lv["generation"] == payload["generation"], (
-            "every served level must name the generation it came out of"
-        )
+            "every served level must name the generation it came out of")
         assert lv["semantic_scope"] == PHASE2A_LEVEL_IDS[lv["id"]][1]
     assert payload["vwap_series"], "the carried VWAP curve is missing"
     assert by_id["VWAP"]["price"] == payload["vwap_series"][-1][1]

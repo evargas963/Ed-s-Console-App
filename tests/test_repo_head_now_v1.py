@@ -5,7 +5,6 @@ ref, or packed into packed-refs), a worktree (its own HEAD, the refs in the shar
 and a detached HEAD. Real git repositories made by git in a temporary folder; git's own answer
 (`git rev-parse HEAD`) is the expected value.
 """
-
 from __future__ import annotations
 
 import subprocess
@@ -15,9 +14,7 @@ import server
 
 
 def _git(cwd: Path, *args: str) -> str:
-    return subprocess.run(
-        ["git", *args], cwd=cwd, capture_output=True, text=True, check=True
-    ).stdout.strip()
+    return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, check=True).stdout.strip()
 
 
 def _repo(tmp_path: Path) -> Path:
@@ -47,11 +44,7 @@ def test_a_worktrees_head_and_a_detached_head_are_gits(tmp_path):
     tree = tmp_path / "tree"
     _git(repo, "worktree", "add", "-q", "-b", "side", str(tree), "HEAD~1")
     assert (tree / ".git").is_file()
-    assert (
-        server.checkout_head(tree)
-        == _git(tree, "rev-parse", "HEAD")
-        != _git(repo, "rev-parse", "HEAD")
-    )
+    assert server.checkout_head(tree) == _git(tree, "rev-parse", "HEAD") != _git(repo, "rev-parse", "HEAD")
     _git(repo, "checkout", "-q", "--detach", "HEAD~1")
     assert server.checkout_head(repo) == _git(repo, "rev-parse", "HEAD")
 

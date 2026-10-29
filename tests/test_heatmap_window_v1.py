@@ -8,7 +8,6 @@ producer (server._publish_levels), the heatmap's and the per-strike panels' answ
 11-20), published as one chain (no single capture spans three expiries), valued on the captures'
 day (2026-10-01 12:00 ET). STAND-IN (named): the live price, the 10-15 capture's spot.
 """
-
 from __future__ import annotations
 
 import copy
@@ -25,26 +24,20 @@ from terrain_engine import SCOPE_ROWS, strike_window
 from time_et import ET
 
 _FX = Path(__file__).resolve().parent / "fixtures"
-_CHAIN = [
-    c
-    for f, key in (
-        ("real_spy_2026_10_14_chain_oi_zero.json", "contracts"),
-        ("real_spy_2026_10_15_chain_oi_zero.json", "contracts"),
-        ("real_spy_2026_11_20_chain_and_quotes.json", "chain"),
-    )
-    for c in json.loads((_FX / f).read_text(encoding="utf-8"))[key]
-]
-_SPOT = 764.92  # stand-in: the 10-15 capture's spot
+_CHAIN = [c for f, key in (("real_spy_2026_10_14_chain_oi_zero.json", "contracts"),
+                           ("real_spy_2026_10_15_chain_oi_zero.json", "contracts"),
+                           ("real_spy_2026_11_20_chain_and_quotes.json", "chain"))
+          for c in json.loads((_FX / f).read_text(encoding="utf-8"))[key]]
+_SPOT = 764.92                                    # stand-in: the 10-15 capture's spot
 TK = "SPY"
-_AT = datetime(2026, 10, 1, 12, 0, tzinfo=ET)  # the captures' day, before every expiry
+_AT = datetime(2026, 10, 1, 12, 0, tzinfo=ET)     # the captures' day, before every expiry
 
 
 def _price(spot):
     """The daemon's status at _AT (Schwab's socket open, SPY held) and SPY's price row (None: no
     price)."""
-    lmp.record_feed_heartbeat(
-        {"ts": _AT.timestamp(), "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [TK]}}
-    )
+    lmp.record_feed_heartbeat({"ts": _AT.timestamp(), "schwab_socket_open": True,
+                               "held": {"LEVELONE_EQUITIES": [TK]}})
     if spot is None:
         ofs._price_rows.pop(TK, None)
     else:
@@ -53,15 +46,11 @@ def _price(spot):
 
 @pytest.fixture(autouse=True)
 def _published():
-    with server._terrain_cache_lock:  # this test's chain, never one an earlier test left
+    with server._terrain_cache_lock:              # this test's chain, never one an earlier test left
         server._terrain_cache.pop(TK, None)
     _price(_SPOT)
-    assert (
-        server._publish_levels(
-            TK, copy.deepcopy(_CHAIN), _AT.timestamp(), chain_spot=(_SPOT, _AT.timestamp()), now=_AT
-        )
-        is not None
-    )
+    assert server._publish_levels(TK, copy.deepcopy(_CHAIN), _AT.timestamp(), chain_spot=(_SPOT, _AT.timestamp()),
+                                  now=_AT) is not None
     yield
     with server._terrain_cache_lock:
         server._terrain_cache.pop(TK, None)
@@ -71,9 +60,8 @@ def _published():
 
 def _heat(at=_AT, **kw):
     args = {"scope": "auto", "centre": None, "shift": 0, "cols": None, "expiry": None, **kw}
-    return server.gamma_surface_payload(
-        TK, args["scope"], args["centre"], args["shift"], args["cols"], args["expiry"], at
-    )
+    return server.gamma_surface_payload(TK, args["scope"], args["centre"], args["shift"], args["cols"],
+                                        args["expiry"], at)
 
 
 def _strikes(scope):
@@ -94,7 +82,7 @@ def test_each_scope_serves_its_rows_around_the_price_and_all_serves_every_strike
         assert d["view"]["centre"] == at_price
         assert [c["strike"] for c in d["cells"] if c["spot"]] == [at_price]
         i = d["strikes"].index(at_price)
-        assert i == (n - 1) // 2  # the price row in the middle
+        assert i == (n - 1) // 2                   # the price row in the middle
     assert len(_heat(scope="all")["cells"]) == len(every) > SCOPE_ROWS["wider"]
 
 
@@ -104,11 +92,9 @@ def test_a_pan_moves_the_rows_and_stops_at_the_ends_of_the_chain():
     centre = _heat()["view"]["centre"]
     assert d["view"]["centre"] == every[every.index(centre) + 3]
     top = _heat(centre=every[0])
-    assert top["strikes"] == every[: SCOPE_ROWS["auto"]] and top["view"]["centre"] == every[0]
+    assert top["strikes"] == every[:SCOPE_ROWS["auto"]] and top["view"]["centre"] == every[0]
     bottom = _heat(centre=every[-1], shift=50)
-    assert (
-        bottom["strikes"] == every[-SCOPE_ROWS["auto"] :] and bottom["view"]["centre"] == every[-1]
-    )
+    assert bottom["strikes"] == every[-SCOPE_ROWS["auto"]:] and bottom["view"]["centre"] == every[-1]
 
 
 def test_strike_window_with_no_strikes_has_no_rows():
@@ -139,20 +125,15 @@ def test_a_new_publication_serves_the_new_number():
     """The number moves: a publication with a changed value serves that value, as a new
     publication (surface_seq), so the page redraws it."""
     first = _heat(scope="all")
-    target = next(
-        c for c in _CHAIN if c["expirationDate"].startswith("2026-11-20") and c["openInterest"] > 0
-    )
+    target = next(c for c in _CHAIN if c["expirationDate"].startswith("2026-11-20") and c["openInterest"] > 0)
     k = float(target["strikePrice"])
 
     def oi(d):
         col = [e["expiry"] for e in d["expirations"]].index("2026-11-20")
         return next(c for c in d["cells"] if c["strike"] == k)["oi"][col]["total"]
-
     chain = copy.deepcopy(_CHAIN)
     next(c for c in chain if c["symbol"] == target["symbol"])["openInterest"] += 1000
-    server._publish_levels(
-        TK, chain, _AT.timestamp() + 1, chain_spot=(_SPOT, _AT.timestamp()), now=_AT
-    )
+    server._publish_levels(TK, chain, _AT.timestamp() + 1, chain_spot=(_SPOT, _AT.timestamp()), now=_AT)
     now = _heat(scope="all")
     assert oi(now) == oi(first) + 1000
     assert now["surface_seq"] == first["surface_seq"] + 1
@@ -165,11 +146,9 @@ def test_with_no_live_price_the_window_says_it_is_not_around_the_price():
     d = _heat()
     assert d["view"]["note"] == server.WINDOW_NO_PRICE and not any(c["spot"] for c in d["cells"])
     strikes = _strikes("auto")
-    assert {v["note"] for v in strikes["views"].values() if v["centre"] is not None} == {
-        server.WINDOW_NO_PRICE
-    }
+    assert {v["note"] for v in strikes["views"].values() if v["centre"] is not None} == {server.WINDOW_NO_PRICE}
     every = _every_strike()
-    panned = _heat(centre=every[3])  # the operator's pan: no reason needed
+    panned = _heat(centre=every[3])                                # the operator's pan: no reason needed
     assert panned["view"]["note"] is None and panned["view"]["centre"] == every[3]
 
 
@@ -181,51 +160,39 @@ def test_expired_columns_are_drawn_labelled_and_never_counted():
     assert [e["expiry"] for e in auto["expirations"]] == ["2026-10-15", "2026-11-20"]
     every = _heat(later, scope="all")
     assert [(e["expiry"], e["expired"], e["front"]) for e in every["expirations"]] == [
-        ("2026-10-14", True, False),
-        ("2026-10-15", False, True),
-        ("2026-11-20", False, False),
-    ]
-    only = _heat(later, expiry="2026-10-14")  # the expired column alone
+        ("2026-10-14", True, False), ("2026-10-15", False, True), ("2026-11-20", False, False)]
+    only = _heat(later, expiry="2026-10-14")                       # the expired column alone
     assert only["view"]["coverage"]["cells"] == 0
-    assert (only["view"]["coverage"]["state"], only["view"]["coverage"]["label"]) == (
-        server.COVERAGE_EXPIRED,
-        "EXPIRED",
-    )
+    assert (only["view"]["coverage"]["state"], only["view"]["coverage"]["label"]) == (server.COVERAGE_EXPIRED, "EXPIRED")
 
 
 def test_every_per_strike_panel_is_served_its_window_and_scale():
     """GEX by strike (today: all, near, far), the chart's DEX and OI, the migration's scale with the
     prior day, vanna and charm: each list is the scope's rows around the price or the pan, with
     the largest |value| drawn as its scale."""
-
     def lists(body):
-        return {
-            **{sc: body["today"][sc] for sc in ("all", "near", "far")},
-            **{m: body["measures"][m]["rows"] for m in ("dex", "oi")},
-        }
-
+        return {**{sc: body["today"][sc] for sc in ("all", "near", "far")},
+                **{m: body["measures"][m]["rows"] for m in ("dex", "oi")}}
     body = _strikes("auto")
     every = lists(_strikes("all"))
     assert every["all"] and every["dex"] and every["oi"]
     for name, rows in lists(body).items():
         view = body["views"][name]
         assert len(rows) == min(SCOPE_ROWS["auto"], len(every[name])), name
-        assert all(r in every[name] for r in rows), name  # rows of the list, as published
+        assert all(r in every[name] for r in rows), name                # rows of the list, as published
         known = [abs(r[1]) for r in rows if r[1] is not None]
         assert view["max_abs"] == (max(known) if known else None), name
         assert view["note"] is None or not rows, name
     # no prior day is stored here: the migration's scale is today's
     assert body["views"]["all"]["max_abs_with_prior"] == body["views"]["all"]["max_abs"] is not None
-    assert body["views"]["near"]["max_abs_with_prior"] is None  # no near-term rows
+    assert body["views"]["near"]["max_abs_with_prior"] is None                  # no near-term rows
     assert body["measures"]["dex"]["view"] == body["views"]["dex"]
-    for key in server.STRIKE_BAR_METHODS:  # vanna, charm
-
+    for key in server.STRIKE_BAR_METHODS:                       # vanna, charm
         def bars(scope, centre=None, shift=0):
             return server.strike_bar_payload(TK, key, scope, centre, shift, _AT.timestamp())
-
         d = bars("auto")
         rows = [r[0] for r in d["rows"]]
-        assert d["spot_strike"] is not None  # around the price
+        assert d["spot_strike"] is not None                     # around the price
         panned = bars("auto", centre=d["view"]["centre"], shift=2)
         every = [r[0] for r in bars("all")["rows"]]
         assert panned["view"]["centre"] == every[every.index(d["view"]["centre"]) + 2]

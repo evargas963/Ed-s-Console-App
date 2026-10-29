@@ -6,7 +6,6 @@ with the schema it had when the console wrote it. news_events holds a
 NEWS_HEADLINE item as Schwab sent it (tests/fixtures/real_schwab_news_headline_spx_2026_10_05.json);
 session_log and confluence_log are empty, since no captured row of either exists.
 """
-
 from __future__ import annotations
 
 import json
@@ -15,11 +14,8 @@ from pathlib import Path
 
 from db import EdDB
 
-_NEWS = json.loads(
-    (
-        Path(__file__).parent / "fixtures" / "real_schwab_news_headline_spx_2026_10_05.json"
-    ).read_text(encoding="utf-8")
-)
+_NEWS = json.loads((Path(__file__).parent / "fixtures" / "real_schwab_news_headline_spx_2026_10_05.json")
+                   .read_text(encoding="utf-8"))
 
 _OLD_SCHEMA = """
 CREATE TABLE session_log (
@@ -70,20 +66,15 @@ CREATE INDEX idx_news_impact_ts ON news_events(impact_level, timestamp);
 def _schema(db: Path) -> dict:
     """Every schema object in the database: name -> (type, its SQL)."""
     with sqlite3.connect(db) as conn:
-        return {
-            name: (kind, sql)
-            for kind, name, sql in conn.execute("SELECT type, name, sql FROM sqlite_master")
-        }
+        return {name: (kind, sql) for kind, name, sql in
+                conn.execute("SELECT type, name, sql FROM sqlite_master")}
 
 
 def _rows(db: Path, schema: dict) -> dict:
     """Every row of every table in `schema`."""
     with sqlite3.connect(db) as conn:
-        return {
-            name: conn.execute(f'SELECT * FROM "{name}"').fetchall()
-            for name, (kind, _sql) in schema.items()
-            if kind == "table"
-        }
+        return {name: conn.execute(f'SELECT * FROM "{name}"').fetchall()
+                for name, (kind, _sql) in schema.items() if kind == "table"}
 
 
 def test_starting_the_database_keeps_every_table_it_finds_with_its_rows(tmp_path):
@@ -91,11 +82,9 @@ def test_starting_the_database_keeps_every_table_it_finds_with_its_rows(tmp_path
     item = _NEWS["content"]
     with sqlite3.connect(db) as conn:
         conn.executescript(_OLD_SCHEMA)
-        conn.execute(
-            "INSERT INTO news_events (timestamp, source, ticker, headline, raw_json) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (str(item["1"]), _NEWS["src"], item["key"], item["4"], json.dumps(item)),
-        )
+        conn.execute("INSERT INTO news_events (timestamp, source, ticker, headline, raw_json) "
+                     "VALUES (?, ?, ?, ?, ?)",
+                     (str(item["1"]), _NEWS["src"], item["key"], item["4"], json.dumps(item)))
     before = _schema(db)
     rows = _rows(db, before)
     assert {"session_log", "confluence_log", "news_events"} <= set(rows) and rows["news_events"]
@@ -103,7 +92,5 @@ def test_starting_the_database_keeps_every_table_it_finds_with_its_rows(tmp_path
     EdDB(db, allow_noncanonical=True)
 
     after = _schema(db)
-    assert {name: after.get(name) for name in before} == before, (
-        "starting the database dropped or changed an object"
-    )
+    assert {name: after.get(name) for name in before} == before, "starting the database dropped or changed an object"
     assert _rows(db, before) == rows, "starting the database changed a table's rows"

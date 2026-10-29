@@ -12,7 +12,6 @@ Schwab's own trade time; the only derivations are the trade age and its label. W
 values are live now, the word for that (`feed_label`) and why not (`outage`) are stated beside
 them; the last values Schwab sent stay (docs/DATA_FLOW.md §2 D5).
 """
-
 from __future__ import annotations
 
 from typing import Any, Optional
@@ -84,8 +83,8 @@ def price_row(ticker: str, now: float) -> dict[str, Any]:
         "ask": field("ask"),
         "bid_size": field("bid_size"),
         "ask_size": field("ask_size"),
-        "mark": field("mark"),  # Schwab MARK
-        "quote_ts": quote_ts,  # Schwab QUOTE_TIME (epoch s)
+        "mark": field("mark"),                         # Schwab MARK
+        "quote_ts": quote_ts,                          # Schwab QUOTE_TIME (epoch s)
         "quote_time_ct": ct_label(quote_ts) if quote_ts is not None else None,
         "last_size": field("last_size"),
         "total_volume": field("total_volume"),
@@ -98,7 +97,7 @@ def price_row(ticker: str, now: float) -> dict[str, Any]:
         "high_price": field("high_price"),
         "low_price": field("low_price"),
         "prior_close": field("prior_close"),
-        "trade_ts": trade_ts,  # Schwab TRADE_TIME (epoch s)
+        "trade_ts": trade_ts,                          # Schwab TRADE_TIME (epoch s)
         "trade_time_ct": ct_label(trade_ts) if trade_ts is not None else None,
         "trade_age_sec": _trade_age_sec(trade_ts, now),
         "ts_recv": row.get("server_received_ts") if row else None,

@@ -6,7 +6,6 @@ asyncio loop as the websocket reads, so a slow commit stalled the socket (writer
 tests prove it at the real seam: a commit made artificially slow must not stop the loop
 from ticking, and every delivered message is still written before run() returns.
 """
-
 from __future__ import annotations
 
 import asyncio
@@ -49,7 +48,6 @@ def test_a_slow_commit_does_not_stall_the_event_loop(tmp_path, monkeypatch):
         if __import__("threading").get_ident() != main_thread:
             return _SlowCommitConn(conn, 0.6)
         return conn
-
     monkeypatch.setattr(stream_spine.sqlite3, "connect", _connect)
 
     writer = CaptureWriter(tmp_path / "cap.db", batch_rows=1, batch_sec=0.05)
@@ -73,24 +71,19 @@ def test_a_slow_commit_does_not_stall_the_event_loop(tmp_path, monkeypatch):
 
     worst = asyncio.run(go())
     assert worst < 0.25, f"the event loop stalled {worst:.2f}s behind a 0.6s commit"
-    n = (
-        real_connect(str(tmp_path / "cap.db"))
-        .execute("SELECT count(*) FROM stream_quotes_raw")
-        .fetchone()[0]
-    )
+    n = real_connect(str(tmp_path / "cap.db")).execute(
+        "SELECT count(*) FROM stream_quotes_raw").fetchone()[0]
     assert n == 40, "every delivered message must still be written before run() returns"
 
 
 def test_writes_happen_on_the_writer_thread_not_the_loop(tmp_path, monkeypatch):
     import threading
-
     seen: set = set()
     orig = CaptureWriter.insert
 
     def _spy(self, topic, msg, *, conn=None):
         seen.add(threading.current_thread().name)
         return orig(self, topic, msg, conn=conn)
-
     monkeypatch.setattr(CaptureWriter, "insert", _spy)
     writer = CaptureWriter(tmp_path / "cap.db", batch_rows=5, batch_sec=0.05)
     bus = MessageBus()
@@ -104,6 +97,5 @@ def test_writes_happen_on_the_writer_thread_not_the_loop(tmp_path, monkeypatch):
         await asyncio.sleep(0.2)
         stop.set()
         await task
-
     asyncio.run(go())
     assert seen == {"stream-capture-writer"}

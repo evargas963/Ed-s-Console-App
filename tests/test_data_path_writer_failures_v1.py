@@ -9,7 +9,6 @@ the daemon's own handler (capture._publisher) and bus; the captured SPY 2026-11-
 STAND-INS: the local host for Schwab's (tests/schwab_rest_standin.py), serving a chain envelope
 rebuilt from the captured contracts. Each induced failure is named in its test.
 """
-
 from __future__ import annotations
 
 import asyncio
@@ -34,29 +33,19 @@ from app.market_data.schwab.streaming import capture
 from app.market_data.schwab.streaming.live_push import serve_live_push
 from app.market_data.schwab.streaming.live_ui import LiveUiServer
 from calibration.complete_chain_capture import ChainSweep
-from stream_spine import (
-    LOG,
-    CaptureWriter,
-    HealthRegistry,
-    MessageBus,
-    options_quote_msg,
-    quote_msg,
-)
+from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus, options_quote_msg, quote_msg
 from tests.schwab_rest_standin import CHAIN, LocalSchwab
 from tests.test_data_path_rules_v1 import _CONTRACT, _EVENTS, _frame
 
-_IN_WINDOW = 1790863205.0  # 2026-10-01 10:00:05 ET, inside the 10:00 capture window
-_TSLA = json.loads(
-    (Path(__file__).parent / "fixtures" / "real_equity_book.json").read_text(encoding="utf-8")
-)["quote"]
+_IN_WINDOW = 1790863205.0          # 2026-10-01 10:00:05 ET, inside the 10:00 capture window
+_TSLA = json.loads((Path(__file__).parent / "fixtures" / "real_equity_book.json")
+                   .read_text(encoding="utf-8"))["quote"]
 
 
 def _failures(db) -> list:
     """The kept failures, (topic, message as stored, error); none where no table keeps them."""
     with closing(sqlite3.connect(db)) as conn, conn:
-        if not conn.execute(
-            "SELECT 1 FROM sqlite_master WHERE name='stream_write_failures'"
-        ).fetchone():
+        if not conn.execute("SELECT 1 FROM sqlite_master WHERE name='stream_write_failures'").fetchone():
             return []
         return conn.execute("SELECT topic, msg_json, error FROM stream_write_failures").fetchall()
 
@@ -97,10 +86,7 @@ def test_the_writer_handed_the_consoles_database_refuses_it_naming_the_file(tmp_
     db = tmp_path / "ed_console.db"
     with pytest.raises(ValueError) as refused:
         CaptureWriter(db)
-    assert (
-        str(refused.value)
-        == f"the stream writer never writes the console's database ({db.resolve()})"
-    )
+    assert str(refused.value) == f"the stream writer never writes the console's database ({db.resolve()})"
     assert not db.exists(), "the refused file was created"
 
 
@@ -111,49 +97,35 @@ def test_a_writer_whose_thread_is_not_running_records_on_connections_it_closes(t
     writer runs in a Python of its own, so no other code's connection can be counted. Real data:
     the captured TSLA LEVELONE_EQUITIES item."""
     db = tmp_path / "stream_capture.db"
-    code = (
-        "import gc, json, sys\n"
-        "from pathlib import Path\n"
-        "from stream_spine import CaptureWriter, quote_msg\n"
-        "native = json.loads(Path(sys.argv[2]).read_text(encoding='utf-8'))['quote']['native']\n"
-        "writer = CaptureWriter(sys.argv[1])\n"
-        "writer.insert('quote.TSLA', quote_msg(symbol='TSLA', src='schwab_stream', ts_recv=1.0, native=native))\n"
-        "writer.keep_failure('chain.TSLA', {'native': native}, OSError('disk full'), 2.0)\n"
-        "gc.collect()\n"
-    )
+    code = ("import gc, json, sys\n"
+            "from pathlib import Path\n"
+            "from stream_spine import CaptureWriter, quote_msg\n"
+            "native = json.loads(Path(sys.argv[2]).read_text(encoding='utf-8'))['quote']['native']\n"
+            "writer = CaptureWriter(sys.argv[1])\n"
+            "writer.insert('quote.TSLA', quote_msg(symbol='TSLA', src='schwab_stream', ts_recv=1.0, native=native))\n"
+            "writer.keep_failure('chain.TSLA', {'native': native}, OSError('disk full'), 2.0)\n"
+            "gc.collect()\n")
     fixture = Path(__file__).parent / "fixtures" / "real_equity_book.json"
-    done = subprocess.run(
-        [sys.executable, "-W", "always::ResourceWarning", "-c", code, str(db), str(fixture)],
-        cwd=Path(__file__).resolve().parent.parent,
-        capture_output=True,
-        text=True,
-        timeout=60,
-    )
+    done = subprocess.run([sys.executable, "-W", "always::ResourceWarning", "-c", code, str(db), str(fixture)],
+                          cwd=Path(__file__).resolve().parent.parent, capture_output=True, text=True,
+                          timeout=60)
     assert done.returncode == 0, done.stderr
     conn = sqlite3.connect(db)
     try:
-        counts = [
-            conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
-            for t in ("stream_quotes_raw", "stream_write_failures")
-        ]
+        counts = [conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
+                  for t in ("stream_quotes_raw", "stream_write_failures")]
     finally:
         conn.close()
     assert counts == [1, 1], counts
     assert "unclosed database" not in done.stderr, done.stderr
 
 
-def test_a_message_the_writer_cannot_store_is_kept_as_sent_and_its_error_reaches_the_heartbeat(
-    tmp_path,
-):
+def test_a_message_the_writer_cannot_store_is_kept_as_sent_and_its_error_reaches_the_heartbeat(tmp_path):
     """INDUCED CONDITION: one captured option quote published with no symbol, so the NOT NULL
     symbol column refuses its row."""
     db = tmp_path / "stream_capture.db"
-    bad = options_quote_msg(
-        symbol=None,
-        content=_EVENTS[0]["content"],
-        src="schwab_stream",
-        schwab_ts=_EVENTS[0]["content"].get("QUOTE_TIME_MILLIS"),
-    )
+    bad = options_quote_msg(symbol=None, content=_EVENTS[0]["content"], src="schwab_stream",
+                            schwab_ts=_EVENTS[0]["content"].get("QUOTE_TIME_MILLIS"))
 
     async def go():
         bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
@@ -162,31 +134,22 @@ def test_a_message_the_writer_cannot_store_is_kept_as_sent_and_its_error_reaches
         task = asyncio.create_task(daemon.writer.run(bus.subscribe("", policy=LOG), stop=stop))
         _publish_options(bus, health, _EVENTS)
         bus.publish(f"optquote.{_CONTRACT}", bad)
-        deadline = time.monotonic() + 10  # every message taken: the rows and the refused one
-        while (
-            daemon.writer.status()["rows_written"] < len(_EVENTS)
-            or not daemon.writer.status()["failures"]
-        ) and time.monotonic() < deadline:
+        deadline = time.monotonic() + 10                  # every message taken: the rows and the refused one
+        while (daemon.writer.status()["rows_written"] < len(_EVENTS) or not daemon.writer.status()["failures"]) \
+                and time.monotonic() < deadline:
             await asyncio.sleep(0.02)
         beat = _beat(daemon)
         stop.set()
         await task
         return beat
-
     beat = asyncio.run(go())
 
-    assert _count(db, "stream_options_quotes_raw") == len(_EVENTS), (
-        "a refused row cost the good rows"
-    )
-    ((topic, kept, error),) = _failures(db)
+    assert _count(db, "stream_options_quotes_raw") == len(_EVENTS), "a refused row cost the good rows"
+    (topic, kept, error), = _failures(db)
     assert topic == f"optquote.{_CONTRACT}" and json.loads(kept) == bad
     assert error.startswith("IntegrityError: NOT NULL constraint failed")
     writer = beat["writer"]
-    assert (writer["state"], writer["failures"], writer["rows_written"]) == (
-        "recording",
-        1,
-        len(_EVENTS),
-    )
+    assert (writer["state"], writer["failures"], writer["rows_written"]) == ("recording", 1, len(_EVENTS))
     assert writer["last_failure"] == f"optquote.{_CONTRACT}: {error}"
     assert writer["line"].startswith("RECORDING · ") and writer["last_failure_ct"].endswith(" CT")
     assert f"last {writer['last_failure_ct']}: {writer['last_failure']}" in writer["line"]
@@ -197,7 +160,7 @@ def test_one_value_the_database_cannot_hold_is_kept_and_the_writer_goes_on(tmp_p
     """INDUCED CONDITION: the captured TSLA quote's TOTAL_VOLUME set to 2**64, more than SQLite's
     64-bit INTEGER holds (OverflowError while binding). The captured quote after it is stored."""
     db = tmp_path / "stream_capture.db"
-    big = {**_TSLA["native"], "TOTAL_VOLUME": 2**64}
+    big = {**_TSLA["native"], "TOTAL_VOLUME": 2 ** 64}
 
     async def go():
         bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
@@ -210,11 +173,10 @@ def test_one_value_the_database_cannot_hold_is_kept_and_the_writer_goes_on(tmp_p
         await asyncio.sleep(0.3)
         stop.set()
         await task
-
     asyncio.run(go())
 
     assert _count(db, "stream_quotes_raw") == 1, "the writer stopped after one oversized value"
-    ((topic, kept, error),) = _failures(db)
+    (topic, kept, error), = _failures(db)
     assert topic == "quote.TSLA" and json.loads(kept)["native"] == big
     assert error.startswith("OverflowError")
 
@@ -244,22 +206,15 @@ def test_a_database_locked_by_another_connection_holds_the_writer_and_it_goes_on
         stop.set()
         await task
         return during, after
-
     try:
         during, after = asyncio.run(go())
     finally:
         release.join()
         holder.close()
 
-    assert (
-        during["state"] == "blocked" and during["error"] == "OperationalError: database is locked"
-    )
+    assert during["state"] == "blocked" and during["error"] == "OperationalError: database is locked"
     assert during["line"].startswith(f"BLOCKED · since {during['error_ct']}: OperationalError")
-    assert (after["state"], after["error"], after["rows_written"]) == (
-        "recording",
-        None,
-        len(_EVENTS),
-    )
+    assert (after["state"], after["error"], after["rows_written"]) == ("recording", None, len(_EVENTS))
     assert _count(db, "stream_options_quotes_raw") == len(_EVENTS)
 
 
@@ -292,7 +247,6 @@ def test_a_database_read_only_when_the_writer_starts_is_written_once_it_accepts_
         stop.set()
         await task
         return during, after
-
     try:
         during, after = asyncio.run(go())
     finally:
@@ -303,10 +257,8 @@ def test_a_database_read_only_when_the_writer_starts_is_written_once_it_accepts_
     assert during["error"].startswith("OperationalError: attempt to write a readonly database")
     assert during["waiting"] == during["held"] == len(_EVENTS) and during["queue_depth"] == 0
     assert during["held_bytes"] > 0 and during["spill"] is None
-    assert (
-        f"held in memory: {len(_EVENTS)} messages, {during['held_bytes'] / 1e6:.1f} MB "
-        f"({len(_EVENTS)} waiting for the database)"
-    ) in during["line"]
+    assert (f"held in memory: {len(_EVENTS)} messages, {during['held_bytes'] / 1e6:.1f} MB "
+            f"({len(_EVENTS)} waiting for the database)") in during["line"]
     assert (after["state"], after["rows_written"], after["held"]) == ("recording", len(_EVENTS), 0)
 
 
@@ -355,7 +307,6 @@ def test_a_writer_that_dies_in_a_retry_counts_each_held_message_not_recorded_onc
         stop.set()
         await task
         return dead, writer.status()
-
     try:
         dead, after = asyncio.run(go())
     finally:
@@ -387,7 +338,6 @@ def test_a_writer_that_dies_while_recording_counts_the_message_that_ended_it(tmp
         stop.set()
         await task
         return dead, later, writer.status()
-
     dead, later, after = asyncio.run(go())
 
     assert dead["state"] == "dead" and dead["unrecorded"] == 8
@@ -403,10 +353,8 @@ def test_a_row_only_the_database_refuses_is_kept_and_the_writer_is_not_blocked(t
     db = tmp_path / "stream_capture.db"
     writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01)
     with closing(sqlite3.connect(db)) as conn, conn:
-        conn.execute(
-            "CREATE TRIGGER refuse_tsla BEFORE INSERT ON stream_quotes_raw "
-            "WHEN NEW.symbol = 'TSLA' BEGIN SELECT abs(-9223372036854775808); END"
-        )
+        conn.execute("CREATE TRIGGER refuse_tsla BEFORE INSERT ON stream_quotes_raw "
+                     "WHEN NEW.symbol = 'TSLA' BEGIN SELECT abs(-9223372036854775808); END")
 
     async def go():
         bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
@@ -416,13 +364,10 @@ def test_a_row_only_the_database_refuses_is_kept_and_the_writer_is_not_blocked(t
         await _until(lambda: _count(db, "stream_options_quotes_raw") == len(_EVENTS), limit=5.0)
         stop.set()
         await task
-
     asyncio.run(go())
 
-    assert _count(db, "stream_options_quotes_raw") == len(_EVENTS), (
-        "one refused row blocked the writer"
-    )
-    ((topic, kept, error),) = _failures(db)
+    assert _count(db, "stream_options_quotes_raw") == len(_EVENTS), "one refused row blocked the writer"
+    (topic, kept, error), = _failures(db)
     assert (topic, error) == ("quote.TSLA", "OperationalError: integer overflow")
     assert json.loads(kept)["native"] == _TSLA["native"]
     assert writer.status()["state"] == "stopped"
@@ -436,12 +381,10 @@ def test_a_chain_whose_history_write_fails_is_kept_as_sent_and_is_never_a_chain_
     the daemon's writer keeps the chain as delivered."""
     db = tmp_path / "ed_console.db"
     with closing(sqlite3.connect(db)) as conn, conn:
-        conn.execute(
-            "CREATE TABLE complete_chain_captures (ticker TEXT NOT NULL, expiry TEXT NOT NULL, "
-            "ts_utc REAL NOT NULL, spot REAL, n_contracts INTEGER NOT NULL, "
-            "completeness_basis TEXT NOT NULL, chain_json TEXT NOT NULL, source TEXT NOT NULL, "
-            "created_at TEXT, refused TEXT NOT NULL, PRIMARY KEY (ticker, expiry, ts_utc))"
-        )
+        conn.execute("CREATE TABLE complete_chain_captures (ticker TEXT NOT NULL, expiry TEXT NOT NULL, "
+                     "ts_utc REAL NOT NULL, spot REAL, n_contracts INTEGER NOT NULL, "
+                     "completeness_basis TEXT NOT NULL, chain_json TEXT NOT NULL, source TEXT NOT NULL, "
+                     "created_at TEXT, refused TEXT NOT NULL, PRIMARY KEY (ticker, expiry, ts_utc))")
     failures_db = tmp_path / "stream_capture.db"
     published: list = []
 
@@ -450,27 +393,17 @@ def test_a_chain_whose_history_write_fails_is_kept_as_sent_and_is_never_a_chain_
         daemon = capture.Daemon(bus, health, ["SPY"])
         daemon.writer = CaptureWriter(failures_db, batch_rows=1, batch_sec=0.01)
         task = asyncio.create_task(daemon.writer.run(bus.subscribe("", policy=LOG), stop=stop))
-        sweep = ChainSweep(
-            db,
-            ["SPY"],
-            lambda topic, msg: published.append(msg),
-            clock=lambda: _IN_WINDOW,
-            failures=daemon.writer,
-            streamed=daemon.option_record,
-        )
+        sweep = ChainSweep(db, ["SPY"], lambda topic, msg: published.append(msg),
+                           clock=lambda: _IN_WINDOW, failures=daemon.writer, streamed=daemon.option_record)
         schwab = LocalSchwab()
         client = schwab.client(tmp_path)
-
         def chains() -> int:
             return len(schwab.asked(CHAIN))
-
         halt = threading.Event()
         worker = threading.Thread(target=sweep.work, args=(lambda: client, halt), daemon=True)
         try:
             worker.start()
-            await _until(
-                lambda: chains() >= 2 and daemon.writer.status()["failures"] >= 2, limit=4.0
-            )
+            await _until(lambda: chains() >= 2 and daemon.writer.status()["failures"] >= 2, limit=4.0)
         finally:
             halt.set()
             await asyncio.to_thread(worker.join, 10)
@@ -479,23 +412,18 @@ def test_a_chain_whose_history_write_fails_is_kept_as_sent_and_is_never_a_chain_
         stop.set()
         await task
         return chains(), writer
-
     fetched, writer = asyncio.run(go())
 
     assert published and all("failed" not in m for m in published), "a delivered chain read failed"
     assert fetched >= 2, "the sweep paused after a history write failed"
-    failures = _failures(failures_db)  # each fetch of the window tries the history again
+    failures = _failures(failures_db)          # each fetch of the window tries the history again
     assert len(failures) == writer["failures"] >= 2
     assert {topic for topic, _k, _e in failures} == {"chain_history.SPY"}
     (topic, kept, error) = failures[0]
-    assert error.startswith(
-        "IntegrityError: NOT NULL constraint failed: complete_chain_captures.refused"
-    )
+    assert error.startswith("IntegrityError: NOT NULL constraint failed: complete_chain_captures.refused")
     kept = json.loads(kept)
-    parts = [
-        m for m in published if m["src"] == "schwab_chain"
-    ]  # the chain's, not its price history
-    received = [ct for msg in parts[: parts[0]["parts"]] for ct in msg["contracts"]]
+    parts = [m for m in published if m["src"] == "schwab_chain"]          # the chain's, not its price history
+    received = [ct for msg in parts[:parts[0]["parts"]] for ct in msg["contracts"]]
     assert kept["spots"] == {"2026-11-20": 766.31}
     assert kept["contracts"] == received, "kept as the sweep delivered it"
     assert writer["last_failure"] == f"chain_history.SPY: {failures[-1][2]}"
@@ -515,7 +443,6 @@ async def _held_past_the_cap(writer, bus, health, daemon) -> dict:
     def all_held() -> bool:
         s = writer.status()
         return s["spill"] is not None and s["spill"]["messages"] + s["waiting"] == len(_EVENTS)
-
     await _until(all_held)
     return _beat(daemon)["writer"]
 
@@ -528,9 +455,8 @@ def test_a_block_past_the_hold_cap_spills_to_disk_and_writes_back_in_arrival_ord
     lock is released every quote is in the database exactly once, in arrival order, and the spill
     file is gone once its rows are committed."""
     db = tmp_path / "stream_capture.db"
-    writer = CaptureWriter(
-        db, batch_rows=1, batch_sec=0.01, timeout_sec=0.2, retry_sec=0.1, hold_cap_bytes=_SMALL_CAP
-    )
+    writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01, timeout_sec=0.2, retry_sec=0.1,
+                           hold_cap_bytes=_SMALL_CAP)
     holder = sqlite3.connect(db, isolation_level=None, check_same_thread=False)
     holder.execute("BEGIN IMMEDIATE")
 
@@ -542,17 +468,12 @@ def test_a_block_past_the_hold_cap_spills_to_disk_and_writes_back_in_arrival_ord
         during = await _held_past_the_cap(writer, bus, health, daemon)
         on_disk = Path(during["spill"]["path"]).stat().st_size
         holder.execute("COMMIT")
-        await _until(
-            lambda: (
-                writer.status()["spill"] is None
-                and _count(db, "stream_options_quotes_raw") == len(_EVENTS)
-            )
-        )
+        await _until(lambda: writer.status()["spill"] is None
+                     and _count(db, "stream_options_quotes_raw") == len(_EVENTS))
         after = _beat(daemon)["writer"]
         stop.set()
         await task
         return during, on_disk, after
-
     try:
         during, on_disk, after = asyncio.run(go())
     finally:
@@ -560,46 +481,27 @@ def test_a_block_past_the_hold_cap_spills_to_disk_and_writes_back_in_arrival_ord
 
     spill = during["spill"]
     path = Path(spill["path"])
-    assert (
-        during["state"] == "blocked"
-        and during["held_bytes"] <= _SMALL_CAP
-        and during["waiting"] >= 1
-    )
+    assert during["state"] == "blocked" and during["held_bytes"] <= _SMALL_CAP and during["waiting"] >= 1
     assert spill["messages"] >= 1 and spill["bytes"] == on_disk and path.parent == db.parent
     assert path.name.startswith("stream_capture.") and path.suffix == ".spill"
     assert during["line"].startswith("BLOCKED, SPILLING TO DISK · ")
-    assert (
-        f"spilled to disk: {spill['messages']} messages, {on_disk:,} bytes in {path.name}"
-        in during["line"]
-    )
+    assert f"spilled to disk: {spill['messages']} messages, {on_disk:,} bytes in {path.name}" in during["line"]
     with closing(sqlite3.connect(db)) as conn, conn:
-        stored = [
-            json.loads(r[0])
-            for r in conn.execute(
-                "SELECT native_json FROM stream_options_quotes_raw ORDER BY rowid"
-            )
-        ]
-    assert stored == [e["content"] for e in _EVENTS], (
-        "not every quote exactly once, in arrival order"
-    )
+        stored = [json.loads(r[0]) for r in conn.execute(
+            "SELECT native_json FROM stream_options_quotes_raw ORDER BY rowid")]
+    assert stored == [e["content"] for e in _EVENTS], "not every quote exactly once, in arrival order"
     assert not path.exists(), "the spill file outlived its committed write-back"
-    assert (after["state"], after["spill"], after["rows_written"]) == (
-        "recording",
-        None,
-        len(_EVENTS),
-    )
+    assert (after["state"], after["spill"], after["rows_written"]) == ("recording", None, len(_EVENTS))
 
 
 def _run_until_no_spill(writer: CaptureWriter) -> dict:
     """`writer` run until it holds no spill file, then stopped; its status."""
-
     async def go():
         stop = asyncio.Event()
         task = asyncio.create_task(writer.run(MessageBus().subscribe("", policy=LOG), stop=stop))
         await _until(lambda: writer.status()["spill"] is None)
         stop.set()
         await task
-
     asyncio.run(go())
     return writer.status()
 
@@ -612,23 +514,12 @@ def test_a_database_refusing_writes_at_start_never_stops_the_writer_starting(tmp
     database file's mode, so the database takes writes again when all three are writable."""
     db = tmp_path / "stream_capture.db"
     CaptureWriter(db)
-    record = json.dumps(
-        {
-            "topic": f"optquote.{_CONTRACT}",
-            "msg": options_quote_msg(
-                symbol=_CONTRACT,
-                content=_EVENTS[0]["content"],
-                src="schwab_stream",
-                ts_recv=1790863200.0,
-            ),
-        }
-    ).encode()
+    record = json.dumps({"topic": f"optquote.{_CONTRACT}", "msg": options_quote_msg(
+        symbol=_CONTRACT, content=_EVENTS[0]["content"], src="schwab_stream", ts_recv=1790863200.0)}).encode()
     spill = db.with_name("stream_capture.1.spill")
     spill.write_bytes(len(record).to_bytes(4, "big") + record)
     with closing(sqlite3.connect(db)) as conn, conn:
-        conn.execute(
-            "INSERT INTO stream_spill_progress(spill, written_back) VALUES(?, 1)", (spill.name,)
-        )
+        conn.execute("INSERT INTO stream_spill_progress(spill, written_back) VALUES(?, 1)", (spill.name,))
     os.chmod(db, stat.S_IREAD)
     try:
         writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01, timeout_sec=0.2, retry_sec=0.1)
@@ -659,9 +550,8 @@ def test_a_written_back_spill_the_disk_will_not_delete_is_deleted_at_the_next_st
     what arrives after; the file stays with its progress row. Released, the next writer's start
     deletes it and its row without writing it again."""
     db = tmp_path / "stream_capture.db"
-    writer = CaptureWriter(
-        db, batch_rows=1, batch_sec=0.01, timeout_sec=0.2, retry_sec=0.1, hold_cap_bytes=_SMALL_CAP
-    )
+    writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01, timeout_sec=0.2, retry_sec=0.1,
+                           hold_cap_bytes=_SMALL_CAP)
     holder = sqlite3.connect(db, isolation_level=None, check_same_thread=False)
     holder.execute("BEGIN IMMEDIATE")
 
@@ -675,7 +565,7 @@ def test_a_written_back_spill_the_disk_will_not_delete_is_deleted_at_the_next_st
         try:
             holder.execute("COMMIT")
             await _until(lambda: writer.status()["spill"] is None)
-            _publish_options(bus, health, _EVENTS[:1])  # arrives after the write-back
+            _publish_options(bus, health, _EVENTS[:1])                # arrives after the write-back
             await _until(lambda: _count(db, "stream_options_quotes_raw") == len(_EVENTS) + 1)
             after = _beat(daemon)["writer"]
             stop.set()
@@ -683,24 +573,19 @@ def test_a_written_back_spill_the_disk_will_not_delete_is_deleted_at_the_next_st
         finally:
             release()
         return during, after
-
     try:
         during, after = asyncio.run(go())
     finally:
         holder.close()
 
     path = Path(during["spill"]["path"])
-    assert after["state"] == "recording", (
-        "the writer did not go on after the disk refused the delete"
-    )
+    assert after["state"] == "recording", "the writer did not go on after the disk refused the delete"
     assert path.exists() and [Path(k["path"]) for k in after["left_on_disk"]] == [path]
     _run_until_no_spill(CaptureWriter(db, batch_rows=1, batch_sec=0.01))
     with closing(sqlite3.connect(db)) as conn, conn:
         assert conn.execute("SELECT COUNT(*) FROM stream_spill_progress").fetchone()[0] == 0
     assert not path.exists(), "the next start did not delete the written-back spill"
-    assert _count(db, "stream_options_quotes_raw") == len(_EVENTS) + 1, (
-        "the next start wrote it again"
-    )
+    assert _count(db, "stream_options_quotes_raw") == len(_EVENTS) + 1, "the next start wrote it again"
 
 
 def test_a_spill_file_is_resumed_after_its_committed_part_and_a_crash_cut_record_is_kept(tmp_path):
@@ -712,28 +597,15 @@ def test_a_spill_file_is_resumed_after_its_committed_part_and_a_crash_cut_record
     without writing it again; no progress row is left."""
     db = tmp_path / "stream_capture.db"
     CaptureWriter(db)
-    records = [
-        json.dumps(
-            {
-                "topic": f"optquote.{_CONTRACT}",
-                "msg": options_quote_msg(  # DATA_FLOW §2 D4's format
-                    symbol=_CONTRACT,
-                    content=e["content"],
-                    src="schwab_stream",
-                    ts_recv=1790863200.0 + i,
-                ),
-            }
-        ).encode()
-        for i, e in enumerate(_EVENTS)
-    ]
+    records = [json.dumps({"topic": f"optquote.{_CONTRACT}", "msg": options_quote_msg(   # DATA_FLOW §2 D4's format
+        symbol=_CONTRACT, content=e["content"], src="schwab_stream", ts_recv=1790863200.0 + i)}).encode()
+        for i, e in enumerate(_EVENTS)]
     older, newer = db.with_name("stream_capture.1.spill"), db.with_name("stream_capture.2.spill")
     older.write_bytes(b"".join(len(r).to_bytes(4, "big") + r for r in records) + b"\x00\x00\x01")
     newer.write_bytes(b"".join(len(r).to_bytes(4, "big") + r for r in records[:2]))
     with closing(sqlite3.connect(db)) as conn, conn:
-        conn.executemany(
-            "INSERT INTO stream_spill_progress(spill, written_back) VALUES(?,?)",
-            [(older.name, 4), (newer.name, 2)],
-        )
+        conn.executemany("INSERT INTO stream_spill_progress(spill, written_back) VALUES(?,?)",
+                         [(older.name, 4), (newer.name, 2)])
 
     async def go():
         bus, stop = MessageBus(), asyncio.Event()
@@ -743,25 +615,16 @@ def test_a_spill_file_is_resumed_after_its_committed_part_and_a_crash_cut_record
         stop.set()
         await task
         return writer.status()
-
     after = asyncio.run(go())
 
     with closing(sqlite3.connect(db)) as conn, conn:
-        stored = [
-            ts
-            for (ts,) in conn.execute(
-                "SELECT ts_recv FROM stream_options_quotes_raw ORDER BY rowid"
-            )
-        ]
+        stored = [ts for (ts,) in conn.execute("SELECT ts_recv FROM stream_options_quotes_raw ORDER BY rowid")]
         progress = conn.execute("SELECT COUNT(*) FROM stream_spill_progress").fetchone()[0]
         kept = conn.execute("SELECT topic, msg_json, error FROM stream_write_failures").fetchall()
-    assert stored == [1790863200.0 + i for i in range(4, len(_EVENTS))], (
-        "not the uncommitted records once, in order"
-    )
+    assert stored == [1790863200.0 + i for i in range(4, len(_EVENTS))], "not the uncommitted records once, in order"
     assert not older.exists() and not newer.exists() and after["lost"] == 0
-    assert [(t, json.loads(m).encode("latin-1")) for t, m, _e in kept] == [
-        ("spill", b"\x00\x00\x01")
-    ], "the cut record's bytes are not kept as sent"
+    assert [(t, json.loads(m).encode("latin-1")) for t, m, _e in kept] == [("spill", b"\x00\x00\x01")], \
+        "the cut record's bytes are not kept as sent"
     assert kept[0][2].startswith(f"{older.name}: the 3 bytes from byte ")
     assert (after["left_on_disk"], progress) == ([], 0)
 
@@ -774,20 +637,9 @@ def test_what_arrives_while_a_found_spill_waits_is_never_written_behind_its_cut_
     spill file, not behind the cut bytes)."""
     db = tmp_path / "stream_capture.db"
     CaptureWriter(db)
-    record = json.dumps(
-        {
-            "topic": f"optquote.{_CONTRACT}",
-            "msg": options_quote_msg(
-                symbol=_CONTRACT,
-                content=_EVENTS[0]["content"],
-                src="schwab_stream",
-                ts_recv=1790863200.0,
-            ),
-        }
-    ).encode()
-    db.with_name("stream_capture.1.1.spill").write_bytes(
-        len(record).to_bytes(4, "big") + record + b"\x00\x00\x01"
-    )
+    record = json.dumps({"topic": f"optquote.{_CONTRACT}", "msg": options_quote_msg(
+        symbol=_CONTRACT, content=_EVENTS[0]["content"], src="schwab_stream", ts_recv=1790863200.0)}).encode()
+    db.with_name("stream_capture.1.1.spill").write_bytes(len(record).to_bytes(4, "big") + record + b"\x00\x00\x01")
     writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01, timeout_sec=0.2, retry_sec=0.1)
     holder = sqlite3.connect(db, isolation_level=None, check_same_thread=False)
     holder.execute("BEGIN IMMEDIATE")
@@ -796,33 +648,22 @@ def test_what_arrives_while_a_found_spill_waits_is_never_written_behind_its_cut_
         bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
         task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
         _publish_options(bus, health, _EVENTS[1:])
-        await _until(
-            lambda: (
-                len(writer.status()["spills_after"]) == 1
-                and writer.status()["spills_after"][0]["messages"] == len(_EVENTS) - 1
-            )
-        )
+        await _until(lambda: len(writer.status()["spills_after"]) == 1
+                     and writer.status()["spills_after"][0]["messages"] == len(_EVENTS) - 1)
         holder.execute("COMMIT")
         await _until(lambda: writer.status()["spill"] is None)
         stop.set()
         await task
         return writer.status()
-
     try:
         after = asyncio.run(go())
     finally:
         holder.close()
     with closing(sqlite3.connect(db)) as conn, conn:
-        stored = [
-            json.loads(r[0])
-            for r in conn.execute(
-                "SELECT native_json FROM stream_options_quotes_raw ORDER BY rowid"
-            )
-        ]
+        stored = [json.loads(r[0]) for r in conn.execute(
+            "SELECT native_json FROM stream_options_quotes_raw ORDER BY rowid")]
         kept = conn.execute("SELECT COUNT(*) FROM stream_write_failures").fetchone()[0]
-    assert stored == [e["content"] for e in _EVENTS], (
-        "a quote that arrived was not written as its own row"
-    )
+    assert stored == [e["content"] for e in _EVENTS], "a quote that arrived was not written as its own row"
     assert (kept, after["failures"], after["lost"]) == (1, 1, 0)
 
 
@@ -833,29 +674,16 @@ def test_a_found_spill_whose_cut_bytes_were_kept_is_deleted_without_keeping_them
     deletes it and its row, writing nothing again."""
     db = tmp_path / "stream_capture.db"
     CaptureWriter(db)
-    record = json.dumps(
-        {
-            "topic": f"optquote.{_CONTRACT}",
-            "msg": options_quote_msg(
-                symbol=_CONTRACT,
-                content=_EVENTS[0]["content"],
-                src="schwab_stream",
-                ts_recv=1790863200.0,
-            ),
-        }
-    ).encode()
+    record = json.dumps({"topic": f"optquote.{_CONTRACT}", "msg": options_quote_msg(
+        symbol=_CONTRACT, content=_EVENTS[0]["content"], src="schwab_stream", ts_recv=1790863200.0)}).encode()
     spill = db.with_name("stream_capture.1.1.spill")
     spill.write_bytes(len(record).to_bytes(4, "big") + record + b"\x00\x00\x01")
     with closing(sqlite3.connect(db)) as conn, conn:
-        conn.execute(
-            "INSERT INTO stream_spill_progress(spill, written_back) VALUES(?, 2)", (spill.name,)
-        )
+        conn.execute("INSERT INTO stream_spill_progress(spill, written_back) VALUES(?, 2)", (spill.name,))
     _run_until_no_spill(CaptureWriter(db, batch_rows=1, batch_sec=0.01))
     with closing(sqlite3.connect(db)) as conn, conn:
         assert conn.execute("SELECT COUNT(*) FROM stream_spill_progress").fetchone()[0] == 0
-        assert conn.execute("SELECT COUNT(*) FROM stream_write_failures").fetchone()[0] == 0, (
-            "the cut bytes were kept again"
-        )
+        assert conn.execute("SELECT COUNT(*) FROM stream_write_failures").fetchone()[0] == 0, "the cut bytes were kept again"
     assert not spill.exists() and _count(db, "stream_options_quotes_raw") == 0
 
 
@@ -866,20 +694,9 @@ def test_a_damaged_length_found_at_start_keeps_every_byte_after_it(tmp_path):
     stream_write_failures (it places no record after it), never cut from the file unrecorded."""
     db = tmp_path / "stream_capture.db"
     CaptureWriter(db)
-    records = [
-        json.dumps(
-            {
-                "topic": f"optquote.{_CONTRACT}",
-                "msg": options_quote_msg(
-                    symbol=_CONTRACT,
-                    content=e["content"],
-                    src="schwab_stream",
-                    ts_recv=1790863200.0 + i,
-                ),
-            }
-        ).encode()
-        for i, e in enumerate(_EVENTS)
-    ]
+    records = [json.dumps({"topic": f"optquote.{_CONTRACT}", "msg": options_quote_msg(
+        symbol=_CONTRACT, content=e["content"], src="schwab_stream", ts_recv=1790863200.0 + i)}).encode()
+        for i, e in enumerate(_EVENTS)]
     framed = [len(r).to_bytes(4, "big") + r for r in records]
     rest = b"\xff\xff\xff\xff" + framed[1][4:] + b"".join(framed[2:])
     spill = db.with_name("stream_capture.1.spill")
@@ -893,20 +710,11 @@ def test_a_damaged_length_found_at_start_keeps_every_byte_after_it(tmp_path):
         stop.set()
         await task
         return writer.status()
-
     after = asyncio.run(go())
 
     with closing(sqlite3.connect(db)) as conn, conn:
-        stored = [
-            ts
-            for (ts,) in conn.execute(
-                "SELECT ts_recv FROM stream_options_quotes_raw ORDER BY rowid"
-            )
-        ]
-        kept = [
-            json.loads(m).encode("latin-1")
-            for (m,) in conn.execute("SELECT msg_json FROM stream_write_failures")
-        ]
+        stored = [ts for (ts,) in conn.execute("SELECT ts_recv FROM stream_options_quotes_raw ORDER BY rowid")]
+        kept = [json.loads(m).encode("latin-1") for (m,) in conn.execute("SELECT msg_json FROM stream_write_failures")]
     assert stored == [1790863200.0]
     assert kept == [rest], "the bytes after the damaged length are not all kept, exactly"
     assert not spill.exists() and (after["lost"], after["failures"]) == (0, 1)
@@ -918,9 +726,8 @@ def test_a_damaged_length_in_a_live_write_back_keeps_the_rest_and_the_spill_fini
     the bytes from the damaged length on are kept as one row, the spill finishes, and what arrives
     after is written to the database."""
     db = tmp_path / "stream_capture.db"
-    writer = CaptureWriter(
-        db, batch_rows=1, batch_sec=0.01, timeout_sec=0.2, retry_sec=0.1, hold_cap_bytes=_SMALL_CAP
-    )
+    writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01, timeout_sec=0.2, retry_sec=0.1,
+                           hold_cap_bytes=_SMALL_CAP)
     holder = sqlite3.connect(db, isolation_level=None, check_same_thread=False)
     holder.execute("BEGIN IMMEDIATE")
 
@@ -931,7 +738,7 @@ def test_a_damaged_length_in_a_live_write_back_keeps_the_rest_and_the_spill_fini
         task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
         during = await _held_past_the_cap(writer, bus, health, daemon)
         path = Path(during["spill"]["path"])
-        with open(path, "r+b") as f:  # where the last record starts
+        with open(path, "r+b") as f:            # where the last record starts
             last, at = 0, 0
             while at < during["spill"]["bytes"]:
                 last = at
@@ -947,18 +754,13 @@ def test_a_damaged_length_in_a_live_write_back_keeps_the_rest_and_the_spill_fini
         stop.set()
         await task
         return after
-
     try:
         after = asyncio.run(go())
     finally:
         holder.close()
     with closing(sqlite3.connect(db)) as conn, conn:
-        stored = [
-            json.loads(r[0])
-            for r in conn.execute(
-                "SELECT native_json FROM stream_options_quotes_raw ORDER BY rowid"
-            )
-        ]
+        stored = [json.loads(r[0]) for r in conn.execute(
+            "SELECT native_json FROM stream_options_quotes_raw ORDER BY rowid")]
         kept = conn.execute("SELECT COUNT(*) FROM stream_write_failures").fetchone()[0]
     assert stored == [e["content"] for e in _EVENTS[:-1]] + [_EVENTS[0]["content"]]
     assert (kept, after["state"], after["spill"]) == (1, "recording", None)
@@ -973,20 +775,13 @@ def test_a_spill_file_is_never_opened_over_another_file(tmp_path):
     files hold every quote, memory's file named first. The quotes arrive at least twice the time
     taking the names is measured to need on this machine as it is loaded now, and never under 8 s."""
     db = tmp_path / "stream_capture.db"
-    writer = CaptureWriter(
-        db, batch_rows=1, batch_sec=0.01, timeout_sec=0.2, retry_sec=0.1, hold_cap_bytes=_SMALL_CAP
-    )
+    writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01, timeout_sec=0.2, retry_sec=0.1,
+                           hold_cap_bytes=_SMALL_CAP)
     probe = time.perf_counter()
     for n in range(300):
         (tmp_path / f"probe.{n}").write_bytes(b"taken")
-    begin = int(time.time() * 1000) + max(
-        8000, int((time.perf_counter() - probe) * 1000 * 4500 / 300 * 2)
-    )
-    taken = [
-        db.with_name(f"stream_capture.{ms}{n}.spill")
-        for ms in range(begin, begin + 1500)
-        for n in ("", ".0", ".1")
-    ]
+    begin = int(time.time() * 1000) + max(8000, int((time.perf_counter() - probe) * 1000 * 4500 / 300 * 2))
+    taken = [db.with_name(f"stream_capture.{ms}{n}.spill") for ms in range(begin, begin + 1500) for n in ("", ".0", ".1")]
     for path in taken:
         path.write_bytes(b"taken")
     assert time.time() * 1000 < begin, "the names were not all taken before the quotes arrive"
@@ -1002,24 +797,17 @@ def test_a_spill_file_is_never_opened_over_another_file(tmp_path):
         await _held_past_the_cap(writer, bus, health, daemon)
         stop.set()
         await task
-
     try:
         asyncio.run(go())
     finally:
         holder.close()
 
-    assert [p for p in taken if p.read_bytes() != b"taken"] == [], (
-        "a spill file was opened over another file"
-    )
+    assert [p for p in taken if p.read_bytes() != b"taken"] == [], "a spill file was opened over another file"
     left = writer.status()["left_on_disk"]
-    assert len({k["path"] for k in left}) == len(left) == 2 and not set(map(str, taken)) & {
-        k["path"] for k in left
-    }
+    assert len({k["path"] for k in left}) == len(left) == 2 and not set(map(str, taken)) & {k["path"] for k in left}
     assert sum(k["messages"] for k in left) == len(_EVENTS)
-    assert [k["path"] for k in left] == sorted(
-        (k["path"] for k in left),
-        key=lambda p: tuple(int(part) for part in Path(p).name.split(".")[1:-1]),
-    ), "memory's file is not named before the spill's"
+    assert [k["path"] for k in left] == sorted((k["path"] for k in left), key=lambda p: tuple(
+        int(part) for part in Path(p).name.split(".")[1:-1])), "memory's file is not named before the spill's"
 
 
 def test_a_database_made_before_the_receipt_time_indexes_is_not_reindexed_at_start(tmp_path):
@@ -1041,55 +829,33 @@ def test_a_database_made_before_the_receipt_time_indexes_is_not_reindexed_at_sta
             "CREATE INDEX idx_sbkr_sym_ts ON stream_book_raw(symbol, ts_recv);"
             "CREATE TABLE stream_options_quotes_raw (ts_recv REAL NOT NULL, symbol TEXT NOT NULL, "
             "native_json TEXT NOT NULL, src TEXT NOT NULL);"
-            "CREATE INDEX idx_soqr_sym_ts ON stream_options_quotes_raw(symbol, ts_recv);"
-        )
+            "CREATE INDEX idx_soqr_sym_ts ON stream_options_quotes_raw(symbol, ts_recv);")
     CaptureWriter(old)
 
     def indexes(db) -> dict:
         with closing(sqlite3.connect(db)) as conn, conn:
-            return {
-                t: sorted(
-                    n
-                    for (n,) in conn.execute(
-                        "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name=?", (t,)
-                    )
-                )
-                for t in ("stream_quotes_raw", "stream_book_raw", "stream_options_quotes_raw")
-            }
-
-    assert indexes(new) == {
-        "stream_quotes_raw": ["idx_sqr_ts"],
-        "stream_book_raw": ["idx_sbkr_ts"],
-        "stream_options_quotes_raw": ["idx_soqr_ts"],
-    }
-    assert indexes(old) == {
-        "stream_quotes_raw": ["idx_sqr_sym_ts"],
-        "stream_book_raw": ["idx_sbkr_sym_ts"],
-        "stream_options_quotes_raw": ["idx_soqr_sym_ts"],
-    }, "a start changed an existing table's index"
+            return {t: sorted(n for (n,) in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name=?", (t,)))
+                for t in ("stream_quotes_raw", "stream_book_raw", "stream_options_quotes_raw")}
+    assert indexes(new) == {"stream_quotes_raw": ["idx_sqr_ts"], "stream_book_raw": ["idx_sbkr_ts"],
+                            "stream_options_quotes_raw": ["idx_soqr_ts"]}
+    assert indexes(old) == {"stream_quotes_raw": ["idx_sqr_sym_ts"], "stream_book_raw": ["idx_sbkr_sym_ts"],
+                            "stream_options_quotes_raw": ["idx_soqr_sym_ts"]}, "a start changed an existing table's index"
 
 
 #: production's stream in its real proportions: every message received 2026-10-05 14:00:00-14:00:03
 #: CT, as Schwab sent it (7,420 option quotes, 152 equity quotes, 12 books; read-only from
 #: stream_capture.db, provenance in the file)
-_MIX = json.loads(
-    (Path(__file__).parent / "fixtures" / "real_stream_mix_2026_10_05_1400ct.json").read_text(
-        encoding="utf-8"
-    )
-)
-_MIX_TABLES = {
-    "stream_options_quotes_raw": "LEVELONE_OPTIONS",
-    "stream_quotes_raw": "LEVELONE_EQUITIES",
-    "stream_book_raw": None,
-}
+_MIX = json.loads((Path(__file__).parent / "fixtures" / "real_stream_mix_2026_10_05_1400ct.json")
+                  .read_text(encoding="utf-8"))
+_MIX_TABLES = {"stream_options_quotes_raw": "LEVELONE_OPTIONS", "stream_quotes_raw": "LEVELONE_EQUITIES",
+               "stream_book_raw": None}
 
 
 def _mix_frames() -> list:
     """The mix as the wire carries it: (service, the frame's JSON), one frame per message."""
-    return [
-        (m["service"], json.dumps({"content": [m["item"]], "timestamp": m["schwab_ts"]}))
-        for m in _MIX["messages"]
-    ]
+    return [(m["service"], json.dumps({"content": [m["item"]], "timestamp": m["schwab_ts"]}))
+            for m in _MIX["messages"]]
 
 
 def _mix_rows(db) -> int:
@@ -1104,11 +870,9 @@ def _pages_for_the_mix(db, *, indexes: bool) -> int:
     writer = CaptureWriter(db)
     with closing(sqlite3.connect(db)) as conn, conn:
         for table in [] if indexes else _MIX_TABLES:
-            for (name,) in conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name=?", (table,)
-            ):
+            for (name,) in conn.execute("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name=?", (table,)):
                 conn.execute(f"DROP INDEX {name}")
-        for copy in range(8):  # each copy received earlier, in order
+        for copy in range(8):                       # each copy received earlier, in order
             for m in _MIX["messages"]:
                 key = m["item"]["key"].upper()
                 kind, msg = capture._message(m["service"], key, m["item"], m["schwab_ts"])
@@ -1117,9 +881,7 @@ def _pages_for_the_mix(db, *, indexes: bool) -> int:
         page = conn.execute("PRAGMA page_size").fetchone()[0]
         conn.commit()
         conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-        conn.execute(
-            "PRAGMA user_version = 1"
-        )  # one page in the WAL, which the reader's snapshot needs
+        conn.execute("PRAGMA user_version = 1")     # one page in the WAL, which the reader's snapshot needs
     reader = sqlite3.connect(db, isolation_level=None)
     reader.execute("BEGIN")
     reader.execute("SELECT 1 FROM stream_options_quotes_raw LIMIT 1").fetchall()
@@ -1129,21 +891,14 @@ def _pages_for_the_mix(db, *, indexes: bool) -> int:
     async def go():
         bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
         task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
-        handlers = {
-            s: capture._publisher(s, bus, health) for s in {m["service"] for m in _MIX["messages"]}
-        }
+        handlers = {s: capture._publisher(s, bus, health) for s in {m["service"] for m in _MIX["messages"]}}
         for service, frame in _mix_frames():
             handlers[service](json.loads(frame))
-        await _until(
-            lambda: _mix_rows(db) == 9 * sum(_MIX["counts"][t] for t in _MIX_TABLES), limit=60.0
-        )
+        await _until(lambda: _mix_rows(db) == 9 * sum(_MIX["counts"][t] for t in _MIX_TABLES), limit=60.0)
         stop.set()
         await task
-
     asyncio.run(go())
-    frames = (wal.stat().st_size - before) // (
-        page + 24
-    )  # each WAL frame: a 24-byte header and a page
+    frames = (wal.stat().st_size - before) // (page + 24)    # each WAL frame: a 24-byte header and a page
     reader.close()
     return frames
 
@@ -1154,9 +909,7 @@ def test_the_indexes_add_no_more_pages_than_the_rows_they_index(tmp_path):
     option symbols on a page of its own, one written per row)."""
     rows = _pages_for_the_mix(tmp_path / "rows" / "stream_capture.db", indexes=False)
     indexed = _pages_for_the_mix(tmp_path / "indexed" / "stream_capture.db", indexes=True)
-    assert indexed - rows <= rows, (
-        f"the indexes wrote {indexed - rows} pages for {rows} pages of rows"
-    )
+    assert indexed - rows <= rows, f"the indexes wrote {indexed - rows} pages for {rows} pages of rows"
 
 
 def test_the_hold_cap_holds_memory_to_its_size(tmp_path):
@@ -1185,7 +938,6 @@ def test_the_hold_cap_holds_memory_to_its_size(tmp_path):
                 handlers[service](json.loads(frame))
                 if i % 500 == 0:
                     await asyncio.sleep(0)
-
         # each symbol's current record on the bus exists before the hold, traced, so the records
         # that replace it during the hold count only their difference
         tracemalloc.start()
@@ -1198,43 +950,28 @@ def test_the_hold_cap_holds_memory_to_its_size(tmp_path):
 
         def all_held() -> bool:
             s = writer.status()
-            return (
-                s["queue_depth"] == 0
-                and s["spill"] is not None
-                and s["spill"]["messages"] + s["waiting"] == 3 * n
-            )
-
+            return (s["queue_depth"] == 0 and s["spill"] is not None
+                    and s["spill"]["messages"] + s["waiting"] == 3 * n)
         await _until(all_held, limit=60.0)
         held_memory = tracemalloc.get_traced_memory()[0] - base
         tracemalloc.stop()
         during = writer.status()
         holder.execute("COMMIT")
-        await _until(
-            lambda: writer.status()["spill"] is None and _mix_rows(db) == 4 * n, limit=120.0
-        )
+        await _until(lambda: writer.status()["spill"] is None and _mix_rows(db) == 4 * n, limit=120.0)
         stop.set()
         await task
         return held_memory, during
-
     try:
         held_memory, during = asyncio.run(go())
     finally:
         holder.close()
 
     assert during["spill"]["messages"] > 0, "the cap never engaged"
-    assert 0.95 * memory <= during["held_bytes"] <= memory, (
-        "the hold stopped short of its cap, or passed it"
-    )
-    assert abs(held_memory - during["held_bytes"]) <= 0.05 * held_memory, (
+    assert 0.95 * memory <= during["held_bytes"] <= memory, "the hold stopped short of its cap, or passed it"
+    assert abs(held_memory - during["held_bytes"]) <= 0.05 * held_memory, \
         f"the hold took {held_memory:,} bytes; the writer counted {during['held_bytes']:,}"
-    )
-    assert (
-        f"{during['held_bytes'] / 1e6:.1f} MB ({during['waiting']} waiting for the database)"
-        in during["line"]
-    )
-    assert {t: _count(db, t) for t in _MIX_TABLES} == {
-        t: 4 * c for t, c in _MIX["counts"].items() if t in _MIX_TABLES
-    }
+    assert f"{during['held_bytes'] / 1e6:.1f} MB ({during['waiting']} waiting for the database)" in during["line"]
+    assert {t: _count(db, t) for t in _MIX_TABLES} == {t: 4 * c for t, c in _MIX["counts"].items() if t in _MIX_TABLES}
 
 
 class _ArmedDefect(dict):
@@ -1259,12 +996,9 @@ def test_a_writer_that_dies_with_a_spill_file_lists_it_and_counts_its_messages(t
     count and size; not recorded counts only what memory held, not what is in the file."""
     db = tmp_path / "stream_capture.db"
     armed = threading.Event()
-    defect = _ArmedDefect(
-        armed, quote_msg(symbol="TSLA", src="schwab_stream", native=_TSLA["native"])
-    )
-    writer = CaptureWriter(
-        db, batch_rows=1, batch_sec=0.01, timeout_sec=0.2, retry_sec=0.1, hold_cap_bytes=16_000
-    )  # the TSLA quote (about 10 KB) and a few option quotes
+    defect = _ArmedDefect(armed, quote_msg(symbol="TSLA", src="schwab_stream", native=_TSLA["native"]))
+    writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01, timeout_sec=0.2, retry_sec=0.1,
+                           hold_cap_bytes=16_000)  # the TSLA quote (about 10 KB) and a few option quotes
     holder = sqlite3.connect(db, isolation_level=None, check_same_thread=False)
     holder.execute("BEGIN IMMEDIATE")
 
@@ -1276,10 +1010,7 @@ def test_a_writer_that_dies_with_a_spill_file_lists_it_and_counts_its_messages(t
 
         def all_held() -> bool:
             s = writer.status()
-            return (
-                s["spill"] is not None and s["spill"]["messages"] + s["waiting"] == len(_EVENTS) + 1
-            )
-
+            return s["spill"] is not None and s["spill"]["messages"] + s["waiting"] == len(_EVENTS) + 1
         await _until(all_held)
         held = writer.status()
         armed.set()
@@ -1288,7 +1019,6 @@ def test_a_writer_that_dies_with_a_spill_file_lists_it_and_counts_its_messages(t
         stop.set()
         await task
         return held, dead
-
     try:
         held, dead = asyncio.run(go())
     finally:
@@ -1298,22 +1028,12 @@ def test_a_writer_that_dies_with_a_spill_file_lists_it_and_counts_its_messages(t
     spilled = held["spill"]
     assert dead["state"] == "dead" and dead["error"] == "RuntimeError: a defect in the writer"
     assert dead["line"].startswith("DEAD · ")
-    assert dead["left_on_disk"] == [
-        {
-            "path": spilled["path"],
-            "messages": spilled["messages"],
-            "bytes": spilled["bytes"],
-            "written_back": 0,
-        }
-    ]
+    assert dead["left_on_disk"] == [{"path": spilled["path"], "messages": spilled["messages"],
+                                     "bytes": spilled["bytes"], "written_back": 0}]
     assert Path(spilled["path"]).exists() and dead["spill"] is None
-    assert dead["unrecorded"] == held["waiting"], (
-        "messages still in the spill file counted not recorded"
-    )
-    assert (
-        f"left on disk: {Path(spilled['path']).name} ({spilled['messages']} messages, "
-        f"{spilled['bytes']:,} bytes, 0 written back)"
-    ) in dead["line"]
+    assert dead["unrecorded"] == held["waiting"], "messages still in the spill file counted not recorded"
+    assert (f"left on disk: {Path(spilled['path']).name} ({spilled['messages']} messages, "
+            f"{spilled['bytes']:,} bytes, 0 written back)") in dead["line"]
 
 
 def test_a_damaged_spill_record_is_kept_as_sent_and_every_record_after_it_is_written(tmp_path):
@@ -1324,9 +1044,8 @@ def test_a_damaged_spill_record_is_kept_as_sent_and_every_record_after_it_is_wri
     stream_write_failures with where and why, the quote after it written; the file is deleted and
     the writer goes on recording."""
     db = tmp_path / "stream_capture.db"
-    writer = CaptureWriter(
-        db, batch_rows=1, batch_sec=0.01, timeout_sec=0.2, retry_sec=0.1, hold_cap_bytes=_SMALL_CAP
-    )
+    writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01, timeout_sec=0.2, retry_sec=0.1,
+                           hold_cap_bytes=_SMALL_CAP)
     holder = sqlite3.connect(db, isolation_level=None, check_same_thread=False)
     holder.execute("BEGIN IMMEDIATE")
 
@@ -1337,7 +1056,7 @@ def test_a_damaged_spill_record_is_kept_as_sent_and_every_record_after_it_is_wri
         task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
         during = await _held_past_the_cap(writer, bus, health, daemon)
         path = Path(during["spill"]["path"])
-        with open(path, "rb") as f:  # where the last record starts
+        with open(path, "rb") as f:            # where the last record starts
             last, at = 0, 0
             while at < during["spill"]["bytes"]:
                 last = at
@@ -1346,22 +1065,14 @@ def test_a_damaged_spill_record_is_kept_as_sent_and_every_record_after_it_is_wri
         with open(path, "r+b") as f:
             f.seek(during["spill"]["bytes"] - 2)
             f.write(b"\xff\xff")
-        _publish_options(bus, health, _EVENTS[:1])  # behind the damaged record
-        await _until(
-            lambda: writer.status()["spill"]["messages"] == during["spill"]["messages"] + 1
-        )
+        _publish_options(bus, health, _EVENTS[:1])           # behind the damaged record
+        await _until(lambda: writer.status()["spill"]["messages"] == during["spill"]["messages"] + 1)
         holder.execute("COMMIT")
-        await _until(
-            lambda: (
-                _count(db, "stream_options_quotes_raw") == len(_EVENTS)
-                and writer.status()["spill"] is None
-            )
-        )
+        await _until(lambda: _count(db, "stream_options_quotes_raw") == len(_EVENTS) and writer.status()["spill"] is None)
         after = _beat(daemon)["writer"]
         stop.set()
         await task
         return during, after, last
-
     try:
         during, after, last = asyncio.run(go())
     finally:
@@ -1369,20 +1080,13 @@ def test_a_damaged_spill_record_is_kept_as_sent_and_every_record_after_it_is_wri
 
     path = Path(during["spill"]["path"])
     with closing(sqlite3.connect(db)) as conn, conn:
-        stored = [
-            json.loads(r[0])
-            for r in conn.execute(
-                "SELECT native_json FROM stream_options_quotes_raw ORDER BY rowid"
-            )
-        ]
+        stored = [json.loads(r[0]) for r in conn.execute(
+            "SELECT native_json FROM stream_options_quotes_raw ORDER BY rowid")]
         kept = conn.execute("SELECT topic, error FROM stream_write_failures").fetchall()
-    assert stored == [e["content"] for e in _EVENTS[:-1]] + [_EVENTS[0]["content"]], (
+    assert stored == [e["content"] for e in _EVENTS[:-1]] + [_EVENTS[0]["content"]], \
         "not every good record, in order, the one received after the damaged record included"
-    )
     assert [t for t, _e in kept] == ["spill"]
-    assert kept[0][1].startswith(
-        f"{path.name}: the record at byte {last} does not decode, kept as its bytes"
-    )
+    assert kept[0][1].startswith(f"{path.name}: the record at byte {last} does not decode, kept as its bytes")
     assert not path.exists(), "the written-back spill file was kept"
     assert (after["state"], after["spill"], after["failures"]) == ("recording", None, 1)
 
@@ -1394,9 +1098,8 @@ def test_spill_files_left_beside_the_database_are_written_back_at_start(tmp_path
     once, in arrival order, with the receipt time it was received at, then what arrives after;
     each file is deleted once its rows are committed."""
     db = tmp_path / "stream_capture.db"
-    first = CaptureWriter(
-        db, batch_rows=1, batch_sec=0.01, timeout_sec=0.2, retry_sec=0.1, hold_cap_bytes=_SMALL_CAP
-    )
+    first = CaptureWriter(db, batch_rows=1, batch_sec=0.01, timeout_sec=0.2, retry_sec=0.1,
+                          hold_cap_bytes=_SMALL_CAP)
     holder = sqlite3.connect(db, isolation_level=None, check_same_thread=False)
     holder.execute("BEGIN IMMEDIATE")
     received: list = []
@@ -1406,14 +1109,13 @@ def test_spill_files_left_beside_the_database_are_written_back_at_start(tmp_path
         daemon = capture.Daemon(bus, health)
         daemon.writer = first
         sub = bus.subscribe("", policy=LOG)
-        seen = bus.subscribe("optquote.", policy=LOG)  # the receipt times as published
+        seen = bus.subscribe("optquote.", policy=LOG)     # the receipt times as published
         task = asyncio.create_task(first.run(sub, stop=stop))
         await _held_past_the_cap(first, bus, health, daemon)
         while not seen.queue.empty():
             received.append((await seen.get())[1]["ts_recv"])
         stop.set()
         await task
-
     try:
         asyncio.run(go())
     finally:
@@ -1428,31 +1130,21 @@ def test_spill_files_left_beside_the_database_are_written_back_at_start(tmp_path
         second = CaptureWriter(db, batch_rows=1, batch_sec=0.01)
         task = asyncio.create_task(second.run(bus.subscribe("", policy=LOG), stop=stop))
         await _until(lambda: second.status()["spill"] is None)
-        _publish_options(bus, health, _EVENTS[:1])  # arrives after the restart
+        _publish_options(bus, health, _EVENTS[:1])                 # arrives after the restart
         await _until(lambda: _count(db, "stream_options_quotes_raw") == len(_EVENTS) + 1)
         stop.set()
         await task
         return second.status()
-
     after = asyncio.run(restart())
 
     with closing(sqlite3.connect(db)) as conn, conn:
-        stored = [
-            (ts, json.loads(native))
-            for ts, native in conn.execute(
-                "SELECT ts_recv, native_json FROM stream_options_quotes_raw ORDER BY rowid"
-            )
-        ]
+        stored = [(ts, json.loads(native)) for ts, native in conn.execute(
+            "SELECT ts_recv, native_json FROM stream_options_quotes_raw ORDER BY rowid")]
         assert conn.execute("SELECT COUNT(*) FROM stream_spill_progress").fetchone()[0] == 0
-    assert [item for _ts, item in stored] == [e["content"] for e in _EVENTS] + [
-        _EVENTS[0]["content"]
-    ], "not every left quote once, in arrival order, before what arrived after the restart"
-    assert [ts for ts, _item in stored[: len(_EVENTS)]] == received, (
-        "a receipt time changed in the write-back"
-    )
-    assert not any(Path(k["path"]).exists() for k in left), (
-        "a spill file outlived its committed write-back"
-    )
+    assert [item for _ts, item in stored] == [e["content"] for e in _EVENTS] + [_EVENTS[0]["content"]], \
+        "not every left quote once, in arrival order, before what arrived after the restart"
+    assert [ts for ts, _item in stored[:len(_EVENTS)]] == received, "a receipt time changed in the write-back"
+    assert not any(Path(k["path"]).exists() for k in left), "a spill file outlived its committed write-back"
     assert (after["spill"], after["left_on_disk"], after["lost"]) == (None, [], 0)
 
 
@@ -1463,9 +1155,8 @@ def test_the_clean_stop_writes_what_the_daemon_holds_to_spill_files_before_it_en
     captured option quotes are held in memory and the spill file. The daemon's stop is set, every
     task it ends returns, and every quote is on disk in spill files beside the database."""
     db = tmp_path / "stream_capture.db"
-    writer = CaptureWriter(
-        db, batch_rows=1, batch_sec=0.01, timeout_sec=0.2, retry_sec=0.1, hold_cap_bytes=_SMALL_CAP
-    )
+    writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01, timeout_sec=0.2, retry_sec=0.1,
+                           hold_cap_bytes=_SMALL_CAP)
     holder = sqlite3.connect(db, isolation_level=None, check_same_thread=False)
     holder.execute("BEGIN IMMEDIATE")
     with socket.socket() as s:
@@ -1476,17 +1167,12 @@ def test_the_clean_stop_writes_what_the_daemon_holds_to_spill_files_before_it_en
         bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
         daemon = capture.Daemon(bus, health)
         daemon.writer, daemon.stop = writer, stop
-        tasks = [
-            asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop)),
-            asyncio.create_task(
-                serve_live_push(bus, stop, port=port, on_request=daemon.console_frame)
-            ),
-        ]
+        tasks = [asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop)),
+                 asyncio.create_task(serve_live_push(bus, stop, port=port, on_request=daemon.console_frame))]
         await _held_past_the_cap(writer, bus, health, daemon)
         await asyncio.to_thread(launch.ask_daemon_to_stop, port)
         await asyncio.wait_for(asyncio.gather(*tasks), timeout=30)
         return stop.is_set()
-
     try:
         stopped = asyncio.run(go())
     finally:
@@ -1494,7 +1180,5 @@ def test_the_clean_stop_writes_what_the_daemon_holds_to_spill_files_before_it_en
         holder.close()
     left = writer.status()["left_on_disk"]
     assert stopped and writer.status()["state"] == "stopped"
-    assert sum(k["messages"] for k in left) == len(_EVENTS), (
-        "a held quote is not on disk after the clean stop"
-    )
+    assert sum(k["messages"] for k in left) == len(_EVENTS), "a held quote is not on disk after the clean stop"
     assert all(Path(k["path"]).exists() and Path(k["path"]).parent == db.parent for k in left)

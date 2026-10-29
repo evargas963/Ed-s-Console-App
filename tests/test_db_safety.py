@@ -12,6 +12,22 @@ from db_safety import (
 )
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 def test_authorizer_blocks_drop(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("ED_CONSOLE_DANGEROUS_SQL_UNRESTRICTED", raising=False)
     p = tmp_path / "g.db"
@@ -20,3 +36,19 @@ def test_authorizer_blocks_drop(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     conn.execute("CREATE TABLE zz(a INTEGER)")
     with pytest.raises(sqlite3.DatabaseError, match="not authorized|authorized"):
         conn.execute("DROP TABLE zz")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

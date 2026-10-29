@@ -1,7 +1,6 @@
 """overlay_streamed_contract_fields (math_exposure_core.py) merges a newer streamed open interest
 or volume onto a chain contract. Gamma, delta, and volatility stay the chain's. Receive time
 decides which open interest or volume is newer. Pure function: no network, no cache, no clock."""
-
 from __future__ import annotations
 
 import sys
@@ -23,14 +22,8 @@ def _contract(symbol, **fields):
     # of its own -- compute_exposures_by_strike's own correctness is proven on real chains
     # elsewhere (test_gamma_surface_projection_v1.py). A synthetic contract with deterministic
     # field values makes the merge assertions exact and readable.
-    base = {
-        "symbol": symbol,
-        "strikePrice": 580.0,
-        "putCall": "CALL",
-        "gamma": 0.01,
-        "delta": 0.40,
-        "openInterest": 100,
-    }
+    base = {"symbol": symbol, "strikePrice": 580.0, "putCall": "CALL",
+            "gamma": 0.01, "delta": 0.40, "openInterest": 100}
     base.update(fields)
     return base
 
@@ -112,16 +105,9 @@ def test_a_streamed_value_from_before_the_chain_never_overrides_it():
     received after the chain does not replace it either."""
     day = 86_400.0
     contracts = [_contract("A", gamma=0.01, openInterest=100, totalVolume=7)]
-    streamed = {
-        "A": {
-            "gamma": 0.03,
-            "gamma_ts_recv": CHAIN_RX + 5.0,
-            "open_interest": 90,
-            "open_interest_ts_recv": CHAIN_RX - day,
-            "total_volume": 4_000,
-            "total_volume_ts_recv": CHAIN_RX - day,
-        }
-    }
+    streamed = {"A": {"gamma": 0.03, "gamma_ts_recv": CHAIN_RX + 5.0,
+                      "open_interest": 90, "open_interest_ts_recv": CHAIN_RX - day,
+                      "total_volume": 4_000, "total_volume_ts_recv": CHAIN_RX - day}}
     out, n = overlay_streamed_contract_fields(contracts, streamed, CHAIN_RX)
     assert n == 0
     assert out[0] is contracts[0]

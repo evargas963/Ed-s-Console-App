@@ -2,7 +2,6 @@
 positioning_migration), from two real days of Schwab's PCG chain (tests/fixtures, captured
 2026-09-24 and 2026-09-25), each valued at its capture. Expected values are worked out here from
 the rows themselves (question 3: a calculation Schwab does not send, against its definition)."""
-
 import json
 import time
 from datetime import datetime
@@ -15,23 +14,16 @@ import live_market_plane as lmp
 import time_et
 from terrain_engine import MIGRATION_DRIFT_STRIKES, compute_terrain, positioning_migration
 
-_FX = json.loads(
-    (Path(__file__).resolve().parent / "fixtures" / "real_pcg_two_day_chain.json").read_text(
-        encoding="utf-8"
-    )
-)
+_FX = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_pcg_two_day_chain.json")
+                 .read_text(encoding="utf-8"))
 
 
 @pytest.fixture
 def two_days():
     rows = []
     for day in _FX["days"]:
-        snap = compute_terrain(
-            "PCG",
-            day["contracts"],
-            day["spot"],
-            now=datetime.fromtimestamp(day["ts_utc"], time_et.ET),
-        )
+        snap = compute_terrain("PCG", day["contracts"], day["spot"],
+                               now=datetime.fromtimestamp(day["ts_utc"], time_et.ET))
         rows.append((snap.per_strike, snap))
     return rows
 
@@ -40,32 +32,20 @@ def test_the_migration_matches_the_two_days_rows(two_days):
     (prior, _), (today, snap) = two_days
     m = positioning_migration(today["all"], prior["all"], snap.call_wall, snap.put_wall)
     prior_gex = {r[0]: r[1] for r in prior["all"]}
-    changes = {
-        r[0]: r[1] - prior_gex[r[0]]
-        for r in today["all"]
-        if r[1] is not None and prior_gex.get(r[0]) is not None
-    }
+    changes = {r[0]: r[1] - prior_gex[r[0]] for r in today["all"]
+               if r[1] is not None and prior_gex.get(r[0]) is not None}
     assert m["compared"] and len(changes) > 10
     assert {r[0]: r[3] for r in m["rows"] if r[3] is not None} == pytest.approx(changes)
-    assert (
-        m["grew"]
-        == [k for k, _ in sorted(changes.items(), key=lambda kv: -kv[1]) if changes[k] > 0][:2]
-    )
-
+    assert m["grew"] == [k for k, _ in sorted(changes.items(), key=lambda kv: -kv[1]) if changes[k] > 0][:2]
     # the weighted positive-gamma strike, each day, over strikes known on both days
     def wmean(day_gex):
         pos = [(k, day_gex[k]) for k in changes if day_gex[k] > 0]
         return sum(k * g for k, g in pos) / sum(g for _k, g in pos) if pos else None
-
     today_gex = {r[0]: r[1] for r in today["all"]}
     wt, wp = wmean(today_gex), wmean(prior_gex)
-    assert m["weighted_strike_today"] == pytest.approx(wt) and m[
-        "weighted_strike_prior"
-    ] == pytest.approx(wp)
+    assert m["weighted_strike_today"] == pytest.approx(wt) and m["weighted_strike_prior"] == pytest.approx(wp)
     d = wt - wp
-    assert m["drift"] == (
-        "UP" if d > MIGRATION_DRIFT_STRIKES else "DOWN" if -d > MIGRATION_DRIFT_STRIKES else "FLAT"
-    )
+    assert m["drift"] == ("UP" if d > MIGRATION_DRIFT_STRIKES else "DOWN" if -d > MIGRATION_DRIFT_STRIKES else "FLAT")
 
 
 def test_busiest_strikes_and_volume_total_come_from_schwabs_volume(two_days):
@@ -74,7 +54,7 @@ def test_busiest_strikes_and_volume_total_come_from_schwabs_volume(two_days):
     vols = {r[0]: r[2] for r in today["all"] if r[2]}
     assert m["busiest"] == sorted(sorted(vols, key=lambda k: -vols[k])[:2])
     assert m["volume_total"] == sum(r[2] for r in today["all"] if r[2] is not None)
-    assert not m["compared"] and m["drift"] is None  # no prior day: nothing to compare
+    assert not m["compared"] and m["drift"] is None      # no prior day: nothing to compare
 
 
 def test_on_a_closed_market_the_prior_day_is_the_day_before_the_chains_own():
@@ -85,50 +65,28 @@ def test_on_a_closed_market_the_prior_day_is_the_day_before_the_chains_own():
     daemon writes them in the console's database. STAND-IN (named): Monday's price row, Friday's
     capture price."""
     import server
-    from calibration.complete_chain_capture import (
-        CAPTURE_BASIS,
-        last_capture_per_day,
-        persist_complete_chain_capture,
-    )
-
+    from calibration.complete_chain_capture import CAPTURE_BASIS, last_capture_per_day, persist_complete_chain_capture
     db = server.get_db().db_path
     for day in _FX["days"]:
         by_exp: dict = {}
         for c in day["contracts"]:
             by_exp.setdefault(str(c.get("expirationDate") or "")[:10], []).append(c)
         for exp, cs in by_exp.items():
-            persist_complete_chain_capture(
-                db,
-                ticker="PCG",
-                expiry=exp,
-                contracts=cs,
-                spot=day["spot"],
-                completeness_basis=CAPTURE_BASIS,
-                ts_utc=day["ts_utc"],
-            )
-    stored = last_capture_per_day(db, "PCG", 2)  # the startup load's one read
+            persist_complete_chain_capture(db, ticker="PCG", expiry=exp, contracts=cs, spot=day["spot"],
+                                           completeness_basis=CAPTURE_BASIS, ts_utc=day["ts_utc"])
+    stored = last_capture_per_day(db, "PCG", 2)                 # the startup load's one read
     newest = stored[0]
     try:
         # startup on a closed market (Sunday 2026-09-27): the levels producer prices the newest
         # capture (Friday) and, with it, the prior day's rows the route serves
-        assert (
-            server._publish_levels(
-                "PCG", captures=stored, now=datetime(2026, 9, 27, 12, 0, tzinfo=time_et.ET)
-            )
-            is not None
-        )
+        assert server._publish_levels("PCG", captures=stored,
+                                      now=datetime(2026, 9, 27, 12, 0, tzinfo=time_et.ET)) is not None
         body = json.loads(server.get_terrain_strikes(ticker="PCG").body)
         # a new market day's first chain (Monday 2026-09-28 10:00 ET), before that day's first
         # capture: the prior day is recomputed against the new day
         monday = datetime(2026, 9, 28, 10, 0, tzinfo=time_et.ET)
-        lmp.record_feed_heartbeat(
-            {"ts": time.time(), "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": ["PCG"]}}
-        )
-        ofs._price_rows["PCG"] = {
-            "ticker": "PCG",
-            "spot": newest["spot"],
-            "trade_ts": monday.timestamp(),
-        }
+        lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": ["PCG"]}})
+        ofs._price_rows["PCG"] = {"ticker": "PCG", "spot": newest["spot"], "trade_ts": monday.timestamp()}
         server._publish_levels("PCG", newest["contracts"], monday.timestamp(), now=monday)
         monday_body = json.loads(server.get_terrain_strikes(ticker="PCG").body)
     finally:
@@ -138,9 +96,7 @@ def test_on_a_closed_market_the_prior_day_is_the_day_before_the_chains_own():
         lmp.record_feed_down()
     assert body["prior_source"] == "chain_capture:2026-09-24"
     m = body["migration"]["all"]
-    assert (
-        m["compared"] and sum(1 for r in m["rows"] if r[3]) > 10
-    )  # real changes, not self vs self
+    assert m["compared"] and sum(1 for r in m["rows"] if r[3]) > 10       # real changes, not self vs self
     # the migration panel's one scale: the largest |GEX| today or the prior day among the strikes
     # drawn (every today bar too, whether or not the prior day lists its strike)
     drawn = {r[0] for r in body["today"]["all"]}

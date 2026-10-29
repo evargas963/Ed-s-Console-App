@@ -1,5 +1,4 @@
 """Schwab -> the desk map. The chain's time stands beside the chain's age."""
-
 from __future__ import annotations
 
 import server as srv
@@ -13,9 +12,7 @@ def test_the_terrain_carries_the_chain_time():
     1790380799.830."""
     tk = "ZZCHAINTIME"
     fetched = 1790380799.830
-    published = compute_terrain(
-        tk, [dict(c) for c in CRWD.chain], CRWD.spot, now=CRWD.now
-    ).to_dict()
+    published = compute_terrain(tk, [dict(c) for c in CRWD.chain], CRWD.spot, now=CRWD.now).to_dict()
     assert published["call_wall"] is not None
     with srv._terrain_cache_lock:
         srv._terrain_cache[tk] = published | {"computed_ts_utc": fetched}

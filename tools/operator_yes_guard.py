@@ -28,7 +28,6 @@ Limits: shell commands are judged on the statements they run, as tools/shell_par
 they only mention (a read, a diff or a search naming a launcher passes); code inside `python -c`
 or a heredoc a python reads is not judged here.
 """
-
 from __future__ import annotations
 
 import json
@@ -59,17 +58,8 @@ LAUNCHERS = ("start_capture_daemon", "start_ed_console")
 PRODUCTION_MARKS = (*PROCESS_NAMES, *LAUNCHERS, "launch.py")
 #: programs that start or open what they are given (wmic and the CIM/WMI methods with Create), and
 #: shells that run the script file given as their first argument
-STARTERS = (
-    "start",
-    "start-process",
-    "saps",
-    "invoke-item",
-    "ii",
-    "explorer",
-    "wmic",
-    "invoke-cimmethod",
-    "invoke-wmimethod",
-)
+STARTERS = ("start", "start-process", "saps", "invoke-item", "ii", "explorer", "wmic", "invoke-cimmethod",
+            "invoke-wmimethod")
 SHELLS = ("powershell", "pwsh", "bash", "sh")
 #: programs that end a process from outside
 STOPPERS = ("stop-process", "spps", "taskkill", "kill", "tskill", "pskill")
@@ -79,39 +69,18 @@ MACHINE_STOPPERS = ("stop-computer", "restart-computer", "shutdown")
 WMI_STOPS = ("remove-ciminstance", "remove-wmiobject")
 #: a merge through GitHub's API: a pull request or a branch by REST, or a GraphQL mutation that
 #: merges or turns on a merge once checks pass
-MERGE_ROUTE = re.compile(
-    r"/pulls/[^/\s'\"]+/merge\b|\brepos/[^/\s'\"]+/[^/\s'\"]+/merges\b"
-    r"|mergePullRequest|enablePullRequestAutoMerge|mergeBranch",
-    re.I,
-)
+MERGE_ROUTE = re.compile(r"/pulls/[^/\s'\"]+/merge\b|\brepos/[^/\s'\"]+/[^/\s'\"]+/merges\b"
+                         r"|mergePullRequest|enablePullRequestAutoMerge|mergeBranch", re.I)
 #: programs that send an HTTP request
 HTTP_CLIENTS = ("curl", "wget", "invoke-restmethod", "irm", "invoke-webrequest", "iwr")
 #: gh options that take a value (the value is not a subcommand)
-GH_VALUE_OPTIONS = (
-    "-R",
-    "--repo",
-    "--hostname",
-    "-X",
-    "--method",
-    "-f",
-    "-F",
-    "--field",
-    "--raw-field",
-    "-H",
-    "--header",
-    "--input",
-    "-q",
-    "--jq",
-    "-t",
-    "--template",
-)
+GH_VALUE_OPTIONS = ("-R", "--repo", "--hostname", "-X", "--method", "-f", "-F", "--field", "--raw-field",
+                    "-H", "--header", "--input", "-q", "--jq", "-t", "--template")
 #: process ids and image names a stop names (Stop-Process -Id, taskkill /PID, ProcessId=N;
 #: -Name, /IM, Get-Process <name>, Name='x.exe')
 _PIDS = re.compile(r"(?:-id|/pid|processid\s*=)\s*['\"]?(\d[\d,\s]*)", re.I)
-_NAMES = re.compile(
-    r"(?:-name|-processname|/im|get-process)\s+['\"]?([\w.*]+)|\bname\s*(?:=|like)\s*['\"]([\w.*%]+)",
-    re.I,
-)
+_NAMES = re.compile(r"(?:-name|-processname|/im|get-process)\s+['\"]?([\w.*]+)|\bname\s*(?:=|like)\s*['\"]([\w.*%]+)",
+                    re.I)
 
 
 def market_session(now: datetime, db: Path) -> str:
@@ -122,17 +91,12 @@ def market_session(now: datetime, db: Path) -> str:
     try:
         conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=2)
         try:
-            row = conn.execute(
-                "SELECT native_json FROM stream_markets_raw WHERE date = ? AND status = 200 "
-                "ORDER BY ts_recv DESC LIMIT 1",
-                (day,),
-            ).fetchone()
+            row = conn.execute("SELECT native_json FROM stream_markets_raw WHERE date = ? AND status = 200 "
+                               "ORDER BY ts_recv DESC LIMIT 1", (day,)).fetchone()
         finally:
             conn.close()
     except sqlite3.Error as e:
-        sys.stderr.write(
-            f"operator_yes_guard: the market session is unknown: {type(e).__name__}: {e}\n"
-        )
+        sys.stderr.write(f"operator_yes_guard: the market session is unknown: {type(e).__name__}: {e}\n")
         return time_et.UNKNOWN
     if row is None:
         return time_et.UNKNOWN
@@ -148,14 +112,8 @@ def _printed(st: Statement) -> bool:
     """Whether a PowerShell statement's program word is a quoted phrase or a here-string: a string
     PowerShell prints, not a program (bash runs a quoted program path)."""
     raw0 = st.raw[0]
-    return st.powershell and (
-        raw0[:2] in ("@'", '@"')
-        or (
-            raw0[:1] in "\"'"
-            and " " in raw0
-            and not st.words[0].lower().endswith((".bat", ".cmd", ".exe"))
-        )
-    )
+    return st.powershell and (raw0[:2] in ("@'", '@"') or (raw0[:1] in "\"'" and " " in raw0
+                                                and not st.words[0].lower().endswith((".bat", ".cmd", ".exe"))))
 
 
 def _starts(st: Statement) -> bool:
@@ -167,10 +125,8 @@ def _starts(st: Statement) -> bool:
     if name in LAUNCHERS or name == "uvicorn":
         return True
     if name == "py" or name.startswith("python"):
-        return bool(args) and (
-            program_name(args[0]) == "launch.py"
-            or (args[0] == "-m" and len(args) > 1 and any(n in args[1] for n in PROCESS_NAMES))
-        )
+        return bool(args) and (program_name(args[0]) == "launch.py"
+                               or (args[0] == "-m" and len(args) > 1 and any(n in args[1] for n in PROCESS_NAMES)))
     if name in SHELLS:
         script = next((a for a in args if not a.startswith(("-", "/"))), "")
         return _launcher(script) in LAUNCHERS
@@ -185,9 +141,8 @@ def _kills(st: Statement) -> bool:
     delete or terminate, CIM/WMI's Terminate, a removed process object."""
     name = st.program
     args = [a.lower() for a in st.words[1:]]
-    if name in STOPPERS or any(
-        ".kill(" in r.lower() and not r.startswith(("'", '"', "@'", '@"')) for r in st.raw
-    ):  # a quoted string or here-string is text
+    if name in STOPPERS or any(".kill(" in r.lower() and not r.startswith(("'", '"', "@'", '@"'))
+                               for r in st.raw):                     # a quoted string or here-string is text
         return True
     if name == "wmic":
         return "process" in args and any(a in ("delete", "terminate") for a in args)
@@ -207,39 +162,29 @@ def _targets(st: Statement, upstream: "list[str] | None") -> "tuple[list[psutil.
     also reaches processes chosen only when it runs: a target held in a variable ($ids,
     $_.ProcessId), a pipe from anything but a listing (a filter), or none named at all."""
     text = st.text
-    later = any(t.startswith("$") for t in st.words[1:] if upstream is None) or (
-        upstream is not None and program_name(upstream[0]) not in LISTINGS
-    )
+    later = (any(t.startswith("$") for t in st.words[1:] if upstream is None)
+             or (upstream is not None and program_name(upstream[0]) not in LISTINGS))
     if upstream is not None and not later:
         text += " " + " ".join(upstream)
     pids = {int(p) for m in _PIDS.finditer(text) for p in re.split(r"[,\s]+", m.group(1)) if p}
-    names = {
-        (a or b).lower().removesuffix(".exe").replace("%", "*") for a, b in _NAMES.findall(text)
-    }
+    names = {(a or b).lower().removesuffix(".exe").replace("%", "*") for a, b in _NAMES.findall(text)}
     if st.program in STOPPERS:
         for arg in (t for t in st.words[1:] if not t.startswith(("-", "/", "$", "(", "@("))):
             for part in arg.split(","):
                 pids.update([int(part)] if part.isdigit() else [])
-                names.update(
-                    [part.lower().removesuffix(".exe")] if part and not part.isdigit() else []
-                )
+                names.update([part.lower().removesuffix(".exe")] if part and not part.isdigit() else [])
     found = [psutil.Process(pid) for pid in pids if psutil.pid_exists(pid)]
     for p in psutil.process_iter(["name"]):
         image = (p.info["name"] or "").lower().removesuffix(".exe")
-        if any(
-            fnmatch(image, n) or (n.startswith("python") and image.startswith(n)) for n in names
-        ):
+        if any(fnmatch(image, n) or (n.startswith("python") and image.startswith(n)) for n in names):
             found.append(p)
     return found, later or not (pids or names)
 
 
 def _production_running() -> bool:
     """Whether the daemon, the console or launch.py runs on this machine now."""
-    return any(
-        _production(p) is not False
-        for p in psutil.process_iter(["name"])
-        if (p.info["name"] or "").lower().startswith("python")
-    )
+    return any(_production(p) is not False for p in psutil.process_iter(["name"])
+               if (p.info["name"] or "").lower().startswith("python"))
 
 
 def _production(proc: psutil.Process) -> "bool | None":
@@ -263,69 +208,38 @@ def decide(payload: dict, now: datetime, db: Path) -> "tuple[str, list[str]]":
         return PASS, []
     cmd = str((payload.get("tool_input") or {}).get("command") or "")
     asks, denies, merges = [], [], False
-    statements = [
-        st
-        for st in read(cmd, powershell=payload.get("tool_name") == "PowerShell")
-        if st.words and not _printed(st)
-    ]
+    statements = [st for st in read(cmd, powershell=payload.get("tool_name") == "PowerShell")
+                  if st.words and not _printed(st)]
     # `$x = <listing>` with nothing piped after it: a kill naming $x reaches what the listing names
-    listed = {
-        st.env[-1][:-1].lower(): list(st.raw)
-        for st in statements
-        if st.env
-        and st.env[-1].startswith("$")
-        and st.env[-1].endswith("=")
-        and not any(s.upstream is st for s in statements)
-    }
-    for st in statements:  # every check on every statement; the strictest answer wins
+    listed = {st.env[-1][:-1].lower(): list(st.raw) for st in statements
+              if st.env and st.env[-1].startswith("$") and st.env[-1].endswith("=")
+              and not any(s.upstream is st for s in statements)}
+    for st in statements:                 # every check on every statement; the strictest answer wins
         if st.program in MACHINE_STOPPERS:
-            asks.append(
-                "stops or restarts the machine, and the daemon and console with it (CLAUDE.md rule 5: production)"
-            )
+            asks.append("stops or restarts the machine, and the daemon and console with it (CLAUDE.md rule 5: production)")
         if _merges(st):
             merges = True
         if _kills(st):
-            upstream = (
-                list(st.upstream.raw)
-                if st.upstream is not None and st.upstream.raw
-                else next(
-                    (
-                        listed[v]
-                        for t in st.words[1:]
-                        for v in [t.lower().split(".")[0]]
-                        if v in listed
-                    ),
-                    None,
-                )
-            )
+            upstream = list(st.upstream.raw) if st.upstream is not None and st.upstream.raw else next(
+                (listed[v] for t in st.words[1:] for v in [t.lower().split(".")[0]] if v in listed), None)
             found, later = _targets(st, upstream)
             seen = [_production(p) for p in found]
             if any(seen) or (later and any(m in cmd.lower() for m in PRODUCTION_MARKS)):
-                denies.append(
-                    "kills the daemon, the console or launch.py: on Windows that skips its shutdown "
-                    "and loses what the daemon holds; stop them with `python launch.py stop`"
-                )
+                denies.append("kills the daemon, the console or launch.py: on Windows that skips its shutdown "
+                              "and loses what the daemon holds; stop them with `python launch.py stop`")
             else:
                 if None in seen:
-                    asks.append(
-                        "stops a process whose command line cannot be read (CLAUDE.md rule 5: production)"
-                    )
+                    asks.append("stops a process whose command line cannot be read (CLAUDE.md rule 5: production)")
                 if later and _production_running():
-                    asks.append(
-                        "stops processes chosen only when it runs while the daemon or the console runs "
-                        "(CLAUDE.md rule 5: production)"
-                    )
+                    asks.append("stops processes chosen only when it runs while the daemon or the console runs "
+                                "(CLAUDE.md rule 5: production)")
         if _starts(st):
             session = market_session(now, db)
             if session in (time_et.RTH, time_et.UNKNOWN):
-                asks.append(
-                    f"starts or stops the daemon or the console while the market session is "
-                    f"{session} (CLAUDE.md rule 5: production)"
-                )
+                asks.append(f"starts or stops the daemon or the console while the market session is "
+                            f"{session} (CLAUDE.md rule 5: production)")
         if st.program == "gh" and _gh_words(st)[:2] in (["alias", "set"], ["alias", "import"]):
-            denies.append(
-                "sets a gh alias: an alias can name a merge in words the merge check does not know"
-            )
+            denies.append("sets a gh alias: an alias can name a merge in words the merge check does not know")
     if merges:
         asks.append(f"merges (AGENTS.md Authority); the command as written: {cmd}")
     return (DENY, denies) if denies else (ASK, asks) if asks else (PASS, [])
@@ -334,29 +248,21 @@ def decide(payload: dict, now: datetime, db: Path) -> "tuple[str, list[str]]":
 def _gh_words(st: Statement) -> "list[str]":
     """A gh statement's subcommand words: its arguments without options and their values."""
     args = list(st.words[1:])
-    return [
-        a
-        for i, a in enumerate(args)
-        if not a.startswith("-") and not (i and args[i - 1] in GH_VALUE_OPTIONS)
-    ]
+    return [a for i, a in enumerate(args) if not a.startswith("-") and not (i and args[i - 1] in GH_VALUE_OPTIONS)]
 
 
 def _merges(st: Statement) -> bool:
     """Whether the statement merges."""
     name, args = st.program, list(st.words[1:])
     if name == "gh":
-        if (
-            "pr" in args and "merge" in args[args.index("pr") + 1 :]
-        ):  # whatever options come between
+        if "pr" in args and "merge" in args[args.index("pr") + 1:]:     # whatever options come between
             return True
     elif name not in HTTP_CLIENTS:
         return False
     if any(MERGE_ROUTE.search(a) for a in args):
         return True
     # a GraphQL body read from a file: its query is unseen
-    return any("graphql" in a.lower() for a in args) and any(
-        a.startswith("@") or "=@" in a or a == "--input" for a in args
-    )
+    return any("graphql" in a.lower() for a in args) and any(a.startswith("@") or "=@" in a or a == "--input" for a in args)
 
 
 def main() -> int:
@@ -373,17 +279,10 @@ def main() -> int:
         sys.stderr.write("BLOCKED (operator_yes_guard): " + "; ".join(why) + "\n")
         return 2
     if answer == ASK:
-        print(
-            json.dumps(
-                {
-                    "hookSpecificOutput": {
-                        "hookEventName": "PreToolUse",
-                        "permissionDecision": "ask",
-                        "permissionDecisionReason": "Needs the operator's yes: " + "; ".join(why),
-                    }
-                }
-            )
-        )
+        print(json.dumps({"hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "ask",
+            "permissionDecisionReason": "Needs the operator's yes: " + "; ".join(why)}}))
     return 0
 
 

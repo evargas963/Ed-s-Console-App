@@ -2,19 +2,19 @@
 
 from __future__ import annotations
 
-import logging
 import os
 import sqlite3
+import logging
 import threading
-from dataclasses import asdict, dataclass, fields
 from pathlib import Path
-from typing import Optional
 
 from db_authority import (
     classify_db_path,
     eddb_allow_noncanonical_path,
     is_canonical_db_path,
 )
+from dataclasses import dataclass, asdict, fields
+from typing import Optional
 
 log = logging.getLogger(__name__)
 
@@ -28,11 +28,13 @@ _SCHEMA_INIT_LOCK = threading.Lock()
 #: cache (NOT per-connection heap), so a large value is cheap; 2 GiB covers the hot
 #: index/recent-rows working set. cache_size is per-connection page cache — SQLite reads
 #: a NEGATIVE value as KiB, so -131072 == 128 MiB (vs the ~2 MiB / -2000 default).
-SQLITE_MMAP_SIZE_BYTES = 2 * 1024**3  # 2 GiB
-SQLITE_CACHE_SIZE_KIB = -131072  # 128 MiB (negative = KiB in SQLite's PRAGMA convention)
+SQLITE_MMAP_SIZE_BYTES = 2 * 1024 ** 3   # 2 GiB
+SQLITE_CACHE_SIZE_KIB = -131072          # 128 MiB (negative = KiB in SQLite's PRAGMA convention)
 
 
-def configure_sqlite_connection(conn: sqlite3.Connection, *, busy_timeout_ms: int = 30000) -> None:
+def configure_sqlite_connection(
+    conn: sqlite3.Connection, *, busy_timeout_ms: int = 30000
+) -> None:
     """
     Production pragmas for any sqlite3 connection touching the console DB.
     Safe to call on every new connection (WAL is idempotent once enabled on the file).
@@ -63,10 +65,16 @@ def configure_sqlite_connection(conn: sqlite3.Connection, *, busy_timeout_ms: in
             log.debug("configure_sqlite_connection: %s failed: %s", pragma, e)
 
 
+
+
+
+
+
 # ── Database location (ONE APP, ONE MAIN, ONE DB) ───────────────────────────
 # Default: data/ed_console.db, for every process and every worktree. No ambient setting
 # (an agent role, ED_CONSOLE_DB, ED_DB_PATH) selects the production database: recovery and
 # tests pass explicit paths to EdDB; runtime placement belongs only to runtime_layout.
+
 
 
 def _resolve_console_db_path() -> Path:
@@ -85,29 +93,28 @@ def _resolve_console_db_path() -> Path:
 DB_PATH = _resolve_console_db_path()
 
 
+
 @dataclass
 class LevelCrossEvent:
     """
     Logged every time price crosses a key level.
     Used for breach log + pattern detection.
     """
-
-    ticker: str
-    ts_utc: float
-    ts_et: str
-    level_name: str  # 'Call Gamma Wall', 'VWAP', etc.
-    level_value: float
-    direction: str  # 'up', 'down'
-    spot_at_cross: float
-    zone_before: Optional[str]
-    zone_after: Optional[str]
-    timeframe: str
+    ticker:         str
+    ts_utc:         float
+    ts_et:          str
+    level_name:     str         # 'Call Gamma Wall', 'VWAP', etc.
+    level_value:    float
+    direction:      str         # 'up', 'down'
+    spot_at_cross:  float
+    zone_before:    Optional[str]
+    zone_after:     Optional[str]
+    timeframe:      str
 
 
 # ════════════════════════════════════════════════════════════════════════════════
 # DATABASE MANAGER
 # ════════════════════════════════════════════════════════════════════════════════
-
 
 class EdDB:
     """
@@ -182,30 +189,25 @@ class EdDB:
         one transaction: every one is stored, or none is and the error is raised. Returns the
         rows stored, each as get_recent_crosses reads it back."""
         cols = [f.name for f in fields(LevelCrossEvent)]
-        sql = (
-            f"INSERT INTO level_crosses ({', '.join(cols)}) VALUES ({', '.join('?' for _ in cols)})"
-        )
+        sql = f"INSERT INTO level_crosses ({', '.join(cols)}) VALUES ({', '.join('?' for _ in cols)})"
         logged: list[dict] = []
         with self._connect() as conn:
             for event in events:
                 d = asdict(event)
                 cross_id = int(conn.execute(sql, [d[c] for c in cols]).lastrowid)
-                logged.append({**d, "cross_id": cross_id})  # the stored row
+                logged.append({**d, "cross_id": cross_id})     # the stored row
         return logged
 
     def get_recent_crosses(self, ticker: str, n: int = 20) -> list:
         """The most recent level crosses, each the row record_level_crosses returns."""
         cols = ", ".join(["cross_id", *(f.name for f in fields(LevelCrossEvent))])
         with self._connect() as conn:
-            rows = conn.execute(
-                f"""
+            rows = conn.execute(f"""
                 SELECT {cols} FROM level_crosses
                 WHERE ticker = ?
                 ORDER BY ts_utc DESC
                 LIMIT ?
-            """,
-                (ticker, n),
-            ).fetchall()
+            """, (ticker, n)).fetchall()
         return [dict(r) for r in rows]
 
 

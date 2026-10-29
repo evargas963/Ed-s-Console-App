@@ -4,7 +4,6 @@ Issue 40 & 46 — Playwright environment is enforced (fail-fast), not silently s
 - ensure_playwright_ready() must pass before any Playwright E2E is considered valid.
 - Real browser + app tests live under tests/e2e/*.spec.js and run via: npm run test:e2e
 """
-
 from __future__ import annotations
 
 import shutil

@@ -42,7 +42,6 @@ class VolumeProfile:
     prints -- and the value area read from it. `bins`: ((price, volume), ...) in price order. `bars`:
     the bars given; `bars_without_volume`: those Schwab sent with no volume, which the profile
     cannot place and does not contain."""
-
     tick_size: float
     bins: tuple
     poc: float
@@ -74,11 +73,7 @@ def volume_profile(
     for b in bars:
         if not isinstance(b, dict):
             continue
-        hi, lo, vol = (
-            schwab_number(b.get("high")),
-            schwab_number(b.get("low")),
-            schwab_count(b.get("volume")),
-        )
+        hi, lo, vol = schwab_number(b.get("high")), schwab_number(b.get("low")), schwab_count(b.get("volume"))
         no_volume += vol is None
         # high < low has no range to spread over (measured: 0 of 2,166,115 bars)
         if hi is None or lo is None or vol is None or vol == 0 or hi < lo:
@@ -87,7 +82,7 @@ def volume_profile(
         hi_i = int(round(hi / tick_size))
         n = hi_i - lo_i + 1
         if n <= 1:
-            vol_by_idx[lo_i] += vol  # flat bar: one price, all of it
+            vol_by_idx[lo_i] += vol            # flat bar: one price, all of it
             continue
         if n <= MAX_BINS_PER_BAR:
             share = vol / n
@@ -130,14 +125,11 @@ def volume_profile(
         poc=round(poc_idx * tick_size, ndigits),
         vah=round(idx_sorted[hi_pos] * tick_size, ndigits),
         val=round(idx_sorted[lo_pos] * tick_size, ndigits),
-        bars=len(bars),
-        bars_without_volume=no_volume,
-    )
+        bars=len(bars), bars_without_volume=no_volume)
 
 
 class SnapshotType(str, Enum):
     """The shape of the served zones: before the session's open (premarket) or during it (live)."""
-
     PREMARKET = "premarket"
     LIVE = "live"
 
@@ -154,7 +146,6 @@ class ZoneType(str, Enum):
     Taxonomy: low_extreme | support_liquidity | pivot_value | breakdown_trigger |
     breakout_trigger | resistance_liquidity | high_extreme
     """
-
     LOW_EXTREME = "low_extreme"
     SUPPORT_LIQUIDITY = "support_liquidity"
     PIVOT_VALUE = "pivot_value"
@@ -198,12 +189,11 @@ ZONE_DISPLAY: dict[ZoneType, tuple[str, str]] = {
 @dataclass
 class Zone:
     """Clustered zone built from one or more price levels."""
-
     zone_type: ZoneType
     zone_low: float
     zone_high: float
     zone_mid: float
-    source_levels: list[dict] = field(default_factory=list)  # [{"label": str, "value": float}]
+    source_levels: list[dict] = field(default_factory=list)   # [{"label": str, "value": float}]
     source_tags: list[str] = field(default_factory=list)
     confluence_score: int = 0
     snapshot_type: SnapshotType = SnapshotType.PREMARKET
@@ -218,9 +208,8 @@ class Zone:
 @dataclass
 class SnapshotSummary:
     """Readable auction context interpretation."""
-
-    value_state: str = ""  # "shifted_higher" | "shifted_lower" | "unchanged"
-    vwap_relation: str = ""  # "above_value" | "below_value" | "at_value"
+    value_state: str = ""           # "shifted_higher" | "shifted_lower" | "unchanged"
+    vwap_relation: str = ""         # "above_value" | "below_value" | "at_value"
     auction_interpretation: str = ""  # "bullish_acceptance" | "bearish_acceptance" | etc.
     notes: list[str] = field(default_factory=list)
 
@@ -228,7 +217,6 @@ class SnapshotSummary:
 @dataclass
 class SnapshotOutput:
     """Full structural snapshot output."""
-
     ticker: str
     session_date: str
     snapshot_type: SnapshotType
@@ -240,9 +228,10 @@ class SnapshotOutput:
 @dataclass
 class PlaybookConfig:
     """Configurable engine settings."""
-
     opening_range_minutes: int = 15
     value_area_percent: float = 0.70
-    clustering_threshold_pct: float = 0.002  # adjacent levels within 0.2% merge
-    max_zone_width: float = 0.0  # 0 = no cap; when > 0, zones cannot exceed this width
+    clustering_threshold_pct: float = 0.002   # adjacent levels within 0.2% merge
+    max_zone_width: float = 0.0   # 0 = no cap; when > 0, zones cannot exceed this width
     tick_size: float = 0.01
+
+

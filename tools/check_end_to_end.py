@@ -28,15 +28,14 @@ Run in CI on every pull request (.github/workflows/hardening.yml):
 Exit 0: none found. Exit 1: each violation on its own line. Exit 2: the check itself failed
 (git unavailable, the base unknown, a file of the PR unreadable).
 """
-
 from __future__ import annotations
 
 import argparse
 import ast
-import io
 import re
 import subprocess
 import sys
+import io
 import tempfile
 import tokenize
 from pathlib import Path
@@ -52,8 +51,7 @@ JS_PATCH = re.compile(
     rf"|(\|\||\?\?)=\s*{JS_LITERAL}"
     r"|catch\s*(\([^)]*\))?\s*\{\s*\}"
     r"|\.catch\(\s*(\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>\s*"
-    r"(null|undefined(?!\w)|0(?!\w)|''|\"\"|\[\]|\{\})\s*\)"
-)
+    r"(null|undefined(?!\w)|0(?!\w)|''|\"\"|\[\]|\{\})\s*\)")
 SCRIPT_BLOCK = re.compile(r"<script\b[^>]*>(.*?)</script\s*>", re.S | re.I)
 HUNK = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
 DATA_REPAIR = {"fillna", "dropna", "interpolate", "bfill", "ffill"}
@@ -65,9 +63,7 @@ class ToolError(Exception):
 
 def _git(root: Path, *args: str) -> str:
     try:
-        return subprocess.run(
-            ["git", *args], cwd=root, capture_output=True, check=True
-        ).stdout.decode("utf-8")
+        return subprocess.run(["git", *args], cwd=root, capture_output=True, check=True).stdout.decode("utf-8")
     except (subprocess.CalledProcessError, FileNotFoundError, UnicodeDecodeError) as e:
         raise ToolError(f"git {' '.join(args)} failed: {e}") from e
 
@@ -75,15 +71,7 @@ def _git(root: Path, *args: str) -> str:
 def pr_files(root: Path, base: str, kinds: str) -> list[str]:
     """The paths the PR changes in the ways `kinds` names (git's --diff-filter letters), each as
     written (NUL-separated, never quoted), a rename read as its deletion and its addition."""
-    out = _git(
-        root,
-        "diff",
-        "--name-only",
-        "-z",
-        "--no-renames",
-        f"--diff-filter={kinds}",
-        f"{base}...HEAD",
-    )
+    out = _git(root, "diff", "--name-only", "-z", "--no-renames", f"--diff-filter={kinds}", f"{base}...HEAD")
     return [f for f in out.split("\0") if f]
 
 
@@ -104,26 +92,14 @@ def pr_added_lines(root: Path, base: str) -> dict[str, set[int]]:
     file adds every line it holds."""
     out: dict[str, set[int]] = {}
     path: str | None = None
-    header = (
-        False  # between a file's `diff --git` and its first hunk: an added line is not a header
-    )
+    header = False      # between a file's `diff --git` and its first hunk: an added line is not a header
     # core.quotePath=true: a quoted name is all escapes, whatever the repository's own setting
-    for line in _git(
-        root,
-        "-c",
-        "core.quotePath=true",
-        "diff",
-        "-U0",
-        "--no-renames",
-        "--src-prefix=a/",
-        "--dst-prefix=b/",
-        "--diff-filter=AMRT",
-        f"{base}...HEAD",
-    ).split("\n"):
+    for line in _git(root, "-c", "core.quotePath=true", "diff", "-U0", "--no-renames", "--src-prefix=a/",
+                     "--dst-prefix=b/", "--diff-filter=AMRT", f"{base}...HEAD").split("\n"):
         if line.startswith("diff --git "):
             path, header = None, True
         elif header and line.startswith("+++ ") and line != "+++ /dev/null":
-            path = _diff_path(line[len("+++ ") :])
+            path = _diff_path(line[len("+++ "):])
             out[path] = set()
         elif line.startswith("@@ "):
             header = False
@@ -164,11 +140,8 @@ def _python_code(source: str) -> str | None:
     for node in ast.walk(tree):
         if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
             first = node.body[0] if node.body else None
-            if (
-                isinstance(first, ast.Expr)
-                and isinstance(first.value, ast.Constant)
-                and isinstance(first.value.value, str)
-            ):
+            if (isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant)
+                    and isinstance(first.value.value, str)):
                 node.body = node.body[1:] or [ast.Pass()]
     return ast.dump(tree)
 
@@ -178,15 +151,10 @@ def _js_code(text: str, module: bool = False) -> str | None:
     None when it does not parse or Node cannot run it, which counts as changed."""
     with tempfile.TemporaryDirectory() as tmp:
         src = Path(tmp) / ("code.mjs" if module else "code.js")
-        src.write_bytes(text.encode("utf-8"))  # as written: no line ending translated
+        src.write_bytes(text.encode("utf-8"))      # as written: no line ending translated
         try:
-            run = subprocess.run(
-                ["node", str(JS_CODE_TREE), str(src)],
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                timeout=120,
-            )
+            run = subprocess.run(["node", str(JS_CODE_TREE), str(src)], capture_output=True, text=True,
+                                 encoding="utf-8", timeout=120)
         except (OSError, subprocess.TimeoutExpired):
             return None
     return run.stdout if run.returncode == 0 and run.stdout else None
@@ -254,65 +222,42 @@ def _catches_everything(handler: ast.ExceptHandler) -> bool:
 
 
 def _none_check(test: ast.AST) -> bool:
-    return (
-        isinstance(test, ast.Compare)
-        and len(test.ops) == 1
-        and isinstance(test.ops[0], (ast.Is, ast.IsNot, ast.Eq, ast.NotEq))
-        and any(_is_none(c) for c in (test.left, *test.comparators))
-    )
+    return (isinstance(test, ast.Compare) and len(test.ops) == 1
+            and isinstance(test.ops[0], (ast.Is, ast.IsNot, ast.Eq, ast.NotEq))
+            and any(_is_none(c) for c in (test.left, *test.comparators)))
 
 
 def _logs(handler: ast.ExceptHandler) -> bool:
     """The except logs the error and carries on: not a patch."""
-    return any(
-        isinstance(s, ast.Expr)
-        and isinstance(s.value, ast.Call)
-        and isinstance(s.value.func, ast.Attribute)
-        and s.value.func.attr in LOG_METHODS
-        for s in handler.body
-    )
+    return any(isinstance(s, ast.Expr) and isinstance(s.value, ast.Call)
+               and isinstance(s.value.func, ast.Attribute) and s.value.func.attr in LOG_METHODS
+               for s in handler.body)
 
 
 def _swallows(stmt: ast.stmt) -> bool:
     """The one statement of an except body turns the error into silence."""
     value = getattr(stmt, "value", None)
-    return (
-        isinstance(stmt, (ast.Pass, ast.Continue, ast.Expr))
-        or (isinstance(stmt, ast.Return) and (value is None or _is_none(value) or _literal(value)))
-        or (
-            isinstance(stmt, (ast.Assign, ast.AnnAssign))
-            and value is not None
-            and (_is_none(value) or _literal(value))
-        )
-    )
+    return (isinstance(stmt, (ast.Pass, ast.Continue, ast.Expr))
+            or (isinstance(stmt, ast.Return) and (value is None or _is_none(value) or _literal(value)))
+            or (isinstance(stmt, (ast.Assign, ast.AnnAssign)) and value is not None
+                and (_is_none(value) or _literal(value))))
 
 
 def _literal_fallback(stmt: ast.stmt) -> bool:
     """The one statement of an `if x is None:` returns or assigns a literal."""
     value = getattr(stmt, "value", None)
-    return (
-        isinstance(stmt, (ast.Return, ast.Assign, ast.AnnAssign))
-        and value is not None
-        and _literal(value)
-    )
+    return isinstance(stmt, (ast.Return, ast.Assign, ast.AnnAssign)) and value is not None and _literal(value)
 
 
 def _call_patch(node: ast.Call) -> str | None:
     f = node.func
     attr = f.attr if isinstance(f, ast.Attribute) else None
     name = f.id if isinstance(f, ast.Name) else None
-    if attr == "get" and (
-        len(node.args) == 2
-        and _literal(node.args[1])
-        or any(k.arg == "default" and _literal(k.value) for k in node.keywords)
-    ):
+    if attr == "get" and (len(node.args) == 2 and _literal(node.args[1]) or any(
+            k.arg == "default" and _literal(k.value) for k in node.keywords)):
         return "a missing value replaced by a literal (`.get(key, <literal>)`)"
-    if (
-        attr == "setdefault"
-        and len(node.args) == 2
-        and isinstance(node.args[1], ast.Constant)
-        and node.args[1].value is not None
-    ):
+    if attr == "setdefault" and len(node.args) == 2 and isinstance(node.args[1], ast.Constant) \
+            and node.args[1].value is not None:
         return "a missing value replaced by a literal (`.setdefault(key, <literal>)`)"
     if attr in DATA_REPAIR:
         return f"missing data repaired (`.{attr}(...)`) instead of served as missing"
@@ -332,7 +277,7 @@ def python_patches(source: str, added: set[int]) -> list[tuple[int, str]]:
     found: list[tuple[int, str]] = []
     for node in ast.walk(tree):
         if isinstance(node, (ast.ExceptHandler, ast.If, ast.With)):
-            if node.lineno not in added:  # an old block with a line added inside it
+            if node.lineno not in added:          # an old block with a line added inside it
                 continue
             if isinstance(node, ast.ExceptHandler):
                 if _logs(node):
@@ -342,42 +287,22 @@ def python_patches(source: str, added: set[int]) -> list[tuple[int, str]]:
                 if len(node.body) == 1 and _swallows(node.body[0]):
                     found.append((node.lineno, "an except that swallows the error"))
             elif isinstance(node, ast.If):
-                if (
-                    _none_check(node.test)
-                    and len(node.body) == 1
-                    and _literal_fallback(node.body[0])
-                ):
-                    found.append(
-                        (
-                            node.lineno,
-                            "a missing value replaced by a literal "
-                            "(`if x is None:` then a literal)",
-                        )
-                    )
-            elif any(
-                isinstance(i.context_expr, ast.Call)
-                and "suppress"
-                in (
-                    getattr(i.context_expr.func, "id", None),
-                    getattr(i.context_expr.func, "attr", None),
-                )
-                for i in node.items
-            ):
+                if _none_check(node.test) and len(node.body) == 1 and _literal_fallback(node.body[0]):
+                    found.append((node.lineno, "a missing value replaced by a literal "
+                                               "(`if x is None:` then a literal)"))
+            elif any(isinstance(i.context_expr, ast.Call)
+                     and "suppress" in (getattr(i.context_expr.func, "id", None),
+                                        getattr(i.context_expr.func, "attr", None))
+                     for i in node.items):
                 found.append((node.lineno, "an error swallowed (`contextlib.suppress`)"))
         elif isinstance(node, (ast.BoolOp, ast.IfExp, ast.Call)) and _spans_added(node, added):
             if isinstance(node, ast.BoolOp):
                 if isinstance(node.op, ast.Or) and _literal(node.values[-1]):
-                    found.append(
-                        (node.lineno, "a missing value replaced by a literal (`or <literal>`)")
-                    )
+                    found.append((node.lineno, "a missing value replaced by a literal (`or <literal>`)"))
             elif isinstance(node, ast.IfExp):
                 if _none_check(node.test) and (_literal(node.body) or _literal(node.orelse)):
-                    found.append(
-                        (
-                            node.lineno,
-                            "a missing value replaced by a literal (a None-check ternary)",
-                        )
-                    )
+                    found.append((node.lineno, "a missing value replaced by a literal "
+                                               "(a None-check ternary)"))
             elif (what := _call_patch(node)) is not None:
                 found.append((node.lineno, what))
     return sorted(set(found))
@@ -385,11 +310,8 @@ def python_patches(source: str, added: set[int]) -> list[tuple[int, str]]:
 
 def js_patches(path: str, source: str, added: set[int]) -> list[tuple[int, str]]:
     """The patch shapes the PR adds to page code (an .html file: its scripts only)."""
-    blocks = (
-        [(m.start(1), m.group(1)) for m in SCRIPT_BLOCK.finditer(source)]
-        if path.endswith(".html")
-        else [(0, source)]
-    )
+    blocks = ([(m.start(1), m.group(1)) for m in SCRIPT_BLOCK.finditer(source)]
+              if path.endswith(".html") else [(0, source)])
     found = []
     for offset, text in blocks:
         first = source.count("\n", 0, offset) + 1
@@ -397,13 +319,8 @@ def js_patches(path: str, source: str, added: set[int]) -> list[tuple[int, str]]
             start = first + text.count("\n", 0, m.start())
             end = first + text.count("\n", 0, m.end())
             if any(n in added for n in range(start, end + 1)):
-                found.append(
-                    (
-                        start,
-                        "a missing value replaced by a literal, an empty catch, "
-                        "or a swallowing .catch",
-                    )
-                )
+                found.append((start, "a missing value replaced by a literal, an empty catch, "
+                                     "or a swallowing .catch"))
     return sorted(set(found))
 
 
@@ -428,7 +345,7 @@ def main(argv: list[str] | None = None) -> int:
     except ToolError as e:
         print(f"the check failed: {e}", file=sys.stderr)
         return 2
-    sys.stdout.reconfigure(encoding="utf-8")  # a file name may hold any character
+    sys.stdout.reconfigure(encoding="utf-8")       # a file name may hold any character
     for v in found:
         print(v)
     return 1 if found else 0

@@ -13,19 +13,16 @@ from typing import Optional
 
 import numpy as np
 
+from numeric_contract import float_finite_or_none, schwab_count, schwab_number
 from l1_trade_observation import (
     canonical_tape_prints,
+    compute_cum_delta_proxy as _canonical_cum_delta,
+    compute_tape_pressure as _canonical_tape_pressure,
     cum_delta_window,
     iter_signed_cum_points,
 )
-from l1_trade_observation import (
-    compute_cum_delta_proxy as _canonical_cum_delta,
-)
-from l1_trade_observation import (
-    compute_tape_pressure as _canonical_tape_pressure,
-)
-from numeric_contract import float_finite_or_none, schwab_count, schwab_number
 from time_et import ct_label
+
 
 OF_TAPE_WINDOW_30S_SEC: float = 30.0
 OF_TAPE_WINDOW_2M_SEC: float = 120.0
@@ -62,7 +59,7 @@ def _iter_bids_levels(content_item: dict) -> list[tuple[float, float]]:
     if not bids:
         return []
     out = []
-    for level in bids if isinstance(bids, list) else [bids]:
+    for level in (bids if isinstance(bids, list) else [bids]):
         if isinstance(level, dict):
             p = schwab_number(level.get("BID_PRICE"))
             v = schwab_count(level.get("TOTAL_VOLUME"))
@@ -86,7 +83,7 @@ def _iter_asks_levels(content_item: dict) -> list[tuple[float, float]]:
     if not asks:
         return []
     out = []
-    for level in asks if isinstance(asks, list) else [asks]:
+    for level in (asks if isinstance(asks, list) else [asks]):
         if isinstance(level, dict):
             p = schwab_number(level.get("ASK_PRICE"))
             v = schwab_count(level.get("TOTAL_VOLUME"))
@@ -102,10 +99,11 @@ def _iter_asks_levels(content_item: dict) -> list[tuple[float, float]]:
     return out
 
 
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # BOOK METRICS
 # ─────────────────────────────────────────────────────────────────────────────
-
 
 def _latest_book_snapshot(items: list) -> Optional[dict]:
     """Return the most recent book content item (a one-sided book included: the side Schwab sent
@@ -124,9 +122,7 @@ def _book_side_depth_total(levels: list[tuple[float, float]], depth: int) -> Opt
     return sum(v for _, v in levels[:depth])
 
 
-def _book_imbalance_from_totals(
-    bid_total: Optional[float], ask_total: Optional[float]
-) -> Optional[float]:
+def _book_imbalance_from_totals(bid_total: Optional[float], ask_total: Optional[float]) -> Optional[float]:
     """THE single book-imbalance formula: (bid - ask) / (bid + ask). None if a side total is
     absent or the combined depth is non-positive."""
     if bid_total is None or ask_total is None:
@@ -137,10 +133,11 @@ def _book_imbalance_from_totals(
     return (bid_total - ask_total) / total
 
 
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # TOP OF BOOK
 # ─────────────────────────────────────────────────────────────────────────────
-
 
 def _top(data: dict) -> dict:
     """The top of book the caller supplies as ``data["top"]`` -- bid, ask, bid_size, ask_size,
@@ -161,18 +158,12 @@ def _compute_top_book_pressure(data: dict) -> Optional[float]:
     return (bid_sz - ask_sz) / total
 
 
-def _resolve_bid_ask_prices(
-    data: dict,
-) -> tuple[Optional[float], Optional[float], Optional[str], Optional[str]]:
+def _resolve_bid_ask_prices(data: dict) -> tuple[Optional[float], Optional[float], Optional[str], Optional[str]]:
     """Level-one BID_PRICE / ASK_PRICE and their leaf labels."""
     t = _top(data)
     bid_p, ask_p = t.get("bid"), t.get("ask")
-    return (
-        bid_p,
-        ask_p,
-        "streaming.BID_PRICE" if bid_p is not None else None,
-        "streaming.ASK_PRICE" if ask_p is not None else None,
-    )
+    return (bid_p, ask_p, "streaming.BID_PRICE" if bid_p is not None else None,
+            "streaming.ASK_PRICE" if ask_p is not None else None)
 
 
 def _resolve_quote_mark(data: dict) -> tuple[Optional[float], Optional[str]]:
@@ -203,11 +194,7 @@ def _resolve_quote_mark(data: dict) -> tuple[Optional[float], Optional[str]]:
 OF_BOOK_WALL_MEDIAN_MULT: float = 3.0
 
 #: Depth ladder for the canonical depth totals/imbalance — the existing 1/3/5 ladder.
-OF_MICRO_DEPTH_LADDER: tuple[int, ...] = (
-    OF_BOOK_DEPTH_TOP,
-    OF_BOOK_DEPTH_SHALLOW,
-    OF_BOOK_DEPTH_DEEP,
-)
+OF_MICRO_DEPTH_LADDER: tuple[int, ...] = (OF_BOOK_DEPTH_TOP, OF_BOOK_DEPTH_SHALLOW, OF_BOOK_DEPTH_DEEP)
 
 #: Per-ticker carry cache: ticker -> (canonical_book_identity, structural_payload). Lets the route
 #: serialize the engine's already-computed state for an UNCHANGED book instead of re-walking raw
@@ -217,9 +204,7 @@ OF_MICRO_DEPTH_LADDER: tuple[int, ...] = (
 _MICRO_STRUCTURAL_CACHE: dict[str, tuple[tuple, dict]] = {}
 
 
-def _sorted_valid_levels(
-    levels: list[tuple[float, float]], *, descending: bool
-) -> list[tuple[float, float]]:
+def _sorted_valid_levels(levels: list[tuple[float, float]], *, descending: bool) -> list[tuple[float, float]]:
     """Normalize a raw book side ONCE: drop a level Schwab sent no price or size for (the raw
     readers drop -999, text, NaN and a negative size), then SORT so `[:N]` is the true Top-N
     regardless of the vendor's array order: bids DESCENDING, asks ASCENDING."""
@@ -238,27 +223,17 @@ def _extract_canonical_book(data: dict) -> dict:
     bid_size = schwab_count(t.get("bid_size"))
     ask_size = schwab_count(t.get("ask_size"))
 
-    bid_levels = (
-        _sorted_valid_levels(_iter_bids_levels(snapshot), descending=True) if snapshot else []
-    )
-    ask_levels = (
-        _sorted_valid_levels(_iter_asks_levels(snapshot), descending=False) if snapshot else []
-    )
+    bid_levels = _sorted_valid_levels(_iter_bids_levels(snapshot), descending=True) if snapshot else []
+    ask_levels = _sorted_valid_levels(_iter_asks_levels(snapshot), descending=False) if snapshot else []
     mark, mark_leaf = _resolve_quote_mark(data)
     return {
         "has_book": snapshot is not None,
         "venue": snapshot.get("SERVICE") if snapshot else None,
-        "bid": bid,
-        "ask": ask,
-        "bid_size": bid_size,
-        "ask_size": ask_size,
-        "bid_leaf": bid_leaf,
-        "ask_leaf": ask_leaf,
-        "bid_levels": bid_levels,
-        "ask_levels": ask_levels,
+        "bid": bid, "ask": ask, "bid_size": bid_size, "ask_size": ask_size,
+        "bid_leaf": bid_leaf, "ask_leaf": ask_leaf,
+        "bid_levels": bid_levels, "ask_levels": ask_levels,
         "book_time_ms": schwab_number(snapshot.get("BOOK_TIME")) if snapshot else None,
-        "mark": mark,
-        "mark_leaf": mark_leaf,
+        "mark": mark, "mark_leaf": mark_leaf,
     }
 
 
@@ -269,21 +244,14 @@ def _canonical_book_identity(cb: dict) -> tuple:
     identity differs and `compute_book_microstructure` recomputes instead of serving stale state.
     BOOK_TIME is included, but only as one component — its uniqueness is not assumed."""
     return (
-        cb["book_time_ms"],
-        cb["venue"],
-        cb["bid"],
-        cb["ask"],
-        cb["bid_size"],
-        cb["ask_size"],
-        cb["mark"],
-        tuple(cb["bid_levels"]),
-        tuple(cb["ask_levels"]),
+        cb["book_time_ms"], cb["venue"],
+        cb["bid"], cb["ask"], cb["bid_size"], cb["ask_size"], cb["mark"],
+        tuple(cb["bid_levels"]), tuple(cb["ask_levels"]),
     )
 
 
-def _microprice(
-    bid: Optional[float], ask: Optional[float], bid_size: Optional[float], ask_size: Optional[float]
-) -> Optional[float]:
+def _microprice(bid: Optional[float], ask: Optional[float],
+                bid_size: Optional[float], ask_size: Optional[float]) -> Optional[float]:
     """Size-weighted top-of-book fair price:
         microprice = (bid·ask_size + ask·bid_size) / (bid_size + ask_size)
     Each price is weighted by the OPPOSITE side's size, so heavier bid size pulls the fair
@@ -307,9 +275,7 @@ def _book_pressure_curve(levels: list[tuple[float, float]], max_levels: int) -> 
     return out
 
 
-def _book_slope(
-    levels: list[tuple[float, float]], depth: int, total: Optional[float]
-) -> Optional[float]:
+def _book_slope(levels: list[tuple[float, float]], depth: int, total: Optional[float]) -> Optional[float]:
     """Displayed depth density across the best `depth` levels:
         book_slope = (canonical top-`depth` TOTAL_VOLUME) / |best_price − last_level_price|
     Units: shares per $1 of book depth = dVolume/dPrice (depth per unit price), NOT a
@@ -325,9 +291,7 @@ def _book_slope(
     return total / span
 
 
-def _book_concentration(
-    levels: list[tuple[float, float]], total: Optional[float]
-) -> Optional[float]:
+def _book_concentration(levels: list[tuple[float, float]], total: Optional[float]) -> Optional[float]:
     """Fraction of the canonical top-`depth` displayed volume resting at the touch (best level):
         liquidity_concentration = best_level_volume / (canonical top-`depth` TOTAL_VOLUME)
     Range [0, 1]. 1.0 = all near-book size at the inside (fragile); low = distributed down the
@@ -357,7 +321,8 @@ def _book_wall_candidates(levels: list[tuple[float, float]], side: str, depth: i
     out: list[dict] = []
     for price, vol in lv:
         if vol >= OF_BOOK_WALL_MEDIAN_MULT * median:
-            out.append({"side": side, "price": price, "volume": vol, "median_mult": vol / median})
+            out.append({"side": side, "price": price, "volume": vol,
+                        "median_mult": vol / median})
     return out
 
 
@@ -405,25 +370,19 @@ def _microstructure_structural(cb: dict) -> dict:
             "bid": _book_pressure_curve(bid_levels, OF_BOOK_DEPTH_DEEP),
             "ask": _book_pressure_curve(ask_levels, OF_BOOK_DEPTH_DEEP),
         },
-        "book_slope": {
-            "bid": _book_slope(bid_levels, OF_BOOK_DEPTH_DEEP, deep_bt),
-            "ask": _book_slope(ask_levels, OF_BOOK_DEPTH_DEEP, deep_at),
-        },
-        "liquidity_concentration": {
-            "bid": _book_concentration(bid_levels, deep_bt),
-            "ask": _book_concentration(ask_levels, deep_at),
-        },
-        "wall_candidates": (
-            _book_wall_candidates(bid_levels, "bid", OF_BOOK_DEPTH_DEEP)
-            + _book_wall_candidates(ask_levels, "ask", OF_BOOK_DEPTH_DEEP)
-        ),
+        "book_slope": {"bid": _book_slope(bid_levels, OF_BOOK_DEPTH_DEEP, deep_bt),
+                       "ask": _book_slope(ask_levels, OF_BOOK_DEPTH_DEEP, deep_at)},
+        "liquidity_concentration": {"bid": _book_concentration(bid_levels, deep_bt),
+                                    "ask": _book_concentration(ask_levels, deep_at)},
+        "wall_candidates": (_book_wall_candidates(bid_levels, "bid", OF_BOOK_DEPTH_DEEP)
+                            + _book_wall_candidates(ask_levels, "ask", OF_BOOK_DEPTH_DEEP)),
         "wall_method": {
             "basis": "displayed level TOTAL_VOLUME >= mult x median top-N level size",
             "mult": OF_BOOK_WALL_MEDIAN_MULT,
             "depth": OF_BOOK_DEPTH_DEEP,
             "heuristic": True,
             "note": "size-outlier candidates in the DISPLAYED book only; blind to hidden/reserve "
-            "size; NOT an objectively-known liquidity wall",
+                    "size; NOT an objectively-known liquidity wall",
         },
         "provenance_structural": {
             "book_time_ms": cb["book_time_ms"],
@@ -434,27 +393,18 @@ def _microstructure_structural(cb: dict) -> dict:
             "top_of_book_ask_leaf": cb["ask_leaf"],
         },
         "classification": {
-            "top_of_book.bid": "NATIVE",
-            "top_of_book.ask": "NATIVE",
-            "top_of_book.bid_size": "NATIVE",
-            "top_of_book.ask_size": "NATIVE",
-            "mid": "DERIVED",
-            "microprice": "DERIVED",
-            "crossed": "DERIVED",
-            "spread_pts": "DERIVED",
-            "spread_frac": "DERIVED",
-            "depth.*.bid_total": "DERIVED",
-            "depth.*.ask_total": "DERIVED",
+            "top_of_book.bid": "NATIVE", "top_of_book.ask": "NATIVE",
+            "top_of_book.bid_size": "NATIVE", "top_of_book.ask_size": "NATIVE",
+            "mid": "DERIVED", "microprice": "DERIVED", "crossed": "DERIVED",
+            "spread_pts": "DERIVED", "spread_frac": "DERIVED",
+            "depth.*.bid_total": "DERIVED", "depth.*.ask_total": "DERIVED",
             "depth.*.imbalance": "DERIVED",
-            "depth_pressure": "DERIVED",
-            "book_slope": "DERIVED",
+            "depth_pressure": "DERIVED", "book_slope": "DERIVED",
             "liquidity_concentration": "DERIVED",
             "wall_candidates": "DERIVED-HEURISTIC (size-outlier convention; see wall_method)",
-            "ages.book_age_sec": "DERIVED",
-            "ages.quote_age_sec": "DERIVED",
+            "ages.book_age_sec": "DERIVED", "ages.quote_age_sec": "DERIVED",
             "ages.book_stale": "DERIVED",
-            "provenance.book_time_ms": "NATIVE",
-            "provenance.exchange_quote_ts": "NATIVE",
+            "provenance.book_time_ms": "NATIVE", "provenance.exchange_quote_ts": "NATIVE",
             "provenance.server_received_ts": "DERIVED",
         },
         "deferred": [
@@ -466,7 +416,8 @@ def _microstructure_structural(cb: dict) -> dict:
     }
 
 
-def compute_book_microstructure(data: dict, *, now_ts: float, ticker: Optional[str] = None) -> dict:
+def compute_book_microstructure(data: dict, *, now_ts: float,
+                                ticker: Optional[str] = None) -> dict:
     """Canonical L2 book microstructure for one symbol at `now_ts` (epoch seconds) — the ONE
     producer the engine and the `/api/order-flow/microstructure` route both read. `data.content`
     carries the live streaming book + top-of-book (app.options.order_flow.state.get_content_for_symbol);
@@ -485,7 +436,7 @@ def compute_book_microstructure(data: dict, *, now_ts: float, ticker: Optional[s
     identity = _canonical_book_identity(cb)
     cached = _MICRO_STRUCTURAL_CACHE.get(ticker) if ticker else None
     if cached is not None and cached[0] == identity:
-        structural = cached[1]  # carry: identical canonical book, no recompute
+        structural = cached[1]                       # carry: identical canonical book, no recompute
     else:
         structural = _microstructure_structural(cb)
         if ticker:
@@ -495,8 +446,8 @@ def compute_book_microstructure(data: dict, *, now_ts: float, ticker: Optional[s
     exch_ts = float_finite_or_none(data.get("exchange_quote_ts"))
     payload = dict(structural)
     prov = dict(structural["provenance_structural"])
-    prov["exchange_quote_ts"] = exch_ts  # NATIVE (plane quote clock)
-    prov["server_received_ts"] = now  # DERIVED (server wall clock at serialization)
+    prov["exchange_quote_ts"] = exch_ts             # NATIVE (plane quote clock)
+    prov["server_received_ts"] = now                # DERIVED (server wall clock at serialization)
     payload.pop("provenance_structural", None)
     payload["provenance"] = prov
     book_age_sec = now - book_time_ms / 1000.0 if book_time_ms else None
@@ -514,18 +465,14 @@ def compute_book_microstructure(data: dict, *, now_ts: float, ticker: Optional[s
 # TAPE METRICS
 # ─────────────────────────────────────────────────────────────────────────────
 
-
 def _compute_tape_pressure(data: dict, window_sec: float, now: float) -> Optional[float]:
     """PROXY reconstructed L1 tick-rule pressure. ONE FAUCET: l1_trade_observation."""
-    return _canonical_tape_pressure(
-        canonical_tape_prints(_iter_content(data)), window_sec, now * 1000.0
-    )
+    return _canonical_tape_pressure(canonical_tape_prints(_iter_content(data)), window_sec, now * 1000.0)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # CUMULATIVE DELTA PROXY
 # ─────────────────────────────────────────────────────────────────────────────
-
 
 def _compute_cum_delta_proxy(data: dict) -> Optional[float]:
     """PROXY reconstructed L1 tick-rule signed size sum. ONE FAUCET: l1_trade_observation."""
@@ -534,9 +481,7 @@ def _compute_cum_delta_proxy(data: dict) -> Optional[float]:
 
 def _compute_cum_delta_slope(data: dict, now: float, window_sec: float = 60.0) -> Optional[float]:
     """Slope of PROXY cum-delta in receive order. ONE signed-size walk: l1_trade_observation."""
-    points = iter_signed_cum_points(
-        canonical_tape_prints(_iter_content(data)), window_sec, now * 1000.0
-    )
+    points = iter_signed_cum_points(canonical_tape_prints(_iter_content(data)), window_sec, now * 1000.0)
     if len(points) < 2:
         return None
     xs = np.array([p[0] for p in points])
@@ -547,7 +492,6 @@ def _compute_cum_delta_slope(data: dict, now: float, window_sec: float = 60.0) -
 # ─────────────────────────────────────────────────────────────────────────────
 # MAIN ENGINE
 # ─────────────────────────────────────────────────────────────────────────────
-
 
 class OrderFlowEngine:
     """
@@ -585,10 +529,7 @@ class OrderFlowEngine:
             "cum_delta_proxy": cum_delta_proxy,
             # the window the cumulative delta sums: the tape's first and last print (Schwab trade
             # time), served beside the number
-            "cum_delta_window": (
-                "prints " + ct_label(cum_first) + " to " + ct_label(cum_last)
-                if cum_first is not None
-                else None
-            ),
+            "cum_delta_window": ("prints " + ct_label(cum_first) + " to " + ct_label(cum_last)
+                                 if cum_first is not None else None),
             "cum_delta_slope": cum_delta_slope,
         }

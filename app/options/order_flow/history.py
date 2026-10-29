@@ -2,7 +2,6 @@
 the console's memory: fed by the console's intake as the daemon pushes each record
 (app.options.order_flow.streaming), never read from the database (docs/DATA_FLOW.md §2 D6).
 The database keeps the whole history."""
-
 from __future__ import annotations
 
 import threading
@@ -18,15 +17,8 @@ TAPE_KEPT = 500
 #: how long a venue's books are kept (the heatmap route's longest window)
 BOOKS_KEPT_SEC = 240 * 60
 #: the contract details Schwab sends once and then only when they change: carried forward
-_CONTEXT = (
-    "STRIKE_TYPE",
-    "CONTRACT_TYPE",
-    "EXPIRATION_YEAR",
-    "EXPIRATION_MONTH",
-    "EXPIRATION_DAY",
-    "MULTIPLIER",
-    "UNDERLYING",
-)
+_CONTEXT = ("STRIKE_TYPE", "CONTRACT_TYPE", "EXPIRATION_YEAR", "EXPIRATION_MONTH",
+            "EXPIRATION_DAY", "MULTIPLIER", "UNDERLYING")
 
 
 class RecentTape:
@@ -56,8 +48,7 @@ class RecentTape:
                 return
             self._last[sym] = key
             self._prints.setdefault(sym, deque(maxlen=TAPE_KEPT)).append(
-                _print_row(sym, item, p, dict(context), float(ts_recv))
-            )
+                _print_row(sym, item, p, dict(context), float(ts_recv)))
 
     def forget(self, contract: str) -> None:
         """Drop the contract's prints, when the console stops streaming it."""
@@ -72,17 +63,13 @@ class RecentTape:
         sym = ticker_storage_key(contract)
         with self._lock:
             held = list(self._prints[sym]) if sym in self._prints else []
-        return held[::-1][: max(0, int(limit))]
+        return held[::-1][:max(0, int(limit))]
 
     def put_call(self, contract: str) -> "str | None":
         """The contract's side (CALL / PUT) as Schwab's CONTRACT_TYPE last sent it; None until sent."""
         sym = ticker_storage_key(contract)
         with self._lock:
-            return (
-                put_call_side(self._context[sym].get("CONTRACT_TYPE"))
-                if sym in self._context
-                else None
-            )
+            return put_call_side(self._context[sym].get("CONTRACT_TYPE")) if sym in self._context else None
 
 
 def _print_row(sym: str, item: dict, p: dict, context: dict, ts_recv: float) -> "dict[str, Any]":
@@ -91,19 +78,12 @@ def _print_row(sym: str, item: dict, p: dict, context: dict, ts_recv: float) -> 
     the same message's bid and ask (no aggressor side)."""
     strike = schwab_number(context.get("STRIKE_TYPE"))
     side = put_call_side(context.get("CONTRACT_TYPE"))
-    y, m, d = (
-        context.get("EXPIRATION_YEAR"),
-        context.get("EXPIRATION_MONTH"),
-        context.get("EXPIRATION_DAY"),
-    )
+    y, m, d = context.get("EXPIRATION_YEAR"), context.get("EXPIRATION_MONTH"), context.get("EXPIRATION_DAY")
     expiry = f"{y:04d}-{m:02d}-{d:02d}" if (y and m and d) else None
     mult = schwab_number(context.get("MULTIPLIER"))
     trade, size = p["price"], p["size"]
-    premium = (
-        trade * size * mult
-        if (trade is not None and size is not None and mult is not None)
-        else None
-    )
+    premium = (trade * size * mult
+               if (trade is not None and size is not None and mult is not None) else None)
     bid, ask = schwab_number(item.get("BID_PRICE")), schwab_number(item.get("ASK_PRICE"))
     classification = "unknown"
     if trade is not None and bid is not None and ask is not None:
@@ -114,25 +94,14 @@ def _print_row(sym: str, item: dict, p: dict, context: dict, ts_recv: float) -> 
         else:
             classification = "inside_spread"
     return {
-        "ts_recv": ts_recv,
-        "symbol": sym,
-        "underlying": context.get("UNDERLYING"),
-        "expiry": expiry,
-        "type": side,
-        "strike": strike,
-        "bid": bid,
-        "bid_size": schwab_count(item.get("BID_SIZE")),
-        "ask": ask,
-        "ask_size": schwab_count(item.get("ASK_SIZE")),
-        "trade": trade,
-        "size": size,
-        "premium": premium,
-        "volume": schwab_count(item.get("TOTAL_VOLUME")),
-        "oi": schwab_count(item.get("OPEN_INTEREST")),
-        "iv": schwab_number(item.get("VOLATILITY")),
-        "delta": schwab_number(item.get("DELTA")),
-        "multiplier": mult,
-        "classification": classification,
+        "ts_recv": ts_recv, "symbol": sym, "underlying": context.get("UNDERLYING"),
+        "expiry": expiry, "type": side, "strike": strike,
+        "bid": bid, "bid_size": schwab_count(item.get("BID_SIZE")),
+        "ask": ask, "ask_size": schwab_count(item.get("ASK_SIZE")),
+        "trade": trade, "size": size, "premium": premium,
+        "volume": schwab_count(item.get("TOTAL_VOLUME")), "oi": schwab_count(item.get("OPEN_INTEREST")),
+        "iv": schwab_number(item.get("VOLATILITY")), "delta": schwab_number(item.get("DELTA")),
+        "multiplier": mult, "classification": classification,
     }
 
 
@@ -151,9 +120,7 @@ def _display_window(cells: list[dict]) -> tuple[float, float]:
     """(lo, hi): the price window holding all but DISPLAY_TAIL_SHARE of displayed size at each end."""
     totals: dict[float, float] = {}
     for c in cells:
-        totals[c["price"]] = totals.get(c["price"], 0.0) + sum(
-            v for v in (c["bid"], c["ask"]) if v is not None
-        )
+        totals[c["price"]] = totals.get(c["price"], 0.0) + sum(v for v in (c["bid"], c["ask"]) if v is not None)
     prices = sorted(totals)
     whole = sum(totals.values())
     if not whole:
@@ -224,11 +191,7 @@ class RecentBooks:
         key = (ticker_storage_key(ticker), venue)
         with self._lock:
             held = list(self._books[key]) if key in self._books else []
-        return (
-            [b for b in held if b[0] >= held[-1][0] - max(1.0, float(minutes)) * 60.0]
-            if held
-            else []
-        )
+        return [b for b in held if b[0] >= held[-1][0] - max(1.0, float(minutes)) * 60.0] if held else []
 
 
 #: the recent prints and books, fed by the console's intake
@@ -236,9 +199,8 @@ TAPE = RecentTape()
 BOOKS = RecentBooks()
 
 
-def book_heatmap_for_ticker(
-    ticker: str, venue: str, *, minutes: float = 60.0, books: RecentBooks = BOOKS
-) -> dict[str, Any]:
+def book_heatmap_for_ticker(ticker: str, venue: str, *, minutes: float = 60.0,
+                            books: RecentBooks = BOOKS) -> dict[str, Any]:
     """Book-depth heatmap for one Schwab book of a ticker, `venue` (NYSE_BOOK or NASDAQ_BOOK; the
     two are never merged): its recent books binned into a time x price grid, a cell the LAST
     observed size at that price within the bucket -- never a sum (a book is a full snapshot, so
@@ -250,14 +212,11 @@ def book_heatmap_for_ticker(
         return {"ticker": ticker, "available": False, "reason": "empty ticker"}
     rows = books.window(sym, venue, minutes)
     if not rows:
-        return {
-            "ticker": sym,
-            "available": False,
-            "reason": f"no {venue} book with a price level since the console started",
-        }
+        return {"ticker": sym, "available": False,
+                "reason": f"no {venue} book with a price level since the console started"}
 
     t0 = rows[0][0]
-    span = rows[-1][0] - t0  # binning floors at 1s below; no invented span
+    span = rows[-1][0] - t0   # binning floors at 1s below; no invented span
     n_buckets = 90
     bucket_sec = max(1.0, span / n_buckets)
 
@@ -281,40 +240,23 @@ def book_heatmap_for_ticker(
         return "BID" if bid > ask else "ASK" if ask > bid else "EVEN"
 
     cell_list = sorted(
-        (
-            {
-                "t": k[0],
-                "price": k[1],
-                "bid": v["bid"],
-                "ask": v["ask"],
-                "side": _dominant(v["bid"], v["ask"]),
-            }
-            for k, v in cells.items()
-        ),
+        ({"t": k[0], "price": k[1], "bid": v["bid"], "ask": v["ask"], "side": _dominant(v["bid"], v["ask"])}
+         for k, v in cells.items()),
         key=lambda c: (c["t"], c["price"]),
     )
     display_lo, display_hi = _display_window(cell_list)
     return {
-        "ticker": sym,
-        "venue": venue,
-        "available": True,
-        "since_ts": t0,
-        "until_ts": rows[-1][0],
-        "latest_captured_ts": rows[-1][0],
-        "n_buckets": n_buckets,
-        "bucket_sec": bucket_sec,
-        "price_min": min(prices_seen),
-        "price_max": max(prices_seen),
+        "ticker": sym, "venue": venue, "available": True,
+        "since_ts": t0, "until_ts": rows[-1][0], "latest_captured_ts": rows[-1][0],
+        "n_buckets": n_buckets, "bucket_sec": bucket_sec,
+        "price_min": min(prices_seen), "price_max": max(prices_seen),
         # the default price window, and the largest displayed size (the colour scale's top)
-        "display_lo": display_lo,
-        "display_hi": display_hi,
+        "display_lo": display_lo, "display_hi": display_hi,
         "max_size": max(v for c in cell_list for v in (c["bid"], c["ask"]) if v is not None),
         "rows_scanned": len(rows),
         "cells": cell_list,
-        "method": (
-            "the venue's books in the console's memory, one per second, in the window "
-            "ending at the newest, binned into n_buckets time columns x Schwab's BID_PRICE/"
-            "ASK_PRICE rows; cell value = the LAST observed TOTAL_VOLUME at that price within "
-            "the bucket -- never summed across repeated observations of the same resting size."
-        ),
+        "method": ("the venue's books in the console's memory, one per second, in the window "
+                   "ending at the newest, binned into n_buckets time columns x Schwab's BID_PRICE/"
+                   "ASK_PRICE rows; cell value = the LAST observed TOTAL_VOLUME at that price within "
+                   "the bucket -- never summed across repeated observations of the same resting size."),
     }

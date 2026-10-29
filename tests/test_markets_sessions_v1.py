@@ -9,7 +9,6 @@ side (tests/fixtures/real_schwab_markets_2026_10_07.json, held by tests/conftest
 the stand-in host, tests/schwab_rest_standin.py), and CRWD's LEVELONE_EQUITIES message of
 2026-10-07 10:38 ET (tests/fixtures/real_crwd_quote_2026_10_07.json).
 """
-
 from __future__ import annotations
 
 import asyncio
@@ -38,7 +37,6 @@ def _et(s: str) -> datetime:
 
 # ── question 1: we get what we asked Schwab for, exactly as sent ─────────────────────────────
 
-
 def test_the_daemon_asks_each_date_once_and_records_every_answer_as_sent(tmp_path):
     """The real sweep on the daemon's thread (capture.run_chains, the wall clock), SPY and TSLA on
         the watchlist: each of today and the 7 days before it, and each expiry from today on,
@@ -51,21 +49,16 @@ def test_the_daemon_asks_each_date_once_and_records_every_answer_as_sent(tmp_pat
     # an expiry that has passed is left out of the chain (schwab_client.option_expiries), so it is
     # not a markets date. Schwab answers /markets only 7 days back.
     wanted = {(today - timedelta(days=n)).isoformat() for n in range(8)} | {
-        e for e, _c, _s in CHAINS.values() if date.fromisoformat(e) >= today
-    }
+        e for e, _c, _s in CHAINS.values() if date.fromisoformat(e) >= today}
 
     def rows():
         if not db.exists():
             return []
         con = sqlite3.connect(db)
         try:
-            if not con.execute(
-                "SELECT 1 FROM sqlite_master WHERE name='stream_markets_raw'"
-            ).fetchone():
+            if not con.execute("SELECT 1 FROM sqlite_master WHERE name='stream_markets_raw'").fetchone():
                 return []
-            return con.execute(
-                "SELECT date, status, native_json, src FROM stream_markets_raw ORDER BY rowid"
-            ).fetchall()
+            return con.execute("SELECT date, status, native_json, src FROM stream_markets_raw ORDER BY rowid").fetchall()
         finally:
             con.close()
 
@@ -74,18 +67,14 @@ def test_the_daemon_asks_each_date_once_and_records_every_answer_as_sent(tmp_pat
         daemon = capture.Daemon(bus, health, ["SPY", "TSLA"])
         writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01)
         written = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
-        sweep = asyncio.create_task(
-            capture.run_chains(
-                daemon, tmp_path / "ed_console.db", lambda: client, stop, failures=writer
-            )
-        )
+        sweep = asyncio.create_task(capture.run_chains(daemon, tmp_path / "ed_console.db", lambda: client, stop,
+                                                       failures=writer))
         deadline = asyncio.get_running_loop().time() + 30
         while {r[0] for r in rows()} < wanted and asyncio.get_running_loop().time() < deadline:
             await asyncio.sleep(0.1)
         await asyncio.sleep(1.0)
         stop.set()
         await asyncio.gather(written, sweep)
-
     try:
         asyncio.run(go())
     finally:
@@ -107,7 +96,6 @@ def test_the_console_holds_each_200_answer_and_never_a_400():
     daemon publishes it; Schwab's 400 (more than 7 days back) is no session: the date stays
     unknown."""
     from calibration.complete_chain_capture import markets_message
-
     for day in ("2026-09-29", "2026-10-07"):
         a = MARKETS_ANSWERS[day]
         _topic, msg = markets_message(day, a["status"], json.loads(a["body"]), time.time())
@@ -119,20 +107,13 @@ def test_the_console_holds_each_200_answer_and_never_a_400():
 
 # ── question 3: each session reading is correct against Schwab's answer ──────────────────────
 
-
 def test_the_sessions_are_the_windows_schwab_sent_on_a_normal_day_a_holiday_and_an_early_close():
-    normal, holiday, early = (
-        time_et.session(d) for d in ("2026-10-07", "2026-11-26", "2026-11-27")
-    )
-    assert (normal.pre, normal.post) == (
-        ((_et("2026-10-07 07:00"), _et("2026-10-07 09:30")),),
-        ((_et("2026-10-07 16:00"), _et("2026-10-07 20:00")),),
-    )
+    normal, holiday, early = (time_et.session(d) for d in ("2026-10-07", "2026-11-26", "2026-11-27"))
+    assert (normal.pre, normal.post) == (((_et("2026-10-07 07:00"), _et("2026-10-07 09:30")),),
+                                         ((_et("2026-10-07 16:00"), _et("2026-10-07 20:00")),))
     assert normal.option_windows("EQO") == ((_et("2026-10-07 09:30"), _et("2026-10-07 16:00")),)
     assert normal.option_windows("IND") == ((_et("2026-10-07 09:30"), _et("2026-10-07 16:15")),)
-    assert (
-        holiday.is_open is False and holiday.regular == () and holiday.option_windows("EQO") == ()
-    )
+    assert holiday.is_open is False and holiday.regular == () and holiday.option_windows("EQO") == ()
     assert early.regular == ((_et("2026-11-27 09:30"), _et("2026-11-27 13:00")),)
     assert early.post == ((_et("2026-11-27 13:00"), _et("2026-11-27 17:00")),)
     assert early.option_windows("IND") == ((_et("2026-11-27 09:30"), _et("2026-11-27 13:15")),)
@@ -140,15 +121,15 @@ def test_the_sessions_are_the_windows_schwab_sent_on_a_normal_day_a_holiday_and_
 
 def test_the_label_follows_schwabs_windows():
     label = time_et.session_label
-    assert label(_et("2026-10-07 06:59")) == time_et.CLOSED  # Schwab's pre-market opens 07:00
+    assert label(_et("2026-10-07 06:59")) == time_et.CLOSED          # Schwab's pre-market opens 07:00
     assert label(_et("2026-10-07 07:00")) == time_et.PRE_MARKET
     assert label(_et("2026-10-07 09:30")) == time_et.RTH
     assert label(_et("2026-10-07 16:00")) == time_et.AFTER_HOURS
     assert label(_et("2026-10-07 20:00")) == time_et.CLOSED
-    assert label(_et("2026-11-27 13:00")) == time_et.AFTER_HOURS  # the early close
+    assert label(_et("2026-11-27 13:00")) == time_et.AFTER_HOURS     # the early close
     assert label(_et("2026-11-27 17:00")) == time_et.CLOSED
-    assert label(_et("2026-11-26 12:00")) == time_et.CLOSED  # Thanksgiving
-    assert label(_et("2027-10-09 12:00")) == time_et.UNKNOWN  # beyond what Schwab answers
+    assert label(_et("2026-11-26 12:00")) == time_et.CLOSED          # Thanksgiving
+    assert label(_et("2027-10-09 12:00")) == time_et.UNKNOWN         # beyond what Schwab answers
     assert time_et.closed_since(_et("2026-10-10 12:00")) == _et("2026-10-09 20:00")
 
 
@@ -169,13 +150,8 @@ def test_a_chain_is_valued_at_its_close_for_the_rest_of_that_day_and_on_the_cloc
     after = _et("2026-10-09 18:00")
     assert time_et.valuation_instant(after, time_et.INDEX_OPTIONS) == _et("2026-10-09 16:15")
     assert time_et.valuation_instant(after, time_et.EQUITY_OPTIONS) == _et("2026-10-09 16:00")
-    for at in (
-        _et("2026-10-10 12:00"),
-        _et("2026-10-11 20:00"),
-        _et("2026-10-12 08:00"),
-        _et("2026-10-12 11:00"),
-        _et("2027-10-09 12:00"),
-    ):
+    for at in (_et("2026-10-10 12:00"), _et("2026-10-11 20:00"), _et("2026-10-12 08:00"), _et("2026-10-12 11:00"),
+               _et("2027-10-09 12:00")):
         for product in (time_et.INDEX_OPTIONS, time_et.EQUITY_OPTIONS):
             assert time_et.valuation_instant(at, product) == at, (at, product)
 
@@ -186,10 +162,8 @@ def test_a_closed_day_is_outside_every_option_market():
     for hour in (9, 12, 16):
         at = _et(f"2026-10-10 {hour:02d}:00")
         assert time_et.session("2026-10-10") is not None
-        assert [
-            time_et.option_market_open(at, p)
-            for p in (None, time_et.EQUITY_OPTIONS, time_et.INDEX_OPTIONS)
-        ] == [False, False, False]
+        assert [time_et.option_market_open(at, p) for p in (None, time_et.EQUITY_OPTIONS, time_et.INDEX_OPTIONS)] == [
+            False, False, False]
 
 
 def test_time_to_expiry_runs_to_schwabs_close_of_the_expiry_date():
@@ -201,23 +175,16 @@ def test_time_to_expiry_runs_to_schwabs_close_of_the_expiry_date():
     year = time_et.YEAR_SECONDS
     at = _et("2026-11-27 10:00")
     assert time_et.time_to_expiry_years("2026-11-27T21:00:00.000+00:00", at) == 3 * 3600 / year
-    assert (
-        time_et.time_to_expiry_years(
-            "2026-11-27T21:00:00.000+00:00", _et("2026-11-27 09:00"), settlement_type="A"
-        )
-        == 1800 / year
-    )
+    assert time_et.time_to_expiry_years("2026-11-27T21:00:00.000+00:00", _et("2026-11-27 09:00"),
+                                        settlement_type="A") == 1800 / year
     assert time_et.time_to_expiry_years("2026-11-26T21:00:00.000+00:00", at) is None
-    far = "2027-12-17T21:00:00.000+00:00"  # $SPX's, as Schwab sent it
-    assert (
-        time_et.time_to_expiry_years(far, at, settlement_type="P")
-        == (datetime.fromisoformat(far).timestamp() - at.timestamp()) / year
-    )
+    far = "2027-12-17T21:00:00.000+00:00"                          # $SPX's, as Schwab sent it
+    assert time_et.time_to_expiry_years(far, at, settlement_type="P") == (
+        datetime.fromisoformat(far).timestamp() - at.timestamp()) / year
     assert time_et.time_to_expiry_years(far, at, settlement_type="A") is None
 
 
 # ── question 2: the screen shows what Schwab streams, whatever the label says ────────────────
-
 
 def test_a_stock_quote_before_schwabs_pre_market_is_shown():
     """Operator 2026-10-07: stock quotes from 04:00 ET come through. At 05:00 ET Schwab's /markets
@@ -230,10 +197,7 @@ def test_a_stock_quote_before_schwabs_pre_market_is_shown():
         publish_daemon_rows(tk)
         assert time_et.session_label(_et("2026-10-07 05:00")) == time_et.CLOSED
         at = _et("2026-10-07 05:00").timestamp()
-        assert (
-            lmp.outage(tk, "LEVELONE_EQUITIES", at)
-            == "Schwab LEVELONE_EQUITIES feed down during Closed"
-        )
+        assert lmp.outage(tk, "LEVELONE_EQUITIES", at) == "Schwab LEVELONE_EQUITIES feed down during Closed"
         assert server.resolve_spot(tk, now=at)[0] == native["LAST_PRICE"]
     finally:
         ofs._price_rows.pop(tk, None)

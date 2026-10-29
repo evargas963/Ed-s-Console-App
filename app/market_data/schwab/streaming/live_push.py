@@ -30,7 +30,6 @@ socket can take it. Nothing old waits in line behind a newer value (docs/DATA_FL
 Wire format: one JSON text frame per record, {"topic": str, "msg": {...}}; a chain is one frame
 per part.
 """
-
 from __future__ import annotations
 
 import asyncio
@@ -46,26 +45,17 @@ LIVE_PUSH_HOST = "127.0.0.1"
 #: Own port -- never shared with a web server (the e2e console used 8765). ED_LIVE_PUSH_PORT
 #: overrides it; the test harnesses point it at an unused port so no test console can ever
 #: receive the real daemon's live data.
-LIVE_PUSH_PORT = int(
-    os.environ.get("ED_LIVE_PUSH_PORT", "8799")
-)  # caps-ok: operator port config with its declared default, not market data
+LIVE_PUSH_PORT = int(os.environ.get("ED_LIVE_PUSH_PORT", "8799"))  # caps-ok: operator port config with its declared default, not market data
 
 #: The market context every page's header shows beside the selected ticker (Trade Desk): the
 #: daemon streams it whatever the watchlist holds.
 MARKET_CONTEXT = ("$SPX", "$NDX", "$VIX")
 
 #: topic prefix -> the only `src` forwarded for it
-_FORWARDED = {
-    "quote.": "schwab_l1",
-    "book.": "schwab_book",
-    "optquote.": "schwab_options_l1",
-    "news.": "schwab_news",
-    "bar1m.": "schwab_chart",
-    "chain.": "schwab_chain",
-    "pricehistory.": "schwab_pricehistory",
-    "markets.": "schwab_markets",
-    "watchlist": "daemon_watchlist",
-}
+_FORWARDED = {"quote.": "schwab_l1", "book.": "schwab_book", "optquote.": "schwab_options_l1",
+              "news.": "schwab_news", "bar1m.": "schwab_chart", "chain.": "schwab_chain",
+              "pricehistory.": "schwab_pricehistory", "markets.": "schwab_markets",
+              "watchlist": "daemon_watchlist"}
 
 
 def is_forwarded(topic: str, msg) -> bool:
@@ -135,15 +125,9 @@ async def _serve_client(ws, bus: MessageBus, stats: dict, on_request=None) -> No
         stats["clients"] -= 1
 
 
-async def serve_live_push(
-    bus: MessageBus,
-    stop: asyncio.Event,
-    *,
-    host: str = LIVE_PUSH_HOST,
-    port: int = LIVE_PUSH_PORT,
-    stats: "dict | None" = None,
-    on_request=None,
-) -> None:
+async def serve_live_push(bus: MessageBus, stop: asyncio.Event, *,
+                          host: str = LIVE_PUSH_HOST, port: int = LIVE_PUSH_PORT,
+                          stats: "dict | None" = None, on_request=None) -> None:
     """Run the push server until `stop` is set. `stats` (mutated) reports clients and sent."""
     from websockets.asyncio.server import serve
 
@@ -153,10 +137,8 @@ async def serve_live_push(
     async def handler(ws):
         await _serve_client(ws, bus, stats, on_request)
 
-    async with serve(
-        handler, host, port, max_size=None, ping_interval=20, ping_timeout=20
-    ) as server:
-        bound = server.sockets[0].getsockname()[1]  # the port taken (port 0: the system's pick)
+    async with serve(handler, host, port, max_size=None, ping_interval=20, ping_timeout=20) as server:
+        bound = server.sockets[0].getsockname()[1]      # the port taken (port 0: the system's pick)
         stats["listening"] = f"ws://{host}:{bound}"
         log.info("live push: serving Schwab stream messages on ws://%s:%s", host, bound)
         await stop.wait()

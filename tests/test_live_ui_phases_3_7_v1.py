@@ -1,5 +1,4 @@
 """Instant-UI Phases 3–7 seams. Each expected value is independently derived."""
-
 from __future__ import annotations
 
 

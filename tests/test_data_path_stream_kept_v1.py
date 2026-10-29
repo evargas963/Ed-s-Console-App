@@ -11,7 +11,6 @@ place between live writes. STAND-INS, in the tests of the kept contracts and of 
 (no streamed message of the 2026-10-07 contracts is captured): the messages' contents (only their
 topic, symbol and receipt time are what these prove) and the daemon's clock.
 """
-
 from __future__ import annotations
 
 import asyncio
@@ -26,19 +25,7 @@ import pytest
 import live_market_plane as lmp
 from app.market_data.schwab.streaming import capture
 from calibration.complete_chain_capture import chain_messages
-from stream_spine import (
-    LOG,
-    PRUNE_ROWS,
-    WRITER_BLOCKED,
-    WRITER_DEAD,
-    WRITER_RECORDING,
-    CaptureWriter,
-    HealthRegistry,
-    MessageBus,
-    book_msg,
-    options_quote_msg,
-    quote_msg,
-)
+from stream_spine import LOG, PRUNE_ROWS, WRITER_BLOCKED, WRITER_DEAD, WRITER_RECORDING, CaptureWriter, HealthRegistry, MessageBus, book_msg, options_quote_msg, quote_msg
 from tests.real_chains import MRVL, SPY_0DTE
 from time_et import ET
 
@@ -68,120 +55,65 @@ def test_only_the_option_contracts_traded_are_recorded_and_every_equity_message(
     db = tmp_path / "stream_capture.db"
     writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01)
     bus = MessageBus()
-    daemon = capture.Daemon(
-        bus, HealthRegistry(), ["SPY", "MRVL"], clock=lambda: SPY_0DTE.now.timestamp()
-    )
+    daemon = capture.Daemon(bus, HealthRegistry(), ["SPY", "MRVL"], clock=lambda: SPY_0DTE.now.timestamp())
     daemon.writer = writer
     writer.saves = daemon.saves
     flow = next(c["symbol"] for c in MRVL.chain if c["expirationDate"].startswith("2026-11-20"))
     spy_kept = {c["symbol"] for c in SPY_0DTE.chain if 772 <= c["strikePrice"] <= 782}
-    mrvl_kept = {
-        c["symbol"]
-        for c in MRVL.chain
-        if c["expirationDate"].startswith("2026-10-09") and 270 <= c["strikePrice"] <= 295
-    }
+    mrvl_kept = {c["symbol"] for c in MRVL.chain
+                 if c["expirationDate"].startswith("2026-10-09") and 270 <= c["strikePrice"] <= 295}
     every = [c["symbol"] for c in SPY_0DTE.chain + MRVL.chain]
-    near, far = (
-        sorted(spy_kept)[0],
-        next(s for s in every if s not in spy_kept | mrvl_kept | {flow}),
-    )
+    near, far = sorted(spy_kept)[0], next(s for s in every if s not in spy_kept | mrvl_kept | {flow})
 
     async def go():
         stop = asyncio.Event()
-        tasks = [
-            asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop)),
-            asyncio.create_task(daemon.follow_market(stop)),
-        ]
+        tasks = [asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop)),
+                 asyncio.create_task(daemon.follow_market(stop))]
         await asyncio.sleep(0)
         for rc in (SPY_0DTE, MRVL):
-            for topic, msg in chain_messages(
-                rc.ticker, rc.chain, rc.now.timestamp(), rc.spot, rc.now.timestamp()
-            ):
+            for topic, msg in chain_messages(rc.ticker, rc.chain, rc.now.timestamp(), rc.spot, rc.now.timestamp()):
                 bus.publish(topic, msg)
-            bus.publish(
-                f"quote.{rc.ticker}",
-                quote_msg(
-                    symbol=rc.ticker,
-                    last=rc.spot,
-                    src="schwab_l1",
-                    native={"key": rc.ticker, "LAST_PRICE": rc.spot},
-                ),
-            )
+            bus.publish(f"quote.{rc.ticker}", quote_msg(symbol=rc.ticker, last=rc.spot, src="schwab_l1",
+                                                        native={"key": rc.ticker, "LAST_PRICE": rc.spot}))
         await _until(lambda: daemon.saved_options == frozenset(spy_kept | mrvl_kept))
         daemon.console_frame({"op": "flow_contract", "contract": flow}, None)
         for sym in every:
-            bus.publish(
-                f"optquote.{sym}",
-                options_quote_msg(
-                    symbol=sym, content={"key": sym, "MARK": 1.0}, src="schwab_options_l1"
-                ),
-            )
+            bus.publish(f"optquote.{sym}", options_quote_msg(symbol=sym, content={"key": sym, "MARK": 1.0},
+                                                             src="schwab_options_l1"))
         for sym in (near, far):
-            bus.publish(
-                f"book.{sym}",
-                book_msg(
-                    symbol=sym, service="OPTIONS_BOOK", content={"key": sym}, src="schwab_book"
-                ),
-            )
-        bus.publish(
-            "quote.SPY",
-            quote_msg(
-                symbol="SPY",
-                last=776.62,
-                src="schwab_l1",
-                native={"key": "SPY", "LAST_PRICE": 776.62},
-            ),
-        )
-        await _until(
-            lambda: writer.status()["rows_written"] == len(spy_kept | mrvl_kept) + 1 + 1 + 3
-        )
+            bus.publish(f"book.{sym}", book_msg(symbol=sym, service="OPTIONS_BOOK", content={"key": sym},
+                                                src="schwab_book"))
+        bus.publish("quote.SPY", quote_msg(symbol="SPY", last=776.62, src="schwab_l1",
+                                           native={"key": "SPY", "LAST_PRICE": 776.62}))
+        await _until(lambda: writer.status()["rows_written"] == len(spy_kept | mrvl_kept) + 1 + 1 + 3)
         stop.set()
         await asyncio.gather(*tasks)
-
     try:
         asyncio.run(go())
     finally:
-        for tk in ("SPY", "MRVL"):  # the plane rows these prices wrote
+        for tk in ("SPY", "MRVL"):                               # the plane rows these prices wrote
             lmp._by_ticker.pop(tk, None)
             lmp._fields_by_ticker.pop(tk, None)
 
-    assert len(spy_kept) == len(mrvl_kept) == 22  # 11 strikes, a call and a put each
+    assert len(spy_kept) == len(mrvl_kept) == 22                 # 11 strikes, a call and a put each
     options = {s for (s,) in _rows(db, "SELECT symbol FROM stream_options_quotes_raw")}
-    assert options == spy_kept | mrvl_kept | {flow}, (
-        "not exactly the kept contracts and the Flow panel's"
-    )
+    assert options == spy_kept | mrvl_kept | {flow}, "not exactly the kept contracts and the Flow panel's"
     assert [s for (s,) in _rows(db, "SELECT symbol FROM stream_book_raw")] == [near]
-    assert sorted(s for (s,) in _rows(db, "SELECT symbol FROM stream_quotes_raw")) == [
-        "MRVL",
-        "SPY",
-        "SPY",
-    ]
+    assert sorted(s for (s,) in _rows(db, "SELECT symbol FROM stream_quotes_raw")) == ["MRVL", "SPY", "SPY"]
 
 
 def _recorded(bus) -> None:
     """Rows on both sides of 2026-10-01 00:00 ET, as the daemon publishes them."""
     for when in ("2026-09-30 15:00", "2026-10-01 09:31"):
-        bus.publish(
-            "quote.SPY",
-            quote_msg(
-                symbol="SPY", last=1.0, src="schwab_l1", ts_recv=_et(when), native={"key": "SPY"}
-            ),
-        )
-        bus.publish(
-            "feedstatus.LEVELONE_EQUITIES",
-            {"ts": _et(when), "service": "LEVELONE_EQUITIES", "socket_open": True, "held": 1},
-        )
+        bus.publish("quote.SPY", quote_msg(symbol="SPY", last=1.0, src="schwab_l1", ts_recv=_et(when),
+                                           native={"key": "SPY"}))
+        bus.publish("feedstatus.LEVELONE_EQUITIES", {"ts": _et(when), "service": "LEVELONE_EQUITIES",
+                                                     "socket_open": True, "held": 1})
     for when in ("2026-09-30 15:00", "2026-10-07 15:00"):
-        bus.publish(
-            "optquote.SPY   261007C00777000",
-            options_quote_msg(
-                symbol="SPY   261007C00777000",
-                content={"key": "SPY   261007C00777000"},
-                src="schwab_options_l1",
-                ts_recv=_et(when),
-            ),
-        )
-    for when in ("2026-09-29 12:00", "2026-09-30 12:00"):  # both before; the newest stays
+        bus.publish("optquote.SPY   261007C00777000", options_quote_msg(
+            symbol="SPY   261007C00777000", content={"key": "SPY   261007C00777000"}, src="schwab_options_l1",
+            ts_recv=_et(when)))
+    for when in ("2026-09-29 12:00", "2026-09-30 12:00"):          # both before; the newest stays
         topic, msg = capture.watchlist_message(["SPY"], op="added", ticker="SPY", request_id=when)
         bus.publish(topic, {**msg, "ts_recv": _et(when)})
 
@@ -203,27 +135,16 @@ def _kept_at(tmp_path, clock: str, wait: float) -> str:
         await _until(lambda: writer.status()["rows_written"] == 8)
         keep = asyncio.create_task(capture.keep_sessions(daemon, stop))
         try:
-            await _until(
-                lambda: _rows(db, "SELECT COUNT(*) FROM stream_feed_status")[0][0] == 1, wait
-            )
+            await _until(lambda: _rows(db, "SELECT COUNT(*) FROM stream_feed_status")[0][0] == 1, wait)
         except AssertionError:
-            pass  # nothing was removed
+            pass                                                         # nothing was removed
         stop.set()
         await asyncio.gather(task, keep)
-
     asyncio.run(go())
-    counts = " ".join(
-        f"{name}:{_rows(db, f'SELECT COUNT(*) FROM {table}')[0][0]}"
-        for name, table in (
-            ("quotes", "stream_quotes_raw"),
-            ("options", "stream_options_quotes_raw"),
-            ("feed", "stream_feed_status"),
-            ("watchlist", "stream_watchlist"),
-        )
-    )
-    newest = datetime.fromtimestamp(
-        _rows(db, "SELECT MAX(ts_recv) FROM stream_watchlist")[0][0], ET
-    )
+    counts = " ".join(f"{name}:{_rows(db, f'SELECT COUNT(*) FROM {table}')[0][0]}" for name, table in (
+        ("quotes", "stream_quotes_raw"), ("options", "stream_options_quotes_raw"),
+        ("feed", "stream_feed_status"), ("watchlist", "stream_watchlist")))
+    newest = datetime.fromtimestamp(_rows(db, "SELECT MAX(ts_recv) FROM stream_watchlist")[0][0], ET)
     return f"{counts} newest-watchlist:{newest:%m-%d %H:%M}"
 
 
@@ -232,21 +153,16 @@ def test_after_the_last_option_close_rows_before_the_newest_five_sessions_are_re
     the market was open 09-30, 10-01, 10-02, 10-05, 10-06 and 10-07, so the newest five sessions
     run from 2026-10-01 00:00 ET. Every row received before it is removed from each table, except
     the newest watchlist row, which the daemon reads at its start."""
-    assert (
-        _kept_at(tmp_path, "2026-10-07 17:00", 30.0)
-        == "quotes:1 options:1 feed:1 watchlist:1 newest-watchlist:09-30 12:00"
-    )
+    assert _kept_at(tmp_path, "2026-10-07 17:00", 30.0) == \
+        "quotes:1 options:1 feed:1 watchlist:1 newest-watchlist:09-30 12:00"
 
 
 #: CT, as Schwab sent it (7,420 option quotes, 152 equity quotes, 12 books; read-only from
 #: stream_capture.db, provenance in the file)
-_MIX = json.loads(
-    (Path(__file__).parent / "fixtures" / "real_stream_mix_2026_10_05_1400ct.json").read_text(
-        encoding="utf-8"
-    )
-)
-_COPIES = 54  # 400,680 option quotes: twenty-one parts of the keep
-_FIVE_SESSIONS = "2026-10-01 00:00"  # the newest five sessions' start at 2026-10-07 17:00 ET
+_MIX = json.loads((Path(__file__).parent / "fixtures" / "real_stream_mix_2026_10_05_1400ct.json")
+                  .read_text(encoding="utf-8"))
+_COPIES = 54                                   # 400,680 option quotes: twenty-one parts of the keep
+_FIVE_SESSIONS = "2026-10-01 00:00"            # the newest five sessions' start at 2026-10-07 17:00 ET
 
 
 @pytest.fixture(scope="module")
@@ -277,21 +193,15 @@ def _publish_mix(bus: MessageBus, services: set, limit: int | None = None) -> in
     handlers = {s: capture._publisher(s, bus, health) for s in services}
     sent = [m for m in _MIX["messages"] if m["service"] in services][:limit]
     for m in sent:
-        handlers[m["service"]](
-            json.loads(json.dumps({"content": [m["item"]], "timestamp": m["schwab_ts"]}))
-        )
+        handlers[m["service"]](json.loads(json.dumps({"content": [m["item"]], "timestamp": m["schwab_ts"]})))
     return len(sent)
 
 
 def _old_rows(db) -> int:
-    return _rows(
-        db, f"SELECT COUNT(*) FROM stream_options_quotes_raw WHERE ts_recv < {_et(_FIVE_SESSIONS)}"
-    )[0][0]
+    return _rows(db, f"SELECT COUNT(*) FROM stream_options_quotes_raw WHERE ts_recv < {_et(_FIVE_SESSIONS)}")[0][0]
 
 
-def test_every_message_arriving_during_the_keep_is_written_while_old_rows_are_still_being_removed(
-    _old_file, tmp_path
-):
+def test_every_message_arriving_during_the_keep_is_written_while_old_rows_are_still_being_removed(_old_file, tmp_path):
     """The old file (_old_file: 400,680 option quotes before the newest five sessions, twenty-one
     parts of the keep), and the whole mix arriving while the keep runs: every message is written
     while old rows remain (every message queued is written in each round between parts), and the
@@ -313,19 +223,12 @@ def test_every_message_arriving_during_the_keep_is_written_while_old_rows_are_st
         stop.set()
         await task
         return old_left
-
     old_left = asyncio.run(go())
-    assert old_left > 0, (
-        "the keep had finished before the messages that arrived during it were written"
-    )
-    assert {t: _rows(db, f"SELECT COUNT(*) FROM {t}")[0][0] for t in _MIX["counts"]} == _MIX[
-        "counts"
-    ]
+    assert old_left > 0, "the keep had finished before the messages that arrived during it were written"
+    assert {t: _rows(db, f"SELECT COUNT(*) FROM {t}")[0][0] for t in _MIX["counts"]} == _MIX["counts"]
 
 
-def test_a_stop_asked_during_the_keep_writes_what_was_queued_and_removes_nothing_more(
-    _old_file, tmp_path
-):
+def test_a_stop_asked_during_the_keep_writes_what_was_queued_and_removes_nothing_more(_old_file, tmp_path):
     """The keep has the old file's 400,680 option quotes to remove (twenty-one parts) when the mix's
     first ten equity quotes and the stop are handed to the writer: it writes the ten and ends,
     having run at most the one part in progress when they arrived, none after it took the stop.
@@ -340,7 +243,7 @@ def test_a_stop_asked_during_the_keep_writes_what_was_queued_and_removes_nothing
     assert _publish_mix(bus, {"LEVELONE_EQUITIES"}, limit=10) == 10
     writer.prune(_et(_FIVE_SESSIONS))
     stop = asyncio.Event()
-    stop.set()  # the stop is asked as the ten are handed over
+    stop.set()                                   # the stop is asked as the ten are handed over
     asyncio.run(writer.run(sub, stop=stop))
     assert _rows(db, "SELECT COUNT(*) FROM stream_quotes_raw")[0][0] == 10
     assert _old_rows(db) >= old - PRUNE_ROWS
@@ -371,17 +274,12 @@ def test_every_message_a_round_has_taken_counts_as_held_until_it_is_written(tmp_
         stop.set()
         await task
         return during
-
     try:
         during = asyncio.run(go())
     finally:
         holder.close()
-    assert (during["state"], during["rows_written"]) == (WRITER_RECORDING, 0), (
-        "the round was not still waiting"
-    )
-    assert during["held"] == sent == 152, (
-        f"{during['held']} of {sent} taken messages counted as held"
-    )
+    assert (during["state"], during["rows_written"]) == (WRITER_RECORDING, 0), "the round was not still waiting"
+    assert during["held"] == sent == 152, f"{during['held']} of {sent} taken messages counted as held"
     assert _rows(db, "SELECT COUNT(*) FROM stream_quotes_raw")[0][0] == sent
 
 
@@ -401,15 +299,10 @@ def test_messages_spilled_when_the_database_refuses_a_round_are_not_counted_as_h
     async def go():
         stop = asyncio.Event()
         task = asyncio.create_task(writer.run(sub, stop=stop))
-
-        def admitted() -> bool:  # every message spilled or queued: _admit has finished
+        def admitted() -> bool:        # every message spilled or queued: _admit has finished
             s = writer.status()
-            return (
-                s["state"] == WRITER_BLOCKED
-                and s["spill"] is not None
-                and s["spill"]["messages"] + s["queue_depth"] == sent
-            )
-
+            return (s["state"] == WRITER_BLOCKED and s["spill"] is not None
+                    and s["spill"]["messages"] + s["queue_depth"] == sent)
         await _until(admitted)
         during = writer.status()
         holder.execute("COMMIT")
@@ -417,15 +310,13 @@ def test_messages_spilled_when_the_database_refuses_a_round_are_not_counted_as_h
         stop.set()
         await task
         return during
-
     try:
         during = asyncio.run(go())
     finally:
         holder.close()
     assert during["state"] == WRITER_BLOCKED and during["spill"]["messages"] > 0
-    assert during["held"] == during["queue_depth"] + during["waiting"] == during["queue_depth"], (
+    assert during["held"] == during["queue_depth"] + during["waiting"] == during["queue_depth"], \
         f"held {during['held']}: {during['spill']['messages']} spilled, {during['queue_depth']} queued"
-    )
     assert _rows(db, "SELECT COUNT(*) FROM stream_quotes_raw")[0][0] == sent
 
 
@@ -440,10 +331,8 @@ def test_a_keep_part_refused_after_a_commit_counts_none_of_the_committed_as_held
     old = {**_eleventh(), "ts_recv": _et("2026-09-28 13:00")}
     with sqlite3.connect(db) as conn:
         writer.insert(f"quote.{old['symbol']}", old, conn=conn)
-        conn.execute(
-            "CREATE TRIGGER keep_refused BEFORE DELETE ON stream_quotes_raw "
-            "BEGIN SELECT RAISE(ABORT, 'a keep part the database refuses'); END"
-        )
+        conn.execute("CREATE TRIGGER keep_refused BEFORE DELETE ON stream_quotes_raw "
+                     "BEGIN SELECT RAISE(ABORT, 'a keep part the database refuses'); END")
     holder = sqlite3.connect(db, isolation_level=None, check_same_thread=False)
     holder.execute("BEGIN IMMEDIATE")
     bus = MessageBus()
@@ -459,27 +348,18 @@ def test_a_keep_part_refused_after_a_commit_counts_none_of_the_committed_as_held
 
         def keep_refused() -> bool:
             s = writer.status()
-            return (
-                s["state"] == WRITER_BLOCKED
-                and s["rows_written"] == 10
-                and s["error"].startswith("IntegrityError")
-            )
-
+            return s["state"] == WRITER_BLOCKED and s["rows_written"] == 10 and s["error"].startswith("IntegrityError")
         await _until(keep_refused)
         during = writer.status()
         stop.set()
         await task
         return during
-
     try:
         during = asyncio.run(go())
     finally:
         holder.close()
-    assert (during["held"], during["waiting"], during["spill"]) == (
-        during["queue_depth"],
-        0,
-        None,
-    ), f"held {during['held']} after the ten were committed"
+    assert (during["held"], during["waiting"], during["spill"]) == (during["queue_depth"], 0, None), \
+        f"held {during['held']} after the ten were committed"
 
 
 class _UnreadableQuote(dict):
@@ -518,7 +398,6 @@ def _dies_holding(db, cap: int, eleventh: dict, *, stop: bool) -> dict:
         await _until(lambda: writer.status()["state"] == WRITER_DEAD)
         ended.set()
         await task
-
     try:
         asyncio.run(go())
     finally:
@@ -531,9 +410,7 @@ def _eleventh() -> dict:
     return capture._message(m["service"], m["item"]["key"].upper(), m["item"], m["schwab_ts"])[1]
 
 
-def test_a_writer_that_dies_while_spilling_counts_as_not_recorded_only_what_was_not_yet_held(
-    tmp_path,
-):
+def test_a_writer_that_dies_while_spilling_counts_as_not_recorded_only_what_was_not_yet_held(tmp_path):
     """INDUCED CONDITIONS: a 1-byte memory cap (an input, STAND-IN for about 2 GB), so the first ten
     go to the spill file, and the eleventh an _UnreadableQuote: the writer dies holding it. Not
     recorded is the eleventh alone; the ten are in the spill file, listed as left on disk; none is
@@ -547,16 +424,12 @@ def test_a_writer_that_dies_while_holding_in_memory_counts_all_it_held_as_not_re
     """INDUCED CONDITIONS: a 10 MB memory cap, so the first ten are held in memory, and the eleventh
     an _UnreadableQuote: the writer dies holding it. Not recorded is all eleven; nothing is on
     disk or lost."""
-    s = _dies_holding(
-        tmp_path / "stream_capture.db", 10_000_000, _UnreadableQuote(_eleventh()), stop=False
-    )
+    s = _dies_holding(tmp_path / "stream_capture.db", 10_000_000, _UnreadableQuote(_eleventh()), stop=False)
     assert s["error"] == "RuntimeError: a message the writer cannot read"
     assert (s["unrecorded"], s["lost"], s["left_on_disk"]) == (11, 0, [])
 
 
-def test_a_writer_that_dies_leaving_memory_on_disk_at_a_stop_counts_only_what_was_not_yet_written(
-    tmp_path,
-):
+def test_a_writer_that_dies_leaving_memory_on_disk_at_a_stop_counts_only_what_was_not_yet_written(tmp_path):
     """INDUCED CONDITIONS: a 10 MB memory cap, so all eleven are held in memory, the eleventh
     carrying an _Unprintable value; the stop is asked, and the writer dies writing the eleventh
     to the stop's file. Not recorded is the eleventh alone, none is lost, and the next writer
@@ -573,7 +446,6 @@ def test_a_writer_that_dies_leaving_memory_on_disk_at_a_stop_counts_only_what_wa
         await _until(lambda: _rows(db, "SELECT COUNT(*) FROM stream_quotes_raw")[0][0] == 10)
         ended.set()
         await task
-
     asyncio.run(go())
 
 

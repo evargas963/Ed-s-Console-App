@@ -11,7 +11,6 @@ Schwab at the same moment (tests/fixtures/real_mrvl_full_chain_vs_strike_window.
 tests (1) keep the measurement reproducible offline, and (2) hold the one level producer to the
 full chain: if it is ever narrowed back to a window, its levels stop matching and CI fails.
 """
-
 from __future__ import annotations
 
 import json
@@ -24,11 +23,8 @@ import time_et
 from schwab_client import flatten_chain_contracts
 from terrain_engine import compute_terrain
 
-_FX = json.loads(
-    (
-        Path(__file__).resolve().parent / "fixtures" / "real_mrvl_full_chain_vs_strike_window.json"
-    ).read_text(encoding="utf-8")
-)
+_FX = json.loads((Path(__file__).resolve().parent / "fixtures"
+                  / "real_mrvl_full_chain_vs_strike_window.json").read_text(encoding="utf-8"))
 _CAPTURED = datetime.fromtimestamp(_FX["captured_utc"], time_et.ET)
 _SPOT = float(_FX["full"]["underlying"]["last"])
 
@@ -38,24 +34,15 @@ def _contracts(payload: dict) -> list[dict]:
 
 
 def _levels(snap) -> dict:
-    return {
-        k: getattr(snap, k)
-        for k in (
-            "call_wall",
-            "put_wall",
-            "gamma_flip",
-            "absolute_gamma_strike",
-            "net_gex_peak",
-            "max_pain",
-        )
-    }
+    return {k: getattr(snap, k) for k in ("call_wall", "put_wall", "gamma_flip",
+                                          "absolute_gamma_strike", "net_gex_peak", "max_pain")}
 
 
 def test_the_fixture_is_the_full_chain_and_its_window():
     full, window = _contracts(_FX["full"]), _contracts(_FX["window"])
     assert len(full) == _FX["n_full"] and len(window) == _FX["n_window"]
     assert len(window) < len(full)
-    strikes = lambda cs: {c["strikePrice"] for c in cs}  # noqa: E731
+    strikes = lambda cs: {c["strikePrice"] for c in cs}   # noqa: E731
     assert strikes(window) < strikes(full), "the window is a strict subset of the chain's strikes"
 
 
@@ -80,15 +67,9 @@ def test_the_level_producer_computes_from_the_full_chain(tmp_path):
     for ct in _contracts(_FX["full"]):
         by_expiry.setdefault(ct["expirationDate"][:10], []).append(ct)
     for expiry, cts in by_expiry.items():
-        cch.persist_complete_chain_capture(
-            db,
-            ticker=tk,
-            expiry=expiry,
-            contracts=cts,
-            spot=_SPOT,
-            completeness_basis=cch.CAPTURE_BASIS,
-            ts_utc=_FX["captured_utc"],
-        )
+        cch.persist_complete_chain_capture(db, ticker=tk, expiry=expiry, contracts=cts, spot=_SPOT,
+                                           completeness_basis=cch.CAPTURE_BASIS,
+                                           ts_utc=_FX["captured_utc"])
     server._publish_levels(tk, captures=cch.last_capture_per_day(db, tk, 2))
     published = server.terrain_cache_get(tk, _CAPTURED.timestamp()) or {}
     full = _levels(compute_terrain("MRVL", _contracts(_FX["full"]), _SPOT, now=_CAPTURED))

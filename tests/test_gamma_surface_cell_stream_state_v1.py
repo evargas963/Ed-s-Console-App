@@ -12,7 +12,6 @@ expiration), valued at its capture; that day's sessions as Schwab's /markets sen
 (tests/conftest.py). STAND-INS (named): each streamed value of a CRWD contract, and the daemon's
 status holding them.
 """
-
 from __future__ import annotations
 
 from datetime import datetime
@@ -30,8 +29,8 @@ from time_et import ET
 _SPOT = CRWD.spot
 _CONTRACTS = [dict(ct) for ct in CRWD.chain]
 TK = server.ticker_storage_key("CRWD")
-_AT = CRWD.now  # RTH, at the capture
-_CLOSED = datetime(2026, 10, 7, 22, 0, tzinfo=ET)  # after Schwab's 20:00 post-market end
+_AT = CRWD.now                                           # RTH, at the capture
+_CLOSED = datetime(2026, 10, 7, 22, 0, tzinfo=ET)        # after Schwab's 20:00 post-market end
 CALLS = [c["symbol"] for c in _CONTRACTS if c["putCall"] == "CALL"]
 PUTS = [c["symbol"] for c in _CONTRACTS if c["putCall"] == "PUT"]
 
@@ -52,27 +51,13 @@ def _publish(held, ticked, *, at=_AT, socket_open=True):
     """The daemon holding `held` on LEVELONE_OPTIONS, Schwab having sent a GAMMA for each of
     `ticked` a second before `at`, CRWD's chain published at `at`; the route's coverage of every
     strike, and the published surface."""
-    lmp.record_feed_heartbeat(
-        {
-            "ts": at.timestamp(),
-            "schwab_socket_open": socket_open,
-            "held": {"LEVELONE_EQUITIES": [TK], "LEVELONE_OPTIONS": list(held)},
-        }
-    )
+    lmp.record_feed_heartbeat({"ts": at.timestamp(), "schwab_socket_open": socket_open,
+                               "held": {"LEVELONE_EQUITIES": [TK], "LEVELONE_OPTIONS": list(held)}})
     ofs._price_rows[TK] = {"ticker": TK, "spot": _SPOT, "trade_ts": at.timestamp()}
     for sym in ticked:
-        ofs._ingest_pushed(
-            f"optquote.{sym}",
-            options_quote_msg(
-                symbol=sym,
-                content={"key": sym, "GAMMA": 0.05},
-                src="schwab_options_l1",
-                ts_recv=at.timestamp() - 1,
-            ),
-        )
-    server._publish_levels(
-        TK, _CONTRACTS, at.timestamp() - 10.0, chain_spot=(_SPOT, at.timestamp()), now=at
-    )
+        ofs._ingest_pushed(f"optquote.{sym}", options_quote_msg(
+            symbol=sym, content={"key": sym, "GAMMA": 0.05}, src="schwab_options_l1", ts_recv=at.timestamp() - 1))
+    server._publish_levels(TK, _CONTRACTS, at.timestamp() - 10.0, chain_spot=(_SPOT, at.timestamp()), now=at)
     body = server.gamma_surface_payload(TK, "all", None, 0, None, None, at)
     with server._terrain_cache_lock:
         surface = server._terrain_cache[TK]["_gamma_surface"]
@@ -80,23 +65,16 @@ def _publish(held, ticked, *, at=_AT, socket_open=True):
 
 
 def _legs(surface, sym):
-    return [
-        col[side]
-        for cell in surface["cells"]
-        for col, pair in zip(cell["stream"], cell["contracts"])
-        for side in ("call", "put")
-        if col and pair.get(side) == sym
-    ]
+    return [col[side] for cell in surface["cells"] for col, pair in zip(cell["stream"], cell["contracts"])
+            for side in ("call", "put") if col and pair.get(side) == sym]
 
 
 def test_a_contract_the_feed_delivers_is_live_with_its_own_age():
     sym = CALLS[0]
     cov, surface = _publish([sym], [sym])
     legs = _legs(surface, sym)
-    assert legs and all(
-        leg["state"] == "live" and leg["age_sec"] == pytest.approx(1.0) for leg in legs
-    )
-    assert cov["partial"] == 1 and cov["live"] == 0  # its put is not streamed: the cell is partial
+    assert legs and all(leg["state"] == "live" and leg["age_sec"] == pytest.approx(1.0) for leg in legs)
+    assert cov["partial"] == 1 and cov["live"] == 0          # its put is not streamed: the cell is partial
 
 
 def test_every_cell_streaming_reads_all_streaming_and_one_cell_short_never_does():
@@ -105,11 +83,7 @@ def test_every_cell_streaming_reads_all_streaming_and_one_cell_short_never_does(
     every = CALLS + PUTS
     cov, _ = _publish(every, every)
     assert (cov["state"], cov["label"], cov["live"], cov["cells"]) == (
-        server.COVERAGE_LIVE,
-        "ALL STREAMING",
-        len(CALLS),
-        len(CALLS),
-    )
+        server.COVERAGE_LIVE, "ALL STREAMING", len(CALLS), len(CALLS))
     ofls.clear_all_live_state()
     cov, surface = _publish(every, every[:-1])
     assert _legs(surface, every[-1])[0]["state"] == "pending"

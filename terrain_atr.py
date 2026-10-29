@@ -43,9 +43,7 @@ def roll_up(candles: "list[Candle]", key) -> "list[Candle]":
             last = k
         else:
             p = out[-1]
-            out[-1] = Candle(
-                ts=p.ts, open=p.open, high=max(p.high, c.high), low=min(p.low, c.low), close=c.close
-            )
+            out[-1] = Candle(ts=p.ts, open=p.open, high=max(p.high, c.high), low=min(p.low, c.low), close=c.close)
     return out
 
 

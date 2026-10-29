@@ -1,5 +1,4 @@
 """Schwab -> the Flow panel. A missing heartbeat keeps the last subscription."""
-
 from __future__ import annotations
 
 import live_market_plane as lmp
@@ -13,17 +12,12 @@ def test_a_missing_heartbeat_keeps_the_last_subscription():
     daemon held, and the feed is down. The page says OFFLINE. It does not say the daemon
     released the contract. Judged in regular hours, the option market open (RTH_INSTANT)."""
     now = RTH_INSTANT
-    lmp.record_feed_heartbeat(
-        {
-            "ts": now,
-            "schwab_socket_open": True,
-            "held": {"LEVELONE_OPTIONS": ["A"], "OPTIONS_BOOK": ["A"]},
-        }
-    )
+    lmp.record_feed_heartbeat({
+        "ts": now, "schwab_socket_open": True,
+        "held": {"LEVELONE_OPTIONS": ["A"], "OPTIONS_BOOK": ["A"]},
+    })
     try:
-        live = ofs.get_option_contract_streaming_diagnostics(
-            "A", now, EQUITY_OPTIONS
-        )  # a stock option
+        live = ofs.get_option_contract_streaming_diagnostics("A", now, EQUITY_OPTIONS)   # a stock option
         lmp.record_feed_down()
         down = ofs.get_option_contract_streaming_diagnostics("A", now, EQUITY_OPTIONS)
     finally:

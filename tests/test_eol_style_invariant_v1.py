@@ -4,7 +4,6 @@ Two shapes are refused by different clauses: a PURE EOL REFLOW carries no conten
 all, while an EOL STYLE FLIP hides a genuine edit inside a whole-file reflow. Both must fail;
 a legitimate edit that preserves the terminator must pass.
 """
-
 from __future__ import annotations
 
 import subprocess
@@ -45,6 +44,8 @@ def repo(tmp_path):
     return root, git
 
 
+
+
 def _patch_tool_repo(root: Path):
     """The tool resolves REPO from its own location; run it with cwd inside the scratch
     repo and point it there via git's own discovery by copying it in."""
@@ -57,11 +58,8 @@ def _patch_tool_repo(root: Path):
 def run_in(root: Path, *extra: str) -> tuple[int, str]:
     tool = _patch_tool_repo(root)
     r = subprocess.run(
-        [sys.executable, str(tool), *extra],
-        cwd=str(root),
-        capture_output=True,
-        text=True,
-        check=False,
+        [sys.executable, str(tool), *extra], cwd=str(root),
+        capture_output=True, text=True, check=False,
     )
     return r.returncode, (r.stdout or "") + (r.stderr or "")
 
@@ -216,8 +214,7 @@ def test_a_pinned_path_with_a_real_content_change_is_silent(repo):
     _, out = run_in(root, "--measure")
     assert "EOL STYLE FLIP" not in out, (
         f"a real edit to a PINNED path was reported as a terminator flip — the check is "
-        f"judging disk bytes where git judges normalised bytes: {out}"
-    )
+        f"judging disk bytes where git judges normalised bytes: {out}")
     assert "[PASS]" in out, out
 
 
@@ -240,8 +237,7 @@ def test_a_blob_that_violates_its_own_pin_can_be_repaired(repo):
     rc, out = run_in(root)
     assert rc == 0 and "[PASS]" in out, (
         f"restoring a pinned path's terminator was refused as a reflow — the repair the "
-        f"message itself asks for is unreachable: {out}"
-    )
+        f"message itself asks for is unreachable: {out}")
 
 
 def test_an_unpinned_reflow_is_refused(repo):
@@ -259,17 +255,13 @@ def test_an_unpinned_reflow_is_refused(repo):
     git("add", "-A")
     rc, out = run_in(root)
     assert rc != 0 and "PURE EOL REFLOW" in out, (
-        f"an unpinned terminator flip is not refused: {out}"
-    )
+        f"an unpinned terminator flip is not refused: {out}")
 
 
 def test_the_live_repo_is_currently_clean():
     """Negative control on the real tree: the lock passes the repository as it is."""
     rc = subprocess.run(
-        [sys.executable, str(TOOL), "--measure"],
-        cwd=str(REPO),
-        capture_output=True,
-        text=True,
-        check=False,
+        [sys.executable, str(TOOL), "--measure"], cwd=str(REPO),
+        capture_output=True, text=True, check=False,
     )
     assert "[PASS]" in rc.stdout, rc.stdout + rc.stderr

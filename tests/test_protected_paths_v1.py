@@ -20,43 +20,37 @@ D = "data/"
 B = "backups/"
 
 
-@pytest.mark.parametrize(
-    "cmd",
-    [
-        f"rm -f {D}ed_console.db",
-        f"rm -rf {D}",
-        f"del {D}ed_console.db",
-        f"erase {D}ed_console.db",
-        f"Remove-Item {D}x.db",
-        f"Remove-Item -Recurse -Force {D}",
-        f"mv {D}ed_console.db /tmp/x",
-        f"Move-Item {D}ed_console.db C:/temp/",
-        f"python -c \"import os; os.remove('{D}ed_console.db')\"",
-        f"python -c \"import shutil; shutil.rmtree('{D}')\"",
-        f"echo x > {D}ed_console.db",
-    ],
-)
+@pytest.mark.parametrize("cmd", [
+    f"rm -f {D}ed_console.db",
+    f"rm -rf {D}",
+    f"del {D}ed_console.db",
+    f"erase {D}ed_console.db",
+    f"Remove-Item {D}x.db",
+    f"Remove-Item -Recurse -Force {D}",
+    f"mv {D}ed_console.db /tmp/x",
+    f"Move-Item {D}ed_console.db C:/temp/",
+    f"python -c \"import os; os.remove('{D}ed_console.db')\"",
+    f"python -c \"import shutil; shutil.rmtree('{D}')\"",
+    f"echo x > {D}ed_console.db",
+])
 def test_destruction_of_an_unrecoverable_tree_is_refused(cmd):
     """Delete, remove, move, python file removal and redirect-overwrite of data/ are refused."""
     assert any(f"under {D}" in b for b in G.bash_violations(cmd)), f"NOT blocked: {cmd}"
 
 
-@pytest.mark.parametrize(
-    "cmd",
-    [
-        # The restore path must never be blocked -- it is the recovery route.
-        f"cp {B}db/20260806_203509_ed_console.db {D}ed_console.db",
-        f"Copy-Item {B}db/latest.db {D}ed_console.db",
-        # Reads and queries are untouched.
-        f'sqlite3 {D}ed_console.db "select count(*) from price_bars_1m"',
-        f"python -c \"import sqlite3; sqlite3.connect('{D}ed_console.db')\"",
-        # Deleting elsewhere is the cleanup work and must stay possible.
-        "rm -f /tmp/scratch.txt",
-        "rm -f reports/old_report.md",
-        "rm -f tools/dead_tool.py",
-        "git worktree remove --force ../EdWebConsole-item4",
-    ],
-)
+@pytest.mark.parametrize("cmd", [
+    # The restore path must never be blocked -- it is the recovery route.
+    f"cp {B}db/20260806_203509_ed_console.db {D}ed_console.db",
+    f"Copy-Item {B}db/latest.db {D}ed_console.db",
+    # Reads and queries are untouched.
+    f"sqlite3 {D}ed_console.db \"select count(*) from price_bars_1m\"",
+    f"python -c \"import sqlite3; sqlite3.connect('{D}ed_console.db')\"",
+    # Deleting elsewhere is the cleanup work and must stay possible.
+    "rm -f /tmp/scratch.txt",
+    "rm -f reports/old_report.md",
+    "rm -f tools/dead_tool.py",
+    "git worktree remove --force ../EdWebConsole-item4",
+])
 def test_restore_read_and_ordinary_cleanup_pass(cmd):
     """Recovery into data/, reads, and deletes elsewhere are not refused."""
     assert not any(f"under {D}" in b for b in G.bash_violations(cmd)), f"wrongly blocked: {cmd}"
@@ -75,16 +69,14 @@ def test_a_commit_message_quoting_a_destructive_command_is_not_blocked():
         f"MSG"
     )
     assert not any(f"under {D}" in b for b in G.bash_violations(msg)), (
-        "the guard blocks a commit whose message quotes a destructive command"
-    )
+        "the guard blocks a commit whose message quotes a destructive command")
 
 
 def test_the_commit_exemption_is_by_verb_not_by_heredoc():
     """A heredoc that is NOT a commit is judged."""
     payload = f"cat <<'EOF' | bash\nrm -f {D}ed_console.db\nEOF"
     assert any(f"under {D}" in b for b in G.bash_violations(payload)), (
-        "a heredoc piped to a shell is a write channel and must stay watched"
-    )
+        "a heredoc piped to a shell is a write channel and must stay watched")
 
 
 def test_the_protected_tree_is_guarded_and_backups_is_not():
@@ -99,38 +91,33 @@ def test_empty_and_none_commands_do_not_crash():
     assert G.bash_violations(None) == []  # type: ignore[arg-type]
 
 
-@pytest.mark.parametrize(
-    "cmd",
-    [
-        # text written into a file is content, not a command
-        f"cat > plan.md <<'EOF'\nMove {D}, logs/ and the token out of the checkout.\nEOF\nrm plan.md",
-        f"cat > notes.md <<'EOF'\nrm -f {D}ed_console.db destroyed it twice\nEOF",
-        # a Python string that only mentions a protected path
-        f"python - <<'EOF'\nprint('never delete {D}ed_console.db')\nEOF",
-        # adding protection is not removing it
-        f'icacls {D}ed_console.db /deny "someuser:(DE)"',
-        # deleting a temp file whose path shares no protected segment
-        "rm ../ap.md",
-    ],
-)
+
+@pytest.mark.parametrize("cmd", [
+    # text written into a file is content, not a command
+    f"cat > plan.md <<'EOF'\nMove {D}, logs/ and the token out of the checkout.\nEOF\nrm plan.md",
+    f"cat > notes.md <<'EOF'\nrm -f {D}ed_console.db destroyed it twice\nEOF",
+    # a Python string that only mentions a protected path
+    f"python - <<'EOF'\nprint('never delete {D}ed_console.db')\nEOF",
+    # adding protection is not removing it
+    f"icacls {D}ed_console.db /deny \"someuser:(DE)\"",
+    # deleting a temp file whose path shares no protected segment
+    "rm ../ap.md",
+])
 def test_text_that_only_mentions_a_protected_path_passes(cmd):
     """The rule judges what runs: prose, file content and protection pass untouched."""
     assert not any(f"under {D}" in b for b in G.bash_violations(cmd)), f"wrongly blocked: {cmd}"
 
 
-@pytest.mark.parametrize(
-    "cmd",
-    [
-        f"python - <<'EOF'\nimport shutil\nshutil.rmtree('{D}')\nEOF",
-        f"python - <<'EOF'\nfrom pathlib import Path\nPath('{D}ed_console.db').unlink()\nEOF",
-        f"python - <<'EOF'\nfrom pathlib import Path\nPath('{D}ed_console.db').write_bytes(b'')\nEOF",
-        f"python - <<'EOF'\nopen('{D}ed_console.db', 'w').close()\nEOF",
-        f"bash <<'EOF'\nrm -f {D}stream_capture.db\nEOF",
-        f"icacls {D}ed_console.db /remove:d someuser",
-        f"icacls C:/repo/{D} /reset",
-        f"cd /c/repo && rm -rf {D}",
-    ],
-)
+@pytest.mark.parametrize("cmd", [
+    f"python - <<'EOF'\nimport shutil\nshutil.rmtree('{D}')\nEOF",
+    f"python - <<'EOF'\nfrom pathlib import Path\nPath('{D}ed_console.db').unlink()\nEOF",
+    f"python - <<'EOF'\nfrom pathlib import Path\nPath('{D}ed_console.db').write_bytes(b'')\nEOF",
+    f"python - <<'EOF'\nopen('{D}ed_console.db', 'w').close()\nEOF",
+    f"bash <<'EOF'\nrm -f {D}stream_capture.db\nEOF",
+    f"icacls {D}ed_console.db /remove:d someuser",
+    f"icacls C:/repo/{D} /reset",
+    f"cd /c/repo && rm -rf {D}",
+])
 def test_code_that_would_destroy_or_unprotect_is_refused(cmd):
     """Python run from a heredoc, a shell heredoc, and removing the OS protection all block."""
     assert any(f"under {D}" in b for b in G.bash_violations(cmd)), f"NOT blocked: {cmd}"

@@ -69,9 +69,7 @@ def level_side(level: float | None, price: float | None) -> str | None:
 def price_side(level: float | None, price: float | None) -> str | None:
     """Where `price` sits against `level` (the other way round from level_side): LEVEL_ABOVE when
     the price is over the level, LEVEL_AT, LEVEL_BELOW; None when either is unknown."""
-    return {LEVEL_ABOVE: LEVEL_BELOW, LEVEL_AT: LEVEL_AT, LEVEL_BELOW: LEVEL_ABOVE, None: None}[
-        level_side(level, price)
-    ]
+    return {LEVEL_ABOVE: LEVEL_BELOW, LEVEL_AT: LEVEL_AT, LEVEL_BELOW: LEVEL_ABOVE, None: None}[level_side(level, price)]
 
 
 def from_spot_text(distance: float | None, side: str | None) -> str | None:
@@ -86,10 +84,8 @@ def from_spot_text(distance: float | None, side: str | None) -> str | None:
 
 def within(low: float | None, high: float | None, price: float | None) -> bool:
     """Whether `price` is inside the range from `low` to `high`, either edge included (level_side)."""
-    return level_side(low, price) in (LEVEL_BELOW, LEVEL_AT) and level_side(high, price) in (
-        LEVEL_ABOVE,
-        LEVEL_AT,
-    )
+    return (level_side(low, price) in (LEVEL_BELOW, LEVEL_AT)
+            and level_side(high, price) in (LEVEL_ABOVE, LEVEL_AT))
 
 
 def crossed(level: float | None, before: float | None, after: float | None) -> str | None:
@@ -105,10 +101,8 @@ def crossed(level: float | None, before: float | None, after: float | None) -> s
 
 #: the one wording, shown whenever the flip's modelled curve and Schwab's gamma disagree on the
 #: sign at today's price (the flip is placed by the curve; the regime is Schwab's gamma)
-FLIP_CURVE_DISAGREES = (
-    "The gamma flip is placed by a modelled curve that disagrees with Schwab's "
-    "gamma at today's price."
-)
+FLIP_CURVE_DISAGREES = ("The gamma flip is placed by a modelled curve that disagrees with Schwab's "
+                        "gamma at today's price.")
 
 
 @dataclass(frozen=True)
@@ -169,13 +163,8 @@ def _position_line(spot: float, put_wall: float | None, call_wall: float | None)
     return "Box incomplete — at least one wall is unavailable."
 
 
-def _unavailable(
-    reason: str,
-    spot: float | None,
-    confidence: str,
-    put_wall: float | None,
-    call_wall: float | None,
-) -> TerrainRead:
+def _unavailable(reason: str, spot: float | None, confidence: str,
+                 put_wall: float | None, call_wall: float | None) -> TerrainRead:
     lines = [reason, "No regime and no posture are issued while the levels are unreliable."]
     if spot is not None and (put_wall is not None or call_wall is not None):
         lines.append(
@@ -223,13 +212,8 @@ def build_terrain_read(
     if spot is None or spot <= 0:
         return _unavailable("Spot price is unavailable.", None, flip_confidence, None, None)
     if flip is None and gamma_at_spot is None:
-        return _unavailable(
-            "Dealer gamma is unavailable, so the regime cannot be determined.",
-            spot,
-            flip_confidence,
-            put_wall,
-            call_wall,
-        )
+        return _unavailable("Dealer gamma is unavailable, so the regime cannot be determined.",
+                            spot, flip_confidence, put_wall, call_wall)
     # The REGIME is the sign of dealer gamma AT SPOT (see this function's
     # docstring) — it does NOT depend on how precisely the flip LEVEL is placed. Gating it on the
     # level-trust verdict conflates two different questions: coverage wide enough to PLACE the flip
@@ -252,22 +236,14 @@ def build_terrain_read(
         return _unavailable(
             f"Gamma flip is not trustworthy ({flip_confidence}) — the option chain is too "
             "narrow to place it reliably.",
-            spot,
-            flip_confidence,
-            put_wall,
-            call_wall,
+            spot, flip_confidence, put_wall, call_wall,
         )
 
     # the regime is the sign of dealer gamma at spot; absent or exactly zero -> unavailable
     regime = regime_from_signed_gamma(gamma_at_spot) or REGIME_UNAVAILABLE
     if regime == REGIME_UNAVAILABLE:
-        return _unavailable(
-            "Dealer gamma at spot is zero or unknown, so the regime cannot be determined.",
-            spot,
-            flip_confidence,
-            put_wall,
-            call_wall,
-        )
+        return _unavailable("Dealer gamma at spot is zero or unknown, so the regime cannot be "
+                            "determined.", spot, flip_confidence, put_wall, call_wall)
     posture = _posture_for(regime)
 
     # Dealer positioning is MODELLED from public OI under the
@@ -276,46 +252,32 @@ def build_terrain_read(
     # the claim honest rather than certain.
     if regime == REGIME_LONG_GAMMA:
         headline = "Long gamma — chop regime. Fade the edges, do not chase breakouts."
-        mechanism = (
-            "Dealers are modelled net long gamma (from OI, not observed positioning): "
-            "they sell into strength and buy into weakness, damping every move."
-        )
-        action = (
-            f"Fade rallies into {_fmt('call wall', call_wall, spot)} and buy dips toward "
-            f"{_fmt('put wall', put_wall, spot)}; target the middle, stop beyond the wall."
-        )
+        mechanism = ("Dealers are modelled net long gamma (from OI, not observed positioning): "
+                     "they sell into strength and buy into weakness, damping every move.")
+        action = (f"Fade rallies into {_fmt('call wall', call_wall, spot)} and buy dips toward "
+                  f"{_fmt('put wall', put_wall, spot)}; target the middle, stop beyond the wall.")
     else:
         headline = "Short gamma — trend regime. Follow breaks, do not fade."
-        mechanism = (
-            "Dealers are modelled net short gamma (from OI, not observed positioning): "
-            "they buy strength and sell weakness, amplifying every move."
-        )
-        action = (
-            f"Trade with a break of {_fmt('put wall', put_wall, spot)} or "
-            f"{_fmt('call wall', call_wall, spot)}; fading here gets run over."
-        )
+        mechanism = ("Dealers are modelled net short gamma (from OI, not observed positioning): "
+                     "they buy strength and sell weakness, amplifying every move.")
+        action = (f"Trade with a break of {_fmt('put wall', put_wall, spot)} or "
+                  f"{_fmt('call wall', call_wall, spot)}; fading here gets run over.")
 
     if flip is not None:
         distance_pct = _pct_from(spot, flip) * 100.0
         where = price_side(flip, spot).lower()
-        flip_line = (
-            f"Spot {price_text(spot)} vs {_fmt('flip', flip, spot)} — {abs(distance_pct):.2f}% "
-            f"{where} the regime line."
-        )
+        flip_line = (f"Spot {price_text(spot)} vs {_fmt('flip', flip, spot)} — {abs(distance_pct):.2f}% "
+                     f"{where} the regime line.")
         # At the middle tier the chain does not reach the measured flip-LEVEL
         # convergence span, so the LEVEL is approximate (~1.4% of spot in the study); the regime
         # still stands on the at-spot sign, which no span verifies. Say so on the same line the operator reads the number from — a precise
         # "-0.42%" beside an unqualified level is exactly the overstatement this tier exists to end.
         if flip_confidence == GAMMA_FLIP_LEVEL_APPROX:
-            flip_line += (
-                " APPROXIMATE: the chain is too narrow to place this level precisely "
-                "(~1.4% of spot); the regime above does not depend on it."
-            )
+            flip_line += (" APPROXIMATE: the chain is too narrow to place this level precisely "
+                          "(~1.4% of spot); the regime above does not depend on it.")
     else:
-        flip_line = (
-            f"Spot {price_text(spot)} — dealer gamma holds one sign across the whole chain, "
-            f"so there is no flip nearby to cross. The regime is unambiguous."
-        )
+        flip_line = (f"Spot {price_text(spot)} — dealer gamma holds one sign across the whole chain, "
+                     f"so there is no flip nearby to cross. The regime is unambiguous.")
 
     lines = [
         mechanism,

@@ -7,22 +7,17 @@ back. STAND-INS: the host answering the sweep is the local stand-in for Schwab's
 (tests/schwab_rest_standin.py), and the chain envelope it serves is rebuilt from the captured
 contracts, not the envelope as Schwab sent it.
 """
-
 from __future__ import annotations
 
 import sqlite3
 import threading
 
-from calibration.complete_chain_capture import (
-    CAPTURE_BASIS,
-    ChainSweep,
-    last_capture_per_day,
-    persist_complete_chain_capture,
-)
+from calibration.complete_chain_capture import (CAPTURE_BASIS, ChainSweep, last_capture_per_day,
+                                                persist_complete_chain_capture)
 from stream_spine import CaptureWriter
 from tests.schwab_rest_standin import LocalSchwab
 
-_IN_WINDOW = 1790863205.0  # 2026-10-01 10:00:05 ET, inside the 10:00 capture window
+_IN_WINDOW = 1790863205.0          # 2026-10-01 10:00:05 ET, inside the 10:00 capture window
 
 
 def test_a_stored_chain_capture_is_never_overwritten_by_a_second_write_of_its_key(tmp_path):
@@ -31,14 +26,8 @@ def test_a_stored_chain_capture_is_never_overwritten_by_a_second_write_of_its_ke
     capture's spot, on the same key) is a later write landing on that key."""
     db = tmp_path / "ed_console.db"
     schwab = LocalSchwab()
-    sweep = ChainSweep(
-        db,
-        ["SPY"],
-        lambda topic, msg: None,
-        clock=lambda: _IN_WINDOW,
-        failures=CaptureWriter(tmp_path / "stream_capture.db"),
-        streamed=lambda symbol: None,
-    )
+    sweep = ChainSweep(db, ["SPY"], lambda topic, msg: None, clock=lambda: _IN_WINDOW,
+                       failures=CaptureWriter(tmp_path / "stream_capture.db"), streamed=lambda symbol: None)
     client = schwab.client(tmp_path)
     try:
         assert sweep.rotation(lambda: client, ["SPY"], threading.Event()) == {"SPY"}
@@ -50,15 +39,9 @@ def test_a_stored_chain_capture_is_never_overwritten_by_a_second_write_of_its_ke
 
     refused = None
     try:
-        persist_complete_chain_capture(
-            db,
-            ticker="SPY",
-            expiry=expiry,
-            contracts=stored["contracts"][:1],
-            spot=stored["spot"],
-            completeness_basis=CAPTURE_BASIS,
-            ts_utc=_IN_WINDOW,
-        )
+        persist_complete_chain_capture(db, ticker="SPY", expiry=expiry,
+                                       contracts=stored["contracts"][:1], spot=stored["spot"],
+                                       completeness_basis=CAPTURE_BASIS, ts_utc=_IN_WINDOW)
     except sqlite3.IntegrityError as e:
         refused = e
 

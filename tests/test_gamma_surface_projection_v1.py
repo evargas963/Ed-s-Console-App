@@ -10,17 +10,11 @@ Two expiries: MRVL's first two, 2026-10-09 and 2026-10-16, from the one capture,
 capture instant (`now`, an input: every computation below prices at the same instant, so each
 identity is exact).
 """
-
 import json
 
-from math_exposure_core import (
-    bucket_metric,
-    compute_exposures_by_strike,
-    exposure_books,
-    strike_oi_legs,
-    strike_volume_legs,
-)
 from server import project_gamma_surface
+from math_exposure_core import (bucket_metric, compute_exposures_by_strike, exposure_books,
+                                strike_oi_legs, strike_volume_legs)
 from tests.real_chains import MRVL
 
 NOW = MRVL.now
@@ -32,7 +26,7 @@ def _exp_key(ct: dict) -> str:
     return str(ct.get("expirationDate") or "")[:10]
 
 
-E1, E2 = sorted({_exp_key(ct) for ct in MRVL.chain})[:2]  # 2026-10-09, 2026-10-16
+E1, E2 = sorted({_exp_key(ct) for ct in MRVL.chain})[:2]      # 2026-10-09, 2026-10-16
 
 
 def _chain() -> list[dict]:
@@ -82,7 +76,7 @@ def test_A_cell_equals_canonical_faucet_per_expiry_slice():
             # missing (bucket_metric, the one reader)
             assert _cell(surface, float(k), exp) == bucket_metric(bucket, "net_gex_1pct")
             checked += 1
-    assert checked > 20  # a real book, not a handful of strikes
+    assert checked > 20   # a real book, not a handful of strikes
 
 
 # B. ADDITIVITY / RECONCILIATION — per-expiry cells sum to the canonical full-book value.
@@ -90,23 +84,16 @@ def test_B_per_expiry_sum_reconciles_to_full_book():
     chain = _chain()
     full, _ = compute_exposures_by_strike(chain, spot=SPOT, now=NOW)
     surface = _surface(chain, SPOT)
-    per = {
-        exp: compute_exposures_by_strike(_slice(chain, exp), spot=SPOT, now=NOW)[0]
-        for exp in (E1, E2)
-    }
+    per = {exp: compute_exposures_by_strike(_slice(chain, exp), spot=SPOT, now=NOW)[0]
+           for exp in (E1, E2)}
     for k, bucket in full.items():
         # exact math additivity on the unrounded faucet output (the real proof)
-        per_sum = sum(
-            float(per[exp][float(k)]["net_gex_1pct"]) for exp in (E1, E2) if float(k) in per[exp]
-        )
+        per_sum = sum(float(per[exp][float(k)]["net_gex_1pct"]) for exp in (E1, E2) if float(k) in per[exp])
         assert abs(per_sum - float(bucket["net_gex_1pct"])) < 1e-6
         # the unrounded cells reconcile to the full book's known net
         cells = [_cell(surface, float(k), E1), _cell(surface, float(k), E2)]
         if bucket_metric(bucket, "net_gex_1pct") is not None:
-            assert (
-                abs(sum(v for v in cells if v is not None) - bucket_metric(bucket, "net_gex_1pct"))
-                < 1e-6
-            )
+            assert abs(sum(v for v in cells if v is not None) - bucket_metric(bucket, "net_gex_1pct")) < 1e-6
 
 
 # C. EXPIRY ISOLATION — changing the E2 slice must not alter any E1 cell (shared spot is the
@@ -131,19 +118,11 @@ def test_F_input_projection_coverage():
     assert {e["expiry"] for e in surface["expirations"]} == {E1, E2}
     expected_strikes = set()
     for exp in (E1, E2):
-        expected_strikes |= {
-            float(k) for k in compute_exposures_by_strike(_slice(chain, exp), spot=SPOT, now=NOW)[0]
-        }
+        expected_strikes |= {float(k) for k in compute_exposures_by_strike(_slice(chain, exp), spot=SPOT, now=NOW)[0]}
     assert set(surface["strikes"]) == expected_strikes
     # native DTE carried onto the column header, not inferred
-    native_dte = {
-        exp: next(
-            int(ct["daysToExpiration"])
-            for ct in _slice(chain, exp)
-            if ct.get("daysToExpiration") is not None
-        )
-        for exp in (E1, E2)
-    }
+    native_dte = {exp: next(int(ct["daysToExpiration"]) for ct in _slice(chain, exp) if ct.get("daysToExpiration") is not None)
+                  for exp in (E1, E2)}
     assert {e["expiry"]: e["dte"] for e in surface["expirations"]} == native_dte
     assert surface["contracts_total"] == len(chain)
     assert surface["contracts_used"] == len(chain)
@@ -153,9 +132,7 @@ def test_F_input_projection_coverage():
 #    rows are REAL rows with their native expirationDate broken (the only field under test).
 def test_G_malformed_expiry_excluded_not_reassigned():
     clean_chain = _chain()
-    probe = max(
-        _slice(clean_chain, E1), key=lambda ct: ct.get("openInterest") or 0
-    )  # the heaviest real row
+    probe = max(_slice(clean_chain, E1), key=lambda ct: ct.get("openInterest") or 0)   # the heaviest real row
     chain = clean_chain + [dict(probe, expirationDate=None), dict(probe, expirationDate="bad")]
     surface = _surface(chain, SPOT)
     assert surface["contracts_excluded_malformed_expiry"] == 2
@@ -170,7 +147,6 @@ def test_G_malformed_expiry_excluded_not_reassigned():
 # H. SPX / SPXW — canonical underlying->option-chain identity is unchanged; no UI translation.
 def test_H_spx_identity_unchanged():
     from server import ticker_storage_key
-
     assert ticker_storage_key("SPX") == "$SPX"
     assert ticker_storage_key("$SPX") == "$SPX"
     # an SPXW-rooted contract projects without any symbol rewriting: a REAL vendor row re-rooted
@@ -189,10 +165,7 @@ def test_J_cell_carries_the_real_vendor_symbols_for_its_strike_and_expiry():
     surface = _surface(chain, SPOT)
     col1 = [i for i, e in enumerate(surface["expirations"]) if e["expiry"] == E1][0]
     row = [r for r in surface["cells"] if r["strike"] == 280.0][0]
-    assert row["contracts"][col1] == {
-        "call": "MRVL  261009C00280000",
-        "put": "MRVL  261009P00280000",
-    }
+    assert row["contracts"][col1] == {"call": "MRVL  261009C00280000", "put": "MRVL  261009P00280000"}
 
 
 def test_J_a_side_with_no_real_contract_reports_null_not_a_fabricated_symbol():
@@ -237,7 +210,7 @@ def test_K_dex_cell_equals_the_same_canonical_faucet_net_dex_dollars():
         col = [i for i, e in enumerate(surface["expirations"]) if e["expiry"] == exp][0]
         for k, bucket in exposures_e.items():
             row = [r for r in surface["cells"] if r["strike"] == float(k)][0]
-            assert row["dex"][col] == bucket_metric(bucket, "net_dex_dollars")  # unrounded
+            assert row["dex"][col] == bucket_metric(bucket, "net_dex_dollars")   # unrounded
             checked += 1
     assert checked > 20
 
@@ -251,11 +224,11 @@ def test_K_vanna_cell_equals_call_vanna_minus_put_vanna_the_same_dealer_conventi
         col = [i for i, e in enumerate(surface["expirations"]) if e["expiry"] == exp][0]
         for k, bucket in exposures_e.items():
             row = [r for r in surface["cells"] if r["strike"] == float(k)][0]
-            if bucket_metric(bucket, "net_vanna") is None:  # a leg's vanna input not sent
+            if bucket_metric(bucket, "net_vanna") is None:     # a leg's vanna input not sent
                 assert row["vanna"][col] is None
                 continue
             expected = bucket["call_vanna"] - bucket["put_vanna"]
-            assert row["vanna"][col] == bucket_metric(bucket, "net_vanna")  # same instant: exact
+            assert row["vanna"][col] == bucket_metric(bucket, "net_vanna")      # same instant: exact
             assert abs(row["vanna"][col] - expected) < 1e-9
             checked += 1
             nonzero += expected != 0
@@ -273,19 +246,9 @@ def test_K_oi_and_volume_cells_equal_the_same_canonical_faucets_call_and_put_tot
         for k, bucket in exposures_e.items():
             row = [r for r in surface["cells"] if r["strike"] == float(k)][0]
             # the cell carries the one readers' answers: Schwab's values as sent, 0 a real zero
-            for key, legs in (
-                ("oi", strike_oi_legs(bucket)),
-                ("volume", strike_volume_legs(bucket)),
-            ):
-                exp_cell = (
-                    None
-                    if legs is None
-                    else {
-                        "call": round(legs[0]),
-                        "put": round(legs[1]),
-                        "total": round(legs[0] + legs[1]),
-                    }
-                )
+            for key, legs in (("oi", strike_oi_legs(bucket)), ("volume", strike_volume_legs(bucket))):
+                exp_cell = (None if legs is None else
+                            {"call": round(legs[0]), "put": round(legs[1]), "total": round(legs[0] + legs[1])})
                 assert row[key][col] == exp_cell
             checked += 1
     assert checked > 20
@@ -300,9 +263,7 @@ def test_K_a_strike_absent_from_one_expirys_own_slice_reports_null_there_not_zer
     e1_col = [i for i, e in enumerate(surface["expirations"]) if e["expiry"] == E1][0]
     e1_strikes = {float(ct["strikePrice"]) for ct in _slice(chain, E1)}
     e2_only_strikes = [k for k in surface["strikes"] if k not in e1_strikes]
-    assert e2_only_strikes, (
-        "the two real expiries must not share every strike, or this proves nothing"
-    )
+    assert e2_only_strikes, "the two real expiries must not share every strike, or this proves nothing"
     row = [r for r in surface["cells"] if r["strike"] == e2_only_strikes[0]][0]
     assert row["gex"][e1_col] is None
     assert row["dex"][e1_col] is None
@@ -313,29 +274,23 @@ def test_K_a_strike_absent_from_one_expirys_own_slice_reports_null_there_not_zer
 
 # ---- the exposure books every view is shaped from merge back to the one full book ----
 
-
 def test_per_expiry_exposures_additively_merge_to_the_full_recompute():
     """The identity the heatmap, per-strike rows and levels rely on: partitioning the two-expiry
     chain by expiry and merging the per-expiry exposures must reproduce
     compute_exposures_by_strike's own single-call result over the WHOLE chain, strike for
     strike, field for field, at the same valuation instant."""
     from math_exposure_core import merge_exposure_books
-
     chain = _chain()
     full, _diag = compute_exposures_by_strike(chain, spot=SPOT, now=NOW)
     by_expiry = exposure_books(chain, spot=SPOT, now=NOW)
     assert {exp for exp, _dte in by_expiry} == {E1, E2}
     merged, merged_diag = merge_exposure_books(by_expiry.values())
-    assert (merged_diag.contracts_total, merged_diag.contracts_used) == (
-        _diag.contracts_total,
-        _diag.contracts_used,
-    )
+    assert (merged_diag.contracts_total, merged_diag.contracts_used) == (_diag.contracts_total, _diag.contracts_used)
     assert set(merged.keys()) == set(full.keys())
     for strike, bucket in full.items():
         assert merged[strike] == bucket, (
             f"merged per-expiry exposures at strike {strike} must equal the full single-call "
-            f"recompute exactly: {merged[strike]} != {bucket}"
-        )
+            f"recompute exactly: {merged[strike]} != {bucket}")
 
 
 def test_the_chart_draws_the_heatmaps_own_dex_and_oi_per_strike():
@@ -351,16 +306,10 @@ def test_the_chart_draws_the_heatmaps_own_dex_and_oi_per_strike():
     snap = compute_terrain("MRVL", chain, SPOT, now=NOW)
     surface = project_gamma_surface(chain, snap.books)
     with server._terrain_cache_lock:
-        server._terrain_cache["MRVL"] = {
-            "ticker": "MRVL",
-            "spot": snap.spot,
-            "computed_ts_utc": time.time(),
-            "_per_strike": snap.per_strike,
-        }
+        server._terrain_cache["MRVL"] = {"ticker": "MRVL", "spot": snap.spot, "computed_ts_utc": time.time(),
+                                         "_per_strike": snap.per_strike}
     try:
-        measures = json.loads(server.get_terrain_strikes(ticker="MRVL", scope="all").body)[
-            "measures"
-        ]
+        measures = json.loads(server.get_terrain_strikes(ticker="MRVL", scope="all").body)["measures"]
     finally:
         with server._terrain_cache_lock:
             server._terrain_cache.pop("MRVL", None)

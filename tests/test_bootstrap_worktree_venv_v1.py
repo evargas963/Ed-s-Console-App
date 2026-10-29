@@ -1,5 +1,4 @@
 """Seam: bootstrap creates a worktree-local .venv (venv-only, no pip)."""
-
 from tools.bootstrap_worktree_venv import ensure_venv, venv_python
 
 

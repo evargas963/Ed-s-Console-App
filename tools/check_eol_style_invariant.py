@@ -21,7 +21,6 @@ Usage:
     python tools/check_eol_style_invariant.py --base origin/main # a pull request's changes (CI)
     python tools/check_eol_style_invariant.py --measure          # worktree vs HEAD, reports only
 """
-
 from __future__ import annotations
 
 import argparse
@@ -34,10 +33,7 @@ REPO = Path(__file__).resolve().parent.parent
 
 def _git(*args: str) -> subprocess.CompletedProcess:
     return subprocess.run(
-        ["git", *args],
-        cwd=str(REPO),
-        capture_output=True,
-        check=False,
+        ["git", *args], cwd=str(REPO), capture_output=True, check=False,
     )
 
 
@@ -148,12 +144,10 @@ def violations(staged: bool = True, base: str | None = None) -> list[str]:
         return [f"no merge base between {base} and HEAD: the pull request's changes cannot be read"]
     changed = changed_paths(staged, base)
     if changed is None:
-        return [
-            "git could not list the changed files: the change cannot be read, so it is not clean"
-        ]
+        return ["git could not list the changed files: the change cannot be read, so it is not clean"]
     for was, path in changed:
         before = head_bytes(was, old)
-        if before is None:  # newly added file: no prior style to preserve
+        if before is None:          # newly added file: no prior style to preserve
             continue
         after = current_bytes(path, staged, base)
         if after is None:
@@ -191,14 +185,9 @@ def violations(staged: bool = True, base: str | None = None) -> list[str]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(
-        description="Refuse commits that change a file's line-ending style"
-    )
-    ap.add_argument(
-        "--measure",
-        action="store_true",
-        help="check the worktree against HEAD and report without failing the gate",
-    )
+    ap = argparse.ArgumentParser(description="Refuse commits that change a file's line-ending style")
+    ap.add_argument("--measure", action="store_true",
+                    help="check the worktree against HEAD and report without failing the gate")
     ap.add_argument("--base", help="check a pull request's changes against this base (CI)")
     args = ap.parse_args(argv)
 

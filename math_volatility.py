@@ -2,12 +2,12 @@
 math_volatility.py
 Volatility-derived transforms: the 25-delta risk reversal and the average true range.
 """
-
 from __future__ import annotations
 
 from typing import List
 
 from numeric_contract import schwab_number
+
 
 # ── 25-delta risk reversal (skew steepness) ──────────────────────────────────
 
@@ -31,7 +31,7 @@ def compute_25d_risk_reversal(contracts: List[dict]) -> dict | None:
     """
     if not contracts:
         return None
-    usable: list[tuple[int, str, float, float]] = []  # (dte, side, delta, iv)
+    usable: list[tuple[int, str, float, float]] = []   # (dte, side, delta, iv)
     for ct in contracts:
         if not isinstance(ct, dict):
             continue
@@ -46,9 +46,7 @@ def compute_25d_risk_reversal(contracts: List[dict]) -> dict | None:
         usable.append((int(dte), side, delta, iv))
     if not usable:
         return None
-    front_dte = min(
-        {u[0] for u in usable if u[0] >= 1}, key=lambda d: (abs(d - 30), d), default=None
-    )
+    front_dte = min({u[0] for u in usable if u[0] >= 1}, key=lambda d: (abs(d - 30), d), default=None)
     if front_dte is None:
         return None
     front = [u for u in usable if u[0] == front_dte]
@@ -69,7 +67,6 @@ def compute_25d_risk_reversal(contracts: List[dict]) -> dict | None:
 
 
 # ── ATR (Average True Range) ────────────────────────────────────────────────
-
 
 def compute_atr(candles: list, *, period: int = 14) -> float | None:
     """
@@ -101,9 +98,9 @@ def compute_atr(candles: list, *, period: int = 14) -> float | None:
     trs = []
     prev_close = None
     for candle in candles:
-        h = _get(candle, "h", "high")
-        l = _get(candle, "l", "low")
-        c = _get(candle, "c", "close")
+        h = _get(candle, 'h', 'high')
+        l = _get(candle, 'l', 'low')
+        c = _get(candle, 'c', 'close')
         if h is None or l is None or c is None:
             prev_close = c
             continue

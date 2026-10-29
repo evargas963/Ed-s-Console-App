@@ -14,10 +14,11 @@ from __future__ import annotations
 
 import json
 import math
-from datetime import datetime
 from pathlib import Path
 
+from datetime import datetime
 import time_et
+
 from math_levels import bs_charm, compute_charm_by_strike, pick_charm_wall_strikes
 
 #: a REAL same-day-expiry SPY chain captured 2026-10-07 12:32 ET, valued at its own capture time
@@ -60,9 +61,9 @@ def test_bs_charm_matches_finite_difference_of_delta() -> None:
 
 
 def test_bs_charm_refuses_degenerate_inputs() -> None:
-    assert bs_charm(100.0, 100.0, 0.0, 0.20) is None  # expired
-    assert bs_charm(100.0, 100.0, 0.02, 0.0) is None  # no vol
-    assert bs_charm(0.0, 100.0, 0.02, 0.20) is None  # no spot
+    assert bs_charm(100.0, 100.0, 0.0, 0.20) is None      # expired
+    assert bs_charm(100.0, 100.0, 0.02, 0.0) is None      # no vol
+    assert bs_charm(0.0, 100.0, 0.02, 0.20) is None       # no spot
 
 
 def test_charm_by_strike_on_real_chain_uses_dealer_convention() -> None:

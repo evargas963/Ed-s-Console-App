@@ -13,7 +13,6 @@ not the values' existence).
 Real data: Schwab's SPY and TSLA bars of Thu 2026-10-01 (390 regular-session minutes each) and
 Fri 10-02 (291 each: the capture daemon was down for the rest), as the daemon recorded them.
 """
-
 from __future__ import annotations
 
 from datetime import datetime
@@ -30,7 +29,6 @@ _PAIR = ("SPY", "TSLA")
 def _published(now: datetime) -> dict:
     """Each ticker's price levels published at `now` from the recorded bars, streamed to the
     console as the daemon pushed them; nothing is left behind."""
-
     def forget():
         for tk in _PAIR:
             server._bars.pop(tk, None)
@@ -52,10 +50,7 @@ def _published(now: datetime) -> dict:
 def test_thin_banked_prior_session_is_stamped_degraded():
     """Mon 2026-10-05: the prior session, Friday, holds 291 of 390 regular-session bars."""
     for tk, snap in _published(datetime(2026, 10, 5, 12, 0, tzinfo=ET)).items():
-        assert snap.price("PDH") is not None, (
-            tk,
-            "the thin tape still serves — the defect was silence, not existence",
-        )
+        assert snap.price("PDH") is not None, (tk, "the thin tape still serves — the defect was silence, not existence")
         stamps = [d for d in snap.degraded if d.get("family") == "prior_day"]
         assert stamps and "prior session 2026-10-02" in stamps[0]["reason"], (tk, snap.degraded)
         assert "partial tape" in stamps[0]["reason"], (tk, stamps)

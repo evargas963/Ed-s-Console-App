@@ -13,6 +13,21 @@ every other level means.
 from __future__ import annotations
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 def test_bars1m_endpoint_serves_canonical_bars_shape(monkeypatch):
     """CR-03 pre-work: /api/bars1m returns newest-last {t,o,h,l,c,v} rows from the console's
     1-minute bars in memory (server._bars: price_bars_1m loaded at startup, then each streamed bar).
@@ -29,15 +44,9 @@ def test_bars1m_endpoint_serves_canonical_bars_shape(monkeypatch):
     from micro_structure import Candle
 
     # Real SPY 1-minute bars (tests/fixtures) as the console holds them in memory.
-    fx = json.loads(
-        (
-            Path(__file__).resolve().parent / "fixtures" / "real_spy_1m_bars_2026_09_24_25.json"
-        ).read_text(encoding="utf-8")
-    )["bars"]
-    rows = [
-        (b["timestamp"] / 1000.0, b["open"], b["high"], b["low"], b["close"], b["volume"])
-        for b in fx
-    ]
+    fx = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_spy_1m_bars_2026_09_24_25.json")
+                    .read_text(encoding="utf-8"))["bars"]
+    rows = [(b["timestamp"] / 1000.0, b["open"], b["high"], b["low"], b["close"], b["volume"]) for b in fx]
     monkeypatch.setattr(srv, "_bars", {"SPY": [Candle(*r) for r in rows]})
     body = json.loads(srv.get_bars1m(ticker="SPY", limit=5, tf="1").body)
     assert body["ticker"] == "SPY" and len(body["bars"]) == 5
@@ -56,9 +65,8 @@ def test_bars1m_endpoint_serves_canonical_bars_shape(monkeypatch):
 def test_terrain_strikes_endpoint_shape_and_scopes():
     """CR-03 histogram feed: per-strike [strike, net_gex, volume] rows in three
     expiry scopes for today + prior capture, sorted by strike, read-only."""
-    from fastapi.testclient import TestClient
-
     import server as srv
+    from fastapi.testclient import TestClient
 
     client = TestClient(srv.app)
     r = client.get("/api/terrain/strikes?ticker=SPY")

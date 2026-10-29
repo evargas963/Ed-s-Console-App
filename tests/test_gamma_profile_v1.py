@@ -10,10 +10,8 @@ from __future__ import annotations
 
 import json
 import math
-from datetime import datetime
 from pathlib import Path
 
-import time_et
 from math_levels import (
     GAMMA_FLIP_UNAVAILABLE,
     GSF_STATE_BELOW_SUPPORT,
@@ -25,6 +23,9 @@ from math_levels import (
     gamma_at_price,
     gamma_flip_from_profile,
 )
+
+from datetime import datetime
+import time_et
 
 #: a REAL same-day-expiry SPY chain the capture daemon captured 2026-10-07 12:32 ET, valued at its
 #: own capture time (a live 0DTE, ~3.5 h to Schwab's 16:00 EQO close)
@@ -77,7 +78,6 @@ def test_flip_v2_fails_closed_without_inputs() -> None:
         flip, confidence, _diag = compute_gamma_flip_v2(contracts, spot, profile=[])
         assert flip is None and confidence == GAMMA_FLIP_UNAVAILABLE
 
-
 def test_regime_is_defined_even_when_the_profile_never_crosses_zero() -> None:
     """RC-11: no zero-crossing means no FLIP LEVEL, never an unknown regime.
 
@@ -107,8 +107,8 @@ def test_regime_is_defined_even_when_the_profile_never_crosses_zero() -> None:
 
 def test_gamma_at_price_clamps_outside_the_profile() -> None:
     prof = [(100.0, -2.0), (110.0, 4.0)]
-    assert gamma_at_price(prof, 50.0) == -2.0  # below the profile -> first value
-    assert gamma_at_price(prof, 500.0) == 4.0  # above -> last value
+    assert gamma_at_price(prof, 50.0) == -2.0     # below the profile -> first value
+    assert gamma_at_price(prof, 500.0) == 4.0     # above -> last value
     assert gamma_at_price([], 100.0) is None
     assert gamma_at_price(prof, None) is None
 
@@ -174,7 +174,8 @@ def test_flip_zero_touching_profile_start_is_the_boundary():
 def _linear_profile(lo_px, hi_px, lo_v, hi_v, steps=100):
     """Synthetic ascending profile with net GEX linear from lo_v to hi_v."""
     return [
-        (round(lo_px + (hi_px - lo_px) * i / steps, 4), lo_v + (hi_v - lo_v) * i / steps)
+        (round(lo_px + (hi_px - lo_px) * i / steps, 4),
+         lo_v + (hi_v - lo_v) * i / steps)
         for i in range(steps + 1)
     ]
 
@@ -188,9 +189,9 @@ def test_gsf_sits_between_flip_and_spot_and_grc_mirrors_above():
     assert out["state"] == GSF_STATE_OK
     assert out["gsf"] is not None
     flip = gamma_flip_from_profile(prof, 105.0)
-    assert flip is not None and out["gsf"] > flip  # above the flip
-    assert flip < out["gsf"] < 105.0  # between flip and spot
-    assert abs(out["gsf"] - 100.0) < 0.5  # analytic crossing
+    assert flip is not None and out["gsf"] > flip           # above the flip
+    assert flip < out["gsf"] < 105.0                        # between flip and spot
+    assert abs(out["gsf"] - 100.0) < 0.5                    # analytic crossing
     # monotone-rising profile above spot never decays below target -> no ceiling
     assert out["grc"] is None
 
@@ -203,11 +204,10 @@ def test_grc_found_when_cushion_decays_above_spot():
     prof = up + down
     out = compute_gamma_support_levels(prof, 102.0)
     assert out["state"] == GSF_STATE_OK
-    assert out["grc"] is not None and out["grc"] > 106.0  # beyond the peak/wall
+    assert out["grc"] is not None and out["grc"] > 106.0    # beyond the peak/wall
     n_spot = out["n_at_spot"]
     # value at the ceiling is ~phi * N(spot)
     from math_levels import _interp_profile_at
-
     assert abs(_interp_profile_at(prof, out["grc"]) - 0.5 * n_spot) / n_spot < 0.05
 
 
@@ -221,14 +221,8 @@ def test_below_support_state_never_fabricates_a_price():
 
 def test_unavailable_on_empty_or_bad_inputs():
     assert compute_gamma_support_levels([], 100.0)["state"] == GSF_STATE_UNAVAILABLE
-    assert (
-        compute_gamma_support_levels(_linear_profile(90, 110, 1e9, 2e9), None)["state"]
-        == GSF_STATE_UNAVAILABLE
-    )
-    assert (
-        compute_gamma_support_levels(_linear_profile(90, 110, 1e9, 2e9), -5)["state"]
-        == GSF_STATE_UNAVAILABLE
-    )
+    assert compute_gamma_support_levels(_linear_profile(90, 110, 1e9, 2e9), None)["state"] == GSF_STATE_UNAVAILABLE
+    assert compute_gamma_support_levels(_linear_profile(90, 110, 1e9, 2e9), -5)["state"] == GSF_STATE_UNAVAILABLE
 
 
 def test_rc357_zero_dte_gamma_share_ratio_and_fail_closed():
@@ -236,15 +230,12 @@ def test_rc357_zero_dte_gamma_share_ratio_and_fail_closed():
     full book is empty or has no measurable gamma — never a fabricated 0%."""
     from math_exposure_core import compute_zero_dte_gamma_share
 
-    all_book = {
-        700.0: {"net_gex_1pct": 6e9},
-        705.0: {"net_gex_1pct": -2e9},
-        710.0: {"net_gex_1pct": 2e9},
-    }
+    all_book = {700.0: {"net_gex_1pct": 6e9}, 705.0: {"net_gex_1pct": -2e9},
+                710.0: {"net_gex_1pct": 2e9}}
     zero_book = {700.0: {"net_gex_1pct": 4e9}, 705.0: {"net_gex_1pct": -1e9}}
-    assert compute_zero_dte_gamma_share(all_book, zero_book) == 50.0  # 5e9/10e9
-    assert compute_zero_dte_gamma_share(all_book, {}) == 0.0  # genuine zero 0DTE
-    assert compute_zero_dte_gamma_share({}, zero_book) is None  # empty full book
+    assert compute_zero_dte_gamma_share(all_book, zero_book) == 50.0   # 5e9/10e9
+    assert compute_zero_dte_gamma_share(all_book, {}) == 0.0           # genuine zero 0DTE
+    assert compute_zero_dte_gamma_share({}, zero_book) is None         # empty full book
     assert compute_zero_dte_gamma_share({700.0: {"net_gex_1pct": 0.0}}, {}) is None
 
 
@@ -258,16 +249,12 @@ def test_rc358_25d_risk_reversal_30_day_tenor_and_fail_closed():
 
     chain = [
         # the ~30-day expiry (28d): usable 25Δ wings — RR = 17.0 − 21.5 = −4.5
-        ct("CALL", 0.27, 17.0, 28),
-        ct("PUT", -0.24, 21.5, 28),
+        ct("CALL", 0.27, 17.0, 28), ct("PUT", -0.24, 21.5, 28),
         # noise wings far from 25Δ on the same expiry
-        ct("CALL", 0.55, 15.0, 28),
-        ct("PUT", -0.60, 25.0, 28),
+        ct("CALL", 0.55, 15.0, 28), ct("PUT", -0.60, 25.0, 28),
         # the front (1d) and a far (60d) expiry are IGNORED even with perfect deltas
-        ct("CALL", 0.25, 30.0, 1),
-        ct("PUT", -0.25, 10.0, 1),
-        ct("CALL", 0.25, 40.0, 60),
-        ct("PUT", -0.25, 12.0, 60),
+        ct("CALL", 0.25, 30.0, 1), ct("PUT", -0.25, 10.0, 1),
+        ct("CALL", 0.25, 40.0, 60), ct("PUT", -0.25, 12.0, 60),
     ]
     out = compute_25d_risk_reversal(chain)
     assert out is not None and out["dte"] == 28
@@ -293,23 +280,15 @@ def test_the_flip_counts_the_contracts_it_could_not_price():
     -999 -- and $SPX's AM-settled 2027-12-17 expiry (10:37 ET; 288 with open interest)."""
     from math_levels import NO_EXPIRY_SESSION, contract_inputs
     from terrain_engine import compute_terrain
-
     fx = Path(__file__).parent / "fixtures"
-    nflx = json.loads(
-        (fx / "real_nflx_chain_2026_10_07_three_expiries.json").read_text(encoding="utf-8")
-    )
+    nflx = json.loads((fx / "real_nflx_chain_2026_10_07_three_expiries.json").read_text(encoding="utf-8"))
     spx = json.loads((fx / "real_spx_chain_2026_10_07_2027_12_17.json").read_text(encoding="utf-8"))
     now = datetime.fromtimestamp(nflx["ts_utc"], time_et.ET)
     priced, unpriced = contract_inputs(nflx["chain"], now)
     assert (len(priced), unpriced) == (685, {"no_volatility": 8})
     far = next(ct for ct in nflx["chain"] if ct["expirationDate"].startswith("2028-01-21"))
-    assert (
-        time_et.time_to_expiry_years(
-            far["expirationDate"], now, settlement_type=far["settlementType"]
-        )
-        == (datetime.fromisoformat(far["expirationDate"]).timestamp() - now.timestamp())
-        / time_et.YEAR_SECONDS
-    )
+    assert time_et.time_to_expiry_years(far["expirationDate"], now, settlement_type=far["settlementType"]) == (
+        datetime.fromisoformat(far["expirationDate"]).timestamp() - now.timestamp()) / time_et.YEAR_SECONDS
     snap = compute_terrain("NFLX", nflx["chain"], nflx["spot"], now=now)
     assert snap.to_dict()["flip_diag"]["unpriced"] == {"no_volatility": 8}
     at = datetime.fromtimestamp(spx["ts_utc"], time_et.ET)

@@ -7,7 +7,6 @@ stored chain whose expiry had already passed read as ZERO vanna on replay.
 
 Real data: TSLA's complete 2026-10-09 chain captured 2026-10-07 12:32 ET (tests/real_chains.py).
 """
-
 from __future__ import annotations
 
 import time

@@ -1,27 +1,31 @@
 """Institutional consistency: dollar GEX pickers and aggregates."""
 
+
 from math_exposure_core import (
     bucket_metric_abs,
     compute_exposures_by_strike,
     exposures_have_dollar_gex,
     net_gex_dollars_at_strike,
-    pick_key_delta_strike,
     pick_pin_and_strength,
+    pick_key_delta_strike,
     pick_volatility_point_strikes,
 )
 from tests.real_chains import SPY_0DTE
 
 
+
 def _dollarized_exposures():
-    # Real captured SPY 0DTE chain (tests/real_chains.py, 2026-10-07 12:32 ET), valued at its
-    # capture — level invariants must hold on real data.
-    exposures, _ = compute_exposures_by_strike(SPY_0DTE.chain, spot=SPY_0DTE.spot, now=SPY_0DTE.now)
-    return exposures, SPY_0DTE.spot
+  # Real captured SPY 0DTE chain (tests/real_chains.py, 2026-10-07 12:32 ET), valued at its
+  # capture — level invariants must hold on real data.
+  exposures, _ = compute_exposures_by_strike(SPY_0DTE.chain, spot=SPY_0DTE.spot, now=SPY_0DTE.now)
+  return exposures, SPY_0DTE.spot
 
 
 def test_exposures_are_dollarized():
     exposures, _ = _dollarized_exposures()
     assert exposures_have_dollar_gex(exposures)
+
+
 
 
 def test_pin_fails_closed_without_dollarized_gex():
@@ -31,19 +35,51 @@ def test_pin_fails_closed_without_dollarized_gex():
     assert pick_pin_and_strength(raw_only, [700.0]) == (None, None)
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 def test_key_delta_strike_is_the_total_dex_argmax_on_real_chain():
     exposures, _ = _dollarized_exposures()
     strikes = sorted(exposures.keys())
     kds = pick_key_delta_strike(exposures, strikes)
     assert kds is not None
-
     # Independent recompute: no other strike may carry more total |DEX$|.
     def total_dex(s):
         b = exposures.get(s, {})
         c = bucket_metric_abs(b, "call_dex_dollars")
         p = bucket_metric_abs(b, "put_dex_dollars")
         return (c or 0.0) + (p or 0.0)
-
     best = max(strikes, key=total_dex)
     assert kds == round(best, 2)
 
@@ -81,21 +117,12 @@ def test_terrain_snapshot_v2_carries_net_gex_and_new_levels():
     from terrain_engine import TERRAIN_SCHEMA_VERSION, compute_terrain, price_relations
 
     snap = compute_terrain("SPY", SPY_0DTE.chain, SPY_0DTE.spot, now=SPY_0DTE.now)
-    d = (
-        snap.to_dict() | price_relations(snap.to_dict(), SPY_0DTE.spot).to_dict()
-    )  # as /api/terrain serves it
+    d = snap.to_dict() | price_relations(snap.to_dict(), SPY_0DTE.spot).to_dict()     # as /api/terrain serves it
     # v3 (RC-292): gamma_pin* renamed absolute_gamma_*; + pin_candidate(+blockers). The
     # v2 fields this test locks are all still carried.
     assert TERRAIN_SCHEMA_VERSION == 3 and d["schema_version"] == 3
-    for fld in (
-        "net_gex_at_spot",
-        "key_delta_strike",
-        "hvp",
-        "lvp",
-        "absolute_gamma_strike",
-        "pin_candidate",
-        "pin_candidate_blockers",
-    ):
+    for fld in ("net_gex_at_spot", "key_delta_strike", "hvp", "lvp",
+                "absolute_gamma_strike", "pin_candidate", "pin_candidate_blockers"):
         assert fld in d, fld + " missing from terrain payload"
     assert "gamma_pin" not in d, "the retired gamma_pin key returned to the terrain payload"
     assert d["net_gex_at_spot"] is not None, "the chain must price (valued at its capture)"
@@ -104,7 +131,6 @@ def test_terrain_snapshot_v2_carries_net_gex_and_new_levels():
     strikes = sorted(exposures.keys())
     # engine strike list is filtered; pickers must agree when run on the same inputs
     from math_exposure_core import key_level_strikes_with_gamma
-
     eng_strikes = key_level_strikes_with_gamma(exposures) or strikes
     assert d["key_delta_strike"] == pick_key_delta_strike(exposures, eng_strikes)
     assert (d["hvp"], d["lvp"]) == pick_volatility_point_strikes(exposures, eng_strikes)
@@ -116,5 +142,5 @@ def test_volatility_points_one_sided_chain_returns_none_side():
         105.0: {"net_gex_1pct": 9_000_000.0, "call_gex_1pct": 9_000_000.0, "dollarized": True},
     }
     hvp, lvp = pick_volatility_point_strikes(exposures, [100.0, 105.0])
-    assert hvp is None  # no negative pocket anywhere
-    assert lvp == 105.0  # most positive, signed — not magnitude
+    assert hvp is None      # no negative pocket anywhere
+    assert lvp == 105.0     # most positive, signed — not magnitude

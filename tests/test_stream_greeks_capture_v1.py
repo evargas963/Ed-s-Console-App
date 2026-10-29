@@ -8,11 +8,10 @@ live GEX recompute needs, keeping the heatmap bound to the ~60s wide-chain REST 
 for the one contract already streaming. This is the foundation for feeding fresher-than-REST
 Greeks into the existing ONE FAUCET projection (project_gamma_surface), not a second one --
 capture and merge only, no new exposure math here."""
-
 from __future__ import annotations
+import time
 
 import sys
-import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -20,6 +19,8 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from app.options.order_flow.state import OrderFlowState as LiveOrderFlowState
+
+
 
 
 def test_total_volume_is_captured_alongside_the_greeks():
@@ -73,14 +74,8 @@ def test_a_bid_ask_only_tick_does_not_blank_a_previously_observed_gamma():
     """A quote tick that carries BID_PRICE/ASK_PRICE but not GAMMA must not erase a gamma
     value learned on an earlier tick -- explicit per-field presence, not a group overwrite."""
     st = LiveOrderFlowState()
-    st.push_level_one(
-        "SPY   260116C00580000",
-        {"GAMMA": 0.0123, "DELTA": 0.45, "OPEN_INTEREST": 4200},
-        ts_recv=time.time(),
-    )
-    st.push_level_one(
-        "SPY   260116C00580000", {"BID_PRICE": 12.30, "ASK_PRICE": 12.35}, ts_recv=time.time()
-    )
+    st.push_level_one("SPY   260116C00580000", {"GAMMA": 0.0123, "DELTA": 0.45, "OPEN_INTEREST": 4200}, ts_recv=time.time())
+    st.push_level_one("SPY   260116C00580000", {"BID_PRICE": 12.30, "ASK_PRICE": 12.35}, ts_recv=time.time())
     g = st.get_stream_greeks("SPY   260116C00580000")
     assert g["gamma"] == 0.0123, "gamma must survive a tick that does not mention it"
     assert g["delta"] == 0.45
@@ -89,11 +84,7 @@ def test_a_bid_ask_only_tick_does_not_blank_a_previously_observed_gamma():
 
 def test_each_field_is_independently_updatable():
     st = LiveOrderFlowState()
-    st.push_level_one(
-        "SPY   260116C00580000",
-        {"GAMMA": 0.01, "DELTA": 0.40, "OPEN_INTEREST": 100},
-        ts_recv=time.time(),
-    )
+    st.push_level_one("SPY   260116C00580000", {"GAMMA": 0.01, "DELTA": 0.40, "OPEN_INTEREST": 100}, ts_recv=time.time())
     st.push_level_one("SPY   260116C00580000", {"GAMMA": 0.02}, ts_recv=time.time())
     g = st.get_stream_greeks("SPY   260116C00580000")
     assert g["gamma"] == 0.02, "gamma updates independently"

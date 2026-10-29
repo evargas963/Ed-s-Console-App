@@ -4,7 +4,6 @@ Two full-suite runs from two worktrees at once used to share 127.0.0.1:8765: one
 start ("is already used"), the other lost 32 tests to ERR_CONNECTION_REFUSED when the first
 run's server went away.
 """
-
 from __future__ import annotations
 
 import json
@@ -23,14 +22,8 @@ def _load_config(env: dict[str, str]) -> dict:
         "console.log(JSON.stringify({base:c.use.baseURL,url:c.webServer.url,"
         "command:c.webServer.command,storage:c.use.storageState}));"
     )
-    result = subprocess.run(
-        ["node", "--input-type=module", "-e", script],
-        cwd=ROOT,
-        env=env,
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
+    result = subprocess.run(["node", "--input-type=module", "-e", script], cwd=ROOT, env=env,
+                            capture_output=True, text=True, timeout=30)
     assert result.returncode == 0, result.stdout + result.stderr
     return json.loads(result.stdout.strip().splitlines()[-1])
 

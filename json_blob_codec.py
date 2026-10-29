@@ -14,7 +14,6 @@ so old and new rows are both readable during and after a backfill, with no coord
 cutover moment required. A table can be read successfully while a backfill against it is
 still in progress, or never backfilled at all.
 """
-
 from __future__ import annotations
 
 import gzip
@@ -87,3 +86,5 @@ def decode_json_blob(value: "bytes | bytearray | str | None") -> Any:
     if text is None:
         return None
     return json.loads(text)
+
+

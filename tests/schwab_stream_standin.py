@@ -14,7 +14,6 @@ per service) a test sets; which symbols of a request past the limit Schwab keeps
 a SUBS whose highest field number is past the service's range refused whole (Schwab's refusals
 were of ranges and of single numbers); a data entry (`data`) sent once after an accepted SUBS.
 """
-
 from __future__ import annotations
 
 import asyncio
@@ -26,21 +25,15 @@ from pathlib import Path
 
 from websockets.asyncio.server import serve
 
+
 #: Schwab's answers to SUBS asking field numbers past what it accepts, per service (2026-10-12)
-FIELD_REPLIES = json.loads(
-    (
-        Path(__file__).parent / "fixtures" / "real_schwab_field_number_replies_2026_10_12.json"
-    ).read_text(encoding="utf-8")
-)
+FIELD_REPLIES = json.loads((Path(__file__).parent / "fixtures" / "real_schwab_field_number_replies_2026_10_12.json")
+                           .read_text(encoding="utf-8"))
 
 
 #: the top of the field range Schwab answered code 0 for, per service ("0-150" -> 150)
-HIGHEST_FIELD = {
-    svc: int(f.split("-")[1])
-    for svc, replies in FIELD_REPLIES["replies"].items()
-    for f, code, _m in replies
-    if code == 0
-}
+HIGHEST_FIELD = {svc: int(f.split("-")[1]) for svc, replies in FIELD_REPLIES["replies"].items()
+                 for f, code, _m in replies if code == 0}
 
 
 def refusal(service: str, limit: int, discarded: int) -> str:
@@ -54,9 +47,7 @@ class LocalStreamer:
     past it, the request is answered twice: code 19 (refusal) and then code 24
     ("<COMMAND> command failed"), as Schwab answered on 2026-10-07. UNSUBS releases them."""
 
-    def __init__(
-        self, limits: "dict[str, int] | None" = None, data: "dict[str, dict] | None" = None
-    ):
+    def __init__(self, limits: "dict[str, int] | None" = None, data: "dict[str, dict] | None" = None):
         self.limits = dict(limits or {})
         #: per service, a data entry Schwab sent, streamed once a SUBS on that service is accepted
         self.data = dict(data or {})
@@ -74,9 +65,7 @@ class LocalStreamer:
                 ready.set()
                 await self.stop.wait()
 
-        self.thread = threading.Thread(
-            target=self.loop.run_until_complete, args=(main(),), daemon=True
-        )
+        self.thread = threading.Thread(target=self.loop.run_until_complete, args=(main(),), daemon=True)
         self.thread.start()
         ready.wait(10)
 
@@ -88,43 +77,24 @@ class LocalStreamer:
                 for frame in frames:
                     self.answers.append(frame)
                     await ws.send(json.dumps(frame))
-                if (
-                    req["command"] == "LOGOUT"
-                ):  # "Streamer will close the connection" (Streamer API §1)
+                if req["command"] == "LOGOUT":          # "Streamer will close the connection" (Streamer API §1)
                     return await ws.close()
-                if (
-                    req["command"] == "SUBS"
-                    and req["service"] in self.data
-                    and frames[-1]["response"][0]["content"]["code"] == 0
-                ):
+                if req["command"] == "SUBS" and req["service"] in self.data \
+                        and frames[-1]["response"][0]["content"]["code"] == 0:
                     await ws.send(json.dumps({"data": [self.data[req["service"]]]}))
 
     def answer(self, req: dict) -> "list[dict]":
         service, command = req["service"], req["command"]
 
         def response(code: int, msg: str) -> dict:
-            return {
-                "response": [
-                    {
-                        "service": service,
-                        "command": command,
-                        "requestid": req["requestid"],
-                        "SchwabClientCorrelId": req["SchwabClientCorrelId"],
-                        "timestamp": int(time.time() * 1000),
-                        "content": {"code": code, "msg": msg},
-                    }
-                ]
-            }
-
+            return {"response": [{"service": service, "command": command, "requestid": req["requestid"],
+                                  "SchwabClientCorrelId": req["SchwabClientCorrelId"],
+                                  "timestamp": int(time.time() * 1000), "content": {"code": code, "msg": msg}}]}
         if service == "ADMIN":
             return [response(0, f"{command} command succeeded")]
         keys = req["parameters"]["keys"].split(",")
         fields = req["parameters"].get("fields")
-        if (
-            command == "SUBS"
-            and fields
-            and max(map(int, fields.split(","))) > HIGHEST_FIELD[service]
-        ):
+        if command == "SUBS" and fields and max(map(int, fields.split(","))) > HIGHEST_FIELD[service]:
             return [response(22, "SUBS command failed")]
         held = self.held[service]
         if command == "UNSUBS":
@@ -134,22 +104,16 @@ class LocalStreamer:
             held = self.held[service] = []
         new = [k for k in keys if k not in held]
         limit = self.limits[service] if service in self.limits else len(held) + len(new)
-        kept = new[: max(0, limit - len(held))]
+        kept = new[:max(0, limit - len(held))]
         held.extend(kept)
         if len(kept) < len(new):
-            return [
-                response(19, refusal(service, limit, len(new) - len(kept))),
-                response(24, f"{command} command failed"),
-            ]
+            return [response(19, refusal(service, limit, len(new) - len(kept))),
+                    response(24, f"{command} command failed")]
         return [response(0, f"{command} command succeeded")]
 
     def asked(self, service: str) -> "list[tuple[str, list[str]]]":
         """(command, keys) of each request on `service`, in order."""
-        return [
-            (r["command"], r["parameters"]["keys"].split(","))
-            for r in self.requests
-            if r["service"] == service
-        ]
+        return [(r["command"], r["parameters"]["keys"].split(",")) for r in self.requests if r["service"] == service]
 
     def close(self) -> None:
         self.loop.call_soon_threadsafe(self.stop.set)

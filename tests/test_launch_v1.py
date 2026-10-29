@@ -16,7 +16,6 @@ window of its own (hidden) for each stop case; a batch file ending as start_ed_c
 Ctrl+Break handler for the console in the first stop case, and the real console (uvicorn
 server:app, offline, a runtime root of its own) in the second.
 """
-
 from __future__ import annotations
 
 import os
@@ -32,9 +31,7 @@ import pytest
 import launch
 
 REPO = Path(__file__).resolve().parent.parent
-windows_only = pytest.mark.skipif(
-    sys.platform != "win32", reason="console windows and their Ctrl events are Windows'"
-)
+windows_only = pytest.mark.skipif(sys.platform != "win32", reason="console windows and their Ctrl events are Windows'")
 
 
 def test_a_port_with_a_listener_is_in_use_and_a_free_one_is_not():
@@ -48,9 +45,7 @@ def test_a_port_with_a_listener_is_in_use_and_a_free_one_is_not():
 
 
 def _git(cwd: Path, *args: str) -> str:
-    return subprocess.run(
-        ["git", *args], cwd=cwd, capture_output=True, text=True, check=True
-    ).stdout.strip()
+    return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, check=True).stdout.strip()
 
 
 def _merge(work: Path, name: str) -> str:
@@ -71,14 +66,10 @@ def test_each_start_brings_the_checkout_to_origin_main_or_says_why_it_cannot(tmp
 
     assert launch.bring_to_origin_main(prod) == (launch.COMMIT_CURRENT, first, "at origin/main")
 
-    merged = _merge(tmp_path / "work", "merged")  # production one commit behind
-    assert launch.bring_to_origin_main(prod) == (
-        launch.COMMIT_MOVED,
-        merged,
-        f"fast-forwarded from {first}",
-    )
+    merged = _merge(tmp_path / "work", "merged")                      # production one commit behind
+    assert launch.bring_to_origin_main(prod) == (launch.COMMIT_MOVED, merged, f"fast-forwarded from {first}")
     assert _git(prod, "rev-parse", "HEAD") == merged
-    assert launch.bring_to_origin_main(prod)[0] == launch.COMMIT_CURRENT  # the run after it starts
+    assert launch.bring_to_origin_main(prod)[0] == launch.COMMIT_CURRENT     # the run after it starts
 
     (prod / "first").write_text("edited in production", encoding="utf-8")
     _merge(tmp_path / "work", "later")
@@ -89,24 +80,19 @@ def test_each_start_brings_the_checkout_to_origin_main_or_says_why_it_cannot(tmp
     (prod / "first").write_text("first", encoding="utf-8")
     _git(prod, "remote", "set-url", "origin", str(tmp_path / "unreachable.git"))
     check, at, why = launch.bring_to_origin_main(prod)
-    assert (check, at) == (launch.COMMIT_UNKNOWN, merged) and why.startswith(
-        "origin could not be fetched"
-    )
+    assert (check, at) == (launch.COMMIT_UNKNOWN, merged) and why.startswith("origin could not be fetched")
 
     # INDUCED CONDITION: git cannot run there (no such folder: the OSError an absent git gives)
     check, at, why = launch.bring_to_origin_main(tmp_path / "gone")
-    assert (check, at) == (launch.COMMIT_UNKNOWN, None) and why.startswith(
-        "git did not answer: "
-    ), "the start ended on git"
+    assert (check, at) == (launch.COMMIT_UNKNOWN, None) and why.startswith("git did not answer: "), \
+        "the start ended on git"
 
 
 def _window(argv: "list[str]") -> subprocess.Popen:
     """`argv` in a console window of its own, hidden."""
     hidden = subprocess.STARTUPINFO()
     hidden.dwFlags, hidden.wShowWindow = subprocess.STARTF_USESHOWWINDOW, 0
-    return subprocess.Popen(
-        argv, cwd=REPO, creationflags=subprocess.CREATE_NEW_CONSOLE, startupinfo=hidden
-    )
+    return subprocess.Popen(argv, cwd=REPO, creationflags=subprocess.CREATE_NEW_CONSOLE, startupinfo=hidden)
 
 
 def _until(path: Path, seconds: float = 60.0) -> str:
@@ -127,29 +113,21 @@ def _batch(tmp_path: Path, console_argv: "list[str]", env: "dict | None" = None)
         f"console = launch.start_console({console_argv!r}, {env!r})\n"
         f"open({str(tmp_path / 'console.pid')!r}, 'w').write(str(console.pid))\n"
         "signal.signal(signal.SIGINT, signal.SIG_IGN)\n"
-        "sys.exit(console.wait())\n",
-        encoding="utf-8",
-    )
+        "sys.exit(console.wait())\n", encoding="utf-8")
     bat = tmp_path / "start.bat"
-    bat.write_text(
-        f'@echo off\r\n"{sys.executable}" "{launcher}" || pause & exit /b\r\n', encoding="utf-8"
-    )
+    bat.write_text(f'@echo off\r\n"{sys.executable}" "{launcher}" || pause & exit /b\r\n', encoding="utf-8")
     return bat
 
 
 @windows_only
 def test_the_stop_ends_the_console_and_leaves_no_window_waiting(tmp_path):
     ready, handled = tmp_path / "ready", tmp_path / "handled"
-    console = (
-        "import pathlib, signal, sys, time\n"
-        f"def on_break(signum, frame):\n    pathlib.Path(r'{handled}').write_text('break')\n    sys.exit(0)\n"
-        "signal.signal(signal.SIGBREAK, on_break)\n"
-        f"pathlib.Path(r'{ready}').write_text('ready')\n"
-        "while True:\n    time.sleep(0.1)\n"
-    )  # awake, as a running console is
-    window = _window(
-        ["cmd", "/c", str(_batch(tmp_path, [sys.executable, "-c", console], dict(os.environ)))]
-    )
+    console = ("import pathlib, signal, sys, time\n"
+               f"def on_break(signum, frame):\n    pathlib.Path(r'{handled}').write_text('break')\n    sys.exit(0)\n"
+               "signal.signal(signal.SIGBREAK, on_break)\n"
+               f"pathlib.Path(r'{ready}').write_text('ready')\n"
+               "while True:\n    time.sleep(0.1)\n")      # awake, as a running console is
+    window = _window(["cmd", "/c", str(_batch(tmp_path, [sys.executable, "-c", console], dict(os.environ)))])
     try:
         _until(ready)
         launch.ctrl_break(int(_until(tmp_path / "console.pid")))
@@ -166,36 +144,10 @@ def _real_console(tmp_path: Path) -> "tuple[subprocess.Popen, int]":
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
         port = s.getsockname()[1]
-    env = {
-        **os.environ,
-        "ED_CI_OFFLINE": "1",
-        "ED_RUNTIME_ROOT": str(tmp_path / "runtime"),
-        "ED_LIVE_PUSH_PORT": "1",
-        "SCHWAB_API_KEY": "stand-in",
-        "SCHWAB_APP_SECRET": "stand-in",
-    }
-    window = _window(
-        [
-            "cmd",
-            "/c",
-            str(
-                _batch(
-                    tmp_path,
-                    [
-                        sys.executable,
-                        "-m",
-                        "uvicorn",
-                        "server:app",
-                        "--host",
-                        "127.0.0.1",
-                        "--port",
-                        str(port),
-                    ],
-                    env,
-                )
-            ),
-        ]
-    )
+    env = {**os.environ, "ED_CI_OFFLINE": "1", "ED_RUNTIME_ROOT": str(tmp_path / "runtime"), "ED_LIVE_PUSH_PORT": "1",
+           "SCHWAB_API_KEY": "stand-in", "SCHWAB_APP_SECRET": "stand-in"}
+    window = _window(["cmd", "/c", str(_batch(tmp_path, [sys.executable, "-m", "uvicorn", "server:app", "--host",
+                                                          "127.0.0.1", "--port", str(port)], env))])
     assert launch.unhealthy_for(port, 120.0) is None
     return window, int(_until(tmp_path / "console.pid"))
 
@@ -210,20 +162,11 @@ def test_the_real_console_stops_on_the_stop_and_on_the_operators_ctrl_c(tmp_path
         window.kill()
     window, pid = _real_console(tmp_path / "ctrl_c")
     console = psutil.Process(pid)
-    try:  # Ctrl+C to every process on the window, as the operator's key press
-        subprocess.run(
-            [
-                sys.executable,
-                "-c",
-                "import ctypes, sys; k = ctypes.windll.kernel32; k.FreeConsole(); "
-                "k.AttachConsole(int(sys.argv[1])); k.SetConsoleCtrlHandler(None, True); "
-                "k.GenerateConsoleCtrlEvent(0, 0)",
-                str(pid),
-            ],
-            creationflags=subprocess.CREATE_NO_WINDOW,
-            check=True,
-            timeout=30,
-        )
+    try:                    # Ctrl+C to every process on the window, as the operator's key press
+        subprocess.run([sys.executable, "-c", "import ctypes, sys; k = ctypes.windll.kernel32; k.FreeConsole(); "
+                        "k.AttachConsole(int(sys.argv[1])); k.SetConsoleCtrlHandler(None, True); "
+                        "k.GenerateConsoleCtrlEvent(0, 0)", str(pid)], creationflags=subprocess.CREATE_NO_WINDOW,
+                       check=True, timeout=30)
         # the console stops (its window's cmd, which the key press reached too, asks its own question)
         assert console.wait(timeout=60) == 0, "the operator's Ctrl+C did not stop the console"
     finally:

@@ -8,7 +8,6 @@ EVENT. The executor keeps no state and chooses no other tree: the checkout runni
 judges every event from that event's payload alone (a session transcript cannot tell an
 executed mutation from one the hook refused).
 """
-
 from __future__ import annotations
 
 import json
@@ -30,21 +29,11 @@ PRE_ROSTER = ("tools/operator_law_guard.py", "tools/process_lock_guard.py")
 WIRED_ROSTER = PRE_ROSTER + ("tools/operator_yes_guard.py",)
 
 
-def _chain(
-    payload, roster: tuple[str, ...] = PRE_ROSTER, root: Path = ROOT
-) -> subprocess.CompletedProcess[str]:
+def _chain(payload, roster: tuple[str, ...] = PRE_ROSTER, root: Path = ROOT) -> subprocess.CompletedProcess[str]:
     raw = payload if isinstance(payload, str) else json.dumps(payload)
-    return subprocess.run(
-        [sys.executable, str(root / "tools" / "hook_chain.py"), *roster],
-        cwd=str(root),
-        input=raw,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        env=_ENV,
-        timeout=180,
-    )
+    return subprocess.run([sys.executable, str(root / "tools" / "hook_chain.py"), *roster],
+                          cwd=str(root), input=raw, capture_output=True, text=True,
+                          encoding="utf-8", errors="replace", env=_ENV, timeout=180)
 
 
 def bash(command: str, cwd: Path | None = None, tool: str = "Bash") -> dict:
@@ -59,24 +48,13 @@ def edit(path: Path) -> dict:
 
 
 #: Every module the wired PreToolUse roster imports, so a scratch checkout runs the REAL guards.
-_GUARD_MODULES = (
-    "hook_chain.py",
-    "operator_law_guard.py",
-    "process_lock_guard.py",
-    "operating_process_lock.py",
-    "pretooluse_guard.py",
-    "shell_parse.py",
-    "__init__.py",
-)
+_GUARD_MODULES = ("hook_chain.py", "operator_law_guard.py", "process_lock_guard.py",
+                  "operating_process_lock.py", "pretooluse_guard.py", "shell_parse.py", "__init__.py")
 
 
 def _git(cwd: Path, *args: str) -> None:
-    subprocess.run(
-        ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", *args],
-        cwd=str(cwd),
-        check=True,
-        capture_output=True,
-    )
+    subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false",
+                    *args], cwd=str(cwd), check=True, capture_output=True)
 
 
 def _checkout_with_the_wired_guards(root: Path) -> Path:
@@ -117,11 +95,9 @@ def _wired_commands() -> dict[str, list[str]]:
 
 # ============================================================ executor contract
 
-
 def test_argv_roster_maps_hook_spellings_to_modules():
-    assert _argv_members(
-        ["tools/process_lock_guard.py", "tools\\operator_law_guard.py", "x.py"]
-    ) == ("tools.process_lock_guard", "tools.operator_law_guard", "tools.x")
+    assert _argv_members(["tools/process_lock_guard.py", "tools\\operator_law_guard.py", "x.py"]) == (
+        "tools.process_lock_guard", "tools.operator_law_guard", "tools.x")
     assert _argv_members([]) == ()
 
 
@@ -139,13 +115,9 @@ def test_both_hosts_wire_the_one_executor_with_the_same_rosters():
     assert guards and all("tools/hook_chain.py" in c for c in guards), guards
     for retired in ("stop_chain.py", "pretooluse_chain.py", "honesty_guard", "proof_only_guard"):
         assert not any(retired in c for c in commands), retired
-        assert not (ROOT / "tools" / retired.split(".")[0]).with_suffix(
-            ".py"
-        ).exists() or retired.endswith("guard"), retired
-
+        assert not (ROOT / "tools" / retired.split(".")[0]).with_suffix(".py").exists() or retired.endswith("guard"), retired
     def roster(c: str) -> set[str]:
         return {t for t in c.split() if t.startswith("tools/") and "chain" not in t}
-
     assert set(wired) == {"PreToolUse", "preToolUse"}, wired
     assert all(roster(c) == set(WIRED_ROSTER) for c in guards), wired
 
@@ -153,66 +125,31 @@ def test_both_hosts_wire_the_one_executor_with_the_same_rosters():
 def test_every_wired_executable_refuses_an_unreadable_payload():
     """'Cannot judge' and 'judged clean' must not share an exit code — measured for
     every executable the wiring names, not a hand list."""
-    members = {
-        t
-        for cmds in _wired_commands().values()
-        for c in cmds
-        for t in c.split()
-        if t.startswith("tools/")
-    }
-    assert members >= {
-        "tools/hook_chain.py",
-        "tools/operator_law_guard.py",
-        "tools/process_lock_guard.py",
-    }
+    members = {t for cmds in _wired_commands().values() for c in cmds for t in c.split() if t.startswith("tools/")}
+    assert members >= {"tools/hook_chain.py", "tools/operator_law_guard.py", "tools/process_lock_guard.py"}
     for rel in sorted(members):
-        r = subprocess.run(
-            [sys.executable, str(ROOT / rel)],
-            cwd=str(ROOT),
-            input="{not json",
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            env=_ENV,
-            timeout=120,
-        )
+        r = subprocess.run([sys.executable, str(ROOT / rel)], cwd=str(ROOT), input="{not json",
+                           capture_output=True, text=True, encoding="utf-8", errors="replace", env=_ENV, timeout=120)
         assert r.returncode != 0, f"{rel} exits 0 on an unreadable payload — fails OPEN"
 
 
 def test_a_crashing_or_missing_member_blocks_and_the_chain_keeps_running(capsys):
     assert run_chain(json.dumps({"tool_name": "Bash"}), ("tools.zz_no_such_guard_zz",)) == 2
-    r = _chain(
-        bash("git reset --hard", cwd=ROOT),
-        roster=("tools/process_lock_guard.py", "tools/zz_absent.py"),
-    )
-    assert (
-        r.returncode == 2 and "RESET_GUARD" in r.stderr and "tools.zz_absent crashed" in r.stderr
-    ), r.stderr
+    r = _chain(bash("git reset --hard", cwd=ROOT), roster=("tools/process_lock_guard.py", "tools/zz_absent.py"))
+    assert r.returncode == 2 and "RESET_GUARD" in r.stderr and "tools.zz_absent crashed" in r.stderr, r.stderr
 
 
 def test_a_member_block_reaches_the_host_with_the_members_stderr_and_the_judge_banner():
-    standalone = subprocess.run(
-        [sys.executable, str(ROOT / "tools" / "process_lock_guard.py")],
-        cwd=str(ROOT),
-        input=json.dumps(bash("git reset --hard")),
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        env=_ENV,
-        timeout=120,
-    )
+    standalone = subprocess.run([sys.executable, str(ROOT / "tools" / "process_lock_guard.py")], cwd=str(ROOT),
+                                input=json.dumps(bash("git reset --hard")), capture_output=True, text=True,
+                                encoding="utf-8", errors="replace", env=_ENV, timeout=120)
     chain = _chain(bash("git reset --hard"))
     assert standalone.returncode == chain.returncode == 2
     assert "RESET_GUARD" in standalone.stderr and "RESET_GUARD" in chain.stderr
-    assert "JUDGED BY:" in chain.stderr and str(ROOT.resolve()) in chain.stderr.replace(
-        "\\\\", "\\"
-    ), chain.stderr
+    assert "JUDGED BY:" in chain.stderr and str(ROOT.resolve()) in chain.stderr.replace("\\\\", "\\"), chain.stderr
 
 
 # ============================================================ the invariant's adversarial proofs
-
 
 def test_1_a_blocked_mutation_has_zero_effect_on_the_next_event(tmp_path):
     """Attempt a blocked destructive command, then an ordinary edit and an ordinary read:
@@ -234,21 +171,12 @@ def test_2_a_nonexistent_worktree_in_a_blocked_command_has_zero_future_effect(tm
     for later in (edit(tmp_path / "later.py"), bash("git status", cwd=ROOT)):
         r = _chain(later)
         assert r.returncode == 0, (later, r.stderr)
-        assert (
-            ghost.name not in r.stderr
-            and "cannot determine" not in r.stderr
-            and "REFUSED" not in r.stderr
-        )
+        assert ghost.name not in r.stderr and "cannot determine" not in r.stderr and "REFUSED" not in r.stderr
 
 
 def test_3_read_only_actions_establish_nothing_and_pass():
-    for command in (
-        f'cat "{ROOT / "server.py"}"',
-        f'git -C "{ROOT}" status --porcelain',
-        f'ls -la "{ROOT}"',
-        "git log --oneline -3",
-        'python -c "print(1)"',
-    ):
+    for command in (f'cat "{ROOT / "server.py"}"', f'git -C "{ROOT}" status --porcelain',
+                    f'ls -la "{ROOT}"', "git log --oneline -3", "python -c \"print(1)\""):
         r = _chain(bash(command, cwd=ROOT))
         assert r.returncode == 0 and r.stderr == "", (command, r.stderr)
 
@@ -267,12 +195,8 @@ def test_5_legitimate_edits_pass_in_every_topology_and_only_production_app_code_
     primary; non-app paths (tests, governance, docs, scratch) pass everywhere; and a checkout
     whose `.git` file is unreadable garbage is judged as a primary — it fails CLOSED."""
     primary, linked = _primary_and_linked(tmp_path)
-    for target in (
-        ROOT / "tests" / "test_hook_chain_v1.py",
-        ROOT / "governance" / "root_cause_log.md",
-        ROOT / "docs" / "playwright.md",
-        tmp_path / "anything.py",
-    ):
+    for target in (ROOT / "tests" / "test_hook_chain_v1.py", ROOT / "governance" / "root_cause_log.md",
+                   ROOT / "docs" / "playwright.md", tmp_path / "anything.py"):
         r = _chain(edit(target))
         assert r.returncode == 0, (target, r.stderr)
     for root in (primary, linked):
@@ -293,9 +217,7 @@ def test_5_legitimate_edits_pass_in_every_topology_and_only_production_app_code_
     assert _chain(edit(garbage / "tests" / "t.py"), root=garbage).returncode == 0
 
 
-def test_5b_a_worktree_nested_inside_the_primary_edits_its_own_files_and_never_the_primarys(
-    tmp_path,
-):
+def test_5b_a_worktree_nested_inside_the_primary_edits_its_own_files_and_never_the_primarys(tmp_path):
     """Claude's worktrees live at `<primary>/.claude/worktrees/<name>`, under the primary's root:
     their own files are theirs, the primary's app code stays refused from them."""
     primary, _ = _primary_and_linked(tmp_path)
@@ -307,58 +229,28 @@ def test_5b_a_worktree_nested_inside_the_primary_edits_its_own_files_and_never_t
         assert own.returncode == 0 and own.stderr == "", (rel, own.stderr)
     sibling = primary / ".claude" / "worktrees" / "sibling"
     _git(primary, "worktree", "add", "-q", str(sibling), "-b", "sibling")
-    for target in (
-        primary / "server.py",
-        primary / "tools" / "operator_law_guard.py",
-        primary / "static" / "index.html",
-        sibling / "server.py",
-    ):
+    for target in (primary / "server.py", primary / "tools" / "operator_law_guard.py",
+                   primary / "static" / "index.html", sibling / "server.py"):
         cross = _chain(edit(target), root=nested)
-        assert cross.returncode == 2 and "PROD_CHECKOUT_EDIT" in cross.stderr, (
-            target,
-            cross.stderr,
-        )
+        assert cross.returncode == 2 and "PROD_CHECKOUT_EDIT" in cross.stderr, (target, cross.stderr)
 
 
-def test_6_a_dev_worktree_commits_freely_the_production_primary_refuses_moves_and_masked_forms_block(
-    tmp_path,
-):
+def test_6_a_dev_worktree_commits_freely_the_production_primary_refuses_moves_and_masked_forms_block(tmp_path):
     primary, linked = _primary_and_linked(tmp_path)
-    for command in (
-        'git commit -m "x"',
-        'git add tools/x.py && git commit -m "y"',
-        'git -C "%s" commit -m "z"' % linked,
-        "git checkout -b feature",
-    ):
+    for command in ('git commit -m "x"', 'git add tools/x.py && git commit -m "y"',
+                    'git -C "%s" commit -m "z"' % linked, "git checkout -b feature"):
         r = _chain(bash(command, cwd=linked), root=linked)
         assert r.returncode == 0, (command, r.stderr)
-    for command in (
-        'git commit -m "x"',
-        "git checkout -b feature",
-        "git switch -c feature",
-        "git merge feature",
-        "git rebase origin/main",
-    ):
+    for command in ('git commit -m "x"', "git checkout -b feature", "git switch -c feature",
+                    "git merge feature", "git rebase origin/main"):
         here = _chain(bash(command, cwd=primary), root=primary)
         assert here.returncode == 2 and "PROD_CHECKOUT_LOCK" in here.stderr, (command, here.stderr)
         there = _chain(bash('git -C "%s" %s' % (primary, command[4:]), cwd=linked), root=linked)
-        assert there.returncode == 2 and "PROD_CHECKOUT_LOCK" in there.stderr, (
-            command,
-            there.stderr,
-        )
-    for command in (
-        "git status",
-        "git fetch",
-        "git merge --ff-only origin/main",
-        "git checkout main",
-    ):
+        assert there.returncode == 2 and "PROD_CHECKOUT_LOCK" in there.stderr, (command, there.stderr)
+    for command in ("git status", "git fetch", "git merge --ff-only origin/main", "git checkout main"):
         r = _chain(bash(command, cwd=primary), root=primary)
         assert r.returncode == 0, (command, r.stderr)
-    for command in (
-        'git commit -m "x" | tail -3',
-        "git commit --no-verify -m x",
-        "git add -A && git commit -m x",
-    ):
+    for command in ('git commit -m "x" | tail -3', 'git commit --no-verify -m x', 'git add -A && git commit -m x'):
         r = _chain(bash(command, cwd=linked), root=linked)
         assert r.returncode == 2, (command, r.stderr)
 
@@ -367,40 +259,22 @@ def test_6b_a_linked_worktree_cannot_write_main_the_branch_production_runs(tmp_p
     """Every checkout shares refs/heads/main, so the production checkout's lock cannot protect
     it by judging only commands run there. The commands are judged, never run."""
     primary, linked = _primary_and_linked(tmp_path)
-    for command in (
-        "git update-ref refs/heads/main HEAD",
-        "git update-ref -d refs/heads/main",
-        "git branch -f main HEAD",
-        "git branch --force main HEAD",
-        "git branch -D main",
-        "git branch -d main",
-        "git branch -m main old",
-        "git branch -M dev main",
-        "git branch -c dev main",
-        "git fetch origin +dev:main",
-        "git fetch . dev:refs/heads/main",
-        "git push . HEAD:main",
-        "git push . HEAD:heads/main",
-        "git fetch . dev:heads/main",
-        'git -C "%s" update-ref refs/heads/main HEAD' % primary,
-    ):
+    for command in ("git update-ref refs/heads/main HEAD", "git update-ref -d refs/heads/main",
+                    "git branch -f main HEAD", "git branch --force main HEAD", "git branch -D main",
+                    "git branch -d main", "git branch -m main old", "git branch -M dev main",
+                    "git branch -c dev main", "git fetch origin +dev:main", "git fetch . dev:refs/heads/main",
+                    "git push . HEAD:main", "git push . HEAD:heads/main", "git fetch . dev:heads/main",
+                    'git -C "%s" update-ref refs/heads/main HEAD' % primary):
         r = _chain(bash(command, cwd=linked), root=linked)
         assert r.returncode == 2 and "MAIN_REF_LOCK" in r.stderr, (command, r.stderr)
 
 
 def test_6c_a_linked_worktree_still_deletes_and_moves_its_own_branches(tmp_path):
     primary, linked = _primary_and_linked(tmp_path)
-    for command in (
-        "git branch -d feature",
-        "git branch -D feature",
-        "git branch -f feature HEAD",
-        "git branch -m feature other",
-        "git update-ref refs/heads/feature HEAD",
-        "git fetch origin main:feature",
-        "git fetch origin main",
-        "git push origin dev",
-        "git branch --list main",
-    ):
+    for command in ("git branch -d feature", "git branch -D feature", "git branch -f feature HEAD",
+                    "git branch -m feature other", "git update-ref refs/heads/feature HEAD",
+                    "git fetch origin main:feature", "git fetch origin main", "git push origin dev",
+                    "git branch --list main"):
         r = _chain(bash(command, cwd=linked), root=linked)
         assert r.returncode == 0, (command, r.stderr)
 
@@ -412,11 +286,5 @@ def test_7_the_session_checkout_judges_and_says_so_no_other_tree_is_ever_chosen(
     _git(other, "init", "-q", "-b", "main")
     here = _chain(bash("git reset --hard"))
     there = _chain(bash("git reset --hard"), root=other)
-    assert (
-        str(ROOT.resolve()) in here.stderr.replace("\\\\", "\\")
-        and str(other.resolve()) not in here.stderr
-    )
-    assert (
-        str(other.resolve()) in there.stderr.replace("\\\\", "\\")
-        and str(ROOT.resolve()) not in there.stderr
-    )
+    assert str(ROOT.resolve()) in here.stderr.replace("\\\\", "\\") and str(other.resolve()) not in here.stderr
+    assert str(other.resolve()) in there.stderr.replace("\\\\", "\\") and str(ROOT.resolve()) not in there.stderr

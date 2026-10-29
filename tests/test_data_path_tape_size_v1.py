@@ -1,5 +1,4 @@
 """Schwab -> the tape. A print's size keeps every digit; the screen rounds it."""
-
 from __future__ import annotations
 
 import l1_trade_observation as l1

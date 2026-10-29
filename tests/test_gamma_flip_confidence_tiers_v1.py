@@ -23,7 +23,6 @@ That case is real; it simply is not SPY/QQQ's today.
 These tests therefore pin the SEMANTICS (which verdict a given span earns, and what each verdict
 permits), not the population — so they stay valid whichever chains production happens to deliver.
 """
-
 from __future__ import annotations
 
 import sys
@@ -52,9 +51,7 @@ NOW = datetime(2027, 6, 16, 12, 0, tzinfo=ET)
 
 def _verdict(span: float) -> str:
     chain = _chain(span)
-    return compute_gamma_flip_v2(
-        chain, 100.0, profile=compute_gamma_profile(chain, 100.0, now=NOW)
-    )[1]
+    return compute_gamma_flip_v2(chain, 100.0, profile=compute_gamma_profile(chain, 100.0, now=NOW))[1]
 
 
 def _chain(span: float, spot: float = 100.0, n: int = 41):
@@ -65,17 +62,9 @@ def _chain(span: float, spot: float = 100.0, n: int = 41):
     for i in range(n):
         k = lo + (hi - lo) * i / (n - 1)
         for side in ("CALL", "PUT"):
-            out.append(
-                {
-                    "strikePrice": round(k, 2),
-                    "putCall": side,
-                    "openInterest": 100,
-                    "multiplier": 100,
-                    "volatility": 20.0,
-                    "daysToExpiration": 30,
-                    "expirationDate": "2027-07-16T00:00:00.000+00:00",
-                }
-            )
+            out.append({"strikePrice": round(k, 2), "putCall": side, "openInterest": 100,
+                        "multiplier": 100, "volatility": 20.0, "daysToExpiration": 30,
+                        "expirationDate": "2027-07-16T00:00:00.000+00:00"})
     return out
 
 
@@ -83,12 +72,10 @@ def test_trusted_requires_the_measured_convergence_span():
     """±5%-class coverage must NOT be TRUSTED (the defect); the convergence span must be."""
     assert GAMMA_FLIP_TRUSTED_SPAN_PCT > GAMMA_FLIP_MIN_SPAN_PCT, (
         "the flip-LEVEL trust bar must be strictly above the fetch-width floor, or the two are "
-        "conflated again and the fetch compromise sets the trust bar"
-    )
+        "conflated again and the fetch compromise sets the trust bar")
     conf_5 = _verdict(0.055)
     assert conf_5 != GAMMA_FLIP_TRUSTED, (
-        f"a ~±5% chain must not be TRUSTED — the study measured 1.38%-of-spot error there; got {conf_5}"
-    )
+        f"a ~±5% chain must not be TRUSTED — the study measured 1.38%-of-spot error there; got {conf_5}")
     conf_wide = _verdict(0.12)
     assert conf_wide == GAMMA_FLIP_TRUSTED, f"a ±12% chain should be TRUSTED, got {conf_wide}"
 
@@ -104,12 +91,8 @@ def test_regime_survives_the_middle_tier_but_level_is_disclosed_approximate():
     """SPY/QQQ class (~8-9% span): the regime must STILL be issued — its basis is the sign of gamma
     at spot, independent of flip-level precision — while the flip LEVEL says it is approximate."""
     read = build_terrain_read(
-        spot=100.0,
-        flip=99.0,
-        flip_confidence=GAMMA_FLIP_LEVEL_APPROX,
-        put_wall=95.0,
-        call_wall=105.0,
-        gamma_at_spot=5.0e9,
+        spot=100.0, flip=99.0, flip_confidence=GAMMA_FLIP_LEVEL_APPROX,
+        put_wall=95.0, call_wall=105.0, gamma_at_spot=5.0e9,
     )
     assert read.regime, "the regime must survive the middle tier (its basis is the at-spot sign)"
     assert read.posture, "posture accompanies a resolved regime"
@@ -119,12 +102,8 @@ def test_regime_survives_the_middle_tier_but_level_is_disclosed_approximate():
 
 def test_a_chain_too_narrow_for_the_at_spot_sign_still_stands_everything_aside():
     read = build_terrain_read(
-        spot=100.0,
-        flip=99.0,
-        flip_confidence=GAMMA_FLIP_NARROW,
-        put_wall=95.0,
-        call_wall=105.0,
-        gamma_at_spot=5.0e9,
+        spot=100.0, flip=99.0, flip_confidence=GAMMA_FLIP_NARROW,
+        put_wall=95.0, call_wall=105.0, gamma_at_spot=5.0e9,
     )
     # TEST_SYSTEM_REHAB_V2_RESIDUAL_CLOSURE (weak-assertion item 5): was a 3-way
     # `or` in which the first two disjuncts are DEAD (measured: regime is the truthy
@@ -140,25 +119,18 @@ def test_a_chain_too_narrow_for_the_at_spot_sign_still_stands_everything_aside()
     from terrain_read import POSTURE_STAND_ASIDE, REGIME_UNAVAILABLE
 
     assert read.regime == REGIME_UNAVAILABLE, (
-        f"a NARROW chain must withhold the regime entirely, got {read.regime!r}"
-    )
+        f"a NARROW chain must withhold the regime entirely, got {read.regime!r}")
     assert read.posture == POSTURE_STAND_ASIDE, (
-        f"a NARROW chain must stand aside, got {read.posture!r}"
-    )
+        f"a NARROW chain must stand aside, got {read.posture!r}")
     assert "not trustworthy" in " ".join(read.lines), (
-        f"the operator must be told why it was withheld: {read.lines}"
-    )
+        f"the operator must be told why it was withheld: {read.lines}")
 
 
 def test_regime_wording_discloses_the_modeled_dealer_sign():
     """Operator requirement: modeled dealer positioning must not read as observed fact."""
     read = build_terrain_read(
-        spot=100.0,
-        flip=99.0,
-        flip_confidence=GAMMA_FLIP_TRUSTED,
-        put_wall=95.0,
-        call_wall=105.0,
-        gamma_at_spot=5.0e9,
+        spot=100.0, flip=99.0, flip_confidence=GAMMA_FLIP_TRUSTED,
+        put_wall=95.0, call_wall=105.0, gamma_at_spot=5.0e9,
     )
     mech = " ".join(read.lines)
     assert "modelled" in mech.lower(), f"the mechanism line must disclose the modeled sign: {mech}"

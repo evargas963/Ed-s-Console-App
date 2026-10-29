@@ -3,7 +3,6 @@
 Every open page holds one connection (/api/changes) on its ticker, kept in the order they opened.
 A changed value (`changed`) reaches the pages open on its ticker on the event loop.
 """
-
 from __future__ import annotations
 
 import asyncio

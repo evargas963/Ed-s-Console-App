@@ -5,7 +5,6 @@ canonical resolvers must still select one process-private root, preserve the
 poisoned signal bytes, and fail Schwab closed without a second production
 StreamClient.
 """
-
 from __future__ import annotations
 
 import json
@@ -21,16 +20,14 @@ PLACEHOLDER_SECRET = "ci-placeholder-app-secret"
 
 def _e2e_server_env(poison_root: Path) -> dict[str, str]:
     env = os.environ.copy()
-    env.update(
-        {
-            "ED_CONSOLE_DB": str(poison_root / "production_console.db"),
-            "STREAM_CAPTURE_DB_PATH": str(poison_root / "production_stream.db"),
-            "SCHWAB_TOKEN_PATH": str(poison_root / "production_token.json"),
-            "ED_CI_OFFLINE": "0",
-            "SCHWAB_API_KEY": "live-looking-inherited-key",
-            "SCHWAB_APP_SECRET": "live-looking-inherited-secret",
-        }
-    )
+    env.update({
+        "ED_CONSOLE_DB": str(poison_root / "production_console.db"),
+        "STREAM_CAPTURE_DB_PATH": str(poison_root / "production_stream.db"),
+        "SCHWAB_TOKEN_PATH": str(poison_root / "production_token.json"),
+        "ED_CI_OFFLINE": "0",
+        "SCHWAB_API_KEY": "live-looking-inherited-key",
+        "SCHWAB_APP_SECRET": "live-looking-inherited-secret",
+    })
     script = (
         "import {e2eServerEnv,e2eRuntimeRoot} from './playwright.config.mjs';"
         "console.log(JSON.stringify({env:e2eServerEnv,root:e2eRuntimeRoot}));"
@@ -73,21 +70,16 @@ def test_e2e_boundary_rejects_poisoned_inherited_runtime_state(tmp_path):
 def test_e2e_boundary_blocks_an_inherited_valid_token_from_building_a_client(tmp_path):
     """A valid-looking parent token cannot cross the E2E capability boundary."""
     inherited_token = tmp_path / "production_token.json"
-    inherited_token.write_text(
-        json.dumps(
-            {
-                "creation_timestamp": 1_788_000_000,
-                "token": {
-                    "access_token": "live-looking-access-token",
-                    "refresh_token": "live-looking-refresh-token",
-                    "expires_at": 4_000_000_000,
-                    "token_type": "Bearer",
-                    "scope": "api",
-                },
-            }
-        ),
-        encoding="utf-8",
-    )
+    inherited_token.write_text(json.dumps({
+        "creation_timestamp": 1_788_000_000,
+        "token": {
+            "access_token": "live-looking-access-token",
+            "refresh_token": "live-looking-refresh-token",
+            "expires_at": 4_000_000_000,
+            "token_type": "Bearer",
+            "scope": "api",
+        },
+    }), encoding="utf-8")
     server_env = _e2e_server_env(tmp_path)
     server_env.pop("_E2E_RUNTIME_ROOT")
 
@@ -116,3 +108,5 @@ def test_e2e_boundary_blocks_an_inherited_valid_token_from_building_a_client(tmp
     result = json.loads(child.stdout.strip())
     assert result["ok"] is False and result["has_client"] is False
     assert Path(result["token_path"]).resolve() != inherited_token.resolve()
+
+

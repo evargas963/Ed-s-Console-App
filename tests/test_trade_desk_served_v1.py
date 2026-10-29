@@ -2,7 +2,6 @@
 Schwab's SPY 1-minute bars (2026-09-24/25), SPY level crosses (2026-09-09..25), a TSLA NASDAQ book
 and the SPY 0DTE and CRWD chains (tests/fixtures). Expected values are worked out here from the
 fixtures themselves."""
-
 import json
 from datetime import datetime
 from pathlib import Path
@@ -30,7 +29,6 @@ def _load(name):
 
 def test_the_book_side_is_served_from_the_real_book():
     from app.options.order_flow.engine import compute_book_microstructure
-
     fx = _load("real_equity_book.json")
     nat = fx["book"]["native"]
     bid5 = sum(r["TOTAL_VOLUME"] for r in nat["BIDS"][:5])
@@ -44,12 +42,8 @@ def test_the_book_side_is_served_from_the_real_book():
 def _desk_events(monkeypatch, ticker, crosses, now, tf):
     """/api/desk/events on real crosses, at `now`: the stored crosses loaded as the console's
     start loads them (server._load_crosses)."""
-    newest_first = sorted(
-        crosses, key=lambda r: r["ts_utc"], reverse=True
-    )  # as db.get_recent_crosses reads
-    monkeypatch.setattr(
-        server.get_db(), "get_recent_crosses", lambda ticker, n=20: newest_first[:n]
-    )
+    newest_first = sorted(crosses, key=lambda r: r["ts_utc"], reverse=True)       # as db.get_recent_crosses reads
+    monkeypatch.setattr(server.get_db(), "get_recent_crosses", lambda ticker, n=20: newest_first[:n])
     monkeypatch.setattr(server, "_crosses", {})
     server._load_crosses([ticker_storage_key(ticker)])
     monkeypatch.setattr(time_et, "now_et", lambda: now)
@@ -58,20 +52,11 @@ def _desk_events(monkeypatch, ticker, crosses, now, tf):
     return json.loads(server.get_desk_events(ticker=ticker, venue="NYSE_BOOK", tf=tf).body)
 
 
-@pytest.mark.parametrize(
-    "ticker,crosses,now",
-    [
-        ("SPY", "real_spy_level_crosses.json", datetime(2026, 9, 25, 18, 0, tzinfo=time_et.ET)),
-        (
-            "$SPX",
-            "real_spx_level_crosses_2026_09_25_28.json",
-            datetime(2026, 9, 28, 12, 0, tzinfo=time_et.ET),
-        ),
-    ],
-)
-def test_each_cross_is_served_as_recorded_and_the_chart_draws_the_newest_at_each_level(
-    monkeypatch, ticker, crosses, now
-):
+@pytest.mark.parametrize("ticker,crosses,now", [
+    ("SPY", "real_spy_level_crosses.json", datetime(2026, 9, 25, 18, 0, tzinfo=time_et.ET)),
+    ("$SPX", "real_spx_level_crosses_2026_09_25_28.json", datetime(2026, 9, 28, 12, 0, tzinfo=time_et.ET)),
+])
+def test_each_cross_is_served_as_recorded_and_the_chart_draws_the_newest_at_each_level(monkeypatch, ticker, crosses, now):
     """Each level cross is the queue's entry as recorded -- its level's price, direction and
     time -- and the chart's few are the newest cross at each level, for the newest DESK_MARKERS
     levels; a marker and its queue entry are one served item (real SPY and $SPX crosses)."""
@@ -86,10 +71,7 @@ def test_each_cross_is_served_as_recorded_and_the_chart_draws_the_newest_at_each
     newest_at = {}
     for it in sorted(items, key=lambda it: it["ts"]):
         newest_at[it["price"]] = it
-    want = {
-        it["key"]
-        for it in sorted(newest_at.values(), key=lambda it: it["ts"])[-server.DESK_MARKERS :]
-    }
+    want = {it["key"] for it in sorted(newest_at.values(), key=lambda it: it["ts"])[-server.DESK_MARKERS:]}
     assert {it["key"] for it in items if it["marker"]} == want
 
 
@@ -104,15 +86,12 @@ def test_a_book_wall_carries_its_books_time_and_says_when_the_book_is_not_live()
     read the same whether or not the book was live. Real TSLA NASDAQ book (its own BOOK_TIME),
     applied by the console's own intake as the daemon pushes it; Schwab's feed is down."""
     import app.options.order_flow.state as ofls
-
     fx = _load("real_equity_book.json")
     tk, nat, venue = fx["ticker"], fx["book"]["native"], fx["book"]["service"]
     ofls.clear_all_live_state()
     try:
-        ofs._ingest_pushed(
-            f"book.{tk}",
-            {"symbol": tk, "ts_recv": fx["book"]["ts_recv"], "content": nat, "service": venue},
-        )
+        ofs._ingest_pushed(f"book.{tk}", {"symbol": tk, "ts_recv": fx["book"]["ts_recv"], "content": nat,
+                                          "service": venue})
         body = server.desk_events_payload(tk, venue, "30", _WED_EVENING)
     finally:
         ofls.clear_all_live_state()
@@ -130,17 +109,10 @@ def test_the_desk_event_feed_numbers_orders_and_counts_the_real_crosses():
     from dataclasses import fields
 
     from db import LevelCrossEvent
-
     tk = "ZZDESKX"
     fx = _load("real_spy_level_crosses_2026_10_06_07.json")["rows"]
-    server.get_db().record_level_crosses(
-        [
-            LevelCrossEvent(
-                **{**{f.name: r[f.name] for f in fields(LevelCrossEvent)}, "ticker": tk}
-            )
-            for r in fx
-        ]
-    )
+    server.get_db().record_level_crosses([LevelCrossEvent(**{**{f.name: r[f.name] for f in fields(LevelCrossEvent)},
+                                                             "ticker": tk}) for r in fx])
     server._crosses.pop(tk, None)
     server._load_crosses([tk])
     try:
@@ -160,7 +132,7 @@ def test_the_desk_event_feed_numbers_orders_and_counts_the_real_crosses():
     oldest = min(events)[0]
     assert next(it for it in crosses if it["n"] == 1)["ts"] == oldest
     ts = [it["ts"] for it in body["items"] if it["ts"] is not None]
-    assert ts == sorted(ts, reverse=True)  # newest first
+    assert ts == sorted(ts, reverse=True)                             # newest first
     up = sum(1 for k in events if k[2] == "up")
     assert body["cross_counts"] == {"up": up, "down": len(events) - up}
 
@@ -169,10 +141,7 @@ def _spy_close_at(msg):
     """SPY's 2026-10-22 close capture published at Schwab's price in it (764.04), and every
     relation of a real SPY print after it (`msg`, as the daemon received it) to those levels."""
     from tests.real_chains import SPY_CLOSE
-
-    published = compute_terrain(
-        "SPY", [dict(c) for c in SPY_CLOSE.chain], SPY_CLOSE.spot, now=SPY_CLOSE.now
-    ).to_dict()
+    published = compute_terrain("SPY", [dict(c) for c in SPY_CLOSE.chain], SPY_CLOSE.spot, now=SPY_CLOSE.now).to_dict()
     assert (published["put_wall"], published["call_wall"]) == (764.0, 765.0)
     price = msg["native"]["LAST_PRICE"]
     return published | price_relations(published, price).to_dict() | {"spot": price}
@@ -180,25 +149,18 @@ def _spy_close_at(msg):
 
 def test_the_flip_side_is_the_live_prices():
     from tests.real_chains import SPY_AFTER_HOURS_PRINT, SPY_PRINT_A_STRIKE_AWAY
-
     for msg in (SPY_AFTER_HOURS_PRINT, SPY_PRINT_A_STRIKE_AWAY):
         out = _spy_close_at(msg)
         side = level_side(out["gamma_flip"], out["spot"])
-        assert (
-            out["flip_relation"]
-            == {None: None, "ABOVE": "BELOW", "BELOW": "ABOVE", "AT": "AT"}[side]
-        )
+        assert out["flip_relation"] == {None: None, "ABOVE": "BELOW", "BELOW": "ABOVE", "AT": "AT"}[side]
 
 
 def test_a_breached_wall_says_where_the_live_price_is():
     """The 16:39 print (773.1269) is past the call wall 765; the 16:33 print (764.00) is on the
     put wall 764, which contains nothing there."""
     from tests.real_chains import SPY_PRINT_A_STRIKE_AWAY, SPY_PRINT_ON_A_STRIKE
-
     out = _spy_close_at(SPY_PRINT_A_STRIKE_AWAY)
-    assert (
-        out["call_wall_state"] == WALL_BREACHED and out["call_wall_lean"] == "BREACHED — spot above"
-    )
+    assert out["call_wall_state"] == WALL_BREACHED and out["call_wall_lean"] == "BREACHED — spot above"
     out = _spy_close_at(SPY_PRINT_ON_A_STRIKE)
     assert out["spot"] == out["put_wall"]
     assert out["put_wall_state"] == WALL_BREACHED and out["put_wall_lean"] == "BREACHED — spot at"
@@ -208,7 +170,6 @@ def test_a_breached_wall_says_where_the_live_price_is():
 def test_a_containing_wall_earns_the_dealer_lean_only_on_a_trusted_flip():
     """The 18:00 print (764.27) is between the put wall 764 and the call wall 765."""
     from tests.real_chains import SPY_AFTER_HOURS_PRINT
-
     out = _spy_close_at(SPY_AFTER_HOURS_PRINT)
     assert out["call_wall_state"] == out["put_wall_state"] == WALL_CONTAINS
     earned = out["regime"] != "UNAVAILABLE" and out["confidence"] == "TRUSTED"
@@ -222,19 +183,11 @@ def test_one_strike_holding_both_walls_is_two_sided():
     print (764.27)."""
     from terrain_engine import wall_lean
     from tests.real_chains import SPY_AFTER_HOURS_PRINT
-
     price = SPY_AFTER_HOURS_PRINT["native"]["LAST_PRICE"]
     assert wall_lean(770.0, 770.0, price, "LONG_GAMMA_CHOP", "TRUSTED") == (
-        ("TWO-SIDED — magnet, not a barrier",) * 2
-    )
-    assert wall_lean(765.0, 764.0, price, "LONG_GAMMA_CHOP", "TRUSTED") == (
-        "DEALERS SELL",
-        "DEALERS BUY",
-    )
-    for regime, conf in (
-        ("UNAVAILABLE", "TRUSTED"),
-        ("LONG_GAMMA_CHOP", "LEVEL_APPROX_NARROW_SPAN"),
-    ):
+        ("TWO-SIDED — magnet, not a barrier",) * 2)
+    assert wall_lean(765.0, 764.0, price, "LONG_GAMMA_CHOP", "TRUSTED") == ("DEALERS SELL", "DEALERS BUY")
+    for regime, conf in (("UNAVAILABLE", "TRUSTED"), ("LONG_GAMMA_CHOP", "LEVEL_APPROX_NARROW_SPAN")):
         assert wall_lean(765.0, 764.0, price, regime, conf) == (None, None)
 
 
@@ -249,20 +202,11 @@ def _spy_bars() -> list:
     answer of 2026-10-07 (tests/fixtures/real_pricehistory_spy_tsla_2026_10_07.json), every candle
     of those two ET days."""
     from tests.feed_live_helper import price_history
-
     days = {"2026-10-01", "2026-10-02"}
-    return [
-        {
-            "timestamp": c["datetime"],
-            "open": c["open"],
-            "high": c["high"],
-            "low": c["low"],
-            "close": c["close"],
-            "volume": c["volume"],
-        }
-        for c in price_history("SPY", "1m")["body"]["candles"]
-        if datetime.fromtimestamp(c["datetime"] / 1000, time_et.ET).date().isoformat() in days
-    ]
+    return [{"timestamp": c["datetime"], "open": c["open"], "high": c["high"], "low": c["low"],
+             "close": c["close"], "volume": c["volume"]}
+            for c in price_history("SPY", "1m")["body"]["candles"]
+            if datetime.fromtimestamp(c["datetime"] / 1000, time_et.ET).date().isoformat() in days]
 
 
 def _forget(tk):
@@ -276,20 +220,9 @@ def _forget(tk):
 
 def _priced(tk, chain, spot, ts_utc):
     """The chain priced as the console prices a stored capture (at its own time and spot)."""
-    server._publish_levels(
-        tk,
-        captures=[
-            {
-                "et_date": datetime.fromtimestamp(ts_utc, time_et.ET).date().isoformat(),
-                "ts_utc": ts_utc,
-                "spot": spot,
-                "spot_ts": None,
-                "spot_from_chain": False,
-                "basis": CAPTURE_BASIS,
-                "contracts": [dict(c) for c in chain],
-            }
-        ],
-    )
+    server._publish_levels(tk, captures=[{"et_date": datetime.fromtimestamp(ts_utc, time_et.ET).date().isoformat(),
+                                          "ts_utc": ts_utc, "spot": spot, "spot_ts": None, "spot_from_chain": False, "basis": CAPTURE_BASIS,
+                                          "contracts": [dict(c) for c in chain]}])
     return server.terrain_cache_get(tk, ts_utc)
 
 
@@ -297,9 +230,7 @@ def _live_price(tk, last):
     """Schwab's LAST_PRICE through the daemon's price row, its feed live at FRIDAY_CLOSE (the time
     the levels are served at)."""
     at = FRIDAY_CLOSE.timestamp()
-    lmp.record_feed_heartbeat(
-        {"ts": at, "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [tk]}}
-    )
+    lmp.record_feed_heartbeat({"ts": at, "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [tk]}})
     lmp.record_from_level_one_equity(tk, {"LAST_PRICE": last}, received_ts=at)
     ofs._price_rows[tk] = live_price_rows.price_row(tk, at)
 
@@ -310,29 +241,18 @@ def spy_levels():
     time (tests/real_chains.py), the SPY bars published by the bar writer, and the last bar's close
     as Schwab's LAST_PRICE (stand-in). Returns (spot, terrain, serve(tf))."""
     from tests.real_chains import SPY_0DTE
-
     bars = _spy_bars()
     _forget(DESK)
     terrain = _priced(DESK, SPY_0DTE.chain, SPY_0DTE.spot, SPY_0DTE.now.timestamp())
     spot = bars[-1]["close"]
     for b in bars:
-        server._keep_bar(
-            DESK,
-            Candle(
-                ts=b["timestamp"] / 1000,
-                open=b["open"],
-                high=b["high"],
-                low=b["low"],
-                close=b["close"],
-                volume=b["volume"],
-            ),
-        )
-    server._publish_price_levels(DESK, FRIDAY_CLOSE)  # as the bar writer does
+        server._keep_bar(DESK, Candle(ts=b["timestamp"] / 1000, open=b["open"], high=b["high"], low=b["low"],
+                                      close=b["close"], volume=b["volume"]))
+    server._publish_price_levels(DESK, FRIDAY_CLOSE)                  # as the bar writer does
 
     def serve(tf="1"):
         _live_price(DESK, spot)
         return server.levels_payload(DESK, tf, FRIDAY_CLOSE)
-
     yield spot, terrain, serve
     _forget(DESK)
 
@@ -341,21 +261,14 @@ def test_levels_carry_the_gamma_family_into_the_one_distance_order(spy_levels):
     spot, terrain, serve = spy_levels
     body = serve()
     by_id = {r["id"]: r for r in body["levels"]}
-    assert (
-        sum(terrain.get(gid) is not None for gid, _ in server.GAMMA_LEVELS) >= 8
-    )  # the real chain prices most
+    assert sum(terrain.get(gid) is not None for gid, _ in server.GAMMA_LEVELS) >= 8   # the real chain prices most
     for gid, _label in server.GAMMA_LEVELS:
         if terrain.get(gid) is not None:
             assert by_id[gid]["family"] == "gamma" and by_id[gid]["price"] == terrain[gid]
             assert gid in body["by_distance"]
     priced = [r for r in body["levels"] if r["price"] is not None]
-    assert body["by_distance"] == [
-        r["id"] for r in sorted(priced, key=lambda r: abs(r["price"] - spot))
-    ]
-    assert all(
-        r["side"] == level_side(r["price"], spot) and r["distance"] == r["price"] - spot
-        for r in priced
-    )
+    assert body["by_distance"] == [r["id"] for r in sorted(priced, key=lambda r: abs(r["price"] - spot))]
+    assert all(r["side"] == level_side(r["price"], spot) and r["distance"] == r["price"] - spot for r in priced)
 
 
 def test_a_same_day_chain_has_no_expected_move_and_says_why(spy_levels):
@@ -364,9 +277,7 @@ def test_a_same_day_chain_has_no_expected_move_and_says_why(spy_levels):
     assert terrain.get("implied_1d_move") is None
     body = serve()
     assert not {"em_up", "em_dn"} & {r["id"] for r in body["levels"]}
-    assert {"family": "expected_move", "reason": "the terrain has no implied 1-day move"} in body[
-        "families_absent"
-    ]
+    assert {"family": "expected_move", "reason": "the terrain has no implied 1-day move"} in body["families_absent"]
 
 
 def test_the_expected_move_is_the_live_price_plus_and_minus_the_terrain_move():
@@ -376,9 +287,7 @@ def test_the_expected_move_is_the_live_price_plus_and_minus_the_terrain_move():
     spot = float(fx["spot"])
     _forget(DESK_EM)
     try:
-        terrain = _priced(
-            DESK_EM, fx["chain"], spot, datetime(2026, 9, 2, 12, 0, tzinfo=time_et.ET).timestamp()
-        )
+        terrain = _priced(DESK_EM, fx["chain"], spot, datetime(2026, 9, 2, 12, 0, tzinfo=time_et.ET).timestamp())
         _live_price(DESK_EM, spot)
         body = server.levels_payload(DESK_EM, "1", FRIDAY_CLOSE)
     finally:
@@ -394,11 +303,10 @@ def test_every_level_is_served_with_its_name_and_short_tag(spy_levels):
     """The proximity strip printed raw ids (OVERNIGHT_HIGH, PD_VAH) and the chart kept its own
     short-name table; both names are served now, from one table (LEVEL_NAMES)."""
     from liquidity_value_engine import LEVEL_NAMES
-
     _spot, _terrain, serve = spy_levels
     body = serve()
     snap = [r for r in body["levels"] if r["id"] in LEVEL_NAMES]
-    assert len(snap) >= 8  # the real SPY bars price most of them
+    assert len(snap) >= 8                                    # the real SPY bars price most of them
     for r in body["levels"]:
         assert r["label"] and r["short"], r["id"]
         if r["id"] in LEVEL_NAMES:
@@ -410,7 +318,7 @@ def test_vwap_is_served_per_chart_bar(spy_levels):
     one = serve("1")["vwap_series"]
     fifteen = serve("15")["vwap_series"]
     buckets = {}
-    for r in one:  # first minute stamps, last minute's value
+    for r in one:                                                    # first minute stamps, last minute's value
         k = int(r[0] // 900)
         buckets[k] = [buckets[k][0] if k in buckets else r[0]] + list(r[1:])
     assert len(one) > 100 and fifteen == [buckets[k] for k in sorted(buckets)]
@@ -426,10 +334,8 @@ def test_levels_are_served_in_ladder_order_with_distance(spy_levels):
     assert [r["price"] for r in priced] == sorted((r["price"] for r in priced), reverse=True)
     for r in priced:
         assert r["distance"] == pytest.approx(r["price"] - spot)
-        assert "near_spot" not in r  # no proximity flag (operator 2026-09-29)
-    assert body["by_distance"] == [
-        r["id"] for r in sorted(priced, key=lambda r: abs(r["price"] - spot))
-    ]
+        assert "near_spot" not in r          # no proximity flag (operator 2026-09-29)
+    assert body["by_distance"] == [r["id"] for r in sorted(priced, key=lambda r: abs(r["price"] - spot))]
 
 
 def test_the_volume_profile_the_value_area_is_read_from_is_served(spy_levels):
@@ -441,37 +347,19 @@ def test_the_volume_profile_the_value_area_is_read_from_is_served(spy_levels):
     body = serve()
     vp = body["volume_profile"]
     by_id = {r["id"]: r["price"] for r in body["levels"]}
-    assert (vp["poc"], vp["vah"], vp["val"]) == (
-        by_id["TODAY_POC"],
-        by_id["TODAY_VAH"],
-        by_id["TODAY_VAL"],
-    )
+    assert (vp["poc"], vp["vah"], vp["val"]) == (by_id["TODAY_POC"], by_id["TODAY_VAH"], by_id["TODAY_VAL"])
     prices = [b[0] for b in vp["bins"]]
     assert prices == sorted(prices) and len(prices) > 100
     assert all(b[2] == (vp["val"] <= b[0] <= vp["vah"]) for b in vp["bins"])
     # the profile's scale is served: the POC bin's volume, the largest
-    assert (
-        vp["max_volume"]
-        == max(b[1] for b in vp["bins"])
-        == next(b[1] for b in vp["bins"] if b[0] == vp["poc"])
-    )
+    assert vp["max_volume"] == max(b[1] for b in vp["bins"]) == next(b[1] for b in vp["bins"] if b[0] == vp["poc"])
     at = [(datetime.fromtimestamp(b["timestamp"] / 1000, time_et.ET), b) for b in _spy_bars()]
-    rth = [
-        b
-        for d, b in at
-        if d.date().isoformat() == "2026-10-02" and time_et.session_label(d) == "RTH"
-    ]
+    rth = [b for d, b in at if d.date().isoformat() == "2026-10-02" and time_et.session_label(d) == "RTH"]
     # every RTH bar's volume is in the profile; a bar that sent no volume cannot be placed and is
     # counted and served (operator 2026-09-29: accounted for, not silently dropped) -- Schwab sent
     # volume on every one of Friday's 390
-    assert sum(b[1] for b in vp["bins"]) == pytest.approx(
-        sum(b["volume"] for b in rth if b["volume"] is not None), rel=1e-9
-    )
-    assert (
-        (vp["bars"], vp["bars_without_volume"])
-        == (len(rth), sum(1 for b in rth if b["volume"] is None))
-        == (390, 0)
-    )
+    assert sum(b[1] for b in vp["bins"]) == pytest.approx(sum(b["volume"] for b in rth if b["volume"] is not None), rel=1e-9)
+    assert (vp["bars"], vp["bars_without_volume"]) == (len(rth), sum(1 for b in rth if b["volume"] is None)) == (390, 0)
     assert vp["basis"].startswith("Estimated volume by price")
 
 
@@ -483,19 +371,14 @@ def test_after_the_close_the_levels_are_measured_from_schwabs_last_trade(spy_lev
     it, carrying its trade time. Real SPY 1-minute bars (2026-10-01 and 02); the last trade is the
     one the daemon captured on Friday 10-02 (its newest SPY message that evening)."""
     at = FRIDAY_CLOSE.timestamp()
-    lmp.record_feed_heartbeat(
-        {"ts": at, "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [DESK]}}
-    )
-    lmp.record_from_level_one_equity(
-        DESK, {"LAST_PRICE": 769.5, "TRADE_TIME_MILLIS": 1790983830151}, received_ts=at
-    )
+    lmp.record_feed_heartbeat({"ts": at, "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [DESK]}})
+    lmp.record_from_level_one_equity(DESK, {"LAST_PRICE": 769.5, "TRADE_TIME_MILLIS": 1790983830151},
+                                     received_ts=at)
     ofs._price_rows[DESK] = live_price_rows.price_row(DESK, at)
     body = server.levels_payload(DESK, "1", FRIDAY_CLOSE)
     priced = [r for r in body["levels"] if r["price"] is not None]
     assert len(priced) > 5 and body["spot"] == 769.5 and body["spot_as_of_ts_utc"] == 1790983830.151
-    assert body["by_distance"] == [
-        r["id"] for r in sorted(priced, key=lambda r: abs(r["price"] - 769.5))
-    ]
+    assert body["by_distance"] == [r["id"] for r in sorted(priced, key=lambda r: abs(r["price"] - 769.5))]
     assert all(r["distance"] == r["price"] - 769.5 for r in priced)
 
 
@@ -504,27 +387,19 @@ def test_the_desk_window_is_schwabs_last_session_open_and_its_words_are_served()
     was a hard-coded 9:30 with a 24-hour stand-in when no session was found. The open is the one
     Schwab's /markets sent (tests/conftest.py)."""
     from time_et import ET
-
-    sat = datetime(2026, 10, 3, 11, 0, tzinfo=ET)  # Saturday: Friday's open
-    assert (
-        server._desk_window_start("30", sat) == datetime(2026, 10, 2, 9, 30, tzinfo=ET).timestamp()
-    )
+    sat = datetime(2026, 10, 3, 11, 0, tzinfo=ET)                    # Saturday: Friday's open
+    assert server._desk_window_start("30", sat) == datetime(2026, 10, 2, 9, 30, tzinfo=ET).timestamp()
     mon = datetime(2026, 10, 5, 10, 0, tzinfo=ET)
-    assert (
-        server._desk_window_start("30", mon) == datetime(2026, 10, 5, 9, 30, tzinfo=ET).timestamp()
-    )
+    assert server._desk_window_start("30", mon) == datetime(2026, 10, 5, 9, 30, tzinfo=ET).timestamp()
     assert server._desk_window_start("1", mon) == mon.timestamp() - 900
     # the reference's 5-minute Market Map lists the session's events (its queue: "since open")
-    assert (
-        server._desk_window_start("5", mon) == datetime(2026, 10, 5, 9, 30, tzinfo=ET).timestamp()
-    )
+    assert server._desk_window_start("5", mon) == datetime(2026, 10, 5, 9, 30, tzinfo=ET).timestamp()
     words = {tf: words for tf, (_lb, words) in server.DESK_LOOKBACK.items()}
     assert words["30"] == words["5"] == "this session"
 
 
 def test_every_bar_carries_its_change():
     import live_price_rows
-
     for b in _load("real_spy_1m_bars_2026_09_24_25.json")["bars"][:50]:
         bar = live_price_rows.with_change({"o": b["open"], "c": b["close"]})
         assert bar["chg"] == pytest.approx(b["close"] - b["open"])

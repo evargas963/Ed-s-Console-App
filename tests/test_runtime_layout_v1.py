@@ -3,7 +3,6 @@
 "Runtime state is not source"). The controls of an environment variable drive the real modules
 through a subprocess with it set and unset, because the roots are read at import.
 """
-
 from __future__ import annotations
 
 import json

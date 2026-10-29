@@ -16,7 +16,6 @@ real_spy_2026_10_14_chain_oi_zero.json. STAND-INS (named): each price reaches th
 LEVELONE_EQUITIES LAST_PRICE carrying the chain answer's price; the rule is applied at each
 chain's capture time (the daemon's clock).
 """
-
 from __future__ import annotations
 
 import asyncio
@@ -40,9 +39,7 @@ from tests.schwab_stream_standin import LocalStreamer
 _FX = Path(__file__).parent / "fixtures"
 _MRVL = json.loads((_FX / "real_mrvl_full_chain_vs_strike_window.json").read_text(encoding="utf-8"))
 _SPY = json.loads((_FX / "real_spy_2026_11_20_chain_and_quotes.json").read_text(encoding="utf-8"))
-_SPY_NO_GAMMA = json.loads(
-    (_FX / "real_spy_2026_10_14_chain_oi_zero.json").read_text(encoding="utf-8")
-)
+_SPY_NO_GAMMA = json.loads((_FX / "real_spy_2026_10_14_chain_oi_zero.json").read_text(encoding="utf-8"))
 CHAINS = {"MRVL": flatten_chain_contracts(_MRVL["full"]), "SPY": _SPY["chain"]}
 PRICES = {"MRVL": _MRVL["full"]["underlying"]["last"], "SPY": _SPY["spot"]}
 MRVL_CLOSE = _MRVL["full"]["underlying"]["close"]
@@ -58,13 +55,7 @@ def _order(ct: dict, price: float) -> tuple:
     """Ed's order: the highest Schwab gamma first (absent, -999, or a -999 volatility is no gamma,
     last); of equal gammas the nearest expiration, then the strike nearest the price (the lower
     of two), calls before puts."""
-    rest = (
-        _expires(ct),
-        abs(ct["strikePrice"] - price),
-        ct["strikePrice"],
-        ct["putCall"],
-        ct["symbol"],
-    )
+    rest = (_expires(ct), abs(ct["strikePrice"] - price), ct["strikePrice"], ct["putCall"], ct["symbol"])
     gamma = ct.get("gamma")
     known = isinstance(gamma, (int, float)) and gamma != -999 and ct.get("volatility") != -999
     return (0, -gamma, *rest) if known else (1, *rest)
@@ -77,16 +68,12 @@ def by_definition(contracts: "list[dict]", price: float, n: int, now: float) -> 
     return {c["symbol"] for c in live[:n]}
 
 
-def _rule(
-    chains: dict, prices: dict, now: float, watchlist: "list[str]", flow: "str | None" = None
-) -> "dict[str, set[str]]":
+def _rule(chains: dict, prices: dict, now: float, watchlist: "list[str]", flow: "str | None" = None) -> "dict[str, set[str]]":
     taken = 1 if flow else 0
     out = {L1: set(), BOOK: set()}
     for tk in watchlist:
         for svc in (L1, BOOK):
-            out[svc] |= by_definition(
-                chains[tk], prices[tk], (capture.OPTION_LIMITS[svc] - taken) // len(watchlist), now
-            )
+            out[svc] |= by_definition(chains[tk], prices[tk], (capture.OPTION_LIMITS[svc] - taken) // len(watchlist), now)
     if flow:
         out[L1].add(flow)
         out[BOOK].add(flow)
@@ -112,53 +99,39 @@ class _Market:
         self.daemon = capture.Daemon(self.bus, HealthRegistry(), watchlist, clock=clock)
 
     def chain(self, tk: str, ts: float = CAPTURED, contracts: "list[dict] | None" = None) -> None:
-        for topic, msg in chain_messages(
-            tk, CHAINS[tk] if contracts is None else contracts, ts, None, None
-        ):
+        for topic, msg in chain_messages(tk, CHAINS[tk] if contracts is None else contracts, ts, None, None):
             self.bus.publish(topic, msg)
 
     def price(self, tk: str, last: float) -> None:
-        self.bus.publish(
-            f"quote.{tk}",
-            quote_msg(
-                symbol=tk, last=last, src="schwab_l1", native={"key": tk, "LAST_PRICE": last}
-            ),
-        )
+        self.bus.publish(f"quote.{tk}", quote_msg(symbol=tk, last=last, src="schwab_l1",
+                                                  native={"key": tk, "LAST_PRICE": last}))
 
     def holds(self, want: "dict[str, set[str]]") -> bool:
-        return all(
-            set(self.daemon.held[s]) == want[s] == set(self.streamer.held[s]) for s in (L1, BOOK)
-        )
+        return all(set(self.daemon.held[s]) == want[s] == set(self.streamer.held[s]) for s in (L1, BOOK))
 
     def run(self, steps) -> None:
         async def go():
             stop = asyncio.Event()
-            tasks = [
-                asyncio.create_task(self.daemon.run(lambda: self.client, stop)),
-                asyncio.create_task(self.daemon.follow_market(stop)),
-            ]
+            tasks = [asyncio.create_task(self.daemon.run(lambda: self.client, stop)),
+                     asyncio.create_task(self.daemon.follow_market(stop))]
             try:
                 await steps(self)
             finally:
                 stop.set()
                 await asyncio.wait_for(asyncio.gather(*tasks), 10)
-
         try:
             asyncio.run(go())
         finally:
             self.streamer.close()
             self.rest.close()
-            for tk in CHAINS:  # the plane rows these prices wrote
+            for tk in CHAINS:                                    # the plane rows these prices wrote
                 lmp._by_ticker.pop(tk, None)
                 lmp._fields_by_ticker.pop(tk, None)
 
 
 def _answers(streamer, service: str) -> "list[int]":
-    return [
-        a["response"][0]["content"]["code"]
-        for a in streamer.answers
-        if a["response"][0]["service"] == service
-    ]
+    return [a["response"][0]["content"]["code"] for a in streamer.answers
+            if a["response"][0]["service"] == service]
 
 
 def test_each_ticker_streams_its_highest_gamma_contracts_within_schwabs_limits(tmp_path):
@@ -174,7 +147,6 @@ def test_each_ticker_streams_its_highest_gamma_contracts_within_schwabs_limits(t
             m.chain(tk)
             m.price(tk, PRICES[tk])
         await _until(lambda: m.holds(want))
-
     market.run(steps)
     assert (len(want[L1]), len(want[BOOK])) == (1500 + 442, 100)
     assert set(_answers(market.streamer, L1)) == set(_answers(market.streamer, BOOK)) == {0}
@@ -183,11 +155,7 @@ def test_each_ticker_streams_its_highest_gamma_contracts_within_schwabs_limits(t
 def test_a_contract_without_gamma_streams_only_after_every_one_with_it(tmp_path):
     """SPY's 2026-10-14 chain as the console served it: 60 contracts with Schwab's gamma, 242 with
     -999. OPTIONS_BOOK's 100 are the 60, then the 40 without gamma nearest the price."""
-    contracts, price, ts = (
-        _SPY_NO_GAMMA["contracts"],
-        _SPY_NO_GAMMA["priced_at_spot"],
-        _SPY_NO_GAMMA["chain_as_of_ts_utc"],
-    )
+    contracts, price, ts = _SPY_NO_GAMMA["contracts"], _SPY_NO_GAMMA["priced_at_spot"], _SPY_NO_GAMMA["chain_as_of_ts_utc"]
     with_gamma = {c["symbol"] for c in contracts if c["gamma"] != -999}
     want = _rule({"SPY": contracts}, {"SPY": price}, ts, ["SPY"])
     market = _Market(tmp_path, ["SPY"], lambda: ts)
@@ -196,7 +164,6 @@ def test_a_contract_without_gamma_streams_only_after_every_one_with_it(tmp_path)
         m.chain("SPY", ts, contracts)
         m.price("SPY", price)
         await _until(lambda: m.holds(want))
-
     market.run(steps)
     assert len(with_gamma) == 60 and with_gamma < want[BOOK] and len(want[BOOK]) == 100
     assert len(want[L1]) == len(contracts)
@@ -227,17 +194,11 @@ def test_a_price_tick_asks_schwab_for_nothing_and_the_next_chain_only_the_differ
         clock[0] = after
         m.chain("MRVL", after)
         await _until(lambda: m.holds(then))
-
     market.run(steps)
-    assert sent["after_tick"] == {s: sent[s] for s in (L1, BOOK)}, (
-        "a price tick asks Schwab for nothing"
-    )
+    assert sent["after_tick"] == {s: sent[s] for s in (L1, BOOK)}, "a price tick asks Schwab for nothing"
     for svc in (L1, BOOK):
-        moved = [(c, sorted(k)) for c, k in market.streamer.asked(svc)[sent[svc] :]]
-        assert moved == [
-            ("UNSUBS", sorted(before[svc] - then[svc])),
-            ("ADD", sorted(then[svc] - before[svc])),
-        ], svc
+        moved = [(c, sorted(k)) for c, k in market.streamer.asked(svc)[sent[svc]:]]
+        assert moved == [("UNSUBS", sorted(before[svc] - then[svc])), ("ADD", sorted(then[svc] - before[svc]))], svc
         assert before[svc] != then[svc] and not expired & then[svc]
     assert expired & before[BOOK]
 
@@ -266,23 +227,16 @@ def test_the_rule_orders_a_chain_at_the_price_rows_price_and_waits_while_it_has_
         clock[0] = after
         m.chain("MRVL", after)
         await asyncio.sleep(1.0)
-        held.update(
-            {s: set(m.daemon.held[s]) for s in (L1, BOOK)},
-            recorded=(recorded, m.daemon.saved_options),
-        )
+        held.update({s: set(m.daemon.held[s]) for s in (L1, BOOK)}, recorded=(recorded, m.daemon.saved_options))
         m.price("MRVL", MRVL_CLOSE)
         await _until(lambda: m.holds(then))
         held["then_recorded"] = m.daemon.saved_options
-
     market.run(steps)
     assert {s: held[s] for s in (L1, BOOK)} == {s: before[s] for s in (L1, BOOK)}, (
-        "no chain is ordered at a price the row does not hold"
-    )
-    assert held["recorded"][1] == held["recorded"][0], (
-        "the recorded window stands while the row has no price"
-    )
-    assert held["then_recorded"] != held["recorded"][0]  # at the next price it moves
-    assert expired & before[L1] and not expired & then[L1]  # the next chain moved what is held
+        "no chain is ordered at a price the row does not hold")
+    assert held["recorded"][1] == held["recorded"][0], "the recorded window stands while the row has no price"
+    assert held["then_recorded"] != held["recorded"][0]            # at the next price it moves
+    assert expired & before[L1] and not expired & then[L1]          # the next chain moved what is held
 
 
 def test_a_watchlist_change_splits_schwabs_limits_again(tmp_path):
@@ -296,11 +250,8 @@ def test_a_watchlist_change_splits_schwabs_limits_again(tmp_path):
             m.chain(tk)
             m.price(tk, PRICES[tk])
         await _until(lambda: m.holds(_rule(CHAINS, PRICES, CAPTURED, ["MRVL", "SPY"])))
-        m.daemon.console_frame(
-            {"op": "watchlist", "action": "remove", "ticker": "SPY", "id": 1}, None
-        )
+        m.daemon.console_frame({"op": "watchlist", "action": "remove", "ticker": "SPY", "id": 1}, None)
         await _until(lambda: m.holds(want))
-
     market.run(steps)
     assert len(want[L1]) == len(CHAINS["MRVL"]) and len(want[BOOK]) == 100
 
@@ -319,9 +270,7 @@ def test_a_ticker_removed_and_added_again_records_nothing_until_its_next_chain(t
             m.price(tk, PRICES[tk])
         await _until(lambda: m.holds(_rule(CHAINS, PRICES, CAPTURED, ["MRVL", "SPY"])))
         seen["before"] = m.daemon.saved_options & spy
-        m.daemon.console_frame(
-            {"op": "watchlist", "action": "remove", "ticker": "SPY", "id": 1}, None
-        )
+        m.daemon.console_frame({"op": "watchlist", "action": "remove", "ticker": "SPY", "id": 1}, None)
         await _until(lambda: "SPY" not in m.daemon.watchlist)
         m.daemon.console_frame({"op": "watchlist", "action": "add", "ticker": "SPY", "id": 2}, None)
         await _until(lambda: "SPY" in m.daemon.watchlist)
@@ -331,10 +280,9 @@ def test_a_ticker_removed_and_added_again_records_nothing_until_its_next_chain(t
         m.chain("SPY")
         await _until(lambda: m.daemon.saved_options & spy)
         seen["next_chain"] = m.daemon.saved_options & spy
-
     market.run(steps)
     assert seen["before"] and seen["re_added"] == set(), "no window from before the removal"
-    assert seen["next_chain"] == seen["before"]  # the same chain at the same price
+    assert seen["next_chain"] == seen["before"]                    # the same chain at the same price
 
 
 def test_a_chain_that_arrives_after_its_ticker_is_removed_records_nothing(tmp_path):
@@ -349,15 +297,12 @@ def test_a_chain_that_arrives_after_its_ticker_is_removed_records_nothing(tmp_pa
             m.chain(tk)
             m.price(tk, PRICES[tk])
         await _until(lambda: m.daemon.saved_options & spy)
-        m.daemon.console_frame(
-            {"op": "watchlist", "action": "remove", "ticker": "SPY", "id": 1}, None
-        )
+        m.daemon.console_frame({"op": "watchlist", "action": "remove", "ticker": "SPY", "id": 1}, None)
         await _until(lambda: "SPY" not in m.daemon.watchlist)
         m.chain("SPY")
         m.price("SPY", PRICES["SPY"])
         await asyncio.sleep(0.5)
         seen["after"] = m.daemon.saved_options & spy
-
     market.run(steps)
     assert seen["after"] == set()
 
@@ -370,31 +315,21 @@ def test_the_flow_panels_contract_streams_on_both_services_on_top_of_the_rule(tm
     far = max(CHAINS["MRVL"], key=lambda c: _order(c, PRICES["MRVL"]))["symbol"]
     want = _rule(CHAINS, PRICES, CAPTURED, ["MRVL", "SPY"], flow=far)
     market = _Market(tmp_path, ["MRVL", "SPY"], lambda: CAPTURED)
-    with server._terrain_cache_lock:  # the console holds MRVL's chain
-        server._terrain_cache["MRVL"] = {
-            "_contract_symbols": frozenset(c["symbol"] for c in CHAINS["MRVL"])
-        }
+    with server._terrain_cache_lock:                              # the console holds MRVL's chain
+        server._terrain_cache["MRVL"] = {"_contract_symbols": frozenset(c["symbol"] for c in CHAINS["MRVL"])}
     restarted = capture.Daemon(MessageBus(), HealthRegistry(), ["MRVL"])
     held: dict = {}
 
     async def steps(m):
         from websockets.asyncio.client import connect
-
         for tk in ("MRVL", "SPY"):
             m.chain(tk)
             m.price(tk, PRICES[tk])
         stop = asyncio.Event()
         ports = [_free_port(), _free_port()]
-        sockets = [
-            asyncio.create_task(
-                serve_live_push(m.bus, stop, port=ports[0], on_request=m.daemon.console_frame)
-            ),
-            asyncio.create_task(
-                serve_live_push(
-                    MessageBus(), stop, port=ports[1], on_request=restarted.console_frame
-                )
-            ),
-        ]
+        sockets = [asyncio.create_task(serve_live_push(m.bus, stop, port=ports[0], on_request=m.daemon.console_frame)),
+                   asyncio.create_task(serve_live_push(MessageBus(), stop, port=ports[1],
+                                                       on_request=restarted.console_frame))]
         ws = await _connect(connect, ports[0])
         console = asyncio.create_task(ofs.serve_push(ws))
         await _until(lambda: ofs._push_ws is ws)
@@ -403,17 +338,16 @@ def test_the_flow_panels_contract_streams_on_both_services_on_top_of_the_rule(tm
         held.update({s: set(m.daemon.held[s]) for s in (L1, BOOK)})
         await ws.close()
         await asyncio.wait_for(console, 5)
-        ws2 = await _connect(connect, ports[1])  # the console's next daemon
+        ws2 = await _connect(connect, ports[1])                    # the console's next daemon
         console2 = asyncio.create_task(ofs.serve_push(ws2))
         await _until(lambda: restarted.flow_contract == far)
-        await server.post_flow_contract({"contract": None})  # Ed's selection cleared
+        await server.post_flow_contract({"contract": None})       # Ed's selection cleared
         await _until(lambda: restarted.flow_contract is None)
         await ws2.close()
         await asyncio.wait_for(console2, 5)
         stop.set()
         await asyncio.gather(*sockets)
         assert answer == {"ok": True, "contract": far}
-
     try:
         market.run(steps)
     finally:

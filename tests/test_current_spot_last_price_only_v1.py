@@ -19,11 +19,13 @@ def _feed_live():
     mark_feed_down()
 
 
+
+
+
 def test_resolve_spot_rejects_mark_close_chain_and_snapshot() -> None:
     L._by_ticker.pop("SPY", None)
     from app.options.order_flow import streaming as ofs
-
-    ofs._price_rows.pop("SPY", None)  # no daemon price row: a chain, MARK or close is no spot
+    ofs._price_rows.pop("SPY", None)   # no daemon price row: a chain, MARK or close is no spot
     spot, source, _ts = server.resolve_spot("SPY", now=RTH_INSTANT)
     assert spot is None
     assert source == "no price row from the daemon for SPY yet"
@@ -36,8 +38,8 @@ def test_plane_mark_only_tick_never_creates_current_spot() -> None:
         {"key": "MARKNEVER", "MARK": 20.95, "BID_PRICE": 20.9, "ASK_PRICE": 21.1},
         received_ts=time.time(),
     )
-    assert ok is True  # the quote Schwab sent is published
-    assert L.get_quote("MARKNEVER")["spot"] is None  # MARK never stands in for the spot
+    assert ok is True                                   # the quote Schwab sent is published
+    assert L.get_quote("MARKNEVER")["spot"] is None     # MARK never stands in for the spot
     spot, source, _ts = server.resolve_spot("MARKNEVER", now=RTH_INSTANT)
     assert spot is None
     assert source == "no price row from the daemon for MARKNEVER yet"
@@ -67,20 +69,11 @@ def test_a_rest_written_plane_row_is_not_spot() -> None:
     labelled or not (operator rule 2026-09-23: no fallbacks, a broken feed must look broken)."""
     tk = "ZZRESTROW"
     now = RTH_INSTANT
-    L._by_ticker[tk] = {
-        "ticker": tk,
-        "spot": 700.42,
-        "server_received_ts": now - 1.0,
-        "spot_received_ts": now - 1.0,
-        "exchange_quote_ts": now - 1.0,
-        "quote_source_detail": {"spot": "LAST_PRICE"},
-        "quote_ingestion": "rest_anchor_lane_refresher",
-    }
+    L._by_ticker[tk] = {"ticker": tk, "spot": 700.42, "server_received_ts": now - 1.0,
+                        "spot_received_ts": now - 1.0, "exchange_quote_ts": now - 1.0,
+                        "quote_source_detail": {"spot": "LAST_PRICE"},
+                        "quote_ingestion": "rest_anchor_lane_refresher"}
     try:
-        assert server.resolve_spot(tk, now=now) == (
-            None,
-            f"no price row from the daemon for {tk} yet",
-            None,
-        )
+        assert server.resolve_spot(tk, now=now) == (None, f"no price row from the daemon for {tk} yet", None)
     finally:
         L._by_ticker.pop(tk, None)

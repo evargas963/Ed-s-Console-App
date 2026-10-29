@@ -2,5 +2,5 @@
 # numpy is pinned for CI reproducibility (a floating resolution segfaulted the runner).
 pytest>=8.0
 pytest-xdist>=3.6.0
-ruff==0.17.3
+ruff>=0.16.3
 numpy==2.3.5

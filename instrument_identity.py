@@ -12,7 +12,6 @@ Do **not** strip `$`.
 Schwab names **index** symbols with a leading `$` while pages and human input may use the bare
 root (`SPX` vs `$SPX`): bare roots listed in ``BROKER_INDEX_BARE_ROOTS`` map to Schwab's form.
 """
-
 from __future__ import annotations
 
 # Index roots an operator types bare, mapped to Schwab's own name for the index ("$" + root).

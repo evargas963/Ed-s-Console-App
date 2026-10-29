@@ -1,5 +1,4 @@
 """Schwab -> the book panel. The quote time and the book time stay when the feed is down."""
-
 from __future__ import annotations
 
 import time
@@ -21,24 +20,15 @@ def test_a_down_feed_keeps_schwabs_quote_time_and_book_time_on_the_book():
     mark_feed_live(_TK)
     lmp.record_from_level_one_equity(
         _TK,
-        {
-            "LAST_PRICE": 772.04,
-            "BID_PRICE": 772.00,
-            "ASK_PRICE": 772.08,
-            "QUOTE_TIME_MILLIS": _WHEN,
-            "TRADE_TIME_MILLIS": _WHEN,
-        },
+        {"LAST_PRICE": 772.04, "BID_PRICE": 772.00, "ASK_PRICE": 772.08,
+         "QUOTE_TIME_MILLIS": _WHEN, "TRADE_TIME_MILLIS": _WHEN},
         received_ts=time.time(),
     )
-    of_state.push_book(
-        _TK,
-        {
-            "BIDS": [{"BID_PRICE": 772.00, "TOTAL_VOLUME": 10}],
-            "ASKS": [{"ASK_PRICE": 772.08, "TOTAL_VOLUME": 8}],
-            "BOOK_TIME": _WHEN,
-        },
-        "NASDAQ_BOOK",
-    )
+    of_state.push_book(_TK, {
+        "BIDS": [{"BID_PRICE": 772.00, "TOTAL_VOLUME": 10}],
+        "ASKS": [{"ASK_PRICE": 772.08, "TOTAL_VOLUME": 8}],
+        "BOOK_TIME": _WHEN,
+    }, "NASDAQ_BOOK")
     try:
         lmp.record_feed_down()
         ofs._price_rows[_TK] = live_price_rows.price_row(_TK, time.time())

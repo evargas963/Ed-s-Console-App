@@ -1,5 +1,4 @@
 """Run Node assertions for client L1 SSE guard helpers (static/js/l1_sse_guards.js)."""
-
 from __future__ import annotations
 
 import shutil

@@ -9,12 +9,16 @@ vs 4,176,672 live), with ~500K missing on strike 740 alone.
 These lock the retention and its numeric contract so the panel can never silently regress to the
 archive, and so a NaN vendor leaf can never enter the histogram as a value.
 """
-
 from __future__ import annotations
 
 from terrain_engine import (
     TerrainSnapshot,
 )
+
+
+
+
+
 
 
 def test_unknown_dte_belongs_to_neither_near_nor_far_f8():
@@ -26,12 +30,12 @@ def test_unknown_dte_belongs_to_neither_near_nor_far_f8():
     from terrain_engine import _dte_of
 
     contracts = [
-        {"strikePrice": 100.0, "daysToExpiration": 0},  # near (0-DTE)
-        {"strikePrice": 101.0, "daysToExpiration": 3},  # near
-        {"strikePrice": 102.0, "daysToExpiration": 30},  # far
-        {"strikePrice": 103.0, "daysToExpiration": float("nan")},  # unknown -> neither
-        {"strikePrice": 104.0},  # missing -> neither
-        {"strikePrice": 105.0, "daysToExpiration": float("inf")},  # junk -> neither
+        {"strikePrice": 100.0, "daysToExpiration": 0},               # near (0-DTE)
+        {"strikePrice": 101.0, "daysToExpiration": 3},               # near
+        {"strikePrice": 102.0, "daysToExpiration": 30},              # far
+        {"strikePrice": 103.0, "daysToExpiration": float("nan")},    # unknown -> neither
+        {"strikePrice": 104.0},                                      # missing -> neither
+        {"strikePrice": 105.0, "daysToExpiration": float("inf")},    # junk -> neither
     ]
     assert _dte_of(contracts[3]) is None
     assert _dte_of(contracts[4]) is None
@@ -43,6 +47,8 @@ def test_unknown_dte_belongs_to_neither_near_nor_far_f8():
     assert far == {102.0}, f"far must be >7DTE only (no unknown-DTE leak into MONTHLY+), got {far}"
     # the F8 defect was the parse-failed contracts landing in far — they now appear in NEITHER
     assert (near | far).isdisjoint({103.0, 104.0, 105.0})
+
+
 
 
 def test_per_strike_is_excluded_from_to_dict_but_timestamp_is_not():

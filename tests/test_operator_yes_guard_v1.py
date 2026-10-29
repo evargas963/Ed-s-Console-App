@@ -9,7 +9,6 @@ Real data: Schwab's /markets answer for 2026-10-07 (tests/fixtures/real_schwab_m
 recorded as the daemon records it. STAND-INS: python processes whose command lines carry the
 daemon's module, the console's app and launch.py (the guard reads command lines, as of production).
 """
-
 from __future__ import annotations
 
 import json
@@ -29,25 +28,16 @@ from stream_spine import CaptureWriter  # noqa: E402
 from tools import operator_yes_guard as guard  # noqa: E402
 
 REPO = Path(__file__).resolve().parent.parent
-EXISTING = "tests/test_check_end_to_end_v1.py"  # a test that is on origin/main
-MARKETS = json.loads(
-    (REPO / "tests" / "fixtures" / "real_schwab_markets_2026_10_07.json").read_text(
-        encoding="utf-8"
-    )
-)
+EXISTING = "tests/test_check_end_to_end_v1.py"     # a test that is on origin/main
+MARKETS = json.loads((REPO / "tests" / "fixtures" / "real_schwab_markets_2026_10_07.json").read_text(encoding="utf-8"))
 #: 2026-10-07 in ET: inside Schwab's pre-market, regular and post-market windows, after them, and a
 #: date whose answer is not held
-PRE, RTH, AFTER, CLOSED = (
-    datetime(2026, 10, 7, h, m, tzinfo=time_et.ET) for h, m in ((7, 30), (10, 0), (17, 0), (21, 0))
-)
+PRE, RTH, AFTER, CLOSED = (datetime(2026, 10, 7, h, m, tzinfo=time_et.ET) for h, m in ((7, 30), (10, 0), (17, 0), (21, 0)))
 NOT_HELD = datetime(2026, 10, 20, 21, 0, tzinfo=time_et.ET)
 
 
 def _edit(path: str) -> dict:
-    return {
-        "tool_name": "Edit",
-        "tool_input": {"file_path": path, "old_string": "a", "new_string": "b"},
-    }
+    return {"tool_name": "Edit", "tool_input": {"file_path": path, "old_string": "a", "new_string": "b"}}
 
 
 def _shell(cmd: str, tool: str = "Bash") -> dict:
@@ -55,13 +45,8 @@ def _shell(cmd: str, tool: str = "Bash") -> dict:
 
 
 def _chain(payload: dict) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        [sys.executable, "tools/hook_chain.py", "tools/operator_yes_guard.py"],
-        cwd=REPO,
-        input=json.dumps(payload),
-        capture_output=True,
-        text=True,
-    )
+    return subprocess.run([sys.executable, "tools/hook_chain.py", "tools/operator_yes_guard.py"], cwd=REPO,
+                          input=json.dumps(payload), capture_output=True, text=True)
 
 
 @pytest.fixture(scope="module")
@@ -73,10 +58,8 @@ def markets(tmp_path_factory) -> Path:
     conn = sqlite3.connect(db)
     try:
         with conn:
-            conn.execute(
-                "INSERT INTO stream_markets_raw(ts_recv,date,status,native_json,src) VALUES(?,?,?,?,?)",
-                (1791367200.0, "2026-10-07", answer["status"], answer["body"], "schwab_rest"),
-            )
+            conn.execute("INSERT INTO stream_markets_raw(ts_recv,date,status,native_json,src) VALUES(?,?,?,?,?)",
+                         (1791367200.0, "2026-10-07", answer["status"], answer["body"], "schwab_rest"))
     finally:
         conn.close()
     return db
@@ -87,26 +70,17 @@ def test_the_session_is_read_on_a_connection_the_guard_closes(markets):
     ET) on a read-only connection it closes: no connection is left for the collector, which
     Python 3.13 reports ("unclosed database"). It runs in a Python of its own, so no other
     code's connection is counted."""
-    code = (
-        "import gc, sys\nfrom datetime import datetime\nimport time_et\n"
-        "from tools import operator_yes_guard as guard\n"
-        "print(guard.market_session(datetime(2026, 10, 7, 10, 0, tzinfo=time_et.ET), sys.argv[1]))\n"
-        "gc.collect()\n"
-    )
-    done = subprocess.run(
-        [sys.executable, "-W", "always::ResourceWarning", "-c", code, str(markets)],
-        cwd=REPO,
-        capture_output=True,
-        text=True,
-        timeout=60,
-    )
+    code = ("import gc, sys\nfrom datetime import datetime\nimport time_et\n"
+            "from tools import operator_yes_guard as guard\n"
+            "print(guard.market_session(datetime(2026, 10, 7, 10, 0, tzinfo=time_et.ET), sys.argv[1]))\n"
+            "gc.collect()\n")
+    done = subprocess.run([sys.executable, "-W", "always::ResourceWarning", "-c", code, str(markets)],
+                          cwd=REPO, capture_output=True, text=True, timeout=60)
     assert done.stdout.strip() == time_et.session_label(RTH), (done.stdout, done.stderr)
     assert "unclosed database" not in done.stderr, done.stderr
 
 
-def _stand_in(
-    *marks: str, exe: str = sys.executable, cwd: Path = runtime_layout.RUNTIME_ROOT
-) -> subprocess.Popen:
+def _stand_in(*marks: str, exe: str = sys.executable, cwd: Path = runtime_layout.RUNTIME_ROOT) -> subprocess.Popen:
     """A sleeping process whose command line carries `marks`, running in `cwd` (production's
     checkout by default, as the daemon and the console run)."""
     return subprocess.Popen([exe, "-c", "import time; time.sleep(600)", *marks], cwd=cwd)
@@ -116,20 +90,14 @@ def _stand_in(
 def procs(tmp_path_factory):
     """Running stand-ins: the daemon, the console, launch.py, a process of no production, and a
     test console in another checkout (as Playwright's in a worktree)."""
-    running = {
-        "daemon": _stand_in("-m", "app.market_data.schwab.streaming.capture"),
-        "console": _stand_in("-m", "uvicorn", "server:app"),
-        "launch": _stand_in("launch.py"),
-        "other": _stand_in("some_research_job"),
-        "worktree_console": _stand_in(
-            "-m", "uvicorn", "server:app", cwd=tmp_path_factory.mktemp("worktree")
-        ),
-    }
+    running = {"daemon": _stand_in("-m", "app.market_data.schwab.streaming.capture"),
+               "console": _stand_in("-m", "uvicorn", "server:app"),
+               "launch": _stand_in("launch.py"),
+               "other": _stand_in("some_research_job"),
+               "worktree_console": _stand_in("-m", "uvicorn", "server:app", cwd=tmp_path_factory.mktemp("worktree"))}
     pythonw = Path(sys.executable).with_name("pythonw.exe")
     if pythonw.exists():
-        running["daemon_w"] = _stand_in(
-            "-m", "app.market_data.schwab.streaming.capture", exe=str(pythonw)
-        )
+        running["daemon_w"] = _stand_in("-m", "app.market_data.schwab.streaming.capture", exe=str(pythonw))
     yield {name: p.pid for name, p in running.items()}
     for p in running.values():
         p.kill()
@@ -141,83 +109,47 @@ def _decide(cmd: str, now: datetime, db: Path, tool: str = "Bash") -> str:
 
 
 STARTS_AND_CLEAN_STOPS = [
-    "start_ed_console.bat",
-    ".\\start_capture_daemon.bat",
-    '& "C:\\x\\start_ed_console.bat"',
-    "cmd /c start_ed_console.bat",
-    ".venv\\Scripts\\python.exe launch.py",
-    "python launch.py stop",
-    "py launch.py",
-    "py -m uvicorn server:app",
-    "python -m uvicorn server:app --port 8000",
+    "start_ed_console.bat", ".\\start_capture_daemon.bat", "& \"C:\\x\\start_ed_console.bat\"",
+    "cmd /c start_ed_console.bat", ".venv\\Scripts\\python.exe launch.py", "python launch.py stop",
+    "py launch.py", "py -m uvicorn server:app", "python -m uvicorn server:app --port 8000",
     "pythonw -m app.market_data.schwab.streaming.capture",
     "Start-Process -FilePath \"cmd.exe\" -ArgumentList '/c','start','\"Ed Console\"','\"C:\\x\\start_ed_console.bat\"'",
-    'powershell -NoProfile -Command "cmd /c start_ed_console.bat"',
-    "Invoke-Item .\\start_ed_console.bat",
-    "ii launch.py",
-    "explorer.exe start_ed_console.bat",
-    'iex "cmd /c start_capture_daemon.bat"',
-    "Start-Job { & .\\start_ed_console.bat }",
-    'wmic process call create "cmd /c C:\\x\\start_ed_console.bat"',
-    "[System.Diagnostics.Process]::Start('C:\\x\\start_ed_console.bat')",
-    "schtasks /run /tn EdConsole",
+    "powershell -NoProfile -Command \"cmd /c start_ed_console.bat\"", "Invoke-Item .\\start_ed_console.bat",
+    "ii launch.py", "explorer.exe start_ed_console.bat", "iex \"cmd /c start_capture_daemon.bat\"",
+    "Start-Job { & .\\start_ed_console.bat }", "wmic process call create \"cmd /c C:\\x\\start_ed_console.bat\"",
+    "[System.Diagnostics.Process]::Start('C:\\x\\start_ed_console.bat')", "schtasks /run /tn EdConsole",
 ]
 
 
 @pytest.mark.parametrize("cmd", STARTS_AND_CLEAN_STOPS)
-def test_a_start_or_clean_stop_asks_only_in_regular_hours_or_an_unknown_session(
-    cmd, markets, tmp_path
-):
+def test_a_start_or_clean_stop_asks_only_in_regular_hours_or_an_unknown_session(cmd, markets, tmp_path):
     for now in (PRE, AFTER, CLOSED):
         assert _decide(cmd, now, markets) == guard.PASS, now
     for now in (RTH, NOT_HELD):
         assert _decide(cmd, now, markets) == guard.ASK, now
-    assert _decide(cmd, CLOSED, tmp_path / "no_database.db") == guard.ASK, (
-        "an unreadable session did not ask"
-    )
+    assert _decide(cmd, CLOSED, tmp_path / "no_database.db") == guard.ASK, "an unreadable session did not ask"
 
 
 def test_regular_hours_are_schwabs_window_0830_to_1500_central(markets):
     """Schwab's regular window for 2026-10-07 is 09:30-16:00 ET (08:30-15:00 CT): a restart asks
     from its first minute to its last and passes the minute before and the minute it ends."""
     ct = time_et.ZoneInfo("America/Chicago")
-    for (h, m), answer in (
-        ((8, 29), guard.PASS),
-        ((8, 30), guard.ASK),
-        ((14, 59), guard.ASK),
-        ((15, 0), guard.PASS),
-    ):
-        assert (
-            _decide("python launch.py stop", datetime(2026, 10, 7, h, m, tzinfo=ct), markets)
-            == answer
-        ), (h, m)
+    for (h, m), answer in (((8, 29), guard.PASS), ((8, 30), guard.ASK), ((14, 59), guard.ASK), ((15, 0), guard.PASS)):
+        assert _decide("python launch.py stop", datetime(2026, 10, 7, h, m, tzinfo=ct), markets) == answer, (h, m)
 
 
-KILLS = [
-    "Stop-Process -Id {pid}",
-    "Stop-Process -Id {pid} -Force",
-    "Stop-Process {pid}",
-    "spps -Id {pid}",
-    "kill {pid}",
-    "kill -9 {pid}",
-    "taskkill /PID {pid}",
-    "taskkill /PID {pid} /F",
-    "tskill {pid}",
-    "pskill {pid}",
-    "(Get-Process -Id {pid}).Kill()",
-    "wmic process where processid={pid} delete",
-    "wmic process where processid={pid} call terminate",
-    'Get-CimInstance Win32_Process -Filter "ProcessId={pid}" | Invoke-CimMethod -MethodName Terminate',
-    'Get-CimInstance Win32_Process -Filter "ProcessId={pid}" | Remove-CimInstance',
-    "Stop-Process -Id 4194300,{pid} -Force",
-]
+KILLS = ["Stop-Process -Id {pid}", "Stop-Process -Id {pid} -Force", "Stop-Process {pid}", "spps -Id {pid}",
+         "kill {pid}", "kill -9 {pid}", "taskkill /PID {pid}", "taskkill /PID {pid} /F", "tskill {pid}", "pskill {pid}",
+         "(Get-Process -Id {pid}).Kill()", "wmic process where processid={pid} delete",
+         "wmic process where processid={pid} call terminate",
+         "Get-CimInstance Win32_Process -Filter \"ProcessId={pid}\" | Invoke-CimMethod -MethodName Terminate",
+         "Get-CimInstance Win32_Process -Filter \"ProcessId={pid}\" | Remove-CimInstance",
+         "Stop-Process -Id 4194300,{pid} -Force"]
 
 
 @pytest.mark.parametrize("target", ["daemon", "console", "launch"])
 @pytest.mark.parametrize("kill", KILLS)
-def test_killing_the_daemon_the_console_or_launch_py_is_refused_at_any_hour(
-    kill, target, procs, markets
-):
+def test_killing_the_daemon_the_console_or_launch_py_is_refused_at_any_hour(kill, target, procs, markets):
     for now in (RTH, CLOSED):
         assert _decide(kill.format(pid=procs[target]), now, markets) == guard.DENY
 
@@ -226,48 +158,32 @@ def test_killing_the_daemon_the_console_or_launch_py_is_refused_at_any_hour(
 def test_killing_a_process_of_no_production_passes(kill, procs, markets):
     assert _decide(kill.format(pid=procs["other"]), RTH, markets) == guard.PASS
     assert _decide(kill.format(pid=procs["worktree_console"]), RTH, markets) == guard.PASS
-    assert _decide(kill.format(pid=4194300), RTH, markets) == guard.PASS  # no such process
+    assert _decide(kill.format(pid=4194300), RTH, markets) == guard.PASS      # no such process
 
 
-@pytest.mark.parametrize(
-    "cmd",
-    [
-        "taskkill /IM python.exe /F",
-        "taskkill /IM python.exe",
-        "Stop-Process -Name python",
-        "Stop-Process -Name python -Force",
-        "Get-Process python* | Stop-Process",
-        "Get-Process python* | Stop-Process -Force",
-        "tskill python",
-        "wmic process where name='python.exe' delete",
-        "Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" | Remove-CimInstance",
-        "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like "
-        "'*streaming.capture*' } | Stop-Process",
-        # a target held in a variable, or a stop inside a script block
-        "$ids = Get-CimInstance Win32_Process -Filter \"Name like 'python%'\" | Where-Object "
-        "{ $_.CommandLine -like '*streaming.capture*' } | Select-Object -ExpandProperty "
-        "ProcessId; Stop-Process -Id $ids -Force",
-        "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'uvicorn' } | "
-        "ForEach-Object { Stop-Process -Id $_.ProcessId -Force }",
-        "$p = Get-CimInstance Win32_Process -Filter \"Name like 'python%'\"; "
-        "Stop-Process -Id $p.ProcessId -Force",
-    ],
-)
+@pytest.mark.parametrize("cmd", ["taskkill /IM python.exe /F", "taskkill /IM python.exe", "Stop-Process -Name python",
+                                 "Stop-Process -Name python -Force", "Get-Process python* | Stop-Process",
+                                 "Get-Process python* | Stop-Process -Force", "tskill python",
+                                 "wmic process where name='python.exe' delete",
+                                 "Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" | Remove-CimInstance",
+                                 "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like "
+                                 "'*streaming.capture*' } | Stop-Process",
+                                 # a target held in a variable, or a stop inside a script block
+                                 "$ids = Get-CimInstance Win32_Process -Filter \"Name like 'python%'\" | Where-Object "
+                                 "{ $_.CommandLine -like '*streaming.capture*' } | Select-Object -ExpandProperty "
+                                 "ProcessId; Stop-Process -Id $ids -Force",
+                                 "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'uvicorn' } | "
+                                 "ForEach-Object { Stop-Process -Id $_.ProcessId -Force }",
+                                 "$p = Get-CimInstance Win32_Process -Filter \"Name like 'python%'\"; "
+                                 "Stop-Process -Id $p.ProcessId -Force"])
 def test_killing_the_python_image_with_production_in_it_is_refused(cmd, procs, markets):
     assert _decide(cmd, CLOSED, markets) == guard.DENY
 
 
-@pytest.mark.parametrize(
-    "cmd",
-    [
-        "taskkill /F /PID $pid",
-        "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'pytest' } | "
-        "ForEach-Object { Stop-Process -Id $_.ProcessId -Force }",
-    ],
-)
-def test_a_kill_whose_targets_are_chosen_when_it_runs_asks_while_production_runs(
-    cmd, procs, markets
-):
+@pytest.mark.parametrize("cmd", ["taskkill /F /PID $pid",
+                                 "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'pytest' } | "
+                                 "ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"])
+def test_a_kill_whose_targets_are_chosen_when_it_runs_asks_while_production_runs(cmd, procs, markets):
     """Its targets cannot be read before it runs: it may reach the daemon or the console."""
     assert _decide(cmd, CLOSED, markets) == guard.ASK
 
@@ -279,217 +195,134 @@ def test_a_kill_inside_a_merge_is_judged_as_a_kill_too(procs, markets):
     later = "gh pr merge 5 --subject $p.Kill()"
     answer, reasons = guard.decide(_shell(later, "PowerShell"), CLOSED, markets)
     assert answer == guard.ASK and len(reasons) == 2 and any(later in r for r in reasons), reasons
-    text = 'gh pr merge 5 --subject="fix p.Kill() call"'  # text, read as a kill: the safe side
-    assert guard.decide(_shell(text), CLOSED, markets) == (
-        guard.ASK,
-        [
-            "stops processes chosen only when it runs while the daemon or the console runs (CLAUDE.md rule 5: production)",
-            f"merges (AGENTS.md Authority); the command as written: {text}",
-        ],
-    )
-    for run in (
-        'gh pr merge 5 --subject="$((Get-Process python).Kill())"',  # PowerShell runs "$( )"
-        'echo a"$((Get-Process python).Kill())"',
-        "gh pr merge 5 --subject=\"'$((Get-Process python).Kill())'\"",
-        "echo a\"'$((Get-Process python).Kill())'\"",
-        'gh pr merge 5 --subject=$(("$x")+(Get-Process python).Kill()+"y")',
-    ):
+    text = 'gh pr merge 5 --subject="fix p.Kill() call"'                # text, read as a kill: the safe side
+    assert guard.decide(_shell(text), CLOSED, markets) == (guard.ASK, [
+        "stops processes chosen only when it runs while the daemon or the console runs (CLAUDE.md rule 5: production)",
+        f"merges (AGENTS.md Authority); the command as written: {text}"])
+    for run in ('gh pr merge 5 --subject="$((Get-Process python).Kill())"',   # PowerShell runs "$( )"
+                'echo a"$((Get-Process python).Kill())"',
+                "gh pr merge 5 --subject=\"'$((Get-Process python).Kill())'\"",
+                "echo a\"'$((Get-Process python).Kill())'\"",
+                'gh pr merge 5 --subject=$(("$x")+(Get-Process python).Kill()+"y")'):
         assert guard.decide(_shell(run, "PowerShell"), CLOSED, markets)[0] == guard.DENY, run
 
 
 def test_a_kill_names_every_ask_reason_that_applies(procs, markets):
     """A target whose command line cannot be read and one chosen when it runs: both reasons."""
-    unreadable = 4 if os.name == "nt" else 1  # the System process; init
-    answer, reasons = guard.decide(
-        _shell(f"Stop-Process -Id {unreadable} -Name $n", "PowerShell"), CLOSED, markets
-    )
+    unreadable = 4 if os.name == "nt" else 1                           # the System process; init
+    answer, reasons = guard.decide(_shell(f"Stop-Process -Id {unreadable} -Name $n", "PowerShell"), CLOSED, markets)
     assert answer == guard.ASK and len(reasons) == 2, reasons
 
 
 def test_killing_the_pythonw_image_with_the_daemon_in_it_is_refused(procs, markets):
     if "daemon_w" not in procs:
         pytest.skip("no pythonw beside this Python (pythonw exists on Windows only)")
-    for cmd in (
-        "taskkill /IM pythonw.exe /F",
-        "Stop-Process -Name pythonw",
-        "Get-Process pythonw | Stop-Process",
-    ):
+    for cmd in ("taskkill /IM pythonw.exe /F", "Stop-Process -Name pythonw", "Get-Process pythonw | Stop-Process"):
         assert _decide(cmd, CLOSED, markets) == guard.DENY, cmd
 
 
-@pytest.mark.parametrize(
-    "cmd, answer",
-    [
-        ("Stop-Computer", guard.ASK),
-        ("Restart-Computer -Force", guard.ASK),
-        ("shutdown /r /t 0", guard.ASK),
-        ("gh pr merge 445 --merge", guard.ASK),
-        ("gh api -X PUT repos/o/r/pulls/445/merge", guard.ASK),
-        ("git push -q -u origin fix/some-branch", guard.PASS),
-    ],
-)
+@pytest.mark.parametrize("cmd, answer", [
+    ("Stop-Computer", guard.ASK), ("Restart-Computer -Force", guard.ASK), ("shutdown /r /t 0", guard.ASK),
+    ("gh pr merge 445 --merge", guard.ASK), ("gh api -X PUT repos/o/r/pulls/445/merge", guard.ASK),
+    ("git push -q -u origin fix/some-branch", guard.PASS),
+])
 def test_the_machine_a_merge_and_a_push(cmd, answer, markets):
     assert _decide(cmd, CLOSED, markets) == answer
 
 
-@pytest.mark.parametrize(
-    "cmd, tool",
-    [
-        ("gh -R evargas963/Ed-s-Console-App pr merge 515", "Bash"),  # options before merge
-        ("gh pr -R o/r merge 5 --squash", "Bash"),
-        ("gh api -X PUT repos/o/r/pulls/5/merge", "Bash"),  # API PUT through gh api
-        (
-            'gh api graphql -f query=\'mutation { mergePullRequest(input: {pullRequestId: "PR_x"}) '
-            "{ clientMutationId } }'",
-            "Bash",
-        ),  # GraphQL through gh api
-        (
-            "curl -X PUT -H 'Accept: application/vnd.github+json' https://api.github.com/repos/o/r/pulls/5/merge",
-            "Bash",
-        ),
-        (
-            'curl -X POST https://api.github.com/graphql -d \'{"query":"mutation { mergePullRequest(input: '
-            '{pullRequestId: \\"PR_x\\"}) { clientMutationId } }"}\'',
-            "Bash",
-        ),
-        (
-            'Invoke-RestMethod -Method Post -Uri https://api.github.com/graphql -Body \'{"query":"mutation '
-            '{ mergePullRequest(input: {pullRequestId: \\"PR_x\\"}) { clientMutationId } }"}\'',
-            "PowerShell",
-        ),
-        (
-            "Invoke-RestMethod -Method Put -Uri https://api.github.com/repos/o/r/pulls/5/merge",
-            "PowerShell",
-        ),
-        ('bash -c "gh pr merge 5"', "Bash"),  # wrapped in a shell
-        ('bash -lc "gh pr merge 5"', "Bash"),
-        ('cmd /c "gh pr merge 5"', "Bash"),
-        ('pwsh -c "gh pr merge 5 --merge"', "PowerShell"),
-        ("cmd /c gh pr merge 5", "Bash"),  # unquoted payload
-        ("pwsh -c gh pr merge 5", "PowerShell"),
-        ('/usr/bin/bash -c "gh pr merge 5"', "Bash"),  # a shell named by path
-        (
-            'gh api graphql -f query=\'\nmutation {\n  mergePullRequest(input: {pullRequestId: "PR_x"}) '
-            "{ clientMutationId }\n}'",
-            "Bash",
-        ),  # a multi-line query
-        ("gh api -X PUT repos/o/r/pulls/$PR/merge", "Bash"),  # the number in a variable
-        (
-            'gh api graphql -f query=\'mutation { enablePullRequestAutoMerge(input: {pullRequestId: "PR_x"}) '
-            "{ clientMutationId } }'",
-            "Bash",
-        ),  # merges once checks pass
-        (
-            'gh api graphql -f query=\'mutation { mergeBranch(input: {repositoryId: "R_x", base: "main", '
-            'head: "x"}) { clientMutationId } }\'',
-            "Bash",
-        ),  # a branch merge
-        ("gh api -X POST repos/o/r/merges -f base=main -f head=x", "Bash"),  # the REST branch merge
-        (
-            'curl -X POST https://api.github.com/repos/o/r/merges -d \'{"base":"main","head":"x"}\'',
-            "Bash",
-        ),
-        ("(( ($(gh pr merge 5)) > 0 ))", "Bash"),  # inside ( ) in bash arithmetic
-    ],
-)
+@pytest.mark.parametrize("cmd, tool", [
+    ("gh -R evargas963/Ed-s-Console-App pr merge 515", "Bash"),            # options before merge
+    ("gh pr -R o/r merge 5 --squash", "Bash"),
+    ("gh api -X PUT repos/o/r/pulls/5/merge", "Bash"),                       # API PUT through gh api
+    ("gh api graphql -f query='mutation { mergePullRequest(input: {pullRequestId: \"PR_x\"}) "
+     "{ clientMutationId } }'", "Bash"),                                     # GraphQL through gh api
+    ("curl -X PUT -H 'Accept: application/vnd.github+json' https://api.github.com/repos/o/r/pulls/5/merge", "Bash"),
+    ("curl -X POST https://api.github.com/graphql -d '{\"query\":\"mutation { mergePullRequest(input: "
+     "{pullRequestId: \\\"PR_x\\\"}) { clientMutationId } }\"}'", "Bash"),
+    ("Invoke-RestMethod -Method Post -Uri https://api.github.com/graphql -Body '{\"query\":\"mutation "
+     "{ mergePullRequest(input: {pullRequestId: \\\"PR_x\\\"}) { clientMutationId } }\"}'", "PowerShell"),
+    ("Invoke-RestMethod -Method Put -Uri https://api.github.com/repos/o/r/pulls/5/merge", "PowerShell"),
+    ("bash -c \"gh pr merge 5\"", "Bash"),                                  # wrapped in a shell
+    ("bash -lc \"gh pr merge 5\"", "Bash"),
+    ("cmd /c \"gh pr merge 5\"", "Bash"),
+    ("pwsh -c \"gh pr merge 5 --merge\"", "PowerShell"),
+    ("cmd /c gh pr merge 5", "Bash"),                                        # unquoted payload
+    ("pwsh -c gh pr merge 5", "PowerShell"),
+    ("/usr/bin/bash -c \"gh pr merge 5\"", "Bash"),                         # a shell named by path
+    ("gh api graphql -f query='\nmutation {\n  mergePullRequest(input: {pullRequestId: \"PR_x\"}) "
+     "{ clientMutationId }\n}'", "Bash"),                                    # a multi-line query
+    ("gh api -X PUT repos/o/r/pulls/$PR/merge", "Bash"),                     # the number in a variable
+    ("gh api graphql -f query='mutation { enablePullRequestAutoMerge(input: {pullRequestId: \"PR_x\"}) "
+     "{ clientMutationId } }'", "Bash"),                                     # merges once checks pass
+    ("gh api graphql -f query='mutation { mergeBranch(input: {repositoryId: \"R_x\", base: \"main\", "
+     "head: \"x\"}) { clientMutationId } }'", "Bash"),                        # a branch merge
+    ("gh api -X POST repos/o/r/merges -f base=main -f head=x", "Bash"),       # the REST branch merge
+    ("curl -X POST https://api.github.com/repos/o/r/merges -d '{\"base\":\"main\",\"head\":\"x\"}'", "Bash"),
+    ("(( ($(gh pr merge 5)) > 0 ))", "Bash"),                               # inside ( ) in bash arithmetic
+])
 def test_every_merge_route_asks(cmd, tool, markets):
     assert _decide(cmd, CLOSED, markets, tool) == guard.ASK, cmd
 
 
-@pytest.mark.parametrize(
-    "cmd",
-    [
-        "gh pr merge -sb 7 518",
-        "gh pr merge --body-file 7 518",
-        "gh pr merge --subject 2026 518",
-        "gh pr merge 518",
-        "gh -b x pr merge 5",
-        "gh --subject x pr merge 5",
-        "gh -R owner/repo pr merge 5",
-        "gh -b x api -X PUT repos/o/r/pulls/5/merge",
-    ],
-)
+@pytest.mark.parametrize("cmd", ["gh pr merge -sb 7 518", "gh pr merge --body-file 7 518",
+                                 "gh pr merge --subject 2026 518", "gh pr merge 518", "gh -b x pr merge 5",
+                                 "gh --subject x pr merge 5", "gh -R owner/repo pr merge 5",
+                                 "gh -b x api -X PUT repos/o/r/pulls/5/merge"])
 def test_the_merge_question_shows_the_command_as_written(cmd, markets):
     answer, reasons = guard.decide(_shell(cmd), CLOSED, markets)
     assert answer == guard.ASK and len(reasons) == 1 and cmd in reasons[0], (cmd, reasons)
 
 
-@pytest.mark.parametrize(
-    "cmd",
-    [
-        "gh pr view 515",
-        "gh pr checks 515",
-        "gh -R o/r pr list",
-        "curl -s https://api.github.com/repos/o/r/pulls/5",
-        'bash -c "gh pr view 5"',
-        'git commit -m "asks for eval gh pr merge 5"',
-    ],
-)
+@pytest.mark.parametrize("cmd", ["gh pr view 515", "gh pr checks 515", "gh -R o/r pr list",
+                                 "curl -s https://api.github.com/repos/o/r/pulls/5",
+                                 "bash -c \"gh pr view 5\"", "git commit -m \"asks for eval gh pr merge 5\""])
 def test_reading_a_pull_request_passes(cmd, markets):
     assert _decide(cmd, CLOSED, markets) == guard.PASS, cmd
 
 
 def test_the_test_changed_below_is_on_main():
-    assert (
-        subprocess.run(["git", "cat-file", "-e", f"origin/main:{EXISTING}"], cwd=REPO).returncode
-        == 0
-    )
+    assert subprocess.run(["git", "cat-file", "-e", f"origin/main:{EXISTING}"], cwd=REPO).returncode == 0
 
 
-@pytest.mark.parametrize(
-    "payload",
-    [
-        _edit(str(REPO / EXISTING)),
-        {"tool_name": "Write", "tool_input": {"file_path": str(REPO / EXISTING), "content": "x"}},
-        _shell(f"rm {EXISTING}"),
-        _shell(f"git rm -q {EXISTING}"),
-        _shell(f"echo x > {EXISTING}"),
-        _shell(f"Remove-Item {EXISTING}", "PowerShell"),
-        _edit(str(REPO / "server.py")),
-        _shell(f"python -m pytest {EXISTING} -q"),
-        _shell(
-            "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*streaming.capture*' }",
-            "PowerShell",
-        ),
-        _shell("gh pr view 445 --json state"),
-        _shell("git add launch.py tests/test_launch_v1.py"),
-        _shell("python -m ruff check launch.py"),
-        # commands that only name a launcher or a process, as reads, diffs and searches do
-        _shell("Get-Content start_capture_daemon.bat, start_ed_console.bat", "PowerShell"),
-        _shell(
-            "git -C ..\\wt diff origin/main...HEAD -- app start_capture_daemon.bat stream_spine.py"
-        ),
-        _shell('git grep -n -E "start_capture_daemon|uvicorn server:app|restart" -- .'),
-        _shell("Select-String -Path logs\\ed_server.log -Pattern 'uvicorn restart'", "PowerShell"),
-        _shell(
-            'powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine '
-            "-like '*streaming.capture*' }\""
-        ),
-        _shell("file start_capture_daemon.bat && grep -c x start_capture_daemon.bat"),
-        _shell(
-            "\"--- any python/uvicorn\"; Get-Process | Where-Object { $_.ProcessName -match 'python' }",
-            "PowerShell",
-        ),
-        _shell('grep -rn "stop.set()\\|\\"op\\"\\|taskkill" start_capture_daemon.bat launch.py'),
-        _shell(
-            "git commit -q -F - @'\nstart_ed_console.bat runs it again after a fast-forward\n'@",
-            "PowerShell",
-        ),
-        # looking at processes, and stopping or opening something that is not production
-        _shell("Get-Process python* | Select-Object Id, CPU", "PowerShell"),
-        _shell("Get-Process -Id 18692", "PowerShell"),
-        _shell("Stop-Process -Name node", "PowerShell"),
-        _shell("taskkill /IM chrome.exe"),
-        _shell("wmic process where name='python.exe' get processid,commandline"),
-        _shell("ii .\\docs\\DATA_FLOW.md", "PowerShell"),
-        _shell("explorer.exe .", "PowerShell"),
-        _shell("schtasks /query /fo LIST"),
-        _shell("git log --oneline --grep kill"),
-        # a merge named only as data: loop strings, a heredoc body
-        _shell('for c in "gh pr merge 427 --merge"; do echo "$c"; done'),
-        _shell("python - <<'EOF'\nprint('gh pr merge 1')\nEOF"),
-    ],
-)
+@pytest.mark.parametrize("payload", [
+    _edit(str(REPO / EXISTING)),
+    {"tool_name": "Write", "tool_input": {"file_path": str(REPO / EXISTING), "content": "x"}},
+    _shell(f"rm {EXISTING}"),
+    _shell(f"git rm -q {EXISTING}"),
+    _shell(f"echo x > {EXISTING}"),
+    _shell(f"Remove-Item {EXISTING}", "PowerShell"),
+    _edit(str(REPO / "server.py")),
+    _shell(f"python -m pytest {EXISTING} -q"),
+    _shell("Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*streaming.capture*' }",
+           "PowerShell"),
+    _shell("gh pr view 445 --json state"),
+    _shell("git add launch.py tests/test_launch_v1.py"),
+    _shell("python -m ruff check launch.py"),
+    # commands that only name a launcher or a process, as reads, diffs and searches do
+    _shell("Get-Content start_capture_daemon.bat, start_ed_console.bat", "PowerShell"),
+    _shell("git -C ..\\wt diff origin/main...HEAD -- app start_capture_daemon.bat stream_spine.py"),
+    _shell("git grep -n -E \"start_capture_daemon|uvicorn server:app|restart\" -- ."),
+    _shell("Select-String -Path logs\\ed_server.log -Pattern 'uvicorn restart'", "PowerShell"),
+    _shell("powershell -NoProfile -Command \"Get-CimInstance Win32_Process | Where-Object { $_.CommandLine "
+           "-like '*streaming.capture*' }\""),
+    _shell("file start_capture_daemon.bat && grep -c x start_capture_daemon.bat"),
+    _shell("\"--- any python/uvicorn\"; Get-Process | Where-Object { $_.ProcessName -match 'python' }", "PowerShell"),
+    _shell("grep -rn \"stop.set()\\|\\\"op\\\"\\|taskkill\" start_capture_daemon.bat launch.py"),
+    _shell("git commit -q -F - @'\nstart_ed_console.bat runs it again after a fast-forward\n'@", "PowerShell"),
+    # looking at processes, and stopping or opening something that is not production
+    _shell("Get-Process python* | Select-Object Id, CPU", "PowerShell"),
+    _shell("Get-Process -Id 18692", "PowerShell"),
+    _shell("Stop-Process -Name node", "PowerShell"),
+    _shell("taskkill /IM chrome.exe"),
+    _shell("wmic process where name='python.exe' get processid,commandline"),
+    _shell("ii .\\docs\\DATA_FLOW.md", "PowerShell"),
+    _shell("explorer.exe .", "PowerShell"),
+    _shell("schtasks /query /fo LIST"),
+    _shell("git log --oneline --grep kill"),
+    # a merge named only as data: loop strings, a heredoc body
+    _shell("for c in \"gh pr merge 427 --merge\"; do echo \"$c\"; done"),
+    _shell("python - <<'EOF'\nprint('gh pr merge 1')\nEOF"),
+])
 def test_everything_else_passes_at_any_hour(payload, procs, markets):
     for now in (RTH, NOT_HELD):
         assert guard.decide(payload, now, markets) == (guard.PASS, [])

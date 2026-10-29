@@ -1,5 +1,4 @@
 """Seams for staged credential-leak firewall."""
-
 import subprocess
 
 import pytest
@@ -25,26 +24,11 @@ def _staged(root, files, config=()):
 
 def _staged_as(root, path: bytes, text):
     """Stage `text` under a name the disk may not hold, through the index itself."""
-    sha = (
-        subprocess.run(
-            ["git", "hash-object", "-w", "--stdin"],
-            cwd=root,
-            check=True,
-            capture_output=True,
-            input=text.encode(),
-        )
-        .stdout.decode()
-        .strip()
-    )
-    subprocess.run(
-        ["git", "update-index", "--add", "-z", "--index-info"],
-        cwd=root,
-        check=True,
-        input=f"100644 {sha}\t".encode() + path + b"\0",
-    )
-    staged = subprocess.run(
-        ["git", "ls-files", "-z"], cwd=root, check=True, capture_output=True
-    ).stdout
+    sha = subprocess.run(["git", "hash-object", "-w", "--stdin"], cwd=root, check=True,
+                         capture_output=True, input=text.encode()).stdout.decode().strip()
+    subprocess.run(["git", "update-index", "--add", "-z", "--index-info"], cwd=root, check=True,
+                   input=f"100644 {sha}\t".encode() + path + b"\0")
+    staged = subprocess.run(["git", "ls-files", "-z"], cwd=root, check=True, capture_output=True).stdout
     assert path + b"\0" in staged, staged
     return root
 
@@ -56,10 +40,8 @@ def _labels(root):
 def test_a_secret_after_an_added_line_starting_plus_plus_is_refused(tmp_path):
     """An added `++ b/<skipped path>` line is a line of the file, not a header, and a secret
     written on a `++` line is scanned like any other."""
-    root = _staged(
-        tmp_path,
-        {"app.py": "x = 1\n++ b/tests/test_credential_leak_v1.py\n" + SECRET + "++ " + SECRET},
-    )
+    root = _staged(tmp_path, {"app.py": "x = 1\n++ b/tests/test_credential_leak_v1.py\n" + SECRET
+                              + "++ " + SECRET})
     assert _labels(root) == [["app.py", "bearer_token"]] * 2
 
 
@@ -70,48 +52,29 @@ def test_a_secret_in_a_file_git_quotes_after_a_skipped_file_is_refused(tmp_path)
     assert _labels(root) == [["tools/é.py", "bearer_token"]]
 
 
-def test_a_carriage_return_inside_an_added_line_neither_hides_a_secret_nor_starts_a_header(
-    tmp_path,
-):
+def test_a_carriage_return_inside_an_added_line_neither_hides_a_secret_nor_starts_a_header(tmp_path):
     """git ends a line only at a line feed; a lone carriage return is text of the line."""
-    root = _staged(
-        tmp_path,
-        {
-            "app.py": "x = 1\r"
-            + SECRET
-            + "y\rdiff --git a/q b/q\r+++ b/tests/test_credential_leak_v1.py\r@@ -0,0 +1 @@\n"
-            + SECRET
-        },
-    )
+    root = _staged(tmp_path, {"app.py": "x = 1\r" + SECRET
+                              + "y\rdiff --git a/q b/q\r+++ b/tests/test_credential_leak_v1.py\r@@ -0,0 +1 @@\n"
+                              + SECRET})
     assert _labels(root) == [["app.py", "bearer_token"]] * 2
 
 
-@pytest.mark.parametrize(
-    "files, config",
-    [
-        ({".gitattributes": "evil.txt -diff\n", "evil.txt": SECRET}, ()),
-        ({"evil.txt": "\0" + SECRET}, ()),
-        (
-            {".gitattributes": "evil.txt diff=hide\n", "evil.txt": SECRET},
-            (("diff.hide.textconv", "true"),),
-        ),
-        ({"evil.txt": SECRET}, (("diff.external", "true"),)),
-    ],
-    ids=["no-diff attribute", "NUL byte", "textconv", "external diff"],
-)
+@pytest.mark.parametrize("files, config", [
+    ({".gitattributes": "evil.txt -diff\n", "evil.txt": SECRET}, ()),
+    ({"evil.txt": "\0" + SECRET}, ()),
+    ({".gitattributes": "evil.txt diff=hide\n", "evil.txt": SECRET}, (("diff.hide.textconv", "true"),)),
+    ({"evil.txt": SECRET}, (("diff.external", "true"),)),
+], ids=["no-diff attribute", "NUL byte", "textconv", "external diff"])
 def test_a_secret_git_would_show_otherwise_is_still_read(tmp_path, files, config):
     """The scan reads the bytes the commit publishes, whatever the repository's diff settings."""
     assert _labels(_staged(tmp_path, files, config)) == [["evil.txt", "bearer_token"]]
 
 
-@pytest.mark.parametrize(
-    "path", [b"tests\\test_credential_leak_v1.py", b"tests/test_credential_leak_v1.py "]
-)
+@pytest.mark.parametrize("path", [b"tests\\test_credential_leak_v1.py", b"tests/test_credential_leak_v1.py "])
 def test_only_the_skipped_path_itself_is_skipped(tmp_path, path):
     """A name that differs from a skip entry by a backslash or a trailing space is another file."""
-    root = _staged_as(
-        _staged(tmp_path, {}, (("core.protectNTFS", "false"),)), path, SECRET
-    )  # names Windows cannot hold on disk
+    root = _staged_as(_staged(tmp_path, {}, (("core.protectNTFS", "false"),)), path, SECRET)  # names Windows cannot hold on disk
     assert _labels(root) == [[path.decode(), "bearer_token"]]
 
 
@@ -125,34 +88,25 @@ def test_a_file_name_that_is_not_utf8_is_not_a_clean_diff(tmp_path):
 
 def test_detects_bearer_and_home_path(tmp_path):
     # Payloads live under a non-skipped path so the detector can fire.
-    hits = find_credential_leaks(
-        _staged(tmp_path, {"evil.py": SECRET + "path = 'C:/Users/someone/secret.json'\n"})
-    )
+    hits = find_credential_leaks(_staged(tmp_path, {"evil.py": SECRET + "path = 'C:/Users/someone/secret.json'\n"}))
     assert any("bearer_token" in h for h in hits)
     assert any("windows_user_home" in h for h in hits)
 
 
 def test_detects_a_git_bash_home_path(tmp_path):
     """Git Bash spells the Windows home `/c/Users/<name>/`; it is an operator-home path too."""
-    root = _staged(
-        tmp_path, {"tests/test_x.py": 'cmd = "cd /c/Users/someone/Documents/repo && ls"\n'}
-    )
+    root = _staged(tmp_path, {"tests/test_x.py": 'cmd = "cd /c/Users/someone/Documents/repo && ls"\n'})
     assert any("git_bash_user_home" in h for h in find_credential_leaks(root))
 
 
 def test_fixture_marker_suppresses(tmp_path):
-    root = _staged(
-        tmp_path, {"tests/test_x.py": "Bearer supersecrettokenvalue99  # credential-leak-ok\n"}
-    )
+    root = _staged(tmp_path, {"tests/test_x.py": "Bearer supersecrettokenvalue99  # credential-leak-ok\n"})
     assert find_credential_leaks(root) == []
 
 
 def test_scanner_own_suite_path_is_skipped(tmp_path):
     """Staging this test file must not trip the firewall on its own fixtures."""
-    root = _staged(
-        tmp_path,
-        {"tests/test_credential_leak_v1.py": SECRET + "path = 'C:/Users/someone/secret.json'\n"},
-    )
+    root = _staged(tmp_path, {"tests/test_credential_leak_v1.py": SECRET + "path = 'C:/Users/someone/secret.json'\n"})
     assert find_credential_leaks(root) == []
 
 
@@ -166,33 +120,24 @@ def test_a_secret_a_pull_request_commits_is_refused_against_its_base(tmp_path):
     pre-commit hook does not run (GitHub's editor, a skipped hook) is still read, and so is a
     secret a later commit removes again, since the merge publishes every commit."""
     root = _staged(tmp_path, {"app.py": "x = 1\n"})
-    git = lambda *a: subprocess.run(
-        ["git", "-c", "user.email=t@t", "-c", "user.name=t", *a],  # noqa: E731
-        cwd=root,
-        check=True,
-        capture_output=True,
-    )
+    git = lambda *a: subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", *a],  # noqa: E731
+                                    cwd=root, check=True, capture_output=True)
     git("commit", "-q", "-m", "base")
     git("branch", "base")
     (root / "app.py").write_text("x = 1\n" + SECRET, encoding="utf-8")
     git("commit", "-q", "-am", "adds a secret")
     (root / "app.py").write_text("x = 1\n", encoding="utf-8")
     git("commit", "-q", "-am", "removes it again")
-    assert find_credential_leaks(root) == []  # nothing staged
-    assert [h.split(": ")[:2] for h in find_credential_leaks(root, base="base")] == [
-        ["app.py", "bearer_token"]
-    ]
+    assert find_credential_leaks(root) == []                     # nothing staged
+    assert [h.split(": ")[:2] for h in find_credential_leaks(root, base="base")] == [["app.py", "bearer_token"]]
 
 
 def test_a_secret_typed_into_a_merge_resolution_is_refused(tmp_path):
     """A conflict resolved in a merge commit (GitHub's web conflict editor runs no hook) is read for
     what the resolution adds; the lines main brings in through the merge are not the PR's."""
     root = _staged(tmp_path, {"app.py": "x = 1\n"})
-    git = lambda *a: subprocess.run(
-        ["git", "-c", "user.email=t@t", "-c", "user.name=t", *a],  # noqa: E731
-        cwd=root,
-        capture_output=True,
-    )
+    git = lambda *a: subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", *a],  # noqa: E731
+                                    cwd=root, capture_output=True)
     git("commit", "-q", "-m", "base")
     git("branch", "-M", "main")
     git("checkout", "-q", "-b", "pr")
@@ -210,6 +155,4 @@ def test_a_secret_typed_into_a_merge_resolution_is_refused(tmp_path):
     (root / "app.py").write_text("x = 4\n" + SECRET, encoding="utf-8")
     git("add", "app.py")
     assert git("commit", "-q", "--no-edit").returncode == 0
-    assert [h.split(": ")[:2] for h in find_credential_leaks(root, base="main")] == [
-        ["app.py", "bearer_token"]
-    ]
+    assert [h.split(": ")[:2] for h in find_credential_leaks(root, base="main")] == [["app.py", "bearer_token"]]

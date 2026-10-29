@@ -1,5 +1,4 @@
 """Schwab -> the levels page. Each level's As-of column carries that level's time."""
-
 from __future__ import annotations
 
 from datetime import datetime
@@ -38,16 +37,10 @@ def test_the_levels_page_carries_each_levels_time():
         _forget("SPY", "TSLA")
 
 
-@pytest.mark.parametrize(
-    "now, window",
-    [
-        (datetime(2026, 10, 3, 12, 0, tzinfo=ET), "2026-10-01 RTH close -> 2026-10-02 RTH open"),
-        (
-            datetime(2026, 10, 1, 12, 0, tzinfo=ET),
-            "2026-10-01 before the RTH open (no prior session)",
-        ),
-    ],
-)
+@pytest.mark.parametrize("now, window", [
+    (datetime(2026, 10, 3, 12, 0, tzinfo=ET), "2026-10-01 RTH close -> 2026-10-02 RTH open"),
+    (datetime(2026, 10, 1, 12, 0, tzinfo=ET), "2026-10-01 before the RTH open (no prior session)"),
+])
 def test_the_overnight_levels_name_the_sessions_they_span(now, window):
     """SPY's overnight high and low name the sessions their bars span. Saturday 2026-10-03:
     Thursday's regular close to Friday's regular open. Thursday 2026-10-01, the first day the

@@ -7,30 +7,14 @@ code or document file name. Runtime files,
 branch names, folders outside the repository and not-yet-built target folders are not repository
 paths and are not checked.
 """
-
 import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 #: the agents' rules for one area, the skills and the reviewers (loaded on demand)
-AGENT_FILES = tuple(
-    p.relative_to(ROOT).as_posix()
-    for p in sorted(
-        [
-            *ROOT.glob(".claude/rules/*.md"),
-            *ROOT.glob(".claude/skills/*/SKILL.md"),
-            *ROOT.glob(".claude/agents/*.md"),
-        ]
-    )
-)
-DOCS = (
-    "AGENTS.md",
-    "CLAUDE.md",
-    "docs/DATA_FLOW.md",
-    "ACTIVE_PROGRAM.md",
-    "docs/ARCHITECTURE.md",
-    *AGENT_FILES,
-)
+AGENT_FILES = tuple(p.relative_to(ROOT).as_posix() for p in sorted(
+    [*ROOT.glob(".claude/rules/*.md"), *ROOT.glob(".claude/skills/*/SKILL.md"), *ROOT.glob(".claude/agents/*.md")]))
+DOCS = ("AGENTS.md", "CLAUDE.md", "docs/DATA_FLOW.md", "ACTIVE_PROGRAM.md", "docs/ARCHITECTURE.md", *AGENT_FILES)
 FILE_EXT = (".py", ".js", ".mjs", ".html", ".bat", ".md")
 
 
@@ -58,12 +42,7 @@ def test_every_path_the_governing_documents_name_exists(tracked_files):
 
 
 def test_the_check_catches_the_deleted_paths_the_old_charter_named():
-    old = (
-        "Enforced by `decision_gate.py` in `call_engine.compute_call`, per "
-        "`config/decision_path_admissions.json`; `server.py` serves it."
-    )
+    old = ("Enforced by `decision_gate.py` in `call_engine.compute_call`, per "
+           "`config/decision_path_admissions.json`; `server.py` serves it.")
     tracked = ["server.py", "tools/hook_chain.py"]
-    assert missing_paths(old, tracked) == [
-        "decision_gate.py",
-        "config/decision_path_admissions.json",
-    ]
+    assert missing_paths(old, tracked) == ["decision_gate.py", "config/decision_path_admissions.json"]

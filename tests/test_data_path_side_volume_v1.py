@@ -1,5 +1,4 @@
 """Schwab -> the strikes payload. Volume below and above spot keeps every digit."""
-
 from __future__ import annotations
 
 import json
@@ -16,13 +15,12 @@ def test_volume_below_and_above_spot_keeps_every_digit():
     tk = "ZZSIDE"
     with srv._terrain_cache_lock:
         srv._terrain_cache[tk] = {
-            "_per_strike": {"all": [[95.0, 10.0, 10.4], [105.0, -4.0, 3.2]], "near": [], "far": []},
-            "spot": 100.0,
-            "computed_ts_utc": 1.0,
+            "_per_strike": {"all": [[95.0, 10.0, 10.4], [105.0, -4.0, 3.2]],
+                            "near": [], "far": []},
+            "spot": 100.0, "computed_ts_utc": 1.0,
         }
-    lmp.record_feed_heartbeat(
-        {"ts": time.time(), "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [tk]}}
-    )
+    lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True,
+                               "held": {"LEVELONE_EQUITIES": [tk]}})
     ofs._price_rows[tk] = {"ticker": tk, "spot": 100.0, "trade_ts": 1.0}
     try:
         resp = srv.get_terrain_strikes(ticker=tk)

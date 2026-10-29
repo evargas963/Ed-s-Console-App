@@ -3,16 +3,16 @@ math_exposure_core.py
 Base exposure engine — raw and normalized exposure values derived
 from the chain and position structure.
 """
-
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Dict, List
+import math
 
 from numeric_contract import float_finite_or_none, schwab_count, schwab_number
 from time_et import EQUITY_OPTIONS, MIN_TIME_TO_EXPIRY_YEARS, time_to_expiry_years
+
 
 # Schwab options API missing-greek sentinel (documented wire value).
 MISSING_GREEK_SENTINEL: float = -999.0
@@ -45,9 +45,7 @@ def vendor_greeks_unavailable(iv: float | None) -> bool:
 def greek_reported(value: float | None, *, iv: float | None = None) -> bool:
     """True when Schwab sent a value for this Greek: present and not Schwab's -999 no-value code (on
     the Greek itself or on the contract's volatility). A gamma is judged by gamma_reported."""
-    return (
-        value is not None and value != MISSING_GREEK_SENTINEL and not vendor_greeks_unavailable(iv)
-    )
+    return value is not None and value != MISSING_GREEK_SENTINEL and not vendor_greeks_unavailable(iv)
 
 
 def gamma_reported(ct: dict, price: float | None, *, product: str = EQUITY_OPTIONS) -> bool:
@@ -71,12 +69,8 @@ def largest_gamma(ct: dict, price: float | None, *, product: str = EQUITY_OPTION
     stamp = schwab_number(times.get("gamma")) if isinstance(times, dict) else None
     if price is None or price <= 0 or sigma is None or stamp is None or stamp <= 0:
         return None
-    t = time_to_expiry_years(
-        ct.get("expirationDate"),
-        datetime.fromtimestamp(stamp / 1000.0, tz=timezone.utc),
-        settlement_type=ct.get("settlementType"),
-        product=product,
-    )
+    t = time_to_expiry_years(ct.get("expirationDate"), datetime.fromtimestamp(stamp / 1000.0, tz=timezone.utc),
+                             settlement_type=ct.get("settlementType"), product=product)
     if t is None or t <= MIN_TIME_TO_EXPIRY_YEARS:
         return None
     return 1.0 / (price * sigma * math.sqrt(2.0 * math.pi * t))
@@ -86,17 +80,12 @@ def largest_gamma(ct: dict, price: float | None, *, product: str = EQUITY_OPTION
 #: field's legs whose term is not known (see compute_exposures_by_strike). A leg with one has no
 #: value for the field; every other sum is Schwab's inputs computed, 0 included.
 _GREEK_FIELD_UNREPORTED = {
-    f"{leg}_{field}": tuple(
-        f"{s}_{greek}_unreported" for s in (("call", "put") if leg == "net" else (leg,))
-    )
-    for greek, fields in (
-        ("gamma", ("gamma", "gex_1pct")),
-        ("delta", ("delta", "dex_dollars")),
-        ("vanna", ("vanna",)),
-        ("oi_mult", ("oi_mult",)),
-    )
-    for field in fields
-    for leg in ("call", "put", "net")
+    f"{leg}_{field}": tuple(f"{s}_{greek}_unreported" for s in (("call", "put") if leg == "net" else (leg,)))
+    for greek, fields in (("gamma", ("gamma", "gex_1pct")),
+                          ("delta", ("delta", "dex_dollars")),
+                          ("vanna", ("vanna",)),
+                          ("oi_mult", ("oi_mult",)))
+    for field in fields for leg in ("call", "put", "net")
 }
 
 
@@ -128,7 +117,6 @@ class ExposureDiagnostics:
 
 # ── Exposure primitives ──────────────────────────────────────────────────────
 
-
 def _strike_bucket(exposures_by_strike: Dict[float, dict], strike: float) -> dict:
     if strike not in exposures_by_strike:
         exposures_by_strike[strike] = {
@@ -140,11 +128,7 @@ def _strike_bucket(exposures_by_strike: Dict[float, dict], strike: float) -> dic
             # Contracts on each leg whose gamma / delta / vanna term is not known: openInterest or
             # multiplier not reported, or open interest above 0 with no Greek (Schwab sent -999 or
             # none). That leg's sum of it is not known; a contract with open interest 0 adds 0.
-            **{
-                f"{s}_{g}_unreported": 0
-                for s in ("call", "put")
-                for g in ("gamma", "delta", "vanna", "oi_mult")
-            },
+            **{f"{s}_{g}_unreported": 0 for s in ("call", "put") for g in ("gamma", "delta", "vanna", "oi_mult")},
             # True when the book was built WITH spot, i.e. the *_dollars / *_gex_1pct fields are
             # real dollar values. Set explicitly at build; never inferred from values.
             "dollarized": False,
@@ -173,7 +157,6 @@ def _strike_bucket(exposures_by_strike: Dict[float, dict], strike: float) -> dic
             "put_volume": None,
         }
     return exposures_by_strike[strike]
-
 
 def compute_exposures_by_strike(
     contracts: List[dict],
@@ -212,9 +195,7 @@ def compute_exposures_by_strike(
     def _tte_memo(ct: dict) -> float | None:
         key = (str(ct.get("expirationDate")), ct.get("settlementType"))
         if key not in _tte_cache:
-            _tte_cache[key] = time_to_expiry_years(
-                key[0], now=now, settlement_type=key[1], product=product
-            )
+            _tte_cache[key] = time_to_expiry_years(key[0], now=now, settlement_type=key[1], product=product)
         return _tte_cache[key]
 
     for ct in contracts:
@@ -223,7 +204,7 @@ def compute_exposures_by_strike(
         if strike is None:
             continue
 
-        oi = schwab_count(ct.get("openInterest"))  # -999 / text / negative: unreported
+        oi = schwab_count(ct.get("openInterest"))   # -999 / text / negative: unreported
         side = (ct.get("putCall") or "").upper()
         if side not in ("CALL", "PUT"):
             continue
@@ -248,7 +229,7 @@ def compute_exposures_by_strike(
         mult = schwab_number(ct.get("multiplier"))
         if mult is not None and mult < 0:
             mult = None
-        if oi is None or mult is None:  # the contract's exposure terms are not known
+        if oi is None or mult is None:      # the contract's exposure terms are not known
             missing += oi is not None
             b[f"{leg}_oi_mult_unreported"] += 1
             for g in ("gamma", "delta", "vanna"):
@@ -258,11 +239,11 @@ def compute_exposures_by_strike(
         delta = schwab_number(ct.get("delta"))
         gamma = schwab_number(ct.get("gamma"))
         iv = schwab_number(ct.get("volatility"))
-        delta_ok = greek_reported(delta, iv=ct.get("volatility"))  # raw: a -999 IV voids its greeks
+        delta_ok = greek_reported(delta, iv=ct.get("volatility"))   # raw: a -999 IV voids its greeks
         gamma_ok = gamma_reported(ct, spot, product=product)
         if not delta_ok or not gamma_ok:
             missing += 1
-        if oi > 0:  # open interest 0 adds a known 0 whatever its Greeks
+        if oi > 0:      # open interest 0 adds a known 0 whatever its Greeks
             b[f"{leg}_gamma_unreported"] += not gamma_ok
             b[f"{leg}_delta_unreported"] += not delta_ok
         vanna_priced = False
@@ -280,22 +261,17 @@ def compute_exposures_by_strike(
             if delta_ok:
                 b[f"{leg}_dex_dollars"] += delta * oi * mult * spt
             if gamma_ok:
-                b[f"{leg}_gex_1pct"] += (
-                    gamma * oi * mult * spt * spt * 0.01
-                )  # $-GEX per 1% spot move
+                b[f"{leg}_gex_1pct"] += gamma * oi * mult * spt * spt * 0.01  # $-GEX per 1% spot move
             # exact BS vanna from the shared d1/d2 faucet (math_levels.bs_vanna), per
             # vol point; vanna is the same for a call and a put at a strike and expiry.
-            _iv_ok = (
-                iv is not None and iv > 0 and iv != MISSING_GREEK_SENTINEL and math.isfinite(iv)
-            )
+            _iv_ok = iv is not None and iv > 0 and iv != MISSING_GREEK_SENTINEL and math.isfinite(iv)
             _T = _tte_memo(ct)
             if _iv_ok and _T is not None and _T > 0:
                 from math_levels import bs_vanna as _bsv
-
                 _sig = schwab_iv_to_sigma(iv)
                 _vn = _bsv(spt, float(strike), _T, _sig) if _sig is not None else None
                 if _vn is not None:
-                    b[f"{leg}_vanna"] += _vn * 0.01 * oi * mult  # per 1 vol point
+                    b[f"{leg}_vanna"] += _vn * 0.01 * oi * mult   # per 1 vol point
                     vanna_priced = True
             # a settled contract (no time to expiry) carries no vanna; one whose expiry cannot
             # be read, or with open interest and no IV, leaves its leg's vanna unknown
@@ -304,7 +280,7 @@ def compute_exposures_by_strike(
 
     for b in exposures.values():
         b["dollarized"] = spot is not None
-        if spot is None:  # the dollar fields and vanna need spot: none without it
+        if spot is None:    # the dollar fields and vanna need spot: none without it
             for f in ("dex_dollars", "gex_1pct", "vanna"):
                 for s in ("call", "put"):
                     b[f"{s}_{f}"] = None
@@ -329,37 +305,25 @@ def _diagnostics(total: int, used: int, missing: int) -> ExposureDiagnostics:
     if used == 0:
         note = "No usable contracts (OI filtered or chain empty)."
     elif missing == used:
-        note = (
-            "All greeks missing (Schwab sent -999, or no quote came back). You will still get "
-            "OI center; gamma/delta pin/inf may be N/A until RTH."
-        )
-    return ExposureDiagnostics(
-        contracts_total=total, contracts_used=used, greeks_missing=missing, note=note
-    )
+        note = ("All greeks missing (Schwab sent -999, or no quote came back). You will still get "
+                "OI center; gamma/delta pin/inf may be N/A until RTH.")
+    return ExposureDiagnostics(contracts_total=total, contracts_used=used,
+                               greeks_missing=missing, note=note)
 
 
-def exposure_books(
-    contracts: List[dict],
-    *,
-    spot: float | None,
-    now: datetime,
-    product: str = "EQO",
-) -> "Dict[tuple[str, float | None], tuple[Dict[float, dict], ExposureDiagnostics]]":
+def exposure_books(contracts: List[dict], *, spot: float | None, now: datetime,
+                   product: str = "EQO",
+                   ) -> "Dict[tuple[str, float | None], tuple[Dict[float, dict], ExposureDiagnostics]]":
     """compute_exposures_by_strike once per (expiration date, days to
     expiry) group. Every contract is priced once; any subset of expiries is then a
     merge_exposure_books of its groups (the full book, 0DTE, the front expiry, <=7 / >7 days)."""
     groups: "dict[tuple[str, float | None], list]" = {}
     for ct in contracts or []:
         if isinstance(ct, dict):
-            key = (
-                str(ct.get("expirationDate") or "")[:10],
-                schwab_number(ct.get("daysToExpiration")),
-            )
+            key = (str(ct.get("expirationDate") or "")[:10], schwab_number(ct.get("daysToExpiration")))
             groups.setdefault(key, []).append(ct)
-    return {
-        k: compute_exposures_by_strike(cs, spot=spot, now=now, product=product)
-        for k, cs in groups.items()
-    }
+    return {k: compute_exposures_by_strike(cs, spot=spot, now=now, product=product)
+            for k, cs in groups.items()}
 
 
 def merge_exposure_books(books) -> "tuple[Dict[float, dict], ExposureDiagnostics]":
@@ -472,10 +436,10 @@ def strike_oi_legs(bucket: dict) -> tuple[float, float] | None:
     legs = []
     for key in ("call_oi", "put_oi"):
         if bucket.get(key) is None:
-            legs.append(0.0)  # known: no contract on this leg carried positive OI
+            legs.append(0.0)      # known: no contract on this leg carried positive OI
             continue
         v = bucket_metric(bucket, key)
-        if v is None:  # present but not a finite number -> not known
+        if v is None:             # present but not a finite number -> not known
             return None
         legs.append(v)
     return legs[0], legs[1]
@@ -566,7 +530,9 @@ def key_level_strikes_with_gamma(exposures: Dict[float, dict]) -> List[float]:
         if dollar:
             tg = total_gex_dollars_at_strike(b)
             ng = net_gex_dollars_at_strike(b)
-            if (tg is not None and tg > 0) or (ng is not None and abs(ng) > 1e-12):
+            if (tg is not None and tg > 0) or (
+                ng is not None and abs(ng) > 1e-12
+            ):
                 out.append(s)
         else:
             tg = total_gamma_raw_at_strike(b)
@@ -601,14 +567,14 @@ def compute_net_vanna(exposures: dict, spot: float | None) -> dict | None:
     nets = [v for b in exposures.values() if (v := bucket_metric(b, "net_vanna")) is not None]
     if not nets:
         return None
-    net_shares_per_volpt = sum(nets)  # the book is already per vol point
-    return {
-        "net_vanna_dollars_per_volpt": net_shares_per_volpt * float(spot),
-        "net_vanna_shares_per_volpt": net_shares_per_volpt,
-    }
+    net_shares_per_volpt = sum(nets)                 # the book is already per vol point
+    return {"net_vanna_dollars_per_volpt": net_shares_per_volpt * float(spot),
+            "net_vanna_shares_per_volpt": net_shares_per_volpt}
 
 
-def compute_zero_dte_gamma_share(exposures_all: dict, exposures_0dte: dict) -> float | None:
+def compute_zero_dte_gamma_share(
+    exposures_all: dict, exposures_0dte: dict
+) -> float | None:
     """% of the dealer gamma book from SAME-DAY expiry — the level-persistence read.
 
     share = sum(|net_gex_1pct|) over the 0DTE book / sum(|net_gex_1pct|) over the full book,
@@ -721,7 +687,9 @@ def pick_net_gex_peak_strike(exposures: Dict[float, dict], strikes: List[float])
     return s
 
 
-def pick_key_delta_strike(exposures: Dict[float, dict], strikes: List[float]) -> float | None:
+def pick_key_delta_strike(
+    exposures: Dict[float, dict], strikes: List[float]
+) -> float | None:
     """Key Delta Strike: largest total delta notional (|call DEX$| + |put DEX$|).
 
     Institutional only — no raw-delta fallback: delta notional needs spot, and a
@@ -774,9 +742,7 @@ def pick_gamma_wall_strikes(
     if not exposures_have_dollar_gex(exposures):
         return (None, None), (None, None)
     return (
-        _pick_strike_max_metric(
-            exposures, strikes, lambda b: bucket_metric_abs(b, "call_gex_1pct")
-        ),
+        _pick_strike_max_metric(exposures, strikes, lambda b: bucket_metric_abs(b, "call_gex_1pct")),
         _pick_strike_max_metric(exposures, strikes, lambda b: bucket_metric_abs(b, "put_gex_1pct")),
     )
 
@@ -788,10 +754,6 @@ def pick_delta_wall_strikes(
     if not exposures_have_dollar_gex(exposures):
         return (None, None), (None, None)
     return (
-        _pick_strike_max_metric(
-            exposures, strikes, lambda b: bucket_metric_abs(b, "call_dex_dollars")
-        ),
-        _pick_strike_max_metric(
-            exposures, strikes, lambda b: bucket_metric_abs(b, "put_dex_dollars")
-        ),
+        _pick_strike_max_metric(exposures, strikes, lambda b: bucket_metric_abs(b, "call_dex_dollars")),
+        _pick_strike_max_metric(exposures, strikes, lambda b: bucket_metric_abs(b, "put_dex_dollars")),
     )

@@ -27,7 +27,6 @@ module named.
 Exit 2: the check itself failed (git unavailable, the base unknown, a file it cannot read or parse,
 a field list without its canonical_field column).
 """
-
 from __future__ import annotations
 
 import argparse
@@ -53,9 +52,8 @@ class ToolError(Exception):
 
 def _git(root: Path, *args: str) -> str:
     try:
-        return subprocess.run(
-            ["git", *args], cwd=root, capture_output=True, text=True, encoding="utf-8", check=True
-        ).stdout
+        return subprocess.run(["git", *args], cwd=root, capture_output=True, text=True, encoding="utf-8",
+                              check=True).stdout
     except (subprocess.CalledProcessError, FileNotFoundError, UnicodeDecodeError) as e:
         raise ToolError(f"git {' '.join(args)} failed: {e}") from e
 
@@ -76,11 +74,7 @@ def _constants(tree: ast.Module) -> dict[str, str]:
     """Module-level names bound once to a text (`K = "LAST_PRICE"`)."""
     out = {}
     for node in tree.body:
-        if (
-            isinstance(node, ast.Assign)
-            and isinstance(node.value, ast.Constant)
-            and isinstance(node.value.value, str)
-        ):
+        if isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
             for target in node.targets:
                 if isinstance(target, ast.Name):
                     out[target.id] = node.value.value
@@ -103,18 +97,10 @@ def fields_read(src: str, fields: set[str]) -> set[str]:
     for n in ast.walk(tree):
         if isinstance(n, ast.Subscript) and isinstance(n.ctx, ast.Load):
             k = key(n.slice)
-        elif (
-            isinstance(n, ast.Call)
-            and isinstance(n.func, ast.Attribute)
-            and n.func.attr in ("get", "pop")
-            and n.args
-        ):
+        elif (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr in ("get", "pop")
+              and n.args):
             k = key(n.args[0])
-        elif (
-            isinstance(n, ast.Compare)
-            and len(n.ops) == 1
-            and isinstance(n.ops[0], (ast.In, ast.NotIn))
-        ):
+        elif isinstance(n, ast.Compare) and len(n.ops) == 1 and isinstance(n.ops[0], (ast.In, ast.NotIn)):
             k = key(n.left)
         else:
             continue
@@ -151,10 +137,8 @@ def violations(root: Path, base: str) -> list[str]:
         was = before.get(name, set())
         added = after[name] - was
         if added and len(after[name]) > 1:
-            out.append(
-                f"{name}: read raw by {len(after[name])} modules, {len(was)} before "
-                f"(added {', '.join(sorted(added))}); one module reads a Schwab field"
-            )
+            out.append(f"{name}: read raw by {len(after[name])} modules, {len(was)} before "
+                       f"(added {', '.join(sorted(added))}); one module reads a Schwab field")
     return out
 
 
