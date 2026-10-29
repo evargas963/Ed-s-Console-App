@@ -14,6 +14,10 @@ a heredoc nothing runs are data.
     `python -`, and Python 3.13's REPL retries forever on the invalid handle. A python that reads
     its program from stdin (`-`, or no script, -c or -m) is refused wherever it runs; a script file
     or `python -c` does the same job.
+  * SED EDITS. AGENTS.md: never edit source through a script. A sed that writes a file, in place
+    (`-i`, `-i.bak`, `-ni`, `--in-place`) or by redirecting its output to a file (/dev/null, NUL
+    and $null are not files), is refused with what to use instead: the Edit and Write tools. A sed
+    that only prints is allowed. A sed script's own `w` command is not detected.
   * UNSEEN COMMANDS (the guards fail closed). What the reader cannot see into is refused, with a
     message to write it plainly: a program built at run time (a `$` or substitution in a bash
     program word, PowerShell `& $x` / `. $x` / `& (...)`, a script block made from text), text piped
@@ -121,6 +125,22 @@ def _disables_a_lock(st: Statement) -> bool:
             or [w.lower() for w in st.words[:2]] == ["pre-commit", "uninstall"])
 
 
+#: an option that makes sed edit its files in place: -i, -i.bak, -ni, -Ei, --in-place[=SUF]
+_SED_IN_PLACE = re.compile(r"^(?:-[A-Za-z]*i|--in-place(?:=|$))")
+#: redirects of the statement's output (not 2> / &>, which carry no sed output)
+_OUTPUT = frozenset({">", ">>", ">|", "1>", "1>>", "1>|"})
+_NOT_A_FILE = frozenset({"/dev/null", "nul", "$null"})
+
+
+def _sed_writes(st: Statement) -> list[str]:
+    """How a sed statement writes a file; empty for any other statement or a sed that only prints."""
+    if st.program != "sed":
+        return []
+    flag = next((a for a in st.words[1:] if _SED_IN_PLACE.match(a)), None)
+    return ([f"in place, {flag}"] if flag else []) + [
+        f"output redirected to {t}" for op, t in st.redirects if op in _OUTPUT and t.lower() not in _NOT_A_FILE]
+
+
 def bash_violations(cmd: str, powershell: bool = False) -> list[str]:
     """Every host-wide ban that fires on `cmd` (a PowerShell command when `powershell`).
     Applicability is per rule, never an early return (a foreign-repository target
@@ -143,6 +163,12 @@ def bash_violations(cmd: str, powershell: bool = False) -> list[str]:
                    "a pipe or </dev/null). On Windows an empty heredoc or </dev/null looks like a "
                    "console and Python 3.13's REPL retries forever. Put the code in a script file and "
                    "run it, or use `python -c`.")
+    sed = [w for st in statements for w in _sed_writes(st)]
+    if sed:
+        out.append(f"ACTION BLOCKED: this command edits a file with sed ({'; '.join(sed)}). AGENTS.md: never "
+                   "edit source through a script. Make the change with the Edit tool (or Write for a new "
+                   "file), one edit at a time. A sed that only prints (sed -n '5p' f, sed 's/a/b/' f) is "
+                   "allowed.")
     hidden = list(filter(None, (unseen(st) for st in statements)))
     if hidden:
         out.append(f"ACTION BLOCKED: the guards cannot see what this runs ({'; '.join(hidden)}). Write the "

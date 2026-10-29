@@ -14,7 +14,6 @@ from tools import operating_process_lock as OPL
 from tools import operator_yes_guard as yes_guard
 from tools import process_lock_guard as PLG
 from tools.operator_law_guard import bash_violations
-from tools.sed_edit_guard import edits
 
 #: Split so this file's own text is not read as the actions it names.
 D = "d" + "ata"
@@ -51,7 +50,7 @@ def test_a_protected_tree_removal_behind_a_keyword_a_subshell_or_a_wrapper_is_re
                                  "timeout 5 sed -i s/a/b/ notes.txt", "bash <<'EOF'\nsed -i s/a/b/ notes.txt\nEOF",
                                  "/c/Program\\ Files/Git/usr/bin/sed.exe -i s/a/b/ notes.txt"])
 def test_a_sed_edit_behind_a_keyword_a_subshell_a_wrapper_or_a_heredoc_is_refused(cmd):
-    assert edits(cmd)
+    assert any("edits a file with sed" in b for b in bash_violations(cmd))
 
 
 #: commit commands as agents ran them (session transcripts): a message from a heredoc holding an
@@ -253,5 +252,5 @@ def test_a_checkout_naming_no_path_passes_as_on_main():
 def test_text_inside_quotes_is_not_a_statement(quoted):
     """Quoted text that names an action, with `;` or `(` inside the quotes, runs nothing."""
     assert not any(f"under {D}/" in b for b in bash_violations(quoted.format(f"note; rm -rf {D}/x (eval rm -rf {D}/y)")))
-    assert edits(quoted.format("docs; sed -i s/a/b/ f (sed -i x)")) == []
+    assert not any("edits a file with sed" in b for b in bash_violations(quoted.format("docs; sed -i s/a/b/ f (sed -i x)")))
     assert _yes(quoted.format("asks; then gh pr merge 5 (gh pr merge 6)")) == yes_guard.PASS

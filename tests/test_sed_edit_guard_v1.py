@@ -1,6 +1,6 @@
-"""The sed edit guard (tools/sed_edit_guard.py), run as Claude Code runs it: the wired hook chain
-on a hook payload, its exit code (2 refuses the command) and its message. AGENTS.md: never edit
-source through a script."""
+"""The law guard's sed-edit ban (tools/operator_law_guard.py), run as Claude Code runs it: the
+hook chain on a hook payload, its exit code (2 refuses the command) and its message. AGENTS.md:
+never edit source through a script."""
 from __future__ import annotations
 
 import json
@@ -17,7 +17,7 @@ _ENV = {**os.environ, "PYTHONIOENCODING": "utf-8"}
 
 def _hook(tool: str, tool_input: dict) -> subprocess.CompletedProcess[str]:
     payload = {"tool_name": tool, "tool_input": tool_input, "cwd": str(ROOT)}
-    return subprocess.run([sys.executable, str(ROOT / "tools" / "hook_chain.py"), "tools/sed_edit_guard.py"],
+    return subprocess.run([sys.executable, str(ROOT / "tools" / "hook_chain.py"), "tools/operator_law_guard.py"],
                           cwd=str(ROOT), input=json.dumps(payload), capture_output=True, text=True,
                           encoding="utf-8", errors="replace", env=_ENV, timeout=120)
 
