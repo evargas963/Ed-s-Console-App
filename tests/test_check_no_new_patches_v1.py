@@ -196,6 +196,20 @@ def test_a_new_test_that_patches_nothing_is_allowed(tmp_path):
     assert _check(tmp_path, {"tests/test_new.py": "import calc\n\n\ndef test_new():\n    assert calc.spot({'last': 4}) == 4\n"}) == []
 
 
+def test_a_pytest_that_a_test_starts_does_not_write_to_the_record(tmp_path):
+    """The recorder's folder is not in a running test's environment, so a pytest it starts (the
+    full-suite runner's own test does) cannot clear or add to the run's record."""
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_env.py").write_text(
+        "import os\n\n\ndef test_env(tmp_path_factory):\n"
+        "    open(os.environ['SEEN'], 'w').write(repr(os.environ.get('ED_PATCH_RECORD')))\n", encoding="utf-8")
+    seen = tmp_path / "seen.txt"
+    env = {**os.environ, "ED_PATCH_RECORD": str(tmp_path / "record"), "SEEN": str(seen), "PYTHONPATH": str(REPO)}
+    subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "-p", "no:xdist", "-p", "tools.patch_record",
+                    "--rootdir", str(tmp_path), "tests"], cwd=tmp_path, env=env, capture_output=True)
+    assert seen.read_text(encoding="utf-8") == "None"
+
+
 def test_no_record_of_the_run_fails_the_check(tmp_path):
     root = tmp_path / "repo"
     root.mkdir()

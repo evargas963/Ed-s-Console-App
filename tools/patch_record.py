@@ -115,6 +115,12 @@ def pytest_load_initial_conftests(early_config: pytest.Config, parser, args) -> 
         setattr(cls, UNDO[cls], _undoing(getattr(cls, UNDO[cls])))
 
 
+@pytest.hookimpl(tryfirst=True)
+def pytest_runtestloop(session: pytest.Session) -> None:
+    """xdist's workers have started with ED_PATCH_RECORD; a pytest a test starts does not inherit it."""
+    os.environ.pop("ED_PATCH_RECORD", None)
+
+
 @pytest.hookimpl(wrapper=True)
 def pytest_runtest_protocol(item: pytest.Item, nextitem: pytest.Item | None):
     global _test

@@ -14,8 +14,8 @@ to Ed what was tried (CLAUDE.md item 6, which wins over starting again).
 2. `.venv/Scripts/python.exe -m ruff check .` — no findings; then
    `.venv/Scripts/python.exe -m compileall -q -x '([\\/](\.venv|venv|node_modules|__pycache__|models)[\\/])' .`
    — exit 0 (both as the `hardening` job runs them).
-3. `ED_PATCH_RECORD=<a scratch folder> npm run test:all` — Playwright, then the full pytest suite,
-   recording each patch it applies; both counts shown, no failure.
+3. `ED_PATCH_RECORD=<a scratch folder> npm run test:all -- -p tools.patch_record` — Playwright, then
+   the full pytest suite, recording each patch it applies; both counts shown, no failure.
 4. `.venv/Scripts/python.exe tools/check_fails_before.py --base origin/main` — exit 0; for a pull
    request that changes product code it prints "proven", naming the end-to-end path test that fails on
    the old code, or, for a change that only removes whole undecorated Python functions or classes and
