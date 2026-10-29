@@ -15,6 +15,7 @@ retained, and the terminal output is bounded. The first test carries its own neg
 control: the pre-repair path (pytest straight into the same non-draining pipe) must still
 freeze, or the control proves nothing.
 """
+
 from __future__ import annotations
 
 import json
@@ -40,8 +41,7 @@ _CONTROL_STALL_SECONDS = 20
 
 #: Per-process runtime selectors exported by tests/conftest.py at import; a nested pytest
 #: owns its own runtime root and never reads this session's (see _child_env).
-_OUTER_SESSION_RUNTIME_SELECTORS = frozenset(
-    {"ED_RUNTIME_ROOT", "ED_ARTIFACTS_ROOT"})
+_OUTER_SESSION_RUNTIME_SELECTORS = frozenset({"ED_RUNTIME_ROOT", "ED_ARTIFACTS_ROOT"})
 
 
 def _child_env(log_dir: Path) -> dict[str, str]:
@@ -53,8 +53,11 @@ def _child_env(log_dir: Path) -> dict[str, str]:
     every pytest process owns a fresh runtime root; the nested run must never read or
     write this session's.
     """
-    env = {k: v for k, v in os.environ.items()
-           if not k.startswith("PYTEST_") and k not in _OUTER_SESSION_RUNTIME_SELECTORS}
+    env = {
+        k: v
+        for k, v in os.environ.items()
+        if not k.startswith("PYTEST_") and k not in _OUTER_SESSION_RUNTIME_SELECTORS
+    }
     env["ED_TEST_LOG_DIR"] = str(log_dir)
     return env
 
@@ -95,8 +98,12 @@ def _runner_cmd(*pytest_args: str, rootdir: Path | None = None) -> list[str]:
 def _spawn_with_non_draining_reader(cmd: list[str], env: dict[str, str]) -> subprocess.Popen:
     """Start `cmd` with stdout+stderr on ONE pipe that nobody ever reads."""
     return subprocess.Popen(
-        cmd, cwd=str(ROOT), env=env,
-        stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        cmd,
+        cwd=str(ROOT),
+        env=env,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
     )
 
 
@@ -107,8 +114,19 @@ def test_runner_completes_when_the_terminal_reader_never_drains(tmp_path):
     # NEGATIVE CONTROL — the pre-repair canonical path. Same noisy target, same
     # non-draining pipe, output straight from pytest into it: must NOT finish.
     control = _spawn_with_non_draining_reader(
-        [sys.executable, "-m", "pytest", str(noisy), "-s", *_hermetic_args(tmp_path),
-         "-n", "0", "-p", "no:cacheprovider", "-q"],
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            str(noisy),
+            "-s",
+            *_hermetic_args(tmp_path),
+            "-n",
+            "0",
+            "-p",
+            "no:cacheprovider",
+            "-q",
+        ],
         env,
     )
     try:
@@ -119,7 +137,7 @@ def test_runner_completes_when_the_terminal_reader_never_drains(tmp_path):
                 "reads exited with %r — the control cannot detect the defect" % control.returncode
             )
         except subprocess.TimeoutExpired:
-            pass                                   # frozen, as the defect predicts
+            pass  # frozen, as the defect predicts
     finally:
         control.kill()
         control.wait(timeout=30)
@@ -127,7 +145,7 @@ def test_runner_completes_when_the_terminal_reader_never_drains(tmp_path):
     # THE REPAIR — same target, same non-draining pipe, through the canonical runner.
     proc = _spawn_with_non_draining_reader(_runner_cmd(str(noisy), "-s", rootdir=tmp_path), env)
     try:
-        rc = proc.wait(timeout=180)              # completes without the reader ever recovering
+        rc = proc.wait(timeout=180)  # completes without the reader ever recovering
     except subprocess.TimeoutExpired:
         proc.kill()
         raise AssertionError("the canonical runner froze behind a non-draining terminal reader")
@@ -141,10 +159,16 @@ def test_runner_completes_when_the_terminal_reader_never_drains(tmp_path):
 
 def test_failure_exit_code_is_exact_and_the_log_is_retained(tmp_path):
     failing = tmp_path / "test_rc535_fails.py"
-    failing.write_text("def test_boom():\n    assert 1 == 2, 'deliberate RC-535 failure'\n", encoding="utf-8")
+    failing.write_text(
+        "def test_boom():\n    assert 1 == 2, 'deliberate RC-535 failure'\n", encoding="utf-8"
+    )
     r = subprocess.run(
-        _runner_cmd(str(failing), rootdir=tmp_path), cwd=str(ROOT), env=_child_env(tmp_path / "logs"),
-        capture_output=True, text=True, timeout=180,
+        _runner_cmd(str(failing), rootdir=tmp_path),
+        cwd=str(ROOT),
+        env=_child_env(tmp_path / "logs"),
+        capture_output=True,
+        text=True,
+        timeout=180,
     )
     assert r.returncode == 1, f"expected pytest's exit code 1, got {r.returncode}\n{r.stdout}"
     log = (tmp_path / "logs" / "test_pytest_last.log").read_text(encoding="utf-8", errors="replace")
@@ -161,8 +185,12 @@ def test_failure_exit_code_is_exact_and_the_log_is_retained(tmp_path):
 
 def test_success_is_visible_and_exit_code_zero(tmp_path):
     r = subprocess.run(
-        _runner_cmd("tests/test_time_et_authority.py"), cwd=str(ROOT), env=_child_env(tmp_path / "logs"),
-        capture_output=True, text=True, timeout=180,
+        _runner_cmd("tests/test_time_et_authority.py"),
+        cwd=str(ROOT),
+        env=_child_env(tmp_path / "logs"),
+        capture_output=True,
+        text=True,
+        timeout=180,
     )
     assert r.returncode == 0, r.stdout
     assert "passed" in r.stdout and "exit code 0" in r.stdout
@@ -226,15 +254,25 @@ def test_forwarded_selection_arguments_reach_the_native_playwright_cli(tmp_path)
         "});\n"
     )
     r = subprocess.run(
-        [NODE, "-e", script], cwd=str(ROOT), capture_output=True, text=True, timeout=30,
+        [NODE, "-e", script],
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+        timeout=30,
     )
     assert r.returncode == 0, r.stdout + r.stderr
-    assert marker.exists(), "child process never ran / never received its ARGV_MARKER env var\n" + r.stdout + r.stderr
+    assert marker.exists(), (
+        "child process never ran / never received its ARGV_MARKER env var\n" + r.stdout + r.stderr
+    )
     got = json.loads(marker.read_text(encoding="utf-8"))
     assert got == dangerous_args, (
         f"an argument was reinterpreted in transit: got {got!r}, expected {dangerous_args!r}"
     )
     # No POSIX command substitution actually ran (would prove a real shell reparsed
     # `$(touch ...)` / `` `touch ...` `` instead of forwarding it as an inert string).
-    assert not (ROOT / "PWNED_POSIX").exists(), "a shell executed $(...) inside a forwarded argument"
-    assert not (ROOT / "PWNED_BACKTICK").exists(), "a shell executed a backtick substitution inside a forwarded argument"
+    assert not (ROOT / "PWNED_POSIX").exists(), (
+        "a shell executed $(...) inside a forwarded argument"
+    )
+    assert not (ROOT / "PWNED_BACKTICK").exists(), (
+        "a shell executed a backtick substitution inside a forwarded argument"
+    )

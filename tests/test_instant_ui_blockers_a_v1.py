@@ -5,27 +5,32 @@
 - a sustained run of skipped frames ends the pump (-> the watchdog recycles), while isolated
   bad frames between good ones do not.
 """
+
 from __future__ import annotations
 
-
-
-
-
-
-
-
 # ── PR B: drop counts per consumer; atomic token refresh ─────────────────────────────────
-
 
 
 def _token_file(tmp_path):
     """A token file in schwab-py's shape (the stand-in for schwab_token.json), valid for an hour."""
     import json
     import time
+
     tok = tmp_path / "schwab_token.json"
-    tok.write_text(json.dumps({"creation_timestamp": int(time.time()), "token": {
-        "access_token": "a", "refresh_token": "r", "token_type": "Bearer",
-        "expires_in": 3600, "expires_at": int(time.time()) + 3600}}))
+    tok.write_text(
+        json.dumps(
+            {
+                "creation_timestamp": int(time.time()),
+                "token": {
+                    "access_token": "a",
+                    "refresh_token": "r",
+                    "token_type": "Bearer",
+                    "expires_in": 3600,
+                    "expires_at": int(time.time()) + 3600,
+                },
+            }
+        )
+    )
     return tok
 
 
@@ -34,15 +39,18 @@ def test_every_token_refresh_writes_atomically(monkeypatch, tmp_path):
     in place (audit of #280: the atomic helper had no production caller)."""
     import json
     import os as _os
+
     import schwab_client as sc
 
     tok = _token_file(tmp_path)
     replaced = []
     real_replace = _os.replace
-    monkeypatch.setattr(_os, "replace", lambda a, b: (replaced.append((a, b)), real_replace(a, b))[1])
+    monkeypatch.setattr(
+        _os, "replace", lambda a, b: (replaced.append((a, b)), real_replace(a, b))[1]
+    )
     client = sc.client_from_token_file_atomic(str(tok), "k", "s")
     assert client.session.token["access_token"] == "a"
-    client.session.update_token({"access_token": "b", "refresh_token": "r"})   # a refresh
+    client.session.update_token({"access_token": "b", "refresh_token": "r"})  # a refresh
     assert json.loads(tok.read_text())["token"]["access_token"] == "b"
     assert replaced and str(replaced[0][1]) == str(tok), "the refresh must land via os.replace"
 
@@ -57,6 +65,7 @@ def test_the_client_sends_one_request_at_a_time_on_one_connection(tmp_path):
     from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
     import schwab_client as sc
+
     n = 20
     lock = threading.Lock()
     seen = {"open": 0, "most": 0, "ports": set()}
@@ -79,6 +88,7 @@ def test_the_client_sends_one_request_at_a_time_on_one_connection(tmp_path):
 
         def log_message(self, *a):
             pass
+
     srv = ThreadingHTTPServer(("127.0.0.1", 0), Held)
     srv.daemon_threads = True
     threading.Thread(target=srv.serve_forever, daemon=True).start()
@@ -94,32 +104,43 @@ def test_the_client_sends_one_request_at_a_time_on_one_connection(tmp_path):
     assert len(seen["ports"]) == 1, f"{len(seen['ports'])} connections"
 
 
-
-
 # ── PR C: server-side bar roll-up; quote_tick carries the screen's numbers; heatmap demand ──
+
 
 def test_bars_roll_up_server_side_and_unknown_volume_stays_unknown():
     import server as srv
-    t0 = 1_700_000_100.0                                    # a 5-minute boundary: 1_700_000_100 % 300 == 100? use floor
+
+    t0 = 1_700_000_100.0  # a 5-minute boundary: 1_700_000_100 % 300 == 100? use floor
     base = t0 - (t0 % 300)
-    m = [{"t": base + 60 * i, "o": 10 + i, "h": 11 + i, "l": 9 + i, "c": 10.5 + i, "v": 100} for i in range(7)]
-    m[6]["v"] = None                                        # one minute with no reported volume
+    m = [
+        {"t": base + 60 * i, "o": 10 + i, "h": 11 + i, "l": 9 + i, "c": 10.5 + i, "v": 100}
+        for i in range(7)
+    ]
+    m[6]["v"] = None  # one minute with no reported volume
     out = srv.aggregate_bars(m, "5")
     assert [b["t"] for b in out] == [base, base + 300]
     first, second = out
     assert (first["o"], first["h"], first["l"], first["c"], first["v"]) == (10, 15, 9, 14.5, 500)
     assert (second["o"], second["h"], second["l"], second["c"]) == (15, 17, 14, 16.5)
-    assert second["v"] is None, "a bucket with an unreported minute has unknown volume, not a partial sum"
+    assert second["v"] is None, (
+        "a bucket with an unreported minute has unknown volume, not a partial sum"
+    )
     assert srv.aggregate_bars(m, "1") == m
 
 
 def test_daily_roll_up_is_keyed_on_the_et_trading_date():
     import server as srv
+
     # 2026-09-24 19:59 ET and 20:01 ET are the same ET date; 00:01 ET next day is not
     d1a, d1b, d2 = 1_790_294_340.0, 1_790_294_460.0, 1_790_308_860.0
-    out = srv.aggregate_bars([{"t": d1a, "o": 1, "h": 2, "l": 0.5, "c": 1.5, "v": 1},
-                              {"t": d1b, "o": 1.5, "h": 3, "l": 1, "c": 2, "v": 1},
-                              {"t": d2, "o": 2, "h": 2, "l": 2, "c": 2, "v": 1}], "D")
+    out = srv.aggregate_bars(
+        [
+            {"t": d1a, "o": 1, "h": 2, "l": 0.5, "c": 1.5, "v": 1},
+            {"t": d1b, "o": 1.5, "h": 3, "l": 1, "c": 2, "v": 1},
+            {"t": d2, "o": 2, "h": 2, "l": 2, "c": 2, "v": 1},
+        ],
+        "D",
+    )
     assert len(out) == 2 and out[0]["h"] == 3 and out[0]["v"] == 2
 
 
@@ -129,12 +150,17 @@ def test_the_price_row_carries_feed_state_and_trade_age_and_no_bar():
     import server as srv
     from tests.feed_live_helper import RTH_INSTANT, mark_feed_live
 
-    now = RTH_INSTANT                               # regular hours: the market trades
+    now = RTH_INSTANT  # regular hours: the market trades
     mark_feed_live("ZZQF", now=now)
-    lmp.record_from_level_one_equity("ZZQF", {"LAST_PRICE": 42.0, "TRADE_TIME_MILLIS": int((now - 7) * 1000)},
-                                     received_ts=now)
+    lmp.record_from_level_one_equity(
+        "ZZQF", {"LAST_PRICE": 42.0, "TRADE_TIME_MILLIS": int((now - 7) * 1000)}, received_ts=now
+    )
     ev = live_price_rows.price_row("ZZQF", now)
-    assert ev["feed_live"] is True and ev["spot"] == 42.0 and ev["spot_source"] == srv.SPOT_SOURCE_PLANE
+    assert (
+        ev["feed_live"] is True
+        and ev["spot"] == 42.0
+        and ev["spot_source"] == srv.SPOT_SOURCE_PLANE
+    )
     assert 6.0 <= ev["trade_age_sec"] <= 9.0
     assert "forming_1m" not in ev
     held_no_trade = live_price_rows.price_row("ZZNOTRADE", now)
@@ -148,6 +174,7 @@ def test_spot_gamma_reprice_runs_only_for_a_viewed_heatmap():
 
     import push_changes
     import server as srv
+
     loop = push_changes._loop
     push_changes.bind(None)
     page = push_changes.subscribe("ZZVIEW")

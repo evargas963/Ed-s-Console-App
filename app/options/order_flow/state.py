@@ -10,14 +10,15 @@ import logging
 import threading
 from collections import deque
 from typing import Optional
+
 from app.options.order_flow import history
 from instrument_identity import ticker_storage_key
-from numeric_contract import schwab_count, schwab_number
 from l1_trade_observation import (
     TAPE_COMPLETENESS,
     is_adjacent_restatement,
     vendor_triple,
 )
+from numeric_contract import schwab_count, schwab_number
 
 # Limits to prevent unbounded growth
 MAX_BOOK_SNAPSHOTS = 20
@@ -26,10 +27,14 @@ MAX_TAPE_PRINTS = 500
 log = logging.getLogger(__name__)
 
 
-_OPTION_TOP_FIELDS = (("BID_PRICE", "bid", schwab_number), ("ASK_PRICE", "ask", schwab_number),
-                      ("BID_SIZE", "bid_size", schwab_count), ("ASK_SIZE", "ask_size", schwab_count),
-                      ("MARK", "mark", schwab_number),
-                      ("QUOTE_TIME_MILLIS", "quote_time_ms", schwab_number))
+_OPTION_TOP_FIELDS = (
+    ("BID_PRICE", "bid", schwab_number),
+    ("ASK_PRICE", "ask", schwab_number),
+    ("BID_SIZE", "bid_size", schwab_count),
+    ("ASK_SIZE", "ask_size", schwab_count),
+    ("MARK", "mark", schwab_number),
+    ("QUOTE_TIME_MILLIS", "quote_time_ms", schwab_number),
+)
 
 
 class OrderFlowState:
@@ -70,7 +75,7 @@ class OrderFlowState:
         if not sym:
             return
 
-        def _side(levels) -> list:      # a side Schwab sent no levels for is empty, as sent
+        def _side(levels) -> list:  # a side Schwab sent no levels for is empty, as sent
             return [] if levels is None else list(levels) if isinstance(levels, list) else [levels]
 
         item = {
@@ -83,7 +88,10 @@ class OrderFlowState:
             self._get_book(sym).append(item)
 
     def push_level_one(
-        self, symbol: str, content_item: dict, ts_recv: Optional[float] = None,
+        self,
+        symbol: str,
+        content_item: dict,
+        ts_recv: Optional[float] = None,
         field_received: Optional[dict] = None,
     ) -> None:
         """Apply one Schwab L1 observation with canonical merge/freshness/tape semantics. A
@@ -126,10 +134,17 @@ class OrderFlowState:
         oi = schwab_count(content_item.get("OPEN_INTEREST"))
         # VOLATILITY too: the model's input must be as fresh as the gamma beside it
         iv = schwab_number(content_item.get("VOLATILITY"))
+
         def received(field: str) -> float:
             return ts_recv if field_received is None else field_received[field]
 
-        if gamma is not None or delta is not None or oi is not None or vf is not None or iv is not None:
+        if (
+            gamma is not None
+            or delta is not None
+            or oi is not None
+            or vf is not None
+            or iv is not None
+        ):
             with self._lock:
                 g = self._stream_greeks.setdefault(sym, {})
                 if gamma is not None:
@@ -142,7 +157,6 @@ class OrderFlowState:
                     g["total_volume"], g["total_volume_ts_recv"] = vf, received("TOTAL_VOLUME")
                 if iv is not None:
                     g["volatility"], g["volatility_ts_recv"] = iv, received("VOLATILITY")
-
 
         trade_ms = content_item.get("TRADE_TIME_MILLIS")
         last_price = content_item.get("LAST_PRICE")
@@ -191,11 +205,13 @@ class OrderFlowState:
             return []
         out: list[dict] = []
         with self._lock:
-            out.extend(dict(item) for item in self._get_book(sym)
-                       if venue is None or item["SERVICE"] == venue)
+            out.extend(
+                dict(item)
+                for item in self._get_book(sym)
+                if venue is None or item["SERVICE"] == venue
+            )
             out.extend(dict(item) for item in self._get_tape(sym))
         return out
-
 
     def clear_all(self) -> None:
         """Drop tape/book/top/prev-print identity for every symbol."""
@@ -214,7 +230,6 @@ class OrderFlowState:
         self._receive_seq.clear()
         self._stream_greeks.clear()
 
-
     def clear_symbol(self, symbol: str) -> None:
         """Clear all state for one symbol, its recent prints and books included."""
         sym = ticker_storage_key(symbol)
@@ -229,7 +244,6 @@ class OrderFlowState:
             self._prev_trade.pop(sym, None)
             self._receive_seq.pop(sym, None)
             self._stream_greeks.pop(sym, None)
-
 
     def push_option_top(self, symbol: str, content_item: dict) -> None:
         """An option contract's top of book (LEVELONE_OPTIONS BID/ASK price and size, MARK),
@@ -268,8 +282,6 @@ class OrderFlowState:
             return dict(g) if g else None
 
 
-
-
 _LIVE_STATE = OrderFlowState()
 
 
@@ -287,7 +299,9 @@ def push_book(symbol: str, content_item: dict, service: str) -> None:
 
 
 def push_level_one(
-    symbol: str, content_item: dict, ts_recv: Optional[float] = None,
+    symbol: str,
+    content_item: dict,
+    ts_recv: Optional[float] = None,
     field_received: Optional[dict] = None,
 ) -> None:
     """Apply an L1 observation to the live singleton."""
@@ -299,8 +313,6 @@ def get_content_for_symbol(symbol: str, venue: Optional[str] = None) -> list[dic
     return _LIVE_STATE.get_content_for_symbol(symbol, venue)
 
 
-
-
 def clear_all_live_state() -> None:
     """Drop tape/book/top/prev-print identity for every symbol.
 
@@ -310,20 +322,12 @@ def clear_all_live_state() -> None:
     _LIVE_STATE.clear_all()
 
 
-
-
 def clear_symbol(symbol: str) -> None:
     """Clear stored data for a symbol (e.g. on unsubscribe)."""
     _LIVE_STATE.clear_symbol(symbol)
-
-
 
 
 def get_stream_greeks(symbol: str) -> Optional[dict]:
     """Return the live singleton's latest streamed GAMMA/DELTA/OPEN_INTEREST for one option
     contract symbol (each paired with its own `_ts_recv`), or None if never observed."""
     return _LIVE_STATE.get_stream_greeks(symbol)
-
-
-
-

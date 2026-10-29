@@ -3,19 +3,19 @@ math_levels.py
 Chartable key-level engine — walls, pins, inflections, support/resistance
 derived from options exposure structure.
 """
+
 from __future__ import annotations
 
 import math
 from datetime import datetime
 from typing import Dict, List
 
-from numeric_contract import schwab_count, schwab_number
 from math_exposure_core import (
     bucket_metric,
-    strike_oi_legs,
     key_level_strikes_with_oi,
+    strike_oi_legs,
 )
-
+from numeric_contract import schwab_count, schwab_number
 
 # ── Gamma Exposure Profile — total dealer gamma recomputed at hypothetical spot ──
 # Every contract's gamma is recomputed at each candidate price; a cumulative sum does NOT
@@ -41,8 +41,9 @@ def bs_gamma(spot: float, strike: float, t_years: float, sigma: float) -> float 
     return g if math.isfinite(g) else None
 
 
-def bs_delta(spot: float, strike: float, t_years: float, sigma: float, *,
-             call: bool) -> float | None:
+def bs_delta(
+    spot: float, strike: float, t_years: float, sigma: float, *, call: bool
+) -> float | None:
     """Black-Scholes delta per share, r = q = 0. A put is the call delta minus one."""
     if spot <= 0 or strike <= 0 or t_years <= 0 or sigma <= 0:
         return None
@@ -55,8 +56,9 @@ def bs_delta(spot: float, strike: float, t_years: float, sigma: float, *,
     return d if math.isfinite(d) else None
 
 
-def bs_vanna(spot: float, strike: float, t_years: float, sigma: float,
-             rate: float = 0.0, div: float = 0.0) -> float | None:
+def bs_vanna(
+    spot: float, strike: float, t_years: float, sigma: float, rate: float = 0.0, div: float = 0.0
+) -> float | None:
     """Black-Scholes vanna (dDelta/dSigma) per share — identical for calls and puts.
 
     Closed form: -e^(-qT) * phi(d1) * d2 / sigma. Sign is driven entirely by -d2, so it
@@ -78,8 +80,9 @@ def bs_vanna(spot: float, strike: float, t_years: float, sigma: float,
     return v if math.isfinite(v) else None
 
 
-def bs_charm(spot: float, strike: float, t_years: float, sigma: float,
-             rate: float = 0.0) -> float | None:
+def bs_charm(
+    spot: float, strike: float, t_years: float, sigma: float, rate: float = 0.0
+) -> float | None:
     """Black-Scholes charm (dDelta/dt, calendar time) per share, q=0.
 
     Textbook (Haug) charm is dDelta/dT = -phi(d1) * [ r/(sigma*sqrt(T)) - d2/(2T) ].
@@ -104,8 +107,14 @@ def bs_charm(spot: float, strike: float, t_years: float, sigma: float,
     return c if math.isfinite(c) else None
 
 
-def compute_charm_by_strike(contracts: List[dict], spot: float, *, now: datetime,
-                            parsed: "list | None" = None, product: str = "EQO") -> Dict[float, dict]:
+def compute_charm_by_strike(
+    contracts: List[dict],
+    spot: float,
+    *,
+    now: datetime,
+    parsed: "list | None" = None,
+    product: str = "EQO",
+) -> Dict[float, dict]:
     """Per-strike dealer CHARM exposure, in delta-shares per day.
 
     Charm exposure is standard institutional practice (SpotGamma, Unusual Whales and
@@ -120,8 +129,9 @@ def compute_charm_by_strike(contracts: List[dict], spot: float, *, now: datetime
     out: Dict[float, dict] = {}
     if not contracts or not spot or spot <= 0:
         return out
-    for strike, oi, mult, t_years, sigma, sign in (parsed if parsed is not None
-                                                   else contract_inputs(contracts, now, product=product)[0]):
+    for strike, oi, mult, t_years, sigma, sign in (
+        parsed if parsed is not None else contract_inputs(contracts, now, product=product)[0]
+    ):
         c = bs_charm(float(spot), strike, t_years, sigma)
         if c is None:
             continue
@@ -156,8 +166,9 @@ def merge_charm_maps(maps: Dict[str, Dict[float, dict]]) -> Dict[float, dict]:
     return out
 
 
-def pick_charm_wall_strikes(charm_by_strike: Dict[float, dict]
-                            ) -> tuple[float | None, float | None]:
+def pick_charm_wall_strikes(
+    charm_by_strike: Dict[float, dict],
+) -> tuple[float | None, float | None]:
     """(call_charm_wall, put_charm_wall) — strikes of maximum call-side and put-side
     charm exposure. These are the strikes whose delta decay exerts the most mechanical
     pressure into the close."""
@@ -175,7 +186,9 @@ def pick_charm_wall_strikes(charm_by_strike: Dict[float, dict]
 NO_EXPIRY_SESSION = "no_markets_session_for_expiry"
 
 
-def contract_inputs(contracts: List[dict], now: datetime, product: str = "EQO") -> tuple[list, dict]:
+def contract_inputs(
+    contracts: List[dict], now: datetime, product: str = "EQO"
+) -> tuple[list, dict]:
     """(priced, unpriced): _contract_inputs for every contract with open interest, parsed once
     and shared by the gamma profile and charm (compute_terrain); `unpriced` counts the
     contracts with open interest the profile could not price, by reason."""
@@ -189,9 +202,13 @@ def contract_inputs(contracts: List[dict], now: datetime, product: str = "EQO") 
     return priced, unpriced
 
 
-def _contract_inputs(ct: dict, now: datetime, *,
-                     t_years: float | None = None, product: str = "EQO",
-                     ) -> tuple[float, float, float, float, float, int] | str:
+def _contract_inputs(
+    ct: dict,
+    now: datetime,
+    *,
+    t_years: float | None = None,
+    product: str = "EQO",
+) -> tuple[float, float, float, float, float, int] | str:
     """(strike, oi, mult, t_years, sigma, sign), or the reason it cannot be priced.
 
     `t_years` is the canonical INTRADAY time-to-expiry (time_et.time_to_expiry_years): to the
@@ -215,15 +232,23 @@ def _contract_inputs(ct: dict, now: datetime, *,
     if strike is None or strike <= 0 or mult is None or mult <= 0 or side not in ("CALL", "PUT"):
         return "invalid"
     # schwab_iv_to_sigma already rejects None/non-positive, so no separate iv guard.
-    sigma = schwab_iv_to_sigma(schwab_number(ct.get("volatility")))  # single source: math_exposure_core
+    sigma = schwab_iv_to_sigma(
+        schwab_number(ct.get("volatility"))
+    )  # single source: math_exposure_core
     if sigma is None or sigma <= 0:
         return "no_volatility"
     if t_years is None:
-        t_years = time_to_expiry_years(ct.get("expirationDate"), now=now,
-                                       settlement_type=ct.get("settlementType"), product=product)
+        t_years = time_to_expiry_years(
+            ct.get("expirationDate"),
+            now=now,
+            settlement_type=ct.get("settlementType"),
+            product=product,
+        )
     if t_years is None or t_years <= 0:
-        am_unanswered = (ct.get("settlementType") == SETTLEMENT_AM
-                         and session(str(ct.get("expirationDate"))[:10]) is None)
+        am_unanswered = (
+            ct.get("settlementType") == SETTLEMENT_AM
+            and session(str(ct.get("expirationDate"))[:10]) is None
+        )
         return NO_EXPIRY_SESSION if am_unanswered else "expired_or_no_expiry"
     return strike, oi, mult, t_years, sigma, (1 if side == "CALL" else -1)
 
@@ -233,8 +258,9 @@ GAMMA_PROFILE_SPAN_PCT = 0.15
 GAMMA_PROFILE_STEPS = 240
 
 
-def compute_gamma_profile(contracts: List[dict], spot: float, *, now: datetime,
-                          parsed: "list | None" = None) -> List[tuple[float, float]]:
+def compute_gamma_profile(
+    contracts: List[dict], spot: float, *, now: datetime, parsed: "list | None" = None
+) -> List[tuple[float, float]]:
     """Total dealer gamma exposure (per 1% move, dollars) at each candidate price.
 
     One dealer convention for every instrument: +call / -put. Returns [(price, total_gex)]
@@ -277,7 +303,7 @@ def _gamma_profile_totals(parsed: list, grid: List[float]) -> List[float]:
     out: List[float] = []
     with np.errstate(all="ignore"):
         for start in range(0, len(s_all), _GAMMA_PROFILE_BLOCK):
-            s = s_all[start:start + _GAMMA_PROFILE_BLOCK, None]
+            s = s_all[start : start + _GAMMA_PROFILE_BLOCK, None]
             d1 = (np.log(s / strike) + drift) / vt
             g = np.exp(-0.5 * d1 * d1) / _SQRT_2PI / (s * vt)
             g = np.where(np.isfinite(g), g, 0.0)
@@ -407,8 +433,7 @@ def compute_gamma_support_levels(
     max_abs = max(abs(v) for _, v in profile)
     eps = eps_frac * max_abs if max_abs > 0 else 0.0
     if n_spot <= eps:
-        return {"gsf": None, "grc": None, "state": GSF_STATE_BELOW_SUPPORT,
-                "n_at_spot": n_spot}
+        return {"gsf": None, "grc": None, "state": GSF_STATE_BELOW_SUPPORT, "n_at_spot": n_spot}
     target = phi * n_spot
 
     def _cross(p0: float, v0: float, p1: float, v1: float) -> float:
@@ -611,7 +636,11 @@ def compute_gamma_flip_v2(
     """
     if not contracts or not spot or spot <= 0:
         return None, GAMMA_FLIP_UNAVAILABLE, {"reason": "no_contracts_or_spot"}
-    strikes = [k for k in (schwab_number(c.get("strikePrice")) for c in contracts if isinstance(c, dict)) if k is not None]
+    strikes = [
+        k
+        for k in (schwab_number(c.get("strikePrice")) for c in contracts if isinstance(c, dict))
+        if k is not None
+    ]
     if not strikes:
         return None, GAMMA_FLIP_UNAVAILABLE, {"reason": "no_strikes"}
     lo, hi = min(strikes), max(strikes)
@@ -630,17 +659,27 @@ def compute_gamma_flip_v2(
     #                  is verified.
     #  covers_level  — the measured convergence span for the flip LEVEL itself
     #                  (GAMMA_FLIP_TRUSTED_SPAN_PCT; see its provenance block). Only this earns TRUSTED.
-    covers_regime = (lo <= spot * (1.0 - GAMMA_FLIP_MIN_SPAN_PCT)
-                     and hi >= spot * (1.0 + GAMMA_FLIP_MIN_SPAN_PCT))
-    covers_level = (lo <= spot * (1.0 - GAMMA_FLIP_TRUSTED_SPAN_PCT)
-                    and hi >= spot * (1.0 + GAMMA_FLIP_TRUSTED_SPAN_PCT))
+    covers_regime = lo <= spot * (1.0 - GAMMA_FLIP_MIN_SPAN_PCT) and hi >= spot * (
+        1.0 + GAMMA_FLIP_MIN_SPAN_PCT
+    )
+    covers_level = lo <= spot * (1.0 - GAMMA_FLIP_TRUSTED_SPAN_PCT) and hi >= spot * (
+        1.0 + GAMMA_FLIP_TRUSTED_SPAN_PCT
+    )
     # TRUSTED is earned by the LEVEL span, never the fetch width
-    _verdict = (GAMMA_FLIP_TRUSTED if covers_level
-                else GAMMA_FLIP_LEVEL_APPROX if covers_regime
-                else GAMMA_FLIP_NARROW)
-    diag = {**diag, "trusted_span_pct": GAMMA_FLIP_TRUSTED_SPAN_PCT,
-            "covers_regime_span": covers_regime, "covers_level_span": covers_level}
-    flip = gamma_flip_from_profile(profile, spot)   # nearest crossing, EITHER direction
+    _verdict = (
+        GAMMA_FLIP_TRUSTED
+        if covers_level
+        else GAMMA_FLIP_LEVEL_APPROX
+        if covers_regime
+        else GAMMA_FLIP_NARROW
+    )
+    diag = {
+        **diag,
+        "trusted_span_pct": GAMMA_FLIP_TRUSTED_SPAN_PCT,
+        "covers_regime_span": covers_regime,
+        "covers_level_span": covers_level,
+    }
+    flip = gamma_flip_from_profile(profile, spot)  # nearest crossing, EITHER direction
 
     # Dealer gamma AT SPOT is what defines the regime. The flip is only the price where
     # that sign changes -- it is a landmark, not a prerequisite.
@@ -648,18 +687,22 @@ def compute_gamma_flip_v2(
     # is MORE certain than a flip sitting next to spot -- not less. Only the flip level is
     # unknown, never the regime.
     at_spot = gamma_at_price(profile, spot)
-    diag = {**diag, "curve_gamma_at_spot": at_spot,
-            "no_crossing_in_window": flip is None and at_spot is not None}
+    diag = {
+        **diag,
+        "curve_gamma_at_spot": at_spot,
+        "no_crossing_in_window": flip is None and at_spot is not None,
+    }
 
     if at_spot is None:
         return None, GAMMA_FLIP_UNAVAILABLE, {**diag, "reason": "empty_profile"}
     if flip is None:
         # regime is knowable; the flip level is not
-        return None, _verdict,                {**diag, "reason": "no_zero_crossing_regime_still_defined"}
+        return None, _verdict, {**diag, "reason": "no_zero_crossing_regime_still_defined"}
     return flip, _verdict, diag
 
 
 # ── Max Pain — OI-weighted expiry settlement magnet ────────────────────────────
+
 
 def compute_max_pain(exposures_by_strike: Dict[float, dict]) -> float | None:
     """

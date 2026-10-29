@@ -9,6 +9,7 @@ are computed from, today's candle rolled up live from the 1-minute bars.
 Real data: SPY's and TSLA's /pricehistory answers of 2026-10-07 09:57 UTC
 (tests/fixtures/real_pricehistory_spy_tsla_2026_10_07.json). Inputs, named: the clock.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -37,8 +38,14 @@ def _et(s: str) -> float:
 
 def _sweep(tmp_path, clock, publish):
     daemon = capture.Daemon(MessageBus(), HealthRegistry(), ["SPY"])
-    return ChainSweep(tmp_path / "ed_console.db", ["SPY"], publish, clock=lambda: clock["now"],
-                      failures=CaptureWriter(tmp_path / "stream_capture.db"), streamed=daemon.option_record)
+    return ChainSweep(
+        tmp_path / "ed_console.db",
+        ["SPY"],
+        publish,
+        clock=lambda: clock["now"],
+        failures=CaptureWriter(tmp_path / "stream_capture.db"),
+        streamed=daemon.option_record,
+    )
 
 
 def test_the_daemon_asks_each_series_as_schwab_documents_it_and_publishes_it_as_sent(tmp_path):
@@ -51,20 +58,34 @@ def test_the_daemon_asks_each_series_as_schwab_documents_it_and_publishes_it_as_
         assert sweep.candles_due("SPY", datetime.fromtimestamp(clock["now"], ET)), "never asked"
         sweep.candles(lambda: client, ["SPY"], threading.Event())
         first = schwab.asked(PRICEHISTORY)
-        later_today = [sweep.candles_due("SPY", datetime.fromtimestamp(clock["now"] + s, ET)) for s in (2, 600, 8 * 3600)]
-        clock["now"] = _et("2026-08-31 09:05")                     # the next market day
+        later_today = [
+            sweep.candles_due("SPY", datetime.fromtimestamp(clock["now"] + s, ET))
+            for s in (2, 600, 8 * 3600)
+        ]
+        clock["now"] = _et("2026-08-31 09:05")  # the next market day
         assert sweep.candles_due("SPY", datetime.fromtimestamp(clock["now"], ET))
         sweep.candles(lambda: client, ["SPY"], threading.Event())
-        next_day = schwab.asked(PRICEHISTORY)[len(first):]
+        next_day = schwab.asked(PRICEHISTORY)[len(first) :]
     finally:
         schwab.close()
 
     assert [(q["periodType"], q["period"], q["frequencyType"], q["frequency"]) for q in first] == [
-        ("day", "10", "minute", "1"), ("year", "2", "daily", "1")]
-    for q, (series, (period_type, period, frequency_type, frequency)) in zip(first, PRICE_HISTORY.items()):
+        ("day", "10", "minute", "1"),
+        ("year", "2", "daily", "1"),
+    ]
+    for q, (series, (period_type, period, frequency_type, frequency)) in zip(
+        first, PRICE_HISTORY.items()
+    ):
         assert (q["symbol"], q["periodType"], q["period"], q["frequencyType"], q["frequency"]) == (
-            "SPY", period_type, str(period), frequency_type, str(frequency)), series
-        assert q["endDate"] == str(int(_et("2026-08-28 09:05") * 1000)), "each request ends at the clock"
+            "SPY",
+            period_type,
+            str(period),
+            frequency_type,
+            str(frequency),
+        ), series
+        assert q["endDate"] == str(int(_et("2026-08-28 09:05") * 1000)), (
+            "each request ends at the clock"
+        )
         assert q["needExtendedHoursData"] == "true"
     assert later_today == [False, False, False], "the price history is asked again the same ET date"
     assert [q["frequencyType"] + q["frequency"] for q in next_day] == ["minute1", "daily1"]
@@ -74,13 +95,18 @@ def test_the_daemon_asks_each_series_as_schwab_documents_it_and_publishes_it_as_
         topic, msg = next((t, m) for t, m in history if t == f"pricehistory.SPY.{series}")
         sent = HISTORY[("SPY", *_SERIES[series])]["body"]
         assert msg["answer"] == sent and msg["src"] == "schwab_pricehistory", series
-        assert json.loads(msg["frame"]) == {"topic": topic, "msg": {k: v for k, v in msg.items() if k != "frame"}}
+        assert json.loads(msg["frame"]) == {
+            "topic": topic,
+            "msg": {k: v for k, v in msg.items() if k != "frame"},
+        }
 
 
 def _true_range_mean(candles: list[dict]) -> float:
     """ATR(14) worked out here from Schwab's candles: the mean of the last 14 true ranges."""
-    tr = [max(c["high"] - c["low"], abs(c["high"] - p["close"]), abs(c["low"] - p["close"]))
-          for p, c in zip(candles, candles[1:])]
+    tr = [
+        max(c["high"] - c["low"], abs(c["high"] - p["close"]), abs(c["low"] - p["close"]))
+        for p, c in zip(candles, candles[1:])
+    ]
     return sum(tr[-14:]) / 14
 
 
@@ -99,6 +125,7 @@ def _held(tk: str, series: str, now: datetime, candles: "list | None" = None) ->
     """Schwab's captured `series` answer for `tk` (its `candles` only, when given), published,
     pushed and taken by the console."""
     from calibration.complete_chain_capture import price_history_message
+
     a = HISTORY[(tk, *_SERIES[series])]
     body = a["body"] if candles is None else dict(a["body"], candles=candles)
     topic, msg = price_history_message(tk, series, body, a["answered_utc"])
@@ -108,6 +135,7 @@ def _held(tk: str, series: str, now: datetime, candles: "list | None" = None) ->
 
 def _told(tk: str, takes) -> list:
     """What the page open on `tk` is told after each of `takes` (callables run in turn)."""
+
     async def main():
         push_changes.bind(asyncio.get_running_loop())
         page = push_changes.subscribe(tk)
@@ -120,6 +148,7 @@ def _told(tk: str, takes) -> list:
         finally:
             push_changes.unsubscribe(tk, page)
             push_changes.bind(None)
+
     return asyncio.run(main())
 
 
@@ -135,11 +164,23 @@ def test_today_s_candle_is_rolled_up_live_from_the_regular_session_bars():
             _held(tk, "1d", now)
             _held(tk, "1m", now)
             daily = HISTORY[(tk, "daily", "1")]["body"]["candles"]
-            before = [c for c in daily if datetime.fromtimestamp(c["datetime"] / 1000, ET).date() < now.date()]
-            schwabs = next(c for c in daily if datetime.fromtimestamp(c["datetime"] / 1000, ET).date() == now.date())
-            window = [m for m in HISTORY[(tk, "minute", "1")]["body"]["candles"]
-                      if datetime(2026, 10, 6, 9, 30, tzinfo=ET).timestamp() <= m["datetime"] / 1000
-                      < datetime(2026, 10, 6, 16, 0, tzinfo=ET).timestamp()]
+            before = [
+                c
+                for c in daily
+                if datetime.fromtimestamp(c["datetime"] / 1000, ET).date() < now.date()
+            ]
+            schwabs = next(
+                c
+                for c in daily
+                if datetime.fromtimestamp(c["datetime"] / 1000, ET).date() == now.date()
+            )
+            window = [
+                m
+                for m in HISTORY[(tk, "minute", "1")]["body"]["candles"]
+                if datetime(2026, 10, 6, 9, 30, tzinfo=ET).timestamp()
+                <= m["datetime"] / 1000
+                < datetime(2026, 10, 6, 16, 0, tzinfo=ET).timestamp()
+            ]
             (rolled,) = _grouped(window, lambda day: day)
             assert (rolled["high"], rolled["low"]) == (schwabs["high"], schwabs["low"]), tk
             assert server._atr(tk, now).daily == _true_range_mean(before + [rolled]), tk
@@ -155,6 +196,7 @@ def test_the_console_takes_schwabs_bars_and_candles_from_the_push_and_computes_t
     monthly ATR are those of Schwab's daily candles, of the weeks and of the months they make (at
     the answer's time, before the session: no candle of today yet)."""
     from calibration.complete_chain_capture import price_history_message
+
     bus = MessageBus()
     sub = bus.subscribe("pricehistory.", policy=LATEST)
     for tk in ("SPY", "TSLA"):
@@ -173,7 +215,7 @@ def test_the_console_takes_schwabs_bars_and_candles_from_the_push_and_computes_t
             assert live_push.is_forwarded(topic, record)
             (frame,) = live_push.frames(topic, record)
             wire = json.loads(frame)
-            ofs._ingest_pushed(wire["topic"], wire["msg"])               # as the console receives it
+            ofs._ingest_pushed(wire["topic"], wire["msg"])  # as the console receives it
         msgs = []
         while not ofs.streamed_bars.empty():
             msgs.append(ofs.streamed_bars.get_nowait())
@@ -182,15 +224,22 @@ def test_the_console_takes_schwabs_bars_and_candles_from_the_push_and_computes_t
         server._write_streamed_bars(msgs, answered)
         for tk in ("SPY", "TSLA"):
             minutes = HISTORY[(tk, "minute", "1")]["body"]["candles"]
-            got = [(b.ts, b.open, b.high, b.low, b.close, b.volume) for b in server._bars_1m(tk, server.BARS_KEPT)]
-            assert got == [(c["datetime"] / 1000, c["open"], c["high"], c["low"], c["close"], c["volume"])
-                           for c in minutes], tk
+            got = [
+                (b.ts, b.open, b.high, b.low, b.close, b.volume)
+                for b in server._bars_1m(tk, server.BARS_KEPT)
+            ]
+            assert got == [
+                (c["datetime"] / 1000, c["open"], c["high"], c["low"], c["close"], c["volume"])
+                for c in minutes
+            ], tk
             daily = HISTORY[(tk, "daily", "1")]["body"]["candles"]
             months = _grouped(daily, lambda day: (day.year, day.month))
             atr = server._atr(tk, answered)
             assert atr.daily == _true_range_mean(daily), tk
-            assert atr.weekly == _true_range_mean(_grouped(daily, lambda day: day.isocalendar()[:2])), tk
-            assert atr.monthly is None, tk   # a year captured: not 15 months, so no monthly ATR
+            assert atr.weekly == _true_range_mean(
+                _grouped(daily, lambda day: day.isocalendar()[:2])
+            ), tk
+            assert atr.monthly is None, tk  # a year captured: not 15 months, so no monthly ATR
     finally:
         for tk in ("SPY", "TSLA"):
             server._bars.pop(tk, None)
@@ -206,13 +255,18 @@ def test_a_price_history_sent_again_with_every_minute_held_changes_nothing():
         server._bars.pop(tk, None)
         try:
             first, again = _told(tk, [lambda: _held(tk, "1m", now), lambda: _held(tk, "1m", now)])
-            got = [(b.ts, b.open, b.high, b.low, b.close, b.volume) for b in server._bars_1m(tk, server.BARS_KEPT)]
+            got = [
+                (b.ts, b.open, b.high, b.low, b.close, b.volume)
+                for b in server._bars_1m(tk, server.BARS_KEPT)
+            ]
         finally:
             server._bars.pop(tk, None)
         assert "liquidity" in first, tk
         assert again == set(), (tk, again)
-        assert got == [(c["datetime"] / 1000, c["open"], c["high"], c["low"], c["close"], c["volume"])
-                       for c in HISTORY[(tk, "minute", "1")]["body"]["candles"]], tk
+        assert got == [
+            (c["datetime"] / 1000, c["open"], c["high"], c["low"], c["close"], c["volume"])
+            for c in HISTORY[(tk, "minute", "1")]["body"]["candles"]
+        ], tk
 
 
 def test_a_price_history_that_brings_minutes_not_held_adds_exactly_those():
@@ -227,12 +281,17 @@ def test_a_price_history_that_brings_minutes_not_held_adds_exactly_those():
         try:
             _held(tk, "1m", now, earlier)
             (told,) = _told(tk, [lambda: _held(tk, "1m", now)])
-            got = [(b.ts, b.open, b.high, b.low, b.close, b.volume) for b in server._bars_1m(tk, server.BARS_KEPT)]
+            got = [
+                (b.ts, b.open, b.high, b.low, b.close, b.volume)
+                for b in server._bars_1m(tk, server.BARS_KEPT)
+            ]
         finally:
             server._bars.pop(tk, None)
         assert "liquidity" in told, tk
-        assert got == [(c["datetime"] / 1000, c["open"], c["high"], c["low"], c["close"], c["volume"])
-                       for c in sent], tk
+        assert got == [
+            (c["datetime"] / 1000, c["open"], c["high"], c["low"], c["close"], c["volume"])
+            for c in sent
+        ], tk
 
 
 def test_new_daily_candles_reach_the_open_page_and_the_same_candles_again_do_not():
@@ -251,8 +310,10 @@ def test_new_daily_candles_reach_the_open_page_and_the_same_candles_again_do_not
             server._daily.pop(tk, None)
         assert "liquidity" in newer, tk
         assert again == set(), (tk, again)
-        assert held == [(c["datetime"] / 1000, c["open"], c["high"], c["low"], c["close"], c["volume"])
-                        for c in sent], tk
+        assert held == [
+            (c["datetime"] / 1000, c["open"], c["high"], c["low"], c["close"], c["volume"])
+            for c in sent
+        ], tk
 
 
 #: a console just started (a fresh interpreter): its first price history, SPY's and TSLA's
@@ -279,8 +340,20 @@ def test_a_console_just_started_takes_its_first_price_history_without_loading_a_
     """The first price history after the console starts reaches its bars and price levels with
     nothing loaded on the way (a module loaded there holds up the first answer beside the pricing
     thread)."""
-    done = subprocess.run([sys.executable, "-W", "ignore", "-c", _FIRST_TAKE, str(Path(__file__).resolve().parent.parent)],
-                          capture_output=True, text=True, timeout=120, check=True)
+    done = subprocess.run(
+        [
+            sys.executable,
+            "-W",
+            "ignore",
+            "-c",
+            _FIRST_TAKE,
+            str(Path(__file__).resolve().parent.parent),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=True,
+    )
     got = json.loads(done.stdout.strip().splitlines()[-1])
     assert got["loaded"] == [] and all(got["bars"]) and got["levels"] == [True, True], got
 
@@ -308,32 +381,45 @@ def test_the_daemons_writer_records_every_answer_as_schwab_sent_it(tmp_path):
             return []
         con = sqlite3.connect(db)
         try:
-            if not con.execute("SELECT 1 FROM sqlite_master WHERE name='stream_pricehistory_raw'").fetchone():
+            if not con.execute(
+                "SELECT 1 FROM sqlite_master WHERE name='stream_pricehistory_raw'"
+            ).fetchone():
                 return []
-            return con.execute("SELECT symbol, series, native_json, src FROM stream_pricehistory_raw "
-                               "ORDER BY rowid").fetchall()
+            return con.execute(
+                "SELECT symbol, series, native_json, src FROM stream_pricehistory_raw "
+                "ORDER BY rowid"
+            ).fetchall()
         finally:
             con.close()
 
     async def go():
         from stream_spine import LOG
+
         bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
         daemon = capture.Daemon(bus, health, ["SPY"])
         writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01)
         written = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
-        sweep = asyncio.create_task(capture.run_chains(daemon, tmp_path / "ed_console.db", lambda: client, stop,
-                                                       failures=writer))
+        sweep = asyncio.create_task(
+            capture.run_chains(
+                daemon, tmp_path / "ed_console.db", lambda: client, stop, failures=writer
+            )
+        )
         deadline = asyncio.get_running_loop().time() + 30
         while len(rows()) < 2 and asyncio.get_running_loop().time() < deadline:
             await asyncio.sleep(0.1)
         stop.set()
         await asyncio.gather(written, sweep)
+
     try:
         asyncio.run(go())
     finally:
         schwab.close()
     recorded = rows()[:2]
     assert [(symbol, series, src) for symbol, series, _n, src in recorded] == [
-        ("SPY", "1m", "schwab_pricehistory"), ("SPY", "1d", "schwab_pricehistory")]
-    for (_s, series, native, _src) in recorded:
-        assert json.loads(native) == HISTORY[("SPY", *_SERIES[series])]["body"], f"{series}: recorded as sent"
+        ("SPY", "1m", "schwab_pricehistory"),
+        ("SPY", "1d", "schwab_pricehistory"),
+    ]
+    for _s, series, native, _src in recorded:
+        assert json.loads(native) == HISTORY[("SPY", *_SERIES[series])]["body"], (
+            f"{series}: recorded as sent"
+        )

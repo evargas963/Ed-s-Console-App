@@ -21,17 +21,17 @@ from datetime import date, datetime
 from typing import Optional
 
 from instrument_identity import ticker_storage_key
-from numeric_contract import float_finite_or_none, float_positive_or_none
 from liquidity_models import (
     PlaybookConfig,
     SnapshotOutput,
     SnapshotSummary,
     SnapshotType,
-    Zone,
     VolumeProfile,
+    Zone,
     ZoneType,
     volume_profile,
 )
+from numeric_contract import float_finite_or_none, float_positive_or_none
 
 log = logging.getLogger(__name__)
 
@@ -63,13 +63,17 @@ LEVEL_NAMES = {
     "TODAY_VAH": ("Value area high (est. from 1-min bars)", "VAH est"),
     "TODAY_VAL": ("Value area low (est. from 1-min bars)", "VAL est"),
     "TODAY_POC": ("Point of control (est. from 1-min bars)", "POC est"),
-    "PDH": ("Prior day high", "PDH"), "PDL": ("Prior day low", "PDL"), "PDC": ("Prior day close", "PDC"),
+    "PDH": ("Prior day high", "PDH"),
+    "PDL": ("Prior day low", "PDL"),
+    "PDC": ("Prior day close", "PDC"),
     "PD_POC": ("Prior day POC (est. from 1-min bars)", "pPOC est"),
     "PD_VAH": ("Prior day VAH (est. from 1-min bars)", "pVAH est"),
     "PD_VAL": ("Prior day VAL (est. from 1-min bars)", "pVAL est"),
-    "ORB_HIGH": ("Opening range high", "ORH"), "ORB_LOW": ("Opening range low", "ORL"),
+    "ORB_HIGH": ("Opening range high", "ORH"),
+    "ORB_LOW": ("Opening range low", "ORL"),
     "ORB_MID": ("Opening range mid", "ORM"),
-    "OVERNIGHT_HIGH": ("Overnight high", "ONH"), "OVERNIGHT_LOW": ("Overnight low", "ONL"),
+    "OVERNIGHT_HIGH": ("Overnight high", "ONH"),
+    "OVERNIGHT_LOW": ("Overnight low", "ONL"),
 }
 
 
@@ -91,8 +95,18 @@ def bars_from_candles(candles) -> list[dict]:
     """The bars every level function takes, from the bar writer's Candles, each field already
     checked once as Schwab sent it, where it came in (server._schwab_bar): {timestamp (ms), _dt
     (its ET time), open, high, low, close, volume}."""
-    return [{"timestamp": int(c.ts * 1000), "_dt": datetime.fromtimestamp(c.ts, tz=ET), "open": c.open,
-             "high": c.high, "low": c.low, "close": c.close, "volume": c.volume} for c in candles]
+    return [
+        {
+            "timestamp": int(c.ts * 1000),
+            "_dt": datetime.fromtimestamp(c.ts, tz=ET),
+            "open": c.open,
+            "high": c.high,
+            "low": c.low,
+            "close": c.close,
+            "volume": c.volume,
+        }
+        for c in candles
+    ]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -136,11 +150,16 @@ def get_previous_day_levels(
         return {}
     prev_bars = [b for b in bars_norm if b["_dt"].date() == prior and _in_rth(b["_dt"])]
     p = volume_profile(prev_bars, config.value_area_percent, config.tick_size, ndigits=4)
-    return {"prior_date": prior, "rth_bars": len(prev_bars),
-            "pdh": max(b["high"] for b in prev_bars), "pdl": min(b["low"] for b in prev_bars),
-            "pdc": prev_bars[-1]["close"],
-            "pd_poc": None if p is None else p.poc, "pd_vah": None if p is None else p.vah,
-            "pd_val": None if p is None else p.val}
+    return {
+        "prior_date": prior,
+        "rth_bars": len(prev_bars),
+        "pdh": max(b["high"] for b in prev_bars),
+        "pdl": min(b["low"] for b in prev_bars),
+        "pdc": prev_bars[-1]["close"],
+        "pd_poc": None if p is None else p.poc,
+        "pd_vah": None if p is None else p.vah,
+        "pd_val": None if p is None else p.val,
+    }
 
 
 def get_overnight_levels(
@@ -218,7 +237,8 @@ def compute_opening_range(
 
 
 def compute_session_vwap_series(
-    bars_norm: list, session_date: date,
+    bars_norm: list,
+    session_date: date,
 ) -> list[tuple[float, float, float, float, float, float]]:
     """Running session VWAP and σ bands after each RTH bar, from normalized bars (bars_from_candles).
 
@@ -232,7 +252,7 @@ def compute_session_vwap_series(
     cum_tpv = cum_vol = cum_tp2v = 0.0
     series: list[tuple[float, float, float, float, float, float]] = []
     for b in rth_bars:
-        vol = b["volume"]   # a 0-volume minute adds nothing and keeps its VWAP point
+        vol = b["volume"]  # a 0-volume minute adds nothing and keeps its VWAP point
         if vol is None:
             continue
         tp = (b["high"] + b["low"] + b["close"]) / 3.0
@@ -249,7 +269,11 @@ def compute_session_vwap_series(
 
 def count_session_rth_positive_volume_bars(bars_norm: list, session_date: date) -> int:
     """INPUT RTH bars with positive volume on session_date — independent of the VWAP series."""
-    return sum(1 for b in _filter_rth_bars(bars_norm, session_date) if b["volume"] is not None and b["volume"] > 0)
+    return sum(
+        1
+        for b in _filter_rth_bars(bars_norm, session_date)
+        if b["volume"] is not None and b["volume"] > 0
+    )
 
 
 def _filter_rth_bars(bars_norm: list, session_date: date) -> list:
@@ -268,8 +292,12 @@ def compute_volume_profile_levels(
 ) -> Optional[VolumeProfile]:
     """The current day's volume profile with its POC, VAH, VAL, from normalized bars
     (bars_from_candles). RTH only, no lookahead."""
-    return volume_profile(_filter_rth_bars(bars_norm, session_date), config.value_area_percent,
-                          config.tick_size, ndigits=4)
+    return volume_profile(
+        _filter_rth_bars(bars_norm, session_date),
+        config.value_area_percent,
+        config.tick_size,
+        ndigits=4,
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -380,9 +408,13 @@ def build_premarket_snapshot(
         sl = [{"label": t, "value": p} for p, t in source_pairs]
         z = Zone(
             zone_type=zt,
-            zone_low=lo, zone_high=hi, zone_mid=mid,
-            source_levels=sl, source_tags=tags,
-            confluence_score=len(tags), snapshot_type=SnapshotType.PREMARKET,
+            zone_low=lo,
+            zone_high=hi,
+            zone_mid=mid,
+            source_levels=sl,
+            source_tags=tags,
+            confluence_score=len(tags),
+            snapshot_type=SnapshotType.PREMARKET,
             interpretation_notes="",
         )
         zones.append(z)
@@ -434,7 +466,9 @@ def build_premarket_snapshot(
 
 
 def _classify_value_state_and_vwap_relation(
-    poc: Optional[float], prev_pd_poc: Optional[float], vwap: Optional[float],
+    poc: Optional[float],
+    prev_pd_poc: Optional[float],
+    vwap: Optional[float],
 ) -> tuple[str, str, str]:
     """Value-area shift + VWAP-vs-value relation + auction interpretation."""
     value_state = "unchanged"
@@ -465,9 +499,22 @@ def _classify_live_cluster(tags: list[str], orb: dict) -> tuple[ZoneType, str]:
     """Map clustered level tags to zone type + note (live / fused playbook)."""
     ts = " ".join(tags)
     opt_markers = (
-        "GAMMA_CALL", "GAMMA_PUT", "DELTA_CALL", "DELTA_PUT",
-        "OI_CALL", "OI_PUT", "GAMMA_PIN", "NET_GEX_PEAK", "MAX_PAIN", "GAMMA_FLIP",
-        "GAMMA_INFLECTION", "DELTA_INFLECTION", "OI_CENTER", "EM_UPPER", "EM_LOWER", "SYNTH_FWD",
+        "GAMMA_CALL",
+        "GAMMA_PUT",
+        "DELTA_CALL",
+        "DELTA_PUT",
+        "OI_CALL",
+        "OI_PUT",
+        "GAMMA_PIN",
+        "NET_GEX_PEAK",
+        "MAX_PAIN",
+        "GAMMA_FLIP",
+        "GAMMA_INFLECTION",
+        "DELTA_INFLECTION",
+        "OI_CENTER",
+        "EM_UPPER",
+        "EM_LOWER",
+        "SYNTH_FWD",
     )
     has_opt = any(m in ts for m in opt_markers)
     if "SPOT_LIVE" in ts:
@@ -481,9 +528,21 @@ def _classify_live_cluster(tags: list[str], orb: dict) -> tuple[ZoneType, str]:
             return ZoneType.SUPPORT_LIQUIDITY, "Confluence: downside positioning / demand"
         return ZoneType.PIVOT_VALUE, "Confluence: mixed positioning + session levels"
 
-    if "ORB_HIGH" in ts or "TODAY_VAH" in ts or "PDH" in ts or "OVERNIGHT_HIGH" in ts or "PD_VAH" in ts:
+    if (
+        "ORB_HIGH" in ts
+        or "TODAY_VAH" in ts
+        or "PDH" in ts
+        or "OVERNIGHT_HIGH" in ts
+        or "PD_VAH" in ts
+    ):
         return ZoneType.RESISTANCE_LIQUIDITY, "Resistance / upper structure"
-    if "ORB_LOW" in ts or "TODAY_VAL" in ts or "PDL" in ts or "OVERNIGHT_LOW" in ts or "PD_VAL" in ts:
+    if (
+        "ORB_LOW" in ts
+        or "TODAY_VAL" in ts
+        or "PDL" in ts
+        or "OVERNIGHT_LOW" in ts
+        or "PD_VAL" in ts
+    ):
         return ZoneType.SUPPORT_LIQUIDITY, "Support / lower structure"
     if "TODAY_POC" in ts or "VWAP" in ts or "ORB_MID" in ts or "PD_POC" in ts or "PDC" in ts:
         return ZoneType.PIVOT_VALUE, "Fair value / pivot"
@@ -499,19 +558,37 @@ def _phase2a_families_from_canonical(canonical: "PriceLevelSnapshot"):
     replaced by zero, spot or a neighbouring level.
     """
     p = canonical.price
-    prev = {k: v for k, v in (
-        ("pdh", p("PDH")), ("pdl", p("PDL")), ("pdc", p("PDC")),
-        ("pd_poc", p("PD_POC")), ("pd_vah", p("PD_VAH")), ("pd_val", p("PD_VAL")),
-    ) if v is not None}
-    over = {k: v for k, v in (
-        ("overnight_high", p("OVERNIGHT_HIGH")), ("overnight_low", p("OVERNIGHT_LOW")),
-    ) if v is not None}
-    orb = {k: v for k, v in (
-        ("orb_high", p("ORB_HIGH")), ("orb_low", p("ORB_LOW")), ("orb_mid", p("ORB_MID")),
-    ) if v is not None}
+    prev = {
+        k: v
+        for k, v in (
+            ("pdh", p("PDH")),
+            ("pdl", p("PDL")),
+            ("pdc", p("PDC")),
+            ("pd_poc", p("PD_POC")),
+            ("pd_vah", p("PD_VAH")),
+            ("pd_val", p("PD_VAL")),
+        )
+        if v is not None
+    }
+    over = {
+        k: v
+        for k, v in (
+            ("overnight_high", p("OVERNIGHT_HIGH")),
+            ("overnight_low", p("OVERNIGHT_LOW")),
+        )
+        if v is not None
+    }
+    orb = {
+        k: v
+        for k, v in (
+            ("orb_high", p("ORB_HIGH")),
+            ("orb_low", p("ORB_LOW")),
+            ("orb_mid", p("ORB_MID")),
+        )
+        if v is not None
+    }
     bands = (p("VWAP_P1"), p("VWAP_M1"), p("VWAP_P2"), p("VWAP_M2"))
-    return (prev, over, orb, p("TODAY_POC"), p("TODAY_VAH"), p("TODAY_VAL"),
-            p("VWAP"), bands)
+    return (prev, over, orb, p("TODAY_POC"), p("TODAY_VAH"), p("TODAY_VAL"), p("VWAP"), bands)
 
 
 def build_live_snapshot(
@@ -535,7 +612,8 @@ def build_live_snapshot(
         return build_premarket_snapshot(ticker, session_date, config, canonical=canonical)
     cutoff = min(now, regular[1])
     prev, over, orb, poc, vah, val, vwap, (vwap_p1, vwap_m1, vwap_p2, vwap_m2) = (
-        _phase2a_families_from_canonical(canonical))
+        _phase2a_families_from_canonical(canonical)
+    )
 
     levels: list[tuple[float, str]] = []
     if prev.get("pdh"):
@@ -705,12 +783,33 @@ _SESSION_SCOPE_OF: dict[str, str] = {
 class PriceLevelValue:
     """One materialized level: its value AND the identity that makes it comparable."""
 
-    __slots__ = ("level_id", "price", "family", "semantic_scope", "evidence_tier",
-                 "producer", "window", "vendor_basis", "as_of_ts_utc", "generation")
+    __slots__ = (
+        "level_id",
+        "price",
+        "family",
+        "semantic_scope",
+        "evidence_tier",
+        "producer",
+        "window",
+        "vendor_basis",
+        "as_of_ts_utc",
+        "generation",
+    )
 
-    def __init__(self, *, level_id: str, price: float, family: str, semantic_scope: str,
-                 evidence_tier: str, producer: str, window: str, vendor_basis: str,
-                 as_of_ts_utc: Optional[float], generation: int) -> None:
+    def __init__(
+        self,
+        *,
+        level_id: str,
+        price: float,
+        family: str,
+        semantic_scope: str,
+        evidence_tier: str,
+        producer: str,
+        window: str,
+        vendor_basis: str,
+        as_of_ts_utc: Optional[float],
+        generation: int,
+    ) -> None:
         self.level_id = level_id
         self.price = float(price)
         self.family = family
@@ -754,32 +853,56 @@ class PriceLevelSnapshot:
     """The ONE materialized result for (ticker, session scope, generation). `input_fingerprint`
     is set by materialize_price_level_snapshot, which decides the generation from it."""
 
-    __slots__ = ("ticker", "session_date", "generation", "bar_source", "as_of_ts_utc",
-                 "produced_ts_utc", "levels", "vwap_path", "vwap_series",
-                 "families_absent", "degraded", "input_fingerprint", "bars_used",
-                 "session_rth_positive_volume_bars", "volume_profile")
+    __slots__ = (
+        "ticker",
+        "session_date",
+        "generation",
+        "bar_source",
+        "as_of_ts_utc",
+        "produced_ts_utc",
+        "levels",
+        "vwap_path",
+        "vwap_series",
+        "families_absent",
+        "degraded",
+        "input_fingerprint",
+        "bars_used",
+        "session_rth_positive_volume_bars",
+        "volume_profile",
+    )
 
-    def __init__(self, *, ticker: str, session_date: date, generation: int,
-                 bar_source: str, as_of_ts_utc: Optional[float], produced_ts_utc: float,
-                 levels: dict, vwap_path: list, families_absent: list,
-                 degraded: list, bars_used: int,
-                 vwap_series: Optional[list] = None,
-                 session_rth_positive_volume_bars: int = 0,
-                 volume_profile: Optional[VolumeProfile] = None) -> None:
+    def __init__(
+        self,
+        *,
+        ticker: str,
+        session_date: date,
+        generation: int,
+        bar_source: str,
+        as_of_ts_utc: Optional[float],
+        produced_ts_utc: float,
+        levels: dict,
+        vwap_path: list,
+        families_absent: list,
+        degraded: list,
+        bars_used: int,
+        vwap_series: Optional[list] = None,
+        session_rth_positive_volume_bars: int = 0,
+        volume_profile: Optional[VolumeProfile] = None,
+    ) -> None:
         self.ticker = ticker
         self.session_date = session_date
         self.generation = generation
         self.bar_source = bar_source
         self.as_of_ts_utc = as_of_ts_utc
         self.produced_ts_utc = produced_ts_utc
-        self.levels = levels                    # level_id -> PriceLevelValue
-        self.vwap_path = vwap_path              # [(epoch_sec, vwap)]
-        self.vwap_series = vwap_series or []    # [(epoch_sec, vwap, +1σ, -1σ, +2σ, -2σ)]
+        self.levels = levels  # level_id -> PriceLevelValue
+        self.vwap_path = vwap_path  # [(epoch_sec, vwap)]
+        self.vwap_series = vwap_series or []  # [(epoch_sec, vwap, +1σ, -1σ, +2σ, -2σ)]
         self.families_absent = families_absent
         self.degraded = degraded
         self.bars_used = bars_used
         self.session_rth_positive_volume_bars = int(session_rth_positive_volume_bars)
-        self.volume_profile = volume_profile    # the session's profile the value area is read from
+        self.volume_profile = volume_profile  # the session's profile the value area is read from
 
     def price(self, level_id: str) -> Optional[float]:
         """The canonical value, or None. Absence is absence — never spot, zero or a sibling."""
@@ -793,8 +916,9 @@ _BAR_PRESENT = struct.Struct("<qdddddB")
 _BAR_ABSENT = struct.Struct("<qddddB")
 
 
-def _snapshot_input_fingerprint(ticker: str, session_date: date, bars_norm: list,
-                                bar_source: str) -> tuple:
+def _snapshot_input_fingerprint(
+    ticker: str, session_date: date, bars_norm: list, bar_source: str
+) -> tuple:
     """Identity of the INPUT. Same fingerprint ⇒ same generation ⇒ same result object.
 
     Bar identity, not wall-clock: re-asking within a generation must return the very
@@ -805,12 +929,16 @@ def _snapshot_input_fingerprint(ticker: str, session_date: date, bars_norm: list
     is fixed-width so the key stays cheap to compare.
     """
     h = hashlib.blake2b(digest_size=16)
-    h.update(f"{ticker}\x1f{session_date.isoformat()}\x1f{bar_source}\x1f"
-             f"{len(bars_norm)}".encode())
+    h.update(f"{ticker}\x1f{session_date.isoformat()}\x1f{bar_source}\x1f{len(bars_norm)}".encode())
     present, absent = _BAR_PRESENT.pack, _BAR_ABSENT.pack
     for b in bars_norm:
-        ts, o, hi, lo, c = (int(b["timestamp"]), float(b["open"]), float(b["high"]),
-                            float(b["low"]), float(b["close"]))
+        ts, o, hi, lo, c = (
+            int(b["timestamp"]),
+            float(b["open"]),
+            float(b["high"]),
+            float(b["low"]),
+            float(b["close"]),
+        )
         vol = b["volume"]
         if vol is None:
             h.update(absent(ts, o, hi, lo, c, 0))
@@ -857,42 +985,74 @@ def build_price_level_snapshot(
             return
         family, scope, tier = PHASE2A_LEVEL_IDS[level_id]
         levels[level_id] = PriceLevelValue(
-            level_id=level_id, price=v, family=family, semantic_scope=scope,
-            evidence_tier=tier, producer=producer, window=window, vendor_basis=basis,
-            as_of_ts_utc=as_of, generation=generation,
+            level_id=level_id,
+            price=v,
+            family=family,
+            semantic_scope=scope,
+            evidence_tier=tier,
+            producer=producer,
+            window=window,
+            vendor_basis=basis,
+            as_of_ts_utc=as_of,
+            generation=generation,
         )
 
     # ── prior day ────────────────────────────────────────────────────────────
     eng = get_previous_day_levels(bars_norm, session_date, cfg)
     prior_date = eng.get("prior_date")
     if prior_date is None:
-        families_absent.append({
-            "family": "prior_day",
-            "reason": f"no prior RTH session in available bars (source {bar_source})",
-        })
+        families_absent.append(
+            {
+                "family": "prior_day",
+                "reason": f"no prior RTH session in available bars (source {bar_source})",
+            }
+        )
     else:
         window = f"{prior_date.isoformat()} RTH (most recent prior RTH session)"
-        for lid, key in (("PDH", "pdh"), ("PDL", "pdl"), ("PDC", "pdc"),
-                         ("PD_POC", "pd_poc"), ("PD_VAH", "pd_vah"), ("PD_VAL", "pd_val")):
-            _put(lid, eng.get(key),
-                 producer=f"{_PRODUCER_NS}.get_previous_day_levels", window=window)
+        for lid, key in (
+            ("PDH", "pdh"),
+            ("PDL", "pdl"),
+            ("PDC", "pdc"),
+            ("PD_POC", "pd_poc"),
+            ("PD_VAH", "pd_vah"),
+            ("PD_VAL", "pd_val"),
+        ):
+            _put(
+                lid, eng.get(key), producer=f"{_PRODUCER_NS}.get_previous_day_levels", window=window
+            )
         if eng["rth_bars"] < LEVELS_PRIOR_SESSION_MIN_BARS:
-            degraded.append({"family": "prior_day", "last_good_ts_utc": None, "reason": (
-                f"prior session {prior_date} holds only {eng['rth_bars']} of >= "
-                f"{LEVELS_PRIOR_SESSION_MIN_BARS} RTH bars; prior-day levels derive from a partial tape")})
+            degraded.append(
+                {
+                    "family": "prior_day",
+                    "last_good_ts_utc": None,
+                    "reason": (
+                        f"prior session {prior_date} holds only {eng['rth_bars']} of >= "
+                        f"{LEVELS_PRIOR_SESSION_MIN_BARS} RTH bars; prior-day levels derive from a partial tape"
+                    ),
+                }
+            )
 
     sess_window = f"{session_date.isoformat()} RTH (canonical snapshot over {bar_source})"
 
     if not bars_norm:
         for fam in ("vwap", "opening_range", "overnight", "value_area"):
-            families_absent.append({
-                "family": fam, "reason": f"no bars available (source {bar_source})"})
+            families_absent.append(
+                {"family": fam, "reason": f"no bars available (source {bar_source})"}
+            )
         return PriceLevelSnapshot(
-            ticker=tk, session_date=session_date, generation=generation,
-            bar_source=bar_source, as_of_ts_utc=as_of, produced_ts_utc=produced_ts,
-            levels=levels, vwap_path=vwap_path, vwap_series=vwap_series,
-            families_absent=families_absent, degraded=degraded,
-            bars_used=0, session_rth_positive_volume_bars=0,
+            ticker=tk,
+            session_date=session_date,
+            generation=generation,
+            bar_source=bar_source,
+            as_of_ts_utc=as_of,
+            produced_ts_utc=produced_ts,
+            levels=levels,
+            vwap_path=vwap_path,
+            vwap_series=vwap_series,
+            families_absent=families_absent,
+            degraded=degraded,
+            bars_used=0,
+            session_rth_positive_volume_bars=0,
         )
 
     # ── vwap + bands (one accumulation: the series IS the scalars' source) ───
@@ -906,56 +1066,92 @@ def build_price_level_snapshot(
             vwap_abs_reason = "no RTH volume for session VWAP in available bars"
         families_absent.append({"family": "vwap", "reason": vwap_abs_reason})
     else:
-        _put("VWAP", vwap_val,
-             producer=f"{_PRODUCER_NS}.compute_session_vwap_series", window=sess_window)
-        p1, m1, p2, m2 = vwap_series[-1][2:]      # the curve's last point IS the served band
+        _put(
+            "VWAP",
+            vwap_val,
+            producer=f"{_PRODUCER_NS}.compute_session_vwap_series",
+            window=sess_window,
+        )
+        p1, m1, p2, m2 = vwap_series[-1][2:]  # the curve's last point IS the served band
         for lid, val in (("VWAP_P1", p1), ("VWAP_M1", m1), ("VWAP_P2", p2), ("VWAP_M2", m2)):
-            _put(lid, val,
-                 producer=f"{_PRODUCER_NS}.compute_session_vwap_series", window=sess_window)
+            _put(
+                lid, val, producer=f"{_PRODUCER_NS}.compute_session_vwap_series", window=sess_window
+            )
     vwap_path = [(t, w) for t, w, _a, _b, _c, _d in vwap_series]
 
     # ── opening range ────────────────────────────────────────────────────────
     orb = compute_opening_range(bars_norm, session_date, cfg)
     if not orb:
-        families_absent.append({
-            "family": "opening_range", "reason": "no ORB bars in available tape for session"})
+        families_absent.append(
+            {"family": "opening_range", "reason": "no ORB bars in available tape for session"}
+        )
     else:
         orb_window = f"{session_date.isoformat()} first {cfg.opening_range_minutes}m RTH"
         for lid, key in (("ORB_HIGH", "orb_high"), ("ORB_LOW", "orb_low"), ("ORB_MID", "orb_mid")):
-            _put(lid, orb.get(key),
-                 producer=f"{_PRODUCER_NS}.compute_opening_range", window=orb_window)
+            _put(
+                lid,
+                orb.get(key),
+                producer=f"{_PRODUCER_NS}.compute_opening_range",
+                window=orb_window,
+            )
 
     # ── overnight ────────────────────────────────────────────────────────────
     overnight = get_overnight_levels(bars_norm, session_date, prior_date)
     if not overnight:
-        families_absent.append({
-            "family": "overnight", "reason": "no overnight-window bars in available tape"})
+        families_absent.append(
+            {"family": "overnight", "reason": "no overnight-window bars in available tape"}
+        )
     else:
-        overnight_window = (f"{session_date.isoformat()} before the RTH open (no prior session)"
-                            if prior_date is None else
-                            f"{prior_date.isoformat()} RTH close -> {session_date.isoformat()} RTH open")
+        overnight_window = (
+            f"{session_date.isoformat()} before the RTH open (no prior session)"
+            if prior_date is None
+            else f"{prior_date.isoformat()} RTH close -> {session_date.isoformat()} RTH open"
+        )
         for lid, key in (("OVERNIGHT_HIGH", "overnight_high"), ("OVERNIGHT_LOW", "overnight_low")):
-            _put(lid, overnight.get(key),
-                 producer=f"{_PRODUCER_NS}.get_overnight_levels", window=overnight_window)
+            _put(
+                lid,
+                overnight.get(key),
+                producer=f"{_PRODUCER_NS}.get_overnight_levels",
+                window=overnight_window,
+            )
 
     # ── current-session value area ───────────────────────────────────────────
     profile = compute_volume_profile_levels(bars_norm, session_date, cfg)
-    poc, vah, val = (None, None, None) if profile is None else (profile.poc, profile.vah, profile.val)
+    poc, vah, val = (
+        (None, None, None) if profile is None else (profile.poc, profile.vah, profile.val)
+    )
     if profile is None:
-        families_absent.append({"family": "value_area", "reason": (
-            "no RTH volume for the volume profile in available bars" if session_rth_vol_n == 0
-            else "RTH volume bars present but the volume profile did not materialize")})
+        families_absent.append(
+            {
+                "family": "value_area",
+                "reason": (
+                    "no RTH volume for the volume profile in available bars"
+                    if session_rth_vol_n == 0
+                    else "RTH volume bars present but the volume profile did not materialize"
+                ),
+            }
+        )
     else:
         for lid, price in (("TODAY_POC", poc), ("TODAY_VAH", vah), ("TODAY_VAL", val)):
-            _put(lid, price,
-                 producer=f"{_PRODUCER_NS}.compute_volume_profile_levels",
-                 window=sess_window)
+            _put(
+                lid,
+                price,
+                producer=f"{_PRODUCER_NS}.compute_volume_profile_levels",
+                window=sess_window,
+            )
 
     return PriceLevelSnapshot(
-        ticker=tk, session_date=session_date, generation=generation,
-        bar_source=bar_source, as_of_ts_utc=as_of, produced_ts_utc=produced_ts,
-        levels=levels, vwap_path=vwap_path, vwap_series=vwap_series,
-        families_absent=families_absent, degraded=degraded,
+        ticker=tk,
+        session_date=session_date,
+        generation=generation,
+        bar_source=bar_source,
+        as_of_ts_utc=as_of,
+        produced_ts_utc=produced_ts,
+        levels=levels,
+        vwap_path=vwap_path,
+        vwap_series=vwap_series,
+        families_absent=families_absent,
+        degraded=degraded,
         bars_used=len(bars_norm),
         session_rth_positive_volume_bars=session_rth_vol_n,
         volume_profile=profile,
@@ -996,7 +1192,11 @@ def materialize_price_level_snapshot(
             return existing
         generation = 1 if existing is None else existing.generation + 1
         snap = build_price_level_snapshot(
-            tk, session_date, bars_norm, bar_source=bar_source, config=config,
+            tk,
+            session_date,
+            bars_norm,
+            bar_source=bar_source,
+            config=config,
             generation=generation,
         )
         snap.input_fingerprint = fingerprint

@@ -11,6 +11,7 @@ elsewhere: test_charm_by_strike_v1.py, test_charm_sign_finite_difference.py).
 Real data: CRWD's 2026-10-16 chain captured 2026-10-07 10:38:40 ET (tests/real_chains.py), priced
 at its capture instant, and CRWD's LEVELONE_EQUITIES message the daemon received at 10:38:00 ET
 (tests/fixtures/real_crwd_quote_2026_10_07.json), the live price the routes serve beside it."""
+
 from __future__ import annotations
 
 import json
@@ -26,8 +27,11 @@ from tests.real_chains import CRWD
 
 _SPOT = CRWD.spot
 _CONTRACTS = [dict(ct) for ct in CRWD.chain]
-_QUOTE = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_crwd_quote_2026_10_07.json")
-                    .read_text(encoding="utf-8"))
+_QUOTE = json.loads(
+    (Path(__file__).resolve().parent / "fixtures" / "real_crwd_quote_2026_10_07.json").read_text(
+        encoding="utf-8"
+    )
+)
 TK = server.ticker_storage_key("CRWD")
 
 
@@ -42,9 +46,13 @@ def _clear():
 def _put_live_chain():
     snap = compute_terrain(TK, _CONTRACTS, _SPOT, now=CRWD.now)
     with server._terrain_cache_lock:
-        server._terrain_cache[TK] = {"ticker": TK, "spot": snap.spot, "computed_ts_utc": time.time(),
-                                     "_vanna_rows": server._vanna_rows(snap),
-                                     "_charm_rows": server._charm_rows(snap)}
+        server._terrain_cache[TK] = {
+            "ticker": TK,
+            "spot": snap.spot,
+            "computed_ts_utc": time.time(),
+            "_vanna_rows": server._vanna_rows(snap),
+            "_charm_rows": server._charm_rows(snap),
+        }
 
 
 def setup_function(_fn):
@@ -69,7 +77,9 @@ def test_charm_by_strike_unavailable_with_no_cached_chain():
 
 def test_vanna_by_strike_matches_the_same_canonical_faucet_call_vanna_minus_put_vanna():
     _put_live_chain()
-    from math_exposure_core import bucket_metric, compute_exposures_by_strike as cebs
+    from math_exposure_core import bucket_metric
+    from math_exposure_core import compute_exposures_by_strike as cebs
+
     # Schwab's CRWD quote reaches the console as the daemon pushes it: its price row
     lmp.record_from_level_one_equity(TK, _QUOTE["native"], received_ts=time.time())
     mark_feed_live(TK)
@@ -87,7 +97,7 @@ def test_vanna_by_strike_matches_the_same_canonical_faucet_call_vanna_minus_put_
     checked = 0
     for k, b in exposures.items():
         expected = bucket_metric(b, "net_vanna")
-        if expected is None:            # a leg's vanna input Schwab did not send: no row
+        if expected is None:  # a leg's vanna input Schwab did not send: no row
             assert float(k) not in rows
             continue
         assert rows[float(k)] == expected

@@ -1,7 +1,8 @@
 """Hold N CPU-bound processes for S seconds: the load the flaky-test skill runs the suite beside.
 
-    python tools/cpu_load.py 4 600
+python tools/cpu_load.py 4 600
 """
+
 from __future__ import annotations
 
 import multiprocessing

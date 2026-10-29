@@ -6,6 +6,7 @@ Real data: every message of SPY 2026-10-05 774 call received 2026-10-05 14:00:00
 Schwab sent them (tests/fixtures/real_stream_mix_2026_10_05_1400ct.json: four OPTIONS_BOOK
 messages). STAND-IN (named): the daemon's status, holding the contract or not.
 """
+
 from __future__ import annotations
 
 import json
@@ -20,15 +21,25 @@ from stream_spine import book_msg
 from tests.real_chains import SPY_0DTE
 
 CONTRACT = "SPY   261005C00774000"
-_MIX = json.loads((Path(__file__).parent / "fixtures" / "real_stream_mix_2026_10_05_1400ct.json")
-                  .read_text(encoding="utf-8"))
-BOOKS = [m for m in _MIX["messages"] if m["service"] == "OPTIONS_BOOK" and m["item"]["key"] == CONTRACT]
+_MIX = json.loads(
+    (Path(__file__).parent / "fixtures" / "real_stream_mix_2026_10_05_1400ct.json").read_text(
+        encoding="utf-8"
+    )
+)
+BOOKS = [
+    m for m in _MIX["messages"] if m["service"] == "OPTIONS_BOOK" and m["item"]["key"] == CONTRACT
+]
 
 
 def _daemon_holds(*services: str, now: "float | None" = None) -> None:
     """The daemon's heartbeat stamped `now` (the wall clock when not given), holding CONTRACT on `services`."""
-    lmp.record_feed_heartbeat({"ts": time.time() if now is None else now, "schwab_socket_open": True,
-                               "held": {svc: [CONTRACT] for svc in services}})
+    lmp.record_feed_heartbeat(
+        {
+            "ts": time.time() if now is None else now,
+            "schwab_socket_open": True,
+            "held": {svc: [CONTRACT] for svc in services},
+        }
+    )
 
 
 def _route() -> dict:
@@ -42,8 +53,16 @@ def test_the_flow_panel_shows_schwabs_newest_option_book_as_sent():
     _daemon_holds("LEVELONE_OPTIONS", "OPTIONS_BOOK")
     try:
         for m in BOOKS:
-            ofs._ingest_pushed(f"book.{CONTRACT}", book_msg(symbol=CONTRACT, service="OPTIONS_BOOK", content=m["item"],
-                                                            src="schwab_book", ts_recv=m["ts_recv"]))
+            ofs._ingest_pushed(
+                f"book.{CONTRACT}",
+                book_msg(
+                    symbol=CONTRACT,
+                    service="OPTIONS_BOOK",
+                    content=m["item"],
+                    src="schwab_book",
+                    ts_recv=m["ts_recv"],
+                ),
+            )
         body = _route()
     finally:
         ofls.clear_all_live_state()
@@ -51,7 +70,9 @@ def test_the_flow_panel_shows_schwabs_newest_option_book_as_sent():
     newest = BOOKS[-1]["item"]
     assert len(BOOKS) == 4 and body["status"] == "ok"
     assert (body["depth"]["1"]["bid_total"], body["depth"]["1"]["ask_total"]) == (
-        newest["BIDS"][0]["TOTAL_VOLUME"], newest["ASKS"][0]["TOTAL_VOLUME"])
+        newest["BIDS"][0]["TOTAL_VOLUME"],
+        newest["ASKS"][0]["TOTAL_VOLUME"],
+    )
 
 
 def test_with_no_book_from_schwab_the_flow_panel_says_so():
@@ -68,20 +89,33 @@ def test_the_flow_panel_says_whether_the_daemon_streams_the_contract():
     contract, at = SPY_0DTE.chain[0]["symbol"], SPY_0DTE.now.timestamp()
 
     def holds(*services: str) -> None:
-        lmp.record_feed_heartbeat({"ts": at, "schwab_socket_open": True,
-                                   "held": {svc: [contract] for svc in services}})
+        lmp.record_feed_heartbeat(
+            {"ts": at, "schwab_socket_open": True, "held": {svc: [contract] for svc in services}}
+        )
 
     def served() -> dict:
         return server.options_microstructure(contract, at)
+
     with server._terrain_cache_lock:
         server._terrain_cache.pop("SPY", None)
     try:
         holds("LEVELONE_OPTIONS", "OPTIONS_BOOK")
         unlisted = served()
-        server._publish_levels("SPY", captures=[{"contracts": [dict(c) for c in SPY_0DTE.chain], "ts_utc": at,
-                                                 "spot": SPY_0DTE.spot, "spot_ts": None, "spot_from_chain": False,
-                                                 "et_date": SPY_0DTE.now.date().isoformat(),
-                                                 "basis": server.CAPTURE_BASIS}], now=SPY_0DTE.now)
+        server._publish_levels(
+            "SPY",
+            captures=[
+                {
+                    "contracts": [dict(c) for c in SPY_0DTE.chain],
+                    "ts_utc": at,
+                    "spot": SPY_0DTE.spot,
+                    "spot_ts": None,
+                    "spot_from_chain": False,
+                    "et_date": SPY_0DTE.now.date().isoformat(),
+                    "basis": server.CAPTURE_BASIS,
+                }
+            ],
+            now=SPY_0DTE.now,
+        )
         held = served()["streaming_plane"]
         holds()
         not_held = served()["streaming_plane"]
@@ -91,8 +125,14 @@ def test_the_flow_panel_says_whether_the_daemon_streams_the_contract():
         lmp.record_feed_down()
         with server._terrain_cache_lock:
             server._terrain_cache.pop("SPY", None)
-    assert (unlisted["top_feed_label"], unlisted["top_outage"]) == ("NOT LIVE", "the contract's option market is not known")
+    assert (unlisted["top_feed_label"], unlisted["top_outage"]) == (
+        "NOT LIVE",
+        "the contract's option market is not known",
+    )
     assert held["subscription_state"] == "SUBSCRIBED"
-    assert (held["feed_health"]["l1"]["state"], held["feed_health"]["book"]["state"]) == ("LIVE", "LIVE")
+    assert (held["feed_health"]["l1"]["state"], held["feed_health"]["book"]["state"]) == (
+        "LIVE",
+        "LIVE",
+    )
     assert not_held["subscription_state"] == down["subscription_state"] == "NOT STREAMED"
     assert not_held["feed_health"]["l1"]["state"] == "NOT LIVE"

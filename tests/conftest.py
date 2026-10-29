@@ -8,6 +8,7 @@ the environment. Module-level setdefault here runs before test collection so no 
 real GitHub secrets; these vars are not set outside pytest. Fail-closed without secrets is
 locked by ``test_build_config_fail_closed_without_secrets``.
 """
+
 from __future__ import annotations
 
 import os
@@ -85,6 +86,7 @@ def _markets_answers_held():
     import json
 
     from time_et import record_markets
+
     for a in json.loads(MARKETS_ANSWERS.read_text(encoding="utf-8"))["answers"].values():
         if a["status"] == 200:
             record_markets(json.loads(a["body"]))
@@ -98,6 +100,7 @@ def _live_feed_starts_down():
     for the screen (record_feed_down); this fixture clears them. Tests that need a live price
     mark it (tests/feed_live_helper.py)."""
     import live_market_plane as _lmp_feed
+
     _lmp_feed.record_feed_down()
     with _lmp_feed._lock:
         _lmp_feed._feed["held"] = {}
@@ -116,14 +119,15 @@ def most_recent_trading_day_et(*, on_or_before: date | None = None) -> date:
     from time_et import ET, session
 
     day = on_or_before or datetime.now(ET).date()
-    for _ in range(14):          # the longest market closure gap is far under two weeks
+    for _ in range(14):  # the longest market closure gap is far under two weeks
         s = session(day.isoformat())
         if s is not None and s.is_open:
             return day
         day -= timedelta(days=1)
     raise AssertionError(
         f"no open day in Schwab's /markets answers held in the 14 ET days before "
-        f"{on_or_before or 'today'} ({MARKETS_ANSWERS.name} covers 2026-09-30 to 2027-10-07)")
+        f"{on_or_before or 'today'} ({MARKETS_ANSWERS.name} covers 2026-09-30 to 2027-10-07)"
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -150,8 +154,14 @@ def _clear_quote_memo_between_tests():
 def tracked_files() -> list[str]:
     """Every path git tracks."""
     import subprocess
-    out = subprocess.run(["git", "ls-files", "-z"], cwd=Path(__file__).resolve().parent.parent,
-                         capture_output=True, text=True, check=True).stdout
+
+    out = subprocess.run(
+        ["git", "ls-files", "-z"],
+        cwd=Path(__file__).resolve().parent.parent,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
     return sorted(p for p in out.split("\0") if p)
 
 
@@ -161,20 +171,25 @@ def pin_clock(monkeypatch):
     stored Schwab chain is valued at the chain's capture instant, so the chain's expiries passing
     can never empty the greeks the test compares (2026-09-27: six tests had been comparing None
     with None since their fixtures expired)."""
-    import time_et
     from datetime import datetime as _dt
 
+    import time_et
+
     real = time_et.now_et
-    pinned: list = []                        # modules this test has pinned, so a second pin moves them
+    pinned: list = []  # modules this test has pinned, so a second pin moves them
 
     def pin(*when):
         at = _dt(*when, tzinfo=time_et.ET)
         if not pinned:
-            pinned.extend(m for m in list(sys.modules.values())
-                          if m is not None and getattr(m, "now_et", None) is real)
+            pinned.extend(
+                m
+                for m in list(sys.modules.values())
+                if m is not None and getattr(m, "now_et", None) is real
+            )
         for mod in pinned:
             monkeypatch.setattr(mod, "now_et", lambda: at)
         return at
+
     return pin
 
 
@@ -185,9 +200,11 @@ def view(monkeypatch):
     event loop is bound, so a change is recorded for the page but not delivered (another test's
     loop may be closed)."""
     import push_changes
+
     monkeypatch.setattr(push_changes, "_open", [])
     monkeypatch.setattr(push_changes, "_loop", None)
 
     def open_(*tickers):
         return [push_changes.subscribe(tk) for tk in tickers]
+
     return open_

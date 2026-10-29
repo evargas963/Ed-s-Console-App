@@ -11,6 +11,7 @@ VALIDATED: this finite-difference IS the ground truth — d(Delta)/dt as calenda
 (T shrinks) — computed independently of both implementations. Both bs_charm and the scalar
 compute_net_charm must match its sign for every moneyness, or the build fails.
 """
+
 from __future__ import annotations
 
 import math
@@ -59,13 +60,9 @@ def test_bs_charm_sign_matches_finite_difference(label, S, dte):
     fd = _fd_calendar_charm(S, dte)
     bs = bs_charm(S, K, dte / 365.0, SIGMA, rate=0.0)
     assert bs is not None
-    assert fd * bs > 0, f"{label}: bs_charm sign {bs:+.4f} disagrees with FD calendar charm {fd:+.4f}"
-
-
-
-
-
-
+    assert fd * bs > 0, (
+        f"{label}: bs_charm sign {bs:+.4f} disagrees with FD calendar charm {fd:+.4f}"
+    )
 
 
 def test_near_expiry_minutes_to_close_matches_finite_difference():
@@ -84,20 +81,7 @@ def test_near_expiry_minutes_to_close_matches_finite_difference():
     )
 
 
-
-
-
-
-
-
 # ── RC-211: the SAME ground-truth lock for VANNA (operator spec, independently verified) ──
-
-
-
-
-
-
-
 
 
 def test_vanna_is_identical_for_calls_and_puts_in_the_bucket_path():
@@ -112,10 +96,20 @@ def test_vanna_is_identical_for_calls_and_puts_in_the_bucket_path():
     # ages out)
     now = datetime(2026, 9, 28, 12, 0, tzinfo=ET)
     expiry = "2026-10-28"
-    base = {"strikePrice": 100.0, "expirationDate": expiry, "gamma": 0.05,
-            "delta": 0.5, "volatility": 20.0, "openInterest": 100, "multiplier": 100,
-            "daysToExpiration": 30, "vega": 0.11, "bidSize": 1, "askSize": 1,
-            "totalVolume": 10}
+    base = {
+        "strikePrice": 100.0,
+        "expirationDate": expiry,
+        "gamma": 0.05,
+        "delta": 0.5,
+        "volatility": 20.0,
+        "openInterest": 100,
+        "multiplier": 100,
+        "daysToExpiration": 30,
+        "vega": 0.11,
+        "bidSize": 1,
+        "askSize": 1,
+        "totalVolume": 10,
+    }
     # institutional-synthetic-ok: exact-identity math lock needs controlled equal inputs;
     # a captured chain cannot pin call_vanna == put_vanna at equal OI.
     call = dict(base, putCall="CALL")
@@ -125,7 +119,8 @@ def test_vanna_is_identical_for_calls_and_puts_in_the_bucket_path():
     assert b["call_vanna"] != 0.0, "call vanna did not compute"
     assert abs(b["call_vanna"] - b["put_vanna"]) < 1e-9, (
         f"call/put vanna split at equal OI: {b['call_vanna']} vs {b['put_vanna']} — "
-        f"the math invented a split parity forbids")
+        f"the math invented a split parity forbids"
+    )
     assert b["call_vanna"] > 0, "strike above spot (100 > 98) must have positive vanna"
 
 
@@ -144,14 +139,26 @@ def test_vanna_uses_the_single_iv_conversion_authority_f7():
     def one(iv):
         # institutional-synthetic-ok: a units-flip discriminator needs the SAME contract with IV in
         # percent vs decimal form — a captured real chain cannot pin that controlled pair.
-        return {"strikePrice": 100.0, "expirationDate": "2027-07-16", "gamma": 0.05,
-                "delta": 0.5, "volatility": iv, "openInterest": 100, "multiplier": 100,
-                "daysToExpiration": 30, "vega": 0.11, "bidSize": 1, "askSize": 1,
-                "totalVolume": 10, "putCall": "CALL"}
+        return {
+            "strikePrice": 100.0,
+            "expirationDate": "2027-07-16",
+            "gamma": 0.05,
+            "delta": 0.5,
+            "volatility": iv,
+            "openInterest": 100,
+            "multiplier": 100,
+            "daysToExpiration": 30,
+            "vega": 0.11,
+            "bidSize": 1,
+            "askSize": 1,
+            "totalVolume": 10,
+            "putCall": "CALL",
+        }
 
     from math_exposure_core import schwab_iv_to_sigma
     from math_levels import bs_vanna
     from time_et import time_to_expiry_years
+
     per_pct, _ = compute_exposures_by_strike([one(20.0)], spot=98.0, now=now)
     v_pct = per_pct[100.0]["call_vanna"]
     assert v_pct not in (None, 0.0), "percent-form vanna did not compute"
@@ -163,4 +170,5 @@ def test_vanna_uses_the_single_iv_conversion_authority_f7():
     # under test is "the same sigma", i.e. equality to floating-point precision, which is a relative
     # statement; an inline /100 would differ by a FACTOR OF 100, not by 1e-12.
     assert math.isclose(v_pct, v_dec, rel_tol=1e-9), (
-        f"vanna at IV 20.0 must be bs_vanna at sigma 0.20; got {v_pct} vs {v_dec}")
+        f"vanna at IV 20.0 must be bs_vanna at sigma 0.20; got {v_pct} vs {v_dec}"
+    )

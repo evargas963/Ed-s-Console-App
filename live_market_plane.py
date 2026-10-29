@@ -21,11 +21,9 @@ OPTION_SERVICES = ("LEVELONE_OPTIONS", "OPTIONS_BOOK")
 LIVE, OFFLINE, NOT_LIVE = "LIVE", "OFFLINE", "NOT LIVE"
 
 
-
 _lock = threading.RLock()
 # ticker UPPER -> last plane payload (streaming and/or REST fast quote)
 _by_ticker: dict[str, dict[str, Any]] = {}
-
 
 
 #: Schwab LEVELONE_EQUITIES sends only the fields that CHANGED since the last message for a
@@ -34,8 +32,16 @@ _by_ticker: dict[str, dict[str, Any]] = {}
 #: So a field absent from a message is UNCHANGED, not missing -- the current value of each
 #: field is the last one Schwab sent, and its age is the age of THAT message. This table holds
 #: exactly that, per ticker, per field: {field: (value, received_ts)}.
-_PRICE_FIELDS = ("LAST_PRICE", "BID_PRICE", "ASK_PRICE", "MARK", "CLOSE_PRICE",
-                 "OPEN_PRICE", "HIGH_PRICE", "LOW_PRICE")
+_PRICE_FIELDS = (
+    "LAST_PRICE",
+    "BID_PRICE",
+    "ASK_PRICE",
+    "MARK",
+    "CLOSE_PRICE",
+    "OPEN_PRICE",
+    "HIGH_PRICE",
+    "LOW_PRICE",
+)
 _COUNT_FIELDS = ("BID_SIZE", "ASK_SIZE", "LAST_SIZE", "TOTAL_VOLUME")
 _CLOCK_FIELDS = ("QUOTE_TIME_MILLIS", "TRADE_TIME_MILLIS")
 #: signed values (any finite number): Schwab's own change of the LAST_PRICE vs the prior close.
@@ -60,8 +66,13 @@ def _read_stream_field(name: str, raw: Any) -> "float | str | None":
     return v / 1000.0 if v is not None and name in _CLOCK_FIELDS else v
 
 
-def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
-                                 received_ts: float, field_received: "dict[str, float] | None" = None) -> bool:
+def record_from_level_one_equity(
+    ticker: str,
+    item: dict[str, Any],
+    *,
+    received_ts: float,
+    field_received: "dict[str, float] | None" = None,
+) -> bool:
     """
     Ingest one Schwab streaming LEVELONE_EQUITIES content item into the plane.
     Returns True when a plane row was (re)published.
@@ -92,7 +103,7 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
             seen = True
             v = _read_stream_field(name, item.get(name))
             if v is None:
-                fs.pop(name, None)       # not a number (-999, text, NaN): cleared
+                fs.pop(name, None)  # not a number (-999, text, NaN): cleared
             else:
                 fs[name] = (v, rts if field_received is None else float(field_received[name]))
         snapshot = dict(fs)
@@ -104,7 +115,7 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
 
     spot_f = val("LAST_PRICE")
     bid, ask, mark = val("BID_PRICE"), val("ASK_PRICE"), val("MARK")
-    quote_ts = val("QUOTE_TIME_MILLIS")   # exchange quote clock; TRADE_TIME never stands in
+    quote_ts = val("QUOTE_TIME_MILLIS")  # exchange quote clock; TRADE_TIME never stands in
     out = {
         "ticker": t,
         "spot": spot_f,
@@ -129,7 +140,9 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
         #: LAST_PRICE tick belongs to (candles); never used as the quote time.
         "trade_ts": val("TRADE_TIME_MILLIS"),
         "security_status": val("SECURITY_STATUS"),
-        "quote_time_source": "schwab_streaming_level_one" if quote_ts is not None else "unavailable",
+        "quote_time_source": "schwab_streaming_level_one"
+        if quote_ts is not None
+        else "unavailable",
         "server_received_ts": rts,
         "spot_received_ts": snapshot["LAST_PRICE"][1] if "LAST_PRICE" in snapshot else None,
         "quote_ingestion": "schwab_streaming_level_one",
@@ -171,12 +184,12 @@ def get_quote(ticker: str) -> Optional[dict[str, Any]]:
         return dict(row) if row else None
 
 
-
-
 def plane_row_is_streamed(row: dict) -> bool:
     """True only for a row the Schwab LEVELONE_EQUITIES stream wrote. Rows the REST
     refreshers write carry their own quote_ingestion tag and are NOT stream identity."""
-    return (row or {}).get("quote_ingestion") == "schwab_streaming_level_one"  # caps-ok: fail-closed -- no row is not a streamed row
+    return (row or {}).get(
+        "quote_ingestion"
+    ) == "schwab_streaming_level_one"  # caps-ok: fail-closed -- no row is not a streamed row
 
 
 def plane_spot_is_last_price(row: dict[str, Any] | None) -> bool:
@@ -207,8 +220,11 @@ def record_feed_heartbeat(msg: dict[str, Any]) -> None:
     (docs/DATA_FLOW.md §2 D5). A status without its time is not applied."""
     if not isinstance(msg, dict) or not isinstance(msg.get("ts"), (int, float)):
         return
-    held = {svc: frozenset(ticker_storage_key(s) for s in syms)
-            for svc, syms in (msg.get("held") or {}).items() if isinstance(syms, list)}
+    held = {
+        svc: frozenset(ticker_storage_key(s) for s in syms)
+        for svc, syms in (msg.get("held") or {}).items()
+        if isinstance(syms, list)
+    }
     watchlist = msg.get("watchlist")
     with _lock:
         _feed.update(rx=float(msg["ts"]), status=msg, held=held)
@@ -252,8 +268,11 @@ def feed_now(now: float) -> FeedNow:
         rx, status, held = _feed["rx"], _feed["status"], dict(_feed["held"])
     if isinstance(rx, (int, float)) and now < float(rx):
         return FeedNow(None, {})
-    current = (isinstance(rx, (int, float)) and isinstance(status, dict)
-               and 0.0 <= now - float(rx) < FEED_HEARTBEAT_MAX_AGE_SEC)
+    current = (
+        isinstance(rx, (int, float))
+        and isinstance(status, dict)
+        and 0.0 <= now - float(rx) < FEED_HEARTBEAT_MAX_AGE_SEC
+    )
     return FeedNow(status, held) if current else FeedNow(None, held)
 
 
@@ -287,11 +306,16 @@ def held_by_daemon(service: str, now: float) -> frozenset[str]:
 
 #: why an option contract is not trading, by whether its own option market is open (None: the
 #: contract's market is not known, no chain held lists it)
-_OPTION_MARKET_WHY = {True: None, False: "outside Schwab's option market hours",
-                      None: "the contract's option market is not known"}
+_OPTION_MARKET_WHY = {
+    True: None,
+    False: "outside Schwab's option market hours",
+    None: "the contract's option market is not known",
+}
 
 
-def not_trading(symbol: str | None, service: str, now: float, product: str | None = None) -> str | None:
+def not_trading(
+    symbol: str | None, service: str, now: float, product: str | None = None
+) -> str | None:
     """Why `symbol`'s values on Schwab `service` are not changing at `now`, or None while its
     market trades: the stock market outside the sessions Schwab's /markets answer sent for today
     (or that answer not held); an option contract outside its own option market's regular window
@@ -311,7 +335,9 @@ def not_trading(symbol: str | None, service: str, now: float, product: str | Non
     return f"Schwab marks {t} {status}" if status in ("Closed", "Halted") else None
 
 
-def live_state(symbol: str | None, service: str, now: float, product: str | None = None) -> tuple[str, str | None]:
+def live_state(
+    symbol: str | None, service: str, now: float, product: str | None = None
+) -> tuple[str, str | None]:
     """THE live rule, for every streamed value: `symbol`'s state on Schwab `service` at `now` and
     why it is not live (docs/DATA_FLOW.md §2 D5). LIVE while it is updating: the daemon's heartbeat
     current (feed_now) reporting the Schwab socket open, the symbol held on that service, and its
@@ -324,15 +350,22 @@ def live_state(symbol: str | None, service: str, now: float, product: str | None
     return _judge(feed_now(now), symbol, service, now, product)
 
 
-def live_symbols(feed: FeedNow, symbols, service: str, now: float, product: str | None = None) -> set[str]:
+def live_symbols(
+    feed: FeedNow, symbols, service: str, now: float, product: str | None = None
+) -> set[str]:
     """The `symbols` live on Schwab `service` at `now` by the live rule, judged on one read of
     the heartbeat (`feed`)."""
     return {s for s in symbols if _judge(feed, s, service, now, product)[0] == LIVE}
 
 
-def _judge(feed: FeedNow, symbol: str | None, service: str, now: float, product: str | None) -> tuple[str, str | None]:
+def _judge(
+    feed: FeedNow, symbol: str | None, service: str, now: float, product: str | None
+) -> tuple[str, str | None]:
     if not feed_up(feed):
-        return OFFLINE, f"Schwab {service} feed down during {session_label(datetime.fromtimestamp(now, ET))}"
+        return (
+            OFFLINE,
+            f"Schwab {service} feed down during {session_label(datetime.fromtimestamp(now, ET))}",
+        )
     if not live_on(feed, symbol, service):
         return NOT_LIVE, f"{ticker_storage_key(symbol)} is not streamed on Schwab {service}"
     why = not_trading(symbol, service, now, product)
@@ -347,5 +380,3 @@ def feed_live_for(symbol: str | None, service: str, now: float, product: str | N
 def outage(symbol: str | None, service: str, now: float, product: str | None = None) -> str | None:
     """Why `symbol` on Schwab `service` is not live at `now`, or None when it is (live_state)."""
     return live_state(symbol, service, now, product)[1]
-
-

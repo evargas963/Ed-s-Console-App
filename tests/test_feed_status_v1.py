@@ -1,6 +1,7 @@
 """Once a minute the daemon records per feed: checked at X, socket open, when Schwab last sent
 anything, subscribed symbols, and when the feed last carried data -- a quiet feed and a dead one
 read differently in the database (operator question 2026-09-27)."""
+
 from __future__ import annotations
 
 import asyncio
@@ -26,15 +27,18 @@ def test_every_feed_gets_one_row_with_the_same_checked_at(tmp_path, monkeypatch)
 
     async def go():
         stop = asyncio.Event()
-        stop.set()                                   # one round, then stop
+        stop.set()  # one round, then stop
         await capture.record_feed_status(daemon, stop)
+
     asyncio.run(go())
 
     for topic, msg in got:
         writer.insert(topic, msg)
     with sqlite3.connect(db) as c:
-        rows = c.execute("SELECT ts, service, schwab_last_frame_ts, last_data_ts "
-                         "FROM stream_feed_status ORDER BY service").fetchall()
+        rows = c.execute(
+            "SELECT ts, service, schwab_last_frame_ts, last_data_ts "
+            "FROM stream_feed_status ORDER BY service"
+        ).fetchall()
     assert {r[1] for r in rows} == set(capture.SERVICES)
     assert len({r[0] for r in rows}) == 1, "every feed is checked at the same X"
     assert all(r[2] == 1000.0 for r in rows)
@@ -45,12 +49,22 @@ def test_every_feed_gets_one_row_with_the_same_checked_at(tmp_path, monkeypatch)
 
 def test_a_stopped_record_reads_stale_in_the_console(tmp_path):
     import time
+
     import server
+
     db = tmp_path / "stream_capture.db"
     now = time.time()
-    CaptureWriter(db).insert("feedstatus.NEWS_HEADLINE", {
-        "ts": now - 600, "service": "NEWS_HEADLINE", "socket_open": True,
-        "schwab_last_frame_ts": None, "held": 1, "last_data_ts": None})
+    CaptureWriter(db).insert(
+        "feedstatus.NEWS_HEADLINE",
+        {
+            "ts": now - 600,
+            "service": "NEWS_HEADLINE",
+            "socket_open": True,
+            "schwab_last_frame_ts": None,
+            "held": 1,
+            "last_data_ts": None,
+        },
+    )
     assert server._feed_record_state(db, now) == "FEED RECORD STALE: last written 10 min ago"
 
 
@@ -67,6 +81,7 @@ def test_a_failed_round_is_logged_and_the_next_round_runs(tmp_path, monkeypatch,
         if calls["n"] == 1:
             raise RuntimeError("boom")
         return real()
+
     monkeypatch.setattr(daemon, "status", flaky)
     got = []
     monkeypatch.setattr(bus, "publish", lambda topic, msg: got.append(topic))
@@ -77,6 +92,7 @@ def test_a_failed_round_is_logged_and_the_next_round_runs(tmp_path, monkeypatch,
         await asyncio.sleep(0.1)
         stop.set()
         await task
+
     asyncio.run(go())
     assert "feed status round failed: RuntimeError: boom" in caplog.text
     assert len(got) >= len(capture.SERVICES), "the round after the failure still wrote"

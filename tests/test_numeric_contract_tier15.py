@@ -49,17 +49,3 @@ def test_float_finite_or_none(value, expected):
 )
 def test_float_positive_or_none(value, expected):
     assert float_positive_or_none(value) == expected
-
-
-
-
-
-
-
-
-
-
-
-
-
-

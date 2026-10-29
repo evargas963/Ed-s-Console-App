@@ -12,7 +12,8 @@ needs a bar placed exactly inside or outside a session boundary.
 
 from __future__ import annotations
 
-from datetime import date, datetime, time as dtime
+from datetime import date, datetime
+from datetime import time as dtime
 from zoneinfo import ZoneInfo
 
 from liquidity_value_engine import PlaybookConfig, bars_from_candles
@@ -23,6 +24,7 @@ from micro_structure import Candle
 def get_previous_day_levels(bars, session_date, cfg):
     """The engine's prior-day levels of the bar writer's candles, as its producer takes them."""
     return _levels(bars_from_candles(bars), session_date, cfg)
+
 
 ET = ZoneInfo("America/New_York")
 
@@ -42,7 +44,7 @@ def test_monday_uses_friday_not_weekend_calendar_walk():
     """Monday session: prior trading day is Friday; Thursday bars must not leak."""
     thursday, friday, monday = date(2026, 10, 1), date(2026, 10, 2), date(2026, 10, 5)
     bars = [
-        _bar(thursday, 10, 0, 100, 120, 90, 110),   # decoy older day
+        _bar(thursday, 10, 0, 100, 120, 90, 110),  # decoy older day
         _bar(friday, 10, 0, 100, 105, 95, 101),
         _bar(friday, 14, 0, 101, 106, 96, 102),
     ]
@@ -55,9 +57,9 @@ def test_monday_uses_friday_not_weekend_calendar_walk():
 def test_extended_hours_bars_never_enter_prev_day_levels():
     prev, today = date(2026, 10, 6), date(2026, 10, 7)
     bars = [
-        _bar(prev, 8, 0, 100, 999, 1, 100),     # premarket outlier — must be excluded
+        _bar(prev, 8, 0, 100, 999, 1, 100),  # premarket outlier — must be excluded
         _bar(prev, 10, 0, 100, 105, 95, 101),
-        _bar(prev, 17, 0, 100, 998, 2, 100),    # after-hours outlier — must be excluded
+        _bar(prev, 17, 0, 100, 998, 2, 100),  # after-hours outlier — must be excluded
     ]
     out = get_previous_day_levels(bars, today, _cfg())
     assert out["pdh"] == 105
@@ -67,7 +69,7 @@ def test_extended_hours_bars_never_enter_prev_day_levels():
 def test_multi_day_buffer_selects_only_most_recent_trading_day():
     d1, d2, today = date(2026, 10, 1), date(2026, 10, 6), date(2026, 10, 7)
     bars = [
-        _bar(d1, 11, 0, 100, 200, 50, 150),     # older day extremes — must not leak
+        _bar(d1, 11, 0, 100, 200, 50, 150),  # older day extremes — must not leak
         _bar(d2, 11, 0, 100, 110, 90, 105),
     ]
     out = get_previous_day_levels(bars, today, _cfg())
@@ -81,8 +83,8 @@ def test_no_prior_rth_bars_fails_closed_empty():
     from extended-hours or same-day bars (the pre-fix fallback defect)."""
     today = date(2026, 10, 7)
     bars = [
-        _bar(date(2026, 10, 6), 7, 0, 100, 120, 80, 110),   # premarket only
-        _bar(today, 10, 0, 100, 105, 95, 101),              # same-day RTH
+        _bar(date(2026, 10, 6), 7, 0, 100, 120, 80, 110),  # premarket only
+        _bar(today, 10, 0, 100, 105, 95, 101),  # same-day RTH
     ]
     out = get_previous_day_levels(bars, today, _cfg())
     assert "pdh" not in out and "pdl" not in out and "pdc" not in out
@@ -101,7 +103,7 @@ def test_the_prior_session_ends_at_schwabs_close_on_an_early_close_day():
     bars = [
         _bar(friday, 10, 0, 100, 105, 95, 101),
         _bar(friday, 12, 59, 101, 106, 96, 102),
-        _bar(friday, 14, 0, 102, 150, 50, 140),   # after the early close — must be excluded
+        _bar(friday, 14, 0, 102, 150, 50, 140),  # after the early close — must be excluded
     ]
     out = get_previous_day_levels(bars, monday, _cfg())
     assert (out["pdh"], out["pdl"], out["pdc"]) == (106, 95, 102)
@@ -112,7 +114,7 @@ def test_a_holiday_has_no_session_whatever_bars_it_carries():
     carries bars, and the prior session of 2026-11-27 is 2026-11-25."""
     bars = [
         _bar(date(2026, 11, 25), 11, 0, 100, 105, 95, 101),
-        _bar(date(2026, 11, 26), 11, 0, 100, 200, 50, 150),   # the holiday's bar — never a level
+        _bar(date(2026, 11, 26), 11, 0, 100, 200, 50, 150),  # the holiday's bar — never a level
     ]
     out = get_previous_day_levels(bars, date(2026, 11, 27), _cfg())
     assert (out["prior_date"], out["pdh"], out["pdl"]) == (date(2026, 11, 25), 105, 95)

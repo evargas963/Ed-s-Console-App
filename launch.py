@@ -18,6 +18,7 @@ start_ed_console.bat runs it with the project's .venv Python. Its start stops no
 socket and writes what it holds before it exits; the console, in a process group of its own, gets
 Ctrl+Break and runs its shutdown; start_ed_console.bat then ends and its window closes.
 """
+
 from __future__ import annotations
 
 import ctypes
@@ -42,14 +43,29 @@ ROOT = Path(__file__).resolve().parent
 CONSOLE_PORT = 8000
 URL = f"http://127.0.0.1:{CONSOLE_PORT}/"
 #: --timeout-graceful-shutdown: Ctrl+C ends it while pages hold their change streams open
-CONSOLE = [sys.executable, "-m", "uvicorn", "server:app", "--host", "0.0.0.0", "--port", str(CONSOLE_PORT),
-           "--timeout-graceful-shutdown", "10"]
+CONSOLE = [
+    sys.executable,
+    "-m",
+    "uvicorn",
+    "server:app",
+    "--host",
+    "0.0.0.0",
+    "--port",
+    str(CONSOLE_PORT),
+    "--timeout-graceful-shutdown",
+    "10",
+]
 #: what each process's command line carries: the daemon's module, the console's app
 DAEMON_MARK, CONSOLE_MARK = "streaming.capture", "server:app"
 #: how long a clean stop waits for each process to end (the console's shutdown is bounded at 12 s)
 STOP_WAIT_SEC = 30.0
 #: what the commit check before a start found (bring_to_origin_main)
-COMMIT_CURRENT, COMMIT_MOVED, COMMIT_UNKNOWN, COMMIT_REFUSED = "current", "moved", "unknown", "refused"
+COMMIT_CURRENT, COMMIT_MOVED, COMMIT_UNKNOWN, COMMIT_REFUSED = (
+    "current",
+    "moved",
+    "unknown",
+    "refused",
+)
 
 
 def bring_to_origin_main(root: Path) -> "tuple[str, str | None, str]":
@@ -67,6 +83,7 @@ def bring_to_origin_main(root: Path) -> "tuple[str, str | None, str]":
 def _bring(root: Path) -> "tuple[str, str, str]":
     def git(*args: str) -> subprocess.CompletedProcess:
         return subprocess.run(["git", *args], cwd=root, capture_output=True, text=True, timeout=60)
+
     head = git("rev-parse", "HEAD").stdout.strip()
     fetched = git("fetch", "--quiet", "origin", "main")
     if fetched.returncode != 0:
@@ -78,9 +95,17 @@ def _bring(root: Path) -> "tuple[str, str, str]":
         return COMMIT_REFUSED, head, f"local changes: {changed}"
     merged = git("merge", "--ff-only", "--quiet", "origin/main")
     if merged.returncode != 0:
-        return COMMIT_REFUSED, head, f"main cannot fast-forward to origin/main: {merged.stderr.strip()}"
+        return (
+            COMMIT_REFUSED,
+            head,
+            f"main cannot fast-forward to origin/main: {merged.stderr.strip()}",
+        )
     now = git("rev-parse", "HEAD").stdout.strip()
-    return (COMMIT_CURRENT, now, "at origin/main") if now == head else (COMMIT_MOVED, now, f"fast-forwarded from {head}")
+    return (
+        (COMMIT_CURRENT, now, "at origin/main")
+        if now == head
+        else (COMMIT_MOVED, now, f"fast-forwarded from {head}")
+    )
 
 
 def in_use(port: int) -> bool:
@@ -94,16 +119,23 @@ def running(mark: str) -> "list[psutil.Process]":
     """This checkout's processes whose command line carries `mark`: those whose folder is ROOT,
     where its daemon's batch and its console run, so another checkout's daemon or console (a
     test's) is never taken for one (one whose line or folder cannot be read is none)."""
-    return [p for p in psutil.process_iter(["cmdline", "cwd"])
-            if p.info["cmdline"] is not None and mark in " ".join(p.info["cmdline"])
-            and p.info["cwd"] is not None and Path(p.info["cwd"]).resolve() == ROOT]
+    return [
+        p
+        for p in psutil.process_iter(["cmdline", "cwd"])
+        if p.info["cmdline"] is not None
+        and mark in " ".join(p.info["cmdline"])
+        and p.info["cwd"] is not None
+        and Path(p.info["cwd"]).resolve() == ROOT
+    ]
 
 
 def start_console(argv: "list[str]", env: dict) -> subprocess.Popen:
     """The console process `argv`, in a process group of its own on this window, so a stop
     (ctrl_break) reaches it alone: the window's cmd, which would ask "Terminate batch job (Y/N)?"
     after an interrupt, and this launcher never get one."""
-    return subprocess.Popen(argv, cwd=ROOT, env=env, creationflags=subprocess.CREATE_NEW_PROCESS_GROUP)
+    return subprocess.Popen(
+        argv, cwd=ROOT, env=env, creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
+    )
 
 
 def daemon_window(batch: Path) -> "list[str]":
@@ -117,8 +149,12 @@ def ctrl_break(group: int) -> None:
     """Ctrl+Break to process group `group` (the console's, start_console) on its window, from a
     process without a window of its own: the console's handler runs its shutdown
     (server._install_signal_handlers)."""
-    subprocess.run([sys.executable, str(Path(__file__)), "ctrl-break", str(group)],
-                   creationflags=subprocess.CREATE_NO_WINDOW, check=True, timeout=30)
+    subprocess.run(
+        [sys.executable, str(Path(__file__)), "ctrl-break", str(group)],
+        creationflags=subprocess.CREATE_NO_WINDOW,
+        check=True,
+        timeout=30,
+    )
 
 
 def _send_ctrl_break(group: int) -> int:
@@ -126,7 +162,7 @@ def _send_ctrl_break(group: int) -> int:
     kernel.FreeConsole()
     if not kernel.AttachConsole(group):
         return 1
-    return 0 if kernel.GenerateConsoleCtrlEvent(1, group) else 1     # 1: CTRL_BREAK_EVENT
+    return 0 if kernel.GenerateConsoleCtrlEvent(1, group) else 1  # 1: CTRL_BREAK_EVENT
 
 
 def ask_daemon_to_stop(port: int = LIVE_PUSH_PORT) -> None:
@@ -148,7 +184,10 @@ def stop() -> int:
     _gone, alive = psutil.wait_procs(daemon + console, timeout=STOP_WAIT_SEC)
     for name, procs in (("Capture daemon", daemon), ("Console", console)):
         left = [p.pid for p in procs if p in alive]
-        print(f"{name}: " + ("not running" if not procs else f"still running ({left})" if left else "stopped"))
+        print(
+            f"{name}: "
+            + ("not running" if not procs else f"still running ({left})" if left else "stopped")
+        )
     return 1 if alive else 0
 
 
@@ -159,7 +198,9 @@ def unhealthy_for(port: int, seconds: float) -> "str | None":
     why = f"no answer in {seconds:.0f} s"
     while (left := deadline - time.monotonic()) > 0:
         try:
-            with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/health", timeout=min(left, 2.0)) as r:
+            with urllib.request.urlopen(
+                f"http://127.0.0.1:{port}/api/health", timeout=min(left, 2.0)
+            ) as r:
                 if r.status == 200:
                     return None
                 why = f"HTTP {r.status}"
@@ -170,7 +211,11 @@ def unhealthy_for(port: int, seconds: float) -> "str | None":
 
 
 def main() -> int:
-    up = [name for name, port in (("capture daemon", DAEMON_PORT), ("console", CONSOLE_PORT)) if in_use(port)]
+    up = [
+        name
+        for name, port in (("capture daemon", DAEMON_PORT), ("console", CONSOLE_PORT))
+        if in_use(port)
+    ]
     if up:
         print(f"Commit check: not run; the {' and the '.join(up)} already run from this checkout.")
     else:
@@ -178,7 +223,7 @@ def main() -> int:
         print(f"Commit check: {check}: {why}")
         if commit is not None:
             print(f"Commit: {commit}")
-        if check == COMMIT_MOVED:                  # this process loaded the old code: the new one starts both
+        if check == COMMIT_MOVED:  # this process loaded the old code: the new one starts both
             signal.signal(signal.SIGINT, signal.SIG_IGN)
             return subprocess.call([sys.executable, str(ROOT / "launch.py")], cwd=ROOT)
     if in_use(DAEMON_PORT):
@@ -188,11 +233,17 @@ def main() -> int:
         print('Capture daemon: started in its own window ("Ed Capture Daemon").')
     if in_use(CONSOLE_PORT):
         print(f"Console: port {CONSOLE_PORT} is already in use; not started. Opening {URL}.")
-        webbrowser.open(URL)                       # the default browser
+        webbrowser.open(URL)  # the default browser
         return 0
-    print(f"Console: starting on port {CONSOLE_PORT}; the browser opens at {URL} once it answers. Ctrl+C stops it.")
-    console = start_console(CONSOLE, {k: v for k, v in os.environ.items() if not k.upper().startswith("SCHWAB_")})
-    signal.signal(signal.SIGINT, signal.SIG_IGN)   # Ctrl+C is the console's: it stops, then this ends
+    print(
+        f"Console: starting on port {CONSOLE_PORT}; the browser opens at {URL} once it answers. Ctrl+C stops it."
+    )
+    console = start_console(
+        CONSOLE, {k: v for k, v in os.environ.items() if not k.upper().startswith("SCHWAB_")}
+    )
+    signal.signal(
+        signal.SIGINT, signal.SIG_IGN
+    )  # Ctrl+C is the console's: it stops, then this ends
     started = time.monotonic()
     while console.poll() is None and unhealthy_for(CONSOLE_PORT, 1.0) is not None:
         pass

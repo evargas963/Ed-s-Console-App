@@ -5,6 +5,7 @@ Greek; Schwab resends a field only when it changes, so a value it had sent staye
 it changed. Real SPY NASDAQ_BOOK (tests/fixtures/real_spy_nyse_nasdaq_books.json); the clock is
 pinned on both sides of the open.
 """
+
 from __future__ import annotations
 
 import json
@@ -12,8 +13,11 @@ from pathlib import Path
 
 import app.options.order_flow.state as ofls
 
-_BOOK = json.loads((Path(__file__).parent / "fixtures" / "real_spy_nyse_nasdaq_books.json")
-                   .read_text(encoding="utf-8"))["books"]["NASDAQ_BOOK"]["content"]
+_BOOK = json.loads(
+    (Path(__file__).parent / "fixtures" / "real_spy_nyse_nasdaq_books.json").read_text(
+        encoding="utf-8"
+    )
+)["books"]["NASDAQ_BOOK"]["content"]
 
 
 def test_a_book_sent_before_the_open_is_kept_through_the_open(pin_clock):

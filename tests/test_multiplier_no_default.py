@@ -1,6 +1,7 @@
 """compute_exposures_by_strike's contract multiplier must come from the real chain
 data, never a hardcoded/default multiplier -- a wrong default silently mis-scales
 every exposure computed from that contract."""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -78,4 +79,3 @@ def test_exposures_preserve_missing_open_interest_instead_of_silent_zero():
     assert exposures[500.0]["oi_unreported"] == 1
     assert exposures[500.0]["call_oi"] is None
     assert bucket_metric(exposures[500.0], "net_gex_1pct") is None
-

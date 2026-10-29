@@ -4,6 +4,7 @@ HTTPException raised on the route's path must propagate as its own status code, 
 route: Schwab's SPY 1-minute bars of Thursday 2026-10-01 and Friday 10-02 as the capture daemon
 recorded them (each minute's newest receipt), the levels published as the bar writer publishes
 them, valued on Friday 2026-10-02 at 15:00 ET. Stand-in: ticker ZZLIQ carries the SPY bars."""
+
 from __future__ import annotations
 
 import json
@@ -11,10 +12,10 @@ from datetime import datetime
 
 import pytest
 
+import liquidity_value_engine as lve
 import live_market_plane as lmp
 import live_price_rows
 import server as srv
-import liquidity_value_engine as lve
 from app.options.order_flow import streaming as ofs
 from liquidity_models import ZONE_DISPLAY, SnapshotType, ZoneType
 from micro_structure import Candle
@@ -27,10 +28,22 @@ FRIDAY = datetime(2026, 10, 2, 15, 0, tzinfo=ET)
 
 def _newest_per_minute() -> list:
     newest = {}
-    for r in sorted(daemon_bars("real_daemon_bars_spy_tsla_2026_10_01_02.json", "SPY"), key=lambda r: r["ts_recv"]):
+    for r in sorted(
+        daemon_bars("real_daemon_bars_spy_tsla_2026_10_01_02.json", "SPY"),
+        key=lambda r: r["ts_recv"],
+    ):
         newest[r["bar_start_ms"]] = r
-    return [{"timestamp": ms, "open": r["open"], "high": r["high"], "low": r["low"], "close": r["close"],
-             "volume": r["volume"]} for ms, r in sorted(newest.items())]
+    return [
+        {
+            "timestamp": ms,
+            "open": r["open"],
+            "high": r["high"],
+            "low": r["low"],
+            "close": r["close"],
+            "volume": r["volume"],
+        }
+        for ms, r in sorted(newest.items())
+    ]
 
 
 _BARS = [b for b in _newest_per_minute() if b["timestamp"] / 1000 < FRIDAY.timestamp()]
@@ -40,16 +53,27 @@ _BARS = [b for b in _newest_per_minute() if b["timestamp"] / 1000 < FRIDAY.times
 def published():
     """The SPY bars to 15:00 ET on Friday in the console's memory and the levels published from
     them; nothing of the stand-in ticker is left behind."""
+
     def forget():
         srv._bars.pop(TK, None)
         ofs._price_rows.pop(TK, None)
         for key in [k for k in lve._MATERIALIZED_SNAPSHOTS if k[0] == TK]:
             del lve._MATERIALIZED_SNAPSHOTS[key]
+
     forget()
     for b in _BARS:
         if b["timestamp"] / 1000 < FRIDAY.timestamp():
-            srv._keep_bar(TK, Candle(ts=b["timestamp"] / 1000, open=b["open"], high=b["high"], low=b["low"],
-                                     close=b["close"], volume=b["volume"]))
+            srv._keep_bar(
+                TK,
+                Candle(
+                    ts=b["timestamp"] / 1000,
+                    open=b["open"],
+                    high=b["high"],
+                    low=b["low"],
+                    close=b["close"],
+                    volume=b["volume"],
+                ),
+            )
     srv._publish_price_levels(TK, FRIDAY)
     yield
     forget()
@@ -69,7 +93,9 @@ def test_spot_used_for_scoring_is_null_not_vwap_when_no_live_spot_is_cached(publ
     assert "spot_estimate_vwap_fallback" not in body, "VWAP is never a stand-in for spot"
 
 
-def test_missing_spot_produces_honest_null_distance_and_neutral_score_through_the_real_zone_path(published):
+def test_missing_spot_produces_honest_null_distance_and_neutral_score_through_the_real_zone_path(
+    published,
+):
     """MEASURED 2026-09-11: the VWAP-as-spot value was also fed into the zone distance and sort.
     The real zones of the real levels: with no spot, distance and inside-zone are absent and the
     score is neutral -- not a crash, not a fabricated distance."""
@@ -89,7 +115,9 @@ def test_spot_used_for_scoring_reports_the_real_live_spot_when_available(publish
     (resolve_spot, the one spot authority), is reported as spot_used_for_scoring. Stand-in: the
     last bar's close as the LAST_PRICE Schwab sent."""
     last, at = _BARS[-1]["close"], FRIDAY.timestamp()
-    lmp.record_feed_heartbeat({"ts": at, "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [TK]}})
+    lmp.record_feed_heartbeat(
+        {"ts": at, "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [TK]}}
+    )
     lmp.record_from_level_one_equity(TK, {"LAST_PRICE": last}, received_ts=at)
     ofs._price_rows[TK] = live_price_rows.price_row(TK, at)
     body = _body(srv.liquidity_snapshot(TK, FRIDAY))
@@ -136,6 +164,7 @@ def test_an_unrelated_crash_still_reports_500(monkeypatch):
 
     def _boom(*a, **k):
         raise RuntimeError("something actually broke")
+
     monkeypatch.setattr(srv, "canonical_price_level_snapshot", _boom)
     resp = srv.get_liquidity_snapshot(ticker="SPY")
     assert resp.status_code == 500

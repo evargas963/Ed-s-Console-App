@@ -19,6 +19,7 @@ from it, and runs on the same Python as this check (first on PATH for the spec's
 Exit 0: proven, or no product code changed. Exit 1: not proven, with the reason. Exit 2: the
 check itself failed (git unavailable, the base unknown).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -34,7 +35,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from check_end_to_end import (  # noqa: E402
-    ToolError, _git, _python_code, behavior_change, deleted_product, pr_files)
+    ToolError,
+    _git,
+    _python_code,
+    behavior_change,
+    deleted_product,
+    pr_files,
+)
 
 
 def changed(root: Path, base: str) -> list[str]:
@@ -44,12 +51,20 @@ def changed(root: Path, base: str) -> list[str]:
 def is_pytest(path: str) -> bool:
     """An end-to-end path test in pytest: tests/test_data_path_*.py (docs/DATA_FLOW.md §2)."""
     name = path.rsplit("/", 1)[-1]
-    return path.startswith("tests/") and "/" not in path[len("tests/"):] and name.startswith("test_data_path_") \
+    return (
+        path.startswith("tests/")
+        and "/" not in path[len("tests/") :]
+        and name.startswith("test_data_path_")
         and name.endswith(".py")
+    )
 
 
 def is_spec(path: str) -> bool:
-    return path.startswith("tests/e2e/") and "/" not in path[len("tests/e2e/"):] and path.endswith(".spec.js")
+    return (
+        path.startswith("tests/e2e/")
+        and "/" not in path[len("tests/e2e/") :]
+        and path.endswith(".spec.js")
+    )
 
 
 def is_test(path: str) -> bool:
@@ -57,8 +72,21 @@ def is_test(path: str) -> bool:
 
 
 def pytest_on(tree: Path, tests: list[str], report: Path) -> tuple[int, list[str]]:
-    subprocess.run([sys.executable, "-m", "pytest", *tests, "-q", "-p", "no:cacheprovider",
-                    f"--junitxml={report}"], cwd=tree, capture_output=True, env=os.environ.copy())
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            *tests,
+            "-q",
+            "-p",
+            "no:cacheprovider",
+            f"--junitxml={report}",
+        ],
+        cwd=tree,
+        capture_output=True,
+        env=os.environ.copy(),
+    )
     if not report.exists():
         return 0, []
     run, failed = 0, []
@@ -74,10 +102,23 @@ def _specs(suite: dict) -> list[dict]:
 
 
 def playwright_on(root: Path, tree: Path, specs: list[str], report: Path) -> tuple[int, list[str]]:
-    env = {**os.environ, "PLAYWRIGHT_JSON_OUTPUT_NAME": str(report),
-           "PATH": os.path.dirname(sys.executable) + os.pathsep + os.environ.get("PATH", "")}
-    subprocess.run(["node", str(root / "node_modules" / "@playwright" / "test" / "cli.js"), "test",
-                    *specs, "--reporter=json"], cwd=tree, capture_output=True, env=env)
+    env = {
+        **os.environ,
+        "PLAYWRIGHT_JSON_OUTPUT_NAME": str(report),
+        "PATH": os.path.dirname(sys.executable) + os.pathsep + os.environ.get("PATH", ""),
+    }
+    subprocess.run(
+        [
+            "node",
+            str(root / "node_modules" / "@playwright" / "test" / "cli.js"),
+            "test",
+            *specs,
+            "--reporter=json",
+        ],
+        cwd=tree,
+        capture_output=True,
+        env=env,
+    )
     if not report.exists():
         return 0, []
     run, failed = 0, []
@@ -89,7 +130,9 @@ def playwright_on(root: Path, tree: Path, specs: list[str], report: Path) -> tup
     return run, failed
 
 
-def failures_on_base(root: Path, base: str, files: list[str], tests: list[str]) -> tuple[int, list[str]]:
+def failures_on_base(
+    root: Path, base: str, files: list[str], tests: list[str]
+) -> tuple[int, list[str]]:
     """(tests run, tests failed or errored) of `tests` on the base with the PR's test files."""
     tmp = Path(tempfile.mkdtemp(prefix=".fails-before-", dir=root))
     tree = tmp / "base"
@@ -98,8 +141,11 @@ def failures_on_base(root: Path, base: str, files: list[str], tests: list[str]) 
         for f in files:
             if f.startswith("tests/"):
                 (tree / f).parent.mkdir(parents=True, exist_ok=True)
-                (tree / f).write_bytes(subprocess.run(["git", "show", f"HEAD:{f}"], cwd=root,
-                                                      capture_output=True, check=True).stdout)
+                (tree / f).write_bytes(
+                    subprocess.run(
+                        ["git", "show", f"HEAD:{f}"], cwd=root, capture_output=True, check=True
+                    ).stdout
+                )
         run, failed = 0, []
         pytests = [t for t in tests if is_pytest(t)]
         if pytests:
@@ -131,13 +177,21 @@ def _units(tree: ast.Module) -> dict[str, ast.stmt]:
 
 def _binding(n: ast.Import | ast.ImportFrom, a: ast.alias) -> tuple:
     """One name an import binds, as (module, name, alias)."""
-    return (None if isinstance(n, ast.Import) else "." * n.level + (n.module or ""), a.name, a.asname)
+    return (
+        None if isinstance(n, ast.Import) else "." * n.level + (n.module or ""),
+        a.name,
+        a.asname,
+    )
 
 
 def _imports(tree: ast.Module) -> dict[tuple, str]:
     """A module's top-level imports, each binding with the name it binds."""
-    return {_binding(n, a): a.asname or a.name.split(".")[0]
-            for n in tree.body if isinstance(n, (ast.Import, ast.ImportFrom)) for a in n.names}
+    return {
+        _binding(n, a): a.asname or a.name.split(".")[0]
+        for n in tree.body
+        if isinstance(n, (ast.Import, ast.ImportFrom))
+        for a in n.names
+    }
 
 
 def _code_without(tree: ast.Module, units: set[str], bindings: set[tuple]) -> str | None:
@@ -147,7 +201,9 @@ def _code_without(tree: ast.Module, units: set[str], bindings: set[tuple]) -> st
         if isinstance(n, _DEFS) and n.name in units:
             continue
         if isinstance(n, ast.ClassDef):
-            n.body = [s for s in n.body if not (isinstance(s, _DEFS) and f"{n.name}.{s.name}" in units)] or [ast.Pass()]
+            n.body = [
+                s for s in n.body if not (isinstance(s, _DEFS) and f"{n.name}.{s.name}" in units)
+            ] or [ast.Pass()]
         if isinstance(n, (ast.Import, ast.ImportFrom)):
             n.names = [a for a in n.names if _binding(n, a) not in bindings]
             if not n.names:
@@ -164,10 +220,12 @@ def _removes_whole_units(was: str, now: str | None) -> bool:
     imports, a docstring and undecorated functions and classes."""
     tree = ast.parse(was)
     if now is None:
-        return (not any(isinstance(n, _DEFS) and n.decorator_list for n in ast.walk(tree))
-                and all(isinstance(n, (ast.Import, ast.ImportFrom, *_DEFS))
-                        or (isinstance(n, ast.Expr) and isinstance(n.value, ast.Constant)) for n in tree.body))
-    if _python_code(was) is None or _python_code(now) is None:   # one declares another encoding
+        return not any(isinstance(n, _DEFS) and n.decorator_list for n in ast.walk(tree)) and all(
+            isinstance(n, (ast.Import, ast.ImportFrom, *_DEFS))
+            or (isinstance(n, ast.Expr) and isinstance(n.value, ast.Constant))
+            for n in tree.body
+        )
+    if _python_code(was) is None or _python_code(now) is None:  # one declares another encoding
         return False
     after = ast.parse(now)
     kept = _units(after)
@@ -177,9 +235,11 @@ def _removes_whole_units(was: str, now: str | None) -> bool:
     had, has = _imports(tree), _imports(after)
     dropped = had.keys() - has.keys()
     used = {n.id for n in ast.walk(after) if isinstance(n, ast.Name)}
-    used_by_removed = {n.id for u in removed.values() for n in ast.walk(u) if isinstance(n, ast.Name)}
+    used_by_removed = {
+        n.id for u in removed.values() for n in ast.walk(u) if isinstance(n, ast.Name)
+    }
     if any(had[b] in used or had[b] not in used_by_removed for b in dropped):
-        return False                    # a dropped import still used, or one the removed code never used
+        return False  # a dropped import still used, or one the removed code never used
     left = _code_without(tree, set(removed), dropped)
     return left is not None and left == _code_without(after, set(), set())
 
@@ -201,7 +261,7 @@ def deletes_only(root: Path, base: str, product: list[str]) -> bool:
             now = None if f in deleted else _git(root, "show", f"HEAD:{f}")
             if not _removes_whole_units(was, now):
                 return False
-        except (ToolError, SyntaxError):           # a new file, or one Python cannot read
+        except (ToolError, SyntaxError):  # a new file, or one Python cannot read
             return False
     return True
 
@@ -212,18 +272,24 @@ def violations(root: Path, base: str) -> list[str]:
     if not product:
         return []
     if deletes_only(root, base, product):
-        print(f"proven: {', '.join(product)} only lose whole undecorated functions or classes and their imports; "
-              "the full suite and "
-              "the browser tests are the proof (operator 2026-10-28)")
+        print(
+            f"proven: {', '.join(product)} only lose whole undecorated functions or classes and their imports; "
+            "the full suite and "
+            "the browser tests are the proof (operator 2026-10-28)"
+        )
         return []
     tests = [f for f in files if is_test(f)]
     if not tests:
-        return [f"product code changed ({', '.join(product)}) but no end-to-end path test "
-                "(tests/test_data_path_*.py or tests/e2e/*.spec.js) changed"]
+        return [
+            f"product code changed ({', '.join(product)}) but no end-to-end path test "
+            "(tests/test_data_path_*.py or tests/e2e/*.spec.js) changed"
+        ]
     run, failed = failures_on_base(root, base, files, tests)
     if not failed:
-        return [f"every changed test passes on the old code ({run} run: {', '.join(tests)}): "
-                "none of them proves this change"]
+        return [
+            f"every changed test passes on the old code ({run} run: {', '.join(tests)}): "
+            "none of them proves this change"
+        ]
     print(f"proven: {len(failed)} of {run} changed tests fail on the old code: {'; '.join(failed)}")
     return []
 

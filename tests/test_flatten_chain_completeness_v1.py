@@ -6,19 +6,21 @@ Uses banked complete captures (strike_range=ALL) that match live /api/chain this
 No ticker-specific product branch. Rebuilds the Schwab nested map from the flat capture, then runs the live
 flatten_chain_contracts.
 """
-from __future__ import annotations
 
-import pytest
+from __future__ import annotations
 
 import json
 from pathlib import Path
 
+import pytest
+
 from schwab_client import flatten_chain_contracts
 
 _FIXTURES = Path(__file__).parent / "fixtures"
-_CDE = json.loads((_FIXTURES / "real_cde_complete_chain_half_dollar.json").read_text(encoding="utf-8"))
+_CDE = json.loads(
+    (_FIXTURES / "real_cde_complete_chain_half_dollar.json").read_text(encoding="utf-8")
+)
 _CDE_CONTRACTS = _CDE["chain"]
-
 
 
 @pytest.fixture(autouse=True)
@@ -27,12 +29,15 @@ def _at_capture(pin_clock):
     what this test measures."""
     return pin_clock(2026, 9, 2, 10, 5)
 
+
 def _chain_json_for(contracts):
     """The Schwab callExpDateMap/putExpDateMap payload a flat contract list came from."""
     out = {"callExpDateMap": {}, "putExpDateMap": {}}
     for c in contracts:
         side = "callExpDateMap" if c.get("putCall") == "CALL" else "putExpDateMap"
-        out[side].setdefault(f"{c['expirationDate'][:10]}:1", {}).setdefault(str(c["strikePrice"]), []).append(c)
+        out[side].setdefault(f"{c['expirationDate'][:10]}:1", {}).setdefault(
+            str(c["strikePrice"]), []
+        ).append(c)
     return out
 
 
@@ -41,7 +46,9 @@ def _symbols(contracts):
 
 
 def _frac(contracts):
-    return [c for c in contracts if abs(float(c["strikePrice"]) - round(float(c["strikePrice"]))) > 1e-9]
+    return [
+        c for c in contracts if abs(float(c["strikePrice"]) - round(float(c["strikePrice"]))) > 1e-9
+    ]
 
 
 def test_flatten_preserves_real_cde_half_dollar_set():
@@ -49,13 +56,17 @@ def test_flatten_preserves_real_cde_half_dollar_set():
     after = flatten_chain_contracts(c_json)
     assert len(after) == len(_CDE_CONTRACTS)
     assert _symbols(after) == _symbols(_CDE_CONTRACTS)
-    assert {float(c["strikePrice"]) for c in after} == {float(c["strikePrice"]) for c in _CDE_CONTRACTS}
+    assert {float(c["strikePrice"]) for c in after} == {
+        float(c["strikePrice"]) for c in _CDE_CONTRACTS
+    }
     assert len(_frac(after)) == len(_frac(_CDE_CONTRACTS))
     strikes = {float(c["strikePrice"]) for c in after}
     assert 21.0 in strikes and 21.5 in strikes
 
 
-_CRWD = json.loads((_FIXTURES / "real_crwd_complete_chain_quarter.json").read_text(encoding="utf-8"))
+_CRWD = json.loads(
+    (_FIXTURES / "real_crwd_complete_chain_quarter.json").read_text(encoding="utf-8")
+)
 _CRWD_CONTRACTS = _CRWD["chain"]
 
 
@@ -68,4 +79,3 @@ def test_flatten_preserves_real_crwd_quarter_and_half_dollar_set():
     assert {38.75, 41.25, 43.75, 46.25, 48.75}.issubset(strikes)
     assert 42.5 in strikes
     assert {c["putCall"] for c in after} == {"CALL", "PUT"}
-

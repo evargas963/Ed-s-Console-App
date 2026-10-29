@@ -1,4 +1,5 @@
 """Runtime seam: configure_sqlite_connection applies WAL + NORMAL + busy_timeout."""
+
 import sqlite3
 import tempfile
 from pathlib import Path
@@ -39,7 +40,7 @@ def test_configure_sqlite_connection_applies_access_tuning_rc50():
             # mmap is ENABLED and ~requested; SQLite rounds/caps it down to a page/mmap
             # boundary (this build caps a 2 GiB request at 2 GiB - 64 KiB), so assert
             # "enabled and within 1 MiB of the request", not exact equality.
-            assert SQLITE_MMAP_SIZE_BYTES == 2 * 1024 ** 3
+            assert SQLITE_MMAP_SIZE_BYTES == 2 * 1024**3
             assert 0 < mmap <= SQLITE_MMAP_SIZE_BYTES
             assert mmap >= SQLITE_MMAP_SIZE_BYTES - (1024 * 1024)
             assert cache == SQLITE_CACHE_SIZE_KIB == -131072  # 128 MiB (negative = KiB)

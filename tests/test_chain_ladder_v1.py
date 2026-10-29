@@ -1,5 +1,6 @@
 """/api/chain serves the ladder the Chain view draws (terrain_engine.chain_ladder): strikes high to
 low, one row per listed contract, in-the-money flags against the live spot. Real CRWD chain."""
+
 import json
 from pathlib import Path
 
@@ -7,8 +8,11 @@ import pytest
 
 from terrain_engine import chain_ladder
 
-FX = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_crwd_complete_chain_quarter.json")
-                .read_text(encoding="utf-8"))
+FX = json.loads(
+    (
+        Path(__file__).resolve().parent / "fixtures" / "real_crwd_complete_chain_quarter.json"
+    ).read_text(encoding="utf-8")
+)
 
 
 @pytest.fixture(autouse=True)
@@ -27,7 +31,7 @@ def test_every_contract_on_one_row_strikes_high_to_low():
 
 
 def test_in_the_money_against_the_spot_and_one_spot_row():
-    spot = FX["spot"]   # 205.4
+    spot = FX["spot"]  # 205.4
     rows, _ = chain_ladder(FX["chain"], spot)
     for r in rows:
         assert r["call_itm"] is (r["strike"] < spot) and r["put_itm"] is (r["strike"] > spot)
@@ -43,7 +47,11 @@ def test_without_a_spot_nothing_is_marked():
 def test_a_second_contract_at_one_strike_and_side_gets_its_own_row():
     """Stand-in: the CRWD capture lists one contract per strike and side; one call is repeated."""
     chain = FX["chain"] + [dict(FX["chain"][0], symbol="CRWD-ADJ")]
-    rows = [r for r in chain_ladder(chain, FX["spot"])[0] if r["strike"] == FX["chain"][0]["strikePrice"]]
+    rows = [
+        r
+        for r in chain_ladder(chain, FX["spot"])[0]
+        if r["strike"] == FX["chain"][0]["strikePrice"]
+    ]
     assert [r["first"] for r in rows] == [True, False]
 
 
@@ -54,6 +62,10 @@ def test_a_number_schwab_did_not_send_is_absent_and_an_unknown_side_is_not_a_cal
     first = dict(FX["chain"][0], delta=-999.0)
     odd = dict(FX["chain"][1], putCall="X", symbol="CRWD-ODD")
     rows, unplaced = chain_ladder([first, odd] + FX["chain"][2:], FX["spot"])
-    shown = next(r[s] for r in rows for s in ("call", "put") if r[s] and r[s]["symbol"] == first["symbol"])
+    shown = next(
+        r[s] for r in rows for s in ("call", "put") if r[s] and r[s]["symbol"] == first["symbol"]
+    )
     assert shown["delta"] is None and shown["strikePrice"] == first["strikePrice"]
-    assert unplaced == 1 and all(r[s]["symbol"] != "CRWD-ODD" for r in rows for s in ("call", "put") if r[s])
+    assert unplaced == 1 and all(
+        r[s]["symbol"] != "CRWD-ODD" for r in rows for s in ("call", "put") if r[s]
+    )

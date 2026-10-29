@@ -20,6 +20,7 @@ Authority: work in a worktree).
 INVARIANT: BLOCKED OR UNEXECUTED ACTION => ZERO MUTATION => ZERO EFFECT ON ANY LATER EVENT.
 There is no place for an effect to live.
 """
+
 from __future__ import annotations
 
 import importlib
@@ -44,8 +45,9 @@ MUTATING_TOOLS = frozenset({"Edit", "Write", "MultiEdit", "NotebookEdit", "StrRe
 
 def _git(*args: str) -> str:
     try:
-        r = subprocess.run(["git", *args], cwd=str(REPO), capture_output=True,
-                           text=True, timeout=15, check=False)
+        r = subprocess.run(
+            ["git", *args], cwd=str(REPO), capture_output=True, text=True, timeout=15, check=False
+        )
         return (r.stdout or "").strip()
     except (OSError, subprocess.SubprocessError):
         return ""
@@ -65,8 +67,10 @@ def run_chain(raw_payload: str, members: tuple[str, ...]) -> int:
     except (json.JSONDecodeError, ValueError, TypeError):
         parsed = None
     if not isinstance(parsed, dict):
-        sys.stderr.write("HOOK CHAIN: the hook payload is not a readable JSON object; the event "
-                         "cannot be judged and is refused. Unreadable is not clean.\n")
+        sys.stderr.write(
+            "HOOK CHAIN: the hook payload is not a readable JSON object; the event "
+            "cannot be judged and is refused. Unreadable is not clean.\n"
+        )
         return 2
     worst = 0
     for name in members:
@@ -74,7 +78,7 @@ def run_chain(raw_payload: str, members: tuple[str, ...]) -> int:
             mod = importlib.import_module(name)
             sys.stdin = io.StringIO(raw_payload)
             rc = int(mod.main() or 0)
-        except SystemExit as exc:          # a guard that sys.exit()s inside main()
+        except SystemExit as exc:  # a guard that sys.exit()s inside main()
             rc = int(exc.code or 0)
         except Exception as exc:  # noqa: BLE001 — a broken guard must scream, not wave through
             sys.stderr.write(f"HOOK CHAIN: {name} crashed: {type(exc).__name__}: {exc}\n")

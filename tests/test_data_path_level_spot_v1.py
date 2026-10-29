@@ -1,4 +1,5 @@
 """Schwab -> the key levels. A price that has stopped marks the levels, and the wall stays."""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -8,8 +9,8 @@ import live_market_plane as lmp
 import server as srv
 from terrain_engine import compute_terrain
 from tests.feed_live_helper import RTH_INSTANT, mark_feed_live, publish_daemon_rows
-from time_et import ET
 from tests.real_chains import CRWD
+from time_et import ET
 
 
 def test_a_down_price_marks_the_levels_and_the_wall_stays():
@@ -19,13 +20,15 @@ def test_a_down_price_marks_the_levels_and_the_wall_stays():
     tk = "ZZLVSPOT"
     now = RTH_INSTANT
     at = datetime.fromtimestamp(now, ET)
-    published = compute_terrain(tk, [dict(c) for c in CRWD.chain], CRWD.spot, now=CRWD.now).to_dict()
+    published = compute_terrain(
+        tk, [dict(c) for c in CRWD.chain], CRWD.spot, now=CRWD.now
+    ).to_dict()
     with srv._terrain_cache_lock:
         srv._terrain_cache[tk] = published | {"computed_ts_utc": now}
     try:
         down = srv.terrain_answer(tk, at)
         mark_feed_live(tk, now=now)
-        publish_daemon_rows(tk, now=now)                          # the daemon's price row, its verdict LIVE
+        publish_daemon_rows(tk, now=now)  # the daemon's price row, its verdict LIVE
         live = srv.terrain_answer(tk, at)
     finally:
         with srv._terrain_cache_lock:

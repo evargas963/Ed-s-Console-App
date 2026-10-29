@@ -5,6 +5,7 @@ Real data: NFLX's chain as production's complete_chain_captures held it (tests/r
 NFLX): on 2027-12-17 and 2028-01-21, 8 contracts with open interest whose Greeks Schwab sent as
 -999, so their cells have no GEX; and strikes no contract is listed at in a column.
 """
+
 from __future__ import annotations
 
 from tests.gamma_render_helper import drawn
@@ -18,8 +19,11 @@ def test_the_page_draws_every_cell_with_no_value_as_a_dash(tmp_path):
     surface, text = drawn(NFLX.ticker, NFLX.chain, NFLX.spot, NFLX.now, tmp_path)
     exps = [e["expiry"] for e in surface["expirations"]]
     listed = {(float(c["strikePrice"]), c["expirationDate"][:10]) for c in NFLX.chain}
-    no_greek = {(float(c["strikePrice"]), c["expirationDate"][:10]) for c in NFLX.chain
-                if c["openInterest"] > 0 and -999.0 in (c["gamma"], c["delta"], c["volatility"])}
+    no_greek = {
+        (float(c["strikePrice"]), c["expirationDate"][:10])
+        for c in NFLX.chain
+        if c["openInterest"] > 0 and -999.0 in (c["gamma"], c["delta"], c["volatility"])
+    }
     gex = {(r["strike"], exps[j]): v for r in surface["cells"] for j, v in enumerate(r["gex"])}
     assert no_greek and set(gex) - listed
     assert all(gex[cell] is None for cell in no_greek | (set(gex) - listed))

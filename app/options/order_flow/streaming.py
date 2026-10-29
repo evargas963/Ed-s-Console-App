@@ -27,23 +27,21 @@ from __future__ import annotations
 
 import asyncio
 import json
-import queue
 import logging
+import queue
 import time
 from typing import Any, Callable, Optional
 
-from instrument_identity import ticker_storage_key
+import live_market_plane as _lmp
 import push_changes
 from app.options.order_flow import history as recent
-
 from app.options.order_flow.state import (
     clear_all_live_state,
     push_book,
     push_level_one,
     push_option_top,
 )
-
-import live_market_plane as _lmp
+from instrument_identity import ticker_storage_key
 from time_et import record_markets
 
 log = logging.getLogger(__name__)
@@ -66,7 +64,9 @@ def price_row(ticker: str) -> "dict | None":
     return _price_rows.get(ticker_storage_key(ticker) or "")
 
 
-def price_state(ticker: str, now: float, service: str = "LEVELONE_EQUITIES") -> "tuple[str, str | None]":
+def price_state(
+    ticker: str, now: float, service: str = "LEVELONE_EQUITIES"
+) -> "tuple[str, str | None]":
     """`ticker`'s state on Schwab `service` (its quote, or a venue's book) at `now`, as the console
     serves it: the rule on the beat the console holds (live_market_plane.live_state) while that is
     not LIVE (the feed down, the symbol not held, its market not trading); while it is LIVE, the
@@ -79,6 +79,8 @@ def price_state(ticker: str, now: float, service: str = "LEVELONE_EQUITIES") -> 
     if row is None:
         return _lmp.NOT_LIVE, f"no price row from the daemon for {ticker_storage_key(ticker)} yet"
     return row["feed_label"], row["outage"]
+
+
 #: Wait between reconnect attempts when the daemon's push server is down. While it is down
 #: no live value is refreshed -- the freshness checks turn them stale; nothing substitutes.
 PUSH_RECONNECT_SEC = 1.0
@@ -104,7 +106,9 @@ async def watchlist_request(action: str, ticker: str) -> dict:
     answer = asyncio.get_running_loop().create_future()
     _watchlist_answers[rid] = answer
     try:
-        await ws.send(json.dumps({"op": "watchlist", "action": action, "ticker": ticker, "id": rid}))
+        await ws.send(
+            json.dumps({"op": "watchlist", "action": action, "ticker": ticker, "id": rid})
+        )
         return await asyncio.wait_for(answer, WATCHLIST_ANSWER_SEC)
     finally:
         del _watchlist_answers[rid]
@@ -122,6 +126,7 @@ async def select_flow_contract(contract: "str | None") -> None:
     _flow_contract = contract
     if _push_ws is not None:
         await _push_ws.send(json.dumps({"op": "flow_contract", "contract": contract}))
+
 
 # ── Runtime state (single asyncio task inside the SAME event loop as the server —
 #    no dedicated thread/loop needed once nothing here opens a socket) ──
@@ -148,7 +153,9 @@ _on_chain_callback: Optional[Callable[..., None]] = None
 _chain_parts: "dict[str, dict]" = {}
 
 
-def assemble_chain_part(msg: dict) -> "list[tuple[str, list | None, float, str | None, tuple | None]]":
+def assemble_chain_part(
+    msg: dict,
+) -> "list[tuple[str, list | None, float, str | None, tuple | None]]":
     """One chain message from the daemon (complete_chain_capture.chain_messages) -> what it
     settles, in order: a chain whose parts did not all arrive before the next one began
     (ticker, None, ts, reason, None); a fetch that failed (ticker, None, ts, Schwab's answer, None);
@@ -160,8 +167,16 @@ def assemble_chain_part(msg: dict) -> "list[tuple[str, list | None, float, str |
     out = []
     cur = _chain_parts.get(tk)
     if cur is not None and cur["ts"] != ts:
-        out.append((tk, None, float(ts), f"the daemon's chain of {tk} arrived with "
-                    f"{len(cur['got'])} of its {cur['parts']} parts", None))
+        out.append(
+            (
+                tk,
+                None,
+                float(ts),
+                f"the daemon's chain of {tk} arrived with "
+                f"{len(cur['got'])} of its {cur['parts']} parts",
+                None,
+            )
+        )
         del _chain_parts[tk]
         cur = None
     if "failed" in msg:
@@ -169,13 +184,20 @@ def assemble_chain_part(msg: dict) -> "list[tuple[str, list | None, float, str |
         return [*out, (tk, None, float(ts), str(msg["failed"]), None)]
     if cur is None:
         if int(msg["part"]) != 0:
-            return out              # a chain begun before this console connected: not its chain
+            return out  # a chain begun before this console connected: not its chain
         cur = _chain_parts[tk] = {"ts": ts, "parts": int(msg["parts"]), "got": {}}
     cur["got"][int(msg["part"])] = msg.get("contracts") or []
     if len(cur["got"]) == cur["parts"]:
         del _chain_parts[tk]
-        out.append((tk, [c for i in range(cur["parts"]) for c in cur["got"][i]], float(ts), None,
-                    (msg["spot"], msg["spot_ts"])))
+        out.append(
+            (
+                tk,
+                [c for i in range(cur["parts"]) for c in cur["got"][i]],
+                float(ts),
+                None,
+                (msg["spot"], msg["spot_ts"]),
+            )
+        )
     return out
 
 
@@ -188,8 +210,9 @@ def _tick(sym: str) -> None:
     except Exception as e:  # noqa: BLE001 -- counted + WARNING; ingest must go on
         _tick_callback_failures += 1
         if _tick_callback_failures & (_tick_callback_failures - 1) == 0:
-            log.warning("tick callback failed for %s (%s failures): %s",
-                        sym, _tick_callback_failures, e)
+            log.warning(
+                "tick callback failed for %s (%s failures): %s", sym, _tick_callback_failures, e
+            )
 
 
 def _service_feed(symbol: "str | None", service: str, now: float, product: "str | None") -> dict:
@@ -200,8 +223,10 @@ def _service_feed(symbol: "str | None", service: str, now: float, product: "str 
     status = _lmp.daemon_status(now)
     reports = status.get("health") if status is not None else None
     health = reports.get(service) if reports is not None else None
-    return {"state": _lmp.live_state(symbol, service, now, product)[0],
-            "age_sec": health.get("age_sec") if health is not None else None}
+    return {
+        "state": _lmp.live_state(symbol, service, now, product)[0],
+        "age_sec": health.get("age_sec") if health is not None else None,
+    }
 
 
 def _log_stream(phase: str, **kwargs: Any) -> None:
@@ -245,8 +270,11 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
         if msg["status"] == 200:
             record_markets(msg["answer"])
         return None
-    if topic == "watchlist":                        # the daemon's answer to a watchlist request
-        if msg["request_id"] in _watchlist_answers and not _watchlist_answers[msg["request_id"]].done():
+    if topic == "watchlist":  # the daemon's answer to a watchlist request
+        if (
+            msg["request_id"] in _watchlist_answers
+            and not _watchlist_answers[msg["request_id"]].done()
+        ):
             _watchlist_answers[msg["request_id"]].set_result(msg)
         return None
     sym = msg.get("symbol")
@@ -255,7 +283,7 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
         return None
     ts = float(ts)
     kind = topic.split(".", 1)[0]
-    if kind in ("bar1m", "pricehistory"):          # the bar writer's: a streamed bar, a price history
+    if kind in ("bar1m", "pricehistory"):  # the bar writer's: a streamed bar, a price history
         streamed_bars.put(msg)
         return None
     received = {f: stamp[1] for f, stamp in msg["field_ts"].items()} if "field_ts" in msg else None
@@ -320,8 +348,8 @@ async def _rows_loop(ui_url: str, reconnect_sec: float) -> None:
                     try:
                         frame = await asyncio.wait_for(ws.recv(), _lmp.FEED_HEARTBEAT_MAX_AGE_SEC)
                     except asyncio.TimeoutError:
-                        _lmp.record_feed_down()      # the daemon beats every second: silence
-                        _feed_changed(time.time())   # the last price row stays
+                        _lmp.record_feed_down()  # the daemon beats every second: silence
+                        _feed_changed(time.time())  # the last price row stays
                         continue
                     msg = json.loads(frame)
                     if msg.get("type") == "feed":
@@ -335,9 +363,13 @@ async def _rows_loop(ui_url: str, reconnect_sec: float) -> None:
         except asyncio.CancelledError:
             raise
         except Exception as e:  # noqa: BLE001 -- daemon down/restarting: retry, never substitute
-            log.info("price rows unavailable (%s: %s); retrying in %.1fs",
-                     type(e).__name__, e, reconnect_sec)
-        _lmp.record_feed_down()            # no daemon: the feed is down, the last price stays
+            log.info(
+                "price rows unavailable (%s: %s); retrying in %.1fs",
+                type(e).__name__,
+                e,
+                reconnect_sec,
+            )
+        _lmp.record_feed_down()  # no daemon: the feed is down, the last price stays
         _feed_changed(time.time())
         if _feed_running:
             await asyncio.sleep(reconnect_sec)
@@ -379,15 +411,20 @@ async def _feed_loop(push_url: str, ui_url: str, reconnect_sec: float) -> None:
     try:
         while _feed_running:
             try:
-                async with connect(push_url, max_size=None, open_timeout=5,
-                                   ping_interval=20, ping_timeout=20) as ws:
+                async with connect(
+                    push_url, max_size=None, open_timeout=5, ping_interval=20, ping_timeout=20
+                ) as ws:
                     _log_stream("PUSH_CONNECTED", url=push_url)
                     await serve_push(ws)
             except asyncio.CancelledError:
                 raise
             except Exception as e:  # noqa: BLE001 -- daemon down/restarting: retry, never substitute
-                log.info("live push unavailable (%s: %s); retrying in %.1fs",
-                         type(e).__name__, e, reconnect_sec)
+                log.info(
+                    "live push unavailable (%s: %s); retrying in %.1fs",
+                    type(e).__name__,
+                    e,
+                    reconnect_sec,
+                )
             if _feed_running:
                 await asyncio.sleep(reconnect_sec)
     finally:
@@ -411,7 +448,9 @@ def _drop_released_options(now: float) -> None:
 SUBSCRIBED, NOT_STREAMED = "SUBSCRIBED", "NOT STREAMED"
 
 
-def get_option_contract_streaming_diagnostics(for_contract: str, now: float, product: "str | None") -> dict[str, Any]:
+def get_option_contract_streaming_diagnostics(
+    for_contract: str, now: float, product: "str | None"
+) -> dict[str, Any]:
     """Whether the daemon streams `for_contract` and is receiving it at `now`, distinct from the
     book's own content ages (options_live_payload): its subscription (SUBSCRIBED / NOT STREAMED,
     from the symbols on the latest beat), and each feed by the one live rule on its own option
@@ -423,11 +462,15 @@ def get_option_contract_streaming_diagnostics(for_contract: str, now: float, pro
     healthy = bool(_feed_running and l1["state"] == _lmp.LIVE)
     return {
         "queried_contract": c,
-        "subscription_state": SUBSCRIBED if levelone is not None and c in levelone else NOT_STREAMED,
+        "subscription_state": SUBSCRIBED
+        if levelone is not None and c in levelone
+        else NOT_STREAMED,
         "streaming_last_update_ts": _option_contract_last_update_ts.get(c),
-        "feed_health": {"replay": "healthy" if healthy else "stale" if _feed_running else "not connected",
-                        "l1": l1,
-                        "book": _service_feed(c, "OPTIONS_BOOK", now, product)},
+        "feed_health": {
+            "replay": "healthy" if healthy else "stale" if _feed_running else "not connected",
+            "l1": l1,
+            "book": _service_feed(c, "OPTIONS_BOOK", now, product),
+        },
     }
 
 
@@ -437,9 +480,11 @@ def _feed_changed(now: float) -> None:
         _on_feed_callback(now)
 
 
-def start_order_flow_stream(on_tick_callback: Optional[Callable[[str], None]] = None,
-                            on_chain_callback: Optional[Callable[..., None]] = None,
-                            on_feed_callback: Optional[Callable[[float], None]] = None) -> bool:
+def start_order_flow_stream(
+    on_tick_callback: Optional[Callable[[str], None]] = None,
+    on_chain_callback: Optional[Callable[..., None]] = None,
+    on_feed_callback: Optional[Callable[[float], None]] = None,
+) -> bool:
     """Start the feed from the capture daemon (on the event loop)."""
     global _feed_task, _feed_running, _on_tick_callback, _on_chain_callback, _on_feed_callback
     if _feed_task is not None and not _feed_task.done():
@@ -450,7 +495,8 @@ def start_order_flow_stream(on_tick_callback: Optional[Callable[[str], None]] = 
     _on_feed_callback = on_feed_callback
     _feed_running = True
     _feed_task = asyncio.get_event_loop().create_task(
-        _feed_loop(LIVE_PUSH_URL, LIVE_UI_URL, PUSH_RECONNECT_SEC), name="daemon-plane-feed")
+        _feed_loop(LIVE_PUSH_URL, LIVE_UI_URL, PUSH_RECONNECT_SEC), name="daemon-plane-feed"
+    )
     log.info("Live-plane feed started (source=capture daemon live push)")
     return True
 
@@ -467,5 +513,3 @@ def stop_order_flow_stream() -> None:
         task.cancel()
     _feed_task = None
     _log_stream("FEED_CANCEL_REQUESTED")
-
-

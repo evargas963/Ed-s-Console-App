@@ -4,6 +4,7 @@ tools/process_lock_guard.py at PreToolUse.
   (a) tree-destructive git — THE one owner of that class, universal hard forms included;
   (b) pipe-masked commits.
 """
+
 from __future__ import annotations
 
 import re
@@ -56,28 +57,39 @@ PRODUCT_WIPE_PROTECTED: tuple[str, ...] = (
 
 def _hard(sub: str, args: list[str]) -> bool:
     """A git subcommand that discards work whatever it names."""
-    return ((sub == "reset" and "--hard" in args)
-            or (sub == "checkout" and args[:1] == ["--"] and len(args) > 1)
-            or (sub == "clean" and any(re.match(r"-[a-z]*f", a, re.I) for a in args))
-            or (sub == "stash" and args[:1] != ["list"])
-            or (sub == "push" and any((a.startswith("--force") and not a.startswith("--force-with-lease"))
-                                      or re.fullmatch(r"-[a-zA-Z]*f[a-zA-Z]*", a) for a in args)))
+    return (
+        (sub == "reset" and "--hard" in args)
+        or (sub == "checkout" and args[:1] == ["--"] and len(args) > 1)
+        or (sub == "clean" and any(re.match(r"-[a-z]*f", a, re.I) for a in args))
+        or (sub == "stash" and args[:1] != ["list"])
+        or (
+            sub == "push"
+            and any(
+                (a.startswith("--force") and not a.startswith("--force-with-lease"))
+                or re.fullmatch(r"-[a-zA-Z]*f[a-zA-Z]*", a)
+                for a in args
+            )
+        )
+    )
 
 
 def _safe(sub: str, args: list[str]) -> bool:
     """A form of the class that cannot reach the index or the worktree, or only reads."""
     first = args[0] if args else ""
-    return ((sub == "reset" and first == "--soft")
-            or (sub == "restore" and first == "--staged" and "--worktree" not in args)
-            or (sub == "checkout" and first == "-b")
-            or (sub == "clean" and bool(re.match(r"-\S*n", first))))
+    return (
+        (sub == "reset" and first == "--soft")
+        or (sub == "restore" and first == "--staged" and "--worktree" not in args)
+        or (sub == "checkout" and first == "-b")
+        or (sub == "clean" and bool(re.match(r"-\S*n", first)))
+    )
 
 
 def _reset_class_violation(words: tuple[str, ...]) -> list[str]:
     """The CLASS rule for ONE statement: a chain cannot launder a later wipe."""
     sub, args = git_subcommand(words)
-    if not (sub in ("reset", "restore", "clean") or (sub == "checkout" and "--" in args[:-1])) \
-            or _safe(sub, args):
+    if not (
+        sub in ("reset", "restore", "clean") or (sub == "checkout" and "--" in args[:-1])
+    ) or _safe(sub, args):
         return []
     seg = " ".join(words)
     touched = [p for p in PROTECTED_PATHS + PRODUCT_WIPE_PROTECTED if p in seg]
@@ -122,7 +134,9 @@ def reset_guard_violations(command: str, powershell: bool = False) -> list[str]:
 
 
 #: the output filters whose exit code replaces a commit's; a pipe into anything else passes
-_MASKING_FILTERS = frozenset({"tail", "head", "cat", "tee", "grep", "findstr", "out-null", "select-object"})
+_MASKING_FILTERS = frozenset(
+    {"tail", "head", "cat", "tee", "grep", "findstr", "out-null", "select-object"}
+)
 
 
 def commit_pipe_violations(cmd: str, powershell: bool = False) -> list[str]:

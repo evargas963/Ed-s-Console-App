@@ -1,4 +1,5 @@
 """/api/levels and /api/terrain/strikes: what the level routes serve."""
+
 from __future__ import annotations
 
 import asyncio
@@ -27,8 +28,14 @@ def _forget(*tickers: str) -> None:
 
 
 def _candle(b: dict) -> Candle:
-    return Candle(ts=b["timestamp"] / 1000.0, open=b["open"], high=b["high"], low=b["low"],
-                  close=b["close"], volume=b["volume"])
+    return Candle(
+        ts=b["timestamp"] / 1000.0,
+        open=b["open"],
+        high=b["high"],
+        low=b["low"],
+        close=b["close"],
+        volume=b["volume"],
+    )
 
 
 def _newest(rows: list[dict], tk: str) -> list[dict]:
@@ -44,6 +51,7 @@ def _rth(rows: list[dict], tk: str, day: str) -> list[dict]:
     at = [(_dt.fromtimestamp(r["bar_start_ms"] / 1000, ET), r) for r in _newest(rows, tk)]
     return [r for d, r in at if d.date().isoformat() == day and 570 <= d.hour * 60 + d.minute < 960]
 
+
 # ── RC-213 B1: /api/levels read-adapter contract (mission levels-faucet-v1) ──────────
 
 
@@ -56,13 +64,19 @@ def test_api_levels_b1_contract_single_session_prior_day():
     tk = "ZZB1"
 
     def _bar(y, mo, d, h, mi, o, hi, lo, c):
-        return {"timestamp": int(_dt(y, mo, d, h, mi, tzinfo=ET).timestamp() * 1000),
-                "open": o, "high": hi, "low": lo, "close": c, "volume": 1000.0}
+        return {
+            "timestamp": int(_dt(y, mo, d, h, mi, tzinfo=ET).timestamp() * 1000),
+            "open": o,
+            "high": hi,
+            "low": lo,
+            "close": c,
+            "volume": 1000.0,
+        }
 
     tape = [
-        _bar(2026, 10, 1, 10, 0, 100, 110, 90, 100),   # older prior session: both extremes
+        _bar(2026, 10, 1, 10, 0, 100, 110, 90, 100),  # older prior session: both extremes
         _bar(2026, 10, 1, 14, 0, 100, 101, 99, 100),
-        _bar(2026, 10, 2, 10, 0, 96, 105, 95, 97),     # most recent prior session (a Friday)
+        _bar(2026, 10, 2, 10, 0, 96, 105, 95, 97),  # most recent prior session (a Friday)
         _bar(2026, 10, 2, 15, 59, 101, 103, 100, 102),
         _bar(2026, 10, 5, 9, 35, 103, 104, 102, 103),  # today (Monday) inside ORB window
         _bar(2026, 10, 5, 9, 45, 103, 104, 102, 103),  # today post-ORB
@@ -72,13 +86,15 @@ def test_api_levels_b1_contract_single_session_prior_day():
     try:
         for b in tape:
             srv._keep_bar(tk, _candle(b))
-        srv._publish_price_levels(tk, now)            # as the bar writer does
+        srv._publish_price_levels(tk, now)  # as the bar writer does
         payload = srv.levels_payload(tk, "1", now)
     finally:
         _forget(tk)
 
     assert payload["schema_version"] == 1
-    assert payload["spot"] is None, "Schwab has sent the stand-in no price: absent, never a stand-in value"
+    assert payload["spot"] is None, (
+        "Schwab has sent the stand-in no price: absent, never a stand-in value"
+    )
 
     ids = [lv["id"] for lv in payload["levels"]]
     assert len(ids) == len(set(ids)), "level ids must be UNIQUE per payload (RC-88)"
@@ -101,7 +117,10 @@ def test_api_levels_b1_contract_single_session_prior_day():
     # Trade Desk chart), never computed by Tier-B: every gamma row says so in its provenance.
     for lv in payload["levels"]:
         if lv["family"] == "gamma":
-            assert lv["provenance"] == {"producer": "terrain_engine.compute_terrain", "carried": True}
+            assert lv["provenance"] == {
+                "producer": "terrain_engine.compute_terrain",
+                "carried": True,
+            }
     # Tier-B (levels-tierb-session-collapse-v1): session families are served from the engine
     # when today bars exist — not left as soft B1-absent placeholders.
     assert "VWAP" in by_id and by_id["VWAP"]["family"] == "vwap"
@@ -127,11 +146,14 @@ def test_strikes_payload_carries_server_side_sums():
 
     tk = "ZZSUMS"
     with srv._terrain_cache_lock:
-        srv._terrain_cache[tk] = {"_per_strike": {"all": [[95.0, 10.0, 100], [105.0, -4.0, 50]],
-                                                  "near": [], "far": []},
-                                  "spot": 100.0, "computed_ts_utc": 1.0}
-    lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True,
-                               "held": {"LEVELONE_EQUITIES": [tk]}})
+        srv._terrain_cache[tk] = {
+            "_per_strike": {"all": [[95.0, 10.0, 100], [105.0, -4.0, 50]], "near": [], "far": []},
+            "spot": 100.0,
+            "computed_ts_utc": 1.0,
+        }
+    lmp.record_feed_heartbeat(
+        {"ts": time.time(), "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [tk]}}
+    )
     ofs._price_rows[tk] = {"ticker": tk, "spot": 100.0, "trade_ts": 1.0}
     try:
         resp = srv.get_terrain_strikes(ticker=tk)
@@ -159,7 +181,7 @@ def test_api_levels_prior_day_is_the_whole_recorded_prior_session():
         stream_daemon_bars(_DAEMON_BARS)
         payloads = {}
         for tk in _PAIR:
-            srv._publish_price_levels(tk, now)        # as the bar writer does
+            srv._publish_price_levels(tk, now)  # as the bar writer does
             payloads[tk] = srv.levels_payload(tk, "1", now)
     finally:
         _forget(*_PAIR)
@@ -167,10 +189,15 @@ def test_api_levels_prior_day_is_the_whole_recorded_prior_session():
         monday = _rth(_DAEMON_BARS, tk, "2026-10-01")
         assert len(monday) == 390, tk
         by_id = {lv["id"]: lv for lv in payloads[tk]["levels"]}
-        assert by_id["PDL"]["price"] == min(r["low"] for r in monday), (tk, "PDL is not the whole prior session's min")
+        assert by_id["PDL"]["price"] == min(r["low"] for r in monday), (
+            tk,
+            "PDL is not the whole prior session's min",
+        )
         assert by_id["PDH"]["price"] == max(r["high"] for r in monday), tk
         assert by_id["PDC"]["price"] == monday[-1]["close"], tk
-        assert srv.BAR_SOURCE in by_id["PDL"]["provenance"]["vendor_basis"], "provenance names the one bar source"
+        assert srv.BAR_SOURCE in by_id["PDL"]["provenance"]["vendor_basis"], (
+            "provenance names the one bar source"
+        )
 
 
 def test_the_bar_writer_publishes_the_levels_and_the_route_only_serves_them():
@@ -190,7 +217,9 @@ def test_the_bar_writer_publishes_the_levels_and_the_route_only_serves_them():
         # nothing published yet: the levels are absent with their reason
         none_yet = srv.levels_payload(tk, "1", now)
         assert none_yet["generation"] is None
-        assert {"family": "price_levels", "reason": srv.NO_PRICE_LEVELS_REASON} in none_yet["families_absent"]
+        assert {"family": "price_levels", "reason": srv.NO_PRICE_LEVELS_REASON} in none_yet[
+            "families_absent"
+        ]
 
         # a minute's bars arrive together (SPY and TSLA): each write is pushed as `liquidity` and
         # each ticker's levels published from its bars as `levels`, to the page open on it (the
@@ -217,19 +246,25 @@ def test_the_bar_writer_publishes_the_levels_and_the_route_only_serves_them():
         served = srv.levels_payload(tk, "1", now)
         assert served["generation"] is not None
         assert served["snapshot_as_of_ts_utc"] == pushed[tk]["bar_start_ms"] / 1000.0
-        assert srv.canonical_price_level_snapshot(other, now).as_of_ts_utc == pushed[other]["bar_start_ms"] / 1000.0
+        assert (
+            srv.canonical_price_level_snapshot(other, now).as_of_ts_utc
+            == pushed[other]["bar_start_ms"] / 1000.0
+        )
         # the route reads no bar: with the ticker's bars gone from memory it serves the same levels
         kept = srv._bars.pop(tk)
         again = srv.levels_payload(tk, "15", now)
         assert again["generation"] == served["generation"]
-        assert [(r["id"], r["price"]) for r in again["levels"]] == [(r["id"], r["price"]) for r in served["levels"]]
+        assert [(r["id"], r["price"]) for r in again["levels"]] == [
+            (r["id"], r["price"]) for r in served["levels"]
+        ]
         srv._bars[tk] = kept
 
         # a new session: the levels loop builds its levels (10-02's bars are its prior day)
-        monday = _dt(2026, 10, 5, 7, 30, tzinfo=ET)                       # pre-market (Schwab's: 07:00)
+        monday = _dt(2026, 10, 5, 7, 30, tzinfo=ET)  # pre-market (Schwab's: 07:00)
         srv._publish_missing_price_levels([tk], monday)
         nextday = srv.levels_payload(tk, "1", monday)
         assert {lv["id"]: lv["price"] for lv in nextday["levels"]}["PDH"] == max(
-            r["high"] for r in _rth(_DAEMON_BARS, tk, "2026-10-02"))
+            r["high"] for r in _rth(_DAEMON_BARS, tk, "2026-10-02")
+        )
     finally:
         _forget(*_PAIR)
