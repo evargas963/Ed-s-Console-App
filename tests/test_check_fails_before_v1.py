@@ -259,8 +259,30 @@ def test_a_removal_may_drop_the_imports_only_the_removed_code_used(tmp_path, bef
 @pytest.mark.parametrize("after", [
     USES.replace("import math\n", ""),                                           # an import still used, dropped
     "import csv\n" + USES,                                                       # an import added
+    USES.replace("import json\n", ""),                                           # one the removed code never used
+    USES.replace("import json\nimport math\n", "import math\nimport json\n"),    # imports reordered
 ])
 def test_a_removal_that_drops_a_used_import_or_adds_one_still_needs_a_test(tmp_path, after):
     before = USES + "\n\ndef dump(row):\n    return row\n"
     root = _repo(tmp_path, {"calc.py": after}, base={**BASE, "calc.py": before})
+    assert cfb.violations(root, "main") == [f"product code changed (calc.py) {NEEDS}"]
+
+
+@pytest.mark.parametrize("before, after", [
+    ("import math\n\n\ndef spot(row):\n    return math.floor(row['bid'])\n\n\ndef unused():\n    return 1\n",
+     "import math; math.floor = round\n\n\ndef spot(row):\n    return math.floor(row['bid'])\n"),   # a statement beside an import
+    ("from os.path import join as f\nfrom posixpath import basename as f\n\n\ndef g():\n    return f('a/b')\n\n\n"
+     "def unused():\n    return 1\n",
+     "from posixpath import basename as f\nfrom os.path import join as f\n\n\ndef g():\n    return f('a/b')\n"),  # imports swapped
+])
+def test_a_removal_beside_a_change_hidden_in_the_imports_still_needs_a_test(tmp_path, before, after):
+    root = _repo(tmp_path, {"calc.py": after}, base={**BASE, "calc.py": before})
+    assert cfb.violations(root, "main") == [f"product code changed (calc.py) {NEEDS}"]
+
+
+def test_a_removal_that_drops_the_future_import_still_needs_a_test(tmp_path):
+    """`from __future__ import annotations` binds a name no code uses; dropping it changes when every
+    annotation is evaluated (FastAPI reads them), so it is not an import the removed code used."""
+    future = "from __future__ import annotations\n\n" + USES
+    root = _repo(tmp_path, {"calc.py": USES}, base={**BASE, "calc.py": future + "\n\ndef dump(row):\n    return row\n"})
     assert cfb.violations(root, "main") == [f"product code changed (calc.py) {NEEDS}"]

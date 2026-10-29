@@ -129,27 +129,38 @@ def _units(tree: ast.Module) -> dict[str, ast.stmt]:
     return out
 
 
+def _binding(n: ast.Import | ast.ImportFrom, a: ast.alias) -> tuple:
+    """One name an import binds, as (module, name, alias)."""
+    return (None if isinstance(n, ast.Import) else "." * n.level + (n.module or ""), a.name, a.asname)
+
+
 def _imports(tree: ast.Module) -> dict[tuple, str]:
-    """A module's top-level imports, each binding (module, name, alias) with the name it binds."""
-    out = {}
+    """A module's top-level imports, each binding with the name it binds."""
+    return {_binding(n, a): a.asname or a.name.split(".")[0]
+            for n in tree.body if isinstance(n, (ast.Import, ast.ImportFrom)) for a in n.names}
+
+
+def _code_without(tree: ast.Module, units: set[str], bindings: set[tuple]) -> str | None:
+    """`tree`'s code, in its order, with the named units and import bindings taken out as nodes."""
+    body = []
     for n in tree.body:
+        if isinstance(n, _DEFS) and n.name in units:
+            continue
+        if isinstance(n, ast.ClassDef):
+            n.body = [s for s in n.body if not (isinstance(s, _DEFS) and f"{n.name}.{s.name}" in units)] or [ast.Pass()]
         if isinstance(n, (ast.Import, ast.ImportFrom)):
-            frm = None if isinstance(n, ast.Import) else "." * n.level + (n.module or "")
-            out |= {(frm, a.name, a.asname): a.asname or a.name.split(".")[0] for a in n.names}
-    return out
-
-
-def _code_without(source: str, tree: ast.Module, units: list[ast.stmt]) -> str | None:
-    """`source`'s code with `units` and its top-level imports taken out, as a syntax tree."""
-    drop = {n for u in [*units, *(s for s in tree.body if isinstance(s, (ast.Import, ast.ImportFrom)))]
-            for n in range(u.lineno, u.end_lineno + 1)}
-    return _python_code("\n".join(line for n, line in enumerate(source.split("\n"), start=1) if n not in drop))
+            n.names = [a for a in n.names if _binding(n, a) not in bindings]
+            if not n.names:
+                continue
+        body.append(n)
+    tree.body = body
+    return _python_code(ast.unparse(tree))
 
 
 def _removes_whole_units(was: str, now: str | None) -> bool:
-    """Whether `now` is `was` with whole undecorated functions or classes removed and nothing else
-    but the imports nothing left uses (its code compared as a syntax tree, so comments and
-    docstrings aside, every string as written); `now` None is the file deleted, which holds only
+    """Whether `now` is `was` with whole undecorated functions or classes removed, and the imports
+    only they used, and nothing else: both compared as syntax trees in their order (comments and
+    docstrings aside, every string as written). `now` None is the file deleted, which holds only
     imports, a docstring and undecorated functions and classes."""
     tree = ast.parse(was)
     if now is None:
@@ -160,15 +171,17 @@ def _removes_whole_units(was: str, now: str | None) -> bool:
         return False
     after = ast.parse(now)
     kept = _units(after)
-    removed = [u for name, u in _units(tree).items() if name not in kept]
-    if not removed or any(u.decorator_list for u in removed):
+    removed = {name: u for name, u in _units(tree).items() if name not in kept}
+    if not removed or any(u.decorator_list for u in removed.values()):
         return False
     had, has = _imports(tree), _imports(after)
+    dropped = had.keys() - has.keys()
     used = {n.id for n in ast.walk(after) if isinstance(n, ast.Name)}
-    if not has.keys() <= had.keys() or any(had[b] in used for b in had.keys() - has.keys()):
-        return False                              # an import added or changed, or one removed still used
-    left = _code_without(was, tree, removed)
-    return left is not None and left == _code_without(now, after, [])
+    used_by_removed = {n.id for u in removed.values() for n in ast.walk(u) if isinstance(n, ast.Name)}
+    if any(had[b] in used or had[b] not in used_by_removed for b in dropped):
+        return False                    # a dropped import still used, or one the removed code never used
+    left = _code_without(tree, set(removed), dropped)
+    return left is not None and left == _code_without(after, set(), set())
 
 
 def deletes_only(root: Path, base: str, product: list[str]) -> bool:
