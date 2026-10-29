@@ -5,8 +5,8 @@
 Every pytest `MonkeyPatch` change and every unittest.mock patch (`patch` in any form, `patch.dict`,
 started, entered or as a decorator; pytest-mock's `mocker` is built on them) is wrapped before the
 first conftest.py is imported. Each process writes <dir>/<xdist worker or "main">.jsonl, one Event
-per line: each patch APPLIED, and each test that RAN (reached its call) with the patches still
-applied that reach it: one applied while modules were imported, by a fixture the test requests, or
+per line: each patch APPLIED, and each test that RAN (its call ended other than by a skip) with the
+patches still applied that reach it: one applied while modules were imported, by a fixture the test requests, or
 from its own file or a conftest.py above it. A patch with no test code on its stack (pytest's own
 set-up) is not recorded. Without ED_PATCH_RECORD the plugin records nothing.
 """
@@ -162,6 +162,16 @@ def _reaches(applied: _Applied, item: pytest.Item) -> bool:
         for site, _ in applied.sites)
 
 
-def pytest_runtest_call(item: pytest.Item) -> None:
-    if _out is not None:
-        _write(RAN, item.nodeid, [s for a in _active.values() if _reaches(a, item) for s in a.sites])
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_call(item: pytest.Item):
+    """A test RAN when its call ends other than by a skip or an imperative xfail, which stop it
+    partway, with the patches that reached it when the call began."""
+    sites = [s for a in _active.values() if _reaches(a, item) for s in a.sites]
+    try:
+        return (yield)
+    except (pytest.skip.Exception, pytest.xfail.Exception):
+        sites = None
+        raise
+    finally:
+        if _out is not None and sites is not None:
+            _write(RAN, item.nodeid, sites)

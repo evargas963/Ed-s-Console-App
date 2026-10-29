@@ -208,6 +208,12 @@ def test_a_new_test_in_a_file_skipped_at_collection_is_refused(tmp_path):
     assert _check(tmp_path, {"tests/test_new.py": new}) == [f"tests/test_new.py::test_new patches: {cnp.UNRUN}"]
 
 
+def test_a_new_test_that_skips_partway_is_refused(tmp_path):
+    """The code after its skip never ran here; what it runs under is unknown."""
+    new = "import pytest\n\n\ndef test_new(monkeypatch):\n    pytest.skip('elsewhere')\n    monkeypatch.setenv('X', '1')\n"
+    assert _check(tmp_path, {"tests/test_new.py": new}) == [f"tests/test_new.py::test_new patches: {cnp.UNRUN}"]
+
+
 def test_a_new_test_marked_not_to_run_is_refused(tmp_path):
     new = "import pytest\n\n\n@pytest.mark.xfail(run=False)\ndef test_new(monkeypatch):\n    monkeypatch.setenv('X', '1')\n"
     assert _check(tmp_path, {"tests/test_new.py": new}) == [f"tests/test_new.py::test_new patches: {cnp.UNRUN}"]

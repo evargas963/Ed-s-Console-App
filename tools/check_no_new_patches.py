@@ -6,7 +6,8 @@ at any class depth or under an `if` or `try`, carrying its classes' decorators) 
 statement. The suite's run, recorded by tools/patch_record.py, says what patched, however it was
 written. A test the PR adds or changes is refused when it ran with a patch applied (applied while
 it ran, or still applied and reaching it, as the recorder judges), or when the run has no record
-of it running (skipped, deselected, its file skipped), so what it runs under is unknown. A unit the
+of it running to its end (skipped before or during its call, deselected, its file skipped), so
+what it runs under is unknown. A unit the
 PR adds or changes is refused when a patch was applied from one of its lines. A patching test whose docstrings or comments alone change is not judged; a
 change to its code needs its patch removed.
 
