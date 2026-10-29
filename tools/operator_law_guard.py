@@ -141,11 +141,6 @@ def _sed_writes(st: Statement) -> list[str]:
         f"output redirected to {t}" for op, t in st.redirects if op in _OUTPUT and t.lower() not in _NOT_A_FILE]
 
 
-def sed_edits(cmd: str, powershell: bool = False) -> list[str]:
-    """How each sed in `cmd` (a PowerShell command when `powershell`) writes a file."""
-    return [w for st in read(cmd, powershell=powershell) for w in _sed_writes(st)]
-
-
 def bash_violations(cmd: str, powershell: bool = False) -> list[str]:
     """Every host-wide ban that fires on `cmd` (a PowerShell command when `powershell`).
     Applicability is per rule, never an early return (a foreign-repository target
