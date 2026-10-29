@@ -6,7 +6,8 @@ description: Run before offering a pull request or reporting work done. Runs the
 Run each step from the worktree root on the branch's final commit (`git log --oneline -1` first), with
 `ED_CI_OFFLINE=1`, `SCHWAB_API_KEY=ci-not-live-placeholder`, `SCHWAB_APP_SECRET=ci-not-live-placeholder`.
 Show each command's last lines in the reply. A step that fails stops the list: fix the cause (AGENTS.md
-First gate 4), then start again from step 1.
+First gate 4), then start again from step 1. After two failed fixes of the same step, stop and report
+to Ed what was tried (CLAUDE.md item 6, which wins over starting again).
 
 1. `git fetch -q origin && git merge-base --is-ancestor origin/main HEAD` — the branch is current with
    `main` (exit 0). Otherwise merge `origin/main` and start again.
