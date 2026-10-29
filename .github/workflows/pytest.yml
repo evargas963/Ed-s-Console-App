@@ -115,6 +115,7 @@ jobs:
           # ED_CI_OFFLINE + config.is_schwab_ci_offline_mode() block live API calls.
           SCHWAB_API_KEY: "ci-not-live-placeholder"
           SCHWAB_APP_SECRET: "ci-not-live-placeholder"
+          ED_PATCH_RECORD: ${{ runner.temp }}/patch-record
         run: |
           # MEASURED on required pytest-full 32234684073: nproc=4 and
           # os.cpu_count()=4 but `pytest -n auto` still created 2/2 workers
@@ -142,7 +143,7 @@ jobs:
           npm run test:e2e
           e2e_rc=$?
           echo "e2e_rc=$e2e_rc" >> "$GITHUB_OUTPUT"
-          python -m pytest -n "$(nproc)" --dist loadfile --durations=20 -rs
+          python -m pytest -p tools.patch_record -n "$(nproc)" --dist loadfile --durations=20 -rs
           pytest_rc=$?
           set -e
           if [ "$e2e_rc" -ne 0 ]; then
@@ -173,3 +174,9 @@ jobs:
           SCHWAB_APP_SECRET: "ci-not-live-placeholder"
           BASE_REF: ${{ github.base_ref }}
         run: python tools/check_fails_before.py --base "origin/$BASE_REF"
+
+      - name: no new or changed test patches the code it tests, as the suite's run recorded (TEST-PATCHES)
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: python tools/check_no_new_patches.py --base "origin/$BASE_REF" --record "$RUNNER_TEMP/patch-record"

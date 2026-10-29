@@ -112,7 +112,8 @@ const invokedDirectly =
   process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 
 if (invokedDirectly) {
-  const args = ["-m", "pytest", "-n", "auto", "--dist", "loadfile", "--durations=20", ...process.argv.slice(2)];
+  const args = ["-m", "pytest", "-p", "tools.patch_record", "-n", "auto", "--dist", "loadfile", "--durations=20",
+    ...process.argv.slice(2)];
   const code = runWithFileSink("pytest", projectPython(root), args, {
     logPath: path.join(logDir(), "test_pytest_last.log"),
   });

@@ -8,8 +8,10 @@
    removed afterwards: the test server never touches the production database. Each run serves on
    a free port the config picks (`ED_E2E_PORT`, inherited by Playwright's workers), so runs from
    two checkouts at once never share a server (`tests/test_e2e_own_port_v1.py`).
-2. `node scripts/run-pytest-full.mjs [pytest args]` — `python -m pytest -n auto --dist loadfile
-   --durations=20`; extra args narrow the run (a test path, `-n 0`).
+2. `node scripts/run-pytest-full.mjs [pytest args]` — `python -m pytest -p tools.patch_record -n auto
+   --dist loadfile --durations=20`; extra args narrow the run (a test path, `-n 0`). With
+   `ED_PATCH_RECORD=<folder>` set, the run records each patch it applies for
+   `tools/check_no_new_patches.py`.
 
 If step 1 fails, step 2 does not run. Each step's exit code is its proof. CI
 (`.github/workflows/pytest.yml`) runs both.
