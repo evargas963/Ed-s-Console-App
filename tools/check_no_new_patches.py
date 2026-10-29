@@ -4,9 +4,13 @@ A pull request's test files (tests/**/*.py) are compared function by function wi
 function's code read with its docstrings and comments set aside. A test, fixture or helper whose
 code the PR adds or changes is refused when it patches: it takes or uses pytest's `monkeypatch`,
 uses unittest.mock's patch (`patch(...)`, `mock.patch`, `patch.object`, `patch.dict`) or
-pytest-mock's `mocker`, or requests a fixture that does (in its own file or a conftest.py). A test
-whose code the PR adds or changes is also refused when its file has an autouse fixture that
-patches: it would run under that patch. A patching test whose docstrings or comments alone change
+pytest-mock's `mocker`, or requests a fixture that does (in its own file or a conftest.py), as a
+parameter or through `pytest.mark.usefixtures`; a method carries its class's decorators. Code
+outside the functions (a module's or a class's other statements) that the PR adds or changes is
+refused when it patches (a patch call, or a pytestmark using a patching fixture). A test whose code
+the PR adds or changes is also refused when it would run under a patch: an autouse fixture that
+patches, in its file or in a conftest.py of its directory or one above, or its file's patch outside
+a function. A patching test whose docstrings or comments alone change
 is not judged (operator 2026-10-28); a change to its code needs its patch removed.
 
     python tools/check_no_new_patches.py --base origin/main
@@ -55,7 +59,8 @@ def _dotted(node: ast.AST) -> str:
 
 
 def _functions(src: str) -> dict[str, ast.FunctionDef]:
-    """Top-level functions and the methods of top-level classes, by name (Class.method)."""
+    """Top-level functions and the methods of top-level classes, by name (Class.method); a method
+    carries its class's decorators, which apply to it."""
     out = {}
     for node in ast.parse(src).body:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -63,12 +68,20 @@ def _functions(src: str) -> dict[str, ast.FunctionDef]:
         elif isinstance(node, ast.ClassDef):
             for sub in node.body:
                 if isinstance(sub, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    sub.decorator_list = node.decorator_list + sub.decorator_list
                     out[f"{node.name}.{sub.name}"] = sub
     return out
 
 
+def _usefixtures(node: ast.AST) -> set[str]:
+    """The fixture names `pytest.mark.usefixtures(...)` calls in `node` request."""
+    return {a.value for n in ast.walk(node) if isinstance(n, ast.Call) and _dotted(n.func).endswith("mark.usefixtures")
+            for a in n.args if isinstance(a, ast.Constant) and isinstance(a.value, str)}
+
+
 def _params(fn: ast.FunctionDef) -> set[str]:
-    return {a.arg for a in fn.args.args + fn.args.kwonlyargs}
+    """The fixtures a function requests: its parameters and its decorators' usefixtures names."""
+    return {a.arg for a in fn.args.args + fn.args.kwonlyargs} | set().union(*map(_usefixtures, fn.decorator_list))
 
 
 def _patches_directly(fn: ast.FunctionDef) -> bool:
@@ -113,15 +126,39 @@ def _code(fn: ast.FunctionDef) -> str | None:
     return _python_code(ast.unparse(fn))
 
 
-def _conftest_patching(root: Path, rev: str) -> set[str]:
-    out: set[str] = set()
-    for path in _git(root, "ls-tree", "-r", "--name-only", rev, "tests").splitlines():
-        if path.endswith("conftest.py"):
+def _outside(tree: ast.Module) -> list[ast.stmt]:
+    """A module's statements outside its functions: the module's and its classes' other
+    statements."""
+    out = []
+    for node in tree.body:
+        if isinstance(node, ast.ClassDef):
+            out += [s for s in node.body if not isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef))]
+        elif not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            out.append(node)
+    return out
+
+
+def _outside_patches(tree: ast.Module, patching: set[str]) -> bool:
+    """Whether a module's statements outside its functions patch: a patch call, or a pytestmark
+    using `monkeypatch`, `mocker` or a patching fixture."""
+    return any((isinstance(n, ast.Call) and _dotted(n.func) in PATCH_CALLS)
+               or _usefixtures(n) & (patching | PATCH_FIXTURES)
+               for s in _outside(tree) for n in ast.walk(s))
+
+
+def _conftest_patching(root: Path, rev: str) -> tuple[set[str], list[tuple[str, str]]]:
+    """The patching fixtures of every conftest.py, and the autouse ones as (its directory, name)."""
+    shared: set[str] = set()
+    autouse: list[tuple[str, str]] = []
+    for path in _git(root, "ls-tree", "-r", "--name-only", rev).splitlines():
+        if path.rsplit("/", 1)[-1] == "conftest.py":
             src = _source(root, rev, path)
             if src:
                 funcs = _functions(src)
-                out |= {n for n in _patching(funcs, set()) if _is_fixture(funcs[n])[0]}
-    return out
+                fixtures = {n for n in _patching(funcs, set()) if _is_fixture(funcs[n])[0]}
+                shared |= fixtures
+                autouse += [(path[:-len("conftest.py")], n) for n in sorted(fixtures) if _is_fixture(funcs[n])[1]]
+    return shared, autouse
 
 
 def violations(root: Path, base: str) -> list[str]:
@@ -129,7 +166,7 @@ def violations(root: Path, base: str) -> list[str]:
                if f.startswith("tests/") and f.endswith(".py")]
     if not changed:
         return []
-    shared = _conftest_patching(root, "HEAD")
+    shared, conftest_autouse = _conftest_patching(root, "HEAD")
     out = []
     for path in changed:
         head = _source(root, "HEAD", path)
@@ -140,13 +177,22 @@ def violations(root: Path, base: str) -> list[str]:
         funcs = _functions(head)
         patching = _patching(funcs, shared)
         autouse = sorted(n for n in patching if _is_fixture(funcs[n]) == (True, True))
+        under = [f"the file's patching autouse fixture {', '.join(autouse)}"] if autouse else []
+        under += [f"{d}conftest.py's patching autouse fixture {n}" for d, n in conftest_autouse
+                  if path.startswith(d) and path != f"{d}conftest.py"]
+        tree = ast.parse(head)
+        if _outside_patches(tree, patching | shared):
+            under.append("the file's patch outside a function")
+            was = ast.Module(_outside(ast.parse(old)) if old else [], [])
+            if _python_code(ast.unparse(was)) != _python_code(ast.unparse(ast.Module(_outside(tree), []))):
+                out.append(f"{path} patches outside a function (a patch call or a pytestmark that patches)")
         for name, fn in funcs.items():
             if old_code.get(name) == _code(fn):
                 continue                    # its code unchanged: docstrings and comments may change
             if name in patching:
                 out.append(f"{path}::{name} patches (monkeypatch, mock.patch or a fixture that does)")
-            elif autouse and name.split(".")[-1].startswith("test"):
-                out.append(f"{path}::{name} runs under the file's patching autouse fixture {', '.join(autouse)}")
+            elif under and name.split(".")[-1].startswith("test"):
+                out.append(f"{path}::{name} runs under {'; '.join(under)}")
     return out
 
 

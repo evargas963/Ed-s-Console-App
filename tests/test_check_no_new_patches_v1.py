@@ -118,6 +118,49 @@ def test_an_untouched_old_patching_test_is_allowed_when_its_file_changes_elsewhe
     assert cnp.violations(root, "main") == []
 
 
+def test_a_test_class_patched_by_its_decorator_is_refused(tmp_path):
+    root = _pr(tmp_path, {"tests/test_new.py": (
+        "from unittest import mock\n\n\n@mock.patch('calc.spot', return_value=3)\nclass TestSpot:\n"
+        "    def test_new(self, spot):\n        assert spot() == 3\n")})
+    assert cnp.violations(root, "main") == [
+        "tests/test_new.py::TestSpot.test_new patches (monkeypatch, mock.patch or a fixture that does)"]
+
+
+def test_a_test_class_given_a_patching_fixture_by_usefixtures_is_refused(tmp_path):
+    root = _pr(tmp_path, {"tests/test_new.py": (
+        "import pytest\n\n\n@pytest.mark.usefixtures('pinned')\nclass TestSpot:\n"
+        "    def test_new(self):\n        assert True\n")})
+    assert cnp.violations(root, "main") == [
+        "tests/test_new.py::TestSpot.test_new patches (monkeypatch, mock.patch or a fixture that does)"]
+
+
+def test_a_patch_added_outside_the_functions_is_refused(tmp_path):
+    """No test's code changes, yet every test in the file now runs under the patch."""
+    root = _pr(tmp_path, {"tests/test_old.py": OLD_FILE.replace(
+        "import calc\n", "from unittest import mock\n\nimport calc\n\nmock.patch('calc.spot', return_value=3).start()\n")})
+    assert cnp.violations(root, "main") == [
+        "tests/test_old.py patches outside a function (a patch call or a pytestmark that patches)"]
+
+
+def test_a_new_test_under_a_pytestmark_using_a_patching_fixture_is_refused(tmp_path):
+    root = _pr(tmp_path, {"tests/test_new.py": (
+        "import pytest\n\npytestmark = pytest.mark.usefixtures('pinned')\n\n\ndef test_new():\n    assert True\n")})
+    assert cnp.violations(root, "main") == [
+        "tests/test_new.py patches outside a function (a patch call or a pytestmark that patches)",
+        "tests/test_new.py::test_new runs under the file's patch outside a function"]
+
+
+def test_a_new_test_under_a_conftest_patching_autouse_fixture_is_refused(tmp_path):
+    """The conftest's autouse fixture runs for every test in its directory and those below it."""
+    root = _pr(tmp_path, {
+        "tests/sub/conftest.py": CONFTEST.replace("@pytest.fixture\ndef pinned", "@pytest.fixture(autouse=True)\ndef held"),
+        "tests/sub/deeper/test_new.py": "def test_new():\n    assert True\n",
+        "tests/test_beside.py": "def test_beside():\n    assert True\n"})
+    assert cnp.violations(root, "main") == [
+        "tests/sub/conftest.py::held patches (monkeypatch, mock.patch or a fixture that does)",
+        "tests/sub/deeper/test_new.py::test_new runs under tests/sub/conftest.py's patching autouse fixture held"]
+
+
 def test_a_new_test_that_patches_nothing_is_allowed(tmp_path):
     root = _pr(tmp_path, {"tests/test_new.py": "import calc\n\n\ndef test_new():\n    assert calc.spot({'last': 4}) == 4\n"})
     assert cnp.violations(root, "main") == []
