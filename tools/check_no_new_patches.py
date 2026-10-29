@@ -1,17 +1,20 @@
 """No new or changed test patches the code it tests.
 
-A pull request's test files (tests/**/*.py) are compared function by function with the base, each
-function's code read with its docstrings and comments set aside. A test, fixture or helper whose
-code the PR adds or changes is refused when it patches: it takes or uses pytest's `monkeypatch`,
-uses unittest.mock's patch (`patch(...)`, `mock.patch`, `patch.object`, `patch.dict`) or
-pytest-mock's `mocker`, or requests a fixture that does (in its own file or a conftest.py). A test
-whose code the PR adds or changes is also refused when its file has an autouse fixture that
-patches: it would run under that patch. A patching test whose docstrings or comments alone change
-is not judged (operator 2026-10-28); a change to its code needs its patch removed.
+A pull request's test files (tests/**/*.py) are compared with the base unit by unit, each unit's
+code read with its docstrings and comments set aside: every function not inside another (by name,
+at any class depth or under an `if` or `try`, carrying its classes' decorators) and every other
+statement. The suite's run, recorded by tools/patch_record.py, says what patched, however it was
+written. A test the PR adds or changes is refused when it ran with a patch applied (applied while
+it ran, or still applied and reaching it, as the recorder judges), or when the run has no record
+of it running to its end (skipped before or during its call, deselected, its file skipped), so
+what it runs under is unknown. A unit the
+PR adds or changes is refused when a patch was applied from one of its lines. A patching test whose docstrings or comments alone change is not judged; a
+change to its code needs its patch removed.
 
-    python tools/check_no_new_patches.py --base origin/main
-Exit 0: nothing patches in what the PR adds or changes. Exit 1: refused, each function named.
-Exit 2: the check itself failed (git unavailable, the base unknown).
+    ED_PATCH_RECORD=<dir> python -m pytest -p tools.patch_record
+    python tools/check_no_new_patches.py --base origin/main --record <dir>
+Exit 0: nothing patches in what the PR adds or changes. Exit 1: refused, each unit named.
+Exit 2: the check itself failed (git unavailable, the base unknown, no record of the run).
 """
 from __future__ import annotations
 
@@ -23,139 +26,184 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from check_end_to_end import _python_code  # noqa: E402
+from patch_record import APPLIED, COLLECTED, RAN, read  # noqa: E402
 
-PATCH_CALLS = {"patch", "patch.object", "patch.dict", "patch.multiple", "mock.patch", "mock.patch.object",
-               "mock.patch.dict", "unittest.mock.patch"}
-PATCH_FIXTURES = {"monkeypatch", "mocker"}
+_DEFS = (ast.FunctionDef, ast.AsyncFunctionDef)
+PATCHED = "it ran with a patch applied"
+UNRUN = "it did not run, so what it runs under is unknown"
+UNBOUND = "pytest collected it, but no code in its file binds the name, so what it is is unknown"
 
 
 class ToolError(Exception):
     pass
 
 
-def _git(root: Path, *args: str) -> str:
+def _git(root: Path, *args: str) -> bytes:
     try:
-        return subprocess.run(["git", *args], cwd=root, capture_output=True, text=True, encoding="utf-8",
+        return subprocess.run(["git", "-c", "core.quotePath=false", *args], cwd=root, capture_output=True,
                               check=True).stdout
     except (subprocess.CalledProcessError, FileNotFoundError) as e:
         raise ToolError(f"git {' '.join(args)} failed: {e}") from e
 
 
-def _source(root: Path, rev: str, path: str) -> str | None:
-    r = subprocess.run(["git", "show", f"{rev}:{path}"], cwd=root, capture_output=True, text=True, encoding="utf-8")
-    return r.stdout if r.returncode == 0 else None
+def _outside_defs(node: ast.AST) -> list[ast.AST]:
+    """`node` and every node under it outside the functions and classes it holds."""
+    out, todo = [], [node]
+    while todo:
+        n = todo.pop()
+        out.append(n)
+        todo += [c for c in ast.iter_child_nodes(n) if not isinstance(c, (*_DEFS, ast.ClassDef))]
+    return out
 
 
-def _dotted(node: ast.AST) -> str:
-    if isinstance(node, ast.Name):
-        return node.id
-    if isinstance(node, ast.Attribute):
-        return f"{_dotted(node.value)}.{node.attr}"
-    return ""
+def _units(src: bytes) -> tuple[dict[str, ast.stmt], list[ast.stmt]]:
+    """A module's functions and class headers (name, bases, decorators) by name (Class.name at any
+    class depth; one under an `if` or `try` by its own name), each carrying its classes'
+    decorators, and its other statements, docstrings aside (a compound statement holds the
+    functions under it)."""
+    funcs: dict[str, ast.stmt] = {}
+    rest: list[ast.stmt] = []
+
+    def walk(body: list[ast.stmt], prefix: str, decorators: list[ast.expr], top: bool) -> None:
+        for node in body:
+            if isinstance(node, _DEFS):
+                node.first = min([d.lineno for d in node.decorator_list] + [node.lineno])
+                node.decorator_list = decorators + node.decorator_list
+                funcs[prefix + node.name] = node
+            elif isinstance(node, ast.ClassDef):
+                header = ast.ClassDef(name=node.name, bases=node.bases, keywords=node.keywords, body=[ast.Pass()],
+                                      decorator_list=decorators + node.decorator_list, type_params=node.type_params)
+                header.lineno, header.end_lineno = node.lineno, node.end_lineno
+                header.first = min([d.lineno for d in node.decorator_list] + [node.lineno])
+                funcs[prefix + node.name] = header
+                walk(node.body, f"{prefix}{node.name}.", decorators + node.decorator_list, True)
+            elif not (isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant)):
+                if top:
+                    inner = _outside_defs(node)
+                    node.binds = ({prefix + n.id for n in inner if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store)}
+                                  | {prefix + (a.asname or a.name.split(".")[0]) for n in inner
+                                     if isinstance(n, (ast.Import, ast.ImportFrom)) for a in n.names})
+                    rest.append(node)
+                for block in [getattr(node, f, []) for f in ("body", "orelse", "finalbody")] + [
+                        h.body for h in getattr(node, "handlers", [])]:
+                    walk(block, prefix, decorators, False)
+    walk(ast.parse(src).body, "", [], True)
+    return funcs, rest
 
 
-def _functions(src: str) -> dict[str, ast.FunctionDef]:
-    """Top-level functions and the methods of top-level classes, by name (Class.method)."""
+def _code(node: ast.AST) -> str | None:
+    """A unit's code, decorators included, with its docstrings and comments set aside."""
+    return _python_code(ast.unparse(node))
+
+
+def _file_units(root: Path, base: str, path: str, was_path: str | None) -> list[tuple[str, ast.stmt, bool]]:
+    """Every unit of `path` as (name, node, whether the PR adds or changes it); a statement is
+    named "line N". `was_path` is the file's path on the base (a rename's old path; None when the
+    PR adds the file)."""
+    was_funcs, was_rest = _units(_git(root, "show", f"{base}:{was_path}")) if was_path else ({}, [])
+    was = {n: _code(f) for n, f in was_funcs.items()}
+    was_statements = {_code(s) for s in was_rest}
+    funcs, rest = _units(_git(root, "show", f"HEAD:{path}"))
+    return ([(n, f, was.get(n) != _code(f)) for n, f in funcs.items()]
+            + [(f"line {s.lineno}", s, _code(s) not in was_statements) for s in rest])
+
+
+def _changed_files(root: Path, base: str) -> dict[str, str | None]:
+    """The PR's added, changed and renamed test files, each with its path on the base."""
     out = {}
-    for node in ast.parse(src).body:
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            out[node.name] = node
-        elif isinstance(node, ast.ClassDef):
-            for sub in node.body:
-                if isinstance(sub, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                    out[f"{node.name}.{sub.name}"] = sub
+    rows = _git(root, "diff", "--name-status", "-M", "--diff-filter=AMR", f"{base}...HEAD")
+    for row in rows.decode("utf-8", "surrogateescape").splitlines():
+        status, *paths = row.split("\t")
+        if paths[-1].startswith("tests/") and paths[-1].endswith(".py"):
+            out[paths[-1]] = None if status == "A" else paths[0]
     return out
 
 
-def _params(fn: ast.FunctionDef) -> set[str]:
-    return {a.arg for a in fn.args.args + fn.args.kwonlyargs}
+def _named_as_test(path: str, name: str) -> bool:
+    """Whether pytest's default names make `name` in `path` a test (test_*.py or *_test.py, a test*
+    function in Test* classes): read only for a file pytest collected nothing from (skipped whole,
+    ignored, or in a package that skipped)."""
+    file, *classes, function = [path.rsplit("/", 1)[-1], *name.split(".")]
+    return ((file.startswith("test_") or file.endswith("_test.py")) and function.startswith("test")
+            and all(c.startswith("Test") for c in classes))
 
 
-def _patches_directly(fn: ast.FunctionDef) -> bool:
-    if _params(fn) & PATCH_FIXTURES:
-        return True
-    for n in ast.walk(fn):
-        if isinstance(n, ast.Name) and n.id in PATCH_FIXTURES:
-            return True
-        if isinstance(n, ast.Call) and _dotted(n.func) in PATCH_CALLS:
-            return True
-        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n is not fn:
-            if any(_dotted(d.func if isinstance(d, ast.Call) else d) in PATCH_CALLS for d in n.decorator_list):
-                return True
-    return any(_dotted(d.func if isinstance(d, ast.Call) else d) in PATCH_CALLS for d in fn.decorator_list)
+def _innermost(units: dict, path: str, line: int) -> tuple[str, bool] | None:
+    """The innermost unit of `path` holding `line`, as (name, changed); None outside every unit or
+    for a file the PR does not change."""
+    inside = [(u.end_lineno - getattr(u, "first", u.lineno), n, changed) for n, u, changed in units.get(path, [])
+              if getattr(u, "first", u.lineno) <= line <= u.end_lineno]
+    return min(inside)[1:] if inside else None
 
 
-def _is_fixture(fn: ast.FunctionDef) -> tuple[bool, bool]:
-    """(a pytest fixture, autouse)."""
-    for d in fn.decorator_list:
-        name = _dotted(d.func if isinstance(d, ast.Call) else d)
-        if name in ("pytest.fixture", "fixture"):
-            auto = isinstance(d, ast.Call) and any(
-                k.arg == "autouse" and isinstance(k.value, ast.Constant) and k.value.value is True for k in d.keywords)
-            return True, auto
-    return False, False
+def _resolve(units: dict, path: str, at: str | int) -> tuple[str, str] | None:
+    """The changed file's unit a test identity names, as (path, name): a name pytest collected it
+    under (a function's, or a statement's that binds it, `test_b = test_a`), or the innermost unit
+    holding the line its code starts on."""
+    if isinstance(at, int):
+        inside = _innermost(units, path, at)
+        return (path, inside[0]) if inside else None
+    for n, u, _ in units.get(path, []):
+        if n == at or at in getattr(u, "binds", ()):
+            return path, n
+    cls = at.rpartition(".")[0]
+    return _resolve(units, path, cls) if cls else None    # a method the class inherits: its class
 
 
-def _patching(funcs: dict[str, ast.FunctionDef], shared: set[str]) -> set[str]:
-    """Names in `funcs` that patch, directly or through a fixture or helper that does (`shared`:
-    patching fixtures from conftest.py), to a fixed point."""
-    out = {n for n, f in funcs.items() if _patches_directly(f)}
-    while True:
-        more = {n for n, f in funcs.items() if n not in out and (
-            _params(f) & (out | shared) or {x.id for x in ast.walk(f) if isinstance(x, ast.Name)} & out)}
-        if not more:
-            return out
-        out |= more
+def _over(units: dict, path: str, name: str) -> set[tuple[str, str]]:
+    """The units that put a test under what it runs with, besides its own code: the headers of the
+    classes holding it (their bases and decorators) and a `pytestmark` over it, in its module or
+    one of those classes."""
+    parts = name.split(".")
+    classes = {".".join(parts[:i]) for i in range(1, len(parts))}
+    marks = {"pytestmark"} | {c + ".pytestmark" for c in classes}
+    return {(path, n) for n, u, _ in units.get(path, []) if n in classes or marks & getattr(u, "binds", set())}
 
 
-def _code(fn: ast.FunctionDef) -> str | None:
-    """A function's code, decorators included, with its docstrings and comments set aside."""
-    return _python_code(ast.unparse(fn))
-
-
-def _conftest_patching(root: Path, rev: str) -> set[str]:
-    out: set[str] = set()
-    for path in _git(root, "ls-tree", "-r", "--name-only", rev, "tests").splitlines():
-        if path.endswith("conftest.py"):
-            src = _source(root, rev, path)
-            if src:
-                funcs = _functions(src)
-                out |= {n for n in _patching(funcs, set()) if _is_fixture(funcs[n])[0]}
-    return out
-
-
-def violations(root: Path, base: str) -> list[str]:
-    changed = [f for f in _git(root, "diff", "--name-only", "--diff-filter=AMR", f"{base}...HEAD").splitlines()
-               if f.startswith("tests/") and f.endswith(".py")]
-    if not changed:
-        return []
-    shared = _conftest_patching(root, "HEAD")
-    out = []
-    for path in changed:
-        head = _source(root, "HEAD", path)
-        if head is None:
+def violations(root: Path, base: str, record: Path) -> list[str]:
+    try:
+        events = read(record)
+    except FileNotFoundError as e:
+        raise ToolError(str(e)) from e
+    units = {path: _file_units(root, base, path, was) for path, was in _changed_files(root, base).items()}
+    reasons: dict[str, set[str]] = {}
+    ran, collected, collected_files = set(), set(), set()
+    for e in events:
+        tests = {t for at in e.test or () if (t := _resolve(units, *at))}
+        if tests and not any(changed for p, n in tests for m, _, changed in units[p] if m == n):
+            tests |= {o for p, n in tests for o in _over(units, p, n)}   # unchanged code put under a changed mark
+        if e.kind == RAN:
+            ran |= tests
+        if e.kind == COLLECTED:
+            collected |= tests
+            collected_files |= {path for path, _ in e.test}
+            path, name = e.test[0]
+            if path in units and not _resolve(units, path, name):
+                reasons.setdefault(f"{path}::{name}", set()).add(UNBOUND)
+        for path, name in tests:
+            if (e.kind == APPLIED or e.sites) and any(n == name and changed for n, _, changed in units[path]):
+                reasons.setdefault(f"{path}::{name}", set()).add(PATCHED)
+        if e.kind != APPLIED:
             continue
-        old = _source(root, base, path)
-        old_code = {n: _code(f) for n, f in _functions(old).items()} if old else {}
-        funcs = _functions(head)
-        patching = _patching(funcs, shared)
-        autouse = sorted(n for n in patching if _is_fixture(funcs[n]) == (True, True))
-        for name, fn in funcs.items():
-            if old_code.get(name) == _code(fn):
-                continue                    # its code unchanged: docstrings and comments may change
-            if name in patching:
-                out.append(f"{path}::{name} patches (monkeypatch, mock.patch or a fixture that does)")
-            elif autouse and name.split(".")[-1].startswith("test"):
-                out.append(f"{path}::{name} runs under the file's patching autouse fixture {', '.join(autouse)}")
-    return out
+        for path, line in e.sites:
+            inside = _innermost(units, path, line)
+            if inside and inside[1]:
+                reasons.setdefault(f"{path}::{inside[0]}", set()).add(f"line {line} applies one")
+    for path, file_units in units.items():
+        for name, _, changed in file_units:
+            is_test = (path, name) in collected or (path not in collected_files and _named_as_test(path, name))
+            if changed and is_test and (path, name) not in ran:
+                reasons.setdefault(f"{path}::{name}", set()).add(UNRUN)
+    return [f"{unit} patches: {', '.join(sorted(why))}" for unit, why in sorted(reasons.items())]
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--base", required=True)
+    ap.add_argument("--record", required=True, type=Path)
     a = ap.parse_args(argv)
     try:
-        found = violations(Path.cwd(), a.base)
+        found = violations(Path.cwd(), a.base, a.record)
     except (ToolError, SyntaxError) as e:
         print(f"the check failed: {e}", file=sys.stderr)
         return 2
