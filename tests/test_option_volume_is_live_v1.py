@@ -11,6 +11,7 @@ the panel would render, with no archive anywhere in the path. The input is a cap
 chain (tests/real_chains.py: 2026-10-07 12:32 ET), valued at its capture, not a hand-built one: a
 fixture tuned by the same hand that writes the assertion proves only that the hand is consistent.
 """
+
 from __future__ import annotations
 
 from terrain_engine import compute_terrain
@@ -49,7 +50,9 @@ def test_rows_are_the_shape_the_panel_renders():
     )
     for scope, rows in ps.items():
         for r in rows:
-            assert len(r) == (2 if scope in ("dex", "oi") else 3), f"{scope}: row {r} has the wrong shape"
+            assert len(r) == (2 if scope in ("dex", "oi") else 3), (
+                f"{scope}: row {r} has the wrong shape"
+            )
             assert all(isinstance(x, (int, float)) for x in r), f"{scope}: non-numeric row {r}"
     assert ps["all"], "the ALL scope is empty on a real 40-contract chain"
     assert any(r[1] != 0 for r in ps["all"]), "every gamma bar is zero — nothing would render"

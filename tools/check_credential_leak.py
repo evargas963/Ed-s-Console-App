@@ -11,6 +11,7 @@ are path-skipped (injected payloads must live there). Other fixtures mark a line
     python tools/check_credential_leak.py                       (pre-commit)
     python tools/check_credential_leak.py --base origin/main    (CI)
 """
+
 from __future__ import annotations
 
 import argparse
@@ -28,25 +29,35 @@ REPO = Path(__file__).resolve().parents[1]
 _FIXTURE_MARKERS = ("credential-leak-ok", "credential-leak-fixture-ok")
 
 # Paths that deliberately contain mock secrets for detector proof — never block.
-_SKIP_PATHS = frozenset({
-    "tests/test_credential_leak_v1.py",
-    "tools/check_credential_leak.py",
-})
+_SKIP_PATHS = frozenset(
+    {
+        "tests/test_credential_leak_v1.py",
+        "tools/check_credential_leak.py",
+    }
+)
 
 SECRET_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     # Require ≥16 token chars so prose like "Bearer token" in docs does not trip.
     ("bearer_token", re.compile(r"(?i)\bbearer\s+[A-Za-z0-9\-._~+/]{16,}=*")),
-    ("jwt_compact", re.compile(
-        r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b")),
+    (
+        "jwt_compact",
+        re.compile(r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b"),
+    ),
     ("aws_access_key", re.compile(r"\bAKIA[0-9A-Z]{16}\b")),
-    ("generic_api_key_assign", re.compile(
-        r"(?i)\b(api[_-]?key|secret[_-]?key|access[_-]?token|client[_-]?secret)\b\s*[:=]\s*"
-        r"['\"][^'\"]{12,}['\"]")),
+    (
+        "generic_api_key_assign",
+        re.compile(
+            r"(?i)\b(api[_-]?key|secret[_-]?key|access[_-]?token|client[_-]?secret)\b\s*[:=]\s*"
+            r"['\"][^'\"]{12,}['\"]"
+        ),
+    ),
     ("pem_private_key", re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----")),
-    ("windows_user_home", re.compile(
-        r"[A-Za-z]:[\\/]+Users[\\/]+[A-Za-z0-9_.-]+", re.IGNORECASE)),
+    ("windows_user_home", re.compile(r"[A-Za-z]:[\\/]+Users[\\/]+[A-Za-z0-9_.-]+", re.IGNORECASE)),
     ("posix_user_home", re.compile(r"(?<![\w<])/(?:home|Users)/[A-Za-z0-9_.-]+[\\/]")),
-    ("git_bash_user_home", re.compile(r"(?<![\w<])/[A-Za-z]/Users/[A-Za-z0-9_.-]+[\\/]", re.IGNORECASE)),
+    (
+        "git_bash_user_home",
+        re.compile(r"(?<![\w<])/[A-Za-z]/Users/[A-Za-z0-9_.-]+[\\/]", re.IGNORECASE),
+    ),
 )
 
 
@@ -68,11 +79,25 @@ def _added_text(root: Path, base: str | None = None) -> str:
     # or diff settings. Read as bytes: git ends a line only at a line feed.
     # --diff-merges=remerge: a merge commit shows only what it adds beyond git's own merge of its
     # parents (a conflict resolved by hand), never the lines its other parent brings in.
-    which = (["log", "-p", "--diff-merges=remerge", "--format=", f"{base}..HEAD"] if base
-             else ["diff", "--cached"])
+    which = (
+        ["log", "-p", "--diff-merges=remerge", "--format=", f"{base}..HEAD"]
+        if base
+        else ["diff", "--cached"]
+    )
     p = subprocess.run(
-        ["git", "-c", "core.quotePath=true", *which, "--unified=0", "--no-color",
-         "--text", "--no-textconv", "--no-ext-diff", "--src-prefix=a/", "--dst-prefix=b/"],
+        [
+            "git",
+            "-c",
+            "core.quotePath=true",
+            *which,
+            "--unified=0",
+            "--no-color",
+            "--text",
+            "--no-textconv",
+            "--no-ext-diff",
+            "--src-prefix=a/",
+            "--dst-prefix=b/",
+        ],
         cwd=root,
         capture_output=True,
     )
@@ -91,7 +116,9 @@ def find_credential_leaks(root: Path = REPO, base: str | None = None) -> list[st
     hits: list[str] = []
     current_file = "?"
     skip_file = False
-    header = False      # between a file's `diff --git` and its first hunk: an added line is not a header
+    header = (
+        False  # between a file's `diff --git` and its first hunk: an added line is not a header
+    )
     for line in text.split("\n"):
         if line.startswith("diff --git "):
             current_file, skip_file, header = "?", False, True
@@ -102,7 +129,7 @@ def find_credential_leaks(root: Path = REPO, base: str | None = None) -> list[st
         if header:
             if line.startswith("+++ ") and line != "+++ /dev/null":
                 try:
-                    current_file = _diff_path(line[len("+++ "):])
+                    current_file = _diff_path(line[len("+++ ") :])
                 except ToolError as e:
                     raise DiffUnreadable(str(e)) from e
                 skip_file = current_file in _SKIP_PATHS
@@ -127,11 +154,15 @@ def main(argv: list[str] | None = None) -> int:
     except DiffUnreadable as e:
         # Fail CLOSED: "clean" for a diff nobody read is the one outcome a secrets gate must
         # never produce.
-        print("check_credential_leak: FAIL — the diff could not be read, so nothing "
-              "was scanned:", file=sys.stderr)
+        print(
+            "check_credential_leak: FAIL — the diff could not be read, so nothing was scanned:",
+            file=sys.stderr,
+        )
         print(f"  {e}", file=sys.stderr)
-        print("  This is NOT a clean result. Fix the repository state and run it again.",
-              file=sys.stderr)
+        print(
+            "  This is NOT a clean result. Fix the repository state and run it again.",
+            file=sys.stderr,
+        )
         return 1
     rc = 0
     if hits:

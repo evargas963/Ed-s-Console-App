@@ -1,4 +1,5 @@
 """Schwab -> the trade desk. The Right Now spot carries Schwab's trade time."""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -15,7 +16,8 @@ def test_the_desk_spot_carries_schwabs_trade_time_when_the_feed_is_down():
     it is that trade's time. The feed being down does not remove either."""
     at = datetime(2026, 10, 2, 11, 0, tzinfo=ET).timestamp()
     lmp.record_from_level_one_equity(
-        "SPY", {"LAST_PRICE": 767.39, "TRADE_TIME_MILLIS": int(at * 1000)}, received_ts=at)
+        "SPY", {"LAST_PRICE": 767.39, "TRADE_TIME_MILLIS": int(at * 1000)}, received_ts=at
+    )
     ofs._price_rows["SPY"] = live_price_rows.price_row("SPY", at)
     try:
         body = server.levels_payload("SPY", "1", datetime.fromtimestamp(at, ET))

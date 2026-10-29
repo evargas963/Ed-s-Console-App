@@ -3,6 +3,7 @@
 Liveness is the FEED's (live_market_plane.feed_live_for): a daemon heartbeat < 3 s old that
 reports the Schwab socket open and holds the symbol. Tests that exercise a live price mark
 exactly the symbols the daemon would hold -- through the production entry point."""
+
 from __future__ import annotations
 
 import json
@@ -26,6 +27,7 @@ def stream_daemon_bars(rows: list[dict]) -> None:
     daemon received them, through the console's own streamed-bar writer (server._write_streamed_bar),
     so each minute holds Schwab's newest bar for it."""
     import server
+
     for r in sorted(rows, key=lambda r: r["ts_recv"]):
         server._write_streamed_bar(r)
 
@@ -34,7 +36,9 @@ def price_history(symbol: str, series: str) -> dict:
     """Schwab's captured /pricehistory answer for `symbol`'s `series` ("1m", "15m", "1d")
     (tests/fixtures/real_pricehistory_spy_tsla_2026_10_07.json): {params, status, date, sent_utc,
     answered_utc, body}."""
-    fx = json.loads((_FIXTURES / "real_pricehistory_spy_tsla_2026_10_07.json").read_text(encoding="utf-8"))
+    fx = json.loads(
+        (_FIXTURES / "real_pricehistory_spy_tsla_2026_10_07.json").read_text(encoding="utf-8")
+    )
     return next(a for a in fx["answers"] if a["symbol"] == symbol and a["series"] == series)
 
 
@@ -52,8 +56,13 @@ def clock_from(start: float):
 def mark_feed_live(*tickers: str, now: "float | None" = None) -> None:
     """The daemon's heartbeat stamped `now` (the wall clock when not given), holding `tickers` on
     LEVELONE_EQUITIES."""
-    lmp.record_feed_heartbeat({"ts": time.time() if now is None else now, "schwab_socket_open": True,
-                               "held": {"LEVELONE_EQUITIES": list(tickers)}})
+    lmp.record_feed_heartbeat(
+        {
+            "ts": time.time() if now is None else now,
+            "schwab_socket_open": True,
+            "held": {"LEVELONE_EQUITIES": list(tickers)},
+        }
+    )
 
 
 def mark_feed_down() -> None:
@@ -66,6 +75,7 @@ def publish_daemon_rows(*tickers: str, now: "float | None" = None) -> None:
     live_market_plane stands in for the daemon's)."""
     import live_price_rows
     from app.options.order_flow import streaming as ofs
+
     for tk in tickers:
         row = live_price_rows.price_row(tk, time.time() if now is None else now)
         ofs._price_rows[row["ticker"]] = row

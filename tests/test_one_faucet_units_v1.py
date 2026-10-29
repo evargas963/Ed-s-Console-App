@@ -3,6 +3,7 @@ no readable expiry is in no expiry's book; yesterday's chain is priced at its ow
 
 Real data (tests/real_chains.py): SPY's same-day chain of 2026-10-07 12:32 ET and CRWD's 2026-10-16
 chain of 2026-10-07 10:38 ET, each valued at its capture."""
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta
@@ -38,19 +39,26 @@ def test_a_contract_with_no_expiry_is_not_counted_as_same_day():
     expiry must not create a same-day share (it was pooled into the 0DTE book)."""
     chain, spot = CRWD.chain, CRWD.spot
     base = compute_terrain("CRWD", chain, spot, now=CRWD.now).zero_dte_gamma_share_pct
-    top = max(chain, key=lambda c: c.get("gamma") or 0.0)          # a contract that carries gamma
+    top = max(chain, key=lambda c: c.get("gamma") or 0.0)  # a contract that carries gamma
     orphan = {k: v for k, v in top.items() if k not in ("expirationDate", "daysToExpiration")}
     orphan["openInterest"] = 100_000
     assert base == 0.0
-    assert compute_terrain("CRWD", chain + [orphan], spot, now=CRWD.now).zero_dte_gamma_share_pct == base
+    assert (
+        compute_terrain("CRWD", chain + [orphan], spot, now=CRWD.now).zero_dte_gamma_share_pct
+        == base
+    )
 
 
 def test_forces_prices_yesterdays_chain_at_its_capture_time(tmp_path):
     """The stored captures are priced at their own capture times, whatever the clock reads now
     (after the chain's expiry). Stand-in: SPY's real chain stored as two days' captures."""
     import server
-    from calibration.complete_chain_capture import (CAPTURE_BASIS, last_capture_per_day,
-                                                    persist_complete_chain_capture)
+    from calibration.complete_chain_capture import (
+        CAPTURE_BASIS,
+        last_capture_per_day,
+        persist_complete_chain_capture,
+    )
+
     db = tmp_path / "ed_console.db"
     for day, hour in ((7, 12), (6, 15)):
         ts = datetime(2026, 10, day, hour, 0, tzinfo=time_et.ET).timestamp()
@@ -58,10 +66,18 @@ def test_forces_prices_yesterdays_chain_at_its_capture_time(tmp_path):
         for ct in SPY_0DTE.chain:
             by_exp.setdefault(ct["expirationDate"][:10], []).append(ct)
         for exp, cts in by_exp.items():
-            persist_complete_chain_capture(db, ticker="SPY", expiry=exp, contracts=cts,
-                                           spot=SPY_0DTE.spot, completeness_basis=CAPTURE_BASIS,
-                                           ts_utc=ts)
-    body = server._forces_from_captures("SPY", last_capture_per_day(db, "SPY", 2))   # the producer's forces
+            persist_complete_chain_capture(
+                db,
+                ticker="SPY",
+                expiry=exp,
+                contracts=cts,
+                spot=SPY_0DTE.spot,
+                completeness_basis=CAPTURE_BASIS,
+                ts_utc=ts,
+            )
+    body = server._forces_from_captures(
+        "SPY", last_capture_per_day(db, "SPY", 2)
+    )  # the producer's forces
     assert body["available"] is True
     assert body["charm_below"] is not None and body.get("charm_error") is None, body
 
@@ -70,8 +86,11 @@ def test_the_put_call_volume_ratio_is_todays_trading_and_says_so_when_volume_is_
     """Both ratios are served (operator 2026-09-27): OI (positions held) and volume (today's
     trading, Cboe's convention). A strike with no call listed has no call volume, not a zero."""
     from math_exposure_core import put_call_volume_ratio
-    book = {100.0: {"call_volume": 400.0, "put_volume": 300.0, "volume_unreported": 0},
-            105.0: {"call_volume": 100.0, "put_volume": 200.0, "volume_unreported": 0}}
+
+    book = {
+        100.0: {"call_volume": 400.0, "put_volume": 300.0, "volume_unreported": 0},
+        105.0: {"call_volume": 100.0, "put_volume": 200.0, "volume_unreported": 0},
+    }
     assert put_call_volume_ratio(book) == pytest.approx(500.0 / 500.0)
     book[105.0]["volume_unreported"] = 1
     assert put_call_volume_ratio(book) is None, "a contract with no volume is not zero volume"
@@ -85,6 +104,7 @@ def test_a_book_that_priced_no_vanna_serves_absent_not_zero():
     data. Real chain priced the day after its own expiry (Schwab still lists an expired Friday on
     the weekend): no contract has a vanna, so there is no net vanna."""
     from math_exposure_core import bucket_metric
+
     next_day = SPY_0DTE.now + timedelta(days=1)
     per, _ = compute_exposures_by_strike(SPY_0DTE.chain, spot=SPY_0DTE.spot, now=next_day)
     assert [bucket_metric(b, "net_vanna") for b in per.values()] == [None] * len(per)

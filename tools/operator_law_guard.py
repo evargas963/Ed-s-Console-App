@@ -23,6 +23,7 @@ a heredoc nothing runs are data.
     program word, PowerShell `& $x` / `. $x` / `& (...)`, a script block made from text), text piped
     into a shell, cmd or node, a PowerShell -EncodedCommand, and Invoke-Expression.
 """
+
 from __future__ import annotations
 
 import ast
@@ -37,7 +38,16 @@ if str(REPO) not in sys.path:
 
 from tools.hook_chain import BASH_TOOLS  # noqa: E402 — the ONE shell-tool roster
 from tools.shell_parse import (  # noqa: E402 — the ONE shell reader
-    PYTHON, Statement, git_parts, git_subcommand, parse_python, python_code, read, reads_stdin, unseen)
+    PYTHON,
+    Statement,
+    git_parts,
+    git_subcommand,
+    parse_python,
+    python_code,
+    read,
+    reads_stdin,
+    unseen,
+)
 
 #: The gitignored tree with no history. A path SEGMENT: `AppData/`, `mydata/`, `_data/`
 #: do not match; `data/x`, `./data/x`, `C:/repo/data/x` do.
@@ -45,14 +55,44 @@ _PROTECTED_TREE = re.compile(r"(?:^|[\\/\"'=(,\s])data[\\/]", re.I)
 #: The tree itself as a shell argument: `data`, `./data`, `C:/repo/data`.
 _TREE_ROOT = re.compile(r"(?:^|[\\/])data[\\/]?$", re.I)
 #: Shell commands that delete, move or rename their arguments.
-_SHELL_REMOVERS = frozenset({"rm", "del", "erase", "rmdir", "rd", "remove-item", "ri", "unlink",
-                             "mv", "move", "move-item", "mi", "ren", "rename", "rename-item",
-                             "truncate"})
+_SHELL_REMOVERS = frozenset(
+    {
+        "rm",
+        "del",
+        "erase",
+        "rmdir",
+        "rd",
+        "remove-item",
+        "ri",
+        "unlink",
+        "mv",
+        "move",
+        "move-item",
+        "mi",
+        "ren",
+        "rename",
+        "rename-item",
+        "truncate",
+    }
+)
 #: icacls flags that remove or override a file's protection (adding a deny is protection).
 _ACL_LOOSENERS = ("/remove", "/reset", "/grant", "/setowner", "/inheritance")
 #: Python calls that delete, move, rename or overwrite a path.
-_PY_REMOVERS = frozenset({"remove", "unlink", "rmtree", "rmdir", "removedirs", "rename", "replace",
-                          "move", "truncate", "write_text", "write_bytes"})
+_PY_REMOVERS = frozenset(
+    {
+        "remove",
+        "unlink",
+        "rmtree",
+        "rmdir",
+        "removedirs",
+        "rename",
+        "replace",
+        "move",
+        "truncate",
+        "write_text",
+        "write_bytes",
+    }
+)
 
 
 def _protected(arg: str) -> bool:
@@ -70,11 +110,17 @@ def _python_violation(code: str) -> bool:
             continue
         f = n.func
         name = f.attr if isinstance(f, ast.Attribute) else getattr(f, "id", "")
-        strings = [c.value for c in ast.walk(n) if isinstance(c, ast.Constant) and isinstance(c.value, str)]
+        strings = [
+            c.value for c in ast.walk(n) if isinstance(c, ast.Constant) and isinstance(c.value, str)
+        ]
         if name in _PY_REMOVERS and any(_protected(s) for s in strings):
             return True
-        if name == "open" and strings and _protected(strings[0]) and \
-                any(s[:1] in ("w", "a") and len(s) <= 3 for s in strings[1:]):
+        if (
+            name == "open"
+            and strings
+            and _protected(strings[0])
+            and any(s[:1] in ("w", "a") and len(s) <= 3 for s in strings[1:])
+        ):
             return True
     return False
 
@@ -87,12 +133,20 @@ def _destroys_protected(st: Statement) -> bool:
     paths = [a for a in args if not a.startswith("-")]
     if name in _SHELL_REMOVERS and any(_protected(a) or _TREE_ROOT.search(a) for a in paths):
         return True
-    if name == "find" and ("-delete" in args or "-exec" in args or "-execdir" in args) and any(
-            _protected(a) or _TREE_ROOT.search(a) for a in args[:next(
-                (i for i, a in enumerate(args) if a.startswith("-")), len(args))]):
+    if (
+        name == "find"
+        and ("-delete" in args or "-exec" in args or "-execdir" in args)
+        and any(
+            _protected(a) or _TREE_ROOT.search(a)
+            for a in args[: next((i for i, a in enumerate(args) if a.startswith("-")), len(args))]
+        )
+    ):
         return True
-    if name == "icacls" and any(_protected(a) for a in args) and \
-            any(a.lower().startswith(_ACL_LOOSENERS) for a in args):
+    if (
+        name == "icacls"
+        and any(_protected(a) for a in args)
+        and any(a.lower().startswith(_ACL_LOOSENERS) for a in args)
+    ):
         return True
     if any(_protected(t) for t in st.writes):
         return True
@@ -115,14 +169,21 @@ def _disables_a_lock(st: Statement) -> bool:
     """Lock-disable routes: git's own (`--no-verify`, `-n` on commit, `core.hooksPath`) and
     pre-commit's own (`SKIP=<hook-id>`, `$env:SKIP=`, `pre-commit uninstall`)."""
     git_globals, sub, args = git_parts(st.words)
-    skip = next((e.split("=", 1)[1] for e in st.env if re.match(r"(?:\$env:)?skip=", e, re.I)), None)
-    if skip == "" and st.words:          # `$env:SKIP = 'x'`
+    skip = next(
+        (e.split("=", 1)[1] for e in st.env if re.match(r"(?:\$env:)?skip=", e, re.I)), None
+    )
+    if skip == "" and st.words:  # `$env:SKIP = 'x'`
         skip = st.words[0]
-    return ("--no-verify" in st.words
-            or any("hookspath" in w.lower() for w in (*git_globals, *(args if sub == "config" else ()), *st.env))
-            or (sub == "commit" and "-n" in args)
-            or bool(skip and re.match(r"[\w,\-]", skip))
-            or [w.lower() for w in st.words[:2]] == ["pre-commit", "uninstall"])
+    return (
+        "--no-verify" in st.words
+        or any(
+            "hookspath" in w.lower()
+            for w in (*git_globals, *(args if sub == "config" else ()), *st.env)
+        )
+        or (sub == "commit" and "-n" in args)
+        or bool(skip and re.match(r"[\w,\-]", skip))
+        or [w.lower() for w in st.words[:2]] == ["pre-commit", "uninstall"]
+    )
 
 
 #: an option that makes sed edit its files in place: -i, -i.bak, -ni, -Ei, --in-place[=SUF]
@@ -138,7 +199,10 @@ def _sed_writes(st: Statement) -> list[str]:
         return []
     flag = next((a for a in st.words[1:] if _SED_IN_PLACE.match(a)), None)
     return ([f"in place, {flag}"] if flag else []) + [
-        f"output redirected to {t}" for op, t in st.redirects if op in _OUTPUT and t.lower() not in _NOT_A_FILE]
+        f"output redirected to {t}"
+        for op, t in st.redirects
+        if op in _OUTPUT and t.lower() not in _NOT_A_FILE
+    ]
 
 
 def bash_violations(cmd: str, powershell: bool = False) -> list[str]:
@@ -148,33 +212,43 @@ def bash_violations(cmd: str, powershell: bool = False) -> list[str]:
     statements = read(cmd or "", powershell=powershell)
     out: list[str] = []
     if any(_blind_stage(st) for st in statements):
-        out.append("ACTION BLOCKED: blind staging (git add -A/--all/.) sweeps another agent's "
-                   "in-flight files into a commit. Stage EXPLICIT paths — a commit asserts "
-                   "authorship of everything in it.")
+        out.append(
+            "ACTION BLOCKED: blind staging (git add -A/--all/.) sweeps another agent's "
+            "in-flight files into a commit. Stage EXPLICIT paths — a commit asserts "
+            "authorship of everything in it."
+        )
     if any(_destroys_protected(st) for st in statements):
-        out.append("ACTION BLOCKED: this deletes, moves or truncates something under data/. That "
-                   "tree is gitignored -- there is NO history and NO undo. Test destructive "
-                   "behaviour against a COPY in a temp directory, never the real artefact. "
-                   "Restores INTO it stay legal; removal from it is operator-only.")
+        out.append(
+            "ACTION BLOCKED: this deletes, moves or truncates something under data/. That "
+            "tree is gitignored -- there is NO history and NO undo. Test destructive "
+            "behaviour against a COPY in a temp directory, never the real artefact. "
+            "Restores INTO it stay legal; removal from it is operator-only."
+        )
     if any(_disables_a_lock(st) for st in statements):
         out.append("ACTION BLOCKED: this disables a mechanical lock. Only the operator may.")
     if any(PYTHON.fullmatch(st.program) and reads_stdin(st) for st in statements):
-        out.append("ACTION BLOCKED: this python reads its program from stdin (`python -`, a heredoc, "
-                   "a pipe or </dev/null). On Windows an empty heredoc or </dev/null looks like a "
-                   "console and Python 3.13's REPL retries forever. Put the code in a script file and "
-                   "run it, or use `python -c`.")
+        out.append(
+            "ACTION BLOCKED: this python reads its program from stdin (`python -`, a heredoc, "
+            "a pipe or </dev/null). On Windows an empty heredoc or </dev/null looks like a "
+            "console and Python 3.13's REPL retries forever. Put the code in a script file and "
+            "run it, or use `python -c`."
+        )
     sed = [w for st in statements for w in _sed_writes(st)]
     if sed:
-        out.append(f"ACTION BLOCKED: this command edits a file with sed ({'; '.join(sed)}). AGENTS.md: never "
-                   "edit source through a script. Make the change with the Edit tool (or Write for a new "
-                   "file), one edit at a time. A sed that only prints (sed -n '5p' f, sed 's/a/b/' f) is "
-                   "allowed.")
+        out.append(
+            f"ACTION BLOCKED: this command edits a file with sed ({'; '.join(sed)}). AGENTS.md: never "
+            "edit source through a script. Make the change with the Edit tool (or Write for a new "
+            "file), one edit at a time. A sed that only prints (sed -n '5p' f, sed 's/a/b/' f) is "
+            "allowed."
+        )
     hidden = list(filter(None, (unseen(st) for st in statements)))
     if hidden:
-        out.append(f"ACTION BLOCKED: the guards cannot see what this runs ({'; '.join(hidden)}). Write the "
-                   "command plainly: the program and its arguments as literal words — no $variable or "
-                   "substitution as the program, no text piped into a shell or interpreter, no "
-                   "-EncodedCommand, no Invoke-Expression.")
+        out.append(
+            f"ACTION BLOCKED: the guards cannot see what this runs ({'; '.join(hidden)}). Write the "
+            "command plainly: the program and its arguments as literal words — no $variable or "
+            "substitution as the program, no text piped into a shell or interpreter, no "
+            "-EncodedCommand, no Invoke-Expression."
+        )
     return out
 
 
@@ -188,12 +262,15 @@ def main() -> int:
         sys.stderr.write("BLOCKED: the hook payload is not an object.\n")
         return 2
     if payload.get("tool_name") not in BASH_TOOLS:
-        return 0                          # file edits carry no shell action to judge
+        return 0  # file edits carry no shell action to judge
     cmd = (payload.get("tool_input") or {}).get("command") or ""
     bad = bash_violations(cmd, powershell=payload.get("tool_name") == "PowerShell")
     if bad:
-        sys.stderr.write("BLOCKED — OPERATOR LAW: ban the ACTION, not the word.\n\n"
-                         + "\n".join(f"    {b}" for b in bad) + "\n")
+        sys.stderr.write(
+            "BLOCKED — OPERATOR LAW: ban the ACTION, not the word.\n\n"
+            + "\n".join(f"    {b}" for b in bad)
+            + "\n"
+        )
         return 2
     return 0
 

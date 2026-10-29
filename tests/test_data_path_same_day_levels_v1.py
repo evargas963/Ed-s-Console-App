@@ -1,6 +1,7 @@
 """Same-day levels: one producer, every ticker. The nearest expiry keeps its open interest
 and implied volatility; gamma and delta are rebuilt to that ticker's option close today.
 A name with no listed same-day expiry still gets them. That pin is the only 0DTE pin."""
+
 from __future__ import annotations
 
 from terrain_engine import SAME_DAY_LEVELS, compute_terrain
@@ -75,15 +76,29 @@ def test_open_interest_without_volatility_withholds_that_strike():
     """The captured call at the same-day call wall, with its volatility absent and its own
     open interest kept, is put back on the captured chain. That strike is not a same-day level."""
     book = SPY_0DTE
-    strike = compute_terrain(book.ticker, book.chain, book.spot, now=book.now).to_dict()["same_day"]["call_wall"]
+    strike = compute_terrain(book.ticker, book.chain, book.spot, now=book.now).to_dict()[
+        "same_day"
+    ]["call_wall"]
     assert strike is not None
     chain = [dict(ct) for ct in book.chain]
-    seed = next(ct for ct in chain
-                if ct.get("putCall") == "CALL" and float(ct["strikePrice"]) == float(strike))
+    seed = next(
+        ct
+        for ct in chain
+        if ct.get("putCall") == "CALL" and float(ct["strikePrice"]) == float(strike)
+    )
     absent = dict(seed)
     absent["volatility"] = None
     chain.append(absent)
     same = compute_terrain(book.ticker, chain, book.spot, now=book.now).to_dict()["same_day"]
-    for name in ("call_wall", "put_wall", "absolute_gamma_strike", "net_gex_peak",
-                 "hvp", "lvp", "key_delta_strike", "call_charm_wall", "put_charm_wall"):
+    for name in (
+        "call_wall",
+        "put_wall",
+        "absolute_gamma_strike",
+        "net_gex_peak",
+        "hvp",
+        "lvp",
+        "key_delta_strike",
+        "call_charm_wall",
+        "put_charm_wall",
+    ):
         assert same[name] != float(strike), name

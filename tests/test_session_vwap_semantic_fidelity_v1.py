@@ -18,8 +18,14 @@ FRIDAY = date(2026, 10, 2)
 
 def _rth_bar(day: date, minutes_after_open: int, close: float, volume: float = 1_000.0) -> Candle:
     dt = session(day.isoformat()).regular[0][0] + timedelta(minutes=minutes_after_open)
-    return Candle(ts=dt.timestamp(), open=close - 0.05, high=close + 0.10, low=close - 0.10, close=close,
-                  volume=volume)
+    return Candle(
+        ts=dt.timestamp(),
+        open=close - 0.05,
+        high=close + 0.10,
+        low=close - 0.10,
+        close=close,
+        volume=volume,
+    )
 
 
 def test_first_positive_volume_rth_bar_produces_session_vwap() -> None:

@@ -1,6 +1,7 @@
 """The price is one row, built once by the capture daemon (live_price_rows.price_row) and pushed
 to the browser (live_ui.py) and to the console alike: a price on screen and a price in a
 console calculation are the same value."""
+
 from __future__ import annotations
 
 import time
@@ -15,10 +16,12 @@ def test_a_symbol_the_daemon_does_not_hold_keeps_the_last_price_and_is_not_live(
     price stands, the row is not live, and it names the outage, the market open or closed."""
     try:
         for now in (1790780400.0, 1790820000.0):  # 11:00 ET, 22:00 ET
-            lmp.record_feed_heartbeat({"ts": now, "schwab_socket_open": True,
-                                       "held": {"LEVELONE_EQUITIES": ["ZZHELD"]}})
-            lmp.record_from_level_one_equity("ZZNOTHELD", {"LAST_PRICE": 9.0, "BID_PRICE": 8.9},
-                                             received_ts=now)
+            lmp.record_feed_heartbeat(
+                {"ts": now, "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": ["ZZHELD"]}}
+            )
+            lmp.record_from_level_one_equity(
+                "ZZNOTHELD", {"LAST_PRICE": 9.0, "BID_PRICE": 8.9}, received_ts=now
+            )
             row = live_price_rows.price_row("ZZNOTHELD", now)
             assert (row["spot"], row["bid"], row["feed_live"]) == (9.0, 8.9, False)
             assert row["outage"] is not None
@@ -36,11 +39,15 @@ def test_the_console_spot_is_the_daemons_price_row_and_the_console_keeps_no_copy
     from app.options.order_flow import streaming as ofs
     from tests.feed_live_helper import publish_daemon_rows
 
-    fx = json.loads((Path(__file__).parent / "fixtures" / "real_equity_book.json").read_text(encoding="utf-8"))
+    fx = json.loads(
+        (Path(__file__).parent / "fixtures" / "real_equity_book.json").read_text(encoding="utf-8")
+    )
     tk, native, now = fx["ticker"], fx["quote"]["native"], time.time()
     for kept in (lmp._by_ticker, lmp._fields_by_ticker, ofs._price_rows):
         kept.pop(tk, None)
-    lmp.record_feed_heartbeat({"ts": now, "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [tk]}})
+    lmp.record_feed_heartbeat(
+        {"ts": now, "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [tk]}}
+    )
     try:
         # the console receives Schwab's message (its order-flow tape) and keeps no price of its own
         ofs._ingest_pushed(f"quote.{tk}", {"symbol": tk, "ts_recv": now, "native": native})
@@ -50,7 +57,11 @@ def test_the_console_spot_is_the_daemons_price_row_and_the_console_keeps_no_copy
         publish_daemon_rows(tk)
         row = ofs.price_row(tk)
         assert row["spot"] == native["LAST_PRICE"]
-        assert srv.resolve_spot(tk, now=now) == (row["spot"], srv.SPOT_SOURCE_PLANE, row["trade_ts"])
+        assert srv.resolve_spot(tk, now=now) == (
+            row["spot"],
+            srv.SPOT_SOURCE_PLANE,
+            row["trade_ts"],
+        )
     finally:
         for kept in (lmp._by_ticker, lmp._fields_by_ticker, ofs._price_rows):
             kept.pop(tk, None)
@@ -61,13 +72,8 @@ def test_pages_are_told_the_daemon_price_port(monkeypatch) -> None:
     """The console fills the page's price-socket port from the daemon's own setting; e2e
     points it at a dead port so no test page can ever reach the real daemon."""
     from app.market_data.schwab.streaming import live_ui
+
     monkeypatch.setattr(live_ui, "LIVE_UI_PORT", 8811)
     html = srv.root().body.decode("utf-8")
     assert '<meta name="ed-live-ui-port" content="8811">' in html
     assert 'content="">' not in html.split("ed-live-ui-port", 1)[1][:12]
-
-
-
-
-
-

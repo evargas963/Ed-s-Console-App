@@ -24,32 +24,46 @@ TRUSTED = GAMMA_FLIP_TRUSTED
 
 
 def test_above_flip_is_long_gamma_and_fades() -> None:
-    r = build_terrain_read(spot=750.0, flip=740.0, flip_confidence=TRUSTED,
-                           put_wall=735.0, call_wall=760.0, gamma_at_spot=2.5e8)
+    r = build_terrain_read(
+        spot=750.0,
+        flip=740.0,
+        flip_confidence=TRUSTED,
+        put_wall=735.0,
+        call_wall=760.0,
+        gamma_at_spot=2.5e8,
+    )
     assert r.regime == REGIME_LONG_GAMMA
     assert r.posture == POSTURE_FADE
     assert "do not chase" in r.headline.lower()
 
 
 def test_below_flip_is_short_gamma_and_follows() -> None:
-    r = build_terrain_read(spot=743.29, flip=745.61, flip_confidence=TRUSTED,
-                           put_wall=740.0, call_wall=745.0, gamma_at_spot=-1.1e8)
+    r = build_terrain_read(
+        spot=743.29,
+        flip=745.61,
+        flip_confidence=TRUSTED,
+        put_wall=740.0,
+        call_wall=745.0,
+        gamma_at_spot=-1.1e8,
+    )
     assert r.regime == REGIME_SHORT_GAMMA
     assert r.posture == POSTURE_FOLLOW
     assert "do not fade" in r.headline.lower()
-
-
 
 
 def test_regime_is_the_signed_gamma_at_spot_only() -> None:
     """T-07 (2026-09-24): no spot-vs-flip fallback. No signed gamma, or exactly zero (spot
     AT the flip), is no regime -- not a side picked from the flip."""
     for g in (None, 0.0):
-        r = build_terrain_read(spot=750.0, flip=740.0, flip_confidence=TRUSTED,
-                               put_wall=735.0, call_wall=760.0, gamma_at_spot=g)
+        r = build_terrain_read(
+            spot=750.0,
+            flip=740.0,
+            flip_confidence=TRUSTED,
+            put_wall=735.0,
+            call_wall=760.0,
+            gamma_at_spot=g,
+        )
         assert r.regime not in (REGIME_LONG_GAMMA, REGIME_SHORT_GAMMA), g
-
-
 
 
 def test_missing_inputs_fail_closed() -> None:
@@ -68,9 +82,14 @@ def test_a_missing_wall_reads_as_a_dash_and_a_known_one_as_its_price():
     wall and gamma at spot as the levels producer computed them. Induced: the call wall withheld.
     The box line shows the put wall at two decimals and the missing call wall as "-", no word."""
     snap = compute_terrain(CRWD.ticker, [dict(c) for c in CRWD.chain], CRWD.spot, now=CRWD.now)
-    r = build_terrain_read(spot=CRWD.spot, flip=snap.gamma_flip, flip_confidence=snap.confidence,
-                           put_wall=snap.put_wall, call_wall=None,
-                           gamma_at_spot=snap.flip_diag.get("gamma_at_spot"))
+    r = build_terrain_read(
+        spot=CRWD.spot,
+        flip=snap.gamma_flip,
+        flip_confidence=snap.confidence,
+        put_wall=snap.put_wall,
+        call_wall=None,
+        gamma_at_spot=snap.flip_diag.get("gamma_at_spot"),
+    )
     box = next(line for line in r.lines if line.startswith("Box: "))
     assert snap.put_wall is not None
     assert box.startswith(f"Box: put wall {price_text(snap.put_wall)} (")
@@ -95,11 +114,3 @@ def test_the_regime_is_read_by_one_rule_for_every_instrument():
         else:
             assert snap.regime == (REGIME_LONG_GAMMA if g > 0 else REGIME_SHORT_GAMMA), tk
     assert got["CRWD"][1] != REGIME_UNAVAILABLE, "a single name's regime is issued"
-
-
-
-
-
-
-
-

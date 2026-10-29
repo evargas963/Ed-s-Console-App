@@ -13,6 +13,7 @@ NFLX:     NFLX's 2026-10-16, 2027-12-17 and 2028-01-21 expiries at 10:32:20 ET; 
 SPY_CLOSE: SPY's 2026-10-22 expiry from the close capture begun 2026-10-22 16:17:04 ET, with SPY's
           LEVELONE_EQUITIES prints after it as the daemon received them.
 """
+
 from __future__ import annotations
 
 import json
@@ -35,7 +36,9 @@ class RealChain:
 
 def _load(name: str) -> RealChain:
     d = json.loads((_FX / name).read_text(encoding="utf-8"))
-    return RealChain(d["ticker"], d["chain"], float(d["spot"]), datetime.fromtimestamp(d["ts_utc"], ET))
+    return RealChain(
+        d["ticker"], d["chain"], float(d["spot"]), datetime.fromtimestamp(d["ts_utc"], ET)
+    )
 
 
 SPY_0DTE = _load("real_spy_0dte_chain_2026_10_07.json")
@@ -45,12 +48,17 @@ MRVL = _load("real_mrvl_full_chain_2026_10_07.json")
 NFLX = _load("real_nflx_chain_2026_10_07_three_expiries.json")
 SPY_CLOSE = _load("real_spy_close_capture_and_after_hours_print_2026_10_22.json")
 #: SPY's first LEVELONE_EQUITIES message with a LAST_PRICE from 18:00 ET 2026-10-22, as recorded
-_SPY_CLOSE_FX = json.loads((_FX / "real_spy_close_capture_and_after_hours_print_2026_10_22.json")
-                           .read_text(encoding="utf-8"))
+_SPY_CLOSE_FX = json.loads(
+    (_FX / "real_spy_close_capture_and_after_hours_print_2026_10_22.json").read_text(
+        encoding="utf-8"
+    )
+)
 SPY_AFTER_HOURS_PRINT = _SPY_CLOSE_FX["after_hours_print"]
 #: SPY's first LEVELONE_EQUITIES message after that capture whose LAST_PRICE is a strike from it
 SPY_PRINT_A_STRIKE_AWAY = _SPY_CLOSE_FX["print_a_strike_away"]
 #: SPY's first LEVELONE_EQUITIES message after that capture whose LAST_PRICE is one of its strikes
 #: (764.00, received 16:33:27 ET): the first of the three, then SPY_PRINT_A_STRIKE_AWAY (16:39:03),
 #: then SPY_AFTER_HOURS_PRINT (18:00)
-SPY_PRINT_ON_A_STRIKE = json.loads((_FX / "real_spy_print_on_a_strike_2026_10_22.json").read_text(encoding="utf-8"))
+SPY_PRINT_ON_A_STRIKE = json.loads(
+    (_FX / "real_spy_print_on_a_strike_2026_10_22.json").read_text(encoding="utf-8")
+)

@@ -54,7 +54,13 @@ def et_date_str_from_ts_utc(ts_utc: float) -> str:
 
 
 #: the session states (session_label): a label only; no value is held back or stopped by it
-PRE_MARKET, RTH, AFTER_HOURS, CLOSED, UNKNOWN = "Pre-Market", "RTH", "After-Hours", "Closed", "Unknown"
+PRE_MARKET, RTH, AFTER_HOURS, CLOSED, UNKNOWN = (
+    "Pre-Market",
+    "RTH",
+    "After-Hours",
+    "Closed",
+    "Unknown",
+)
 #: Schwab's option markets in /markets: stock and ETF options, index options
 EQUITY_OPTIONS, INDEX_OPTIONS = "EQO", "IND"
 #: Underlyings whose listed options run to the index close. Schwab's equity-option
@@ -74,6 +80,7 @@ def option_close_product(ticker: str) -> str:
         return INDEX_OPTIONS
     return EQUITY_OPTIONS
 
+
 Windows = tuple[tuple[datetime, datetime], ...]
 
 
@@ -82,6 +89,7 @@ class Session:
     """One market date as Schwab's /markets answered it: whether the stock market is open, each
     stock-market window it sent as (start, end) in ET, and each option market's regular windows
     (`options`: product -> windows). A closed date has no windows."""
+
     day: str
     is_open: bool
     pre: Windows
@@ -94,14 +102,21 @@ class Session:
         return next((w for p, w in self.options if p == product), ())
 
 
-_sessions: dict[str, Session] = {}       # ET date (YYYY-MM-DD) -> Schwab's answer for it; replaced, never mutated
+_sessions: dict[
+    str, Session
+] = {}  # ET date (YYYY-MM-DD) -> Schwab's answer for it; replaced, never mutated
 
 
 def _windows(hours: dict, name: str) -> Windows:
     if name not in hours:
         return ()
-    return tuple((datetime.fromisoformat(w["start"]).astimezone(ET), datetime.fromisoformat(w["end"]).astimezone(ET))
-                 for w in hours[name])
+    return tuple(
+        (
+            datetime.fromisoformat(w["start"]).astimezone(ET),
+            datetime.fromisoformat(w["end"]).astimezone(ET),
+        )
+        for w in hours[name]
+    )
 
 
 def _hours(entry: dict) -> dict:
@@ -115,10 +130,17 @@ def record_markets(answer: dict) -> Session:
     from here on."""
     (eq,) = answer["equity"].values()
     hours = _hours(eq)
-    s = Session(eq["date"], eq["isOpen"], _windows(hours, "preMarket"), _windows(hours, "regularMarket"),
-                _windows(hours, "postMarket"),
-                tuple((product, _windows(_hours(entry), "regularMarket"))
-                      for product, entry in answer["option"].items()))
+    s = Session(
+        eq["date"],
+        eq["isOpen"],
+        _windows(hours, "preMarket"),
+        _windows(hours, "regularMarket"),
+        _windows(hours, "postMarket"),
+        tuple(
+            (product, _windows(_hours(entry), "regularMarket"))
+            for product, entry in answer["option"].items()
+        ),
+    )
     global _sessions
     # a new dict, never an insert: a reader on another thread keeps iterating the one it began with
     _sessions = {**_sessions, s.day: s}
@@ -152,14 +174,25 @@ def option_market_open(now: datetime, product: str | None = None) -> bool | None
     s = session(now.astimezone(ET).date().isoformat())
     if s is None:
         return None
-    return any(start <= now < end for p, windows in s.options if product in (None, p) for start, end in windows)
+    return any(
+        start <= now < end
+        for p, windows in s.options
+        if product in (None, p)
+        for start, end in windows
+    )
 
 
 def options_closed_at(now: datetime, product: str | None = None) -> datetime | None:
     """The end of the newest regular window that has ended by `now`, among the answers held, of
     option market `product`, or of any option market when none is named; None when none has."""
-    ended = [end for s in _sessions.values() for p, windows in s.options if product in (None, p)
-             for _start, end in windows if end <= now]
+    ended = [
+        end
+        for s in _sessions.values()
+        for p, windows in s.options
+        if product in (None, p)
+        for _start, end in windows
+        if end <= now
+    ]
     return max(ended) if ended else None
 
 
@@ -173,7 +206,11 @@ def valuation_instant(now: datetime, product: str = EQUITY_OPTIONS) -> datetime:
     if option_market_open(now, product) is not False:
         return now
     closed = options_closed_at(now, product)
-    return closed if closed is not None and closed.astimezone(ET).date() == now.astimezone(ET).date() else now
+    return (
+        closed
+        if closed is not None and closed.astimezone(ET).date() == now.astimezone(ET).date()
+        else now
+    )
 
 
 def closed_since(now: datetime) -> "datetime | None":
@@ -182,7 +219,12 @@ def closed_since(now: datetime) -> "datetime | None":
     answer held has a window that has ended."""
     if session_label(now) != CLOSED:
         return None
-    ended = [end for s in _sessions.values() for _start, end in (*s.pre, *s.regular, *s.post) if end <= now]
+    ended = [
+        end
+        for s in _sessions.values()
+        for _start, end in (*s.pre, *s.regular, *s.post)
+        if end <= now
+    ]
     return max(ended) if ended else None
 
 
@@ -203,7 +245,11 @@ def sessions_since(now: datetime, n: int) -> datetime | None:
     """The start (00:00 ET) of the `n`th newest date Schwab's /markets says the market was open
     whose regular session has begun by `now`, so the newest `n` sessions run from it; None when
     fewer than `n` such dates are held."""
-    begun = sorted(s.day for s in _sessions.values() if s.is_open and any(start <= now for start, _end in s.regular))
+    begun = sorted(
+        s.day
+        for s in _sessions.values()
+        if s.is_open and any(start <= now for start, _end in s.regular)
+    )
     if len(begun) < n:
         return None
     return datetime.combine(date.fromisoformat(begun[-n]), datetime.min.time(), ET)
@@ -212,7 +258,11 @@ def sessions_since(now: datetime, n: int) -> datetime | None:
 def prior_trading_day(day: date) -> date | None:
     """The newest date before `day` Schwab's /markets says the stock market was open; None when
     no answer held says so."""
-    earlier = [date.fromisoformat(d) for d, s in _sessions.items() if s.is_open and date.fromisoformat(d) < day]
+    earlier = [
+        date.fromisoformat(d)
+        for d, s in _sessions.items()
+        if s.is_open and date.fromisoformat(d) < day
+    ]
     return max(earlier) if earlier else None
 
 
@@ -229,9 +279,13 @@ MIN_TIME_TO_EXPIRY_YEARS: float = 600.0 / YEAR_SECONDS
 SETTLEMENT_AM = "A"
 
 
-def time_to_expiry_years(expiration_date: str, now: datetime, *,
-                         settlement_type: str | None = None,
-                         product: str = EQUITY_OPTIONS) -> float | None:
+def time_to_expiry_years(
+    expiration_date: str,
+    now: datetime,
+    *,
+    settlement_type: str | None = None,
+    product: str = EQUITY_OPTIONS,
+) -> float | None:
     """INTRADAY time-to-expiry in years (ACT/365), the one T of every Black-Scholes greek:
     seconds from `now` (the caller's valuation instant) to the option's settlement, over a
     365-day year. `expiration_date` is Schwab's expirationDate as sent.

@@ -36,31 +36,17 @@ import terrain_engine as TE  # noqa: E402
 from liquidity_models import volume_profile  # noqa: E402
 
 
-
-
 # ------------------------------------- a NULL short volume is not zero shares short ----
-
-
-
-
-
-
-
 
 
 # ------------------------------------------ a NULL strike count is not zero strikes ----
 
 
-
-
-
-
-
 # ------------------------------------- an unpriced bar is not zero dollars of turnover ----
 
 
-
 # ---------------------------------------- an unknown gamma is not a flat gamma bar ----
+
 
 def test_a_strike_with_no_resolvable_gamma_draws_no_bar():
     """The exact law stated four lines above the defect, applied to the value as well.
@@ -90,12 +76,14 @@ def test_a_genuine_zero_gamma_still_draws_its_bar():
 def test_a_strike_with_a_contract_whose_gamma_term_was_not_sent_draws_no_bar():
     """A contract at the strike sent no open interest (or has open interest and no Greek): the
     strike's GEX is not known, whatever its accumulator holds."""
-    rows = TE._per_strike_rows({500.0: {"dollarized": True, "call_gamma_unreported": 1,
-                                        "net_gex_1pct": 1_234_567.0}})
+    rows = TE._per_strike_rows(
+        {500.0: {"dollarized": True, "call_gamma_unreported": 1, "net_gex_1pct": 1_234_567.0}}
+    )
     assert rows == [], f"drew a bar for a strike whose GEX is not known: {rows}"
 
 
 # ------------------------------------- a NULL bar volume is not zero traded volume ----
+
 
 def test_a_null_volume_bar_does_not_enter_the_volume_profile():
     """One bar priced and one bar absent must give the priced bar's POC, not a blend."""
@@ -103,10 +91,11 @@ def test_a_null_volume_bar_does_not_enter_the_volume_profile():
         {"high": 100.0, "low": 100.0, "volume": None},
         {"high": 200.0, "low": 200.0, "volume": 5_000.0},
     ]
-    assert volume_profile(bars).poc == pytest.approx(200.0), "an unmeasured bar moved the point of control"
+    assert volume_profile(bars).poc == pytest.approx(200.0), (
+        "an unmeasured bar moved the point of control"
+    )
 
 
 def test_no_usable_volume_still_reads_as_absence():
     """The docstring's own promise: absence reads as absence, never a fabricated level."""
     assert volume_profile([{"high": 100.0, "low": 99.0, "volume": None}]) is None
-

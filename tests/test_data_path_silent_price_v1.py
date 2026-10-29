@@ -1,4 +1,5 @@
 """Schwab -> the console's price row. A silent daemon keeps the last price and reads down."""
+
 from __future__ import annotations
 
 import asyncio

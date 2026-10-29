@@ -3,6 +3,7 @@ Canonical DB connections (``db_authority.is_canonical_db_path``) install an SQLi
 that denies DROP / DETACH unless ``ED_CONSOLE_DANGEROUS_SQL_UNRESTRICTED=1``. Disable the hook
 with ``ED_CONSOLE_SQL_EXECUTE_GUARD=0``.
 """
+
 from __future__ import annotations
 
 import os
@@ -33,7 +34,9 @@ def sql_execute_guard_enabled() -> bool:
 def install_production_sql_authorizer(conn: sqlite3.Connection) -> None:
     """SQLite authorizer hook: deny structural DROP / DETACH on guarded connections."""
 
-    def _auth(action: int, arg1: str | None, arg2: str | None, db_name: str | None, inner: str | None) -> int:
+    def _auth(
+        action: int, arg1: str | None, arg2: str | None, db_name: str | None, inner: str | None
+    ) -> int:
         if dangerous_sql_unrestricted():
             return sqlite3.SQLITE_OK
         deny = {
@@ -59,5 +62,3 @@ def maybe_install_sql_guard_on_connection(conn: sqlite3.Connection, db_path: Pat
     if dangerous_sql_unrestricted():
         return
     install_production_sql_authorizer(conn)
-
-

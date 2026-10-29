@@ -3,6 +3,7 @@ for each ET date) and its streamed CHART_EQUITY 1-minute bars, which the daemon 
 (stream_capture.db stream_bars_raw) and forwards. The console keeps them in memory (server._bars:
 the history, each pushed bar on top); every live reader reads memory. Only completed bars are
 served. A minute Schwab sent neither way stays missing."""
+
 from __future__ import annotations
 
 import threading
@@ -19,12 +20,21 @@ from tests.feed_live_helper import price_history
 from time_et import ET, ct_label
 
 TK = "ZZBARS"
-T0 = 1_790_000_040.0            # a minute boundary
+T0 = 1_790_000_040.0  # a minute boundary
 
 
 def _bar(start: float, o=10.0, h=11.0, lo=9.5, c=10.5, v=100.0) -> dict:
-    return bar_msg(symbol=TK, bar_start_ms=int(start * 1000), open=o, high=h, low=lo, close=c,
-                   volume=v, src="schwab_chart", ts_recv=start + 60.0)
+    return bar_msg(
+        symbol=TK,
+        bar_start_ms=int(start * 1000),
+        open=o,
+        high=h,
+        low=lo,
+        close=c,
+        volume=v,
+        src="schwab_chart",
+        ts_recv=start + 60.0,
+    )
 
 
 def _clear():
@@ -84,7 +94,7 @@ def test_a_reported_zero_is_written_as_sent():
 
 
 def test_a_minute_the_stream_did_not_deliver_stays_missing():
-    for m in (0, 1, 3):                                   # minute 2 never arrived
+    for m in (0, 1, 3):  # minute 2 never arrived
         server._write_streamed_bar(_bar(T0 + 60 * m))
     assert [b.ts for b in server._bars_1m(TK)] == [T0, T0 + 60, T0 + 180]
 
@@ -110,9 +120,19 @@ def test_the_price_history_is_taken_promptly_and_exactly_while_options_are_price
     t.start()
     try:
         t0 = time.perf_counter()
-        server._write_streamed_bars([{"src": "schwab_pricehistory", "symbol": tk, "series": "1m",
-                                      "ts_recv": a["answered_utc"], "answer": a["body"]}
-                                     for tk, a in answers.items()], datetime.fromtimestamp(answers["SPY"]["answered_utc"], ET))
+        server._write_streamed_bars(
+            [
+                {
+                    "src": "schwab_pricehistory",
+                    "symbol": tk,
+                    "series": "1m",
+                    "ts_recv": a["answered_utc"],
+                    "answer": a["body"],
+                }
+                for tk, a in answers.items()
+            ],
+            datetime.fromtimestamp(answers["SPY"]["answered_utc"], ET),
+        )
         read = {tk: server._bars_1m(tk, server.BARS_KEPT) for tk in answers}
         took = time.perf_counter() - t0
     finally:
@@ -122,12 +142,20 @@ def test_the_price_history_is_taken_promptly_and_exactly_while_options_are_price
             server._bars.pop(tk, None)
     for tk, a in answers.items():
         got = [(b.ts, b.open, b.high, b.low, b.close, b.volume) for b in read[tk]]
-        want = [(c["datetime"] / 1000, c["open"], c["high"], c["low"], c["close"], c["volume"])
-                for c in a["body"]["candles"]]
+        want = [
+            (c["datetime"] / 1000, c["open"], c["high"], c["low"], c["close"], c["volume"])
+            for c in a["body"]["candles"]
+        ]
         assert got == want, tk
-        assert any(datetime.fromtimestamp(ts, ET).hour < 9 for ts, *_ in got), f"{tk}: no pre-market minute kept"
-        assert any(datetime.fromtimestamp(ts, ET).hour >= 17 for ts, *_ in got), f"{tk}: no after-hours minute kept"
-    assert took < 1.0, f"{sum(len(v) for v in read.values())} candles took {took:.2f} s beside a busy thread"
+        assert any(datetime.fromtimestamp(ts, ET).hour < 9 for ts, *_ in got), (
+            f"{tk}: no pre-market minute kept"
+        )
+        assert any(datetime.fromtimestamp(ts, ET).hour >= 17 for ts, *_ in got), (
+            f"{tk}: no after-hours minute kept"
+        )
+    assert took < 1.0, (
+        f"{sum(len(v) for v in read.values())} candles took {took:.2f} s beside a busy thread"
+    )
 
 
 def test_the_bars_endpoint_serves_completed_schwab_bars_and_the_last_bars_minute():

@@ -25,33 +25,58 @@ def _reset(tmp_path):
 
 
 def _push_l1(symbol, native, ts_recv):
-    ofs._ingest_pushed(f"quote.{symbol}", quote_msg(
-        symbol=symbol, bid=native.get("BID_PRICE"), src="schwab_l1", ts_recv=ts_recv,
-        native=native))
+    ofs._ingest_pushed(
+        f"quote.{symbol}",
+        quote_msg(
+            symbol=symbol,
+            bid=native.get("BID_PRICE"),
+            src="schwab_l1",
+            ts_recv=ts_recv,
+            native=native,
+        ),
+    )
 
 
 def _push_book(symbol, content, ts_recv):
-    ofs._ingest_pushed(f"book.{symbol}", book_msg(
-        symbol=symbol, service="NASDAQ_BOOK", content=content, src="schwab_book",
-        ts_recv=ts_recv))
+    ofs._ingest_pushed(
+        f"book.{symbol}",
+        book_msg(
+            symbol=symbol,
+            service="NASDAQ_BOOK",
+            content=content,
+            src="schwab_book",
+            ts_recv=ts_recv,
+        ),
+    )
 
 
 def test_l1_message_lands_in_the_tape_and_the_console_keeps_no_price(tmp_path, monkeypatch):
     _reset(tmp_path)
     monkeypatch.setattr(lmp, "_by_ticker", {})
-    native = {"key": "SPY", "BID_PRICE": 449.98, "ASK_PRICE": 450.02, "LAST_PRICE": 450.0,
-              "LAST_SIZE": 100, "TRADE_TIME_MILLIS": 1000, "TOTAL_VOLUME": 5000}
+    native = {
+        "key": "SPY",
+        "BID_PRICE": 449.98,
+        "ASK_PRICE": 450.02,
+        "LAST_PRICE": 450.0,
+        "LAST_SIZE": 100,
+        "TRADE_TIME_MILLIS": 1000,
+        "TOTAL_VOLUME": 5000,
+    }
     _push_l1("SPY", native, ts_recv=time.time())
 
     top = ofls.get_content_for_symbol("SPY")
     assert any(item.get("LAST_PRICE") == 450.0 for item in top)
-    assert lmp.get_quote("SPY") is None          # the price is the daemon's row, not a copy here
+    assert lmp.get_quote("SPY") is None  # the price is the daemon's row, not a copy here
 
 
 def test_book_message_lands_verbatim(tmp_path):
     _reset(tmp_path)
-    content = {"key": "SPY", "BIDS": [{"BID_PRICE": 449.9, "BID_SIZE": 100}],
-               "ASKS": [{"ASK_PRICE": 450.1, "ASK_SIZE": 200}], "BOOK_TIME": 555}
+    content = {
+        "key": "SPY",
+        "BIDS": [{"BID_PRICE": 449.9, "BID_SIZE": 100}],
+        "ASKS": [{"ASK_PRICE": 450.1, "ASK_SIZE": 200}],
+        "BOOK_TIME": 555,
+    }
     _push_book("SPY", content, ts_recv=time.time())
 
     items = ofls.get_content_for_symbol("SPY")
@@ -66,12 +91,24 @@ def test_each_venue_serves_only_its_own_book(tmp_path):
     from pathlib import Path
 
     import server
+
     _reset(tmp_path)
-    fx = json.loads((Path(__file__).parent / "fixtures" / "real_spy_nyse_nasdaq_books.json")
-                    .read_text(encoding="utf-8"))["books"]
+    fx = json.loads(
+        (Path(__file__).parent / "fixtures" / "real_spy_nyse_nasdaq_books.json").read_text(
+            encoding="utf-8"
+        )
+    )["books"]
     for svc in ("NASDAQ_BOOK", "NYSE_BOOK"):
-        ofs._ingest_pushed("book.SPY", book_msg(symbol="SPY", service=svc, content=fx[svc]["content"],
-                                                src="schwab_book", ts_recv=fx[svc]["ts_recv"]))
+        ofs._ingest_pushed(
+            "book.SPY",
+            book_msg(
+                symbol="SPY",
+                service=svc,
+                content=fx[svc]["content"],
+                src="schwab_book",
+                ts_recv=fx[svc]["ts_recv"],
+            ),
+        )
     for svc in ("NASDAQ_BOOK", "NYSE_BOOK"):
         body = json.loads(server.api_order_flow_microstructure(ticker="SPY", venue=svc).body)
         prov = body["provenance"]
@@ -91,20 +128,34 @@ def test_a_book_is_live_by_the_one_rule_on_its_venue_not_by_its_book_time(tmp_pa
 
     import server
     from tests.feed_live_helper import RTH_INSTANT, publish_daemon_rows
+
     _reset(tmp_path)
-    fx = json.loads((Path(__file__).parent / "fixtures" / "real_spy_nyse_nasdaq_books.json")
-                    .read_text(encoding="utf-8"))["books"]
+    fx = json.loads(
+        (Path(__file__).parent / "fixtures" / "real_spy_nyse_nasdaq_books.json").read_text(
+            encoding="utf-8"
+        )
+    )["books"]
     for svc in ("NASDAQ_BOOK", "NYSE_BOOK"):
-        ofs._ingest_pushed("book.SPY", book_msg(symbol="SPY", service=svc, content=fx[svc]["content"],
-                                                src="schwab_book", ts_recv=fx[svc]["ts_recv"]))
+        ofs._ingest_pushed(
+            "book.SPY",
+            book_msg(
+                symbol="SPY",
+                service=svc,
+                content=fx[svc]["content"],
+                src="schwab_book",
+                ts_recv=fx[svc]["ts_recv"],
+            ),
+        )
 
     def stale(svc):
         return server.order_flow_microstructure("SPY", svc, RTH_INSTANT)["ages"]["book_stale"]
 
-    held = {"schwab_socket_open": True,
-            "held": {"LEVELONE_EQUITIES": ["SPY"], "NASDAQ_BOOK": ["SPY"], "NYSE_BOOK": []}}
+    held = {
+        "schwab_socket_open": True,
+        "held": {"LEVELONE_EQUITIES": ["SPY"], "NASDAQ_BOOK": ["SPY"], "NYSE_BOOK": []},
+    }
     lmp.record_feed_heartbeat({**held, "ts": RTH_INSTANT})
-    publish_daemon_rows("SPY", now=RTH_INSTANT)                 # the daemon's price row, its verdict LIVE
+    publish_daemon_rows("SPY", now=RTH_INSTANT)  # the daemon's price row, its verdict LIVE
     try:
         assert (stale("NASDAQ_BOOK"), stale("NYSE_BOOK")) == (False, True)
         lmp.record_feed_heartbeat({**held, "ts": RTH_INSTANT - lmp.FEED_HEARTBEAT_MAX_AGE_SEC - 1})

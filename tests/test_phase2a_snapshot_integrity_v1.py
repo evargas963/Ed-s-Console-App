@@ -36,10 +36,18 @@ def _bars(session, high_of_interior: float = 105.0) -> list:
             ts = datetime(d.year, d.month, d.day, 9, 30, tzinfo=ET) + timedelta(minutes=i)
             px = 100.0 + (i % 11) * 0.10
             hi = px + 0.05
-            if d == prior and i == 30:          # interior bar of the PRIOR session -> PDH
+            if d == prior and i == 30:  # interior bar of the PRIOR session -> PDH
                 hi = high_of_interior
-            out.append({"timestamp": int(ts.timestamp() * 1000), "open": px, "high": hi,
-                        "low": px - 0.05, "close": px, "volume": 1000.0 + i})
+            out.append(
+                {
+                    "timestamp": int(ts.timestamp() * 1000),
+                    "open": px,
+                    "high": hi,
+                    "low": px - 0.05,
+                    "close": px,
+                    "volume": 1000.0 + i,
+                }
+            )
     return out
 
 
@@ -51,9 +59,24 @@ def _fresh():
 
 def _mat(session, bars):
     return materialize_price_level_snapshot(
-        "ZZRC324", session, LVE.bars_from_candles(
-            [Candle(ts=b["timestamp"] / 1000, open=b["open"], high=b["high"], low=b["low"], close=b["close"],
-                    volume=b["volume"]) for b in bars]), bar_source="test_fixture", config=PlaybookConfig())
+        "ZZRC324",
+        session,
+        LVE.bars_from_candles(
+            [
+                Candle(
+                    ts=b["timestamp"] / 1000,
+                    open=b["open"],
+                    high=b["high"],
+                    low=b["low"],
+                    close=b["close"],
+                    volume=b["volume"],
+                )
+                for b in bars
+            ]
+        ),
+        bar_source="test_fixture",
+        config=PlaybookConfig(),
+    )
 
 
 def test_an_interior_bar_change_is_a_new_generation():
@@ -68,12 +91,15 @@ def test_an_interior_bar_change_is_a_new_generation():
     second = _mat(session, _bars(session, 999.0))
     assert second is not first, (
         "an interior bar changed and the producer returned the SAME object — the "
-        "fingerprint is sampling the input instead of covering it (RC-324)")
+        "fingerprint is sampling the input instead of covering it (RC-324)"
+    )
     assert second.generation == first.generation + 1, (
-        f"generation did not advance: {first.generation} -> {second.generation}")
+        f"generation did not advance: {first.generation} -> {second.generation}"
+    )
     assert second.price("PDH") != pdh_before, (
         f"PDH stayed {pdh_before!r} after the high was moved to 999 — a stale value served "
-        "under a fresh generation")
+        "under a fresh generation"
+    )
 
     # And the same input must still be ONE generation: no churn.
     again = _mat(session, _bars(session, 999.0))
@@ -94,7 +120,7 @@ def test_concurrent_materialization_yields_one_object_and_one_generation():
         try:
             barrier.wait(timeout=10)
             results.append(_mat(session, bars))
-        except Exception as exc:                       # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
             errors.append(exc)
 
     threads = [threading.Thread(target=go) for _ in range(8)]
@@ -107,9 +133,11 @@ def test_concurrent_materialization_yields_one_object_and_one_generation():
     assert len(results) == 8, f"only {len(results)} of 8 threads completed"
     assert len({id(r) for r in results}) == 1, (
         "concurrent callers received DIFFERENT snapshot objects — two results for one "
-        "generation, the exact defect Cursor reproduced with PDH 105 and 205 (RC-324)")
+        "generation, the exact defect Cursor reproduced with PDH 105 and 205 (RC-324)"
+    )
     assert len({r.generation for r in results}) == 1, (
-        f"one input produced several generations: {sorted({r.generation for r in results})}")
+        f"one input produced several generations: {sorted({r.generation for r in results})}"
+    )
     assert results[0].generation == 1
 
 
@@ -125,7 +153,8 @@ def test_the_fingerprint_covers_every_bar_field():
         other = LVE._snapshot_input_fingerprint("ZZRC324", session, mutated, "test_fixture")
         assert other != fp, (
             f"changing an interior bar's {field} left the fingerprint unchanged — that "
-            f"field can go stale (RC-324)")
+            f"field can go stale (RC-324)"
+        )
 
     # A timestamp change must also register.
     shifted = [dict(b) for b in base]

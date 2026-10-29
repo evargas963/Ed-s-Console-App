@@ -16,10 +16,7 @@ import app.options.order_flow.state as live_state
 
 
 def _prints(*rows):
-    return [
-        {"LAST_PRICE": p, "LAST_SIZE": s, "TRADE_TIME_MILLIS": t}
-        for p, s, t in rows
-    ]
+    return [{"LAST_PRICE": p, "LAST_SIZE": s, "TRADE_TIME_MILLIS": t} for p, s, t in rows]
 
 
 def test_distinct_same_ms_price_change_retained():
@@ -73,9 +70,17 @@ def test_missing_size_remains_unavailable():
 def test_reconnect_clear_resets_restatement_identity():
     sym = "RECON"
     live_state.clear_symbol(sym)
-    live_state.push_level_one(sym, {"key": sym, "LAST_PRICE": 10.0, "LAST_SIZE": 1, "TRADE_TIME_MILLIS": 5}, ts_recv=time.time())
+    live_state.push_level_one(
+        sym,
+        {"key": sym, "LAST_PRICE": 10.0, "LAST_SIZE": 1, "TRADE_TIME_MILLIS": 5},
+        ts_recv=time.time(),
+    )
     live_state.clear_all_live_state()
-    live_state.push_level_one(sym, {"key": sym, "LAST_PRICE": 10.0, "LAST_SIZE": 1, "TRADE_TIME_MILLIS": 5}, ts_recv=time.time())
+    live_state.push_level_one(
+        sym,
+        {"key": sym, "LAST_PRICE": 10.0, "LAST_SIZE": 1, "TRADE_TIME_MILLIS": 5},
+        ts_recv=time.time(),
+    )
     tape = [i for i in live_state.get_content_for_symbol(sym) if i.get("LAST_PRICE") is not None]
     assert len(tape) == 1
     assert tape[0]["receive_seq"] == 1
@@ -131,5 +136,3 @@ def test_slope_uses_same_signed_size_walk():
     slope = ofe._compute_cum_delta_slope({"content": content}, now=3.0, window_sec=60.0)
     assert slope is not None
     assert math.isclose(slope, -1.0, rel_tol=0.0, abs_tol=1e-9)
-
-

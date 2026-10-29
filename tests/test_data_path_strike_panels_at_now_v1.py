@@ -8,6 +8,7 @@ CRWD), and CRWD's LEVELONE_EQUITIES message the daemon received at 10:38:00 ET
 (tests/fixtures/real_crwd_quote_2026_10_07.json), taken in by the plane at its receipt time and
 turned into the price row by the daemon's own function at the capture's instant.
 """
+
 from __future__ import annotations
 
 import json
@@ -19,8 +20,11 @@ import server
 from app.options.order_flow import streaming as ofs
 from tests.real_chains import CRWD
 
-_QUOTE = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_crwd_quote_2026_10_07.json")
-                    .read_text(encoding="utf-8"))
+_QUOTE = json.loads(
+    (Path(__file__).resolve().parent / "fixtures" / "real_crwd_quote_2026_10_07.json").read_text(
+        encoding="utf-8"
+    )
+)
 
 
 def _clear(tk):
@@ -37,12 +41,26 @@ def test_every_per_strike_panel_answers_at_the_time_asked_around_the_price():
     _clear(tk)
     try:
         lmp.record_from_level_one_equity(tk, _QUOTE["native"], received_ts=_QUOTE["ts_recv"])
-        lmp.record_feed_heartbeat({"ts": at, "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [tk]}})
+        lmp.record_feed_heartbeat(
+            {"ts": at, "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [tk]}}
+        )
         row = live_price_rows.price_row(tk, at)
         ofs._price_rows[row["ticker"]] = row
-        server._publish_levels(tk, captures=[{"contracts": CRWD.chain, "ts_utc": at, "spot": CRWD.spot,
-                                              "et_date": CRWD.now.date().isoformat(),
-                                              "basis": server.CAPTURE_BASIS, "spot_ts": None, "spot_from_chain": False}], now=CRWD.now)
+        server._publish_levels(
+            tk,
+            captures=[
+                {
+                    "contracts": CRWD.chain,
+                    "ts_utc": at,
+                    "spot": CRWD.spot,
+                    "et_date": CRWD.now.date().isoformat(),
+                    "basis": server.CAPTURE_BASIS,
+                    "spot_ts": None,
+                    "spot_from_chain": False,
+                }
+            ],
+            now=CRWD.now,
+        )
         last = _QUOTE["native"]["LAST_PRICE"]
         strikes = server.terrain_strikes_payload(tk, "auto", None, 0, at)
         assert strikes["spot"] == last and strikes["spot_strike"] is not None

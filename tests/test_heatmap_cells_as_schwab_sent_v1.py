@@ -16,6 +16,7 @@ Real data, one column each:
 - SPY 2026-11-20 (tests/fixtures/real_spy_2026_11_20_chain_and_quotes.json, captured 2026-09-30).
 A strike listed in one column and not another is that column's "-" cell.
 """
+
 from __future__ import annotations
 
 import json
@@ -33,7 +34,11 @@ _OCT15 = json.loads((_FX / "real_spy_2026_10_15_chain_oi_zero.json").read_text(e
 _NOV20 = json.loads((_FX / "real_spy_2026_11_20_chain_and_quotes.json").read_text(encoding="utf-8"))
 _SPOT = float(_OCT14["priced_at_spot"])
 _AT = datetime.fromtimestamp(_OCT14["chain_as_of_ts_utc"], time_et.ET)
-_COLUMNS = {"2026-10-14": _OCT14["contracts"], "2026-10-15": _OCT15["contracts"], "2026-11-20": _NOV20["chain"]}
+_COLUMNS = {
+    "2026-10-14": _OCT14["contracts"],
+    "2026-10-15": _OCT15["contracts"],
+    "2026-11-20": _NOV20["chain"],
+}
 
 
 _CONTRACTS = [c for cs in _COLUMNS.values() for c in cs]
@@ -51,7 +56,11 @@ def _by_strike(contracts) -> "dict[float, list]":
 
 
 def _open_interest_zero(expiry) -> "set[float]":
-    return {k for k, cs in _by_strike(_COLUMNS[expiry]).items() if all(c["openInterest"] == 0 for c in cs)}
+    return {
+        k
+        for k, cs in _by_strike(_COLUMNS[expiry]).items()
+        if all(c["openInterest"] == 0 for c in cs)
+    }
 
 
 def _column(surface, expiry) -> "dict[float, tuple]":

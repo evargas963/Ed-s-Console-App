@@ -10,20 +10,12 @@ from math_levels import (
 
 def test_key_level_strikes_with_oi_counts_one_sided_and_skips_unknown():
     exposures = {
-        100.0: {"call_oi": 100.0, "oi_unreported": 0},                  # one-sided: counts (M-06)
+        100.0: {"call_oi": 100.0, "oi_unreported": 0},  # one-sided: counts (M-06)
         105.0: {"call_oi": 50.0, "put_oi": 50.0, "oi_unreported": 0},
-        110.0: {"call_oi": 70.0, "put_oi": 70.0, "oi_unreported": 1},   # unknown OI: excluded
-        115.0: {"oi_unreported": 0},                                    # known zero OI: excluded
+        110.0: {"call_oi": 70.0, "put_oi": 70.0, "oi_unreported": 1},  # unknown OI: excluded
+        115.0: {"oi_unreported": 0},  # known zero OI: excluded
     }
     assert key_level_strikes_with_oi(exposures) == [100.0, 105.0]
-
-
-
-
-
-
-
-
 
 
 def test_compute_max_pain_ignores_strike_when_oi_present_but_mult_missing():

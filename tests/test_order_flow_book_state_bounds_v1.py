@@ -1,5 +1,6 @@
 """The order-flow book store is bounded per contract and keeps contracts apart (real QQQ/TSLA
 option books, tests/fixtures/real_options_stream_history_samples.json)."""
+
 from __future__ import annotations
 
 import json
@@ -36,5 +37,3 @@ def test_canonical_book_state_is_bounded_and_contract_isolated():
     assert all(row.get("BOOK_TIME") != second_book["BOOK_TIME"] for row in first_books)
     assert len([row for row in second_content if "BIDS" in row]) == 1
     assert options_live_payload("MISSING", float(base_time) / 1000, None)["status"] == "no_book"
-
-

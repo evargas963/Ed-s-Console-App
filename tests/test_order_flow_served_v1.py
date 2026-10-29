@@ -2,14 +2,24 @@
 cell's dominant side and the colour scale's top are served; so is an option contract's put/call
 (Schwab's CONTRACT_TYPE). Book rows are real TSLA NASDAQ_BOOK messages
 (tests/fixtures/real_tsla_book_rows.json)."""
+
 import json
 from pathlib import Path
 
 import pytest
 
-from app.options.order_flow.history import DISPLAY_TAIL_SHARE, RecentBooks, book_heatmap_for_ticker, put_call_side
+from app.options.order_flow.history import (
+    DISPLAY_TAIL_SHARE,
+    RecentBooks,
+    book_heatmap_for_ticker,
+    put_call_side,
+)
 
-_FX = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_tsla_book_rows.json").read_text(encoding="utf-8"))
+_FX = json.loads(
+    (Path(__file__).resolve().parent / "fixtures" / "real_tsla_book_rows.json").read_text(
+        encoding="utf-8"
+    )
+)
 
 
 def _books(rows) -> RecentBooks:
@@ -39,7 +49,17 @@ def test_each_cell_carries_its_dominant_side_and_the_scale_top(heat):
         b, a = c["bid"], c["ask"]
         assert _sizes(c), c
         one_sided += b is None or a is None
-        want = "BID" if a is None else "ASK" if b is None else "BID" if b > a else "ASK" if a > b else "EVEN"
+        want = (
+            "BID"
+            if a is None
+            else "ASK"
+            if b is None
+            else "BID"
+            if b > a
+            else "ASK"
+            if a > b
+            else "EVEN"
+        )
         assert c["side"] == want
     assert one_sided, "real TSLA books: a price carries a bid or an ask, rarely both"
     assert heat["max_size"] == max(v for c in heat["cells"] for v in _sizes(c))
@@ -67,8 +87,16 @@ def test_the_window_ends_at_the_newest_book_with_levels_not_the_empty_after_clos
     NASDAQ_BOOK message is {"key": "SPY", "BOOK_TIME": ..., "BIDS": [], "ASKS": []}); anchoring the
     window on those left the heatmap blank all weekend."""
     last = _FX["rows"][-1][0]
-    empties = [(last + 3600 * h, "NASDAQ_BOOK", {"key": "TSLA", "BOOK_TIME": int((last + 3600 * h) * 1000), "BIDS": [], "ASKS": []})
-               for h in range(1, 40)]
-    d = book_heatmap_for_ticker("TSLA", "NASDAQ_BOOK", minutes=60, books=_books(_FX["rows"] + empties))
+    empties = [
+        (
+            last + 3600 * h,
+            "NASDAQ_BOOK",
+            {"key": "TSLA", "BOOK_TIME": int((last + 3600 * h) * 1000), "BIDS": [], "ASKS": []},
+        )
+        for h in range(1, 40)
+    ]
+    d = book_heatmap_for_ticker(
+        "TSLA", "NASDAQ_BOOK", minutes=60, books=_books(_FX["rows"] + empties)
+    )
     assert d["available"] is True and d["cells"]
     assert d["until_ts"] == last

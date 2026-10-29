@@ -5,6 +5,7 @@ process holds the day's file open (Windows refuses to rename a file another proc
 STAND-IN: a second Python process holding the day's file open, as a log viewer or a second
 daemon's start does.
 """
+
 from __future__ import annotations
 
 import logging
@@ -31,8 +32,16 @@ def test_the_day_changes_while_another_process_holds_the_log_open(tmp_path):
     _line(handler, before, "before midnight")
     handler.flush()
     holder = subprocess.Popen(
-        [sys.executable, "-c", "import sys, time; f = open(sys.argv[1], 'a'); print('open', flush=True); "
-         "time.sleep(60)", str(capture.log_path(tmp_path, before.date()))], stdout=subprocess.PIPE, text=True)
+        [
+            sys.executable,
+            "-c",
+            "import sys, time; f = open(sys.argv[1], 'a'); print('open', flush=True); "
+            "time.sleep(60)",
+            str(capture.log_path(tmp_path, before.date())),
+        ],
+        stdout=subprocess.PIPE,
+        text=True,
+    )
     try:
         assert holder.stdout.readline().strip() == "open"
         _line(handler, before + timedelta(seconds=2), "after midnight")
@@ -40,9 +49,13 @@ def test_the_day_changes_while_another_process_holds_the_log_open(tmp_path):
     finally:
         holder.kill()
         holder.wait()
-    assert capture.log_path(tmp_path, before.date()).read_text(encoding="utf-8") == "before midnight\n"
-    assert capture.log_path(tmp_path, date(2026, 10, 9)).read_text(encoding="utf-8") == "after midnight\n", \
-        "a line after midnight did not reach the new day's file"
+    assert (
+        capture.log_path(tmp_path, before.date()).read_text(encoding="utf-8") == "before midnight\n"
+    )
+    assert (
+        capture.log_path(tmp_path, date(2026, 10, 9)).read_text(encoding="utf-8")
+        == "after midnight\n"
+    ), "a line after midnight did not reach the new day's file"
 
 
 def test_a_days_file_the_disk_will_not_open_never_raises_where_the_daemon_logs(tmp_path):
@@ -57,8 +70,13 @@ def test_a_days_file_the_disk_will_not_open_never_raises_where_the_daemon_logs(t
     capture.log_path(tmp_path, date(2026, 10, 9)).rmdir()
     _line(handler, before + timedelta(seconds=3), "after midnight")
     handler.close()
-    assert capture.log_path(tmp_path, before.date()).read_text(encoding="utf-8") == "before midnight\n"
-    assert capture.log_path(tmp_path, date(2026, 10, 9)).read_text(encoding="utf-8") == "after midnight\n"
+    assert (
+        capture.log_path(tmp_path, before.date()).read_text(encoding="utf-8") == "before midnight\n"
+    )
+    assert (
+        capture.log_path(tmp_path, date(2026, 10, 9)).read_text(encoding="utf-8")
+        == "after midnight\n"
+    )
 
 
 def test_the_newest_45_days_are_kept(tmp_path):
@@ -72,16 +90,25 @@ def test_the_newest_45_days_are_kept(tmp_path):
     handler.close()
     kept = sorted(tmp_path.glob("stream_capture.*.log"))
     assert capture.LOG_DAYS_KEPT == 45
-    assert kept == [capture.log_path(tmp_path, d) for d in days[6:]] + [capture.log_path(tmp_path, date(2026, 9, 20))]
+    assert kept == [capture.log_path(tmp_path, d) for d in days[6:]] + [
+        capture.log_path(tmp_path, date(2026, 9, 20))
+    ]
 
 
 def test_the_daemons_log_has_every_line_with_its_wall_time(tmp_path):
     """The daemon's log as it starts it (_start_log), under a runtime root of its own: a line
     reaches the day's file under <runtime>/logs, beginning with its date and time."""
-    script = ("from app.market_data.schwab.streaming import capture; capture._start_log(); "
-              "capture.log.warning('schwab: connection ended (socket closed)')")
-    subprocess.run([sys.executable, "-c", script], cwd=REPO, env={**os.environ, "ED_RUNTIME_ROOT": str(tmp_path)},
-                   check=True, timeout=120)
+    script = (
+        "from app.market_data.schwab.streaming import capture; capture._start_log(); "
+        "capture.log.warning('schwab: connection ended (socket closed)')"
+    )
+    subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=REPO,
+        env={**os.environ, "ED_RUNTIME_ROOT": str(tmp_path)},
+        check=True,
+        timeout=120,
+    )
     (log,) = (tmp_path / "logs").glob("stream_capture.*.log")
     text = log.read_text(encoding="utf-8")
     assert "schwab: connection ended (socket closed)" in text

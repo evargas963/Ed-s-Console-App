@@ -19,6 +19,7 @@ each contract on LEVELONE_OPTIONS.
 Regenerate (from the repo root, project .venv):
   python -c "from tests.test_options_order_flow_production_v1 import write_flow_e2e_fixture; write_flow_e2e_fixture()"
 """
+
 from __future__ import annotations
 
 import json
@@ -30,10 +31,14 @@ import pytest
 from time_et import ET
 
 _HISTORY = Path(__file__).resolve().parent / "fixtures" / "real_options_stream_history_samples.json"
-_FLOW_E2E_FIXTURE = Path(__file__).resolve().parent / "e2e" / "fixtures" / "options_microstructure_payload.json"
-_SIDES = Path(__file__).resolve().parent / "fixtures" / "real_spy_option_contract_type_2026_10_23.json"
+_FLOW_E2E_FIXTURE = (
+    Path(__file__).resolve().parent / "e2e" / "fixtures" / "options_microstructure_payload.json"
+)
+_SIDES = (
+    Path(__file__).resolve().parent / "fixtures" / "real_spy_option_contract_type_2026_10_23.json"
+)
 _SPY_CLOSE = _SIDES.with_name("real_spy_2026_10_23_expiry_two_closes_2026_10_21_22.json")
-_SIDES_E2E_FIXTURE =_FLOW_E2E_FIXTURE.with_name("options_microstructure_side_payloads.json")
+_SIDES_E2E_FIXTURE = _FLOW_E2E_FIXTURE.with_name("options_microstructure_side_payloads.json")
 FLOW_CONTRACT = "TSLA  260831C00367500"
 
 
@@ -45,21 +50,43 @@ def build_flow_e2e_fixture_response() -> dict:
     from app.options.order_flow import streaming as ofs
     from stream_spine import book_msg, options_quote_msg
 
-    events = next(c for c in json.loads(_HISTORY.read_text(encoding="utf-8"))["contracts"]
-                  if c["symbol"] == FLOW_CONTRACT)["events"]
+    events = next(
+        c
+        for c in json.loads(_HISTORY.read_text(encoding="utf-8"))["contracts"]
+        if c["symbol"] == FLOW_CONTRACT
+    )["events"]
     ofls.clear_all_live_state()
     at = max(e["ts_recv"] for e in events)
     try:
-        lmp.record_feed_heartbeat({"ts": at, "schwab_socket_open": True,
-                                   "held": {"LEVELONE_OPTIONS": [FLOW_CONTRACT], "OPTIONS_BOOK": [FLOW_CONTRACT]}})
+        lmp.record_feed_heartbeat(
+            {
+                "ts": at,
+                "schwab_socket_open": True,
+                "held": {"LEVELONE_OPTIONS": [FLOW_CONTRACT], "OPTIONS_BOOK": [FLOW_CONTRACT]},
+            }
+        )
         for e in sorted(events, key=lambda e: e["ts_recv"]):
             if e["kind"] == "book":
-                ofs._ingest_pushed(f"book.{FLOW_CONTRACT}", book_msg(
-                    symbol=FLOW_CONTRACT, service="OPTIONS_BOOK", content=e["content"], src="schwab_book",
-                    ts_recv=e["ts_recv"]))
+                ofs._ingest_pushed(
+                    f"book.{FLOW_CONTRACT}",
+                    book_msg(
+                        symbol=FLOW_CONTRACT,
+                        service="OPTIONS_BOOK",
+                        content=e["content"],
+                        src="schwab_book",
+                        ts_recv=e["ts_recv"],
+                    ),
+                )
             else:
-                ofs._ingest_pushed(f"optquote.{FLOW_CONTRACT}", options_quote_msg(
-                    symbol=FLOW_CONTRACT, content=e["content"], src="schwab_options_l1", ts_recv=e["ts_recv"]))
+                ofs._ingest_pushed(
+                    f"optquote.{FLOW_CONTRACT}",
+                    options_quote_msg(
+                        symbol=FLOW_CONTRACT,
+                        content=e["content"],
+                        src="schwab_options_l1",
+                        ts_recv=e["ts_recv"],
+                    ),
+                )
         return srv.options_microstructure(FLOW_CONTRACT, at)
     finally:
         lmp.record_feed_down()
@@ -82,17 +109,34 @@ def build_side_e2e_fixture_response() -> dict:
     # SPY's 2026-10-22 close capture lists both, so each is judged by SPY's option market
     close = json.loads(_SPY_CLOSE.read_text(encoding="utf-8"))["newer"]
     at_close = datetime.fromtimestamp(close["ts_utc"], ET)
-    srv._publish_levels("SPY", captures=[{"contracts": close["chain"], "ts_utc": close["ts_utc"], "spot": close["spot"],
-                                          "spot_ts": None, "spot_from_chain": False,
-                                          "et_date": at_close.date().isoformat(), "basis": srv.CAPTURE_BASIS}],
-                        now=at_close)
+    srv._publish_levels(
+        "SPY",
+        captures=[
+            {
+                "contracts": close["chain"],
+                "ts_utc": close["ts_utc"],
+                "spot": close["spot"],
+                "spot_ts": None,
+                "spot_from_chain": False,
+                "et_date": at_close.date().isoformat(),
+                "basis": srv.CAPTURE_BASIS,
+            }
+        ],
+        now=at_close,
+    )
     try:
         for sym, msgs in contracts.items():
             at = max(m["ts_recv"] for m in msgs)
-            lmp.record_feed_heartbeat({"ts": at, "schwab_socket_open": True, "held": {"LEVELONE_OPTIONS": [sym]}})
+            lmp.record_feed_heartbeat(
+                {"ts": at, "schwab_socket_open": True, "held": {"LEVELONE_OPTIONS": [sym]}}
+            )
             for m in msgs:
-                ofs._ingest_pushed(f"optquote.{sym}", options_quote_msg(symbol=sym, content=m["item"], src="schwab",
-                                                                        ts_recv=m["ts_recv"]))
+                ofs._ingest_pushed(
+                    f"optquote.{sym}",
+                    options_quote_msg(
+                        symbol=sym, content=m["item"], src="schwab", ts_recv=m["ts_recv"]
+                    ),
+                )
             out[sym] = srv.options_microstructure(sym, at)
         return out
     finally:
@@ -115,24 +159,42 @@ def write_flow_e2e_fixture() -> None:
     import tempfile
 
     root = tempfile.mkdtemp(prefix="ed-e2e-fixture-regen-")
-    env = {k: v for k, v in os.environ.items()
-           if k not in ("ED_CONSOLE_DB", "ED_DB_PATH", "STREAM_CAPTURE_DB_PATH")}
-    env.update({"ED_RUNTIME_ROOT": root, "ED_ARTIFACTS_ROOT": os.path.join(root, "artifacts"),
-                "ED_CONSOLE_ALLOW_NONCANONICAL_DB": "1", "ED_CI_OFFLINE": "1",
-                "SCHWAB_API_KEY": "ci-placeholder-api-key", "SCHWAB_APP_SECRET": "ci-placeholder-app-secret",
-                "SCHWAB_CALLBACK_URL": "https://127.0.0.1:8182"})
-    code = ("import json, sys; from tests.conftest import MARKETS_ANSWERS; from time_et import record_markets; "
-            "[record_markets(json.loads(a['body'])) for a in json.loads(MARKETS_ANSWERS.read_text(encoding='utf-8'))"
-            "['answers'].values() if a['status'] == 200]; "
-            "from tests.test_options_order_flow_production_v1 import "
-            "build_flow_e2e_fixture_response as b, build_side_e2e_fixture_response as s; "
-            "sys.stdout.write(json.dumps({'flow': b(), 'sides': s()}))")
+    env = {
+        k: v
+        for k, v in os.environ.items()
+        if k not in ("ED_CONSOLE_DB", "ED_DB_PATH", "STREAM_CAPTURE_DB_PATH")
+    }
+    env.update(
+        {
+            "ED_RUNTIME_ROOT": root,
+            "ED_ARTIFACTS_ROOT": os.path.join(root, "artifacts"),
+            "ED_CONSOLE_ALLOW_NONCANONICAL_DB": "1",
+            "ED_CI_OFFLINE": "1",
+            "SCHWAB_API_KEY": "ci-placeholder-api-key",
+            "SCHWAB_APP_SECRET": "ci-placeholder-app-secret",
+            "SCHWAB_CALLBACK_URL": "https://127.0.0.1:8182",
+        }
+    )
+    code = (
+        "import json, sys; from tests.conftest import MARKETS_ANSWERS; from time_et import record_markets; "
+        "[record_markets(json.loads(a['body'])) for a in json.loads(MARKETS_ANSWERS.read_text(encoding='utf-8'))"
+        "['answers'].values() if a['status'] == 200]; "
+        "from tests.test_options_order_flow_production_v1 import "
+        "build_flow_e2e_fixture_response as b, build_side_e2e_fixture_response as s; "
+        "sys.stdout.write(json.dumps({'flow': b(), 'sides': s()}))"
+    )
     try:
-        out = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True, check=True,
-                             cwd=str(_FLOW_E2E_FIXTURE.parents[3])).stdout
+        out = subprocess.run(
+            [sys.executable, "-c", code],
+            env=env,
+            capture_output=True,
+            text=True,
+            check=True,
+            cwd=str(_FLOW_E2E_FIXTURE.parents[3]),
+        ).stdout
     finally:
         shutil.rmtree(root, ignore_errors=True)
-    payload = json.loads(out.strip().splitlines()[-1])     # import-time log lines may precede it
+    payload = json.loads(out.strip().splitlines()[-1])  # import-time log lines may precede it
     for path, key in ((_FLOW_E2E_FIXTURE, "flow"), (_SIDES_E2E_FIXTURE, "sides")):
         path.write_text(json.dumps(payload[key], indent=2, sort_keys=True) + "\n", encoding="utf-8")
         print(f"wrote {path}")
@@ -155,9 +217,20 @@ def test_flow_e2e_fixture_is_the_route_contract():
     value, so the Flow spec proves the real API's output; the flow values it shows are served."""
     fixture = json.loads(_FLOW_E2E_FIXTURE.read_text(encoding="utf-8"))
     live = build_flow_e2e_fixture_response()
-    assert _same(fixture, live), "E2E fixture drifted from the route; regenerate with write_flow_e2e_fixture()"
-    assert fixture["status"] == "ok" and fixture["streaming_plane"]["subscription_state"] == "SUBSCRIBED"
-    for k in ("tape_pressure_30s", "tape_pressure_2m", "tape_pressure_5m", "cum_delta_proxy", "top_book_pressure"):
+    assert _same(fixture, live), (
+        "E2E fixture drifted from the route; regenerate with write_flow_e2e_fixture()"
+    )
+    assert (
+        fixture["status"] == "ok"
+        and fixture["streaming_plane"]["subscription_state"] == "SUBSCRIBED"
+    )
+    for k in (
+        "tape_pressure_30s",
+        "tape_pressure_2m",
+        "tape_pressure_5m",
+        "cum_delta_proxy",
+        "top_book_pressure",
+    ):
         assert k not in live and fixture["flow"][k] is not None, k
 
 
@@ -165,7 +238,10 @@ def test_side_e2e_fixture_is_the_route_contract():
     """The Playwright side payloads are what the route serves for the SPY call and put, every key and
     value: the side the header shows is the route's CALL and PUT."""
     fixture = json.loads(_SIDES_E2E_FIXTURE.read_text(encoding="utf-8"))
-    assert _same(fixture, build_side_e2e_fixture_response()), \
+    assert _same(fixture, build_side_e2e_fixture_response()), (
         "E2E side fixture drifted from the route; regenerate with write_flow_e2e_fixture()"
+    )
     assert {k: v["put_call"] for k, v in fixture.items()} == {
-        "SPY   261023C00761000": "CALL", "SPY   261023P00762000": "PUT"}
+        "SPY   261023C00761000": "CALL",
+        "SPY   261023P00762000": "PUT",
+    }

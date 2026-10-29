@@ -19,6 +19,7 @@ governance does not decide whether the desk may run. It reads the environment on
 `ED_RUNTIME_ROOT` in `.env` reaches it when an entry point loads `.env` (config.load_dotenv_file)
 before importing it.
 """
+
 from __future__ import annotations
 
 import os
@@ -92,8 +93,9 @@ def logs_dir() -> Path:
     return RUNTIME_ROOT / "logs"
 
 
-def live_binding_error(source_root: "Path | None" = None,
-                       runtime_root: "Path | None" = None) -> "str | None":
+def live_binding_error(
+    source_root: "Path | None" = None, runtime_root: "Path | None" = None
+) -> "str | None":
     """Why THIS checkout may not run a LIVE process (the console server, the capture daemon)
     against the runtime root -- or None when it may.
 
@@ -110,10 +112,10 @@ def live_binding_error(source_root: "Path | None" = None,
     if rt == src:
         return None
     if (rt / ".git").exists():
-        return (f"this checkout ({src}) resolves its runtime to another checkout ({rt}) -- the "
-                f"live database, token and logs of that checkout. A live console or capture "
-                f"daemon runs only from the checkout that owns its runtime; to run this one, "
-                f"set ED_RUNTIME_ROOT to a separate sandbox directory (not a git checkout).")
+        return (
+            f"this checkout ({src}) resolves its runtime to another checkout ({rt}) -- the "
+            f"live database, token and logs of that checkout. A live console or capture "
+            f"daemon runs only from the checkout that owns its runtime; to run this one, "
+            f"set ED_RUNTIME_ROOT to a separate sandbox directory (not a git checkout)."
+        )
     return None
-
-

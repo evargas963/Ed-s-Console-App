@@ -31,17 +31,19 @@ _CI_SCHWAB_PLACEHOLDER_PREFIXES: tuple[str, ...] = (
 )
 
 
-def schwab_credentials_are_ci_placeholders(api_key: str | None = None, app_secret: str | None = None) -> bool:
+def schwab_credentials_are_ci_placeholders(
+    api_key: str | None = None, app_secret: str | None = None
+) -> bool:
     """True when Schwab env vars are non-production CI placeholders (not live credentials)."""
     key = (api_key if api_key is not None else os.getenv("SCHWAB_API_KEY") or "").strip()
-    secret = (app_secret if app_secret is not None else os.getenv("SCHWAB_APP_SECRET") or "").strip()
+    secret = (
+        app_secret if app_secret is not None else os.getenv("SCHWAB_APP_SECRET") or ""
+    ).strip()
     if not key or not secret:
         return False
     return any(key.startswith(p) for p in _CI_SCHWAB_PLACEHOLDER_PREFIXES) and any(
         secret.startswith(p) for p in _CI_SCHWAB_PLACEHOLDER_PREFIXES
     )
-
-
 
 
 def schwab_live_blocked_for(
@@ -64,7 +66,9 @@ def schwab_live_blocked_for(
     if schwab_credentials_are_ci_placeholders(api_key, app_secret):
         return True
     key = (api_key if api_key is not None else os.getenv("SCHWAB_API_KEY") or "").strip()
-    secret = (app_secret if app_secret is not None else os.getenv("SCHWAB_APP_SECRET") or "").strip()
+    secret = (
+        app_secret if app_secret is not None else os.getenv("SCHWAB_APP_SECRET") or ""
+    ).strip()
     if not key or not secret:
         return True
     offline = os.getenv("ED_CI_OFFLINE", "").strip().lower() in ("1", "true", "yes")
@@ -90,6 +94,7 @@ def token_path() -> str:
     if env_token:
         return os.path.abspath(env_token)
     from runtime_layout import RUNTIME_ROOT
+
     return os.path.abspath(os.path.join(str(RUNTIME_ROOT), "schwab_token.json"))
 
 
