@@ -88,6 +88,19 @@ with no machine check.
 | 12 | **Typed records across boundaries.** A value that crosses a module boundary is a dataclass whose states are named constants. | pyright, strict on State, Calculators and Push (step 6) |
 | 13 | **Python's guidelines.** PEP 8 and PEP 257 as `ruff format` and ruff's rules read them; PEP 20 as the shape. Imports at the top. One formatter per format (price, Central Time, dollars), on the server. | `ruff format` and ruff `I` (in force); ruff `E`, `W`, `UP`, `D` (pep257, no docstring required) (steps 1b and 1c) |
 
+## Fix what you find (operator 2026-10-29: "fix what you find anywhere, everywhere, repo wide")
+
+- A defect found anywhere in the repository, while doing any task, is fixed: in the task that
+  found it, or as the next small PR when it lies outside that task's files. It is never left as
+  "pre-existing", "out of scope" or "follow-up", and never parked in a list. A standard tool's own
+  fix for what its check flags (`ruff format`, `ruff check --fix`) needs no separate yes.
+- Every check runs over the whole repository, never only the lines a change touches, so a finding
+  anywhere fails the required job and nothing merges while it stands. A check that cannot pass
+  repo-wide is not turned on until what it finds is fixed; it never gets an exception list.
+  Enforced by: `ruff check .` and `ruff format --check .` over the whole repository at commit and in
+  `hardening` (in force); each tool SHAPE adds (import-linter, ESLint, pyright) runs the same way
+  (steps 1d to 6).
+
 ## Writing a change
 
 - Trace each value it touches: its source, its one producer, its time, its consumers, and what
