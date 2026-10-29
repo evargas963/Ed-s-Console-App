@@ -278,7 +278,6 @@ class ChainSweep:
         self._optioned: "set[str]" = set()                 # tickers Schwab has answered a chain for
         self._fetched: "dict[str, float]" = {}             # ticker -> when its newest delivered chain began
         self._candled: "dict[str, float]" = {}             # ticker -> when its newest whole price history began
-        self._no_client: "str | None" = None               # why the daemon's client could not be built, logged once
         self._queue: "list[tuple[_Chain, dict]]" = []     # contracts whose quote is not asked for
         self._delivered: "set[str]" = set()                # the tickers this rotation delivered
         self._written: "dict[str, float | None]" = {}       # ticker -> its newest history capture
@@ -292,7 +291,7 @@ class ChainSweep:
         (waits), it asks Schwab for nothing and looks again each second: a sign-in Schwab
         refused fails every request at once, and a round of them would only log each failure."""
         while not stop.is_set():
-            if not self.watchlist or self.waits(schwab_client) is not None:
+            if self.waits(schwab_client) is not None or not self.watchlist:
                 stop.wait(1.0)
                 continue
             today = datetime.fromtimestamp(self.clock(), ET).date()
@@ -317,12 +316,11 @@ class ChainSweep:
         try:
             self.waiting = schwab_client().session.refusal()
         except (ConnectionError, TimeoutError) as e:
-            if str(e) != self._no_client:
+            why = (f"the daemon holds no Schwab sign-in to ask with ({e}); a new one is saved by "
+                   "python reauth_schwab.py")
+            if why != self.waiting:
                 log.warning("chain sweep waits for the daemon's Schwab client: %s", e)
-            self._no_client = str(e)
-            self.waiting = f"the daemon's Schwab client cannot be built: {e}"
-            return self.waiting
-        self._no_client = None
+            self.waiting = why
         return self.waiting
 
     def candles_due(self, ticker: str, now: datetime) -> bool:

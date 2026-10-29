@@ -192,7 +192,7 @@ class OneRefreshSession(OAuth2Client):
                     except AuthlibBaseError as e:
                         self._refused = e
                         log.error("%s", self._refusal_text())
-            raise SignInRefused(f"Schwab refused the sign-in: {self._refused}") from self._refused
+            raise SignInRefused(self._refusal_text()) from self._refused
 
     def refusal(self) -> "str | None":
         """Why this session holds no sign-in Schwab accepts, with what to run, else None; while

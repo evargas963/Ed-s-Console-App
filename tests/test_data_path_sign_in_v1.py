@@ -307,32 +307,40 @@ def test_the_chain_sweep_asks_nothing_while_signed_out_and_goes_on_after_a_new_s
     assert asked and all(auth == "Bearer fresh" for _path, auth in asked)
 
 
-def test_a_refused_sign_in_is_why_the_screen_says_the_levels_are_stale(tmp_path):
-    """Schwab refusing the sign-in (REFUSED): the daemon's chain sweep asks for nothing and keeps
-    why; the daemon's status carries it; and the console's verdict on SPY's levels, past due during
-    2026-10-07's session, names the refusal and what to run, not a sweep that has not delivered.
-    STAND-IN (named): the status's time is the session instant judged."""
+def test_a_refused_sign_in_is_why_the_screen_says_the_levels_are_not_live(tmp_path):
+    """Schwab refusing the sign-in (REFUSED): the daemon's chain sweep asks for nothing, so not even
+    today's /markets answer, and keeps why; the daemon's status, as it stamps it, carries it; and
+    the console's verdict on SPY's levels then, a week old or never computed, names the refusal
+    and what to run whatever the session at that instant (unknown, open, or closed before the
+    close values were fetched). A new sign-in saved, the sweep's why is gone."""
     schwab = LocalSchwab()
     schwab.token = "refuses"
     try:
         client = schwab.client(tmp_path, 100)
         sweep = _sweep(tmp_path)
         assert _work(sweep, lambda: client, 3)
+        refused = sweep.waiting
+        daemon = capture.Daemon(MessageBus(), HealthRegistry(), ["SPY"])
+        daemon.chains = sweep
+        status = daemon.status()
+        lmp.record_feed_heartbeat(status)
+        try:
+            week_old = server.terrain_staleness(status["ts"] - 7 * 86400, "SPY", now=status["ts"])
+            none_yet = server.terrain_staleness(None, "SPY", now=status["ts"])
+        finally:
+            lmp.record_feed_heartbeat({"ts": 0.0, "schwab_socket_open": True, "held": {}})
+            lmp.record_feed_down()
+        _new_sign_in(tmp_path / "schwab_token.json", "fresh")
+        assert _work(sweep, lambda: client, 1)
     finally:
         schwab.close()
-    daemon = capture.Daemon(MessageBus(), HealthRegistry(), ["SPY"])
-    daemon.chains = sweep
-    now = datetime(2026, 10, 7, 12, 0, tzinfo=ET).timestamp()
-    lmp.record_feed_heartbeat({**daemon.status(), "ts": now})
-    try:
-        verdict = server.terrain_staleness(now - 3600, "SPY", now=now)
-    finally:
-        lmp.record_feed_heartbeat({"ts": 0.0, "schwab_socket_open": True, "held": {}})
-        lmp.record_feed_down()
-    assert verdict["levels_state"] == "STALE"
-    assert verdict["levels_stale_reason"].startswith("levels are 3600s old; no chain is fetched: Schwab refused the sign-in (")
-    assert "Refresh token is invalid" in verdict["levels_stale_reason"]
-    assert verdict["levels_stale_reason"].endswith("python reauth_schwab.py")
+    assert "Refresh token is invalid" in refused and refused.endswith("python reauth_schwab.py")
+    assert status["chains_waiting"] == refused
+    assert week_old["levels_state"] in ("STALE", "NOT LIVE")
+    assert week_old["levels_stale_reason"].endswith(f" — no chain is fetched: {refused}")
+    assert (none_yet["levels_state"], none_yet["levels_stale_reason"]) == (
+        "STALE", f"no terrain snapshot has been computed yet — no chain is fetched: {refused}")
+    assert sweep.waiting is None
 
 
 def test_the_chain_sweep_waits_for_a_client_it_cannot_build_and_goes_on_once_built(tmp_path, caplog):
