@@ -240,10 +240,10 @@ def test_a_database_read_only_when_the_writer_starts_is_written_once_it_accepts_
         task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
         _publish_options(bus, health, _EVENTS)
         await asyncio.sleep(1.5)
-        during = daemon.status().get("writer")
+        during = daemon.status(time.time()).get("writer")
         writable()
         await _until(lambda: _count(db, "stream_options_quotes_raw") == len(_EVENTS))
-        after = daemon.status().get("writer")
+        after = daemon.status(time.time()).get("writer")
         stop.set()
         await task
         return during, after

@@ -228,7 +228,8 @@ STOPPED_FIXTURES = {"levels": "real_spy_levels_at_a_stopped_price_2026_10_22.jso
                     "terrain": "real_spy_terrain_at_a_stopped_price_2026_10_22.json",
                     "strikes": "real_spy_strikes_at_a_stopped_price_2026_10_22.json",
                     "surface": "real_spy_gamma_surface_at_a_stopped_price_2026_10_22.json",
-                    "strikes_next_close": "real_spy_strikes_after_the_next_close_2026_10_23.json"}
+                    "strikes_next_close": "real_spy_strikes_after_the_next_close_2026_10_23.json",
+                    "surface_next_close": "real_spy_gamma_surface_after_the_next_close_2026_10_23.json"}
 #: the answers that carry the price's mark
 PRICE_MARKED = ("levels", "confluence", "terrain")
 
@@ -237,7 +238,7 @@ def stopped_price_answers() -> dict:
     """/api/levels, /api/confluence (the 2026-10-22 expiry), /api/terrain, /api/terrain/strikes and
     /api/options/gamma-surface as the real code serves them on SPY's 2026-10-22 close publication
     with SPY's 16:39 print (773.1269) as the last price and the daemon's connection ended, read at
-    the 18:00 print's instant; and /api/terrain/strikes on that same publication after the next
+    the 18:00 print's instant; and /api/terrain/strikes and /api/options/gamma-surface on that same publication after the next
     day's 16:15 option close (2026-10-23 16:30 ET), no chain fetched since: the answers the browser
     tests render (STOPPED_FIXTURES)."""
     import json
@@ -257,12 +258,15 @@ def stopped_price_answers() -> dict:
         next_close = datetime(2026, 10, 23, 16, 30, tzinfo=ET)
         surface = server.gamma_surface_payload("SPY", "auto", None, 0, None, None, at)
         surface.pop("surface_seq")    # the publication's revision, drawn from the wall clock
+        surface_next_close = server.gamma_surface_payload("SPY", "auto", None, 0, None, None, next_close)
+        surface_next_close.pop("surface_seq")
         bodies = {"levels": server.levels_payload("SPY", "1", at),
                   "confluence": server.confluence_payload("SPY", "2026-10-22", at),
                   "terrain": server.terrain_answer("SPY", at),
                   "strikes": server.terrain_strikes_payload("SPY", "auto", None, 0, at.timestamp()),
                   "surface": surface,
-                  "strikes_next_close": server.terrain_strikes_payload("SPY", "auto", None, 0, next_close.timestamp())}
+                  "strikes_next_close": server.terrain_strikes_payload("SPY", "auto", None, 0, next_close.timestamp()),
+                  "surface_next_close": surface_next_close}
     finally:
         _forget()
     return json.loads(json.dumps(bodies))
@@ -286,8 +290,9 @@ def test_the_stopped_price_answers_the_browser_renders_are_the_routes_own():
     for route in ("levels", "strikes", "surface"):
         assert served[route]["levels_state"] == "CLOSE", route
     assert served["surface"]["available"] is True
-    assert (served["strikes_next_close"]["levels_state"], served["strikes_next_close"]["levels_stale_reason"]) == (
-        "STALE", "this ticker's options are closed and its close values have not been fetched")
+    for route in ("strikes_next_close", "surface_next_close"):
+        assert (served[route]["levels_state"], served[route]["levels_stale_reason"]) == (
+            "STALE", "this ticker's options are closed and its close values have not been fetched"), route
 
 
 def test_a_stored_cross_is_the_row_read_back(tmp_path: Path) -> None:

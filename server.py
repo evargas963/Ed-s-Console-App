@@ -762,7 +762,8 @@ def terrain_staleness(computed_ts_utc: float | None, ticker: str | None = None, 
     index-close options at 16:15) is open and its chain current; CLOSE once that market has closed
     and a chain fetched after its close stands, however old (docs/DATA_FLOW.md §2 D5); STALE, with WHY, when the chain is overdue or the close values were never fetched;
     NOT LIVE when Schwab's /markets answer for today is not held. The daemon's last answer for the
-    ticker's chain (a failed fetch, an incomplete delivery) outranks the age. While its option
+    ticker's chain (a failed fetch, an incomplete delivery) outranks the age, and its refused
+    sign-in (`chains_waiting`) outranks both, on every verdict but LIVE and CLOSE. While its option
     market is open the daemon fetches every watchlist ticker's chain without end, so age past two of
     its delivered rounds is a gap, never a schedule. Served beside it: the age and the chain's time."""
     token = schwab_token_countdown(_schwab_token_creation_ts(), now)   # warned before it expires
@@ -779,7 +780,12 @@ def terrain_staleness(computed_ts_utc: float | None, ticker: str | None = None, 
 
 
 def _levels_state(computed_ts_utc: float | None, ticker: str | None, now: float, failure: str) -> tuple[str, str]:
-    """(levels_state, why it is not LIVE or CLOSE) for terrain_staleness."""
+    """(levels_state, why it is not LIVE or CLOSE) for terrain_staleness. While the daemon asks
+    Schwab for nothing (its status's `chains_waiting`: a refused sign-in), that is the why."""
+    status = lmp.daemon_status(now)
+    waiting = status.get("chains_waiting") if status is not None else None
+    if waiting:
+        failure = f"no chain is fetched: {waiting}"
     sep = f" — {failure}" if failure else ""
     if computed_ts_utc is None:
         return LEVELS_STALE, "no terrain snapshot has been computed yet" + sep
@@ -787,7 +793,7 @@ def _levels_state(computed_ts_utc: float | None, ticker: str | None, now: float,
     product = option_close_product(ticker)
     market_open = option_market_open(at, product)
     if market_open is None:
-        return lmp.NOT_LIVE, "the market session is unknown"
+        return lmp.NOT_LIVE, "the market session is unknown" + sep
     if not market_open:
         closed = options_closed_at(at, product)
         if closed is None or float(computed_ts_utc) < closed.timestamp():
@@ -795,7 +801,6 @@ def _levels_state(computed_ts_utc: float | None, ticker: str | None, now: float,
         return LEVELS_CLOSE, ""
     age = now - float(computed_ts_utc)
     # judged against the round the daemon's chain sweep delivers (every watchlist ticker once)
-    status = lmp.daemon_status(now)
     round_sec = status.get("chain_round_sec") if status is not None else None
     # Stale only past the floor *and* past two delivered rounds — one missed round is normal
     # jitter, two is a real gap. The floor is retained so a fast sweep cannot hide staleness;
@@ -804,6 +809,8 @@ def _levels_state(computed_ts_utc: float | None, ticker: str | None, now: float,
                    else max(float(TERRAIN_STALE_AFTER_SEC), 2.0 * float(round_sec)))
     if age <= stale_after:
         return lmp.LIVE, ""
+    if waiting:
+        return LEVELS_STALE, f"levels are {age:.0f}s old{sep}"
     if failure:
         return LEVELS_STALE, f"levels are {age:.0f}s old and every chain since has failed — {failure}"
     return LEVELS_STALE, (f"levels are {age:.0f}s old; the daemon's chain sweep has not delivered this "

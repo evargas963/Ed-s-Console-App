@@ -25,10 +25,13 @@ from pathlib import Path
 
 import pytest
 
+import live_market_plane as lmp
 import schwab_client as sc
+import server
 from app.market_data.schwab.streaming import capture
 from app.market_data.schwab.streaming.capture import CaptureWriter
 from calibration import complete_chain_capture as cch
+from stream_spine import HealthRegistry, MessageBus
 from tests.schwab_rest_standin import EXPIRATIONS, TOKEN, LocalSchwab, _ToLocal
 from time_et import ET
 
@@ -112,7 +115,8 @@ def test_once_schwab_refuses_the_sign_in_no_request_of_any_kind_reaches_schwab(t
             with pytest.raises(sc.SignInRefused, match="Refresh token is invalid") as r:
                 request()
             raised.append(r.value)
-        assert not client.session.signed_in()
+        refusal = client.session.refusal()
+        assert "Refresh token is invalid" in refusal and refusal.endswith("python reauth_schwab.py")
     finally:
         schwab.close()
     assert (_posts(schwab), _asked(schwab)) == (1, [])
@@ -237,11 +241,11 @@ def test_a_sign_in_in_progress_removes_the_token_file_and_nothing_breaks(tmp_pat
         with pytest.raises(sc.SignInRefused):
             client.get_option_expiration_chain("SPY")
         token.unlink()
-        assert not client.session.signed_in()
+        assert client.session.refusal() is not None
         with pytest.raises(sc.SignInRefused):
             client.get_option_expiration_chain("SPY")
         _new_sign_in(token, "fresh")
-        assert client.session.signed_in()
+        assert client.session.refusal() is None
     finally:
         schwab.close()
     assert _posts(schwab) == 1
@@ -258,7 +262,7 @@ def test_schwabs_edge_page_at_the_token_endpoint_is_not_a_refusal(tmp_path):
             with pytest.raises(Exception) as raised:
                 client.get_option_expiration_chain("SPY")
             assert not isinstance(raised.value, sc.SignInRefused)
-        assert client.session.signed_in()
+        assert client.session.refusal() is None
     finally:
         schwab.close()
     assert _posts(schwab) == 2
@@ -275,7 +279,7 @@ def test_a_token_endpoint_that_cannot_be_reached_is_not_a_refusal(tmp_path):
         with pytest.raises(Exception) as raised:
             client.get_option_expiration_chain("SPY")
         assert not isinstance(raised.value, sc.SignInRefused)
-    assert client.session.signed_in()
+    assert client.session.refusal() is None
 
 
 def test_the_chain_sweep_asks_nothing_while_signed_out_and_goes_on_after_a_new_sign_in(tmp_path, caplog):
@@ -303,6 +307,53 @@ def test_the_chain_sweep_asks_nothing_while_signed_out_and_goes_on_after_a_new_s
     assert asked and all(auth == "Bearer fresh" for _path, auth in asked)
 
 
+def _verdict(daemon, computed: "float | None", at: datetime) -> tuple:
+    """The console's verdict on SPY's levels computed at `computed`, judged at `at` with the
+    daemon's status stamped then taken in by the plane: (levels_state, levels_stale_reason)."""
+    now = at.timestamp()
+    lmp.record_feed_heartbeat(daemon.status(now))
+    try:
+        verdict = server.terrain_staleness(computed, "SPY", now=now)
+    finally:
+        lmp.record_feed_heartbeat({"ts": 0.0, "schwab_socket_open": True, "held": {}})
+        lmp.record_feed_down()
+    return verdict["levels_state"], verdict["levels_stale_reason"]
+
+
+def test_a_refused_sign_in_is_why_the_screen_says_the_levels_are_not_live(tmp_path):
+    """Schwab refusing the sign-in (REFUSED): the daemon's chain sweep asks for nothing and keeps
+    why, and the daemon's status carries it. The console's verdict on SPY's levels names the
+    refusal and what to run: past due during 2026-10-07's session, after its option close before
+    the close values were fetched, never computed, and on 2026-09-20, a date Schwab's /markets
+    answer is not held for. A new sign-in saved, the sweep's why is gone."""
+    schwab = LocalSchwab()
+    schwab.token = "refuses"
+    try:
+        client = schwab.client(tmp_path, 100)
+        sweep = _sweep(tmp_path)
+        assert _work(sweep, lambda: client, 3)
+        refused = sweep.waiting
+        daemon = capture.Daemon(MessageBus(), HealthRegistry(), ["SPY"])
+        daemon.chains = sweep
+        noon, evening = datetime(2026, 10, 7, 12, 0, tzinfo=ET), datetime(2026, 10, 7, 20, 0, tzinfo=ET)
+        past_due = _verdict(daemon, noon.timestamp() - 3600, noon)
+        closed = _verdict(daemon, datetime(2026, 10, 7, 15, 0, tzinfo=ET).timestamp(), evening)
+        none_yet = _verdict(daemon, None, noon)
+        unknown = _verdict(daemon, datetime(2026, 9, 20, 10, 0, tzinfo=ET).timestamp(),
+                           datetime(2026, 9, 20, 11, 0, tzinfo=ET))
+        _new_sign_in(tmp_path / "schwab_token.json", "fresh")
+        assert _work(sweep, lambda: client, 1)
+    finally:
+        schwab.close()
+    why = f" — no chain is fetched: {refused}"
+    assert "Refresh token is invalid" in refused and refused.endswith("python reauth_schwab.py")
+    assert past_due == ("STALE", "levels are 3600s old" + why)
+    assert closed == ("STALE", "this ticker's options are closed and its close values have not been fetched" + why)
+    assert none_yet == ("STALE", "no terrain snapshot has been computed yet" + why)
+    assert unknown == ("NOT LIVE", "the market session is unknown" + why)
+    assert sweep.waiting is None
+
+
 def test_the_chain_sweep_waits_for_a_client_it_cannot_build_and_goes_on_once_built(tmp_path, caplog):
     """The daemon's client holder (capture.one_schwab_client, the real one) while its client
     cannot be built: the real builder's answer for a token file that is not there
@@ -327,11 +378,13 @@ def test_the_chain_sweep_waits_for_a_client_it_cannot_build_and_goes_on_once_bui
         waits = [r.getMessage() for r in caplog.records]
         assert len(waits) == 1 and waits[0].startswith("chain sweep waits for the daemon's Schwab client: no Schwab client (")
         assert schwab.requests == []
+        assert sweep.waiting.startswith("the daemon holds no Schwab sign-in to ask with (no Schwab client (")
+        assert sweep.waiting.endswith("python reauth_schwab.py")
         _new_sign_in(token, "fresh")
         assert _work(sweep, schwab_client, 1)
     finally:
         schwab.close()
-    assert _asked(schwab)
+    assert _asked(schwab) and sweep.waiting is None
 
 
 def test_a_token_file_that_is_not_utf8_text_is_reported_unreadable(tmp_path):
