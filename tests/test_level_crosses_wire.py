@@ -238,7 +238,7 @@ def stopped_price_answers() -> dict:
     """/api/levels, /api/confluence (the 2026-10-22 expiry), /api/terrain, /api/terrain/strikes and
     /api/options/gamma-surface as the real code serves them on SPY's 2026-10-22 close publication
     with SPY's 16:39 print (773.1269) as the last price and the daemon's connection ended, read at
-    the 18:00 print's instant; and /api/terrain/strikes on that same publication after the next
+    the 18:00 print's instant; and /api/terrain/strikes and /api/options/gamma-surface on that same publication after the next
     day's 16:15 option close (2026-10-23 16:30 ET), no chain fetched since: the answers the browser
     tests render (STOPPED_FIXTURES)."""
     import json
