@@ -1,5 +1,7 @@
 """AGENTS.md rule 1 and Before writing code: a pull request that changes product code proves it with
-an end-to-end path test that fails on the old code.
+an end-to-end path test that fails on the old code, unless it only removes whole undecorated Python
+functions or classes and the imports only they used (`deletes_only`): then the full suite and the
+browser tests, which the same job runs, are the proof (operator 2026-10-28).
 
 The PR's changed and added files under tests/ are laid over a checkout of the base, and the PR's
 changed end-to-end path tests run there: pytest files (tests/test_data_path_*.py) with this
@@ -20,6 +22,7 @@ check itself failed (git unavailable, the base unknown).
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import os
 import shutil
@@ -30,7 +33,8 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from check_end_to_end import ToolError, _git, behavior_change, deleted_product, pr_files  # noqa: E402
+from check_end_to_end import (  # noqa: E402
+    ToolError, _git, _python_code, behavior_change, deleted_product, pr_files)
 
 
 def changed(root: Path, base: str) -> list[str]:
@@ -111,10 +115,106 @@ def failures_on_base(root: Path, base: str, files: list[str], tests: list[str]) 
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+_DEFS = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+
+
+def _units(tree: ast.Module) -> dict[str, ast.stmt]:
+    """A module's top-level functions and classes, and its classes' methods (Class.method)."""
+    out: dict[str, ast.stmt] = {}
+    for node in tree.body:
+        if isinstance(node, _DEFS):
+            out[node.name] = node
+            if isinstance(node, ast.ClassDef):
+                out |= {f"{node.name}.{s.name}": s for s in node.body if isinstance(s, _DEFS)}
+    return out
+
+
+def _binding(n: ast.Import | ast.ImportFrom, a: ast.alias) -> tuple:
+    """One name an import binds, as (module, name, alias)."""
+    return (None if isinstance(n, ast.Import) else "." * n.level + (n.module or ""), a.name, a.asname)
+
+
+def _imports(tree: ast.Module) -> dict[tuple, str]:
+    """A module's top-level imports, each binding with the name it binds."""
+    return {_binding(n, a): a.asname or a.name.split(".")[0]
+            for n in tree.body if isinstance(n, (ast.Import, ast.ImportFrom)) for a in n.names}
+
+
+def _code_without(tree: ast.Module, units: set[str], bindings: set[tuple]) -> str | None:
+    """`tree`'s code, in its order, with the named units and import bindings taken out as nodes."""
+    body = []
+    for n in tree.body:
+        if isinstance(n, _DEFS) and n.name in units:
+            continue
+        if isinstance(n, ast.ClassDef):
+            n.body = [s for s in n.body if not (isinstance(s, _DEFS) and f"{n.name}.{s.name}" in units)] or [ast.Pass()]
+        if isinstance(n, (ast.Import, ast.ImportFrom)):
+            n.names = [a for a in n.names if _binding(n, a) not in bindings]
+            if not n.names:
+                continue
+        body.append(n)
+    tree.body = body
+    return _python_code(ast.unparse(tree))
+
+
+def _removes_whole_units(was: str, now: str | None) -> bool:
+    """Whether `now` is `was` with whole undecorated functions or classes removed, and the imports
+    only they used, and nothing else: both compared as syntax trees in their order (comments and
+    docstrings aside, every string as written). `now` None is the file deleted, which holds only
+    imports, a docstring and undecorated functions and classes."""
+    tree = ast.parse(was)
+    if now is None:
+        return (not any(isinstance(n, _DEFS) and n.decorator_list for n in ast.walk(tree))
+                and all(isinstance(n, (ast.Import, ast.ImportFrom, *_DEFS))
+                        or (isinstance(n, ast.Expr) and isinstance(n.value, ast.Constant)) for n in tree.body))
+    if _python_code(was) is None or _python_code(now) is None:   # one declares another encoding
+        return False
+    after = ast.parse(now)
+    kept = _units(after)
+    removed = {name: u for name, u in _units(tree).items() if name not in kept}
+    if not removed or any(u.decorator_list for u in removed.values()):
+        return False
+    had, has = _imports(tree), _imports(after)
+    dropped = had.keys() - has.keys()
+    used = {n.id for n in ast.walk(after) if isinstance(n, ast.Name)}
+    used_by_removed = {n.id for u in removed.values() for n in ast.walk(u) if isinstance(n, ast.Name)}
+    if any(had[b] in used or had[b] not in used_by_removed for b in dropped):
+        return False                    # a dropped import still used, or one the removed code never used
+    left = _code_without(tree, set(removed), dropped)
+    return left is not None and left == _code_without(after, set(), set())
+
+
+def deletes_only(root: Path, base: str, product: list[str]) -> bool:
+    """Whether every changed product file is Python that loses whole undecorated functions or
+    classes, and the imports only they used, and nothing else (operator 2026-10-28). Removing code
+    nothing calls adds no value to check; what could break is a caller, which the full suite and
+    the browser tests run. A line removed inside a function, a module-level call (`app.mount`), a
+    decorated one (a route) or any page code is a change of behavior, and needs its end-to-end
+    test."""
+    if not all(f.endswith(".py") for f in product):
+        return False
+    fork = _git(root, "merge-base", base, "HEAD").strip()
+    deleted = set(deleted_product(root, base))
+    for f in product:
+        try:
+            was = _git(root, "show", f"{fork}:{f}")
+            now = None if f in deleted else _git(root, "show", f"HEAD:{f}")
+            if not _removes_whole_units(was, now):
+                return False
+        except (ToolError, SyntaxError):           # a new file, or one Python cannot read
+            return False
+    return True
+
+
 def violations(root: Path, base: str) -> list[str]:
     files = changed(root, base)
     product = [f for f in files if behavior_change(root, base, f)] + deleted_product(root, base)
     if not product:
+        return []
+    if deletes_only(root, base, product):
+        print(f"proven: {', '.join(product)} only lose whole undecorated functions or classes and their imports; "
+              "the full suite and "
+              "the browser tests are the proof (operator 2026-10-28)")
         return []
     tests = [f for f in files if is_test(f)]
     if not tests:

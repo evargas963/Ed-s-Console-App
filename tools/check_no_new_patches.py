@@ -1,11 +1,13 @@
 """No new or changed test patches the code it tests.
 
-A pull request's test files (tests/**/*.py) are compared function by function with the base. A
-test, fixture or helper the PR adds or changes is refused when it patches: it takes or uses
-pytest's `monkeypatch`, uses unittest.mock's patch (`patch(...)`, `mock.patch`, `patch.object`,
-`patch.dict`) or pytest-mock's `mocker`, or requests a fixture that does (in its own file or a
-conftest.py). A test the PR adds or changes is also refused when its file has an autouse fixture
-that patches: it would run under that patch. A function the PR leaves unchanged is not judged.
+A pull request's test files (tests/**/*.py) are compared function by function with the base, each
+function's code read with its docstrings and comments set aside. A test, fixture or helper whose
+code the PR adds or changes is refused when it patches: it takes or uses pytest's `monkeypatch`,
+uses unittest.mock's patch (`patch(...)`, `mock.patch`, `patch.object`, `patch.dict`) or
+pytest-mock's `mocker`, or requests a fixture that does (in its own file or a conftest.py). A test
+whose code the PR adds or changes is also refused when its file has an autouse fixture that
+patches: it would run under that patch. A patching test whose docstrings or comments alone change
+is not judged (operator 2026-10-28); a change to its code needs its patch removed.
 
     python tools/check_no_new_patches.py --base origin/main
 Exit 0: nothing patches in what the PR adds or changes. Exit 1: refused, each function named.
@@ -18,6 +20,9 @@ import ast
 import subprocess
 import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from check_end_to_end import _python_code  # noqa: E402
 
 PATCH_CALLS = {"patch", "patch.object", "patch.dict", "patch.multiple", "mock.patch", "mock.patch.object",
                "mock.patch.dict", "unittest.mock.patch"}
@@ -103,6 +108,11 @@ def _patching(funcs: dict[str, ast.FunctionDef], shared: set[str]) -> set[str]:
         out |= more
 
 
+def _code(fn: ast.FunctionDef) -> str | None:
+    """A function's code, decorators included, with its docstrings and comments set aside."""
+    return _python_code(ast.unparse(fn))
+
+
 def _conftest_patching(root: Path, rev: str) -> set[str]:
     out: set[str] = set()
     for path in _git(root, "ls-tree", "-r", "--name-only", rev, "tests").splitlines():
@@ -126,13 +136,13 @@ def violations(root: Path, base: str) -> list[str]:
         if head is None:
             continue
         old = _source(root, base, path)
-        old_funcs = {n: ast.dump(f) for n, f in _functions(old).items()} if old else {}
+        old_code = {n: _code(f) for n, f in _functions(old).items()} if old else {}
         funcs = _functions(head)
         patching = _patching(funcs, shared)
         autouse = sorted(n for n in patching if _is_fixture(funcs[n]) == (True, True))
         for name, fn in funcs.items():
-            if old_funcs.get(name) == ast.dump(fn):
-                continue                                  # unchanged by this PR: not judged
+            if old_code.get(name) == _code(fn):
+                continue                    # its code unchanged: docstrings and comments may change
             if name in patching:
                 out.append(f"{path}::{name} patches (monkeypatch, mock.patch or a fixture that does)")
             elif autouse and name.split(".")[-1].startswith("test"):
