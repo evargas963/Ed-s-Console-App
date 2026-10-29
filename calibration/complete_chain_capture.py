@@ -272,6 +272,7 @@ class ChainSweep:
         self.failures = failures        # the daemon's writer: keeps a failed history write
         self.streamed = streamed        # not read: every greek is the quote's
         self.round_sec: float | None = None
+        self.waiting: "str | None" = None              # why no chain is asked for (waits), else None
         self._expiries: "dict[str, tuple[date, list[date]]]" = {}   # ticker -> (ET date, expiries)
         self._markets_day: "dict[str, date]" = {}          # market date -> the ET date Schwab answered it
         self._optioned: "set[str]" = set()                 # tickers Schwab has answered a chain for
@@ -288,10 +289,10 @@ class ChainSweep:
         watchlist tickers whose candles are due (the price-built levels wait for it, a rotation
         takes minutes) and a rotation of those whose chain is due; with none due, it looks again
         each second. With the watchlist empty, or no sign-in held
-        (signed_in), it asks Schwab for nothing and looks again each second: a sign-in Schwab
+        (waits), it asks Schwab for nothing and looks again each second: a sign-in Schwab
         refused fails every request at once, and a round of them would only log each failure."""
         while not stop.is_set():
-            if not self.watchlist or not self.signed_in(schwab_client):
+            if not self.watchlist or self.waits(schwab_client) is not None:
                 stop.wait(1.0)
                 continue
             today = datetime.fromtimestamp(self.clock(), ET).date()
@@ -307,21 +308,22 @@ class ChainSweep:
             if not chains and not candles:
                 stop.wait(1.0)
 
-    def signed_in(self, schwab_client) -> bool:
-        """Whether the daemon holds a Schwab sign-in to ask with: its client built
-        (capture.one_schwab_client: built again on each ask until a build succeeds) and Schwab not
-        having refused it (schwab_client.OneRefreshSession.signed_in). A build that fails (no
-        usable token file), or a token file locked past its wait, is logged once, until it
-        passes."""
+    def waits(self, schwab_client) -> "str | None":
+        """Why the daemon holds no Schwab sign-in to ask with, kept as `waiting` for its status,
+        else None: its client not built (capture.one_schwab_client: built again on each ask until
+        a build succeeds), or Schwab having refused it (schwab_client.OneRefreshSession.refusal).
+        A build that fails (no usable token file), or a token file locked past its wait, is
+        logged once, until it passes."""
         try:
-            held = schwab_client().session.signed_in()
+            self.waiting = schwab_client().session.refusal()
         except (ConnectionError, TimeoutError) as e:
             if str(e) != self._no_client:
                 log.warning("chain sweep waits for the daemon's Schwab client: %s", e)
             self._no_client = str(e)
-            return False
+            self.waiting = f"the daemon's Schwab client cannot be built: {e}"
+            return self.waiting
         self._no_client = None
-        return held
+        return self.waiting
 
     def candles_due(self, ticker: str, now: datetime) -> bool:
         """Whether `ticker`'s price history is asked for at `now`: not yet whole on this ET date."""

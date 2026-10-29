@@ -191,18 +191,21 @@ class OneRefreshSession(OAuth2Client):
                         return super().ensure_active_token(self.token)
                     except AuthlibBaseError as e:
                         self._refused = e
-                        log.error("Schwab refused the sign-in (%s); nothing is sent to Schwab until a "
-                                  "new sign-in is saved: python reauth_schwab.py", e)
+                        log.error("%s", self._refusal_text())
             raise SignInRefused(f"Schwab refused the sign-in: {self._refused}") from self._refused
 
-    def signed_in(self) -> bool:
-        """Whether this session holds a sign-in Schwab has not refused; while refused, a new one
-        saved to the token file is taken first."""
+    def refusal(self) -> "str | None":
+        """Why this session holds no sign-in Schwab accepts, with what to run, else None; while
+        refused, a new one saved to the token file is taken first."""
         with self._refresh_lock:
             if self._refused is not None:
                 with token_file_lock(self._token_file):
                     self._take_saved()
-            return self._refused is None
+            return None if self._refused is None else self._refusal_text()
+
+    def _refusal_text(self) -> str:
+        return (f"Schwab refused the sign-in ({self._refused}); nothing is sent to Schwab until a "
+                "new sign-in is saved: python reauth_schwab.py")
 
     def _take_saved(self) -> None:
         """Take the sign-in saved to the token file when it is a new one (a creation time not the

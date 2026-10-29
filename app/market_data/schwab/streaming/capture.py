@@ -636,6 +636,7 @@ class Daemon:
                 "schwab_down": self.schwab_down,
                 "watchlist": list(self.watchlist),
                 "chain_round_sec": self.chains.round_sec if self.chains is not None else None,
+                "chains_waiting": self.chains.waiting if self.chains is not None else None,
                 "held": {k: sorted(v) for k, v in self.held.items()},
                 "health": self.health.report(now),
                 "writer": self.writer.status() if self.writer is not None else None}

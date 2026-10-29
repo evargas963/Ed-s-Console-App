@@ -25,10 +25,13 @@ from pathlib import Path
 
 import pytest
 
+import live_market_plane as lmp
 import schwab_client as sc
+import server
 from app.market_data.schwab.streaming import capture
 from app.market_data.schwab.streaming.capture import CaptureWriter
 from calibration import complete_chain_capture as cch
+from stream_spine import HealthRegistry, MessageBus
 from tests.schwab_rest_standin import EXPIRATIONS, TOKEN, LocalSchwab, _ToLocal
 from time_et import ET
 
@@ -112,7 +115,8 @@ def test_once_schwab_refuses_the_sign_in_no_request_of_any_kind_reaches_schwab(t
             with pytest.raises(sc.SignInRefused, match="Refresh token is invalid") as r:
                 request()
             raised.append(r.value)
-        assert not client.session.signed_in()
+        refusal = client.session.refusal()
+        assert "Refresh token is invalid" in refusal and refusal.endswith("python reauth_schwab.py")
     finally:
         schwab.close()
     assert (_posts(schwab), _asked(schwab)) == (1, [])
@@ -237,11 +241,11 @@ def test_a_sign_in_in_progress_removes_the_token_file_and_nothing_breaks(tmp_pat
         with pytest.raises(sc.SignInRefused):
             client.get_option_expiration_chain("SPY")
         token.unlink()
-        assert not client.session.signed_in()
+        assert client.session.refusal() is not None
         with pytest.raises(sc.SignInRefused):
             client.get_option_expiration_chain("SPY")
         _new_sign_in(token, "fresh")
-        assert client.session.signed_in()
+        assert client.session.refusal() is None
     finally:
         schwab.close()
     assert _posts(schwab) == 1
@@ -258,7 +262,7 @@ def test_schwabs_edge_page_at_the_token_endpoint_is_not_a_refusal(tmp_path):
             with pytest.raises(Exception) as raised:
                 client.get_option_expiration_chain("SPY")
             assert not isinstance(raised.value, sc.SignInRefused)
-        assert client.session.signed_in()
+        assert client.session.refusal() is None
     finally:
         schwab.close()
     assert _posts(schwab) == 2
@@ -275,7 +279,7 @@ def test_a_token_endpoint_that_cannot_be_reached_is_not_a_refusal(tmp_path):
         with pytest.raises(Exception) as raised:
             client.get_option_expiration_chain("SPY")
         assert not isinstance(raised.value, sc.SignInRefused)
-    assert client.session.signed_in()
+    assert client.session.refusal() is None
 
 
 def test_the_chain_sweep_asks_nothing_while_signed_out_and_goes_on_after_a_new_sign_in(tmp_path, caplog):
@@ -301,6 +305,34 @@ def test_the_chain_sweep_asks_nothing_while_signed_out_and_goes_on_after_a_new_s
         schwab.close()
     asked = _asked(schwab)
     assert asked and all(auth == "Bearer fresh" for _path, auth in asked)
+
+
+def test_a_refused_sign_in_is_why_the_screen_says_the_levels_are_stale(tmp_path):
+    """Schwab refusing the sign-in (REFUSED): the daemon's chain sweep asks for nothing and keeps
+    why; the daemon's status carries it; and the console's verdict on SPY's levels, past due during
+    2026-10-07's session, names the refusal and what to run, not a sweep that has not delivered.
+    STAND-IN (named): the status's time is the session instant judged."""
+    schwab = LocalSchwab()
+    schwab.token = "refuses"
+    try:
+        client = schwab.client(tmp_path, 100)
+        sweep = _sweep(tmp_path)
+        assert _work(sweep, lambda: client, 3)
+    finally:
+        schwab.close()
+    daemon = capture.Daemon(MessageBus(), HealthRegistry(), ["SPY"])
+    daemon.chains = sweep
+    now = datetime(2026, 10, 7, 12, 0, tzinfo=ET).timestamp()
+    lmp.record_feed_heartbeat({**daemon.status(), "ts": now})
+    try:
+        verdict = server.terrain_staleness(now - 3600, "SPY", now=now)
+    finally:
+        lmp.record_feed_heartbeat({"ts": 0.0, "schwab_socket_open": True, "held": {}})
+        lmp.record_feed_down()
+    assert verdict["levels_state"] == "STALE"
+    assert verdict["levels_stale_reason"].startswith("levels are 3600s old; no chain is fetched: Schwab refused the sign-in (")
+    assert "Refresh token is invalid" in verdict["levels_stale_reason"]
+    assert verdict["levels_stale_reason"].endswith("python reauth_schwab.py")
 
 
 def test_the_chain_sweep_waits_for_a_client_it_cannot_build_and_goes_on_once_built(tmp_path, caplog):

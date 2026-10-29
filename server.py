@@ -804,6 +804,9 @@ def _levels_state(computed_ts_utc: float | None, ticker: str | None, now: float,
                    else max(float(TERRAIN_STALE_AFTER_SEC), 2.0 * float(round_sec)))
     if age <= stale_after:
         return lmp.LIVE, ""
+    waiting = status.get("chains_waiting") if status is not None else None
+    if waiting:
+        return LEVELS_STALE, f"levels are {age:.0f}s old; no chain is fetched: {waiting}"
     if failure:
         return LEVELS_STALE, f"levels are {age:.0f}s old and every chain since has failed — {failure}"
     return LEVELS_STALE, (f"levels are {age:.0f}s old; the daemon's chain sweep has not delivered this "
