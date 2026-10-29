@@ -265,6 +265,33 @@ def test_an_old_patching_test_bound_under_a_new_name_is_refused(tmp_path):
         f"tests/test_old.py::line {_line(now, 'test_again =')} patches: {RAN}"]
 
 
+def test_an_old_patching_test_bound_under_a_new_name_in_its_class_is_refused(tmp_path):
+    was = "class TestSpot:\n    def test_a(self, monkeypatch):\n        monkeypatch.setenv('X', '1')\n"
+    now = was + "\n    test_b = test_a\n"
+    assert _check(tmp_path, {"tests/test_cls.py": now}, base={**BASE, "tests/test_cls.py": was}) == [
+        f"tests/test_cls.py::line {_line(now, 'test_b =')} patches: {RAN}"]
+
+
+def test_an_old_patching_test_bound_in_a_tuple_is_refused(tmp_path):
+    now = OLD_FILE + "\n\nx, test_again = 1, test_old_one\n"
+    assert _check(tmp_path, {"tests/test_old.py": now}) == [
+        f"tests/test_old.py::line {_line(now, 'x, test_again')} patches: {RAN}"]
+
+
+def test_a_local_named_like_another_test_does_not_take_its_runs(tmp_path):
+    """test_x, changed and skipped, keeps its own 'did not run' though its local is named test_b."""
+    now = ("import pytest\n\n\n@pytest.mark.skip\ndef test_x():\n    test_b = 1\n    assert test_b\n\n\n"
+           "def test_b():\n    assert True\n")
+    assert _check(tmp_path, {"tests/test_new.py": now}) == [f"tests/test_new.py::test_x patches: {cnp.UNRUN}"]
+
+
+def test_a_local_named_like_a_patching_test_is_not_refused_for_it(tmp_path):
+    new = ("def test_first():\n    test_second = 1\n    assert test_second\n\n\n"
+           "def test_second(monkeypatch):\n    monkeypatch.setenv('X', '1')\n")
+    assert _check(tmp_path, {"tests/test_new.py": new}) == [
+        f"tests/test_new.py::test_second patches: {RAN}, line {_line(new, 'monkeypatch.setenv')} applies one"]
+
+
 def test_a_changed_fixture_named_like_a_test_is_not_taken_for_one(tmp_path):
     """pytest collects no fixture, so one named test_* is judged only by the patches it applies."""
     new = "import pytest\n\n\n@pytest.fixture\ndef test_data():\n    return 1\n\n\ndef test_new(test_data):\n    assert test_data == 1\n"

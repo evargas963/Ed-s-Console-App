@@ -45,6 +45,16 @@ def _git(root: Path, *args: str) -> bytes:
         raise ToolError(f"git {' '.join(args)} failed: {e}") from e
 
 
+def _outside_defs(node: ast.AST) -> list[ast.AST]:
+    """`node` and every node under it outside the functions and classes it holds."""
+    out, todo = [], [node]
+    while todo:
+        n = todo.pop()
+        out.append(n)
+        todo += [c for c in ast.iter_child_nodes(n) if not isinstance(c, (*_DEFS, ast.ClassDef))]
+    return out
+
+
 def _units(src: bytes) -> tuple[dict[str, ast.stmt], list[ast.stmt]]:
     """A module's functions by name (Class.name at any class depth; one under an `if` or `try` by
     its own name), each carrying its classes' decorators, and its other statements, docstrings
@@ -62,6 +72,9 @@ def _units(src: bytes) -> tuple[dict[str, ast.stmt], list[ast.stmt]]:
                 walk(node.body, f"{prefix}{node.name}.", decorators + node.decorator_list, True)
             elif not (isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant)):
                 if top:
+                    node.binds = {prefix + x.id for s in _outside_defs(node) if isinstance(s, (ast.Assign, ast.AnnAssign))
+                                  for t in getattr(s, "targets", [getattr(s, "target", None)])
+                                  for x in ast.walk(t) if isinstance(x, ast.Name)}
                     rest.append(node)
                 for block in [getattr(node, f, []) for f in ("body", "orelse", "finalbody")] + [
                         h.body for h in getattr(node, "handlers", [])]:
@@ -123,9 +136,7 @@ def _resolve(units: dict, path: str, at: str | int) -> tuple[str, str] | None:
         inside = _innermost(units, path, at)
         return (path, inside[0]) if inside else None
     for n, u, _ in units.get(path, []):
-        if n == at or any(isinstance(t, ast.Name) and t.id == at
-                          for s in ast.walk(u) if isinstance(s, (ast.Assign, ast.AnnAssign))
-                          for t in getattr(s, "targets", [getattr(s, "target", None)])):
+        if n == at or at in getattr(u, "binds", ()):
             return path, n
     return None
 
