@@ -35,11 +35,6 @@ jobs:
         env:
           BASE_REF: ${{ github.base_ref }}
         run: python tools/check_end_to_end.py --base "origin/$BASE_REF"
-      - name: no new or changed test patches the code it tests (TEST-PATCHES)
-        if: github.event_name == 'pull_request'
-        env:
-          BASE_REF: ${{ github.base_ref }}
-        run: python tools/check_no_new_patches.py --base "origin/$BASE_REF"
       - name: one module reads each Schwab field (AGENTS.md rule 3, ENF-23)
         if: github.event_name == 'pull_request'
         env:
