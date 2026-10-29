@@ -1178,6 +1178,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await mark();
     served.s = live(3, true); await reload();
     await expect(page.locator('#heatBody .heat-banner')).toContainText('STALE');
+    await expect(page.locator('#heatBody .heat-banner')).toHaveAttribute('title', served.s.levels_stale_reason);
     await expect(marked()).toHaveCount(1);
   });
 
