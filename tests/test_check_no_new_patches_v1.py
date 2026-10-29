@@ -259,6 +259,12 @@ def test_a_new_test_made_inside_a_function_is_judged_as_that_function(tmp_path):
         f"tests/test_made.py::make patches: {RAN}"]
 
 
+def test_an_old_patching_test_bound_under_a_new_name_is_refused(tmp_path):
+    now = OLD_FILE + "\n\ntest_again = test_old_one\n"
+    assert _check(tmp_path, {"tests/test_old.py": now}) == [
+        f"tests/test_old.py::line {_line(now, 'test_again =')} patches: {RAN}"]
+
+
 def test_a_changed_fixture_named_like_a_test_is_not_taken_for_one(tmp_path):
     """pytest collects no fixture, so one named test_* is judged only by the patches it applies."""
     new = "import pytest\n\n\n@pytest.fixture\ndef test_data():\n    return 1\n\n\ndef test_new(test_data):\n    assert test_data == 1\n"

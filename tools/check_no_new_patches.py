@@ -117,11 +117,17 @@ def _innermost(units: dict, path: str, line: int) -> tuple[str, bool] | None:
 
 def _resolve(units: dict, path: str, at: str | int) -> tuple[str, str] | None:
     """The changed file's unit a test identity names, as (path, name): a name pytest collected it
-    under, or the innermost unit holding the line its code starts on."""
+    under (a function's, or a statement's that binds it, `test_b = test_a`), or the innermost unit
+    holding the line its code starts on."""
     if isinstance(at, int):
         inside = _innermost(units, path, at)
         return (path, inside[0]) if inside else None
-    return (path, at) if any(n == at for n, _, _ in units.get(path, [])) else None
+    for n, u, _ in units.get(path, []):
+        if n == at or any(isinstance(t, ast.Name) and t.id == at
+                          for s in ast.walk(u) if isinstance(s, (ast.Assign, ast.AnnAssign))
+                          for t in getattr(s, "targets", [getattr(s, "target", None)])):
+            return path, n
+    return None
 
 
 def violations(root: Path, base: str, record: Path) -> list[str]:
