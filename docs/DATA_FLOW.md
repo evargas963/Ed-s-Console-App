@@ -548,8 +548,9 @@ from Schwab to the screen (daemon, console, page), are these:
   live price, or around the strike the operator panned to (`centre`, moved `shift` rows by a
   drag), and each answer carries its `view`: the centre, the largest |value| drawn (the bar and
   colour scale) and `note`: with no live price and no pan the rows are the middle of the chain,
-  and the note says so (`WINDOW_NO_PRICE`, drawn on the panel, on the matrix among its `notes`;
-  no row is marked as the price).
+  and the note says so (`WINDOW_NO_PRICE`, drawn on the panel; no row is marked as the price).
+  The confluence matrix takes only the rows and the note, which it serves among its `notes`; its
+  colours stay on the whole expiry's scale (`docs/derived_register.md` Heat color).
   The heatmap's view (`server._surface_view`) also picks the columns (the selected expiry
   alone; for Auto the nearest unexpired the page fits, `cols`; Wider twice that; All every one;
   an expired column is a past observation, drawn labelled EXPIRED, and with none unexpired Auto
