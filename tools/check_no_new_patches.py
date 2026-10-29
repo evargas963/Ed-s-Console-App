@@ -31,6 +31,7 @@ from patch_record import APPLIED, COLLECTED, RAN, read  # noqa: E402
 _DEFS = (ast.FunctionDef, ast.AsyncFunctionDef)
 PATCHED = "it ran with a patch applied"
 UNRUN = "it did not run, so what it runs under is unknown"
+UNBOUND = "pytest collected it, but no code in its file binds the name, so what it is is unknown"
 
 
 class ToolError(Exception):
@@ -64,6 +65,7 @@ def _units(src: bytes) -> tuple[dict[str, ast.stmt], list[ast.stmt]]:
 
     def walk(body: list[ast.stmt], prefix: str, decorators: list[ast.expr], top: bool) -> None:
         for node in body:
+            node.prefix = prefix
             if isinstance(node, _DEFS):
                 node.first = min([d.lineno for d in node.decorator_list] + [node.lineno])
                 node.decorator_list = decorators + node.decorator_list
@@ -72,9 +74,10 @@ def _units(src: bytes) -> tuple[dict[str, ast.stmt], list[ast.stmt]]:
                 walk(node.body, f"{prefix}{node.name}.", decorators + node.decorator_list, True)
             elif not (isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant)):
                 if top:
-                    node.binds = {prefix + x.id for s in _outside_defs(node) if isinstance(s, (ast.Assign, ast.AnnAssign))
-                                  for t in getattr(s, "targets", [getattr(s, "target", None)])
-                                  for x in ast.walk(t) if isinstance(x, ast.Name)}
+                    inner = _outside_defs(node)
+                    node.binds = ({prefix + n.id for n in inner if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store)}
+                                  | {prefix + (a.asname or a.name.split(".")[0]) for n in inner
+                                     if isinstance(n, (ast.Import, ast.ImportFrom)) for a in n.names})
                     rest.append(node)
                 for block in [getattr(node, f, []) for f in ("body", "orelse", "finalbody")] + [
                         h.body for h in getattr(node, "handlers", [])]:
@@ -156,6 +159,11 @@ def violations(root: Path, base: str, record: Path) -> list[str]:
         if e.kind == COLLECTED:
             collected |= tests
             collected_files |= {path for path, _ in e.test}
+            path, name = e.test[0]
+            cls = name.rpartition(".")[0]
+            inherited = cls and any(getattr(u, "prefix", "") == cls + "." for _, u, _ in units.get(path, []))
+            if path in units and not _resolve(units, path, name) and not inherited:
+                reasons.setdefault(f"{path}::{name}", set()).add(UNBOUND)
         for path, name in tests:
             if (e.kind == APPLIED or e.sites) and any(n == name and changed for n, _, changed in units[path]):
                 reasons.setdefault(f"{path}::{name}", set()).add(PATCHED)

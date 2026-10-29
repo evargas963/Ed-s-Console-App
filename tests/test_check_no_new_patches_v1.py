@@ -278,6 +278,23 @@ def test_an_old_patching_test_bound_in_a_tuple_is_refused(tmp_path):
         f"tests/test_old.py::line {_line(now, 'x, test_again')} patches: {RAN}"]
 
 
+def test_an_old_patching_test_imported_into_a_new_file_is_refused(tmp_path):
+    new = "from test_old import test_old_one as test_again  # noqa: F401\n"
+    assert _check(tmp_path, {"tests/test_again.py": new}) == [f"tests/test_again.py::line 1 patches: {RAN}"]
+
+
+def test_a_collected_test_no_code_in_its_file_binds_is_refused(tmp_path):
+    """A name bound in a way the check does not read (here through globals()) is refused as unknown."""
+    new = "import test_old\n\nglobals()['test_again'] = test_old.test_old_two\n"
+    assert _check(tmp_path, {"tests/test_again.py": new}) == [f"tests/test_again.py::test_again patches: {cnp.UNBOUND}"]
+
+
+def test_a_name_bound_by_unread_code_in_a_changed_file_is_refused(tmp_path):
+    """Its code is the file's own unchanged test_old_one; the new name is still unknown."""
+    now = OLD_FILE + "\n\nglobals()['test_again'] = test_old_one\n"
+    assert _check(tmp_path, {"tests/test_old.py": now}) == [f"tests/test_old.py::test_again patches: {cnp.UNBOUND}"]
+
+
 def test_a_local_named_like_another_test_does_not_take_its_runs(tmp_path):
     """test_x, changed and skipped, keeps its own 'did not run' though its local is named test_b."""
     now = ("import pytest\n\n\n@pytest.mark.skip\ndef test_x():\n    test_b = 1\n    assert test_b\n\n\n"
