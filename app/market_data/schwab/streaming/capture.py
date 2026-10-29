@@ -900,8 +900,9 @@ def _start_log() -> None:
 FEED_STATUS_EVERY_SEC = 60.0
 
 
-async def record_feed_status(daemon: "Daemon", stop: asyncio.Event) -> None:
-    """Once a minute, per Schwab feed: checked at X (the same X for every feed), is the socket
+async def record_feed_status(daemon: "Daemon", stop: asyncio.Event,
+                             every: float = FEED_STATUS_EVERY_SEC) -> None:
+    """Every `every` seconds (once a minute), per Schwab feed: checked at X (the same X for every feed), is the socket
     open, when Schwab last sent anything, how many symbols are subscribed, and when this feed
     last carried data -- so a quiet feed and a dead one read differently in the database."""
     while True:
@@ -919,7 +920,7 @@ async def record_feed_status(daemon: "Daemon", stop: asyncio.Event) -> None:
             # why; the next round still runs (the console's status line reports the record's age)
             log.warning("feed status round failed: %s: %s", type(e).__name__, e)
         try:
-            await asyncio.wait_for(stop.wait(), timeout=FEED_STATUS_EVERY_SEC)
+            await asyncio.wait_for(stop.wait(), timeout=every)
             return
         except asyncio.TimeoutError:
             pass
