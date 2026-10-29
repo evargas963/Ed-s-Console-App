@@ -22,7 +22,7 @@ CONFTEST = ('import pytest\n\n\n'
             '@pytest.fixture\ndef pinned(monkeypatch):\n    monkeypatch.setattr("time.time", lambda: 1.0)\n')
 BASE = {"calc.py": "def spot(row):\n    return row['last']\n", "tests/test_old.py": OLD_FILE,
         "tests/conftest.py": CONFTEST}
-RAN = "it ran with a patch applied"
+RAN = cnp.PATCHED
 
 
 def _git(root: Path, *a: str) -> None:
@@ -33,9 +33,9 @@ def _line(text: str, needle: str) -> int:
     return text[:text.index(needle)].count("\n") + 1
 
 
-def _check(tmp_path: Path, files: dict[str, str | None], base: dict[str, str] = BASE) -> list[str]:
-    """The check's verdict on a PR of `files` (None deletes one) over `base`, after the PR's suite
-    ran with the recorder."""
+def _check(tmp_path: Path, files: dict[str, str | None], base: dict[str, str] = BASE, encoding: str = "utf-8") -> list[str]:
+    """The check's verdict on a PR of `files` (None deletes one; written in `encoding`) over `base`,
+    after the PR's suite ran with the recorder."""
     root = tmp_path / "repo"
     root.mkdir()
     _git(root, "init", "-q", "-b", "main")
@@ -47,7 +47,7 @@ def _check(tmp_path: Path, files: dict[str, str | None], base: dict[str, str] = 
             if text is None:
                 (root / name).unlink()
             else:
-                (root / name).write_text(text, encoding="utf-8")
+                (root / name).write_text(text, encoding="utf-8" if commit is base else encoding)
         _git(root, "add", *commit)
         _git(root, "commit", "-q", "-m", "pr" if commit is files else "base")
         if commit is base:
@@ -180,10 +180,43 @@ def test_an_unchanged_patching_function_in_a_changed_block_is_not_judged(tmp_pat
                   base={**BASE, "tests/test_block.py": was}) == []
 
 
-def test_a_patch_left_applied_by_another_file_does_not_judge_a_new_test(tmp_path):
-    """A leak from another file reaches a test only by the order its worker runs them in."""
+def test_a_patch_applied_when_another_file_is_imported_judges_a_new_test(tmp_path):
+    """Every worker imports every test file before any test runs, so the patch reaches every test."""
     base = {**BASE, "tests/test_a_leak.py": "import pytest\n\npytest.MonkeyPatch().setenv('X', '1')\n\n\ndef test_a():\n    assert True\n"}
+    assert _check(tmp_path, {"tests/test_new.py": "def test_new():\n    assert True\n"}, base=base) == [
+        f"tests/test_new.py::test_new patches: {RAN}"]
+
+
+def test_a_patch_another_files_test_left_applied_does_not_judge_a_new_test(tmp_path):
+    """It reaches a test only by the order a worker runs files in; it is judged where it was applied."""
+    base = {**BASE, "tests/test_a_leak.py": "import pytest\n\n\ndef test_a():\n    pytest.MonkeyPatch().setenv('X', '1')\n"}
     assert _check(tmp_path, {"tests/test_new.py": "def test_new():\n    assert True\n"}, base=base) == []
+
+
+def test_a_new_test_under_a_module_scoped_fixture_from_a_helper_is_refused(tmp_path):
+    """The fixture applies its patch for the first test only; every test requesting it runs under it."""
+    helper = ("import pytest\n\n\n@pytest.fixture(scope='module')\ndef held():\n    mp = pytest.MonkeyPatch()\n"
+              "    mp.setenv('X', '1')\n    yield\n    mp.undo()\n")
+    was = "from helpers_fx import held  # noqa: F401\n\n\ndef test_a(held):\n    assert True\n"
+    base = {**BASE, "tests/helpers_fx.py": helper, "tests/test_h.py": was}
+    assert _check(tmp_path, {"tests/test_h.py": was + "\n\ndef test_b(held):\n    assert True\n"}, base=base) == [
+        f"tests/test_h.py::test_b patches: {RAN}"]
+
+
+def test_a_new_test_in_a_file_skipped_at_collection_is_refused(tmp_path):
+    new = "import pytest\n\npytest.importorskip('no_such_module')\n\n\ndef test_new(monkeypatch):\n    monkeypatch.setenv('X', '1')\n"
+    assert _check(tmp_path, {"tests/test_new.py": new}) == [f"tests/test_new.py::test_new patches: {cnp.UNRUN}"]
+
+
+def test_a_new_test_marked_not_to_run_is_refused(tmp_path):
+    new = "import pytest\n\n\n@pytest.mark.xfail(run=False)\ndef test_new(monkeypatch):\n    monkeypatch.setenv('X', '1')\n"
+    assert _check(tmp_path, {"tests/test_new.py": new}) == [f"tests/test_new.py::test_new patches: {cnp.UNRUN}"]
+
+
+def test_a_test_file_in_another_encoding_is_judged(tmp_path):
+    root_files = {"tests/test_new.py": "# -*- coding: latin-1 -*-\ndef test_new(monkeypatch):\n    monkeypatch.setenv('X', '\xe9')\n"}
+    assert _check(tmp_path, root_files, encoding="latin-1") == [
+        f"tests/test_new.py::test_new patches: {RAN}, line 3 applies one"]
 
 
 def test_a_patch_left_applied_by_its_own_file_judges_a_new_test(tmp_path):

@@ -19,7 +19,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
-          # FULL_FIXES_ONLY_V2: FINAL_SHA verification needs full history
+          # the checks below diff against the base branch, which needs full history
           fetch-depth: 0
 
       - name: Set up Python
@@ -53,10 +53,7 @@ jobs:
           key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
 
       - name: Install Playwright system deps (Linux)
-        # Bound this step. Unbounded apt-get is what cancelled required pytest-full:
-        # run 32223509912 (#134) and 32161696563 (main, #129) both sat ~43m on
-        # `playwright install-deps` after `Ign: azure.archive.ubuntu.com`, then the
-        # job `timeout-minutes: 45` cancelled before E2E/pytest started.
+        # Bounded: an unbounded apt-get on a dead mirror outlasts the job's 45 minutes.
         timeout-minutes: 8
         run: |
           sudo tee /etc/apt/apt.conf.d/99ci-acquire-timeout >/dev/null <<'EOF'
@@ -84,9 +81,8 @@ jobs:
                   n += 1
           print(f"rewrote {n} apt file(s) off azure.archive.ubuntu.com")
           PY
-          # Apt still hung after the .list/.sources-only rewrite (run 32231391764)
-          # because ubuntu-24.04 GHA uses /etc/apt/apt-mirrors.txt. Bound each
-          # attempt so a dead mirror cannot consume the 8-minute step budget.
+          # ubuntu-24.04 also reads /etc/apt/apt-mirrors.txt, so each attempt is bounded and a
+          # dead mirror cannot consume the 8-minute step budget.
           ok=0
           for attempt in 1 2 3; do
             if timeout 90 npx playwright install-deps chromium; then

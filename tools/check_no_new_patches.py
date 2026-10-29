@@ -5,9 +5,9 @@ code read with its docstrings and comments set aside: every function not inside 
 at any class depth or under an `if` or `try`, carrying its classes' decorators) and every other
 statement. The suite's run, recorded by tools/patch_record.py, says what patched, however it was
 written. A test the PR adds or changes is refused when it ran with a patch applied (applied while
-it ran, or still applied from its own file or a conftest.py above it), or when it did not run, so
-what it runs under is unknown. A unit the PR adds or changes is refused when a patch was applied
-from one of its lines. A patching test whose docstrings or comments alone change is not judged; a
+it ran, or still applied and reaching it, as the recorder judges), or when the run has no record
+of it running (skipped, deselected, its file skipped), so what it runs under is unknown. A unit the
+PR adds or changes is refused when a patch was applied from one of its lines. A patching test whose docstrings or comments alone change is not judged; a
 change to its code needs its patch removed.
 
     ED_PATCH_RECORD=<dir> python -m pytest -p tools.patch_record
@@ -25,10 +25,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from check_end_to_end import _python_code  # noqa: E402
-from patch_record import ACTIVE, APPLIED, SKIPPED, read  # noqa: E402
+from patch_record import APPLIED, RAN, read  # noqa: E402
 
 _DEFS = (ast.FunctionDef, ast.AsyncFunctionDef)
-RAN = "it ran with a patch applied"
+PATCHED = "it ran with a patch applied"
 UNRUN = "it did not run, so what it runs under is unknown"
 
 
@@ -36,22 +36,15 @@ class ToolError(Exception):
     pass
 
 
-def _git(root: Path, *args: str) -> str:
+def _git(root: Path, *args: str) -> bytes:
     try:
         return subprocess.run(["git", "-c", "core.quotePath=false", *args], cwd=root, capture_output=True,
-                              text=True, encoding="utf-8", check=True).stdout
-    except (subprocess.CalledProcessError, FileNotFoundError, UnicodeDecodeError) as e:
+                              check=True).stdout
+    except (subprocess.CalledProcessError, FileNotFoundError) as e:
         raise ToolError(f"git {' '.join(args)} failed: {e}") from e
 
 
-def _source(root: Path, rev: str, path: str) -> str | None:
-    try:
-        return _git(root, "show", f"{rev}:{path}")
-    except ToolError:
-        return None
-
-
-def _units(src: str) -> tuple[dict[str, ast.stmt], list[ast.stmt]]:
+def _units(src: bytes) -> tuple[dict[str, ast.stmt], list[ast.stmt]]:
     """A module's functions by name (Class.name at any class depth; one under an `if` or `try` by
     its own name), each carrying its classes' decorators, and its other statements, docstrings
     aside (a compound statement holds the functions under it)."""
@@ -81,36 +74,35 @@ def _code(node: ast.AST) -> str | None:
     return _python_code(ast.unparse(node))
 
 
-def _file_units(root: Path, base: str, path: str, was_path: str) -> list[tuple[str, ast.stmt, bool]]:
+def _file_units(root: Path, base: str, path: str, was_path: str | None) -> list[tuple[str, ast.stmt, bool]]:
     """Every unit of `path` as (name, node, whether the PR adds or changes it); a statement is
-    named "line N". `was_path` is the file's path on the base (a rename's old path)."""
-    head = _source(root, "HEAD", path)
-    if head is None:
-        return []
-    old = _source(root, base, was_path)
-    was_funcs, was_rest = _units(old) if old else ({}, [])
+    named "line N". `was_path` is the file's path on the base (a rename's old path; None when the
+    PR adds the file)."""
+    was_funcs, was_rest = _units(_git(root, "show", f"{base}:{was_path}")) if was_path else ({}, [])
     was = {n: _code(f) for n, f in was_funcs.items()}
     was_statements = {_code(s) for s in was_rest}
-    funcs, rest = _units(head)
+    funcs, rest = _units(_git(root, "show", f"HEAD:{path}"))
     return ([(n, f, was.get(n) != _code(f)) for n, f in funcs.items()]
             + [(f"line {s.lineno}", s, _code(s) not in was_statements) for s in rest])
 
 
-def _changed_files(root: Path, base: str) -> dict[str, str]:
+def _changed_files(root: Path, base: str) -> dict[str, str | None]:
     """The PR's added, changed and renamed test files, each with its path on the base."""
     out = {}
-    for row in _git(root, "diff", "--name-status", "-M", "--diff-filter=AMR", f"{base}...HEAD").splitlines():
+    rows = _git(root, "diff", "--name-status", "-M", "--diff-filter=AMR", f"{base}...HEAD")
+    for row in rows.decode("utf-8", "surrogateescape").splitlines():
         status, *paths = row.split("\t")
         if paths[-1].startswith("tests/") and paths[-1].endswith(".py"):
-            out[paths[-1]] = paths[0]
+            out[paths[-1]] = None if status == "A" else paths[0]
     return out
 
 
-def _covers(site: str, test: str) -> bool:
-    """Whether a patch applied from file `site` and left applied reaches a test in file `test`."""
-    if site.rsplit("/", 1)[-1] == "conftest.py":
-        return test.startswith(site[:-len("conftest.py")])
-    return site == test
+def _is_test(path: str, name: str) -> bool:
+    """Whether pytest collects `name` in `path` as a test: test_*.py or *_test.py, a test* function
+    in Test* classes."""
+    file, *classes, function = [path.rsplit("/", 1)[-1], *name.split(".")]
+    return ((file.startswith("test_") or file.endswith("_test.py")) and function.startswith("test")
+            and all(c.startswith("Test") for c in classes))
 
 
 def violations(root: Path, base: str, record: Path) -> list[str]:
@@ -120,15 +112,15 @@ def violations(root: Path, base: str, record: Path) -> list[str]:
         raise ToolError(str(e)) from e
     units = {path: _file_units(root, base, path, was) for path, was in _changed_files(root, base).items()}
     reasons: dict[str, set[str]] = {}
+    ran = set()
     for e in events:
         if e.test:
             path, _, name = e.test.split("[")[0].partition("::")
             name = name.replace("::", ".")
-            if any(n == name and changed for n, _, changed in units.get(path, [])):
-                if e.kind == SKIPPED:
-                    reasons.setdefault(f"{path}::{name}", set()).add(UNRUN)
-                elif e.kind == APPLIED or (e.kind == ACTIVE and any(_covers(p, path) for p, _ in e.sites)):
-                    reasons.setdefault(f"{path}::{name}", set()).add(RAN)
+            if e.kind == RAN:
+                ran.add((path, name))
+            if any(n == name and changed for n, _, changed in units.get(path, [])) and (e.kind == APPLIED or e.sites):
+                reasons.setdefault(f"{path}::{name}", set()).add(PATCHED)
         if e.kind != APPLIED:
             continue
         for path, line in e.sites:
@@ -136,6 +128,10 @@ def violations(root: Path, base: str, record: Path) -> list[str]:
                       if getattr(u, "first", u.lineno) <= line <= u.end_lineno]
             if inside and min(inside)[2]:
                 reasons.setdefault(f"{path}::{min(inside)[1]}", set()).add(f"line {line} applies one")
+    for path, file_units in units.items():
+        for name, _, changed in file_units:
+            if changed and _is_test(path, name) and (path, name) not in ran:
+                reasons.setdefault(f"{path}::{name}", set()).add(UNRUN)
     return [f"{unit} patches: {', '.join(sorted(why))}" for unit, why in sorted(reasons.items())]
 
 

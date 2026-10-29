@@ -5,9 +5,10 @@
 Every pytest `MonkeyPatch` change and every unittest.mock patch (`patch` in any form, `patch.dict`,
 started, entered or as a decorator; pytest-mock's `mocker` is built on them) is wrapped before the
 first conftest.py is imported. Each process writes <dir>/<xdist worker or "main">.jsonl, one Event
-per line: each patch APPLIED, the patches still ACTIVE when a test's call starts, and each test
-SKIPPED. A patch with no test code on its stack (pytest's own set-up) is not recorded. Without
-ED_PATCH_RECORD the plugin records nothing.
+per line: each patch APPLIED, and each test that RAN (reached its call) with the patches still
+applied that reach it: one applied while modules were imported, by a fixture the test requests, or
+from its own file or a conftest.py above it. A patch with no test code on its stack (pytest's own
+set-up) is not recorded. Without ED_PATCH_RECORD the plugin records nothing.
 """
 from __future__ import annotations
 
@@ -22,7 +23,7 @@ from unittest import mock
 import pytest
 from _pytest.monkeypatch import MonkeyPatch
 
-APPLIED, ACTIVE, SKIPPED = "applied", "active", "skipped"
+APPLIED, RAN = "applied", "ran"
 APPLY = {MonkeyPatch: ("setattr", "delattr", "setitem", "delitem", "setenv", "delenv", "syspath_prepend", "chdir"),
          mock._patch: ("__enter__",), mock._patch_dict: ("_patch_dict",)}
 UNDO = {MonkeyPatch: "undo", mock._patch: "__exit__", mock._patch_dict: "_unpatch_dict"}
@@ -30,8 +31,8 @@ UNDO = {MonkeyPatch: "undo", mock._patch: "__exit__", mock._patch_dict: "_unpatc
 
 @dataclass(frozen=True)
 class Event:
-    """One line of the record: its kind (APPLIED, ACTIVE or SKIPPED), the test's node id (None
-    outside a test) and the test code that applied the patches, as (path, line)."""
+    """One line of the record: its kind (APPLIED or RAN), the test's node id (None outside a test)
+    and the test code that applied the patches, as (path, line)."""
     kind: str
     test: str | None
     sites: tuple[tuple[str, int], ...]
@@ -48,10 +49,20 @@ def read(where: Path) -> list[Event]:
             for d in [json.loads(line)]]
 
 
+@dataclass
+class _Applied:
+    """A patch still applied: the test running when it was applied (None while modules were
+    imported), the fixture being set up then (None outside one), and the test code that applied it."""
+    test: str | None
+    fixture: str | None
+    sites: list[tuple[str, int]]
+
+
 _tests: Path | None = None
 _out = None
 _test: str | None = None
-_active: dict[object, list[tuple[str, int]]] = {}
+_fixtures: list[str] = []
+_active: dict[object, _Applied] = {}
 
 
 def _sites() -> list[tuple[str, int]]:
@@ -82,7 +93,7 @@ def _applying(real):
         result = real(self, *args, **kwargs)
         sites = _sites()
         if sites:                       # pytest's own set-up patches its config, not code under test
-            _active.setdefault(self, []).extend(sites)
+            _active.setdefault(self, _Applied(_test, _fixtures[-1] if _fixtures else None, [])).sites.extend(sites)
             _write(APPLIED, _test, sites)
         return result
     return wrapper
@@ -131,11 +142,26 @@ def pytest_runtest_protocol(item: pytest.Item, nextitem: pytest.Item | None):
         _test = None
 
 
+@pytest.hookimpl(wrapper=True)
+def pytest_fixture_setup(fixturedef, request):
+    _fixtures.append(fixturedef.argname)
+    try:
+        return (yield)
+    finally:
+        _fixtures.pop()
+
+
+def _reaches(applied: _Applied, item: pytest.Item) -> bool:
+    """Whether a patch still applied reaches `item`: applied while modules were imported, by a
+    fixture it requests (pytest's own closure, autouse included), or from its file or a conftest.py
+    above it. A patch another file's test left applied reaches it only by the order its worker runs
+    files in, and is judged where it was applied."""
+    path = item.nodeid.split("::")[0]
+    return applied.test is None or applied.fixture in item.fixturenames or any(
+        site == path or (site.rsplit("/", 1)[-1] == "conftest.py" and path.startswith(site[:-len("conftest.py")]))
+        for site, _ in applied.sites)
+
+
 def pytest_runtest_call(item: pytest.Item) -> None:
-    if _out is not None and _active:
-        _write(ACTIVE, item.nodeid, [s for sites in _active.values() for s in sites])
-
-
-def pytest_runtest_logreport(report: pytest.TestReport) -> None:
-    if _out is not None and report.skipped and not hasattr(report, "wasxfail"):
-        _write(SKIPPED, report.nodeid, [])
+    if _out is not None:
+        _write(RAN, item.nodeid, [s for a in _active.values() if _reaches(a, item) for s in a.sites])
