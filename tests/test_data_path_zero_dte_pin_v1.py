@@ -1,4 +1,5 @@
 """The 0DTE gamma pin has one producer: the same-day absolute gamma, for every ticker."""
+
 from __future__ import annotations
 
 import server

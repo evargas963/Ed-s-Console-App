@@ -1,4 +1,5 @@
 """Schwab -> the chain ladder. The spot on the ladder carries Schwab's trade time."""
+
 from __future__ import annotations
 
 import json
@@ -15,9 +16,12 @@ def test_the_chain_spot_carries_schwabs_trade_time():
     symbol = "SPY   260911C00601000"
     with srv._terrain_cache_lock:
         srv._terrain_cache[tk] = {
-            "ticker": tk, "spot": 600.0, "expiries": [exp],
-            "_chain": [{"symbol": symbol, "putCall": "CALL", "strikePrice": 601.0,
-                        "expirationDate": exp}],
+            "ticker": tk,
+            "spot": 600.0,
+            "expiries": [exp],
+            "_chain": [
+                {"symbol": symbol, "putCall": "CALL", "strikePrice": 601.0, "expirationDate": exp}
+            ],
             "_contract_symbols": frozenset([symbol]),
             "_chain_fetched_ts": 1.0,
         }

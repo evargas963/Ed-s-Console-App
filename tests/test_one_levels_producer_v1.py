@@ -11,6 +11,7 @@ chain captures in the console's database. Real data: CRWD's 2026-10-16 chain cap
 STAND-INS (named): each streamed value of a CRWD contract (no CRWD contract was streamed in a
 capture), and the daemon's status holding them.
 """
+
 from __future__ import annotations
 
 import json
@@ -42,7 +43,9 @@ TK = server.ticker_storage_key("CRWD")
 #: CRWD's chain was captured 2026-10-07 at 10:38:40 ET: everything is valued there
 _AT = CRWD.now
 _T = _AT.timestamp()
-_MIX = json.loads((_FX / "real_stream_mix_2026_10_05_1400ct.json").read_text(encoding="utf-8"))["messages"]
+_MIX = json.loads((_FX / "real_stream_mix_2026_10_05_1400ct.json").read_text(encoding="utf-8"))[
+    "messages"
+]
 
 
 @pytest.fixture(autouse=True)
@@ -76,8 +79,13 @@ def _daemon(held=(), *, socket_open=True, price: "float | None" = _SPOT, at: flo
     """The daemon's status at `at` (the chain's publication time unless given): Schwab's socket
     open, TK held on LEVELONE_EQUITIES and `held` on LEVELONE_OPTIONS; and TK's price row as the
     daemon pushes it (None: no price)."""
-    lmp.record_feed_heartbeat({"ts": at, "schwab_socket_open": socket_open,
-                               "held": {"LEVELONE_EQUITIES": [TK], "LEVELONE_OPTIONS": list(held)}})
+    lmp.record_feed_heartbeat(
+        {
+            "ts": at,
+            "schwab_socket_open": socket_open,
+            "held": {"LEVELONE_EQUITIES": [TK], "LEVELONE_OPTIONS": list(held)},
+        }
+    )
     if price is None:
         ofs._price_rows.pop(TK, None)
     else:
@@ -86,8 +94,12 @@ def _daemon(held=(), *, socket_open=True, price: "float | None" = _SPOT, at: flo
 
 def _streamed(sym: str, content: dict, ts: float) -> None:
     """One LEVELONE_OPTIONS message for `sym`, as the daemon pushes it."""
-    ofs._ingest_pushed(f"optquote.{sym}", options_quote_msg(
-        symbol=sym, content={"key": sym, **content}, src="schwab_options_l1", ts_recv=ts))
+    ofs._ingest_pushed(
+        f"optquote.{sym}",
+        options_quote_msg(
+            symbol=sym, content={"key": sym, **content}, src="schwab_options_l1", ts_recv=ts
+        ),
+    )
 
 
 def _publish(chain=None, fetched_ts=None, chain_spot=(_SPOT, _T), **kw):
@@ -123,6 +135,7 @@ def _busy():
 
 # ── one computation behind every view ────────────────────────────────────────────────────────
 
+
 def test_heatmap_per_strike_rows_and_levels_are_one_computation():
     _daemon()
     snap = _put_chain()
@@ -131,7 +144,7 @@ def test_heatmap_per_strike_rows_and_levels_are_one_computation():
     assert c["gamma_flip"] == snap.gamma_flip and c["call_wall"] == snap.call_wall
     full, _ = merge_exposure_books(snap.books.values())
     checked = 0
-    for row in c["_gamma_surface"]["cells"]:        # every strike's cells sum to the levels' book
+    for row in c["_gamma_surface"]["cells"]:  # every strike's cells sum to the levels' book
         total = bucket_metric(full[row["strike"]], "net_gex_1pct")
         if total is not None:
             valued = [g for g in row["gex"] if g is not None]
@@ -146,8 +159,15 @@ def test_published_levels_equal_compute_terrain_on_the_same_inputs():
     expected = compute_terrain(TK, _CONTRACTS, _SPOT, now=_AT).to_dict()
     got = _cached()
     assert expected["gamma_flip"] is not None, "the chain must price (valued at its capture)"
-    for k in ("gamma_flip", "call_wall", "put_wall", "absolute_gamma_strike", "max_pain",
-              "net_gex_peak", "contracts_used"):
+    for k in (
+        "gamma_flip",
+        "call_wall",
+        "put_wall",
+        "absolute_gamma_strike",
+        "max_pain",
+        "net_gex_peak",
+        "contracts_used",
+    ):
         assert got[k] == expected[k], k
 
 
@@ -155,6 +175,7 @@ def test_the_terrain_endpoint_serves_a_published_ticker_as_json_without_internal
     """2026-09-26: the payload carried the snapshot object and /api/terrain served the whole
     entry -- HTTP 500 for every published ticker, and the kept chain on every poll."""
     from fastapi.testclient import TestClient
+
     _daemon()
     snap = _put_chain()
     r = TestClient(server.app).get(f"/api/terrain?ticker={TK}")
@@ -166,6 +187,7 @@ def test_the_terrain_endpoint_serves_a_published_ticker_as_json_without_internal
 
 
 # ── a streamed greek does not replace the chain's; a streamed volume does ───────────────────────
+
 
 def test_a_streamed_greek_does_not_replace_the_chains():
     """Gamma on the book is the chain's. A later LEVELONE_OPTIONS gamma does not reprice it."""
@@ -182,14 +204,19 @@ def test_a_new_chain_does_not_turn_a_live_contracts_leg_stale():
     legs flip between live and stale while the feed stayed live. A leg's state is the feed's
     (live while the daemon holds the contract); its value is the newest Schwab sent: the chain's,
     fetched after the contract's last streamed change."""
-    chain = [dict(_CONTRACTS[0], quoteTimeInLong=int(_T * 1000))] + _CONTRACTS[1:]   # a fresh chain
+    chain = [dict(_CONTRACTS[0], quoteTimeInLong=int(_T * 1000))] + _CONTRACTS[1:]  # a fresh chain
     _daemon(held=[_A])
-    _streamed(_A, {"GAMMA": 0.9}, _T - 60.0)                                       # a minute ago
+    _streamed(_A, {"GAMMA": 0.9}, _T - 60.0)  # a minute ago
     _publish(chain, _T)
     surface = _cached()["_gamma_surface"]
-    assert surface["stream_overlay_symbols"] == []                                   # the chain is newer
-    legs = [col[side] for cell in surface["cells"] for col, pair in zip(cell["stream"], cell["contracts"])
-            for side in ("call", "put") if pair.get(side) == _A and col]
+    assert surface["stream_overlay_symbols"] == []  # the chain is newer
+    legs = [
+        col[side]
+        for cell in surface["cells"]
+        for col, pair in zip(cell["stream"], cell["contracts"])
+        for side in ("call", "put")
+        if pair.get(side) == _A and col
+    ]
     assert legs and all(leg["state"] == "live" for leg in legs)
 
 
@@ -215,7 +242,7 @@ def test_repeated_reprices_start_from_the_raw_chain_never_a_prior_overlay():
     _daemon(held=[_A])
     _streamed(_A, {"GAMMA": 0.9}, _T)
     _put_chain(fetched_ts=_T - 5.0)
-    _daemon(held=[])                                   # the daemon no longer streams A
+    _daemon(held=[])  # the daemon no longer streams A
     _publish()
     c = _cached()
     assert c["_chain"] is _CONTRACTS and _CONTRACTS[0].get("gamma") != 0.9
@@ -243,35 +270,41 @@ def test_a_foreign_tickers_contract_never_overlays_this_chain():
 
 # ── spot ─────────────────────────────────────────────────────────────────────────────────────
 
+
 def test_the_levels_are_priced_at_the_chains_spot_and_a_new_chain_moves_them():
     """One spot per chain (operator 2026-10-23): a reprice of the kept chain on a tick stays at the
     chain's spot whatever the live price does; the next chain, at its own spot, reprices every view."""
     _daemon()
     _put_chain()
     before = _cached()["_gamma_surface"]
-    _daemon(price=_SPOT * 1.02)                                         # the live price moves
+    _daemon(price=_SPOT * 1.02)  # the live price moves
     _publish()
     kept = _cached()
     assert kept["spot"] == _SPOT and kept["spot_as_of_ts_utc"] == _T
     assert kept["_gamma_surface"]["cells"] == before["cells"]
-    _publish(_CONTRACTS, _T + 60.0, chain_spot=(_SPOT * 1.02, _T + 55.0))   # the next chain, at its spot
+    _publish(
+        _CONTRACTS, _T + 60.0, chain_spot=(_SPOT * 1.02, _T + 55.0)
+    )  # the next chain, at its spot
     after = _cached()
     assert after["_gamma_surface"]["spot"] == _SPOT * 1.02 and after["spot"] == _SPOT * 1.02
     assert after["spot_as_of_ts_utc"] == _T + 55.0
-    assert after["_gamma_surface"]["cells"] != before["cells"]          # GEX scales with spot
-    assert after["_gamma_surface"]["surface_seq"] == before["surface_seq"] + 2   # the reprice, then the chain
+    assert after["_gamma_surface"]["cells"] != before["cells"]  # GEX scales with spot
+    assert (
+        after["_gamma_surface"]["surface_seq"] == before["surface_seq"] + 2
+    )  # the reprice, then the chain
 
 
 # ── what is kept, and for whom ───────────────────────────────────────────────────────────────
+
 
 def test_every_ticker_keeps_its_chain_and_heatmap_so_a_switch_shows_at_once():
     """2026-10-01, operator: "when i switch tickers the heatmap doesnt render right away". Every
     ticker's publication keeps its chain and its heatmap, viewed or not."""
     _daemon()
-    _put_chain()                                                        # published while not viewed
+    _put_chain()  # published while not viewed
     c = _cached()
     assert c["_chain"] and c["_gamma_surface"]["cells"]
-    assert _publish() is not None                                       # repriced from its kept chain
+    assert _publish() is not None  # repriced from its kept chain
 
 
 def test_a_stored_capture_and_a_live_chain_publish_the_same_fields():
@@ -280,10 +313,23 @@ def test_a_stored_capture_and_a_live_chain_publish_the_same_fields():
     _daemon()
     _put_chain()
     live = _cached()
-    _publish(captures=[{"contracts": _CONTRACTS, "ts_utc": _T, "spot": _SPOT, "spot_ts": None, "spot_from_chain": False, "et_date": "2026-10-07",
-                        "basis": server.CAPTURE_BASIS}])
+    _publish(
+        captures=[
+            {
+                "contracts": _CONTRACTS,
+                "ts_utc": _T,
+                "spot": _SPOT,
+                "spot_ts": None,
+                "spot_from_chain": False,
+                "et_date": "2026-10-07",
+                "basis": server.CAPTURE_BASIS,
+            }
+        ]
+    )
     stored = _cached()
-    assert {k for k in live if not k.startswith("_")} == {k for k in stored if not k.startswith("_")}
+    assert {k for k in live if not k.startswith("_")} == {
+        k for k in stored if not k.startswith("_")
+    }
     assert live["chain_basis"] == stored["chain_basis"] == server.CAPTURE_BASIS
 
 
@@ -291,12 +337,14 @@ def test_vanna_and_charm_by_strike_read_the_published_snapshot():
     """Valued in the chain's own session (2026-10-07 12:00 ET): its 2026-10-16 expiry still has
     time value, which charm needs."""
     valued = datetime(2026, 10, 7, 12, 0, tzinfo=ET)
-    _daemon(at=valued.timestamp())                       # live when the chain is published
+    _daemon(at=valued.timestamp())  # live when the chain is published
     snap = server._publish_levels(TK, _CONTRACTS, _T, chain_spot=(_SPOT, _T), now=valued)
-    _daemon(at=time.time())                              # live now, as the routes read it
+    _daemon(at=time.time())  # live now, as the routes read it
     charm = json.loads(server.get_charm_by_strike(TK, scope="all").body)
     assert charm["available"] and charm["spot"] == snap.spot
-    assert len(charm["rows"]) == sum(1 for b in snap.charm_by_strike.values() if b.get("net_charm") is not None)
+    assert len(charm["rows"]) == sum(
+        1 for b in snap.charm_by_strike.values() if b.get("net_charm") is not None
+    )
     vanna = json.loads(server.get_vanna_by_strike(TK, scope="all").body)
     assert vanna["available"] and vanna["rows"]
 
@@ -319,7 +367,7 @@ def test_the_route_serves_the_publication_and_a_chain_without_a_spot_publishes_n
     _daemon()
     _put_chain()
     published = _cached()
-    _daemon(price=None)                                         # the price is no longer live
+    _daemon(price=None)  # the price is no longer live
     out = server.get_terrain(ticker=TK)
     for k in ("regime", "net_gex_at_spot", "call_wall", "headline"):
         assert out[k] == published[k], k
@@ -328,25 +376,38 @@ def test_the_route_serves_the_publication_and_a_chain_without_a_spot_publishes_n
     assert out["priced_at_spot"] == published["spot"] and out["priced_at_spot_as_of_ts_utc"] == _T
     assert out["priced_at_spot_source"] == server.SPOT_SOURCE_PLANE
     assert out["spot"] is None and "spot_state" not in out
-    _publish(_CONTRACTS, _T, chain_spot=(None, None))           # the next chain: no spot
+    _publish(_CONTRACTS, _T, chain_spot=(None, None))  # the next chain: no spot
     out = server.get_terrain(ticker=TK)
-    assert out["regime"] == "UNAVAILABLE" and out["call_wall"] is None and out["error"] == "no spot price"
-    assert (out["priced_at_spot"], out["priced_at_spot_source"], out["priced_at_spot_as_of_ts_utc"]) == (None, "none", None)
+    assert (
+        out["regime"] == "UNAVAILABLE"
+        and out["call_wall"] is None
+        and out["error"] == "no spot price"
+    )
+    assert (
+        out["priced_at_spot"],
+        out["priced_at_spot_source"],
+        out["priced_at_spot_as_of_ts_utc"],
+    ) == (None, "none", None)
 
 
 def test_an_unknown_gamma_at_spot_never_reads_as_short_gamma():
     """Measured 2026-09-26: with gamma at spot unknown, the regime read UNAVAILABLE while the
     headline said "Short gamma -- trend regime. Follow breaks" -- advice from nothing."""
     from terrain_read import GAMMA_FLIP_TRUSTED, build_terrain_read
-    r = build_terrain_read(spot=100.0, flip=99.0, flip_confidence=GAMMA_FLIP_TRUSTED,
-                           gamma_at_spot=None)
+
+    r = build_terrain_read(
+        spot=100.0, flip=99.0, flip_confidence=GAMMA_FLIP_TRUSTED, gamma_at_spot=None
+    )
     assert r.regime == "UNAVAILABLE" and "gamma" not in r.headline.lower().split("—")[0]
     assert "Short gamma" not in r.headline and "Long gamma" not in r.headline
 
 
 # ── the ticks and chains that reach the one pricing thread ───────────────────────────────────
 
-def test_a_ticker_on_screen_reprices_on_its_ticks_its_options_included_and_a_burst_is_one_reprice(_clean):
+
+def test_a_ticker_on_screen_reprices_on_its_ticks_its_options_included_and_a_burst_is_one_reprice(
+    _clean,
+):
     """A streamed tick on a viewed ticker, an equity quote or one of its options, queues one
     reprice of its kept chain; every tick that arrives while it waits is in that one reprice."""
     _daemon()
@@ -354,7 +415,7 @@ def test_a_ticker_on_screen_reprices_on_its_ticks_its_options_included_and_a_bur
     _view(_clean)
     gate = _busy()
     try:
-        server._on_stream_tick(_A)                              # an option of TK
+        server._on_stream_tick(_A)  # an option of TK
         for _ in range(10):
             server._on_stream_tick(TK)
         with server._chains_waiting_lock:
@@ -383,14 +444,22 @@ def test_chains_waiting_to_be_priced_keep_only_the_newest_of_each_ticker():
 
 # ── the stored captures: the last session's levels stand, saved and labeled ─────────────────────
 
+
 def _store(tk: str, ts: float, spot: float = _SPOT) -> None:
     """TK's chain as a full capture of `tk` in the console's database, one row per expiry."""
     by_expiry: dict = {}
     for ct in _CONTRACTS:
         by_expiry.setdefault(ct["expirationDate"][:10], []).append(ct)
     for expiry, cts in by_expiry.items():
-        persist_complete_chain_capture(server.get_db().db_path, ticker=tk, expiry=expiry, contracts=cts,
-                                       spot=spot, completeness_basis=CAPTURE_BASIS, ts_utc=ts)
+        persist_complete_chain_capture(
+            server.get_db().db_path,
+            ticker=tk,
+            expiry=expiry,
+            contracts=cts,
+            spot=spot,
+            completeness_basis=CAPTURE_BASIS,
+            ts_utc=ts,
+        )
 
 
 def _forget(*tickers):
@@ -405,9 +474,15 @@ def test_startup_prices_the_newest_capture_with_its_own_price_and_time():
     valued and dated at the capture's time. A row that is not a full chain is never loaded."""
     tk = "ZZCAPSTART"
     _store(tk, _T)
-    persist_complete_chain_capture(server.get_db().db_path, ticker=tk, expiry=_CONTRACTS[0]["expirationDate"][:10],
-                                   contracts=_CONTRACTS[:2], spot=1.0, completeness_basis="strike_range=ALL",
-                                   ts_utc=_T + 60)
+    persist_complete_chain_capture(
+        server.get_db().db_path,
+        ticker=tk,
+        expiry=_CONTRACTS[0]["expirationDate"][:10],
+        contracts=_CONTRACTS[:2],
+        spot=1.0,
+        completeness_basis="strike_range=ALL",
+        ts_utc=_T + 60,
+    )
     try:
         assert server._load_stored_levels([tk]) == 1
         _drain()
@@ -437,7 +512,9 @@ def test_a_stored_capture_never_replaces_a_delivered_chain(delivered_first):
             queued = server._load_stored_levels([tk])
         else:
             queued = server._load_stored_levels([tk])
-            server._on_chain(tk, _CONTRACTS, _T, None, (_SPOT, _T))   # arrives while the capture waits
+            server._on_chain(
+                tk, _CONTRACTS, _T, None, (_SPOT, _T)
+            )  # arrives while the capture waits
     finally:
         gate.set()
         _drain()
@@ -476,22 +553,37 @@ def test_a_delivered_chain_is_priced_before_the_stored_ones_waiting():
 
 # ── the feed calls the one callback for exactly the ticks that move the math ────────────────
 
+
 def _real_option(with_greek: bool) -> dict:
     """A real LEVELONE_OPTIONS message (2026-10-05 14:00 CT) carrying a value the levels use
     (GAMMA, DELTA, OPEN_INTEREST, TOTAL_VOLUME, VOLUME), or none of them."""
     used = {"GAMMA", "DELTA", "OPEN_INTEREST", "TOTAL_VOLUME", "VOLUME"}
-    return next(m for m in _MIX if m["service"] == "LEVELONE_OPTIONS"
-                and bool(used & set(m["item"])) is with_greek and "BID_PRICE" in m["item"])
+    return next(
+        m
+        for m in _MIX
+        if m["service"] == "LEVELONE_OPTIONS"
+        and bool(used & set(m["item"])) is with_greek
+        and "BID_PRICE" in m["item"]
+    )
 
 
 @pytest.mark.parametrize("with_greek", [True, False])
 def test_an_option_quote_reaches_the_callback_only_when_it_moves_the_math(with_greek):
     m = _real_option(with_greek)
     hits: list = []
-    ofs._on_tick_callback = hits.append                        # the console's callback, as start_order_flow_stream sets it
+    ofs._on_tick_callback = (
+        hits.append
+    )  # the console's callback, as start_order_flow_stream sets it
     try:
-        ofs._ingest_pushed(f"optquote.{m['item']['key']}", options_quote_msg(
-            symbol=m["item"]["key"], content=m["item"], src="schwab_options_l1", ts_recv=m["ts_recv"]))
+        ofs._ingest_pushed(
+            f"optquote.{m['item']['key']}",
+            options_quote_msg(
+                symbol=m["item"]["key"],
+                content=m["item"],
+                src="schwab_options_l1",
+                ts_recv=m["ts_recv"],
+            ),
+        )
     finally:
         ofs._on_tick_callback = None
     assert hits == ([m["item"]["key"]] if with_greek else [])

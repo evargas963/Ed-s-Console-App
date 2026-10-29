@@ -17,6 +17,7 @@ only if nothing needs it at all.
 
 from __future__ import annotations
 
+
 def test_the_two_pin_metrics_are_different_quantities():
     """RC-315: demonstrate the distinction the register describes, instead of describing it.
 
@@ -42,10 +43,18 @@ def test_the_two_pin_metrics_are_different_quantities():
     # 800: enormous and nearly BALANCED — the biggest gross concentration, tiny net.
     # 810: smaller book, entirely one-sided — the biggest signed-net peak.
     exposures = {
-        800.0: {"call_gex_1pct": 9.0e9, "put_gex_1pct": 8.6e9, "net_gex_1pct": 0.4e9,
-                "dollarized": True},
-        810.0: {"call_gex_1pct": 4.0e9, "put_gex_1pct": 0.1e9, "net_gex_1pct": 3.9e9,
-                "dollarized": True},
+        800.0: {
+            "call_gex_1pct": 9.0e9,
+            "put_gex_1pct": 8.6e9,
+            "net_gex_1pct": 0.4e9,
+            "dollarized": True,
+        },
+        810.0: {
+            "call_gex_1pct": 4.0e9,
+            "put_gex_1pct": 0.1e9,
+            "net_gex_1pct": 3.9e9,
+            "dollarized": True,
+        },
     }
     strikes = [800.0, 810.0]
 
@@ -56,6 +65,8 @@ def test_the_two_pin_metrics_are_different_quantities():
     assert peak == 810.0, f"signed-net peak is at 810 (3.9B vs 0.4B), got {peak}"
     assert pin != peak, (
         "the two metrics returned the same strike on a book built to separate them — "
-        "if this ever passes trivially the fixture has stopped testing anything")
+        "if this ever passes trivially the fixture has stopped testing anything"
+    )
     assert strength is not None and 0.0 < strength <= 100.0, (
-        f"strength_pct is the margin over the runner-up, got {strength}")
+        f"strength_pct is the margin over the runner-up, got {strength}"
+    )

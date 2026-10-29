@@ -175,8 +175,11 @@ def cum_delta_window(prints: list[dict[str, Any]]) -> tuple[Optional[float], Opt
     """(first, last) Schwab trade time, epoch seconds, of the prints compute_cum_delta_proxy
     sums (those with a size and a trade time): the window the cumulative delta covers. It is
     what the tape holds -- no clock resets it -- so it is served beside the number."""
-    times = [p["time_millis"] / 1000.0 for p in prints
-             if p.get("size") is not None and p.get("time_millis") is not None]
+    times = [
+        p["time_millis"] / 1000.0
+        for p in prints
+        if p.get("size") is not None and p.get("time_millis") is not None
+    ]
     return (min(times), max(times)) if times else (None, None)
 
 
@@ -210,4 +213,3 @@ def compute_tape_pressure(
     if total_sz <= 0:
         return None
     return total_delta / total_sz
-

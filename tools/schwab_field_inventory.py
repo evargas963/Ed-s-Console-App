@@ -13,6 +13,7 @@ market-hours products are kept (market_hours.future.GC.isOpen). Containers are r
 
     python tools/schwab_field_inventory.py [--seed older_list.csv]
 """
+
 from __future__ import annotations
 
 import argparse
@@ -31,11 +32,33 @@ sys.path.insert(0, str(REPO))
 OUT = REPO / "docs" / "schwab_fields.csv"
 #: schwab_doc: where Schwab's docs define the field, or "not in Schwab's doc"; sample: values Schwab
 #: sent. Both are written by hand from a probe's raw replies; this tool keeps them.
-COLUMNS = ["canonical_field", "endpoint", "type", "variants", "first_seen", "last_seen", "schwab_doc", "sample"]
+COLUMNS = [
+    "canonical_field",
+    "endpoint",
+    "type",
+    "variants",
+    "first_seen",
+    "last_seen",
+    "schwab_doc",
+    "sample",
+]
 #: every asset type Schwab quotes, beside the roster: index, future, forex, mutual fund, a
 #: hard-to-borrow stock (its borrow fields)
-EXTRA_QUOTES = ["$SPX", "$VIX", "$NDX", "$DJI", "/ES", "/CL", "EUR/USD", "VFIAX", "GME", "BRK.B", "TOITF", "CNSWF",
-                "./ESZ26C6800"]
+EXTRA_QUOTES = [
+    "$SPX",
+    "$VIX",
+    "$NDX",
+    "$DJI",
+    "/ES",
+    "/CL",
+    "EUR/USD",
+    "VFIAX",
+    "GME",
+    "BRK.B",
+    "TOITF",
+    "CNSWF",
+    "./ESZ26C6800",
+]
 #: underlyings whose full chains are read: ETF, index, stock, adjusted-deliverable candidates
 CHAIN_SYMBOLS = ["SPY", "$SPX", "AAPL", "GME", "TSLA"]
 TYPES = {bool: "bool", int: "number", float: "number", str: "string", dict: "object", list: "array"}
@@ -87,7 +110,9 @@ def _paced(call):
     return call()
 
 
-def rest_rows(c, roster: list[str]) -> tuple[dict[tuple[str, str], set[str]], dict[str, str], dict[str, object]]:
+def rest_rows(
+    c, roster: list[str]
+) -> tuple[dict[tuple[str, str], set[str]], dict[str, str], dict[str, object]]:
     """({(path, type): variants}, {path: endpoint}, {call: status}). Every endpoint, with every
     option it takes; the widest date range each accepts."""
     now, today = dt.datetime.now(), dt.date.today()
@@ -97,41 +122,143 @@ def rest_rows(c, roster: list[str]) -> tuple[dict[tuple[str, str], set[str]], di
         ("quotes", "", lambda: c.get_quotes(roster + EXTRA_QUOTES + _option_symbols(c))),
         # a whole SPY or $SPX chain is too large for one response (502): one call per expiration,
         # every strike, every expiration
-        *[("chains", f"{s} {d}", lambda s=s, d=d: _paced(lambda: c.get_option_chain(
-            s, include_underlying_quote=True, strike_range=c.Options.StrikeRange.ALL, from_date=d, to_date=d)))
-          for s in CHAIN_SYMBOLS for d in _expirations(c, s)],
-        *[("chains", f"SPY analytical {d}", lambda d=d: _paced(lambda: c.get_option_chain(
-            "SPY", strategy=c.Options.Strategy.ANALYTICAL, include_underlying_quote=True,
-            strike_range=c.Options.StrikeRange.ALL, from_date=d, to_date=d)))
-          for d in _expirations(c, "SPY")],
+        *[
+            (
+                "chains",
+                f"{s} {d}",
+                lambda s=s, d=d: _paced(
+                    lambda: c.get_option_chain(
+                        s,
+                        include_underlying_quote=True,
+                        strike_range=c.Options.StrikeRange.ALL,
+                        from_date=d,
+                        to_date=d,
+                    )
+                ),
+            )
+            for s in CHAIN_SYMBOLS
+            for d in _expirations(c, s)
+        ],
+        *[
+            (
+                "chains",
+                f"SPY analytical {d}",
+                lambda d=d: _paced(
+                    lambda: c.get_option_chain(
+                        "SPY",
+                        strategy=c.Options.Strategy.ANALYTICAL,
+                        include_underlying_quote=True,
+                        strike_range=c.Options.StrikeRange.ALL,
+                        from_date=d,
+                        to_date=d,
+                    )
+                ),
+            )
+            for d in _expirations(c, "SPY")
+        ],
         # the spread strategies answer with monthlyStrategyList instead of the expiry maps
-        *[("chains", f"SPY {st.value}", lambda st=st: _paced(lambda: c.get_option_chain(
-            "SPY", strategy=st, interval=5, strike_count=2, include_underlying_quote=True,
-            from_date=today, to_date=today + dt.timedelta(days=45))))
-          for st in c.Options.Strategy if st.name not in ("SINGLE", "ANALYTICAL")],
-        *[("expirationchain", s, lambda s=s: c.get_option_expiration_chain(s)) for s in CHAIN_SYMBOLS],
-        *[("pricehistory", f.__name__, lambda f=f: f("SPY", need_extended_hours_data=True, need_previous_close=True))
-          for f in (c.get_price_history_every_minute, c.get_price_history_every_five_minutes,
-                    c.get_price_history_every_ten_minutes, c.get_price_history_every_fifteen_minutes,
-                    c.get_price_history_every_thirty_minutes, c.get_price_history_every_day,
-                    c.get_price_history_every_week)],
-        *[("movers", f"{i.value} {s.value} {f.value}", lambda i=i, s=s, f=f: c.get_movers(i, sort_order=s, frequency=f))
-          for i in M.Index for s in M.SortOrder for f in (M.Frequency.ZERO, M.Frequency.TEN)],
-        *[("market_hours", str(d), lambda d=d: c.get_market_hours(list(c.MarketHours.Market), date=d))
-          for d in (today, today + dt.timedelta(days=1), today + dt.timedelta(days=5))],
-        ("instruments", "fundamental", lambda: c.get_instruments(roster + EXTRA_QUOTES, P.FUNDAMENTAL)),
+        *[
+            (
+                "chains",
+                f"SPY {st.value}",
+                lambda st=st: _paced(
+                    lambda: c.get_option_chain(
+                        "SPY",
+                        strategy=st,
+                        interval=5,
+                        strike_count=2,
+                        include_underlying_quote=True,
+                        from_date=today,
+                        to_date=today + dt.timedelta(days=45),
+                    )
+                ),
+            )
+            for st in c.Options.Strategy
+            if st.name not in ("SINGLE", "ANALYTICAL")
+        ],
+        *[
+            ("expirationchain", s, lambda s=s: c.get_option_expiration_chain(s))
+            for s in CHAIN_SYMBOLS
+        ],
+        *[
+            (
+                "pricehistory",
+                f.__name__,
+                lambda f=f: f("SPY", need_extended_hours_data=True, need_previous_close=True),
+            )
+            for f in (
+                c.get_price_history_every_minute,
+                c.get_price_history_every_five_minutes,
+                c.get_price_history_every_ten_minutes,
+                c.get_price_history_every_fifteen_minutes,
+                c.get_price_history_every_thirty_minutes,
+                c.get_price_history_every_day,
+                c.get_price_history_every_week,
+            )
+        ],
+        *[
+            (
+                "movers",
+                f"{i.value} {s.value} {f.value}",
+                lambda i=i, s=s, f=f: c.get_movers(i, sort_order=s, frequency=f),
+            )
+            for i in M.Index
+            for s in M.SortOrder
+            for f in (M.Frequency.ZERO, M.Frequency.TEN)
+        ],
+        *[
+            (
+                "market_hours",
+                str(d),
+                lambda d=d: c.get_market_hours(list(c.MarketHours.Market), date=d),
+            )
+            for d in (today, today + dt.timedelta(days=1), today + dt.timedelta(days=5))
+        ],
+        (
+            "instruments",
+            "fundamental",
+            lambda: c.get_instruments(roster + EXTRA_QUOTES, P.FUNDAMENTAL),
+        ),
         ("instruments", "symbol_search", lambda: c.get_instruments(roster, P.SYMBOL_SEARCH)),
         ("instruments", "symbol_regex", lambda: c.get_instruments(["AAP.*"], P.SYMBOL_REGEX)),
-        ("instruments", "description_search", lambda: c.get_instruments(["Apple"], P.DESCRIPTION_SEARCH)),
-        ("instruments", "description_regex", lambda: c.get_instruments(["Apple.*"], P.DESCRIPTION_REGEX)),
+        (
+            "instruments",
+            "description_search",
+            lambda: c.get_instruments(["Apple"], P.DESCRIPTION_SEARCH),
+        ),
+        (
+            "instruments",
+            "description_regex",
+            lambda: c.get_instruments(["Apple.*"], P.DESCRIPTION_REGEX),
+        ),
         ("instruments", "search", lambda: c.get_instruments(["SPY"], P.SEARCH)),
         ("accountnumbers", "", lambda: c.get_account_numbers()),
         ("accounts", "positions", lambda: c.get_accounts(fields=[c.Account.Fields.POSITIONS])),
-        *[("accounts", "one account", lambda h=h: c.get_account(h, fields=[c.Account.Fields.POSITIONS])) for h in hashes],
-        ("orders", "all accounts", lambda: c.get_orders_for_all_linked_accounts(
-            from_entered_datetime=now - dt.timedelta(days=364), to_entered_datetime=now)),
-        *[("transactions", "one year", lambda h=h: c.get_transactions(h, start_date=now - dt.timedelta(days=364),
-                                                                     end_date=now)) for h in hashes],
+        *[
+            (
+                "accounts",
+                "one account",
+                lambda h=h: c.get_account(h, fields=[c.Account.Fields.POSITIONS]),
+            )
+            for h in hashes
+        ],
+        (
+            "orders",
+            "all accounts",
+            lambda: c.get_orders_for_all_linked_accounts(
+                from_entered_datetime=now - dt.timedelta(days=364), to_entered_datetime=now
+            ),
+        ),
+        *[
+            (
+                "transactions",
+                "one year",
+                lambda h=h: c.get_transactions(
+                    h, start_date=now - dt.timedelta(days=364), end_date=now
+                ),
+            )
+            for h in hashes
+        ],
         ("userpreference", "", lambda: c.get_user_preferences()),
     ]
     rows: dict[tuple[str, str], set[str]] = {}
@@ -149,9 +276,11 @@ def rest_rows(c, roster: list[str]) -> tuple[dict[tuple[str, str], set[str]], di
             status[name] = f"error: {type(e).__name__}"
             continue
         found: dict[str, str] = {}
-        if endpoint == "instruments":   # {"instruments": [...]}: the wrapper key is not a field
+        if endpoint == "instruments":  # {"instruments": [...]}: the wrapper key is not a field
             body = body.get("instruments", [])
-        if endpoint == "quotes":    # keyed by symbol: the symbol level is dropped, the asset type kept
+        if (
+            endpoint == "quotes"
+        ):  # keyed by symbol: the symbol level is dropped, the asset type kept
             for q in body.values():
                 one: dict[str, str] = {}
                 paths(q, "quotes", one)
@@ -171,23 +300,34 @@ def rest_rows(c, roster: list[str]) -> tuple[dict[tuple[str, str], set[str]], di
 
 def streaming_fields() -> dict[str, list[str]]:
     from schwab.streaming import StreamClient
-    return {n.removesuffix("Fields"): [f.name for f in getattr(StreamClient, n)]
-            for n in dir(StreamClient)
-            if n.endswith("Fields") and isinstance(getattr(StreamClient, n), type)
-            and issubclass(getattr(StreamClient, n), enum.Enum)}
+
+    return {
+        n.removesuffix("Fields"): [f.name for f in getattr(StreamClient, n)]
+        for n in dir(StreamClient)
+        if n.endswith("Fields")
+        and isinstance(getattr(StreamClient, n), type)
+        and issubclass(getattr(StreamClient, n), enum.Enum)
+    }
 
 
 def captured_stream_paths(db: Path) -> dict[tuple[str, str], set[str]]:
     """Every path the daemon received (the newest 20,000 messages of each table), as
     streaming.content.*.<path>, the form the stream's content items take."""
-    tables = {"stream_quotes_raw": "LEVELONE_EQUITIES", "stream_options_quotes_raw": "LEVELONE_OPTIONS",
-              "stream_book_raw": "BOOK", "stream_news_raw": "NEWS", "stream_bars_raw": "CHART_EQUITY"}
+    tables = {
+        "stream_quotes_raw": "LEVELONE_EQUITIES",
+        "stream_options_quotes_raw": "LEVELONE_OPTIONS",
+        "stream_book_raw": "BOOK",
+        "stream_news_raw": "NEWS",
+        "stream_bars_raw": "CHART_EQUITY",
+    }
     rows: dict[tuple[str, str], set[str]] = {}
     con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     try:
         for table, service in tables.items():
-            for (raw,) in con.execute(f"SELECT native_json FROM {table} WHERE native_json IS NOT NULL "
-                                      "ORDER BY rowid DESC LIMIT 20000"):
+            for (raw,) in con.execute(
+                f"SELECT native_json FROM {table} WHERE native_json IS NOT NULL "
+                "ORDER BY rowid DESC LIMIT 20000"
+            ):
                 try:
                     item = json.loads(raw)
                 except ValueError:
@@ -210,12 +350,17 @@ def _read(path: Path) -> dict[str, dict]:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--seed", type=Path, help="an older field list (canonical_field, source_endpoints, last_seen)")
+    ap.add_argument(
+        "--seed",
+        type=Path,
+        help="an older field list (canonical_field, source_endpoints, last_seen)",
+    )
     args = ap.parse_args()
     from config import build_config, load_dotenv_file
     from db_authority import canonical_stream_db_path
     from runtime_layout import RUNTIME_ROOT
     from schwab_client import build_client_from_token
+
     load_dotenv_file(Path(RUNTIME_ROOT) / ".env")
     cfg = build_config()
     state = build_client_from_token(cfg.token_path, cfg.api_key, cfg.app_secret)
@@ -224,6 +369,7 @@ def main() -> int:
         return 1
     today = dt.date.today().isoformat()
     from app.market_data.schwab.streaming.capture import stored_watchlist
+
     roster = [t for t in stored_watchlist(canonical_stream_db_path()) if not t.startswith("$")]
     rest, endpoint_of, status = rest_rows(state.client, roster)
     stream_seen = captured_stream_paths(canonical_stream_db_path())
@@ -232,16 +378,39 @@ def main() -> int:
     rows = _read(OUT)
     if args.seed:
         for field, r in _read(args.seed).items():
-            rows.setdefault(field, {"canonical_field": field, "endpoint": r.get("source_endpoints", ""),
-                                    "type": "", "variants": "", "first_seen": r.get("first_seen", ""),
-                                    "last_seen": r.get("last_seen", "")})
+            rows.setdefault(
+                field,
+                {
+                    "canonical_field": field,
+                    "endpoint": r.get("source_endpoints", ""),
+                    "type": "",
+                    "variants": "",
+                    "first_seen": r.get("first_seen", ""),
+                    "last_seen": r.get("last_seen", ""),
+                },
+            )
 
     def seen(field: str, endpoint: str, typ: str, variants: set[str]) -> None:
-        r = rows.setdefault(field, {"canonical_field": field, "endpoint": endpoint, "type": typ,
-                                    "variants": "", "first_seen": today, "last_seen": today})
-        r.update(endpoint=endpoint, type=typ or r.get("type", ""), last_seen=today,
-                 first_seen=r.get("first_seen") or today,
-                 variants=";".join(sorted(set(filter(None, (r.get("variants") or "").split(";"))) | variants)))
+        r = rows.setdefault(
+            field,
+            {
+                "canonical_field": field,
+                "endpoint": endpoint,
+                "type": typ,
+                "variants": "",
+                "first_seen": today,
+                "last_seen": today,
+            },
+        )
+        r.update(
+            endpoint=endpoint,
+            type=typ or r.get("type", ""),
+            last_seen=today,
+            first_seen=r.get("first_seen") or today,
+            variants=";".join(
+                sorted(set(filter(None, (r.get("variants") or "").split(";"))) | variants)
+            ),
+        )
 
     for (field, typ), variants in rest.items():
         seen(field, endpoint_of[field], typ, {v for v in variants if v})
@@ -251,8 +420,17 @@ def main() -> int:
     for service, fields in documented.items():
         for name in fields:
             field = f"streaming.{service}.{name}"
-            r = rows.setdefault(field, {"canonical_field": field, "endpoint": "streaming", "type": "",
-                                        "variants": "schwab-py list", "first_seen": today, "last_seen": ""})
+            r = rows.setdefault(
+                field,
+                {
+                    "canonical_field": field,
+                    "endpoint": "streaming",
+                    "type": "",
+                    "variants": "schwab-py list",
+                    "first_seen": today,
+                    "last_seen": "",
+                },
+            )
             if name in received:
                 r.update(last_seen=today, first_seen=r.get("first_seen") or today)
 

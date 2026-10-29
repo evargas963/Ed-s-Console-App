@@ -15,6 +15,7 @@ The boundary these tests pin:
 Two behavioural questions: can the app come up with governance unimportable, and does the
 agent seam still refuse to move the production checkout.
 """
+
 from __future__ import annotations
 
 import json
@@ -25,6 +26,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
+
 
 def test_the_app_imports_and_answers_health_with_governance_unimportable():
     """Behavioural: with `tools` and `governance` refused at import, the app still serves.
@@ -66,7 +68,10 @@ print(json.dumps({"armed": armed, "status": status}))
 """
     proc = subprocess.run(
         [sys.executable, "-c", snippet],
-        cwd=str(REPO), capture_output=True, text=True, timeout=900,
+        cwd=str(REPO),
+        capture_output=True,
+        text=True,
+        timeout=900,
         env={**_ci_env(), "PYTHONIOENCODING": "utf-8"},
     )
     assert proc.returncode == 0, (
@@ -83,12 +88,14 @@ def _ci_env() -> dict:
     import os
 
     env = dict(os.environ)
-    env.update({
-        "ED_CI_OFFLINE": "1",
-        "ED_CONSOLE_ALLOW_NONCANONICAL_DB": "1",
-        "SCHWAB_API_KEY": "ci-not-live-placeholder",
-        "SCHWAB_APP_SECRET": "ci-not-live-placeholder",
-    })
+    env.update(
+        {
+            "ED_CI_OFFLINE": "1",
+            "ED_CONSOLE_ALLOW_NONCANONICAL_DB": "1",
+            "SCHWAB_API_KEY": "ci-not-live-placeholder",
+            "SCHWAB_APP_SECRET": "ci-not-live-placeholder",
+        }
+    )
     return env
 
 
@@ -118,4 +125,7 @@ def test_the_agent_seam_still_refuses_to_move_the_production_checkout():
     assert any("PROD_CHECKOUT_LOCK" in v for v in violations), violations
 
     # negative half: the same verb aimed at a dev worktree is not the desk's business
-    assert prod_checkout_git_move_violations(read('git -C "/tmp/some-dev-worktree" checkout -b wip')) == []
+    assert (
+        prod_checkout_git_move_violations(read('git -C "/tmp/some-dev-worktree" checkout -b wip'))
+        == []
+    )

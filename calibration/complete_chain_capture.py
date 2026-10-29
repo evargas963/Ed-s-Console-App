@@ -31,8 +31,14 @@ from instrument_identity import ticker_storage_key
 from json_blob_codec import decode_json_blob, encode_json_blob
 from live_price_rows import price_row
 from numeric_contract import schwab_number
-from schwab_client import (GREEK_FIELDS, QUOTES_BATCH_MAX, flatten_chain_contracts, option_expiries,
-                           safe_get_chain, safe_get_quotes)
+from schwab_client import (
+    GREEK_FIELDS,
+    QUOTES_BATCH_MAX,
+    flatten_chain_contracts,
+    option_expiries,
+    safe_get_chain,
+    safe_get_quotes,
+)
 from stream_spine import CaptureWriter
 from time_et import ET, option_market_open, options_closed_at, record_markets, session
 
@@ -43,7 +49,9 @@ CAPTURE_EVERY_MIN = 30
 #: only this basis, and rows of any other are not read. The basis is stored before the chain blob, so filtering
 #: on it never reads a chain (measured: filtering on `source`, stored after the blob, read every
 #: chain -- 15 s for SPY, 80 s at startup).
-CAPTURE_BASIS = "every_expiry_strike_range_ALL"     # the only basis read: rows of any other are partial
+CAPTURE_BASIS = (
+    "every_expiry_strike_range_ALL"  # the only basis read: rows of any other are partial
+)
 
 TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS complete_chain_captures (
@@ -121,14 +129,30 @@ def persist_complete_chain_capture(
             "INSERT INTO complete_chain_captures "
             "(ticker, expiry, ts_utc, spot, n_contracts, completeness_basis, chain_json, source, "
             "chain_spot, chain_spot_ts) VALUES (?,?,?,?,?,?,?,?,?,?)",
-            (tk, exp, ts, spot, len(clean), str(completeness_basis),
-             encode_json_blob(clean, default=str), str(source), chain_spot, chain_spot_ts),
+            (
+                tk,
+                exp,
+                ts,
+                spot,
+                len(clean),
+                str(completeness_basis),
+                encode_json_blob(clean, default=str),
+                str(source),
+                chain_spot,
+                chain_spot_ts,
+            ),
         )
         conn.commit()
     finally:
         conn.close()
-    return {"status": "written", "ticker": tk, "expiry": exp, "ts_utc": ts,
-            "n_contracts": len(clean), "completeness_basis": completeness_basis}
+    return {
+        "status": "written",
+        "ticker": tk,
+        "expiry": exp,
+        "ts_utc": ts,
+        "n_contracts": len(clean),
+        "completeness_basis": completeness_basis,
+    }
 
 
 def capture_slot(now_ts: float) -> float | None:
@@ -157,19 +181,39 @@ def capture_slot(now_ts: float) -> float | None:
 CHAIN_PART_CONTRACTS = 500
 
 
-def chain_messages(ticker: str, contracts: list[dict], fetched_ts: float, spot: float | None,
-                   spot_ts: float | None) -> list[tuple[str, dict]]:
+def chain_messages(
+    ticker: str, contracts: list[dict], fetched_ts: float, spot: float | None, spot_ts: float | None
+) -> list[tuple[str, dict]]:
     """A fetched chain as its bus messages, each carrying its finished wire frame: part i of n,
     CHAIN_PART_CONTRACTS contracts each, all with the time the chain began and the chain's one spot
     with its trade time. The console assembles the parts; a chain missing a part is never priced."""
-    parts = [contracts[i:i + CHAIN_PART_CONTRACTS]
-             for i in range(0, len(contracts), CHAIN_PART_CONTRACTS)] or [[]]
+    parts = [
+        contracts[i : i + CHAIN_PART_CONTRACTS]
+        for i in range(0, len(contracts), CHAIN_PART_CONTRACTS)
+    ] or [[]]
     out = []
     for i, part in enumerate(parts):
-        msg = {"src": "schwab_chain", "ticker": ticker, "ts_recv": fetched_ts, "spot": spot, "spot_ts": spot_ts,
-               "part": i, "parts": len(parts), "contracts": part}
-        out.append((f"chain.{ticker}", {**msg, "frame": json.dumps(
-            {"topic": f"chain.{ticker}", "msg": msg}, separators=(",", ":"))}))
+        msg = {
+            "src": "schwab_chain",
+            "ticker": ticker,
+            "ts_recv": fetched_ts,
+            "spot": spot,
+            "spot_ts": spot_ts,
+            "part": i,
+            "parts": len(parts),
+            "contracts": part,
+        }
+        out.append(
+            (
+                f"chain.{ticker}",
+                {
+                    **msg,
+                    "frame": json.dumps(
+                        {"topic": f"chain.{ticker}", "msg": msg}, separators=(",", ":")
+                    ),
+                },
+            )
+        )
     return out
 
 
@@ -182,14 +226,21 @@ def chain_messages(ticker: str, contracts: list[dict], fetched_ts: float, spot: 
 PRICE_HISTORY = {"1m": ("day", 10, "minute", 1), "1d": ("year", 2, "daily", 1)}
 
 
-def price_history_message(ticker: str, series: str, answer: dict, fetched_ts: float) -> tuple[str, dict]:
+def price_history_message(
+    ticker: str, series: str, answer: dict, fetched_ts: float
+) -> tuple[str, dict]:
     """One series of a ticker's price history as its bus message: Schwab's whole answer as sent
     (its candles and every other field), recorded by the daemon's writer like every stream
     message, with its finished wire frame (built here, off the event loop: a ticker's 1-minute
     answer is ~1 MB)."""
     topic = f"pricehistory.{ticker}.{series}"
-    msg = {"src": "schwab_pricehistory", "symbol": ticker, "series": series, "ts_recv": fetched_ts,
-           "answer": answer}
+    msg = {
+        "src": "schwab_pricehistory",
+        "symbol": ticker,
+        "series": series,
+        "ts_recv": fetched_ts,
+        "answer": answer,
+    }
     return topic, {**msg, "frame": json.dumps({"topic": topic, "msg": msg}, separators=(",", ":"))}
 
 
@@ -204,27 +255,40 @@ MARKETS_ANSWERED = (200, 400)
 def markets_message(day: str, status: int, answer: dict, fetched_ts: float) -> tuple[str, dict]:
     """Schwab's /markets answer for `day` as its bus message, as sent, with its status."""
     topic = f"markets.{day}"
-    msg = {"src": "schwab_markets", "date": day, "ts_recv": fetched_ts, "status": status, "answer": answer}
+    msg = {
+        "src": "schwab_markets",
+        "date": day,
+        "ts_recv": fetched_ts,
+        "status": status,
+        "answer": answer,
+    }
     return topic, {**msg, "frame": json.dumps({"topic": topic, "msg": msg}, separators=(",", ":"))}
 
 
 def chain_failure_message(ticker: str, reason: str, ts: float) -> tuple[str, dict]:
     msg = {"src": "schwab_chain", "ticker": ticker, "ts_recv": ts, "failed": reason}
-    return f"chain.{ticker}", {**msg, "frame": json.dumps(
-        {"topic": f"chain.{ticker}", "msg": msg}, separators=(",", ":"))}
+    return f"chain.{ticker}", {
+        **msg,
+        "frame": json.dumps({"topic": f"chain.{ticker}", "msg": msg}, separators=(",", ":")),
+    }
 
 
 @dataclass(eq=False)
 class _Chain:
     """A ticker's chain from its first request until its last quote is in."""
+
     ticker: str
-    started: float                                                 # its first request
-    spots: "dict[str, float | None]" = field(default_factory=dict)  # expiry -> Schwab's underlyingPrice in its answer
-    spot: "float | None" = None                                    # the chain's one spot: LAST_PRICE when complete
-    spot_ts: "float | None" = None                                 # that price's trade time
+    started: float  # its first request
+    spots: "dict[str, float | None]" = field(
+        default_factory=dict
+    )  # expiry -> Schwab's underlyingPrice in its answer
+    spot: "float | None" = None  # the chain's one spot: LAST_PRICE when complete
+    spot_ts: "float | None" = None  # that price's trade time
     by_expiry: "dict[str, list[dict]]" = field(default_factory=dict)
-    unquoted: "set[str]" = field(default_factory=set)              # contracts whose quote is not in
-    named_invalid: "set[str]" = field(default_factory=set)         # contracts Schwab's quotes named invalid
+    unquoted: "set[str]" = field(default_factory=set)  # contracts whose quote is not in
+    named_invalid: "set[str]" = field(
+        default_factory=set
+    )  # contracts Schwab's quotes named invalid
 
     def contracts(self) -> "list[dict]":
         return [ct for cts in self.by_expiry.values() for ct in cts]
@@ -262,25 +326,32 @@ class ChainSweep:
     write that fails is a write failure, never the chain's: the chain as delivered is handed to
     `failures` (the daemon's writer) to keep."""
 
-    def __init__(self, db_path: Path | str, watchlist: "list[str]", publish: "callable",
-                 clock: "callable" = time.time, *, failures: "CaptureWriter",
-                 streamed: "callable") -> None:
+    def __init__(
+        self,
+        db_path: Path | str,
+        watchlist: "list[str]",
+        publish: "callable",
+        clock: "callable" = time.time,
+        *,
+        failures: "CaptureWriter",
+        streamed: "callable",
+    ) -> None:
         self.db_path = db_path
         self.watchlist = list(watchlist)  # the daemon's list, replaced whole on each change
-        self.publish = publish          # (topic, msg) -> None, safe from any thread
-        self.clock = clock              # when a request begins, and when a chain is delivered
-        self.failures = failures        # the daemon's writer: keeps a failed history write
-        self.streamed = streamed        # not read: every greek is the quote's
+        self.publish = publish  # (topic, msg) -> None, safe from any thread
+        self.clock = clock  # when a request begins, and when a chain is delivered
+        self.failures = failures  # the daemon's writer: keeps a failed history write
+        self.streamed = streamed  # not read: every greek is the quote's
         self.round_sec: float | None = None
-        self.waiting: "str | None" = None              # why no chain is asked for (waits), else None
-        self._expiries: "dict[str, tuple[date, list[date]]]" = {}   # ticker -> (ET date, expiries)
-        self._markets_day: "dict[str, date]" = {}          # market date -> the ET date Schwab answered it
-        self._optioned: "set[str]" = set()                 # tickers Schwab has answered a chain for
-        self._fetched: "dict[str, float]" = {}             # ticker -> when its newest delivered chain began
-        self._candled: "dict[str, float]" = {}             # ticker -> when its newest whole price history began
-        self._queue: "list[tuple[_Chain, dict]]" = []     # contracts whose quote is not asked for
-        self._delivered: "set[str]" = set()                # the tickers this rotation delivered
-        self._written: "dict[str, float | None]" = {}       # ticker -> its newest history capture
+        self.waiting: "str | None" = None  # why no chain is asked for (waits), else None
+        self._expiries: "dict[str, tuple[date, list[date]]]" = {}  # ticker -> (ET date, expiries)
+        self._markets_day: "dict[str, date]" = {}  # market date -> the ET date Schwab answered it
+        self._optioned: "set[str]" = set()  # tickers Schwab has answered a chain for
+        self._fetched: "dict[str, float]" = {}  # ticker -> when its newest delivered chain began
+        self._candled: "dict[str, float]" = {}  # ticker -> when its newest whole price history began
+        self._queue: "list[tuple[_Chain, dict]]" = []  # contracts whose quote is not asked for
+        self._delivered: "set[str]" = set()  # the tickers this rotation delivered
+        self._written: "dict[str, float | None]" = {}  # ticker -> its newest history capture
 
     def work(self, schwab_client, stop: threading.Event) -> None:
         """The thread's life, until `stop`: on the daemon's client (`schwab_client()`), the
@@ -295,8 +366,10 @@ class ChainSweep:
                 stop.wait(1.0)
                 continue
             today = datetime.fromtimestamp(self.clock(), ET).date()
-            self.fetch_markets(schwab_client, [(today - timedelta(days=n)).isoformat()
-                                               for n in range(MARKETS_DAYS_BACK, -1, -1)])
+            self.fetch_markets(
+                schwab_client,
+                [(today - timedelta(days=n)).isoformat() for n in range(MARKETS_DAYS_BACK, -1, -1)],
+            )
             now = datetime.fromtimestamp(self.clock(), ET)
             chains = [t for t in sorted(self.watchlist) if self.chain_due(t, now)]
             candles = [t for t in sorted(self.watchlist) if self.candles_due(t, now)]
@@ -316,8 +389,10 @@ class ChainSweep:
         try:
             self.waiting = schwab_client().session.refusal()
         except (ConnectionError, TimeoutError) as e:
-            why = (f"the daemon holds no Schwab sign-in to ask with ({e}); a new one is saved by "
-                   "python reauth_schwab.py")
+            why = (
+                f"the daemon holds no Schwab sign-in to ask with ({e}); a new one is saved by "
+                "python reauth_schwab.py"
+            )
             if why != self.waiting:
                 log.warning("chain sweep waits for the daemon's Schwab client: %s", e)
             self.waiting = why
@@ -325,7 +400,10 @@ class ChainSweep:
 
     def candles_due(self, ticker: str, now: datetime) -> bool:
         """Whether `ticker`'s price history is asked for at `now`: not yet whole on this ET date."""
-        return ticker not in self._candled or datetime.fromtimestamp(self._candled[ticker], ET).date() < now.date()
+        return (
+            ticker not in self._candled
+            or datetime.fromtimestamp(self._candled[ticker], ET).date() < now.date()
+        )
 
     def chain_due(self, ticker: str, now: datetime) -> bool:
         """Whether `ticker`'s chain is asked for at `now`: an option market open, or today's
@@ -333,11 +411,16 @@ class ChainSweep:
         newest close after the ticker's newest delivered chain began. A ticker with no chain answer
         yet (none asked, or no option listed) is asked once per ET date."""
         if ticker not in self._optioned:
-            return ticker not in self._fetched or datetime.fromtimestamp(self._fetched[ticker], ET).date() < now.date()
+            return (
+                ticker not in self._fetched
+                or datetime.fromtimestamp(self._fetched[ticker], ET).date() < now.date()
+            )
         if option_market_open(now) is not False:
             return True
         closed = options_closed_at(now)
-        return closed is not None and (ticker not in self._fetched or self._fetched[ticker] < closed.timestamp())
+        return closed is not None and (
+            ticker not in self._fetched or self._fetched[ticker] < closed.timestamp()
+        )
 
     def fetch_markets(self, schwab_client, days: "list[str]") -> None:
         """Schwab's GET /markets?markets=equity,option answer for each of `days` (YYYY-MM-DD) not
@@ -351,7 +434,9 @@ class ChainSweep:
                 continue
             try:
                 resp = schwab_client().get_market_hours(
-                    [Client.MarketHours.Market.EQUITY, Client.MarketHours.Market.OPTION], date=date.fromisoformat(day))
+                    [Client.MarketHours.Market.EQUITY, Client.MarketHours.Market.OPTION],
+                    date=date.fromisoformat(day),
+                )
                 answer = resp.json()
             except Exception as e:  # noqa: BLE001 -- that date's answer is the failure; it is asked again
                 log.warning("market hours for %s failed: %s: %s", day, type(e).__name__, e)
@@ -379,8 +464,12 @@ class ChainSweep:
         while self._queue and not stop.is_set():
             self.send_quotes(schwab_client)
         self.round_sec = self.clock() - started
-        log.info("chain rotation: %d of %d tickers delivered in %.0f s",
-                 len(self._delivered), len(tickers), self.round_sec)
+        log.info(
+            "chain rotation: %d of %d tickers delivered in %.0f s",
+            len(self._delivered),
+            len(tickers),
+            self.round_sec,
+        )
         return self._delivered
 
     def candles(self, schwab_client, tickers: "list[str]", stop: threading.Event) -> None:
@@ -401,15 +490,22 @@ class ChainSweep:
         for series, (period_type, period, frequency_type, frequency) in PRICE_HISTORY.items():
             try:
                 resp = schwab_client().get_price_history(
-                    ticker, period_type=period_type, period=period, frequency_type=frequency_type,
-                    frequency=frequency, end_datetime=datetime.fromtimestamp(now, timezone.utc),
-                    need_extended_hours_data=True)
+                    ticker,
+                    period_type=period_type,
+                    period=period,
+                    frequency_type=frequency_type,
+                    frequency=frequency,
+                    end_datetime=datetime.fromtimestamp(now, timezone.utc),
+                    need_extended_hours_data=True,
+                )
                 if resp.status_code != 200:
                     whole = False
                     continue
                 answer = resp.json()
             except Exception as e:  # noqa: BLE001 -- that series' answer is the failure; the next series is asked
-                log.warning("price history %s %s failed: %s: %s", ticker, series, type(e).__name__, e)
+                log.warning(
+                    "price history %s %s failed: %s: %s", ticker, series, type(e).__name__, e
+                )
                 whole = False
                 continue
             self.publish(*price_history_message(ticker, series, answer, self.clock()))
@@ -431,9 +527,13 @@ class ChainSweep:
                 listed = self._expiries[ticker] = (today, expiries)
             self.fetch_markets(schwab_client, [expiry.isoformat() for expiry in listed[1]])
             for expiry in listed[1]:
-                resp = safe_get_chain(client, ticker, strike_range="ALL", from_date=expiry, to_date=expiry)
+                resp = safe_get_chain(
+                    client, ticker, strike_range="ALL", from_date=expiry, to_date=expiry
+                )
                 if resp.status_code != 200:
-                    return self.fail([chain], f"chain for {expiry} returned HTTP {resp.status_code}")
+                    return self.fail(
+                        [chain], f"chain for {expiry} returned HTTP {resp.status_code}"
+                    )
                 payload = resp.json()
                 self._optioned.add(ticker)
                 chain.spots[expiry.isoformat()] = schwab_number(payload.get("underlyingPrice"))
@@ -456,13 +556,17 @@ class ChainSweep:
         `errors` entry naming the symbols it does not (`invalidSymbols`; measured: 8
         SPY contracts its own chain lists, every one never quoted or traded): those contracts get
         no Greeks, logged once with their count, and the rest of the request is delivered."""
-        self._queue = [(chain, ct) for chain, ct in self._queue if chain.ticker in self.watchlist]  # removed: not asked
+        self._queue = [
+            (chain, ct) for chain, ct in self._queue if chain.ticker in self.watchlist
+        ]  # removed: not asked
         batch, self._queue = self._queue[:QUOTES_BATCH_MAX], self._queue[QUOTES_BATCH_MAX:]
         chains = list({id(chain): chain for chain, _ct in batch}.values())
         try:
             resp = safe_get_quotes(schwab_client(), [ct["symbol"] for _chain, ct in batch])
             if resp.status_code != 200:
-                return self.fail(chains, f"quotes for {len(batch)} contracts returned HTTP {resp.status_code}")
+                return self.fail(
+                    chains, f"quotes for {len(batch)} contracts returned HTTP {resp.status_code}"
+                )
             answer = resp.json()
             errors = answer.pop("errors") if "errors" in answer else {}
             named = set(errors["invalidSymbols"]) if "invalidSymbols" in errors else set()
@@ -471,8 +575,12 @@ class ChainSweep:
             log.warning("quotes for %d contracts failed: %s: %s", len(batch), type(e).__name__, e)
             return self.fail(chains, f"{type(e).__name__}: {e}")
         if errors:
-            log.warning("quotes for %d contracts: Schwab named %d invalid, which have no Greeks: %s",
-                        len(batch), len(named), json.dumps(errors))
+            log.warning(
+                "quotes for %d contracts: Schwab named %d invalid, which have no Greeks: %s",
+                len(batch),
+                len(named),
+                json.dumps(errors),
+            )
         for chain, ct in batch:
             quote = quoted.get(ct["symbol"])
             if quote is not None:
@@ -500,25 +608,47 @@ class ChainSweep:
         its trade time, as the daemon's price row holds it now that the chain is complete."""
         now = self.clock()
         row = price_row(chain.ticker, now)
-        if row["spot"] is not None:      # a trade time without its price is no spot
+        if row["spot"] is not None:  # a trade time without its price is no spot
             chain.spot, chain.spot_ts = row["spot"], row["trade_ts"]
         contracts = chain.contracts()
-        for topic, msg in chain_messages(chain.ticker, contracts, chain.started, chain.spot, chain.spot_ts):
+        for topic, msg in chain_messages(
+            chain.ticker, contracts, chain.started, chain.spot, chain.spot_ts
+        ):
             self.publish(topic, msg)
         self._delivered.add(chain.ticker)
         self._fetched[chain.ticker] = chain.started
-        missing = sum(1 for ct in contracts if ct["greeksTime"] is None and ct["symbol"] not in chain.named_invalid)
+        missing = sum(
+            1
+            for ct in contracts
+            if ct["greeksTime"] is None and ct["symbol"] not in chain.named_invalid
+        )
         if missing:
-            log.warning("quotes for %s: no quote came back for %d of %d contracts; their Greeks are absent",
-                        chain.ticker, missing, len(contracts))
+            log.warning(
+                "quotes for %s: no quote came back for %d of %d contracts; their Greeks are absent",
+                chain.ticker,
+                missing,
+                len(contracts),
+            )
         try:
             self._write_history(chain)
         except Exception as e:  # noqa: BLE001 -- the chain is delivered; a failed history write is the writer's to keep and show
-            log.warning("chain history for %s not written, kept as delivered: %s: %s",
-                        chain.ticker, type(e).__name__, e)
-            self.failures.keep_failure(f"chain_history.{chain.ticker}",
-                                       {"spots": chain.spots, "spot": chain.spot, "spot_ts": chain.spot_ts,
-                                        "contracts": contracts}, e, now)
+            log.warning(
+                "chain history for %s not written, kept as delivered: %s: %s",
+                chain.ticker,
+                type(e).__name__,
+                e,
+            )
+            self.failures.keep_failure(
+                f"chain_history.{chain.ticker}",
+                {
+                    "spots": chain.spots,
+                    "spot": chain.spot,
+                    "spot_ts": chain.spot_ts,
+                    "contracts": contracts,
+                },
+                e,
+                now,
+            )
 
     def _write_history(self, chain: _Chain) -> None:
         """The chain history: a chain begun inside a capture window of the ticker's option market,
@@ -534,15 +664,22 @@ class ChainSweep:
         before = self._written[ticker]
         if before is not None and before >= slot:
             return
-        self._written[ticker] = slot                       # claim the window for this ticker
+        self._written[ticker] = slot  # claim the window for this ticker
         try:
             for expiry, cts in chain.by_expiry.items():
-                persist_complete_chain_capture(self.db_path, ticker=ticker, expiry=expiry, contracts=cts,
-                                               spot=chain.spots[expiry], completeness_basis=CAPTURE_BASIS,
-                                               ts_utc=chain.started, chain_spot=chain.spot,
-                                               chain_spot_ts=chain.spot_ts)
+                persist_complete_chain_capture(
+                    self.db_path,
+                    ticker=ticker,
+                    expiry=expiry,
+                    contracts=cts,
+                    spot=chain.spots[expiry],
+                    completeness_basis=CAPTURE_BASIS,
+                    ts_utc=chain.started,
+                    chain_spot=chain.spot,
+                    chain_spot_ts=chain.spot_ts,
+                )
         except Exception:
-            self._written[ticker] = before                 # unwritten: the window's next chain tries
+            self._written[ticker] = before  # unwritten: the window's next chain tries
             raise
 
 
@@ -552,18 +689,22 @@ def newest_capture_ts(db_path: Path | str, ticker: str) -> float | None:
         return None
     conn = sqlite3.connect(f"file:{Path(db_path).resolve().as_posix()}?mode=ro", uri=True)
     try:
-        if not conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' "
-                            "AND name='complete_chain_captures'").fetchone():
+        if not conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='complete_chain_captures'"
+        ).fetchone():
             return None
-        return conn.execute("SELECT MAX(ts_utc) FROM complete_chain_captures WHERE ticker=? "
-                            "AND completeness_basis=?",
-                            (ticker_storage_key(ticker), CAPTURE_BASIS)).fetchone()[0]
+        return conn.execute(
+            "SELECT MAX(ts_utc) FROM complete_chain_captures WHERE ticker=? "
+            "AND completeness_basis=?",
+            (ticker_storage_key(ticker), CAPTURE_BASIS),
+        ).fetchone()[0]
     finally:
         conn.close()
 
 
-def last_capture_per_day(db_path: Path | str, ticker: str, days: int, *,
-                         before_et_date: str | None = None) -> list[dict[str, Any]]:
+def last_capture_per_day(
+    db_path: Path | str, ticker: str, days: int, *, before_et_date: str | None = None
+) -> list[dict[str, Any]]:
     """The last capture of each of the newest `days` market days (newest first) -- the close --
     each as {et_date, ts_utc, spot, spot_ts, spot_from_chain, basis, contracts} with every expiry of
     that capture. `spot` is the chain's one spot with its trade time `spot_ts` (`spot_from_chain`
@@ -574,14 +715,16 @@ def last_capture_per_day(db_path: Path | str, ticker: str, days: int, *,
     tk = ticker_storage_key(ticker)
     conn = sqlite3.connect(f"file:{Path(db_path).resolve().as_posix()}?mode=ro", uri=True)
     try:
-        if not conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' "
-                            "AND name='complete_chain_captures'").fetchone():
-            return []                     # no capture has ever been written
+        if not conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='complete_chain_captures'"
+        ).fetchone():
+            return []  # no capture has ever been written
         picked: list[tuple[str, float]] = []
         for (ts,) in conn.execute(
-                "SELECT DISTINCT ts_utc FROM complete_chain_captures "
-                "WHERE ticker=? AND completeness_basis=? ORDER BY ts_utc DESC",
-                (tk, CAPTURE_BASIS)):
+            "SELECT DISTINCT ts_utc FROM complete_chain_captures "
+            "WHERE ticker=? AND completeness_basis=? ORDER BY ts_utc DESC",
+            (tk, CAPTURE_BASIS),
+        ):
             day = datetime.fromtimestamp(ts, ET).date().isoformat()
             if before_et_date is not None and day >= before_et_date:
                 continue
@@ -591,20 +734,33 @@ def last_capture_per_day(db_path: Path | str, ticker: str, days: int, *,
             if len(picked) == days:
                 break
         have = {row[1] for row in conn.execute("PRAGMA table_info(complete_chain_captures)")}
-        chain_spot = ", ".join(name for name, _kind in CHAIN_SPOT_COLUMNS) if "chain_spot" in have else "NULL, NULL"
+        chain_spot = (
+            ", ".join(name for name, _kind in CHAIN_SPOT_COLUMNS)
+            if "chain_spot" in have
+            else "NULL, NULL"
+        )
         out = []
         for day, ts in picked:
             rows = conn.execute(
                 f"SELECT expiry, spot, {chain_spot}, completeness_basis, chain_json FROM complete_chain_captures "
                 "WHERE ticker=? AND completeness_basis=? AND ts_utc=? ORDER BY expiry",
-                (tk, CAPTURE_BASIS, ts)).fetchall()
+                (tk, CAPTURE_BASIS, ts),
+            ).fetchall()
             spot, spot_ts = rows[0][2], rows[0][3]
             from_chain = spot is not None
             if not from_chain:
                 spot, spot_ts = next((r[1] for r in rows if r[0] >= day), rows[-1][1]), None
-            out.append({"et_date": day, "ts_utc": ts, "spot": spot, "spot_ts": spot_ts,
-                        "spot_from_chain": from_chain, "basis": rows[0][4],
-                        "contracts": [c for r in rows for c in decode_json_blob(r[5])]})
+            out.append(
+                {
+                    "et_date": day,
+                    "ts_utc": ts,
+                    "spot": spot,
+                    "spot_ts": spot_ts,
+                    "spot_from_chain": from_chain,
+                    "basis": rows[0][4],
+                    "contracts": [c for r in rows for c in decode_json_blob(r[5])],
+                }
+            )
         return out
     finally:
         conn.close()

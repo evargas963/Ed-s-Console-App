@@ -4,6 +4,7 @@ three full navigations after a real code change + server restart, with zero requ
 reaching the server for that file -- a plain StaticFiles mount sends no Cache-Control at
 all. ETag/Last-Modified still make an unchanged file a cheap 304 under no-cache; this
 only removes the browser's ability to skip asking entirely."""
+
 from __future__ import annotations
 
 import sys

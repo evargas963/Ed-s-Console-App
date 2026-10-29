@@ -66,7 +66,7 @@ def test_derived_scalars():
     assert m["mid"] == 712.48
     # microprice weights each price by the OPPOSITE size: (712.47*500 + 712.49*300)/800.
     assert abs(m["microprice"] - 712.4775) < 1e-6
-    assert m["spread_pts"] == 712.49 - 712.47          # exact, unrounded
+    assert m["spread_pts"] == 712.49 - 712.47  # exact, unrounded
     assert m["classification"]["microprice"] == "DERIVED"
 
 
@@ -76,10 +76,6 @@ def test_depth_totals_values():
     assert (d1["bid_total"], d1["ask_total"]) == (1000.0, 960.0)
     assert (d3["bid_total"], d3["ask_total"]) == (1080.0, 1990.0)
     assert (d5["bid_total"], d5["ask_total"]) == (1360.0, 2430.0)
-
-
-
-
 
 
 def test_book_shape_metrics():
@@ -112,20 +108,24 @@ def test_microprice_is_computed_from_every_quote_schwab_sent():
     size to weight."""
     ok = ofe._microprice(712.47, 712.49, 300, 500)
     assert abs(ok - 712.4775) < 1e-9
-    assert ofe._microprice(712.50, 712.49, 300, 500) == (712.50 * 500 + 712.49 * 300) / 800   # crossed
-    assert ofe._microprice(712.47, 712.49, 0, 0) is None       # zero total size: nothing to weight
-    assert ofe._microprice(None, 712.49, 300, 500) is None     # missing leg
+    assert (
+        ofe._microprice(712.50, 712.49, 300, 500) == (712.50 * 500 + 712.49 * 300) / 800
+    )  # crossed
+    assert ofe._microprice(712.47, 712.49, 0, 0) is None  # zero total size: nothing to weight
+    assert ofe._microprice(None, 712.49, 300, 500) is None  # missing leg
     # locked book (bid == ask, spread 0) is a valid input, returns the common price.
     assert ofe._microprice(712.49, 712.49, 300, 500) == 712.49
 
 
 def test_slope_and_concentration_sparse_and_asymmetric():
     # Sparse: a single bid level -> slope None (no span), concentration 1.0 (all at touch).
-    one = {"BIDS": [{"BID_PRICE": 10.0, "TOTAL_VOLUME": 50}],
-           "ASKS": [{"ASK_PRICE": 10.1, "TOTAL_VOLUME": 40},
-                    {"ASK_PRICE": 10.2, "TOTAL_VOLUME": 40}], "BOOK_TIME": 1}
+    one = {
+        "BIDS": [{"BID_PRICE": 10.0, "TOTAL_VOLUME": 50}],
+        "ASKS": [{"ASK_PRICE": 10.1, "TOTAL_VOLUME": 40}, {"ASK_PRICE": 10.2, "TOTAL_VOLUME": 40}],
+        "BOOK_TIME": 1,
+    }
     m = ofe.compute_book_microstructure({"content": [one]}, now_ts=1.0)
-    assert m["book_slope"]["bid"] is None            # <2 bid levels -> no span
+    assert m["book_slope"]["bid"] is None  # <2 bid levels -> no span
     assert m["liquidity_concentration"]["bid"] == 1.0
     # Asymmetric: ask side has 2 levels over a 0.1 span -> slope = 80/0.1 = 800 shares/$.
     assert abs(m["book_slope"]["ask"] - 800.0) < 1e-9
@@ -134,7 +134,7 @@ def test_slope_and_concentration_sparse_and_asymmetric():
 
 def test_ages_from_native_timestamps():
     m = ofe.compute_book_microstructure(_data(), now_ts=1787233772.0)
-    assert m["ages"]["book_age_sec"] == 1787233772.0 - 1787233769563.0 / 1000.0     # in full
+    assert m["ages"]["book_age_sec"] == 1787233772.0 - 1787233769563.0 / 1000.0  # in full
     assert m["ages"]["quote_age_sec"] == 3.0
     assert m["provenance"]["book_time_ms"] == 1787233769563.0
     assert m["provenance"]["exchange_quote_ts"] == 1787233769.0
@@ -160,14 +160,14 @@ def test_every_emitted_metric_is_classified():
     # documents HOW wall_candidates is computed and carries no metric of its own).
     meta = {"classification", "deferred", "status", "wall_method"}
     unclassified = [
-        key for key in m
-        if key not in meta
-        and key not in cls
-        and not any(c.startswith(f"{key}.") for c in cls)
+        key
+        for key in m
+        if key not in meta and key not in cls and not any(c.startswith(f"{key}.") for c in cls)
     ]
     assert unclassified == [], (
         f"emitted metric(s) with no classification entry: {unclassified}. Every metric "
-        f"this producer emits must declare NATIVE/DERIVED/PROXY provenance.")
+        f"this producer emits must declare NATIVE/DERIVED/PROXY provenance."
+    )
 
 
 def test_server_received_ts_is_classified_derived():
@@ -182,25 +182,35 @@ def test_server_received_ts_is_classified_derived():
 
 # ─── property tests: canonicalization, invalid input, crossed/one-sided, carry ───
 
+
 def _unsorted_data() -> dict:
     # Same book as _book_snapshot's top-3 per side but levels supplied OUT OF ORDER.
-    return {"content": [
-        {"BIDS": [{"BID_PRICE": 712.43, "TOTAL_VOLUME": 200},
-                  {"BID_PRICE": 712.47, "TOTAL_VOLUME": 1000},
-                  {"BID_PRICE": 712.45, "TOTAL_VOLUME": 40}],
-         "ASKS": [{"ASK_PRICE": 712.53, "TOTAL_VOLUME": 320},
-                  {"ASK_PRICE": 712.49, "TOTAL_VOLUME": 960},
-                  {"ASK_PRICE": 712.51, "TOTAL_VOLUME": 710}],
-         "BOOK_TIME": 1}],
-        "top": {"bid": 712.47, "ask": 712.49, "bid_size": 300, "ask_size": 500}}
+    return {
+        "content": [
+            {
+                "BIDS": [
+                    {"BID_PRICE": 712.43, "TOTAL_VOLUME": 200},
+                    {"BID_PRICE": 712.47, "TOTAL_VOLUME": 1000},
+                    {"BID_PRICE": 712.45, "TOTAL_VOLUME": 40},
+                ],
+                "ASKS": [
+                    {"ASK_PRICE": 712.53, "TOTAL_VOLUME": 320},
+                    {"ASK_PRICE": 712.49, "TOTAL_VOLUME": 960},
+                    {"ASK_PRICE": 712.51, "TOTAL_VOLUME": 710},
+                ],
+                "BOOK_TIME": 1,
+            }
+        ],
+        "top": {"bid": 712.47, "ask": 712.49, "bid_size": 300, "ask_size": 500},
+    }
 
 
 def test_unsorted_book_is_canonicalized_before_topn():
     """Levels arriving out of order must be sorted (bids desc, asks asc) BEFORE any Top-N
     semantics, so the touch and cumulative depth curve are correct regardless of input order."""
     m = ofe.compute_book_microstructure(_unsorted_data(), now_ts=2.0)
-    assert m["top_of_book"]["bid"] == 712.47   # highest bid, not the 712.43 that arrived first
-    assert m["top_of_book"]["ask"] == 712.49   # lowest ask, not the 712.53 that arrived first
+    assert m["top_of_book"]["bid"] == 712.47  # highest bid, not the 712.43 that arrived first
+    assert m["top_of_book"]["ask"] == 712.49  # lowest ask, not the 712.53 that arrived first
     # depth-pressure is cumulative BEST-FIRST after sorting: 712.47(1000),712.45(40),712.43(200)
     assert [round(x["cum"], 1) for x in m["depth_pressure"]["bid"]] == [1000.0, 1040.0, 1240.0]
     # ask cumulative best-first: 712.49(960),712.51(710),712.53(320)
@@ -212,15 +222,24 @@ def test_invalid_sizes_are_rejected():
     from level totals, and an invalid L1 size must not be published as a real top-of-book size.
     The L1 size is read where it is stored (OrderFlowState.push_option_top)."""
     l1 = OrderFlowState()
-    l1.push_option_top("BADSIZE", {"BID_PRICE": 712.47, "ASK_PRICE": 712.49, "BID_SIZE": -5, "ASK_SIZE": 500})
-    bad = {"content": [
-        {"BIDS": [{"BID_PRICE": 712.47, "TOTAL_VOLUME": 1000},
-                  {"BID_PRICE": 712.46, "TOTAL_VOLUME": -40},          # negative -> dropped
-                  {"BID_PRICE": 712.45, "TOTAL_VOLUME": float("inf")},  # non-finite -> dropped
-                  {"BID_PRICE": 712.44, "TOTAL_VOLUME": 80}],
-         "ASKS": [{"ASK_PRICE": 712.49, "TOTAL_VOLUME": 960}],
-         "BOOK_TIME": 1}],
-        "top": l1.option_top("BADSIZE")}
+    l1.push_option_top(
+        "BADSIZE", {"BID_PRICE": 712.47, "ASK_PRICE": 712.49, "BID_SIZE": -5, "ASK_SIZE": 500}
+    )
+    bad = {
+        "content": [
+            {
+                "BIDS": [
+                    {"BID_PRICE": 712.47, "TOTAL_VOLUME": 1000},
+                    {"BID_PRICE": 712.46, "TOTAL_VOLUME": -40},  # negative -> dropped
+                    {"BID_PRICE": 712.45, "TOTAL_VOLUME": float("inf")},  # non-finite -> dropped
+                    {"BID_PRICE": 712.44, "TOTAL_VOLUME": 80},
+                ],
+                "ASKS": [{"ASK_PRICE": 712.49, "TOTAL_VOLUME": 960}],
+                "BOOK_TIME": 1,
+            }
+        ],
+        "top": l1.option_top("BADSIZE"),
+    }
     m = ofe.compute_book_microstructure(bad, now_ts=2.0)
     # only the two valid bid levels (1000 + 80) survive into the depth total
     assert m["depth"]["3"]["bid_total"] == 1080.0
@@ -232,11 +251,16 @@ def test_invalid_sizes_are_rejected():
 def test_a_crossed_book_computes_mid_and_microprice_and_says_it_is_crossed():
     """A crossed book (bid > ask): Schwab sent both quotes, so mid and microprice are computed
     from them and the payload flags crossed ("we use what schwab gives us and we display it")."""
-    crossed = {"content": [
-        {"BIDS": [{"BID_PRICE": 712.60, "TOTAL_VOLUME": 1000}],
-         "ASKS": [{"ASK_PRICE": 712.49, "TOTAL_VOLUME": 960}],
-         "BOOK_TIME": 1}],
-        "top": {"bid": 712.60, "ask": 712.49, "bid_size": 300, "ask_size": 500}}
+    crossed = {
+        "content": [
+            {
+                "BIDS": [{"BID_PRICE": 712.60, "TOTAL_VOLUME": 1000}],
+                "ASKS": [{"ASK_PRICE": 712.49, "TOTAL_VOLUME": 960}],
+                "BOOK_TIME": 1,
+            }
+        ],
+        "top": {"bid": 712.60, "ask": 712.49, "bid_size": 300, "ask_size": 500},
+    }
     m = ofe.compute_book_microstructure(crossed, now_ts=2.0)
     assert m["crossed"] is True
     assert m["mid"] == (712.60 + 712.49) / 2.0
@@ -247,9 +271,12 @@ def test_a_crossed_book_computes_mid_and_microprice_and_says_it_is_crossed():
 def test_one_sided_book_fails_closed():
     """With one side of the book empty, depth imbalance cannot be computed and must be None
     (fail closed) rather than fabricated from the single populated side."""
-    one = {"content": [
-        {"BIDS": [], "ASKS": [{"ASK_PRICE": 712.49, "TOTAL_VOLUME": 960}], "BOOK_TIME": 1}],
-        "top": {"ask": 712.49, "ask_size": 500}}
+    one = {
+        "content": [
+            {"BIDS": [], "ASKS": [{"ASK_PRICE": 712.49, "TOTAL_VOLUME": 960}], "BOOK_TIME": 1}
+        ],
+        "top": {"ask": 712.49, "ask_size": 500},
+    }
     m = ofe.compute_book_microstructure(one, now_ts=2.0)
     for n in ("1", "3", "5"):
         assert m["depth"][n]["imbalance"] is None
@@ -262,9 +289,14 @@ def test_a_one_sided_book_schwab_sent_is_the_latest_book_never_the_older_two_sid
     st = OrderFlowState()
     snap = _book_snapshot()
     st.push_book("ONESIDE", snap, "NASDAQ_BOOK")
-    st.push_book("ONESIDE", {"ASKS": [{"ASK_PRICE": 713.10, "TOTAL_VOLUME": 77}], "BOOK_TIME": snap["BOOK_TIME"] + 1},
-                 "NASDAQ_BOOK")
-    m = ofe.compute_book_microstructure({"content": st.get_content_for_symbol("ONESIDE")}, now_ts=2.0)
+    st.push_book(
+        "ONESIDE",
+        {"ASKS": [{"ASK_PRICE": 713.10, "TOTAL_VOLUME": 77}], "BOOK_TIME": snap["BOOK_TIME"] + 1},
+        "NASDAQ_BOOK",
+    )
+    m = ofe.compute_book_microstructure(
+        {"content": st.get_content_for_symbol("ONESIDE")}, now_ts=2.0
+    )
     assert m["status"] == "ok"
     assert m["depth"]["1"]["ask_total"] == 77.0 and m["depth"]["1"]["bid_total"] is None
 
@@ -279,7 +311,9 @@ def test_route_serializes_carried_state_without_recomputing():
     first = ofe.compute_book_microstructure(data, now_ts=100.0, ticker="CARRYTEST")
     held = ofe._MICRO_STRUCTURAL_CACHE["CARRYTEST"]
     second = ofe.compute_book_microstructure(data, now_ts=200.0, ticker="CARRYTEST")
-    assert ofe._MICRO_STRUCTURAL_CACHE["CARRYTEST"] is held, "structural recomputed instead of carried"
+    assert ofe._MICRO_STRUCTURAL_CACHE["CARRYTEST"] is held, (
+        "structural recomputed instead of carried"
+    )
 
     # structural fields are identical (carried); only wall-clock ages/stamps advance.
     assert second["depth"] == first["depth"]
@@ -297,20 +331,27 @@ def test_changed_ladder_under_same_book_time_is_not_served_stale():
     BT = 424242  # identical BOOK_TIME across both snapshots
 
     def _book(bids, asks) -> dict:
-        return {"content": [
-            {"BIDS": [{"BID_PRICE": p, "TOTAL_VOLUME": v} for p, v in bids],
-             "ASKS": [{"ASK_PRICE": p, "TOTAL_VOLUME": v} for p, v in asks],
-             "BOOK_TIME": BT}],
-            "top": {"bid": bids[0][0], "ask": asks[0][0], "bid_size": 100, "ask_size": 100}}
+        return {
+            "content": [
+                {
+                    "BIDS": [{"BID_PRICE": p, "TOTAL_VOLUME": v} for p, v in bids],
+                    "ASKS": [{"ASK_PRICE": p, "TOTAL_VOLUME": v} for p, v in asks],
+                    "BOOK_TIME": BT,
+                }
+            ],
+            "top": {"bid": bids[0][0], "ask": asks[0][0], "bid_size": 100, "ask_size": 100},
+        }
 
     # v1: heavy bid book with a bid-side size wall at the touch.
     v1 = _book(
         bids=[(712.47, 1000), (712.46, 40), (712.45, 40), (712.44, 80), (712.43, 200)],
-        asks=[(712.49, 60), (712.51, 40), (712.53, 40), (712.75, 40), (713.00, 40)])
+        asks=[(712.49, 60), (712.51, 40), (712.53, 40), (712.75, 40), (713.00, 40)],
+    )
     # v2: SAME BOOK_TIME, but the book has flipped — heavy ask book with an ask-side wall.
     v2 = _book(
         bids=[(712.47, 60), (712.46, 40), (712.45, 40), (712.44, 40), (712.43, 40)],
-        asks=[(712.49, 1000), (712.51, 40), (712.53, 40), (712.75, 80), (713.00, 200)])
+        asks=[(712.49, 1000), (712.51, 40), (712.53, 40), (712.75, 80), (713.00, 200)],
+    )
 
     ofe._MICRO_STRUCTURAL_CACHE.pop("STALE", None)
     m1 = ofe.compute_book_microstructure(v1, ticker="STALE", now_ts=1.0)
@@ -320,9 +361,9 @@ def test_changed_ladder_under_same_book_time_is_not_served_stale():
     assert m1["provenance"]["book_time_ms"] == m2["provenance"]["book_time_ms"] == float(BT)
     # ...yet the second read reflects the NEW ladder, not the cached first one.
     assert m1["depth"]["5"]["bid_total"] == 1360.0
-    assert m2["depth"]["5"]["bid_total"] == 220.0                     # not the stale 1360
+    assert m2["depth"]["5"]["bid_total"] == 220.0  # not the stale 1360
     assert m1["depth"]["1"]["imbalance"] != m2["depth"]["1"]["imbalance"]
-    assert m2["depth"]["1"]["imbalance"] < 0                          # ask-heavy now
+    assert m2["depth"]["1"]["imbalance"] < 0  # ask-heavy now
     # walls flip from the bid side to the ask side — proving walls are not served stale.
     assert [w["side"] for w in m1["wall_candidates"]] == ["bid"]
     assert [w["side"] for w in m2["wall_candidates"]] == ["ask"]
@@ -330,7 +371,9 @@ def test_changed_ladder_under_same_book_time_is_not_served_stale():
     # And an unchanged re-read of v2 (same ticker, same content) still carries without recompute.
     held = ofe._MICRO_STRUCTURAL_CACHE["STALE"]
     m2b = ofe.compute_book_microstructure(v2, ticker="STALE", now_ts=3.0)
-    assert ofe._MICRO_STRUCTURAL_CACHE["STALE"] is held, "recomputed despite identical canonical book"
+    assert ofe._MICRO_STRUCTURAL_CACHE["STALE"] is held, (
+        "recomputed despite identical canonical book"
+    )
     assert m2b["depth"] == m2["depth"]
     ofe._MICRO_STRUCTURAL_CACHE.pop("STALE", None)
 
@@ -339,13 +382,13 @@ def test_engine_and_route_read_the_same_canonical_state():
     """OrderFlowEngine.compute carries the SAME book_microstructure the route serializes — one
     faucet, not two producers."""
     from app.options.order_flow.engine import OrderFlowEngine
+
     ofe._MICRO_STRUCTURAL_CACHE.pop("SAME", None)
     data = _data()
     out = OrderFlowEngine().compute(data, now=1787233772.0, ticker="SAME")
     route = ofe.compute_book_microstructure(data, now_ts=1787233772.0, ticker="SAME")
     assert out["book_microstructure"]["depth"] == route["depth"]
     ofe._MICRO_STRUCTURAL_CACHE.pop("SAME", None)
-
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -355,6 +398,7 @@ def test_engine_and_route_read_the_same_canonical_state():
 # changed-fields-only ticks is the store's job (push_option_top below; live_market_plane for
 # equities).
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def test_top_prices_and_sizes_are_carried_exactly():
     data = {"top": {"bid": 0.58, "ask": 0.59, "bid_size": 11, "ask_size": 23}}
@@ -367,10 +411,17 @@ def test_top_prices_and_sizes_are_carried_exactly():
 
 
 def test_zero_size_is_a_real_value_not_a_fallback_trigger():
-    data = {"content": [_book_snapshot()], "top": {"bid": 0.10, "ask": 0.12, "bid_size": 0, "ask_size": 5}}
-    assert ofe._compute_top_book_pressure(data) == (0 - 5) / (0 + 5), "a real BID_SIZE=0 is not missing"
+    data = {
+        "content": [_book_snapshot()],
+        "top": {"bid": 0.10, "ask": 0.12, "bid_size": 0, "ask_size": 5},
+    }
+    assert ofe._compute_top_book_pressure(data) == (0 - 5) / (0 + 5), (
+        "a real BID_SIZE=0 is not missing"
+    )
     assert ofe._extract_canonical_book(data)["bid_size"] == 0
-    assert ofe.compute_book_microstructure(data, now_ts=1787233772.0)["top_of_book"]["bid_size"] == 0
+    assert (
+        ofe.compute_book_microstructure(data, now_ts=1787233772.0)["top_of_book"]["bid_size"] == 0
+    )
 
 
 def test_no_top_resolves_to_none():
@@ -393,8 +444,13 @@ def test_push_option_top_merges_real_partial_ticks_per_field():
         st.push_option_top(tsla["symbol"], tick)
     assert "BID_PRICE" not in tsla_l1[3] and "ASK_PRICE" not in tsla_l1[3]
     assert st.option_top(tsla["symbol"]) == {
-        "bid": 0.56, "ask": 0.59, "bid_size": 83, "ask_size": 57, "mark": 0.575,
-        "quote_time_ms": tsla_l1[3]["QUOTE_TIME_MILLIS"]}
+        "bid": 0.56,
+        "ask": 0.59,
+        "bid_size": 83,
+        "ask_size": 57,
+        "mark": 0.575,
+        "quote_time_ms": tsla_l1[3]["QUOTE_TIME_MILLIS"],
+    }
 
     st.push_option_top(tsla["symbol"], dict(tsla_l1[3], BID_SIZE=0))
     assert st.option_top(tsla["symbol"])["bid_size"] == 0
@@ -406,7 +462,10 @@ def test_push_option_top_merges_real_partial_ticks_per_field():
     qqq_first = next(e["content"] for e in qqq["events"] if e["kind"] == "l1")
     st.push_option_top(qqq["symbol"], qqq_first)
     assert st.option_top(qqq["symbol"]) == {
-        "bid_size": 272, "ask_size": 29, "quote_time_ms": qqq_first["QUOTE_TIME_MILLIS"]}
+        "bid_size": 272,
+        "ask_size": 29,
+        "quote_time_ms": qqq_first["QUOTE_TIME_MILLIS"],
+    }
     assert st.option_top(tsla["symbol"])["bid"] == 0.56
 
 
@@ -415,10 +474,21 @@ def test_an_equity_l1_quote_is_not_stored_a_second_time_in_order_flow_state():
     top-of-book item beside the book and tape. Stand-in (named): a hand-built
     LEVELONE_EQUITIES tick."""
     import app.options.order_flow.state as ofls
+
     ofls.clear_symbol("O01EQ")
     try:
-        ofls.push_level_one("O01EQ", {"key": "O01EQ", "BID_PRICE": 100.0, "ASK_PRICE": 100.02,
-                                      "BID_SIZE": 3, "ASK_SIZE": 4, "MARK": 100.01}, ts_recv=1_000.0)
+        ofls.push_level_one(
+            "O01EQ",
+            {
+                "key": "O01EQ",
+                "BID_PRICE": 100.0,
+                "ASK_PRICE": 100.02,
+                "BID_SIZE": 3,
+                "ASK_SIZE": 4,
+                "MARK": 100.01,
+            },
+            ts_recv=1_000.0,
+        )
         content = ofls.get_content_for_symbol("O01EQ")
         assert not any("BID_PRICE" in row or "ASK_PRICE" in row for row in content)
         assert ofls.option_top("O01EQ") is None
@@ -435,18 +505,27 @@ def test_size_g_the_live_push_seam_threads_each_messages_receive_time_into_push_
     import app.options.order_flow.streaming as ofs
     from stream_spine import options_quote_msg, quote_msg
 
-    mix = json.loads((Path(__file__).parent / "fixtures" / "real_stream_mix_2026_10_05_1400ct.json")
-                     .read_text(encoding="utf-8"))["messages"]
+    mix = json.loads(
+        (Path(__file__).parent / "fixtures" / "real_stream_mix_2026_10_05_1400ct.json").read_text(
+            encoding="utf-8"
+        )
+    )["messages"]
     eq = next(m for m in mix if m["service"] == "LEVELONE_EQUITIES" and "TOTAL_VOLUME" in m["item"])
     opt = next(m for m in mix if m["service"] == "LEVELONE_OPTIONS" and "GAMMA" in m["item"])
     eq_sym, opt_sym = eq["item"]["key"], opt["item"]["key"]
     ofls.clear_symbol(eq_sym)
     ofls.clear_symbol(opt_sym)
     try:
-        ofs._ingest_pushed(f"quote.{eq_sym}", quote_msg(symbol=eq_sym, src="schwab_l1", ts_recv=eq["ts_recv"],
-                                                        native=eq["item"]))
-        ofs._ingest_pushed(f"optquote.{opt_sym}", options_quote_msg(symbol=opt_sym, content=opt["item"],
-                                                                    src="schwab_options_l1", ts_recv=opt["ts_recv"]))
+        ofs._ingest_pushed(
+            f"quote.{eq_sym}",
+            quote_msg(symbol=eq_sym, src="schwab_l1", ts_recv=eq["ts_recv"], native=eq["item"]),
+        )
+        ofs._ingest_pushed(
+            f"optquote.{opt_sym}",
+            options_quote_msg(
+                symbol=opt_sym, content=opt["item"], src="schwab_options_l1", ts_recv=opt["ts_recv"]
+            ),
+        )
         assert ofls.get_stream_greeks(eq_sym)["total_volume_ts_recv"] == eq["ts_recv"]
         assert ofls.get_stream_greeks(opt_sym)["gamma_ts_recv"] == opt["ts_recv"]
     finally:
@@ -459,12 +538,16 @@ def test_book_top_never_stands_in_for_a_missing_l1_price():
     not stand in when L1 carries no price -- bid/ask stay absent.
     # universal-scope-ok: book shape fixture, not a SPY-only product claim.
     """
-    items = [{
-        "BIDS": [{"BID_PRICE": 0.02, "TOTAL_VOLUME": 10}],
-        "ASKS": [{"ASK_PRICE": 0.03, "TOTAL_VOLUME": 12}],
-        "BOOK_TIME": 1,
-    }]
-    bid, ask, bid_leaf, ask_leaf = ofe._resolve_bid_ask_prices({"content": items, "top": {"ask_size": 12}})
+    items = [
+        {
+            "BIDS": [{"BID_PRICE": 0.02, "TOTAL_VOLUME": 10}],
+            "ASKS": [{"ASK_PRICE": 0.03, "TOTAL_VOLUME": 12}],
+            "BOOK_TIME": 1,
+        }
+    ]
+    bid, ask, bid_leaf, ask_leaf = ofe._resolve_bid_ask_prices(
+        {"content": items, "top": {"ask_size": 12}}
+    )
     assert (bid, ask, bid_leaf, ask_leaf) == (None, None, None, None)
 
 
@@ -477,15 +560,17 @@ def test_an_option_contracts_top_is_what_schwab_sent_on_a_live_feed():
     from app.options.order_flow import state
     from app.options.order_flow.live_payload import options_live_payload
     from tests.feed_live_helper import RTH_INSTANT
+
     c = json.loads(FIXTURE.read_text(encoding="utf-8"))["contracts"][0]
     sym = c["symbol"]
     for ev in c["events"][:4]:
         if ev["kind"] == "l1":
             state.push_option_top(sym, ev["content"])
     try:
-        lmp.record_feed_heartbeat({"ts": RTH_INSTANT, "schwab_socket_open": True,
-                                   "held": {"LEVELONE_OPTIONS": [sym]}})
-        payload = options_live_payload(sym, RTH_INSTANT, EQUITY_OPTIONS)        # a TSLA option
+        lmp.record_feed_heartbeat(
+            {"ts": RTH_INSTANT, "schwab_socket_open": True, "held": {"LEVELONE_OPTIONS": [sym]}}
+        )
+        payload = options_live_payload(sym, RTH_INSTANT, EQUITY_OPTIONS)  # a TSLA option
         assert payload["flow"]["top_book_pressure"] is not None and payload["top_outage"] is None
     finally:
         lmp.record_feed_down()
@@ -500,11 +585,22 @@ def test_the_equity_book_reads_the_daemons_price_row_for_its_top_of_book():
     import live_market_plane as lmp
     import server
     from tests.feed_live_helper import RTH_INSTANT, mark_feed_live, publish_daemon_rows
+
     now = RTH_INSTANT
     mark_feed_live("ZZTB", now=now)
     try:
-        lmp.record_from_level_one_equity("ZZTB", {"LAST_PRICE": 10.01, "BID_PRICE": 10.0, "ASK_PRICE": 10.02,
-                                                  "BID_SIZE": 3, "ASK_SIZE": 5, "MARK": 10.01}, received_ts=now)
+        lmp.record_from_level_one_equity(
+            "ZZTB",
+            {
+                "LAST_PRICE": 10.01,
+                "BID_PRICE": 10.0,
+                "ASK_PRICE": 10.02,
+                "BID_SIZE": 3,
+                "ASK_SIZE": 5,
+                "MARK": 10.01,
+            },
+            received_ts=now,
+        )
         publish_daemon_rows("ZZTB", now=now)
         body = server.order_flow_microstructure("ZZTB", "NYSE_BOOK", now)
         assert body["flow"]["top_book_pressure"] == (3 - 5) / 8 and body["top_outage"] is None

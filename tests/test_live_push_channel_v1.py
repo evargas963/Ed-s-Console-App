@@ -12,6 +12,7 @@ prove the seam the 2026-09-23 transport change created:
   * the live loop never opens the capture database;
   * with the push server down nothing is served, and the feed picks up when it returns.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -69,15 +70,30 @@ def _port(stats: dict) -> int:
 def _console(push_port: int, ui_port: "int | None" = None):
     """The console's real feed loop on the daemon's live push at `push_port` and its price rows
     at `ui_port` (none given: a port this test holds, nothing listening), retried every 0.05 s."""
-    return ofs._feed_loop(f"ws://127.0.0.1:{push_port}",
-                          f"ws://127.0.0.1:{_held_port() if ui_port is None else ui_port}", 0.05)
+    return ofs._feed_loop(
+        f"ws://127.0.0.1:{push_port}",
+        f"ws://127.0.0.1:{_held_port() if ui_port is None else ui_port}",
+        0.05,
+    )
 
 
 def _spy_trade(last: float, ts: float) -> dict:
-    native = {"key": "SPY", "BID_PRICE": last - 0.01, "ASK_PRICE": last + 0.01,
-              "LAST_PRICE": last, "QUOTE_TIME_MILLIS": int(ts * 1000)}
-    return quote_msg(symbol="SPY", bid=last - 0.01, ask=last + 0.01, last=last,
-                     src="schwab_l1", ts_recv=ts, native=native)
+    native = {
+        "key": "SPY",
+        "BID_PRICE": last - 0.01,
+        "ASK_PRICE": last + 0.01,
+        "LAST_PRICE": last,
+        "QUOTE_TIME_MILLIS": int(ts * 1000),
+    }
+    return quote_msg(
+        symbol="SPY",
+        bid=last - 0.01,
+        ask=last + 0.01,
+        last=last,
+        src="schwab_l1",
+        ts_recv=ts,
+        native=native,
+    )
 
 
 async def _until(pred, timeout=5.0):
@@ -92,8 +108,12 @@ async def _until(pred, timeout=5.0):
 def _daemon_heartbeat(socket_open=True, held=("SPY",), clock=time.time):
     """What capture.py's heartbeat reports for a session holding `held` on LEVELONE_EQUITIES, each
     beat stamped by `clock`."""
-    return lambda _now: {"ts": clock(), "schwab_socket_open": socket_open,
-                    "held": {"LEVELONE_EQUITIES": list(held)}, "health": {}}
+    return lambda _now: {
+        "ts": clock(),
+        "schwab_socket_open": socket_open,
+        "held": {"LEVELONE_EQUITIES": list(held)},
+        "health": {},
+    }
 
 
 async def _run(body, heartbeat_fn=None):
@@ -108,9 +128,16 @@ async def _run(body, heartbeat_fn=None):
     stats: dict = {}
     ui_stats: dict = {}
     server = asyncio.create_task(live_push.serve_live_push(bus, stop, port=0, stats=stats))
-    ui = asyncio.create_task(live_ui.serve_live_ui(
-        stop, heartbeat_fn=heartbeat_fn if heartbeat_fn is not None else _daemon_heartbeat(),
-        host="127.0.0.1", port=0, stats=ui_stats, record_heartbeat=lambda _beat: None))
+    ui = asyncio.create_task(
+        live_ui.serve_live_ui(
+            stop,
+            heartbeat_fn=heartbeat_fn if heartbeat_fn is not None else _daemon_heartbeat(),
+            host="127.0.0.1",
+            port=0,
+            stats=ui_stats,
+            record_heartbeat=lambda _beat: None,
+        )
+    )
     follower = asyncio.create_task(capture.Daemon(bus, HealthRegistry(), []).follow_market(stop))
     assert await _until(lambda: stats.get("listening") and ui_stats.get("listening"))
     ofs._feed_running = True
@@ -127,9 +154,9 @@ async def _run(body, heartbeat_fn=None):
 def _received(ts):
     """The console applied SPY's trade that the daemon received at `ts`: it is on SPY's tape
     with that receive time."""
-    return lambda: any(r.get("server_received_ts") == ts for r in ofls.get_content_for_symbol("SPY"))
-
-
+    return lambda: any(
+        r.get("server_received_ts") == ts for r in ofls.get_content_for_symbol("SPY")
+    )
 
 
 def test_the_daemon_heartbeat_decides_liveness_end_to_end(feed):
@@ -146,12 +173,13 @@ def test_the_daemon_heartbeat_decides_liveness_end_to_end(feed):
         assert await _until(_received(ts))
         assert await _until(lambda: lmp.feed_live_for("SPY", "LEVELONE_EQUITIES", clock()))
         now = clock()
-        assert not lmp.feed_live_for("QQQ", "LEVELONE_EQUITIES", now)   # not held by the daemon
-        assert not lmp.feed_live_for("SPY", "NYSE_BOOK", now)           # held on another service only
+        assert not lmp.feed_live_for("QQQ", "LEVELONE_EQUITIES", now)  # not held by the daemon
+        assert not lmp.feed_live_for("SPY", "NYSE_BOOK", now)  # held on another service only
         assert lmp.daemon_status(now) is not None
+
     asyncio.run(_run(body, heartbeat_fn=_daemon_heartbeat(clock=clock)))
     now = clock()
-    assert not lmp.feed_live_for("SPY", "LEVELONE_EQUITIES", now)       # push ended -> feed down
+    assert not lmp.feed_live_for("SPY", "LEVELONE_EQUITIES", now)  # push ended -> feed down
     assert lmp.daemon_status(now) is None
 
 
@@ -168,12 +196,16 @@ def test_a_live_feed_stays_live_while_the_console_works_through_a_backlog_of_cha
 
     from calibration.complete_chain_capture import chain_messages
     from pathlib import Path
-    contracts = _json.loads((Path(__file__).parent / "fixtures" / "real_spy_0dte_chain.json")
-                            .read_text(encoding="utf-8"))["chain"][:1]
+
+    contracts = _json.loads(
+        (Path(__file__).parent / "fixtures" / "real_spy_0dte_chain.json").read_text(
+            encoding="utf-8"
+        )
+    )["chain"][:1]
     samples: list = []
     clock = clock_from(RTH_INSTANT)
 
-    def sample(seconds):                   # a route, on its own thread, as the console serves them
+    def sample(seconds):  # a route, on its own thread, as the console serves them
         end = time.monotonic() + seconds
         while time.monotonic() < end:
             samples.append(lmp.feed_live_for("SPY", "LEVELONE_EQUITIES", clock()))
@@ -188,12 +220,15 @@ def test_a_live_feed_stays_live_while_the_console_works_through_a_backlog_of_cha
         sampler.start()
         while sampler.is_alive():
             await asyncio.sleep(0.05)
+
     ofs._on_chain_callback = lambda *_chain: time.sleep(0.02)
     try:
         asyncio.run(_run(body, heartbeat_fn=_daemon_heartbeat(clock=clock)))
     finally:
         ofs._on_chain_callback = None
-    assert samples and all(samples), f"read down in {samples.count(False)} of {len(samples)} samples"
+    assert samples and all(samples), (
+        f"read down in {samples.count(False)} of {len(samples)} samples"
+    )
 
 
 def test_a_closed_schwab_socket_is_not_live(feed):
@@ -202,8 +237,9 @@ def test_a_closed_schwab_socket_is_not_live(feed):
         ts = time.time()
         bus.publish("quote.SPY", _spy_trade(501.0, ts))
         assert await _until(_received(ts))
-        await asyncio.sleep(1.3)                            # at least one heartbeat arrived
+        await asyncio.sleep(1.3)  # at least one heartbeat arrived
         assert not lmp.feed_live_for("SPY", "LEVELONE_EQUITIES", time.time())
+
     asyncio.run(_run(body, heartbeat_fn=_daemon_heartbeat(socket_open=False)))
 
 
@@ -216,20 +252,32 @@ def test_a_non_schwab_message_on_the_same_topic_is_never_forwarded(feed):
 
     async def body(bus, stats):
         assert await _until(lambda: stats["clients"] == 1)
-        bus.publish("quote.SPY", quote_msg(symbol="SPY", bid=1.0, ask=1.1, last=1.05,
-                                           src="not_schwab", ts_recv=time.time(),
-                                           native={"LAST_PRICE": 1.05, "CLOSE_PRICE": 1.0}))
+        bus.publish(
+            "quote.SPY",
+            quote_msg(
+                symbol="SPY",
+                bid=1.0,
+                ask=1.1,
+                last=1.05,
+                src="not_schwab",
+                ts_recv=time.time(),
+                native={"LAST_PRICE": 1.05, "CLOSE_PRICE": 1.0},
+            ),
+        )
         ts = time.time()
         bus.publish("quote.SPY", _spy_trade(502.0, ts))
         assert await _until(_received(ts))
         assert stats["sent"] == 1
-        async with connect(f"ws://127.0.0.1:{_port(stats)}", max_size=None) as ws:   # a second client
+        async with connect(
+            f"ws://127.0.0.1:{_port(stats)}", max_size=None
+        ) as ws:  # a second client
             while (m := _json.loads(await asyncio.wait_for(ws.recv(), 5)))["topic"] != "quote.SPY":
                 pass
-        assert "CLOSE_PRICE" not in m["msg"]["native"], "a non-Schwab value was forwarded as Schwab's"
+        assert "CLOSE_PRICE" not in m["msg"]["native"], (
+            "a non-Schwab value was forwarded as Schwab's"
+        )
+
     asyncio.run(_run(body))
-
-
 
 
 def test_option_l1_and_book_update_the_contract_and_report_greeks(feed):
@@ -239,16 +287,30 @@ def test_option_l1_and_book_update_the_contract_and_report_greeks(feed):
     async def body(bus, stats):
         assert await _until(lambda: stats["clients"] == 1)
         ts = time.time()
-        bus.publish(f"optquote.{_CONTRACT}", options_quote_msg(
-            symbol=_CONTRACT, content={"key": _CONTRACT, "BID_PRICE": 1.2, "ASK_PRICE": 1.3,
-                                       "GAMMA": 0.05}, src="schwab_options_l1", ts_recv=ts))
-        bus.publish(f"book.{_CONTRACT}", book_msg(
-            symbol=_CONTRACT, service="OPTIONS_BOOK", src="schwab_book", ts_recv=ts,
-            content={"key": _CONTRACT, "BIDS": [], "ASKS": []}))
-        assert await _until(lambda: _CONTRACT in seen)       # (SPY's price row ticks too)
+        bus.publish(
+            f"optquote.{_CONTRACT}",
+            options_quote_msg(
+                symbol=_CONTRACT,
+                content={"key": _CONTRACT, "BID_PRICE": 1.2, "ASK_PRICE": 1.3, "GAMMA": 0.05},
+                src="schwab_options_l1",
+                ts_recv=ts,
+            ),
+        )
+        bus.publish(
+            f"book.{_CONTRACT}",
+            book_msg(
+                symbol=_CONTRACT,
+                service="OPTIONS_BOOK",
+                src="schwab_book",
+                ts_recv=ts,
+                content={"key": _CONTRACT, "BIDS": [], "ASKS": []},
+            ),
+        )
+        assert await _until(lambda: _CONTRACT in seen)  # (SPY's price row ticks too)
         assert seen.count(_CONTRACT) == 1
         assert ofs._option_contract_last_update_ts[_CONTRACT] == ts
         assert ofls.option_top(_CONTRACT) == {"bid": 1.2, "ask": 1.3}
+
     ofs._on_tick_callback = seen.append
     try:
         asyncio.run(_run(body))
@@ -259,7 +321,11 @@ def test_option_l1_and_book_update_the_contract_and_report_greeks(feed):
 #: every sqlite3.connect this process makes while _AUDITING is set, as Python's audit hook reports it
 _OPENED: list = []
 _AUDITING = threading.Event()
-sys.addaudithook(lambda event, args: _OPENED.append(args) if event == "sqlite3.connect" and _AUDITING.is_set() else None)
+sys.addaudithook(
+    lambda event, args: (
+        _OPENED.append(args) if event == "sqlite3.connect" and _AUDITING.is_set() else None
+    )
+)
 
 
 def test_the_live_loop_never_opens_the_capture_database(feed):
@@ -268,6 +334,7 @@ def test_the_live_loop_never_opens_the_capture_database(feed):
         ts = time.time()
         bus.publish("quote.SPY", _spy_trade(503.0, ts))
         assert await _until(_received(ts))
+
     _OPENED.clear()
     _AUDITING.set()
     try:
@@ -287,7 +354,7 @@ def test_push_down_serves_nothing_and_the_feed_recovers_when_it_returns(feed):
     async def run():
         ofs._feed_running = True
         client = asyncio.create_task(_console(port))
-        await asyncio.sleep(0.3)                    # no server: several failed connects
+        await asyncio.sleep(0.3)  # no server: several failed connects
         assert ofls.get_content_for_symbol("SPY") == []
         bus = MessageBus()
         stop = asyncio.Event()
@@ -304,6 +371,7 @@ def test_push_down_serves_nothing_and_the_feed_recovers_when_it_returns(feed):
             client.cancel()
             stop.set()
             await asyncio.gather(client, server, return_exceptions=True)
+
     asyncio.run(run())
 
 
@@ -313,12 +381,16 @@ def test_a_message_missing_its_receive_time_is_dropped_whole():
     msg["symbol"] = "ZZZNOPE"
     del msg["ts_recv"]
     ofs._ingest_pushed("quote.ZZZNOPE", msg)
-    assert ofls.get_content_for_symbol("ZZZNOTS") == [] and ofls.get_content_for_symbol("ZZZNOPE") == []
+    assert (
+        ofls.get_content_for_symbol("ZZZNOTS") == []
+        and ofls.get_content_for_symbol("ZZZNOPE") == []
+    )
 
 
 def test_daemon_shutdown_is_not_held_up_by_a_connected_console(feed):
     """A handler blocked waiting for the next bus message must not keep the server open:
     before the fix, stopping the daemon with a console attached hung forever."""
+
     async def run():
         bus = MessageBus()
         stop = asyncio.Event()
@@ -329,7 +401,7 @@ def test_daemon_shutdown_is_not_held_up_by_a_connected_console(feed):
         client = asyncio.create_task(_console(_port(stats)))
         try:
             assert await _until(lambda: stats["clients"] == 1)
-            stop.set()                                  # console still connected
+            stop.set()  # console still connected
             await asyncio.wait_for(asyncio.shield(server), timeout=3.0)
             assert stats["clients"] == 0
         finally:
@@ -337,6 +409,7 @@ def test_daemon_shutdown_is_not_held_up_by_a_connected_console(feed):
             client.cancel()
             stop.set()
             await asyncio.gather(client, server, return_exceptions=True)
+
     asyncio.run(run())
 
 
@@ -346,6 +419,7 @@ def test_a_late_console_gets_the_current_record_with_each_fields_own_time(feed):
     and the bid/ask together, each stamped with the receive time the daemon gave the message
     that carried it -- the trade is not lost behind the later bid/ask-only tick, nor re-dated
     to it."""
+
     async def run():
         bus = MessageBus()
         stop = asyncio.Event()
@@ -355,21 +429,34 @@ def test_a_late_console_gets_the_current_record_with_each_fields_own_time(feed):
         # the daemon publishes a trade, then a bid/ask-only tick -- before any console exists
         t_trade = time.time() - 5.0
         t_quote = time.time() - 1.0
-        bus.publish("quote.SPY", quote_msg(symbol="SPY", src="schwab_l1", ts_recv=t_trade,
-                                           native={"key": "SPY", "LAST_PRICE": 505.0,
-                                                   "CLOSE_PRICE": 500.0}))
-        bus.publish("quote.SPY", quote_msg(symbol="SPY", src="schwab_l1", ts_recv=t_quote,
-                                           native={"key": "SPY", "BID_PRICE": 504.9,
-                                                   "ASK_PRICE": 505.1}))
+        bus.publish(
+            "quote.SPY",
+            quote_msg(
+                symbol="SPY",
+                src="schwab_l1",
+                ts_recv=t_trade,
+                native={"key": "SPY", "LAST_PRICE": 505.0, "CLOSE_PRICE": 500.0},
+            ),
+        )
+        bus.publish(
+            "quote.SPY",
+            quote_msg(
+                symbol="SPY",
+                src="schwab_l1",
+                ts_recv=t_quote,
+                native={"key": "SPY", "BID_PRICE": 504.9, "ASK_PRICE": 505.1},
+            ),
+        )
         await asyncio.sleep(0.05)
         ofs._feed_running = True
         client = asyncio.create_task(_console(_port(stats)))
         try:
-            assert await _until(_received(t_trade))    # the trade, at its own receive time
+            assert await _until(_received(t_trade))  # the trade, at its own receive time
             assert not _received(t_quote)(), "the trade was re-dated to the later bid/ask tick"
         finally:
             ofs._feed_running = False
             client.cancel()
             stop.set()
             await asyncio.gather(client, server, return_exceptions=True)
+
     asyncio.run(run())

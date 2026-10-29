@@ -6,6 +6,7 @@ tests/test_data_path_impossible_gamma_v1.py):
 that contract adds nothing and is counted in greeks_missing. A strike
 where no contract carried a reported Greek has no value, never its 0.0 initialiser.
 """
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -30,9 +31,16 @@ NOW = datetime(2026, 9, 30, 12, 0, tzinfo=ET)
 def _ct(strike: float, side: str, oi, *, gamma=0.04, delta=0.5, iv=20.0):
     # institutional-synthetic-ok: each case needs one exactly-controlled field
     return {
-        "strikePrice": strike, "putCall": side, "openInterest": oi, "multiplier": 100.0,
-        "delta": delta if side == "CALL" else -abs(delta), "gamma": gamma, "vega": 0.01,
-        "volatility": iv, "totalVolume": 0, "expirationDate": "2026-10-01T20:00:00.000+00:00",
+        "strikePrice": strike,
+        "putCall": side,
+        "openInterest": oi,
+        "multiplier": 100.0,
+        "delta": delta if side == "CALL" else -abs(delta),
+        "gamma": gamma,
+        "vega": 0.01,
+        "volatility": iv,
+        "totalVolume": 0,
+        "expirationDate": "2026-10-01T20:00:00.000+00:00",
     }
 
 
@@ -78,11 +86,14 @@ def test_real_spy_capture_is_used_as_schwab_sent_it():
 
 
 def test_a_strike_no_greek_reached_is_blank_not_zero():
-    exp, _ = compute_exposures_by_strike([_ct(100.0, "CALL", 500, iv=MISSING_GREEK_SENTINEL)], spot=SPOT, now=NOW)
+    exp, _ = compute_exposures_by_strike(
+        [_ct(100.0, "CALL", 500, iv=MISSING_GREEK_SENTINEL)], spot=SPOT, now=NOW
+    )
     assert bucket_metric(exp[100.0], "net_gex_1pct") is None
-    surface = project_gamma_surface([_ct(100.0, "CALL", 500, iv=MISSING_GREEK_SENTINEL)],
-                                    exposure_books([_ct(100.0, "CALL", 500, iv=MISSING_GREEK_SENTINEL)], spot=SPOT,
-                                                   now=NOW))
+    surface = project_gamma_surface(
+        [_ct(100.0, "CALL", 500, iv=MISSING_GREEK_SENTINEL)],
+        exposure_books([_ct(100.0, "CALL", 500, iv=MISSING_GREEK_SENTINEL)], spot=SPOT, now=NOW),
+    )
     row = [r for r in surface["cells"] if r["strike"] == 100.0][0]
     # no put is listed at the strike: its OI is the call's 500 (strike_oi_legs, the one reader)
     assert row["gex"] == [None] and row["oi"] == [{"call": 500, "put": 0, "total": 500}]

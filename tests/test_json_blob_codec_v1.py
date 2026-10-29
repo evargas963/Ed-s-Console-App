@@ -2,6 +2,7 @@
 call site's safety depends on -- decode_json_blob transparently reads a pre-migration
 plain-JSON string exactly like a legacy call site's own json.loads(row[N]) always did,
 with no schema change and no coordinated cutover."""
+
 from __future__ import annotations
 
 import gzip
@@ -60,11 +61,10 @@ def test_decode_malformed_payload_raises():
 
 def test_default_str_matches_existing_call_sites_non_json_native_types():
     import datetime
+
     obj = {"ts": datetime.date(2026, 1, 1)}
     decoded = decode_json_blob(encode_json_blob(obj, default=str))
     assert decoded == {"ts": "2026-01-01"}
-
-
 
 
 def test_encode_json_blob_is_deterministic_across_calls():
@@ -73,9 +73,10 @@ def test_encode_json_blob_is_deterministic_across_calls():
     breaking any code that compares stored blobs for byte-identity (e.g.
     execution_identity.py's dedup-collision check)."""
     import time
+
     obj = {"a": 1, "b": [1, 2, 3]}
     first = encode_json_blob(obj)
-    time.sleep(1.1)   # gzip's mtime field has 1-second resolution
+    time.sleep(1.1)  # gzip's mtime field has 1-second resolution
     second = encode_json_blob(obj)
     assert first == second
 
@@ -88,11 +89,12 @@ def test_encode_text_blob_compresses_already_serialized_text_exactly():
     blob = encode_text_blob(text)
     assert blob[:2] == b"\x1f\x8b"
     decompressed = gzip.decompress(blob).decode("utf-8")
-    assert decompressed == text   # byte-exact, not just JSON-equal
+    assert decompressed == text  # byte-exact, not just JSON-equal
 
 
 def test_encode_text_blob_is_also_deterministic():
     import time
+
     text = json.dumps({"a": 1})
     first = encode_text_blob(text)
     time.sleep(1.1)

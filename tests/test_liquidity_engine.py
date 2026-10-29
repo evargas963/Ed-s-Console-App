@@ -4,6 +4,7 @@ test_liquidity_engine.py — Unit tests for Liquidity & Value Playbook Engine
 
 Run: pytest tests/test_liquidity_engine.py -v
 """
+
 from __future__ import annotations
 
 import sys
@@ -17,17 +18,16 @@ from micro_structure import Candle
 from time_et import (
     ET,
 )
+
+
 def _mk_bar(dt: datetime, o: float, h: float, l: float, c: float, vol: float = 1000.0) -> Candle:
     return Candle(ts=dt.timestamp(), open=o, high=h, low=l, close=c, volume=vol)
-
-
-
-
 
 
 def test_imports():
     """All liquidity modules import cleanly."""
     from liquidity_models import SnapshotType, ZoneType
+
     assert SnapshotType.PREMARKET.value == "premarket"
     assert SnapshotType.LIVE.value == "live"
     assert ZoneType.RESISTANCE_LIQUIDITY.value == "resistance_liquidity"
@@ -36,24 +36,19 @@ def test_imports():
 def test_the_engine_takes_the_bar_writers_candles_as_they_are():
     """Each candle's fields as the bar writer checked them, an absent volume still absent."""
     from liquidity_value_engine import bars_from_candles
-    (b,) = bars_from_candles([Candle(ts=1710000000.0, open=500.0, high=501.0, low=499.0, close=500.5, volume=None)])
-    assert (b["timestamp"], b["open"], b["high"], b["low"], b["close"], b["volume"]) == \
-        (1710000000000, 500.0, 501.0, 499.0, 500.5, None)
+
+    (b,) = bars_from_candles(
+        [Candle(ts=1710000000.0, open=500.0, high=501.0, low=499.0, close=500.5, volume=None)]
+    )
+    assert (b["timestamp"], b["open"], b["high"], b["low"], b["close"], b["volume"]) == (
+        1710000000000,
+        500.0,
+        501.0,
+        499.0,
+        500.5,
+        None,
+    )
     assert b["_dt"] == datetime.fromtimestamp(1710000000.0, ET)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 def _typical_price_dump(bars, tick_size=0.01):
@@ -62,6 +57,7 @@ def _typical_price_dump(bars, tick_size=0.01):
     matters.
     """
     from collections import defaultdict
+
     vol_by_price: dict = defaultdict(float)
     for b in bars:
         typical = (float(b["high"]) + float(b["low"]) + float(b["close"])) / 3.0
@@ -74,6 +70,7 @@ def _typical_price_dump(bars, tick_size=0.01):
 def test_volume_profile_flat_bar_puts_all_volume_at_one_price():
     """A bar with high == low DID trade at exactly one price — distribution must not smear it."""
     from liquidity_models import volume_profile
+
     bars = [{"high": 100.0, "low": 100.0, "close": 100.0, "volume": 5000.0}]
     p = volume_profile(bars)
     poc, vah, val = p.poc, p.vah, p.val
@@ -86,6 +83,7 @@ def test_volume_profile_distributes_a_wide_bar_across_its_range():
     (H+L+C)/3. With a single bar the distributed profile is FLAT, so every spanned price ties —
     while the dump puts 100% of it in one bin at the typical price."""
     from liquidity_models import volume_profile
+
     bars = [{"high": 101.0, "low": 100.0, "close": 100.9, "volume": 10100.0}]
     p = volume_profile(bars, value_area_pct=0.70)
     vah, val = p.vah, p.val
@@ -107,6 +105,7 @@ def test_volume_profile_poc_is_the_price_most_bars_traded_through():
     covers 100.03-100.04, so those two bins carry the most volume and the POC must land there.
     The typical-price dump cannot find it — no bar's (H+L+C)/3 lands on 100.03/100.04."""
     from liquidity_models import volume_profile
+
     bars = [
         {"high": 100.04, "low": 100.00, "close": 100.00, "volume": 500.0},
         {"high": 100.04, "low": 100.00, "close": 100.00, "volume": 500.0},
@@ -129,6 +128,7 @@ def test_volume_profile_rejects_nan_and_nonpositive_volume():
     """A NaN bin key poisons every comparison after it, and a zero-volume bar contributes
     nothing — absence must read as absence rather than a fabricated level."""
     from liquidity_models import volume_profile
+
     nan = float("nan")
     bars = [
         {"high": nan, "low": 100.0, "close": 100.0, "volume": 900.0},
@@ -137,13 +137,17 @@ def test_volume_profile_rejects_nan_and_nonpositive_volume():
     ]
     assert volume_profile(bars) is None
     assert volume_profile([]) is None
-    assert volume_profile([{"high": 1.0, "low": 1.0, "close": 1.0, "volume": 1.0}], tick_size=0.0) is None
+    assert (
+        volume_profile([{"high": 1.0, "low": 1.0, "close": 1.0, "volume": 1.0}], tick_size=0.0)
+        is None
+    )
 
 
 def test_volume_profile_wide_bar_stays_bounded_and_distributed():
     """A pathological range against a 0.01 tick must not allocate unbounded bins, and must
     still SPREAD — the bound is a work cap, never a licence to dump."""
     from liquidity_models import MAX_BINS_PER_BAR, volume_profile
+
     bars = [{"high": 10000.0, "low": 0.01, "close": 5000.0, "volume": 1e6}]
     p = volume_profile(bars, value_area_pct=0.70)
     assert p is not None
@@ -151,20 +155,33 @@ def test_volume_profile_wide_bar_stays_bounded_and_distributed():
     assert MAX_BINS_PER_BAR > 0
 
 
-def _bar(d: date, hh: int, mm: int, high: float, low: float, close: float = None,
-         volume: float = 1000.0) -> Candle:
+def _bar(
+    d: date, hh: int, mm: int, high: float, low: float, close: float = None, volume: float = 1000.0
+) -> Candle:
     """One 1m bar at an explicit ET wall-clock time."""
     from datetime import datetime as _dt
     from time_et import ET as _ET
+
     ts = _dt(d.year, d.month, d.day, hh, mm, tzinfo=_ET)
-    return Candle(ts=ts.timestamp(), open=low, high=high, low=low,
-                  close=close if close is not None else high, volume=volume)
+    return Candle(
+        ts=ts.timestamp(),
+        open=low,
+        high=high,
+        low=low,
+        close=close if close is not None else high,
+        volume=volume,
+    )
 
 
 def _overnight(bars: list, session_date: date) -> dict:
     """The engine's overnight range as its producer gets it: bars normalized once, the prior
     session found once."""
-    from liquidity_value_engine import bars_from_candles, get_overnight_levels, prior_trading_session_date
+    from liquidity_value_engine import (
+        bars_from_candles,
+        get_overnight_levels,
+        prior_trading_session_date,
+    )
+
     norm = bars_from_candles(bars)
     return get_overnight_levels(norm, session_date, prior_trading_session_date(norm, session_date))
 
@@ -172,13 +189,13 @@ def _overnight(bars: list, session_date: date) -> dict:
 def test_overnight_window_monday_reaches_back_to_friday():
     """Monday's overnight starts at FRIDAY's 16:00 close (the prior session), not at Sunday,
     which has no close and no bars: Friday's post-16:00 tape is in OVERNIGHT_HIGH/LOW."""
-    friday, monday = date(2026, 10, 2), date(2026, 10, 5)    # sessions Schwab's /markets sent
+    friday, monday = date(2026, 10, 2), date(2026, 10, 5)  # sessions Schwab's /markets sent
     bars = [
-        _bar(friday, 10, 0, 100.0, 99.0),      # Friday RTH — establishes the prior session
-        _bar(friday, 15, 59, 101.0, 100.0),    # Friday RTH, before the close
-        _bar(friday, 17, 30, 108.0, 107.0),    # Friday AFTER 16:00 — inside the overnight
-        _bar(monday, 4, 30, 96.0, 95.0),       # Monday pre-open — inside the overnight
-        _bar(monday, 10, 0, 120.0, 90.0),      # Monday RTH — must NOT be in the overnight
+        _bar(friday, 10, 0, 100.0, 99.0),  # Friday RTH — establishes the prior session
+        _bar(friday, 15, 59, 101.0, 100.0),  # Friday RTH, before the close
+        _bar(friday, 17, 30, 108.0, 107.0),  # Friday AFTER 16:00 — inside the overnight
+        _bar(monday, 4, 30, 96.0, 95.0),  # Monday pre-open — inside the overnight
+        _bar(monday, 10, 0, 120.0, 90.0),  # Monday RTH — must NOT be in the overnight
     ]
     out = _overnight(bars, monday)
     assert out["overnight_high"] == 108.0, (
@@ -192,10 +209,10 @@ def test_overnight_window_midweek_uses_the_immediately_prior_session():
     """Tuesday's overnight starts at Monday's 16:00 — and Monday's RTH body stays out of it."""
     monday, tuesday = date(2026, 10, 5), date(2026, 10, 6)
     bars = [
-        _bar(monday, 10, 0, 130.0, 70.0),      # Monday RTH — wide, must be EXCLUDED
-        _bar(monday, 18, 0, 104.0, 103.0),     # Monday post-close — included
-        _bar(tuesday, 8, 0, 99.0, 98.0),       # Tuesday pre-open — included
-        _bar(tuesday, 9, 30, 140.0, 60.0),     # Tuesday RTH open bar — must be EXCLUDED
+        _bar(monday, 10, 0, 130.0, 70.0),  # Monday RTH — wide, must be EXCLUDED
+        _bar(monday, 18, 0, 104.0, 103.0),  # Monday post-close — included
+        _bar(tuesday, 8, 0, 99.0, 98.0),  # Tuesday pre-open — included
+        _bar(tuesday, 9, 30, 140.0, 60.0),  # Tuesday RTH open bar — must be EXCLUDED
     ]
     out = _overnight(bars, tuesday)
     assert out["overnight_high"] == 104.0 and out["overnight_low"] == 98.0, (
@@ -210,16 +227,17 @@ def test_overnight_window_spans_a_holiday_gap_without_inventing_a_session():
     hand-picked calendar dates."""
     from liquidity_value_engine import prior_trading_session_date
     from liquidity_value_engine import bars_from_candles
+
     wed, thu, fri = date(2026, 11, 25), date(2026, 11, 26), date(2026, 11, 27)
     bars = [
-        _bar(wed, 10, 0, 100.0, 99.0),         # Wednesday RTH — the real prior session
-        _bar(wed, 17, 0, 106.0, 105.0),        # Wednesday post-close
+        _bar(wed, 10, 0, 100.0, 99.0),  # Wednesday RTH — the real prior session
+        _bar(wed, 17, 0, 106.0, 105.0),  # Wednesday post-close
         # The holiday itself: bars exist but NONE in RTH — a closed day trades no session.
         # (Placing one at 12:00 would make Thursday a real session, which is what the code
         # should conclude from that evidence; the fixture must mean what it claims.)
-        _bar(thu, 3, 0, 111.0, 94.0),          # holiday extended-hours bar INSIDE the window
-        _bar(fri, 8, 0, 97.0, 96.0),           # Friday pre-open
-        _bar(fri, 10, 0, 200.0, 10.0),         # Friday RTH — excluded
+        _bar(thu, 3, 0, 111.0, 94.0),  # holiday extended-hours bar INSIDE the window
+        _bar(fri, 8, 0, 97.0, 96.0),  # Friday pre-open
+        _bar(fri, 10, 0, 200.0, 10.0),  # Friday RTH — excluded
     ]
     assert prior_trading_session_date(bars_from_candles(bars), fri) == wed, (
         "a day with no RTH bars was treated as the prior trading session"
@@ -233,8 +251,7 @@ def test_overnight_window_spans_a_holiday_gap_without_inventing_a_session():
 def test_overnight_empty_is_empty_never_fabricated():
     """No bars in the window -> {}. Absence reads as absence."""
     tuesday = date(2026, 10, 6)
-    only_rth = [_bar(date(2026, 10, 5), 11, 0, 100.0, 99.0),
-                _bar(tuesday, 10, 0, 101.0, 98.0)]
+    only_rth = [_bar(date(2026, 10, 5), 11, 0, 100.0, 99.0), _bar(tuesday, 10, 0, 101.0, 98.0)]
     assert _overnight(only_rth, tuesday) == {}, "an overnight range was invented"
     assert _overnight([], tuesday) == {}
 
@@ -244,7 +261,7 @@ def test_overnight_without_a_prior_session_uses_only_this_session_premarket():
     this session's pre-open is used — never widened into a guess that sweeps older days."""
     tuesday = date(2026, 10, 6)
     bars = [
-        _bar(date(2026, 10, 5), 20, 0, 300.0, 290.0),   # prior-day AFTER hours, no RTH anywhere
+        _bar(date(2026, 10, 5), 20, 0, 300.0, 290.0),  # prior-day AFTER hours, no RTH anywhere
         _bar(tuesday, 8, 0, 99.0, 98.0),
     ]
     out = _overnight(bars, tuesday)
@@ -265,23 +282,33 @@ def _overnight_under_prior_low_bars(session_date: date) -> list:
     return [
         _bar(prev, 10, 0, 105.0, 100.0, close=104.0),
         _bar(prev, 15, 0, 106.0, 101.0, close=102.0),
-        _bar(prev, 17, 0, 103.0, 99.0, close=99.5),      # after the close
-        _bar(session_date, 6, 0, 100.0, 95.0, close=96.0),   # overnight UNDER the prior low
+        _bar(prev, 17, 0, 103.0, 99.0, close=99.5),  # after the close
+        _bar(session_date, 6, 0, 100.0, 95.0, close=96.0),  # overnight UNDER the prior low
         _bar(session_date, 9, 45, 101.0, 96.0, close=100.0),  # RTH
     ]
 
 
 def _overnight_under_prior_low_zones(session_date: date):
     from liquidity_models import PlaybookConfig
-    from liquidity_value_engine import bars_from_candles, build_premarket_snapshot, build_price_level_snapshot
-    snap = build_price_level_snapshot("SPY", session_date, bars_from_candles(_overnight_under_prior_low_bars(session_date)), bar_source="test")
+    from liquidity_value_engine import (
+        bars_from_candles,
+        build_premarket_snapshot,
+        build_price_level_snapshot,
+    )
+
+    snap = build_price_level_snapshot(
+        "SPY",
+        session_date,
+        bars_from_candles(_overnight_under_prior_low_bars(session_date)),
+        bar_source="test",
+    )
     return build_premarket_snapshot("SPY", session_date, PlaybookConfig(), canonical=snap).zones
 
 
 def test_no_pool_language_in_rendered_zone_payload():
     """Behaviour-bound: build the snapshot for an overnight leg under the prior low and assert
     no operator-facing field claims a pool."""
-    session = date(2026, 10, 6)          # a Tuesday: its prior session is the day before
+    session = date(2026, 10, 6)  # a Tuesday: its prior session is the day before
     zones = _overnight_under_prior_low_zones(session)
     assert zones, "fixture produced no zones — the assertion would be vacuous"
     for z in zones:
@@ -300,35 +327,34 @@ def test_cluster_price_levels():
     """Adjacent levels within 0.2% of the lower one merge; no reference price."""
     from liquidity_value_engine import cluster_price_levels_into_zones
     from liquidity_models import PlaybookConfig
+
     levels = [(500.0, "PDH"), (500.5, "PD_VAH"), (505.0, "ORB_HIGH")]
     clusters = cluster_price_levels_into_zones(levels, PlaybookConfig())
     assert [(lo, hi) for lo, hi, *_ in clusters] == [(500.0, 500.5), (505.0, 505.0)]
 
 
-
-
-
-
-
-
-
-
-
-
 def test_no_lookahead_premarket():
     """Premarket snapshot does not use same-day RTH data."""
-    from liquidity_value_engine import bars_from_candles, build_premarket_snapshot, build_price_level_snapshot
+    from liquidity_value_engine import (
+        bars_from_candles,
+        build_premarket_snapshot,
+        build_price_level_snapshot,
+    )
     from liquidity_models import PlaybookConfig
-    session = date(2026, 10, 6)          # a Tuesday: its prior session is the day before
+
+    session = date(2026, 10, 6)  # a Tuesday: its prior session is the day before
     # Only previous day bars
     from datetime import timedelta
+
     prev_date = session - timedelta(days=1)
     bars = []
     for i in range(100):
         dt = datetime(prev_date.year, prev_date.month, prev_date.day, 10, 0 + i % 60, tzinfo=ET)
         bars.append(_mk_bar(dt, 500, 501, 499, 500, 1000))
     cfg = PlaybookConfig()
-    snap = build_price_level_snapshot("SPY", session, bars_from_candles(bars), bar_source="test", config=cfg)
+    snap = build_price_level_snapshot(
+        "SPY", session, bars_from_candles(bars), bar_source="test", config=cfg
+    )
     out = build_premarket_snapshot("SPY", session, cfg, canonical=snap)
     assert out.raw_levels.get("prev_day")
     # No today POC/VAH/VAL in premarket raw: every "poc"-shaped key inside prev_day
@@ -338,25 +364,15 @@ def test_no_lookahead_premarket():
     poc_keys = [k for k in prev_day if "poc" in str(k).lower()]
     assert poc_keys, "prev_day carries no poc-shaped key at all"
     assert all(str(k).lower().startswith("pd_") for k in poc_keys), (
-        f"prev_day contains a non-pd_-prefixed poc key: {poc_keys}")
-
-
-
-
-
-
-
-
-
-
-
-
+        f"prev_day contains a non-pd_-prefixed poc key: {poc_keys}"
+    )
 
 
 def test_source_levels_use_actual_values():
     """source_levels stores actual level prices, not zone midpoint."""
     from liquidity_value_engine import cluster_price_levels_into_zones
     from liquidity_models import PlaybookConfig
+
     levels = [(100.0, "A"), (101.0, "B"), (105.0, "C")]
     cfg = PlaybookConfig(clustering_threshold_pct=0.1)
     clusters = cluster_price_levels_into_zones(levels, cfg)
@@ -387,5 +403,3 @@ def test_max_zone_width():
     for lo, hi, _, _, _ in clusters_cap:
         assert hi - lo <= 1.5 + 0.001, f"zone {lo}-{hi} exceeds max_zone_width 1.5"
     assert len(clusters_cap) >= len(clusters), "cap should produce more zones when width limited"
-
-

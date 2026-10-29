@@ -12,7 +12,13 @@ from __future__ import annotations
 import json
 
 from math_levels import GAMMA_FLIP_TRUSTED
-from terrain_engine import TERRAIN_SCHEMA_VERSION, WALL_BREACHED, WALL_CONTAINS, compute_terrain, price_relations
+from terrain_engine import (
+    TERRAIN_SCHEMA_VERSION,
+    WALL_BREACHED,
+    WALL_CONTAINS,
+    compute_terrain,
+    price_relations,
+)
 from tests.real_chains import CRWD, MRVL, SPY_0DTE
 
 NOW = SPY_0DTE.now
@@ -62,8 +68,14 @@ def test_levels_are_real_strikes_or_absent() -> None:
     strikes = {float(c["strikePrice"]) for c in chain if c.get("strikePrice") is not None}
     served = snap.to_dict() | price_relations(snap.to_dict(), spot).to_dict()
 
-    for name in ("call_wall", "put_wall", "absolute_gamma_strike", "pin_candidate",
-                 "call_charm_wall", "put_charm_wall"):
+    for name in (
+        "call_wall",
+        "put_wall",
+        "absolute_gamma_strike",
+        "pin_candidate",
+        "call_charm_wall",
+        "put_charm_wall",
+    ):
         value = served[name]
         assert value is None or value in strikes, f"{name}={value} is not a chain strike"
     # RC-134: dead total-gamma twin removed — absolute_gamma_strike is the sole terrain
@@ -112,20 +124,22 @@ def test_is_deterministic() -> None:
 
 # ── RC-113: the institutional sigma band (SpotGamma-on-Bloomberg standard) ───────────────────
 
+
 def test_implied_one_day_move_matches_the_named_formula() -> None:
     """EM = S x sigma_ATM x sqrt(1/252). The chain here is hand-built ON PURPOSE — a formula
     verification needs known inputs (the real-chain test below covers the live shape)."""
     from terrain_engine import compute_implied_one_day_move
+
     spot = 700.0
     # institutional-synthetic-ok: formula verification REQUIRES known inputs — the exactness
     # assertion below is meaningless on a live chain; the real-chain test covers the live shape.
     chain = [
         {"putCall": "CALL", "strikePrice": 700.0, "volatility": 20.0, "daysToExpiration": 1},
-        {"putCall": "PUT",  "strikePrice": 700.0, "volatility": 24.0, "daysToExpiration": 1},
+        {"putCall": "PUT", "strikePrice": 700.0, "volatility": 24.0, "daysToExpiration": 1},
         # a farther expiry with wild IV must be IGNORED — front expiry only
         {"putCall": "CALL", "strikePrice": 700.0, "volatility": 80.0, "daysToExpiration": 30},
         # far-from-money same-expiry must lose to the ATM pair
-        {"putCall": "PUT",  "strikePrice": 650.0, "volatility": 99.0, "daysToExpiration": 1},
+        {"putCall": "PUT", "strikePrice": 650.0, "volatility": 99.0, "daysToExpiration": 1},
     ]
     em = compute_implied_one_day_move(chain, spot)
     assert em is not None
@@ -139,15 +153,24 @@ def test_implied_one_day_move_matches_the_named_formula() -> None:
 def test_implied_move_fails_closed_without_usable_iv() -> None:
     """No usable ATM IV -> None. A fabricated sigma is worse than no sigma."""
     from terrain_engine import compute_implied_one_day_move
+
     # institutional-synthetic-ok: fail-closed tests MUST feed malformed contracts on purpose.
     assert compute_implied_one_day_move([], 700.0) is None
     assert compute_implied_one_day_move(None, 700.0) is None
-    assert compute_implied_one_day_move(
-        [{"putCall": "CALL", "strikePrice": 700.0, "volatility": -5.0,
-          "daysToExpiration": 1}], 700.0) is None, "negative IV must not produce a band"
-    assert compute_implied_one_day_move(
-        [{"putCall": "CALL", "strikePrice": 700.0, "volatility": 20.0,
-          "daysToExpiration": 1}], None) is None
+    assert (
+        compute_implied_one_day_move(
+            [{"putCall": "CALL", "strikePrice": 700.0, "volatility": -5.0, "daysToExpiration": 1}],
+            700.0,
+        )
+        is None
+    ), "negative IV must not produce a band"
+    assert (
+        compute_implied_one_day_move(
+            [{"putCall": "CALL", "strikePrice": 700.0, "volatility": 20.0, "daysToExpiration": 1}],
+            None,
+        )
+        is None
+    )
 
 
 def test_an_atm_contract_with_no_iv_is_never_replaced_by_the_next_strikes() -> None:
@@ -155,11 +178,30 @@ def test_an_atm_contract_with_no_iv_is_never_replaced_by_the_next_strikes() -> N
     is None -- the 705 call's IV used to stand in for it, labelled ATM (operator 2026-10-01: "we
     use what schwab gives us and we display it")."""
     from terrain_engine import atm_sigma_by_expiry
+
     # institutional-synthetic-ok: the rule needs a known ATM contract with no IV beside a priced one
     chain = [
-        {"putCall": "CALL", "strikePrice": 700.0, "volatility": -999.0, "daysToExpiration": 1, "expirationDate": "2026-10-02"},
-        {"putCall": "CALL", "strikePrice": 705.0, "volatility": 30.0, "daysToExpiration": 1, "expirationDate": "2026-10-02"},
-        {"putCall": "PUT", "strikePrice": 700.0, "volatility": 24.0, "daysToExpiration": 1, "expirationDate": "2026-10-02"},
+        {
+            "putCall": "CALL",
+            "strikePrice": 700.0,
+            "volatility": -999.0,
+            "daysToExpiration": 1,
+            "expirationDate": "2026-10-02",
+        },
+        {
+            "putCall": "CALL",
+            "strikePrice": 705.0,
+            "volatility": 30.0,
+            "daysToExpiration": 1,
+            "expirationDate": "2026-10-02",
+        },
+        {
+            "putCall": "PUT",
+            "strikePrice": 700.0,
+            "volatility": 24.0,
+            "daysToExpiration": 1,
+            "expirationDate": "2026-10-02",
+        },
     ]
     assert atm_sigma_by_expiry(chain, 700.0) == {("2026-10-02", 1): None}
 
@@ -197,22 +239,24 @@ def test_every_expiry_carries_its_atm_iv_by_the_one_rule() -> None:
 
 # ── RC-115: per-side wall ranges — gamma value area (Market-Profile POC expansion) ───────────
 
+
 def test_wall_value_area_expands_toward_the_heavier_neighbor() -> None:
     """The CQG value-area rule verbatim: start at the POC, absorb the bigger neighbor each
     step until 68.2% is enclosed."""
     from terrain_engine import compute_wall_value_area
+
     # institutional-synthetic-ok: algorithm verification requires known mass — the real-chain
     # test below covers the live shape.
     # side GEX$ mass on a dollarized book (T-05: raw gamma no longer stands in)
     _f = {"dollarized": True}
     exposures = {
         700.0: {"put_gex_1pct": 100.0, **_f},
-        705.0: {"put_gex_1pct": 900.0, **_f},   # the wall (POC)
-        710.0: {"put_gex_1pct": 500.0, **_f},   # heavier neighbor — absorbed first
+        705.0: {"put_gex_1pct": 900.0, **_f},  # the wall (POC)
+        710.0: {"put_gex_1pct": 500.0, **_f},  # heavier neighbor — absorbed first
         715.0: {"put_gex_1pct": 100.0, **_f},
     }
     raw_only = {k: {"put_gamma": v["put_gex_1pct"]} for k, v in exposures.items()}
-    assert compute_wall_value_area(raw_only, 705.0, "put") is None   # raw gamma: no range
+    assert compute_wall_value_area(raw_only, 705.0, "put") is None  # raw gamma: no range
     rg = compute_wall_value_area(exposures, 705.0, "put")
     assert rg is not None
     assert rg["lo"] == 705.0 and rg["hi"] == 710.0, rg
@@ -222,6 +266,7 @@ def test_wall_value_area_expands_toward_the_heavier_neighbor() -> None:
 
 def test_wall_value_area_fails_closed() -> None:
     from terrain_engine import compute_wall_value_area
+
     # institutional-synthetic-ok: fail-closed probes must feed degenerate inputs on purpose.
     assert compute_wall_value_area({}, 705.0, "put") is None
     assert compute_wall_value_area({700.0: {"put_gamma": 1.0}}, None, "put") is None
@@ -233,8 +278,10 @@ def test_wall_value_area_fails_closed() -> None:
 def test_real_chain_carries_per_side_wall_ranges() -> None:
     chain, spot = _real_chain()
     snap = compute_terrain("SPY", chain, spot, now=NOW)
-    for side, wall, rg in (("call", snap.call_wall, snap.call_wall_range),
-                           ("put", snap.put_wall, snap.put_wall_range)):
+    for side, wall, rg in (
+        ("call", snap.call_wall, snap.call_wall_range),
+        ("put", snap.put_wall, snap.put_wall_range),
+    ):
         assert rg is not None, f"{side} range missing on the real chain"
         assert rg["lo"] <= wall <= rg["hi"], f"{side} wall must sit inside its own range: {rg}"
         assert rg["coverage_pct"] >= 68.2
@@ -248,8 +295,10 @@ def test_real_chain_carries_per_side_wall_ranges() -> None:
 # the concentration max — unconstrained by spot — and a breach is a DISTINCT reported state,
 # not a moved strike. These tests pin the state function and its carriage.
 
+
 def test_wall_geometry_state_truth_table() -> None:
     from terrain_engine import wall_geometry_state
+
     # the live defect, exactly: put wall above spot is NOT support
     assert wall_geometry_state(735.13, 740.0, "put") == "breached"
     assert wall_geometry_state(735.13, 730.0, "put") == "contains"
@@ -266,6 +315,7 @@ def test_wall_geometry_state_truth_table() -> None:
 def test_wall_geometry_state_rejects_unknown_side() -> None:
     from terrain_engine import wall_geometry_state
     import pytest
+
     with pytest.raises(ValueError):
         wall_geometry_state(735.0, 740.0, "steel")
 
@@ -273,6 +323,7 @@ def test_wall_geometry_state_rejects_unknown_side() -> None:
 def test_real_chain_wall_states_agree_with_the_geometry() -> None:
     """The states qualify the walls at the price given, and agree with the geometry."""
     from terrain_engine import wall_geometry_state
+
     chain, spot = _real_chain()
     snap = compute_terrain("SPY", chain, spot, now=NOW)
     d = price_relations(snap.to_dict(), spot)
@@ -354,7 +405,7 @@ def test_pin_score_inputs_follow_the_wide_terrain_book_not_selected_expiry() -> 
     assert wide_gex is not None and sel_gex is not None and wide_gex != sel_gex
     assert terrain.absolute_gamma_gex_dollars == wide_gex
     assert terrain.absolute_gamma_oi != (
-        (float(sb.get("call_oi") or 0) + float(sb.get("put_oi") or 0))
+        float(sb.get("call_oi") or 0) + float(sb.get("put_oi") or 0)
     )
     wide_score = compute_pin_score(
         terrain.absolute_gamma_gex_dollars,
@@ -364,10 +415,7 @@ def test_pin_score_inputs_follow_the_wide_terrain_book_not_selected_expiry() -> 
     )
     sel_score = compute_pin_score(
         sel_gex,
-        (
-            (float(sb.get("call_oi") or 0) + float(sb.get("put_oi") or 0))
-            / _book_oi(sel_ex)
-        )
+        ((float(sb.get("call_oi") or 0) + float(sb.get("put_oi") or 0)) / _book_oi(sel_ex))
         if _book_oi(sel_ex)
         else None,
     )

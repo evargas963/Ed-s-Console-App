@@ -105,7 +105,6 @@ _LEVEL_EXTRAS = {"hvp", "lvp", "gsf", "grc"}
 _SINGLE_SURFACE_FULL_BOOK = {"hvp", "lvp", "gsf", "grc"}
 
 
-
 def _fixture_book():
     return SPY_0DTE.chain, SPY_0DTE.spot
 
@@ -133,9 +132,11 @@ def test_definitions_diverge_on_the_real_book_so_a_miswire_cannot_hide():
     assert total_leader is not None and net_leader is not None
     assert total_leader != net_leader, (
         "the fixture no longer separates max-total-gamma from max-|net-GEX| — replace it "
-        "with a book where the definitions diverge or every wiring check below is blind")
+        "with a book where the definitions diverge or every wiring check below is blind"
+    )
     assert (total_leader, net_leader) == (778.0, 775.0), (
-        "the measured split (778 vs 775) no longer reproduces on this fixture")
+        "the measured split (778 vs 775) no longer reproduces on this fixture"
+    )
 
 
 def test_terrain_names_carry_their_declared_definitions():
@@ -169,9 +170,14 @@ def test_pin_candidate_is_published_only_through_the_qualification_gates():
     from terrain_engine import compute_terrain, price_relations, qualify_pin_candidate
 
     passing = dict(
-        spot=100.0, absolute_gamma_strike=100.2, absolute_gamma_strength_pct=15.0,
-        absolute_gamma_gex_dollars=60_000.0, absolute_gamma_oi=3_000.0,
-        book_oi_total=10_000.0, net_gex_at_spot=5.0, front_dte=0.0,
+        spot=100.0,
+        absolute_gamma_strike=100.2,
+        absolute_gamma_strength_pct=15.0,
+        absolute_gamma_gex_dollars=60_000.0,
+        absolute_gamma_oi=3_000.0,
+        book_oi_total=10_000.0,
+        net_gex_at_spot=5.0,
+        front_dte=0.0,
     )
     strike, blockers = qualify_pin_candidate(**passing)
     assert (strike, blockers) == (100.2, [])
@@ -184,7 +190,8 @@ def test_pin_candidate_is_published_only_through_the_qualification_gates():
     ):
         strike, blockers = qualify_pin_candidate(**{**passing, **patch})
         assert strike is None and gate in blockers, (
-            f"the {gate} gate did not withhold the pin claim: blockers={blockers}")
+            f"the {gate} gate did not withhold the pin claim: blockers={blockers}"
+        )
     # The real book, valued at its capture (2026-10-07 12:32 ET): gamma at spot is -$2.44B, so the
     # regime gate withholds the claim, and liquidity too -- WITH the reasons; the measured
     # concentration stays.
@@ -195,8 +202,8 @@ def test_pin_candidate_is_published_only_through_the_qualification_gates():
     assert served["pin_candidate"] is None
     assert served["pin_candidate_blockers"] == ["regime", "liquidity"]
     assert snap.absolute_gamma_strike is not None, (
-        "withholding the CLAIM must never delete the measured concentration (deliver, "
-        "never delete)")
+        "withholding the CLAIM must never delete the measured concentration (deliver, never delete)"
+    )
 
 
 def test_every_level_shaped_payload_name_is_declared():
@@ -206,24 +213,30 @@ def test_every_level_shaped_payload_name_is_declared():
 
     chain, spot = _fixture_book()
     published = compute_terrain("SPY", chain, spot, now=NOW).to_dict()
-    payload = published | price_relations(published, spot).to_dict()     # as /api/terrain serves it
+    payload = published | price_relations(published, spot).to_dict()  # as /api/terrain serves it
     declared_terrain = {n for (s, n) in DECLARED if s == "terrain"}
     same = payload.get("same_day")
     assert isinstance(same, dict)
     for key in same:
         if key.endswith(_LEVEL_SUFFIXES) or key in _LEVEL_EXTRAS:
             assert f"same_day.{key}" in declared_terrain, (
-                f"same-day level {key!r} has no declared (definition, chain scope)")
+                f"same-day level {key!r} has no declared (definition, chain scope)"
+            )
     for key in payload:
-        if key.endswith(("_state", "_range", "_blockers")):   # states, ranges and reasons, not levels
+        if key.endswith(
+            ("_state", "_range", "_blockers")
+        ):  # states, ranges and reasons, not levels
             continue
         if key.endswith(_LEVEL_SUFFIXES) or key in _LEVEL_EXTRAS:
             assert key in declared_terrain or key in _SINGLE_SURFACE_FULL_BOOK, (
                 f"terrain payload publishes level-shaped {key!r} with no declared "
-                f"(definition, chain scope) — declare it in DECLARED before shipping")
+                f"(definition, chain scope) — declare it in DECLARED before shipping"
+            )
     # every declared terrain name really is published (a stale declaration is a lie too)
     for name in declared_terrain:
         if name.startswith("same_day."):
-            assert name.split(".", 1)[1] in same, f"declared same-day name {name!r} is not published"
+            assert name.split(".", 1)[1] in same, (
+                f"declared same-day name {name!r} is not published"
+            )
         else:
             assert name in payload, f"declared terrain name {name!r} is not published"

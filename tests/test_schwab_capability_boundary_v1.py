@@ -12,6 +12,7 @@ placeholder credentials; `/api/health` publishes the capability from the capture
 (the daemon is the only Schwab client), so health can never advertise a Schwab connection that is
 not open.
 """
+
 from __future__ import annotations
 
 import os
@@ -39,23 +40,32 @@ def _blocked(**env: str) -> bool:
     """config.schwab_live_blocked_for() in a fresh interpreter whose environment holds exactly
     `env` of the Schwab settings (each test states the situation it is testing)."""
     base = {k: v for k, v in os.environ.items() if k not in SCHWAB_ENV}
-    done = subprocess.run([sys.executable, "-c", "import config; print(config.schwab_live_blocked_for())"],
-                          cwd=REPO, env={**base, **env}, capture_output=True, text=True, timeout=120)
+    done = subprocess.run(
+        [sys.executable, "-c", "import config; print(config.schwab_live_blocked_for())"],
+        cwd=REPO,
+        env={**base, **env},
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
     assert done.returncode == 0, done.stderr
     return done.stdout.strip() == "True"
 
 
 # ==================================================== the capability gate and fail-closed
 
+
 def test_absent_credentials_block_live_schwab():
     """PROOF 4a. Absent credentials block: with none, no client is built and no call goes out
     unauthenticated."""
     assert _blocked() is True, "no credentials must block live Schwab"
     assert schwab_live_blocked_for(api_key="", app_secret="") is True
-    assert _blocked(SCHWAB_API_KEY=LIVE_KEY, SCHWAB_APP_SECRET=LIVE_SECRET) is False, \
+    assert _blocked(SCHWAB_API_KEY=LIVE_KEY, SCHWAB_APP_SECRET=LIVE_SECRET) is False, (
         "PROOF 3: live credentials must NOT be blocked"
-    assert _blocked(SCHWAB_API_KEY=LIVE_KEY, SCHWAB_APP_SECRET=LIVE_SECRET, ED_CI_OFFLINE="1") is True, \
-        "CI offline must still block"
+    )
+    assert (
+        _blocked(SCHWAB_API_KEY=LIVE_KEY, SCHWAB_APP_SECRET=LIVE_SECRET, ED_CI_OFFLINE="1") is True
+    ), "CI offline must still block"
     # explicit non-placeholder args stay usable for unit tests (unchanged contract)
     assert schwab_live_blocked_for(api_key=LIVE_KEY, app_secret=LIVE_SECRET) is False
 
@@ -71,9 +81,8 @@ def test_an_unavailable_capability_cannot_serve_live_data():
     assert "UNAVAILABLE" in state.message, state.message
 
 
-
-
 # ================================================================= app availability
+
 
 def test_health_reports_the_daemons_schwab_socket_and_the_app_stays_ok():
     """PROOF 1c/2. The app is `ok` while Schwab is UNAVAILABLE, and health says which. Schwab is
@@ -83,14 +92,19 @@ def test_health_reports_the_daemons_schwab_socket_and_the_app_stays_ok():
     payload = server.health()
     assert payload["status"] == "ok", "a vendor outage must not make the application unhealthy"
     assert payload["capabilities"] == {
-        "schwab": "UNAVAILABLE", "schwab_reason": "the capture daemon's heartbeat is not current"}
+        "schwab": "UNAVAILABLE",
+        "schwab_reason": "the capture daemon's heartbeat is not current",
+    }
     assert payload["watchlist_tickers"] is None
 
-    lmp.record_feed_heartbeat(capture.Daemon(MessageBus(), HealthRegistry(), ["SPY", "$SPX"]).status(time.time()))
+    lmp.record_feed_heartbeat(
+        capture.Daemon(MessageBus(), HealthRegistry(), ["SPY", "$SPX"]).status(time.time())
+    )
     payload = server.health()
     assert payload["capabilities"] == {
         "schwab": "UNAVAILABLE",
-        "schwab_reason": "NOT CONNECTED: the stream is logging in, or its connection has just ended"}
+        "schwab_reason": "NOT CONNECTED: the stream is logging in, or its connection has just ended",
+    }
 
     now = time.time()
     lmp.record_feed_heartbeat({"ts": now, "schwab_socket_open": True, "watchlist": ["SPY", "$SPX"]})
@@ -98,5 +112,3 @@ def test_health_reports_the_daemons_schwab_socket_and_the_app_stays_ok():
     assert payload["status"] == "ok"
     assert payload["capabilities"] == {"schwab": "AVAILABLE"}
     assert payload["watchlist_tickers"] == 2
-
-

@@ -1,9 +1,10 @@
 """Trade Desk > Desk: the server contract it reads.
 
-  - /api/bars1m rolls 1m bars to the one global timeframe, now including 30m, and serves up to
-    12,000 1m rows -- measured 2026-09-25 at ~400 banked SPY rows per session, so the old
-    3,000 cap gave the D timeframe seven daily bars instead of the 20 sessions it shows.
+- /api/bars1m rolls 1m bars to the one global timeframe, now including 30m, and serves up to
+  12,000 1m rows -- measured 2026-09-25 at ~400 banked SPY rows per session, so the old
+  3,000 cap gave the D timeframe seven daily bars instead of the 20 sessions it shows.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -20,15 +21,23 @@ ET = ZoneInfo("America/New_York")
 
 def _bars(start: datetime, minutes: int) -> list[dict]:
     t0 = start.astimezone(timezone.utc).timestamp()
-    return [{"t": t0 + 60 * i, "o": 100 + i, "h": 100.5 + i, "l": 99.5 + i, "c": 100.25 + i, "v": 10}
-            for i in range(minutes)]
+    return [
+        {"t": t0 + 60 * i, "o": 100 + i, "h": 100.5 + i, "l": 99.5 + i, "c": 100.25 + i, "v": 10}
+        for i in range(minutes)
+    ]
 
 
 def test_thirty_minute_rollup_is_first_open_max_high_min_low_last_close():
     out = srv.aggregate_bars(_bars(datetime(2026, 9, 25, 9, 30, tzinfo=ET), 60), "30")
     assert len(out) == 2
     first, second = out
-    assert (first["o"], first["h"], first["l"], first["c"], first["v"]) == (100, 129.5, 99.5, 129.25, 300)
+    assert (first["o"], first["h"], first["l"], first["c"], first["v"]) == (
+        100,
+        129.5,
+        99.5,
+        129.25,
+        300,
+    )
     assert (second["o"], second["c"]) == (130, 159.25)
     assert second["t"] - first["t"] == 1800
 
@@ -44,9 +53,16 @@ def test_bars_route_accepts_30m_and_twelve_thousand_rows_and_nothing_beyond():
 
 def test_equity_microstructure_serves_the_engines_tick_rule_flow_labelled_proxy():
     client = TestClient(srv.app)
-    d = client.get("/api/order-flow/microstructure", params={"ticker": "SPY", "venue": "NYSE_BOOK"}).json()
+    d = client.get(
+        "/api/order-flow/microstructure", params={"ticker": "SPY", "venue": "NYSE_BOOK"}
+    ).json()
     flow = d["flow"]
-    assert set(flow) >= {"tape_pressure_30s", "tape_pressure_2m", "tape_pressure_5m", "cum_delta_proxy"}
+    assert set(flow) >= {
+        "tape_pressure_30s",
+        "tape_pressure_2m",
+        "tape_pressure_5m",
+        "cum_delta_proxy",
+    }
     assert flow["classification"]["tape_pressure_5m"] == "PROXY"
     assert flow["native_aggressor_available"] is False
 
@@ -58,6 +74,7 @@ def test_every_shipped_page_script_parses():
     import shutil
     import subprocess
     import pytest
+
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is not installed")

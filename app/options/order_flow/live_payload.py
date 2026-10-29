@@ -4,6 +4,7 @@ Consumes ``OrderFlowEngine.compute`` (the live book + tape authority) and does
 not re-walk the book. Tape/CVD fields are PROXY reconstructions — Schwab L1
 has no native aggressor.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -53,11 +54,16 @@ def options_live_payload(contract: str, now: float, product: "str | None") -> di
     top = option_top(contract)
     quote_ms = top.get("quote_time_ms") if isinstance(top, dict) else None
     top_label, top_outage = lmp.live_state(contract, "LEVELONE_OPTIONS", now, product)
-    of = OrderFlowEngine().compute({"content": items,
-                                    "top": top,
-                                    "book_live": lmp.feed_live_for(contract, "OPTIONS_BOOK", now, product),
-                                    "exchange_quote_ts": quote_ms / 1000.0 if quote_ms is not None else None},
-                                   now=now, ticker=contract)
+    of = OrderFlowEngine().compute(
+        {
+            "content": items,
+            "top": top,
+            "book_live": lmp.feed_live_for(contract, "OPTIONS_BOOK", now, product),
+            "exchange_quote_ts": quote_ms / 1000.0 if quote_ms is not None else None,
+        },
+        now=now,
+        ticker=contract,
+    )
     book = dict(of["book_microstructure"])
     book["flow"] = flow_block(of)
     book["top_outage"], book["top_feed_label"] = top_outage, top_label

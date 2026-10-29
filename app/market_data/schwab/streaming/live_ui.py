@@ -28,6 +28,7 @@ Delivery is latest-value-per-symbol per client (conflation, as Lightstreamer MER
 LSEG conflated feeds do): a slow browser gets the newest row for each symbol it is behind
 on, never a queue of stale ones, and never loses a symbol's only update.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -44,8 +45,12 @@ log = logging.getLogger(__name__)
 
 #: The browser connects to this port on the console's own host name. Binds like the console
 #: (0.0.0.0): the page is served to whatever address the operator opened it on.
-LIVE_UI_HOST = os.environ.get("ED_LIVE_UI_HOST", "0.0.0.0")  # caps-ok: operator bind config with its declared default, not market data
-LIVE_UI_PORT = int(os.environ.get("ED_LIVE_UI_PORT", "8800"))  # caps-ok: operator port config with its declared default, not market data
+LIVE_UI_HOST = os.environ.get(
+    "ED_LIVE_UI_HOST", "0.0.0.0"
+)  # caps-ok: operator bind config with its declared default, not market data
+LIVE_UI_PORT = int(
+    os.environ.get("ED_LIVE_UI_PORT", "8800")
+)  # caps-ok: operator port config with its declared default, not market data
 #: feed verdict + row beat cadence (the heartbeat that keeps "live" honest)
 HEARTBEAT_SEC = 1.0
 
@@ -56,21 +61,30 @@ class _Client:
     def __init__(self, ws) -> None:
         self.ws = ws
         self.symbols: frozenset[str] = frozenset()
-        self.pending: set[str] = set()      # symbols changed since the last send
-        self.identity: list[dict] | None = None   # the last subscribe's answer, not yet sent
+        self.pending: set[str] = set()  # symbols changed since the last send
+        self.identity: list[dict] | None = None  # the last subscribe's answer, not yet sent
         self.wake = asyncio.Event()
 
 
 class LiveUiServer:
-    def __init__(self, heartbeat_fn, stats: dict, record_heartbeat=lmp.record_feed_heartbeat,
-                 clock=time.time) -> None:
+    def __init__(
+        self, heartbeat_fn, stats: dict, record_heartbeat=lmp.record_feed_heartbeat, clock=time.time
+    ) -> None:
         self.heartbeat_fn = heartbeat_fn
-        self.clock = clock                           # the time each row is finished at, and each beat
-        self.record_heartbeat = record_heartbeat     # where the daemon keeps its own record of each beat
+        self.clock = clock  # the time each row is finished at, and each beat
+        self.record_heartbeat = (
+            record_heartbeat  # where the daemon keeps its own record of each beat
+        )
         self.stats = stats
         self.clients: set[_Client] = set()
-        stats.update(clients=0, rows_sent=0, frames_sent=0,
-                     beat_send_failures=0, listening=None, last_send_ms=None)
+        stats.update(
+            clients=0,
+            rows_sent=0,
+            frames_sent=0,
+            beat_send_failures=0,
+            listening=None,
+            last_send_ms=None,
+        )
 
     # -- plane side -------------------------------------------------------------------
 
@@ -130,8 +144,8 @@ class LiveUiServer:
                 if k not in keys:
                     keys.append(k)
             c.symbols = frozenset(keys)
-            c.identity = identity            # what each asked-for symbol is, before its rows
-            c.pending = set(keys)            # snapshot: the current row for each, now
+            c.identity = identity  # what each asked-for symbol is, before its rows
+            c.pending = set(keys)  # snapshot: the current row for each, now
             c.wake.set()
 
     async def serve_client(self, ws) -> None:
@@ -170,7 +184,8 @@ class LiveUiServer:
                     rows = [live_price_rows.price_row(s, now) for s in sorted(c.symbols)]
                     await asyncio.wait_for(
                         self._send(c, {"type": "feed", "feed": feed, "rows": rows}),
-                        timeout=HEARTBEAT_SEC)
+                        timeout=HEARTBEAT_SEC,
+                    )
                 except asyncio.TimeoutError:
                     self.stats["beat_send_failures"] += 1
                     log.warning("live ui: a browser stopped reading; dropping it")
@@ -182,10 +197,16 @@ class LiveUiServer:
             await asyncio.sleep(HEARTBEAT_SEC)
 
 
-async def serve_live_ui(stop: asyncio.Event, *, heartbeat_fn,
-                        host: str = LIVE_UI_HOST, port: int = LIVE_UI_PORT,
-                        stats: "dict | None" = None, record_heartbeat=lmp.record_feed_heartbeat,
-                        clock=time.time) -> None:
+async def serve_live_ui(
+    stop: asyncio.Event,
+    *,
+    heartbeat_fn,
+    host: str = LIVE_UI_HOST,
+    port: int = LIVE_UI_PORT,
+    stats: "dict | None" = None,
+    record_heartbeat=lmp.record_feed_heartbeat,
+    clock=time.time,
+) -> None:
     """Run until `stop` is set. Each beat is recorded with `record_heartbeat` (the daemon's own
     plane)."""
     from websockets.asyncio.server import serve
@@ -195,8 +216,15 @@ async def serve_live_ui(stop: asyncio.Event, *, heartbeat_fn,
     lmp.add_row_listener(srv.on_row)
     tasks = [asyncio.create_task(srv.beat_loop())]
     try:
-        async with serve(srv.serve_client, host, port, max_size=None, compression=None,
-                         ping_interval=20, ping_timeout=20) as server:
+        async with serve(
+            srv.serve_client,
+            host,
+            port,
+            max_size=None,
+            compression=None,
+            ping_interval=20,
+            ping_timeout=20,
+        ) as server:
             bound = server.sockets[0].getsockname()[1]  # the port taken (port 0: the system's pick)
             stats["listening"] = f"ws://{host}:{bound}"
             log.info("live ui: serving price rows to browsers on ws://%s:%s", host, bound)

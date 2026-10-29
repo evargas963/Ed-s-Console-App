@@ -48,17 +48,30 @@ def test_a_contract_is_priced_to_its_own_settlement_whatever_the_ticker():
     from pathlib import Path
 
     from math_levels import contract_inputs
+
     fx = Path(__file__).parent / "fixtures"
-    spx = json.loads((fx / "real_spx_chain_contracts_2026_09_28.json").read_text(encoding="utf-8"))["contracts"]
+    spx = json.loads((fx / "real_spx_chain_contracts_2026_09_28.json").read_text(encoding="utf-8"))[
+        "contracts"
+    ]
     am = [c for c in spx if c["settlementType"] == "A"]
     pm = [c for c in spx if c["settlementType"] == "P"]
-    tsla = json.loads((fx / "real_tsla_complete_chain_strike_range_all.json").read_text(encoding="utf-8"))
-    equity = [dict(c, openInterest=100, expirationDate="2026-10-16T20:00:00.000+00:00")   # stand-in: its OI and date
-              for c in tsla["chain"] if c.get("volatility")][:4]
+    tsla = json.loads(
+        (fx / "real_tsla_complete_chain_strike_range_all.json").read_text(encoding="utf-8")
+    )
+    equity = [
+        dict(
+            c, openInterest=100, expirationDate="2026-10-16T20:00:00.000+00:00"
+        )  # stand-in: its OI and date
+        for c in tsla["chain"]
+        if c.get("volatility")
+    ][:4]
     assert am and pm and equity and all(c["settlementType"] == "P" for c in equity)
 
     thu_close = datetime(2026, 10, 15, 15, 30, tzinfo=ET)
-    fri_open, fri_close = datetime(2026, 10, 16, 9, 30, tzinfo=ET), datetime(2026, 10, 16, 16, 0, tzinfo=ET)
+    fri_open, fri_close = (
+        datetime(2026, 10, 16, 9, 30, tzinfo=ET),
+        datetime(2026, 10, 16, 16, 0, tzinfo=ET),
+    )
     t_am = contract_inputs(am, now=thu_close)[0][0][3]
     t_pm = contract_inputs(pm, now=thu_close)[0][0][3]
     assert round(t_am * 365 * 24, 2) == round((fri_open - thu_close).total_seconds() / 3600, 2)

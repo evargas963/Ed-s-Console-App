@@ -10,6 +10,7 @@ a fixed clock: 2026-10-07 20:00 ET, after that day's option close, a day Schwab'
 was captured for. STAND-INS (named): the token files; the transport the client a test builds is
 given (to the stand-in's host), named in that test.
 """
+
 from __future__ import annotations
 
 import json
@@ -50,21 +51,33 @@ def _asked(schwab: LocalSchwab) -> list:
 def _every_request(client) -> list:
     """Each kind of request the daemon sends Schwab, as it sends it: the stream's login first
     asks for the user's preferences (schwab-py StreamClient.login)."""
-    return [lambda: client.get_user_preferences(),
-            lambda: client.get_option_expiration_chain("SPY"),
-            lambda: sc.safe_get_chain(client, "SPY", strike_range="ALL"),
-            lambda: sc.safe_get_quotes(client, ["SPY"]),
-            lambda: client.get_price_history_every_minute("SPY"),
-            lambda: client.get_market_hours([client.MarketHours.Market.EQUITY])]
+    return [
+        lambda: client.get_user_preferences(),
+        lambda: client.get_option_expiration_chain("SPY"),
+        lambda: sc.safe_get_chain(client, "SPY", strike_range="ALL"),
+        lambda: sc.safe_get_quotes(client, ["SPY"]),
+        lambda: client.get_price_history_every_minute("SPY"),
+        lambda: client.get_market_hours([client.MarketHours.Market.EQUITY]),
+    ]
 
 
 def _new_sign_in(token_path, access: str) -> int:
     """A new sign-in saved to the token file by the writer of every sign-in python
     reauth_schwab.py saves (sc.write_token_file_atomically): its creation time."""
     created = int(time.time()) + 1
-    sc.write_token_file_atomically(str(token_path), {"creation_timestamp": created, "token": {
-        "access_token": access, "refresh_token": "r2", "token_type": "Bearer", "expires_in": 1800,
-        "expires_at": int(time.time() + 3600)}})
+    sc.write_token_file_atomically(
+        str(token_path),
+        {
+            "creation_timestamp": created,
+            "token": {
+                "access_token": access,
+                "refresh_token": "r2",
+                "token_type": "Bearer",
+                "expires_in": 1800,
+                "expires_at": int(time.time() + 3600),
+            },
+        },
+    )
     return created
 
 
@@ -85,9 +98,14 @@ class _Turns(threading.Event):
 
 def _sweep(tmp_path):
     sqlite3.connect(tmp_path / "ed_console.db").close()
-    return cch.ChainSweep(tmp_path / "ed_console.db", ["SPY"], lambda topic, msg: None,
-                          clock=lambda: _AFTER_THE_CLOSE,
-                          failures=CaptureWriter(tmp_path / "stream_capture.db"), streamed=lambda symbol: None)
+    return cch.ChainSweep(
+        tmp_path / "ed_console.db",
+        ["SPY"],
+        lambda topic, msg: None,
+        clock=lambda: _AFTER_THE_CLOSE,
+        failures=CaptureWriter(tmp_path / "stream_capture.db"),
+        streamed=lambda symbol: None,
+    )
 
 
 def _work(sweep, schwab_client, turns: int) -> bool:
@@ -148,11 +166,13 @@ def test_a_new_sign_in_saved_while_signed_in_is_taken_when_the_refresh_is_due(tm
     refresh: no token request, the request carries the new token, the token file still holds it."""
     schwab = LocalSchwab()
     try:
-        client = schwab.client(tmp_path)                   # the old sign-in, an hour from expiry
+        client = schwab.client(tmp_path)  # the old sign-in, an hour from expiry
         token = tmp_path / "schwab_token.json"
         created = _new_sign_in(token, "fresh")
         client.get_option_expiration_chain("SPY")
-        client.session.token["expires_at"] = int(time.time()) + 100   # the old token now in its refresh window
+        client.session.token["expires_at"] = (
+            int(time.time()) + 100
+        )  # the old token now in its refresh window
         resp = client.get_option_expiration_chain("SPY")
     finally:
         schwab.close()
@@ -178,17 +198,37 @@ with sc.token_file_lock(path):
     sc.write_token_file_atomically(path, payload)
 sys.exit(3 if (now.st_mtime_ns, now.st_ino) != (seen.st_mtime_ns, seen.st_ino) else 0)
 """
-_FRESH = {"creation_timestamp": int(time.time()) + 1, "token": {
-    "access_token": "fresh", "refresh_token": "r2", "token_type": "Bearer", "expires_in": 1800,
-    "expires_at": int(time.time() + 3600)}}
+_FRESH = {
+    "creation_timestamp": int(time.time()) + 1,
+    "token": {
+        "access_token": "fresh",
+        "refresh_token": "r2",
+        "token_type": "Bearer",
+        "expires_in": 1800,
+        "expires_at": int(time.time() + 3600),
+    },
+}
 
 
 def _saving(token) -> subprocess.Popen:
     """The other process, holding the token file's lock once this returns, saving a sign-in newer
     than the one the file holds."""
-    newer = {**_FRESH, "creation_timestamp": json.loads(token.read_text())["creation_timestamp"] + 1}
-    saver = subprocess.Popen([sys.executable, "-c", _SAVER, str(Path(__file__).resolve().parent.parent),
-                              str(token), json.dumps(newer)], stdout=subprocess.PIPE, text=True)
+    newer = {
+        **_FRESH,
+        "creation_timestamp": json.loads(token.read_text())["creation_timestamp"] + 1,
+    }
+    saver = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            _SAVER,
+            str(Path(__file__).resolve().parent.parent),
+            str(token),
+            json.dumps(newer),
+        ],
+        stdout=subprocess.PIPE,
+        text=True,
+    )
     assert saver.stdout.readline().strip() == "held"
     return saver
 
@@ -200,7 +240,7 @@ def test_a_refresh_due_while_a_sign_in_is_being_saved_takes_it_and_never_writes_
     schwab = LocalSchwab()
     token = tmp_path / "schwab_token.json"
     try:
-        client = schwab.client(tmp_path, 100)              # the old sign-in, in its refresh window
+        client = schwab.client(tmp_path, 100)  # the old sign-in, in its refresh window
         saver = _saving(token)
         client.get_option_expiration_chain("SPY")
         assert saver.wait(30) == 0, "the token file was written while a sign-in being saved held it"
@@ -217,10 +257,11 @@ def test_a_client_built_while_a_sign_in_is_being_saved_holds_that_sign_in(tmp_pa
     schwab = LocalSchwab()
     token = tmp_path / "schwab_token.json"
     try:
-        schwab.client(tmp_path)                            # the old sign-in, saved before
+        schwab.client(tmp_path)  # the old sign-in, saved before
         saver = _saving(token)
-        client = sc.client_from_token_file_atomic(str(token), "k", "s",
-                                                  transport=_ToLocal(schwab.server.server_address[1]))
+        client = sc.client_from_token_file_atomic(
+            str(token), "k", "s", transport=_ToLocal(schwab.server.server_address[1])
+        )
         held = client.token_metadata.token["access_token"]
         assert saver.wait(30) == 0
         client.get_option_expiration_chain("SPY")
@@ -282,7 +323,9 @@ def test_a_token_endpoint_that_cannot_be_reached_is_not_a_refusal(tmp_path):
     assert client.session.refusal() is None
 
 
-def test_the_chain_sweep_asks_nothing_while_signed_out_and_goes_on_after_a_new_sign_in(tmp_path, caplog):
+def test_the_chain_sweep_asks_nothing_while_signed_out_and_goes_on_after_a_new_sign_in(
+    tmp_path, caplog
+):
     """The daemon's chain sweep over SPY while Schwab refuses the sign-in: its first round meets
     the refusal (one POST), then it only looks, 50 times, sending nothing and logging nothing more
     (a round per look would log every request's failure); a new sign-in saved, it asks Schwab."""
@@ -292,7 +335,9 @@ def test_the_chain_sweep_asks_nothing_while_signed_out_and_goes_on_after_a_new_s
         client = schwab.client(tmp_path, 100)
         sweep = _sweep(tmp_path)
         with caplog.at_level(logging.WARNING):
-            assert _work(sweep, lambda: client, 50), "the sweep never stopped to look: it kept asking"
+            assert _work(sweep, lambda: client, 50), (
+                "the sweep never stopped to look: it kept asking"
+            )
         first_round = len(caplog.records)
         assert (_posts(schwab), _asked(schwab)) == (1, [])
         caplog.clear()
@@ -335,12 +380,18 @@ def test_a_refused_sign_in_is_why_the_screen_says_the_levels_are_not_live(tmp_pa
         refused = sweep.waiting
         daemon = capture.Daemon(MessageBus(), HealthRegistry(), ["SPY"])
         daemon.chains = sweep
-        noon, evening = datetime(2026, 10, 7, 12, 0, tzinfo=ET), datetime(2026, 10, 7, 20, 0, tzinfo=ET)
+        noon, evening = (
+            datetime(2026, 10, 7, 12, 0, tzinfo=ET),
+            datetime(2026, 10, 7, 20, 0, tzinfo=ET),
+        )
         past_due = _verdict(daemon, noon.timestamp() - 3600, noon)
         closed = _verdict(daemon, datetime(2026, 10, 7, 15, 0, tzinfo=ET).timestamp(), evening)
         none_yet = _verdict(daemon, None, noon)
-        unknown = _verdict(daemon, datetime(2026, 9, 20, 10, 0, tzinfo=ET).timestamp(),
-                           datetime(2026, 9, 20, 11, 0, tzinfo=ET))
+        unknown = _verdict(
+            daemon,
+            datetime(2026, 9, 20, 10, 0, tzinfo=ET).timestamp(),
+            datetime(2026, 9, 20, 11, 0, tzinfo=ET),
+        )
         _new_sign_in(tmp_path / "schwab_token.json", "fresh")
         assert _work(sweep, lambda: client, 1)
     finally:
@@ -348,13 +399,18 @@ def test_a_refused_sign_in_is_why_the_screen_says_the_levels_are_not_live(tmp_pa
     why = f" — no chain is fetched: {refused}"
     assert "Refresh token is invalid" in refused and refused.endswith("python reauth_schwab.py")
     assert past_due == ("STALE", "levels are 3600s old" + why)
-    assert closed == ("STALE", "this ticker's options are closed and its close values have not been fetched" + why)
+    assert closed == (
+        "STALE",
+        "this ticker's options are closed and its close values have not been fetched" + why,
+    )
     assert none_yet == ("STALE", "no terrain snapshot has been computed yet" + why)
     assert unknown == ("NOT LIVE", "the market session is unknown" + why)
     assert sweep.waiting is None
 
 
-def test_the_chain_sweep_waits_for_a_client_it_cannot_build_and_goes_on_once_built(tmp_path, caplog):
+def test_the_chain_sweep_waits_for_a_client_it_cannot_build_and_goes_on_once_built(
+    tmp_path, caplog
+):
     """The daemon's client holder (capture.one_schwab_client, the real one) while its client
     cannot be built: the real builder's answer for a token file that is not there
     (schwab_client.build_client_from_token), which the holder raises as ConnectionError and
@@ -368,17 +424,27 @@ def test_the_chain_sweep_waits_for_a_client_it_cannot_build_and_goes_on_once_bui
     def build():
         if not token.exists():
             return sc.build_client_from_token(str(token), "LiveLookingKey", "LiveLookingSecret")
-        return sc.SchwabClientState(ok=True, message="", client=sc.client_from_token_file_atomic(
-            str(token), "k", "s", transport=_ToLocal(schwab.server.server_address[1])))
+        return sc.SchwabClientState(
+            ok=True,
+            message="",
+            client=sc.client_from_token_file_atomic(
+                str(token), "k", "s", transport=_ToLocal(schwab.server.server_address[1])
+            ),
+        )
+
     schwab_client = capture.one_schwab_client(build)
     try:
         sweep = _sweep(tmp_path)
         with caplog.at_level(logging.WARNING):
             assert _work(sweep, schwab_client, 20), "the sweep ended or never looked again"
         waits = [r.getMessage() for r in caplog.records]
-        assert len(waits) == 1 and waits[0].startswith("chain sweep waits for the daemon's Schwab client: no Schwab client (")
+        assert len(waits) == 1 and waits[0].startswith(
+            "chain sweep waits for the daemon's Schwab client: no Schwab client ("
+        )
         assert schwab.requests == []
-        assert sweep.waiting.startswith("the daemon holds no Schwab sign-in to ask with (no Schwab client (")
+        assert sweep.waiting.startswith(
+            "the daemon holds no Schwab sign-in to ask with (no Schwab client ("
+        )
         assert sweep.waiting.endswith("python reauth_schwab.py")
         _new_sign_in(token, "fresh")
         assert _work(sweep, schwab_client, 1)
@@ -394,13 +460,26 @@ def test_a_token_file_that_is_not_utf8_text_is_reported_unreadable(tmp_path):
     token = tmp_path / "schwab_token.json"
     token.write_bytes(json.dumps(_FRESH).encode("utf-16"))
     got = sc.inspect_token_file(str(token))
-    assert got.file_exists and not got.json_valid and got.message.startswith("Invalid JSON in token file")
+    assert (
+        got.file_exists
+        and not got.json_valid
+        and got.message.startswith("Invalid JSON in token file")
+    )
 
 
-@pytest.mark.parametrize("held", ["{not a sign-in", "[]", '{"token": "x", "creation_timestamp": 1}',
-                                  '{"token": {}, "creation_timestamp": 1}'],
-                         ids=["not JSON", "JSON, not a sign-in", "a token that is not one", "an empty token"])
-def test_a_token_file_that_cannot_be_read_is_logged_once_and_the_sweep_goes_on(tmp_path, caplog, held):
+@pytest.mark.parametrize(
+    "held",
+    [
+        "{not a sign-in",
+        "[]",
+        '{"token": "x", "creation_timestamp": 1}',
+        '{"token": {}, "creation_timestamp": 1}',
+    ],
+    ids=["not JSON", "JSON, not a sign-in", "a token that is not one", "an empty token"],
+)
+def test_a_token_file_that_cannot_be_read_is_logged_once_and_the_sweep_goes_on(
+    tmp_path, caplog, held
+):
     """Schwab having refused the sign-in, the token file then holding what is not a sign-in: the
     chain sweep keeps looking (each look reads the file for a new sign-in), it is logged once,
     and the sign-in saved after it is taken."""
@@ -413,7 +492,7 @@ def test_a_token_file_that_cannot_be_read_is_logged_once_and_the_sweep_goes_on(t
         token = tmp_path / "schwab_token.json"
         bad = tmp_path / "not_a_sign_in.json"
         bad.write_text(held)
-        bad.replace(token)                                  # saved whole, as every writer saves
+        bad.replace(token)  # saved whole, as every writer saves
         sweep = _sweep(tmp_path)
         with caplog.at_level(logging.WARNING, logger=sc.log.name):
             assert _work(sweep, lambda: client, 20), "the sweep's thread ended"

@@ -11,7 +11,10 @@ from dataclasses import dataclass
 from typing import Any
 
 from math_exposure_core import (
-    bucket_metric, strike_total_oi, strike_total_volume, strike_volume_legs,
+    bucket_metric,
+    strike_total_oi,
+    strike_total_volume,
+    strike_volume_legs,
 )
 from numeric_contract import price_text, schwab_count, schwab_number
 
@@ -23,28 +26,57 @@ THIN_BOOK = 10
 class RankedStrike:
     """One strike of an expiry's ranking: its factor magnitudes (magnitudes) and its score with
     what it is missing (score_magnitudes)."""
+
     factors: dict
     result: dict
 
+
 WRITTEN = {
     "0DTE": {
-        "CHARMM": 0.22, "DGEXM": 0.18, "GEXM": 0.15, "VOL": 0.10, "OI": 0.10,
-        "FLOWM": 0.10, "VANNAM": 0.05, "DEXM": 0.05, "IV": 0.05,
+        "CHARMM": 0.22,
+        "DGEXM": 0.18,
+        "GEXM": 0.15,
+        "VOL": 0.10,
+        "OI": 0.10,
+        "FLOWM": 0.10,
+        "VANNAM": 0.05,
+        "DEXM": 0.05,
+        "IV": 0.05,
     },
     "WEEKLY": {
-        "GEXM": 0.25, "OI": 0.15, "DGEXM": 0.15, "VOL": 0.10, "FLOWM": 0.10,
-        "CHARMM": 0.08, "VANNAM": 0.07, "DEXM": 0.05, "IV": 0.05,
+        "GEXM": 0.25,
+        "OI": 0.15,
+        "DGEXM": 0.15,
+        "VOL": 0.10,
+        "FLOWM": 0.10,
+        "CHARMM": 0.08,
+        "VANNAM": 0.07,
+        "DEXM": 0.05,
+        "IV": 0.05,
     },
     "MONTHLY": {
-        "GEXM": 0.30, "OI": 0.20, "VANNAM": 0.10, "DEXM": 0.10, "DGEXM": 0.08,
-        "VOL": 0.07, "FLOWM": 0.05, "CHARMM": 0.05, "IV": 0.05,
+        "GEXM": 0.30,
+        "OI": 0.20,
+        "VANNAM": 0.10,
+        "DEXM": 0.10,
+        "DGEXM": 0.08,
+        "VOL": 0.07,
+        "FLOWM": 0.05,
+        "CHARMM": 0.05,
+        "IV": 0.05,
     },
 }
 
 _LABEL = {
-    "GEXM": "net gamma", "OI": "open interest", "VOL": "volume", "DEXM": "delta",
-    "VANNAM": "vanna", "IV": "volatility", "CHARMM": "charm",
-    "DGEXM": "change in gamma", "FLOWM": "flow",
+    "GEXM": "net gamma",
+    "OI": "open interest",
+    "VOL": "volume",
+    "DEXM": "delta",
+    "VANNAM": "vanna",
+    "IV": "volatility",
+    "CHARMM": "charm",
+    "DGEXM": "change in gamma",
+    "FLOWM": "flow",
 }
 
 
@@ -105,9 +137,9 @@ def _normalize(present: list[tuple[float, float]]) -> tuple[dict[float, float], 
     return out, span
 
 
-def score_magnitudes(by_strike: dict[float, dict[str, float | None]],
-                     weights: dict[str, float]
-                     ) -> tuple[dict[float, dict[str, Any]], list[str], dict[str, float | None]]:
+def score_magnitudes(
+    by_strike: dict[float, dict[str, float | None]], weights: dict[str, float]
+) -> tuple[dict[float, dict[str, Any]], list[str], dict[str, float | None]]:
     """One score per strike. A missing factor whose weight is above zero blanks that strike.
 
     The third value is p95 − p5 for each scored factor, None when that factor does not vary.
@@ -118,8 +150,7 @@ def score_magnitudes(by_strike: dict[float, dict[str, float | None]],
     spans: dict[str, float | None] = {}
     flat: list[str] = []
     for name in required:
-        present = [(s, by_strike[s][name]) for s in universe
-                   if by_strike[s].get(name) is not None]
+        present = [(s, by_strike[s][name]) for s in universe if by_strike[s].get(name) is not None]
         mapped, span = _normalize(present)
         norm[name] = mapped
         spans[name] = span
@@ -129,10 +160,12 @@ def score_magnitudes(by_strike: dict[float, dict[str, float | None]],
     for strike, factors in by_strike.items():
         if strike not in universe:
             unreported = factors.get("OI") is None or factors.get("VOL") is None
-            why = ("open interest or volume was not reported" if unreported
-                   else "no open interest and no volume")
-            scored[strike] = {"score": None, "missing": [why],
-                              "contributions": [], "factors": []}
+            why = (
+                "open interest or volume was not reported"
+                if unreported
+                else "no open interest and no volume"
+            )
+            scored[strike] = {"score": None, "missing": [why], "contributions": [], "factors": []}
             continue
         missing = [_LABEL[k] for k in required if factors.get(k) is None]
         if missing:
@@ -143,13 +176,23 @@ def score_magnitudes(by_strike: dict[float, dict[str, float | None]],
         for name in required:
             share = weights[name] * norm[name][strike]
             total += share
-            parts.append({
-                "factor": name, "label": _LABEL[name], "raw": factors[name],
-                "normalized": norm[name][strike], "weight": weights[name], "contribution": share,
-            })
+            parts.append(
+                {
+                    "factor": name,
+                    "label": _LABEL[name],
+                    "raw": factors[name],
+                    "normalized": norm[name][strike],
+                    "weight": weights[name],
+                    "contribution": share,
+                }
+            )
         parts.sort(key=lambda p: p["contribution"], reverse=True)
-        scored[strike] = {"score": 100.0 * total, "missing": [], "contributions": parts[:3],
-                          "factors": parts}
+        scored[strike] = {
+            "score": 100.0 * total,
+            "missing": [],
+            "contributions": parts[:3],
+            "factors": parts,
+        }
     return scored, flat, spans
 
 
@@ -167,8 +210,9 @@ def _legs_ok(bucket: dict, call_key: str, put_key: str) -> tuple[float, float] |
     return call, put
 
 
-def magnitudes(bucket: dict, charm: dict | None, iv: float | None, spot: float
-               ) -> dict[str, float | None]:
+def magnitudes(
+    bucket: dict, charm: dict | None, iv: float | None, spot: float
+) -> dict[str, float | None]:
     """The scored magnitudes, plus the signed numbers the columns show."""
     gex = _legs_ok(bucket, "call_gex_1pct", "put_gex_1pct")
     net_gex = bucket_metric(bucket, "net_gex_1pct")
@@ -375,8 +419,9 @@ def _factor_row(part: dict) -> dict:
     }
 
 
-def build_matrix(exposures: dict, charm_by_strike: dict, ivs: dict[float, float | None],
-                 spot: float, dte: float) -> dict:
+def build_matrix(
+    exposures: dict, charm_by_strike: dict, ivs: dict[float, float | None], spot: float, dte: float
+) -> dict:
     """The ranking of one expiry's book: every strike's factors and score and the expiry's colour
     scales. The rows the page shows are drawn from it (window_rows)."""
     name = preset_name(dte)
@@ -393,13 +438,20 @@ def build_matrix(exposures: dict, charm_by_strike: dict, ivs: dict[float, float 
         weights,
     )
     cap = ceiling(weights)
-    peaks = {key: _peak(f[key] for f in mags.values())
-             for key in ("_net_gex", "OI", "_gross", "VOL", "_dex", "_vanna", "IV", "_charm", "_vol_oi")}
-    peaks.update({key: _peak(None if f[key] is None else 1 - f[key] for f in mags.values())
-                  for key in ("_pc_gex", "_pc_vol")})
+    peaks = {
+        key: _peak(f[key] for f in mags.values())
+        for key in ("_net_gex", "OI", "_gross", "VOL", "_dex", "_vanna", "IV", "_charm", "_vol_oi")
+    }
+    peaks.update(
+        {
+            key: _peak(None if f[key] is None else 1 - f[key] for f in mags.values())
+            for key in ("_pc_gex", "_pc_vol")
+        }
+    )
     peaks["score"] = cap
-    universe_n = sum(1 for s in mags if _in_universe(
-        {k: v for k, v in mags[s].items() if not k.startswith("_")}))
+    universe_n = sum(
+        1 for s in mags if _in_universe({k: v for k, v in mags[s].items() if not k.startswith("_")})
+    )
     flat_labels = [_LABEL[k] for k in flat]
     notes = []
     if universe_n < THIN_BOOK:
@@ -415,7 +467,8 @@ def build_matrix(exposures: dict, charm_by_strike: dict, ivs: dict[float, float 
         "notes": notes,
         "slopes": [
             {"label": _LABEL[k], "text": f"{100.0 * weights[k] / span:.2f}"}
-            for k, span in spans.items() if span is not None and span != 0
+            for k, span in spans.items()
+            if span is not None and span != 0
         ],
         "ranked": {strike: RankedStrike(mags[strike], scored[strike]) for strike in mags},
         "peaks": peaks,
