@@ -239,3 +239,28 @@ def test_removing_a_function_nothing_calls_is_proven_by_the_suite(tmp_path):
     base = {**BASE, "calc.py": BASE["calc.py"] + "\n\ndef unused(row):\n    return row['ask']\n"}
     root = _repo(tmp_path, {"calc.py": BASE["calc.py"]}, base=base)
     assert cfb.violations(root, "main") == []
+
+
+USES = "import json\nimport math\nfrom os import path, sep\n\n\ndef spot(row):\n    return math.floor(row['bid'])\n"
+
+
+@pytest.mark.parametrize("before, after", [
+    (USES + "\n\ndef dump(row):\n    return json.dumps(row) + path.sep\n",        # json and path only the removed code used
+     "import math\nfrom os import sep\n\n\ndef spot(row):\n    return math.floor(row['bid'])\n"),
+    (USES + "\n\ndef dump(row):\n    return json.dumps(row)\n", USES.replace("import json\n", "")),
+])
+def test_a_removal_may_drop_the_imports_only_the_removed_code_used(tmp_path, before, after):
+    """Operator 2026-10-28 ("Yes, both"): a removal may also drop the imports that only the removed
+    functions or classes used."""
+    root = _repo(tmp_path, {"calc.py": after}, base={**BASE, "calc.py": before})
+    assert cfb.violations(root, "main") == []
+
+
+@pytest.mark.parametrize("after", [
+    USES.replace("import math\n", ""),                                           # an import still used, dropped
+    "import csv\n" + USES,                                                       # an import added
+])
+def test_a_removal_that_drops_a_used_import_or_adds_one_still_needs_a_test(tmp_path, after):
+    before = USES + "\n\ndef dump(row):\n    return row\n"
+    root = _repo(tmp_path, {"calc.py": after}, base={**BASE, "calc.py": before})
+    assert cfb.violations(root, "main") == [f"product code changed (calc.py) {NEEDS}"]
