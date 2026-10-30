@@ -1,8 +1,8 @@
 """The full-suite command never blocks on the caller's terminal pipe: scripts/run-pytest-full.mjs
 (and the Playwright step in scripts/run-playwright-e2e.mjs) give the child file descriptors on a
-log file, never the terminal, and echo only a bounded tail. These tests drive it with a reader
-that never drains and prove the child still completes, the exit code is exact, the log is kept,
-and the terminal output is bounded."""
+log file, never the terminal, and echo only a bounded tail. One test drives it with a reader that
+never drains and proves the child still completes; the others check, with an ordinary reader,
+that the exit code is exact, the log is kept and the terminal output is bounded."""
 
 from __future__ import annotations
 
@@ -118,7 +118,7 @@ def test_failure_exit_code_is_exact_and_the_log_is_retained(tmp_path):
     # bounded terminal echo: the tail, not the stream — and the failure is visible in it.
     # The bound is BYTES: Windows anonymous pipes hold 4 KiB, and the whole `test:all`
     # footprint (npm banner + E2E step + this step) must fit so a dead reader cannot hold
-    # the exit code hostage. MEASURED: a 6 KB tail blocked the runner behind a dead reader.
+    # the exit code hostage.
     assert "1 failed" in r.stdout and "exit code 1" in r.stdout
     assert len(r.stdout.encode("utf-8")) <= 2300, (
         f"terminal output is not bounded: {len(r.stdout.encode('utf-8'))} bytes"
