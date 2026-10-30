@@ -1,6 +1,6 @@
-"""GET /api/chain: one expiry of the full chain the daemon delivered (strike_range=ALL), every Schwab
-field as sent. A newer streamed open interest or volume replaces the chain's. Gamma, delta, and
-volatility stay the quote the sweep stored.
+"""GET /api/chain: one expiry of the full chain the daemon delivered (strike_range=ALL), every
+Schwab field as sent. A newer streamed open interest or volume replaces the chain's. Gamma, delta,
+and volatility stay the quote the sweep stored.
 
 Through the real code: the levels producer holds the chain (server._publish_levels), the daemon's
 status and pushed option messages reach the console (live_market_plane.record_feed_heartbeat,

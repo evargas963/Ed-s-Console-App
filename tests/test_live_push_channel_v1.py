@@ -318,7 +318,8 @@ def test_option_l1_and_book_update_the_contract_and_report_greeks(feed):
         ofs._on_tick_callback = None
 
 
-#: every sqlite3.connect this process makes while _AUDITING is set, as Python's audit hook reports it
+#: every sqlite3.connect this process makes while _AUDITING is set, as Python's audit hook reports
+#: it
 _OPENED: list = []
 _AUDITING = threading.Event()
 sys.addaudithook(

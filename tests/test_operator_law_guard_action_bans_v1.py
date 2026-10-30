@@ -46,8 +46,10 @@ def test_lock_disable_routes_are_git_and_precommits_own():
     [
         # an empty heredoc inside a longer search command
         "cd tests/fixtures && grep -oiE '.{120}(stand-?in|synthetic|edited).{120}' "
-        "real_cde_complete_chain_half_dollar.json real_options_stream_history_samples.json | head -5; "
-        "python - <<'EOF' 2>/dev/null || true\nEOF\nhead -c 900 real_spy_2026_11_20_chain_and_quotes.json; echo",
+        "real_cde_complete_chain_half_dollar.json real_options_stream_history_samples.json "
+        "| head -5; "
+        "python - <<'EOF' 2>/dev/null || true\nEOF\n"
+        "head -c 900 real_spy_2026_11_20_chain_and_quotes.json; echo",
         "python - <<'EOF'\nEOF\necho ok",
         "python - </dev/null",
         "eval 'python - <<'\"'\"'EOF'\"'\"' 2>/dev/null || true\nEOF\necho \"after python\"'",

@@ -19,8 +19,8 @@ def test_ensure_playwright_ready_passes_when_configured():
     """Fails loudly with AssertionError if Node/npm/Playwright CLI are missing — never skips.
 
     Browser binaries are enforced by `npm run test:e2e` (install chromium + run tests). This test
-    uses install_browsers=False so the full Python suite stays fast; run `python tests/playwright_ready.py`
-    for a full check including chromium install.
+    uses install_browsers=False so the full Python suite stays fast; run
+    `python tests/playwright_ready.py` for a full check including chromium install.
     """
     assert ensure_playwright_ready(install_browsers=False) is None
 

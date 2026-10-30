@@ -85,8 +85,8 @@ def test_a_patch_is_refused_with_each_violation_named(tmp_path):
     assert "server.py:4: an except that catches everything" in text
     assert "server.py:4: an except that swallows the error" in text
     assert (
-        "static/js/page.js:1: a missing value replaced by a literal, an empty catch, or a swallowing .catch"
-        in text
+        "static/js/page.js:1: a missing value replaced by a literal, an empty catch, "
+        "or a swallowing .catch" in text
     )
 
 
@@ -116,7 +116,8 @@ def test_a_patch_already_on_main_is_not_counted_against_a_pr_that_does_not_touch
     _commit(
         root,
         {
-            "server.py": "def spot(row):\n    return row.get('last', 0)\n\n\ndef bid(row):\n    return row['bid']\n",
+            "server.py": "def spot(row):\n    return row.get('last', 0)\n\n\n"
+            "def bid(row):\n    return row['bid']\n",
             **REAL_TEST,
         },
     )
@@ -163,22 +164,26 @@ def test_a_patch_already_on_main_is_not_counted_against_a_pr_that_does_not_touch
         ),
         (
             "server.py",
-            "def spot(s):\n    try:\n        x = float(s)\n    except ValueError:\n        x = 0\n    return x\n",
+            "def spot(s):\n    try:\n        x = float(s)\n    except ValueError:\n"
+            "        x = 0\n    return x\n",
             "an except that swallows the error",
         ),
         (
             "server.py",
-            "def spot(s):\n    try:\n        return float(s)\n    except ValueError:\n        cleanup(s)\n",
+            "def spot(s):\n    try:\n        return float(s)\n    except ValueError:\n"
+            "        cleanup(s)\n",
             "an except that swallows the error",
         ),
         (
             "server.py",
-            "def spot(s):\n    try:\n        return float(s)\n    except Exception:\n        pass\n",
+            "def spot(s):\n    try:\n        return float(s)\n    except Exception:\n"
+            "        pass\n",
             "an except that catches everything",
         ),
         (
             "server.py",
-            "from contextlib import suppress\n\n\ndef spot(d):\n    with suppress(KeyError):\n        return d['k']\n",
+            "from contextlib import suppress\n\n\n"
+            "def spot(d):\n    with suppress(KeyError):\n        return d['k']\n",
             "an error swallowed (`contextlib.suppress`)",
         ),
         (
@@ -210,11 +215,13 @@ def test_each_patch_shape_a_pr_adds_is_refused(tmp_path, path, text, what):
         "def spot(d):\n    try:\n        return d['k']\n    except (ValueError, KeyError) as e:\n"
         "        raise RuntimeError('no k') from e\n",
         # a container started empty, to be filled
-        "def spot(held, tk, bar):\n    held.setdefault(tk, []).append(bar)\n    return held.setdefault(tk, {})\n",
+        "def spot(held, tk, bar):\n    held.setdefault(tk, []).append(bar)\n"
+        "    return held.setdefault(tk, {})\n",
         # a missing value served as missing
         "def spot(x):\n    if x is None:\n        return None\n    return x or None\n",
         # an except that logs and carries on: a retry loop, a failed reprice (the operator's ruling)
-        "def loop():\n    while True:\n        try:\n            connect()\n        except OSError as e:\n"
+        "def loop():\n    while True:\n        try:\n            connect()\n"
+        "        except OSError as e:\n"
         "            log.info('retrying: %s', e)\n",
         "def reprice(tk):\n    try:\n        publish(tk)\n    except Exception as e:\n"
         "        log.warning('reprice failed for %s: %s', tk, e)\n",
@@ -230,7 +237,8 @@ def test_a_line_added_inside_an_old_block_does_not_charge_the_block_to_the_pr(tm
         {
             **BASE,
             "server.py": (
-                "def spot():\n    try:\n        go()\n    except Exception as e:\n        log(e)\n        raise\n"
+                "def spot():\n    try:\n        go()\n    except Exception as e:\n"
+                "        log(e)\n        raise\n"
             ),
         },
     )
@@ -238,7 +246,8 @@ def test_a_line_added_inside_an_old_block_does_not_charge_the_block_to_the_pr(tm
         root,
         {
             "server.py": (
-                "def spot():\n    try:\n        go()\n    except Exception as e:\n        log(e)\n        count()\n        raise\n"
+                "def spot():\n    try:\n        go()\n    except Exception as e:\n"
+                "        log(e)\n        count()\n        raise\n"
             ),
             **REAL_TEST,
         },
@@ -247,7 +256,8 @@ def test_a_line_added_inside_an_old_block_does_not_charge_the_block_to_the_pr(tm
 
 
 def test_a_change_to_comments_and_docstrings_only_is_not_a_product_change(tmp_path):
-    """The same code once comments and docstrings are set aside: nothing for a path test to cover."""
+    """The same code once comments and docstrings are set aside: nothing for a path test to
+    cover."""
     root = _repo(
         tmp_path,
         {
@@ -271,7 +281,10 @@ def test_a_change_to_comments_and_docstrings_only_is_not_a_product_change(tmp_pa
 RUFF_BASE = '[tool.ruff]\ntarget-version = "py313"\n'
 RUFF_UP = RUFF_BASE + '[tool.ruff.lint]\nselect = ["UP"]\n'
 TOOLS_BASE = {**BASE, "pyproject.toml": RUFF_BASE}
-OLD_STYLE = "from typing import Optional\n\n\ndef spot(row: Optional[float]) -> Optional[float]:\n    return row\n"
+OLD_STYLE = (
+    "from typing import Optional\n\n\n"
+    "def spot(row: Optional[float]) -> Optional[float]:\n    return row\n"
+)
 
 
 def _tool_fixed(root: Path, text: str, config: str = RUFF_UP) -> str | None:
@@ -437,8 +450,8 @@ def test_a_code_change_beside_comment_changes_is_a_product_change(tmp_path):
 def test_a_code_change_a_comment_reader_could_miss_is_a_product_change(
     tmp_path, path, before, after
 ):
-    """The pairs differ in code, though a reader that guesses comments from characters reads them the
-    same: each is a change of product code."""
+    """The pairs differ in code, though a reader that guesses comments from characters reads them
+    the same: each is a change of product code."""
     root = _repo(tmp_path, {**BASE, path: before})
     _commit(root, {path: after})
     assert _changed(root) == [path]
@@ -498,8 +511,8 @@ def test_a_product_file_whose_name_git_quotes_is_still_read(tmp_path, path):
 
 @pytest.mark.parametrize("path", ["static/js/page.js", "static/js/my page.js", "static/js/café.js"])
 def test_a_patch_after_a_line_starting_with_plus_plus_is_still_refused_at_its_line(tmp_path, path):
-    """An added `++ x;` reads in the diff as `+++ x;`: it is a line of the file, not a file header, and
-    every name git quotes or ends with a tab is read back as written."""
+    """An added `++ x;` reads in the diff as `+++ x;`: it is a line of the file, not a file header,
+    and every name git quotes or ends with a tab is read back as written."""
     root = _repo(tmp_path, {**BASE, path: "var x = 0;\nvar a = 1;\nvar b = 2;\n"})
     _commit(
         root, {**REAL_TEST, path: "var x = 0;\n++ x;\nvar a = 1;\nvar b = 2;\nvar y = v || 0;\n"}
@@ -592,7 +605,8 @@ def test_a_product_file_replaced_by_a_link_is_a_change(tmp_path):
 
 
 def test_crlf_page_code_reaches_the_reader_as_written(tmp_path):
-    """A template literal's line breaks are the shown string: CRLF against two line feeds is a change."""
+    """A template literal's line breaks are the shown string: CRLF against two line feeds is a
+    change."""
     root = _repo(tmp_path, BASE)
     (root / "static/js/page.js").write_bytes(b"var s = `a\r\nb`;\r\n")
     _git_in(root, "commit", "-q", "-am", "crlf")

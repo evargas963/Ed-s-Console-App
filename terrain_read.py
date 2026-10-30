@@ -13,11 +13,12 @@ Two institutional invariants:
        flip LEVEL is explicitly disclosed as approximate on the line that prints it.
      * confidence NARROW or UNAVAILABLE -> everything is withheld, with the reason stated. This is a
        conservative DECLINE-TO-SPEAK bound, not a finding about the sign: measured against sign
-       reliability, span shows no cliff at the floor (see math_levels.GAMMA_FLIP_MIN_SPAN_PCT). Passing this bound means we are
-       willing to speak; it does not mean the sign is verified.
+       reliability, span shows no cliff at the floor (see math_levels.GAMMA_FLIP_MIN_SPAN_PCT).
+       Passing this bound means we are willing to speak; it does not mean the sign is verified.
      * missing spot, or dealer gamma at spot absent or exactly zero -> withheld, with the reason.
    It never presents a posture derived from a level we know is unreliable (a 40-contract chain
-   placed the flip at 770.35 against a full-chain 745.61), and it never presents a coverage verdict as proof the level is right.
+   placed the flip at 770.35 against a full-chain 745.61), and it never presents a coverage
+   verdict as proof the level is right.
 2. **Absence reads as absence.** A missing level is reported missing, never defaulted to a
    neutral-looking number.
 
@@ -85,7 +86,8 @@ def from_spot_text(distance: float | None, side: str | None) -> str | None:
 
 
 def within(low: float | None, high: float | None, price: float | None) -> bool:
-    """Whether `price` is inside the range from `low` to `high`, either edge included (level_side)."""
+    """Whether `price` is inside the range from `low` to `high`, either edge included
+    (level_side)."""
     return level_side(low, price) in (LEVEL_BELOW, LEVEL_AT) and level_side(high, price) in (
         LEVEL_ABOVE,
         LEVEL_AT,
@@ -241,13 +243,13 @@ def build_terrain_read(
     # What was measured is agreement between the MODELLED +call/-put sign on a truncated window and
     # the MODELLED sign on the full delivered chain — both sides modelled, so this bounds truncation
     # sensitivity, not correctness against real dealer positioning. Agreement improves with width
-    # (79.8% at +/-1% up to 92.7% at +/-15%), but that trend is SUPPORTED, NOT PROVEN: adjacent rungs
-    # overlap, the rungs re-window largely the same chains (paired observations), and no paired test
-    # or power analysis was run. There is no visible threshold effect at the floor, so passing it
-    # certifies nothing. Separately, AT THE FLOOR ONLY, a nearly balanced book (net/gross < 10%) sat
-    # near 50%; whether width rescues such a book is UNMEASURED. It is deliberately NOT gated on
-    # here — changing when advice is withheld is the
-    # operator's call, not a silent threshold edit from one study.
+    # (79.8% at +/-1% up to 92.7% at +/-15%), but that trend is SUPPORTED, NOT PROVEN: adjacent
+    # rungs overlap, the rungs re-window largely the same chains (paired observations), and no
+    # paired test or power analysis was run. There is no visible threshold effect at the floor, so
+    # passing it certifies nothing. Separately, AT THE FLOOR ONLY, a nearly balanced book
+    # (net/gross < 10%) sat near 50%; whether width rescues such a book is UNMEASURED. It is
+    # deliberately NOT gated on here — changing when advice is withheld is the operator's call,
+    # not a silent threshold edit from one study.
     if flip_confidence not in (GAMMA_FLIP_TRUSTED, GAMMA_FLIP_LEVEL_APPROX):
         return _unavailable(
             f"Gamma flip is not trustworthy ({flip_confidence}) — the option chain is too "
@@ -304,7 +306,8 @@ def build_terrain_read(
         )
         # At the middle tier the chain does not reach the measured flip-LEVEL
         # convergence span, so the LEVEL is approximate (~1.4% of spot in the study); the regime
-        # still stands on the at-spot sign, which no span verifies. Say so on the same line the operator reads the number from — a precise
+        # still stands on the at-spot sign, which no span verifies. Say so on the same line the
+        # operator reads the number from — a precise
         # "-0.42%" beside an unqualified level is exactly the overstatement this tier exists to end.
         if flip_confidence == GAMMA_FLIP_LEVEL_APPROX:
             flip_line += (

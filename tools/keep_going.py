@@ -90,7 +90,8 @@ def decide(work_list: str, last: str, in_a_row: int = 1) -> str | None:
     if in_a_row < BEDROCK_AT:
         return why
     return (
-        f"This is stop {in_a_row} refused in a row since the operator last wrote. If you are trying "
+        f"This is stop {in_a_row} refused in a row since the operator last wrote. "
+        "If you are trying "
         "again what already failed, it is not working: do not repeat it. Go to bedrock: write down "
         "why it fails, down to the line of code or data, with "
         "evidence (AGENTS.md First gate 4); then take a different approach, the simplest one that "

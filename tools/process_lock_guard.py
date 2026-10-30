@@ -260,7 +260,8 @@ def _shell_write_dest_paths(st: Statement) -> list[str]:
     elif verb in ("tee", "truncate"):
         dests += positionals
     elif verb in ("sed", "gsed", "perl"):
-        # in-place: -i / -i.bak / a combined short flag carrying 'i' (perl -pi, sed -ni) / --in-place
+        # in-place: -i / -i.bak / a combined short flag carrying 'i' (perl -pi, sed -ni) /
+        # --in-place
         if any(
             (a.startswith("-") and not a.startswith("--") and "i" in a)
             or a == "--in-place"
@@ -369,7 +370,8 @@ def pretooluse_block(tool: str, tool_input: dict, payload_cwd: str = "") -> list
         out.extend(OPL.reset_guard_violations(cmd, ps))
         # Live-checkout invariant #1/#4: PREVENT a git branch-move/commit/reset/merge that
         # TARGETS the production checkout, at the moment of the command (not just at next launch).
-        # Every git invocation in the chain is judged on its own — no laundering by a harmless first.
+        # Every git invocation in the chain is judged on its own — no laundering by a harmless
+        # first.
         out.extend(prod_checkout_git_move_violations(statements))
         out.extend(main_ref_write_violations(statements))
         # Live-checkout invariant #4: a materially-equivalent SHELL write to production app code

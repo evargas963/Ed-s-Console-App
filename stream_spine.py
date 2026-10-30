@@ -76,7 +76,8 @@ CREATE TABLE IF NOT EXISTS stream_bars_raw (
     src TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_sbr_sym_ts ON stream_bars_raw(symbol, bar_start_ms);
--- NEWS_HEADLINE items, verbatim (not in Schwab's Streamer API, docs/schwab/schwab_streamer_api.pdf §1.1 "Services available"; answers code 0).
+-- NEWS_HEADLINE items, verbatim (not in Schwab's Streamer API,
+-- docs/schwab/schwab_streamer_api.pdf §1.1 "Services available"; answers code 0).
 CREATE TABLE IF NOT EXISTS stream_news_raw (
     ts_recv REAL NOT NULL,
     symbol TEXT NOT NULL,
@@ -84,7 +85,8 @@ CREATE TABLE IF NOT EXISTS stream_news_raw (
     src TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_snr_sym_ts ON stream_news_raw(symbol, ts_recv);
--- Schwab's /pricehistory answers, verbatim: one row per series asked (1m, 15m, 1d), the whole answer.
+-- Schwab's /pricehistory answers, verbatim: one row per series asked (1m, 15m, 1d), the whole
+-- answer.
 CREATE TABLE IF NOT EXISTS stream_pricehistory_raw (
     ts_recv REAL NOT NULL,
     symbol TEXT NOT NULL,
@@ -93,7 +95,8 @@ CREATE TABLE IF NOT EXISTS stream_pricehistory_raw (
     src TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_sphr_sym_ts ON stream_pricehistory_raw(symbol, series, ts_recv);
--- Schwab's /markets answers, verbatim: one row per market date asked, its status and the whole answer.
+-- Schwab's /markets answers, verbatim: one row per market date asked, its status and the whole
+-- answer.
 CREATE TABLE IF NOT EXISTS stream_markets_raw (
     ts_recv REAL NOT NULL,
     date TEXT NOT NULL,
@@ -740,11 +743,12 @@ class KeptFailure:
 class WriterStatus:
     """The writer as the heartbeat carries it, counted at commit. `failures`: messages kept in
     stream_write_failures; `held`: messages in memory not yet in the database (queued, taken in
-    the round being written, in the open batch or waiting); `waiting`: those the writer took from the queue to write again while
-    the database refuses writes (each try takes every queued one; those arriving during the pause
-    between tries stay queued until the next), `held_bytes` the memory they take, each counted
-    once when held (_held_size; the cap's measure); `spill`: the spill file being written back
-    (its path, bytes, messages and how many are written back), None when there is none;
+    the round being written, in the open batch or waiting); `waiting`: those the writer took from
+    the queue to write again while the database refuses writes (each try takes every queued one;
+    those arriving during the pause between tries stay queued until the next), `held_bytes` the
+    memory they take, each counted once when held (_held_size; the cap's measure); `spill`: the
+    spill file being written back (its path, bytes, messages and how many are written back), None
+    when there is none;
     `spills_after`: the spill files after it, in order, the last taking new messages;
     `left_on_disk`: spill files a stop or the writer's death left for the next writer,
     with how many records are written back; `lost`: messages neither the
@@ -971,8 +975,8 @@ class _Spill:
         return out
 
     def _unframed(self, at: int, raw: bytes) -> KeptFailure:
-        """Bytes from `at` that make no whole record (a damaged length, or a crash cut a record off),
-        as one KeptFailure: kept as sent, never cut away unrecorded."""
+        """Bytes from `at` that make no whole record (a damaged length, or a crash cut a record
+        off), as one KeptFailure: kept as sent, never cut away unrecorded."""
         return KeptFailure(
             "spill",
             raw.decode("latin-1"),
@@ -1050,9 +1054,9 @@ class CaptureWriter:
     oldest first, then what arrived meanwhile (the newest spill takes it, behind the rest); each
     part of a spill is committed with how far its write-back got, and the file is deleted once all
     of it is in. Spill files found beside the database at start are written back first, each from
-    after its committed parts. A message the spill file cannot take (a full disk) is lost: counted, with
-    when it was received. Only an error outside these ends the thread (dead): what it held in
-    memory and what reaches it after are counted unrecorded."""
+    after its committed parts. A message the spill file cannot take (a full disk) is lost:
+    counted, with when it was received. Only an error outside these ends the thread (dead): what
+    it held in memory and what reaches it after are counted unrecorded."""
 
     def __init__(
         self,
@@ -1607,7 +1611,8 @@ class CaptureWriter:
             os.remove(spill.path)
         except OSError as e:
             log.error(
-                "stream writer: %s written back (%d messages), not deleted, deleted at the next start: %s: %s",
+                "stream writer: %s written back (%d messages), not deleted, deleted at the next "
+                "start: %s: %s",
                 spill.path,
                 spill.messages,
                 type(e).__name__,

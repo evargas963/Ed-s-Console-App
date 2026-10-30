@@ -111,7 +111,8 @@ def _book_magnitudes(live: dict, expiry: str, spot: float) -> dict:
 
 def _nflx_far_book() -> tuple[dict, dict]:
     """NFLX's 2027-12-17 expiry as the levels producer priced it (tests/real_chains.py NFLX,
-    captured 2026-10-07): its book, and each strike's factor magnitudes as the matrix builds them."""
+    captured 2026-10-07): its book, and each strike's factor magnitudes as the matrix builds
+    them."""
     try:
         server._publish_levels(
             "NFLX",

@@ -4,9 +4,10 @@ page fits, the row at the price and each measure's colour scale.
 
 Through the real code: the daemon's status and price row as the console holds them, the levels
 producer (server._publish_levels), the heatmap's and the per-strike panels' answers at a time
-(server.gamma_surface_payload, terrain_strikes_payload, strike_bar_payload). Real data: three SPY chain captures, one expiry each (10-14, 10-15,
-11-20), published as one chain (no single capture spans three expiries), valued on the captures'
-day (2026-10-01 12:00 ET). STAND-IN (named): the live price, the 10-15 capture's spot.
+(server.gamma_surface_payload, terrain_strikes_payload, strike_bar_payload). Real data: three SPY
+chain captures, one expiry each (10-14, 10-15, 11-20), published as one chain (no single capture
+spans three expiries), valued on the captures' day (2026-10-01 12:00 ET). STAND-IN (named): the
+live price, the 10-15 capture's spot.
 """
 
 from __future__ import annotations
@@ -175,7 +176,8 @@ def test_with_no_live_price_the_window_says_it_is_not_around_the_price():
 
 def test_expired_columns_are_drawn_labelled_and_never_counted():
     """On 2026-10-15 the 10-14 column has expired: Auto draws the unexpired columns, Wider and All
-    draw it labelled, and its cells are not counted in the coverage; alone, its chip says EXPIRED."""
+    draw it labelled, and its cells are not counted in the coverage; alone, its chip says
+    EXPIRED."""
     later = datetime(2026, 10, 15, 12, 0, tzinfo=ET)
     auto = _heat(later, cols=3)
     assert [e["expiry"] for e in auto["expirations"]] == ["2026-10-15", "2026-11-20"]
