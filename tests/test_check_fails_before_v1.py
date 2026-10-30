@@ -392,6 +392,39 @@ def test_a_product_file_replaced_by_a_link_still_needs_a_test(tmp_path):
     ]
 
 
+RUFF_BASE = '[tool.ruff]\ntarget-version = "py313"\n[tool.ruff.lint]\nselect = ["F401"]\n'
+#: E741 (an ambiguous name) has no fix of ruff's own: the rename is a hand edit
+AMBIGUOUS = "def spot(rows):\n    for l in rows:\n        return l['bid']\n"
+RENAMED = "def spot(rows):\n    for row in rows:\n        return row['bid']\n"
+
+
+def test_a_change_made_only_for_a_rule_the_pr_turns_on_is_proven_by_the_suite(tmp_path):
+    """Operator 2026-10-30: a refactor a newly selected ruff rule asks for, behaviour unchanged, is
+    proven by the full suite and the browser tests, as a deletion is."""
+    base = {**BASE, "calc.py": AMBIGUOUS, "pyproject.toml": RUFF_BASE}
+    selects = RUFF_BASE.replace('["F401"]', '["F401", "E741"]')
+    root = _repo(tmp_path, {"pyproject.toml": selects, "calc.py": RENAMED}, base=base)
+    assert cfb.violations(root, "main") == []
+
+
+@pytest.mark.parametrize(
+    "pr",
+    [
+        {"calc.py": RENAMED},  # no rule newly selected
+        {"pyproject.toml": "E741", "calc.py": AMBIGUOUS.replace("'bid'", "'last'")},  # rule unmet
+    ],
+    ids=["no-new-rule", "rule-still-broken"],
+)
+def test_a_change_beyond_what_a_newly_selected_rule_asks_still_needs_a_test(tmp_path, pr):
+    base = {**BASE, "calc.py": AMBIGUOUS, "pyproject.toml": RUFF_BASE}
+    if "pyproject.toml" in pr:
+        pr = {**pr, "pyproject.toml": RUFF_BASE.replace('["F401"]', '["F401", "E741"]')}
+    root = _repo(tmp_path, pr, base=base)
+    assert cfb.violations(root, "main") == [
+        "product code changed (calc.py) but no end-to-end path test (tests/test_data_path_*.py or tests/e2e/*.spec.js) changed"
+    ]
+
+
 def test_removing_a_function_nothing_calls_is_proven_by_the_suite(tmp_path):
     base = {**BASE, "calc.py": BASE["calc.py"] + "\n\ndef unused(row):\n    return row['ask']\n"}
     root = _repo(tmp_path, {"calc.py": BASE["calc.py"]}, base=base)
