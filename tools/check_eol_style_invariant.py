@@ -17,9 +17,9 @@ Two refusals:
 Exemptions are read from git, never guessed: binary blobs and paths marked `-text`.
 
 Usage:
-    python tools/check_eol_style_invariant.py                    # staged changes (pre-commit)
-    python tools/check_eol_style_invariant.py --base origin/main # a pull request's changes (CI)
-    python tools/check_eol_style_invariant.py --measure          # worktree vs HEAD, reports only
+    python -m tools.check_eol_style_invariant                    # staged changes (pre-commit)
+    python -m tools.check_eol_style_invariant --base origin/main # a pull request's changes (CI)
+    python -m tools.check_eol_style_invariant --measure          # worktree vs HEAD, reports only
 """
 
 from __future__ import annotations

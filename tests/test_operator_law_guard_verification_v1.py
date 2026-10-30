@@ -7,15 +7,13 @@ look like it.
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 import pytest
 
-REPO = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO / "tools"))
+from tools import operator_law_guard as G
 
-import operator_law_guard as G  # noqa: E402
+REPO = Path(__file__).resolve().parent.parent
 
 
 # ── unrecoverable trees ───────────────────────────────────────────────────────────────

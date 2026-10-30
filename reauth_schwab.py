@@ -19,10 +19,6 @@ from __future__ import annotations
 import os
 import sys
 import traceback
-from pathlib import Path
-
-APP_DIR = Path(__file__).parent.resolve()
-sys.path.insert(0, str(APP_DIR))
 
 from config import build_config, load_dotenv_file
 from schwab_client import (

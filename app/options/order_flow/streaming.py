@@ -33,6 +33,8 @@ import time
 from typing import Any
 from collections.abc import Callable
 
+from websockets.asyncio.client import connect
+
 from instrument_identity import ticker_storage_key
 import push_changes
 from app.options.order_flow import history as recent
@@ -45,14 +47,11 @@ from app.options.order_flow.state import (
 )
 
 import live_market_plane as _lmp
+from app.market_data.schwab.streaming.live_push import LIVE_PUSH_HOST, LIVE_PUSH_PORT
+from app.market_data.schwab.streaming.live_ui import LIVE_UI_PORT
 from time_et import record_markets
 
 log = logging.getLogger(__name__)
-
-#: The daemon's live push endpoint (app.market_data.schwab.streaming.live_push), the feed's
-#: (start_order_flow_stream -> _feed_loop).
-from app.market_data.schwab.streaming.live_push import LIVE_PUSH_HOST, LIVE_PUSH_PORT
-from app.market_data.schwab.streaming.live_ui import LIVE_UI_PORT
 
 LIVE_PUSH_URL = f"ws://{LIVE_PUSH_HOST}:{LIVE_PUSH_PORT}"
 #: The daemon's price-row push (live_ui), the one the browser reads.
@@ -340,8 +339,6 @@ async def _rows_loop(ui_url: str, reconnect_sec: float) -> None:
     (live_market_plane.record_feed_heartbeat); this connection carries no chain, so a beat never
     waits behind one. Silence or a lost connection is a feed down. Each row's arrival is the
     equity's tick."""
-    from websockets.asyncio.client import connect
-
     while _feed_running:
         try:
             async with connect(ui_url, max_size=None, open_timeout=5) as ws:
@@ -411,8 +408,6 @@ async def _feed_loop(push_url: str, ui_url: str, reconnect_sec: float) -> None:
     (_ingest_pushed) -- no poll interval, no database read. A dropped connection is retried
     every `reconnect_sec`; while it is down, the live values age out through their own
     freshness checks and the screen shows them stale. There is no second source."""
-    from websockets.asyncio.client import connect
-
     rows = asyncio.create_task(_rows_loop(ui_url, reconnect_sec), name="daemon-price-rows")
     try:
         while _feed_running:

@@ -26,12 +26,8 @@ import re
 import sys
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent.parent
-if str(REPO) not in sys.path:
-    sys.path.insert(0, str(REPO))
-
-import tools.operating_process_lock as OPL  # noqa: E402
-from tools.shell_parse import (  # noqa: E402 — the ONE shell reader
+import tools.operating_process_lock as OPL
+from tools.shell_parse import (  # the ONE shell reader
     Statement,
     _join_dir,
     git_repo,
@@ -39,8 +35,10 @@ from tools.shell_parse import (  # noqa: E402 — the ONE shell reader
     normalize_repo,
     read,
 )
-from tools.pretooluse_guard import checkout_path, production_path  # noqa: E402
-from tools.hook_chain import BASH_TOOLS, MUTATING_TOOLS  # noqa: E402 — the ONE roster of each class
+from tools.pretooluse_guard import checkout_path, production_path
+from tools.hook_chain import BASH_TOOLS, MUTATING_TOOLS  # the ONE roster of each class
+
+REPO = Path(__file__).resolve().parent.parent
 
 #: The file-mutating tool class is decided ONCE (tools.hook_chain.MUTATING_TOOLS, Cursor's
 #: StrReplace/Delete included) and imported here; no private copy.

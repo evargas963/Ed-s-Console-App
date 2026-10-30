@@ -7,11 +7,9 @@ from __future__ import annotations
 
 import os
 import subprocess
-import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
-import check_one_reader as cor  # noqa: E402
+from tools import check_one_reader as cor
 
 FIELDS = (Path(__file__).resolve().parent.parent / "docs" / "schwab_fields.csv").read_text(
     encoding="utf-8"

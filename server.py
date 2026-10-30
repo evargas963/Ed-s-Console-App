@@ -13,6 +13,7 @@ import asyncio
 import logging
 from logging.handlers import RotatingFileHandler
 import contextlib
+from contextlib import asynccontextmanager
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, UTC
@@ -67,10 +68,60 @@ from fastapi import Body, FastAPI, Query, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
+import live_market_plane as lmp
+import live_price_rows as _lpr  # with_change: the bar-change computation
+import push_changes
+import runtime_layout
+from app.market_data.schwab.streaming import live_ui
+from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT
+from app.options.order_flow.engine import OrderFlowEngine, compute_book_microstructure
+from app.options.order_flow.history import TAPE, book_heatmap_for_ticker
+from app.options.order_flow.live_payload import flow_block, options_live_payload
+from app.options.order_flow.state import get_content_for_symbol, get_stream_greeks
+from app.options.order_flow.streaming import (
+    get_option_contract_streaming_diagnostics,
+    price_row,
+    price_state,
+    select_flow_contract,
+    start_order_flow_stream,
+    stop_order_flow_stream,
+    streamed_bars,
+    watchlist_request,
+)
+from calibration.complete_chain_capture import (
+    CAPTURE_BASIS,
+    last_capture_per_day,
+    newest_capture_ts,
+)
+from config import token_path
+from confluence_composite import at_price, build_matrix, window_rows
+from db import LevelCrossEvent, get_db
+from db_authority import canonical_stream_db_path
+from instrument_identity import display_symbol, ticker_storage_key, vendor_option_root
+from math_levels import compute_charm_by_strike
+from micro_structure import Candle
+from numeric_contract import float_finite_or_none, price_text, schwab_count, schwab_number
+from runtime_layout import logs_dir as _runtime_logs_dir
+from terrain_atr import Atr, compute_atrs, roll_up
+from terrain_engine import (
+    SCOPES,
+    SAME_DAY_LEVELS,
+    TerrainSnapshot,
+    _dte_of,
+    _per_strike_rows,
+    chain_ladder,
+    compute_terrain,
+    nearest_strike,
+    positioning_migration,
+    PRICE_RELATIONS,
+    price_relations,
+    strike_window,
+)
+from terrain_read import LEVEL_ABOVE, LEVEL_BELOW, crossed, from_spot_text, level_side, within
+
 
 # ── App directory = same folder as this file ─────────────────────────────────
 APP_DIR = str(Path(__file__).parent.resolve())
-sys.path.insert(0, APP_DIR)
 
 
 # ── Logging ──────────────────────────────────────────────────────────────────
@@ -106,9 +157,6 @@ class _LevelMarkerFormatter(logging.Formatter):
 # at INFO+, under the RUNTIME root (runtime_layout): this checkout, or the primary checkout for a
 # linked worktree, unless ED_RUNTIME_ROOT moves it (docs/ARCHITECTURE.md "Runtime state is not
 # source").
-import runtime_layout  # noqa: E402
-from runtime_layout import logs_dir as _runtime_logs_dir  # noqa: E402
-
 ED_SERVER_LOG_PATH = _runtime_logs_dir() / "ed_server.log"
 
 
@@ -180,54 +228,6 @@ def _install_visual_severity_markers(level: int = logging.INFO) -> None:
 
 _install_visual_severity_markers(logging.INFO)
 log = logging.getLogger("ed_server")
-
-
-# ── Ed Console modules ───────────────────────────────────────────────────────
-from config import token_path
-from db_authority import canonical_stream_db_path
-
-from instrument_identity import display_symbol, ticker_storage_key, vendor_option_root
-import live_market_plane as lmp
-from numeric_contract import float_finite_or_none, price_text, schwab_count, schwab_number
-from confluence_composite import at_price, build_matrix, window_rows
-from terrain_engine import (
-    SCOPES,
-    SAME_DAY_LEVELS,
-    TerrainSnapshot,
-    _dte_of,
-    _per_strike_rows,
-    chain_ladder,
-    compute_terrain,
-    nearest_strike,
-    positioning_migration,
-    PRICE_RELATIONS,
-    price_relations,
-    strike_window,
-)
-from terrain_read import LEVEL_ABOVE, LEVEL_BELOW, crossed, from_spot_text, level_side, within
-from math_levels import compute_charm_by_strike
-from terrain_atr import Atr, compute_atrs, roll_up
-
-from db import LevelCrossEvent, get_db
-
-import live_price_rows as _lpr  # with_change: the bar-change computation
-import push_changes
-from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT
-from app.market_data.schwab.streaming import live_ui
-from app.options.order_flow.engine import OrderFlowEngine, compute_book_microstructure
-from app.options.order_flow.history import TAPE, book_heatmap_for_ticker
-from app.options.order_flow.live_payload import flow_block, options_live_payload
-from app.options.order_flow.state import get_content_for_symbol, get_stream_greeks
-from app.options.order_flow.streaming import (
-    get_option_contract_streaming_diagnostics,
-    price_row,
-    price_state,
-    select_flow_contract,
-    start_order_flow_stream,
-    stop_order_flow_stream,
-    streamed_bars,
-    watchlist_request,
-)
 
 #: the Schwab token file, whose age is shown (the console holds no Schwab credential and makes no
 #: Schwab call)
@@ -369,12 +369,6 @@ def resolve_spot(ticker: str, *, now: float) -> tuple[float | None, str, float |
 
 #: one RTH day of 1-minute bars
 CANDLE_1M_MAX_BARS: int = 390
-from micro_structure import Candle
-from calibration.complete_chain_capture import (
-    CAPTURE_BASIS,
-    last_capture_per_day,
-    newest_capture_ts,
-)
 
 
 #: every ticker's completed 1-minute bars, oldest first, the newest BARS_KEPT: Schwab's own
@@ -577,7 +571,6 @@ def _watchlist(now: float) -> list[str] | None:
 # ─────────────────────────────────────────────────────────────────────────────
 # FastAPI app
 # ─────────────────────────────────────────────────────────────────────────────
-from contextlib import asynccontextmanager
 
 
 @asynccontextmanager

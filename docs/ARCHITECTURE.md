@@ -35,7 +35,7 @@ the token, logs) and worktrees.
 |---|---|
 | `schwab_client.py`; the Schwab half of `app/market_data/schwab/streaming/capture.py` (the stream, the subscriptions, the watchlist check); `calibration/complete_chain_capture.py` (the chain sweep and price history requests) | `feed/` |
 | The option rule in `capture.py` (`by_gamma`, `saved_window`, the choice in `pick_options`): which contracts stream and which are kept, computed from the chain and the price | `calc/`; Feed subscribes to what it chooses |
-| The rest of `capture.py`: the program's start and stop, `DailyLog`, the daily keep (`keep_sessions`) | `recorder/` (the keep) and the program's entry |
+| `app/market_data/schwab/streaming/capture_main.py` (the daemon's start: the early error log, then the daemon); the rest of `capture.py`: the program's stop, `DailyLog`, the daily keep (`keep_sessions`) | `recorder/` (the keep) and the program's entry |
 | `app/market_data/schwab/streaming/live_ui.py` (:8800: the price rows and heartbeat to the page and the console), `app/options/order_flow/live_payload.py` | `push/` |
 | From `app/options/order_flow/streaming.py`: `assemble_chain_part` and the Flow panel's streaming state (`get_option_contract_streaming_diagnostics`) | `state/` |
 | `live_market_plane.py`, `live_price_rows.py`, `stream_spine.py` (the bus), the console's live stores (`server._terrain_cache`, `server._bars`, `server._crosses`, `app/options/order_flow/state.py`, `app/options/order_flow/history.py`) | `state/`, one store |

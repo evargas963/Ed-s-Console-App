@@ -31,10 +31,9 @@ from liquidity_models import (
     ZoneType,
     volume_profile,
 )
+from time_et import ET, session
 
 log = logging.getLogger(__name__)
-
-from time_et import ET, session
 
 #: a prior session with fewer 1-minute RTH bars than this (of ~390) is disclosed as partial on the
 #: price levels built from it

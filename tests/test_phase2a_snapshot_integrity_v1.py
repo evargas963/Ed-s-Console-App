@@ -7,24 +7,21 @@
 
 from __future__ import annotations
 
-import sys
 import threading
 from datetime import datetime, timedelta
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent.parent
-if str(REPO) not in sys.path:
-    sys.path.insert(0, str(REPO))
-
-import liquidity_value_engine as LVE  # noqa: E402
-from liquidity_value_engine import (  # noqa: E402
+import liquidity_value_engine as LVE
+from liquidity_value_engine import (
     PlaybookConfig,
     materialize_price_level_snapshot,
 )
-from micro_structure import Candle  # noqa: E402
-from time_et import ET  # noqa: E402
+from micro_structure import Candle
+from time_et import ET
 
-from tests.conftest import most_recent_trading_day_et  # noqa: E402
+from tests.conftest import most_recent_trading_day_et
+
+REPO = Path(__file__).resolve().parent.parent
 
 
 def _bars(session, high_of_interior: float = 105.0) -> list:

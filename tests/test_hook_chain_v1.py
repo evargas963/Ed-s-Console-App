@@ -18,11 +18,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+from tools.hook_chain import _argv_members, run_chain
 
-from tools.hook_chain import _argv_members, run_chain  # noqa: E402
+ROOT = Path(__file__).resolve().parent.parent
 
 _ENV = {**os.environ, "PYTHONIOENCODING": "utf-8"}
 PRE_ROSTER = ("tools/operator_law_guard.py", "tools/process_lock_guard.py")
@@ -170,7 +168,7 @@ def test_every_wired_executable_refuses_an_unreadable_payload():
     }
     for rel in sorted(members):
         r = subprocess.run(
-            [sys.executable, str(ROOT / rel)],
+            [sys.executable, "-m", rel.removesuffix(".py").replace("/", ".")],
             cwd=str(ROOT),
             input="{not json",
             capture_output=True,
@@ -181,6 +179,7 @@ def test_every_wired_executable_refuses_an_unreadable_payload():
             timeout=120,
         )
         assert r.returncode != 0, f"{rel} exits 0 on an unreadable payload — fails OPEN"
+        assert "ModuleNotFoundError" not in r.stderr, f"{rel} never read the payload: {r.stderr}"
 
 
 def test_a_crashing_or_missing_member_blocks_and_the_chain_keeps_running(capsys):
@@ -196,7 +195,7 @@ def test_a_crashing_or_missing_member_blocks_and_the_chain_keeps_running(capsys)
 
 def test_a_member_block_reaches_the_host_with_the_members_stderr_and_the_judge_banner():
     standalone = subprocess.run(
-        [sys.executable, str(ROOT / "tools" / "process_lock_guard.py")],
+        [sys.executable, "-m", "tools.process_lock_guard"],
         cwd=str(ROOT),
         input=json.dumps(bash("git reset --hard")),
         capture_output=True,

@@ -9,19 +9,14 @@ every output, fail-closed on no book, and that temporal PROXY metrics are NOT pr
 
 from __future__ import annotations
 import json
-import sys
 from pathlib import Path
-
-ROOT = Path(__file__).resolve().parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 
 import app.options.order_flow.engine as ofe
 import app.options.order_flow.state as ofls
 from app.options.order_flow.state import OrderFlowState
 from time_et import EQUITY_OPTIONS
 
-FIXTURE = ROOT / "tests" / "fixtures" / "real_options_stream_history_samples.json"
+FIXTURE = Path(__file__).resolve().parent / "fixtures" / "real_options_stream_history_samples.json"
 
 
 def _book_snapshot() -> dict:

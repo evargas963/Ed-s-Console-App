@@ -13,25 +13,22 @@ These drive the REAL builders on ONE canonical snapshot and require identical va
 
 from __future__ import annotations
 
-import sys
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent.parent
-if str(REPO) not in sys.path:
-    sys.path.insert(0, str(REPO))
-
-from liquidity_value_engine import (  # noqa: E402
+from liquidity_value_engine import (
     PlaybookConfig,
     bars_from_candles,
     build_live_snapshot,
     build_premarket_snapshot,
     build_price_level_snapshot,
 )
-from micro_structure import Candle  # noqa: E402
-from time_et import ET  # noqa: E402
+from micro_structure import Candle
+from time_et import ET
 
-from tests.conftest import most_recent_trading_day_et  # noqa: E402
+from tests.conftest import most_recent_trading_day_et
+
+REPO = Path(__file__).resolve().parent.parent
 
 #: canonical level id -> (raw_levels family, key) as the builders publish them.
 _PHASE2A_IDS = {

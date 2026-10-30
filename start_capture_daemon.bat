@@ -10,7 +10,7 @@ REM was stopped cleanly on request (exit 5: `python launch.py stop`, which also 
 REM Close this window to stop the daemon's restarts (then end the pythonw process if running).
 :loop
 echo  %date% %time%  capture daemon starting (output: logs\stream_capture.^<date^>.log)
-"%~dp0.venv\Scripts\pythonw.exe" -m app.market_data.schwab.streaming.capture
+"%~dp0.venv\Scripts\pythonw.exe" -m app.market_data.schwab.streaming.capture_main
 set "CODE=%errorlevel%"
 if "%CODE%"=="3" (
     echo  Another capture daemon already owns the stream - not starting a second one.

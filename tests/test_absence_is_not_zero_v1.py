@@ -23,17 +23,11 @@ source table and read what comes out the other end.
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
 
 import pytest
 
-REPO = Path(__file__).resolve().parent.parent
-if str(REPO) not in sys.path:
-    sys.path.insert(0, str(REPO))
-
-import terrain_engine as TE  # noqa: E402
-from liquidity_models import volume_profile  # noqa: E402
+import terrain_engine as TE
+from liquidity_models import volume_profile
 
 
 # ------------------------------------- a NULL short volume is not zero shares short ----

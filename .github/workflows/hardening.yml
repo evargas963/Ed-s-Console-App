@@ -36,19 +36,19 @@ jobs:
         if: github.event_name == 'pull_request'
         env:
           BASE_REF: ${{ github.base_ref }}
-        run: python tools/check_end_to_end.py --base "origin/$BASE_REF"
+        run: python -m tools.check_end_to_end --base "origin/$BASE_REF"
       - name: one module reads each Schwab field (AGENTS.md rule 3, ENF-23)
         if: github.event_name == 'pull_request'
         env:
           BASE_REF: ${{ github.base_ref }}
-        run: python tools/check_one_reader.py --base "origin/$BASE_REF"
+        run: python -m tools.check_one_reader --base "origin/$BASE_REF"
       - name: no credential or operator-home path is committed (AGENTS.md Authority)
         if: github.event_name == 'pull_request'
         env:
           BASE_REF: ${{ github.base_ref }}
-        run: python tools/check_credential_leak.py --base "origin/$BASE_REF"
+        run: python -m tools.check_credential_leak --base "origin/$BASE_REF"
       - name: a file keeps its line endings (AGENTS.md Authority)
         if: github.event_name == 'pull_request'
         env:
           BASE_REF: ${{ github.base_ref }}
-        run: python tools/check_eol_style_invariant.py --base "origin/$BASE_REF"
+        run: python -m tools.check_eol_style_invariant --base "origin/$BASE_REF"

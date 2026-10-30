@@ -32,12 +32,8 @@ import re
 import sys
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent.parent
-if str(REPO) not in sys.path:
-    sys.path.insert(0, str(REPO))
-
-from tools.hook_chain import BASH_TOOLS  # noqa: E402 — the ONE shell-tool roster
-from tools.shell_parse import (  # noqa: E402 — the ONE shell reader
+from tools.hook_chain import BASH_TOOLS  # the ONE shell-tool roster
+from tools.shell_parse import (  # the ONE shell reader
     PYTHON,
     Statement,
     git_parts,
@@ -48,6 +44,8 @@ from tools.shell_parse import (  # noqa: E402 — the ONE shell reader
     reads_stdin,
     unseen,
 )
+
+REPO = Path(__file__).resolve().parent.parent
 
 #: The gitignored tree with no history. A path SEGMENT: `AppData/`, `mydata/`, `_data/`
 #: do not match; `data/x`, `./data/x`, `C:/repo/data/x` do.

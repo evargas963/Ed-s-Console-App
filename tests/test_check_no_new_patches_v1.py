@@ -12,9 +12,9 @@ from pathlib import Path
 
 import pytest
 
+from tools import check_no_new_patches as cnp
+
 REPO = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO / "tools"))
-import check_no_new_patches as cnp  # noqa: E402
 
 OLD_FILE = (
     "import calc\n\n\n"
