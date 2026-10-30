@@ -57,6 +57,9 @@ def published():
     def forget():
         srv._bars.pop(TK, None)
         ofs._price_rows.pop(TK, None)
+        with lmp._lock:
+            lmp._by_ticker.pop(TK, None)
+            lmp._fields_by_ticker.pop(TK, None)
         for key in [k for k in lve._MATERIALIZED_SNAPSHOTS if k[0] == TK]:
             del lve._MATERIALIZED_SNAPSHOTS[key]
 
@@ -101,6 +104,7 @@ def test_missing_spot_produces_honest_null_distance_through_the_real_zone_path(p
     for z in body["zones"]:
         assert z["distance_to_spot"] is None
         assert z["spot_inside_zone"] is None
+        assert "tradeable_score" not in z, "a score no page reads is not served"
         # the pages named every zone that was not support_liquidity "Resistance": each zone's name
         # and side are served from its type
         assert (z["zone_label"], z["zone_side"]) == ZONE_DISPLAY[ZoneType(z["zone_type"])]
