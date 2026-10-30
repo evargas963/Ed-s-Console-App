@@ -91,27 +91,32 @@ def decide(work_list: str, last: str, in_a_row: int = 1) -> str | None:
     if in_a_row < BEDROCK_AT:
         return why
     return (
-        f"This is stop {in_a_row} refused in a row: what you are doing is not working, so do not "
-        "repeat it. Go to bedrock: write down why it fails, down to the line of code or data, with "
+        f"This is stop {in_a_row} refused in a row since the operator last wrote. If you are trying "
+        "again what already failed, it is not working: do not repeat it. Go to bedrock: write down "
+        "why it fails, down to the line of code or data, with "
         "evidence (AGENTS.md First gate 4); then take a different approach, the simplest one that "
         "fits Python's guidelines (PEP 20) and the shape, and keep going. " + why
     )
 
 
-#: the refusal in a row from which the reason sends the agent to bedrock (operator 2026-10-30)
+#: the refusal in a row from which the reason sends the agent to bedrock (AGENTS.md Authority)
 BEDROCK_AT = 3
 #: one file per session holding its refusals in a row (Claude Code's payload says only whether
-#: this stop follows a refused one: `stop_hook_active`)
+#: this stop comes while it is continuing because a Stop hook refused one: `stop_hook_active`,
+#: true until the operator next writes, the same run Claude Code's own cap of 8 counts)
 COUNTS = Path(tempfile.gettempdir()) / "ed_keep_going"
 
 
 def in_a_row(payload: dict, counts: Path = COUNTS) -> int:
     """Which refusal in a row this stop would be: 1 after a stop the hook did not refuse, else one
-    more than the session's count in `counts`."""
+    more than the session's count in `counts`. The count is replaced whole, never half-written."""
     count = counts / (re.sub(r"[^\w-]", "", str(payload.get("session_id", ""))) or "unknown")
-    previous = int(count.read_text()) if payload.get("stop_hook_active") and count.exists() else 0
+    active = payload.get("stop_hook_active") is True
+    previous = int(count.read_text()) if active and count.exists() else 0
     counts.mkdir(exist_ok=True)
-    count.write_text(str(previous + 1))
+    written = count.with_name(count.name + ".new")
+    written.write_text(str(previous + 1))
+    written.replace(count)
     return previous + 1
 
 

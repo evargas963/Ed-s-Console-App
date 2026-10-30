@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import uuid
 from pathlib import Path
 
 import pytest
@@ -131,8 +132,8 @@ def test_a_payload_it_cannot_read_refuses_the_stop_with_the_reason():
 
 
 def test_from_the_third_refusal_in_a_row_the_reason_sends_the_agent_to_bedrock(tmp_path):
-    """Operator 2026-10-30: refused stops in a row mean the work is not working; from the third the
-    reason says so and sends the agent to the cause and a different approach, still working. A stop
+    """Refused stops in a row mean the work may not be working (AGENTS.md Authority); from the third
+    the reason says so and sends the agent to the cause and a different approach, still working. A stop
     the hook did not refuse (`stop_hook_active` false) starts the count again."""
     counts = [
         keep_going.in_a_row({"session_id": "s-1", "stop_hook_active": active}, tmp_path)
@@ -142,8 +143,43 @@ def test_from_the_third_refusal_in_a_row_the_reason_sends_the_agent_to_bedrock(t
     second = keep_going.decide(OPEN_ROW, "Step 1b is merged.", 2)
     third = keep_going.decide(OPEN_ROW, "Step 1b is merged.", 3)
     assert "bedrock" not in second and second in third
-    assert third.startswith("This is stop 3 refused in a row: what you are doing is not working")
+    assert third.startswith("This is stop 3 refused in a row since the operator last wrote.")
+    assert "Go to bedrock" in third
     assert keep_going.decide(OPEN_ROW, "WAITING ON OPERATOR: his yes.", 3) is None
+
+
+def test_the_hook_as_wired_counts_its_refusals_and_an_allowed_stop_writes_no_count():
+    """Run as the settings wire it: three refused stops of one session reach the bedrock reason on
+    the third; a stop marked WAITING ON OPERATOR is let through and leaves no count."""
+    if not keep_going.OPEN.search((REPO / "ACTIVE_PROGRAM.md").read_text(encoding="utf-8")):
+        pytest.skip("SHAPE is finished: the hook refuses no stop")
+    session = f"test-{uuid.uuid4().hex}"
+    count = keep_going.COUNTS / session
+    try:
+        reasons = [
+            json.loads(
+                _run(
+                    {
+                        "session_id": session,
+                        "stop_hook_active": active,
+                        "last_assistant_message": "Step 1b is merged.",
+                    }
+                ).stdout
+            )["reason"]
+            for active in (False, True, True)
+        ]
+        assert "bedrock" not in reasons[1] and reasons[2].startswith("This is stop 3 refused")
+        count.unlink()
+        run = _run(
+            {
+                "session_id": session,
+                "stop_hook_active": True,
+                "last_assistant_message": "WAITING ON OPERATOR: his yes.",
+            }
+        )
+        assert (run.returncode, run.stdout, count.exists()) == (0, "", False)
+    finally:
+        count.unlink(missing_ok=True)
 
 
 def test_a_subagents_message_is_not_the_agents_final_message(tmp_path):
