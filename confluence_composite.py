@@ -426,7 +426,7 @@ def build_matrix(
     scales. The rows the page shows are drawn from it (window_rows)."""
     name = preset_name(dte)
     weights = in_score_weights(name)
-    strikes = sorted(float(s) for s in exposures.keys())
+    strikes = sorted(float(s) for s in exposures)
     mags = {}
     for strike in strikes:
         bucket = exposures.get(strike)
