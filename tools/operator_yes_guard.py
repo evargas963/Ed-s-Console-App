@@ -38,8 +38,6 @@ from pathlib import Path
 import psutil
 
 REPO = Path(__file__).resolve().parent.parent
-if str(REPO) not in sys.path:
-    sys.path.insert(0, str(REPO))
 
 import runtime_layout  # noqa: E402
 import time_et  # noqa: E402

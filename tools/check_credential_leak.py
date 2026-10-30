@@ -20,8 +20,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from check_end_to_end import ToolError, _diff_path  # noqa: E402
+from tools.check_end_to_end import ToolError, _diff_path
 
 REPO = Path(__file__).resolve().parents[1]
 

@@ -39,8 +39,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from check_end_to_end import is_product  # noqa: E402
+from tools.check_end_to_end import is_product
 
 FIELDS_CSV = "docs/schwab_fields.csv"
 #: Schwab's own spelling: an uppercase streamer field (one word or UPPER_SNAKE) or a camelCase REST field

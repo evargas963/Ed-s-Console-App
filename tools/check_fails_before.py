@@ -36,8 +36,7 @@ import tempfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from check_end_to_end import (  # noqa: E402
+from tools.check_end_to_end import (
     ToolError,
     _git,
     _python_code,

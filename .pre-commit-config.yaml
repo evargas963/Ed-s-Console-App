@@ -5,13 +5,13 @@ repos:
     hooks:
       - id: secrets-and-paths
         name: secrets and operator-home paths
-        entry: python tools/check_credential_leak.py
+        entry: python -m tools.check_credential_leak
         language: system
         pass_filenames: false
         always_run: true
       - id: eol-style-invariant
         name: line-ending style survives the edit
-        entry: python tools/check_eol_style_invariant.py
+        entry: python -m tools.check_eol_style_invariant
         language: system
         pass_filenames: false
         always_run: true

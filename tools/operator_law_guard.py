@@ -33,8 +33,6 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-if str(REPO) not in sys.path:
-    sys.path.insert(0, str(REPO))
 
 from tools.hook_chain import BASH_TOOLS  # noqa: E402 — the ONE shell-tool roster
 from tools.shell_parse import (  # noqa: E402 — the ONE shell reader

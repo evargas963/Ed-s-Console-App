@@ -25,9 +25,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from check_end_to_end import _python_code  # noqa: E402
-from patch_record import APPLIED, COLLECTED, RAN, read  # noqa: E402
+from tools.check_end_to_end import _python_code
+from tools.patch_record import APPLIED, COLLECTED, RAN, read
 
 _DEFS = (ast.FunctionDef, ast.AsyncFunctionDef)
 PATCHED = "it ran with a patch applied"

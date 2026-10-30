@@ -27,8 +27,6 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-if str(REPO) not in sys.path:
-    sys.path.insert(0, str(REPO))
 
 import tools.operating_process_lock as OPL  # noqa: E402
 from tools.shell_parse import (  # noqa: E402 — the ONE shell reader
