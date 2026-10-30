@@ -969,6 +969,15 @@ EXIT_OWNER_LOCK_HELD = 3
 EXIT_STOPPED = 5
 
 
+def owner_pid(lock: Path) -> int:
+    """The process the owner lock names; 0 with no lock, or an empty or unreadable one."""
+    try:
+        return int(lock.read_text().strip() or 0)
+    except (OSError, ValueError) as e:
+        log.debug("owner lock %s not read: %s: %s", lock, type(e).__name__, e)
+        return 0
+
+
 def acquire_owner_lock(db_path: str | Path | None = None) -> tuple[int, Path]:
     """Exclusive pidfile: one daemon at a time; a lock left by a dead process is reclaimed."""
     lock = owner_lock_path(db_path)
@@ -979,12 +988,7 @@ def acquire_owner_lock(db_path: str | Path | None = None) -> tuple[int, Path]:
             os.write(fd, str(os.getpid()).encode())
             return fd, lock
         except FileExistsError:
-            try:
-                pid = int(
-                    lock.read_text().strip() or 0
-                )  # caps-ok: an empty pidfile is not a live owner
-            except (OSError, ValueError):
-                pid = 0
+            pid = owner_pid(lock)
             if pid and psutil.pid_exists(pid):
                 print(f"FATAL: another capture daemon holds {lock} (pid {pid}).", file=sys.stderr)
                 raise SystemExit(EXIT_OWNER_LOCK_HELD) from None

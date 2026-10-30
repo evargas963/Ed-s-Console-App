@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import ctypes
 import json
+import logging
 import os
 import signal
 import socket
@@ -34,17 +35,19 @@ import webbrowser
 from pathlib import Path
 
 import psutil
+from websockets.exceptions import WebSocketException
 from websockets.sync.client import connect
 
+from app.market_data.schwab.streaming import capture
 from app.market_data.schwab.streaming.live_push import LIVE_PUSH_PORT
 from app.market_data.schwab.streaming.live_ui import LIVE_UI_PORT as DAEMON_PORT
 
+log = logging.getLogger("launch")
 ROOT = Path(__file__).resolve().parent
 CONSOLE_PORT = 8000
 URL = f"http://127.0.0.1:{CONSOLE_PORT}/"
-#: what each runs right after its program: the console's app, the daemon's module
+#: what the console runs right after its program
 CONSOLE_START = ["-m", "uvicorn", "server:app"]
-DAEMON_START = ["-m", "app.market_data.schwab.streaming.capture_main"]
 #: --timeout-graceful-shutdown: Ctrl+C ends it while pages hold their change streams open
 CONSOLE = [
     sys.executable,
@@ -115,19 +118,31 @@ def in_use(port: int) -> bool:
         return probe.connect_ex(("127.0.0.1", port)) == 0
 
 
-def running(start: list[str]) -> list[psutil.Process]:
-    """This checkout's processes that run `start` right after their program: those whose folder is
-    ROOT, where its daemon's batch and its console run, so another checkout's daemon or console (a
-    test's) is never taken for one, nor a process that only names them, as a search does (one whose
-    line or folder cannot be read is none)."""
+def _in_checkout() -> list[psutil.Process]:
+    """This checkout's processes: those whose folder is ROOT, where its daemon's batch and its
+    console run, so another checkout's daemon or console (a test's) is never taken for one (one
+    whose folder cannot be read is none)."""
     return [
         p
         for p in psutil.process_iter(["cmdline", "cwd", "ppid"])
-        if p.info["cmdline"] is not None
-        and p.info["cmdline"][1 : len(start) + 1] == start
-        and p.info["cwd"] is not None
-        and Path(p.info["cwd"]).resolve() == ROOT
+        if p.info["cwd"] is not None and Path(p.info["cwd"]).resolve() == ROOT
     ]
+
+
+def running(start: list[str]) -> list[psutil.Process]:
+    """This checkout's processes that run `start` right after their program, so a process that
+    only names it, as a search does, is never taken (one whose line cannot be read is none)."""
+    return [
+        p
+        for p in _in_checkout()
+        if p.info["cmdline"] is not None and p.info["cmdline"][1 : len(start) + 1] == start
+    ]
+
+
+def owner_of_the_stream() -> list[psutil.Process]:
+    """This checkout's daemon: the process its owner lock names (capture.owner_pid)."""
+    pid = capture.owner_pid(capture.owner_lock_path())
+    return [p for p in _in_checkout() if p.pid == pid]
 
 
 def start_console(argv: list[str], env: dict) -> subprocess.Popen:
@@ -140,20 +155,10 @@ def start_console(argv: list[str], env: dict) -> subprocess.Popen:
 
 
 def daemon_window(batch: Path) -> list[str]:
-    """The command that runs `batch` (start_capture_daemon.bat) on DAEMON_START in a minimized
-    window of its own titled "Ed Capture Daemon", under `cmd /c` so the window closes when the
-    batch ends (`start` given a batch file runs it under `cmd /K`, which keeps the window open)."""
-    return [
-        "cmd",
-        "/c",
-        "start",
-        "Ed Capture Daemon",
-        "/min",
-        "cmd",
-        "/c",
-        str(batch),
-        *DAEMON_START,
-    ]
+    """The command that runs `batch` (start_capture_daemon.bat) in a minimized window of its own
+    titled "Ed Capture Daemon", under `cmd /c` so the window closes when the batch ends (`start`
+    given a batch file runs it under `cmd /K`, which keeps the window open)."""
+    return ["cmd", "/c", "start", "Ed Capture Daemon", "/min", "cmd", "/c", str(batch)]
 
 
 def ctrl_break(group: int) -> None:
@@ -193,12 +198,12 @@ def group_leader(console: list[psutil.Process]) -> int:
 def stop() -> int:
     """The clean stop of the daemon (ask_daemon_to_stop) and the console (ctrl_break to its group,
     group_leader). Waits up to STOP_WAIT_SEC for each; 0 when both ended."""
-    daemon, console = running(DAEMON_START), running(CONSOLE_START)
+    daemon, console = owner_of_the_stream(), running(CONSOLE_START)
     if daemon:
         try:
             ask_daemon_to_stop()
-        except OSError as e:
-            print(f"Capture daemon: not asked to stop: {type(e).__name__}: {e}")
+        except (OSError, WebSocketException) as e:
+            log.warning("Capture daemon: not asked to stop: %s: %s", type(e).__name__, e)
     if console:
         ctrl_break(group_leader(console))
     _gone, alive = psutil.wait_procs(daemon + console, timeout=STOP_WAIT_SEC)

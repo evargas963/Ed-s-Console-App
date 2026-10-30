@@ -366,19 +366,25 @@ def _end(process: subprocess.Popen) -> None:
 
 
 def test_the_stop_ends_the_real_daemon_and_says_when_it_could_not_ask(tmp_path):
-    """The real daemon, on the command launch.py gives its window's batch, in a folder of its own
-    with launch.py beside it, so the stop reaches nothing else; no Schwab token, ports of its own.
-    A stop on a port nothing serves cannot ask it: it says so and that the daemon is still
-    running, exit 1. A stop on the daemon's port ends it, exit 0."""
-    home = tmp_path / "checkout"
-    home.mkdir()
-    shutil.copy(launch.ROOT / "launch.py", home)
+    """The real daemon as its batch runs it, in a folder of its own with launch.py beside it, so
+    the stop reaches nothing else; no Schwab token, ports of its own. Its owner lock names it.
+    Another checkout's stop leaves it alone. A stop that cannot ask it, on a port nothing serves
+    or one that closes at once, says so and that the daemon is still running, exit 1. A stop on
+    the daemon's port ends it, exit 0."""
+    home, other = tmp_path / "checkout", tmp_path / "other_checkout"
+    for folder in (home, other):
+        folder.mkdir()
+        shutil.copy(launch.ROOT / "launch.py", folder)
     with socket.socket() as push, socket.socket() as ui, socket.socket() as nothing:
         push.bind(("127.0.0.1", 0))
         ui.bind(("127.0.0.1", 0))
         nothing.bind(("127.0.0.1", 0))
         push_port, ui_port = push.getsockname()[1], ui.getsockname()[1]
         unserved = nothing.getsockname()[1]
+    closing = socket.socket()
+    closing.bind(("127.0.0.1", 0))
+    closing.listen()
+    threading.Thread(target=lambda: closing.accept()[0].close(), daemon=True).start()
     env = {
         **os.environ,
         "PYTHONPATH": str(launch.ROOT),
@@ -388,17 +394,18 @@ def test_the_stop_ends_the_real_daemon_and_says_when_it_could_not_ask(tmp_path):
         "ED_LIVE_PUSH_PORT": str(push_port),
         "SCHWAB_TOKEN_PATH": str(tmp_path / "missing_token.json"),
     }
-    command = launch.daemon_window(home / "batch")[-len(launch.DAEMON_START) :]
-    daemon = subprocess.Popen([sys.executable, *command], cwd=home, env=env)
+    daemon = subprocess.Popen(
+        [sys.executable, "-m", "app.market_data.schwab.streaming.capture_main"], cwd=home, env=env
+    )
 
-    def stop(port: int) -> subprocess.CompletedProcess:
-        return subprocess.run(
+    def stop(folder: Path, port: int) -> subprocess.Popen:
+        return subprocess.Popen(
             [sys.executable, "launch.py", "stop"],
-            cwd=home,
+            cwd=folder,
             env={**env, "ED_LIVE_PUSH_PORT": str(port)},
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=90,
         )
 
     try:
@@ -406,15 +413,28 @@ def test_the_stop_ends_the_real_daemon_and_says_when_it_could_not_ask(tmp_path):
         while not launch.in_use(push_port):
             assert daemon.poll() is None and time.monotonic() < end, daemon.poll()
             time.sleep(0.1)
-        refused = stop(unserved)
-        assert refused.returncode == 1, refused
-        assert "Capture daemon: not asked to stop: " in refused.stdout
-        assert "Capture daemon: still running (" in refused.stdout
-        stopped = stop(push_port)
-        assert stopped.returncode == 0, stopped
-        assert "Capture daemon: stopped\nConsole: not running\n" == stopped.stdout
-        assert daemon.wait(60) == capture.EXIT_STOPPED
+        elsewhere = stop(other, push_port)
+        out, err = elsewhere.communicate(timeout=60)
+        assert (elsewhere.returncode, out) == (
+            0,
+            "Capture daemon: not running\nConsole: not running\n",
+        ), err
+        assert daemon.poll() is None
+        not_asked = [stop(home, port) for port in (unserved, closing.getsockname()[1])]
+        for p in not_asked:
+            out, err = p.communicate(timeout=90)
+            assert p.returncode == 1, (out, err)
+            assert "Capture daemon: not asked to stop: " in err
+            assert "Capture daemon: still running (" in out
+        stopping = stop(home, push_port)
+        assert daemon.wait(60) == capture.EXIT_STOPPED  # reaped: the stop sees it gone on Linux too
+        out, err = stopping.communicate(timeout=60)
+        assert (stopping.returncode, out) == (
+            0,
+            "Capture daemon: stopped\nConsole: not running\n",
+        ), err
     finally:
+        closing.close()
         _end(daemon)
 
 
