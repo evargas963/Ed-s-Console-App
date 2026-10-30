@@ -79,21 +79,20 @@ def test_the_daemons_window_closes_when_its_batch_ends(tmp_path):
 
 
 def test_the_stop_takes_only_this_checkouts_processes(tmp_path):
-    """launch.stop finds the daemon and the console by launch.running: of two processes carrying
-    the same mark, the one started in this checkout's folder (as its daemon's batch and its
+    """launch.stop finds the daemon and the console by launch.running: of two processes started
+    the same way, the one started in this checkout's folder (as its daemon's batch and its
     console are) is found, and the one started in another folder (another checkout's console, a
     test's) is not, so the stop's Ctrl+Break never goes to it instead of this console. Induced
-    test condition: two sleeping Pythons carrying a mark of this test's own."""
-    mark = f"ed-stop-mark-{os.getpid()}-{time.monotonic_ns()}"
+    test condition: two sleeping Pythons started by a script of this test's own."""
+    start = ["-c", f"import time; time.sleep(60)  # {os.getpid()}-{time.monotonic_ns()}"]
     ours, theirs = (
-        subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)", mark], cwd=cwd)
-        for cwd in (launch.ROOT, tmp_path)
+        subprocess.Popen([sys.executable, *start], cwd=cwd) for cwd in (launch.ROOT, tmp_path)
     )
     try:
         found: set = set()
         end = time.monotonic() + 10
         while ours.pid not in found and time.monotonic() < end:
-            found = {p.pid for p in launch.running(mark)}
+            found = {p.pid for p in launch.running(start)}
             time.sleep(0.05)
         theirs_tree = {theirs.pid} | {
             c.pid for c in psutil.Process(theirs.pid).children(recursive=True)
@@ -357,37 +356,66 @@ def test_a_browser_that_stopped_reading_is_dropped_others_keep_beats_and_the_sto
     )
 
 
-def test_the_stop_finds_the_daemon_and_the_console_as_they_are_started():
-    """Each mark is one argument of the command that starts it."""
-    assert launch.CONSOLE_MARK in launch.CONSOLE
-    batch = (launch.ROOT / "start_capture_daemon.bat").read_text(encoding="utf-8")
-    assert f"-m {launch.DAEMON_MARK}\n" in batch.replace("\r\n", "\n")
+def test_the_daemon_as_it_is_started_is_found_and_stops_when_asked(tmp_path):
+    """The real daemon, run as its batch runs it, in the checkout's folder with no Schwab token and
+    ports of its own: launch.running finds it and it ends on launch.ask_daemon_to_stop, as a stop
+    does."""
+    with socket.socket() as push, socket.socket() as ui:
+        push.bind(("127.0.0.1", 0))
+        ui.bind(("127.0.0.1", 0))
+        push_port, ui_port = push.getsockname()[1], ui.getsockname()[1]
+    env = {
+        **os.environ,
+        "ED_RUNTIME_ROOT": str(tmp_path),
+        "ED_LIVE_UI_HOST": "127.0.0.1",
+        "ED_LIVE_UI_PORT": str(ui_port),
+        "ED_LIVE_PUSH_PORT": str(push_port),
+        "SCHWAB_TOKEN_PATH": str(tmp_path / "missing_token.json"),
+    }
+    daemon = subprocess.Popen([sys.executable, *launch.DAEMON_START], cwd=launch.ROOT, env=env)
+    try:
+        end = time.monotonic() + 60
+        while not launch.in_use(push_port):
+            assert daemon.poll() is None and time.monotonic() < end, daemon.poll()
+            time.sleep(0.1)
+        assert daemon.pid in {p.pid for p in launch.running(launch.DAEMON_START)}
+        launch.ask_daemon_to_stop(push_port)
+        assert daemon.wait(60) == capture.EXIT_STOPPED
+    finally:
+        daemon.kill()
 
 
-def test_a_shell_that_only_mentions_the_console_is_not_the_console():
-    """A shell and a Python in the checkout whose command text names the console's mark, as a
-    process search does, are not the console, and a stop leaves them alone."""
-    wait = ["cmd", "/c", "ping -n 30 127.0.0.1 >nul & rem server:app"]
+def test_a_process_that_only_names_the_console_is_not_the_console():
+    """A shell and Pythons in the checkout that name the console, in their text or as an argument
+    of their own, as a process search does, are not the console, and a stop leaves them alone."""
+    named = launch.CONSOLE_START[-1]
+    wait = ["cmd", "/c", f"ping -n 30 127.0.0.1 >nul & rem {named}"]
     if sys.platform != "win32":
-        wait = ["sh", "-c", "sleep 30; echo server:app"]
-    script = "import time; time.sleep(30)  # server:app"
-    shell = subprocess.Popen(wait, cwd=launch.ROOT)
-    python = subprocess.Popen([sys.executable, "-c", script], cwd=launch.ROOT)
+        wait = ["sh", "-c", f"sleep 30; echo {named}"]
+    sleep = "import time; time.sleep(30)"
+    searches = [
+        subprocess.Popen(argv, cwd=launch.ROOT)
+        for argv in (
+            wait,
+            [sys.executable, "-c", f"{sleep}  # {named}"],
+            [sys.executable, "-c", sleep, named],
+            [sys.executable, "-c", sleep, *launch.CONSOLE_START],
+        )
+    ]
     try:
         end = time.monotonic() + 10
-        for p in (shell, python):
-            while time.monotonic() < end and launch.CONSOLE_MARK not in " ".join(
-                psutil.Process(p.pid).cmdline()
-            ):
+        for p in searches:
+            while time.monotonic() < end and named not in " ".join(psutil.Process(p.pid).cmdline()):
                 time.sleep(0.05)
-        found = {p.pid for p in launch.running(launch.CONSOLE_MARK)}
-        assert launch.CONSOLE_MARK in " ".join(psutil.Process(shell.pid).cmdline())
-        assert not found & {shell.pid, python.pid}
+            assert named in " ".join(psutil.Process(p.pid).cmdline())
+        found = {p.pid for p in launch.running(launch.CONSOLE_START)}
+        assert not found & {p.pid for p in searches}
     finally:
-        python.kill()
-        python.wait(30)
-        shell.kill()
-        shell.wait(30)
+        for p in searches:
+            for c in psutil.Process(p.pid).children(recursive=True):
+                c.kill()
+            p.kill()
+            p.wait(30)
 
 
 def test_a_module_that_fails_to_load_leaves_its_reason_in_the_daemons_log(tmp_path):
