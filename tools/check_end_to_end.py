@@ -205,15 +205,13 @@ def code_tree(path: str, text: str) -> str | None:
 def tool_fixed(root: Path, path: str, text: str) -> str | None:
     """`text` as the repository's standard tools leave it: `ruff check --fix` with the PR's
     pyproject.toml selection, then `ruff format`; None when either cannot run on it."""
-    out = text
+    out = text.encode("utf-8")  # as bytes: no line ending translated on the way in or out
     for args in (["check", "--fix", "--exit-zero", "--quiet"], ["format", "--quiet"]):
         try:
             run = subprocess.run(
                 [sys.executable, "-m", "ruff", *args, "--stdin-filename", path, "-"],
                 input=out,
                 capture_output=True,
-                text=True,
-                encoding="utf-8",
                 cwd=root,
                 timeout=120,
             )
@@ -222,7 +220,7 @@ def tool_fixed(root: Path, path: str, text: str) -> str | None:
         if run.returncode != 0:
             return None
         out = run.stdout
-    return out
+    return out.decode("utf-8")
 
 
 def code_identical(root: Path, base: str, path: str) -> bool:

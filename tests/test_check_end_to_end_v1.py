@@ -282,6 +282,16 @@ def test_a_change_the_standard_tools_make_alone_is_not_a_product_change(tmp_path
     assert _changed(root) == []
 
 
+def test_the_tools_fix_keeps_a_files_crlf_line_endings_as_they_are(tmp_path):
+    """Some product files are CRLF; the text goes to ruff and back as bytes, so no line ending is
+    doubled or dropped (on Windows a text pipe turned each CRLF into CR CR LF)."""
+    root = _repo(tmp_path, BASE)
+    (root / "pyproject.toml").write_text(RUFF_UP, encoding="utf-8")
+    crlf = OLD_STYLE.replace("\n", "\r\n")
+    fixed = cee.tool_fixed(root, "server.py", crlf)
+    assert fixed is not None and "\r\r" not in fixed and fixed.count("\r\n") == fixed.count("\n")
+
+
 def test_a_hand_edit_on_top_of_the_tools_fix_is_a_product_change(tmp_path):
     """The same PR with one line the tools did not write: it is a product change."""
     root = _repo(tmp_path, {**BASE, "server.py": OLD_STYLE})
