@@ -121,7 +121,7 @@ to write it plainly, in the forms `test_a_command_the_reader_cannot_see_into_is_
 - M-02 `volume_profile` drops bars (`hi < lo`) without counting them.
 - M-04 `compute_opening_range` hard-codes 9:30 instead of `RTH_OPEN_MINS`.
 - M-05 `compute_session_vwap_series` skips volume-less bars without disclosing the count.
-- M-09 a missing poc, pd_poc or vwap yields `value_state="unchanged"` / `vwap_relation="at_value"` (and `else 0`).
+- M-09 a missing poc, pd_poc or vwap yields `value_state="unchanged"` / `vwap_relation="at_value"`.
 - M-11 `cutoff_et` (now) is served as the values' time (they are as of the last bar); `session_scope` relabels an unknown scope; prior-day POC/VAH/VAL missing is not in `families_absent`.
 - M-12 fused option levels: the non-number rejection is gone (#646: no caller can send one). A level at 0 is no longer dropped, by the regular-session fusion or the clustering (a reported 0 is 0, rule 2); before the open, `build_premarket_snapshot` takes no option or spot levels at all. The liquidity zones are served nearest the live price first, and with no live price by price, lowest first (operator 2026-10-30: "By price"), not by the deleted score.
 

@@ -457,11 +457,10 @@ def _classify_value_state_and_vwap_relation(
 ) -> tuple[str, str, str]:
     """Value-area shift + VWAP-vs-value relation + auction interpretation."""
     value_state = "unchanged"
-    if poc is not None and prev_pd_poc:  # a change against a POC of 0 has no size
-        d = (poc - prev_pd_poc) / prev_pd_poc
-        if d > 0.002:
+    if poc is not None and prev_pd_poc is not None:
+        if poc > prev_pd_poc * 1.002:
             value_state = "shifted_higher"
-        elif d < -0.002:
+        elif poc < prev_pd_poc * 0.998:
             value_state = "shifted_lower"
 
     vwap_relation = "at_value"
