@@ -44,6 +44,22 @@ def resolve_stream_db_path(default: Path | str | None = None) -> Path:
     return canonical_stream_db_path()
 
 
+def owner_lock_path(db_path: str | Path | None = None) -> Path:
+    """Beside the stream database, so a worktree and production can never both stream."""
+    return resolve_stream_db_path(db_path).with_name("stream_capture.lock")
+
+
+def owner_pid(lock: Path) -> int | None:
+    """The process the owner lock names; None with no lock, or one that cannot be read (logged)."""
+    if not lock.exists():
+        return None
+    try:
+        return int(lock.read_text().strip())
+    except (OSError, ValueError) as e:
+        log.warning("owner lock %s not read: %s: %s", lock, type(e).__name__, e)
+        return None
+
+
 STREAM_SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS stream_quotes_raw (
     ts_recv REAL NOT NULL,

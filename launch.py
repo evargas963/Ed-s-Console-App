@@ -38,9 +38,9 @@ import psutil
 from websockets.exceptions import WebSocketException
 from websockets.sync.client import connect
 
-from app.market_data.schwab.streaming import capture
 from app.market_data.schwab.streaming.live_push import LIVE_PUSH_PORT
 from app.market_data.schwab.streaming.live_ui import LIVE_UI_PORT as DAEMON_PORT
+from stream_spine import owner_lock_path, owner_pid
 
 log = logging.getLogger("launch")
 ROOT = Path(__file__).resolve().parent
@@ -140,8 +140,8 @@ def running(start: list[str]) -> list[psutil.Process]:
 
 
 def owner_of_the_stream() -> list[psutil.Process]:
-    """This checkout's daemon: the process its owner lock names (capture.owner_pid)."""
-    pid = capture.owner_pid(capture.owner_lock_path())
+    """This checkout's daemon: the process its owner lock names (stream_spine.owner_pid)."""
+    pid = owner_pid(owner_lock_path())
     return [p for p in _in_checkout() if p.pid == pid]
 
 
@@ -164,11 +164,10 @@ def daemon_window(batch: Path) -> list[str]:
 def ctrl_break(group: int) -> None:
     """Ctrl+Break to process group `group` (the console's, start_console) on its window, from a
     process without a window of its own: the console's handler runs its shutdown
-    (server._install_signal_handlers)."""
+    (server._install_signal_handlers). A group gone is no error: stop reports what is left."""
     subprocess.run(
         [sys.executable, str(Path(__file__)), "ctrl-break", str(group)],
         creationflags=subprocess.CREATE_NO_WINDOW,
-        check=True,
         timeout=30,
     )
 
