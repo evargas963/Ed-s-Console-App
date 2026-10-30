@@ -3,9 +3,11 @@ change is proven only by a changed end-to-end path test that fails on the old co
 
 from __future__ import annotations
 
+import ast
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -475,6 +477,17 @@ def test_a_trim_that_also_adds_or_rewrites_code_still_needs_a_test(tmp_path, now
         "product code changed (calc.py) but no end-to-end path test "
         "(tests/test_data_path_*.py or tests/e2e/*.spec.js) changed"
     ]
+
+
+def test_reading_a_trim_takes_time_in_step_with_the_code_not_exponential():
+    """A function of many `if`s ahead of a real rewrite is read in one pass: the first reading
+    searched every delete-or-open choice, and on 18 `if`s ran past 20 s."""
+    body = "".join(f"    if x == {i}:\n        g({i})\n" for i in range(200))
+    was = ast.parse("def f(x):\n" + body + "    return 1\n").body
+    now = ast.parse("def f(x):\n" + body + "    return 2\n").body
+    started = time.perf_counter()
+    assert cfb._trimmed(was, now, False) is False
+    assert time.perf_counter() - started < 5
 
 
 def test_a_module_level_statement_removed_is_not_a_trim(tmp_path):
