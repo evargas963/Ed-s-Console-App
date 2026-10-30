@@ -87,11 +87,13 @@ def test_a_sed_edit_behind_a_keyword_a_subshell_a_wrapper_or_a_heredoc_is_refuse
 PIPED_COMMITS = [
     (
         "Bash",
-        "git commit -m \"$(cat <<'EOF'\nfix: the operator's guard (one reader)\nEOF\n)\" 2>&1 | tail -3",
+        "git commit -m \"$(cat <<'EOF'\nfix: the operator's guard (one reader)\nEOF\n)\" "
+        "2>&1 | tail -3",
     ),
     (
         "PowerShell",
-        "$msg = @'\nTraining's full rebuild is unchanged.\n'@; git commit -m $msg 2>&1 | Select-Object -Last 2",
+        "$msg = @'\nTraining's full rebuild is unchanged.\n'@; "
+        "git commit -m $msg 2>&1 | Select-Object -Last 2",
     ),
     (
         "PowerShell",
@@ -118,11 +120,13 @@ def test_a_wipe_after_a_heredoc_message_with_an_apostrophe_is_refused():
     [
         (
             "Bash",
-            "git commit -m \"$(cat <<'EOF'\nreplaced taskkill with psutil.Process(pid).kill() in launch.py\nEOF\n)\"",
+            "git commit -m \"$(cat <<'EOF'\n"
+            'replaced taskkill with psutil.Process(pid).kill() in launch.py\nEOF\n)"',
         ),
         (
             "PowerShell",
-            "$add = @'\n- by method: `(Get-Process).Kill()`, `Stop-Process -Id` of launch.py\n'@; Set-Content -Path f.md -Value $add",
+            "$add = @'\n- by method: `(Get-Process).Kill()`, `Stop-Process -Id` of launch.py\n'@; "
+            "Set-Content -Path f.md -Value $add",
         ),
     ],
 )
@@ -231,7 +235,8 @@ def test_a_machine_restart_by_a_called_path_an_escaped_word_or_a_command_string_
         f"uv -q run python -c \"import shutil; shutil.rmtree('{D}/x')\"",
         f"uv --directory . run python -c \"import shutil; shutil.rmtree('{D}/x')\"",
         f"poetry -C . run python -c \"import shutil; shutil.rmtree('{D}/x')\"",
-        f"uv run --python-preference only-system python -c \"import shutil; shutil.rmtree('{D}/x')\"",
+        "uv run --python-preference only-system "
+        f"python -c \"import shutil; shutil.rmtree('{D}/x')\"",
         f"python -c\"import shutil; shutil.rmtree('{D}/x')\"",
         f"python -Ic \"import shutil; shutil.rmtree('{D}/x')\"",
         f"r\\m -rf {D}/x",
@@ -267,7 +272,8 @@ def test_a_protected_tree_delete_behind_a_runner_attached_code_an_escape_or_a_fu
         # a group after a keyword or `time`, and a bash function definition
         (
             "Bash",
-            'until { [ -s "$D/a.md" ] && [ -s "$D/b.md" ]; } || [ $(date +%s) -gt $end ]; do sleep 10; done',
+            'until { [ -s "$D/a.md" ] && [ -s "$D/b.md" ]; } || [ $(date +%s) -gt $end ]; '
+            "do sleep 10; done",
         ),
         ("Bash", "time (echo '{}' | grep x)"),
         ("Bash", 'for w in a b; do (cd "$w" && echo "$(git rev-parse HEAD)"); done'),
@@ -278,7 +284,8 @@ def test_a_protected_tree_delete_behind_a_runner_attached_code_an_escape_or_a_fu
         # PowerShell inside a bash command is read as PowerShell: `$_...` there is an expression
         (
             "Bash",
-            'powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { \\$_.CommandLine '
+            'powershell -NoProfile -Command "Get-CimInstance Win32_Process '
+            "| Where-Object { \\$_.CommandLine "
             "-match 'uvicorn' } | Select-Object ProcessId\"",
         ),
     ],
@@ -330,8 +337,8 @@ def test_a_python_behind_a_runner_with_valued_options_is_judged(runner):
 
 
 def test_a_branch_listing_aimed_at_production_is_a_read_and_a_new_branch_is_refused():
-    """git branch --list (-l) and --contains aimed at production read; other listing options still meet
-    the branch rule."""
+    """git branch --list (-l) and --contains aimed at production read; other listing options still
+    meet the branch rule."""
     primary = PLG._primary_worktree_root(PLG.REPO) or PLG.REPO
     lock = "PROD_CHECKOUT_LOCK"
     for cmd in (

@@ -1,4 +1,4 @@
-"""RUNTIME LAYOUT — the ONE owner of where runtime state lives (docs/ARCHITECTURE.md "Runtime state is not source").
+"""Where runtime state lives (docs/ARCHITECTURE.md "Runtime state is not source").
 
 Source, runtime state and generated artifacts are separate concerns:
 
@@ -7,10 +7,11 @@ Source, runtime state and generated artifacts are separate concerns:
     ARTIFACTS   generated reports and scorecards           ED_ARTIFACTS_ROOT (default: RUNTIME)
 
 Runtime state lives in the runtime root's ``data/`` and ``logs/`` (data_dir, logs_dir) and its
-``schwab_token.json`` (config.token_path), each ignored by git, so a source update never touches it (docs/ARCHITECTURE.md §5), whatever the
-process's working directory. A standalone checkout is its own runtime root, so production's
-database, logs and token sit in its checkout. A linked Git worktree resolves runtime
-state to its primary worktree by reading Git's own ``.git`` / ``commondir`` metadata.
+``schwab_token.json`` (config.token_path), each ignored by git, so a source update never touches
+it (docs/ARCHITECTURE.md §5), whatever the process's working directory. A standalone checkout is
+its own runtime root, so production's database, logs and token sit in its checkout. A linked Git
+worktree resolves runtime state to its primary worktree by reading Git's own ``.git`` /
+``commondir`` metadata.
 ``ED_RUNTIME_ROOT`` may move runtime state to a dedicated non-checkout directory, but may not
 select a linked source worktree.
 

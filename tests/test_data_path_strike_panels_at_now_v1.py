@@ -3,9 +3,9 @@ levels producer, and every per-strike panel's answer (GEX by strike, the chart's
 charm) at that time is windowed around Schwab's price, whatever the wall clock says (AGENTS.md: a
 function that depends on the clock takes `now`).
 
-Real data: CRWD's 2026-10-16 expiry, every strike, captured 2026-10-07 10:38:40 ET (tests/real_chains.py
-CRWD), and CRWD's LEVELONE_EQUITIES message the daemon received at 10:38:00 ET
-(tests/fixtures/real_crwd_quote_2026_10_07.json), taken in by the plane at its receipt time and
+Real data: CRWD's 2026-10-16 expiry, every strike, captured 2026-10-07 10:38:40 ET
+(tests/real_chains.py CRWD), and CRWD's LEVELONE_EQUITIES message the daemon received at 10:38:00
+ET (tests/fixtures/real_crwd_quote_2026_10_07.json), taken in by the plane at its receipt time and
 turned into the price row by the daemon's own function at the capture's instant.
 """
 

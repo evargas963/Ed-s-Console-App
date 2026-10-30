@@ -3,8 +3,8 @@
 Uses banked complete captures (strike_range=ALL) that match live /api/chain this session:
   CDE 2026-09-04  — $0.50 strikes (10.5 … 26.5)
   CRWD 2026-09-18 — $0.25/$0.75 plus $0.50 (38.75, 41.25, …)
-No ticker-specific product branch. Rebuilds the Schwab nested map from the flat capture, then runs the live
-flatten_chain_contracts.
+No ticker-specific product branch. Rebuilds the Schwab nested map from the flat capture, then runs
+the live flatten_chain_contracts.
 """
 
 from __future__ import annotations
@@ -25,8 +25,8 @@ _CDE_CONTRACTS = _CDE["chain"]
 
 @pytest.fixture(autouse=True)
 def _at_capture(pin_clock):
-    """Valued at the stored chain's capture (2026-09-02 10:05 ET), so its expiries passing never change
-    what this test measures."""
+    """Valued at the stored chain's capture (2026-09-02 10:05 ET), so its expiries passing never
+    change what this test measures."""
     return pin_clock(2026, 9, 2, 10, 5)
 
 

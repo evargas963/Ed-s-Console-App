@@ -1,6 +1,7 @@
 """A vendor outage degrades a capability; it does not decide whether the app exists.
 
-docs/ARCHITECTURE.md "Failure domains" separates application availability from capability availability:
+docs/ARCHITECTURE.md "Failure domains" separates application availability from capability
+availability:
 
     Schwab unavailable
         -> app stays alive
@@ -103,7 +104,8 @@ def test_health_reports_the_daemons_schwab_socket_and_the_app_stays_ok():
     payload = server.health()
     assert payload["capabilities"] == {
         "schwab": "UNAVAILABLE",
-        "schwab_reason": "NOT CONNECTED: the stream is logging in, or its connection has just ended",
+        "schwab_reason": "NOT CONNECTED: the stream is logging in, "
+        "or its connection has just ended",
     }
 
     now = time.time()

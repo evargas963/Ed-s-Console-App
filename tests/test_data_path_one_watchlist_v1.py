@@ -1,15 +1,16 @@
 """The one watchlist and the daemon's subscriptions, Schwab to the screen, through the real code:
-the capture daemon's connection (capture.Daemon.run) on the real schwab-py StreamClient, logged in to
-Schwab's streamer played locally (tests/schwab_stream_standin.py) through Schwab's REST host played
-locally (tests/schwab_rest_standin.py); the daemon's console socket (live_push); the console's side of
-it (streaming.serve_push) and its routes (server.post_watchlist, delete_watchlist, get_watchlist).
+the capture daemon's connection (capture.Daemon.run) on the real schwab-py StreamClient, logged in
+to Schwab's streamer played locally (tests/schwab_stream_standin.py) through Schwab's REST host
+played locally (tests/schwab_rest_standin.py); the daemon's console socket (live_push); the
+console's side of it (streaming.serve_push) and its routes (server.post_watchlist,
+delete_watchlist, get_watchlist).
 
-Real data: Schwab's /quotes answers to SPY, TSLA, SPCX, META, QQQ, IWM and ZQZQZ asked alone, as the
-watchlist check asks (2026-10-07; ZQZQZ is named in errors.invalidSymbols); Schwab's answers to an ADD
-past LEVELONE_OPTIONS' limit as logged on 2026-10-07 04:40:39 (code 19, then code 24 "ADD command
-failed"); SPY's captured 2026-11-20 chain with its stored price and MRVL's full chain, as the option
-rule's inputs on the daemon's bus. STAND-INS (named in the stand-ins): the streamer's login, a code-0
-answer's message, the limit a test sets; the daemon's clock at each chain's capture.
+Real data: Schwab's /quotes answers to SPY, TSLA, SPCX, META, QQQ, IWM and ZQZQZ asked alone, as
+the watchlist check asks (2026-10-07; ZQZQZ is named in errors.invalidSymbols); Schwab's answers to
+an ADD past LEVELONE_OPTIONS' limit as logged on 2026-10-07 04:40:39 (code 19, then code 24 "ADD
+command failed"); SPY's captured 2026-11-20 chain with its stored price and MRVL's full chain, as
+the option rule's inputs on the daemon's bus. STAND-INS (named in the stand-ins): the streamer's
+login, a code-0 answer's message, the limit a test sets; the daemon's clock at each chain's capture.
 """
 
 from __future__ import annotations
@@ -163,7 +164,8 @@ def test_the_daemon_subscribes_once_and_each_of_schwabs_answers_reaches_its_own_
     assert all(code == 0 for svc, _c, code, _m in answers if svc != "LEVELONE_OPTIONS"), answers
     assert held["NYSE_BOOK"] == {"SPY", "TSLA"} and held["LEVELONE_OPTIONS"] == frozenset()
     # each request asks for every field number Schwab accepts on its service (code 22 past it), and
-    # the fields Schwab sends past its Streamer Guide (LEVELONE_EQUITIES 52-56) reach SPY's record as sent
+    # the fields Schwab sends past its Streamer Guide (LEVELONE_EQUITIES 52-56) reach SPY's record
+    # as sent
     assert {
         (r["service"], r["parameters"]["fields"])
         for r in schwab.streamer.requests
@@ -467,7 +469,8 @@ def test_a_viewed_ticker_warms_only_on_the_watchlist_and_a_silent_daemon_says_so
         )
         server._on_chain(on, None, time.time(), "full chain returned HTTP 400", None)
         assert json.loads(server.get_options_gamma_surface(on).body)["reason"] == (
-            "no terrain snapshot has been computed yet — chain fetch failed (full chain returned HTTP 400)"
+            "no terrain snapshot has been computed yet — "
+            "chain fetch failed (full chain returned HTTP 400)"
         )
         lmp.record_feed_heartbeat(
             {"ts": time.time() - 100, "schwab_socket_open": True, "watchlist": [on]}

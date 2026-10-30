@@ -99,12 +99,13 @@ def test_a_minute_the_stream_did_not_deliver_stays_missing():
     assert [b.ts for b in server._bars_1m(TK)] == [T0, T0 + 60, T0 + 180]
 
 
-def test_the_price_history_is_taken_promptly_and_exactly_while_options_are_priced_in_the_same_process():
+def test_the_price_history_is_taken_promptly_and_exactly_while_options_are_priced_alongside():
     """The console prices option chains in the interpreter that takes and serves the bars. Schwab's
     SPY and TSLA 1-minute price history as /pricehistory answered it at 2026-10-07 09:57 UTC (10
-    days, extended hours: ~11,000 candles each), taken by the bar writer (server._write_streamed_bars,
-    as the daemon pushes it) beside a busy pure-Python thread: each minute is Schwab's candle with
-    every field as sent, the pre-market and after-hours minutes included, in well under a second."""
+    days, extended hours: ~11,000 candles each), taken by the bar writer
+    (server._write_streamed_bars, as the daemon pushes it) beside a busy pure-Python thread: each
+    minute is Schwab's candle with every field as sent, the pre-market and after-hours minutes
+    included, in well under a second."""
     busy = threading.Event()
 
     def price_options():

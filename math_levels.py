@@ -338,9 +338,10 @@ def gamma_flip_from_profile(profile: list[tuple[float, float]], spot: float) -> 
 
 
 #: Gamma Support Floor / Gamma Resistance Ceiling — construction constants.
-#: phi: the support-decay fraction (Barbon & Buraschi gamma-fragility framing): the level where the dealer stabilization cushion N(s) has decayed to phi of its
-#: at-spot value. 0.5 = "half-support", communicable and parameter-honest; calibratable in
-#: [0.25, 0.6] on banked bars later (placebo-tested), never silently re-tuned.
+#: phi: the support-decay fraction (Barbon & Buraschi gamma-fragility framing): the level where
+#: the dealer stabilization cushion N(s) has decayed to phi of its at-spot value. 0.5 =
+#: "half-support", communicable and parameter-honest; calibratable in [0.25, 0.6] on banked bars
+#: later (placebo-tested), never silently re-tuned.
 GSF_PHI = 0.5
 #: eps guard: below this fraction of the profile's max |N|, the at-spot cushion is too small
 #: for a ratio to mean anything — the regime is effectively at/below zero support and the
@@ -501,9 +502,10 @@ GAMMA_FLIP_LEVEL_APPROX = "LEVEL_APPROX_NARROW_SPAN"
 #: The live chain-FETCH width, and the FLOOR below which nothing is claimed at all (the verdict is
 #: LOW_CONFIDENCE_NARROW_CHAIN and terrain stands everything aside).
 #: The floor makes no claim about the at-spot SIGN: the flip-LEVEL convergence study measures
-#: |windowed flip - full-chain flip|, a LEVEL distance, and is silent about the SIGN of gamma at spot.
-#: MEASURED (260 seed-fixed chains from the study's reference cohort, at-spot gamma recomputed on truncated windows via
-#: _contract_inputs/bs_gamma, counting ONLY genuinely truncated chains):
+#: |windowed flip - full-chain flip|, a LEVEL distance, and is silent about the SIGN of gamma at
+#: spot. MEASURED (260 seed-fixed chains from the study's reference cohort, at-spot gamma
+#: recomputed on truncated windows via _contract_inputs/bs_gamma, counting ONLY genuinely
+#: truncated chains):
 #:   sign agreement with the full delivered chain — +/-1% 79.8% (n=233), +/-5% 86.2% (n=253,
 #:   95% CI [0.814, 0.899]), +/-10% 90.2% (n=254), +/-15% 92.7% (n=248).
 #: WHAT IS BEING COMPARED — read this before quoting any number above. Both sides of the comparison
@@ -549,20 +551,21 @@ GAMMA_FLIP_LEVEL_APPROX = "LEVEL_APPROX_NARROW_SPAN"
 #: and 0.257% at +/-15%; no ladder point reaches 95% of chains inside a 0.05%-of-spot tolerance.
 #: So 0.05 is measurably INSUFFICIENT, not merely unjustified.
 #: HELD AT 0.05 PENDING, deliberately not silently re-tuned: the cohort is only n=15 and the
-#: reference is the widest chain we captured (Schwab's documentation states no strikeCount cap), so the study bounds the
-#: requirement from below rather than pinning it. Raising it also widens every fetch, which is a
-#: cost/latency decision. Re-set it once a chain-depth probe measures how many strikes Schwab
-#: delivers and the cohort is large enough to pin a value.
+#: reference is the widest chain we captured (Schwab's documentation states no strikeCount cap),
+#: so the study bounds the requirement from below rather than pinning it. Raising it also widens
+#: every fetch, which is a cost/latency decision. Re-set it once a chain-depth probe measures how
+#: many strikes Schwab delivers and the cohort is large enough to pin a value.
 GAMMA_FLIP_MIN_SPAN_PCT = 0.05
 #: The 0.05 above is the live chain-fetch width, a real cost/latency decision; the study refutes it
 #: as the TRUSTED-vs-NARROW verdict on the flip LEVEL, so a fetch-width compromise does not set the
-#: trust bar. This constant governs the flip-LEVEL trust ONLY, and is set at the measured convergence knee:
-#: median error vs the full-chain flip falls from 1.38% of spot at ±5% to 0.117% at ±10% (~10x) and
-#: does not improve at ±15% (0.257%, reference noise).
+#: trust bar. This constant governs the flip-LEVEL trust ONLY, and is set at the measured
+#: convergence knee: median error vs the full-chain flip falls from 1.38% of spot at ±5% to
+#: 0.117% at ±10% (~10x) and does not improve at ±15% (0.257%, reference noise).
 #: Read this before quoting any span number: the study's reference chains are NOT the production
 #: terrain chain.
 #: MEASURED against the LIVE fetch (`/api/terrain` flip_diag span_below/above_pct):
-#:   SPY 29.4% (216 strikes), QQQ 29.5% (216), IWM 29.8% (87), NVDA 21.7% (44), AAPL 29.4%, TSLA 25.9%
+#:   SPY 29.4% (216 strikes), QQQ 29.5% (216), IWM 29.8% (87), NVDA 21.7% (44), AAPL 29.4%,
+#:   TSLA 25.9%
 #: — every sampled production chain clears this bar with ~3x headroom and reads TRUSTED.
 #: The middle tier is the honest verdict for a chain that
 #: genuinely lands between GAMMA_FLIP_MIN_SPAN_PCT and this bar (the regime is the SIGN OF GAMMA AT
@@ -575,9 +578,9 @@ GAMMA_FLIP_MIN_SPAN_PCT = 0.05
 #:  (2) for SPY/QQQ the study's own REFERENCE chain (SPY 8.9%/110
 #:      strikes, QQQ 9.6%/123) is ~3x NARROWER than the production chain it is used to certify, so
 #:      the ±10% and ±15% ladder points cannot even truncate those rows (they pass through at
-#:      zero error by construction — 5.1% of the study's 992 usable chains at ±10%). The knee is therefore
-#:      measured predominantly on non-SPY/QQQ chains, and the 9%->30% region is UNMEASURED for
-#:      exactly the two tickers that matter most.
+#:      zero error by construction — 5.1% of the study's 992 usable chains at ±10%). The knee is
+#:      therefore measured predominantly on non-SPY/QQQ chains, and the 9%->30% region is
+#:      UNMEASURED for exactly the two tickers that matter most.
 #: So 0.10 is an evidence-backed FLOOR, never a certified sufficiency. Settle it by re-running the
 #: ladder against reference chains at least as wide as production for the dense-strike ETFs.
 GAMMA_FLIP_TRUSTED_SPAN_PCT = 0.10
@@ -629,7 +632,8 @@ def compute_gamma_flip_v2(
       * >= GAMMA_FLIP_MIN_SPAN_PCT, below
         the trusted span                 -> GAMMA_FLIP_LEVEL_APPROX (the regime stands on the
                                             at-spot sign, which this span does not verify; too
-                                            narrow to place the LEVEL — consumers must disclose that)
+                                            narrow to place the LEVEL — consumers must disclose
+                                            that)
       * < GAMMA_FLIP_MIN_SPAN_PCT        -> GAMMA_FLIP_NARROW (nothing is claimed)
     Why the floor exists at all: a narrow chain misplaces the flip (a 40-contract chain placed it
     at 770.35 against a full-chain reference of 745.61).
@@ -658,7 +662,8 @@ def compute_gamma_flip_v2(
     #                  measurement). Clearing it means we are willing to speak, not that the sign
     #                  is verified.
     #  covers_level  — the measured convergence span for the flip LEVEL itself
-    #                  (GAMMA_FLIP_TRUSTED_SPAN_PCT; see its provenance block). Only this earns TRUSTED.
+    #                  (GAMMA_FLIP_TRUSTED_SPAN_PCT; see its provenance block). Only this earns
+    #                  TRUSTED.
     covers_regime = lo <= spot * (1.0 - GAMMA_FLIP_MIN_SPAN_PCT) and hi >= spot * (
         1.0 + GAMMA_FLIP_MIN_SPAN_PCT
     )

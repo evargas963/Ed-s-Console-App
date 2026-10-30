@@ -29,10 +29,10 @@ PROTECTED_PATHS: tuple[str, ...] = (
     "tools/process_lock_guard.py",
 )
 
-#: The reset guard's class: tree-destructive git, not just `reset --hard`. The hard forms (reset --hard,
-#: checkout -- <any path>, clean -f, push --force without lease, short -f included, and every git
-#: stash but `stash list`) are `_hard` below and refuse on any target. The class rule covers the
-#: reset/restore/checkout--/clean
+#: The reset guard's class: tree-destructive git, not just `reset --hard`. The hard forms (reset
+#: --hard, checkout -- <any path>, clean -f, push --force without lease, short -f included, and
+#: every git stash but `stash list`) are `_hard` below and refuse on any target. The class rule
+#: covers the reset/restore/checkout--/clean
 #: family: a statement running a destructive verb AND touching a protected/product path (or a
 #: bare, whole-tree form) is refused at PreToolUse in every session wired to process_lock_guard.
 #: git's global options (`git -C <other> ...`) are skipped; the class rule is judged per
@@ -95,9 +95,11 @@ def _reset_class_violation(words: tuple[str, ...]) -> list[str]:
     touched = [p for p in PROTECTED_PATHS + PRODUCT_WIPE_PROTECTED if p in seg]
     bare = not any(tok in seg for tok in (" -- ", ".py", ".html", ".json"))
     if touched or bare:
+        what = (
+            "paths: " + ", ".join(sorted(set(touched))[:4]) if touched else "bare/whole-tree form"
+        )
         return [
-            "RESET_GUARD: tree-destructive git "
-            f"({'paths: ' + ', '.join(sorted(set(touched))[:4]) if touched else 'bare/whole-tree form'}) "
+            f"RESET_GUARD: tree-destructive git ({what}) "
             "can discard operator work. No setting or file here can allow it."
         ]
     return []
@@ -122,7 +124,8 @@ def reset_guard_violations(command: str, powershell: bool = False) -> list[str]:
     if any(_hard(*git_subcommand(words)) for words in gits):
         return [
             "RESET_GUARD: destructive git can discard operator work — "
-            "reset --hard / checkout -- <path> / clean -f / push --force or -f / stash are refused on "
+            "reset --hard / checkout -- <path> / clean -f / push --force or -f / stash "
+            "are refused on "
             "any target (`--force-with-lease` is the safe form). Hand it to the operator. No "
             "setting or file here can allow it."
         ]

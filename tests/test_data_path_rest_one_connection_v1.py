@@ -6,10 +6,10 @@ tickers, one request at a time. Each chain reaches the bus with Schwab's exact G
 times: the quote's, every contract, including one the stream holds.
 
 Real data: the stand-in's (SPY 2026-11-20 chain and quotes, TSLA 2026-10-09 chain) and the
-LEVELONE_OPTIONS events of SPY 260904C00772000 (tests/fixtures/real_options_stream_history_samples.json).
-STAND-INS: the held contract's stream record is SPY 260904C00772000's events keyed as
-SPY 261120C00875000, each with its receive time as Schwab's frame time (no captured stream of a
-2026-11-20 contract carries its Greeks); the clock.
+LEVELONE_OPTIONS events of SPY 260904C00772000
+(tests/fixtures/real_options_stream_history_samples.json). STAND-INS: the held contract's stream
+record is SPY 260904C00772000's events keyed as SPY 261120C00875000, each with its receive time as
+Schwab's frame time (no captured stream of a 2026-11-20 contract carries its Greeks); the clock.
 """
 
 from __future__ import annotations
@@ -113,7 +113,8 @@ def test_a_rotation_asks_schwab_as_documented_one_request_at_a_time_with_exact_g
         (QUOTES, None, 300),
         (QUOTES, None, n_quoted - 600),
     ], (
-        "the expiration chain, each expiry's market hours, each expiry, quotes as 300 fill (the price "
+        "the expiration chain, each expiry's market hours, each expiry, quotes as 300 fill "
+        "(the price "
         "history has its own schedule, ChainSweep.candles)"
     )
     for path, q, *_ in first:
@@ -279,8 +280,8 @@ def test_contracts_schwab_names_invalid_get_no_greeks_and_every_ticker_in_the_re
     """Schwab's /quotes answers 200 with a quote per symbol it knows and, beside them, an errors
     entry naming the ones it does not (measured 2026-10-07: 8 SPY contracts its own chain lists,
     never quoted or traded). Every entry that is a quote is read; the 8 get no Greeks, logged once
-    per request with their count; SPY and TSLA, which share a request, are both delivered. Real data: the 8
-    contracts' /chains entries and Schwab's errors entry as sent
+    per request with their count; SPY and TSLA, which share a request, are both delivered. Real
+    data: the 8 contracts' /chains entries and Schwab's errors entry as sent
     (tests/fixtures/real_spy_quotes_invalid_symbols_2026_10_07.json). STAND-IN: the 8 are served in
     SPY's chain answer beside its 2026-11-20 contracts, as one more expiry's."""
     invalid = json.loads(

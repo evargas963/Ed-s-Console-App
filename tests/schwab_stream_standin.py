@@ -46,7 +46,10 @@ HIGHEST_FIELD = {
 
 def refusal(service: str, limit: int, discarded: int) -> str:
     """Schwab's code-19 message, as logged on 2026-10-07 (two spaces before the parenthesis)."""
-    return f"You've reached the maximum number of symbols allowed.  ({service}={limit}, DISCARDED={discarded})"
+    return (
+        "You've reached the maximum number of symbols allowed.  "
+        f"({service}={limit}, DISCARDED={discarded})"
+    )
 
 
 class LocalStreamer:

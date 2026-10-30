@@ -23,7 +23,8 @@ def test_static_js_response_forces_revalidation():
         r = client.get("/static/js/ed-gamma.js")
         assert r.status_code == 200
         assert r.headers.get("cache-control") == "no-cache", (
-            f"static assets must set Cache-Control: no-cache -- got {r.headers.get('cache-control')!r}"
+            "static assets must set Cache-Control: no-cache -- "
+            f"got {r.headers.get('cache-control')!r}"
         )
         # revalidation must still work (a cheap 304) -- not a regression to no-store
         etag = r.headers.get("etag")

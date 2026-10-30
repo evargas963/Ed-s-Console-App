@@ -41,8 +41,8 @@ def _et(s: str) -> datetime:
 
 def test_the_daemon_asks_each_date_once_and_records_every_answer_as_sent(tmp_path):
     """The real sweep on the daemon's thread (capture.run_chains, the wall clock), SPY and TSLA on
-        the watchlist: each of today and the 7 days before it, and each expiry from today on,
-        asked once -- not once per ticker -- each answer published and written by the one writer into
+    the watchlist: each of today and the 7 days before it, and each expiry from today on, asked
+    once -- not once per ticker -- each answer published and written by the one writer into
     stream_markets_raw exactly as Schwab sent it, with its status."""
     db = tmp_path / "stream_capture.db"
     schwab = LocalSchwab()

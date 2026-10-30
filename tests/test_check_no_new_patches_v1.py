@@ -18,7 +18,8 @@ import check_no_new_patches as cnp  # noqa: E402
 
 OLD_FILE = (
     "import calc\n\n\n"
-    'def test_old_one(monkeypatch):\n    monkeypatch.setattr(calc, "spot", lambda row: 1)\n    assert calc.spot({}) == 1\n\n\n'
+    'def test_old_one(monkeypatch):\n    monkeypatch.setattr(calc, "spot", lambda row: 1)\n'
+    "    assert calc.spot({}) == 1\n\n\n"
     'def test_old_two():\n    assert calc.spot({"last": 2}) == 2\n'
 )
 CONFTEST = (
@@ -95,24 +96,33 @@ def _check(
 
 
 def test_a_new_test_using_monkeypatch_is_refused(tmp_path):
-    new = "import calc\n\n\ndef test_new(monkeypatch):\n    monkeypatch.setattr(calc, 'spot', lambda r: 3)\n"
+    new = (
+        "import calc\n\n\ndef test_new(monkeypatch):\n"
+        "    monkeypatch.setattr(calc, 'spot', lambda r: 3)\n"
+    )
     assert _check(tmp_path, {"tests/test_new.py": new}) == [
-        f"tests/test_new.py::test_new patches: {RAN}, line {_line(new, 'monkeypatch.setattr')} applies one"
+        f"tests/test_new.py::test_new patches: {RAN}, "
+        f"line {_line(new, 'monkeypatch.setattr')} applies one"
     ]
 
 
 def test_a_test_in_a_nested_class_patched_by_its_class_decorator_is_refused(tmp_path):
     new = (
-        "from unittest import mock\n\n\nclass TestOuter:\n    @mock.patch('calc.spot', return_value=3)\n"
+        "from unittest import mock\n\n\n"
+        "class TestOuter:\n    @mock.patch('calc.spot', return_value=3)\n"
         "    class TestInner:\n        def test_new(self, spot):\n            assert spot() == 3\n"
     )
     assert _check(tmp_path, {"tests/test_new.py": new}) == [
-        f"tests/test_new.py::TestOuter.TestInner.test_new patches: {RAN}, line {_line(new, 'def test_new')} applies one"
+        f"tests/test_new.py::TestOuter.TestInner.test_new patches: {RAN}, "
+        f"line {_line(new, 'def test_new')} applies one"
     ]
 
 
 def test_an_aliased_patch_dict_is_refused(tmp_path):
-    new = "from unittest.mock import patch as p\n\n\ndef test_new():\n    with p.dict('os.environ', {'X': '1'}):\n        pass\n"
+    new = (
+        "from unittest.mock import patch as p\n\n\n"
+        "def test_new():\n    with p.dict('os.environ', {'X': '1'}):\n        pass\n"
+    )
     assert _check(tmp_path, {"tests/test_new.py": new}) == [
         f"tests/test_new.py::test_new patches: {RAN}, line {_line(new, 'with p.dict')} applies one"
     ]
@@ -120,7 +130,8 @@ def test_an_aliased_patch_dict_is_refused(tmp_path):
 
 def test_a_new_test_under_an_if_beside_a_patching_autouse_fixture_is_refused(tmp_path):
     was = (
-        "import pytest\n\n\n@pytest.fixture(autouse=True)\ndef _pin(monkeypatch):\n    monkeypatch.setenv('X', '1')\n\n\n"
+        "import pytest\n\n\n@pytest.fixture(autouse=True)\n"
+        "def _pin(monkeypatch):\n    monkeypatch.setenv('X', '1')\n\n\n"
         "def test_one():\n    assert True\n"
     )
     assert _check(
@@ -133,7 +144,8 @@ def test_a_new_test_under_an_if_beside_a_patching_autouse_fixture_is_refused(tmp
 def test_a_new_test_under_a_conftest_fixture_patching_through_another_conftest_is_refused(tmp_path):
     base = {
         **BASE,
-        "tests/sub/conftest.py": "import pytest\n\n\n@pytest.fixture(autouse=True)\ndef held(pinned):\n    yield\n",
+        "tests/sub/conftest.py": "import pytest\n\n\n@pytest.fixture(autouse=True)\n"
+        "def held(pinned):\n    yield\n",
     }
     assert _check(
         tmp_path, {"tests/sub/test_new.py": "def test_new():\n    assert True\n"}, base=base
@@ -142,22 +154,25 @@ def test_a_new_test_under_a_conftest_fixture_patching_through_another_conftest_i
 
 def test_a_new_test_calling_a_patching_helper_by_attribute_is_refused(tmp_path):
     was = (
-        "import pytest\n\n\nclass TestHeld:\n    def _pin(self):\n        self.mp = pytest.MonkeyPatch()\n"
-        "        self.mp.setenv('X', '1')\n\n    def teardown_method(self):\n        self.mp.undo()\n\n"
+        "import pytest\n\n\nclass TestHeld:\n"
+        "    def _pin(self):\n        self.mp = pytest.MonkeyPatch()\n"
+        "        self.mp.setenv('X', '1')\n\n"
+        "    def teardown_method(self):\n        self.mp.undo()\n\n"
         "    def test_one(self):\n        self._pin()\n"
     )
     now = was + "\n    def test_two(self):\n        self._pin()\n"
     assert _check(
         tmp_path, {"tests/test_held.py": now}, base={**BASE, "tests/test_held.py": was}
     ) == [
-        f"tests/test_held.py::TestHeld.test_two patches: {RAN}, line {now.count(chr(10))} applies one"
+        f"tests/test_held.py::TestHeld.test_two patches: {RAN}, "
+        f"line {now.count(chr(10))} applies one"
     ]
 
 
 def test_a_new_test_beside_a_patching_setup_function_is_refused(tmp_path):
     was = (
-        OLD_FILE
-        + "\n\ndef setup_function(_fn):\n    import os\n    import pytest\n    pytest.MonkeyPatch().setenv('X', '1')\n"
+        OLD_FILE + "\n\ndef setup_function(_fn):\n    import os\n    import pytest\n"
+        "    pytest.MonkeyPatch().setenv('X', '1')\n"
     )
     assert _check(
         tmp_path,
@@ -217,7 +232,8 @@ def test_an_old_patching_test_whose_code_changes_is_refused(tmp_path):
         "lambda row: 5)\n    assert calc.spot({}) == 5",
     )
     assert _check(tmp_path, {"tests/test_old.py": now}) == [
-        f"tests/test_old.py::test_old_one patches: {RAN}, line {_line(now, 'monkeypatch.setattr')} applies one"
+        f"tests/test_old.py::test_old_one patches: {RAN}, "
+        f"line {_line(now, 'monkeypatch.setattr')} applies one"
     ]
 
 
@@ -232,10 +248,12 @@ def test_an_untouched_old_patching_test_is_allowed_when_its_file_changes_elsewhe
 
 
 def test_names_that_only_look_like_patches_are_not_patches(tmp_path):
-    """A client's `patch` method, a local named `patch`, and a fixture fetched by name that patches nothing."""
+    """A client's `patch` method, a local named `patch`, and a fixture fetched by name that patches
+    nothing."""
     new = (
         "class Client:\n    def patch(self, url):\n        return url\n\n\n"
-        "def test_new(request):\n    request.getfixturevalue('tmp_path')\n    patch = Client().patch('/x')\n    assert patch == '/x'\n"
+        "def test_new(request):\n    request.getfixturevalue('tmp_path')\n"
+        "    patch = Client().patch('/x')\n    assert patch == '/x'\n"
     )
     assert _check(tmp_path, {"tests/test_new.py": new}) == []
 
@@ -243,7 +261,8 @@ def test_names_that_only_look_like_patches_are_not_patches(tmp_path):
 def test_a_patch_dict_decorator_under_a_patch_decorator_is_refused(tmp_path):
     new = (
         "import os\nfrom unittest import mock\n\n\n@mock.patch('calc.spot', return_value=3)\n"
-        "@mock.patch.dict(os.environ, {'X': '1'})\ndef test_new(spot):\n    assert os.environ['X'] == '1'\n"
+        "@mock.patch.dict(os.environ, {'X': '1'})\n"
+        "def test_new(spot):\n    assert os.environ['X'] == '1'\n"
     )
     assert _check(tmp_path, {"tests/test_new.py": new}) == [
         f"tests/test_new.py::test_new patches: {RAN}, line {_line(new, '@mock.patch(')} applies one"
@@ -253,7 +272,8 @@ def test_a_patch_dict_decorator_under_a_patch_decorator_is_refused(tmp_path):
 def test_a_patch_applied_when_the_conftest_is_imported_is_refused(tmp_path):
     now = CONFTEST.replace(
         "import pytest\n",
-        "import pytest\nfrom unittest import mock\n\nmock.patch('time.time', lambda: 1.0).start()\n",
+        "import pytest\nfrom unittest import mock\n\n"
+        "mock.patch('time.time', lambda: 1.0).start()\n",
     )
     line = _line(now, "mock.patch(")
     assert _check(tmp_path, {"tests/conftest.py": now}) == [
@@ -263,7 +283,10 @@ def test_a_patch_applied_when_the_conftest_is_imported_is_refused(tmp_path):
 
 def test_a_new_test_that_did_not_run_is_refused(tmp_path):
     """Skipped here, it would patch where it runs; what it runs under is unknown."""
-    new = "import pytest\n\n\n@pytest.mark.skipif(True, reason='elsewhere')\ndef test_new(monkeypatch):\n    monkeypatch.setenv('X', '1')\n"
+    new = (
+        "import pytest\n\n\n@pytest.mark.skipif(True, reason='elsewhere')\n"
+        "def test_new(monkeypatch):\n    monkeypatch.setenv('X', '1')\n"
+    )
     assert _check(tmp_path, {"tests/test_new.py": new}) == [
         f"tests/test_new.py::test_new patches: {cnp.UNRUN}"
     ]
@@ -281,7 +304,10 @@ def test_a_renamed_file_keeps_its_old_patching_test_unjudged(tmp_path):
 
 
 def test_an_unchanged_patching_function_in_a_changed_block_is_not_judged(tmp_path):
-    was = "import os\n\nif True:\n    def test_one(monkeypatch):\n        monkeypatch.setenv('X', '1')\n"
+    was = (
+        "import os\n\nif True:\n"
+        "    def test_one(monkeypatch):\n        monkeypatch.setenv('X', '1')\n"
+    )
     assert (
         _check(
             tmp_path,
@@ -293,10 +319,12 @@ def test_an_unchanged_patching_function_in_a_changed_block_is_not_judged(tmp_pat
 
 
 def test_a_patch_applied_when_another_file_is_imported_judges_a_new_test(tmp_path):
-    """Every worker imports every test file before any test runs, so the patch reaches every test."""
+    """Every worker imports every test file before any test runs, so the patch reaches every
+    test."""
     base = {
         **BASE,
-        "tests/test_a_leak.py": "import pytest\n\npytest.MonkeyPatch().setenv('X', '1')\n\n\ndef test_a():\n    assert True\n",
+        "tests/test_a_leak.py": "import pytest\n\npytest.MonkeyPatch().setenv('X', '1')\n\n\n"
+        "def test_a():\n    assert True\n",
     }
     assert _check(
         tmp_path, {"tests/test_new.py": "def test_new():\n    assert True\n"}, base=base
@@ -304,10 +332,12 @@ def test_a_patch_applied_when_another_file_is_imported_judges_a_new_test(tmp_pat
 
 
 def test_a_patch_another_files_test_left_applied_does_not_judge_a_new_test(tmp_path):
-    """It reaches a test only by the order a worker runs files in; it is judged where it was applied."""
+    """It reaches a test only by the order a worker runs files in; it is judged where it was
+    applied."""
     base = {
         **BASE,
-        "tests/test_a_leak.py": "import pytest\n\n\ndef test_a():\n    pytest.MonkeyPatch().setenv('X', '1')\n",
+        "tests/test_a_leak.py": "import pytest\n\n\n"
+        "def test_a():\n    pytest.MonkeyPatch().setenv('X', '1')\n",
     }
     assert (
         _check(tmp_path, {"tests/test_new.py": "def test_new():\n    assert True\n"}, base=base)
@@ -316,9 +346,11 @@ def test_a_patch_another_files_test_left_applied_does_not_judge_a_new_test(tmp_p
 
 
 def test_a_new_test_under_a_module_scoped_fixture_from_a_helper_is_refused(tmp_path):
-    """The fixture applies its patch for the first test only; every test requesting it runs under it."""
+    """The fixture applies its patch for the first test only; every test requesting it runs under
+    it."""
     helper = (
-        "import pytest\n\n\n@pytest.fixture(scope='module')\ndef held():\n    mp = pytest.MonkeyPatch()\n"
+        "import pytest\n\n\n@pytest.fixture(scope='module')\n"
+        "def held():\n    mp = pytest.MonkeyPatch()\n"
         "    mp.setenv('X', '1')\n    yield\n    mp.undo()\n"
     )
     was = "from helpers_fx import held  # noqa: F401\n\n\ndef test_a(held):\n    assert True\n"
@@ -329,7 +361,10 @@ def test_a_new_test_under_a_module_scoped_fixture_from_a_helper_is_refused(tmp_p
 
 
 def test_a_new_test_in_a_file_skipped_at_collection_is_refused(tmp_path):
-    new = "import pytest\n\npytest.importorskip('no_such_module')\n\n\ndef test_new(monkeypatch):\n    monkeypatch.setenv('X', '1')\n"
+    new = (
+        "import pytest\n\npytest.importorskip('no_such_module')\n\n\n"
+        "def test_new(monkeypatch):\n    monkeypatch.setenv('X', '1')\n"
+    )
     assert _check(tmp_path, {"tests/test_new.py": new}) == [
         f"tests/test_new.py::test_new patches: {cnp.UNRUN}"
     ]
@@ -337,7 +372,10 @@ def test_a_new_test_in_a_file_skipped_at_collection_is_refused(tmp_path):
 
 def test_a_new_test_that_skips_partway_is_refused(tmp_path):
     """The code after its skip never ran here; what it runs under is unknown."""
-    new = "import pytest\n\n\ndef test_new(monkeypatch):\n    pytest.skip('elsewhere')\n    monkeypatch.setenv('X', '1')\n"
+    new = (
+        "import pytest\n\n\ndef test_new(monkeypatch):\n"
+        "    pytest.skip('elsewhere')\n    monkeypatch.setenv('X', '1')\n"
+    )
     assert _check(tmp_path, {"tests/test_new.py": new}) == [
         f"tests/test_new.py::test_new patches: {cnp.UNRUN}"
     ]
@@ -374,7 +412,8 @@ def test_an_inherited_test_is_judged_as_the_code_that_defines_it(tmp_path):
     """TestHeld runs test_x, defined in _Base, under its patching autouse fixture."""
     was = (
         "import pytest\n\n\nclass _Base:\n    def test_x(self):\n        assert True\n\n\n"
-        "class TestHeld(_Base):\n    @pytest.fixture(autouse=True)\n    def _pin(self, monkeypatch):\n"
+        "class TestHeld(_Base):\n    @pytest.fixture(autouse=True)\n"
+        "    def _pin(self, monkeypatch):\n"
         "        monkeypatch.setenv('X', '1')\n"
     )
     now = was.replace("        assert True\n", "        assert 1 == 1\n")
@@ -386,7 +425,8 @@ def test_an_inherited_test_is_judged_as_the_code_that_defines_it(tmp_path):
 def test_a_new_test_under_a_decorator_that_does_not_wrap_is_refused(tmp_path):
     was = (
         "from unittest import mock\n\n\ndef pinned(f):\n    def wrapper(*a, **k):\n"
-        "        with mock.patch('calc.spot', return_value=3):\n            return f(*a, **k)\n    return wrapper\n\n\n"
+        "        with mock.patch('calc.spot', return_value=3):\n            return f(*a, **k)\n"
+        "    return wrapper\n\n\n"
         "@pinned\ndef test_old():\n    pass\n"
     )
     assert _check(
@@ -398,8 +438,10 @@ def test_a_new_test_under_a_decorator_that_does_not_wrap_is_refused(tmp_path):
 
 def test_a_new_test_made_inside_a_function_is_judged_as_that_function(tmp_path):
     was = (
-        "import pytest\n\n\n@pytest.fixture(autouse=True)\ndef _pin(monkeypatch):\n    monkeypatch.setenv('X', '1')\n\n\n"
-        "def make():\n    def test_x():\n        assert True\n    return test_x\n\n\ntest_made = make()\n"
+        "import pytest\n\n\n@pytest.fixture(autouse=True)\n"
+        "def _pin(monkeypatch):\n    monkeypatch.setenv('X', '1')\n\n\n"
+        "def make():\n    def test_x():\n        assert True\n    return test_x\n\n\n"
+        "test_made = make()\n"
     )
     now = was.replace("        assert True\n", "        assert 1 == 1\n")
     assert _check(
@@ -415,7 +457,10 @@ def test_an_old_patching_test_bound_under_a_new_name_is_refused(tmp_path):
 
 
 def test_an_old_patching_test_bound_under_a_new_name_in_its_class_is_refused(tmp_path):
-    was = "class TestSpot:\n    def test_a(self, monkeypatch):\n        monkeypatch.setenv('X', '1')\n"
+    was = (
+        "class TestSpot:\n"
+        "    def test_a(self, monkeypatch):\n        monkeypatch.setenv('X', '1')\n"
+    )
     now = was + "\n    test_b = test_a\n"
     assert _check(
         tmp_path, {"tests/test_cls.py": now}, base={**BASE, "tests/test_cls.py": was}
@@ -437,7 +482,8 @@ def test_an_old_patching_test_imported_into_a_new_file_is_refused(tmp_path):
 
 
 def test_a_collected_test_no_code_in_its_file_binds_is_refused(tmp_path):
-    """A name bound in a way the check does not read (here through globals()) is refused as unknown."""
+    """A name bound in a way the check does not read (here through globals()) is refused as
+    unknown."""
     new = "import test_old\n\nglobals()['test_again'] = test_old.test_old_two\n"
     assert _check(tmp_path, {"tests/test_again.py": new}) == [
         f"tests/test_again.py::test_again patches: {cnp.UNBOUND}"
@@ -453,7 +499,10 @@ def test_a_name_bound_by_unread_code_in_a_changed_file_is_refused(tmp_path):
 
 
 def test_a_new_class_inheriting_old_patching_tests_is_refused(tmp_path):
-    was = "import pytest\n\n\nclass TestOld:\n    def test_x(self, monkeypatch):\n        monkeypatch.setenv('X', '1')\n"
+    was = (
+        "import pytest\n\n\nclass TestOld:\n"
+        "    def test_x(self, monkeypatch):\n        monkeypatch.setenv('X', '1')\n"
+    )
     now = was + "\n\nclass TestAgain(TestOld):\n    pass\n"
     assert _check(
         tmp_path, {"tests/test_cls.py": now}, base={**BASE, "tests/test_cls.py": was}
@@ -486,8 +535,10 @@ def test_a_pytestmark_putting_old_tests_under_a_patching_fixture_is_refused(tmp_
 
 def test_a_class_given_a_patching_base_is_refused(tmp_path):
     was = (
-        "import pytest\n\n\nclass Held:\n    @pytest.fixture(autouse=True)\n    def _pin(self, monkeypatch):\n"
-        "        monkeypatch.setenv('X', '1')\n\n\nclass TestSpot:\n    def test_x(self):\n        assert True\n"
+        "import pytest\n\n\nclass Held:\n    @pytest.fixture(autouse=True)\n"
+        "    def _pin(self, monkeypatch):\n"
+        "        monkeypatch.setenv('X', '1')\n\n\n"
+        "class TestSpot:\n    def test_x(self):\n        assert True\n"
     )
     now = was.replace("class TestSpot:", "class TestSpot(Held):")
     assert _check(
@@ -498,7 +549,8 @@ def test_a_class_given_a_patching_base_is_refused(tmp_path):
 def test_a_local_named_like_another_test_does_not_take_its_runs(tmp_path):
     """test_x, changed and skipped, keeps its own 'did not run' though its local is named test_b."""
     now = (
-        "import pytest\n\n\n@pytest.mark.skip\ndef test_x():\n    test_b = 1\n    assert test_b\n\n\n"
+        "import pytest\n\n\n@pytest.mark.skip\n"
+        "def test_x():\n    test_b = 1\n    assert test_b\n\n\n"
         "def test_b():\n    assert True\n"
     )
     assert _check(tmp_path, {"tests/test_new.py": now}) == [
@@ -512,18 +564,25 @@ def test_a_local_named_like_a_patching_test_is_not_refused_for_it(tmp_path):
         "def test_second(monkeypatch):\n    monkeypatch.setenv('X', '1')\n"
     )
     assert _check(tmp_path, {"tests/test_new.py": new}) == [
-        f"tests/test_new.py::test_second patches: {RAN}, line {_line(new, 'monkeypatch.setenv')} applies one"
+        f"tests/test_new.py::test_second patches: {RAN}, "
+        f"line {_line(new, 'monkeypatch.setenv')} applies one"
     ]
 
 
 def test_a_changed_fixture_named_like_a_test_is_not_taken_for_one(tmp_path):
     """pytest collects no fixture, so one named test_* is judged only by the patches it applies."""
-    new = "import pytest\n\n\n@pytest.fixture\ndef test_data():\n    return 1\n\n\ndef test_new(test_data):\n    assert test_data == 1\n"
+    new = (
+        "import pytest\n\n\n@pytest.fixture\ndef test_data():\n    return 1\n\n\n"
+        "def test_new(test_data):\n    assert test_data == 1\n"
+    )
     assert _check(tmp_path, {"tests/test_new.py": new}) == []
 
 
 def test_a_new_test_marked_not_to_run_is_refused(tmp_path):
-    new = "import pytest\n\n\n@pytest.mark.xfail(run=False)\ndef test_new(monkeypatch):\n    monkeypatch.setenv('X', '1')\n"
+    new = (
+        "import pytest\n\n\n@pytest.mark.xfail(run=False)\n"
+        "def test_new(monkeypatch):\n    monkeypatch.setenv('X', '1')\n"
+    )
     assert _check(tmp_path, {"tests/test_new.py": new}) == [
         f"tests/test_new.py::test_new patches: {cnp.UNRUN}"
     ]
@@ -531,7 +590,8 @@ def test_a_new_test_marked_not_to_run_is_refused(tmp_path):
 
 def test_a_test_file_in_another_encoding_is_judged(tmp_path):
     root_files = {
-        "tests/test_new.py": "# -*- coding: latin-1 -*-\ndef test_new(monkeypatch):\n    monkeypatch.setenv('X', '\xe9')\n"
+        "tests/test_new.py": "# -*- coding: latin-1 -*-\n"
+        "def test_new(monkeypatch):\n    monkeypatch.setenv('X', '\xe9')\n"
     }
     assert _check(tmp_path, root_files, encoding="latin-1") == [
         f"tests/test_new.py::test_new patches: {RAN}, line 3 applies one"
@@ -539,7 +599,10 @@ def test_a_test_file_in_another_encoding_is_judged(tmp_path):
 
 
 def test_a_patch_left_applied_by_its_own_file_judges_a_new_test(tmp_path):
-    was = "import pytest\n\npytest.MonkeyPatch().setenv('X', '1')\n\n\ndef test_a():\n    assert True\n"
+    was = (
+        "import pytest\n\npytest.MonkeyPatch().setenv('X', '1')\n\n\n"
+        "def test_a():\n    assert True\n"
+    )
     assert _check(
         tmp_path,
         {"tests/test_held.py": was + "\n\ndef test_new():\n    assert True\n"},
@@ -552,7 +615,8 @@ def test_a_new_test_that_patches_nothing_is_allowed(tmp_path):
         _check(
             tmp_path,
             {
-                "tests/test_new.py": "import calc\n\n\ndef test_new():\n    assert calc.spot({'last': 4}) == 4\n"
+                "tests/test_new.py": "import calc\n\n\n"
+                "def test_new():\n    assert calc.spot({'last': 4}) == 4\n"
             },
         )
         == []

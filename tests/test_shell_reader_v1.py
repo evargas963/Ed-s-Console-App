@@ -83,7 +83,8 @@ def test_an_escaped_quote_in_dollar_single_quotes_inside_a_substitution_hides_no
     ids=["deep-unary", "deep-sum", "lone-surrogate"],
 )
 def test_python_code_too_deep_or_unencodable_to_parse_runs_nothing(code):
-    """Python cannot compile it either (MemoryError, RecursionError, UnicodeEncodeError from the parser)."""
+    """Python cannot compile it either (MemoryError, RecursionError, UnicodeEncodeError from the
+    parser)."""
     assert [list(st.words[:2]) for st in read(f'python -c "{code}"')] == [["python", "-c"]]
 
 
