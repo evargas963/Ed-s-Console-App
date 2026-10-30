@@ -3,7 +3,7 @@ ACTIVE_PROGRAM.md's SHAPE row is IN PROGRESS, the agent's attempt to end its tur
 is sent back to the next step.
 
 The one way through is a stop the rules require: the agent's final message begins
-`WAITING ON OPERATOR:` and names why (AGENTS.md Authority's stop list; CLAUDE.md items 3, 5 and 6).
+`WAITING ON OPERATOR:` and names why (AGENTS.md Authority's stop list; CLAUDE.md items 3 and 5).
 From the third refusal in a row the reason sends the agent to the cause and a different approach
 (AGENTS.md Authority); the count is kept per session in COUNTS. Wired by `.claude/settings.json`
 (Stop).
@@ -84,8 +84,7 @@ def decide(work_list: str, last: str, in_a_row: int = 1) -> str | None:
     why = (
         "SHAPE in ACTIVE_PROGRAM.md is IN PROGRESS: take its next step now (AGENTS.md Authority: "
         "work continues until SHAPE is finished; merges do not wait on the operator). Stop only "
-        "for a stop the rules require (AGENTS.md Authority's stop list; CLAUDE.md items 3, 5 and "
-        "6), "
+        "for a stop the rules require (AGENTS.md Authority's stop list; CLAUDE.md items 3 and 5), "
         f"saying why in a message that begins `{WAITING}`."
     )
     if in_a_row < BEDROCK_AT:

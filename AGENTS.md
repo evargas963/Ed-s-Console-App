@@ -197,7 +197,7 @@ then the rule binds with no machine check.
 - Work continues until SHAPE is finished: a stop is refused while its row is IN PROGRESS, unless
   the rules require the stop (his yes to a plan for work outside SHAPE, CLAUDE.md item 3; his yes
   to a production start or stop in regular hours, or to a change of request rates, limits or
-  settings, CLAUDE.md item 5; two failed attempts at the same thing, CLAUDE.md item 6; the next
+  settings, CLAUDE.md item 5; the next
   bullet's stop list: his stop words, an AUDIT ONLY or DO NOT MERGE task, a destructive data action,
   a product decision), said in a message that begins `WAITING ON OPERATOR:`. From the third
   refused stop in a row since the operator last wrote, what is being done is suspect (operator
@@ -205,7 +205,8 @@ then the rule binds with no machine check.
   agent does not try again what already failed, finds the cause down to the line of code or data
   with evidence (First gate 4), takes a different approach, the simplest that fits Python's
   guidelines and the shape, and keeps going ("go to bedrock or try some other solution based on
-  our python guidelines ... instead of just churning"). Enforced by: the Stop hook
+  our python guidelines ... instead of just churning"); two failed attempts at the same thing are
+  met the same way (CLAUDE.md item 6, operator 2026-10-30). Enforced by: the Stop hook
   `tools/keep_going.py` refuses every other stop while SHAPE is open, and from the third refusal
   in a row since the operator last wrote its reason says "If you are trying again what already
   failed, it is not working" and the rest of the above (`tests/test_keep_going_v1.py`); that a

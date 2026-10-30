@@ -23,7 +23,9 @@ so a wrong number that looks right is worse than a '-'.
    outside regular hours (the session tools/operator_yes_guard.py reads from Schwab's
    /markets answer) needs no yes: post a notice in chat, stop cleanly, and after a start
    confirm both are back. During regular hours or an unknown session, it asks.
-6. After two failed attempts at the same thing, stop and report what you tried.
+6. After two failed attempts at the same thing, go to bedrock: find the cause down to the
+   line, with evidence, report what you tried, and take a different approach. Stop only for
+   a stop the rules require.
 7. If rules conflict: correctness of what I see > my explicit yes > speed.
 
 Every report ends like this example:
