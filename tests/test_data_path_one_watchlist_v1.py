@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import socket
 import threading
 import time
@@ -277,6 +278,39 @@ def test_a_request_schwab_never_answers_ends_the_connection(tmp_path):
         schwab.close()
     assert time.monotonic() - started >= capture.REQUEST_TIMEOUT_SEC
     assert daemon.stream is None, "the broken session is logged out and dropped"
+
+
+def test_a_console_frame_the_daemon_cannot_read_is_logged_with_what_arrived(caplog):
+    """The daemon's console socket reads every frame the console sends: one that is not JSON, or
+    JSON that is not an object, is logged with what arrived, never dropped unseen; a request after
+    it still reaches the daemon."""
+    bus, got, stats = MessageBus(), [], {}
+    request = {"op": "watchlist", "add": "SPY"}
+
+    async def go():
+        from websockets.asyncio.client import connect
+
+        stop = asyncio.Event()
+        served = asyncio.create_task(
+            serve_live_push(
+                bus, stop, port=0, stats=stats, on_request=lambda req, ws: got.append(req)
+            )
+        )
+        await _until(lambda: stats.get("listening"))  # the port the system picked
+        ws = await connect(stats["listening"], max_size=None)
+        for frame in ("not json", "[1, 2]", json.dumps(request)):
+            await ws.send(frame)
+        await _until(lambda: got)
+        await ws.close()
+        stop.set()
+        await served
+
+    with caplog.at_level(logging.WARNING, logger="app.market_data.schwab.streaming.live_push"):
+        asyncio.run(go())
+    warned = [r.getMessage() for r in caplog.records if r.name.endswith("live_push")]
+    assert got == [request]
+    assert any("'not json'" in m for m in warned), warned
+    assert any("'[1, 2]'" in m for m in warned), warned
 
 
 def test_an_added_ticker_is_checked_once_asked_for_everywhere_and_a_removed_one_no_more(tmp_path):
