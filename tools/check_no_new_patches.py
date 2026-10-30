@@ -7,8 +7,8 @@ statement. The suite's run, recorded by tools/patch_record.py, says what patched
 written. A test the PR adds or changes is refused when it ran with a patch applied (applied while
 it ran, or still applied and reaching it, as the recorder judges), or when the run has no record
 of it running to its end (skipped before or during its call, deselected, its file skipped), so
-what it runs under is unknown. A unit the
-PR adds or changes is refused when a patch was applied from one of its lines. A patching test whose docstrings or comments alone change is not judged; a
+what it runs under is unknown. A unit the PR adds or changes is refused when a patch was applied
+from one of its lines. A patching test whose docstrings or comments alone change is not judged; a
 change to its code needs its patch removed.
 
     ED_PATCH_RECORD=<dir> python -m pytest -p tools.patch_record

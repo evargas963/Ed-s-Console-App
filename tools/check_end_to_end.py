@@ -5,7 +5,8 @@ is proven end to end is check_fails_before's: an end-to-end path test that fails
 file whose code is the same once comments and docstrings are set aside (code_identical: the Python
 syntax tree; page code's syntax tree from Babel, tools/js_code_tree.js), or whose change is exactly
 the standard tools' own (ruff's safe fixes with the PR's committed pyproject.toml, then ruff format:
-tool_fixed), is not a change of product code. An .html page is always one, and so is removing code nothing calls, a deleted file included.
+tool_fixed), is not a change of product code. An .html page is always one, and so is removing
+code nothing calls, a deleted file included.
 
 The product lines a PR adds carry no patch shape:
    - an except that catches everything (bare, `Exception`, `BaseException`, or a tuple holding
@@ -145,9 +146,9 @@ def is_product(path: str) -> bool:
 
 
 JS_CODE_TREE = Path(__file__).resolve().parent / "js_code_tree.js"
-#: the files whose code a syntax tree reads exactly; an .html page is not one (a browser's reading of
-#: its whitespace, entities and comments depends on CSS and parser details), so every change to one
-#: is a change of product code
+#: the files whose code a syntax tree reads exactly; an .html page is not one (a browser's
+#: reading of its whitespace, entities and comments depends on CSS and parser details), so every
+#: change to one is a change of product code
 CODE_TREE_SUFFIXES = (".py", ".js", ".mjs")
 
 

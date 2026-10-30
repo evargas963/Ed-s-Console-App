@@ -145,9 +145,10 @@ def request_sent(request: httpx.Request) -> None:
 
 def log_request(response: httpx.Response) -> None:
     """Every request to Schwab, once, when its answer is in: the endpoint, the symbol (or how many
-    symbols, and the expiration or market date asked for), the status, and when it was sent and answered. An
-    answer that is not a success also carries Schwab's body and headers as sent; the token
-    endpoint's body (it holds tokens) and the request's headers (the bearer token) never are."""
+    symbols, and the expiration or market date asked for), the status, and when it was sent and
+    answered. An answer that is not a success also carries Schwab's body and headers as sent; the
+    token endpoint's body (it holds tokens) and the request's headers (the bearer token) never
+    are."""
     response.read()
     answered = time.time()
     req = response.request
@@ -394,8 +395,8 @@ def sign_in_problem(inspection: TokenInspectionResult, resolved: str) -> "str | 
         return f"Schwab token file is not valid JSON at {resolved!r}. {inspection.message}"
     if not (inspection.has_creation_timestamp and inspection.has_token_object):
         return (
-            f"Schwab token file malformed (expected schwab-py layout with creation_timestamp and token) "
-            f"at {resolved!r}. {inspection.message}"
+            "Schwab token file malformed (expected schwab-py layout with creation_timestamp and "
+            f"token) at {resolved!r}. {inspection.message}"
         )
     if not inspection.has_access_token:
         return f"Schwab token file missing access_token at {resolved!r}. {inspection.message}"
@@ -633,8 +634,8 @@ def safe_get_quotes(client, symbols: "list[str]"):
     return client.get_quotes(symbols, fields=["quote"])
 
 
-#: The most symbols one quotes request carries: Schwab Trader API Support, 2026-10-06 (email 1,
-#: item 4: not more than 300 on the quotes endpoint; docs/schwab/schwab_support_emails_2026_10_06.txt).
+#: The most symbols one quotes request carries: Schwab Trader API Support (email 1, item 4: not
+#: more than 300 on the quotes endpoint; docs/schwab/schwab_support_emails_2026_10_06.txt).
 QUOTES_BATCH_MAX = 300
 #: The contract fields Schwab's chain sends rounded, which it cannot change (the same email,
 #: item 6), and its quotes and its LEVELONE_OPTIONS stream send as computed.

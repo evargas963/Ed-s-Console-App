@@ -1,6 +1,6 @@
 """Schwab -> the Flow panel. A contract's quote time and book time stay when the feed is down; its
-side is the CONTRACT_TYPE Schwab sent in its first message (real SPY 2026-10-23 761 call and 762 put:
-the stored message carrying CONTRACT_TYPE and the three after it,
+side is the CONTRACT_TYPE Schwab sent in its first message (real SPY 2026-10-23 761 call and 762
+put: the stored message carrying CONTRACT_TYPE and the three after it,
 tests/fixtures/real_spy_option_contract_type_2026_10_23.json, read from stream_capture.db)."""
 
 from __future__ import annotations

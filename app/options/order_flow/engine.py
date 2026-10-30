@@ -459,9 +459,10 @@ def _microstructure_structural(cb: dict) -> dict:
 def compute_book_microstructure(data: dict, *, now_ts: float, ticker: str | None = None) -> dict:
     """Canonical L2 book microstructure for one symbol at `now_ts` (epoch seconds) — the ONE
     producer the engine and the `/api/order-flow/microstructure` route both read. `data.content`
-    carries the live streaming book + top-of-book (app.options.order_flow.state.get_content_for_symbol);
-    `data.exchange_quote_ts` (optional) is the plane's exchange quote clock; `data.book_live` is
-    the live rule's answer for the book's service (absent: not live). The structural state
+    carries the live streaming book + top-of-book
+    (app.options.order_flow.state.get_content_for_symbol); `data.exchange_quote_ts` (optional) is
+    the plane's exchange quote clock; `data.book_live` is the live rule's answer for the book's
+    service (absent: not live). The structural state
     is extracted/computed ONCE and memoized per (ticker, BOOK_TIME); a caller with the same
     unchanged book SERIALIZES the cached state instead of re-walking raw data. Only the age
     fields depend on `now` and are always stamped fresh. Fail-closed: no book snapshot -> status
@@ -471,7 +472,8 @@ def compute_book_microstructure(data: dict, *, now_ts: float, ticker: str | None
     book_time_ms = cb["book_time_ms"]
 
     # Carry only when the canonical book CONTENT is byte-for-byte identical — not merely the same
-    # BOOK_TIME. A changed ladder under a repeated BOOK_TIME has a different identity and recomputes.
+    # BOOK_TIME. A changed ladder under a repeated BOOK_TIME has a different identity and
+    # recomputes.
     identity = _canonical_book_identity(cb)
     cached = _MICRO_STRUCTURAL_CACHE.get(ticker) if ticker else None
     if cached is not None and cached[0] == identity:

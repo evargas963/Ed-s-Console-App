@@ -108,7 +108,8 @@ def prior_trading_session_date(bars_norm: list, session_date: date) -> date | No
     that was shut has no close for an overnight range to start from.
 
     Presence of bars inside a day's regular session (the hours Schwab's /markets sent, early
-    closes included) is the evidence a session happened, so an ad-hoc closure with no bars is skipped.
+    closes included) is the evidence a session happened, so an ad-hoc closure with no bars is
+    skipped.
     Fail-closed: no prior RTH date in the buffer returns None, never a guessed date.
     """
     prior: date | None = None
@@ -225,7 +226,8 @@ def compute_session_vwap_series(
     bars_norm: list,
     session_date: date,
 ) -> list[tuple[float, float, float, float, float, float]]:
-    """Running session VWAP and σ bands after each RTH bar, from normalized bars (bars_from_candles).
+    """Running session VWAP and σ bands after each RTH bar, from normalized bars
+    (bars_from_candles).
 
     Returns [(bar_epoch_sec, vwap, +1σ, -1σ, +2σ, -2σ), ...] using the standard
     cumulative moments VWAP_t = Σ(tp·v)/Σv and σ_t² = Σ(tp²·v)/Σv − VWAP_t².
@@ -295,8 +297,9 @@ def cluster_price_levels_into_zones(
     config: PlaybookConfig,
 ) -> list[tuple[float, float, float, list[str], list[tuple[float, str]]]]:
     """
-    Cluster nearby levels into zones. Returns list of (zone_low, zone_high, zone_mid, source_tags, source_pairs).
-    source_pairs = [(price, tag), ...] for correct source_levels (actual level values, not zone mid).
+    Cluster nearby levels into zones. Returns list of (zone_low, zone_high, zone_mid, source_tags,
+    source_pairs). source_pairs = [(price, tag), ...] for correct source_levels (actual level
+    values, not zone mid).
 
     Adjacent levels merge while the gap is within config.clustering_threshold_pct of the lower one.
     """
@@ -403,7 +406,8 @@ def build_premarket_snapshot(
 
     # Canonical taxonomy: downside extremes -> low_extreme; PDL/VAL ->
     # support_liquidity; POC/balance -> pivot_value; PDH/overnight high -> resistance_liquidity.
-    # Notes state WHERE the level came from — never that stops rest there or that price is drawn to it.
+    # Notes state WHERE the level came from — never that stops rest there or that price is drawn
+    # to it.
     out_zones = []
     if prev and over:
         pdh, pdl = prev.get("pdh"), prev.get("pdl")
@@ -999,7 +1003,8 @@ def build_price_level_snapshot(
                     "last_good_ts_utc": None,
                     "reason": (
                         f"prior session {prior_date} holds only {eng['rth_bars']} of >= "
-                        f"{LEVELS_PRIOR_SESSION_MIN_BARS} RTH bars; prior-day levels derive from a partial tape"
+                        f"{LEVELS_PRIOR_SESSION_MIN_BARS} RTH bars; prior-day levels derive from "
+                        "a partial tape"
                     ),
                 }
             )

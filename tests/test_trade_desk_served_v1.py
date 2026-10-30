@@ -359,7 +359,8 @@ def test_levels_carry_the_gamma_family_into_the_one_distance_order(spy_levels):
 
 
 def test_a_same_day_chain_has_no_expected_move_and_says_why(spy_levels):
-    """The SPY capture lists only the 0DTE expiry; the terrain's one-day move needs one a day out."""
+    """The SPY capture lists only the 0DTE expiry; the terrain's one-day move needs one a day
+    out."""
     _spot, terrain, serve = spy_levels
     assert terrain.get("implied_1d_move") is None
     body = serve()

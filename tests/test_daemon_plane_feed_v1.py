@@ -122,7 +122,8 @@ def test_a_book_is_live_by_the_one_rule_on_its_venue_not_by_its_book_time(tmp_pa
     is live while the daemon's heartbeat is live and it holds the ticker on that venue's service,
     however old its last change (these real books are days old), at any hour: no clock of ours
     judges it (operator 2026-10-01, "From Schwab's mouth to our UI's ears. Period."). Real SPY
-    books (tests/fixtures/real_spy_nyse_nasdaq_books.json), judged in regular hours (RTH_INSTANT)."""
+    books (tests/fixtures/real_spy_nyse_nasdaq_books.json), judged in regular hours
+    (RTH_INSTANT)."""
     import json
     from pathlib import Path
 

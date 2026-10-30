@@ -273,7 +273,8 @@ def test_a_foreign_tickers_contract_never_overlays_this_chain():
 
 def test_the_levels_are_priced_at_the_chains_spot_and_a_new_chain_moves_them():
     """One spot per chain (operator 2026-10-23): a reprice of the kept chain on a tick stays at the
-    chain's spot whatever the live price does; the next chain, at its own spot, reprices every view."""
+    chain's spot whatever the live price does; the next chain, at its own spot, reprices every
+    view."""
     _daemon()
     _put_chain()
     before = _cached()["_gamma_surface"]

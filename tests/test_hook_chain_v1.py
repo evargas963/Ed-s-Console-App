@@ -26,7 +26,8 @@ from tools.hook_chain import _argv_members, run_chain  # noqa: E402
 
 _ENV = {**os.environ, "PYTHONIOENCODING": "utf-8"}
 PRE_ROSTER = ("tools/operator_law_guard.py", "tools/process_lock_guard.py")
-#: what both hosts wire: the roster above plus the operator's-yes guard (tests/test_operator_yes_guard_v1.py)
+#: what both hosts wire: the roster above plus the operator's-yes guard
+#: (tests/test_operator_yes_guard_v1.py)
 WIRED_ROSTER = PRE_ROSTER + ("tools/operator_yes_guard.py",)
 
 
@@ -322,7 +323,7 @@ def test_5b_a_worktree_nested_inside_the_primary_edits_its_own_files_and_never_t
         )
 
 
-def test_6_a_dev_worktree_commits_freely_the_production_primary_refuses_moves_and_masked_forms_block(
+def test_6_a_dev_worktree_commits_freely_production_refuses_moves_and_masked_forms_block(
     tmp_path,
 ):
     primary, linked = _primary_and_linked(tmp_path)

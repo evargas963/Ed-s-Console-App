@@ -75,7 +75,8 @@ class RecentTape:
         return held[::-1][: max(0, int(limit))]
 
     def put_call(self, contract: str) -> str | None:
-        """The contract's side (CALL / PUT) as Schwab's CONTRACT_TYPE last sent it; None until sent."""
+        """The contract's side (CALL / PUT) as Schwab's CONTRACT_TYPE last sent it; None until
+        sent."""
         sym = ticker_storage_key(contract)
         with self._lock:
             return (
@@ -148,7 +149,8 @@ DISPLAY_TAIL_SHARE = 0.01
 
 
 def _display_window(cells: list[dict]) -> tuple[float, float]:
-    """(lo, hi): the price window holding all but DISPLAY_TAIL_SHARE of displayed size at each end."""
+    """(lo, hi): the price window holding all but DISPLAY_TAIL_SHARE of displayed size at each
+    end."""
     totals: dict[float, float] = {}
     for c in cells:
         totals[c["price"]] = totals.get(c["price"], 0.0) + sum(

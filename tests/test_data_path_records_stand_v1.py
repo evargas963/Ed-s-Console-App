@@ -1,11 +1,11 @@
 """docs/DATA_FLOW.md §3.4 (chains): a stored chain capture is never replaced.
 
 The chain history through the real code: the daemon's ChainSweep fetches Schwab's chain (the
-captured SPY 2026-11-20 chain and its quotes, tests/fixtures/real_spy_2026_11_20_chain_and_quotes.json)
-and writes it in a capture window; the console's startup reader (last_capture_per_day) reads it
-back. STAND-INS: the host answering the sweep is the local stand-in for Schwab's
-(tests/schwab_rest_standin.py), and the chain envelope it serves is rebuilt from the captured
-contracts, not the envelope as Schwab sent it.
+captured SPY 2026-11-20 chain and its quotes,
+tests/fixtures/real_spy_2026_11_20_chain_and_quotes.json) and writes it in a capture window; the
+console's startup reader (last_capture_per_day) reads it back. STAND-INS: the host answering the
+sweep is the local stand-in for Schwab's (tests/schwab_rest_standin.py), and the chain envelope it
+serves is rebuilt from the captured contracts, not the envelope as Schwab sent it.
 """
 
 from __future__ import annotations

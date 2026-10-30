@@ -1,7 +1,7 @@
-"""Schwab -> the heatmap, the chain and the option rule. A gamma more than twice the largest any option
-can have at its own volatility, price and time left is not a value: the chain shows "-", the strike's
-GEX is unknown, the daemon ranks the contract last, and after the close it keeps the last gamma
-Schwab reported, as a -999 does (operator 2026-10-23).
+"""Schwab -> the heatmap, the chain and the option rule. A gamma more than twice the largest any
+option can have at its own volatility, price and time left is not a value: the chain shows "-", the
+strike's GEX is unknown, the daemon ranks the contract last, and after the close it keeps the last
+gamma Schwab reported, as a -999 does (operator 2026-10-23).
 
 Real data (tests/fixtures/real_impossible_gamma_nvda_2026_10_22_and_iwm_0dte_2026_10_20.json, read
 from ed_console.db and stream_capture.db): NVDA's 2026-12-18 chain captured 2026-10-22 12:30 CT,

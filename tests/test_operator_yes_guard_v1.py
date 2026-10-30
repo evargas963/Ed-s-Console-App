@@ -1,13 +1,14 @@
 """tools/operator_yes_guard.py (CLAUDE.md rule 5). A start or a clean stop of the daemon or the
 console is put to the operator (Allow/Deny) during regular market hours and while the session is
-unknown, and passes in Pre-Market, After-Hours and Closed; killing the daemon, the console or launch.py is refused, whatever its flags; a
-stop of any other process passes; a stop of the machine asks; a merge, and every other action, a
-change to a test included, passes. Judged on real payloads and
-through the hook chain the settings run.
+unknown, and passes in Pre-Market, After-Hours and Closed; killing the daemon, the console or
+launch.py is refused, whatever its flags; a stop of any other process passes; a stop of the machine
+asks; a merge, and every other action, a change to a test included, passes. Judged on real payloads
+and through the hook chain the settings run.
 
-Real data: Schwab's /markets answer for 2026-10-07 (tests/fixtures/real_schwab_markets_2026_10_07.json)
-recorded as the daemon records it. STAND-INS: python processes whose command lines carry the
-daemon's module, the console's app and launch.py (the guard reads command lines, as of production).
+Real data: Schwab's /markets answer for 2026-10-07
+(tests/fixtures/real_schwab_markets_2026_10_07.json) recorded as the daemon records it.
+STAND-INS: python processes whose command lines carry the daemon's module, the console's app and
+launch.py (the guard reads command lines, as of production).
 """
 
 from __future__ import annotations
@@ -74,7 +75,8 @@ def markets(tmp_path_factory) -> Path:
     try:
         with conn:
             conn.execute(
-                "INSERT INTO stream_markets_raw(ts_recv,date,status,native_json,src) VALUES(?,?,?,?,?)",
+                "INSERT INTO stream_markets_raw(ts_recv,date,status,native_json,src) "
+                "VALUES(?,?,?,?,?)",
                 (1791367200.0, "2026-10-07", answer["status"], answer["body"], "schwab_rest"),
             )
     finally:
@@ -90,7 +92,8 @@ def test_the_session_is_read_on_a_connection_the_guard_closes(markets):
     code = (
         "import gc, sys\nfrom datetime import datetime\nimport time_et\n"
         "from tools import operator_yes_guard as guard\n"
-        "print(guard.market_session(datetime(2026, 10, 7, 10, 0, tzinfo=time_et.ET), sys.argv[1]))\n"
+        "print(guard.market_session("
+        "datetime(2026, 10, 7, 10, 0, tzinfo=time_et.ET), sys.argv[1]))\n"
         "gc.collect()\n"
     )
     done = subprocess.run(
@@ -151,7 +154,8 @@ STARTS_AND_CLEAN_STOPS = [
     "py -m uvicorn server:app",
     "python -m uvicorn server:app --port 8000",
     "pythonw -m app.market_data.schwab.streaming.capture",
-    "Start-Process -FilePath \"cmd.exe\" -ArgumentList '/c','start','\"Ed Console\"','\"C:\\x\\start_ed_console.bat\"'",
+    'Start-Process -FilePath "cmd.exe" '
+    "-ArgumentList '/c','start','\"Ed Console\"','\"C:\\x\\start_ed_console.bat\"'",
     'powershell -NoProfile -Command "cmd /c start_ed_console.bat"',
     "Invoke-Item .\\start_ed_console.bat",
     "ii launch.py",
@@ -207,7 +211,8 @@ KILLS = [
     "(Get-Process -Id {pid}).Kill()",
     "wmic process where processid={pid} delete",
     "wmic process where processid={pid} call terminate",
-    'Get-CimInstance Win32_Process -Filter "ProcessId={pid}" | Invoke-CimMethod -MethodName Terminate',
+    'Get-CimInstance Win32_Process -Filter "ProcessId={pid}" '
+    "| Invoke-CimMethod -MethodName Terminate",
     'Get-CimInstance Win32_Process -Filter "ProcessId={pid}" | Remove-CimInstance',
     "Stop-Process -Id 4194300,{pid} -Force",
 ]
@@ -283,7 +288,8 @@ def test_a_kill_inside_a_merge_is_judged_as_a_kill_too(procs, markets):
     assert guard.decide(_shell(text), CLOSED, markets) == (
         guard.ASK,
         [
-            "stops processes chosen only when it runs while the daemon or the console runs (CLAUDE.md rule 5: production)",
+            "stops processes chosen only when it runs while the daemon or the console runs "
+            "(CLAUDE.md rule 5: production)",
         ],
     )
     for run in (
@@ -347,12 +353,14 @@ def test_the_machine_a_merge_and_a_push(cmd, answer, markets):
             "Bash",
         ),
         (
-            'curl -X POST https://api.github.com/graphql -d \'{"query":"mutation { mergePullRequest(input: '
+            "curl -X POST https://api.github.com/graphql "
+            '-d \'{"query":"mutation { mergePullRequest(input: '
             '{pullRequestId: \\"PR_x\\"}) { clientMutationId } }"}\'',
             "Bash",
         ),
         (
-            'Invoke-RestMethod -Method Post -Uri https://api.github.com/graphql -Body \'{"query":"mutation '
+            "Invoke-RestMethod -Method Post -Uri https://api.github.com/graphql "
+            '-Body \'{"query":"mutation '
             '{ mergePullRequest(input: {pullRequestId: \\"PR_x\\"}) { clientMutationId } }"}\'',
             "PowerShell",
         ),
@@ -368,24 +376,28 @@ def test_the_machine_a_merge_and_a_push(cmd, answer, markets):
         ("pwsh -c gh pr merge 5", "PowerShell"),
         ('/usr/bin/bash -c "gh pr merge 5"', "Bash"),  # a shell named by path
         (
-            'gh api graphql -f query=\'\nmutation {\n  mergePullRequest(input: {pullRequestId: "PR_x"}) '
+            "gh api graphql -f query='\nmutation {\n"
+            '  mergePullRequest(input: {pullRequestId: "PR_x"}) '
             "{ clientMutationId }\n}'",
             "Bash",
         ),  # a multi-line query
         ("gh api -X PUT repos/o/r/pulls/$PR/merge", "Bash"),  # the number in a variable
         (
-            'gh api graphql -f query=\'mutation { enablePullRequestAutoMerge(input: {pullRequestId: "PR_x"}) '
+            "gh api graphql -f query='mutation { "
+            'enablePullRequestAutoMerge(input: {pullRequestId: "PR_x"}) '
             "{ clientMutationId } }'",
             "Bash",
         ),  # merges once checks pass
         (
-            'gh api graphql -f query=\'mutation { mergeBranch(input: {repositoryId: "R_x", base: "main", '
+            "gh api graphql -f query='mutation { "
+            'mergeBranch(input: {repositoryId: "R_x", base: "main", '
             'head: "x"}) { clientMutationId } }\'',
             "Bash",
         ),  # a branch merge
         ("gh api -X POST repos/o/r/merges -f base=main -f head=x", "Bash"),  # the REST branch merge
         (
-            'curl -X POST https://api.github.com/repos/o/r/merges -d \'{"base":"main","head":"x"}\'',
+            "curl -X POST https://api.github.com/repos/o/r/merges "
+            '-d \'{"base":"main","head":"x"}\'',
             "Bash",
         ),
         ("(( ($(gh pr merge 5)) > 0 ))", "Bash"),  # inside ( ) in bash arithmetic
@@ -431,7 +443,8 @@ def test_the_test_changed_below_is_on_main():
         _edit(str(REPO / "server.py")),
         _shell(f"python -m pytest {EXISTING} -q"),
         _shell(
-            "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*streaming.capture*' }",
+            "Get-CimInstance Win32_Process "
+            "| Where-Object { $_.CommandLine -like '*streaming.capture*' }",
             "PowerShell",
         ),
         _shell("gh pr view 445 --json state"),
@@ -445,12 +458,14 @@ def test_the_test_changed_below_is_on_main():
         _shell('git grep -n -E "start_capture_daemon|uvicorn server:app|restart" -- .'),
         _shell("Select-String -Path logs\\ed_server.log -Pattern 'uvicorn restart'", "PowerShell"),
         _shell(
-            'powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine '
+            'powershell -NoProfile -Command "Get-CimInstance Win32_Process '
+            "| Where-Object { $_.CommandLine "
             "-like '*streaming.capture*' }\""
         ),
         _shell("file start_capture_daemon.bat && grep -c x start_capture_daemon.bat"),
         _shell(
-            "\"--- any python/uvicorn\"; Get-Process | Where-Object { $_.ProcessName -match 'python' }",
+            '"--- any python/uvicorn"; '
+            "Get-Process | Where-Object { $_.ProcessName -match 'python' }",
             "PowerShell",
         ),
         _shell('grep -rn "stop.set()\\|\\"op\\"\\|taskkill" start_capture_daemon.bat launch.py'),

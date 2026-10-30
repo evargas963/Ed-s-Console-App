@@ -70,8 +70,9 @@ COMMIT_CURRENT, COMMIT_MOVED, COMMIT_UNKNOWN, COMMIT_REFUSED = (
 
 def bring_to_origin_main(root: Path) -> tuple[str, str | None, str]:
     """The checkout at `root` brought to origin/main: (what the check found, the commit it is at,
-    None when git could not say, why). It fetches origin and fast-forwards main. COMMIT_CURRENT: at origin/main. COMMIT_MOVED:
-    fast-forwarded. COMMIT_UNKNOWN: origin out of reach, or git itself not answering (absent, hung);
+    None when git could not say, why). It fetches origin and fast-forwards main. COMMIT_CURRENT:
+    at origin/main. COMMIT_MOVED: fast-forwarded. COMMIT_UNKNOWN: origin out of reach, or git
+    itself not answering (absent, hung);
     COMMIT_REFUSED: not on main, local changes, or a history split from origin/main; nothing is
     moved."""
     try:
@@ -236,7 +237,8 @@ def main() -> int:
         webbrowser.open(URL)  # the default browser
         return 0
     print(
-        f"Console: starting on port {CONSOLE_PORT}; the browser opens at {URL} once it answers. Ctrl+C stops it."
+        f"Console: starting on port {CONSOLE_PORT}; the browser opens at {URL} once it answers. "
+        "Ctrl+C stops it."
     )
     console = start_console(
         CONSOLE, {k: v for k, v in os.environ.items() if not k.upper().startswith("SCHWAB_")}

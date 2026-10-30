@@ -28,7 +28,8 @@ def test_counts_keep_zero_and_refuse_negatives():
 
 
 # ── Real captured data through the real readers ─────────────────────────────────────────────
-# CRWD's 2026-10-16 chain captured 2026-10-07 10:38 ET (tests/real_chains.py), valued at its capture.
+# CRWD's 2026-10-16 chain captured 2026-10-07 10:38 ET (tests/real_chains.py), valued at its
+# capture.
 
 
 def test_a_reported_zero_open_interest_is_reported_not_missing():

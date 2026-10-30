@@ -254,7 +254,8 @@ def test_a_resent_identical_last_price_refreshes_its_age():
 
 
 def test_record_from_level_one_ignores_non_canonical_bid_ask_keys():
-    """Schwab streaming dictionary uses BID_PRICE/ASK_PRICE only — bare BID/ASK are not wire leaves."""
+    """Schwab streaming dictionary uses BID_PRICE/ASK_PRICE only — bare BID/ASK are not wire
+    leaves."""
     ok = _rec(
         "NOCANON",
         {"key": "NOCANON", "LAST_PRICE": 100.0, "BID": 99.5, "ASK": 100.5},

@@ -1,5 +1,5 @@
-"""The daemon's chain sweep (DATA_FLOW decisions 1 and 7): the one fetcher of every watchlist ticker's
-chain, what it hands the console, and the chain history it writes.
+"""The daemon's chain sweep (DATA_FLOW decisions 1 and 7): the one fetcher of every watchlist
+ticker's chain, what it hands the console, and the chain history it writes.
 
 Real data: SPY's 2026-11-20 contracts from the capture daemon's full-chain capture of 2026-09-30
 15:31:57 ET and Schwab's quotes for every one of them, served by Schwab's host as a local server
