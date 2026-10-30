@@ -117,14 +117,16 @@ def in_use(port: int) -> bool:
 
 
 def running(mark: str) -> list[psutil.Process]:
-    """This checkout's processes whose command line carries `mark`: those whose folder is ROOT,
-    where its daemon's batch and its console run, so another checkout's daemon or console (a
-    test's) is never taken for one (one whose line or folder cannot be read is none)."""
+    """This checkout's Python processes whose command line carries `mark`: those whose folder is
+    ROOT, where its daemon's batch and its console run, so another checkout's daemon or console (a
+    test's) is never taken for one, nor a shell whose command only names the mark (one whose line
+    or folder cannot be read is none)."""
     return [
         p
         for p in psutil.process_iter(["cmdline", "cwd"])
         if p.info["cmdline"] is not None
         and mark in " ".join(p.info["cmdline"])
+        and Path(p.info["cmdline"][0]).stem.lower().startswith("python")
         and p.info["cwd"] is not None
         and Path(p.info["cwd"]).resolve() == ROOT
     ]

@@ -357,6 +357,20 @@ def test_a_browser_that_stopped_reading_is_dropped_others_keep_beats_and_the_sto
     )
 
 
+def test_a_shell_that_only_mentions_the_console_is_not_the_console():
+    """A shell in the checkout whose command names the console's mark, as a process search does:
+    `launch.py stop` once sent it the console's Ctrl+Break and ended in a traceback."""
+    wait = ["cmd", "/c", "ping -n 30 127.0.0.1 >nul & rem server:app"]
+    if sys.platform != "win32":
+        wait = ["sh", "-c", "sleep 30 # server:app"]
+    shell = subprocess.Popen(wait, cwd=launch.ROOT)
+    try:
+        assert shell.pid not in [p.pid for p in launch.running(launch.CONSOLE_MARK)]
+    finally:
+        shell.kill()
+        shell.wait(30)
+
+
 def test_a_module_that_fails_to_load_leaves_its_reason_in_the_daemons_log(tmp_path):
     """The daemon run with no error output (pythonw on Windows; elsewhere its fd 2 closed), with
     schwab-py missing: the log file under its runtime root has why."""
