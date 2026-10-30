@@ -23,6 +23,8 @@ import threading
 import time
 from pathlib import Path
 
+from fastapi.testclient import TestClient
+
 import live_market_plane as lmp
 import push_changes
 import server
@@ -501,3 +503,14 @@ def test_the_page_is_told_the_market_context_with_its_display_names():
         '[{"key": "$SPX", "display": "SPX"}, {"key": "$NDX", "display": "NDX"}, '
         '{"key": "$VIX", "display": "VIX"}]' in html.replace("&quot;", '"')
     )
+
+
+def test_the_routes_that_take_a_json_body_read_it_and_refuse_none():
+    """Over HTTP through the real app, with no daemon connected: a POST with no body is refused
+    before the route runs; one with its JSON reaches the route: an add says the daemon is away, and
+    no contract selected is taken."""
+    client = TestClient(server.app)
+    for route in ("/api/watchlist", "/api/flow-contract"):
+        assert client.post(route).status_code == 422, route
+    assert client.post("/api/watchlist", json={"ticker": "TSLA"}).status_code == 503
+    assert client.post("/api/flow-contract", json={"contract": None}).status_code == 200
