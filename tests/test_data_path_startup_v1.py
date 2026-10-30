@@ -49,9 +49,6 @@ async def _until(cond, limit: float = 10.0) -> None:
         await asyncio.sleep(0.05)
 
 
-@pytest.mark.skipif(
-    sys.platform != "win32", reason="the daemon's window is a Windows console window"
-)
 def test_a_web_page_cannot_reach_the_daemons_local_socket():
     """The console and `launch.py stop` send no Origin and connect; a browser always sends one, and
     a page on any site is refused before it reads the stream or asks the daemon to stop. Induced
@@ -75,6 +72,9 @@ def test_a_web_page_cannot_reach_the_daemons_local_socket():
     assert asyncio.run(asyncio.wait_for(go(), 30)) == 403
 
 
+@pytest.mark.skipif(
+    sys.platform != "win32", reason="the daemon's window is a Windows console window"
+)
 def test_the_daemons_window_closes_when_its_batch_ends(tmp_path):
     """The launcher's command for the daemon's window (launch.daemon_window) runs the batch in a
     window of its own; when the batch ends (the daemon stopped on request), the window's cmd ends
