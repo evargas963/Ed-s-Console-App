@@ -25,15 +25,15 @@ FRIDAY_ON = {2}
 BOTH = {1, 2}
 
 
-def _snapshot(zero_days: set[int], at: datetime) -> dict:
+def _snapshot(zero_days: set[int], at: datetime, keep: float | None = None) -> dict:
     """The route's answer at `at` on the bars before it, those of the October days in `zero_days`
-    with every price 0."""
+    with every price 0 but the bar at `keep`."""
     srv._bars.pop(TK, None)
     for b in _BARS:
         ts = b["timestamp"] / 1000
         if ts >= at.timestamp():
             continue
-        zero = datetime.fromtimestamp(ts, ET).day in zero_days
+        zero = datetime.fromtimestamp(ts, ET).day in zero_days and ts != keep
         o, h, lo, c = (0, 0, 0, 0) if zero else (b["open"], b["high"], b["low"], b["close"])
         srv._keep_bar(TK, Candle(ts=ts, open=o, high=h, low=lo, close=c, volume=b["volume"]))
     srv._publish_price_levels(TK, at)
@@ -107,3 +107,10 @@ def test_a_value_area_at_zero_is_compared_as_a_price(
 ):
     summary = _snapshot(zero_days, FRIDAY)["summary"]
     assert (summary["value_state"], summary["vwap_relation"]) == (value_state, vwap_relation)
+
+
+def test_a_poc_at_zero_under_a_vwap_above_it_reads_above_value(published):
+    """Friday's bars at 0 but its last, which keeps its prices: the POC is 0, VWAP above it."""
+    last = max(b["timestamp"] for b in _BARS) / 1000
+    summary = _snapshot(FRIDAY_ON, FRIDAY, keep=last)["summary"]
+    assert (summary["value_state"], summary["vwap_relation"]) == ("shifted_lower", "above_value")
