@@ -15,7 +15,8 @@ report what was tried, and take a different approach (CLAUDE.md item 6).
    `.venv/Scripts/python.exe -m compileall -q -x '([\\/](\.venv|venv|node_modules|__pycache__|models)[\\/])' .`
    — exit 0 (both as the `hardening` job runs them).
 3. The full suite on the final commit: the required CI job `pytest-full` (Playwright, then the full
-   pytest with each patch recorded, then `check_fails_before` and `check_no_new_patches`) and
+   pytest with each patch recorded, then `check_fails_before` and `check_no_new_patches`),
+   `pytest-windows` (the tests that take a Windows path, on Windows as production runs) and
    `hardening` green, shown by `gh pr checks <pr>` on the final commit (operator 2026-10-30: "Yes,
    CI proves it"). The suites run here only while a test is written or a failure is chased:
    `ED_PATCH_RECORD=<a scratch folder> npm run test:all -- -p tools.patch_record`, one at a time.
@@ -24,9 +25,7 @@ report what was tried, and take a different approach (CLAUDE.md item 6).
    the old code, or, for a change that only removes whole undecorated Python functions or classes and
    the imports only they used, or only fixes what ruff rules the PR newly selects find, naming the
    files.
-5. `.venv/Scripts/python.exe tools/check_no_new_patches.py --base origin/main --record <that folder>`
-   — exit 0; then
-   `.venv/Scripts/python.exe tools/check_one_reader.py --base origin/main` — exit 0; then
+5. `.venv/Scripts/python.exe tools/check_one_reader.py --base origin/main` — exit 0; then
    `.venv/Scripts/python.exe tools/check_credential_leak.py --base origin/main` and
    `.venv/Scripts/python.exe tools/check_eol_style_invariant.py --base origin/main` — exit 0 each.
 6. `.venv/Scripts/python.exe tools/check_end_to_end.py --base origin/main` — exit 0.
