@@ -15,9 +15,9 @@ shell commands. Each command gets one answer, the strictest of its statements':
     command line cannot be read is put to the operator. A stop whose targets are chosen only when
     it runs (a variable, a pipe) is refused when the command names the daemon or the console, and
     put to the operator while either runs.
-  * A stop or restart of the machine is put to the operator. A merge is not: it goes ahead once CI
-    is green on the pull request's final commit (branch protection) and both reviewers have no FAIL
-    open (operator 2026-10-29, AGENTS.md Authority).
+  * A stop or restart of the machine is put to the operator; a merge is not (AGENTS.md Authority).
+    `gh alias set` / `gh alias import` is refused: an alias, a --shell one included, runs a command
+    no guard reads.
 
 Limits: shell commands are judged on the statements they run, as tools/shell_parse.read reads them
 (behind a keyword, a wrapper or a subshell, inside a shell's command string), never on names
@@ -73,6 +73,25 @@ STOPPERS = ("stop-process", "spps", "taskkill", "kill", "tskill", "pskill")
 MACHINE_STOPPERS = ("stop-computer", "restart-computer", "shutdown")
 #: process objects removed through WMI/CIM
 WMI_STOPS = ("remove-ciminstance", "remove-wmiobject")
+#: gh options that take a value (the value is not a subcommand)
+GH_VALUE_OPTIONS = (
+    "-R",
+    "--repo",
+    "--hostname",
+    "-X",
+    "--method",
+    "-f",
+    "-F",
+    "--field",
+    "--raw-field",
+    "-H",
+    "--header",
+    "--input",
+    "-q",
+    "--jq",
+    "-t",
+    "--template",
+)
 #: process ids and image names a stop names (Stop-Process -Id, taskkill /PID, ProcessId=N;
 #: -Name, /IM, Get-Process <name>, Name='x.exe')
 _PIDS = re.compile(r"(?:-id|/pid|processid\s*=)\s*['\"]?(\d[\d,\s]*)", re.I)
@@ -288,7 +307,22 @@ def decide(payload: dict, now: datetime, db: Path) -> "tuple[str, list[str]]":
                     f"starts or stops the daemon or the console while the market session is "
                     f"{session} (CLAUDE.md rule 5: production)"
                 )
+        if st.program == "gh" and _gh_words(st)[:2] in (["alias", "set"], ["alias", "import"]):
+            denies.append(
+                "sets a gh alias: an alias (a --shell one included) runs a command no guard reads, "
+                "a kill of production among them"
+            )
     return (DENY, denies) if denies else (ASK, asks) if asks else (PASS, [])
+
+
+def _gh_words(st: Statement) -> "list[str]":
+    """A gh statement's subcommand words: its arguments without options and their values."""
+    args = list(st.words[1:])
+    return [
+        a
+        for i, a in enumerate(args)
+        if not a.startswith("-") and not (i and args[i - 1] in GH_VALUE_OPTIONS)
+    ]
 
 
 def main() -> int:

@@ -131,8 +131,8 @@ def test_no_guard_named_is_refused_not_passed():
 
 
 def test_both_hosts_wire_the_one_executor_with_the_same_rosters():
-    """The guards run before a tool on both hosts, through the one executor, with one roster, and
-    nothing else is wired."""
+    """The guards run before a tool on both hosts, through the one executor, with one roster; the
+    Stop hook is the one other thing wired."""
     wired = _wired_commands()
     guards = wired["PreToolUse"] + wired["preToolUse"]
     commands = [c for cmds in wired.values() for c in cmds]
@@ -148,7 +148,7 @@ def test_both_hosts_wire_the_one_executor_with_the_same_rosters():
 
     assert set(wired) == {"PreToolUse", "preToolUse", "Stop"}, wired
     assert all(roster(c) == set(WIRED_ROSTER) for c in guards), wired
-    # the Stop hook keeps the agent working while SHAPE is open (operator 2026-10-29)
+    # the Stop hook keeps the agent working while SHAPE is open (AGENTS.md Authority)
     assert wired["Stop"] == [".venv/Scripts/python.exe tools/keep_going.py"], wired
 
 

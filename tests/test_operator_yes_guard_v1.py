@@ -392,8 +392,8 @@ def test_the_machine_a_merge_and_a_push(cmd, answer, markets):
     ],
 )
 def test_every_merge_route_goes_ahead_without_a_question(cmd, tool, markets):
-    """Operator 2026-10-29: merges do not wait on his yes; branch protection's green CI and the two
-    reviewers decide."""
+    """A merge does not wait on the operator (AGENTS.md Authority): branch protection's green CI
+    and the two reviewers decide."""
     assert _decide(cmd, CLOSED, markets, tool) == guard.PASS, cmd
 
 

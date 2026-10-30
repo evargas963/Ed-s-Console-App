@@ -295,6 +295,15 @@ def test_a_quoted_program_path_with_a_space_runs_in_bash(cmd):
     assert _yes(cmd) == yes_guard.ASK
 
 
+def test_setting_or_importing_a_gh_alias_is_refused_and_listing_them_passes():
+    """An alias (a --shell one included) runs a command no guard reads, a kill among them."""
+    assert _yes("gh alias set --shell k 'taskkill /F /IM python.exe'") == yes_guard.DENY
+    assert _yes("gh -R o/r alias set co 'pr checkout'") == yes_guard.DENY
+    assert _yes("gh alias import aliases.yml") == yes_guard.DENY
+    assert _yes("cat aliases.yml | gh alias import -") == yes_guard.DENY
+    assert _yes("gh alias list") == yes_guard.PASS
+
+
 @pytest.mark.parametrize(
     "code", ["-" * 100000 + "1", "1" + "+1" * 200000], ids=["deep-unary", "deep-sum"]
 )
