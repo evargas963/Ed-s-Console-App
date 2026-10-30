@@ -101,6 +101,8 @@ def test_missing_spot_produces_honest_null_distance_through_the_real_zone_path(p
     not a crash, not a fabricated distance, never VWAP standing in for the spot."""
     body = _body(srv.liquidity_snapshot(TK, FRIDAY))
     assert body["zones"]
+    lows = [z["zone_low"] for z in body["zones"]]
+    assert lows == sorted(lows), "with no spot the zones are listed by price, lowest first"
     for z in body["zones"]:
         assert z["distance_to_spot"] is None
         assert z["spot_inside_zone"] is None

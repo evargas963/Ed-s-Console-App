@@ -4361,7 +4361,8 @@ def liquidity_snapshot(ticker: str, now: datetime):
         zones_payload.sort(
             key=lambda x: (
                 x["distance_to_spot"] is None,
-                x["distance_to_spot"] if x["distance_to_spot"] is not None else 1e9,
+                x["distance_to_spot"] or 0.0,
+                x["zone_low"],
             )
         )
         result = {

@@ -124,7 +124,7 @@ to write it plainly, in the forms `test_a_command_the_reader_cannot_see_into_is_
 - M-08 truthiness drops a 0 price (`if prev.get("pdh")`, `if vah:`, `if poc:`, …).
 - M-09 a missing poc, pd_poc or vwap yields `value_state="unchanged"` / `vwap_relation="at_value"` (and `else 0`).
 - M-11 `cutoff_et` (now) is served as the values' time (they are as of the last bar); `session_scope` relabels an unknown scope; prior-day POC/VAH/VAL missing is not in `families_absent`.
-- M-12 fused option levels: raw `float()`, rejected ones dropped silently. A level at 0 is no longer dropped, by the regular-session fusion or the clustering (a reported 0 is 0, rule 2); before the open, `build_premarket_snapshot` takes no option or spot levels at all.
+- M-12 fused option levels: raw `float()`, rejected ones dropped silently. A level at 0 is no longer dropped, by the regular-session fusion or the clustering (a reported 0 is 0, rule 2); before the open, `build_premarket_snapshot` takes no option or spot levels at all. The liquidity zones are served nearest the live price first, and with no live price by price, lowest first (operator 2026-10-30: "By price"), not by the deleted score.
 - `build_price_level_snapshot` reads the clock (`produced_ts`) instead of taking `now`.
 
 **math_exposure_core.py, math_levels.py**
