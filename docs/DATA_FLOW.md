@@ -766,7 +766,7 @@ The work that closes these gaps, in order, is `ACTIVE_PROGRAM.md`.
 The rules and the tool that enforces each are `AGENTS.md` "Rules and what enforces them". Today:
 ruff at commit and in CI, with `pyproject.toml`'s one selection (unused imports, undefined names,
 syntax errors, the UP rules but UP042, whose only fix is unsafe, the W rules, S110, a catch-all `except` (bare, `Exception` or `BaseException`) passed in silence,
-E402, imports at the top, E501, lines at most 100 columns, E741, no `l`, `O` or `I` as a name, I, import order, and the SIM rules with a safe fix or with no fix and nothing to fix), and `ruff format` (the one Python formatter, ruff pinned in `requirements-dev.txt`);
+the E rules but E731, whose only fix is unsafe: E402, imports at the top, E501, lines at most 100 columns, E741, no `l`, `O` or `I` as a name; I, import order, and the SIM rules with a safe fix or with no fix and nothing to fix), and `ruff format` (the one Python formatter, ruff pinned in `requirements-dev.txt`);
 a compile pass in CI (every file CPython compiles); the behavior tests (`pytest`, `tests/`) and the
 browser tests (Playwright, `tests/e2e/`) in CI; the secrets and home-path scan at commit and in CI
 (each commit of a pull request, merge resolutions included); the line-ending check at commit and
