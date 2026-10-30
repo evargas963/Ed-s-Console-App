@@ -54,7 +54,6 @@ from liquidity_value_engine import (
     _MATERIALIZED_SNAPSHOTS,
     bars_from_candles,
     build_live_snapshot,
-    liquidity_zone_tradeable_score,
     materialize_price_level_snapshot,
 )
 
@@ -4273,7 +4272,7 @@ def _liquidity_option_levels(tk: str, now: float) -> tuple[list[tuple[float, str
 
 
 def _liquidity_zone_tradeable_fields(zp: dict, spot: float | None) -> None:
-    """Add anchor, distance_to_spot, tradeable_score, options_level_count (mutates zp)."""
+    """Add anchor, distance_to_spot, spot_inside_zone, options_level_count (mutates zp)."""
     tags = zp.get("source_tags") or []
     lo, hi = float(zp["zone_low"]), float(zp["zone_high"])
     mid = zp.get("zone_mid")
@@ -4285,22 +4284,11 @@ def _liquidity_zone_tradeable_fields(zp: dict, spot: float | None) -> None:
     if spot is None:
         zp["distance_to_spot"] = None
         zp["spot_inside_zone"] = None
-        zp["tradeable_score"] = liquidity_zone_tradeable_score(
-            n_tags=len(tags), n_opt=n_opt, inside=False, dist_pen=0.0, spot=None
-        )
         return
     sf = float(spot)
     inside = within(lo, hi, sf)
-    if inside:
-        d = 0.0
-    else:
-        d = min(abs(sf - lo), abs(sf - hi))
-    zp["distance_to_spot"] = d
+    zp["distance_to_spot"] = 0.0 if inside else min(abs(sf - lo), abs(sf - hi))
     zp["spot_inside_zone"] = inside
-    dist_pen = min((d / sf) * 12.0, 10.0)
-    zp["tradeable_score"] = liquidity_zone_tradeable_score(
-        n_tags=len(tags), n_opt=n_opt, inside=inside, dist_pen=dist_pen, spot=sf
-    )
 
 
 def _spot_location(zones: list, spot) -> dict | None:
@@ -4374,7 +4362,6 @@ def liquidity_snapshot(ticker: str, now: datetime):
             key=lambda x: (
                 x["distance_to_spot"] is None,
                 x["distance_to_spot"] if x["distance_to_spot"] is not None else 1e9,
-                -x.get("tradeable_score", 0),
             )
         )
         result = {

@@ -93,18 +93,14 @@ def test_spot_used_for_scoring_is_null_not_vwap_when_no_live_spot_is_cached(publ
     assert "spot_estimate_vwap_fallback" not in body, "VWAP is never a stand-in for spot"
 
 
-def test_missing_spot_produces_honest_null_distance_and_neutral_score_through_the_real_zone_path(
-    published,
-):
-    """MEASURED 2026-09-11: the VWAP-as-spot value was also fed into the zone distance and sort.
-    The real zones of the real levels: with no spot, distance and inside-zone are absent and the
-    score is neutral -- not a crash, not a fabricated distance."""
+def test_missing_spot_produces_honest_null_distance_through_the_real_zone_path(published):
+    """The real zones of the real levels: with no spot, distance and inside-zone are absent --
+    not a crash, not a fabricated distance, never VWAP standing in for the spot."""
     body = _body(srv.liquidity_snapshot(TK, FRIDAY))
     assert body["zones"]
     for z in body["zones"]:
         assert z["distance_to_spot"] is None
         assert z["spot_inside_zone"] is None
-        assert isinstance(z["tradeable_score"], (int, float))
         # the pages named every zone that was not support_liquidity "Resistance": each zone's name
         # and side are served from its type
         assert (z["zone_label"], z["zone_side"]) == ZONE_DISPLAY[ZoneType(z["zone_type"])]

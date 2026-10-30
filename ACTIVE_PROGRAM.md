@@ -114,7 +114,7 @@ to write it plainly, in the forms `test_a_command_the_reader_cannot_see_into_is_
 - S-30 the equity microstructure route (`flow`), the options one (`streaming_plane`) and the microstructure content build return None/{} after an exception with no reason.
 - S-35 `get_levels` expected-move levels: live spot ± the chain-time move, stamped with the terrain's time and stale flag, computed in the route.
 - S-36 `_build_raw_levels_used` takes `prev_day` or `prev` (the two snapshot builders name it differently).
-- S-37 / M-03 `_liquidity_zone_tradeable_fields`: midpoint anchor when `zone_mid` is missing; with no spot, `liquidity_zone_tradeable_score` uses another formula instead of absent; the distance penalty is computed in the route; `/api/options/tape` turns an invalid `limit` into 100.
+- S-37 / M-03 `_liquidity_zone_tradeable_fields`: midpoint anchor when `zone_mid` is missing; `/api/options/tape` turns an invalid `limit` into 100. (The zone score and its distance penalty are deleted: no page read the score, and its division by the spot failed the whole route at a last price of 0.)
 - M-28 `gsf_state` (model curve at spot) and `regime` (Schwab's book) judge gamma at spot from two sources; `gsf_state` is documented as the regime and carries no basis.
 
 **liquidity_value_engine.py, liquidity_models.py**
@@ -124,7 +124,7 @@ to write it plainly, in the forms `test_a_command_the_reader_cannot_see_into_is_
 - M-08 truthiness drops a 0 price (`if prev.get("pdh")`, `if vah:`, `if poc:`, `p and p > 0`, …).
 - M-09 a missing poc, pd_poc or vwap yields `value_state="unchanged"` / `vwap_relation="at_value"` (and `else 0`).
 - M-11 `cutoff_et` (now) is served as the values' time (they are as of the last bar); `session_scope` relabels an unknown scope; prior-day POC/VAH/VAL missing is not in `families_absent`.
-- M-12 fused option levels: raw `float()`, rejected ones dropped silently.
+- M-12 fused option levels: raw `float()`, rejected ones dropped silently. A level at 0 is no longer dropped, by the live fusion or the clustering (a reported 0 is 0, rule 2).
 - `build_price_level_snapshot` reads the clock (`produced_ts`) instead of taking `now`.
 
 **math_exposure_core.py, math_levels.py**
