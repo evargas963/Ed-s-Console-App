@@ -76,20 +76,6 @@ LEVEL_NAMES = {
 }
 
 
-def liquidity_zone_tradeable_score(
-    *,
-    n_tags: int,
-    n_opt: int,
-    inside: bool,
-    dist_pen: float,
-    spot: float | None = None,
-) -> float:
-    """Spot-normalized liquidity zone tradeability score."""
-    if spot is None:
-        return 3.0 * n_tags + 2.5 * n_opt
-    return 3.0 * n_tags + 2.5 * n_opt + (1.5 if inside else 0.0) - dist_pen
-
-
 def bars_from_candles(candles) -> list[dict]:
     """The bars every level function takes, from the bar writer's Candles, each field already
     checked once as Schwab sent it, where it came in (server._schwab_bar): {timestamp (ms), _dt
@@ -319,14 +305,11 @@ def cluster_price_levels_into_zones(
     """
     if not levels:
         return []
-    prices = sorted(set(p for p, _ in levels if p and p > 0))
-    if not prices:
-        return []
+    prices = sorted(set(p for p, _ in levels))
 
     tag_map: dict[float, list[str]] = defaultdict(list)
     for p, tag in levels:
-        if p and p > 0:
-            tag_map[p].append(tag)
+        tag_map[p].append(tag)
 
     max_width = float_positive_or_none(getattr(config, "max_zone_width", None))
 
@@ -658,8 +641,7 @@ def build_live_snapshot(
         p, tag = pair[0], pair[1]
         try:
             pf = float(p)
-            if pf > 0:
-                levels.append((pf, str(tag)))
+            levels.append((pf, str(tag)))
         except (TypeError, ValueError):
             continue
 
