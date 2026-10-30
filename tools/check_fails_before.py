@@ -273,18 +273,21 @@ def deletes_only(root: Path, base: str, product: list[str]) -> bool:
 _BODIES = ("body", "orelse", "finalbody")
 
 
+def _dumped(value):
+    """A statement field as comparable data: a node by its dump, a list item by item, a name or a
+    number as it is."""
+    if isinstance(value, ast.AST):
+        return ast.dump(value)
+    if isinstance(value, list):
+        return [_dumped(v) for v in value]
+    return value
+
+
 def _same_head(a: ast.stmt, b: ast.stmt) -> bool:
     """Whether `a` and `b` are the same statement apart from their bodies."""
-    if type(a) is not type(b):
-        return False
-    for field in a._fields:
-        if field in _BODIES:
-            continue
-        x, y = getattr(a, field), getattr(b, field)
-        dump = (lambda v: [ast.dump(e) for e in v]) if isinstance(x, list) else ast.dump
-        if (x is None) != (y is None) or (x is not None and dump(x) != dump(y)):
-            return False
-    return True
+    return type(a) is type(b) and all(
+        _dumped(getattr(a, f)) == _dumped(getattr(b, f)) for f in a._fields if f not in _BODIES
+    )
 
 
 def _trimmed(was: list[ast.stmt], now: list[ast.stmt], in_function: bool) -> bool:
