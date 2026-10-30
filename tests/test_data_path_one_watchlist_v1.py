@@ -282,7 +282,7 @@ def test_a_console_frame_the_daemon_cannot_read_is_logged_with_what_arrived(capl
     """The daemon's console socket reads every frame the console sends: one that is not JSON, or
     JSON that is not an object, is logged with what arrived, never dropped unseen; a request after
     it still reaches the daemon."""
-    bus, got, port = MessageBus(), [], _free_port()
+    bus, got, stats = MessageBus(), [], {}
     request = {"op": "watchlist", "add": "SPY"}
 
     async def go():
@@ -290,14 +290,12 @@ def test_a_console_frame_the_daemon_cannot_read_is_logged_with_what_arrived(capl
 
         stop = asyncio.Event()
         served = asyncio.create_task(
-            serve_live_push(bus, stop, port=port, on_request=lambda req, ws: got.append(req))
+            serve_live_push(
+                bus, stop, port=0, stats=stats, on_request=lambda req, ws: got.append(req)
+            )
         )
-        for _ in range(100):
-            try:
-                ws = await connect(f"ws://127.0.0.1:{port}", max_size=None)
-                break
-            except OSError:
-                await asyncio.sleep(0.05)
+        await _until(lambda: stats.get("listening"))  # the port the system picked
+        ws = await connect(stats["listening"], max_size=None)
         for frame in ("not json", "[1, 2]", json.dumps(request)):
             await ws.send(frame)
         await _until(lambda: got)
