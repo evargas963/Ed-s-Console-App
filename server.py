@@ -4358,13 +4358,9 @@ def liquidity_snapshot(ticker: str, now: datetime):
             }
             _liquidity_zone_tradeable_fields(zp, spot_for_zones)
             zones_payload.append(zp)
-        zones_payload.sort(
-            key=lambda x: (
-                x["distance_to_spot"] is None,
-                x["distance_to_spot"] or 0.0,
-                x["zone_low"],
-            )
-        )
+        zones_payload.sort(key=lambda x: x["zone_low"])
+        if spot_for_zones is not None:
+            zones_payload.sort(key=lambda x: x["distance_to_spot"])
         result = {
             "ticker": out.ticker,
             "symbol": ticker_upper,
