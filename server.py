@@ -2,69 +2,30 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import ctypes
+import json
+import logging
 import os
 import signal
 import sqlite3
 import subprocess
 import sys
-import time
-import asyncio
-import logging
-from logging.handlers import RotatingFileHandler
-import contextlib
-from contextlib import asynccontextmanager
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, UTC
-from zoneinfo import ZoneInfo
+from contextlib import asynccontextmanager
+from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
+from html import escape as html_escape
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Annotated
-from dataclasses import asdict, dataclass
-
-from time_et import (
-    ET,
-    now_et,
-    age_text,
-    ct_label,
-    et_date_str_from_ts_utc,
-    last_open,
-    market_session_date,
-    option_close_product,
-    option_market_open,
-    options_closed_at,
-    session,
-    session_label,
-    valuation_instant,
-    EQUITY_OPTIONS,
-    INDEX_OPTIONS,
-)
-from math_exposure_core import (
-    bucket_metric,
-    compute_exposures_by_strike,
-    gamma_reported,
-    greek_reported,
-    merge_exposure_books,
-    overlay_streamed_contract_fields,
-    strike_oi_legs,
-    strike_total_oi,
-    strike_volume_legs,
-)
-from liquidity_models import ZONE_DISPLAY, PlaybookConfig
-from liquidity_value_engine import (
-    _MATERIALIZED_SNAPSHOTS,
-    bars_from_candles,
-    build_live_snapshot,
-    materialize_price_level_snapshot,
-)
-
-import json
-from html import escape as html_escape
+from zoneinfo import ZoneInfo
 
 import psutil
-
-
-from fastapi import Body, FastAPI, Query, HTTPException
+from fastapi import Body, FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -98,14 +59,33 @@ from confluence_composite import at_price, build_matrix, window_rows
 from db import LevelCrossEvent, get_db
 from db_authority import canonical_stream_db_path
 from instrument_identity import display_symbol, ticker_storage_key, vendor_option_root
+from liquidity_models import ZONE_DISPLAY, PlaybookConfig
+from liquidity_value_engine import (
+    _MATERIALIZED_SNAPSHOTS,
+    bars_from_candles,
+    build_live_snapshot,
+    materialize_price_level_snapshot,
+)
+from math_exposure_core import (
+    bucket_metric,
+    compute_exposures_by_strike,
+    gamma_reported,
+    greek_reported,
+    merge_exposure_books,
+    overlay_streamed_contract_fields,
+    strike_oi_legs,
+    strike_total_oi,
+    strike_volume_legs,
+)
 from math_levels import compute_charm_by_strike
 from micro_structure import Candle
 from numeric_contract import float_finite_or_none, price_text, schwab_count, schwab_number
 from runtime_layout import logs_dir as _runtime_logs_dir
 from terrain_atr import Atr, compute_atrs, roll_up
 from terrain_engine import (
-    SCOPES,
+    PRICE_RELATIONS,
     SAME_DAY_LEVELS,
+    SCOPES,
     TerrainSnapshot,
     _dte_of,
     _per_strike_rows,
@@ -113,12 +93,27 @@ from terrain_engine import (
     compute_terrain,
     nearest_strike,
     positioning_migration,
-    PRICE_RELATIONS,
     price_relations,
     strike_window,
 )
 from terrain_read import LEVEL_ABOVE, LEVEL_BELOW, crossed, from_spot_text, level_side, within
-
+from time_et import (
+    EQUITY_OPTIONS,
+    ET,
+    INDEX_OPTIONS,
+    age_text,
+    ct_label,
+    et_date_str_from_ts_utc,
+    last_open,
+    market_session_date,
+    now_et,
+    option_close_product,
+    option_market_open,
+    options_closed_at,
+    session,
+    session_label,
+    valuation_instant,
+)
 
 # ── App directory = same folder as this file ─────────────────────────────────
 APP_DIR = str(Path(__file__).parent.resolve())

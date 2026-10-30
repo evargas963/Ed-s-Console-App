@@ -12,7 +12,7 @@ unknown: nothing is guessed.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime, UTC
+from datetime import UTC, date, datetime
 from zoneinfo import ZoneInfo
 
 ET = ZoneInfo("America/New_York")

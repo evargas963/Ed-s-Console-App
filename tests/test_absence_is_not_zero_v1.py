@@ -23,12 +23,10 @@ source table and read what comes out the other end.
 
 from __future__ import annotations
 
-
 import pytest
 
 import terrain_engine as TE
 from liquidity_models import volume_profile
-
 
 # ------------------------------------- a NULL short volume is not zero shares short ----
 

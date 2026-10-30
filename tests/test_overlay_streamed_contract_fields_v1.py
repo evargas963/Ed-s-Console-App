@@ -4,7 +4,6 @@ decides which open interest or volume is newer. Pure function: no network, no ca
 
 from __future__ import annotations
 
-
 from math_exposure_core import overlay_streamed_contract_fields
 
 #: the chain's receive time in these tests; a streamed field after it is newer

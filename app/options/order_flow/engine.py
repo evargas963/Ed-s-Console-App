@@ -9,19 +9,21 @@ book as Schwab last sent it) and ``book_live`` (whether the feed delivers the bo
 
 from __future__ import annotations
 
-
 import numpy as np
 
-from numeric_contract import float_finite_or_none, schwab_count, schwab_number
 from l1_trade_observation import (
     canonical_tape_prints,
-    compute_cum_delta_proxy as _canonical_cum_delta,
-    compute_tape_pressure as _canonical_tape_pressure,
     cum_delta_window,
     iter_signed_cum_points,
 )
+from l1_trade_observation import (
+    compute_cum_delta_proxy as _canonical_cum_delta,
+)
+from l1_trade_observation import (
+    compute_tape_pressure as _canonical_tape_pressure,
+)
+from numeric_contract import float_finite_or_none, schwab_count, schwab_number
 from time_et import ct_label
-
 
 OF_TAPE_WINDOW_30S_SEC: float = 30.0
 OF_TAPE_WINDOW_2M_SEC: float = 120.0

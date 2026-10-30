@@ -7,11 +7,11 @@ from datetime import datetime
 import app.options.order_flow.state as ofls
 import server
 from tests.test_one_levels_producer_v1 import (
-    TK,
     _A,
     _CONTRACTS,
     _SPOT,
     _T,
+    TK,
     _cached,
     _daemon,
     _streamed,

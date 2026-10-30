@@ -12,7 +12,8 @@ import live_market_plane as lmp
 import live_price_rows
 import server as srv
 from app.options.order_flow import streaming as ofs
-from tests.test_liquidity_snapshot_spot_identity_v1 import FRIDAY, TK, published as published
+from tests.test_liquidity_snapshot_spot_identity_v1 import FRIDAY, TK
+from tests.test_liquidity_snapshot_spot_identity_v1 import published as published
 
 
 def test_a_last_price_of_zero_is_the_live_spot_level_in_the_zones(published):

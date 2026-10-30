@@ -5,9 +5,7 @@ Volatility-derived transforms: the 25-delta risk reversal and the average true r
 
 from __future__ import annotations
 
-
 from numeric_contract import schwab_number
-
 
 # ── 25-delta risk reversal (skew steepness) ──────────────────────────────────
 

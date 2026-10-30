@@ -26,7 +26,6 @@ from pathlib import Path
 
 from websockets.asyncio.server import serve
 
-
 #: Schwab's answers to SUBS asking field numbers past what it accepts, per service (2026-10-12)
 FIELD_REPLIES = json.loads(
     (

@@ -16,8 +16,9 @@ if str(ROOT) not in sys.path:
 
 
 def test_static_js_response_forces_revalidation():
-    import server as srv
     from starlette.testclient import TestClient
+
+    import server as srv
 
     with TestClient(srv.app) as client:
         r = client.get("/static/js/ed-gamma.js")
@@ -34,8 +35,9 @@ def test_static_js_response_forces_revalidation():
 
 
 def test_static_css_response_also_forces_revalidation():
-    import server as srv
     from starlette.testclient import TestClient
+
+    import server as srv
 
     with TestClient(srv.app) as client:
         r = client.get("/static/css/ed-tokens.css")

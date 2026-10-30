@@ -58,35 +58,37 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
 
-import runtime_layout
-from stream_spine import (
-    LATEST,
-    LOG,
-    CaptureWriter,
-    HealthRegistry,
-    MessageBus,
-    current_key,
-    bar_msg,
-    book_msg,
-    news_msg,
-    options_quote_msg,
-    quote_msg,
-    resolve_stream_db_path,
-    subscription_msg,
-)
 import psutil
+from schwab.streaming import StreamClient
+from websockets.exceptions import ConnectionClosed
+
+import live_market_plane as lmp
+import live_price_rows
+import runtime_layout
 from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT, serve_live_push
 from app.market_data.schwab.streaming.live_ui import serve_live_ui
 from calibration.complete_chain_capture import ChainSweep
 from config import build_config, load_dotenv_file
 from db_authority import canonical_console_db_path
 from instrument_identity import ticker_storage_key
-import live_market_plane as lmp
-import live_price_rows
 from math_exposure_core import gamma_reported
 from numeric_contract import schwab_number
-from schwab.streaming import StreamClient
 from schwab_client import build_client_from_token, safe_get_quotes
+from stream_spine import (
+    LATEST,
+    LOG,
+    CaptureWriter,
+    HealthRegistry,
+    MessageBus,
+    bar_msg,
+    book_msg,
+    current_key,
+    news_msg,
+    options_quote_msg,
+    quote_msg,
+    resolve_stream_db_path,
+    subscription_msg,
+)
 from time_et import (
     ET,
     ct_label,
@@ -95,7 +97,6 @@ from time_et import (
     options_closed_at,
     sessions_since,
 )
-from websockets.exceptions import ConnectionClosed
 
 log = logging.getLogger("capture")
 
