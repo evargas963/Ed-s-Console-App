@@ -85,9 +85,8 @@ from stream_spine import (
     current_key,
     news_msg,
     options_quote_msg,
-    owner_lock_path,
-    owner_pid,
     quote_msg,
+    resolve_stream_db_path,
     subscription_msg,
 )
 from time_et import (
@@ -957,6 +956,11 @@ class Daemon:
 # ---------------------------------------------------------------------------- process
 
 
+def owner_lock_path(db_path: str | Path | None = None) -> Path:
+    """Beside the stream database, so a worktree and production can never both stream."""
+    return resolve_stream_db_path(db_path).with_name("stream_capture.lock")
+
+
 #: Exit code when another daemon already owns the stream (start_capture_daemon.bat stops its
 #: restart loop on it). 2 is the live-binding refusal (runtime_layout).
 EXIT_OWNER_LOCK_HELD = 3
@@ -975,8 +979,13 @@ def acquire_owner_lock(db_path: str | Path | None = None) -> tuple[int, Path]:
             os.write(fd, str(os.getpid()).encode())
             return fd, lock
         except FileExistsError:
-            pid = owner_pid(lock)
-            if pid is not None and psutil.pid_exists(pid):
+            try:
+                pid = int(
+                    lock.read_text().strip() or 0
+                )  # caps-ok: an empty pidfile is not a live owner
+            except (OSError, ValueError):
+                pid = 0
+            if pid and psutil.pid_exists(pid):
                 print(f"FATAL: another capture daemon holds {lock} (pid {pid}).", file=sys.stderr)
                 raise SystemExit(EXIT_OWNER_LOCK_HELD) from None
             if attempt == 1:

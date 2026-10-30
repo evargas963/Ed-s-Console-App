@@ -27,7 +27,6 @@ import launch
 import live_market_plane as lmp
 import push_changes
 import server
-import stream_spine
 from app.market_data.schwab.streaming import capture, live_ui
 from app.market_data.schwab.streaming.live_ui import serve_live_ui
 from calibration.complete_chain_capture import (
@@ -81,9 +80,9 @@ def test_the_daemons_window_closes_when_its_batch_ends(tmp_path):
 
 
 def test_the_stop_takes_only_this_checkouts_processes(tmp_path):
-    """launch.stop finds the console by launch.running, as it finds the daemon, in this checkout
-    alone: of two processes started the same way, the one started in this checkout's folder (as
-    its daemon's batch and its console are) is found, and the one started in another folder
+    """launch.stop finds the daemon and the console by launch.running: of two processes started
+    the same way, the one started in this checkout's folder (as its daemon's batch and its
+    console are) is found, and the one started in another folder
     (another checkout's console, a test's) is not, so the stop's Ctrl+Break never goes to it
     instead of this console. Induced test condition: two sleeping Pythons started by a script of
     this test's own."""
@@ -369,10 +368,10 @@ def _end(process: subprocess.Popen) -> None:
 
 def test_the_stop_ends_the_real_daemon_and_says_when_it_could_not_ask(tmp_path):
     """The real daemon as its batch runs it, in a folder of its own with launch.py beside it, so
-    the stop reaches nothing else; no Schwab token, ports of its own. Its owner lock names it.
-    Another checkout's stop leaves it alone. A stop that cannot ask it, on a port nothing serves
-    or one that closes at once, says so and that the daemon is still running, exit 1. A stop on
-    the daemon's port ends it, exit 0."""
+    the stop reaches nothing else; no Schwab token, ports of its own. Another checkout's stop
+    leaves it alone. A stop that cannot ask it, on a port nothing serves or one that closes at
+    once, says so and that the daemon is still running, exit 1. A stop on the daemon's port ends
+    it, exit 0."""
     home, other = tmp_path / "checkout", tmp_path / "other_checkout"
     for folder in (home, other):
         folder.mkdir()
@@ -396,9 +395,7 @@ def test_the_stop_ends_the_real_daemon_and_says_when_it_could_not_ask(tmp_path):
         "ED_LIVE_PUSH_PORT": str(push_port),
         "SCHWAB_TOKEN_PATH": str(tmp_path / "missing_token.json"),
     }
-    daemon = subprocess.Popen(
-        [sys.executable, "-m", "app.market_data.schwab.streaming.capture_main"], cwd=home, env=env
-    )
+    daemon = subprocess.Popen([sys.executable, *launch.DAEMON_START], cwd=home, env=env)
 
     def stop(folder: Path, port: int) -> subprocess.Popen:
         return subprocess.Popen(
@@ -438,17 +435,6 @@ def test_the_stop_ends_the_real_daemon_and_says_when_it_could_not_ask(tmp_path):
     finally:
         closing.close()
         _end(daemon)
-
-
-def test_an_owner_lock_that_cannot_be_read_is_unknown_and_logged(tmp_path, caplog):
-    lock = tmp_path / "stream_capture.lock"
-    assert stream_spine.owner_pid(lock) is None
-    assert not caplog.records
-    lock.write_text("not a process id")
-    assert stream_spine.owner_pid(lock) is None
-    assert "owner lock" in caplog.text
-    lock.write_text("0")
-    assert stream_spine.owner_pid(lock) == 0
 
 
 def test_the_console_group_is_known_after_its_processes_have_gone():
