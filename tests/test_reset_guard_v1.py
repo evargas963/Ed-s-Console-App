@@ -207,7 +207,7 @@ def test_git_named_by_its_full_path_or_exe_is_judged_as_git():
         assert any("RESET_GUARD" in b for b in PLG.pretooluse_block(tool, {"command": cmd})), cmd
     for cmd in ("& C:\\Git\\cmd\\git.exe reset --soft HEAD~1", "C:/Git/cmd/git.exe stash list"):
         assert not OPL.reset_guard_violations(cmd), cmd
-    assert PLG.git_subcommand("C:\\Git\\cmd\\git.exe push origin main".split())[0] == "push"
+    assert PLG.git_subcommand(["C:\\Git\\cmd\\git.exe", "push", "origin", "main"])[0] == "push"
 
 
 def test_a_heredoc_handed_to_an_interpreter_by_its_full_path_is_judged():

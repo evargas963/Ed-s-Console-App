@@ -313,9 +313,7 @@ def _trimmed(was: list[ast.stmt], now: list[ast.stmt], in_function: bool) -> boo
         branches = []
         if isinstance(s, ast.If):
             branches = [s.body, s.orelse]
-        elif isinstance(s, ast.Try) and not s.orelse and not s.finalbody:
-            branches = [s.body]
-        elif isinstance(s, ast.With):
+        elif isinstance(s, ast.Try) and not s.orelse and not s.finalbody or isinstance(s, ast.With):
             branches = [s.body]
         held = [b for b in branches if nxt is not None and any(_same_head(t, nxt) for t in b)]
         queue = (held[0] if held else []) + queue  # opened, or deleted
