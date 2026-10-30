@@ -157,7 +157,13 @@ async def serve_live_push(
         await _serve_client(ws, bus, stats, on_request)
 
     async with serve(
-        handler, host, port, max_size=None, ping_interval=20, ping_timeout=20
+        handler,
+        host,
+        port,
+        max_size=None,
+        ping_interval=20,
+        ping_timeout=20,
+        origins=[None],  # no browser: a page always sends an Origin, this program's clients none
     ) as server:
         bound = server.sockets[0].getsockname()[1]  # the port taken (port 0: the system's pick)
         stats["listening"] = f"ws://{host}:{bound}"
