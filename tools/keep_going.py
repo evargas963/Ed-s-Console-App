@@ -3,8 +3,10 @@ ACTIVE_PROGRAM.md's SHAPE row is IN PROGRESS, the agent's attempt to end its tur
 is sent back to the next step.
 
 The one way through is a stop the rules require: the agent's final message begins
-`WAITING ON OPERATOR:` and names why (AGENTS.md Authority's stop list; CLAUDE.md items 3, 5 and 6).
-Wired by `.claude/settings.json` (Stop).
+`WAITING ON OPERATOR:` and names why (AGENTS.md Authority's stop list; CLAUDE.md items 3 and 5).
+From the third refusal in a row the reason sends the agent to the cause and a different approach
+(AGENTS.md Authority); the count is kept per session in COUNTS. Wired by `.claude/settings.json`
+(Stop).
 
     python tools/keep_going.py < payload.json
 Prints Claude Code's `{"decision": "block", "reason": ...}` to refuse the stop; prints nothing to
@@ -21,6 +23,7 @@ from __future__ import annotations
 import json
 import re
 import sys
+import tempfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -70,19 +73,50 @@ def last_message(transcript: Path) -> str:
     )
 
 
-def decide(work_list: str, last: str) -> str | None:
-    """Why the stop is refused, or None when it may end."""
+def decide(work_list: str, last: str, in_a_row: int = 1) -> str | None:
+    """Why the stop is refused, or None when it may end; `in_a_row` is which refusal in a row this
+    would be, and from BEDROCK_AT on the reason sends the agent to the cause, not back to the
+    same attempt."""
     if not OPEN.search(work_list):
         return None
     if last.lstrip().startswith(WAITING):
         return None
-    return (
+    why = (
         "SHAPE in ACTIVE_PROGRAM.md is IN PROGRESS: take its next step now (AGENTS.md Authority: "
         "work continues until SHAPE is finished; merges do not wait on the operator). Stop only "
-        "for a stop the rules require (AGENTS.md Authority's stop list; CLAUDE.md items 3, 5 and "
-        "6), "
+        "for a stop the rules require (AGENTS.md Authority's stop list; CLAUDE.md items 3 and 5), "
         f"saying why in a message that begins `{WAITING}`."
     )
+    if in_a_row < BEDROCK_AT:
+        return why
+    return (
+        f"This is stop {in_a_row} refused in a row since the operator last wrote. If you are trying "
+        "again what already failed, it is not working: do not repeat it. Go to bedrock: write down "
+        "why it fails, down to the line of code or data, with "
+        "evidence (AGENTS.md First gate 4); then take a different approach, the simplest one that "
+        "fits Python's guidelines (PEP 20) and the shape, and keep going. " + why
+    )
+
+
+#: the refusal in a row from which the reason sends the agent to bedrock (AGENTS.md Authority)
+BEDROCK_AT = 3
+#: one file per session holding its refusals in a row (Claude Code's payload says only whether
+#: this stop comes while it is continuing because a Stop hook refused one: `stop_hook_active`,
+#: true until the operator next writes, the same run Claude Code's own cap of 8 counts)
+COUNTS = Path(tempfile.gettempdir()) / "ed_keep_going"
+
+
+def in_a_row(payload: dict, counts: Path = COUNTS) -> int:
+    """Which refusal in a row this stop would be: 1 after a stop the hook did not refuse, else one
+    more than the session's count in `counts`. The count is replaced whole, never half-written."""
+    count = counts / (re.sub(r"[^\w-]", "", str(payload.get("session_id", ""))) or "unknown")
+    active = payload.get("stop_hook_active") is True
+    previous = int(count.read_text()) if active and count.exists() else 0
+    counts.mkdir(exist_ok=True)
+    written = count.with_name(count.name + ".new")
+    written.write_text(str(previous + 1))
+    written.replace(count)
+    return previous + 1
 
 
 def main() -> int:
@@ -93,12 +127,14 @@ def main() -> int:
             return 0
         said = payload.get("last_assistant_message")
         last = said if isinstance(said, str) else last_message(Path(payload["transcript_path"]))
+        why = decide(work_list, last)
+        if why is not None:
+            why = decide(work_list, last, in_a_row(payload))
     except (OSError, ValueError, KeyError, TypeError, AttributeError) as e:
         sys.stderr.write(
             f"keep_going cannot judge the stop ({e!r}); keep working and fix the hook\n"
         )
         return 2
-    why = decide(work_list, last)
     if why is not None:
         print(json.dumps({"decision": "block", "reason": why}))
     return 0
