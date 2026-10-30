@@ -15,8 +15,8 @@ from time_et import (
 )
 
 
-def _mk_bar(dt: datetime, o: float, h: float, l: float, c: float, vol: float = 1000.0) -> Candle:
-    return Candle(ts=dt.timestamp(), open=o, high=h, low=l, close=c, volume=vol)
+def _mk_bar(dt: datetime, o: float, h: float, lo: float, c: float, vol: float = 1000.0) -> Candle:
+    return Candle(ts=dt.timestamp(), open=o, high=h, low=lo, close=c, volume=vol)
 
 
 def test_imports():
