@@ -16,7 +16,7 @@ report what was tried, and take a different approach (CLAUDE.md item 6).
    — exit 0 (both as the `hardening` job runs them).
 3. The full suite on the final commit: the required CI job `pytest-full` (Playwright, then the full
    pytest with each patch recorded, then `check_fails_before` and `check_no_new_patches`),
-   `pytest-windows` (the full pytest suite on Windows, as production runs) and
+   `pytest-windows` (Playwright, then the full pytest suite, on Windows as production runs) and
    `hardening` green, shown by `gh pr checks <pr>` on the final commit (operator 2026-10-30: "Yes,
    CI proves it"). The suites run here only while a test is written or a failure is chased:
    `ED_PATCH_RECORD=<a scratch folder> npm run test:all -- -p tools.patch_record`, one at a time.
