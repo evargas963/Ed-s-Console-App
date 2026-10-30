@@ -24,7 +24,7 @@ def test_hook_entrypoint_rejects_no_verify():
         }
     )
     p = subprocess.run(
-        [sys.executable, str(ROOT / "tools" / "operator_law_guard.py")],
+        [sys.executable, "-m", "tools.operator_law_guard"],
         input=payload,
         text=True,
         capture_output=True,

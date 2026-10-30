@@ -194,7 +194,7 @@ def test_a_crashing_or_missing_member_blocks_and_the_chain_keeps_running(capsys)
 
 def test_a_member_block_reaches_the_host_with_the_members_stderr_and_the_judge_banner():
     standalone = subprocess.run(
-        [sys.executable, str(ROOT / "tools" / "process_lock_guard.py")],
+        [sys.executable, "-m", "tools.process_lock_guard"],
         cwd=str(ROOT),
         input=json.dumps(bash("git reset --hard")),
         capture_output=True,
