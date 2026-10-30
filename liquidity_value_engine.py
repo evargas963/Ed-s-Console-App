@@ -76,20 +76,6 @@ LEVEL_NAMES = {
 }
 
 
-def liquidity_zone_tradeable_score(
-    *,
-    n_tags: int,
-    n_opt: int,
-    inside: bool,
-    dist_pen: float,
-    spot: float | None = None,
-) -> float:
-    """Spot-normalized liquidity zone tradeability score."""
-    if spot is None:
-        return 3.0 * n_tags + 2.5 * n_opt
-    return 3.0 * n_tags + 2.5 * n_opt + (1.5 if inside else 0.0) - dist_pen
-
-
 def bars_from_candles(candles) -> list[dict]:
     """The bars every level function takes, from the bar writer's Candles, each field already
     checked once as Schwab sent it, where it came in (server._schwab_bar): {timestamp (ms), _dt
@@ -316,14 +302,11 @@ def cluster_price_levels_into_zones(
     """
     if not levels:
         return []
-    prices = sorted(set(p for p, _ in levels if p and p > 0))
-    if not prices:
-        return []
+    prices = sorted(set(p for p, _ in levels))
 
     tag_map: dict[float, list[str]] = defaultdict(list)
     for p, tag in levels:
-        if p and p > 0:
-            tag_map[p].append(tag)
+        tag_map[p].append(tag)
 
     max_width = float_positive_or_none(getattr(config, "max_zone_width", None))
 
@@ -650,9 +633,11 @@ def build_live_snapshot(
 
     for pair in extra_levels or []:
         p, tag = pair[0], pair[1]
-        pf = float(p)
-        if pf > 0:
+        try:
+            pf = float(p)
             levels.append((pf, str(tag)))
+        except (TypeError, ValueError):
+            continue
 
     clusters = cluster_price_levels_into_zones(levels, config)
 
@@ -853,7 +838,6 @@ class PriceLevelSnapshot:
         "generation",
         "bar_source",
         "as_of_ts_utc",
-        "produced_ts_utc",
         "levels",
         "vwap_path",
         "vwap_series",
@@ -873,7 +857,6 @@ class PriceLevelSnapshot:
         generation: int,
         bar_source: str,
         as_of_ts_utc: float | None,
-        produced_ts_utc: float,
         levels: dict,
         vwap_path: list,
         families_absent: list,
@@ -888,7 +871,6 @@ class PriceLevelSnapshot:
         self.generation = generation
         self.bar_source = bar_source
         self.as_of_ts_utc = as_of_ts_utc
-        self.produced_ts_utc = produced_ts_utc
         self.levels = levels  # level_id -> PriceLevelValue
         self.vwap_path = vwap_path  # [(epoch_sec, vwap)]
         self.vwap_series = vwap_series or []  # [(epoch_sec, vwap, +1σ, -1σ, +2σ, -2σ)]
@@ -960,7 +942,6 @@ def build_price_level_snapshot(
     """
     cfg = config or PlaybookConfig()
     tk = ticker_storage_key(ticker)  # canonical liquidity snapshot/ledger identity
-    produced_ts = datetime.now(tz=ET).timestamp()
     levels: dict[str, PriceLevelValue] = {}
     families_absent: list[dict] = []
     degraded: list[dict] = []
@@ -1039,7 +1020,6 @@ def build_price_level_snapshot(
             generation=generation,
             bar_source=bar_source,
             as_of_ts_utc=as_of,
-            produced_ts_utc=produced_ts,
             levels=levels,
             vwap_path=vwap_path,
             vwap_series=vwap_series,
@@ -1140,7 +1120,6 @@ def build_price_level_snapshot(
         generation=generation,
         bar_source=bar_source,
         as_of_ts_utc=as_of,
-        produced_ts_utc=produced_ts,
         levels=levels,
         vwap_path=vwap_path,
         vwap_series=vwap_series,

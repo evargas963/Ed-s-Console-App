@@ -6,11 +6,16 @@ that the exit code is exact, the log is kept and the terminal output is bounded.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import shutil
 import subprocess
+import sys
+import time
 from pathlib import Path
+
+import psutil
 
 ROOT = Path(__file__).resolve().parent.parent
 RUNNER = ROOT / "scripts" / "run-pytest-full.mjs"
@@ -82,6 +87,38 @@ def _spawn_with_non_draining_reader(cmd: list[str], env: dict[str, str]) -> subp
     )
 
 
+def _stop_tree(proc: subprocess.Popen) -> None:
+    """Stop `proc` and every process it started (the runner's pytest), then reap it; a process that
+    has already ended is stopped already, so it is passed over rather than raised."""
+    with contextlib.suppress(psutil.NoSuchProcess):
+        for child in psutil.Process(proc.pid).children(recursive=True):
+            with contextlib.suppress(psutil.NoSuchProcess):
+                child.kill()
+    proc.kill()
+    proc.wait(timeout=30)
+
+
+def test_stopping_the_runner_stops_what_it_started_and_one_already_ended_raises_nothing():
+    """The timeout path's cleanup: a parent whose child sleeps leaves nothing running once stopped;
+    a runner that has already exited is stopped without an error."""
+    sleeper = (
+        "import subprocess, sys, time; "
+        "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)']); time.sleep(60)"
+    )
+    proc = subprocess.Popen([sys.executable, "-c", sleeper])
+    deadline = time.monotonic() + 30
+    while not psutil.Process(proc.pid).children(recursive=True) and time.monotonic() < deadline:
+        time.sleep(0.1)
+    started = psutil.Process(proc.pid).children(recursive=True)
+    assert started, "the parent started no child"
+    _stop_tree(proc)
+    psutil.wait_procs(started, timeout=10)
+    assert [p.pid for p in started if p.is_running() and p.status() != psutil.STATUS_ZOMBIE] == []
+    ended = subprocess.Popen([sys.executable, "-c", "pass"])
+    ended.wait(timeout=30)
+    _stop_tree(ended)
+
+
 def test_runner_completes_when_the_terminal_reader_never_drains(tmp_path):
     noisy = _noisy_test_file(tmp_path)
     env = _child_env(tmp_path / "logs")
@@ -89,7 +126,7 @@ def test_runner_completes_when_the_terminal_reader_never_drains(tmp_path):
     try:
         rc = proc.wait(timeout=180)  # completes without the reader ever recovering
     except subprocess.TimeoutExpired:
-        proc.kill()
+        _stop_tree(proc)
         raise AssertionError("the canonical runner froze behind a non-draining terminal reader")
     assert rc == 0, f"runner exit code {rc}"
     log = tmp_path / "logs" / "test_pytest_last.log"
