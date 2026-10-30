@@ -197,6 +197,7 @@ jobs:
           npx playwright install chromium
 
       - name: Run the browser tests on Windows
+        id: e2e
         shell: bash
         env:
           CI: "true"
@@ -216,3 +217,16 @@ jobs:
           SCHWAB_API_KEY: "ci-not-live-placeholder"
           SCHWAB_APP_SECRET: "ci-not-live-placeholder"
         run: python -m pytest -n auto --dist loadfile --durations=20 -rs
+
+      - name: Upload Playwright failure traces and the E2E log
+        if: failure() && steps.e2e.outcome == 'failure'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: playwright-failures-windows
+          path: |
+            test-results/**/trace.zip
+            test-results/**/error-context.md
+            logs/test_e2e_last.log
+          if-no-files-found: ignore
+          compression-level: 0
+          retention-days: 14
