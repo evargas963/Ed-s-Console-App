@@ -192,10 +192,15 @@ then the rule binds with no machine check.
   to a production start or stop in regular hours, or to a change of request rates, limits or
   settings, CLAUDE.md item 5; two failed attempts at the same thing, CLAUDE.md item 6; the next
   bullet's stop list: his stop words, an AUDIT ONLY or DO NOT MERGE task, a destructive data action,
-  a product decision), said in a message that begins `WAITING ON OPERATOR:`. Enforced by: the Stop
-  hook `tools/keep_going.py` refuses every other stop while SHAPE is open
-  (`tests/test_keep_going_v1.py`); that a stop marked so is one the rules require — no machine
-  check, ENF-12.
+  a product decision), said in a message that begins `WAITING ON OPERATOR:`. From the third
+  refused stop in a row, what is being done is not working: the agent does not repeat it, finds
+  the cause down to the line of code or data with evidence (First gate 4), takes a different
+  approach, the simplest that fits Python's guidelines and the shape, and keeps going (operator
+  2026-10-30: "go to bedrock or try some other solution based on our python guidelines ... instead
+  of just churning"). Enforced by: the Stop hook `tools/keep_going.py` refuses every other stop
+  while SHAPE is open, and from the third refusal in a row its reason says the above
+  (`tests/test_keep_going_v1.py`); that a stop marked so is one the rules require, and that the
+  next approach differs — no machine check, ENF-12.
 - Stop for the operator's STOP / PAUSE / HANG IT UP / DO NOT CONTINUE / NO, a task marked AUDIT ONLY
   or DO NOT MERGE, a destructive data action, and a product decision code cannot settle. Say in chat
   what a guarded action is for before running it. Enforced by: `tools/operator_yes_guard.py` asks

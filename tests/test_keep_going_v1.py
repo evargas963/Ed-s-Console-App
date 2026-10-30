@@ -130,6 +130,22 @@ def test_a_payload_it_cannot_read_refuses_the_stop_with_the_reason():
             assert (run.returncode, run.stdout) == (0, ""), payload
 
 
+def test_from_the_third_refusal_in_a_row_the_reason_sends_the_agent_to_bedrock(tmp_path):
+    """Operator 2026-10-30: refused stops in a row mean the work is not working; from the third the
+    reason says so and sends the agent to the cause and a different approach, still working. A stop
+    the hook did not refuse (`stop_hook_active` false) starts the count again."""
+    counts = [
+        keep_going.in_a_row({"session_id": "s-1", "stop_hook_active": active}, tmp_path)
+        for active in (False, True, True, True, False)
+    ]
+    assert counts == [1, 2, 3, 4, 1]
+    second = keep_going.decide(OPEN_ROW, "Step 1b is merged.", 2)
+    third = keep_going.decide(OPEN_ROW, "Step 1b is merged.", 3)
+    assert "bedrock" not in second and second in third
+    assert third.startswith("This is stop 3 refused in a row: what you are doing is not working")
+    assert keep_going.decide(OPEN_ROW, "WAITING ON OPERATOR: his yes.", 3) is None
+
+
 def test_a_subagents_message_is_not_the_agents_final_message(tmp_path):
     waiting = _said("WAITING ON OPERATOR: his yes to a console restart in regular hours.")
     side = {**_said("Verdict: FAIL."), "isSidechain": True}
