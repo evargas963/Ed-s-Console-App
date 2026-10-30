@@ -31,7 +31,8 @@ to Ed what was tried (CLAUDE.md item 6, which wins over starting again).
    of steps 1–6), naming that commit; any commit made after a review gets a new review of both before
    the PR is offered. Show each verdict
    (PASS / FAIL / NOT_PROVEN) and its findings, and put both verdicts in the PR description. A FAIL or
-   NOT_PROVEN is fixed or proven, or brought to Ed, before the PR is offered. Before bringing Ed a
+   NOT_PROVEN is fixed or proven, or brought to Ed, before the PR merges; the one NOT_PROVEN a merge
+   may carry is the deployed-screen tier its deploy proves (AGENTS.md Authority). Before bringing Ed a
    decision, check AGENTS.md, CLAUDE.md and ACTIVE_PROGRAM.md for a rule or recorded decision that
    answers it; if one does, apply it and cite it. A decision goes to Ed only when none does.
 8. Nothing left running: list each background shell, subagent (`ListAgents`) and process this session

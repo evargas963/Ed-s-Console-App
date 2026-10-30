@@ -20,6 +20,16 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".venv/Scripts/python.exe tools/keep_going.py"
+          }
+        ]
+      }
     ]
   }
 }

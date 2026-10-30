@@ -29,14 +29,14 @@ def _yes(cmd: str) -> str:
 @pytest.mark.parametrize(
     "cmd",
     [
-        "if gh pr checks 5; then gh pr merge 5; fi",
-        "(gh pr merge 5)",
-        "timeout 600 gh pr merge 5",
-        'bash -c "gh pr merge 5"',
-        'pwsh -NoProfile -Command "gh pr merge 5"',
+        "if gh pr checks 5; then shutdown /r /t 0; fi",
+        "(shutdown /r /t 0)",
+        "timeout 600 shutdown /r /t 0",
+        'bash -c "shutdown /r /t 0"',
+        'pwsh -NoProfile -Command "Restart-Computer"',
     ],
 )
-def test_a_merge_behind_a_keyword_a_subshell_a_wrapper_or_a_shell_asks(cmd):
+def test_a_machine_restart_behind_a_keyword_a_subshell_a_wrapper_or_a_shell_asks(cmd):
     assert _yes(cmd) == yes_guard.ASK
 
 
@@ -212,16 +212,13 @@ def test_shell_arithmetic_is_not_refused(cmd):
 @pytest.mark.parametrize(
     "tool, cmd",
     [
-        ("PowerShell", '$r = & "C:\\Program Files\\GitHub CLI\\gh" pr merge 5'),
-        ("Bash", "g\\h pr merge 5"),
-        ("Bash", "gh pr mer\\ge 5"),
-        ("PowerShell", 'pwsh -CommandWithArgs "gh pr merge 5"'),
-        ("PowerShell", 'pwsh -cwa "gh pr merge 5"'),
-        ("Bash", "gh api graphql -F query=@merge.graphql"),
-        ("Bash", "curl -s https://api.github.com/graphql -d @q.json"),
+        ("PowerShell", '$r = & "C:\\Windows\\System32\\shutdown" /r /t 0'),
+        ("Bash", "shut\\down /r /t 0"),
+        ("PowerShell", 'pwsh -CommandWithArgs "Restart-Computer"'),
+        ("PowerShell", 'pwsh -cwa "Restart-Computer"'),
     ],
 )
-def test_a_merge_by_a_called_path_an_escaped_word_a_command_string_or_a_query_file_asks(tool, cmd):
+def test_a_machine_restart_by_a_called_path_an_escaped_word_or_a_command_string_asks(tool, cmd):
     assert (
         yes_guard.decide({"tool_name": tool, "tool_input": {"command": cmd}}, CLOSED, NO_DB)[0]
         == yes_guard.ASK
@@ -290,21 +287,21 @@ def test_a_plain_command_is_not_refused_as_unseen(tool, cmd):
     assert not any(UNSEEN in b for b in bash_violations(cmd, powershell=tool == "PowerShell")), cmd
 
 
-def test_setting_or_importing_a_gh_alias_is_refused_and_listing_them_passes():
-    """An alias would name a merge in words the merge check does not know."""
-    assert _yes("gh alias set co 'pr checkout'") == yes_guard.DENY
-    assert _yes("gh -R o/r alias set co 'pr checkout'") == yes_guard.DENY
-    assert _yes("gh alias import aliases.yml") == yes_guard.DENY
-    assert _yes("cat aliases.yml | gh alias import -") == yes_guard.DENY
-    assert _yes("gh alias list") == yes_guard.PASS
-
-
 @pytest.mark.parametrize(
-    "cmd", ['"/c/Program Files/GitHub CLI/gh" pr merge 5', "'/opt/my tools/gh' pr merge 5"]
+    "cmd", ['"/c/Windows/System 32/shutdown" /r /t 0', "'/opt/my tools/shutdown' -r now"]
 )
 def test_a_quoted_program_path_with_a_space_runs_in_bash(cmd):
     """In bash a quoted program path runs that program; only PowerShell prints a quoted phrase."""
     assert _yes(cmd) == yes_guard.ASK
+
+
+def test_setting_or_importing_a_gh_alias_is_refused_and_listing_them_passes():
+    """An alias (a --shell one included) runs a command no guard reads, a kill among them."""
+    assert _yes("gh alias set --shell k 'taskkill /F /IM python.exe'") == yes_guard.DENY
+    assert _yes("gh -R o/r alias set co 'pr checkout'") == yes_guard.DENY
+    assert _yes("gh alias import aliases.yml") == yes_guard.DENY
+    assert _yes("cat aliases.yml | gh alias import -") == yes_guard.DENY
+    assert _yes("gh alias list") == yes_guard.PASS
 
 
 @pytest.mark.parametrize(

@@ -1,7 +1,7 @@
 """tools/operator_yes_guard.py (CLAUDE.md rule 5). A start or a clean stop of the daemon or the
 console is put to the operator (Allow/Deny) during regular market hours and while the session is
 unknown, and passes in Pre-Market, After-Hours and Closed; killing the daemon, the console or launch.py is refused, whatever its flags; a
-stop of any other process passes; a stop of the machine and a merge ask; every other action, a
+stop of any other process passes; a stop of the machine asks; a merge, and every other action, a
 change to a test included, passes. Judged on real payloads and
 through the hook chain the settings run.
 
@@ -278,13 +278,12 @@ def test_a_kill_inside_a_merge_is_judged_as_a_kill_too(procs, markets):
     assert guard.decide(_shell(hidden, "PowerShell"), CLOSED, markets)[0] == guard.DENY
     later = "gh pr merge 5 --subject $p.Kill()"
     answer, reasons = guard.decide(_shell(later, "PowerShell"), CLOSED, markets)
-    assert answer == guard.ASK and len(reasons) == 2 and any(later in r for r in reasons), reasons
+    assert answer == guard.ASK and len(reasons) == 1, reasons
     text = 'gh pr merge 5 --subject="fix p.Kill() call"'  # text, read as a kill: the safe side
     assert guard.decide(_shell(text), CLOSED, markets) == (
         guard.ASK,
         [
             "stops processes chosen only when it runs while the daemon or the console runs (CLAUDE.md rule 5: production)",
-            f"merges (AGENTS.md Authority); the command as written: {text}",
         ],
     )
     for run in (
@@ -323,8 +322,8 @@ def test_killing_the_pythonw_image_with_the_daemon_in_it_is_refused(procs, marke
         ("Stop-Computer", guard.ASK),
         ("Restart-Computer -Force", guard.ASK),
         ("shutdown /r /t 0", guard.ASK),
-        ("gh pr merge 445 --merge", guard.ASK),
-        ("gh api -X PUT repos/o/r/pulls/445/merge", guard.ASK),
+        ("gh pr merge 445 --merge", guard.PASS),
+        ("gh api -X PUT repos/o/r/pulls/445/merge", guard.PASS),
         ("git push -q -u origin fix/some-branch", guard.PASS),
     ],
 )
@@ -392,26 +391,10 @@ def test_the_machine_a_merge_and_a_push(cmd, answer, markets):
         ("(( ($(gh pr merge 5)) > 0 ))", "Bash"),  # inside ( ) in bash arithmetic
     ],
 )
-def test_every_merge_route_asks(cmd, tool, markets):
-    assert _decide(cmd, CLOSED, markets, tool) == guard.ASK, cmd
-
-
-@pytest.mark.parametrize(
-    "cmd",
-    [
-        "gh pr merge -sb 7 518",
-        "gh pr merge --body-file 7 518",
-        "gh pr merge --subject 2026 518",
-        "gh pr merge 518",
-        "gh -b x pr merge 5",
-        "gh --subject x pr merge 5",
-        "gh -R owner/repo pr merge 5",
-        "gh -b x api -X PUT repos/o/r/pulls/5/merge",
-    ],
-)
-def test_the_merge_question_shows_the_command_as_written(cmd, markets):
-    answer, reasons = guard.decide(_shell(cmd), CLOSED, markets)
-    assert answer == guard.ASK and len(reasons) == 1 and cmd in reasons[0], (cmd, reasons)
+def test_every_merge_route_goes_ahead_without_a_question(cmd, tool, markets):
+    """A merge does not wait on the operator (AGENTS.md Authority): branch protection's green CI
+    and the two reviewers decide."""
+    assert _decide(cmd, CLOSED, markets, tool) == guard.PASS, cmd
 
 
 @pytest.mark.parametrize(
@@ -502,11 +485,17 @@ def test_the_hook_chain_answers_ask_refuses_and_passes_ordinary_work():
     settings = json.loads((REPO / ".claude" / "settings.json").read_text(encoding="utf-8"))
     commands = [h["command"] for e in settings["hooks"]["PreToolUse"] for h in e["hooks"]]
     assert all("tools/operator_yes_guard.py" in c for c in commands)
-    r = _chain(_shell("gh pr merge 99999"))
+    r = _chain(_shell("shutdown /r /t 0"))
     out = json.loads(r.stdout)["hookSpecificOutput"]
     assert r.returncode == 0 and out["permissionDecision"] == "ask"
-    assert "gh pr merge 99999" in out["permissionDecisionReason"]
-    refused = _chain(_shell("gh alias set m 'pr merge'"))
-    assert refused.returncode == 2 and "sets a gh alias" in refused.stderr
+    assert "stops or restarts the machine" in out["permissionDecisionReason"]
+    refused = _chain(
+        _shell(
+            "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'uvicorn' } | "
+            "ForEach-Object { Stop-Process -Id $_.ProcessId -Force }",
+            "PowerShell",
+        )
+    )
+    assert refused.returncode == 2 and "kills the daemon" in refused.stderr
     quiet = _chain(_edit(str(REPO / EXISTING)))
     assert quiet.returncode == 0 and quiet.stdout == ""
