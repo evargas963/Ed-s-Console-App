@@ -275,8 +275,7 @@ def test_a_change_the_standard_tools_make_alone_is_not_a_product_change(tmp_path
     """A PR that turns on ruff's UP rules and takes ruff's own fix: ruff check --fix and ruff format
     on the base file give the PR's file exactly, so it is not a product change."""
     root = _repo(tmp_path, {**BASE, "server.py": OLD_STYLE})
-    (root / "pyproject.toml").write_text(RUFF_UP, encoding="utf-8")
-    fixed = cee.tool_fixed(root, "server.py", OLD_STYLE)
+    fixed = cee.tool_fixed(root, "server.py", OLD_STYLE, RUFF_UP)
     assert fixed is not None and "float | None" in fixed and fixed != OLD_STYLE
     _commit(root, {"pyproject.toml": RUFF_UP, "server.py": fixed})
     assert _changed(root) == []
@@ -286,21 +285,47 @@ def test_the_tools_fix_keeps_a_files_crlf_line_endings_as_they_are(tmp_path):
     """Some product files are CRLF; the text goes to ruff and back as bytes, so no line ending is
     doubled or dropped (on Windows a text pipe turned each CRLF into CR CR LF)."""
     root = _repo(tmp_path, BASE)
-    (root / "pyproject.toml").write_text(RUFF_UP, encoding="utf-8")
     crlf = OLD_STYLE.replace("\n", "\r\n")
-    fixed = cee.tool_fixed(root, "server.py", crlf)
+    fixed = cee.tool_fixed(root, "server.py", crlf, RUFF_UP)
     assert fixed is not None and "\r\r" not in fixed and fixed.count("\r\n") == fixed.count("\n")
 
 
 def test_a_hand_edit_on_top_of_the_tools_fix_is_a_product_change(tmp_path):
     """The same PR with one line the tools did not write: it is a product change."""
     root = _repo(tmp_path, {**BASE, "server.py": OLD_STYLE})
-    (root / "pyproject.toml").write_text(RUFF_UP, encoding="utf-8")
-    fixed = cee.tool_fixed(root, "server.py", OLD_STYLE)
+    fixed = cee.tool_fixed(root, "server.py", OLD_STYLE, RUFF_UP)
     _commit(
         root,
         {"pyproject.toml": RUFF_UP, "server.py": fixed.replace("return row", "return row or 0.0")},
     )
+    assert _changed(root) == ["server.py"]
+
+
+STR_ENUM = 'from enum import Enum\n\n\nclass Zone(str, Enum):\n    LOW = "low"\n'
+#: ruff's unsafe UP042 rewrite of STR_ENUM, written out (the operator allows no unsafe fix)
+STR_ENUM_REWRITTEN = 'from enum import StrEnum\n\n\nclass Zone(StrEnum):\n    LOW = "low"\n'
+
+
+def test_a_fix_ruff_marks_unsafe_is_a_product_change_whatever_the_prs_config_asks(tmp_path):
+    """A PR whose own pyproject.toml turns ruff's unsafe fixes on (or marks one safe) and commits
+    the unsafe rewrite of `(str, Enum)` to `StrEnum`, which changes what str() of a member is: the
+    check runs ruff's safe fixes only, so the rewrite is a product change that needs its test."""
+    for config in (
+        '[tool.ruff]\nunsafe-fixes = true\n[tool.ruff.lint]\nselect = ["UP042"]\n',
+        '[tool.ruff.lint]\nselect = ["UP042"]\nextend-safe-fixes = ["UP042"]\n',
+    ):
+        (where := tmp_path / str(len(config))).mkdir()
+        root = _repo(where, {**BASE, "server.py": STR_ENUM})
+        _commit(root, {"pyproject.toml": config, "server.py": STR_ENUM_REWRITTEN})
+        assert _changed(root) == ["server.py"], config
+
+
+def test_the_tools_fix_reads_the_committed_config_never_the_working_trees(tmp_path):
+    """A pyproject.toml changed in the working tree only does not change the verdict."""
+    root = _repo(tmp_path, {**BASE, "server.py": OLD_STYLE})
+    fixed = cee.tool_fixed(root, "server.py", OLD_STYLE, RUFF_UP)
+    _commit(root, {"server.py": fixed})  # the PR commits the rewrite but not the UP selection
+    (root / "pyproject.toml").write_text(RUFF_UP, encoding="utf-8")
     assert _changed(root) == ["server.py"]
 
 

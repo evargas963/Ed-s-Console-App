@@ -3,8 +3,9 @@
 A check of shapes only. It cannot see a design-level patch; that is review's. That a product change
 is proven end to end is check_fails_before's: an end-to-end path test that fails on the old code. A
 file whose code is the same once comments and docstrings are set aside (code_identical: the Python
-syntax tree; page code's syntax tree from Babel, tools/js_code_tree.js) is not a change of product
-code. An .html page is always one, and so is removing code nothing calls, a deleted file included.
+syntax tree; page code's syntax tree from Babel, tools/js_code_tree.js), or whose change is exactly
+the standard tools' own (ruff's safe fixes with the PR's committed pyproject.toml, then ruff format:
+tool_fixed), is not a change of product code. An .html page is always one, and so is removing code nothing calls, a deleted file included.
 
 The product lines a PR adds carry no patch shape:
    - an except that catches everything (bare, `Exception`, `BaseException`, or a tuple holding
@@ -202,33 +203,42 @@ def code_tree(path: str, text: str) -> str | None:
     return None
 
 
-def tool_fixed(root: Path, path: str, text: str) -> str | None:
-    """`text` as the repository's standard tools leave it: `ruff check --fix` with the PR's
-    pyproject.toml selection, then `ruff format`; None when either cannot run on it."""
+#: ruff's fix as the check runs it: its safe fixes only, whatever the configuration asks, so a fix
+#: ruff marks as one that may change behaviour is never taken for the tools' own
+SAFE_FIX = ["--fix", "--no-unsafe-fixes", "--config", "lint.extend-safe-fixes = []"]
+
+
+def tool_fixed(root: Path, path: str, text: str, config: str) -> str | None:
+    """`text` as the repository's standard tools leave it: ruff's safe fixes with `config` (the
+    text of a pyproject.toml), then `ruff format`; None when either cannot run on it."""
     out = text.encode("utf-8")  # as bytes: no line ending translated on the way in or out
-    for args in (["check", "--fix", "--exit-zero", "--quiet"], ["format", "--quiet"]):
-        try:
-            run = subprocess.run(
-                [sys.executable, "-m", "ruff", *args, "--stdin-filename", path, "-"],
-                input=out,
-                capture_output=True,
-                cwd=root,
-                timeout=120,
-            )
-        except (OSError, subprocess.TimeoutExpired):
-            return None
-        if run.returncode != 0:
-            return None
-        out = run.stdout
+    with tempfile.TemporaryDirectory() as tmp:
+        settings = Path(tmp) / "pyproject.toml"
+        settings.write_bytes(config.encode("utf-8"))
+        for args in (["check", *SAFE_FIX, "--exit-zero", "--quiet"], ["format", "--quiet"]):
+            try:
+                run = subprocess.run(
+                    [sys.executable, "-m", "ruff", *args, "--config", str(settings)]
+                    + ["--stdin-filename", path, "-"],
+                    input=out,
+                    capture_output=True,
+                    cwd=root,
+                    timeout=120,
+                )
+            except (OSError, subprocess.TimeoutExpired):
+                return None
+            if run.returncode != 0:
+                return None
+            out = run.stdout
     return out.decode("utf-8")
 
 
 def code_identical(root: Path, base: str, path: str) -> bool:
     """Whether the PR leaves `path`'s code as it is on `base` once comments and docstrings are set
-    aside, or changes it only as the repository's standard tools do (tool_fixed reproduces the PR's
-    file from the base's): such a change has nothing for a test to fail on, so it needs none. A file
-    new to the PR, renamed, deleted, not one of CODE_TREE_SUFFIXES, or one either version of which
-    cannot be read is not that."""
+    aside, or changes it only as the repository's standard tools do (tool_fixed, with the PR's
+    committed pyproject.toml, reproduces the PR's file from the base's): such a change has nothing
+    for a test to fail on, so it needs none. A file new to the PR, renamed, deleted, not one of
+    CODE_TREE_SUFFIXES, or one either version of which cannot be read is not that."""
     try:
         old = _git(root, "show", f"{_git(root, 'merge-base', base, 'HEAD').strip()}:{path}")
         new = pr_source(root, path)
@@ -237,7 +247,13 @@ def code_identical(root: Path, base: str, path: str) -> bool:
     before, after = code_tree(path, old), code_tree(path, new)
     if before is None:
         return False
-    return before == after or (path.endswith(".py") and tool_fixed(root, path, old) == new)
+    if before == after:
+        return True
+    try:
+        config = pr_source(root, "pyproject.toml")
+    except ToolError:
+        return False
+    return path.endswith(".py") and tool_fixed(root, path, old, config) == new
 
 
 def behavior_change(root: Path, base: str, path: str) -> bool:

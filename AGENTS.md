@@ -93,7 +93,7 @@ then the rule binds with no machine check.
 | 10 | **Only Feed talks to Schwab.** | import-linter: `schwab`, `httpx` and `authlib` importable only from Feed (step 1d) |
 | 11 | **Calculators are pure.** They take `now` and their inputs; they read no clock, database, global or network. Only an entry point (a route, a loop, a stream handler) reads the clock. | import-linter forbidden imports and ruff `TID251` banned `time.time` / `datetime.now` outside the entry points (step 2) |
 | 12 | **Typed records across boundaries.** A value that crosses a module boundary is a dataclass whose states are named constants. | pyright, strict on State, Calculators and Push (step 6) |
-| 13 | **Python's guidelines.** PEP 8 and PEP 257 as `ruff format` and ruff's rules read them; PEP 20 as the shape. Imports at the top. One formatter per format (price, Central Time, dollars), on the server (no machine check — ENF-11). | `ruff format` and ruff `UP` (in force; `UP042` deselected, its one fix unsafe, in `pyproject.toml`); ruff `E`, `W`, `B`, `SIM`, `BLE`, `S110`, `TRY`, `C90` (step 1b), `D` (pep257, no docstring required; step 1c), `I` (step 7) |
+| 13 | **Python's guidelines.** PEP 8 and PEP 257 as `ruff format` and ruff's rules read them; PEP 20 as the shape. Imports at the top. One formatter per format (price, Central Time, dollars), on the server (no machine check — ENF-11). | `ruff format` and ruff `UP` (in force; `UP042` deselected, its one fix unsafe, in `pyproject.toml`); ruff `E`, `W`, `B`, `SIM`, `BLE`, `S110`, `TRY`, `C90`, `I` (step 1b), `D` (pep257, no docstring required; step 1c) |
 
 ## Fix what you find (operator 2026-10-29: "fix what you find anywhere, everywhere, repo wide")
 
@@ -101,7 +101,11 @@ then the rule binds with no machine check.
   found it, or as the next small PR when it lies outside that task's files. "Pre-existing", "out of
   scope" and "follow-up" are not dispositions. A row in `ACTIVE_PROGRAM.md` holds a found defect
   only as the next work in its order, never as a place to leave it. A standard tool's own fix for
-  what its check flags (`ruff format`, `ruff check --fix`) needs no separate yes.
+  what its check flags (`ruff format`, `ruff check --fix`) needs no separate yes; never an unsafe
+  fix (operator 2026-10-29: "I DID NOT ALLOW FOR ANY UNSAFE FIXES"): no `--unsafe-fixes`, no
+  `unsafe-fixes` or `extend-safe-fixes` in `pyproject.toml`, and a rule whose only fix is unsafe
+  stays deselected. Enforced by: `tools/check_end_to_end.py` runs ruff's safe fixes only, so an
+  unsafe rewrite is a product change that needs its failing test (`tests/test_check_end_to_end_v1.py`).
 - A check runs over the whole repository wherever it can, so a finding anywhere fails the required
   job and nothing merges while it stands; a check is turned on only once what it finds repo-wide is
   fixed, never with an exception list. Enforced by: `ruff check .` and `ruff format --check .` over
@@ -126,7 +130,7 @@ then the rule binds with no machine check.
   with no exceptions. Enforced by: `tools/check_fails_before.py` in `pytest-full`
   (`tests/test_check_fails_before_v1.py`).
 - Edit source by hand, one edit at a time, never through a script; the exceptions are ENF-14's (a
-  standard tool's own fix, `ruff format` and `ruff check --fix`; `unix2dos`/`dos2unix` for line
+  standard tool's own fix, `ruff format` and ruff's safe fixes; `unix2dos`/`dos2unix` for line
   endings). Enforced by: `tools/operator_law_guard.py` for
   sed (`tests/test_sed_edit_guard_v1.py`); the other in-place editors — ENF-14.
 
