@@ -3260,7 +3260,7 @@ async def _watchlist_change(action: str, ticker: str) -> JSONResponse:
 
 
 @app.post("/api/watchlist")
-async def post_watchlist(payload: dict = Body(...)):
+async def post_watchlist(payload: Annotated[dict, Body()]):
     """Add a ticker: the daemon checks it with one /quotes request and adds it unless Schwab
     does not quote it (names it in errors.invalidSymbols)."""
     return await _watchlist_change("add", str(payload["ticker"]))
@@ -3273,7 +3273,7 @@ async def delete_watchlist(ticker: str):
 
 
 @app.post("/api/flow-contract")
-async def post_flow_contract(payload: dict = Body(...)):
+async def post_flow_contract(payload: Annotated[dict, Body()]):
     """The contract selected on the Flow panel ({"contract": symbol}, or null for none): the daemon
     streams it on LEVELONE_OPTIONS and OPTIONS_BOOK on top of its option rule. Only a contract
     Schwab listed in a chain the console holds is taken."""

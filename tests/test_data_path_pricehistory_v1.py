@@ -18,6 +18,7 @@ import subprocess
 import sys
 import threading
 from datetime import datetime
+from functools import partial
 from pathlib import Path
 
 import push_changes
@@ -255,7 +256,7 @@ def test_a_price_history_sent_again_with_every_minute_held_changes_nothing():
         now = datetime.fromtimestamp(HISTORY[(tk, "minute", "1")]["answered_utc"], ET)
         server._bars.pop(tk, None)
         try:
-            first, again = _told(tk, [lambda: _held(tk, "1m", now), lambda: _held(tk, "1m", now)])
+            first, again = _told(tk, [partial(_held, tk, "1m", now)] * 2)
             got = [
                 (b.ts, b.open, b.high, b.low, b.close, b.volume)
                 for b in server._bars_1m(tk, server.BARS_KEPT)
@@ -281,7 +282,7 @@ def test_a_price_history_that_brings_minutes_not_held_adds_exactly_those():
         server._bars.pop(tk, None)
         try:
             _held(tk, "1m", now, earlier)
-            (told,) = _told(tk, [lambda: _held(tk, "1m", now)])
+            (told,) = _told(tk, [partial(_held, tk, "1m", now)])
             got = [
                 (b.ts, b.open, b.high, b.low, b.close, b.volume)
                 for b in server._bars_1m(tk, server.BARS_KEPT)
@@ -305,7 +306,7 @@ def test_new_daily_candles_reach_the_open_page_and_the_same_candles_again_do_not
         server._daily.pop(tk, None)
         try:
             _held(tk, "1d", now, sent[:-1])
-            newer, again = _told(tk, [lambda: _held(tk, "1d", now), lambda: _held(tk, "1d", now)])
+            newer, again = _told(tk, [partial(_held, tk, "1d", now)] * 2)
             held = [(c.ts, c.open, c.high, c.low, c.close, c.volume) for c in server._daily[tk]]
         finally:
             server._daily.pop(tk, None)
