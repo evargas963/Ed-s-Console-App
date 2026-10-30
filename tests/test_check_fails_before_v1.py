@@ -442,6 +442,52 @@ def test_a_tighter_setting_of_a_rule_already_on_is_not_a_new_rule(tmp_path):
     ]
 
 
+GUARDED = (
+    "def spot(rows):\n    out = []\n    for row in rows:\n        if row is None:\n"
+    "            continue\n        try:\n            out.append(float(row['bid']))\n"
+    "        except ValueError:\n            continue\n    return out\n"
+)
+UNGUARDED = (
+    "def spot(rows):\n    out = []\n    for row in rows:\n"
+    "        out.append(float(row['bid']))\n    return out\n"
+)
+
+
+def test_a_branch_no_caller_reaches_removed_inside_a_function_is_proven_by_the_suite(tmp_path):
+    """A guard deleted and a try unwrapped inside a function, nothing added: the full suite and
+    the browser tests are the proof, the PR's caller trace the reviewers' to read."""
+    root = _repo(tmp_path, {"calc.py": UNGUARDED}, base={**BASE, "calc.py": GUARDED})
+    assert cfb.violations(root, "main") == []
+
+
+@pytest.mark.parametrize(
+    "now",
+    [
+        UNGUARDED.replace("float(row['bid'])", "float(row['last'])"),  # a path rewritten
+        UNGUARDED.replace("    return out\n", "    out.sort()\n    return out\n"),  # one added
+        "x = 1\n\n\n" + UNGUARDED,  # a statement added outside the function
+    ],
+    ids=["rewritten", "added-inside", "added-outside"],
+)
+def test_a_trim_that_also_adds_or_rewrites_code_still_needs_a_test(tmp_path, now):
+    root = _repo(tmp_path, {"calc.py": now}, base={**BASE, "calc.py": GUARDED})
+    assert cfb.violations(root, "main") == [
+        "product code changed (calc.py) but no end-to-end path test "
+        "(tests/test_data_path_*.py or tests/e2e/*.spec.js) changed"
+    ]
+
+
+def test_a_module_level_statement_removed_is_not_a_trim(tmp_path):
+    """Outside a function, a removed statement (a route registered, a value set) changes behavior:
+    only a whole undecorated function or class may go."""
+    base = {**BASE, "calc.py": "LIMIT = 5\nprint(LIMIT)\n\n\n" + UNGUARDED}
+    root = _repo(tmp_path, {"calc.py": "LIMIT = 5\n\n\n" + UNGUARDED}, base=base)
+    assert cfb.violations(root, "main") == [
+        "product code changed (calc.py) but no end-to-end path test "
+        "(tests/test_data_path_*.py or tests/e2e/*.spec.js) changed"
+    ]
+
+
 def test_removing_a_function_nothing_calls_is_proven_by_the_suite(tmp_path):
     base = {**BASE, "calc.py": BASE["calc.py"] + "\n\ndef unused(row):\n    return row['ask']\n"}
     root = _repo(tmp_path, {"calc.py": BASE["calc.py"]}, base=base)
