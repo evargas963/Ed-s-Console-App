@@ -21,8 +21,8 @@ from tests.test_live_push_channel_v1 import (
 
 def test_a_page_frame_the_daemon_cannot_read_is_logged_with_what_arrived(caplog):
     """The daemon's price socket reads every page frame: one that is not JSON, one that is not a
-    subscribe request with a list of symbols, and a symbol in it that is not a ticker are each
-    logged with what arrived, never dropped unseen."""
+    subscribe request with a list of symbols, and a symbol in it that is not a string, or is blank,
+    are each logged with what arrived (its first 200 characters), never dropped unseen."""
 
     async def go():
         from websockets.asyncio.client import connect
@@ -54,7 +54,8 @@ def test_a_page_frame_the_daemon_cannot_read_is_logged_with_what_arrived(caplog)
     with caplog.at_level(logging.WARNING, logger="app.market_data.schwab.streaming.live_ui"):
         asyncio.run(go())
     warned = " | ".join(r.getMessage() for r in caplog.records if r.name.endswith("live_ui"))
-    assert "'not json'" in warned and '\'{"op": "hello"}\'' in warned and "7" in warned, warned
+    assert "'not json'" in warned and '\'{"op": "hello"}\'' in warned, warned
+    assert "a subscribed symbol not a string, or blank: 7" in warned, warned
 
 
 def test_a_silent_daemon_keeps_the_last_price(feed):

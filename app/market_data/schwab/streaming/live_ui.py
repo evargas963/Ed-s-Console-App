@@ -129,18 +129,20 @@ class LiveUiServer:
             try:
                 req = json.loads(frame)
             except (TypeError, ValueError) as e:
-                log.warning("live ui: a page frame that is not JSON (%s): %r", e, frame)
+                log.warning("live ui: a page frame that is not JSON (%s): %.200r", e, frame)
                 continue
             subscribe = isinstance(req, dict) and req.get("op") == "subscribe"
             raw = req.get("symbols") if subscribe else None
             if not isinstance(raw, list):
-                log.warning("live ui: a page frame that is not a subscribe with symbols: %r", frame)
+                log.warning(
+                    "live ui: a page frame that is not a subscribe with symbols: %.200r", frame
+                )
                 continue
             keys, identity = [], []
             for s in raw:
                 k = ticker_storage_key(s) if isinstance(s, str) else ""
                 if not k:
-                    log.warning("live ui: a subscribed symbol that is not a ticker: %r", s)
+                    log.warning("live ui: a subscribed symbol not a string, or blank: %.200r", s)
                     continue
                 identity.append({"requested": s, "key": k, "display": display_symbol(k)})
                 if k not in keys:
