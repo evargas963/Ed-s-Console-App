@@ -1,21 +1,32 @@
 # Ed Console — Data Flow
 
-How data moves from Schwab to the screen: the processes, how they talk, where data lives, and the
-journey of each kind of data. The operator's decisions are in §6. Where the code lives is `docs/ARCHITECTURE.md`. Every change
-is built to this document and checked against it; a change that does not fit stops and goes to the
-operator.
+How data moves from Schwab to the screen: the design (§1), the rules for the data (§2), today's
+code (§3, being replaced step by step), and the journey of each kind of data. The operator's
+decisions are in §6. Where the code lives is `docs/ARCHITECTURE.md`. Every change is built to this
+document and checked against it; a change that does not fit stops and goes to the operator.
 
-## 1. The agreed design (enforced)
+## 1. The design (operator 2026-10-29)
 
 ```
-[Schwab] ─ one WebSocket ─► [Capture daemon: the newest of everything] ─ push ─► [Browser]
-                                        │
-                        every message, in the background
-                                        ▼
-                             [The one database writer] ─► [Databases: history]
+[Schwab] ─ stream + REST ─► [ one program:  Feed ─► State ─► Calculators ─► State ─► Push ] ─ one WebSocket ─► [page]
+                                                      │
+                                                      └─► Recorder ─► [databases: history]
 ```
 
-- One Schwab connection, owned by the daemon (Schwab allows one streamer connection per user).
+One program in five parts (`AGENTS.md` "The shape"): **Feed** talks to Schwab and takes each field
+as sent; **State** holds the newest value of everything with its time; **Calculators** compute each
+derived value once, as pure functions; **Push** sends the page a snapshot, then every change, on one
+WebSocket, and the page draws it; **Recorder** writes every message to the databases, which no live
+screen reads. Hops: Schwab → program → page.
+
+Today the program is two (the capture daemon and the console, §3.1) joined by two local sockets,
+and the page re-reads routes after each push (§3.2). `ACTIVE_PROGRAM.md` SHAPE step 3 makes them
+one program and step 4 makes the push the page's only data; each step rewrites the sections of §3
+it replaces, in the same PR.
+
+The facts below hold today and in the design, except where a bullet says what today lacks:
+
+- One Schwab connection, owned by Feed (today the daemon; Schwab allows one streamer connection per user).
   Enforced by: `tests/test_schwab_client_import_boundary.py` (the console makes no Schwab call).
 - One owner of the Schwab token while the app runs: the daemon's one client
   (`capture.one_schwab_client`), used by the stream and every chain request, built from
@@ -41,8 +52,8 @@ operator.
   `tests/test_data_path_sign_in_v1.py`, `tests/test_data_path_rules_v1.py`
   (`test_twenty_requests_at_a_refresh_send_one_refresh_and_all_carry_the_new_token`,
   `test_the_daemon_builds_one_schwab_client_and_a_failed_refresh_never_rebuilds_it`).
-- Data is pushed at every hop. Nothing polls. Enforced by: no machine check — ENF-15 (the page
-  re-reads routes after each push today).
+- Data is pushed at every hop. Nothing polls. Today the page still re-reads routes after each push
+  (§3.2) until SHAPE step 4. Enforced by: no machine check — ENF-15.
 - The databases are history, written in the background (two writers today, §3.5). Nothing on screen waits on them.
   Enforced by: D4 and D6 below.
 - At startup the in-memory state is loaded once from the latest stored values, so a restart, a
@@ -192,6 +203,11 @@ from Schwab to the screen (daemon, console, page), are these:
   Enforced by: `tests/test_data_path_rules_v1.py`.
 
 ## 3. Today
+
+Today's code, accurate as of the last PR that touched each part. It is being replaced by the
+design of §1: §3.1's two processes become one program (SHAPE step 3), §3.2's channels between them
+are deleted and the page's `/api` reads and `/api/changes` give way to the one push (step 4), and
+§3.3's console memory becomes the one State.
 
 ### 3.1 The processes
 
@@ -714,38 +730,40 @@ from Schwab to the screen (daemon, console, page), are these:
 
 The work that closes these gaps, in order, is `ACTIVE_PROGRAM.md`.
 
-## 4. The target
+## 4. The target, in the one program (§1)
 
-### 4.1 The processes
+### 4.1 Where each part runs
 
-| Process | What it does |
-|---|---|
-| **Capture daemon** | Holds the one Schwab connection: the streamer, and the REST chain fetch. Holds the one in-memory state: latest quotes, books, bars, chains. Pushes every change. Its writer thread is the one database writer. At startup it loads the latest stored values into memory. |
-| **Levels producer** | Its own process. Receives the chain and quotes from the daemon, computes each derived value once, and hands the results back to the daemon to push and write. The daemon never waits on it: it sends and moves on, and results arrive as their own message. Kept out of the daemon because heavy computing in the daemon's process stalls its event loop and Schwab drops the socket. |
-| **Console** | Serves the page and the read routes, from the daemon's state. Computes nothing and holds no copy. |
-| **Browser** | One page, two push connections: the daemon's (prices, bars) and the console's (levels, flow and liquidity changed). No refresh timer. Every panel reads from what is pushed; opening the Chain view reads one expiry from the state. |
+| Part | Runs on | Why |
+|---|---|---|
+| **Feed** | the program's event loop (the Schwab stream) and one thread (the REST chain sweep, one request at a time) | the stream must read every frame as it comes |
+| **Calculators** | a worker pool the program owns, never the event loop | the design premise the old levels-producer row stood on: heavy computing in the daemon's process stalls its event loop, and a stalled loop stops answering Schwab's stream; the console's loop did stall this way (2026-09-24, per-tick repricing; 2026-10-02, chain-part decoding, §3.2). A process pool, because Python threads share one interpreter lock, so a CPU-bound thread still stalls the loop. Feed and Push never wait on a calculation: it is handed off, and its result returns to State as its own update. Which pool is measured in step 3 (the Schwab socket's heartbeat kept while every watchlist ticker's chain is priced) |
+| **State** | the event loop | one writer of each value, read by Push and the Recorder |
+| **Push** | the event loop | a snapshot on connect, then every change |
+| **Recorder** | its own thread (the writer) | the page never waits on a database |
+| **Page** | the browser | one WebSocket; it draws what is pushed, with no refresh timer and no route reads |
 
 ### 4.2 The journey of each kind of data
 
-- **Quote, option quote, book, bar:** Schwab → daemon state → pushed to the browser; written by the
-  one writer.
-- **Chain:** Schwab REST, fetched by the daemon → daemon state → the producer. The browser is never
-  pushed a whole chain.
+- **Quote, option quote, book, bar:** Schwab → Feed → State → pushed to the page; written by the
+  Recorder.
+- **Chain:** Schwab REST, fetched by Feed → State → Calculators → State. The page is never pushed a
+  whole chain.
 - **Chain history:** in each capture window of the option markets as Schwab's /markets sent them
   -- every 30 minutes from their open, and at the last close (the close capture: 16:15 ET, 13:15
-  on an early close) -- the daemon
-  writes the first full chain (every expiry) it begins of each watchlist ticker, compressed, one
-  row per expiry, into `ed_console.db` (its chain sweep writes it). Nothing is captured
-  outside those windows. This is what research reads and what startup loads (the newest
-  capture per ticker).
-- **Levels:** producer → daemon state → pushed to the browser; not stored (decision 7).
-- **Level crosses:** producer → written by the one writer.
-- **After a restart, a weekend or the close:** at startup the newest stored chain per ticker and the
-  bars are loaded, the levels are computed from them once, and the screens show them with their
-  time.
+  on an early close) -- the Recorder
+  writes the first full chain (every expiry) Feed begins of each watchlist ticker, compressed, one
+  row per expiry, into `ed_console.db`. Nothing is captured outside those windows. This is what
+  research reads and what startup loads (the newest capture per ticker).
+- **Levels:** Calculators → State → pushed to the page; not stored (decision 7).
+- **Level crosses:** Calculators → State → written by the Recorder.
+- **After a restart, a weekend or the close:** at startup the Recorder's loader reads the newest
+  stored chain per ticker and the bars once, the levels are computed from them once, and the
+  screens show them with their time.
 
 ## 5. Checks
 
+The rules and the tool that enforces each are `AGENTS.md` "Rules and what enforces them". Today:
 ruff at commit and in CI, with `pyproject.toml`'s one selection (unused imports, undefined names,
 syntax errors), and `ruff format` (the one Python formatter, ruff pinned in `requirements-dev.txt`);
 a compile pass in CI (every file CPython compiles); the behavior tests (`pytest`, `tests/`) and the
@@ -763,16 +781,18 @@ behavior (AGENTS.md).
    list and open interest come only from Schwab's REST chain endpoint. Built 2026-10-01: the
    daemon is the only Schwab client; every watchlist ticker is fetched in its turn, none first.
    Enforced by: `tests/test_schwab_client_import_boundary.py`.
-2. **The levels producer runs in its own process**, not inside the daemon.
-   Enforced by: not built — ENF-16.
+2. **The levels producer runs in its own process**, not inside the daemon. Superseded by SHAPE
+   (operator 2026-10-29): the Calculators run in a worker pool the one program owns, off its event
+   loop (§4.1). Enforced by: not built — SHAPE step 3.
 3. **The browser is never pushed a whole chain.** Enforced by: no machine check — ENF-16.
 4. **One shell, two connections** (operator 2026-09-27). One page; tabs switch what is shown;
    the daemon pushes prices and bars, the console pushes that levels, flow or liquidity changed.
-   Enforced by: no machine check — ENF-16.
+   Superseded by SHAPE (operator 2026-10-29): one shell, one WebSocket from the one program, which
+   carries every value (§1). Enforced by: no machine check — SHAPE step 4.
 5. **Two databases, each with one job** (operator 2026-10-09/10): `stream_capture.db`, the
    daemon's writer, five sessions (§2 D4); `ed_console.db`, the chain history (decision 7, written
-   by the daemon's chain sweep) and the level crosses (the console's one write today; the target
-   is a console that reads read-only, P2-DB5). The stored chain is the chain history of decision 7,
+   by the daemon's chain sweep) and the level crosses (the console's one write today; under SHAPE
+   (operator 2026-10-29) the Recorder writes both databases and nothing else does, P2-DB5). The stored chain is the chain history of decision 7,
    not every 5-second chain; no table without a job.
    Enforced by: not built (the console still writes its level crosses) — ENF-16.
 6. **Before any table is dropped:** each table's size is measured read-only; dropping needs the
