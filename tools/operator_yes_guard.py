@@ -15,13 +15,9 @@ shell commands. Each command gets one answer, the strictest of its statements':
     command line cannot be read is put to the operator. A stop whose targets are chosen only when
     it runs (a variable, a pipe) is refused when the command names the daemon or the console, and
     put to the operator while either runs.
-  * A stop or restart of the machine and a merge are put to the operator; `gh alias set` /
-    `gh alias import` (an alias could name a merge in other words) is refused.
-    What counts as a merge is `_merges`; the forms it is proven on are the tests' (ENF-13 lists the
-    known open ones). The question shows the command as written, whole; the guard does not say
-    what it merges. A merge
-    clicked in a browser or run from a script file is not a shell command this guard sees
-    (GITHUB-LOCK in ACTIVE_PROGRAM.md).
+  * A stop or restart of the machine is put to the operator. A merge is not: it goes ahead once CI
+    is green on the pull request's final commit (branch protection) and both reviewers have no FAIL
+    open (operator 2026-10-29, AGENTS.md Authority).
 
 Limits: shell commands are judged on the statements they run, as tools/shell_parse.read reads them
 (behind a keyword, a wrapper or a subshell, inside a shell's command string), never on names
@@ -77,34 +73,6 @@ STOPPERS = ("stop-process", "spps", "taskkill", "kill", "tskill", "pskill")
 MACHINE_STOPPERS = ("stop-computer", "restart-computer", "shutdown")
 #: process objects removed through WMI/CIM
 WMI_STOPS = ("remove-ciminstance", "remove-wmiobject")
-#: a merge through GitHub's API: a pull request or a branch by REST, or a GraphQL mutation that
-#: merges or turns on a merge once checks pass
-MERGE_ROUTE = re.compile(
-    r"/pulls/[^/\s'\"]+/merge\b|\brepos/[^/\s'\"]+/[^/\s'\"]+/merges\b"
-    r"|mergePullRequest|enablePullRequestAutoMerge|mergeBranch",
-    re.I,
-)
-#: programs that send an HTTP request
-HTTP_CLIENTS = ("curl", "wget", "invoke-restmethod", "irm", "invoke-webrequest", "iwr")
-#: gh options that take a value (the value is not a subcommand)
-GH_VALUE_OPTIONS = (
-    "-R",
-    "--repo",
-    "--hostname",
-    "-X",
-    "--method",
-    "-f",
-    "-F",
-    "--field",
-    "--raw-field",
-    "-H",
-    "--header",
-    "--input",
-    "-q",
-    "--jq",
-    "-t",
-    "--template",
-)
 #: process ids and image names a stop names (Stop-Process -Id, taskkill /PID, ProcessId=N;
 #: -Name, /IM, Get-Process <name>, Name='x.exe')
 _PIDS = re.compile(r"(?:-id|/pid|processid\s*=)\s*['\"]?(\d[\d,\s]*)", re.I)
@@ -262,7 +230,7 @@ def decide(payload: dict, now: datetime, db: Path) -> "tuple[str, list[str]]":
     if payload.get("tool_name") not in BASH_TOOLS:
         return PASS, []
     cmd = str((payload.get("tool_input") or {}).get("command") or "")
-    asks, denies, merges = [], [], False
+    asks, denies = [], []
     statements = [
         st
         for st in read(cmd, powershell=payload.get("tool_name") == "PowerShell")
@@ -282,8 +250,6 @@ def decide(payload: dict, now: datetime, db: Path) -> "tuple[str, list[str]]":
             asks.append(
                 "stops or restarts the machine, and the daemon and console with it (CLAUDE.md rule 5: production)"
             )
-        if _merges(st):
-            merges = True
         if _kills(st):
             upstream = (
                 list(st.upstream.raw)
@@ -322,41 +288,7 @@ def decide(payload: dict, now: datetime, db: Path) -> "tuple[str, list[str]]":
                     f"starts or stops the daemon or the console while the market session is "
                     f"{session} (CLAUDE.md rule 5: production)"
                 )
-        if st.program == "gh" and _gh_words(st)[:2] in (["alias", "set"], ["alias", "import"]):
-            denies.append(
-                "sets a gh alias: an alias can name a merge in words the merge check does not know"
-            )
-    if merges:
-        asks.append(f"merges (AGENTS.md Authority); the command as written: {cmd}")
     return (DENY, denies) if denies else (ASK, asks) if asks else (PASS, [])
-
-
-def _gh_words(st: Statement) -> "list[str]":
-    """A gh statement's subcommand words: its arguments without options and their values."""
-    args = list(st.words[1:])
-    return [
-        a
-        for i, a in enumerate(args)
-        if not a.startswith("-") and not (i and args[i - 1] in GH_VALUE_OPTIONS)
-    ]
-
-
-def _merges(st: Statement) -> bool:
-    """Whether the statement merges."""
-    name, args = st.program, list(st.words[1:])
-    if name == "gh":
-        if (
-            "pr" in args and "merge" in args[args.index("pr") + 1 :]
-        ):  # whatever options come between
-            return True
-    elif name not in HTTP_CLIENTS:
-        return False
-    if any(MERGE_ROUTE.search(a) for a in args):
-        return True
-    # a GraphQL body read from a file: its query is unseen
-    return any("graphql" in a.lower() for a in args) and any(
-        a.startswith("@") or "=@" in a or a == "--input" for a in args
-    )
 
 
 def main() -> int:
