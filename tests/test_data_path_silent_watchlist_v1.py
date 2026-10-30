@@ -1,4 +1,5 @@
-"""Schwab -> the watchlist. A missing daemon heartbeat keeps the last list and says it is not live."""
+"""Schwab -> the watchlist. A missing daemon heartbeat keeps the last list and says it is not
+live."""
 
 from __future__ import annotations
 

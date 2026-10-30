@@ -6,12 +6,12 @@ browser tests, which the same job runs, are the proof (operator 2026-10-28).
 The PR's changed and added files under tests/ are laid over a checkout of the base, and the PR's
 changed end-to-end path tests run there: pytest files (tests/test_data_path_*.py) with this
 interpreter, Playwright specs (tests/e2e/*.spec.js) with the repository's installed Playwright,
-against a console served from the base. At least one of them must fail or error on the base; a change whose every test
-already passed before proves nothing about that change. The same tests passing on the PR is the
-full suite's job (the required pytest-full check). A product file whose code is the same once
-comments and docstrings are set aside, or whose change is exactly ruff's safe fixes and ruff format
-(check_end_to_end.code_identical: .py, .js, .mjs), has nothing for a test to fail on, and needs
-none; a deleted product file is a change.
+against a console served from the base. At least one of them must fail or error on the base; a
+change whose every test already passed before proves nothing about that change. The same tests
+passing on the PR is the full suite's job (the required pytest-full check). A product file whose
+code is the same once comments and docstrings are set aside, or whose change is exactly ruff's
+safe fixes and ruff format (check_end_to_end.code_identical: .py, .js, .mjs), has nothing for a
+test to fail on, and needs none; a deleted product file is a change.
 
 The base checkout sits inside the repository so that Node finds the repository's node_modules
 from it, and runs on the same Python as this check (first on PATH for the spec's console).
@@ -274,7 +274,8 @@ def violations(root: Path, base: str) -> list[str]:
         return []
     if deletes_only(root, base, product):
         print(
-            f"proven: {', '.join(product)} only lose whole undecorated functions or classes and their imports; "
+            f"proven: {', '.join(product)} only lose whole undecorated functions or classes "
+            "and their imports; "
             "the full suite and "
             "the browser tests are the proof (operator 2026-10-28)"
         )

@@ -214,7 +214,8 @@ def test_git_named_by_its_full_path_or_exe_is_judged_as_git():
 
 
 def test_a_heredoc_handed_to_an_interpreter_by_its_full_path_is_judged():
-    """A heredoc handed to bash by its path (`C:\\Git\\bin\\bash.exe <<'EOF'`) is judged as bash's."""
+    """A heredoc handed to bash by its path (`C:\\Git\\bin\\bash.exe <<'EOF'`) is judged as
+    bash's."""
     for shell in (
         "C:\\Git\\bin\\bash.exe",
         "/usr/bin/bash",

@@ -968,9 +968,12 @@ def test_d6_the_price_history_and_a_pushed_bar_build_levels_on_the_whole_history
 #: price_bars_1m as production holds it: the console's old bar store, which its quote accumulator
 #: and price-history re-seeds wrote before 2026-09-26 (no code writes or reads it now)
 _OLD_STORE_DDL = (
-    "CREATE TABLE IF NOT EXISTS price_bars_1m (ticker TEXT NOT NULL, bar_start_ts_utc REAL NOT NULL, "
-    "bar_end_ts_utc REAL NOT NULL, open REAL, high REAL, low REAL, close REAL NOT NULL, volume REAL, "
-    "source TEXT NOT NULL DEFAULT 'schwab_1m_accumulator_sqlite', PRIMARY KEY (ticker, bar_start_ts_utc))"
+    "CREATE TABLE IF NOT EXISTS price_bars_1m (ticker TEXT NOT NULL, "
+    "bar_start_ts_utc REAL NOT NULL, "
+    "bar_end_ts_utc REAL NOT NULL, open REAL, high REAL, low REAL, close REAL NOT NULL, "
+    "volume REAL, "
+    "source TEXT NOT NULL DEFAULT 'schwab_1m_accumulator_sqlite', "
+    "PRIMARY KEY (ticker, bar_start_ts_utc))"
 )
 
 

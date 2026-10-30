@@ -111,7 +111,8 @@ def test_payload_is_json_serialisable() -> None:
 
 
 def test_is_deterministic() -> None:
-    """Same chain, same spot, same instant, same payload — or nothing on the card is reproducible."""
+    """Same chain, same spot, same instant, same payload — or nothing on the card is
+    reproducible."""
     chain, spot = _real_chain()
     a = compute_terrain("SPY", chain, spot, now=NOW).to_dict()
     b = compute_terrain("SPY", chain, spot, now=NOW).to_dict()
@@ -383,7 +384,8 @@ def test_pin_score_stamps_match_the_same_exposures_book_as_the_pin() -> None:
 
 def test_pin_score_inputs_follow_the_wide_terrain_book_not_selected_expiry() -> None:
     """The pin's GEX and open interest are the whole book's (every expiry), so its pin_score is
-    not the selected expiry's. MRVL's full real chain, all its expiries, against its front expiry."""
+    not the selected expiry's. MRVL's full real chain, all its expiries, against its front
+    expiry."""
     from math_exposure_core import compute_exposures_by_strike, total_gex_dollars_at_strike
     from math_probabilities import compute_pin_score
 

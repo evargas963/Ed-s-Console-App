@@ -194,7 +194,8 @@ _NOT_A_FILE = frozenset({"/dev/null", "nul", "$null"})
 
 
 def _sed_writes(st: Statement) -> list[str]:
-    """How a sed statement writes a file; empty for any other statement or a sed that only prints."""
+    """How a sed statement writes a file; empty for any other statement or a sed that only
+    prints."""
     if st.program != "sed":
         return []
     flag = next((a for a in st.words[1:] if _SED_IN_PLACE.match(a)), None)
@@ -236,7 +237,8 @@ def bash_violations(cmd: str, powershell: bool = False) -> list[str]:
     sed = [w for st in statements for w in _sed_writes(st)]
     if sed:
         out.append(
-            f"ACTION BLOCKED: this command edits a file with sed ({'; '.join(sed)}). AGENTS.md: never "
+            f"ACTION BLOCKED: this command edits a file with sed ({'; '.join(sed)}). "
+            "AGENTS.md: never "
             "edit source through a script. Make the change with the Edit tool (or Write for a new "
             "file), one edit at a time. A sed that only prints (sed -n '5p' f, sed 's/a/b/' f) is "
             "allowed."
@@ -244,7 +246,8 @@ def bash_violations(cmd: str, powershell: bool = False) -> list[str]:
     hidden = list(filter(None, (unseen(st) for st in statements)))
     if hidden:
         out.append(
-            f"ACTION BLOCKED: the guards cannot see what this runs ({'; '.join(hidden)}). Write the "
+            f"ACTION BLOCKED: the guards cannot see what this runs ({'; '.join(hidden)}). "
+            "Write the "
             "command plainly: the program and its arguments as literal words — no $variable or "
             "substitution as the program, no text piped into a shell or interpreter, no "
             "-EncodedCommand, no Invoke-Expression."

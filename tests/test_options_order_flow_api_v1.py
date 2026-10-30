@@ -32,7 +32,8 @@ BOOKS = [
 
 
 def _daemon_holds(*services: str, now: float | None = None) -> None:
-    """The daemon's heartbeat stamped `now` (the wall clock when not given), holding CONTRACT on `services`."""
+    """The daemon's heartbeat stamped `now` (the wall clock when not given), holding CONTRACT on
+    `services`."""
     lmp.record_feed_heartbeat(
         {
             "ts": time.time() if now is None else now,
@@ -82,10 +83,11 @@ def test_with_no_book_from_schwab_the_flow_panel_says_so():
 
 def test_the_flow_panel_says_whether_the_daemon_streams_the_contract():
     """SUBSCRIBED while the daemon holds the contract on LEVELONE_OPTIONS; NOT STREAMED when it
-    does not, and when its status is gone (a daemon that stopped reporting holds nothing). A contract
-    of SPY's 2026-10-07 0DTE chain, served at that chain's capture (12:32 ET, the option market open).
-    The contract's market is that of the chain that lists it: with no chain held that lists it, its
-    market is not known and it is not live; once the levels producer publishes SPY's chain, SPY's."""
+    does not, and when its status is gone (a daemon that stopped reporting holds nothing). A
+    contract of SPY's 2026-10-07 0DTE chain, served at that chain's capture (12:32 ET, the option
+    market open). The contract's market is that of the chain that lists it: with no chain held that
+    lists it, its market is not known and it is not live; once the levels producer publishes SPY's
+    chain, SPY's."""
     contract, at = SPY_0DTE.chain[0]["symbol"], SPY_0DTE.now.timestamp()
 
     def holds(*services: str) -> None:

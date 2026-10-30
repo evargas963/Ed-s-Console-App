@@ -62,7 +62,8 @@ def test_a_second_module_reading_a_schwab_field_raw_is_refused(tmp_path):
         },
     )
     assert cor.violations(root, "main") == [
-        "LAST_PRICE: read raw by 2 modules, 1 before (added capture.py); one module reads a Schwab field"
+        "LAST_PRICE: read raw by 2 modules, 1 before (added capture.py); "
+        "one module reads a Schwab field"
     ]
 
 
@@ -76,7 +77,8 @@ def test_a_one_word_streamer_field_is_judged(tmp_path):
         },
     )
     assert cor.violations(root, "main") == [
-        "DELTA: read raw by 2 modules, 0 before (added greeks.py, tape.py); one module reads a Schwab field"
+        "DELTA: read raw by 2 modules, 0 before (added greeks.py, tape.py); "
+        "one module reads a Schwab field"
     ]
 
 
@@ -89,7 +91,8 @@ def test_a_read_through_a_module_constant_is_a_read(tmp_path):
         },
     )
     assert cor.violations(root, "main") == [
-        "LAST_PRICE: read raw by 2 modules, 1 before (added trades.py); one module reads a Schwab field"
+        "LAST_PRICE: read raw by 2 modules, 1 before (added trades.py); "
+        "one module reads a Schwab field"
     ]
 
 
@@ -99,7 +102,8 @@ def test_moving_the_one_reader_and_a_test_reading_it_are_not_refused(tmp_path):
         {
             "plane.py": None,
             "parse.py": PLANE,
-            "tests/test_more.py": 'def test_it():\n    assert {"LAST_PRICE": 2}.get("LAST_PRICE")\n',
+            "tests/test_more.py": "def test_it():\n"
+            '    assert {"LAST_PRICE": 2}.get("LAST_PRICE")\n',
         },
     )
     assert cor.violations(root, "main") == []
@@ -114,12 +118,14 @@ def test_a_rest_field_in_camel_case_is_read_from_any_mapping(tmp_path):
         },
     )
     assert cor.violations(root, "main") == [
-        "openInterest: read raw by 2 modules, 0 before (added book.py, levels.py); one module reads a Schwab field"
+        "openInterest: read raw by 2 modules, 0 before (added book.py, levels.py); "
+        "one module reads a Schwab field"
     ]
 
 
 def test_our_own_records_keys_named_like_a_plain_schwab_word_are_not_judged(tmp_path):
-    """`status`, `type` and `symbol` are in Schwab's field list and are our own records' keys too."""
+    """`status`, `type` and `symbol` are in Schwab's field list and are our own records' keys
+    too."""
     root = _pr(
         tmp_path,
         {
@@ -142,14 +148,16 @@ def test_removing_a_field_from_the_list_does_not_take_it_out_of_the_check(tmp_pa
         },
     )
     assert cor.violations(root, "main") == [
-        "LAST_PRICE: read raw by 2 modules, 1 before (added capture.py); one module reads a Schwab field"
+        "LAST_PRICE: read raw by 2 modules, 1 before (added capture.py); "
+        "one module reads a Schwab field"
     ]
 
 
 def test_a_membership_test_is_a_read(tmp_path):
     root = _pr(tmp_path, {"has.py": 'def has(item):\n    return "LAST_PRICE" not in item\n'})
     assert cor.violations(root, "main") == [
-        "LAST_PRICE: read raw by 2 modules, 1 before (added has.py); one module reads a Schwab field"
+        "LAST_PRICE: read raw by 2 modules, 1 before (added has.py); "
+        "one module reads a Schwab field"
     ]
 
 
@@ -181,7 +189,8 @@ def test_a_new_reader_beside_another_is_refused_even_when_one_stops_reading(tmp_
     _git(root, "add", "second.py", "third.py")
     _git(root, "commit", "-q", "-m", "swap a reader")
     assert cor.violations(root, "main") == [
-        "BID_PRICE: read raw by 2 modules, 2 before (added third.py); one module reads a Schwab field"
+        "BID_PRICE: read raw by 2 modules, 2 before (added third.py); "
+        "one module reads a Schwab field"
     ]
 
 

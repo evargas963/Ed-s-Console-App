@@ -155,7 +155,8 @@ def _told(tk: str, takes) -> list:
 def test_today_s_candle_is_rolled_up_live_from_the_regular_session_bars():
     """At 2026-10-06 16:30 ET, after Schwab's regular window for that day (09:30-16:00 ET): the
     daily ATR is Schwab's daily candles before that day plus the day's candle rolled up from its
-    1-minute bars inside the window. Its high and low are Schwab's own daily candle's for the day."""
+    1-minute bars inside the window. Its high and low are Schwab's own daily candle's for the
+    day."""
     now = datetime(2026, 10, 6, 16, 30, tzinfo=ET)
     for tk in ("SPY", "TSLA"):
         server._bars.pop(tk, None)
@@ -318,22 +319,26 @@ def test_new_daily_candles_reach_the_open_page_and_the_same_candles_again_do_not
 
 #: a console just started (a fresh interpreter): its first price history, SPY's and TSLA's
 #: 1-minute series as Schwab answered them, taken by the bar writer; the modules loaded meanwhile
-_FIRST_TAKE = """
+_FIRST_TAKE = (
+    """
 import json, sys
 sys.path.insert(0, sys.argv[1])
 from datetime import datetime
 import server
 from tests.schwab_rest_standin import HISTORY
 from time_et import ET
-msgs = [{"src": "schwab_pricehistory", "symbol": tk, "series": "1m", "ts_recv": a["answered_utc"], "answer": a["body"]}
+msgs = [{"src": "schwab_pricehistory", "symbol": tk, "series": "1m", """
+    """"ts_recv": a["answered_utc"], "answer": a["body"]}
         for tk, a in ((tk, HISTORY[(tk, "minute", "1")]) for tk in ("SPY", "TSLA"))]
 now = datetime.fromtimestamp(msgs[0]["ts_recv"], ET)
 before = set(sys.modules)
 server._write_streamed_bars(msgs, now)
 print(json.dumps({"loaded": sorted(set(sys.modules) - before),
                   "bars": [len(server._bars_1m(tk, server.BARS_KEPT)) for tk in ("SPY", "TSLA")],
-                  "levels": [server.canonical_price_level_snapshot(tk, now) is not None for tk in ("SPY", "TSLA")]}))
+                  "levels": [server.canonical_price_level_snapshot(tk, now) is not None """
+    """for tk in ("SPY", "TSLA")]}))
 """
+)
 
 
 def test_a_console_just_started_takes_its_first_price_history_without_loading_a_module():
