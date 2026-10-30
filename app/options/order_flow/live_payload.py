@@ -43,7 +43,7 @@ def flow_block(of: dict[str, Any]) -> dict[str, Any]:
     return flow
 
 
-def options_live_payload(contract: str, now: float, product: "str | None") -> dict[str, Any]:
+def options_live_payload(contract: str, now: float, product: str | None) -> dict[str, Any]:
     """Book microstructure + labeled PROXY flow for one option contract at `now`, judged live by
     its own option market `product` (EQO or IND; None: not known)."""
     items = get_content_for_symbol(contract)

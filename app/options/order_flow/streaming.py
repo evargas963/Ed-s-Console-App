@@ -30,7 +30,8 @@ import json
 import queue
 import logging
 import time
-from typing import Any, Callable, Optional
+from typing import Any
+from collections.abc import Callable
 
 from instrument_identity import ticker_storage_key
 import push_changes
@@ -59,16 +60,16 @@ LIVE_UI_URL = f"ws://127.0.0.1:{LIVE_UI_PORT}"
 #: The daemon's finished price row per ticker (live_price_rows.price_row), exactly as it pushes
 #: it to the browser. The console keeps no other copy of a live price. A silent or dropped push
 #: marks the feed down; the last row stays until a newer one arrives.
-_price_rows: "dict[str, dict]" = {}
+_price_rows: dict[str, dict] = {}
 
 
-def price_row(ticker: str) -> "dict | None":
+def price_row(ticker: str) -> dict | None:
     return _price_rows.get(ticker_storage_key(ticker) or "")
 
 
 def price_state(
     ticker: str, now: float, service: str = "LEVELONE_EQUITIES"
-) -> "tuple[str, str | None]":
+) -> tuple[str, str | None]:
     """`ticker`'s state on Schwab `service` (its quote, or a venue's book) at `now`, as the console
     serves it: the rule on the beat the console holds (live_market_plane.live_state) while that is
     not LIVE (the feed down, the symbol not held, its market not trading); while it is LIVE, the
@@ -91,7 +92,7 @@ PUSH_RECONNECT_SEC = 1.0
 #: the console's push connection to the daemon while it is open (_feed_loop): watchlist requests go on it
 _push_ws = None
 #: request id -> the future the daemon's watchlist record for it resolves (_ingest_pushed)
-_watchlist_answers: "dict[int, asyncio.Future]" = {}
+_watchlist_answers: dict[int, asyncio.Future] = {}
 #: how long a watchlist request waits for the daemon's record (an add waits on Schwab's /quotes answer)
 WATCHLIST_ANSWER_SEC = 30.0
 
@@ -118,10 +119,10 @@ async def watchlist_request(action: str, ticker: str) -> dict:
 
 #: the contract Ed selected on the Flow panel, or None: the daemon streams it on both option
 #: services on top of its option rule; sent on every connection to the daemon and on each change
-_flow_contract: "str | None" = None
+_flow_contract: str | None = None
 
 
-async def select_flow_contract(contract: "str | None") -> None:
+async def select_flow_contract(contract: str | None) -> None:
     """The Flow panel's selection (None: none), told to the daemon now when connected, and on each
     connection after (serve_push), so a daemon restart keeps it."""
     global _flow_contract
@@ -132,7 +133,7 @@ async def select_flow_contract(contract: "str | None") -> None:
 
 # ── Runtime state (single asyncio task inside the SAME event loop as the server —
 #    no dedicated thread/loop needed once nothing here opens a socket) ──
-_feed_task: Optional[asyncio.Task] = None
+_feed_task: asyncio.Task | None = None
 _feed_running = False
 
 #: Each option contract's last streamed message time (LEVELONE_OPTIONS or OPTIONS_BOOK), keyed
@@ -142,22 +143,22 @@ _option_contract_last_update_ts: dict[str, float] = {}
 #: Called with the symbol of every streamed equity quote and every option quote carrying
 #: GAMMA/DELTA/OPEN_INTEREST/TOTAL_VOLUME/VOLUME (server._on_stream_tick: reprices a viewed
 #: ticker). Runs on the event loop, so it must return at once.
-_on_tick_callback: Optional[Callable[[str], None]] = None
-_on_feed_callback: Optional[Callable[[float], None]] = None
+_on_tick_callback: Callable[[str], None] | None = None
+_on_feed_callback: Callable[[float], None] | None = None
 _tick_callback_failures = 0
 #: Every streamed 1-minute bar (bar1m.SYM, Schwab CHART_EQUITY), for server._bar_writer to write.
-streamed_bars: "queue.SimpleQueue[dict]" = queue.SimpleQueue()
+streamed_bars: queue.SimpleQueue[dict] = queue.SimpleQueue()
 #: Called on the event loop with (ticker, contracts, fetched_ts, None) for each whole chain the
 #: daemon fetched, and with (ticker, None, ts, reason) for one it could not deliver
 #: (server._on_chain).
-_on_chain_callback: Optional[Callable[..., None]] = None
+_on_chain_callback: Callable[..., None] | None = None
 #: ticker -> the chain being received: {"ts", "parts", "got": {part: contracts}}
-_chain_parts: "dict[str, dict]" = {}
+_chain_parts: dict[str, dict] = {}
 
 
 def assemble_chain_part(
     msg: dict,
-) -> "list[tuple[str, list | None, float, str | None, tuple | None]]":
+) -> list[tuple[str, list | None, float, str | None, tuple | None]]:
     """One chain message from the daemon (complete_chain_capture.chain_messages) -> what it
     settles, in order: a chain whose parts did not all arrive before the next one began
     (ticker, None, ts, reason, None); a fetch that failed (ticker, None, ts, Schwab's answer, None);
@@ -217,7 +218,7 @@ def _tick(sym: str) -> None:
             )
 
 
-def _service_feed(symbol: "str | None", service: str, now: float, product: "str | None") -> dict:
+def _service_feed(symbol: str | None, service: str, now: float, product: str | None) -> dict:
     """One Schwab option service's feed for contract `symbol` at `now`, as the page shows it: its
     state by the one live rule on its own option market `product` (live_market_plane.live_state:
     LIVE, OFFLINE or NOT LIVE), and how long ago the daemon last received anything on that service
@@ -322,7 +323,7 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
     return None
 
 
-def _rows_wanted(now: float) -> "list[str]":
+def _rows_wanted(now: float) -> list[str]:
     """The price rows this console holds at `now`: every equity the daemon streams (its
     heartbeat's held LEVELONE_EQUITIES -- the watchlist and the market context, as Schwab
     accepted them)."""
@@ -349,7 +350,7 @@ async def _rows_loop(ui_url: str, reconnect_sec: float) -> None:
                         sent = want
                     try:
                         frame = await asyncio.wait_for(ws.recv(), _lmp.FEED_HEARTBEAT_MAX_AGE_SEC)
-                    except asyncio.TimeoutError:
+                    except TimeoutError:
                         _lmp.record_feed_down()  # the daemon beats every second: silence
                         _feed_changed(time.time())  # the last price row stays
                         continue
@@ -451,7 +452,7 @@ SUBSCRIBED, NOT_STREAMED = "SUBSCRIBED", "NOT STREAMED"
 
 
 def get_option_contract_streaming_diagnostics(
-    for_contract: str, now: float, product: "str | None"
+    for_contract: str, now: float, product: str | None
 ) -> dict[str, Any]:
     """Whether the daemon streams `for_contract` and is receiving it at `now`, distinct from the
     book's own content ages (options_live_payload): its subscription (SUBSCRIBED / NOT STREAMED,
@@ -483,9 +484,9 @@ def _feed_changed(now: float) -> None:
 
 
 def start_order_flow_stream(
-    on_tick_callback: Optional[Callable[[str], None]] = None,
-    on_chain_callback: Optional[Callable[..., None]] = None,
-    on_feed_callback: Optional[Callable[[float], None]] = None,
+    on_tick_callback: Callable[[str], None] | None = None,
+    on_chain_callback: Callable[..., None] | None = None,
+    on_feed_callback: Callable[[float], None] | None = None,
 ) -> bool:
     """Start the feed from the capture daemon (on the event loop)."""
     global _feed_task, _feed_running, _on_tick_callback, _on_chain_callback, _on_feed_callback

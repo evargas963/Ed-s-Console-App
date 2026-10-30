@@ -327,7 +327,7 @@ def test_6_a_dev_worktree_commits_freely_the_production_primary_refuses_moves_an
     for command in (
         'git commit -m "x"',
         'git add tools/x.py && git commit -m "y"',
-        'git -C "%s" commit -m "z"' % linked,
+        f'git -C "{linked}" commit -m "z"',
         "git checkout -b feature",
     ):
         r = _chain(bash(command, cwd=linked), root=linked)
@@ -341,7 +341,7 @@ def test_6_a_dev_worktree_commits_freely_the_production_primary_refuses_moves_an
     ):
         here = _chain(bash(command, cwd=primary), root=primary)
         assert here.returncode == 2 and "PROD_CHECKOUT_LOCK" in here.stderr, (command, here.stderr)
-        there = _chain(bash('git -C "%s" %s' % (primary, command[4:]), cwd=linked), root=linked)
+        there = _chain(bash(f'git -C "{primary}" {command[4:]}', cwd=linked), root=linked)
         assert there.returncode == 2 and "PROD_CHECKOUT_LOCK" in there.stderr, (
             command,
             there.stderr,
@@ -382,7 +382,7 @@ def test_6b_a_linked_worktree_cannot_write_main_the_branch_production_runs(tmp_p
         "git push . HEAD:main",
         "git push . HEAD:heads/main",
         "git fetch . dev:heads/main",
-        'git -C "%s" update-ref refs/heads/main HEAD' % primary,
+        f'git -C "{primary}" update-ref refs/heads/main HEAD',
     ):
         r = _chain(bash(command, cwd=linked), root=linked)
         assert r.returncode == 2 and "MAIN_REF_LOCK" in r.stderr, (command, r.stderr)

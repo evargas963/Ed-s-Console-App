@@ -202,18 +202,44 @@ def code_tree(path: str, text: str) -> str | None:
     return None
 
 
+def tool_fixed(root: Path, path: str, text: str) -> str | None:
+    """`text` as the repository's standard tools leave it: `ruff check --fix` with the PR's
+    pyproject.toml selection, then `ruff format`; None when either cannot run on it."""
+    out = text
+    for args in (["check", "--fix", "--exit-zero", "--quiet"], ["format", "--quiet"]):
+        try:
+            run = subprocess.run(
+                [sys.executable, "-m", "ruff", *args, "--stdin-filename", path, "-"],
+                input=out,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                cwd=root,
+                timeout=120,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        if run.returncode != 0:
+            return None
+        out = run.stdout
+    return out
+
+
 def code_identical(root: Path, base: str, path: str) -> bool:
     """Whether the PR leaves `path`'s code as it is on `base` once comments and docstrings are set
-    aside: such a change has nothing for a test to fail on, so it needs none. A file new to the PR,
-    renamed, deleted, not one of CODE_TREE_SUFFIXES, or one either version of which cannot be read
-    is not that."""
+    aside, or changes it only as the repository's standard tools do (tool_fixed reproduces the PR's
+    file from the base's): such a change has nothing for a test to fail on, so it needs none. A file
+    new to the PR, renamed, deleted, not one of CODE_TREE_SUFFIXES, or one either version of which
+    cannot be read is not that."""
     try:
         old = _git(root, "show", f"{_git(root, 'merge-base', base, 'HEAD').strip()}:{path}")
         new = pr_source(root, path)
     except ToolError:
         return False
     before, after = code_tree(path, old), code_tree(path, new)
-    return before is not None and before == after
+    if before is None:
+        return False
+    return before == after or (path.endswith(".py") and tool_fixed(root, path, old) == new)
 
 
 def behavior_change(root: Path, base: str, path: str) -> bool:

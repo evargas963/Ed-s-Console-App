@@ -31,7 +31,7 @@ BOOKS = [
 ]
 
 
-def _daemon_holds(*services: str, now: "float | None" = None) -> None:
+def _daemon_holds(*services: str, now: float | None = None) -> None:
     """The daemon's heartbeat stamped `now` (the wall clock when not given), holding CONTRACT on `services`."""
     lmp.record_feed_heartbeat(
         {

@@ -134,7 +134,7 @@ def test_runner_completes_when_the_terminal_reader_never_drains(tmp_path):
             control.wait(timeout=_CONTROL_STALL_SECONDS)
             raise AssertionError(
                 "negative control did not freeze: pytest writing directly into a pipe nobody "
-                "reads exited with %r — the control cannot detect the defect" % control.returncode
+                f"reads exited with {control.returncode!r} — the control cannot detect the defect"
             )
         except subprocess.TimeoutExpired:
             pass  # frozen, as the defect predicts

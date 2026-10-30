@@ -5,7 +5,6 @@ Volatility-derived transforms: the 25-delta risk reversal and the average true r
 
 from __future__ import annotations
 
-from typing import List
 
 from numeric_contract import schwab_number
 
@@ -17,7 +16,7 @@ from numeric_contract import schwab_number
 RR25_DELTA_TOL = 0.10
 
 
-def compute_25d_risk_reversal(contracts: List[dict]) -> dict | None:
+def compute_25d_risk_reversal(contracts: list[dict]) -> dict | None:
     """IV(25Δ call) − IV(25Δ put) on the expiry nearest 30 days out, in vol points
     (the fixed ~30-day tenor the published risk reversal uses -- SpotGamma; the front expiry is
     often a same-day one, whose skew is hours wide).

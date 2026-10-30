@@ -35,7 +35,7 @@ import json
 import re
 import sqlite3
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from fnmatch import fnmatch
 from pathlib import Path
 
@@ -200,7 +200,7 @@ def _kills(st: Statement) -> bool:
 LISTINGS = ("get-process", "gps", "ps", "get-ciminstance", "gcim", "get-wmiobject", "gwmi")
 
 
-def _targets(st: Statement, upstream: "list[str] | None") -> "tuple[list[psutil.Process], bool]":
+def _targets(st: Statement, upstream: list[str] | None) -> tuple[list[psutil.Process], bool]:
     """The running processes a kill statement `st` reaches by the ids and image names it names
     (a stopper's bare ids and names among them), or that the listing piped straight into it
     names (`upstream`, its words as written: Get-Process, Get-CimInstance ...); and whether it
@@ -242,7 +242,7 @@ def _production_running() -> bool:
     )
 
 
-def _production(proc: psutil.Process) -> "bool | None":
+def _production(proc: psutil.Process) -> bool | None:
     """Whether `proc` is the daemon, the console or launch.py: its command line carries one of
     their marks and it runs in the production checkout (runtime_layout.RUNTIME_ROOT, which every
     worktree resolves to; a worktree's test console is not production). None when either cannot
@@ -256,7 +256,7 @@ def _production(proc: psutil.Process) -> "bool | None":
     return any(m in line for m in PRODUCTION_MARKS) and cwd == runtime_layout.RUNTIME_ROOT.resolve()
 
 
-def decide(payload: dict, now: datetime, db: Path) -> "tuple[str, list[str]]":
+def decide(payload: dict, now: datetime, db: Path) -> tuple[str, list[str]]:
     """The answer to the action in `payload` at `now` (PASS, ASK or DENY), with its reasons; the
     market session is read from the stream database `db` (market_session)."""
     if payload.get("tool_name") not in BASH_TOOLS:
@@ -331,7 +331,7 @@ def decide(payload: dict, now: datetime, db: Path) -> "tuple[str, list[str]]":
     return (DENY, denies) if denies else (ASK, asks) if asks else (PASS, [])
 
 
-def _gh_words(st: Statement) -> "list[str]":
+def _gh_words(st: Statement) -> list[str]:
     """A gh statement's subcommand words: its arguments without options and their values."""
     args = list(st.words[1:])
     return [
@@ -368,7 +368,7 @@ def main() -> int:
     if not isinstance(payload, dict):
         sys.stderr.write("BLOCKED: the hook payload is not an object.\n")
         return 2
-    answer, why = decide(payload, datetime.now(timezone.utc), canonical_stream_db_path())
+    answer, why = decide(payload, datetime.now(UTC), canonical_stream_db_path())
     if answer == DENY:
         sys.stderr.write("BLOCKED (operator_yes_guard): " + "; ".join(why) + "\n")
         return 2

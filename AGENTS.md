@@ -93,7 +93,7 @@ then the rule binds with no machine check.
 | 10 | **Only Feed talks to Schwab.** | import-linter: `schwab`, `httpx` and `authlib` importable only from Feed (step 1d) |
 | 11 | **Calculators are pure.** They take `now` and their inputs; they read no clock, database, global or network. Only an entry point (a route, a loop, a stream handler) reads the clock. | import-linter forbidden imports and ruff `TID251` banned `time.time` / `datetime.now` outside the entry points (step 2) |
 | 12 | **Typed records across boundaries.** A value that crosses a module boundary is a dataclass whose states are named constants. | pyright, strict on State, Calculators and Push (step 6) |
-| 13 | **Python's guidelines.** PEP 8 and PEP 257 as `ruff format` and ruff's rules read them; PEP 20 as the shape. Imports at the top. One formatter per format (price, Central Time, dollars), on the server (no machine check — ENF-11). | `ruff format` (in force); ruff `E`, `W`, `B`, `SIM`, `BLE`, `S110`, `TRY`, `C90`, `UP` (step 1b), `D` (pep257, no docstring required; step 1c), `I` (step 7) |
+| 13 | **Python's guidelines.** PEP 8 and PEP 257 as `ruff format` and ruff's rules read them; PEP 20 as the shape. Imports at the top. One formatter per format (price, Central Time, dollars), on the server (no machine check — ENF-11). | `ruff format` and ruff `UP` (in force; `UP042` deselected, its one fix unsafe, in `pyproject.toml`); ruff `E`, `W`, `B`, `SIM`, `BLE`, `S110`, `TRY`, `C90` (step 1b), `D` (pep257, no docstring required; step 1c), `I` (step 7) |
 
 ## Fix what you find (operator 2026-10-29: "fix what you find anywhere, everywhere, repo wide")
 

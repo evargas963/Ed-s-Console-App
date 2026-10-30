@@ -352,7 +352,7 @@ def test_the_chain_sweep_asks_nothing_while_signed_out_and_goes_on_after_a_new_s
     assert asked and all(auth == "Bearer fresh" for _path, auth in asked)
 
 
-def _verdict(daemon, computed: "float | None", at: datetime) -> tuple:
+def _verdict(daemon, computed: float | None, at: datetime) -> tuple:
     """The console's verdict on SPY's levels computed at `computed`, judged at `at` with the
     daemon's status stamped then taken in by the plane: (levels_state, levels_stale_reason)."""
     now = at.timestamp()

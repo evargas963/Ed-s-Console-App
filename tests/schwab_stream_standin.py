@@ -55,15 +55,13 @@ class LocalStreamer:
     past it, the request is answered twice: code 19 (refusal) and then code 24
     ("<COMMAND> command failed"), as Schwab answered on 2026-10-07. UNSUBS releases them."""
 
-    def __init__(
-        self, limits: "dict[str, int] | None" = None, data: "dict[str, dict] | None" = None
-    ):
+    def __init__(self, limits: dict[str, int] | None = None, data: dict[str, dict] | None = None):
         self.limits = dict(limits or {})
         #: per service, a data entry Schwab sent, streamed once a SUBS on that service is accepted
         self.data = dict(data or {})
         self.requests: list = []
         self.answers: list = []
-        self.held: "dict[str, list[str]]" = defaultdict(list)
+        self.held: dict[str, list[str]] = defaultdict(list)
         self.loop = asyncio.new_event_loop()
         ready = threading.Event()
         self.stop = None
@@ -100,7 +98,7 @@ class LocalStreamer:
                 ):
                     await ws.send(json.dumps({"data": [self.data[req["service"]]]}))
 
-    def answer(self, req: dict) -> "list[dict]":
+    def answer(self, req: dict) -> list[dict]:
         service, command = req["service"], req["command"]
 
         def response(code: int, msg: str) -> dict:
@@ -144,7 +142,7 @@ class LocalStreamer:
             ]
         return [response(0, f"{command} command succeeded")]
 
-    def asked(self, service: str) -> "list[tuple[str, list[str]]]":
+    def asked(self, service: str) -> list[tuple[str, list[str]]]:
         """(command, keys) of each request on `service`, in order."""
         return [
             (r["command"], r["parameters"]["keys"].split(","))

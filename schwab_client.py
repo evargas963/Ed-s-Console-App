@@ -14,7 +14,6 @@ import time
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
-from typing import Optional
 from urllib.parse import parse_qs, urlparse
 
 import httpx
@@ -50,8 +49,8 @@ class TokenInspectionResult:
     has_access_token: bool = False
     has_refresh_token: bool = False
     has_expires_at: bool = False
-    scope_value: Optional[str] = None
-    seconds_to_expiry: Optional[int] = None
+    scope_value: str | None = None
+    seconds_to_expiry: int | None = None
     is_expired: bool = False
     is_expiring_soon: bool = False
     message: str = ""
@@ -203,11 +202,9 @@ class OneRefreshSession(OAuth2Client):
         super().__init__(*args, **kwargs)
         self._refresh_lock = threading.Lock()
         self._token_file, self._metadata = token_file, metadata
-        self._refused: "AuthlibBaseError | None" = (
-            None  # Schwab's refusal, held until a new sign-in
-        )
-        self._unread: "str | None" = None  # the token file's read failure last logged
-        self._seen: "tuple | None" = None  # the token file as last looked at (id, time, size)
+        self._refused: AuthlibBaseError | None = None  # Schwab's refusal, held until a new sign-in
+        self._unread: str | None = None  # the token file's read failure last logged
+        self._seen: tuple | None = None  # the token file as last looked at (id, time, size)
 
     def ensure_active_token(self, token=None):
         with self._refresh_lock:
@@ -322,7 +319,7 @@ def inspect_token_file(token_path: str) -> TokenInspectionResult:
         return out
     out.file_exists = True
     try:
-        with open(resolved, "r", encoding="utf-8") as f:
+        with open(resolved, encoding="utf-8") as f:
             raw = f.read()
         data = json.loads(raw)
         out.json_valid = True
@@ -459,7 +456,7 @@ def _wait_for_callback_port(host: str, port: int, timeout: float = 5.0) -> bool:
             with socket.create_connection((host, port), timeout=0.5):
                 pass
             return True
-        except (socket.error, OSError):
+        except OSError:
             time.sleep(0.1)
     return False
 

@@ -33,7 +33,7 @@ AFTER_HOURS = SPY_AFTER_HOURS_PRINT["native"]["LAST_PRICE"]
 BETWEEN = {"Call g-Wall", "Gamma Flip", "Max Pain", "Put d-Wall"}
 
 
-def _publish_close(tk: str = "SPY", now: "float | None" = None) -> dict:
+def _publish_close(tk: str = "SPY", now: float | None = None) -> dict:
     """SPY's 2026-10-22 close publication, and the daemon's heartbeat holding `tk` stamped `now`
     (the wall clock when not given)."""
     server._publish_levels(

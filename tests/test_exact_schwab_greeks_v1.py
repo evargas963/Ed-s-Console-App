@@ -43,7 +43,7 @@ _SWEEP_AT = datetime(
 def fetched(tmp_path):
     """SPY's chain as the sweep delivers it; `withheld` symbols get no quote back."""
 
-    def run(withheld: "set[str]" = frozenset()) -> "list[dict]":
+    def run(withheld: set[str] = frozenset()) -> list[dict]:
         schwab = LocalSchwab()
         schwab.withheld = set(withheld)
         published: list = []
@@ -65,7 +65,7 @@ def fetched(tmp_path):
     return run
 
 
-def _column(contracts: "list[dict]") -> dict:
+def _column(contracts: list[dict]) -> dict:
     """The heatmap's 2026-11-20 column as the levels producer projects it: {strike: (cell's gex,
     its contracts)}."""
     snap = compute_terrain("SPY", contracts, _SPOT, now=_CAPTURED)

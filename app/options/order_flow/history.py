@@ -67,14 +67,14 @@ class RecentTape:
             self._context.pop(sym, None)
             self._last.pop(sym, None)
 
-    def rows(self, contract: str, limit: int) -> "list[dict[str, Any]]":
+    def rows(self, contract: str, limit: int) -> list[dict[str, Any]]:
         """The contract's newest `limit` prints, newest first."""
         sym = ticker_storage_key(contract)
         with self._lock:
             held = list(self._prints[sym]) if sym in self._prints else []
         return held[::-1][: max(0, int(limit))]
 
-    def put_call(self, contract: str) -> "str | None":
+    def put_call(self, contract: str) -> str | None:
         """The contract's side (CALL / PUT) as Schwab's CONTRACT_TYPE last sent it; None until sent."""
         sym = ticker_storage_key(contract)
         with self._lock:
@@ -85,7 +85,7 @@ class RecentTape:
             )
 
 
-def _print_row(sym: str, item: dict, p: dict, context: dict, ts_recv: float) -> "dict[str, Any]":
+def _print_row(sym: str, item: dict, p: dict, context: dict, ts_recv: float) -> dict[str, Any]:
     """One trade print in the Options Flow tape's schema: Schwab's values as sent; premium =
     trade x size x Schwab's multiplier; `classification` only where the trade landed against
     the same message's bid and ask (no aggressor side)."""
@@ -136,7 +136,7 @@ def _print_row(sym: str, item: dict, p: dict, context: dict, ts_recv: float) -> 
     }
 
 
-def put_call_side(contract_type) -> "str | None":
+def put_call_side(contract_type) -> str | None:
     """Schwab's LEVELONE_OPTIONS CONTRACT_TYPE ('C' / 'P'), as CALL / PUT; None when not sent."""
     return {"C": "CALL", "P": "PUT"}.get(contract_type)
 
@@ -171,7 +171,7 @@ def _display_window(cells: list[dict]) -> tuple[float, float]:
     return lo, max(hi, lo + 0.01)
 
 
-def _levels(item: dict, leaf: str, price_key: str) -> "tuple[tuple[float, int], ...]":
+def _levels(item: dict, leaf: str, price_key: str) -> tuple[tuple[float, int], ...]:
     """One side of a Schwab book as (price, size) pairs; a single level can arrive as one bare
     object rather than a list. A level without a number for both is not a level."""
     levels = item.get(leaf)
@@ -219,7 +219,7 @@ class RecentBooks:
             for key in [k for k in self._books if k[0] == sym]:
                 del self._books[key]
 
-    def window(self, ticker: str, venue: str, minutes: float) -> "list[tuple]":
+    def window(self, ticker: str, venue: str, minutes: float) -> list[tuple]:
         """The books of the `minutes` ending at the newest one, oldest first."""
         key = (ticker_storage_key(ticker), venue)
         with self._lock:

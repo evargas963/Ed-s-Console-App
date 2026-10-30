@@ -267,6 +267,33 @@ def test_a_change_to_comments_and_docstrings_only_is_not_a_product_change(tmp_pa
     assert _changed(root) == []
 
 
+RUFF_UP = '[tool.ruff.lint]\nselect = ["UP"]\n'
+OLD_STYLE = "from typing import Optional\n\n\ndef spot(row: Optional[float]) -> Optional[float]:\n    return row\n"
+
+
+def test_a_change_the_standard_tools_make_alone_is_not_a_product_change(tmp_path):
+    """A PR that turns on ruff's UP rules and takes ruff's own fix: ruff check --fix and ruff format
+    on the base file give the PR's file exactly, so it is not a product change."""
+    root = _repo(tmp_path, {**BASE, "server.py": OLD_STYLE})
+    (root / "pyproject.toml").write_text(RUFF_UP, encoding="utf-8")
+    fixed = cee.tool_fixed(root, "server.py", OLD_STYLE)
+    assert fixed is not None and "float | None" in fixed and fixed != OLD_STYLE
+    _commit(root, {"pyproject.toml": RUFF_UP, "server.py": fixed})
+    assert _changed(root) == []
+
+
+def test_a_hand_edit_on_top_of_the_tools_fix_is_a_product_change(tmp_path):
+    """The same PR with one line the tools did not write: it is a product change."""
+    root = _repo(tmp_path, {**BASE, "server.py": OLD_STYLE})
+    (root / "pyproject.toml").write_text(RUFF_UP, encoding="utf-8")
+    fixed = cee.tool_fixed(root, "server.py", OLD_STYLE)
+    _commit(
+        root,
+        {"pyproject.toml": RUFF_UP, "server.py": fixed.replace("return row", "return row or 0.0")},
+    )
+    assert _changed(root) == ["server.py"]
+
+
 def test_a_code_change_beside_comment_changes_is_a_product_change(tmp_path):
     root = _repo(
         tmp_path, {**BASE, "static/js/page.js": "/* RC-UI-1 */\nfunction draw(v) { return v; }\n"}

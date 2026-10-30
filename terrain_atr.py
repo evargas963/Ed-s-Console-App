@@ -31,10 +31,10 @@ class Atr:
     monthly: float | None
 
 
-def roll_up(candles: "list[Candle]", key) -> "list[Candle]":
+def roll_up(candles: list[Candle], key) -> list[Candle]:
     """`candles` (oldest first) rolled into one candle per `key` of each candle's ET date: the
     first open, the highest high, the lowest low, the last close."""
-    out: "list[Candle]" = []
+    out: list[Candle] = []
     last = None
     for c in candles:
         k = key(datetime.fromtimestamp(c.ts, ET).date())
@@ -49,13 +49,13 @@ def roll_up(candles: "list[Candle]", key) -> "list[Candle]":
     return out
 
 
-def _leg(candles: list) -> "float | None":
+def _leg(candles: list) -> float | None:
     """ATR(ATR_PERIOD) of `candles`, or None when fewer than ATR_PERIOD + 1 of them give a true
     range."""
     return compute_atr(candles, period=ATR_PERIOD)
 
 
-def compute_atrs(daily: "list[Candle]") -> Atr:
+def compute_atrs(daily: list[Candle]) -> Atr:
     """Daily, weekly and monthly ATR of one ticker from its daily candles (oldest first, today's
     the live one). A horizon that cannot be computed is None."""
     return Atr(

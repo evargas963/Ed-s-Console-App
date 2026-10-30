@@ -326,7 +326,7 @@ def _tsla_quotes(bus, health, n: int) -> None:
         h({"content": [dict(_TSLA["native"])], "timestamp": i})
 
 
-def _defect() -> "_Defect":
+def _defect() -> _Defect:
     return _Defect(quote_msg(symbol="TSLA", src="schwab_stream", native=_TSLA["native"]))
 
 

@@ -8,7 +8,7 @@ from __future__ import annotations
 import threading
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 from instrument_identity import ticker_storage_key
 from numeric_contract import float_finite_or_none, schwab_count, schwab_number
@@ -56,7 +56,7 @@ _TEXT_FIELDS = ("SECURITY_STATUS",)
 _fields_by_ticker: dict[str, dict[str, tuple[float, float]]] = {}
 
 
-def _read_stream_field(name: str, raw: Any) -> "float | str | None":
+def _read_stream_field(name: str, raw: Any) -> float | str | None:
     """Each field as Schwab sent it (AGENTS.md rule 2); a reported 0 is 0."""
     if name in _TEXT_FIELDS:
         return raw if isinstance(raw, str) and raw else None
@@ -71,7 +71,7 @@ def record_from_level_one_equity(
     item: dict[str, Any],
     *,
     received_ts: float,
-    field_received: "dict[str, float] | None" = None,
+    field_received: dict[str, float] | None = None,
 ) -> bool:
     """
     Ingest one Schwab streaming LEVELONE_EQUITIES content item into the plane.
@@ -110,7 +110,7 @@ def record_from_level_one_equity(
     if not seen:
         return False
 
-    def val(name: str) -> "float | str | None":
+    def val(name: str) -> float | str | None:
         return snapshot[name][0] if name in snapshot else None
 
     spot_f = val("LAST_PRICE")
@@ -176,7 +176,7 @@ def remove_row_listener(fn) -> None:
         _row_listeners.remove(fn)
 
 
-def get_quote(ticker: str) -> Optional[dict[str, Any]]:
+def get_quote(ticker: str) -> dict[str, Any] | None:
     """Copy of latest plane row for ticker, or None."""
     t = ticker_storage_key(ticker)  # the plane's key, the same as the write's
     with _lock:

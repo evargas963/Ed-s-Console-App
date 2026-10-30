@@ -67,7 +67,7 @@ def _port(stats: dict) -> int:
     return int(stats["listening"].rsplit(":", 1)[1])
 
 
-def _console(push_port: int, ui_port: "int | None" = None):
+def _console(push_port: int, ui_port: int | None = None):
     """The console's real feed loop on the daemon's live push at `push_port` and its price rows
     at `ui_port` (none given: a port this test holds, nothing listening), retried every 0.05 s."""
     return ofs._feed_loop(

@@ -70,7 +70,7 @@ def _order(ct: dict, price: float) -> tuple:
     return (0, -gamma, *rest) if known else (1, *rest)
 
 
-def by_definition(contracts: "list[dict]", price: float, n: int, now: float) -> "set[str]":
+def by_definition(contracts: list[dict], price: float, n: int, now: float) -> set[str]:
     """The rule's set, from its definition: of the contracts not expired at `now` (Schwab's
     expirationDate), the first `n` in Ed's order."""
     live = sorted((c for c in contracts if _expires(c) > now), key=lambda c: _order(c, price))
@@ -78,8 +78,8 @@ def by_definition(contracts: "list[dict]", price: float, n: int, now: float) -> 
 
 
 def _rule(
-    chains: dict, prices: dict, now: float, watchlist: "list[str]", flow: "str | None" = None
-) -> "dict[str, set[str]]":
+    chains: dict, prices: dict, now: float, watchlist: list[str], flow: str | None = None
+) -> dict[str, set[str]]:
     taken = 1 if flow else 0
     out = {L1: set(), BOOK: set()}
     for tk in watchlist:
@@ -104,14 +104,14 @@ class _Market:
     """Schwab's streamer (with its limits) and REST host played locally, the daemon on them, and
     its bus fed as the chain sweep and the stream feed it."""
 
-    def __init__(self, tmp_path, watchlist: "list[str]", clock):
+    def __init__(self, tmp_path, watchlist: list[str], clock):
         self.streamer = LocalStreamer(capture.OPTION_LIMITS)
         self.rest = LocalSchwab(self.streamer.url)
         self.client = self.rest.client(tmp_path)
         self.bus = MessageBus()
         self.daemon = capture.Daemon(self.bus, HealthRegistry(), watchlist, clock=clock)
 
-    def chain(self, tk: str, ts: float = CAPTURED, contracts: "list[dict] | None" = None) -> None:
+    def chain(self, tk: str, ts: float = CAPTURED, contracts: list[dict] | None = None) -> None:
         for topic, msg in chain_messages(
             tk, CHAINS[tk] if contracts is None else contracts, ts, None, None
         ):
@@ -125,7 +125,7 @@ class _Market:
             ),
         )
 
-    def holds(self, want: "dict[str, set[str]]") -> bool:
+    def holds(self, want: dict[str, set[str]]) -> bool:
         return all(
             set(self.daemon.held[s]) == want[s] == set(self.streamer.held[s]) for s in (L1, BOOK)
         )
@@ -153,7 +153,7 @@ class _Market:
                 lmp._fields_by_ticker.pop(tk, None)
 
 
-def _answers(streamer, service: str) -> "list[int]":
+def _answers(streamer, service: str) -> list[int]:
     return [
         a["response"][0]["content"]["code"]
         for a in streamer.answers

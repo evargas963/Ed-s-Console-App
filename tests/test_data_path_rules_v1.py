@@ -86,7 +86,7 @@ async def _daemon_then_console(
             while time.monotonic() < end:
                 try:
                     frame = await asyncio.wait_for(ws.recv(), timeout=end - time.monotonic())
-                except (asyncio.TimeoutError, TimeoutError):
+                except TimeoutError:
                     break
                 got.append(json.loads(frame))
         return got
@@ -256,7 +256,7 @@ async def _chains_then_console(contracts, fetched) -> list[dict]:
             while time.monotonic() < end:
                 try:
                     frame = await asyncio.wait_for(ws.recv(), timeout=end - time.monotonic())
-                except (asyncio.TimeoutError, TimeoutError):
+                except TimeoutError:
                     break
                 got.append(json.loads(frame))
             return got
@@ -448,10 +448,10 @@ class _Swept:
     """The sweep (the watchlist `watchlist`) on its thread at `clock["now"]`; `chains` is each
     ticker whose chain it delivered, in order, `delivered` the clock at each delivery."""
 
-    def __init__(self, tmp_path, at: str, watchlist: "list[str]"):
+    def __init__(self, tmp_path, at: str, watchlist: list[str]):
         self.clock = {"now": _et(at)}
-        self.chains: "list[str]" = []
-        self.delivered: "list[float]" = []
+        self.chains: list[str] = []
+        self.delivered: list[float] = []
         self.schwab = LocalSchwab()
 
         def publish(topic, msg):
@@ -489,7 +489,7 @@ class _Swept:
         self._start()
         return before
 
-    def until(self, n: int) -> "list[str]":
+    def until(self, n: int) -> list[str]:
         """The chains delivered once `n` are in (or 10 s have passed), and a second more."""
         deadline = time.monotonic() + 10
         while len(self.chains) < n and time.monotonic() < deadline:
@@ -596,7 +596,7 @@ def test_d5_a_close_fetch_that_fails_is_tried_again_at_once_until_it_lands(tmp_p
     assert [q["symbol"] for q in swept.schwab.asked("/marketdata/v1/chains")] == ["SPY", "SPY"]
 
 
-def _asked_since(swept: "_Swept", path: str, mark: float) -> "list[dict]":
+def _asked_since(swept: _Swept, path: str, mark: float) -> list[dict]:
     """The queries of the requests to `path` Schwab's host received after `mark` (monotonic)."""
     return [q for p, q, started, *_ in swept.schwab.requests if p == path and started > mark]
 
@@ -626,7 +626,7 @@ def test_d5_the_price_history_once_a_day_and_the_chain_the_options_session(tmp_p
     finally:
         swept.close()
 
-    def history_at(when: str) -> "list[str]":
+    def history_at(when: str) -> list[str]:
         """The series of the price-history requests begun at the clock `when` (each request's
         endDate is the sweep's clock when it began)."""
         return [
@@ -710,7 +710,7 @@ def test_d5_a_chain_in_flight_at_the_close_keeps_its_begin_time_and_the_close_ch
     more is asked. Both are stored, each at the time it began, and no history write fails."""
     chains = "/marketdata/v1/chains"
     schwab = LocalSchwab()
-    delivered: "list[float]" = []
+    delivered: list[float] = []
 
     def clock() -> float:
         return (
@@ -1056,7 +1056,7 @@ def _chart_bars(tk: str) -> list[dict]:
 
 #: the databases SQLite opens while a test watches (each list in it, newest last), told by
 #: Python's own audit event for sqlite3.connect: nothing of SQLite's or the app's is replaced
-_watching: "list[list[str]]" = []
+_watching: list[list[str]] = []
 
 
 def _record_connect(event: str, args: tuple) -> None:
@@ -1218,7 +1218,7 @@ def test_every_schwab_error_is_logged_as_sent_without_tokens(tmp_path, caplog):
 # behavior.
 
 
-def _posts(schwab: LocalSchwab) -> "list[float]":
+def _posts(schwab: LocalSchwab) -> list[float]:
     """When each token request reached the stand-in."""
     return [r[2] for r in schwab.requests if r[0] == TOKEN]
 
