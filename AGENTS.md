@@ -138,8 +138,8 @@ then the rule binds with no machine check.
   for is proven by the full suite, as deletions are); for those the full suite and the browser
   tests are the proof, and a real defect a rule finds still gets its failing test. Enforced by:
   `tools/check_fails_before.py` (`deletes_only`, `rule_fixes_only`;
-  `tests/test_check_fails_before_v1.py`); that a rule fix carries no other change — the reviewers,
-  no machine check, ENF-12.
+  `tests/test_check_fails_before_v1.py`); that a rule fix carries no other change, and that a real
+  defect a rule finds gets its failing test — the reviewers, no machine check, ENF-12.
 - Edit source by hand, one edit at a time, never through a script; the exceptions are ENF-14's (a
   standard tool's own fix, `ruff format` and ruff's safe fixes; `unix2dos`/`dos2unix` for line
   endings). Enforced by: `tools/operator_law_guard.py` for
