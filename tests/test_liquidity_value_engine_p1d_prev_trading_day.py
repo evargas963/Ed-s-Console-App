@@ -28,11 +28,11 @@ def get_previous_day_levels(bars, session_date, cfg):
 ET = ZoneInfo("America/New_York")
 
 
-def _bar(d: date, hh: int, mm: int, o: float, h: float, l: float, c: float, v: int = 100):
+def _bar(d: date, hh: int, mm: int, o: float, h: float, lo: float, c: float, v: int = 100):
     # institutional-synthetic-ok: each case places a bar exactly inside or outside a session
     # boundary Schwab's /markets sent
     ts = datetime.combine(d, dtime(hh, mm), tzinfo=ET).timestamp()
-    return Candle(ts=ts, open=o, high=h, low=l, close=c, volume=v)
+    return Candle(ts=ts, open=o, high=h, low=lo, close=c, volume=v)
 
 
 def _cfg() -> PlaybookConfig:
