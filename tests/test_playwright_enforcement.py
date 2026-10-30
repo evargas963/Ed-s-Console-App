@@ -7,10 +7,10 @@ Issue 40 & 46 — Playwright environment is enforced (fail-fast), not silently s
 
 from __future__ import annotations
 
-import shutil
-from unittest.mock import patch
-
-import pytest
+import os
+import subprocess
+import sys
+from pathlib import Path
 
 from tests.playwright_ready import ensure_playwright_ready
 
@@ -26,13 +26,18 @@ def test_ensure_playwright_ready_passes_when_configured():
 
 
 def test_ensure_playwright_ready_raises_when_node_missing():
-    """Regression: missing node must raise AssertionError, not return or skip."""
-
-    def _which(name: str):
-        if name == "node":
-            return None
-        return shutil.which(name)
-
-    with patch("tests.playwright_ready.shutil.which", side_effect=_which):
-        with pytest.raises(AssertionError, match="Node"):
-            ensure_playwright_ready(install_browsers=False)
+    """With nothing on PATH, missing node must raise AssertionError, not return or skip."""
+    check = (
+        "from tests.playwright_ready import ensure_playwright_ready; "
+        "ensure_playwright_ready(install_browsers=False)"
+    )
+    done = subprocess.run(
+        [sys.executable, "-c", check],
+        cwd=Path(__file__).resolve().parent.parent,
+        env={**os.environ, "PATH": ""},
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert done.returncode == 1
+    assert "AssertionError: Playwright E2E requires Node.js on PATH" in done.stderr
