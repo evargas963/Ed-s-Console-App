@@ -1,0 +1,384 @@
+{
+ "ticker": "ZZLIQ",
+ "symbol": "ZZLIQ",
+ "session_date": "2026-10-02",
+ "snapshot_type": "live",
+ "zones": [
+  {
+   "zone_type": "pivot_value",
+   "zone_label": "Pivot / value",
+   "zone_side": "value",
+   "zone_class": "value",
+   "zone_low": -44.3533325484506,
+   "zone_high": -44.3533325484506,
+   "zone_mid": -44.3533325484506,
+   "zone_width": 0.0,
+   "source_levels": [
+    {
+     "label": "VWAP_M1",
+     "value": -44.3533325484506
+    }
+   ],
+   "source_tags": [
+    "VWAP_M1"
+   ],
+   "confluence_score": 1,
+   "merged_levels_count": 1,
+   "interpretation_notes": "Fair value / pivot",
+   "first_snapshot": "live",
+   "last_snapshot": "live",
+   "persistence": 1,
+   "anchor": -44.3533325484506,
+   "options_level_count": 0,
+   "distance_to_spot": null,
+   "spot_inside_zone": null
+  },
+  {
+   "zone_type": "resistance_liquidity",
+   "zone_label": "Resistance",
+   "zone_side": "resistance",
+   "zone_class": "structure",
+   "zone_low": 0.0,
+   "zone_high": 0.0,
+   "zone_mid": 0.0,
+   "zone_width": 0.0,
+   "source_levels": [
+    {
+     "label": "ORB_HIGH",
+     "value": 0.0
+    },
+    {
+     "label": "ORB_MID",
+     "value": 0.0
+    },
+    {
+     "label": "ORB_LOW",
+     "value": 0.0
+    },
+    {
+     "label": "TODAY_VAH",
+     "value": 0.0
+    },
+    {
+     "label": "TODAY_POC",
+     "value": 0.0
+    },
+    {
+     "label": "TODAY_VAL",
+     "value": 0.0
+    },
+    {
+     "label": "OVERNIGHT_LOW",
+     "value": 0.0
+    }
+   ],
+   "source_tags": [
+    "ORB_HIGH",
+    "ORB_MID",
+    "ORB_LOW",
+    "TODAY_VAH",
+    "TODAY_POC",
+    "TODAY_VAL",
+    "OVERNIGHT_LOW"
+   ],
+   "confluence_score": 7,
+   "merged_levels_count": 7,
+   "interpretation_notes": "Resistance / upper structure",
+   "first_snapshot": "live",
+   "last_snapshot": "live",
+   "persistence": 1,
+   "anchor": 0.0,
+   "options_level_count": 0,
+   "distance_to_spot": null,
+   "spot_inside_zone": null
+  },
+  {
+   "zone_type": "pivot_value",
+   "zone_label": "Pivot / value",
+   "zone_side": "value",
+   "zone_class": "value",
+   "zone_low": 2.9153649326952222,
+   "zone_high": 2.9153649326952222,
+   "zone_mid": 2.9153649326952222,
+   "zone_width": 0.0,
+   "source_levels": [
+    {
+     "label": "VWAP",
+     "value": 2.9153649326952222
+    }
+   ],
+   "source_tags": [
+    "VWAP"
+   ],
+   "confluence_score": 1,
+   "merged_levels_count": 1,
+   "interpretation_notes": "Fair value / pivot",
+   "first_snapshot": "live",
+   "last_snapshot": "live",
+   "persistence": 1,
+   "anchor": 2.9153649326952222,
+   "options_level_count": 0,
+   "distance_to_spot": null,
+   "spot_inside_zone": null
+  },
+  {
+   "zone_type": "pivot_value",
+   "zone_label": "Pivot / value",
+   "zone_side": "value",
+   "zone_class": "value",
+   "zone_low": 50.18406241384104,
+   "zone_high": 50.18406241384104,
+   "zone_mid": 50.18406241384104,
+   "zone_width": 0.0,
+   "source_levels": [
+    {
+     "label": "VWAP_P1",
+     "value": 50.18406241384104
+    }
+   ],
+   "source_tags": [
+    "VWAP_P1"
+   ],
+   "confluence_score": 1,
+   "merged_levels_count": 1,
+   "interpretation_notes": "Fair value / pivot",
+   "first_snapshot": "live",
+   "last_snapshot": "live",
+   "persistence": 1,
+   "anchor": 50.18406241384104,
+   "options_level_count": 0,
+   "distance_to_spot": null,
+   "spot_inside_zone": null
+  },
+  {
+   "zone_type": "support_liquidity",
+   "zone_label": "Support",
+   "zone_side": "support",
+   "zone_class": "structure",
+   "zone_low": 758.7901,
+   "zone_high": 758.7901,
+   "zone_mid": 758.7901,
+   "zone_width": 0.0,
+   "source_levels": [
+    {
+     "label": "PDL",
+     "value": 758.7901
+    }
+   ],
+   "source_tags": [
+    "PDL"
+   ],
+   "confluence_score": 1,
+   "merged_levels_count": 1,
+   "interpretation_notes": "Support / lower structure",
+   "first_snapshot": "live",
+   "last_snapshot": "live",
+   "persistence": 1,
+   "anchor": 758.7901,
+   "options_level_count": 0,
+   "distance_to_spot": null,
+   "spot_inside_zone": null
+  },
+  {
+   "zone_type": "support_liquidity",
+   "zone_label": "Support",
+   "zone_side": "support",
+   "zone_class": "structure",
+   "zone_low": 761.19,
+   "zone_high": 761.19,
+   "zone_mid": 761.19,
+   "zone_width": 0.0,
+   "source_levels": [
+    {
+     "label": "PD_VAL",
+     "value": 761.19
+    }
+   ],
+   "source_tags": [
+    "PD_VAL"
+   ],
+   "confluence_score": 1,
+   "merged_levels_count": 1,
+   "interpretation_notes": "Support / lower structure",
+   "first_snapshot": "live",
+   "last_snapshot": "live",
+   "persistence": 1,
+   "anchor": 761.19,
+   "options_level_count": 0,
+   "distance_to_spot": null,
+   "spot_inside_zone": null
+  },
+  {
+   "zone_type": "resistance_liquidity",
+   "zone_label": "Resistance",
+   "zone_side": "resistance",
+   "zone_class": "structure",
+   "zone_low": 764.35,
+   "zone_high": 765.65,
+   "zone_mid": 765.0,
+   "zone_width": 1.2999999999999545,
+   "source_levels": [
+    {
+     "label": "PD_POC",
+     "value": 764.35
+    },
+    {
+     "label": "OVERNIGHT_HIGH",
+     "value": 764.98
+    },
+    {
+     "label": "PD_VAH",
+     "value": 765.34
+    },
+    {
+     "label": "PDH",
+     "value": 765.65
+    }
+   ],
+   "source_tags": [
+    "PD_POC",
+    "OVERNIGHT_HIGH",
+    "PD_VAH",
+    "PDH"
+   ],
+   "confluence_score": 4,
+   "merged_levels_count": 4,
+   "interpretation_notes": "Resistance / upper structure",
+   "first_snapshot": "live",
+   "last_snapshot": "live",
+   "persistence": 1,
+   "anchor": 765.0,
+   "options_level_count": 0,
+   "distance_to_spot": null,
+   "spot_inside_zone": null
+  }
+ ],
+ "summary": {
+  "value_state": "shifted_lower",
+  "vwap_relation": "above_value",
+  "auction_interpretation": "",
+  "notes": [
+   "Live zones: volume/VWAP/OR/prior day through cutoff; options fused when cache hit."
+  ]
+ },
+ "raw_levels": {
+  "prev": {
+   "pdh": 765.65,
+   "pdl": 758.7901,
+   "pdc": 764.03,
+   "pd_poc": 764.35,
+   "pd_vah": 765.34,
+   "pd_val": 761.19
+  },
+  "overnight": {
+   "overnight_high": 764.98,
+   "overnight_low": 0.0
+  },
+  "orb": {
+   "orb_high": 0.0,
+   "orb_low": 0.0,
+   "orb_mid": 0.0
+  },
+  "poc": 0.0,
+  "vah": 0.0,
+  "val": 0.0,
+  "vwap": 2.9153649326952222,
+  "vwap_bands": {
+   "vwap": 2.9153649326952222,
+   "plus1": 50.18406241384104,
+   "minus1": -44.3533325484506,
+   "plus2": 97.45275989498687,
+   "minus2": -91.62203002959642
+  },
+  "cutoff_et": "2026-10-02T15:00:00-04:00",
+  "semantic_scope": "session_rth",
+  "level_generation": 2,
+  "level_snapshot_as_of_ts_utc": 1790967540.0
+ },
+ "raw_levels_used": [
+  {
+   "tag": "VWAP_M2",
+   "value": -91.62203002959642
+  },
+  {
+   "tag": "VWAP_M1",
+   "value": -44.3533325484506
+  },
+  {
+   "tag": "OVERNIGHT_LOW",
+   "value": 0.0
+  },
+  {
+   "tag": "ORB_HIGH",
+   "value": 0.0
+  },
+  {
+   "tag": "ORB_LOW",
+   "value": 0.0
+  },
+  {
+   "tag": "ORB_MID",
+   "value": 0.0
+  },
+  {
+   "tag": "TODAY_POC",
+   "value": 0.0
+  },
+  {
+   "tag": "TODAY_VAH",
+   "value": 0.0
+  },
+  {
+   "tag": "TODAY_VAL",
+   "value": 0.0
+  },
+  {
+   "tag": "VWAP",
+   "value": 2.9153649326952222
+  },
+  {
+   "tag": "VWAP_P1",
+   "value": 50.18406241384104
+  },
+  {
+   "tag": "VWAP_P2",
+   "value": 97.45275989498687
+  },
+  {
+   "tag": "PDL",
+   "value": 758.7901
+  },
+  {
+   "tag": "PD_VAL",
+   "value": 761.19
+  },
+  {
+   "tag": "PDC",
+   "value": 764.03
+  },
+  {
+   "tag": "PD_POC",
+   "value": 764.35
+  },
+  {
+   "tag": "OVERNIGHT_HIGH",
+   "value": 764.98
+  },
+  {
+   "tag": "PD_VAH",
+   "value": 765.34
+  },
+  {
+   "tag": "PDH",
+   "value": 765.65
+  }
+ ],
+ "fusion": "levels_not_ready",
+ "as_of_cutoff_et": "2026-10-02T15:00:00-04:00",
+ "spot_used_for_scoring": null,
+ "spot_location": null,
+ "level_generation": 2,
+ "level_semantic_scope": "session_rth",
+ "level_snapshot_as_of_ts_utc": 1790967540.0,
+ "level_bar_source": "Schwab /pricehistory 1-minute bars and CHART_EQUITY"
+}
