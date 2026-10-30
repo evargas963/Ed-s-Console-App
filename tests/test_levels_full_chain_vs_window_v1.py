@@ -55,7 +55,7 @@ def test_the_fixture_is_the_full_chain_and_its_window():
     full, window = _contracts(_FX["full"]), _contracts(_FX["window"])
     assert len(full) == _FX["n_full"] and len(window) == _FX["n_window"]
     assert len(window) < len(full)
-    strikes = lambda cs: {c["strikePrice"] for c in cs}  # noqa: E731
+    strikes = lambda cs: {c["strikePrice"] for c in cs}
     assert strikes(window) < strikes(full), "the window is a strict subset of the chain's strikes"
 
 
