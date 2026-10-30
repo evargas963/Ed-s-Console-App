@@ -105,12 +105,11 @@ then the rule binds with no machine check.
   fix (operator 2026-10-29: "I DID NOT ALLOW FOR ANY UNSAFE FIXES"): no `--unsafe-fixes`, no
   `unsafe-fixes` or `extend-safe-fixes` in `pyproject.toml`, and a rule whose only fix is unsafe
   stays deselected. Enforced by: `tools/check_end_to_end.py` takes only ruff's safe fixes as the
-  tools' own, run with no config file and only the committed `pyproject.toml`'s listed settings
-  (`RUFF_SETTINGS`), and none at all from a config holding any other setting (`unsafe-fixes`,
-  `extend-safe-fixes`, `extend`), so an unsafe rewrite of a product file is a product change that
-  needs its failing test (`tests/test_check_end_to_end_v1.py`); the rest of this bullet (a found
-  defect fixed, those settings themselves, an unsafe rewrite outside product code) — no machine
-  check, ENF-12.
+  tools' own, and none at all when ruff's own resolved settings for the committed `pyproject.toml`
+  (extended files included) turn unsafe fixes on, force a fix safe, or target another Python than
+  the base's, so an unsafe rewrite of a product file is a product change that needs its failing test
+  (`tests/test_check_end_to_end_v1.py`); the rest of this bullet (a found defect fixed, those
+  settings themselves, an unsafe rewrite outside product code) — no machine check, ENF-12.
 - A check runs over the whole repository wherever it can, so a finding anywhere fails the required
   job and nothing merges while it stands; a check is turned on only once what it finds repo-wide is
   fixed, never with an exception list. Enforced by: `ruff check .` and `ruff format --check .` over

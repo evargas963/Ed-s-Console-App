@@ -38,10 +38,8 @@ import re
 import subprocess
 import sys
 import io
-import json
 import tempfile
 import tokenize
-import tomllib
 from pathlib import Path
 
 PRODUCT_SUFFIXES = (".py", ".js", ".mjs", ".html")
@@ -205,40 +203,61 @@ def code_tree(path: str, text: str) -> str | None:
     return None
 
 
-#: the ruff settings the tools' fix takes from the PR's pyproject.toml; ruff runs with no config
-#: file, so a setting outside this list (`extend`, `unsafe-fixes`, `extend-safe-fixes`, ...) that
-#: could let an unsafe fix through is never read, and a config holding one gets no tool-fix pass
-RUFF_SETTINGS = {
-    "line-length",
-    "target-version",
-    "extend-exclude",
-    "lint.select",
-    "lint.ignore",
-    "format.quote-style",
-}
+#: the lines of ruff's resolved settings (`ruff check --show-settings`, extended files included)
+#: that decide whether a fix ruff calls safe is safe here: unsafe fixes off, no fix forced safe,
+#: and the Python the fixes are made for the base's (a fix is safe only for its target version)
+FIX_SAFETY = (
+    "unsafe_fixes",
+    "linter.safety_table.forced_safe",
+    "linter.unresolved_target_version",
+    "linter.per_file_target_version",
+    "formatter.unresolved_target_version",
+    "formatter.per_file_target_version",
+)
 
 
-def ruff_settings(config: str) -> list[str] | None:
-    """`config`'s (the text of a pyproject.toml) ruff settings as `--config` arguments; None when
-    it cannot be read or holds a setting outside RUFF_SETTINGS."""
+def fix_safety(root: Path, config: Path) -> dict[str, str] | None:
+    """FIX_SAFETY's values as ruff resolves them from `config`; None when ruff cannot."""
     try:
-        ruff = tomllib.loads(config).get("tool", {}).get("ruff", {})
-        pairs = [(k, v) for k, v in ruff.items() if k not in ("lint", "format")]
-        for table in ("lint", "format"):
-            pairs += [(f"{table}.{k}", v) for k, v in ruff.get(table, {}).items()]
-    except (tomllib.TOMLDecodeError, AttributeError):
+        run = subprocess.run(
+            [sys.executable, "-m", "ruff", "check", "--show-settings", "--config", str(config)]
+            + ["pyproject.toml"],
+            capture_output=True,
+            cwd=root,
+            timeout=120,
+        )
+    except (OSError, subprocess.TimeoutExpired):
         return None
-    if any(k not in RUFF_SETTINGS for k, _ in pairs):
-        return None
-    return [a for k, v in pairs for a in ("--config", f"{k} = {json.dumps(v)}")]
+    lines = (line.partition(" = ") for line in run.stdout.decode("utf-8", "replace").splitlines())
+    found = {k: v for k, _, v in lines if k in FIX_SAFETY}
+    return found if run.returncode == 0 and len(found) == len(FIX_SAFETY) else None
 
 
-def tool_fixed(root: Path, path: str, text: str, config: str) -> str | None:
-    """`text` as the repository's standard tools leave it: ruff's safe fixes with `config`'s
-    settings (ruff_settings), then `ruff format`; None when either cannot run on it."""
-    settings = ruff_settings(config)
-    if settings is None:
-        return None
+def tools_fix_is_safe(root: Path, base: str) -> bool:
+    """Whether ruff, run on the PR's committed pyproject.toml, takes only fixes that are safe for
+    the base's Python: unsafe fixes not on, none forced safe, the same target versions."""
+    try:
+        _git(root, "diff", "--quiet", "HEAD", "--", "pyproject.toml")  # the tree is the commit's
+        old = _git(root, "show", f"{_git(root, 'merge-base', base, 'HEAD').strip()}:pyproject.toml")
+    except ToolError:
+        return False
+    with tempfile.TemporaryDirectory() as tmp:
+        (Path(tmp) / "pyproject.toml").write_text(old, encoding="utf-8")
+        was = fix_safety(root, Path(tmp) / "pyproject.toml")
+    now = fix_safety(root, root / "pyproject.toml")
+    if was is None or now is None:
+        return False
+    return (
+        now["unsafe_fixes"] != "enabled"
+        and now["linter.safety_table.forced_safe"] == "[]"
+        and all(now[k] == was[k] for k in FIX_SAFETY if "target_version" in k)
+    )
+
+
+def tool_fixed(root: Path, path: str, text: str) -> str | None:
+    """`text` as the repository's standard tools leave it: ruff's safe fixes with the repository's
+    pyproject.toml, then `ruff format`, as the commit hook runs them; None when either cannot run on
+    it (code_identical first checks that the configuration takes only safe fixes)."""
     out = text.encode("utf-8")  # as bytes: no line ending translated on the way in or out
     for args in (
         ["check", "--fix", "--no-unsafe-fixes", "--exit-zero", "--quiet"],
@@ -246,7 +265,7 @@ def tool_fixed(root: Path, path: str, text: str, config: str) -> str | None:
     ):
         try:
             run = subprocess.run(
-                [sys.executable, "-m", "ruff", *args, "--isolated", *settings]
+                [sys.executable, "-m", "ruff", *args, "--config", "pyproject.toml"]
                 + ["--stdin-filename", path, "-"],
                 input=out,
                 capture_output=True,
@@ -264,9 +283,10 @@ def tool_fixed(root: Path, path: str, text: str, config: str) -> str | None:
 def code_identical(root: Path, base: str, path: str) -> bool:
     """Whether the PR leaves `path`'s code as it is on `base` once comments and docstrings are set
     aside, or changes it only as the repository's standard tools do (tool_fixed, with the PR's
-    committed pyproject.toml, reproduces the PR's file from the base's): such a change has nothing
-    for a test to fail on, so it needs none. A file new to the PR, renamed, deleted, not one of
-    CODE_TREE_SUFFIXES, or one either version of which cannot be read is not that."""
+    committed pyproject.toml when tools_fix_is_safe, reproduces the PR's file from the base's): such
+    a change has nothing for a test to fail on, so it needs none. A file new to the PR, renamed,
+    deleted, not one of CODE_TREE_SUFFIXES, or one either version of which cannot be read is not
+    that."""
     try:
         old = _git(root, "show", f"{_git(root, 'merge-base', base, 'HEAD').strip()}:{path}")
         new = pr_source(root, path)
@@ -277,11 +297,11 @@ def code_identical(root: Path, base: str, path: str) -> bool:
         return False
     if before == after:
         return True
-    try:
-        config = pr_source(root, "pyproject.toml")
-    except ToolError:
-        return False
-    return path.endswith(".py") and tool_fixed(root, path, old, config) == new
+    return (
+        path.endswith(".py")
+        and tools_fix_is_safe(root, base)
+        and tool_fixed(root, path, old) == new
+    )
 
 
 def behavior_change(root: Path, base: str, path: str) -> bool:

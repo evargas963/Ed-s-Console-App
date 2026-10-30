@@ -267,15 +267,25 @@ def test_a_change_to_comments_and_docstrings_only_is_not_a_product_change(tmp_pa
     assert _changed(root) == []
 
 
-RUFF_UP = '[tool.ruff.lint]\nselect = ["UP"]\n'
+#: the base's ruff settings, and a PR's that turns the UP rules on
+RUFF_BASE = '[tool.ruff]\ntarget-version = "py313"\n'
+RUFF_UP = RUFF_BASE + '[tool.ruff.lint]\nselect = ["UP"]\n'
+TOOLS_BASE = {**BASE, "pyproject.toml": RUFF_BASE}
 OLD_STYLE = "from typing import Optional\n\n\ndef spot(row: Optional[float]) -> Optional[float]:\n    return row\n"
+
+
+def _tool_fixed(root: Path, text: str, config: str = RUFF_UP) -> str | None:
+    """ruff's safe fix and format of `text` with `config` in the repository, as a PR's author
+    runs them."""
+    (root / "pyproject.toml").write_text(config, encoding="utf-8")
+    return cee.tool_fixed(root, "server.py", text)
 
 
 def test_a_change_the_standard_tools_make_alone_is_not_a_product_change(tmp_path):
     """A PR that turns on ruff's UP rules and takes ruff's own fix: ruff check --fix and ruff format
     on the base file give the PR's file exactly, so it is not a product change."""
-    root = _repo(tmp_path, {**BASE, "server.py": OLD_STYLE})
-    fixed = cee.tool_fixed(root, "server.py", OLD_STYLE, RUFF_UP)
+    root = _repo(tmp_path, {**TOOLS_BASE, "server.py": OLD_STYLE})
+    fixed = _tool_fixed(root, OLD_STYLE)
     assert fixed is not None and "float | None" in fixed and fixed != OLD_STYLE
     _commit(root, {"pyproject.toml": RUFF_UP, "server.py": fixed})
     assert _changed(root) == []
@@ -284,16 +294,15 @@ def test_a_change_the_standard_tools_make_alone_is_not_a_product_change(tmp_path
 def test_the_tools_fix_keeps_a_files_crlf_line_endings_as_they_are(tmp_path):
     """Some product files are CRLF; the text goes to ruff and back as bytes, so no line ending is
     doubled or dropped (on Windows a text pipe turned each CRLF into CR CR LF)."""
-    root = _repo(tmp_path, BASE)
-    crlf = OLD_STYLE.replace("\n", "\r\n")
-    fixed = cee.tool_fixed(root, "server.py", crlf, RUFF_UP)
+    root = _repo(tmp_path, TOOLS_BASE)
+    fixed = _tool_fixed(root, OLD_STYLE.replace("\n", "\r\n"))
     assert fixed is not None and "\r\r" not in fixed and fixed.count("\r\n") == fixed.count("\n")
 
 
 def test_a_hand_edit_on_top_of_the_tools_fix_is_a_product_change(tmp_path):
     """The same PR with one line the tools did not write: it is a product change."""
-    root = _repo(tmp_path, {**BASE, "server.py": OLD_STYLE})
-    fixed = cee.tool_fixed(root, "server.py", OLD_STYLE, RUFF_UP)
+    root = _repo(tmp_path, {**TOOLS_BASE, "server.py": OLD_STYLE})
+    fixed = _tool_fixed(root, OLD_STYLE)
     _commit(
         root,
         {"pyproject.toml": RUFF_UP, "server.py": fixed.replace("return row", "return row or 0.0")},
@@ -333,36 +342,40 @@ def _unsafe_rewrite(text: str) -> str:
 def test_a_fix_ruff_marks_unsafe_is_a_product_change_whatever_the_prs_config_asks(tmp_path):
     """A PR whose own pyproject.toml turns ruff's unsafe fixes on, marks one safe, or reaches
     another file that does (`extend`), and commits the unsafe rewrite of `(str, Enum)` to
-    `StrEnum`, which changes what str() of a member is: the check reads only its listed settings and
-    runs ruff's safe fixes, so the rewrite is a product change that needs its test."""
+    `StrEnum`, which changes what str() of a member is: the check judges ruff's own resolved
+    settings, so the rewrite is a product change that needs its test."""
     rewritten = _unsafe_rewrite(STR_ENUM)
     assert "StrEnum)" in rewritten
     extra = tmp_path / "extra.toml"
     extra.write_text('unsafe-fixes = true\n[lint]\nextend-safe-fixes = ["UP042"]\n', "utf-8")
     for config in (
-        '[tool.ruff]\nunsafe-fixes = true\n[tool.ruff.lint]\nselect = ["UP042"]\n',
-        '[tool.ruff.lint]\nselect = ["UP042"]\nextend-safe-fixes = ["UP042"]\n',
-        f'[tool.ruff]\nextend = "{extra.as_posix()}"\n[tool.ruff.lint]\nselect = ["UP042"]\n',
+        RUFF_BASE + 'unsafe-fixes = true\n[tool.ruff.lint]\nselect = ["UP042"]\n',
+        RUFF_BASE + '[tool.ruff.lint]\nselect = ["UP042"]\nextend-safe-fixes = ["UP042"]\n',
+        RUFF_BASE + f'extend = "{extra.as_posix()}"\n[tool.ruff.lint]\nselect = ["UP042"]\n',
     ):
         (where := tmp_path / str(len(config))).mkdir()
-        root = _repo(where, {**BASE, "server.py": STR_ENUM})
+        root = _repo(where, {**TOOLS_BASE, "server.py": STR_ENUM})
         _commit(root, {"pyproject.toml": config, "server.py": rewritten})
         assert _changed(root) == ["server.py"], config
 
 
-def test_the_repositorys_own_ruff_settings_are_all_ones_the_tools_fix_reads():
-    """A setting outside RUFF_SETTINGS in this repository's pyproject.toml would make every tool
-    fix a product change; the list grows with the setting, never around it."""
-    config = (Path(__file__).resolve().parent.parent / "pyproject.toml").read_text("utf-8")
-    assert cee.ruff_settings(config) is not None
+def test_a_fix_made_for_another_python_than_the_bases_is_a_product_change(tmp_path):
+    """A fix ruff calls safe is safe for its target Python only: on 3.14 an annotation is not
+    evaluated, so ruff unquotes a forward reference that 3.13, the base's, evaluates at import."""
+    forward = 'def f() -> "Later":\n    return None\n\n\nclass Later:\n    pass\n'
+    root = _repo(tmp_path, {**TOOLS_BASE, "server.py": forward})
+    py314 = RUFF_UP.replace("py313", "py314")
+    fixed = _tool_fixed(root, forward, py314)
+    assert fixed is not None and "-> Later:" in fixed
+    _commit(root, {"pyproject.toml": py314, "server.py": fixed})
+    assert _changed(root) == ["server.py"]
 
 
 def test_the_tools_fix_reads_the_committed_config_never_the_working_trees(tmp_path):
     """A pyproject.toml changed in the working tree only does not change the verdict."""
-    root = _repo(tmp_path, {**BASE, "server.py": OLD_STYLE})
-    fixed = cee.tool_fixed(root, "server.py", OLD_STYLE, RUFF_UP)
+    root = _repo(tmp_path, {**TOOLS_BASE, "server.py": OLD_STYLE})
+    fixed = _tool_fixed(root, OLD_STYLE)
     _commit(root, {"server.py": fixed})  # the PR commits the rewrite but not the UP selection
-    (root / "pyproject.toml").write_text(RUFF_UP, encoding="utf-8")
     assert _changed(root) == ["server.py"]
 
 
