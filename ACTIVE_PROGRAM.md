@@ -125,7 +125,6 @@ to write it plainly, in the forms `test_a_command_the_reader_cannot_see_into_is_
 - M-09 a missing poc, pd_poc or vwap yields `value_state="unchanged"` / `vwap_relation="at_value"` (and `else 0`).
 - M-11 `cutoff_et` (now) is served as the values' time (they are as of the last bar); `session_scope` relabels an unknown scope; prior-day POC/VAH/VAL missing is not in `families_absent`.
 - M-12 fused option levels: raw `float()`, rejected ones dropped silently.
-- `build_price_level_snapshot` reads the clock (`produced_ts`) instead of taking `now`.
 
 **math_exposure_core.py, math_levels.py**
 - M-13 one strike/multiplier validity rule for both files (core accepts strike 0, levels rejects ≤ 0; both reject multiplier ≤ 0, unconfirmed against Schwab's field reference); count IV ≤ 0 in the vanna path.
