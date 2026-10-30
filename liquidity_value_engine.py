@@ -633,11 +633,7 @@ def build_live_snapshot(
 
     for pair in extra_levels or []:
         p, tag = pair[0], pair[1]
-        try:
-            pf = float(p)
-            levels.append((pf, str(tag)))
-        except (TypeError, ValueError):
-            continue
+        levels.append((float(p), str(tag)))
 
     clusters = cluster_price_levels_into_zones(levels, config)
 
