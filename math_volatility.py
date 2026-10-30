@@ -92,10 +92,7 @@ def compute_atr(candles: list, *, period: int = 14) -> float | None:
         for k in keys:
             v = getattr(candle, k, None) if not isinstance(candle, dict) else candle.get(k)
             if v is not None:
-                try:
-                    return float(v)
-                except (ValueError, TypeError):
-                    continue
+                return float(v)
         return None
 
     trs = []
@@ -104,9 +101,6 @@ def compute_atr(candles: list, *, period: int = 14) -> float | None:
         h = _get(candle, "h", "high")
         lo = _get(candle, "l", "low")
         c = _get(candle, "c", "close")
-        if h is None or lo is None or c is None:
-            prev_close = c
-            continue
 
         if prev_close is not None:
             tr = max(h - lo, abs(h - prev_close), abs(lo - prev_close))
