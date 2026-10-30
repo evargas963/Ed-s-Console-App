@@ -1,7 +1,8 @@
 """tools/check_no_new_patches.py (TEST-PATCHES) on real git repositories, each PR's suite run by
 pytest with tools/patch_record.py: a test whose code a pull request adds or changes may not run with
 a patch applied, and no unit it adds or changes may apply one; one whose docstrings and comments
-alone change, or that the PR leaves as it was, is not judged."""
+alone change, that a standard tool's safe fix alone changes, or that the PR leaves as it was, is not
+judged."""
 
 from __future__ import annotations
 
@@ -236,6 +237,30 @@ def test_a_patching_fixture_changed_beside_ruffs_safe_sort_is_refused(tmp_path):
     files = {"pyproject.toml": SORTED_RUFF, "tests/conftest.py": now}
     assert _check(tmp_path, files, base=SORTED_BASE) == [
         f"tests/conftest.py::pinned patches: line {_line(now, 'monkeypatch.setattr')} applies one"
+    ]
+
+
+def test_a_test_ruffs_safe_sort_changes_is_still_refused_when_ci_did_not_run_it(tmp_path):
+    """The allowance is for a patch nobody added; what a skipped test runs under stays unknown."""
+    was = (
+        "import pytest\n\n\n"
+        "@pytest.mark.skip\ndef test_skipped():\n    import time\n    import json\n\n"
+        "    assert json and time\n"
+    )
+    now = was.replace("    import time\n    import json\n", "    import json\n    import time\n")
+    base = {**SORTED_BASE, "tests/test_s.py": was}
+    files = {"pyproject.toml": SORTED_RUFF, "tests/test_s.py": now}
+    assert _check(tmp_path, files, base=base) == [
+        f"tests/test_s.py::test_skipped patches: {cnp.UNRUN}"
+    ]
+
+
+def test_ruffs_sort_is_no_allowance_when_the_pr_turns_unsafe_fixes_on(tmp_path):
+    ruff = SORTED_RUFF.replace("[tool.ruff]\n", "[tool.ruff]\nunsafe-fixes = true\n")
+    files = {"pyproject.toml": ruff, "tests/conftest.py": SORTED_FIXTURE}
+    line = _line(SORTED_FIXTURE, "monkeypatch.setattr")
+    assert _check(tmp_path, files, base=SORTED_BASE) == [
+        f"tests/conftest.py::pinned patches: line {line} applies one"
     ]
 
 

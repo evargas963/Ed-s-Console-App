@@ -303,6 +303,16 @@ def test_a_change_the_standard_tools_make_alone_is_not_a_product_change(tmp_path
     assert _changed(root) == []
 
 
+def test_an_import_the_prs_ruff_settings_require_is_a_product_change(tmp_path):
+    """Ruff's I002 adds the import a PR's settings name: code the PR wrote, not a tidy-up."""
+    added = "from calc import spot\n\n\n" + OLD_STYLE
+    settings = RUFF_BASE + '[tool.ruff.lint]\nselect = ["I002"]\n[tool.ruff.lint.isort]\n'
+    settings += 'required-imports = ["from calc import spot"]\n'
+    root = _repo(tmp_path, {**TOOLS_BASE, "server.py": OLD_STYLE})
+    _commit(root, {"pyproject.toml": settings, "server.py": added})
+    assert _changed(root) == ["server.py"]
+
+
 def test_the_tools_fix_keeps_a_files_crlf_line_endings_as_they_are(tmp_path):
     """Some product files are CRLF; the text goes to ruff and back as bytes, so no line ending is
     doubled or dropped (on Windows a text pipe turned each CRLF into CR CR LF)."""

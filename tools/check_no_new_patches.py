@@ -203,9 +203,12 @@ def violations(root: Path, base: str, record: Path) -> list[str]:
     except FileNotFoundError as e:
         raise ToolError(str(e)) from e
     tools_safe = tools_fix_is_safe(root, base)
+    changed_files = _changed_files(root, base)
     units = {
-        path: _file_units(root, base, path, was, tools_safe)
-        for path, was in _changed_files(root, base).items()
+        path: _file_units(root, base, path, was, tools_safe) for path, was in changed_files.items()
+    }
+    touched = {
+        path: _file_units(root, base, path, was, False) for path, was in changed_files.items()
     }
     reasons: dict[str, set[str]] = {}
     ran, collected, collected_files = set(), set(), set()
@@ -234,7 +237,7 @@ def violations(root: Path, base: str, record: Path) -> list[str]:
             inside = _innermost(units, path, line)
             if inside and inside[1]:
                 reasons.setdefault(f"{path}::{inside[0]}", set()).add(f"line {line} applies one")
-    for path, file_units in units.items():
+    for path, file_units in touched.items():
         for name, _, changed in file_units:
             is_test = (path, name) in collected or (
                 path not in collected_files and _named_as_test(path, name)
