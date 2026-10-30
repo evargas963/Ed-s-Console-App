@@ -119,7 +119,7 @@ def procs(tmp_path_factory):
     """Running stand-ins: the daemon, the console, launch.py, a process of no production, and a
     test console in another checkout (as Playwright's in a worktree)."""
     running = {
-        "daemon": _stand_in("-m", "app.market_data.schwab.streaming.capture"),
+        "daemon": _stand_in("-m", "app.market_data.schwab.streaming.capture_main"),
         "console": _stand_in("-m", "uvicorn", "server:app"),
         "launch": _stand_in("launch.py"),
         "other": _stand_in("some_research_job"),
@@ -130,7 +130,7 @@ def procs(tmp_path_factory):
     pythonw = Path(sys.executable).with_name("pythonw.exe")
     if pythonw.exists():
         running["daemon_w"] = _stand_in(
-            "-m", "app.market_data.schwab.streaming.capture", exe=str(pythonw)
+            "-m", "app.market_data.schwab.streaming.capture_main", exe=str(pythonw)
         )
     yield {name: p.pid for name, p in running.items()}
     for p in running.values():
@@ -152,7 +152,7 @@ STARTS_AND_CLEAN_STOPS = [
     "py launch.py",
     "py -m uvicorn server:app",
     "python -m uvicorn server:app --port 8000",
-    "pythonw -m app.market_data.schwab.streaming.capture",
+    "pythonw -m app.market_data.schwab.streaming.capture_main",
     'Start-Process -FilePath "cmd.exe" '
     "-ArgumentList '/c','start','\"Ed Console\"','\"C:\\x\\start_ed_console.bat\"'",
     'powershell -NoProfile -Command "cmd /c start_ed_console.bat"',

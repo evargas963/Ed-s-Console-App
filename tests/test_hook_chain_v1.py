@@ -168,7 +168,7 @@ def test_every_wired_executable_refuses_an_unreadable_payload():
     }
     for rel in sorted(members):
         r = subprocess.run(
-            [sys.executable, str(ROOT / rel)],
+            [sys.executable, "-m", rel.removesuffix(".py").replace("/", ".")],
             cwd=str(ROOT),
             input="{not json",
             capture_output=True,
@@ -179,6 +179,7 @@ def test_every_wired_executable_refuses_an_unreadable_payload():
             timeout=120,
         )
         assert r.returncode != 0, f"{rel} exits 0 on an unreadable payload — fails OPEN"
+        assert "ModuleNotFoundError" not in r.stderr, f"{rel} never read the payload: {r.stderr}"
 
 
 def test_a_crashing_or_missing_member_blocks_and_the_chain_keeps_running(capsys):
