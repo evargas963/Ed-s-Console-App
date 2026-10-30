@@ -14,8 +14,11 @@ report what was tried, and take a different approach (CLAUDE.md item 6).
 2. `.venv/Scripts/python.exe -m ruff check .` and `.venv/Scripts/python.exe -m ruff format --check .` — no findings; then
    `.venv/Scripts/python.exe -m compileall -q -x '([\\/](\.venv|venv|node_modules|__pycache__|models)[\\/])' .`
    — exit 0 (both as the `hardening` job runs them).
-3. `ED_PATCH_RECORD=<a scratch folder> npm run test:all -- -p tools.patch_record` — Playwright, then
-   the full pytest suite, recording each patch it applies; both counts shown, no failure.
+3. The full suite on the final commit: the required CI job `pytest-full` (Playwright, then the full
+   pytest with each patch recorded, then `check_fails_before` and `check_no_new_patches`) and
+   `hardening` green, shown by `gh pr checks <pr>` on the final commit (operator 2026-10-30: "Yes,
+   CI proves it"). The suites run here only while a test is written or a failure is chased:
+   `ED_PATCH_RECORD=<a scratch folder> npm run test:all -- -p tools.patch_record`, one at a time.
 4. `.venv/Scripts/python.exe tools/check_fails_before.py --base origin/main` — exit 0; for a pull
    request that changes product code it prints "proven", naming the end-to-end path test that fails on
    the old code, or, for a change that only removes whole undecorated Python functions or classes and
