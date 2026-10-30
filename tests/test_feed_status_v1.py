@@ -49,6 +49,7 @@ def test_every_feed_gets_one_row_with_the_same_checked_at(tmp_path, monkeypatch)
 
 def test_a_stopped_record_reads_stale_in_the_console(tmp_path):
     import time
+
     import server
 
     db = tmp_path / "stream_capture.db"

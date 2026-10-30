@@ -13,7 +13,6 @@ identity is exact).
 
 import json
 
-from server import project_gamma_surface
 from math_exposure_core import (
     bucket_metric,
     compute_exposures_by_strike,
@@ -21,6 +20,7 @@ from math_exposure_core import (
     strike_oi_legs,
     strike_volume_legs,
 )
+from server import project_gamma_surface
 from tests.real_chains import MRVL
 
 NOW = MRVL.now

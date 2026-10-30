@@ -9,10 +9,10 @@ the live flatten_chain_contracts.
 
 from __future__ import annotations
 
-import pytest
-
 import json
 from pathlib import Path
+
+import pytest
 
 from schwab_client import flatten_chain_contracts
 

@@ -117,10 +117,10 @@ def test_definitions_diverge_on_the_real_book_so_a_miswire_cannot_hide():
     """
     from math_exposure_core import (
         compute_exposures_by_strike,
+        key_level_strikes_with_gamma,
         pick_net_gex_peak_strike,
         pick_pin_and_strength,
     )
-    from math_exposure_core import key_level_strikes_with_gamma
 
     chain, spot = _fixture_book()
     ex, _ = compute_exposures_by_strike(chain, spot=spot, now=NOW)
@@ -142,10 +142,10 @@ def test_terrain_names_carry_their_declared_definitions():
     pick_net_gex_peak_strike — same book, same strikes, ONE faucet per definition."""
     from math_exposure_core import (
         compute_exposures_by_strike,
+        key_level_strikes_with_gamma,
         pick_net_gex_peak_strike,
         pick_pin_and_strength,
     )
-    from math_exposure_core import key_level_strikes_with_gamma
     from terrain_engine import compute_terrain
 
     chain, spot = _fixture_book()

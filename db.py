@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import sqlite3
-import logging
 import threading
+from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 
 from db_authority import (
@@ -13,7 +14,6 @@ from db_authority import (
     eddb_allow_noncanonical_path,
     is_canonical_db_path,
 )
-from dataclasses import dataclass, asdict, fields
 
 log = logging.getLogger(__name__)
 

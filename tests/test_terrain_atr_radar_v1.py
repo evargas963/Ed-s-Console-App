@@ -56,8 +56,9 @@ def test_bars1m_endpoint_serves_canonical_bars_shape(monkeypatch):
 def test_terrain_strikes_endpoint_shape_and_scopes():
     """CR-03 histogram feed: per-strike [strike, net_gex, volume] rows in three
     expiry scopes for today + prior capture, sorted by strike, read-only."""
-    import server as srv
     from fastapi.testclient import TestClient
+
+    import server as srv
 
     client = TestClient(srv.app)
     r = client.get("/api/terrain/strikes?ticker=SPY")

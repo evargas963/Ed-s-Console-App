@@ -5,6 +5,7 @@ Token path is always absolute.
 """
 
 import json
+import logging
 import os
 import re
 import socket
@@ -26,7 +27,6 @@ from schwab.debug import register_redactions
 
 from config import schwab_live_blocked_for
 from time_et import ct_clock
-import logging
 
 log = logging.getLogger(__name__)
 

@@ -9,11 +9,11 @@ set — no rounding, no coercion, no dropped rows.
 
 from __future__ import annotations
 
-import pytest
-
 import json
 import sqlite3
 from pathlib import Path
+
+import pytest
 
 from calibration.complete_chain_capture import persist_complete_chain_capture
 

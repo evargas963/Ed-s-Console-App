@@ -16,7 +16,8 @@ import live_price_rows
 import server as srv
 from app.options.order_flow import streaming as ofs
 from micro_structure import Candle
-from tests.test_liquidity_snapshot_spot_identity_v1 import _BARS, FRIDAY, TK, published as published
+from tests.test_liquidity_snapshot_spot_identity_v1 import _BARS, FRIDAY, TK
+from tests.test_liquidity_snapshot_spot_identity_v1 import published as published
 from time_et import ET
 
 BEFORE_OPEN = FRIDAY.replace(hour=8)

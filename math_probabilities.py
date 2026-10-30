@@ -6,7 +6,6 @@ Support-math layer for prediction and call engines.
 
 from __future__ import annotations
 
-
 # ══════════════════════════════════════════════════════════════════════════════
 # DERIVED FORMULA DICTIONARY — SECTION 8
 # Predictive Positioning Signals
