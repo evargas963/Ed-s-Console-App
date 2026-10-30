@@ -22,8 +22,9 @@ from liquidity_value_engine import (  # noqa: E402
     materialize_price_level_snapshot,
 )
 from micro_structure import Candle  # noqa: E402
-from tests.conftest import most_recent_trading_day_et  # noqa: E402
 from time_et import ET  # noqa: E402
+
+from tests.conftest import most_recent_trading_day_et  # noqa: E402
 
 
 def _bars(session, high_of_interior: float = 105.0) -> list:

@@ -10,10 +10,8 @@ from __future__ import annotations
 
 import json
 import math
-from datetime import datetime
 from pathlib import Path
 
-import time_et
 from math_levels import (
     GAMMA_FLIP_UNAVAILABLE,
     GSF_STATE_BELOW_SUPPORT,
@@ -25,6 +23,9 @@ from math_levels import (
     gamma_at_price,
     gamma_flip_from_profile,
 )
+
+from datetime import datetime
+import time_et
 
 #: a REAL same-day-expiry SPY chain the capture daemon captured 2026-10-07 12:32 ET, valued at its
 #: own capture time (a live 0DTE, ~3.5 h to Schwab's 16:00 EQO close)

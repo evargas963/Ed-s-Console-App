@@ -110,8 +110,6 @@ def test_the_agent_seam_still_refuses_to_move_the_production_checkout():
     """
     from tools.process_lock_guard import (
         REPO as GUARD_REPO,
-    )
-    from tools.process_lock_guard import (
         _primary_worktree_root,
         prod_checkout_git_move_violations,
     )

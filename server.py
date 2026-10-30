@@ -2,39 +2,41 @@
 
 from __future__ import annotations
 
-import asyncio
-import contextlib
 import ctypes
-import json
-import logging
 import os
 import signal
 import sqlite3
 import subprocess
 import sys
-import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
-from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
-from html import escape as html_escape
+import asyncio
+import logging
 from logging.handlers import RotatingFileHandler
+import contextlib
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from pathlib import Path
 from typing import Annotated, Optional
-from zoneinfo import ZoneInfo
+from dataclasses import asdict, dataclass
 
-import psutil
-from fastapi import Body, FastAPI, HTTPException, Query
-from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
-from fastapi.staticfiles import StaticFiles
-
-from liquidity_models import ZONE_DISPLAY, PlaybookConfig
-from liquidity_value_engine import (
-    _MATERIALIZED_SNAPSHOTS,
-    bars_from_candles,
-    build_live_snapshot,
-    liquidity_zone_tradeable_score,
-    materialize_price_level_snapshot,
+from time_et import (
+    ET,
+    now_et,
+    age_text,
+    ct_label,
+    et_date_str_from_ts_utc,
+    last_open,
+    market_session_date,
+    option_close_product,
+    option_market_open,
+    options_closed_at,
+    session,
+    session_label,
+    valuation_instant,
+    EQUITY_OPTIONS,
+    INDEX_OPTIONS,
 )
 from math_exposure_core import (
     bucket_metric,
@@ -47,23 +49,25 @@ from math_exposure_core import (
     strike_total_oi,
     strike_volume_legs,
 )
-from time_et import (
-    EQUITY_OPTIONS,
-    ET,
-    INDEX_OPTIONS,
-    age_text,
-    ct_label,
-    et_date_str_from_ts_utc,
-    last_open,
-    market_session_date,
-    now_et,
-    option_close_product,
-    option_market_open,
-    options_closed_at,
-    session,
-    session_label,
-    valuation_instant,
+from liquidity_models import ZONE_DISPLAY, PlaybookConfig
+from liquidity_value_engine import (
+    _MATERIALIZED_SNAPSHOTS,
+    bars_from_candles,
+    build_live_snapshot,
+    liquidity_zone_tradeable_score,
+    materialize_price_level_snapshot,
 )
+
+import json
+from html import escape as html_escape
+
+import psutil
+
+
+from fastapi import Body, FastAPI, Query, HTTPException
+from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
+from fastapi.staticfiles import StaticFiles
+
 
 # ── App directory = same folder as this file ─────────────────────────────────
 APP_DIR = str(Path(__file__).parent.resolve())
@@ -179,11 +183,37 @@ log = logging.getLogger("ed_server")
 
 
 # ── Ed Console modules ───────────────────────────────────────────────────────
+from config import token_path
+from db_authority import canonical_stream_db_path
+
+from instrument_identity import display_symbol, ticker_storage_key, vendor_option_root
 import live_market_plane as lmp
+from numeric_contract import float_finite_or_none, price_text, schwab_count, schwab_number
+from confluence_composite import at_price, build_matrix, window_rows
+from terrain_engine import (
+    SCOPES,
+    SAME_DAY_LEVELS,
+    TerrainSnapshot,
+    _dte_of,
+    _per_strike_rows,
+    chain_ladder,
+    compute_terrain,
+    nearest_strike,
+    positioning_migration,
+    PRICE_RELATIONS,
+    price_relations,
+    strike_window,
+)
+from terrain_read import LEVEL_ABOVE, LEVEL_BELOW, crossed, from_spot_text, level_side, within
+from math_levels import compute_charm_by_strike
+from terrain_atr import Atr, compute_atrs, roll_up
+
+from db import LevelCrossEvent, get_db
+
 import live_price_rows as _lpr  # with_change: the bar-change computation
 import push_changes
-from app.market_data.schwab.streaming import live_ui
 from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT
+from app.market_data.schwab.streaming import live_ui
 from app.options.order_flow.engine import OrderFlowEngine, compute_book_microstructure
 from app.options.order_flow.history import TAPE, book_heatmap_for_ticker
 from app.options.order_flow.live_payload import flow_block, options_live_payload
@@ -198,29 +228,6 @@ from app.options.order_flow.streaming import (
     streamed_bars,
     watchlist_request,
 )
-from config import token_path
-from confluence_composite import at_price, build_matrix, window_rows
-from db import LevelCrossEvent, get_db
-from db_authority import canonical_stream_db_path
-from instrument_identity import display_symbol, ticker_storage_key, vendor_option_root
-from math_levels import compute_charm_by_strike
-from numeric_contract import float_finite_or_none, price_text, schwab_count, schwab_number
-from terrain_atr import Atr, compute_atrs, roll_up
-from terrain_engine import (
-    PRICE_RELATIONS,
-    SAME_DAY_LEVELS,
-    SCOPES,
-    TerrainSnapshot,
-    _dte_of,
-    _per_strike_rows,
-    chain_ladder,
-    compute_terrain,
-    nearest_strike,
-    positioning_migration,
-    price_relations,
-    strike_window,
-)
-from terrain_read import LEVEL_ABOVE, LEVEL_BELOW, crossed, from_spot_text, level_side, within
 
 #: the Schwab token file, whose age is shown (the console holds no Schwab credential and makes no
 #: Schwab call)
@@ -362,12 +369,13 @@ def resolve_spot(ticker: str, *, now: float) -> tuple[float | None, str, float |
 
 #: one RTH day of 1-minute bars
 CANDLE_1M_MAX_BARS: int = 390
+from micro_structure import Candle
 from calibration.complete_chain_capture import (
     CAPTURE_BASIS,
     last_capture_per_day,
     newest_capture_ts,
 )
-from micro_structure import Candle
+
 
 #: every ticker's completed 1-minute bars, oldest first, the newest BARS_KEPT: Schwab's own
 #: 1-minute price history (its last 10 days, extended hours, from the capture daemon's
@@ -860,7 +868,8 @@ def terrain_staleness(
     index-close options at 16:15) is open and its chain current; CLOSE once that market has closed
     and a chain fetched after its close stands, however old (docs/DATA_FLOW.md §2 D5); STALE, with WHY, when the chain is overdue or the close values were never fetched;
     NOT LIVE when Schwab's /markets answer for today is not held. The daemon's last answer for the
-    ticker's chain (a failed fetch, an incomplete delivery) outranks the age. While its option
+    ticker's chain (a failed fetch, an incomplete delivery) outranks the age, and its refused
+    sign-in (`chains_waiting`) outranks both, on every verdict but LIVE and CLOSE. While its option
     market is open the daemon fetches every watchlist ticker's chain without end, so age past two of
     its delivered rounds is a gap, never a schedule. Served beside it: the age and the chain's time."""
     token = schwab_token_countdown(_schwab_token_creation_ts(), now)  # warned before it expires
@@ -885,7 +894,12 @@ def terrain_staleness(
 def _levels_state(
     computed_ts_utc: float | None, ticker: str | None, now: float, failure: str
 ) -> tuple[str, str]:
-    """(levels_state, why it is not LIVE or CLOSE) for terrain_staleness."""
+    """(levels_state, why it is not LIVE or CLOSE) for terrain_staleness. While the daemon asks
+    Schwab for nothing (its status's `chains_waiting`: a refused sign-in), that is the why."""
+    status = lmp.daemon_status(now)
+    waiting = status.get("chains_waiting") if status is not None else None
+    if waiting:
+        failure = f"no chain is fetched: {waiting}"
     sep = f" — {failure}" if failure else ""
     if computed_ts_utc is None:
         return LEVELS_STALE, "no terrain snapshot has been computed yet" + sep
@@ -893,7 +907,7 @@ def _levels_state(
     product = option_close_product(ticker)
     market_open = option_market_open(at, product)
     if market_open is None:
-        return lmp.NOT_LIVE, "the market session is unknown"
+        return lmp.NOT_LIVE, "the market session is unknown" + sep
     if not market_open:
         closed = options_closed_at(at, product)
         if closed is None or float(computed_ts_utc) < closed.timestamp():
@@ -904,7 +918,6 @@ def _levels_state(
         return LEVELS_CLOSE, ""
     age = now - float(computed_ts_utc)
     # judged against the round the daemon's chain sweep delivers (every watchlist ticker once)
-    status = lmp.daemon_status(now)
     round_sec = status.get("chain_round_sec") if status is not None else None
     # Stale only past the floor *and* past two delivered rounds — one missed round is normal
     # jitter, two is a real gap. The floor is retained so a fast sweep cannot hide staleness;
@@ -916,6 +929,8 @@ def _levels_state(
     )
     if age <= stale_after:
         return lmp.LIVE, ""
+    if waiting:
+        return LEVELS_STALE, f"levels are {age:.0f}s old{sep}"
     if failure:
         return (
             LEVELS_STALE,

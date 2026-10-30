@@ -8,8 +8,7 @@ import time
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 from app.market_data.schwab.streaming import live_ui
-from tests.test_live_push_channel_v1 import _run, _spy_trade, _until
-from tests.test_live_push_channel_v1 import feed as feed
+from tests.test_live_push_channel_v1 import _run, _spy_trade, _until, feed as feed
 
 
 def test_a_silent_daemon_keeps_the_last_price(feed):

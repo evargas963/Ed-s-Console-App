@@ -160,7 +160,6 @@ def _bar(
 ) -> Candle:
     """One 1m bar at an explicit ET wall-clock time."""
     from datetime import datetime as _dt
-
     from time_et import ET as _ET
 
     ts = _dt(d.year, d.month, d.day, hh, mm, tzinfo=_ET)
@@ -226,7 +225,8 @@ def test_overnight_window_spans_a_holiday_gap_without_inventing_a_session():
     (Schwab's /markets: 2026-11-26 closed), Friday's overnight must reach back to WEDNESDAY's
     16:00 and include the Thursday bars in between — the interval is continuous, not two
     hand-picked calendar dates."""
-    from liquidity_value_engine import bars_from_candles, prior_trading_session_date
+    from liquidity_value_engine import prior_trading_session_date
+    from liquidity_value_engine import bars_from_candles
 
     wed, thu, fri = date(2026, 11, 25), date(2026, 11, 26), date(2026, 11, 27)
     bars = [
@@ -325,8 +325,8 @@ def test_no_pool_language_in_rendered_zone_payload():
 
 def test_cluster_price_levels():
     """Adjacent levels within 0.2% of the lower one merge; no reference price."""
-    from liquidity_models import PlaybookConfig
     from liquidity_value_engine import cluster_price_levels_into_zones
+    from liquidity_models import PlaybookConfig
 
     levels = [(500.0, "PDH"), (500.5, "PD_VAH"), (505.0, "ORB_HIGH")]
     clusters = cluster_price_levels_into_zones(levels, PlaybookConfig())
@@ -335,12 +335,12 @@ def test_cluster_price_levels():
 
 def test_no_lookahead_premarket():
     """Premarket snapshot does not use same-day RTH data."""
-    from liquidity_models import PlaybookConfig
     from liquidity_value_engine import (
         bars_from_candles,
         build_premarket_snapshot,
         build_price_level_snapshot,
     )
+    from liquidity_models import PlaybookConfig
 
     session = date(2026, 10, 6)  # a Tuesday: its prior session is the day before
     # Only previous day bars
@@ -370,8 +370,8 @@ def test_no_lookahead_premarket():
 
 def test_source_levels_use_actual_values():
     """source_levels stores actual level prices, not zone midpoint."""
-    from liquidity_models import PlaybookConfig
     from liquidity_value_engine import cluster_price_levels_into_zones
+    from liquidity_models import PlaybookConfig
 
     levels = [(100.0, "A"), (101.0, "B"), (105.0, "C")]
     cfg = PlaybookConfig(clustering_threshold_pct=0.1)
@@ -390,8 +390,8 @@ def test_source_levels_use_actual_values():
 
 def test_max_zone_width():
     """max_zone_width prevents over-merged zones."""
-    from liquidity_models import PlaybookConfig
     from liquidity_value_engine import cluster_price_levels_into_zones
+    from liquidity_models import PlaybookConfig
 
     levels = [(100.0, "A"), (100.5, "B"), (101.0, "C"), (102.0, "D"), (103.0, "E")]
     cfg = PlaybookConfig(clustering_threshold_pct=0.02)

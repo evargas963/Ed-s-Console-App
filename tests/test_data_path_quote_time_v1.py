@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import time
 
-import live_market_plane as lmp
 import live_price_rows
 from tests.feed_live_helper import mark_feed_live
+import live_market_plane as lmp
 
 
 def test_a_down_feed_keeps_schwabs_quote_time_and_trade_time():

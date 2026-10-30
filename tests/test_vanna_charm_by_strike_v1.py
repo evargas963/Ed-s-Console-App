@@ -77,8 +77,7 @@ def test_charm_by_strike_unavailable_with_no_cached_chain():
 
 def test_vanna_by_strike_matches_the_same_canonical_faucet_call_vanna_minus_put_vanna():
     _put_live_chain()
-    from math_exposure_core import bucket_metric
-    from math_exposure_core import compute_exposures_by_strike as cebs
+    from math_exposure_core import bucket_metric, compute_exposures_by_strike as cebs
 
     # Schwab's CRWD quote reaches the console as the daemon pushes it: its price row
     lmp.record_from_level_one_equity(TK, _QUOTE["native"], received_ts=time.time())

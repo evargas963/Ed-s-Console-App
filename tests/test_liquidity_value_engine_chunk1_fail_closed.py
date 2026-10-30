@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from liquidity_value_engine import bars_from_candles, compute_session_vwap_series
 from micro_structure import Candle
 from time_et import ET
+from liquidity_value_engine import bars_from_candles, compute_session_vwap_series
 
 
 def test_session_vwap_absent_when_volume_missing():

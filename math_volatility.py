@@ -9,6 +9,7 @@ from typing import List
 
 from numeric_contract import schwab_number
 
+
 # ── 25-delta risk reversal (skew steepness) ──────────────────────────────────
 
 #: A wing quote only counts as "the 25Δ option" if its delta is within this distance of

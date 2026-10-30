@@ -10,9 +10,9 @@ Greeks into the existing ONE FAUCET projection (project_gamma_surface), not a se
 capture and merge only, no new exposure math here."""
 
 from __future__ import annotations
+import time
 
 import sys
-import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent

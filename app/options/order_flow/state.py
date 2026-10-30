@@ -10,15 +10,14 @@ import logging
 import threading
 from collections import deque
 from typing import Optional
-
 from app.options.order_flow import history
 from instrument_identity import ticker_storage_key
+from numeric_contract import schwab_count, schwab_number
 from l1_trade_observation import (
     TAPE_COMPLETENESS,
     is_adjacent_restatement,
     vendor_triple,
 )
-from numeric_contract import schwab_count, schwab_number
 
 # Limits to prevent unbounded growth
 MAX_BOOK_SNAPSHOTS = 20

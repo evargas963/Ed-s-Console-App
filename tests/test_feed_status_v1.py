@@ -49,7 +49,6 @@ def test_every_feed_gets_one_row_with_the_same_checked_at(tmp_path, monkeypatch)
 
 def test_a_stopped_record_reads_stale_in_the_console(tmp_path):
     import time
-
     import server
 
     db = tmp_path / "stream_capture.db"
@@ -68,31 +67,35 @@ def test_a_stopped_record_reads_stale_in_the_console(tmp_path):
     assert server._feed_record_state(db, now) == "FEED RECORD STALE: last written 10 min ago"
 
 
-def test_a_failed_round_is_logged_and_the_next_round_runs(tmp_path, monkeypatch, caplog):
-    monkeypatch.setattr(capture, "FEED_STATUS_EVERY_SEC", 0.01)
+class _StreamFailingOnce:
+    """A stream whose first read of its last frame's time fails (an induced condition)."""
+
+    def __init__(self):
+        self.reads = 0
+
+    @property
+    def last_frame_ts(self):
+        self.reads += 1
+        if self.reads == 1:
+            raise RuntimeError("boom")
+        return 1000.0
+
+
+def test_a_failed_round_is_logged_and_the_next_round_runs(caplog):
     bus, health = MessageBus(), HealthRegistry()
     daemon = capture.Daemon(bus, health)
-    daemon.stream = _Stream()
-    calls = {"n": 0}
-    real = daemon.status
-
-    def flaky():
-        calls["n"] += 1
-        if calls["n"] == 1:
-            raise RuntimeError("boom")
-        return real()
-
-    monkeypatch.setattr(daemon, "status", flaky)
-    got = []
-    monkeypatch.setattr(bus, "publish", lambda topic, msg: got.append(topic))
+    daemon.stream = _StreamFailingOnce()
 
     async def go():
         stop = asyncio.Event()
-        task = asyncio.create_task(capture.record_feed_status(daemon, stop))
+        task = asyncio.create_task(capture.record_feed_status(daemon, stop, every=0.01))
         await asyncio.sleep(0.1)
         stop.set()
         await task
 
     asyncio.run(go())
+    written = {topic for topic, _record in bus.current.values() if topic.startswith("feedstatus.")}
     assert "feed status round failed: RuntimeError: boom" in caplog.text
-    assert len(got) >= len(capture.SERVICES), "the round after the failure still wrote"
+    assert written == {f"feedstatus.{svc}" for svc in capture.SERVICES}, (
+        "the round after the failure still wrote"
+    )

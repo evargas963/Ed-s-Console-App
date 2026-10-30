@@ -1075,7 +1075,6 @@ def test_d6_no_live_route_opens_a_database():
     are read from the app itself; /api/changes is the push stream (it never ends)."""
     from fastapi.routing import APIRoute
     from fastapi.testclient import TestClient
-
     import server
     from db import get_db
     from stream_spine import book_msg, options_quote_msg
@@ -1152,8 +1151,8 @@ def test_every_schwab_error_is_logged_as_sent_without_tokens(tmp_path, caplog):
     sent and answered; an error answer with its body and headers. Through the client the daemon
     builds. Stand-ins: a local server answering as Schwab does (the error body's shape is
     Schwab's documented {"errors": [...]}), and a token file."""
-    import threading
     from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    import threading
 
     import schwab_client as sc
 

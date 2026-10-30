@@ -17,16 +17,15 @@ from math_exposure_core import (
     compute_zero_dte_gamma_share,
     exposure_books,
     exposures_have_dollar_gex,
-    key_level_strikes_with_gamma,
     merge_exposure_books,
-    pick_delta_wall_strikes,
-    pick_gamma_wall_strikes,
-    pick_key_delta_strike,
-    pick_net_gex_peak_strike,
-    pick_pin_and_strength,
-    pick_volatility_point_strikes,
     put_call_oi_ratio,
     put_call_volume_ratio,
+    pick_delta_wall_strikes,
+    pick_net_gex_peak_strike,
+    pick_pin_and_strength,
+    pick_gamma_wall_strikes,
+    pick_key_delta_strike,
+    pick_volatility_point_strikes,
     total_gex_dollars_at_strike,
 )
 from math_levels import (
@@ -34,17 +33,18 @@ from math_levels import (
     bs_delta,
     bs_gamma,
     compute_charm_by_strike,
+    contract_inputs,
+    merge_charm_maps,
     compute_gamma_flip_v2,
     compute_gamma_profile,
     compute_gamma_support_levels,
     compute_max_pain,
-    contract_inputs,
-    merge_charm_maps,
     pick_charm_wall_strikes,
 )
+from time_et import ET, option_close_product, time_to_expiry_years
+from math_exposure_core import key_level_strikes_with_gamma
 from numeric_contract import schwab_count, schwab_number
 from terrain_read import LEVEL_ABOVE, LEVEL_BELOW, build_terrain_read, level_side, price_side
-from time_et import ET, option_close_product, time_to_expiry_years
 
 #: Payload schema version — bump on any field change so the UI can fail closed.
 TERRAIN_SCHEMA_VERSION = 3

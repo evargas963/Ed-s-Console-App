@@ -269,7 +269,7 @@ def test_why_schwab_is_not_connected_reaches_the_log_and_api_health(tmp_path, ca
             serve_live_ui(stop, heartbeat_fn=daemon.status, host="127.0.0.1", port=port)
         )
         run = asyncio.create_task(daemon.run(schwab_client, stop))
-        await _until(lambda: daemon.status()["schwab_down"].startswith("NOT CONNECTED"))
+        await _until(lambda: daemon.status(time.time())["schwab_down"].startswith("NOT CONNECTED"))
         await asyncio.sleep(0.2)
         async with connect(f"ws://127.0.0.1:{port}", max_size=None) as ws:
             await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"]}))
@@ -317,7 +317,7 @@ def test_a_browser_that_stopped_reading_is_dropped_the_others_keep_their_beats_a
         daemon_side = asyncio.create_task(
             serve_live_ui(
                 stop,
-                heartbeat_fn=lambda: {**daemon.status(), "pad": "x" * 2_000_000},
+                heartbeat_fn=lambda now: {**daemon.status(now), "pad": "x" * 2_000_000},
                 host="127.0.0.1",
                 port=0,
                 stats=stats,

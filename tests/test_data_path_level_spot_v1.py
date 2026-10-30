@@ -9,8 +9,8 @@ import live_market_plane as lmp
 import server as srv
 from terrain_engine import compute_terrain
 from tests.feed_live_helper import RTH_INSTANT, mark_feed_live, publish_daemon_rows
-from tests.real_chains import CRWD
 from time_et import ET
+from tests.real_chains import CRWD
 
 
 def test_a_down_price_marks_the_levels_and_the_wall_stays():

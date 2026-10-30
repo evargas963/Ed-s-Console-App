@@ -171,9 +171,8 @@ def pin_clock(monkeypatch):
     stored Schwab chain is valued at the chain's capture instant, so the chain's expiries passing
     can never empty the greeks the test compares (2026-09-27: six tests had been comparing None
     with None since their fixtures expired)."""
-    from datetime import datetime as _dt
-
     import time_et
+    from datetime import datetime as _dt
 
     real = time_et.now_et
     pinned: list = []  # modules this test has pinned, so a second pin moves them

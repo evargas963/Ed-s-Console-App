@@ -82,7 +82,6 @@ def test_record_from_level_one_never_uses_trade_time_as_the_quote_time():
 
 def test_received_ts_is_required_and_is_what_freshness_judges():
     import inspect
-
     import pytest
 
     param = inspect.signature(lmp.record_from_level_one_equity).parameters["received_ts"]

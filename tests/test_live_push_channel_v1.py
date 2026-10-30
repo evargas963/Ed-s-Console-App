@@ -27,8 +27,8 @@ import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 from app.market_data.schwab.streaming import capture, live_push, live_ui
-from stream_spine import HealthRegistry, MessageBus, book_msg, options_quote_msg, quote_msg
 from tests.feed_live_helper import RTH_INSTANT, clock_from
+from stream_spine import HealthRegistry, MessageBus, book_msg, options_quote_msg, quote_msg
 
 _CONTRACT = "SPY   260918C00500000"
 
@@ -108,7 +108,7 @@ async def _until(pred, timeout=5.0):
 def _daemon_heartbeat(socket_open=True, held=("SPY",), clock=time.time):
     """What capture.py's heartbeat reports for a session holding `held` on LEVELONE_EQUITIES, each
     beat stamped by `clock`."""
-    return lambda: {
+    return lambda _now: {
         "ts": clock(),
         "schwab_socket_open": socket_open,
         "held": {"LEVELONE_EQUITIES": list(held)},
@@ -193,9 +193,9 @@ def test_a_live_feed_stays_live_while_the_console_works_through_a_backlog_of_cha
     beats and the reads run from RTH_INSTANT."""
     import json as _json
     import threading
-    from pathlib import Path
 
     from calibration.complete_chain_capture import chain_messages
+    from pathlib import Path
 
     contracts = _json.loads(
         (Path(__file__).parent / "fixtures" / "real_spy_0dte_chain.json").read_text(

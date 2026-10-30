@@ -9,10 +9,11 @@ from __future__ import annotations
 
 from typing import Any
 
-import live_market_plane as lmp
-from app.options.order_flow.engine import OrderFlowEngine
-from app.options.order_flow.state import get_content_for_symbol, option_top
 from l1_trade_observation import NATIVE_AGGRESSOR_AVAILABLE, TAPE_CLASSIFICATION
+from app.options.order_flow.engine import OrderFlowEngine
+import live_market_plane as lmp
+from app.options.order_flow.state import get_content_for_symbol, option_top
+
 
 _FLOW_KEYS = (
     "tape_pressure_30s",

@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+
 # ── PR B: drop counts per consumer; atomic token refresh ─────────────────────────────────
 
 
@@ -39,7 +40,6 @@ def test_every_token_refresh_writes_atomically(monkeypatch, tmp_path):
     in place (audit of #280: the atomic helper had no production caller)."""
     import json
     import os as _os
-
     import schwab_client as sc
 
     tok = _token_file(tmp_path)

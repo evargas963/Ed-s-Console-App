@@ -21,17 +21,17 @@ from datetime import date, datetime
 from typing import Optional
 
 from instrument_identity import ticker_storage_key
+from numeric_contract import float_finite_or_none, float_positive_or_none
 from liquidity_models import (
     PlaybookConfig,
     SnapshotOutput,
     SnapshotSummary,
     SnapshotType,
-    VolumeProfile,
     Zone,
+    VolumeProfile,
     ZoneType,
     volume_profile,
 )
-from numeric_contract import float_finite_or_none, float_positive_or_none
 
 log = logging.getLogger(__name__)
 

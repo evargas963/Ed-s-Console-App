@@ -29,8 +29,9 @@ from liquidity_value_engine import (  # noqa: E402
     build_price_level_snapshot,
 )
 from micro_structure import Candle  # noqa: E402
-from tests.conftest import most_recent_trading_day_et  # noqa: E402
 from time_et import ET  # noqa: E402
+
+from tests.conftest import most_recent_trading_day_et  # noqa: E402
 
 #: canonical level id -> (raw_levels family, key) as the builders publish them.
 _PHASE2A_IDS = {

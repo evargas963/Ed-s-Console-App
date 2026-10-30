@@ -6,13 +6,13 @@
 """
 
 from __future__ import annotations
-
-import math
 import time
 
+import math
+
+import l1_trade_observation as l1
 import app.options.order_flow.engine as ofe
 import app.options.order_flow.state as live_state
-import l1_trade_observation as l1
 
 
 def _prints(*rows):

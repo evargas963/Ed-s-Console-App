@@ -33,10 +33,10 @@ from __future__ import annotations
 
 import argparse
 import ast
-import io
 import re
 import subprocess
 import sys
+import io
 import tempfile
 import tokenize
 from pathlib import Path

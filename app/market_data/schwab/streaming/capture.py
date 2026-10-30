@@ -82,36 +82,34 @@ if sys.stderr is None:
         file=sys.stderr,
     )
 
-import psutil  # noqa: E402
-from schwab.streaming import StreamClient  # noqa: E402
-from websockets.exceptions import ConnectionClosed  # noqa: E402
-
-import live_market_plane as lmp  # noqa: E402
-import live_price_rows  # noqa: E402
-from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT, serve_live_push  # noqa: E402
-from app.market_data.schwab.streaming.live_ui import serve_live_ui  # noqa: E402
-from calibration.complete_chain_capture import ChainSweep  # noqa: E402
-from config import build_config, load_dotenv_file  # noqa: E402
-from db_authority import canonical_console_db_path  # noqa: E402
-from instrument_identity import ticker_storage_key  # noqa: E402
-from math_exposure_core import gamma_reported  # noqa: E402
-from numeric_contract import schwab_number  # noqa: E402
-from schwab_client import build_client_from_token, safe_get_quotes  # noqa: E402
 from stream_spine import (  # noqa: E402
     LATEST,
     LOG,
     CaptureWriter,
     HealthRegistry,
     MessageBus,
+    current_key,
     bar_msg,
     book_msg,
-    current_key,
     news_msg,
     options_quote_msg,
     quote_msg,
     resolve_stream_db_path,
     subscription_msg,
 )
+import psutil  # noqa: E402
+from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT, serve_live_push  # noqa: E402
+from app.market_data.schwab.streaming.live_ui import serve_live_ui  # noqa: E402
+from calibration.complete_chain_capture import ChainSweep  # noqa: E402
+from config import build_config, load_dotenv_file  # noqa: E402
+from db_authority import canonical_console_db_path  # noqa: E402
+from instrument_identity import ticker_storage_key  # noqa: E402
+import live_market_plane as lmp  # noqa: E402
+import live_price_rows  # noqa: E402
+from math_exposure_core import gamma_reported  # noqa: E402
+from numeric_contract import schwab_number  # noqa: E402
+from schwab.streaming import StreamClient  # noqa: E402
+from schwab_client import build_client_from_token, safe_get_quotes  # noqa: E402
 from time_et import (
     ET,
     ct_label,
@@ -120,6 +118,7 @@ from time_et import (
     options_closed_at,
     sessions_since,
 )  # noqa: E402
+from websockets.exceptions import ConnectionClosed  # noqa: E402
 
 log = logging.getLogger("capture")
 
@@ -777,9 +776,8 @@ class Daemon:
         held = symbol in self.held["LEVELONE_OPTIONS"]
         return self.bus.current.get(_current_key("LEVELONE_OPTIONS", symbol)) if held else None
 
-    def status(self) -> dict:
-        """What the console and browsers are told every second (live_push / live_ui)."""
-        now = time.time()
+    def status(self, now: float) -> dict:
+        """What the console and browsers are told every second (live_push / live_ui), at `now`."""
         last = self.stream.last_frame_ts if self.stream is not None else 0.0
         return {
             "ts": now,
@@ -787,6 +785,7 @@ class Daemon:
             "schwab_down": self.schwab_down,
             "watchlist": list(self.watchlist),
             "chain_round_sec": self.chains.round_sec if self.chains is not None else None,
+            "chains_waiting": self.chains.waiting if self.chains is not None else None,
             "held": {k: sorted(v) for k, v in self.held.items()},
             "health": self.health.report(now),
             "writer": self.writer.status() if self.writer is not None else None,
@@ -1093,15 +1092,17 @@ def _start_log() -> None:
 FEED_STATUS_EVERY_SEC = 60.0
 
 
-async def record_feed_status(daemon: "Daemon", stop: asyncio.Event) -> None:
-    """Once a minute, per Schwab feed: checked at X (the same X for every feed), is the socket
+async def record_feed_status(
+    daemon: "Daemon", stop: asyncio.Event, every: float = FEED_STATUS_EVERY_SEC
+) -> None:
+    """Every `every` seconds (once a minute), per Schwab feed: checked at X (the same X for every feed), is the socket
     open, when Schwab last sent anything, how many symbols are subscribed, and when this feed
     last carried data -- so a quiet feed and a dead one read differently in the database."""
     while True:
         now = time.time()
         try:
             last_frame = daemon.stream.last_frame_ts if daemon.stream is not None else None
-            st = daemon.status()
+            st = daemon.status(now)
             for svc in SERVICES:
                 daemon.bus.publish(
                     f"feedstatus.{svc}",
@@ -1118,7 +1119,7 @@ async def record_feed_status(daemon: "Daemon", stop: asyncio.Event) -> None:
             # why; the next round still runs (the console's status line reports the record's age)
             log.warning("feed status round failed: %s: %s", type(e).__name__, e)
         try:
-            await asyncio.wait_for(stop.wait(), timeout=FEED_STATUS_EVERY_SEC)
+            await asyncio.wait_for(stop.wait(), timeout=every)
             return
         except asyncio.TimeoutError:
             pass

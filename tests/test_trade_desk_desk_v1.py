@@ -73,7 +73,6 @@ def test_every_shipped_page_script_parses():
     page from loading, and no Python test noticed. Every script the console serves must parse."""
     import shutil
     import subprocess
-
     import pytest
 
     node = shutil.which("node")

@@ -419,7 +419,9 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
   Schwab and the screen (operator 2026-10-06): an answer other than 200, or none, fails that
   ticker's chain with the reason and the next request goes at once. One exception (operator
   2026-10-15, the refused sign-in): once Schwab refuses the sign-in, nothing is sent until a new
-  one is saved (§1, `OneRefreshSession`, `ChainSweep.signed_in`). Enforced by:
+  one is saved (§1, `OneRefreshSession`, `ChainSweep.waits`); the refusal and what to run ride the
+  daemon's status (`chains_waiting`) to the levels' stale reason on every screen
+  (`server._levels_state`; `tests/test_data_path_sign_in_v1.py`). Enforced by:
   `tests/test_data_path_rest_one_connection_v1.py` (the requests, one at a time on one
   connection, quotes across tickers, no pause after a 429) and `tests/test_data_path_rules_v1.py`
   (`test_a_403_from_schwabs_edge_reaches_the_console_and_the_next_ticker_is_asked_at_once`, on
@@ -762,8 +764,9 @@ The work that closes these gaps, in order, is `ACTIVE_PROGRAM.md`.
 ## 5. Checks
 
 The rules and the tool that enforces each are `AGENTS.md` "Rules and what enforces them". Today:
-ruff at commit and in CI, with `pyproject.toml`'s selection, and `ruff format` (the one Python
-formatter); a compile pass in CI (every file CPython compiles); the behavior tests (`pytest`, `tests/`) and the
+ruff at commit and in CI, with `pyproject.toml`'s one selection (unused imports, undefined names,
+syntax errors), and `ruff format` (the one Python formatter, ruff pinned in `requirements-dev.txt`);
+a compile pass in CI (every file CPython compiles); the behavior tests (`pytest`, `tests/`) and the
 browser tests (Playwright, `tests/e2e/`) in CI; the secrets and home-path scan at commit and in CI
 (each commit of a pull request, merge resolutions included); the line-ending check at commit and
 in CI (the pull request's change); for agents, the hooks that block destructive git. A passing check proves only what its tests exercise; every rule beyond

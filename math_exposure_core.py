@@ -6,13 +6,14 @@ from the chain and position structure.
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Dict, List
+import math
 
 from numeric_contract import float_finite_or_none, schwab_count, schwab_number
 from time_et import EQUITY_OPTIONS, MIN_TIME_TO_EXPIRY_YEARS, time_to_expiry_years
+
 
 # Schwab options API missing-greek sentinel (documented wire value).
 MISSING_GREEK_SENTINEL: float = -999.0

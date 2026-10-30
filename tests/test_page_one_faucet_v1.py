@@ -26,12 +26,12 @@ from fastapi.testclient import TestClient
 
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
+from app.options.order_flow.engine import compute_book_microstructure
+from tests.feed_live_helper import mark_feed_live
 import live_price_rows
 import server
-from app.options.order_flow.engine import compute_book_microstructure
 from instrument_identity import ticker_storage_key
 from stream_spine import options_quote_msg
-from tests.feed_live_helper import mark_feed_live
 from tests.real_chains import CRWD, SPY_CLOSE, SPY_PRINT_A_STRIKE_AWAY
 from time_et import ET
 

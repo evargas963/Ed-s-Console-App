@@ -2,19 +2,19 @@
 
 from __future__ import annotations
 
-import logging
 import os
 import sqlite3
+import logging
 import threading
-from dataclasses import asdict, dataclass, fields
 from pathlib import Path
-from typing import Optional
 
 from db_authority import (
     classify_db_path,
     eddb_allow_noncanonical_path,
     is_canonical_db_path,
 )
+from dataclasses import dataclass, asdict, fields
+from typing import Optional
 
 log = logging.getLogger(__name__)
 

@@ -3,7 +3,6 @@ missing, not coerce it to zero -- downstream order-flow consumers need to tell
 "no size reported" apart from "size was zero"."""
 
 from __future__ import annotations
-
 import time
 
 import app.options.order_flow.engine as ofe

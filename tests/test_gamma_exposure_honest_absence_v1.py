@@ -11,7 +11,8 @@ import time
 import server
 from math_exposure_core import compute_exposures_by_strike, exposure_books
 from server import project_gamma_surface
-from terrain_engine import _per_strike_rows, compute_terrain
+from terrain_engine import compute_terrain
+from terrain_engine import _per_strike_rows
 from tests.real_chains import CRWD
 
 

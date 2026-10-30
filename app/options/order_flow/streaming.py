@@ -27,21 +27,23 @@ from __future__ import annotations
 
 import asyncio
 import json
-import logging
 import queue
+import logging
 import time
 from typing import Any, Callable, Optional
 
-import live_market_plane as _lmp
+from instrument_identity import ticker_storage_key
 import push_changes
 from app.options.order_flow import history as recent
+
 from app.options.order_flow.state import (
     clear_all_live_state,
     push_book,
     push_level_one,
     push_option_top,
 )
-from instrument_identity import ticker_storage_key
+
+import live_market_plane as _lmp
 from time_et import record_markets
 
 log = logging.getLogger(__name__)
