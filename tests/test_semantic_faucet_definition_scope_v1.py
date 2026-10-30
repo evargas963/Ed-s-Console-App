@@ -21,14 +21,11 @@ enforced check (teardown rule: no new governance mechanism).
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent.parent
-if str(REPO) not in sys.path:
-    sys.path.insert(0, str(REPO))
+from tests.real_chains import SPY_0DTE
 
-from tests.real_chains import SPY_0DTE  # noqa: E402
+REPO = Path(__file__).resolve().parent.parent
 
 NOW = SPY_0DTE.now
 

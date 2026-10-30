@@ -4,12 +4,6 @@ decides which open interest or volume is newer. Pure function: no network, no ca
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
-ROOT = Path(__file__).resolve().parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 
 from math_exposure_core import overlay_streamed_contract_fields
 

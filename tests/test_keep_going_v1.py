@@ -12,8 +12,7 @@ from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
-import keep_going  # noqa: E402
+from tools import keep_going
 
 REPO = Path(__file__).resolve().parent.parent
 OPEN_ROW = "| SHAPE | IN PROGRESS | **One program, five parts** ... |\n"

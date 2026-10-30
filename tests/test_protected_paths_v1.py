@@ -5,15 +5,13 @@ what a command RUNS, not text that mentions the folder; restores into it and rea
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 import pytest
 
-REPO = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO / "tools"))
+from tools import operator_law_guard as G
 
-import operator_law_guard as G  # noqa: E402
+REPO = Path(__file__).resolve().parent.parent
 
 #: The protected tree and the backups folder, as the commands below name them.
 D = "data/"

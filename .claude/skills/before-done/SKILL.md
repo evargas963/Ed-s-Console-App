@@ -20,16 +20,16 @@ report what was tried, and take a different approach (CLAUDE.md item 6).
    `hardening` green, shown by `gh pr checks <pr>` on the final commit (operator 2026-10-30: "Yes,
    CI proves it"). The suites run here only while a test is written or a failure is chased:
    `ED_PATCH_RECORD=<a scratch folder> npm run test:all -- -p tools.patch_record`, one at a time.
-4. `.venv/Scripts/python.exe tools/check_fails_before.py --base origin/main` — exit 0; for a pull
+4. `.venv/Scripts/python.exe -m tools.check_fails_before --base origin/main` — exit 0; for a pull
    request that changes product code it prints "proven", naming the end-to-end path test that fails on
    the old code, or, for a change that only removes whole undecorated Python functions or classes and
    the imports only they used, or only fixes what ruff rules the PR newly selects find, or only
    removes code paths inside functions (the PR shows the trace that no caller reaches them),
    naming the files.
-5. `.venv/Scripts/python.exe tools/check_one_reader.py --base origin/main` — exit 0; then
-   `.venv/Scripts/python.exe tools/check_credential_leak.py --base origin/main` and
-   `.venv/Scripts/python.exe tools/check_eol_style_invariant.py --base origin/main` — exit 0 each.
-6. `.venv/Scripts/python.exe tools/check_end_to_end.py --base origin/main` — exit 0.
+5. `.venv/Scripts/python.exe -m tools.check_one_reader --base origin/main` — exit 0; then
+   `.venv/Scripts/python.exe -m tools.check_credential_leak --base origin/main` and
+   `.venv/Scripts/python.exe -m tools.check_eol_style_invariant --base origin/main` — exit 0 each.
+6. `.venv/Scripts/python.exe -m tools.check_end_to_end --base origin/main` — exit 0.
 7. Four eyes: run the `correctness-reviewer` and `requirements-reviewer` agents on the PR's final
    commit (`git diff origin/main...HEAD`, with the PR description, the operator's task and the output
    of steps 1–6), naming that commit; any commit made after a review gets a new review of both before

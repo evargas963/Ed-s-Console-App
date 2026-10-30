@@ -15,14 +15,8 @@ compute_net_charm must match its sign for every moneyness, or the build fails.
 from __future__ import annotations
 
 import math
-import sys
-from pathlib import Path
 
 import pytest
-
-REPO = Path(__file__).resolve().parent.parent
-if str(REPO) not in sys.path:
-    sys.path.insert(0, str(REPO))
 
 from math_levels import bs_charm
 

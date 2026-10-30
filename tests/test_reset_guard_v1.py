@@ -9,15 +9,12 @@ Safe and read-only forms stay legal.
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+import tools.operating_process_lock as OPL
+import tools.process_lock_guard as PLG
 
-import tools.operating_process_lock as OPL  # noqa: E402
-import tools.process_lock_guard as PLG  # noqa: E402
+ROOT = Path(__file__).resolve().parent.parent
 
 
 def test_destructive_class_blocks():
