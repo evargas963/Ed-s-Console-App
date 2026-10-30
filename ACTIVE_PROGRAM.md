@@ -124,7 +124,7 @@ to write it plainly, in the forms `test_a_command_the_reader_cannot_see_into_is_
 - M-08 truthiness drops a 0 price (`if prev.get("pdh")`, `if vah:`, `if poc:`, `p and p > 0`, …).
 - M-09 a missing poc, pd_poc or vwap yields `value_state="unchanged"` / `vwap_relation="at_value"` (and `else 0`).
 - M-11 `cutoff_et` (now) is served as the values' time (they are as of the last bar); `session_scope` relabels an unknown scope; prior-day POC/VAH/VAL missing is not in `families_absent`.
-- M-12 fused option levels: raw `float()`, rejected ones dropped silently.
+- M-12 fused option levels: a level at 0 (a reported spot of 0 among them) is dropped silently by `liquidity_value_engine.build_live_snapshot`'s `> 0` check (rule 2: a reported 0 is 0); the no-op `float()`/`str()` around pairs its caller already builds as (float, tag) go with it. The non-number rejection is gone (#646: no caller can send one).
 - `build_price_level_snapshot` reads the clock (`produced_ts`) instead of taking `now`.
 
 **math_exposure_core.py, math_levels.py**
@@ -142,8 +142,7 @@ to write it plainly, in the forms `test_a_command_the_reader_cannot_see_into_is_
 - M-31 `computed_ts_utc` is compute time documented as fetch time, with two writers.
 - M-32 per-expiry PCR/IV maps key by date alone while books key by (date, dte): same-date books overwrite.
 - M-33 the ATM IV expiry is the one nearest 30 days; its docs say "front expiry".
-- M-34 `terrain_atr` uses DB OHLC raw (no `schwab_number`).
-- M-35 `compute_atr` reads first-of keys with raw `float()`, skips candles uncounted and carries `prev_close` across them.
+- M-35 `compute_atr` reads each price through `_get`'s first-of alias keys (`"h"`/`"high"`) and a dict path, though its one caller passes `Candle`s; the uncounted skip and the raw `float()` that could raise are gone (#646). M-34 is closed: `terrain_atr`'s candles are in memory, built by `server._schwab_bar` from prices that passed `schwab_number`.
 - M-36 the pin score clamps `oi_concentration` to [0, 1] and divides by an unsourced $50,000 (PIN-FLOOR).
 - M-37 `time_to_expiry_years` floors T at 10 minutes.
 
