@@ -111,13 +111,16 @@ async def _serve_client(ws, bus: MessageBus, stats: dict, on_request=None) -> No
     async def _read() -> None:
         """The console's frames, each handed to `on_request` with this connection
         (capture.Daemon.console_frame): {"op": "watchlist", ...}, an add or a removal. Ends when
-        the socket closes."""
+        the socket closes. A frame that is not a JSON object is logged with what arrived."""
         async for frame in ws:
             try:
                 req = json.loads(frame)
-            except (TypeError, ValueError):
+            except (TypeError, ValueError) as e:
+                log.warning("live push: a console frame that is not JSON (%s): %r", e, frame)
                 continue
-            if isinstance(req, dict) and on_request is not None:
+            if not isinstance(req, dict):
+                log.warning("live push: a console frame that is not a JSON object: %r", frame)
+            elif on_request is not None:
                 on_request(req, ws)
 
     pump = asyncio.create_task(_pump())
