@@ -205,8 +205,9 @@ def code_tree(path: str, text: str) -> str | None:
 
 
 #: the lines of ruff's resolved settings (`ruff check --show-settings`, extended files included)
-#: that decide whether a fix ruff calls safe is safe here: unsafe fixes off, no fix forced safe,
-#: and the Python the fixes are made for the base's (a fix is safe only for its target version)
+#: that decide whether a fix ruff calls safe is safe here: unsafe fixes off, no fix forced safe, no
+#: import required of every file, and the Python the fixes are made for the base's (a fix is safe
+#: only for its target version)
 FIX_SAFETY = (
     "unsafe_fixes",
     "linter.safety_table.forced_safe",
@@ -214,6 +215,7 @@ FIX_SAFETY = (
     "linter.per_file_target_version",
     "formatter.unresolved_target_version",
     "formatter.per_file_target_version",
+    "linter.isort.required_imports",
 )
 
 
@@ -236,8 +238,8 @@ def fix_safety(root: Path, config: Path) -> dict[str, str] | None:
 
 def tools_fix_is_safe(root: Path, base: str) -> bool:
     """Whether ruff, run on the PR's committed pyproject.toml, takes only fixes that are safe for
-    the base's Python: unsafe fixes not on, none forced safe, no per-file target version, the same
-    target versions."""
+    the base's Python: unsafe fixes not on, none forced safe, no import required of every file, no
+    per-file target version, the same target versions."""
     try:
         _git(root, "diff", "--quiet", "HEAD", "--", "pyproject.toml")  # the tree is the commit's
         old = _git(root, "show", f"{_git(root, 'merge-base', base, 'HEAD').strip()}:pyproject.toml")
@@ -252,6 +254,7 @@ def tools_fix_is_safe(root: Path, base: str) -> bool:
     return (
         now["unsafe_fixes"] != "enabled"
         and now["linter.safety_table.forced_safe"] == "[]"
+        and now["linter.isort.required_imports"] == "[]"  # a fix that adds code, not tidies it
         and all(now[k] == "{}" for k in FIX_SAFETY if "per_file" in k)  # a map prints on many lines
         and all(now[k] == was[k] for k in FIX_SAFETY if "unresolved_target" in k)
     )
@@ -260,7 +263,7 @@ def tools_fix_is_safe(root: Path, base: str) -> bool:
 def tool_fixed(root: Path, path: str, text: str) -> str | None:
     """`text` as the repository's standard tools leave it: ruff's safe fixes with the repository's
     pyproject.toml, then `ruff format`, as the commit hook runs them; None when either cannot run on
-    it (code_identical first checks that the configuration takes only safe fixes)."""
+    it (its callers first check that the configuration takes only safe fixes: tools_fix_is_safe)."""
     out = text.encode("utf-8")  # as bytes: no line ending translated on the way in or out
     for args in (
         ["check", "--fix", "--no-unsafe-fixes", "--exit-zero", "--quiet"],
