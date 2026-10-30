@@ -164,7 +164,7 @@ def test_a_checkout_that_may_not_run_live_refuses_before_opening_anything(tmp_pa
     (other / ".git").mkdir(parents=True)
     env = {**os.environ, "ED_RUNTIME_ROOT": str(other)}
     r = subprocess.run(
-        [sys.executable, "-m", "app.market_data.schwab.streaming.capture"],
+        [sys.executable, "-m", "app.market_data.schwab.streaming.capture_main"],
         cwd=str(ROOT),
         env=env,
         capture_output=True,

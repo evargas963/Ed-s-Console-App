@@ -8,8 +8,8 @@ every file read as text (what a commit would publish). The scanner's own suite a
 are path-skipped (injected payloads must live there). Other fixtures mark a line with
 `# credential-leak-ok` or `# credential-leak-fixture-ok`.
 
-    python tools/check_credential_leak.py                       (pre-commit)
-    python tools/check_credential_leak.py --base origin/main    (CI)
+    python -m tools.check_credential_leak                       (pre-commit)
+    python -m tools.check_credential_leak --base origin/main    (CI)
 """
 
 from __future__ import annotations

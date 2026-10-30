@@ -23,11 +23,10 @@ from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-import runtime_layout  # noqa: E402
-import time_et  # noqa: E402
-from stream_spine import CaptureWriter  # noqa: E402
-from tools import operator_yes_guard as guard  # noqa: E402
+import runtime_layout
+import time_et
+from stream_spine import CaptureWriter
+from tools import operator_yes_guard as guard
 
 REPO = Path(__file__).resolve().parent.parent
 EXISTING = "tests/test_check_end_to_end_v1.py"  # a test that is on origin/main

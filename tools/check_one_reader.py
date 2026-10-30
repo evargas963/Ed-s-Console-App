@@ -21,7 +21,7 @@ reader (a record crossing modules is a typed record, ENF-10). `--list` names eac
 in more than one module: the candidates to check, each one either a second reader to remove or one
 of those two cases.
 
-    python tools/check_one_reader.py --base origin/main      (or --list)
+    python -m tools.check_one_reader --base origin/main      (or --list)
 Exit 0: no module began reading a field that has another reader. Exit 1: refused, each field and
 module named.
 Exit 2: the check itself failed (git unavailable, the base unknown, a file it cannot read or parse,

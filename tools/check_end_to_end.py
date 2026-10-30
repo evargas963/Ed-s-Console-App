@@ -26,7 +26,7 @@ The product lines a PR adds carry no patch shape:
    inside an old one. None stays allowed: it is a missing value served as missing.
 
 Run in CI on every pull request (.github/workflows/hardening.yml):
-    python tools/check_end_to_end.py --base origin/main
+    python -m tools.check_end_to_end --base origin/main
 Exit 0: none found. Exit 1: each violation on its own line. Exit 2: the check itself failed
 (git unavailable, the base unknown, a file of the PR unreadable).
 """

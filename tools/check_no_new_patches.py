@@ -12,7 +12,7 @@ from one of its lines. A patching test whose docstrings or comments alone change
 change to its code needs its patch removed.
 
     ED_PATCH_RECORD=<dir> python -m pytest -p tools.patch_record
-    python tools/check_no_new_patches.py --base origin/main --record <dir>
+    python -m tools.check_no_new_patches --base origin/main --record <dir>
 Exit 0: nothing patches in what the PR adds or changes. Exit 1: refused, each unit named.
 Exit 2: the check itself failed (git unavailable, the base unknown, no record of the run).
 """

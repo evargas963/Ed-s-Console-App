@@ -18,11 +18,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+from tools.hook_chain import _argv_members, run_chain
 
-from tools.hook_chain import _argv_members, run_chain  # noqa: E402
+ROOT = Path(__file__).resolve().parent.parent
 
 _ENV = {**os.environ, "PYTHONIOENCODING": "utf-8"}
 PRE_ROSTER = ("tools/operator_law_guard.py", "tools/process_lock_guard.py")

@@ -5,15 +5,14 @@ from __future__ import annotations
 
 import os
 import subprocess
-import sys
 import time
 from pathlib import Path
 
 import pytest
 
+from tools import check_fails_before as cfb
+
 REPO = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO / "tools"))
-import check_fails_before as cfb  # noqa: E402
 
 BASE = {
     "calc.py": "def spot(row):\n    return row['bid']\n",

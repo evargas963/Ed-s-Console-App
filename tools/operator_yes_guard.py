@@ -37,14 +37,13 @@ from pathlib import Path
 
 import psutil
 
+import runtime_layout
+import time_et
+from db_authority import canonical_stream_db_path
+from tools.hook_chain import BASH_TOOLS
+from tools.shell_parse import Statement, program_name, read
+
 REPO = Path(__file__).resolve().parent.parent
-
-import runtime_layout  # noqa: E402
-import time_et  # noqa: E402
-from db_authority import canonical_stream_db_path  # noqa: E402
-from tools.hook_chain import BASH_TOOLS  # noqa: E402
-from tools.shell_parse import Statement, program_name, read  # noqa: E402
-
 PASS, ASK, DENY = "pass", "ask", "deny"
 #: the production processes and what starts them
 PROCESS_NAMES = ("streaming.capture", "uvicorn", "server:app")

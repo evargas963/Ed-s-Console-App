@@ -1276,7 +1276,3 @@ def main(early_errors=None) -> int:
         raise
     finally:
         release_owner_lock(fd, lock)
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

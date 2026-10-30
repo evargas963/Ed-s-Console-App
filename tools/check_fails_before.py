@@ -18,7 +18,7 @@ test to fail on, and needs none; a deleted product file is a change.
 The base checkout sits inside the repository so that Node finds the repository's node_modules
 from it, and runs on the same Python as this check (first on PATH for the spec's console).
 
-    python tools/check_fails_before.py --base origin/main
+    python -m tools.check_fails_before --base origin/main
 Exit 0: proven, or no product code changed. Exit 1: not proven, with the reason. Exit 2: the
 check itself failed (git unavailable, the base unknown).
 """

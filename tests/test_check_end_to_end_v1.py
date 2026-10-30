@@ -11,8 +11,7 @@ from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
-import check_end_to_end as cee  # noqa: E402
+from tools import check_end_to_end as cee
 
 TEST = "tests/test_data_path_x.py"
 REAL_TEST = {TEST: "def test_x():\n    assert spot({'last': 1.0}) == 1.0\n"}

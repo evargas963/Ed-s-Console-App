@@ -12,7 +12,7 @@ import re
 
 # The ONE shell reader (tools/shell_parse.py, stdlib-only): the rules below judge each git
 # statement a command runs on its own words.
-from tools.shell_parse import git_subcommand, read  # noqa: E402
+from tools.shell_parse import git_subcommand, read
 
 #: Wipe-protected paths (the reset guard's reach): the one writer and the guards.
 PROTECTED_PATHS: tuple[str, ...] = (
