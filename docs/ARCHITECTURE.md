@@ -25,7 +25,7 @@ EdWebConsole/
 └── start_ed_console.bat (runs launch.py, which starts the one program)
 ```
 
-Imports flow one way, enforced by import-linter: push → state → calc; feed → state; recorder ←
+Imports flow one way, to be enforced by import-linter from SHAPE step 1d: push → state → calc; feed → state; recorder ←
 state; every part may use shared. Outside the repository: the runtime folder (the two databases,
 the token, logs) and worktrees.
 
@@ -33,13 +33,16 @@ the token, logs) and worktrees.
 
 | Today | Goes to |
 |---|---|
-| `schwab_client.py`; the Schwab half of `app/market_data/schwab/streaming/capture.py` (the stream, the subscriptions, the watchlist check); `calibration/complete_chain_capture.py` (the chain sweep and price history requests) | `feed/` |
+| `schwab_client.py`; the Schwab half of `app/market_data/schwab/streaming/capture.py` (the stream, the subscriptions, the watchlist check, the option rule `pick_options`/`by_gamma`/`saved_window`); `calibration/complete_chain_capture.py` (the chain sweep and price history requests) | `feed/` |
+| The rest of `capture.py`: the program's start and stop, `DailyLog`, the daily keep (`keep_sessions`) | `recorder/` (the keep) and the program's entry |
+| `app/market_data/schwab/streaming/live_ui.py` (:8800: the price rows and heartbeat to the page and the console), `app/options/order_flow/live_payload.py` | `push/` |
+| From `app/options/order_flow/streaming.py`: `assemble_chain_part` and the Flow panel's streaming state (`get_option_contract_streaming_diagnostics`) | `state/` |
 | `live_market_plane.py`, `live_price_rows.py`, `stream_spine.py` (the bus), the console's live stores (`server._terrain_cache`, `server._bars`, `server._crosses`, `app/options/order_flow/state.py`, `app/options/order_flow/history.py`) | `state/`, one store |
 | `terrain_engine.py`, `terrain_read.py`, `terrain_atr.py`, `math_exposure_core.py`, `math_levels.py`, `math_probabilities.py`, `math_volatility.py`, `confluence_composite.py`, `liquidity_value_engine.py`, `liquidity_models.py`, `micro_structure.py`, `l1_trade_observation.py`, the order-flow engine | `calc/` |
 | `server.py` (the routes and startup), `static/` | `push/`, `static/` |
 | `stream_spine.py` (the writer, `CaptureWriter`), `db.py`, `db_authority.py`, `db_safety.py`, `json_blob_codec.py`, the chain history writes | `recorder/` |
 | `time_et.py`, `config.py`, `runtime_layout.py`, `instrument_identity.py`, `numeric_contract.py` | `shared/` |
-| `app/market_data/schwab/streaming/live_push.py` (daemon → console, :8799), `app/options/order_flow/streaming.py` (the console's consumer), `push_changes.py` (SSE `/api/changes`), `static/js/l1_sse_guards.js` | deleted: one program needs no channel between processes, and the page gets the one push |
+| `app/market_data/schwab/streaming/live_push.py` (daemon → console, :8799), the rest of `app/options/order_flow/streaming.py` (the console's consumer of :8799 and :8800), `push_changes.py` (SSE `/api/changes`), `static/js/l1_sse_guards.js` | deleted: one program needs no channel between processes, and the page gets the one push |
 | `start_capture_daemon.bat` | deleted with the second program |
 | `launch.py`, `reauth_schwab.py`, `start_ed_console.bat` | stay at the root |
 
@@ -52,7 +55,7 @@ move into their folders as the step that owns them lands; nothing is copied.
 ## 4. Failure domains
 
 The app and each capability fail separately. If Schwab (or its stream) is unavailable, the app
-still starts and serves; the Schwab-dependent panels say they are unavailable and why, and nothing
+still starts and serves; the Schwab-dependent panels draw "-" (operator 2026-10-12 and 2026-10-16), and nothing
 is filled in from elsewhere. The app refuses to start only when it cannot run at all (a broken
 Python environment, core code that will not load).
 

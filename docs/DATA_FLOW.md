@@ -24,7 +24,7 @@ and the page re-reads routes after each push (§3.2). `ACTIVE_PROGRAM.md` SHAPE 
 one program and step 4 makes the push the page's only data; each step rewrites the sections of §3
 it replaces, in the same PR.
 
-The facts below hold in both:
+The facts below hold today and in the design, except where a bullet says what today lacks:
 
 - One Schwab connection, owned by Feed (today the daemon; Schwab allows one streamer connection per user).
   Enforced by: `tests/test_schwab_client_import_boundary.py` (the console makes no Schwab call).
@@ -52,8 +52,8 @@ The facts below hold in both:
   `tests/test_data_path_sign_in_v1.py`, `tests/test_data_path_rules_v1.py`
   (`test_twenty_requests_at_a_refresh_send_one_refresh_and_all_carry_the_new_token`,
   `test_the_daemon_builds_one_schwab_client_and_a_failed_refresh_never_rebuilds_it`).
-- Data is pushed at every hop. Nothing polls. Enforced by: no machine check — ENF-15 (the page
-  re-reads routes after each push today).
+- Data is pushed at every hop. Nothing polls. Today the page still re-reads routes after each push
+  (§3.2) until SHAPE step 4. Enforced by: no machine check — ENF-15.
 - The databases are history, written in the background (two writers today, §3.5). Nothing on screen waits on them.
   Enforced by: D4 and D6 below.
 - At startup the in-memory state is loaded once from the latest stored values, so a restart, a
@@ -737,7 +737,7 @@ The work that closes these gaps, in order, is `ACTIVE_PROGRAM.md`.
 | Part | Runs on | Why |
 |---|---|---|
 | **Feed** | the program's event loop (the Schwab stream) and one thread (the REST chain sweep, one request at a time) | the stream must read every frame as it comes |
-| **Calculators** | a worker pool the program owns, never the event loop | heavy computing on the daemon's event loop stalled it until Schwab dropped the socket; a process pool, because Python threads share one interpreter lock, so a CPU-bound thread still stalls the loop. Feed and Push never wait on a calculation: it is handed off, and its result returns to State as its own update. Which pool is measured in step 3 (the Schwab socket's heartbeat kept while every watchlist ticker's chain is priced) |
+| **Calculators** | a worker pool the program owns, never the event loop | the design premise the old levels-producer row stood on: heavy computing in the daemon's process stalls its event loop, and a stalled loop stops answering Schwab's stream; the console's loop did stall this way (2026-09-24, per-tick repricing; 2026-10-02, chain-part decoding, §3.2). A process pool, because Python threads share one interpreter lock, so a CPU-bound thread still stalls the loop. Feed and Push never wait on a calculation: it is handed off, and its result returns to State as its own update. Which pool is measured in step 3 (the Schwab socket's heartbeat kept while every watchlist ticker's chain is priced) |
 | **State** | the event loop | one writer of each value, read by Push and the Recorder |
 | **Push** | the event loop | a snapshot on connect, then every change |
 | **Recorder** | its own thread (the writer) | the page never waits on a database |
@@ -781,16 +781,18 @@ behavior (AGENTS.md).
    list and open interest come only from Schwab's REST chain endpoint. Built 2026-10-01: the
    daemon is the only Schwab client; every watchlist ticker is fetched in its turn, none first.
    Enforced by: `tests/test_schwab_client_import_boundary.py`.
-2. **The levels producer runs in its own process**, not inside the daemon.
-   Enforced by: not built — ENF-16.
+2. **The levels producer runs in its own process**, not inside the daemon. Superseded by SHAPE
+   (operator 2026-10-29): the Calculators run in a worker pool the one program owns, off its event
+   loop (§4.1). Enforced by: not built — SHAPE step 3.
 3. **The browser is never pushed a whole chain.** Enforced by: no machine check — ENF-16.
 4. **One shell, two connections** (operator 2026-09-27). One page; tabs switch what is shown;
    the daemon pushes prices and bars, the console pushes that levels, flow or liquidity changed.
-   Enforced by: no machine check — ENF-16.
+   Superseded by SHAPE (operator 2026-10-29): one shell, one WebSocket from the one program, which
+   carries every value (§1). Enforced by: no machine check — SHAPE step 4.
 5. **Two databases, each with one job** (operator 2026-10-09/10): `stream_capture.db`, the
    daemon's writer, five sessions (§2 D4); `ed_console.db`, the chain history (decision 7, written
-   by the daemon's chain sweep) and the level crosses (the console's one write today; the target
-   is a console that reads read-only, P2-DB5). The stored chain is the chain history of decision 7,
+   by the daemon's chain sweep) and the level crosses (the console's one write today; under SHAPE
+   (operator 2026-10-29) the Recorder writes both databases and nothing else does, P2-DB5). The stored chain is the chain history of decision 7,
    not every 5-second chain; no table without a job.
    Enforced by: not built (the console still writes its level crosses) — ENF-16.
 6. **Before any table is dropped:** each table's size is measured read-only; dropping needs the
