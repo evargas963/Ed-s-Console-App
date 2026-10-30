@@ -56,7 +56,7 @@ CONSOLE = [
     "10",
 ]
 #: what each process's command line carries: the daemon's module, the console's app
-DAEMON_MARK, CONSOLE_MARK = "streaming.capture", "server:app"
+DAEMON_MARK, CONSOLE_MARK = "app.market_data.schwab.streaming.capture_main", "server:app"
 #: how long a clean stop waits for each process to end (the console's shutdown is bounded at 12 s)
 STOP_WAIT_SEC = 30.0
 #: what the commit check before a start found (bring_to_origin_main)
@@ -117,16 +117,15 @@ def in_use(port: int) -> bool:
 
 
 def running(mark: str) -> list[psutil.Process]:
-    """This checkout's Python processes whose command line carries `mark`: those whose folder is
-    ROOT, where its daemon's batch and its console run, so another checkout's daemon or console (a
-    test's) is never taken for one, nor a shell whose command only names the mark (one whose line
-    or folder cannot be read is none)."""
+    """This checkout's processes with `mark` as one of their arguments: those whose folder is ROOT,
+    where its daemon's batch and its console run, so another checkout's daemon or console (a
+    test's) is never taken for one, nor a shell or script whose text only names the mark (one whose
+    line or folder cannot be read is none)."""
     return [
         p
         for p in psutil.process_iter(["cmdline", "cwd"])
         if p.info["cmdline"] is not None
-        and mark in " ".join(p.info["cmdline"])
-        and Path(p.info["cmdline"][0]).stem.lower().startswith("python")
+        and mark in p.info["cmdline"]
         and p.info["cwd"] is not None
         and Path(p.info["cwd"]).resolve() == ROOT
     ]

@@ -357,16 +357,35 @@ def test_a_browser_that_stopped_reading_is_dropped_others_keep_beats_and_the_sto
     )
 
 
+def test_the_stop_finds_the_daemon_and_the_console_as_they_are_started():
+    """Each mark is one argument of the command that starts it."""
+    assert launch.CONSOLE_MARK in launch.CONSOLE
+    batch = (launch.ROOT / "start_capture_daemon.bat").read_text(encoding="utf-8")
+    assert f"-m {launch.DAEMON_MARK}\n" in batch.replace("\r\n", "\n")
+
+
 def test_a_shell_that_only_mentions_the_console_is_not_the_console():
-    """A shell in the checkout whose command names the console's mark, as a process search does:
-    `launch.py stop` once sent it the console's Ctrl+Break and ended in a traceback."""
+    """A shell and a Python in the checkout whose command text names the console's mark, as a
+    process search does, are not the console, and a stop leaves them alone."""
     wait = ["cmd", "/c", "ping -n 30 127.0.0.1 >nul & rem server:app"]
     if sys.platform != "win32":
-        wait = ["sh", "-c", "sleep 30 # server:app"]
+        wait = ["sh", "-c", "sleep 30; echo server:app"]
+    script = "import time; time.sleep(30)  # server:app"
     shell = subprocess.Popen(wait, cwd=launch.ROOT)
+    python = subprocess.Popen([sys.executable, "-c", script], cwd=launch.ROOT)
     try:
-        assert shell.pid not in [p.pid for p in launch.running(launch.CONSOLE_MARK)]
+        end = time.monotonic() + 10
+        for p in (shell, python):
+            while time.monotonic() < end and launch.CONSOLE_MARK not in " ".join(
+                psutil.Process(p.pid).cmdline()
+            ):
+                time.sleep(0.05)
+        found = {p.pid for p in launch.running(launch.CONSOLE_MARK)}
+        assert launch.CONSOLE_MARK in " ".join(psutil.Process(shell.pid).cmdline())
+        assert not found & {shell.pid, python.pid}
     finally:
+        python.kill()
+        python.wait(30)
         shell.kill()
         shell.wait(30)
 
