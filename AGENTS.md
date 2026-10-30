@@ -10,7 +10,8 @@ producers), `docs/ARCHITECTURE.md` (where code lives), `ACTIVE_PROGRAM.md` (the 
 `docs/PRACTICES.md` (the Schwab field list). Rules for one area load with its files
 (`.claude/rules/`); procedures are skills (`.claude/skills/`).
 
-Every requirement here, in `.claude/rules/` and in `docs/DATA_FLOW.md` names what enforces it: a
+Every requirement in this file's sections after the Shared rules (whose Standard of care is judgment,
+not things to build), in `.claude/rules/` and in `docs/DATA_FLOW.md` names what enforces it: a
 test, hook or required check, or "no machine check" and the item in `ACTIVE_PROGRAM.md` (an ENF item
 or a SHAPE step) that builds one. Enforced by: no machine check — ENF-12.
 
@@ -109,7 +110,7 @@ then the rule binds with no machine check.
   checks judge a pull request's change only (`check_end_to_end`, `check_one_reader`,
   `check_credential_leak`, `check_eol_style_invariant`, `check_fails_before`,
   `check_no_new_patches`, each with `--base`); step 7 deletes or replaces them. The first bullet:
-  no machine check.
+  no machine check — ENF-12.
 
 ## Before writing code
 
@@ -189,7 +190,8 @@ then the rule binds with no machine check.
   or DO NOT MERGE, a destructive data action, and a product decision code cannot settle. Say in chat
   what a guarded action is for before running it. Enforced by: `tools/operator_yes_guard.py` asks
   Allow/Deny for the daemon or console starts and stops (in regular hours or an unknown session),
-  machine restarts and merges, and refuses the kills of production, in the forms its tests cover.
+  machine restarts and merges, and refuses the kills of production, in the forms its tests cover
+  (`tests/test_operator_yes_guard_v1.py`); the rest — ENF-12.
 - The production checkout `EdWebConsole` stays `main == origin/main` and moves only by a
   fast-forward (`git pull --ff-only`, or `launch.bring_to_origin_main` at a start); work happens in a
   worktree. Enforced by: `tools/process_lock_guard.py` (`tests/test_operating_process_lock_v1.py`,
