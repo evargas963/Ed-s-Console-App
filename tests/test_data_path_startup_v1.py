@@ -369,7 +369,7 @@ def test_a_module_that_fails_to_load_leaves_its_reason_in_the_daemons_log(tmp_pa
         encoding="utf-8",
     )
     env = {**os.environ, "PYTHONPATH": str(site), "ED_RUNTIME_ROOT": str(tmp_path)}
-    module = ["-m", "app.market_data.schwab.streaming.capture"]
+    module = ["-m", "app.market_data.schwab.streaming.capture_main"]
     if sys.platform == "win32":
         cmd = [str(Path(sys.executable).with_name("pythonw.exe")), *module]
     else:
@@ -400,7 +400,7 @@ def test_a_daemon_whose_live_ui_port_is_held_ends_at_once_with_why_and_its_windo
             "SCHWAB_TOKEN_PATH": str(tmp_path / "missing_token.json"),
         }
         done = subprocess.run(
-            [sys.executable, "-m", "app.market_data.schwab.streaming.capture"],
+            [sys.executable, "-m", "app.market_data.schwab.streaming.capture_main"],
             cwd=REPO,
             env=env,
             capture_output=True,

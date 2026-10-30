@@ -15,6 +15,7 @@ import sys
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
+import runtime_layout
 from app.market_data.schwab.streaming import capture
 
 REPO = Path(__file__).resolve().parent.parent
@@ -37,7 +38,7 @@ def test_the_day_changes_while_another_process_holds_the_log_open(tmp_path):
             "-c",
             "import sys, time; f = open(sys.argv[1], 'a'); print('open', flush=True); "
             "time.sleep(60)",
-            str(capture.log_path(tmp_path, before.date())),
+            str(runtime_layout.daemon_log_path(tmp_path, before.date())),
         ],
         stdout=subprocess.PIPE,
         text=True,
@@ -50,10 +51,11 @@ def test_the_day_changes_while_another_process_holds_the_log_open(tmp_path):
         holder.kill()
         holder.wait()
     assert (
-        capture.log_path(tmp_path, before.date()).read_text(encoding="utf-8") == "before midnight\n"
+        runtime_layout.daemon_log_path(tmp_path, before.date()).read_text(encoding="utf-8")
+        == "before midnight\n"
     )
     assert (
-        capture.log_path(tmp_path, date(2026, 10, 9)).read_text(encoding="utf-8")
+        runtime_layout.daemon_log_path(tmp_path, date(2026, 10, 9)).read_text(encoding="utf-8")
         == "after midnight\n"
     ), "a line after midnight did not reach the new day's file"
 
@@ -65,16 +67,17 @@ def test_a_days_file_the_disk_will_not_open_never_raises_where_the_daemon_logs(t
     before = datetime(2026, 10, 8, 23, 59, 59)
     handler = capture.DailyLog(tmp_path)
     _line(handler, before, "before midnight")
-    capture.log_path(tmp_path, date(2026, 10, 9)).mkdir()
+    runtime_layout.daemon_log_path(tmp_path, date(2026, 10, 9)).mkdir()
     _line(handler, before + timedelta(seconds=2), "the file will not open")
-    capture.log_path(tmp_path, date(2026, 10, 9)).rmdir()
+    runtime_layout.daemon_log_path(tmp_path, date(2026, 10, 9)).rmdir()
     _line(handler, before + timedelta(seconds=3), "after midnight")
     handler.close()
     assert (
-        capture.log_path(tmp_path, before.date()).read_text(encoding="utf-8") == "before midnight\n"
+        runtime_layout.daemon_log_path(tmp_path, before.date()).read_text(encoding="utf-8")
+        == "before midnight\n"
     )
     assert (
-        capture.log_path(tmp_path, date(2026, 10, 9)).read_text(encoding="utf-8")
+        runtime_layout.daemon_log_path(tmp_path, date(2026, 10, 9)).read_text(encoding="utf-8")
         == "after midnight\n"
     )
 
@@ -84,14 +87,14 @@ def test_the_newest_45_days_are_kept(tmp_path):
     the new day's among them."""
     days = [date(2026, 8, 1) + timedelta(days=i) for i in range(50)]
     for d in days:
-        capture.log_path(tmp_path, d).write_text(f"{d}\n", encoding="utf-8")
+        runtime_layout.daemon_log_path(tmp_path, d).write_text(f"{d}\n", encoding="utf-8")
     handler = capture.DailyLog(tmp_path)
     _line(handler, datetime(2026, 9, 20, 9, 0), "the next day")
     handler.close()
     kept = sorted(tmp_path.glob("stream_capture.*.log"))
     assert capture.LOG_DAYS_KEPT == 45
-    assert kept == [capture.log_path(tmp_path, d) for d in days[6:]] + [
-        capture.log_path(tmp_path, date(2026, 9, 20))
+    assert kept == [runtime_layout.daemon_log_path(tmp_path, d) for d in days[6:]] + [
+        runtime_layout.daemon_log_path(tmp_path, date(2026, 9, 20))
     ]
 
 

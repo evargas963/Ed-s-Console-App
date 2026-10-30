@@ -23,6 +23,7 @@ before importing it.
 from __future__ import annotations
 
 import os
+from datetime import date
 from pathlib import Path
 
 SOURCE_ROOT = Path(__file__).resolve().parent
@@ -91,6 +92,11 @@ def data_dir() -> Path:
 def logs_dir() -> Path:
     """`<runtime>/logs` — the server log sink and other process logs."""
     return RUNTIME_ROOT / "logs"
+
+
+def daemon_log_path(folder: Path, day: date) -> Path:
+    """The capture daemon's log file for `day` (local date) in `folder`."""
+    return folder / f"stream_capture.{day:%Y-%m-%d}.log"
 
 
 def live_binding_error(

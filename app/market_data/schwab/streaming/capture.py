@@ -1,6 +1,6 @@
 """The capture daemon: the ONE Schwab streaming connection (Schwab allows one per account).
 
-    python -m app.market_data.schwab.streaming.capture   (launch.py -> start_capture_daemon.bat)
+    python -m app.market_data.schwab.streaming.capture_main   (launch.py -> start_capture_daemon.bat)
 
 It is the only part of Ed Console that talks to Schwab. Beside the loop below, its chain sweep
 (run_chains) fetches full option chains on its own thread, one request at a time, without end:
@@ -58,31 +58,8 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[4]
-sys.path.insert(0, str(ROOT))
-
-import runtime_layout  # noqa: E402  (the standard library only)
-
-
-def log_path(folder: Path, day: date) -> Path:
-    """The daemon's log file for `day` (local date) in `folder`."""
-    return folder / f"stream_capture.{day:%Y-%m-%d}.log"
-
-
-#: Under pythonw there is no error output: from here until the log starts (_start_log) it is the
-#: day's log file, so a module below that fails to load leaves its reason there.
-_EARLY_ERRORS = None
-if sys.stderr is None:
-    runtime_layout.logs_dir().mkdir(parents=True, exist_ok=True)
-    _EARLY_ERRORS = sys.stderr = open(
-        log_path(runtime_layout.logs_dir(), date.today()), "a", encoding="utf-8", buffering=1
-    )
-    print(
-        f"{time.strftime('%Y-%m-%d %H:%M:%S')} capture daemon loading (pid {os.getpid()})",
-        file=sys.stderr,
-    )
-
-from stream_spine import (  # noqa: E402
+import runtime_layout
+from stream_spine import (
     LATEST,
     LOG,
     CaptureWriter,
@@ -97,19 +74,19 @@ from stream_spine import (  # noqa: E402
     resolve_stream_db_path,
     subscription_msg,
 )
-import psutil  # noqa: E402
-from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT, serve_live_push  # noqa: E402
-from app.market_data.schwab.streaming.live_ui import serve_live_ui  # noqa: E402
-from calibration.complete_chain_capture import ChainSweep  # noqa: E402
-from config import build_config, load_dotenv_file  # noqa: E402
-from db_authority import canonical_console_db_path  # noqa: E402
-from instrument_identity import ticker_storage_key  # noqa: E402
-import live_market_plane as lmp  # noqa: E402
-import live_price_rows  # noqa: E402
-from math_exposure_core import gamma_reported  # noqa: E402
-from numeric_contract import schwab_number  # noqa: E402
-from schwab.streaming import StreamClient  # noqa: E402
-from schwab_client import build_client_from_token, safe_get_quotes  # noqa: E402
+import psutil
+from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT, serve_live_push
+from app.market_data.schwab.streaming.live_ui import serve_live_ui
+from calibration.complete_chain_capture import ChainSweep
+from config import build_config, load_dotenv_file
+from db_authority import canonical_console_db_path
+from instrument_identity import ticker_storage_key
+import live_market_plane as lmp
+import live_price_rows
+from math_exposure_core import gamma_reported
+from numeric_contract import schwab_number
+from schwab.streaming import StreamClient
+from schwab_client import build_client_from_token, safe_get_quotes
 from time_et import (
     ET,
     ct_label,
@@ -117,8 +94,8 @@ from time_et import (
     option_market_open,
     options_closed_at,
     sessions_since,
-)  # noqa: E402
-from websockets.exceptions import ConnectionClosed  # noqa: E402
+)
+from websockets.exceptions import ConnectionClosed
 
 log = logging.getLogger("capture")
 
@@ -1022,7 +999,8 @@ LOG_DAYS_KEPT = 45
 
 
 class DailyLog(logging.StreamHandler):
-    """The daemon's log in `folder`, one file a day (log_path), by each line's own time: the first
+    """The daemon's log in `folder`, one file a day (runtime_layout.daemon_log_path), by each
+    line's own time: the first
     line of a day opens that day's file, then the files past the newest LOG_DAYS_KEPT are deleted.
     No file is renamed, so another process holding one open never stops a line; a file it cannot
     delete (held open) is logged and tried again the next day. A day's file the disk will not open
@@ -1044,7 +1022,7 @@ class DailyLog(logging.StreamHandler):
         super().emit(record)
 
     def _open(self, day: date) -> None:
-        stream = open(log_path(self.folder, day), "a", encoding="utf-8")
+        stream = open(runtime_layout.daemon_log_path(self.folder, day), "a", encoding="utf-8")
         if self.day is not None:
             self.stream.close()
         self.day, self.stream = day, stream
@@ -1066,15 +1044,15 @@ class DailyLog(logging.StreamHandler):
         super().close()
 
 
-def _start_log() -> None:
-    """Every line, with its time to the millisecond, to the day's log file (log_path) under
-    <runtime>/logs, and to the console if any. Under pythonw the log file held as the error output
-    since the first line (_EARLY_ERRORS) is closed first; from here an error reaches the log
-    through the handler (main logs one that ends the daemon)."""
-    global _EARLY_ERRORS
-    if _EARLY_ERRORS is not None:
-        _EARLY_ERRORS.close()
-        _EARLY_ERRORS = sys.stderr = None
+def _start_log(early_errors=None) -> None:
+    """Every line, with its time to the millisecond, to the day's log file
+    (runtime_layout.daemon_log_path) under <runtime>/logs, and to the console if any. Under
+    pythonw the log file held as the error output since the daemon's start (capture_main,
+    `early_errors`) is closed first; from here an error reaches the log through the handler (main
+    logs one that ends the daemon)."""
+    if early_errors is not None:
+        early_errors.close()
+        sys.stderr = None
     folder = runtime_layout.logs_dir()
     folder.mkdir(parents=True, exist_ok=True)
     handlers: list[logging.Handler] = [DailyLog(folder)]
@@ -1268,7 +1246,7 @@ async def run() -> int:
     return EXIT_STOPPED
 
 
-def main() -> int:
+def main(early_errors=None) -> int:
     if sys.argv[1:]:  # everything it needs comes from the console; no switch can move it
         print(f"the capture daemon takes no arguments (got {sys.argv[1:]})", file=sys.stderr)
         return 2
@@ -1277,7 +1255,7 @@ def main() -> int:
     if binding is not None:
         print(f"CAPTURE DAEMON REFUSED: {binding}", file=sys.stderr, flush=True)
         return 2
-    _start_log()
+    _start_log(early_errors)
     fd, lock = acquire_owner_lock()
     try:
         return asyncio.run(run())
