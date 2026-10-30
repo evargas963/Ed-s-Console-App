@@ -100,7 +100,7 @@ def test_each_start_brings_the_checkout_to_origin_main_or_says_why_it_cannot(tmp
     ), "the start ended on git"
 
 
-def _window(argv: "list[str]") -> subprocess.Popen:
+def _window(argv: list[str]) -> subprocess.Popen:
     """`argv` in a console window of its own, hidden."""
     hidden = subprocess.STARTUPINFO()
     hidden.dwFlags, hidden.wShowWindow = subprocess.STARTF_USESHOWWINDOW, 0
@@ -116,7 +116,7 @@ def _until(path: Path, seconds: float = 60.0) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def _batch(tmp_path: Path, console_argv: "list[str]", env: "dict | None" = None) -> Path:
+def _batch(tmp_path: Path, console_argv: list[str], env: dict | None = None) -> Path:
     """A batch file that ends as start_ed_console.bat does, its launcher starting `console_argv`
     with launch.start_console and writing the console's process id to tmp_path/console.pid."""
     launcher = tmp_path / "launcher.py"
@@ -159,7 +159,7 @@ def test_the_stop_ends_the_console_and_leaves_no_window_waiting(tmp_path):
         window.kill()
 
 
-def _real_console(tmp_path: Path) -> "tuple[subprocess.Popen, int]":
+def _real_console(tmp_path: Path) -> tuple[subprocess.Popen, int]:
     """The real console, offline on a free port with a runtime root of its own, started by the
     batch file in a window of its own; healthy before this returns its window and process id."""
     tmp_path.mkdir()

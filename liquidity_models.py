@@ -10,7 +10,6 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional
 
 from numeric_contract import schwab_count, schwab_number
 
@@ -57,7 +56,7 @@ def volume_profile(
     value_area_pct: float = 0.70,
     tick_size: float = 0.01,
     ndigits: int = 4,
-) -> Optional[VolumeProfile]:
+) -> VolumeProfile | None:
     """The volume profile built by DISTRIBUTING each bar across [low, high], with its POC and
     value area; None when no usable volume exists -- absence reads as absence, never a
     fabricated level.
@@ -233,7 +232,7 @@ class SnapshotOutput:
     session_date: str
     snapshot_type: SnapshotType
     zones: list[Zone] = field(default_factory=list)
-    summary: Optional[SnapshotSummary] = None
+    summary: SnapshotSummary | None = None
     raw_levels: dict = field(default_factory=dict)  # for debugging/audit
 
 

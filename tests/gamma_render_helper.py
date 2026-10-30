@@ -16,7 +16,7 @@ import server
 
 def drawn(
     tk: str, contracts: list, spot: float, now: datetime, tmp_path: Path
-) -> "tuple[dict, dict]":
+) -> tuple[dict, dict]:
     """`contracts` captured at `now` with Schwab's underlying price `spot`, published, served for
     every strike and column and drawn: (surface, {(strike, expiry): text})."""
     node = shutil.which("node")

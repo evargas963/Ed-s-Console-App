@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -20,7 +20,7 @@ ET = ZoneInfo("America/New_York")
 
 
 def _bars(start: datetime, minutes: int) -> list[dict]:
-    t0 = start.astimezone(timezone.utc).timestamp()
+    t0 = start.astimezone(UTC).timestamp()
     return [
         {"t": t0 + 60 * i, "o": 100 + i, "h": 100.5 + i, "l": 99.5 + i, "c": 100.25 + i, "v": 10}
         for i in range(minutes)

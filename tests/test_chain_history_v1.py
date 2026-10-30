@@ -111,7 +111,7 @@ def _sweep(tmp_path, schwab, clock):
     return sweep, published, (lambda: client)
 
 
-def _rotate(sweep, client) -> "set[str]":
+def _rotate(sweep, client) -> set[str]:
     return sweep.rotation(client, ["SPY"], threading.Event())
 
 

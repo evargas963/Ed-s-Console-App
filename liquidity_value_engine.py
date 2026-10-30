@@ -18,7 +18,6 @@ import struct
 import threading
 from collections import defaultdict
 from datetime import date, datetime
-from typing import Optional
 
 from instrument_identity import ticker_storage_key
 from numeric_contract import float_finite_or_none, float_positive_or_none
@@ -42,7 +41,7 @@ from time_et import ET, session
 LEVELS_PRIOR_SESSION_MIN_BARS: int = 300
 
 
-def _regular(d: date) -> "tuple[datetime, datetime] | None":
+def _regular(d: date) -> tuple[datetime, datetime] | None:
     """`d`'s regular session (open, close) as Schwab's /markets sent it (time_et.session); None:
     no regular session that day, or Schwab's answer for it is not held."""
     s = session(d.isoformat())
@@ -83,7 +82,7 @@ def liquidity_zone_tradeable_score(
     n_opt: int,
     inside: bool,
     dist_pen: float,
-    spot: Optional[float] = None,
+    spot: float | None = None,
 ) -> float:
     """Spot-normalized liquidity zone tradeability score."""
     if spot is None:
@@ -114,7 +113,7 @@ def bars_from_candles(candles) -> list[dict]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def prior_trading_session_date(bars_norm: list, session_date: date) -> Optional[date]:
+def prior_trading_session_date(bars_norm: list, session_date: date) -> date | None:
     """The most recent date BEFORE `session_date` that actually traded an RTH session.
 
     THE single definition of "the prior session", for both the
@@ -126,7 +125,7 @@ def prior_trading_session_date(bars_norm: list, session_date: date) -> Optional[
     closes included) is the evidence a session happened, so an ad-hoc closure with no bars is skipped.
     Fail-closed: no prior RTH date in the buffer returns None, never a guessed date.
     """
-    prior: Optional[date] = None
+    prior: date | None = None
     for b in bars_norm:
         dt = b["_dt"]
         d = dt.date()
@@ -165,7 +164,7 @@ def get_previous_day_levels(
 def get_overnight_levels(
     bars_norm: list,
     session_date: date,
-    prev_session: Optional[date],
+    prev_session: date | None,
 ) -> dict:
     """Overnight range over normalized bars (bars_from_candles): the continuous interval from the
     prior session's (`prev_session`, prior_trading_session_date) regular close to this session's
@@ -289,7 +288,7 @@ def compute_volume_profile_levels(
     bars_norm: list,
     session_date: date,
     config: PlaybookConfig,
-) -> Optional[VolumeProfile]:
+) -> VolumeProfile | None:
     """The current day's volume profile with its POC, VAH, VAL, from normalized bars
     (bars_from_candles). RTH only, no lookahead."""
     return volume_profile(
@@ -368,7 +367,7 @@ def build_premarket_snapshot(
     session_date: date,
     config: PlaybookConfig,
     *,
-    canonical: "PriceLevelSnapshot",
+    canonical: PriceLevelSnapshot,
 ) -> SnapshotOutput:
     """Premarket: PDH/PDL/PDC, PD POC/VAH/VAL, overnight high/low. No same-day RTH.
 
@@ -466,9 +465,9 @@ def build_premarket_snapshot(
 
 
 def _classify_value_state_and_vwap_relation(
-    poc: Optional[float],
-    prev_pd_poc: Optional[float],
-    vwap: Optional[float],
+    poc: float | None,
+    prev_pd_poc: float | None,
+    vwap: float | None,
 ) -> tuple[str, str, str]:
     """Value-area shift + VWAP-vs-value relation + auction interpretation."""
     value_state = "unchanged"
@@ -551,7 +550,7 @@ def _classify_live_cluster(tags: list[str], orb: dict) -> tuple[ZoneType, str]:
     return ZoneType.PIVOT_VALUE, "Unclassified session zone"
 
 
-def _phase2a_families_from_canonical(canonical: "PriceLevelSnapshot"):
+def _phase2a_families_from_canonical(canonical: PriceLevelSnapshot):
     """Unpack the canonical snapshot into the family shapes, values UNCHANGED.
 
     Absent stays absent: a level missing from the snapshot is missing here, never
@@ -595,9 +594,9 @@ def build_live_snapshot(
     ticker: str,
     config: PlaybookConfig,
     *,
-    canonical: "PriceLevelSnapshot",
+    canonical: PriceLevelSnapshot,
     now: datetime,
-    extra_levels: Optional[list[tuple[float, str]]] = None,
+    extra_levels: list[tuple[float, str]] | None = None,
 ) -> SnapshotOutput:
     """
     The session's zones from the one materialized price-level snapshot (``canonical``), with
@@ -807,7 +806,7 @@ class PriceLevelValue:
         producer: str,
         window: str,
         vendor_basis: str,
-        as_of_ts_utc: Optional[float],
+        as_of_ts_utc: float | None,
         generation: int,
     ) -> None:
         self.level_id = level_id
@@ -878,16 +877,16 @@ class PriceLevelSnapshot:
         session_date: date,
         generation: int,
         bar_source: str,
-        as_of_ts_utc: Optional[float],
+        as_of_ts_utc: float | None,
         produced_ts_utc: float,
         levels: dict,
         vwap_path: list,
         families_absent: list,
         degraded: list,
         bars_used: int,
-        vwap_series: Optional[list] = None,
+        vwap_series: list | None = None,
         session_rth_positive_volume_bars: int = 0,
-        volume_profile: Optional[VolumeProfile] = None,
+        volume_profile: VolumeProfile | None = None,
     ) -> None:
         self.ticker = ticker
         self.session_date = session_date
@@ -904,7 +903,7 @@ class PriceLevelSnapshot:
         self.session_rth_positive_volume_bars = int(session_rth_positive_volume_bars)
         self.volume_profile = volume_profile  # the session's profile the value area is read from
 
-    def price(self, level_id: str) -> Optional[float]:
+    def price(self, level_id: str) -> float | None:
         """The canonical value, or None. Absence is absence — never spot, zero or a sibling."""
         lv = self.levels.get(level_id)
         return None if lv is None else lv.price
@@ -953,7 +952,7 @@ def build_price_level_snapshot(
     bars_norm: list,
     *,
     bar_source: str,
-    config: Optional[PlaybookConfig] = None,
+    config: PlaybookConfig | None = None,
     generation: int = 0,
 ) -> PriceLevelSnapshot:
     """THE level producer, from normalized bars (bars_from_candles). The only production caller
@@ -973,7 +972,7 @@ def build_price_level_snapshot(
     vwap_path: list[tuple[float, float]] = []
     vwap_series: list[tuple] = []
 
-    as_of: Optional[float] = max((b["_dt"].timestamp() for b in bars_norm), default=None)
+    as_of: float | None = max((b["_dt"].timestamp() for b in bars_norm), default=None)
 
     basis = f"1m bars ({bar_source}); Schwab streamed bars"
 
@@ -1172,7 +1171,7 @@ def materialize_price_level_snapshot(
     bars_norm: list,
     *,
     bar_source: str,
-    config: Optional[PlaybookConfig] = None,
+    config: PlaybookConfig | None = None,
 ) -> PriceLevelSnapshot:
     """Materialize once per generation from normalized bars (bars_from_candles); return the SAME
     object within a generation.

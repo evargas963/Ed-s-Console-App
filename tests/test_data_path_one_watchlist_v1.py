@@ -67,7 +67,7 @@ class _Schwab:
         self.rest.close()
 
 
-def _answers(log) -> "list[tuple[str, str, int, str]]":
+def _answers(log) -> list[tuple[str, str, int, str]]:
     """(service, command, code, Schwab's message) of each answer the daemon recorded, in order."""
     out = []
     while not log.queue.empty():
@@ -77,7 +77,7 @@ def _answers(log) -> "list[tuple[str, str, int, str]]":
     return out
 
 
-def _market(bus, ticker: str, contracts: "list[dict]", price: float, ts: float) -> None:
+def _market(bus, ticker: str, contracts: list[dict], price: float, ts: float) -> None:
     """`ticker`'s chain and price on the daemon's bus, as the chain sweep and the stream publish
     them: the option rule's inputs."""
     for topic, msg in chain_messages(ticker, contracts, ts, price, ts):

@@ -94,8 +94,8 @@ def logs_dir() -> Path:
 
 
 def live_binding_error(
-    source_root: "Path | None" = None, runtime_root: "Path | None" = None
-) -> "str | None":
+    source_root: Path | None = None, runtime_root: Path | None = None
+) -> str | None:
     """Why THIS checkout may not run a LIVE process (the console server, the capture daemon)
     against the runtime root -- or None when it may.
 

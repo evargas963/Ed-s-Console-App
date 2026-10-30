@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import math
 from datetime import datetime
-from typing import Dict, List
 
 from numeric_contract import schwab_count, schwab_number
 from math_exposure_core import (
@@ -109,13 +108,13 @@ def bs_charm(
 
 
 def compute_charm_by_strike(
-    contracts: List[dict],
+    contracts: list[dict],
     spot: float,
     *,
     now: datetime,
-    parsed: "list | None" = None,
+    parsed: list | None = None,
     product: str = "EQO",
-) -> Dict[float, dict]:
+) -> dict[float, dict]:
     """Per-strike dealer CHARM exposure, in delta-shares per day.
 
     Charm exposure is standard institutional practice (SpotGamma, Unusual Whales and
@@ -127,7 +126,7 @@ def compute_charm_by_strike(
 
     Units: charm/year * OI * multiplier / 365 -> delta-shares per day.
     """
-    out: Dict[float, dict] = {}
+    out: dict[float, dict] = {}
     if not contracts or not spot or spot <= 0:
         return out
     for strike, oi, mult, t_years, sigma, sign in (
@@ -146,11 +145,11 @@ def compute_charm_by_strike(
     return out
 
 
-def merge_charm_maps(maps: Dict[str, Dict[float, dict]]) -> Dict[float, dict]:
+def merge_charm_maps(maps: dict[str, dict[float, dict]]) -> dict[float, dict]:
     """One strike map from per-expiry maps of the same function. A strike listed on more
     than one expiry is the sum of those expiries, +call/−put, the same as one call over
     every contract."""
-    out: Dict[float, dict] = {}
+    out: dict[float, dict] = {}
     for part in maps.values():
         for strike, bucket in part.items():
             cur = out.get(strike)
@@ -168,7 +167,7 @@ def merge_charm_maps(maps: Dict[str, Dict[float, dict]]) -> Dict[float, dict]:
 
 
 def pick_charm_wall_strikes(
-    charm_by_strike: Dict[float, dict],
+    charm_by_strike: dict[float, dict],
 ) -> tuple[float | None, float | None]:
     """(call_charm_wall, put_charm_wall) — strikes of maximum call-side and put-side
     charm exposure. These are the strikes whose delta decay exerts the most mechanical
@@ -188,7 +187,7 @@ NO_EXPIRY_SESSION = "no_markets_session_for_expiry"
 
 
 def contract_inputs(
-    contracts: List[dict], now: datetime, product: str = "EQO"
+    contracts: list[dict], now: datetime, product: str = "EQO"
 ) -> tuple[list, dict]:
     """(priced, unpriced): _contract_inputs for every contract with open interest, parsed once
     and shared by the gamma profile and charm (compute_terrain); `unpriced` counts the
@@ -260,8 +259,8 @@ GAMMA_PROFILE_STEPS = 240
 
 
 def compute_gamma_profile(
-    contracts: List[dict], spot: float, *, now: datetime, parsed: "list | None" = None
-) -> List[tuple[float, float]]:
+    contracts: list[dict], spot: float, *, now: datetime, parsed: list | None = None
+) -> list[tuple[float, float]]:
     """Total dealer gamma exposure (per 1% move, dollars) at each candidate price.
 
     One dealer convention for every instrument: +call / -put. Returns [(price, total_gex)]
@@ -285,7 +284,7 @@ def compute_gamma_profile(
 _GAMMA_PROFILE_BLOCK = 32
 
 
-def _gamma_profile_totals(parsed: list, grid: List[float]) -> List[float]:
+def _gamma_profile_totals(parsed: list, grid: list[float]) -> list[float]:
     """sum over contracts of side_sign * bs_gamma(s) * oi * mult * s^2 * 0.01, per s in grid.
 
     The same Black-Scholes gamma bs_gamma computes (r = q = 0, as every production caller
@@ -301,7 +300,7 @@ def _gamma_profile_totals(parsed: list, grid: List[float]) -> List[float]:
     drift = 0.5 * sigma * sigma * t_years
     weight = side * oi * mult
     s_all = np.asarray(grid, dtype=float)
-    out: List[float] = []
+    out: list[float] = []
     with np.errstate(all="ignore"):
         for start in range(0, len(s_all), _GAMMA_PROFILE_BLOCK):
             s = s_all[start : start + _GAMMA_PROFILE_BLOCK, None]
@@ -312,7 +311,7 @@ def _gamma_profile_totals(parsed: list, grid: List[float]) -> List[float]:
     return out
 
 
-def gamma_flip_from_profile(profile: List[tuple[float, float]], spot: float) -> float | None:
+def gamma_flip_from_profile(profile: list[tuple[float, float]], spot: float) -> float | None:
     """Interpolated price where net dealer gamma changes SIGN — in either direction.
 
     Both directions are boundaries; the direction only changes what lies on each side,
@@ -352,7 +351,7 @@ GSF_STATE_BELOW_SUPPORT = "BELOW_SUPPORT"
 GSF_STATE_UNAVAILABLE = "UNAVAILABLE"
 
 
-def _interp_profile_at(profile: List[tuple[float, float]], s: float) -> float | None:
+def _interp_profile_at(profile: list[tuple[float, float]], s: float) -> float | None:
     """Linear interpolation of net GEX$ at price s on an ascending profile."""
     if not profile:
         return None
@@ -370,7 +369,7 @@ def _interp_profile_at(profile: List[tuple[float, float]], s: float) -> float | 
 
 
 def compute_gamma_support_levels(
-    profile: List[tuple[float, float]],
+    profile: list[tuple[float, float]],
     spot: float | None,
     *,
     phi: float = GSF_PHI,
@@ -584,7 +583,7 @@ GAMMA_FLIP_MIN_SPAN_PCT = 0.05
 GAMMA_FLIP_TRUSTED_SPAN_PCT = 0.10
 
 
-def gamma_at_price(profile: List[tuple[float, float]], price: float) -> float | None:
+def gamma_at_price(profile: list[tuple[float, float]], price: float) -> float | None:
     """Net dealer gamma at `price`, linearly interpolated from the profile.
 
     This -- not the flip -- is what determines the regime: positive means dealers are net
@@ -615,7 +614,7 @@ def gamma_at_price(profile: List[tuple[float, float]], price: float) -> float | 
 
 
 def compute_gamma_flip_v2(
-    contracts: List[dict], spot: float, *, profile: List[tuple[float, float]]
+    contracts: list[dict], spot: float, *, profile: list[tuple[float, float]]
 ) -> tuple[float | None, str, dict]:
     """Canonical gamma flip (profile zero-crossing) plus a CHAIN-COVERAGE verdict.
 
@@ -705,7 +704,7 @@ def compute_gamma_flip_v2(
 # ── Max Pain — OI-weighted expiry settlement magnet ────────────────────────────
 
 
-def compute_max_pain(exposures_by_strike: Dict[float, dict]) -> float | None:
+def compute_max_pain(exposures_by_strike: dict[float, dict]) -> float | None:
     """
     Classic max pain: settlement strike that minimizes total ITM option holder payout.
 

@@ -75,7 +75,7 @@ def _view(pages: list, tk: str = TK) -> None:
     pages.append((tk, push_changes.subscribe(tk)))
 
 
-def _daemon(held=(), *, socket_open=True, price: "float | None" = _SPOT, at: float = _T) -> None:
+def _daemon(held=(), *, socket_open=True, price: float | None = _SPOT, at: float = _T) -> None:
     """The daemon's status at `at` (the chain's publication time unless given): Schwab's socket
     open, TK held on LEVELONE_EQUITIES and `held` on LEVELONE_OPTIONS; and TK's price row as the
     daemon pushes it (None: no price)."""

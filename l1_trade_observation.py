@@ -16,7 +16,7 @@ are not native trade identity.
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 from numeric_contract import float_finite_or_none, schwab_count, schwab_number
 
@@ -30,27 +30,27 @@ VENDOR_LAST_PRICE = "LAST_PRICE"
 VENDOR_LAST_SIZE = "LAST_SIZE"
 
 
-def _schwab_int(val: Any) -> Optional[int]:
+def _schwab_int(val: Any) -> int | None:
     v = schwab_number(val)
     return int(v) if v is not None else None
 
 
 def vendor_triple(
     trade_ms: Any, price: Any, size: Any
-) -> tuple[Optional[int], Optional[float], Optional[float]]:
+) -> tuple[int | None, float | None, float | None]:
     """Vendor last-print key. Not a native trade id."""
     return (_schwab_int(trade_ms), schwab_number(price), schwab_count(size))
 
 
 def is_adjacent_restatement(
-    prev: Optional[tuple[Any, ...]],
+    prev: tuple[Any, ...] | None,
     curr: tuple[Any, ...],
 ) -> bool:
     """True only when the immediately previous observation equals this vendor triple."""
     return prev is not None and prev == curr
 
 
-def extract_vendor_print(item: dict[str, Any]) -> Optional[dict[str, Any]]:
+def extract_vendor_print(item: dict[str, Any]) -> dict[str, Any] | None:
     """Pull LEVELONE last-print fields. Missing LAST_PRICE is not a trade observation."""
     if not isinstance(item, dict):
         return None
@@ -87,7 +87,7 @@ def iter_content_prints(content_items: list) -> list[dict[str, Any]]:
 def filter_adjacent_restatements(prints: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Keep distinct observations; drop only adjacent identical vendor triples."""
     out: list[dict[str, Any]] = []
-    prev: Optional[tuple[Any, ...]] = None
+    prev: tuple[Any, ...] | None = None
     for p in prints:
         key = vendor_triple(p.get("time_millis"), p.get("price"), p.get("size"))
         if is_adjacent_restatement(prev, key):
@@ -107,10 +107,10 @@ def canonical_tape_prints(content_items: list) -> list[dict[str, Any]]:
 
 
 def tick_rule_signed_size(
-    prev_price: Optional[float],
-    price: Optional[float],
-    size: Optional[float],
-) -> Optional[float]:
+    prev_price: float | None,
+    price: float | None,
+    size: float | None,
+) -> float | None:
     """PROXY tick-rule signed size. Not native aggressor. None without a size or a price to
     compare (Schwab sent none); a size of 0 signs 0."""
     if size is None or price is None or prev_price is None:
@@ -124,8 +124,8 @@ def tick_rule_signed_size(
 
 def iter_signed_cum_points(
     prints: list[dict[str, Any]],
-    window_sec: Optional[float] = None,
-    now_ms: Optional[float] = None,
+    window_sec: float | None = None,
+    now_ms: float | None = None,
 ) -> list[tuple[float, float]]:
     """ONE signed-size walk. x is vendor seconds when present, else receive index.
 
@@ -136,7 +136,7 @@ def iter_signed_cum_points(
     cutoff = None if window_sec is None else now_ms - int(window_sec * 1000)
     points: list[tuple[float, float]] = []
     cum = 0.0
-    prev_price: Optional[float] = None
+    prev_price: float | None = None
     for i, p in enumerate(prints):
         t = p.get("time_millis")
         price = p.get("price")
@@ -162,7 +162,7 @@ def iter_signed_cum_points(
     return points
 
 
-def compute_cum_delta_proxy(prints: list[dict[str, Any]]) -> Optional[float]:
+def compute_cum_delta_proxy(prints: list[dict[str, Any]]) -> float | None:
     """The tick-rule signed size summed over every print with a size (a size of 0 adds 0);
     None when no print carried one. The prints it sums are cum_delta_window's."""
     points = iter_signed_cum_points(prints)
@@ -171,7 +171,7 @@ def compute_cum_delta_proxy(prints: list[dict[str, Any]]) -> Optional[float]:
     return points[-1][1]
 
 
-def cum_delta_window(prints: list[dict[str, Any]]) -> tuple[Optional[float], Optional[float]]:
+def cum_delta_window(prints: list[dict[str, Any]]) -> tuple[float | None, float | None]:
     """(first, last) Schwab trade time, epoch seconds, of the prints compute_cum_delta_proxy
     sums (those with a size and a trade time): the window the cumulative delta covers. It is
     what the tape holds -- no clock resets it -- so it is served beside the number."""
@@ -185,13 +185,13 @@ def cum_delta_window(prints: list[dict[str, Any]]) -> tuple[Optional[float], Opt
 
 def compute_tape_pressure(
     prints: list[dict[str, Any]], window_sec: float, now_ms: float
-) -> Optional[float]:
+) -> float | None:
     """Tick-rule signed size over total size for the prints traded in the `window_sec` before
     `now_ms`; None when none traded in it. A print with no trade time is left out."""
     cutoff_ms = now_ms - int(window_sec * 1000)
     total_delta = 0.0
     total_sz = 0
-    prev_price: Optional[float] = None
+    prev_price: float | None = None
     for p in prints:
         t = p.get("time_millis")
         price = p.get("price")

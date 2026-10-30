@@ -9,7 +9,6 @@ book as Schwab last sent it) and ``book_live`` (whether the feed delivers the bo
 
 from __future__ import annotations
 
-from typing import Optional
 
 import numpy as np
 
@@ -104,7 +103,7 @@ def _iter_asks_levels(content_item: dict) -> list[tuple[float, float]]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _latest_book_snapshot(items: list) -> Optional[dict]:
+def _latest_book_snapshot(items: list) -> dict | None:
     """Return the most recent book content item (a one-sided book included: the side Schwab sent
     no levels for is empty)."""
     for item in reversed(items):
@@ -113,7 +112,7 @@ def _latest_book_snapshot(items: list) -> Optional[dict]:
     return None
 
 
-def _book_side_depth_total(levels: list[tuple[float, float]], depth: int) -> Optional[float]:
+def _book_side_depth_total(levels: list[tuple[float, float]], depth: int) -> float | None:
     """Σ TOTAL_VOLUME over the best `depth` levels (best-first). None when the side has no
     levels. The microstructure depth ladder's one depth aggregation."""
     if not levels:
@@ -121,9 +120,7 @@ def _book_side_depth_total(levels: list[tuple[float, float]], depth: int) -> Opt
     return sum(v for _, v in levels[:depth])
 
 
-def _book_imbalance_from_totals(
-    bid_total: Optional[float], ask_total: Optional[float]
-) -> Optional[float]:
+def _book_imbalance_from_totals(bid_total: float | None, ask_total: float | None) -> float | None:
     """THE single book-imbalance formula: (bid - ask) / (bid + ask). None if a side total is
     absent or the combined depth is non-positive."""
     if bid_total is None or ask_total is None:
@@ -146,7 +143,7 @@ def _top(data: dict) -> dict:
     return t if isinstance(t, dict) else {}
 
 
-def _compute_top_book_pressure(data: dict) -> Optional[float]:
+def _compute_top_book_pressure(data: dict) -> float | None:
     """Top-of-book pressure: (bid_size - ask_size) / (bid_size + ask_size), streamed sizes."""
     t = _top(data)
     bid_sz, ask_sz = t.get("bid_size"), t.get("ask_size")
@@ -160,7 +157,7 @@ def _compute_top_book_pressure(data: dict) -> Optional[float]:
 
 def _resolve_bid_ask_prices(
     data: dict,
-) -> tuple[Optional[float], Optional[float], Optional[str], Optional[str]]:
+) -> tuple[float | None, float | None, str | None, str | None]:
     """Level-one BID_PRICE / ASK_PRICE and their leaf labels."""
     t = _top(data)
     bid_p, ask_p = t.get("bid"), t.get("ask")
@@ -172,7 +169,7 @@ def _resolve_bid_ask_prices(
     )
 
 
-def _resolve_quote_mark(data: dict) -> tuple[Optional[float], Optional[str]]:
+def _resolve_quote_mark(data: dict) -> tuple[float | None, str | None]:
     """Streamed MARK, the spread-fraction denominator (a MARK of 0 divides nothing)."""
     mark_p = _top(data).get("mark")
     if mark_p is not None and mark_p > 0:
@@ -279,8 +276,8 @@ def _canonical_book_identity(cb: dict) -> tuple:
 
 
 def _microprice(
-    bid: Optional[float], ask: Optional[float], bid_size: Optional[float], ask_size: Optional[float]
-) -> Optional[float]:
+    bid: float | None, ask: float | None, bid_size: float | None, ask_size: float | None
+) -> float | None:
     """Size-weighted top-of-book fair price:
         microprice = (bid·ask_size + ask·bid_size) / (bid_size + ask_size)
     Each price is weighted by the OPPOSITE side's size, so heavier bid size pulls the fair
@@ -304,9 +301,7 @@ def _book_pressure_curve(levels: list[tuple[float, float]], max_levels: int) -> 
     return out
 
 
-def _book_slope(
-    levels: list[tuple[float, float]], depth: int, total: Optional[float]
-) -> Optional[float]:
+def _book_slope(levels: list[tuple[float, float]], depth: int, total: float | None) -> float | None:
     """Displayed depth density across the best `depth` levels:
         book_slope = (canonical top-`depth` TOTAL_VOLUME) / |best_price − last_level_price|
     Units: shares per $1 of book depth = dVolume/dPrice (depth per unit price), NOT a
@@ -322,9 +317,7 @@ def _book_slope(
     return total / span
 
 
-def _book_concentration(
-    levels: list[tuple[float, float]], total: Optional[float]
-) -> Optional[float]:
+def _book_concentration(levels: list[tuple[float, float]], total: float | None) -> float | None:
     """Fraction of the canonical top-`depth` displayed volume resting at the touch (best level):
         liquidity_concentration = best_level_volume / (canonical top-`depth` TOTAL_VOLUME)
     Range [0, 1]. 1.0 = all near-book size at the inside (fragile); low = distributed down the
@@ -378,7 +371,7 @@ def _microstructure_structural(cb: dict) -> dict:
     # Depth ladder — totals aggregated ONCE per (side, depth); imbalance, slope and concentration
     # all reuse these SAME canonical totals. One aggregation authority (`_book_side_depth_total`).
     depth: dict[str, dict] = {}
-    totals: dict[int, tuple[Optional[float], Optional[float]]] = {}
+    totals: dict[int, tuple[float | None, float | None]] = {}
     for n in OF_MICRO_DEPTH_LADDER:
         bt = _book_side_depth_total(bid_levels, n)
         at = _book_side_depth_total(ask_levels, n)
@@ -463,7 +456,7 @@ def _microstructure_structural(cb: dict) -> dict:
     }
 
 
-def compute_book_microstructure(data: dict, *, now_ts: float, ticker: Optional[str] = None) -> dict:
+def compute_book_microstructure(data: dict, *, now_ts: float, ticker: str | None = None) -> dict:
     """Canonical L2 book microstructure for one symbol at `now_ts` (epoch seconds) — the ONE
     producer the engine and the `/api/order-flow/microstructure` route both read. `data.content`
     carries the live streaming book + top-of-book (app.options.order_flow.state.get_content_for_symbol);
@@ -512,7 +505,7 @@ def compute_book_microstructure(data: dict, *, now_ts: float, ticker: Optional[s
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _compute_tape_pressure(data: dict, window_sec: float, now: float) -> Optional[float]:
+def _compute_tape_pressure(data: dict, window_sec: float, now: float) -> float | None:
     """PROXY reconstructed L1 tick-rule pressure. ONE FAUCET: l1_trade_observation."""
     return _canonical_tape_pressure(
         canonical_tape_prints(_iter_content(data)), window_sec, now * 1000.0
@@ -524,12 +517,12 @@ def _compute_tape_pressure(data: dict, window_sec: float, now: float) -> Optiona
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _compute_cum_delta_proxy(data: dict) -> Optional[float]:
+def _compute_cum_delta_proxy(data: dict) -> float | None:
     """PROXY reconstructed L1 tick-rule signed size sum. ONE FAUCET: l1_trade_observation."""
     return _canonical_cum_delta(canonical_tape_prints(_iter_content(data)))
 
 
-def _compute_cum_delta_slope(data: dict, now: float, window_sec: float = 60.0) -> Optional[float]:
+def _compute_cum_delta_slope(data: dict, now: float, window_sec: float = 60.0) -> float | None:
     """Slope of PROXY cum-delta in receive order. ONE signed-size walk: l1_trade_observation."""
     points = iter_signed_cum_points(
         canonical_tape_prints(_iter_content(data)), window_sec, now * 1000.0
@@ -552,7 +545,7 @@ class OrderFlowEngine:
     identified field paths.
     """
 
-    def compute(self, data: dict, *, now: float, ticker: Optional[str] = None) -> dict:
+    def compute(self, data: dict, *, now: float, ticker: str | None = None) -> dict:
         """The book microstructure and the tape flow of one symbol at `now` (epoch seconds);
         missing data yields None."""
         # the book, extracted once by its one producer; `ticker` lets the route serialize this

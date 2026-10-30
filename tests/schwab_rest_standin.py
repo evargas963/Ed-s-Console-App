@@ -135,16 +135,16 @@ class LocalSchwab:
     while set, every data request is answered with EDGE_403. Each request is recorded as (path, query,
     started, answered, the client's port, its Authorization)."""
 
-    def __init__(self, stream_url: "str | None" = None):
+    def __init__(self, stream_url: str | None = None):
         self.stream_url = stream_url
         self.requests: list = []
         self.token = "refreshes"
         self.edge = False
         self.quotes_status = 200
-        self.quotes_body: "bytes | None" = None
-        self.refuse_chain: "set[str]" = set()
-        self.withheld: "set[str]" = set()
-        self.invalid: "list[dict]" = []
+        self.quotes_body: bytes | None = None
+        self.refuse_chain: set[str] = set()
+        self.withheld: set[str] = set()
+        self.invalid: list[dict] = []
         outer = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -228,7 +228,7 @@ class LocalSchwab:
         self.server.daemon_threads = True
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
 
-    def answer(self, path: str, query: dict) -> "tuple[int, dict | bytes]":
+    def answer(self, path: str, query: dict) -> tuple[int, dict | bytes]:
         if path == EXPIRATIONS:
             return 200, {
                 "expirationList": [
@@ -284,7 +284,7 @@ class LocalSchwab:
             answer["errors"] = {"invalidSymbols": named}
         return 200, answer
 
-    def asked(self, path: str) -> "list[dict]":
+    def asked(self, path: str) -> list[dict]:
         """The query of each request to `path`, in order."""
         return [q for p, q, *_ in self.requests if p == path]
 
@@ -325,7 +325,7 @@ class _ToLocal(httpx.BaseTransport):
         return self.inner.handle_request(request)
 
 
-def delivered(published: list, ticker: str) -> "dict[str, dict]":
+def delivered(published: list, ticker: str) -> dict[str, dict]:
     """The ticker's contracts in the chain the sweep published, by symbol."""
     return {
         ct["symbol"]: ct

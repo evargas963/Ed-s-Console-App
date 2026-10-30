@@ -21,7 +21,7 @@ import sqlite3
 import threading
 import time
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, UTC
 from pathlib import Path
 from typing import Any
 
@@ -279,18 +279,16 @@ class _Chain:
 
     ticker: str
     started: float  # its first request
-    spots: "dict[str, float | None]" = field(
+    spots: dict[str, float | None] = field(
         default_factory=dict
     )  # expiry -> Schwab's underlyingPrice in its answer
-    spot: "float | None" = None  # the chain's one spot: LAST_PRICE when complete
-    spot_ts: "float | None" = None  # that price's trade time
-    by_expiry: "dict[str, list[dict]]" = field(default_factory=dict)
-    unquoted: "set[str]" = field(default_factory=set)  # contracts whose quote is not in
-    named_invalid: "set[str]" = field(
-        default_factory=set
-    )  # contracts Schwab's quotes named invalid
+    spot: float | None = None  # the chain's one spot: LAST_PRICE when complete
+    spot_ts: float | None = None  # that price's trade time
+    by_expiry: dict[str, list[dict]] = field(default_factory=dict)
+    unquoted: set[str] = field(default_factory=set)  # contracts whose quote is not in
+    named_invalid: set[str] = field(default_factory=set)  # contracts Schwab's quotes named invalid
 
-    def contracts(self) -> "list[dict]":
+    def contracts(self) -> list[dict]:
         return [ct for cts in self.by_expiry.values() for ct in cts]
 
 
@@ -329,12 +327,12 @@ class ChainSweep:
     def __init__(
         self,
         db_path: Path | str,
-        watchlist: "list[str]",
-        publish: "callable",
-        clock: "callable" = time.time,
+        watchlist: list[str],
+        publish: callable,
+        clock: callable = time.time,
         *,
-        failures: "CaptureWriter",
-        streamed: "callable",
+        failures: CaptureWriter,
+        streamed: callable,
     ) -> None:
         self.db_path = db_path
         self.watchlist = list(watchlist)  # the daemon's list, replaced whole on each change
@@ -343,15 +341,15 @@ class ChainSweep:
         self.failures = failures  # the daemon's writer: keeps a failed history write
         self.streamed = streamed  # not read: every greek is the quote's
         self.round_sec: float | None = None
-        self.waiting: "str | None" = None  # why no chain is asked for (waits), else None
-        self._expiries: "dict[str, tuple[date, list[date]]]" = {}  # ticker -> (ET date, expiries)
-        self._markets_day: "dict[str, date]" = {}  # market date -> the ET date Schwab answered it
-        self._optioned: "set[str]" = set()  # tickers Schwab has answered a chain for
-        self._fetched: "dict[str, float]" = {}  # ticker -> when its newest delivered chain began
-        self._candled: "dict[str, float]" = {}  # ticker -> when its newest whole price history began
-        self._queue: "list[tuple[_Chain, dict]]" = []  # contracts whose quote is not asked for
-        self._delivered: "set[str]" = set()  # the tickers this rotation delivered
-        self._written: "dict[str, float | None]" = {}  # ticker -> its newest history capture
+        self.waiting: str | None = None  # why no chain is asked for (waits), else None
+        self._expiries: dict[str, tuple[date, list[date]]] = {}  # ticker -> (ET date, expiries)
+        self._markets_day: dict[str, date] = {}  # market date -> the ET date Schwab answered it
+        self._optioned: set[str] = set()  # tickers Schwab has answered a chain for
+        self._fetched: dict[str, float] = {}  # ticker -> when its newest delivered chain began
+        self._candled: dict[str, float] = {}  # ticker -> when its newest whole price history began
+        self._queue: list[tuple[_Chain, dict]] = []  # contracts whose quote is not asked for
+        self._delivered: set[str] = set()  # the tickers this rotation delivered
+        self._written: dict[str, float | None] = {}  # ticker -> its newest history capture
 
     def work(self, schwab_client, stop: threading.Event) -> None:
         """The thread's life, until `stop`: on the daemon's client (`schwab_client()`), the
@@ -380,7 +378,7 @@ class ChainSweep:
             if not chains and not candles:
                 stop.wait(1.0)
 
-    def waits(self, schwab_client) -> "str | None":
+    def waits(self, schwab_client) -> str | None:
         """Why the daemon holds no Schwab sign-in to ask with, kept as `waiting` for its status,
         else None: its client not built (capture.one_schwab_client: built again on each ask until
         a build succeeds), or Schwab having refused it (schwab_client.OneRefreshSession.refusal).
@@ -422,7 +420,7 @@ class ChainSweep:
             ticker not in self._fetched or self._fetched[ticker] < closed.timestamp()
         )
 
-    def fetch_markets(self, schwab_client, days: "list[str]") -> None:
+    def fetch_markets(self, schwab_client, days: list[str]) -> None:
         """Schwab's GET /markets?markets=equity,option answer for each of `days` (YYYY-MM-DD) not
         answered on this ET date, one request each: a 200 is that date's sessions from here on
         (time_et.record_markets), and every answer is published as sent (markets_message), for
@@ -447,7 +445,7 @@ class ChainSweep:
                 self._markets_day[day] = today
             self.publish(*markets_message(day, resp.status_code, answer, self.clock()))
 
-    def rotation(self, schwab_client, tickers: "list[str]", stop: threading.Event) -> "set[str]":
+    def rotation(self, schwab_client, tickers: list[str], stop: threading.Event) -> set[str]:
         """Each ticker's chain in turn (one removed from the watchlist since the rotation began is
         not asked for), the queued quotes asked for whenever a full request's worth is waiting
         and the rest at the end; the tickers delivered."""
@@ -472,7 +470,7 @@ class ChainSweep:
         )
         return self._delivered
 
-    def candles(self, schwab_client, tickers: "list[str]", stop: threading.Event) -> None:
+    def candles(self, schwab_client, tickers: list[str], stop: threading.Event) -> None:
         """Each ticker's price history in turn (one removed from the watchlist meanwhile is not
         asked for)."""
         for ticker in tickers:
@@ -495,7 +493,7 @@ class ChainSweep:
                     period=period,
                     frequency_type=frequency_type,
                     frequency=frequency,
-                    end_datetime=datetime.fromtimestamp(now, timezone.utc),
+                    end_datetime=datetime.fromtimestamp(now, UTC),
                     need_extended_hours_data=True,
                 )
                 if resp.status_code != 200:
@@ -593,7 +591,7 @@ class ChainSweep:
             if not chain.unquoted:
                 self.deliver(chain)
 
-    def fail(self, chains: "list[_Chain]", reason: str) -> None:
+    def fail(self, chains: list[_Chain], reason: str) -> None:
         """Each chain's ticker is published as failed with `reason`; its contracts leave the queue.
         The log has the cause already: Schwab's answer (schwab_client.log_request) or the error."""
         now = self.clock()

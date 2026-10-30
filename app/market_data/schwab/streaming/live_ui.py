@@ -186,7 +186,7 @@ class LiveUiServer:
                         self._send(c, {"type": "feed", "feed": feed, "rows": rows}),
                         timeout=HEARTBEAT_SEC,
                     )
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     self.stats["beat_send_failures"] += 1
                     log.warning("live ui: a browser stopped reading; dropping it")
                     self.clients.discard(c)
@@ -203,7 +203,7 @@ async def serve_live_ui(
     heartbeat_fn,
     host: str = LIVE_UI_HOST,
     port: int = LIVE_UI_PORT,
-    stats: "dict | None" = None,
+    stats: dict | None = None,
     record_heartbeat=lmp.record_feed_heartbeat,
     clock=time.time,
 ) -> None:

@@ -347,7 +347,7 @@ SCOPES = ("auto", "wider", "all")
 SCOPE_ROWS = {"auto": 11, "wider": 23}
 
 
-def strike_window(strikes, centre, scope: str, shift: int = 0) -> "tuple[int, int, float | None]":
+def strike_window(strikes, centre, scope: str, shift: int = 0) -> tuple[int, int, float | None]:
     """The rows a per-strike panel shows, for every panel and the heatmap alike: (first index,
     last index, the centre strike) into `strikes` (ascending). `scope`'s count of strikes centred
     on the listed strike nearest `centre` (the operator's panned strike, else the price) moved
