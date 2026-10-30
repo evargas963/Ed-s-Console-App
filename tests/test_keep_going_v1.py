@@ -146,6 +146,9 @@ def test_from_the_third_refusal_in_a_row_the_reason_sends_the_agent_to_bedrock(t
     assert third.startswith("This is stop 3 refused in a row since the operator last wrote.")
     assert "Go to bedrock" in third
     assert keep_going.decide(OPEN_ROW, "WAITING ON OPERATOR: his yes.", 3) is None
+    rule = " ".join((REPO / "AGENTS.md").read_text(encoding="utf-8").split())
+    said = "If you are trying again what already failed, it is not working"
+    assert said in third and f'"{said}"' in rule and "since the operator last wrote" in rule
 
 
 def test_the_hook_as_wired_counts_its_refusals_and_an_allowed_stop_writes_no_count():
