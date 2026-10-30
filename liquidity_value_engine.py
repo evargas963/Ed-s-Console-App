@@ -363,21 +363,21 @@ def build_premarket_snapshot(
     prev, over, _orb, _poc, _vah, _val, _vwap, _bands = _phase2a_families_from_canonical(canonical)
 
     levels = []
-    if prev.get("pdh"):
+    if prev.get("pdh") is not None:
         levels.append((prev["pdh"], "PDH"))
-    if prev.get("pd_vah"):
+    if prev.get("pd_vah") is not None:
         levels.append((prev["pd_vah"], "PD_VAH"))
-    if prev.get("pd_poc"):
+    if prev.get("pd_poc") is not None:
         levels.append((prev["pd_poc"], "PD_POC"))
-    if prev.get("pd_val"):
+    if prev.get("pd_val") is not None:
         levels.append((prev["pd_val"], "PD_VAL"))
-    if prev.get("pdl"):
+    if prev.get("pdl") is not None:
         levels.append((prev["pdl"], "PDL"))
-    if prev.get("pdc"):
+    if prev.get("pdc") is not None:
         levels.append((prev["pdc"], "PDC"))
-    if over.get("overnight_high"):
+    if over.get("overnight_high") is not None:
         levels.append((over["overnight_high"], "OVERNIGHT_HIGH"))
-    if over.get("overnight_low"):
+    if over.get("overnight_low") is not None:
         levels.append((over["overnight_low"], "OVERNIGHT_LOW"))
 
     clusters = cluster_price_levels_into_zones(levels, config)
@@ -457,15 +457,15 @@ def _classify_value_state_and_vwap_relation(
 ) -> tuple[str, str, str]:
     """Value-area shift + VWAP-vs-value relation + auction interpretation."""
     value_state = "unchanged"
-    if poc and prev_pd_poc:
-        d = (poc - prev_pd_poc) / prev_pd_poc if prev_pd_poc else 0
+    if poc is not None and prev_pd_poc:  # a change against a POC of 0 has no size
+        d = (poc - prev_pd_poc) / prev_pd_poc
         if d > 0.002:
             value_state = "shifted_higher"
         elif d < -0.002:
             value_state = "shifted_lower"
 
     vwap_relation = "at_value"
-    if vwap and poc:
+    if vwap is not None and poc is not None:
         if vwap > poc * 1.001:
             vwap_relation = "above_value"
         elif vwap < poc * 0.999:
@@ -601,37 +601,37 @@ def build_live_snapshot(
     )
 
     levels: list[tuple[float, str]] = []
-    if prev.get("pdh"):
+    if prev.get("pdh") is not None:
         levels.append((prev["pdh"], "PDH"))
-    if prev.get("pd_vah"):
+    if prev.get("pd_vah") is not None:
         levels.append((prev["pd_vah"], "PD_VAH"))
-    if prev.get("pd_poc"):
+    if prev.get("pd_poc") is not None:
         levels.append((prev["pd_poc"], "PD_POC"))
-    if orb.get("orb_high"):
+    if orb.get("orb_high") is not None:
         levels.append((orb["orb_high"], "ORB_HIGH"))
-    if orb.get("orb_mid"):
+    if orb.get("orb_mid") is not None:
         levels.append((orb["orb_mid"], "ORB_MID"))
-    if orb.get("orb_low"):
+    if orb.get("orb_low") is not None:
         levels.append((orb["orb_low"], "ORB_LOW"))
-    if vah:
+    if vah is not None:
         levels.append((vah, "TODAY_VAH"))
-    if vwap_p1:
+    if vwap_p1 is not None:
         levels.append((vwap_p1, "VWAP_P1"))
     if vwap is not None:
         levels.append((vwap, "VWAP"))
-    if poc:
+    if poc is not None:
         levels.append((poc, "TODAY_POC"))
-    if vwap_m1:
+    if vwap_m1 is not None:
         levels.append((vwap_m1, "VWAP_M1"))
-    if val:
+    if val is not None:
         levels.append((val, "TODAY_VAL"))
-    if prev.get("pd_val"):
+    if prev.get("pd_val") is not None:
         levels.append((prev["pd_val"], "PD_VAL"))
-    if prev.get("pdl"):
+    if prev.get("pdl") is not None:
         levels.append((prev["pdl"], "PDL"))
-    if over.get("overnight_high"):
+    if over.get("overnight_high") is not None:
         levels.append((over["overnight_high"], "OVERNIGHT_HIGH"))
-    if over.get("overnight_low"):
+    if over.get("overnight_low") is not None:
         levels.append((over["overnight_low"], "OVERNIGHT_LOW"))
 
     for pair in extra_levels or []:
