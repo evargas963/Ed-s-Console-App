@@ -9,13 +9,12 @@ from __future__ import annotations
 import math
 from datetime import datetime
 
-from numeric_contract import schwab_count, schwab_number
 from math_exposure_core import (
     bucket_metric,
-    strike_oi_legs,
     key_level_strikes_with_oi,
+    strike_oi_legs,
 )
-
+from numeric_contract import schwab_count, schwab_number
 
 # ── Gamma Exposure Profile — total dealer gamma recomputed at hypothetical spot ──
 # Every contract's gamma is recomputed at each candidate price; a cumulative sum does NOT

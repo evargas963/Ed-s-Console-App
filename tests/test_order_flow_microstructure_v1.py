@@ -8,6 +8,7 @@ every output, fail-closed on no book, and that temporal PROXY metrics are NOT pr
 """
 
 from __future__ import annotations
+
 import json
 from pathlib import Path
 

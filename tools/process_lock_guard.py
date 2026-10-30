@@ -27,6 +27,8 @@ import sys
 from pathlib import Path
 
 import tools.operating_process_lock as OPL
+from tools.hook_chain import BASH_TOOLS, MUTATING_TOOLS  # the ONE roster of each class
+from tools.pretooluse_guard import checkout_path, production_path
 from tools.shell_parse import (  # the ONE shell reader
     Statement,
     _join_dir,
@@ -35,8 +37,6 @@ from tools.shell_parse import (  # the ONE shell reader
     normalize_repo,
     read,
 )
-from tools.pretooluse_guard import checkout_path, production_path
-from tools.hook_chain import BASH_TOOLS, MUTATING_TOOLS  # the ONE roster of each class
 
 REPO = Path(__file__).resolve().parent.parent
 

@@ -310,8 +310,9 @@ def test_wall_geometry_state_truth_table() -> None:
 
 
 def test_wall_geometry_state_rejects_unknown_side() -> None:
-    from terrain_engine import wall_geometry_state
     import pytest
+
+    from terrain_engine import wall_geometry_state
 
     with pytest.raises(ValueError):
         wall_geometry_state(735.0, 740.0, "steel")

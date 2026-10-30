@@ -17,9 +17,8 @@ from liquidity_value_engine import (
     materialize_price_level_snapshot,
 )
 from micro_structure import Candle
-from time_et import ET
-
 from tests.conftest import most_recent_trading_day_et
+from time_et import ET
 
 REPO = Path(__file__).resolve().parent.parent
 

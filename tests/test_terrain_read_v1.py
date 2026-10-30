@@ -9,7 +9,6 @@ from __future__ import annotations
 from math_levels import GAMMA_FLIP_NARROW, GAMMA_FLIP_TRUSTED, GAMMA_FLIP_UNAVAILABLE
 from numeric_contract import price_text
 from terrain_engine import compute_terrain
-from tests.real_chains import CRWD, SPY_0DTE
 from terrain_read import (
     POSTURE_FADE,
     POSTURE_FOLLOW,
@@ -19,6 +18,7 @@ from terrain_read import (
     REGIME_UNAVAILABLE,
     build_terrain_read,
 )
+from tests.real_chains import CRWD, SPY_0DTE
 
 TRUSTED = GAMMA_FLIP_TRUSTED
 

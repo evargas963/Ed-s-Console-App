@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import json
 
-from app.options.order_flow import streaming as ofs
 import server as srv
+from app.options.order_flow import streaming as ofs
 
 
 def test_the_chain_spot_carries_schwabs_trade_time():

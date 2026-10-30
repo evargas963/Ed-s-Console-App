@@ -12,7 +12,8 @@ needs a bar placed exactly inside or outside a session boundary.
 
 from __future__ import annotations
 
-from datetime import date, datetime, time as dtime
+from datetime import date, datetime
+from datetime import time as dtime
 from zoneinfo import ZoneInfo
 
 from liquidity_value_engine import PlaybookConfig, bars_from_candles

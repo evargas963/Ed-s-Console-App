@@ -31,7 +31,7 @@ import json
 import re
 import sqlite3
 import sys
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from fnmatch import fnmatch
 from pathlib import Path
 

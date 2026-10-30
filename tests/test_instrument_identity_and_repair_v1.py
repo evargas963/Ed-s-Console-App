@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-
 import server
 from instrument_identity import ticker_storage_key
 from tests.feed_live_helper import daemon_bars, stream_daemon_bars

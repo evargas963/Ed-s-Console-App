@@ -27,28 +27,26 @@ from __future__ import annotations
 
 import asyncio
 import json
-import queue
 import logging
+import queue
 import time
-from typing import Any
 from collections.abc import Callable
+from typing import Any
 
 from websockets.asyncio.client import connect
 
-from instrument_identity import ticker_storage_key
+import live_market_plane as _lmp
 import push_changes
+from app.market_data.schwab.streaming.live_push import LIVE_PUSH_HOST, LIVE_PUSH_PORT
+from app.market_data.schwab.streaming.live_ui import LIVE_UI_PORT
 from app.options.order_flow import history as recent
-
 from app.options.order_flow.state import (
     clear_all_live_state,
     push_book,
     push_level_one,
     push_option_top,
 )
-
-import live_market_plane as _lmp
-from app.market_data.schwab.streaming.live_push import LIVE_PUSH_HOST, LIVE_PUSH_PORT
-from app.market_data.schwab.streaming.live_ui import LIVE_UI_PORT
+from instrument_identity import ticker_storage_key
 from time_et import record_markets
 
 log = logging.getLogger(__name__)
