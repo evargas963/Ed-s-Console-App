@@ -1,8 +1,9 @@
 """AGENTS.md rule 1 and Before writing code: a pull request that changes product code proves it with
 an end-to-end path test that fails on the old code, unless it only removes whole undecorated Python
 functions or classes and the imports only they used (`deletes_only`), or only fixes what ruff rules
-it newly selects find (`rule_fixes_only`): then the full suite and the browser tests, which the
-same job runs, are the proof (AGENTS.md "Before writing code").
+it newly selects find (`rule_fixes_only`), or only takes code away inside function bodies
+(`trims_only`, the PR showing that no caller reaches it): then the full suite and the browser
+tests, which the same job runs, are the proof (AGENTS.md "Before writing code").
 
 The PR's changed and added files under tests/ are laid over a checkout of the base, and the PR's
 changed end-to-end path tests run there: pytest files (tests/test_data_path_*.py) with this
@@ -251,9 +252,9 @@ def deletes_only(root: Path, base: str, product: list[str]) -> bool:
     """Whether every changed product file is Python that loses whole undecorated functions or
     classes, and the imports only they used, and nothing else. Removing code
     nothing calls adds no value to check; what could break is a caller, which the full suite and
-    the browser tests run. A line removed inside a function, a module-level call (`app.mount`), a
-    decorated one (a route) or any page code is a change of behavior, and needs its end-to-end
-    test."""
+    the browser tests run. A module-level call (`app.mount`), a decorated function (a route) or
+    any page code removed is a change of behavior, and needs its end-to-end test; code removed
+    inside a function is `trims_only`'s to judge."""
     if not all(f.endswith(".py") for f in product):
         return False
     fork = _git(root, "merge-base", base, "HEAD").strip()
@@ -265,6 +266,96 @@ def deletes_only(root: Path, base: str, product: list[str]) -> bool:
             if not _removes_whole_units(was, now):
                 return False
         except (ToolError, SyntaxError):  # a new file, or one Python cannot read
+            return False
+    return True
+
+
+#: the bodies a statement holds; `_same_head` compares everything else
+_BODIES = ("body", "orelse", "finalbody")
+
+
+def _dumped(value):
+    """A statement field as comparable data: a node by its dump, a list item by item, a name or a
+    number as it is."""
+    if isinstance(value, ast.AST):
+        return ast.dump(value)
+    if isinstance(value, list):
+        return [_dumped(v) for v in value]
+    return value
+
+
+def _same_head(a: ast.stmt, b: ast.stmt) -> bool:
+    """Whether `a` and `b` are the same statement apart from their bodies."""
+    return type(a) is type(b) and all(
+        _dumped(getattr(a, f)) == _dumped(getattr(b, f)) for f in a._fields if f not in _BODIES
+    )
+
+
+def _trimmed(was: list[ast.stmt], now: list[ast.stmt], in_function: bool) -> bool:
+    """Whether `now` is `was` with code taken away inside function bodies only: statements
+    deleted, or an `if` replaced by one of its branches, a `try` with no else or finally by its
+    body, a `with` by its body; outside a function every statement stays as it was. One pass in
+    order, so its time grows with the code's size: a statement is kept when the next of `now` is
+    it (its bodies trimmed in turn), else opened when one of its branches holds that next
+    statement, else deleted; a trim read another way is refused, and then needs its test."""
+    queue, j = list(was), 0
+    while queue:
+        s = queue.pop(0)
+        nxt = now[j] if j < len(now) else None
+        if nxt is not None and _same_head(s, nxt):
+            inner = in_function or isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef))
+            if all(
+                _trimmed(getattr(s, f), getattr(nxt, f), inner) for f in _BODIES if hasattr(s, f)
+            ):
+                j += 1
+                continue
+        if not in_function:
+            return False
+        branches = []
+        if isinstance(s, ast.If):
+            branches = [s.body, s.orelse]
+        elif isinstance(s, ast.Try) and not s.orelse and not s.finalbody:
+            branches = [s.body]
+        elif isinstance(s, ast.With):
+            branches = [s.body]
+        held = [b for b in branches if nxt is not None and any(_same_head(t, nxt) for t in b)]
+        queue = (held[0] if held else []) + queue  # opened, or deleted
+    return j == len(now)
+
+
+def _without_docstrings(tree: ast.Module) -> ast.Module:
+    for node in ast.walk(tree):
+        body = getattr(node, "body", None)
+        if (
+            isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+            and body
+            and isinstance(body[0], ast.Expr)
+            and isinstance(body[0].value, ast.Constant)
+            and isinstance(body[0].value.value, str)
+        ):
+            node.body = body[1:] or [ast.Pass()]
+    return tree
+
+
+def trims_only(root: Path, base: str, product: list[str]) -> bool:
+    """Whether every changed product file is Python whose code only loses paths inside function
+    bodies (_trimmed): a branch or guard no caller can reach, removed with the full suite and the
+    browser tests as its proof, as a whole function is (operator, AGENTS.md "Before writing
+    code"). That the removed path can never run, shown by tracing every caller, is the PR's to
+    show and the reviewers' to read; the check sees only that nothing was added or rewritten."""
+    if not all(f.endswith(".py") for f in product):
+        return False
+    fork = _git(root, "merge-base", base, "HEAD").strip()
+    deleted = set(deleted_product(root, base))
+    for f in product:
+        if f in deleted:
+            return False
+        try:
+            was = _without_docstrings(ast.parse(_git(root, "show", f"{fork}:{f}")))
+            now = _without_docstrings(ast.parse(_git(root, "show", f"HEAD:{f}")))
+        except (ToolError, SyntaxError):
+            return False
+        if ast.dump(was) == ast.dump(now) or not _trimmed(was.body, now.body, False):
             return False
     return True
 
@@ -366,6 +457,12 @@ def violations(root: Path, base: str) -> list[str]:
         print(
             f"proven: {', '.join(product)} change only for ruff rules the PR newly selects; the full "
             "suite and the browser tests are the proof"
+        )
+        return []
+    if trims_only(root, base, product):
+        print(
+            f"proven: {', '.join(product)} only lose code paths inside functions; the full suite "
+            "and the browser tests are the proof, the PR's caller trace the reviewers' to read"
         )
         return []
     tests = [f for f in files if is_test(f)]
