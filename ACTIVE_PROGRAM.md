@@ -125,7 +125,6 @@ to write it plainly, in the forms `test_a_command_the_reader_cannot_see_into_is_
 - M-09 a missing poc, pd_poc or vwap yields `value_state="unchanged"` / `vwap_relation="at_value"` (and `else 0`).
 - M-11 `cutoff_et` (now) is served as the values' time (they are as of the last bar); `session_scope` relabels an unknown scope; prior-day POC/VAH/VAL missing is not in `families_absent`.
 - M-12 fused option levels: raw `float()`, rejected ones dropped silently.
-- `build_price_level_snapshot` reads the clock (`produced_ts`) instead of taking `now`.
 
 **math_exposure_core.py, math_levels.py**
 - M-13 one strike/multiplier validity rule for both files (core accepts strike 0, levels rejects ≤ 0; both reject multiplier ≤ 0, unconfirmed against Schwab's field reference); count IV ≤ 0 in the vanna path.
@@ -139,7 +138,6 @@ to write it plainly, in the forms `test_a_command_the_reader_cannot_see_into_is_
 - M-27 two interpolators for gamma at a price (`_interp_profile_at`, `gamma_at_price`), both returning the end value off the profile.
 
 **terrain_engine.py, terrain_atr.py, math_volatility.py, math_probabilities.py, time_et.py**
-- M-31 `computed_ts_utc` is compute time documented as fetch time, with two writers.
 - M-32 per-expiry PCR/IV maps key by date alone while books key by (date, dte): same-date books overwrite.
 - M-33 the ATM IV expiry is the one nearest 30 days; its docs say "front expiry".
 - M-34 `terrain_atr` uses DB OHLC raw (no `schwab_number`).

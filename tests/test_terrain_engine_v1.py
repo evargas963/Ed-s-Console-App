@@ -115,10 +115,6 @@ def test_is_deterministic() -> None:
     chain, spot = _real_chain()
     a = compute_terrain("SPY", chain, spot, now=NOW).to_dict()
     b = compute_terrain("SPY", chain, spot, now=NOW).to_dict()
-    # RC-114: computed_ts_utc is the capture WALL CLOCK — nondeterministic BY DESIGN (RC-68:
-    # every consumer must render an age). Determinism is about the LEVELS, so the stamp is
-    # excluded.
-    a.pop("computed_ts_utc"), b.pop("computed_ts_utc")
     assert a == b
 
 
