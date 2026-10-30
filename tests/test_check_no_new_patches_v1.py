@@ -207,6 +207,38 @@ def test_a_fixture_changed_to_patch_is_refused_though_its_tests_are_unchanged(tm
     ]
 
 
+SORTED_RUFF = '[tool.ruff]\ntarget-version = "py313"\n[tool.ruff.lint]\nselect = ["I"]\n'
+UNSORTED_FIXTURE = (
+    "import pytest\n\n\n"
+    "@pytest.fixture\ndef pinned(monkeypatch):\n    import time\n    import json\n\n"
+    "    assert json and time\n"
+    '    monkeypatch.setattr("time.time", lambda: 1.0)\n'
+)
+SORTED_FIXTURE = UNSORTED_FIXTURE.replace(
+    "    import time\n    import json\n", "    import json\n    import time\n"
+)
+SORTED_BASE = {
+    **BASE,
+    "pyproject.toml": '[tool.ruff]\ntarget-version = "py313"\n',
+    "tests/conftest.py": UNSORTED_FIXTURE,
+    "tests/test_pinned.py": "def test_pinned(pinned):\n    assert True\n",
+}
+
+
+def test_a_patching_fixture_only_ruffs_safe_sort_changes_passes(tmp_path):
+    """Selecting a rule whose safe fix reorders a patching fixture's imports adds no patch."""
+    files = {"pyproject.toml": SORTED_RUFF, "tests/conftest.py": SORTED_FIXTURE}
+    assert _check(tmp_path, files, base=SORTED_BASE) == []
+
+
+def test_a_patching_fixture_changed_beside_ruffs_safe_sort_is_refused(tmp_path):
+    now = SORTED_FIXTURE.replace("lambda: 1.0", "lambda: 2.0")
+    files = {"pyproject.toml": SORTED_RUFF, "tests/conftest.py": now}
+    assert _check(tmp_path, files, base=SORTED_BASE) == [
+        f"tests/conftest.py::pinned patches: line {_line(now, 'monkeypatch.setattr')} applies one"
+    ]
+
+
 def test_an_old_patching_test_whose_docstring_and_comments_alone_change_passes(tmp_path):
     """A patching test may change in its docstrings and comments; its code may not."""
     assert (
