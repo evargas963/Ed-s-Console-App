@@ -302,8 +302,9 @@ def test_a_hand_edit_on_top_of_the_tools_fix_is_a_product_change(tmp_path):
 
 
 STR_ENUM = 'from enum import Enum\n\n\nclass Zone(str, Enum):\n    LOW = "low"\n'
-#: ruff's unsafe UP042 rewrite of STR_ENUM, written out (the operator allows no unsafe fix)
-STR_ENUM_REWRITTEN = 'from enum import StrEnum\n\n\nclass Zone(StrEnum):\n    LOW = "low"\n'
+#: ruff 0.17.3's unsafe UP042 rewrite of STR_ENUM, then `ruff format`, as ruff writes it (the
+#: operator allows no unsafe fix)
+STR_ENUM_REWRITTEN = 'from enum import Enum, StrEnum\n\n\nclass Zone(StrEnum):\n    LOW = "low"\n'
 
 
 def test_a_fix_ruff_marks_unsafe_is_a_product_change_whatever_the_prs_config_asks(tmp_path):

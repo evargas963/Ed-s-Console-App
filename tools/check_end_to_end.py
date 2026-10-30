@@ -40,6 +40,7 @@ import sys
 import io
 import tempfile
 import tokenize
+import tomllib
 from pathlib import Path
 
 PRODUCT_SUFFIXES = (".py", ".js", ".mjs", ".html")
@@ -203,19 +204,22 @@ def code_tree(path: str, text: str) -> str | None:
     return None
 
 
-#: ruff's fix as the check runs it: its safe fixes only, whatever the configuration asks, so a fix
-#: ruff marks as one that may change behaviour is never taken for the tools' own
-SAFE_FIX = ["--fix", "--no-unsafe-fixes", "--config", "lint.extend-safe-fixes = []"]
-
-
 def tool_fixed(root: Path, path: str, text: str, config: str) -> str | None:
     """`text` as the repository's standard tools leave it: ruff's safe fixes with `config` (the
-    text of a pyproject.toml), then `ruff format`; None when either cannot run on it."""
+    text of a pyproject.toml), then `ruff format`; None when either cannot run on it, or when
+    `config` turns unsafe fixes on or marks one safe (ruff adds a file's `extend-safe-fixes` to
+    any given on the command line, so only refusing the config keeps an unsafe fix out)."""
+    try:
+        ruff = tomllib.loads(config).get("tool", {}).get("ruff", {})
+    except tomllib.TOMLDecodeError:
+        return None
+    if "unsafe-fixes" in ruff or "extend-safe-fixes" in ruff | ruff.get("lint", {}):
+        return None
     out = text.encode("utf-8")  # as bytes: no line ending translated on the way in or out
     with tempfile.TemporaryDirectory() as tmp:
         settings = Path(tmp) / "pyproject.toml"
         settings.write_bytes(config.encode("utf-8"))
-        for args in (["check", *SAFE_FIX, "--exit-zero", "--quiet"], ["format", "--quiet"]):
+        for args in (["check", "--fix", "--exit-zero", "--quiet"], ["format", "--quiet"]):
             try:
                 run = subprocess.run(
                     [sys.executable, "-m", "ruff", *args, "--config", str(settings)]

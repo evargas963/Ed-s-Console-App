@@ -104,8 +104,11 @@ then the rule binds with no machine check.
   what its check flags (`ruff format`, `ruff check --fix`) needs no separate yes; never an unsafe
   fix (operator 2026-10-29: "I DID NOT ALLOW FOR ANY UNSAFE FIXES"): no `--unsafe-fixes`, no
   `unsafe-fixes` or `extend-safe-fixes` in `pyproject.toml`, and a rule whose only fix is unsafe
-  stays deselected. Enforced by: `tools/check_end_to_end.py` runs ruff's safe fixes only, so an
-  unsafe rewrite is a product change that needs its failing test (`tests/test_check_end_to_end_v1.py`).
+  stays deselected. Enforced by: `tools/check_end_to_end.py` takes only ruff's safe fixes as the
+  tools' own, and none at all from a committed `pyproject.toml` that sets `unsafe-fixes` or
+  `extend-safe-fixes`, so an unsafe rewrite of a product file is a product change that needs its
+  failing test (`tests/test_check_end_to_end_v1.py`); the rest of this bullet (a found defect fixed,
+  those settings themselves, an unsafe rewrite outside product code) — no machine check, ENF-12.
 - A check runs over the whole repository wherever it can, so a finding anywhere fails the required
   job and nothing merges while it stands; a check is turned on only once what it finds repo-wide is
   fixed, never with an exception list. Enforced by: `ruff check .` and `ruff format --check .` over
@@ -113,8 +116,7 @@ then the rule binds with no machine check.
   ESLint, pyright) runs over the whole repository the same way (steps 1d to 6). Today's hand-built
   checks judge a pull request's change only (`check_end_to_end`, `check_one_reader`,
   `check_credential_leak`, `check_eol_style_invariant`, `check_fails_before`,
-  `check_no_new_patches`, each with `--base`); step 7 deletes or replaces them. The first bullet:
-  no machine check — ENF-12.
+  `check_no_new_patches`, each with `--base`); step 7 deletes or replaces them.
 
 ## Before writing code
 
