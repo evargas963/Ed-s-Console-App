@@ -482,7 +482,7 @@ def test_a_daemon_that_ends_without_being_asked_is_not_reported_stopped(tmp_path
             _end(daemon)
     assert stopping.returncode == 1, (out, err)
     assert "Capture daemon: not asked to stop: " in err
-    assert "Capture daemon: ended without being asked; its window restarts it\n" in out
+    assert "Capture daemon: ended, not asked by this stop\n" in out
 
 
 def test_the_console_group_is_known_after_its_processes_have_gone():

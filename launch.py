@@ -185,7 +185,7 @@ def group_leader(console: list[psutil.Process]) -> int:
 def stop() -> int:
     """The clean stop of the daemon (ask_daemon_to_stop) and the console (ctrl_break to its group,
     group_leader). Waits up to STOP_WAIT_SEC for each; 0 when both ended, a daemon only if it was
-    asked: one that ended without being asked is not stopped, its window restarts it."""
+    asked: one that ended when this stop could not ask it is not reported stopped."""
     daemon, console = running(DAEMON_START), running(CONSOLE_START)
     daemon_ended = "stopped"
     if daemon:
@@ -193,7 +193,7 @@ def stop() -> int:
             ask_daemon_to_stop()
         except (OSError, WebSocketException) as e:
             log.warning("Capture daemon: not asked to stop: %s: %s", type(e).__name__, e)
-            daemon_ended = "ended without being asked; its window restarts it"
+            daemon_ended = "ended, not asked by this stop"
     if console:
         ctrl_break(group_leader(console))
     _gone, alive = psutil.wait_procs(daemon + console, timeout=STOP_WAIT_SEC)
