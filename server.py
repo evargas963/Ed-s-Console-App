@@ -105,7 +105,8 @@ class _LevelMarkerFormatter(logging.Formatter):
 
 # The console's log file (install_ed_server_file_sink): every logger (db, ed_server, uvicorn, …)
 # at INFO+, under the RUNTIME root (runtime_layout): this checkout, or the primary checkout for a
-# linked worktree, unless ED_RUNTIME_ROOT moves it (docs/ARCHITECTURE.md "Runtime state is not source").
+# linked worktree, unless ED_RUNTIME_ROOT moves it (docs/ARCHITECTURE.md "Runtime state is not
+# source").
 import runtime_layout  # noqa: E402
 from runtime_layout import logs_dir as _runtime_logs_dir  # noqa: E402
 
@@ -863,15 +864,17 @@ def _schwab_token_creation_ts() -> float | None:
 def terrain_staleness(
     computed_ts_utc: float | None, ticker: str | None = None, *, now: float
 ) -> dict:
-    """The levels' state at `now`, THE levels verdict every screen shows (`levels_state`): LIVE while
-    the ticker's own option market (time_et.option_close_product: stock options close at 16:00 ET,
-    index-close options at 16:15) is open and its chain current; CLOSE once that market has closed
-    and a chain fetched after its close stands, however old (docs/DATA_FLOW.md §2 D5); STALE, with WHY, when the chain is overdue or the close values were never fetched;
-    NOT LIVE when Schwab's /markets answer for today is not held. The daemon's last answer for the
-    ticker's chain (a failed fetch, an incomplete delivery) outranks the age, and its refused
-    sign-in (`chains_waiting`) outranks both, on every verdict but LIVE and CLOSE. While its option
-    market is open the daemon fetches every watchlist ticker's chain without end, so age past two of
-    its delivered rounds is a gap, never a schedule. Served beside it: the age and the chain's time."""
+    """The levels' state at `now`, THE levels verdict every screen shows (`levels_state`): LIVE
+    while the ticker's own option market (time_et.option_close_product: stock options close at
+    16:00 ET, index-close options at 16:15) is open and its chain current; CLOSE once that market
+    has closed and a chain fetched after its close stands, however old (docs/DATA_FLOW.md §2 D5);
+    STALE, with WHY, when the chain is overdue or the close values were never fetched; NOT LIVE
+    when Schwab's /markets answer for today is not held. The daemon's last answer for the ticker's
+    chain (a failed fetch, an incomplete delivery) outranks the age, and its refused sign-in
+    (`chains_waiting`) outranks both, on every verdict but LIVE and CLOSE. While its option market
+    is open the daemon fetches every watchlist ticker's chain without end, so age past two of its
+    delivered rounds is a gap, never a schedule. Served beside it: the age and the chain's
+    time."""
     token = schwab_token_countdown(_schwab_token_creation_ts(), now)  # warned before it expires
     failure = str(
         _terrain_refresh_last_error.get(ticker_storage_key(ticker) if ticker else "", "") or ""
@@ -941,7 +944,8 @@ def _levels_state(
         + (
             f"ticker in two of its rounds ({float(round_sec):.0f}s each)"
             if round_sec is not None
-            else f"ticker in {float(TERRAIN_STALE_AFTER_SEC):.0f}s (the daemon reports no round of its sweep)"
+            else f"ticker in {float(TERRAIN_STALE_AFTER_SEC):.0f}s (the daemon reports no round "
+            "of its sweep)"
         )
     )
 
@@ -1004,7 +1008,8 @@ def _streamed_greeks_for_ticker(
 ) -> dict:
     """The newest streamed GAMMA/DELTA/OPEN_INTEREST/VOLUME of every contract the daemon's
     latest beat holds of the ticker's chain (`listed`, the symbols Schwab listed in it). A
-    missing beat keeps that set. `feed` is one read of that heartbeat; omitted, this call reads it."""
+    missing beat keeps that set. `feed` is one read of that heartbeat; omitted, this call reads
+    it."""
     out: dict = {}
     for sym in _held_option_symbols_for_ticker(listed, now, feed):
         greeks = get_stream_greeks(sym)
@@ -1394,8 +1399,8 @@ _QUOTE_COUNTS = ("openInterest", "totalVolume")
 
 
 def _shown_greeks(ct, price, product):
-    """The contract as the chain shows it: a Greek that is not a value (gamma_reported for the gamma,
-    greek_reported for the rest) is None ("-")."""
+    """The contract as the chain shows it: a Greek that is not a value (gamma_reported for the
+    gamma, greek_reported for the rest) is None ("-")."""
     if not isinstance(ct, dict):
         return ct
     shown = dict(ct)
@@ -1820,10 +1825,10 @@ _chain_pricing = ThreadPoolExecutor(max_workers=1, thread_name_prefix="chain-pri
 #: captures (startup, for a ticker the daemon has not delivered yet), or a REPRICE of its held
 #: chain (a streamed tick on a viewed ticker)
 DELIVERED, STORED, REPRICE = "delivered", "stored", "reprice"
-#: ticker -> (what, contracts, fetched time, the chain's spot): at most one per ticker however far pricing falls
-#: behind; a delivered chain replaces what waits, and whatever waits already prices the newest
-#: ticks. Every pricing runs on the one pricing thread, so each ticker's chains are priced in the
-#: order they were fetched.
+#: ticker -> (what, contracts, fetched time, the chain's spot): at most one per ticker however far
+#: pricing falls behind; a delivered chain replaces what waits, and whatever waits already prices
+#: the newest ticks. Every pricing runs on the one pricing thread, so each ticker's chains are
+#: priced in the order they were fetched.
 _chains_waiting: dict[str, tuple[str, list | None, float | None, tuple | None]] = {}
 _chains_waiting_lock = threading.Lock()
 #: the tickers the daemon has delivered a chain for since the console started: their stored
@@ -1918,7 +1923,8 @@ FEED_RECORD_STALE_SEC = 150.0
 
 def _feed_record_state(path: Path, now: float) -> str:
     """How old the newest stream_feed_status row in the stream database at `path` is at `now`: it
-    proves the whole path (the daemon's loop, the bus, the writer, the database) wrote this minute."""
+    proves the whole path (the daemon's loop, the bus, the writer, the database) wrote this
+    minute."""
     if not path.is_file():
         return "feed record: NO DATABASE"
     conn = sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True, timeout=5)
@@ -2010,11 +2016,11 @@ def refresh_not_live_pages(now: float) -> None:
 
 def _terrain_loop() -> None:
     """The watchlist's stored levels once the daemon has said what the watchlist is (queued behind
-    the delivered chains: _load_stored_levels); then every STATUS_EVERY_SEC the status line is logged,
-    each open page whose price or levels are not live is told to read its levels again
+    the delivered chains: _load_stored_levels); then every STATUS_EVERY_SEC the status line is
+    logged, each open page whose price or levels are not live is told to read its levels again
     (refresh_not_live_pages) and the price levels of a new session or a new ticker are published.
-    The chains, and the bars
-    each ticker's price levels are built from, arrive from the daemon (_on_chain, _bar_writer)."""
+    The chains, and the bars each ticker's price levels are built from, arrive from the daemon
+    (_on_chain, _bar_writer)."""
     _wait_for(
         "the capture daemon's heartbeat (it says what the watchlist is)",
         lambda: _watchlist(time.time()) is not None,
@@ -2594,7 +2600,8 @@ def _forces_from_captures(tk: str, captures: list, charm_by_strike: dict | None 
         ]
         if len(rows) >= 2:
             (d1, s1, c1, t1), (d0, s0, c0, t0) = rows[0], rows[1]
-            # each capture at its own time, or at that day's option close once the capture is past it
+            # each capture at its own time, or at that day's option close once the capture is past
+            # it
             product = option_close_product(tk)
             clock1 = valuation_instant(datetime.fromtimestamp(t1, ET), product)
             clock0 = valuation_instant(datetime.fromtimestamp(t0, ET), product)
@@ -2949,7 +2956,8 @@ DESK_LOOKBACK = {
 
 def _desk_window_start(tf: str, now: datetime) -> float:
     """Start of the Trade Desk's event window for chart timeframe `tf`: `now` minus its lookback,
-    or the open of the latest regular session that has begun (Schwab's /markets, time_et.last_open)."""
+    or the open of the latest regular session that has begun (Schwab's /markets,
+    time_et.last_open)."""
     lb = DESK_LOOKBACK[tf][0]
     if lb != "session":
         return now.timestamp() - lb
@@ -3001,7 +3009,8 @@ def desk_events_payload(tk: str, venue: str, tf: str, now: datetime) -> dict:
                 "dir": c.get("direction"),
                 "marker": False,
                 "title": f"Crossed {_CROSS_WORD.get(c.get('direction'), 'through')} {names}",
-                "detail": f"{price_text(c['level_value'])} · spot {price_text(c['spot_at_cross'])} at the cross",
+                "detail": f"{price_text(c['level_value'])} · spot "
+                f"{price_text(c['spot_at_cross'])} at the cross",
                 "src": "level_crosses",
             }
         )
@@ -3141,8 +3150,8 @@ def order_flow_microstructure(ticker: str, venue: str, now: float) -> dict:
     spread, microprice, Top 1/3/5 depth totals + imbalance, depth-pressure curve, book slope,
     liquidity concentration, wall_candidates, and ages — every field classified
     NATIVE/DERIVED/PROXY. SERIALIZER, not a second producer: it delegates to the ONE canonical
-    app.options.order_flow.engine.compute_book_microstructure keyed by this ticker, which carries the
-    engine's already-computed structural state for the current book (memoized per ticker +
+    app.options.order_flow.engine.compute_book_microstructure keyed by this ticker, which carries
+    the engine's already-computed structural state for the current book (memoized per ticker +
     BOOK_TIME) rather than re-walking the raw book. No Schwab REST quote call; the client
     renders, never recomputes. `venue` is the one Schwab book shown: NYSE_BOOK (exchanges) or
     NASDAQ_BOOK (market makers); the two are never combined."""
@@ -3168,7 +3177,8 @@ def order_flow_microstructure(ticker: str, venue: str, now: float) -> dict:
     # the venue's book: the same verdict on its own service (price_state), its word served
     book_label = price_state(t, now, venue)[0]
     data["book_live"] = book_label == lmp.LIVE
-    # ticker=t → serialize the canonical state carried per (ticker, BOOK_TIME); no independent recompute.
+    # ticker=t → serialize the canonical state carried per (ticker, BOOK_TIME); no independent
+    # recompute.
     payload = compute_book_microstructure(data, now_ts=now, ticker=t)
     payload["top_outage"], payload["top_feed_label"], payload["book_feed_label"] = (
         top_outage,
@@ -3206,8 +3216,9 @@ def api_order_flow_options_microstructure(contract: str = Query(...)):
 
 def options_microstructure(c: str, now: float) -> dict:
     """The Flow panel's payload for contract `c` at `now` (/api/order-flow/options-microstructure),
-    judged live by its own option market: that of the ticker whose chain lists it (_contract_ticker);
-    a contract in no chain the console holds has no known market and is not live."""
+    judged live by its own option market: that of the ticker whose chain lists it
+    (_contract_ticker); a contract in no chain the console holds has no known market and is not
+    live."""
     tk = _contract_ticker(ticker_storage_key(c))
     product = option_close_product(tk) if tk is not None else None
     payload = options_live_payload(ticker_storage_key(c), now, product)
@@ -3333,10 +3344,11 @@ NO_CHAIN_YET = "the daemon has not delivered this ticker's chain yet"
 @app.get("/api/chain")
 def get_chain(ticker: str = Query(...), expiry: str | None = Query(default=None)):
     """One expiry of the ticker's full chain -- every contract Schwab listed, every field as sent
-    except a Greek that is not a value, which is null (_shown_greeks) -- from the chain the daemon delivered (strike_range=ALL), with each live streamed contract's
-    streamed fields as its values (the stream owns them), by the levels' own rule on the same
-    inputs (the chain's listed contracts, its fetch time). Every watchlist ticker's chain is kept.
-    Answers `status: unavailable` with a reason when no chain is held."""
+    except a Greek that is not a value, which is null (_shown_greeks) -- from the chain the daemon
+    delivered (strike_range=ALL), with each live streamed contract's streamed fields as its values
+    (the stream owns them), by the levels' own rule on the same inputs (the chain's listed
+    contracts, its fetch time). Every watchlist ticker's chain is kept. Answers `status:
+    unavailable` with a reason when no chain is held."""
     t = ticker_storage_key(_required_ticker(ticker))
     now = time.time()
     held = terrain_cache_get(t, now)
@@ -3586,7 +3598,8 @@ def capture_process_identity(checkout: str | Path) -> ProcessIdentityV1:
     )
 
 
-#: captured once, at import, before uvicorn serves any request (one process, no --reload: launch.CONSOLE)
+#: captured once, at import, before uvicorn serves any request (one process, no --reload:
+#: launch.CONSOLE)
 PROCESS_IDENTITY_V1: ProcessIdentityV1 = capture_process_identity(APP_DIR)
 
 
@@ -3866,7 +3879,8 @@ def _inside_move(strike, low, high) -> bool:
 
 
 def _ranked_matrices(live: dict) -> dict:
-    """One ranking of each expiry on this publication. The matrix request reads the expiry it shows."""
+    """One ranking of each expiry on this publication. The matrix request reads the expiry it
+    shows."""
     books = live.get("_books")
     spot = live.get("spot")
     if not isinstance(books, dict) or not isinstance(spot, (int, float)):
@@ -4176,8 +4190,8 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict:
         "volume_profile": None
         if vp is None
         else {
-            "basis": "Estimated volume by price: each RTH 1-minute bar's volume spread evenly over its "
-            "range (not trades observed at a price)",
+            "basis": "Estimated volume by price: each RTH 1-minute bar's volume spread evenly "
+            "over its range (not trades observed at a price)",
             "bars": vp.bars,
             "bars_without_volume": vp.bars_without_volume,
             "tick_size": vp.tick_size,
