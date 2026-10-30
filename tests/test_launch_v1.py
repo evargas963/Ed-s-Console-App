@@ -160,15 +160,6 @@ def test_the_stop_ends_the_console_and_leaves_no_window_waiting(tmp_path):
         window.kill()
 
 
-@windows_only
-def test_a_ctrl_break_to_a_console_already_gone_raises_nothing():
-    """The console ended between the stop finding it and the signal: the stop goes on to report
-    what is left."""
-    gone = subprocess.Popen([sys.executable, "-c", ""])
-    gone.wait(30)
-    launch.ctrl_break(gone.pid)
-
-
 def _real_console(tmp_path: Path) -> tuple[subprocess.Popen, int]:
     """The real console, offline on a free port with a runtime root of its own, started by the
     batch file in a window of its own; healthy before this returns its window and process id."""
@@ -193,7 +184,9 @@ def _real_console(tmp_path: Path) -> tuple[subprocess.Popen, int]:
                     tmp_path,
                     [
                         sys.executable,
-                        *launch.CONSOLE_START,
+                        "-m",
+                        "uvicorn",
+                        "server:app",
                         "--host",
                         "127.0.0.1",
                         "--port",
@@ -212,7 +205,6 @@ def _real_console(tmp_path: Path) -> tuple[subprocess.Popen, int]:
 def test_the_real_console_stops_on_the_stop_and_on_the_operators_ctrl_c(tmp_path):
     window, pid = _real_console(tmp_path / "break")
     try:
-        assert pid in {p.pid for p in launch.running(launch.CONSOLE_START)}
         launch.ctrl_break(pid)
         assert window.wait(timeout=60) == 0, "the console did not stop, or its window waits"
     finally:

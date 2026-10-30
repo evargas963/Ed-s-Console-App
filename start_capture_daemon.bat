@@ -2,7 +2,8 @@
 title Ed Capture Daemon
 cd /d "%~dp0"
 REM The capture daemon: holds the ONE Schwab streaming connection and serves every live price
-REM (ws :8800 browsers, :8799 console). Started by launch.py (start_ed_console.bat), which brings the
+REM (ws :8800 browsers, :8799 console). Started only by launch.py, which passes the daemon's command
+REM as this batch's arguments (launch.DAEMON_START, its one copy; start_ed_console.bat), and brings the
 REM checkout to origin/main first; it reads its own .env (the Schwab credentials). Its output,
 REM and its errors from before its project modules load, go to logs\stream_capture.<date>.log (pythonw). If it exits it is restarted here after 5 s -- except when
 REM another daemon already owns the stream (exit 3), this checkout may not run live (exit 2), or it
@@ -10,7 +11,7 @@ REM was stopped cleanly on request (exit 5: `python launch.py stop`, which also 
 REM Close this window to stop the daemon's restarts (then end the pythonw process if running).
 :loop
 echo  %date% %time%  capture daemon starting (output: logs\stream_capture.^<date^>.log)
-"%~dp0.venv\Scripts\pythonw.exe" -m app.market_data.schwab.streaming.capture_main
+"%~dp0.venv\Scripts\pythonw.exe" %*
 set "CODE=%errorlevel%"
 if "%CODE%"=="3" (
     echo  Another capture daemon already owns the stream - not starting a second one.
