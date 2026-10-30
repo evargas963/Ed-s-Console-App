@@ -10,6 +10,10 @@ producers), `docs/ARCHITECTURE.md` (where code lives), `ACTIVE_PROGRAM.md` (the 
 `docs/PRACTICES.md` (the Schwab field list). Rules for one area load with its files
 (`.claude/rules/`); procedures are skills (`.claude/skills/`).
 
+Every requirement here, in `.claude/rules/` and in `docs/DATA_FLOW.md` names what enforces it: a
+test, hook or required check, or "no machine check" and the item in `ACTIVE_PROGRAM.md` (an ENF item
+or a SHAPE step) that builds one. Enforced by: no machine check — ENF-12.
+
 ## Shared rules (master copy: the operator's wording, identical to his project instructions; a change is proposed to him separately)
 
 ### First gate (EdWebConsole)
@@ -82,13 +86,13 @@ then the rule binds with no machine check.
 | 4 | **The page draws; it computes nothing.** Every number, total, choice, comparison and date it shows is served. It gets data only from the one push. | ESLint: `fetch`, `XMLHttpRequest` and `EventSource` only in the transport module (step 4); `Math.*`, `.sort(`, `.reduce(` and date arithmetic banned outside the drawing module (step 5) |
 | 5 | **The numbers.** Every value comes from its one producer and matches what Schwab sent. Calculations keep every digit and use every contract; rounding happens only on screen. Every value is shown with its time. While it updates it is live; when it stops, for any reason, the last value stands, marked not live with its time and age, and everything computed from it is marked too; during a feed outage the header says OFFLINE. A value never received, or sent invalid, shows "-". Never a fallback, default, estimate, proxy, interpolation or synthetic value. | `tests/test_live_quote_and_order_flow_no_fallbacks_v1.py`, `tests/test_gamma_exposure_honest_absence_v1.py`, `tests/test_data_path_heatmap_absent_v1.py` (in force) |
 | 6 | **One program, one path.** Schwab → program memory → pushed to the page. The databases are history, written by the Recorder, read at startup, after the close and for research, never for a live screen. | import-linter: `sqlite3` only in the Recorder and the startup loader; a test that the launcher starts one process (step 3); the data path tests of `docs/DATA_FLOW.md` §2 (in force) |
-| 7 | **All tickers.** Measure and report across every watchlist ticker, never one. Every ticker is treated the same. | no machine check |
+| 7 | **All tickers.** Measure and report across every watchlist ticker, never one. Every ticker is treated the same. | no machine check — ENF-05 |
 | 8 | **Clocks.** Market logic in ET; the page shows Central Time. The market's sessions are Schwab's /markets answers; no session table is typed by hand. | `tests/test_time_et_authority.py`, `tests/test_markets_sessions_v1.py` (in force) |
 | 9 | **Real data.** Tests run on captured Schwab data (`tests/fixtures/`) through the real code; no stand-ins, no patches of the code under test. | `tools/check_no_new_patches.py` with `tools/patch_record.py` in `pytest-full`, on a pull request's change (in force), until ruff `TID251` (no `unittest.mock`) and a conftest that refuses `monkeypatch` replace them (step 7); stand-ins left in the tests — STAND-INS |
 | 10 | **Only Feed talks to Schwab.** | import-linter: `schwab`, `httpx` and `authlib` importable only from Feed (step 1d) |
 | 11 | **Calculators are pure.** They take `now` and their inputs; they read no clock, database, global or network. Only an entry point (a route, a loop, a stream handler) reads the clock. | import-linter forbidden imports and ruff `TID251` banned `time.time` / `datetime.now` outside the entry points (step 2) |
 | 12 | **Typed records across boundaries.** A value that crosses a module boundary is a dataclass whose states are named constants. | pyright, strict on State, Calculators and Push (step 6) |
-| 13 | **Python's guidelines.** PEP 8 and PEP 257 as `ruff format` and ruff's rules read them; PEP 20 as the shape. Imports at the top. One formatter per format (price, Central Time, dollars), on the server. | `ruff format` (in force); ruff `E`, `W`, `B`, `SIM`, `BLE`, `S110`, `TRY`, `C90`, `UP` (step 1b), `D` (pep257, no docstring required; step 1c), `I` (step 7) |
+| 13 | **Python's guidelines.** PEP 8 and PEP 257 as `ruff format` and ruff's rules read them; PEP 20 as the shape. Imports at the top. One formatter per format (price, Central Time, dollars), on the server (no machine check — ENF-11). | `ruff format` (in force); ruff `E`, `W`, `B`, `SIM`, `BLE`, `S110`, `TRY`, `C90`, `UP` (step 1b), `D` (pep257, no docstring required; step 1c), `I` (step 7) |
 
 ## Fix what you find (operator 2026-10-29: "fix what you find anywhere, everywhere, repo wide")
 
@@ -111,11 +115,12 @@ then the rule binds with no machine check.
 
 - Trace each value it touches: its source, its one producer, its validity rule and time, its live
   and stored consumers, and what each shows when it is missing. A producer exists: call it. None
-  exists: write it once, in its part.
+  exists: write it once, in its part. Enforced by: no machine check — ENF-08.
 - Name each touched responsibility's one lifecycle owner (what starts, refreshes, retries and
   expires it) and what fails when that owner fails, in `docs/DATA_FLOW.md` and in the code.
+  Enforced by: no machine check — ENF-08.
 - A function that depends on the clock takes `now`; only an entry point (a route, a loop, a stream
-  handler) reads the clock.
+  handler) reads the clock. Enforced by: ruff `TID251` (SHAPE step 2); until then no machine check — ENF-09.
 - A new check is a test of behavior for a failure that happened, fails on the old code, and starts
   with no exceptions. Enforced by: `tools/check_fails_before.py` in `pytest-full`
   (`tests/test_check_fails_before_v1.py`).
@@ -123,10 +128,6 @@ then the rule binds with no machine check.
   standard tool's own fix, `ruff format` and `ruff check --fix`; `unix2dos`/`dos2unix` for line
   endings). Enforced by: `tools/operator_law_guard.py` for
   sed (`tests/test_sed_edit_guard_v1.py`); the other in-place editors — ENF-14.
-- A file keeps its line endings. Enforced by: `tools/check_eol_style_invariant.py` at commit and in
-  `hardening` (`tests/test_eol_style_invariant_v1.py`).
-- No credential or operator-home path is committed. Enforced by: `tools/check_credential_leak.py`
-  at commit and in `hardening` (`tests/test_credential_leak_v1.py`).
 
 ## Before saying done
 
@@ -138,25 +139,28 @@ then the rule binds with no machine check.
   Anything else is NOT VERIFIED, with when it was last checked. "Done" = a test that failed before
   passes after, the full suite passes, and the live screen shows it working (a PR with no app code
   gets no screen check). "Across the board" = every watchlist ticker. Proof is a committed test or
-  a command anyone can re-run.
+  a command anyone can re-run. Enforced by: no machine check — ENF-12.
 - No hand-maintained count, floor or list that a check compares against; the check computes it.
-- Work another agent wrote is read in full by the agent offering the PR.
+  Enforced by: no machine check — ENF-12.
+- Work another agent wrote is read in full by the agent offering the PR. Enforced by: no machine
+  check — ENF-12.
 - Say whether a runtime change is live or on disk until a restart. Deployed means production at the
   merge commit, restarted, and the screen checked during market hours (the `deploy` skill).
-- Never kill a commit hook mid-run.
+  Enforced by: no machine check — ENF-12.
+- Never kill a commit hook mid-run. Enforced by: no machine check — ENF-12.
 - Settle code, test and design questions with these rules, the banking analogy, Python's guidelines
   and outside research, and say what was decided and why. Bring the operator what is his: merges;
   production starts and stops in regular hours; changes to request rates, limits and settings;
-  behavior or data changes; money.
+  behavior or data changes; money. Enforced by: no machine check — ENF-12.
 
 ## Close the change
 
 - A PR updates, in itself, every instruction, design, work item, check, test and caller its change
   affects, removes what it supersedes, and lists each affected path without proof as NOT_PROVEN. A
   finished work item leaves `ACTIVE_PROGRAM.md` in the PR that finishes it. Enforced by:
-  `tests/test_governing_docs_v1.py` (every path named exists).
+  `tests/test_governing_docs_v1.py` (every path named exists); the rest — ENF-12.
 - Each decision the operator gives in chat is written into `ACTIVE_PROGRAM.md` or this file in the
-  PR that acts on it.
+  PR that acts on it. Enforced by: no machine check — ENF-12.
 
 ## Review verdicts
 
@@ -175,7 +179,7 @@ then the rule binds with no machine check.
 
 - At each milestone (a commit, a failed check, a finding that changes the plan), report to the
   operator what changed, what was deleted, each proof and its tier, and what is NOT_PROVEN, then
-  continue.
+  continue. Enforced by: no machine check — ENF-12.
 - A PR merges on the operator's yes after CI is green on its final commit; that yes also covers its
   deploy. No CODEOWNERS file. Enforced by: branch protection; `tools/operator_yes_guard.py` asks
   Allow/Deny for the merges its tests check (`tests/test_operator_yes_guard_v1.py`,
@@ -199,4 +203,8 @@ then the rule binds with no machine check.
   `tests/test_operator_law_guard_action_bans_v1.py`, `tests/test_protected_paths_v1.py` and
   `tests/test_guards_read_statements_v1.py` check; the forms ENF-13 lists as known open, a script
   file's contents among them — no machine check, ENF-13.
-- Shell steps that depend on each other are joined with `&&`.
+- A file keeps its line endings. Enforced by: `tools/check_eol_style_invariant.py` at commit and in
+  `hardening` (`tests/test_eol_style_invariant_v1.py`).
+- No credential or operator-home path is committed. Enforced by: `tools/check_credential_leak.py`
+  at commit and in `hardening` (`tests/test_credential_leak_v1.py`).
+- Shell steps that depend on each other are joined with `&&`. Enforced by: no machine check — ENF-12.
