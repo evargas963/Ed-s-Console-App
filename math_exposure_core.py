@@ -547,7 +547,7 @@ def exposures_have_dollar_gex(exposures: dict[float, dict]) -> bool:
 def key_level_strikes_with_oi(exposures: dict[float, dict]) -> list[float]:
     """Strikes whose OI is KNOWN and positive (strike_total_oi -- the one reader)."""
     out: list[float] = []
-    for s in sorted(float(k) for k in exposures.keys()):
+    for s in sorted(float(k) for k in exposures):
         tot = strike_total_oi(exposures.get(s, {}))
         if tot is not None and tot > 0:
             out.append(s)
@@ -560,7 +560,7 @@ def key_level_strikes_with_gamma(exposures: dict[float, dict]) -> list[float]:
         return []
     dollar = exposures_have_dollar_gex(exposures)
     out: list[float] = []
-    for s in sorted(float(k) for k in exposures.keys()):
+    for s in sorted(float(k) for k in exposures):
         b = exposures.get(s, {})
         if dollar:
             tg = total_gex_dollars_at_strike(b)
