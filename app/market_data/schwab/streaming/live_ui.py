@@ -128,17 +128,21 @@ class LiveUiServer:
         async for frame in c.ws:
             try:
                 req = json.loads(frame)
-            except (TypeError, ValueError):
+            except (TypeError, ValueError) as e:
+                log.warning("live ui: a page frame that is not JSON (%s): %.200r", e, frame)
                 continue
-            if not isinstance(req, dict) or req.get("op") != "subscribe":
-                continue
-            raw = req.get("symbols")
+            subscribe = isinstance(req, dict) and req.get("op") == "subscribe"
+            raw = req.get("symbols") if subscribe else None
             if not isinstance(raw, list):
+                log.warning(
+                    "live ui: a page frame that is not a subscribe with symbols: %.200r", frame
+                )
                 continue
             keys, identity = [], []
             for s in raw:
                 k = ticker_storage_key(s) if isinstance(s, str) else ""
                 if not k:
+                    log.warning("live ui: a subscribed symbol not a string, or blank: %.200r", s)
                     continue
                 identity.append({"requested": s, "key": k, "display": display_symbol(k)})
                 if k not in keys:

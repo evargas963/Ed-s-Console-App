@@ -6,7 +6,6 @@ scheduling live in the caller, so this stays trivially testable.
 
 from __future__ import annotations
 
-import time as _time
 from dataclasses import asdict, dataclass, field, fields, replace
 from datetime import datetime
 from typing import Any
@@ -1116,5 +1115,4 @@ def compute_terrain(
         pcr_volume_all=put_call_volume_ratio(exposures),
         expiries=sorted({e for (e, _d) in books}),
         expiry_dte={e: d for (e, d) in books},
-        computed_ts_utc=_time.time(),
     )
