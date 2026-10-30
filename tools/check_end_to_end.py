@@ -235,7 +235,8 @@ def fix_safety(root: Path, config: Path) -> dict[str, str] | None:
 
 def tools_fix_is_safe(root: Path, base: str) -> bool:
     """Whether ruff, run on the PR's committed pyproject.toml, takes only fixes that are safe for
-    the base's Python: unsafe fixes not on, none forced safe, the same target versions."""
+    the base's Python: unsafe fixes not on, none forced safe, no per-file target version, the same
+    target versions."""
     try:
         _git(root, "diff", "--quiet", "HEAD", "--", "pyproject.toml")  # the tree is the commit's
         old = _git(root, "show", f"{_git(root, 'merge-base', base, 'HEAD').strip()}:pyproject.toml")
@@ -250,7 +251,8 @@ def tools_fix_is_safe(root: Path, base: str) -> bool:
     return (
         now["unsafe_fixes"] != "enabled"
         and now["linter.safety_table.forced_safe"] == "[]"
-        and all(now[k] == was[k] for k in FIX_SAFETY if "target_version" in k)
+        and all(now[k] == "{}" for k in FIX_SAFETY if "per_file" in k)  # a map prints on many lines
+        and all(now[k] == was[k] for k in FIX_SAFETY if "unresolved_target" in k)
     )
 
 

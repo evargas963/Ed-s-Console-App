@@ -363,12 +363,17 @@ def test_a_fix_made_for_another_python_than_the_bases_is_a_product_change(tmp_pa
     """A fix ruff calls safe is safe for its target Python only: on 3.14 an annotation is not
     evaluated, so ruff unquotes a forward reference that 3.13, the base's, evaluates at import."""
     forward = 'def f() -> "Later":\n    return None\n\n\nclass Later:\n    pass\n'
-    root = _repo(tmp_path, {**TOOLS_BASE, "server.py": forward})
-    py314 = RUFF_UP.replace("py313", "py314")
-    fixed = _tool_fixed(root, forward, py314)
-    assert fixed is not None and "-> Later:" in fixed
-    _commit(root, {"pyproject.toml": py314, "server.py": fixed})
-    assert _changed(root) == ["server.py"]
+    per_file = RUFF_BASE + 'per-file-target-version = {"server.py" = "py314"}\n'
+    for base, pr in (
+        (RUFF_BASE, RUFF_UP.replace("py313", "py314")),
+        (per_file.replace("py314", "py313"), per_file + '[tool.ruff.lint]\nselect = ["UP"]\n'),
+    ):
+        (where := tmp_path / str(len(pr))).mkdir()
+        root = _repo(where, {**BASE, "pyproject.toml": base, "server.py": forward})
+        fixed = _tool_fixed(root, forward, pr)
+        assert fixed is not None and "-> Later:" in fixed, pr
+        _commit(root, {"pyproject.toml": pr, "server.py": fixed})
+        assert _changed(root) == ["server.py"], pr
 
 
 def test_the_tools_fix_reads_the_committed_config_never_the_working_trees(tmp_path):
