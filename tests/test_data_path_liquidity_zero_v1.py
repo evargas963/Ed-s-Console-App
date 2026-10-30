@@ -22,7 +22,7 @@ from tests.test_liquidity_snapshot_spot_identity_v1 import published as publishe
 from time_et import ET
 
 BEFORE_OPEN = FRIDAY.replace(hour=8)
-DRAWN = Path(__file__).parent / "e2e/fixtures/real_spy_liquidity_with_a_session_at_zero.json"
+DRAWN = Path(__file__).parent / "e2e/fixtures/standin_liquidity_with_a_session_at_zero.json"
 THURSDAY_ON = {1}
 FRIDAY_ON = {2}
 BOTH = {1, 2}
