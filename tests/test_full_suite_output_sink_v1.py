@@ -127,7 +127,9 @@ def test_runner_completes_when_the_terminal_reader_never_drains(tmp_path):
         rc = proc.wait(timeout=180)  # completes without the reader ever recovering
     except subprocess.TimeoutExpired:
         _stop_tree(proc)
-        raise AssertionError("the canonical runner froze behind a non-draining terminal reader")
+        raise AssertionError(
+            "the canonical runner froze behind a non-draining terminal reader"
+        ) from None
     assert rc == 0, f"runner exit code {rc}"
     log = tmp_path / "logs" / "test_pytest_last.log"
     assert log.is_file(), "the full pytest output was not written to the log file"

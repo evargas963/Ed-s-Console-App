@@ -222,7 +222,7 @@ def test_every_per_strike_panel_is_served_its_window_and_scale():
     assert body["measures"]["dex"]["view"] == body["views"]["dex"]
     for key in server.STRIKE_BAR_METHODS:  # vanna, charm
 
-        def bars(scope, centre=None, shift=0):
+        def bars(scope, centre=None, shift=0, key=key):
             return server.strike_bar_payload(TK, key, scope, centre, shift, _AT.timestamp())
 
         d = bars("auto")

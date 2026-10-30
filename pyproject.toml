@@ -5,11 +5,11 @@ extend-exclude = [".venv", "venv", "node_modules", "__pycache__"]
 
 [tool.ruff.lint]
 #: the commit hook's and the hardening job's one selection; CI's compileall step is what proves every file compiles
-select = ["F401", "F821", "E", "I", "SIM107", "SIM113", "SIM114", "SIM116", "SIM117", "SIM118", "SIM208", "SIM300", "SIM905", "SIM910", "SIM911", "UP", "W", "S110"]
-#: UP042 (str + Enum to StrEnum), E711 and E712 (== None, == True) and E731 (a lambda assigned to
-#: a name): the one fix of each is ruff-labelled unsafe, and no unsafe fix is taken (operator,
-#: AGENTS.md "Fix what you find")
-ignore = ["UP042", "E711", "E712", "E731"]
+select = ["F401", "F821", "E", "B", "I", "SIM107", "SIM113", "SIM114", "SIM116", "SIM117", "SIM118", "SIM208", "SIM300", "SIM905", "SIM910", "SIM911", "UP", "W", "S110"]
+#: UP042 (str + Enum to StrEnum), E711 and E712 (== None, == True), E731 (a lambda assigned to a
+#: name), B004, B006, B007, B011, B028, B905 and B912: the one fix of each is ruff-labelled unsafe,
+#: and no unsafe fix is taken (operator, AGENTS.md "Fix what you find")
+ignore = ["UP042", "E711", "E712", "E731", "B004", "B006", "B007", "B011", "B028", "B905", "B912"]
 
 [tool.ruff.format]
 quote-style = "double"
