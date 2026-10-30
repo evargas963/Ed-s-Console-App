@@ -167,7 +167,7 @@ def test_a_secret_a_pull_request_commits_is_refused_against_its_base(tmp_path):
     secret a later commit removes again, since the merge publishes every commit."""
     root = _staged(tmp_path, {"app.py": "x = 1\n"})
     git = lambda *a: subprocess.run(
-        ["git", "-c", "user.email=t@t", "-c", "user.name=t", *a],  # noqa: E731
+        ["git", "-c", "user.email=t@t", "-c", "user.name=t", *a],
         cwd=root,
         check=True,
         capture_output=True,
@@ -189,7 +189,7 @@ def test_a_secret_typed_into_a_merge_resolution_is_refused(tmp_path):
     what the resolution adds; the lines main brings in through the merge are not the PR's."""
     root = _staged(tmp_path, {"app.py": "x = 1\n"})
     git = lambda *a: subprocess.run(
-        ["git", "-c", "user.email=t@t", "-c", "user.name=t", *a],  # noqa: E731
+        ["git", "-c", "user.email=t@t", "-c", "user.name=t", *a],
         cwd=root,
         capture_output=True,
     )
