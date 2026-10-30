@@ -102,14 +102,14 @@ def compute_atr(candles: list, *, period: int = 14) -> float | None:
     prev_close = None
     for candle in candles:
         h = _get(candle, "h", "high")
-        l = _get(candle, "l", "low")
+        lo = _get(candle, "l", "low")
         c = _get(candle, "c", "close")
-        if h is None or l is None or c is None:
+        if h is None or lo is None or c is None:
             prev_close = c
             continue
 
         if prev_close is not None:
-            tr = max(h - l, abs(h - prev_close), abs(l - prev_close))
+            tr = max(h - lo, abs(h - prev_close), abs(lo - prev_close))
             trs.append(tr)
 
         prev_close = c
