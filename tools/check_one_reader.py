@@ -2,9 +2,9 @@
 
 The fields judged are the names in `docs/schwab_fields.csv` that are Schwab's own: each canonical
 field's last name in Schwab's spelling, an uppercase streamer field (`LAST_PRICE`, `DELTA`) or a
-camelCase REST field (`openInterest`). A plain lowercase word (`status`, `symbol`, `gamma`) is also the name
-of our own records' keys, so a read of it says nothing about Schwab; it is not judged. The list is
-read from the base and from the pull request, so removing a row does not take a field out.
+camelCase REST field (`openInterest`). A plain lowercase word (`status`, `symbol`, `gamma`) is also
+the name of our own records' keys, so a read of it says nothing about Schwab; it is not judged. The
+list is read from the base and from the pull request, so removing a row does not take a field out.
 
 A module reads a field raw when its code takes it out of a mapping by that name: `x["NAME"]`,
 `x.get("NAME")`, `x.pop("NAME")` or `"NAME" in x` / `not in x`, the name written as text or as a
@@ -14,12 +14,12 @@ are found at the merge base and on the pull request, and the pull request is ref
 that did not read the field at the merge base reads it and the field is then read by more than one
 module. Moving a field's one reader and bringing readers into one parser pass; renaming one of
 several readers is refused like a new one. Reads through a helper, a constant imported from another
-module, a loop over a table of names, `getattr`, `itemgetter` or a `match` pattern are not seen. A field is
-keyed by its last name, so two Schwab fields that share one (a quote's BID_PRICE and a book level's)
-count together, and a module reading our own record kept in Schwab's spelling counts as a reader
-(a record crossing modules is a typed record, ENF-10). `--list` names each field read by name in
-more than one module: the candidates to check, each one either a second reader to remove or one of
-those two cases.
+module, a loop over a table of names, `getattr`, `itemgetter` or a `match` pattern are not seen. A
+field is keyed by its last name, so two Schwab fields that share one (a quote's BID_PRICE and a book
+level's) count together, and a module reading our own record kept in Schwab's spelling counts as a
+reader (a record crossing modules is a typed record, ENF-10). `--list` names each field read by name
+in more than one module: the candidates to check, each one either a second reader to remove or one
+of those two cases.
 
     python tools/check_one_reader.py --base origin/main      (or --list)
 Exit 0: no module began reading a field that has another reader. Exit 1: refused, each field and
@@ -43,7 +43,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from check_end_to_end import is_product  # noqa: E402
 
 FIELDS_CSV = "docs/schwab_fields.csv"
-#: Schwab's own spelling: an uppercase streamer field (one word or UPPER_SNAKE) or a camelCase REST field
+#: Schwab's own spelling: an uppercase streamer field (one word or UPPER_SNAKE) or a camelCase
+#: REST field
 SCHWAB_SPELLING = re.compile(r"[A-Z][A-Z0-9]+(?:_[A-Z0-9]+)*|[a-z]+(?:[A-Z][a-z0-9]*)+")
 
 

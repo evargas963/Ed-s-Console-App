@@ -236,7 +236,8 @@ def market_session_date(now: datetime) -> date:
 
 
 def last_open(now: datetime) -> datetime | None:
-    """The start of the newest regular session Schwab sent that has begun by `now`; None: none held."""
+    """The start of the newest regular session Schwab sent that has begun by `now`; None: none
+    held."""
     begun = [start for s in _sessions.values() for start, _end in s.regular if start <= now]
     return max(begun) if begun else None
 

@@ -94,7 +94,8 @@ def _forget():
 
 @pytest.fixture
 def held():
-    """CRWD's chain published at the price Schwab sent with it; the live price is Schwab's last trade."""
+    """CRWD's chain published at the price Schwab sent with it; the live price is Schwab's last
+    trade."""
     _publish(_AT.timestamp())
     _daemon(time.time())  # live now, as the routes read it
     with server._terrain_cache_lock:

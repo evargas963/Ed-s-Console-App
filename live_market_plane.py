@@ -14,10 +14,11 @@ from instrument_identity import ticker_storage_key
 from numeric_contract import float_finite_or_none, schwab_count, schwab_number
 from time_et import CLOSED, ET, UNKNOWN, option_market_open, session_label
 
-#: the services the capture daemon streams the option rule's contracts on (capture.Daemon.pick_options):
-#: they trade only while an option market is open
+#: the services the capture daemon streams the option rule's contracts on
+#: (capture.Daemon.pick_options): they trade only while an option market is open
 OPTION_SERVICES = ("LEVELONE_OPTIONS", "OPTIONS_BOOK")
-#: the words of a value's state, served to the page: updating now; its feed down; its market not trading
+#: the words of a value's state, served to the page: updating now; its feed down; its market not
+#: trading
 LIVE, OFFLINE, NOT_LIVE = "LIVE", "OFFLINE", "NOT LIVE"
 
 
@@ -341,8 +342,9 @@ def live_state(
     """THE live rule, for every streamed value: `symbol`'s state on Schwab `service` at `now` and
     why it is not live (docs/DATA_FLOW.md §2 D5). LIVE while it is updating: the daemon's heartbeat
     current (feed_now) reporting the Schwab socket open, the symbol held on that service, and its
-    market trading (not_trading; an option contract by its own option market, `product`). OFFLINE while the feed itself is down; NOT LIVE while the feed is
-    up and this symbol is not held or its market is not trading. The last values stand either way.
+    market trading (not_trading; an option contract by its own option market, `product`). OFFLINE
+    while the feed itself is down; NOT LIVE while the feed is up and this symbol is not held or its
+    market is not trading. The last values stand either way.
 
     Not "did a value arrive recently": Schwab sends a field only when it CHANGES (measured: 11%
     of 4,039 messages carried bid+ask+last together), so a quiet symbol's unchanged value is its

@@ -1,8 +1,8 @@
-"""Schwab -> the levels. A chain's one spot (operator 2026-10-23): Schwab's LAST_PRICE with its trade
-time, as the daemon's price row holds it when the chain is complete. The daemon's chain sweep sends it
-with the chain and stores it with the capture (each expiry's underlyingPrice kept as sent beside it);
-the console prices the chain at it; the stored-capture reader gives it back. A capture written before
-the chain carried a spot is read at its nearest expiry's underlyingPrice, labelled.
+"""Schwab -> the levels. A chain's one spot (operator 2026-10-23): Schwab's LAST_PRICE with its
+trade time, as the daemon's price row holds it when the chain is complete. The daemon's chain sweep
+sends it with the chain and stores it with the capture (each expiry's underlyingPrice kept as sent
+beside it); the console prices the chain at it; the stored-capture reader gives it back. A capture
+written before the chain carried a spot is read at its nearest expiry's underlyingPrice, labelled.
 
 Real data: CRWD's 2026-10-16 expiry captured 2026-10-07 10:38:40 ET (tests/real_chains.py CRWD,
 underlyingPrice 269.04) and CRWD's LEVELONE_EQUITIES message the daemon received at 10:38:00 ET

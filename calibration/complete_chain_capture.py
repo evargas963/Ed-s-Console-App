@@ -46,9 +46,9 @@ log = logging.getLogger("chain_history")
 
 CAPTURE_EVERY_MIN = 30
 #: why the daemon's captures are complete: every listed expiry, every strike. The daemon writes
-#: only this basis, and rows of any other are not read. The basis is stored before the chain blob, so filtering
-#: on it never reads a chain (measured: filtering on `source`, stored after the blob, read every
-#: chain -- 15 s for SPY, 80 s at startup).
+#: only this basis, and rows of any other are not read. The basis is stored before the chain
+#: blob, so filtering on it never reads a chain (measured: filtering on `source`, stored after
+#: the blob, read every chain -- 15 s for SPY, 80 s at startup).
 CAPTURE_BASIS = (
     "every_expiry_strike_range_ALL"  # the only basis read: rows of any other are partial
 )
@@ -102,8 +102,8 @@ def persist_complete_chain_capture(
     Schwab sent it; `chain_spot` / `chain_spot_ts` the chain's one spot and its trade time (None
     when the daemon held no price). A time series (PRIMARY KEY includes
     ts_utc): each capture time is its own set of rows, one per expiry. A stored capture is
-    never replaced: a second write of the same (ticker, expiry, ts_utc) raises sqlite3.IntegrityError and the
-    stored row stands.
+    never replaced: a second write of the same (ticker, expiry, ts_utc) raises
+    sqlite3.IntegrityError and the stored row stands.
 
     FAIL CLOSED: no contracts, or an unproven `completeness_basis`, writes NOTHING and
     says why — a persisted row with an empty or unverifiable completeness claim would be
@@ -296,10 +296,10 @@ class ChainSweep:
     """The one fetcher of option chains: one thread, one request at a time on the daemon's one
     Schwab client, every ticker the same, in one rotation (sorted): every watchlist ticker
     (`watchlist`, which the daemon replaces on each add or removal: an added ticker is in the
-    next rotation, a removed one is asked for no more). For each ticker, Schwab's expiration chain once per ET
-    date, then one chain request per expiry (strike_range=ALL), as Schwab says to break up a
-    large chain. The chain's own Greeks (GREEK_FIELDS, rounded by Schwab) are never kept.
-    Every contract is asked for on the quotes endpoint, the one service that carries each of
+    next rotation, a removed one is asked for no more). For each ticker, Schwab's expiration
+    chain once per ET date, then one chain request per expiry (strike_range=ALL), as Schwab says
+    to break up a large chain. The chain's own Greeks (GREEK_FIELDS, rounded by Schwab) are never
+    kept. Every contract is asked for on the quotes endpoint, the one service that carries each of
     those fields for every contract, QUOTES_BATCH_MAX symbols to a request across tickers, and
     takes its quote's, with the quote's quoteTime. The stream is not read. A Greek Schwab does
     not send is absent (None). Each contract carries the time of its Greeks as `greeksTime`
@@ -317,9 +317,10 @@ class ChainSweep:
     while that answer is not known yet, and once more after the newest close it has not been
     fetched since (its close values; a failed one again in the next pass); otherwise not, until
     the next session. A ticker whose expiration chain lists no option (or none asked yet) has
-    its chain asked once per ET date, to learn whether options are listed. A chain is published to the console in parts (chain_messages) once
-    all its quotes are in; a ticker whose request fails (an answer other than 200, or none) is
-    published as failed with the reason, and the rotation goes on. The first chain of a ticker
+    its chain asked once per ET date, to learn whether options are listed. A chain is published
+    to the console in parts (chain_messages) once all its quotes are in; a ticker whose request
+    fails (an answer other than 200, or none) is published as failed with the reason, and the
+    rotation goes on. The first chain of a ticker
     begun inside a capture window (capture_slot) is also written to the chain history; a history
     write that fails is a write failure, never the chain's: the chain as delivered is handed to
     `failures` (the daemon's writer) to keep."""
@@ -740,7 +741,8 @@ def last_capture_per_day(
         out = []
         for day, ts in picked:
             rows = conn.execute(
-                f"SELECT expiry, spot, {chain_spot}, completeness_basis, chain_json FROM complete_chain_captures "
+                f"SELECT expiry, spot, {chain_spot}, completeness_basis, chain_json "
+                "FROM complete_chain_captures "
                 "WHERE ticker=? AND completeness_basis=? AND ts_utc=? ORDER BY expiry",
                 (tk, CAPTURE_BASIS, ts),
             ).fetchall()

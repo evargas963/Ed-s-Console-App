@@ -48,8 +48,10 @@ def test_build_config_fail_closed_without_secrets(tmp_path: Path) -> None:
         "cfg = config.build_config()\n"
         "assert cfg.api_key == '' and cfg.app_secret == '', cfg\n"
         "assert config.schwab_live_blocked_for() is True\n"
-        f"state = schwab_client.build_client_from_token({str(tmp_path / 'token.json')!r}, cfg.api_key, cfg.app_secret)\n"
-        "assert state.ok is False and state.client is None and 'UNAVAILABLE' in state.message, state\n"
+        "state = schwab_client.build_client_from_token("
+        f"{str(tmp_path / 'token.json')!r}, cfg.api_key, cfg.app_secret)\n"
+        "assert state.ok is False and state.client is None "
+        "and 'UNAVAILABLE' in state.message, state\n"
     )
     env = {k: v for k, v in os.environ.items() if k not in ("SCHWAB_API_KEY", "SCHWAB_APP_SECRET")}
     r = subprocess.run(
@@ -62,7 +64,8 @@ def test_server_import_does_not_build_client_or_run_login_flow() -> None:
     """`import server` in a fresh interpreter builds no client and runs no login flow."""
     code = (
         "from unittest.mock import patch\n"
-        "with patch('schwab_client.build_client_from_token') as b, patch('schwab_client.run_login_flow') as lf:\n"
+        "with patch('schwab_client.build_client_from_token') as b, "
+        "patch('schwab_client.run_login_flow') as lf:\n"
         "    import server\n"
         "    b.assert_not_called(); lf.assert_not_called()\n"
         "    assert server.app is not None\n"
@@ -73,7 +76,8 @@ def test_server_import_does_not_build_client_or_run_login_flow() -> None:
     assert r.returncode == 0, r.stdout + r.stderr
 
 
-_CONSOLE_WALK = """
+_CONSOLE_WALK = (
+    """
 import json, sys
 from pathlib import Path
 import server
@@ -83,15 +87,19 @@ from fastapi.testclient import TestClient
 fx = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 with TestClient(server.app) as client:
     ofs._on_chain_callback = server._on_chain
-    for topic, msg in chain_messages("SPY", fx["chain"], fx["capture_ts_utc"], fx["spot"], fx["capture_ts_utc"]):
+    for topic, msg in chain_messages("SPY", fx["chain"], fx["capture_ts_utc"], """
+    """fx["spot"], fx["capture_ts_utc"]):
         ofs._ingest_pushed(topic, msg)
     server._chain_pricing.submit(lambda: None).result(timeout=120)   # the chain is priced
     for route in server.app.routes:
         # /api/changes is an open-ended event stream (it reads only the push's own state)
-        if "GET" in (getattr(route, "methods", None) or ()) and "{" not in route.path and route.path != "/api/changes":
+        if "GET" in (getattr(route, "methods", None) or ()) and "{" not in route.path """
+    """and route.path != "/api/changes":
             client.get(route.path, params={"ticker": "SPY", "contract": "SPY   261120C00875000"})
-assert server.terrain_cache_get("SPY", fx["capture_ts_utc"]) is not None, "the daemon's chain was priced"
+assert server.terrain_cache_get("SPY", fx["capture_ts_utc"]) is not None, """
+    """"the daemon's chain was priced"
 """
+)
 
 
 def test_the_console_makes_no_schwab_call(tmp_path: Path) -> None:

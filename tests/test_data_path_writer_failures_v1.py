@@ -2,9 +2,10 @@
 writer cannot store is kept as sent, a database that refuses writes holds the writer instead of
 ending it, and the writer's state reaches the heartbeat the console and the browser read.
 
-Real data: captured LEVELONE_OPTIONS quotes (tests/fixtures/real_options_stream_history_samples.json)
-and a captured TSLA LEVELONE_EQUITIES item (tests/fixtures/real_equity_book.json, "quote") through
-the daemon's own handler (capture._publisher) and bus; the captured SPY 2026-11-20 chain and quotes
+Real data: captured LEVELONE_OPTIONS quotes
+(tests/fixtures/real_options_stream_history_samples.json) and a captured TSLA LEVELONE_EQUITIES item
+(tests/fixtures/real_equity_book.json, "quote") through the daemon's own handler
+(capture._publisher) and bus; the captured SPY 2026-11-20 chain and quotes
 (tests/fixtures/real_spy_2026_11_20_chain_and_quotes.json) through the real ChainSweep.
 STAND-INS: the local host for Schwab's (tests/schwab_rest_standin.py), serving a chain envelope
 rebuilt from the captured contracts. Each induced failure is named in its test.
@@ -117,7 +118,8 @@ def test_a_writer_whose_thread_is_not_running_records_on_connections_it_closes(t
         "from stream_spine import CaptureWriter, quote_msg\n"
         "native = json.loads(Path(sys.argv[2]).read_text(encoding='utf-8'))['quote']['native']\n"
         "writer = CaptureWriter(sys.argv[1])\n"
-        "writer.insert('quote.TSLA', quote_msg(symbol='TSLA', src='schwab_stream', ts_recv=1.0, native=native))\n"
+        "writer.insert('quote.TSLA', "
+        "quote_msg(symbol='TSLA', src='schwab_stream', ts_recv=1.0, native=native))\n"
         "writer.keep_failure('chain.TSLA', {'native': native}, OSError('disk full'), 2.0)\n"
         "gc.collect()\n"
     )
@@ -971,7 +973,8 @@ def test_a_spill_file_is_never_opened_over_another_file(tmp_path):
     1.5 s the quotes arrive in (a millisecond each, in every form) is already taken by a file of
     its own. The writer opens neither over any of them: each stays as it was, and the writer's two
     files hold every quote, memory's file named first. The quotes arrive at least twice the time
-    taking the names is measured to need on this machine as it is loaded now, and never under 8 s."""
+    taking the names is measured to need on this machine as it is loaded now, and never under
+    8 s."""
     db = tmp_path / "stream_capture.db"
     writer = CaptureWriter(
         db, batch_rows=1, batch_sec=0.01, timeout_sec=0.2, retry_sec=0.1, hold_cap_bytes=_SMALL_CAP
@@ -1032,11 +1035,14 @@ def test_a_database_made_before_the_receipt_time_indexes_is_not_reindexed_at_sta
     old.parent.mkdir()
     with closing(sqlite3.connect(old)) as conn, conn:
         conn.executescript(
-            "CREATE TABLE stream_quotes_raw (ts_recv REAL NOT NULL, symbol TEXT NOT NULL, bid REAL, ask REAL, "
-            "last REAL, bid_size INTEGER, ask_size INTEGER, last_size INTEGER, total_volume INTEGER, "
+            "CREATE TABLE stream_quotes_raw (ts_recv REAL NOT NULL, symbol TEXT NOT NULL, "
+            "bid REAL, ask REAL, "
+            "last REAL, bid_size INTEGER, ask_size INTEGER, last_size INTEGER, "
+            "total_volume INTEGER, "
             "quote_time_ms INTEGER, trade_time_ms INTEGER, src TEXT NOT NULL);"
             "CREATE INDEX idx_sqr_sym_ts ON stream_quotes_raw(symbol, ts_recv);"
-            "CREATE TABLE stream_book_raw (ts_recv REAL NOT NULL, symbol TEXT NOT NULL, service TEXT NOT NULL, "
+            "CREATE TABLE stream_book_raw (ts_recv REAL NOT NULL, symbol TEXT NOT NULL, "
+            "service TEXT NOT NULL, "
             "native_json TEXT NOT NULL, src TEXT NOT NULL);"
             "CREATE INDEX idx_sbkr_sym_ts ON stream_book_raw(symbol, ts_recv);"
             "CREATE TABLE stream_options_quotes_raw (ts_recv REAL NOT NULL, symbol TEXT NOT NULL, "

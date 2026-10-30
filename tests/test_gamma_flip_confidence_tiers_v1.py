@@ -87,7 +87,8 @@ def test_trusted_requires_the_measured_convergence_span():
     )
     conf_5 = _verdict(0.055)
     assert conf_5 != GAMMA_FLIP_TRUSTED, (
-        f"a ~±5% chain must not be TRUSTED — the study measured 1.38%-of-spot error there; got {conf_5}"
+        "a ~±5% chain must not be TRUSTED — "
+        f"the study measured 1.38%-of-spot error there; got {conf_5}"
     )
     conf_wide = _verdict(0.12)
     assert conf_wide == GAMMA_FLIP_TRUSTED, f"a ±12% chain should be TRUSTED, got {conf_wide}"

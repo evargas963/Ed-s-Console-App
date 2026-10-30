@@ -2,15 +2,15 @@
 limit (live_market_plane.daemon_status). A stamp after that time is a later moment.
 
 End to end through the real code: the daemon's status (record_feed_heartbeat), Schwab's SPY quote
-through the daemon's plane and its price row (record_from_level_one_equity, live_price_rows.price_row),
-the pushed option message (streaming._ingest_pushed), the levels producer (server._publish_levels)
-and the heatmap route (server.gamma_surface_payload).
+through the daemon's plane and its price row (record_from_level_one_equity,
+live_price_rows.price_row), the pushed option message (streaming._ingest_pushed), the levels
+producer (server._publish_levels) and the heatmap route (server.gamma_surface_payload).
 Real data: SPY's 2026-11-20 chain captured 2026-09-30 15:31:57 ET
 (tests/fixtures/real_spy_2026_11_20_chain_and_quotes.json, fetched at its capture), and
 Schwab's LEVELONE_EQUITIES SPY quote and LEVELONE_OPTIONS message for one of the chain's
 contracts received 2026-10-05 14:00 CT (tests/fixtures/real_stream_mix_2026_10_05_1400ct.json),
-priced and judged a second after that message. The daemon's status is the console's own message, built here
-in its shape (no status is captured).
+priced and judged a second after that message. The daemon's status is the console's own message,
+built here in its shape (no status is captured).
 """
 
 from __future__ import annotations
@@ -169,11 +169,11 @@ def test_a_status_stamped_after_the_time_judged_is_not_that_time(after):
 
 
 def test_a_streamed_cell_is_not_live_after_its_own_option_close():
-    """SPY's chain priced at `_AT` (2026-10-05, regular hours) with SYM streaming: its legs are live.
-    At 16:05 ET that day, after the stock options' 16:00 close, SPY's own option market (index-close
-    options, 16:15 in Schwab's /markets answer) is still open: its legs stay live. At 16:20 it has
-    closed, the feed up and the daemon still holding SYM: no leg reads live, and the heatmap's
-    levels are STALE (the chain was fetched 2026-09-30, not after this close)."""
+    """SPY's chain priced at `_AT` (2026-10-05, regular hours) with SYM streaming: its legs are
+    live. At 16:05 ET that day, after the stock options' 16:00 close, SPY's own option market
+    (index-close options, 16:15 in Schwab's /markets answer) is still open: its legs stay live. At
+    16:20 it has closed, the feed up and the daemon still holding SYM: no leg reads live, and the
+    heatmap's levels are STALE (the chain was fetched 2026-09-30, not after this close)."""
     assert _states_when_the_status_was_sent(-0.5) == ["live"]
 
     def legs_at(hhmm: str) -> tuple[list, dict]:
