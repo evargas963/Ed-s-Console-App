@@ -135,11 +135,14 @@ then the rule binds with no machine check.
 - A product change needs an end-to-end test that fails on the old code, except a change that only
   removes whole undecorated functions or classes (operator 2026-10-28), or only fixes what ruff
   rules the PR newly selects find, behaviour unchanged (operator 2026-10-30: a refactor a rule asks
-  for is proven by the full suite, as deletions are); for those the full suite and the browser
-  tests are the proof, and a real defect a rule finds still gets its failing test. Enforced by:
-  `tools/check_fails_before.py` (`deletes_only`, `rule_fixes_only`;
-  `tests/test_check_fails_before_v1.py`); that a rule fix carries no other change, and that a real
-  defect a rule finds gets its failing test — the reviewers, no machine check, ENF-12.
+  for is proven by the full suite, as deletions are), or only removes a branch or guard inside a
+  function that no caller can reach, the PR showing the trace of every caller (operator
+  2026-10-30: "Yes, suite proves it"); for those the full suite and the browser tests are the
+  proof, and a real defect a rule finds still gets its failing test. Enforced by:
+  `tools/check_fails_before.py` (`deletes_only`, `rule_fixes_only`, `trims_only`: code only taken
+  away inside function bodies; `tests/test_check_fails_before_v1.py`); that a rule fix carries no
+  other change, that a real defect a rule finds gets its failing test, and that a removed branch
+  is one no caller reaches — the reviewers, no machine check, ENF-12.
 - Edit source by hand, one edit at a time, never through a script; the exceptions are ENF-14's (a
   standard tool's own fix, `ruff format` and ruff's safe fixes; `unix2dos`/`dos2unix` for line
   endings). Enforced by: `tools/operator_law_guard.py` for

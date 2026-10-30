@@ -6,6 +6,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -319,12 +320,6 @@ NEEDS = "but no end-to-end path test (tests/test_data_path_*.py or tests/e2e/*.s
             FIX,
         ),  # a deletion and a changed line
         (
-            "num.py",
-            "def number(v):\n    if isinstance(v, str):\n        return None\n"
-            "    return float(v)\n",
-            "def number(v):\n    return float(v)\n",
-        ),  # a guard line inside a function
-        (
             "app.py",
             "app = object()\napp.mount('/static')\n",
             "app = object()\n",
@@ -354,8 +349,9 @@ NEEDS = "but no end-to-end path test (tests/test_data_path_*.py or tests/e2e/*.s
 def test_a_deletion_that_is_not_whole_undecorated_python_units_still_needs_a_test(
     tmp_path, name, before, after
 ):
-    """The suite proves only a removal of whole undecorated functions or classes;
-    a line removed inside one, a module-level call or a decorated one changes behavior."""
+    """Outside a function the suite proves only a removal of whole undecorated functions or
+    classes: a module-level call, a decorated one, a list entry or a page's code removed changes
+    behavior (code taken away inside a function is trims_only's)."""
     root = _repo(tmp_path, {name: after}, base={**BASE, name: before})
     assert cfb.violations(root, "main") == [f"product code changed ({name}) {NEEDS}"]
 
@@ -460,6 +456,66 @@ def test_a_tighter_setting_of_a_rule_already_on_is_not_a_new_rule(tmp_path):
     flat = "def spot(row):\n    return row['bid'] or row['last']\n"
     base = {**BASE, "calc.py": BRANCHY, "pyproject.toml": cap.format(10)}
     root = _repo(tmp_path, {"pyproject.toml": cap.format(1), "calc.py": flat}, base=base)
+    assert cfb.violations(root, "main") == [
+        "product code changed (calc.py) but no end-to-end path test "
+        "(tests/test_data_path_*.py or tests/e2e/*.spec.js) changed"
+    ]
+
+
+GUARDED = (
+    "def spot(rows):\n    out = []\n    for row in rows:\n        if row is None:\n"
+    "            continue\n        try:\n            out.append(float(row['bid']))\n"
+    "        except ValueError:\n            continue\n    return out\n"
+)
+UNGUARDED = (
+    "def spot(rows):\n    out = []\n    for row in rows:\n"
+    "        out.append(float(row['bid']))\n    return out\n"
+)
+
+
+def test_a_branch_no_caller_reaches_removed_inside_a_function_is_proven_by_the_suite(tmp_path):
+    """A guard deleted and a try unwrapped inside a function, nothing added: the full suite and
+    the browser tests are the proof, the PR's caller trace the reviewers' to read."""
+    root = _repo(tmp_path, {"calc.py": UNGUARDED}, base={**BASE, "calc.py": GUARDED})
+    assert cfb.violations(root, "main") == []
+
+
+@pytest.mark.parametrize(
+    "now",
+    [
+        UNGUARDED.replace("float(row['bid'])", "float(row['last'])"),  # a path rewritten
+        UNGUARDED.replace("    return out\n", "    out.sort()\n    return out\n"),  # one added
+        "x = 1\n\n\n" + UNGUARDED,  # a statement added outside the function
+    ],
+    ids=["rewritten", "added-inside", "added-outside"],
+)
+def test_a_trim_that_also_adds_or_rewrites_code_still_needs_a_test(tmp_path, now):
+    root = _repo(tmp_path, {"calc.py": now}, base={**BASE, "calc.py": GUARDED})
+    assert cfb.violations(root, "main") == [
+        "product code changed (calc.py) but no end-to-end path test "
+        "(tests/test_data_path_*.py or tests/e2e/*.spec.js) changed"
+    ]
+
+
+def test_reading_a_trim_takes_time_in_step_with_the_code_not_exponential(tmp_path):
+    """A function of many `if`s ahead of a real rewrite is read in one pass and refused at once:
+    the first reading searched every delete-or-open choice, and on 18 `if`s ran past 20 s."""
+    body = "".join(f"    if x == {i}:\n        g({i})\n" for i in range(200))
+    base = {**BASE, "calc.py": "def f(x):\n" + body + "    return 1\n"}
+    root = _repo(tmp_path, {"calc.py": "def f(x):\n" + body + "    return 2\n"}, base=base)
+    started = time.perf_counter()
+    assert cfb.violations(root, "main") == [
+        "product code changed (calc.py) but no end-to-end path test "
+        "(tests/test_data_path_*.py or tests/e2e/*.spec.js) changed"
+    ]
+    assert time.perf_counter() - started < 30
+
+
+def test_a_module_level_statement_removed_is_not_a_trim(tmp_path):
+    """Outside a function, a removed statement (a route registered, a value set) changes behavior:
+    only a whole undecorated function or class may go."""
+    base = {**BASE, "calc.py": "LIMIT = 5\nprint(LIMIT)\n\n\n" + UNGUARDED}
+    root = _repo(tmp_path, {"calc.py": "LIMIT = 5\n\n\n" + UNGUARDED}, base=base)
     assert cfb.violations(root, "main") == [
         "product code changed (calc.py) but no end-to-end path test "
         "(tests/test_data_path_*.py or tests/e2e/*.spec.js) changed"
