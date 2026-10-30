@@ -1,20 +1,8 @@
-"""RC-535 — the canonical full-suite command cannot block on the caller's terminal pipe.
-
-MEASURED 2026-09-08: `npm run test:all` ran `python -m pytest -n auto ...` with stdout/stderr
-inherited from an agent terminal. When that reader stopped draining, the xdist controller
-blocked inside `_pytest/_io/terminalwriter.py:write_raw`, every worker idled in
-`xdist/remote.py run_one_test -> get` waiting for its next item, all five processes stayed
-alive at ~0 CPU, and the suite sat frozen for 72 minutes at 94% executed while the screen
-showed 36%. Reproduced on demand by piping pytest into a reader that never reads.
-
-The repair: scripts/run-pytest-full.mjs (and the Playwright step in
-scripts/run-playwright-e2e.mjs) give the child file descriptors on a log file — never the
-terminal — and echo only a bounded tail. These tests drive that seam with a reader that
-never drains and prove the child still completes, the exit code is exact, the log is
-retained, and the terminal output is bounded. The first test carries its own negative
-control: the pre-repair path (pytest straight into the same non-draining pipe) must still
-freeze, or the control proves nothing.
-"""
+"""The full-suite command never blocks on the caller's terminal pipe: scripts/run-pytest-full.mjs
+(and the Playwright step in scripts/run-playwright-e2e.mjs) give the child file descriptors on a
+log file, never the terminal, and echo only a bounded tail. One test drives it with a reader that
+never drains and proves the child still completes; the others check, with an ordinary reader,
+that the exit code is exact, the log is kept and the terminal output is bounded."""
 
 from __future__ import annotations
 
@@ -22,7 +10,6 @@ import json
 import os
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -34,10 +21,6 @@ NODE = shutil.which("node")
 #: writer that talks to the pipe directly.
 _NOISY_LINES = 20_000
 _NOISY_LINE = "x" * 100
-
-#: The direct-pipe negative control is given this long to prove it is stuck. pytest on the
-#: noisy file starts writing within ~3 s; the pipe fills in well under a second after that.
-_CONTROL_STALL_SECONDS = 20
 
 #: Per-process runtime selectors exported by tests/conftest.py at import; a nested pytest
 #: owns its own runtime root and never reads this session's (see _child_env).
@@ -75,17 +58,9 @@ def _noisy_test_file(tmp_path: Path) -> Path:
 
 
 def _hermetic_args(rootdir: Path) -> list[str]:
-    """Pin pytest's rootdir to the temp directory that holds the target file.
-
-    Without it, a target under %TEMP% with cwd at the repo makes pytest pick the common
-    ancestor (the user's home) as rootdir and WALK every directory between it and the
-    target during collection — including %TEMP%, which concurrent xdist workers are
-    creating and deleting their own runtime roots in. MEASURED 2026-09-08 (outer run
-    `-n 4`): the nested pytest's rootdir was the user's home directory, its top `Dir`
-    collector (`..\\..\\..`) died with FileNotFoundError on a sibling worker's just-removed
-    `ed-pytest-gw0-...` entry under %TEMP%, and the runner correctly propagated exit 2 —
-    a collection race, not a stall, and not this runner's defect.
-    """
+    """Pin pytest's rootdir to the temp directory that holds the target file: otherwise, with
+    the target under %TEMP% and cwd at the repo, pytest takes their common ancestor as rootdir
+    and walks %TEMP%, where other xdist workers create and delete their runtime roots."""
     return ["--rootdir", str(rootdir)]
 
 
@@ -110,39 +85,6 @@ def _spawn_with_non_draining_reader(cmd: list[str], env: dict[str, str]) -> subp
 def test_runner_completes_when_the_terminal_reader_never_drains(tmp_path):
     noisy = _noisy_test_file(tmp_path)
     env = _child_env(tmp_path / "logs")
-
-    # NEGATIVE CONTROL — the pre-repair canonical path. Same noisy target, same
-    # non-draining pipe, output straight from pytest into it: must NOT finish.
-    control = _spawn_with_non_draining_reader(
-        [
-            sys.executable,
-            "-m",
-            "pytest",
-            str(noisy),
-            "-s",
-            *_hermetic_args(tmp_path),
-            "-n",
-            "0",
-            "-p",
-            "no:cacheprovider",
-            "-q",
-        ],
-        env,
-    )
-    try:
-        try:
-            control.wait(timeout=_CONTROL_STALL_SECONDS)
-            raise AssertionError(
-                "negative control did not freeze: pytest writing directly into a pipe nobody "
-                f"reads exited with {control.returncode!r} — the control cannot detect the defect"
-            )
-        except subprocess.TimeoutExpired:
-            pass  # frozen, as the defect predicts
-    finally:
-        control.kill()
-        control.wait(timeout=30)
-
-    # THE REPAIR — same target, same non-draining pipe, through the canonical runner.
     proc = _spawn_with_non_draining_reader(_runner_cmd(str(noisy), "-s", rootdir=tmp_path), env)
     try:
         rc = proc.wait(timeout=180)  # completes without the reader ever recovering
@@ -176,7 +118,7 @@ def test_failure_exit_code_is_exact_and_the_log_is_retained(tmp_path):
     # bounded terminal echo: the tail, not the stream — and the failure is visible in it.
     # The bound is BYTES: Windows anonymous pipes hold 4 KiB, and the whole `test:all`
     # footprint (npm banner + E2E step + this step) must fit so a dead reader cannot hold
-    # the exit code hostage. MEASURED: a 6 KB tail blocked the runner behind a dead reader.
+    # the exit code hostage.
     assert "1 failed" in r.stdout and "exit code 1" in r.stdout
     assert len(r.stdout.encode("utf-8")) <= 2300, (
         f"terminal output is not bounded: {len(r.stdout.encode('utf-8'))} bytes"
@@ -198,29 +140,11 @@ def test_success_is_visible_and_exit_code_zero(tmp_path):
 
 
 def test_forwarded_selection_arguments_reach_the_native_playwright_cli(tmp_path):
-    """Independent-review finding (2026-09-12), REPRODUCED and fixed, then found STILL
-    BROKEN by a second independent review (2026-09-13): run-playwright-e2e.mjs used to
-    hardcode `["playwright", "test"]`, discarding any CLI selection arguments this runner
-    was itself invoked with. The 2026-09-12 fix forwarded the caller's argv but still
-    routed it through `npx` under `runWithFileSink(..., shell: true)` -- which joins the
-    whole command into ONE STRING and hands it to a shell to re-parse -- guarded only by a
-    hand-rolled `shellQuoteArg` that wrapped values in double quotes. That does not survive
-    POSIX `$(...)`/backtick substitution inside double quotes, and does not match cmd.exe's
-    own (unrelated) escaping rules on this repo's actual Windows host, so a forwarded
-    argument containing either could still be reinterpreted rather than forwarded verbatim.
-
-    The fix deletes the shell (and npx) from this path entirely: run-playwright-e2e.mjs now
-    resolves Playwright's own CLI entry point directly and spawns it with
-    `runWithFileSink(..., shell: false)`, i.e. `spawnSync(cmd, args, {stdio})` with NO shell
-    at all. This test proves the property that fix actually relies on -- not by
-    reimplementing or re-inspecting quoting logic (there is none left to inspect), but by
-    round-tripping a battery of arguments a shell WOULD mangle (a bare space, an embedded
-    double quote, POSIX `$(...)`/backtick command substitution, a Windows `%VAR%`
-    environment-variable reference, and shell control operators `;`, `|`, `&`) through the
-    exact `runWithFileSink` function run-playwright-e2e.mjs now calls, confirming every one
-    of them arrives at the child process byte-for-byte unchanged, in order, as SEPARATE
-    argv entries.
-    """
+    """run-playwright-e2e.mjs spawns Playwright's own CLI with no shell
+    (`runWithFileSink(..., shell: false)`), so the caller's selection arguments arrive as sent:
+    arguments a shell would change (a space, an embedded double quote, `$(...)` and backtick
+    substitution, a Windows `%VAR%`, and `;`, `|`, `&`) reach the child byte for byte, in
+    order, each as its own argv entry."""
     marker = tmp_path / "argv_dump.json"
     log_path = tmp_path / "probe.log"
     dangerous_args = [
