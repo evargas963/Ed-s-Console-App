@@ -23,8 +23,9 @@ report what was tried, and take a different approach (CLAUDE.md item 6).
 4. `.venv/Scripts/python.exe tools/check_fails_before.py --base origin/main` — exit 0; for a pull
    request that changes product code it prints "proven", naming the end-to-end path test that fails on
    the old code, or, for a change that only removes whole undecorated Python functions or classes and
-   the imports only they used, or only fixes what ruff rules the PR newly selects find, naming the
-   files.
+   the imports only they used, or only fixes what ruff rules the PR newly selects find, or only
+   removes code paths inside functions (the PR shows the trace that no caller reaches them),
+   naming the files.
 5. `.venv/Scripts/python.exe tools/check_one_reader.py --base origin/main` — exit 0; then
    `.venv/Scripts/python.exe tools/check_credential_leak.py --base origin/main` and
    `.venv/Scripts/python.exe tools/check_eol_style_invariant.py --base origin/main` — exit 0 each.
