@@ -12,6 +12,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+import psutil
+
 ROOT = Path(__file__).resolve().parent.parent
 RUNNER = ROOT / "scripts" / "run-pytest-full.mjs"
 NODE = shutil.which("node")
@@ -89,7 +91,10 @@ def test_runner_completes_when_the_terminal_reader_never_drains(tmp_path):
     try:
         rc = proc.wait(timeout=180)  # completes without the reader ever recovering
     except subprocess.TimeoutExpired:
+        for child in psutil.Process(proc.pid).children(recursive=True):  # the pytest it started
+            child.kill()
         proc.kill()
+        proc.wait(timeout=30)
         raise AssertionError("the canonical runner froze behind a non-draining terminal reader")
     assert rc == 0, f"runner exit code {rc}"
     log = tmp_path / "logs" / "test_pytest_last.log"
