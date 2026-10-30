@@ -139,7 +139,6 @@ to write it plainly, in the forms `test_a_command_the_reader_cannot_see_into_is_
 - M-27 two interpolators for gamma at a price (`_interp_profile_at`, `gamma_at_price`), both returning the end value off the profile.
 
 **terrain_engine.py, terrain_atr.py, math_volatility.py, math_probabilities.py, time_et.py**
-- M-31 `computed_ts_utc` is compute time documented as fetch time, with two writers.
 - M-32 per-expiry PCR/IV maps key by date alone while books key by (date, dte): same-date books overwrite.
 - M-33 the ATM IV expiry is the one nearest 30 days; its docs say "front expiry".
 - M-34 `terrain_atr` uses DB OHLC raw (no `schwab_number`).
