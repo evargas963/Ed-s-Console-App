@@ -150,7 +150,7 @@ then the rule binds with no machine check.
   Enforced by: no machine check — ENF-12.
 - Never kill a commit hook mid-run. Enforced by: no machine check — ENF-12.
 - Settle code, test and design questions with these rules, the banking analogy, Python's guidelines
-  and outside research, and say what was decided and why. Bring the operator what is his: merges;
+  and outside research, and say what was decided and why. Bring the operator what is his:
   production starts and stops in regular hours; changes to request rates, limits and settings;
   behavior or data changes; money. Enforced by: no machine check — ENF-12.
 
@@ -181,16 +181,26 @@ then the rule binds with no machine check.
 - At each milestone (a commit, a failed check, a finding that changes the plan), report to the
   operator what changed, what was deleted, each proof and its tier, and what is NOT_PROVEN, then
   continue. Enforced by: no machine check — ENF-12.
-- A PR merges on the operator's yes after CI is green on its final commit; that yes also covers its
-  deploy. No CODEOWNERS file. Enforced by: branch protection; `tools/operator_yes_guard.py` asks
-  Allow/Deny for the merges its tests check (`tests/test_operator_yes_guard_v1.py`,
-  `tests/test_guards_read_statements_v1.py`); a merge in a browser or a script file, and the forms
-  ENF-13 lists — no machine check, ENF-13.
+- A PR merges, without waiting on the operator, once CI is green on its final commit, current with
+  `main`, and both reviewers have no FAIL and no NOT_PROVEN open but the deployed-screen tier its
+  deploy proves; its deploy follows (operator 2026-10-29: "i don't
+  want for you to wait on my yes for merges, etc. you are allowed to continue until you finish").
+  No CODEOWNERS file. Enforced by: branch protection (green CI, current with `main`); the reviewers'
+  verdicts — no machine check, ENF-12.
+- Work continues until SHAPE is finished: a stop is refused while its row is IN PROGRESS, unless
+  the rules require the stop (his yes to a plan for work outside SHAPE, CLAUDE.md item 3; his yes
+  to a production start or stop in regular hours, or to a change of request rates, limits or
+  settings, CLAUDE.md item 5; two failed attempts at the same thing, CLAUDE.md item 6; the next
+  bullet's stop list: his stop words, an AUDIT ONLY or DO NOT MERGE task, a destructive data action,
+  a product decision), said in a message that begins `WAITING ON OPERATOR:`. Enforced by: the Stop
+  hook `tools/keep_going.py` refuses every other stop while SHAPE is open
+  (`tests/test_keep_going_v1.py`); that a stop marked so is one the rules require — no machine
+  check, ENF-12.
 - Stop for the operator's STOP / PAUSE / HANG IT UP / DO NOT CONTINUE / NO, a task marked AUDIT ONLY
   or DO NOT MERGE, a destructive data action, and a product decision code cannot settle. Say in chat
   what a guarded action is for before running it. Enforced by: `tools/operator_yes_guard.py` asks
   Allow/Deny for the daemon or console starts and stops (in regular hours or an unknown session),
-  machine restarts and merges, and refuses the kills of production, in the forms its tests cover
+  machine restarts, and refuses the kills of production, in the forms its tests cover
   (`tests/test_operator_yes_guard_v1.py`); the rest — ENF-12.
 - The production checkout `EdWebConsole` stays `main == origin/main` and moves only by a
   fast-forward (`git pull --ff-only`, or `launch.bring_to_origin_main` at a start); work happens in a
