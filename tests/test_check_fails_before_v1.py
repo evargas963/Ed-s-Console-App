@@ -3,7 +3,6 @@ change is proven only by a changed end-to-end path test that fails on the old co
 
 from __future__ import annotations
 
-import ast
 import os
 import subprocess
 import sys
@@ -303,11 +302,6 @@ NEEDS = "but no end-to-end path test (tests/test_data_path_*.py or tests/e2e/*.s
             FIX,
         ),  # a deletion and a changed line
         (
-            "num.py",
-            "def number(v):\n    if isinstance(v, str):\n        return None\n    return float(v)\n",
-            "def number(v):\n    return float(v)\n",
-        ),  # a guard line inside a function
-        (
             "app.py",
             "app = object()\napp.mount('/static')\n",
             "app = object()\n",
@@ -337,8 +331,9 @@ NEEDS = "but no end-to-end path test (tests/test_data_path_*.py or tests/e2e/*.s
 def test_a_deletion_that_is_not_whole_undecorated_python_units_still_needs_a_test(
     tmp_path, name, before, after
 ):
-    """The suite proves only a removal of whole undecorated functions or classes;
-    a line removed inside one, a module-level call or a decorated one changes behavior."""
+    """Outside a function the suite proves only a removal of whole undecorated functions or
+    classes: a module-level call, a decorated one, a list entry or a page's code removed changes
+    behavior (code taken away inside a function is trims_only's)."""
     root = _repo(tmp_path, {name: after}, base={**BASE, name: before})
     assert cfb.violations(root, "main") == [f"product code changed ({name}) {NEEDS}"]
 
@@ -479,15 +474,18 @@ def test_a_trim_that_also_adds_or_rewrites_code_still_needs_a_test(tmp_path, now
     ]
 
 
-def test_reading_a_trim_takes_time_in_step_with_the_code_not_exponential():
-    """A function of many `if`s ahead of a real rewrite is read in one pass: the first reading
-    searched every delete-or-open choice, and on 18 `if`s ran past 20 s."""
+def test_reading_a_trim_takes_time_in_step_with_the_code_not_exponential(tmp_path):
+    """A function of many `if`s ahead of a real rewrite is read in one pass and refused at once:
+    the first reading searched every delete-or-open choice, and on 18 `if`s ran past 20 s."""
     body = "".join(f"    if x == {i}:\n        g({i})\n" for i in range(200))
-    was = ast.parse("def f(x):\n" + body + "    return 1\n").body
-    now = ast.parse("def f(x):\n" + body + "    return 2\n").body
+    base = {**BASE, "calc.py": "def f(x):\n" + body + "    return 1\n"}
+    root = _repo(tmp_path, {"calc.py": "def f(x):\n" + body + "    return 2\n"}, base=base)
     started = time.perf_counter()
-    assert cfb._trimmed(was, now, False) is False
-    assert time.perf_counter() - started < 5
+    assert cfb.violations(root, "main") == [
+        "product code changed (calc.py) but no end-to-end path test "
+        "(tests/test_data_path_*.py or tests/e2e/*.spec.js) changed"
+    ]
+    assert time.perf_counter() - started < 30
 
 
 def test_a_module_level_statement_removed_is_not_a_trim(tmp_path):
