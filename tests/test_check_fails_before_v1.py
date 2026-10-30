@@ -302,11 +302,6 @@ NEEDS = "but no end-to-end path test (tests/test_data_path_*.py or tests/e2e/*.s
             FIX,
         ),  # a deletion and a changed line
         (
-            "num.py",
-            "def number(v):\n    if isinstance(v, str):\n        return None\n    return float(v)\n",
-            "def number(v):\n    return float(v)\n",
-        ),  # a guard line inside a function
-        (
             "app.py",
             "app = object()\napp.mount('/static')\n",
             "app = object()\n",
@@ -336,8 +331,9 @@ NEEDS = "but no end-to-end path test (tests/test_data_path_*.py or tests/e2e/*.s
 def test_a_deletion_that_is_not_whole_undecorated_python_units_still_needs_a_test(
     tmp_path, name, before, after
 ):
-    """The suite proves only a removal of whole undecorated functions or classes;
-    a line removed inside one, a module-level call or a decorated one changes behavior."""
+    """Outside a function the suite proves only a removal of whole undecorated functions or
+    classes: a module-level call, a decorated one, a list entry or a page's code removed changes
+    behavior (code taken away inside a function is trims_only's)."""
     root = _repo(tmp_path, {name: after}, base={**BASE, name: before})
     assert cfb.violations(root, "main") == [f"product code changed ({name}) {NEEDS}"]
 
