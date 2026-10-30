@@ -443,7 +443,8 @@ def test_a_change_with_no_newly_selected_rule_met_still_needs_a_test(tmp_path, p
         pr = {**pr, "pyproject.toml": RUFF_BASE.replace('["F401"]', '["F401", "E741"]')}
     root = _repo(tmp_path, pr, base=base)
     assert cfb.violations(root, "main") == [
-        "product code changed (calc.py) but no end-to-end path test (tests/test_data_path_*.py or tests/e2e/*.spec.js) changed"
+        "product code changed (calc.py) but no end-to-end path test "
+        "(tests/test_data_path_*.py or tests/e2e/*.spec.js) changed"
     ]
 
 
@@ -460,7 +461,8 @@ def test_a_tighter_setting_of_a_rule_already_on_is_not_a_new_rule(tmp_path):
     base = {**BASE, "calc.py": BRANCHY, "pyproject.toml": cap.format(10)}
     root = _repo(tmp_path, {"pyproject.toml": cap.format(1), "calc.py": flat}, base=base)
     assert cfb.violations(root, "main") == [
-        "product code changed (calc.py) but no end-to-end path test (tests/test_data_path_*.py or tests/e2e/*.spec.js) changed"
+        "product code changed (calc.py) but no end-to-end path test "
+        "(tests/test_data_path_*.py or tests/e2e/*.spec.js) changed"
     ]
 
 

@@ -365,8 +365,8 @@ def violations(root: Path, base: str) -> list[str]:
         return []
     if rule_fixes_only(root, base, product):
         print(
-            f"proven: {', '.join(product)} change only for ruff rules the PR newly selects; the full "
-            "suite and the browser tests are the proof"
+            f"proven: {', '.join(product)} change only for ruff rules the PR newly selects; "
+            "the full suite and the browser tests are the proof"
         )
         return []
     tests = [f for f in files if is_test(f)]
