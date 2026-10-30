@@ -636,14 +636,9 @@ def build_live_snapshot(
         levels.append((over["overnight_low"], "OVERNIGHT_LOW"))
 
     for pair in extra_levels or []:
-        if len(pair) < 2:
-            continue
         p, tag = pair[0], pair[1]
-        try:
-            pf = float(p)
-            levels.append((pf, str(tag)))
-        except (TypeError, ValueError):
-            continue
+        pf = float(p)
+        levels.append((pf, str(tag)))
 
     clusters = cluster_price_levels_into_zones(levels, config)
 
