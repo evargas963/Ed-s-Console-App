@@ -60,7 +60,7 @@ def _run(payload) -> subprocess.CompletedProcess:
 
 
 def test_the_settings_run_it_on_stop_and_it_answers_by_this_repositorys_shape_row(tmp_path):
-    """The command `.claude/settings.json` wires for Stop, run on a real payload: it refuses the
+    """The command `.claude/settings.json` wires for Stop, run on a payload in Claude Code's form: it refuses the
     stop with the reason while this repository's SHAPE row is open, and lets it end once it is not."""
     settings = json.loads((REPO / ".claude" / "settings.json").read_text(encoding="utf-8"))
     (command,) = [h["command"] for e in settings["hooks"]["Stop"] for h in e["hooks"]]
@@ -117,6 +117,20 @@ def test_the_final_message_is_the_last_assistant_entry_and_a_bad_line_never_deci
 
 
 def test_a_payload_it_cannot_read_refuses_the_stop_with_the_reason():
-    for payload in ("not json", "null", {"session_id": "s"}):
+    """Not JSON refuses always; a payload without a transcript refuses while SHAPE is open (the row
+    is read first, so once SHAPE is finished it holds no session)."""
+    run = _run("not json")
+    assert run.returncode == 2 and "cannot judge the stop" in run.stderr
+    open_now = keep_going.OPEN.search((REPO / "ACTIVE_PROGRAM.md").read_text(encoding="utf-8"))
+    for payload in ("null", {"session_id": "s"}):
         run = _run(payload)
-        assert run.returncode == 2 and "cannot judge the stop" in run.stderr, payload
+        if open_now:
+            assert run.returncode == 2 and "cannot judge the stop" in run.stderr, payload
+        else:
+            assert (run.returncode, run.stdout) == (0, ""), payload
+
+
+def test_a_subagents_message_is_not_the_agents_final_message(tmp_path):
+    waiting = _said("WAITING ON OPERATOR: his yes to a console restart in regular hours.")
+    side = {**_said("Verdict: FAIL."), "isSidechain": True}
+    assert keep_going.last_message(_entries(tmp_path, waiting, side)).startswith("WAITING")

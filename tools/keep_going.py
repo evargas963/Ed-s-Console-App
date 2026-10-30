@@ -3,7 +3,7 @@ ACTIVE_PROGRAM.md's SHAPE row is IN PROGRESS, the agent's attempt to end its tur
 is sent back to the next step.
 
 The one way through is a stop the rules require: the agent's final message begins
-`WAITING ON OPERATOR:` and names why (AGENTS.md Authority's stop list; CLAUDE.md items 5 and 6).
+`WAITING ON OPERATOR:` and names why (AGENTS.md Authority's stop list; CLAUDE.md items 3, 5 and 6).
 Wired by `.claude/settings.json` (Stop).
 
     python tools/keep_going.py < payload.json
@@ -11,8 +11,9 @@ Prints Claude Code's `{"decision": "block", "reason": ...}` to refuse the stop; 
 let it end. The SHAPE row is read first, so once SHAPE is finished no session is held. The final
 message is the payload's `last_assistant_message` when Claude Code sends one, else the transcript's
 last assistant entry (a line that is not a JSON object is skipped, so one damaged line never
-decides every later stop). A payload or work list it cannot read exits 2 with the reason, which
-also refuses the stop: "cannot judge" never reads as "may stop" (tests/test_hook_chain_v1.py).
+decides every later stop). A work list it cannot read, and while SHAPE is open a payload or
+transcript it cannot read, exits 2 with the reason, which also refuses the stop: "cannot judge"
+never reads as "may stop" (tests/test_hook_chain_v1.py).
 """
 
 from __future__ import annotations
@@ -40,7 +41,11 @@ def _last_assistant(text: str) -> dict | None:
             entry = json.loads(line)
         except ValueError:
             continue
-        if isinstance(entry, dict) and entry.get("type") == "assistant":
+        if (
+            isinstance(entry, dict)
+            and entry.get("type") == "assistant"
+            and not entry.get("isSidechain")  # a subagent's message is not the agent's
+        ):
             last = entry
     return last
 
@@ -74,7 +79,8 @@ def decide(work_list: str, last: str) -> str | None:
     return (
         "SHAPE in ACTIVE_PROGRAM.md is IN PROGRESS: take its next step now (AGENTS.md Authority: "
         "work continues until SHAPE is finished; merges do not wait on the operator). Stop only "
-        "for a stop the rules require (AGENTS.md Authority's stop list; CLAUDE.md items 5 and 6), "
+        "for a stop the rules require (AGENTS.md Authority's stop list; CLAUDE.md items 3, 5 and "
+        "6), "
         f"saying why in a message that begins `{WAITING}`."
     )
 
