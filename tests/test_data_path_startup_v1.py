@@ -437,6 +437,54 @@ def test_the_stop_ends_the_real_daemon_and_says_when_it_could_not_ask(tmp_path):
         _end(daemon)
 
 
+def test_a_daemon_that_ends_without_being_asked_is_not_reported_stopped(tmp_path):
+    """The real daemon found while it loads, its socket not up, then ending on its own because its
+    live UI's port is held, the code its window restarts on: the stop could not ask it, so it does
+    not read "stopped" and exits 1. Induced test condition: a load held for 6 s."""
+    home, site = tmp_path / "checkout", tmp_path / "site"
+    for folder in (home, site):
+        folder.mkdir()
+    shutil.copy(launch.ROOT / "launch.py", home)
+    (site / "sitecustomize.py").write_text(
+        'import sys, time\nif "-m" in sys.orig_argv:\n    time.sleep(6)\n', encoding="utf-8"
+    )
+    with socket.socket() as held, socket.socket() as push, socket.socket() as nothing:
+        held.bind(("127.0.0.1", 0))
+        held.listen()
+        push.bind(("127.0.0.1", 0))
+        nothing.bind(("127.0.0.1", 0))
+        env = {
+            **os.environ,
+            "PYTHONPATH": str(launch.ROOT),
+            "ED_RUNTIME_ROOT": str(tmp_path),
+            "ED_LIVE_UI_HOST": "127.0.0.1",
+            "ED_LIVE_UI_PORT": str(held.getsockname()[1]),
+            "ED_LIVE_PUSH_PORT": str(push.getsockname()[1]),
+            "SCHWAB_TOKEN_PATH": str(tmp_path / "missing_token.json"),
+        }
+        unserved = str(nothing.getsockname()[1])
+        push.close()
+        nothing.close()
+        loading = {**env, "PYTHONPATH": os.pathsep.join((str(site), str(launch.ROOT)))}
+        daemon = subprocess.Popen([sys.executable, *launch.DAEMON_START], cwd=home, env=loading)
+        try:
+            stopping = subprocess.Popen(
+                [sys.executable, "launch.py", "stop"],
+                cwd=home,
+                env={**env, "ED_LIVE_PUSH_PORT": unserved},
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            assert daemon.wait(60) == 1  # reaped: the stop sees it gone on Linux too
+            out, err = stopping.communicate(timeout=60)
+        finally:
+            _end(daemon)
+    assert stopping.returncode == 1, (out, err)
+    assert "Capture daemon: not asked to stop: " in err
+    assert "Capture daemon: ended without being asked; its window restarts it\n" in out
+
+
 def test_the_console_group_is_known_after_its_processes_have_gone():
     """The console ended between the stop finding it and the signal: its group is still named, so
     the stop goes on to what is left. Induced test condition: a Python of this test's own."""

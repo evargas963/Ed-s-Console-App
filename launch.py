@@ -184,23 +184,29 @@ def group_leader(console: list[psutil.Process]) -> int:
 
 def stop() -> int:
     """The clean stop of the daemon (ask_daemon_to_stop) and the console (ctrl_break to its group,
-    group_leader). Waits up to STOP_WAIT_SEC for each; 0 when both ended."""
+    group_leader). Waits up to STOP_WAIT_SEC for each; 0 when both ended, a daemon only if it was
+    asked: one that ended without being asked is not stopped, its window restarts it."""
     daemon, console = running(DAEMON_START), running(CONSOLE_START)
+    daemon_ended = "stopped"
     if daemon:
         try:
             ask_daemon_to_stop()
         except (OSError, WebSocketException) as e:
             log.warning("Capture daemon: not asked to stop: %s: %s", type(e).__name__, e)
+            daemon_ended = "ended without being asked; its window restarts it"
     if console:
         ctrl_break(group_leader(console))
     _gone, alive = psutil.wait_procs(daemon + console, timeout=STOP_WAIT_SEC)
-    for name, procs in (("Capture daemon", daemon), ("Console", console)):
+    for name, procs, ended in (
+        ("Capture daemon", daemon, daemon_ended),
+        ("Console", console, "stopped"),
+    ):
         left = [p.pid for p in procs if p in alive]
         print(
             f"{name}: "
-            + ("not running" if not procs else f"still running ({left})" if left else "stopped")
+            + ("not running" if not procs else f"still running ({left})" if left else ended)
         )
-    return 1 if alive else 0
+    return 1 if alive or daemon_ended != "stopped" else 0
 
 
 def unhealthy_for(port: int, seconds: float) -> str | None:
