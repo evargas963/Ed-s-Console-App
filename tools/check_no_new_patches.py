@@ -8,8 +8,9 @@ written. A test the PR adds or changes is refused when it ran with a patch appli
 it ran, or still applied and reaching it, as the recorder judges), or when the run has no record
 of it running to its end (skipped before or during its call, deselected, its file skipped), so
 what it runs under is unknown. A unit the PR adds or changes is refused when a patch was applied
-from one of its lines. A patching test whose docstrings or comments alone change is not judged; a
-change to its code needs its patch removed.
+from one of its lines. A patching test whose docstrings or comments alone change is not judged,
+one a standard tool's safe fix alone changes is not judged for its patches but must still run, and
+any other change to its code needs its patch removed.
 
     ED_PATCH_RECORD=<dir> python -m pytest -p tools.patch_record
     python -m tools.check_no_new_patches --base origin/main --record <dir>
@@ -25,7 +26,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from tools.check_end_to_end import _python_code
+from tools.check_end_to_end import _python_code, tool_fixed, tools_fix_is_safe
 from tools.patch_record import APPLIED, COLLECTED, RAN, read
 
 _DEFS = (ast.FunctionDef, ast.AsyncFunctionDef)
@@ -113,17 +114,25 @@ def _code(node: ast.AST) -> str | None:
 
 
 def _file_units(
-    root: Path, base: str, path: str, was_path: str | None
+    root: Path, base: str, path: str, was_path: str | None, tools_safe: bool
 ) -> list[tuple[str, ast.stmt, bool]]:
     """Every unit of `path` as (name, node, whether the PR adds or changes it); a statement is
     named "line N". `was_path` is the file's path on the base (a rename's old path; None when the
-    PR adds the file)."""
-    was_funcs, was_rest = _units(_git(root, "show", f"{base}:{was_path}")) if was_path else ({}, [])
-    was = {n: _code(f) for n, f in was_funcs.items()}
-    was_statements = {_code(s) for s in was_rest}
+    PR adds the file). A unit as the repository's standard tools leave the base's (tool_fixed, when
+    `tools_safe`) is not changed: a tool's safe fix adds no patch."""
+    sources = [_git(root, "show", f"{base}:{was_path}")] if was_path else []
+    if sources and tools_safe:
+        fixed = tool_fixed(root, path, sources[0].decode("utf-8", "replace"))
+        sources += [fixed] if fixed is not None else []
+    was: set[tuple[str, str | None]] = set()
+    was_statements: set[tuple[str | None, frozenset[str]]] = set()
+    for source in sources:
+        was_funcs, was_rest = _units(source)
+        was |= {(n, _code(f)) for n, f in was_funcs.items()}
+        was_statements |= {(_code(s), frozenset(s.binds)) for s in was_rest}
     funcs, rest = _units(_git(root, "show", f"HEAD:{path}"))
-    return [(n, f, was.get(n) != _code(f)) for n, f in funcs.items()] + [
-        (f"line {s.lineno}", s, _code(s) not in was_statements) for s in rest
+    return [(n, f, (n, _code(f)) not in was) for n, f in funcs.items()] + [
+        (f"line {s.lineno}", s, (_code(s), frozenset(s.binds)) not in was_statements) for s in rest
     ]
 
 
@@ -194,8 +203,13 @@ def violations(root: Path, base: str, record: Path) -> list[str]:
         events = read(record)
     except FileNotFoundError as e:
         raise ToolError(str(e)) from e
+    tools_safe = tools_fix_is_safe(root, base)
+    changed_files = _changed_files(root, base)
     units = {
-        path: _file_units(root, base, path, was) for path, was in _changed_files(root, base).items()
+        path: _file_units(root, base, path, was, tools_safe) for path, was in changed_files.items()
+    }
+    touched = {
+        path: _file_units(root, base, path, was, False) for path, was in changed_files.items()
     }
     reasons: dict[str, set[str]] = {}
     ran, collected, collected_files = set(), set(), set()
@@ -224,7 +238,7 @@ def violations(root: Path, base: str, record: Path) -> list[str]:
             inside = _innermost(units, path, line)
             if inside and inside[1]:
                 reasons.setdefault(f"{path}::{inside[0]}", set()).add(f"line {line} applies one")
-    for path, file_units in units.items():
+    for path, file_units in touched.items():
         for name, _, changed in file_units:
             is_test = (path, name) in collected or (
                 path not in collected_files and _named_as_test(path, name)
