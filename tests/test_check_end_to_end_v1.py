@@ -302,23 +302,59 @@ def test_a_hand_edit_on_top_of_the_tools_fix_is_a_product_change(tmp_path):
 
 
 STR_ENUM = 'from enum import Enum\n\n\nclass Zone(str, Enum):\n    LOW = "low"\n'
-#: ruff 0.17.3's unsafe UP042 rewrite of STR_ENUM, then `ruff format`, as ruff writes it (the
-#: operator allows no unsafe fix)
-STR_ENUM_REWRITTEN = 'from enum import Enum, StrEnum\n\n\nclass Zone(StrEnum):\n    LOW = "low"\n'
+
+
+def _unsafe_rewrite(text: str) -> str:
+    """ruff's own unsafe UP042 fix of `text`, then `ruff format`: the rewrite the operator allows
+    no one to take, as ruff writes it."""
+    out = text.encode("utf-8")
+    for args in (
+        ["check", "--fix", "--unsafe-fixes", "--exit-zero", "--quiet", "--select", "UP042"],
+        ["format", "--quiet"],
+    ):
+        out = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "ruff",
+                *args,
+                "--isolated",
+                "--stdin-filename",
+                "server.py",
+                "-",
+            ],
+            input=out,
+            capture_output=True,
+            check=True,
+        ).stdout
+    return out.decode("utf-8")
 
 
 def test_a_fix_ruff_marks_unsafe_is_a_product_change_whatever_the_prs_config_asks(tmp_path):
-    """A PR whose own pyproject.toml turns ruff's unsafe fixes on (or marks one safe) and commits
-    the unsafe rewrite of `(str, Enum)` to `StrEnum`, which changes what str() of a member is: the
-    check runs ruff's safe fixes only, so the rewrite is a product change that needs its test."""
+    """A PR whose own pyproject.toml turns ruff's unsafe fixes on, marks one safe, or reaches
+    another file that does (`extend`), and commits the unsafe rewrite of `(str, Enum)` to
+    `StrEnum`, which changes what str() of a member is: the check reads only its listed settings and
+    runs ruff's safe fixes, so the rewrite is a product change that needs its test."""
+    rewritten = _unsafe_rewrite(STR_ENUM)
+    assert "StrEnum)" in rewritten
+    extra = tmp_path / "extra.toml"
+    extra.write_text('unsafe-fixes = true\n[lint]\nextend-safe-fixes = ["UP042"]\n', "utf-8")
     for config in (
         '[tool.ruff]\nunsafe-fixes = true\n[tool.ruff.lint]\nselect = ["UP042"]\n',
         '[tool.ruff.lint]\nselect = ["UP042"]\nextend-safe-fixes = ["UP042"]\n',
+        f'[tool.ruff]\nextend = "{extra.as_posix()}"\n[tool.ruff.lint]\nselect = ["UP042"]\n',
     ):
         (where := tmp_path / str(len(config))).mkdir()
         root = _repo(where, {**BASE, "server.py": STR_ENUM})
-        _commit(root, {"pyproject.toml": config, "server.py": STR_ENUM_REWRITTEN})
+        _commit(root, {"pyproject.toml": config, "server.py": rewritten})
         assert _changed(root) == ["server.py"], config
+
+
+def test_the_repositorys_own_ruff_settings_are_all_ones_the_tools_fix_reads():
+    """A setting outside RUFF_SETTINGS in this repository's pyproject.toml would make every tool
+    fix a product change; the list grows with the setting, never around it."""
+    config = (Path(__file__).resolve().parent.parent / "pyproject.toml").read_text("utf-8")
+    assert cee.ruff_settings(config) is not None
 
 
 def test_the_tools_fix_reads_the_committed_config_never_the_working_trees(tmp_path):

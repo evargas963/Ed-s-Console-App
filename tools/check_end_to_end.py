@@ -38,6 +38,7 @@ import re
 import subprocess
 import sys
 import io
+import json
 import tempfile
 import tokenize
 import tomllib
@@ -204,36 +205,59 @@ def code_tree(path: str, text: str) -> str | None:
     return None
 
 
-def tool_fixed(root: Path, path: str, text: str, config: str) -> str | None:
-    """`text` as the repository's standard tools leave it: ruff's safe fixes with `config` (the
-    text of a pyproject.toml), then `ruff format`; None when either cannot run on it, or when
-    `config` turns unsafe fixes on or marks one safe (ruff adds a file's `extend-safe-fixes` to
-    any given on the command line, so only refusing the config keeps an unsafe fix out)."""
+#: the ruff settings the tools' fix takes from the PR's pyproject.toml; ruff runs with no config
+#: file, so a setting outside this list (`extend`, `unsafe-fixes`, `extend-safe-fixes`, ...) that
+#: could let an unsafe fix through is never read, and a config holding one gets no tool-fix pass
+RUFF_SETTINGS = {
+    "line-length",
+    "target-version",
+    "extend-exclude",
+    "lint.select",
+    "lint.ignore",
+    "format.quote-style",
+}
+
+
+def ruff_settings(config: str) -> list[str] | None:
+    """`config`'s (the text of a pyproject.toml) ruff settings as `--config` arguments; None when
+    it cannot be read or holds a setting outside RUFF_SETTINGS."""
     try:
         ruff = tomllib.loads(config).get("tool", {}).get("ruff", {})
-    except tomllib.TOMLDecodeError:
+        pairs = [(k, v) for k, v in ruff.items() if k not in ("lint", "format")]
+        for table in ("lint", "format"):
+            pairs += [(f"{table}.{k}", v) for k, v in ruff.get(table, {}).items()]
+    except (tomllib.TOMLDecodeError, AttributeError):
         return None
-    if "unsafe-fixes" in ruff or "extend-safe-fixes" in ruff | ruff.get("lint", {}):
+    if any(k not in RUFF_SETTINGS for k, _ in pairs):
+        return None
+    return [a for k, v in pairs for a in ("--config", f"{k} = {json.dumps(v)}")]
+
+
+def tool_fixed(root: Path, path: str, text: str, config: str) -> str | None:
+    """`text` as the repository's standard tools leave it: ruff's safe fixes with `config`'s
+    settings (ruff_settings), then `ruff format`; None when either cannot run on it."""
+    settings = ruff_settings(config)
+    if settings is None:
         return None
     out = text.encode("utf-8")  # as bytes: no line ending translated on the way in or out
-    with tempfile.TemporaryDirectory() as tmp:
-        settings = Path(tmp) / "pyproject.toml"
-        settings.write_bytes(config.encode("utf-8"))
-        for args in (["check", "--fix", "--exit-zero", "--quiet"], ["format", "--quiet"]):
-            try:
-                run = subprocess.run(
-                    [sys.executable, "-m", "ruff", *args, "--config", str(settings)]
-                    + ["--stdin-filename", path, "-"],
-                    input=out,
-                    capture_output=True,
-                    cwd=root,
-                    timeout=120,
-                )
-            except (OSError, subprocess.TimeoutExpired):
-                return None
-            if run.returncode != 0:
-                return None
-            out = run.stdout
+    for args in (
+        ["check", "--fix", "--no-unsafe-fixes", "--exit-zero", "--quiet"],
+        ["format", "--quiet"],
+    ):
+        try:
+            run = subprocess.run(
+                [sys.executable, "-m", "ruff", *args, "--isolated", *settings]
+                + ["--stdin-filename", path, "-"],
+                input=out,
+                capture_output=True,
+                cwd=root,
+                timeout=120,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        if run.returncode != 0:
+            return None
+        out = run.stdout
     return out.decode("utf-8")
 
 
