@@ -158,10 +158,11 @@ jobs:
 
   pytest-windows:
     # Production runs on Windows; pytest-full runs on Linux, where the launcher's console windows,
-    # the daemon's pythonw start and the guard against killing it are skipped or take another path.
-    # The files that branch on the platform run here, found by the same search each time.
+    # the daemon's pythonw start, the guards' Windows path handling and the guard against killing
+    # it are skipped or take another path. The whole pytest suite runs here, so no Windows path is
+    # left to a guess of which tests reach it.
     runs-on: windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     steps:
       - name: Check out repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
@@ -194,7 +195,7 @@ jobs:
           npm ci
           npx playwright install chromium
 
-      - name: Run the tests that branch on the platform
+      - name: Run the full pytest suite on Windows
         shell: bash
         env:
           CI: "true"
@@ -202,8 +203,4 @@ jobs:
           ED_CONSOLE_ALLOW_NONCANONICAL_DB: "1"
           SCHWAB_API_KEY: "ci-not-live-placeholder"
           SCHWAB_APP_SECRET: "ci-not-live-placeholder"
-        run: |
-          files=$(grep -lE 'sys\.platform|os\.name ?==|platform\.system|pythonw|win32' tests/*.py)
-          echo "$files"
-          test -n "$files"
-          python -m pytest -n auto --dist loadfile -rs $files
+        run: python -m pytest -n auto --dist loadfile --durations=20 -rs

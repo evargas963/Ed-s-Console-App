@@ -150,7 +150,7 @@ then the rule binds with no machine check.
 - The `before-done` skill's checks pass on the PR's final commit, their output shown; the full
   suite is the required CI jobs green there, not a local repeat (operator 2026-10-30: "Yes, CI
   proves it"). Branch protection on `main` requires `pytest-full` and `hardening` on the final
-  commit, current with `main`; `pytest-windows` runs the tests that take a Windows path, on
+  commit, current with `main`; `pytest-windows` runs the full pytest suite on
   Windows as production runs, and is green on the final commit before a merge (no machine check
   until branch protection requires it — ENF-12).
 - Claims. Every statement about how something is now (a process, a file, a branch, a pull request,
