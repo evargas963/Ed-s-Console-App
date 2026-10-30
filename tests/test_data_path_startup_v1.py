@@ -21,13 +21,14 @@ from pathlib import Path
 import psutil
 import pytest
 from websockets.asyncio.client import connect
+from websockets.exceptions import InvalidStatus
 
 import db
 import launch
 import live_market_plane as lmp
 import push_changes
 import server
-from app.market_data.schwab.streaming import capture, live_ui
+from app.market_data.schwab.streaming import capture, live_push, live_ui
 from app.market_data.schwab.streaming.live_ui import serve_live_ui
 from calibration.complete_chain_capture import (
     CAPTURE_BASIS,
@@ -46,6 +47,29 @@ async def _until(cond, limit: float = 10.0) -> None:
     while not cond():
         assert time.monotonic() < end, "timed out"
         await asyncio.sleep(0.05)
+
+
+def test_a_web_page_cannot_reach_the_daemons_local_socket():
+    """The console and `launch.py stop` send no Origin and connect; a browser always sends one, and
+    a page on any site is refused before it reads the stream or asks the daemon to stop. Induced
+    test condition: a client sending the Origin a page's browser would."""
+
+    async def go():
+        stop, stats = asyncio.Event(), {}
+        pushing = asyncio.create_task(
+            live_push.serve_live_push(MessageBus(), stop, port=0, stats=stats)
+        )
+        await _until(lambda: stats.get("listening"))
+        async with connect(stats["listening"]):
+            pass
+        with pytest.raises(InvalidStatus) as refused:
+            async with connect(stats["listening"], origin="https://example.com"):
+                pass
+        stop.set()
+        await pushing
+        return refused.value.response.status_code
+
+    assert asyncio.run(asyncio.wait_for(go(), 30)) == 403
 
 
 @pytest.mark.skipif(
