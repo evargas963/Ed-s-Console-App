@@ -1,7 +1,8 @@
 """AGENTS.md rule 1 and Before writing code: a pull request that changes product code proves it with
 an end-to-end path test that fails on the old code, unless it only removes whole undecorated Python
-functions or classes and the imports only they used (`deletes_only`): then the full suite and the
-browser tests, which the same job runs, are the proof (operator 2026-10-28).
+functions or classes and the imports only they used (`deletes_only`), or only fixes what ruff rules
+it newly selects find (`rule_fixes_only`): then the full suite and the browser tests, which the
+same job runs, are the proof (AGENTS.md "Before writing code").
 
 The PR's changed and added files under tests/ are laid over a checkout of the base, and the PR's
 changed end-to-end path tests run there: pytest files (tests/test_data_path_*.py) with this
@@ -27,6 +28,7 @@ import argparse
 import ast
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -247,7 +249,7 @@ def _removes_whole_units(was: str, now: str | None) -> bool:
 
 def deletes_only(root: Path, base: str, product: list[str]) -> bool:
     """Whether every changed product file is Python that loses whole undecorated functions or
-    classes, and the imports only they used, and nothing else (operator 2026-10-28). Removing code
+    classes, and the imports only they used, and nothing else. Removing code
     nothing calls adds no value to check; what could break is a caller, which the full suite and
     the browser tests run. A line removed inside a function, a module-level call (`app.mount`), a
     decorated one (a route) or any page code is a change of behavior, and needs its end-to-end
@@ -267,6 +269,87 @@ def deletes_only(root: Path, base: str, product: list[str]) -> bool:
     return True
 
 
+def _rule_codes(root: Path, config: Path, path: str, text: str) -> set[str] | None:
+    """The ruff rules `text` (as `path`) breaks under `config`; None when ruff cannot say."""
+    try:
+        run = subprocess.run(
+            [sys.executable, "-m", "ruff", "check", "--config", str(config)]
+            + ["--output-format", "json", "--exit-zero", "--stdin-filename", path, "-"],
+            input=text.encode("utf-8"),
+            capture_output=True,
+            cwd=root,
+            timeout=120,
+        )
+        return {r["code"] for r in json.loads(run.stdout)} if run.returncode == 0 else None
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        return None
+
+
+def _enabled_rules(root: Path, config: Path) -> set[str] | None:
+    """The rule codes ruff's resolved settings for `config` list as enabled
+    (`linter.rules.enabled`); None when ruff cannot say."""
+    try:
+        run = subprocess.run(
+            [sys.executable, "-m", "ruff", "check", "--show-settings", "--config", str(config)]
+            + ["pyproject.toml"],
+            capture_output=True,
+            cwd=root,
+            timeout=120,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    lines = run.stdout.decode("utf-8", "replace").splitlines()
+    if run.returncode != 0 or "linter.rules.enabled = [" not in lines:
+        return None
+    block = lines[lines.index("linter.rules.enabled = [") + 1 :]
+    if "]" not in block:
+        return None
+    return {
+        code
+        for line in block[: block.index("]")]
+        for code in re.findall(r"\(([A-Z]+[0-9]+)\)", line)
+    }
+
+
+def rule_fixes_only(root: Path, base: str, product: list[str]) -> bool:
+    """Whether every changed product file is Python whose base version breaks a ruff rule the
+    PR's pyproject.toml newly enables (one ruff lists as enabled under it and not under the base's)
+    and whose PR version breaks none: a change made for a rule now selected, behaviour unchanged,
+    which the full suite and the browser tests prove, as a deletion is. A changed setting of a rule
+    already on is not a new rule. That the diff is only the rule's fix, and no other change rides
+    with it, no check can tell: the reviewers read it. A deleted file, page code, or a file that
+    broke no new rule is not one."""
+    deleted = set(deleted_product(root, base))
+    if not all(f.endswith(".py") and f not in deleted for f in product):
+        return False
+    fork = _git(root, "merge-base", base, "HEAD").strip()
+    try:
+        _git(root, "diff", "--quiet", "HEAD", "--", "pyproject.toml")  # the tree's is the commit's
+        old_config = _git(root, "show", f"{fork}:pyproject.toml")
+    except ToolError:
+        return False
+    with tempfile.TemporaryDirectory() as tmp:
+        was_config = Path(tmp) / "pyproject.toml"
+        was_config.write_bytes(old_config.encode("utf-8"))
+        now_on, was_on = (
+            _enabled_rules(root, root / "pyproject.toml"),
+            _enabled_rules(root, was_config),
+        )
+    if now_on is None or was_on is None or not now_on - was_on:
+        return False
+    for f in product:
+        try:
+            was, now = _git(root, "show", f"{fork}:{f}"), _git(root, "show", f"HEAD:{f}")
+        except ToolError:
+            return False
+        found = _rule_codes(root, root / "pyproject.toml", f, was)
+        if found is None or not found & (now_on - was_on):
+            return False
+        if _rule_codes(root, root / "pyproject.toml", f, now) != set():
+            return False
+    return True
+
+
 def violations(root: Path, base: str) -> list[str]:
     files = changed(root, base)
     product = [f for f in files if behavior_change(root, base, f)] + deleted_product(root, base)
@@ -276,7 +359,13 @@ def violations(root: Path, base: str) -> list[str]:
         print(
             f"proven: {', '.join(product)} only lose whole undecorated functions or classes and their imports; "
             "the full suite and "
-            "the browser tests are the proof (operator 2026-10-28)"
+            "the browser tests are the proof"
+        )
+        return []
+    if rule_fixes_only(root, base, product):
+        print(
+            f"proven: {', '.join(product)} change only for ruff rules the PR newly selects; the full "
+            "suite and the browser tests are the proof"
         )
         return []
     tests = [f for f in files if is_test(f)]
