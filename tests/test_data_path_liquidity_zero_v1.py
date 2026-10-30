@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
+from pathlib import Path
 
 import pytest
 
@@ -21,6 +22,7 @@ from tests.test_liquidity_snapshot_spot_identity_v1 import published as publishe
 from time_et import ET
 
 BEFORE_OPEN = FRIDAY.replace(hour=8)
+DRAWN = Path(__file__).parent / "e2e/fixtures/real_spy_liquidity_with_a_session_at_zero.json"
 THURSDAY_ON = {1}
 FRIDAY_ON = {2}
 BOTH = {1, 2}
@@ -111,7 +113,10 @@ def test_a_value_area_at_zero_is_compared_as_a_price(
 
 
 def test_a_poc_at_zero_under_a_vwap_above_it_reads_above_value(published):
-    """Friday's bars at 0 but its last, which keeps its prices: the POC is 0, VWAP above it."""
+    """Friday's bars at 0 but its last, which keeps its prices: the POC is 0, VWAP above it. The
+    browser tests draw this answer (tests/e2e/console-trade-desk.spec.js)."""
     last = max(b["timestamp"] for b in _BARS) / 1000
-    summary = _snapshot(FRIDAY_ON, FRIDAY, keep=last)["summary"]
+    body = _snapshot(FRIDAY_ON, FRIDAY, keep=last)
+    summary = body["summary"]
     assert (summary["value_state"], summary["vwap_relation"]) == ("shifted_lower", "above_value")
+    assert body == json.loads(DRAWN.read_text(encoding="utf-8"))

@@ -140,6 +140,24 @@ test('Liquidity map: the live price keeps its last trade time', async ({ page })
   await expect.poll(() => page.evaluate(() => (window.EdLiquidityMap.state() || {}).livePrice)).toBe(SPOT);
 });
 
+test('a level at 0 draws as a price: the map lists its zone, the desk its value words', async ({ page }) => {
+  // the route's answer on SPY's bars with a session's prices at 0 (tests/test_data_path_liquidity_zero_v1.py
+  // keeps this file equal to it): a reported 0 is 0
+  const AT_ZERO = require(path.join(__dirname, 'fixtures', 'real_spy_liquidity_with_a_session_at_zero.json'));
+  const errs = watchErrors(page);
+  await intercept(page);
+  await page.route('**/api/liquidity-snapshot**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
+    body: JSON.stringify(AT_ZERO) }));
+  await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'liquidity'); localStorage.setItem('ed_sub', 'map'); } catch (e) {} });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await expect(page.locator('.liqm-zones')).toContainText('Resistance 0.00');
+  await page.addInitScript(() => { try { localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await expect(page.locator('#tdmAgree')).toContainText('shifted lower');
+  await expect(page.locator('#tdmAgree')).toContainText('above value');
+  expect(errs).toEqual([]);
+});
+
 test('the liquidity map fits its price scale to the candles; a far zone does not flatten them', async ({ page }) => {
   // 2026-09-29 RTH: SPY's served zones at 750 and 800 joined the auto-fit, the scale ran 735-805
   // and the candles (765) were a flat line
