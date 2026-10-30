@@ -858,7 +858,6 @@ class PriceLevelSnapshot:
         "generation",
         "bar_source",
         "as_of_ts_utc",
-        "produced_ts_utc",
         "levels",
         "vwap_path",
         "vwap_series",
@@ -878,7 +877,6 @@ class PriceLevelSnapshot:
         generation: int,
         bar_source: str,
         as_of_ts_utc: float | None,
-        produced_ts_utc: float,
         levels: dict,
         vwap_path: list,
         families_absent: list,
@@ -893,7 +891,6 @@ class PriceLevelSnapshot:
         self.generation = generation
         self.bar_source = bar_source
         self.as_of_ts_utc = as_of_ts_utc
-        self.produced_ts_utc = produced_ts_utc
         self.levels = levels  # level_id -> PriceLevelValue
         self.vwap_path = vwap_path  # [(epoch_sec, vwap)]
         self.vwap_series = vwap_series or []  # [(epoch_sec, vwap, +1σ, -1σ, +2σ, -2σ)]
@@ -965,7 +962,6 @@ def build_price_level_snapshot(
     """
     cfg = config or PlaybookConfig()
     tk = ticker_storage_key(ticker)  # canonical liquidity snapshot/ledger identity
-    produced_ts = datetime.now(tz=ET).timestamp()
     levels: dict[str, PriceLevelValue] = {}
     families_absent: list[dict] = []
     degraded: list[dict] = []
@@ -1044,7 +1040,6 @@ def build_price_level_snapshot(
             generation=generation,
             bar_source=bar_source,
             as_of_ts_utc=as_of,
-            produced_ts_utc=produced_ts,
             levels=levels,
             vwap_path=vwap_path,
             vwap_series=vwap_series,
@@ -1145,7 +1140,6 @@ def build_price_level_snapshot(
         generation=generation,
         bar_source=bar_source,
         as_of_ts_utc=as_of,
-        produced_ts_utc=produced_ts,
         levels=levels,
         vwap_path=vwap_path,
         vwap_series=vwap_series,
