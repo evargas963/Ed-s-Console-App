@@ -12,12 +12,6 @@ capture and merge only, no new exposure math here."""
 from __future__ import annotations
 import time
 
-import sys
-from pathlib import Path
-
-ROOT = Path(__file__).resolve().parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 
 from app.options.order_flow.state import OrderFlowState as LiveOrderFlowState
 

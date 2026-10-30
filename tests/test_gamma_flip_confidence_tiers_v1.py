@@ -26,13 +26,7 @@ permits), not the population — so they stay valid whichever chains production 
 
 from __future__ import annotations
 
-import sys
 from datetime import datetime
-from pathlib import Path
-
-REPO = Path(__file__).resolve().parent.parent
-if str(REPO) not in sys.path:
-    sys.path.insert(0, str(REPO))
 
 from math_levels import (
     GAMMA_FLIP_LEVEL_APPROX,

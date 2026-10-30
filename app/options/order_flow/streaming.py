@@ -45,14 +45,11 @@ from app.options.order_flow.state import (
 )
 
 import live_market_plane as _lmp
+from app.market_data.schwab.streaming.live_push import LIVE_PUSH_HOST, LIVE_PUSH_PORT
+from app.market_data.schwab.streaming.live_ui import LIVE_UI_PORT
 from time_et import record_markets
 
 log = logging.getLogger(__name__)
-
-#: The daemon's live push endpoint (app.market_data.schwab.streaming.live_push), the feed's
-#: (start_order_flow_stream -> _feed_loop).
-from app.market_data.schwab.streaming.live_push import LIVE_PUSH_HOST, LIVE_PUSH_PORT
-from app.market_data.schwab.streaming.live_ui import LIVE_UI_PORT
 
 LIVE_PUSH_URL = f"ws://{LIVE_PUSH_HOST}:{LIVE_PUSH_PORT}"
 #: The daemon's price-row push (live_ui), the one the browser reads.

@@ -7,12 +7,7 @@ Run: pytest tests/test_liquidity_engine.py -v
 
 from __future__ import annotations
 
-import sys
 from datetime import date, datetime
-from pathlib import Path
-
-ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT))
 
 from micro_structure import Candle
 from time_et import (
