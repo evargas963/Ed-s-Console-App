@@ -205,8 +205,9 @@ def code_tree(path: str, text: str) -> str | None:
 
 
 #: the lines of ruff's resolved settings (`ruff check --show-settings`, extended files included)
-#: that decide whether a fix ruff calls safe is safe here: unsafe fixes off, no fix forced safe,
-#: and the Python the fixes are made for the base's (a fix is safe only for its target version)
+#: that decide whether a fix ruff calls safe is safe here: unsafe fixes off, no fix forced safe, no
+#: import required of every file, and the Python the fixes are made for the base's (a fix is safe
+#: only for its target version)
 FIX_SAFETY = (
     "unsafe_fixes",
     "linter.safety_table.forced_safe",

@@ -8,8 +8,9 @@ written. A test the PR adds or changes is refused when it ran with a patch appli
 it ran, or still applied and reaching it, as the recorder judges), or when the run has no record
 of it running to its end (skipped before or during its call, deselected, its file skipped), so
 what it runs under is unknown. A unit the PR adds or changes is refused when a patch was applied
-from one of its lines. A patching test whose docstrings or comments alone change, or that a
-standard tool's safe fix alone changes, is not judged; a change to its code needs its patch removed.
+from one of its lines. A patching test whose docstrings or comments alone change is not judged,
+one a standard tool's safe fix alone changes is not judged for its patches but must still run, and
+any other change to its code needs its patch removed.
 
     ED_PATCH_RECORD=<dir> python -m pytest -p tools.patch_record
     python -m tools.check_no_new_patches --base origin/main --record <dir>
@@ -124,14 +125,14 @@ def _file_units(
         fixed = tool_fixed(root, path, sources[0].decode("utf-8", "replace"))
         sources += [fixed] if fixed is not None else []
     was: set[tuple[str, str | None]] = set()
-    was_statements: set[str | None] = set()
+    was_statements: set[tuple[str | None, frozenset[str]]] = set()
     for source in sources:
         was_funcs, was_rest = _units(source)
         was |= {(n, _code(f)) for n, f in was_funcs.items()}
-        was_statements |= {_code(s) for s in was_rest}
+        was_statements |= {(_code(s), frozenset(s.binds)) for s in was_rest}
     funcs, rest = _units(_git(root, "show", f"HEAD:{path}"))
     return [(n, f, (n, _code(f)) not in was) for n, f in funcs.items()] + [
-        (f"line {s.lineno}", s, _code(s) not in was_statements) for s in rest
+        (f"line {s.lineno}", s, (_code(s), frozenset(s.binds)) not in was_statements) for s in rest
     ]
 
 

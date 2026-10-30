@@ -1,8 +1,8 @@
 """tools/check_no_new_patches.py (TEST-PATCHES) on real git repositories, each PR's suite run by
 pytest with tools/patch_record.py: a test whose code a pull request adds or changes may not run with
 a patch applied, and no unit it adds or changes may apply one; one whose docstrings and comments
-alone change, that a standard tool's safe fix alone changes, or that the PR leaves as it was, is not
-judged."""
+alone change, or that the PR leaves as it was, is not judged, and one a standard tool's safe fix
+alone changes is not judged for its patches but must still run."""
 
 from __future__ import annotations
 
@@ -585,6 +585,17 @@ def test_a_class_of_only_a_docstring_inheriting_tests_is_judged_by_its_header(tm
 def test_a_pytestmark_putting_old_tests_under_a_patching_fixture_is_refused(tmp_path):
     was = "def test_m():\n    assert True\n"
     now = "import pytest\n\npytestmark = pytest.mark.usefixtures('pinned')\n\n\n" + was
+    assert _check(tmp_path, {"tests/test_m.py": now}, base={**BASE, "tests/test_m.py": was}) == [
+        f"tests/test_m.py::line {_line(now, 'pytestmark')} patches: {RAN}"
+    ]
+
+
+def test_a_pytestmark_moved_onto_another_class_is_refused(tmp_path):
+    mark = "    pytestmark = pytest.mark.usefixtures('pinned')\n\n"
+    test = "    def test_{0}(self):\n        assert True\n"
+    head = "import pytest\n\n\nclass TestA:\n"
+    was = f"{head}{mark}{test.format('a')}\n\nclass TestB:\n{test.format('b')}"
+    now = f"{head}{test.format('a')}\n\nclass TestB:\n{mark}{test.format('b')}"
     assert _check(tmp_path, {"tests/test_m.py": now}, base={**BASE, "tests/test_m.py": was}) == [
         f"tests/test_m.py::line {_line(now, 'pytestmark')} patches: {RAN}"
     ]

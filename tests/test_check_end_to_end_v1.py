@@ -305,10 +305,11 @@ def test_a_change_the_standard_tools_make_alone_is_not_a_product_change(tmp_path
 
 def test_an_import_the_prs_ruff_settings_require_is_a_product_change(tmp_path):
     """Ruff's I002 adds the import a PR's settings name: code the PR wrote, not a tidy-up."""
-    added = "from calc import spot\n\n\n" + OLD_STYLE
     settings = RUFF_BASE + '[tool.ruff.lint]\nselect = ["I002"]\n[tool.ruff.lint.isort]\n'
     settings += 'required-imports = ["from calc import spot"]\n'
     root = _repo(tmp_path, {**TOOLS_BASE, "server.py": OLD_STYLE})
+    added = _tool_fixed(root, OLD_STYLE, settings)
+    assert added is not None and "from calc import spot" in added
     _commit(root, {"pyproject.toml": settings, "server.py": added})
     assert _changed(root) == ["server.py"]
 
