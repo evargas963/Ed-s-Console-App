@@ -1,6 +1,5 @@
-"""spot_used_for_scoring must never silently carry a VWAP value (RC-close-2026-09-11), and a
-HTTPException raised on the route's path must propagate as its own status code, not a blanket
-500 -- both found by independent review of /api/liquidity-snapshot. Real data through the real
+"""/api/liquidity-snapshot: spot_used_for_scoring never carries a VWAP value, and an
+HTTPException raised on the route's path keeps its own status code. Real data through the real
 route: Schwab's SPY 1-minute bars of Thursday 2026-10-01 and Friday 10-02 as the capture daemon
 recorded them (each minute's newest receipt), the levels published as the bar writer publishes
 them, valued on Friday 2026-10-02 at 15:00 ET. Stand-in: ticker ZZLIQ carries the SPY bars."""
@@ -57,6 +56,9 @@ def published():
     def forget():
         srv._bars.pop(TK, None)
         ofs._price_rows.pop(TK, None)
+        with lmp._lock:
+            lmp._by_ticker.pop(TK, None)
+            lmp._fields_by_ticker.pop(TK, None)
         for key in [k for k in lve._MATERIALIZED_SNAPSHOTS if k[0] == TK]:
             del lve._MATERIALIZED_SNAPSHOTS[key]
 
@@ -84,8 +86,7 @@ def _body(resp):
 
 
 def test_spot_used_for_scoring_is_null_not_vwap_when_no_live_spot_is_cached(published):
-    """MEASURED 2026-09-11: with no live spot, spot_used_for_scoring used to be silently
-    backfilled with the VWAP number and reported under the "spot" name. It must report null --
+    """With no live spot, spot_used_for_scoring is null, never the VWAP under the "spot" name:
     absence stays absence. Schwab has sent no price for the ticker here."""
     body = _body(srv.liquidity_snapshot(TK, FRIDAY))
     assert body["raw_levels"]["vwap"] is not None, "the session's VWAP exists to be misused"
@@ -93,18 +94,17 @@ def test_spot_used_for_scoring_is_null_not_vwap_when_no_live_spot_is_cached(publ
     assert "spot_estimate_vwap_fallback" not in body, "VWAP is never a stand-in for spot"
 
 
-def test_missing_spot_produces_honest_null_distance_and_neutral_score_through_the_real_zone_path(
-    published,
-):
-    """MEASURED 2026-09-11: the VWAP-as-spot value was also fed into the zone distance and sort.
-    The real zones of the real levels: with no spot, distance and inside-zone are absent and the
-    score is neutral -- not a crash, not a fabricated distance."""
+def test_missing_spot_produces_honest_null_distance_through_the_real_zone_path(published):
+    """The real zones of the real levels: with no spot, distance and inside-zone are absent --
+    not a crash, not a fabricated distance, never VWAP standing in for the spot."""
     body = _body(srv.liquidity_snapshot(TK, FRIDAY))
     assert body["zones"]
+    lows = [z["zone_low"] for z in body["zones"]]
+    assert lows == sorted(lows), "with no spot the zones are listed by price, lowest first"
     for z in body["zones"]:
         assert z["distance_to_spot"] is None
         assert z["spot_inside_zone"] is None
-        assert isinstance(z["tradeable_score"], (int, float))
+        assert "tradeable_score" not in z, "a score no page reads is not served"
         # the pages named every zone that was not support_liquidity "Resistance": each zone's name
         # and side are served from its type
         assert (z["zone_label"], z["zone_side"]) == ZONE_DISPLAY[ZoneType(z["zone_type"])]
@@ -127,8 +127,8 @@ def test_spot_used_for_scoring_reports_the_real_live_spot_when_available(publish
 
 
 def test_an_http_exception_on_the_route_path_keeps_its_status_not_a_generic_500():
-    """MEASURED 2026-09-11: an HTTPException on this route's path was re-issued as a bare 500. It
-    must propagate as its own status: a blank ticker is refused by the snapshot read with 400."""
+    """An HTTPException on this route's path keeps its own status, not a bare 500: a blank
+    ticker is refused by the snapshot read with 400."""
     resp = srv.liquidity_snapshot("", FRIDAY)
     assert resp.status_code == 400
     assert json.loads(resp.body)["error"] == "ticker is required"
