@@ -6,16 +6,18 @@ chain of a captured expiry in Schwab's chain shape, the quotes of the symbols as
 captured quotes, and the price history of a ticker's series as Schwab answered it. Every request is
 recorded once answered: (path, query, started, answered, the client's port).
 
-Real data: SPY's 2026-11-20 chain and its quotes (fixtures/real_spy_2026_11_20_chain_and_quotes.json),
-Schwab's /chains answer for TSLA's 2026-10-09 expiry as sent (fixtures/real_schwab_chain_tsla_2026_10_09.json,
-captured 2026-10-08; its quotes were not captured), and SPY's and TSLA's /pricehistory answers of 2026-10-07 09:57 UTC
+Real data: SPY's 2026-11-20 chain and its quotes
+(fixtures/real_spy_2026_11_20_chain_and_quotes.json), Schwab's /chains answer for TSLA's 2026-10-09
+expiry as sent (fixtures/real_schwab_chain_tsla_2026_10_09.json, captured 2026-10-08; its quotes
+were not captured), and SPY's and TSLA's /pricehistory answers of 2026-10-07 09:57 UTC
 (fixtures/real_pricehistory_spy_tsla_2026_10_07.json: 1-minute, 15-minute and daily candles), and
 Schwab's /quotes answer for each of SPY, TSLA, SPCX, META, QQQ, IWM and ZQZQZ asked alone, as the
 daemon's watchlist check asks (fixtures/real_schwab_quotes_watchlist_check_2026_10_07.json; ZQZQZ is
 named in errors.invalidSymbols), Schwab's /markets answer for every date it answered on
 2026-10-07 (fixtures/real_schwab_markets_2026_10_07.json), each chain's isIndex from a /chains
-answer Schwab sent for the ticker on 2026-10-08 (fixtures/real_schwab_chain_top_level_spy_tsla_2026_10_08.json),
-and Schwab's edge 403 page (fixtures/real_schwab_akamai_403_2026_10_03.json).
+answer Schwab sent for the ticker on 2026-10-08
+(fixtures/real_schwab_chain_top_level_spy_tsla_2026_10_08.json), and Schwab's edge 403 page
+(fixtures/real_schwab_akamai_403_2026_10_03.json).
 STAND-INS: the expiration chains; an answer other than 200 (its body); the refreshed token
 (REFRESHED); the body of Schwab's refusal of the sign-in (REFUSED); the user preferences
 (`stream_url`: where schwab-py's StreamClient finds the streamer, tests/schwab_stream_standin.py);
@@ -99,7 +101,8 @@ REFRESHED = {
 #: 400") and authlib's error and description, Schwab's own `error` and `error_description`
 REFUSED = {
     "error": "unsupported_token_type",
-    "error_description": '400 Bad Request: "{"error_description":"Refresh token is invalid, expired or '
+    "error_description": '400 Bad Request: "{"error_description":'
+    '"Refresh token is invalid, expired or '
     'revoked","error":"invalid_grant"}"',
 }
 
@@ -132,8 +135,8 @@ class LocalSchwab:
     (`{"errors": {"invalidSymbols": [...]}}`) instead of quoting them; `stream_url`: the streamer
     the user preferences name (tests/schwab_stream_standin.LocalStreamer.url); `token`: the token
     endpoint's answer ("refreshes": REFRESHED; "refuses": REFUSED, 400; "edge": EDGE_403); `edge`:
-    while set, every data request is answered with EDGE_403. Each request is recorded as (path, query,
-    started, answered, the client's port, its Authorization)."""
+    while set, every data request is answered with EDGE_403. Each request is recorded as (path,
+    query, started, answered, the client's port, its Authorization)."""
 
     def __init__(self, stream_url: str | None = None):
         self.stream_url = stream_url
@@ -202,7 +205,8 @@ class LocalSchwab:
                 data: bytes,
                 headers: tuple = (),
             ):
-                # recorded before the answer leaves, so a client holding the answer finds its request
+                # recorded before the answer leaves, so a client holding the answer finds its
+                # request
                 outer.requests.append(
                     (
                         path,

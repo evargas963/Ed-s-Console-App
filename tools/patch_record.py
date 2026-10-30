@@ -5,9 +5,10 @@
 Every pytest `MonkeyPatch` change and every unittest.mock patch (`patch` in any form, `patch.dict`,
 started, entered or as a decorator; pytest-mock's `mocker` is built on them) is wrapped before the
 first conftest.py is imported. Each process writes <dir>/<xdist worker or "main">.jsonl, one Event
-per line: each test pytest COLLECTED (before any deselection), each patch APPLIED, and each test that RAN (pytest reported its call
-other than as skipped) with the patches still applied that reach it: one applied while modules were imported, by a fixture the test requests, or
-from its own file or a conftest.py above it. A patch with no test code on its stack (pytest's own
+per line: each test pytest COLLECTED (before any deselection), each patch APPLIED, and each test
+that RAN (pytest reported its call other than as skipped) with the patches still applied that
+reach it: one applied while modules were imported, by a fixture the test requests, or from its own
+file or a conftest.py above it. A patch with no test code on its stack (pytest's own
 set-up) is not recorded. Without ED_PATCH_RECORD the plugin records nothing.
 """
 
@@ -76,7 +77,8 @@ def read(where: Path) -> list[Event]:
 @dataclass
 class _Applied:
     """A patch still applied: the test running when it was applied (None while modules were
-    imported), the fixture being set up then (None outside one), and the test code that applied it."""
+    imported), the fixture being set up then (None outside one), and the test code that applied
+    it."""
 
     test: tuple[tuple[str, str | int], ...] | None
     fixture: str | None
@@ -179,7 +181,8 @@ def pytest_load_initial_conftests(early_config: pytest.Config, parser, args) -> 
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_runtestloop(session: pytest.Session) -> None:
-    """xdist's workers have started with ED_PATCH_RECORD; a pytest a test starts does not inherit it."""
+    """xdist's workers have started with ED_PATCH_RECORD; a pytest a test starts does not
+    inherit it."""
     os.environ.pop("ED_PATCH_RECORD", None)
 
 

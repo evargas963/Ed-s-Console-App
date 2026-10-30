@@ -8,8 +8,8 @@ takes its quote's, so the heatmap, the levels, the per-strike rows and the force
 unchanged.
 
 Real data (tests/fixtures/real_spy_2026_11_20_chain_and_quotes.json): SPY's 2026-11-20 contracts
-from the capture daemon's full-chain capture of 2026-09-30 15:31:57 ET, and Schwab's quotes for every
-one of them as answered at 2026-10-01 04:52 ET, served by Schwab's host as a local server
+from the capture daemon's full-chain capture of 2026-09-30 15:31:57 ET, and Schwab's quotes for
+every one of them as answered at 2026-10-01 04:52 ET, served by Schwab's host as a local server
 (tests/schwab_rest_standin.py) to the real sweep and client.
 """
 

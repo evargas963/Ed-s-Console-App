@@ -1,6 +1,6 @@
 """The capture daemon: the ONE Schwab streaming connection (Schwab allows one per account).
 
-    python -m app.market_data.schwab.streaming.capture_main   (launch.py -> start_capture_daemon.bat)
+    python -m app.market_data.schwab.streaming.capture_main  (launch.py -> start_capture_daemon.bat)
 
 It is the only part of Ed Console that talks to Schwab. Beside the loop below, its chain sweep
 (run_chains) fetches full option chains on its own thread, one request at a time, without end:
@@ -22,11 +22,11 @@ It does four things, in one loop:
              CHART_EQUITY and NEWS_HEADLINE), and the option contracts the option rule picks
              (pick_options: the contract selected on the Flow panel, then the rest of Schwab's
              limit on each option service split evenly across the watchlist, each ticker's
-             contracts with the highest gamma in its newest chain, none expired). A change to the watchlist
-             or the picked contracts is asked once: UNSUBS what left, then SUBS (a service's first
-             request) or ADD what came. Nothing asked is asked again on this connection, whatever
-             Schwab answered. Requests are split so none exceeds Schwab's 64 KB message limit
-             (a larger request closes the socket).
+             contracts with the highest gamma in its newest chain, none expired). A change to the
+             watchlist or the picked contracts is asked once: UNSUBS what left, then SUBS (a
+             service's first request) or ADD what came. Nothing asked is asked again on this
+             connection, whatever Schwab answered. Requests are split so none exceeds Schwab's
+             64 KB message limit (a larger request closes the socket).
   2. ANSWERS Every Schwab answer is matched to its own request by its requestid, logged and
              recorded (stream_subscriptions) exactly as sent -- a refused ADD is answered twice
              (code 19, then code 24 "ADD command failed"), and both are its answers.
@@ -151,8 +151,9 @@ CHART_FIELDS = {
     "CHART_TIME_MILLIS": "bar_start_ms",
 }
 #: The highest field number Schwab accepts on each service: every number above it, asked alone, is
-#: answered code 22 "SUBS command failed" (tests/fixtures/real_schwab_field_number_replies_2026_10_12.json).
-#: The daemon asks for every number up to it, so each field Schwab sends, documented or not, is kept.
+#: answered code 22 "SUBS command failed"
+#: (tests/fixtures/real_schwab_field_number_replies_2026_10_12.json). The daemon asks for every
+#: number up to it, so each field Schwab sends, documented or not, is kept.
 HIGHEST_FIELD = {
     "LEVELONE_EQUITIES": 150,
     "LEVELONE_OPTIONS": 150,
@@ -276,10 +277,11 @@ def expiration_ts(ct: dict) -> float | None:
 def by_gamma(contracts: list[dict], price: float, now: float, product: str) -> tuple[str, ...]:
     """`contracts` (a chain as the sweep delivers it) in the option rule's order at `now`: highest
     Schwab gamma first, as the levels take it (math_exposure_core.gamma_reported: absent, -999, a
-    -999 volatility, or past twice the largest gamma possible at `price` is no gamma, ranked last); of equal gammas the nearest expiration, then the
-    strike nearest `price` (the lower of two equally near), calls before puts. A contract has
-    expired once now passes its expirationDate and is left out (it stays in the records; it is
-    never streamed); so is one whose strike or expiration is not a number (rule 2)."""
+    -999 volatility, or past twice the largest gamma possible at `price` is no gamma, ranked
+    last); of equal gammas the nearest expiration, then the strike nearest `price` (the lower of
+    two equally near), calls before puts. A contract has expired once now passes its
+    expirationDate and is left out (it stays in the records; it is never streamed); so is one
+    whose strike or expiration is not a number (rule 2)."""
     with_gamma, without = [], []
     for ct in contracts:
         strike, expires = schwab_number(ct.get("strikePrice")), expiration_ts(ct)
@@ -469,7 +471,8 @@ class Daemon:
     ) -> None:
         self.bus = bus
         self.health = health
-        #: the time a chain is put in the option rule's order at (by_gamma's `now`, read as it arrives)
+        #: the time a chain is put in the option rule's order at (by_gamma's `now`, read as it
+        #: arrives)
         self.clock = clock
         #: the one list of tickers Schwab is asked for, in its order (stored_watchlist at startup)
         self.watchlist: list[str] = list(watchlist)
@@ -532,13 +535,13 @@ class Daemon:
 
     def pick_options(self) -> None:
         """The option rule, every watchlist ticker the same, run when a ticker's chain is put in
-        the rule's order (_rank), on a watchlist change and on the Flow panel's selection. The contract selected
-        on the Flow panel streams on both option services when a watchlist ticker's chain lists
-        it, not expired; what is left of Schwab's limit on each option service (OPTION_LIMITS) is
-        split evenly across the watchlist, and a ticker's share on each is the first of its
-        contracts in the rule's order (by_gamma). A ticker without a chain and a price yet has
-        none. When the picked contracts change, the difference is asked
-        once (ask: one UNSUBS and one ADD per service)."""
+        the rule's order (_rank), on a watchlist change and on the Flow panel's selection. The
+        contract selected on the Flow panel streams on both option services when a watchlist
+        ticker's chain lists it, not expired; what is left of Schwab's limit on each option
+        service (OPTION_LIMITS) is split evenly across the watchlist, and a ticker's share on each
+        is the first of its contracts in the rule's order (by_gamma). A ticker without a chain and
+        a price yet has none. When the picked contracts change, the difference is asked once (ask:
+        one UNSUBS and one ADD per service)."""
         ranked = [self._ranked[tk] for tk in self.watchlist if tk in self._ranked]
         flow = frozenset(c for c in [self.flow_contract] if any(c in r for r in ranked))
         new = {
@@ -555,7 +558,8 @@ class Daemon:
         log.info(
             "option rule: %s",
             "; ".join(
-                f"{svc} {len(new[svc])} (+{len(new[svc] - self.options[svc])} -{len(self.options[svc] - new[svc])})"
+                f"{svc} {len(new[svc])} (+{len(new[svc] - self.options[svc])} "
+                f"-{len(self.options[svc] - new[svc])})"
                 for svc in lmp.OPTION_SERVICES
             ),
         )
@@ -563,7 +567,8 @@ class Daemon:
         self.ask()
 
     def _keep_options(self) -> None:
-        """The option contracts recorded (saved_options): each ticker's window and the Flow panel's."""
+        """The option contracts recorded (saved_options): each ticker's window and the Flow
+        panel's."""
         self.saved_options = frozenset(c for c in [self.flow_contract] if c is not None).union(
             *self._windows.values()
         )
@@ -1073,9 +1078,10 @@ FEED_STATUS_EVERY_SEC = 60.0
 async def record_feed_status(
     daemon: Daemon, stop: asyncio.Event, every: float = FEED_STATUS_EVERY_SEC
 ) -> None:
-    """Every `every` seconds (once a minute), per Schwab feed: checked at X (the same X for every feed), is the socket
-    open, when Schwab last sent anything, how many symbols are subscribed, and when this feed
-    last carried data -- so a quiet feed and a dead one read differently in the database."""
+    """Every `every` seconds (once a minute), per Schwab feed: checked at X (the same X for every
+    feed), is the socket open, when Schwab last sent anything, how many symbols are subscribed, and
+    when this feed last carried data -- so a quiet feed and a dead one read differently in the
+    database."""
     while True:
         now = time.time()
         try:
@@ -1103,16 +1109,18 @@ async def record_feed_status(
             pass
 
 
-#: trading sessions stream_capture.db keeps (the operator's setting), and how often keep_sessions looks
+#: trading sessions stream_capture.db keeps (the operator's setting), and how often keep_sessions
+#: looks
 SESSIONS_KEPT = 5
 KEEP_EVERY_SEC = 60.0
 
 
 async def keep_sessions(daemon: Daemon, stop: asyncio.Event) -> None:
     """Once after each close of the last option market (time_et.options_closed_at), the writer
-    removes every row received before the newest SESSIONS_KEPT sessions began (time_et.sessions_since,
-    from Schwab's /markets answers; CaptureWriter.prune). While today's market is unknown or open,
-    or fewer sessions are held, nothing is removed: never on a guess."""
+    removes every row received before the newest SESSIONS_KEPT sessions began
+    (time_et.sessions_since, from Schwab's /markets answers; CaptureWriter.prune). While today's
+    market is unknown or open, or fewer sessions are held, nothing is removed: never on a
+    guess."""
     kept_for = warned_for = None
     stopped = asyncio.ensure_future(stop.wait())
     try:

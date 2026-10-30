@@ -103,7 +103,8 @@ def test_empty_and_none_commands_do_not_crash():
     "cmd",
     [
         # text written into a file is content, not a command
-        f"cat > plan.md <<'EOF'\nMove {D}, logs/ and the token out of the checkout.\nEOF\nrm plan.md",
+        f"cat > plan.md <<'EOF'\nMove {D}, logs/ and the token out of the checkout.\n"
+        "EOF\nrm plan.md",
         f"cat > notes.md <<'EOF'\nrm -f {D}ed_console.db destroyed it twice\nEOF",
         # a Python string that only mentions a protected path
         f"python - <<'EOF'\nprint('never delete {D}ed_console.db')\nEOF",
@@ -123,7 +124,8 @@ def test_text_that_only_mentions_a_protected_path_passes(cmd):
     [
         f"python - <<'EOF'\nimport shutil\nshutil.rmtree('{D}')\nEOF",
         f"python - <<'EOF'\nfrom pathlib import Path\nPath('{D}ed_console.db').unlink()\nEOF",
-        f"python - <<'EOF'\nfrom pathlib import Path\nPath('{D}ed_console.db').write_bytes(b'')\nEOF",
+        "python - <<'EOF'\nfrom pathlib import Path\n"
+        f"Path('{D}ed_console.db').write_bytes(b'')\nEOF",
         f"python - <<'EOF'\nopen('{D}ed_console.db', 'w').close()\nEOF",
         f"bash <<'EOF'\nrm -f {D}stream_capture.db\nEOF",
         f"icacls {D}ed_console.db /remove:d someuser",

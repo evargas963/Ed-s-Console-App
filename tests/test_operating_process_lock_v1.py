@@ -1,4 +1,5 @@
-# institutional-synthetic-ok: inject cross-checkout edits and destructive git to prove the locks BLOCK.
+# institutional-synthetic-ok: inject cross-checkout edits and destructive git to prove the locks
+# BLOCK.
 """Operating process lock — negative controls + quiet paths."""
 
 from __future__ import annotations
@@ -181,7 +182,8 @@ def test_every_file_the_console_and_daemon_run_is_app_code_to_the_rails():
             sys.executable,
             "-c",
             "import sys, server, app.market_data.schwab.streaming.capture; "
-            "print('\\n'.join(m.__file__ for m in list(sys.modules.values()) if getattr(m, '__file__', None)))",
+            "print('\\n'.join(m.__file__ for m in list(sys.modules.values()) "
+            "if getattr(m, '__file__', None)))",
         ],
         cwd=ROOT,
         check=True,

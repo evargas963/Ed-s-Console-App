@@ -1,5 +1,6 @@
-"""One meaning per name (2026-09-27): DEX is dealer-signed (+call/-put) in every bucket; vanna is per 1 volatility point in every bucket and in the aggregate; a contract with
-no readable expiry is in no expiry's book; yesterday's chain is priced at its own capture time.
+"""One meaning per name (2026-09-27): DEX is dealer-signed (+call/-put) in every bucket; vanna is
+per 1 volatility point in every bucket and in the aggregate; a contract with no readable expiry is
+in no expiry's book; yesterday's chain is priced at its own capture time.
 
 Real data (tests/real_chains.py): SPY's same-day chain of 2026-10-07 12:32 ET and CRWD's 2026-10-16
 chain of 2026-10-07 10:38 ET, each valued at its capture."""

@@ -88,9 +88,9 @@ def pinned_eol(path: str) -> str | None:
 
     A pinned path is one git NORMALISES on the way into the blob, so its worktree bytes are
     ALLOWED to differ from HEAD — that is the point of the pin (the harness can leave
-    .claude/settings.json CRLF on disk; git stores it LF). Comparing raw worktree bytes for such a path would
-    report a flip on a file behaving exactly as configured, so the comparison is made on the
-    form git will STORE.
+    .claude/settings.json CRLF on disk; git stores it LF). Comparing raw worktree bytes for such
+    a path would report a flip on a file behaving exactly as configured, so the comparison is
+    made on the form git will STORE.
     """
     line = _text("check-attr", "eol", "--", path).strip()
     value = line.rsplit(":", 1)[-1].strip() if ":" in line else ""

@@ -265,7 +265,8 @@ def decide(payload: dict, now: datetime, db: Path) -> tuple[str, list[str]]:
     for st in statements:  # every check on every statement; the strictest answer wins
         if st.program in MACHINE_STOPPERS:
             asks.append(
-                "stops or restarts the machine, and the daemon and console with it (CLAUDE.md rule 5: production)"
+                "stops or restarts the machine, and the daemon and console with it "
+                "(CLAUDE.md rule 5: production)"
             )
         if _kills(st):
             upstream = (
@@ -285,17 +286,20 @@ def decide(payload: dict, now: datetime, db: Path) -> tuple[str, list[str]]:
             seen = [_production(p) for p in found]
             if any(seen) or (later and any(m in cmd.lower() for m in PRODUCTION_MARKS)):
                 denies.append(
-                    "kills the daemon, the console or launch.py: on Windows that skips its shutdown "
+                    "kills the daemon, the console or launch.py: "
+                    "on Windows that skips its shutdown "
                     "and loses what the daemon holds; stop them with `python launch.py stop`"
                 )
             else:
                 if None in seen:
                     asks.append(
-                        "stops a process whose command line cannot be read (CLAUDE.md rule 5: production)"
+                        "stops a process whose command line cannot be read "
+                        "(CLAUDE.md rule 5: production)"
                     )
                 if later and _production_running():
                     asks.append(
-                        "stops processes chosen only when it runs while the daemon or the console runs "
+                        "stops processes chosen only when it runs "
+                        "while the daemon or the console runs "
                         "(CLAUDE.md rule 5: production)"
                     )
         if _starts(st):

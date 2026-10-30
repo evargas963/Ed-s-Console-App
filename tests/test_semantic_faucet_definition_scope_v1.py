@@ -110,7 +110,8 @@ def _fixture_book():
 
 
 def test_definitions_diverge_on_the_real_book_so_a_miswire_cannot_hide():
-    """Premise: the two pin-shaped definitions disagree on this chain (778 vs 775; SPY 2026-10-07 12:32 ET).
+    """Premise: the two pin-shaped definitions disagree on this chain (778 vs 775; SPY 2026-10-07
+    12:32 ET).
 
     RC-292 measured live SPY where they AGREED (775 == 775) and named the coincidence the
     finding: nothing could tell two definitions apart. This fixture is the book where they

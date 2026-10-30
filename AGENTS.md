@@ -93,7 +93,7 @@ then the rule binds with no machine check.
 | 10 | **Only Feed talks to Schwab.** | import-linter: `schwab`, `httpx` and `authlib` importable only from Feed (step 1d) |
 | 11 | **Calculators are pure.** They take `now` and their inputs; they read no clock, database, global or network. Only an entry point (a route, a loop, a stream handler) reads the clock. | import-linter forbidden imports and ruff `TID251` banned `time.time` / `datetime.now` outside the entry points (step 2) |
 | 12 | **Typed records across boundaries.** A value that crosses a module boundary is a dataclass whose states are named constants. | pyright, strict on State, Calculators and Push (step 6) |
-| 13 | **Python's guidelines.** PEP 8 and PEP 257 as `ruff format` and ruff's rules read them; PEP 20 as the shape. Imports at the top. One formatter per format (price, Central Time, dollars), on the server (no machine check — ENF-11). | `ruff format` and ruff `UP`, `W` and `S110` (in force; `UP042` deselected, its one fix unsafe, in `pyproject.toml`); ruff `E`, `B`, `SIM`, `BLE`, `TRY`, `C90`, `I` (step 1b), `D` (pep257, no docstring required; step 1c) |
+| 13 | **Python's guidelines.** PEP 8 and PEP 257 as `ruff format` and ruff's rules read them; PEP 20 as the shape. Imports at the top. One formatter per format (price, Central Time, dollars), on the server (no machine check — ENF-11). | `ruff format` and ruff `UP`, `W`, `S110` and `E501` (lines at most 100 columns) (in force; `UP042` deselected, its one fix unsafe, in `pyproject.toml`); ruff `E`, `B`, `SIM`, `BLE`, `TRY`, `C90`, `I` (step 1b), `D` (pep257, no docstring required; step 1c) |
 
 ## Fix what you find (operator 2026-10-29: "fix what you find anywhere, everywhere, repo wide")
 
@@ -135,11 +135,14 @@ then the rule binds with no machine check.
 - A product change needs an end-to-end test that fails on the old code, except a change that only
   removes whole undecorated functions or classes (operator 2026-10-28), or only fixes what ruff
   rules the PR newly selects find, behaviour unchanged (operator 2026-10-30: a refactor a rule asks
-  for is proven by the full suite, as deletions are); for those the full suite and the browser
-  tests are the proof, and a real defect a rule finds still gets its failing test. Enforced by:
-  `tools/check_fails_before.py` (`deletes_only`, `rule_fixes_only`;
-  `tests/test_check_fails_before_v1.py`); that a rule fix carries no other change, and that a real
-  defect a rule finds gets its failing test — the reviewers, no machine check, ENF-12.
+  for is proven by the full suite, as deletions are), or only removes a branch or guard inside a
+  function that no caller can reach, the PR showing the trace of every caller (operator
+  2026-10-30: "Yes, suite proves it"); for those the full suite and the browser tests are the
+  proof, and a real defect a rule finds still gets its failing test. Enforced by:
+  `tools/check_fails_before.py` (`deletes_only`, `rule_fixes_only`, `trims_only`: code only taken
+  away inside function bodies; `tests/test_check_fails_before_v1.py`); that a rule fix carries no
+  other change, that a real defect a rule finds gets its failing test, and that a removed branch
+  is one no caller reaches — the reviewers, no machine check, ENF-12.
 - Edit source by hand, one edit at a time, never through a script; the exceptions are ENF-14's (a
   standard tool's own fix, `ruff format` and ruff's safe fixes; `unix2dos`/`dos2unix` for line
   endings). Enforced by: `tools/operator_law_guard.py` for
@@ -147,9 +150,12 @@ then the rule binds with no machine check.
 
 ## Before saying done
 
-- The `before-done` skill's checks pass on the PR's final commit, their output shown. Branch
-  protection on `main` requires `pytest-full` and `hardening` on the final commit, current with
-  `main`.
+- The `before-done` skill's checks pass on the PR's final commit, their output shown; the full
+  suite is the required CI jobs green there, not a local repeat (operator 2026-10-30: "Yes, CI
+  proves it"). Branch protection on `main` requires `pytest-full` and `hardening` on the final
+  commit, current with `main`; `pytest-windows` runs the browser tests and the full pytest suite on
+  Windows as production runs, and is green on the final commit before a merge (no machine check
+  until branch protection requires it — ENF-12).
 - Claims. Every statement about how something is now (a process, a file, a branch, a pull request,
   a test result, data, the screen) is CONFIRMED only by command output shown in the same reply.
   Anything else is NOT VERIFIED, with when it was last checked. "Done" = a test that failed before

@@ -1,5 +1,5 @@
-"""Contract -> underlying: a contract is the ticker's when Schwab listed it in the ticker's chain, one
-rule for every instrument whatever the contract's root (TICK-02, 2026-09-28 audit: roots were
+"""Contract -> underlying: a contract is the ticker's when Schwab listed it in the ticker's chain,
+one rule for every instrument whatever the contract's root (TICK-02, 2026-09-28 audit: roots were
 compared by name). It decides which ticker an option's streamed values reprice, and that the Flow
 panel's contract is one Schwab listed (question 2: the screen shows the right values promptly).
 

@@ -85,8 +85,8 @@ def reauth():
             if ok:
                 print(f"\nSUCCESS: Token written to {token_path}")
                 print(
-                    "No restart: the capture daemon takes it at once if Schwab refused the old sign-in, "
-                    "else when its token next comes due (within about 30 minutes)."
+                    "No restart: the capture daemon takes it at once if Schwab refused the old "
+                    "sign-in, else when its token next comes due (within about 30 minutes)."
                 )
                 _print_post_reauth_validation(token_path)
                 return
@@ -137,8 +137,8 @@ def reauth():
         if ok:
             print(f"\nSUCCESS: Token written to {token_path}")
             print(
-                "No restart: the capture daemon takes it at once if Schwab refused the old sign-in, "
-                "else when its token next comes due (within about 30 minutes)."
+                "No restart: the capture daemon takes it at once if Schwab refused the old "
+                "sign-in, else when its token next comes due (within about 30 minutes)."
             )
             _print_post_reauth_validation(token_path)
         else:

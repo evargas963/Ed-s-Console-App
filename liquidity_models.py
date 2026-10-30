@@ -16,10 +16,10 @@ from numeric_contract import schwab_count, schwab_number
 #: The ONE volume-profile construction.
 #: A bar's volume did not trade at one price. It traded ACROSS [low, high], and the profile is
 #: the record of where; a bar's whole volume put in one bin at the typical price (H+L+C)/3 would
-#: be a typical-price histogram, not a volume profile. Auction Market Theory / Volume Profile practice
-#: distributes the bar's volume across every price the bar traded through; POC is then the price
-#: that actually saw the most volume, and the value area is the smallest contiguous band holding
-#: `value_area_pct` of it.
+#: be a typical-price histogram, not a volume profile. Auction Market Theory / Volume Profile
+#: practice distributes the bar's volume across every price the bar traded through; POC is then
+#: the price that actually saw the most volume, and the value area is the smallest contiguous band
+#: holding `value_area_pct` of it.
 #:
 #: Uniform distribution across the spanned bins is the standard first-order model (it is what
 #: TPO-style and most charting-package volume profiles do without tick-level trade data). The
@@ -38,9 +38,9 @@ MAX_BINS_PER_BAR: int = 5000
 class VolumeProfile:
     """Volume by price from bars, each bar's volume spread evenly over its [low, high] in tick
     bins -- a derived distribution from 1-minute bars, not traded volume at a price from trade
-    prints -- and the value area read from it. `bins`: ((price, volume), ...) in price order. `bars`:
-    the bars given; `bars_without_volume`: those Schwab sent with no volume, which the profile
-    cannot place and does not contain."""
+    prints -- and the value area read from it. `bins`: ((price, volume), ...) in price order.
+    `bars`: the bars given; `bars_without_volume`: those Schwab sent with no volume, which the
+    profile cannot place and does not contain."""
 
     tick_size: float
     bins: tuple

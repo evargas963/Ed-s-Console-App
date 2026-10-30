@@ -24,8 +24,8 @@ def daemon_bars(name: str, *symbols: str) -> list[dict]:
 
 def stream_daemon_bars(rows: list[dict]) -> None:
     """What the capture daemon pushes of Schwab's bars: each captured receipt, in the order the
-    daemon received them, through the console's own streamed-bar writer (server._write_streamed_bar),
-    so each minute holds Schwab's newest bar for it."""
+    daemon received them, through the console's own streamed-bar writer
+    (server._write_streamed_bar), so each minute holds Schwab's newest bar for it."""
     import server
 
     for r in sorted(rows, key=lambda r: r["ts_recv"]):
@@ -43,12 +43,14 @@ def price_history(symbol: str, series: str) -> dict:
 
 
 #: Wednesday 2026-09-30, 11:00 ET: regular hours in Schwab's /markets answer held for that date
-#: (tests/conftest.py MARKETS_ANSWERS), the instant a live-feed test is judged at, whatever day it runs
+#: (tests/conftest.py MARKETS_ANSWERS), the instant a live-feed test is judged at, whatever day it
+#: runs
 RTH_INSTANT = 1790780400.0
 
 
 def clock_from(start: float):
-    """A clock running from `start`, time still passing: what a test hands the code it calls as `now`."""
+    """A clock running from `start`, time still passing: what a test hands the code it calls as
+    `now`."""
     began = time.monotonic()
     return lambda: start + time.monotonic() - began
 

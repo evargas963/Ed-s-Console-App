@@ -2,7 +2,8 @@
 Fail-fast checks for Playwright / Node E2E tooling (Issue 40 & 46).
 
 Used by tests/test_playwright_enforcement.py. Does not import Playwright-Python — validates
-the same prerequisites as scripts/run-playwright-e2e.mjs (Node, npm, package install, CLI, browsers).
+the same prerequisites as scripts/run-playwright-e2e.mjs (Node, npm, package install, CLI,
+browsers).
 """
 
 from __future__ import annotations
@@ -30,7 +31,8 @@ def ensure_playwright_ready(*, install_browsers: bool = True) -> None:
         )
     if not shutil.which("npm"):
         raise AssertionError(
-            "Playwright E2E requires npm on PATH. Install Node.js LTS (includes npm) or install npm."
+            "Playwright E2E requires npm on PATH. "
+            "Install Node.js LTS (includes npm) or install npm."
         )
     pkg = ROOT / "package.json"
     if not pkg.is_file():

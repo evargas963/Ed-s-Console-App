@@ -156,7 +156,8 @@ class Statement:
 
     @property
     def writes(self) -> list[str]:
-        """The files its redirects write: `>`, `>>`, `N>`, `>|`, `&>` (not an fd dup like `2>&1`)."""
+        """The files its redirects write: `>`, `>>`, `N>`, `>|`, `&>` (not an fd dup like
+        `2>&1`)."""
         return [t for op, t in self.redirects if _WRITE_REDIRECT.fullmatch(op)]
 
 
@@ -283,7 +284,8 @@ class _Lexer:
         return i + 1
 
     def double(self, i: int, value: list[str], nested: list[str]) -> int:
-        """The inside of a double-quoted string opened before `i`; returns the index past its close."""
+        """The inside of a double-quoted string opened before `i`; returns the index past its
+        close."""
         s = self.s
         while i < len(s):
             c = s[i]
@@ -396,8 +398,8 @@ class _Lexer:
         )
 
     def tokens(self) -> list[list]:
-        """["w", _Word], ["op", separator], ["redir", operator, _Word, heredoc body], ["group", text],
-        ["arith", the commands substituted in it]."""
+        """["w", _Word], ["op", separator], ["redir", operator, _Word, heredoc body],
+        ["group", text], ["arith", the commands substituted in it]."""
         s, tokens, pending, fresh, called, i = self.s, [], [], True, "", 0
         while i < len(s):
             c = s[i]
@@ -823,7 +825,8 @@ _STDIN_FILES = ("-", "/dev/stdin")
 
 
 def _pwsh_command(args) -> int | None:
-    """The index of pwsh's command-string option: -Command (any prefix) or -CommandWithArgs / -cwa."""
+    """The index of pwsh's command-string option: -Command (any prefix) or -CommandWithArgs /
+    -cwa."""
     k = pwsh_option(args, "-command")
     return (
         k

@@ -424,7 +424,8 @@ def test_messages_spilled_when_the_database_refuses_a_round_are_not_counted_as_h
         holder.close()
     assert during["state"] == WRITER_BLOCKED and during["spill"]["messages"] > 0
     assert during["held"] == during["queue_depth"] + during["waiting"] == during["queue_depth"], (
-        f"held {during['held']}: {during['spill']['messages']} spilled, {during['queue_depth']} queued"
+        f"held {during['held']}: {during['spill']['messages']} spilled, "
+        f"{during['queue_depth']} queued"
     )
     assert _rows(db, "SELECT COUNT(*) FROM stream_quotes_raw")[0][0] == sent
 
@@ -434,7 +435,8 @@ def test_a_keep_part_refused_after_a_commit_counts_none_of_the_committed_as_held
     the keep's DELETE abort (STAND-IN for a keep part the database refuses), the keep asked, and
     the mix's first ten equity quotes held in memory while another connection holds the write
     lock. Once the lock is let go the ten are committed, and the keep's part after them is
-    refused: in the pause that follows, held is the queue alone, nothing waits and nothing spills."""
+    refused: in the pause that follows, held is the queue alone, nothing waits and nothing
+    spills."""
     db = tmp_path / "stream_capture.db"
     writer = CaptureWriter(db, timeout_sec=0.05, retry_sec=1.0)
     old = {**_eleventh(), "ts_recv": _et("2026-09-28 13:00")}

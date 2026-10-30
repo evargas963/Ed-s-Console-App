@@ -221,10 +221,10 @@ def test_relations_from_a_stopped_price_stand_marked_not_live_with_its_time_and_
 
 def test_a_page_whose_price_has_stopped_is_told_each_minute_to_read_its_levels_again():
     """Each not-live age keeps counting: SPY's levels are its close values (its chain fetched after
-    its own 16:15 option close: CLOSE), so while its last price (the 16:39 print) is live a page open
-    on SPY is told by the levels loop's minute (server.refresh_not_live_pages) to read its levels
-    again, and once the daemon's connection ends too, every minute. Judged from the print's receipt
-    on, in that After-Hours session."""
+    its own 16:15 option close: CLOSE), so while its last price (the 16:39 print) is live a page
+    open on SPY is told by the levels loop's minute (server.refresh_not_live_pages) to read its
+    levels again, and once the daemon's connection ends too, every minute. Judged from the print's
+    receipt on, in that After-Hours session."""
     import asyncio
 
     import push_changes
@@ -276,9 +276,9 @@ def stopped_price_answers() -> dict:
     """/api/levels, /api/confluence (the 2026-10-22 expiry), /api/terrain, /api/terrain/strikes and
     /api/options/gamma-surface as the real code serves them on SPY's 2026-10-22 close publication
     with SPY's 16:39 print (773.1269) as the last price and the daemon's connection ended, read at
-    the 18:00 print's instant; and /api/terrain/strikes and /api/options/gamma-surface on that same publication after the next
-    day's 16:15 option close (2026-10-23 16:30 ET), no chain fetched since: the answers the browser
-    tests render (STOPPED_FIXTURES)."""
+    the 18:00 print's instant; and /api/terrain/strikes and /api/options/gamma-surface on that same
+    publication after the next day's 16:15 option close (2026-10-23 16:30 ET), no chain fetched
+    since: the answers the browser tests render (STOPPED_FIXTURES)."""
     import json
     from datetime import datetime
 

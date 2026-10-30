@@ -86,11 +86,13 @@ def price_state(
 PUSH_RECONNECT_SEC = 1.0
 
 
-#: the console's push connection to the daemon while it is open (_feed_loop): watchlist requests go on it
+#: the console's push connection to the daemon while it is open (_feed_loop): watchlist requests
+#: go on it
 _push_ws = None
 #: request id -> the future the daemon's watchlist record for it resolves (_ingest_pushed)
 _watchlist_answers: dict[int, asyncio.Future] = {}
-#: how long a watchlist request waits for the daemon's record (an add waits on Schwab's /quotes answer)
+#: how long a watchlist request waits for the daemon's record (an add waits on Schwab's /quotes
+#: answer)
 WATCHLIST_ANSWER_SEC = 30.0
 
 
@@ -329,11 +331,12 @@ def _rows_wanted(now: float) -> list[str]:
 
 async def _rows_loop(ui_url: str, reconnect_sec: float) -> None:
     """Hold the daemon's price rows (_rows_wanted) and its status: one browser client of the
-    daemon's price push (`ui_url`, retried every `reconnect_sec`), resubscribed when what the daemon streams changes (checked on every
-    frame). The daemon beats every second with its whole status (`feed`), the one record of
-    whether the daemon and Schwab are live (live_market_plane.record_feed_heartbeat); this
-    connection carries no chain, so a beat never waits behind one. Silence or a lost connection
-    is a feed down. Each row's arrival is the equity's tick."""
+    daemon's price push (`ui_url`, retried every `reconnect_sec`), resubscribed when what the
+    daemon streams changes (checked on every frame). The daemon beats every second with its whole
+    status (`feed`), the one record of whether the daemon and Schwab are live
+    (live_market_plane.record_feed_heartbeat); this connection carries no chain, so a beat never
+    waits behind one. Silence or a lost connection is a feed down. Each row's arrival is the
+    equity's tick."""
     from websockets.asyncio.client import connect
 
     while _feed_running:

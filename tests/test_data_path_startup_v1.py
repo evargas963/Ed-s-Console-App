@@ -1,6 +1,7 @@
 """The capture daemon's start, Schwab to the screen: its window closes when its batch ends, and the
-stop takes only this checkout's processes; why Schwab is not connected reaches the daemon's log and /api/health on its heartbeat; a module that fails to load, and a chain sweep
-thread that ends on an error, leave their reason in the daemon's log."""
+stop takes only this checkout's processes; why Schwab is not connected reaches the daemon's log and
+/api/health on its heartbeat; a module that fails to load, and a chain sweep thread that ends on an
+error, leave their reason in the daemon's log."""
 
 from __future__ import annotations
 
@@ -56,8 +57,10 @@ def test_the_daemons_window_closes_when_its_batch_ends(tmp_path):
     window_pid = tmp_path / "window.pid"
     bat = tmp_path / "daemon.bat"
     bat.write_text(
-        f'@"{sys.executable}" -c "import psutil; window = next(p for p in psutil.Process().parents() '
-        f"if p.name().lower() == 'cmd.exe'); open(r'{window_pid}', 'w').write(str(window.pid))\"\r\n",
+        f'@"{sys.executable}" -c "import psutil; '
+        "window = next(p for p in psutil.Process().parents() "
+        "if p.name().lower() == 'cmd.exe'); "
+        f"open(r'{window_pid}', 'w').write(str(window.pid))\"\r\n",
         encoding="utf-8",
     )
     subprocess.Popen(launch.daemon_window(bat), cwd=launch.ROOT)
@@ -300,7 +303,7 @@ def test_why_schwab_is_not_connected_reaches_the_log_and_api_health(tmp_path, ca
     ), reason
 
 
-def test_a_browser_that_stopped_reading_is_dropped_the_others_keep_their_beats_and_the_stop_is_not_held():
+def test_a_browser_that_stopped_reading_is_dropped_others_keep_beats_and_the_stop_is_not_held():
     """The daemon's price socket (serve_live_ui, its heartbeat the daemon's own status) and two
     real browser sockets: one reads every frame, one stops reading once its one-message queue is
     full. The one that stopped reading is found once (its beat not taken within HEARTBEAT_SEC),

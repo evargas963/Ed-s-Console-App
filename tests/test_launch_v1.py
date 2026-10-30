@@ -142,7 +142,8 @@ def test_the_stop_ends_the_console_and_leaves_no_window_waiting(tmp_path):
     ready, handled = tmp_path / "ready", tmp_path / "handled"
     console = (
         "import pathlib, signal, sys, time\n"
-        f"def on_break(signum, frame):\n    pathlib.Path(r'{handled}').write_text('break')\n    sys.exit(0)\n"
+        "def on_break(signum, frame):\n"
+        f"    pathlib.Path(r'{handled}').write_text('break')\n    sys.exit(0)\n"
         "signal.signal(signal.SIGBREAK, on_break)\n"
         f"pathlib.Path(r'{ready}').write_text('ready')\n"
         "while True:\n    time.sleep(0.1)\n"
@@ -224,7 +225,8 @@ def test_the_real_console_stops_on_the_stop_and_on_the_operators_ctrl_c(tmp_path
             check=True,
             timeout=30,
         )
-        # the console stops (its window's cmd, which the key press reached too, asks its own question)
+        # the console stops (its window's cmd, which the key press reached too, asks its own
+        # question)
         assert console.wait(timeout=60) == 0, "the operator's Ctrl+C did not stop the console"
     finally:
         window.kill()

@@ -63,8 +63,9 @@ def _run(payload, temp: Path) -> subprocess.CompletedProcess:
 
 
 def test_the_settings_run_it_on_stop_and_it_answers_by_this_repositorys_shape_row(tmp_path):
-    """The command `.claude/settings.json` wires for Stop, run on a payload in Claude Code's form: it refuses the
-    stop with the reason while this repository's SHAPE row is open, and lets it end once it is not."""
+    """The command `.claude/settings.json` wires for Stop, run on a payload in Claude Code's form:
+    it refuses the stop with the reason while this repository's SHAPE row is open, and lets it end
+    once it is not."""
     settings = json.loads((REPO / ".claude" / "settings.json").read_text(encoding="utf-8"))
     (command,) = [h["command"] for e in settings["hooks"]["Stop"] for h in e["hooks"]]
     assert command.endswith("tools/keep_going.py")
@@ -137,8 +138,8 @@ def test_a_payload_it_cannot_read_refuses_the_stop_with_the_reason(tmp_path):
 
 def test_from_the_third_refusal_in_a_row_the_reason_sends_the_agent_to_bedrock(tmp_path):
     """Refused stops in a row mean the work may not be working (AGENTS.md Authority); from the third
-    the reason says so and sends the agent to the cause and a different approach, still working. A stop
-    the hook did not refuse (`stop_hook_active` false) starts the count again."""
+    the reason says so and sends the agent to the cause and a different approach, still working. A
+    stop the hook did not refuse (`stop_hook_active` false) starts the count again."""
     counts = [
         keep_going.in_a_row({"session_id": "s-1", "stop_hook_active": active}, tmp_path)
         for active in (False, True, True, True, False)
