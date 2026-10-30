@@ -9,6 +9,7 @@ import asyncio
 import json
 import os
 import re
+import shutil
 import socket
 import sqlite3
 import subprocess
@@ -79,21 +80,21 @@ def test_the_daemons_window_closes_when_its_batch_ends(tmp_path):
 
 
 def test_the_stop_takes_only_this_checkouts_processes(tmp_path):
-    """launch.stop finds the daemon and the console by launch.running: of two processes carrying
-    the same mark, the one started in this checkout's folder (as its daemon's batch and its
-    console are) is found, and the one started in another folder (another checkout's console, a
-    test's) is not, so the stop's Ctrl+Break never goes to it instead of this console. Induced
-    test condition: two sleeping Pythons carrying a mark of this test's own."""
-    mark = f"ed-stop-mark-{os.getpid()}-{time.monotonic_ns()}"
+    """launch.stop finds the daemon and the console by launch.running: of two processes started
+    the same way, the one started in this checkout's folder (as its daemon's batch and its
+    console are) is found, and the one started in another folder
+    (another checkout's console, a test's) is not, so the stop's Ctrl+Break never goes to it
+    instead of this console. Induced test condition: two sleeping Pythons started by a script of
+    this test's own."""
+    start = ["-c", f"import time; time.sleep(60)  # {os.getpid()}-{time.monotonic_ns()}"]
     ours, theirs = (
-        subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)", mark], cwd=cwd)
-        for cwd in (launch.ROOT, tmp_path)
+        subprocess.Popen([sys.executable, *start], cwd=cwd) for cwd in (launch.ROOT, tmp_path)
     )
     try:
         found: set = set()
         end = time.monotonic() + 10
         while ours.pid not in found and time.monotonic() < end:
-            found = {p.pid for p in launch.running(mark)}
+            found = {p.pid for p in launch.running(start)}
             time.sleep(0.05)
         theirs_tree = {theirs.pid} | {
             c.pid for c in psutil.Process(theirs.pid).children(recursive=True)
@@ -355,6 +356,179 @@ def test_a_browser_that_stopped_reading_is_dropped_others_keep_beats_and_the_sto
     assert failures == 1, (
         f"{failures} beats were not taken: the reading browser missed {failures - 1}"
     )
+
+
+def _end(process: subprocess.Popen) -> None:
+    if process.poll() is None:
+        for child in psutil.Process(process.pid).children(recursive=True):
+            child.kill()
+    process.kill()
+    process.wait(30)
+
+
+def test_the_stop_ends_the_real_daemon_and_says_when_it_could_not_ask(tmp_path):
+    """The real daemon as its batch runs it, in a folder of its own with launch.py beside it, so
+    the stop reaches nothing else; no Schwab token, ports of its own. Another checkout's stop
+    leaves it alone. A stop that cannot ask it, on a port nothing serves or one that closes at
+    once, says so and that the daemon is still running, exit 1. A stop on the daemon's port ends
+    it, exit 0."""
+    home, other = tmp_path / "checkout", tmp_path / "other_checkout"
+    for folder in (home, other):
+        folder.mkdir()
+        shutil.copy(launch.ROOT / "launch.py", folder)
+    with socket.socket() as push, socket.socket() as ui, socket.socket() as nothing:
+        push.bind(("127.0.0.1", 0))
+        ui.bind(("127.0.0.1", 0))
+        nothing.bind(("127.0.0.1", 0))
+        push_port, ui_port = push.getsockname()[1], ui.getsockname()[1]
+        unserved = nothing.getsockname()[1]
+    closing = socket.socket()
+    closing.bind(("127.0.0.1", 0))
+    closing.listen()
+    threading.Thread(target=lambda: closing.accept()[0].close(), daemon=True).start()
+    env = {
+        **os.environ,
+        "PYTHONPATH": str(launch.ROOT),
+        "ED_RUNTIME_ROOT": str(tmp_path),
+        "ED_LIVE_UI_HOST": "127.0.0.1",
+        "ED_LIVE_UI_PORT": str(ui_port),
+        "ED_LIVE_PUSH_PORT": str(push_port),
+        "SCHWAB_TOKEN_PATH": str(tmp_path / "missing_token.json"),
+    }
+    daemon = subprocess.Popen([sys.executable, *launch.DAEMON_START], cwd=home, env=env)
+
+    def stop(folder: Path, port: int) -> subprocess.Popen:
+        return subprocess.Popen(
+            [sys.executable, "launch.py", "stop"],
+            cwd=folder,
+            env={**env, "ED_LIVE_PUSH_PORT": str(port)},
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+
+    try:
+        end = time.monotonic() + 60
+        while not launch.in_use(push_port):
+            assert daemon.poll() is None and time.monotonic() < end, daemon.poll()
+            time.sleep(0.1)
+        elsewhere = stop(other, push_port)
+        out, err = elsewhere.communicate(timeout=60)
+        assert (elsewhere.returncode, out) == (
+            0,
+            "Capture daemon: not running\nConsole: not running\n",
+        ), err
+        assert daemon.poll() is None
+        not_asked = [stop(home, port) for port in (unserved, closing.getsockname()[1])]
+        for p in not_asked:
+            out, err = p.communicate(timeout=90)
+            assert p.returncode == 1, (out, err)
+            assert "Capture daemon: not asked to stop: " in err
+            assert "Capture daemon: still running (" in out
+        stopping = stop(home, push_port)
+        assert daemon.wait(60) == capture.EXIT_STOPPED  # reaped: the stop sees it gone on Linux too
+        out, err = stopping.communicate(timeout=60)
+        assert (stopping.returncode, out) == (
+            0,
+            "Capture daemon: stopped\nConsole: not running\n",
+        ), err
+    finally:
+        closing.close()
+        _end(daemon)
+
+
+def test_a_daemon_that_ends_without_being_asked_is_not_reported_stopped(tmp_path):
+    """The real daemon found while it loads, its socket not up, then ending on its own because its
+    live UI's port is held, the code its window restarts on: the stop could not ask it, so it does
+    not read "stopped" and exits 1. Induced test condition: a load held for 6 s."""
+    home, site = tmp_path / "checkout", tmp_path / "site"
+    for folder in (home, site):
+        folder.mkdir()
+    shutil.copy(launch.ROOT / "launch.py", home)
+    (site / "sitecustomize.py").write_text(
+        'import sys, time\nif "-m" in sys.orig_argv:\n    time.sleep(6)\n', encoding="utf-8"
+    )
+    with socket.socket() as held, socket.socket() as push, socket.socket() as nothing:
+        held.bind(("127.0.0.1", 0))
+        held.listen()
+        push.bind(("127.0.0.1", 0))
+        nothing.bind(("127.0.0.1", 0))
+        env = {
+            **os.environ,
+            "PYTHONPATH": str(launch.ROOT),
+            "ED_RUNTIME_ROOT": str(tmp_path),
+            "ED_LIVE_UI_HOST": "127.0.0.1",
+            "ED_LIVE_UI_PORT": str(held.getsockname()[1]),
+            "ED_LIVE_PUSH_PORT": str(push.getsockname()[1]),
+            "SCHWAB_TOKEN_PATH": str(tmp_path / "missing_token.json"),
+        }
+        unserved = str(nothing.getsockname()[1])
+        push.close()
+        nothing.close()
+        loading = {**env, "PYTHONPATH": os.pathsep.join((str(site), str(launch.ROOT)))}
+        daemon = subprocess.Popen([sys.executable, *launch.DAEMON_START], cwd=home, env=loading)
+        try:
+            stopping = subprocess.Popen(
+                [sys.executable, "launch.py", "stop"],
+                cwd=home,
+                env={**env, "ED_LIVE_PUSH_PORT": unserved},
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            assert daemon.wait(60) == 1  # reaped: the stop sees it gone on Linux too
+            out, err = stopping.communicate(timeout=60)
+        finally:
+            _end(daemon)
+    assert stopping.returncode == 1, (out, err)
+    assert "Capture daemon: not asked to stop: " in err
+    assert "Capture daemon: ended, not asked by this stop\n" in out
+
+
+def test_the_console_group_is_known_after_its_processes_have_gone():
+    """The console ended between the stop finding it and the signal: its group is still named, so
+    the stop goes on to what is left. Induced test condition: a Python of this test's own."""
+    start = ["-c", f"import time; time.sleep(60)  # {os.getpid()}-{time.monotonic_ns()}"]
+    console = subprocess.Popen([sys.executable, *start], cwd=launch.ROOT)
+    found: list = []
+    try:
+        end = time.monotonic() + 10
+        while console.pid not in {p.pid for p in found} and time.monotonic() < end:
+            found = launch.running(start)
+            time.sleep(0.05)
+    finally:
+        _end(console)
+    assert launch.group_leader(found) == console.pid
+
+
+def test_a_process_that_only_names_the_console_is_not_the_console():
+    """A shell and Pythons in the checkout that name the console, in their text or as an argument
+    of their own, as a process search does, are not taken for the console."""
+    named = launch.CONSOLE_START[-1]
+    wait = ["cmd", "/c", f"ping -n 30 127.0.0.1 >nul & rem {named}"]
+    if sys.platform != "win32":
+        wait = ["sh", "-c", f"sleep 30; echo {named}"]
+    sleep = "import time; time.sleep(30)"
+    searches = [
+        subprocess.Popen(argv, cwd=launch.ROOT)
+        for argv in (
+            wait,
+            [sys.executable, "-c", f"{sleep}  # {named}"],
+            [sys.executable, "-c", sleep, named],
+            [sys.executable, "-c", sleep, *launch.CONSOLE_START],
+        )
+    ]
+    try:
+        end = time.monotonic() + 10
+        for p in searches:
+            while time.monotonic() < end and named not in " ".join(psutil.Process(p.pid).cmdline()):
+                time.sleep(0.05)
+            assert named in " ".join(psutil.Process(p.pid).cmdline())
+        found = {p.pid for p in launch.running(launch.CONSOLE_START)}
+        assert not found & {p.pid for p in searches}
+    finally:
+        for p in searches:
+            _end(p)
 
 
 def test_a_module_that_fails_to_load_leaves_its_reason_in_the_daemons_log(tmp_path):
