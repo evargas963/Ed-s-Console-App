@@ -9,7 +9,6 @@ from __future__ import annotations
 import logging
 import threading
 from collections import deque
-from typing import Optional
 from app.options.order_flow import history
 from instrument_identity import ticker_storage_key
 from numeric_contract import schwab_count, schwab_number
@@ -90,8 +89,8 @@ class OrderFlowState:
         self,
         symbol: str,
         content_item: dict,
-        ts_recv: Optional[float] = None,
-        field_received: Optional[dict] = None,
+        ts_recv: float | None = None,
+        field_received: dict | None = None,
     ) -> None:
         """Apply one Schwab L1 observation with canonical merge/freshness/tape semantics. A
         current record merged from several messages (the daemon's bus) carries each field's own
@@ -196,7 +195,7 @@ class OrderFlowState:
             }
             self._get_tape(sym).append(receipt)
 
-    def get_content_for_symbol(self, symbol: str, venue: Optional[str] = None) -> list[dict]:
+    def get_content_for_symbol(self, symbol: str, venue: str | None = None) -> list[dict]:
         """Return the canonical engine-facing state for one symbol; with `venue`, only that
         Schwab book service's books (an equity has two: NYSE_BOOK and NASDAQ_BOOK)."""
         sym = ticker_storage_key(symbol)
@@ -260,13 +259,13 @@ class OrderFlowState:
                     else:
                         top[name] = v
 
-    def option_top(self, symbol: str) -> Optional[dict]:
+    def option_top(self, symbol: str) -> dict | None:
         sym = ticker_storage_key(symbol)
         with self._lock:
             t = self._top.get(sym)
             return dict(t) if t else None
 
-    def get_stream_greeks(self, symbol: str) -> Optional[dict]:
+    def get_stream_greeks(self, symbol: str) -> dict | None:
         """Return the latest streamed GAMMA/DELTA/OPEN_INTEREST/TOTAL_VOLUME for one OPTION
         contract symbol, each field paired with its own ``_ts_recv`` (the field's own
         last-update wall-clock receive time, not merely this call's time) -- a per-field
@@ -288,7 +287,7 @@ def push_option_top(symbol: str, content_item: dict) -> None:
     _LIVE_STATE.push_option_top(symbol, content_item)
 
 
-def option_top(symbol: str) -> Optional[dict]:
+def option_top(symbol: str) -> dict | None:
     return _LIVE_STATE.option_top(symbol)
 
 
@@ -300,14 +299,14 @@ def push_book(symbol: str, content_item: dict, service: str) -> None:
 def push_level_one(
     symbol: str,
     content_item: dict,
-    ts_recv: Optional[float] = None,
-    field_received: Optional[dict] = None,
+    ts_recv: float | None = None,
+    field_received: dict | None = None,
 ) -> None:
     """Apply an L1 observation to the live singleton."""
     _LIVE_STATE.push_level_one(symbol, content_item, ts_recv=ts_recv, field_received=field_received)
 
 
-def get_content_for_symbol(symbol: str, venue: Optional[str] = None) -> list[dict]:
+def get_content_for_symbol(symbol: str, venue: str | None = None) -> list[dict]:
     """Return canonical engine content from the live singleton."""
     return _LIVE_STATE.get_content_for_symbol(symbol, venue)
 
@@ -326,7 +325,7 @@ def clear_symbol(symbol: str) -> None:
     _LIVE_STATE.clear_symbol(symbol)
 
 
-def get_stream_greeks(symbol: str) -> Optional[dict]:
+def get_stream_greeks(symbol: str) -> dict | None:
     """Return the live singleton's latest streamed GAMMA/DELTA/OPEN_INTEREST for one option
     contract symbol (each paired with its own `_ts_recv`), or None if never observed."""
     return _LIVE_STATE.get_stream_greeks(symbol)

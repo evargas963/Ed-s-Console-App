@@ -24,7 +24,6 @@ Design principles:
 from dataclasses import (
     dataclass,
 )
-from typing import Optional
 
 
 # ════════════════════════════════════════════════════════════════════════════════
@@ -41,7 +40,7 @@ class Candle:
     high: float
     low: float
     close: float
-    volume: Optional[float] = None
+    volume: float | None = None
 
 
 # ════════════════════════════════════════════════════════════════════════════════

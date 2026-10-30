@@ -121,7 +121,7 @@ def _grouped(candles: list[dict], key) -> list[dict]:
     return list(out.values())
 
 
-def _held(tk: str, series: str, now: datetime, candles: "list | None" = None) -> None:
+def _held(tk: str, series: str, now: datetime, candles: list | None = None) -> None:
     """Schwab's captured `series` answer for `tk` (its `candles` only, when given), published,
     pushed and taken by the console."""
     from calibration.complete_chain_capture import price_history_message

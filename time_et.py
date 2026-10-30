@@ -12,7 +12,7 @@ unknown: nothing is guessed.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import date, datetime, UTC
 from zoneinfo import ZoneInfo
 
 ET = ZoneInfo("America/New_York")
@@ -49,7 +49,7 @@ def now_et() -> datetime:
 
 def et_date_str_from_ts_utc(ts_utc: float) -> str:
     """YYYY-MM-DD in America/New_York for the instant."""
-    dt = datetime.fromtimestamp(float(ts_utc), tz=timezone.utc).astimezone(ET)
+    dt = datetime.fromtimestamp(float(ts_utc), tz=UTC).astimezone(ET)
     return dt.strftime("%Y-%m-%d")
 
 
@@ -213,7 +213,7 @@ def valuation_instant(now: datetime, product: str = EQUITY_OPTIONS) -> datetime:
     )
 
 
-def closed_since(now: datetime) -> "datetime | None":
+def closed_since(now: datetime) -> datetime | None:
     """While the stock market is CLOSED at `now` (session_label): when it closed, the end of the
     newest window Schwab sent that has ended. None while a session is open or unknown, and when no
     answer held has a window that has ended."""

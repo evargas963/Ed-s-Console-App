@@ -68,7 +68,7 @@ COMMIT_CURRENT, COMMIT_MOVED, COMMIT_UNKNOWN, COMMIT_REFUSED = (
 )
 
 
-def bring_to_origin_main(root: Path) -> "tuple[str, str | None, str]":
+def bring_to_origin_main(root: Path) -> tuple[str, str | None, str]:
     """The checkout at `root` brought to origin/main: (what the check found, the commit it is at,
     None when git could not say, why). It fetches origin and fast-forwards main. COMMIT_CURRENT: at origin/main. COMMIT_MOVED:
     fast-forwarded. COMMIT_UNKNOWN: origin out of reach, or git itself not answering (absent, hung);
@@ -80,7 +80,7 @@ def bring_to_origin_main(root: Path) -> "tuple[str, str | None, str]":
         return COMMIT_UNKNOWN, None, f"git did not answer: {type(e).__name__}: {e}"
 
 
-def _bring(root: Path) -> "tuple[str, str, str]":
+def _bring(root: Path) -> tuple[str, str, str]:
     def git(*args: str) -> subprocess.CompletedProcess:
         return subprocess.run(["git", *args], cwd=root, capture_output=True, text=True, timeout=60)
 
@@ -115,7 +115,7 @@ def in_use(port: int) -> bool:
         return probe.connect_ex(("127.0.0.1", port)) == 0
 
 
-def running(mark: str) -> "list[psutil.Process]":
+def running(mark: str) -> list[psutil.Process]:
     """This checkout's processes whose command line carries `mark`: those whose folder is ROOT,
     where its daemon's batch and its console run, so another checkout's daemon or console (a
     test's) is never taken for one (one whose line or folder cannot be read is none)."""
@@ -129,7 +129,7 @@ def running(mark: str) -> "list[psutil.Process]":
     ]
 
 
-def start_console(argv: "list[str]", env: dict) -> subprocess.Popen:
+def start_console(argv: list[str], env: dict) -> subprocess.Popen:
     """The console process `argv`, in a process group of its own on this window, so a stop
     (ctrl_break) reaches it alone: the window's cmd, which would ask "Terminate batch job (Y/N)?"
     after an interrupt, and this launcher never get one."""
@@ -138,7 +138,7 @@ def start_console(argv: "list[str]", env: dict) -> subprocess.Popen:
     )
 
 
-def daemon_window(batch: Path) -> "list[str]":
+def daemon_window(batch: Path) -> list[str]:
     """The command that runs `batch` (start_capture_daemon.bat) in a minimized window of its own
     titled "Ed Capture Daemon", under `cmd /c` so the window closes when the batch ends (`start`
     given a batch file runs it under `cmd /K`, which keeps the window open)."""
@@ -191,7 +191,7 @@ def stop() -> int:
     return 1 if alive else 0
 
 
-def unhealthy_for(port: int, seconds: float) -> "str | None":
+def unhealthy_for(port: int, seconds: float) -> str | None:
     """None once the console on `port` answers /api/health with 200 within `seconds`; else the
     last answer it gave instead (an error status, a refused connection, a timeout)."""
     deadline = time.monotonic() + seconds

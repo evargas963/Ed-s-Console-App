@@ -5,7 +5,10 @@ extend-exclude = [".venv", "venv", "node_modules", "__pycache__"]
 
 [tool.ruff.lint]
 #: the commit hook's and the hardening job's one selection; CI's compileall step is what proves every file compiles
-select = ["F401", "F821", "E9"]
+select = ["F401", "F821", "E9", "UP"]
+#: UP042 (str + Enum to StrEnum): its one fix is ruff-labelled unsafe, and no unsafe fix is taken
+#: (operator, AGENTS.md "Fix what you find")
+ignore = ["UP042"]
 
 [tool.ruff.format]
 quote-style = "double"

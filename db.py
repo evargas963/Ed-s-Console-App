@@ -14,7 +14,6 @@ from db_authority import (
     is_canonical_db_path,
 )
 from dataclasses import dataclass, asdict, fields
-from typing import Optional
 
 log = logging.getLogger(__name__)
 
@@ -99,8 +98,8 @@ class LevelCrossEvent:
     level_value: float
     direction: str  # 'up', 'down'
     spot_at_cross: float
-    zone_before: Optional[str]
-    zone_after: Optional[str]
+    zone_before: str | None
+    zone_after: str | None
     timeframe: str
 
 
@@ -213,7 +212,7 @@ class EdDB:
 # SINGLETON — one DB instance for the app (thread-safe)
 # ════════════════════════════════════════════════════════════════════════════════
 
-_db_instance: Optional[EdDB] = None
+_db_instance: EdDB | None = None
 _db_lock: threading.Lock = threading.Lock()
 
 

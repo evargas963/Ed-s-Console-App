@@ -30,7 +30,7 @@ _MIX = json.loads(
 BOOK_CONTRACT = "SPY   261005C00774000"
 
 
-def _message(m: dict) -> "tuple[str, dict]":
+def _message(m: dict) -> tuple[str, dict]:
     """One fixture row as the daemon publishes it on its bus."""
     sym, svc, ts = m["item"]["key"], m["service"], m["ts_recv"]
     if svc == "LEVELONE_OPTIONS":

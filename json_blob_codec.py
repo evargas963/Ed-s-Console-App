@@ -40,7 +40,7 @@ def encode_json_blob(obj: Any, *, default: Any = str) -> bytes:
     return encode_text_blob(raw)
 
 
-def encode_text_blob(text: "str | bytes") -> bytes:
+def encode_text_blob(text: str | bytes) -> bytes:
     """gzip an ALREADY-serialized JSON string/bytes directly, with no re-serialization.
 
     Some call sites (execution_identity.py's canonical_envelope_json, for one) build
@@ -57,7 +57,7 @@ def encode_text_blob(text: "str | bytes") -> bytes:
     return gzip.compress(raw, compresslevel=_COMPRESSLEVEL, mtime=0)
 
 
-def decode_text_blob(value: "bytes | bytearray | str | None") -> "str | None":
+def decode_text_blob(value: bytes | bytearray | str | None) -> str | None:
     """Inverse of encode_text_blob: returns the raw JSON TEXT, not parsed.
 
     Required (not just decode_json_blob's parsed form) by any caller that re-verifies a
@@ -77,7 +77,7 @@ def decode_text_blob(value: "bytes | bytearray | str | None") -> "str | None":
     return value
 
 
-def decode_json_blob(value: "bytes | bytearray | str | None") -> Any:
+def decode_json_blob(value: bytes | bytearray | str | None) -> Any:
     """Inverse of encode_json_blob: decode_text_blob, then json.loads the result.
 
     Returns None for a NULL column (never raises on the mere absence of a value); a

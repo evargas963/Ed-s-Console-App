@@ -70,7 +70,7 @@ def _clean():
     server._last_feed_stamp = None
 
 
-def _beat(ts: float, *, socket_open: bool = True, options: "list[str] | None" = None) -> None:
+def _beat(ts: float, *, socket_open: bool = True, options: list[str] | None = None) -> None:
     lmp.record_feed_heartbeat(
         {
             "ts": ts,
@@ -176,7 +176,7 @@ def test_a_streamed_cell_is_not_live_after_its_own_option_close():
     levels are STALE (the chain was fetched 2026-09-30, not after this close)."""
     assert _states_when_the_status_was_sent(-0.5) == ["live"]
 
-    def legs_at(hhmm: str) -> "tuple[list, dict]":
+    def legs_at(hhmm: str) -> tuple[list, dict]:
         at = datetime.fromisoformat(f"2026-10-05T{hhmm}:00-04:00").timestamp()
         _beat(at - 0.5, options=[SYM])
         server.restamp_open_surfaces(at)

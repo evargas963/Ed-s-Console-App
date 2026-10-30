@@ -48,14 +48,14 @@ def _surface() -> dict:
     return server.project_gamma_surface(_CONTRACTS, exposure_books(_CONTRACTS, spot=_SPOT, now=_AT))
 
 
-def _by_strike(contracts) -> "dict[float, list]":
-    out: "dict[float, list]" = {}
+def _by_strike(contracts) -> dict[float, list]:
+    out: dict[float, list] = {}
     for c in contracts:
         out.setdefault(float(c["strikePrice"]), []).append(c)
     return out
 
 
-def _open_interest_zero(expiry) -> "set[float]":
+def _open_interest_zero(expiry) -> set[float]:
     return {
         k
         for k, cs in _by_strike(_COLUMNS[expiry]).items()
@@ -63,7 +63,7 @@ def _open_interest_zero(expiry) -> "set[float]":
     }
 
 
-def _column(surface, expiry) -> "dict[float, tuple]":
+def _column(surface, expiry) -> dict[float, tuple]:
     j = [e["expiry"] for e in surface["expirations"]].index(expiry)
     return {r["strike"]: (r["gex"][j], r["dex"][j], r["vanna"][j]) for r in surface["cells"]}
 

@@ -456,7 +456,7 @@ def test_the_stored_levels_are_priced_while_a_page_on_another_ticker_takes_ticks
 
     ticker = threading.Thread(target=ticks, daemon=True)
 
-    def priced() -> "set[str]":
+    def priced() -> set[str]:
         with server._terrain_cache_lock:
             return {name for name in names if name in server._terrain_cache}
 

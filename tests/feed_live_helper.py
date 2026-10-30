@@ -53,7 +53,7 @@ def clock_from(start: float):
     return lambda: start + time.monotonic() - began
 
 
-def mark_feed_live(*tickers: str, now: "float | None" = None) -> None:
+def mark_feed_live(*tickers: str, now: float | None = None) -> None:
     """The daemon's heartbeat stamped `now` (the wall clock when not given), holding `tickers` on
     LEVELONE_EQUITIES."""
     lmp.record_feed_heartbeat(
@@ -69,7 +69,7 @@ def mark_feed_down() -> None:
     lmp.record_feed_down()
 
 
-def publish_daemon_rows(*tickers: str, now: "float | None" = None) -> None:
+def publish_daemon_rows(*tickers: str, now: float | None = None) -> None:
     """What the daemon's price push hands the console: its price row per ticker at `now` (the wall
     clock when not given), built by the daemon's own function from the daemon's plane (the test's
     live_market_plane stands in for the daemon's)."""

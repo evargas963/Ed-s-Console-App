@@ -3,8 +3,9 @@
 A check of shapes only. It cannot see a design-level patch; that is review's. That a product change
 is proven end to end is check_fails_before's: an end-to-end path test that fails on the old code. A
 file whose code is the same once comments and docstrings are set aside (code_identical: the Python
-syntax tree; page code's syntax tree from Babel, tools/js_code_tree.js) is not a change of product
-code. An .html page is always one, and so is removing code nothing calls, a deleted file included.
+syntax tree; page code's syntax tree from Babel, tools/js_code_tree.js), or whose change is exactly
+the standard tools' own (ruff's safe fixes with the PR's committed pyproject.toml, then ruff format:
+tool_fixed), is not a change of product code. An .html page is always one, and so is removing code nothing calls, a deleted file included.
 
 The product lines a PR adds carry no patch shape:
    - an except that catches everything (bare, `Exception`, `BaseException`, or a tuple holding
@@ -202,18 +203,107 @@ def code_tree(path: str, text: str) -> str | None:
     return None
 
 
+#: the lines of ruff's resolved settings (`ruff check --show-settings`, extended files included)
+#: that decide whether a fix ruff calls safe is safe here: unsafe fixes off, no fix forced safe,
+#: and the Python the fixes are made for the base's (a fix is safe only for its target version)
+FIX_SAFETY = (
+    "unsafe_fixes",
+    "linter.safety_table.forced_safe",
+    "linter.unresolved_target_version",
+    "linter.per_file_target_version",
+    "formatter.unresolved_target_version",
+    "formatter.per_file_target_version",
+)
+
+
+def fix_safety(root: Path, config: Path) -> dict[str, str] | None:
+    """FIX_SAFETY's values as ruff resolves them from `config`; None when ruff cannot."""
+    try:
+        run = subprocess.run(
+            [sys.executable, "-m", "ruff", "check", "--show-settings", "--config", str(config)]
+            + ["pyproject.toml"],
+            capture_output=True,
+            cwd=root,
+            timeout=120,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    lines = (line.partition(" = ") for line in run.stdout.decode("utf-8", "replace").splitlines())
+    found = {k: v for k, _, v in lines if k in FIX_SAFETY}
+    return found if run.returncode == 0 and len(found) == len(FIX_SAFETY) else None
+
+
+def tools_fix_is_safe(root: Path, base: str) -> bool:
+    """Whether ruff, run on the PR's committed pyproject.toml, takes only fixes that are safe for
+    the base's Python: unsafe fixes not on, none forced safe, no per-file target version, the same
+    target versions."""
+    try:
+        _git(root, "diff", "--quiet", "HEAD", "--", "pyproject.toml")  # the tree is the commit's
+        old = _git(root, "show", f"{_git(root, 'merge-base', base, 'HEAD').strip()}:pyproject.toml")
+    except ToolError:
+        return False
+    with tempfile.TemporaryDirectory() as tmp:
+        (Path(tmp) / "pyproject.toml").write_text(old, encoding="utf-8")
+        was = fix_safety(root, Path(tmp) / "pyproject.toml")
+    now = fix_safety(root, root / "pyproject.toml")
+    if was is None or now is None:
+        return False
+    return (
+        now["unsafe_fixes"] != "enabled"
+        and now["linter.safety_table.forced_safe"] == "[]"
+        and all(now[k] == "{}" for k in FIX_SAFETY if "per_file" in k)  # a map prints on many lines
+        and all(now[k] == was[k] for k in FIX_SAFETY if "unresolved_target" in k)
+    )
+
+
+def tool_fixed(root: Path, path: str, text: str) -> str | None:
+    """`text` as the repository's standard tools leave it: ruff's safe fixes with the repository's
+    pyproject.toml, then `ruff format`, as the commit hook runs them; None when either cannot run on
+    it (code_identical first checks that the configuration takes only safe fixes)."""
+    out = text.encode("utf-8")  # as bytes: no line ending translated on the way in or out
+    for args in (
+        ["check", "--fix", "--no-unsafe-fixes", "--exit-zero", "--quiet"],
+        ["format", "--quiet"],
+    ):
+        try:
+            run = subprocess.run(
+                [sys.executable, "-m", "ruff", *args, "--config", "pyproject.toml"]
+                + ["--stdin-filename", path, "-"],
+                input=out,
+                capture_output=True,
+                cwd=root,
+                timeout=120,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        if run.returncode != 0:
+            return None
+        out = run.stdout
+    return out.decode("utf-8")
+
+
 def code_identical(root: Path, base: str, path: str) -> bool:
     """Whether the PR leaves `path`'s code as it is on `base` once comments and docstrings are set
-    aside: such a change has nothing for a test to fail on, so it needs none. A file new to the PR,
-    renamed, deleted, not one of CODE_TREE_SUFFIXES, or one either version of which cannot be read
-    is not that."""
+    aside, or changes it only as the repository's standard tools do (tool_fixed, with the PR's
+    committed pyproject.toml when tools_fix_is_safe, reproduces the PR's file from the base's): such
+    a change has nothing for a test to fail on, so it needs none. A file new to the PR, renamed,
+    deleted, not one of CODE_TREE_SUFFIXES, or one either version of which cannot be read is not
+    that."""
     try:
         old = _git(root, "show", f"{_git(root, 'merge-base', base, 'HEAD').strip()}:{path}")
         new = pr_source(root, path)
     except ToolError:
         return False
     before, after = code_tree(path, old), code_tree(path, new)
-    return before is not None and before == after
+    if before is None:
+        return False
+    if before == after:
+        return True
+    return (
+        path.endswith(".py")
+        and tools_fix_is_safe(root, base)
+        and tool_fixed(root, path, old) == new
+    )
 
 
 def behavior_change(root: Path, base: str, path: str) -> bool:

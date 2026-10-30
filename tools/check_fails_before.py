@@ -9,8 +9,9 @@ interpreter, Playwright specs (tests/e2e/*.spec.js) with the repository's instal
 against a console served from the base. At least one of them must fail or error on the base; a change whose every test
 already passed before proves nothing about that change. The same tests passing on the PR is the
 full suite's job (the required pytest-full check). A product file whose code is the same once
-comments and docstrings are set aside (check_end_to_end.code_identical: .py, .js, .mjs) has nothing
-for a test to fail on, and needs none; a deleted product file is a change.
+comments and docstrings are set aside, or whose change is exactly ruff's safe fixes and ruff format
+(check_end_to_end.code_identical: .py, .js, .mjs), has nothing for a test to fail on, and needs
+none; a deleted product file is a change.
 
 The base checkout sits inside the repository so that Node finds the repository's node_modules
 from it, and runs on the same Python as this check (first on PATH for the spec's console).

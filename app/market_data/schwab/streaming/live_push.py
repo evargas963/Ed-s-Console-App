@@ -80,7 +80,7 @@ def is_forwarded(topic: str, msg) -> bool:
     return False
 
 
-def frames(topic: str, record) -> "list[str]":
+def frames(topic: str, record) -> list[str]:
     """The wire frames of one current record: a chain's parts and a price history arrive with
     their frames already built, off the event loop (complete_chain_capture.chain_messages,
     price_history_message)."""
@@ -141,7 +141,7 @@ async def serve_live_push(
     *,
     host: str = LIVE_PUSH_HOST,
     port: int = LIVE_PUSH_PORT,
-    stats: "dict | None" = None,
+    stats: dict | None = None,
     on_request=None,
 ) -> None:
     """Run the push server until `stop` is set. `stats` (mutated) reports clients and sent."""
