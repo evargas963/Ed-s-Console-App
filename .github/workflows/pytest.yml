@@ -149,6 +149,8 @@ jobs:
 
       - name: A changed end-to-end path test fails on the old code (AGENTS.md rule 1, Before writing code)
         if: github.event_name == 'pull_request'
+        # Bounded: a run on the old code that hangs outlasts the job's 45 minutes.
+        timeout-minutes: 10
         env:
           ED_CI_OFFLINE: "1"
           ED_CONSOLE_ALLOW_NONCANONICAL_DB: "1"
