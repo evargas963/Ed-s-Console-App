@@ -520,5 +520,8 @@ def test_the_routes_that_take_a_json_body_read_it_and_refuse_none():
         assert plain.status_code == 422, route
     assert client.post("/api/watchlist", json={"ticker": "TSLA"}).status_code == 503
     assert client.post("/api/flow-contract", json={"contract": None}).status_code == 200
+    extra = client.post("/api/flow-contract", json={"contract": None, "x": 1})
+    assert extra.status_code == 200
     unlisted = "ZZZZ  261120C00100000"
-    assert client.post("/api/flow-contract", json={"contract": unlisted}).status_code == 409
+    refused = client.post("/api/flow-contract", json={"contract": unlisted})
+    assert (refused.status_code, refused.json()["contract"]) == (409, unlisted)
