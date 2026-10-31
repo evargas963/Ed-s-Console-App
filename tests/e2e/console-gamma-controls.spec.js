@@ -200,9 +200,11 @@ test.describe('ticker / expiry / measure controls', () => {
     await expect(page.locator('#flTicker')).toHaveText('QQQ');
     await page.locator('#subnav .tab', { hasText: 'Gamma' }).click();
     await page.waitForTimeout(4000);                                                 // more than one scheduler tick
+    const isQqq = (u) => /[?&]ticker=QQQ(&|$)/.test(u);
     const tickered = reqs.filter((u) => /[?&]ticker=/.test(u));
-    expect(tickered.length).toBeGreaterThan(0);
-    expect(tickered.filter((u) => !/[?&]ticker=QQQ(&|$)/.test(u))).toEqual([]);      // no AAPL (or SPY) request survives the switch
+    const afterSwitch = tickered.slice(tickered.findIndex(isQqq));                   // AAPL's own last reads go before
+    expect(tickered.some(isQqq)).toBe(true);
+    expect(afterSwitch.filter((u) => !isQqq(u))).toEqual([]);                        // no AAPL (or SPY) request survives the switch
     expect(await page.evaluate(() => window.EdShell.getState().ticker)).toBe('QQQ');
   });
 });
