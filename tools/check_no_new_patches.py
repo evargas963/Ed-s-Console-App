@@ -3,8 +3,9 @@
 A pull request's test files (tests/**/*.py) are compared with the base unit by unit, each unit's
 code read with its docstrings and comments set aside: every function not inside another (by name,
 at any class depth or under an `if` or `try`, carrying its classes' decorators) and every other
-statement. The suite's runs, each recorded by tools/patch_record.py (one per system: a test ends
-its run on Windows or on Linux, not always both), say what patched, however it was written. A test
+statement. The suite's runs, each recorded by tools/patch_record.py (a system's workers, and the
+tests marked `alone`: a test ends its run on Windows or on Linux, not always both), say what
+patched, however it was written. A test
 the PR adds or changes is refused when it ran with a patch applied in any run (applied while it
 ran, or still applied and reaching it, as the recorder judges), or when no run has a record of it
 running to its end (skipped before or during its call, deselected, its file skipped), so what it
