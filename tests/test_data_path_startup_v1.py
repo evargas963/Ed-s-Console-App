@@ -155,7 +155,9 @@ def test_the_stop_finds_and_ends_the_daemon_its_batch_started(tmp_path):
             started = [
                 p.pid
                 for p in psutil.process_iter(["name", "cwd"])
-                if p.info["name"] == "pythonw.exe" and p.info["cwd"] == str(home)
+                if p.info["name"] == "pythonw.exe"
+                and p.info["cwd"]
+                and Path(p.info["cwd"]).resolve() == home.resolve()
             ]
             assert not started, f"the batch restarted a daemon stopped on request: {started}"
             time.sleep(0.2)

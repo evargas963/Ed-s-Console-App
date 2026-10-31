@@ -20,7 +20,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
-          # check_fails_before diffs against the base branch, which needs full history
+          # check_fails_before and tests diff against the base branch, which needs full history
           fetch-depth: 0
 
       - name: Set up Python
@@ -158,6 +158,7 @@ jobs:
           name: patch-record-linux
           path: ${{ runner.temp }}/patch-record
           if-no-files-found: error
+          overwrite: true
           retention-days: 14
 
   pytest-windows:
