@@ -10,12 +10,14 @@ import json
 import os
 import re
 import shutil
+import site
 import socket
 import sqlite3
 import subprocess
 import sys
 import threading
 import time
+import venv
 from pathlib import Path
 
 import psutil
@@ -101,6 +103,59 @@ def test_the_daemons_window_closes_when_its_batch_ends(tmp_path):
     if still_open:
         psutil.Process(window).kill()
     assert not still_open, "the daemon's window stayed open after its batch ended"
+
+
+@pytest.mark.skipif(
+    sys.platform != "win32", reason="the daemon's batch and its window are Windows'"
+)
+def test_the_stop_finds_and_ends_the_daemon_its_batch_started(tmp_path):
+    """The real start_capture_daemon.bat in a folder of its own, with launch.py and a virtual
+    environment beside it, starts the real daemon in its window (no Schwab token, ports of its
+    own). The stop finds it by launch.DAEMON_START and ends it, exit 0, and the batch does not
+    restart it. A batch line apart from DAEMON_START would read "not running", leaving it up."""
+    home = tmp_path / "checkout"
+    home.mkdir()
+    for name in ("launch.py", "start_capture_daemon.bat"):
+        shutil.copy(launch.ROOT / name, home)
+    venv.create(home / ".venv")
+    with socket.socket() as push, socket.socket() as ui:
+        push.bind(("127.0.0.1", 0))
+        ui.bind(("127.0.0.1", 0))
+        push_port, ui_port = push.getsockname()[1], ui.getsockname()[1]
+    env = {
+        **os.environ,
+        "PYTHONPATH": os.pathsep.join([str(launch.ROOT), *site.getsitepackages()]),
+        "ED_RUNTIME_ROOT": str(tmp_path),
+        "ED_LIVE_UI_HOST": "127.0.0.1",
+        "ED_LIVE_UI_PORT": str(ui_port),
+        "ED_LIVE_PUSH_PORT": str(push_port),
+        "SCHWAB_TOKEN_PATH": str(tmp_path / "missing_token.json"),
+    }
+    bat = home / "start_capture_daemon.bat"
+    subprocess.Popen(launch.daemon_window(bat), cwd=home, env=env)
+    try:
+        end = time.monotonic() + 60
+        while not launch.in_use(push_port):
+            assert time.monotonic() < end, "the batch's daemon never served its port"
+            time.sleep(0.1)
+        stopped = subprocess.run(
+            [sys.executable, "launch.py", "stop"],
+            cwd=home,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=90,
+        )
+        assert (stopped.returncode, stopped.stdout) == (
+            0,
+            "Capture daemon: stopped\nConsole: not running\n",
+        ), stopped.stderr
+        time.sleep(6)  # past the batch's 5 s restart wait
+        assert not launch.in_use(push_port), "the batch restarted a daemon stopped on request"
+    finally:
+        for p in psutil.process_iter(["cmdline"]):
+            if str(home) in " ".join(p.info["cmdline"] or []):
+                p.kill()
 
 
 def test_the_stop_takes_only_this_checkouts_processes(tmp_path):
