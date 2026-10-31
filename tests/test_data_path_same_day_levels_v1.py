@@ -114,8 +114,6 @@ def test_a_contract_with_no_rebuilt_gamma_leaves_its_side_and_the_strike_total_u
         "hvp",
         "lvp",
         "key_delta_strike",
-        "call_charm_wall",
-        "put_charm_wall",
     ):
         assert same[name] != float(strike), name
 

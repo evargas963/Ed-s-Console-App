@@ -15,7 +15,7 @@ from math_exposure_core import (
     strike_oi_legs,
 )
 from numeric_contract import schwab_count, schwab_number
-from time_et import time_to_expiry_years
+from time_et import past_settlement, time_to_expiry_years
 
 # ── Gamma Exposure Profile — total dealer gamma recomputed at hypothetical spot ──
 # Every contract's gamma is recomputed at each candidate price; a cumulative sum does NOT
@@ -107,18 +107,6 @@ def bs_charm(
     return c if math.isfinite(c) else None
 
 
-def _settled(ct: dict, now: datetime, product: str) -> bool:
-    return (
-        time_to_expiry_years(
-            ct.get("expirationDate"),
-            now=now,
-            settlement_type=ct.get("settlementType"),
-            product=product,
-        )
-        is None
-    )
-
-
 def compute_charm_by_strike(
     contracts: list[dict],
     spot: float,
@@ -138,8 +126,9 @@ def compute_charm_by_strike(
 
     Units: charm/year * OI * multiplier / 365 -> delta-shares per day.
 
-    A live contract that cannot be priced leaves its side None and the strike's net None, as a
-    side's unknown gamma does in compute_exposures_by_strike. An expired one has no charm left.
+    A contract that cannot be priced and has not settled (time_et.past_settlement) leaves its side
+    None and the strike's net None, as a side's unknown gamma does in
+    compute_exposures_by_strike. A settled one has no charm left.
     """
     out: dict[float, dict] = {}
     if not contracts or not spot or spot <= 0:
@@ -157,9 +146,17 @@ def compute_charm_by_strike(
             strike = schwab_number(ct.get("strikePrice"))
             exposure = None
             side = f"{str(ct.get('putCall')).lower()}_charm"
-            if row in _NO_CHARM_LEFT or strike is None or side not in _CHARM_SIDES:
+            if row == "zero_open_interest" or strike is None or side not in _CHARM_SIDES:
                 continue
-            if t_years is None and _settled(ct, now, product):
+            if schwab_number(ct.get("multiplier")) == 0:
+                continue  # a reported 0 is 0, and zero contracts' worth of charm
+            settled = past_settlement(
+                ct.get("expirationDate"),
+                now,
+                settlement_type=ct.get("settlementType"),
+                product=product,
+            )
+            if t_years is None and settled:
                 continue
         b = out.setdefault(strike, {"call_charm": 0.0, "put_charm": 0.0, "net_charm": 0.0})
         if exposure is None or b[side] is None:
@@ -212,8 +209,6 @@ def pick_charm_wall_strikes(
 
 
 _CHARM_SIDES = ("call_charm", "put_charm")
-#: a contract with no charm to add, not one whose charm is unknown
-_NO_CHARM_LEFT = ("zero_open_interest", "expired_or_no_expiry")
 
 
 def contract_inputs(
