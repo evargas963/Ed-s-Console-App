@@ -175,6 +175,11 @@ test.describe('ticker / expiry / measure controls', () => {
     await expect(page.locator('.wl-row .wl-sym')).toHaveText(['SPY', 'IWM']);
   });
 
+  test('throwaway spec proof', async ({ page }) => {
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    expect(await page.evaluate(() => window.EdThrowaway)).toBe(1);
+  });
+
   test('#9 ONE ticker state: watchlist click, typed entry, Gamma / Chain / Flow and the expiry filter resolve to the same instrument, no prior-symbol request afterwards', async ({ page }) => {
     const reqs = [];
     page.on('request', (r) => { const u = r.url(); if (u.includes('/api/')) reqs.push(u); });

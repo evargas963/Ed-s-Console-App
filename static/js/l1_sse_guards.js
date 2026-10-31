@@ -106,6 +106,7 @@
     return p;
   }
 
+  g.EdThrowaway = 1;
   g.EdL1SseGuards = {
     makeCoalescedLoader: makeCoalescedLoader,
     readJson: readJson,
