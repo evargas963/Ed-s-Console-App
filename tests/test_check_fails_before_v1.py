@@ -62,6 +62,18 @@ def _repo(tmp_path: Path, pr: dict[str, str], base: dict[str, str] = BASE) -> Pa
 FIX = "def spot(row):\n    return row['last']\n"
 
 
+def test_a_run_that_never_ends_stops_the_check_and_says_where_it_stood(tmp_path):
+    """A run on the old code that hangs ran to the CI job's 45-minute limit (#664, 2026-10-30):
+    it now stops at its limit with every thread's stack."""
+    (tmp_path / "test_data_path_hang.py").write_text(
+        "import time\n\n\ndef test_hangs():\n    time.sleep(600)\n", encoding="utf-8"
+    )
+    with pytest.raises(cfb.ToolError) as stopped:
+        cfb.pytest_on(tmp_path, ["test_data_path_hang.py"], tmp_path / "r.xml", limit=30)
+    assert "did not end in 30 s (report written: False)" in str(stopped.value)
+    assert "test_hangs" in str(stopped.value)
+
+
 def test_a_fix_with_a_test_that_fails_on_the_old_code_is_proven(tmp_path):
     root = _repo(
         tmp_path,

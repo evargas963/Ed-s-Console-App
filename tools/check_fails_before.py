@@ -47,6 +47,9 @@ from tools.check_end_to_end import (
     pr_files,
 )
 
+#: what one run on the old code may take
+RUN_LIMIT_S = 600
+
 
 def changed(root: Path, base: str) -> list[str]:
     return pr_files(root, base, "AMT")
@@ -75,8 +78,23 @@ def is_test(path: str) -> bool:
     return is_pytest(path) or is_spec(path)
 
 
-def pytest_on(tree: Path, tests: list[str], report: Path) -> tuple[int, list[str]]:
-    subprocess.run(
+def _bounded_run(cmd: list[str], limit: float, report: Path, **kwargs) -> None:
+    """`cmd`, stopped after `limit` seconds; a run past it stops the check with what it printed
+    (for pytest, every thread's stack) and whether its report was written."""
+    try:
+        subprocess.run(cmd, capture_output=True, timeout=limit, **kwargs)
+    except subprocess.TimeoutExpired as e:
+        said = (e.stderr or b"").decode("utf-8", "replace")[-6000:]
+        raise ToolError(
+            f"the run on the old code did not end in {limit} s (report written: "
+            f"{report.exists()}): {' '.join(cmd[:6])}\n{said}"
+        ) from e
+
+
+def pytest_on(
+    tree: Path, tests: list[str], report: Path, limit: float = RUN_LIMIT_S
+) -> tuple[int, list[str]]:
+    _bounded_run(
         [
             sys.executable,
             "-m",
@@ -86,9 +104,12 @@ def pytest_on(tree: Path, tests: list[str], report: Path) -> tuple[int, list[str
             "-p",
             "no:cacheprovider",
             f"--junitxml={report}",
+            "-o",
+            f"faulthandler_timeout={limit / 2}",
         ],
+        limit,
+        report,
         cwd=tree,
-        capture_output=True,
         env=os.environ.copy(),
     )
     if not report.exists():
@@ -111,7 +132,7 @@ def playwright_on(root: Path, tree: Path, specs: list[str], report: Path) -> tup
         "PLAYWRIGHT_JSON_OUTPUT_NAME": str(report),
         "PATH": os.path.dirname(sys.executable) + os.pathsep + os.environ.get("PATH", ""),
     }
-    subprocess.run(
+    _bounded_run(
         [
             "node",
             str(root / "node_modules" / "@playwright" / "test" / "cli.js"),
@@ -119,8 +140,9 @@ def playwright_on(root: Path, tree: Path, specs: list[str], report: Path) -> tup
             *specs,
             "--reporter=json",
         ],
+        RUN_LIMIT_S,
+        report,
         cwd=tree,
-        capture_output=True,
         env=env,
     )
     if not report.exists():
