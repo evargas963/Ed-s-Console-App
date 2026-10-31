@@ -42,16 +42,20 @@ def test_a_page_frame_the_daemon_cannot_read_is_logged_with_what_arrived(caplog)
         )
         assert await _until(lambda: stats.get("listening"))
         ws = await connect(stats["listening"], max_size=None)
-        for frame in (
-            "not json",
-            '{"op": "hello"}',
-            json.dumps({"op": "subscribe", "symbols": [7]}),
-        ):
-            await ws.send(frame)
-        await _until(lambda: len([r for r in caplog.records if r.name.endswith("live_ui")]) >= 3)
-        await ws.close()
-        stop.set()
-        await ui
+        try:
+            for frame in (
+                "not json",
+                '{"op": "hello"}',
+                json.dumps({"op": "subscribe", "symbols": [7]}),
+            ):
+                await ws.send(frame)
+            await _until(
+                lambda: len([r for r in caplog.records if r.name.endswith("live_ui")]) >= 3
+            )
+        finally:  # a failure still closes the socket: cancelling over an open one can hang
+            await ws.close()
+            stop.set()
+            await ui
 
     with caplog.at_level(logging.WARNING, logger="app.market_data.schwab.streaming.live_ui"):
         asyncio.run(go())
