@@ -75,8 +75,8 @@ held by standard linters, not by hand-written checks.
 
 Each rule names what enforces it and where it runs. "(in force)" means it runs today: at commit
 (`.pre-commit-config.yaml`: the credential scan, the line-ending check, `ruff check .`, `ruff format
---check .`) or in the required `hardening` (`.github/workflows/hardening.yml`) or `pytest-full`
-(`.github/workflows/pytest.yml`) job. "Step N" is the SHAPE step that turns the check on; until
+--check .`) or in the required `hardening` (`.github/workflows/hardening.yml`), `pytest-full` or
+`pytest-windows` (`.github/workflows/pytest.yml`) job. "Step N" is the SHAPE step that turns the check on; until
 then the rule binds with no machine check.
 
 | # | Rule | Enforced by |
@@ -89,7 +89,7 @@ then the rule binds with no machine check.
 | 6 | **One program, one path.** Schwab → program memory → pushed to the page. The databases are history, written by the Recorder, read at startup, after the close and for research, never for a live screen. | import-linter: `sqlite3` only in the Recorder and the startup loader; a test that the launcher starts one process (step 3); the data path tests of `docs/DATA_FLOW.md` §2 (in force) |
 | 7 | **All tickers.** Measure and report across every watchlist ticker, never one. Every ticker is treated the same. | no machine check — ENF-05 |
 | 8 | **Clocks.** Market logic in ET; the page shows Central Time. The market's sessions are Schwab's /markets answers; no session table is typed by hand. | `tests/test_time_et_authority.py`, `tests/test_markets_sessions_v1.py` (in force) |
-| 9 | **Real data.** Tests run on captured Schwab data (`tests/fixtures/`) through the real code; no stand-ins, no patches of the code under test. | `tools/check_no_new_patches.py` with `tools/patch_record.py` in `pytest-full`, on a pull request's change (in force), until ruff `TID251` (no `unittest.mock`) and a conftest that refuses `monkeypatch` replace them (step 7); stand-ins left in the tests — STAND-INS |
+| 9 | **Real data.** Tests run on captured Schwab data (`tests/fixtures/`) through the real code; no stand-ins, no patches of the code under test. | `tools/check_no_new_patches.py` in `pytest-windows`, on the runs `tools/patch_record.py` records in both `pytest-full` and `pytest-windows`, on a pull request's change (in force), until ruff `TID251` (no `unittest.mock`) and a conftest that refuses `monkeypatch` replace them (step 7); stand-ins left in the tests — STAND-INS |
 | 10 | **Only Feed talks to Schwab.** | import-linter: `schwab`, `httpx` and `authlib` importable only from Feed (step 1d) |
 | 11 | **Calculators are pure.** They take `now` and their inputs; they read no clock, database, global or network. Only an entry point (a route, a loop, a stream handler) reads the clock. | import-linter forbidden imports and ruff `TID251` banned `time.time` / `datetime.now` outside the entry points (step 2) |
 | 12 | **Typed records across boundaries.** A value that crosses a module boundary is a dataclass whose states are named constants. | pyright, strict on State, Calculators and Push (step 6) |
@@ -154,10 +154,9 @@ then the rule binds with no machine check.
 
 - The `before-done` skill's checks pass on the PR's final commit, their output shown; the full
   suite is the required CI jobs green there, not a local repeat (operator 2026-10-30: "Yes, CI
-  proves it"). Branch protection on `main` requires `pytest-full` and `hardening` on the final
-  commit, current with `main`; `pytest-windows` runs the browser tests and the full pytest suite on
-  Windows as production runs, and is green on the final commit before a merge (no machine check
-  until branch protection requires it — ENF-12).
+  proves it"). Branch protection on `main` requires `pytest-full`, `pytest-windows` and `hardening`
+  on the final commit, current with `main`; `pytest-windows` runs the browser tests and the full
+  pytest suite on Windows as production runs (operator 2026-10-30: "Yes, do both").
 - Claims. Every statement about how something is now (a process, a file, a branch, a pull request,
   a test result, data, the screen) is CONFIRMED only by command output shown in the same reply.
   Anything else is NOT VERIFIED, with when it was last checked. "Done" = a test that failed before
