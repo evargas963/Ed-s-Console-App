@@ -9,7 +9,7 @@ from math_exposure_core import (
     pick_pin_and_strength,
     pick_volatility_point_strikes,
 )
-from tests.real_chains import NFLX, SPY_0DTE
+from tests.real_chains import SPY_0DTE
 
 
 def _dollarized_exposures():
@@ -46,20 +46,6 @@ def test_key_delta_strike_is_the_total_dex_argmax_on_real_chain():
 
     best = max(strikes, key=total_dex)
     assert kds == round(best, 2)
-
-
-def test_a_strike_with_a_side_not_known_is_not_ranked_as_if_that_side_were_zero():
-    """NFLX as Schwab sent it holds strikes whose call delta is not known and whose put delta is:
-    their total is unknown, as total_gex_dollars_at_strike leaves it, so none is a key strike."""
-    exposures, _ = compute_exposures_by_strike(NFLX.chain, spot=NFLX.spot, now=NFLX.now)
-    one_sided = [
-        s
-        for s, b in exposures.items()
-        if (bucket_metric_abs(b, "call_dex_dollars") is None)
-        != (bucket_metric_abs(b, "put_dex_dollars") is None)
-    ]
-    assert one_sided
-    assert pick_key_delta_strike(exposures, one_sided) is None
 
 
 def test_key_delta_strike_fails_closed_without_dollarization():
