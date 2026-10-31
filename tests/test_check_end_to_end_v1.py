@@ -481,6 +481,13 @@ def test_every_python_and_page_code_file_in_the_repo_is_read():
     assert product and unread == []
 
 
+def test_a_batch_file_is_product_code_and_is_not_read_as_page_code(tmp_path):
+    root = _repo(tmp_path, {**BASE, "start.bat": "@echo off\r\n"})
+    _commit(root, {"start.bat": '@echo off\r\nrun || ""\r\n'})
+    assert _changed(root) == ["start.bat"]
+    assert cee.violations(root, "main") == []
+
+
 def test_a_comment_only_change_to_an_html_page_is_a_product_change(tmp_path):
     root = _repo(tmp_path, {**BASE, "static/page.html": "<!-- RC-UI-1 -->\n<p>a</p>\n"})
     _commit(root, {"static/page.html": "<p>a</p>\n"})

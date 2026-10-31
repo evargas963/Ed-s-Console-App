@@ -5,8 +5,8 @@ is proven end to end is check_fails_before's: an end-to-end path test that fails
 file whose code is the same once comments and docstrings are set aside (code_identical: the Python
 syntax tree; page code's syntax tree from Babel, tools/js_code_tree.js), or whose change is exactly
 the standard tools' own (ruff's safe fixes with the PR's committed pyproject.toml, then ruff format:
-tool_fixed), is not a change of product code. An .html page is always one, and so is removing
-code nothing calls, a deleted file included.
+tool_fixed), is not a change of product code. An .html page or a .bat file is always one, and so
+is removing code nothing calls, a deleted file included.
 
 The product lines a PR adds carry no patch shape:
    - an except that catches everything (bare, `Exception`, `BaseException`, or a tuple holding
@@ -43,7 +43,9 @@ import tempfile
 import tokenize
 from pathlib import Path
 
-PRODUCT_SUFFIXES = (".py", ".js", ".mjs", ".html")
+#: the product files whose added lines are read for patch shapes
+SHAPED_SUFFIXES = (".py", ".js", ".mjs", ".html")
+PRODUCT_SUFFIXES = (*SHAPED_SUFFIXES, ".bat")
 NOT_PRODUCT = ("tests/", "tools/", ".github/", "docs/", "playwright.config.mjs")
 CATCH_ALL = ("Exception", "BaseException")
 LOG_METHODS = {"debug", "info", "warning", "warn", "error", "exception", "critical", "log"}
@@ -503,7 +505,11 @@ def js_patches(path: str, source: str, added: set[int]) -> list[tuple[int, str]]
 
 def violations(root: Path, base: str) -> list[str]:
     added = pr_added_lines(root, base)
-    changed_code = sorted(f for f in pr_files(root, base, "AMT") if behavior_change(root, base, f))
+    changed_code = sorted(
+        f
+        for f in pr_files(root, base, "AMT")
+        if f.endswith(SHAPED_SUFFIXES) and behavior_change(root, base, f)
+    )
     out = []
     for f in changed_code:
         source = pr_source(root, f)
