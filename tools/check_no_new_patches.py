@@ -3,17 +3,19 @@
 A pull request's test files (tests/**/*.py) are compared with the base unit by unit, each unit's
 code read with its docstrings and comments set aside: every function not inside another (by name,
 at any class depth or under an `if` or `try`, carrying its classes' decorators) and every other
-statement. The suite's run, recorded by tools/patch_record.py, says what patched, however it was
-written. A test the PR adds or changes is refused when it ran with a patch applied (applied while
-it ran, or still applied and reaching it, as the recorder judges), or when the run has no record
-of it running to its end (skipped before or during its call, deselected, its file skipped), so
-what it runs under is unknown. A unit the PR adds or changes is refused when a patch was applied
-from one of its lines. A patching test whose docstrings or comments alone change is not judged,
-one a standard tool's safe fix alone changes is not judged for its patches but must still run, and
-any other change to its code needs its patch removed.
+statement. The suite's runs, each recorded by tools/patch_record.py (a system's workers, and the
+tests marked `alone`: a test ends its run on Windows or on Linux, not always both), say what
+patched, however it was written. A test
+the PR adds or changes is refused when it ran with a patch applied in any run (applied while it
+ran, or still applied and reaching it, as the recorder judges), or when no run has a record of it
+running to its end (skipped before or during its call, deselected, its file skipped), so what it
+runs under is unknown. A unit the PR adds or changes is refused when a patch was applied from one
+of its lines. A patching test whose docstrings or comments alone change is not judged, one a
+standard tool's safe fix alone changes is not judged for its patches but must still run, and any
+other change to its code needs its patch removed.
 
     ED_PATCH_RECORD=<dir> python -m pytest -p tools.patch_record
-    python -m tools.check_no_new_patches --base origin/main --record <dir>
+    python -m tools.check_no_new_patches --base origin/main --record <dir> [<dir> ...]
 Exit 0: nothing patches in what the PR adds or changes. Exit 1: refused, each unit named.
 Exit 2: the check itself failed (git unavailable, the base unknown, no record of the run).
 """
@@ -198,9 +200,9 @@ def _over(units: dict, path: str, name: str) -> set[tuple[str, str]]:
     }
 
 
-def violations(root: Path, base: str, record: Path) -> list[str]:
+def violations(root: Path, base: str, *records: Path) -> list[str]:
     try:
-        events = read(record)
+        events = [e for record in records for e in read(record)]
     except FileNotFoundError as e:
         raise ToolError(str(e)) from e
     tools_safe = tools_fix_is_safe(root, base)
@@ -251,10 +253,10 @@ def violations(root: Path, base: str, record: Path) -> list[str]:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--base", required=True)
-    ap.add_argument("--record", required=True, type=Path)
+    ap.add_argument("--record", required=True, type=Path, nargs="+")
     a = ap.parse_args(argv)
     try:
-        found = violations(Path.cwd(), a.base, a.record)
+        found = violations(Path.cwd(), a.base, *a.record)
     except (ToolError, SyntaxError) as e:
         print(f"the check failed: {e}", file=sys.stderr)
         return 2

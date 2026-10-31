@@ -10,7 +10,8 @@ changed end-to-end path tests run there: pytest files (tests/test_data_path_*.py
 interpreter, Playwright specs (tests/e2e/*.spec.js) with the repository's installed Playwright,
 against a console served from the base. At least one of them must fail or error on the base; a
 change whose every test already passed before proves nothing about that change. The same tests
-passing on the PR is the full suite's job (the required pytest-full check). A product file whose
+passing on the PR is the full suite's job (the required pytest-full and pytest-windows checks). A
+product file whose
 code is the same once comments and docstrings are set aside, or whose change is exactly ruff's
 safe fixes and ruff format (check_end_to_end.code_identical: .py, .js, .mjs), has nothing for a
 test to fail on, and needs none; a deleted product file is a change.
