@@ -265,7 +265,6 @@ def compute_exposures_by_strike(
             b[f"{leg}_gamma_unreported"] += not gamma_ok
             b[f"{leg}_delta_unreported"] += not delta_ok
         vanna_priced = False
-        _T = None
 
         used += 1
 
@@ -296,9 +295,8 @@ def compute_exposures_by_strike(
                 if _vn is not None:
                     b[f"{leg}_vanna"] += _vn * 0.01 * oi * mult  # per 1 vol point
                     vanna_priced = True
-            # a settled contract (no time to expiry) carries no vanna; one whose expiry cannot
-            # be read, or with open interest and no IV, leaves its leg's vanna unknown
-            if oi > 0 and not vanna_priced and (_T is None or _T > 0):
+            # a contract with open interest and no vanna leaves its leg's vanna unknown
+            if oi > 0 and not vanna_priced:
                 b[f"{leg}_vanna_unreported"] += 1
 
     for b in exposures.values():

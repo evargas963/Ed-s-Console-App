@@ -14,7 +14,7 @@ import server
 from math_levels import compute_charm_by_strike
 from terrain_engine import compute_terrain
 from tests.real_chains import NFLX
-from time_et import ET, INDEX_OPTIONS, past_settlement
+from time_et import ET, INDEX_OPTIONS, time_to_expiry_years
 
 
 def test_a_contract_schwab_sent_no_volatility_leaves_its_side_and_net_unknown():
@@ -56,8 +56,8 @@ def test_a_contract_past_its_date_with_no_session_held_has_settled():
 
 
 @pytest.mark.parametrize("date_sent", ["", -999, "-999", None, "bad"])
-def test_a_date_that_cannot_be_read_is_not_settled(date_sent):
-    assert not past_settlement(date_sent, NFLX.now)
+def test_a_date_that_cannot_be_read_has_no_time_known(date_sent):
+    assert time_to_expiry_years(date_sent, NFLX.now) is None
 
 
 def test_a_reported_multiplier_of_0_is_0_and_a_missing_one_is_not_known():

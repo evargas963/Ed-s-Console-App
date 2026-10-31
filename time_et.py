@@ -280,27 +280,6 @@ MIN_TIME_TO_EXPIRY_YEARS: float = 600.0 / YEAR_SECONDS
 SETTLEMENT_AM = "A"
 
 
-def _settlement(
-    expiration_date: str, now: datetime, settlement_type: str | None, product: str
-) -> datetime | None:
-    """The contract's settlement instant, as time_to_expiry_years states; None when not known."""
-    s = session(str(expiration_date)[:10])
-    if s is None:
-        if len(str(expiration_date)) <= 10:
-            return None
-        settles = datetime.fromisoformat(str(expiration_date))
-        if (
-            settlement_type == SETTLEMENT_AM
-            and settles.timestamp() - now.timestamp() <= YEAR_SECONDS
-        ):
-            return None
-        return settles
-    windows = s.option_windows(product)
-    if not windows:
-        return None
-    return windows[0][0] if settlement_type == SETTLEMENT_AM else windows[-1][1]
-
-
 def time_to_expiry_years(
     expiration_date: str,
     now: datetime,
@@ -322,33 +301,25 @@ def time_to_expiry_years(
     Validated against Schwab-reported gamma on real chains: intraday-to-close matches
     Schwab to a MEASURED median ratio 0.987 (94% of ATM strikes within 10%) in the 2-6h window.
 
-    None for an AM-settled contract within the year /markets answers whose date it has not, for a
-    date it answers with no regular option session, for an expirationDate without its time, and
-    after settlement. At the settlement instant the 10-minute floor guards
-    the exact-expiry singularity."""
-    settles = _settlement(expiration_date, now, settlement_type, product)
-    if settles is None:
-        return None
+    0.0 after settlement: no time is left. None when the time left is not known: an AM-settled
+    contract within the year /markets answers whose date it has not, a date it answers with no
+    regular option session, and an expirationDate without its time. At the settlement instant the
+    10-minute floor guards the exact-expiry singularity."""
+    s = session(str(expiration_date)[:10])
+    if s is None:
+        if len(str(expiration_date)) <= 10:
+            return None
+        settles = datetime.fromisoformat(str(expiration_date))
+        left = settles.timestamp() - now.timestamp()
+        if settlement_type == SETTLEMENT_AM and 0.0 <= left <= YEAR_SECONDS:
+            return None
+    else:
+        windows = s.option_windows(product)
+        if not windows:
+            return None
+        settles = windows[0][0] if settlement_type == SETTLEMENT_AM else windows[-1][1]
     # instants, not civil time: a DST change between now and the expiry is counted as elapsed
     t = (settles.timestamp() - now.timestamp()) / YEAR_SECONDS
     if t < 0.0:
-        return None  # after settlement — the contract has expired
+        return 0.0
     return max(t, MIN_TIME_TO_EXPIRY_YEARS)
-
-
-def past_settlement(
-    expiration_date: str,
-    now: datetime,
-    *,
-    settlement_type: str | None = None,
-    product: str = EQUITY_OPTIONS,
-) -> bool:
-    """True when the contract has settled: past its settlement, or, that not being known, past its
-    date. False when it may still be live, a date that cannot be read among them."""
-    settles = _settlement(expiration_date, now, settlement_type, product)
-    if settles is not None:
-        return settles.timestamp() < now.timestamp()
-    try:
-        return date.fromisoformat(str(expiration_date)[:10]) < now.astimezone(ET).date()
-    except ValueError:
-        return False

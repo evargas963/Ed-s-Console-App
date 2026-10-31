@@ -817,7 +817,7 @@ def same_day_levels(
         return blank
     today = now.astimezone(ET).date().isoformat()
     t_close = time_to_expiry_years(today, now, product=option_close_product(ticker))
-    if t_close is None:
+    if not t_close:
         return blank
     front = None
     for ct in contracts:
@@ -991,12 +991,12 @@ def compute_terrain(
 
     charm_by_expiry = {}
     iv_by_expiry = {}
-    expiry_rows: dict[str, list] = {}
+    expiry_rows: dict[str | None, list] = {}
     for ct in contracts:
         if not isinstance(ct, dict):
             continue
-        # no readable date keeps its row, as the exposure books key it "", so its side is unknown
-        expiry_rows.setdefault(_listed_expiry_day(ct) or "", []).append(ct)
+        # no readable date keeps its row under None, so its side is unknown
+        expiry_rows.setdefault(_listed_expiry_day(ct), []).append(ct)
     for exp, rows in expiry_rows.items():
         charm_by_expiry[exp] = compute_charm_by_strike(
             rows, float(spot), now=_terrain_now, product=product

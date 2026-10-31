@@ -15,7 +15,7 @@ from math_exposure_core import (
     strike_oi_legs,
 )
 from numeric_contract import schwab_count, schwab_number
-from time_et import past_settlement, time_to_expiry_years
+from time_et import time_to_expiry_years
 
 # ── Gamma Exposure Profile — total dealer gamma recomputed at hypothetical spot ──
 # Every contract's gamma is recomputed at each candidate price; a cumulative sum does NOT
@@ -126,9 +126,8 @@ def compute_charm_by_strike(
 
     Units: charm/year * OI * multiplier / 365 -> delta-shares per day.
 
-    A contract that cannot be priced and has not settled (time_et.past_settlement) leaves its side
-    None and the strike's net None, as a side's unknown gamma does in
-    compute_exposures_by_strike. A settled one has no charm left.
+    A contract that cannot be priced leaves its side None and the strike's net None, as a side's
+    unknown gamma does in compute_exposures_by_strike. A settled one has no charm left.
     """
     out: dict[float, dict] = {}
     if not contracts or not spot or spot <= 0:
@@ -137,27 +136,15 @@ def compute_charm_by_strike(
         if not isinstance(ct, dict):
             continue
         row = _contract_inputs(ct, now, t_years=t_years, product=product)
+        strike = schwab_number(ct.get("strikePrice"))
+        side = f"{str(ct.get('putCall')).lower()}_charm"
+        if row in ("zero_open_interest", "settled") or strike is None or side not in _CHARM_SIDES:
+            continue
+        exposure = None
         if isinstance(row, tuple):
-            strike, oi, mult, years, sigma, sign = row
+            _, oi, mult, years, sigma, _ = row
             c = bs_charm(float(spot), strike, years, sigma)
             exposure = None if c is None else c * oi * mult / 365.0
-            side = "call_charm" if sign > 0 else "put_charm"
-        else:
-            strike = schwab_number(ct.get("strikePrice"))
-            exposure = None
-            side = f"{str(ct.get('putCall')).lower()}_charm"
-            if row == "zero_open_interest" or strike is None or side not in _CHARM_SIDES:
-                continue
-            if schwab_number(ct.get("multiplier")) == 0:
-                continue  # a reported 0 is 0, and zero contracts' worth of charm
-            settled = past_settlement(
-                ct.get("expirationDate"),
-                now,
-                settlement_type=ct.get("settlementType"),
-                product=product,
-            )
-            if t_years is None and settled:
-                continue
         b = out.setdefault(strike, {"call_charm": 0.0, "put_charm": 0.0, "net_charm": 0.0})
         if exposure is None or b[side] is None:
             b[side] = None
@@ -251,9 +238,18 @@ def _contract_inputs(
     side = str(ct.get("putCall") or "").upper()
     if oi == 0:
         return "zero_open_interest"
+    if t_years is None:
+        t_years = time_to_expiry_years(
+            ct.get("expirationDate"),
+            now=now,
+            settlement_type=ct.get("settlementType"),
+            product=product,
+        )
+    if t_years == 0:
+        return "settled"
     if oi is None:
         return "no_open_interest"
-    if strike is None or strike <= 0 or mult is None or mult <= 0 or side not in ("CALL", "PUT"):
+    if strike is None or strike <= 0 or mult is None or mult < 0 or side not in ("CALL", "PUT"):
         return "invalid"
     # schwab_iv_to_sigma already rejects None/non-positive, so no separate iv guard.
     sigma = schwab_iv_to_sigma(
@@ -262,14 +258,7 @@ def _contract_inputs(
     if sigma is None or sigma <= 0:
         return "no_volatility"
     if t_years is None:
-        t_years = time_to_expiry_years(
-            ct.get("expirationDate"),
-            now=now,
-            settlement_type=ct.get("settlementType"),
-            product=product,
-        )
-    if t_years is None or t_years <= 0:
-        return "expired_or_no_expiry"
+        return "no_expiry"
     return strike, oi, mult, t_years, sigma, (1 if side == "CALL" else -1)
 
 
