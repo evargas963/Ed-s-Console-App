@@ -98,4 +98,5 @@ def test_a_forces_side_with_a_strike_not_known_has_no_total():
     assert snap.charm_by_strike[3.0]["net_charm"] is None
     assert any(b["net_charm"] is not None for k, b in snap.charm_by_strike.items() if k < NFLX.spot)
     forces = server._forces_from_captures(NFLX.ticker, caps, snap.charm_by_strike)
+    assert forces["available"] is True
     assert forces["charm_below"] is None

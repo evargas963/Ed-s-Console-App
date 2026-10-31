@@ -1295,16 +1295,8 @@ def test_the_forces_read_the_charm_map_of_the_capture_just_priced():
     assert from_book["charm_above"] == fresh["charm_above"]
     midday = compute_charm_by_strike(held.chain, held.spot, now=held.now, product=INDEX_OPTIONS)
     read = server._forces_from_captures("SPY", caps, midday)
-    below = sum(
-        v["net_charm"]
-        for k, v in midday.items()
-        if k < held.spot and v.get("net_charm") is not None
-    )
-    above = sum(
-        v["net_charm"]
-        for k, v in midday.items()
-        if k > held.spot and v.get("net_charm") is not None
-    )
+    below = sum(v["net_charm"] for k, v in midday.items() if k < held.spot)
+    above = sum(v["net_charm"] for k, v in midday.items() if k > held.spot)
     assert (below, above) != (fresh["charm_below"], fresh["charm_above"])
     assert (read["charm_below"], read["charm_above"]) == (below, above)
 
