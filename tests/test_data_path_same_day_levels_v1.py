@@ -125,11 +125,10 @@ def test_a_contract_with_no_rebuilt_gamma_leaves_the_other_side_known():
     assert _with_a_call_at(strike)["put_wall"] == strike
 
 
-@pytest.mark.parametrize(
-    ("book", "wall"),
-    [(SPY_0DTE, "call_charm_wall"), (SPY_0DTE, "put_charm_wall"), (TSLA, "call_charm_wall")],
-)
-def test_a_strike_with_a_contract_with_no_rebuilt_gamma_is_not_a_charm_wall(book, wall):
+@pytest.mark.parametrize("book", [SPY_0DTE, TSLA])
+def test_a_contract_with_no_rebuilt_gamma_leaves_only_its_sides_charm_unknown(book):
     """SPY's front expiry settles today (the held map), TSLA's does not (the rebuilt map)."""
-    strike = _same_day(wall, book)
-    assert _with_a_call_at(strike, book)[wall] != strike
+    strike = _same_day("call_charm_wall", book)
+    assert _with_a_call_at(strike, book)["call_charm_wall"] != strike
+    strike = _same_day("put_charm_wall", book)
+    assert _with_a_call_at(strike, book)["put_charm_wall"] == strike

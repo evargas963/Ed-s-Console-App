@@ -827,7 +827,7 @@ behavior (AGENTS.md).
     from the valuation instant to that day's option close. A contract with open interest whose
     gamma cannot be rebuilt leaves its side and that strike's total unknown, as in the whole
     book; the other side's known value still ranks (operator 2026-10-31: "you're guide is how
-    would a financial banking app work"). That strike is not a charm wall. The close is
+    would a financial banking app work"). Charm follows the same rule, in both books. The close is
     the regular window Schwab's /markets sent: the index window for an index it names with "$"
     and for SPY, QQQ and IWM, the equity-option window for every other ticker. No window held,
     or a close already passed, leaves the level absent.     The whole-book levels are unchanged.

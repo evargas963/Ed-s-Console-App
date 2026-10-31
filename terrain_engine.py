@@ -40,7 +40,6 @@ from math_levels import (
     merge_charm_maps,
     pick_charm_wall_strikes,
 )
-from numeric_contract import schwab_count, schwab_number
 from terrain_read import LEVEL_ABOVE, LEVEL_BELOW, build_terrain_read, level_side, price_side
 from time_et import ET, option_close_product, time_to_expiry_years
 
@@ -834,7 +833,6 @@ def same_day_levels(
     parsed: list = []
     priced: list[dict] = []
     repriced: list[dict] = []
-    blocked: set[float] = set()
     for ct in contracts:
         if not isinstance(ct, dict) or _listed_expiry_day(ct) != front:
             continue
@@ -851,10 +849,6 @@ def same_day_levels(
         if gamma is None or delta is None:
             copied["gamma"] = None
             copied["delta"] = None
-            strike = schwab_number(ct.get("strikePrice"))
-            oi = schwab_count(ct.get("openInterest"))
-            if strike is not None and oi is not None and oi > 0:
-                blocked.add(float(strike))
             continue
         copied["gamma"] = gamma
         copied["delta"] = delta
@@ -877,10 +871,8 @@ def same_day_levels(
             if isinstance(found, dict):
                 part = found
         if not isinstance(part, dict):
-            part = compute_charm_by_strike(priced, float(spot), now=now, parsed=parsed)
-        call_charm, put_charm = pick_charm_wall_strikes(
-            {k: bucket for k, bucket in part.items() if k not in blocked}
-        )
+            part = compute_charm_by_strike(repriced, float(spot), now=now, t_years=t_close)
+        call_charm, put_charm = pick_charm_wall_strikes(part)
     else:
         flip = None
         support = {"gsf": None, "grc": None}
