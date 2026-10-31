@@ -35,5 +35,5 @@ jobs:
             rc=$?
             echo "run $i exit $rc"
             tail -4 "out$i.txt"
-            if [ "$rc" -ge 124 ]; then tail -90 "out$i.txt"; break; fi
+            if [ "$rc" -ge 124 ]; then grep -E "^TASK|^    /|PASSED|FAILED" "out$i.txt" | cut -c1-200; break; fi
           done
