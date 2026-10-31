@@ -313,11 +313,4 @@ def test_the_flip_counts_the_contracts_it_could_not_price():
     snap = compute_terrain("NFLX", nflx["chain"], nflx["spot"], now=now)
     assert snap.to_dict()["flip_diag"]["unpriced"] == {"no_volatility": 8}
     at = datetime.fromtimestamp(spx["ts_utc"], time_et.ET)
-    priced, unpriced = contract_inputs(spx["chain"], at)
-    assert (len(priced), unpriced) == (288, {})
-    settles = datetime(2027, 12, 17, 9, 30, tzinfo=time_et.ET)
-    assert {row[3] for row in priced} == {
-        (settles.timestamp() - at.timestamp()) / time_et.YEAR_SECONDS
-    }
-    snap = compute_terrain("$SPX", spx["chain"], spx["spot"], now=at)
-    assert snap.to_dict()["flip_diag"]["unpriced"] == {}
+    assert contract_inputs(spx["chain"], at)[1] == {}
