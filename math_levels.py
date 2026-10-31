@@ -180,11 +180,6 @@ def pick_charm_wall_strikes(
     return cw, pw
 
 
-#: why an AM-settled contract has no time to expiry: Schwab's /markets answer for its expiry date
-#: is not held (beyond the year Schwab answers), so its settlement (the open) is not known
-NO_EXPIRY_SESSION = "no_markets_session_for_expiry"
-
-
 def contract_inputs(
     contracts: list[dict], now: datetime, product: str = "EQO"
 ) -> tuple[list, dict]:
@@ -212,13 +207,13 @@ def _contract_inputs(
 
     `t_years` is the canonical INTRADAY time-to-expiry (time_et.time_to_expiry_years): to the
     contract's settlement (the option market's regular close Schwab's /markets sent for its
-    expiry date, or its open for Schwab's settlementType "A"; Schwab's expirationDate for a
-    PM-settled contract on a date /markets does not answer), ACT/365, from `now` (the caller's
-    valuation instant), unless the caller passes `t_years`. Offline/replay callers pass
+    expiry date, or its open for Schwab's settlementType "A"; on a date /markets has not answered,
+    as time_et.time_to_expiry_years says), ACT/365, from `now` (the caller's valuation instant),
+    unless the caller passes `t_years`. Offline/replay callers pass
     `now` = the snapshot time.
     """
     from math_exposure_core import schwab_iv_to_sigma
-    from time_et import SETTLEMENT_AM, session, time_to_expiry_years
+    from time_et import time_to_expiry_years
 
     strike = schwab_number(ct.get("strikePrice"))
     oi = schwab_count(ct.get("openInterest"))
@@ -244,11 +239,7 @@ def _contract_inputs(
             product=product,
         )
     if t_years is None or t_years <= 0:
-        am_unanswered = (
-            ct.get("settlementType") == SETTLEMENT_AM
-            and session(str(ct.get("expirationDate"))[:10]) is None
-        )
-        return NO_EXPIRY_SESSION if am_unanswered else "expired_or_no_expiry"
+        return "expired_or_no_expiry"
     return strike, oi, mult, t_years, sigma, (1 if side == "CALL" else -1)
 
 

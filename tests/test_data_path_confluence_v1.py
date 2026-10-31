@@ -60,7 +60,6 @@ _SPY_MONDAY = _fixture("real_spy_2026_10_19_close_capture_and_premarket_zero_vol
 _IWM_ON_A_STRIKE = _fixture("real_iwm_0dte_chain_priced_on_a_strike_2026_10_23.json")
 _SPY_PRINT_ON_A_STRIKE = _fixture("real_spy_print_on_a_strike_2026_10_22.json")
 _SPY_PRINT_ABOVE = _fixture("real_spy_print_above_the_0dte_strikes_2026_10_23.json")
-_SPX_FAR = _fixture("real_spx_2027_10_15_expiry_2026_10_14.json")
 
 
 def _chain_spot(tk: str, quote: dict) -> tuple:
@@ -182,12 +181,11 @@ def test_a_missing_gamma_blanks_the_score_and_the_top_is_not_100():
     assert top == pytest.approx(max(expected.values()), rel=1e-12) and top < 100
 
 
-def test_a_missing_factor_is_not_called_flat():
-    """$SPX's 2027-10-15 expiry from the 2026-10-14 13:31:14 ET capture, priced by the levels
-    producer: two traded strikes have charm, both 0.00, and every other traded strike has none.
-    Charm does not vary where present, but the note does not call it flat, because it is missing
-    elsewhere; each strike missing it has no score and says charm."""
-    fx = _SPX_FAR
+def test_an_am_settled_expiry_past_the_year_is_scored():
+    """$SPX's AM-settled 2027-12-17 expiry, captured 2026-10-07, past the year Schwab's /markets
+    answers: each strike with open interest has its charm and vanna, so it has a score, and the
+    score is the definition's."""
+    fx = _fixture("real_spx_chain_2026_10_07_2027_12_17.json")
     tk, at = server.ticker_storage_key(fx["ticker"]), datetime.fromtimestamp(fx["ts_utc"], ET)
     try:
         server._publish_levels(
@@ -208,7 +206,23 @@ def test_a_missing_factor_is_not_called_flat():
         live = server._terrain_cache[tk]
     finally:
         _forget(tk)
-    mags = _book_magnitudes(live, fx["expiry"], fx["spot"])
+    mags = _book_magnitudes(live, "2027-12-17", fx["spot"])
+    weights = in_score_weights("MONTHLY")
+    scored, _flat, _spans = score_magnitudes(mags, weights)
+    expected = _scores_by_definition(mags, weights)
+    assert len(expected) > 10
+    assert {s: scored[s]["score"] for s in expected} == pytest.approx(
+        expected, rel=1e-12, abs=1e-12
+    )
+
+
+def test_a_missing_factor_is_not_called_flat():
+    """NFLX's 2027-12-17 strikes 2.5 to 4, priced by the levels producer: Schwab sent -999 for the
+    volatility of the calls at 2.5, 3 and 3.5, with no puts open there, so those have no charm, and
+    4 has it. Charm does not vary where present, but the note does not call it flat, because it is
+    missing elsewhere; each strike missing it has no score and says charm."""
+    _book, book_mags = _nflx_far_book()
+    mags = {s: book_mags[s] for s in (2.5, 3.0, 3.5, 4.0)}
     scored, flat, spans = score_magnitudes(mags, in_score_weights("MONTHLY"))
     traded = [s for s, m in mags.items() if _traded(m)]
     present = [s for s in traded if mags[s]["CHARMM"] is not None]
