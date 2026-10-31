@@ -85,15 +85,17 @@ def test_every_option_and_equity_message_on_the_one_push_reaches_the_console():
             await asyncio.sleep(0.02)
         ws = await connect(f"ws://127.0.0.1:{port}", max_size=None)
         console = asyncio.create_task(ofs.serve_push(ws))
-        for m in rows:
-            bus.publish(*_message(m))
-        deadline = time.monotonic() + 30
-        while any(top(s) != t for s, t in want.items()) and time.monotonic() < deadline:
-            await asyncio.sleep(0.05)
-        await ws.close()
-        await asyncio.wait_for(console, 5)
-        stop.set()
-        await pushing
+        try:
+            for m in rows:
+                bus.publish(*_message(m))
+            deadline = time.monotonic() + 30
+            while any(top(s) != t for s, t in want.items()) and time.monotonic() < deadline:
+                await asyncio.sleep(0.05)
+        finally:  # a failure still closes the socket: cancelling over an open one can hang
+            await ws.close()
+            await asyncio.wait_for(console, 5)
+            stop.set()
+            await pushing
 
     ofls.clear_all_live_state()
     try:
