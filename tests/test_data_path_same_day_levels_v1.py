@@ -84,10 +84,10 @@ def test_gamma_rebuilt_to_todays_close_is_not_refused_at_the_listed_expiry(book,
     assert same["absolute_gamma_strike"] == pin
 
 
-def _with_a_call_at(strike: float) -> dict:
-    """The captured call at `strike`, its volatility absent and its own open interest kept, is
-    put back on the captured chain."""
-    book = SPY_0DTE
+def _with_a_call_at(strike: float, book=SPY_0DTE) -> dict:
+    """Induced test condition: the captured call at `strike`, its volatility absent and its own
+    open interest kept, is put back on the captured chain. No capture holds a contract that cannot
+    be rebuilt beside a good one on the other side."""
     chain = [dict(ct) for ct in book.chain]
     seed = next(
         ct
@@ -100,8 +100,7 @@ def _with_a_call_at(strike: float) -> dict:
     return compute_terrain(book.ticker, chain, book.spot, now=book.now).to_dict()["same_day"]
 
 
-def _same_day(name: str) -> float:
-    book = SPY_0DTE
+def _same_day(name: str, book=SPY_0DTE) -> float:
     return compute_terrain(book.ticker, book.chain, book.spot, now=book.now).same_day[name]
 
 
@@ -124,3 +123,13 @@ def test_a_contract_with_no_rebuilt_gamma_leaves_its_side_and_the_strike_total_u
 def test_a_contract_with_no_rebuilt_gamma_leaves_the_other_side_known():
     strike = _same_day("put_wall")
     assert _with_a_call_at(strike)["put_wall"] == strike
+
+
+@pytest.mark.parametrize(
+    ("book", "wall"),
+    [(SPY_0DTE, "call_charm_wall"), (SPY_0DTE, "put_charm_wall"), (TSLA, "call_charm_wall")],
+)
+def test_a_strike_with_a_contract_with_no_rebuilt_gamma_is_not_a_charm_wall(book, wall):
+    """SPY's front expiry settles today (the held map), TSLA's does not (the rebuilt map)."""
+    strike = _same_day(wall, book)
+    assert _with_a_call_at(strike, book)[wall] != strike
