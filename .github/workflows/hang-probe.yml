@@ -28,6 +28,7 @@ jobs:
           PYTHONFAULTHANDLER: "1"
         run: |
           git show 72c2184d:server.py > server.py
+          set +e
           for i in 1 2 3 4 5 6; do
             echo "=== run $i"
             timeout -s ABRT 150 python -m pytest tests/test_data_path_one_watchlist_v1.py -q -p no:cacheprovider -p no:faulthandler --tb=line > "out$i.txt" 2>&1
