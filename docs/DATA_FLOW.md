@@ -649,7 +649,8 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
   carries 16:00 ET). On an expiry date with no /markets answer held, a PM-settled contract runs to
   Schwab's own expirationDate as sent (operator 2026-10-08), and an AM-settled one does past the
   year /markets answers (operator 2026-10-31, asked which to use: "Use Schwab's date"; up to 6.5
-  hours past its open); nearer, its settlement may have passed and it has no time to expiry. No
+  hours past its open); nearer, its settlement may have passed and it has no time to expiry until
+  Schwab's expirationDate passes. Past that a contract has settled. No
   hand-typed
   holiday, early-close or covered-year table exists. A day with no session has an empty window.
   The label only labels: no session window starts, stops or clears a streamed value (stock

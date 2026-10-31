@@ -296,7 +296,8 @@ def time_to_expiry_years(
     Schwab's own expirationDate is not the settlement of an AM-settled contract (an AM-settled
     $SPX monthly carries the 16:00 ET of its date, as captured). For a date with no /markets
     answer held a PM-settled contract settles at Schwab's expirationDate as sent, and an
-    AM-settled one too when that is past the year /markets answers; nearer, it has no T.
+    AM-settled one too when that is past the year /markets answers; nearer, it has no T until that
+    instant passes.
 
     Validated against Schwab-reported gamma on real chains: intraday-to-close matches
     Schwab to a MEASURED median ratio 0.987 (94% of ATM strikes within 10%) in the 2-6h window.

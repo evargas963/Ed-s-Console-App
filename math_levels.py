@@ -133,8 +133,6 @@ def compute_charm_by_strike(
     if not contracts or not spot or spot <= 0:
         return out
     for ct in contracts:
-        if not isinstance(ct, dict):
-            continue
         row = _contract_inputs(ct, now, t_years=t_years, product=product)
         strike = schwab_number(ct.get("strikePrice"))
         side = f"{str(ct.get('putCall')).lower()}_charm"
@@ -146,15 +144,16 @@ def compute_charm_by_strike(
             c = bs_charm(float(spot), strike, years, sigma)
             exposure = None if c is None else c * oi * mult / 365.0
         b = out.setdefault(strike, {"call_charm": 0.0, "put_charm": 0.0, "net_charm": 0.0})
-        if exposure is None or b[side] is None:
-            b[side] = None
-        else:
-            b[side] += exposure
-        if b["call_charm"] is None or b["put_charm"] is None:
-            b["net_charm"] = None
-        else:
-            b["net_charm"] = b["call_charm"] - b["put_charm"]
+        _add_charm(b, side, exposure)
     return out
+
+
+def _add_charm(bucket: dict, side: str, exposure: float | None) -> None:
+    """Add to one side of a strike. One unknown leaves that side and the strike's net unknown."""
+    side_now = bucket[side]
+    bucket[side] = None if side_now is None or exposure is None else side_now + exposure
+    call, put = bucket["call_charm"], bucket["put_charm"]
+    bucket["net_charm"] = None if call is None or put is None else call - put
 
 
 def merge_charm_maps(maps: dict[str, dict[float, dict]]) -> dict[float, dict]:
@@ -173,10 +172,7 @@ def merge_charm_maps(maps: dict[str, dict[float, dict]]) -> dict[float, dict]:
                 }
                 continue
             for side in _CHARM_SIDES:
-                add = bucket[side]
-                cur[side] = None if add is None or cur[side] is None else cur[side] + add
-            call, put = cur["call_charm"], cur["put_charm"]
-            cur["net_charm"] = None if call is None or put is None else call - put
+                _add_charm(cur, side, bucket[side])
     return out
 
 

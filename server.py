@@ -2613,16 +2613,13 @@ def _forces_from_captures(tk: str, captures: list, charm_by_strike: dict | None 
                     per_ch = charm_by_strike
                 else:
                     per_ch = compute_charm_by_strike(c1, spot1, now=clock1, product=product)
-                if per_ch:
-                    # a strike with no net_charm is left out of the below/above sums, as the
-                    # card's other sums leave one out; a side with none known has no total
-                    def _total(nets: list[float]) -> float | None:
-                        return sum(nets) if nets else None
 
-                    nets = {k: float_finite_or_none(v.get("net_charm")) for k, v in per_ch.items()}
-                    known = {k: c for k, c in nets.items() if c is not None}
-                    charm_below = _total([c for k, c in known.items() if k < spot1])
-                    charm_above = _total([c for k, c in known.items() if k > spot1])
+                # a strike not known leaves its side's total unknown, never the sum of the rest
+                def _total(nets: list[float | None]) -> float | None:
+                    return None if not nets or None in nets else sum(nets)
+
+                charm_below = _total([v["net_charm"] for k, v in per_ch.items() if k < spot1])
+                charm_above = _total([v["net_charm"] for k, v in per_ch.items() if k > spot1])
             except Exception as e:
                 log.warning("forces charm for %s failed (%s)", tk, e)
             payload = {
