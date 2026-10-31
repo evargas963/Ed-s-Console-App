@@ -300,12 +300,14 @@ def test_a_console_frame_the_daemon_cannot_read_is_logged_with_what_arrived(capl
         )
         await _until(lambda: stats.get("listening"))  # the port the system picked
         ws = await connect(stats["listening"], max_size=None)
-        for frame in ("not json", "[1, 2]", json.dumps(request)):
-            await ws.send(frame)
-        await _until(lambda: got)
-        await ws.close()
-        stop.set()
-        await served
+        try:
+            for frame in ("not json", "[1, 2]", json.dumps(request)):
+                await ws.send(frame)
+            await _until(lambda: got)
+        finally:  # a failure still closes the socket: cancelling over an open one can hang
+            await ws.close()
+            stop.set()
+            await served
 
     with caplog.at_level(logging.WARNING, logger="app.market_data.schwab.streaming.live_push"):
         asyncio.run(go())
@@ -356,15 +358,15 @@ def test_an_added_ticker_is_checked_once_asked_for_everywhere_and_a_removed_one_
             except OSError:
                 await asyncio.sleep(0.05)
         console = asyncio.create_task(ofs.serve_push(ws))  # the console's side of the socket
-        await _until(lambda: ofs._push_ws is ws)
         try:
+            await _until(lambda: ofs._push_ws is ws)
             added = json.loads((await server.post_watchlist("tsla")).body)
             await _until(lambda: daemon.held["NASDAQ_BOOK"] == {"SPY", "TSLA"})
             swept_after_add = list(daemon.chains.watchlist)
             invalid = json.loads((await server.post_watchlist("ZQZQZ")).body)
             removed = json.loads((await server.delete_watchlist("TSLA")).body)
             await _until(lambda: daemon.held["NASDAQ_BOOK"] == {"SPY"})
-        finally:  # a failure still closes the socket: cancelling the server over an open one hangs
+        finally:  # a failure still closes the socket: cancelling over an open one can hang
             await ws.close()
             await asyncio.wait_for(console, 5)
             stop.set()
