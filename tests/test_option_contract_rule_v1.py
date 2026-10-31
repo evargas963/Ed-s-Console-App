@@ -395,24 +395,30 @@ def test_the_flow_panels_contract_streams_on_both_services_on_top_of_the_rule(tm
                 )
             ),
         ]
-        ws = await _connect(connect, ports[0])
-        console = asyncio.create_task(ofs.serve_push(ws))
-        await _until(lambda: ofs._push_ws is ws)
-        answer = await server.post_flow_contract(server.FlowContract(contract=far))
-        await _until(lambda: m.holds(want))
-        held.update({s: set(m.daemon.held[s]) for s in (L1, BOOK)})
-        await ws.close()
-        await asyncio.wait_for(console, 5)
-        ws2 = await _connect(connect, ports[1])  # the console's next daemon
-        console2 = asyncio.create_task(ofs.serve_push(ws2))
-        await _until(lambda: restarted.flow_contract == far)
-        cleared = server.FlowContract(contract=None)  # Ed's selection cleared
-        await server.post_flow_contract(cleared)
-        await _until(lambda: restarted.flow_contract is None)
-        await ws2.close()
-        await asyncio.wait_for(console2, 5)
-        stop.set()
-        await asyncio.gather(*sockets)
+        try:
+            ws = await _connect(connect, ports[0])
+            console = asyncio.create_task(ofs.serve_push(ws))
+            try:
+                await _until(lambda: ofs._push_ws is ws)
+                answer = await server.post_flow_contract(server.FlowContract(contract=far))
+                await _until(lambda: m.holds(want))
+                held.update({s: set(m.daemon.held[s]) for s in (L1, BOOK)})
+            finally:  # a failure still closes the socket: cancelling over an open one can hang
+                await ws.close()
+                await asyncio.wait_for(console, 5)
+            ws2 = await _connect(connect, ports[1])  # the console's next daemon
+            console2 = asyncio.create_task(ofs.serve_push(ws2))
+            try:
+                await _until(lambda: restarted.flow_contract == far)
+                cleared = server.FlowContract(contract=None)  # Ed's selection cleared
+                await server.post_flow_contract(cleared)
+                await _until(lambda: restarted.flow_contract is None)
+            finally:
+                await ws2.close()
+                await asyncio.wait_for(console2, 5)
+        finally:
+            stop.set()
+            await asyncio.gather(*sockets)
         assert answer == {"ok": True, "contract": far}
 
     try:
