@@ -31,9 +31,9 @@ jobs:
           set +e
           for i in 1 2 3 4 5 6; do
             echo "=== run $i"
-            timeout -s ABRT 150 python -m pytest tests/test_data_path_one_watchlist_v1.py -q -p no:cacheprovider -p no:faulthandler --tb=line > "out$i.txt" 2>&1
+            timeout -s ABRT 120 python -m pytest tests/test_data_path_one_watchlist_v1.py -v -s -p no:cacheprovider -p no:faulthandler --tb=line > "out$i.txt" 2>&1
             rc=$?
             echo "run $i exit $rc"
             tail -4 "out$i.txt"
-            if [ "$rc" -ge 124 ]; then cat "out$i.txt"; fi
+            if [ "$rc" -ge 124 ]; then tail -90 "out$i.txt"; break; fi
           done
