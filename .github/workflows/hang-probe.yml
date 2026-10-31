@@ -39,7 +39,4 @@ jobs:
             tail -1 out.txt
             cp keep.py "$1"
           }
-          probe "$W" a_console_frame "await _until(lambda: got)"
-          probe "$W" an_added_ticker "await _until(lambda: ofs._push_ws is ws)"
-          probe "$O" flow_panels "await _until(lambda: m.holds(want))"
-          probe "$O" flow_panels "await _until(lambda: restarted.flow_contract == far)"
+          probe "$O" flow_panels "answer = await server.post_flow_contract(server.FlowContract(contract=far))"
