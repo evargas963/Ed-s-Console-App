@@ -48,9 +48,11 @@ def _check(
     files: dict[str, str | None],
     base: dict[str, str] = BASE,
     encoding: str = "utf-8",
+    second_system: dict[str, str] | None = None,
 ) -> list[str]:
     """The check's verdict on a PR of `files` (None deletes one; written in `encoding`) over `base`,
-    after the PR's suite ran with the recorder."""
+    after the PR's suite ran with the recorder; with `second_system`, the suite run again under
+    those environment variables and the check given both records."""
     root = tmp_path / "repo"
     root.mkdir()
     _git(root, "init", "-q", "-b", "main")
@@ -67,33 +69,78 @@ def _check(
         _git(root, "commit", "-q", "-m", "pr" if commit is files else "base")
         if commit is base:
             _git(root, "checkout", "-q", "-b", "pr")
-    record = tmp_path / "record"
-    env = {
-        **os.environ,
-        "ED_PATCH_RECORD": str(record),
-        "PYTHONPATH": os.pathsep.join([str(root), str(REPO)]),
-    }
-    subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "pytest",
-            "-q",
-            "-p",
-            "no:cacheprovider",
-            "-p",
-            "no:xdist",
-            "-p",
-            "tools.patch_record",
-            "--rootdir",
-            str(root),
-            "tests",
-        ],
-        cwd=root,
-        env=env,
-        capture_output=True,
-    )
-    return cnp.violations(root, "main", record)
+    records = [tmp_path / "record"]
+    if second_system is not None:
+        records.append(tmp_path / "second_record")
+    for record, system in zip(records, ({}, second_system), strict=False):
+        env = {
+            **os.environ,
+            **system,
+            "ED_PATCH_RECORD": str(record),
+            "PYTHONPATH": os.pathsep.join([str(root), str(REPO)]),
+        }
+        subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "pytest",
+                "-q",
+                "-p",
+                "no:cacheprovider",
+                "-p",
+                "no:xdist",
+                "-p",
+                "tools.patch_record",
+                "--rootdir",
+                str(root),
+                "tests",
+            ],
+            cwd=root,
+            env=env,
+            capture_output=True,
+        )
+    return cnp.violations(root, "main", *records)
+
+
+ONE_SYSTEM = (
+    "import os\n"
+    "import pytest\n"
+    "@pytest.mark.skipif('ED_SECOND_SYSTEM' not in os.environ, reason='the other system')\n"
+    "def test_new(monkeypatch):\n"
+    "    {body}\n"
+)
+
+
+def test_a_test_one_system_skips_stands_on_the_run_of_the_system_that_ran_it(tmp_path):
+    """A test only one system runs, as a Windows-only test on Linux: one run of it to its end is
+    enough. Induced test condition: an environment variable plays the second system."""
+    files = {"tests/test_new.py": ONE_SYSTEM.format(body="assert True")}
+    assert _check(tmp_path, files, second_system={"ED_SECOND_SYSTEM": "1"}) == []
+
+
+def test_a_test_every_system_skips_is_still_refused(tmp_path):
+    files = {"tests/test_new.py": ONE_SYSTEM.format(body="assert True")}
+    assert _check(tmp_path, files, second_system={}) == [
+        f"tests/test_new.py::test_new patches: {cnp.UNRUN}"
+    ]
+
+
+def test_a_patch_in_the_run_of_the_one_system_that_runs_the_test_is_refused(tmp_path):
+    """The first system skipped it, so only the second run shows the patch."""
+    files = {"tests/test_new.py": ONE_SYSTEM.format(body="monkeypatch.setenv('X', '1')")}
+    found = _check(tmp_path, files, second_system={"ED_SECOND_SYSTEM": "1"})
+    assert len(found) == 1
+    assert found[0].startswith("tests/test_new.py::test_new patches: ")
+    assert cnp.PATCHED in found[0]
+
+
+def test_a_system_with_no_record_stops_the_check(tmp_path):
+    """A run that left no record is not read as a run that found nothing."""
+    files = {"tests/test_new.py": ONE_SYSTEM.format(body="assert True")}
+    _check(tmp_path, files, second_system={"ED_SECOND_SYSTEM": "1"})
+    root = tmp_path / "repo"
+    with pytest.raises(cnp.ToolError):
+        cnp.violations(root, "main", tmp_path / "record", tmp_path / "never-recorded")
 
 
 def test_a_new_test_using_monkeypatch_is_refused(tmp_path):

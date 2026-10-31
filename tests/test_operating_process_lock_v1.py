@@ -57,6 +57,24 @@ def test_cross_checkout_edit_into_primary_blocks(tmp_path):
     assert len(bad) == 1 and "PROD_CHECKOUT_EDIT" in bad[0], bad
 
 
+def test_a_batch_file_in_the_primary_is_app_code(tmp_path):
+    """The batch files start and restart production: a session in the primary may not edit one."""
+    primary, _ = _linked_worktree_layout(tmp_path)
+    (primary / "start.bat").write_text("@echo off\r\n", encoding="utf-8")
+    bad = PLG.production_checkout_edit_violations(
+        {"file_path": str(primary / "start.bat")}, repo=primary
+    )
+    assert len(bad) == 1 and "PROD_CHECKOUT_EDIT" in bad[0], bad
+
+
+def test_a_shell_write_to_a_batch_file_in_the_primary_is_refused():
+    primary = PLG._primary_worktree_root(ROOT) or ROOT
+    bad = PLG.production_checkout_shell_app_write_violations(
+        PLG.read("echo x > start_ed_console.bat", str(primary))
+    )
+    assert len(bad) == 1 and "PROD_CHECKOUT_EDIT" in bad[0], bad
+
+
 def test_own_worktree_edit_stays_unblocked(tmp_path):
     primary, wt = _linked_worktree_layout(tmp_path)
     assert PLG.production_checkout_edit_violations({"file_path": str(wt / "own.py")}, repo=wt) == []
