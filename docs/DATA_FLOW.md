@@ -502,7 +502,8 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
   inside Schwab's regular window, and the weeks and months those make. The day-over-day
   open-interest change has one producer: the forces, from the stored captures (`/api/forces`,
   shown on the Trade Desk). Fewer than two market days of captures leaves each forces number
-  absent (`server._forces_from_captures`); the screen draws "-". An ATR that cannot be computed is absent (`server._atr_fields`); the
+  absent (`server._forces_from_captures`), and a charm side with no strike known leaves that side
+  absent; the screen draws "-". An ATR that cannot be computed is absent (`server._atr_fields`); the
   screen draws "-". None of these rules names a ticker; the
   watchlist decides which tickers are fetched and priced. A viewed
   ticker is one an open page shows (its `/api/changes` stream, on any workspace, open while the
@@ -724,8 +725,8 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
    listed in PR #515's description and fixed by `ACTIVE_PROGRAM.md` NUMBERS.
 6. **Missing values served with a reason** (D5, operator 2026-10-12: a missing value shows "-";
    operator 2026-10-16: one producer, the number or nothing). An ATR that cannot be computed, a
-   same-day absolute-gamma strike with no same-day book, and the forces before two capture days
-   are absent (`server._atr_fields`, `terrain_engine.compute_terrain`,
+   same-day absolute-gamma strike with no same-day book, the forces before two capture days and
+   a forces charm side with no strike known are absent (`server._atr_fields`, `terrain_engine.compute_terrain`,
    `server._forces_from_captures`); the screen draws "-". The levels with no price and the
    outage words are still served with their reason (§3 above). The gamma heatmap's cells draw "-".
 
@@ -828,7 +829,7 @@ behavior (AGENTS.md).
     from the valuation instant to that day's option close. A contract with open interest whose
     gamma cannot be rebuilt leaves its side and that strike's total unknown, as in the whole
     book; the other side's known value still ranks (operator 2026-10-31: "you're guide is how
-    would a financial banking app work"). That strike is not a charm wall. The close is
+    would a financial banking app work"). Charm follows the same rule, in both books. The close is
     the regular window Schwab's /markets sent: the index window for an index it names with "$"
     and for SPY, QQQ and IWM, the equity-option window for every other ticker. No window held,
     or a close already passed, leaves the level absent.     The whole-book levels are unchanged.

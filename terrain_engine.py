@@ -40,7 +40,6 @@ from math_levels import (
     merge_charm_maps,
     pick_charm_wall_strikes,
 )
-from numeric_contract import schwab_count, schwab_number
 from terrain_read import LEVEL_ABOVE, LEVEL_BELOW, build_terrain_read, level_side, price_side
 from time_et import ET, option_close_product, time_to_expiry_years
 
@@ -834,7 +833,6 @@ def same_day_levels(
     parsed: list = []
     priced: list[dict] = []
     repriced: list[dict] = []
-    blocked: set[float] = set()
     for ct in contracts:
         if not isinstance(ct, dict) or _listed_expiry_day(ct) != front:
             continue
@@ -851,10 +849,6 @@ def same_day_levels(
         if gamma is None or delta is None:
             copied["gamma"] = None
             copied["delta"] = None
-            strike = schwab_number(ct.get("strikePrice"))
-            oi = schwab_count(ct.get("openInterest"))
-            if strike is not None and oi is not None and oi > 0:
-                blocked.add(float(strike))
             continue
         copied["gamma"] = gamma
         copied["delta"] = delta
@@ -877,10 +871,8 @@ def same_day_levels(
             if isinstance(found, dict):
                 part = found
         if not isinstance(part, dict):
-            part = compute_charm_by_strike(priced, float(spot), now=now, parsed=parsed)
-        call_charm, put_charm = pick_charm_wall_strikes(
-            {k: bucket for k, bucket in part.items() if k not in blocked}
-        )
+            part = compute_charm_by_strike(repriced, float(spot), now=now, t_years=t_close)
+        call_charm, put_charm = pick_charm_wall_strikes(part)
     else:
         flip = None
         support = {"gsf": None, "grc": None}
@@ -957,9 +949,7 @@ def compute_terrain(
     # every operator surface until this producer computes them.
     (call_delta_wall, _cdw_str), (put_delta_wall, _pdw_str) = pick_delta_wall_strikes(exposures)
     # the gamma profile, built once at one instant, feeds the flip verdict and the regime read
-    parsed, unpriced = contract_inputs(
-        contracts, _terrain_now, product=product
-    )  # one parse for profile + charm
+    parsed, unpriced = contract_inputs(contracts, _terrain_now, product=product)
     profile = compute_gamma_profile(contracts, spot, now=_terrain_now, parsed=parsed)
     flip, confidence, flip_diag = compute_gamma_flip_v2(contracts, spot, profile=profile)
     # ONE gamma at spot: Schwab's gamma as sent, summed over the book (the walls' own gamma).
@@ -1005,10 +995,8 @@ def compute_terrain(
     for ct in contracts:
         if not isinstance(ct, dict):
             continue
-        exp = _listed_expiry_day(ct)
-        if exp is None:
-            continue
-        expiry_rows.setdefault(exp, []).append(ct)
+        # no readable date keeps its row, as the exposure books key it "", so its side is unknown
+        expiry_rows.setdefault(_listed_expiry_day(ct) or "", []).append(ct)
     for exp, rows in expiry_rows.items():
         charm_by_expiry[exp] = compute_charm_by_strike(
             rows, float(spot), now=_terrain_now, product=product

@@ -15,6 +15,7 @@ from math_exposure_core import (
     strike_oi_legs,
 )
 from numeric_contract import schwab_count, schwab_number
+from time_et import past_settlement, time_to_expiry_years
 
 # ── Gamma Exposure Profile — total dealer gamma recomputed at hypothetical spot ──
 # Every contract's gamma is recomputed at each candidate price; a cumulative sum does NOT
@@ -111,10 +112,10 @@ def compute_charm_by_strike(
     spot: float,
     *,
     now: datetime,
-    parsed: list | None = None,
+    t_years: float | None = None,
     product: str = "EQO",
 ) -> dict[float, dict]:
-    """Per-strike dealer CHARM exposure, in delta-shares per day.
+    """Per-strike dealer CHARM exposure, in delta-shares per day. `t_years`: as _contract_inputs.
 
     Charm exposure is standard institutional practice (SpotGamma, Unusual Whales and
     VannaCharm all publish charm-by-strike alongside GEX), and charm pressure is the
@@ -124,23 +125,48 @@ def compute_charm_by_strike(
     dealer book's delta decay creates BUYING pressure at that strike.
 
     Units: charm/year * OI * multiplier / 365 -> delta-shares per day.
+
+    A contract that cannot be priced and has not settled (time_et.past_settlement) leaves its side
+    None and the strike's net None, as a side's unknown gamma does in
+    compute_exposures_by_strike. A settled one has no charm left.
     """
     out: dict[float, dict] = {}
     if not contracts or not spot or spot <= 0:
         return out
-    for strike, oi, mult, t_years, sigma, sign in (
-        parsed if parsed is not None else contract_inputs(contracts, now, product=product)[0]
-    ):
-        c = bs_charm(float(spot), strike, t_years, sigma)
-        if c is None:
+    for ct in contracts:
+        if not isinstance(ct, dict):
             continue
-        exposure = c * oi * mult / 365.0
-        b = out.setdefault(strike, {"call_charm": 0.0, "put_charm": 0.0, "net_charm": 0.0})
-        if sign > 0:
-            b["call_charm"] += exposure
+        row = _contract_inputs(ct, now, t_years=t_years, product=product)
+        if isinstance(row, tuple):
+            strike, oi, mult, years, sigma, sign = row
+            c = bs_charm(float(spot), strike, years, sigma)
+            exposure = None if c is None else c * oi * mult / 365.0
+            side = "call_charm" if sign > 0 else "put_charm"
         else:
-            b["put_charm"] += exposure
-        b["net_charm"] = b["call_charm"] - b["put_charm"]
+            strike = schwab_number(ct.get("strikePrice"))
+            exposure = None
+            side = f"{str(ct.get('putCall')).lower()}_charm"
+            if row == "zero_open_interest" or strike is None or side not in _CHARM_SIDES:
+                continue
+            if schwab_number(ct.get("multiplier")) == 0:
+                continue  # a reported 0 is 0, and zero contracts' worth of charm
+            settled = past_settlement(
+                ct.get("expirationDate"),
+                now,
+                settlement_type=ct.get("settlementType"),
+                product=product,
+            )
+            if t_years is None and settled:
+                continue
+        b = out.setdefault(strike, {"call_charm": 0.0, "put_charm": 0.0, "net_charm": 0.0})
+        if exposure is None or b[side] is None:
+            b[side] = None
+        else:
+            b[side] += exposure
+        if b["call_charm"] is None or b["put_charm"] is None:
+            b["net_charm"] = None
+        else:
+            b["net_charm"] = b["call_charm"] - b["put_charm"]
     return out
 
 
@@ -159,9 +185,11 @@ def merge_charm_maps(maps: dict[str, dict[float, dict]]) -> dict[float, dict]:
                     "net_charm": bucket["net_charm"],
                 }
                 continue
-            cur["call_charm"] += bucket["call_charm"]
-            cur["put_charm"] += bucket["put_charm"]
-            cur["net_charm"] = cur["call_charm"] - cur["put_charm"]
+            for side in _CHARM_SIDES:
+                add = bucket[side]
+                cur[side] = None if add is None or cur[side] is None else cur[side] + add
+            call, put = cur["call_charm"], cur["put_charm"]
+            cur["net_charm"] = None if call is None or put is None else call - put
     return out
 
 
@@ -171,20 +199,23 @@ def pick_charm_wall_strikes(
     """(call_charm_wall, put_charm_wall) — strikes of maximum call-side and put-side
     charm exposure. These are the strikes whose delta decay exerts the most mechanical
     pressure into the close."""
-    if not charm_by_strike:
-        return None, None
-    call_k = max(charm_by_strike, key=lambda k: abs(charm_by_strike[k]["call_charm"]))
-    put_k = max(charm_by_strike, key=lambda k: abs(charm_by_strike[k]["put_charm"]))
-    cw = call_k if abs(charm_by_strike[call_k]["call_charm"]) > 0 else None
-    pw = put_k if abs(charm_by_strike[put_k]["put_charm"]) > 0 else None
-    return cw, pw
+
+    def wall(side: str) -> float | None:
+        known = {k: abs(b[side]) for k, b in charm_by_strike.items() if b[side] is not None}
+        strike = max(known, key=known.get, default=None)
+        return strike if strike is not None and known[strike] > 0 else None
+
+    return wall("call_charm"), wall("put_charm")
+
+
+_CHARM_SIDES = ("call_charm", "put_charm")
 
 
 def contract_inputs(
     contracts: list[dict], now: datetime, product: str = "EQO"
 ) -> tuple[list, dict]:
     """(priced, unpriced): _contract_inputs for every contract with open interest, parsed once
-    and shared by the gamma profile and charm (compute_terrain); `unpriced` counts the
+    for the gamma profile (compute_terrain); `unpriced` counts the
     contracts with open interest the profile could not price, by reason."""
     priced, unpriced = [], {}
     for ct in contracts:
@@ -213,7 +244,6 @@ def _contract_inputs(
     `now` = the snapshot time.
     """
     from math_exposure_core import schwab_iv_to_sigma
-    from time_et import time_to_expiry_years
 
     strike = schwab_number(ct.get("strikePrice"))
     oi = schwab_count(ct.get("openInterest"))
