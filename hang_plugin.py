@@ -1,4 +1,4 @@
-"""Throwaway: 90 s in, print every unfinished asyncio task and where it is stuck."""
+"""Throwaway: 90 s in, print every unfinished asyncio task and where each is stuck."""
 
 import asyncio
 import gc
