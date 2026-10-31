@@ -122,7 +122,7 @@ jobs:
           echo "e2e_rc=$e2e_rc" >> "$GITHUB_OUTPUT"
           python -m pytest -p tools.patch_record -n "$(nproc)" --dist loadfile --durations=20 -rs -m "not alone"
           pytest_rc=$?
-          ED_PATCH_RECORD="$ED_PATCH_RECORD/alone" python -m pytest -p tools.patch_record -rs -m alone
+          ED_PATCH_RECORD="$ED_PATCH_RECORD/alone" python -m pytest -p tools.patch_record --durations=1 -rs -m alone
           alone_rc=$?
           set -e
           if [ "$e2e_rc" -ne 0 ]; then
@@ -243,7 +243,7 @@ jobs:
           SCHWAB_API_KEY: "ci-not-live-placeholder"
           SCHWAB_APP_SECRET: "ci-not-live-placeholder"
           ED_PATCH_RECORD: ${{ runner.temp }}/patch-record/alone
-        run: python -m pytest -p tools.patch_record -rs -m alone
+        run: python -m pytest -p tools.patch_record --durations=1 -rs -m alone
 
       - name: Fetch pytest-full's patch record
         if: github.event_name == 'pull_request'
