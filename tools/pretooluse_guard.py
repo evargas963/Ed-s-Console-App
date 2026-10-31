@@ -7,7 +7,7 @@ from __future__ import annotations
 from pathlib import Path
 
 #: Production surfaces across the whole continuum, not just backend.
-PRODUCTION_SUFFIXES = (".py", ".html", ".js", ".css", ".sql", ".ts", ".jsx", ".tsx")
+PRODUCTION_SUFFIXES = (".py", ".html", ".js", ".css", ".sql", ".ts", ".jsx", ".tsx", ".bat")
 #: Not part of the product surface.
 NOT_PRODUCT_PREFIXES = (
     "tests/",
