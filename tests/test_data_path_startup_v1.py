@@ -74,6 +74,11 @@ def test_a_web_page_cannot_reach_the_daemons_local_socket():
     assert asyncio.run(asyncio.wait_for(go(), 30)) == 403
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="the throwaway's Windows-only proof")
+def test_throwaway_windows_only_proof():
+    assert launch.THROWAWAY == 1
+
+
 @pytest.mark.skipif(
     sys.platform != "win32", reason="the daemon's window is a Windows console window"
 )

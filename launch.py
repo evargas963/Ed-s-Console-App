@@ -48,6 +48,7 @@ URL = f"http://127.0.0.1:{CONSOLE_PORT}/"
 #: what each runs right after its program: the console's app, the daemon's module (its batch's line)
 CONSOLE_START = ["-m", "uvicorn", "server:app"]
 DAEMON_START = ["-m", "app.market_data.schwab.streaming.capture_main"]
+THROWAWAY = 1
 #: --timeout-graceful-shutdown: Ctrl+C ends it while pages hold their change streams open
 CONSOLE = [
     sys.executable,
