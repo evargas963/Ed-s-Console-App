@@ -949,9 +949,7 @@ def compute_terrain(
     # every operator surface until this producer computes them.
     (call_delta_wall, _cdw_str), (put_delta_wall, _pdw_str) = pick_delta_wall_strikes(exposures)
     # the gamma profile, built once at one instant, feeds the flip verdict and the regime read
-    parsed, unpriced = contract_inputs(
-        contracts, _terrain_now, product=product
-    )  # one parse for profile + charm
+    parsed, unpriced = contract_inputs(contracts, _terrain_now, product=product)
     profile = compute_gamma_profile(contracts, spot, now=_terrain_now, parsed=parsed)
     flip, confidence, flip_diag = compute_gamma_flip_v2(contracts, spot, profile=profile)
     # ONE gamma at spot: Schwab's gamma as sent, summed over the book (the walls' own gamma).

@@ -6,7 +6,7 @@ Each market date's sessions are Schwab's GET /markets?markets=equity,option answ
 window of each option market (EQO: stock and ETF options; IND: index options). The capture daemon
 asks it once per date per ET day: today, the days before it Schwab answers, and each expiry date
 of the chains; the console takes every answer from the daemon. A date with no answer held is
-unknown: nothing is guessed.
+unknown. Past the year Schwab answers, a contract's expiry runs to its expirationDate as sent.
 """
 
 from __future__ import annotations
@@ -294,22 +294,27 @@ def time_to_expiry_years(
     expiry date (`product`, EQO unless the caller names another), or its open for Schwab's
     settlementType "A".
     Schwab's own expirationDate is not the settlement of an AM-settled contract (an AM-settled
-    $SPX monthly carries the 16:00 ET of its date, as captured). For a date /markets does
-    not answer (beyond the year it answers, or before the 7 days back) a PM-settled contract
-    settles at Schwab's expirationDate; an AM-settled one has no T.
+    $SPX monthly carries the 16:00 ET of its date, as captured). For a date with no /markets
+    answer held a PM-settled contract settles at Schwab's expirationDate as sent, and an
+    AM-settled one too when that is past the year /markets answers; nearer, it has no T.
 
     Validated against Schwab-reported gamma on real chains: intraday-to-close matches
     Schwab to a MEASURED median ratio 0.987 (94% of ATM strikes within 10%) in the 2-6h window.
 
-    None for an AM-settled contract whose expiry date /markets does not answer, for a date it
-    answers with no regular option session, for an expirationDate without its time, and after
-    settlement. At the settlement instant the 10-minute floor guards the exact-expiry
-    singularity."""
+    None for an AM-settled contract within the year /markets answers whose date it has not, for a
+    date it answers with no regular option session, for an expirationDate without its time, and
+    after settlement. At the settlement instant the 10-minute floor guards
+    the exact-expiry singularity."""
     s = session(str(expiration_date)[:10])
     if s is None:
-        if settlement_type == SETTLEMENT_AM or len(str(expiration_date)) <= 10:
+        if len(str(expiration_date)) <= 10:
             return None
         settles = datetime.fromisoformat(str(expiration_date))
+        if (
+            settlement_type == SETTLEMENT_AM
+            and settles.timestamp() - now.timestamp() <= YEAR_SECONDS
+        ):
+            return None
     else:
         windows = s.option_windows(product)
         if not windows:
