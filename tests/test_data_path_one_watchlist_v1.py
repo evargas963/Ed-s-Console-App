@@ -357,16 +357,18 @@ def test_an_added_ticker_is_checked_once_asked_for_everywhere_and_a_removed_one_
                 await asyncio.sleep(0.05)
         console = asyncio.create_task(ofs.serve_push(ws))  # the console's side of the socket
         await _until(lambda: ofs._push_ws is ws)
-        added = json.loads((await server.post_watchlist("tsla")).body)
-        await _until(lambda: daemon.held["NASDAQ_BOOK"] == {"SPY", "TSLA"})
-        swept_after_add = list(daemon.chains.watchlist)
-        invalid = json.loads((await server.post_watchlist("ZQZQZ")).body)
-        removed = json.loads((await server.delete_watchlist("TSLA")).body)
-        await _until(lambda: daemon.held["NASDAQ_BOOK"] == {"SPY"})
-        await ws.close()
-        await asyncio.wait_for(console, 5)
-        stop.set()
-        await asyncio.gather(*tasks)
+        try:
+            added = json.loads((await server.post_watchlist("tsla")).body)
+            await _until(lambda: daemon.held["NASDAQ_BOOK"] == {"SPY", "TSLA"})
+            swept_after_add = list(daemon.chains.watchlist)
+            invalid = json.loads((await server.post_watchlist("ZQZQZ")).body)
+            removed = json.loads((await server.delete_watchlist("TSLA")).body)
+            await _until(lambda: daemon.held["NASDAQ_BOOK"] == {"SPY"})
+        finally:  # a failure still closes the socket: cancelling the server over an open one hangs
+            await ws.close()
+            await asyncio.wait_for(console, 5)
+            stop.set()
+            await asyncio.gather(*tasks)
         return added, invalid, removed, swept_after_add
 
     try:
