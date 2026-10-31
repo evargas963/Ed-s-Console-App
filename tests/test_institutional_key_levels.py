@@ -28,13 +28,13 @@ def test_pin_fails_closed_without_dollarized_gex():
     """No dollarized book -> (None, None); a raw-gamma fallback would silently change basis."""
     # institutional-synthetic-ok: the refusal path needs an un-dollarized bucket on purpose.
     raw_only = {700.0: {"net_gamma": 5.0, "call_gamma": 3.0, "put_gamma": 2.0}}
-    assert pick_pin_and_strength(raw_only, [700.0]) == (None, None)
+    assert pick_pin_and_strength(raw_only) == (None, None)
 
 
 def test_key_delta_strike_is_the_total_dex_argmax_on_real_chain():
     exposures, _ = _dollarized_exposures()
     strikes = sorted(exposures.keys())
-    kds = pick_key_delta_strike(exposures, strikes)
+    kds = pick_key_delta_strike(exposures)
     assert kds is not None
 
     # Independent recompute: no other strike may carry more total |DEX$|.
@@ -51,13 +51,13 @@ def test_key_delta_strike_is_the_total_dex_argmax_on_real_chain():
 def test_key_delta_strike_fails_closed_without_dollarization():
     # OI-only buckets (no DEX$ fields) must return None, never a raw-unit rank.
     exposures = {100.0: {"call_oi": 500, "put_oi": 400}}
-    assert pick_key_delta_strike(exposures, [100.0]) is None
+    assert pick_key_delta_strike(exposures) is None
 
 
 def test_volatility_points_are_signed_extremes_on_real_chain():
     exposures, _ = _dollarized_exposures()
     strikes = sorted(exposures.keys())
-    hvp, lvp = pick_volatility_point_strikes(exposures, strikes)
+    hvp, lvp = pick_volatility_point_strikes(exposures)
     signed = {s: net_gex_dollars_at_strike(exposures.get(s, {})) for s in strikes}
     signed = {s: v for s, v in signed.items() if v is not None}
     negatives = {s: v for s, v in signed.items() if v < 0}
@@ -101,13 +101,8 @@ def test_terrain_snapshot_v2_carries_net_gex_and_new_levels():
     assert d["net_gex_at_spot"] is not None, "the chain must price (valued at its capture)"
     assert d["net_gex_at_spot"] == (d["flip_diag"] or {}).get("gamma_at_spot")
     exposures, _ = compute_exposures_by_strike(SPY_0DTE.chain, spot=SPY_0DTE.spot, now=SPY_0DTE.now)
-    strikes = sorted(exposures.keys())
-    # engine strike list is filtered; pickers must agree when run on the same inputs
-    from math_exposure_core import key_level_strikes_with_gamma
-
-    eng_strikes = key_level_strikes_with_gamma(exposures) or strikes
-    assert d["key_delta_strike"] == pick_key_delta_strike(exposures, eng_strikes)
-    assert (d["hvp"], d["lvp"]) == pick_volatility_point_strikes(exposures, eng_strikes)
+    assert d["key_delta_strike"] == pick_key_delta_strike(exposures)
+    assert (d["hvp"], d["lvp"]) == pick_volatility_point_strikes(exposures)
 
 
 def test_volatility_points_one_sided_chain_returns_none_side():
@@ -115,6 +110,6 @@ def test_volatility_points_one_sided_chain_returns_none_side():
         100.0: {"net_gex_1pct": 5_000_000.0, "call_gex_1pct": 5_000_000.0, "dollarized": True},
         105.0: {"net_gex_1pct": 9_000_000.0, "call_gex_1pct": 9_000_000.0, "dollarized": True},
     }
-    hvp, lvp = pick_volatility_point_strikes(exposures, [100.0, 105.0])
+    hvp, lvp = pick_volatility_point_strikes(exposures)
     assert hvp is None  # no negative pocket anywhere
     assert lvp == 105.0  # most positive, signed — not magnitude

@@ -4,8 +4,10 @@ A name with no listed same-day expiry still gets them. That pin is the only 0DTE
 
 from __future__ import annotations
 
+import pytest
+
 from terrain_engine import SAME_DAY_LEVELS, compute_terrain
-from tests.real_chains import CRWD, MRVL, SPY_0DTE, TSLA
+from tests.real_chains import CRWD, MRVL, NFLX, SPY_0DTE, TSLA
 from time_et import EQUITY_OPTIONS, ET, INDEX_OPTIONS, option_close_product, time_to_expiry_years
 
 
@@ -70,6 +72,16 @@ def test_a_later_front_expiry_keeps_its_charm_at_todays_close():
     assert snap.same_day["put_charm_wall"] == 380.0
     assert snap.call_charm_wall == 390.0
     assert snap.put_charm_wall == 370.0
+
+
+@pytest.mark.parametrize(
+    ("book", "pin"), [(CRWD, 270.0), (MRVL, 285.0), (NFLX, 69.0), (TSLA, 375.0)]
+)
+def test_gamma_rebuilt_to_todays_close_is_not_refused_at_the_listed_expiry(book, pin):
+    """A front expiry later than today: gamma rebuilt to today's close is largest at the price,
+    above any gamma the contract can have at its listed expiry. The strike there stays a level."""
+    same = compute_terrain(book.ticker, book.chain, book.spot, now=book.now).same_day
+    assert same["absolute_gamma_strike"] == pin
 
 
 def test_open_interest_without_volatility_withholds_that_strike():
