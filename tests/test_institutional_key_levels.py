@@ -42,7 +42,7 @@ def test_key_delta_strike_is_the_total_dex_argmax_on_real_chain():
         b = exposures.get(s, {})
         c = bucket_metric_abs(b, "call_dex_dollars")
         p = bucket_metric_abs(b, "put_dex_dollars")
-        return (c or 0.0) + (p or 0.0)
+        return -1.0 if c is None or p is None else c + p
 
     best = max(strikes, key=total_dex)
     assert kds == round(best, 2)

@@ -732,9 +732,7 @@ def pick_key_delta_strike(exposures: dict[float, dict], strikes: list[float]) ->
     def _total_dex(b: dict) -> float | None:
         c = bucket_metric_abs(b, "call_dex_dollars")
         p = bucket_metric_abs(b, "put_dex_dollars")
-        if c is None and p is None:
-            return None
-        return (c or 0.0) + (p or 0.0)
+        return None if c is None or p is None else c + p
 
     s, _ = _pick_strike_max_metric(exposures, strikes, _total_dex)
     return s
