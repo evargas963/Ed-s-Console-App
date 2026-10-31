@@ -56,10 +56,9 @@ def test_the_two_pin_metrics_are_different_quantities():
             "dollarized": True,
         },
     }
-    strikes = [800.0, 810.0]
 
-    pin, strength = pick_pin_and_strength(exposures, strikes)
-    peak = pick_net_gex_peak_strike(exposures, strikes)
+    pin, strength = pick_pin_and_strength(exposures)
+    peak = pick_net_gex_peak_strike(exposures)
 
     assert pin == 800.0, f"gross concentration is at 800 (17.6B vs 4.1B), got {pin}"
     assert peak == 810.0, f"signed-net peak is at 810 (3.9B vs 0.4B), got {peak}"

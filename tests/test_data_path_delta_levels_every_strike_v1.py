@@ -1,5 +1,6 @@
 """The delta levels through the terrain rank every strike by delta, whatever its gamma: AMZN's 250
-strike, one contract's gamma refused as impossible, and TSLA's $5 strike, gamma reported 0."""
+strike, two puts' gamma refused as impossible, and TSLA's $5 strike against its $400 strike, gamma
+reported 0 on the $5."""
 
 from __future__ import annotations
 

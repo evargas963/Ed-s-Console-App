@@ -840,6 +840,8 @@ def same_day_levels(
         if not isinstance(ct, dict) or _listed_expiry_day(ct) != front:
             continue
         copied = dict(ct)
+        # gamma and delta below are ours, not Schwab's: nothing of Schwab's times them
+        copied.pop("greeksTime", None)
         strike = schwab_number(ct.get("strikePrice"))
         row = _contract_inputs(ct, now, t_years=t_close)
         gamma = delta = None
@@ -874,10 +876,9 @@ def same_day_levels(
         return blank
     books = exposure_books(repriced, spot=spot, now=now)
     exposures, _diag = merge_exposure_books(books.values())
-    strikes = sorted(exposures)
-    (call_wall, _), (put_wall, _) = pick_gamma_wall_strikes(exposures, strikes)
-    pin, _strength = pick_pin_and_strength(exposures, strikes)
-    hvp, lvp = pick_volatility_point_strikes(exposures, strikes)
+    (call_wall, _), (put_wall, _) = pick_gamma_wall_strikes(exposures)
+    pin, _strength = pick_pin_and_strength(exposures)
+    hvp, lvp = pick_volatility_point_strikes(exposures)
     if priced:
         profile = compute_gamma_profile(priced, float(spot), now=now, parsed=parsed)
         flip, _confidence, _flip_diag = compute_gamma_flip_v2(priced, float(spot), profile=profile)
@@ -906,12 +907,12 @@ def same_day_levels(
         "put_wall": put_wall,
         "gamma_flip": flip,
         "absolute_gamma_strike": pin,
-        "net_gex_peak": pick_net_gex_peak_strike(exposures, strikes),
+        "net_gex_peak": pick_net_gex_peak_strike(exposures),
         "gsf": support["gsf"],
         "grc": support["grc"],
         "hvp": hvp,
         "lvp": lvp,
-        "key_delta_strike": pick_key_delta_strike(exposures, strikes),
+        "key_delta_strike": pick_key_delta_strike(exposures),
         "call_charm_wall": call_charm,
         "put_charm_wall": put_charm,
     }
@@ -951,11 +952,10 @@ def compute_terrain(
     if not exposures:
         return _unavailable(ticker, spot, "chain produced no exposures")
 
-    strikes = sorted(exposures)
-    (call_wall, _cw_str), (put_wall, _pw_str) = pick_gamma_wall_strikes(exposures, strikes)
-    hvp, lvp = pick_volatility_point_strikes(exposures, strikes)
+    (call_wall, _cw_str), (put_wall, _pw_str) = pick_gamma_wall_strikes(exposures)
+    hvp, lvp = pick_volatility_point_strikes(exposures)
     # max TOTAL gamma — the absolute-gamma concentration, full book.
-    _abs_gamma_strike, _abs_gamma_strength = pick_pin_and_strength(exposures, strikes)
+    _abs_gamma_strike, _abs_gamma_strength = pick_pin_and_strength(exposures)
     # pin_score GEX/OI from THIS same exposures book — never a second analytics book.
     # OI from the ONE reader -- unknown (a contract that never reported OI) is None, never 0.
     from math_exposure_core import book_total_oi, strike_total_oi
@@ -972,9 +972,7 @@ def compute_terrain(
     # the SSOT producer owns the delta walls too — same wide
     # chain, same exposures, one book. OI/vanna walls stay unowned and therefore BLANK on
     # every operator surface until this producer computes them.
-    (call_delta_wall, _cdw_str), (put_delta_wall, _pdw_str) = pick_delta_wall_strikes(
-        exposures, strikes
-    )
+    (call_delta_wall, _cdw_str), (put_delta_wall, _pdw_str) = pick_delta_wall_strikes(exposures)
     # the gamma profile, built once at one instant, feeds the flip verdict and the regime read
     parsed, unpriced = contract_inputs(
         contracts, _terrain_now, product=product
@@ -1061,8 +1059,8 @@ def compute_terrain(
         absolute_gamma_gex_dollars=_abs_gamma_gex_dollars,
         absolute_gamma_oi=_abs_gamma_oi,
         book_oi_total=_book_oi_total,
-        net_gex_peak=pick_net_gex_peak_strike(exposures, strikes),
-        key_delta_strike=pick_key_delta_strike(exposures, strikes),
+        net_gex_peak=pick_net_gex_peak_strike(exposures),
+        key_delta_strike=pick_key_delta_strike(exposures),
         hvp=hvp,
         lvp=lvp,
         net_gex_at_spot=flip_diag.get("gamma_at_spot"),

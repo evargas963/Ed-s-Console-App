@@ -618,14 +618,12 @@ def compute_zero_dte_gamma_share(exposures_all: dict, exposures_0dte: dict) -> f
 
 def _pick_strike_max_metric(
     exposures: dict[float, dict],
-    strikes: list[float],
     metric_fn,
 ) -> tuple[float | None, float | None]:
     best_s: float | None = None
     best_v: float | None = None
-    for s in strikes:
-        b = exposures.get(s, {})
-        v = metric_fn(b)
+    for s in sorted(exposures):
+        v = metric_fn(exposures[s])
         if v is None or v <= 0:
             continue
         if best_v is None or v > best_v:
@@ -634,9 +632,7 @@ def _pick_strike_max_metric(
     return best_s, best_v
 
 
-def pick_pin_and_strength(
-    exposures: dict[float, dict], strikes: list[float]
-) -> tuple[float | None, float | None]:
+def pick_pin_and_strength(exposures: dict[float, dict]) -> tuple[float | None, float | None]:
     """Max TOTAL gamma — a GROSS GAMMA CONCENTRATION, plus its
     decisiveness. NOT a demonstrated magnet.
 
@@ -667,20 +663,20 @@ def pick_pin_and_strength(
     """
     if not exposures_have_dollar_gex(exposures):
         return None, None
-    s, v = _pick_strike_max_metric(exposures, strikes, total_gex_dollars_at_strike)
+    s, v = _pick_strike_max_metric(exposures, total_gex_dollars_at_strike)
     if s is None or v is None or v <= 0:
         return None, None
     second = 0.0
-    for k in strikes:
+    for k, bucket in exposures.items():
         if float(k) == s:
             continue
-        t = total_gex_dollars_at_strike(exposures.get(k, {}))
+        t = total_gex_dollars_at_strike(bucket)
         if t is not None and t > second:
             second = t
     return s, (v - second) / v * 100.0
 
 
-def pick_net_gex_peak_strike(exposures: dict[float, dict], strikes: list[float]) -> float | None:
+def pick_net_gex_peak_strike(exposures: dict[float, dict]) -> float | None:
     """
     Net-GEX peak: strike with largest |net GEX$| per 1% (calls minus puts) -- where the SIGNED
     book concentrates (the standard pin is total gamma, pick_pin_and_strength). None when the
@@ -688,13 +684,11 @@ def pick_net_gex_peak_strike(exposures: dict[float, dict], strikes: list[float])
     """
     if not exposures_have_dollar_gex(exposures):
         return None
-    s, _ = _pick_strike_max_metric(
-        exposures, strikes, lambda b: bucket_metric_abs(b, "net_gex_1pct")
-    )
+    s, _ = _pick_strike_max_metric(exposures, lambda b: bucket_metric_abs(b, "net_gex_1pct"))
     return s
 
 
-def pick_key_delta_strike(exposures: dict[float, dict], strikes: list[float]) -> float | None:
+def pick_key_delta_strike(exposures: dict[float, dict]) -> float | None:
     """Key Delta Strike: largest total delta notional (|call DEX$| + |put DEX$|).
 
     Institutional only — no raw-delta fallback: delta notional needs spot, and a
@@ -708,12 +702,12 @@ def pick_key_delta_strike(exposures: dict[float, dict], strikes: list[float]) ->
         p = bucket_metric_abs(b, "put_dex_dollars")
         return None if c is None or p is None else c + p
 
-    s, _ = _pick_strike_max_metric(exposures, strikes, _total_dex)
+    s, _ = _pick_strike_max_metric(exposures, _total_dex)
     return s
 
 
 def pick_volatility_point_strikes(
-    exposures: dict[float, dict], strikes: list[float]
+    exposures: dict[float, dict],
 ) -> tuple[float | None, float | None]:
     """(HVP, LVP): strike holding the most NEGATIVE / most POSITIVE net GEX$.
 
@@ -727,8 +721,8 @@ def pick_volatility_point_strikes(
     hvp_v: float | None = None
     lvp_s: float | None = None
     lvp_v: float | None = None
-    for s in strikes:
-        v = net_gex_dollars_at_strike(exposures.get(s, {}))
+    for s in sorted(exposures):
+        v = net_gex_dollars_at_strike(exposures[s])
         if v is None:
             continue
         if v < 0 and (hvp_v is None or v < hvp_v):
@@ -739,30 +733,24 @@ def pick_volatility_point_strikes(
 
 
 def pick_gamma_wall_strikes(
-    exposures: dict[float, dict], strikes: list[float]
+    exposures: dict[float, dict],
 ) -> tuple[tuple[float | None, float | None], tuple[float | None, float | None]]:
     """Call/put gamma walls: max |side GEX$|; none without a dollarized book (no spot)."""
     if not exposures_have_dollar_gex(exposures):
         return (None, None), (None, None)
     return (
-        _pick_strike_max_metric(
-            exposures, strikes, lambda b: bucket_metric_abs(b, "call_gex_1pct")
-        ),
-        _pick_strike_max_metric(exposures, strikes, lambda b: bucket_metric_abs(b, "put_gex_1pct")),
+        _pick_strike_max_metric(exposures, lambda b: bucket_metric_abs(b, "call_gex_1pct")),
+        _pick_strike_max_metric(exposures, lambda b: bucket_metric_abs(b, "put_gex_1pct")),
     )
 
 
 def pick_delta_wall_strikes(
-    exposures: dict[float, dict], strikes: list[float]
+    exposures: dict[float, dict],
 ) -> tuple[tuple[float | None, float | None], tuple[float | None, float | None]]:
     """Call/put delta walls: max |side DEX$|; none without a dollarized book (no spot)."""
     if not exposures_have_dollar_gex(exposures):
         return (None, None), (None, None)
     return (
-        _pick_strike_max_metric(
-            exposures, strikes, lambda b: bucket_metric_abs(b, "call_dex_dollars")
-        ),
-        _pick_strike_max_metric(
-            exposures, strikes, lambda b: bucket_metric_abs(b, "put_dex_dollars")
-        ),
+        _pick_strike_max_metric(exposures, lambda b: bucket_metric_abs(b, "call_dex_dollars")),
+        _pick_strike_max_metric(exposures, lambda b: bucket_metric_abs(b, "put_dex_dollars")),
     )
