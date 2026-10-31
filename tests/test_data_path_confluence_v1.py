@@ -181,6 +181,41 @@ def test_a_missing_gamma_blanks_the_score_and_the_top_is_not_100():
     assert top == pytest.approx(max(expected.values()), rel=1e-12) and top < 100
 
 
+def test_an_am_settled_expiry_past_the_year_is_scored():
+    """$SPX's AM-settled 2027-12-17 expiry, captured 2026-10-07, past the year Schwab's /markets
+    answers: each strike with open interest has its charm and vanna, so it has a score, and the
+    score is the definition's."""
+    fx = _fixture("real_spx_chain_2026_10_07_2027_12_17.json")
+    tk, at = server.ticker_storage_key(fx["ticker"]), datetime.fromtimestamp(fx["ts_utc"], ET)
+    try:
+        server._publish_levels(
+            tk,
+            captures=[
+                {
+                    "contracts": [dict(c) for c in fx["chain"]],
+                    "ts_utc": fx["ts_utc"],
+                    "spot": fx["spot"],
+                    "et_date": at.date().isoformat(),
+                    "basis": CAPTURE_BASIS,
+                    "spot_ts": None,
+                    "spot_from_chain": False,
+                }
+            ],
+            now=at,
+        )
+        live = server._terrain_cache[tk]
+    finally:
+        _forget(tk)
+    mags = _book_magnitudes(live, "2027-12-17", fx["spot"])
+    weights = in_score_weights("MONTHLY")
+    scored, _flat, _spans = score_magnitudes(mags, weights)
+    expected = _scores_by_definition(mags, weights)
+    assert len(expected) > 10
+    assert {s: scored[s]["score"] for s in expected} == pytest.approx(
+        expected, rel=1e-12, abs=1e-12
+    )
+
+
 def test_a_missing_factor_is_not_called_flat():
     """NFLX's 2027-12-17 strikes 2.5 to 4, priced by the levels producer: Schwab sent -999 for the
     volatility of the calls at 2.5, 3 and 3.5, with no puts open there, so those have no charm, and
