@@ -1,6 +1,7 @@
 name: Pytest Full Suite
 
-# Playwright E2E then the full Python suite: the required runtime-correctness job, beside hardening.
+# Playwright E2E then the full Python suite, on Linux and on Windows: the two required
+# runtime-correctness jobs, beside hardening.
 
 on:
   pull_request:
@@ -19,7 +20,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
-          # the checks below diff against the base branch, which needs full history
+          # check_fails_before and tests diff against the base branch, which needs full history
           fetch-depth: 0
 
       - name: Set up Python
@@ -113,8 +114,8 @@ jobs:
           echo "CI_CPUS nproc=$(nproc) cpu_count=$(python -c 'import os; print(os.cpu_count())') process_cpu_count=$(python -c 'import os; p=getattr(os,"process_cpu_count",None); print(p() if p else None)')"
           # The two suites run one after the other: pytest on every core beside Playwright starves
           # Playwright's real-time timeouts past this job's 45-minute limit. The recorder writes
-          # each patch the run applies for the patch check below. A test marked `alone` holds a
-          # wall-clock limit, so it runs after the workers, with none beside it.
+          # each patch the run applies for the patch check in pytest-windows. A test marked `alone`
+          # holds a wall-clock limit, so it runs after the workers, with none beside it.
           set +e
           npm run test:e2e
           e2e_rc=$?
@@ -157,13 +158,14 @@ jobs:
         run: python -m tools.check_fails_before --base "origin/$BASE_REF"
 
       - name: Keep the suite's patch record for pytest-windows
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && !cancelled()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with:
           name: patch-record-linux
           path: ${{ runner.temp }}/patch-record
           if-no-files-found: error
-          retention-days: 1
+          overwrite: true
+          retention-days: 14
 
   pytest-windows:
     # Production runs on Windows; pytest-full runs on Linux, where the launcher's console windows,

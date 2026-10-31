@@ -150,8 +150,17 @@ def test_the_stop_finds_and_ends_the_daemon_its_batch_started(tmp_path):
             0,
             "Capture daemon: stopped\nConsole: not running\n",
         ), stopped.stderr
-        time.sleep(6)  # past the batch's 5 s restart wait
-        assert not launch.in_use(push_port), "the batch restarted a daemon stopped on request"
+        end = time.monotonic() + 8  # past the batch's 5 s restart wait
+        while time.monotonic() < end:
+            started = [
+                p.pid
+                for p in psutil.process_iter(["name", "cwd"])
+                if p.info["name"] == "pythonw.exe"
+                and p.info["cwd"]
+                and Path(p.info["cwd"]).resolve() == home.resolve()
+            ]
+            assert not started, f"the batch restarted a daemon stopped on request: {started}"
+            time.sleep(0.2)
     finally:
         for p in psutil.process_iter(["cmdline"]):
             if str(home) in " ".join(p.info["cmdline"] or []):
