@@ -43,7 +43,7 @@ import tempfile
 import tokenize
 from pathlib import Path
 
-PRODUCT_SUFFIXES = (".py", ".js", ".mjs", ".html")
+PRODUCT_SUFFIXES = (".py", ".js", ".mjs", ".html", ".bat")
 NOT_PRODUCT = ("tests/", "tools/", ".github/", "docs/", "playwright.config.mjs")
 CATCH_ALL = ("Exception", "BaseException")
 LOG_METHODS = {"debug", "info", "warning", "warn", "error", "exception", "critical", "log"}

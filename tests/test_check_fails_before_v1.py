@@ -261,6 +261,19 @@ def test_a_code_change_beside_the_comments_still_needs_a_failing_test(tmp_path, 
     ]
 
 
+def test_a_change_to_a_batch_file_needs_a_test(tmp_path):
+    """A batch file starts and restarts production: it is product code."""
+    root = _repo(
+        tmp_path,
+        {"start.bat": "@echo off\r\npython -m other\r\n"},
+        base={**BASE, "start.bat": "@echo off\r\npython -m daemon\r\n"},
+    )
+    assert cfb.violations(root, "main") == [
+        "product code changed (start.bat) but no end-to-end path test "
+        "(tests/test_data_path_*.py or tests/e2e/*.spec.js) changed"
+    ]
+
+
 def test_a_comment_only_change_to_an_html_page_still_needs_a_test(tmp_path):
     """A browser's reading of a page's whitespace, entities and comments depends on CSS and parser
     details, so a page is never judged unchanged by its comments."""
