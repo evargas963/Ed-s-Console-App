@@ -12,7 +12,8 @@
    --durations=20`; extra args narrow the run (a test path, `-n 0`).
 
 If step 1 fails, step 2 does not run. Each step's exit code is its proof. CI
-(`.github/workflows/pytest.yml`) runs both.
+(`.github/workflows/pytest.yml`) runs both, and a test marked `alone` (a limit on the wall clock)
+after the workers, with none beside it.
 
 ## Output goes to a log file
 

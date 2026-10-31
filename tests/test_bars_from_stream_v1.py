@@ -10,6 +10,7 @@ import threading
 import time
 from datetime import datetime
 
+import pytest
 from fastapi.testclient import TestClient
 
 import app.options.order_flow.streaming as ofs
@@ -99,6 +100,7 @@ def test_a_minute_the_stream_did_not_deliver_stays_missing():
     assert [b.ts for b in server._bars_1m(TK)] == [T0, T0 + 60, T0 + 180]
 
 
+@pytest.mark.alone
 def test_the_price_history_is_taken_promptly_and_exactly_while_options_are_priced_alongside():
     """The console prices option chains in the interpreter that takes and serves the bars. Schwab's
     SPY and TSLA 1-minute price history as /pricehistory answered it at 2026-10-07 09:57 UTC (10

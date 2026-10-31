@@ -114,19 +114,25 @@ jobs:
           echo "CI_CPUS nproc=$(nproc) cpu_count=$(python -c 'import os; print(os.cpu_count())') process_cpu_count=$(python -c 'import os; p=getattr(os,"process_cpu_count",None); print(p() if p else None)')"
           # The two suites run one after the other: pytest on every core beside Playwright starves
           # Playwright's real-time timeouts past this job's 45-minute limit. The recorder writes
-          # each patch the run applies for the patch check in pytest-windows.
+          # each patch the run applies for the patch check in pytest-windows. A test marked `alone`
+          # holds a wall-clock limit, so it runs after the workers, with none beside it.
           set +e
           npm run test:e2e
           e2e_rc=$?
           echo "e2e_rc=$e2e_rc" >> "$GITHUB_OUTPUT"
-          python -m pytest -p tools.patch_record -n "$(nproc)" --dist loadfile --durations=20 -rs
+          python -m pytest -p tools.patch_record -n "$(nproc)" --dist loadfile --durations=20 -rs -m "not alone"
           pytest_rc=$?
+          ED_PATCH_RECORD="$ED_PATCH_RECORD/alone" python -m pytest -p tools.patch_record --durations=1 -rs -m alone
+          alone_rc=$?
           set -e
           if [ "$e2e_rc" -ne 0 ]; then
             echo "Playwright E2E failed with ${e2e_rc}"
             exit "$e2e_rc"
           fi
-          exit "$pytest_rc"
+          if [ "$pytest_rc" -ne 0 ]; then
+            exit "$pytest_rc"
+          fi
+          exit "$alone_rc"
 
       - name: Upload Playwright failure traces and the E2E log
         if: failure() && steps.run.outputs.e2e_rc != '0'
@@ -225,7 +231,19 @@ jobs:
           SCHWAB_API_KEY: "ci-not-live-placeholder"
           SCHWAB_APP_SECRET: "ci-not-live-placeholder"
           ED_PATCH_RECORD: ${{ runner.temp }}/patch-record
-        run: python -m pytest -p tools.patch_record -n auto --dist loadfile --durations=20 -rs
+        run: python -m pytest -p tools.patch_record -n auto --dist loadfile --durations=20 -rs -m "not alone"
+
+      - name: Run the tests that hold a wall-clock limit, with no workers beside them
+        if: success() || failure()
+        shell: bash
+        env:
+          CI: "true"
+          ED_CI_OFFLINE: "1"
+          ED_CONSOLE_ALLOW_NONCANONICAL_DB: "1"
+          SCHWAB_API_KEY: "ci-not-live-placeholder"
+          SCHWAB_APP_SECRET: "ci-not-live-placeholder"
+          ED_PATCH_RECORD: ${{ runner.temp }}/patch-record/alone
+        run: python -m pytest -p tools.patch_record --durations=1 -rs -m alone
 
       - name: Fetch pytest-full's patch record
         if: github.event_name == 'pull_request'
@@ -239,7 +257,7 @@ jobs:
         shell: bash
         env:
           BASE_REF: ${{ github.base_ref }}
-        run: python -m tools.check_no_new_patches --base "origin/$BASE_REF" --record "$RUNNER_TEMP/patch-record" "$RUNNER_TEMP/patch-record-linux"
+        run: python -m tools.check_no_new_patches --base "origin/$BASE_REF" --record "$RUNNER_TEMP/patch-record" "$RUNNER_TEMP/patch-record/alone" "$RUNNER_TEMP/patch-record-linux" "$RUNNER_TEMP/patch-record-linux/alone"
 
       - name: Upload Playwright failure traces and the E2E log
         if: failure() && steps.e2e.outcome == 'failure'
