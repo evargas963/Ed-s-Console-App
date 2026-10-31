@@ -285,9 +285,9 @@ def test_rc358_25d_risk_reversal_30_day_tenor_and_fail_closed():
 
 def test_the_flip_counts_the_contracts_it_could_not_price():
     """M-10: the profile cannot price a contract with open interest whose volatility Schwab
-    sent as -999; a PM-settled one beyond a year runs to Schwab's own expirationDate (operator
-    2026-10-08), an AM-settled one to the open of its own date, at the time of day of the newest
-    open Schwab's /markets sent. The served flip says how many were left out and why.
+    sent as -999; one beyond a year runs to Schwab's own expirationDate, PM-settled (operator
+    2026-10-08) and AM-settled (operator 2026-10-31). The served flip says how many were left out
+    and why.
     Real captures of 2026-10-07: NFLX (10:32 ET; PM) -- on 2026-10-16, 100 contracts with open
     interest and a volatility; on 2027-12-17 and 2028-01-21, 585 with a volatility and 8 sent
     -999 -- and $SPX's AM-settled 2027-12-17 expiry (10:37 ET; 288 with open interest)."""

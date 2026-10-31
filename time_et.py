@@ -5,14 +5,14 @@ Each market date's sessions are Schwab's GET /markets?markets=equity,option answ
 (record_markets): the stock market's pre-market, regular and post-market windows, and the regular
 window of each option market (EQO: stock and ETF options; IND: index options). The capture daemon
 asks it once per date per ET day: today, the days before it Schwab answers, and each expiry date
-of the chains; the console takes every answer from the daemon. A date with no answer held is
-unknown: nothing is guessed.
+of the chains; the console takes every answer from the daemon. A date with no answer held has no
+session: nothing is guessed, and a contract expiring on one runs to Schwab's expirationDate.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, time
+from datetime import UTC, date, datetime
 from zoneinfo import ZoneInfo
 
 ET = ZoneInfo("America/New_York")
@@ -280,12 +280,6 @@ MIN_TIME_TO_EXPIRY_YEARS: float = 600.0 / YEAR_SECONDS
 SETTLEMENT_AM = "A"
 
 
-def _newest_open(product: str) -> time | None:
-    """The time of day of the newest open of option market `product` Schwab's /markets sent."""
-    held = [d for d, s in _sessions.items() if s.option_windows(product)]
-    return _sessions[max(held)].option_windows(product)[0][0].time() if held else None
-
-
 def time_to_expiry_years(
     expiration_date: str,
     now: datetime,
@@ -300,27 +294,21 @@ def time_to_expiry_years(
     expiry date (`product`, EQO unless the caller names another), or its open for Schwab's
     settlementType "A".
     Schwab's own expirationDate is not the settlement of an AM-settled contract (an AM-settled
-    $SPX monthly carries the 16:00 ET of its date, as captured). For a date /markets does
-    not answer (beyond the year it answers, or before the 7 days back) a PM-settled contract
-    settles at Schwab's expirationDate; an AM-settled one at the open of its own date, at the
-    time of day of the newest open /markets sent, and has no T with none held.
+    $SPX monthly carries the 16:00 ET of its date, as captured). For a date with no /markets
+    answer held (beyond the year it answers, before the 7 days back, or a request that failed)
+    every contract, AM or PM-settled, settles at Schwab's expirationDate as sent.
 
     Validated against Schwab-reported gamma on real chains: intraday-to-close matches
     Schwab to a MEASURED median ratio 0.987 (94% of ATM strikes within 10%) in the 2-6h window.
 
-    None for an AM-settled contract with no open of `product` held, for a date /markets answers
-    with no regular option session, for an expirationDate without its time, and after settlement.
-    At the settlement instant the 10-minute floor guards the exact-expiry singularity."""
+    None for a date /markets answers with no regular option session, for an expirationDate
+    without its time, and after settlement. At the settlement instant the 10-minute floor guards
+    the exact-expiry singularity."""
     s = session(str(expiration_date)[:10])
     if s is None:
         if len(str(expiration_date)) <= 10:
             return None
         settles = datetime.fromisoformat(str(expiration_date))
-        if settlement_type == SETTLEMENT_AM:
-            opens = _newest_open(product)
-            if opens is None:
-                return None
-            settles = datetime.combine(settles.astimezone(ET).date(), opens, ET)
     else:
         windows = s.option_windows(product)
         if not windows:

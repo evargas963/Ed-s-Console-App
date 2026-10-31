@@ -1,5 +1,5 @@
-"""An AM-settled contract past the year Schwab's /markets answers is priced to the open of its own
-date. $SPX's 2027-12-17 expiry, captured 2026-10-07 10:37 ET, 288 contracts with open interest."""
+"""An AM-settled contract past the year Schwab's /markets answers runs to Schwab's expirationDate.
+$SPX's 2027-12-17 expiry, captured 2026-10-07 10:37 ET, 288 contracts with open interest."""
 
 from __future__ import annotations
 
@@ -18,10 +18,10 @@ _SPX = json.loads(
 )
 
 
-def test_every_contract_is_priced_to_the_open_of_its_date_through_the_terrain():
+def test_every_contract_is_priced_to_schwabs_expiration_date_through_the_terrain():
     at = datetime.fromtimestamp(_SPX["ts_utc"], time_et.ET)
     priced, _unpriced = contract_inputs(_SPX["chain"], at)
-    settles = datetime(2027, 12, 17, 9, 30, tzinfo=time_et.ET)
+    settles = datetime.fromisoformat(_SPX["chain"][0]["expirationDate"])
     assert len(priced) == 288
     assert {row[3] for row in priced} == {
         (settles.timestamp() - at.timestamp()) / time_et.YEAR_SECONDS
