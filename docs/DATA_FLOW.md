@@ -645,10 +645,11 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
   (`time_et.last_open`), the chain history's capture windows (the option markets, to the last close), and
   each contract's time to expiry (the EQO regular close of its expiry date, or its open for
   settlementType "A": Schwab's expirationDate is not the settlement, an AM-settled $SPX monthly
-  carries 16:00 ET). On an expiry date with no /markets answer held (beyond the year it answers,
-  or a request that failed), every contract runs to Schwab's own expirationDate as sent: PM-settled
-  (operator 2026-10-08) and AM-settled (operator 2026-10-31, asked which to use: "Use Schwab's
-  date"; up to 6.5 hours past an AM-settled contract's open). No hand-typed
+  carries 16:00 ET). On an expiry date with no /markets answer held, a PM-settled contract runs to
+  Schwab's own expirationDate as sent (operator 2026-10-08), and an AM-settled one does past the
+  year /markets answers (operator 2026-10-31, asked which to use: "Use Schwab's date"; up to 6.5
+  hours past its open); nearer, its settlement may have passed and it has no time to expiry. No
+  hand-typed
   holiday, early-close or covered-year table exists. A day with no session has an empty window.
   The label only labels: no session window starts, stops or clears a streamed value (stock
   quotes from 04:00 ET are shown and recorded), and the order-flow state keeps every book,

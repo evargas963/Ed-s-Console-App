@@ -207,9 +207,9 @@ def _contract_inputs(
 
     `t_years` is the canonical INTRADAY time-to-expiry (time_et.time_to_expiry_years): to the
     contract's settlement (the option market's regular close Schwab's /markets sent for its
-    expiry date, or its open for Schwab's settlementType "A"; Schwab's expirationDate for a
-    PM-settled contract on a date /markets does not answer), ACT/365, from `now` (the caller's
-    valuation instant), unless the caller passes `t_years`. Offline/replay callers pass
+    expiry date, or its open for Schwab's settlementType "A"; on a date /markets has not answered,
+    as time_et.time_to_expiry_years says), ACT/365, from `now` (the caller's valuation instant),
+    unless the caller passes `t_years`. Offline/replay callers pass
     `now` = the snapshot time.
     """
     from math_exposure_core import schwab_iv_to_sigma

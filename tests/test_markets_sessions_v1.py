@@ -197,8 +197,8 @@ def test_time_to_expiry_runs_to_schwabs_close_of_the_expiry_date():
     of its date): T runs to the EQO regular close Schwab's /markets sent for the expiry date --
     13:00 on the 2026-11-27 early close -- or its 09:30 open for settlementType "A"; none on a
     date Schwab says has no session. Beyond the year /markets answers every contract runs to
-    Schwab's expirationDate as sent, PM-settled (operator 2026-10-08) and AM-settled (operator
-    2026-10-31)."""
+    Schwab's expirationDate as sent. On a nearer date with no answer held (a request that failed),
+    a PM-settled one does and an AM-settled one has none: its settlement may have passed."""
     year = time_et.YEAR_SECONDS
     at = _et("2026-11-27 10:00")
     assert time_et.time_to_expiry_years("2026-11-27T21:00:00.000+00:00", at) == 3 * 3600 / year
@@ -215,6 +215,12 @@ def test_time_to_expiry_runs_to_schwabs_close_of_the_expiry_date():
             time_et.time_to_expiry_years(far, at, settlement_type=settlement)
             == (datetime.fromisoformat(far).timestamp() - at.timestamp()) / year
         )
+    unanswered = "2027-11-19T21:00:00.000+00:00"  # within a year of `at`, after the held answers
+    assert (
+        time_et.time_to_expiry_years(unanswered, at, settlement_type="P")
+        == (datetime.fromisoformat(unanswered).timestamp() - at.timestamp()) / year
+    )
+    assert time_et.time_to_expiry_years(unanswered, at, settlement_type="A") is None
 
 
 # ── question 2: the screen shows what Schwab streams, whatever the label says ────────────────
