@@ -180,8 +180,8 @@ def pick_charm_wall_strikes(
     return cw, pw
 
 
-#: why an AM-settled contract has no time to expiry: Schwab's /markets answer for its expiry date
-#: is not held (beyond the year Schwab answers), so its settlement (the open) is not known
+#: why an AM-settled contract has no time to expiry: no /markets answer for its expiry date is
+#: held, nor any open to take the time of day from, so its settlement (the open) is not known
 NO_EXPIRY_SESSION = "no_markets_session_for_expiry"
 
 

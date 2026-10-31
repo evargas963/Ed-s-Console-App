@@ -647,7 +647,10 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
   settlementType "A": Schwab's expirationDate is not the settlement, an AM-settled $SPX monthly
   carries 16:00 ET). On an expiry date Schwab's /markets does not answer (beyond a year), a
   PM-settled contract runs to Schwab's own expirationDate (operator 2026-10-08) and an AM-settled
-  one has no time to expiry: it is counted unpriced with the reason
+  one to the open of that date, the contract's own term, at the time of day of the newest open
+  /markets sent (decided 2026-10-31 by the banking analogy and Cboe's settlement terms: a bank
+  schedules from the contract and meets an unscheduled change when it comes); with no open held
+  it has no time to expiry and is counted unpriced with the reason
   (`math_levels.NO_EXPIRY_SESSION`). No hand-typed
   holiday, early-close or covered-year table exists. A day with no session has an empty window.
   The label only labels: no session window starts, stops or clears a streamed value (stock
