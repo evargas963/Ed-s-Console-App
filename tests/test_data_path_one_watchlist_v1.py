@@ -507,12 +507,18 @@ def test_the_page_is_told_the_market_context_with_its_display_names():
 
 def test_the_routes_that_take_a_json_body_read_it_and_refuse_none():
     """Over HTTP through the real app, with no daemon connected: a POST with no body, without its
-    field or with a field of the wrong type is refused before the route runs; one with its JSON
-    reaches the route: an add says the daemon is away, and no contract selected is taken."""
+    field, with a field of the wrong type or with a body that is not a JSON object is refused
+    before the route runs; one with its JSON reaches the route: an add says the daemon is away, no
+    contract selected is taken, and a contract no chain lists is refused by the route."""
     client = TestClient(server.app, raise_server_exceptions=False)
     for route, field in (("/api/watchlist", "ticker"), ("/api/flow-contract", "contract")):
         assert client.post(route).status_code == 422, route
         assert client.post(route, json={}).status_code == 422, route
         assert client.post(route, json={field: 5}).status_code == 422, route
+        assert client.post(route, json=[]).status_code == 422, route
+        plain = client.post(route, content="x", headers={"Content-Type": "text/plain"})
+        assert plain.status_code == 422, route
     assert client.post("/api/watchlist", json={"ticker": "TSLA"}).status_code == 503
     assert client.post("/api/flow-contract", json={"contract": None}).status_code == 200
+    unlisted = "ZZZZ  261120C00100000"
+    assert client.post("/api/flow-contract", json={"contract": unlisted}).status_code == 409

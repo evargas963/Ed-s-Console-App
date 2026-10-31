@@ -28,7 +28,6 @@ import psutil
 from fastapi import Body, FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
 
 import live_market_plane as lmp
 import live_price_rows as _lpr  # with_change: the bar-change computation
@@ -3273,7 +3272,8 @@ async def delete_watchlist(ticker: str):
     return await _watchlist_change("remove", ticker)
 
 
-class FlowContract(BaseModel):
+@dataclass(frozen=True)
+class FlowContract:
     """The body of /api/flow-contract: the field is required, null meaning none selected (a
     required body parameter of its own would read null as missing)."""
 
