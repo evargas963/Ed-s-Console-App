@@ -481,7 +481,6 @@ def violations(root: Path, base: str) -> list[str]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    sys.stdout.reconfigure(encoding="utf-8")  # a spec's title may hold any character
     ap = argparse.ArgumentParser()
     ap.add_argument("--base", required=True)
     a = ap.parse_args(argv)
