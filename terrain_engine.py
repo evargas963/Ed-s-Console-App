@@ -834,7 +834,6 @@ def same_day_levels(
     parsed: list = []
     priced: list[dict] = []
     repriced: list[dict] = []
-    built: list[tuple[dict, tuple | None, float | None]] = []
     blocked: set[float] = set()
     for ct in contracts:
         if not isinstance(ct, dict) or _listed_expiry_day(ct) != front:
@@ -842,7 +841,7 @@ def same_day_levels(
         copied = dict(ct)
         # gamma and delta below are ours, not Schwab's: nothing of Schwab's times them
         copied.pop("greeksTime", None)
-        strike = schwab_number(ct.get("strikePrice"))
+        repriced.append(copied)
         row = _contract_inputs(ct, now, t_years=t_close)
         gamma = delta = None
         if isinstance(row, tuple):
@@ -852,26 +851,15 @@ def same_day_levels(
         if gamma is None or delta is None:
             copied["gamma"] = None
             copied["delta"] = None
+            strike = schwab_number(ct.get("strikePrice"))
             oi = schwab_count(ct.get("openInterest"))
             if strike is not None and oi is not None and oi > 0:
                 blocked.add(float(strike))
-            built.append((copied, None, strike))
             continue
         copied["gamma"] = gamma
         copied["delta"] = delta
-        built.append((copied, row, strike))
-    for copied, row, strike in built:
-        if strike is not None and float(strike) in blocked:
-            # One contract at this strike has open interest and no rebuilt greek.
-            # No sibling names the strike either: not a wall, and not a charm wall.
-            copied["gamma"] = None
-            copied["delta"] = None
-            repriced.append(copied)
-            continue
-        repriced.append(copied)
-        if row is not None:
-            parsed.append(row)
-            priced.append(copied)
+        parsed.append(row)
+        priced.append(copied)
     if not repriced:
         return blank
     books = exposure_books(repriced, spot=spot, now=now)
@@ -888,16 +876,11 @@ def same_day_levels(
             found = held_charm.get(front)
             if isinstance(found, dict):
                 part = found
-        if isinstance(part, dict):
-            eligible = {
-                strike_key: bucket
-                for strike_key, bucket in part.items()
-                if strike_key not in blocked
-            }
-            call_charm, put_charm = pick_charm_wall_strikes(eligible)
-        else:
-            charm = compute_charm_by_strike(priced, float(spot), now=now, parsed=parsed)
-            call_charm, put_charm = pick_charm_wall_strikes(charm)
+        if not isinstance(part, dict):
+            part = compute_charm_by_strike(priced, float(spot), now=now, parsed=parsed)
+        call_charm, put_charm = pick_charm_wall_strikes(
+            {k: bucket for k, bucket in part.items() if k not in blocked}
+        )
     else:
         flip = None
         support = {"gsf": None, "grc": None}

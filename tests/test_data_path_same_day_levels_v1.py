@@ -84,14 +84,10 @@ def test_gamma_rebuilt_to_todays_close_is_not_refused_at_the_listed_expiry(book,
     assert same["absolute_gamma_strike"] == pin
 
 
-def test_open_interest_without_volatility_withholds_that_strike():
-    """The captured call at the same-day call wall, with its volatility absent and its own
-    open interest kept, is put back on the captured chain. That strike is not a same-day level."""
+def _with_a_call_at(strike: float) -> dict:
+    """The captured call at `strike`, its volatility absent and its own open interest kept, is
+    put back on the captured chain."""
     book = SPY_0DTE
-    strike = compute_terrain(book.ticker, book.chain, book.spot, now=book.now).to_dict()[
-        "same_day"
-    ]["call_wall"]
-    assert strike is not None
     chain = [dict(ct) for ct in book.chain]
     seed = next(
         ct
@@ -101,10 +97,19 @@ def test_open_interest_without_volatility_withholds_that_strike():
     absent = dict(seed)
     absent["volatility"] = None
     chain.append(absent)
-    same = compute_terrain(book.ticker, chain, book.spot, now=book.now).to_dict()["same_day"]
+    return compute_terrain(book.ticker, chain, book.spot, now=book.now).to_dict()["same_day"]
+
+
+def _same_day(name: str) -> float:
+    book = SPY_0DTE
+    return compute_terrain(book.ticker, book.chain, book.spot, now=book.now).same_day[name]
+
+
+def test_a_contract_with_no_rebuilt_gamma_leaves_its_side_and_the_strike_total_unknown():
+    strike = _same_day("call_wall")
+    same = _with_a_call_at(strike)
     for name in (
         "call_wall",
-        "put_wall",
         "absolute_gamma_strike",
         "net_gex_peak",
         "hvp",
@@ -114,3 +119,8 @@ def test_open_interest_without_volatility_withholds_that_strike():
         "put_charm_wall",
     ):
         assert same[name] != float(strike), name
+
+
+def test_a_contract_with_no_rebuilt_gamma_leaves_the_other_side_known():
+    strike = _same_day("put_wall")
+    assert _with_a_call_at(strike)["put_wall"] == strike
