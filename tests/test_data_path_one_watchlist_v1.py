@@ -357,10 +357,10 @@ def test_an_added_ticker_is_checked_once_asked_for_everywhere_and_a_removed_one_
                 await asyncio.sleep(0.05)
         console = asyncio.create_task(ofs.serve_push(ws))  # the console's side of the socket
         await _until(lambda: ofs._push_ws is ws)
-        added = json.loads((await server.post_watchlist({"ticker": "tsla"})).body)
+        added = json.loads((await server.post_watchlist("tsla")).body)
         await _until(lambda: daemon.held["NASDAQ_BOOK"] == {"SPY", "TSLA"})
         swept_after_add = list(daemon.chains.watchlist)
-        invalid = json.loads((await server.post_watchlist({"ticker": "ZQZQZ"})).body)
+        invalid = json.loads((await server.post_watchlist("ZQZQZ")).body)
         removed = json.loads((await server.delete_watchlist("TSLA")).body)
         await _until(lambda: daemon.held["NASDAQ_BOOK"] == {"SPY"})
         await ws.close()
@@ -506,11 +506,13 @@ def test_the_page_is_told_the_market_context_with_its_display_names():
 
 
 def test_the_routes_that_take_a_json_body_read_it_and_refuse_none():
-    """Over HTTP through the real app, with no daemon connected: a POST with no body is refused
-    before the route runs; one with its JSON reaches the route: an add says the daemon is away, and
-    no contract selected is taken."""
-    client = TestClient(server.app)
-    for route in ("/api/watchlist", "/api/flow-contract"):
+    """Over HTTP through the real app, with no daemon connected: a POST with no body, without its
+    field or with a field of the wrong type is refused before the route runs; one with its JSON
+    reaches the route: an add says the daemon is away, and no contract selected is taken."""
+    client = TestClient(server.app, raise_server_exceptions=False)
+    for route, field in (("/api/watchlist", "ticker"), ("/api/flow-contract", "contract")):
         assert client.post(route).status_code == 422, route
+        assert client.post(route, json={}).status_code == 422, route
+        assert client.post(route, json={field: 5}).status_code == 422, route
     assert client.post("/api/watchlist", json={"ticker": "TSLA"}).status_code == 503
     assert client.post("/api/flow-contract", json={"contract": None}).status_code == 200

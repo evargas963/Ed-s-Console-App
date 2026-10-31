@@ -28,6 +28,7 @@ import psutil
 from fastapi import Body, FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 import live_market_plane as lmp
 import live_price_rows as _lpr  # with_change: the bar-change computation
@@ -3260,10 +3261,10 @@ async def _watchlist_change(action: str, ticker: str) -> JSONResponse:
 
 
 @app.post("/api/watchlist")
-async def post_watchlist(payload: Annotated[dict, Body()]):
+async def post_watchlist(ticker: Annotated[str, Body(embed=True)]):
     """Add a ticker: the daemon checks it with one /quotes request and adds it unless Schwab
     does not quote it (names it in errors.invalidSymbols)."""
-    return await _watchlist_change("add", str(payload["ticker"]))
+    return await _watchlist_change("add", ticker)
 
 
 @app.delete("/api/watchlist/{ticker}")
@@ -3272,19 +3273,30 @@ async def delete_watchlist(ticker: str):
     return await _watchlist_change("remove", ticker)
 
 
+class FlowContract(BaseModel):
+    """The body of /api/flow-contract: the field is required, null meaning none selected (a
+    required body parameter of its own would read null as missing)."""
+
+    contract: str | None
+
+
 @app.post("/api/flow-contract")
-async def post_flow_contract(payload: Annotated[dict, Body()]):
+async def post_flow_contract(selected: FlowContract):
     """The contract selected on the Flow panel ({"contract": symbol}, or null for none): the daemon
     streams it on LEVELONE_OPTIONS and OPTIONS_BOOK on top of its option rule. Only a contract
     Schwab listed in a chain the console holds is taken."""
-    c = payload["contract"]
-    if c is not None and _contract_ticker(c) is None:
+    contract = selected.contract
+    if contract is not None and _contract_ticker(contract) is None:
         return JSONResponse(
-            {"ok": False, "contract": c, "error": "not a contract in a chain the console holds"},
+            {
+                "ok": False,
+                "contract": contract,
+                "error": "not a contract in a chain the console holds",
+            },
             status_code=409,
         )
-    await select_flow_contract(c)
-    return {"ok": True, "contract": c}
+    await select_flow_contract(contract)
+    return {"ok": True, "contract": contract}
 
 
 @app.get("/api/expiries")
