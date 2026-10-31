@@ -344,8 +344,11 @@ def past_settlement(
     product: str = EQUITY_OPTIONS,
 ) -> bool:
     """True when the contract has settled: past its settlement, or, that not being known, past its
-    date. False when its time to expiry is unknown but it may still be live."""
+    date. False when it may still be live, a date that cannot be read among them."""
     settles = _settlement(expiration_date, now, settlement_type, product)
-    if settles is None:
-        return str(expiration_date)[:10] < now.astimezone(ET).date().isoformat()
-    return settles.timestamp() < now.timestamp()
+    if settles is not None:
+        return settles.timestamp() < now.timestamp()
+    try:
+        return date.fromisoformat(str(expiration_date)[:10]) < now.astimezone(ET).date()
+    except ValueError:
+        return False

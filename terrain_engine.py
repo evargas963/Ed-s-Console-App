@@ -995,10 +995,8 @@ def compute_terrain(
     for ct in contracts:
         if not isinstance(ct, dict):
             continue
-        exp = _listed_expiry_day(ct)
-        if exp is None:
-            continue
-        expiry_rows.setdefault(exp, []).append(ct)
+        # no readable date keeps its row, as the exposure books key it "", so its side is unknown
+        expiry_rows.setdefault(_listed_expiry_day(ct) or "", []).append(ct)
     for exp, rows in expiry_rows.items():
         charm_by_expiry[exp] = compute_charm_by_strike(
             rows, float(spot), now=_terrain_now, product=product

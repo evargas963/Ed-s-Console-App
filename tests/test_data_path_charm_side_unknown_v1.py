@@ -8,11 +8,13 @@ import json
 from datetime import datetime
 from pathlib import Path
 
+import pytest
+
 import server
 from math_levels import compute_charm_by_strike
 from terrain_engine import compute_terrain
 from tests.real_chains import NFLX
-from time_et import ET, INDEX_OPTIONS
+from time_et import ET, INDEX_OPTIONS, past_settlement
 
 
 def test_a_contract_schwab_sent_no_volatility_leaves_its_side_and_net_unknown():
@@ -39,6 +41,51 @@ def test_a_live_contract_with_no_time_to_expiry_leaves_its_side_unknown():
     now = datetime(2027, 1, 4, 12, 0, tzinfo=ET)
     book = compute_charm_by_strike(fx["chain"], fx["spot"], now=now, product=INDEX_OPTIONS)
     assert book and all(b["net_charm"] is None for b in book.values())
+
+
+def test_a_contract_past_its_date_with_no_session_held_has_settled():
+    """$SPX's AM-settled 2027-12-17 contracts on 2028-02-01: no /markets answer is held, and the
+    date has passed."""
+    fx = json.loads(
+        (
+            Path(__file__).parent / "fixtures" / "real_spx_chain_2026_10_07_2027_12_17.json"
+        ).read_text(encoding="utf-8")
+    )
+    now = datetime(2028, 2, 1, 12, 0, tzinfo=ET)
+    assert compute_charm_by_strike(fx["chain"], fx["spot"], now=now, product=INDEX_OPTIONS) == {}
+
+
+@pytest.mark.parametrize("date_sent", ["", -999, "-999", None, "bad"])
+def test_a_date_that_cannot_be_read_is_not_settled(date_sent):
+    assert not past_settlement(date_sent, NFLX.now)
+
+
+def test_a_reported_multiplier_of_0_is_0_and_a_missing_one_is_not_known():
+    """Induced test condition: NFLX's $5 call, which has a charm, with its multiplier changed."""
+    call = next(
+        c
+        for c in NFLX.chain
+        if c["strikePrice"] == 5.0
+        and c["putCall"] == "CALL"
+        and c["expirationDate"].startswith("2027-12-17")
+    )
+    book = [c for c in NFLX.chain if c["strikePrice"] == 5.0 and c is not call]
+    zero = compute_charm_by_strike([*book, dict(call, multiplier=0)], NFLX.spot, now=NFLX.now)
+    gone = compute_charm_by_strike([*book, dict(call, multiplier=None)], NFLX.spot, now=NFLX.now)
+    assert zero[5.0]["call_charm"] is not None
+    assert gone[5.0]["call_charm"] is None
+
+
+def test_a_contract_with_no_readable_date_leaves_its_side_unknown_in_the_terrain():
+    """Induced test condition: NFLX's $5 call put back with its expirationDate removed."""
+    call = next(
+        c
+        for c in NFLX.chain
+        if c["strikePrice"] == 5.0 and c["putCall"] == "CALL" and c["openInterest"] > 0
+    )
+    chain = [*NFLX.chain, {k: v for k, v in call.items() if k != "expirationDate"}]
+    snap = compute_terrain(NFLX.ticker, chain, NFLX.spot, now=NFLX.now)
+    assert snap.charm_by_strike[5.0]["call_charm"] is None
 
 
 def test_a_forces_side_with_no_strike_known_has_no_total():
