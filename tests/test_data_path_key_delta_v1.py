@@ -1,4 +1,4 @@
-"""The Key Delta Strike through the terrain, every captured chain: a strike with one side's delta
+"""The Key Delta Strike through the terrain, on six captured chains: a strike with one side's delta
 not known has no total, as total_gex_dollars_at_strike leaves one with a side's gamma not known."""
 
 from __future__ import annotations
