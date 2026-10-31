@@ -16,7 +16,6 @@ from math_exposure_core import (
     compute_zero_dte_gamma_share,
     exposure_books,
     exposures_have_dollar_gex,
-    key_level_strikes_with_gamma,
     merge_exposure_books,
     pick_delta_wall_strikes,
     pick_gamma_wall_strikes,
@@ -875,7 +874,7 @@ def same_day_levels(
         return blank
     books = exposure_books(repriced, spot=spot, now=now)
     exposures, _diag = merge_exposure_books(books.values())
-    strikes = key_level_strikes_with_gamma(exposures)
+    strikes = sorted(exposures)
     (call_wall, _), (put_wall, _) = pick_gamma_wall_strikes(exposures, strikes)
     pin, _strength = pick_pin_and_strength(exposures, strikes)
     hvp, lvp = pick_volatility_point_strikes(exposures, strikes)
@@ -952,9 +951,7 @@ def compute_terrain(
     if not exposures:
         return _unavailable(ticker, spot, "chain produced no exposures")
 
-    # key levels only on strikes with usable gamma -- no all-strikes fallback: with
-    # none the pickers return None instead of ranking initialiser zeros.
-    strikes = key_level_strikes_with_gamma(exposures)
+    strikes = sorted(exposures)
     (call_wall, _cw_str), (put_wall, _pw_str) = pick_gamma_wall_strikes(exposures, strikes)
     hvp, lvp = pick_volatility_point_strikes(exposures, strikes)
     # max TOTAL gamma — the absolute-gamma concentration, full book.

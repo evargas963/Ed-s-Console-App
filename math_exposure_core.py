@@ -554,26 +554,6 @@ def key_level_strikes_with_oi(exposures: dict[float, dict]) -> list[float]:
     return out
 
 
-def key_level_strikes_with_gamma(exposures: dict[float, dict]) -> list[float]:
-    """Strikes with usable gamma buckets (excludes OI-only / invalid-greek tails)."""
-    if not exposures:
-        return []
-    dollar = exposures_have_dollar_gex(exposures)
-    out: list[float] = []
-    for s in sorted(float(k) for k in exposures):
-        b = exposures.get(s, {})
-        if dollar:
-            tg = total_gex_dollars_at_strike(b)
-            ng = net_gex_dollars_at_strike(b)
-            if (tg is not None and tg > 0) or (ng is not None and abs(ng) > 1e-12):
-                out.append(s)
-        else:
-            tg = total_gamma_raw_at_strike(b)
-            if tg is not None and tg > 0:
-                out.append(s)
-    return out
-
-
 def total_gex_dollars_at_strike(bucket: dict) -> float | None:
     """Peak gamma concentration: |call GEX$| + |put GEX$| per 1% move."""
     c = bucket_metric_abs(bucket, "call_gex_1pct")
@@ -634,12 +614,6 @@ def compute_zero_dte_gamma_share(exposures_all: dict, exposures_0dte: dict) -> f
         if x is not None:
             zero += abs(x)
     return 100.0 * zero / total
-
-
-def total_gamma_raw_at_strike(bucket: dict) -> float | None:
-    c = bucket_metric_abs(bucket, "call_gamma")
-    p = bucket_metric_abs(bucket, "put_gamma")
-    return None if c is None or p is None else c + p
 
 
 def _pick_strike_max_metric(

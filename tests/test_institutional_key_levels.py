@@ -102,12 +102,8 @@ def test_terrain_snapshot_v2_carries_net_gex_and_new_levels():
     assert d["net_gex_at_spot"] == (d["flip_diag"] or {}).get("gamma_at_spot")
     exposures, _ = compute_exposures_by_strike(SPY_0DTE.chain, spot=SPY_0DTE.spot, now=SPY_0DTE.now)
     strikes = sorted(exposures.keys())
-    # engine strike list is filtered; pickers must agree when run on the same inputs
-    from math_exposure_core import key_level_strikes_with_gamma
-
-    eng_strikes = key_level_strikes_with_gamma(exposures) or strikes
-    assert d["key_delta_strike"] == pick_key_delta_strike(exposures, eng_strikes)
-    assert (d["hvp"], d["lvp"]) == pick_volatility_point_strikes(exposures, eng_strikes)
+    assert d["key_delta_strike"] == pick_key_delta_strike(exposures, strikes)
+    assert (d["hvp"], d["lvp"]) == pick_volatility_point_strikes(exposures, strikes)
 
 
 def test_volatility_points_one_sided_chain_returns_none_side():
