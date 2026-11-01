@@ -263,7 +263,7 @@
         '<span class="gbs-k">' + num(k, k % 1 ? 2 : 0) + '</span>' +
         '<span class="gbs-track mig-track"><i class="gbs-bar ' + (pos ? 'pos' : 'neg') + '" style="width:' + wToday.toFixed(1) + '%"></i>' +
         (_migGhost ? ghostBar : '') + '</span>' +
-        '<span class="gbs-v ' + (gx == null ? '' : (pos ? 'pos' : 'neg')) + '">' + (gx == null ? '—' : usd(gx)) + '</span>' +
+        '<span class="gbs-v ' + (gx == null ? '' : (pos ? 'pos' : 'neg')) + '">' + (gx == null ? '-' : usd(gx)) + '</span>' +
         (_migGhost ? deltaHtml : '') +
         '<span class="gbs-vol" title="session volume">' + fmtVol(vol) + '</span>' +
         (k === spotStrike ? migTag('SPOT', 'spot') : '') +

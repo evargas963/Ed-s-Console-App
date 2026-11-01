@@ -94,6 +94,7 @@ from terrain_engine import (
     nearest_strike,
     positioning_migration,
     price_relations,
+    side_total,
     strike_window,
 )
 from terrain_read import LEVEL_ABOVE, LEVEL_BELOW, crossed, from_spot_text, level_side, within
@@ -2197,12 +2198,6 @@ def _windowed(rows: list, spot_strike, scope: str, centre, shift: int) -> tuple[
     return win, {**view, "max_abs": max(known) if known else None}
 
 
-def _side_total(values: list[float | None]) -> float | None:
-    """A side's total: unknown with a strike not known or no strike at all, never the sum of the
-    rest."""
-    return None if not values or None in values else sum(values)
-
-
 @app.get("/api/terrain/strikes")
 def get_terrain_strikes(
     ticker: str = Query(...),
@@ -2254,10 +2249,10 @@ def terrain_strikes_payload(tk: str, scope: str, centre, shift: int, now: float)
         below = [c for c in cells if c[0] is not None and c[0] < s]
         above = [c for c in cells if c[0] is not None and c[0] > s]
         return {
-            "gex_below": _side_total([c[1] for c in below]),
-            "gex_above": _side_total([c[1] for c in above]),
-            "vol_below": _side_total([c[2] for c in below]),
-            "vol_above": _side_total([c[2] for c in above]),
+            "gex_below": side_total([c[1] for c in below]),
+            "gex_above": side_total([c[1] for c in above]),
+            "vol_below": side_total([c[2] for c in below]),
+            "vol_above": side_total([c[2] for c in above]),
             "spot_basis": float(s),
         }
 
@@ -2620,7 +2615,7 @@ def _forces_from_captures(tk: str, captures: list, charm_by_strike: dict | None 
                 the whole chain: a strike one does not list is in that day's total for what it
                 holds, nothing."""
                 totals = [
-                    _side_total([strike_total_oi(b) for k, b in per.items() if in_side(k)])
+                    side_total([strike_total_oi(b) for k, b in per.items() if in_side(k)])
                     for per in (per1, per0)
                 ]
                 return None if None in totals else totals[0] - totals[1]
@@ -2634,8 +2629,8 @@ def _forces_from_captures(tk: str, captures: list, charm_by_strike: dict | None 
                 else:
                     per_ch = compute_charm_by_strike(c1, spot1, now=clock1, product=product)
 
-                charm_below = _side_total([v["net_charm"] for k, v in per_ch.items() if k < spot1])
-                charm_above = _side_total([v["net_charm"] for k, v in per_ch.items() if k > spot1])
+                charm_below = side_total([v["net_charm"] for k, v in per_ch.items() if k < spot1])
+                charm_above = side_total([v["net_charm"] for k, v in per_ch.items() if k > spot1])
             except Exception as e:
                 log.warning("forces charm for %s failed (%s)", tk, e)
             payload = {
@@ -2643,8 +2638,8 @@ def _forces_from_captures(tk: str, captures: list, charm_by_strike: dict | None 
                 "available": True,
                 "doi_below": _oi_change(lambda k: k < spot1),
                 "doi_above": _oi_change(lambda k: k > spot1),
-                "dex_below_dollars": _side_total([d for k, d in dex1.items() if k < spot1]),
-                "dex_above_dollars": _side_total([d for k, d in dex1.items() if k > spot1]),
+                "dex_below_dollars": side_total([d for k, d in dex1.items() if k < spot1]),
+                "dex_above_dollars": side_total([d for k, d in dex1.items() if k > spot1]),
                 "charm_below": charm_below,
                 "charm_above": charm_above,
                 "newer_et_date": d1,

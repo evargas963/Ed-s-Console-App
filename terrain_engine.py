@@ -223,6 +223,12 @@ def _unavailable(ticker: str, spot: float | None, reason: str) -> TerrainSnapsho
     )
 
 
+def side_total(values: list[float | None]) -> float | None:
+    """A total of strikes: unknown with a strike not known or no strike at all, never the sum of
+    the rest."""
+    return None if not values or None in values else sum(values)
+
+
 def _per_strike_rows(exposures: dict) -> list[list]:
     """`[[strike, net_gex_1pct$, session_volume], …]` — the EXACT shape the panel renders.
 
@@ -272,7 +278,7 @@ def positioning_migration(today: list, prior: list, call_wall, put_wall) -> dict
     the positive-gamma-weighted strike today against the prior day, UP / DOWN / FLAT (None
     without positive gamma on both days); grew / shrank: the two strikes that gained / lost the
     most GEX; busiest: the two strikes with the most volume and where they sit against the walls;
-    volume_total: the scope's session volume (None when no row reported volume)."""
+    volume_total: the scope's session volume (side_total)."""
     prior_gex = {r[0]: r[1] for r in prior or []}
     rows, pos_t, pos_p = [], [], []
     for k, gx, _vol in today or []:
@@ -313,7 +319,6 @@ def positioning_migration(today: list, prior: list, call_wall, put_wall) -> dict
             if put_wall is not None and max(busiest) < put_wall
             else "INSIDE_WALLS"
         )
-    reported = [r[2] for r in today or [] if r[2] is not None]
     return {
         "rows": rows,
         "compared": bool(changes),
@@ -324,7 +329,7 @@ def positioning_migration(today: list, prior: list, call_wall, put_wall) -> dict
         "shrank": shrank,
         "busiest": busiest,
         "busiest_vs_walls": where,
-        "volume_total": sum(reported) if reported else None,
+        "volume_total": side_total([r[2] for r in today or []]),
     }
 
 

@@ -71,6 +71,21 @@ test.describe('the Gamma presentation scope', () => {
     await expect(ctl).toBeVisible();
   });
 
+  test('a strike of GEX not known keeps its row: no bar, the dash, no page error', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(String(e)));
+    const rows = [[99, -90000, 1000], [100, null, 1000], [101, 264500, 1000]];
+    await page.route('**/api/terrain/strikes?**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify(Object.assign(strikesFor('auto'), { today: { all: rows }, views: { all: { centre: 100, max_abs: 264500 } },
+        max_abs_row: [101, 264500, 1000] })) }));
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const row = page.locator('#gbsBody .gbs-row[data-strike="100"]');
+    await expect(row.locator('.gbs-v')).toHaveText('-');
+    expect(await row.locator('.gbs-bar').evaluate((el) => el.style.width)).toBe('0%');
+    await expect(page.locator('#gbsBody .gbs-row')).toHaveCount(3);
+    expect(errors).toEqual([]);
+  });
+
   test('GEX-by-strike asks with the scope and draws the served window, legible at every scope', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const gbs = page.locator('#gbsBody');
