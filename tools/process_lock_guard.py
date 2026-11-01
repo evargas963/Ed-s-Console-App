@@ -367,8 +367,8 @@ def pretooluse_block(tool: str, tool_input: dict, payload_cwd: str = "") -> list
     out: list[str] = []
     if tool in _EDIT_TOOLS:
         # judged by the session's checkout: sealed hooks run from the production checkout
-        session = Path(repo_root_of(payload_cwd) or "no-checkout") if payload_cwd else None
-        out.extend(production_checkout_edit_violations(tool_input, REPO, session))
+        session = (repo_root_of(payload_cwd) if payload_cwd else "") or "no-checkout"
+        out.extend(production_checkout_edit_violations(tool_input, REPO, Path(session)))
     if tool in BASH_TOOLS:  # one roster (hook_chain.BASH_TOOLS)
         cmd = tool_input.get("command") or ""
         ps = tool == "PowerShell"
