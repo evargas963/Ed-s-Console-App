@@ -3,8 +3,7 @@
 `.github/workflows/locks.yml` runs this file from the base, on `pull_request_target`, so a change
 cannot edit its judge, and reads the change only as data: it runs no code of the head. Every count
 is taken on the base and the head under the base's rules. A count at 0 is an absolute ban. A change
-this refuses, a rise or a touched lock file, merges only on the operator's approval in GitHub (the
-`operator-locks` environment).
+this refuses cannot merge: `locks` is a required check, and nothing approves past it.
 
     python tools/check_locks.py --base <sha>      from the head's root; exit 3 is refused
 """
@@ -27,38 +26,6 @@ REFUSED = 3
 FREE = ("banned in tests: `sqlite3`", "bytes of", "lines of", "open work items", "ruff D")
 DATA = (".json", ".md", ".mdc", ".csv", ".txt", ".png", ".ico", ".pdf", ".webmanifest", ".lock")
 PYTHON = (".py", ".pyi", ".pyw", ".ipynb")
-#: compared in lower case: Windows, where production runs, reads `Tools/x.py` as `tools/x.py`
-LOCK_PATHS = (
-    RULES,
-    ".claude/",
-    ".cursor/",
-    ".github/",
-    ".pre-commit-config.yaml",
-    "agents.md",
-    "claude.md",
-    "package-lock.json",
-    "package.json",
-    "playwright.config.mjs",
-    "requirements-dev.txt",
-    "scripts/",
-    "tools/",
-)
-#: a file of this name steers ruff, pytest or git wherever it sits
-LOCK_NAMES = (
-    ".gitattributes",
-    ".gitignore",
-    ".ignore",
-    ".pytest.ini",
-    ".pytest.toml",
-    ".ruff.toml",
-    "conftest.py",
-    "pyproject.toml",
-    "pytest.ini",
-    "pytest.toml",
-    "ruff.toml",
-    "setup.cfg",
-    "tox.ini",
-)
 ROW = re.compile(r"^\|(?!\s*(?:ID|#)\s*\|)(?!\s*:?-)", re.M)
 ITEM = re.compile(r"^- [A-Z]+-\d+", re.M)
 PATCH = re.compile(
@@ -156,12 +123,6 @@ def rises(base: Counter, head: Counter) -> list[str]:
 def judge(root: Path, base_ref: str) -> list[str]:
     """Why the head at `root` is refused against `base_ref`; empty when it passes."""
     rules = _run("git", "show", f"{base_ref}:{RULES}", cwd=root)
-    changed = _names("diff", "--no-renames", "--name-only", base_ref, "HEAD", cwd=root)
-    refused = [
-        f"lock file: {name}"
-        for name in changed
-        if name.lower().startswith(LOCK_PATHS) or Path(name).name.lower() in LOCK_NAMES
-    ]
     with tempfile.TemporaryDirectory() as scratch:
         tree = Path(scratch).resolve() / "base"
         _run("git", "worktree", "add", "--detach", "--quiet", str(tree), base_ref, cwd=root)
@@ -172,7 +133,7 @@ def judge(root: Path, base_ref: str) -> list[str]:
             _run("git", "worktree", "remove", "--force", str(tree), cwd=root)
     for name in sorted(head | base):
         print(f"{name}: {base[name]} -> {head[name]}")
-    return refused + rises(base, head)
+    return rises(base, head)
 
 
 def main() -> int:

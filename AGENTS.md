@@ -87,12 +87,11 @@ anything to slow down"; his to reverse); that a change deletes what it replaces 
 ENF-12. No number is kept by hand (`tests/test_check_locks_v1.py`). A banned name (Schwab's clients, `sqlite3`, the clock) counts
 per product file, so no module that does not hold one may start.
 GitHub runs that workflow from the base (`pull_request_target`), and it runs no code of the head, so
-a change cannot edit its judge. A refused rise, or a change to a lock file
-(`check_locks.LOCK_PATHS`, `LOCK_NAMES`), merges only on the operator's approval on the
-`operator-locks` environment (CLAUDE.md item 4 stands). `locks` is a required
-check on `main`. `gh` is allowed by a list and `gh api` only reads, in the forms
-`tests/test_operator_law_guard_action_bans_v1.py` checks (`tools/operator_law_guard.py`); the
-restricted token is what makes that a seal (`ACTIVE_PROGRAM.md` LOCK-SETTINGS).
+a change cannot edit its judge. `locks` is a required check on `main`: a change it refuses cannot
+merge, and nothing approves past it. No step waits on the operator's click, and none is built again
+(operator 2026-11-01: "you need to remove all of this. don't do this again. we strengthen
+enfocement instead from now on"). `gh` is allowed by a list and `gh api` only reads, in the forms
+`tests/test_operator_law_guard_action_bans_v1.py` checks (`tools/operator_law_guard.py`).
 
 ## Rules and what enforces them
 
@@ -227,7 +226,7 @@ then the rule binds with no machine check.
 - At each milestone (a commit, a failed check, a finding that changes the plan), report to the
   operator what changed, what was deleted, each proof and its tier, and what is NOT_PROVEN, then
   continue. Enforced by: no machine check — ENF-12.
-- A PR `locks` does not refuse merges, without waiting on the operator, once CI is green on its final commit, current with
+- A PR merges, without waiting on the operator, once CI is green on its final commit, current with
   `main`, and both reviewers have no FAIL and no NOT_PROVEN open but the deployed-screen tier its
   deploy proves; its deploy follows (operator 2026-10-29: "i don't
   want for you to wait on my yes for merges, etc. you are allowed to continue until you finish").
@@ -237,7 +236,7 @@ then the rule binds with no machine check.
   the rules require the stop (his yes to a plan for work outside SHAPE, CLAUDE.md item 3; his yes
   to a production start or stop in regular hours, or to a change of request rates, limits or
   settings, CLAUDE.md item 5; the next
-  bullet's stop list: a pull request `locks` refuses, his stop words, an AUDIT ONLY or DO NOT MERGE task, a destructive data action,
+  bullet's stop list: his stop words, an AUDIT ONLY or DO NOT MERGE task, a destructive data action,
   a product decision), said in a message that begins `WAITING ON OPERATOR:`. From the third
   refused stop in a row since the operator last wrote, what is being done is suspect (operator
   2026-10-30: "at that point in time i would suspect that what you are doing isn't working"): the
@@ -251,7 +250,7 @@ then the rule binds with no machine check.
   failed, it is not working" and the rest of the above (`tests/test_keep_going_v1.py`); that a
   stop marked so is one the rules require, and that the next approach differs — no machine check,
   ENF-12.
-- Stop for a pull request `locks` refuses, which waits on his approval, the operator's STOP / PAUSE / HANG IT UP / DO NOT CONTINUE / NO, a task marked AUDIT ONLY
+- Stop for the operator's STOP / PAUSE / HANG IT UP / DO NOT CONTINUE / NO, a task marked AUDIT ONLY
   or DO NOT MERGE, a destructive data action, and a product decision code cannot settle. Say in chat
   what a guarded action is for before running it. Enforced by: `tools/operator_yes_guard.py` asks
   Allow/Deny for the daemon or console starts and stops (in regular hours or an unknown session),

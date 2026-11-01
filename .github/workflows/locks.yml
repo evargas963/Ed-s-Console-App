@@ -1,9 +1,8 @@
 name: Locks
 
 # pull_request_target: GitHub runs this file and tools/check_locks.py from the base, so a pull
-# request cannot edit its judge. The head is only read as data; none of its code runs. The required
-# check is `locks`: it runs whatever `judge` did, and passes only on a clean judgement or the
-# operator's approval.
+# request cannot edit its judge. The head is only read as data; none of its code runs. `locks` is
+# a required check, and a change it refuses cannot merge.
 on:
   pull_request_target:
     branches: [main]
@@ -13,11 +12,9 @@ permissions:
   contents: read
 
 jobs:
-  judge:
+  locks:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    outputs:
-      refused: ${{ steps.judge.outputs.refused }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
@@ -29,45 +26,15 @@ jobs:
           python-version: "3.13"
       - name: the base's ruff
         run: python -m pip install "$(grep '^ruff==' judge/requirements-dev.txt)"
-      - id: judge
-        name: the change, against the base
+      - name: the change, against the base
         env:
           PR: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          # this job names no environment: a value here can only be a stray repository variable
-          STRAY: ${{ vars.OPERATOR_LOCKS }}
         run: |
-          test -z "$STRAY"
           git -C judge fetch -q "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
             "refs/pull/$PR/merge:refs/heads/judged"
           test "$(git -C judge rev-parse refs/heads/judged^2)" = "$HEAD_SHA"
           test "$(git -C judge rev-parse refs/heads/judged^1)" = "$(git -C judge rev-parse HEAD)"
           git -C judge worktree add -q --detach "$PWD/head" refs/heads/judged
           cd head
-          status=0
-          python ../judge/tools/check_locks.py --base "$(git rev-parse HEAD^1)" || status=$?
-          if [ "$status" = 3 ]; then
-            echo "refused=true" >> "$GITHUB_OUTPUT"
-          elif [ "$status" = 0 ]; then
-            echo "refused=false" >> "$GITHUB_OUTPUT"
-          else
-            exit "$status"
-          fi
-
-  locks:
-    needs: judge
-    if: ${{ always() }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    # a refused change waits here for the operator's approval in GitHub
-    environment: ${{ needs.judge.outputs.refused == 'true' && 'operator-locks' || '' }}
-    steps:
-      - name: judged, and clean or approved
-        env:
-          JUDGED: ${{ needs.judge.result }}
-          REFUSED: ${{ needs.judge.outputs.refused }}
-          # exists only inside the operator's environment: an unprotected run has no value
-          APPROVED: ${{ vars.OPERATOR_LOCKS }}
-        run: |
-          test "$JUDGED" = success
-          test "$REFUSED" = false || test "$APPROVED" = approved
+          python ../judge/tools/check_locks.py --base "$(git rev-parse HEAD^1)"

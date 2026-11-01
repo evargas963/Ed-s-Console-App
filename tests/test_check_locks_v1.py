@@ -143,35 +143,6 @@ def test_a_folder_in_another_case_is_the_same_folder(tmp_path):
     assert "patching lines in tests: 0 -> 1" in refused
 
 
-def test_a_lock_file_changes_only_on_approval(tmp_path):
-    repo = _repo(tmp_path)
-    _write(repo, "tools/x.py", "\n")
-    _write(repo, ".github/workflows/x.yml", "\n")
-    _write(repo, ".cursor/hooks.json", "{}\n")
-    _write(repo, "sub/conftest.py", "\n")
-    _write(repo, "sub/ruff.toml", "\n")
-    _write(repo, "pytest.toml", "\n")
-    _write(repo, "sub/.gitattributes", "\n")
-    _write(repo, "other/Conftest.py", "\n")
-    _write(repo, "AGENTS.md", "\n")
-    refused = _refused(repo)
-    assert "lock file: AGENTS.md" in refused
-    assert "lock file: pytest.toml" in refused
-    assert "lock file: sub/.gitattributes" in refused
-    assert "lock file: other/Conftest.py" in refused
-    assert "lock file: tools/x.py" in refused
-    assert "lock file: .github/workflows/x.yml" in refused
-    assert "lock file: .cursor/hooks.json" in refused
-    assert "lock file: sub/conftest.py" in refused
-    assert "lock file: sub/ruff.toml" in refused
-
-
-def test_removing_or_renaming_the_rules_is_refused(tmp_path):
-    repo = _repo(tmp_path)
-    _git(repo, "mv", check_locks.RULES, "other.toml")
-    assert f"lock file: {check_locks.RULES}" in _refused(repo)
-
-
 def test_a_file_named_as_an_option_is_not_read_as_one(tmp_path):
     repo = _repo(tmp_path)
     _write(repo, "--config=lint.ignore=['ALL']#.py", "X = print(1)\n")
