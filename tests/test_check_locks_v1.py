@@ -57,10 +57,16 @@ def test_a_finding_at_zero_is_refused_and_a_line_or_a_work_item_more_is_not(tmp_
     assert "ruff T201: 0 -> 1" in refused
 
 
-def test_a_held_count_may_not_rise_from_any_number(tmp_path):
-    base, head = Counter({"patching lines in tests": 5}), Counter({"patching lines in tests": 6})
-    assert check_locks.rises(base, head) == ["patching lines in tests: 5 -> 6"]
-    assert check_locks.rises(Counter({"ruff D205": 5}), Counter({"ruff D205": 6})) == []
+def test_only_size_may_rise_above_zero():
+    for name in ("lines of tests", "bytes of product code", "open work items", "ruff D205"):
+        assert check_locks.rises(Counter({name: 5}), Counter({name: 6})) == []
+    for name in (
+        "banned in server.py: `sqlite3` is banned",
+        "format suppressions",
+        "patching lines in tests",
+        "ruff BLE001",
+    ):
+        assert check_locks.rises(Counter({name: 5}), Counter({name: 6})) == [f"{name}: 5 -> 6"]
 
 
 def test_a_change_that_only_removes_passes(tmp_path):

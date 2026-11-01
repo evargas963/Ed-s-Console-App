@@ -80,11 +80,11 @@ his "you are in control and control the language", his to reverse.
 `tools/check_locks.py`, in `.github/workflows/locks.yml`, counts on the base and on the head under
 the base's rules: lines and bytes of everything that is not data (product code, tests, check tools),
 open work items, patching lines in tests, format suppressions, and every finding of
-`locks.ruff.toml` with each `noqa` ignored. Every count is reported. A count at 0 is an absolute
-ban, and patching lines and format suppressions may not rise; other counts may, and a change deletes
-what it replaces (rule 1), so routine work does not wait on the operator (agent's decision
-2026-11-01, on his "i don't want anything to slow down"; his to reverse). No number is kept by
-hand (`tests/test_check_locks_v1.py`). A banned name (Schwab's clients, `sqlite3`, the clock) counts
+`locks.ruff.toml` with each `noqa` ignored. A count at 0 is an absolute ban. Above 0, size may rise
+and is reported (`check_locks.FREE`: lines, bytes, work items, a test's database, docstring style),
+so routine work does not wait on the operator (agent's decision 2026-11-01, on his "i don't want
+anything to slow down"; his to reverse); that a change deletes what it replaces — no machine check,
+ENF-12. No number is kept by hand (`tests/test_check_locks_v1.py`). A banned name (Schwab's clients, `sqlite3`, the clock) counts
 per product file, so no module that does not hold one may start.
 GitHub runs that workflow from the base (`pull_request_target`), and it runs no code of the head, so
 a change cannot edit its judge. A refused rise, or a change to a lock file
@@ -117,7 +117,7 @@ then the rule binds with no machine check.
 | 10 | **Only Feed talks to Schwab.** | `locks.ruff.toml` banned names, per product file (locks); import-linter's layers (step 1d) |
 | 11 | **Calculators are pure.** They take `now` and their inputs; they read no clock, database, global or network. Only an entry point (a route, a loop, a stream handler) reads the clock. | `locks.ruff.toml` banned clock names, per product file (locks); import-linter forbidden imports (step 2) |
 | 12 | **Typed records across boundaries.** A value that crosses a module boundary is a dataclass whose states are named constants. | pyright, strict on State, Calculators and Push (step 6) |
-| 13 | **Python's guidelines.** PEP 8 and PEP 257 as `ruff format` and ruff's rules read them; PEP 20 as the shape. Imports at the top; the one exception to stay is `capture_main`'s import of the daemon inside `main()`, after it opens the early error log (operator 2026-10-30: "Allow the one import"). The imports still inside other functions go, and ruff `PLC0415` holds the rule (locks). One formatter per format (price, Central Time, dollars), on the server (no machine check — ENF-11). | `ruff format` and ruff `UP`, `W`, `S110`, `E` (`E501`: lines at most 100 columns; `E741`: no `l`, `O` or `I` as a name), `B`, `I` (import order) and the `SIM` rules with a safe fix (`SIM114`, `SIM117`, `SIM118`, `SIM208`, `SIM300`, `SIM905`, `SIM910`, `SIM911`) or with no fix and nothing to fix (`SIM107`, `SIM113`, `SIM116`) (in force; `UP042`, `E711`, `E712`, `E731` and the `B` and `SIM` rules whose only fix is unsafe deselected, in `pyproject.toml`, and `SIM115`, whose findings are mostly files held open past the function, which a `with` would close); ruff `BLE`, `TRY`, `C90`, `PLC0415` and `D` (pep257, no docstring required) as one-way counts (locks), to 0 in steps 1b and 1c |
+| 13 | **Python's guidelines.** PEP 8 and PEP 257 as `ruff format` and ruff's rules read them; PEP 20 as the shape. Imports at the top; the one exception to stay is `capture_main`'s import of the daemon inside `main()`, after it opens the early error log (operator 2026-10-30: "Allow the one import"). The imports still inside other functions go, and ruff `PLC0415` holds the rule (locks). One formatter per format (price, Central Time, dollars), on the server (no machine check — ENF-11). | `ruff format` and ruff `UP`, `W`, `S110`, `E` (`E501`: lines at most 100 columns; `E741`: no `l`, `O` or `I` as a name), `B`, `I` (import order) and the `SIM` rules with a safe fix (`SIM114`, `SIM117`, `SIM118`, `SIM208`, `SIM300`, `SIM905`, `SIM910`, `SIM911`) or with no fix and nothing to fix (`SIM107`, `SIM113`, `SIM116`) (in force; `UP042`, `E711`, `E712`, `E731` and the `B` and `SIM` rules whose only fix is unsafe deselected, in `pyproject.toml`, and `SIM115`, whose findings are mostly files held open past the function, which a `with` would close); ruff `BLE`, `TRY`, `C90` and `PLC0415` as one-way counts and `D` (pep257, no docstring required) as a reported one (locks), to 0 in steps 1b and 1c |
 
 ## Fix what you find (operator 2026-10-29: "fix what you find anywhere, everywhere, repo wide")
 
