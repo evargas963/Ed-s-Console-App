@@ -1555,15 +1555,16 @@ def _publish_levels(
     clock = datetime.fromtimestamp(fetched_ts, ET) if capture is not None else at
     product = option_close_product(tk)
     valued_at = valuation_instant(clock, product)
-    begun = datetime.fromtimestamp(fetched_ts, ET) if isinstance(fetched_ts, (int, float)) else at
+    begun_ts = fetched_ts if isinstance(fetched_ts, (int, float)) else at.timestamp()
+    begun = datetime.fromtimestamp(begun_ts, ET)
     if new_chain and capture is None and option_market_open(begun, product) is False:
         memory = payload.get("_priced_chain")
         if memory is None:
             memory = payload.get("_chain")
         # the capture before this chain: its own may be stored already
-        newest = newest_capture_ts(get_db().db_path, tk, before_ts=begun.timestamp())
+        newest = newest_capture_ts(get_db().db_path, tk, before_ts=begun_ts)
         if payload.get("_count_capture_ts") != newest:
-            rows = last_capture_per_day(get_db().db_path, tk, 1, before_ts=begun.timestamp())
+            rows = last_capture_per_day(get_db().db_path, tk, 1, before_ts=begun_ts)
             payload["_count_capture"] = rows[0].get("contracts") if rows else ()
             payload["_count_capture_ts"] = newest
         published = payload.get("spot")

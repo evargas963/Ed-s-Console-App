@@ -443,10 +443,7 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
   chain as the sweep delivered it (each expiry's underlying price, the chain's spot and the
   contracts) is handed to
   the daemon's writer, which keeps it in `stream_write_failures` and counts it on its state (§2
-  D4); the delivered chain stands, and the sweep holds it: with no chain due, it writes the capture
-  from the chain held, with no request to Schwab, and sends the chain to the console again
-  (`ChainSweep.retry_history`); a newer chain replaces the one held, and a restart drops it, its
-  record standing in `stream_write_failures`. The sweep
+  D4); the delivered chain stands, and the window's next chain, if any, tries again. The sweep
   (`ChainSweep.fetch_chain`, `send_quotes`) is the one place a chain enters, so every consumer
   (levels, walls, flip, the heatmap, per-strike rows, forces, the chain ladder, Strike Detail,
   the captures) reads the Greeks it sets. The Greeks (gamma, delta, theta, vega, rho,

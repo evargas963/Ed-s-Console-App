@@ -62,13 +62,6 @@ def _refuse(db, expiry: str) -> None:
     conn.close()
 
 
-def _allow(db) -> None:
-    conn = sqlite3.connect(db)
-    conn.execute("DROP TRIGGER refuse")
-    conn.commit()
-    conn.close()
-
-
 def test_a_capture_the_database_refuses_partway_is_kept_and_leaves_nothing_stored(tmp_path):
     """The expiries before the refused one are not left standing as the day's capture, and the
     chain still reaches the console and the failure log."""
@@ -95,38 +88,6 @@ def test_the_console_hears_of_a_chain_after_its_capture_is_stored(tmp_path):
     chain = _chain()
     sweep.deliver(chain)
     assert set(stored_at_each_message) == {len(chain.contracts())}
-
-
-def test_a_refused_capture_is_written_from_the_chain_held_and_the_console_hears_again(tmp_path):
-    """No request goes to Schwab: the sweep holds the chain. Its write succeeds once the database
-    takes it, whole, at the time the chain began, and a read on the second arrival finds it."""
-    db = tmp_path / "ed_console.db"
-    stored_at_each_message: list = []
-    sweep = _sweep(tmp_path, lambda _topic, _msg: stored_at_each_message.append(len(_stored(db))))
-    chain = _chain()
-    _refuse(db, list(chain.by_expiry)[-1])
-    sweep.deliver(chain)
-    assert set(stored_at_each_message) == {0}
-    stored_at_each_message.clear()
-    _allow(db)
-    sweep.retry_history()
-    assert set(stored_at_each_message) == {len(chain.contracts())}
-    assert cch.newest_capture_ts(db, "MRVL") == _BEGUN
-
-
-def test_a_newer_chain_replaces_the_one_held(tmp_path):
-    """A chain held for its failed write is not sent to the console after a newer one."""
-    db = tmp_path / "ed_console.db"
-    published: list = []
-    sweep = _sweep(tmp_path, lambda _topic, msg: published.append(msg))
-    chain = _chain()
-    _refuse(db, list(chain.by_expiry)[-1])
-    sweep.deliver(chain)
-    _allow(db)
-    sweep.deliver(_chain())
-    published.clear()
-    sweep.retry_history()
-    assert published == []
 
 
 def test_a_capture_is_read_before_a_time(tmp_path):

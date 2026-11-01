@@ -47,9 +47,6 @@ from time_et import ET, option_market_open, options_closed_at, record_markets, s
 log = logging.getLogger("chain_history")
 
 CAPTURE_EVERY_MIN = 30
-#: how often a capture whose write failed is tried again from the chain held; each try encodes the
-#: whole chain, 1.3 s for $SPX
-HISTORY_RETRY_SEC = 60.0
 #: why the daemon's captures are complete: every listed expiry, every strike. The daemon writes
 #: only this basis, and rows of any other are not read. The basis is stored before the chain
 #: blob, so filtering on it never reads a chain (measured: filtering on `source`, stored after
@@ -364,18 +361,15 @@ class ChainSweep:
         self._queue: list[tuple[_Chain, dict]] = []  # contracts whose quote is not asked for
         self._delivered: set[str] = set()  # the tickers this rotation delivered
         self._written: dict[str, float | None] = {}  # ticker -> its newest history capture
-        self._unwritten: dict[str, _Chain] = {}  # ticker -> the chain whose history write failed
-        self._retried = 0.0  # when retry_history last ran
 
     def work(self, schwab_client, stop: threading.Event) -> None:
         """The thread's life, until `stop`: on the daemon's client (`schwab_client()`), the
         market's sessions for today and the days before it, then the price history of the
         watchlist tickers whose candles are due (the price-built levels wait for it, a rotation
-        takes minutes) and a rotation of those whose chain is due; with none due, it writes any
-        capture that failed (retry_history) and looks again each second. With the watchlist empty,
-        or no sign-in held (waits), it asks Schwab for nothing and looks again each second: a
-        sign-in Schwab refused fails every request at once, and a round of them would only log
-        each failure."""
+        takes minutes) and a rotation of those whose chain is due; with none due, it looks again
+        each second. With the watchlist empty, or no sign-in held
+        (waits), it asks Schwab for nothing and looks again each second: a sign-in Schwab
+        refused fails every request at once, and a round of them would only log each failure."""
         while not stop.is_set():
             if self.waits(schwab_client) is not None or not self.watchlist:
                 stop.wait(1.0)
@@ -393,7 +387,6 @@ class ChainSweep:
             if chains:
                 self.rotation(schwab_client, chains, stop)
             if not chains and not candles:
-                self.retry_history()
                 stop.wait(1.0)
 
     def waits(self, schwab_client) -> str | None:
@@ -628,7 +621,6 @@ class ChainSweep:
         if row["spot"] is not None:  # a trade time without its price is no spot
             chain.spot, chain.spot_ts = row["spot"], row["trade_ts"]
         contracts = chain.contracts()
-        self._unwritten.pop(chain.ticker, None)
         try:
             self._write_history(chain)
         except Exception as e:  # noqa: BLE001 -- the chain still goes to the console; a failed history write is the writer's to keep and show
@@ -650,8 +642,10 @@ class ChainSweep:
                 e,
                 now,
             )
-            self._unwritten[chain.ticker] = chain
-        self._publish_chain(chain)
+        for topic, msg in chain_messages(
+            chain.ticker, contracts, chain.started, chain.spot, chain.spot_ts
+        ):
+            self.publish(topic, msg)
         self._delivered.add(chain.ticker)
         self._fetched[chain.ticker] = chain.started
         missing = sum(
@@ -666,29 +660,6 @@ class ChainSweep:
                 missing,
                 len(contracts),
             )
-
-    def _publish_chain(self, chain: _Chain) -> None:
-        for topic, msg in chain_messages(
-            chain.ticker, chain.contracts(), chain.started, chain.spot, chain.spot_ts
-        ):
-            self.publish(topic, msg)
-
-    def retry_history(self) -> None:
-        """Each capture whose write failed, written from the chain held, every HISTORY_RETRY_SEC:
-        no request goes to Schwab. Written, its chain goes to the console again, whose read then
-        finds it. A newer chain of the ticker replaces the one held (deliver)."""
-        now = self.clock()
-        if now - self._retried < HISTORY_RETRY_SEC:
-            return
-        self._retried = now
-        for ticker, chain in list(self._unwritten.items()):
-            try:
-                self._write_history(chain)
-            except Exception as e:  # noqa: BLE001 -- it stays held; the first failure is kept
-                log.warning("chain history for %s still not written: %s", ticker, e)
-                continue
-            del self._unwritten[ticker]
-            self._publish_chain(chain)
 
     def _write_history(self, chain: _Chain) -> None:
         """The chain history: a chain begun inside a capture window of the ticker's option market,
