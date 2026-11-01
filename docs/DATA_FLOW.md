@@ -19,9 +19,9 @@ derived value once, as pure functions; **Push** sends the page a snapshot, then 
 WebSocket, and the page draws it; **Recorder** writes every message to the databases, which no live
 screen reads. Hops: Schwab → program → page.
 
-Today the program is two (the capture daemon and the console, §3.1) joined by two local sockets,
-and the page re-reads routes after each push (§3.2). `ACTIVE_PROGRAM.md` SHAPE step 3 makes them
-one program and step 4 makes the push the page's only data; each step rewrites the sections of §3
+Today the capture daemon and the console are one program (§3.1), the console still takes its price
+rows from the program's own :8800 socket, and the page re-reads routes after each push (§3.2).
+`ACTIVE_PROGRAM.md` SHAPE step 4 makes the push the page's only data; each step rewrites the sections of §3
 it replaces, in the same PR.
 
 The facts below hold today and in the design, except where a bullet says what today lacks:
