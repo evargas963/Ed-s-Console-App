@@ -296,24 +296,23 @@ def time_to_expiry_years(
     Schwab's own expirationDate is not the settlement of an AM-settled contract (an AM-settled
     $SPX monthly carries the 16:00 ET of its date, as captured). For a date with no /markets
     answer held a PM-settled contract settles at Schwab's expirationDate as sent, and an
-    AM-settled one too when that is past the year /markets answers; nearer, it has no T.
+    AM-settled one too when that is past the year /markets answers; nearer, it has no T until that
+    instant passes.
 
     Validated against Schwab-reported gamma on real chains: intraday-to-close matches
     Schwab to a MEASURED median ratio 0.987 (94% of ATM strikes within 10%) in the 2-6h window.
 
-    None for an AM-settled contract within the year /markets answers whose date it has not, for a
-    date it answers with no regular option session, for an expirationDate without its time, and
-    after settlement. At the settlement instant the 10-minute floor guards
-    the exact-expiry singularity."""
+    0.0 after settlement: no time is left. None when the time left is not known: an AM-settled
+    contract within the year /markets answers whose date it has not, a date it answers with no
+    regular option session, and an expirationDate without its time. At the settlement instant the
+    10-minute floor guards the exact-expiry singularity."""
     s = session(str(expiration_date)[:10])
     if s is None:
         if len(str(expiration_date)) <= 10:
             return None
         settles = datetime.fromisoformat(str(expiration_date))
-        if (
-            settlement_type == SETTLEMENT_AM
-            and settles.timestamp() - now.timestamp() <= YEAR_SECONDS
-        ):
+        left = settles.timestamp() - now.timestamp()
+        if settlement_type == SETTLEMENT_AM and 0.0 <= left <= YEAR_SECONDS:
             return None
     else:
         windows = s.option_windows(product)
@@ -323,5 +322,5 @@ def time_to_expiry_years(
     # instants, not civil time: a DST change between now and the expiry is counted as elapsed
     t = (settles.timestamp() - now.timestamp()) / YEAR_SECONDS
     if t < 0.0:
-        return None  # after settlement — the contract has expired
+        return 0.0
     return max(t, MIN_TIME_TO_EXPIRY_YEARS)

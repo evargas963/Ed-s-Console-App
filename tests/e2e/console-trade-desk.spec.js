@@ -780,7 +780,7 @@ test.describe('Trade Desk renders served values', () => {
       if (url.includes('/api/desk/events')) body = EVENTS;
       else if (url.includes('/api/terrain/strikes')) body = Object.assign({}, STRIKES, { today_side_sums: { gex_below: -1.2e9, gex_above: 8e8 } });
       else if (url.includes('/api/forces')) body = { ticker: 'SPY', available: true, doi_below: 1200, doi_above: -300,
-        dex_below_dollars: 5e8, dex_above_dollars: -2e8, charm_below: 0.0123, charm_above: -0.0045 };
+        dex_below_dollars: 5e8, dex_above_dollars: -2e8, charm_below: 0.0123, charm_above: null };
       else if (url.includes('/api/terrain')) body = Object.assign({}, TERRAIN, { call_wall: 772, call_wall_lean: 'DEALERS SELL' });
       else if (url.includes('/api/levels')) body = Object.assign({}, LEVELS, { levels: LEVELS.levels.concat([wall, far]),
         by_distance: ['call_wall', 'max_pain', 'PDH', 'grc'] });
@@ -796,7 +796,7 @@ test.describe('Trade Desk renders served values', () => {
     await expect(page.locator('#tdmChart .tvc-edge-top')).toContainText('GRC 837.58');
     await expect(page.locator('#tdmCardOpt')).toContainText('GEX below / above');
     await expect(page.locator('#tdmCardOpt')).toContainText('1200 / -300');          // ΔOI, served
-    await expect(page.locator('#tdmCardOpt')).toContainText('0.0123 / -0.0045');     // charm, served
+    await expect(page.locator('#tdmCardOpt')).toContainText('0.0123 / —');           // charm, one side not known
     await page.locator('#tdmToolbar [data-act="style"]').click();
     await expect(page.locator('#tdmToolbar [data-act="style"]')).toHaveClass(/on/);
     expect(errs).toEqual([]);
