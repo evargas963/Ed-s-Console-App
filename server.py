@@ -2586,9 +2586,9 @@ def _forces_absent(tk: str) -> dict:
 
 
 def _forces_from_captures(tk: str, captures: list, charm_by_strike: dict | None = None) -> dict:
-    """Forces rows from banked chains: per-strike OI delta FIRST, then bucketed by the NEWER
-    capture's spot — bucketing each day by its own spot lets the moving boundary masquerade as
-    OI change. DEX is the newer capture's net_dex_dollars side sums; CHARM the dealer-signed
+    """Forces rows from banked chains: each day's OI totalled by side of the NEWER capture's spot
+    — bucketing each day by its own spot lets the moving boundary masquerade as OI change. DEX is
+    the newer capture's net_dex_dollars side sums; CHARM the dealer-signed
     net_charm below and above spot on the newer banked chain. `charm_by_strike` is that
     capture's map when this publication just priced it. Otherwise the same function runs once,
     at that capture's valuation instant.
@@ -2612,17 +2612,19 @@ def _forces_from_captures(tk: str, captures: list, charm_by_strike: dict | None 
             per1 = compute_exposures_by_strike(c1, spot=float(s1), now=clock1, product=product)[0]
             per0 = compute_exposures_by_strike(c0, spot=float(s0), now=clock0, product=product)[0]
 
-            # each capture is the whole chain, so a strike it does not list holds no contracts; a
-            # strike listed with an open interest not known has no change
-            oi1 = {k: strike_total_oi(v) for k, v in per1.items()}
-            oi0 = {k: strike_total_oi(v) for k, v in per0.items()}
-            doi = {
-                k: None if a is None or b is None else a - b
-                for k in oi1.keys() | oi0.keys()
-                for a, b in [(oi1.get(k, 0), oi0.get(k, 0))]
-            }
             dex1 = {k: bucket_metric(v, "net_dex_dollars") for k, v in per1.items()}
             spot1 = float(s1)
+
+            def _oi_change(in_side) -> float | None:
+                """The side's open interest on the newer day less the older day's, each capture
+                the whole chain: a strike one does not list is in that day's total for what it
+                holds, nothing."""
+                totals = [
+                    _side_total([strike_total_oi(b) for k, b in per.items() if in_side(k)])
+                    for per in (per1, per0)
+                ]
+                return None if None in totals else totals[0] - totals[1]
+
             # CHARM below/above from the NEWER banked wide chain (full book).
             # Dealer-signed net_charm = call_charm - put_charm per strike.
             charm_below = charm_above = None
@@ -2639,18 +2641,17 @@ def _forces_from_captures(tk: str, captures: list, charm_by_strike: dict | None 
             payload = {
                 "ticker": tk,
                 "available": True,
-                "doi_below": _side_total([d for k, d in doi.items() if k < spot1]),
-                "doi_above": _side_total([d for k, d in doi.items() if k > spot1]),
+                "doi_below": _oi_change(lambda k: k < spot1),
+                "doi_above": _oi_change(lambda k: k > spot1),
                 "dex_below_dollars": _side_total([d for k, d in dex1.items() if k < spot1]),
                 "dex_above_dollars": _side_total([d for k, d in dex1.items() if k > spot1]),
-                "strikes_diffed": sum(d is not None for d in doi.values()),
                 "charm_below": charm_below,
                 "charm_above": charm_above,
                 "newer_et_date": d1,
                 "older_et_date": d0,
                 "bucket_spot": spot1,
                 "method": (
-                    "per-strike OI delta first, bucketed by the newer capture's spot; "
+                    "OI side totals of the two captures, each side by the newer capture's spot; "
                     "DEX = net_dex_dollars side sums on the newer capture; "
                     "CHARM = dealer-signed net_charm side sums on the newer capture"
                 ),
