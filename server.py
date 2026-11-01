@@ -2612,13 +2612,14 @@ def _forces_from_captures(tk: str, captures: list, charm_by_strike: dict | None 
             per1 = compute_exposures_by_strike(c1, spot=float(s1), now=clock1, product=product)[0]
             per0 = compute_exposures_by_strike(c0, spot=float(s0), now=clock0, product=product)[0]
 
-            # a strike's OI change exists only when its OI is known on both days
+            # each capture is the whole chain, so a strike it does not list holds no contracts; a
+            # strike listed with an open interest not known has no change
             oi1 = {k: strike_total_oi(v) for k, v in per1.items()}
             oi0 = {k: strike_total_oi(v) for k, v in per0.items()}
             doi = {
-                k: None if oi1[k] is None or oi0[k] is None else oi1[k] - oi0[k]
-                for k in oi1
-                if k in oi0
+                k: None if a is None or b is None else a - b
+                for k in oi1.keys() | oi0.keys()
+                for a, b in [(oi1.get(k, 0), oi0.get(k, 0))]
             }
             dex1 = {k: bucket_metric(v, "net_dex_dollars") for k, v in per1.items()}
             spot1 = float(s1)

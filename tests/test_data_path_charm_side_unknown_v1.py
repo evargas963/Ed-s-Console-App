@@ -166,3 +166,27 @@ def test_a_forces_oi_side_with_a_strike_not_known_has_no_total():
     forces = server._forces_from_captures(NFLX.ticker, caps)
     assert forces["doi_below"] is None
     assert forces["doi_above"] == 0
+
+
+def test_a_strike_one_whole_chain_does_not_list_holds_no_contracts_on_that_day():
+    """Induced test condition: NFLX's $5 contracts cut from one capture, as a strike listed after
+    the older capture or settled before the newer one; one chain stored as two captures."""
+    open_interest = sum(c["openInterest"] for c in NFLX.chain if c["strikePrice"] == 5.0)
+    assert open_interest > 0
+    without = [c for c in NFLX.chain if c["strikePrice"] != 5.0]
+    days = (NFLX.now, datetime(2026, 10, 6, 12, 0, tzinfo=ET))
+
+    def doi_below(newer: list, older: list) -> float:
+        caps = [
+            {
+                "et_date": day.date().isoformat(),
+                "spot": NFLX.spot,
+                "contracts": chain,
+                "ts_utc": day.timestamp(),
+            }
+            for day, chain in zip(days, (newer, older), strict=True)
+        ]
+        return server._forces_from_captures(NFLX.ticker, caps)["doi_below"]
+
+    assert doi_below(NFLX.chain, without) == open_interest
+    assert doi_below(without, NFLX.chain) == -open_interest
