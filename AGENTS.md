@@ -73,13 +73,17 @@ held by standard linters, not by hand-written checks.
 
 ## Locks (operator 2026-11-01: "air tight locks, governance, etc.", "no patches ever, end to end only")
 
-The repository may only get simpler. `tools/check_locks.py`, in the required `hardening` job, counts
-on the base and on the head, under the base's rules and by the base's own copy of itself: lines of
-product code, of tests and of check tools, open work rows, patching lines in tests, fields with a
-second reader, and every finding of `locks.ruff.toml` with each `noqa` ignored. Any rise refuses the
-pull request. A count at 0 is an absolute ban. Nothing is exempt and no number is kept by hand
-(`tests/test_check_locks_v1.py`). `locks.ruff.toml` holds what no module but its owner may use:
-Schwab's client, `sqlite3` and the clock.
+The repository may only get simpler (operator 2026-11-01: "you are in control and control the
+language"; this replaces the 2026-10-29 rule that a check turns on only once its findings are fixed).
+`tools/check_locks.py`, in `.github/workflows/locks.yml`, counts on the base and on the head under
+the base's rules: lines and bytes of everything that is not data (product code, tests, check tools),
+open work items, patching lines in tests, and every finding of `locks.ruff.toml` with each `noqa`
+ignored. Any rise refuses the pull request; a lock with nowhere to give asks the operator. A count at
+0 is an absolute ban. No number is kept by hand (`tests/test_check_locks_v1.py`). GitHub runs that
+workflow from the base (`pull_request_target`), and it runs no code of the head, so a change cannot
+edit its judge. A change to a lock file waits for the operator's approval on the `operator-locks`
+environment; `check_locks.LOCK_FILES` names them. A banned name (Schwab's clients, `sqlite3`, the
+clock) counts per product file, so no module that does not hold one may start.
 
 ## Rules and what enforces them
 
@@ -100,8 +104,8 @@ then the rule binds with no machine check.
 | 7 | **All tickers.** Measure and report across every watchlist ticker, never one. Every ticker is treated the same. | no machine check — ENF-05 |
 | 8 | **Clocks.** Market logic in ET; the page shows Central Time. The market's sessions are Schwab's /markets answers; no session table is typed by hand. | `tests/test_time_et_authority.py`, `tests/test_markets_sessions_v1.py` (in force) |
 | 9 | **Real data.** Tests run on captured Schwab data (`tests/fixtures/`) through the real code; no stand-ins, no patches of the code under test. | `tools/check_no_new_patches.py` in `pytest-windows`, on the runs `tools/patch_record.py` records in both `pytest-full` and `pytest-windows`, on a pull request's change (in force), until ruff `TID251` (no `unittest.mock`) and a conftest that refuses `monkeypatch` replace them (step 7); stand-ins left in the tests — STAND-INS |
-| 10 | **Only Feed talks to Schwab.** | import-linter: `schwab`, `httpx` and `authlib` importable only from Feed (step 1d) |
-| 11 | **Calculators are pure.** They take `now` and their inputs; they read no clock, database, global or network. Only an entry point (a route, a loop, a stream handler) reads the clock. | import-linter forbidden imports and ruff `TID251` banned `time.time` / `datetime.now` outside the entry points (step 2) |
+| 10 | **Only Feed talks to Schwab.** | `locks.ruff.toml` banned names, per product file, in `locks` (in force); import-linter's layers (step 1d) |
+| 11 | **Calculators are pure.** They take `now` and their inputs; they read no clock, database, global or network. Only an entry point (a route, a loop, a stream handler) reads the clock. | `locks.ruff.toml` banned clock names, per product file, in `locks` (in force); import-linter forbidden imports (step 2) |
 | 12 | **Typed records across boundaries.** A value that crosses a module boundary is a dataclass whose states are named constants. | pyright, strict on State, Calculators and Push (step 6) |
 | 13 | **Python's guidelines.** PEP 8 and PEP 257 as `ruff format` and ruff's rules read them; PEP 20 as the shape. Imports at the top; the one exception to stay is `capture_main`'s import of the daemon inside `main()`, after it opens the early error log (operator 2026-10-30: "Allow the one import"). The imports still inside other functions go, and ruff `PLC0415` then holds the rule (no machine check — ENF-11). One formatter per format (price, Central Time, dollars), on the server (no machine check — ENF-11). | `ruff format` and ruff `UP`, `W`, `S110`, `E` (`E501`: lines at most 100 columns; `E741`: no `l`, `O` or `I` as a name), `B`, `I` (import order) and the `SIM` rules with a safe fix (`SIM114`, `SIM117`, `SIM118`, `SIM208`, `SIM300`, `SIM905`, `SIM910`, `SIM911`) or with no fix and nothing to fix (`SIM107`, `SIM113`, `SIM116`) (in force; `UP042`, `E711`, `E712`, `E731` and the `B` and `SIM` rules whose only fix is unsafe deselected, in `pyproject.toml`, and `SIM115`, whose findings are mostly files held open past the function, which a `with` would close); ruff `BLE`, `TRY`, `C90` (step 1b), `D` (pep257, no docstring required; step 1c) |
 
@@ -122,10 +126,10 @@ then the rule binds with no machine check.
   a change to its code (`tests/test_check_end_to_end_v1.py`,
   `tests/test_check_no_new_patches_v1.py`); the rest of this bullet (a found defect fixed, those
   settings themselves, an unsafe rewrite outside product code) — no machine check, ENF-12.
-- A check runs over the whole repository wherever it can, so a finding anywhere fails the required
-  job and nothing merges while it stands; a check is turned on only once what it finds repo-wide is
-  fixed, never with an exception list. Enforced by: `ruff check .` and `ruff format --check .` over
-  the whole repository at commit and in `hardening` (in force); each tool SHAPE adds (import-linter,
+- A check runs over the whole repository wherever it can, never with an exception list: at 0
+  findings a rule fails the required job outright, and above 0 it is a one-way count (Locks).
+  Enforced by: `ruff check .` and `ruff format --check .` over the whole repository at commit and in
+  `hardening`, and `tools/check_locks.py` in `locks` (in force); each tool SHAPE adds (import-linter,
   ESLint, pyright) runs over the whole repository the same way (steps 1d to 6). Today's hand-built
   checks judge a pull request's change only (`check_end_to_end`, `check_one_reader`,
   `check_credential_leak`, `check_eol_style_invariant`, `check_fails_before`,
