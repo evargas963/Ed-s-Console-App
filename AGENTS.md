@@ -73,20 +73,23 @@ held by standard linters, not by hand-written checks.
 
 ## Locks (operator 2026-11-01: "air tight locks, governance, etc.", "no patches ever, end to end only")
 
-The repository may only get simpler (operator 2026-11-01: "there should not be that much code, that
-many tests, that many hand built check tools, open work rows"). One-way counts replace the
+The repository is meant to get simpler (operator 2026-11-01: "there should not be that much code,
+that many tests, that many hand built check tools, open work rows"). Counts replace the
 2026-10-29 rule that a check turns on only once its findings are fixed: decided by the agent under
 his "you are in control and control the language", his to reverse.
 `tools/check_locks.py`, in `.github/workflows/locks.yml`, counts on the base and on the head under
 the base's rules: lines and bytes of everything that is not data (product code, tests, check tools),
 open work items, patching lines in tests, format suppressions, and every finding of
-`locks.ruff.toml` with each `noqa` ignored. A count at 0 is an absolute ban. No number is kept by
+`locks.ruff.toml` with each `noqa` ignored. Every count is reported. A count at 0 is an absolute
+ban, and patching lines and format suppressions may not rise; other counts may, and a change deletes
+what it replaces (rule 1), so routine work does not wait on the operator (agent's decision
+2026-11-01, on his "i don't want anything to slow down"; his to reverse). No number is kept by
 hand (`tests/test_check_locks_v1.py`). A banned name (Schwab's clients, `sqlite3`, the clock) counts
 per product file, so no module that does not hold one may start.
 GitHub runs that workflow from the base (`pull_request_target`), and it runs no code of the head, so
-a change cannot edit its judge. A rise, or a change to a lock file (`check_locks.LOCK_PATHS`, `LOCK_NAMES`), merges
-only on the operator's approval on the `operator-locks` environment; a new test that raises a count
-goes the same way, or deletes what it replaces (CLAUDE.md item 4 stands). `locks` is a required
+a change cannot edit its judge. A refused rise, or a change to a lock file
+(`check_locks.LOCK_PATHS`, `LOCK_NAMES`), merges only on the operator's approval on the
+`operator-locks` environment (CLAUDE.md item 4 stands). `locks` is a required
 check on `main`. `gh` is allowed by a list and `gh api` only reads, in the forms
 `tests/test_operator_law_guard_action_bans_v1.py` checks (`tools/operator_law_guard.py`); the
 restricted token is what makes that a seal (`ACTIVE_PROGRAM.md` LOCK-SETTINGS).

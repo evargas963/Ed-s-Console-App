@@ -5,6 +5,7 @@ from __future__ import annotations
 import shutil
 import subprocess
 import sys
+from collections import Counter
 from pathlib import Path
 
 from tools import check_locks
@@ -46,14 +47,20 @@ def _write(repo: Path, name: str, text: str) -> None:
     (repo / name).write_text(text, encoding="utf-8")
 
 
-def test_a_line_a_work_item_or_a_finding_more_is_refused(tmp_path):
+def test_a_finding_at_zero_is_refused_and_a_line_or_a_work_item_more_is_not(tmp_path):
     repo = _repo(tmp_path)
     _write(repo, "product.py", "VALUE = 1\nOTHER = print('x')\n")
     _write(repo, "ACTIVE_PROGRAM.md", "| ONE | NEXT | a row |\n| TWO | LATER | a row |\n- P-1 x\n")
     refused = _refused(repo)
-    assert "lines of product code" in refused
-    assert "open work items: 1 -> 3" in refused
+    assert "lines of product code" not in refused
+    assert "open work items" not in refused
     assert "ruff T201: 0 -> 1" in refused
+
+
+def test_a_held_count_may_not_rise_from_any_number(tmp_path):
+    base, head = Counter({"patching lines in tests": 5}), Counter({"patching lines in tests": 6})
+    assert check_locks.rises(base, head) == ["patching lines in tests: 5 -> 6"]
+    assert check_locks.rises(Counter({"ruff D205": 5}), Counter({"ruff D205": 6})) == []
 
 
 def test_a_change_that_only_removes_passes(tmp_path):
@@ -83,13 +90,14 @@ def test_a_file_named_ruff_in_the_change_does_not_answer_for_ruff(tmp_path):
     assert "ruff T201: 0 -> 1" in _refused(repo)
 
 
-def test_a_new_kind_of_file_and_a_foreign_name_are_counted(tmp_path):
+def test_a_new_kind_of_file_and_a_foreign_name_are_counted(tmp_path, capsys):
     repo = _repo(tmp_path)
     _write(repo, "módulo.py", "VALUE = 1\n")
     _write(repo, "script.cmd", "echo hi\n")
-    refused = _refused(repo)
-    assert "lines of product code" in refused
-    assert "bytes of product code" in refused
+    _refused(repo)
+    reported = capsys.readouterr().out
+    before, after = reported.split("bytes of product code: ")[1].split("\n")[0].split(" -> ")
+    assert int(after) - int(before) == len("VALUE = 1\necho hi\n")
 
 
 def test_a_banned_name_in_a_new_module_is_not_bought_by_removing_it_elsewhere(tmp_path):
@@ -175,6 +183,6 @@ def test_a_refused_change_exits_3_and_a_clean_one_0(tmp_path):
     repo = _repo(tmp_path)
     tool = [sys.executable, str(ROOT / "tools" / "check_locks.py"), "--base", "main"]
     assert subprocess.run(tool, cwd=repo, capture_output=True, check=False).returncode == 0
-    _write(repo, "product.py", "VALUE = 1\nOTHER = 2\n")
+    _write(repo, "product.py", "VALUE = 1\nOTHER = print(2)\n")
     _commit(repo)
     assert subprocess.run(tool, cwd=repo, capture_output=True, check=False).returncode == 3

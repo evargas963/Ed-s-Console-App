@@ -1,10 +1,10 @@
-"""The one-way locks: no pull request may raise a count, so the repository only gets simpler.
+"""The locks: every count is reported, and what may not rise is refused.
 
 `.github/workflows/locks.yml` runs this file from the base, on `pull_request_target`, so a change
 cannot edit its judge, and reads the change only as data: it runs no code of the head. Every count
-is taken on the base and the head under the base's rules. A count at 0 is an absolute ban. A change
-this refuses, a rise or a touched lock file, merges only on the operator's approval in GitHub (the
-`operator-locks` environment).
+is taken on the base and the head under the base's rules. A count at 0 is an absolute ban, and the
+patches and format suppressions may not rise. A change this refuses, one of those or a touched lock
+file, merges only on the operator's approval in GitHub (the `operator-locks` environment).
 
     python tools/check_locks.py --base <sha>      from the head's root; exit 3 is refused
 """
@@ -23,6 +23,8 @@ from pathlib import Path
 RULES = "locks.ruff.toml"
 COUNTED_RULES = ".locks-counted.toml"
 REFUSED = 3
+#: the counts that may not rise from any number; any other count may, unless it is at 0
+HELD = ("format suppressions", "patching lines in tests")
 DATA = (".json", ".md", ".mdc", ".csv", ".txt", ".png", ".ico", ".pdf", ".webmanifest", ".lock")
 PYTHON = (".py", ".pyi", ".pyw", ".ipynb")
 #: compared in lower case: Windows, where production runs, reads `Tools/x.py` as `tools/x.py`
@@ -143,9 +145,11 @@ def counts(tree: Path, rules: str) -> Counter:
 
 
 def rises(base: Counter, head: Counter) -> list[str]:
-    """Each count the head raised."""
+    """Each count the head raised that may not rise."""
     return [
-        f"{name}: {base[name]} -> {head[name]}" for name in sorted(head) if head[name] > base[name]
+        f"{name}: {base[name]} -> {head[name]}"
+        for name in sorted(head)
+        if head[name] > base[name] and (name in HELD or not base[name])
     ]
 
 
