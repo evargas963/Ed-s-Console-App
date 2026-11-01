@@ -1,4 +1,4 @@
-"""The one-way locks: no pull request may raise a count, but for size (FREE), which is reported.
+"""The one-way locks: no pull request may raise a count, but for those in FREE, which are reported.
 
 `.github/workflows/locks.yml` runs this file from the base, on `pull_request_target`, so a change
 cannot edit its judge, and reads the change only as data: it runs no code of the head. Every count
@@ -24,7 +24,7 @@ RULES = "locks.ruff.toml"
 COUNTED_RULES = ".locks-counted.toml"
 REFUSED = 3
 #: the counts that may rise above 0: size, work items, a test's database, docstring style
-FREE = ("banned in tests", "bytes of", "lines of", "open work items", "ruff D")
+FREE = ("banned in tests: `sqlite3`", "bytes of", "lines of", "open work items", "ruff D")
 DATA = (".json", ".md", ".mdc", ".csv", ".txt", ".png", ".ico", ".pdf", ".webmanifest", ".lock")
 PYTHON = (".py", ".pyi", ".pyw", ".ipynb")
 #: compared in lower case: Windows, where production runs, reads `Tools/x.py` as `tools/x.py`

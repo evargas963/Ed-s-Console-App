@@ -58,10 +58,17 @@ def test_a_finding_at_zero_is_refused_and_a_line_or_a_work_item_more_is_not(tmp_
 
 
 def test_only_size_may_rise_above_zero():
-    for name in ("lines of tests", "bytes of product code", "open work items", "ruff D205"):
+    for name in (
+        "lines of tests",
+        "bytes of product code",
+        "open work items",
+        "ruff D205",
+        "banned in tests: `sqlite3` is banned: Only the Recorder uses a database.",
+    ):
         assert check_locks.rises(Counter({name: 5}), Counter({name: 6})) == []
     for name in (
         "banned in server.py: `sqlite3` is banned",
+        "banned in tests: `websockets` is banned: Only Feed talks to Schwab.",
         "format suppressions",
         "patching lines in tests",
         "ruff BLE001",

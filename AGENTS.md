@@ -137,7 +137,7 @@ then the rule binds with no machine check.
   `tests/test_check_no_new_patches_v1.py`); the rest of this bullet (a found defect fixed, those
   settings themselves, an unsafe rewrite outside product code) — no machine check, ENF-12.
 - A check runs over the whole repository wherever it can, never with an exception list: at 0
-  findings a rule fails the required job outright, and above 0 it is a one-way count (Locks).
+  findings a rule fails the required job outright, and above 0 it is a count (Locks).
   Enforced by: `ruff check .` and `ruff format --check .` over the whole repository at commit and in
   `hardening` (in force), and `tools/check_locks.py` (locks); each tool SHAPE adds (import-linter,
   ESLint, pyright) runs over the whole repository the same way (steps 1d to 6). Today's hand-built
