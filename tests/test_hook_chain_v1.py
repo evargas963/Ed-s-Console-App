@@ -53,8 +53,8 @@ def bash(command: str, cwd: Path | None = None, tool: str = "Bash") -> dict:
     return out
 
 
-def edit(path: Path) -> dict:
-    return {"tool_name": "Edit", "tool_input": {"file_path": str(path)}}
+def edit(path: Path, cwd: Path = ROOT) -> dict:
+    return {"tool_name": "Edit", "tool_input": {"file_path": str(path)}, "cwd": str(cwd)}
 
 
 #: Every module the wired PreToolUse roster imports, so a scratch checkout runs the REAL guards.
@@ -279,20 +279,23 @@ def test_5_legitimate_edits_pass_in_every_topology_and_only_production_app_code_
         assert r.returncode == 0, (target, r.stderr)
     for root in (primary, linked):
         for rel in ("tests/test_x.py", "governance/row.md", "docs/note.md", "reports/out.json"):
-            r = _chain(edit(root / rel), root=root)
+            r = _chain(edit(root / rel, root), root=root)
             assert r.returncode == 0, (root.name, rel, r.stderr)
     for rel in ("server.py", "tools/operator_law_guard.py", "static/index.html"):
-        free = _chain(edit(linked / rel), root=linked)
+        free = _chain(edit(linked / rel, linked), root=linked)
         assert free.returncode == 0, (rel, free.stderr)
-        prod = _chain(edit(primary / rel), root=primary)
+        prod = _chain(edit(primary / rel, primary), root=primary)
         assert prod.returncode == 2 and "PROD_CHECKOUT_EDIT" in prod.stderr, (rel, prod.stderr)
-        cross = _chain(edit(primary / rel), root=linked)
+        cross = _chain(edit(primary / rel, linked), root=linked)
         assert cross.returncode == 2 and "PROD_CHECKOUT_EDIT" in cross.stderr, (rel, cross.stderr)
+    unplaced = {"tool_name": "Edit", "tool_input": {"file_path": str(primary / "AGENTS.md")}}
+    r = _chain(unplaced, root=primary)
+    assert r.returncode == 2 and "PROD_CHECKOUT_EDIT" in r.stderr, r.stderr
     garbage = _checkout_with_the_wired_guards(tmp_path / "garbage")
     (garbage / ".git").write_text("this is not a gitdir pointer\n", encoding="utf-8")
-    r = _chain(edit(garbage / "server.py"), root=garbage)
+    r = _chain(edit(garbage / "server.py", garbage), root=garbage)
     assert r.returncode == 2 and "PROD_CHECKOUT_EDIT" in r.stderr, r.stderr
-    assert _chain(edit(garbage / "tests" / "t.py"), root=garbage).returncode == 0
+    assert _chain(edit(garbage / "tests" / "t.py", garbage), root=garbage).returncode == 0
 
 
 def test_5b_a_worktree_nested_inside_the_primary_edits_its_own_files_and_never_the_primarys(
@@ -305,7 +308,7 @@ def test_5b_a_worktree_nested_inside_the_primary_edits_its_own_files_and_never_t
     _git(primary, "worktree", "add", "-q", str(nested), "-b", "nested")
     assert (nested / ".git").is_file()
     for rel in ("server.py", "tools/operator_law_guard.py", "static/index.html", "tests/test_x.py"):
-        own = _chain(edit(nested / rel), root=nested)
+        own = _chain(edit(nested / rel, nested), root=nested)
         assert own.returncode == 0 and own.stderr == "", (rel, own.stderr)
     sibling = primary / ".claude" / "worktrees" / "sibling"
     _git(primary, "worktree", "add", "-q", str(sibling), "-b", "sibling")
@@ -315,7 +318,7 @@ def test_5b_a_worktree_nested_inside_the_primary_edits_its_own_files_and_never_t
         primary / "static" / "index.html",
         sibling / "server.py",
     ):
-        cross = _chain(edit(target), root=nested)
+        cross = _chain(edit(target, nested), root=nested)
         assert cross.returncode == 2 and "PROD_CHECKOUT_EDIT" in cross.stderr, (
             target,
             cross.stderr,
