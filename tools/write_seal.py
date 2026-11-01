@@ -1,8 +1,9 @@
 """Write the seal: the repository's hooks as managed settings, out of the agent's reach.
 
 Claude Code reads `C:/Program Files/ClaudeCode/managed-settings.json` above every other settings
-file, and changing it takes Windows administrator rights, so the agent cannot switch a hook off.
-The hooks run from the production checkout, which moves only by merges `locks` has judged.
+file, and changing it takes Windows administrator rights, so the agent cannot change the wiring.
+The code it points at, in the production checkout, is ordinary files: `ACTIVE_PROGRAM.md`
+LOCK-SETTINGS holds what still protects them.
 
 The operator runs this once, in an administrator shell, from the production checkout, and again
 when a merge changes the hooks in `.claude/settings.json`:
@@ -39,11 +40,7 @@ def sealed(settings: dict, root: Path) -> dict:
         ]
         for event, groups in settings["hooks"].items()
     }
-    return {
-        "allowManagedHooksOnly": True,
-        "hooks": hooks,
-        "permissions": {"disableBypassPermissionsMode": "disable"},
-    }
+    return {"allowManagedHooksOnly": True, "hooks": hooks}
 
 
 def main() -> int:

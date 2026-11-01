@@ -89,9 +89,10 @@ only on the operator's approval on the `operator-locks` environment; a new test 
 goes the same way, or deletes what it replaces (CLAUDE.md item 4 stands). `locks` is a required
 check on `main`. `gh` is allowed by a list and `gh api` only reads, in the forms
 `tests/test_operator_law_guard_action_bans_v1.py` checks (`tools/operator_law_guard.py`); the
-restricted token is what makes that a seal (`ACTIVE_PROGRAM.md` LOCK-SETTINGS). The hooks run from
-Claude Code's managed settings, which the agent cannot edit (`tools/write_seal.py`, in force once
-the operator runs it), from the production checkout.
+restricted token is what makes that a seal (`ACTIVE_PROGRAM.md` LOCK-SETTINGS). The hooks are wired
+by Claude Code's managed settings, which the agent cannot edit, to the code in the production
+checkout, which it still can until LOCK-SETTINGS is done. Enforced by: `tests/test_write_seal_v1.py`
+for what `tools/write_seal.py` writes; that it is installed and current — no machine check, ENF-13.
 
 ## Rules and what enforces them
 

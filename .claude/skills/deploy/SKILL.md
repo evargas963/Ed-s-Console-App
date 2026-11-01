@@ -26,3 +26,5 @@ on the moved file and its replacement and `icacls <new folder> /deny "evarg:(DC)
    `git -C <production> rev-parse --short HEAD` equal to `origin/main`. Show each output.
 6. Deployed means step 5 passed and the screen was checked during market hours. Until then report the
    change as on disk, not deployed.
+7. If the merge changed `.claude/settings.json`, tell the operator to run `tools/write_seal.py` again
+   in an administrator shell; the installed seal does not follow the file.

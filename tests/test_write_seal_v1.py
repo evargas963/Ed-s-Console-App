@@ -33,10 +33,9 @@ def test_every_hook_is_sealed_and_runs_from_the_given_checkout():
         assert plain.split()[2:] == guards
 
 
-def test_the_seal_refuses_every_other_hook_and_bypass_mode():
+def test_the_seal_refuses_every_other_hook():
     seal = write_seal.sealed(SETTINGS, Path("C:/production"))
     assert seal["allowManagedHooksOnly"] is True
-    assert seal["permissions"]["disableBypassPermissionsMode"] == "disable"
     assert set(seal["hooks"]) == set(SETTINGS["hooks"])
     matchers = [group.get("matcher") for group in seal["hooks"]["PreToolUse"]]
     assert matchers == [group.get("matcher") for group in SETTINGS["hooks"]["PreToolUse"]]

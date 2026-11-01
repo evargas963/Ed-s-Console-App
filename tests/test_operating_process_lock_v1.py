@@ -72,7 +72,6 @@ def test_a_sealed_hook_judges_an_edit_by_the_session_not_by_where_the_hook_runs(
             assert len(bad) == 1 and "PROD_CHECKOUT_EDIT" in bad[0], (session, target)
     own = {"file_path": str(wt / "own.py")}
     assert PLG.production_checkout_edit_violations(own, primary, wt) == []
-    assert PLG.pretooluse_block("Edit", rules, str(wt)) == []  # this file's checkout is not primary
 
 
 def test_a_batch_file_in_the_primary_is_app_code(tmp_path):

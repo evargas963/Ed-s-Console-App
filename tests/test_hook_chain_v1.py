@@ -289,8 +289,11 @@ def test_5_legitimate_edits_pass_in_every_topology_and_only_production_app_code_
         cross = _chain(edit(primary / rel, linked), root=linked)
         assert cross.returncode == 2 and "PROD_CHECKOUT_EDIT" in cross.stderr, (rel, cross.stderr)
     unplaced = {"tool_name": "Edit", "tool_input": {"file_path": str(primary / "AGENTS.md")}}
-    r = _chain(unplaced, root=primary)
-    assert r.returncode == 2 and "PROD_CHECKOUT_EDIT" in r.stderr, r.stderr
+    sealed = _chain(edit(primary / "AGENTS.md", linked), root=primary)
+    for refused in (_chain(unplaced, root=primary), sealed):
+        assert refused.returncode == 2 and "PROD_CHECKOUT_EDIT" in refused.stderr, refused.stderr
+    own = _chain(edit(linked / "server.py", linked), root=primary)
+    assert own.returncode == 0, own.stderr
     garbage = _checkout_with_the_wired_guards(tmp_path / "garbage")
     (garbage / ".git").write_text("this is not a gitdir pointer\n", encoding="utf-8")
     r = _chain(edit(garbage / "server.py", garbage), root=garbage)
