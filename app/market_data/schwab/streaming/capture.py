@@ -9,10 +9,10 @@ every watchlist ticker, each in its turn in one rotation.
   0. WATCHLIST The one list of tickers Schwab is asked for (Watchlist): the daemon holds it,
              is its only writer, and keeps every change as a `watchlist` record (the writer
              stores it in stream_capture.db stream_watchlist; the newest is read at startup).
-             The console asks for an add or a removal over the local console socket (live_push,
-             ws://127.0.0.1:8799): {"op": "watchlist", "action": "add"|"remove", "ticker": T,
-             "id": n}. An added ticker is checked with one /quotes request: one Schwab names in
-             errors.invalidSymbols, or does not quote, is not added. The record carries the
+             The console asks for an add or a removal (Daemon.console_request): {"op": "watchlist",
+             "action": "add"|"remove", "ticker": T, "id": n}. An added ticker is checked with one
+             /quotes request: one Schwab names in errors.invalidSymbols, or does not quote, is not
+             added. The record carries the
              request's id and Schwab's answer back to the console.
 
 It does four things, in one loop:
@@ -65,7 +65,6 @@ from websockets.exceptions import ConnectionClosed
 import live_market_plane as lmp
 import live_price_rows
 import runtime_layout
-from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT, serve_live_push
 from app.market_data.schwab.streaming.live_ui import serve_live_ui
 from calibration.complete_chain_capture import ChainSweep
 from config import build_config, load_dotenv_file
@@ -126,8 +125,8 @@ EQUITY_SERVICES = ("LEVELONE_EQUITIES", "CHART_EQUITY", "NEWS_HEADLINE", "NYSE_B
 #: Schwab's limit on each option service, as its own refusals on the daemon's connection state it
 #: ("(LEVELONE_OPTIONS=3000, DISCARDED=1)", "(OPTIONS_BOOK=100, DISCARDED=1)")
 OPTION_LIMITS = {"LEVELONE_OPTIONS": 3000, "OPTIONS_BOOK": 100}
-#: the market context every page's header shows (live_push.MARKET_CONTEXT) is streamed on these,
-#: whatever the watchlist holds
+#: the market context every page's header shows (lmp.MARKET_CONTEXT) is streamed on these, whatever
+#: the watchlist holds
 MARKET_CONTEXT_SERVICES = ("LEVELONE_EQUITIES", "CHART_EQUITY", "NEWS_HEADLINE")
 
 #: LEVELONE_EQUITIES / CHART_EQUITY fields copied into the database's flat columns (the full
@@ -513,7 +512,7 @@ class Daemon:
         the market context on MARKET_CONTEXT_SERVICES, and the option contracts the rule picked."""
         out = {svc: frozenset(self.watchlist) for svc in EQUITY_SERVICES}
         for svc in MARKET_CONTEXT_SERVICES:
-            out[svc] |= frozenset(MARKET_CONTEXT)
+            out[svc] |= frozenset(lmp.MARKET_CONTEXT)
         out.update(self.options)
         return out
 
@@ -661,10 +660,9 @@ class Daemon:
         for task in done:
             task.result()  # a follower's error, raised for run to name
 
-    def console_frame(self, req: dict, sender) -> None:
-        """A frame from a connection `sender` to the daemon's local socket (live_push, 127.0.0.1): a
-        watchlist request ({"op": "watchlist"}, answered on the bus) or the contract selected on the
-        Flow panel ({"op": "flow_contract", "contract": symbol or null})."""
+    def console_request(self, req: dict) -> None:
+        """A watchlist request ({"op": "watchlist"}, answered on the bus) or the contract selected
+        on the Flow panel ({"op": "flow_contract", "contract": symbol or null})."""
         if req["op"] == "watchlist":
             task = asyncio.ensure_future(self.watchlist_request(req))
             task.add_done_callback(_request_ended)
@@ -755,7 +753,7 @@ class Daemon:
         return self.bus.current.get(_current_key("LEVELONE_OPTIONS", symbol)) if held else None
 
     def status(self, now: float) -> dict:
-        """What the console and browsers are told every second (live_push / live_ui), at `now`."""
+        """What the console and browsers are told every second (live_ui), at `now`."""
         last = self.stream.last_frame_ts if self.stream is not None else 0.0
         return {
             "ts": now,
@@ -1194,10 +1192,10 @@ def one_schwab_client(build) -> callable:
     return schwab_client
 
 
-async def run(asked: asyncio.Event) -> None:
-    """The whole daemon: writer, the two local sockets, the chain sweep, the market follower and
-    the Schwab connection, each until `asked`; one that ends first ends them all with an error
-    naming it."""
+async def run(asked: asyncio.Event, consume) -> None:
+    """The whole daemon: writer, the browsers' socket, the chain sweep, the market follower, the
+    Schwab connection and `consume` (the console's reader of its bus), each until `asked`; one that
+    ends first ends them all with an error naming it."""
     load_dotenv_file()
     cfg = build_config()
     schwab_client = one_schwab_client(
@@ -1221,11 +1219,10 @@ async def run(asked: asyncio.Event) -> None:
         asyncio.create_task(record_feed_status(daemon, stop), name="feed status"),
         asyncio.create_task(keep_sessions(daemon, stop), name="keep"),
         asyncio.create_task(daemon.follow_market(stop), name="market follower"),
-        asyncio.create_task(
-            serve_live_push(bus, stop, on_request=daemon.console_frame), name="live push"
-        ),
         asyncio.create_task(serve_live_ui(stop, heartbeat_fn=daemon.status), name="live ui"),
     ]
+    console = asyncio.create_task(consume(bus, daemon), name="console")
+    tasks.append(console)
     stopping = asyncio.ensure_future(asked.wait())
     try:
         await asyncio.sleep(0)  # servers subscribe before the first message
@@ -1234,6 +1231,7 @@ async def run(asked: asyncio.Event) -> None:
         ended = None if asked.is_set() else done.pop()
     finally:
         stopping.cancel()
+        console.cancel()
         stop.set()
         await asyncio.gather(*tasks, return_exceptions=True)
     if ended is not None:
@@ -1242,12 +1240,12 @@ async def run(asked: asyncio.Event) -> None:
         ) from ended.exception()
 
 
-async def keep_running(stop: asyncio.Event) -> None:
+async def keep_running(stop: asyncio.Event, consume) -> None:
     """The daemon until `stop`, started again RESTART_WAIT_SEC after an error ends it, with the
     error in the log."""
     while not stop.is_set():
         try:
-            await run(stop)
+            await run(stop, consume)
         except Exception:
             log.exception("capture daemon: ended by an error")
             asked = asyncio.ensure_future(stop.wait())

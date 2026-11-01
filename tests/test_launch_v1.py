@@ -185,7 +185,6 @@ def _real_console(
         **os.environ,
         "ED_CI_OFFLINE": "1",
         "ED_RUNTIME_ROOT": str(tmp_path / "runtime"),
-        "ED_LIVE_PUSH_PORT": "1",
         "SCHWAB_API_KEY": "stand-in",
         "SCHWAB_APP_SECRET": "stand-in",
         **settings,
@@ -221,11 +220,10 @@ def test_the_program_is_one_process_and_the_stop_ends_the_daemon_before_the_loop
     """The one program started as the launcher starts it: one process serves the console and holds
     the daemon's sockets, with no Schwab token. A clean stop ends it, exit 0, and the owner lock of
     the stream is gone."""
-    push, ui = _free_port(), _free_port()
+    ui = _free_port()
     window, pid = _real_console(
         tmp_path / "one",
         launch.CONSOLE_START[-1],
-        ED_LIVE_PUSH_PORT=str(push),
         ED_LIVE_UI_PORT=str(ui),
         ED_LIVE_UI_HOST="127.0.0.1",
         SCHWAB_TOKEN_PATH=str(tmp_path / "missing_token.json"),
@@ -233,14 +231,14 @@ def test_the_program_is_one_process_and_the_stop_ends_the_daemon_before_the_loop
     locks = (tmp_path / "one" / "runtime").rglob("stream_capture.lock")
     try:
         end = time.monotonic() + 60
-        while not (launch.in_use(push) and launch.in_use(ui)):
-            assert time.monotonic() < end, "the daemon's sockets never opened"
+        while not launch.in_use(ui):
+            assert time.monotonic() < end, "the daemon's socket never opened"
             time.sleep(0.1)
         program = psutil.Process(pid)  # a venv's python.exe runs the real Python as its child
         owners = {
             c.pid
             for c in psutil.net_connections("inet")
-            if c.laddr and c.laddr.port in (push, ui) and not c.raddr
+            if c.laddr and c.laddr.port == ui and not c.raddr
         }
         assert len(owners) == 1
         assert owners <= {pid, *(p.pid for p in program.children(recursive=True))}

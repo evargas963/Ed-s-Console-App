@@ -31,7 +31,6 @@ import pytest
 
 import live_market_plane as lmp
 from app.market_data.schwab.streaming import capture
-from app.market_data.schwab.streaming.live_push import serve_live_push
 from app.market_data.schwab.streaming.live_ui import LiveUiServer
 from calibration.complete_chain_capture import ChainSweep
 from stream_spine import (
@@ -1462,9 +1461,9 @@ def test_spill_files_left_beside_the_database_are_written_back_at_start(tmp_path
 
 
 def test_the_clean_stop_writes_what_the_daemon_holds_to_spill_files_before_it_ends(tmp_path):
-    """The daemon's clean stop (its stop set by the program's shutdown), on a live_push server on a
-    free port. INDUCED CONDITION: while another connection holds the stream database's write lock
-    and the captured option quotes are held in memory and the spill file. The daemon's stop is set,
+    """The daemon's clean stop (its stop set by the program's shutdown). INDUCED CONDITION: while
+    another connection holds the stream database's write lock and the captured option quotes are
+    held in memory and the spill file. The daemon's stop is set,
     every task it ends returns, and every quote is on disk in spill files beside the database."""
     db = tmp_path / "stream_capture.db"
     writer = CaptureWriter(
@@ -1482,9 +1481,6 @@ def test_the_clean_stop_writes_what_the_daemon_holds_to_spill_files_before_it_en
         daemon.writer, daemon.stop = writer, stop
         tasks = [
             asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop)),
-            asyncio.create_task(
-                serve_live_push(bus, stop, port=port, on_request=daemon.console_frame)
-            ),
         ]
         await _held_past_the_cap(writer, bus, health, daemon)
         stop.set()

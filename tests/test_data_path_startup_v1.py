@@ -19,14 +19,13 @@ from pathlib import Path
 import psutil
 import pytest
 from websockets.asyncio.client import connect
-from websockets.exceptions import InvalidStatus
 
 import db
 import launch
 import live_market_plane as lmp
 import push_changes
 import server
-from app.market_data.schwab.streaming import capture, live_push, live_ui
+from app.market_data.schwab.streaming import capture, live_ui
 from app.market_data.schwab.streaming.live_ui import serve_live_ui
 from calibration.complete_chain_capture import (
     CAPTURE_BASIS,
@@ -45,29 +44,6 @@ async def _until(cond, limit: float = 10.0) -> None:
     while not cond():
         assert time.monotonic() < end, "timed out"
         await asyncio.sleep(0.05)
-
-
-def test_a_web_page_cannot_reach_the_daemons_local_socket():
-    """The console sends no Origin and connects; a browser always sends one, and a page on any site
-    is refused before it reads the stream. Induced test condition: a client sending the Origin a
-    page's browser would."""
-
-    async def go():
-        stop, stats = asyncio.Event(), {}
-        pushing = asyncio.create_task(
-            live_push.serve_live_push(MessageBus(), stop, port=0, stats=stats)
-        )
-        await _until(lambda: stats.get("listening"))
-        async with connect(stats["listening"]):
-            pass
-        with pytest.raises(InvalidStatus) as refused:
-            async with connect(stats["listening"], origin="https://example.com"):
-                pass
-        stop.set()
-        await pushing
-        return refused.value.response.status_code
-
-    assert asyncio.run(asyncio.wait_for(go(), 30)) == 403
 
 
 def test_the_stop_takes_only_this_checkouts_processes(tmp_path):
@@ -409,10 +385,11 @@ def test_a_daemon_whose_live_ui_port_is_held_ends_with_why_and_starts_again(tmp_
     script = (
         "import asyncio\n"
         "from app.market_data.schwab.streaming import capture\n"
+        "from app.options.order_flow.streaming import follow\n"
         "async def go():\n"
         "    stop = asyncio.Event()\n"
         "    asyncio.get_running_loop().call_later(capture.RESTART_WAIT_SEC + 3, stop.set)\n"
-        "    await capture.keep_running(stop)\n"
+        "    await capture.keep_running(stop, follow)\n"
         "capture.start_log()\n"
         "asyncio.run(go())\n"
     )
@@ -424,7 +401,6 @@ def test_a_daemon_whose_live_ui_port_is_held_ends_with_why_and_starts_again(tmp_
             "ED_RUNTIME_ROOT": str(tmp_path),
             "ED_LIVE_UI_HOST": "127.0.0.1",
             "ED_LIVE_UI_PORT": str(held.getsockname()[1]),
-            "ED_LIVE_PUSH_PORT": "0",
             "SCHWAB_TOKEN_PATH": str(tmp_path / "missing_token.json"),
         }
         done = subprocess.run(

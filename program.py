@@ -16,6 +16,7 @@ from fastapi import FastAPI
 
 import server
 from app.market_data.schwab.streaming import capture
+from app.options.order_flow.streaming import follow
 
 
 @asynccontextmanager
@@ -24,7 +25,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         capture.start_log()
         fd, lock = capture.acquire_owner_lock()
         stop = asyncio.Event()
-        daemon = asyncio.create_task(capture.keep_running(stop), name="capture daemon")
+        daemon = asyncio.create_task(capture.keep_running(stop, follow), name="capture daemon")
         daemon.add_done_callback(lambda _: capture.release_owner_lock(fd, lock))
 
         def stop_daemon_first() -> None:
