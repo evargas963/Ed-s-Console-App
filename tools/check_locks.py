@@ -1,7 +1,8 @@
-"""The one-way locks: a pull request may not raise any count here, so the repository only gets
-simpler. Each count is taken on the base and on the head under one set of rules, the base's when
-it has them, so a change cannot weaken what judges it. A count at 0 is an absolute ban. No number
-is kept by hand and nothing is exempt.
+"""The one-way locks: no pull request may raise a count, so the repository only gets simpler.
+
+Each count is taken on the base and on the head under one set of rules, the base's when it has
+them, so a change cannot weaken what judges it. A count at 0 is an absolute ban. No number is kept
+by hand and nothing is exempt.
 
 CI runs the base's copy of this file, from the repository root, so a change cannot edit its judge.
 
@@ -45,9 +46,11 @@ def _part(name: str) -> str:
 
 
 def counts(tree: Path, rules: str) -> Counter:
-    """Every lock's count in `tree` under `rules`: its lines of code, tests and tools, its open
-    work rows, its patching lines in tests, its fields with a second reader and each rule's
-    findings."""
+    """Return every lock's count in `tree` under `rules`.
+
+    The counts are its lines of code, tests and tools, its open work rows, its patching lines in
+    tests, its fields with a second reader and each rule's findings.
+    """
     found: Counter = Counter()
     for name in _run("git", "ls-files", cwd=tree).splitlines():
         if name.endswith(CODE) and not name.startswith(SKIP):
