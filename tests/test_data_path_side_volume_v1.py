@@ -35,3 +35,28 @@ def test_volume_below_and_above_spot_keeps_every_digit():
     assert sums["vol_below"] == 10.4
     assert sums["vol_above"] == 3.2
     assert sums["spot_basis"] == 100.0
+
+
+def test_a_side_with_no_strike_or_a_volume_not_known_has_no_total():
+    tk = "ZZSIDE"
+    with srv._terrain_cache_lock:
+        srv._terrain_cache[tk] = {
+            "_per_strike": {"all": [[95.0, 10.0, None]], "near": [], "far": []},
+            "spot": 100.0,
+            "computed_ts_utc": 1.0,
+        }
+    lmp.record_feed_heartbeat(
+        {"ts": time.time(), "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [tk]}}
+    )
+    ofs._price_rows[tk] = {"ticker": tk, "spot": 100.0, "trade_ts": 1.0}
+    try:
+        resp = srv.get_terrain_strikes(ticker=tk)
+    finally:
+        with srv._terrain_cache_lock:
+            srv._terrain_cache.pop(tk, None)
+        ofs._price_rows.pop(tk, None)
+        lmp.record_feed_down()
+    sums = json.loads(bytes(resp.body))["today_side_sums"]
+    assert sums["gex_below"] == 10.0
+    assert sums["vol_below"] is None
+    assert sums["gex_above"] is None and sums["vol_above"] is None

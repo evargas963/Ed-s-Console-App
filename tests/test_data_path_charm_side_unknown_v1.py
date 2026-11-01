@@ -144,3 +144,25 @@ def test_a_forces_dex_side_with_a_strike_not_known_has_no_total():
         bucket_metric(b, "net_dex_dollars") is None for k, b in book.items() if k < NFLX.spot
     )
     assert server._forces_from_captures(NFLX.ticker, caps)["dex_below_dollars"] is None
+
+
+def test_a_forces_oi_side_with_a_strike_not_known_has_no_total():
+    """Induced test condition: the older capture's $5 contracts with openInterest removed, none
+    being captured unreported on two days."""
+    prior = datetime(2026, 10, 6, 12, 0, tzinfo=ET)
+    older = [
+        {k: v for k, v in c.items() if k != "openInterest" or c["strikePrice"] != 5.0}
+        for c in NFLX.chain
+    ]
+    caps = [
+        {
+            "et_date": day.date().isoformat(),
+            "spot": NFLX.spot,
+            "contracts": chain,
+            "ts_utc": day.timestamp(),
+        }
+        for day, chain in ((NFLX.now, NFLX.chain), (prior, older))
+    ]
+    forces = server._forces_from_captures(NFLX.ticker, caps)
+    assert forces["doi_below"] is None
+    assert forces["doi_above"] == 0

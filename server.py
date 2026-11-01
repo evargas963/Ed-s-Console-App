@@ -2613,9 +2613,13 @@ def _forces_from_captures(tk: str, captures: list, charm_by_strike: dict | None 
             per0 = compute_exposures_by_strike(c0, spot=float(s0), now=clock0, product=product)[0]
 
             # a strike's OI change exists only when its OI is known on both days
-            oi1 = {k: t for k, v in per1.items() if (t := strike_total_oi(v)) is not None}
-            oi0 = {k: t for k, v in per0.items() if (t := strike_total_oi(v)) is not None}
-            doi = {k: oi1[k] - oi0[k] for k in oi1 if k in oi0}
+            oi1 = {k: strike_total_oi(v) for k, v in per1.items()}
+            oi0 = {k: strike_total_oi(v) for k, v in per0.items()}
+            doi = {
+                k: None if oi1[k] is None or oi0[k] is None else oi1[k] - oi0[k]
+                for k in oi1
+                if k in oi0
+            }
             dex1 = {k: bucket_metric(v, "net_dex_dollars") for k, v in per1.items()}
             spot1 = float(s1)
             # CHARM below/above from the NEWER banked wide chain (full book).
@@ -2638,7 +2642,7 @@ def _forces_from_captures(tk: str, captures: list, charm_by_strike: dict | None 
                 "doi_above": _side_total([d for k, d in doi.items() if k > spot1]),
                 "dex_below_dollars": _side_total([d for k, d in dex1.items() if k < spot1]),
                 "dex_above_dollars": _side_total([d for k, d in dex1.items() if k > spot1]),
-                "strikes_diffed": len(doi),
+                "strikes_diffed": sum(d is not None for d in doi.values()),
                 "charm_below": charm_below,
                 "charm_above": charm_above,
                 "newer_et_date": d1,
