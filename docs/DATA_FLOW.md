@@ -639,10 +639,9 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
   as sent → daemon bus (`markets.DATE`) → the daemon's writer (`stream_capture.db`
   `stream_markets_raw`, every answer with its status) and → console (8799) → `time_et.record_markets`
   (a 200 is that date's sessions; a 400, "more than 7 days back" or "beyond 1 year", is no session:
-  the date stays unknown). At startup the console reads the recorded 200 answers before it prices
-  the stored chains (`server._load_stored_sessions`,
-  `tests/test_data_path_stored_sessions_v1.py`), as a stored chain's expiries reach it before the
-  daemon's answers do. The label (`time_et.session_label`: Pre-Market, RTH, After-Hours,
+  the date stays unknown). At startup, before its loops and the feed, the console reads the recorded 200
+  answers (`server._load_stored_sessions`, `tests/test_data_path_stored_sessions_v1.py`), as a
+  stored chain's expiries reach it before the daemon's answers do. The label (`time_et.session_label`: Pre-Market, RTH, After-Hours,
   Closed, Unknown) is pushed on `/api/changes` when the page connects and every 5 s with no other
   change. The same answers decide every session window: the prior-day, overnight, VWAP and
   value-area windows (the regular session), the Trade Desk's "this session" window

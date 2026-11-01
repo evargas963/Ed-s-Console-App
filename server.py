@@ -585,6 +585,10 @@ async def _app_lifespan(app):
     # completing, and that path joins background workers which may be blocked.
     _install_signal_handlers()
 
+    # Before the loops and the feed: everything priced from here on has the recorded sessions, and
+    # the daemon's answers then replace them.
+    _load_stored_sessions(canonical_stream_db_path())
+
     # The levels loop: the stored levels at startup, then the status line and the price levels
     # (the chains arrive from the daemon, _on_chain).
     start_terrain_loop()
@@ -2043,11 +2047,16 @@ def _terrain_loop() -> None:
 
 def _load_stored_sessions(path: Path) -> None:
     """Schwab's /markets answers as the daemon recorded them in the stream database at `path`,
-    oldest first, so a stored chain is priced on the sessions of its expiries."""
+    oldest first, so a stored chain is priced on the sessions of its expiries. No database or table
+    yet, as at the first start before the daemon's, is no answer held."""
     if not path.is_file():
         return
     conn = sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True, timeout=5)
     try:
+        if not conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE name='stream_markets_raw'"
+        ).fetchone():
+            return
         rows = conn.execute(
             "SELECT native_json FROM stream_markets_raw WHERE status = 200 ORDER BY ts_recv"
         ).fetchall()
@@ -2062,7 +2071,6 @@ def _load_stored_levels(watchlist: list[str]) -> int:
     decision 7), so a restart, a weekend or the close shows the last reading with its time: queued
     for the pricing thread behind every delivered chain (_wait_to_price), never for a ticker the
     daemon already delivered a chain for. Returns how many tickers were queued."""
-    _load_stored_sessions(canonical_stream_db_path())
     return sum(_wait_to_price(tk, STORED) for tk in watchlist)
 
 
