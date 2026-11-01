@@ -1,0 +1,67 @@
+# The locks' rules, counted by tools/check_locks.py on every tracked Python file with every `noqa`
+# ignored. It stands alone: no other file changes what it counts. A count may only fall; at 0 a rule
+# is absolute. A count asks for no fix; the rules the operator ruled out stay out.
+line-length = 100
+target-version = "py313"
+
+[lint]
+select = [
+    "ARG", # an argument nothing reads
+    "B", # likely bugs
+    "BLE", # a catch-all except
+    "C90", # a function too complex to read
+    "D2", "D3", "D4", # PEP 257, where a docstring exists
+    "E", "F", "I", "UP", "W", # PEP 8, unused and undefined names, import order, old syntax
+    "ERA", # code left in a comment
+    "PERF", # needless work in a loop
+    "PLC0415", # an import outside the module's top
+    "RET", # a return that says nothing
+    "S102", "S307", # code run from text
+    "S110", "S112", # an error passed over in silence
+    "SIM107", "SIM113", "SIM114", "SIM116", "SIM117", "SIM118", "SIM208", "SIM300", "SIM905",
+    "SIM910", "SIM911", # needless complexity
+    "T20", # print in product code
+    "TID251", # the banned names below
+    "TRY", # an except that hides what failed
+]
+ignore = [
+    "B004", "B006", "B007", "B011", "B028", "B905", "B912", "D203", "D213", "E711", "E712", "E731",
+    "UP042",
+]
+
+[lint.mccabe]
+max-complexity = 10
+
+[lint.flake8-tidy-imports.banned-api]
+"aiohttp".msg = "Only Feed talks to Schwab."
+"authlib".msg = "Only Feed talks to Schwab."
+"http.client".msg = "Only Feed talks to Schwab."
+"httpx".msg = "Only Feed talks to Schwab."
+"requests".msg = "Only Feed talks to Schwab."
+"schwab".msg = "Only Feed talks to Schwab."
+"urllib.request".msg = "Only Feed talks to Schwab."
+"websockets".msg = "Only Feed talks to Schwab."
+"sqlite3".msg = "Only the Recorder uses a database."
+"datetime.date.today".msg = "Only an entry point reads the clock; pass `now`."
+"datetime.datetime.now".msg = "Only an entry point reads the clock; pass `now`."
+"datetime.datetime.today".msg = "Only an entry point reads the clock; pass `now`."
+"datetime.datetime.utcnow".msg = "Only an entry point reads the clock; pass `now`."
+"time.gmtime".msg = "Only an entry point reads the clock; pass `now`."
+"time.localtime".msg = "Only an entry point reads the clock; pass `now`."
+"time.monotonic".msg = "Only an entry point reads the clock; pass `now`."
+"time.perf_counter".msg = "Only an entry point reads the clock; pass `now`."
+"time.time".msg = "Only an entry point reads the clock; pass `now`."
+"time.time_ns".msg = "Only an entry point reads the clock; pass `now`."
+"time.monotonic_ns".msg = "Only an entry point reads the clock; pass `now`."
+"time.perf_counter_ns".msg = "Only an entry point reads the clock; pass `now`."
+"time.process_time".msg = "Only an entry point reads the clock; pass `now`."
+"time_et.now_et".msg = "Only an entry point reads the clock; pass `now`."
+"importlib.import_module".msg = "A module is imported by name at the top."
+"importlib.machinery".msg = "No code runs from a data file."
+"importlib.util".msg = "No code runs from a data file."
+"runpy".msg = "No code runs from a data file."
+
+[lint.per-file-ignores]
+"tests/**" = ["ARG", "T20"]
+"tools/**" = ["T20"]
+"app/market_data/schwab/streaming/capture_main.py" = ["PLC0415"] # the operator's one import
