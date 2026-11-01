@@ -272,7 +272,6 @@ def test_heatmap_column_state_cell_age_and_front_expiry_are_served():
         _publish(_AT.timestamp() - 10)
         body = server.gamma_surface_payload(TK, "all", None, 0, None, None, _AT)
     finally:
-        ofs._drop_released_options(_AT.timestamp())
         _forget()
     assert body["stream_by_expiry"][EXPIRY] == "partial"
     ages = [

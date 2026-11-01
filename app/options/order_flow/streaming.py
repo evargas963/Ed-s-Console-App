@@ -355,7 +355,6 @@ async def _rows_loop(ui_url: str, reconnect_sec: float) -> None:
                     msg = json.loads(frame)
                     if msg.get("type") == "feed":
                         _lmp.record_feed_heartbeat(msg.get("feed"))
-                        _drop_released_options(time.time())
                         _feed_changed(time.time())
                     for row in msg.get("rows") or []:
                         _price_rows[row["ticker"]] = row
@@ -432,13 +431,6 @@ async def _feed_loop(push_url: str, ui_url: str, reconnect_sec: float) -> None:
         _lmp.record_feed_down()
         _feed_changed(time.time())
         _log_stream("FEED_LOOP_STOP_DONE")
-
-
-def _drop_released_options(now: float) -> None:
-    """A contract that left the daemon's held set keeps its last quote, its last greeks, and
-    the time of that quote. The Flow panel marks it NOT STREAMED. `now` is the heartbeat's
-    time. Nothing is deleted because the option rule moved on or the socket closed."""
-    return None
 
 
 #: a contract's subscription, as the Flow panel shows it: the daemon's option rule holds it on

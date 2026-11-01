@@ -2643,9 +2643,7 @@ def _forces_from_captures(tk: str, captures: list, charm_by_strike: dict | None 
                 "dex_above_dollars": side_total([d for k, d in dex1.items() if k > spot1]),
                 "charm_below": charm_below,
                 "charm_above": charm_above,
-                "newer_et_date": d1,
                 "older_et_date": d0,
-                "bucket_spot": spot1,
                 "method": (
                     "OI side totals of the two captures, each side by the newer capture's spot; "
                     "DEX = net_dex_dollars side sums on the newer capture; "

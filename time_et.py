@@ -257,17 +257,6 @@ def sessions_since(now: datetime, n: int) -> datetime | None:
     return datetime.combine(date.fromisoformat(begun[-n]), datetime.min.time(), ET)
 
 
-def prior_trading_day(day: date) -> date | None:
-    """The newest date before `day` Schwab's /markets says the stock market was open; None when
-    no answer held says so."""
-    earlier = [
-        date.fromisoformat(d)
-        for d, s in _sessions.items()
-        if s.is_open and date.fromisoformat(d) < day
-    ]
-    return max(earlier) if earlier else None
-
-
 #: Seconds in a 365-day year (ACT/365, the standard option-pricing day-count).
 YEAR_SECONDS: float = 365.0 * 24.0 * 3600.0
 #: Sub-floor on time-to-expiry (10 minutes) — guards the exact-expiry 1/sqrt(T) singularity
