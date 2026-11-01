@@ -86,8 +86,10 @@ per product file, so no module that does not hold one may start.
 GitHub runs that workflow from the base (`pull_request_target`), and it runs no code of the head, so
 a change cannot edit its judge. A rise, or a change to a lock file (`check_locks.LOCK_PATHS`, `LOCK_NAMES`), merges
 only on the operator's approval on the `operator-locks` environment; a new test that raises a count
-goes the same way, or deletes what it replaces (CLAUDE.md item 4 stands). In force once the operator
-makes `locks` a required check (`ACTIVE_PROGRAM.md` LOCK-SETTINGS).
+goes the same way, or deletes what it replaces (CLAUDE.md item 4 stands). `locks` is a required
+check on `main`. `gh` is allowed by a list and `gh api` only reads, in the forms
+`tests/test_operator_law_guard_action_bans_v1.py` checks (`tools/operator_law_guard.py`); the
+restricted token is what makes that a seal (`ACTIVE_PROGRAM.md` LOCK-SETTINGS).
 
 ## Rules and what enforces them
 
@@ -95,7 +97,7 @@ Each rule names what enforces it and where it runs. "(in force)" means it runs t
 (`.pre-commit-config.yaml`: the credential scan, the line-ending check, `ruff check .`, `ruff format
 --check .`) or in the required `hardening` (`.github/workflows/hardening.yml`), `pytest-full` or
 `pytest-windows` (`.github/workflows/pytest.yml`) job. "(locks)" means it runs in
-`.github/workflows/locks.yml`, in force once LOCK-SETTINGS is done. "Step N" is the SHAPE step that turns the check on; until
+`.github/workflows/locks.yml`, a required job too. "Step N" is the SHAPE step that turns the check on; until
 then the rule binds with no machine check.
 
 | # | Rule | Enforced by |
@@ -173,7 +175,7 @@ then the rule binds with no machine check.
 
 - The `before-done` skill's checks pass on the PR's final commit, their output shown; the full
   suite is the required CI jobs green there, not a local repeat (operator 2026-10-30: "Yes, CI
-  proves it"). Branch protection on `main` requires `pytest-full`, `pytest-windows` and `hardening`
+  proves it"). Branch protection on `main` requires `pytest-full`, `pytest-windows`, `hardening` and `locks`
   on the final commit, current with `main`; `pytest-windows` runs the browser tests and the full
   pytest suite on Windows as production runs (operator 2026-10-30: "Yes, do both").
 - Claims. Every statement about how something is now (a process, a file, a branch, a pull request,

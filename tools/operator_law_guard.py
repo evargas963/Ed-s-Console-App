@@ -10,6 +10,8 @@ a heredoc nothing runs are data.
     commit; stage explicit paths.
   * LOCK DISABLE. `--no-verify`, `-n`, `core.hooksPath`, `SKIP=<hook>` and `pre-commit uninstall`
     bypass the pre-commit checks; refusing the bypass in session blocks nothing legitimate.
+  * THE LOCKS' SETTINGS. `gh` is allowed by a list: pull requests, runs and reads. `gh api` takes
+    read options only, and every word must be written out; ENF-13 lists what this does not reach.
   * PYTHON FROM STDIN. On Windows an empty heredoc or </dev/null looks like a console to
     `python -`, and Python 3.13's REPL retries forever on the invalid handle. A python that reads
     its program from stdin (`-`, or no script, -c or -m) is refused wherever it runs; a script file
@@ -184,6 +186,78 @@ def _disables_a_lock(st: Statement) -> bool:
     )
 
 
+#: all of `gh` the agent may run, group by group; `gh api` only reads (_GH_API_READS)
+_GH_ALLOWED = {
+    "issue": {"list", "view"},
+    "pr": {
+        "checks",
+        "close",
+        "comment",
+        "create",
+        "diff",
+        "edit",
+        "list",
+        "merge",
+        "ready",
+        "update-branch",
+        "view",
+    },
+    "repo": {"view"},
+    "run": {"download", "list", "rerun", "view", "watch"},
+    "workflow": {"list", "view"},
+}
+_GH_API_READS = frozenset(
+    {
+        "--cache",
+        "--include",
+        "--jq",
+        "--paginate",
+        "--silent",
+        "--slurp",
+        "--template",
+        "-i",
+        "-q",
+        "-t",
+    }
+)
+
+
+#: a word written out: in single quotes, in double quotes with nothing to expand, or plain
+_GH_LITERAL = re.compile(r"""'[^']*'|"[^"$`%^]*"|[^'"$`{}()@%^*?\[~]+""")
+
+
+def _gh_refused(st: Statement) -> bool:
+    """Return whether a `gh` is outside what the agent may run.
+
+    The list says what is allowed, because a list of what is not allowed always misses a spelling.
+    A word the shell would still expand, or input from a pipe, is refused: the guard must read
+    every word to judge it. The locks stand on the sign-in, variables, environments, branch
+    protection and pending approvals, and none of them is on the list.
+    """
+    if st.program != "gh":
+        return False
+    fed = (
+        st.upstream is not None
+        or st.heredoc is not None
+        or any(op.startswith("<") for op, _target in st.redirects)
+    )
+    if fed or not all(_GH_LITERAL.fullmatch(word) for word in st.raw[1:]):
+        return True
+    if len(st.words) < 2:
+        return False
+    group, *args = st.words[1:]
+    if any(a.startswith("--admin") for a in args):
+        return True
+    if group == "auth":
+        return args != ["status"]
+    if group == "api":
+        flags = [a.split("=", 1)[0] for a in args if a.startswith("-")]
+        return not _GH_API_READS.issuperset(flags)
+    if group in ("--help", "--version", "help"):
+        return bool(args)
+    return not args or args[0] not in _GH_ALLOWED.get(group, ())
+
+
 #: an option that makes sed edit its files in place: -i, -i.bak, -ni, -Ei, --in-place[=SUF]
 _SED_IN_PLACE = re.compile(r"^(?:-[A-Za-z]*i|--in-place(?:=|$))")
 #: redirects of the statement's output (not 2> / &>, which carry no sed output)
@@ -225,6 +299,11 @@ def bash_violations(cmd: str, powershell: bool = False) -> list[str]:
         )
     if any(_disables_a_lock(st) for st in statements):
         out.append("ACTION BLOCKED: this disables a mechanical lock. Only the operator may.")
+    if any(_gh_refused(st) for st in statements):
+        out.append(
+            "ACTION BLOCKED: this `gh` is outside what the agent may run. Write every word out, "
+            "or ask the operator."
+        )
     if any(PYTHON.fullmatch(st.program) and reads_stdin(st) for st in statements):
         out.append(
             "ACTION BLOCKED: this python reads its program from stdin (`python -`, a heredoc, "
