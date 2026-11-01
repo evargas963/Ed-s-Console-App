@@ -1,8 +1,8 @@
 """A contract the daemon stops holding keeps Schwab's last bid on the Flow panel.
 
 End to end through the real code: the daemon's status (live_market_plane.record_feed_heartbeat),
-Schwab's LEVELONE_OPTIONS message (streaming._ingest_pushed), the release path
-(streaming._drop_released_options), and the Flow panel (server.options_microstructure).
+Schwab's LEVELONE_OPTIONS message (streaming._ingest_pushed), and the Flow panel
+(server.options_microstructure).
 Real data: one LEVELONE_OPTIONS message received 2026-10-05 14:00 CT
 (tests/fixtures/real_stream_mix_2026_10_05_1400ct.json). The daemon's status is the console's
 own message, built here in its shape (no status is captured).
@@ -54,7 +54,6 @@ def test_a_released_contract_keeps_its_last_bid_and_is_not_streamed():
                 "held": {"LEVELONE_OPTIONS": [], "OPTIONS_BOOK": []},
             }
         )
-        ofs._drop_released_options(_AT)
         body = server.options_microstructure(_SYM, _AT)
     finally:
         ofls.clear_all_live_state()

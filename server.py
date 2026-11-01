@@ -2610,7 +2610,7 @@ def _forces_from_captures(tk: str, captures: list, charm_by_strike: dict | None 
             if c["spot"] is not None
         ]
         if len(rows) >= 2:
-            (d1, s1, c1, t1), (d0, s0, c0, t0) = rows[0], rows[1]
+            (_, s1, c1, t1), (d0, s0, c0, t0) = rows[0], rows[1]
             # each capture at its own time, or at that day's option close once the capture is past
             # it
             product = option_close_product(tk)
@@ -2653,9 +2653,7 @@ def _forces_from_captures(tk: str, captures: list, charm_by_strike: dict | None 
                 "dex_above_dollars": side_total([d for k, d in dex1.items() if k > spot1]),
                 "charm_below": charm_below,
                 "charm_above": charm_above,
-                "newer_et_date": d1,
                 "older_et_date": d0,
-                "bucket_spot": spot1,
                 "method": (
                     "OI side totals of the two captures, each side by the newer capture's spot; "
                     "DEX = net_dex_dollars side sums on the newer capture; "

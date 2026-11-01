@@ -108,7 +108,6 @@ def test_a_contract_the_daemon_stops_streaming_keeps_its_last_bid():
                 "held": {"LEVELONE_OPTIONS": [sym], "OPTIONS_BOOK": []},
             }
         )
-        ofs._drop_released_options(time.time())
         ofs._ingest_pushed(*_message(m))
         held = ofls.option_top(sym)
         lmp.record_feed_heartbeat(
@@ -118,7 +117,6 @@ def test_a_contract_the_daemon_stops_streaming_keeps_its_last_bid():
                 "held": {"LEVELONE_OPTIONS": [], "OPTIONS_BOOK": []},
             }
         )
-        ofs._drop_released_options(time.time())
         released = ofls.option_top(sym)
     finally:
         ofls.clear_all_live_state()

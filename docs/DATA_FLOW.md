@@ -296,7 +296,7 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
   contract of the full chain, streamed or not. When the owner fails (the daemon down), nothing
   streams: every cell keeps its value and the header says OFFLINE. A contract the daemon stops
   holding keeps its last quote; the Flow panel marks it NOT STREAMED
-  (`streaming._drop_released_options`, `get_option_contract_streaming_diagnostics`). Tests:
+  (`get_option_contract_streaming_diagnostics`). Tests:
   `tests/test_option_contract_rule_v1.py`, `tests/test_data_path_released_contract_v1.py`.
 - **1-minute bar and daily candles.** Schwab's price history: the daemon's chain sweep
   asks `/pricehistory` for each ticker (`complete_chain_capture.PRICE_HISTORY`,
