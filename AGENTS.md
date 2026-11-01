@@ -112,7 +112,7 @@ then the rule binds with no machine check.
 | 6 | **One program, one path.** Schwab → program memory → pushed to the page. The databases are history, written by the Recorder, read at startup, after the close and for research, never for a live screen. | import-linter: `sqlite3` only in the Recorder and the startup loader; a test that the launcher starts one process (step 3); the data path tests of `docs/DATA_FLOW.md` §2 (in force) |
 | 7 | **All tickers.** Measure and report across every watchlist ticker, never one. Every ticker is treated the same. | no machine check — ENF-05 |
 | 8 | **Clocks.** Market logic in ET; the page shows Central Time. The market's sessions are Schwab's /markets answers; no session table is typed by hand. | `tests/test_time_et_authority.py`, `tests/test_markets_sessions_v1.py` (in force) |
-| 9 | **Real data.** Tests run on captured Schwab data (`tests/fixtures/`) through the real code; no stand-ins, no patches of the code under test. | `tools/check_no_new_patches.py` in `pytest-windows`, on the runs `tools/patch_record.py` records in both `pytest-full` and `pytest-windows`, on a pull request's change (in force), until ruff `TID251` (no `unittest.mock`) and a conftest that refuses `monkeypatch` replace them (step 7); stand-ins left in the tests — STAND-INS |
+| 9 | **Real data.** Tests run on captured Schwab data (`tests/fixtures/`) through the real code; no stand-ins, no patches of the code under test. | `tools/check_locks.py`: patching lines in tests may not rise (locks); stand-ins left in the tests — STAND-INS |
 | 10 | **Only Feed talks to Schwab.** | `locks.ruff.toml` banned names, per product file (locks); import-linter's layers (step 1d) |
 | 11 | **Calculators are pure.** They take `now` and their inputs; they read no clock, database, global or network. Only an entry point (a route, a loop, a stream handler) reads the clock. | `locks.ruff.toml` banned clock names, per product file (locks); import-linter forbidden imports (step 2) |
 | 12 | **Typed records across boundaries.** A value that crosses a module boundary is a dataclass whose states are named constants. | pyright, strict on State, Calculators and Push (step 6) |
@@ -127,13 +127,11 @@ then the rule binds with no machine check.
   what its check flags (`ruff format`, `ruff check --fix`) needs no separate yes; never an unsafe
   fix (operator 2026-10-29: "I DID NOT ALLOW FOR ANY UNSAFE FIXES"): no `--unsafe-fixes`, no
   `unsafe-fixes` or `extend-safe-fixes` in `pyproject.toml`, and a rule whose only fix is unsafe
-  stays deselected. Enforced by: `tools/check_end_to_end.py` and `tools/check_no_new_patches.py`
-  take only ruff's safe fixes as the tools' own, and none at all when ruff's own resolved settings
-  for the committed `pyproject.toml` (extended files included) turn unsafe fixes on, force a fix
-  safe, require an import of every file, or target another Python than the base's, so an unsafe
-  rewrite of a product file is a product change that needs its failing test, and of a patching test
-  a change to its code (`tests/test_check_end_to_end_v1.py`,
-  `tests/test_check_no_new_patches_v1.py`); the rest of this bullet (a found defect fixed, those
+  stays deselected. Enforced by: `tools/check_end_to_end.py` takes only ruff's safe fixes as the
+  tools' own, and none at all when ruff's own resolved settings for the committed `pyproject.toml`
+  (extended files included) turn unsafe fixes on, force a fix safe, require an import of every file,
+  or target another Python than the base's, so an unsafe rewrite of a product file is a product
+  change that needs its failing test (`tests/test_check_end_to_end_v1.py`); the rest of this bullet (a found defect fixed, those
   settings themselves, an unsafe rewrite outside product code) — no machine check, ENF-12.
 - A check runs over the whole repository wherever it can, never with an exception list: at 0
   findings a rule fails the required job outright, and above 0 it is a count (Locks).
@@ -141,8 +139,8 @@ then the rule binds with no machine check.
   `hardening` (in force), and `tools/check_locks.py` (locks); each tool SHAPE adds (import-linter,
   ESLint, pyright) runs over the whole repository the same way (steps 1d to 6). Today's hand-built
   checks judge a pull request's change only (`check_end_to_end`, `check_one_reader`,
-  `check_credential_leak`, `check_eol_style_invariant`, `check_fails_before`,
-  `check_no_new_patches`, each with `--base`); step 7 deletes or replaces them.
+  `check_credential_leak`, `check_eol_style_invariant`, `check_fails_before`, each with `--base`);
+  step 7 deletes or replaces them.
 
 ## Before writing code
 
