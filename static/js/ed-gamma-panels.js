@@ -12,7 +12,7 @@
   // Compact SESSION VOLUME (native totalVolume, never OI or last-trade size — see the row
   // source below) for the GEX-by-strike row. No sign/color: volume is a magnitude, not signed.
   function fmtVol(n) {
-    if (n == null || isNaN(n)) return '—';
+    if (n == null || isNaN(n)) return '-';
     var a = Math.abs(Number(n));
     if (a >= 1e6) return (a / 1e6).toFixed(1) + 'M';
     if (a >= 1e3) return (a / 1e3).toFixed(1) + 'K';
@@ -164,14 +164,14 @@
       (view.note ? '<div class="gbs-allexp">' + esc(view.note) + '</div>' : '');   // why not around the price
     var bars = '';
     rows.slice().reverse().forEach(function (r) {
-      // a strike with no value is unknown: no bar, '—' (never a $0 bar)
+      // a strike with no value is unknown: no bar, '-' (never a $0 bar)
       var k = r[0], v = r[1] == null ? null : Number(r[1]);
       var w = v == null || v === 0 ? 0 : Math.abs(v) / maxAbs * 100, pos = v != null && v >= 0;
       bars += '<div class="gbs-row' + (k === spotStrike ? ' spot' : '') + '" data-strike="' + k + '"' +
         (opts.attrs ? opts.attrs(r) : '') + '>' +
         '<span class="gbs-k">' + px(k, k % 1 ? 2 : 0) + '</span>' +
         '<span class="gbs-track"><i class="gbs-bar ' + (pos ? 'pos' : 'neg') + '" style="width:' + w.toFixed(1) + '%"></i></span>' +
-        '<span class="gbs-v ' + (v == null ? '' : pos ? 'pos' : 'neg') + '">' + (v == null ? '—' : usd(v)) + '</span>' +
+        '<span class="gbs-v ' + (v == null ? '' : pos ? 'pos' : 'neg') + '">' + (v == null ? '-' : usd(v)) + '</span>' +
         (opts.cells ? opts.cells(r) : '') + '</div>';
     });
     // the bars scroll in their own area; the -/0/+ axis is pinned at the foot
@@ -211,7 +211,7 @@
       cells: function (r) {
         return '<span class="gbs-vol" title="session volume">' + fmtVol(r[2]) + '</span>' +
           '<span class="gbs-chg" title="net GEX change vs the previous session">' +
-          (chg[r[0]] == null ? '—' : usd(chg[r[0]])) + '</span>';
+          (chg[r[0]] == null ? '-' : usd(chg[r[0]])) + '</span>';
       },
     });
     applyGbsHighlight(host);

@@ -37,9 +37,9 @@
 
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
     return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
-  function num(n, d) { return (n == null || isNaN(n)) ? '—' : Number(n).toFixed(d == null ? 2 : d); }
+  function num(n, d) { return (n == null || isNaN(n)) ? '-' : Number(n).toFixed(d == null ? 2 : d); }
   function usd(n) {
-    if (n == null || isNaN(n)) return '—';
+    if (n == null || isNaN(n)) return '-';
     var a = Math.abs(n), s = n < 0 ? '−' : '+';
     if (a >= 1e9) return s + '$' + (a / 1e9).toFixed(2) + 'B';
     if (a >= 1e6) return s + '$' + (a / 1e6).toFixed(1) + 'M';
@@ -329,8 +329,8 @@
   // OI change, DEX and charm below/above from the last two market days' captures (/api/forces)
   function forcesRows() {
     var ss = S.strikes && S.strikes.today_side_sums, f = S.forces || {};
-    return row('GEX below / above', ss ? usd(ss.gex_below) + ' / ' + usd(ss.gex_above) : '—') +
-      row('ΔOI below / above', num(f.doi_below, 0) + ' / ' + num(f.doi_above, 0)) +
+    return row('GEX below / above', ss ? usd(ss.gex_below) + ' / ' + usd(ss.gex_above) : '-') +
+      row('ΔOI' + (f.older_et_date ? ' since ' + f.older_et_date : '') + ' below / above', num(f.doi_below, 0) + ' / ' + num(f.doi_above, 0)) +
       row('DEX below / above', usd(f.dex_below_dollars) + ' / ' + usd(f.dex_above_dollars)) +
       row('Charm below / above', num(f.charm_below, 4) + ' / ' + num(f.charm_above, 4));
   }

@@ -502,8 +502,8 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
   inside Schwab's regular window, and the weeks and months those make. The day-over-day
   open-interest change has one producer: the forces, from the stored captures (`/api/forces`,
   shown on the Trade Desk). Fewer than two market days of captures leaves each forces number
-  absent (`server._forces_from_captures`), and a charm side with a strike not known, or no strike at all, leaves that side
-  absent (enforced by `tests/test_data_path_charm_side_unknown_v1.py`); the screen draws "-". An ATR that cannot be computed is absent (`server._atr_fields`); the
+  absent (`server._forces_from_captures`), and a charm, DEX, ΔOI, GEX or volume side with a strike not known, or no strike at all, leaves that side
+  absent (enforced by `tests/test_data_path_charm_side_unknown_v1.py` and `tests/test_data_path_side_volume_v1.py`); the screen draws "-". ΔOI is a side's total on the newer day less its total on the older day, both cut at the newer price: a strike a whole chain does not list holds no contracts that day, and the card names the older day. An ATR that cannot be computed is absent (`server._atr_fields`); the
   screen draws "-". None of these rules names a ticker; the
   watchlist decides which tickers are fetched and priced. A viewed
   ticker is one an open page shows (its `/api/changes` stream, on any workspace, open while the
@@ -730,7 +730,7 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
 6. **Missing values served with a reason** (D5, operator 2026-10-12: a missing value shows "-";
    operator 2026-10-16: one producer, the number or nothing). An ATR that cannot be computed, a
    same-day absolute-gamma strike with no same-day book, the forces before two capture days and
-   a forces charm side with a strike not known or no strike at all are absent (`server._atr_fields`, `terrain_engine.compute_terrain`,
+   a forces side (charm, DEX, ΔOI) with a strike not known or no strike at all are absent (`server._atr_fields`, `terrain_engine.compute_terrain`,
    `server._forces_from_captures`; the forces side by `tests/test_data_path_charm_side_unknown_v1.py`); the screen draws "-". The levels with no price and the
    outage words are still served with their reason (§3 above). The gamma heatmap's cells draw "-".
 

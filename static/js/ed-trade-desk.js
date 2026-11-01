@@ -42,7 +42,7 @@
     return s + '$' + a.toFixed(0);
   };
   function fmtVol(n) {
-    if (n == null || isNaN(n)) return '—';
+    if (n == null || isNaN(n)) return '-';
     var a = Math.abs(Number(n));
     if (a >= 1e6) return (a / 1e6).toFixed(1) + 'M';
     if (a >= 1e3) return (a / 1e3).toFixed(1) + 'K';
@@ -255,7 +255,7 @@
       var ghostBar = hasGy
         ? '<i class="mig-ghost ' + (gy >= 0 ? 'pos' : 'neg') + '" style="width:' + (gy === 0 ? 0 : Math.abs(gy) / maxAbs * 100).toFixed(1) + '%"></i>' : '';
       var delta = migRow[k] ? migRow[k][3] : null;   // served change
-      var deltaHtml = delta == null ? '<span class="mig-delta"></span>'
+      var deltaHtml = delta == null ? '<span class="mig-delta">-</span>'
         : '<span class="mig-delta ' + (delta >= 0 ? 'pos' : 'neg') + '">' + (delta >= 0 ? '▲' : '▼') + usd(Math.abs(delta)) + '</span>';
       var rowCls = 'gbs-row mig-row' + (k === spotStrike ? ' spot' : '') +
         (cw != null && k === cw ? ' mig-wall-call' : '') + (pw != null && k === pw ? ' mig-wall-put' : '');
@@ -263,7 +263,7 @@
         '<span class="gbs-k">' + num(k, k % 1 ? 2 : 0) + '</span>' +
         '<span class="gbs-track mig-track"><i class="gbs-bar ' + (pos ? 'pos' : 'neg') + '" style="width:' + wToday.toFixed(1) + '%"></i>' +
         (_migGhost ? ghostBar : '') + '</span>' +
-        '<span class="gbs-v ' + (gx == null ? '' : (pos ? 'pos' : 'neg')) + '">' + (gx == null ? '—' : usd(gx)) + '</span>' +
+        '<span class="gbs-v ' + (gx == null ? '' : (pos ? 'pos' : 'neg')) + '">' + (gx == null ? '-' : usd(gx)) + '</span>' +
         (_migGhost ? deltaHtml : '') +
         '<span class="gbs-vol" title="session volume">' + fmtVol(vol) + '</span>' +
         (k === spotStrike ? migTag('SPOT', 'spot') : '') +

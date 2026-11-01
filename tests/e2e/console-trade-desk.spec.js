@@ -735,6 +735,27 @@ test.describe('Trade Desk renders served values', () => {
     expect(await page.evaluate(() => window.__draws)).toEqual(['(NASDAQ_BOOK']);
   });
 
+  test('Right Now: a strike of GEX not known keeps its row: no bar, no ghost, the dash, no page error', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(String(e)));
+    await intercept(page);
+    const today = [[770, 500000, 1000], [771, null, null], [772, -200000, 3000]];
+    await page.route('**/api/terrain/strikes?**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify(Object.assign({}, STRIKES, { today: { all: today }, migration: { all: Object.assign({}, STRIKES.migration.all,
+        { rows: [[770, 500000, 400000, 100000], [771, null, 700000, null], [772, -200000, -100000, -100000]] }) } })) }));
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
+      localStorage.setItem('ed_sub', 'right-now'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#tdMigration .gbs-k')).toHaveText(['772', '771', '770']);
+    const row = page.locator('#tdMigration .mig-row', { hasText: '771' });
+    await expect(row.locator('.gbs-v')).toHaveText('-');
+    await expect(row.locator('.mig-delta')).toHaveText('-');
+    await expect(row.locator('.gbs-vol')).toHaveText('-');
+    expect(await row.locator('.gbs-bar').evaluate((el) => el.style.width)).toBe('0%');
+    await expect(row.locator('.mig-ghost')).toHaveCount(0);
+    expect(errors).toEqual([]);
+  });
+
   test('Right Now: a read cut short by a scope change never draws', async ({ page }) => {
     await intercept(page);
     const wider = Object.assign({}, STRIKES, { spot_strike: 791,
@@ -778,9 +799,9 @@ test.describe('Trade Desk renders served values', () => {
       const url = route.request().url();
       let body = { available: false };
       if (url.includes('/api/desk/events')) body = EVENTS;
-      else if (url.includes('/api/terrain/strikes')) body = Object.assign({}, STRIKES, { today_side_sums: { gex_below: -1.2e9, gex_above: 8e8 } });
-      else if (url.includes('/api/forces')) body = { ticker: 'SPY', available: true, doi_below: 1200, doi_above: -300,
-        dex_below_dollars: 5e8, dex_above_dollars: -2e8, charm_below: 0.0123, charm_above: null };
+      else if (url.includes('/api/terrain/strikes')) body = Object.assign({}, STRIKES, { today_side_sums: { gex_below: -1.2e9, gex_above: null } });
+      else if (url.includes('/api/forces')) body = { ticker: 'SPY', available: true, doi_below: 1200, doi_above: null,
+        dex_below_dollars: 5e8, dex_above_dollars: null, charm_below: 0.0123, charm_above: null, older_et_date: '2026-10-07' };
       else if (url.includes('/api/terrain')) body = Object.assign({}, TERRAIN, { call_wall: 772, call_wall_lean: 'DEALERS SELL' });
       else if (url.includes('/api/levels')) body = Object.assign({}, LEVELS, { levels: LEVELS.levels.concat([wall, far]),
         by_distance: ['call_wall', 'max_pain', 'PDH', 'grc'] });
@@ -795,8 +816,10 @@ test.describe('Trade Desk renders served values', () => {
     await expect(page.locator('#tdmToolbar [data-tf="3"]')).toHaveText('3m');
     await expect(page.locator('#tdmChart .tvc-edge-top')).toContainText('GRC 837.58');
     await expect(page.locator('#tdmCardOpt')).toContainText('GEX below / above');
-    await expect(page.locator('#tdmCardOpt')).toContainText('1200 / -300');          // ΔOI, served
-    await expect(page.locator('#tdmCardOpt')).toContainText('0.0123 / —');           // charm, one side not known
+    await expect(page.locator('#tdmCardOpt')).toContainText('−$1.20B / -');          // GEX, one side not known
+    await expect(page.locator('#tdmCardOpt')).toContainText('ΔOI since 2026-10-07 below / above 1200 / -');   // from its served day
+    await expect(page.locator('#tdmCardOpt')).toContainText('0.0123 / -');           // charm, one side not known
+    await expect(page.locator('#tdmCardOpt')).toContainText('+$500.0M / -');         // DEX, one side not known
     await page.locator('#tdmToolbar [data-act="style"]').click();
     await expect(page.locator('#tdmToolbar [data-act="style"]')).toHaveClass(/on/);
     expect(errs).toEqual([]);

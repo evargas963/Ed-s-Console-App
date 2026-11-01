@@ -123,6 +123,19 @@ test.describe('Options/Gamma Chart subview', () => {
     expect(await page.evaluate(() => window.EdShell.getState().selExpiry)).toBeNull();
   });
 
+  test('the GEX profile leaves a strike of GEX not known undrawn, with no page error', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(String(e)));
+    await intercept(page);
+    const today = { all: [[98, -90000, 10], [100, null, 50], [102, -264500, 12]] };
+    await page.route('**/api/terrain/strikes?**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify(Object.assign({}, STRIKES, { today })) }));
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.locator('.vtab[data-view="chart"]').click();
+    await expect.poll(() => page.evaluate(() => (window.EdGammaChart.state() || { profile: {} }).profile.rows)).toBe(2);
+    expect(errors).toEqual([]);
+  });
+
   test('the Delta / DEX and Open Interest Chart views draw the served profile of their measure', async ({ page }) => {
     // operator 2026-09-29: "dex has a chart, oi has a chart" -- both views were blank
     await intercept(page);
