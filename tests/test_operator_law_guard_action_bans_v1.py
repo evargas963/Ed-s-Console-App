@@ -44,8 +44,26 @@ def test_the_locks_settings_are_the_operators():
         "gh pr merge 5 --merge --admin=true",
         "git status && gh pr merge 5 --merge --admin",
         "gh.exe variable set X",
+        "gh alias set --shell k 'taskkill /F /IM python.exe'",
+        "gh -R o/r alias set co 'pr checkout'",
+        "cat aliases.yml | gh alias import -",
+        "gh $x",
+        "gh $(cat cmd.txt)",
+        'gh "$@"',
+        "gh api $x",
+        "gh pr merge 5 $x",
+        "gh {variable,set,X,--body,approved}",
+        f"gh api {{-X,DELETE}} {repo}/branches/main/protection",
+        "gh pr merge 5 --merge --adm{in,in}",
+        "cat f | xargs gh api",
     ):
         assert any(refused in b for b in bash_violations(cmd)), cmd
+    for cmd in (
+        f'gh api ("-X") DELETE {repo}/branches/main/protection',
+        'gh pr merge 5 --merge ("--admin")',
+        "gh @a",
+    ):
+        assert any(refused in b for b in bash_violations(cmd, powershell=True)), cmd
     for cmd in (
         "gh auth status",
         f"gh api {repo}/environments/operator-locks",
@@ -56,6 +74,11 @@ def test_the_locks_settings_are_the_operators():
         "gh pr create --draft --base main --head x --title t --body-file b.md",
         "gh run view 5 --log-failed",
         "gh repo view --json visibility",
+        "gh pr create --title 'a $b (c)' --body-file b.md",
+        'gh pr create --title "a (b)" --body-file b.md',
+        "gh api x --jq '{a: .b}'",
+        "gh",
+        "gh --version",
         "echo gh variable set",
     ):
         assert not any(refused in b for b in bash_violations(cmd)), cmd
