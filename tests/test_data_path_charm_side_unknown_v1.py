@@ -195,3 +195,4 @@ def test_a_strike_that_left_the_chain_counts_for_what_it_held():
     forces = server._forces_from_captures(fx["ticker"], [newer, older])
     assert forces["doi_below"] == change(lambda k: k < spot)
     assert forces["doi_above"] == change(lambda k: k > spot)
+    assert not {"newer_et_date", "bucket_spot"} & set(forces)  # served to no reader

@@ -219,7 +219,6 @@ def test_a_closed_socket_keeps_the_last_option_value_and_names_its_time():
             symbol=SYM, content=_MSG["item"], src="schwab_options_l1", ts_recv=_MSG["ts_recv"]
         ),
     )
-    ofs._drop_released_options(_AT)
     at = datetime.fromtimestamp(_AT, ET)
     server._publish_levels(
         TK,
@@ -232,7 +231,6 @@ def test_a_closed_socket_keeps_the_last_option_value_and_names_its_time():
         gex = [cell["gex"] for cell in server._terrain_cache[TK]["_gamma_surface"]["cells"]]
     kept = ofls.get_stream_greeks(SYM)
     _beat(_AT, socket_open=False, options=[])
-    ofs._drop_released_options(_AT)
     server.restamp_open_surfaces(_AT)
     body = server.gamma_surface_payload(TK, "all", None, 0, None, None, at)
     cells = [
