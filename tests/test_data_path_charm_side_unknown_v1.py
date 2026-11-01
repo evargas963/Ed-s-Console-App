@@ -9,6 +9,7 @@ from datetime import datetime
 from pathlib import Path
 
 import server
+from math_exposure_core import bucket_metric, compute_exposures_by_strike
 from math_levels import compute_charm_by_strike
 from terrain_engine import compute_terrain
 from tests.real_chains import NFLX, SPY_0DTE
@@ -121,3 +122,25 @@ def test_a_forces_side_with_no_strike_at_all_has_no_total():
     assert forces["available"] is True
     assert forces["charm_above"] is None
     assert forces["charm_below"] is not None
+    assert forces["doi_above"] is None
+    assert forces["dex_above_dollars"] is None
+    assert forces["dex_below_dollars"] is not None
+
+
+def test_a_forces_dex_side_with_a_strike_not_known_has_no_total():
+    """Schwab's -999 on NFLX's strikes: no DEX known there, so no total on that side."""
+    prior = datetime(2026, 10, 6, 12, 0, tzinfo=ET)
+    caps = [
+        {
+            "et_date": day.date().isoformat(),
+            "spot": NFLX.spot,
+            "contracts": NFLX.chain,
+            "ts_utc": day.timestamp(),
+        }
+        for day in (NFLX.now, prior)
+    ]
+    book = compute_exposures_by_strike(NFLX.chain, spot=NFLX.spot, now=NFLX.now)[0]
+    assert any(
+        bucket_metric(b, "net_dex_dollars") is None for k, b in book.items() if k < NFLX.spot
+    )
+    assert server._forces_from_captures(NFLX.ticker, caps)["dex_below_dollars"] is None

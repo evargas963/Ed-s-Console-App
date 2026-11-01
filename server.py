@@ -2197,6 +2197,12 @@ def _windowed(rows: list, spot_strike, scope: str, centre, shift: int) -> tuple[
     return win, {**view, "max_abs": max(known) if known else None}
 
 
+def _side_total(values: list[float | None]) -> float | None:
+    """A side's total: unknown with a strike not known or no strike at all, never the sum of the
+    rest."""
+    return None if not values or None in values else sum(values)
+
+
 @app.get("/api/terrain/strikes")
 def get_terrain_strikes(
     ticker: str = Query(...),
@@ -2244,31 +2250,14 @@ def terrain_strikes_payload(tk: str, scope: str, centre, shift: int, now: float)
     def _side_sums(rows, s):
         if not rows or s is None:
             return None
-        gb = ga = vb = va = 0.0
-        for r in rows:
-            # a row with no gamma is left out of a side's sum, never counted as 0; a row's GEX
-            # and its volume are summed each on its own
-            k = float_finite_or_none(r[0])
-            g = float_finite_or_none(r[1])
-            v = float_finite_or_none(r[2])
-            if k is None or k == s:
-                continue
-            below = k < s
-            if g is not None:
-                if below:
-                    gb += g
-                else:
-                    ga += g
-            if v is not None:
-                if below:
-                    vb += v
-                else:
-                    va += v
+        cells = [[float_finite_or_none(x) for x in r[:3]] for r in rows]
+        below = [c for c in cells if c[0] is not None and c[0] < s]
+        above = [c for c in cells if c[0] is not None and c[0] > s]
         return {
-            "gex_below": gb,
-            "gex_above": ga,
-            "vol_below": vb,
-            "vol_above": va,
+            "gex_below": _side_total([c[1] for c in below]),
+            "gex_above": _side_total([c[1] for c in above]),
+            "vol_below": _side_total([c[2] for c in below]),
+            "vol_above": _side_total([c[2] for c in above]),
             "spot_basis": float(s),
         }
 
@@ -2627,11 +2616,7 @@ def _forces_from_captures(tk: str, captures: list, charm_by_strike: dict | None 
             oi1 = {k: t for k, v in per1.items() if (t := strike_total_oi(v)) is not None}
             oi0 = {k: t for k, v in per0.items() if (t := strike_total_oi(v)) is not None}
             doi = {k: oi1[k] - oi0[k] for k in oi1 if k in oi0}
-            dex1 = {
-                k: d
-                for k, v in per1.items()
-                if (d := bucket_metric(v, "net_dex_dollars")) is not None
-            }
+            dex1 = {k: bucket_metric(v, "net_dex_dollars") for k, v in per1.items()}
             spot1 = float(s1)
             # CHARM below/above from the NEWER banked wide chain (full book).
             # Dealer-signed net_charm = call_charm - put_charm per strike.
@@ -2642,21 +2627,17 @@ def _forces_from_captures(tk: str, captures: list, charm_by_strike: dict | None 
                 else:
                     per_ch = compute_charm_by_strike(c1, spot1, now=clock1, product=product)
 
-                # a strike not known leaves its side's total unknown, never the sum of the rest
-                def _total(nets: list[float | None]) -> float | None:
-                    return None if not nets or None in nets else sum(nets)
-
-                charm_below = _total([v["net_charm"] for k, v in per_ch.items() if k < spot1])
-                charm_above = _total([v["net_charm"] for k, v in per_ch.items() if k > spot1])
+                charm_below = _side_total([v["net_charm"] for k, v in per_ch.items() if k < spot1])
+                charm_above = _side_total([v["net_charm"] for k, v in per_ch.items() if k > spot1])
             except Exception as e:
                 log.warning("forces charm for %s failed (%s)", tk, e)
             payload = {
                 "ticker": tk,
                 "available": True,
-                "doi_below": sum(d for k, d in doi.items() if k < spot1),
-                "doi_above": sum(d for k, d in doi.items() if k > spot1),
-                "dex_below_dollars": sum(d for k, d in dex1.items() if k < spot1),
-                "dex_above_dollars": sum(d for k, d in dex1.items() if k > spot1),
+                "doi_below": _side_total([d for k, d in doi.items() if k < spot1]),
+                "doi_above": _side_total([d for k, d in doi.items() if k > spot1]),
+                "dex_below_dollars": _side_total([d for k, d in dex1.items() if k < spot1]),
+                "dex_above_dollars": _side_total([d for k, d in dex1.items() if k > spot1]),
                 "strikes_diffed": len(doi),
                 "charm_below": charm_below,
                 "charm_above": charm_above,
