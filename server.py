@@ -2600,7 +2600,7 @@ def _forces_from_captures(tk: str, captures: list, charm_by_strike: dict | None 
             if c["spot"] is not None
         ]
         if len(rows) >= 2:
-            (d1, s1, c1, t1), (d0, s0, c0, t0) = rows[0], rows[1]
+            (_, s1, c1, t1), (d0, s0, c0, t0) = rows[0], rows[1]
             # each capture at its own time, or at that day's option close once the capture is past
             # it
             product = option_close_product(tk)
