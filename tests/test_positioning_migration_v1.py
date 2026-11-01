@@ -14,6 +14,7 @@ import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 import time_et
 from terrain_engine import MIGRATION_DRIFT_STRIKES, compute_terrain, positioning_migration
+from tests.capture_store import store_capture
 
 _FX = json.loads(
     (Path(__file__).resolve().parent / "fixtures" / "real_pcg_two_day_chain.json").read_text(
@@ -88,7 +89,6 @@ def test_on_a_closed_market_the_prior_day_is_the_day_before_the_chains_own():
     from calibration.complete_chain_capture import (
         CAPTURE_BASIS,
         last_capture_per_day,
-        persist_complete_chain_capture,
     )
 
     db = server.get_db().db_path
@@ -97,7 +97,7 @@ def test_on_a_closed_market_the_prior_day_is_the_day_before_the_chains_own():
         for c in day["contracts"]:
             by_exp.setdefault(str(c.get("expirationDate") or "")[:10], []).append(c)
         for exp, cs in by_exp.items():
-            persist_complete_chain_capture(
+            store_capture(
                 db,
                 ticker="PCG",
                 expiry=exp,

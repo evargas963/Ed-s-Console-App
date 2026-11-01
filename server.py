@@ -1537,9 +1537,9 @@ def _publish_levels(
     A chain that is not a capture is valued then, or at that ticker's option close once it has
     passed. Outside that window, a quote that does not report a greek leaves the greek the
     last quote reported, and a count of zero leaves the last count above zero. That last
-    count is the one already published, or the newest stored capture when this process has
-    not published one. The last streamed values price over the chain when they are newer,
-    and each leg's age is taken.
+    count is the one already published, or the newest capture stored before this chain when this
+    process has not published one. The last streamed values price over the chain when they are
+    newer, and each leg's age is taken.
     Returns the snapshot, or None when there is no chain to price."""
     at = now if now is not None else now_et()
     with _terrain_cache_lock:
@@ -1555,14 +1555,16 @@ def _publish_levels(
     clock = datetime.fromtimestamp(fetched_ts, ET) if capture is not None else at
     product = option_close_product(tk)
     valued_at = valuation_instant(clock, product)
-    begun = datetime.fromtimestamp(fetched_ts, ET) if isinstance(fetched_ts, (int, float)) else at
+    begun_ts = fetched_ts if isinstance(fetched_ts, (int, float)) else at.timestamp()
+    begun = datetime.fromtimestamp(begun_ts, ET)
     if new_chain and capture is None and option_market_open(begun, product) is False:
         memory = payload.get("_priced_chain")
         if memory is None:
             memory = payload.get("_chain")
-        newest = newest_capture_ts(get_db().db_path, tk)
+        # the capture before this chain: its own may be stored already
+        newest = newest_capture_ts(get_db().db_path, tk, before_ts=begun_ts)
         if payload.get("_count_capture_ts") != newest:
-            rows = last_capture_per_day(get_db().db_path, tk, 1)
+            rows = last_capture_per_day(get_db().db_path, tk, 1, before_ts=begun_ts)
             payload["_count_capture"] = rows[0].get("contracts") if rows else ()
             payload["_count_capture_ts"] = newest
         published = payload.get("spot")

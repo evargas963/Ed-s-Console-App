@@ -434,14 +434,16 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
   the daemon (`run_chains`, started with it); when it stops or its socket to the console drops,
   every ticker's levels go stale with that reason (`terrain_staleness`, judged against two of
   the sweep's delivered rounds, carried on the heartbeat). The first chain of each ticker whose
-  fetch began in a capture window is also written to the chain history (§4.2, `capture_slot`); a
+  fetch began in a capture window is also written to the chain history (§4.2, `capture_slot`), in
+  one transaction before the console hears of the chain (operator 2026-11-01), so a read on its
+  arrival finds that capture, whole (`tests/test_data_path_capture_whole_v1.py`); a
   stored capture is never replaced (a second write of its ticker, expiry and time is refused,
   `test_a_stored_chain_capture_is_never_overwritten_by_a_second_write_of_its_key`); a
   history write that fails (that refusal included) is a write failure, never the chain's: the
-  chain as the sweep delivered it (each expiry's underlying price, the chain's spot and the
-  contracts) is handed to
+  chain as the sweep delivered it (when it began, each expiry's underlying price, the chain's spot
+  and the contracts) is handed to
   the daemon's writer, which keeps it in `stream_write_failures` and counts it on its state (§2
-  D4); the delivered chain stands, and the window's next chain writes the history. The sweep
+  D4); the delivered chain stands, and the window's next chain, if any, tries again. The sweep
   (`ChainSweep.fetch_chain`, `send_quotes`) is the one place a chain enters, so every consumer
   (levels, walls, flip, the heatmap, per-strike rows, forces, the chain ladder, Strike Detail,
   the captures) reads the Greeks it sets. The Greeks (gamma, delta, theta, vega, rho,
@@ -460,7 +462,7 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
   a quote that does not report a greek leaves the greek the last quote reported, and an open
   interest or volume of zero leaves the last count above zero. A missing count and Schwab's
   no-value code are not that zero. That last count is the one this process already published,
-  or, when it has not, the newest stored capture. A day Schwab says is closed is outside every
+  or, when it has not, the newest capture stored before this chain. A day Schwab says is closed is outside every
   window (`time_et.option_market_open`), so its zeros keep the last count too (operator 2026-10-25:
   the last valid number stands, as a bank's last balance does while it is closed). A chain is judged by when it was fetched: one begun inside the window keeps a reported
   zero even when it is priced after the close. A streamed zero after the close does not replace

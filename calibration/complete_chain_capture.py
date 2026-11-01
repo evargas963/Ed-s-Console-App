@@ -20,6 +20,8 @@ import logging
 import sqlite3
 import threading
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
@@ -85,8 +87,21 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+@contextmanager
+def capture_transaction(db_path: Path | str) -> Iterator[sqlite3.Connection]:
+    """One transaction on the capture table: what is written in it commits together or not at all,
+    so a reader finds a capture whole or finds none."""
+    conn = sqlite3.connect(str(db_path), timeout=60.0)
+    try:
+        ensure_schema(conn)
+        with conn:
+            yield conn
+    finally:
+        conn.close()
+
+
 def persist_complete_chain_capture(
-    db_path: Path | str,
+    conn: sqlite3.Connection,
     *,
     ticker: str,
     expiry: str,
@@ -103,7 +118,8 @@ def persist_complete_chain_capture(
     when the daemon held no price). A time series (PRIMARY KEY includes
     ts_utc): each capture time is its own set of rows, one per expiry. A stored capture is
     never replaced: a second write of the same (ticker, expiry, ts_utc) raises
-    sqlite3.IntegrityError and the stored row stands.
+    sqlite3.IntegrityError and the stored row stands. `conn` is the capture_transaction the row
+    joins.
 
     FAIL CLOSED: no contracts, or an unproven `completeness_basis`, writes NOTHING and
     says why — a persisted row with an empty or unverifiable completeness claim would be
@@ -122,29 +138,23 @@ def persist_complete_chain_capture(
         return {"status": "skipped", "reason": "no_contracts", "ticker": tk, "expiry": exp}
 
     ts = float(ts_utc if ts_utc is not None else time.time())
-    conn = sqlite3.connect(str(db_path), timeout=60.0)
-    try:
-        ensure_schema(conn)
-        conn.execute(
-            "INSERT INTO complete_chain_captures "
-            "(ticker, expiry, ts_utc, spot, n_contracts, completeness_basis, chain_json, source, "
-            "chain_spot, chain_spot_ts) VALUES (?,?,?,?,?,?,?,?,?,?)",
-            (
-                tk,
-                exp,
-                ts,
-                spot,
-                len(clean),
-                str(completeness_basis),
-                encode_json_blob(clean, default=str),
-                str(source),
-                chain_spot,
-                chain_spot_ts,
-            ),
-        )
-        conn.commit()
-    finally:
-        conn.close()
+    conn.execute(
+        "INSERT INTO complete_chain_captures "
+        "(ticker, expiry, ts_utc, spot, n_contracts, completeness_basis, chain_json, source, "
+        "chain_spot, chain_spot_ts) VALUES (?,?,?,?,?,?,?,?,?,?)",
+        (
+            tk,
+            exp,
+            ts,
+            spot,
+            len(clean),
+            str(completeness_basis),
+            encode_json_blob(clean, default=str),
+            str(source),
+            chain_spot,
+            chain_spot_ts,
+        ),
+    )
     return {
         "status": "written",
         "ticker": tk,
@@ -601,15 +611,37 @@ class ChainSweep:
             self.publish(*chain_failure_message(chain.ticker, reason, now))
 
     def deliver(self, chain: _Chain) -> None:
-        """The chain to the console, and to the chain history when it is the window's first, both
-        carrying the time the chain began (its as-of everywhere: a chain begun before the close is
-        not the close values, whenever it is delivered) and its one spot: Schwab's LAST_PRICE with
-        its trade time, as the daemon's price row holds it now that the chain is complete."""
+        """The chain to the chain history when it is the window's first, then to the console, so a
+        read on its arrival finds that capture, both carrying the time the chain began (its as-of
+        everywhere: a chain begun before the close is not the close values, whenever it is
+        delivered) and its one spot: Schwab's LAST_PRICE with its trade time, as the
+        daemon's price row holds it now that the chain is complete."""
         now = self.clock()
         row = price_row(chain.ticker, now)
         if row["spot"] is not None:  # a trade time without its price is no spot
             chain.spot, chain.spot_ts = row["spot"], row["trade_ts"]
         contracts = chain.contracts()
+        try:
+            self._write_history(chain)
+        except Exception as e:  # noqa: BLE001 -- the chain still goes to the console; a failed history write is the writer's to keep and show
+            log.warning(
+                "chain history for %s not written, kept as delivered: %s: %s",
+                chain.ticker,
+                type(e).__name__,
+                e,
+            )
+            self.failures.keep_failure(
+                f"chain_history.{chain.ticker}",
+                {
+                    "started": chain.started,
+                    "spots": chain.spots,
+                    "spot": chain.spot,
+                    "spot_ts": chain.spot_ts,
+                    "contracts": contracts,
+                },
+                e,
+                now,
+            )
         for topic, msg in chain_messages(
             chain.ticker, contracts, chain.started, chain.spot, chain.spot_ts
         ):
@@ -628,32 +660,12 @@ class ChainSweep:
                 missing,
                 len(contracts),
             )
-        try:
-            self._write_history(chain)
-        except Exception as e:  # noqa: BLE001 -- the chain is delivered; a failed history write is the writer's to keep and show
-            log.warning(
-                "chain history for %s not written, kept as delivered: %s: %s",
-                chain.ticker,
-                type(e).__name__,
-                e,
-            )
-            self.failures.keep_failure(
-                f"chain_history.{chain.ticker}",
-                {
-                    "spots": chain.spots,
-                    "spot": chain.spot,
-                    "spot_ts": chain.spot_ts,
-                    "contracts": contracts,
-                },
-                e,
-                now,
-            )
 
     def _write_history(self, chain: _Chain) -> None:
         """The chain history: a chain begun inside a capture window of the ticker's option market,
         the first one of the window for this ticker (a chain begun before the close is not the
         close capture, whenever it ends), one row per expiry with the underlying price of that
-        expiry's answer, at the time the chain began."""
+        expiry's answer, at the time the chain began, every row in one transaction."""
         ticker = chain.ticker
         slot = capture_slot(chain.started)
         if slot is None:
@@ -665,25 +677,29 @@ class ChainSweep:
             return
         self._written[ticker] = slot  # claim the window for this ticker
         try:
-            for expiry, cts in chain.by_expiry.items():
-                persist_complete_chain_capture(
-                    self.db_path,
-                    ticker=ticker,
-                    expiry=expiry,
-                    contracts=cts,
-                    spot=chain.spots[expiry],
-                    completeness_basis=CAPTURE_BASIS,
-                    ts_utc=chain.started,
-                    chain_spot=chain.spot,
-                    chain_spot_ts=chain.spot_ts,
-                )
+            with capture_transaction(self.db_path) as conn:
+                for expiry, cts in chain.by_expiry.items():
+                    persist_complete_chain_capture(
+                        conn,
+                        ticker=ticker,
+                        expiry=expiry,
+                        contracts=cts,
+                        spot=chain.spots[expiry],
+                        completeness_basis=CAPTURE_BASIS,
+                        ts_utc=chain.started,
+                        chain_spot=chain.spot,
+                        chain_spot_ts=chain.spot_ts,
+                    )
         except Exception:
-            self._written[ticker] = before  # unwritten: the window's next chain tries
+            self._written[ticker] = before  # unwritten: the window's next chain, if any, tries
             raise
 
 
-def newest_capture_ts(db_path: Path | str, ticker: str) -> float | None:
-    """When the ticker's newest full capture was taken; None when there is none."""
+def newest_capture_ts(
+    db_path: Path | str, ticker: str, *, before_ts: float = float("inf")
+) -> float | None:
+    """When the ticker's newest full capture before `before_ts` was taken; None when there is
+    none."""
     if not Path(db_path).is_file():
         return None
     conn = sqlite3.connect(f"file:{Path(db_path).resolve().as_posix()}?mode=ro", uri=True)
@@ -694,15 +710,20 @@ def newest_capture_ts(db_path: Path | str, ticker: str) -> float | None:
             return None
         return conn.execute(
             "SELECT MAX(ts_utc) FROM complete_chain_captures WHERE ticker=? "
-            "AND completeness_basis=?",
-            (ticker_storage_key(ticker), CAPTURE_BASIS),
+            "AND completeness_basis=? AND ts_utc<?",
+            (ticker_storage_key(ticker), CAPTURE_BASIS, before_ts),
         ).fetchone()[0]
     finally:
         conn.close()
 
 
 def last_capture_per_day(
-    db_path: Path | str, ticker: str, days: int, *, before_et_date: str | None = None
+    db_path: Path | str,
+    ticker: str,
+    days: int,
+    *,
+    before_et_date: str | None = None,
+    before_ts: float = float("inf"),
 ) -> list[dict[str, Any]]:
     """The last capture of each of the newest `days` market days (newest first) -- the close --
     each as {et_date, ts_utc, spot, spot_ts, spot_from_chain, basis, contracts} with every expiry of
@@ -710,7 +731,7 @@ def last_capture_per_day(
     true); a capture written without one gives its nearest expiry's underlyingPrice, `spot_ts`
     None and `spot_from_chain` false.
     `before_et_date` keeps only days before it (the previous market day for a day-over-day
-    view)."""
+    view); `before_ts` only captures taken before it."""
     tk = ticker_storage_key(ticker)
     conn = sqlite3.connect(f"file:{Path(db_path).resolve().as_posix()}?mode=ro", uri=True)
     try:
@@ -725,7 +746,7 @@ def last_capture_per_day(
             (tk, CAPTURE_BASIS),
         ):
             day = datetime.fromtimestamp(ts, ET).date().isoformat()
-            if before_et_date is not None and day >= before_et_date:
+            if ts >= before_ts or (before_et_date is not None and day >= before_et_date):
                 continue
             if picked and picked[-1][0] == day:
                 continue

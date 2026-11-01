@@ -24,6 +24,7 @@ from app.market_data.schwab.streaming import capture
 from app.options.order_flow import streaming as ofs
 from json_blob_codec import decode_json_blob
 from stream_spine import LATEST, CaptureWriter, HealthRegistry, MessageBus
+from tests.capture_store import store_capture
 from tests.schwab_rest_standin import CHAIN, SPY_QUOTES, LocalSchwab
 from time_et import ET
 
@@ -325,7 +326,7 @@ def test_the_reader_gives_the_last_full_capture_of_each_day(tmp_path):
 
     def put(when, spot, expiries, basis=cch.CAPTURE_BASIS):
         for e in expiries:
-            cch.persist_complete_chain_capture(
+            store_capture(
                 db,
                 ticker="ZZ",
                 expiry=e,
@@ -358,7 +359,7 @@ def test_a_partial_morning_capture_is_never_the_prior_day(tmp_path):
     db = tmp_path / "ed_console.db"
     # institutional-synthetic-ok: the reader returns stored contracts verbatim; none is priced.
     ct = {"symbol": "ZZ 2030-01-04", "expirationDate": "2030-01-04T20:00:00.000+00:00"}
-    cch.persist_complete_chain_capture(
+    store_capture(
         db,
         ticker="ZZ",
         expiry="2030-01-04",
@@ -367,7 +368,7 @@ def test_a_partial_morning_capture_is_never_the_prior_day(tmp_path):
         completeness_basis="expiries_to_37_days_morning",
         ts_utc=_ts("2026-09-25 10:00"),
     )
-    cch.persist_complete_chain_capture(
+    store_capture(
         db,
         ticker="ZZ",
         expiry="2030-01-04",

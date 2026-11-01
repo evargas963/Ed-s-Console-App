@@ -14,7 +14,7 @@ import live_market_plane as lmp
 import live_price_rows
 import server
 from app.options.order_flow import streaming as ofs
-from calibration.complete_chain_capture import CAPTURE_BASIS, persist_complete_chain_capture
+from calibration.complete_chain_capture import CAPTURE_BASIS
 from confluence_composite import (
     at_price,
     build_matrix,
@@ -30,6 +30,7 @@ from math_levels import compute_charm_by_strike
 from numeric_contract import price_text
 from stream_spine import options_quote_msg
 from terrain_engine import compute_terrain
+from tests.capture_store import store_capture
 from tests.real_chains import (
     CRWD,
     MRVL,
@@ -854,7 +855,7 @@ def _first_chain_keeps_the_capture(now, capture_at):
         for ct in fresh:
             by_expiry.setdefault(str(ct["expirationDate"])[:10], []).append(ct)
         for exp, cts in by_expiry.items():
-            persist_complete_chain_capture(
+            store_capture(
                 server.get_db().db_path,
                 ticker=tk,
                 expiry=exp,
@@ -946,6 +947,38 @@ def test_a_chain_begun_inside_the_window_keeps_its_reported_zero():
         _forget(tk)
 
 
+def test_a_chain_past_its_close_stored_first_keeps_the_capture_before_it():
+    """SPY's chain with its counts stored at 16:00, then a chain begun after the option close with
+    every count zero, stored before the console hears of it, on a console holding no earlier chain:
+    the last count is the 16:00 capture's, not the zeros of the chain's own capture. Induced test
+    condition: one chain stored twice, once with its counts set to 0, as Schwab's after a close."""
+    held = SPY_0DTE
+    tk = "SPYOWN"
+    fresh = [dict(c) for c in held.chain]
+    expiry = str(fresh[0]["expirationDate"])[:10]
+    at_close = datetime(2026, 10, 7, 16, 0, tzinfo=ET)
+    after = datetime(2026, 10, 7, 16, 20, tzinfo=ET)
+    try:
+        spot = _chain_spot(tk, _AT_CAPTURE[held.ticker])
+        for when, contracts in ((at_close, fresh), (after, _zero_counts(fresh))):
+            store_capture(
+                server.get_db().db_path,
+                ticker=tk,
+                expiry=expiry,
+                contracts=contracts,
+                spot=held.spot,
+                completeness_basis=CAPTURE_BASIS,
+                ts_utc=when.timestamp(),
+            )
+        server._publish_levels(
+            tk, _zero_counts(fresh), after.timestamp(), chain_spot=spot, now=after
+        )
+        served = server.confluence_payload(tk, expiry, after)
+        assert any(row["pc_vol_text"] is not None for row in served["rows"])
+    finally:
+        _forget(tk)
+
+
 def test_a_closed_day_zero_book_keeps_the_last_count_through_the_next_open():
     """A day Schwab says is closed is outside every option window: Sunday's zero book does not
     replace the last count, the stored capture's; and Monday before the open it still stands."""
@@ -969,7 +1002,7 @@ def test_a_closed_day_zero_book_keeps_the_last_count_through_the_next_open():
         for ct in fresh:
             by_expiry.setdefault(str(ct["expirationDate"])[:10], []).append(ct)
         for exp, cts in by_expiry.items():
-            persist_complete_chain_capture(
+            store_capture(
                 server.get_db().db_path,
                 ticker=tk,
                 expiry=exp,
@@ -1102,7 +1135,7 @@ def test_a_date_with_no_session_keeps_a_reported_zero():
         for ct in fresh:
             by_expiry.setdefault(str(ct["expirationDate"])[:10], []).append(ct)
         for exp, cts in by_expiry.items():
-            persist_complete_chain_capture(
+            store_capture(
                 server.get_db().db_path,
                 ticker=tk,
                 expiry=exp,
@@ -1140,7 +1173,7 @@ def test_a_newer_capture_is_the_count_the_next_chain_keeps():
     after = datetime(2026, 10, 22, 18, 0, tzinfo=ET)
 
     def store(capture):
-        persist_complete_chain_capture(
+        store_capture(
             server.get_db().db_path,
             ticker=tk,
             expiry=_SPY_TWO_CLOSES["expiry"],
