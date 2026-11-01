@@ -10,8 +10,8 @@ a heredoc nothing runs are data.
     commit; stage explicit paths.
   * LOCK DISABLE. `--no-verify`, `-n`, `core.hooksPath`, `SKIP=<hook>` and `pre-commit uninstall`
     bypass the pre-commit checks; refusing the bypass in session blocks nothing legitimate.
-  * THE LOCKS' SETTINGS. A `gh` that changes the sign-in, a repository variable or secret, a
-    ruleset, branch protection, an environment or a pending approval, or merges with `--admin`.
+  * THE LOCKS' SETTINGS. `gh` is allowed by a list: pull requests, runs and reads. `gh api` only
+    reads, so no sign-in, variable, environment, branch protection or approval can change.
   * PYTHON FROM STDIN. On Windows an empty heredoc or </dev/null looks like a console to
     `python -`, and Python 3.13's REPL retries forever on the invalid handle. A python that reads
     its program from stdin (`-`, or no script, -c or -m) is refused wherever it runs; a script file
@@ -186,33 +186,60 @@ def _disables_a_lock(st: Statement) -> bool:
     )
 
 
-#: what `gh` changes that the locks stand on
-_SEALED_GH = frozenset({"auth", "ruleset", "secret", "variable"})
-_SEALED_API = re.compile(
-    r"pending_deployments|/environments|/protection|/rulesets|/rules/|/actions/(?:variables|secrets)"
+#: all of `gh` the agent may run, group by group; `gh api` only reads (_GH_API_READS)
+_GH_ALLOWED = {
+    "issue": {"list", "view"},
+    "pr": {
+        "checks",
+        "close",
+        "comment",
+        "create",
+        "diff",
+        "edit",
+        "list",
+        "merge",
+        "ready",
+        "update-branch",
+        "view",
+    },
+    "repo": {"view"},
+    "run": {"download", "list", "rerun", "view", "watch"},
+    "workflow": {"list", "view"},
+}
+_GH_API_READS = frozenset(
+    {
+        "--cache",
+        "--include",
+        "--jq",
+        "--paginate",
+        "--silent",
+        "--slurp",
+        "--template",
+        "-i",
+        "-q",
+        "-t",
+    }
 )
-_API_WRITES = frozenset({"-f", "-F", "--field", "--raw-field", "--input"})
 
 
-def _opens_the_seal(st: Statement) -> bool:
-    """Return whether a `gh` changes what the locks stand on, which is the operator's alone.
+def _gh_refused(st: Statement) -> bool:
+    """Return whether a `gh` is outside what the agent may run.
 
-    That is the sign-in, repository variables and secrets, rulesets, a merge past the required
-    checks, and an API write to an environment, branch protection or a pending approval. Reading
-    any of them stays legal.
+    The list says what is allowed, because a list of what is not allowed always misses a spelling.
+    The locks stand on the sign-in, variables, environments, branch protection and pending
+    approvals, and everything that changes them is outside it.
     """
     if st.program != "gh" or len(st.words) < 2:
         return False
-    sub, *args = st.words[1:]
-    method = next((a.split("=", 1)[-1] for a in args if a.startswith("--method")), "")
-    if "-X" in args[:-1]:
-        method = args[args.index("-X") + 1]
-    if sub == "api":
-        writes = method.upper() not in ("", "GET") or bool(_API_WRITES & set(args))
-        return writes and any(_SEALED_API.search(a) for a in args)
-    if sub == "auth":
-        return args[:1] != ["status"]
-    return sub in _SEALED_GH or "--admin" in args
+    group, *args = st.words[1:]
+    if any(a.startswith("--admin") for a in args):
+        return True
+    if group == "auth":
+        return args != ["status"]
+    if group == "api":
+        flags = [a.split("=", 1)[0] for a in args if a.startswith("-")]
+        return "graphql" in args or not _GH_API_READS.issuperset(flags)
+    return bool(args) and args[0] not in _GH_ALLOWED.get(group, ())
 
 
 #: an option that makes sed edit its files in place: -i, -i.bak, -ni, -Ei, --in-place[=SUF]
@@ -256,8 +283,8 @@ def bash_violations(cmd: str, powershell: bool = False) -> list[str]:
         )
     if any(_disables_a_lock(st) for st in statements):
         out.append("ACTION BLOCKED: this disables a mechanical lock. Only the operator may.")
-    if any(_opens_the_seal(st) for st in statements):
-        out.append("ACTION BLOCKED: this changes what the locks stand on. Only the operator may.")
+    if any(_gh_refused(st) for st in statements):
+        out.append("ACTION BLOCKED: this `gh` is outside what the agent may run. Ask the operator.")
     if any(PYTHON.fullmatch(st.program) and reads_stdin(st) for st in statements):
         out.append(
             "ACTION BLOCKED: this python reads its program from stdin (`python -`, a heredoc, "

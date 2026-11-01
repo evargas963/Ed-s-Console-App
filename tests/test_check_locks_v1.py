@@ -112,6 +112,14 @@ def test_a_patch_in_a_test_is_refused(tmp_path):
     assert "patching lines in tests: 0 -> 1" in _refused(repo)
 
 
+def test_a_folder_in_another_case_is_the_same_folder(tmp_path):
+    repo = _repo(tmp_path)
+    _write(repo, "Tests/test_y.py", "def test_y(m):\n    m.MonkeyPatch()\n")
+    refused = _refused(repo)
+    assert "lines of tests" in refused
+    assert "patching lines in tests: 0 -> 1" in refused
+
+
 def test_a_lock_file_changes_only_on_approval(tmp_path):
     repo = _repo(tmp_path)
     _write(repo, "tools/x.py", "\n")

@@ -17,33 +17,48 @@ LOCK = "disables a mechanical lock"
 
 def test_the_locks_settings_are_the_operators():
     """Refuse a change the agent's sign-in could make, or a refused change could approve itself."""
-    seal = "what the locks stand on"
+    refused = "outside what the agent may run"
     repo = "repos/o/r"
     for cmd in (
         f"gh api -X POST {repo}/actions/runs/1/pending_deployments -f state=approved",
+        f"gh api -XPOST {repo}/actions/runs/1/pending_deployments -fstate=approved",
+        f"gh api {repo}/actions/runs/1/pending_deployments --input=x.json",
         f"gh api --method=PUT {repo}/environments/operator-locks --input x.json",
         f"gh api -X DELETE {repo}/branches/main/protection",
-        f"gh api {repo}/rulesets -f name=x",
-        f"gh api -X POST {repo}/actions/variables -f name=OPERATOR_LOCKS",
+        f"gh api -XDELETE {repo}/branches/main/protection",
+        f"gh api -X GET -X DELETE {repo}/branches/main/protection",
+        f"gh api {repo}/rulesets -H 'X-HTTP-Method-Override: DELETE'",
+        "gh api graphql -f query='mutation{approveDeployments(input:{}){clientMutationId}}'",
         "gh variable set OPERATOR_LOCKS --body approved",
+        "gh -R o/r variable set OPERATOR_LOCKS --body approved",
         "gh secret set X",
         "gh ruleset list",
+        "gh repo edit --default-branch x",
+        "gh workflow disable locks",
+        "gh extension install x",
         "gh auth login",
+        "gh auth token",
+        "gh auth status --show-token",
         "gh auth refresh -s admin:org",
         "gh pr merge 5 --admin",
+        "gh pr merge 5 --merge --admin=true",
         "git status && gh pr merge 5 --merge --admin",
+        "gh.exe variable set X",
     ):
-        assert any(seal in b for b in bash_violations(cmd)), cmd
+        assert any(refused in b for b in bash_violations(cmd)), cmd
     for cmd in (
         "gh auth status",
         f"gh api {repo}/environments/operator-locks",
         f"gh api {repo}/branches/main/protection --jq .enforce_admins",
-        f"gh api -X POST {repo}/issues/1/comments -f body=x",
+        f"gh api {repo}/actions/runs --paginate",
         "gh pr merge 5 --merge",
         "gh pr view 5",
+        "gh pr create --draft --base main --head x --title t --body-file b.md",
+        "gh run view 5 --log-failed",
+        "gh repo view --json visibility",
         "echo gh variable set",
     ):
-        assert not any(seal in b for b in bash_violations(cmd)), cmd
+        assert not any(refused in b for b in bash_violations(cmd)), cmd
 
 
 def test_lock_disable_routes_are_git_and_precommits_own():
