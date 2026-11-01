@@ -214,25 +214,33 @@ def main_ref_write_violations(statements: list[Statement]) -> list[str]:
     ]
 
 
-def production_checkout_edit_violations(tool_input: dict, repo: Path = REPO) -> list[str]:
-    """An Edit or Write whose target belongs to the production checkout, the live one. From a
-    linked worktree: any file inside the production checkout that is not under this worktree's
-    own root (a worktree nested at `<primary>/.claude/worktrees/<name>` owns its files). From the
-    production checkout itself: its app code (`production_path`). The topology is file logic
-    only (`_primary_worktree_root`); a target that cannot be placed raises, and hook_chain refuses
-    the event."""
-    linked_to = _primary_worktree_root(repo)
-    primary = linked_to or repo
+def production_checkout_edit_violations(
+    tool_input: dict, repo: Path = REPO, session: Path | None = None
+) -> list[str]:
+    """An Edit or Write whose target belongs to the production checkout, the live one.
+
+    `repo` places production, wherever the hook runs from; `session` is the checkout the session
+    is in (`repo` when not given). From a linked worktree of production: any file inside it that
+    is not under that worktree's own root (a worktree nested at `<primary>/.claude/worktrees/<name>`
+    owns its files). From production itself: its app code (`production_path`). From anywhere else,
+    a checkout that cannot be placed included: any file inside it. The topology is file logic only
+    (`_primary_worktree_root`); a target that cannot be placed raises, and hook_chain refuses the
+    event.
+    """
+    primary = _primary_worktree_root(repo) or repo
+    own = session or repo
+    linked_to = _primary_worktree_root(own)
+    is_worktree = linked_to is not None and linked_to.resolve() == primary.resolve()
     out: list[str] = []
     for key in _EDIT_TARGET_KEYS:
         raw = tool_input.get(key)
         if not raw or not isinstance(raw, str):
             continue
-        if linked_to is None:
-            resolved = production_path(raw, repo, primary)
+        if own.resolve() == primary.resolve():
+            resolved = production_path(raw, own, primary)
         else:
-            resolved = checkout_path(raw, repo, primary)
-            if resolved is not None and resolved.is_relative_to(repo.resolve()):
+            resolved = checkout_path(raw, own, primary)
+            if resolved is not None and is_worktree and resolved.is_relative_to(own.resolve()):
                 resolved = None
         if resolved is not None:
             out.append(
@@ -358,9 +366,9 @@ def production_checkout_shell_app_write_violations(statements: list[Statement]) 
 def pretooluse_block(tool: str, tool_input: dict, payload_cwd: str = "") -> list[str]:
     out: list[str] = []
     if tool in _EDIT_TOOLS:
-        # the session's checkout, not this file's: sealed hooks run from the production checkout
-        session = repo_root_of(payload_cwd) if payload_cwd else ""
-        out.extend(production_checkout_edit_violations(tool_input, Path(session or REPO)))
+        # judged by the session's checkout: sealed hooks run from the production checkout
+        session = Path(repo_root_of(payload_cwd) or "no-checkout") if payload_cwd else None
+        out.extend(production_checkout_edit_violations(tool_input, REPO, session))
     if tool in BASH_TOOLS:  # one roster (hook_chain.BASH_TOOLS)
         cmd = tool_input.get("command") or ""
         ps = tool == "PowerShell"

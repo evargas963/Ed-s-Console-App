@@ -62,9 +62,17 @@ def test_a_sealed_hook_judges_an_edit_by_the_session_not_by_where_the_hook_runs(
     only its app code, is refused by the session's own checkout."""
     primary, wt = _linked_worktree_layout(tmp_path)
     (primary / "AGENTS.md").write_text("# rules\n", encoding="utf-8")
-    bad = PLG.pretooluse_block("Edit", {"file_path": str(primary / "AGENTS.md")}, str(wt))
-    assert len(bad) == 1 and "PROD_CHECKOUT_EDIT" in bad[0], bad
-    assert PLG.pretooluse_block("Edit", {"file_path": str(wt / "own.py")}, str(wt)) == []
+    other = tmp_path / "other"
+    (other / ".git").mkdir(parents=True)
+    rules = {"file_path": str(primary / "AGENTS.md")}
+    code = {"file_path": str(primary / "db.py")}
+    for session in (wt, other, tmp_path / "no-checkout"):
+        for target in (rules, code):
+            bad = PLG.production_checkout_edit_violations(target, primary, session)
+            assert len(bad) == 1 and "PROD_CHECKOUT_EDIT" in bad[0], (session, target)
+    own = {"file_path": str(wt / "own.py")}
+    assert PLG.production_checkout_edit_violations(own, primary, wt) == []
+    assert PLG.pretooluse_block("Edit", rules, str(wt)) == []  # this file's checkout is not primary
 
 
 def test_a_batch_file_in_the_primary_is_app_code(tmp_path):
