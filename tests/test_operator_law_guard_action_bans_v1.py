@@ -16,7 +16,7 @@ LOCK = "disables a mechanical lock"
 
 
 def test_the_locks_settings_are_the_operators():
-    """The agent's sign-in can change these, so a refused pull request could approve itself."""
+    """Refuse a change the agent's sign-in could make, or a refused change could approve itself."""
     seal = "what the locks stand on"
     repo = "repos/o/r"
     for cmd in (

@@ -195,9 +195,12 @@ _API_WRITES = frozenset({"-f", "-F", "--field", "--raw-field", "--input"})
 
 
 def _opens_the_seal(st: Statement) -> bool:
-    """A `gh` that changes what the locks stand on, the operator's alone: the sign-in, repository
-    variables and secrets, rulesets, a merge past the required checks, and an API write to an
-    environment, branch protection or a pending approval. Reading any of them stays legal."""
+    """Return whether a `gh` changes what the locks stand on, which is the operator's alone.
+
+    That is the sign-in, repository variables and secrets, rulesets, a merge past the required
+    checks, and an API write to an environment, branch protection or a pending approval. Reading
+    any of them stays legal.
+    """
     if st.program != "gh" or len(st.words) < 2:
         return False
     sub, *args = st.words[1:]
