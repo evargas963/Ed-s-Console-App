@@ -232,7 +232,7 @@ then the rule binds with no machine check.
   the rules require the stop (his yes to a plan for work outside SHAPE, CLAUDE.md item 3; his yes
   to a production start or stop in regular hours, or to a change of request rates, limits or
   settings, CLAUDE.md item 5; the next
-  bullet's stop list: his stop words, an AUDIT ONLY or DO NOT MERGE task, a destructive data action,
+  bullet's stop list: a pull request `locks` refuses, his stop words, an AUDIT ONLY or DO NOT MERGE task, a destructive data action,
   a product decision), said in a message that begins `WAITING ON OPERATOR:`. From the third
   refused stop in a row since the operator last wrote, what is being done is suspect (operator
   2026-10-30: "at that point in time i would suspect that what you are doing isn't working"): the

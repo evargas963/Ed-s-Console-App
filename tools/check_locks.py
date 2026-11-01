@@ -25,15 +25,15 @@ COUNTED_RULES = ".locks-counted.toml"
 REFUSED = 3
 DATA = (".json", ".md", ".mdc", ".csv", ".txt", ".png", ".ico", ".pdf", ".webmanifest", ".lock")
 PYTHON = (".py", ".pyi", ".pyw", ".ipynb")
+#: compared in lower case: Windows, where production runs, reads `Tools/x.py` as `tools/x.py`
 LOCK_PATHS = (
     RULES,
     ".claude/",
     ".cursor/",
     ".github/",
-    ".gitattributes",
     ".pre-commit-config.yaml",
-    "AGENTS.md",
-    "CLAUDE.md",
+    "agents.md",
+    "claude.md",
     "package-lock.json",
     "package.json",
     "playwright.config.mjs",
@@ -43,13 +43,16 @@ LOCK_PATHS = (
 )
 #: a file of this name steers ruff, pytest or git wherever it sits
 LOCK_NAMES = (
+    ".gitattributes",
     ".gitignore",
     ".ignore",
     ".pytest.ini",
+    ".pytest.toml",
     ".ruff.toml",
     "conftest.py",
     "pyproject.toml",
     "pytest.ini",
+    "pytest.toml",
     "ruff.toml",
     "setup.cfg",
     "tox.ini",
@@ -153,7 +156,7 @@ def judge(root: Path, base_ref: str) -> list[str]:
     refused = [
         f"lock file: {name}"
         for name in changed
-        if name.startswith(LOCK_PATHS) or Path(name).name in LOCK_NAMES
+        if name.lower().startswith(LOCK_PATHS) or Path(name).name.lower() in LOCK_NAMES
     ]
     with tempfile.TemporaryDirectory() as scratch:
         tree = Path(scratch).resolve() / "base"

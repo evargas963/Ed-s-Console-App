@@ -119,7 +119,15 @@ def test_a_lock_file_changes_only_on_approval(tmp_path):
     _write(repo, ".cursor/hooks.json", "{}\n")
     _write(repo, "sub/conftest.py", "\n")
     _write(repo, "sub/ruff.toml", "\n")
+    _write(repo, "pytest.toml", "\n")
+    _write(repo, "sub/.gitattributes", "\n")
+    _write(repo, "other/Conftest.py", "\n")
+    _write(repo, "AGENTS.md", "\n")
     refused = _refused(repo)
+    assert "lock file: AGENTS.md" in refused
+    assert "lock file: pytest.toml" in refused
+    assert "lock file: sub/.gitattributes" in refused
+    assert "lock file: other/Conftest.py" in refused
     assert "lock file: tools/x.py" in refused
     assert "lock file: .github/workflows/x.yml" in refused
     assert "lock file: .cursor/hooks.json" in refused
@@ -141,8 +149,16 @@ def test_a_file_named_as_an_option_is_not_read_as_one(tmp_path):
 
 def test_a_format_suppression_is_refused(tmp_path):
     repo = _repo(tmp_path)
-    _write(repo, "product.py", "VALUE = [1, 2]  # fmt: skip\n")
-    assert "format suppressions: 0 -> 1" in _refused(repo)
+    _write(
+        repo, "product.py", "VALUE = [1, 2]  # fmt: skip\n# isort: skip_file\n# ruff: isort: off\n"
+    )
+    assert "format suppressions: 0 -> 3" in _refused(repo)
+
+
+def test_loading_code_from_a_data_file_is_refused(tmp_path):
+    repo = _repo(tmp_path)
+    _write(repo, "product.py", "import importlib.util\n\nVALUE = importlib.util\n")
+    assert "No code runs from a data file" in _refused(repo)
 
 
 def test_a_refused_change_exits_3_and_a_clean_one_0(tmp_path):

@@ -41,6 +41,7 @@ jobs:
           git -C judge fetch -q "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
             "refs/pull/$PR/merge:refs/heads/judged"
           test "$(git -C judge rev-parse refs/heads/judged^2)" = "$HEAD_SHA"
+          git -C judge merge-base --is-ancestor refs/heads/judged^1 HEAD
           git -C judge worktree add -q --detach "$PWD/head" refs/heads/judged
           cd head
           status=0
