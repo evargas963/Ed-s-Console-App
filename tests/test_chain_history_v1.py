@@ -206,6 +206,61 @@ def test_the_history_is_written_once_per_capture_window_and_never_outside_one(tm
     )
 
 
+def _mrvl_chain() -> cch._Chain:
+    """MRVL's real chain, every expiry, begun inside a capture window, each contract with the
+    sweep's mark that no quote came back."""
+    by_expiry: dict[str, list[dict]] = {}
+    for ct in _MRVL:
+        by_expiry.setdefault(ct["expirationDate"][:10], []).append({**ct, "greeksTime": None})
+    assert len(by_expiry) > 1
+    return cch._Chain(
+        "MRVL", _ts("2026-09-30 15:31:57"), dict.fromkeys(by_expiry), by_expiry=by_expiry
+    )
+
+
+def test_a_capture_the_database_refuses_partway_leaves_nothing_stored(tmp_path, schwab):
+    """Induced test condition: a trigger refuses MRVL's last expiry, as a locked or full database
+    would. The expiries before it stand in no capture, whole or not at all."""
+    db = tmp_path / "ed_console.db"
+    sweep, _published, _client = _sweep(tmp_path, schwab, lambda: _ts("2026-09-30 15:31:57"))
+    chain = _mrvl_chain()
+    conn = sqlite3.connect(db)
+    cch.ensure_schema(conn)
+    conn.execute(
+        "CREATE TRIGGER refuse BEFORE INSERT ON complete_chain_captures "
+        f"WHEN NEW.expiry = '{list(chain.by_expiry)[-1]}' "
+        "BEGIN SELECT RAISE(ABORT, 'refused'); END"
+    )
+    conn.commit()
+    conn.close()
+    with pytest.raises(sqlite3.IntegrityError):
+        sweep._write_history(chain)
+    assert cch.last_capture_per_day(db, "MRVL", 1) == []
+    assert cch.newest_capture_ts(db, "MRVL") is None
+
+
+def test_the_console_hears_of_a_chain_after_its_capture_is_stored(tmp_path):
+    """A read on the chain's arrival finds the capture it belongs to, whole."""
+    db = tmp_path / "ed_console.db"
+    sqlite3.connect(db).close()
+    stored_at_each_message: list = []
+    sweep = cch.ChainSweep(
+        db,
+        ["MRVL"],
+        lambda _topic, _msg: stored_at_each_message.append(len(_stored(db))),
+        clock=lambda: _ts("2026-09-30 15:31:57"),
+        failures=CaptureWriter(tmp_path / "stream_capture.db"),
+        streamed=lambda symbol: None,
+    )
+    chain = _mrvl_chain()
+    sweep.deliver(chain)
+    assert set(stored_at_each_message) == {len(chain.contracts())}
+
+
+def _stored(db) -> list:
+    return [c for capture in cch.last_capture_per_day(db, "MRVL", 1) for c in capture["contracts"]]
+
+
 def test_an_added_ticker_joins_the_rotation_in_its_turn(tmp_path, schwab):
     """Operator 2026-10-06: every ticker the same, in one rotation; none has priority. TSLA added
     to the watchlist beside SPY: SPY first, then TSLA, in sorted order."""

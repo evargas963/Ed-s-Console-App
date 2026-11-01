@@ -434,7 +434,9 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
   the daemon (`run_chains`, started with it); when it stops or its socket to the console drops,
   every ticker's levels go stale with that reason (`terrain_staleness`, judged against two of
   the sweep's delivered rounds, carried on the heartbeat). The first chain of each ticker whose
-  fetch began in a capture window is also written to the chain history (§4.2, `capture_slot`); a
+  fetch began in a capture window is also written to the chain history (§4.2, `capture_slot`), in
+  one transaction before the console hears of the chain, so a reader finds a capture whole or not
+  at all (`tests/test_chain_history_v1.py`); a
   stored capture is never replaced (a second write of its ticker, expiry and time is refused,
   `test_a_stored_chain_capture_is_never_overwritten_by_a_second_write_of_its_key`); a
   history write that fails (that refusal included) is a write failure, never the chain's: the
