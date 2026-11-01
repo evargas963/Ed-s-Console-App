@@ -14,8 +14,8 @@ as a mystery.
 It keeps no state between events and never chooses another tree to judge: a session
 transcript cannot tell an executed mutation from one the hook refused, so state carried from
 it would let one BLOCKED command affect every later event. The guards judge the ACTION in the
-payload; the checkout that runs the session is the checkout whose guards run (AGENTS.md,
-Authority: work in a worktree).
+payload. The checkout whose guards run is the one that wires the hook: the session's own, or
+production's once sealed (tools/write_seal.py).
 
 INVARIANT: BLOCKED OR UNEXECUTED ACTION => ZERO MUTATION => ZERO EFFECT ON ANY LATER EVENT.
 There is no place for an effect to live.

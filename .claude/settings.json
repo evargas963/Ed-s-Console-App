@@ -1,5 +1,5 @@
 {
-  "_comment": "Hook wiring only. Each guard file IS its own authority and documents why it exists; this file decides which guards run on which event. tools/hook_chain.py runs the listed guards in one process from THIS checkout; nothing is remembered between events.",
+  "_comment": "Hook wiring only. Each guard file IS its own authority and documents why it exists; this file decides which guards run on which event. tools/hook_chain.py runs the listed guards in one process; nothing is remembered between events. Once sealed, tools/write_seal.py takes these hooks into managed settings, anchored to the production checkout, and this file is only their source.",
   "hooks": {
     "PreToolUse": [
       {

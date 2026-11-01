@@ -57,6 +57,16 @@ def test_cross_checkout_edit_into_primary_blocks(tmp_path):
     assert len(bad) == 1 and "PROD_CHECKOUT_EDIT" in bad[0], bad
 
 
+def test_a_sealed_hook_judges_an_edit_by_the_session_not_by_where_the_hook_runs(tmp_path):
+    """Sealed hooks run from production, so a worktree session's edit of any production file, not
+    only its app code, is refused by the session's own checkout."""
+    primary, wt = _linked_worktree_layout(tmp_path)
+    (primary / "AGENTS.md").write_text("# rules\n", encoding="utf-8")
+    bad = PLG.pretooluse_block("Edit", {"file_path": str(primary / "AGENTS.md")}, str(wt))
+    assert len(bad) == 1 and "PROD_CHECKOUT_EDIT" in bad[0], bad
+    assert PLG.pretooluse_block("Edit", {"file_path": str(wt / "own.py")}, str(wt)) == []
+
+
 def test_a_batch_file_in_the_primary_is_app_code(tmp_path):
     """The batch files start and restart production: a session in the primary may not edit one."""
     primary, _ = _linked_worktree_layout(tmp_path)

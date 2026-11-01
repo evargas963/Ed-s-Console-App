@@ -36,6 +36,7 @@ from tools.shell_parse import (  # the ONE shell reader
     git_subcommand,
     normalize_repo,
     read,
+    repo_root_of,
 )
 
 REPO = Path(__file__).resolve().parent.parent
@@ -357,7 +358,9 @@ def production_checkout_shell_app_write_violations(statements: list[Statement]) 
 def pretooluse_block(tool: str, tool_input: dict, payload_cwd: str = "") -> list[str]:
     out: list[str] = []
     if tool in _EDIT_TOOLS:
-        out.extend(production_checkout_edit_violations(tool_input))
+        # the session's checkout, not this file's: sealed hooks run from the production checkout
+        session = repo_root_of(payload_cwd) if payload_cwd else ""
+        out.extend(production_checkout_edit_violations(tool_input, Path(session or REPO)))
     if tool in BASH_TOOLS:  # one roster (hook_chain.BASH_TOOLS)
         cmd = tool_input.get("command") or ""
         ps = tool == "PowerShell"
