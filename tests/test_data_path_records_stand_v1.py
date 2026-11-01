@@ -17,9 +17,9 @@ from calibration.complete_chain_capture import (
     CAPTURE_BASIS,
     ChainSweep,
     last_capture_per_day,
-    persist_complete_chain_capture,
 )
 from stream_spine import CaptureWriter
+from tests.capture_store import store_capture
 from tests.schwab_rest_standin import LocalSchwab
 
 _IN_WINDOW = 1790863205.0  # 2026-10-01 10:00:05 ET, inside the 10:00 capture window
@@ -50,7 +50,7 @@ def test_a_stored_chain_capture_is_never_overwritten_by_a_second_write_of_its_ke
 
     refused = None
     try:
-        persist_complete_chain_capture(
+        store_capture(
             db,
             ticker="SPY",
             expiry=expiry,

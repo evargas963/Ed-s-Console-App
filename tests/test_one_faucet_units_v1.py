@@ -57,8 +57,8 @@ def test_forces_prices_yesterdays_chain_at_its_capture_time(tmp_path):
     from calibration.complete_chain_capture import (
         CAPTURE_BASIS,
         last_capture_per_day,
-        persist_complete_chain_capture,
     )
+    from tests.capture_store import store_capture
 
     db = tmp_path / "ed_console.db"
     for day, hour in ((7, 12), (6, 15)):
@@ -67,7 +67,7 @@ def test_forces_prices_yesterdays_chain_at_its_capture_time(tmp_path):
         for ct in SPY_0DTE.chain:
             by_exp.setdefault(ct["expirationDate"][:10], []).append(ct)
         for exp, cts in by_exp.items():
-            persist_complete_chain_capture(
+            store_capture(
                 db,
                 ticker="SPY",
                 expiry=exp,

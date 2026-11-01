@@ -101,7 +101,7 @@ def capture_transaction(db_path: Path | str) -> Iterator[sqlite3.Connection]:
 
 
 def persist_complete_chain_capture(
-    db_path: Path | str,
+    conn: sqlite3.Connection,
     *,
     ticker: str,
     expiry: str,
@@ -112,15 +112,14 @@ def persist_complete_chain_capture(
     source: str = "schwab_chain_strike_range_all",
     chain_spot: float | None = None,
     chain_spot_ts: float | None = None,
-    transaction: sqlite3.Connection | None = None,
 ) -> dict[str, Any]:
     """Append one COMPLETE single-expiry capture: `spot` is that expiry's underlyingPrice as
     Schwab sent it; `chain_spot` / `chain_spot_ts` the chain's one spot and its trade time (None
     when the daemon held no price). A time series (PRIMARY KEY includes
     ts_utc): each capture time is its own set of rows, one per expiry. A stored capture is
     never replaced: a second write of the same (ticker, expiry, ts_utc) raises
-    sqlite3.IntegrityError and the stored row stands. `transaction` is a capture_transaction the
-    row joins; with none it is its own.
+    sqlite3.IntegrityError and the stored row stands. `conn` is the capture_transaction the row
+    joins.
 
     FAIL CLOSED: no contracts, or an unproven `completeness_basis`, writes NOTHING and
     says why — a persisted row with an empty or unverifiable completeness claim would be
@@ -139,28 +138,23 @@ def persist_complete_chain_capture(
         return {"status": "skipped", "reason": "no_contracts", "ticker": tk, "expiry": exp}
 
     ts = float(ts_utc if ts_utc is not None else time.time())
-    row = (
-        tk,
-        exp,
-        ts,
-        spot,
-        len(clean),
-        str(completeness_basis),
-        encode_json_blob(clean, default=str),
-        str(source),
-        chain_spot,
-        chain_spot_ts,
-    )
-    insert = (
+    conn.execute(
         "INSERT INTO complete_chain_captures "
         "(ticker, expiry, ts_utc, spot, n_contracts, completeness_basis, chain_json, source, "
-        "chain_spot, chain_spot_ts) VALUES (?,?,?,?,?,?,?,?,?,?)"
+        "chain_spot, chain_spot_ts) VALUES (?,?,?,?,?,?,?,?,?,?)",
+        (
+            tk,
+            exp,
+            ts,
+            spot,
+            len(clean),
+            str(completeness_basis),
+            encode_json_blob(clean, default=str),
+            str(source),
+            chain_spot,
+            chain_spot_ts,
+        ),
     )
-    if transaction is not None:
-        transaction.execute(insert, row)
-    else:
-        with capture_transaction(db_path) as conn:
-            conn.execute(insert, row)
     return {
         "status": "written",
         "ticker": tk,
@@ -617,36 +611,15 @@ class ChainSweep:
             self.publish(*chain_failure_message(chain.ticker, reason, now))
 
     def deliver(self, chain: _Chain) -> None:
-        """The chain to the chain history when it is the window's first, then to the console, so a
-        read on its arrival finds that capture, both carrying the time the chain began (its as-of
-        everywhere: a chain begun before the close is not the close values, whenever it is
-        delivered) and its one spot: Schwab's LAST_PRICE with its trade time, as the daemon's price
-        row holds it now that the chain is complete."""
+        """The chain to the console, and to the chain history when it is the window's first, both
+        carrying the time the chain began (its as-of everywhere: a chain begun before the close is
+        not the close values, whenever it is delivered) and its one spot: Schwab's LAST_PRICE with
+        its trade time, as the daemon's price row holds it now that the chain is complete."""
         now = self.clock()
         row = price_row(chain.ticker, now)
         if row["spot"] is not None:  # a trade time without its price is no spot
             chain.spot, chain.spot_ts = row["spot"], row["trade_ts"]
         contracts = chain.contracts()
-        try:
-            self._write_history(chain)
-        except Exception as e:  # noqa: BLE001 -- the chain still goes to the console; a failed history write is the writer's to keep and show
-            log.warning(
-                "chain history for %s not written, kept as delivered: %s: %s",
-                chain.ticker,
-                type(e).__name__,
-                e,
-            )
-            self.failures.keep_failure(
-                f"chain_history.{chain.ticker}",
-                {
-                    "spots": chain.spots,
-                    "spot": chain.spot,
-                    "spot_ts": chain.spot_ts,
-                    "contracts": contracts,
-                },
-                e,
-                now,
-            )
         for topic, msg in chain_messages(
             chain.ticker, contracts, chain.started, chain.spot, chain.spot_ts
         ):
@@ -664,6 +637,26 @@ class ChainSweep:
                 chain.ticker,
                 missing,
                 len(contracts),
+            )
+        try:
+            self._write_history(chain)
+        except Exception as e:  # noqa: BLE001 -- the chain is delivered; a failed history write is the writer's to keep and show
+            log.warning(
+                "chain history for %s not written, kept as delivered: %s: %s",
+                chain.ticker,
+                type(e).__name__,
+                e,
+            )
+            self.failures.keep_failure(
+                f"chain_history.{chain.ticker}",
+                {
+                    "spots": chain.spots,
+                    "spot": chain.spot,
+                    "spot_ts": chain.spot_ts,
+                    "contracts": contracts,
+                },
+                e,
+                now,
             )
 
     def _write_history(self, chain: _Chain) -> None:
@@ -685,7 +678,7 @@ class ChainSweep:
             with capture_transaction(self.db_path) as conn:
                 for expiry, cts in chain.by_expiry.items():
                     persist_complete_chain_capture(
-                        self.db_path,
+                        conn,
                         ticker=ticker,
                         expiry=expiry,
                         contracts=cts,
@@ -694,10 +687,9 @@ class ChainSweep:
                         ts_utc=chain.started,
                         chain_spot=chain.spot,
                         chain_spot_ts=chain.spot_ts,
-                        transaction=conn,
                     )
         except Exception:
-            self._written[ticker] = before  # unwritten: the window's next chain tries
+            self._written[ticker] = before  # unwritten: the window's next chain, if any, tries
             raise
 
 

@@ -23,6 +23,7 @@ import server
 import time_et
 from schwab_client import flatten_chain_contracts
 from terrain_engine import compute_terrain
+from tests.capture_store import store_capture
 
 _FX = json.loads(
     (
@@ -80,7 +81,7 @@ def test_the_level_producer_computes_from_the_full_chain(tmp_path):
     for ct in _contracts(_FX["full"]):
         by_expiry.setdefault(ct["expirationDate"][:10], []).append(ct)
     for expiry, cts in by_expiry.items():
-        cch.persist_complete_chain_capture(
+        store_capture(
             db,
             ticker=tk,
             expiry=expiry,

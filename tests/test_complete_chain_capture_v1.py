@@ -13,9 +13,7 @@ import json
 import sqlite3
 from pathlib import Path
 
-import pytest
-
-from calibration.complete_chain_capture import persist_complete_chain_capture
+from tests.capture_store import store_capture
 
 _FIXTURE = json.loads(
     (
@@ -26,18 +24,11 @@ _TSLA_CONTRACTS = _FIXTURE["chain"]
 _TSLA_EXPIRY = _FIXTURE["expiry"]
 
 
-@pytest.fixture(autouse=True)
-def _at_capture(pin_clock):
-    """Valued at the stored chain's capture (2026-08-30), so its expiries passing never change
-    what this test measures."""
-    return pin_clock(2026, 8, 30, 12, 0)
-
-
 def test_write_skips_missing_completeness_basis_fail_closed(tmp_path):
     """A row with no stated basis for its completeness claim would be worse than no row —
     a caller trusts what THIS table alone claims."""
     db_path = tmp_path / "cap.db"
-    result = persist_complete_chain_capture(
+    result = store_capture(
         db_path,
         ticker="TSLA",
         expiry=_TSLA_EXPIRY,
@@ -54,7 +45,7 @@ def test_persisted_chain_json_is_actually_gzip_compressed_on_disk(tmp_path):
     disk are smaller than raw JSON -- prove it directly against the stored column, not just
     that round-tripping through the public functions still works."""
     db_path = tmp_path / "cap.db"
-    persist_complete_chain_capture(
+    store_capture(
         db_path,
         ticker="TSLA",
         expiry=_TSLA_EXPIRY,

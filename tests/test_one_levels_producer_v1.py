@@ -27,10 +27,11 @@ import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 import push_changes
 import server
-from calibration.complete_chain_capture import CAPTURE_BASIS, persist_complete_chain_capture
+from calibration.complete_chain_capture import CAPTURE_BASIS
 from math_exposure_core import bucket_metric, merge_exposure_books
 from stream_spine import options_quote_msg
 from terrain_engine import compute_terrain
+from tests.capture_store import store_capture
 from tests.real_chains import CRWD
 from time_et import ET
 
@@ -452,7 +453,7 @@ def _store(tk: str, ts: float, spot: float = _SPOT) -> None:
     for ct in _CONTRACTS:
         by_expiry.setdefault(ct["expirationDate"][:10], []).append(ct)
     for expiry, cts in by_expiry.items():
-        persist_complete_chain_capture(
+        store_capture(
             server.get_db().db_path,
             ticker=tk,
             expiry=expiry,
@@ -475,7 +476,7 @@ def test_startup_prices_the_newest_capture_with_its_own_price_and_time():
     valued and dated at the capture's time. A row that is not a full chain is never loaded."""
     tk = "ZZCAPSTART"
     _store(tk, _T)
-    persist_complete_chain_capture(
+    store_capture(
         server.get_db().db_path,
         ticker=tk,
         expiry=_CONTRACTS[0]["expirationDate"][:10],

@@ -35,10 +35,10 @@ from app.market_data.schwab.streaming.live_ui import serve_live_ui
 from calibration.complete_chain_capture import (
     CAPTURE_BASIS,
     chain_messages,
-    persist_complete_chain_capture,
 )
 from schwab_client import build_client_from_token
 from stream_spine import CaptureWriter, HealthRegistry, MessageBus, quote_msg
+from tests.capture_store import store_capture
 from tests.real_chains import CRWD, MRVL, NFLX
 
 REPO = Path(__file__).resolve().parent.parent
@@ -696,7 +696,7 @@ def test_the_stored_levels_are_priced_while_a_page_on_another_ticker_takes_ticks
         for ct in chain.chain:
             by_expiry.setdefault(ct["expirationDate"][:10], []).append(dict(ct))
         for expiry, cts in by_expiry.items():
-            persist_complete_chain_capture(
+            store_capture(
                 server.get_db().db_path,
                 ticker=chain.ticker,
                 expiry=expiry,

@@ -58,10 +58,11 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 import server
-from calibration.complete_chain_capture import CAPTURE_BASIS, persist_complete_chain_capture
+from calibration.complete_chain_capture import CAPTURE_BASIS
+from tests.capture_store import store_capture
 
 chain = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-persist_complete_chain_capture(
+store_capture(
     server.get_db().db_path,
     ticker=chain["ticker"],
     expiry=sys.argv[2],

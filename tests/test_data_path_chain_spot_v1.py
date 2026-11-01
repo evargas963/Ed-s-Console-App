@@ -21,6 +21,7 @@ import live_market_plane as lmp
 import server
 from app.options.order_flow import streaming as ofs
 from stream_spine import CaptureWriter
+from tests.capture_store import store_capture
 from tests.real_chains import CRWD
 
 _QUOTE = json.loads(
@@ -104,7 +105,7 @@ def test_a_capture_written_before_the_chain_carried_a_spot_is_read_at_its_neares
     for ct in CRWD.chain:
         by_expiry.setdefault(ct["expirationDate"][:10], []).append(ct)
     for expiry, cts in by_expiry.items():
-        cch.persist_complete_chain_capture(
+        store_capture(
             db,
             ticker=TK,
             expiry=expiry,
@@ -135,7 +136,7 @@ def test_a_capture_written_before_the_chain_carried_a_spot_is_read_at_its_neares
 
 def test_a_stored_trade_time_without_its_price_is_no_chain_spot(tmp_path):
     db = tmp_path / "ed_console.db"
-    cch.persist_complete_chain_capture(
+    store_capture(
         db,
         ticker=TK,
         expiry=EXPIRY,

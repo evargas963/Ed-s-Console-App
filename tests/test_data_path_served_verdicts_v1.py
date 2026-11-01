@@ -24,7 +24,8 @@ import live_market_plane as lmp
 import live_price_rows
 import push_changes
 import server
-from calibration.complete_chain_capture import CAPTURE_BASIS, persist_complete_chain_capture
+from calibration.complete_chain_capture import CAPTURE_BASIS
+from tests.capture_store import store_capture
 from tests.real_chains import SPY_0DTE, TSLA
 from time_et import ET
 
@@ -212,7 +213,7 @@ def test_on_a_closed_day_a_delivered_chain_keeps_the_close_counts_schwab_blanks(
     at = datetime.fromtimestamp(sunday["ts_utc"], ET)
     _forget()
     try:
-        persist_complete_chain_capture(
+        store_capture(
             server.get_db().db_path,
             ticker="SPY",
             expiry=_SUNDAY["expiry"],

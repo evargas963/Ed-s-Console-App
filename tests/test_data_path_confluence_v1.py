@@ -14,7 +14,7 @@ import live_market_plane as lmp
 import live_price_rows
 import server
 from app.options.order_flow import streaming as ofs
-from calibration.complete_chain_capture import CAPTURE_BASIS, persist_complete_chain_capture
+from calibration.complete_chain_capture import CAPTURE_BASIS
 from confluence_composite import (
     at_price,
     build_matrix,
@@ -30,6 +30,7 @@ from math_levels import compute_charm_by_strike
 from numeric_contract import price_text
 from stream_spine import options_quote_msg
 from terrain_engine import compute_terrain
+from tests.capture_store import store_capture
 from tests.real_chains import (
     CRWD,
     MRVL,
@@ -854,7 +855,7 @@ def _first_chain_keeps_the_capture(now, capture_at):
         for ct in fresh:
             by_expiry.setdefault(str(ct["expirationDate"])[:10], []).append(ct)
         for exp, cts in by_expiry.items():
-            persist_complete_chain_capture(
+            store_capture(
                 server.get_db().db_path,
                 ticker=tk,
                 expiry=exp,
@@ -969,7 +970,7 @@ def test_a_closed_day_zero_book_keeps_the_last_count_through_the_next_open():
         for ct in fresh:
             by_expiry.setdefault(str(ct["expirationDate"])[:10], []).append(ct)
         for exp, cts in by_expiry.items():
-            persist_complete_chain_capture(
+            store_capture(
                 server.get_db().db_path,
                 ticker=tk,
                 expiry=exp,
@@ -1102,7 +1103,7 @@ def test_a_date_with_no_session_keeps_a_reported_zero():
         for ct in fresh:
             by_expiry.setdefault(str(ct["expirationDate"])[:10], []).append(ct)
         for exp, cts in by_expiry.items():
-            persist_complete_chain_capture(
+            store_capture(
                 server.get_db().db_path,
                 ticker=tk,
                 expiry=exp,
@@ -1140,7 +1141,7 @@ def test_a_newer_capture_is_the_count_the_next_chain_keeps():
     after = datetime(2026, 10, 22, 18, 0, tzinfo=ET)
 
     def store(capture):
-        persist_complete_chain_capture(
+        store_capture(
             server.get_db().db_path,
             ticker=tk,
             expiry=_SPY_TWO_CLOSES["expiry"],
