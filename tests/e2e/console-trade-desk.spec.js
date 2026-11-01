@@ -739,7 +739,7 @@ test.describe('Trade Desk renders served values', () => {
     const errors = [];
     page.on('pageerror', (e) => errors.push(String(e)));
     await intercept(page);
-    const today = [[770, 500000, 1000], [771, null, 5000], [772, -200000, 3000]];
+    const today = [[770, 500000, 1000], [771, null, null], [772, -200000, 3000]];
     await page.route('**/api/terrain/strikes?**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
       body: JSON.stringify(Object.assign({}, STRIKES, { today: { all: today }, migration: { all: Object.assign({}, STRIKES.migration.all,
         { rows: [[770, 500000, 400000, 100000], [771, null, 700000, null], [772, -200000, -100000, -100000]] }) } })) }));
@@ -749,6 +749,8 @@ test.describe('Trade Desk renders served values', () => {
     await expect(page.locator('#tdMigration .gbs-k')).toHaveText(['772', '771', '770']);
     const row = page.locator('#tdMigration .mig-row', { hasText: '771' });
     await expect(row.locator('.gbs-v')).toHaveText('-');
+    await expect(row.locator('.mig-delta')).toHaveText('-');
+    await expect(row.locator('.gbs-vol')).toHaveText('-');
     expect(await row.locator('.gbs-bar').evaluate((el) => el.style.width)).toBe('0%');
     await expect(row.locator('.mig-ghost')).toHaveCount(0);
     expect(errors).toEqual([]);

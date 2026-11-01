@@ -242,7 +242,7 @@ def _per_strike_rows(exposures: dict) -> list[list]:
         interest 0 is a $0 bar). A strike whose GEX is not known (bucket_metric) keeps its row
         with None, so a total of its side is unknown too; a book built without spot has no rows.
       * volume is strike_total_volume, the one reader: Schwab's volumes as sent (0 is a real
-        zero); None ("—") when a contract at the strike did not report it, never a partial sum.
+        zero); None ("-") when a contract at the strike did not report it, never a partial sum.
     """
     from math_exposure_core import (
         exposures_have_dollar_gex,

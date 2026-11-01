@@ -255,7 +255,7 @@
       var ghostBar = hasGy
         ? '<i class="mig-ghost ' + (gy >= 0 ? 'pos' : 'neg') + '" style="width:' + (gy === 0 ? 0 : Math.abs(gy) / maxAbs * 100).toFixed(1) + '%"></i>' : '';
       var delta = migRow[k] ? migRow[k][3] : null;   // served change
-      var deltaHtml = delta == null ? '<span class="mig-delta"></span>'
+      var deltaHtml = delta == null ? '<span class="mig-delta">-</span>'
         : '<span class="mig-delta ' + (delta >= 0 ? 'pos' : 'neg') + '">' + (delta >= 0 ? '▲' : '▼') + usd(Math.abs(delta)) + '</span>';
       var rowCls = 'gbs-row mig-row' + (k === spotStrike ? ' spot' : '') +
         (cw != null && k === cw ? ' mig-wall-call' : '') + (pw != null && k === pw ? ' mig-wall-put' : '');
