@@ -5,7 +5,8 @@ Each market date's sessions are Schwab's GET /markets?markets=equity,option answ
 (record_markets): the stock market's pre-market, regular and post-market windows, and the regular
 window of each option market (EQO: stock and ETF options; IND: index options). The capture daemon
 asks it once per date per ET day: today, the days before it Schwab answers, and each expiry date
-of the chains; the console takes every answer from the daemon. A date with no answer held is
+of the chains; the console takes every answer from the daemon, and at startup those the daemon
+recorded (server._load_stored_sessions). A date with no answer held is
 unknown. Past the year Schwab answers, a contract's expiry runs to its expirationDate as sent.
 """
 

@@ -110,6 +110,7 @@ from time_et import (
     option_close_product,
     option_market_open,
     options_closed_at,
+    record_markets,
     session,
     session_label,
     valuation_instant,
@@ -570,8 +571,8 @@ def _watchlist(now: float) -> list[str] | None:
 
 @asynccontextmanager
 async def _app_lifespan(app):
-    """Startup and shutdown: the live-binding check, the signal handlers, the levels loop, the bar
-    writer, the daemon's feed and the page push."""
+    """Startup and shutdown: the live-binding check, the signal handlers, the recorded market
+    sessions, the levels loop, the bar writer, the daemon's feed and the page push."""
     # ── Startup ─────────────────────────────────────────────────────────────
     # FIRST, before any worker, client or database is touched: a checkout whose runtime is
     # ANOTHER checkout (a worktree converging on production) does not start a live console
@@ -583,6 +584,10 @@ async def _app_lifespan(app):
     # Installed FIRST: until these exist, Ctrl+C depends on uvicorn's graceful path
     # completing, and that path joins background workers which may be blocked.
     _install_signal_handlers()
+
+    # Before the loops and the feed: everything priced from here on has the recorded sessions, and
+    # the daemon's answers then replace them.
+    _load_stored_sessions(canonical_stream_db_path())
 
     # The levels loop: the stored levels at startup, then the status line and the price levels
     # (the chains arrive from the daemon, _on_chain).
@@ -2038,6 +2043,29 @@ def _terrain_loop() -> None:
         except Exception as e:  # noqa: BLE001 -- the status line says it failed, never silence
             log.warning("levels loop: %s: %s", type(e).__name__, e)
     log.info("Terrain loop stopped")
+
+
+def _load_stored_sessions(path: Path) -> None:
+    """Schwab's /markets answers as the daemon recorded them in the stream database at `path`,
+    oldest first, so a stored chain is priced on the sessions of its expiries. No database or table
+    yet, as at the first start before the daemon's, is no answer held. A database that cannot be
+    read, or a row that cannot be taken, stops the console's start with its error."""
+    if not path.is_file():
+        return
+    conn = sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True, timeout=5)
+    try:
+        if not conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE name='stream_markets_raw'"
+        ).fetchone():
+            return
+        rows = conn.execute(
+            "SELECT native_json FROM stream_markets_raw WHERE status = 200 ORDER BY ts_recv"
+        ).fetchall()
+    finally:
+        conn.close()
+    for (answer,) in rows:
+        record_markets(json.loads(answer))
+    log.info("Recorded market answers held: %d", len(rows))
 
 
 def _load_stored_levels(watchlist: list[str]) -> int:
