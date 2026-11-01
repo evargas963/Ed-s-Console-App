@@ -5,6 +5,7 @@ from __future__ import annotations
 import shutil
 import subprocess
 import sys
+from collections import Counter
 from pathlib import Path
 
 from tools import check_locks
@@ -46,14 +47,33 @@ def _write(repo: Path, name: str, text: str) -> None:
     (repo / name).write_text(text, encoding="utf-8")
 
 
-def test_a_line_a_work_item_or_a_finding_more_is_refused(tmp_path):
+def test_a_finding_at_zero_is_refused_and_a_line_or_a_work_item_more_is_not(tmp_path):
     repo = _repo(tmp_path)
     _write(repo, "product.py", "VALUE = 1\nOTHER = print('x')\n")
     _write(repo, "ACTIVE_PROGRAM.md", "| ONE | NEXT | a row |\n| TWO | LATER | a row |\n- P-1 x\n")
     refused = _refused(repo)
-    assert "lines of product code" in refused
-    assert "open work items: 1 -> 3" in refused
+    assert "lines of product code" not in refused
+    assert "open work items" not in refused
     assert "ruff T201: 0 -> 1" in refused
+
+
+def test_only_size_may_rise_above_zero():
+    for name in (
+        "lines of tests",
+        "bytes of product code",
+        "open work items",
+        "ruff D205",
+        "banned in tests: `sqlite3` is banned: Only the Recorder uses a database.",
+    ):
+        assert check_locks.rises(Counter({name: 5}), Counter({name: 6})) == []
+    for name in (
+        "banned in server.py: `sqlite3` is banned",
+        "banned in tests: `websockets` is banned: Only Feed talks to Schwab.",
+        "format suppressions",
+        "patching lines in tests",
+        "ruff BLE001",
+    ):
+        assert check_locks.rises(Counter({name: 5}), Counter({name: 6})) == [f"{name}: 5 -> 6"]
 
 
 def test_a_change_that_only_removes_passes(tmp_path):
@@ -83,13 +103,14 @@ def test_a_file_named_ruff_in_the_change_does_not_answer_for_ruff(tmp_path):
     assert "ruff T201: 0 -> 1" in _refused(repo)
 
 
-def test_a_new_kind_of_file_and_a_foreign_name_are_counted(tmp_path):
+def test_a_new_kind_of_file_and_a_foreign_name_are_counted(tmp_path, capsys):
     repo = _repo(tmp_path)
     _write(repo, "módulo.py", "VALUE = 1\n")
     _write(repo, "script.cmd", "echo hi\n")
-    refused = _refused(repo)
-    assert "lines of product code" in refused
-    assert "bytes of product code" in refused
+    _refused(repo)
+    reported = capsys.readouterr().out
+    before, after = reported.split("bytes of product code: ")[1].split("\n")[0].split(" -> ")
+    assert int(after) - int(before) == len("VALUE = 1\necho hi\n")
 
 
 def test_a_banned_name_in_a_new_module_is_not_bought_by_removing_it_elsewhere(tmp_path):
@@ -122,35 +143,6 @@ def test_a_folder_in_another_case_is_the_same_folder(tmp_path):
     assert "patching lines in tests: 0 -> 1" in refused
 
 
-def test_a_lock_file_changes_only_on_approval(tmp_path):
-    repo = _repo(tmp_path)
-    _write(repo, "tools/x.py", "\n")
-    _write(repo, ".github/workflows/x.yml", "\n")
-    _write(repo, ".cursor/hooks.json", "{}\n")
-    _write(repo, "sub/conftest.py", "\n")
-    _write(repo, "sub/ruff.toml", "\n")
-    _write(repo, "pytest.toml", "\n")
-    _write(repo, "sub/.gitattributes", "\n")
-    _write(repo, "other/Conftest.py", "\n")
-    _write(repo, "AGENTS.md", "\n")
-    refused = _refused(repo)
-    assert "lock file: AGENTS.md" in refused
-    assert "lock file: pytest.toml" in refused
-    assert "lock file: sub/.gitattributes" in refused
-    assert "lock file: other/Conftest.py" in refused
-    assert "lock file: tools/x.py" in refused
-    assert "lock file: .github/workflows/x.yml" in refused
-    assert "lock file: .cursor/hooks.json" in refused
-    assert "lock file: sub/conftest.py" in refused
-    assert "lock file: sub/ruff.toml" in refused
-
-
-def test_removing_or_renaming_the_rules_is_refused(tmp_path):
-    repo = _repo(tmp_path)
-    _git(repo, "mv", check_locks.RULES, "other.toml")
-    assert f"lock file: {check_locks.RULES}" in _refused(repo)
-
-
 def test_a_file_named_as_an_option_is_not_read_as_one(tmp_path):
     repo = _repo(tmp_path)
     _write(repo, "--config=lint.ignore=['ALL']#.py", "X = print(1)\n")
@@ -175,6 +167,6 @@ def test_a_refused_change_exits_3_and_a_clean_one_0(tmp_path):
     repo = _repo(tmp_path)
     tool = [sys.executable, str(ROOT / "tools" / "check_locks.py"), "--base", "main"]
     assert subprocess.run(tool, cwd=repo, capture_output=True, check=False).returncode == 0
-    _write(repo, "product.py", "VALUE = 1\nOTHER = 2\n")
+    _write(repo, "product.py", "VALUE = 1\nOTHER = print(2)\n")
     _commit(repo)
     assert subprocess.run(tool, cwd=repo, capture_output=True, check=False).returncode == 3

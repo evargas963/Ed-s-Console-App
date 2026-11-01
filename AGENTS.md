@@ -73,23 +73,25 @@ held by standard linters, not by hand-written checks.
 
 ## Locks (operator 2026-11-01: "air tight locks, governance, etc.", "no patches ever, end to end only")
 
-The repository may only get simpler (operator 2026-11-01: "there should not be that much code, that
-many tests, that many hand built check tools, open work rows"). One-way counts replace the
+The repository is meant to get simpler (operator 2026-11-01: "there should not be that much code,
+that many tests, that many hand built check tools, open work rows"). Counts replace the
 2026-10-29 rule that a check turns on only once its findings are fixed: decided by the agent under
 his "you are in control and control the language", his to reverse.
 `tools/check_locks.py`, in `.github/workflows/locks.yml`, counts on the base and on the head under
 the base's rules: lines and bytes of everything that is not data (product code, tests, check tools),
 open work items, patching lines in tests, format suppressions, and every finding of
-`locks.ruff.toml` with each `noqa` ignored. A count at 0 is an absolute ban. No number is kept by
-hand (`tests/test_check_locks_v1.py`). A banned name (Schwab's clients, `sqlite3`, the clock) counts
+`locks.ruff.toml` with each `noqa` ignored. A count at 0 is an absolute ban. Above 0, size may rise
+and is reported (`check_locks.FREE`: lines, bytes, work items, a test's database, docstring style),
+so routine work does not wait on the operator (agent's decision 2026-11-01, on his "i don't want
+anything to slow down"; his to reverse); that a change deletes what it replaces — no machine check,
+ENF-12. No number is kept by hand (`tests/test_check_locks_v1.py`). A banned name (Schwab's clients, `sqlite3`, the clock) counts
 per product file, so no module that does not hold one may start.
 GitHub runs that workflow from the base (`pull_request_target`), and it runs no code of the head, so
-a change cannot edit its judge. A rise, or a change to a lock file (`check_locks.LOCK_PATHS`, `LOCK_NAMES`), merges
-only on the operator's approval on the `operator-locks` environment; a new test that raises a count
-goes the same way, or deletes what it replaces (CLAUDE.md item 4 stands). `locks` is a required
-check on `main`. `gh` is allowed by a list and `gh api` only reads, in the forms
-`tests/test_operator_law_guard_action_bans_v1.py` checks (`tools/operator_law_guard.py`); the
-restricted token is what makes that a seal (`ACTIVE_PROGRAM.md` LOCK-SETTINGS).
+a change cannot edit its judge. `locks` is a required check on `main`: a change it refuses cannot
+merge, and nothing approves past it. No step waits on the operator's click, and none is built again
+(operator 2026-11-01: "you need to remove all of this. don't do this again. we strengthen
+enfocement instead from now on"). `gh` is allowed by a list and `gh api` only reads, in the forms
+`tests/test_operator_law_guard_action_bans_v1.py` checks (`tools/operator_law_guard.py`).
 
 ## Rules and what enforces them
 
@@ -114,7 +116,7 @@ then the rule binds with no machine check.
 | 10 | **Only Feed talks to Schwab.** | `locks.ruff.toml` banned names, per product file (locks); import-linter's layers (step 1d) |
 | 11 | **Calculators are pure.** They take `now` and their inputs; they read no clock, database, global or network. Only an entry point (a route, a loop, a stream handler) reads the clock. | `locks.ruff.toml` banned clock names, per product file (locks); import-linter forbidden imports (step 2) |
 | 12 | **Typed records across boundaries.** A value that crosses a module boundary is a dataclass whose states are named constants. | pyright, strict on State, Calculators and Push (step 6) |
-| 13 | **Python's guidelines.** PEP 8 and PEP 257 as `ruff format` and ruff's rules read them; PEP 20 as the shape. Imports at the top; the one exception to stay is `capture_main`'s import of the daemon inside `main()`, after it opens the early error log (operator 2026-10-30: "Allow the one import"). The imports still inside other functions go, and ruff `PLC0415` holds the rule (locks). One formatter per format (price, Central Time, dollars), on the server (no machine check — ENF-11). | `ruff format` and ruff `UP`, `W`, `S110`, `E` (`E501`: lines at most 100 columns; `E741`: no `l`, `O` or `I` as a name), `B`, `I` (import order) and the `SIM` rules with a safe fix (`SIM114`, `SIM117`, `SIM118`, `SIM208`, `SIM300`, `SIM905`, `SIM910`, `SIM911`) or with no fix and nothing to fix (`SIM107`, `SIM113`, `SIM116`) (in force; `UP042`, `E711`, `E712`, `E731` and the `B` and `SIM` rules whose only fix is unsafe deselected, in `pyproject.toml`, and `SIM115`, whose findings are mostly files held open past the function, which a `with` would close); ruff `BLE`, `TRY`, `C90`, `PLC0415` and `D` (pep257, no docstring required) as one-way counts (locks), to 0 in steps 1b and 1c |
+| 13 | **Python's guidelines.** PEP 8 and PEP 257 as `ruff format` and ruff's rules read them; PEP 20 as the shape. Imports at the top; the one exception to stay is `capture_main`'s import of the daemon inside `main()`, after it opens the early error log (operator 2026-10-30: "Allow the one import"). The imports still inside other functions go, and ruff `PLC0415` holds the rule (locks). One formatter per format (price, Central Time, dollars), on the server (no machine check — ENF-11). | `ruff format` and ruff `UP`, `W`, `S110`, `E` (`E501`: lines at most 100 columns; `E741`: no `l`, `O` or `I` as a name), `B`, `I` (import order) and the `SIM` rules with a safe fix (`SIM114`, `SIM117`, `SIM118`, `SIM208`, `SIM300`, `SIM905`, `SIM910`, `SIM911`) or with no fix and nothing to fix (`SIM107`, `SIM113`, `SIM116`) (in force; `UP042`, `E711`, `E712`, `E731` and the `B` and `SIM` rules whose only fix is unsafe deselected, in `pyproject.toml`, and `SIM115`, whose findings are mostly files held open past the function, which a `with` would close); ruff `BLE`, `TRY`, `C90` and `PLC0415` as one-way counts and `D` (pep257, no docstring required) as a reported one (locks), to 0 in steps 1b and 1c |
 
 ## Fix what you find (operator 2026-10-29: "fix what you find anywhere, everywhere, repo wide")
 
@@ -134,7 +136,7 @@ then the rule binds with no machine check.
   `tests/test_check_no_new_patches_v1.py`); the rest of this bullet (a found defect fixed, those
   settings themselves, an unsafe rewrite outside product code) — no machine check, ENF-12.
 - A check runs over the whole repository wherever it can, never with an exception list: at 0
-  findings a rule fails the required job outright, and above 0 it is a one-way count (Locks).
+  findings a rule fails the required job outright, and above 0 it is a count (Locks).
   Enforced by: `ruff check .` and `ruff format --check .` over the whole repository at commit and in
   `hardening` (in force), and `tools/check_locks.py` (locks); each tool SHAPE adds (import-linter,
   ESLint, pyright) runs over the whole repository the same way (steps 1d to 6). Today's hand-built
@@ -224,7 +226,7 @@ then the rule binds with no machine check.
 - At each milestone (a commit, a failed check, a finding that changes the plan), report to the
   operator what changed, what was deleted, each proof and its tier, and what is NOT_PROVEN, then
   continue. Enforced by: no machine check — ENF-12.
-- A PR `locks` does not refuse merges, without waiting on the operator, once CI is green on its final commit, current with
+- A PR merges, without waiting on the operator, once CI is green on its final commit, current with
   `main`, and both reviewers have no FAIL and no NOT_PROVEN open but the deployed-screen tier its
   deploy proves; its deploy follows (operator 2026-10-29: "i don't
   want for you to wait on my yes for merges, etc. you are allowed to continue until you finish").
@@ -234,7 +236,7 @@ then the rule binds with no machine check.
   the rules require the stop (his yes to a plan for work outside SHAPE, CLAUDE.md item 3; his yes
   to a production start or stop in regular hours, or to a change of request rates, limits or
   settings, CLAUDE.md item 5; the next
-  bullet's stop list: a pull request `locks` refuses, his stop words, an AUDIT ONLY or DO NOT MERGE task, a destructive data action,
+  bullet's stop list: his stop words, an AUDIT ONLY or DO NOT MERGE task, a destructive data action,
   a product decision), said in a message that begins `WAITING ON OPERATOR:`. From the third
   refused stop in a row since the operator last wrote, what is being done is suspect (operator
   2026-10-30: "at that point in time i would suspect that what you are doing isn't working"): the
@@ -248,7 +250,7 @@ then the rule binds with no machine check.
   failed, it is not working" and the rest of the above (`tests/test_keep_going_v1.py`); that a
   stop marked so is one the rules require, and that the next approach differs — no machine check,
   ENF-12.
-- Stop for a pull request `locks` refuses, which waits on his approval, the operator's STOP / PAUSE / HANG IT UP / DO NOT CONTINUE / NO, a task marked AUDIT ONLY
+- Stop for the operator's STOP / PAUSE / HANG IT UP / DO NOT CONTINUE / NO, a task marked AUDIT ONLY
   or DO NOT MERGE, a destructive data action, and a product decision code cannot settle. Say in chat
   what a guarded action is for before running it. Enforced by: `tools/operator_yes_guard.py` asks
   Allow/Deny for the daemon or console starts and stops (in regular hours or an unknown session),

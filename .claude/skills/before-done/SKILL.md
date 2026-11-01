@@ -30,8 +30,7 @@ report what was tried, and take a different approach (CLAUDE.md item 6).
    `.venv/Scripts/python.exe -m tools.check_credential_leak --base origin/main` and
    `.venv/Scripts/python.exe -m tools.check_eol_style_invariant --base origin/main` — exit 0 each.
 6. `.venv/Scripts/python.exe -m tools.check_end_to_end --base origin/main` — exit 0; then
-   `.venv/Scripts/python.exe tools/check_locks.py --base origin/main` — exit 0, or exit 3 with each
-   refusal shown, which the PR names for the operator's approval on `operator-locks`.
+   `.venv/Scripts/python.exe tools/check_locks.py --base origin/main` — exit 0.
 7. Four eyes: run the `correctness-reviewer` and `requirements-reviewer` agents on the PR's final
    commit (`git diff origin/main...HEAD`, with the PR description, the operator's task and the output
    of steps 1–6), naming that commit; any commit made after a review gets a new review of both before

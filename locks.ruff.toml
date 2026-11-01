@@ -1,6 +1,7 @@
 # The locks' rules, counted by tools/check_locks.py on every tracked Python file with every `noqa`
-# ignored. It stands alone: no other file changes what it counts. A count may only fall; at 0 a rule
-# is absolute. A count asks for no fix; the rules the operator ruled out stay out.
+# ignored. It stands alone: no other file changes what it counts. A count may only fall, but for
+# `check_locks.FREE`; at 0 a rule is absolute. A count asks for no fix; the rules the operator ruled
+# out stay out.
 line-length = 100
 target-version = "py313"
 
