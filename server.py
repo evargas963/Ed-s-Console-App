@@ -110,6 +110,7 @@ from time_et import (
     option_close_product,
     option_market_open,
     options_closed_at,
+    record_markets,
     session,
     session_label,
     valuation_instant,
@@ -2040,11 +2041,28 @@ def _terrain_loop() -> None:
     log.info("Terrain loop stopped")
 
 
+def _load_stored_sessions(path: Path) -> None:
+    """Schwab's /markets answers as the daemon recorded them in the stream database at `path`,
+    oldest first, so a stored chain is priced on the sessions of its expiries."""
+    if not path.is_file():
+        return
+    conn = sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True, timeout=5)
+    try:
+        rows = conn.execute(
+            "SELECT native_json FROM stream_markets_raw WHERE status = 200 ORDER BY ts_recv"
+        ).fetchall()
+    finally:
+        conn.close()
+    for (answer,) in rows:
+        record_markets(json.loads(answer))
+
+
 def _load_stored_levels(watchlist: list[str]) -> int:
     """At startup, each watchlist ticker's newest full chain capture is priced once (DATA_FLOW
     decision 7), so a restart, a weekend or the close shows the last reading with its time: queued
     for the pricing thread behind every delivered chain (_wait_to_price), never for a ticker the
     daemon already delivered a chain for. Returns how many tickers were queued."""
+    _load_stored_sessions(canonical_stream_db_path())
     return sum(_wait_to_price(tk, STORED) for tk in watchlist)
 
 
