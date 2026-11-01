@@ -295,6 +295,17 @@ def _arm_shutdown_watchdog(deadline_sec: float = SHUTDOWN_DEADLINE_SEC) -> None:
     threading.Thread(target=_watch, name="shutdown-watchdog", daemon=True).start()
 
 
+def interrupt() -> None:
+    """End the event loop, bounded by the shutdown watchdog."""
+    _arm_shutdown_watchdog()
+    raise KeyboardInterrupt
+
+
+#: what a stop does: program.py ends the capture daemon first, so its writer finishes
+on_stop = interrupt
+_stop_asked = threading.Event()
+
+
 def _install_signal_handlers() -> None:
     """First Ctrl+C asks politely; a second one is not a request.
 
@@ -303,13 +314,13 @@ def _install_signal_handlers() -> None:
     """
 
     def _on_signal(signum, _frame):
-        if _shutdown_watchdog_armed.is_set():
+        if _stop_asked.is_set():
             _hard_exit(f"second interrupt (signal {signum}) - exiting immediately")
+        _stop_asked.set()
         log.warning("signal %s received - shutting down (press Ctrl+C again to force)", signum)
         sys.stderr.write("\nShutting down… press Ctrl+C again to force immediate exit.\n")
         sys.stderr.flush()
-        _arm_shutdown_watchdog()
-        raise KeyboardInterrupt
+        on_stop()
 
     # SIGBREAK (Ctrl+Break on Windows) takes the same bounded path: unregistered, it falls through
     # to Python's default and waits on whatever background worker is blocked (measured: 24.8 s to

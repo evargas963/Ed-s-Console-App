@@ -157,22 +157,22 @@ def test_one_daemon_at_a_time_and_a_dead_owners_lock_is_reclaimed(tmp_path):
 
 
 def test_a_checkout_that_may_not_run_live_refuses_before_opening_anything(tmp_path):
-    """The daemon started, as launch.py starts it, with its runtime root another checkout (a
-    directory holding `.git`): it refuses and exits 2, with no lock, no log and no stream database
-    written there."""
+    """The program started, as launch.py starts it, with its runtime root another checkout (a
+    directory holding `.git`): it refuses, with no lock, no log and no stream database written
+    there."""
     other = tmp_path / "other_checkout"
     (other / ".git").mkdir(parents=True)
     env = {**os.environ, "ED_RUNTIME_ROOT": str(other)}
     r = subprocess.run(
-        [sys.executable, "-m", "app.market_data.schwab.streaming.capture_main"],
+        [sys.executable, "-m", "uvicorn", "program:app", "--port", "0"],
         cwd=str(ROOT),
         env=env,
         capture_output=True,
         text=True,
-        timeout=60,
+        timeout=120,
     )
-    assert r.returncode == 2, r.stdout + r.stderr
-    assert "CAPTURE DAEMON REFUSED" in r.stderr
+    assert r.returncode != 0, r.stdout + r.stderr
+    assert "LIVE CONSOLE REFUSED" in r.stdout + r.stderr
     assert sorted(p.name for p in other.iterdir()) == [".git"], (
         "no lock, no log, no stream database"
     )

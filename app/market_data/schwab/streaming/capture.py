@@ -1,6 +1,6 @@
 """The capture daemon: the ONE Schwab streaming connection (Schwab allows one per account).
 
-    python -m app.market_data.schwab.streaming.capture_main  (launch.py -> start_capture_daemon.bat)
+    keep_running, a task of the one program (program.py)
 
 It is the only part of Ed Console that talks to Schwab. Beside the loop below, its chain sweep
 (run_chains) fetches full option chains on its own thread, one request at a time, without end:
@@ -47,6 +47,7 @@ from __future__ import annotations
 
 import asyncio
 import bisect
+import contextlib
 import json
 import logging
 import os
@@ -663,10 +664,8 @@ class Daemon:
 
     def console_frame(self, req: dict, sender) -> None:
         """A frame from a connection `sender` to the daemon's local socket (live_push, 127.0.0.1): a
-        watchlist request ({"op": "watchlist"}, answered on the bus), the contract selected on the
-        Flow panel ({"op": "flow_contract", "contract": symbol or null}), or the clean stop
-        ({"op": "stop"}, launch.py stop): every task ends, the writer writes what it holds (to the
-        spill files while the database refuses writes), and the daemon exits EXIT_STOPPED."""
+        watchlist request ({"op": "watchlist"}, answered on the bus) or the contract selected on the
+        Flow panel ({"op": "flow_contract", "contract": symbol or null})."""
         if req["op"] == "watchlist":
             task = asyncio.ensure_future(self.watchlist_request(req))
             task.add_done_callback(_request_ended)
@@ -675,9 +674,6 @@ class Daemon:
             log.info("flow contract: %s", self.flow_contract)
             self.pick_options()
             self._keep_options()
-        elif req["op"] == "stop":
-            log.info("capture daemon: stop requested on its local socket")
-            self.stop.set()
 
     async def watchlist_request(self, req: dict) -> None:
         """One add or removal from the console ({"op": "watchlist", "action", "ticker", "id"}),
@@ -961,12 +957,11 @@ def owner_lock_path(db_path: str | Path | None = None) -> Path:
     return resolve_stream_db_path(db_path).with_name("stream_capture.lock")
 
 
-#: Exit code when another daemon already owns the stream (start_capture_daemon.bat stops its
-#: restart loop on it). 2 is the live-binding refusal (runtime_layout).
+#: Exit code when another program already owns the stream. 2 is the live-binding refusal
+#: (runtime_layout).
 EXIT_OWNER_LOCK_HELD = 3
-#: Exit code of a daemon stopped on request ({"op": "stop"}): start_capture_daemon.bat does not
-#: restart it.
-EXIT_STOPPED = 5
+#: Seconds before a stream that ended on an error starts again.
+RESTART_WAIT_SEC = 5.0
 
 
 def acquire_owner_lock(db_path: str | Path | None = None) -> tuple[int, Path]:
@@ -1050,26 +1045,18 @@ class DailyLog(logging.StreamHandler):
         super().close()
 
 
-def _start_log(early_errors=None) -> None:
+def start_log() -> None:
     """Every line, with its time to the millisecond, to the day's log file
-    (runtime_layout.daemon_log_path) under <runtime>/logs, and to the console if any. Under
-    pythonw the log file held as the error output since the daemon's start (capture_main,
-    `early_errors`) is closed first; from here an error reaches the log through the handler (main
-    logs one that ends the daemon)."""
-    if early_errors is not None:
-        early_errors.close()
-        sys.stderr = None
+    (runtime_layout.daemon_log_path) under <runtime>/logs, beside the console's own output."""
     folder = runtime_layout.logs_dir()
     folder.mkdir(parents=True, exist_ok=True)
-    handlers: list[logging.Handler] = [DailyLog(folder)]
-    if sys.stderr is not None:
-        handlers.append(logging.StreamHandler())
-    logging.basicConfig(
-        level=logging.INFO,
-        handlers=handlers,
-        format="%(asctime)s.%(msecs)03d %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
+    handler = DailyLog(folder)
+    handler.setFormatter(
+        logging.Formatter("%(asctime)s.%(msecs)03d %(message)s", "%Y-%m-%d %H:%M:%S")
     )
+    root = logging.getLogger()
+    root.addHandler(handler)
+    root.setLevel(logging.INFO)
     logging.getLogger("httpx").setLevel(logging.WARNING)  # each request's line is log_request's
 
 
@@ -1208,10 +1195,10 @@ def one_schwab_client(build) -> callable:
     return schwab_client
 
 
-async def run() -> int:
+async def run(stop: asyncio.Event) -> None:
     """The whole daemon: writer, the two local sockets, the chain sweep, the market follower and
-    the Schwab connection, each until the stop; one that ends first ends the daemon with an error
-    naming it, which start_capture_daemon.bat restarts."""
+    the Schwab connection, each until `stop`; one that ends first ends them all with an error
+    naming it."""
     load_dotenv_file()
     cfg = build_config()
     schwab_client = one_schwab_client(
@@ -1219,7 +1206,6 @@ async def run() -> int:
             api_key=cfg.api_key, app_secret=cfg.app_secret, token_path=cfg.token_path
         )
     )
-    stop = asyncio.Event()
     bus, health = MessageBus(), HealthRegistry()
     writer = CaptureWriter()
     db_path = canonical_console_db_path()
@@ -1252,28 +1238,15 @@ async def run() -> int:
         raise RuntimeError(
             f"the capture daemon's {ended.get_name()} ended before the stop"
         ) from ended.exception()
-    return EXIT_STOPPED
 
 
-def main(early_errors=None) -> int:
-    if sys.argv[1:]:  # everything it needs comes from the console; no switch can move it
-        print(f"the capture daemon takes no arguments (got {sys.argv[1:]})", file=sys.stderr)
-        return 2
-    # a worktree must not run a live daemon against production's runtime
-    binding = runtime_layout.live_binding_error()
-    if binding is not None:
-        print(f"CAPTURE DAEMON REFUSED: {binding}", file=sys.stderr, flush=True)
-        return 2
-    _start_log(early_errors)
-    fd, lock = acquire_owner_lock()
-    try:
-        return asyncio.run(run())
-    except KeyboardInterrupt:
-        return 0
-    except BaseException:
-        log.exception(
-            "capture daemon: ended by an error"
-        )  # under pythonw, the log is the only record
-        raise
-    finally:
-        release_owner_lock(fd, lock)
+async def keep_running(stop: asyncio.Event) -> None:
+    """The daemon until `stop`, started again RESTART_WAIT_SEC after an error ends it, with the
+    error in the log."""
+    while not stop.is_set():
+        try:
+            await run(stop)
+        except Exception:
+            log.exception("capture daemon: ended by an error")
+            with contextlib.suppress(TimeoutError):
+                await asyncio.wait_for(stop.wait(), RESTART_WAIT_SEC)
