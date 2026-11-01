@@ -44,3 +44,5 @@ Thumbs.db
 !.cursor/rules/**
 !.cursor/hooks.json
 scratchpad/
+
+# lock test
