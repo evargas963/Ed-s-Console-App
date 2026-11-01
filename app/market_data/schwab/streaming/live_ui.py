@@ -21,8 +21,7 @@ Protocol (JSON text frames):
                                                                      and a fresh row per symbol,
                                                                      so a dead feed reads dead
                                                                      within FEED_HEARTBEAT_
-                                                                     MAX_AGE_SEC; the console
-                                                                     takes its status from here)
+                                                                     MAX_AGE_SEC)
 
 Delivery is latest-value-per-symbol per client (conflation, as Lightstreamer MERGE /
 LSEG conflated feeds do): a slow browser gets the newest row for each symbol it is behind
@@ -67,14 +66,9 @@ class _Client:
 
 
 class LiveUiServer:
-    def __init__(
-        self, heartbeat_fn, stats: dict, record_heartbeat=lmp.record_feed_heartbeat, clock=time.time
-    ) -> None:
+    def __init__(self, heartbeat_fn, stats: dict, clock=time.time) -> None:
         self.heartbeat_fn = heartbeat_fn
         self.clock = clock  # the time each row is finished at, and each beat
-        self.record_heartbeat = (
-            record_heartbeat  # where the daemon keeps its own record of each beat
-        )
         self.stats = stats
         self.clients: set[_Client] = set()
         stats.update(
@@ -97,10 +91,10 @@ class LiveUiServer:
 
     def beat(self) -> dict:
         """The daemon's whole status (Schwab socket, symbols held and refused per service, the
-        watchlist, health), recorded here and sent with every beat: the console's one record of
-        it."""
+        watchlist, health), recorded in the plane, the one record of it, and sent with every
+        beat."""
         hb = self.heartbeat_fn(self.clock())
-        self.record_heartbeat(hb)
+        lmp.record_feed_heartbeat(hb)
         return hb
 
     # -- browser side -----------------------------------------------------------------
@@ -209,15 +203,13 @@ async def serve_live_ui(
     host: str = LIVE_UI_HOST,
     port: int = LIVE_UI_PORT,
     stats: dict | None = None,
-    record_heartbeat=lmp.record_feed_heartbeat,
     clock=time.time,
 ) -> None:
-    """Run until `stop` is set. Each beat is recorded with `record_heartbeat` (the daemon's own
-    plane)."""
+    """Run until `stop` is set."""
     from websockets.asyncio.server import serve
 
     stats = stats if stats is not None else {}
-    srv = LiveUiServer(heartbeat_fn, stats, record_heartbeat, clock)
+    srv = LiveUiServer(heartbeat_fn, stats, clock)
     lmp.add_row_listener(srv.on_row)
     tasks = [asyncio.create_task(srv.beat_loop())]
     try:

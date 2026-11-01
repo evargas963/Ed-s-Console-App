@@ -45,11 +45,6 @@ def feed():
     lmp._by_ticker.clear()
 
 
-def _port(stats: dict) -> int:
-    """The port a daemon server took (it was asked for port 0: the system's free pick)."""
-    return int(stats["listening"].rsplit(":", 1)[1])
-
-
 def _spy_trade(last: float, ts: float) -> dict:
     native = {
         "key": "SPY",
@@ -92,9 +87,7 @@ def _daemon_heartbeat(socket_open=True, held=("SPY",), clock=time.time):
 async def _run(body, heartbeat_fn=None):
     """The daemon's bus and its price-row push, which beats the daemon's status, with its market
     follower feeding the plane the price rows are read from, and the console's real reader of the
-    bus and real feed loop. The daemon's own record of each beat is kept out of the plane
-    (record_heartbeat): what the console knows of the daemon arrives on the push or not at
-    all."""
+    bus."""
     bus = MessageBus()
     stop = asyncio.Event()
     ui_stats: dict = {}
@@ -105,7 +98,6 @@ async def _run(body, heartbeat_fn=None):
             host="127.0.0.1",
             port=0,
             stats=ui_stats,
-            record_heartbeat=lambda _beat: None,
         )
     )
     daemon = capture.Daemon(bus, HealthRegistry(), [])
@@ -113,16 +105,15 @@ async def _run(body, heartbeat_fn=None):
     assert await _until(lambda: ui_stats.get("listening"))
     ofs._feed_running = True
     console = asyncio.create_task(ofs.follow(bus, daemon))
-    client = asyncio.create_task(ofs._feed_loop(f"ws://127.0.0.1:{_port(ui_stats)}", 0.05))
     try:
         assert await _until(lambda: ofs._daemon is daemon)
         await body(bus)
     finally:
         ofs._feed_running = False
-        client.cancel()
-        console.cancel()
         stop.set()
-        await asyncio.gather(client, console, ui, follower, return_exceptions=True)
+        await asyncio.gather(ui, follower, return_exceptions=True)
+        console.cancel()
+        await asyncio.gather(console, return_exceptions=True)
 
 
 def _received(ts):

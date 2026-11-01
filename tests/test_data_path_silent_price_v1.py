@@ -37,7 +37,6 @@ def test_a_page_frame_the_daemon_cannot_read_is_logged_with_what_arrived(caplog)
                 host="127.0.0.1",
                 port=0,
                 stats=stats,
-                record_heartbeat=lambda _beat: None,
             )
         )
         assert await _until(lambda: stats.get("listening"))
