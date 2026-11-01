@@ -1537,9 +1537,9 @@ def _publish_levels(
     A chain that is not a capture is valued then, or at that ticker's option close once it has
     passed. Outside that window, a quote that does not report a greek leaves the greek the
     last quote reported, and a count of zero leaves the last count above zero. That last
-    count is the one already published, or the newest stored capture when this process has
-    not published one. The last streamed values price over the chain when they are newer,
-    and each leg's age is taken.
+    count is the one already published, or the newest capture stored before this chain when this
+    process has not published one. The last streamed values price over the chain when they are
+    newer, and each leg's age is taken.
     Returns the snapshot, or None when there is no chain to price."""
     at = now if now is not None else now_et()
     with _terrain_cache_lock:

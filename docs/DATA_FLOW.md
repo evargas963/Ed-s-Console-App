@@ -462,7 +462,7 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
   a quote that does not report a greek leaves the greek the last quote reported, and an open
   interest or volume of zero leaves the last count above zero. A missing count and Schwab's
   no-value code are not that zero. That last count is the one this process already published,
-  or, when it has not, the newest stored capture. A day Schwab says is closed is outside every
+  or, when it has not, the newest capture stored before this chain. A day Schwab says is closed is outside every
   window (`time_et.option_market_open`), so its zeros keep the last count too (operator 2026-10-25:
   the last valid number stands, as a bank's last balance does while it is closed). A chain is judged by when it was fetched: one begun inside the window keeps a reported
   zero even when it is priced after the close. A streamed zero after the close does not replace
