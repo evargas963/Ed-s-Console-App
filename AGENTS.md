@@ -73,29 +73,33 @@ held by standard linters, not by hand-written checks.
 
 ## Locks (operator 2026-11-01: "air tight locks, governance, etc.", "no patches ever, end to end only")
 
-The repository may only get simpler (operator 2026-11-01: "you are in control and control the
-language"; this replaces the 2026-10-29 rule that a check turns on only once its findings are fixed).
+The repository may only get simpler (operator 2026-11-01: "there should not be that much code, that
+many tests, that many hand built check tools, open work rows"). One-way counts replace the
+2026-10-29 rule that a check turns on only once its findings are fixed: decided by the agent under
+his "you are in control and control the language", his to reverse.
 `tools/check_locks.py`, in `.github/workflows/locks.yml`, counts on the base and on the head under
 the base's rules: lines and bytes of everything that is not data (product code, tests, check tools),
-open work items, patching lines in tests, and every finding of `locks.ruff.toml` with each `noqa`
-ignored. Any rise refuses the pull request; a lock with nowhere to give asks the operator. A count at
-0 is an absolute ban. No number is kept by hand (`tests/test_check_locks_v1.py`). GitHub runs that
-workflow from the base (`pull_request_target`), and it runs no code of the head, so a change cannot
-edit its judge. A change to a lock file waits for the operator's approval on the `operator-locks`
-environment; `check_locks.LOCK_FILES` names them. A banned name (Schwab's clients, `sqlite3`, the
-clock) counts per product file, so no module that does not hold one may start.
+open work items, patching lines in tests, format suppressions, and every finding of
+`locks.ruff.toml` with each `noqa` ignored. A count at 0 is an absolute ban. No number is kept by
+hand (`tests/test_check_locks_v1.py`). A banned name (Schwab's clients, `sqlite3`, the clock) counts
+per product file, so no module that does not hold one may start.
+GitHub runs that workflow from the base (`pull_request_target`), and it runs no code of the head, so
+a change cannot edit its judge. A rise, or a change to a lock file (`check_locks.LOCK_FILES`), merges
+only on the operator's approval on the `operator-locks` environment; a new test that raises a count
+goes the same way, or deletes what it replaces (CLAUDE.md item 4 stands). In force once the operator
+makes `locks` a required check (`ACTIVE_PROGRAM.md` LOCK-SETTINGS).
 
 ## Rules and what enforces them
 
 Each rule names what enforces it and where it runs. "(in force)" means it runs today: at commit
 (`.pre-commit-config.yaml`: the credential scan, the line-ending check, `ruff check .`, `ruff format
---check .`) or in the required `hardening` (`.github/workflows/hardening.yml`), `pytest-full` or
-`pytest-windows` (`.github/workflows/pytest.yml`) job. "Step N" is the SHAPE step that turns the check on; until
+--check .`) or in the required `hardening` (`.github/workflows/hardening.yml`), `pytest-full`,
+`pytest-windows` (`.github/workflows/pytest.yml`) or `locks` (`.github/workflows/locks.yml`) job. "Step N" is the SHAPE step that turns the check on; until
 then the rule binds with no machine check.
 
 | # | Rule | Enforced by |
 |---|---|---|
-| 1 | **Simple.** Fewest files, functions and hops that do the job. No prose in code: history, incidents and dates go in the commit message. No patches: a defect is fixed where it is produced, by changing or deleting that code, never by a guard, wrapper, flag, special case or check around it; if that takes a restructure, the restructure is the fix. Every fix is end to end: Schwab to the screen. Nothing new (process, cache, helper, file, check) without a job its existing owner cannot do, shown in the PR; an existing piece that cannot show one is removed. A change deletes what it replaces, in the same PR; a register, audit, report or check lives only while it has a job, and once answered, it is deleted. | `tools/check_fails_before.py` in `pytest-windows` and `tools/check_end_to_end.py` in `hardening`, on a pull request's change (in force); ruff `S110` (a catch-all `except` passed in silence) over the whole repository (in force); ruff `C90` complexity cap, `BLE`, `TRY` over the whole repository (step 1b); `check_end_to_end` is deleted in step 7 only once a standard tool refuses every shape its docstring lists (swallowing excepts, missing values replaced or repaired, the page's patch shapes) and everything `check_fails_before` imports from it has moved — the shapes left — SHAPE step 7 |
+| 1 | **Simple.** Fewest files, functions and hops that do the job. No prose in code: history, incidents and dates go in the commit message. No patches: a defect is fixed where it is produced, by changing or deleting that code, never by a guard, wrapper, flag, special case or check around it; if that takes a restructure, the restructure is the fix. Every fix is end to end: Schwab to the screen. Nothing new (process, cache, helper, file, check) without a job its existing owner cannot do, shown in the PR; an existing piece that cannot show one is removed. A change deletes what it replaces, in the same PR; a register, audit, report or check lives only while it has a job, and once answered, it is deleted. | `tools/check_fails_before.py` in `pytest-windows` and `tools/check_end_to_end.py` in `hardening`, on a pull request's change (in force); ruff `S110` (a catch-all `except` passed in silence) over the whole repository (in force); ruff `C90` complexity cap, `BLE`, `TRY`, as one-way counts in `locks` (in force), to 0 in step 1b; `check_end_to_end` is deleted in step 7 only once a standard tool refuses every shape its docstring lists (swallowing excepts, missing values replaced or repaired, the page's patch shapes) and everything `check_fails_before` imports from it has moved — the shapes left — SHAPE step 7 |
 | 2 | **Schwab fields as sent.** Not a number: absent, -999, text, NaN or infinity, a value Schwab's own field definition excludes (a negative volume or size), and a gamma more than twice the largest any option can have at its own volatility, price and time left (operator 2026-10-23). Everything else is taken as sent; a reported 0 is 0. No other bounds, no substitution. What Schwab sends or accepts is settled by Schwab's own documentation, `docs/schwab/schwab_market_data_api_spec.pdf` (with `docs/schwab/schwab_market_data_parameters_chains_quotes.txt` for the expanded /chains and /quotes parameters) and `docs/schwab/schwab_streamer_api.pdf`, cited by section; a limit not stated there or in Schwab's own reply is our defect until shown otherwise. | `tests/test_schwab_as_sent_v1.py`, `tests/test_absence_is_not_zero_v1.py`, `tests/test_data_path_impossible_gamma_v1.py` (in force) |
 | 3 | **One producer.** Each value served, stored or shown has one producer; consumers carry its result and never select, compute, repair or relabel it. A second authority for the same value is banned whatever it is called: helper, parser, resolver or cache. One module reads each Schwab field. | `tools/check_one_reader.py` in `hardening` refuses a pull request that adds a second reader (in force); the fields already read by more than one module (`python -m tools.check_one_reader --list`) — ENF-23; import-linter layers (step 1d) |
 | 4 | **The page draws; it computes nothing.** Every number, total, choice, comparison and date it shows is served. It gets data only from the one push. | ESLint: `fetch`, `XMLHttpRequest` and `EventSource` only in the transport module (step 4); `Math.*`, `.sort(`, `.reduce(` and date arithmetic banned outside the drawing module (step 5) |
@@ -107,7 +111,7 @@ then the rule binds with no machine check.
 | 10 | **Only Feed talks to Schwab.** | `locks.ruff.toml` banned names, per product file, in `locks` (in force); import-linter's layers (step 1d) |
 | 11 | **Calculators are pure.** They take `now` and their inputs; they read no clock, database, global or network. Only an entry point (a route, a loop, a stream handler) reads the clock. | `locks.ruff.toml` banned clock names, per product file, in `locks` (in force); import-linter forbidden imports (step 2) |
 | 12 | **Typed records across boundaries.** A value that crosses a module boundary is a dataclass whose states are named constants. | pyright, strict on State, Calculators and Push (step 6) |
-| 13 | **Python's guidelines.** PEP 8 and PEP 257 as `ruff format` and ruff's rules read them; PEP 20 as the shape. Imports at the top; the one exception to stay is `capture_main`'s import of the daemon inside `main()`, after it opens the early error log (operator 2026-10-30: "Allow the one import"). The imports still inside other functions go, and ruff `PLC0415` then holds the rule (no machine check — ENF-11). One formatter per format (price, Central Time, dollars), on the server (no machine check — ENF-11). | `ruff format` and ruff `UP`, `W`, `S110`, `E` (`E501`: lines at most 100 columns; `E741`: no `l`, `O` or `I` as a name), `B`, `I` (import order) and the `SIM` rules with a safe fix (`SIM114`, `SIM117`, `SIM118`, `SIM208`, `SIM300`, `SIM905`, `SIM910`, `SIM911`) or with no fix and nothing to fix (`SIM107`, `SIM113`, `SIM116`) (in force; `UP042`, `E711`, `E712`, `E731` and the `B` and `SIM` rules whose only fix is unsafe deselected, in `pyproject.toml`, and `SIM115`, whose findings are mostly files held open past the function, which a `with` would close); ruff `BLE`, `TRY`, `C90` (step 1b), `D` (pep257, no docstring required; step 1c) |
+| 13 | **Python's guidelines.** PEP 8 and PEP 257 as `ruff format` and ruff's rules read them; PEP 20 as the shape. Imports at the top; the one exception to stay is `capture_main`'s import of the daemon inside `main()`, after it opens the early error log (operator 2026-10-30: "Allow the one import"). The imports still inside other functions go, and ruff `PLC0415` then holds the rule (no machine check — ENF-11). One formatter per format (price, Central Time, dollars), on the server (no machine check — ENF-11). | `ruff format` and ruff `UP`, `W`, `S110`, `E` (`E501`: lines at most 100 columns; `E741`: no `l`, `O` or `I` as a name), `B`, `I` (import order) and the `SIM` rules with a safe fix (`SIM114`, `SIM117`, `SIM118`, `SIM208`, `SIM300`, `SIM905`, `SIM910`, `SIM911`) or with no fix and nothing to fix (`SIM107`, `SIM113`, `SIM116`) (in force; `UP042`, `E711`, `E712`, `E731` and the `B` and `SIM` rules whose only fix is unsafe deselected, in `pyproject.toml`, and `SIM115`, whose findings are mostly files held open past the function, which a `with` would close); ruff `BLE`, `TRY`, `C90`, `PLC0415` and `D` (pep257, no docstring required) as one-way counts in `locks` (in force), to 0 in steps 1b and 1c |
 
 ## Fix what you find (operator 2026-10-29: "fix what you find anywhere, everywhere, repo wide")
 
@@ -144,9 +148,9 @@ then the rule binds with no machine check.
   expires it) and what fails when that owner fails, in `docs/DATA_FLOW.md` and in the code.
   Enforced by: no machine check — ENF-08.
 - A function that depends on the clock takes `now`; only an entry point (a route, a loop, a stream
-  handler) reads the clock. Enforced by: ruff `TID251` (SHAPE step 2); until then no machine check — ENF-09.
-- A new check is a test of behavior for a failure that happened, fails on the old code, and starts
-  with no exceptions. Enforced by: `tools/check_fails_before.py` in `pytest-windows`
+  handler) reads the clock. Enforced by: ruff `TID251`, a one-way count per file in `locks` (in force), to 0 in SHAPE step 2.
+- A new check is a test of behavior for a failure that happened, fails on the old code, and has no
+  exception list. Enforced by: `tools/check_fails_before.py` in `pytest-windows`
   (`tests/test_check_fails_before_v1.py`).
 - A product change needs an end-to-end test that fails on the old code, except a change that only
   removes whole undecorated functions or classes (operator 2026-10-28), or only fixes what ruff
@@ -217,7 +221,7 @@ then the rule binds with no machine check.
 - At each milestone (a commit, a failed check, a finding that changes the plan), report to the
   operator what changed, what was deleted, each proof and its tier, and what is NOT_PROVEN, then
   continue. Enforced by: no machine check — ENF-12.
-- A PR merges, without waiting on the operator, once CI is green on its final commit, current with
+- A PR `locks` does not refuse merges, without waiting on the operator, once CI is green on its final commit, current with
   `main`, and both reviewers have no FAIL and no NOT_PROVEN open but the deployed-screen tier its
   deploy proves; its deploy follows (operator 2026-10-29: "i don't
   want for you to wait on my yes for merges, etc. you are allowed to continue until you finish").

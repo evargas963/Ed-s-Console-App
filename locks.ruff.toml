@@ -1,6 +1,6 @@
 # The locks' rules, counted by tools/check_locks.py on every tracked Python file with every `noqa`
 # ignored. It stands alone: no other file changes what it counts. A count may only fall; at 0 a rule
-# is absolute. A rule whose only fix is unsafe is not selected (AGENTS.md "Fix what you find").
+# is absolute. A count asks for no fix; the rules the operator ruled out stay out.
 line-length = 100
 target-version = "py313"
 
@@ -16,6 +16,7 @@ select = [
     "PERF", # needless work in a loop
     "PLC0415", # an import outside the module's top
     "RET", # a return that says nothing
+    "S102", "S307", # code run from text
     "S110", "S112", # an error passed over in silence
     "SIM107", "SIM113", "SIM114", "SIM116", "SIM117", "SIM118", "SIM208", "SIM300", "SIM905",
     "SIM910", "SIM911", # needless complexity
@@ -51,9 +52,14 @@ max-complexity = 10
 "time.perf_counter".msg = "Only an entry point reads the clock; pass `now`."
 "time.time".msg = "Only an entry point reads the clock; pass `now`."
 "time.time_ns".msg = "Only an entry point reads the clock; pass `now`."
+"time.monotonic_ns".msg = "Only an entry point reads the clock; pass `now`."
+"time.perf_counter_ns".msg = "Only an entry point reads the clock; pass `now`."
+"time.process_time".msg = "Only an entry point reads the clock; pass `now`."
 "time_et.now_et".msg = "Only an entry point reads the clock; pass `now`."
+"importlib.import_module".msg = "A module is imported by name at the top."
+"runpy".msg = "No code runs from a data file."
 
 [lint.per-file-ignores]
-"tests/**" = ["ARG", "D", "PLC0415", "T20"]
+"tests/**" = ["ARG", "D", "T20"]
 "tools/**" = ["T20"]
 "app/market_data/schwab/streaming/capture_main.py" = ["PLC0415"] # the operator's one import

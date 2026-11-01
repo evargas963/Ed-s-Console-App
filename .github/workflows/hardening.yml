@@ -27,9 +27,9 @@ jobs:
           python -m pip install "$(grep '^ruff==' requirements-dev.txt)"
           npm ci        # the end-to-end check reads page code with Playwright's Babel (tools/js_code_tree.js)
       - name: ruff (pyproject.toml's selection)
-        run: python -m ruff check .
+        run: python -P -m ruff check .
       - name: ruff format (the one Python formatter)
-        run: python -m ruff format --check .
+        run: python -P -m ruff format --check .
       - name: compileall
         run: python -m compileall -q -x '([\\/](\.venv|venv|node_modules|__pycache__|models)[\\/])' .
       - name: no patch shapes in added product code (AGENTS.md rule 1)

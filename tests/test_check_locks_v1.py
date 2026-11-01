@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 from tools import check_locks
@@ -35,9 +36,9 @@ def _commit(repo: Path) -> None:
     _git(repo, "commit", "-qm", "x", "--no-verify", "--allow-empty")
 
 
-def _refused(repo: Path, *, approved: bool = False) -> str:
+def _refused(repo: Path) -> str:
     _commit(repo)
-    return "\n".join(check_locks.judge(repo, "main", approved))
+    return "\n".join(check_locks.judge(repo, "main"))
 
 
 def _write(repo: Path, name: str, text: str) -> None:
@@ -73,7 +74,7 @@ def test_no_ignore_file_or_excluded_folder_hides_a_finding(tmp_path):
     repo = _repo(tmp_path)
     _write(repo, ".ignore", "*.py\n")
     _write(repo, "dist/a.py", "X = print(1)\n")
-    assert "ruff T201: 0 -> 1" in _refused(repo, approved=True)
+    assert "ruff T201: 0 -> 1" in _refused(repo)
 
 
 def test_a_file_named_ruff_in_the_change_does_not_answer_for_ruff(tmp_path):
@@ -118,10 +119,30 @@ def test_a_lock_file_changes_only_on_approval(tmp_path):
     refused = _refused(repo)
     assert "lock file: tools/x.py" in refused
     assert "lock file: .github/workflows/x.yml" in refused
-    assert "lock file" not in _refused(repo, approved=True)
 
 
-def test_removing_the_rules_is_refused(tmp_path):
+def test_removing_or_renaming_the_rules_is_refused(tmp_path):
     repo = _repo(tmp_path)
-    (repo / check_locks.RULES).unlink()
+    _git(repo, "mv", check_locks.RULES, "other.toml")
     assert f"lock file: {check_locks.RULES}" in _refused(repo)
+
+
+def test_a_file_named_as_an_option_is_not_read_as_one(tmp_path):
+    repo = _repo(tmp_path)
+    _write(repo, "--config=lint.ignore=['ALL']#.py", "X = print(1)\n")
+    assert "ruff T201: 0 -> 1" in _refused(repo)
+
+
+def test_a_format_suppression_is_refused(tmp_path):
+    repo = _repo(tmp_path)
+    _write(repo, "product.py", "VALUE = [1, 2]  # fmt: skip\n")
+    assert "format suppressions: 0 -> 1" in _refused(repo)
+
+
+def test_a_refused_change_exits_3_and_a_clean_one_0(tmp_path):
+    repo = _repo(tmp_path)
+    tool = [sys.executable, str(ROOT / "tools" / "check_locks.py"), "--base", "main"]
+    assert subprocess.run(tool, cwd=repo, capture_output=True, check=False).returncode == 0
+    _write(repo, "product.py", "VALUE = 1\nOTHER = 2\n")
+    _commit(repo)
+    assert subprocess.run(tool, cwd=repo, capture_output=True, check=False).returncode == 3

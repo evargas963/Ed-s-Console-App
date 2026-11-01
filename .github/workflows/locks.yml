@@ -1,7 +1,9 @@
 name: Locks
 
 # pull_request_target: GitHub runs this file and tools/check_locks.py from the base, so a pull
-# request cannot edit its judge. The head is only read as data; none of its code runs.
+# request cannot edit its judge. The head is only read as data; none of its code runs. The required
+# check is `locks`: it runs whatever `judge` did, and passes only on a clean judgement or the
+# operator's approval.
 on:
   pull_request_target:
 
@@ -9,33 +11,11 @@ permissions:
   contents: read
 
 jobs:
-  lock-files:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      touched: ${{ steps.touched.outputs.touched }}
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
-        with:
-          python-version: "3.13"
-      - id: touched
-        env:
-          PR: ${{ github.event.pull_request.number }}
-        run: |
-          git fetch -q "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" "refs/pull/$PR/merge:merged"
-          files="$(python tools/check_locks.py --changed merged^1 merged)"
-          echo "touched=$([ -n "$files" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
-
-  locks:
-    needs: lock-files
+  judge:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # a change to a lock file waits here for the operator's approval in GitHub
-    environment: ${{ needs.lock-files.outputs.touched == 'true' && 'operator-locks' || '' }}
+    outputs:
+      refused: ${{ steps.judge.outputs.refused }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
@@ -47,12 +27,41 @@ jobs:
           python-version: "3.13"
       - name: the base's ruff
         run: python -m pip install "$(grep '^ruff==' judge/requirements-dev.txt)"
-      - name: no count rises
+      - id: judge
+        name: the change, against the base
         env:
           PR: ${{ github.event.pull_request.number }}
-          LOCK_FILES_APPROVED: ${{ needs.lock-files.outputs.touched }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          git -C judge fetch -q "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" "refs/pull/$PR/merge:merged"
-          git -C judge worktree add -q --detach "$PWD/head" merged
+          git -C judge fetch -q "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
+            "refs/pull/$PR/merge:refs/heads/judged"
+          test "$(git -C judge rev-parse refs/heads/judged^2)" = "$HEAD_SHA"
+          git -C judge worktree add -q --detach "$PWD/head" refs/heads/judged
           cd head
-          python ../judge/tools/check_locks.py --base "$(git rev-parse HEAD^1)"
+          status=0
+          python ../judge/tools/check_locks.py --base "$(git rev-parse HEAD^1)" || status=$?
+          if [ "$status" = 3 ]; then
+            echo "refused=true" >> "$GITHUB_OUTPUT"
+          elif [ "$status" = 0 ]; then
+            echo "refused=false" >> "$GITHUB_OUTPUT"
+          else
+            exit "$status"
+          fi
+
+  locks:
+    needs: judge
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # a refused change waits here for the operator's approval in GitHub
+    environment: ${{ needs.judge.outputs.refused == 'true' && 'operator-locks' || '' }}
+    steps:
+      - name: judged, and clean or approved
+        env:
+          JUDGED: ${{ needs.judge.result }}
+          REFUSED: ${{ needs.judge.outputs.refused }}
+          # exists only inside the operator's environment: an unprotected run has no value
+          APPROVED: ${{ vars.OPERATOR_LOCKS }}
+        run: |
+          test "$JUDGED" = success
+          test "$REFUSED" = false || test "$APPROVED" = approved

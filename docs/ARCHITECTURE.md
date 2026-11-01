@@ -49,8 +49,8 @@ the token, logs) and worktrees.
 
 ## 3. The order
 
-The steps of `ACTIVE_PROGRAM.md` SHAPE, one small PR each. A step turns its check on with no
-exception list, fixes what the check finds in the same PR, and deletes what it replaces. Files
+The steps of `ACTIVE_PROGRAM.md` SHAPE, one small PR each. A step brings its check's one-way count
+(`AGENTS.md` Locks) to 0 with no exception list and deletes what it replaces. Files
 move into their folders as the step that owns them lands; nothing is copied.
 
 ## 4. Failure domains
