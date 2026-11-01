@@ -14,6 +14,7 @@ import pytest
 import time_et
 from math_exposure_core import compute_exposures_by_strike, compute_net_vanna
 from terrain_engine import compute_terrain
+from tests.capture_store import store_capture
 from tests.real_chains import CRWD, SPY_0DTE
 
 
@@ -58,7 +59,6 @@ def test_forces_prices_yesterdays_chain_at_its_capture_time(tmp_path):
         CAPTURE_BASIS,
         last_capture_per_day,
     )
-    from tests.capture_store import store_capture
 
     db = tmp_path / "ed_console.db"
     for day, hour in ((7, 12), (6, 15)):

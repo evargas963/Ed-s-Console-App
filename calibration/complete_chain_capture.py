@@ -612,9 +612,9 @@ class ChainSweep:
 
     def deliver(self, chain: _Chain) -> None:
         """The chain to the chain history when it is the window's first, then to the console, so a
-        read on its arrival finds that capture (operator 2026-11-01), both carrying the time the
-        chain began (its as-of everywhere: a chain begun before the close is not the close values,
-        whenever it is delivered) and its one spot: Schwab's LAST_PRICE with its trade time, as the
+        read on its arrival finds that capture, both carrying the time the chain began (its as-of
+        everywhere: a chain begun before the close is not the close values, whenever it is
+        delivered) and its one spot: Schwab's LAST_PRICE with its trade time, as the
         daemon's price row holds it now that the chain is complete."""
         now = self.clock()
         row = price_row(chain.ticker, now)

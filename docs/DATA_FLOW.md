@@ -440,8 +440,8 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
   stored capture is never replaced (a second write of its ticker, expiry and time is refused,
   `test_a_stored_chain_capture_is_never_overwritten_by_a_second_write_of_its_key`); a
   history write that fails (that refusal included) is a write failure, never the chain's: the
-  chain as the sweep delivered it (each expiry's underlying price, the chain's spot and the
-  contracts) is handed to
+  chain as the sweep delivered it (when it began, each expiry's underlying price, the chain's spot
+  and the contracts) is handed to
   the daemon's writer, which keeps it in `stream_write_failures` and counts it on its state (§2
   D4); the delivered chain stands, and the window's next chain, if any, tries again. The sweep
   (`ChainSweep.fetch_chain`, `send_quotes`) is the one place a chain enters, so every consumer
