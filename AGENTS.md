@@ -86,8 +86,9 @@ per product file, so no module that does not hold one may start.
 GitHub runs that workflow from the base (`pull_request_target`), and it runs no code of the head, so
 a change cannot edit its judge. A rise, or a change to a lock file (`check_locks.LOCK_PATHS`, `LOCK_NAMES`), merges
 only on the operator's approval on the `operator-locks` environment; a new test that raises a count
-goes the same way, or deletes what it replaces (CLAUDE.md item 4 stands). In force once the operator
-makes `locks` a required check (`ACTIVE_PROGRAM.md` LOCK-SETTINGS).
+goes the same way, or deletes what it replaces (CLAUDE.md item 4 stands). `locks` is a required
+check on `main`, and the guards refuse a `gh` that would change that (`tools/operator_law_guard.py`);
+the restricted token is what makes that a seal (`ACTIVE_PROGRAM.md` LOCK-SETTINGS).
 
 ## Rules and what enforces them
 

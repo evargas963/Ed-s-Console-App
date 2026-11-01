@@ -78,9 +78,9 @@ def _names(*args: str, cwd: Path) -> list[str]:
 
 
 def _part(name: str) -> str:
-    if name.startswith("tests/"):
+    if name.lower().startswith("tests/"):
         return "tests"
-    return "tools" if name.startswith("tools/") else "product code"
+    return "tools" if name.lower().startswith("tools/") else "product code"
 
 
 def _ruff(tree: Path, names: list[str]) -> list[dict]:
@@ -124,7 +124,7 @@ def counts(tree: Path, rules: str) -> Counter:
             found[f"lines of {_part(name)}"] += len(lines)
             found[f"bytes of {_part(name)}"] += len(text.encode("utf-8"))
             found["format suppressions"] += sum(1 for ln in lines if FORMAT_OFF.search(ln))
-            if name.startswith("tests/"):
+            if _part(name) == "tests":
                 found["patching lines in tests"] += sum(1 for ln in lines if PATCH.search(ln))
     work_list = (tree / "ACTIVE_PROGRAM.md").read_text(encoding="utf-8")
     found["open work items"] = len(ROW.findall(work_list)) + len(ITEM.findall(work_list))

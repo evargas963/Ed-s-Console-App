@@ -308,5 +308,5 @@ and a secret in a quoted-name file after a skip-listed file are refused.
 
 | ID | Item |
 |---|---|
-| LOCK-SETTINGS | Set by the operator on GitHub: the `operator-locks` environment with himself as required reviewer, administrators' bypass off, self-review allowed (one account), and the variable `OPERATOR_LOCKS=approved` inside it; `locks` added to `main`'s required checks, pinned to GitHub Actions; and the agent's `gh` signed in with a fine-grained token holding Contents and Pull requests write only, no Administration, Environments, Variables, Workflows or Deployments, because the agent's login today is his own account and could approve its own refusal. |
+| LOCK-SETTINGS | Done 2026-11-01 on his yes: the `operator-locks` environment with himself as required reviewer, administrators' bypass off, self-review allowed (one account), the variable `OPERATOR_LOCKS=approved` inside it, and `locks` a required check on `main`, pinned to GitHub Actions. Left, his alone: the agent's `gh` signed in with a fine-grained token holding Contents and Pull requests write only, no Administration, Environments, Variables, Workflows or Deployments, because the agent's login today is his own account and could approve its own refusal. |
 | RUNTIME-SEPARATION | Move the runtime state (database, logs, token, diagnostics) out of the production checkout into a runtime folder. |

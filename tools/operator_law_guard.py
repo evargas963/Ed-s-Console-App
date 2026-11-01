@@ -10,6 +10,8 @@ a heredoc nothing runs are data.
     commit; stage explicit paths.
   * LOCK DISABLE. `--no-verify`, `-n`, `core.hooksPath`, `SKIP=<hook>` and `pre-commit uninstall`
     bypass the pre-commit checks; refusing the bypass in session blocks nothing legitimate.
+  * THE LOCKS' SETTINGS. A `gh` that changes the sign-in, a repository variable or secret, a
+    ruleset, branch protection, an environment or a pending approval, or merges with `--admin`.
   * PYTHON FROM STDIN. On Windows an empty heredoc or </dev/null looks like a console to
     `python -`, and Python 3.13's REPL retries forever on the invalid handle. A python that reads
     its program from stdin (`-`, or no script, -c or -m) is refused wherever it runs; a script file
@@ -184,6 +186,32 @@ def _disables_a_lock(st: Statement) -> bool:
     )
 
 
+#: what `gh` changes that the locks stand on
+_SEALED_GH = frozenset({"auth", "ruleset", "secret", "variable"})
+_SEALED_API = re.compile(
+    r"pending_deployments|/environments|/protection|/rulesets|/rules/|/actions/(?:variables|secrets)"
+)
+_API_WRITES = frozenset({"-f", "-F", "--field", "--raw-field", "--input"})
+
+
+def _opens_the_seal(st: Statement) -> bool:
+    """A `gh` that changes what the locks stand on, the operator's alone: the sign-in, repository
+    variables and secrets, rulesets, a merge past the required checks, and an API write to an
+    environment, branch protection or a pending approval. Reading any of them stays legal."""
+    if st.program != "gh" or len(st.words) < 2:
+        return False
+    sub, *args = st.words[1:]
+    method = next((a.split("=", 1)[-1] for a in args if a.startswith("--method")), "")
+    if "-X" in args[:-1]:
+        method = args[args.index("-X") + 1]
+    if sub == "api":
+        writes = method.upper() not in ("", "GET") or bool(_API_WRITES & set(args))
+        return writes and any(_SEALED_API.search(a) for a in args)
+    if sub == "auth":
+        return args[:1] != ["status"]
+    return sub in _SEALED_GH or "--admin" in args
+
+
 #: an option that makes sed edit its files in place: -i, -i.bak, -ni, -Ei, --in-place[=SUF]
 _SED_IN_PLACE = re.compile(r"^(?:-[A-Za-z]*i|--in-place(?:=|$))")
 #: redirects of the statement's output (not 2> / &>, which carry no sed output)
@@ -225,6 +253,8 @@ def bash_violations(cmd: str, powershell: bool = False) -> list[str]:
         )
     if any(_disables_a_lock(st) for st in statements):
         out.append("ACTION BLOCKED: this disables a mechanical lock. Only the operator may.")
+    if any(_opens_the_seal(st) for st in statements):
+        out.append("ACTION BLOCKED: this changes what the locks stand on. Only the operator may.")
     if any(PYTHON.fullmatch(st.program) and reads_stdin(st) for st in statements):
         out.append(
             "ACTION BLOCKED: this python reads its program from stdin (`python -`, a heredoc, "

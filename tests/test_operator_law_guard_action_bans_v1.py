@@ -15,6 +15,37 @@ from tools.operator_law_guard import bash_violations
 LOCK = "disables a mechanical lock"
 
 
+def test_the_locks_settings_are_the_operators():
+    """The agent's sign-in can change these, so a refused pull request could approve itself."""
+    seal = "what the locks stand on"
+    repo = "repos/o/r"
+    for cmd in (
+        f"gh api -X POST {repo}/actions/runs/1/pending_deployments -f state=approved",
+        f"gh api --method=PUT {repo}/environments/operator-locks --input x.json",
+        f"gh api -X DELETE {repo}/branches/main/protection",
+        f"gh api {repo}/rulesets -f name=x",
+        f"gh api -X POST {repo}/actions/variables -f name=OPERATOR_LOCKS",
+        "gh variable set OPERATOR_LOCKS --body approved",
+        "gh secret set X",
+        "gh ruleset list",
+        "gh auth login",
+        "gh auth refresh -s admin:org",
+        "gh pr merge 5 --admin",
+        "git status && gh pr merge 5 --merge --admin",
+    ):
+        assert any(seal in b for b in bash_violations(cmd)), cmd
+    for cmd in (
+        "gh auth status",
+        f"gh api {repo}/environments/operator-locks",
+        f"gh api {repo}/branches/main/protection --jq .enforce_admins",
+        f"gh api -X POST {repo}/issues/1/comments -f body=x",
+        "gh pr merge 5 --merge",
+        "gh pr view 5",
+        "echo gh variable set",
+    ):
+        assert not any(seal in b for b in bash_violations(cmd)), cmd
+
+
 def test_lock_disable_routes_are_git_and_precommits_own():
     """The lock-disable ban refuses the routes that bypass the pre-commit checks: git's
     (`--no-verify`, `-n`, `core.hooksPath`) and pre-commit's (`SKIP=`, uninstall)."""
