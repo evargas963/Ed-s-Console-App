@@ -6,6 +6,8 @@ name: Locks
 # operator's approval.
 on:
   pull_request_target:
+    branches: [main]
+    types: [opened, synchronize, reopened, edited]
 
 permissions:
   contents: read
@@ -32,7 +34,10 @@ jobs:
         env:
           PR: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          # this job names no environment: a value here can only be a stray repository variable
+          STRAY: ${{ vars.OPERATOR_LOCKS }}
         run: |
+          test -z "$STRAY"
           git -C judge fetch -q "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
             "refs/pull/$PR/merge:refs/heads/judged"
           test "$(git -C judge rev-parse refs/heads/judged^2)" = "$HEAD_SHA"
@@ -50,7 +55,7 @@ jobs:
 
   locks:
     needs: judge
-    if: ${{ !cancelled() }}
+    if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     # a refused change waits here for the operator's approval in GitHub

@@ -25,29 +25,33 @@ COUNTED_RULES = ".locks-counted.toml"
 REFUSED = 3
 DATA = (".json", ".md", ".mdc", ".csv", ".txt", ".png", ".ico", ".pdf", ".webmanifest", ".lock")
 PYTHON = (".py", ".pyi", ".pyw", ".ipynb")
-LOCK_FILES = (
+LOCK_PATHS = (
     RULES,
     ".claude/",
+    ".cursor/",
     ".github/",
     ".gitattributes",
-    ".gitignore",
-    ".ignore",
     ".pre-commit-config.yaml",
-    ".pytest.ini",
-    ".ruff.toml",
     "AGENTS.md",
     "CLAUDE.md",
     "package-lock.json",
     "package.json",
     "playwright.config.mjs",
+    "requirements-dev.txt",
+    "scripts/",
+    "tools/",
+)
+#: a file of this name steers ruff, pytest or git wherever it sits
+LOCK_NAMES = (
+    ".gitignore",
+    ".ignore",
+    ".pytest.ini",
+    ".ruff.toml",
+    "conftest.py",
     "pyproject.toml",
     "pytest.ini",
-    "requirements-dev.txt",
     "ruff.toml",
-    "scripts/",
     "setup.cfg",
-    "tests/conftest.py",
-    "tools/",
     "tox.ini",
 )
 ROW = re.compile(r"^\|(?!\s*(?:ID|#)\s*\|)(?!\s*:?-)", re.M)
@@ -56,7 +60,7 @@ PATCH = re.compile(
     r"monkeypatch|mock\.|\bmock\b|mocker|\bMagicMock\b|\bMock\(|\bpatch\(|\bpatch\.|\bpin_clock\b",
     re.I,
 )
-FORMAT_OFF = re.compile(r"#\s*(?:fmt|yapf):\s*(?:off|skip|disable)")
+FORMAT_OFF = re.compile(r"#\s*(?:ruff:\s*)?(?:fmt|yapf|isort):\s*(?:off|skip|disable)")
 
 
 def _run(*args: str, cwd: Path) -> str:
@@ -146,7 +150,11 @@ def judge(root: Path, base_ref: str) -> list[str]:
     """Why the head at `root` is refused against `base_ref`; empty when it passes."""
     rules = _run("git", "show", f"{base_ref}:{RULES}", cwd=root)
     changed = _names("diff", "--no-renames", "--name-only", base_ref, "HEAD", cwd=root)
-    refused = [f"lock file: {name}" for name in changed if name.startswith(LOCK_FILES)]
+    refused = [
+        f"lock file: {name}"
+        for name in changed
+        if name.startswith(LOCK_PATHS) or Path(name).name in LOCK_NAMES
+    ]
     with tempfile.TemporaryDirectory() as scratch:
         tree = Path(scratch).resolve() / "base"
         _run("git", "worktree", "add", "--detach", "--quiet", str(tree), base_ref, cwd=root)

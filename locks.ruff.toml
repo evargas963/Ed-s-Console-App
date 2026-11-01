@@ -57,9 +57,11 @@ max-complexity = 10
 "time.process_time".msg = "Only an entry point reads the clock; pass `now`."
 "time_et.now_et".msg = "Only an entry point reads the clock; pass `now`."
 "importlib.import_module".msg = "A module is imported by name at the top."
+"importlib.machinery".msg = "No code runs from a data file."
+"importlib.util".msg = "No code runs from a data file."
 "runpy".msg = "No code runs from a data file."
 
 [lint.per-file-ignores]
-"tests/**" = ["ARG", "D", "T20"]
+"tests/**" = ["ARG", "T20"]
 "tools/**" = ["T20"]
 "app/market_data/schwab/streaming/capture_main.py" = ["PLC0415"] # the operator's one import

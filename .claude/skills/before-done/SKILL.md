@@ -11,7 +11,7 @@ report what was tried, and take a different approach (CLAUDE.md item 6).
 
 1. `git fetch -q origin && git merge-base --is-ancestor origin/main HEAD` — the branch is current with
    `main` (exit 0). Otherwise merge `origin/main` and start again.
-2. `.venv/Scripts/python.exe -m ruff check .` and `.venv/Scripts/python.exe -m ruff format --check .` — no findings; then
+2. `.venv/Scripts/python.exe -P -m ruff check .` and `.venv/Scripts/python.exe -P -m ruff format --check .` — no findings; then
    `.venv/Scripts/python.exe -m compileall -q -x '([\\/](\.venv|venv|node_modules|__pycache__|models)[\\/])' .`
    — exit 0 (both as the `hardening` job runs them).
 3. The full suite on the final commit: the required CI jobs `pytest-full` (Playwright, then the full
