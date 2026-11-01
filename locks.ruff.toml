@@ -1,0 +1,42 @@
+# The locks' rules, counted by tools/check_locks.py with every `noqa` ignored. It stands alone: no
+# other file changes what it counts. A count may only fall; at 0 a rule is absolute.
+line-length = 100
+target-version = "py313"
+extend-exclude = [".venv", "venv", "node_modules", "__pycache__", "research"]
+
+[lint]
+select = [
+    "ARG", # an argument nothing reads
+    "B", # likely bugs
+    "BLE", # a catch-all except
+    "C90", # a function too complex to read
+    "D2", "D3", "D4", # PEP 257, where a docstring exists
+    "E", "F", "I", "UP", "W", # PEP 8, unused and undefined names, import order, old syntax
+    "ERA", # code left in a comment
+    "PERF", # needless work in a loop
+    "PLC0415", # an import outside the module's top
+    "RET", # a return that says nothing
+    "S110", "S112", # an error passed over in silence
+    "SIM", # needless complexity
+    "T20", # print in product code
+    "TID251", # the banned names below
+    "TRY", # an except that hides what failed
+]
+ignore = ["D203", "D213"]
+
+[lint.mccabe]
+max-complexity = 10
+
+[lint.flake8-tidy-imports.banned-api]
+"schwab".msg = "Only Feed talks to Schwab."
+"httpx".msg = "Only Feed talks to Schwab."
+"authlib".msg = "Only Feed talks to Schwab."
+"sqlite3".msg = "Only the Recorder uses a database."
+"time.time".msg = "Only an entry point reads the clock; pass `now`."
+"datetime.datetime.now".msg = "Only an entry point reads the clock; pass `now`."
+"time_et.now_et".msg = "Only an entry point reads the clock; pass `now`."
+
+[lint.per-file-ignores]
+"tests/**" = ["ARG", "D", "PLC0415", "T20", "TID251"]
+"tools/**" = ["T20", "TID251"]
+"scripts/**" = ["T20", "TID251"]

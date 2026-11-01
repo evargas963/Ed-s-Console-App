@@ -71,6 +71,16 @@ Why, from outside practice: one user and one account call for one program (Fowle
 needed (KISS, YAGNI); systems that work grow from simple ones that work (Gall's law); and rules are
 held by standard linters, not by hand-written checks.
 
+## Locks (operator 2026-11-01: "air tight locks, governance, etc.", "no patches ever, end to end only")
+
+The repository may only get simpler. `tools/check_locks.py`, in the required `hardening` job, counts
+on the base and on the head, under the base's rules and by the base's own copy of itself: lines of
+product code, of tests and of check tools, open work rows, patching lines in tests, fields with a
+second reader, and every finding of `locks.ruff.toml` with each `noqa` ignored. Any rise refuses the
+pull request. A count at 0 is an absolute ban. Nothing is exempt and no number is kept by hand
+(`tests/test_check_locks_v1.py`). `locks.ruff.toml` holds what no module but its owner may use:
+Schwab's client, `sqlite3` and the clock.
+
 ## Rules and what enforces them
 
 Each rule names what enforces it and where it runs. "(in force)" means it runs today: at commit

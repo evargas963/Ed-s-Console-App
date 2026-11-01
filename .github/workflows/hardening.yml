@@ -32,6 +32,14 @@ jobs:
         run: python -m ruff format --check .
       - name: compileall
         run: python -m compileall -q -x '([\\/](\.venv|venv|node_modules|__pycache__|models)[\\/])' .
+      - name: one-way locks, judged by the base's own copy (AGENTS.md Locks)
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if git show "origin/$BASE_REF:tools/check_locks.py" > "$RUNNER_TEMP/check_locks.py"; then
+            python "$RUNNER_TEMP/check_locks.py" --base "origin/$BASE_REF"
+          fi
       - name: no patch shapes in added product code (AGENTS.md rule 1)
         if: github.event_name == 'pull_request'
         env:
