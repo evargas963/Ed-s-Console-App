@@ -32,8 +32,8 @@ time (a `$` or substitution in a bash program word, PowerShell `& $x` / `. $x` /
 block made from text), text piped into a shell, cmd, python or node, a PowerShell -EncodedCommand,
 Invoke-Expression. Not seen and not refused: a script file a statement runs, a shell command a
 python program builds at run time, the command xargs builds from its input (`xargs sh -c`), a
-PowerShell here-string's $( ), a `hatch run env:cmd` script name, a `gh alias`, and an alias or
-function defined earlier.
+PowerShell here-string's $( ), a `hatch run env:cmd` script name, and an alias or function defined
+earlier.
 
 A bash backslash before an ordinary character is dropped by bash (`r\\m` runs rm) and kept in a
 Windows path (`C:\\Git\\cmd\\git.exe`): such a statement is read both ways and both are judged.

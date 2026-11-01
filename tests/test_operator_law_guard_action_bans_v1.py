@@ -56,6 +56,12 @@ def test_the_locks_settings_are_the_operators():
         f"gh api {{-X,DELETE}} {repo}/branches/main/protection",
         "gh pr merge 5 --merge --adm{in,in}",
         "cat f | xargs gh api",
+        "echo variable set X --body y | xargs gh",
+        "xargs gh api < f",
+        "xargs gh <<< 'variable set X'",
+        "gh pr merge 5 --adm*",
+        f"gh api ?X DELETE {repo}/branches/main/protection",
+        f"cmd /c gh api ^-X DELETE {repo}/branches/main/protection",
     ):
         assert any(refused in b for b in bash_violations(cmd)), cmd
     for cmd in (

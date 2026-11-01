@@ -223,7 +223,7 @@ _GH_API_READS = frozenset(
 
 
 #: a word written out: in single quotes, in double quotes with nothing to expand, or plain
-_GH_LITERAL = re.compile(r"""'[^']*'|"[^"$`]*"|[^'"$`{}()@]+""")
+_GH_LITERAL = re.compile(r"""'[^']*'|"[^"$`%^]*"|[^'"$`{}()@%^*?\[~]+""")
 
 
 def _gh_refused(st: Statement) -> bool:
@@ -234,10 +234,17 @@ def _gh_refused(st: Statement) -> bool:
     every word to judge it. The locks stand on the sign-in, variables, environments, branch
     protection and pending approvals, and none of them is on the list.
     """
-    if st.program != "gh" or len(st.words) < 2:
+    if st.program != "gh":
         return False
-    if st.upstream is not None or not all(_GH_LITERAL.fullmatch(word) for word in st.raw[1:]):
+    fed = (
+        st.upstream is not None
+        or st.heredoc is not None
+        or any(op.startswith("<") for op, _target in st.redirects)
+    )
+    if fed or not all(_GH_LITERAL.fullmatch(word) for word in st.raw[1:]):
         return True
+    if len(st.words) < 2:
+        return False
     group, *args = st.words[1:]
     if any(a.startswith("--admin") for a in args):
         return True
@@ -293,7 +300,10 @@ def bash_violations(cmd: str, powershell: bool = False) -> list[str]:
     if any(_disables_a_lock(st) for st in statements):
         out.append("ACTION BLOCKED: this disables a mechanical lock. Only the operator may.")
     if any(_gh_refused(st) for st in statements):
-        out.append("ACTION BLOCKED: this `gh` is outside what the agent may run. Ask the operator.")
+        out.append(
+            "ACTION BLOCKED: this `gh` is outside what the agent may run. Write every word out, "
+            "or ask the operator."
+        )
     if any(PYTHON.fullmatch(st.program) and reads_stdin(st) for st in statements):
         out.append(
             "ACTION BLOCKED: this python reads its program from stdin (`python -`, a heredoc, "
