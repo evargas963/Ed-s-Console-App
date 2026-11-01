@@ -2611,9 +2611,8 @@ def _forces_from_captures(tk: str, captures: list, charm_by_strike: dict | None 
             spot1 = float(s1)
 
             def _oi_change(in_side) -> float | None:
-                """The side's open interest on the newer day less the older day's, each capture
-                the whole chain: a strike one does not list is in that day's total for what it
-                holds, nothing."""
+                """The side's open interest on the newer day less the older day's. It assumes each
+                capture is the whole chain, where a strike not listed holds no contracts."""
                 totals = [
                     side_total([strike_total_oi(b) for k, b in per.items() if in_side(k)])
                     for per in (per1, per0)

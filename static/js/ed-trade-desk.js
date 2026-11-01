@@ -42,7 +42,7 @@
     return s + '$' + a.toFixed(0);
   };
   function fmtVol(n) {
-    if (n == null || isNaN(n)) return '—';
+    if (n == null || isNaN(n)) return '-';
     var a = Math.abs(Number(n));
     if (a >= 1e6) return (a / 1e6).toFixed(1) + 'M';
     if (a >= 1e3) return (a / 1e3).toFixed(1) + 'K';

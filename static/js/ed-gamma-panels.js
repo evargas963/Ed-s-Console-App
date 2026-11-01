@@ -12,7 +12,7 @@
   // Compact SESSION VOLUME (native totalVolume, never OI or last-trade size — see the row
   // source below) for the GEX-by-strike row. No sign/color: volume is a magnitude, not signed.
   function fmtVol(n) {
-    if (n == null || isNaN(n)) return '—';
+    if (n == null || isNaN(n)) return '-';
     var a = Math.abs(Number(n));
     if (a >= 1e6) return (a / 1e6).toFixed(1) + 'M';
     if (a >= 1e3) return (a / 1e3).toFixed(1) + 'K';
@@ -211,7 +211,7 @@
       cells: function (r) {
         return '<span class="gbs-vol" title="session volume">' + fmtVol(r[2]) + '</span>' +
           '<span class="gbs-chg" title="net GEX change vs the previous session">' +
-          (chg[r[0]] == null ? '—' : usd(chg[r[0]])) + '</span>';
+          (chg[r[0]] == null ? '-' : usd(chg[r[0]])) + '</span>';
       },
     });
     applyGbsHighlight(host);

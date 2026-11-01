@@ -168,25 +168,30 @@ def test_a_forces_oi_side_with_a_strike_not_known_has_no_total():
     assert forces["doi_above"] == 0
 
 
-def test_a_strike_one_whole_chain_does_not_list_holds_no_contracts_on_that_day():
-    """Induced test condition: NFLX's $5 contracts cut from one capture, as a strike listed after
-    the older capture or settled before the newer one; one chain stored as two captures."""
-    open_interest = sum(c["openInterest"] for c in NFLX.chain if c["strikePrice"] == 5.0)
-    assert open_interest > 0
-    without = [c for c in NFLX.chain if c["strikePrice"] != 5.0]
-    days = (NFLX.now, datetime(2026, 10, 6, 12, 0, tzinfo=ET))
+def test_a_strike_that_left_the_chain_counts_for_what_it_held():
+    """TSLA's closing captures of 2026-10-28 and 2026-10-29, at the strikes the 2026-10-28 expiry
+    alone listed and the six nearest the price: ΔOI is each side's Schwab total on one day less the
+    other's, so the open interest that expired leaves the side."""
+    fx = json.loads(
+        (
+            Path(__file__).parent / "fixtures" / "real_tsla_strikes_expired_2026_10_28_to_29.json"
+        ).read_text(encoding="utf-8")
+    )
+    newer, older = fx["newer"], fx["older"]
+    gone = {c["strikePrice"] for c in older["contracts"]} - {
+        c["strikePrice"] for c in newer["contracts"]
+    }
+    assert sum(c["openInterest"] for c in older["contracts"] if c["strikePrice"] in gone) == 460
+    spot = float(newer["spot"])
 
-    def doi_below(newer: list, older: list) -> float:
-        caps = [
-            {
-                "et_date": day.date().isoformat(),
-                "spot": NFLX.spot,
-                "contracts": chain,
-                "ts_utc": day.timestamp(),
-            }
-            for day, chain in zip(days, (newer, older), strict=True)
-        ]
-        return server._forces_from_captures(NFLX.ticker, caps)["doi_below"]
+    def change(in_side) -> int:
+        return sum(
+            sign * c["openInterest"]
+            for sign, capture in ((1, newer), (-1, older))
+            for c in capture["contracts"]
+            if in_side(c["strikePrice"])
+        )
 
-    assert doi_below(NFLX.chain, without) == open_interest
-    assert doi_below(without, NFLX.chain) == -open_interest
+    forces = server._forces_from_captures(fx["ticker"], [newer, older])
+    assert forces["doi_below"] == change(lambda k: k < spot)
+    assert forces["doi_above"] == change(lambda k: k > spot)
