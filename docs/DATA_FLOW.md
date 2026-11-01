@@ -503,7 +503,7 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
   open-interest change has one producer: the forces, from the stored captures (`/api/forces`,
   shown on the Trade Desk). Fewer than two market days of captures leaves each forces number
   absent (`server._forces_from_captures`), and a charm side with a strike not known, or no strike at all, leaves that side
-  absent; the screen draws "-". An ATR that cannot be computed is absent (`server._atr_fields`); the
+  absent (enforced by `tests/test_data_path_charm_side_unknown_v1.py`); the screen draws "-". An ATR that cannot be computed is absent (`server._atr_fields`); the
   screen draws "-". None of these rules names a ticker; the
   watchlist decides which tickers are fetched and priced. A viewed
   ticker is one an open page shows (its `/api/changes` stream, on any workspace, open while the
@@ -656,7 +656,7 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
   The label only labels: no session window starts, stops or clears a streamed value (stock
   quotes from 04:00 ET are shown and recorded), and the order-flow state keeps every book,
   top-of-book field, print and streamed Greek through the open. Enforced by:
-  `tests/test_markets_sessions_v1.py`.
+  `tests/test_markets_sessions_v1.py`, `tests/test_data_path_charm_side_unknown_v1.py`.
 - **Lifecycle.** `/api/changes` (console, `push_changes.py`): the levels producer, the stream
   handler (equity quote and book) and the bar writer mark a ticker's kind changed; each page
   connection gets each change the moment it is marked (changes marked while one is sent go in
@@ -728,7 +728,7 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
    operator 2026-10-16: one producer, the number or nothing). An ATR that cannot be computed, a
    same-day absolute-gamma strike with no same-day book, the forces before two capture days and
    a forces charm side with a strike not known or no strike at all are absent (`server._atr_fields`, `terrain_engine.compute_terrain`,
-   `server._forces_from_captures`); the screen draws "-". The levels with no price and the
+   `server._forces_from_captures`; the forces side by `tests/test_data_path_charm_side_unknown_v1.py`); the screen draws "-". The levels with no price and the
    outage words are still served with their reason (§3 above). The gamma heatmap's cells draw "-".
 
 The work that closes these gaps, in order, is `ACTIVE_PROGRAM.md`.
@@ -844,4 +844,4 @@ behavior (AGENTS.md).
     other served levels. Family, evidence and source are not drawn. Each price is shown
     with the time the server sent for it.
     Enforced by: `tests/test_data_path_same_day_levels_v1.py`,
-    `tests/test_data_path_zero_dte_pin_v1.py`.
+    `tests/test_data_path_zero_dte_pin_v1.py`, `tests/test_data_path_charm_side_unknown_v1.py`.

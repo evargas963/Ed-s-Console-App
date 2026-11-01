@@ -11,7 +11,7 @@ from pathlib import Path
 import server
 from math_levels import compute_charm_by_strike
 from terrain_engine import compute_terrain
-from tests.real_chains import NFLX
+from tests.real_chains import NFLX, SPY_0DTE
 from time_et import ET, INDEX_OPTIONS
 
 
@@ -100,3 +100,24 @@ def test_a_forces_side_with_a_strike_not_known_has_no_total():
     forces = server._forces_from_captures(NFLX.ticker, caps, snap.charm_by_strike)
     assert forces["available"] is True
     assert forces["charm_below"] is None
+
+
+def test_a_forces_side_with_no_strike_at_all_has_no_total():
+    """SPY's 0DTE chain priced at its 787.5169 print, above every strike: nothing is above the
+    price, so no total, not a 0. Induced test condition: the print and chain are of other days."""
+    spot = 787.5169
+    prior = datetime(2026, 10, 6, 12, 0, tzinfo=ET)
+    caps = [
+        {
+            "et_date": day.date().isoformat(),
+            "spot": spot,
+            "contracts": SPY_0DTE.chain,
+            "ts_utc": day.timestamp(),
+        }
+        for day in (SPY_0DTE.now, prior)
+    ]
+    charm = compute_charm_by_strike(SPY_0DTE.chain, spot, now=SPY_0DTE.now, product=INDEX_OPTIONS)
+    forces = server._forces_from_captures("SPY", caps, charm)
+    assert forces["available"] is True
+    assert forces["charm_above"] is None
+    assert forces["charm_below"] is not None
