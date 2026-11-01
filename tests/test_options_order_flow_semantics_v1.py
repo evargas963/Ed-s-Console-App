@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import socket
 import time
 from pathlib import Path
 
@@ -42,12 +41,6 @@ def _message(m: dict) -> tuple[str, dict]:
     return f"book.{sym}", book_msg(
         symbol=sym, service=svc, content=m["item"], src="schwab_book", ts_recv=ts
     )
-
-
-def _free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
 
 
 def test_every_option_and_equity_message_on_the_one_push_reaches_the_console():

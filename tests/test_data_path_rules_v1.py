@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import socket
 import sqlite3
 import sys
 import threading
@@ -48,14 +47,6 @@ def _frame(service: str, items: list[dict], ts_ms: int) -> dict:
     """A Schwab streamer data block as schwab-py hands it to the handler: service, Schwab's own
     frame timestamp, command, and the labeled items."""
     return {"service": service, "timestamp": ts_ms, "command": "SUBS", "content": items}
-
-
-def _port() -> int:
-    s = socket.socket()
-    s.bind(("127.0.0.1", 0))
-    port = s.getsockname()[1]
-    s.close()
-    return port
 
 
 async def _daemon_then_console(

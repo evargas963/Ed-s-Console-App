@@ -8,7 +8,7 @@ The REAL stream_spine.MessageBus and the console's REAL reader of it
   * only Schwab-sourced messages are forwarded (any other src on the same topic is not);
   * a connecting console first receives the bus's current records, then each that changes;
   * the live loop never opens the capture database;
-  * with the push server down nothing is served, and the feed picks up when it returns.
+  * a record that fails is logged and the next one applied, and a daemon's next run is read.
 """
 
 from __future__ import annotations
@@ -216,8 +216,7 @@ def test_a_closed_schwab_socket_is_not_live(feed):
 
 
 def test_a_non_schwab_message_on_the_same_topic_is_never_forwarded(feed):
-    """Neither the message nor any value it carried: the SPY record a client receives holds
-    only what Schwab sent (here, no CLOSE_PRICE -- only the non-Schwab message carried one)."""
+    """The console applies only what Schwab sent: the non-Schwab record is not taken."""
 
     async def body(bus):
         bus.publish(
@@ -302,6 +301,35 @@ def test_the_live_loop_never_opens_the_capture_database(feed):
     finally:
         _AUDITING.clear()
     assert _OPENED == [], f"the live feed opened a database: {_OPENED}"
+
+
+def test_a_record_that_fails_is_logged_and_a_daemons_next_run_is_read(feed, caplog):
+    """Induced test condition: a /markets record with no status. The record after it is applied,
+    and the reader of a daemon's next run, on its new bus, applies what that bus carries."""
+
+    async def run():
+        bus = MessageBus()
+        console = asyncio.create_task(ofs.follow(bus, capture.Daemon(bus, HealthRegistry(), [])))
+        assert await _until(lambda: ofs._daemon is not None)
+        bus.publish("markets.2026-10-07", {"src": "schwab_markets", "date": "2026-10-07"})
+        first = time.time()
+        bus.publish("quote.SPY", _spy_trade(503.0, first))
+        assert await _until(_received(first))
+        console.cancel()
+        await asyncio.gather(console, return_exceptions=True)
+        assert ofs._daemon is None
+        bus = MessageBus()
+        console = asyncio.create_task(ofs.follow(bus, capture.Daemon(bus, HealthRegistry(), [])))
+        try:
+            assert await _until(lambda: ofs._daemon is not None)
+            second = first + 1
+            bus.publish("quote.SPY", _spy_trade(504.0, second))
+            assert await _until(_received(second))
+        finally:
+            console.cancel()
+
+    asyncio.run(run())
+    assert any("markets.2026-10-07 not applied" in r.getMessage() for r in caplog.records)
 
 
 def test_a_message_missing_its_receive_time_is_dropped_whole():

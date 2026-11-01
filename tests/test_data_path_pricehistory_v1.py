@@ -2,7 +2,7 @@
 chain sweep asks /pricehistory for each ticker (tests/schwab_rest_standin.py, on the real schwab-py
 client as the daemon builds it) as docs/schwab lists it -- 1-minute bars and two years of daily
 candles, once per ET date, each request ending at the sweep's clock -- and publishes each series
-as Schwab sent it; the daemon's push forwards it (live_push) and the console's bar writer takes
+as Schwab sent it; the console reads it off the daemon's bus and its bar writer takes
 it: the 1-minute bars every reader reads, and the daily candles the daily, weekly and monthly ATR
 are computed from, today's candle rolled up live from the 1-minute bars.
 

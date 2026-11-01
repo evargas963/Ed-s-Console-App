@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import socket
 import threading
 import time
 from pathlib import Path
@@ -47,12 +46,6 @@ async def _until(cond, seconds: float = 15.0) -> None:
     while not cond():
         assert time.monotonic() < deadline, "not reached in time"
         await asyncio.sleep(0.02)
-
-
-def _free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
 
 
 class _Schwab:
