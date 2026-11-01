@@ -111,3 +111,6 @@ def build_config() -> AppConfig:
         app_secret=app_secret,
         callback_url=callback_url,
     )
+
+
+LOCK_TEST = 1
