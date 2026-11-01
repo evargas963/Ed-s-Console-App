@@ -47,7 +47,6 @@ from __future__ import annotations
 
 import asyncio
 import bisect
-import contextlib
 import json
 import logging
 import os
@@ -1195,9 +1194,9 @@ def one_schwab_client(build) -> callable:
     return schwab_client
 
 
-async def run(stop: asyncio.Event) -> None:
+async def run(asked: asyncio.Event) -> None:
     """The whole daemon: writer, the two local sockets, the chain sweep, the market follower and
-    the Schwab connection, each until `stop`; one that ends first ends them all with an error
+    the Schwab connection, each until `asked`; one that ends first ends them all with an error
     naming it."""
     load_dotenv_file()
     cfg = build_config()
@@ -1206,6 +1205,7 @@ async def run(stop: asyncio.Event) -> None:
             api_key=cfg.api_key, app_secret=cfg.app_secret, token_path=cfg.token_path
         )
     )
+    stop = asyncio.Event()  # this run's own: its tasks end on it, and another run may follow
     bus, health = MessageBus(), HealthRegistry()
     writer = CaptureWriter()
     db_path = canonical_console_db_path()
@@ -1226,12 +1226,14 @@ async def run(stop: asyncio.Event) -> None:
         ),
         asyncio.create_task(serve_live_ui(stop, heartbeat_fn=daemon.status), name="live ui"),
     ]
+    stopping = asyncio.ensure_future(asked.wait())
     try:
         await asyncio.sleep(0)  # servers subscribe before the first message
         tasks.append(asyncio.create_task(daemon.run(schwab_client, stop), name="schwab connection"))
-        done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-        ended = None if stop.is_set() else done.pop()
+        done, _ = await asyncio.wait([*tasks, stopping], return_when=asyncio.FIRST_COMPLETED)
+        ended = None if asked.is_set() else done.pop()
     finally:
+        stopping.cancel()
         stop.set()
         await asyncio.gather(*tasks, return_exceptions=True)
     if ended is not None:
@@ -1248,5 +1250,6 @@ async def keep_running(stop: asyncio.Event) -> None:
             await run(stop)
         except Exception:
             log.exception("capture daemon: ended by an error")
-            with contextlib.suppress(TimeoutError):
-                await asyncio.wait_for(stop.wait(), RESTART_WAIT_SEC)
+            asked = asyncio.ensure_future(stop.wait())
+            await asyncio.wait({asked}, timeout=RESTART_WAIT_SEC)
+            asked.cancel()

@@ -411,7 +411,7 @@ def test_a_daemon_whose_live_ui_port_is_held_ends_with_why_and_starts_again(tmp_
         "from app.market_data.schwab.streaming import capture\n"
         "async def go():\n"
         "    stop = asyncio.Event()\n"
-        "    asyncio.get_running_loop().call_later(3, stop.set)\n"
+        "    asyncio.get_running_loop().call_later(capture.RESTART_WAIT_SEC + 3, stop.set)\n"
         "    await capture.keep_running(stop)\n"
         "capture.start_log()\n"
         "asyncio.run(go())\n"
@@ -437,7 +437,7 @@ def test_a_daemon_whose_live_ui_port_is_held_ends_with_why_and_starts_again(tmp_
     (path,) = (tmp_path / "logs").glob("stream_capture.*.log")
     log = path.read_text(encoding="utf-8")
     assert done.returncode == 0, (done.returncode, log)
-    assert "capture daemon: ended by an error" in log, log
+    assert log.count("capture daemon: ended by an error") >= 2, log
     assert "RuntimeError: the capture daemon's live ui ended before the stop" in log, log
     assert "OSError" in log, log
 

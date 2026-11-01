@@ -49,7 +49,8 @@ CONSOLE = [
     "--timeout-graceful-shutdown",
     "10",
 ]
-#: how long a clean stop waits for the program to end (its shutdown is bounded at 12 s)
+#: how long a clean stop waits for the program to end: the daemon's stop, then a shutdown bounded
+#: at 12 s
 STOP_WAIT_SEC = 30.0
 #: what the commit check before a start found (bring_to_origin_main)
 COMMIT_CURRENT, COMMIT_MOVED, COMMIT_UNKNOWN, COMMIT_REFUSED = (

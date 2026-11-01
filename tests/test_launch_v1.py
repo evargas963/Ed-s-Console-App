@@ -217,7 +217,7 @@ def _real_console(
 
 
 @windows_only
-def test_the_program_is_one_process_and_the_stop_ends_its_writer_first(tmp_path):
+def test_the_program_is_one_process_and_the_stop_ends_the_daemon_before_the_loop(tmp_path):
     """The one program started as the launcher starts it: one process serves the console and holds
     the daemon's sockets, with no Schwab token. A clean stop ends it, exit 0, and the owner lock of
     the stream is gone."""
