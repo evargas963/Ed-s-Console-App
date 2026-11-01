@@ -947,6 +947,38 @@ def test_a_chain_begun_inside_the_window_keeps_its_reported_zero():
         _forget(tk)
 
 
+def test_a_chain_past_its_close_stored_first_keeps_the_capture_before_it():
+    """SPY's chain with its counts stored at 16:00, then a chain begun after the option close with
+    every count zero, stored before the console hears of it, on a console holding no earlier chain:
+    the last count is the 16:00 capture's, not the zeros of the chain's own capture. Induced test
+    condition: one chain stored twice, once with its counts set to 0, as Schwab's after a close."""
+    held = SPY_0DTE
+    tk = "SPYOWN"
+    fresh = [dict(c) for c in held.chain]
+    expiry = str(fresh[0]["expirationDate"])[:10]
+    at_close = datetime(2026, 10, 7, 16, 0, tzinfo=ET)
+    after = datetime(2026, 10, 7, 16, 20, tzinfo=ET)
+    try:
+        spot = _chain_spot(tk, _AT_CAPTURE[held.ticker])
+        for when, contracts in ((at_close, fresh), (after, _zero_counts(fresh))):
+            store_capture(
+                server.get_db().db_path,
+                ticker=tk,
+                expiry=expiry,
+                contracts=contracts,
+                spot=held.spot,
+                completeness_basis=CAPTURE_BASIS,
+                ts_utc=when.timestamp(),
+            )
+        server._publish_levels(
+            tk, _zero_counts(fresh), after.timestamp(), chain_spot=spot, now=after
+        )
+        served = server.confluence_payload(tk, expiry, after)
+        assert any(row["pc_vol_text"] is not None for row in served["rows"])
+    finally:
+        _forget(tk)
+
+
 def test_a_closed_day_zero_book_keeps_the_last_count_through_the_next_open():
     """A day Schwab says is closed is outside every option window: Sunday's zero book does not
     replace the last count, the stored capture's; and Monday before the open it still stands."""

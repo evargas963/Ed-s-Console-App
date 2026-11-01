@@ -1,5 +1,5 @@
-"""Schwab's chain -> the stored capture. A capture is found whole or not at all. MRVL's real chain,
-every expiry."""
+"""Schwab's chain -> the stored capture -> the console. A capture is found whole or not at all, and
+it is stored before the console hears of its chain. MRVL's real chain, every expiry."""
 
 from __future__ import annotations
 
@@ -25,39 +25,115 @@ _MRVL = sc.flatten_chain_contracts(
 )
 
 
-def test_a_capture_the_database_refuses_partway_is_kept_and_leaves_nothing_stored(tmp_path):
-    """Induced test condition: a trigger refuses MRVL's last expiry, as a locked or full database
-    would, the chain delivered at an instant it was not taken. The expiries before it are not left
-    standing as the day's capture, and the chain still reaches the console and the failure log."""
-    db = tmp_path / "ed_console.db"
+def _chain() -> cch._Chain:
+    """Inside a capture window, each contract with the sweep's mark that no quote came back."""
     by_expiry: dict[str, list[dict]] = {}
     for ct in _MRVL:
         by_expiry.setdefault(ct["expirationDate"][:10], []).append({**ct, "greeksTime": None})
     assert len(by_expiry) > 1
-    chain = cch._Chain("MRVL", _BEGUN, dict.fromkeys(by_expiry), by_expiry=by_expiry)
+    return cch._Chain("MRVL", _BEGUN, dict.fromkeys(by_expiry), by_expiry=by_expiry)
+
+
+def _sweep(tmp_path, publish) -> cch.ChainSweep:
+    sqlite3.connect(tmp_path / "ed_console.db").close()  # the daemon's database exists
+    return cch.ChainSweep(
+        tmp_path / "ed_console.db",
+        ["MRVL"],
+        publish,
+        clock=lambda: _BEGUN,
+        failures=CaptureWriter(tmp_path / "stream_capture.db"),
+        streamed=lambda symbol: None,
+    )
+
+
+def _stored(db) -> list:
+    return [c for capture in cch.last_capture_per_day(db, "MRVL", 1) for c in capture["contracts"]]
+
+
+def _refuse(db, expiry: str) -> None:
+    """Induced test condition: a trigger refuses this expiry, as a locked or full database would."""
     conn = sqlite3.connect(db)
     cch.ensure_schema(conn)
     conn.execute(
         "CREATE TRIGGER refuse BEFORE INSERT ON complete_chain_captures "
-        f"WHEN NEW.expiry = '{list(by_expiry)[-1]}' "
-        "BEGIN SELECT RAISE(ABORT, 'refused'); END"
+        f"WHEN NEW.expiry = '{expiry}' BEGIN SELECT RAISE(ABORT, 'refused'); END"
     )
     conn.commit()
     conn.close()
+
+
+def _allow(db) -> None:
+    conn = sqlite3.connect(db)
+    conn.execute("DROP TRIGGER refuse")
+    conn.commit()
+    conn.close()
+
+
+def test_a_capture_the_database_refuses_partway_is_kept_and_leaves_nothing_stored(tmp_path):
+    """The expiries before the refused one are not left standing as the day's capture, and the
+    chain still reaches the console and the failure log."""
+    db = tmp_path / "ed_console.db"
     published: list = []
-    failures = CaptureWriter(tmp_path / "stream_capture.db")
-    sweep = cch.ChainSweep(
-        db,
-        ["MRVL"],
-        lambda topic, _msg: published.append(topic),
-        clock=lambda: _BEGUN,
-        failures=failures,
-        streamed=lambda symbol: None,
-    )
+    sweep = _sweep(tmp_path, lambda topic, _msg: published.append(topic))
+    chain = _chain()
+    _refuse(db, list(chain.by_expiry)[-1])
     sweep.deliver(chain)
     assert published
     assert cch.last_capture_per_day(db, "MRVL", 1) == []
     assert cch.newest_capture_ts(db, "MRVL") is None
     with sqlite3.connect(tmp_path / "stream_capture.db") as read:
-        topics = [r[0] for r in read.execute("SELECT topic FROM stream_write_failures")]
-    assert topics == ["chain_history.MRVL"]
+        kept = read.execute("SELECT topic, msg_json FROM stream_write_failures").fetchall()
+    assert [topic for topic, _msg in kept] == ["chain_history.MRVL"]
+    assert json.loads(kept[0][1])["started"] == _BEGUN
+
+
+def test_the_console_hears_of_a_chain_after_its_capture_is_stored(tmp_path):
+    """A read on the chain's arrival finds the capture it belongs to, whole."""
+    db = tmp_path / "ed_console.db"
+    stored_at_each_message: list = []
+    sweep = _sweep(tmp_path, lambda _topic, _msg: stored_at_each_message.append(len(_stored(db))))
+    chain = _chain()
+    sweep.deliver(chain)
+    assert set(stored_at_each_message) == {len(chain.contracts())}
+
+
+def test_a_refused_capture_is_written_from_the_chain_held_and_the_console_hears_again(tmp_path):
+    """No request goes to Schwab: the sweep holds the chain. Its write succeeds once the database
+    takes it, whole, at the time the chain began, and a read on the second arrival finds it."""
+    db = tmp_path / "ed_console.db"
+    stored_at_each_message: list = []
+    sweep = _sweep(tmp_path, lambda _topic, _msg: stored_at_each_message.append(len(_stored(db))))
+    chain = _chain()
+    _refuse(db, list(chain.by_expiry)[-1])
+    sweep.deliver(chain)
+    assert set(stored_at_each_message) == {0}
+    stored_at_each_message.clear()
+    _allow(db)
+    sweep.retry_history()
+    assert set(stored_at_each_message) == {len(chain.contracts())}
+    assert cch.newest_capture_ts(db, "MRVL") == _BEGUN
+
+
+def test_a_newer_chain_replaces_the_one_held(tmp_path):
+    """A chain held for its failed write is not sent to the console after a newer one."""
+    db = tmp_path / "ed_console.db"
+    published: list = []
+    sweep = _sweep(tmp_path, lambda _topic, msg: published.append(msg))
+    chain = _chain()
+    _refuse(db, list(chain.by_expiry)[-1])
+    sweep.deliver(chain)
+    _allow(db)
+    sweep.deliver(_chain())
+    published.clear()
+    sweep.retry_history()
+    assert published == []
+
+
+def test_a_capture_is_read_before_a_time(tmp_path):
+    """The stored capture of the chain being priced is not its own last count."""
+    db = tmp_path / "ed_console.db"
+    sweep = _sweep(tmp_path, lambda _topic, _msg: None)
+    sweep.deliver(_chain())
+    assert cch.newest_capture_ts(db, "MRVL", before_ts=_BEGUN) is None
+    assert cch.last_capture_per_day(db, "MRVL", 1, before_ts=_BEGUN) == []
+    assert cch.newest_capture_ts(db, "MRVL", before_ts=_BEGUN + 1) == _BEGUN

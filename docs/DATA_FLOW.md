@@ -435,16 +435,18 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
   every ticker's levels go stale with that reason (`terrain_staleness`, judged against two of
   the sweep's delivered rounds, carried on the heartbeat). The first chain of each ticker whose
   fetch began in a capture window is also written to the chain history (§4.2, `capture_slot`), in
-  one transaction, so a reader finds a capture whole or not at all
-  (`tests/test_data_path_capture_whole_v1.py`); a
+  one transaction before the console hears of the chain (operator 2026-11-01), so a read on its
+  arrival finds that capture, whole (`tests/test_data_path_capture_whole_v1.py`); a
   stored capture is never replaced (a second write of its ticker, expiry and time is refused,
   `test_a_stored_chain_capture_is_never_overwritten_by_a_second_write_of_its_key`); a
   history write that fails (that refusal included) is a write failure, never the chain's: the
   chain as the sweep delivered it (each expiry's underlying price, the chain's spot and the
   contracts) is handed to
   the daemon's writer, which keeps it in `stream_write_failures` and counts it on its state (§2
-  D4); the delivered chain stands, and the window's next chain, if one comes, writes the history
-  (after the close none does, so the day's last stored capture reads as its close). The sweep
+  D4); the delivered chain stands, and the sweep holds it: with no chain due, it writes the capture
+  from the chain held, with no request to Schwab, and sends the chain to the console again
+  (`ChainSweep.retry_history`); a newer chain replaces the one held, and a restart drops it, its
+  record standing in `stream_write_failures`. The sweep
   (`ChainSweep.fetch_chain`, `send_quotes`) is the one place a chain enters, so every consumer
   (levels, walls, flip, the heatmap, per-strike rows, forces, the chain ladder, Strike Detail,
   the captures) reads the Greeks it sets. The Greeks (gamma, delta, theta, vega, rho,

@@ -47,6 +47,9 @@ from time_et import ET, option_market_open, options_closed_at, record_markets, s
 log = logging.getLogger("chain_history")
 
 CAPTURE_EVERY_MIN = 30
+#: how often a capture whose write failed is tried again from the chain held; each try encodes the
+#: whole chain, 1.3 s for $SPX
+HISTORY_RETRY_SEC = 60.0
 #: why the daemon's captures are complete: every listed expiry, every strike. The daemon writes
 #: only this basis, and rows of any other are not read. The basis is stored before the chain
 #: blob, so filtering on it never reads a chain (measured: filtering on `source`, stored after
@@ -361,15 +364,18 @@ class ChainSweep:
         self._queue: list[tuple[_Chain, dict]] = []  # contracts whose quote is not asked for
         self._delivered: set[str] = set()  # the tickers this rotation delivered
         self._written: dict[str, float | None] = {}  # ticker -> its newest history capture
+        self._unwritten: dict[str, _Chain] = {}  # ticker -> the chain whose history write failed
+        self._retried = 0.0  # when retry_history last ran
 
     def work(self, schwab_client, stop: threading.Event) -> None:
         """The thread's life, until `stop`: on the daemon's client (`schwab_client()`), the
         market's sessions for today and the days before it, then the price history of the
         watchlist tickers whose candles are due (the price-built levels wait for it, a rotation
-        takes minutes) and a rotation of those whose chain is due; with none due, it looks again
-        each second. With the watchlist empty, or no sign-in held
-        (waits), it asks Schwab for nothing and looks again each second: a sign-in Schwab
-        refused fails every request at once, and a round of them would only log each failure."""
+        takes minutes) and a rotation of those whose chain is due; with none due, it writes any
+        capture that failed (retry_history) and looks again each second. With the watchlist empty,
+        or no sign-in held (waits), it asks Schwab for nothing and looks again each second: a
+        sign-in Schwab refused fails every request at once, and a round of them would only log
+        each failure."""
         while not stop.is_set():
             if self.waits(schwab_client) is not None or not self.watchlist:
                 stop.wait(1.0)
@@ -387,6 +393,7 @@ class ChainSweep:
             if chains:
                 self.rotation(schwab_client, chains, stop)
             if not chains and not candles:
+                self.retry_history()
                 stop.wait(1.0)
 
     def waits(self, schwab_client) -> str | None:
@@ -611,19 +618,40 @@ class ChainSweep:
             self.publish(*chain_failure_message(chain.ticker, reason, now))
 
     def deliver(self, chain: _Chain) -> None:
-        """The chain to the console, and to the chain history when it is the window's first, both
-        carrying the time the chain began (its as-of everywhere: a chain begun before the close is
-        not the close values, whenever it is delivered) and its one spot: Schwab's LAST_PRICE with
-        its trade time, as the daemon's price row holds it now that the chain is complete."""
+        """The chain to the chain history when it is the window's first, then to the console, so a
+        read on its arrival finds that capture (operator 2026-11-01), both carrying the time the
+        chain began (its as-of everywhere: a chain begun before the close is not the close values,
+        whenever it is delivered) and its one spot: Schwab's LAST_PRICE with its trade time, as the
+        daemon's price row holds it now that the chain is complete."""
         now = self.clock()
         row = price_row(chain.ticker, now)
         if row["spot"] is not None:  # a trade time without its price is no spot
             chain.spot, chain.spot_ts = row["spot"], row["trade_ts"]
         contracts = chain.contracts()
-        for topic, msg in chain_messages(
-            chain.ticker, contracts, chain.started, chain.spot, chain.spot_ts
-        ):
-            self.publish(topic, msg)
+        self._unwritten.pop(chain.ticker, None)
+        try:
+            self._write_history(chain)
+        except Exception as e:  # noqa: BLE001 -- the chain still goes to the console; a failed history write is the writer's to keep and show
+            log.warning(
+                "chain history for %s not written, kept as delivered: %s: %s",
+                chain.ticker,
+                type(e).__name__,
+                e,
+            )
+            self.failures.keep_failure(
+                f"chain_history.{chain.ticker}",
+                {
+                    "started": chain.started,
+                    "spots": chain.spots,
+                    "spot": chain.spot,
+                    "spot_ts": chain.spot_ts,
+                    "contracts": contracts,
+                },
+                e,
+                now,
+            )
+            self._unwritten[chain.ticker] = chain
+        self._publish_chain(chain)
         self._delivered.add(chain.ticker)
         self._fetched[chain.ticker] = chain.started
         missing = sum(
@@ -638,26 +666,29 @@ class ChainSweep:
                 missing,
                 len(contracts),
             )
-        try:
-            self._write_history(chain)
-        except Exception as e:  # noqa: BLE001 -- the chain is delivered; a failed history write is the writer's to keep and show
-            log.warning(
-                "chain history for %s not written, kept as delivered: %s: %s",
-                chain.ticker,
-                type(e).__name__,
-                e,
-            )
-            self.failures.keep_failure(
-                f"chain_history.{chain.ticker}",
-                {
-                    "spots": chain.spots,
-                    "spot": chain.spot,
-                    "spot_ts": chain.spot_ts,
-                    "contracts": contracts,
-                },
-                e,
-                now,
-            )
+
+    def _publish_chain(self, chain: _Chain) -> None:
+        for topic, msg in chain_messages(
+            chain.ticker, chain.contracts(), chain.started, chain.spot, chain.spot_ts
+        ):
+            self.publish(topic, msg)
+
+    def retry_history(self) -> None:
+        """Each capture whose write failed, written from the chain held, every HISTORY_RETRY_SEC:
+        no request goes to Schwab. Written, its chain goes to the console again, whose read then
+        finds it. A newer chain of the ticker replaces the one held (deliver)."""
+        now = self.clock()
+        if now - self._retried < HISTORY_RETRY_SEC:
+            return
+        self._retried = now
+        for ticker, chain in list(self._unwritten.items()):
+            try:
+                self._write_history(chain)
+            except Exception as e:  # noqa: BLE001 -- it stays held; the first failure is kept
+                log.warning("chain history for %s still not written: %s", ticker, e)
+                continue
+            del self._unwritten[ticker]
+            self._publish_chain(chain)
 
     def _write_history(self, chain: _Chain) -> None:
         """The chain history: a chain begun inside a capture window of the ticker's option market,
@@ -693,8 +724,11 @@ class ChainSweep:
             raise
 
 
-def newest_capture_ts(db_path: Path | str, ticker: str) -> float | None:
-    """When the ticker's newest full capture was taken; None when there is none."""
+def newest_capture_ts(
+    db_path: Path | str, ticker: str, *, before_ts: float = float("inf")
+) -> float | None:
+    """When the ticker's newest full capture before `before_ts` was taken; None when there is
+    none."""
     if not Path(db_path).is_file():
         return None
     conn = sqlite3.connect(f"file:{Path(db_path).resolve().as_posix()}?mode=ro", uri=True)
@@ -705,15 +739,20 @@ def newest_capture_ts(db_path: Path | str, ticker: str) -> float | None:
             return None
         return conn.execute(
             "SELECT MAX(ts_utc) FROM complete_chain_captures WHERE ticker=? "
-            "AND completeness_basis=?",
-            (ticker_storage_key(ticker), CAPTURE_BASIS),
+            "AND completeness_basis=? AND ts_utc<?",
+            (ticker_storage_key(ticker), CAPTURE_BASIS, before_ts),
         ).fetchone()[0]
     finally:
         conn.close()
 
 
 def last_capture_per_day(
-    db_path: Path | str, ticker: str, days: int, *, before_et_date: str | None = None
+    db_path: Path | str,
+    ticker: str,
+    days: int,
+    *,
+    before_et_date: str | None = None,
+    before_ts: float = float("inf"),
 ) -> list[dict[str, Any]]:
     """The last capture of each of the newest `days` market days (newest first) -- the close --
     each as {et_date, ts_utc, spot, spot_ts, spot_from_chain, basis, contracts} with every expiry of
@@ -721,7 +760,7 @@ def last_capture_per_day(
     true); a capture written without one gives its nearest expiry's underlyingPrice, `spot_ts`
     None and `spot_from_chain` false.
     `before_et_date` keeps only days before it (the previous market day for a day-over-day
-    view)."""
+    view); `before_ts` only captures taken before it."""
     tk = ticker_storage_key(ticker)
     conn = sqlite3.connect(f"file:{Path(db_path).resolve().as_posix()}?mode=ro", uri=True)
     try:
@@ -736,7 +775,7 @@ def last_capture_per_day(
             (tk, CAPTURE_BASIS),
         ):
             day = datetime.fromtimestamp(ts, ET).date().isoformat()
-            if before_et_date is not None and day >= before_et_date:
+            if ts >= before_ts or (before_et_date is not None and day >= before_et_date):
                 continue
             if picked and picked[-1][0] == day:
                 continue

@@ -1560,9 +1560,10 @@ def _publish_levels(
         memory = payload.get("_priced_chain")
         if memory is None:
             memory = payload.get("_chain")
-        newest = newest_capture_ts(get_db().db_path, tk)
+        # the capture before this chain: its own may be stored already
+        newest = newest_capture_ts(get_db().db_path, tk, before_ts=begun.timestamp())
         if payload.get("_count_capture_ts") != newest:
-            rows = last_capture_per_day(get_db().db_path, tk, 1)
+            rows = last_capture_per_day(get_db().db_path, tk, 1, before_ts=begun.timestamp())
             payload["_count_capture"] = rows[0].get("contracts") if rows else ()
             payload["_count_capture_ts"] = newest
         published = payload.get("spot")
