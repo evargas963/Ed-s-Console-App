@@ -1231,9 +1231,10 @@ async def run(asked: asyncio.Event, consume) -> None:
         ended = None if asked.is_set() else done.pop()
     finally:
         stopping.cancel()
-        console.cancel()
         stop.set()
-        await asyncio.gather(*tasks, return_exceptions=True)
+        await asyncio.gather(*(t for t in tasks if t is not console), return_exceptions=True)
+        console.cancel()  # last: no beat lands after it marks the feed down
+        await asyncio.gather(console, return_exceptions=True)
     if ended is not None:
         raise RuntimeError(
             f"the capture daemon's {ended.get_name()} ended before the stop"

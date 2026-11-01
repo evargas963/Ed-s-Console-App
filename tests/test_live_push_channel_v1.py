@@ -125,7 +125,7 @@ def _received(ts):
 
 
 def test_the_daemon_heartbeat_decides_liveness_end_to_end(feed):
-    """Real daemon servers -> real console feed loop. Live only while the daemon's status beats
+    """The daemon's real beat -> the real console reader. Live only while the daemon's status beats
     arrive, the Schwab socket is open and the daemon holds the symbol; the feed is down the
     moment the daemon's connections end. In regular hours: the beats and the reads run from
     RTH_INSTANT."""
@@ -292,6 +292,21 @@ def test_the_live_loop_never_opens_the_capture_database(feed):
     finally:
         _AUDITING.clear()
     assert _OPENED == [], f"the live feed opened a database: {_OPENED}"
+
+
+def test_the_beat_refreshes_a_quiet_tickers_row_and_restamps_what_is_live(feed):
+    """A held ticker with no quote has its row on the beat, and the console restamps each beat."""
+    restamped: list = []
+    ofs._on_feed_callback = restamped.append
+
+    async def body(bus):
+        assert await _until(lambda: ofs.price_row("SPY") is not None and len(restamped) >= 2)
+
+    try:
+        asyncio.run(_run(body))
+    finally:
+        ofs._on_feed_callback = None
+    assert ofs.price_row("SPY")["spot"] is None
 
 
 def test_a_record_that_fails_is_logged_and_a_daemons_next_run_is_read(feed, caplog):

@@ -165,8 +165,8 @@ def record_from_level_one_equity(
     return True
 
 
-#: callables told the ticker of every published row, in the process that owns this plane: the
-#: capture daemon's browser push (live_ui).
+#: callables told the ticker of every published row: the browser push (live_ui) and the console
+#: (streaming._took_row).
 _row_listeners: list = []
 
 
@@ -237,7 +237,7 @@ def record_feed_heartbeat(msg: dict[str, Any]) -> None:
 
 
 def record_feed_down() -> None:
-    """The connection to the daemon ended: nothing is live until a heartbeat arrives.
+    """The daemon ended: nothing is live until a heartbeat arrives.
     The symbols that beat last named stay, so the last streamed values still price.
     The last watchlist stays with them."""
     with _lock:
