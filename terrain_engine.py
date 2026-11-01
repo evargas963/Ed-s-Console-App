@@ -329,7 +329,7 @@ def positioning_migration(today: list, prior: list, call_wall, put_wall) -> dict
         "shrank": shrank,
         "busiest": busiest,
         "busiest_vs_walls": where,
-        "volume_total": side_total([r[2] for r in today or []]),
+        "volume_total": side_total([r[2] for r in today]),
     }
 
 
