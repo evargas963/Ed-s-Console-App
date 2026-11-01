@@ -233,8 +233,8 @@ def _per_strike_rows(exposures: dict) -> list[list]:
 
     No fallbacks:
       * the bar is net GEX$ from a DOLLARIZED book, exact (a strike whose contracts have open
-        interest 0 is a $0 bar). A strike whose GEX is not known
-        (bucket_metric), or a book built without spot, has no bar.
+        interest 0 is a $0 bar). A strike whose GEX is not known (bucket_metric) keeps its row
+        with None, so a total of its side is unknown too; a book built without spot has no rows.
       * volume is strike_total_volume, the one reader: Schwab's volumes as sent (0 is a real
         zero); None ("—") when a contract at the strike did not report it, never a partial sum.
     """
@@ -253,8 +253,6 @@ def _per_strike_rows(exposures: dict) -> list[list]:
         if sk is None:  # a NaN strike must never become a rendered bar
             continue
         gf = float_finite_or_none(net_gex_dollars_at_strike(b))
-        if gf is None:
-            continue
         vol = strike_total_volume(b)
         rows.append([sk, gf, vol])
     rows.sort(key=lambda r: r[0])

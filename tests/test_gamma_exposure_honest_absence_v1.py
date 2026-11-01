@@ -74,8 +74,8 @@ def test_real_chain_reported_zero_oi_shows_zero_and_unreported_shows_absent():
     assert cell[gone_k]["gex"] == [None]
     exposures, _ = compute_exposures_by_strike(chain, spot=CRWD.spot, now=CRWD.now)
     assert exposures[zero_k]["net_gex_1pct"] == 0 and exposures[gone_k]["oi_unreported"] > 0
-    rows = {r[0] for r in _per_strike_rows(exposures)}
-    assert zero_k in rows and gone_k not in rows
+    rows = {r[0]: r[1] for r in _per_strike_rows(exposures)}
+    assert rows[zero_k] == 0 and rows[gone_k] is None
 
 
 def test_vanna_by_strike_route_omits_unreported_oi_strikes():

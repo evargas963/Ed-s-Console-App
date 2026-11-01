@@ -65,13 +65,13 @@ def test_a_genuine_zero_gamma_still_draws_its_bar():
     assert len(rows) == 1 and rows[0][1] == pytest.approx(0.0)
 
 
-def test_a_strike_with_a_contract_whose_gamma_term_was_not_sent_draws_no_bar():
+def test_a_strike_with_a_contract_whose_gamma_term_was_not_sent_has_gex_unknown():
     """A contract at the strike sent no open interest (or has open interest and no Greek): the
     strike's GEX is not known, whatever its accumulator holds."""
     rows = TE._per_strike_rows(
         {500.0: {"dollarized": True, "call_gamma_unreported": 1, "net_gex_1pct": 1_234_567.0}}
     )
-    assert rows == [], f"drew a bar for a strike whose GEX is not known: {rows}"
+    assert [r[:2] for r in rows] == [[500.0, None]]
 
 
 # ------------------------------------- a NULL bar volume is not zero traded volume ----
