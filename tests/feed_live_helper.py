@@ -54,9 +54,10 @@ async def changes_within(page: push_changes.Client, within: float) -> set[str]:
 
 
 async def takes_a_beat(page) -> None:
-    """`page` reads frames until the daemon's beat comes."""
+    """`page` reads frames until a beat carries the daemon's status."""
     async for frame in page:
-        if json.loads(frame)["type"] == "feed":
+        beat = json.loads(frame)
+        if beat["type"] == "feed" and beat["feed"] is not None:
             return
 
 

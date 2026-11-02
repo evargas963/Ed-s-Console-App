@@ -478,7 +478,6 @@
   // The page holds the list as the console last served it (/api/watchlist); an add or a removal
   // is the daemon's (POST / DELETE /api/watchlist), and its answer carries the new list.
   var _wl = [];
-  var _wlRead = false;   // the console has answered with the list
   function loadWL() { return _wl.slice(); }
   function wlFetch(url, opts) {
     return fetch(url, opts).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); });
@@ -487,7 +486,7 @@
     wlFetch('/api/watchlist', { cache: 'no-store' })
       .then(function (a) {
         if (!a.ok) { wlNotify(a.j.error); return; }
-        _wl = a.j.tickers; _wlRead = true; renderWatchlist();
+        _wl = a.j.tickers; renderWatchlist();
         if (a.j.live === false) wlNotify('the capture daemon is not reporting');
       })
       .catch(function (e) { wlNotify('The watchlist could not be read: ' + e); });
@@ -600,7 +599,6 @@
     var si = document.getElementById('symInput'); if (si) { si.value = state.ticker; buildSymList(); }   // the control reflects the ONE state
     state.selStrike = null; state.selExpiry = null;   // a new ticker clears the shared selection
     loadExpiries(state.ticker);       // refresh the expiry dropdown from /api/expiries for the new ticker
-    refreshWL();                         // the list as the daemon keeps it
     _priceSubTs = Date.now();
     _quoteShown = false;                 // the last ticker's price is not this one's
     subscribePrices();                   // the daemon answers with this ticker's row at once
@@ -802,9 +800,8 @@
     ws.onopen = function () {
       _priceRetry = 0;
       subscribePrices();
-      refreshWL();                       // the list as the daemon keeps it
-      // the page's reads before this subscribe found it not viewing, and no notice reached it
-      if (state.ticker) CHANGE_KINDS.forEach(valueChanged);
+      if (_priceWasOpen && state.ticker) CHANGE_KINDS.forEach(valueChanged);   // no notice reached it
+      _priceWasOpen = true;
     };
     ws.onmessage = function (ev) {
       var msg; try { msg = JSON.parse(ev.data); } catch (e) { return; }
@@ -813,7 +810,10 @@
       if (msg && msg.type === 'feed') {
         paintRecord(msg.feed && msg.feed.writer);
         paintSession(msg.session);
-        if (msg.feed && !_wlRead) refreshWL();   // the daemon reports: the list is there to read
+        // the list as the daemon keeps it
+        if (msg.feed && JSON.stringify(msg.feed.watchlist) !== JSON.stringify(_wl)) {
+          _wl = msg.feed.watchlist; renderWatchlist();
+        }
       }
       if (!msg || !Array.isArray(msg.rows)) return;
       _priceUp = true; _lastPriceTs = Date.now();
@@ -887,6 +887,7 @@
   // ---- which of this ticker's values changed, as the page's socket says. Each panel reloads on
   // `ed:changed` for the kinds it shows: levels, flow, liquidity. ----
   var CHANGE_KINDS = ['levels', 'chain', 'flow', 'liquidity'];
+  var _priceWasOpen = false;
   function valueChanged(kind) {
     if (kind === 'chain') loadExpiries(state.ticker);
     emit('ed:changed', { kind: kind });
