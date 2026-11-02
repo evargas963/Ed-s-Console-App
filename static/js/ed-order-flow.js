@@ -6,8 +6,8 @@
    view's exact .fl-* CSS grammar so a book reads the same whether it's an option contract's
    or the ticker's own -- one visual language, not a second one invented here.
 
-   The console streams the books of the ticker whose /api/changes connection is open (the page
-   opens it for its ticker); a book not yet arrived reads "No <venue> for <ticker>". */
+   The console streams the books of the ticker an open page shows (its socket says so); a book
+   not yet arrived reads "No <venue> for <ticker>". */
 (function () {
   'use strict';
 

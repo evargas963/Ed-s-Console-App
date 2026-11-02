@@ -7,7 +7,7 @@
  */
 const { test, expect } = require('@playwright/test');
 const path = require('path');
-const { mockPriceSocket, priceRow } = require('./fixtures/price_socket');
+const { mockChange, mockPriceSocket, priceRow } = require('./fixtures/price_socket');
 const { routeWatchlist } = require('./fixtures/watchlist');
 
 const CROSSES = require(path.join(__dirname, '..', 'fixtures', 'real_spy_level_crosses.json')).rows.slice(0, 3);
@@ -445,10 +445,10 @@ test.describe('Trade Desk renders served values', () => {
     expect(errs).toEqual([]);
   });
 
-  test('Desk: selecting a ticker opens its /api/changes connection (the book request)', async ({ page }) => {
+  test('Desk: selecting a ticker tells the page socket (the book request)', async ({ page }) => {
     await intercept(page);
     const opened = [];
-    page.on('request', (r) => { if (r.url().includes('/api/changes')) opened.push(new URL(r.url()).searchParams.get('ticker')); });
+    await mockChange(page, null, 'levels', () => new Promise(() => {}), (ticker) => opened.push(ticker));
     await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect.poll(() => opened).toContain('SPY');

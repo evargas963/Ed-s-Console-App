@@ -143,7 +143,7 @@ def _told(tk: str, takes) -> list:
                 told.append(await push_changes.next_changes(page, 0.5))
             return told
         finally:
-            push_changes.unsubscribe(tk, page)
+            push_changes.unsubscribe(page)
             push_changes.bind(None)
 
     return asyncio.run(main())

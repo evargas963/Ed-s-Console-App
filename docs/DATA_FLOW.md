@@ -206,7 +206,7 @@ from Schwab to the screen (daemon, console, page), are these:
 
 Today's code, accurate as of the last PR that touched each part. It is being replaced by the
 design of §1: §3.1's two processes become one program (SHAPE step 3), §3.2's channels between them
-are deleted and the page's `/api` reads and `/api/changes` give way to the one push (step 4), and
+are deleted and the page's `/api` reads give way to the one push (step 4), and
 §3.3's console memory becomes the one State.
 
 ### 3.1 The processes
@@ -228,7 +228,7 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
 | daemon → browser | WebSocket `/ws`, on the program's own port | on each subscribe, what every asked-for symbol is (its key, e.g. `$SPX`, and display name `SPX`, from `instrument_identity`); then the finished price row per symbol, on every change, plus a heartbeat every second: the daemon's whole status (Schwab socket, why it is not connected, symbols held per service, the watchlist, the chain sweep's last round time, health). The page matches rows by that key and shows that name; the market-context symbols come in the page (meta `ed-market-context`, from `live_market_plane.MARKET_CONTEXT`). A browser that does not take its heartbeat within `live_ui.HEARTBEAT_SEC` has stopped reading: the beat (`LiveUiServer.beat_loop`, the one place a client that stopped reading is dropped; each connection's handler, `serve_client`, owns its lifetime) drops it: its handler ends and nothing more is written to it. The connection closes once what is already buffered has gone or the browser has (ASGI offers no abort), and the program's stop waits on it at most `--timeout-graceful-shutdown`. The page reconnects when it sees the close, its first rows then the fresh snapshot. While no daemon runs, `/ws` refuses the handshake, so the page's reconnect keeps its schedule |
 | daemon → console | the plane, in the one program (`live_price_rows.price_row`) | the same price rows, finished at each read from the plane, the one store of a live price; each new row is an equity's tick (`streaming.follow`). The daemon's status is the beat `live_ui` records in the plane, its one record |
 | console → browser | HTTP `/api/*` | everything else, on request |
-| console → browser | Server-Sent Events (`/api/changes`) | which of the ticker's values changed (`levels`, `chain`, `flow`, `liquidity`) and the session label |
+| console → browser | the same `/ws` | which of the ticker the page's subscribe named has changed (`levels`, `chain`, `flow`, `liquidity`), and the session label on every heartbeat |
 
 ### 3.3 Where data lives
 
@@ -247,7 +247,7 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
   levels and top of book use; (c) the raw message → the console's order-flow tape. Pushed
   end to end; one price row everywhere.
 - **Option quote and order book.** Schwab → daemon bus → writer, and → console memory → a
-  `flow` push on `/api/changes` → the browser reads the order-flow and heatmap routes. An equity
+  `flow` push on `/ws` → the browser reads the order-flow and heatmap routes. An equity
   has two Schwab books, NYSE_BOOK (exchanges) and NASDAQ_BOOK (market makers); each is stored
   under its service and served for the `venue` the screen's venue switch names, never combined.
   The books streamed are every watchlist ticker's. For each option contract the daemon holds
@@ -313,7 +313,7 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
   over its minute (a history sent again is taken only for the minutes not held: one that adds
   none changes nothing, pushes nothing and rebuilds no level; daily candles the same as those
   held push nothing, new ones push like a new bar); `_daily`, the daily candles (the console reads no database
-  for them, and writes no bar) → a `liquidity` push on `/api/changes` → the browser reads
+  for them, and writes no bar) → a `liquidity` push on `/ws` → the browser reads
   `/api/bars1m`. Enforced by: `tests/test_data_path_pricehistory_v1.py`; the order,
   `tests/test_data_path_rules_v1.py::test_d5_a_start_asks_every_tickers_price_history_before_any_chain`. Charts show completed Schwab bars only, exactly as Schwab sent them, with
   the newest bar's minute (`last_bar`). The live Schwab LAST_PRICE (the header's price row, with
@@ -483,7 +483,7 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
   300 — about 1,546 requests a rotation. The request rate and rotation time on the live watchlist
   are unmeasured (`ACTIVE_PROGRAM.md` SPEED).
 - **Levels** (walls, flip, GEX, vanna, charm, max pain, PCR). Computed by the console from the
-  chain in memory + spot → console memory → a `levels` push on `/api/changes` (and `chain` when
+  chain in memory + spot → console memory → a `levels` push on `/ws` (and `chain` when
   a new chain arrived) → the browser reads `/api/terrain` and four other slice routes. Not stored; at startup they are computed from the
   newest chain capture of each watchlist ticker the daemon has not yet delivered a chain for (once the
   daemon's heartbeat says what the watchlist is), queued on the pricing thread behind the delivered
@@ -508,7 +508,7 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
   absent (enforced by `tests/test_data_path_charm_side_unknown_v1.py` and `tests/test_data_path_side_volume_v1.py`); the screen draws "-". ΔOI is a side's total on the newer day less its total on the older day, both cut at the newer price: a strike a whole chain does not list holds no contracts that day, and the card names the older day. An ATR that cannot be computed is absent (`server._atr_fields`); the
   screen draws "-". None of these rules names a ticker; the
   watchlist decides which tickers are fetched and priced. A viewed
-  ticker is one an open page shows (its `/api/changes` stream, on any workspace, open while the
+  ticker is one an open page shows (its `/ws` subscribe names it, on any workspace, open while the
   stream runs): every streamed tick queues a reprice on the pricing thread (the ticks that arrive
   while one waits or runs are all in the next), and it is pushed to the page the moment it
   changes. Which page opened last decides nothing. With the daemon not reporting (no
@@ -641,8 +641,7 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
   answers (`server._load_stored_sessions`, `tests/test_data_path_stored_sessions_v1.py`), as a
   stored chain's expiries reach it before the daemon's answers do. A stream database that cannot
   be read stops the console's start with its error. The label (`time_et.session_label`: Pre-Market, RTH, After-Hours,
-  Closed, Unknown) is pushed on `/api/changes` when the page connects and every 5 s with no other
-  change. The same answers decide every session window: the prior-day, overnight, VWAP and
+  Closed, Unknown) rides every `/ws` heartbeat. The same answers decide every session window: the prior-day, overnight, VWAP and
   value-area windows (the regular session), the Trade Desk's "this session" window
   (`time_et.last_open`), the chain history's capture windows (the option markets, to the last close), and
   each contract's time to expiry (the EQO regular close of its expiry date, or its open for
@@ -658,11 +657,11 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
   quotes from 04:00 ET are shown and recorded), and the order-flow state keeps every book,
   top-of-book field, print and streamed Greek through the open. Enforced by:
   `tests/test_markets_sessions_v1.py`, `tests/test_data_path_charm_side_unknown_v1.py`.
-- **Lifecycle.** `/api/changes` (console, `push_changes.py`): the levels producer, the stream
+- **Lifecycle.** `/ws` (`live_ui`, `push_changes.py`): the levels producer, the stream
   handler (equity quote and book) and the bar writer mark a ticker's kind changed; each page
-  connection gets each change the moment it is marked (changes marked while one is sent go in
-  the next). The console down: the page's session label reads
-  `—` and no panel reloads until the browser's EventSource reconnects. A Trade Desk timeframe
+  socket gets each change the moment it is marked (changes marked while one is sent go in
+  the next). The socket down: the page's session label reads
+  UNKNOWN and no panel reloads until it reconnects, when each reloads once. A Trade Desk timeframe
   switch asks only for that timeframe's bars, levels and event window. Each panel re-reads only
   for the kinds it shows; Right Now re-reads all five of its reads on every push, because each
   serves values derived at read time (the live price, each level's distance, the chain's

@@ -21,13 +21,16 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from datetime import datetime
 
 import pytest
 
 import live_market_plane as lmp
+import push_changes
 from app.market_data.schwab.streaming import capture, live_ui
 from stream_spine import HealthRegistry, MessageBus, quote_msg
 from tests.feed_live_helper import connect, page_socket, refused, takes_a_beat
+from time_et import ET, session_label
 
 
 @pytest.fixture(autouse=True)
@@ -269,6 +272,34 @@ def test_shutdown_is_not_held_up_by_a_connected_browser():
     t0 = time.monotonic()
     asyncio.run(_run(body))
     assert time.monotonic() - t0 < 5
+
+
+def test_a_change_reaches_the_page_on_its_ticker_once_and_the_beat_carries_the_session():
+    """Two pages on two tickers. A change of one ticker reaches its page on the socket, each kind
+    once, and not the other page; the beat says the session; a page that leaves stops counting as
+    viewing its ticker."""
+
+    async def body(bus, ws, feed, stats):
+        push_changes.bind(asyncio.get_running_loop())
+        await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"], "ticker": "SPY"}))
+        while "SPY" not in push_changes.watched():
+            await asyncio.sleep(0.01)
+        beat = {}
+        while beat.get("type") != "feed":
+            beat = json.loads(await asyncio.wait_for(ws.recv(), 5))
+        assert beat["session"] == session_label(datetime.fromtimestamp(feed.clock(), ET))
+        for kind in ("levels", "flow", "levels"):
+            push_changes.changed("SPY", kind)
+        push_changes.changed("AAPL", "chain")
+        frame = {}
+        while frame.get("type") != "changes":
+            frame = json.loads(await asyncio.wait_for(ws.recv(), 5))
+        assert frame["kinds"] == ["flow", "levels"]
+        await ws.send(json.dumps({"op": "subscribe", "symbols": [], "ticker": ""}))
+        while "SPY" in push_changes.watched():
+            await asyncio.sleep(0.01)
+
+    asyncio.run(_run(body))
 
 
 def test_a_page_is_refused_with_no_daemon_and_served_by_the_daemons_next_run():

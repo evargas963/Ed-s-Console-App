@@ -143,7 +143,7 @@ const CHAIN = {
 };
 
 // The capture daemon's price socket, stood in for (tests/e2e/fixtures/price_socket.js).
-const { mockPriceSocket, priceRow } = require('./fixtures/price_socket');
+const { mockChange, mockPriceSocket, priceRow } = require('./fixtures/price_socket');
 // The console's watchlist routes, stood in for (tests/e2e/fixtures/watchlist.js).
 const { routeWatchlist } = require('./fixtures/watchlist');
 
@@ -151,21 +151,15 @@ const { routeWatchlist } = require('./fixtures/watchlist');
 // One levels push on `ticker`'s change stream, held until the test calls the returned release():
 // the push lands where the test says, however long the page took to get there.
 async function routeOneLevelsPush(page, ticker = 'SPY') {
-  let pushes = 0, release;
+  let release;
   const held = new Promise((r) => { release = r; });
-  await page.route(`**/api/changes?ticker=${ticker}**`, async (route) => {
-    pushes += 1;
-    await (pushes === 1 ? held : new Promise((r) => setTimeout(r, 1000)));
-    route.fulfill({ status: 200, contentType: 'text/event-stream',
-      body: pushes === 1 ? `event: levels\ndata: ${ticker}\n\n` : 'event: session\ndata: RTH\n\n' });
-  });
+  await mockChange(page, ticker, 'levels', () => held);
   return release;
 }
 
 async function intercept(page) {
   await page.route('**/api/**', (route) => {
     const url = route.request().url();
-    if (url.includes('/api/changes')) return route.fallback();   // the test server's own push
     let body = { available: false };
     if (url.includes('/api/options/gamma-surface')) body = SURFACE;
     else if (url.includes('/api/terrain/strikes')) body = STRIKES;
@@ -198,8 +192,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#hSession')).toHaveClass(/unknown/);
   });
 
-  test('a levels push on /api/changes reloads the heatmap, with no manual event dispatch', async ({ page }) => {
-    // Delivery, not rendering: the browser's own EventSource parses the pushed `levels` event.
+  test('a levels change on the page socket reloads the heatmap, with no manual event dispatch', async ({ page }) => {
     let surfaceCalls = 0;
     await page.route('**/api/options/gamma-surface**', (route) => {
       surfaceCalls += 1;
@@ -213,13 +206,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
         })),
       });
     });
-    let pushes = 0;
-    await page.route('**/api/changes**', async (route) => {
-      pushes += 1;
-      await new Promise((r) => setTimeout(r, 500));   // after the first render
-      route.fulfill({ status: 200, contentType: 'text/event-stream',
-        body: pushes === 1 ? 'event: levels\ndata: SPY\n\n' : 'event: session\ndata: RTH\n\n' });
-    });
+    await mockChange(page, 'SPY', 'levels', () => new Promise((r) => setTimeout(r, 500)));   // after the first render
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const cell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
     await expect(cell).toHaveText('$1.0K');
@@ -944,7 +931,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   });
 
   test('header never paints a quote from a poll: no push -> UNAVAILABLE, not a fallback', async ({ page }) => {
-    // the price comes only from the daemon's push; the session label from the console's
+    // the price and the session label come only from the push
     await page.routeWebSocket(/\/ws$/, (ws) => ws.close());          // the daemon is down
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#hPx')).toHaveText('UNAVAILABLE');
@@ -1527,7 +1514,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     const reads = [];
     page.on('request', (r) => {
       const u = new URL(r.url());
-      if (r.method() === 'GET' && u.pathname.startsWith('/api/') && u.pathname !== '/api/changes') reads.push(u.pathname);
+      if (r.method() === 'GET' && u.pathname.startsWith('/api/')) reads.push(u.pathname);
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('.hcell').first()).toBeVisible();

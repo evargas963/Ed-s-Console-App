@@ -8,19 +8,25 @@ browser that asked for the symbol, the moment a Schwab message changes it, on th
 the page holds (/ws, page_socket).
 
 Protocol (JSON text frames):
-  browser -> {"op": "subscribe", "symbols": ["SPY", "AAPL", ...]}   (replaces the set)
+  browser -> {"op": "subscribe", "symbols": ["SPY", "AAPL", ...], "ticker": "SPY"}
+                                                                     (replaces the set, and the
+                                                                     ticker the page shows)
   server  -> {"type": "symbols", "symbols": [{requested, key, display}, ...]}  (on subscribe:
                                                                      what each asked-for symbol
                                                                      is -- "SPX" is key "$SPX",
                                                                      shown "SPX")
   server  -> {"type": "quotes", "rows": [price_row, ...]}            (snapshot on subscribe,
                                                                      then every change)
-  server  -> {"type": "feed", "feed": {...}, "rows": [...]}           (every HEARTBEAT_SEC:
-                                                                     the daemon's whole status
-                                                                     and a fresh row per symbol,
-                                                                     so a dead feed reads dead
-                                                                     within FEED_HEARTBEAT_
-                                                                     MAX_AGE_SEC)
+  server  -> {"type": "feed", "feed": {...}, "rows": [...], "session": "RTH"}
+                                                                     (every HEARTBEAT_SEC:
+                                                                     the daemon's whole status,
+                                                                     a fresh row per symbol, so a
+                                                                     dead feed reads dead within
+                                                                     FEED_HEARTBEAT_MAX_AGE_SEC,
+                                                                     and the market session)
+  server  -> {"type": "changes", "kinds": ["levels", ...]}           (which of the ticker's
+                                                                     values changed: the page
+                                                                     reloads them)
 
 Delivery is latest-value-per-symbol per client (conflation, as Lightstreamer MERGE /
 LSEG conflated feeds do): a slow browser gets the newest row for each symbol it is behind
@@ -33,12 +39,15 @@ import asyncio
 import json
 import logging
 import time
+from datetime import datetime
 
 from fastapi import WebSocket
 
 import live_market_plane as lmp
 import live_price_rows
+import push_changes
 from instrument_identity import display_symbol, ticker_storage_key
+from time_et import ET, session_label
 
 log = logging.getLogger(__name__)
 
@@ -47,7 +56,7 @@ HEARTBEAT_SEC = 1.0
 
 
 class _Client:
-    __slots__ = ("ws", "symbols", "pending", "identity", "wake", "dropped")
+    __slots__ = ("ws", "symbols", "pending", "identity", "wake", "dropped", "page")
 
     def __init__(self, ws) -> None:
         self.ws = ws
@@ -56,6 +65,7 @@ class _Client:
         self.identity: list[dict] | None = None  # the last subscribe's answer, not yet sent
         self.wake = asyncio.Event()
         self.dropped = asyncio.Event()  # the beat gave up on it, or the daemon stopped
+        self.page = push_changes.Client()  # the ticker it shows, for the change notices
 
 
 #: the server while the daemon runs (serve_live_ui)
@@ -115,6 +125,12 @@ class LiveUiServer:
             if rows:
                 await self._send(c, {"type": "quotes", "rows": rows})
 
+    async def _changes(self, c: _Client) -> None:
+        while True:
+            kinds = await push_changes.next_changes(c.page, HEARTBEAT_SEC)
+            if kinds:
+                await self._send(c, {"type": "changes", "kinds": sorted(kinds)})
+
     async def _read(self, c: _Client) -> None:
         async for frame in c.ws.iter_text():
             try:
@@ -142,6 +158,10 @@ class LiveUiServer:
             c.identity = identity  # what each asked-for symbol is, before its rows
             c.pending = set(keys)  # snapshot: the current row for each, now
             c.wake.set()
+            ticker = req.get("ticker")
+            push_changes.unsubscribe(c.page)
+            if isinstance(ticker, str) and ticker_storage_key(ticker):
+                push_changes.subscribe(ticker_storage_key(ticker), c.page)
 
     async def serve_client(self, ws) -> None:
         """One accepted page socket (page_socket), until it closes or is dropped."""
@@ -150,17 +170,20 @@ class LiveUiServer:
         self.stats["clients"] = len(self.clients)
         pump = asyncio.create_task(self._pump(c))
         read = asyncio.create_task(self._read(c))
+        changes = asyncio.create_task(self._changes(c))
         dropped = asyncio.create_task(c.dropped.wait())
+        tasks = (pump, read, changes, dropped)
         try:
-            await asyncio.wait({pump, read, dropped}, return_when=asyncio.FIRST_COMPLETED)
-            for t in (pump, read):
+            await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            for t in tasks:
                 if t.done() and not t.cancelled() and t.exception() is not None:
                     e = t.exception()
                     log.info("live ui client ended: %s: %s", type(e).__name__, e)
         finally:
-            for t in (pump, read, dropped):
+            for t in tasks:
                 t.cancel()
-            await asyncio.gather(pump, read, dropped, return_exceptions=True)
+            await asyncio.gather(*tasks, return_exceptions=True)
+            push_changes.unsubscribe(c.page)
             self.clients.discard(c)
             self.stats["clients"] = len(self.clients)
 
@@ -172,6 +195,7 @@ class LiveUiServer:
                 log.warning("live ui heartbeat: %s: %s", type(e).__name__, e)
                 feed = None
             now = self.clock()
+            session = session_label(datetime.fromtimestamp(now, ET))
             for c in list(self.clients):
                 # one browser can neither stop the beat nor hold it: an error is logged and the
                 # next browser still gets its beat; a browser that does not take its beat within
@@ -179,7 +203,9 @@ class LiveUiServer:
                 try:
                     rows = [live_price_rows.price_row(s, now) for s in sorted(c.symbols)]
                     await asyncio.wait_for(
-                        self._send(c, {"type": "feed", "feed": feed, "rows": rows}),
+                        self._send(
+                            c, {"type": "feed", "feed": feed, "rows": rows, "session": session}
+                        ),
                         timeout=HEARTBEAT_SEC,
                     )
                 except TimeoutError:

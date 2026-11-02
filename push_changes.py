@@ -1,7 +1,7 @@
-"""The console's push: which of a ticker's served values changed (the page reloads what changed).
+"""Which of a ticker's served values changed (the page reloads what changed).
 
-Every open page holds one connection (/api/changes) on its ticker, kept in the order they opened.
-A changed value (`changed`) reaches the pages open on its ticker on the event loop.
+Every open page holds one socket (live_ui) on its ticker, kept in the order they opened. A changed
+value (`changed`) reaches the pages open on its ticker on the event loop.
 """
 
 from __future__ import annotations
@@ -39,8 +39,8 @@ def subscribe(tk: str, c: Client | None = None) -> Client:
     return c
 
 
-def unsubscribe(tk: str, c: Client) -> None:
-    """The page closed (on the event loop)."""
+def unsubscribe(c: Client) -> None:
+    """The page closed, or left its ticker (on the event loop)."""
     _open[:] = [(t, x) for t, x in _open if x is not c]
 
 

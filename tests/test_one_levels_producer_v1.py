@@ -64,7 +64,7 @@ def _clean():
         server._chains_delivered.discard(TK)
     yield pages
     for tk, page in pages:
-        push_changes.unsubscribe(tk, page)
+        push_changes.unsubscribe(page)
     ofls.clear_all_live_state()
     lmp.record_feed_down()
     forget_price(TK)
@@ -73,7 +73,7 @@ def _clean():
 
 
 def _view(pages: list, tk: str = TK) -> None:
-    """A page opens on `tk` (its /api/changes connection)."""
+    """A page opens on `tk` (its socket)."""
     pages.append((tk, push_changes.subscribe(tk)))
 
 

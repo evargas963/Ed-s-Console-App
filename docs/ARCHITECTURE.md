@@ -43,7 +43,7 @@ the token, logs) and worktrees.
 | `server.py` (the routes and startup), `static/` | `push/`, `static/` |
 | `stream_spine.py` (the writer, `CaptureWriter`), `db.py`, `db_authority.py`, `db_safety.py`, `json_blob_codec.py`, the chain history writes | `recorder/` |
 | `time_et.py`, `config.py`, `runtime_layout.py`, `instrument_identity.py`, `numeric_contract.py` | `shared/` |
-| `push_changes.py` (SSE `/api/changes`), `static/js/l1_sse_guards.js` | deleted: one program needs no channel between processes, and the page gets the one push |
+| `push_changes.py`, `static/js/l1_sse_guards.js` | deleted: one program needs no channel between processes, and the page gets the one push |
 | `launch.py`, `reauth_schwab.py`, `start_ed_console.bat` | stay at the root |
 
 ## 3. The order

@@ -471,7 +471,7 @@ def test_the_stored_levels_are_priced_while_a_page_on_another_ticker_takes_ticks
             ticking.set()
             ticker.join(10)
     finally:
-        push_changes.unsubscribe(tk, page)
+        push_changes.unsubscribe(page)
         while True:  # what still waits is priced
             server._chain_pricing.submit(lambda: None).result(timeout=60)
             with server._chains_waiting_lock:
