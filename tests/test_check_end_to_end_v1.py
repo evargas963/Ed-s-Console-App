@@ -658,6 +658,20 @@ def test_a_file_that_is_not_utf8_fails_the_check_itself(tmp_path):
     assert run.returncode == 2, run.stdout + run.stderr
 
 
+@pytest.mark.parametrize(
+    "body, refused",
+    [
+        ("", 3),
+        ("Schwab → screen: quote\nDeleted: old\nEnd-to-end test: test_x\n", 0),
+        ("Schwab -> screen: quote\nDeleted: old\nEnd-to-end test: test_x\n", 0),
+        ("Schwab → screen: quote\nDeleted:\nEnd-to-end test: test_x\n", 1),
+        ("Deleted: old\nEnd-to-end test: test_x\n", 1),
+    ],
+)
+def test_the_description_fills_its_sections(body, refused):
+    assert len(cee.body_violations(body)) == refused
+
+
 def test_deleting_a_product_file_is_a_product_change(tmp_path):
     root = _repo(tmp_path, {**BASE, "dead.py": "def unused(row):\n    return row['ask']\n"})
     subprocess.run(["git", "rm", "-q", "dead.py"], cwd=root, check=True, capture_output=True)
