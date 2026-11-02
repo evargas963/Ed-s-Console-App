@@ -407,17 +407,3 @@ def test_db_path_e_explicit_test_path_still_bypasses_the_resolver(tmp_path):
     explicit = tmp_path / "explicit.db"
     w = CaptureWriter(explicit)
     assert w.db_path == explicit.resolve()
-
-
-def test_production_stream_daemon_exposes_no_database_path_switch(tmp_path):
-    """The daemon started with a database path refuses it and exits 2 before it starts: no
-    log, no owner lock, no connection."""
-    done = _in_own_python(
-        "import sys\n"
-        "from app.market_data.schwab.streaming import capture\n"
-        f"sys.argv = ['capture.py', '--db', {str(tmp_path / 'fork.db')!r}]\n"
-        "sys.exit(capture.main())\n"
-    )
-    assert done.returncode == 2, (done.stdout, done.stderr)
-    assert "takes no arguments" in done.stderr, done.stderr
-    assert not (tmp_path / "fork.db").exists()

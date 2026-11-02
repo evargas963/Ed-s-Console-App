@@ -65,4 +65,3 @@ max-complexity = 10
 [lint.per-file-ignores]
 "tests/**" = ["ARG", "T20"]
 "tools/**" = ["T20"]
-"app/market_data/schwab/streaming/capture_main.py" = ["PLC0415"] # the operator's one import

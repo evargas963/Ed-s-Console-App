@@ -1,7 +1,6 @@
-"""The capture daemon's start, Schwab to the screen: its window closes when its batch ends, and the
-stop takes only this checkout's processes; why Schwab is not connected reaches the daemon's log and
-/api/health on its heartbeat; a module that fails to load, and a chain sweep thread that ends on an
-error, leave their reason in the daemon's log."""
+"""The capture daemon's start, Schwab to the screen: the stop takes only this checkout's processes;
+why Schwab is not connected reaches the daemon's log and /api/health on its heartbeat; a chain sweep
+thread that ends on an error leaves its reason in the daemon's log."""
 
 from __future__ import annotations
 
@@ -9,15 +8,12 @@ import asyncio
 import json
 import os
 import re
-import shutil
-import site
 import socket
 import sqlite3
 import subprocess
 import sys
 import threading
 import time
-import venv
 from pathlib import Path
 
 import psutil
@@ -52,9 +48,9 @@ async def _until(cond, limit: float = 10.0) -> None:
 
 
 def test_a_web_page_cannot_reach_the_daemons_local_socket():
-    """The console and `launch.py stop` send no Origin and connect; a browser always sends one, and
-    a page on any site is refused before it reads the stream or asks the daemon to stop. Induced
-    test condition: a client sending the Origin a page's browser would."""
+    """The console sends no Origin and connects; a browser always sends one, and a page on any site
+    is refused before it reads the stream. Induced test condition: a client sending the Origin a
+    page's browser would."""
 
     async def go():
         stop, stats = asyncio.Event(), {}
@@ -72,99 +68,6 @@ def test_a_web_page_cannot_reach_the_daemons_local_socket():
         return refused.value.response.status_code
 
     assert asyncio.run(asyncio.wait_for(go(), 30)) == 403
-
-
-@pytest.mark.skipif(
-    sys.platform != "win32", reason="the daemon's window is a Windows console window"
-)
-def test_the_daemons_window_closes_when_its_batch_ends(tmp_path):
-    """The launcher's command for the daemon's window (launch.daemon_window) runs the batch in a
-    window of its own; when the batch ends (the daemon stopped on request), the window's cmd ends
-    too, so no empty window stays open."""
-    window_pid = tmp_path / "window.pid"
-    bat = tmp_path / "daemon.bat"
-    bat.write_text(
-        f'@"{sys.executable}" -c "import psutil; '
-        "window = next(p for p in psutil.Process().parents() "
-        "if p.name().lower() == 'cmd.exe'); "
-        f"open(r'{window_pid}', 'w').write(str(window.pid))\"\r\n",
-        encoding="utf-8",
-    )
-    subprocess.Popen(launch.daemon_window(bat), cwd=launch.ROOT)
-    deadline = time.monotonic() + 60.0
-    while not window_pid.exists():
-        assert time.monotonic() < deadline, "the batch never ran"
-        time.sleep(0.1)
-    window = int(window_pid.read_text(encoding="utf-8"))
-    deadline = time.monotonic() + 30.0
-    while psutil.pid_exists(window) and time.monotonic() < deadline:
-        time.sleep(0.1)
-    still_open = psutil.pid_exists(window)
-    if still_open:
-        psutil.Process(window).kill()
-    assert not still_open, "the daemon's window stayed open after its batch ended"
-
-
-@pytest.mark.skipif(
-    sys.platform != "win32", reason="the daemon's batch and its window are Windows'"
-)
-def test_the_stop_finds_and_ends_the_daemon_its_batch_started(tmp_path):
-    """The real start_capture_daemon.bat in a folder of its own, with launch.py and a virtual
-    environment beside it, starts the real daemon in its window (no Schwab token, ports of its
-    own). The stop finds it by launch.DAEMON_START and ends it, exit 0, and the batch does not
-    restart it. A batch line apart from DAEMON_START would read "not running", leaving it up."""
-    home = tmp_path / "checkout"
-    home.mkdir()
-    for name in ("launch.py", "start_capture_daemon.bat"):
-        shutil.copy(launch.ROOT / name, home)
-    venv.create(home / ".venv")
-    with socket.socket() as push, socket.socket() as ui:
-        push.bind(("127.0.0.1", 0))
-        ui.bind(("127.0.0.1", 0))
-        push_port, ui_port = push.getsockname()[1], ui.getsockname()[1]
-    env = {
-        **os.environ,
-        "PYTHONPATH": os.pathsep.join([str(launch.ROOT), *site.getsitepackages()]),
-        "ED_RUNTIME_ROOT": str(tmp_path),
-        "ED_LIVE_UI_HOST": "127.0.0.1",
-        "ED_LIVE_UI_PORT": str(ui_port),
-        "ED_LIVE_PUSH_PORT": str(push_port),
-        "SCHWAB_TOKEN_PATH": str(tmp_path / "missing_token.json"),
-    }
-    bat = home / "start_capture_daemon.bat"
-    subprocess.Popen(launch.daemon_window(bat), cwd=home, env=env)
-    try:
-        end = time.monotonic() + 60
-        while not launch.in_use(push_port):
-            assert time.monotonic() < end, "the batch's daemon never served its port"
-            time.sleep(0.1)
-        stopped = subprocess.run(
-            [sys.executable, "launch.py", "stop"],
-            cwd=home,
-            env=env,
-            capture_output=True,
-            text=True,
-            timeout=90,
-        )
-        assert (stopped.returncode, stopped.stdout) == (
-            0,
-            "Capture daemon: stopped\nConsole: not running\n",
-        ), stopped.stderr
-        end = time.monotonic() + 8  # past the batch's 5 s restart wait
-        while time.monotonic() < end:
-            started = [
-                p.pid
-                for p in psutil.process_iter(["name", "cwd"])
-                if p.info["name"] == "pythonw.exe"
-                and p.info["cwd"]
-                and Path(p.info["cwd"]).resolve() == home.resolve()
-            ]
-            assert not started, f"the batch restarted a daemon stopped on request: {started}"
-            time.sleep(0.2)
-    finally:
-        for p in psutil.process_iter(["cmdline"]):
-            if str(home) in " ".join(p.info["cmdline"] or []):
-                p.kill()
 
 
 def test_the_stop_takes_only_this_checkouts_processes(tmp_path):
@@ -454,125 +357,6 @@ def _end(process: subprocess.Popen) -> None:
     process.wait(30)
 
 
-def test_the_stop_ends_the_real_daemon_and_says_when_it_could_not_ask(tmp_path):
-    """The real daemon as its batch runs it, in a folder of its own with launch.py beside it, so
-    the stop reaches nothing else; no Schwab token, ports of its own. Another checkout's stop
-    leaves it alone. A stop that cannot ask it, on a port nothing serves or one that closes at
-    once, says so and that the daemon is still running, exit 1. A stop on the daemon's port ends
-    it, exit 0."""
-    home, other = tmp_path / "checkout", tmp_path / "other_checkout"
-    for folder in (home, other):
-        folder.mkdir()
-        shutil.copy(launch.ROOT / "launch.py", folder)
-    with socket.socket() as push, socket.socket() as ui, socket.socket() as nothing:
-        push.bind(("127.0.0.1", 0))
-        ui.bind(("127.0.0.1", 0))
-        nothing.bind(("127.0.0.1", 0))
-        push_port, ui_port = push.getsockname()[1], ui.getsockname()[1]
-        unserved = nothing.getsockname()[1]
-    closing = socket.socket()
-    closing.bind(("127.0.0.1", 0))
-    closing.listen()
-    threading.Thread(target=lambda: closing.accept()[0].close(), daemon=True).start()
-    env = {
-        **os.environ,
-        "PYTHONPATH": str(launch.ROOT),
-        "ED_RUNTIME_ROOT": str(tmp_path),
-        "ED_LIVE_UI_HOST": "127.0.0.1",
-        "ED_LIVE_UI_PORT": str(ui_port),
-        "ED_LIVE_PUSH_PORT": str(push_port),
-        "SCHWAB_TOKEN_PATH": str(tmp_path / "missing_token.json"),
-    }
-    daemon = subprocess.Popen([sys.executable, *launch.DAEMON_START], cwd=home, env=env)
-
-    def stop(folder: Path, port: int) -> subprocess.Popen:
-        return subprocess.Popen(
-            [sys.executable, "launch.py", "stop"],
-            cwd=folder,
-            env={**env, "ED_LIVE_PUSH_PORT": str(port)},
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
-
-    try:
-        end = time.monotonic() + 60
-        while not launch.in_use(push_port):
-            assert daemon.poll() is None and time.monotonic() < end, daemon.poll()
-            time.sleep(0.1)
-        elsewhere = stop(other, push_port)
-        out, err = elsewhere.communicate(timeout=60)
-        assert (elsewhere.returncode, out) == (
-            0,
-            "Capture daemon: not running\nConsole: not running\n",
-        ), err
-        assert daemon.poll() is None
-        not_asked = [stop(home, port) for port in (unserved, closing.getsockname()[1])]
-        for p in not_asked:
-            out, err = p.communicate(timeout=90)
-            assert p.returncode == 1, (out, err)
-            assert "Capture daemon: not asked to stop: " in err
-            assert "Capture daemon: still running (" in out
-        stopping = stop(home, push_port)
-        assert daemon.wait(60) == capture.EXIT_STOPPED  # reaped: the stop sees it gone on Linux too
-        out, err = stopping.communicate(timeout=60)
-        assert (stopping.returncode, out) == (
-            0,
-            "Capture daemon: stopped\nConsole: not running\n",
-        ), err
-    finally:
-        closing.close()
-        _end(daemon)
-
-
-def test_a_daemon_that_ends_without_being_asked_is_not_reported_stopped(tmp_path):
-    """The real daemon found while it loads, its socket not up, then ending on its own because its
-    live UI's port is held, the code its window restarts on: the stop could not ask it, so it does
-    not read "stopped" and exits 1. Induced test condition: a load held for 6 s."""
-    home, site = tmp_path / "checkout", tmp_path / "site"
-    for folder in (home, site):
-        folder.mkdir()
-    shutil.copy(launch.ROOT / "launch.py", home)
-    (site / "sitecustomize.py").write_text(
-        'import sys, time\nif "-m" in sys.orig_argv:\n    time.sleep(6)\n', encoding="utf-8"
-    )
-    with socket.socket() as held, socket.socket() as push, socket.socket() as nothing:
-        held.bind(("127.0.0.1", 0))
-        held.listen()
-        push.bind(("127.0.0.1", 0))
-        nothing.bind(("127.0.0.1", 0))
-        env = {
-            **os.environ,
-            "PYTHONPATH": str(launch.ROOT),
-            "ED_RUNTIME_ROOT": str(tmp_path),
-            "ED_LIVE_UI_HOST": "127.0.0.1",
-            "ED_LIVE_UI_PORT": str(held.getsockname()[1]),
-            "ED_LIVE_PUSH_PORT": str(push.getsockname()[1]),
-            "SCHWAB_TOKEN_PATH": str(tmp_path / "missing_token.json"),
-        }
-        unserved = str(nothing.getsockname()[1])
-        push.close()
-        nothing.close()
-        loading = {**env, "PYTHONPATH": os.pathsep.join((str(site), str(launch.ROOT)))}
-        daemon = subprocess.Popen([sys.executable, *launch.DAEMON_START], cwd=home, env=loading)
-        try:
-            stopping = subprocess.Popen(
-                [sys.executable, "launch.py", "stop"],
-                cwd=home,
-                env={**env, "ED_LIVE_PUSH_PORT": unserved},
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-            )
-            assert daemon.wait(60) == 1  # reaped: the stop sees it gone on Linux too
-            out, err = stopping.communicate(timeout=60)
-        finally:
-            _end(daemon)
-    assert stopping.returncode == 1, (out, err)
-    assert "Capture daemon: not asked to stop: " in err
-    assert "Capture daemon: ended, not asked by this stop\n" in out
-
-
 def test_the_console_group_is_known_after_its_processes_have_gone():
     """The console ended between the stop finding it and the signal: its group is still named, so
     the stop goes on to what is left. Induced test condition: a Python of this test's own."""
@@ -619,40 +403,19 @@ def test_a_process_that_only_names_the_console_is_not_the_console():
             _end(p)
 
 
-def test_a_module_that_fails_to_load_leaves_its_reason_in_the_daemons_log(tmp_path):
-    """The daemon run with no error output (pythonw on Windows; elsewhere its fd 2 closed), with
-    schwab-py missing: the log file under its runtime root has why."""
-    site = tmp_path / "site"
-    site.mkdir()
-    (site / "sitecustomize.py").write_text(
-        "import sys\n"
-        "class _Missing:\n"
-        "    def find_spec(self, name, path=None, target=None):\n"
-        "        if name == 'schwab' or name.startswith('schwab.'):\n"
-        "            raise ModuleNotFoundError(f\"No module named '{name}'\", name=name)\n"
-        "sys.meta_path.insert(0, _Missing())\n",
-        encoding="utf-8",
+def test_a_daemon_whose_live_ui_port_is_held_ends_with_why_and_starts_again(tmp_path):
+    """Another socket holds the live UI's port: the daemon ends with the bind's error in its log,
+    instead of running with no browser served, and keep_running goes on until the stop."""
+    script = (
+        "import asyncio\n"
+        "from app.market_data.schwab.streaming import capture\n"
+        "async def go():\n"
+        "    stop = asyncio.Event()\n"
+        "    asyncio.get_running_loop().call_later(capture.RESTART_WAIT_SEC + 3, stop.set)\n"
+        "    await capture.keep_running(stop)\n"
+        "capture.start_log()\n"
+        "asyncio.run(go())\n"
     )
-    env = {**os.environ, "PYTHONPATH": str(site), "ED_RUNTIME_ROOT": str(tmp_path)}
-    module = ["-m", "app.market_data.schwab.streaming.capture_main"]
-    if sys.platform == "win32":
-        cmd = [str(Path(sys.executable).with_name("pythonw.exe")), *module]
-    else:
-        cmd = ["sh", "-c", 'exec "$0" "$@" 2>&-', sys.executable, *module]
-    done = subprocess.run(cmd, cwd=REPO, env=env, timeout=120)  # no handle passed: pythonw has none
-    (path,) = (tmp_path / "logs").glob("stream_capture.*.log")
-    log = path.read_text(encoding="utf-8")
-    assert done.returncode == 1
-    assert "capture daemon loading (pid " in log
-    assert "ModuleNotFoundError: No module named 'schwab'" in log, log
-
-
-def test_a_daemon_whose_live_ui_port_is_held_ends_at_once_with_why_and_its_window_restarts_it(
-    tmp_path,
-):
-    """Another socket holds the live UI's port: the daemon, run as its window runs it, ends with
-    the bind's error in its log and an exit code its window restarts on (not EXIT_STOPPED), instead
-    of running with no browser served."""
     with socket.socket() as held:
         held.bind(("127.0.0.1", 0))
         held.listen()
@@ -665,7 +428,7 @@ def test_a_daemon_whose_live_ui_port_is_held_ends_at_once_with_why_and_its_windo
             "SCHWAB_TOKEN_PATH": str(tmp_path / "missing_token.json"),
         }
         done = subprocess.run(
-            [sys.executable, "-m", "app.market_data.schwab.streaming.capture_main"],
+            [sys.executable, "-c", script],
             cwd=REPO,
             env=env,
             capture_output=True,
@@ -673,8 +436,8 @@ def test_a_daemon_whose_live_ui_port_is_held_ends_at_once_with_why_and_its_windo
         )
     (path,) = (tmp_path / "logs").glob("stream_capture.*.log")
     log = path.read_text(encoding="utf-8")
-    assert done.returncode == 1, (done.returncode, log)
-    assert "capture daemon: ended by an error" in log, log
+    assert done.returncode == 0, (done.returncode, log)
+    assert log.count("capture daemon: ended by an error") >= 2, log
     assert "RuntimeError: the capture daemon's live ui ended before the stop" in log, log
     assert "OSError" in log, log
 
