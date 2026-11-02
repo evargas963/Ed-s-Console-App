@@ -65,7 +65,6 @@ from websockets.exceptions import ConnectionClosed
 import live_market_plane as lmp
 import live_price_rows
 import runtime_layout
-from app.market_data.schwab.streaming.live_ui import serve_live_ui
 from calibration.complete_chain_capture import ChainSweep
 from config import build_config, load_dotenv_file
 from db_authority import canonical_console_db_path
@@ -1193,9 +1192,9 @@ def one_schwab_client(build) -> callable:
 
 
 async def run(asked: asyncio.Event, consume) -> None:
-    """The whole daemon: writer, the browsers' socket, the chain sweep, the market follower, the
-    Schwab connection and `consume` (the console's reader of its bus), each until `asked`; one that
-    ends first ends them all with an error naming it."""
+    """The whole daemon: writer, the chain sweep, the market follower, the Schwab connection and
+    `consume` (the console's reader of its bus), each until `asked`; one that ends first ends them
+    all with an error naming it."""
     load_dotenv_file()
     cfg = build_config()
     schwab_client = one_schwab_client(
@@ -1219,7 +1218,6 @@ async def run(asked: asyncio.Event, consume) -> None:
         asyncio.create_task(record_feed_status(daemon, stop), name="feed status"),
         asyncio.create_task(keep_sessions(daemon, stop), name="keep"),
         asyncio.create_task(daemon.follow_market(stop), name="market follower"),
-        asyncio.create_task(serve_live_ui(stop, heartbeat_fn=daemon.status), name="live ui"),
     ]
     console = asyncio.create_task(consume(bus, daemon), name="console")
     tasks.append(console)

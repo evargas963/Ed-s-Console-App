@@ -19,6 +19,7 @@ from websockets.asyncio.client import connect
 from websockets.exceptions import ConnectionClosed, InvalidStatus
 
 import live_market_plane as lmp
+import push_changes
 from app.market_data.schwab.streaming import live_ui
 
 _FIXTURES = Path(__file__).resolve().parent / "fixtures"
@@ -44,10 +45,19 @@ async def page_socket():
         await serving
 
 
+async def changes_within(page: push_changes.Client, within: float) -> set[str]:
+    """The kinds changed for `page`, waiting `within` seconds; empty with none."""
+    try:
+        return await asyncio.wait_for(push_changes.next_changes(page), within)
+    except TimeoutError:
+        return set()
+
+
 async def takes_a_beat(page) -> None:
-    """`page` reads frames until the daemon's beat comes."""
+    """`page` reads frames until a beat carries the daemon's status."""
     async for frame in page:
-        if json.loads(frame)["type"] == "feed":
+        beat = json.loads(frame)
+        if beat["type"] == "feed" and beat["feed"] is not None:
             return
 
 

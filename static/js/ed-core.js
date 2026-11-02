@@ -475,8 +475,8 @@
   }
 
   // ================= watchlist: the one list, kept by the capture daemon =================
-  // The page holds the list as the console last served it (/api/watchlist); an add or a removal
-  // is the daemon's (POST / DELETE /api/watchlist), and its answer carries the new list.
+  // The page holds the list as the last beat carried it (read once at load: /api/watchlist); an
+  // add or a removal is the daemon's (POST / DELETE /api/watchlist), and its answer carries the new list.
   var _wl = [];
   function loadWL() { return _wl.slice(); }
   function wlFetch(url, opts) {
@@ -599,7 +599,6 @@
     var si = document.getElementById('symInput'); if (si) { si.value = state.ticker; buildSymList(); }   // the control reflects the ONE state
     state.selStrike = null; state.selExpiry = null;   // a new ticker clears the shared selection
     loadExpiries(state.ticker);       // refresh the expiry dropdown from /api/expiries for the new ticker
-    openChangeStream(state.ticker);      // levels / flow / liquidity changes and the session
     _priceSubTs = Date.now();
     _quoteShown = false;                 // the last ticker's price is not this one's
     subscribePrices();                   // the daemon answers with this ticker's row at once
@@ -783,7 +782,7 @@
   }
   function subscribePrices() {
     if (!_priceWs || _priceWs.readyState !== 1) return;   // sent on open
-    try { _priceWs.send(JSON.stringify({ op: 'subscribe', symbols: priceSymbols() })); } catch (e) {}
+    _priceWs.send(JSON.stringify({ op: 'subscribe', symbols: priceSymbols(), ticker: state.ticker }));
   }
   // The daemon's database writer, as each heartbeat carries it: the line and its class are the
   // daemon's (stream_spine.WriterStatus line / cls). No writer status served: '—'.
@@ -798,17 +797,34 @@
     try { ws = new WebSocket(priceSocketUrl()); } catch (e) { schedulePriceReconnect(); return; }
     _priceWs = ws;   // (_priceSubTs is set by a ticker change only: a reconnect during an
                      //  outage keeps reading OFFLINE, not WAITING)
-    ws.onopen = function () { _priceRetry = 0; subscribePrices(); };
+    ws.onopen = function () {
+      _priceRetry = 0;
+      subscribePrices();
+      if (_priceWasOpen && state.ticker) CHANGE_KINDS.forEach(valueChanged);   // no notice reached it
+      _priceWasOpen = true;
+    };
     ws.onmessage = function (ev) {
       var msg; try { msg = JSON.parse(ev.data); } catch (e) { return; }
       if (msg && msg.type === 'symbols' && Array.isArray(msg.symbols)) { ingestIdentity(msg.symbols); return; }
-      if (msg && msg.type === 'feed') paintRecord(msg.feed && msg.feed.writer);
+      if (msg && msg.type === 'changes' && Array.isArray(msg.kinds)) { msg.kinds.forEach(valueChanged); return; }
+      if (msg && msg.type === 'feed') {
+        paintRecord(msg.feed && msg.feed.writer);
+        paintSession(msg.session);
+        // the list as the daemon keeps it
+        if (msg.feed && JSON.stringify(msg.feed.watchlist) !== JSON.stringify(_wl)) {
+          _wl = msg.feed.watchlist; renderWatchlist();
+        }
+      }
       if (!msg || !Array.isArray(msg.rows)) return;
       _priceUp = true; _lastPriceTs = Date.now();
       msg.rows.forEach(ingestPriceRow);
     };
     ws.onclose = function () {
-      if (_priceWs === ws) { _priceWs = null; _priceUp = false; schedulePriceReconnect(); }
+      if (_priceWs === ws) {
+        _priceWs = null; _priceUp = false;
+        paintSession(null, 'session unknown: the push is down');
+        schedulePriceReconnect();
+      }
     };
     ws.onerror = function () { try { ws.close(); } catch (e) {} };
   }
@@ -868,28 +884,17 @@
     if (!(wlHost && wlHost.classList.contains('wl-degraded'))) markWlDegraded('live push down');
   }
 
-  // ---- the console's push: which of this ticker's values changed, and the session label.
-  // Each panel reloads on `ed:changed` for the kinds it shows: levels, flow, liquidity. ----
-  var _changes = null;
-  function openChangeStream(tk) {
-    if (_changes) { try { _changes.close(); } catch (e) {} }
-    _changes = null;
-    if (typeof EventSource === 'undefined') return;
-    try { _changes = new EventSource('/api/changes?ticker=' + encodeURIComponent(tk)); }
-    catch (e) { return; }
-    _changes.onopen = refreshWL;     // the list as the daemon keeps it, again after the push reopens
-    _changes.onerror = function () { paintSession(null, 'session unknown: the console push is down'); };
-    _changes.addEventListener('session', function (ev) { paintSession(ev.data); });
-    ['levels', 'chain', 'flow', 'liquidity'].forEach(function (kind) {
-      _changes.addEventListener(kind, function () {
-        if (kind === 'chain') loadExpiries(state.ticker);
-        emit('ed:changed', { kind: kind });
-      });
-    });
+  // ---- which of this ticker's values changed, as the page's socket says. Each panel reloads on
+  // `ed:changed` for the kinds it shows: levels, flow, liquidity. ----
+  var CHANGE_KINDS = ['levels', 'chain', 'flow', 'liquidity'];
+  var _priceWasOpen = false;
+  function valueChanged(kind) {
+    if (kind === 'chain') loadExpiries(state.ticker);
+    emit('ed:changed', { kind: kind });
   }
 
   // market session (RTH / Pre-Market / After-Hours / Closed, or Unknown while Schwab's /markets
-  // answer for today is not held), pushed with the changes
+  // answer for today is not held), on every beat
   function paintSession(label, why) {
     var el = document.getElementById('hSession'); if (!el) return;
     var m = { 'RTH': ['RTH', 'rth'], 'Pre-Market': ['PRE', 'pre'], 'After-Hours': ['AH', 'ah'], 'Closed': ['CLOSED', 'closed'],
@@ -899,7 +904,7 @@
   }
 
   // The push is not delivering: the last quote stays and the chip says so. Nothing polls
-  // for a replacement. The session label is not a live quote and keeps its own slow read.
+  // for a replacement.
   function markHeaderPushDown() {
     // just asked for this ticker (page load or a ticker change): the row is on its way
     // (WAITING); otherwise the push itself is down (OFFLINE). A price already shown stays with its

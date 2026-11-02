@@ -55,7 +55,7 @@ test('the matrix redraws when the priced chain updates and keeps the expiry', as
   const expiries = [];
   page.on('pageerror', (e) => errs.push(e.message));
   page.on('console', (m) => {
-    if (m.type() === 'error' && !/WebSocket|EventSource|Failed to load resource/.test(m.text())) errs.push(m.text());
+    if (m.type() === 'error' && !/WebSocket|Failed to load resource/.test(m.text())) errs.push(m.text());
   });
   await page.route('**/api/confluence**', (route) => {
     const asked = new URL(route.request().url()).searchParams.get('expiry');

@@ -1,7 +1,7 @@
-"""The console's push: which of a ticker's served values changed (the page reloads what changed).
+"""Which of a ticker's served values changed (the page reloads what changed).
 
-Every open page holds one connection (/api/changes) on its ticker, kept in the order they opened.
-A changed value (`changed`) reaches the pages open on its ticker on the event loop.
+Every open page holds one socket (live_ui) on its ticker, kept in the order they opened. A changed
+value (`changed`) reaches the pages open on its ticker on the event loop.
 """
 
 from __future__ import annotations
@@ -32,15 +32,15 @@ def watched() -> list[str]:
 
 
 def subscribe(tk: str, c: Client | None = None) -> Client:
-    """A page opened on `tk` (on the event loop), as connection `c` (a new one when not given:
-    a caller that must close it whatever happens creates it first)."""
+    """A page opened on `tk`, or moved to it (on the event loop), as connection `c` (a new one when
+    not given). One step: `changed` on another thread never finds a page between two tickers."""
     c = Client() if c is None else c
-    _open.append((tk, c))
+    _open[:] = [(t, x) for t, x in _open if x is not c] + [(tk, c)]
     return c
 
 
-def unsubscribe(tk: str, c: Client) -> None:
-    """The page closed (on the event loop)."""
+def unsubscribe(c: Client) -> None:
+    """The page closed, or left its ticker (on the event loop)."""
     _open[:] = [(t, x) for t, x in _open if x is not c]
 
 
@@ -57,12 +57,9 @@ def _mark(tk: str, kind: str) -> None:
             c.wake.set()
 
 
-async def next_changes(c: Client, timeout: float) -> set[str]:
-    """The kinds changed since the last call; empty after `timeout` seconds with none."""
-    try:
-        await asyncio.wait_for(c.wake.wait(), timeout)
-    except TimeoutError:
-        return set()
+async def next_changes(c: Client) -> set[str]:
+    """The kinds changed since the last call, waiting for one."""
+    await c.wake.wait()
     c.wake.clear()
     kinds, c.kinds = c.kinds, set()
     return kinds

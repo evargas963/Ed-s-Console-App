@@ -27,6 +27,7 @@ import live_market_plane as lmp
 import live_price_rows
 import server
 from stream_spine import options_quote_msg
+from tests.feed_live_helper import changes_within
 from time_et import ET, INDEX_OPTIONS
 
 _FX = Path(__file__).resolve().parent / "fixtures"
@@ -406,9 +407,9 @@ def test_the_console_serves_the_daemons_verdict_on_a_price_schwab_marks_closed()
             page = push_changes.subscribe("$SPX")
             try:
                 server.refresh_not_live_pages(at)
-                return await push_changes.next_changes(page, 0.3)
+                return await changes_within(page, 0.3)
             finally:
-                push_changes.unsubscribe("$SPX", page)
+                push_changes.unsubscribe(page)
                 push_changes.bind(None)
 
         assert asyncio.run(told()) == {push_changes.LEVELS}

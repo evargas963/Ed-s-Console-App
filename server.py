@@ -26,7 +26,7 @@ from zoneinfo import ZoneInfo
 
 import psutil
 from fastapi import Body, FastAPI, HTTPException, Query
-from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 import live_market_plane as lmp
@@ -976,7 +976,7 @@ def levels_verdict(staleness: dict) -> dict:
 
 
 def _gamma_surface_wanted(tk: str) -> bool:
-    """Viewed: a page has the ticker open (its /api/changes connection), on any workspace, for
+    """Viewed: a page has the ticker open (its socket says so), on any workspace, for
     as long as it stays open. It decides only which tickers are repriced on every streamed tick;
     every watchlist ticker's chain is fetched and priced alike."""
     return tk in push_changes.watched()
@@ -3079,45 +3079,6 @@ def desk_events_payload(tk: str, venue: str, tf: str, now: datetime) -> dict:
 #: the chart draws the newest cross at each level, for the newest this-many levels (the queue
 #: lists every cross)
 DESK_MARKERS = 6
-
-
-#: With no change, the session label is pushed this often (it doubles as the heartbeat).
-CHANGES_SESSION_SEC = 5.0
-
-
-@app.get("/api/changes")
-async def get_changes(ticker: str = Query(...)):
-    """The console's push to the page: `levels`, `flow` or `liquidity` when that value of the
-    ticker changed (the page reloads it), and `session` with the market session label. Prices
-    and bars come from the daemon's own push. The open connection is the page: a ticker an open
-    page shows is repriced on its ticks (push_changes.watched). Every page reconnects after a
-    console restart."""
-    t = ticker_storage_key(_required_ticker(ticker))
-
-    async def event_generator():
-        # the page is open while this stream runs: it opens here and closes in `finally`, so a
-        # connection that never starts streaming opens none
-        client = push_changes.Client()
-        try:
-            push_changes.subscribe(t, client)
-            yield f"event: session\ndata: {session_label(now_et())}\n\n"
-            while True:
-                kinds = await push_changes.next_changes(client, CHANGES_SESSION_SEC)
-                for k in sorted(kinds):
-                    yield f"event: {k}\ndata: {t}\n\n"
-                if not kinds:
-                    yield f"event: session\ndata: {session_label(now_et())}\n\n"
-        finally:
-            push_changes.unsubscribe(t, client)
-
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-        },
-    )
 
 
 @app.get("/api/order-flow/microstructure")

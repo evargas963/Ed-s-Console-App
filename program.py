@@ -16,7 +16,14 @@ from fastapi import FastAPI
 
 import server
 from app.market_data.schwab.streaming import capture
+from app.market_data.schwab.streaming.live_ui import serve_live_ui
+from app.options.order_flow import streaming
 from app.options.order_flow.streaming import follow
+
+
+def _status(now: float) -> dict | None:
+    """The daemon's status at `now`; none between its runs, when the page's feed goes OFFLINE."""
+    return None if streaming._daemon is None else streaming._daemon.status(now)
 
 
 @asynccontextmanager
@@ -25,6 +32,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         capture.start_log()
         fd, lock = capture.acquire_owner_lock()
         stop = asyncio.Event()
+        page = asyncio.create_task(serve_live_ui(stop, heartbeat_fn=_status), name="page socket")
         daemon = asyncio.create_task(capture.keep_running(stop, follow), name="capture daemon")
         daemon.add_done_callback(lambda _: capture.release_owner_lock(fd, lock))
 
@@ -37,6 +45,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         yield
         stop.set()
         await daemon
+        await page
 
 
 app = server.app

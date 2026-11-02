@@ -433,7 +433,7 @@ def test_a_viewed_ticker_warms_only_on_the_watchlist_and_a_silent_daemon_says_so
         assert "daemon not reporting" in server._status_line(time.time())
     finally:
         for tk, page in zip((on, off), pages):
-            push_changes.unsubscribe(tk, page)
+            push_changes.unsubscribe(page)
         with server._terrain_cache_lock:
             server._terrain_cache.pop(off, None)
             server._terrain_cache.pop(on, None)

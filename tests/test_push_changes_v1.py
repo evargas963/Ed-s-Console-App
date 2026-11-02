@@ -13,7 +13,7 @@ import app.options.order_flow.streaming as ofs
 import push_changes
 import server
 from stream_spine import bar_msg
-from tests.feed_live_helper import daemon_bars
+from tests.feed_live_helper import changes_within, daemon_bars
 from time_et import ET
 
 _FX = json.loads(
@@ -30,12 +30,12 @@ def _run(body):
             body()
             await asyncio.sleep(0)
             return (
-                await push_changes.next_changes(mine, 1.0),
-                await push_changes.next_changes(other, 0.05),
+                await changes_within(mine, 1.0),
+                await changes_within(other, 0.05),
             )
         finally:
-            push_changes.unsubscribe(TK, mine)
-            push_changes.unsubscribe("ZZOTHER", other)
+            push_changes.unsubscribe(mine)
+            push_changes.unsubscribe(other)
 
     return asyncio.run(main())
 

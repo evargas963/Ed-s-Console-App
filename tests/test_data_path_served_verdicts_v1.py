@@ -25,6 +25,7 @@ import push_changes
 import server
 from calibration.complete_chain_capture import CAPTURE_BASIS
 from tests.capture_store import store_capture
+from tests.feed_live_helper import changes_within
 from tests.real_chains import SPY_0DTE, TSLA
 from time_et import ET
 
@@ -260,9 +261,9 @@ def _told(tk: str, at: datetime) -> set:
         page = push_changes.subscribe(tk)
         try:
             server.refresh_not_live_pages(at.timestamp())
-            return await push_changes.next_changes(page, 0.3)
+            return await changes_within(page, 0.3)
         finally:
-            push_changes.unsubscribe(tk, page)
+            push_changes.unsubscribe(page)
             push_changes.bind(None)
 
     return asyncio.run(run())

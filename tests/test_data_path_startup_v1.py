@@ -8,6 +8,7 @@ import asyncio
 import json
 import os
 import re
+import socket
 import sqlite3
 import subprocess
 import sys
@@ -407,6 +408,68 @@ def test_a_daemon_whose_console_reader_fails_ends_with_why_and_starts_again(tmp_
     assert "OSError: the reader failed" in log, log
 
 
+def test_a_page_stays_on_through_a_daemon_restart_in_the_one_program(tmp_path):
+    """The program's app, its status and its daemon over a real socket (the lifespan's wiring:
+    tests/test_launch_v1.py), a page connected. A daemon run ends with an error; the page's
+    connection stands, its beat carries the daemon's status, then none between the runs,
+    then the next run's. Induced test condition: the console's reader of each run fails after 3 s.
+    """
+    script = (
+        "import asyncio, sys\n"
+        "import uvicorn\n"
+        "import program\n"
+        "from app.market_data.schwab.streaming import capture\n"
+        "from app.market_data.schwab.streaming.live_ui import serve_live_ui\n"
+        "async def fails(bus, daemon):\n"
+        "    reader = asyncio.create_task(program.follow(bus, daemon))\n"
+        "    await asyncio.sleep(3)\n"
+        "    reader.cancel()\n"
+        "    await asyncio.gather(reader, return_exceptions=True)\n"
+        "    raise OSError('the reader failed')\n"
+        "async def go():\n"
+        "    stop = asyncio.Event()\n"
+        "    page = asyncio.create_task(serve_live_ui(stop, heartbeat_fn=program._status))\n"
+        "    daemon = asyncio.create_task(capture.keep_running(stop, fails))\n"
+        "    config = uvicorn.Config(\n"
+        "        program.app, host='127.0.0.1', port=int(sys.argv[1]), lifespan='off'\n"
+        "    )\n"
+        "    await uvicorn.Server(config).serve()\n"
+        "asyncio.run(go())\n"
+    )
+    with socket.create_server(("127.0.0.1", 0)) as s:
+        port = s.getsockname()[1]
+    env = {
+        **os.environ,
+        "ED_RUNTIME_ROOT": str(tmp_path),
+        "SCHWAB_TOKEN_PATH": str(tmp_path / "missing_token.json"),
+    }
+    process = subprocess.Popen(
+        [sys.executable, "-c", script, str(port)],
+        cwd=REPO,
+        env=env,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+    async def go() -> None:
+        beats: list[bool] = []  # each change in whether a beat carried the daemon's status
+        async with connect(f"ws://127.0.0.1:{port}/ws", max_size=None) as page:
+            while beats[-3:] != [True, False, True]:
+                frame = json.loads(await asyncio.wait_for(page.recv(), 10))
+                has_status = frame["type"] == "feed" and frame["feed"] is not None
+                if frame["type"] == "feed" and beats[-1:] != [has_status]:
+                    beats.append(has_status)
+
+    try:
+        end = time.monotonic() + 60
+        while not launch.in_use(port):
+            assert time.monotonic() < end, "the program's socket never opened"
+            time.sleep(0.1)
+        asyncio.run(asyncio.wait_for(go(), 40))
+    finally:
+        _end(process)
+
+
 def test_the_stored_levels_are_priced_while_a_page_on_another_ticker_takes_ticks():
     """At a console start, the stored captures of the tickers the daemon has not delivered yet are
     priced while a page views a ticker whose options stream. Through the real code, on Schwab's
@@ -471,7 +534,7 @@ def test_the_stored_levels_are_priced_while_a_page_on_another_ticker_takes_ticks
             ticking.set()
             ticker.join(10)
     finally:
-        push_changes.unsubscribe(tk, page)
+        push_changes.unsubscribe(page)
         while True:  # what still waits is priced
             server._chain_pricing.submit(lambda: None).result(timeout=60)
             with server._chains_waiting_lock:

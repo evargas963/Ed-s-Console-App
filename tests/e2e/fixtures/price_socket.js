@@ -26,4 +26,18 @@ async function mockPriceSocket(page, rows, later) {
     });
   });
 }
-module.exports = { mockPriceSocket, priceRow };
+// One `kind` change of `ticker` on the page's socket, once `when()` resolves; `asked` hears each
+// ticker the page shows
+async function mockChange(page, ticker, kind, when, asked) {
+  let sent = false;
+  await page.routeWebSocket(/\/ws$/, (ws) => {
+    ws.onMessage((m) => {
+      const req = JSON.parse(String(m));
+      if (asked) asked(req.ticker);
+      if (sent || req.ticker !== ticker) return;
+      sent = true;
+      when().then(() => ws.send(JSON.stringify({ type: 'changes', kinds: [kind] })));
+    });
+  });
+}
+module.exports = { mockChange, mockPriceSocket, priceRow };

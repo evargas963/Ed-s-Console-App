@@ -16,7 +16,7 @@ import live_price_rows
 import server
 from db import EdDB, LevelCrossEvent
 from terrain_read import CROSSED_DOWN, CROSSED_UP, LEVEL_AT, crossed
-from tests.feed_live_helper import clock_from
+from tests.feed_live_helper import changes_within, clock_from
 from tests.real_chains import (
     SPY_AFTER_HOURS_PRINT,
     SPY_CLOSE,
@@ -239,10 +239,10 @@ def test_a_page_whose_price_has_stopped_is_told_each_minute_to_read_its_levels_a
                 if down:
                     lmp.record_feed_down()
                 server.refresh_not_live_pages(clock())
-                seen.append(await push_changes.next_changes(page, 0.3))
+                seen.append(await changes_within(page, 0.3))
             return seen
         finally:
-            push_changes.unsubscribe("SPY", page)
+            push_changes.unsubscribe(page)
             push_changes.bind(None)
 
     try:

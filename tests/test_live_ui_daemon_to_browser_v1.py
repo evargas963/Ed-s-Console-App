@@ -21,13 +21,16 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from datetime import datetime
 
 import pytest
 
 import live_market_plane as lmp
+import push_changes
 from app.market_data.schwab.streaming import capture, live_ui
 from stream_spine import HealthRegistry, MessageBus, quote_msg
-from tests.feed_live_helper import connect, page_socket, refused, takes_a_beat
+from tests.feed_live_helper import connect, page_socket, refused
+from time_et import ET, session_label
 
 
 @pytest.fixture(autouse=True)
@@ -271,22 +274,72 @@ def test_shutdown_is_not_held_up_by_a_connected_browser():
     assert time.monotonic() - t0 < 5
 
 
-def test_a_page_is_refused_with_no_daemon_and_served_by_the_daemons_next_run():
-    """With no daemon the socket refuses the page's handshake, so the page's reconnect keeps its
-    schedule. A daemon's stop closes the connected page; its next run serves the page again."""
+def test_a_change_reaches_the_page_on_its_ticker_once_and_the_beat_carries_the_session():
+    """Two pages on two tickers. A change of one ticker reaches its page on the socket, each kind
+    once, and not the other page; the beat says the session; a page that leaves stops counting as
+    viewing its ticker."""
+
+    async def frame_of(ws, kind):
+        frame = {}
+        while frame.get("type") != kind:
+            frame = json.loads(await asyncio.wait_for(ws.recv(), 5))
+        return frame
 
     async def go():
+        push_changes.bind(asyncio.get_running_loop())
+        feed, stop = _Feed(), asyncio.Event()
+        run = asyncio.create_task(live_ui.serve_live_ui(stop, heartbeat_fn=feed, clock=feed.clock))
+        async with (
+            page_socket() as url,
+            connect(url, max_size=None) as spy,
+            connect(url, max_size=None) as other,
+        ):
+            await spy.send(json.dumps({"op": "subscribe", "symbols": [], "ticker": "SPY"}))
+            await other.send(json.dumps({"op": "subscribe", "symbols": [], "ticker": "AAPL"}))
+            while {"SPY", "AAPL"} - set(push_changes.watched()):
+                await asyncio.sleep(0.01)
+            beat = await frame_of(spy, "feed")
+            assert beat["session"] == session_label(datetime.fromtimestamp(feed.clock(), ET))
+            for kind in ("levels", "flow", "levels"):
+                push_changes.changed("SPY", kind)
+            assert (await frame_of(spy, "changes"))["kinds"] == ["flow", "levels"]
+            for _ in range(2):  # two beats on the other page, and no change among them
+                frame = {}
+                while frame.get("type") != "feed":
+                    frame = json.loads(await asyncio.wait_for(other.recv(), 5))
+                    assert frame["type"] != "changes"
+            await spy.send(json.dumps({"op": "subscribe", "symbols": [], "ticker": ""}))
+            while "SPY" in push_changes.watched():
+                await asyncio.sleep(0.01)
+        stop.set()
+        await run
+
+    asyncio.run(go())
+
+
+def test_a_page_stays_on_between_the_daemons_runs_and_only_the_program_ends_it():
+    """Outside the program the socket refuses the page's handshake, so its reconnect keeps its
+    schedule. Between the daemon's runs (no status) the page stays connected and its beat goes on:
+    the session, and its rows OFFLINE. The program's stop closes the page."""
+
+    async def go():
+        lmp.record_feed_down()
         async with page_socket() as url:
             assert await refused(url)
-            for _run_again in range(2):
-                stop = asyncio.Event()
-                run = asyncio.create_task(live_ui.serve_live_ui(stop, heartbeat_fn=_Feed()))
-                await asyncio.sleep(0)
-                page = await connect(url, max_size=None)
-                await takes_a_beat(page)
-                stop.set()
-                await run
-                await asyncio.wait_for(page.wait_closed(), 5)
-                assert await refused(url)
+            stop = asyncio.Event()
+            run = asyncio.create_task(live_ui.serve_live_ui(stop, heartbeat_fn=lambda now: None))
+            await asyncio.sleep(0)
+            page = await connect(url, max_size=None)
+            await page.send(json.dumps({"op": "subscribe", "symbols": ["SPY"], "ticker": "SPY"}))
+            beat = {}
+            while beat.get("type") != "feed" or not beat["rows"]:
+                beat = json.loads(await asyncio.wait_for(page.recv(), 5))
+            assert beat["feed"] is None
+            assert beat["session"]
+            assert beat["rows"][0]["feed_label"] == "OFFLINE"
+            stop.set()
+            await run
+            await asyncio.wait_for(page.wait_closed(), 5)
+            assert await refused(url)
 
     asyncio.run(asyncio.wait_for(go(), 20))

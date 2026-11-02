@@ -113,8 +113,7 @@ def test_every_route_serves_the_live_spot_and_names_the_computed_one(held):
         if isinstance(r, APIRoute)
         and "GET" in r.methods
         and "ticker" in inspect.signature(r.endpoint).parameters
-        and not inspect.iscoroutinefunction(r.endpoint)
-    ]  # /api/changes is a stream
+    ]
     served, refused = {}, {}
     for path in paths:
         answer = client.get(path, params={"ticker": TK, "expiry": EXPIRY, "venue": "NYSE_BOOK"})
