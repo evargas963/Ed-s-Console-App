@@ -832,7 +832,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#klSrc')).toHaveAttribute('title', 'Schwab LEVELONE_EQUITIES feed down during RTH');
   });
 
-  test('key levels rail after its own option close reads CLOSE with the close values\' time and age (the route\'s own answer)', async ({ page }) => {
+  test('key levels rail after the option close reads CLOSE with the close values\' time and age (the route\'s own answer)', async ({ page }) => {
     // /api/terrain for SPY's 2026-10-22 close publication, read at 18:00 ET (tests/test_level_crosses_wire.py)
     const CLOSED = require(path.join(__dirname, '..', 'fixtures', 'real_spy_terrain_at_a_stopped_price_2026_10_22.json'));
     await page.route('**/api/terrain?**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
@@ -1181,7 +1181,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(marked()).toHaveCount(1);
   });
 
-  test('after its own option close the heatmap banner reads CLOSE with the close values\' time and age (the route\'s own answer)', async ({ page }) => {
+  test('after the option close the heatmap banner reads CLOSE with the close values\' time and age (the route\'s own answer)', async ({ page }) => {
     // /api/options/gamma-surface for SPY's 2026-10-22 close publication, read at 18:00 ET
     // (tests/test_level_crosses_wire.py)
     const CLOSED = require(path.join(__dirname, '..', 'fixtures', 'real_spy_gamma_surface_at_a_stopped_price_2026_10_22.json'));

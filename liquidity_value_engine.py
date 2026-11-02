@@ -198,11 +198,10 @@ def compute_opening_range(
     bars (bars_from_candles). Nothing when that session is not held.
     """
     regular = _regular(session_date)
-    if regular is None:
-        return {}
-    opens = regular[0]
-    ends = opens + timedelta(minutes=config.opening_range_minutes)
-    orb_bars = [b for b in bars_norm if opens <= b["_dt"] < ends]
+    span = timedelta(minutes=config.opening_range_minutes)
+    orb_bars = [
+        b for b in bars_norm if regular is not None and regular[0] <= b["_dt"] < regular[0] + span
+    ]
 
     if not orb_bars:
         return {}
