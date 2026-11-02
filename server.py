@@ -3170,8 +3170,10 @@ def order_flow_microstructure(ticker: str, venue: str, now: float) -> dict:
         if _row.get("bid") is not None or _row.get("ask") is not None
         else None
     )
-    # the venue's book: the one rule on its own service, its word served
-    book_label = lmp.live_state(t, venue, now)[0]
+    # the venue's book: the one rule on its own service, then the price row's verdict, its word
+    # served
+    venue_label = lmp.live_state(t, venue, now)[0]
+    book_label = top_label if venue_label == lmp.LIVE else venue_label
     data["book_live"] = book_label == lmp.LIVE
     # ticker=t → serialize the canonical state carried per (ticker, BOOK_TIME); no independent
     # recompute.

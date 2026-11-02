@@ -598,7 +598,7 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
   holds has no known market and is not live. A symbol's quote has one verdict, the price row's and
   every console reader's (`live_price_rows.price_state`): that rule, and NOT LIVE until Schwab's
   first quote of it arrives (operator 2026-10-25). A venue's equity book takes the rule on its own
-  service. The levels, the chain and the heatmap carry the levels verdict
+  service, and while that is LIVE the quote's verdict. The levels, the chain and the heatmap carry the levels verdict
   (`server.terrain_staleness`, §3.4's chain sweep: LIVE / CLOSE / STALE / NOT LIVE with the
   chain's time and age, its age kept counting by `server.refresh_not_live_pages` while it is not
   LIVE), and Key Levels its mark (`server.levels_mark`: the levels' word, or the price's while

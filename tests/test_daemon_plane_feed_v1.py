@@ -116,7 +116,7 @@ def test_each_venue_serves_only_its_own_book(tmp_path):
         assert prov["book_time_ms"] == fx[svc]["content"]["BOOK_TIME"]
 
 
-def test_a_book_is_live_by_the_one_rule_on_its_venue_not_by_its_book_time(tmp_path):
+def test_a_book_is_live_by_the_one_rule_on_its_venue_not_by_its_book_time(tmp_path, monkeypatch):
     """ONE-15: a book read stale once its BOOK_TIME was 25 s old -- a fourth liveness limit. It
     is live while the daemon's heartbeat is live and it holds the ticker on that venue's service,
     however old its last change (these real books are days old), at any hour: no clock of ours
@@ -128,8 +128,11 @@ def test_a_book_is_live_by_the_one_rule_on_its_venue_not_by_its_book_time(tmp_pa
 
     import server
     from tests.feed_live_helper import RTH_INSTANT
+    from tests.test_data_path_live_status_v1 import _QUOTE
 
     _reset(tmp_path)
+    monkeypatch.setattr(lmp, "_by_ticker", {})
+    monkeypatch.setattr(lmp, "_fields_by_ticker", {})
     fx = json.loads(
         (Path(__file__).parent / "fixtures" / "real_spy_nyse_nasdaq_books.json").read_text(
             encoding="utf-8"
@@ -155,6 +158,8 @@ def test_a_book_is_live_by_the_one_rule_on_its_venue_not_by_its_book_time(tmp_pa
         "held": {"LEVELONE_EQUITIES": ["SPY"], "NASDAQ_BOOK": ["SPY"], "NYSE_BOOK": []},
     }
     lmp.record_feed_heartbeat({**held, "ts": RTH_INSTANT})
+    assert (stale("NASDAQ_BOOK"), stale("NYSE_BOOK")) == (True, True)  # the price row's verdict
+    lmp.record_from_level_one_equity("SPY", _QUOTE["item"], received_ts=_QUOTE["ts_recv"])
     assert (stale("NASDAQ_BOOK"), stale("NYSE_BOOK")) == (False, True)
     lmp.record_feed_heartbeat({**held, "ts": RTH_INSTANT - lmp.FEED_HEARTBEAT_MAX_AGE_SEC - 1})
     assert (stale("NASDAQ_BOOK"), stale("NYSE_BOOK")) == (True, True)
