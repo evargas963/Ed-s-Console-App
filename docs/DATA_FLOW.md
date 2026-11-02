@@ -159,15 +159,13 @@ from Schwab to the screen (daemon, console, page), are these:
   the newest by that time is the current one; a reconnect never replays an older value as live. A
   value is live only while it is updating: its feed delivers it and its market trades
   (`live_market_plane.live_state`). Its market trades on a day Schwab's /markets answer gave
-  windows for (an option contract only inside its own option market's regular window, the market of the ticker whose chain lists it: stock options to 16:00 ET,
-  index-close options to 16:15; with no chain held that lists it, its market is not known and it
-  reads NOT LIVE), while Schwab's SECURITY_STATUS for it is not Closed or Halted. The market day
-  runs from 04:00 ET, when Schwab flips stocks to Normal and before the 07:00 pre-market /markets
-  sends, until today's last /markets window ends (operator 2026-11-02:
-  `time_et.session_label`, the one rule). A stock needs a Schwab time dated today, which no message
-  carries before an index's open. An option contract, and the chain sweep and the levels, run from
-  04:00 to its option market's close (`time_et.option_quotes_open`), while
-  `time_et.option_market_open` stays the option market's own window, which decides the close
+  windows for, while Schwab's SECURITY_STATUS for it is not Closed or Halted. One rule (operator
+  2026-11-02): a valid session is live, and with none the screen reads CLOSED and the last value
+  stands. The session (`time_et.session_label`) runs from 04:00 ET, when Schwab flips stocks to
+  Normal and before the 07:00 pre-market /markets sends, until today's last /markets window ends.
+  An option contract, the chain sweep and the levels run from 04:00 until the last option market's
+  close (`time_et.options_open`: Schwab's 16:15 ET, stock options' post-market included), while
+  `time_et.option_market_open` stays the option markets' regular window, which decides the close
   values and what a pre-market zero does not replace. When it stops
   updating, for any reason (feed down, market closed, an input missing), the last value stands,
   marked not live with its time and its served age, and every value computed from it is marked not
@@ -388,9 +386,8 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
   chain waits behind a stored one). The daemon's bus keeps each ticker's newest whole chain:
   once all its parts are in it replaces the older one, which is never sent again. The sweep runs on
   one thread on the daemon's one Schwab client (§1), one request at a time, by the option markets
-  Schwab's /markets sends (`ChainSweep.chain_due`, `time_et.option_market_open`, the one option-market
-  reader, which every caller asks; a day Schwab says is closed is outside every window): open while any of them
-  is, to the last close (IND, 16:15 ET, when SPY's, QQQ's and IWM's options stop too; Schwab's EQO
+  Schwab's /markets sends (`ChainSweep.chain_due`, `time_et.options_open`; a day Schwab says is
+  closed is outside every window): from 04:00 ET to the last close (IND, 16:15 ET, when SPY's, QQQ's and IWM's options stop too; Schwab's EQO
   window ends at 16:00 and has no window of its own for them; operator 2026-10-09). While one is
   open (and while today's answer, or a ticker before its first chain, is not known) the
   ticker is fetched in one rotation with every other such watchlist ticker, sorted, each the same,
@@ -594,10 +591,8 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
   (`live_market_plane.FEED_HEARTBEAT_MAX_AGE_SEC`), says the Schwab socket is open, and holds the
   symbol on that Schwab service, and its market trades (`live_market_plane.live_state`; the
   header's LIVE / OFFLINE / NOT LIVE, a book's `book_live`, a heatmap leg's and a gamma cell's
-  state). An option contract trades only inside its own option market's regular window
-  (`time_et.option_market_open`), its market that of the ticker whose chain lists it
-  (`server._contract_ticker`, `time_et.option_close_product`); a contract in no chain the console
-  holds has no known market and is not live. Only the daemon holds Schwab's
+  state). An option contract is live from 04:00 ET to the last option close (`time_et.options_open`).
+  Only the daemon holds Schwab's
   SECURITY_STATUS, so the console carries the daemon's verdict (`streaming.price_state`, for a
   symbol's quote and for a venue's equity book): the rule on the beat the console holds while
   that is not LIVE (the feed down, the symbol not held, its market not trading); while it is

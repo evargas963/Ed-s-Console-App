@@ -12,10 +12,10 @@ from typing import Any
 
 from instrument_identity import ticker_storage_key
 from numeric_contract import float_finite_or_none, schwab_count, schwab_number
-from time_et import CLOSED, ET, UNKNOWN, option_quotes_open, session_label
+from time_et import CLOSED, ET, UNKNOWN, options_open, session_label
 
 #: the services the capture daemon streams the option rule's contracts on
-#: (capture.Daemon.pick_options): they trade only while an option market is open
+#: (capture.Daemon.pick_options): live until the last option market closes (time_et.options_open)
 OPTION_SERVICES = ("LEVELONE_OPTIONS", "OPTIONS_BOOK")
 #: the words of a value's state, served to the page: updating now; its feed down; its market not
 #: trading
@@ -305,24 +305,11 @@ def held_by_daemon(service: str, now: float) -> frozenset[str]:
     return feed.held.get(service, frozenset())
 
 
-#: why an option contract is not trading, by whether its own option market is open (None: the
-#: contract's market is not known, no chain held lists it)
-_OPTION_MARKET_WHY = {
-    True: None,
-    False: "outside Schwab's option market hours",
-    None: "the contract's option market is not known",
-}
-
-
-def not_trading(
-    symbol: str | None, service: str, now: float, product: str | None = None
-) -> str | None:
-    """Why `symbol`'s values on Schwab `service` are not changing at `now`, or None while its
-    market trades. Any value: the market day not started or ended (time_et.session_label), or
-    that /markets answer not held. An option contract: its option market closed for today
-    (`product`, EQO or IND: time_et.option_close_product of the ticker whose chain lists it), or
-    that market not known. A stock or an index: Schwab's own SECURITY_STATUS for it Closed or
-    Halted, or no quote from Schwab dated today."""
+def not_trading(symbol: str | None, service: str, now: float) -> str | None:
+    """Why `symbol`'s values on Schwab `service` are not live at `now`, or None in a valid session
+    (time_et.session_label): no valid session, that /markets answer not held, for an option today's
+    option markets closed (time_et.options_open), or for a stock or an index Schwab's own
+    SECURITY_STATUS for it Closed or Halted."""
     at = datetime.fromtimestamp(now, ET)
     session = session_label(at)
     if session == UNKNOWN:
@@ -330,45 +317,33 @@ def not_trading(
     if session == CLOSED:
         return "outside Schwab's market hours"
     if service in OPTION_SERVICES:
-        return _OPTION_MARKET_WHY[None if product is None else option_quotes_open(at, product)]
+        return None if options_open(at) else "outside Schwab's option market hours"
     t = ticker_storage_key(symbol)
     row = get_quote(t) if t else None
     status = row.get("security_status") if row is not None else None
-    if status in ("Closed", "Halted"):
-        return f"Schwab marks {t} {status}"
-    times = [row[k] for k in ("exchange_quote_ts", "trade_ts") if row and row.get(k) is not None]
-    if row and not any(datetime.fromtimestamp(ts, ET).date() == at.date() for ts in times):
-        return f"no quote from Schwab for {t} today"
-    return None
+    return f"Schwab marks {t} {status}" if status in ("Closed", "Halted") else None
 
 
-def live_state(
-    symbol: str | None, service: str, now: float, product: str | None = None
-) -> tuple[str, str | None]:
+def live_state(symbol: str | None, service: str, now: float) -> tuple[str, str | None]:
     """THE live rule, for every streamed value: `symbol`'s state on Schwab `service` at `now` and
     why it is not live (docs/DATA_FLOW.md §2 D5). LIVE while it is updating: the daemon's heartbeat
-    current (feed_now) reporting the Schwab socket open, the symbol held on that service, and its
-    market trading (not_trading; an option contract by its own option market, `product`). OFFLINE
-    while the feed itself is down; NOT LIVE while the feed is up and this symbol is not held or its
-    market is not trading. The last values stand either way.
+    current (feed_now) reporting the Schwab socket open, the symbol held on that service, and a
+    valid session (not_trading). OFFLINE while the feed itself is down; NOT LIVE while the feed is
+    up and this symbol is not held or no session is valid. The last values stand either way.
 
     Not "did a value arrive recently": Schwab sends a field only when it CHANGES (measured: 11%
     of 4,039 messages carried bid+ask+last together), so a quiet symbol's unchanged value is its
     current value; judging by arrival age blanks quiet names on a healthy feed."""
-    return _judge(feed_now(now), symbol, service, now, product)
+    return _judge(feed_now(now), symbol, service, now)
 
 
-def live_symbols(
-    feed: FeedNow, symbols, service: str, now: float, product: str | None = None
-) -> set[str]:
+def live_symbols(feed: FeedNow, symbols, service: str, now: float) -> set[str]:
     """The `symbols` live on Schwab `service` at `now` by the live rule, judged on one read of
     the heartbeat (`feed`)."""
-    return {s for s in symbols if _judge(feed, s, service, now, product)[0] == LIVE}
+    return {s for s in symbols if _judge(feed, s, service, now)[0] == LIVE}
 
 
-def _judge(
-    feed: FeedNow, symbol: str | None, service: str, now: float, product: str | None
-) -> tuple[str, str | None]:
+def _judge(feed: FeedNow, symbol: str | None, service: str, now: float) -> tuple[str, str | None]:
     if not feed_up(feed):
         return (
             OFFLINE,
@@ -376,15 +351,15 @@ def _judge(
         )
     if not live_on(feed, symbol, service):
         return NOT_LIVE, f"{ticker_storage_key(symbol)} is not streamed on Schwab {service}"
-    why = not_trading(symbol, service, now, product)
+    why = not_trading(symbol, service, now)
     return (LIVE, None) if why is None else (NOT_LIVE, why)
 
 
-def feed_live_for(symbol: str | None, service: str, now: float, product: str | None = None) -> bool:
+def feed_live_for(symbol: str | None, service: str, now: float) -> bool:
     """Whether `symbol` on Schwab `service` is live at `now` (live_state)."""
-    return live_state(symbol, service, now, product)[0] == LIVE
+    return live_state(symbol, service, now)[0] == LIVE
 
 
-def outage(symbol: str | None, service: str, now: float, product: str | None = None) -> str | None:
+def outage(symbol: str | None, service: str, now: float) -> str | None:
     """Why `symbol` on Schwab `service` is not live at `now`, or None when it is (live_state)."""
-    return live_state(symbol, service, now, product)[1]
+    return live_state(symbol, service, now)[1]

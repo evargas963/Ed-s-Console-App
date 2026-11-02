@@ -99,9 +99,8 @@ from terrain_engine import (
 )
 from terrain_read import LEVEL_ABOVE, LEVEL_BELOW, crossed, from_spot_text, level_side, within
 from time_et import (
-    EQUITY_OPTIONS,
     ET,
-    INDEX_OPTIONS,
+    MARKET_DAY_OPENS,
     age_text,
     ct_label,
     et_date_str_from_ts_utc,
@@ -110,8 +109,8 @@ from time_et import (
     now_et,
     option_close_product,
     option_market_open,
-    option_quotes_open,
     options_closed_at,
+    options_open,
     record_markets,
     session,
     session_label,
@@ -902,7 +901,7 @@ def _levels_state(
         return LEVELS_STALE, "no terrain snapshot has been computed yet" + sep
     at = datetime.fromtimestamp(now, ET)
     product = option_close_product(ticker)
-    market_open = option_quotes_open(at, product)
+    market_open = options_open(at)
     if market_open is None:
         return lmp.NOT_LIVE, "the market session is unknown" + sep
     if not market_open:
@@ -914,6 +913,7 @@ def _levels_state(
             )
         return LEVELS_CLOSE, ""
     age = now - float(computed_ts_utc)
+    started = at.replace(hour=MARKET_DAY_OPENS.hour, minute=0, second=0, microsecond=0).timestamp()
     # judged against the round the daemon's chain sweep delivers (every watchlist ticker once)
     round_sec = status.get("chain_round_sec") if status is not None else None
     # Stale only past the floor *and* past two delivered rounds — one missed round is normal
@@ -926,6 +926,8 @@ def _levels_state(
     )
     if age <= stale_after:
         return lmp.LIVE, ""
+    if float(computed_ts_utc) < started and now - started <= stale_after:
+        return LEVELS_CLOSE, ""  # the market day's first round is on its way
     if waiting:
         return LEVELS_STALE, f"levels are {age:.0f}s old{sep}"
     if failure:
@@ -1199,7 +1201,7 @@ def restamp_open_surfaces(now: float) -> None:
     key = (
         socket_open,
         held_now,
-        tuple(option_quotes_open(at, p) for p in (EQUITY_OPTIONS, INDEX_OPTIONS)),
+        options_open(at),
     )
     if key == _last_feed_stamp:
         return
@@ -1226,9 +1228,7 @@ def restamp_open_surfaces(now: float) -> None:
                 if greeks:
                     streamed[sym] = greeks
             held = set(symbols) & set(held_now)
-            live = lmp.live_symbols(
-                feed, streamed, "LEVELONE_OPTIONS", now, option_close_product(tk)
-            )
+            live = lmp.live_symbols(feed, streamed, "LEVELONE_OPTIONS", now)
             _stamp_gamma_surface_cell_stream_state(surface, streamed, live, held, now)
             surface["surface_seq"] = _next_gamma_surface_seq(tk)
             bumped.append(tk)
@@ -1606,7 +1606,7 @@ def _publish_levels(
     # one read of the heartbeat: pricing and the cell stamp share it
     feed = lmp.feed_now(at.timestamp())
     streamed = _streamed_greeks_for_ticker(listed, at.timestamp(), feed)
-    feed_live = lmp.live_symbols(feed, streamed, "LEVELONE_OPTIONS", at.timestamp(), product)
+    feed_live = lmp.live_symbols(feed, streamed, "LEVELONE_OPTIONS", at.timestamp())
     held = set(_held_option_symbols_for_ticker(listed, at.timestamp(), feed))
     # each field the newest Schwab sent: the last streamed value received after this chain, else
     # the chain's. The cell stamp says whether that stream is live.
@@ -3208,16 +3208,12 @@ def api_order_flow_options_microstructure(contract: str = Query(...)):
 
 def options_microstructure(c: str, now: float) -> dict:
     """The Flow panel's payload for contract `c` at `now` (/api/order-flow/options-microstructure),
-    judged live by its own option market: that of the ticker whose chain lists it
-    (_contract_ticker); a contract in no chain the console holds has no known market and is not
-    live."""
-    tk = _contract_ticker(ticker_storage_key(c))
-    product = option_close_product(tk) if tk is not None else None
-    payload = options_live_payload(ticker_storage_key(c), now, product)
+    judged live by the one live rule."""
+    payload = options_live_payload(ticker_storage_key(c), now)
     payload["contract"] = c
     payload["put_call"] = TAPE.put_call(c)
     # whether the daemon streams this contract (the option rule) and is receiving it
-    payload["streaming_plane"] = get_option_contract_streaming_diagnostics(c, now, product)
+    payload["streaming_plane"] = get_option_contract_streaming_diagnostics(c, now)
     _stamp_book_times(payload)
     return payload
 

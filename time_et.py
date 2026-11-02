@@ -172,17 +172,17 @@ def session_label(now: datetime) -> str:
     return PRE_MARKET if before and at.time() >= MARKET_DAY_OPENS and now < min(before) else CLOSED
 
 
-def option_quotes_open(now: datetime, product: str | None = None) -> bool | None:
-    """Whether the market day has started (session_label) and option market `product`, or any when
-    none is named, has not closed for today: what the chain sweep and a live mark follow.
-    option_market_open stays the option market's own window, which decides the close values."""
-    session_now = session_label(now)
-    if session_now == UNKNOWN:
+def options_open(now: datetime) -> bool | None:
+    """Whether a session is valid at `now` (session_label) and today's last option window has not
+    ended (Schwab's IND, 16:15 ET): what the chain sweep, the levels and an option's live mark
+    follow; None when Schwab's answer for today is not held. Before the option markets' own
+    windows the last values are refreshed; option_market_open keeps those windows for the close
+    values."""
+    label = session_label(now)
+    if label == UNKNOWN:
         return None
     s = session(now.astimezone(ET).date().isoformat())
-    return session_now != CLOSED and any(
-        now < end for p, windows in s.options if product in (None, p) for _start, end in windows
-    )
+    return label != CLOSED and any(now < end for _p, windows in s.options for _s, end in windows)
 
 
 def option_market_open(now: datetime, product: str | None = None) -> bool | None:

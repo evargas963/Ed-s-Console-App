@@ -109,16 +109,7 @@ def test_a_carried_last_price_is_the_current_price_on_a_live_feed():
         {"key": "CARRY", "LAST_PRICE": 10.0, "BID_PRICE": 9.9, "ASK_PRICE": 10.1},
         received_ts=t_trade,
     )
-    _rec(
-        "CARRY",
-        {
-            "key": "CARRY",
-            "BID_PRICE": 9.95,
-            "ASK_PRICE": 10.05,
-            "QUOTE_TIME_MILLIS": int(now * 1000),
-        },
-        received_ts=now,
-    )
+    _rec("CARRY", {"key": "CARRY", "BID_PRICE": 9.95, "ASK_PRICE": 10.05}, received_ts=now)
     row = lmp.get_quote("CARRY")
     assert row["spot"] == 10.0 and row["spot_received_ts"] == t_trade
     mark_feed_live("CARRY", now=now)

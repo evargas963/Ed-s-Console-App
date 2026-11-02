@@ -92,11 +92,12 @@ def published():
             _et(13, 30),
             "STALE",
         ),  # its options open, no chain for 30 minutes
-        ("TSLA", TSLA, _et(16, 1), _et(16, 5), "CLOSE"),  # fetched after its own 16:00 close
+        ("TSLA", TSLA, _et(16, 1), _et(16, 20), "CLOSE"),  # fetched after its own 16:00 close
         ("TSLA", TSLA, _et(15, 59), _et(16, 5), "STALE"),  # its close values never fetched
         ("SPY", SPY_0DTE, _et(16, 4), _et(16, 5), "LIVE"),  # its options still open until 16:15
         ("SPY", SPY_0DTE, _et(16, 4), _et(16, 20), "STALE"),  # fetched before its own 16:15 close
         ("SPY", SPY_0DTE, _et(16, 16), _et(16, 20), "CLOSE"),
+        ("SPY", SPY_0DTE, _et(16, 16, "2026-10-06"), _et(4, 1), "CLOSE"),  # the day's first round
         (
             "SPY",
             SPY_0DTE,
@@ -140,13 +141,8 @@ def test_levels_with_no_markets_answer_held_are_not_live(published):
     "tk, at, state, why",
     [
         ("TSLA", _et(15, 59), "LIVE", None),
-        (
-            "TSLA",
-            _et(16, 5),
-            "NOT LIVE",
-            "outside Schwab's option market hours",
-        ),  # its stock options closed
-        ("SPY", _et(16, 5), "LIVE", None),  # index-close options still open
+        ("TSLA", _et(16, 5), "LIVE", None),  # Schwab's stock option post-market runs to 16:15
+        ("SPY", _et(16, 5), "LIVE", None),
         ("SPY", _et(16, 20), "NOT LIVE", "outside Schwab's option market hours"),
     ],
 )
@@ -169,24 +165,6 @@ def test_the_flow_panel_judges_a_contract_by_the_option_market_of_the_chain_that
     body = server.options_microstructure(sym, at.timestamp())
     assert (body["top_feed_label"], body["top_outage"]) == (state, why)
     assert body["streaming_plane"]["feed_health"]["l1"]["state"] == state
-
-
-def test_a_contract_no_chain_lists_has_no_known_market(published):
-    """With no chain held that lists it, a contract's market is not known: not live, and why."""
-    sym = TSLA.chain[0]["symbol"]
-    at = _et(13, 0)
-    lmp.record_feed_heartbeat(
-        {
-            "ts": at.timestamp(),
-            "schwab_socket_open": True,
-            "held": {"LEVELONE_OPTIONS": [sym], "OPTIONS_BOOK": [sym]},
-        }
-    )
-    body = server.options_microstructure(sym, at.timestamp())
-    assert (body["top_feed_label"], body["top_outage"]) == (
-        "NOT LIVE",
-        "the contract's option market is not known",
-    )
 
 
 _SUNDAY = json.loads(
@@ -272,16 +250,16 @@ def _told(tk: str, at: datetime) -> set:
 
 def test_a_page_is_told_to_read_again_only_while_its_price_or_its_levels_are_not_live(published):
     """TSLA's price live (its quote's receipt, the daemon holding it) and its chain current: the
-    page is not told, each new price and chain tell it. The same chain at 16:05, after TSLA's own
-    option close and fetched after it: the levels are CLOSE, so the page is told each minute and the
-    close values' age keeps counting."""
+    page is not told, each new price and chain tell it. The same chain at 16:20, after the option
+    markets' close and fetched after TSLA's: the levels are CLOSE, so the page is told each minute
+    and the close values' age keeps counting."""
     quote = _QUOTES["TSLA"]
     at = datetime.fromtimestamp(quote["ts_recv"], ET)
     published("TSLA", TSLA, at)
     assert server.terrain_answer("TSLA", at)["levels_state"] == "LIVE"
     assert _told("TSLA", at) == set()
     published("TSLA", TSLA, _et(16, 1))
-    later = _et(16, 5)
+    later = _et(16, 20)
     lmp.record_feed_heartbeat(
         {
             "ts": later.timestamp(),

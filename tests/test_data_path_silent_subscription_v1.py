@@ -5,7 +5,6 @@ from __future__ import annotations
 import live_market_plane as lmp
 from app.options.order_flow import streaming as ofs
 from tests.feed_live_helper import RTH_INSTANT
-from time_et import EQUITY_OPTIONS
 
 
 def test_a_missing_heartbeat_keeps_the_last_subscription():
@@ -21,11 +20,9 @@ def test_a_missing_heartbeat_keeps_the_last_subscription():
         }
     )
     try:
-        live = ofs.get_option_contract_streaming_diagnostics(
-            "A", now, EQUITY_OPTIONS
-        )  # a stock option
+        live = ofs.get_option_contract_streaming_diagnostics("A", now)  # a stock option
         lmp.record_feed_down()
-        down = ofs.get_option_contract_streaming_diagnostics("A", now, EQUITY_OPTIONS)
+        down = ofs.get_option_contract_streaming_diagnostics("A", now)
     finally:
         lmp.record_feed_down()
     assert live["subscription_state"] == ofs.SUBSCRIBED

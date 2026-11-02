@@ -215,9 +215,9 @@ app rules": every live mark on every screen means the value is updating now; a c
 feed down reads not live with its time and age, Key Levels' Spot included after an outage and a
 ticker switch. Operator 2026-11-02, replacing his 2026-10-25 rule: "the ui shold be live when the
 market is open and we can receive data. during rth, pre market, after hours", and "it should start
-at 4 am et": the market day runs from 04:00 ET, in one place (`time_et.session_label`), for stocks,
-options, the chain sweep and the levels. Next: read Schwab's option preMarket and postMarket
-windows, which `/markets` sends and `time_et` drops. Operator 2026-10-25: "we should not have
+at 4 am et", and "if there is a valid session then the UI is live", with none it reads CLOSED and
+the last value stays: `time_et.session_label` is the one rule, from 04:00 ET. The chain sweep runs
+from 04:00 too, on his word. Operator 2026-10-25: "we should not have
 multiple producers anywhere": the state's word (LIVE / OFFLINE / NOT LIVE) is served
 (`live_market_plane.live_state`), never chosen by the page. Operator 2026-10-25: "we use banking
 analogy always and we take what schwab gives us, always." Operator 2026-10-25, on PR A: a symbol

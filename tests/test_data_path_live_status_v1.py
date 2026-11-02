@@ -27,7 +27,7 @@ import live_market_plane as lmp
 import live_price_rows
 import server
 from stream_spine import options_quote_msg
-from time_et import ET, INDEX_OPTIONS
+from time_et import ET
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 _CAPTURE = json.loads(
@@ -200,11 +200,9 @@ def test_a_streamed_cell_is_not_live_after_its_own_option_close():
 
 def test_a_status_sent_past_the_live_limit_is_not_current():
     _beat(_AT - lmp.FEED_HEARTBEAT_MAX_AGE_SEC)
-    assert lmp.daemon_status(_AT) is None and not lmp.feed_live_for(
-        SYM, "LEVELONE_OPTIONS", _AT, INDEX_OPTIONS
-    )
+    assert lmp.daemon_status(_AT) is None and not lmp.feed_live_for(SYM, "LEVELONE_OPTIONS", _AT)
     _beat(_AT - 1.0)
-    assert lmp.feed_live_for(SYM, "LEVELONE_OPTIONS", _AT, INDEX_OPTIONS)
+    assert lmp.feed_live_for(SYM, "LEVELONE_OPTIONS", _AT)
 
 
 def test_a_closed_socket_keeps_the_last_option_value_and_names_its_time():
@@ -289,17 +287,16 @@ def _all_held(now: float, *tickers: str) -> None:
 )
 def test_a_value_is_live_only_while_its_market_trades(at, equities, options, why):
     """The daemon's socket is open and it holds SPY and SYM at every instant (Schwab's /markets
-    answers captured 2026-10-07 say which days those are): SPY's quote and book are live only on a
-    day the stock market trades, SYM's only while an option market is open, and each names why
-    not."""
+    answers captured 2026-10-07 say which days those are): a valid session is live, stock and
+    option alike, and with none each names why not."""
     lmp.record_from_level_one_equity(TK, _QUOTE["item"], received_ts=_QUOTE["ts_recv"])
     _all_held(at, TK)
     assert lmp.feed_live_for(TK, "LEVELONE_EQUITIES", at) is equities
     assert lmp.feed_live_for(TK, "NYSE_BOOK", at) is equities
-    assert lmp.feed_live_for(SYM, "LEVELONE_OPTIONS", at, INDEX_OPTIONS) is options  # an SPY option
-    assert lmp.feed_live_for(SYM, "OPTIONS_BOOK", at, INDEX_OPTIONS) is options
+    assert lmp.feed_live_for(SYM, "LEVELONE_OPTIONS", at) is options  # an SPY option
+    assert lmp.feed_live_for(SYM, "OPTIONS_BOOK", at) is options
     assert lmp.outage(TK, "LEVELONE_EQUITIES", at) == (None if equities else why)
-    assert lmp.outage(SYM, "LEVELONE_OPTIONS", at, INDEX_OPTIONS) == (None if options else why)
+    assert lmp.outage(SYM, "LEVELONE_OPTIONS", at) == (None if options else why)
     row = live_price_rows.price_row(TK, at)
     assert (row["feed_live"], row["feed_label"]) == (
         (True, "LIVE") if equities else (False, "NOT LIVE")
@@ -372,9 +369,6 @@ def test_a_symbol_schwab_marks_closed_is_not_live_in_an_open_session():
         at = _et("2026-10-19", 20, 30)
         _all_held(at, "$SPX", "NVDA")
         assert lmp.outage("NVDA", "LEVELONE_EQUITIES", at) == "outside Schwab's market hours"
-        at = _et("2026-10-20", 5)  # Schwab marks it Normal, and has sent nothing dated today
-        _all_held(at, "$SPX", "NVDA")
-        assert lmp.outage("NVDA", "LEVELONE_EQUITIES", at) == "no quote from Schwab for NVDA today"
     finally:
         for kept in (lmp._by_ticker, lmp._fields_by_ticker):
             kept.pop("$SPX", None)
