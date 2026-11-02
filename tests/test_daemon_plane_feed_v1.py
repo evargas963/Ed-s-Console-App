@@ -2,20 +2,24 @@
 with zero Schwab connection of its own.
 
 This is the seam that used to be a second `schwab.streaming.StreamClient`. Since 2026-09-23
-the daemon PUSHES each message (live_push); these tests drive the REAL message constructors
-the daemon publishes with (stream_spine.quote_msg / book_msg) through the REAL ingest
-(order_flow_streaming._ingest_pushed). The socket end to end is
-tests/test_live_push_channel_v1.py.
+the console reads the daemon's bus; these tests drive the REAL message constructors the daemon
+publishes with (stream_spine.quote_msg / book_msg) through the REAL ingest
+(order_flow_streaming._ingest_pushed). End to end: tests/test_live_push_channel_v1.py.
 """
 
 from __future__ import annotations
 
+import json
 import time
+from pathlib import Path
 
 import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
+import server
 from stream_spine import book_msg, quote_msg
+from tests.feed_live_helper import RTH_INSTANT, forget_price
+from tests.test_data_path_live_status_v1 import _QUOTE
 
 
 def _reset(tmp_path):
@@ -119,18 +123,13 @@ def test_each_venue_serves_only_its_own_book(tmp_path):
 
 def test_a_book_is_live_by_the_one_rule_on_its_venue_not_by_its_book_time(tmp_path):
     """ONE-15: a book read stale once its BOOK_TIME was 25 s old -- a fourth liveness limit. It
-    is live while the daemon's heartbeat is live and it holds the ticker on that venue's service,
-    however old its last change (these real books are days old), at any hour: no clock of ours
-    judges it (operator 2026-10-01, "From Schwab's mouth to our UI's ears. Period."). Real SPY
-    books (tests/fixtures/real_spy_nyse_nasdaq_books.json), judged in regular hours
-    (RTH_INSTANT)."""
-    import json
-    from pathlib import Path
-
-    import server
-    from tests.feed_live_helper import RTH_INSTANT, publish_daemon_rows
-
+    is live while the daemon's heartbeat is live, it holds the ticker on that venue's service and
+    the ticker's price row reads LIVE, however old its last change (these real books are days
+    old), at any hour: no clock of ours judges it (operator 2026-10-01, "From Schwab's mouth to
+    our UI's ears. Period."). Real SPY books (tests/fixtures/real_spy_nyse_nasdaq_books.json),
+    judged in regular hours (RTH_INSTANT)."""
     _reset(tmp_path)
+    forget_price("SPY")
     fx = json.loads(
         (Path(__file__).parent / "fixtures" / "real_spy_nyse_nasdaq_books.json").read_text(
             encoding="utf-8"
@@ -156,13 +155,12 @@ def test_a_book_is_live_by_the_one_rule_on_its_venue_not_by_its_book_time(tmp_pa
         "held": {"LEVELONE_EQUITIES": ["SPY"], "NASDAQ_BOOK": ["SPY"], "NYSE_BOOK": []},
     }
     lmp.record_feed_heartbeat({**held, "ts": RTH_INSTANT})
-    publish_daemon_rows("SPY", now=RTH_INSTANT)  # the daemon's price row, its verdict LIVE
-    try:
-        assert (stale("NASDAQ_BOOK"), stale("NYSE_BOOK")) == (False, True)
-        lmp.record_feed_heartbeat({**held, "ts": RTH_INSTANT - lmp.FEED_HEARTBEAT_MAX_AGE_SEC - 1})
-        assert (stale("NASDAQ_BOOK"), stale("NYSE_BOOK")) == (True, True)
-    finally:
-        ofs._price_rows.pop("SPY", None)
+    assert (stale("NASDAQ_BOOK"), stale("NYSE_BOOK")) == (True, True)  # the price row's verdict
+    lmp.record_from_level_one_equity("SPY", _QUOTE["item"], received_ts=_QUOTE["ts_recv"])
+    assert (stale("NASDAQ_BOOK"), stale("NYSE_BOOK")) == (False, True)
+    lmp.record_feed_heartbeat({**held, "ts": RTH_INSTANT - lmp.FEED_HEARTBEAT_MAX_AGE_SEC - 1})
+    assert (stale("NASDAQ_BOOK"), stale("NYSE_BOOK")) == (True, True)
+    forget_price("SPY")
 
 
 def test_each_symbol_lands_in_its_own_state_only(tmp_path, monkeypatch):

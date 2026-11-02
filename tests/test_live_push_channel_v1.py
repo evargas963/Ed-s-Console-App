@@ -1,22 +1,19 @@
-"""Daemon -> console live push, end to end, with no database in the live path.
+"""Daemon -> console, end to end, with no database in the live path.
 
-The REAL daemon-side server (app.market_data.schwab.streaming.live_push.serve_live_push,
-fed by a real stream_spine.MessageBus) and the REAL console-side client
-(app.options.order_flow.streaming._feed_loop) talk over a real local WebSocket. These tests
-prove the seam the 2026-09-23 transport change created:
+The REAL stream_spine.MessageBus and the console's REAL reader of it
+(app.options.order_flow.streaming.follow), with the daemon's REAL price-row push:
 
   * a Schwab message published on the daemon's bus reaches the console's live-price plane
     with its OWN receive time (never the time the console processed it);
   * only Schwab-sourced messages are forwarded (any other src on the same topic is not);
   * a connecting console first receives the bus's current records, then each that changes;
   * the live loop never opens the capture database;
-  * with the push server down nothing is served, and the feed picks up when it returns.
+  * a record that fails is logged and the next one applied, and a daemon's next run is read.
 """
 
 from __future__ import annotations
 
 import asyncio
-import socket
 import sys
 import threading
 import time
@@ -26,55 +23,24 @@ import pytest
 import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
-from app.market_data.schwab.streaming import capture, live_push, live_ui
+from app.market_data.schwab.streaming import capture, live_ui
 from stream_spine import HealthRegistry, MessageBus, book_msg, options_quote_msg, quote_msg
 from tests.feed_live_helper import RTH_INSTANT, clock_from
 
 _CONTRACT = "SPY   260918C00500000"
 
 
-#: ports this test holds bound and not listening (every connect refused, no other process can
-#: take them); closed by the `feed` fixture
-_HELD: list = []
-
-
-def _held_port() -> int:
-    s = socket.socket()
-    s.bind(("127.0.0.1", 0))
-    _HELD.append(s)
-    return s.getsockname()[1]
-
-
 @pytest.fixture
 def feed():
     """The console's state cleared before and after."""
     ofs._feed_running = False
-    ofs._price_rows.clear()
     ofs._option_streaming_last_update_ts = None
     ofs._option_contract_last_update_ts.clear()
     ofls.clear_all_live_state()
     lmp._by_ticker.clear()
     yield
     ofs._feed_running = False
-    ofs._price_rows.clear()
     lmp._by_ticker.clear()
-    while _HELD:
-        _HELD.pop().close()
-
-
-def _port(stats: dict) -> int:
-    """The port a daemon server took (it was asked for port 0: the system's free pick)."""
-    return int(stats["listening"].rsplit(":", 1)[1])
-
-
-def _console(push_port: int, ui_port: int | None = None):
-    """The console's real feed loop on the daemon's live push at `push_port` and its price rows
-    at `ui_port` (none given: a port this test holds, nothing listening), retried every 0.05 s."""
-    return ofs._feed_loop(
-        f"ws://127.0.0.1:{push_port}",
-        f"ws://127.0.0.1:{_held_port() if ui_port is None else ui_port}",
-        0.05,
-    )
 
 
 def _spy_trade(last: float, ts: float) -> dict:
@@ -117,17 +83,12 @@ def _daemon_heartbeat(socket_open=True, held=("SPY",), clock=time.time):
 
 
 async def _run(body, heartbeat_fn=None):
-    """The daemon's two servers on one bus -- the message push and the price-row push, which
-    beats the daemon's status -- with its market follower feeding the plane the price rows are
-    read from, and the console's real feed loop connected to both. The daemon
-    runs in its own process with its own live_market_plane; here it shares the test's, so its own
-    record of each beat is kept out of it (record_heartbeat, a named stand-in for the process
-    boundary): what the console knows of the daemon arrives over the wire or not at all."""
+    """The daemon's bus and its price-row push, which beats the daemon's status, with its market
+    follower feeding the plane the price rows are read from, and the console's real reader of the
+    bus."""
     bus = MessageBus()
     stop = asyncio.Event()
-    stats: dict = {}
     ui_stats: dict = {}
-    server = asyncio.create_task(live_push.serve_live_push(bus, stop, port=0, stats=stats))
     ui = asyncio.create_task(
         live_ui.serve_live_ui(
             stop,
@@ -135,20 +96,22 @@ async def _run(body, heartbeat_fn=None):
             host="127.0.0.1",
             port=0,
             stats=ui_stats,
-            record_heartbeat=lambda _beat: None,
         )
     )
-    follower = asyncio.create_task(capture.Daemon(bus, HealthRegistry(), []).follow_market(stop))
-    assert await _until(lambda: stats.get("listening") and ui_stats.get("listening"))
+    daemon = capture.Daemon(bus, HealthRegistry(), [])
+    follower = asyncio.create_task(daemon.follow_market(stop))
+    assert await _until(lambda: ui_stats.get("listening"))
     ofs._feed_running = True
-    client = asyncio.create_task(_console(_port(stats), _port(ui_stats)))
+    console = asyncio.create_task(ofs.follow(bus, daemon))
     try:
-        await body(bus, stats)
+        assert await _until(lambda: ofs._daemon is daemon)
+        await body(bus)
     finally:
         ofs._feed_running = False
-        client.cancel()
         stop.set()
-        await asyncio.gather(client, server, ui, follower, return_exceptions=True)
+        await asyncio.gather(ui, follower, return_exceptions=True)
+        console.cancel()
+        await asyncio.gather(console, return_exceptions=True)
 
 
 def _received(ts):
@@ -160,14 +123,13 @@ def _received(ts):
 
 
 def test_the_daemon_heartbeat_decides_liveness_end_to_end(feed):
-    """Real daemon servers -> real console feed loop. Live only while the daemon's status beats
+    """The daemon's real beat -> the real console reader. Live only while the daemon's status beats
     arrive, the Schwab socket is open and the daemon holds the symbol; the feed is down the
     moment the daemon's connections end. In regular hours: the beats and the reads run from
     RTH_INSTANT."""
     clock = clock_from(RTH_INSTANT)
 
-    async def body(bus, stats):
-        assert await _until(lambda: stats["clients"] == 1)
+    async def body(bus):
         ts = clock()
         bus.publish("quote.SPY", _spy_trade(501.0, ts))
         assert await _until(_received(ts))
@@ -211,7 +173,7 @@ def test_a_live_feed_stays_live_while_the_console_works_through_a_backlog_of_cha
             samples.append(lmp.feed_live_for("SPY", "LEVELONE_EQUITIES", clock()))
             time.sleep(0.05)
 
-    async def body(bus, stats):
+    async def body(bus):
         assert await _until(lambda: lmp.feed_live_for("SPY", "LEVELONE_EQUITIES", clock()))
         for i in range(300):
             for topic, msg in chain_messages(f"ZZ{i:03d}", contracts, time.time(), None, None):
@@ -232,8 +194,7 @@ def test_a_live_feed_stays_live_while_the_console_works_through_a_backlog_of_cha
 
 
 def test_a_closed_schwab_socket_is_not_live(feed):
-    async def body(bus, stats):
-        assert await _until(lambda: stats["clients"] == 1)
+    async def body(bus):
         ts = time.time()
         bus.publish("quote.SPY", _spy_trade(501.0, ts))
         assert await _until(_received(ts))
@@ -244,14 +205,9 @@ def test_a_closed_schwab_socket_is_not_live(feed):
 
 
 def test_a_non_schwab_message_on_the_same_topic_is_never_forwarded(feed):
-    """Neither the message nor any value it carried: the SPY record a client receives holds
-    only what Schwab sent (here, no CLOSE_PRICE -- only the non-Schwab message carried one)."""
-    import json as _json
+    """The console applies only what Schwab sent: the non-Schwab record is not taken."""
 
-    from websockets.asyncio.client import connect
-
-    async def body(bus, stats):
-        assert await _until(lambda: stats["clients"] == 1)
+    async def body(bus):
         bus.publish(
             "quote.SPY",
             quote_msg(
@@ -267,15 +223,8 @@ def test_a_non_schwab_message_on_the_same_topic_is_never_forwarded(feed):
         ts = time.time()
         bus.publish("quote.SPY", _spy_trade(502.0, ts))
         assert await _until(_received(ts))
-        assert stats["sent"] == 1
-        async with connect(
-            f"ws://127.0.0.1:{_port(stats)}", max_size=None
-        ) as ws:  # a second client
-            while (m := _json.loads(await asyncio.wait_for(ws.recv(), 5)))["topic"] != "quote.SPY":
-                pass
-        assert "CLOSE_PRICE" not in m["msg"]["native"], (
-            "a non-Schwab value was forwarded as Schwab's"
-        )
+        applied = ofls.get_content_for_symbol("SPY")
+        assert [r["server_received_ts"] for r in applied] == [ts], "only Schwab's was applied"
 
     asyncio.run(_run(body))
 
@@ -284,8 +233,7 @@ def test_option_l1_and_book_update_the_contract_and_report_greeks(feed):
     """The console's tick callback, as start_order_flow_stream sets it, records each tick."""
     seen: list = []
 
-    async def body(bus, stats):
-        assert await _until(lambda: stats["clients"] == 1)
+    async def body(bus):
         ts = time.time()
         bus.publish(
             f"optquote.{_CONTRACT}",
@@ -330,8 +278,7 @@ sys.addaudithook(
 
 
 def test_the_live_loop_never_opens_the_capture_database(feed):
-    async def body(bus, stats):
-        assert await _until(lambda: stats["clients"] == 1)
+    async def body(bus):
         ts = time.time()
         bus.publish("quote.SPY", _spy_trade(503.0, ts))
         assert await _until(_received(ts))
@@ -345,35 +292,46 @@ def test_the_live_loop_never_opens_the_capture_database(feed):
     assert _OPENED == [], f"the live feed opened a database: {_OPENED}"
 
 
-def test_push_down_serves_nothing_and_the_feed_recovers_when_it_returns(feed):
-    """The daemon's push port is held by this test (bound, not listening: every connect is
-    refused, and no other process can take it) until the daemon's server starts on it."""
-    held = socket.socket()
-    held.bind(("127.0.0.1", 0))
-    port = held.getsockname()[1]
+def test_the_console_restamps_what_is_live_each_beat(feed):
+    restamped: list = []
+    ofs._on_feed_callback = restamped.append
+
+    async def body(bus):
+        assert await _until(lambda: len(restamped) >= 2, timeout=5.0)
+
+    try:
+        asyncio.run(_run(body))
+    finally:
+        ofs._on_feed_callback = None
+
+
+def test_a_record_that_fails_is_logged_and_a_daemons_next_run_is_read(feed, caplog):
+    """Induced test condition: a /markets record with no status. The record after it is applied,
+    and the reader of a daemon's next run, on its new bus, applies what that bus carries."""
 
     async def run():
-        ofs._feed_running = True
-        client = asyncio.create_task(_console(port))
-        await asyncio.sleep(0.3)  # no server: several failed connects
-        assert ofls.get_content_for_symbol("SPY") == []
         bus = MessageBus()
-        stop = asyncio.Event()
-        stats: dict = {}
-        held.close()
-        server = asyncio.create_task(live_push.serve_live_push(bus, stop, port=port, stats=stats))
+        console = asyncio.create_task(ofs.follow(bus, capture.Daemon(bus, HealthRegistry(), [])))
+        assert await _until(lambda: ofs._daemon is not None)
+        bus.publish("markets.2026-10-07", {"src": "schwab_markets", "date": "2026-10-07"})
+        first = time.time()
+        bus.publish("quote.SPY", _spy_trade(503.0, first))
+        assert await _until(_received(first))
+        console.cancel()
+        await asyncio.gather(console, return_exceptions=True)
+        assert ofs._daemon is None
+        bus = MessageBus()
+        console = asyncio.create_task(ofs.follow(bus, capture.Daemon(bus, HealthRegistry(), [])))
         try:
-            assert await _until(lambda: stats.get("clients") == 1)
-            ts = time.time()
-            bus.publish("quote.SPY", _spy_trade(504.0, ts))
-            assert await _until(_received(ts))
+            assert await _until(lambda: ofs._daemon is not None)
+            second = first + 1
+            bus.publish("quote.SPY", _spy_trade(504.0, second))
+            assert await _until(_received(second))
         finally:
-            ofs._feed_running = False
-            client.cancel()
-            stop.set()
-            await asyncio.gather(client, server, return_exceptions=True)
+            console.cancel()
 
     asyncio.run(run())
+    assert any("markets.2026-10-07 not applied" in r.getMessage() for r in caplog.records)
 
 
 def test_a_message_missing_its_receive_time_is_dropped_whole():
@@ -388,32 +346,6 @@ def test_a_message_missing_its_receive_time_is_dropped_whole():
     )
 
 
-def test_daemon_shutdown_is_not_held_up_by_a_connected_console(feed):
-    """A handler blocked waiting for the next bus message must not keep the server open:
-    before the fix, stopping the daemon with a console attached hung forever."""
-
-    async def run():
-        bus = MessageBus()
-        stop = asyncio.Event()
-        stats: dict = {}
-        server = asyncio.create_task(live_push.serve_live_push(bus, stop, port=0, stats=stats))
-        assert await _until(lambda: stats.get("listening"))
-        ofs._feed_running = True
-        client = asyncio.create_task(_console(_port(stats)))
-        try:
-            assert await _until(lambda: stats["clients"] == 1)
-            stop.set()  # console still connected
-            await asyncio.wait_for(asyncio.shield(server), timeout=3.0)
-            assert stats["clients"] == 0
-        finally:
-            ofs._feed_running = False
-            client.cancel()
-            stop.set()
-            await asyncio.gather(client, server, return_exceptions=True)
-
-    asyncio.run(run())
-
-
 def test_a_late_console_gets_the_current_record_with_each_fields_own_time(feed):
     """Schwab LEVELONE sends only changed fields. A console connecting after a trade and a
     later bid/ask tick gets the current record (docs/DATA_FLOW.md §2 D3): the trade's fields
@@ -423,10 +355,6 @@ def test_a_late_console_gets_the_current_record_with_each_fields_own_time(feed):
 
     async def run():
         bus = MessageBus()
-        stop = asyncio.Event()
-        stats: dict = {}
-        server = asyncio.create_task(live_push.serve_live_push(bus, stop, port=0, stats=stats))
-        assert await _until(lambda: stats.get("listening"))
         # the daemon publishes a trade, then a bid/ask-only tick -- before any console exists
         t_trade = time.time() - 5.0
         t_quote = time.time() - 1.0
@@ -448,16 +376,11 @@ def test_a_late_console_gets_the_current_record_with_each_fields_own_time(feed):
                 native={"key": "SPY", "BID_PRICE": 504.9, "ASK_PRICE": 505.1},
             ),
         )
-        await asyncio.sleep(0.05)
-        ofs._feed_running = True
-        client = asyncio.create_task(_console(_port(stats)))
+        console = asyncio.create_task(ofs.follow(bus, capture.Daemon(bus, HealthRegistry(), [])))
         try:
             assert await _until(_received(t_trade))  # the trade, at its own receive time
             assert not _received(t_quote)(), "the trade was re-dated to the later bid/ask tick"
         finally:
-            ofs._feed_running = False
-            client.cancel()
-            stop.set()
-            await asyncio.gather(client, server, return_exceptions=True)
+            console.cancel()
 
     asyncio.run(run())

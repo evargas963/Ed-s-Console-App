@@ -44,7 +44,7 @@ from tools.shell_parse import Statement, program_name, read
 REPO = Path(__file__).resolve().parent.parent
 PASS, ASK, DENY = "pass", "ask", "deny"
 #: the production processes and what starts them
-PROCESS_NAMES = ("streaming.capture", "uvicorn", "server:app")
+PROCESS_NAMES = ("streaming.capture", "uvicorn", "program:app", "server:app")
 LAUNCHERS = ("start_capture_daemon", "start_ed_console")
 #: a command line that carries one of these is production's (launch.py among them)
 PRODUCTION_MARKS = (*PROCESS_NAMES, *LAUNCHERS, "launch.py")

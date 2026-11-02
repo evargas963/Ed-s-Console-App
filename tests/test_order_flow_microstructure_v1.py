@@ -580,7 +580,7 @@ def test_the_equity_book_reads_the_daemons_price_row_for_its_top_of_book():
     Served in regular hours (RTH_INSTANT)."""
     import live_market_plane as lmp
     import server
-    from tests.feed_live_helper import RTH_INSTANT, mark_feed_live, publish_daemon_rows
+    from tests.feed_live_helper import RTH_INSTANT, mark_feed_live
 
     now = RTH_INSTANT
     mark_feed_live("ZZTB", now=now)
@@ -597,7 +597,6 @@ def test_the_equity_book_reads_the_daemons_price_row_for_its_top_of_book():
             },
             received_ts=now,
         )
-        publish_daemon_rows("ZZTB", now=now)
         body = server.order_flow_microstructure("ZZTB", "NYSE_BOOK", now)
         assert body["flow"]["top_book_pressure"] == (3 - 5) / 8 and body["top_outage"] is None
     finally:

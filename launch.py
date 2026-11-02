@@ -1,28 +1,24 @@
-"""Ed Console's launcher, the one start of the console and the capture daemon:
+"""Ed Console's launcher, the one start of the program (program.py):
 start_ed_console.bat runs it with the project's .venv Python. Its start stops nothing.
 
-0. With neither running, the checkout brought to origin/main (bring_to_origin_main), so both start
-   from the same commit, the newest merged: moved, it runs the new launch.py as its child and ends
-   with it. With local changes, not on main, split from origin/main or origin out of reach, both
-   start from the commit the checkout is at, the check not passed and why said: whether the app
-   starts is never the repository's to decide. With either running it is not run: the
-   other starts from the commit the running one loaded.
-1. The capture daemon, in its own window (start_capture_daemon.bat restarts it), unless its price
-   socket's port is in use. It reads its own .env (the Schwab credentials); its log, and
-   /api/health from its heartbeat, say whether Schwab took them.
-2. The console on port 8000, with no SCHWAB_* setting (it never calls Schwab), unless the port is
-   in use: then it says so and opens the browser to it.
-3. The default browser, at URL, once the console it started answers healthy.
+0. With it not running, the checkout brought to origin/main (bring_to_origin_main), so it starts
+   from the newest merged commit: moved, it runs the new launch.py as its child and ends with it.
+   With local changes, not on main, split from origin/main or origin out of reach, it starts from
+   the commit the checkout is at, the check not passed and why said: whether the app starts is
+   never the repository's to decide.
+1. The program on port 8000, unless the port is in use: then it says so and opens the browser to
+   it. It reads .env (the Schwab credentials); its log, and /api/health, say whether Schwab took
+   them.
+2. The default browser, at URL, once the program answers healthy.
 
-`python launch.py stop` is the clean stop of both (stop): the daemon is asked to stop on its local
-socket and writes what it holds before it exits; the console, in a process group of its own, gets
-Ctrl+Break and runs its shutdown; start_ed_console.bat then ends and its window closes.
+`python launch.py stop` is the clean stop (stop): the program, in a process group of its own, gets
+Ctrl+Break and runs its shutdown, the writer writing what it holds; start_ed_console.bat then ends
+and its window closes.
 """
 
 from __future__ import annotations
 
 import ctypes
-import json
 import logging
 import os
 import signal
@@ -35,19 +31,13 @@ import webbrowser
 from pathlib import Path
 
 import psutil
-from websockets.exceptions import WebSocketException
-from websockets.sync.client import connect
-
-from app.market_data.schwab.streaming.live_push import LIVE_PUSH_PORT
-from app.market_data.schwab.streaming.live_ui import LIVE_UI_PORT as DAEMON_PORT
 
 log = logging.getLogger("launch")
 ROOT = Path(__file__).resolve().parent
 CONSOLE_PORT = 8000
 URL = f"http://127.0.0.1:{CONSOLE_PORT}/"
-#: what each runs right after its program: the console's app, the daemon's module (its batch's line)
-CONSOLE_START = ["-m", "uvicorn", "server:app"]
-DAEMON_START = ["-m", "app.market_data.schwab.streaming.capture_main"]
+#: what it runs right after its Python
+CONSOLE_START = ["-m", "uvicorn", "program:app"]
 #: --timeout-graceful-shutdown: Ctrl+C ends it while pages hold their change streams open
 CONSOLE = [
     sys.executable,
@@ -59,7 +49,8 @@ CONSOLE = [
     "--timeout-graceful-shutdown",
     "10",
 ]
-#: how long a clean stop waits for each process to end (the console's shutdown is bounded at 12 s)
+#: how long a clean stop waits for the program to end: the daemon's stop, then a shutdown bounded
+#: at 12 s
 STOP_WAIT_SEC = 30.0
 #: what the commit check before a start found (bring_to_origin_main)
 COMMIT_CURRENT, COMMIT_MOVED, COMMIT_UNKNOWN, COMMIT_REFUSED = (
@@ -120,9 +111,8 @@ def in_use(port: int) -> bool:
 
 def running(start: list[str]) -> list[psutil.Process]:
     """This checkout's processes that run `start` right after their program: those whose folder is
-    ROOT, where its daemon's batch and its console run, so another checkout's daemon or console (a
-    test's) is never taken for one, nor a process that only names them, as a search does (one whose
-    line or folder cannot be read is none)."""
+    ROOT, so another checkout's (a test's) is never taken for one, nor a process that only names
+    it, as a search does (one whose line or folder cannot be read is none)."""
     return [
         p
         for p in psutil.process_iter(["cmdline", "cwd", "ppid"])
@@ -140,13 +130,6 @@ def start_console(argv: list[str], env: dict) -> subprocess.Popen:
     return subprocess.Popen(
         argv, cwd=ROOT, env=env, creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
     )
-
-
-def daemon_window(batch: Path) -> list[str]:
-    """The command that runs `batch` (start_capture_daemon.bat) in a minimized window of its own
-    titled "Ed Capture Daemon", under `cmd /c` so the window closes when the batch ends (`start`
-    given a batch file runs it under `cmd /K`, which keeps the window open)."""
-    return ["cmd", "/c", "start", "Ed Capture Daemon", "/min", "cmd", "/c", str(batch)]
 
 
 def ctrl_break(group: int) -> None:
@@ -168,13 +151,6 @@ def _send_ctrl_break(group: int) -> int:
     return 0 if kernel.GenerateConsoleCtrlEvent(1, group) else 1  # 1: CTRL_BREAK_EVENT
 
 
-def ask_daemon_to_stop(port: int = LIVE_PUSH_PORT) -> None:
-    """The daemon's clean stop, asked on its local socket at `port` ({"op": "stop"}: it writes
-    what it holds, then exits and start_capture_daemon.bat does not restart it)."""
-    with connect(f"ws://127.0.0.1:{port}", open_timeout=10) as ws:
-        ws.send(json.dumps({"op": "stop"}))
-
-
 def group_leader(console: list[psutil.Process]) -> int:
     """The console process whose parent is not one: the launcher started it, so its id is the
     group's. Read from what `running` took, so a process gone since raises nothing."""
@@ -183,30 +159,18 @@ def group_leader(console: list[psutil.Process]) -> int:
 
 
 def stop() -> int:
-    """The clean stop of the daemon (ask_daemon_to_stop) and the console (ctrl_break to its group,
-    group_leader). Waits up to STOP_WAIT_SEC for each; 0 when both ended, a daemon only if it was
-    asked: one that ended when this stop could not ask it is not reported stopped."""
-    daemon, console = running(DAEMON_START), running(CONSOLE_START)
-    daemon_ended = "stopped"
-    if daemon:
-        try:
-            ask_daemon_to_stop()
-        except (OSError, WebSocketException) as e:
-            log.warning("Capture daemon: not asked to stop: %s: %s", type(e).__name__, e)
-            daemon_ended = "ended, not asked by this stop"
+    """The clean stop: ctrl_break to the program's group (group_leader). Waits up to STOP_WAIT_SEC;
+    0 when it ended."""
+    console = running(CONSOLE_START)
     if console:
         ctrl_break(group_leader(console))
-    _gone, alive = psutil.wait_procs(daemon + console, timeout=STOP_WAIT_SEC)
-    for name, procs, ended in (
-        ("Capture daemon", daemon, daemon_ended),
-        ("Console", console, "stopped"),
-    ):
-        left = [p.pid for p in procs if p in alive]
-        print(
-            f"{name}: "
-            + ("not running" if not procs else f"still running ({left})" if left else ended)
-        )
-    return 1 if alive or daemon_ended != "stopped" else 0
+    _gone, alive = psutil.wait_procs(console, timeout=STOP_WAIT_SEC)
+    left = [p.pid for p in alive]
+    print(
+        "Program: "
+        + ("not running" if not console else f"still running ({left})" if left else "stopped")
+    )
+    return 1 if alive else 0
 
 
 def unhealthy_for(port: int, seconds: float) -> str | None:
@@ -229,37 +193,22 @@ def unhealthy_for(port: int, seconds: float) -> str | None:
 
 
 def main() -> int:
-    up = [
-        name
-        for name, port in (("capture daemon", DAEMON_PORT), ("console", CONSOLE_PORT))
-        if in_use(port)
-    ]
-    if up:
-        print(f"Commit check: not run; the {' and the '.join(up)} already run from this checkout.")
-    else:
-        check, commit, why = bring_to_origin_main(ROOT)
-        print(f"Commit check: {check}: {why}")
-        if commit is not None:
-            print(f"Commit: {commit}")
-        if check == COMMIT_MOVED:  # this process loaded the old code: the new one starts both
-            signal.signal(signal.SIGINT, signal.SIG_IGN)
-            return subprocess.call([sys.executable, str(ROOT / "launch.py")], cwd=ROOT)
-    if in_use(DAEMON_PORT):
-        print(f"Capture daemon: port {DAEMON_PORT} is already in use; not started.")
-    else:
-        subprocess.Popen(daemon_window(ROOT / "start_capture_daemon.bat"), cwd=ROOT)
-        print('Capture daemon: started in its own window ("Ed Capture Daemon").')
     if in_use(CONSOLE_PORT):
-        print(f"Console: port {CONSOLE_PORT} is already in use; not started. Opening {URL}.")
+        print(f"Program: port {CONSOLE_PORT} is already in use; not started. Opening {URL}.")
         webbrowser.open(URL)  # the default browser
         return 0
+    check, commit, why = bring_to_origin_main(ROOT)
+    print(f"Commit check: {check}: {why}")
+    if commit is not None:
+        print(f"Commit: {commit}")
+    if check == COMMIT_MOVED:  # this process loaded the old code: the new one starts it
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+        return subprocess.call([sys.executable, str(ROOT / "launch.py")], cwd=ROOT)
     print(
-        f"Console: starting on port {CONSOLE_PORT}; the browser opens at {URL} once it answers. "
+        f"Program: starting on port {CONSOLE_PORT}; the browser opens at {URL} once it answers. "
         "Ctrl+C stops it."
     )
-    console = start_console(
-        CONSOLE, {k: v for k, v in os.environ.items() if not k.upper().startswith("SCHWAB_")}
-    )
+    console = start_console(CONSOLE, dict(os.environ))
     signal.signal(
         signal.SIGINT, signal.SIG_IGN
     )  # Ctrl+C is the console's: it stops, then this ends

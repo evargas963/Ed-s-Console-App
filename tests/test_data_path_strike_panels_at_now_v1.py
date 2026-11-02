@@ -15,9 +15,7 @@ import json
 from pathlib import Path
 
 import live_market_plane as lmp
-import live_price_rows
 import server
-from app.options.order_flow import streaming as ofs
 from tests.real_chains import CRWD
 
 _QUOTE = json.loads(
@@ -30,7 +28,6 @@ _QUOTE = json.loads(
 def _clear(tk):
     with server._terrain_cache_lock:
         server._terrain_cache.pop(tk, None)
-    ofs._price_rows.pop(tk, None)
     lmp._by_ticker.pop(tk, None)
     lmp._fields_by_ticker.pop(tk, None)
     lmp.record_feed_down()
@@ -44,8 +41,6 @@ def test_every_per_strike_panel_answers_at_the_time_asked_around_the_price():
         lmp.record_feed_heartbeat(
             {"ts": at, "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [tk]}}
         )
-        row = live_price_rows.price_row(tk, at)
-        ofs._price_rows[row["ticker"]] = row
         server._publish_levels(
             tk,
             captures=[

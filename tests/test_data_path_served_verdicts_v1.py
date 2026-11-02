@@ -19,7 +19,6 @@ from pathlib import Path
 
 import pytest
 
-import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 import live_price_rows
 import push_changes
@@ -50,7 +49,6 @@ def _forget() -> None:
         for tk in ("TSLA", "SPY"):
             server._terrain_cache.pop(tk, None)
     for tk in ("TSLA", "SPY"):
-        ofs._price_rows.pop(tk, None)
         lmp._by_ticker.pop(tk, None)
         lmp._fields_by_ticker.pop(tk, None)
     lmp.record_feed_down()
@@ -64,7 +62,7 @@ def _publish(tk: str, chain, delivered: datetime) -> None:
     lmp.record_feed_heartbeat(
         {"ts": quote["ts_recv"], "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [tk]}}
     )
-    row = ofs._price_rows[tk] = live_price_rows.price_row(tk, quote["ts_recv"])
+    row = live_price_rows.price_row(tk, quote["ts_recv"])
     server._publish_levels(
         tk,
         [dict(c) for c in chain.chain],

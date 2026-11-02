@@ -3,21 +3,19 @@ The console's live-plane feed for every watchlist ticker — READ-ONLY consumer 
 daemon (app.market_data.schwab.streaming.capture). It opens no Schwab connection: the daemon
 holds the one Schwab socket and is the one producer.
 
-The daemon forwards every Schwab stream message to this module over a local WebSocket
-(app.market_data.schwab.streaming.live_push, ws://127.0.0.1:8799) the moment it arrives, and
-this module applies it to the in-process planes (`app.options.order_flow.state`,
-`live_market_plane`). The database is not in the live path: stream_capture.db is the
-daemon's record, and no screen value is read from it. If the push connection
-drops, the live values go stale and the screen says so; nothing falls back to the database.
+The daemon's message bus gives this module every Schwab record the moment it changes (follow), in
+the one program, and this module applies it to the in-process planes
+(`app.options.order_flow.state`, `live_market_plane`). The database is not in the live path:
+stream_capture.db is the daemon's record, and no screen value is read from it. If the daemon
+stops, the live values go stale and the screen says so; nothing falls back to the database.
 
 The daemon streams every ticker on its watchlist (capture.Daemon.watchlist, the one list), and
 picks the option contracts it streams itself (capture.Daemon.pick_options, the option rule).
-Over the same socket this module sends the operator's adds and removals of watchlist tickers
-(watchlist_request), each answered by the daemon's watchlist record, and the contract selected on
-the Flow panel (select_flow_contract), which the daemon streams on top of the rule. The daemon's
-one-second status comes on the price-row connection (_rows_loop, live_ui's "feed" beat), where
-no chain waits ahead of it, and is the one source for "is the daemon / Schwab alive", the
-watchlist and "what does Schwab hold".
+This module hands it the operator's adds and removals of watchlist tickers (watchlist_request),
+each answered by the daemon's watchlist record, and the contract selected on the Flow panel
+(select_flow_contract), which the daemon streams on top of the rule. The daemon's one-second
+status (live_ui's beat, recorded in live_market_plane) is the one source for "is the daemon /
+Schwab alive", the watchlist and "what does Schwab hold".
 
 Public API: `start_order_flow_stream` / `stop_order_flow_stream`
 / `get_option_contract_streaming_diagnostics`.
@@ -26,19 +24,14 @@ Public API: `start_order_flow_stream` / `stop_order_flow_stream`
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import queue
 import time
 from collections.abc import Callable
 from typing import Any
 
-from websockets.asyncio.client import connect
-
 import live_market_plane as _lmp
 import push_changes
-from app.market_data.schwab.streaming.live_push import LIVE_PUSH_HOST, LIVE_PUSH_PORT
-from app.market_data.schwab.streaming.live_ui import LIVE_UI_PORT
 from app.options.order_flow import history as recent
 from app.options.order_flow.state import (
     clear_all_live_state,
@@ -47,48 +40,29 @@ from app.options.order_flow.state import (
     push_option_top,
 )
 from instrument_identity import ticker_storage_key
+from stream_spine import LATEST
 from time_et import record_markets
 
 log = logging.getLogger(__name__)
 
-LIVE_PUSH_URL = f"ws://{LIVE_PUSH_HOST}:{LIVE_PUSH_PORT}"
-#: The daemon's price-row push (live_ui), the one the browser reads.
-LIVE_UI_URL = f"ws://127.0.0.1:{LIVE_UI_PORT}"
-#: The daemon's finished price row per ticker (live_price_rows.price_row), exactly as it pushes
-#: it to the browser. The console keeps no other copy of a live price. A silent or dropped push
-#: marks the feed down; the last row stays until a newer one arrives.
-_price_rows: dict[str, dict] = {}
+#: topic prefix -> the only `src` taken from the bus for it: Schwab's alone
+_FROM_SCHWAB = {
+    "quote.": "schwab_l1",
+    "book.": "schwab_book",
+    "optquote.": "schwab_options_l1",
+    "news.": "schwab_news",
+    "bar1m.": "schwab_chart",
+    "chain.": "schwab_chain",
+    "pricehistory.": "schwab_pricehistory",
+    "markets.": "schwab_markets",
+    "watchlist": "daemon_watchlist",
+}
+#: how often what is live is restamped: the daemon's beat
+BEAT_SEC = 1.0
 
 
-def price_row(ticker: str) -> dict | None:
-    return _price_rows.get(ticker_storage_key(ticker) or "")
-
-
-def price_state(
-    ticker: str, now: float, service: str = "LEVELONE_EQUITIES"
-) -> tuple[str, str | None]:
-    """`ticker`'s state on Schwab `service` (its quote, or a venue's book) at `now`, as the console
-    serves it: the rule on the beat the console holds (live_market_plane.live_state) while that is
-    not LIVE (the feed down, the symbol not held, its market not trading); while it is LIVE, the
-    daemon's own verdict on its price row (`feed_label`, `outage`: live_price_rows.price_row), which
-    alone holds Schwab's SECURITY_STATUS; NOT LIVE while no row from the daemon has arrived."""
-    label, why = _lmp.live_state(ticker, service, now)
-    if label != _lmp.LIVE:
-        return label, why
-    row = price_row(ticker)
-    if row is None:
-        return _lmp.NOT_LIVE, f"no price row from the daemon for {ticker_storage_key(ticker)} yet"
-    return row["feed_label"], row["outage"]
-
-
-#: Wait between reconnect attempts when the daemon's push server is down. While it is down
-#: no live value is refreshed -- the freshness checks turn them stale; nothing substitutes.
-PUSH_RECONNECT_SEC = 1.0
-
-
-#: the console's push connection to the daemon while it is open (_feed_loop): watchlist requests
-#: go on it
-_push_ws = None
+#: the daemon while it runs (follow): watchlist requests go to it
+_daemon = None
 #: request id -> the future the daemon's watchlist record for it resolves (_ingest_pushed)
 _watchlist_answers: dict[int, asyncio.Future] = {}
 #: how long a watchlist request waits for the daemon's record (an add waits on Schwab's /quotes
@@ -99,40 +73,35 @@ WATCHLIST_ANSWER_SEC = 30.0
 async def watchlist_request(action: str, ticker: str) -> dict:
     """An add or a removal ("add" | "remove") of `ticker`, sent to the daemon, which keeps the
     watchlist; its record once the daemon has answered (capture.watchlist_message: the list, what
-    happened, Schwab's /quotes answer to an add's check). Raises ConnectionError while the push
-    connection is not open, TimeoutError when no record comes in WATCHLIST_ANSWER_SEC."""
-    ws = _push_ws
-    if ws is None:
-        raise ConnectionError("the capture daemon's push connection is not open")
+    happened, Schwab's /quotes answer to an add's check). Raises ConnectionError while the daemon
+    is not running, TimeoutError when no record comes in WATCHLIST_ANSWER_SEC."""
+    if _daemon is None:
+        raise ConnectionError("the capture daemon is not running")
     rid = time.time_ns()
     answer = asyncio.get_running_loop().create_future()
     _watchlist_answers[rid] = answer
     try:
-        await ws.send(
-            json.dumps({"op": "watchlist", "action": action, "ticker": ticker, "id": rid})
-        )
+        _daemon.console_request({"op": "watchlist", "action": action, "ticker": ticker, "id": rid})
         return await asyncio.wait_for(answer, WATCHLIST_ANSWER_SEC)
     finally:
         del _watchlist_answers[rid]
 
 
 #: the contract Ed selected on the Flow panel, or None: the daemon streams it on both option
-#: services on top of its option rule; sent on every connection to the daemon and on each change
+#: services on top of its option rule; told to the daemon at each start of it and on each change
 _flow_contract: str | None = None
 
 
 async def select_flow_contract(contract: str | None) -> None:
-    """The Flow panel's selection (None: none), told to the daemon now when connected, and on each
-    connection after (serve_push), so a daemon restart keeps it."""
+    """The Flow panel's selection (None: none), told to the daemon now when it runs, and at each
+    start of it (follow), so a daemon restart keeps it."""
     global _flow_contract
     _flow_contract = contract
-    if _push_ws is not None:
-        await _push_ws.send(json.dumps({"op": "flow_contract", "contract": contract}))
+    if _daemon is not None:
+        _daemon.console_request({"op": "flow_contract", "contract": contract})
 
 
-# ── Runtime state (single asyncio task inside the SAME event loop as the server —
-#    no dedicated thread/loop needed once nothing here opens a socket) ──
-_feed_task: asyncio.Task | None = None
+# ── Runtime state (the daemon's task on the program's one event loop) ──
 _feed_running = False
 
 #: Each option contract's last streamed message time (LEVELONE_OPTIONS or OPTIONS_BOOK), keyed
@@ -231,14 +200,6 @@ def _service_feed(symbol: str | None, service: str, now: float, product: str | N
     }
 
 
-def _log_stream(phase: str, **kwargs: Any) -> None:
-    if kwargs:
-        extra = " ".join(f"{k}={v!r}" for k, v in sorted(kwargs.items()))
-        log.info("STREAM_DIAG %s %s", phase, extra)
-    else:
-        log.info("STREAM_DIAG %s", phase)
-
-
 #: the option quote fields the levels are priced from: a message carrying one reprices
 _REPRICE_FIELDS = ("GAMMA", "DELTA", "OPEN_INTEREST", "TOTAL_VOLUME", "VOLUME")
 
@@ -251,7 +212,7 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
     fresh).
 
       quote.SYM    LEVELONE_EQUITIES -> order-flow state (the tape); the live price is the
-                   daemon's price row (_rows_loop), never rebuilt here
+                   plane's row (live_price_rows.price_row), never rebuilt here
       book.SYM     NASDAQ_BOOK / NYSE_BOOK -> order-flow book; OPTIONS_BOOK -> the option
                    contract's book
       optquote.SYM LEVELONE_OPTIONS -> order-flow state for the contract
@@ -322,115 +283,60 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
     return None
 
 
-def _rows_wanted(now: float) -> list[str]:
-    """The price rows this console holds at `now`: every equity the daemon streams (its
-    heartbeat's held LEVELONE_EQUITIES -- the watchlist and the market context, as Schwab
-    accepted them)."""
-    return sorted(_lmp.held_by_daemon("LEVELONE_EQUITIES", now))
-
-
-async def _rows_loop(ui_url: str, reconnect_sec: float) -> None:
-    """Hold the daemon's price rows (_rows_wanted) and its status: one browser client of the
-    daemon's price push (`ui_url`, retried every `reconnect_sec`), resubscribed when what the
-    daemon streams changes (checked on every frame). The daemon beats every second with its whole
-    status (`feed`), the one record of whether the daemon and Schwab are live
-    (live_market_plane.record_feed_heartbeat); this connection carries no chain, so a beat never
-    waits behind one. Silence or a lost connection is a feed down. Each row's arrival is the
-    equity's tick."""
-    while _feed_running:
+async def _beats() -> None:
+    """Every BEAT_SEC, what is live restamped. A beat that fails is logged, and the next one
+    runs."""
+    while True:
         try:
-            async with connect(ui_url, max_size=None, open_timeout=5) as ws:
-                sent = None
-                while _feed_running:
-                    want = _rows_wanted(time.time())
-                    if want != sent:
-                        await ws.send(json.dumps({"op": "subscribe", "symbols": want}))
-                        sent = want
-                    try:
-                        frame = await asyncio.wait_for(ws.recv(), _lmp.FEED_HEARTBEAT_MAX_AGE_SEC)
-                    except TimeoutError:
-                        _lmp.record_feed_down()  # the daemon beats every second: silence
-                        _feed_changed(time.time())  # the last price row stays
-                        continue
-                    msg = json.loads(frame)
-                    if msg.get("type") == "feed":
-                        _lmp.record_feed_heartbeat(msg.get("feed"))
-                        _feed_changed(time.time())
-                    for row in msg.get("rows") or []:
-                        _price_rows[row["ticker"]] = row
-                        if msg.get("type") == "quotes":
-                            _tick(row["ticker"])
-        except asyncio.CancelledError:
-            raise
-        except Exception as e:  # noqa: BLE001 -- daemon down/restarting: retry, never substitute
-            log.info(
-                "price rows unavailable (%s: %s); retrying in %.1fs",
-                type(e).__name__,
-                e,
-                reconnect_sec,
-            )
-        _lmp.record_feed_down()  # no daemon: the feed is down, the last price stays
-        _feed_changed(time.time())
-        if _feed_running:
-            await asyncio.sleep(reconnect_sec)
+            _feed_changed(time.time())
+        except Exception as e:  # noqa: BLE001 -- logged; the next beat runs
+            log.warning("console beat: %s: %s", type(e).__name__, e)
+        await asyncio.sleep(BEAT_SEC)
 
 
-async def serve_push(ws) -> None:
-    """One connection to the daemon's live push, for its life: the Flow panel's contract sent first
-    (select_flow_contract), the watchlist requests sent on it (watchlist_request), and every
-    frame applied the moment it arrives (_ingest_pushed)."""
-    global _push_ws
-    await ws.send(json.dumps({"op": "flow_contract", "contract": _flow_contract}))
-    _push_ws = ws
+def from_schwab(topic: str, record: Any) -> bool:
+    """A bus record that came from Schwab (a chain: its parts)."""
+    first = record[0] if isinstance(record, list) and record else record
+    if not isinstance(first, dict):
+        return False
+    return any(
+        topic.startswith(prefix) and first.get("src") == src for prefix, src in _FROM_SCHWAB.items()
+    )
+
+
+async def follow(bus, daemon) -> None:
+    """The daemon's bus, for the daemon's life: the Flow panel's contract told first
+    (select_flow_contract), the watchlist requests sent to it (watchlist_request), each equity's
+    tick as the plane takes it, and every Schwab record applied the moment it changes
+    (_ingest_pushed) -- no poll interval, no database read. A record that fails is logged, and the
+    next one is applied. When the daemon ends, the feed is down and the last values stand, marked.
+    """
+    global _daemon
+    sub = bus.subscribe("", policy=LATEST)
+    daemon.console_request({"op": "flow_contract", "contract": _flow_contract})
+    _daemon = daemon
+    _lmp.add_row_listener(_tick)
+    beats = asyncio.create_task(_beats(), name="console beats")
     try:
-        async for frame in ws:
-            try:
-                env = json.loads(frame)
-            except (TypeError, ValueError):
-                log.warning("live push: a frame that is not JSON was skipped: %r", frame[:200])
+        while True:
+            topic, record = await sub.get()
+            if not from_schwab(topic, record):
                 continue
-            _ingest_pushed(str(env["topic"]), env["msg"])
-            # a frame already received is handed over without a wait, so a backlog of chain
-            # parts would hold the loop: the daemon's status beat and every route take a turn
-            await asyncio.sleep(0)
+            for msg in record if isinstance(record, list) else [record]:
+                try:
+                    _ingest_pushed(topic, msg)
+                except Exception as e:  # noqa: BLE001 -- logged; the next record is applied
+                    log.warning("%s not applied: %s: %s", topic, type(e).__name__, e)
+                # a backlog of chain parts would hold the loop: the daemon's status beat and every
+                # route take a turn
+                await asyncio.sleep(0)
     finally:
-        _push_ws = None
-
-
-async def _feed_loop(push_url: str, ui_url: str, reconnect_sec: float) -> None:
-    """Consume the daemon's live push (`push_url`) and its price rows (`ui_url`, _rows_loop)
-    until the feed stops.
-
-    Each frame is one Schwab stream message; it is applied the moment it arrives
-    (_ingest_pushed) -- no poll interval, no database read. A dropped connection is retried
-    every `reconnect_sec`; while it is down, the live values age out through their own
-    freshness checks and the screen shows them stale. There is no second source."""
-    rows = asyncio.create_task(_rows_loop(ui_url, reconnect_sec), name="daemon-price-rows")
-    try:
-        while _feed_running:
-            try:
-                async with connect(
-                    push_url, max_size=None, open_timeout=5, ping_interval=20, ping_timeout=20
-                ) as ws:
-                    _log_stream("PUSH_CONNECTED", url=push_url)
-                    await serve_push(ws)
-            except asyncio.CancelledError:
-                raise
-            except Exception as e:  # noqa: BLE001 -- daemon down/restarting: retry, never substitute
-                log.info(
-                    "live push unavailable (%s: %s); retrying in %.1fs",
-                    type(e).__name__,
-                    e,
-                    reconnect_sec,
-                )
-            if _feed_running:
-                await asyncio.sleep(reconnect_sec)
-    finally:
-        rows.cancel()
-        await asyncio.gather(rows, return_exceptions=True)
+        beats.cancel()
+        _lmp.remove_row_listener(_tick)
+        _daemon = None
+        bus.unsubscribe(sub)
         _lmp.record_feed_down()
         _feed_changed(time.time())
-        _log_stream("FEED_LOOP_STOP_DONE")
 
 
 #: a contract's subscription, as the Flow panel shows it: the daemon's option rule holds it on
@@ -476,31 +382,19 @@ def start_order_flow_stream(
     on_chain_callback: Callable[..., None] | None = None,
     on_feed_callback: Callable[[float], None] | None = None,
 ) -> bool:
-    """Start the feed from the capture daemon (on the event loop)."""
-    global _feed_task, _feed_running, _on_tick_callback, _on_chain_callback, _on_feed_callback
-    if _feed_task is not None and not _feed_task.done():
-        log.info("Live-plane feed already running")
-        return True
+    """Set what the feed from the capture daemon calls (follow reads it)."""
+    global _feed_running, _on_tick_callback, _on_chain_callback, _on_feed_callback
     _on_tick_callback = on_tick_callback
     _on_chain_callback = on_chain_callback
     _on_feed_callback = on_feed_callback
     _feed_running = True
-    _feed_task = asyncio.get_event_loop().create_task(
-        _feed_loop(LIVE_PUSH_URL, LIVE_UI_URL, PUSH_RECONNECT_SEC), name="daemon-plane-feed"
-    )
-    log.info("Live-plane feed started (source=capture daemon live push)")
+    log.info("Live-plane feed started")
     return True
 
 
 def stop_order_flow_stream() -> None:
-    """Clear the live state the feed fed and cancel its task; the task logs FEED_LOOP_STOP_DONE
-    when it ends."""
-    global _feed_running, _feed_task
+    """Clear the live state the feed fed."""
+    global _feed_running
     _feed_running = False
     _option_contract_last_update_ts.clear()
     clear_all_live_state()
-    task = _feed_task
-    if task is not None and not task.done():
-        task.cancel()
-    _feed_task = None
-    _log_stream("FEED_CANCEL_REQUESTED")

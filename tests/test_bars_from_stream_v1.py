@@ -15,7 +15,6 @@ from fastapi.testclient import TestClient
 
 import app.options.order_flow.streaming as ofs
 import server
-from app.market_data.schwab.streaming.live_push import is_forwarded
 from stream_spine import bar_msg
 from tests.feed_live_helper import price_history
 from time_et import ET, ct_label
@@ -51,8 +50,8 @@ def teardown_function(_fn):
 
 
 def test_the_daemon_forwards_streamed_bars_to_the_console():
-    assert is_forwarded(f"bar1m.{TK}", _bar(T0))
-    assert not is_forwarded(f"bar1m.{TK}", dict(_bar(T0), src="something_else"))
+    assert ofs.from_schwab(f"bar1m.{TK}", _bar(T0))
+    assert not ofs.from_schwab(f"bar1m.{TK}", dict(_bar(T0), src="something_else"))
 
 
 def test_the_feed_hands_each_streamed_bar_to_the_writer():

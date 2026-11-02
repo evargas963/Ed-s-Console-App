@@ -7,13 +7,13 @@ import time
 
 import live_market_plane as lmp
 import server as srv
-from app.options.order_flow import streaming as ofs
 from math_exposure_core import (
     compute_exposures_by_strike,
     net_gex_dollars_at_strike,
     strike_total_volume,
 )
 from terrain_engine import compute_terrain
+from tests.feed_live_helper import forget_price, hold_price
 from tests.real_chains import NFLX, SPY_0DTE
 
 
@@ -30,13 +30,13 @@ def test_volume_below_and_above_spot_keeps_every_digit():
     lmp.record_feed_heartbeat(
         {"ts": time.time(), "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [tk]}}
     )
-    ofs._price_rows[tk] = {"ticker": tk, "spot": 100.0, "trade_ts": 1.0}
+    hold_price(tk, 100.0, 1.0)
     try:
         resp = srv.get_terrain_strikes(ticker=tk)
     finally:
         with srv._terrain_cache_lock:
             srv._terrain_cache.pop(tk, None)
-        ofs._price_rows.pop(tk, None)
+        forget_price(tk)
         lmp.record_feed_down()
     sums = json.loads(bytes(resp.body))["today_side_sums"]
     assert sums["vol_below"] == 10.4
@@ -56,13 +56,13 @@ def _published(tk: str, chain: list, spot: float, now) -> dict:
     lmp.record_feed_heartbeat(
         {"ts": time.time(), "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [tk]}}
     )
-    ofs._price_rows[tk] = {"ticker": tk, "spot": spot, "trade_ts": 1.0}
+    hold_price(tk, spot, 1.0)
     try:
         resp = srv.get_terrain_strikes(ticker=tk)
     finally:
         with srv._terrain_cache_lock:
             srv._terrain_cache.pop(tk, None)
-        ofs._price_rows.pop(tk, None)
+        forget_price(tk)
         lmp.record_feed_down()
     return json.loads(bytes(resp.body))
 

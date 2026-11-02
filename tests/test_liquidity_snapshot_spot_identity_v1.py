@@ -13,9 +13,7 @@ import pytest
 
 import liquidity_value_engine as lve
 import live_market_plane as lmp
-import live_price_rows
 import server as srv
-from app.options.order_flow import streaming as ofs
 from liquidity_models import ZONE_DISPLAY, SnapshotType, ZoneType
 from micro_structure import Candle
 from tests.feed_live_helper import daemon_bars
@@ -55,7 +53,6 @@ def published():
 
     def forget():
         srv._bars.pop(TK, None)
-        ofs._price_rows.pop(TK, None)
         with lmp._lock:
             lmp._by_ticker.pop(TK, None)
             lmp._fields_by_ticker.pop(TK, None)
@@ -119,7 +116,6 @@ def test_spot_used_for_scoring_reports_the_real_live_spot_when_available(publish
         {"ts": at, "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [TK]}}
     )
     lmp.record_from_level_one_equity(TK, {"LAST_PRICE": last}, received_ts=at)
-    ofs._price_rows[TK] = live_price_rows.price_row(TK, at)
     body = _body(srv.liquidity_snapshot(TK, FRIDAY))
     assert body["spot_used_for_scoring"] == last
     assert "spot_estimate_vwap_fallback" not in body

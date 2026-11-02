@@ -25,7 +25,7 @@ import time_et
 from app.market_data.schwab.streaming import capture
 from app.options.order_flow import streaming as ofs
 from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus
-from tests.feed_live_helper import mark_feed_live, publish_daemon_rows
+from tests.feed_live_helper import mark_feed_live
 from tests.schwab_rest_standin import CHAINS, MARKETS, MARKETS_ANSWERS, LocalSchwab
 from time_et import ET
 
@@ -111,7 +111,7 @@ def test_the_console_holds_each_200_answer_and_never_a_400():
     for day in ("2026-09-29", "2026-10-07"):
         a = MARKETS_ANSWERS[day]
         _topic, msg = markets_message(day, a["status"], json.loads(a["body"]), time.time())
-        ofs._ingest_pushed(f"markets.{day}", json.loads(msg["frame"])["msg"])
+        ofs._ingest_pushed(f"markets.{day}", msg)
     assert time_et.session("2026-09-29") is None
     s = time_et.session("2026-10-07")
     assert s.is_open and s.regular == ((_et("2026-10-07 09:30"), _et("2026-10-07 16:00")),)
@@ -234,7 +234,6 @@ def test_a_stock_quote_before_schwabs_pre_market_is_shown():
     try:
         lmp.record_from_level_one_equity(tk, native, received_ts=time.time())
         mark_feed_live(tk)
-        publish_daemon_rows(tk)
         assert time_et.session_label(_et("2026-10-07 05:00")) == time_et.CLOSED
         at = _et("2026-10-07 05:00").timestamp()
         assert (
@@ -243,6 +242,5 @@ def test_a_stock_quote_before_schwabs_pre_market_is_shown():
         )
         assert server.resolve_spot(tk, now=at)[0] == native["LAST_PRICE"]
     finally:
-        ofs._price_rows.pop(tk, None)
         lmp._by_ticker.pop(tk, None)
         lmp._fields_by_ticker.pop(tk, None)

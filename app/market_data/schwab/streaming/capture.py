@@ -1,6 +1,6 @@
 """The capture daemon: the ONE Schwab streaming connection (Schwab allows one per account).
 
-    python -m app.market_data.schwab.streaming.capture_main  (launch.py -> start_capture_daemon.bat)
+    keep_running, a task of the one program (program.py)
 
 It is the only part of Ed Console that talks to Schwab. Beside the loop below, its chain sweep
 (run_chains) fetches full option chains on its own thread, one request at a time, without end:
@@ -9,10 +9,10 @@ every watchlist ticker, each in its turn in one rotation.
   0. WATCHLIST The one list of tickers Schwab is asked for (Watchlist): the daemon holds it,
              is its only writer, and keeps every change as a `watchlist` record (the writer
              stores it in stream_capture.db stream_watchlist; the newest is read at startup).
-             The console asks for an add or a removal over the local console socket (live_push,
-             ws://127.0.0.1:8799): {"op": "watchlist", "action": "add"|"remove", "ticker": T,
-             "id": n}. An added ticker is checked with one /quotes request: one Schwab names in
-             errors.invalidSymbols, or does not quote, is not added. The record carries the
+             The console asks for an add or a removal (Daemon.console_request): {"op": "watchlist",
+             "action": "add"|"remove", "ticker": T, "id": n}. An added ticker is checked with one
+             /quotes request: one Schwab names in errors.invalidSymbols, or does not quote, is not
+             added. The record carries the
              request's id and Schwab's answer back to the console.
 
 It does four things, in one loop:
@@ -31,7 +31,7 @@ It does four things, in one loop:
              recorded (stream_subscriptions) exactly as sent -- a refused ADD is answered twice
              (code 19, then code 24 "ADD command failed"), and both are its answers.
   3. FAN-OUT Every Schwab message is published once on the bus: the database writer
-             (stream_capture.db), the console socket (8799) and the browser price socket
+             (stream_capture.db), the console (streaming.follow) and the browser price socket
              (8800) all read from it.
   4. HEALTH  Any frame from Schwab -- data or Schwab's own heartbeat -- proves the connection
              is alive. None for DEAD_SEC, or a request unanswered for REQUEST_TIMEOUT_SEC:
@@ -65,7 +65,6 @@ from websockets.exceptions import ConnectionClosed
 import live_market_plane as lmp
 import live_price_rows
 import runtime_layout
-from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT, serve_live_push
 from app.market_data.schwab.streaming.live_ui import serve_live_ui
 from calibration.complete_chain_capture import ChainSweep
 from config import build_config, load_dotenv_file
@@ -126,8 +125,8 @@ EQUITY_SERVICES = ("LEVELONE_EQUITIES", "CHART_EQUITY", "NEWS_HEADLINE", "NYSE_B
 #: Schwab's limit on each option service, as its own refusals on the daemon's connection state it
 #: ("(LEVELONE_OPTIONS=3000, DISCARDED=1)", "(OPTIONS_BOOK=100, DISCARDED=1)")
 OPTION_LIMITS = {"LEVELONE_OPTIONS": 3000, "OPTIONS_BOOK": 100}
-#: the market context every page's header shows (live_push.MARKET_CONTEXT) is streamed on these,
-#: whatever the watchlist holds
+#: the market context every page's header shows (lmp.MARKET_CONTEXT) is streamed on these, whatever
+#: the watchlist holds
 MARKET_CONTEXT_SERVICES = ("LEVELONE_EQUITIES", "CHART_EQUITY", "NEWS_HEADLINE")
 
 #: LEVELONE_EQUITIES / CHART_EQUITY fields copied into the database's flat columns (the full
@@ -513,7 +512,7 @@ class Daemon:
         the market context on MARKET_CONTEXT_SERVICES, and the option contracts the rule picked."""
         out = {svc: frozenset(self.watchlist) for svc in EQUITY_SERVICES}
         for svc in MARKET_CONTEXT_SERVICES:
-            out[svc] |= frozenset(MARKET_CONTEXT)
+            out[svc] |= frozenset(lmp.MARKET_CONTEXT)
         out.update(self.options)
         return out
 
@@ -661,12 +660,9 @@ class Daemon:
         for task in done:
             task.result()  # a follower's error, raised for run to name
 
-    def console_frame(self, req: dict, sender) -> None:
-        """A frame from a connection `sender` to the daemon's local socket (live_push, 127.0.0.1): a
-        watchlist request ({"op": "watchlist"}, answered on the bus), the contract selected on the
-        Flow panel ({"op": "flow_contract", "contract": symbol or null}), or the clean stop
-        ({"op": "stop"}, launch.py stop): every task ends, the writer writes what it holds (to the
-        spill files while the database refuses writes), and the daemon exits EXIT_STOPPED."""
+    def console_request(self, req: dict) -> None:
+        """A watchlist request ({"op": "watchlist"}, answered on the bus) or the contract selected
+        on the Flow panel ({"op": "flow_contract", "contract": symbol or null})."""
         if req["op"] == "watchlist":
             task = asyncio.ensure_future(self.watchlist_request(req))
             task.add_done_callback(_request_ended)
@@ -675,9 +671,6 @@ class Daemon:
             log.info("flow contract: %s", self.flow_contract)
             self.pick_options()
             self._keep_options()
-        elif req["op"] == "stop":
-            log.info("capture daemon: stop requested on its local socket")
-            self.stop.set()
 
     async def watchlist_request(self, req: dict) -> None:
         """One add or removal from the console ({"op": "watchlist", "action", "ticker", "id"}),
@@ -760,7 +753,7 @@ class Daemon:
         return self.bus.current.get(_current_key("LEVELONE_OPTIONS", symbol)) if held else None
 
     def status(self, now: float) -> dict:
-        """What the console and browsers are told every second (live_push / live_ui), at `now`."""
+        """What the console and browsers are told every second (live_ui), at `now`."""
         last = self.stream.last_frame_ts if self.stream is not None else 0.0
         return {
             "ts": now,
@@ -961,12 +954,11 @@ def owner_lock_path(db_path: str | Path | None = None) -> Path:
     return resolve_stream_db_path(db_path).with_name("stream_capture.lock")
 
 
-#: Exit code when another daemon already owns the stream (start_capture_daemon.bat stops its
-#: restart loop on it). 2 is the live-binding refusal (runtime_layout).
+#: Exit code when another program already owns the stream. 2 is the live-binding refusal
+#: (runtime_layout).
 EXIT_OWNER_LOCK_HELD = 3
-#: Exit code of a daemon stopped on request ({"op": "stop"}): start_capture_daemon.bat does not
-#: restart it.
-EXIT_STOPPED = 5
+#: Seconds before a stream that ended on an error starts again.
+RESTART_WAIT_SEC = 5.0
 
 
 def acquire_owner_lock(db_path: str | Path | None = None) -> tuple[int, Path]:
@@ -1050,26 +1042,18 @@ class DailyLog(logging.StreamHandler):
         super().close()
 
 
-def _start_log(early_errors=None) -> None:
+def start_log() -> None:
     """Every line, with its time to the millisecond, to the day's log file
-    (runtime_layout.daemon_log_path) under <runtime>/logs, and to the console if any. Under
-    pythonw the log file held as the error output since the daemon's start (capture_main,
-    `early_errors`) is closed first; from here an error reaches the log through the handler (main
-    logs one that ends the daemon)."""
-    if early_errors is not None:
-        early_errors.close()
-        sys.stderr = None
+    (runtime_layout.daemon_log_path) under <runtime>/logs, beside the console's own output."""
     folder = runtime_layout.logs_dir()
     folder.mkdir(parents=True, exist_ok=True)
-    handlers: list[logging.Handler] = [DailyLog(folder)]
-    if sys.stderr is not None:
-        handlers.append(logging.StreamHandler())
-    logging.basicConfig(
-        level=logging.INFO,
-        handlers=handlers,
-        format="%(asctime)s.%(msecs)03d %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
+    handler = DailyLog(folder)
+    handler.setFormatter(
+        logging.Formatter("%(asctime)s.%(msecs)03d %(message)s", "%Y-%m-%d %H:%M:%S")
     )
+    root = logging.getLogger()
+    root.addHandler(handler)
+    root.setLevel(logging.INFO)
     logging.getLogger("httpx").setLevel(logging.WARNING)  # each request's line is log_request's
 
 
@@ -1208,10 +1192,10 @@ def one_schwab_client(build) -> callable:
     return schwab_client
 
 
-async def run() -> int:
-    """The whole daemon: writer, the two local sockets, the chain sweep, the market follower and
-    the Schwab connection, each until the stop; one that ends first ends the daemon with an error
-    naming it, which start_capture_daemon.bat restarts."""
+async def run(asked: asyncio.Event, consume) -> None:
+    """The whole daemon: writer, the browsers' socket, the chain sweep, the market follower, the
+    Schwab connection and `consume` (the console's reader of its bus), each until `asked`; one that
+    ends first ends them all with an error naming it."""
     load_dotenv_file()
     cfg = build_config()
     schwab_client = one_schwab_client(
@@ -1219,7 +1203,7 @@ async def run() -> int:
             api_key=cfg.api_key, app_secret=cfg.app_secret, token_path=cfg.token_path
         )
     )
-    stop = asyncio.Event()
+    stop = asyncio.Event()  # this run's own: its tasks end on it, and another run may follow
     bus, health = MessageBus(), HealthRegistry()
     writer = CaptureWriter()
     db_path = canonical_console_db_path()
@@ -1235,45 +1219,36 @@ async def run() -> int:
         asyncio.create_task(record_feed_status(daemon, stop), name="feed status"),
         asyncio.create_task(keep_sessions(daemon, stop), name="keep"),
         asyncio.create_task(daemon.follow_market(stop), name="market follower"),
-        asyncio.create_task(
-            serve_live_push(bus, stop, on_request=daemon.console_frame), name="live push"
-        ),
         asyncio.create_task(serve_live_ui(stop, heartbeat_fn=daemon.status), name="live ui"),
     ]
+    console = asyncio.create_task(consume(bus, daemon), name="console")
+    tasks.append(console)
+    stopping = asyncio.ensure_future(asked.wait())
     try:
         await asyncio.sleep(0)  # servers subscribe before the first message
         tasks.append(asyncio.create_task(daemon.run(schwab_client, stop), name="schwab connection"))
-        done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-        ended = None if stop.is_set() else done.pop()
+        done, _ = await asyncio.wait([*tasks, stopping], return_when=asyncio.FIRST_COMPLETED)
+        ended = None if asked.is_set() else done.pop()
     finally:
+        stopping.cancel()
         stop.set()
-        await asyncio.gather(*tasks, return_exceptions=True)
+        await asyncio.gather(*(t for t in tasks if t is not console), return_exceptions=True)
+        console.cancel()  # last: no beat lands after it marks the feed down
+        await asyncio.gather(console, return_exceptions=True)
     if ended is not None:
         raise RuntimeError(
             f"the capture daemon's {ended.get_name()} ended before the stop"
         ) from ended.exception()
-    return EXIT_STOPPED
 
 
-def main(early_errors=None) -> int:
-    if sys.argv[1:]:  # everything it needs comes from the console; no switch can move it
-        print(f"the capture daemon takes no arguments (got {sys.argv[1:]})", file=sys.stderr)
-        return 2
-    # a worktree must not run a live daemon against production's runtime
-    binding = runtime_layout.live_binding_error()
-    if binding is not None:
-        print(f"CAPTURE DAEMON REFUSED: {binding}", file=sys.stderr, flush=True)
-        return 2
-    _start_log(early_errors)
-    fd, lock = acquire_owner_lock()
-    try:
-        return asyncio.run(run())
-    except KeyboardInterrupt:
-        return 0
-    except BaseException:
-        log.exception(
-            "capture daemon: ended by an error"
-        )  # under pythonw, the log is the only record
-        raise
-    finally:
-        release_owner_lock(fd, lock)
+async def keep_running(stop: asyncio.Event, consume) -> None:
+    """The daemon until `stop`, started again RESTART_WAIT_SEC after an error ends it, with the
+    error in the log."""
+    while not stop.is_set():
+        try:
+            await run(stop, consume)
+        except Exception:
+            log.exception("capture daemon: ended by an error")
+            asked = asyncio.ensure_future(stop.wait())
+            await asyncio.wait({asked}, timeout=RESTART_WAIT_SEC)
+            asked.cancel()

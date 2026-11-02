@@ -1,6 +1,6 @@
-"""Option messages, Schwab to the console, through the real code: the daemon's push socket
-(live_push.serve_live_push) and the console's side of it (streaming.serve_push), the console's
-state (app.options.order_flow.state), and the daemon's status (live_market_plane).
+"""Option messages, Schwab to the console, through the real code: the daemon's bus and the
+console's reader of it (streaming.follow), the console's state
+(app.options.order_flow.state), and the daemon's status (live_market_plane).
 
 Real data: every message received 2026-10-05 14:00:00-14:00:03 CT, as Schwab sent them
 (tests/fixtures/real_stream_mix_2026_10_05_1400ct.json: 7,420 LEVELONE_OPTIONS, 152
@@ -12,15 +12,14 @@ from __future__ import annotations
 
 import asyncio
 import json
-import socket
 import time
 from pathlib import Path
 
 import app.options.order_flow.state as ofls
 import live_market_plane as lmp
-from app.market_data.schwab.streaming import live_push
+from app.market_data.schwab.streaming import capture
 from app.options.order_flow import streaming as ofs
-from stream_spine import MessageBus, book_msg, options_quote_msg, quote_msg
+from stream_spine import HealthRegistry, MessageBus, book_msg, options_quote_msg, quote_msg
 
 _MIX = json.loads(
     (Path(__file__).parent / "fixtures" / "real_stream_mix_2026_10_05_1400ct.json").read_text(
@@ -44,17 +43,10 @@ def _message(m: dict) -> tuple[str, dict]:
     )
 
 
-def _free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
 def test_every_option_and_equity_message_on_the_one_push_reaches_the_console():
     """The daemon publishes each message Schwab sent; the console's one connection receives them
     and keeps each contract's newest values as sent: every option contract's last BID_PRICE and
     ASK_PRICE (its top of book), and the option book Schwab sent last."""
-    from websockets.asyncio.client import connect
 
     rows = [
         m for m in _MIX if m["service"] in ("LEVELONE_OPTIONS", "LEVELONE_EQUITIES", "OPTIONS_BOOK")
@@ -78,24 +70,18 @@ def test_every_option_and_equity_message_on_the_one_push_reaches_the_console():
         return {k: t[k] for k in want[sym] if k in t}
 
     async def go():
-        bus, stop, port = MessageBus(), asyncio.Event(), _free_port()
-        stats: dict = {}
-        pushing = asyncio.create_task(live_push.serve_live_push(bus, stop, port=port, stats=stats))
-        while stats.get("listening") is None:
-            await asyncio.sleep(0.02)
-        ws = await connect(f"ws://127.0.0.1:{port}", max_size=None)
-        console = asyncio.create_task(ofs.serve_push(ws))
+        bus = MessageBus()
+        daemon = capture.Daemon(bus, HealthRegistry(), [])
+        console = asyncio.create_task(ofs.follow(bus, daemon))
         try:
+            await asyncio.sleep(0)
             for m in rows:
                 bus.publish(*_message(m))
             deadline = time.monotonic() + 30
             while any(top(s) != t for s, t in want.items()) and time.monotonic() < deadline:
                 await asyncio.sleep(0.05)
-        finally:  # a failure still closes the socket: cancelling over an open one can hang
-            await ws.close()
-            await asyncio.wait_for(console, 5)
-            stop.set()
-            await pushing
+        finally:
+            console.cancel()
 
     ofls.clear_all_live_state()
     try:

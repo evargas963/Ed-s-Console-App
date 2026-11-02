@@ -7,9 +7,9 @@ import json
 import logging
 import time
 
-import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 from app.market_data.schwab.streaming import live_ui
+from live_price_rows import price_row
 from tests.test_live_push_channel_v1 import (
     _daemon_heartbeat,
     _run,
@@ -37,7 +37,6 @@ def test_a_page_frame_the_daemon_cannot_read_is_logged_with_what_arrived(caplog)
                 host="127.0.0.1",
                 port=0,
                 stats=stats,
-                record_heartbeat=lambda _beat: None,
             )
         )
         assert await _until(lambda: stats.get("listening"))
@@ -73,14 +72,13 @@ def test_a_silent_daemon_keeps_the_last_price(feed):
     missing: list = []
     quiet: list = []
 
-    async def body(bus, stats):
-        assert await _until(lambda: stats["clients"] == 1)
+    async def body(bus):
         bus.publish("quote.SPY", _spy_trade(501.0, time.time()))
-        assert await _until(lambda: (ofs.price_row("SPY") or {}).get("spot") == 501.0)
+        assert await _until(lambda: price_row("SPY", time.time())["spot"] == 501.0)
         end = time.monotonic() + 1.2
         while time.monotonic() < end:
-            row = ofs.price_row("SPY")
-            if row is None or row.get("spot") != 501.0:
+            row = price_row("SPY", time.time())
+            if row["spot"] != 501.0:
                 missing.append(row)
             if not lmp.feed_live_for("SPY", "LEVELONE_EQUITIES", time.time()):
                 quiet.append(True)

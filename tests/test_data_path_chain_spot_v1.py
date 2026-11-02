@@ -22,6 +22,7 @@ import server
 from app.options.order_flow import streaming as ofs
 from stream_spine import CaptureWriter
 from tests.capture_store import store_capture
+from tests.feed_live_helper import forget_price
 from tests.real_chains import CRWD
 
 _QUOTE = json.loads(
@@ -39,7 +40,7 @@ def _forget():
         server._terrain_cache.pop(TK, None)
     with server._chains_waiting_lock:
         server._chains_delivered.discard(TK)
-    ofs._price_rows.pop(TK, None)
+    forget_price(TK)
     ofs._chain_parts.pop(TK, None)
     lmp._by_ticker.pop(TK, None)
     lmp._fields_by_ticker.pop(TK, None)
@@ -84,7 +85,7 @@ def test_the_chain_carries_its_spot_from_the_daemon_to_the_levels_and_the_captur
         (read,) = cch.last_capture_per_day(tmp_path / "ed_console.db", TK, 1)
         assert (read["spot"], read["spot_ts"]) == (LAST, TRADED)
         for _topic, msg in published:
-            for done in ofs.assemble_chain_part(json.loads(msg["frame"])["msg"]):
+            for done in ofs.assemble_chain_part(msg):
                 server._on_chain(*done)
         _drain()
         with server._terrain_cache_lock:

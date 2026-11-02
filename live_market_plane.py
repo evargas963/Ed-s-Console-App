@@ -17,6 +17,9 @@ from time_et import CLOSED, ET, UNKNOWN, option_market_open, session_label
 #: the services the capture daemon streams the option rule's contracts on
 #: (capture.Daemon.pick_options): they trade only while an option market is open
 OPTION_SERVICES = ("LEVELONE_OPTIONS", "OPTIONS_BOOK")
+#: the market context every page's header shows beside the selected ticker (Trade Desk): the
+#: daemon streams it whatever the watchlist holds
+MARKET_CONTEXT = ("$SPX", "$NDX", "$VIX")
 #: the words of a value's state, served to the page: updating now; its feed down; its market not
 #: trading
 LIVE, OFFLINE, NOT_LIVE = "LIVE", "OFFLINE", "NOT LIVE"
@@ -162,8 +165,8 @@ def record_from_level_one_equity(
     return True
 
 
-#: callables told the ticker of every published row, in the process that owns this plane: the
-#: capture daemon's browser push (live_ui).
+#: callables told the ticker of every published row: the browser push (live_ui) and the console
+#: (streaming._tick).
 _row_listeners: list = []
 
 
@@ -234,7 +237,7 @@ def record_feed_heartbeat(msg: dict[str, Any]) -> None:
 
 
 def record_feed_down() -> None:
-    """The connection to the daemon ended: nothing is live until a heartbeat arrives.
+    """The daemon ended: nothing is live until a heartbeat arrives.
     The symbols that beat last named stay, so the last streamed values still price.
     The last watchlist stays with them."""
     with _lock:
@@ -294,15 +297,6 @@ def live_on(feed: FeedNow, symbol: str | None, service: str) -> bool:
 def daemon_status(now: float) -> dict[str, Any] | None:
     """The daemon's latest status while its heartbeat is current at `now`, else None."""
     return feed_now(now).status
-
-
-def held_by_daemon(service: str, now: float) -> frozenset[str]:
-    """The symbols the daemon holds on Schwab `service` at `now`; none while its heartbeat
-    is not current (unknown is never confirmation)."""
-    feed = feed_now(now)
-    if feed.status is None:
-        return frozenset()
-    return feed.held.get(service, frozenset())
 
 
 #: why an option contract is not trading, by whether its own option market is open (None: the

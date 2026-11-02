@@ -14,7 +14,6 @@ from pathlib import Path
 import live_market_plane as lmp
 import live_price_rows
 import server
-from app.options.order_flow import streaming as ofs
 from db import EdDB, LevelCrossEvent
 from terrain_read import CROSSED_DOWN, CROSSED_UP, LEVEL_AT, crossed
 from tests.feed_live_helper import clock_from
@@ -70,7 +69,6 @@ def _print(msg: dict, tk: str = "SPY") -> list:
     """One SPY LEVELONE_EQUITIES message as the daemon received it and the price row it pushes;
     the quote's tick reaches the console. Returns the crosses it stored (on the pricing thread)."""
     lmp.record_from_level_one_equity(tk, msg["native"], received_ts=msg["ts_recv"])
-    ofs._price_rows[tk] = live_price_rows.price_row(tk, time.time())
     before = {c["cross_id"] for c in _stored(tk)}
     server._on_stream_tick(tk)
     server._chain_pricing.submit(lambda: None).result()
@@ -83,7 +81,6 @@ def _forget(tk: str = "SPY") -> None:
     with server._crosses_lock:
         server._crosses.pop(tk, None)
     server._last_tick_spot.pop(tk, None)
-    ofs._price_rows.pop(tk, None)
     lmp._by_ticker.pop(tk, None)
     lmp._fields_by_ticker.pop(tk, None)
     lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "held": {}})
@@ -162,7 +159,6 @@ def test_the_levels_side_of_a_print_on_a_level_is_at():
     lmp.record_from_level_one_equity(
         "SPY", SPY_PRINT_ON_A_STRIKE["native"], received_ts=SPY_PRINT_ON_A_STRIKE["ts_recv"]
     )
-    ofs._price_rows["SPY"] = live_price_rows.price_row("SPY", time.time())
     try:
         body = server.levels_payload("SPY", "1", SPY_CLOSE.now)
     finally:
@@ -185,8 +181,7 @@ def test_relations_from_a_stopped_price_stand_marked_not_live_with_its_time_and_
     _forget()
     _publish_close(now=clock())
     lmp.record_from_level_one_equity("SPY", msg["native"], received_ts=msg["ts_recv"])
-    ofs._price_rows["SPY"] = live_price_rows.price_row("SPY", clock())
-    trade_ts = ofs._price_rows["SPY"]["trade_ts"]
+    trade_ts = live_price_rows.price_row("SPY", clock())["trade_ts"]
     try:
         live = server.terrain_answer("SPY", datetime.fromtimestamp(clock(), ET))
         lmp.record_feed_down()
@@ -234,7 +229,6 @@ def test_a_page_whose_price_has_stopped_is_told_each_minute_to_read_its_levels_a
     _forget()
     _publish_close(now=clock())
     lmp.record_from_level_one_equity("SPY", msg["native"], received_ts=msg["ts_recv"])
-    ofs._price_rows["SPY"] = live_price_rows.price_row("SPY", clock())
 
     async def told():
         push_changes.bind(asyncio.get_running_loop())
@@ -291,7 +285,6 @@ def stopped_price_answers() -> dict:
         {"ts": msg["ts_recv"], "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": ["SPY"]}}
     )
     lmp.record_from_level_one_equity("SPY", msg["native"], received_ts=msg["ts_recv"])
-    ofs._price_rows["SPY"] = live_price_rows.price_row("SPY", msg["ts_recv"])
     lmp.record_feed_down()
     at = datetime.fromtimestamp(SPY_AFTER_HOURS_PRINT["ts_recv"], ET)
     try:

@@ -5,7 +5,7 @@ the screen shows it correctly and promptly; question 3: each value is the one co
 
 Through the real code: the daemon's status (live_market_plane.record_feed_heartbeat), its pushed
 option messages applied by the console (streaming._ingest_pushed), its price row as the console
-holds it (streaming._price_rows), the console's pages (push_changes), the pricing thread, the
+holds it (live_market_plane), the console's pages (push_changes), the pricing thread, the
 chain captures in the console's database. Real data: CRWD's 2026-10-16 chain captured 2026-10-07
 10:38:40 ET (tests/real_chains.py), valued at its capture.
 STAND-INS (named): each streamed value of a CRWD contract (no CRWD contract was streamed in a
@@ -32,6 +32,7 @@ from math_exposure_core import bucket_metric, merge_exposure_books
 from stream_spine import options_quote_msg
 from terrain_engine import compute_terrain
 from tests.capture_store import store_capture
+from tests.feed_live_helper import forget_price, hold_price
 from tests.real_chains import CRWD
 from time_et import ET
 
@@ -66,7 +67,7 @@ def _clean():
         push_changes.unsubscribe(tk, page)
     ofls.clear_all_live_state()
     lmp.record_feed_down()
-    ofs._price_rows.pop(TK, None)
+    forget_price(TK)
     with server._terrain_cache_lock:
         server._terrain_cache.pop(TK, None)
 
@@ -88,9 +89,9 @@ def _daemon(held=(), *, socket_open=True, price: float | None = _SPOT, at: float
         }
     )
     if price is None:
-        ofs._price_rows.pop(TK, None)
+        forget_price(TK)
     else:
-        ofs._price_rows[TK] = {"ticker": TK, "spot": price, "trade_ts": _T}
+        hold_price(TK, price, _T)
 
 
 def _streamed(sym: str, content: dict, ts: float) -> None:
