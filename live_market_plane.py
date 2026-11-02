@@ -12,7 +12,7 @@ from typing import Any
 
 from instrument_identity import ticker_storage_key
 from numeric_contract import float_finite_or_none, schwab_count, schwab_number
-from time_et import CLOSED, ET, UNKNOWN, option_market_open, session_label
+from time_et import CLOSED, ET, option_market_open, session_label, stock_day_open
 
 #: the services the capture daemon streams the option rule's contracts on
 #: (capture.Daemon.pick_options): they trade only while an option market is open
@@ -318,22 +318,30 @@ def not_trading(
     symbol: str | None, service: str, now: float, product: str | None = None
 ) -> str | None:
     """Why `symbol`'s values on Schwab `service` are not changing at `now`, or None while its
-    market trades: the stock market outside the sessions Schwab's /markets answer sent for today
-    (or that answer not held); an option contract outside its own option market's regular window
-    (`product`, EQO or IND: time_et.option_close_product of the ticker whose chain lists it), or
-    that market not known; or Schwab's own SECURITY_STATUS for the symbol Closed or Halted."""
+    market trades. An option contract: outside its own option market's regular window (`product`,
+    EQO or IND: time_et.option_close_product of the ticker whose chain lists it), or that market
+    not known. A stock or an index: today's last /markets window ended, or today no market day;
+    Schwab's own SECURITY_STATUS for it Closed or Halted; or no quote from Schwab dated today.
+    Either: that /markets answer not held."""
     at = datetime.fromtimestamp(now, ET)
-    session = session_label(at)
-    if session == UNKNOWN:
+    day_open = stock_day_open(at)
+    if day_open is None:
         return "the market session is unknown"
-    if session == CLOSED:
+    if not day_open:
         return "outside Schwab's market hours"
     if service in OPTION_SERVICES:
+        if session_label(at) == CLOSED:
+            return "outside Schwab's market hours"
         return _OPTION_MARKET_WHY[None if product is None else option_market_open(at, product)]
     t = ticker_storage_key(symbol)
     row = get_quote(t) if t else None
     status = row.get("security_status") if row is not None else None
-    return f"Schwab marks {t} {status}" if status in ("Closed", "Halted") else None
+    if status in ("Closed", "Halted"):
+        return f"Schwab marks {t} {status}"
+    sent = max(row.get("exchange_quote_ts") or 0, row.get("trade_ts") or 0) if row else 0
+    if sent and datetime.fromtimestamp(sent, ET).date() != at.date():
+        return f"no quote from Schwab for {t} today"
+    return None
 
 
 def live_state(

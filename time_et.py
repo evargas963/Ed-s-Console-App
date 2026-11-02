@@ -214,6 +214,16 @@ def valuation_instant(now: datetime, product: str = EQUITY_OPTIONS) -> datetime:
     )
 
 
+def stock_day_open(now: datetime) -> bool | None:
+    """Whether today is a day Schwab's /markets answer gave windows for and the last of them has
+    not ended at `now`; None when that answer is not held. The answer's pre-market opens at 07:00,
+    and Schwab streams stocks from 04:00, so a stock's own day starts with what Schwab sends."""
+    s = session(now.astimezone(ET).date().isoformat())
+    if s is None:
+        return None
+    return any(now < end for _start, end in (*s.pre, *s.regular, *s.post))
+
+
 def closed_since(now: datetime) -> datetime | None:
     """While the stock market is CLOSED at `now` (session_label): when it closed, the end of the
     newest window Schwab sent that has ended. None while a session is open or unknown, and when no
