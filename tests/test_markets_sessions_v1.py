@@ -1,8 +1,8 @@
 """The market's sessions are Schwab's GET /markets answers (operator 2026-10-07): the daemon asks
 for equity and option once per date per ET day -- today, the 7 days before it Schwab answers, and
 each expiry date of the chains, whatever the number of tickers -- records every answer as sent, and
-the console takes each 200 as that date's sessions. The session label only labels: what Schwab
-streams is shown whatever it says.
+the console takes each 200 as that date's sessions. What Schwab streams is shown whatever the
+session label says.
 
 Real data: Schwab's /markets answers for every date it answered on 2026-10-07, with its 400 on each
 side (tests/fixtures/real_schwab_markets_2026_10_07.json, held by tests/conftest.py and served by

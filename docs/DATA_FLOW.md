@@ -195,8 +195,8 @@ from Schwab to the screen (daemon, console, page), are these:
   (the GEX-by-strike badge carries the chain's time), `tests/test_data_path_snapshot_time_v1.py`
   (the desk map's LEVELS pill carries the snapshot's time), `tests/test_data_path_level_asof_time_v1.py`
   (the levels page As-of column carries each level's time), `tests/test_data_path_served_verdicts_v1.py`
-  (the levels verdict by the ticker's own option market, an option contract by the market of the
-  chain that lists it, and a page told to read again while its price or its levels are not live);
+  (the levels verdict by the ticker's own option market, an option contract by the session, and a
+  page told to read again while its price or its levels are not live);
   the rest — ENF-22.
 - **D6. No live screen reads the database.** Every live route serves from memory; the database
   is read at startup, after the close and for research only.
@@ -404,8 +404,8 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
   `time_et.option_close_product`: stock options at 16:00 ET, index-close options at 16:15),
   After-Hours included, levels from a chain fetched after that close are its close values and read
   CLOSE, with their time and age, however old (operator 2026-10-25); older ones read STALE, "this
-  ticker's options are closed and its close values have not been fetched"; while its market is
-  open, LIVE until two of the sweep's rounds pass without its chain, then STALE; NOT LIVE when
+  ticker's options are closed and its close values have not been fetched"; from 04:00 ET, after
+  the day's first round, until its market closes, LIVE until two of the sweep's rounds pass without its chain, then STALE; NOT LIVE when
   Schwab's /markets answer for today is not held), never a zero or a
   value from elsewhere. Enforced by: `tests/test_data_path_rules_v1.py` (the D5 sweep and
   staleness tests). Each ticker's chain is asked for as Schwab documents it: its expiration chain
@@ -655,7 +655,7 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
   Schwab's expirationDate passes. Past that a contract has settled. No
   hand-typed
   holiday, early-close or covered-year table exists. A day with no session has an empty window.
-  The label only labels: no session window starts, stops or clears a streamed value (stock
+  The label decides the live word (§2 D5): no session window starts, stops or clears a streamed value (stock
   quotes from 04:00 ET are shown and recorded), and the order-flow state keeps every book,
   top-of-book field, print and streamed Greek through the open. Enforced by:
   `tests/test_markets_sessions_v1.py`, `tests/test_data_path_charm_side_unknown_v1.py`.

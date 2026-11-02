@@ -92,12 +92,13 @@ def published():
             _et(13, 30),
             "STALE",
         ),  # its options open, no chain for 30 minutes
-        ("TSLA", TSLA, _et(16, 1), _et(16, 20), "CLOSE"),  # fetched after its own 16:00 close
+        ("TSLA", TSLA, _et(16, 1), _et(16, 5), "CLOSE"),  # fetched after its own 16:00 close
         ("TSLA", TSLA, _et(15, 59), _et(16, 5), "STALE"),  # its close values never fetched
         ("SPY", SPY_0DTE, _et(16, 4), _et(16, 5), "LIVE"),  # its options still open until 16:15
         ("SPY", SPY_0DTE, _et(16, 4), _et(16, 20), "STALE"),  # fetched before its own 16:15 close
         ("SPY", SPY_0DTE, _et(16, 16), _et(16, 20), "CLOSE"),
         ("SPY", SPY_0DTE, _et(16, 16, "2026-10-06"), _et(4, 1), "CLOSE"),  # the day's first round
+        ("SPY", SPY_0DTE, _et(15, 59, "2026-10-06"), _et(4, 1), "STALE"),  # close never fetched
         (
             "SPY",
             SPY_0DTE,
@@ -250,16 +251,16 @@ def _told(tk: str, at: datetime) -> set:
 
 def test_a_page_is_told_to_read_again_only_while_its_price_or_its_levels_are_not_live(published):
     """TSLA's price live (its quote's receipt, the daemon holding it) and its chain current: the
-    page is not told, each new price and chain tell it. The same chain at 16:20, after the option
-    markets' close and fetched after TSLA's: the levels are CLOSE, so the page is told each minute
-    and the close values' age keeps counting."""
+    page is not told, each new price and chain tell it. The same chain at 16:05, after TSLA's own
+    option close and fetched after it: the levels are CLOSE, so the page is told each minute and the
+    close values' age keeps counting."""
     quote = _QUOTES["TSLA"]
     at = datetime.fromtimestamp(quote["ts_recv"], ET)
     published("TSLA", TSLA, at)
     assert server.terrain_answer("TSLA", at)["levels_state"] == "LIVE"
     assert _told("TSLA", at) == set()
     published("TSLA", TSLA, _et(16, 1))
-    later = _et(16, 20)
+    later = _et(16, 5)
     lmp.record_feed_heartbeat(
         {
             "ts": later.timestamp(),

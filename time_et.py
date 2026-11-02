@@ -57,7 +57,8 @@ def et_date_str_from_ts_utc(ts_utc: float) -> str:
     return dt.strftime("%Y-%m-%d")
 
 
-#: the session states (session_label): a label only; no value is held back or stopped by it
+#: the session states (session_label): no value is held back or stopped by them; a valid one is
+#: live, and with none the last values stand
 PRE_MARKET, RTH, AFTER_HOURS, CLOSED, UNKNOWN = (
     "Pre-Market",
     "RTH",
@@ -169,7 +170,12 @@ def session_label(now: datetime) -> str:
         if any(start <= now < end for start, end in windows):
             return state
     before = [start for start, _end in (*s.pre, *s.regular, *s.post)]
-    return PRE_MARKET if before and at.time() >= MARKET_DAY_OPENS and now < min(before) else CLOSED
+    return PRE_MARKET if before and market_day_start(at) <= now < min(before) else CLOSED
+
+
+def market_day_start(now: datetime) -> datetime:
+    """When the market day of `now`'s ET date starts (MARKET_DAY_OPENS)."""
+    return datetime.combine(now.astimezone(ET).date(), MARKET_DAY_OPENS, tzinfo=ET)
 
 
 def options_open(now: datetime) -> bool | None:

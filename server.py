@@ -100,11 +100,11 @@ from terrain_engine import (
 from terrain_read import LEVEL_ABOVE, LEVEL_BELOW, crossed, from_spot_text, level_side, within
 from time_et import (
     ET,
-    MARKET_DAY_OPENS,
     age_text,
     ct_label,
     et_date_str_from_ts_utc,
     last_open,
+    market_day_start,
     market_session_date,
     now_et,
     option_close_product,
@@ -858,9 +858,10 @@ def terrain_staleness(
     computed_ts_utc: float | None, ticker: str | None = None, *, now: float
 ) -> dict:
     """The levels' state at `now`, THE levels verdict every screen shows (`levels_state`): LIVE
-    while the ticker's own option market (time_et.option_close_product: stock options close at
-    16:00 ET, index-close options at 16:15) is open and its chain current; CLOSE once that market
-    has closed and a chain fetched after its close stands, however old (docs/DATA_FLOW.md §2 D5);
+    from the market day's start (time_et.options_open) until the ticker's own option market closes
+    (time_et.option_close_product: stock options at 16:00 ET, index-close options at 16:15) with
+    its chain current; CLOSE once that market has closed, and through the day's first round, with
+    a chain fetched after its close, however old (docs/DATA_FLOW.md §2 D5);
     STALE, with WHY, when the chain is overdue or the close values were never fetched; NOT LIVE
     when Schwab's /markets answer for today is not held. The daemon's last answer for the ticker's
     chain (a failed fetch, an incomplete delivery) outranks the age, and its refused sign-in
@@ -904,16 +905,7 @@ def _levels_state(
     market_open = options_open(at)
     if market_open is None:
         return lmp.NOT_LIVE, "the market session is unknown" + sep
-    if not market_open:
-        closed = options_closed_at(at, product)
-        if closed is None or float(computed_ts_utc) < closed.timestamp():
-            return (
-                LEVELS_STALE,
-                "this ticker's options are closed and its close values have not been fetched" + sep,
-            )
-        return LEVELS_CLOSE, ""
     age = now - float(computed_ts_utc)
-    started = at.replace(hour=MARKET_DAY_OPENS.hour, minute=0, second=0, microsecond=0).timestamp()
     # judged against the round the daemon's chain sweep delivers (every watchlist ticker once)
     round_sec = status.get("chain_round_sec") if status is not None else None
     # Stale only past the floor *and* past two delivered rounds — one missed round is normal
@@ -924,10 +916,21 @@ def _levels_state(
         if round_sec is None
         else max(float(TERRAIN_STALE_AFTER_SEC), 2.0 * float(round_sec))
     )
+    closed = options_closed_at(at, product)
+    started = market_day_start(at).timestamp()
+    if (
+        not market_open
+        or (closed is not None and closed.date() == at.date())  # its own market has closed today
+        or (float(computed_ts_utc) < started and now - started <= stale_after)  # the first round
+    ):
+        if closed is None or float(computed_ts_utc) < closed.timestamp():
+            return (
+                LEVELS_STALE,
+                "this ticker's options are closed and its close values have not been fetched" + sep,
+            )
+        return LEVELS_CLOSE, ""
     if age <= stale_after:
         return lmp.LIVE, ""
-    if float(computed_ts_utc) < started and now - started <= stale_after:
-        return LEVELS_CLOSE, ""  # the market day's first round is on its way
     if waiting:
         return LEVELS_STALE, f"levels are {age:.0f}s old{sep}"
     if failure:
