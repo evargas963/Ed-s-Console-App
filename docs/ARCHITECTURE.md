@@ -35,7 +35,7 @@ the token, logs) and worktrees.
 |---|---|
 | `schwab_client.py`; the Schwab half of `app/market_data/schwab/streaming/capture.py` (the stream, the subscriptions, the watchlist check); `calibration/complete_chain_capture.py` (the chain sweep and price history requests) | `feed/` |
 | The option rule in `capture.py` (`by_gamma`, `saved_window`, the choice in `pick_options`): which contracts stream and which are kept, computed from the chain and the price | `calc/`; Feed subscribes to what it chooses |
-| `app/market_data/schwab/streaming/capture_main.py` (the daemon's start: the early error log, then the daemon); the rest of `capture.py`: the program's stop, `DailyLog`, the daily keep (`keep_sessions`) | `recorder/` (the keep) and the program's entry |
+| `program.py` (the one program); the rest of `capture.py`: `DailyLog`, the daily keep (`keep_sessions`) | `recorder/` (the keep) and the program's entry |
 | `app/market_data/schwab/streaming/live_ui.py` (:8800: the price rows and heartbeat to the page and the console), `app/options/order_flow/live_payload.py` | `push/` |
 | From `app/options/order_flow/streaming.py`: `assemble_chain_part` and the Flow panel's streaming state (`get_option_contract_streaming_diagnostics`) | `state/` |
 | `live_market_plane.py`, `live_price_rows.py`, `stream_spine.py` (the bus), the console's live stores (`server._terrain_cache`, `server._bars`, `server._crosses`, `app/options/order_flow/state.py`, `app/options/order_flow/history.py`) | `state/`, one store |
@@ -43,8 +43,7 @@ the token, logs) and worktrees.
 | `server.py` (the routes and startup), `static/` | `push/`, `static/` |
 | `stream_spine.py` (the writer, `CaptureWriter`), `db.py`, `db_authority.py`, `db_safety.py`, `json_blob_codec.py`, the chain history writes | `recorder/` |
 | `time_et.py`, `config.py`, `runtime_layout.py`, `instrument_identity.py`, `numeric_contract.py` | `shared/` |
-| `app/market_data/schwab/streaming/live_push.py` (daemon → console, :8799), the rest of `app/options/order_flow/streaming.py` (the console's consumer of :8799 and :8800), `push_changes.py` (SSE `/api/changes`), `static/js/l1_sse_guards.js` | deleted: one program needs no channel between processes, and the page gets the one push |
-| `start_capture_daemon.bat` | deleted with the second program |
+| The rest of `app/options/order_flow/streaming.py` (the console's reader of :8800), `push_changes.py` (SSE `/api/changes`), `static/js/l1_sse_guards.js` | deleted: one program needs no channel between processes, and the page gets the one push |
 | `launch.py`, `reauth_schwab.py`, `start_ed_console.bat` | stay at the root |
 
 ## 3. The order

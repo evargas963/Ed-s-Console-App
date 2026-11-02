@@ -17,6 +17,9 @@ from time_et import CLOSED, ET, UNKNOWN, options_open, session_label
 #: the services the capture daemon streams the option rule's contracts on
 #: (capture.Daemon.pick_options): live until the last option market closes (time_et.options_open)
 OPTION_SERVICES = ("LEVELONE_OPTIONS", "OPTIONS_BOOK")
+#: the market context every page's header shows beside the selected ticker (Trade Desk): the
+#: daemon streams it whatever the watchlist holds
+MARKET_CONTEXT = ("$SPX", "$NDX", "$VIX")
 #: the words of a value's state, served to the page: updating now; its feed down; its market not
 #: trading
 LIVE, OFFLINE, NOT_LIVE = "LIVE", "OFFLINE", "NOT LIVE"

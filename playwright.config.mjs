@@ -42,8 +42,6 @@ export const e2eServerEnv = (() => {
   env.ED_CONSOLE_ALLOW_NONCANONICAL_DB = '1';
   env.SCHWAB_TOKEN_PATH = path.join(e2eRuntimeRoot, 'missing_schwab_token.json');
   env.ED_CI_OFFLINE = '1';
-  // never connect to the real capture daemon's live push (see tests/conftest.py)
-  env.ED_LIVE_PUSH_PORT = '1';
   // pages are told this dead port for the daemon's price socket; specs mock it (routeWebSocket)
   env.ED_LIVE_UI_PORT = '1';
   env.SCHWAB_API_KEY = 'ci-placeholder-api-key';

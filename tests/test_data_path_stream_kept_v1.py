@@ -108,7 +108,7 @@ def test_only_the_option_contracts_traded_are_recorded_and_every_equity_message(
                 ),
             )
         await _until(lambda: daemon.saved_options == frozenset(spy_kept | mrvl_kept))
-        daemon.console_frame({"op": "flow_contract", "contract": flow}, None)
+        daemon.console_request({"op": "flow_contract", "contract": flow})
         for sym in every:
             bus.publish(
                 f"optquote.{sym}",

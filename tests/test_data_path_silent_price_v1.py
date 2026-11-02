@@ -73,8 +73,7 @@ def test_a_silent_daemon_keeps_the_last_price(feed):
     missing: list = []
     quiet: list = []
 
-    async def body(bus, stats):
-        assert await _until(lambda: stats["clients"] == 1)
+    async def body(bus):
         bus.publish("quote.SPY", _spy_trade(501.0, time.time()))
         assert await _until(lambda: (ofs.price_row("SPY") or {}).get("spot") == 501.0)
         end = time.monotonic() + 1.2

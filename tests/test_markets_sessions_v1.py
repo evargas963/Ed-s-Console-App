@@ -111,7 +111,7 @@ def test_the_console_holds_each_200_answer_and_never_a_400():
     for day in ("2026-09-29", "2026-10-07"):
         a = MARKETS_ANSWERS[day]
         _topic, msg = markets_message(day, a["status"], json.loads(a["body"]), time.time())
-        ofs._ingest_pushed(f"markets.{day}", json.loads(msg["frame"])["msg"])
+        ofs._ingest_pushed(f"markets.{day}", msg)
     assert time_et.session("2026-09-29") is None
     s = time_et.session("2026-10-07")
     assert s.is_open and s.regular == ((_et("2026-10-07 09:30"), _et("2026-10-07 16:00")),)
