@@ -63,7 +63,8 @@ VERDICT = re.compile(r"^Verdict:[ \t]*(\S+)[ \t]*$", re.M)
 
 
 class ToolError(Exception):
-    pass
+    def __init__(self, what: str, why: Exception) -> None:
+        super().__init__(f"{what} failed: {why}")
 
 
 def _git(root: Path, *args: str) -> str:
@@ -72,7 +73,7 @@ def _git(root: Path, *args: str) -> str:
             ["git", *args], cwd=root, check=True, capture_output=True, encoding="utf-8"
         )
     except (subprocess.CalledProcessError, FileNotFoundError) as e:
-        raise ToolError(f"git {' '.join(args)} failed: {e}") from e
+        raise ToolError(" ".join(args), e) from e
     return done.stdout
 
 
@@ -129,7 +130,7 @@ def _assertions(root: Path, rev: str, names: list[str]) -> dict[str, set[str]]:
         try:
             read = reader(source)
         except SyntaxError as e:
-            raise ToolError(f"{rev}:{name} does not parse: {e}") from e
+            raise ToolError(f"{rev}:{name}", e) from e
         for test, held in read.items():
             found.setdefault(test, set()).update(held)
     return found
@@ -144,7 +145,7 @@ def _definitions(root: Path, rev: str, names: list[str]) -> set[str]:
         try:
             tree = ast.parse(source)
         except SyntaxError as e:
-            raise ToolError(f"{rev}:{name} does not parse: {e}") from e
+            raise ToolError(f"{rev}:{name}", e) from e
         found.update(
             node.name
             for node in ast.walk(tree)

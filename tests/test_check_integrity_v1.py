@@ -4,6 +4,7 @@ and the review record it must carry. The inputs are the shapes the check judges,
 from __future__ import annotations
 
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -170,12 +171,15 @@ def test_what_governs_a_change_is_named(path):
     assert ci.GOVERNING.match(path)
 
 
-def test_a_broken_test_file_is_the_checks_failure_not_a_pass(repo, capsys):
+def test_a_broken_test_file_is_the_checks_failure_not_a_pass(repo):
     _write(repo, "tests/test_a.py", "def test_x(:\n")
     _commit(repo)
     body = repo / "body.md"
     body.write_text("", encoding="utf-8")
-    with pytest.MonkeyPatch.context() as ctx:
-        ctx.chdir(repo)
-        code = ci.main(["--base", "main", "--body-file", str(body), "--head-sha", HEAD])
-    assert code == 2 and "does not parse" in capsys.readouterr().err
+    run = subprocess.run(
+        [sys.executable, ci.__file__, "--base", "main", "--body-file", body, "--head-sha", HEAD],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+    )
+    assert run.returncode == 2 and "tests/test_a.py" in run.stderr
