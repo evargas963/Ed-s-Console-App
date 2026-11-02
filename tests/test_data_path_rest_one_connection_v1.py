@@ -20,6 +20,7 @@ import threading
 import time
 from datetime import datetime
 
+import schwab_client as sc
 from app.market_data.schwab.streaming import capture
 from calibration.complete_chain_capture import ChainSweep
 from stream_spine import CaptureWriter, HealthRegistry, MessageBus, options_quote_msg
@@ -157,14 +158,15 @@ def test_a_rotation_asks_schwab_as_documented_one_request_at_a_time_with_exact_g
 
 
 def test_the_one_connection_stands_through_a_pause(tmp_path):
-    """Two requests 6 s apart, longer than httpx keeps an idle connection by default, go on the
-    same connection."""
+    """The session as production builds it: two requests 6 s apart, longer than httpx keeps an idle
+    connection by default, go on the same connection."""
     schwab = LocalSchwab()
-    client = schwab.client(tmp_path)
+    client = sc.client_from_token_file_atomic(schwab.token_file(tmp_path), "k", "s")
+    url = f"http://127.0.0.1:{schwab.server.server_address[1]}{EXPIRATIONS}?symbol=SPY"
     try:
-        client.get_option_expiration_chain("SPY")
+        client.session.get(url)
         time.sleep(6)
-        client.get_option_expiration_chain("SPY")
+        client.session.get(url)
     finally:
         schwab.close()
     assert len(schwab.requests) == 2
