@@ -540,6 +540,10 @@ class ChainSweep:
                 resp = safe_get_chain(
                     client, ticker, strike_range="ALL", from_date=expiry, to_date=expiry
                 )
+                if resp.status_code == 429:  # one refused expiry does not cost the ticker a round
+                    resp = safe_get_chain(
+                        client, ticker, strike_range="ALL", from_date=expiry, to_date=expiry
+                    )
                 if resp.status_code != 200:
                     return self.fail(
                         [chain], f"chain for {expiry} returned HTTP {resp.status_code}"

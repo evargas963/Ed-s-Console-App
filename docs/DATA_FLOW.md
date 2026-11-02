@@ -427,7 +427,7 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
   daemon's status (`chains_waiting`) to the levels' stale reason on every screen
   (`server._levels_state`; `tests/test_data_path_sign_in_v1.py`). Enforced by:
   `tests/test_data_path_rest_one_connection_v1.py` (the requests, one at a time on one
-  connection, quotes across tickers, no pause after a 429) and `tests/test_data_path_rules_v1.py`
+  connection, quotes across tickers, no pause after a 429, a 429 on an expiry asked once more) and `tests/test_data_path_rules_v1.py`
   (`test_a_403_from_schwabs_edge_reaches_the_console_and_the_next_ticker_is_asked_at_once`, on
   Schwab's captured 403 page). The chain is always the full chain, every expiry and
   every strike: measured on the 38 tickers' 2026-10-01 close captures, leaving out the
