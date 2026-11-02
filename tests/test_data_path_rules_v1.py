@@ -553,9 +553,10 @@ def test_d5_at_the_option_close_a_ticker_is_fetched_once_more_then_nothing_until
 ):
     """Friday 2026-10-02: fetched without end until the last option market's close (Schwab's IND,
     16:15 ET), once more begun after it (the close values), nothing through the weekend, and
-    again from Monday's 04:00 start of the market day. Counted by the chain requests Schwab's host
-    received after each move of the clock, made with the sweep at rest (_Swept.move): CI 2026-10-08
-    counted a 15:59 request that arrived after the clock moved as one asked after the close."""
+    again from the first option window Schwab sent for Monday. Counted by the chain requests
+    Schwab's host received after each move of the clock, made with the sweep at rest (_Swept.move):
+    CI 2026-10-08 counted a 15:59 request that arrived after the clock moved as one asked after the
+    close."""
 
     def chain_requests_since(mark: int) -> int:
         return sum(
@@ -570,17 +571,17 @@ def test_d5_at_the_option_close_a_ticker_is_fetched_once_more_then_nothing_until
         after_close = chain_requests_since(closed)
         weekend = swept.move("2026-10-03 12:00")
         swept.until(len(swept.chains) + 1)
-        swept.move("2026-10-05 03:59")
+        swept.move("2026-10-05 09:29")
         swept.until(len(swept.chains) + 1)
         quiet = chain_requests_since(weekend)
-        opened = swept.move("2026-10-05 04:00")
+        opened = swept.move("2026-10-05 09:30")
         swept.until(len(swept.chains) + 2)
         reopened = chain_requests_since(opened)
     finally:
         swept.close()
     assert after_close == 1, "one chain asked after the close: the close values"
     assert quiet == 0, "nothing asked through the weekend"
-    assert reopened >= 2, "asked again and again from Monday's 04:00"
+    assert reopened >= 2, "asked again and again from Monday's option window"
 
 
 def test_d5_a_close_fetch_that_fails_is_tried_again_at_once_until_it_lands(tmp_path):
@@ -609,7 +610,7 @@ def test_d5_the_price_history_once_a_day_and_the_chain_the_options_session(tmp_p
     streamed bars); option chains follow each ticker's options session. Thursday 2026-10-01 at
     17:00 ET (Schwab's /markets: stock options closed at 16:00): SPY's chain is asked once (its
     close values) and its price history once; nothing more that day; on Friday's date, at 03:30,
-    the price history once again, and the chain waits for the 04:00 start of the market day."""
+    the price history once again, and the chain waits for the first option window Schwab sent."""
     chains = "/marketdata/v1/chains"
     swept = _Swept(tmp_path, "2026-10-01 17:00", ["SPY"])
     try:
@@ -641,7 +642,7 @@ def test_d5_the_price_history_once_a_day_and_the_chain_the_options_session(tmp_p
     assert history_at("2026-10-01 20:00:30") == [], "not again the same day"
     assert history_at("2026-10-02 03:30") == ["minute1", "daily1"], "once on the next ET date"
     assert history_at("2026-10-02 03:45") == [], "not again that day"
-    assert _asked_since(swept, chains, after_hours) == [], "the chain waits for the market day"
+    assert _asked_since(swept, chains, after_hours) == [], "the chain waits for its window"
 
 
 def test_d5_a_start_asks_every_tickers_price_history_before_any_chain(tmp_path):

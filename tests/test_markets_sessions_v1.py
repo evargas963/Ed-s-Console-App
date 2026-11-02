@@ -12,6 +12,7 @@ the stand-in host, tests/schwab_rest_standin.py), and CRWD's LEVELONE_EQUITIES m
 
 from __future__ import annotations
 
+import ast
 import asyncio
 import json
 import sqlite3
@@ -140,8 +141,7 @@ def test_the_sessions_are_the_windows_schwab_sent_on_a_normal_day_a_holiday_and_
 
 def test_the_label_follows_schwabs_windows():
     label = time_et.session_label
-    assert label(_et("2026-10-07 03:59")) == time_et.CLOSED
-    assert label(_et("2026-10-07 04:00")) == time_et.PRE_MARKET  # before Schwab's 07:00 window
+    assert label(_et("2026-10-07 06:59")) == time_et.CLOSED  # Schwab's pre-market opens 07:00
     assert label(_et("2026-10-07 07:00")) == time_et.PRE_MARKET
     assert label(_et("2026-10-07 09:30")) == time_et.RTH
     assert label(_et("2026-10-07 16:00")) == time_et.AFTER_HOURS
@@ -151,6 +151,43 @@ def test_the_label_follows_schwabs_windows():
     assert label(_et("2026-11-26 12:00")) == time_et.CLOSED  # Thanksgiving
     assert label(_et("2027-10-09 12:00")) == time_et.UNKNOWN  # beyond what Schwab answers
     assert time_et.closed_since(_et("2026-10-10 12:00")) == _et("2026-10-09 20:00")
+
+
+def test_the_option_sessions_are_the_windows_schwab_sent():
+    """Schwab's /markets answer of 2026-11-02 sends each option market's preMarket (07:30 to 09:25
+    ET) and stock options' postMarket (to 16:15), the schedule of its Extended Hours agreement of
+    2026-10-30: options are open inside those windows, as sent, and not between them."""
+    fx = json.loads((FX / "real_schwab_markets_2026_11_02.json").read_text(encoding="utf-8"))
+    time_et.record_markets(fx["body"])
+    expected = {
+        "07:29": False,
+        "07:30": True,
+        "09:24": True,
+        "09:25": False,
+        "09:30": True,
+        "16:14": True,
+        "16:15": False,
+    }
+    assert {t: time_et.options_open(_et(f"2026-11-02 {t}")) for t in expected} == expected
+    assert time_et.options_opened(_et("2026-11-02 12:00")) == _et("2026-11-02 07:30")
+    assert time_et.option_market_open(_et("2026-11-02 08:00")) is False  # the close values' window
+
+
+def test_no_market_time_is_typed_in_the_product():
+    """The market's sessions are Schwab's /markets answers (AGENTS.md rule 8): no product file
+    builds a clock time from a literal, as `time(4)` did for a market day Schwab never sent."""
+    repo = Path(__file__).resolve().parent.parent
+    typed = [
+        f"{path.name}:{node.lineno}"
+        for path in sorted(repo.glob("*.py")) + sorted((repo / "app").rglob("*.py"))
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "time"
+        and node.args
+        and isinstance(node.args[0], ast.Constant)
+    ]
+    assert typed == []
 
 
 def test_the_options_are_open_until_the_last_option_market_closes():
@@ -228,20 +265,19 @@ def test_time_to_expiry_runs_to_schwabs_close_of_the_expiry_date():
 
 
 def test_a_stock_quote_before_schwabs_pre_market_is_shown():
-    """Operator 2026-10-07: stock quotes from 04:00 ET come through. At 05:00 ET, before the 07:00
-    pre-market Schwab's /markets names, the market day has started: CRWD's quote, received then,
-    is the price served."""
+    """Operator 2026-10-07: stock quotes from 04:00 ET come through. At 05:00 ET Schwab's /markets
+    says Closed (pre-market opens 07:00): CRWD's quote, received then, is the price served."""
     fx = json.loads((FX / "real_crwd_quote_2026_10_07.json").read_text(encoding="utf-8"))
     tk, native = fx["ticker"], fx["native"]
     try:
         lmp.record_from_level_one_equity(tk, native, received_ts=time.time())
         mark_feed_live(tk)
         publish_daemon_rows(tk)
-        assert time_et.session_label(_et("2026-10-07 05:00")) == time_et.PRE_MARKET
+        assert time_et.session_label(_et("2026-10-07 05:00")) == time_et.CLOSED
         at = _et("2026-10-07 05:00").timestamp()
         assert (
             lmp.outage(tk, "LEVELONE_EQUITIES", at)
-            == "Schwab LEVELONE_EQUITIES feed down during Pre-Market"
+            == "Schwab LEVELONE_EQUITIES feed down during Closed"
         )
         assert server.resolve_spot(tk, now=at)[0] == native["LAST_PRICE"]
     finally:

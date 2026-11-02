@@ -215,9 +215,9 @@ app rules": every live mark on every screen means the value is updating now; a c
 feed down reads not live with its time and age, Key Levels' Spot included after an outage and a
 ticker switch. Operator 2026-11-02, replacing his 2026-10-25 rule: "the ui shold be live when the
 market is open and we can receive data. during rth, pre market, after hours", and "it should start
-at 4 am et", and "if there is a valid session then the UI is live", with none it reads CLOSED and
-the last value stays: `time_et.session_label` is the one rule, from 04:00 ET. The chain sweep runs
-from 04:00 too, on his word. Operator 2026-11-02: the Schwab session's one connection stays open
+at 4 am et", then, on Schwab's Extended Hours agreement of 2026-10-30, "we keep to the schedule":
+a valid session is live, with none it reads CLOSED and the last value stays, and the sessions are
+the windows Schwab's /markets sends: stocks 07:00 to 20:00, options 07:30 to 16:15 ET. Operator 2026-11-02: the Schwab session's one connection stays open
 while idle ("Yes, keep it open"; no flake, and not closed after 60 s). Operator 2026-10-25: "we
 should not have multiple producers anywhere": the state's word (LIVE / OFFLINE / NOT LIVE) is served
 (`live_market_plane.live_state`), never chosen by the page. Operator 2026-10-25: "we use banking

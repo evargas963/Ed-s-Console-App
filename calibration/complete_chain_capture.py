@@ -322,8 +322,8 @@ class ChainSweep:
     MARKETS_DAYS_BACK days before it, and for each expiry date of the chains, each date asked
     once per ET date, whatever the number of tickers.
 
-    A ticker's chain is asked for (chain_due) from 04:00 ET to the last option close in Schwab's
-    answer for today (IND, 16:15 ET, when SPY's, QQQ's and IWM's options stop too),
+    A ticker's chain is asked for (chain_due) inside the option windows of Schwab's answer for
+    today, pre-market included, to the last close (16:15 ET, when SPY's, QQQ's and IWM's stop too),
     while that answer is not known yet, and once more after the newest close it has not been
     fetched since (its close values; a failed one again in the next pass); otherwise not, until
     the next session. A ticker whose expiration chain lists no option (or none asked yet) has
@@ -415,8 +415,8 @@ class ChainSweep:
         )
 
     def chain_due(self, ticker: str, now: datetime) -> bool:
-        """Whether `ticker`'s chain is asked for at `now`: from the market day's start to the last
-        option close (time_et.options_open), or today's session not known (Schwab's /markets answer
+        """Whether `ticker`'s chain is asked for at `now`: inside an option window Schwab sent
+        (time_et.options_open), or today's session not known (Schwab's /markets answer
         for today not held), or closed with the newest close after the ticker's newest delivered
         chain began. A ticker with no chain answer yet (none asked, or no option listed) is asked
         once per ET date."""
