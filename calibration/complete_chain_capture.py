@@ -54,6 +54,9 @@ CAPTURE_EVERY_MIN = 30
 CAPTURE_BASIS = (
     "every_expiry_strike_range_ALL"  # the only basis read: rows of any other are partial
 )
+#: a chain begun before the day's first regular option window, as Schwab sent it: kept for research,
+#: never the console's last count or close (open interest does not update in AM/PM hours)
+PRE_MARKET_BASIS = CAPTURE_BASIS + "_pre_market"
 
 TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS complete_chain_captures (
@@ -181,6 +184,15 @@ def capture_slot(now_ts: float) -> float | None:
     if not past or now_ts - past[-1] >= CAPTURE_EVERY_MIN * 60:
         return None
     return past[-1]
+
+
+def capture_basis(started_ts: float) -> str:
+    """The basis a chain begun at `started_ts` is stored with: PRE_MARKET_BASIS before the first
+    regular option window Schwab sent for its date, else CAPTURE_BASIS."""
+    at = datetime.fromtimestamp(started_ts, ET)
+    today = session(at.date().isoformat())
+    regular = [start for _p, windows in today.options for start, _e in windows] if today else []
+    return PRE_MARKET_BASIS if regular and at < min(regular) else CAPTURE_BASIS
 
 
 #: contracts per chain message to the console: one message is encoded and decoded whole, so a
@@ -688,7 +700,7 @@ class ChainSweep:
                         expiry=expiry,
                         contracts=cts,
                         spot=chain.spots[expiry],
-                        completeness_basis=CAPTURE_BASIS,
+                        completeness_basis=capture_basis(chain.started),
                         ts_utc=chain.started,
                         chain_spot=chain.spot,
                         chain_spot_ts=chain.spot_ts,

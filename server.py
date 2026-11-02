@@ -1424,12 +1424,15 @@ def _keep_last_reported(chain, previous, at, product, price):
     last quote reported, and a count of zero leaves the last count above zero. Inside them the
     quote stands, a reported zero is zero, and Schwab's no-value code does not keep an older
     greek; but for `product`'s pre-market and post-market, where a zero open interest leaves the
-    last one: Schwab does not update it then (schwab_streamer_api.pdf, LEVELONE_OPTIONS field 9).
-    A gamma is reported by gamma_reported at `price`."""
+    last one, as Schwab does not update it then (schwab_streamer_api.pdf, LEVELONE_OPTIONS field
+    9), and past `product`'s regular close (valuation_instant), where a greek not reported leaves
+    the last one too, a contract expiring that day having expired. A gamma is reported by
+    gamma_reported at `price`."""
     window = options_open(at)
     if window is None or not previous or option_regular_open(at, product):
         return chain
     closed = not window
+    expired = valuation_instant(at, product) < at
     prior = {}
     for ct in previous:
         sym = ct.get("symbol") if isinstance(ct, dict) else None
@@ -1446,7 +1449,7 @@ def _keep_last_reported(chain, previous, at, product, price):
             old = prior[sym]
         kept = None
         if (
-            closed
+            (closed or expired)
             and old is not None
             and not gamma_reported(ct, price, product=product)
             and gamma_reported(old, price, product=product)

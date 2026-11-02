@@ -147,6 +147,15 @@ then the rule binds with no machine check.
 - Trace each value it touches: its source, its one producer, its validity rule and time, its live
   and stored consumers, and what each shows when it is missing. A producer exists: call it. None
   exists: write it once, in its part. Enforced by: no machine check — ENF-08.
+- This is a wiring job (operator 2026-11-02: "this needs to be enforced.. this is non negotiable").
+  A value served is a Schwab field (`docs/schwab_fields.csv`) or a row of the register
+  (`docs/derived_register.csv`: key, kind, its one producer, its definition and why Schwab does not
+  send it). Code that is neither is named to the operator in the message that proposes it, and a
+  row of kind `flag` is a value still to be wired, replaced or removed. Enforced by:
+  `tests/test_every_served_value_is_wired_v1.py` (every key on every GET route that answers over
+  real data; a route with nothing to serve in that state proves nothing), the name match proving a
+  key is named like a Schwab field, not that it is read from one — `tools/check_one_reader.py` and
+  ENF-23; naming it to the operator — no machine check, ENF-12.
 - Name each touched responsibility's one lifecycle owner (what starts, refreshes, retries and
   expires it) and what fails when that owner fails, in `docs/DATA_FLOW.md` and in the code.
   Enforced by: no machine check — ENF-08.

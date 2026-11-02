@@ -73,12 +73,12 @@ def test_the_option_rule_ranks_the_impossible_gamma_last():
     assert max(valid, key=lambda k: k["gamma"])["symbol"] == ranked[0] != BAD
 
 
-def test_after_the_close_an_impossible_gamma_keeps_the_last_one_reported():
-    after_close = datetime(2026, 10, 22, 18, 0, tzinfo=ET)
+@pytest.mark.parametrize("hour, minute", [(16, 5), (18, 0)])  # EQO's close passed; every window's
+def test_after_the_close_an_impossible_gamma_keeps_the_last_one_reported(hour, minute):
     (kept,) = server._keep_last_reported(
         [_contract(NVDA, BAD)],
         NVDA_BEFORE["contracts"],
-        after_close,
+        datetime(2026, 10, 22, hour, minute, tzinfo=ET),
         option_close_product("NVDA"),
         NVDA["spot"],
     )

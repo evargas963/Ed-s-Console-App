@@ -24,7 +24,12 @@ import server
 import time_et
 from app.market_data.schwab.streaming import capture
 from app.options.order_flow import streaming as ofs
-from calibration.complete_chain_capture import capture_slot
+from calibration.complete_chain_capture import (
+    CAPTURE_BASIS,
+    PRE_MARKET_BASIS,
+    capture_basis,
+    capture_slot,
+)
 from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus
 from tests.feed_live_helper import mark_feed_live, publish_daemon_rows
 from tests.schwab_rest_standin import CHAINS, MARKETS, MARKETS_ANSWERS, LocalSchwab
@@ -182,6 +187,8 @@ def test_the_option_sessions_are_the_windows_schwab_sent():
     # the recorder follows the same windows: a pre-market chain is kept
     first = _et("2026-11-02 07:30").timestamp()
     assert capture_slot(_et("2026-11-02 07:40").timestamp()) == first
+    assert capture_basis(first) == PRE_MARKET_BASIS
+    assert capture_basis(_et("2026-11-02 09:30").timestamp()) == CAPTURE_BASIS
 
 
 def test_the_options_are_open_until_the_last_option_market_closes():

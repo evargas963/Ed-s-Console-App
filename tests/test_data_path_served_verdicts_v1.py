@@ -24,7 +24,7 @@ import live_market_plane as lmp
 import live_price_rows
 import push_changes
 import server
-from calibration.complete_chain_capture import CAPTURE_BASIS
+from calibration.complete_chain_capture import CAPTURE_BASIS, PRE_MARKET_BASIS
 from tests.capture_store import store_capture
 from tests.real_chains import SPY_0DTE, TSLA
 from time_et import ET, record_markets
@@ -269,28 +269,34 @@ def test_a_zero_open_interest_leaves_the_last_one_outside_regular_hours(hour, mi
 
 
 def test_a_console_restarted_in_the_pre_market_keeps_the_stored_open_interest():
-    """Nothing published in this process yet: at 08:00 the last open interest is the stored
-    capture's, read for the ticker's first publication."""
-    friday = _SUNDAY["friday_close"]
+    """Nothing published in this process yet: at 08:05 the last open interest is Friday's capture's,
+    read for the ticker's first publication, and not that morning's 07:30 capture, kept with its
+    zeros under its own basis."""
+    friday, sunday = _SUNDAY["friday_close"], _SUNDAY["sunday"]
     blanked = _blanked_open_interest()
+    morning = datetime(2026, 11, 2, 7, 30, tzinfo=ET).timestamp()
     _forget()
     try:
-        store_capture(
-            server.get_db().db_path,
-            ticker="SPY",
-            expiry=_SUNDAY["expiry"],
-            contracts=[dict(c) for c in friday["chain"]],
-            spot=friday["spot"],
-            completeness_basis=CAPTURE_BASIS,
-            ts_utc=friday["ts_utc"],
-        )
-        served = _delivered_at(datetime(2026, 11, 2, 8, 0, tzinfo=ET))
+        for chain, spot, basis, ts in (
+            (friday["chain"], friday["spot"], CAPTURE_BASIS, friday["ts_utc"]),
+            (sunday["chain"], friday["spot"], PRE_MARKET_BASIS, morning),
+        ):
+            store_capture(
+                server.get_db().db_path,
+                ticker="SPY",
+                expiry=_SUNDAY["expiry"],
+                contracts=[dict(c) for c in chain],
+                spot=spot,
+                completeness_basis=basis,
+                ts_utc=ts,
+            )
+        served = _delivered_at(datetime(2026, 11, 2, 8, 5, tzinfo=ET))
     finally:
         _forget()
         with sqlite3.connect(server.get_db().db_path) as db:
             db.execute(
-                "DELETE FROM complete_chain_captures WHERE ticker = 'SPY' AND ts_utc = ?",
-                (friday["ts_utc"],),
+                "DELETE FROM complete_chain_captures WHERE ticker = 'SPY' AND ts_utc IN (?, ?)",
+                (friday["ts_utc"], morning),
             )
     assert blanked
     assert {s: served[s] for s in blanked} == blanked

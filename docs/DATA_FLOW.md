@@ -479,7 +479,10 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
   Schwab's no-value code is not a greek and does not keep an older one, and a count of zero
   replaces the last count; but in a pre-market or post-market a zero open interest leaves the last
   one, since Schwab does not update it then (`schwab_streamer_api.pdf`, LEVELONE_OPTIONS field 9:
-  "Update AM/PM Hours: No"). A chain is published once all its quotes are in. A quotes request Schwab refuses
+  "Update AM/PM Hours: No"), and past a product's regular close a greek not reported leaves the
+  last one too. A pre-market chain is recorded as sent under its own basis
+  (`complete_chain_capture.PRE_MARKET_BASIS`), for research: it is never the console's last count or
+  close. A chain is published once all its quotes are in. A quotes request Schwab refuses
   fails every chain in it with its status and reason, so the levels keep their last good
   publication, stale with that reason. A contract missing from an answered request has no Greeks (None, logged with the count), never the
   chain's: its leg's exposure and its strike's net read absent (a leg's sum is known only when

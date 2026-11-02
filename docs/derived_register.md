@@ -1,8 +1,8 @@
-# Derived register
+# Derived register: the confluence matrix
 
-Schwab does not send these. Each one has one producer. The full inventory of
-older derived values is still the queued register; this file starts with the
-values added for the confluence matrix.
+The register is `docs/derived_register.csv`, one row per served key. This file
+explains the values of the confluence matrix, as groups of those keys. Schwab
+does not send these. Each one has one producer.
 
 | Value | Producer | Why Schwab does not send it |
 |---|---|---|
