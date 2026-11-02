@@ -660,7 +660,6 @@ app.mount("/static", _RevalidateStaticFiles(directory=str(static_dir)), name="st
 # ROUTES
 # ─────────────────────────────────────────────────────────────────────────────
 
-_LIVE_UI_PORT_META = '<meta name="ed-live-ui-port" content="">'
 _MARKET_CONTEXT_META = '<meta name="ed-market-context" content="">'
 _SCOPES_META = '<meta name="ed-scopes" content="">'
 _STREAM_WORDS_META = '<meta name="ed-stream-words" content="">'
@@ -668,22 +667,18 @@ _STREAM_WORDS_META = '<meta name="ed-stream-words" content="">'
 SCOPE_LABELS = {"auto": "Auto", "wider": "Wider", "all": "All available"}
 
 
-def _with_live_ui_port(html: str) -> str:
-    """Tell the page where the capture daemon's price socket listens (the same
-    ED_LIVE_UI_PORT the daemon binds), which market-context symbols it always shows
+app.add_api_websocket_route("/ws", live_ui.page_socket)
+
+
+def _with_page_settings(html: str) -> str:
+    """Tell the page which market-context symbols it always shows
     (live_market_plane.MARKET_CONTEXT, each with its display name), the scopes its strike
     windows take (terrain_engine.SCOPES, each with its word) and the words for each streaming
-    state (STREAM_WORDS). An unfilled page opens no price socket -- its prices read UNAVAILABLE
-    rather than reaching a daemon nobody configured it for."""
+    state (STREAM_WORDS)."""
     context = json.dumps([{"key": k, "display": display_symbol(k)} for k in lmp.MARKET_CONTEXT])
     scopes = json.dumps([{"key": s, "label": SCOPE_LABELS[s]} for s in SCOPES])
     return (
         html.replace(
-            _LIVE_UI_PORT_META,
-            f'<meta name="ed-live-ui-port" content="{int(live_ui.LIVE_UI_PORT)}">',
-            1,
-        )
-        .replace(
             _MARKET_CONTEXT_META,
             f'<meta name="ed-market-context" content="{html_escape(context)}">',
             1,
@@ -704,7 +699,7 @@ def root():
         return HTMLResponse("<h1>static/index.html not found</h1>", status_code=404)
     # "/" is never cached: a cached page would run stale page code after an edit
     return HTMLResponse(
-        content=_with_live_ui_port(html_path.read_text(encoding="utf-8")),
+        content=_with_page_settings(html_path.read_text(encoding="utf-8")),
         headers={
             "Cache-Control": "no-store, no-cache, must-revalidate",
             "Pragma": "no-cache",

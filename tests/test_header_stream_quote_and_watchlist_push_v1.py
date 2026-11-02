@@ -64,14 +64,3 @@ def test_the_console_spot_is_the_daemons_price_row_and_the_console_keeps_no_copy
         for kept in (lmp._by_ticker, lmp._fields_by_ticker):
             kept.pop(tk, None)
         lmp.record_feed_down()
-
-
-def test_pages_are_told_the_daemon_price_port(monkeypatch) -> None:
-    """The console fills the page's price-socket port from the daemon's own setting; e2e
-    points it at a dead port so no test page can ever reach the real daemon."""
-    from app.market_data.schwab.streaming import live_ui
-
-    monkeypatch.setattr(live_ui, "LIVE_UI_PORT", 8811)
-    html = srv.root().body.decode("utf-8")
-    assert '<meta name="ed-live-ui-port" content="8811">' in html
-    assert 'content="">' not in html.split("ed-live-ui-port", 1)[1][:12]

@@ -694,11 +694,10 @@
       spot.title = [cls ? label + (ageTitle != null ? ': ' + ageTitle : '') : '', shown].filter(Boolean).join(' · ');
     }
   }
-  // ---- header quote + watchlist: PUSHED BY THE CAPTURE DAEMON over WebSocket (port 8800,
+  // ---- header quote + watchlist: PUSHED OVER THE PAGE'S SOCKET (/ws,
   //      app/market_data/schwab/streaming/live_ui.py) -- the finished row (live_price_rows.
   //      price_row) the instant a Schwab message changes it, plus a feed verdict every second.
-  //      No web server is in this path, so no analytics load can delay a price. It is the
-  //      ONLY source of the header quote and the watchlist rows (no fallbacks): when it is
+  //      It is the ONLY source of the header quote and the watchlist rows (no fallbacks): when it is
   //      not delivering, the header says so -- nothing polls a quote. ----
   // The source that answered THIS number (quote_ingestion / _quote_authority, on every
   // payload) shows as a hover tooltip, not new chrome, so a divergence between sources is
@@ -765,13 +764,8 @@
   // the shown price's served trade time ("last trade <CT>"), kept for a push outage, when no newer
   // age is served and the page computes none
   var _tradeShown = null;
-  // the port comes from the console (meta ed-live-ui-port = the daemon's ED_LIVE_UI_PORT);
-  // an unfilled page opens no socket and its prices read UNAVAILABLE
   function priceSocketUrl() {
-    var m = document.querySelector('meta[name="ed-live-ui-port"]');
-    var port = m ? String(m.getAttribute('content') || '') : '';
-    if (!/^\d+$/.test(port)) return null;
-    return (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.hostname + ':' + port + '/';
+    return (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws';
   }
   // The market context the server always streams, served in the page (meta ed-market-context,
   // from live_market_plane.MARKET_CONTEXT): [{key, display}]. The socket pushes only what a page
@@ -799,10 +793,9 @@
     el.className = w ? 'v ' + w.cls : 'v';
   }
   function openPriceSocket() {
-    var url = priceSocketUrl();
-    if (typeof WebSocket === 'undefined' || !url) return;
+    if (typeof WebSocket === 'undefined') return;
     var ws;
-    try { ws = new WebSocket(url); } catch (e) { schedulePriceReconnect(); return; }
+    try { ws = new WebSocket(priceSocketUrl()); } catch (e) { schedulePriceReconnect(); return; }
     _priceWs = ws;   // (_priceSubTs is set by a ticker change only: a reconnect during an
                      //  outage keeps reading OFFLINE, not WAITING)
     ws.onopen = function () { _priceRetry = 0; subscribePrices(); };

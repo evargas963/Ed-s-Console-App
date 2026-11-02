@@ -19,6 +19,7 @@ server:app, offline, a runtime root of its own) in the second.
 
 from __future__ import annotations
 
+import asyncio
 import os
 import socket
 import subprocess
@@ -30,6 +31,7 @@ import psutil
 import pytest
 
 import launch
+from tests.feed_live_helper import connect, takes_a_beat
 
 REPO = Path(__file__).resolve().parent.parent
 windows_only = pytest.mark.skipif(
@@ -175,12 +177,12 @@ def _free_port() -> int:
 
 
 def _real_console(
-    tmp_path: Path, app: str = "server:app", **settings: str
+    tmp_path: Path, app: str = "server:app", port: int | None = None, **settings: str
 ) -> tuple[subprocess.Popen, int]:
     """The real console, offline on a free port with a runtime root of its own, started by the
     batch file in a window of its own; healthy before this returns its window and process id."""
     tmp_path.mkdir()
-    port = _free_port()
+    port = _free_port() if port is None else port
     env = {
         **os.environ,
         "ED_CI_OFFLINE": "1",
@@ -205,6 +207,7 @@ def _real_console(
                         "127.0.0.1",
                         "--port",
                         str(port),
+                        *launch.CONSOLE[-2:],
                     ],
                     env,
                 )
@@ -217,33 +220,26 @@ def _real_console(
 
 @windows_only
 def test_the_program_is_one_process_and_the_stop_ends_the_daemon_before_the_loop(tmp_path):
-    """The one program started as the launcher starts it: one process serves the console and holds
-    the daemon's sockets, with no Schwab token. A clean stop ends it, exit 0, and the owner lock of
+    """The one program started as the launcher starts it, with no Schwab token: the console's own
+    port carries the daemon's beat to the page. A clean stop ends it, exit 0, and the owner lock of
     the stream is gone."""
-    ui = _free_port()
+    port = _free_port()
     window, pid = _real_console(
         tmp_path / "one",
         launch.CONSOLE_START[-1],
-        ED_LIVE_UI_PORT=str(ui),
-        ED_LIVE_UI_HOST="127.0.0.1",
+        port,
         SCHWAB_TOKEN_PATH=str(tmp_path / "missing_token.json"),
     )
     locks = (tmp_path / "one" / "runtime").rglob("stream_capture.lock")
+
+    async def stop_with_a_page_on() -> int:
+        async with connect(f"ws://127.0.0.1:{port}/ws", max_size=None) as page:
+            await asyncio.wait_for(takes_a_beat(page), 20)
+            launch.ctrl_break(pid)
+            return await asyncio.to_thread(window.wait, 60)
+
     try:
-        end = time.monotonic() + 60
-        while not launch.in_use(ui):
-            assert time.monotonic() < end, "the daemon's socket never opened"
-            time.sleep(0.1)
-        program = psutil.Process(pid)  # a venv's python.exe runs the real Python as its child
-        owners = {
-            c.pid
-            for c in psutil.net_connections("inet")
-            if c.laddr and c.laddr.port == ui and not c.raddr
-        }
-        assert len(owners) == 1
-        assert owners <= {pid, *(p.pid for p in program.children(recursive=True))}
-        launch.ctrl_break(pid)
-        assert window.wait(timeout=60) == 0, "the program did not stop, or its window waits"
+        assert asyncio.run(stop_with_a_page_on()) == 0, "the program did not stop, or its window"
         assert list(locks) == []
     finally:
         window.kill()

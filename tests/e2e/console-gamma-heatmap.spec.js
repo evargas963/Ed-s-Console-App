@@ -945,7 +945,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
 
   test('header never paints a quote from a poll: no push -> UNAVAILABLE, not a fallback', async ({ page }) => {
     // the price comes only from the daemon's push; the session label from the console's
-    await page.routeWebSocket(/:1\/$/, (ws) => ws.close());          // the daemon is down
+    await page.routeWebSocket(/\/ws$/, (ws) => ws.close());          // the daemon is down
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#hPx')).toHaveText('UNAVAILABLE');
     await expect(page.locator('#hFeed')).toHaveText(/WAITING|OFFLINE/);

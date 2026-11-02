@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import socket
 import time
 
 import pytest
@@ -28,14 +27,7 @@ import pytest
 import live_market_plane as lmp
 from app.market_data.schwab.streaming import capture, live_ui
 from stream_spine import HealthRegistry, MessageBus, quote_msg
-
-
-def _free_port() -> int:
-    s = socket.socket()
-    s.bind(("127.0.0.1", 0))
-    port = s.getsockname()[1]
-    s.close()
-    return port
+from tests.feed_live_helper import connect, page_socket, refused, takes_a_beat
 
 
 @pytest.fixture(autouse=True)
@@ -86,25 +78,16 @@ class _Feed:
 
 
 async def _run(body, feed=None):
-    from websockets.asyncio.client import connect
-
-    port = _free_port()
     bus = MessageBus()
     stop = asyncio.Event()
     stats: dict = {}
     feed = feed if feed is not None else _Feed()
     server = asyncio.create_task(
-        live_ui.serve_live_ui(
-            stop, heartbeat_fn=feed, host="127.0.0.1", port=port, stats=stats, clock=feed.clock
-        )
+        live_ui.serve_live_ui(stop, heartbeat_fn=feed, stats=stats, clock=feed.clock)
     )
     follower = asyncio.create_task(capture.Daemon(bus, HealthRegistry(), []).follow_market(stop))
-    end = time.monotonic() + 5
-    while not stats.get("listening") and time.monotonic() < end:
-        await asyncio.sleep(0.01)
-    assert stats.get("listening")
     try:
-        async with connect(f"ws://127.0.0.1:{port}") as ws:
+        async with page_socket() as url, connect(url) as ws:
             await body(bus, ws, feed, stats)
     finally:
         stop.set()
@@ -286,3 +269,24 @@ def test_shutdown_is_not_held_up_by_a_connected_browser():
     t0 = time.monotonic()
     asyncio.run(_run(body))
     assert time.monotonic() - t0 < 5
+
+
+def test_a_page_is_refused_with_no_daemon_and_served_by_the_daemons_next_run():
+    """With no daemon the socket refuses the page's handshake, so the page's reconnect keeps its
+    schedule. A daemon's stop closes the connected page; its next run serves the page again."""
+
+    async def go():
+        async with page_socket() as url:
+            assert await refused(url)
+            for _run_again in range(2):
+                stop = asyncio.Event()
+                run = asyncio.create_task(live_ui.serve_live_ui(stop, heartbeat_fn=_Feed()))
+                await asyncio.sleep(0)
+                page = await connect(url, max_size=None)
+                await takes_a_beat(page)
+                stop.set()
+                await run
+                await asyncio.wait_for(page.wait_closed(), 5)
+                assert await refused(url)
+
+    asyncio.run(asyncio.wait_for(go(), 20))

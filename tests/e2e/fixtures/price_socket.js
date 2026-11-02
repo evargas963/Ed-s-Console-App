@@ -1,6 +1,5 @@
-// The capture daemon's price socket (app/market_data/schwab/streaming/live_ui.py), stood in for.
-// The console tells the page port 1 under e2e (playwright.config ED_LIVE_UI_PORT), so the page
-// never reaches a real daemon. Like the daemon, it answers a subscribe with what each asked-for
+// The page's socket (/ws, app/market_data/schwab/streaming/live_ui.py), stood in for: a test
+// console runs no daemon. Like the daemon, it answers a subscribe with what each asked-for
 // symbol is ({type:'symbols'}: requested, key, display), then sends `rows` 300 ms apart
 // ({type:'quotes'}). Stand-in for instrument_identity: an index root is keyed with '$'
 // (tests/test_live_ui_identity_v1.py holds the daemon's real answer).
@@ -17,7 +16,7 @@ function priceRow(ticker, spot, extra) {
 }
 // `later`: [{ afterMs, row }], rows sent that long after the subscribe (a push that resumes)
 async function mockPriceSocket(page, rows, later) {
-  await page.routeWebSocket(/:1\/$/, (ws) => {
+  await page.routeWebSocket(/\/ws$/, (ws) => {
     ws.onMessage((m) => {
       let req; try { req = JSON.parse(String(m)); } catch (e) { return; }
       if (!req || req.op !== 'subscribe' || !Array.isArray(req.symbols)) return;

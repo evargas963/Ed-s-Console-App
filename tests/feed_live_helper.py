@@ -6,13 +6,67 @@ exactly the symbols the daemon would hold -- through the production entry point.
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import json
+import socket
 import time
 from pathlib import Path
 
+import uvicorn
+from fastapi import FastAPI
+from websockets.asyncio.client import connect
+from websockets.exceptions import ConnectionClosed, InvalidStatus
+
 import live_market_plane as lmp
+from app.market_data.schwab.streaming import live_ui
 
 _FIXTURES = Path(__file__).resolve().parent / "fixtures"
+
+
+@contextlib.asynccontextmanager
+async def page_socket():
+    """The page's socket on a real server, as the program serves it (/ws); its address."""
+    app = FastAPI()
+    app.add_api_websocket_route("/ws", live_ui.page_socket)
+    config = uvicorn.Config(
+        app, log_level="warning", ws_per_message_deflate=False, timeout_graceful_shutdown=1
+    )
+    server = uvicorn.Server(config)
+    listening = socket.create_server(("127.0.0.1", 0))
+    serving = asyncio.create_task(server.serve([listening]))
+    try:
+        while not server.started:
+            await asyncio.sleep(0.01)
+        yield f"ws://127.0.0.1:{listening.getsockname()[1]}/ws"
+    finally:
+        server.should_exit = True
+        await serving
+
+
+async def takes_a_beat(page) -> None:
+    """`page` reads frames until the daemon's beat comes."""
+    async for frame in page:
+        if json.loads(frame)["type"] == "feed":
+            return
+
+
+async def reads_to_the_close(page) -> None:
+    """`page` reads everything still on its way, until its connection closes."""
+    try:
+        while True:
+            await page.recv()
+    except ConnectionClosed:
+        return
+
+
+async def refused(url: str) -> bool:
+    """Whether the socket at `url` refuses a page's handshake."""
+    try:
+        async with connect(url):
+            return False
+    except InvalidStatus:
+        return True
 
 
 def daemon_bars(name: str, *symbols: str) -> list[dict]:

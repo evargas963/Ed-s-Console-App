@@ -88,19 +88,13 @@ async def _run(body, heartbeat_fn=None):
     bus."""
     bus = MessageBus()
     stop = asyncio.Event()
-    ui_stats: dict = {}
     ui = asyncio.create_task(
         live_ui.serve_live_ui(
-            stop,
-            heartbeat_fn=heartbeat_fn if heartbeat_fn is not None else _daemon_heartbeat(),
-            host="127.0.0.1",
-            port=0,
-            stats=ui_stats,
+            stop, heartbeat_fn=heartbeat_fn if heartbeat_fn is not None else _daemon_heartbeat()
         )
     )
     daemon = capture.Daemon(bus, HealthRegistry(), [])
     follower = asyncio.create_task(daemon.follow_market(stop))
-    assert await _until(lambda: ui_stats.get("listening"))
     ofs._feed_running = True
     console = asyncio.create_task(ofs.follow(bus, daemon))
     try:
