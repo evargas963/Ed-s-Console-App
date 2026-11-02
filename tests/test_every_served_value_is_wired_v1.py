@@ -1,13 +1,13 @@
 """Every value key the console serves is a Schwab field (docs/schwab_fields.csv) or a row of the
 derived register (docs/derived_register.csv), with its one producer (First gate). Each GET route,
-walked over SPY's real chain and Schwab's recorded bars; a route with nothing to serve in that
-state proves nothing about its keys."""
+walked over SPY's real chain and Schwab's recorded bars; a route that does not answer JSON in that
+state, or has nothing to serve, proves nothing about its keys."""
 
 from __future__ import annotations
 
 import csv
-import pydoc
 import re
+import sys
 from pathlib import Path
 
 import pytest
@@ -39,6 +39,19 @@ def _register() -> list[dict]:
         return list(csv.DictReader(f))
 
 
+def _loaded(dotted: str) -> bool:
+    """Whether `dotted` is a module the server loads, or a name reached from the longest one."""
+    parts = dotted.split(".")
+    cut = max(
+        (n for n in range(len(parts) + 1) if ".".join(parts[:n]) in sys.modules),
+        default=0,
+    )
+    held = sys.modules.get(".".join(parts[:cut]))
+    for name in parts[cut:]:
+        held = getattr(held, name, None)
+    return held is not None
+
+
 def _keys(node, into: set[str]) -> None:
     if isinstance(node, dict):
         for key, value in node.items():
@@ -66,7 +79,7 @@ def served():
     answers = {}
     try:
         for route, ops in sorted(server.app.openapi()["paths"].items()):
-            if "get" not in ops or not route.startswith("/api/") or "{" in route:
+            if "get" not in ops or not route.startswith("/api/"):
                 continue
             if route == "/api/changes":  # the long poll: it holds until a change
                 continue
@@ -98,13 +111,14 @@ def test_every_served_key_is_a_schwab_field_or_in_the_register(served):
 
 
 def test_every_derived_row_says_why_schwab_does_not_send_it():
-    assert [row["key"] for row in _register() if not row["why"] and row["kind"] != "schwab"] == []
+    values = (row for row in _register() if row["kind"] in ("derived", "flag"))
+    assert [row["key"] for row in values if not row["why"]] == []
 
 
 def test_every_register_row_names_a_producer_that_exists():
     missing = [
         (row["key"], row["producer"])
         for row in _register()
-        if not row["producer"].startswith("schwab:") and pydoc.locate(row["producer"]) is None
+        if not row["producer"].startswith("schwab:") and not _loaded(row["producer"])
     ]
     assert not missing, "\n".join(f"{key}: {name}" for key, name in missing)

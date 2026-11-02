@@ -273,10 +273,11 @@ def test_a_zero_open_interest_leaves_the_last_one_outside_regular_hours(hour, mi
     assert {s: served[s] for s in blanked} == (blanked if kept else dict.fromkeys(blanked, 0))
 
 
-def test_a_console_restarted_in_the_pre_market_keeps_the_stored_open_interest():
+@pytest.mark.parametrize("stored_first", [False, True])
+def test_a_console_restarted_in_the_pre_market_keeps_the_stored_open_interest(stored_first):
     """Nothing published in this process yet: at 08:05 the last open interest is Friday's capture's,
-    read for the ticker's first publication, and not that morning's 07:30 capture, kept with its
-    zeros under its own basis."""
+    read for the ticker's first publication or priced at startup first, and not that morning's
+    07:30 capture, kept with its zeros under its own basis."""
     friday, sunday = _SUNDAY["friday_close"], _SUNDAY["sunday"]
     blanked = _blanked_open_interest()
     morning = datetime(2026, 11, 2, 7, 30, tzinfo=ET).timestamp()
@@ -298,7 +299,10 @@ def test_a_console_restarted_in_the_pre_market_keeps_the_stored_open_interest():
         db_path = server.get_db().db_path
         assert [c["ts_utc"] for c in last_capture_per_day(db_path, "SPY", 2)] == [friday["ts_utc"]]
         assert newest_capture_ts(db_path, "SPY", basis=PRE_MARKET_BASIS) == morning
-        served = _delivered_at(datetime(2026, 11, 2, 8, 5, tzinfo=ET))
+        at = datetime(2026, 11, 2, 8, 5, tzinfo=ET)
+        if stored_first:
+            server._publish_levels("SPY", captures=last_capture_per_day(db_path, "SPY", 2), now=at)
+        served = _delivered_at(at)
     finally:
         _forget()
         with sqlite3.connect(server.get_db().db_path) as db:

@@ -153,8 +153,8 @@ then the rule binds with no machine check.
   send it). Code that is neither is named to the operator in the message that proposes it, and a
   row of kind `flag` is a value still to be wired, replaced or removed. Enforced by:
   `tests/test_every_served_value_is_wired_v1.py` (every key on every GET route that answers over
-  real data, but `/api/changes`, the long poll that holds until a change; a route with nothing to
-  serve in that state proves nothing), the name match proving a
+  real data, but `/api/changes`, the long poll that holds until a change; a route that does not
+  answer JSON in that state, or has nothing to serve, proves nothing), the name match proving a
   key is named like a Schwab field, not that it is read from one — `tools/check_one_reader.py` and
   ENF-23; naming it to the operator — no machine check, ENF-12.
 - Name each touched responsibility's one lifecycle owner (what starts, refreshes, retries and

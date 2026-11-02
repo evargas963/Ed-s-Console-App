@@ -26,7 +26,7 @@ from json_blob_codec import decode_json_blob
 from stream_spine import LATEST, CaptureWriter, HealthRegistry, MessageBus
 from tests.capture_store import store_capture
 from tests.schwab_rest_standin import CHAIN, SPY_QUOTES, LocalSchwab
-from time_et import ET
+from time_et import ET, record_markets
 
 _QUOTED = {s: e["quote"] for s, e in SPY_QUOTES.items()}
 _MRVL = sc.flatten_chain_contracts(
@@ -205,6 +205,23 @@ def test_the_history_is_written_once_per_capture_window_and_never_outside_one(tm
     assert all(stored[s]["gamma"] == q["gamma"] for s, q in _QUOTED.items()), (
         "the quote's gamma is stored"
     )
+
+
+def test_a_restarted_daemon_writes_a_pre_market_window_once(tmp_path, schwab):
+    """Schwab's /markets answer of 2026-11-02: a chain begun at 07:31 is that window's capture,
+    under the pre-market basis; a daemon restarted by 07:41 does not write the window again."""
+    fx = Path(__file__).resolve().parent / "fixtures" / "real_schwab_markets_2026_11_02.json"
+    record_markets(json.loads(fx.read_text(encoding="utf-8"))["body"])
+    clock = {"now": 0.0}
+    for at in ("2026-11-02 07:31:00", "2026-11-02 07:41:00"):
+        clock["now"] = _ts(at)
+        sweep, _published, client = _sweep(tmp_path, schwab, lambda: clock["now"])
+        assert _rotate(sweep, client) == {"SPY"}
+    with sqlite3.connect(tmp_path / "ed_console.db") as c:
+        rows = c.execute(
+            "SELECT DISTINCT ts_utc, completeness_basis FROM complete_chain_captures"
+        ).fetchall()
+    assert [(_et(ts), basis) for ts, basis in rows] == [("2026-11-02 07:31", cch.PRE_MARKET_BASIS)]
 
 
 def test_an_added_ticker_joins_the_rotation_in_its_turn(tmp_path, schwab):

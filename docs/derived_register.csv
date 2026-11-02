@@ -1,5 +1,5 @@
 key,kind,producer,definition,why
-abbrev,status,server._screen_levels,Pill text for a level on the confluence rail.,"Not a market value: a word, a container or an echo of the request, the console's own."
+abbrev,status,server._screen_levels,Pill text for a level on the confluence rail.,
 above,flag,server._spot_location,Index into zones of the nearest zone above spot.,"server.liquidity_snapshot adds the live price as a level (SPOT_LIVE) before clustering, so during the session the price always sits inside its own zone; `inside` is set and this is None whenever a spot is held in the live shape. The Right Now 'Between zones' branch cannot run then."
 absolute_gamma_gex_dollars,flag,math_exposure_core.total_gex_dollars_at_strike,|call GEX$| + |put GEX$| at the absolute-gamma strike.,"never read by static/js; otherwise derived. Schwab sends gamma per contract, not dollar exposure. Input to the pin gate only."
 absolute_gamma_oi,flag,math_exposure_core.strike_total_oi,Total open interest at the absolute-gamma strike.,"never read by static/js; otherwise derived. Schwab sends OI per contract, not per strike. Input to the pin gate only."
@@ -7,14 +7,14 @@ absolute_gamma_strength_pct,flag,math_exposure_core.pick_pin_and_strength,"Leade
 absolute_gamma_strike,derived,math_exposure_core.pick_pin_and_strength,Strike with the largest |call GEX$| + |put GEX$| over the full book.,Schwab sends no gamma concentration.
 adjusted_deliverable_symbols,schwab,schwab:/chains,Symbols of this expiry's contracts Schwab flags nonStandard.,
 age_sec,flag,server.levels_payload,"Seconds since a level's as-of time, or since a contract last streamed.",never read by static/js; otherwise status.
-ages,status,app.options.order_flow.engine.compute_book_microstructure,"Container: book_age_sec, quote_age_sec, book_stale.","Not a market value: a word, a container or an echo of the request, the console's own."
-ages.book_age_sec,status,app.options.order_flow.engine.compute_book_microstructure,now minus Schwab BOOK_TIME.,"Not a market value: a word, a container or an echo of the request, the console's own."
-ages.book_stale,status,app.options.order_flow.engine.compute_book_microstructure,True when the book's feed is not live. None without a book age.,"Not a market value: a word, a container or an echo of the request, the console's own."
-ages.quote_age_sec,status,app.options.order_flow.engine.compute_book_microstructure,now minus Schwab QUOTE_TIME_MILLIS.,"Not a market value: a word, a container or an echo of the request, the console's own."
-all,status,terrain_engine.per_strike_view,Container: every-expiry per-strike rows; also migration's all-expiry block.,"Not a market value: a word, a container or an echo of the request, the console's own."
+ages,status,app.options.order_flow.engine.compute_book_microstructure,"Container: book_age_sec, quote_age_sec, book_stale.",
+ages.book_age_sec,derived,app.options.order_flow.engine.compute_book_microstructure,now minus Schwab BOOK_TIME.,Schwab sends the time; an age depends on when it is read.
+ages.book_stale,status,app.options.order_flow.engine.compute_book_microstructure,True when the book's feed is not live. None without a book age.,
+ages.quote_age_sec,derived,app.options.order_flow.engine.compute_book_microstructure,now minus Schwab QUOTE_TIME_MILLIS.,Schwab sends the time; an age depends on when it is read.
+all,status,terrain_engine.per_strike_view,Container: every-expiry per-strike rows; also migration's all-expiry block.,
 anchor,flag,server._liquidity_zone_tradeable_fields,A zone's mid.,never read by static/js; otherwise derived. A zone is ours. Same number as zone_mid.
 as_of_cutoff_et,flag,liquidity_value_engine.build_live_snapshot,"min(now, the regular close) in ET.",never read by static/js; otherwise status.
-as_of_time_ct,status,server.levels_payload,A level's as-of time as the screen words it.,"Not a market value: a word, a container or an echo of the request, the console's own."
+as_of_time_ct,status,server.levels_payload,A level's as-of time as the screen words it.,
 as_of_ts_utc,flag,server.levels_payload,"A level's time: newest bar start, or the chain's start for a gamma level.",never read by static/js; otherwise status.
 ask,schwab,schwab:LEVELONE_EQUITIES,"Ask price. On /api/order-flow/book-heatmap the same name is the displayed SIZE at that price, not a price.",
 askSize,flag,schwab:/chains,Ask size.,never read by static/js; otherwise schwab.
@@ -26,11 +26,11 @@ atr_daily,flag,terrain_atr.compute_atrs,"ATR(14), simple mean of true range, on 
 atr_monthly,flag,terrain_atr.compute_atrs,ATR(14) on monthly candles rolled from dailies.,Monthly candles are computed: Schwab's /pricehistory sends frequencyType monthly.
 atr_weekly,flag,terrain_atr.compute_atrs,ATR(14) on weekly candles rolled from dailies.,Weekly candles are computed: Schwab's /pricehistory sends frequencyType weekly.
 auction_interpretation,flag,liquidity_value_engine._classify_value_state_and_vwap_relation,"bullish_acceptance / bearish_acceptance / empty, from value_state and vwap_relation.",never read by static/js; otherwise derived. A label of ours on estimated levels.
-available,status,server,Whether the route has a value to serve.,"Not a market value: a word, a container or an echo of the request, the console's own."
-bar_source,status,server.BAR_SOURCE,Words naming where the bars come from.,"Not a market value: a word, a container or an echo of the request, the console's own."
-bars,status,server.get_bars1m,Container of bars; in volume_profile the count of RTH bars given.,"Not a market value: a word, a container or an echo of the request, the console's own."
-bars_without_volume,status,liquidity_models.volume_profile,RTH bars Schwab sent with no volume.,"Not a market value: a word, a container or an echo of the request, the console's own."
-basis,status,server.levels_payload,Words describing how a value is built.,"Not a market value: a word, a container or an echo of the request, the console's own."
+available,status,server,Whether the route has a value to serve.,
+bar_source,status,server.BAR_SOURCE,Words naming where the bars come from.,
+bars,status,server.get_bars1m,Container of bars; in volume_profile the count of RTH bars given.,
+bars_without_volume,derived,liquidity_models.volume_profile,RTH bars Schwab sent with no volume.,"Schwab sends the rows, not a count of them."
+basis,status,server.levels_payload,Words describing how a value is built.,
 below,flag,server._spot_location,Index into zones of the nearest zone below spot.,"server.liquidity_snapshot adds the live price as a level (SPOT_LIVE) before clustering, so during the session the price always sits inside its own zone; `inside` is set and this is None whenever a spot is held in the live shape."
 bid,schwab,schwab:LEVELONE_EQUITIES,"Bid price. On /api/order-flow/book-heatmap the same name is the displayed SIZE at that price, not a price.",
 bidAskSize,flag,schwab:/chains,Schwab's bid x ask size text.,never read by static/js; otherwise schwab.
@@ -38,21 +38,21 @@ bidSize,flag,schwab:/chains,Bid size.,never read by static/js; otherwise schwab.
 bid_size,schwab,schwab:LEVELONE_EQUITIES,Bid size.,
 bid_total,derived,app.options.order_flow.engine._book_side_depth_total,Sum of displayed size over the best N bid levels.,"Schwab sends levels, not depth totals."
 bins,flag,liquidity_models.volume_profile,"[price, volume, inside value area] per tick.","An estimate: rule 5 bans estimates. Each 1m bar's volume is spread evenly over its range (the route's own basis text says Estimated, not trades at a price). Schwab sends no volume at price, so no wired value exists."
-book_age_sec,status,app.options.order_flow.engine.compute_book_microstructure,now minus Schwab BOOK_TIME.,"Not a market value: a word, a container or an echo of the request, the console's own."
-book_feed_label,status,app.options.order_flow.streaming.price_state,LIVE / OFFLINE / NOT LIVE for the venue's book.,"Not a market value: a word, a container or an echo of the request, the console's own."
+book_age_sec,derived,app.options.order_flow.engine.compute_book_microstructure,now minus Schwab BOOK_TIME.,Schwab sends the time; an age depends on when it is read.
+book_feed_label,status,app.options.order_flow.streaming.price_state,LIVE / OFFLINE / NOT LIVE for the venue's book.,
 book_oi_total,flag,math_exposure_core.book_total_oi,"Total OI of the book, unknown if any strike's is.",never read by static/js; otherwise derived. Schwab sends OI per contract. Input to the pin gate only.
 book_slope,flag,app.options.order_flow.engine._book_slope,Top-5 displayed size per dollar of book span.,never read by static/js; otherwise derived. Schwab sends levels only.
-book_source,status,app.options.order_flow.engine._microstructure_structural,"The book's Schwab service name, or unavailable.","Not a market value: a word, a container or an echo of the request, the console's own."
-book_stale,status,app.options.order_flow.engine.compute_book_microstructure,True when the book's feed is not live.,"Not a market value: a word, a container or an echo of the request, the console's own."
+book_source,status,app.options.order_flow.engine._microstructure_structural,"The book's Schwab service name, or unavailable.",
+book_stale,status,app.options.order_flow.engine.compute_book_microstructure,True when the book's feed is not live.,
 book_time_ct,schwab,schwab:NYSE_BOOK.NASDAQ_BOOK,Schwab's book time in Central Time.,
 book_time_ms,flag,schwab:NYSE_BOOK.NASDAQ_BOOK,"Schwab's book time, ms.",never read by static/js; otherwise schwab.
 breakEven,flag,schwab:/chains,Break-even price.,never read by static/js; otherwise schwab.
-bucket_sec,status,app.options.order_flow.history.book_heatmap_for_ticker,Seconds per time column of the book heatmap.,"Not a market value: a word, a container or an echo of the request, the console's own."
+bucket_sec,status,app.options.order_flow.history.book_heatmap_for_ticker,Seconds per time column of the book heatmap.,
 busiest,derived,terrain_engine.positioning_migration,The two strikes with the most session volume.,Schwab sends no ranking of strikes.
 busiest_vs_walls,derived,terrain_engine.positioning_migration,Where the busiest strikes sit against the walls.,Schwab sends no walls.
 by_distance,derived,server.levels_payload,Level ids ordered by distance from the live price.,Levels are ours.
 c,flag,schwab:/pricehistory,Bar close.,"server.aggregate_bars rolls 1m bars up for every tf above 1, first open/max high/min low/last close. DATA_FLOW 3.4 says charts show bars exactly as Schwab sent them. Schwab's /pricehistory sends 5, 15, 30 minute and daily itself (parameters doc: frequency 1,5,10,15,30; daily); only 3 and 60 have no Schwab frequency. tf=D rolls 1m bars with extended hours (need_extended_hours_data=True) over the 10 days held, while Schwab's 2 years of daily candles sit unused in server._daily. Computes something Schwab sends."
-call,status,terrain_engine.chain_ladder,"Container: the call side of a ladder row, cell, leg or stream state.","Not a market value: a word, a container or an echo of the request, the console's own."
+call,status,terrain_engine.chain_ladder,"Container: the call side of a ladder row, cell, leg or stream state.",
 call_charm_wall,derived,math_levels.pick_charm_wall_strikes,Strike of the largest |call charm exposure|.,Schwab sends no charm. Reaches the screen as /api/levels row id call_charm_wall.
 call_delta_wall,derived,math_exposure_core.pick_delta_wall_strikes,Strike of the largest |call DEX$|.,Schwab sends delta per contract only. Reaches the screen through zone source_levels and level crosses.
 call_itm,flag,terrain_engine.chain_ladder,"strike < live spot, per ladder row.","Computes what Schwab sends: inTheMoney is on every contract and served beside it, unread. Second producer. The ladder's shading reads this one."
@@ -65,14 +65,14 @@ capabilities,flag,server.health,"Container: schwab, and schwab_reason when down.
 carried,derived,server.levels_payload,In zero_dte: the regular level beside its same-day price. In provenance: true when carried. Two meanings.,Levels are ours.
 ceiling,derived,confluence_composite.ceiling,100 x the weights in the score.,In docs/derived_register.md.
 cell_metric,flag,server.gamma_surface_payload,Words naming the cell's metric.,never read by static/js; otherwise status.
-cells,status,server.project_gamma_surface,Container of heatmap cells; in coverage the count of cells.,"Not a market value: a word, a container or an echo of the request, the console's own."
-centre,status,server._window,The strike a panel's window is centred on.,"Not a market value: a word, a container or an echo of the request, the console's own."
+cells,status,server.project_gamma_surface,Container of heatmap cells; in coverage the count of cells.,
+centre,status,server._window,The strike a panel's window is centred on.,
 chain_as_of_time_ct,flag,server.confluence_payload,"When the chain began, Central Time.",never read by static/js; otherwise status.
 chain_as_of_ts_utc,flag,calibration.complete_chain_capture.ChainSweep.fetch_chain,"When the chain request began, our clock.",never read by static/js; otherwise status.
-chain_basis,status,calibration.complete_chain_capture.CAPTURE_BASIS,Words naming the chain's coverage.,"Not a market value: a word, a container or an echo of the request, the console's own."
+chain_basis,status,calibration.complete_chain_capture.CAPTURE_BASIS,Words naming the chain's coverage.,
 charm_above,derived,server._forces_from_captures,Net dealer charm above the newer capture's spot.,Schwab sends no charm.
 charm_below,derived,server._forces_from_captures,Net dealer charm below the newer capture's spot.,Schwab sends no charm.
-charm_reason,status,confluence_composite._row,Why the charm cell is empty.,"Not a market value: a word, a container or an echo of the request, the console's own."
+charm_reason,status,confluence_composite._row,Why the charm cell is empty.,
 charm_style,derived,confluence_composite._ramp,CSS background for the charm cell.,"Heat color, in docs/derived_register.md."
 charm_text,derived,confluence_composite._row,"Net charm at the strike, thousands.",Schwab sends no charm.
 checked_out_code,flag,server.build_identity_answer,The checkout's HEAD now.,never read by static/js (no page asks /api/build); otherwise status.
@@ -87,13 +87,13 @@ computed_ts_utc,flag,server._publish_levels,"The chain's start time, not when th
 confidence,derived,math_levels.compute_gamma_flip_v2,TRUSTED / LEVEL_APPROX / NARROW / UNAVAILABLE by delivered strike span.,"A chain-coverage word, not a confidence in the level (math_levels says so)."
 confluence_score,flag,liquidity_value_engine.build_live_snapshot,Count of distinct level tags in a zone.,"Computed, drawn as 'confluence N'. server.liquidity_snapshot adds the live price as a level (SPOT_LIVE) before clustering, so during the session the price always sits inside its own zone, and that tag counts, so the price adds 1 to the score of the zone it is in."
 contract,flag,server.build_identity_answer,Fixed word meet_or_exceed_v1.,never read by static/js (no page asks /api/build); otherwise status.
-contracts,status,server.get_chain,"Container: the expiry's contracts, or a cell's call/put symbols.","Not a market value: a word, a container or an echo of the request, the console's own."
+contracts,status,server.get_chain,"Container: the expiry's contracts, or a cell's call/put symbols.",
 contracts_excluded_malformed_expiry,flag,server.project_gamma_surface,Contracts with no usable expiry.,never read by static/js; otherwise status.
 contracts_not_on_ladder,flag,terrain_engine.chain_ladder,Contracts with no strike or side.,never read by static/js; otherwise status.
 contracts_total,flag,server.project_gamma_surface,Contracts on the chain.,never read by static/js; otherwise status.
 contracts_used,flag,math_exposure_core.compute_exposures_by_strike,Count of contracts used.,Two producers with two definitions under one name: exposure book (OI and multiplier present) against surface (10-character expiry).
 contributions,derived,confluence_composite.score_magnitudes,Top three factor shares of a strike's score.,In docs/derived_register.md.
-coverage,status,server._stream_coverage,Container: streaming coverage of the cells on screen.,"Not a market value: a word, a container or an echo of the request, the console's own."
+coverage,status,server._stream_coverage,Container: streaming coverage of the cells on screen.,
 coverage_pct,flag,terrain_engine.compute_wall_value_area,Share of side gamma inside the wall range.,never read by static/js; otherwise derived. Ours.
 covers_level_span,flag,math_levels.compute_gamma_flip_v2,Strikes reach +/-10% of spot.,never read by static/js; otherwise status.
 covers_regime_span,flag,math_levels.compute_gamma_flip_v2,Strikes reach +/-5% of spot.,never read by static/js; otherwise status.
@@ -102,33 +102,33 @@ crossed,flag,app.options.order_flow.engine._microstructure_structural,bid > ask.
 cum,derived,app.options.order_flow.engine._book_pressure_curve,Running displayed size down the book.,Schwab sends levels only.
 cum_delta_proxy,flag,l1_trade_observation.compute_cum_delta_proxy,Tick-rule signed size summed over the tape held.,A proxy: tick-rule trade side. Operator decision 9 (DATA_FLOW 6) bans an inferred side and rule 5 bans proxies; ACTIVE_PROGRAM DESK-GAPS keeps it until ONE-12 deletes it. On this route (equity book) no page reads it: only the option route's copy is drawn. The comment at server.order_flow_microstructure saying the Trade Desk card shows it is false.
 cum_delta_slope,flag,app.options.order_flow.engine._compute_cum_delta_slope,Slope of the tick-rule sum over 60 s.,A proxy: tick-rule trade side. Operator decision 9 (DATA_FLOW 6) bans an inferred side and rule 5 bans proxies; ACTIVE_PROGRAM DESK-GAPS keeps it until ONE-12 deletes it. On this route (equity book) no page reads it: only the option route's copy is drawn. The comment at server.order_flow_microstructure saying the Trade Desk card shows it is false.
-cum_delta_window,status,app.options.order_flow.engine.OrderFlowEngine.compute,Words: first and last print time the sum covers.,"Not a market value: a word, a container or an echo of the request, the console's own."
+cum_delta_window,status,app.options.order_flow.engine.OrderFlowEngine.compute,Words: first and last print time the sum covers.,
 currencyType,flag,schwab:/chains,Deliverable's currency.,never read by static/js; otherwise schwab.
 curve_agrees_with_schwab_at_spot,flag,terrain_engine.compute_terrain,Whether the modelled curve's sign at spot equals Schwab's summed gamma.,"never read by static/js; otherwise derived. A check of our model. Adds a line to the read when False, but `lines` is unread."
 curve_gamma_at_spot,flag,math_levels.gamma_at_price,Black-Scholes book gamma at spot from the modelled curve.,"Computes a gamma Schwab sends at this price: second gamma at spot, kept as a diagnostic. Also never read by static/js."
 cutoff_et,flag,liquidity_value_engine.build_live_snapshot,Same value as as_of_cutoff_et.,never read by static/js; otherwise status.
 daysToExpiration,flag,schwab:/chains,Days to expiration.,never read by static/js; otherwise schwab.
-deferred,status,app.options.order_flow.engine._microstructure_structural,Fixed list of metrics not produced.,"Not a market value: a word, a container or an echo of the request, the console's own."
+deferred,status,app.options.order_flow.engine._microstructure_structural,Fixed list of metrics not produced.,
 degraded,flag,liquidity_value_engine.build_price_level_snapshot,"Families built from a partial tape, as {family, last_good_ts_utc, reason}.","Screen defect: static/js/ed-gamma-levels.js joins these objects, so the foot prints [object Object], and the reason never shows."
 deliverableNote,flag,schwab:/chains,Deliverable note.,never read by static/js; otherwise schwab.
 deliverableUnits,flag,schwab:/chains,Deliverable units.,never read by static/js; otherwise schwab.
 delta,schwab,schwab:/quotes,Contract delta. The chain's rounded delta is replaced by the quote's. After the window the last reported stands (server._keep_last_reported).,
-depth,status,app.options.order_flow.engine._microstructure_structural,Container: depth ladder by 1/3/5 levels; in wall_method the depth used.,"Not a market value: a word, a container or an echo of the request, the console's own."
+depth,status,app.options.order_flow.engine._microstructure_structural,Container: depth ladder by 1/3/5 levels; in wall_method the depth used.,
 depth.*.ask_total,derived,app.options.order_flow.engine._book_side_depth_total,Displayed size over the best N ask levels.,Schwab sends levels only.
 depth.*.bid_total,derived,app.options.order_flow.engine._book_side_depth_total,Displayed size over the best N bid levels.,Schwab sends levels only.
 depth.*.imbalance,derived,app.options.order_flow.engine._book_imbalance_from_totals,(bid - ask) / (bid + ask) of the totals.,Schwab sends levels only.
 depth_pressure,derived,app.options.order_flow.engine._book_pressure_curve,"Container: best-5 levels with running size, each side.",Prices and sizes are Schwab's; the running size is ours.
 description,flag,schwab:/chains,Contract description.,never read by static/js; otherwise schwab.
-detail,status,server.desk_events_payload,Queue item's line of words.,"Not a market value: a word, a container or an echo of the request, the console's own."
+detail,status,server.desk_events_payload,Queue item's line of words.,
 dex,derived,math_exposure_core.compute_exposures_by_strike,"Net delta dollars at a strike (and expiry): delta x OI x multiplier x spot, call minus put.","Schwab sends delta per contract. Dealer sign is modelled, +call/-put."
 dex_above_dollars,derived,server._forces_from_captures,Net DEX$ above the newer capture's spot.,Schwab sends delta per contract.
 dex_below_dollars,derived,server._forces_from_captures,Net DEX$ below the newer capture's spot.,Schwab sends delta per contract.
-dex_reason,status,confluence_composite._row,Why the delta cell is empty.,"Not a market value: a word, a container or an echo of the request, the console's own."
+dex_reason,status,confluence_composite._row,Why the delta cell is empty.,
 dex_style,derived,confluence_composite._ramp,CSS background for the delta cell.,"Heat color, in docs/derived_register.md."
 dex_text,derived,confluence_composite._row,"Net DEX$ at the strike, millions.",Schwab sends delta per contract.
 dgex_reason,flag,confluence_composite.DGEX_REASON,Fixed words: no change in gamma is produced.,No producer: permanent placeholder column.
 dgex_text,flag,confluence_composite._row,Always None.,No producer: the column is on screen with weight 0 and no value will ever arrive.
-dir,status,server.desk_events_payload,up / down on a queue item.,"Not a market value: a word, a container or an echo of the request, the console's own."
+dir,status,server.desk_events_payload,up / down on a queue item.,
 display_hi,derived,app.options.order_flow.history._display_window,Default top of the heatmap's price window.,"A view choice, not a market value."
 display_lo,derived,app.options.order_flow.history._display_window,Default bottom of the heatmap's price window.,"A view choice, not a market value."
 distance,flag,server.levels_payload,Level minus live price.,never read by static/js; otherwise derived. Levels are ours.
@@ -138,29 +138,29 @@ dividendYield,flag,schwab:/chains,The chain's dividend yield.,never read by stat
 doi_above,derived,server._forces_from_captures,"OI above the newer spot, newer day less older day.",Schwab sends no prior-day OI.
 doi_below,derived,server._forces_from_captures,"OI below the newer spot, newer day less older day.",Schwab sends no prior-day OI.
 dollarized,flag,math_exposure_core.exposures_have_dollar_gex,The book was built with a spot.,never read by static/js; otherwise status.
-dom,status,server.desk_events_payload,Domain word on a queue item.,"Not a market value: a word, a container or an echo of the request, the console's own."
+dom,status,server.desk_events_payload,Domain word on a queue item.,
 down,derived,server.desk_events_payload,Down crosses in the window.,Crosses are ours.
 drift,flag,terrain_engine.positioning_migration,UP / DOWN / FLAT of the positive-gamma-weighted strike day over day.,"Threshold 0.15 strikes is typed in, its comment says origin not recorded, NOT_PROVEN, and it is one number for every ticker whatever its price."
 dte,schwab,schwab:/chains,"Days to expiration, truncated to int on the surface and in rr_25d.",
 dte_used,schwab,schwab:/chains,DTE of the first expiry at least a day out.,
-error,status,terrain_engine.compute_terrain,Why no levels.,"Not a market value: a word, a container or an echo of the request, the console's own."
+error,status,terrain_engine.compute_terrain,Why no levels.,
 evidence_tier,flag,liquidity_value_engine.PHASE2A_LEVEL_IDS,price_fact / derived_certified / DERIVED.,"derived_certified is drawn beside estimated POC/VAH/VAL and VWAP: nothing certifies them, and two vocabularies share the column."
 exchangeName,flag,schwab:/chains,Exchange name.,never read by static/js; otherwise schwab.
 exchange_quote_ts,flag,schwab:LEVELONE_EQUITIES,"Schwab quote time, seconds.",never read by static/js; otherwise schwab.
 exerciseType,schwab,schwab:/chains,Exercise type.,
 expirationDate,flag,schwab:/chains,Expiration date and time.,never read by static/js; otherwise schwab.
 expirationType,schwab,schwab:/chains,Expiration type.,
-expirations,status,server.project_gamma_surface,Container: the surface's columns.,"Not a market value: a word, a container or an echo of the request, the console's own."
-expired,status,server._stamp_columns,"Column's expiry is before today, ET.","Not a market value: a word, a container or an echo of the request, the console's own."
+expirations,status,server.project_gamma_surface,Container: the surface's columns.,
+expired,status,server._stamp_columns,"Column's expiry is before today, ET.",
 expiries,schwab,schwab:/chains,The expiries the chain lists.,
 expiry,schwab,schwab:/chains,Expiry date.,
 expiry_dte,flag,schwab:/chains,{expiry: Schwab's DTE}.,never read by static/js; otherwise schwab.
 extrinsicValue,flag,schwab:/chains,Extrinsic value.,never read by static/js; otherwise schwab.
 factors,derived,confluence_composite.score_magnitudes,Every factor's share of a strike's score.,In docs/derived_register.md.
-families_absent,status,liquidity_value_engine.build_price_level_snapshot,"Level families with no value, with why.","Not a market value: a word, a container or an echo of the request, the console's own."
-family,status,liquidity_value_engine.PHASE2A_LEVEL_IDS,A level's family word.,"Not a market value: a word, a container or an echo of the request, the console's own."
-far,status,terrain_engine.per_strike_view,Container: rows of expiries over 7 DTE.,"Not a market value: a word, a container or an echo of the request, the console's own."
-first,status,terrain_engine.chain_ladder,First row of its strike.,"Not a market value: a word, a container or an echo of the request, the console's own."
+families_absent,status,liquidity_value_engine.build_price_level_snapshot,"Level families with no value, with why.",
+family,status,liquidity_value_engine.PHASE2A_LEVEL_IDS,A level's family word.,
+far,status,terrain_engine.per_strike_view,Container: rows of expiries over 7 DTE.,
+first,status,terrain_engine.chain_ladder,First row of its strike.,
 first_snapshot,flag,server.liquidity_snapshot,"Equal to snapshot_type, always.","Stub: first and last are both today's snapshot_val, no history behind them. Also never read by static/js."
 flip_diag,flag,math_levels.compute_gamma_flip_v2,Container: the flip's coverage and diagnostics.,never read by static/js; otherwise status.
 flip_relation,derived,terrain_read.price_side,ABOVE / AT / BELOW: the live price against the flip.,The flip is ours.
@@ -169,12 +169,12 @@ flow,flag,app.options.order_flow.live_payload.flow_block,Container: tick-rule ta
 flow_reason,flag,confluence_composite.FLOW_REASON,Fixed words: no signed flow is produced.,No producer: permanent placeholder column.
 flow_text,flag,confluence_composite._row,Always None.,"No producer: the column is on screen with weight 0, and the detail card labels it premium dollars."
 from_spot_text,derived,terrain_read.from_spot_text,Words: a level's distance and side from the live price.,Levels are ours.
-front,status,server._stamp_columns,Nearest unexpired column.,"Not a market value: a word, a container or an echo of the request, the console's own."
+front,status,server._stamp_columns,Nearest unexpired column.,
 fusion,flag,server._liquidity_option_levels,fused / fused_empty / levels_not_ready.,never read by static/js; otherwise status.
 gamma,schwab,schwab:/quotes,Contract gamma. The chain's rounded gamma is replaced by the quote's. None when server._shown_greeks / math_exposure_core.gamma_reported rejects it. After the window the last reported stands.,
 gamma_at_spot,flag,math_exposure_core.book_net_gex,Same value as net_gex_at_spot.,"Duplicate of net_gex_at_spot under a second key, and the same partial sum (see net_gex_at_spot). Also never read by static/js."
 gamma_flip,derived,math_levels.gamma_flip_from_profile,"Nearest zero crossing of the modelled net GEX curve, Black-Scholes r=q=0 on +/-15% of spot.","Schwab sends gamma only at its own price. Contracts with no sigma or expiry are left out of the curve (`unpriced`), so it can rest on part of the book. Modelled dealer sign."
-generation,status,liquidity_value_engine.materialize_price_level_snapshot,Counter of the price-level snapshot.,"Not a market value: a word, a container or an echo of the request, the console's own."
+generation,status,liquidity_value_engine.materialize_price_level_snapshot,Counter of the price-level snapshot.,
 gex,derived,math_exposure_core.compute_exposures_by_strike,"Net dollar gamma per 1% at a strike and expiry, gamma x OI x multiplier x spot^2 x 0.01, call minus put.",Schwab sends gamma per contract. Dealer sign is modelled.
 gex_above,derived,server.terrain_strikes_payload,Net GEX$ of strikes above the live price.,Schwab sends gamma per contract.
 gex_below,derived,server.terrain_strikes_payload,Net GEX$ of strikes below the live price.,Schwab sends gamma per contract.
@@ -183,13 +183,13 @@ git_sha_semantics,flag,server.build_identity_answer,Fixed word.,never read by st
 grc,derived,math_levels.compute_gamma_support_levels,Lowest price above spot where the modelled curve falls to half its at-spot value.,Ours. Reaches the screen as /api/levels row id grc.
 greeksTime,flag,schwab:/quotes,{greek: Schwab's quote time}.,never read by static/js; otherwise schwab.
 grew,derived,terrain_engine.positioning_migration,The two strikes that gained the most GEX.,Schwab sends no prior-day exposure.
-gross_reason,status,confluence_composite._row,Why the gross cell is empty.,"Not a market value: a word, a container or an echo of the request, the console's own."
+gross_reason,status,confluence_composite._row,Why the gross cell is empty.,
 gross_style,derived,confluence_composite._ramp,CSS background for the gross cell.,"Heat color, in docs/derived_register.md."
 gross_text,derived,confluence_composite.magnitudes,"Call plus put 1% gamma at the strike, millions.",In docs/derived_register.md.
 gsf,derived,math_levels.compute_gamma_support_levels,Highest price below spot where the modelled curve falls to half its at-spot value.,Ours. Reaches the screen as /api/levels row id gsf.
 gsf_state,flag,math_levels.compute_gamma_support_levels,OK / BELOW_SUPPORT / UNAVAILABLE.,never read by static/js; otherwise status.
 h,flag,schwab:/pricehistory,Bar high.,"server.aggregate_bars rolls 1m bars up for every tf above 1, first open/max high/min low/last close. DATA_FLOW 3.4 says charts show bars exactly as Schwab sent them. Schwab's /pricehistory sends 5, 15, 30 minute and daily itself (parameters doc: frequency 1,5,10,15,30; daily); only 3 and 60 have no Schwab frequency. tf=D rolls 1m bars with extended hours (need_extended_hours_data=True) over the 10 days held, while Schwab's 2 years of daily candles sit unused in server._daily. Computes something Schwab sends."
-has_duplicate_contracts,status,server.get_chain,Two contracts at one strike and side.,"Not a market value: a word, a container or an echo of the request, the console's own."
+has_duplicate_contracts,status,server.get_chain,Two contracts at one strike and side.,
 headline,derived,terrain_read.build_terrain_read,One sentence on the regime.,"Words of ours, at the publication's price, not the live one."
 heat_background,derived,confluence_composite._ramp,CSS background for the score cell.,"Heat color, in docs/derived_register.md."
 heuristic,flag,app.options.order_flow.engine._microstructure_structural,Fixed True.,never read by static/js; otherwise status.
@@ -197,7 +197,7 @@ hi,flag,terrain_engine.compute_wall_value_area,Top strike of a wall's range.,nev
 high52Week,flag,schwab:/chains,52-week high.,never read by static/js; otherwise schwab.
 highPrice,flag,schwab:/chains,Session high.,never read by static/js; otherwise schwab.
 hvp,derived,math_exposure_core.pick_volatility_point_strikes,Strike with the most negative net GEX$.,Ours. Reaches the screen as /api/levels row id hvp.
-id,status,liquidity_value_engine.PriceLevelValue,A level's id.,"Not a market value: a word, a container or an echo of the request, the console's own."
+id,status,liquidity_value_engine.PriceLevelValue,A level's id.,
 identity_capture_error,flag,server.capture_process_identity,Why the identity is incomplete.,never read by static/js (no page asks /api/build); otherwise status.
 identity_source,flag,server.capture_process_identity,Where the identity came from.,never read by static/js (no page asks /api/build); otherwise status.
 imbalance,derived,app.options.order_flow.engine._book_imbalance_from_totals,(bid - ask) / (bid + ask) of the totals.,Schwab sends levels only.
@@ -207,43 +207,43 @@ inside,flag,confluence_composite,Matrix: strike between the one-day move. Zones:
 interestRate,flag,schwab:/chains,The chain's interest rate.,never read by static/js; otherwise schwab.
 interpretation_notes,derived,liquidity_value_engine._classify_live_cluster,A zone's words.,Words of ours. The spot's own zone reads 'Live spot (from console cache)'.
 intrinsicValue,flag,schwab:/chains,Intrinsic value.,never read by static/js; otherwise schwab.
-items,status,server.desk_events_payload,Container: the attention queue.,"Not a market value: a word, a container or an echo of the request, the console's own."
+items,status,server.desk_events_payload,Container: the attention queue.,
 iv,schwab,schwab:LEVELONE_OPTIONS,Contract volatility on a print.,
 iv_pct_atm,derived,terrain_engine.compute_implied_one_day_move,"ATM volatility used for the move, percent.",Schwab sends volatility per contract.
-iv_reason,status,confluence_composite._row,Why the IV cell is empty.,"Not a market value: a word, a container or an echo of the request, the console's own."
+iv_reason,status,confluence_composite._row,Why the IV cell is empty.,
 iv_style,derived,confluence_composite._ramp,CSS background for the IV cell.,"Heat color, in docs/derived_register.md."
 iv_text,derived,confluence_composite.iv_by_strike,OI-plus-volume weighted volatility at the strike.,In docs/derived_register.md.
-key,status,server.desk_events_payload,A queue item's id. Not Schwab's key.,"Not a market value: a word, a container or an echo of the request, the console's own."
+key,status,server.desk_events_payload,A queue item's id. Not Schwab's key.,
 key_delta_strike,derived,math_exposure_core.pick_key_delta_strike,Strike of the largest total DEX$.,Ours. Reaches the screen as /api/levels row.
-kind,status,server.get_chain,Chain scope word.,"Not a market value: a word, a container or an echo of the request, the console's own."
+kind,status,server.get_chain,Chain scope word.,
 l,flag,schwab:/pricehistory,Bar low.,"server.aggregate_bars rolls 1m bars up for every tf above 1, first open/max high/min low/last close. DATA_FLOW 3.4 says charts show bars exactly as Schwab sent them. Schwab's /pricehistory sends 5, 15, 30 minute and daily itself (parameters doc: frequency 1,5,10,15,30; daily); only 3 and 60 have no Schwab frequency. tf=D rolls 1m bars with extended hours (need_extended_hours_data=True) over the 10 days held, while Schwab's 2 years of daily candles sit unused in server._daily. Computes something Schwab sends."
-label,status,server,"Display name of a level, expiry or coverage state.","Not a market value: a word, a container or an echo of the request, the console's own."
-labels,status,server.get_expiries,Dropdown words: date and Schwab's DTE.,"Not a market value: a word, a container or an echo of the request, the console's own."
-ladder,status,terrain_engine.chain_ladder,Container: the chain ladder's rows.,"Not a market value: a word, a container or an echo of the request, the console's own."
-lane,status,server._confluence_markers,session / options.,"Not a market value: a word, a container or an echo of the request, the console's own."
+label,status,server,"Display name of a level, expiry or coverage state.",
+labels,status,server.get_expiries,Dropdown words: date and Schwab's DTE.,
+ladder,status,terrain_engine.chain_ladder,Container: the chain ladder's rows.,
+lane,status,server._confluence_markers,session / options.,
 last,flag,schwab:/chains,Last price.,never read by static/js; otherwise schwab.
 lastSize,flag,schwab:/chains,Last size.,never read by static/js; otherwise schwab.
 lastTradingDay,schwab,schwab:/chains,"Last trading day, ms.",
-last_bar,status,server.get_bars1m,Container: newest minute held and its label.,"Not a market value: a word, a container or an echo of the request, the console's own."
+last_bar,status,server.get_bars1m,Container: newest minute held and its label.,
 last_snapshot,flag,server.liquidity_snapshot,"Equal to snapshot_type, always.","Stub: first and last are both today's snapshot_val, no history behind them. Also never read by static/js."
-latest_captured_ts,status,app.options.order_flow.history.book_heatmap_for_ticker,Our receive time of the newest book; same as until_ts.,"Not a market value: a word, a container or an echo of the request, the console's own."
+latest_captured_ts,status,app.options.order_flow.history.book_heatmap_for_ticker,Our receive time of the newest book; same as until_ts.,
 level_bar_source,flag,server.liquidity_snapshot,Same as bar_source.,never read by static/js; otherwise status.
 level_generation,flag,liquidity_value_engine.materialize_price_level_snapshot,Snapshot counter.,never read by static/js; otherwise status.
 level_semantic_scope,flag,liquidity_value_engine.build_live_snapshot,session_rth.,never read by static/js; otherwise status.
 level_snapshot_as_of_ts_utc,flag,liquidity_value_engine.build_price_level_snapshot,Newest bar start in the snapshot.,never read by static/js; otherwise status.
-levels,status,server.levels_payload,Container: the level rows.,"Not a market value: a word, a container or an echo of the request, the console's own."
+levels,status,server.levels_payload,Container: the level rows.,
 levels_age_sec,flag,server.terrain_staleness,Seconds since the chain began.,never read by static/js; otherwise status.
-levels_age_text,status,server.terrain_staleness,That age as the screen words it.,"Not a market value: a word, a container or an echo of the request, the console's own."
+levels_age_text,status,server.terrain_staleness,That age as the screen words it.,
 levels_failing,flag,server.terrain_staleness,STALE with a failure held.,never read by static/js; otherwise status.
-levels_mark,status,server.levels_mark,"The Key Levels word: the levels' state, else the price's.","Not a market value: a word, a container or an echo of the request, the console's own."
-levels_mark_reason,status,server.levels_mark,Why.,"Not a market value: a word, a container or an echo of the request, the console's own."
+levels_mark,status,server.levels_mark,"The Key Levels word: the levels' state, else the price's.",
+levels_mark_reason,status,server.levels_mark,Why.,
 levels_source,flag,server.LEVELS_SOURCE_WIDE_CHAIN,Fixed word.,never read by static/js; otherwise status.
-levels_stale_reason,status,server._levels_state,Why the levels are not LIVE or CLOSE.,"Not a market value: a word, a container or an echo of the request, the console's own."
-levels_state,status,server._levels_state,LIVE / CLOSE / STALE / NOT LIVE.,"Not a market value: a word, a container or an echo of the request, the console's own."
-levels_time_ct,status,server.terrain_staleness,"The chain's start, Central Time.","Not a market value: a word, a container or an echo of the request, the console's own."
+levels_stale_reason,status,server._levels_state,Why the levels are not LIVE or CLOSE.,
+levels_state,status,server._levels_state,LIVE / CLOSE / STALE / NOT LIVE.,
+levels_time_ct,status,server.terrain_staleness,"The chain's start, Central Time.",
 lines,flag,terrain_read.build_terrain_read,The read's sentences at the live price.,"never read by static/js; otherwise derived. Words of ours. Includes the warning that the curve disagrees with Schwab's gamma, which therefore never reaches the screen."
 liquidity_concentration,flag,app.options.order_flow.engine._book_concentration,Best level's share of top-5 size.,never read by static/js; otherwise derived. Schwab sends levels only.
-live,status,server.get_watchlist,Daemon reporting; in coverage the live cell count.,"Not a market value: a word, a container or an echo of the request, the console's own."
+live,status,server.get_watchlist,Daemon reporting; in coverage the live cell count.,
 live_pct,flag,server._stream_coverage,"Share of cells streaming, rounded down.",never read by static/js; otherwise status.
 lo,flag,terrain_engine.compute_wall_value_area,Bottom strike of a wall's range.,never read by static/js; otherwise derived. Ours.
 low52Week,flag,schwab:/chains,52-week low.,never read by static/js; otherwise schwab.
@@ -259,50 +259,50 @@ max_pain,derived,math_levels.compute_max_pain,Strike minimising option-holder pa
 max_pain_dte,schwab,schwab:/chains,DTE of the front expiry.,
 max_size,derived,app.options.order_flow.history.book_heatmap_for_ticker,Largest displayed size: the heatmap's scale.,A view scale.
 max_volume,derived,server.levels_payload,Largest bin of the estimated profile: its scale.,A view scale.
-measures,status,terrain_engine._per_strike_measure_rows,Container: DEX and OI profile rows.,"Not a market value: a word, a container or an echo of the request, the console's own."
+measures,status,terrain_engine._per_strike_measure_rows,Container: DEX and OI profile rows.,
 median_mult,derived,app.options.order_flow.engine._book_wall_candidates,A level's size over the median of the top 5.,"Heuristic of ours: 3x median, tunable."
 merged_levels_count,flag,server.liquidity_snapshot,len(source_tags).,never read by static/js; otherwise derived. Same count as confluence_score.
 method,flag,server,Words describing how a value is built.,never read by static/js; otherwise status.
 microprice,derived,app.options.order_flow.engine._microprice,Size-weighted top-of-book price.,"Schwab sends bid, ask and sizes only."
 mid,flag,app.options.order_flow.engine._microstructure_structural,(bid + ask) / 2.,"Schwab sends MARK on both level-one services and the console holds it beside this (top.mark), using it only as spread_frac's divisor. Schwab's guide does not define the equity MARK, so whether this repeats it is NOT_PROVEN."
-migration,status,terrain_engine.positioning_migration,Container: day-over-day positioning per scope.,"Not a market value: a word, a container or an echo of the request, the console's own."
+migration,status,terrain_engine.positioning_migration,Container: day-over-day positioning per scope.,
 min_span_pct,flag,math_levels.GAMMA_FLIP_MIN_SPAN_PCT,Fixed 0.05.,never read by static/js; otherwise status.
 mini,flag,schwab:/chains,Mini flag.,never read by static/js; otherwise schwab.
 minus1,flag,liquidity_value_engine.compute_session_vwap_series,VWAP minus 1 sigma.,never read by static/js; otherwise derived. Schwab sends no VWAP.
 minus2,flag,liquidity_value_engine.compute_session_vwap_series,VWAP minus 2 sigma.,never read by static/js; otherwise derived. Schwab sends no VWAP.
-missing,status,confluence_composite.score_magnitudes,Why a strike has no score.,"Not a market value: a word, a container or an echo of the request, the console's own."
-missing_expiry,status,server._surface_view,Selected expiry the surface lacks.,"Not a market value: a word, a container or an echo of the request, the console's own."
+missing,status,confluence_composite.score_magnitudes,Why a strike has no score.,
+missing_expiry,status,server._surface_view,Selected expiry the surface lacks.,
 move_text,derived,server._move_text,The one-day move's two prices as text.,In docs/derived_register.md.
 mult,flag,app.options.order_flow.engine.OF_BOOK_WALL_MEDIAN_MULT,Fixed 3.0.,never read by static/js; otherwise status.
 multiplier,schwab,schwab:/chains,Contract multiplier.,
-n,status,server.get_bars1m,Count of bars; a queue item's number.,"Not a market value: a word, a container or an echo of the request, the console's own."
+n,derived,server.get_bars1m,Count of bars; a queue item's number.,"Schwab sends the rows, not a count of them."
 n_ask_levels,flag,app.options.order_flow.engine._microstructure_structural,Ask levels held.,never read by static/js; otherwise status.
 n_bid_levels,flag,app.options.order_flow.engine._microstructure_structural,Bid levels held.,never read by static/js; otherwise status.
-n_buckets,status,app.options.order_flow.history.book_heatmap_for_ticker,Fixed 90 time columns.,"Not a market value: a word, a container or an echo of the request, the console's own."
-n_strikes,status,server.get_chain,Strikes in the ladder or chain.,"Not a market value: a word, a container or an echo of the request, the console's own."
-native_aggressor_available,status,l1_trade_observation.NATIVE_AGGRESSOR_AVAILABLE,Fixed False.,"Not a market value: a word, a container or an echo of the request, the console's own."
-near,status,terrain_engine.per_strike_view,Container: rows of expiries at or under 7 DTE.,"Not a market value: a word, a container or an echo of the request, the console's own."
+n_buckets,derived,app.options.order_flow.history.book_heatmap_for_ticker,Fixed 90 time columns.,"Schwab sends the rows, not a count of them."
+n_strikes,derived,server.get_chain,Strikes in the ladder or chain.,"Schwab sends the rows, not a count of them."
+native_aggressor_available,status,l1_trade_observation.NATIVE_AGGRESSOR_AVAILABLE,Fixed False.,
+near,status,terrain_engine.per_strike_view,Container: rows of expiries at or under 7 DTE.,
 netChange,flag,schwab:/chains,Net change.,never read by static/js; otherwise schwab.
 net_gex_at_spot,flag,math_exposure_core.book_net_gex,Sum of every strike's net_gex_1pct: dealer gamma per 1% at the publication's price.,"Partial sum: skips strikes whose value is unknown, unlike terrain_engine.side_total and DATA_FLOW 3.4 ('never the sum of the rest'). This number sets the regime's sign, the posture and the pin gate, on the screen's biggest hero. Also at the publication's price. CONFIRMED on the production routes 2026-11-02: SPY 1 of 556 and $SPX 5 of 893 strikes unknown, regime still published on the rest."
 net_gex_by_strike,derived,server.get_chain,This expiry's net GEX per strike.,Schwab sends gamma per contract.
 net_gex_peak,derived,math_exposure_core.pick_net_gex_peak_strike,Strike of the largest |net GEX$|.,Ours.
 net_gex_text,derived,confluence_composite._row,"Net GEX$ at the strike, millions.",Schwab sends gamma per contract.
-net_reason,status,confluence_composite._row,Why the net cell is empty.,"Not a market value: a word, a container or an echo of the request, the console's own."
+net_reason,status,confluence_composite._row,Why the net cell is empty.,
 net_style,derived,confluence_composite._ramp,CSS background for the net cell.,"Heat color, in docs/derived_register.md."
 net_vanna_dollars_per_volpt,flag,math_exposure_core.compute_net_vanna,Book vanna x spot.,"Partial sum: skips strikes whose value is unknown, unlike terrain_engine.side_total and DATA_FLOW 3.4 ('never the sum of the rest'). Schwab sends no vanna. Also never read by static/js."
 net_vanna_shares_per_volpt,flag,math_exposure_core.compute_net_vanna,Sum of strikes' net_vanna.,"Partial sum: skips strikes whose value is unknown, unlike terrain_engine.side_total and DATA_FLOW 3.4 ('never the sum of the rest'). Schwab sends no vanna. Also never read by static/js."
 no_crossing_in_window,flag,math_levels.compute_gamma_flip_v2,The curve never crosses zero.,never read by static/js; otherwise status.
 nonStandard,schwab,schwab:/chains,Non-standard flag.,
 normalized_text,derived,confluence_composite._factor_row,A factor's scaled value.,In docs/derived_register.md.
-not_live_text,status,server.levels_payload,The price's not-live words on a row placed at it.,"Not a market value: a word, a container or an echo of the request, the console's own."
-note,status,server._window,Why a window is not around the price; a heuristic's caveat.,"Not a market value: a word, a container or an echo of the request, the console's own."
-notes,status,confluence_composite.build_matrix,Lines of words. One is a fixed sentence on the liquidity summary.,"Not a market value: a word, a container or an echo of the request, the console's own."
+not_live_text,status,server.levels_payload,The price's not-live words on a row placed at it.,
+note,status,server._window,Why a window is not around the price; a heuristic's caveat.,
+notes,status,confluence_composite.build_matrix,Lines of words. One is a fixed sentence on the liquidity summary.,
 o,flag,schwab:/pricehistory,Bar open.,"server.aggregate_bars rolls 1m bars up for every tf above 1, first open/max high/min low/last close. DATA_FLOW 3.4 says charts show bars exactly as Schwab sent them. Schwab's /pricehistory sends 5, 15, 30 minute and daily itself (parameters doc: frequency 1,5,10,15,30; daily); only 3 and 60 have no Schwab frequency. tf=D rolls 1m bars with extended hours (need_extended_hours_data=True) over the 10 days held, while Schwab's 2 years of daily candles sit unused in server._daily. Computes something Schwab sends."
 oi,flag,app.options.order_flow.history._print_row,"OI on a print, or {call, put, total} of a heatmap cell, or a strike's total.","One name, Schwab as sent on one route and summed on two."
-oi_reason,status,confluence_composite._row,Why the OI cell is empty.,"Not a market value: a word, a container or an echo of the request, the console's own."
+oi_reason,status,confluence_composite._row,Why the OI cell is empty.,
 oi_style,derived,confluence_composite._ramp,CSS background for the OI cell.,"Heat color, in docs/derived_register.md."
 oi_text,derived,confluence_composite._row,Total OI at the strike.,Schwab sends OI per contract.
-older_et_date,status,server._forces_from_captures,Date of the older capture.,"Not a market value: a word, a container or an echo of the request, the console's own."
+older_et_date,status,server._forces_from_captures,Date of the older capture.,
 openInterest,flag,schwab:/chains,Open interest.,"Rule 2 says a reported 0 is 0, no substitution. server._keep_last_reported replaces a reported 0 with the last count above 0 outside the option window (operator 2026-10-25, DATA_FLOW 3.4), so the rule and the decision conflict. Also two sources: the chain's value, overlaid by a later stream value by receive time."
 openPrice,flag,schwab:/chains,Session open.,never read by static/js; otherwise schwab.
 optionDeliverablesList,flag,schwab:/chains,Deliverables.,never read by static/js; otherwise schwab.
@@ -316,10 +316,10 @@ overnight,flag,liquidity_value_engine.build_live_snapshot,Container: overnight l
 overnight_high,flag,liquidity_value_engine.get_overnight_levels,High of bars from the prior close to today's open.,never read by static/js; otherwise derived. Schwab sends no overnight range.
 overnight_low,flag,liquidity_value_engine.get_overnight_levels,Low of bars from the prior close to today's open.,never read by static/js; otherwise derived. Schwab sends no overnight range.
 partial,flag,server._stream_coverage,Cells with one side streaming.,never read by static/js; otherwise status.
-pc_gex_reason,status,confluence_composite._row,Why the cell is empty.,"Not a market value: a word, a container or an echo of the request, the console's own."
+pc_gex_reason,status,confluence_composite._row,Why the cell is empty.,
 pc_gex_style,derived,confluence_composite._ramp,CSS background.,"Heat color, in docs/derived_register.md."
 pc_gex_text,derived,confluence_composite.magnitudes,Put 1% gamma over call 1% gamma at the strike.,In docs/derived_register.md.
-pc_vol_reason,status,confluence_composite._row,Why the cell is empty.,"Not a market value: a word, a container or an echo of the request, the console's own."
+pc_vol_reason,status,confluence_composite._row,Why the cell is empty.,
 pc_vol_style,derived,confluence_composite._ramp,CSS background.,"Heat color, in docs/derived_register.md."
 pc_vol_text,derived,confluence_composite.magnitudes,Put volume over call volume at the strike.,In docs/derived_register.md.
 pcr_all,derived,math_exposure_core.put_call_oi_ratio,Book put OI over call OI.,Schwab sends OI per contract.
@@ -361,11 +361,11 @@ process_id,flag,server.capture_process_identity,Process id.,never read by static
 process_identity,flag,server.capture_process_identity,Container: the process's identity.,never read by static/js (no page asks /api/build); otherwise status.
 process_started_at_utc,flag,server.capture_process_identity,Process start.,never read by static/js (no page asks /api/build); otherwise status.
 producer,flag,server,Name of the producing function.,never read by static/js; otherwise status.
-provenance,status,server,Container: where a value came from.,"Not a market value: a word, a container or an echo of the request, the console's own."
+provenance,status,server,Container: where a value came from.,
 provenance.book_time_ms,flag,schwab:NYSE_BOOK.NASDAQ_BOOK,"Schwab's book time, ms.",never read by static/js; otherwise schwab.
 provenance.exchange_quote_ts,flag,schwab:LEVELONE_EQUITIES,"Schwab quote time, seconds.",never read by static/js; otherwise schwab.
 provenance.server_received_ts,flag,app.options.order_flow.engine.compute_book_microstructure,now at serialization.,"Misnamed: it is the time the route answered, not a receive time; the map calls it DERIVED, wall clock. Also never read by static/js."
-put,status,terrain_engine.chain_ladder,"Container: the put side of a ladder row, cell, leg or stream state.","Not a market value: a word, a container or an echo of the request, the console's own."
+put,status,terrain_engine.chain_ladder,"Container: the put side of a ladder row, cell, leg or stream state.",
 putCall,schwab,schwab:/chains,CALL / PUT.,
 put_charm_wall,derived,math_levels.pick_charm_wall_strikes,Strike of the largest |put charm exposure|.,Schwab sends no charm. Reaches the screen as /api/levels row id put_charm_wall.
 put_delta_wall,derived,math_exposure_core.pick_delta_wall_strikes,Strike of the largest |put DEX$|.,Schwab sends delta per contract only. Reaches the screen through zone source_levels and level crosses.
@@ -376,31 +376,31 @@ put_wall_lean,derived,terrain_engine.wall_lean,Words for the put wall at the liv
 put_wall_range,flag,terrain_engine.compute_wall_value_area,Container: value area of put gamma around the wall.,never read by static/js; otherwise derived. Schwab sends no such range.
 put_wall_state,flag,terrain_engine.wall_geometry_state,contains / breached at the live price.,never read by static/js; otherwise derived. Used server-side by desk_events_payload.
 quoteTimeInLong,flag,schwab:/chains,"Quote time, ms.",never read by static/js; otherwise schwab.
-quote_age_sec,status,app.options.order_flow.engine.compute_book_microstructure,now minus Schwab QUOTE_TIME_MILLIS.,"Not a market value: a word, a container or an echo of the request, the console's own."
+quote_age_sec,derived,app.options.order_flow.engine.compute_book_microstructure,now minus Schwab QUOTE_TIME_MILLIS.,Schwab sends the time; an age depends on when it is read.
 quote_time_ct,schwab,schwab:LEVELONE_EQUITIES,Schwab's quote time in Central Time.,
 raw_levels,flag,liquidity_value_engine.build_live_snapshot,"Container: the snapshot's levels, again.",never read by static/js; otherwise status.
 raw_levels_used,flag,server._build_raw_levels_used,"Container: the same levels flattened, a second copy in one answer.",never read by static/js; otherwise status.
 raw_text,derived,confluence_composite._raw_text,A factor's raw value as text.,In docs/derived_register.md.
-reason,status,server,Why a value is absent.,"Not a market value: a word, a container or an echo of the request, the console's own."
+reason,status,server,Why a value is absent.,
 regime,derived,terrain_read.regime_from_signed_gamma,LONG_GAMMA_CHOP / SHORT_GAMMA_TREND / UNAVAILABLE: the sign of net_gex_at_spot.,"Schwab sends no regime. Modelled sign, and it rests on a partial sum (see net_gex_at_spot). At the publication's price."
 repo_head_now,flag,server.checkout_head,HEAD now.,never read by static/js (no page asks /api/build); otherwise status.
 repo_moved_past_process,flag,server.build_identity_answer,HEAD differs from the running code.,never read by static/js (no page asks /api/build); otherwise status.
 repository_state_now,flag,server.build_identity_answer,Container.,never read by static/js (no page asks /api/build); otherwise status.
 requested_expiry,flag,server.get_chain,Expiry the chain route answered for.,never read by static/js; otherwise status.
 rho,flag,schwab:/quotes,Contract rho.,never read by static/js; otherwise schwab.
-rows,status,server,Container of rows.,"Not a market value: a word, a container or an echo of the request, the console's own."
-rows_scanned,status,app.options.order_flow.history.book_heatmap_for_ticker,Books in the window.,"Not a market value: a word, a container or an echo of the request, the console's own."
+rows,status,server,Container of rows.,
+rows_scanned,derived,app.options.order_flow.history.book_heatmap_for_ticker,Books in the window.,"Schwab sends the rows, not a count of them."
 rr_25d,flag,math_volatility.compute_25d_risk_reversal,Container: 25-delta risk reversal.,never read by static/js; otherwise derived. Schwab sends no skew.
 rr_pts,flag,math_volatility.compute_25d_risk_reversal,Call volatility minus put volatility at 25 delta.,never read by static/js; otherwise derived. Schwab sends no skew.
 running_code,flag,server.build_identity_answer,The commit running.,never read by static/js (no page asks /api/build); otherwise status.
 same_day,flag,terrain_engine.same_day_levels,Container: nearest expiry's levels with gamma and delta rebuilt to today's close.,"Computes gamma and delta Schwab sends (bs_gamma, bs_delta, r=q=0). Settled by operator decision 10, DATA_FLOW 6. Listed because the gate asks, and it needs a register row."
 scale_text,derived,confluence_composite.build_matrix,The score's range as words.,In docs/derived_register.md.
-schema_version,status,terrain_engine.TERRAIN_SCHEMA_VERSION,Payload version.,"Not a market value: a word, a container or an echo of the request, the console's own."
+schema_version,status,terrain_engine.TERRAIN_SCHEMA_VERSION,Payload version.,
 schwab,flag,server.health,AVAILABLE / UNAVAILABLE.,"never read by static/js (/api/health is read by launch.py and the deploy skill, no page); otherwise status."
 schwab_token_age_days,flag,server.schwab_token_countdown,Days since the token file's creation_timestamp.,never read by static/js; otherwise status.
 schwab_token_note,flag,server.schwab_token_countdown,Re-auth warning words.,Served on every terrain read and never shown: the 5-day and 6-day warnings before the 7-day expiry reach no screen. Also never read by static/js.
 schwab_token_urgency,flag,server.schwab_token_countdown,ok / warn / red / unknown.,"Served and never shown, as schwab_token_note. Also never read by static/js."
-scope,status,server,"Chain scope container, or Auto/Wider/All.","Not a market value: a word, a container or an echo of the request, the console's own."
+scope,status,server,"Chain scope container, or Auto/Wider/All.",
 score,derived,confluence_composite.score_magnitudes,"A strike's composite, 0 to the preset's ceiling.",In docs/derived_register.md. Weights are typed in confluence_composite.WRITTEN.
 score_text,derived,confluence_composite._row,The score as whole-number text.,In docs/derived_register.md.
 semantic_scope,flag,liquidity_value_engine.PHASE2A_LEVEL_IDS,Which measurement a level is.,never read by static/js; otherwise status.
@@ -408,15 +408,15 @@ served_ts_utc,flag,server.levels_payload,The time of the answer.,never read by s
 server_received_ts,flag,app.options.order_flow.engine.compute_book_microstructure,now at serialization.,"Misnamed: it is the time the route answered, not a receive time; the map calls it DERIVED, wall clock. Also never read by static/js."
 session_date,flag,liquidity_value_engine.build_live_snapshot,The market session the levels are for.,never read by static/js; otherwise status.
 settlementType,schwab,schwab:/chains,Settlement type.,
-short,status,liquidity_value_engine.LEVEL_NAMES,A level's short name.,"Not a market value: a word, a container or an echo of the request, the console's own."
+short,status,liquidity_value_engine.LEVEL_NAMES,A level's short name.,
 shrank,derived,terrain_engine.positioning_migration,The two strikes that lost the most GEX.,Schwab sends no prior-day exposure.
 side,flag,terrain_read.level_side,ABOVE/AT/BELOW; BID/ASK/EVEN; bid/ask.,"One name, four producers and three vocabularies."
 since_ts,flag,app.options.order_flow.history.book_heatmap_for_ticker,Our receive time of the oldest book in the window.,"The heatmap's whole time axis is the console's receive time, not Schwab's BOOK_TIME, against D1. A wait in the push moves columns."
 size,schwab,schwab:LEVELONE_OPTIONS,Print size.,
 slopes,flag,confluence_composite.build_matrix,100 x weight / (p95 - p5) per factor.,never read by static/js; otherwise derived. In docs/derived_register.md.
-snapshot_age_text,status,server.levels_payload,Age of the price-level snapshot.,"Not a market value: a word, a container or an echo of the request, the console's own."
+snapshot_age_text,status,server.levels_payload,Age of the price-level snapshot.,
 snapshot_as_of_ts_utc,flag,liquidity_value_engine.build_price_level_snapshot,Newest bar start in the snapshot.,never read by static/js; otherwise status.
-snapshot_time_ct,status,server.levels_payload,"That time, Central.","Not a market value: a word, a container or an echo of the request, the console's own."
+snapshot_time_ct,status,server.levels_payload,"That time, Central.",
 snapshot_type,flag,liquidity_value_engine.build_live_snapshot,premarket / live.,never read by static/js; otherwise status.
 source,flag,server.gamma_surface_payload,Words naming the surface's source.,never read by static/js; otherwise status.
 source_levels,derived,liquidity_value_engine.cluster_price_levels_into_zones,Container: a zone's levels with their prices.,Zones are ours.
@@ -432,29 +432,29 @@ spot_feed_live,flag,server.price_mark,The price is live.,never read by static/js
 spot_inside_zone,flag,server._liquidity_zone_tradeable_fields,Spot within a zone.,"server.liquidity_snapshot adds the live price as a level (SPOT_LIVE) before clustering, so during the session the price always sits inside its own zone, so one zone always reads True. Also never read by static/js."
 spot_line,derived,confluence_composite.at_price,This row sits under the live price.,In docs/derived_register.md.
 spot_location,flag,server._spot_location,Container: inside / above / below zone indexes.,"server.liquidity_snapshot adds the live price as a level (SPOT_LIVE) before clustering, so during the session the price always sits inside its own zone. Right Now always reads 'Inside a Pivot / value zone (confluence N)', a statement about the price's own zone, not the market's. CONFIRMED on the production routes 2026-11-02: 11 of 11 watchlist tickers inside a Pivot / value zone holding SPOT_LIVE."
-spot_not_live_text,status,server.price_mark,Words beside a value from a price that stopped.,"Not a market value: a word, a container or an echo of the request, the console's own."
+spot_not_live_text,status,server.price_mark,Words beside a value from a price that stopped.,
 spot_outage,flag,app.options.order_flow.streaming.price_state,Why the price is not live.,never read by static/js; otherwise status.
-spot_source,status,server.resolve_spot,streaming_plane / none / outage text.,"Not a market value: a word, a container or an echo of the request, the console's own."
+spot_source,status,server.resolve_spot,streaming_plane / none / outage text.,
 spot_strike,derived,terrain_engine.nearest_strike,Listed strike nearest the live price.,Ours.
 spot_text,derived,confluence_composite.at_price,The live price as text.,Formats spot.
 spot_time_ct,schwab,schwab:LEVELONE_EQUITIES,Schwab's trade time in Central Time.,
 spot_used_for_scoring,flag,server.liquidity_snapshot,The live price the zones were built with.,never read by static/js; otherwise status.
 spread_frac,flag,app.options.order_flow.engine._microstructure_structural,spread_pts / MARK.,never read by static/js; otherwise derived. Schwab sends none.
 spread_pts,derived,app.options.order_flow.engine._microstructure_structural,ask - bid.,Schwab sends none.
-src,status,server.desk_events_payload,Which source a queue item came from.,"Not a market value: a word, a container or an echo of the request, the console's own."
+src,status,server.desk_events_payload,Which source a queue item came from.,
 ssid,flag,schwab:/chains,Schwab's ssid.,never read by static/js; otherwise schwab.
 stale,flag,server._stream_coverage,Cells that stopped streaming.,never read by static/js; otherwise status.
-staleness,status,server.levels_payload,Container: a level's time and age.,"Not a market value: a word, a container or an echo of the request, the console's own."
+staleness,status,server.levels_payload,Container: a level's time and age.,
 startup_git_available,flag,server.capture_process_identity,HEAD could be read.,never read by static/js (no page asks /api/build); otherwise status.
 startup_git_dirty,flag,server.capture_process_identity,Tree had changes at start.,never read by static/js (no page asks /api/build); otherwise status.
 startup_git_sha,flag,server.capture_process_identity,HEAD at start.,never read by static/js (no page asks /api/build); otherwise status.
 startup_git_sha_short,flag,server.capture_process_identity,"HEAD at start, 12 characters.",never read by static/js (no page asks /api/build); otherwise status.
 startup_identity_captured_at_utc,flag,server.capture_process_identity,When it was captured.,never read by static/js (no page asks /api/build); otherwise status.
-state,status,server._stamp_gamma_surface_cell_stream_state,"A leg's, cell's or chip's streaming state.","Not a market value: a word, a container or an echo of the request, the console's own."
-status,status,server.get_chain,ok / unavailable / no_book. Not Schwab's chain status.,"Not a market value: a word, a container or an echo of the request, the console's own."
-status_text,status,server.confluence_payload,'Chain as of <time>'.,"Not a market value: a word, a container or an echo of the request, the console's own."
-stream,status,server._stamp_gamma_surface_cell_stream_state,Container: each cell's streaming state.,"Not a market value: a word, a container or an echo of the request, the console's own."
-stream_by_expiry,status,server._stamp_gamma_surface_cell_stream_state,Each column's state.,"Not a market value: a word, a container or an echo of the request, the console's own."
+state,status,server._stamp_gamma_surface_cell_stream_state,"A leg's, cell's or chip's streaming state.",
+status,status,server.get_chain,ok / unavailable / no_book. Not Schwab's chain status.,
+status_text,status,server.confluence_payload,'Chain as of <time>'.,
+stream,status,server._stamp_gamma_surface_cell_stream_state,Container: each cell's streaming state.,
+stream_by_expiry,status,server._stamp_gamma_surface_cell_stream_state,Each column's state.,
 stream_overlay_computed_ts_utc,flag,server._publish_levels,When the stream overlay ran.,never read by static/js; otherwise status.
 stream_overlay_contracts,flag,math_exposure_core.overlay_streamed_contract_fields,Contracts given a streamed count.,never read by static/js; otherwise status.
 stream_overlay_symbols,flag,server._overlaid_symbols,Those contracts.,never read by static/js; otherwise status.
@@ -464,40 +464,40 @@ strike_hi,flag,schwab:/chains,Highest listed strike.,never read by static/js; ot
 strike_lo,flag,schwab:/chains,Lowest listed strike.,never read by static/js; otherwise schwab.
 strike_text,derived,confluence_composite._row,Strike as text.,Formats strike.
 strikes,flag,schwab:/chains,The surface's strikes.,never read by static/js; otherwise schwab.
-strikes_used,status,terrain_engine.compute_terrain,Strikes in the book.,"Not a market value: a word, a container or an echo of the request, the console's own."
-summary,status,liquidity_value_engine.build_live_snapshot,"Container: value_state, vwap_relation, auction_interpretation, notes.","Not a market value: a word, a container or an echo of the request, the console's own."
-surface_seq,status,server._next_gamma_surface_seq,Publication counter.,"Not a market value: a word, a container or an echo of the request, the console's own."
+strikes_used,derived,terrain_engine.compute_terrain,Strikes in the book.,"Schwab sends the rows, not a count of them."
+summary,status,liquidity_value_engine.build_live_snapshot,"Container: value_state, vwap_relation, auction_interpretation, notes.",
+surface_seq,status,server._next_gamma_surface_seq,Publication counter.,
 symbol,schwab,schwab:/chains,Contract symbol; on some routes the route's ticker.,
 symbols,flag,server._held_option_symbols_for_ticker,Contracts the tape covers.,never read by static/js; otherwise status.
 t,flag,server._bar_dict,"A bar's start, or a heatmap column number.","One name, a Schwab time on one route and our bucket number on the other."
 tag,flag,server._build_raw_levels_used,A level's tag.,never read by static/js; otherwise status.
-tape_classification,status,l1_trade_observation.TAPE_CLASSIFICATION,Fixed word.,"Not a market value: a word, a container or an echo of the request, the console's own."
+tape_classification,status,l1_trade_observation.TAPE_CLASSIFICATION,Fixed word.,
 tape_pressure_2m,flag,l1_trade_observation.compute_tape_pressure,"Tick-rule signed size over size, 2 minutes.",A proxy: tick-rule trade side. Operator decision 9 (DATA_FLOW 6) bans an inferred side and rule 5 bans proxies; ACTIVE_PROGRAM DESK-GAPS keeps it until ONE-12 deletes it. On this route (equity book) no page reads it: only the option route's copy is drawn. The comment at server.order_flow_microstructure saying the Trade Desk card shows it is false.
 tape_pressure_30s,flag,l1_trade_observation.compute_tape_pressure,"Tick-rule signed size over size, 30 seconds.",A proxy: tick-rule trade side. Operator decision 9 (DATA_FLOW 6) bans an inferred side and rule 5 bans proxies; ACTIVE_PROGRAM DESK-GAPS keeps it until ONE-12 deletes it. On this route (equity book) no page reads it: only the option route's copy is drawn. The comment at server.order_flow_microstructure saying the Trade Desk card shows it is false.
 tape_pressure_5m,flag,l1_trade_observation.compute_tape_pressure,"Tick-rule signed size over size, 5 minutes.",A proxy: tick-rule trade side. Operator decision 9 (DATA_FLOW 6) bans an inferred side and rule 5 bans proxies; ACTIVE_PROGRAM DESK-GAPS keeps it until ONE-12 deletes it. On this route (equity book) no page reads it: only the option route's copy is drawn. The comment at server.order_flow_microstructure saying the Trade Desk card shows it is false.
 text,derived,confluence_composite._factor_row,A factor's contribution or slope as text.,In docs/derived_register.md.
-tf,status,server,The timeframe asked.,"Not a market value: a word, a container or an echo of the request, the console's own."
+tf,status,server,The timeframe asked.,
 theoreticalOptionValue,flag,schwab:/chains,Schwab's theoretical value.,never read by static/js; otherwise schwab.
 theoreticalVolatility,flag,schwab:/chains,Schwab's theoretical volatility.,never read by static/js; otherwise schwab.
 theta,flag,schwab:/quotes,Contract theta.,never read by static/js; otherwise schwab.
 tick_size,flag,liquidity_models.PlaybookConfig,Typed 0.01 for every ticker.,never read by static/js; otherwise status.
-ticker,status,server,The ticker asked.,"Not a market value: a word, a container or an echo of the request, the console's own."
-tickers,status,server.get_watchlist,The watchlist.,"Not a market value: a word, a container or an echo of the request, the console's own."
+ticker,status,server,The ticker asked.,
+tickers,status,server.get_watchlist,The watchlist.,
 time,flag,server.health,datetime.now() as naive local text. Not Schwab's.,"never read by static/js (/api/health is read by launch.py and the deploy skill, no page); otherwise status."
 timeValue,flag,schwab:/chains,Time value.,never read by static/js; otherwise schwab.
-title,status,server,"Words on an item, level or chip.","Not a market value: a word, a container or an echo of the request, the console's own."
-today,status,server.terrain_strikes_payload,Container: today's windowed rows.,"Not a market value: a word, a container or an echo of the request, the console's own."
+title,status,server,"Words on an item, level or chip.",
+today,status,server.terrain_strikes_payload,Container: today's windowed rows.,
 today_side_sums,derived,server.terrain_strikes_payload,Container: GEX and volume below and above the live price.,A strike exactly at the price is on neither side.
 top_book_pressure,flag,app.options.order_flow.engine._compute_top_book_pressure,(bid size - ask size) / total.,"Not a proxy, but the depth-1 imbalance beside it is the same formula on book sizes, and on this route no page reads it: only the option route's copy is drawn."
-top_feed_label,status,app.options.order_flow.streaming.price_state,LIVE / OFFLINE / NOT LIVE for the top of book.,"Not a market value: a word, a container or an echo of the request, the console's own."
-top_of_book,status,app.options.order_flow.engine._microstructure_structural,"Container: bid, ask and sizes.","Not a market value: a word, a container or an echo of the request, the console's own."
+top_feed_label,status,app.options.order_flow.streaming.price_state,LIVE / OFFLINE / NOT LIVE for the top of book.,
+top_of_book,status,app.options.order_flow.engine._microstructure_structural,"Container: bid, ask and sizes.",
 top_of_book.ask,schwab,schwab:LEVELONE_EQUITIES,Ask.,
 top_of_book.ask_size,schwab,schwab:LEVELONE_EQUITIES,Ask size.,
 top_of_book.bid,schwab,schwab:LEVELONE_EQUITIES,Bid.,
 top_of_book.bid_size,schwab,schwab:LEVELONE_EQUITIES,Bid size.,
 top_of_book_ask_leaf,flag,app.options.order_flow.engine._resolve_bid_ask_prices,streaming.ASK_PRICE when present.,never read by static/js; otherwise status.
 top_of_book_bid_leaf,flag,app.options.order_flow.engine._resolve_bid_ask_prices,streaming.BID_PRICE when present.,never read by static/js; otherwise status.
-top_outage,status,app.options.order_flow.streaming.price_state,Why the top of book is not live.,"Not a market value: a word, a container or an echo of the request, the console's own."
+top_outage,status,app.options.order_flow.streaming.price_state,Why the top of book is not live.,
 total,derived,server._legs,Call plus put of a heatmap cell's OI or volume.,Schwab sends per contract.
 totalVolume,flag,schwab:/chains,Session volume.,"Rule 2 says a reported 0 is 0, no substitution. server._keep_last_reported replaces a reported 0 with the last count above 0 outside the option window (operator 2026-10-25, DATA_FLOW 3.4), so the rule and the decision conflict. Also two sources: the chain's value, overlaid by a later stream value by receive time."
 trade,schwab,schwab:LEVELONE_OPTIONS,Print price.,
@@ -509,7 +509,7 @@ type,schwab,schwab:LEVELONE_OPTIONS,Contract side on a print.,
 unavailable,flag,server._stream_coverage,Cells not streaming.,never read by static/js; otherwise status.
 underlying,flag,schwab:LEVELONE_OPTIONS,Underlying on a print.,never read by static/js; otherwise schwab.
 unpriced,flag,math_levels.contract_inputs,"Contracts left out of the gamma curve, by reason.","never read by static/js; otherwise derived. The one disclosure that the flip, GSF and GRC can rest on part of the book, and no page shows it."
-until_ts,status,app.options.order_flow.history.book_heatmap_for_ticker,Our receive time of the newest book.,"Not a market value: a word, a container or an echo of the request, the console's own."
+until_ts,status,app.options.order_flow.history.book_heatmap_for_ticker,Our receive time of the newest book.,
 up,derived,server.desk_events_payload,Up crosses in the window.,Crosses are ours.
 v,flag,schwab:/pricehistory,Bar volume.,"server.aggregate_bars rolls 1m bars up for every tf above 1, first open/max high/min low/last close. DATA_FLOW 3.4 says charts show bars exactly as Schwab sent them. Schwab's /pricehistory sends 5, 15, 30 minute and daily itself (parameters doc: frequency 1,5,10,15,30; daily); only 3 and 60 have no Schwab frequency. tf=D rolls 1m bars with extended hours (need_extended_hours_data=True) over the 10 days held, while Schwab's 2 years of daily candles sit unused in server._daily. Computes something Schwab sends. Unknown for a whole bucket if one minute is."
 vah,flag,liquidity_models.volume_profile,"Today's value area high, rounded to 4 places.","An estimate: rule 5 bans estimates. Each 1m bar's volume is spread evenly over its range (the route's own basis text says Estimated, not trades at a price). Schwab sends no volume at price, so no wired value exists. Rounded in the calculation, against rule 5. Also never read by static/js."
@@ -518,22 +518,22 @@ value,derived,liquidity_value_engine.cluster_price_levels_into_zones,A level's p
 value_state,flag,liquidity_value_engine._classify_value_state_and_vwap_relation,"shifted_higher / shifted_lower / unchanged, POC against prior POC, +/-0.2%.","A default: starts as 'unchanged', and stays so when either POC is missing, so an unknown reads as a finding on the desk's VALUE cell. Rests on two estimated POCs."
 vanna,flag,math_exposure_core.compute_exposures_by_strike,Net vanna per vol point at a strike and expiry.,never read by static/js; otherwise derived. Schwab sends no vanna. In docs/derived_register.md.
 vanna_agg,flag,math_exposure_core.compute_net_vanna,Container: book vanna.,never read by static/js; otherwise status.
-vanna_reason,status,confluence_composite._row,Why the vanna cell is empty.,"Not a market value: a word, a container or an echo of the request, the console's own."
+vanna_reason,status,confluence_composite._row,Why the vanna cell is empty.,
 vanna_style,derived,confluence_composite._ramp,CSS background.,"Heat color, in docs/derived_register.md."
 vanna_text,derived,confluence_composite.magnitudes,"Net vanna x spot, millions.",In docs/derived_register.md.
 vega,flag,schwab:/quotes,Contract vega.,never read by static/js; otherwise schwab.
-venue,status,server,NYSE_BOOK / NASDAQ_BOOK.,"Not a market value: a word, a container or an echo of the request, the console's own."
-view,status,server._window,Container: a panel's window.,"Not a market value: a word, a container or an echo of the request, the console's own."
-views,status,server.terrain_strikes_payload,Container: each list's view.,"Not a market value: a word, a container or an echo of the request, the console's own."
+venue,status,server,NYSE_BOOK / NASDAQ_BOOK.,
+view,status,server._window,Container: a panel's window.,
+views,status,server.terrain_strikes_payload,Container: each list's view.,
 vol_above,flag,server.terrain_strikes_payload,Session volume of strikes above the live price.,never read by static/js; otherwise derived. Schwab sends per contract.
 vol_below,flag,server.terrain_strikes_payload,Session volume of strikes below the live price.,never read by static/js; otherwise derived. Schwab sends per contract.
-vol_oi_reason,status,confluence_composite._row,Why the cell is empty.,"Not a market value: a word, a container or an echo of the request, the console's own."
+vol_oi_reason,status,confluence_composite._row,Why the cell is empty.,
 vol_oi_style,derived,confluence_composite._ramp,CSS background.,"Heat color, in docs/derived_register.md."
 vol_oi_text,derived,confluence_composite.magnitudes,Volume over OI at the strike.,In docs/derived_register.md.
 volatility,schwab,schwab:/quotes,Contract volatility. The chain's is replaced by the quote's. After the window the last reported stands.,
 volume,flag,server._legs,"Cell {call, put, total}, a contract's session volume, or a book level's size.","One name, three quantities, summed on one route and as sent on two."
 volume_profile,flag,liquidity_models.volume_profile,Container: the session's estimated profile.,"An estimate: rule 5 bans estimates. Each 1m bar's volume is spread evenly over its range (the route's own basis text says Estimated, not trades at a price). Schwab sends no volume at price, so no wired value exists."
-volume_reason,status,confluence_composite._row,Why the cell is empty.,"Not a market value: a word, a container or an echo of the request, the console's own."
+volume_reason,status,confluence_composite._row,Why the cell is empty.,
 volume_style,derived,confluence_composite._ramp,CSS background.,"Heat color, in docs/derived_register.md."
 volume_text,derived,confluence_composite._row,Total session volume at the strike.,Schwab sends per contract.
 volume_total,derived,terrain_engine.side_total,The scope's session volume.,Schwab sends per contract.
@@ -543,14 +543,14 @@ vwap_relation,flag,liquidity_value_engine._classify_value_state_and_vwap_relatio
 vwap_series,derived,liquidity_value_engine.compute_session_vwap_series,"[time, vwap, +1s, -1s, +2s, -2s] per chart bar.",Schwab sends no VWAP.
 wall_candidates,derived,app.options.order_flow.engine._book_wall_candidates,Top-5 levels at least 3x the median size.,"Heuristic of ours, labelled so."
 wall_method,flag,app.options.order_flow.engine._microstructure_structural,Container: the heuristic's words.,never read by static/js; otherwise status.
-warn,status,server.desk_events_payload,A queue item is a warning.,"Not a market value: a word, a container or an echo of the request, the console's own."
+warn,status,server.desk_events_payload,A queue item is a warning.,
 watchlist_tickers,flag,server.health,Length of the watchlist.,"never read by static/js (/api/health is read by launch.py and the deploy skill, no page); otherwise status."
 weight_text,derived,confluence_composite._factor_row,A factor's weight as text.,In docs/derived_register.md.
 weighted_strike_prior,flag,terrain_engine.positioning_migration,"Positive-gamma-weighted strike, prior day.",never read by static/js; otherwise derived. Input to drift.
 weighted_strike_today,flag,terrain_engine.positioning_migration,"Positive-gamma-weighted strike, today.",never read by static/js; otherwise derived. Input to drift.
 weights_in_score,flag,confluence_composite.in_score_weights,"The preset's weights, 0 for the absent factors.",never read by static/js; otherwise derived. In docs/derived_register.md.
-window_label,status,server.DESK_LOOKBACK,Words for the event window.,"Not a market value: a word, a container or an echo of the request, the console's own."
-window_start_ts_utc,status,server._desk_window_start,Start of the event window.,"Not a market value: a word, a container or an echo of the request, the console's own."
+window_label,status,server.DESK_LOOKBACK,Words for the event window.,
+window_start_ts_utc,status,server._desk_window_start,Start of the event window.,
 zero_dte,flag,server.levels_payload,Rows pairing each regular level with its same-day price.,"Computes gamma and delta Schwab sends. Settled by operator decision 10, DATA_FLOW 6. Listed because the gate asks, and it needs a register row."
 zero_dte_gamma_share_pct,flag,math_exposure_core.compute_zero_dte_gamma_share,Share of |net GEX| from same-day expiries.,"Partial sum: skips strikes whose value is unknown, unlike terrain_engine.side_total and DATA_FLOW 3.4 ('never the sum of the rest'). Schwab sends no such share. Also never read by static/js."
 zone_class,flag,liquidity_models.zone_class_for_type,structure / trigger / value.,never read by static/js; otherwise derived. Zones are ours.
@@ -561,5 +561,5 @@ zone_mid,flag,liquidity_value_engine.cluster_price_levels_into_zones,(low + high
 zone_side,flag,liquidity_models.ZONE_DISPLAY,support / resistance / value.,"server.liquidity_snapshot adds the live price as a level (SPOT_LIVE) before clustering, so during the session the price always sits inside its own zone: see zone_label; the side drawn changes when the price reaches the zone."
 zone_type,flag,liquidity_value_engine._classify_live_cluster,The zone's taxonomy word.,"server.liquidity_snapshot adds the live price as a level (SPOT_LIVE) before clustering, so during the session the price always sits inside its own zone: see zone_label. Also never read by static/js."
 zone_width,flag,server.liquidity_snapshot,zone_high - zone_low.,never read by static/js; otherwise derived. Zones are ours.
-zones,status,server.liquidity_snapshot,Container: the zones.,"Not a market value: a word, a container or an echo of the request, the console's own."
-schwab_reason,status,server.health,"Why the Schwab feed is down, in words.","Not a market value: a word, a container or an echo of the request, the console's own."
+zones,status,server.liquidity_snapshot,Container: the zones.,
+schwab_reason,status,server.health,"Why the Schwab feed is down, in words.",
