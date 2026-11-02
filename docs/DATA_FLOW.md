@@ -36,7 +36,12 @@ The facts below hold today and in the design, except where a bullet says what to
   before refreshing one itself). Its session (`schwab_client.OneRefreshSession`) starts nothing else: it refreshes
   the token when it is within 300 s of expiry, one request at a time (the others carry the token
   it returned), and writes it to the token file atomically. Its session holds one connection
-  (httpx `max_connections=1`): every request waits for it, in turn. The session is the one owner
+  (`schwab_client.ONE_CONNECTION`), kept through a pause (operator 2026-11-02: "Yes, keep it
+  open"): every request waits for it, in turn. Nothing of ours closes it. When Schwab closes it,
+  the pool drops it before the next request; a request caught in that close fails, and its caller
+  logs it and asks again, a watchlist add excepted, which reports NOT_CHECKED for the operator to
+  repeat; one dropped in silence stalls that request to schwab-py's 30 s timeout,
+  and the next opens a new connection. The session is the one owner
   of the sign-in: once Schwab answers a refresh with a refusal (the refresh token expired, revoked
   or invalid; a network failure or Schwab's edge 403 page is no refusal), it logs it once and every request raises
   `SignInRefused` with nothing sent, the stream's logins too; the chain sweep asks for nothing

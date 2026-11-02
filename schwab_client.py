@@ -66,6 +66,9 @@ def _resolve_token_path(token_path: str) -> str:
 TOKEN_REPLACE_ATTEMPTS = 5
 #: the longest a writer of the token file waits for another to finish, in seconds
 TOKEN_LOCK_WAIT_SEC = 10
+#: the session's one connection, kept through a pause (httpx closes an idle one after 5 s): only
+#: Schwab or the network ends it, and then the next request opens another (docs/DATA_FLOW.md §1)
+ONE_CONNECTION = httpx.Limits(max_connections=1, max_keepalive_connections=1, keepalive_expiry=None)
 
 
 def token_file_lock(token_path: str) -> FileLock:
@@ -304,7 +307,7 @@ def client_from_token_file_atomic(
         update_token=metadata.wrapped_token_write_func(),
         token_file=resolved,
         metadata=metadata,
-        limits=httpx.Limits(max_connections=1, max_keepalive_connections=1),
+        limits=ONE_CONNECTION,
         event_hooks={"request": [request_sent], "response": [log_request]},
         transport=transport,
     )

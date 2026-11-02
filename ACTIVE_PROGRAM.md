@@ -217,8 +217,9 @@ ticker switch. Operator 2026-11-02, replacing his 2026-10-25 rule: "the ui shold
 market is open and we can receive data. during rth, pre market, after hours", and "it should start
 at 4 am et", and "if there is a valid session then the UI is live", with none it reads CLOSED and
 the last value stays: `time_et.session_label` is the one rule, from 04:00 ET. The chain sweep runs
-from 04:00 too, on his word. Operator 2026-10-25: "we should not have
-multiple producers anywhere": the state's word (LIVE / OFFLINE / NOT LIVE) is served
+from 04:00 too, on his word. Operator 2026-11-02: the Schwab session's one connection stays open
+while idle ("Yes, keep it open"; no flake, and not closed after 60 s). Operator 2026-10-25: "we
+should not have multiple producers anywhere": the state's word (LIVE / OFFLINE / NOT LIVE) is served
 (`live_market_plane.live_state`), never chosen by the page. Operator 2026-10-25: "we use banking
 analogy always and we take what schwab gives us, always." Operator 2026-10-25, on PR A: a symbol
 the daemon stops holding reads NOT LIVE, never its last row's LIVE; a held symbol reads NOT LIVE

@@ -293,9 +293,18 @@ class LocalSchwab:
         return [q for p, q, *_ in self.requests if p == path]
 
     def client(self, tmp_path, expires_in_sec: float = 3600):
-        """The daemon's client, its requests delivered here, from a token file (tmp_path /
-        schwab_token.json) whose token expires in `expires_in_sec` (far from expiry by default),
-        saved whole as every writer of it saves one (sc.write_token_file_atomically)."""
+        """The daemon's client, its requests delivered here, from token_file's file."""
+        return sc.client_from_token_file_atomic(
+            self.token_file(tmp_path, expires_in_sec),
+            "k",
+            "s",
+            transport=_ToLocal(self.server.server_address[1]),
+        )
+
+    def token_file(self, tmp_path, expires_in_sec: float = 3600) -> str:
+        """A token file (tmp_path / schwab_token.json) whose token expires in `expires_in_sec` (far
+        from expiry by default), saved whole as every writer of it saves one
+        (sc.write_token_file_atomically)."""
         tok = tmp_path / "schwab_token.json"
         sc.write_token_file_atomically(
             str(tok),
@@ -310,9 +319,7 @@ class LocalSchwab:
                 },
             },
         )
-        return sc.client_from_token_file_atomic(
-            str(tok), "k", "s", transport=_ToLocal(self.server.server_address[1])
-        )
+        return str(tok)
 
     def close(self) -> None:
         self.server.shutdown()
@@ -322,7 +329,7 @@ class _ToLocal(httpx.BaseTransport):
     """Every request the client sends, delivered to the local server instead of Schwab's host."""
 
     def __init__(self, port: int):
-        self.port, self.inner = port, httpx.HTTPTransport()
+        self.port, self.inner = port, httpx.HTTPTransport(limits=sc.ONE_CONNECTION)
 
     def handle_request(self, request: httpx.Request) -> httpx.Response:
         request.url = request.url.copy_with(scheme="http", host="127.0.0.1", port=self.port)
