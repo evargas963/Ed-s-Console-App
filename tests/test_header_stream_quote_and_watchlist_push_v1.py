@@ -37,13 +37,12 @@ def test_the_console_spot_is_the_daemons_price_row_and_the_console_keeps_no_copy
     from pathlib import Path
 
     from app.options.order_flow import streaming as ofs
-    from tests.feed_live_helper import publish_daemon_rows
 
     fx = json.loads(
         (Path(__file__).parent / "fixtures" / "real_equity_book.json").read_text(encoding="utf-8")
     )
     tk, native, now = fx["ticker"], fx["quote"]["native"], time.time()
-    for kept in (lmp._by_ticker, lmp._fields_by_ticker, ofs._price_rows):
+    for kept in (lmp._by_ticker, lmp._fields_by_ticker):
         kept.pop(tk, None)
     lmp.record_feed_heartbeat(
         {"ts": now, "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [tk]}}
@@ -54,8 +53,7 @@ def test_the_console_spot_is_the_daemons_price_row_and_the_console_keeps_no_copy
         assert lmp.get_quote(tk) is None and srv.resolve_spot(tk, now=now)[0] is None
         # the daemon builds its price row from the same message and pushes it
         lmp.record_from_level_one_equity(tk, native, received_ts=now)
-        publish_daemon_rows(tk)
-        row = ofs.price_row(tk)
+        row = live_price_rows.price_row(tk, now)
         assert row["spot"] == native["LAST_PRICE"]
         assert srv.resolve_spot(tk, now=now) == (
             row["spot"],
@@ -63,7 +61,7 @@ def test_the_console_spot_is_the_daemons_price_row_and_the_console_keeps_no_copy
             row["trade_ts"],
         )
     finally:
-        for kept in (lmp._by_ticker, lmp._fields_by_ticker, ofs._price_rows):
+        for kept in (lmp._by_ticker, lmp._fields_by_ticker):
             kept.pop(tk, None)
         lmp.record_feed_down()
 

@@ -10,7 +10,6 @@ from pathlib import Path
 import pytest
 
 import live_market_plane as lmp
-import live_price_rows
 import server
 import time_et
 from app.options.order_flow import streaming as ofs
@@ -267,7 +266,6 @@ def _spy_bars() -> list:
 
 def _forget(tk):
     server._bars.pop(tk, None)
-    ofs._price_rows.pop(tk, None)
     with server._terrain_cache_lock:
         server._terrain_cache.pop(tk, None)
     for key in [k for k in _MATERIALIZED_SNAPSHOTS if k[0] == tk]:
@@ -301,7 +299,6 @@ def _live_price(tk, last):
         {"ts": at, "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [tk]}}
     )
     lmp.record_from_level_one_equity(tk, {"LAST_PRICE": last}, received_ts=at)
-    ofs._price_rows[tk] = live_price_rows.price_row(tk, at)
 
 
 @pytest.fixture
@@ -490,7 +487,6 @@ def test_after_the_close_the_levels_are_measured_from_schwabs_last_trade(spy_lev
     lmp.record_from_level_one_equity(
         DESK, {"LAST_PRICE": 769.5, "TRADE_TIME_MILLIS": 1790983830151}, received_ts=at
     )
-    ofs._price_rows[DESK] = live_price_rows.price_row(DESK, at)
     body = server.levels_payload(DESK, "1", FRIDAY_CLOSE)
     priced = [r for r in body["levels"] if r["price"] is not None]
     assert len(priced) > 5 and body["spot"] == 769.5 and body["spot_as_of_ts_utc"] == 1790983830.151

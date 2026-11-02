@@ -19,10 +19,10 @@ from pathlib import Path
 
 import pytest
 
-import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 import server
 from terrain_engine import SCOPE_ROWS, strike_window
+from tests.feed_live_helper import forget_price, hold_price
 from time_et import ET
 
 _FX = Path(__file__).resolve().parent / "fixtures"
@@ -47,9 +47,9 @@ def _price(spot):
         {"ts": _AT.timestamp(), "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [TK]}}
     )
     if spot is None:
-        ofs._price_rows.pop(TK, None)
+        forget_price(TK)
     else:
-        ofs._price_rows[TK] = {"ticker": TK, "spot": spot, "trade_ts": _AT.timestamp()}
+        hold_price(TK, spot, _AT.timestamp())
 
 
 @pytest.fixture(autouse=True)
@@ -66,7 +66,7 @@ def _published():
     yield
     with server._terrain_cache_lock:
         server._terrain_cache.pop(TK, None)
-    ofs._price_rows.pop(TK, None)
+    forget_price(TK)
     lmp.record_feed_down()
 
 

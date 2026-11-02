@@ -22,6 +22,7 @@ import server
 from app.options.order_flow import streaming as ofs
 from stream_spine import CaptureWriter
 from tests.capture_store import store_capture
+from tests.feed_live_helper import forget_price
 from tests.real_chains import CRWD
 
 _QUOTE = json.loads(
@@ -39,7 +40,7 @@ def _forget():
         server._terrain_cache.pop(TK, None)
     with server._chains_waiting_lock:
         server._chains_delivered.discard(TK)
-    ofs._price_rows.pop(TK, None)
+    forget_price(TK)
     ofs._chain_parts.pop(TK, None)
     lmp._by_ticker.pop(TK, None)
     lmp._fields_by_ticker.pop(TK, None)

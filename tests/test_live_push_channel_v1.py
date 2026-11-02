@@ -34,14 +34,12 @@ _CONTRACT = "SPY   260918C00500000"
 def feed():
     """The console's state cleared before and after."""
     ofs._feed_running = False
-    ofs._price_rows.clear()
     ofs._option_streaming_last_update_ts = None
     ofs._option_contract_last_update_ts.clear()
     ofls.clear_all_live_state()
     lmp._by_ticker.clear()
     yield
     ofs._feed_running = False
-    ofs._price_rows.clear()
     lmp._by_ticker.clear()
 
 
@@ -294,19 +292,17 @@ def test_the_live_loop_never_opens_the_capture_database(feed):
     assert _OPENED == [], f"the live feed opened a database: {_OPENED}"
 
 
-def test_the_beat_refreshes_a_quiet_tickers_row_and_restamps_what_is_live(feed):
-    """A held ticker with no quote has its row on the beat, and the console restamps each beat."""
+def test_the_console_restamps_what_is_live_each_beat(feed):
     restamped: list = []
     ofs._on_feed_callback = restamped.append
 
     async def body(bus):
-        assert await _until(lambda: ofs.price_row("SPY") is not None and len(restamped) >= 2)
+        assert await _until(lambda: len(restamped) >= 2, timeout=5.0)
 
     try:
         asyncio.run(_run(body))
     finally:
         ofs._on_feed_callback = None
-    assert ofs.price_row("SPY")["spot"] is None
 
 
 def test_a_record_that_fails_is_logged_and_a_daemons_next_run_is_read(feed, caplog):

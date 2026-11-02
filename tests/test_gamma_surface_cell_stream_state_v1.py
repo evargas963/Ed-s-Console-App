@@ -24,6 +24,7 @@ import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 import server
 from stream_spine import options_quote_msg
+from tests.feed_live_helper import forget_price, hold_price
 from tests.real_chains import CRWD
 from time_et import ET
 
@@ -43,7 +44,7 @@ def _clean():
     yield
     ofls.clear_all_live_state()
     lmp.record_feed_down()
-    ofs._price_rows.pop(TK, None)
+    forget_price(TK)
     with server._terrain_cache_lock:
         server._terrain_cache.pop(TK, None)
 
@@ -59,7 +60,7 @@ def _publish(held, ticked, *, at=_AT, socket_open=True):
             "held": {"LEVELONE_EQUITIES": [TK], "LEVELONE_OPTIONS": list(held)},
         }
     )
-    ofs._price_rows[TK] = {"ticker": TK, "spot": _SPOT, "trade_ts": at.timestamp()}
+    hold_price(TK, _SPOT, at.timestamp())
     for sym in ticked:
         ofs._ingest_pushed(
             f"optquote.{sym}",

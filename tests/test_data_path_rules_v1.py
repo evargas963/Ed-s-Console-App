@@ -274,7 +274,6 @@ def _served_at(now: float, feed_live: bool) -> dict:
     import live_price_rows
     import server
     from app.options.order_flow import live_payload
-    from app.options.order_flow import streaming as ofs
     from app.options.order_flow.state import push_option_top
 
     then = now - 600
@@ -305,7 +304,7 @@ def _served_at(now: float, feed_live: bool) -> dict:
     else:
         lmp.record_feed_down()
     try:
-        row = ofs._price_rows["SPY"] = live_price_rows.price_row("SPY", now)
+        row = live_price_rows.price_row("SPY", now)
         return {
             "row": row,
             "spot": server.resolve_spot("SPY", now=now),
@@ -313,7 +312,6 @@ def _served_at(now: float, feed_live: bool) -> dict:
             "option_book": live_payload.options_live_payload(_CONTRACT, now, EQUITY_OPTIONS),
         }  # a TSLA option
     finally:
-        ofs._price_rows.pop("SPY", None)
         lmp.record_feed_down()
 
 
@@ -777,8 +775,6 @@ def test_d5_the_levels_spot_is_judged_at_the_time_they_are_served_for():
     """/api/levels served for Fri 2026-10-02 11:00 ET (RTH) with SPY's last trade in the daemon's
     price row: that trade is the spot with its trade time, the heartbeat live or not."""
     import live_market_plane as lmp
-    import live_price_rows
-    from app.options.order_flow import streaming as ofs
 
     at = _et("2026-10-02 11:00")
     served = {}
@@ -790,11 +786,9 @@ def test_d5_the_levels_spot_is_judged_at_the_time_they_are_served_for():
         lmp.record_from_level_one_equity(
             "SPY", {"LAST_PRICE": 767.39, "TRADE_TIME_MILLIS": int(at * 1000)}, received_ts=at
         )
-        ofs._price_rows["SPY"] = live_price_rows.price_row("SPY", at)
         try:
             body = server.levels_payload("SPY", "1", datetime.fromtimestamp(at, ET))
         finally:
-            ofs._price_rows.pop("SPY", None)
             lmp.record_feed_down()
         served[live] = (body["spot"], body["spot_source"], body["spot_as_of_ts_utc"])
     assert served[True] == served[False] == (767.39, server.SPOT_SOURCE_PLANE, at)

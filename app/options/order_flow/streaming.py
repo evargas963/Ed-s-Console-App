@@ -31,7 +31,6 @@ from collections.abc import Callable
 from typing import Any
 
 import live_market_plane as _lmp
-import live_price_rows
 import push_changes
 from app.options.order_flow import history as recent
 from app.options.order_flow.state import (
@@ -58,32 +57,20 @@ _FROM_SCHWAB = {
     "markets.": "schwab_markets",
     "watchlist": "daemon_watchlist",
 }
-#: The finished price row per ticker (live_price_rows.price_row), the one the browser gets. The
-#: console keeps no other copy of a live price; the last row stays until a newer one arrives.
-_price_rows: dict[str, dict] = {}
-#: how often each row is finished again and what is live restamped: the daemon's beat
+#: how often what is live is restamped: the daemon's beat
 BEAT_SEC = 1.0
-
-
-def price_row(ticker: str) -> dict | None:
-    return _price_rows.get(ticker_storage_key(ticker) or "")
 
 
 def price_state(
     ticker: str, now: float, service: str = "LEVELONE_EQUITIES"
 ) -> tuple[str, str | None]:
     """`ticker`'s state on Schwab `service` (its quote, or a venue's book) at `now`, as the console
-    serves it: the rule on the beat the console holds (live_market_plane.live_state) while that is
-    not LIVE (the feed down, the symbol not held, its market not trading); while it is LIVE, the
-    daemon's own verdict on its price row (`feed_label`, `outage`: live_price_rows.price_row), which
-    alone holds Schwab's SECURITY_STATUS; NOT LIVE while no row from the daemon has arrived."""
+    serves it: the one rule (live_market_plane.live_state), and NOT LIVE while the plane holds no
+    quote of it."""
     label, why = _lmp.live_state(ticker, service, now)
-    if label != _lmp.LIVE:
-        return label, why
-    row = price_row(ticker)
-    if row is None:
+    if label == _lmp.LIVE and _lmp.get_quote(ticker) is None:
         return _lmp.NOT_LIVE, f"no price row from the daemon for {ticker_storage_key(ticker)} yet"
-    return row["feed_label"], row["outage"]
+    return label, why
 
 
 #: the daemon while it runs (follow): watchlist requests go to it
@@ -237,7 +224,7 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
     fresh).
 
       quote.SYM    LEVELONE_EQUITIES -> order-flow state (the tape); the live price is the
-                   daemon's price row (_took_row), never rebuilt here
+                   plane's row (live_price_rows.price_row), never rebuilt here
       book.SYM     NASDAQ_BOOK / NYSE_BOOK -> order-flow book; OPTIONS_BOOK -> the option
                    contract's book
       optquote.SYM LEVELONE_OPTIONS -> order-flow state for the contract
@@ -308,29 +295,12 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
     return None
 
 
-def _rows_wanted(now: float) -> list[str]:
-    """The price rows this console holds at `now`: every equity the daemon streams (its
-    heartbeat's held LEVELONE_EQUITIES -- the watchlist and the market context, as Schwab
-    accepted them)."""
-    return sorted(_lmp.held_by_daemon("LEVELONE_EQUITIES", now))
-
-
-def _took_row(ticker: str) -> None:
-    """The plane's new values for `ticker` (live_market_plane.add_row_listener): its row, and the
-    equity's tick."""
-    _price_rows[ticker] = live_price_rows.price_row(ticker, time.time())
-    _tick(ticker)
-
-
 async def _beats() -> None:
-    """Every BEAT_SEC, a fresh row for each equity the daemon streams, so a dead feed reads dead,
-    and what is live restamped. A beat that fails is logged, and the next one runs."""
+    """Every BEAT_SEC, what is live restamped. A beat that fails is logged, and the next one
+    runs."""
     while True:
-        now = time.time()
         try:
-            for ticker in _rows_wanted(now):
-                _price_rows[ticker] = live_price_rows.price_row(ticker, now)
-            _feed_changed(now)
+            _feed_changed(time.time())
         except Exception as e:  # noqa: BLE001 -- logged; the next beat runs
             log.warning("console beat: %s: %s", type(e).__name__, e)
         await asyncio.sleep(BEAT_SEC)
@@ -348,15 +318,16 @@ def from_schwab(topic: str, record: Any) -> bool:
 
 async def follow(bus, daemon) -> None:
     """The daemon's bus, for the daemon's life: the Flow panel's contract told first
-    (select_flow_contract), the watchlist requests sent to it (watchlist_request), each new price
-    row (_took_row), and every Schwab record applied the moment it changes (_ingest_pushed) -- no
-    poll interval, no database read. A record that fails is logged, and the next one is applied.
-    When the daemon ends, the feed is down and the last values stand, marked."""
+    (select_flow_contract), the watchlist requests sent to it (watchlist_request), each equity's
+    tick as the plane takes it, and every Schwab record applied the moment it changes
+    (_ingest_pushed) -- no poll interval, no database read. A record that fails is logged, and the
+    next one is applied. When the daemon ends, the feed is down and the last values stand, marked.
+    """
     global _daemon
     sub = bus.subscribe("", policy=LATEST)
     daemon.console_request({"op": "flow_contract", "contract": _flow_contract})
     _daemon = daemon
-    _lmp.add_row_listener(_took_row)
+    _lmp.add_row_listener(_tick)
     beats = asyncio.create_task(_beats(), name="console beats")
     try:
         while True:
@@ -373,7 +344,7 @@ async def follow(bus, daemon) -> None:
                 await asyncio.sleep(0)
     finally:
         beats.cancel()
-        _lmp.remove_row_listener(_took_row)
+        _lmp.remove_row_listener(_tick)
         _daemon = None
         bus.unsubscribe(sub)
         _lmp.record_feed_down()

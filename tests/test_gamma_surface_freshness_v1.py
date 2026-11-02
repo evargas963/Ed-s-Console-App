@@ -16,12 +16,12 @@ from pathlib import Path
 
 import pytest
 
-import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 import push_changes
 import server
 from calibration.complete_chain_capture import CAPTURE_BASIS
 from server import get_options_gamma_surface, ticker_storage_key
+from tests.feed_live_helper import forget_price, hold_price
 from time_et import ET
 
 _CRWD = json.loads(
@@ -49,14 +49,7 @@ def _daemon(price: float, at: float, *tickers) -> None:
         }
     )
     for tk in tickers:
-        label, outage = lmp.live_state(tk, "LEVELONE_EQUITIES", at)
-        ofs._price_rows[tk] = {
-            "ticker": tk,
-            "spot": price,
-            "trade_ts": _AT.timestamp(),
-            "feed_label": label,
-            "outage": outage,
-        }
+        hold_price(tk, price, _AT.timestamp())
 
 
 @pytest.fixture
@@ -76,7 +69,7 @@ def published():
     with server._terrain_cache_lock:
         for tk in (_ON, _OFF):
             server._terrain_cache.pop(tk, None)
-            ofs._price_rows.pop(tk, None)
+            forget_price(tk)
     lmp.record_feed_down()
 
 

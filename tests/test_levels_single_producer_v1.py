@@ -10,7 +10,7 @@ import push_changes
 import server as srv
 from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS
 from micro_structure import Candle
-from tests.feed_live_helper import daemon_bars, stream_daemon_bars
+from tests.feed_live_helper import daemon_bars, forget_price, hold_price, stream_daemon_bars
 from time_et import ET
 
 #: Schwab's SPY and TSLA bars as the capture daemon recorded them, Thu 2026-10-01 and Fri 10-02
@@ -142,7 +142,6 @@ def test_strikes_payload_carries_server_side_sums():
 
     import live_market_plane as lmp
     import server as srv
-    from app.options.order_flow import streaming as ofs
 
     tk = "ZZSUMS"
     with srv._terrain_cache_lock:
@@ -154,13 +153,13 @@ def test_strikes_payload_carries_server_side_sums():
     lmp.record_feed_heartbeat(
         {"ts": time.time(), "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [tk]}}
     )
-    ofs._price_rows[tk] = {"ticker": tk, "spot": 100.0, "trade_ts": 1.0}
+    hold_price(tk, 100.0, 1.0)
     try:
         resp = srv.get_terrain_strikes(ticker=tk)
     finally:
         with srv._terrain_cache_lock:
             srv._terrain_cache.pop(tk, None)
-        ofs._price_rows.pop(tk, None)
+        forget_price(tk)
         lmp.record_feed_down()
     payload = json.loads(bytes(resp.body))
     ss = payload["today_side_sums"]

@@ -40,7 +40,6 @@ from app.options.order_flow.live_payload import flow_block, options_live_payload
 from app.options.order_flow.state import get_content_for_symbol, get_stream_greeks
 from app.options.order_flow.streaming import (
     get_option_contract_streaming_diagnostics,
-    price_row,
     price_state,
     select_flow_contract,
     start_order_flow_stream,
@@ -365,8 +364,8 @@ def resolve_spot(ticker: str, *, now: float) -> tuple[float | None, str, float |
     """(spot, source, as_of_ts_utc): the daemon's price row's Schwab LAST_PRICE as sent and its
     trade time. Why it is not live (price_state) does not remove it; the number stays.
     (None, the outage reason or SPOT_SOURCE_NONE, None) until Schwab has sent one."""
-    row = price_row(ticker)
-    if row and row.get("spot") is not None:
+    row = _lpr.price_row(ticker, now)
+    if row["spot"] is not None:
         return row["spot"], SPOT_SOURCE_PLANE, row.get("trade_ts")
     outage = price_state(ticker, now)[1]
     if outage is None:
@@ -3167,12 +3166,12 @@ def order_flow_microstructure(ticker: str, venue: str, now: float) -> dict:
     # top of book: the daemon's price row. The last bid and ask stand when it is not live;
     # top_outage says why and top_feed_label is the page's word for it (docs/DATA_FLOW.md §2 D5)
     top_label, top_outage = price_state(t, now)
-    _row = price_row(t)
-    if _row and _row.get("quote_ts") is not None:
+    _row = _lpr.price_row(t, now)
+    if _row.get("quote_ts") is not None:
         data["exchange_quote_ts"] = _row["quote_ts"]
     data["top"] = (
         {k: _row.get(k) for k in ("bid", "ask", "bid_size", "ask_size", "mark")}
-        if _row and (_row.get("bid") is not None or _row.get("ask") is not None)
+        if _row.get("bid") is not None or _row.get("ask") is not None
         else None
     )
     # the venue's book: the same verdict on its own service (price_state), its word served
