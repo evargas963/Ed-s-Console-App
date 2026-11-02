@@ -774,7 +774,7 @@
     return (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.hostname + ':' + port + '/';
   }
   // The market context the server always streams, served in the page (meta ed-market-context,
-  // from live_push.MARKET_CONTEXT): [{key, display}]. The socket pushes only what a page
+  // from live_market_plane.MARKET_CONTEXT): [{key, display}]. The socket pushes only what a page
   // subscribes to, so every page asks for it.
   var MARKET_CONTEXT = (function () {
     var m = document.querySelector('meta[name="ed-market-context"]');

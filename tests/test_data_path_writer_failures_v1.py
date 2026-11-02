@@ -16,7 +16,6 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import socket
 import sqlite3
 import stat
 import subprocess
@@ -29,10 +28,8 @@ from pathlib import Path
 
 import pytest
 
-import launch
 import live_market_plane as lmp
 from app.market_data.schwab.streaming import capture
-from app.market_data.schwab.streaming.live_push import serve_live_push
 from app.market_data.schwab.streaming.live_ui import LiveUiServer
 from calibration.complete_chain_capture import ChainSweep
 from stream_spine import (
@@ -1463,20 +1460,16 @@ def test_spill_files_left_beside_the_database_are_written_back_at_start(tmp_path
 
 
 def test_the_clean_stop_writes_what_the_daemon_holds_to_spill_files_before_it_ends(tmp_path):
-    """The daemon's clean stop (launch.py stop): {"op": "stop"} sent by launch.ask_daemon_to_stop
-    to a live_push server on a free port, as the daemon runs it with the daemon's console_frame,
-    INDUCED CONDITION: while another connection holds the stream database's write lock and the
-    captured option quotes are held in memory and the spill file. The daemon's stop is set, every
-    task it ends returns, and every quote is on disk in spill files beside the database."""
+    """The daemon's clean stop (its stop set by the program's shutdown). INDUCED CONDITION: while
+    another connection holds the stream database's write lock and the captured option quotes are
+    held in memory and the spill file. The daemon's stop is set,
+    every task it ends returns, and every quote is on disk in spill files beside the database."""
     db = tmp_path / "stream_capture.db"
     writer = CaptureWriter(
         db, batch_rows=1, batch_sec=0.01, timeout_sec=0.2, retry_sec=0.1, hold_cap_bytes=_SMALL_CAP
     )
     holder = sqlite3.connect(db, isolation_level=None, check_same_thread=False)
     holder.execute("BEGIN IMMEDIATE")
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        port = s.getsockname()[1]
 
     async def go():
         bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
@@ -1484,12 +1477,9 @@ def test_the_clean_stop_writes_what_the_daemon_holds_to_spill_files_before_it_en
         daemon.writer, daemon.stop = writer, stop
         tasks = [
             asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop)),
-            asyncio.create_task(
-                serve_live_push(bus, stop, port=port, on_request=daemon.console_frame)
-            ),
         ]
         await _held_past_the_cap(writer, bus, health, daemon)
-        await asyncio.to_thread(launch.ask_daemon_to_stop, port)
+        stop.set()
         await asyncio.wait_for(asyncio.gather(*tasks), timeout=30)
         return stop.is_set()
 

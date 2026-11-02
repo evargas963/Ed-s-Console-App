@@ -168,20 +168,26 @@ def test_a_ctrl_break_to_a_console_already_gone_raises_nothing():
     assert launch.ctrl_break(gone.pid) is None
 
 
-def _real_console(tmp_path: Path) -> tuple[subprocess.Popen, int]:
+def _free_port() -> int:
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+def _real_console(
+    tmp_path: Path, app: str = "server:app", **settings: str
+) -> tuple[subprocess.Popen, int]:
     """The real console, offline on a free port with a runtime root of its own, started by the
     batch file in a window of its own; healthy before this returns its window and process id."""
     tmp_path.mkdir()
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        port = s.getsockname()[1]
+    port = _free_port()
     env = {
         **os.environ,
         "ED_CI_OFFLINE": "1",
         "ED_RUNTIME_ROOT": str(tmp_path / "runtime"),
-        "ED_LIVE_PUSH_PORT": "1",
         "SCHWAB_API_KEY": "stand-in",
         "SCHWAB_APP_SECRET": "stand-in",
+        **settings,
     }
     window = _window(
         [
@@ -194,7 +200,7 @@ def _real_console(tmp_path: Path) -> tuple[subprocess.Popen, int]:
                         sys.executable,
                         "-m",
                         "uvicorn",
-                        "server:app",
+                        app,
                         "--host",
                         "127.0.0.1",
                         "--port",
@@ -207,6 +213,40 @@ def _real_console(tmp_path: Path) -> tuple[subprocess.Popen, int]:
     )
     assert launch.unhealthy_for(port, 120.0) is None
     return window, int(_until(tmp_path / "console.pid"))
+
+
+@windows_only
+def test_the_program_is_one_process_and_the_stop_ends_the_daemon_before_the_loop(tmp_path):
+    """The one program started as the launcher starts it: one process serves the console and holds
+    the daemon's sockets, with no Schwab token. A clean stop ends it, exit 0, and the owner lock of
+    the stream is gone."""
+    ui = _free_port()
+    window, pid = _real_console(
+        tmp_path / "one",
+        launch.CONSOLE_START[-1],
+        ED_LIVE_UI_PORT=str(ui),
+        ED_LIVE_UI_HOST="127.0.0.1",
+        SCHWAB_TOKEN_PATH=str(tmp_path / "missing_token.json"),
+    )
+    locks = (tmp_path / "one" / "runtime").rglob("stream_capture.lock")
+    try:
+        end = time.monotonic() + 60
+        while not launch.in_use(ui):
+            assert time.monotonic() < end, "the daemon's socket never opened"
+            time.sleep(0.1)
+        program = psutil.Process(pid)  # a venv's python.exe runs the real Python as its child
+        owners = {
+            c.pid
+            for c in psutil.net_connections("inet")
+            if c.laddr and c.laddr.port == ui and not c.raddr
+        }
+        assert len(owners) == 1
+        assert owners <= {pid, *(p.pid for p in program.children(recursive=True))}
+        launch.ctrl_break(pid)
+        assert window.wait(timeout=60) == 0, "the program did not stop, or its window waits"
+        assert list(locks) == []
+    finally:
+        window.kill()
 
 
 @windows_only

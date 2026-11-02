@@ -17,6 +17,9 @@ from time_et import CLOSED, ET, UNKNOWN, options_open, session_label
 #: the services the capture daemon streams the option rule's contracts on
 #: (capture.Daemon.pick_options): live until the last option market closes (time_et.options_open)
 OPTION_SERVICES = ("LEVELONE_OPTIONS", "OPTIONS_BOOK")
+#: the market context every page's header shows beside the selected ticker (Trade Desk): the
+#: daemon streams it whatever the watchlist holds
+MARKET_CONTEXT = ("$SPX", "$NDX", "$VIX")
 #: the words of a value's state, served to the page: updating now; its feed down; its market not
 #: trading
 LIVE, OFFLINE, NOT_LIVE = "LIVE", "OFFLINE", "NOT LIVE"
@@ -162,8 +165,8 @@ def record_from_level_one_equity(
     return True
 
 
-#: callables told the ticker of every published row, in the process that owns this plane: the
-#: capture daemon's browser push (live_ui).
+#: callables told the ticker of every published row: the browser push (live_ui) and the console
+#: (streaming._took_row).
 _row_listeners: list = []
 
 
@@ -234,7 +237,7 @@ def record_feed_heartbeat(msg: dict[str, Any]) -> None:
 
 
 def record_feed_down() -> None:
-    """The connection to the daemon ended: nothing is live until a heartbeat arrives.
+    """The daemon ended: nothing is live until a heartbeat arrives.
     The symbols that beat last named stay, so the last streamed values still price.
     The last watchlist stays with them."""
     with _lock:

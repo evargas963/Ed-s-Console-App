@@ -99,10 +99,10 @@ def test_the_newest_45_days_are_kept(tmp_path):
 
 
 def test_the_daemons_log_has_every_line_with_its_wall_time(tmp_path):
-    """The daemon's log as it starts it (_start_log), under a runtime root of its own: a line
+    """The daemon's log as it starts it (start_log), under a runtime root of its own: a line
     reaches the day's file under <runtime>/logs, beginning with its date and time."""
     script = (
-        "from app.market_data.schwab.streaming import capture; capture._start_log(); "
+        "from app.market_data.schwab.streaming import capture; capture.start_log(); "
         "capture.log.warning('schwab: connection ended (socket closed)')"
     )
     subprocess.run(

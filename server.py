@@ -34,7 +34,6 @@ import live_price_rows as _lpr  # with_change: the bar-change computation
 import push_changes
 import runtime_layout
 from app.market_data.schwab.streaming import live_ui
-from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT
 from app.options.order_flow.engine import OrderFlowEngine, compute_book_microstructure
 from app.options.order_flow.history import TAPE, book_heatmap_for_ticker
 from app.options.order_flow.live_payload import flow_block, options_live_payload
@@ -295,6 +294,17 @@ def _arm_shutdown_watchdog(deadline_sec: float = SHUTDOWN_DEADLINE_SEC) -> None:
     threading.Thread(target=_watch, name="shutdown-watchdog", daemon=True).start()
 
 
+def interrupt() -> None:
+    """End the event loop, bounded by the shutdown watchdog."""
+    _arm_shutdown_watchdog()
+    raise KeyboardInterrupt
+
+
+#: what a stop does: program.py ends the capture daemon first, so its writer finishes
+on_stop = interrupt
+_stop_asked = threading.Event()
+
+
 def _install_signal_handlers() -> None:
     """First Ctrl+C asks politely; a second one is not a request.
 
@@ -303,13 +313,13 @@ def _install_signal_handlers() -> None:
     """
 
     def _on_signal(signum, _frame):
-        if _shutdown_watchdog_armed.is_set():
+        if _stop_asked.is_set():
             _hard_exit(f"second interrupt (signal {signum}) - exiting immediately")
+        _stop_asked.set()
         log.warning("signal %s received - shutting down (press Ctrl+C again to force)", signum)
         sys.stderr.write("\nShutting down… press Ctrl+C again to force immediate exit.\n")
         sys.stderr.flush()
-        _arm_shutdown_watchdog()
-        raise KeyboardInterrupt
+        on_stop()
 
     # SIGBREAK (Ctrl+Break on Windows) takes the same bounded path: unregistered, it falls through
     # to Python's default and waits on whatever background worker is blocked (measured: 24.8 s to
@@ -666,11 +676,11 @@ SCOPE_LABELS = {"auto": "Auto", "wider": "Wider", "all": "All available"}
 def _with_live_ui_port(html: str) -> str:
     """Tell the page where the capture daemon's price socket listens (the same
     ED_LIVE_UI_PORT the daemon binds), which market-context symbols it always shows
-    (live_push.MARKET_CONTEXT, each with its display name), the scopes its strike
+    (live_market_plane.MARKET_CONTEXT, each with its display name), the scopes its strike
     windows take (terrain_engine.SCOPES, each with its word) and the words for each streaming
     state (STREAM_WORDS). An unfilled page opens no price socket -- its prices read UNAVAILABLE
     rather than reaching a daemon nobody configured it for."""
-    context = json.dumps([{"key": k, "display": display_symbol(k)} for k in MARKET_CONTEXT])
+    context = json.dumps([{"key": k, "display": display_symbol(k)} for k in lmp.MARKET_CONTEXT])
     scopes = json.dumps([{"key": s, "label": SCOPE_LABELS[s]} for s in SCOPES])
     return (
         html.replace(

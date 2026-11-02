@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import socket
 import time
 from datetime import datetime
 from pathlib import Path
@@ -29,7 +28,6 @@ from pathlib import Path
 import live_market_plane as lmp
 import server
 from app.market_data.schwab.streaming import capture
-from app.market_data.schwab.streaming.live_push import serve_live_push
 from app.options.order_flow import streaming as ofs
 from calibration.complete_chain_capture import chain_messages
 from schwab_client import flatten_chain_contracts
@@ -296,9 +294,7 @@ def test_a_watchlist_change_splits_schwabs_limits_again(tmp_path):
             m.chain(tk)
             m.price(tk, PRICES[tk])
         await _until(lambda: m.holds(_rule(CHAINS, PRICES, CAPTURED, ["MRVL", "SPY"])))
-        m.daemon.console_frame(
-            {"op": "watchlist", "action": "remove", "ticker": "SPY", "id": 1}, None
-        )
+        m.daemon.console_request({"op": "watchlist", "action": "remove", "ticker": "SPY", "id": 1})
         await _until(lambda: m.holds(want))
 
     market.run(steps)
@@ -319,11 +315,9 @@ def test_a_ticker_removed_and_added_again_records_nothing_until_its_next_chain(t
             m.price(tk, PRICES[tk])
         await _until(lambda: m.holds(_rule(CHAINS, PRICES, CAPTURED, ["MRVL", "SPY"])))
         seen["before"] = m.daemon.saved_options & spy
-        m.daemon.console_frame(
-            {"op": "watchlist", "action": "remove", "ticker": "SPY", "id": 1}, None
-        )
+        m.daemon.console_request({"op": "watchlist", "action": "remove", "ticker": "SPY", "id": 1})
         await _until(lambda: "SPY" not in m.daemon.watchlist)
-        m.daemon.console_frame({"op": "watchlist", "action": "add", "ticker": "SPY", "id": 2}, None)
+        m.daemon.console_request({"op": "watchlist", "action": "add", "ticker": "SPY", "id": 2})
         await _until(lambda: "SPY" in m.daemon.watchlist)
         m.price("SPY", PRICES["SPY"])
         await asyncio.sleep(0.5)
@@ -349,9 +343,7 @@ def test_a_chain_that_arrives_after_its_ticker_is_removed_records_nothing(tmp_pa
             m.chain(tk)
             m.price(tk, PRICES[tk])
         await _until(lambda: m.daemon.saved_options & spy)
-        m.daemon.console_frame(
-            {"op": "watchlist", "action": "remove", "ticker": "SPY", "id": 1}, None
-        )
+        m.daemon.console_request({"op": "watchlist", "action": "remove", "ticker": "SPY", "id": 1})
         await _until(lambda: "SPY" not in m.daemon.watchlist)
         m.chain("SPY")
         m.price("SPY", PRICES["SPY"])
@@ -378,47 +370,25 @@ def test_the_flow_panels_contract_streams_on_both_services_on_top_of_the_rule(tm
     held: dict = {}
 
     async def steps(m):
-        from websockets.asyncio.client import connect
-
         for tk in ("MRVL", "SPY"):
             m.chain(tk)
             m.price(tk, PRICES[tk])
-        stop = asyncio.Event()
-        ports = [_free_port(), _free_port()]
-        sockets = [
-            asyncio.create_task(
-                serve_live_push(m.bus, stop, port=ports[0], on_request=m.daemon.console_frame)
-            ),
-            asyncio.create_task(
-                serve_live_push(
-                    MessageBus(), stop, port=ports[1], on_request=restarted.console_frame
-                )
-            ),
-        ]
+        console = asyncio.create_task(ofs.follow(m.bus, m.daemon))
         try:
-            ws = await _connect(connect, ports[0])
-            console = asyncio.create_task(ofs.serve_push(ws))
-            try:
-                await _until(lambda: ofs._push_ws is ws)
-                answer = await server.post_flow_contract(server.FlowContract(contract=far))
-                await _until(lambda: m.holds(want))
-                held.update({s: set(m.daemon.held[s]) for s in (L1, BOOK)})
-            finally:  # a failure still closes the socket: cancelling over an open one can hang
-                await ws.close()
-                await asyncio.wait_for(console, 5)
-            ws2 = await _connect(connect, ports[1])  # the console's next daemon
-            console2 = asyncio.create_task(ofs.serve_push(ws2))
-            try:
-                await _until(lambda: restarted.flow_contract == far)
-                cleared = server.FlowContract(contract=None)  # Ed's selection cleared
-                await server.post_flow_contract(cleared)
-                await _until(lambda: restarted.flow_contract is None)
-            finally:
-                await ws2.close()
-                await asyncio.wait_for(console2, 5)
+            await _until(lambda: ofs._daemon is m.daemon)
+            answer = await server.post_flow_contract(server.FlowContract(contract=far))
+            await _until(lambda: m.holds(want))
+            held.update({s: set(m.daemon.held[s]) for s in (L1, BOOK)})
         finally:
-            stop.set()
-            await asyncio.gather(*sockets)
+            console.cancel()
+        console2 = asyncio.create_task(ofs.follow(MessageBus(), restarted))  # the next daemon
+        try:
+            await _until(lambda: restarted.flow_contract == far)
+            cleared = server.FlowContract(contract=None)  # Ed's selection cleared
+            await server.post_flow_contract(cleared)
+            await _until(lambda: restarted.flow_contract is None)
+        finally:
+            console2.cancel()
         assert answer == {"ok": True, "contract": far}
 
     try:
@@ -435,18 +405,3 @@ def test_a_contract_no_chain_the_console_holds_lists_is_not_taken():
     selected = server.FlowContract(contract="ZZZZ  261120C00100000")
     answer = asyncio.run(server.post_flow_contract(selected))
     assert answer.status_code == 409 and ofs._flow_contract is None
-
-
-def _free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
-async def _connect(connect, port: int):
-    for _ in range(100):
-        try:
-            return await connect(f"ws://127.0.0.1:{port}", max_size=None)
-        except OSError:
-            await asyncio.sleep(0.05)
-    raise AssertionError(f"nothing listening on {port}")

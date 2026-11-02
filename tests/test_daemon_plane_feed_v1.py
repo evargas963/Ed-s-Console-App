@@ -2,10 +2,9 @@
 with zero Schwab connection of its own.
 
 This is the seam that used to be a second `schwab.streaming.StreamClient`. Since 2026-09-23
-the daemon PUSHES each message (live_push); these tests drive the REAL message constructors
-the daemon publishes with (stream_spine.quote_msg / book_msg) through the REAL ingest
-(order_flow_streaming._ingest_pushed). The socket end to end is
-tests/test_live_push_channel_v1.py.
+the console reads the daemon's bus; these tests drive the REAL message constructors the daemon
+publishes with (stream_spine.quote_msg / book_msg) through the REAL ingest
+(order_flow_streaming._ingest_pushed). End to end: tests/test_live_push_channel_v1.py.
 """
 
 from __future__ import annotations

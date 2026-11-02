@@ -84,7 +84,7 @@ def test_the_chain_carries_its_spot_from_the_daemon_to_the_levels_and_the_captur
         (read,) = cch.last_capture_per_day(tmp_path / "ed_console.db", TK, 1)
         assert (read["spot"], read["spot_ts"]) == (LAST, TRADED)
         for _topic, msg in published:
-            for done in ofs.assemble_chain_part(json.loads(msg["frame"])["msg"]):
+            for done in ofs.assemble_chain_part(msg):
                 server._on_chain(*done)
         _drain()
         with server._terrain_cache_lock:
