@@ -57,6 +57,7 @@ max-complexity = 10
 "time.perf_counter_ns".msg = "Only an entry point reads the clock; pass `now`."
 "time.process_time".msg = "Only an entry point reads the clock; pass `now`."
 "time_et.now_et".msg = "Only an entry point reads the clock; pass `now`."
+"datetime.time".msg = "The market's times are Schwab's /markets answers; none is typed."
 "importlib.import_module".msg = "A module is imported by name at the top."
 "importlib.machinery".msg = "No code runs from a data file."
 "importlib.util".msg = "No code runs from a data file."

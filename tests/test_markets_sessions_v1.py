@@ -12,7 +12,6 @@ the stand-in host, tests/schwab_rest_standin.py), and CRWD's LEVELONE_EQUITIES m
 
 from __future__ import annotations
 
-import ast
 import asyncio
 import json
 import sqlite3
@@ -171,28 +170,18 @@ def test_the_option_sessions_are_the_windows_schwab_sent():
     }
     assert {t: time_et.options_open(_et(f"2026-11-02 {t}")) for t in expected} == expected
     assert time_et.options_opened(_et("2026-11-02 12:00")) == _et("2026-11-02 07:30")
-    assert time_et.options_window_began(_et("2026-11-02 12:00")) == _et("2026-11-02 09:30")
+    assert time_et.options_paused(_et("2026-11-02 09:27")) is True
+    assert time_et.options_paused(_et("2026-11-02 07:00")) is False
+    assert time_et.options_paused(_et("2026-11-02 16:20")) is False
+    # each instant once, though EQO's post-market overlaps IND's regular window
+    seconds = time_et.options_open_seconds(_et("2026-11-02 09:24"), _et("2026-11-02 16:15"))
+    assert seconds == 60 + (6 * 3600 + 45 * 60)
+    assert time_et.option_regular_open(_et("2026-11-02 16:05"), time_et.INDEX_OPTIONS)
+    assert not time_et.option_regular_open(_et("2026-11-02 16:05"), time_et.EQUITY_OPTIONS)
     assert time_et.options_closed_at(_et("2026-11-02 16:20")) == _et("2026-11-02 16:15")
     # the recorder follows the same windows: a pre-market chain is kept
     first = _et("2026-11-02 07:30").timestamp()
     assert capture_slot(_et("2026-11-02 07:40").timestamp()) == first
-
-
-def test_no_market_time_is_typed_in_the_product():
-    """The market's sessions are Schwab's /markets answers (AGENTS.md rule 8): no product file
-    builds a clock time from a literal, as `time(4)` did for a market day Schwab never sent."""
-    repo = Path(__file__).resolve().parent.parent
-    typed = [
-        f"{path.name}:{node.lineno}"
-        for path in sorted(repo.glob("*.py")) + sorted((repo / "app").rglob("*.py"))
-        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id == "time"
-        and node.args
-        and isinstance(node.args[0], ast.Constant)
-    ]
-    assert typed == []
 
 
 def test_the_options_are_open_until_the_last_option_market_closes():
@@ -222,7 +211,8 @@ def test_a_chain_is_valued_at_its_close_for_the_rest_of_that_day_and_on_the_cloc
         _et("2026-10-12 11:00"),
         _et("2027-10-09 12:00"),
     ):
-        assert time_et.valuation_instant(at) == at, at
+        for product in (time_et.INDEX_OPTIONS, time_et.EQUITY_OPTIONS):
+            assert time_et.valuation_instant(at, product) == at, at
 
 
 def test_a_closed_day_is_outside_every_option_market():

@@ -356,8 +356,8 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
   is the book's `net_vanna`. After the last regular window Schwab sent for that ticker's option
   product, the publication is valued at that window's end (`time_et.valuation_instant`, the index
   close for SPY, QQQ, and IWM, the equity-option close for every other ticker: where a contract
-  expiring that day expires, so a stock option's numbers stand through the 16:15 post-market), so
-  the close numbers stay for the rest of it. On a day Schwab says is closed
+  expiring that day expires, so its time left stands through the 16:15 post-market while the price
+  and the chain still move), so the close numbers stay for the rest of it. On a day Schwab says is closed
   and before the next open it is valued at the clock: a closed day has no same-day close, so no
   0DTE level is made from a later expiry (operator 2026-10-25). A later
   equity print keeps the price that publication was priced at (`priced_at_spot`); the matrix's
@@ -392,25 +392,27 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
   once all its parts are in it replaces the older one, which is never sent again. The sweep runs on
   one thread on the daemon's one Schwab client (§1), one request at a time, by the option markets
   Schwab's /markets sends (`ChainSweep.chain_due`, `time_et.options_open`; a day Schwab says is
-  closed is outside every window): inside its option windows, to the last close (IND, 16:15 ET, when SPY's, QQQ's and IWM's options stop too; Schwab's EQO
-  window ends at 16:00 and has no window of its own for them; operator 2026-10-09). While one is
+  closed is outside every window): inside its option windows, to the last close (16:15 ET, EQO's
+  post-market and IND's regular window; operator 2026-11-02). While one is
   open (and while today's answer, or a ticker before its first chain, is not known) the
   ticker is fetched in one rotation with every other such watchlist ticker, sorted, each the same,
   without end (operator 2026-10-06: "no priority: every ticker is treated the same, in one
   rotation"); a ticker added is in the next rotation, and one removed is not asked for again, its
-  queued quotes included. After that market's close (and on a weekend, a holiday, and when the
+  queued quotes included. After the last close (and on a weekend, a holiday, and when the
   daemon starts while it is closed) the ticker is fetched once more, its close values (one added
   then too); a fetch that fails is tried again in the next pass. A ticker whose expiration chain
   lists nothing has no option market: its chain is asked once per ET date, only to learn whether
   options are listed (operator 2026-10-08). Then no chain is requested
-  until its market opens again: the close values stand (D5), and a ticker not on the watchlist is not fetched — it shows
+  until the next window opens: the close values stand (D5), and a ticker not on the watchlist is not fetched — it shows
   its levels absent with the reason (`server.terrain_staleness`, the one levels verdict every
   screen shows, `levels_state`, the same for every ticker: after the day's last option window
   (16:15 ET) and until the next one, levels from a chain fetched after that close are the close
   values and read CLOSE, with their time and age, however old (operator 2026-10-25); older ones read
-  STALE, "this ticker's options are closed and its close values have not been fetched"; inside the
-  option windows, after the day's first round, LIVE until two of the sweep's rounds pass without its
-  chain, then STALE; between two of today's windows NOT LIVE, "between Schwab's option windows"; NOT
+  STALE, "this ticker's options are closed and its close values have not been fetched"; through the
+  first two rounds of window time of a day, the last close's values stand the same way; inside the
+  option windows LIVE until two of the sweep's rounds of window time pass without its chain
+  (`time_et.options_open_seconds`: a gap between windows does not age a chain, and no window's
+  start makes an old one current), then STALE; between two of today's windows NOT LIVE, "between Schwab's option windows"; NOT
   LIVE when Schwab's /markets answer for today is not held), never a zero or a
   value from elsewhere. Enforced by: `tests/test_data_path_rules_v1.py` (the D5 sweep and
   staleness tests). Each ticker's chain is asked for as Schwab documents it: its expiration chain
@@ -473,9 +475,11 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
   zero even when it is priced after the close. A streamed zero after the close does not replace
   the count already on that chain. A zero book from a closed day does not replace the last count,
   through the next open. During a window, the pre-market's included (Schwab resets option volume
-  there, operator 2026-11-02: a valid session is live),
+  at 03:30, operator 2026-11-02: a valid session is live),
   Schwab's no-value code is not a greek and does not keep an older one, and a count of zero
-  replaces the last count. A chain is published once all its quotes are in. A quotes request Schwab refuses
+  replaces the last count; but in a pre-market or post-market a zero open interest leaves the last
+  one, since Schwab does not update it then (`schwab_streamer_api.pdf`, LEVELONE_OPTIONS field 9:
+  "Update AM/PM Hours: No"). A chain is published once all its quotes are in. A quotes request Schwab refuses
   fails every chain in it with its status and reason, so the levels keep their last good
   publication, stale with that reason. A contract missing from an answered request has no Greeks (None, logged with the count), never the
   chain's: its leg's exposure and its strike's net read absent (a leg's sum is known only when

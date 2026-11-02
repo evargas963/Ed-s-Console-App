@@ -1,10 +1,10 @@
-"""Schwab -> the levels, the chain and every option contract: one served verdict each, judged by the
-ticker's own option market (docs/DATA_FLOW.md §2 D5).
+"""Schwab -> the levels, the chain and every option contract: one served verdict each, judged by
+Schwab's option windows (docs/DATA_FLOW.md §2 D5).
 
-Real data: TSLA's (stock options, whose market Schwab's /markets answer closes at 16:00 ET) and
-SPY's 0DTE (index-close options, 16:15 ET) chains captured 2026-10-07, a date the held /markets
-answers cover (tests/conftest.py), each published by the levels producer (server._publish_levels)
-at the price Schwab's LEVELONE_EQUITIES quote at that capture gave (live_price_rows.price_row).
+Real data: TSLA's (stock options) and SPY's 0DTE (index-close options) chains captured 2026-10-07,
+a date the held /markets answers cover (tests/conftest.py), each published by the levels producer
+(server._publish_levels) at the price Schwab's LEVELONE_EQUITIES quote at that capture gave
+(live_price_rows.price_row).
 STAND-IN (named): each chain delivered at the instant a test names rather than its capture's, and
 the daemon's status typed in its shape (none is captured).
 """
@@ -27,7 +27,7 @@ import server
 from calibration.complete_chain_capture import CAPTURE_BASIS
 from tests.capture_store import store_capture
 from tests.real_chains import SPY_0DTE, TSLA
-from time_et import ET, option_close_product, record_markets
+from time_et import ET, record_markets
 
 _QUOTES = {
     q["ticker"]: q
@@ -131,8 +131,9 @@ def test_the_levels_are_judged_by_schwabs_option_windows(
 
 def test_on_schwabs_schedule_the_levels_follow_its_option_windows(published):
     """Schwab's /markets answer of 2026-11-02: the levels' word at each edge of its option windows,
-    for a chain fetched after Friday's close and one fetched that morning. Between windows they are
-    not live and say so; at 09:30 a morning chain is live through the first round."""
+    for a chain fetched after Friday's close and ones fetched that day. Between windows they are
+    not live and say so; a chain's age is the window time since it, so the 09:25 gap does not age
+    a current chain, and no window's start makes an old one current."""
     fx = json.loads(
         (Path(__file__).parent / "fixtures" / "real_schwab_markets_2026_11_02.json").read_text(
             encoding="utf-8"
@@ -141,16 +142,22 @@ def test_on_schwabs_schedule_the_levels_follow_its_option_windows(published):
     record_markets(fx["body"])
     day = datetime(2026, 11, 2, tzinfo=ET)
 
-    def state(chain_ts, hour, minute):
-        return server._levels_state(chain_ts, day.replace(hour=hour, minute=minute).timestamp(), "")
+    def state(delivered, hour, minute):
+        published("SPY", SPY_0DTE, delivered)
+        body = server.terrain_answer("SPY", day.replace(hour=hour, minute=minute))
+        return body["levels_state"], body["levels_stale_reason"]
 
-    friday = datetime(2026, 10, 30, 16, 20, tzinfo=ET).timestamp()
-    morning = day.replace(hour=9, minute=23).timestamp()
+    friday = datetime(2026, 10, 30, 16, 20, tzinfo=ET)
+    morning = day.replace(hour=9, minute=23)
     assert state(friday, 7, 0)[0] == "CLOSE"
     assert state(friday, 7, 31)[0] == "CLOSE"  # the day's first round
-    assert state(morning, 9, 24) == ("LIVE", "")
+    assert state(friday, 9, 31)[0] == "STALE"
+    assert state(friday, 16, 1)[0] == "STALE"
+    assert state(morning, 9, 24)[0] == "LIVE"
     assert state(morning, 9, 27) == ("NOT LIVE", "between Schwab's option windows")
-    assert state(morning, 9, 31) == ("LIVE", "")
+    assert state(morning, 9, 31)[0] == "LIVE"
+    assert state(day.replace(hour=7, minute=40), 9, 31)[0] == "STALE"
+    assert state(day.replace(hour=13), 16, 1)[0] == "STALE"
 
 
 def test_levels_with_no_markets_answer_held_are_not_live(published):
@@ -177,7 +184,7 @@ def test_the_flow_panel_judges_a_contract_by_the_option_market_of_the_chain_that
 ):
     """A contract of TSLA's or SPY's published chain, held on LEVELONE_OPTIONS and OPTIONS_BOOK, the
     feed up: the route (server.options_microstructure) finds its ticker by the chain that lists it
-    and serves it live by that ticker's own option market."""
+    and serves it live by Schwab's option windows."""
     chain = {"TSLA": TSLA, "SPY": SPY_0DTE}[tk]
     published(tk, chain, _et(13, 0))
     sym = chain.chain[0]["symbol"]
@@ -202,10 +209,13 @@ _SUNDAY = json.loads(
 )
 
 
-def test_inside_schwabs_pre_market_a_reported_zero_stands():
-    """Schwab's schedule of 2026-11-02 and the zero counts of its chain of 2026-10-25: at 07:00,
-    before the option pre-market, a zero keeps the close count; at 08:00, inside it, a zero is what
-    Schwab reports (it resets option volume there) and replaces the count."""
+@pytest.mark.parametrize("hour, volume_stands", [(7, False), (8, True)])
+def test_a_morning_chains_zero_volume_stands_inside_schwabs_pre_market(hour, volume_stands):
+    """Schwab's schedule of 2026-11-02 and the zero open interest of its chain of 2026-10-25, its
+    volume set to zero (STAND-IN, named: no chain of a pre-market is captured). At 07:00, before
+    the option pre-market, a zero keeps the close count. At 08:00, inside it, a zero volume is what
+    Schwab reports (reset at 03:30), and a zero open interest is not: Schwab does not update it in
+    AM/PM hours (schwab_streamer_api.pdf, LEVELONE_OPTIONS field 9)."""
     fx = json.loads(
         (Path(__file__).parent / "fixtures" / "real_schwab_markets_2026_11_02.json").read_text(
             encoding="utf-8"
@@ -213,25 +223,40 @@ def test_inside_schwabs_pre_market_a_reported_zero_stands():
     )
     record_markets(fx["body"])
     friday, sunday = _SUNDAY["friday_close"], _SUNDAY["sunday"]
-    close_oi = {c["symbol"]: c["openInterest"] for c in friday["chain"]}
+    closed = {c["symbol"]: c for c in friday["chain"]}
     blanked = [
-        c["symbol"] for c in sunday["chain"] if c["openInterest"] == 0 and close_oi[c["symbol"]] > 0
+        c["symbol"]
+        for c in sunday["chain"]
+        if c["openInterest"] == 0 and closed[c["symbol"]]["openInterest"] > 0
     ]
-
-    def counts(hour):
-        kept = server._keep_last_reported(
-            sunday["chain"],
-            friday["chain"],
-            datetime(2026, 11, 2, hour, 0, tzinfo=ET),
-            option_close_product("SPY"),
-            friday["spot"],
+    traded = [s for s, c in closed.items() if c["totalVolume"] > 0]
+    at = datetime(2026, 11, 2, hour, 0, tzinfo=ET)
+    _forget()
+    try:
+        server._publish_levels(
+            "SPY",
+            [dict(c) for c in friday["chain"]],
+            friday["ts_utc"],
+            chain_spot=(friday["spot"], friday["ts_utc"]),
+            now=datetime.fromtimestamp(friday["ts_utc"], ET),
         )
-        by_symbol = {c["symbol"]: c["openInterest"] for c in kept}
-        return {s: by_symbol[s] for s in blanked}
-
-    assert blanked
-    assert counts(7) == {s: close_oi[s] for s in blanked}
-    assert counts(8) == dict.fromkeys(blanked, 0)
+        server._publish_levels(
+            "SPY",
+            [dict(c, totalVolume=0) for c in sunday["chain"]],
+            at.timestamp(),
+            chain_spot=(friday["spot"], friday["ts_utc"]),
+            now=at,
+        )
+        priced = {
+            c["symbol"]: c for c in server.terrain_cache_get("SPY", at.timestamp())["_priced_chain"]
+        }
+    finally:
+        _forget()
+    assert blanked and traded
+    for s in blanked:
+        assert priced[s]["openInterest"] == closed[s]["openInterest"]
+    for s in traded:
+        assert priced[s]["totalVolume"] == (0 if volume_stands else closed[s]["totalVolume"])
 
 
 def test_on_a_closed_day_a_delivered_chain_keeps_the_close_counts_schwab_blanks():

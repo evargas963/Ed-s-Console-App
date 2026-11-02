@@ -107,10 +107,12 @@ from time_et import (
     market_session_date,
     now_et,
     option_close_product,
+    option_regular_open,
     options_closed_at,
     options_open,
+    options_open_seconds,
     options_opened,
-    options_window_began,
+    options_paused,
     record_markets,
     session,
     session_label,
@@ -865,8 +867,9 @@ def terrain_staleness(
     answer for today is not held. The daemon's last answer for the ticker's chain (a failed fetch,
     an incomplete delivery) outranks the age, and its refused sign-in (`chains_waiting`) outranks
     both, on every verdict but LIVE and CLOSE. Inside a window the daemon fetches every watchlist
-    ticker's chain without end, so age past two of its delivered rounds, counted from the window's
-    start, is a gap, never a schedule. Served beside it: the age and the chain's time."""
+    ticker's chain without end, so a chain older than two of its delivered rounds of window time
+    (time_et.options_open_seconds) is a gap, never a schedule. Served beside it: the age and the
+    chain's time."""
     token = schwab_token_countdown(_schwab_token_creation_ts(), now)  # warned before it expires
     failure = str(
         _terrain_refresh_last_error.get(ticker_storage_key(ticker) if ticker else "", "") or ""
@@ -901,6 +904,7 @@ def _levels_state(computed_ts_utc: float | None, now: float, failure: str) -> tu
     if market_open is None:
         return lmp.NOT_LIVE, "the market session is unknown" + sep
     age = now - float(computed_ts_utc)
+    fetched = datetime.fromtimestamp(float(computed_ts_utc), ET)
     # judged against the round the daemon's chain sweep delivers (every watchlist ticker once)
     round_sec = status.get("chain_round_sec") if status is not None else None
     # Stale only past the floor *and* past two delivered rounds — one missed round is normal
@@ -911,22 +915,19 @@ def _levels_state(computed_ts_utc: float | None, now: float, failure: str) -> tu
         if round_sec is None
         else max(float(TERRAIN_STALE_AFTER_SEC), 2.0 * float(round_sec))
     )
-    closed = options_closed_at(at)
-    began = options_window_began(at)
-    closed_today = closed is not None and closed.date() == at.date()
-    if not market_open and began is not None and not closed_today:
+    if options_paused(at):
         return lmp.NOT_LIVE, "between Schwab's option windows" + sep
-    in_first_round = began is not None and now - began.timestamp() <= stale_after
-    if not market_open or (
-        in_first_round and float(computed_ts_utc) < options_opened(at).timestamp()
-    ):
-        if closed is None or float(computed_ts_utc) < closed.timestamp():
+    # the sweep runs only inside the windows, so a chain's age is the window time since it
+    overdue = options_open_seconds(fetched, at) > stale_after
+    if not market_open or (not overdue and fetched < options_opened(at)):
+        closed = options_closed_at(at)
+        if closed is None or fetched < closed:
             return (
                 LEVELS_STALE,
                 "this ticker's options are closed and its close values have not been fetched" + sep,
             )
         return LEVELS_CLOSE, ""
-    if age <= stale_after or in_first_round:
+    if not overdue:
         return lmp.LIVE, ""
     if waiting:
         return LEVELS_STALE, f"levels are {age:.0f}s old{sep}"
@@ -1189,10 +1190,10 @@ _last_feed_stamp: tuple | None = None
 def restamp_open_surfaces(now: float) -> None:
     """Mark every cached heatmap from the daemon's heartbeat at `now`, without repricing.
 
-    The last streamed gamma stays. A contract is live by the one live rule on its ticker's own
-    option market (live_market_plane.live_symbols): a socket that has closed, a contract the daemon
-    no longer holds and an option market that has closed are not live. The page is told only when
-    that changes."""
+    The last streamed gamma stays. A contract is live by the one live rule on Schwab's option
+    windows (live_market_plane.live_symbols): a socket that has closed, a contract the daemon no
+    longer holds and options outside those windows are not live. The page is told only when that
+    changes."""
     global _last_feed_stamp
     feed = lmp.feed_now(now)
     socket_open = lmp.feed_up(feed)
@@ -1422,9 +1423,13 @@ def _keep_last_reported(chain, previous, at, product, price):
     """Outside Schwab's option windows, a quote that does not report a greek leaves the greek the
     last quote reported, and a count of zero leaves the last count above zero. Inside them the
     quote stands, a reported zero is zero, and Schwab's no-value code does not keep an older
-    greek. A gamma is reported by gamma_reported at `price`."""
-    if options_open(at) is not False or not previous:
+    greek; but for `product`'s pre-market and post-market, where a zero open interest leaves the
+    last one: Schwab does not update it then (schwab_streamer_api.pdf, LEVELONE_OPTIONS field 9).
+    A gamma is reported by gamma_reported at `price`."""
+    window = options_open(at)
+    if window is None or not previous or option_regular_open(at, product):
         return chain
+    closed = not window
     prior = {}
     for ct in previous:
         sym = ct.get("symbol") if isinstance(ct, dict) else None
@@ -1441,7 +1446,8 @@ def _keep_last_reported(chain, previous, at, product, price):
             old = prior[sym]
         kept = None
         if (
-            old is not None
+            closed
+            and old is not None
             and not gamma_reported(ct, price, product=product)
             and gamma_reported(old, price, product=product)
         ):
@@ -1452,7 +1458,7 @@ def _keep_last_reported(chain, previous, at, product, price):
             if isinstance(times, dict):
                 kept["greeksTime"] = times
         if old is not None:
-            for field in _QUOTE_COUNTS:
+            for field in _QUOTE_COUNTS if closed else _QUOTE_COUNTS[:1]:
                 old_count = old.get(field)
                 if _positive_count(old_count) and _reported_zero(ct.get(field)):
                     if kept is None:
@@ -1525,7 +1531,7 @@ def _publish_levels(
     Levels always show one computation. A delivered chain is passed in with its spot
     (`chain_spot`: Schwab's LAST_PRICE when the chain was complete and its trade time; (None, None)
     when the daemon held none); a tick on a viewed ticker passes none and the kept chain is
-    repriced at the kept chain's spot. Once that ticker's option window has ended, a
+    repriced at the kept chain's spot. Once the option windows have ended for the day, a
     later publication keeps the spot already published, so a later equity print does not move
     the close book. Called only on the one pricing thread
     (_price_chain), so each publication is computed from inputs read after the one it replaces.
@@ -1536,11 +1542,11 @@ def _publish_levels(
     its own time, or at that ticker's option close when the capture is past it, and both feed
     the forces and prior-day rows. `now`: the instant of this publication (omitted, the clock's).
     A chain that is not a capture is valued then, or at that ticker's option close once it has
-    passed. Outside that window, a quote that does not report a greek leaves the greek the
-    last quote reported, and a count of zero leaves the last count above zero. That last
-    count is the one already published, or the newest capture stored before this chain when this
-    process has not published one. The last streamed values price over the chain when they are
-    newer, and each leg's age is taken.
+    passed. Outside Schwab's option windows, a quote that does not report a greek leaves the greek
+    the last quote reported, and a count of zero leaves the last count above zero
+    (_keep_last_reported). That last count is the one already published, or the newest capture
+    stored before this chain when this process has not published one. The last streamed values
+    price over the chain when they are newer, and each leg's age is taken.
     Returns the snapshot, or None when there is no chain to price."""
     at = now if now is not None else now_et()
     with _terrain_cache_lock:
@@ -1558,16 +1564,17 @@ def _publish_levels(
     valued_at = valuation_instant(clock, product)
     begun_ts = fetched_ts if isinstance(fetched_ts, (int, float)) else at.timestamp()
     begun = datetime.fromtimestamp(begun_ts, ET)
-    if new_chain and capture is None and options_open(begun) is False:
+    if new_chain and capture is None:
         memory = payload.get("_priced_chain")
         if memory is None:
             memory = payload.get("_chain")
-        # the capture before this chain: its own may be stored already
-        newest = newest_capture_ts(get_db().db_path, tk, before_ts=begun_ts)
-        if payload.get("_count_capture_ts") != newest:
-            rows = last_capture_per_day(get_db().db_path, tk, 1, before_ts=begun_ts)
-            payload["_count_capture"] = rows[0].get("contracts") if rows else ()
-            payload["_count_capture_ts"] = newest
+        if options_open(begun) is False and not options_paused(begun):
+            # the capture before this chain: its own may be stored already
+            newest = newest_capture_ts(get_db().db_path, tk, before_ts=begun_ts)
+            if payload.get("_count_capture_ts") != newest:
+                rows = last_capture_per_day(get_db().db_path, tk, 1, before_ts=begun_ts)
+                payload["_count_capture"] = rows[0].get("contracts") if rows else ()
+                payload["_count_capture_ts"] = newest
         published = payload.get("spot")
         chain = _keep_last_reported(
             chain,
@@ -1591,8 +1598,13 @@ def _publish_levels(
         priced_at = (chain_spot[0], source, chain_spot[1])
     else:
         priced_at = payload["_chain_spot"]
-    if capture is None and valued_at < at and payload.get("spot") is not None:
-        # the window has ended: the spot already published is the close, and a later print is not
+    if (
+        capture is None
+        and valued_at < at
+        and options_open(at) is False
+        and payload.get("spot") is not None
+    ):
+        # the windows have ended: the spot already published is the close, a later print is not
         spot = payload.get("spot")
         spot_source = payload.get("spot_source")
         spot_ts = payload.get("spot_as_of_ts_utc")
@@ -1611,8 +1623,7 @@ def _publish_levels(
     # each field the newest Schwab sent: the last streamed value received after this chain, else
     # the chain's. The cell stamp says whether that stream is live.
     priced, n_live = overlay_streamed_contract_fields(chain, streamed, fetched_ts)
-    if options_open(at) is False:
-        priced = _keep_last_reported(priced, chain, at, product, spot)
+    priced = _keep_last_reported(priced, chain, at, product, spot)
     live_syms = _overlaid_symbols(chain, priced)
     snap = compute_terrain(tk, priced, spot, now=valued_at)
     payload.update(snap.to_dict())

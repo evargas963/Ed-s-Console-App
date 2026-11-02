@@ -1,16 +1,16 @@
 """The option chains (DATA_FLOW decisions 1 and 7), run by the capture daemon.
 
-While a watchlist ticker's options trade -- the regular session Schwab's /markets sends for its
-option market (EQO for stock and ETF options, IND for index options) -- the daemon fetches its
+While options trade -- the option windows Schwab's /markets sends, its pre-market and post-market
+included (time_et.options_open) -- the daemon fetches a watchlist ticker's
 full chain (every expiry, every strike) in turn with every other such ticker of the watchlist
-(the daemon's one list, capture.Daemon.watchlist), without end (ChainSweep); once that session
+(the daemon's one list, capture.Daemon.watchlist), without end (ChainSweep); once the last window
 closes, once more (the close values), and then nothing until the next one. Each chain is handed
 to the console for the levels. The chain history: the first chain of each ticker begun in each
-capture window -- every 30 minutes from its option market's open, and at its close (the day's
-close capture) -- is written here, one row per expiry, compressed, with Schwab's own underlying
-price. Schwab has no past option chains, so a chain not saved is gone. Nothing is written outside
-those windows (weekend chains blank open interest). Research reads this table; the console loads
-the newest capture per ticker at startup.
+capture window -- every 30 minutes from the day's first option window, and at the last close
+(the day's close capture) -- is written here, one row per expiry, compressed, with Schwab's own
+underlying price. Schwab has no past option chains, so a chain not saved is gone. Nothing is
+written outside those windows (weekend chains blank open interest). Research reads this table;
+the console loads the newest capture per ticker at startup.
 """
 
 from __future__ import annotations
@@ -665,7 +665,7 @@ class ChainSweep:
             )
 
     def _write_history(self, chain: _Chain) -> None:
-        """The chain history: a chain begun inside a capture window of the ticker's option market,
+        """The chain history: a chain begun inside a capture window (capture_slot),
         the first one of the window for this ticker (a chain begun before the close is not the
         close capture, whenever it ends), one row per expiry with the underlying price of that
         expiry's answer, at the time the chain began, every row in one transaction."""

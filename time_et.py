@@ -2,8 +2,8 @@
 
 Each market date's sessions are Schwab's GET /markets?markets=equity,option answer for that date
 (docs/schwab/schwab_market_data_parameters_pricehistory_markets.txt), held here as received
-(record_markets): the stock market's pre-market, regular and post-market windows, and the regular
-window of each option market (EQO: stock and ETF options; IND: index options). The capture daemon
+(record_markets): the stock market's and each option market's (EQO: stock and ETF options; IND:
+index options) pre-market, regular and post-market windows. The capture daemon
 asks it once per date per ET day: today, the days before it Schwab answers, and each expiry date
 of the chains; the console takes every answer from the daemon, and at startup those the daemon
 recorded (server._load_stored_sessions). A date with no answer held is
@@ -186,12 +186,32 @@ def options_open(now: datetime) -> bool | None:
     return any(start <= now < end for start, end in s.option_hours)
 
 
-def options_window_began(now: datetime) -> datetime | None:
-    """The start of the newest option window Schwab sent for `now`'s date that has begun by `now`;
-    None when none has, or when its answer is not held."""
+def options_paused(now: datetime) -> bool:
+    """Whether `now` is in a gap between two option windows Schwab sent for its date."""
     s = session(now.astimezone(ET).date().isoformat())
-    begun = (start for start, _end in s.option_hours if start <= now) if s else ()
-    return max(begun, default=None)
+    if s is None or not s.option_hours or options_open(now):
+        return False
+    return min(st for st, _e in s.option_hours) <= now < max(e for _s, e in s.option_hours)
+
+
+def options_open_seconds(since: datetime, now: datetime) -> float:
+    """The seconds of option windows Schwab sent for `now`'s date between `since` and `now`, each
+    instant once (the EQO and IND windows overlap). 0.0 when its answer is not held."""
+    s = session(now.astimezone(ET).date().isoformat())
+    counted, reached = 0.0, since
+    for start, end in sorted(s.option_hours) if s else ():
+        start, end = max(start, reached), min(end, now)
+        if start < end:
+            counted += (end - start).total_seconds()
+            reached = end
+    return counted
+
+
+def option_regular_open(now: datetime, product: str) -> bool:
+    """Whether `now` is inside a regular window Schwab sent for `product`: what a field Schwab
+    updates only in regular hours follows (schwab_streamer_api.pdf, LEVELONE_OPTIONS)."""
+    s = session(now.astimezone(ET).date().isoformat())
+    return any(start <= now < end for start, end in s.option_windows(product)) if s else False
 
 
 def options_opened(now: datetime) -> datetime | None:

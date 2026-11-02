@@ -17,7 +17,7 @@ import logging
 import struct
 import threading
 from collections import defaultdict
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from instrument_identity import ticker_storage_key
 from liquidity_models import (
@@ -194,18 +194,15 @@ def compute_opening_range(
     config: PlaybookConfig,
 ) -> dict:
     """
-    First N minutes of RTH (default 15), from normalized bars (bars_from_candles).
+    First N minutes of the regular session Schwab's /markets sent (default 15), from normalized
+    bars (bars_from_candles). Nothing when that session is not held.
     """
-    orb_min = config.opening_range_minutes
-
-    orb_bars = []
-    for b in bars_norm:
-        dt = b["_dt"]
-        if dt.date() != session_date:
-            continue
-        mins_since_open = (dt.hour - 9) * 60 + (dt.minute - 30)
-        if 0 <= mins_since_open < orb_min:
-            orb_bars.append(b)
+    regular = _regular(session_date)
+    if regular is None:
+        return {}
+    opens = regular[0]
+    ends = opens + timedelta(minutes=config.opening_range_minutes)
+    orb_bars = [b for b in bars_norm if opens <= b["_dt"] < ends]
 
     if not orb_bars:
         return {}

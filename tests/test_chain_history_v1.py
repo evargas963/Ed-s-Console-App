@@ -69,8 +69,8 @@ def _et(ts: float) -> str:
     ],
 )
 def test_the_capture_window_a_fetch_is_written_for(now, slot):
-    """The windows are the regular option sessions Schwab's /markets sent for the day
-    (tests/conftest.py holds the answers captured 2026-10-07)."""
+    """The windows are the option windows Schwab's /markets sent for the day
+    (tests/conftest.py holds the answers captured 2026-10-07, regular windows only)."""
     got = cch.capture_slot(_ts(now))
     assert (_et(got) if got is not None else None) == slot
 

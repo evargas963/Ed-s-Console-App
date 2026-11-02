@@ -168,10 +168,10 @@ def test_a_status_stamped_after_the_time_judged_is_not_that_time(after):
     assert states and "live" not in states
 
 
-def test_a_streamed_cell_is_not_live_after_its_own_option_close():
+def test_a_streamed_cell_is_not_live_after_the_option_close():
     """SPY's chain priced at `_AT` (2026-10-05, regular hours) with SYM streaming: its legs are
-    live. At 16:05 ET that day, after the stock options' 16:00 close, SPY's own option market
-    (index-close options, 16:15 in Schwab's /markets answer) is still open: its legs stay live. At
+    live. At 16:05 ET that day Schwab's last option window (to 16:15 in its /markets answer) is
+    still open: its legs stay live. At
     16:20 it has closed, the feed up and the daemon still holding SYM: no leg reads live, and the
     heatmap's levels are STALE (the chain was fetched 2026-09-30, not after this close)."""
     assert _states_when_the_status_was_sent(-0.5) == ["live"]

@@ -87,7 +87,7 @@ def test_one_live_rule_every_reader_agrees_and_all_fail_closed_at_one_limit():
     next: the daemon's
     heartbeat is under FEED_HEARTBEAT_MAX_AGE_SEC, its Schwab socket is open, and it holds the
     symbol on that service. A service quiet for 45 s on that feed is live (Schwab sends changes).
-    Two of TSLA's captured 2026-10-07 contracts, judged by TSLA's own option market. STAND-IN
+    Two of TSLA's captured 2026-10-07 contracts, judged by Schwab's option windows. STAND-IN
     (named): the daemon's status. Judged in regular hours (RTH_INSTANT)."""
     import live_market_plane as lmp
     from app.options.order_flow import streaming as ofs

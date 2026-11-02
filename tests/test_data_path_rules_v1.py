@@ -17,7 +17,7 @@ import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 import pytest
@@ -29,7 +29,13 @@ import schwab_client as sc
 import server
 from app.market_data.schwab.streaming import capture, live_push
 from calibration.complete_chain_capture import ChainSweep, chain_messages
-from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS, bars_from_candles
+from liquidity_models import PlaybookConfig
+from liquidity_value_engine import (
+    _MATERIALIZED_SNAPSHOTS,
+    bars_from_candles,
+    compute_opening_range,
+)
+from micro_structure import Candle
 from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus, bar_msg
 from tests.feed_live_helper import daemon_bars, price_history, stream_daemon_bars
 from tests.schwab_rest_standin import SPY_QUOTES, TOKEN, LocalSchwab
@@ -806,6 +812,21 @@ def test_d5_while_closed_levels_as_of_the_close_stand_and_older_ones_are_absent_
         st["levels_state"] == "STALE"
         and "has not delivered this ticker" in st["levels_stale_reason"]
     ), "in session, an hour-old chain is a gap"
+
+
+def test_d5_the_opening_range_starts_at_the_open_schwab_sent():
+    """SPY's bars of Friday 2026-09-25, a date whose /markets answer is not held: its open is
+    unknown, so its opening range is, however many bars the day has."""
+    bars = json.loads((FX / "real_spy_1m_bars_2026_09_24_25.json").read_text(encoding="utf-8"))
+    norm = bars_from_candles(
+        Candle(
+            b["timestamp"] / 1000, b["open"], b["high"], b["low"], b["close"], volume=b["volume"]
+        )
+        for b in bars["bars"]
+    )
+    friday = date(2026, 9, 25)
+    assert any(b["_dt"].date() == friday for b in norm)
+    assert compute_opening_range(norm, friday, PlaybookConfig()) == {}
 
 
 def test_d5_the_levels_spot_is_judged_at_the_time_they_are_served_for():
