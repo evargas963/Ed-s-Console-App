@@ -8,6 +8,7 @@ import asyncio
 import json
 import os
 import re
+import socket
 import sqlite3
 import subprocess
 import sys
@@ -405,6 +406,56 @@ def test_a_daemon_whose_console_reader_fails_ends_with_why_and_starts_again(tmp_
     assert log.count("capture daemon: ended by an error") >= 2, log
     assert "RuntimeError: the capture daemon's console ended before the stop" in log, log
     assert "OSError: the reader failed" in log, log
+
+
+def test_a_page_stays_on_through_a_daemon_restart_in_the_one_program(tmp_path):
+    """`program:app` over a real socket, a page connected. A daemon run ends with an error; the
+    page's connection stands, its beat carries the daemon's status, then none between the runs,
+    then the next run's. Induced test condition: the console's reader of each run fails after 3 s.
+    """
+    script = (
+        "import asyncio, sys\n"
+        "import uvicorn\n"
+        "import program\n"
+        "follow = program.follow\n"
+        "async def fails(bus, daemon):\n"
+        "    reader = asyncio.create_task(follow(bus, daemon))\n"
+        "    await asyncio.sleep(3)\n"
+        "    reader.cancel()\n"
+        "    await asyncio.gather(reader, return_exceptions=True)\n"
+        "    raise OSError('the reader failed')\n"
+        "program.follow = fails\n"
+        "uvicorn.run(program.app, host='127.0.0.1', port=int(sys.argv[1]))\n"
+    )
+    with socket.create_server(("127.0.0.1", 0)) as s:
+        port = s.getsockname()[1]
+    env = {
+        **os.environ,
+        "ED_RUNTIME_ROOT": str(tmp_path),
+        "SCHWAB_TOKEN_PATH": str(tmp_path / "missing_token.json"),
+    }
+    process = subprocess.Popen(
+        [sys.executable, "-c", script, str(port)],
+        cwd=REPO,
+        env=env,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+    async def go() -> None:
+        beats: list[bool] = []  # each change in whether a beat carried the daemon's status
+        async with connect(f"ws://127.0.0.1:{port}/ws", max_size=None) as page:
+            while beats[-3:] != [True, False, True]:
+                frame = json.loads(await asyncio.wait_for(page.recv(), 10))
+                has_status = frame["type"] == "feed" and frame["feed"] is not None
+                if frame["type"] == "feed" and beats[-1:] != [has_status]:
+                    beats.append(has_status)
+
+    try:
+        assert launch.unhealthy_for(port, 120.0) is None
+        asyncio.run(asyncio.wait_for(go(), 40))
+    finally:
+        _end(process)
 
 
 def test_the_stored_levels_are_priced_while_a_page_on_another_ticker_takes_ticks():

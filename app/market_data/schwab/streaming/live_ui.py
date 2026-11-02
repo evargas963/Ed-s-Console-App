@@ -128,7 +128,7 @@ class LiveUiServer:
 
     async def _changes(self, c: _Client) -> None:
         while True:
-            kinds = await push_changes.next_changes(c.page, None)
+            kinds = await push_changes.next_changes(c.page)
             await self._send(c, {"type": "changes", "kinds": sorted(kinds)})
 
     async def _read(self, c: _Client) -> None:

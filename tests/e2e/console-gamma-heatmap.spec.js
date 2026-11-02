@@ -189,6 +189,21 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#hSession')).toHaveText('—');
   });
 
+  test('a page socket that reopens reads the panels again: no notice reached it while it was shut', async ({ page }) => {
+    let surfaceCalls = 0, opens = 0;
+    await page.route('**/api/options/gamma-surface**', (route) => {
+      surfaceCalls += 1;
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(SURFACE) });
+    });
+    await page.routeWebSocket(/\/ws$/, (ws) => {
+      opens += 1;
+      if (opens === 1) ws.onMessage(() => ws.close());
+    });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect.poll(() => opens).toBe(2);
+    await expect.poll(() => surfaceCalls).toBeGreaterThanOrEqual(2);
+  });
+
   test('the header shows the session the beat serves', async ({ page }) => {
     await page.routeWebSocket(/\/ws$/, (ws) => {
       ws.onMessage(() => ws.send(JSON.stringify({ type: 'feed', feed: null, rows: [], session: 'RTH' })));

@@ -27,6 +27,7 @@ from app.market_data.schwab.streaming import capture
 from app.options.order_flow import streaming as ofs
 from calibration.complete_chain_capture import PRICE_HISTORY, ChainSweep
 from stream_spine import LATEST, CaptureWriter, HealthRegistry, MessageBus
+from tests.feed_live_helper import changes_within
 from tests.schwab_rest_standin import HISTORY, PRICEHISTORY, LocalSchwab
 from time_et import ET
 
@@ -140,7 +141,7 @@ def _told(tk: str, takes) -> list:
             told = []
             for take in takes:
                 take()
-                told.append(await push_changes.next_changes(page, 0.5))
+                told.append(await changes_within(page, 0.5))
             return told
         finally:
             push_changes.unsubscribe(page)

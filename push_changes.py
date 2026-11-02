@@ -57,13 +57,9 @@ def _mark(tk: str, kind: str) -> None:
             c.wake.set()
 
 
-async def next_changes(c: Client, timeout: float | None) -> set[str]:
-    """The kinds changed since the last call; empty after `timeout` seconds with none (None: it
-    waits for one)."""
-    try:
-        await asyncio.wait_for(c.wake.wait(), timeout)
-    except TimeoutError:
-        return set()
+async def next_changes(c: Client) -> set[str]:
+    """The kinds changed since the last call, waiting for one."""
+    await c.wake.wait()
     c.wake.clear()
     kinds, c.kinds = c.kinds, set()
     return kinds

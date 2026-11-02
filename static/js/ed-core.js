@@ -802,6 +802,8 @@
       _priceRetry = 0;
       subscribePrices();
       refreshWL();                       // the list as the daemon keeps it
+      if (_priceWasOpen && state.ticker) CHANGE_KINDS.forEach(valueChanged);   // none reached it
+      _priceWasOpen = true;
     };
     ws.onmessage = function (ev) {
       var msg; try { msg = JSON.parse(ev.data); } catch (e) { return; }
@@ -879,6 +881,8 @@
 
   // ---- which of this ticker's values changed, as the page's socket says. Each panel reloads on
   // `ed:changed` for the kinds it shows: levels, flow, liquidity. ----
+  var CHANGE_KINDS = ['levels', 'chain', 'flow', 'liquidity'];
+  var _priceWasOpen = false;
   function valueChanged(kind) {
     if (kind === 'chain') loadExpiries(state.ticker);
     emit('ed:changed', { kind: kind });
@@ -1002,11 +1006,11 @@
     document.getElementById('aiClose').addEventListener('click', function () {
       var d = document.getElementById('aidrawer'); d.classList.remove('open'); d.setAttribute('aria-hidden', 'true');
     });
-    openPriceSocket();                   // the page's one socket, before its first reads
     // initial ticker + header
     if (state.ticker) setTicker(state.ticker); else paintNoTicker();
     _booting = false;   // every REAL subsequent view/ticker change dispatches both events normally
     tickClock(); setInterval(tickClock, 1000);
+    openPriceSocket();                   // prices: daemon -> browser, one socket for the page
     setInterval(checkPriceSilence, 1000);
   }
 
