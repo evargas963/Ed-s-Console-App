@@ -27,7 +27,7 @@ import live_market_plane as lmp
 import live_price_rows
 import server
 from stream_spine import options_quote_msg
-from time_et import ET, INDEX_OPTIONS
+from time_et import ET
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 _CAPTURE = json.loads(
@@ -200,11 +200,9 @@ def test_a_streamed_cell_is_not_live_after_its_own_option_close():
 
 def test_a_status_sent_past_the_live_limit_is_not_current():
     _beat(_AT - lmp.FEED_HEARTBEAT_MAX_AGE_SEC)
-    assert lmp.daemon_status(_AT) is None and not lmp.feed_live_for(
-        SYM, "LEVELONE_OPTIONS", _AT, INDEX_OPTIONS
-    )
+    assert lmp.daemon_status(_AT) is None and not lmp.feed_live_for(SYM, "LEVELONE_OPTIONS", _AT)
     _beat(_AT - 1.0)
-    assert lmp.feed_live_for(SYM, "LEVELONE_OPTIONS", _AT, INDEX_OPTIONS)
+    assert lmp.feed_live_for(SYM, "LEVELONE_OPTIONS", _AT)
 
 
 def test_a_closed_socket_keeps_the_last_option_value_and_names_its_time():
@@ -272,10 +270,13 @@ def _all_held(now: float, *tickers: str) -> None:
 @pytest.mark.parametrize(
     "at, equities, options, why",
     [
-        (_et("2026-10-07", 8), True, False, "outside Schwab's option market hours"),  # Pre-Market
-        (_et("2026-10-07", 11), True, True, None),  # RTH
-        (_et("2026-10-07", 17), True, False, "outside Schwab's option market hours"),  # After-Hours
+        (_et("2026-10-05", 3), False, False, "outside Schwab's market hours"),  # before the day
+        (_et("2026-10-05", 4), True, True, None),  # the market day starts
+        (_et("2026-10-05", 8), True, True, None),  # Pre-Market
+        (_et("2026-10-05", 11), True, True, None),  # RTH
+        (_et("2026-10-05", 17), True, False, "outside Schwab's option market hours"),  # After-Hours
         (_et("2026-10-03", 12), False, False, "outside Schwab's market hours"),  # Saturday
+        (_et("2026-11-26", 12), False, False, "outside Schwab's market hours"),  # Thanksgiving
         (
             _et("2026-09-20", 11),
             False,
@@ -286,17 +287,16 @@ def _all_held(now: float, *tickers: str) -> None:
 )
 def test_a_value_is_live_only_while_its_market_trades(at, equities, options, why):
     """The daemon's socket is open and it holds SPY and SYM at every instant (Schwab's /markets
-    answers captured 2026-10-07 say which sessions those are): SPY's quote and book are live only
-    in a session the stock market trades, SYM's only while an option market is open, and each
-    names why not."""
+    answers captured 2026-10-07 say which days those are): a valid session is live, stock and
+    option alike, and with none each names why not."""
     lmp.record_from_level_one_equity(TK, _QUOTE["item"], received_ts=_QUOTE["ts_recv"])
     _all_held(at, TK)
     assert lmp.feed_live_for(TK, "LEVELONE_EQUITIES", at) is equities
     assert lmp.feed_live_for(TK, "NYSE_BOOK", at) is equities
-    assert lmp.feed_live_for(SYM, "LEVELONE_OPTIONS", at, INDEX_OPTIONS) is options  # an SPY option
-    assert lmp.feed_live_for(SYM, "OPTIONS_BOOK", at, INDEX_OPTIONS) is options
+    assert lmp.feed_live_for(SYM, "LEVELONE_OPTIONS", at) is options  # an SPY option
+    assert lmp.feed_live_for(SYM, "OPTIONS_BOOK", at) is options
     assert lmp.outage(TK, "LEVELONE_EQUITIES", at) == (None if equities else why)
-    assert lmp.outage(SYM, "LEVELONE_OPTIONS", at, INDEX_OPTIONS) == (None if options else why)
+    assert lmp.outage(SYM, "LEVELONE_OPTIONS", at) == (None if options else why)
     row = live_price_rows.price_row(TK, at)
     assert (row["feed_live"], row["feed_label"]) == (
         (True, "LIVE") if equities else (False, "NOT LIVE")
@@ -332,11 +332,13 @@ _STATUS = json.loads((_FX / "real_security_status_2026_10_19.json").read_text(en
 def test_a_symbol_schwab_marks_closed_is_not_live_in_an_open_session():
     """$SPX as Schwab streamed it 2026-10-19: SECURITY_STATUS Normal at the 09:30 open, Closed at
     the 16:00 close. At 17:00 ET (After-Hours, the stock market still trading) $SPX is not live
-    and says Schwab marks it Closed. NVDA, Normal from 04:00, is not live at 04:30, before the
-    07:00 pre-market Schwab's /markets sent, and live at 07:30."""
+    and says Schwab marks it Closed. NVDA, Closed overnight and Normal from 04:00, is live at 04:30,
+    before the 07:00 pre-market Schwab's /markets sent, and not live once the day's last window
+    has ended."""
     spx_open, spx_close = (m for m in _STATUS if m["symbol"] == "$SPX")
-    nvda_normal = next(
-        m for m in _STATUS if m["symbol"] == "NVDA" and m["item"]["SECURITY_STATUS"] == "Normal"
+    nvda_closed, nvda_normal = (
+        next(m for m in _STATUS if m["symbol"] == "NVDA" and m["item"]["SECURITY_STATUS"] == s)
+        for s in ("Closed", "Normal")
     )
     try:
         lmp.record_from_level_one_equity("$SPX", spx_open["item"], received_ts=spx_open["ts_recv"])
@@ -352,15 +354,21 @@ def test_a_symbol_schwab_marks_closed_is_not_live_in_an_open_session():
         assert lmp.outage("$SPX", "LEVELONE_EQUITIES", at) == "Schwab marks $SPX Closed"
         assert live_price_rows.price_row("$SPX", at)["feed_label"] == "NOT LIVE"
         lmp.record_from_level_one_equity(
+            "NVDA", nvda_closed["item"], received_ts=nvda_closed["ts_recv"]
+        )
+        at = _et("2026-10-19", 3)
+        _all_held(at, "$SPX", "NVDA")
+        assert lmp.outage("NVDA", "LEVELONE_EQUITIES", at) == "outside Schwab's market hours"
+        lmp.record_from_level_one_equity(
             "NVDA", nvda_normal["item"], received_ts=nvda_normal["ts_recv"]
         )
         at = _et("2026-10-19", 4, 30)
         _all_held(at, "$SPX", "NVDA")
-        assert lmp.feed_live_for("NVDA", "LEVELONE_EQUITIES", at) is False
-        assert lmp.outage("NVDA", "LEVELONE_EQUITIES", at) == "outside Schwab's market hours"
-        at = _et("2026-10-19", 7, 30)
-        _all_held(at, "$SPX", "NVDA")
         assert lmp.feed_live_for("NVDA", "LEVELONE_EQUITIES", at) is True
+        assert live_price_rows.price_row("NVDA", at)["feed_label"] == "LIVE"
+        at = _et("2026-10-19", 20, 30)
+        _all_held(at, "$SPX", "NVDA")
+        assert lmp.outage("NVDA", "LEVELONE_EQUITIES", at) == "outside Schwab's market hours"
     finally:
         for kept in (lmp._by_ticker, lmp._fields_by_ticker):
             kept.pop("$SPX", None)
@@ -427,7 +435,7 @@ def test_a_row_the_daemon_no_longer_holds_is_not_live_and_no_row_is_not_live():
     """Regular hours, the feed up. SPY's last row from the daemon said LIVE; the daemon then stops
     holding SPY, so its rows stop. The console serves NOT LIVE with the reason, not the last row's
     LIVE. And before the daemon's first row for a held symbol, the console serves NOT LIVE."""
-    at = _et("2026-10-07", 11)
+    at = _et("2026-10-05", 11)
     lmp.record_from_level_one_equity(TK, _QUOTE["item"], received_ts=_QUOTE["ts_recv"])
     _all_held(at, TK)
     ofs._price_rows[TK] = live_price_rows.price_row(TK, at)

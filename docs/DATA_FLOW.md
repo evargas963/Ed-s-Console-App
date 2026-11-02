@@ -158,15 +158,15 @@ from Schwab to the screen (daemon, console, page), are these:
 - **D5. The last value stands, marked** (`AGENTS.md` rule 5). Every value carries Schwab's time and
   the newest by that time is the current one; a reconnect never replays an older value as live. A
   value is live only while it is updating: its feed delivers it and its market trades
-  (`live_market_plane.live_state`). Its market trades inside the sessions Schwab's /markets answer
-  sent for today (pre-market, regular, post-market; an option contract only inside its own option
-  market's regular window, the market of the ticker whose chain lists it: stock options to 16:00 ET,
-  index-close options to 16:15; with no chain held that lists it, its market is not known and it
-  reads NOT LIVE), while Schwab's SECURITY_STATUS for it is not Closed or Halted; before
-  the 07:00 ET pre-market /markets sends, a stock Schwab streams from 04:00 reads NOT LIVE,
-  "outside Schwab's market hours" (operator 2026-10-25), and an option contract whose quotes Schwab
-  streams from 07:00 reads NOT LIVE before the 09:30 option window, "outside Schwab's option market
-  hours". When it stops
+  (`live_market_plane.live_state`). Its market trades on a day Schwab's /markets answer gave
+  windows for, while Schwab's SECURITY_STATUS for it is not Closed or Halted. One rule (operator
+  2026-11-02): a valid session is live, and with none the screen reads CLOSED and the last value
+  stands. The session (`time_et.session_label`) runs from 04:00 ET, when Schwab flips stocks to
+  Normal and before the 07:00 pre-market /markets sends, until today's last /markets window ends.
+  An option contract, the chain sweep and the levels run from 04:00 until the last option market's
+  close (`time_et.options_open`: Schwab's 16:15 ET, stock options' post-market included), while
+  `time_et.option_market_open` stays the option markets' regular window, which decides the close
+  values and what a pre-market zero does not replace. When it stops
   updating, for any reason (feed down, market closed, an input missing), the last value stands,
   marked not live with its time and its served age, and every value computed from it is marked not
   live too. While the daemon's push to the page has stopped, no age is served and the page computes
@@ -195,8 +195,8 @@ from Schwab to the screen (daemon, console, page), are these:
   (the GEX-by-strike badge carries the chain's time), `tests/test_data_path_snapshot_time_v1.py`
   (the desk map's LEVELS pill carries the snapshot's time), `tests/test_data_path_level_asof_time_v1.py`
   (the levels page As-of column carries each level's time), `tests/test_data_path_served_verdicts_v1.py`
-  (the levels verdict by the ticker's own option market, an option contract by the market of the
-  chain that lists it, and a page told to read again while its price or its levels are not live);
+  (the levels verdict by the ticker's own option market, an option contract by the session, and a
+  page told to read again while its price or its levels are not live);
   the rest — ENF-22.
 - **D6. No live screen reads the database.** Every live route serves from memory; the database
   is read at startup, after the close and for research only.
@@ -386,9 +386,8 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
   chain waits behind a stored one). The daemon's bus keeps each ticker's newest whole chain:
   once all its parts are in it replaces the older one, which is never sent again. The sweep runs on
   one thread on the daemon's one Schwab client (§1), one request at a time, by the option markets
-  Schwab's /markets sends (`ChainSweep.chain_due`, `time_et.option_market_open`, the one option-market
-  reader, which every caller asks; a day Schwab says is closed is outside every window): open while any of them
-  is, to the last close (IND, 16:15 ET, when SPY's, QQQ's and IWM's options stop too; Schwab's EQO
+  Schwab's /markets sends (`ChainSweep.chain_due`, `time_et.options_open`; a day Schwab says is
+  closed is outside every window): from 04:00 ET to the last close (IND, 16:15 ET, when SPY's, QQQ's and IWM's options stop too; Schwab's EQO
   window ends at 16:00 and has no window of its own for them; operator 2026-10-09). While one is
   open (and while today's answer, or a ticker before its first chain, is not known) the
   ticker is fetched in one rotation with every other such watchlist ticker, sorted, each the same,
@@ -405,8 +404,8 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
   `time_et.option_close_product`: stock options at 16:00 ET, index-close options at 16:15),
   After-Hours included, levels from a chain fetched after that close are its close values and read
   CLOSE, with their time and age, however old (operator 2026-10-25); older ones read STALE, "this
-  ticker's options are closed and its close values have not been fetched"; while its market is
-  open, LIVE until two of the sweep's rounds pass without its chain, then STALE; NOT LIVE when
+  ticker's options are closed and its close values have not been fetched"; from 04:00 ET, after
+  the day's first round, until its market closes, LIVE until two of the sweep's rounds pass without its chain, then STALE; NOT LIVE when
   Schwab's /markets answer for today is not held), never a zero or a
   value from elsewhere. Enforced by: `tests/test_data_path_rules_v1.py` (the D5 sweep and
   staleness tests). Each ticker's chain is asked for as Schwab documents it: its expiration chain
@@ -592,10 +591,8 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
   (`live_market_plane.FEED_HEARTBEAT_MAX_AGE_SEC`), says the Schwab socket is open, and holds the
   symbol on that Schwab service, and its market trades (`live_market_plane.live_state`; the
   header's LIVE / OFFLINE / NOT LIVE, a book's `book_live`, a heatmap leg's and a gamma cell's
-  state). An option contract trades only inside its own option market's regular window
-  (`time_et.option_market_open`), its market that of the ticker whose chain lists it
-  (`server._contract_ticker`, `time_et.option_close_product`); a contract in no chain the console
-  holds has no known market and is not live. Only the daemon holds Schwab's
+  state). An option contract is live from 04:00 ET to the last option close (`time_et.options_open`).
+  Only the daemon holds Schwab's
   SECURITY_STATUS, so the console carries the daemon's verdict (`streaming.price_state`, for a
   symbol's quote and for a venue's equity book): the rule on the beat the console holds while
   that is not LIVE (the feed down, the symbol not held, its market not trading); while it is
@@ -658,7 +655,7 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
   Schwab's expirationDate passes. Past that a contract has settled. No
   hand-typed
   holiday, early-close or covered-year table exists. A day with no session has an empty window.
-  The label only labels: no session window starts, stops or clears a streamed value (stock
+  The label decides the live word (§2 D5): no session window starts, stops or clears a streamed value (stock
   quotes from 04:00 ET are shown and recorded), and the order-flow state keeps every book,
   top-of-book field, print and streamed Greek through the open. Enforced by:
   `tests/test_markets_sessions_v1.py`, `tests/test_data_path_charm_side_unknown_v1.py`.

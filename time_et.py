@@ -13,11 +13,14 @@ unknown. Past the year Schwab answers, a contract's expiry runs to its expiratio
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, time
 from zoneinfo import ZoneInfo
 
 ET = ZoneInfo("America/New_York")
 CT = ZoneInfo("America/Chicago")
+#: the market day's start, ET (operator 2026-11-02): Schwab flips stocks to Normal then, and its
+#: /markets answer names no window before 07:00
+MARKET_DAY_OPENS = time(4)
 
 
 def ct_label(ts_utc: float) -> str:
@@ -54,7 +57,8 @@ def et_date_str_from_ts_utc(ts_utc: float) -> str:
     return dt.strftime("%Y-%m-%d")
 
 
-#: the session states (session_label): a label only; no value is held back or stopped by it
+#: the session states (session_label): no value is held back or stopped by them; a valid one is
+#: live, and with none the last values stand
 PRE_MARKET, RTH, AFTER_HOURS, CLOSED, UNKNOWN = (
     "Pre-Market",
     "RTH",
@@ -154,17 +158,37 @@ def session(day: str) -> Session | None:
 
 
 def session_label(now: datetime) -> str:
-    """The stock market's session at `now`: PRE_MARKET, RTH or AFTER_HOURS inside the window
-    Schwab sent for today, CLOSED outside them (and on a day Schwab says is closed), UNKNOWN when
-    Schwab's answer for today is not held. A label: what Schwab streams is shown and recorded
-    whatever it says."""
-    s = session(now.astimezone(ET).date().isoformat())
+    """The stock market's session at `now`, the one answer to whether the market day has started:
+    PRE_MARKET from MARKET_DAY_OPENS, then RTH and AFTER_HOURS inside the windows Schwab sent for
+    today, CLOSED outside them (and on a day Schwab says is closed), UNKNOWN when Schwab's answer
+    for today is not held. A label: what Schwab streams is shown and recorded whatever it says."""
+    at = now.astimezone(ET)
+    s = session(at.date().isoformat())
     if s is None:
         return UNKNOWN
     for state, windows in ((PRE_MARKET, s.pre), (RTH, s.regular), (AFTER_HOURS, s.post)):
         if any(start <= now < end for start, end in windows):
             return state
-    return CLOSED
+    before = [start for start, _end in (*s.pre, *s.regular, *s.post)]
+    return PRE_MARKET if before and market_day_start(at) <= now < min(before) else CLOSED
+
+
+def market_day_start(now: datetime) -> datetime:
+    """When the market day of `now`'s ET date starts (MARKET_DAY_OPENS)."""
+    return datetime.combine(now.astimezone(ET).date(), MARKET_DAY_OPENS, tzinfo=ET)
+
+
+def options_open(now: datetime) -> bool | None:
+    """Whether a session is valid at `now` (session_label) and today's last option window has not
+    ended (Schwab's IND, 16:15 ET): what the chain sweep, the levels and an option's live mark
+    follow; None when Schwab's answer for today is not held. Before the option markets' own
+    windows the last values are refreshed; option_market_open keeps those windows for the close
+    values."""
+    label = session_label(now)
+    if label == UNKNOWN:
+        return None
+    s = session(now.astimezone(ET).date().isoformat())
+    return label != CLOSED and any(now < end for _p, windows in s.options for _s, end in windows)
 
 
 def option_market_open(now: datetime, product: str | None = None) -> bool | None:

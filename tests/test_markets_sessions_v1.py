@@ -1,8 +1,8 @@
 """The market's sessions are Schwab's GET /markets answers (operator 2026-10-07): the daemon asks
 for equity and option once per date per ET day -- today, the 7 days before it Schwab answers, and
 each expiry date of the chains, whatever the number of tickers -- records every answer as sent, and
-the console takes each 200 as that date's sessions. The session label only labels: what Schwab
-streams is shown whatever it says.
+the console takes each 200 as that date's sessions. What Schwab streams is shown whatever the
+session label says.
 
 Real data: Schwab's /markets answers for every date it answered on 2026-10-07, with its 400 on each
 side (tests/fixtures/real_schwab_markets_2026_10_07.json, held by tests/conftest.py and served by
@@ -140,7 +140,8 @@ def test_the_sessions_are_the_windows_schwab_sent_on_a_normal_day_a_holiday_and_
 
 def test_the_label_follows_schwabs_windows():
     label = time_et.session_label
-    assert label(_et("2026-10-07 06:59")) == time_et.CLOSED  # Schwab's pre-market opens 07:00
+    assert label(_et("2026-10-07 03:59")) == time_et.CLOSED
+    assert label(_et("2026-10-07 04:00")) == time_et.PRE_MARKET  # before Schwab's 07:00 window
     assert label(_et("2026-10-07 07:00")) == time_et.PRE_MARKET
     assert label(_et("2026-10-07 09:30")) == time_et.RTH
     assert label(_et("2026-10-07 16:00")) == time_et.AFTER_HOURS
@@ -227,19 +228,20 @@ def test_time_to_expiry_runs_to_schwabs_close_of_the_expiry_date():
 
 
 def test_a_stock_quote_before_schwabs_pre_market_is_shown():
-    """Operator 2026-10-07: stock quotes from 04:00 ET come through. At 05:00 ET Schwab's /markets
-    says Closed (pre-market opens 07:00): CRWD's quote, received then, is the price served."""
+    """Operator 2026-10-07: stock quotes from 04:00 ET come through. At 05:00 ET, before the 07:00
+    pre-market Schwab's /markets names, the market day has started: CRWD's quote, received then,
+    is the price served."""
     fx = json.loads((FX / "real_crwd_quote_2026_10_07.json").read_text(encoding="utf-8"))
     tk, native = fx["ticker"], fx["native"]
     try:
         lmp.record_from_level_one_equity(tk, native, received_ts=time.time())
         mark_feed_live(tk)
         publish_daemon_rows(tk)
-        assert time_et.session_label(_et("2026-10-07 05:00")) == time_et.CLOSED
+        assert time_et.session_label(_et("2026-10-07 05:00")) == time_et.PRE_MARKET
         at = _et("2026-10-07 05:00").timestamp()
         assert (
             lmp.outage(tk, "LEVELONE_EQUITIES", at)
-            == "Schwab LEVELONE_EQUITIES feed down during Closed"
+            == "Schwab LEVELONE_EQUITIES feed down during Pre-Market"
         )
         assert server.resolve_spot(tk, now=at)[0] == native["LAST_PRICE"]
     finally:

@@ -15,7 +15,6 @@ from pathlib import Path
 import app.options.order_flow.engine as ofe
 import app.options.order_flow.state as ofls
 from app.options.order_flow.state import OrderFlowState
-from time_et import EQUITY_OPTIONS
 
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "real_options_stream_history_samples.json"
 
@@ -566,7 +565,7 @@ def test_an_option_contracts_top_is_what_schwab_sent_on_a_live_feed():
         lmp.record_feed_heartbeat(
             {"ts": RTH_INSTANT, "schwab_socket_open": True, "held": {"LEVELONE_OPTIONS": [sym]}}
         )
-        payload = options_live_payload(sym, RTH_INSTANT, EQUITY_OPTIONS)  # a TSLA option
+        payload = options_live_payload(sym, RTH_INSTANT)  # a TSLA option
         assert payload["flow"]["top_book_pressure"] is not None and payload["top_outage"] is None
     finally:
         lmp.record_feed_down()
