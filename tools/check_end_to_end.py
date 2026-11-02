@@ -25,8 +25,10 @@ The product lines a PR adds carry no patch shape:
    An except, if or with is judged when its own first line is added, not when a line is added
    inside an old one. None stays allowed: it is a missing value served as missing.
 
-Run in CI on every pull request (.github/workflows/hardening.yml):
-    python -m tools.check_end_to_end --base origin/main
+The description fills BODY_SECTIONS, with `--body-file`.
+
+Run from the base on every pull request (.github/workflows/locks.yml), so a change cannot edit it:
+    python tools/check_end_to_end.py --base origin/main --body-file pr_body.md
 Exit 0: none found. Exit 1: each violation on its own line. Exit 2: the check itself failed
 (git unavailable, the base unknown, a file of the PR unreadable).
 """
@@ -47,6 +49,7 @@ from pathlib import Path
 SHAPED_SUFFIXES = (".py", ".js", ".mjs", ".html")
 PRODUCT_SUFFIXES = (*SHAPED_SUFFIXES, ".bat")
 NOT_PRODUCT = ("tests/", "tools/", ".github/", "docs/", "playwright.config.mjs")
+BODY_SECTIONS = ("Schwab → screen:", "Deleted:", "End-to-end test:")
 CATCH_ALL = ("Exception", "BaseException")
 LOG_METHODS = {"debug", "info", "warning", "warn", "error", "exception", "critical", "log"}
 JS_LITERAL = r"(0(?!\w)|''|\"\"|\[\]|\{\}|null(?!\w))"
@@ -67,11 +70,11 @@ class ToolError(Exception):
     pass
 
 
-def _git(root: Path, *args: str) -> str:
+def _git(root: Path, *args: str, errors: str = "strict") -> str:
     try:
         return subprocess.run(
             ["git", *args], cwd=root, capture_output=True, check=True
-        ).stdout.decode("utf-8")
+        ).stdout.decode("utf-8", errors)
     except (subprocess.CalledProcessError, FileNotFoundError, UnicodeDecodeError) as e:
         raise ToolError(f"git {' '.join(args)} failed: {e}") from e
 
@@ -118,11 +121,15 @@ def pr_added_lines(root: Path, base: str) -> dict[str, set[int]]:
         "core.quotePath=true",
         "diff",
         "-U0",
+        "--text",  # the head's own attributes and drivers do not decide what the diff shows
+        "--no-ext-diff",
+        "--no-textconv",
         "--no-renames",
         "--src-prefix=a/",
         "--dst-prefix=b/",
         "--diff-filter=AMRT",
         f"{base}...HEAD",
+        errors="replace",  # --text prints a binary file's bytes; pr_source reads what is judged
     ).split("\n"):
         if line.startswith("diff --git "):
             path, header = None, True
@@ -225,7 +232,16 @@ def fix_safety(root: Path, config: Path) -> dict[str, str] | None:
     """FIX_SAFETY's values as ruff resolves them from `config`; None when ruff cannot."""
     try:
         run = subprocess.run(
-            [sys.executable, "-m", "ruff", "check", "--show-settings", "--config", str(config)]
+            [
+                sys.executable,
+                "-P",
+                "-m",
+                "ruff",
+                "check",
+                "--show-settings",
+                "--config",
+                str(config),
+            ]
             + ["pyproject.toml"],
             capture_output=True,
             cwd=root,
@@ -273,7 +289,7 @@ def tool_fixed(root: Path, path: str, text: str) -> str | None:
     ):
         try:
             run = subprocess.run(
-                [sys.executable, "-m", "ruff", *args, "--config", "pyproject.toml"]
+                [sys.executable, "-P", "-m", "ruff", *args, "--config", "pyproject.toml"]
                 + ["--stdin-filename", path, "-"],
                 input=out,
                 capture_output=True,
@@ -519,13 +535,28 @@ def violations(root: Path, base: str) -> list[str]:
     return out
 
 
+def body_violations(body: str) -> list[str]:
+    """Each section the description must fill: BODY_SECTIONS, with an arrow in any spelling."""
+    norm = re.sub(r"<!--.*?-->", "", body, flags=re.S).replace("->", "→").replace("=>", "→")
+    hits = sorted((norm.find(s), s) for s in BODY_SECTIONS if s in norm)
+    out = [f"the description lacks: {s}" for s in BODY_SECTIONS if s not in norm]
+    ends = [at for at, _section in hits[1:]] + [len(norm)]
+    for (at, section), end in zip(hits, ends, strict=False):
+        if not norm[at + len(section) : end].split("\n## ")[0].strip():
+            out.append(f"the description's {section} is empty")
+    return out
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--base", required=True)
+    ap.add_argument("--body-file", type=Path)
     a = ap.parse_args(argv)
     try:
         found = violations(Path.cwd(), a.base)
-    except ToolError as e:
+        if a.body_file:
+            found += body_violations(a.body_file.read_text(encoding="utf-8"))
+    except (ToolError, OSError) as e:
         print(f"the check failed: {e}", file=sys.stderr)
         return 2
     sys.stdout.reconfigure(encoding="utf-8")  # a file name may hold any character

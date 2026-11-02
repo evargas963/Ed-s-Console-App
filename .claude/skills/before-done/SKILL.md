@@ -29,12 +29,15 @@ report what was tried, and take a different approach (CLAUDE.md item 6).
    `.venv/Scripts/python.exe -m tools.check_credential_leak --base origin/main` and
    `.venv/Scripts/python.exe -m tools.check_eol_style_invariant --base origin/main` — exit 0 each.
 6. `.venv/Scripts/python.exe -m tools.check_end_to_end --base origin/main` — exit 0; then
-   `.venv/Scripts/python.exe tools/check_locks.py --base origin/main` — exit 0.
+   `.venv/Scripts/python.exe tools/check_locks.py --base origin/main` — exit 0; `locks` also runs
+   both of them and `tools/check_integrity.py` from the base, with the description.
 7. Four eyes: run the `correctness-reviewer` and `requirements-reviewer` agents on the PR's final
    commit (`git diff origin/main...HEAD`, with the PR description, the operator's task and the output
    of steps 1–6), naming that commit; any commit made after a review gets a new review of both before
    the PR is offered. Show each verdict
-   (PASS / FAIL / NOT_PROVEN) and its findings, and put both verdicts in the PR description. A FAIL or
+   (PASS / FAIL / NOT_PROVEN) and its findings, and put both verdicts in the PR description's
+   `## Review`. The rule 14 record comes from a session that did not write the change, given only
+   what rule 14 names (the commit series with `git log -p origin/main..HEAD`). A FAIL or
    NOT_PROVEN is fixed or proven, or brought to Ed, before the PR merges; the one NOT_PROVEN a merge
    may carry is the deployed-screen tier its deploy proves (AGENTS.md Authority). Before bringing Ed a
    decision, check AGENTS.md, CLAUDE.md and ACTIVE_PROGRAM.md for a rule or recorded decision that

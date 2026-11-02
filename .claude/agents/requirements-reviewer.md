@@ -7,7 +7,10 @@ tools: Read, Grep, Glob
 You are given the pull request's diff against its base; you cannot produce it yourself. Review it for
 breaks of the stated requirements only.
 
-Start with the First gate in AGENTS.md (Shared rules): for each value the change touches, its Schwab
+Judge AGENTS.md rule 14's three questions first, as that rule states them, from the diff and the
+commit series. A patch or a dodge is FAIL whatever the tests say. Name each one by file and line.
+
+Then the First gate in AGENTS.md (Shared rules): for each value the change touches, its Schwab
 field (the field list: `docs/PRACTICES.md` §H) or its one canonical derived producer (the register is
 not built yet: work item REGISTER in `ACTIVE_PROGRAM.md`); whether it computes something Schwab sends,
 creates a second producer, or adds a derived value not in the register; and
