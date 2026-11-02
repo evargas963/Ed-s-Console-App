@@ -215,7 +215,8 @@ app rules": every live mark on every screen means the value is updating now; a c
 feed down reads not live with its time and age, Key Levels' Spot included after an outage and a
 ticker switch. Operator 2026-10-25: live is a /markets session open and Schwab's SECURITY_STATUS
 not Closed or Halted; 04:00–07:00 ET, when Schwab streams stocks before the pre-market /markets
-sends, reads NOT LIVE, "outside Schwab's market hours". Operator 2026-10-25: "we should not have
+sends, reads NOT LIVE, "outside Schwab's market hours". Operator 2026-11-02: the Schwab session's
+one connection stays open while idle ("Yes, keep it open"). Operator 2026-10-25: "we should not have
 multiple producers anywhere": the state's word (LIVE / OFFLINE / NOT LIVE) is served
 (`live_market_plane.live_state`), never chosen by the page. Operator 2026-10-25: "we use banking
 analogy always and we take what schwab gives us, always." Operator 2026-10-25, on PR A: a symbol
