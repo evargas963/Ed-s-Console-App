@@ -55,12 +55,22 @@ def spot(ticker: str) -> float | None:
     return _spot_of(lmp.get_quote(tk) if tk else None)
 
 
+def price_state(ticker: str, now: float) -> tuple[str, str | None]:
+    """`ticker`'s quote state at `now`, the row's and every console reader's: the one rule
+    (live_market_plane.live_state), and NOT LIVE until Schwab has sent a quote of it."""
+    tk = ticker_storage_key(ticker)
+    label, why = lmp.live_state(tk, "LEVELONE_EQUITIES", now)
+    if label == lmp.LIVE and lmp.get_quote(tk) is None:
+        return lmp.NOT_LIVE, f"no price from Schwab for {tk} yet"
+    return label, why
+
+
 def price_row(ticker: str, now: float) -> dict[str, Any]:
     """The finished row the screen paints for one symbol, as it is at `now`: each field the
     last value Schwab sent. Not live, it sets `feed_live` false, `feed_label` and `outage`; the
     fields stay (docs/DATA_FLOW.md §2 D5)."""
     tk = ticker_storage_key(ticker)
-    label, outage = lmp.live_state(tk, "LEVELONE_EQUITIES", now)
+    label, outage = price_state(tk, now)
     row = lmp.get_quote(tk) if tk else None
     streamed = bool(row) and lmp.plane_row_is_streamed(row)
     spot = _spot_of(row)

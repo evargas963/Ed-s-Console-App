@@ -61,18 +61,6 @@ _FROM_SCHWAB = {
 BEAT_SEC = 1.0
 
 
-def price_state(
-    ticker: str, now: float, service: str = "LEVELONE_EQUITIES"
-) -> tuple[str, str | None]:
-    """`ticker`'s state on Schwab `service` (its quote, or a venue's book) at `now`, as the console
-    serves it: the one rule (live_market_plane.live_state), and NOT LIVE while the plane holds no
-    quote of it."""
-    label, why = _lmp.live_state(ticker, service, now)
-    if label == _lmp.LIVE and _lmp.get_quote(ticker) is None:
-        return _lmp.NOT_LIVE, f"no price row from the daemon for {ticker_storage_key(ticker)} yet"
-    return label, why
-
-
 #: the daemon while it runs (follow): watchlist requests go to it
 _daemon = None
 #: request id -> the future the daemon's watchlist record for it resolves (_ingest_pushed)
