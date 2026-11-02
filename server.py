@@ -1564,11 +1564,11 @@ def _publish_levels(
     valued_at = valuation_instant(clock, product)
     begun_ts = fetched_ts if isinstance(fetched_ts, (int, float)) else at.timestamp()
     begun = datetime.fromtimestamp(begun_ts, ET)
-    if new_chain and capture is None:
+    if new_chain and capture is None and not option_regular_open(begun, product):
         memory = payload.get("_priced_chain")
         if memory is None:
             memory = payload.get("_chain")
-        if options_open(begun) is False and not options_paused(begun):
+        if memory is None or (options_open(begun) is False and not options_paused(begun)):
             # the capture before this chain: its own may be stored already
             newest = newest_capture_ts(get_db().db_path, tk, before_ts=begun_ts)
             if payload.get("_count_capture_ts") != newest:

@@ -208,8 +208,9 @@ def options_open_seconds(since: datetime, now: datetime) -> float:
 
 
 def option_regular_open(now: datetime, product: str) -> bool:
-    """Whether `now` is inside a regular window Schwab sent for `product`: what a field Schwab
-    updates only in regular hours follows (schwab_streamer_api.pdf, LEVELONE_OPTIONS)."""
+    """Whether `now` is inside a regular window Schwab sent for `product`: not whether options are
+    open (options_open), but what open interest follows, which Schwab does not update in AM/PM
+    hours (schwab_streamer_api.pdf, LEVELONE_OPTIONS field 9)."""
     s = session(now.astimezone(ET).date().isoformat())
     return any(start <= now < end for start, end in s.option_windows(product)) if s else False
 

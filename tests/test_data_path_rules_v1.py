@@ -439,7 +439,7 @@ def test_d5_a_daemon_status_that_waited_in_a_queue_is_not_current():
         lmp.record_feed_down()
 
 
-# ── D5 for the chains: the sweep by each ticker's option market, as Schwab's /markets sends it ──
+# ── D5 for the chains: the sweep by the option windows Schwab's /markets sends ──
 # The real ChainSweep on its thread (work), its clock an input, against the local stand-in for
 # Schwab's host (tests/schwab_rest_standin.py: SPY and TSLA, and Schwab's /markets answers
 # captured 2026-10-07; an expiry that has passed by the clock's date is not asked for, so a
@@ -613,8 +613,8 @@ def _run_for(seconds: float) -> float:
 
 def test_d5_the_price_history_once_a_day_and_the_chain_the_options_session(tmp_path):
     """The price history is asked once per ET date (today's candle is rolled up live from the
-    streamed bars); option chains follow each ticker's options session. Thursday 2026-10-01 at
-    17:00 ET (Schwab's /markets: stock options closed at 16:00): SPY's chain is asked once (its
+    streamed bars); option chains follow Schwab's option windows. Thursday 2026-10-01 at
+    17:00 ET, after the last of them: SPY's chain is asked once (its
     close values) and its price history once; nothing more that day; on Friday's date, at 03:30,
     the price history once again, and the chain waits for the first option window Schwab sent."""
     chains = "/marketdata/v1/chains"

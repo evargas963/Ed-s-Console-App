@@ -209,28 +209,49 @@ _SUNDAY = json.loads(
 )
 
 
-@pytest.mark.parametrize("hour, volume_stands", [(7, False), (8, True)])
-def test_a_morning_chains_zero_volume_stands_inside_schwabs_pre_market(hour, volume_stands):
-    """Schwab's schedule of 2026-11-02 and the zero open interest of its chain of 2026-10-25, its
-    volume set to zero (STAND-IN, named: no chain of a pre-market is captured). At 07:00, before
-    the option pre-market, a zero keeps the close count. At 08:00, inside it, a zero volume is what
-    Schwab reports (reset at 03:30), and a zero open interest is not: Schwab does not update it in
-    AM/PM hours (schwab_streamer_api.pdf, LEVELONE_OPTIONS field 9)."""
+def _blanked_open_interest():
+    """Schwab's schedule of 2026-11-02 held, and the contracts its chain of 2026-10-25 sent with a
+    zero open interest that Friday's close had above zero: {symbol: Friday's}."""
     fx = json.loads(
         (Path(__file__).parent / "fixtures" / "real_schwab_markets_2026_11_02.json").read_text(
             encoding="utf-8"
         )
     )
     record_markets(fx["body"])
+    closed = {c["symbol"]: c["openInterest"] for c in _SUNDAY["friday_close"]["chain"]}
+    return {
+        c["symbol"]: closed[c["symbol"]]
+        for c in _SUNDAY["sunday"]["chain"]
+        if c["openInterest"] == 0 and closed[c["symbol"]] > 0
+    }
+
+
+def _delivered_at(at):
+    """The chain of 2026-10-25 delivered at `at`: what its contracts' open interest is then."""
     friday, sunday = _SUNDAY["friday_close"], _SUNDAY["sunday"]
-    closed = {c["symbol"]: c for c in friday["chain"]}
-    blanked = [
-        c["symbol"]
-        for c in sunday["chain"]
-        if c["openInterest"] == 0 and closed[c["symbol"]]["openInterest"] > 0
-    ]
-    traded = [s for s, c in closed.items() if c["totalVolume"] > 0]
-    at = datetime(2026, 11, 2, hour, 0, tzinfo=ET)
+    server._publish_levels(
+        "SPY",
+        [dict(c) for c in sunday["chain"]],
+        at.timestamp(),
+        chain_spot=(friday["spot"], friday["ts_utc"]),
+        now=at,
+    )
+    return {
+        c["symbol"]: c["openInterest"]
+        for c in server.terrain_cache_get("SPY", at.timestamp())["_priced_chain"]
+    }
+
+
+@pytest.mark.parametrize(
+    "hour, minute, kept",
+    [(7, 0, True), (8, 0, True), (9, 27, True), (12, 0, False), (16, 5, False)],
+)
+def test_a_zero_open_interest_leaves_the_last_one_outside_regular_hours(hour, minute, kept):
+    """Schwab does not update open interest in AM/PM hours (schwab_streamer_api.pdf,
+    LEVELONE_OPTIONS field 9), so a zero then, and outside every window, leaves the last one;
+    inside the regular window, SPY's to 16:15, a reported zero is zero."""
+    friday = _SUNDAY["friday_close"]
+    blanked = _blanked_open_interest()
     _forget()
     try:
         server._publish_levels(
@@ -240,23 +261,62 @@ def test_a_morning_chains_zero_volume_stands_inside_schwabs_pre_market(hour, vol
             chain_spot=(friday["spot"], friday["ts_utc"]),
             now=datetime.fromtimestamp(friday["ts_utc"], ET),
         )
-        server._publish_levels(
-            "SPY",
-            [dict(c, totalVolume=0) for c in sunday["chain"]],
-            at.timestamp(),
-            chain_spot=(friday["spot"], friday["ts_utc"]),
-            now=at,
-        )
-        priced = {
-            c["symbol"]: c for c in server.terrain_cache_get("SPY", at.timestamp())["_priced_chain"]
-        }
+        served = _delivered_at(datetime(2026, 11, 2, hour, minute, tzinfo=ET))
     finally:
         _forget()
-    assert blanked and traded
-    for s in blanked:
-        assert priced[s]["openInterest"] == closed[s]["openInterest"]
-    for s in traded:
-        assert priced[s]["totalVolume"] == (0 if volume_stands else closed[s]["totalVolume"])
+    assert blanked
+    assert {s: served[s] for s in blanked} == (blanked if kept else dict.fromkeys(blanked, 0))
+
+
+def test_a_console_restarted_in_the_pre_market_keeps_the_stored_open_interest():
+    """Nothing published in this process yet: at 08:00 the last open interest is the stored
+    capture's, read for the ticker's first publication."""
+    friday = _SUNDAY["friday_close"]
+    blanked = _blanked_open_interest()
+    _forget()
+    try:
+        store_capture(
+            server.get_db().db_path,
+            ticker="SPY",
+            expiry=_SUNDAY["expiry"],
+            contracts=[dict(c) for c in friday["chain"]],
+            spot=friday["spot"],
+            completeness_basis=CAPTURE_BASIS,
+            ts_utc=friday["ts_utc"],
+        )
+        served = _delivered_at(datetime(2026, 11, 2, 8, 0, tzinfo=ET))
+    finally:
+        _forget()
+        with sqlite3.connect(server.get_db().db_path) as db:
+            db.execute(
+                "DELETE FROM complete_chain_captures WHERE ticker = 'SPY' AND ts_utc = ?",
+                (friday["ts_utc"],),
+            )
+    assert blanked
+    assert {s: served[s] for s in blanked} == blanked
+
+
+def test_a_stock_tickers_price_moves_until_the_last_option_close(published):
+    """TSLA's options are open to 16:15, so a chain at 16:04 takes its new price though its book
+    is valued at the 16:00 expiry; after 16:15 a later price does not move the close book."""
+    before = TSLA.spot
+
+    def spot(price, at):
+        server._publish_levels(
+            "TSLA",
+            [dict(c) for c in TSLA.chain],
+            at.timestamp(),
+            chain_spot=(price, at.timestamp()),
+            now=at,
+        )
+        return server.terrain_cache_get("TSLA", at.timestamp())["spot"]
+
+    published("TSLA", TSLA, _et(13, 0))
+    moved = server.terrain_cache_get("TSLA", _et(13, 0).timestamp())["spot"]
+    assert before != moved
+    assert spot(before, _et(15, 59)) == before
+    assert spot(moved, _et(16, 4)) == moved
+    assert spot(before, _et(16, 20)) == moved
 
 
 def test_on_a_closed_day_a_delivered_chain_keeps_the_close_counts_schwab_blanks():
