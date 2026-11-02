@@ -39,7 +39,7 @@ bid_size,schwab,schwab:LEVELONE_EQUITIES,Bid size.,
 bid_total,derived,app.options.order_flow.engine._book_side_depth_total,Sum of displayed size over the best N bid levels.,"Schwab sends levels, not depth totals."
 bins,flag,liquidity_models.volume_profile,"[price, volume, inside value area] per tick.","An estimate: rule 5 bans estimates. Each 1m bar's volume is spread evenly over its range (the route's own basis text says Estimated, not trades at a price). Schwab sends no volume at price, so no wired value exists."
 book_age_sec,derived,app.options.order_flow.engine.compute_book_microstructure,now minus Schwab BOOK_TIME.,Schwab sends the time; an age depends on when it is read.
-book_feed_label,status,app.options.order_flow.streaming.price_state,LIVE / OFFLINE / NOT LIVE for the venue's book.,
+book_feed_label,derived,app.options.order_flow.streaming.price_state,LIVE / OFFLINE / NOT LIVE for the venue's book.,Our judgment of a value's freshness or source; Schwab sends no such verdict.
 book_oi_total,flag,math_exposure_core.book_total_oi,"Total OI of the book, unknown if any strike's is.",never read by static/js; otherwise derived. Schwab sends OI per contract. Input to the pin gate only.
 book_slope,flag,app.options.order_flow.engine._book_slope,Top-5 displayed size per dollar of book span.,never read by static/js; otherwise derived. Schwab sends levels only.
 book_source,status,app.options.order_flow.engine._microstructure_structural,"The book's Schwab service name, or unavailable.",
@@ -151,7 +151,7 @@ exerciseType,schwab,schwab:/chains,Exercise type.,
 expirationDate,flag,schwab:/chains,Expiration date and time.,never read by static/js; otherwise schwab.
 expirationType,schwab,schwab:/chains,Expiration type.,
 expirations,status,server.project_gamma_surface,Container: the surface's columns.,
-expired,status,server._stamp_columns,"Column's expiry is before today, ET.",
+expired,derived,server._stamp_columns,"Column's expiry is before today, ET.",Our reading of the dates Schwab sends; it sends no such flag.
 expiries,schwab,schwab:/chains,The expiries the chain lists.,
 expiry,schwab,schwab:/chains,Expiry date.,
 expiry_dte,flag,schwab:/chains,{expiry: Schwab's DTE}.,never read by static/js; otherwise schwab.
@@ -169,7 +169,7 @@ flow,flag,app.options.order_flow.live_payload.flow_block,Container: tick-rule ta
 flow_reason,flag,confluence_composite.FLOW_REASON,Fixed words: no signed flow is produced.,No producer: permanent placeholder column.
 flow_text,flag,confluence_composite._row,Always None.,"No producer: the column is on screen with weight 0, and the detail card labels it premium dollars."
 from_spot_text,derived,terrain_read.from_spot_text,Words: a level's distance and side from the live price.,Levels are ours.
-front,status,server._stamp_columns,Nearest unexpired column.,
+front,derived,server._stamp_columns,Nearest unexpired column.,Our reading of the dates Schwab sends; it sends no such flag.
 fusion,flag,server._liquidity_option_levels,fused / fused_empty / levels_not_ready.,never read by static/js; otherwise status.
 gamma,schwab,schwab:/quotes,Contract gamma. The chain's rounded gamma is replaced by the quote's. None when server._shown_greeks / math_exposure_core.gamma_reported rejects it. After the window the last reported stands.,
 gamma_at_spot,flag,math_exposure_core.book_net_gex,Same value as net_gex_at_spot.,"Duplicate of net_gex_at_spot under a second key, and the same partial sum (see net_gex_at_spot). Also never read by static/js."
@@ -189,7 +189,7 @@ gross_text,derived,confluence_composite.magnitudes,"Call plus put 1% gamma at th
 gsf,derived,math_levels.compute_gamma_support_levels,Highest price below spot where the modelled curve falls to half its at-spot value.,Ours. Reaches the screen as /api/levels row id gsf.
 gsf_state,flag,math_levels.compute_gamma_support_levels,OK / BELOW_SUPPORT / UNAVAILABLE.,never read by static/js; otherwise status.
 h,flag,schwab:/pricehistory,Bar high.,"server.aggregate_bars rolls 1m bars up for every tf above 1, first open/max high/min low/last close. DATA_FLOW 3.4 says charts show bars exactly as Schwab sent them. Schwab's /pricehistory sends 5, 15, 30 minute and daily itself (parameters doc: frequency 1,5,10,15,30; daily); only 3 and 60 have no Schwab frequency. tf=D rolls 1m bars with extended hours (need_extended_hours_data=True) over the 10 days held, while Schwab's 2 years of daily candles sit unused in server._daily. Computes something Schwab sends."
-has_duplicate_contracts,status,server.get_chain,Two contracts at one strike and side.,
+has_duplicate_contracts,derived,server.get_chain,Two contracts at one strike and side.,Our check of the chain Schwab sent; it sends no such flag.
 headline,derived,terrain_read.build_terrain_read,One sentence on the regime.,"Words of ours, at the publication's price, not the live one."
 heat_background,derived,confluence_composite._ramp,CSS background for the score cell.,"Heat color, in docs/derived_register.md."
 heuristic,flag,app.options.order_flow.engine._microstructure_structural,Fixed True.,never read by static/js; otherwise status.
@@ -489,7 +489,7 @@ title,status,server,"Words on an item, level or chip.",
 today,status,server.terrain_strikes_payload,Container: today's windowed rows.,
 today_side_sums,derived,server.terrain_strikes_payload,Container: GEX and volume below and above the live price.,A strike exactly at the price is on neither side.
 top_book_pressure,flag,app.options.order_flow.engine._compute_top_book_pressure,(bid size - ask size) / total.,"Not a proxy, but the depth-1 imbalance beside it is the same formula on book sizes, and on this route no page reads it: only the option route's copy is drawn."
-top_feed_label,status,app.options.order_flow.streaming.price_state,LIVE / OFFLINE / NOT LIVE for the top of book.,
+top_feed_label,derived,app.options.order_flow.streaming.price_state,LIVE / OFFLINE / NOT LIVE for the top of book.,Our judgment of a value's freshness or source; Schwab sends no such verdict.
 top_of_book,status,app.options.order_flow.engine._microstructure_structural,"Container: bid, ask and sizes.",
 top_of_book.ask,schwab,schwab:LEVELONE_EQUITIES,Ask.,
 top_of_book.ask_size,schwab,schwab:LEVELONE_EQUITIES,Ask size.,
