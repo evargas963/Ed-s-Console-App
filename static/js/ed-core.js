@@ -599,6 +599,7 @@
     var si = document.getElementById('symInput'); if (si) { si.value = state.ticker; buildSymList(); }   // the control reflects the ONE state
     state.selStrike = null; state.selExpiry = null;   // a new ticker clears the shared selection
     loadExpiries(state.ticker);       // refresh the expiry dropdown from /api/expiries for the new ticker
+    refreshWL();                         // the list as the daemon keeps it
     _priceSubTs = Date.now();
     _quoteShown = false;                 // the last ticker's price is not this one's
     subscribePrices();                   // the daemon answers with this ticker's row at once
@@ -782,7 +783,7 @@
   }
   function subscribePrices() {
     if (!_priceWs || _priceWs.readyState !== 1) return;   // sent on open
-    try { _priceWs.send(JSON.stringify({ op: 'subscribe', symbols: priceSymbols(), ticker: state.ticker })); } catch (e) {}
+    _priceWs.send(JSON.stringify({ op: 'subscribe', symbols: priceSymbols(), ticker: state.ticker }));
   }
   // The daemon's database writer, as each heartbeat carries it: the line and its class are the
   // daemon's (stream_spine.WriterStatus line / cls). No writer status served: '—'.
@@ -801,8 +802,6 @@
       _priceRetry = 0;
       subscribePrices();
       refreshWL();                       // the list as the daemon keeps it
-      if (_priceWasOpen) CHANGE_KINDS.forEach(valueChanged);   // what changed while it was closed
-      _priceWasOpen = true;
     };
     ws.onmessage = function (ev) {
       var msg; try { msg = JSON.parse(ev.data); } catch (e) { return; }
@@ -816,7 +815,7 @@
     ws.onclose = function () {
       if (_priceWs === ws) {
         _priceWs = null; _priceUp = false;
-        paintSession('Unknown', 'session unknown: the push is down');
+        paintSession(null, 'session unknown: the push is down');
         schedulePriceReconnect();
       }
     };
@@ -880,8 +879,6 @@
 
   // ---- which of this ticker's values changed, as the page's socket says. Each panel reloads on
   // `ed:changed` for the kinds it shows: levels, flow, liquidity. ----
-  var CHANGE_KINDS = ['levels', 'chain', 'flow', 'liquidity'];
-  var _priceWasOpen = false;
   function valueChanged(kind) {
     if (kind === 'chain') loadExpiries(state.ticker);
     emit('ed:changed', { kind: kind });
@@ -898,7 +895,7 @@
   }
 
   // The push is not delivering: the last quote stays and the chip says so. Nothing polls
-  // for a replacement. The session label is not a live quote and keeps its own slow read.
+  // for a replacement.
   function markHeaderPushDown() {
     // just asked for this ticker (page load or a ticker change): the row is on its way
     // (WAITING); otherwise the push itself is down (OFFLINE). A price already shown stays with its
@@ -1005,11 +1002,11 @@
     document.getElementById('aiClose').addEventListener('click', function () {
       var d = document.getElementById('aidrawer'); d.classList.remove('open'); d.setAttribute('aria-hidden', 'true');
     });
+    openPriceSocket();                   // the page's one socket, before its first reads
     // initial ticker + header
     if (state.ticker) setTicker(state.ticker); else paintNoTicker();
     _booting = false;   // every REAL subsequent view/ticker change dispatches both events normally
     tickClock(); setInterval(tickClock, 1000);
-    openPriceSocket();                   // prices: daemon -> browser, one socket for the page
     setInterval(checkPriceSilence, 1000);
   }
 

@@ -32,10 +32,10 @@ def watched() -> list[str]:
 
 
 def subscribe(tk: str, c: Client | None = None) -> Client:
-    """A page opened on `tk` (on the event loop), as connection `c` (a new one when not given:
-    a caller that must close it whatever happens creates it first)."""
+    """A page opened on `tk`, or moved to it (on the event loop), as connection `c` (a new one when
+    not given). One step: `changed` on another thread never finds a page between two tickers."""
     c = Client() if c is None else c
-    _open.append((tk, c))
+    _open[:] = [(t, x) for t, x in _open if x is not c] + [(tk, c)]
     return c
 
 
@@ -57,8 +57,9 @@ def _mark(tk: str, kind: str) -> None:
             c.wake.set()
 
 
-async def next_changes(c: Client, timeout: float) -> set[str]:
-    """The kinds changed since the last call; empty after `timeout` seconds with none."""
+async def next_changes(c: Client, timeout: float | None) -> set[str]:
+    """The kinds changed since the last call; empty after `timeout` seconds with none (None: it
+    waits for one)."""
     try:
         await asyncio.wait_for(c.wake.wait(), timeout)
     except TimeoutError:

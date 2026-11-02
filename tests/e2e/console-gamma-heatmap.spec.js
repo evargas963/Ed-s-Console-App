@@ -147,8 +147,7 @@ const { mockChange, mockPriceSocket, priceRow } = require('./fixtures/price_sock
 // The console's watchlist routes, stood in for (tests/e2e/fixtures/watchlist.js).
 const { routeWatchlist } = require('./fixtures/watchlist');
 
-// the console pushes one `levels` change for `ticker` after `delayMs`; reconnects get the session
-// One levels push on `ticker`'s change stream, held until the test calls the returned release():
+// One levels push on the page's socket for `ticker`, held until the test calls the returned release():
 // the push lands where the test says, however long the page took to get there.
 async function routeOneLevelsPush(page, ticker = 'SPY') {
   let release;
@@ -185,11 +184,18 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     }
     await expect(page.locator('#subnav .wtitle')).toContainText('OPTIONS');
     await expect(page.locator('.vtab', { hasText: 'Heatmap' })).toBeVisible();
-    // #6: canonical market session shown in the header, distinct from feed liveness. The session
-    // is Schwab's /markets answer, which only the daemon asks for: with no daemon here, the
-    // console holds no answer and the header says so.
-    await expect(page.locator('#hSession')).toHaveText('UNKNOWN');
-    await expect(page.locator('#hSession')).toHaveClass(/unknown/);
+    // #6: canonical market session shown in the header, distinct from feed liveness. It rides the
+    // beat: with no push here, it is not known.
+    await expect(page.locator('#hSession')).toHaveText('—');
+  });
+
+  test('the header shows the session the beat serves', async ({ page }) => {
+    await page.routeWebSocket(/\/ws$/, (ws) => {
+      ws.onMessage(() => ws.send(JSON.stringify({ type: 'feed', feed: null, rows: [], session: 'RTH' })));
+    });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#hSession')).toHaveText('RTH');
+    await expect(page.locator('#hSession')).toHaveClass(/rth/);
   });
 
   test('a levels change on the page socket reloads the heatmap, with no manual event dispatch', async ({ page }) => {
@@ -938,8 +944,8 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#hFeed')).toHaveText(/WAITING|OFFLINE/);
     await page.waitForTimeout(3500);
     await expect(page.locator('#hPx')).toHaveText('UNAVAILABLE');
-    // the daemon is down, so Schwab's /markets answer is not held: the session says UNKNOWN
-    await expect(page.locator('#hSession')).toHaveText('UNKNOWN');
+    // the push is down, so the session is not known
+    await expect(page.locator('#hSession')).toHaveText('—');
   });
 
   test('header paints the daemon price row the moment it arrives', async ({ page }) => {

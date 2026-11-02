@@ -201,7 +201,7 @@ test('the Gamma chart and the liquidity map carry the Trade Desk toolbar; a time
 function watchErrors(page) {
   const errs = [];
   page.on('pageerror', (e) => errs.push(e.message));
-  page.on('console', (m) => { if (m.type() === 'error' && !/WebSocket|EventSource|Failed to load resource/.test(m.text())) errs.push(m.text()); });
+  page.on('console', (m) => { if (m.type() === 'error' && !/WebSocket|Failed to load resource/.test(m.text())) errs.push(m.text()); });
   return errs;
 }
 

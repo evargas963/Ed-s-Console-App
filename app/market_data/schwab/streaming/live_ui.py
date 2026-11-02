@@ -64,11 +64,11 @@ class _Client:
         self.pending: set[str] = set()  # symbols changed since the last send
         self.identity: list[dict] | None = None  # the last subscribe's answer, not yet sent
         self.wake = asyncio.Event()
-        self.dropped = asyncio.Event()  # the beat gave up on it, or the daemon stopped
+        self.dropped = asyncio.Event()  # the beat gave up on it, or the program stopped
         self.page = push_changes.Client()  # the ticker it shows, for the change notices
 
 
-#: the server while the daemon runs (serve_live_ui)
+#: the server while the program runs (serve_live_ui)
 _serving = None
 
 
@@ -95,12 +95,13 @@ class LiveUiServer:
                 c.pending.add(ticker)
                 c.wake.set()
 
-    def beat(self) -> dict:
+    def beat(self) -> dict | None:
         """The daemon's whole status (Schwab socket, symbols held and refused per service, the
         watchlist, health), recorded in the plane, the one record of it, and sent with every
         beat."""
         hb = self.heartbeat_fn(self.clock())
-        lmp.record_feed_heartbeat(hb)
+        if hb is not None:
+            lmp.record_feed_heartbeat(hb)
         return hb
 
     # -- browser side -----------------------------------------------------------------
@@ -127,9 +128,8 @@ class LiveUiServer:
 
     async def _changes(self, c: _Client) -> None:
         while True:
-            kinds = await push_changes.next_changes(c.page, HEARTBEAT_SEC)
-            if kinds:
-                await self._send(c, {"type": "changes", "kinds": sorted(kinds)})
+            kinds = await push_changes.next_changes(c.page, None)
+            await self._send(c, {"type": "changes", "kinds": sorted(kinds)})
 
     async def _read(self, c: _Client) -> None:
         async for frame in c.ws.iter_text():
@@ -159,9 +159,11 @@ class LiveUiServer:
             c.pending = set(keys)  # snapshot: the current row for each, now
             c.wake.set()
             ticker = req.get("ticker")
-            push_changes.unsubscribe(c.page)
-            if isinstance(ticker, str) and ticker_storage_key(ticker):
-                push_changes.subscribe(ticker_storage_key(ticker), c.page)
+            key = ticker_storage_key(ticker) if isinstance(ticker, str) else ""
+            if key:
+                push_changes.subscribe(key, c.page)
+            else:
+                push_changes.unsubscribe(c.page)
 
     async def serve_client(self, ws) -> None:
         """One accepted page socket (page_socket), until it closes or is dropped."""
@@ -220,7 +222,7 @@ class LiveUiServer:
 
 
 async def page_socket(ws: WebSocket) -> None:
-    """The page's one socket, /ws on the program's port: refused while no daemon runs, so the
+    """The page's one socket, /ws on the program's port: refused outside the program, so the
     page's reconnect keeps its schedule."""
     if _serving is None:
         await ws.close()
