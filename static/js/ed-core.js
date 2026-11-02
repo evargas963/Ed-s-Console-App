@@ -475,8 +475,8 @@
   }
 
   // ================= watchlist: the one list, kept by the capture daemon =================
-  // The page holds the list as the console last served it (/api/watchlist); an add or a removal
-  // is the daemon's (POST / DELETE /api/watchlist), and its answer carries the new list.
+  // The page holds the list as the last beat carried it (read once at load: /api/watchlist); an
+  // add or a removal is the daemon's (POST / DELETE /api/watchlist), and its answer carries the new list.
   var _wl = [];
   function loadWL() { return _wl.slice(); }
   function wlFetch(url, opts) {
