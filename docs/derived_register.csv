@@ -47,7 +47,7 @@ book_stale,derived,app.options.order_flow.engine.compute_book_microstructure,Tru
 book_time_ct,schwab,schwab:NYSE_BOOK.NASDAQ_BOOK,Schwab's book time in Central Time.,
 book_time_ms,flag,schwab:NYSE_BOOK.NASDAQ_BOOK,"Schwab's book time, ms.",never read by static/js; otherwise schwab.
 breakEven,flag,schwab:/chains,Break-even price.,never read by static/js; otherwise schwab.
-bucket_sec,status,app.options.order_flow.history.book_heatmap_for_ticker,Seconds per time column of the book heatmap.,
+bucket_sec,derived,app.options.order_flow.history.book_heatmap_for_ticker,Seconds per time column of the book heatmap.,"The seconds a heatmap column spans, ours; Schwab sends no such layout."
 busiest,derived,terrain_engine.positioning_migration,The two strikes with the most session volume.,Schwab sends no ranking of strikes.
 busiest_vs_walls,derived,terrain_engine.positioning_migration,Where the busiest strikes sit against the walls.,Schwab sends no walls.
 by_distance,derived,server.levels_payload,Level ids ordered by distance from the live price.,Levels are ours.
@@ -550,7 +550,7 @@ weighted_strike_prior,flag,terrain_engine.positioning_migration,"Positive-gamma-
 weighted_strike_today,flag,terrain_engine.positioning_migration,"Positive-gamma-weighted strike, today.",never read by static/js; otherwise derived. Input to drift.
 weights_in_score,flag,confluence_composite.in_score_weights,"The preset's weights, 0 for the absent factors.",never read by static/js; otherwise derived. In docs/derived_register.md.
 window_label,status,server.DESK_LOOKBACK,Words for the event window.,
-window_start_ts_utc,derived,server._desk_window_start,Start of the event window.,"The start of the heatmap's window, ours; Schwab sends no window."
+window_start_ts_utc,derived,server._desk_window_start,Start of the event window.,"The start of the Trade Desk's event window, ours; Schwab sends none."
 zero_dte,flag,server.levels_payload,Rows pairing each regular level with its same-day price.,"Computes gamma and delta Schwab sends. Settled by operator decision 10, DATA_FLOW 6. Listed because the gate asks, and it needs a register row."
 zero_dte_gamma_share_pct,flag,math_exposure_core.compute_zero_dte_gamma_share,Share of |net GEX| from same-day expiries.,"Partial sum: skips strikes whose value is unknown, unlike terrain_engine.side_total and DATA_FLOW 3.4 ('never the sum of the rest'). Schwab sends no such share. Also never read by static/js."
 zone_class,flag,liquidity_models.zone_class_for_type,structure / trigger / value.,never read by static/js; otherwise derived. Zones are ours.
