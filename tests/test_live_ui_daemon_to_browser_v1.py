@@ -282,8 +282,8 @@ def test_a_page_is_refused_with_no_daemon_and_served_by_the_daemons_next_run():
                 stop = asyncio.Event()
                 run = asyncio.create_task(live_ui.serve_live_ui(stop, heartbeat_fn=_Feed()))
                 await asyncio.sleep(0)
-                await takes_a_beat(url)
-                page = await connect(url)
+                page = await connect(url, max_size=None)
+                await takes_a_beat(page)
                 stop.set()
                 await run
                 await asyncio.wait_for(page.wait_closed(), 5)

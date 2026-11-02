@@ -32,7 +32,7 @@ from calibration.complete_chain_capture import (
 from schwab_client import build_client_from_token
 from stream_spine import CaptureWriter, HealthRegistry, MessageBus, quote_msg
 from tests.capture_store import store_capture
-from tests.feed_live_helper import connect, page_socket
+from tests.feed_live_helper import connect, page_socket, reads_to_the_close
 from tests.real_chains import CRWD, MRVL, NFLX
 
 REPO = Path(__file__).resolve().parent.parent
@@ -289,7 +289,7 @@ def test_a_browser_that_stopped_reading_is_dropped_others_keep_beats_and_the_sto
         async with (
             page_socket() as url,
             connect(url, max_size=None) as reading,
-            connect(url, max_queue=1, max_size=None, close_timeout=1),
+            connect(url, max_queue=1, max_size=None, close_timeout=1) as stalled,
         ):
 
             async def read_all():
@@ -305,6 +305,7 @@ def test_a_browser_that_stopped_reading_is_dropped_others_keep_beats_and_the_sto
                 lambda: sum(t > dropped_at for t in beats) >= 4, 10 * live_ui.HEARTBEAT_SEC
             )
             failures = stats["beat_send_failures"]
+            await asyncio.wait_for(reads_to_the_close(stalled), 10)  # it can reconnect
             stop.set()
             await asyncio.wait_for(daemon_side, 5)
             reader.cancel()

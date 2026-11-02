@@ -31,7 +31,7 @@ import psutil
 import pytest
 
 import launch
-from tests.feed_live_helper import takes_a_beat
+from tests.feed_live_helper import connect, takes_a_beat
 
 REPO = Path(__file__).resolve().parent.parent
 windows_only = pytest.mark.skipif(
@@ -231,10 +231,15 @@ def test_the_program_is_one_process_and_the_stop_ends_the_daemon_before_the_loop
         SCHWAB_TOKEN_PATH=str(tmp_path / "missing_token.json"),
     )
     locks = (tmp_path / "one" / "runtime").rglob("stream_capture.lock")
+
+    async def stop_with_a_page_on() -> int:
+        async with connect(f"ws://127.0.0.1:{port}/ws", max_size=None) as page:
+            await asyncio.wait_for(takes_a_beat(page), 20)
+            launch.ctrl_break(pid)
+            return await asyncio.to_thread(window.wait, 60)
+
     try:
-        asyncio.run(asyncio.wait_for(takes_a_beat(f"ws://127.0.0.1:{port}/ws"), 20))
-        launch.ctrl_break(pid)
-        assert window.wait(timeout=60) == 0, "the program did not stop, or its window waits"
+        assert asyncio.run(stop_with_a_page_on()) == 0, "the program did not stop, or its window"
         assert list(locks) == []
     finally:
         window.kill()

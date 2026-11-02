@@ -16,7 +16,7 @@ from pathlib import Path
 import uvicorn
 from fastapi import FastAPI
 from websockets.asyncio.client import connect
-from websockets.exceptions import InvalidStatus
+from websockets.exceptions import ConnectionClosed, InvalidStatus
 
 import live_market_plane as lmp
 from app.market_data.schwab.streaming import live_ui
@@ -44,12 +44,20 @@ async def page_socket():
         await serving
 
 
-async def takes_a_beat(url: str) -> None:
-    """A page on the socket at `url` reads frames until the daemon's beat comes."""
-    async with connect(url, max_size=None) as page:
-        async for frame in page:
-            if json.loads(frame)["type"] == "feed":
-                return
+async def takes_a_beat(page) -> None:
+    """`page` reads frames until the daemon's beat comes."""
+    async for frame in page:
+        if json.loads(frame)["type"] == "feed":
+            return
+
+
+async def reads_to_the_close(page) -> None:
+    """`page` reads everything still on its way, until its connection closes."""
+    try:
+        while True:
+            await page.recv()
+    except ConnectionClosed:
+        return
 
 
 async def refused(url: str) -> bool:
