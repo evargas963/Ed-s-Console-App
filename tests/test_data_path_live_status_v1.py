@@ -272,7 +272,9 @@ def _all_held(now: float, *tickers: str) -> None:
 @pytest.mark.parametrize(
     "at, equities, options, why",
     [
-        (_et("2026-10-05", 8), True, False, "outside Schwab's option market hours"),  # Pre-Market
+        (_et("2026-10-05", 3), False, False, "outside Schwab's market hours"),  # before the day
+        (_et("2026-10-05", 4), True, True, None),  # the market day starts
+        (_et("2026-10-05", 8), True, True, None),  # Pre-Market
         (_et("2026-10-05", 11), True, True, None),  # RTH
         (_et("2026-10-05", 17), True, False, "outside Schwab's option market hours"),  # After-Hours
         (_et("2026-10-03", 12), False, False, "outside Schwab's market hours"),  # Saturday
@@ -359,7 +361,7 @@ def test_a_symbol_schwab_marks_closed_is_not_live_in_an_open_session():
         )
         at = _et("2026-10-19", 3)
         _all_held(at, "$SPX", "NVDA")
-        assert lmp.outage("NVDA", "LEVELONE_EQUITIES", at) == "Schwab marks NVDA Closed"
+        assert lmp.outage("NVDA", "LEVELONE_EQUITIES", at) == "outside Schwab's market hours"
         lmp.record_from_level_one_equity(
             "NVDA", nvda_normal["item"], received_ts=nvda_normal["ts_recv"]
         )

@@ -42,7 +42,7 @@ from schwab_client import (
     safe_get_quotes,
 )
 from stream_spine import CaptureWriter
-from time_et import ET, option_market_open, options_closed_at, record_markets, session
+from time_et import ET, option_quotes_open, options_closed_at, record_markets, session
 
 log = logging.getLogger("chain_history")
 
@@ -424,7 +424,7 @@ class ChainSweep:
                 ticker not in self._fetched
                 or datetime.fromtimestamp(self._fetched[ticker], ET).date() < now.date()
             )
-        if option_market_open(now) is not False:
+        if option_quotes_open(now) is not False:
             return True
         closed = options_closed_at(now)
         return closed is not None and (

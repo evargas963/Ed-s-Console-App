@@ -12,7 +12,7 @@ from typing import Any
 
 from instrument_identity import ticker_storage_key
 from numeric_contract import float_finite_or_none, schwab_count, schwab_number
-from time_et import CLOSED, ET, UNKNOWN, option_market_open, session_label, stock_day_open
+from time_et import CLOSED, ET, UNKNOWN, option_quotes_open, session_label
 
 #: the services the capture daemon streams the option rule's contracts on
 #: (capture.Daemon.pick_options): they trade only while an option market is open
@@ -318,19 +318,19 @@ def not_trading(
     symbol: str | None, service: str, now: float, product: str | None = None
 ) -> str | None:
     """Why `symbol`'s values on Schwab `service` are not changing at `now`, or None while its
-    market trades. An option contract: outside its own option market's regular window (`product`,
-    EQO or IND: time_et.option_close_product of the ticker whose chain lists it), or that market
-    not known. A stock or an index: today's last /markets window ended, or today no market day;
-    Schwab's own SECURITY_STATUS for it Closed or Halted; or no quote from Schwab dated today.
-    Either: that /markets answer not held."""
+    market trades. Any value: the market day not started or ended (time_et.session_label), or
+    that /markets answer not held. An option contract: its option market closed for today
+    (`product`, EQO or IND: time_et.option_close_product of the ticker whose chain lists it), or
+    that market not known. A stock or an index: Schwab's own SECURITY_STATUS for it Closed or
+    Halted, or no quote from Schwab dated today."""
     at = datetime.fromtimestamp(now, ET)
     session = session_label(at)
     if session == UNKNOWN:
         return "the market session is unknown"
-    if not stock_day_open(at) or (session == CLOSED and service in OPTION_SERVICES):
+    if session == CLOSED:
         return "outside Schwab's market hours"
     if service in OPTION_SERVICES:
-        return _OPTION_MARKET_WHY[None if product is None else option_market_open(at, product)]
+        return _OPTION_MARKET_WHY[None if product is None else option_quotes_open(at, product)]
     t = ticker_storage_key(symbol)
     row = get_quote(t) if t else None
     status = row.get("security_status") if row is not None else None

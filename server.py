@@ -110,6 +110,7 @@ from time_et import (
     now_et,
     option_close_product,
     option_market_open,
+    option_quotes_open,
     options_closed_at,
     record_markets,
     session,
@@ -901,7 +902,7 @@ def _levels_state(
         return LEVELS_STALE, "no terrain snapshot has been computed yet" + sep
     at = datetime.fromtimestamp(now, ET)
     product = option_close_product(ticker)
-    market_open = option_market_open(at, product)
+    market_open = option_quotes_open(at, product)
     if market_open is None:
         return lmp.NOT_LIVE, "the market session is unknown" + sep
     if not market_open:
@@ -1198,7 +1199,7 @@ def restamp_open_surfaces(now: float) -> None:
     key = (
         socket_open,
         held_now,
-        tuple(option_market_open(at, p) for p in (EQUITY_OPTIONS, INDEX_OPTIONS)),
+        tuple(option_quotes_open(at, p) for p in (EQUITY_OPTIONS, INDEX_OPTIONS)),
     )
     if key == _last_feed_stamp:
         return

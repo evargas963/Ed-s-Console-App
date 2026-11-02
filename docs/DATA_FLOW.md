@@ -161,11 +161,14 @@ from Schwab to the screen (daemon, console, page), are these:
   (`live_market_plane.live_state`). Its market trades on a day Schwab's /markets answer gave
   windows for (an option contract only inside its own option market's regular window, the market of the ticker whose chain lists it: stock options to 16:00 ET,
   index-close options to 16:15; with no chain held that lists it, its market is not known and it
-  reads NOT LIVE), while Schwab's SECURITY_STATUS for it is not Closed or Halted. A stock's day
-  runs from Schwab's own Normal (04:00 ET, before the 07:00 pre-market /markets sends) until
-  today's last /markets window ends, with a Schwab time dated today, which no message carries
-  before an index's open (operator 2026-11-02: `time_et.stock_day_open`). An option contract whose quotes Schwab streams from 07:00 reads NOT LIVE before the 09:30 option window, "outside Schwab's option market
-  hours". When it stops
+  reads NOT LIVE), while Schwab's SECURITY_STATUS for it is not Closed or Halted. The market day
+  runs from 04:00 ET, when Schwab flips stocks to Normal and before the 07:00 pre-market /markets
+  sends, until today's last /markets window ends (operator 2026-11-02:
+  `time_et.session_label`, the one rule). A stock needs a Schwab time dated today, which no message
+  carries before an index's open. An option contract, and the chain sweep and the levels, run from
+  04:00 to its option market's close (`time_et.option_quotes_open`), while
+  `time_et.option_market_open` stays the option market's own window, which decides the close
+  values and what a pre-market zero does not replace. When it stops
   updating, for any reason (feed down, market closed, an input missing), the last value stands,
   marked not live with its time and its served age, and every value computed from it is marked not
   live too. While the daemon's push to the page has stopped, no age is served and the page computes

@@ -13,11 +13,14 @@ unknown. Past the year Schwab answers, a contract's expiry runs to its expiratio
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, time
 from zoneinfo import ZoneInfo
 
 ET = ZoneInfo("America/New_York")
 CT = ZoneInfo("America/Chicago")
+#: the market day's start, ET (operator 2026-11-02): Schwab flips stocks to Normal then, and its
+#: /markets answer names no window before 07:00
+MARKET_DAY_OPENS = time(4)
 
 
 def ct_label(ts_utc: float) -> str:
@@ -154,17 +157,32 @@ def session(day: str) -> Session | None:
 
 
 def session_label(now: datetime) -> str:
-    """The stock market's session at `now`: PRE_MARKET, RTH or AFTER_HOURS inside the window
-    Schwab sent for today, CLOSED outside them (and on a day Schwab says is closed), UNKNOWN when
-    Schwab's answer for today is not held. A label: what Schwab streams is shown and recorded
-    whatever it says."""
-    s = session(now.astimezone(ET).date().isoformat())
+    """The stock market's session at `now`, the one answer to whether the market day has started:
+    PRE_MARKET from MARKET_DAY_OPENS, then RTH and AFTER_HOURS inside the windows Schwab sent for
+    today, CLOSED outside them (and on a day Schwab says is closed), UNKNOWN when Schwab's answer
+    for today is not held. A label: what Schwab streams is shown and recorded whatever it says."""
+    at = now.astimezone(ET)
+    s = session(at.date().isoformat())
     if s is None:
         return UNKNOWN
     for state, windows in ((PRE_MARKET, s.pre), (RTH, s.regular), (AFTER_HOURS, s.post)):
         if any(start <= now < end for start, end in windows):
             return state
-    return CLOSED
+    before = [start for start, _end in (*s.pre, *s.regular, *s.post)]
+    return PRE_MARKET if before and at.time() >= MARKET_DAY_OPENS and now < min(before) else CLOSED
+
+
+def option_quotes_open(now: datetime, product: str | None = None) -> bool | None:
+    """Whether the market day has started (session_label) and option market `product`, or any when
+    none is named, has not closed for today: what the chain sweep and a live mark follow.
+    option_market_open stays the option market's own window, which decides the close values."""
+    session_now = session_label(now)
+    if session_now == UNKNOWN:
+        return None
+    s = session(now.astimezone(ET).date().isoformat())
+    return session_now != CLOSED and any(
+        now < end for p, windows in s.options if product in (None, p) for _start, end in windows
+    )
 
 
 def option_market_open(now: datetime, product: str | None = None) -> bool | None:
@@ -212,14 +230,6 @@ def valuation_instant(now: datetime, product: str = EQUITY_OPTIONS) -> datetime:
         if closed is not None and closed.astimezone(ET).date() == now.astimezone(ET).date()
         else now
     )
-
-
-def stock_day_open(now: datetime) -> bool:
-    """Whether Schwab's /markets answer held for today gave windows and the last has not ended at
-    `now`. The answer's pre-market opens at 07:00 and Schwab streams stocks from 04:00, so a stock's
-    day starts with what Schwab sends (live_market_plane.not_trading)."""
-    s = session(now.astimezone(ET).date().isoformat())
-    return s is not None and any(now < end for _start, end in (*s.pre, *s.regular, *s.post))
 
 
 def closed_since(now: datetime) -> datetime | None:
