@@ -85,9 +85,7 @@ def test_the_flow_panel_says_whether_the_daemon_streams_the_contract():
     """SUBSCRIBED while the daemon holds the contract on LEVELONE_OPTIONS; NOT STREAMED when it
     does not, and when its status is gone (a daemon that stopped reporting holds nothing). A
     contract of SPY's 2026-10-07 0DTE chain, served at that chain's capture (12:32 ET, the option
-    market open). The contract's market is that of the chain that lists it: with no chain held that
-    lists it, its market is not known and it is not live; once the levels producer publishes SPY's
-    chain, SPY's."""
+    market open)."""
     contract, at = SPY_0DTE.chain[0]["symbol"], SPY_0DTE.now.timestamp()
 
     def holds(*services: str) -> None:
@@ -102,7 +100,6 @@ def test_the_flow_panel_says_whether_the_daemon_streams_the_contract():
         server._terrain_cache.pop("SPY", None)
     try:
         holds("LEVELONE_OPTIONS", "OPTIONS_BOOK")
-        unlisted = served()
         server._publish_levels(
             "SPY",
             captures=[
@@ -127,10 +124,6 @@ def test_the_flow_panel_says_whether_the_daemon_streams_the_contract():
         lmp.record_feed_down()
         with server._terrain_cache_lock:
             server._terrain_cache.pop("SPY", None)
-    assert (unlisted["top_feed_label"], unlisted["top_outage"]) == (
-        "NOT LIVE",
-        "the contract's option market is not known",
-    )
     assert held["subscription_state"] == "SUBSCRIBED"
     assert (held["feed_health"]["l1"]["state"], held["feed_health"]["book"]["state"]) == (
         "LIVE",

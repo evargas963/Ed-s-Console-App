@@ -99,18 +99,18 @@ from terrain_engine import (
 )
 from terrain_read import LEVEL_ABOVE, LEVEL_BELOW, crossed, from_spot_text, level_side, within
 from time_et import (
-    EQUITY_OPTIONS,
     ET,
-    INDEX_OPTIONS,
     age_text,
     ct_label,
     et_date_str_from_ts_utc,
     last_open,
+    market_day_start,
     market_session_date,
     now_et,
     option_close_product,
     option_market_open,
     options_closed_at,
+    options_open,
     record_markets,
     session,
     session_label,
@@ -858,9 +858,10 @@ def terrain_staleness(
     computed_ts_utc: float | None, ticker: str | None = None, *, now: float
 ) -> dict:
     """The levels' state at `now`, THE levels verdict every screen shows (`levels_state`): LIVE
-    while the ticker's own option market (time_et.option_close_product: stock options close at
-    16:00 ET, index-close options at 16:15) is open and its chain current; CLOSE once that market
-    has closed and a chain fetched after its close stands, however old (docs/DATA_FLOW.md §2 D5);
+    from the market day's start (time_et.options_open) until the ticker's own option market closes
+    (time_et.option_close_product: stock options at 16:00 ET, index-close options at 16:15) with
+    its chain current; CLOSE once that market has closed, and through the day's first round, with
+    a chain fetched after its close, however old (docs/DATA_FLOW.md §2 D5);
     STALE, with WHY, when the chain is overdue or the close values were never fetched; NOT LIVE
     when Schwab's /markets answer for today is not held. The daemon's last answer for the ticker's
     chain (a failed fetch, an incomplete delivery) outranks the age, and its refused sign-in
@@ -901,17 +902,9 @@ def _levels_state(
         return LEVELS_STALE, "no terrain snapshot has been computed yet" + sep
     at = datetime.fromtimestamp(now, ET)
     product = option_close_product(ticker)
-    market_open = option_market_open(at, product)
+    market_open = options_open(at)
     if market_open is None:
         return lmp.NOT_LIVE, "the market session is unknown" + sep
-    if not market_open:
-        closed = options_closed_at(at, product)
-        if closed is None or float(computed_ts_utc) < closed.timestamp():
-            return (
-                LEVELS_STALE,
-                "this ticker's options are closed and its close values have not been fetched" + sep,
-            )
-        return LEVELS_CLOSE, ""
     age = now - float(computed_ts_utc)
     # judged against the round the daemon's chain sweep delivers (every watchlist ticker once)
     round_sec = status.get("chain_round_sec") if status is not None else None
@@ -923,6 +916,19 @@ def _levels_state(
         if round_sec is None
         else max(float(TERRAIN_STALE_AFTER_SEC), 2.0 * float(round_sec))
     )
+    closed = options_closed_at(at, product)
+    started = market_day_start(at).timestamp()
+    if (
+        not market_open
+        or (closed is not None and closed.date() == at.date())  # its own market has closed today
+        or (float(computed_ts_utc) < started and now - started <= stale_after)  # the first round
+    ):
+        if closed is None or float(computed_ts_utc) < closed.timestamp():
+            return (
+                LEVELS_STALE,
+                "this ticker's options are closed and its close values have not been fetched" + sep,
+            )
+        return LEVELS_CLOSE, ""
     if age <= stale_after:
         return lmp.LIVE, ""
     if waiting:
@@ -1198,7 +1204,7 @@ def restamp_open_surfaces(now: float) -> None:
     key = (
         socket_open,
         held_now,
-        tuple(option_market_open(at, p) for p in (EQUITY_OPTIONS, INDEX_OPTIONS)),
+        options_open(at),
     )
     if key == _last_feed_stamp:
         return
@@ -1225,9 +1231,7 @@ def restamp_open_surfaces(now: float) -> None:
                 if greeks:
                     streamed[sym] = greeks
             held = set(symbols) & set(held_now)
-            live = lmp.live_symbols(
-                feed, streamed, "LEVELONE_OPTIONS", now, option_close_product(tk)
-            )
+            live = lmp.live_symbols(feed, streamed, "LEVELONE_OPTIONS", now)
             _stamp_gamma_surface_cell_stream_state(surface, streamed, live, held, now)
             surface["surface_seq"] = _next_gamma_surface_seq(tk)
             bumped.append(tk)
@@ -1605,7 +1609,7 @@ def _publish_levels(
     # one read of the heartbeat: pricing and the cell stamp share it
     feed = lmp.feed_now(at.timestamp())
     streamed = _streamed_greeks_for_ticker(listed, at.timestamp(), feed)
-    feed_live = lmp.live_symbols(feed, streamed, "LEVELONE_OPTIONS", at.timestamp(), product)
+    feed_live = lmp.live_symbols(feed, streamed, "LEVELONE_OPTIONS", at.timestamp())
     held = set(_held_option_symbols_for_ticker(listed, at.timestamp(), feed))
     # each field the newest Schwab sent: the last streamed value received after this chain, else
     # the chain's. The cell stamp says whether that stream is live.
@@ -3207,16 +3211,12 @@ def api_order_flow_options_microstructure(contract: str = Query(...)):
 
 def options_microstructure(c: str, now: float) -> dict:
     """The Flow panel's payload for contract `c` at `now` (/api/order-flow/options-microstructure),
-    judged live by its own option market: that of the ticker whose chain lists it
-    (_contract_ticker); a contract in no chain the console holds has no known market and is not
-    live."""
-    tk = _contract_ticker(ticker_storage_key(c))
-    product = option_close_product(tk) if tk is not None else None
-    payload = options_live_payload(ticker_storage_key(c), now, product)
+    judged live by the one live rule."""
+    payload = options_live_payload(ticker_storage_key(c), now)
     payload["contract"] = c
     payload["put_call"] = TAPE.put_call(c)
     # whether the daemon streams this contract (the option rule) and is receiving it
-    payload["streaming_plane"] = get_option_contract_streaming_diagnostics(c, now, product)
+    payload["streaming_plane"] = get_option_contract_streaming_diagnostics(c, now)
     _stamp_book_times(payload)
     return payload
 

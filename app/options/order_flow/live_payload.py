@@ -42,9 +42,8 @@ def flow_block(of: dict[str, Any]) -> dict[str, Any]:
     return flow
 
 
-def options_live_payload(contract: str, now: float, product: str | None) -> dict[str, Any]:
-    """Book microstructure + labeled PROXY flow for one option contract at `now`, judged live by
-    its own option market `product` (EQO or IND; None: not known)."""
+def options_live_payload(contract: str, now: float) -> dict[str, Any]:
+    """Book microstructure + labeled PROXY flow for one option contract at `now`."""
     items = get_content_for_symbol(contract)
     # the contract's top of book stands when it is not live; top_outage says why and
     # top_feed_label is the page's word for it. book_live is whether the book feed delivers now
@@ -52,12 +51,12 @@ def options_live_payload(contract: str, now: float, product: str | None) -> dict
     # QUOTE_TIME_MILLIS stays on the top; the book ages from that clock.
     top = option_top(contract)
     quote_ms = top.get("quote_time_ms") if isinstance(top, dict) else None
-    top_label, top_outage = lmp.live_state(contract, "LEVELONE_OPTIONS", now, product)
+    top_label, top_outage = lmp.live_state(contract, "LEVELONE_OPTIONS", now)
     of = OrderFlowEngine().compute(
         {
             "content": items,
             "top": top,
-            "book_live": lmp.feed_live_for(contract, "OPTIONS_BOOK", now, product),
+            "book_live": lmp.feed_live_for(contract, "OPTIONS_BOOK", now),
             "exchange_quote_ts": quote_ms / 1000.0 if quote_ms is not None else None,
         },
         now=now,

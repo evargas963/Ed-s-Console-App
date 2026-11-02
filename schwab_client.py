@@ -66,7 +66,8 @@ def _resolve_token_path(token_path: str) -> str:
 TOKEN_REPLACE_ATTEMPTS = 5
 #: the longest a writer of the token file waits for another to finish, in seconds
 TOKEN_LOCK_WAIT_SEC = 10
-#: the session's one connection, kept through a pause (httpx closes an idle one after 5 s)
+#: the session's one connection, kept through a pause (httpx closes an idle one after 5 s): only
+#: Schwab or the network ends it, and then the next request opens another (docs/DATA_FLOW.md §1)
 ONE_CONNECTION = httpx.Limits(max_connections=1, max_keepalive_connections=1, keepalive_expiry=None)
 
 

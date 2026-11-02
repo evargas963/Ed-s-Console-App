@@ -17,7 +17,6 @@ import pytest
 import stream_spine as ss
 from app.market_data.schwab.streaming import capture as cap
 from tests.real_chains import TSLA
-from time_et import option_close_product
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -95,7 +94,6 @@ def test_one_live_rule_every_reader_agrees_and_all_fail_closed_at_one_limit():
     from tests.feed_live_helper import RTH_INSTANT
 
     a, b = TSLA.chain[0]["symbol"], TSLA.chain[1]["symbol"]
-    product = option_close_product(TSLA.ticker)
     status = {
         "schwab_socket_open": True,
         "health": {"OPTIONS_BOOK": {"age_sec": 45.0}},
@@ -105,12 +103,12 @@ def test_one_live_rule_every_reader_agrees_and_all_fail_closed_at_one_limit():
     now = RTH_INSTANT
 
     def diag(sym):  # the served option-contract diagnostics for `sym`
-        return ofs.get_option_contract_streaming_diagnostics(sym, now, product)
+        return ofs.get_option_contract_streaming_diagnostics(sym, now)
 
     def readers():
         return (
             lmp.feed_live_for("MU", "LEVELONE_EQUITIES", now),
-            lmp.feed_live_for(a, "LEVELONE_OPTIONS", now, product),
+            lmp.feed_live_for(a, "LEVELONE_OPTIONS", now),
             diag(a)["feed_health"]["book"]["state"],
             diag(b)["subscription_state"],
         )
@@ -123,7 +121,7 @@ def test_one_live_rule_every_reader_agrees_and_all_fail_closed_at_one_limit():
         live, book_age, b_book = (
             readers(),
             diag(a)["feed_health"]["book"]["age_sec"],
-            lmp.feed_live_for(b, "OPTIONS_BOOK", now, product),
+            lmp.feed_live_for(b, "OPTIONS_BOOK", now),
         )
         lmp.record_feed_heartbeat({**status, "ts": now - limit - 0.5})
         late = readers()
