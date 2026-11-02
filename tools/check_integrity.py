@@ -47,9 +47,10 @@ CALLED = re.compile(r"(\w+)\(")
 JS_TEST = re.compile(r"""\btest(?:\.\w+)?\(\s*(['"`])(.*?)(?<!\\)\1""", re.S)
 JS_EXPECT = re.compile(r"\bexpect(?:\.\w+)?\([^;]*;")
 REVIEW = re.compile(r"^## Review[ \t]*$(.*?)(?=^## |\Z)", re.M | re.S)
-COMMIT = re.compile(r"^Commit:[ \t]*(\S+)[ \t]*$", re.M)
-VERDICT = re.compile(r"^Verdict:[ \t]*(\S+)[ \t]*$", re.M)
-EVIDENCE = re.compile(r"^Evidence:[ \t]*\S", re.M)
+# bold or a trailing word does not take a line out of the record
+COMMIT = re.compile(r"^[^\w\n]*Commit[^\w\n]*(.*)$", re.M | re.I)
+VERDICT = re.compile(r"^[^\w\n]*Verdict[^\w\n]*(.*)$", re.M | re.I)
+EVIDENCE = re.compile(r"^[^\w\n]*Evidence[^\w\n]*\w", re.M | re.I)
 #: the head's own attributes and drivers do not decide what the diff shows
 DIFF = ("diff", "-U0", "--text", "--no-ext-diff", "--no-textconv")
 
@@ -62,16 +63,12 @@ class ToolError(Exception):
 def _git(root: Path, *args: str) -> str:
     try:
         done = subprocess.run(
-            ["git", "-c", "core.quotePath=false", *args],
-            cwd=root,
-            check=True,
-            capture_output=True,
-            encoding="utf-8",
-            errors="replace",  # --text prints a binary file's bytes
+            ["git", "-c", "core.quotePath=false", *args], cwd=root, check=True, capture_output=True
         )
     except (subprocess.CalledProcessError, FileNotFoundError) as e:
         raise ToolError(" ".join(args), e) from e
-    return done.stdout
+    # bytes: text mode would break a line at a bare CR, and --text prints a binary file's bytes
+    return done.stdout.decode("utf-8", "replace")
 
 
 def changed(root: Path, base: str) -> list[str]:
@@ -195,9 +192,9 @@ def review_violations(body: str, head_sha: str, files: list[str]) -> list[str]:
     if not commits and not verdicts:
         return [f"no ## Review record, and the change touches {governing[0]}"] if governing else []
     out = []
-    if not commits or set(commits) != {head_sha}:
+    if {c.strip(" *`") for c in commits} != {head_sha}:
         out.append(f"the ## Review record does not name the head {head_sha}")
-    if not verdicts or set(verdicts) != {"PASS"}:
+    if {v.strip(" *`") for v in verdicts} != {"PASS"}:
         out.append("the ## Review record's Verdict is not PASS")
     if not EVIDENCE.search(section.group(1)):
         out.append("the ## Review record gives no Evidence")

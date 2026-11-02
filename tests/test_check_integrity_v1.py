@@ -141,6 +141,21 @@ def test_two_verdicts_are_both_read(repo):
     assert _found(repo, record) == ["the ## Review record's Verdict is not PASS"]
 
 
+def test_a_marker_after_a_bare_carriage_return_is_read(repo):
+    (repo / "page.js").write_bytes(b"var a = 1;\rtest.skip('x', run);\n")
+    found = _found(repo)
+    assert len(found) == 1 and "marker added" in found[0]
+
+
+@pytest.mark.parametrize(
+    "record", ["Verdict: FAIL, a guard at x", "**Verdict:** FAIL", "verdict - FAIL"]
+)
+def test_a_fail_in_another_shape_is_read(repo, record):
+    _write(repo, "product.py", "VALUE = 2\n")
+    found = _found(repo, f"## Review\nCommit: {HEAD}\n{record}\nEvidence: read.\n")
+    assert found == ["the ## Review record's Verdict is not PASS"]
+
+
 def test_a_record_with_no_evidence_is_refused(repo):
     _write(repo, "AGENTS.md", "# rules, changed\n")
     found = _found(repo, f"## Review\nCommit: {HEAD}\nVerdict: PASS\nEvidence:\n")
