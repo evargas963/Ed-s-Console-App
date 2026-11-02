@@ -26,7 +26,8 @@ End-to-end test:
 <!-- after deploy: production commit, restart, what was looked at on real data -->
 
 ## Review
-<!-- AGENTS.md rule 14, from a session that did not write this change, renewed on every push -->
-Commit:
-Verdict:
-Evidence:
+<!-- AGENTS.md rule 14, from a session that did not write this change, renewed on every push:
+Commit: <the head>
+Verdict: PASS or FAIL
+Evidence: <what was read>
+-->

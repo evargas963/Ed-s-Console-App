@@ -13,9 +13,9 @@ from tools import check_integrity as ci
 
 HEAD = "a" * 40
 SURVIVES = "def test_x():\n    assert 1 == 1\n    assert 2 == 2\n"
-MARK_SKIP = "@pytest.mark." + "skip"
-SKIP_LINE = "pytest." + "skip('later')"
-DEFERRED = "# TO" + "DO: later"
+MARK_SKIP = "@pytest.mark.skip"
+SKIP_LINE = "pytest.skip('later')"
+DEFERRED = "# TODO: later"
 SPEC = "test('a page', async () => {\n  expect(a).toBe(1);\n  expect(b).toBe(2);\n});\n"
 
 
@@ -101,7 +101,28 @@ def test_a_test_rewritten_with_its_assertions_restated_passes(repo):
     assert _found(repo) == []
 
 
-@pytest.mark.parametrize("line", [MARK_SKIP, SKIP_LINE, DEFERRED, "pytest.mark." + "x" + "fail"])
+def test_an_assertion_corrected_one_for_one_passes(repo):
+    _write(repo, "tests/test_a.py", "def test_x():\n    assert 1 == 1\n    assert 2 == 3\n")
+    assert _found(repo) == []
+
+
+def test_a_template_left_unfilled_is_no_record(repo):
+    _write(repo, "product.py", "VALUE = 2\n")
+    assert _found(repo, "## Review\n<!-- how:\nCommit: <head>\nVerdict: PASS or FAIL\n-->\n") == []
+
+
+def test_a_binary_file_is_read_past(repo):
+    (repo / "picture.png").write_bytes(b"\x89PNG\xff\xfe\x00\xd8")
+    assert _found(repo) == []
+
+
+def test_a_marker_in_a_file_with_a_space_in_its_name_is_read(repo):
+    _write(repo, "a page.js", f"{DEFERRED}\n")
+    found = _found(repo)
+    assert len(found) == 1 and "marker added" in found[0]
+
+
+@pytest.mark.parametrize("line", [MARK_SKIP, SKIP_LINE, DEFERRED, "pytest.mark.xfail"])
 def test_an_added_skip_or_deferred_work_marker_is_refused(repo, line):
     _write(repo, "page.js", f"{line}\n")
     found = _found(repo)

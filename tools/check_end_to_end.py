@@ -70,11 +70,11 @@ class ToolError(Exception):
     pass
 
 
-def _git(root: Path, *args: str) -> str:
+def _git(root: Path, *args: str, errors: str = "strict") -> str:
     try:
         return subprocess.run(
             ["git", *args], cwd=root, capture_output=True, check=True
-        ).stdout.decode("utf-8")
+        ).stdout.decode("utf-8", errors)
     except (subprocess.CalledProcessError, FileNotFoundError, UnicodeDecodeError) as e:
         raise ToolError(f"git {' '.join(args)} failed: {e}") from e
 
@@ -129,6 +129,7 @@ def pr_added_lines(root: Path, base: str) -> dict[str, set[int]]:
         "--dst-prefix=b/",
         "--diff-filter=AMRT",
         f"{base}...HEAD",
+        errors="replace",  # --text prints a binary file's bytes; pr_source reads what is judged
     ).split("\n"):
         if line.startswith("diff --git "):
             path, header = None, True

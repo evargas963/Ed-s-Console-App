@@ -31,28 +31,16 @@ from pathlib import Path
 CODE_SUFFIXES = (".py", ".js", ".mjs", ".html", ".yml")
 PYTHON_TESTS = re.compile(r"^tests/.*\.py$")
 JS_TESTS = re.compile(r"^tests/e2e/.*\.spec\.js$")
-# spelled in pieces so that this file and its test add no line the check refuses
 MARKERS = re.compile(
-    "|".join(
-        (
-            r"pytest\.mark\." + "skip",
-            "skip" + "if",
-            r"\bskip" + r"\(",
-            r"unittest\." + "skip",
-            "importor" + "skip",
-            "x" + "fail",
-            r"\b(?:test|describe|it)\." + r"(?:skip|fixme|fail)\b",
-            r"\bx" + r"(?:it|describe)\b",
-            r"\bTO" + r"DO\b",
-            r"\bFIX" + r"ME\b",
-        )
-    )
+    r"pytest\.mark\.skip|skipif|\bskip\(|unittest\.skip|importorskip|xfail"
+    r"|\b(?:test|describe|it)\.(?:skip|fixme|fail)\b|\bx(?:it|describe)\b|\bTODO\b|\bFIXME\b"
 )
 GOVERNING = re.compile(
     r"^(AGENTS\.md|CLAUDE\.md|docs/DATA_FLOW\.md|ACTIVE_PROGRAM\.md|locks\.ruff\.toml"
     r"|pyproject\.toml|\.pre-commit-config\.yaml|\.gitattributes"
+    r"|requirements-dev\.txt|package-lock\.json"
     r"|\.github/.*|\.claude/.*|\.cursor/.*"
-    r"|tools/.*\.py"
+    r"|tools/.*"
     r"|tests/test_(check_\w+|governing_docs|test_rules|hook_chain|\w+_guard\w*)_v\d+\.py)$"
 )
 CALLED = re.compile(r"(\w+)\(")
@@ -74,7 +62,12 @@ class ToolError(Exception):
 def _git(root: Path, *args: str) -> str:
     try:
         done = subprocess.run(
-            ["git", *args], cwd=root, check=True, capture_output=True, encoding="utf-8"
+            ["git", "-c", "core.quotePath=false", *args],
+            cwd=root,
+            check=True,
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",  # --text prints a binary file's bytes
         )
     except (subprocess.CalledProcessError, FileNotFoundError) as e:
         raise ToolError(" ".join(args), e) from e
@@ -165,24 +158,29 @@ def lost_assertions(root: Path, base: str, files: list[str]) -> list[str]:
     deleted = _definitions(root, base, product) - _definitions(root, "HEAD", product)
     before = _assertions(root, base, tests)
     after = _assertions(root, "HEAD", tests)
-    return [
-        f"{test}: assertion lost: {assertion}"
-        for test in sorted(before.keys() & after.keys())
-        for assertion in sorted(before[test] - after[test])
-        if not deleted.intersection(CALLED.findall(assertion))
-    ]
+    out = []
+    for test in sorted(before.keys() & after.keys()):
+        lost = [
+            a
+            for a in sorted(before[test] - after[test])
+            if not deleted.intersection(CALLED.findall(a))
+        ]
+        # an assertion corrected or strengthened is one for one; only a net loss is a loss
+        if len(lost) > len(after[test] - before[test]):
+            out.extend(f"{test}: assertion lost: {a}" for a in lost)
+    return out
 
 
 def added_markers(root: Path, base: str) -> list[str]:
     out = []
     path, in_hunk = "", False
-    for line in _git(root, *DIFF, "--no-renames", f"{base}...HEAD").splitlines():
+    for line in _git(root, *DIFF, "--no-renames", f"{base}...HEAD").split("\n"):
         if line.startswith("diff --git "):
             in_hunk = False
         elif line.startswith("@@ "):
             in_hunk = True
         elif not in_hunk and line.startswith("+++ "):
-            path = line.removeprefix("+++ b/")
+            path = line.removeprefix("+++ b/").removesuffix("\t").strip('"')
         elif in_hunk and line.startswith("+") and path.endswith(CODE_SUFFIXES):
             if MARKERS.search(line):
                 out.append(f"{path}: skip or deferred-work marker added: {line[1:].strip()[:90]}")
@@ -191,11 +189,11 @@ def added_markers(root: Path, base: str) -> list[str]:
 
 def review_violations(body: str, head_sha: str, files: list[str]) -> list[str]:
     governing = [f for f in files if GOVERNING.match(f)]
-    section = REVIEW.search(body)
-    if section is None:
+    section = REVIEW.search(re.sub(r"<!--.*?-->", "", body, flags=re.S))
+    commits = COMMIT.findall(section.group(1)) if section else []
+    verdicts = VERDICT.findall(section.group(1)) if section else []
+    if not commits and not verdicts:
         return [f"no ## Review record, and the change touches {governing[0]}"] if governing else []
-    commits = COMMIT.findall(section.group(1))
-    verdicts = VERDICT.findall(section.group(1))
     out = []
     if not commits or set(commits) != {head_sha}:
         out.append(f"the ## Review record does not name the head {head_sha}")

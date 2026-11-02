@@ -679,12 +679,22 @@ def test_a_ruff_in_the_change_does_not_run_in_the_judge(tmp_path):
     ruff would be head code inside the judge."""
     root = _repo(tmp_path, BASE)
     (root / "ruff.py").write_text("raise SystemExit('ran the head')\n", encoding="utf-8")
-    settings = cee.fix_safety(root, root / "pyproject.toml")
-    assert settings is None or settings != {}
-    stray = subprocess.run(
-        [sys.executable, "-P", "-m", "ruff", "--version"], cwd=root, capture_output=True, text=True
+    (root / "pyproject.toml").write_text("", encoding="utf-8")
+    assert cee.fix_safety(root, root / "pyproject.toml") is not None
+    assert cee.tool_fixed(root, "server.py", "X=1\n") == "X = 1\n"
+
+
+def test_a_binary_file_in_the_change_is_no_failure_of_the_check(tmp_path):
+    root = _repo(tmp_path, BASE)
+    (root / "picture.png").write_bytes(b"\x89PNG\xff\xfe\x00\xd8")
+    subprocess.run(["git", "add", "."], cwd=root, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "x", "--no-verify"],
+        cwd=root,
+        check=True,
+        capture_output=True,
     )
-    assert "ran the head" not in stray.stderr
+    assert "picture.png" in cee.pr_added_lines(root, "main")
 
 
 def test_an_attribute_in_the_change_does_not_hide_its_lines(tmp_path):
