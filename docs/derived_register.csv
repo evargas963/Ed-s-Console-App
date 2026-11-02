@@ -9,7 +9,7 @@ adjusted_deliverable_symbols,schwab,schwab:/chains,Symbols of this expiry's cont
 age_sec,flag,server.levels_payload,"Seconds since a level's as-of time, or since a contract last streamed.",never read by static/js; otherwise status.
 ages,status,app.options.order_flow.engine.compute_book_microstructure,"Container: book_age_sec, quote_age_sec, book_stale.",
 ages.book_age_sec,derived,app.options.order_flow.engine.compute_book_microstructure,now minus Schwab BOOK_TIME.,Schwab sends the time; an age depends on when it is read.
-ages.book_stale,status,app.options.order_flow.engine.compute_book_microstructure,True when the book's feed is not live. None without a book age.,
+ages.book_stale,derived,app.options.order_flow.engine.compute_book_microstructure,True when the book's feed is not live. None without a book age.,Our judgment of a value's freshness or source; Schwab sends no such verdict.
 ages.quote_age_sec,derived,app.options.order_flow.engine.compute_book_microstructure,now minus Schwab QUOTE_TIME_MILLIS.,Schwab sends the time; an age depends on when it is read.
 all,status,terrain_engine.per_strike_view,Container: every-expiry per-strike rows; also migration's all-expiry block.,
 anchor,flag,server._liquidity_zone_tradeable_fields,A zone's mid.,never read by static/js; otherwise derived. A zone is ours. Same number as zone_mid.
@@ -43,7 +43,7 @@ book_feed_label,status,app.options.order_flow.streaming.price_state,LIVE / OFFLI
 book_oi_total,flag,math_exposure_core.book_total_oi,"Total OI of the book, unknown if any strike's is.",never read by static/js; otherwise derived. Schwab sends OI per contract. Input to the pin gate only.
 book_slope,flag,app.options.order_flow.engine._book_slope,Top-5 displayed size per dollar of book span.,never read by static/js; otherwise derived. Schwab sends levels only.
 book_source,status,app.options.order_flow.engine._microstructure_structural,"The book's Schwab service name, or unavailable.",
-book_stale,status,app.options.order_flow.engine.compute_book_microstructure,True when the book's feed is not live.,
+book_stale,derived,app.options.order_flow.engine.compute_book_microstructure,True when the book's feed is not live.,Our judgment of a value's freshness or source; Schwab sends no such verdict.
 book_time_ct,schwab,schwab:NYSE_BOOK.NASDAQ_BOOK,Schwab's book time in Central Time.,
 book_time_ms,flag,schwab:NYSE_BOOK.NASDAQ_BOOK,"Schwab's book time, ms.",never read by static/js; otherwise schwab.
 breakEven,flag,schwab:/chains,Break-even price.,never read by static/js; otherwise schwab.
@@ -235,11 +235,11 @@ levels,status,server.levels_payload,Container: the level rows.,
 levels_age_sec,flag,server.terrain_staleness,Seconds since the chain began.,never read by static/js; otherwise status.
 levels_age_text,status,server.terrain_staleness,That age as the screen words it.,
 levels_failing,flag,server.terrain_staleness,STALE with a failure held.,never read by static/js; otherwise status.
-levels_mark,status,server.levels_mark,"The Key Levels word: the levels' state, else the price's.",
+levels_mark,derived,server.levels_mark,"The Key Levels word: the levels' state, else the price's.",Our judgment of a value's freshness or source; Schwab sends no such verdict.
 levels_mark_reason,status,server.levels_mark,Why.,
 levels_source,flag,server.LEVELS_SOURCE_WIDE_CHAIN,Fixed word.,never read by static/js; otherwise status.
 levels_stale_reason,status,server._levels_state,Why the levels are not LIVE or CLOSE.,
-levels_state,status,server._levels_state,LIVE / CLOSE / STALE / NOT LIVE.,
+levels_state,derived,server._levels_state,LIVE / CLOSE / STALE / NOT LIVE.,Our judgment of a value's freshness or source; Schwab sends no such verdict.
 levels_time_ct,status,server.terrain_staleness,"The chain's start, Central Time.",
 lines,flag,terrain_read.build_terrain_read,The read's sentences at the live price.,"never read by static/js; otherwise derived. Words of ours. Includes the warning that the curve disagrees with Schwab's gamma, which therefore never reaches the screen."
 liquidity_concentration,flag,app.options.order_flow.engine._book_concentration,Best level's share of top-5 size.,never read by static/js; otherwise derived. Schwab sends levels only.
@@ -434,7 +434,7 @@ spot_line,derived,confluence_composite.at_price,This row sits under the live pri
 spot_location,flag,server._spot_location,Container: inside / above / below zone indexes.,"server.liquidity_snapshot adds the live price as a level (SPOT_LIVE) before clustering, so during the session the price always sits inside its own zone. Right Now always reads 'Inside a Pivot / value zone (confluence N)', a statement about the price's own zone, not the market's. CONFIRMED on the production routes 2026-11-02: 11 of 11 watchlist tickers inside a Pivot / value zone holding SPOT_LIVE."
 spot_not_live_text,status,server.price_mark,Words beside a value from a price that stopped.,
 spot_outage,flag,app.options.order_flow.streaming.price_state,Why the price is not live.,never read by static/js; otherwise status.
-spot_source,status,server.resolve_spot,streaming_plane / none / outage text.,
+spot_source,derived,server.resolve_spot,streaming_plane / none / outage text.,Our judgment of a value's freshness or source; Schwab sends no such verdict.
 spot_strike,derived,terrain_engine.nearest_strike,Listed strike nearest the live price.,Ours.
 spot_text,derived,confluence_composite.at_price,The live price as text.,Formats spot.
 spot_time_ct,schwab,schwab:LEVELONE_EQUITIES,Schwab's trade time in Central Time.,
