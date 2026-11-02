@@ -276,6 +276,7 @@ def _all_held(now: float, *tickers: str) -> None:
         (_et("2026-10-05", 11), True, True, None),  # RTH
         (_et("2026-10-05", 17), True, False, "outside Schwab's option market hours"),  # After-Hours
         (_et("2026-10-03", 12), False, False, "outside Schwab's market hours"),  # Saturday
+        (_et("2026-11-26", 12), False, False, "outside Schwab's market hours"),  # Thanksgiving
         (
             _et("2026-09-20", 11),
             False,
@@ -286,9 +287,9 @@ def _all_held(now: float, *tickers: str) -> None:
 )
 def test_a_value_is_live_only_while_its_market_trades(at, equities, options, why):
     """The daemon's socket is open and it holds SPY and SYM at every instant (Schwab's /markets
-    answers captured 2026-10-07 say which sessions those are): SPY's quote and book are live only
-    in a session the stock market trades, SYM's only while an option market is open, and each
-    names why not."""
+    answers captured 2026-10-07 say which days those are): SPY's quote and book are live only on a
+    day the stock market trades, SYM's only while an option market is open, and each names why
+    not."""
     lmp.record_from_level_one_equity(TK, _QUOTE["item"], received_ts=_QUOTE["ts_recv"])
     _all_held(at, TK)
     assert lmp.feed_live_for(TK, "LEVELONE_EQUITIES", at) is equities
@@ -365,9 +366,13 @@ def test_a_symbol_schwab_marks_closed_is_not_live_in_an_open_session():
         at = _et("2026-10-19", 4, 30)
         _all_held(at, "$SPX", "NVDA")
         assert lmp.feed_live_for("NVDA", "LEVELONE_EQUITIES", at) is True
+        assert live_price_rows.price_row("NVDA", at)["feed_label"] == "LIVE"
         at = _et("2026-10-19", 20, 30)
         _all_held(at, "$SPX", "NVDA")
         assert lmp.outage("NVDA", "LEVELONE_EQUITIES", at) == "outside Schwab's market hours"
+        at = _et("2026-10-20", 5)  # Schwab marks it Normal, and has sent nothing dated today
+        _all_held(at, "$SPX", "NVDA")
+        assert lmp.outage("NVDA", "LEVELONE_EQUITIES", at) == "no quote from Schwab for NVDA today"
     finally:
         for kept in (lmp._by_ticker, lmp._fields_by_ticker):
             kept.pop("$SPX", None)

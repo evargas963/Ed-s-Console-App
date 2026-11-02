@@ -594,6 +594,7 @@ def test_the_equity_book_reads_the_daemons_price_row_for_its_top_of_book():
                 "BID_SIZE": 3,
                 "ASK_SIZE": 5,
                 "MARK": 10.01,
+                "QUOTE_TIME_MILLIS": int(now * 1000),
             },
             received_ts=now,
         )

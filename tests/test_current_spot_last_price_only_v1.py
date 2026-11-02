@@ -40,7 +40,7 @@ def test_plane_mark_only_tick_never_creates_current_spot() -> None:
     assert L.get_quote("MARKNEVER")["spot"] is None  # MARK never stands in for the spot
     spot, source, _ts = server.resolve_spot("MARKNEVER", now=RTH_INSTANT)
     assert spot is None
-    assert source == "no price row from the daemon for MARKNEVER yet"
+    assert source == "no quote from Schwab for MARKNEVER today"
 
 
 def test_plane_mark_cannot_replace_prior_last_price() -> None:

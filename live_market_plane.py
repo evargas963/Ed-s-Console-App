@@ -12,7 +12,7 @@ from typing import Any
 
 from instrument_identity import ticker_storage_key
 from numeric_contract import float_finite_or_none, schwab_count, schwab_number
-from time_et import CLOSED, ET, option_market_open, session_label, stock_day_open
+from time_et import CLOSED, ET, UNKNOWN, option_market_open, session_label, stock_day_open
 
 #: the services the capture daemon streams the option rule's contracts on
 #: (capture.Daemon.pick_options): they trade only while an option market is open
@@ -324,22 +324,20 @@ def not_trading(
     Schwab's own SECURITY_STATUS for it Closed or Halted; or no quote from Schwab dated today.
     Either: that /markets answer not held."""
     at = datetime.fromtimestamp(now, ET)
-    day_open = stock_day_open(at)
-    if day_open is None:
+    session = session_label(at)
+    if session == UNKNOWN:
         return "the market session is unknown"
-    if not day_open:
+    if not stock_day_open(at) or (session == CLOSED and service in OPTION_SERVICES):
         return "outside Schwab's market hours"
     if service in OPTION_SERVICES:
-        if session_label(at) == CLOSED:
-            return "outside Schwab's market hours"
         return _OPTION_MARKET_WHY[None if product is None else option_market_open(at, product)]
     t = ticker_storage_key(symbol)
     row = get_quote(t) if t else None
     status = row.get("security_status") if row is not None else None
     if status in ("Closed", "Halted"):
         return f"Schwab marks {t} {status}"
-    sent = max(row.get("exchange_quote_ts") or 0, row.get("trade_ts") or 0) if row else 0
-    if sent and datetime.fromtimestamp(sent, ET).date() != at.date():
+    times = [row[k] for k in ("exchange_quote_ts", "trade_ts") if row and row.get(k) is not None]
+    if row and not any(datetime.fromtimestamp(ts, ET).date() == at.date() for ts in times):
         return f"no quote from Schwab for {t} today"
     return None
 
