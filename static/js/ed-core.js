@@ -765,13 +765,8 @@
   // the shown price's served trade time ("last trade <CT>"), kept for a push outage, when no newer
   // age is served and the page computes none
   var _tradeShown = null;
-  // the port comes from the console (meta ed-live-ui-port = the daemon's ED_LIVE_UI_PORT);
-  // an unfilled page opens no socket and its prices read UNAVAILABLE
   function priceSocketUrl() {
-    var m = document.querySelector('meta[name="ed-live-ui-port"]');
-    var port = m ? String(m.getAttribute('content') || '') : '';
-    if (!/^\d+$/.test(port)) return null;
-    return (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.hostname + ':' + port + '/';
+    return (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws';
   }
   // The market context the server always streams, served in the page (meta ed-market-context,
   // from live_market_plane.MARKET_CONTEXT): [{key, display}]. The socket pushes only what a page

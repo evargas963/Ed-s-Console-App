@@ -4,9 +4,9 @@ The daemon owns the Schwab connection. This server reads the latest value of eve
 LEVELONE_EQUITIES field (live_market_plane, fed by capture.Daemon.follow_market), knows
 whether the feed is alive (the daemon's own heartbeat, applied every HEARTBEAT_SEC), and
 pushes the FINISHED displayed row (live_price_rows.price_row -- the one producer) to every
-browser that asked for the symbol, the moment a Schwab message changes it.
-
-No web server sits in this path, so no analytics load can delay a price.
+browser that asked for the symbol, the moment a Schwab message changes it, on the one socket
+the page holds (/ws, page_socket). Pricing runs on its own thread, so no analytics load holds
+the event loop this runs on.
 
 Protocol (JSON text frames):
   browser -> {"op": "subscribe", "symbols": ["SPY", "AAPL", ...]}   (replaces the set)
@@ -33,8 +33,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import os
 import time
+
+from fastapi import WebSocket
 
 import live_market_plane as lmp
 import live_price_rows
@@ -42,20 +43,12 @@ from instrument_identity import display_symbol, ticker_storage_key
 
 log = logging.getLogger(__name__)
 
-#: The browser connects to this port on the console's own host name. Binds like the console
-#: (0.0.0.0): the page is served to whatever address the operator opened it on.
-LIVE_UI_HOST = os.environ.get(
-    "ED_LIVE_UI_HOST", "0.0.0.0"
-)  # caps-ok: operator bind config with its declared default, not market data
-LIVE_UI_PORT = int(
-    os.environ.get("ED_LIVE_UI_PORT", "8800")
-)  # caps-ok: operator port config with its declared default, not market data
 #: feed verdict + row beat cadence (the heartbeat that keeps "live" honest)
 HEARTBEAT_SEC = 1.0
 
 
 class _Client:
-    __slots__ = ("ws", "symbols", "pending", "identity", "wake")
+    __slots__ = ("ws", "symbols", "pending", "identity", "wake", "dropped")
 
     def __init__(self, ws) -> None:
         self.ws = ws
@@ -63,6 +56,11 @@ class _Client:
         self.pending: set[str] = set()  # symbols changed since the last send
         self.identity: list[dict] | None = None  # the last subscribe's answer, not yet sent
         self.wake = asyncio.Event()
+        self.dropped = asyncio.Event()  # the beat gave up on it, or the daemon stopped
+
+
+#: the server while the daemon runs (serve_live_ui)
+_serving = None
 
 
 class LiveUiServer:
@@ -101,7 +99,7 @@ class LiveUiServer:
 
     async def _send(self, c: _Client, payload: dict) -> None:
         t0 = time.perf_counter()
-        await c.ws.send(json.dumps(payload, separators=(",", ":"), default=str))
+        await c.ws.send_text(json.dumps(payload, separators=(",", ":"), default=str))
         self.stats["frames_sent"] += 1
         self.stats["rows_sent"] += len(payload.get("rows") or ())
         self.stats["last_send_ms"] = (time.perf_counter() - t0) * 1000.0
@@ -120,7 +118,7 @@ class LiveUiServer:
                 await self._send(c, {"type": "quotes", "rows": rows})
 
     async def _read(self, c: _Client) -> None:
-        async for frame in c.ws:
+        async for frame in c.ws.iter_text():
             try:
                 req = json.loads(frame)
             except (TypeError, ValueError) as e:
@@ -148,21 +146,23 @@ class LiveUiServer:
             c.wake.set()
 
     async def serve_client(self, ws) -> None:
+        """One accepted page socket (server.page_socket), until it closes or is dropped."""
         c = _Client(ws)
         self.clients.add(c)
         self.stats["clients"] = len(self.clients)
         pump = asyncio.create_task(self._pump(c))
         read = asyncio.create_task(self._read(c))
+        dropped = asyncio.create_task(c.dropped.wait())
         try:
-            await asyncio.wait({pump, read}, return_when=asyncio.FIRST_COMPLETED)
+            await asyncio.wait({pump, read, dropped}, return_when=asyncio.FIRST_COMPLETED)
             for t in (pump, read):
                 if t.done() and not t.cancelled() and t.exception() is not None:
                     e = t.exception()
                     log.info("live ui client ended: %s: %s", type(e).__name__, e)
         finally:
-            for t in (pump, read):
+            for t in (pump, read, dropped):
                 t.cancel()
-            await asyncio.gather(pump, read, return_exceptions=True)
+            await asyncio.gather(pump, read, dropped, return_exceptions=True)
             self.clients.discard(c)
             self.stats["clients"] = len(self.clients)
 
@@ -177,8 +177,7 @@ class LiveUiServer:
             for c in list(self.clients):
                 # one browser can neither stop the beat nor hold it: an error is logged and the
                 # next browser still gets its beat; a browser that does not take its beat within
-                # a beat is not reading and is dropped: its connection is aborted, because a close
-                # frame cannot be written to a browser that does not read
+                # a beat is not reading and is dropped
                 try:
                     rows = [live_price_rows.price_row(s, now) for s in sorted(c.symbols)]
                     await asyncio.wait_for(
@@ -189,45 +188,42 @@ class LiveUiServer:
                     self.stats["beat_send_failures"] += 1
                     log.warning("live ui: a browser stopped reading; dropping it")
                     self.clients.discard(c)
-                    c.ws.transport.abort()
+                    c.dropped.set()
                 except Exception as e:  # noqa: BLE001 -- logged; the other browsers' beats go out
                     self.stats["beat_send_failures"] += 1
                     log.warning("live ui beat to one browser: %s: %s", type(e).__name__, e)
             await asyncio.sleep(HEARTBEAT_SEC)
 
 
+async def page_socket(ws: WebSocket) -> None:
+    """The page's one socket, /ws on the program's port: closed while no daemon runs."""
+    await ws.accept()
+    if _serving is None:
+        await ws.close(code=1013)
+    else:
+        await _serving.serve_client(ws)
+
+
 async def serve_live_ui(
     stop: asyncio.Event,
     *,
     heartbeat_fn,
-    host: str = LIVE_UI_HOST,
-    port: int = LIVE_UI_PORT,
     stats: dict | None = None,
     clock=time.time,
 ) -> None:
-    """Run until `stop` is set."""
-    from websockets.asyncio.server import serve
-
+    """Serve the page sockets (page_socket) until `stop` is set."""
+    global _serving
     stats = stats if stats is not None else {}
     srv = LiveUiServer(heartbeat_fn, stats, clock)
     lmp.add_row_listener(srv.on_row)
-    tasks = [asyncio.create_task(srv.beat_loop())]
+    beats = asyncio.create_task(srv.beat_loop())
+    _serving = srv
     try:
-        async with serve(
-            srv.serve_client,
-            host,
-            port,
-            max_size=None,
-            compression=None,
-            ping_interval=20,
-            ping_timeout=20,
-        ) as server:
-            bound = server.sockets[0].getsockname()[1]  # the port taken (port 0: the system's pick)
-            stats["listening"] = f"ws://{host}:{bound}"
-            log.info("live ui: serving price rows to browsers on ws://%s:%s", host, bound)
-            await stop.wait()
+        await stop.wait()
     finally:
-        for t in tasks:
-            t.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
+        _serving = None
+        for c in list(srv.clients):
+            c.dropped.set()
+        beats.cancel()
+        await asyncio.gather(beats, return_exceptions=True)
         lmp.remove_row_listener(srv.on_row)
