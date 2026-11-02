@@ -25,7 +25,7 @@ def test_resolve_spot_rejects_mark_close_chain_and_snapshot() -> None:
     forget_price("SPY")  # no price: a chain, MARK or close is no spot
     spot, source, _ts = server.resolve_spot("SPY", now=RTH_INSTANT)
     assert spot is None
-    assert source == "no price row from the daemon for SPY yet"
+    assert source == "no price from Schwab for SPY yet"
 
 
 def test_plane_mark_only_tick_never_creates_current_spot() -> None:

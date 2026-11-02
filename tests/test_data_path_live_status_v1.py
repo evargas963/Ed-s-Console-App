@@ -368,11 +368,10 @@ def test_a_symbol_schwab_marks_closed_is_not_live_in_an_open_session():
 
 
 def test_the_console_serves_the_daemons_verdict_on_a_price_schwab_marks_closed():
-    """The daemon alone holds Schwab's SECURITY_STATUS (its plane); the console holds the daemon's
-    price row. At 17:00 ET on 2026-10-19 (After-Hours, the feed up and holding $SPX) the daemon's
-    row says NOT LIVE, "Schwab marks $SPX Closed"; served by the console from an empty plane, the
-    levels' price mark, the equity book's top and its book, the spot's reason (a row with no price)
-    and the not-live refresh (a page open on $SPX is told to read its levels again) say the same.
+    """At 17:00 ET on 2026-10-19 (After-Hours, the feed up and holding $SPX) the price row says
+    NOT LIVE, "Schwab marks $SPX Closed"; the levels' price mark, the equity book's top and its
+    book, the spot's reason (a row with no price) and the not-live refresh (a page open on $SPX is
+    told to read its levels again) say the same.
     """
     import asyncio
 
@@ -428,7 +427,7 @@ def test_a_row_the_daemon_no_longer_holds_is_not_live():
     _all_held(at, TK)
     assert live_price_rows.price_row(TK, at)["feed_label"] == "LIVE"
     _all_held(at)  # SPY no longer held
-    assert ofs.price_state(TK, at) == (
+    assert live_price_rows.price_state(TK, at) == (
         "NOT LIVE",
         f"{TK} is not streamed on Schwab LEVELONE_EQUITIES",
     )
@@ -437,5 +436,8 @@ def test_a_row_the_daemon_no_longer_holds_is_not_live():
     _all_held(at, TK)
     for kept in (lmp._by_ticker, lmp._fields_by_ticker):
         kept.pop(TK, None)  # held, no quote yet
-    assert ofs.price_state(TK, at) == ("NOT LIVE", f"no price row from the daemon for {TK} yet")
+    why = f"no price from Schwab for {TK} yet"
+    assert live_price_rows.price_state(TK, at) == ("NOT LIVE", why)
+    row = live_price_rows.price_row(TK, at)
+    assert (row["feed_live"], row["feed_label"], row["outage"]) == (False, "NOT LIVE", why)
     assert server.price_mark(TK, None, at)["spot_feed_live"] is False

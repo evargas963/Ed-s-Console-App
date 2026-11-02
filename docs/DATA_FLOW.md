@@ -595,12 +595,10 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
   state). An option contract trades only inside its own option market's regular window
   (`time_et.option_market_open`), its market that of the ticker whose chain lists it
   (`server._contract_ticker`, `time_et.option_close_product`); a contract in no chain the console
-  holds has no known market and is not live. Only the daemon holds Schwab's
-  SECURITY_STATUS, so the console carries the daemon's verdict (`streaming.price_state`, for a
-  symbol's quote and for a venue's equity book): the rule on the beat the console holds while
-  that is not LIVE (the feed down, the symbol not held, its market not trading); while it is
-  LIVE, the daemon's price row's `feed_label` and `outage`; NOT LIVE until the daemon's first row
-  arrives (operator 2026-10-25). The levels, the chain and the heatmap carry the levels verdict
+  holds has no known market and is not live. A symbol's quote has one verdict, the price row's and
+  every console reader's (`live_price_rows.price_state`): that rule, and NOT LIVE until Schwab's
+  first quote of it arrives (operator 2026-10-25). A venue's equity book takes the rule on its own
+  service. The levels, the chain and the heatmap carry the levels verdict
   (`server.terrain_staleness`, §3.4's chain sweep: LIVE / CLOSE / STALE / NOT LIVE with the
   chain's time and age, its age kept counting by `server.refresh_not_live_pages` while it is not
   LIVE), and Key Levels its mark (`server.levels_mark`: the levels' word, or the price's while

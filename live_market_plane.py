@@ -166,7 +166,7 @@ def record_from_level_one_equity(
 
 
 #: callables told the ticker of every published row: the browser push (live_ui) and the console
-#: (streaming._took_row).
+#: (streaming._tick).
 _row_listeners: list = []
 
 
@@ -297,15 +297,6 @@ def live_on(feed: FeedNow, symbol: str | None, service: str) -> bool:
 def daemon_status(now: float) -> dict[str, Any] | None:
     """The daemon's latest status while its heartbeat is current at `now`, else None."""
     return feed_now(now).status
-
-
-def held_by_daemon(service: str, now: float) -> frozenset[str]:
-    """The symbols the daemon holds on Schwab `service` at `now`; none while its heartbeat
-    is not current (unknown is never confirmation)."""
-    feed = feed_now(now)
-    if feed.status is None:
-        return frozenset()
-    return feed.held.get(service, frozenset())
 
 
 #: why an option contract is not trading, by whether its own option market is open (None: the

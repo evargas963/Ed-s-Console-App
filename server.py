@@ -40,7 +40,6 @@ from app.options.order_flow.live_payload import flow_block, options_live_payload
 from app.options.order_flow.state import get_content_for_symbol, get_stream_greeks
 from app.options.order_flow.streaming import (
     get_option_contract_streaming_diagnostics,
-    price_state,
     select_flow_contract,
     start_order_flow_stream,
     stop_order_flow_stream,
@@ -345,7 +344,7 @@ def price_mark(ticker: str, spot_ts: float | None, now: float) -> dict:
     time and age: served beside every value computed from that price, so a value from a price
     that has stopped stands marked not live (AGENTS rule 5): `spot_not_live_text` is the mark the
     page prints beside each such value, None while the price is live."""
-    label, outage = price_state(ticker, now)
+    label, outage = _lpr.price_state(ticker, now)
     live = label == lmp.LIVE
     mark = ["not live"]
     if spot_ts is not None:
@@ -367,10 +366,7 @@ def resolve_spot(ticker: str, *, now: float) -> tuple[float | None, str, float |
     row = _lpr.price_row(ticker, now)
     if row["spot"] is not None:
         return row["spot"], SPOT_SOURCE_PLANE, row.get("trade_ts")
-    outage = price_state(ticker, now)[1]
-    if outage is None:
-        return None, SPOT_SOURCE_NONE, None
-    return None, outage, None
+    return None, row["outage"] or SPOT_SOURCE_NONE, None
 
 
 #: one RTH day of 1-minute bars
@@ -2012,7 +2008,7 @@ def refresh_not_live_pages(now: float) -> None:
     page whose price and levels are both live is told by each new price and chain instead."""
     for tk in push_changes.watched():
         levels = terrain_cache_get(tk, now)
-        if price_state(tk, now)[0] != lmp.LIVE or (
+        if _lpr.price_state(tk, now)[0] != lmp.LIVE or (
             levels is not None and levels["levels_state"] != lmp.LIVE
         ):
             push_changes.changed(tk, push_changes.LEVELS)
@@ -3165,8 +3161,8 @@ def order_flow_microstructure(ticker: str, venue: str, now: float) -> dict:
         log.debug("microstructure content build failed for %s: %s", t, e)
     # top of book: the daemon's price row. The last bid and ask stand when it is not live;
     # top_outage says why and top_feed_label is the page's word for it (docs/DATA_FLOW.md §2 D5)
-    top_label, top_outage = price_state(t, now)
     _row = _lpr.price_row(t, now)
+    top_label, top_outage = _row["feed_label"], _row["outage"]
     if _row.get("quote_ts") is not None:
         data["exchange_quote_ts"] = _row["quote_ts"]
     data["top"] = (
@@ -3174,8 +3170,8 @@ def order_flow_microstructure(ticker: str, venue: str, now: float) -> dict:
         if _row.get("bid") is not None or _row.get("ask") is not None
         else None
     )
-    # the venue's book: the same verdict on its own service (price_state), its word served
-    book_label = price_state(t, now, venue)[0]
+    # the venue's book: the one rule on its own service, its word served
+    book_label = lmp.live_state(t, venue, now)[0]
     data["book_live"] = book_label == lmp.LIVE
     # ticker=t → serialize the canonical state carried per (ticker, BOOK_TIME); no independent
     # recompute.
