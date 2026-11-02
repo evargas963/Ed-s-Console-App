@@ -228,13 +228,13 @@ Levels' Spot show the trade time without an age (the last served age is not the 
 page computes none); the equity book's live flag and the book badges take the price row's
 verdict; each option contract's own close (its market from the chain that lists it) is PR B.
 Operator 2026-10-25, on PR B: the levels, the chain and the heatmap carry one served levels verdict
-(`server.terrain_staleness`), judged by the ticker's own option market; after that market's close
-the levels read CLOSE with the close values' time and age. Operator 2026-10-25, on PR B's reviews:
-the three readers of Schwab's option windows are one, `time_et.option_market_open` (a day Schwab
-says is closed is outside every window, so Schwab's close counts stand on it, as after any close;
-`valuation_instant` keeps main's clock, the day's close only for the rest of that day, read through
-`option_market_open` and `options_closed_at`, the one close instant: a gap between two windows, if
-Schwab ever sends one, counts as closed, like the counts and the levels word); in PR B only the functions it changes lose their history notes, the
+(`server.terrain_staleness`), judged by Schwab's option windows (operator 2026-11-02: "we keep to
+the schedule"); after the last window the levels read CLOSE with the close values' time and age.
+Operator 2026-10-25, on PR B's reviews: the readers of Schwab's option windows are one,
+`time_et.options_open`, pre-market and post-market included (a day Schwab says is closed is outside
+every window, so Schwab's close counts stand on it, as after any close; `valuation_instant` keeps
+main's clock, the product's last regular close only for the rest of that day, where a contract
+expiring that day expires); in PR B only the functions it changes lose their history notes, the
 file-wide cleanup is a separate pass; AGENTS.md rule 2's wording ("a reported 0 is 0") against the
 closed-day count rule is the operator's to amend; the
 stand-ins PR B adds are recorded in STAND-INS, and the older stand-ins in the files it touches stay

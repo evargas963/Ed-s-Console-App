@@ -168,16 +168,14 @@ def persist_complete_chain_capture(
 def capture_slot(now_ts: float) -> float | None:
     """The capture time a chain begun at `now_ts` is written for: the latest of the option
     markets' open, every CAPTURE_EVERY_MIN minutes after it, and their last close (the close
-    capture) -- the regular sessions Schwab's /markets sent for the day (time_et.session) -- that is
-    at most CAPTURE_EVERY_MIN minutes before `now_ts`. None outside those windows, and on a day with
-    no regular option session or no answer: nothing is written."""
+    capture) -- the option windows Schwab's /markets sent for the day, its pre-market included
+    (time_et.session) -- that is at most CAPTURE_EVERY_MIN minutes before `now_ts`. None outside
+    those windows, and on a day with no option session or no answer: nothing is written."""
     today = session(datetime.fromtimestamp(now_ts, ET).date().isoformat())
-    if today is None:
+    if today is None or not today.option_hours:
         return None
-    windows = [w for _p, ws in today.options for w in ws]
-    if not windows:
-        return None
-    opens, close = min(s for s, _e in windows).timestamp(), max(e for _s, e in windows).timestamp()
+    opens = min(s for s, _e in today.option_hours).timestamp()
+    close = max(e for _s, e in today.option_hours).timestamp()
     slots = [*range(int(opens), int(close), CAPTURE_EVERY_MIN * 60), close]
     past = [s for s in slots if s <= now_ts]
     if not past or now_ts - past[-1] >= CAPTURE_EVERY_MIN * 60:

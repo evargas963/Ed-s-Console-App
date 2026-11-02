@@ -169,9 +169,8 @@ from Schwab to the screen (daemon, console, page), are these:
   stands. The sessions are Schwab's /markets windows as sent (`time_et.session_label`: stocks 07:00
   to 20:00 ET in its schedule of 2026-10-30; a stock quote from 04:00 is shown and recorded, not
   live). An option contract, the chain sweep and the levels follow the option windows it sends,
-  pre-market and post-market included (`time_et.options_open`: 07:30 to 09:25, 09:30 to 16:15),
-  while `time_et.option_market_open` stays the option markets' regular window, which decides the close
-  values and what a pre-market zero does not replace. When it stops
+  pre-market and post-market included (`time_et.options_open`, the one option rule: 07:30 to 09:25,
+  09:30 to 16:15). When it stops
   updating, for any reason (feed down, market closed, an input missing), the last value stands,
   marked not live with its time and its served age, and every value computed from it is marked not
   live too. While the daemon's push to the page has stopped, no age is served and the page computes
@@ -200,7 +199,7 @@ from Schwab to the screen (daemon, console, page), are these:
   (the GEX-by-strike badge carries the chain's time), `tests/test_data_path_snapshot_time_v1.py`
   (the desk map's LEVELS pill carries the snapshot's time), `tests/test_data_path_level_asof_time_v1.py`
   (the levels page As-of column carries each level's time), `tests/test_data_path_served_verdicts_v1.py`
-  (the levels verdict by the ticker's own option market, an option contract by the session, and a
+  (the levels verdict by Schwab's option windows, an option contract by the session, and a
   page told to read again while its price or its levels are not live);
   the rest — ENF-22.
 - **D6. No live screen reads the database.** Every live route serves from memory; the database
@@ -354,10 +353,11 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
   `score_magnitudes` once for that expiry, every strike of it, stored with the publication. The
   matrix does not call any of them again; the request draws only its window's rows
   (`confluence_composite.window_rows`). Vanna
-  is the book's `net_vanna`. After that ticker's option market has closed for the day
-  (`time_et.option_market_open`), the publication is valued at that day's close
-  (`time_et.valuation_instant`, the index close for SPY, QQQ, and IWM, the equity-option close for
-  every other ticker), so the close numbers stay for the rest of it. On a day Schwab says is closed
+  is the book's `net_vanna`. After the last regular window Schwab sent for that ticker's option
+  product, the publication is valued at that window's end (`time_et.valuation_instant`, the index
+  close for SPY, QQQ, and IWM, the equity-option close for every other ticker: where a contract
+  expiring that day expires, so a stock option's numbers stand through the 16:15 post-market), so
+  the close numbers stay for the rest of it. On a day Schwab says is closed
   and before the next open it is valued at the clock: a closed day has no same-day close, so no
   0DTE level is made from a later expiry (operator 2026-10-25). A later
   equity print keeps the price that publication was priced at (`priced_at_spot`); the matrix's
@@ -405,13 +405,13 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
   options are listed (operator 2026-10-08). Then no chain is requested
   until its market opens again: the close values stand (D5), and a ticker not on the watchlist is not fetched — it shows
   its levels absent with the reason (`server.terrain_staleness`, the one levels verdict every
-  screen shows, `levels_state`: once the ticker's own option market has closed (its
-  `time_et.option_close_product`: stock options at 16:00 ET, index-close options at 16:15),
-  After-Hours included, levels from a chain fetched after that close are its close values and read
-  CLOSE, with their time and age, however old (operator 2026-10-25); older ones read STALE, "this
-  ticker's options are closed and its close values have not been fetched"; inside the option windows,
-  after the day's first round, until its market closes, LIVE until two of the sweep's rounds pass without its chain, then STALE; NOT LIVE when
-  Schwab's /markets answer for today is not held), never a zero or a
+  screen shows, `levels_state`, the same for every ticker: after the day's last option window
+  (16:15 ET) and until the next one, levels from a chain fetched after that close are the close
+  values and read CLOSE, with their time and age, however old (operator 2026-10-25); older ones read
+  STALE, "this ticker's options are closed and its close values have not been fetched"; inside the
+  option windows, after the day's first round, LIVE until two of the sweep's rounds pass without its
+  chain, then STALE; between two of today's windows NOT LIVE, "between Schwab's option windows"; NOT
+  LIVE when Schwab's /markets answer for today is not held), never a zero or a
   value from elsewhere. Enforced by: `tests/test_data_path_rules_v1.py` (the D5 sweep and
   staleness tests). Each ticker's chain is asked for as Schwab documents it: its expiration chain
   (`/expirationchain`) once per ET date, then `/chains` once per listed expiry (fromDate = toDate
@@ -462,16 +462,18 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
   comma-separated, 300 to a request across tickers (`QUOTES_BATCH_MAX`, Schwab Trader API
   Support 2026-10-06: not more than 300), and takes its quote's, as sent. Each contract carries
   the time of its Greeks as Schwab sent it, `greeksTime` ({field: ms}: the quote's `quoteTime`).
-  Outside that ticker's option window — after it has ended, and before the next one opens —
+  Outside Schwab's option windows (`time_et.options_open`, pre-market and post-market included) —
+  after the last has ended, and before the next one opens —
   a quote that does not report a greek leaves the greek the last quote reported, and an open
   interest or volume of zero leaves the last count above zero. A missing count and Schwab's
   no-value code are not that zero. That last count is the one this process already published,
   or, when it has not, the newest capture stored before this chain. A day Schwab says is closed is outside every
-  window (`time_et.option_market_open`), so its zeros keep the last count too (operator 2026-10-25:
+  window, so its zeros keep the last count too (operator 2026-10-25:
   the last valid number stands, as a bank's last balance does while it is closed). A chain is judged by when it was fetched: one begun inside the window keeps a reported
   zero even when it is priced after the close. A streamed zero after the close does not replace
   the count already on that chain. A zero book from a closed day does not replace the last count,
-  through the next open. During the window,
+  through the next open. During a window, the pre-market's included (Schwab resets option volume
+  there, operator 2026-11-02: a valid session is live),
   Schwab's no-value code is not a greek and does not keep an older one, and a count of zero
   replaces the last count. A chain is published once all its quotes are in. A quotes request Schwab refuses
   fails every chain in it with its status and reason, so the levels keep their last good

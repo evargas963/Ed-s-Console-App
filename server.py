@@ -107,10 +107,10 @@ from time_et import (
     market_session_date,
     now_et,
     option_close_product,
-    option_market_open,
     options_closed_at,
     options_open,
     options_opened,
+    options_window_began,
     record_markets,
     session,
     session_label,
@@ -858,22 +858,20 @@ def terrain_staleness(
     computed_ts_utc: float | None, ticker: str | None = None, *, now: float
 ) -> dict:
     """The levels' state at `now`, THE levels verdict every screen shows (`levels_state`): LIVE
-    from the market day's start (time_et.options_open) until the ticker's own option market closes
-    (time_et.option_close_product: stock options at 16:00 ET, index-close options at 16:15) with
-    its chain current; CLOSE once that market has closed, and through the day's first round, with
-    a chain fetched after its close, however old (docs/DATA_FLOW.md §2 D5);
-    STALE, with WHY, when the chain is overdue or the close values were never fetched; NOT LIVE
-    when Schwab's /markets answer for today is not held. The daemon's last answer for the ticker's
-    chain (a failed fetch, an incomplete delivery) outranks the age, and its refused sign-in
-    (`chains_waiting`) outranks both, on every verdict but LIVE and CLOSE. While its option market
-    is open the daemon fetches every watchlist ticker's chain without end, so age past two of its
-    delivered rounds is a gap, never a schedule. Served beside it: the age and the chain's
-    time."""
+    inside Schwab's option windows (time_et.options_open) with the chain current; CLOSE after the
+    day's close, and through the day's first round, with a chain fetched after the last close,
+    however old (docs/DATA_FLOW.md §2 D5); STALE, with WHY, when the chain is overdue or the close
+    values were never fetched; NOT LIVE between two of today's windows, and when Schwab's /markets
+    answer for today is not held. The daemon's last answer for the ticker's chain (a failed fetch,
+    an incomplete delivery) outranks the age, and its refused sign-in (`chains_waiting`) outranks
+    both, on every verdict but LIVE and CLOSE. Inside a window the daemon fetches every watchlist
+    ticker's chain without end, so age past two of its delivered rounds, counted from the window's
+    start, is a gap, never a schedule. Served beside it: the age and the chain's time."""
     token = schwab_token_countdown(_schwab_token_creation_ts(), now)  # warned before it expires
     failure = str(
         _terrain_refresh_last_error.get(ticker_storage_key(ticker) if ticker else "", "") or ""
     )
-    state, reason = _levels_state(computed_ts_utc, ticker, now, failure)
+    state, reason = _levels_state(computed_ts_utc, now, failure)
     age = None if computed_ts_utc is None else now - float(computed_ts_utc)
     return {
         "levels_state": state,
@@ -888,9 +886,7 @@ def terrain_staleness(
     }
 
 
-def _levels_state(
-    computed_ts_utc: float | None, ticker: str | None, now: float, failure: str
-) -> tuple[str, str]:
+def _levels_state(computed_ts_utc: float | None, now: float, failure: str) -> tuple[str, str]:
     """(levels_state, why it is not LIVE or CLOSE) for terrain_staleness. While the daemon asks
     Schwab for nothing (its status's `chains_waiting`: a refused sign-in), that is the why."""
     status = lmp.daemon_status(now)
@@ -901,7 +897,6 @@ def _levels_state(
     if computed_ts_utc is None:
         return LEVELS_STALE, "no terrain snapshot has been computed yet" + sep
     at = datetime.fromtimestamp(now, ET)
-    product = option_close_product(ticker)
     market_open = options_open(at)
     if market_open is None:
         return lmp.NOT_LIVE, "the market session is unknown" + sep
@@ -916,14 +911,14 @@ def _levels_state(
         if round_sec is None
         else max(float(TERRAIN_STALE_AFTER_SEC), 2.0 * float(round_sec))
     )
-    closed = options_closed_at(at, product)
-    opened = options_opened(at)
-    if (
-        not market_open
-        or (closed is not None and closed.date() == at.date())  # its own market has closed today
-        or (
-            float(computed_ts_utc) < opened.timestamp() and now - opened.timestamp() <= stale_after
-        )  # the day's first round
+    closed = options_closed_at(at)
+    began = options_window_began(at)
+    closed_today = closed is not None and closed.date() == at.date()
+    if not market_open and began is not None and not closed_today:
+        return lmp.NOT_LIVE, "between Schwab's option windows" + sep
+    in_first_round = began is not None and now - began.timestamp() <= stale_after
+    if not market_open or (
+        in_first_round and float(computed_ts_utc) < options_opened(at).timestamp()
     ):
         if closed is None or float(computed_ts_utc) < closed.timestamp():
             return (
@@ -931,7 +926,7 @@ def _levels_state(
                 "this ticker's options are closed and its close values have not been fetched" + sep,
             )
         return LEVELS_CLOSE, ""
-    if age <= stale_after:
+    if age <= stale_after or in_first_round:
         return lmp.LIVE, ""
     if waiting:
         return LEVELS_STALE, f"levels are {age:.0f}s old{sep}"
@@ -951,8 +946,8 @@ def _levels_state(
     )
 
 
-#: the levels' words beside the price's (live_market_plane LIVE / NOT_LIVE): the close values of the
-#: ticker's own option market stand; the chain is overdue or the close values were never fetched
+#: the levels' words beside the price's (live_market_plane LIVE / NOT_LIVE): the close values stand;
+#: the chain is overdue or the close values were never fetched
 LEVELS_CLOSE, LEVELS_STALE = "CLOSE", "STALE"
 
 
@@ -1424,11 +1419,11 @@ def _reported_zero(value) -> bool:
 
 
 def _keep_last_reported(chain, previous, at, product, price):
-    """Outside that ticker's option window, a quote that does not report a greek leaves the
-    greek the last quote reported, and a count of zero leaves the last count above zero.
-    During the window the quote stands, and Schwab's no-value code does not keep an older
+    """Outside Schwab's option windows, a quote that does not report a greek leaves the greek the
+    last quote reported, and a count of zero leaves the last count above zero. Inside them the
+    quote stands, a reported zero is zero, and Schwab's no-value code does not keep an older
     greek. A gamma is reported by gamma_reported at `price`."""
-    if option_market_open(at, product) is not False or not previous:
+    if options_open(at) is not False or not previous:
         return chain
     prior = {}
     for ct in previous:
@@ -1563,7 +1558,7 @@ def _publish_levels(
     valued_at = valuation_instant(clock, product)
     begun_ts = fetched_ts if isinstance(fetched_ts, (int, float)) else at.timestamp()
     begun = datetime.fromtimestamp(begun_ts, ET)
-    if new_chain and capture is None and option_market_open(begun, product) is False:
+    if new_chain and capture is None and options_open(begun) is False:
         memory = payload.get("_priced_chain")
         if memory is None:
             memory = payload.get("_chain")
@@ -1616,7 +1611,7 @@ def _publish_levels(
     # each field the newest Schwab sent: the last streamed value received after this chain, else
     # the chain's. The cell stamp says whether that stream is live.
     priced, n_live = overlay_streamed_contract_fields(chain, streamed, fetched_ts)
-    if option_market_open(at, product) is False:
+    if options_open(at) is False:
         priced = _keep_last_reported(priced, chain, at, product, spot)
     live_syms = _overlaid_symbols(chain, priced)
     snap = compute_terrain(tk, priced, spot, now=valued_at)
@@ -2005,7 +2000,7 @@ def refresh_not_live_pages(now: float) -> None:
     """Tell each open page whose ticker's price (price_state) or published levels (levels_state)
     are not live at `now` to read its levels again, so each not-live age (price_mark,
     terrain_staleness) keeps counting while nothing new arrives: a stopped price, or the close
-    values after the ticker's own option close. The levels loop calls it every STATUS_EVERY_SEC; a
+    values after the option close. The levels loop calls it every STATUS_EVERY_SEC; a
     page whose price and levels are both live is told by each new price and chain instead."""
     for tk in push_changes.watched():
         levels = terrain_cache_get(tk, now)

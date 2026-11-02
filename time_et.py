@@ -176,68 +176,50 @@ def session_label(now: datetime) -> str:
     return CLOSED
 
 
-def options_opened(now: datetime) -> datetime | None:
-    """When the option markets' day starts on `now`'s date: the first window Schwab sent, its
-    pre-market included; None when it sent none or its answer is not held."""
-    s = session(now.astimezone(ET).date().isoformat())
-    return min((start for start, _end in s.option_hours), default=None) if s else None
-
-
 def options_open(now: datetime) -> bool | None:
-    """Whether `now` is inside a window Schwab sent for any option market, as sent: what the chain
-    sweep, the levels and an option's live mark follow; None when Schwab's answer for today is not
-    held. option_market_open keeps the regular windows for the close values."""
+    """Whether `now` is inside a window Schwab sent for any option market, as sent: the one option
+    rule, for the chain sweep, the levels, a live mark and what a reported value replaces. None
+    when Schwab's answer for today is not held."""
     s = session(now.astimezone(ET).date().isoformat())
     if s is None:
         return None
     return any(start <= now < end for start, end in s.option_hours)
 
 
-def option_market_open(now: datetime, product: str | None = None) -> bool | None:
-    """Whether option market `product` (EQO, IND), or any option market
-    when none is named (the last, IND, runs to 16:15 ET), is in a regular window Schwab sent for
-    today. False outside its windows and all day on a day Schwab says is closed; None when Schwab's
-    answer for today is not held."""
+def options_window_began(now: datetime) -> datetime | None:
+    """The start of the newest option window Schwab sent for `now`'s date that has begun by `now`;
+    None when none has, or when its answer is not held."""
     s = session(now.astimezone(ET).date().isoformat())
-    if s is None:
-        return None
-    return any(
-        start <= now < end
-        for p, windows in s.options
-        if product in (None, p)
-        for start, end in windows
-    )
+    begun = (start for start, _end in s.option_hours if start <= now) if s else ()
+    return max(begun, default=None)
 
 
-def options_closed_at(now: datetime, product: str | None = None) -> datetime | None:
-    """The end of the newest regular window that has ended by `now`, among the answers held, of
-    option market `product`, or of any option market when none is named; None when none has."""
+def options_opened(now: datetime) -> datetime | None:
+    """The first option window Schwab sent for `now`'s date; None when it sent none or its answer
+    is not held."""
+    s = session(now.astimezone(ET).date().isoformat())
+    return min((start for start, _end in s.option_hours), default=None) if s else None
+
+
+def options_closed_at(now: datetime) -> datetime | None:
+    """The option markets' newest close by `now`, among the answers held: each date's last option
+    window's end. None when none has passed."""
     ended = [
-        end
-        for s in _sessions.values()
-        for p, windows in s.options
-        if product in (None, p)
-        for _start, end in windows
-        if end <= now
+        last
+        for last in (max((e for _s, e in s.option_hours), default=None) for s in _sessions.values())
+        if last is not None and last <= now
     ]
     return max(ended) if ended else None
 
 
 def valuation_instant(now: datetime, product: str = EQUITY_OPTIONS) -> datetime:
-    """The instant a live chain is priced. While `product`'s option market is not open
-    (option_market_open) after a close earlier that day (options_closed_at, the one close
-    instant; a gap between two windows counts as closed), that close, so the close numbers stand.
-    While it is open, before it opens, on a day with no window, and on a date whose session is not
-    held, it is `now`: the time to each expiry runs on the clock, and a day with no session has no
-    same-day close."""
-    if option_market_open(now, product) is not False:
-        return now
-    closed = options_closed_at(now, product)
-    return (
-        closed
-        if closed is not None and closed.astimezone(ET).date() == now.astimezone(ET).date()
-        else now
-    )
+    """The instant a live chain is priced: `now`, the time to each expiry running on the clock,
+    until the last regular window Schwab sent for `product` on `now`'s date ends, and that end for
+    the rest of the date, so a contract that expired there keeps its close numbers. A date with no
+    window for `product`, or whose answer is not held, has no such end."""
+    s = session(now.astimezone(ET).date().isoformat())
+    closed = max((end for _start, end in s.option_windows(product)), default=None) if s else None
+    return closed if closed is not None and closed <= now else now
 
 
 def closed_since(now: datetime) -> datetime | None:

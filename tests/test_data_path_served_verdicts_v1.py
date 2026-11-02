@@ -27,7 +27,7 @@ import server
 from calibration.complete_chain_capture import CAPTURE_BASIS
 from tests.capture_store import store_capture
 from tests.real_chains import SPY_0DTE, TSLA
-from time_et import ET
+from time_et import ET, option_close_product, record_markets
 
 _QUOTES = {
     q["ticker"]: q
@@ -92,10 +92,11 @@ def published():
             _et(13, 30),
             "STALE",
         ),  # its options open, no chain for 30 minutes
-        ("TSLA", TSLA, _et(16, 1), _et(16, 5), "CLOSE"),  # fetched after its own 16:00 close
-        ("TSLA", TSLA, _et(15, 59), _et(16, 5), "STALE"),  # its close values never fetched
-        ("SPY", SPY_0DTE, _et(16, 4), _et(16, 5), "LIVE"),  # its options still open until 16:15
-        ("SPY", SPY_0DTE, _et(16, 4), _et(16, 20), "STALE"),  # fetched before its own 16:15 close
+        ("TSLA", TSLA, _et(16, 4), _et(16, 5), "LIVE"),  # the options are open until 16:15
+        ("TSLA", TSLA, _et(16, 4), _et(16, 20), "STALE"),  # fetched before the 16:15 close
+        ("TSLA", TSLA, _et(16, 16), _et(16, 20), "CLOSE"),
+        ("SPY", SPY_0DTE, _et(16, 4), _et(16, 5), "LIVE"),
+        ("SPY", SPY_0DTE, _et(16, 4), _et(16, 20), "STALE"),
         ("SPY", SPY_0DTE, _et(16, 16), _et(16, 20), "CLOSE"),
         ("SPY", SPY_0DTE, _et(16, 16, "2026-10-06"), _et(9, 31), "CLOSE"),  # the day's first round
         ("SPY", SPY_0DTE, _et(15, 59, "2026-10-06"), _et(9, 31), "STALE"),  # close never fetched
@@ -115,17 +116,41 @@ def published():
         ),  # Saturday: Wednesday's, not Friday's
     ],
 )
-def test_the_levels_are_judged_by_the_tickers_own_option_market(
+def test_the_levels_are_judged_by_schwabs_option_windows(
     published, tk, chain, delivered, at, state
 ):
-    """The levels' one served word: LIVE while the ticker's own option market is open and its
-    chain current, STALE when the chain is overdue or the close values were never fetched, CLOSE
-    once its own market has closed and a chain fetched after that close stands."""
+    """The levels' one served word, the same for every ticker: LIVE inside Schwab's option windows
+    with the chain current, STALE when the chain is overdue or the close values were never fetched,
+    CLOSE after the last window with a chain fetched after that close."""
     published(tk, chain, delivered)
     body = server.terrain_answer(tk, at)
     assert body["levels_state"] == state
     assert body["levels_age_sec"] == pytest.approx(at.timestamp() - delivered.timestamp())
     assert body["levels_time_ct"] is not None
+
+
+def test_on_schwabs_schedule_the_levels_follow_its_option_windows(published):
+    """Schwab's /markets answer of 2026-11-02: the levels' word at each edge of its option windows,
+    for a chain fetched after Friday's close and one fetched that morning. Between windows they are
+    not live and say so; at 09:30 a morning chain is live through the first round."""
+    fx = json.loads(
+        (Path(__file__).parent / "fixtures" / "real_schwab_markets_2026_11_02.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    record_markets(fx["body"])
+    day = datetime(2026, 11, 2, tzinfo=ET)
+
+    def state(chain_ts, hour, minute):
+        return server._levels_state(chain_ts, day.replace(hour=hour, minute=minute).timestamp(), "")
+
+    friday = datetime(2026, 10, 30, 16, 20, tzinfo=ET).timestamp()
+    morning = day.replace(hour=9, minute=23).timestamp()
+    assert state(friday, 7, 0)[0] == "CLOSE"
+    assert state(friday, 7, 31)[0] == "CLOSE"  # the day's first round
+    assert state(morning, 9, 24) == ("LIVE", "")
+    assert state(morning, 9, 27) == ("NOT LIVE", "between Schwab's option windows")
+    assert state(morning, 9, 31) == ("LIVE", "")
 
 
 def test_levels_with_no_markets_answer_held_are_not_live(published):
@@ -177,11 +202,43 @@ _SUNDAY = json.loads(
 )
 
 
+def test_inside_schwabs_pre_market_a_reported_zero_stands():
+    """Schwab's schedule of 2026-11-02 and the zero counts of its chain of 2026-10-25: at 07:00,
+    before the option pre-market, a zero keeps the close count; at 08:00, inside it, a zero is what
+    Schwab reports (it resets option volume there) and replaces the count."""
+    fx = json.loads(
+        (Path(__file__).parent / "fixtures" / "real_schwab_markets_2026_11_02.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    record_markets(fx["body"])
+    friday, sunday = _SUNDAY["friday_close"], _SUNDAY["sunday"]
+    close_oi = {c["symbol"]: c["openInterest"] for c in friday["chain"]}
+    blanked = [
+        c["symbol"] for c in sunday["chain"] if c["openInterest"] == 0 and close_oi[c["symbol"]] > 0
+    ]
+
+    def counts(hour):
+        kept = server._keep_last_reported(
+            sunday["chain"],
+            friday["chain"],
+            datetime(2026, 11, 2, hour, 0, tzinfo=ET),
+            option_close_product("SPY"),
+            friday["spot"],
+        )
+        by_symbol = {c["symbol"]: c["openInterest"] for c in kept}
+        return {s: by_symbol[s] for s in blanked}
+
+    assert blanked
+    assert counts(7) == {s: close_oi[s] for s in blanked}
+    assert counts(8) == dict.fromkeys(blanked, 0)
+
+
 def test_on_a_closed_day_a_delivered_chain_keeps_the_close_counts_schwab_blanks():
     """Sunday 2026-10-25, a day Schwab's /markets answer says is closed: the daemon, restarted,
     fetches SPY's chain again (09:37 ET) and Schwab sends open interest 0 for contracts Friday's
     16:16 close had above 0. A closed day is outside every option market's window
-    (time_et.option_market_open), so the close counts stand (server._keep_last_reported, the stored
+    (time_et.options_open), so the close counts stand (server._keep_last_reported, the stored
     close capture), as after any close. STAND-IN (named): the chain's price is Friday's close
     capture's underlying price, not Schwab's LAST_PRICE with its trade time."""
     friday, sunday = _SUNDAY["friday_close"], _SUNDAY["sunday"]
@@ -251,16 +308,16 @@ def _told(tk: str, at: datetime) -> set:
 
 def test_a_page_is_told_to_read_again_only_while_its_price_or_its_levels_are_not_live(published):
     """TSLA's price live (its quote's receipt, the daemon holding it) and its chain current: the
-    page is not told, each new price and chain tell it. The same chain at 16:05, after TSLA's own
-    option close and fetched after it: the levels are CLOSE, so the page is told each minute and the
-    close values' age keeps counting."""
+    page is not told, each new price and chain tell it. The same chain at 16:20, after the option
+    close and fetched after it: the levels are CLOSE, so the page is told each minute and the close
+    values' age keeps counting."""
     quote = _QUOTES["TSLA"]
     at = datetime.fromtimestamp(quote["ts_recv"], ET)
     published("TSLA", TSLA, at)
     assert server.terrain_answer("TSLA", at)["levels_state"] == "LIVE"
     assert _told("TSLA", at) == set()
-    published("TSLA", TSLA, _et(16, 1))
-    later = _et(16, 5)
+    published("TSLA", TSLA, _et(16, 16))
+    later = _et(16, 20)
     lmp.record_feed_heartbeat(
         {
             "ts": later.timestamp(),

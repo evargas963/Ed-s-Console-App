@@ -25,6 +25,7 @@ import server
 import time_et
 from app.market_data.schwab.streaming import capture
 from app.options.order_flow import streaming as ofs
+from calibration.complete_chain_capture import capture_slot
 from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus
 from tests.feed_live_helper import mark_feed_live, publish_daemon_rows
 from tests.schwab_rest_standin import CHAINS, MARKETS, MARKETS_ANSWERS, LocalSchwab
@@ -170,7 +171,11 @@ def test_the_option_sessions_are_the_windows_schwab_sent():
     }
     assert {t: time_et.options_open(_et(f"2026-11-02 {t}")) for t in expected} == expected
     assert time_et.options_opened(_et("2026-11-02 12:00")) == _et("2026-11-02 07:30")
-    assert time_et.option_market_open(_et("2026-11-02 08:00")) is False  # the close values' window
+    assert time_et.options_window_began(_et("2026-11-02 12:00")) == _et("2026-11-02 09:30")
+    assert time_et.options_closed_at(_et("2026-11-02 16:20")) == _et("2026-11-02 16:15")
+    # the recorder follows the same windows: a pre-market chain is kept
+    first = _et("2026-11-02 07:30").timestamp()
+    assert capture_slot(_et("2026-11-02 07:40").timestamp()) == first
 
 
 def test_no_market_time_is_typed_in_the_product():
@@ -193,11 +198,11 @@ def test_no_market_time_is_typed_in_the_product():
 def test_the_options_are_open_until_the_last_option_market_closes():
     """Schwab's /markets: EQO to 16:00 ET, IND to 16:15 ET (SPY's, QQQ's and IWM's options trade
     to 16:15 too); the options are open until the last of them closes."""
-    assert time_et.option_market_open(_et("2026-10-07 16:05")) is True
-    assert time_et.option_market_open(_et("2026-10-07 16:15")) is False
+    assert time_et.options_open(_et("2026-10-07 16:05")) is True
+    assert time_et.options_open(_et("2026-10-07 16:15")) is False
     assert time_et.options_closed_at(_et("2026-10-07 16:20")) == _et("2026-10-07 16:15")
     assert time_et.options_closed_at(_et("2026-10-10 12:00")) == _et("2026-10-09 16:15")
-    assert time_et.option_market_open(_et("2027-10-09 12:00")) is None
+    assert time_et.options_open(_et("2027-10-09 12:00")) is None
 
 
 def test_a_chain_is_valued_at_its_close_for_the_rest_of_that_day_and_on_the_clock_otherwise():
@@ -207,6 +212,9 @@ def test_a_chain_is_valued_at_its_close_for_the_rest_of_that_day_and_on_the_cloc
     after = _et("2026-10-09 18:00")
     assert time_et.valuation_instant(after, time_et.INDEX_OPTIONS) == _et("2026-10-09 16:15")
     assert time_et.valuation_instant(after, time_et.EQUITY_OPTIONS) == _et("2026-10-09 16:00")
+    between = _et("2026-10-09 16:05")  # EQO's post-market: its contracts expired at 16:00
+    assert time_et.valuation_instant(between, time_et.EQUITY_OPTIONS) == _et("2026-10-09 16:00")
+    assert time_et.valuation_instant(between, time_et.INDEX_OPTIONS) == between
     for at in (
         _et("2026-10-10 12:00"),
         _et("2026-10-11 20:00"),
@@ -214,8 +222,7 @@ def test_a_chain_is_valued_at_its_close_for_the_rest_of_that_day_and_on_the_cloc
         _et("2026-10-12 11:00"),
         _et("2027-10-09 12:00"),
     ):
-        for product in (time_et.INDEX_OPTIONS, time_et.EQUITY_OPTIONS):
-            assert time_et.valuation_instant(at, product) == at, (at, product)
+        assert time_et.valuation_instant(at) == at, at
 
 
 def test_a_closed_day_is_outside_every_option_market():
@@ -224,10 +231,7 @@ def test_a_closed_day_is_outside_every_option_market():
     for hour in (9, 12, 16):
         at = _et(f"2026-10-10 {hour:02d}:00")
         assert time_et.session("2026-10-10") is not None
-        assert [
-            time_et.option_market_open(at, p)
-            for p in (None, time_et.EQUITY_OPTIONS, time_et.INDEX_OPTIONS)
-        ] == [False, False, False]
+        assert time_et.options_open(at) is False
 
 
 def test_time_to_expiry_runs_to_schwabs_close_of_the_expiry_date():

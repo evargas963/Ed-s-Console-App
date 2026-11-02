@@ -3792,6 +3792,14 @@ market_hours.option.EQO.marketType,market_hours,string,2026-09-28;2026-09-29,202
 market_hours.option.EQO.product,market_hours,string,2026-09-28;2026-09-29,2026-09-28,2026-09-28
 market_hours.option.EQO.productName,market_hours,string,2026-09-28;2026-09-29,2026-09-28,2026-09-28
 market_hours.option.EQO.sessionHours,market_hours,object,2026-09-28;2026-09-29,2026-09-28,2026-09-28
+market_hours.option.EQO.sessionHours.postMarket,market_hours,array,2026-11-02,2026-11-02,2026-11-02
+market_hours.option.EQO.sessionHours.postMarket.*,market_hours,object,2026-11-02,2026-11-02,2026-11-02
+market_hours.option.EQO.sessionHours.postMarket.*.end,market_hours,string,2026-11-02,2026-11-02,2026-11-02
+market_hours.option.EQO.sessionHours.postMarket.*.start,market_hours,string,2026-11-02,2026-11-02,2026-11-02
+market_hours.option.EQO.sessionHours.preMarket,market_hours,array,2026-11-02,2026-11-02,2026-11-02
+market_hours.option.EQO.sessionHours.preMarket.*,market_hours,object,2026-11-02,2026-11-02,2026-11-02
+market_hours.option.EQO.sessionHours.preMarket.*.end,market_hours,string,2026-11-02,2026-11-02,2026-11-02
+market_hours.option.EQO.sessionHours.preMarket.*.start,market_hours,string,2026-11-02,2026-11-02,2026-11-02
 market_hours.option.EQO.sessionHours.regularMarket,market_hours,array,2026-09-28;2026-09-29,2026-09-28,2026-09-28
 market_hours.option.EQO.sessionHours.regularMarket.*,market_hours,object,2026-09-28;2026-09-29,2026-09-28,2026-09-28
 market_hours.option.EQO.sessionHours.regularMarket.*.end,market_hours,string,2026-09-28;2026-09-29,2026-09-28,2026-09-28
@@ -3803,6 +3811,10 @@ market_hours.option.IND.marketType,market_hours,string,2026-09-28;2026-09-29,202
 market_hours.option.IND.product,market_hours,string,2026-09-28;2026-09-29,2026-09-28,2026-09-28
 market_hours.option.IND.productName,market_hours,string,2026-09-28;2026-09-29,2026-09-28,2026-09-28
 market_hours.option.IND.sessionHours,market_hours,object,2026-09-28;2026-09-29,2026-09-28,2026-09-28
+market_hours.option.IND.sessionHours.preMarket,market_hours,array,2026-11-02,2026-11-02,2026-11-02
+market_hours.option.IND.sessionHours.preMarket.*,market_hours,object,2026-11-02,2026-11-02,2026-11-02
+market_hours.option.IND.sessionHours.preMarket.*.end,market_hours,string,2026-11-02,2026-11-02,2026-11-02
+market_hours.option.IND.sessionHours.preMarket.*.start,market_hours,string,2026-11-02,2026-11-02,2026-11-02
 market_hours.option.IND.sessionHours.regularMarket,market_hours,array,2026-09-28;2026-09-29,2026-09-28,2026-09-28
 market_hours.option.IND.sessionHours.regularMarket.*,market_hours,object,2026-09-28;2026-09-29,2026-09-28,2026-09-28
 market_hours.option.IND.sessionHours.regularMarket.*.end,market_hours,string,2026-09-28;2026-09-29,2026-09-28,2026-09-28
