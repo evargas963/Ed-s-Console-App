@@ -150,7 +150,8 @@ then the rule binds with no machine check.
 - This is a wiring job (operator 2026-11-02: "this needs to be enforced.. this is non negotiable").
   A value served is a Schwab field (`docs/schwab_fields.csv`) or a row of the register
   (`docs/derived_register.csv`: key, kind, its one producer, its definition and why Schwab does not
-  send it). Code that is neither is named to the operator in the message that proposes it, and a
+  send it; kind `status` is the console's own words, containers, counters, request echoes and
+  receive times, never a market value, and carries no why). Code that is neither is named to the operator in the message that proposes it, and a
   row of kind `flag` is a value still to be wired, replaced or removed. Enforced by:
   `tests/test_every_served_value_is_wired_v1.py` (every key on every GET route that answers over
   real data, but `/api/changes`, the long poll that holds until a change; a route that does not

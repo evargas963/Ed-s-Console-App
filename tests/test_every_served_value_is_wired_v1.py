@@ -40,7 +40,7 @@ def _register() -> list[dict]:
 
 
 def _loaded(dotted: str) -> bool:
-    """Whether `dotted` is a module the server loads, or a name reached from the longest one."""
+    """Whether `dotted` is a loaded module, or a name reached from the longest loaded one."""
     parts = dotted.split(".")
     cut = max(
         (n for n in range(len(parts) + 1) if ".".join(parts[:n]) in sys.modules),

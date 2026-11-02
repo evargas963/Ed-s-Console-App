@@ -28,7 +28,7 @@ atr_weekly,flag,terrain_atr.compute_atrs,ATR(14) on weekly candles rolled from d
 auction_interpretation,flag,liquidity_value_engine._classify_value_state_and_vwap_relation,"bullish_acceptance / bearish_acceptance / empty, from value_state and vwap_relation.",never read by static/js; otherwise derived. A label of ours on estimated levels.
 available,status,server,Whether the route has a value to serve.,
 bar_source,status,server.BAR_SOURCE,Words naming where the bars come from.,
-bars,status,server.get_bars1m,Container of bars; in volume_profile the count of RTH bars given.,
+bars,derived,server.get_bars1m,Container of bars; in volume_profile the count of RTH bars given.,"Schwab sends the rows, not a count of them."
 bars_without_volume,derived,liquidity_models.volume_profile,RTH bars Schwab sent with no volume.,"Schwab sends the rows, not a count of them."
 basis,status,server.levels_payload,Words describing how a value is built.,
 below,flag,server._spot_location,Index into zones of the nearest zone below spot.,"server.liquidity_snapshot adds the live price as a level (SPOT_LIVE) before clustering, so during the session the price always sits inside its own zone; `inside` is set and this is None whenever a spot is held in the live shape."
@@ -65,8 +65,8 @@ capabilities,flag,server.health,"Container: schwab, and schwab_reason when down.
 carried,derived,server.levels_payload,In zero_dte: the regular level beside its same-day price. In provenance: true when carried. Two meanings.,Levels are ours.
 ceiling,derived,confluence_composite.ceiling,100 x the weights in the score.,In docs/derived_register.md.
 cell_metric,flag,server.gamma_surface_payload,Words naming the cell's metric.,never read by static/js; otherwise status.
-cells,status,server.project_gamma_surface,Container of heatmap cells; in coverage the count of cells.,
-centre,status,server._window,The strike a panel's window is centred on.,
+cells,derived,server.project_gamma_surface,Container of heatmap cells; in coverage the count of cells.,"Schwab sends the rows, not a count of them."
+centre,derived,server._window,The strike a panel's window is centred on.,"The strike the view is drawn around, the server's choice; Schwab sends none."
 chain_as_of_time_ct,flag,server.confluence_payload,"When the chain began, Central Time.",never read by static/js; otherwise status.
 chain_as_of_ts_utc,flag,calibration.complete_chain_capture.ChainSweep.fetch_chain,"When the chain request began, our clock.",never read by static/js; otherwise status.
 chain_basis,status,calibration.complete_chain_capture.CAPTURE_BASIS,Words naming the chain's coverage.,
@@ -243,7 +243,7 @@ levels_state,status,server._levels_state,LIVE / CLOSE / STALE / NOT LIVE.,
 levels_time_ct,status,server.terrain_staleness,"The chain's start, Central Time.",
 lines,flag,terrain_read.build_terrain_read,The read's sentences at the live price.,"never read by static/js; otherwise derived. Words of ours. Includes the warning that the curve disagrees with Schwab's gamma, which therefore never reaches the screen."
 liquidity_concentration,flag,app.options.order_flow.engine._book_concentration,Best level's share of top-5 size.,never read by static/js; otherwise derived. Schwab sends levels only.
-live,status,server.get_watchlist,Daemon reporting; in coverage the live cell count.,
+live,derived,server.get_watchlist,Daemon reporting; in coverage the live cell count.,"Schwab sends the rows, not a count of them."
 live_pct,flag,server._stream_coverage,"Share of cells streaming, rounded down.",never read by static/js; otherwise status.
 lo,flag,terrain_engine.compute_wall_value_area,Bottom strike of a wall's range.,never read by static/js; otherwise derived. Ours.
 low52Week,flag,schwab:/chains,52-week low.,never read by static/js; otherwise schwab.
@@ -278,7 +278,7 @@ multiplier,schwab,schwab:/chains,Contract multiplier.,
 n,derived,server.get_bars1m,Count of bars; a queue item's number.,"Schwab sends the rows, not a count of them."
 n_ask_levels,flag,app.options.order_flow.engine._microstructure_structural,Ask levels held.,never read by static/js; otherwise status.
 n_bid_levels,flag,app.options.order_flow.engine._microstructure_structural,Bid levels held.,never read by static/js; otherwise status.
-n_buckets,derived,app.options.order_flow.history.book_heatmap_for_ticker,Fixed 90 time columns.,"Schwab sends the rows, not a count of them."
+n_buckets,derived,app.options.order_flow.history.book_heatmap_for_ticker,Fixed 90 time columns.,"The heatmap's fixed column count, ours; Schwab sends no such layout."
 n_strikes,derived,server.get_chain,Strikes in the ladder or chain.,"Schwab sends the rows, not a count of them."
 native_aggressor_available,status,l1_trade_observation.NATIVE_AGGRESSOR_AVAILABLE,Fixed False.,
 near,status,terrain_engine.per_strike_view,Container: rows of expiries at or under 7 DTE.,
@@ -550,7 +550,7 @@ weighted_strike_prior,flag,terrain_engine.positioning_migration,"Positive-gamma-
 weighted_strike_today,flag,terrain_engine.positioning_migration,"Positive-gamma-weighted strike, today.",never read by static/js; otherwise derived. Input to drift.
 weights_in_score,flag,confluence_composite.in_score_weights,"The preset's weights, 0 for the absent factors.",never read by static/js; otherwise derived. In docs/derived_register.md.
 window_label,status,server.DESK_LOOKBACK,Words for the event window.,
-window_start_ts_utc,status,server._desk_window_start,Start of the event window.,
+window_start_ts_utc,derived,server._desk_window_start,Start of the event window.,"The start of the heatmap's window, ours; Schwab sends no window."
 zero_dte,flag,server.levels_payload,Rows pairing each regular level with its same-day price.,"Computes gamma and delta Schwab sends. Settled by operator decision 10, DATA_FLOW 6. Listed because the gate asks, and it needs a register row."
 zero_dte_gamma_share_pct,flag,math_exposure_core.compute_zero_dte_gamma_share,Share of |net GEX| from same-day expiries.,"Partial sum: skips strikes whose value is unknown, unlike terrain_engine.side_total and DATA_FLOW 3.4 ('never the sum of the rest'). Schwab sends no such share. Also never read by static/js."
 zone_class,flag,liquidity_models.zone_class_for_type,structure / trigger / value.,never read by static/js; otherwise derived. Zones are ours.
