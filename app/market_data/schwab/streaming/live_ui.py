@@ -5,8 +5,7 @@ LEVELONE_EQUITIES field (live_market_plane, fed by capture.Daemon.follow_market)
 whether the feed is alive (the daemon's own heartbeat, applied every HEARTBEAT_SEC), and
 pushes the FINISHED displayed row (live_price_rows.price_row -- the one producer) to every
 browser that asked for the symbol, the moment a Schwab message changes it, on the one socket
-the page holds (/ws, page_socket). Pricing runs on its own thread, so no analytics load holds
-the event loop this runs on.
+the page holds (/ws, page_socket).
 
 Protocol (JSON text frames):
   browser -> {"op": "subscribe", "symbols": ["SPY", "AAPL", ...]}   (replaces the set)
@@ -145,7 +144,7 @@ class LiveUiServer:
             c.wake.set()
 
     async def serve_client(self, ws) -> None:
-        """One accepted page socket (server.page_socket), until it closes or is dropped."""
+        """One accepted page socket (page_socket), until it closes or is dropped."""
         c = _Client(ws)
         self.clients.add(c)
         self.stats["clients"] = len(self.clients)
@@ -195,11 +194,12 @@ class LiveUiServer:
 
 
 async def page_socket(ws: WebSocket) -> None:
-    """The page's one socket, /ws on the program's port: closed while no daemon runs."""
-    await ws.accept()
+    """The page's one socket, /ws on the program's port: refused while no daemon runs, so the
+    page's reconnect keeps its schedule."""
     if _serving is None:
-        await ws.close(code=1013)
+        await ws.close()
     else:
+        await ws.accept()
         await _serving.serve_client(ws)
 
 

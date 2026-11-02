@@ -19,7 +19,7 @@ server:app, offline, a runtime root of its own) in the second.
 
 from __future__ import annotations
 
-import json
+import asyncio
 import os
 import socket
 import subprocess
@@ -29,9 +29,9 @@ from pathlib import Path
 
 import psutil
 import pytest
-from websockets.sync.client import connect
 
 import launch
+from tests.feed_live_helper import takes_a_beat
 
 REPO = Path(__file__).resolve().parent.parent
 windows_only = pytest.mark.skipif(
@@ -207,6 +207,7 @@ def _real_console(
                         "127.0.0.1",
                         "--port",
                         str(port),
+                        *launch.CONSOLE[-2:],
                     ],
                     env,
                 )
@@ -231,9 +232,7 @@ def test_the_program_is_one_process_and_the_stop_ends_the_daemon_before_the_loop
     )
     locks = (tmp_path / "one" / "runtime").rglob("stream_capture.lock")
     try:
-        with connect(f"ws://127.0.0.1:{port}/ws") as page:
-            while json.loads(page.recv(timeout=10))["type"] != "feed":
-                pass
+        asyncio.run(asyncio.wait_for(takes_a_beat(f"ws://127.0.0.1:{port}/ws"), 20))
         launch.ctrl_break(pid)
         assert window.wait(timeout=60) == 0, "the program did not stop, or its window waits"
         assert list(locks) == []

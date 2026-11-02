@@ -10,7 +10,7 @@ import time
 import live_market_plane as lmp
 from app.market_data.schwab.streaming import live_ui
 from live_price_rows import price_row
-from tests.feed_live_helper import page_socket
+from tests.feed_live_helper import connect, page_socket
 from tests.test_live_push_channel_v1 import (
     _daemon_heartbeat,
     _run,
@@ -28,8 +28,6 @@ def test_a_page_frame_the_daemon_cannot_read_is_logged_with_what_arrived(caplog)
     are each logged with what arrived (its first 200 characters), never dropped unseen."""
 
     async def go():
-        from websockets.asyncio.client import connect
-
         stop = asyncio.Event()
         ui = asyncio.create_task(live_ui.serve_live_ui(stop, heartbeat_fn=_daemon_heartbeat()))
         try:

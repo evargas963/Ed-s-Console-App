@@ -17,7 +17,6 @@ from pathlib import Path
 
 import psutil
 import pytest
-from websockets.asyncio.client import connect
 
 import db
 import launch
@@ -33,7 +32,7 @@ from calibration.complete_chain_capture import (
 from schwab_client import build_client_from_token
 from stream_spine import CaptureWriter, HealthRegistry, MessageBus, quote_msg
 from tests.capture_store import store_capture
-from tests.feed_live_helper import page_socket
+from tests.feed_live_helper import connect, page_socket
 from tests.real_chains import CRWD, MRVL, NFLX
 
 REPO = Path(__file__).resolve().parent.parent
@@ -270,10 +269,9 @@ def test_a_browser_that_stopped_reading_is_dropped_others_keep_beats_and_the_sto
     """The daemon's price socket (serve_live_ui, its heartbeat the daemon's own status) and two
     real browser sockets: one reads every frame, one stops reading once its one-message queue is
     full. The one that stopped reading is found once (its beat not taken within HEARTBEAT_SEC),
-    dropped (its connection aborted: a close frame cannot be written to a browser that does not
-    read), and its handler ends; the reading browser takes each of the next four beats in time
-    (no other beat fails); the daemon's stop ends
-    the server with no error. Induced test condition: each beat carries a 2 MB pad, so the
+    dropped (its handler ends, and no more is written to it); the reading browser takes each of
+    the next four beats in time (no other beat fails); the daemon's stop ends the server with no
+    error. Induced test condition: each beat carries a 2 MB pad, so the
     stalled socket's buffers fill in seconds (the real status, a few KB, takes far longer)."""
     daemon = capture.Daemon(MessageBus(), HealthRegistry(), ["SPY"])
 

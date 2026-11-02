@@ -793,10 +793,9 @@
     el.className = w ? 'v ' + w.cls : 'v';
   }
   function openPriceSocket() {
-    var url = priceSocketUrl();
-    if (typeof WebSocket === 'undefined' || !url) return;
+    if (typeof WebSocket === 'undefined') return;
     var ws;
-    try { ws = new WebSocket(url); } catch (e) { schedulePriceReconnect(); return; }
+    try { ws = new WebSocket(priceSocketUrl()); } catch (e) { schedulePriceReconnect(); return; }
     _priceWs = ws;   // (_priceSubTs is set by a ticker change only: a reconnect during an
                      //  outage keeps reading OFFLINE, not WAITING)
     ws.onopen = function () { _priceRetry = 0; subscribePrices(); };

@@ -27,7 +27,7 @@ import pytest
 import live_market_plane as lmp
 from app.market_data.schwab.streaming import capture, live_ui
 from stream_spine import HealthRegistry, MessageBus, quote_msg
-from tests.feed_live_helper import page_socket
+from tests.feed_live_helper import connect, page_socket, refused, takes_a_beat
 
 
 @pytest.fixture(autouse=True)
@@ -78,8 +78,6 @@ class _Feed:
 
 
 async def _run(body, feed=None):
-    from websockets.asyncio.client import connect
-
     bus = MessageBus()
     stop = asyncio.Event()
     stats: dict = {}
@@ -271,3 +269,24 @@ def test_shutdown_is_not_held_up_by_a_connected_browser():
     t0 = time.monotonic()
     asyncio.run(_run(body))
     assert time.monotonic() - t0 < 5
+
+
+def test_a_page_is_refused_with_no_daemon_and_served_by_the_daemons_next_run():
+    """With no daemon the socket refuses the page's handshake, so the page's reconnect keeps its
+    schedule. A daemon's stop closes the connected page; its next run serves the page again."""
+
+    async def go():
+        async with page_socket() as url:
+            assert await refused(url)
+            for _run_again in range(2):
+                stop = asyncio.Event()
+                run = asyncio.create_task(live_ui.serve_live_ui(stop, heartbeat_fn=_Feed()))
+                await asyncio.sleep(0)
+                await takes_a_beat(url)
+                page = await connect(url)
+                stop.set()
+                await run
+                await asyncio.wait_for(page.wait_closed(), 5)
+                assert await refused(url)
+
+    asyncio.run(asyncio.wait_for(go(), 20))
