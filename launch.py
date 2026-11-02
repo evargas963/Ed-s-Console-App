@@ -38,7 +38,8 @@ CONSOLE_PORT = 8000
 URL = f"http://127.0.0.1:{CONSOLE_PORT}/"
 #: what it runs right after its Python
 CONSOLE_START = ["-m", "uvicorn", "program:app"]
-#: --timeout-graceful-shutdown: Ctrl+C ends it while pages hold their change streams open
+#: --timeout-graceful-shutdown: Ctrl+C ends it while pages hold their change streams open;
+#: --ws-per-message-deflate: the price socket's frames go out as they are, nothing spent on them
 CONSOLE = [
     sys.executable,
     *CONSOLE_START,
@@ -48,6 +49,8 @@ CONSOLE = [
     str(CONSOLE_PORT),
     "--timeout-graceful-shutdown",
     "10",
+    "--ws-per-message-deflate",
+    "false",
 ]
 #: how long a clean stop waits for the program to end: the daemon's stop, then a shutdown bounded
 #: at 12 s

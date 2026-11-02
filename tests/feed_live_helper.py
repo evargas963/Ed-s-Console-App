@@ -6,13 +6,40 @@ exactly the symbols the daemon would hold -- through the production entry point.
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import json
+import socket
 import time
 from pathlib import Path
 
+import uvicorn
+from fastapi import FastAPI
+
 import live_market_plane as lmp
+from app.market_data.schwab.streaming import live_ui
 
 _FIXTURES = Path(__file__).resolve().parent / "fixtures"
+
+
+@contextlib.asynccontextmanager
+async def page_socket():
+    """The page's socket on a real server, as the program serves it (/ws); its address."""
+    app = FastAPI()
+    app.add_api_websocket_route("/ws", live_ui.page_socket)
+    config = uvicorn.Config(
+        app, log_level="warning", ws_per_message_deflate=False, timeout_graceful_shutdown=1
+    )
+    server = uvicorn.Server(config)
+    listening = socket.create_server(("127.0.0.1", 0))
+    serving = asyncio.create_task(server.serve([listening]))
+    try:
+        while not server.started:
+            await asyncio.sleep(0.01)
+        yield f"ws://127.0.0.1:{listening.getsockname()[1]}/ws"
+    finally:
+        server.should_exit = True
+        await serving
 
 
 def daemon_bars(name: str, *symbols: str) -> list[dict]:

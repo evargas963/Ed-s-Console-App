@@ -694,11 +694,10 @@
       spot.title = [cls ? label + (ageTitle != null ? ': ' + ageTitle : '') : '', shown].filter(Boolean).join(' · ');
     }
   }
-  // ---- header quote + watchlist: PUSHED BY THE CAPTURE DAEMON over WebSocket (port 8800,
+  // ---- header quote + watchlist: PUSHED OVER THE PAGE'S SOCKET (/ws,
   //      app/market_data/schwab/streaming/live_ui.py) -- the finished row (live_price_rows.
   //      price_row) the instant a Schwab message changes it, plus a feed verdict every second.
-  //      No web server is in this path, so no analytics load can delay a price. It is the
-  //      ONLY source of the header quote and the watchlist rows (no fallbacks): when it is
+  //      It is the ONLY source of the header quote and the watchlist rows (no fallbacks): when it is
   //      not delivering, the header says so -- nothing polls a quote. ----
   // The source that answered THIS number (quote_ingestion / _quote_authority, on every
   // payload) shows as a hover tooltip, not new chrome, so a divergence between sources is

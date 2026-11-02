@@ -88,7 +88,6 @@ def _env(tmp_path: Path) -> dict:
         **os.environ,
         "ED_RUNTIME_ROOT": str(tmp_path),
         "ED_ARTIFACTS_ROOT": str(tmp_path / "artifacts"),
-        "ED_LIVE_UI_PORT": "1",
         "SCHWAB_TOKEN_PATH": str(tmp_path / "missing_schwab_token.json"),
         "PYTHONIOENCODING": "utf-8",
     }

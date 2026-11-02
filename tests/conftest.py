@@ -47,9 +47,6 @@ os.environ.setdefault("ED_CONSOLE_ALLOW_NONCANONICAL_DB", "1")
 # set — RC-534 resolves the token canonically under ED_RUNTIME_ROOT (a path with no token in
 # the private root, so still offline), and runtime_layout's own tests require it unset.
 os.environ["ED_CI_OFFLINE"] = "1"
-# No test console may connect to the real daemon's price socket (it would take live market data):
-# the port a test daemon would bind / a test page is told
-os.environ["ED_LIVE_UI_PORT"] = "1"
 os.environ["SCHWAB_API_KEY"] = "ci-placeholder-api-key"
 os.environ["SCHWAB_APP_SECRET"] = "ci-placeholder-app-secret"
 os.environ["SCHWAB_CALLBACK_URL"] = "https://127.0.0.1:8182"

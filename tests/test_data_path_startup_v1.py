@@ -8,7 +8,6 @@ import asyncio
 import json
 import os
 import re
-import socket
 import sqlite3
 import subprocess
 import sys
@@ -34,6 +33,7 @@ from calibration.complete_chain_capture import (
 from schwab_client import build_client_from_token
 from stream_spine import CaptureWriter, HealthRegistry, MessageBus, quote_msg
 from tests.capture_store import store_capture
+from tests.feed_live_helper import page_socket
 from tests.real_chains import CRWD, MRVL, NFLX
 
 REPO = Path(__file__).resolve().parent.parent
@@ -230,19 +230,14 @@ def test_why_schwab_is_not_connected_reaches_the_log_and_api_health(tmp_path, ca
     )
     bus = MessageBus()
     daemon = capture.Daemon(bus, HealthRegistry(), ["SPY"])
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        port = s.getsockname()[1]
 
     async def go():
         stop = asyncio.Event()
-        ui = asyncio.create_task(
-            serve_live_ui(stop, heartbeat_fn=daemon.status, host="127.0.0.1", port=port)
-        )
+        ui = asyncio.create_task(serve_live_ui(stop, heartbeat_fn=daemon.status))
         run = asyncio.create_task(daemon.run(schwab_client, stop))
         await _until(lambda: daemon.status(time.time())["schwab_down"].startswith("NOT CONNECTED"))
         await asyncio.sleep(0.2)
-        async with connect(f"ws://127.0.0.1:{port}", max_size=None) as ws:
+        async with page_socket() as url, connect(url, max_size=None) as ws:
             await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"]}))
             while (msg := json.loads(await asyncio.wait_for(ws.recv(), 5)))["type"] != "feed":
                 pass
@@ -289,16 +284,14 @@ def test_a_browser_that_stopped_reading_is_dropped_others_keep_beats_and_the_sto
             serve_live_ui(
                 stop,
                 heartbeat_fn=lambda now: {**daemon.status(now), "pad": "x" * 2_000_000},
-                host="127.0.0.1",
-                port=0,
                 stats=stats,
             )
         )
-        await _until(lambda: stats.get("listening"), 5)
         beats: list[float] = []
         async with (
-            connect(stats["listening"], max_size=None) as reading,
-            connect(stats["listening"], max_queue=1, max_size=None, close_timeout=1),
+            page_socket() as url,
+            connect(url, max_size=None) as reading,
+            connect(url, max_queue=1, max_size=None, close_timeout=1),
         ):
 
             async def read_all():
@@ -379,43 +372,40 @@ def test_a_process_that_only_names_the_console_is_not_the_console():
             _end(p)
 
 
-def test_a_daemon_whose_live_ui_port_is_held_ends_with_why_and_starts_again(tmp_path):
-    """Another socket holds the live UI's port: the daemon ends with the bind's error in its log,
-    instead of running with no browser served, and keep_running goes on until the stop."""
+def test_a_daemon_whose_console_reader_fails_ends_with_why_and_starts_again(tmp_path):
+    """The console's reader of the bus fails: the daemon ends with its error in the log, instead
+    of running with no screen served, and keep_running goes on until the stop. Induced test
+    condition: a reader that raises."""
     script = (
         "import asyncio\n"
         "from app.market_data.schwab.streaming import capture\n"
-        "from app.options.order_flow.streaming import follow\n"
+        "async def fails(bus, daemon):\n"
+        "    raise OSError('the reader failed')\n"
         "async def go():\n"
         "    stop = asyncio.Event()\n"
         "    asyncio.get_running_loop().call_later(capture.RESTART_WAIT_SEC + 3, stop.set)\n"
-        "    await capture.keep_running(stop, follow)\n"
+        "    await capture.keep_running(stop, fails)\n"
         "capture.start_log()\n"
         "asyncio.run(go())\n"
     )
-    with socket.socket() as held:
-        held.bind(("127.0.0.1", 0))
-        held.listen()
-        env = {
-            **os.environ,
-            "ED_RUNTIME_ROOT": str(tmp_path),
-            "ED_LIVE_UI_HOST": "127.0.0.1",
-            "ED_LIVE_UI_PORT": str(held.getsockname()[1]),
-            "SCHWAB_TOKEN_PATH": str(tmp_path / "missing_token.json"),
-        }
-        done = subprocess.run(
-            [sys.executable, "-c", script],
-            cwd=REPO,
-            env=env,
-            capture_output=True,
-            timeout=60,
-        )
+    env = {
+        **os.environ,
+        "ED_RUNTIME_ROOT": str(tmp_path),
+        "SCHWAB_TOKEN_PATH": str(tmp_path / "missing_token.json"),
+    }
+    done = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=REPO,
+        env=env,
+        capture_output=True,
+        timeout=60,
+    )
     (path,) = (tmp_path / "logs").glob("stream_capture.*.log")
     log = path.read_text(encoding="utf-8")
     assert done.returncode == 0, (done.returncode, log)
     assert log.count("capture daemon: ended by an error") >= 2, log
-    assert "RuntimeError: the capture daemon's live ui ended before the stop" in log, log
-    assert "OSError" in log, log
+    assert "RuntimeError: the capture daemon's console ended before the stop" in log, log
+    assert "OSError: the reader failed" in log, log
 
 
 def test_the_stored_levels_are_priced_while_a_page_on_another_ticker_takes_ticks():

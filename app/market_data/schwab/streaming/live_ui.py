@@ -74,7 +74,6 @@ class LiveUiServer:
             rows_sent=0,
             frames_sent=0,
             beat_send_failures=0,
-            listening=None,
             last_send_ms=None,
         )
 
