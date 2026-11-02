@@ -1032,7 +1032,7 @@ def test_d6_no_live_route_opens_a_database():
     """Every live GET route of the console, with both databases present and holding SPY's data
     (the stream database written by the real writer: a captured SPY book and the captured option
     quote; the console database), each database SQLite opens recorded: none opens one. The routes
-    are read from the app itself."""
+    are read from the app itself; /api/changes is the push stream (it never ends)."""
     from fastapi.routing import APIRoute
     from fastapi.testclient import TestClient
 
@@ -1073,6 +1073,7 @@ def test_d6_no_live_route_opens_a_database():
         and "GET" in r.methods
         and r.path.startswith("/api/")
         and "{" not in r.path
+        and r.path != "/api/changes"
     ]
     assert routes
     # what the page sends: every route must run, not answer "invalid request"
