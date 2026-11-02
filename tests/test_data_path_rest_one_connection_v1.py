@@ -156,6 +156,21 @@ def test_a_rotation_asks_schwab_as_documented_one_request_at_a_time_with_exact_g
     ]
 
 
+def test_the_one_connection_stands_through_a_pause(tmp_path):
+    """Two requests 6 s apart, longer than httpx keeps an idle connection by default, go on the
+    same connection."""
+    schwab = LocalSchwab()
+    client = schwab.client(tmp_path)
+    try:
+        client.get_option_expiration_chain("SPY")
+        time.sleep(6)
+        client.get_option_expiration_chain("SPY")
+    finally:
+        schwab.close()
+    assert len(schwab.requests) == 2
+    assert len({r[4] for r in schwab.requests}) == 1
+
+
 def test_a_streamed_no_value_code_does_not_block_the_quote(tmp_path):
     """The stream record holds every greek field as Schwab's -999. That is not a reported greek,
     so the contract is asked on the quotes endpoint and takes the quote's exact greeks. The same

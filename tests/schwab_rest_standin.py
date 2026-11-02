@@ -322,7 +322,7 @@ class _ToLocal(httpx.BaseTransport):
     """Every request the client sends, delivered to the local server instead of Schwab's host."""
 
     def __init__(self, port: int):
-        self.port, self.inner = port, httpx.HTTPTransport()
+        self.port, self.inner = port, httpx.HTTPTransport(limits=sc.ONE_CONNECTION)
 
     def handle_request(self, request: httpx.Request) -> httpx.Response:
         request.url = request.url.copy_with(scheme="http", host="127.0.0.1", port=self.port)
