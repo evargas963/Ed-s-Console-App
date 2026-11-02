@@ -47,13 +47,11 @@ from time_et import ET, options_closed_at, options_open, record_markets, session
 log = logging.getLogger("chain_history")
 
 CAPTURE_EVERY_MIN = 30
-#: why the daemon's captures are complete: every listed expiry, every strike. The daemon writes
-#: only this basis, and rows of any other are not read. The basis is stored before the chain
+#: why the daemon's captures are complete: every listed expiry, every strike. The console reads
+#: only this basis. The basis is stored before the chain
 #: blob, so filtering on it never reads a chain (measured: filtering on `source`, stored after
 #: the blob, read every chain -- 15 s for SPY, 80 s at startup).
-CAPTURE_BASIS = (
-    "every_expiry_strike_range_ALL"  # the only basis read: rows of any other are partial
-)
+CAPTURE_BASIS = "every_expiry_strike_range_ALL"  # the only basis the console reads
 #: a chain begun before the day's first regular option window, as Schwab sent it: kept for research,
 #: never the console's last count or close (open interest does not update in AM/PM hours)
 PRE_MARKET_BASIS = CAPTURE_BASIS + "_pre_market"
@@ -685,8 +683,9 @@ class ChainSweep:
         slot = capture_slot(chain.started)
         if slot is None:
             return
+        basis = capture_basis(chain.started)
         if ticker not in self._written:
-            self._written[ticker] = newest_capture_ts(self.db_path, ticker)
+            self._written[ticker] = newest_capture_ts(self.db_path, ticker, basis=basis)
         before = self._written[ticker]
         if before is not None and before >= slot:
             return
@@ -700,7 +699,7 @@ class ChainSweep:
                         expiry=expiry,
                         contracts=cts,
                         spot=chain.spots[expiry],
-                        completeness_basis=capture_basis(chain.started),
+                        completeness_basis=basis,
                         ts_utc=chain.started,
                         chain_spot=chain.spot,
                         chain_spot_ts=chain.spot_ts,
@@ -711,10 +710,14 @@ class ChainSweep:
 
 
 def newest_capture_ts(
-    db_path: Path | str, ticker: str, *, before_ts: float = float("inf")
+    db_path: Path | str,
+    ticker: str,
+    *,
+    before_ts: float = float("inf"),
+    basis: str = CAPTURE_BASIS,
 ) -> float | None:
-    """When the ticker's newest full capture before `before_ts` was taken; None when there is
-    none."""
+    """When the ticker's newest full capture of `basis` before `before_ts` was taken; None when
+    there is none."""
     if not Path(db_path).is_file():
         return None
     conn = sqlite3.connect(f"file:{Path(db_path).resolve().as_posix()}?mode=ro", uri=True)
@@ -726,7 +729,7 @@ def newest_capture_ts(
         return conn.execute(
             "SELECT MAX(ts_utc) FROM complete_chain_captures WHERE ticker=? "
             "AND completeness_basis=? AND ts_utc<?",
-            (ticker_storage_key(ticker), CAPTURE_BASIS, before_ts),
+            (ticker_storage_key(ticker), basis, before_ts),
         ).fetchone()[0]
     finally:
         conn.close()

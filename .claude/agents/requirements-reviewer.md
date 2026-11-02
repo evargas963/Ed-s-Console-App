@@ -8,8 +8,8 @@ You are given the pull request's diff against its base; you cannot produce it yo
 breaks of the stated requirements only.
 
 Start with the First gate in AGENTS.md (Shared rules): for each value the change touches, its Schwab
-field (the field list: `docs/PRACTICES.md` §H) or its one canonical derived producer (the register is
-not built yet: work item REGISTER in `ACTIVE_PROGRAM.md`); whether it computes something Schwab sends,
+field (the field list: `docs/PRACTICES.md` §H) or its one canonical derived producer (the register:
+`docs/derived_register.csv`); whether it computes something Schwab sends,
 creates a second producer, or adds a derived value not in the register; and
 whether it adds code, tests, checks, tables or tools beyond what wiring Schwab's values, running the
 canonical producers, and testing and enforcing both needs. Then AGENTS.md's other rules, CLAUDE.md, the

@@ -24,7 +24,12 @@ import live_market_plane as lmp
 import live_price_rows
 import push_changes
 import server
-from calibration.complete_chain_capture import CAPTURE_BASIS, PRE_MARKET_BASIS
+from calibration.complete_chain_capture import (
+    CAPTURE_BASIS,
+    PRE_MARKET_BASIS,
+    last_capture_per_day,
+    newest_capture_ts,
+)
 from tests.capture_store import store_capture
 from tests.real_chains import SPY_0DTE, TSLA
 from time_et import ET, record_markets
@@ -290,6 +295,9 @@ def test_a_console_restarted_in_the_pre_market_keeps_the_stored_open_interest():
                 completeness_basis=basis,
                 ts_utc=ts,
             )
+        db_path = server.get_db().db_path
+        assert [c["ts_utc"] for c in last_capture_per_day(db_path, "SPY", 2)] == [friday["ts_utc"]]
+        assert newest_capture_ts(db_path, "SPY", basis=PRE_MARKET_BASIS) == morning
         served = _delivered_at(datetime(2026, 11, 2, 8, 5, tzinfo=ET))
     finally:
         _forget()

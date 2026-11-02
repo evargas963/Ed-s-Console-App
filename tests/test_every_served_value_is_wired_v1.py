@@ -6,7 +6,7 @@ state proves nothing about its keys."""
 from __future__ import annotations
 
 import csv
-import importlib
+import pydoc
 import re
 from pathlib import Path
 
@@ -18,8 +18,8 @@ from tests.feed_live_helper import daemon_bars, stream_daemon_bars
 from tests.real_chains import SPY_0DTE
 
 ROOT = Path(__file__).resolve().parent.parent
-#: strikes, dates, tickers and option symbols: data used as a key, not a name
-_DATA_KEY = re.compile(r"[\d.:\-]+|[A-Z$]{1,6}|[A-Z]+\s+\d+[CP]\d+")
+#: strikes, dates and option symbols: data used as a key, not a name
+_DATA_KEY = re.compile(r"[\d.:\-]+|[A-Z]+\s+\d+[CP]\d+")
 _PARAMS = {"ticker": "SPY", "venue": "NYSE_BOOK", "tf": "1", "timeframe": "1", "scope": "auto"}
 _NOT_A_NAME = re.compile(r"[^a-z0-9]")
 
@@ -37,22 +37,6 @@ def _schwab_names() -> set[str]:
 def _register() -> list[dict]:
     with (ROOT / "docs" / "derived_register.csv").open(encoding="utf-8", newline="") as f:
         return list(csv.DictReader(f))
-
-
-def _resolves(dotted: str) -> bool:
-    """Whether `dotted` is a module, or a name reached by attributes from the longest module."""
-    parts = dotted.split(".")
-    for cut in range(len(parts), 0, -1):
-        try:
-            held = importlib.import_module(".".join(parts[:cut]))
-        except ImportError:
-            continue
-        for name in parts[cut:]:
-            if not hasattr(held, name):
-                return False
-            held = getattr(held, name)
-        return True
-    return False
 
 
 def _keys(node, into: set[str]) -> None:
@@ -104,6 +88,7 @@ def served():
 
 def test_every_served_key_is_a_schwab_field_or_in_the_register(served):
     schwab, register = _schwab_names(), {row["key"] for row in _register()}
+    assert {"/api/terrain", "/api/levels", "/api/health"} <= set(served)
     unwired = {
         route: sorted(k for k in keys if _name(k) not in schwab and k not in register)
         for route, keys in served.items()
@@ -112,10 +97,14 @@ def test_every_served_key_is_a_schwab_field_or_in_the_register(served):
     assert not named, "\n".join(named)
 
 
+def test_every_derived_row_says_why_schwab_does_not_send_it():
+    assert [row["key"] for row in _register() if not row["why"] and row["kind"] != "schwab"] == []
+
+
 def test_every_register_row_names_a_producer_that_exists():
     missing = [
         (row["key"], row["producer"])
         for row in _register()
-        if not row["producer"].startswith("schwab:") and not _resolves(row["producer"])
+        if not row["producer"].startswith("schwab:") and pydoc.locate(row["producer"]) is None
     ]
     assert not missing, "\n".join(f"{key}: {name}" for key, name in missing)
