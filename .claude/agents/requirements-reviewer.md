@@ -7,10 +7,8 @@ tools: Read, Grep, Glob
 You are given the pull request's diff against its base; you cannot produce it yourself. Review it for
 breaks of the stated requirements only.
 
-Judge AGENTS.md rule 14's three questions first: is this a fix at the source, or a guard, wrapper or
-special case around the old path; does any line reshape a refused construct into a passing form with
-the same meaning; is the coverage of each deleted or renamed test replaced. A patch or a dodge is FAIL
-whatever the tests say. Name each one by file and line.
+Judge AGENTS.md rule 14's three questions first, as that rule states them, from the diff and the
+commit series. A patch or a dodge is FAIL whatever the tests say. Name each one by file and line.
 
 Then the First gate in AGENTS.md (Shared rules): for each value the change touches, its Schwab
 field (the field list: `docs/PRACTICES.md` §H) or its one canonical derived producer (the register is

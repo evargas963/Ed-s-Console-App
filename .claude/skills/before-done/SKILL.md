@@ -36,7 +36,8 @@ report what was tried, and take a different approach (CLAUDE.md item 6).
    of steps 1–6), naming that commit; any commit made after a review gets a new review of both before
    the PR is offered. Show each verdict
    (PASS / FAIL / NOT_PROVEN) and its findings, and put both verdicts in the PR description's
-   `## Review` (AGENTS.md rule 14), from a session that did not write the change. A FAIL or
+   `## Review`. The rule 14 record comes from a session that did not write the change, given only
+   what rule 14 names (the commit series with `git log -p origin/main..HEAD`). A FAIL or
    NOT_PROVEN is fixed or proven, or brought to Ed, before the PR merges; the one NOT_PROVEN a merge
    may carry is the deployed-screen tier its deploy proves (AGENTS.md Authority). Before bringing Ed a
    decision, check AGENTS.md, CLAUDE.md and ACTIVE_PROGRAM.md for a rule or recorded decision that

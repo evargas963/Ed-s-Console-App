@@ -121,6 +121,9 @@ def pr_added_lines(root: Path, base: str) -> dict[str, set[int]]:
         "core.quotePath=true",
         "diff",
         "-U0",
+        "--text",  # the head's own attributes and drivers do not decide what the diff shows
+        "--no-ext-diff",
+        "--no-textconv",
         "--no-renames",
         "--src-prefix=a/",
         "--dst-prefix=b/",
@@ -228,7 +231,16 @@ def fix_safety(root: Path, config: Path) -> dict[str, str] | None:
     """FIX_SAFETY's values as ruff resolves them from `config`; None when ruff cannot."""
     try:
         run = subprocess.run(
-            [sys.executable, "-m", "ruff", "check", "--show-settings", "--config", str(config)]
+            [
+                sys.executable,
+                "-P",
+                "-m",
+                "ruff",
+                "check",
+                "--show-settings",
+                "--config",
+                str(config),
+            ]
             + ["pyproject.toml"],
             capture_output=True,
             cwd=root,
@@ -276,7 +288,7 @@ def tool_fixed(root: Path, path: str, text: str) -> str | None:
     ):
         try:
             run = subprocess.run(
-                [sys.executable, "-m", "ruff", *args, "--config", "pyproject.toml"]
+                [sys.executable, "-P", "-m", "ruff", *args, "--config", "pyproject.toml"]
                 + ["--stdin-filename", path, "-"],
                 input=out,
                 capture_output=True,
@@ -524,12 +536,12 @@ def violations(root: Path, base: str) -> list[str]:
 
 def body_violations(body: str) -> list[str]:
     """Each section the description must fill: BODY_SECTIONS, with an arrow in any spelling."""
-    norm = body.replace("->", "→").replace("=>", "→")
+    norm = re.sub(r"<!--.*?-->", "", body, flags=re.S).replace("->", "→").replace("=>", "→")
     hits = sorted((norm.find(s), s) for s in BODY_SECTIONS if s in norm)
     out = [f"the description lacks: {s}" for s in BODY_SECTIONS if s not in norm]
     ends = [at for at, _section in hits[1:]] + [len(norm)]
     for (at, section), end in zip(hits, ends, strict=False):
-        if not norm[at + len(section) : end].strip():
+        if not norm[at + len(section) : end].split("\n## ")[0].strip():
             out.append(f"the description's {section} is empty")
     return out
 

@@ -6,8 +6,9 @@ Test integrity, every pull request:
    - an assertion of a test that survives is not lost. A test is its function name in Python and
      its title in a Playwright spec, across every changed test file, so a moved test is the same
      test and a rewritten one may restate its assertions. An assertion gone with its test, or
-     with a function it names that this change deleted, is the review's to judge;
-   - no line added to code skips a test or leaves a deferred-work marker. A line moved is not added.
+     with a function it calls that this change deleted, is the review's to judge, as is a test
+     renamed or disabled with its assertions kept;
+   - no line added to code skips a test or leaves a deferred-work marker.
 
 Review record, in the description's `## Review` section (`Commit:` the head, `Verdict:` PASS or
 FAIL): required when the change touches what governs changes, and when present it must name the
@@ -25,7 +26,6 @@ import ast
 import re
 import subprocess
 import sys
-from collections import Counter
 from pathlib import Path
 
 CODE_SUFFIXES = (".py", ".js", ".mjs", ".html", ".yml")
@@ -35,31 +35,35 @@ JS_TESTS = re.compile(r"^tests/e2e/.*\.spec\.js$")
 MARKERS = re.compile(
     "|".join(
         (
-            r"@pytest\.mark\." "skip",
-            "skipif",
-            r"pytest\." r"skip\(",
-            r"unittest\." "skip",
-            "importorskip",
-            "xfail",
-            r"\b(?:test|describe|it)\." r"(?:skip|fixme|fail)\b",
-            r"\bx" r"(?:it|describe)\b",
-            r"\bTO" r"DO\b",
-            r"\bFIX" r"ME\b",
+            r"pytest\.mark\." + "skip",
+            "skip" + "if",
+            r"\bskip" + r"\(",
+            r"unittest\." + "skip",
+            "importor" + "skip",
+            "x" + "fail",
+            r"\b(?:test|describe|it)\." + r"(?:skip|fixme|fail)\b",
+            r"\bx" + r"(?:it|describe)\b",
+            r"\bTO" + r"DO\b",
+            r"\bFIX" + r"ME\b",
         )
     )
 )
 GOVERNING = re.compile(
-    r"^(AGENTS\.md|docs/DATA_FLOW\.md|ACTIVE_PROGRAM\.md|locks\.ruff\.toml"
+    r"^(AGENTS\.md|CLAUDE\.md|docs/DATA_FLOW\.md|ACTIVE_PROGRAM\.md|locks\.ruff\.toml"
+    r"|pyproject\.toml|\.pre-commit-config\.yaml|\.gitattributes"
     r"|\.github/.*|\.claude/.*|\.cursor/.*"
-    r"|tools/(hook_chain|check_\w+|after_deploy_check)\.py"
-    r"|tests/test_(governing_docs|test_rules|hook_chain)_v1\.py)$"
+    r"|tools/.*\.py"
+    r"|tests/test_(check_\w+|governing_docs|test_rules|hook_chain|\w+_guard\w*)_v\d+\.py)$"
 )
-NAME = re.compile(r"\w+")
+CALLED = re.compile(r"(\w+)\(")
 JS_TEST = re.compile(r"""\btest(?:\.\w+)?\(\s*(['"`])(.*?)(?<!\\)\1""", re.S)
 JS_EXPECT = re.compile(r"\bexpect(?:\.\w+)?\([^;]*;")
 REVIEW = re.compile(r"^## Review[ \t]*$(.*?)(?=^## |\Z)", re.M | re.S)
 COMMIT = re.compile(r"^Commit:[ \t]*(\S+)[ \t]*$", re.M)
 VERDICT = re.compile(r"^Verdict:[ \t]*(\S+)[ \t]*$", re.M)
+EVIDENCE = re.compile(r"^Evidence:[ \t]*\S", re.M)
+#: the head's own attributes and drivers do not decide what the diff shows
+DIFF = ("diff", "-U0", "--text", "--no-ext-diff", "--no-textconv")
 
 
 class ToolError(Exception):
@@ -78,7 +82,8 @@ def _git(root: Path, *args: str) -> str:
 
 
 def changed(root: Path, base: str) -> list[str]:
-    return _git(root, "diff", "--name-only", "--no-renames", f"{base}...HEAD").splitlines()
+    out = _git(root, "diff", "--name-only", "-z", "--no-renames", f"{base}...HEAD")
+    return [name for name in out.split("\0") if name]
 
 
 def _at(root: Path, rev: str, path: str) -> str | None:
@@ -164,28 +169,23 @@ def lost_assertions(root: Path, base: str, files: list[str]) -> list[str]:
         f"{test}: assertion lost: {assertion}"
         for test in sorted(before.keys() & after.keys())
         for assertion in sorted(before[test] - after[test])
-        if not deleted.intersection(NAME.findall(assertion))
+        if not deleted.intersection(CALLED.findall(assertion))
     ]
 
 
 def added_markers(root: Path, base: str) -> list[str]:
-    added: Counter = Counter()
-    removed: Counter = Counter()
-    path = ""
-    for line in _git(root, "diff", "-U0", "--no-renames", f"{base}...HEAD").splitlines():
-        if line.startswith("+++ "):
-            path = line.removeprefix("+++ b/")
-        elif line.startswith("--- "):
-            pass
-        elif line.startswith("+"):
-            added[(path, line[1:].strip())] += 1
-        elif line.startswith("-"):
-            removed[line[1:].strip()] += 1
     out = []
-    for (where, text), count in sorted(added.items()):
-        new = count - removed[text]
-        if new > 0 and where.endswith(CODE_SUFFIXES) and MARKERS.search(text):
-            out.append(f"{where}: skip or deferred-work marker added: {text[:90]}")
+    path, in_hunk = "", False
+    for line in _git(root, *DIFF, "--no-renames", f"{base}...HEAD").splitlines():
+        if line.startswith("diff --git "):
+            in_hunk = False
+        elif line.startswith("@@ "):
+            in_hunk = True
+        elif not in_hunk and line.startswith("+++ "):
+            path = line.removeprefix("+++ b/")
+        elif in_hunk and line.startswith("+") and path.endswith(CODE_SUFFIXES):
+            if MARKERS.search(line):
+                out.append(f"{path}: skip or deferred-work marker added: {line[1:].strip()[:90]}")
     return out
 
 
@@ -194,13 +194,15 @@ def review_violations(body: str, head_sha: str, files: list[str]) -> list[str]:
     section = REVIEW.search(body)
     if section is None:
         return [f"no ## Review record, and the change touches {governing[0]}"] if governing else []
-    commit = COMMIT.search(section.group(1))
-    verdict = VERDICT.search(section.group(1))
+    commits = COMMIT.findall(section.group(1))
+    verdicts = VERDICT.findall(section.group(1))
     out = []
-    if commit is None or commit.group(1) != head_sha:
+    if not commits or set(commits) != {head_sha}:
         out.append(f"the ## Review record does not name the head {head_sha}")
-    if verdict is None or verdict.group(1) != "PASS":
+    if not verdicts or set(verdicts) != {"PASS"}:
         out.append("the ## Review record's Verdict is not PASS")
+    if not EVIDENCE.search(section.group(1)):
+        out.append("the ## Review record gives no Evidence")
     return out
 
 

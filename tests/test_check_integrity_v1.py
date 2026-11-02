@@ -108,13 +108,22 @@ def test_an_added_skip_or_deferred_work_marker_is_refused(repo, line):
     assert len(found) == 1 and "marker added" in found[0]
 
 
-def test_a_marker_moved_between_files_is_not_added(repo):
-    _write(repo, "product.py", f"{DEFERRED}\nVALUE = 1\n")
-    _commit(repo)
-    _git(repo, "branch", "-f", "main")
-    _write(repo, "product.py", "VALUE = 1\n")
-    _write(repo, "other.py", f"{DEFERRED}\n")
-    assert _found(repo) == []
+def test_a_diff_line_that_reads_like_a_header_does_not_hide_a_marker(repo):
+    _write(repo, "page.js", f"++ x\n{DEFERRED}\n")
+    found = _found(repo)
+    assert len(found) == 1 and found[0].startswith("page.js:")
+
+
+def test_two_verdicts_are_both_read(repo):
+    _write(repo, "AGENTS.md", "# rules, changed\n")
+    record = f"## Review\nCommit: {HEAD}\nVerdict: PASS\nVerdict: FAIL\nEvidence: read.\n"
+    assert _found(repo, record) == ["the ## Review record's Verdict is not PASS"]
+
+
+def test_a_record_with_no_evidence_is_refused(repo):
+    _write(repo, "AGENTS.md", "# rules, changed\n")
+    found = _found(repo, f"## Review\nCommit: {HEAD}\nVerdict: PASS\nEvidence:\n")
+    assert found == ["the ## Review record gives no Evidence"]
 
 
 def test_a_marker_in_a_document_is_not_code(repo):
@@ -134,13 +143,13 @@ def test_a_rules_change_with_a_passing_record_of_the_head_passes(repo):
 
 def test_a_record_of_an_older_commit_is_refused(repo):
     _write(repo, "AGENTS.md", "# rules, changed\n")
-    found = _found(repo, f"## Review\nCommit: {'b' * 40}\nVerdict: PASS\n")
+    found = _found(repo, f"## Review\nCommit: {'b' * 40}\nVerdict: PASS\nEvidence: read.\n")
     assert found == [f"the ## Review record does not name the head {HEAD}"]
 
 
 def test_a_fail_verdict_is_refused_whatever_the_change_touches(repo):
     _write(repo, "product.py", "VALUE = 2\n")
-    found = _found(repo, f"## Review\nCommit: {HEAD}\nVerdict: FAIL\n")
+    found = _found(repo, f"## Review\nCommit: {HEAD}\nVerdict: FAIL\nEvidence: a guard.\n")
     assert found == ["the ## Review record's Verdict is not PASS"]
 
 

@@ -666,10 +666,41 @@ def test_a_file_that_is_not_utf8_fails_the_check_itself(tmp_path):
         ("Schwab -> screen: quote\nDeleted: old\nEnd-to-end test: test_x\n", 0),
         ("Schwab → screen: quote\nDeleted:\nEnd-to-end test: test_x\n", 1),
         ("Deleted: old\nEnd-to-end test: test_x\n", 1),
+        ("Schwab → screen:\n<!-- a -->\nDeleted:\n<!-- b -->\nEnd-to-end test:\n<!-- c -->\n", 3),
+        ("Schwab → screen: q\nDeleted: old\nEnd-to-end test:\n\n## Proof\nran\n", 1),
     ],
 )
 def test_the_description_fills_its_sections(body, refused):
     assert len(cee.body_violations(body)) == refused
+
+
+def test_a_ruff_in_the_change_does_not_run_in_the_judge(tmp_path):
+    """Run from the base with the head as its working directory: a head's `ruff.py` answering for
+    ruff would be head code inside the judge."""
+    root = _repo(tmp_path, BASE)
+    (root / "ruff.py").write_text("raise SystemExit('ran the head')\n", encoding="utf-8")
+    settings = cee.fix_safety(root, root / "pyproject.toml")
+    assert settings is None or settings != {}
+    stray = subprocess.run(
+        [sys.executable, "-P", "-m", "ruff", "--version"], cwd=root, capture_output=True, text=True
+    )
+    assert "ran the head" not in stray.stderr
+
+
+def test_an_attribute_in_the_change_does_not_hide_its_lines(tmp_path):
+    """A `.gitattributes` of `*.py -diff` turns the diff to 'Binary files differ', no hunks."""
+    root = _repo(tmp_path, BASE)
+    name = sorted(BASE)[0]
+    (root / ".gitattributes").write_text("*.py -diff\n", encoding="utf-8")
+    (root / name).write_text(BASE[name] + "\nADDED = 1\n", encoding="utf-8")
+    subprocess.run(["git", "add", "."], cwd=root, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "x", "--no-verify"],
+        cwd=root,
+        check=True,
+        capture_output=True,
+    )
+    assert cee.pr_added_lines(root, "main").get(name)
 
 
 def test_deleting_a_product_file_is_a_product_change(tmp_path):
