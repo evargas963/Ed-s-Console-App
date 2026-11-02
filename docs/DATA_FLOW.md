@@ -661,8 +661,9 @@ are deleted and the page's `/api` reads give way to the one push (step 4), and
   handler (equity quote and book) and the bar writer mark a ticker's kind changed; each page
   socket gets each change the moment it is marked (changes marked while one is sent go in
   the next). The socket down (the program down, a network break, or the page dropped for not
-  reading): the page's session label reads `—` and no notice reaches it; when it reconnects, every
-  kind is told once, so each panel reads again. A Trade Desk timeframe
+  reading): the page's session label reads `—` and no notice reaches it. Each time it opens, every
+  kind is told once after the subscribe, so each panel reads again, as a viewed ticker. A Trade
+  Desk timeframe
   switch asks only for that timeframe's bars, levels and event window. Each panel re-reads only
   for the kinds it shows; Right Now re-reads all five of its reads on every push, because each
   serves values derived at read time (the live price, each level's distance, the chain's

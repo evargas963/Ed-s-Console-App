@@ -409,23 +409,32 @@ def test_a_daemon_whose_console_reader_fails_ends_with_why_and_starts_again(tmp_
 
 
 def test_a_page_stays_on_through_a_daemon_restart_in_the_one_program(tmp_path):
-    """`program:app` over a real socket, a page connected. A daemon run ends with an error; the
-    page's connection stands, its beat carries the daemon's status, then none between the runs,
+    """The program's app, its status and its daemon over a real socket (the lifespan's wiring:
+    tests/test_launch_v1.py), a page connected. A daemon run ends with an error; the page's
+    connection stands, its beat carries the daemon's status, then none between the runs,
     then the next run's. Induced test condition: the console's reader of each run fails after 3 s.
     """
     script = (
         "import asyncio, sys\n"
         "import uvicorn\n"
         "import program\n"
-        "follow = program.follow\n"
+        "from app.market_data.schwab.streaming import capture\n"
+        "from app.market_data.schwab.streaming.live_ui import serve_live_ui\n"
         "async def fails(bus, daemon):\n"
-        "    reader = asyncio.create_task(follow(bus, daemon))\n"
+        "    reader = asyncio.create_task(program.follow(bus, daemon))\n"
         "    await asyncio.sleep(3)\n"
         "    reader.cancel()\n"
         "    await asyncio.gather(reader, return_exceptions=True)\n"
         "    raise OSError('the reader failed')\n"
-        "program.follow = fails\n"
-        "uvicorn.run(program.app, host='127.0.0.1', port=int(sys.argv[1]))\n"
+        "async def go():\n"
+        "    stop = asyncio.Event()\n"
+        "    page = asyncio.create_task(serve_live_ui(stop, heartbeat_fn=program._status))\n"
+        "    daemon = asyncio.create_task(capture.keep_running(stop, fails))\n"
+        "    config = uvicorn.Config(\n"
+        "        program.app, host='127.0.0.1', port=int(sys.argv[1]), lifespan='off'\n"
+        "    )\n"
+        "    await uvicorn.Server(config).serve()\n"
+        "asyncio.run(go())\n"
     )
     with socket.create_server(("127.0.0.1", 0)) as s:
         port = s.getsockname()[1]
@@ -452,7 +461,10 @@ def test_a_page_stays_on_through_a_daemon_restart_in_the_one_program(tmp_path):
                     beats.append(has_status)
 
     try:
-        assert launch.unhealthy_for(port, 120.0) is None
+        end = time.monotonic() + 60
+        while not launch.in_use(port):
+            assert time.monotonic() < end, "the program's socket never opened"
+            time.sleep(0.1)
         asyncio.run(asyncio.wait_for(go(), 40))
     finally:
         _end(process)

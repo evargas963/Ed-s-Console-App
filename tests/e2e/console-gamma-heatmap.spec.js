@@ -204,6 +204,21 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect.poll(() => surfaceCalls).toBeGreaterThanOrEqual(2);
   });
 
+  test('a page opened before the daemon reports reads the list on the first beat that carries its status', async ({ page }) => {
+    let reporting = false;
+    await page.route('**/api/watchlist', (route) => route.fulfill(reporting
+      ? { status: 200, contentType: 'application/json', body: JSON.stringify({ tickers: ['AAPL'], live: true }) }
+      : { status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'the capture daemon is not reporting' }) }));
+    await page.routeWebSocket(/\/ws$/, (ws) => {
+      ws.onMessage(() => setTimeout(() => {
+        reporting = true;
+        ws.send(JSON.stringify({ type: 'feed', feed: {}, rows: [], session: 'RTH' }));
+      }, 500));
+    });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#watchlist')).toContainText('AAPL');
+  });
+
   test('the header shows the session the beat serves', async ({ page }) => {
     await page.routeWebSocket(/\/ws$/, (ws) => {
       ws.onMessage(() => ws.send(JSON.stringify({ type: 'feed', feed: null, rows: [], session: 'RTH' })));
@@ -214,10 +229,10 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   });
 
   test('a levels change on the page socket reloads the heatmap, with no manual event dispatch', async ({ page }) => {
-    let surfaceCalls = 0;
+    let surfaceCalls = 0, pushed = false;
     await page.route('**/api/options/gamma-surface**', (route) => {
       surfaceCalls += 1;
-      const value = surfaceCalls === 1 ? 1000 : 2000;
+      const value = pushed ? 2000 : 1000;
       route.fulfill({
         status: 200, contentType: 'application/json',
         body: JSON.stringify(Object.assign({}, SURFACE, {
@@ -227,7 +242,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
         })),
       });
     });
-    await mockChange(page, 'SPY', 'levels', () => new Promise((r) => setTimeout(r, 500)));   // after the first render
+    await mockChange(page, 'SPY', 'levels', () => new Promise((r) => setTimeout(() => { pushed = true; r(); }, 500)));   // after the first render
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const cell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
     await expect(cell).toHaveText('$1.0K');
@@ -561,10 +576,11 @@ test.describe('Ed Console shell + gamma heatmap', () => {
 
   test('a levels push re-reads the scope on screen, never Auto', async ({ page }) => {
     const asked = [];
+    let pushed = false;
     await page.route('**/api/options/gamma-surface**', (route) => {
       const scope = new URL(route.request().url()).searchParams.get('scope');
       asked.push(scope);
-      const value = asked.length > 2 ? 2000 : 1000;   // the push's publication has a new value
+      const value = pushed ? 2000 : 1000;   // the push's publication has a new value
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(Object.assign({}, SURFACE, {
         strikes: [583], expirations: [{ expiry: '2026-09-11', dte: 2 }],
         cells: [{ strike: 583, gex: [value], spot: true }], surface_seq: asked.length, view: view({ scope }) })) });
@@ -573,11 +589,13 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect.poll(() => asked[0]).toBe('auto');
     await page.locator('#scopeCtl .scbtn', { hasText: 'Wider' }).click();
-    await expect.poll(() => asked[1]).toBe('wider');
+    await expect.poll(() => asked.at(-1)).toBe('wider');
+    const before = asked.length;
+    pushed = true;
     push();                                            // after the scope switch
     const cell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
     await expect(cell).toHaveText('$2.0K', { timeout: 5000 });   // the push's read landed
-    expect(asked.slice(2)).toEqual(asked.slice(2).map(() => 'wider'));
+    expect(asked.slice(before)).toEqual(asked.slice(before).map(() => 'wider'));
     expect(await page.evaluate(() => window.EdShell.getScope())).toBe('wider');
   });
 
