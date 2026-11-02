@@ -201,6 +201,20 @@ def test_a_streamed_no_value_code_does_not_block_the_quote(tmp_path):
     assert got["gamma"] != -999
 
 
+def test_a_429_on_one_expiry_does_not_cost_the_ticker_its_round(tmp_path):
+    """Measured 2026-11-02: Schwab answered one of SPY's expiries 429, and SPY's levels stood 15
+    minutes old until its next round. That expiry is asked once more, and SPY is delivered."""
+    schwab = LocalSchwab()
+    schwab.throttle_chain = {"SPY"}
+    _daemon, sweep, client, published = _setup(tmp_path, schwab, _et("2026-08-28 09:05"))
+    try:
+        assert sweep.rotation(client, ["SPY", "TSLA"], threading.Event()) == {"SPY", "TSLA"}
+    finally:
+        schwab.close()
+    assert [msg["failed"] for _topic, msg in published if "failed" in msg] == []
+    assert [q["symbol"] for p, q, *_ in schwab.requests if p == CHAIN] == ["SPY", "SPY", "TSLA"]
+
+
 def test_a_refused_quotes_request_fails_each_ticker_in_it_and_the_next_request_goes_at_once(
     tmp_path,
 ):
