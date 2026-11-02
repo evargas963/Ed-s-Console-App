@@ -104,13 +104,13 @@ from time_et import (
     ct_label,
     et_date_str_from_ts_utc,
     last_open,
-    market_day_start,
     market_session_date,
     now_et,
     option_close_product,
     option_market_open,
     options_closed_at,
     options_open,
+    options_opened,
     record_markets,
     session,
     session_label,
@@ -917,11 +917,13 @@ def _levels_state(
         else max(float(TERRAIN_STALE_AFTER_SEC), 2.0 * float(round_sec))
     )
     closed = options_closed_at(at, product)
-    started = market_day_start(at).timestamp()
+    opened = options_opened(at)
     if (
         not market_open
         or (closed is not None and closed.date() == at.date())  # its own market has closed today
-        or (float(computed_ts_utc) < started and now - started <= stale_after)  # the first round
+        or (
+            float(computed_ts_utc) < opened.timestamp() and now - opened.timestamp() <= stale_after
+        )  # the day's first round
     ):
         if closed is None or float(computed_ts_utc) < closed.timestamp():
             return (

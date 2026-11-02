@@ -97,8 +97,8 @@ def published():
         ("SPY", SPY_0DTE, _et(16, 4), _et(16, 5), "LIVE"),  # its options still open until 16:15
         ("SPY", SPY_0DTE, _et(16, 4), _et(16, 20), "STALE"),  # fetched before its own 16:15 close
         ("SPY", SPY_0DTE, _et(16, 16), _et(16, 20), "CLOSE"),
-        ("SPY", SPY_0DTE, _et(16, 16, "2026-10-06"), _et(4, 1), "CLOSE"),  # the day's first round
-        ("SPY", SPY_0DTE, _et(15, 59, "2026-10-06"), _et(4, 1), "STALE"),  # close never fetched
+        ("SPY", SPY_0DTE, _et(16, 16, "2026-10-06"), _et(9, 31), "CLOSE"),  # the day's first round
+        ("SPY", SPY_0DTE, _et(15, 59, "2026-10-06"), _et(9, 31), "STALE"),  # close never fetched
         (
             "SPY",
             SPY_0DTE,

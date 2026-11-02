@@ -13,14 +13,11 @@ unknown. Past the year Schwab answers, a contract's expiry runs to its expiratio
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, time
+from datetime import UTC, date, datetime
 from zoneinfo import ZoneInfo
 
 ET = ZoneInfo("America/New_York")
 CT = ZoneInfo("America/Chicago")
-#: the market day's start, ET (operator 2026-11-02): Schwab flips stocks to Normal then, and its
-#: /markets answer names no window before 07:00
-MARKET_DAY_OPENS = time(4)
 
 
 def ct_label(ts_utc: float) -> str:
@@ -92,8 +89,9 @@ Windows = tuple[tuple[datetime, datetime], ...]
 @dataclass(frozen=True)
 class Session:
     """One market date as Schwab's /markets answered it: whether the stock market is open, each
-    stock-market window it sent as (start, end) in ET, and each option market's regular windows
-    (`options`: product -> windows). A closed date has no windows."""
+    stock-market window it sent as (start, end) in ET, each option market's regular windows
+    (`options`: product -> windows), and every window of any option market, its pre-market and
+    post-market included (`option_hours`). A closed date has no windows."""
 
     day: str
     is_open: bool
@@ -101,6 +99,7 @@ class Session:
     regular: Windows
     post: Windows
     options: tuple[tuple[str, Windows], ...]
+    option_hours: Windows
 
     def option_windows(self, product: str) -> Windows:
         """The regular windows Schwab sent for option market `product` (EQO, IND) that date."""
@@ -145,6 +144,12 @@ def record_markets(answer: dict) -> Session:
             (product, _windows(_hours(entry), "regularMarket"))
             for product, entry in answer["option"].items()
         ),
+        tuple(
+            window
+            for entry in answer["option"].values()
+            for name in ("preMarket", "regularMarket", "postMarket")
+            for window in _windows(_hours(entry), name)
+        ),
     )
     global _sessions
     # a new dict, never an insert: a reader on another thread keeps iterating the one it began with
@@ -158,37 +163,34 @@ def session(day: str) -> Session | None:
 
 
 def session_label(now: datetime) -> str:
-    """The stock market's session at `now`, the one answer to whether the market day has started:
-    PRE_MARKET from MARKET_DAY_OPENS, then RTH and AFTER_HOURS inside the windows Schwab sent for
-    today, CLOSED outside them (and on a day Schwab says is closed), UNKNOWN when Schwab's answer
-    for today is not held. A label: what Schwab streams is shown and recorded whatever it says."""
-    at = now.astimezone(ET)
-    s = session(at.date().isoformat())
+    """The stock market's session at `now`: PRE_MARKET, RTH or AFTER_HOURS inside the window
+    Schwab sent for today, CLOSED outside them (and on a day Schwab says is closed), UNKNOWN when
+    Schwab's answer for today is not held. A valid session is live; with none the last values
+    stand. What Schwab streams is shown and recorded whatever it says."""
+    s = session(now.astimezone(ET).date().isoformat())
     if s is None:
         return UNKNOWN
     for state, windows in ((PRE_MARKET, s.pre), (RTH, s.regular), (AFTER_HOURS, s.post)):
         if any(start <= now < end for start, end in windows):
             return state
-    before = [start for start, _end in (*s.pre, *s.regular, *s.post)]
-    return PRE_MARKET if before and market_day_start(at) <= now < min(before) else CLOSED
+    return CLOSED
 
 
-def market_day_start(now: datetime) -> datetime:
-    """When the market day of `now`'s ET date starts (MARKET_DAY_OPENS)."""
-    return datetime.combine(now.astimezone(ET).date(), MARKET_DAY_OPENS, tzinfo=ET)
+def options_opened(now: datetime) -> datetime | None:
+    """When the option markets' day starts on `now`'s date: the first window Schwab sent, its
+    pre-market included; None when it sent none or its answer is not held."""
+    s = session(now.astimezone(ET).date().isoformat())
+    return min((start for start, _end in s.option_hours), default=None) if s else None
 
 
 def options_open(now: datetime) -> bool | None:
-    """Whether a session is valid at `now` (session_label) and today's last option window has not
-    ended (Schwab's IND, 16:15 ET): what the chain sweep, the levels and an option's live mark
-    follow; None when Schwab's answer for today is not held. Before the option markets' own
-    windows the last values are refreshed; option_market_open keeps those windows for the close
-    values."""
-    label = session_label(now)
-    if label == UNKNOWN:
-        return None
+    """Whether `now` is inside a window Schwab sent for any option market, as sent: what the chain
+    sweep, the levels and an option's live mark follow; None when Schwab's answer for today is not
+    held. option_market_open keeps the regular windows for the close values."""
     s = session(now.astimezone(ET).date().isoformat())
-    return label != CLOSED and any(now < end for _p, windows in s.options for _s, end in windows)
+    if s is None:
+        return None
+    return any(start <= now < end for start, end in s.option_hours)
 
 
 def option_market_open(now: datetime, product: str | None = None) -> bool | None:
