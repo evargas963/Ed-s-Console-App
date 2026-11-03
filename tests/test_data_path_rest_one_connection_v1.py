@@ -83,6 +83,33 @@ def _setup(tmp_path, schwab: LocalSchwab, now: float):
     return daemon, sweep, (lambda: client), published
 
 
+def test_market_hours_are_not_asked_for_a_date_beyond_the_year_schwab_answers(tmp_path):
+    """On 2026-10-01 an expiry a year and a week out (2027-10-08, whose captured answer is
+    Schwab's 400 "Date cannot be beyond 1 year from today.") is not asked; one inside the year
+    is, and is published as Schwab sent it."""
+    schwab = LocalSchwab()
+    _daemon, sweep, client, published = _setup(tmp_path, schwab, _et("2026-10-01 10:15"))
+    try:
+        sweep.fetch_markets(client, ["2026-10-09", "2027-10-08"])
+    finally:
+        schwab.close()
+    assert [q["date"] for path, q, *_ in schwab.requests if path == MARKETS] == ["2026-10-09"]
+    assert [topic for topic, _msg in published] == ["markets.2026-10-09"]
+
+
+def test_market_hours_are_asked_to_the_last_day_schwab_answered(tmp_path):
+    """At the capture's own moment, 2026-10-07 22:16 ET, Schwab answered 2027-10-07 (200) and
+    refused 2027-10-08 (400, "beyond 1 year"): the first is asked, the second is not."""
+    schwab = LocalSchwab()
+    _daemon, sweep, client, published = _setup(tmp_path, schwab, _et("2026-10-07 22:16"))
+    try:
+        sweep.fetch_markets(client, ["2027-10-07", "2027-10-08"])
+    finally:
+        schwab.close()
+    assert [q["date"] for path, q, *_ in schwab.requests if path == MARKETS] == ["2027-10-07"]
+    assert [(topic, msg["status"]) for topic, msg in published] == [("markets.2027-10-07", 200)]
+
+
 def test_a_rotation_asks_schwab_as_documented_one_request_at_a_time_with_exact_greeks(tmp_path):
     schwab = LocalSchwab()
     daemon, sweep, client, published = _setup(tmp_path, schwab, _et("2026-10-01 10:15"))

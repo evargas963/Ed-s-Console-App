@@ -257,8 +257,21 @@ def price_history_message(
 #: Schwab answers GET /markets for a date as far as 7 days back ("Date cannot be more than 7 days
 #: in the past.", its 400 for a date 8 days back; 1 day back answered 200)
 MARKETS_DAYS_BACK = 7
+#: Schwab answers GET /markets for a date as far as a year ahead ("Valid date range is from
+#: currentdate to 1 year from today",
+#: docs/schwab/schwab_market_data_parameters_pricehistory_markets.txt line 17; its 400 "Date
+#: cannot be beyond 1 year from today."): a later expiry is not asked until it is within that,
+#: and its sessions stay unknown. The year is the calendar's: the same date next year (from
+#: 29 February, 1 March), so a span that holds a 29 February is 366 days.
+
+
+def markets_last_day(today: date) -> date:
+    """The last date Schwab answers GET /markets for on ET date `today`: a year from it."""
+    return date(today.year + 1, today.month, 1) + timedelta(days=today.day - 1)
+
+
 #: Schwab's answer for a date, asked once per ET date: its sessions (200), or why it has none
-#: (400, e.g. "Date cannot be beyond 1 year from today."). Any other answer is asked again.
+#: (400). Any other answer is asked again.
 MARKETS_ANSWERED = (200, 400)
 
 
@@ -436,13 +449,16 @@ class ChainSweep:
 
     def fetch_markets(self, schwab_client, days: list[str]) -> None:
         """Schwab's GET /markets?markets=equity,option answer for each of `days` (YYYY-MM-DD) not
-        answered on this ET date, one request each: a 200 is that date's sessions from here on
+        answered on this ET date and inside the year Schwab answers (markets_last_day), one
+        request each: a 200 is that date's sessions from here on
         (time_et.record_markets), and every answer is published as sent (markets_message), for
         the daemon's writer to record and the console to take. An answer not in MARKETS_ANSWERED
         (log_request has it), or none, is asked again the next time."""
         today = datetime.fromtimestamp(self.clock(), ET).date()
         for day in days:
             if self._markets_day.get(day) == today:
+                continue
+            if date.fromisoformat(day) > markets_last_day(today):
                 continue
             try:
                 resp = schwab_client().get_market_hours(

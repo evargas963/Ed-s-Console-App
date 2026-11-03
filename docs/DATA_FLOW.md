@@ -639,11 +639,13 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
   liquidity pull and replenishment are not produced (open; `ACTIVE_PROGRAM.md` DESK-GAPS).
 - **Market session.** Schwab's GET /markets?markets=equity,option, asked by the daemon's chain
   sweep (`ChainSweep.fetch_markets`) once per date per ET day -- today, the 7 days before it
-  Schwab answers, and each expiry date of the chains, whatever the number of tickers -- each answer
+  Schwab answers, and each expiry date of the chains inside the year Schwab answers
+  (`markets_last_day`, a calendar year; a later expiry is not asked until it is inside it, and its date stays
+  unknown), whatever the number of tickers -- each answer
   as sent → daemon bus (`markets.DATE`) → the daemon's writer (`stream_capture.db`
   `stream_markets_raw`, every answer with its status) and → console (8799) → `time_et.record_markets`
-  (a 200 is that date's sessions; a 400, "more than 7 days back" or "beyond 1 year", is no session:
-  the date stays unknown). At startup, before its loops and the feed, the console reads the recorded 200
+  (a 200 is that date's sessions; a 400, such as "more than 7 days back", is no session: the date
+  stays unknown). At startup, before its loops and the feed, the console reads the recorded 200
   answers (`server._load_stored_sessions`, `tests/test_data_path_stored_sessions_v1.py`), as a
   stored chain's expiries reach it before the daemon's answers do. A stream database that cannot
   be read stops the console's start with its error. The label (`time_et.session_label`: Pre-Market, RTH, After-Hours,
