@@ -935,13 +935,16 @@ class _Spill:
         whole records."""
         data = len(record).to_bytes(4, "big") + record
         try:
-            if self.out.write(data) != len(data):
-                raise OSError(f"short write to {self.path}")
+            written = self.out.write(data)
         except OSError as e:
-            self.out.truncate(self.size)  # no partial record stays behind the whole ones
-            return e
-        self.size += len(data)  # its message is counted by the writer (_spilled)
-        return None
+            refusal = e
+        else:
+            if written == len(data):
+                self.size += len(data)  # its message is counted by the writer (_spilled)
+                return None
+            refusal = OSError(f"short write to {self.path}")
+        self.out.truncate(self.size)  # no partial record stays behind the whole ones
+        return refusal
 
     def read(self, n: int) -> list:
         """Up to `n` records from `read_at`: (message, end offset) each. A record that does not
@@ -1320,7 +1323,7 @@ class CaptureWriter:
         try:
             self._write(q)
         except Exception as e:  # recorded as the writer's death, then raised
-            log.error("stream writer died: %s: %s", type(e).__name__, e)
+            log.exception("stream writer died")
             with self._lock:
                 self.state, self.error, self.error_ts = (
                     WRITER_DEAD,
@@ -1609,14 +1612,12 @@ class CaptureWriter:
         spill.close()
         try:
             os.remove(spill.path)
-        except OSError as e:
-            log.error(
+        except OSError:
+            log.exception(
                 "stream writer: %s written back (%d messages), not deleted, deleted at the next "
-                "start: %s: %s",
+                "start",
                 spill.path,
                 spill.messages,
-                type(e).__name__,
-                e,
             )
             with self._lock:
                 self.left_on_disk.append(spill.left())

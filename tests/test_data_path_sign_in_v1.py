@@ -118,12 +118,13 @@ def _work(sweep, schwab_client, turns: int) -> bool:
     return stop.is_set() and not worker.is_alive()
 
 
-def test_once_schwab_refuses_the_sign_in_no_request_of_any_kind_reaches_schwab(tmp_path):
+def test_once_schwab_refuses_the_sign_in_no_request_of_any_kind_reaches_schwab(tmp_path, caplog):
     """The token in its refresh window and Schwab refusing it: the first request's refresh is
     refused (SignInRefused), and every kind of request the daemon sends after it, the stream's
     login among them, raises the same, sending nothing: one POST in all, no data request. Each
     refusal raised is its own, carrying only its own request's frames (one held and raised again
-    would grow its traceback by every request's frames, for as long as Schwab refuses)."""
+    would grow its traceback by every request's frames, for as long as Schwab refuses). The log
+    records Schwab's refusal once, with its traceback."""
     schwab = LocalSchwab()
     schwab.token = "refuses"
     try:
@@ -140,6 +141,8 @@ def test_once_schwab_refuses_the_sign_in_no_request_of_any_kind_reaches_schwab(t
     assert (_posts(schwab), _asked(schwab)) == (1, [])
     depth = [len(traceback.extract_tb(e.__traceback__)) for e in raised]
     assert len({id(e) for e in raised}) == len(raised) and depth[6:12] == depth[12:] == depth[:6]
+    refused = [r for r in caplog.records if r.getMessage().startswith("Schwab refused the sign-in")]
+    assert len(refused) == 1 and isinstance(refused[0].exc_info[1], sc.AuthlibBaseError)
 
 
 def test_a_new_sign_in_saved_after_the_refusal_is_taken_without_a_restart(tmp_path):
