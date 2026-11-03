@@ -253,6 +253,7 @@ def test_the_sentence_four_cases_from_the_flat_shares():
         e._sentence(e._zone(nyse["pct"]), nyse["bid_total"], nyse["ask_total"])
         == "To balance, market makers buy 40 shares."
     )
+    # INDUCED: those 160/200 shares read in the BALANCED zone (their own zone is OFFER_HEAVY)
     assert e._sentence("BALANCED", 160, 200) == "Nearly balanced — 40 shares would even the book."
     assert e._sentence(e._zone(comp["pct"]), 780, 2110) == (
         "To balance, market makers buy 1,330 shares."
@@ -269,39 +270,51 @@ def test_the_sentence_four_cases_from_the_flat_shares():
 
 def test_a_zone_changes_only_after_it_has_stood_three_seconds():
     """INDUCED: smoothed values on each side of the lines. One or two seconds out of the shown
-    zone is not a change; three seconds out of it are, whichever zones they cross, dated from the
-    second it was left."""
+    zone is not a change; three seconds out of it are, whichever zones they cross, the zone it
+    then stands in dated from the second it entered it."""
     assert e._dwelled([5, 5, 15, 5, 5], 100) == ("BALANCED", 100)
     assert e._dwelled([5, 5, 15, 15, 5], 100) == ("BALANCED", 100)
     assert e._dwelled([5, 5, 15, 15, 15, 15], 100) == ("BID_HEAVY", 102)
     assert e._dwelled([5, None, 5], 100) == ("BALANCED", 102)
     # out of BID_HEAVY across two zones, the value crossing -10% each second
-    assert e._dwelled([15, 15, 15, -12, -8, -12, -8], 0) == ("OFFER_HEAVY", 3)
+    assert e._dwelled([15, 15, 15, -12, -8, -12, -8], 0) == ("OFFER_HEAVY", 5)
+    # out of BID_HEAVY through BALANCED: OFFER_HEAVY dated from when the value entered it
+    assert e._dwelled([15, 15, 15, -8, -8, -12], 0) == ("OFFER_HEAVY", 5)
     # BALANCED left, the value then crossing the 70% line each second: out three seconds, it
-    # stands in BID_HEAVY then (69), dated from the second it left
-    assert e._dwelled([5, 69, 71, 69, 71], 0) == ("BID_HEAVY", 1)
+    # stands in BID_HEAVY then (69), dated from the second it entered it
+    assert e._dwelled([5, 69, 71, 69, 71], 0) == ("BID_HEAVY", 3)
     # a steady rise through two lines changes three seconds after it left
-    assert e._dwelled([9, 11, 15, 72, 75], 0) == ("VERY_BID", 1)
+    assert e._dwelled([9, 11, 15, 72, 75], 0) == ("VERY_BID", 3)
 
 
 def test_on_schwabs_books_the_zone_changes_three_seconds_after_the_value_leaves_it():
     """Every venue and view of the captured books: the zone shown never stands while the value
-    has been out of it three seconds or more."""
+    has been out of it three seconds or more, never changes sooner, and is dated from the second
+    the value entered it."""
     _readout, points = _replay()
     last = int(points[-1][0])
     first = last - e.OF_LEAN_KEPT_SEC
+    dwell = e.OF_ZONE_DWELL_SEC
     for v in (*e.BOOK_VENUES, e.COMPOSITE):
         for view in e.READOUT_VIEWS:
             sm = e._smoothed(e._standing(points, v, view, first, last))
-            for k in range(e.OF_ZONE_DWELL_SEC, len(sm)):
-                zone, _since = e._dwelled(sm[: k + 1], first)
-                out = [e._zone(s) != zone for s in sm[k - e.OF_ZONE_DWELL_SEC + 1 : k + 1]]
+            before = None
+            for k in range(dwell, len(sm)):
+                zone, since = e._dwelled(sm[: k + 1], first)
+                out = [e._zone(s) != zone for s in sm[k - dwell + 1 : k + 1]]
                 assert zone is None or not all(out), (v, view, k)
+                if before is not None and zone is not None and zone != before:
+                    # it changed: the value had stood out of the zone before for three seconds
+                    assert all(e._zone(s) != before for s in sm[k - dwell + 1 : k + 1]), (v, k)
+                    assert e._zone(sm[since - first]) == zone, (v, view, k)
+                    assert since == first or e._zone(sm[since - first - 1]) != zone, (v, k)
+                before = zone
 
 
 def test_held_is_at_least_when_the_zone_stood_from_the_first_value_kept():
-    """Two of Schwab's books 400 s apart, nothing between (a quiet ticker): the first still
-    stands at the window's start, so the zone has held at least the window, and says so."""
+    """INDUCED: one of Schwab's books, recorded again 400 s later with nothing between (a quiet
+    ticker): the first still stands at the window's start, so the zone has held at least the
+    window, and says so."""
     history.LEAN.forget("SPY")
     try:
         for ts, svc, content in (_ROWS[0], [_ROWS[0][0] + 400, _ROWS[0][1], _ROWS[0][2]]):

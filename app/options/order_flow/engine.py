@@ -378,8 +378,6 @@ def _microstructure_structural(cb: dict) -> dict:
     mark = cb["mark"]
     spread_frac = spread_pts / mark if (spread_pts is not None and mark is not None) else None
 
-    # Depth ladder — totals aggregated ONCE per (side, depth); imbalance, slope and concentration
-    # all reuse these SAME canonical totals. One aggregation authority (`_book_side_depth_total`).
     # Depth ladder: the readout's flat views (`_readout`, the one producer of a book's top-N
     # totals and imbalance), carried; slope and concentration reuse its top-5 totals.
     ladder = _readout(bid_levels, ask_levels, cb["book_time_ms"])["views"]
@@ -742,22 +740,25 @@ def _zone(pct: float | None) -> str | None:
 def _dwelled(smoothed: list, first: int) -> tuple[str | None, int | None]:
     """The zone shown: once the smoothed values have stood outside the shown zone
     OF_ZONE_DWELL_SEC seconds in a row, whichever zones they crossed, the zone they stand in
-    then, dated from the second they left. Returns it and that second; (None, None) while the
-    value is unknown."""
-    zone = since = left = None
+    then, dated from the second they entered it. Returns it and that second; (None, None) while
+    the value is unknown."""
+    zone = since = left = entered = prev = None
     for k, s in enumerate(smoothed):
         z = _zone(s)
+        if z != prev:
+            entered = first + k
+        prev = z
         if z is None:
             zone = since = left = None
         elif zone is None:
-            zone, since = z, first + k
+            zone, since = z, entered
         elif z == zone:
             left = None
         else:
             if left is None:
                 left = first + k
             if first + k - left + 1 >= OF_ZONE_DWELL_SEC:
-                zone, since, left = z, left, None
+                zone, since, left = z, entered, None
     return zone, since
 
 

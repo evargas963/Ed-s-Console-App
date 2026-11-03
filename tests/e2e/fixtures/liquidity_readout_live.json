@@ -200,7 +200,7 @@
       "flips_2m": 16,
       "flips_word": "CHOPPY",
       "held_open": false,
-      "held_sec": 10,
+      "held_sec": 9,
       "lean": {
        "2m": {
         "lean": "MIXED",
@@ -426,7 +426,7 @@
       "flips_2m": 9,
       "flips_word": "CHOPPY",
       "held_open": false,
-      "held_sec": 2,
+      "held_sec": 1,
       "lean": {
        "2m": {
         "lean": "MIXED",
@@ -1338,7 +1338,7 @@
       "flips_2m": 19,
       "flips_word": "CHOPPY",
       "held_open": false,
-      "held_sec": 18,
+      "held_sec": 16,
       "lean": {
        "2m": {
         "lean": "MIXED",
@@ -1780,7 +1780,7 @@
       "flips_2m": 19,
       "flips_word": "CHOPPY",
       "held_open": false,
-      "held_sec": 18,
+      "held_sec": 16,
       "lean": {
        "2m": {
         "lean": "MIXED",
@@ -2019,7 +2019,7 @@
       "flips_2m": 16,
       "flips_word": "CHOPPY",
       "held_open": false,
-      "held_sec": 10,
+      "held_sec": 9,
       "lean": {
        "2m": {
         "lean": "MIXED",
@@ -2240,7 +2240,7 @@
       "flips_2m": 13,
       "flips_word": "CHOPPY",
       "held_open": false,
-      "held_sec": 4,
+      "held_sec": 3,
       "lean": {
        "2m": {
         "lean": "MIXED",
