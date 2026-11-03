@@ -181,6 +181,30 @@ def test_a_patch_already_on_main_is_not_counted_against_a_pr_that_does_not_touch
         ),
         (
             "server.py",
+            "def spot(prev):\n    try:\n        return f(prev)\n    except Exception:\n"
+            "        x = np.log(prev)\n        return x\n",
+            "an except that catches everything",
+        ),
+        (
+            "server.py",
+            "def spot(prev):\n    try:\n        return f(prev)\n    except Exception:\n"
+            "        def later():\n            raise RuntimeError('x')\n\n        return None\n",
+            "an except that catches everything",
+        ),
+        (
+            "server.py",
+            "def spot(prev):\n    try:\n        return f(prev)\n    except Exception:\n"
+            "        raise RuntimeError('no cause')\n",
+            "an except that catches everything",
+        ),
+        (
+            "server.py",
+            "def spot(prev):\n    try:\n        return f(prev)\n    except Exception:\n"
+            "        cb = lambda: log.info('x')\n        return cb\n",
+            "an except that catches everything",
+        ),
+        (
+            "server.py",
             "from contextlib import suppress\n\n\n"
             "def spot(d):\n    with suppress(KeyError):\n        return d['k']\n",
             "an error swallowed (`contextlib.suppress`)",
@@ -243,8 +267,7 @@ def test_a_line_added_inside_an_old_block_does_not_charge_the_block_to_the_pr(tm
         {
             **BASE,
             "server.py": (
-                "def spot():\n    try:\n        go()\n    except Exception as e:\n"
-                "        log(e)\n        raise\n"
+                "def spot():\n    try:\n        go()\n    except Exception as e:\n        keep(e)\n"
             ),
         },
     )
@@ -253,7 +276,7 @@ def test_a_line_added_inside_an_old_block_does_not_charge_the_block_to_the_pr(tm
         {
             "server.py": (
                 "def spot():\n    try:\n        go()\n    except Exception as e:\n"
-                "        log(e)\n        count()\n        raise\n"
+                "        keep(e)\n        count()\n"
             ),
             **REAL_TEST,
         },

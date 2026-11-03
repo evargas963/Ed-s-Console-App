@@ -12,9 +12,11 @@ The product lines a PR adds carry no patch shape:
    - an except that catches everything (bare, `Exception`, `BaseException`, or a tuple holding
      one), or one whose only statement swallows the error: `pass`, `continue`, a return or an
      assignment of None or a literal, or a call with no re-raise. An except that logs the error
-     and carries on is not a patch (the operator's ruling), nor one that raises: one whose body,
-     at any depth, logs (`.debug`, `.info`, `.warning`, `.error`, `.exception`, `.critical`,
-     `.log`) or raises is never refused;
+     and carries on is not a patch (the operator's ruling), nor one that raises it on: one whose
+     body, at any depth outside a def, lambda or class, has a log call as a statement of its own
+     (`.debug`, `.info`, `.warning`, `.error`, `.exception`, `.critical`, `.log`) or a raise that
+     is bare or carries a cause (`from`) is never refused, even when that line runs on one branch
+     only;
    - `contextlib.suppress`;
    - a missing value replaced by a literal: `x or <literal>`, a None-check ternary or
      `if x is None:` that returns or assigns a literal, `.get(k, <literal>)` (positional or
@@ -376,17 +378,25 @@ def _none_check(test: ast.AST) -> bool:
 
 
 def _reports(handler: ast.ExceptHandler) -> bool:
-    """Anywhere in its body, the except logs the error or raises: not a patch."""
-    return any(
-        isinstance(n, ast.Raise)
-        or (
-            isinstance(n, ast.Call)
-            and isinstance(n.func, ast.Attribute)
-            and n.func.attr in LOG_METHODS
-        )
-        for s in handler.body
-        for n in ast.walk(s)
-    )
+    """At any depth of its own body, the except has a log call as a statement of its own, or a
+    raise that is bare or carries a cause (`from`): not a patch. A def, lambda or class inside
+    it does not run when the error does, so it is not read."""
+    stack: list[ast.AST] = list(handler.body)
+    while stack:
+        n = stack.pop()
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+            continue
+        if isinstance(n, ast.Raise) and (n.exc is None or n.cause is not None):
+            return True
+        if (
+            isinstance(n, ast.Expr)
+            and isinstance(n.value, ast.Call)
+            and isinstance(n.value.func, ast.Attribute)
+            and n.value.func.attr in LOG_METHODS
+        ):
+            return True
+        stack.extend(ast.iter_child_nodes(n))
+    return False
 
 
 def _swallows(stmt: ast.stmt) -> bool:
