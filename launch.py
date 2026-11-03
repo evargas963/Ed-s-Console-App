@@ -122,22 +122,21 @@ def running(start: list[str]) -> list[psutil.Process]:
     """This checkout's processes that run `start` right after their program: those whose folder is
     ROOT, where its daemon's batch and its console run, so another checkout's daemon or console (a
     test's) is never taken for one, nor a process that only names them, as a search does (one whose
-    line or folder cannot be read is none). The parent is read only for the processes kept: psutil
-    reads one on Windows from a snapshot of every process, one snapshot per process asked."""
-    kept = []
-    for p in psutil.process_iter(["cmdline", "cwd"]):
-        if (
-            p.info["cmdline"] is not None
-            and p.info["cmdline"][1 : len(start) + 1] == start
-            and p.info["cwd"] is not None
-            and Path(p.info["cwd"]).resolve() == ROOT
-        ):
-            try:
-                p.info |= p.as_dict(["ppid"])
-            except psutil.NoSuchProcess:
-                continue
-            kept.append(p)
-    return kept
+    line or folder cannot be read is none). Their parents come from one snapshot of every process's
+    parent, taken after the scan, so one gone since is dropped as the scan drops one gone while it
+    reads; psutil's parent of one process takes that snapshot on Windows, once per process asked."""
+    kept = [
+        p
+        for p in psutil.process_iter(["cmdline", "cwd"])
+        if p.info["cmdline"] is not None
+        and p.info["cmdline"][1 : len(start) + 1] == start
+        and p.info["cwd"] is not None
+        and Path(p.info["cwd"]).resolve() == ROOT
+    ]
+    parents = psutil._psplatform.ppid_map()
+    for p in kept:
+        p.info["ppid"] = parents.get(p.pid)
+    return [p for p in kept if p.pid in parents]
 
 
 def start_console(argv: list[str], env: dict) -> subprocess.Popen:
