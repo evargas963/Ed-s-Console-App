@@ -33,12 +33,18 @@ report what was tried, and take a different approach (CLAUDE.md item 6).
    both of them and `tools/check_integrity.py` from the base, with the description.
 7. Four eyes: run the `correctness-reviewer` and `requirements-reviewer` agents on the PR's final
    commit (`git diff origin/main...HEAD`, with the PR description, the operator's task and the output
-   of steps 1–6), naming that commit; any commit made after a review gets a new review of both before
-   the PR is offered. Show each verdict
+   of steps 1–6), naming that commit. Before the first review, every statement the description makes
+   about behaviour is backed by a command run on that commit, its output shown (AGENTS.md "Claims").
+   A commit made after a review gets a review of both before the PR is offered: the same two
+   reviewers, given the last round's findings, judge whether each is fixed and the diff since the
+   reviewed commit. A finding that reverses the last round's judgment goes to Ed with both rounds'
+   words. Round 1 is the first review; when round 2 leaves a FAIL or NOT_PROVEN open, bring Ed every
+   open finding in one message, a stop AGENTS.md Authority lists, and the PR does not merge until he
+   decides (operator 2026-11-03: "this is unsustainable. audit and fix right away"). Show each verdict
    (PASS / FAIL / NOT_PROVEN) and its findings, and put both verdicts in the PR description's
    `## Review`. The rule 14 record comes from a session that did not write the change, given only
    what rule 14 names (the commit series with `git log -p origin/main..HEAD`). A FAIL or
-   NOT_PROVEN is fixed or proven, or brought to Ed, before the PR merges; the one NOT_PROVEN a merge
+   NOT_PROVEN is fixed or proven before the PR merges, or decided by Ed when brought to him; the one NOT_PROVEN a merge
    may carry is the deployed-screen tier its deploy proves (AGENTS.md Authority). Before bringing Ed a
    decision, check AGENTS.md, CLAUDE.md and ACTIVE_PROGRAM.md for a rule or recorded decision that
    answers it; if one does, apply it and cite it. A decision goes to Ed only when none does.
