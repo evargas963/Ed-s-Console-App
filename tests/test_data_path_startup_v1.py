@@ -530,8 +530,8 @@ def test_the_stop_ends_the_real_daemon_and_says_when_it_could_not_ask(tmp_path):
 
 def test_the_stop_reads_no_parent_of_a_process_it_does_not_take(tmp_path):
     """A stop in a checkout where nothing runs answers though one process's parent is slow to read,
-    as psutil's is on Windows, one snapshot of every process per parent: it reads no parent one
-    process at a time. Induced test condition: each one-process parent read held for 1 s."""
+    as psutil's is on Windows, one snapshot of every process per parent: it reads the parent of no
+    process it does not take. Induced test condition: each parent read held for 1 s."""
     home, slow = tmp_path / "checkout", tmp_path / "slow"
     for folder in (home, slow):
         folder.mkdir()
