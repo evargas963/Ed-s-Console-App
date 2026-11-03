@@ -257,14 +257,19 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
   under its service and served for the `venue` the screen's venue switch names, never combined,
   but in the Desk Liquidity card's order-imbalance readout (operator 2026-11-03, step 1 of 3):
   `/api/order-flow/microstructure` serves `readout` whatever the venue, both books and their
-  deduped composite (`engine.book_readout`: each exchange or market maker counted once, from the
-  book holding its newer quote by that quote's own time, SEQUENCE, and from the newer BOOK_TIME
-  when the quote times are equal, its code matched without regard to case; a level with no
-  per-exchange rows taken whole and the dedup marked partial), read over one value a second per
-  ticker that the console's intake records on each book (`history.LEAN`, 308 s), and judged
+  composite (`engine.book_readout`, the operator's spec v2 of 2026-11-03: every quote of both
+  books, one per contributor, codes matched without regard to case; NSDQ, in both books, counted
+  once from NYSE_BOOK by convention, the two books' sizes for it differing in 82.5% of strict
+  pairs on 2026-11-02 with no way in the data to say which is right; the shares summed at each
+  distinct price; the same composite with NSDQ from NASDAQ_BOOK served beside it; no number
+  while only one book is held, or while a code other than NSDQ is in both, which SPY's and IWM's
+  books of 2026-11-02 never had; a level with no per-exchange rows taken whole and the dedup
+  marked partial), read over at most one value a second per ticker that the console's intake
+  records as each book arrives, the newest in that second (`history.LEAN`, 308 s), and judged
   live per book by the one live rule, the composite only while both are. The exchange auction
   windows are the 5 minutes before and the 10 minutes before the end of Schwab's regular window
-  for the date (`time_et.auction`); inside them the card shows no continuous number.
+  for the date (`time_et.auction`); inside them the number stands and a line says the auction
+  imbalance is a different number, not shown (continuous trading runs through them).
   The books streamed are every watchlist ticker's. For each option contract the daemon holds
   (the option rule, below), each field the stream carries (gamma, delta, open interest, volume,
   IV) is the newest value Schwab sent (`math_exposure_core.overlay_streamed_contract_fields`):

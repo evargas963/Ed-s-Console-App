@@ -98,7 +98,7 @@
     ticker: null, tb: null, gen: 0, chart: null, bars: [], levels: null, terrain: null, micro: null, crosses: null,
     analytics: null, liq: null, quotes: {}, queue: [], sel: null,
     // the Liquidity card's venue (COMPOSITE, or BOOK: the shell's book switch) and depth view
-    liqVenue: sget('ed.desk.liqvenue', 'COMPOSITE'), liqView: ['weighted', '1', '3', '5'].indexOf(sget('ed.desk.liqview', '')) >= 0 ? sget('ed.desk.liqview', '') : 'weighted', liqPainted: 0, liqPaints: 0, liqTimer: null,
+    liqVenue: sget('ed.desk.liqvenue', 'COMPOSITE'), liqView: ['weighted', '1', '3', '5'].indexOf(sget('ed.desk.liqview', '')) >= 0 ? sget('ed.desk.liqview', '') : 'weighted', liqPainted: 0, liqPaints: 0, liqTimer: null, liqDetail: false,
     pushDown: null   // the header's word while the daemon's price push is down (ed:price_push_down)
   };
 
@@ -470,12 +470,23 @@
     return '<svg viewBox="0 0 96 28" preserveAspectRatio="none"><line x1="0" y1="14" x2="96" y2="14" stroke="#2c3d63"/>' +
       (d ? '<path d="' + d + '" fill="none" stroke="' + col + '" stroke-width="1.5" vector-effect="non-scaling-stroke"/>' : '') + '</svg>';
   }
-  function liqBar(side, label, text, shares, total, twice) {
+  function liqBar(side, label, text, shares, total) {
     // shares not sent: no bar; a total of 0 shares: an empty track
     var fill = shares == null || !total ? '' : '<i class="' + side + '" style="width:' + (shares / total * 100) + '%"></i>';
-    var hatch = !total || !twice ? '' : '<i class="twice" style="width:' + (twice / total * 100) + '%"></i>';
     return '<div class="liq-bar-h"><span>' + label + '</span><span>' + esc(text == null ? '-' : text) + '</span></div>' +
-      '<div class="liq-track">' + fill + hatch + '</div>';
+      '<div class="liq-track">' + fill + '</div>';
+  }
+  function liqSpans(rd, view) {
+    var s = function (k, side) { var t = rd.venues[k].views[view]['span_' + side + '_text']; return t == null ? '-' : '$' + esc(t); };
+    return 'Top-' + (view === 'weighted' ? '5' : view) + ' spans, bid / ask: NYSE ' + s('NYSE_BOOK', 'bid') + ' / ' + s('NYSE_BOOK', 'ask') +
+      ' · Nasdaq ' + s('NASDAQ_BOOK', 'bid') + ' / ' + s('NASDAQ_BOOK', 'ask');
+  }
+  // the detail panel over the card, opened from the headline
+  function liqDetail(rd, v, key) {
+    var d = rd.detail, p = function (t) { return t == null ? '' : '<p>' + esc(t) + '</p>'; };
+    return '<div class="liq-detail liq-keep"><div class="liq-lbl"><span>DETAIL</span><button type="button" class="scbtn" data-liqclose>Close</button></div>' +
+      p(d.weights) + p(d.zones) + (key === 'COMPOSITE' ? p(d.nsdq) + p(v.nsdq_text) + p(d.construction) : '') +
+      p(d.spans) + p(liqSpans(rd, S.liqView)) + p(d.books) + '</div>';
   }
   function paintLiq() {
     var c = $('tdmCardLiq'); if (!c) return;
@@ -492,45 +503,49 @@
       return;
     }
     src(c, esc(r.source_text));
-    if (rd.auction_text) { body.innerHTML = '<div class="liq-none">AUCTION<p>' + esc(rd.auction_text) + '</p></div>'; return; }
     if (r.no_number_text) { body.innerHTML = '<div class="liq-none">NO BOOK<p>' + esc(r.no_number_text) + '</p></div>'; return; }
-    var v = r.views[view], twice = v.counted_twice;
-    var h = '<div class="liq-lbl liq-keep"><span>' + (view === 'weighted' ? 'WEIGHTED TOP-5 HEADLINE' : 'TOP ' + view + ' HEADLINE') + '</span>' +
-      (r.live ? '' : '<span class="liq-pill">BOOK ' + esc(r.feed_label) + '</span>') + '</div>';
+    var v = r.views[view];
+    var h = '<div class="liq-lbl liq-keep"><span>' + (view === 'weighted' ? 'WEIGHTED TOP-5 HEADLINE' : 'TOP ' + view + ' HEADLINE') + '</span><span>' +
+      (r.touch_flag ? '<span class="liq-pill">' + esc(r.touch_flag) + '</span> ' : '') +
+      (r.live ? '' : '<span class="liq-pill">BOOK ' + esc(r.feed_label) + '</span>') + '</span></div>';
     if (r.status === 'one_sided') {
       // the side Schwab sent levels for fills its track; the missing side draws no bar and "-"
-      var only = v.bid_total != null ? v.bid_total : v.ask_total;
       h += '<div class="liq-hl"><span class="liq-pct">-</span><span class="liq-word">ONE-SIDED</span></div>' +
-        liqBar('bid', 'Bids', v.bid_text, v.bid_total, only) +
-        liqBar('ask', 'Asks', v.ask_text, v.ask_total, only) +
+        liqBar('bid', 'Bids', v.bid_text, v.bid_total, v.bid_total) +
+        liqBar('ask', 'Asks', v.ask_text, v.ask_total, v.ask_total) +
+        (r.levels_text ? '<div class="liq-small">' + esc(r.levels_text) + '</div>' : '') +
         '<div class="liq-sent">' + esc(r.one_sided_text) + '</div>';
     } else {
       var tone = liqTone(v.zone);
-      h += '<div class="liq-hl" title="' + esc(rd.guide) + '"><span class="liq-pct ' + tone + '">' + esc(v.pct_text || '-') + '</span>' +
+      h += '<div class="liq-hl" data-liqdetail title="Open the detail"><span class="liq-pct ' + tone + '">' + esc(v.pct_text || '-') + '</span>' +
         '<span class="liq-word ' + tone + '">' + esc(v.side_word || '-') + '</span>' +
         '<span class="liq-live">' + esc(v.live_text || '-') + ' live</span></div>' +
         (v.divergence ? '<div class="liq-flag">' + esc(v.divergence) + '</div>' : '') +
-        liqBar('bid', 'Bids', v.bid_text, v.bid_total, v.total_depth + (twice ? twice.bid + twice.ask : 0), twice && twice.bid) +
-        liqBar('ask', 'Asks', v.ask_text, v.ask_total, v.total_depth + (twice ? twice.bid + twice.ask : 0), twice && twice.ask) +
+        liqBar('bid', 'Bids', v.bid_text, v.bid_total, v.total_depth) +
+        liqBar('ask', 'Asks', v.ask_text, v.ask_total, v.total_depth) +
         '<div class="liq-line">Difference: ' + esc(v.difference_text || '-') + ' shares · Total depth: ' + esc(v.total_text || '-') + ' shares</div>' +
-        (twice ? '<div class="liq-small">' + esc(v.counted_twice_text) + (r.dedup_partial ? ' · dedup partial: a level came without per-exchange sizes' : '') + '</div>' : '') +
-        (r.touch_state ? '<div class="liq-small">' + (r.touch_state === 'LOCKED' ? 'Locked book: best bid equals best offer' : 'Crossed book: best bid above best offer') + '</div>' : '') +
-        '<div class="liq-sent">' + esc(v.sentence || '-') + '</div>';
+        (r.levels_text ? '<div class="liq-small">' + esc(r.levels_text) + '</div>' : '') +
+        (r.dedup_partial_text ? '<div class="liq-small">' + esc(r.dedup_partial_text) + '</div>' : '') +
+        '<div class="liq-sent">' + esc(v.sentence || '-') + '</div>' +
+        (v.nsdq_disagree ? '<div><span class="liq-pill">NSDQ SIZES DISAGREE</span></div>' : '');
     }
-    h += '<div class="liq-lbl"><span>VENUES</span>' + (rd.disagree[view] ? '<span class="liq-pill">VENUES DISAGREE</span>' : '') + '</div>' +
+    h += (rd.auction_text ? '<div class="liq-flag liq-keep">' + esc(rd.auction_text) + '</div>' : '') +
+      '<div class="liq-lbl"><span>VENUES</span>' + (rd.disagree[view] ? '<span class="liq-pill">VENUES DISAGREE</span>' : '') + '</div>' +
       '<div class="liq-strip">' + ['NYSE_BOOK', 'NASDAQ_BOOK', 'COMPOSITE'].map(function (k) {
         var p = rd.venues[k].views[view].pct;
         return p == null ? '' : '<i class="liq-dot ' + k + (k === key ? ' sel' : '') + '" style="left:' + liqLeft(p) + '" title="' + LIQ_NAME[k] + ' ' + esc(rd.venues[k].views[view].pct_text) + '"></i>';
       }).join('') + '</div>' +
       '<div class="liq-small">Green NYSE · Red Nasdaq · Gold Composite · White ring marks the selected venue</div>' +
+      '<div class="liq-small">' + liqSpans(rd, view) + '</div>' +
       '<div class="liq-lbl"><span>AT THE TOUCH</span><b>' + esc(r.touch_text || '-') + '</b></div>' +
       '<div class="liq-gauge">' + (r.touch_pct == null ? '' : '<i style="left:' + liqLeft(r.touch_pct) + '"></i>') + '</div>' +
       '<div class="liq-lbl"><span>LEAN</span></div>' +
-      '<div class="liq-lean"><span class="liq-pill plain">◷ HELD ' + (v.held_sec == null ? '-' : (v.held_open ? '≥' : '') + v.held_sec + 's') + '</span>' +
+      '<div class="liq-lean"><span class="liq-pill plain">◷ ' + esc(v.held_text || 'HELD -') + '</span>' +
       (v.lean ? '2m ' + liqSpark(v.lean['2m']) + ' 5m ' + liqSpark(v.lean['5m']) : '') + '</div>' +
       (v.flips_word ? '<div class="liq-lean"><span class="liq-pill">' + esc(v.flips_word) + ' · ' + v.flips_2m + ' flips in 2 min</span></div>' : '') +
       (r.not_live_text ? '<div class="liq-small liq-keep">' + esc(r.not_live_text) + '</div>' : '') +
-      '<div class="liq-small">NYSE + Nasdaq only — not the whole market · Book ' + esc(r.book_time_ct || '-') + '</div>';
+      '<div class="liq-small">NYSE + Nasdaq only — not the whole market · Book ' + esc(r.book_time_ct || '-') + '</div>' +
+      (S.liqDetail ? liqDetail(rd, v, key) : '');
     body.innerHTML = h;
   }
   // paints at most once a second; the reads stay on the pushes
@@ -694,8 +709,9 @@
     // the Liquidity card's venue and depth: NYSE and NASDAQ are the shell's book switch (its
     // ed:book_venue reads the book again), COMPOSITE is this card's
     $('tdmCardLiq').addEventListener('click', function (e) {
-      var b = e.target.closest('[data-liqvenue], .bookvenue [data-venue], [data-liqview]'); if (!b) return;
-      if (b.hasAttribute('data-liqview')) { S.liqView = b.getAttribute('data-liqview'); sset('ed.desk.liqview', S.liqView); }
+      var b = e.target.closest('[data-liqvenue], .bookvenue [data-venue], [data-liqview], [data-liqdetail], [data-liqclose]'); if (!b) return;
+      if (b.hasAttribute('data-liqdetail') || b.hasAttribute('data-liqclose')) S.liqDetail = b.hasAttribute('data-liqdetail');
+      else if (b.hasAttribute('data-liqview')) { S.liqView = b.getAttribute('data-liqview'); sset('ed.desk.liqview', S.liqView); }
       else {
         S.liqVenue = b.hasAttribute('data-liqvenue') ? 'COMPOSITE' : 'BOOK'; sset('ed.desk.liqvenue', S.liqVenue);
         if (S.liqVenue === 'COMPOSITE' && S.ticker) loadFast();

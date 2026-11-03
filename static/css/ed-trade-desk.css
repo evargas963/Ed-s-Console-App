@@ -161,7 +161,7 @@
 .tdm-chartbox figcaption{font-size:11.5px;color:var(--ed-ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
 /* the Liquidity card: the order-imbalance readout, drawn from the served readout */
-.tdm-card.liq{background:#0d1526;border:1px solid #24314d;border-radius:12px;padding:16px 18px 14px;gap:8px;color:#e8edf7}
+.tdm-card.liq{position:relative;background:#0d1526;border:1px solid #24314d;border-radius:12px;padding:16px 18px 14px;gap:8px;color:#e8edf7}
 .liq .tdm-card-h{flex-wrap:wrap;row-gap:6px}
 .liq .tdm-card-h .t,.liq .tdm-src{color:#e8edf7}
 .liq .tdm-src{color:#8fa1c4}
@@ -184,7 +184,9 @@
 .liq-track{height:16px;background:#1a2440;border-radius:4px;overflow:hidden;display:flex}
 .liq-track i{display:block;height:100%}
 .liq-track i.bid{background:#3fb950} .liq-track i.ask{background:#f85149}
-.liq-track i.twice{background:repeating-linear-gradient(45deg,#8fa1c4 0 3px,#1a2440 3px 6px)}
+.liq-hl[data-liqdetail]{cursor:pointer}
+.liq-detail{position:absolute;inset:0;z-index:2;overflow:auto;background:#0d1526;border-radius:12px;padding:16px 18px 14px;display:flex;flex-direction:column;gap:8px}
+.liq-detail p{margin:0;font-size:12.5px;line-height:1.45;color:#e8edf7}
 .liq-line{font-size:13px;color:#e8edf7}
 .liq-small{font-size:11.5px;color:#8fa1c4}
 .liq-sent{background:#16213d;border:1px solid #2c4a7a;border-radius:8px;padding:10px 12px;font-size:15px;font-weight:700;color:#e8edf7}

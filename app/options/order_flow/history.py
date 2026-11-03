@@ -7,7 +7,7 @@ The database keeps the whole history."""
 from __future__ import annotations
 
 import threading
-from collections import deque
+from collections import defaultdict, deque
 from typing import Any
 
 from app.options.order_flow.engine import OF_LEAN_KEPT_SEC, book_side
@@ -231,7 +231,8 @@ class RecentLean:
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
-        self._points: dict[str, deque] = {}
+        # every ticker's series, empty until its first readout
+        self._points: defaultdict[str, deque] = defaultdict(deque)
 
     def record(self, ticker: str, ts_recv: float, readout: dict) -> None:
         sym = ticker_storage_key(ticker)
@@ -239,7 +240,7 @@ class RecentLean:
             return
         point = (float(ts_recv), readout)
         with self._lock:
-            held = self._points.setdefault(sym, deque())
+            held = self._points[sym]
             if held and int(held[-1][0]) == int(point[0]):
                 held[-1] = point
             else:
@@ -254,8 +255,7 @@ class RecentLean:
     def points(self, ticker: str) -> list[tuple[float, dict]]:
         """The ticker's kept values, oldest first."""
         with self._lock:
-            key = ticker_storage_key(ticker)
-            return list(self._points[key]) if key in self._points else []
+            return list(self._points[ticker_storage_key(ticker)])
 
 
 #: the recent prints, books and imbalance values, fed by the console's intake

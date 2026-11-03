@@ -34,14 +34,15 @@ const LEVELS = { ticker: 'SPY', spot: SPOT, tf: '30', generation: 1, vwap_series
   volume_profile: { basis: 'RTH 1-minute bars, each bar\'s volume spread evenly over its range (not trade prints)', tick_size: 0.01,
     bins: [[769.99, 1200, false], [770.0, 5000, true], [770.01, 3000, true]], max_volume: 5000, poc: 770.0, vah: 770.01, val: 770.0 } };
 // the route's answers for SPY's real books (tests/test_liquidity_readout_v1.py): live, the daemon's
-// connection ended, no book, and inside the closing auction
+// connection ended, no book, inside the closing auction, and crossed
 const READOUT_LIVE = require(path.join(__dirname, 'fixtures', 'liquidity_readout_live.json'));
 const READOUT_OFFLINE = require(path.join(__dirname, 'fixtures', 'liquidity_readout_offline.json'));
 const READOUT_NO_BOOK = require(path.join(__dirname, 'fixtures', 'liquidity_readout_no_book.json'));
 const READOUT_AUCTION = require(path.join(__dirname, 'fixtures', 'liquidity_readout_close_auction.json'));
+const READOUT_CROSSED = require(path.join(__dirname, 'fixtures', 'liquidity_readout_crossed.json'));
 const LIVE_COMP = READOUT_LIVE.readout.venues.COMPOSITE;
 const MICRO = { ticker: 'SPY', venue: 'NASDAQ_BOOK', status: 'ok', readout: READOUT_LIVE.readout, top_of_book: { bid: 771.29, ask: 771.31, bid_size: 300, ask_size: 200 },
-  spread_pts: 0.02, depth: { '1': { imbalance: 0.2, side: 'BID' }, '5': { bid_total: 3000, ask_total: 2000, imbalance: 0.2, side: 'BID' } },
+  spread_pts: 0.02, depth: { '1': { imbalance: 0.2 }, '5': { bid_total: 3000, ask_total: 2000, imbalance: 0.2 } },
   depth_pressure: { bid: [{ price: 771.29, volume: 300, cum: 300 }, { price: 771.28, volume: 900, cum: 1200 }], ask: [{ price: 771.31, volume: 200, cum: 200 }] },
   ages: { book_age_sec: 1, book_stale: false }, book_feed_label: 'LIVE', wall_candidates: [], provenance: { book_source: 'NASDAQ_BOOK' },
   flow: { tape_pressure_5m: 0.3, tape_pressure_30s: 0.1, tape_pressure_2m: 0.2, cum_delta_proxy: 1000 } };
@@ -267,8 +268,9 @@ test('Desk: a book whose market is closed reads BOOK NOT LIVE and keeps Schwab\'
   await intercept(page);
   await page.route('**/api/order-flow/microstructure**', (route) => route.fulfill({
     status: 200, contentType: 'application/json', body: JSON.stringify(CLOSED_BOOK) }));
+  // the fixture holds NYSE_BOOK only: the card shows that book
   await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
-    localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
+    localStorage.setItem('ed_sub', 'desk'); localStorage.setItem('ed_book_venue', 'NYSE_BOOK'); localStorage.setItem('ed.desk.liqvenue', 'BOOK'); } catch (e) {} });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await expect(page.locator('#tdmCardLiq')).toContainText('BOOK NOT LIVE');
   await expect(page.locator('#tdmCardLiq .tdm-src')).toContainText('book ' + CLOSED_BOOK.book_time_ct + ' · not live');
@@ -277,6 +279,10 @@ test('Desk: a book whose market is closed reads BOOK NOT LIVE and keeps Schwab\'
   await expect(page.locator('#tdmCardLiq .liq-bar-h').first()).toHaveText('Bids800');
   await expect(page.locator('#tdmTrust')).toContainText('BOOK ' + CLOSED_BOOK.book_time_ct + ' · NOT LIVE');
   await expect(page.locator('#tdmTrust')).not.toContainText('STALE');
+  // the composite needs both books: words, no number
+  await page.locator('#tdmCardLiq [data-liqvenue="COMPOSITE"]').click();
+  await expect(page.locator('#tdmCardLiq .liq-body')).toHaveText('NO BOOK' + CLOSED_BOOK.readout.venues.COMPOSITE.no_number_text);
+  await expect(page.locator('#tdmCardLiq .liq-pct')).toHaveCount(0);
   expect(errs).toEqual([]);
 });
 
@@ -894,12 +900,16 @@ test.describe('Desk: the Liquidity card draws the served order-imbalance readout
     await expect(card(page).locator('[data-liqvenue="COMPOSITE"]')).toHaveClass(/on/);
     await expect(card(page).locator('[data-liqview="weighted"]')).toHaveClass(/on/);
     await expect(card(page).locator('.liq-depth')).toContainText('price levels per side, not timeframes');
-    await expect(card(page).locator('.tdm-src')).toHaveText('Schwab NYSE_BOOK + NASDAQ_BOOK · deduped composite');
+    await expect(card(page).locator('.tdm-src')).toHaveText('Schwab NYSE_BOOK + NASDAQ_BOOK · deduped composite · NSDQ from NYSE_BOOK');
     const text = await card(page).locator('.liq-body').innerText();
+    const span = (k, side) => '$' + READOUT_LIVE.readout.venues[k].views.weighted['span_' + side + '_text'];
     const order = ['WEIGHTED TOP-5 HEADLINE', w.pct_text, w.side_word, 'Bids', w.bid_text, 'Asks', w.ask_text,
-      'Difference: ' + w.difference_text + ' shares · Total depth: ' + w.total_text + ' shares', w.counted_twice_text, w.sentence,
-      'VENUES', 'Green NYSE · Red Nasdaq · Gold Composite · White ring marks the selected venue', 'AT THE TOUCH', LIVE_COMP.touch_text,
-      'LEAN', 'HELD ', w.flips_word + ' · ' + w.flips_2m + ' flips in 2 min',
+      'Difference: ' + w.difference_text + ' shares · Total depth: ' + w.total_text + ' shares', w.sentence,
+      'VENUES', 'Green NYSE · Red Nasdaq · Gold Composite · White ring marks the selected venue',
+      'Top-5 spans, bid / ask: NYSE ' + span('NYSE_BOOK', 'bid') + ' / ' + span('NYSE_BOOK', 'ask') +
+        ' · Nasdaq ' + span('NASDAQ_BOOK', 'bid') + ' / ' + span('NASDAQ_BOOK', 'ask'),
+      'AT THE TOUCH', LIVE_COMP.touch_text,
+      'LEAN', w.held_text, w.flips_word + ' · ' + w.flips_2m + ' flips in 2 min',
       'NYSE + Nasdaq only — not the whole market · Book ' + LIVE_COMP.book_time_ct];
     let at = -1;
     for (const s of order) { const i = text.indexOf(s, at + 1); expect(i, s).toBeGreaterThan(at); at = i; }
@@ -965,7 +975,7 @@ test.describe('Desk: the Liquidity card draws the served order-imbalance readout
     await expect(card(page).locator('.liq-body')).toHaveClass(/stale/);
     await expect(card(page).locator('.liq-body')).toContainText('BOOK OFFLINE');
     await expect(card(page).locator('.liq-body')).toContainText(c.not_live_text);
-    await expect(card(page).locator('.tdm-src')).toHaveText('Schwab NYSE_BOOK + NASDAQ_BOOK · book ' + c.book_time_ct + ' · not live');
+    await expect(card(page).locator('.tdm-src')).toHaveText('Schwab NYSE_BOOK + NASDAQ_BOOK · deduped composite · NSDQ from NYSE_BOOK · book ' + c.book_time_ct + ' · not live');
     await expect(card(page).locator('.liq-pct')).toHaveText(c.views.weighted.pct_text);
     expect(errs).toEqual([]);
   });
@@ -980,13 +990,43 @@ test.describe('Desk: the Liquidity card draws the served order-imbalance readout
     expect(errs).toEqual([]);
   });
 
-  test('inside the closing auction the continuous number is replaced by the auction card', async ({ page }) => {
+  test('inside the closing auction the number stands and the auction line is added', async ({ page }) => {
     const errs = watchErrors(page);
     await openDesk(page, READOUT_AUCTION);
-    await expect(card(page).locator('.liq-body')).toContainText('AUCTION');
+    const c = READOUT_AUCTION.readout.venues.COMPOSITE;
     await expect(card(page).locator('.liq-body')).toContainText(READOUT_AUCTION.readout.auction_text);
-    await expect(card(page).locator('.liq-pct')).toHaveCount(0);
-    await expect(card(page).locator('.liq-body')).not.toContainText('%');
+    await expect(card(page).locator('.liq-pct')).toHaveText(c.views.weighted.pct_text);
+    // the line sits after the sentence, before the venues
+    const text = await card(page).locator('.liq-body').innerText();
+    expect(text.indexOf(READOUT_AUCTION.readout.auction_text)).toBeGreaterThan(text.indexOf(c.views.weighted.sentence));
+    expect(text.indexOf(READOUT_AUCTION.readout.auction_text)).toBeLessThan(text.indexOf('VENUES'));
+    expect(errs).toEqual([]);
+  });
+
+  test('a crossed book flags it, keeps its number and totals, and withholds the sentence', async ({ page }) => {
+    const errs = watchErrors(page);
+    await openDesk(page, READOUT_CROSSED);
+    const c = READOUT_CROSSED.readout.venues.COMPOSITE;
+    expect(c.touch_flag).toBe('BOOK CROSSED');
+    await expect(card(page).locator('.liq-body')).toContainText('BOOK CROSSED');
+    await expect(card(page).locator('.liq-pct')).toHaveText(c.views.weighted.pct_text);
+    await expect(card(page).locator('.liq-body')).toContainText(c.views.weighted.ask_text);
+    await expect(card(page).locator('.liq-sent')).toHaveText('Book crossed — bid and ask overlap, no balancing sentence.');
+    expect(errs).toEqual([]);
+  });
+
+  test('the headline opens the detail panel with the served words; Close shuts it', async ({ page }) => {
+    const errs = watchErrors(page);
+    await openDesk(page, READOUT_LIVE);
+    const d = READOUT_LIVE.readout.detail;
+    await expect(card(page).locator('.liq-detail')).toHaveCount(0);
+    await card(page).locator('.liq-hl').click();
+    const panel = card(page).locator('.liq-detail');
+    for (const t of [d.weights, d.zones, d.nsdq, LIVE_COMP.views.weighted.nsdq_text, d.construction, d.spans, d.books]) {
+      await expect(panel).toContainText(t);
+    }
+    await panel.locator('[data-liqclose]').click();
+    await expect(card(page).locator('.liq-detail')).toHaveCount(0);
     expect(errs).toEqual([]);
   });
 

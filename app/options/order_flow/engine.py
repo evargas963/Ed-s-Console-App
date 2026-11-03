@@ -9,7 +9,6 @@ book as Schwab last sent it) and ``book_live`` (whether the feed delivers the bo
 
 from __future__ import annotations
 
-import collections
 import itertools
 import math
 import statistics
@@ -30,6 +29,7 @@ from l1_trade_observation import (
 from numeric_contract import (
     float_finite_or_none,
     percent_text,
+    price_text,
     schwab_count,
     schwab_number,
     shares_text,
@@ -525,6 +525,10 @@ def compute_book_microstructure(data: dict, *, now_ts: float, ticker: str | None
 #: the two Schwab equity books, and their deduped union
 BOOK_VENUES: tuple[str, ...] = ("NYSE_BOOK", "NASDAQ_BOOK")
 COMPOSITE = "COMPOSITE"
+#: Nasdaq's own quote, in both books: the composite counts it once, from NSDQ_FROM, by convention
+#: (the two books' sizes for it differ and the data cannot say which is right)
+NSDQ = "NSDQ"
+NSDQ_FROM = "NYSE_BOOK"
 #: the card's views: the weighted top-5 headline, then the flat depths
 READOUT_VIEWS: tuple[str, ...] = ("weighted", "1", "3", "5")
 #: level k (1 = the touch) weighs exp(-OF_LEVEL_DECAY * (k - 1)), the top five normalized to sum
@@ -540,7 +544,7 @@ OF_ZONE_ONE_SIDED_PCT: float = 70.0
 OF_SMOOTH_SEC: int = 5
 #: a zone changes once the smoothed value has stood in another zone this many seconds
 OF_ZONE_DWELL_SEC: int = 3
-#: this many sign changes of the smoothed value in two minutes read CHOPPY, fewer STEADY
+#: this many flips in two minutes read CHOPPY, fewer STEADY
 OF_CHOPPY_FLIPS: int = 5
 #: the lean sparklines: (name, window in seconds, one point every this many seconds)
 OF_LEAN_WINDOWS: tuple[tuple[str, int, int], ...] = (
@@ -556,69 +560,93 @@ ZONE_WORDS = {
     "OFFER_HEAVY": "OFFER HEAVY",
     "VERY_OFFER": "VERY ONE-SIDED · OFFER HEAVY",
 }
-READOUT_GUIDE = (
-    "Weighted headline: level weights "
+#: a zone's side, for flips: BALANCED is none
+_SIDE = {"VERY_BID": "BID", "BID_HEAVY": "BID", "OFFER_HEAVY": "OFFER", "VERY_OFFER": "OFFER"}
+#: the detail panel's words
+READOUT_DETAIL = {
+    "weights": "Headline weights by price level from the touch: "
     + ", ".join(f"{w:.2f}" for w in OF_LEVEL_WEIGHTS)
-    + " from the touch (exp(-0.5·(k-1)), normalized). Zones, a guide and not a research finding:"
-    f" BALANCED under {OF_ZONE_LEANING_PCT:.0f}%, leaning {OF_ZONE_LEANING_PCT:.0f}% to under"
-    f" {OF_ZONE_ONE_SIDED_PCT:.0f}%, very one-sided from {OF_ZONE_ONE_SIDED_PCT:.0f}%. Headline:"
-    f" median of the last {OF_SMOOTH_SEC} seconds; a zone changes after {OF_ZONE_DWELL_SEC}"
-    f" seconds across its line; {OF_CHOPPY_FLIPS} or more sign changes in 2 minutes read CHOPPY."
-)
+    + f" (exp(-{OF_LEVEL_DECAY}·(k-1)), normalized; renormalized over the levels a thin side has)."
+    " Starting weights from a vendor study (VisualHFT, touch-weighted), adjustable.",
+    "zones": "Zones, a provisional guide and not a research finding: BALANCED under"
+    f" {OF_ZONE_LEANING_PCT:.0f}% (Bookmap's colour-switch line); BID or OFFER HEAVY from"
+    f" {OF_ZONE_LEANING_PCT:.0f}% to under {OF_ZONE_ONE_SIDED_PCT:.0f}%; VERY ONE-SIDED from"
+    f" {OF_ZONE_ONE_SIDED_PCT:.0f}% (a VisualHFT vendor study, not a peer-reviewed paper). The"
+    " middle range grades direction only, not strength. The headline is the median of the last"
+    f" {OF_SMOOTH_SEC} seconds; a zone changes after {OF_ZONE_DWELL_SEC} seconds across its line;"
+    " a flip is a change of side, bid to offer or back, held that long; "
+    f"{OF_CHOPPY_FLIPS} or more flips in 2 minutes read CHOPPY.",
+    "nsdq": "NSDQ is counted once, from NYSE_BOOK, by convention. The two books disagree on NSDQ's"
+    " size in 82.5% of strict pairs (Nov 2 session), and the data cannot say which size is"
+    " right. The composite headline is a conventional number, not a verified one.",
+    "construction": "Composite: every exchange's and market maker's quote from both books, codes"
+    " matched without regard to case, one per contributor by side, price and code; NSDQ once,"
+    " from NYSE_BOOK; then the best five distinct prices per side. Never the two books' level"
+    " totals summed, never NSDQ's two sizes averaged, never the newer book's copy kept.",
+    "spans": "Top 5 covers different price ranges on the two venues — the percentages are over"
+    " different prices, so compare directions, not magnitudes. The touch is the only"
+    " like-for-like comparison across venues.",
+    "books": "NYSE_BOOK is each exchange's best quote grouped by price, not order depth."
+    " NASDAQ_BOOK carries Nasdaq's own quote and market makers' quotes.",
+}
 _DIVERGENCE = "Touch and deeper book disagree"
+_CROSSED_SENTENCE = "Book crossed — bid and ask overlap, no balancing sentence."
+_TOUCH_FLAG = {"CROSSED": "BOOK CROSSED", "LOCKED": "BOOK LOCKED"}
 
 Levels = list[tuple[float, float]]
 
 
-def _composite_side(
-    books: list[tuple[float | None, dict]], side: str
-) -> tuple[Levels, Levels, bool]:
-    """The deduped union of one side of both books. Each exchange or market maker counts once,
-    from the book holding its newer quote by that quote's own time (SEQUENCE), and from the book
-    with the newer BOOK_TIME when both hold the same quote time; its code is matched without
-    regard to case (NASDAQ_BOOK sends arcx where NYSE_BOOK sends ARCX). Returns the levels
-    (price, shares) best first, the copies left out (price, shares), and whether a level carried
-    no per-exchange rows, its TOTAL_VOLUME then taken whole (the dedup partial). A book whose
-    BOOK_TIME is unknown comes after one whose time is known."""
-    sizes: collections.defaultdict[float, float] = collections.defaultdict(float)
-    dropped: Levels = []
+def _codes(item: dict) -> set[str]:
+    """The codes, upper-cased, of every exchange and market maker quoting in a book."""
+    return {
+        code.upper()
+        for side in ("BIDS", "ASKS")
+        for _price, _total, rows in _side_levels(item, side)
+        if rows is not None
+        for code, _size, _quoted in rows
+    }
+
+
+def _composite_side(books: dict[str, dict], side: str, nsdq_from: str) -> tuple[Levels, bool]:
+    """One side of the composite of both books: every quote of both, one per contributor, NSDQ's
+    only from the book `nsdq_from`, sorted by price best first and summed at each distinct price.
+    A level that carries no per-exchange rows counts its TOTAL_VOLUME whole, and the second value
+    says one did (the dedup partial)."""
+    quotes: Levels = []
     partial = False
-    timed = sorted((b for b in books if b[0] is not None), key=lambda b: b[0], reverse=True)
-    # each participant's rows, by its code: (book's rank, newest first; price; size; quote time)
-    rows_of: dict[str, list[tuple[int, float, float, float]]] = collections.defaultdict(list)
-    for rank, (_time, item) in enumerate(timed + [b for b in books if b[0] is None]):
+    for venue, item in books.items():
         for price, total, rows in _side_levels(item, side):
             if rows is None:
                 partial = True
-                sizes[price] += total
+                quotes.append((price, total))
                 continue
-            for code, size, quoted in rows:
-                rows_of[code.upper()].append((rank, price, size, quoted))
-    for rows in rows_of.values():
-        newest = max(quoted for _rank, _price, _size, quoted in rows)
-        kept = min(rank for rank, _price, _size, quoted in rows if quoted == newest)
-        for rank, price, size, _quoted in rows:
-            if rank == kept:
-                sizes[price] += size
-            else:
-                dropped.append((price, size))
-    return sorted(sizes.items(), reverse=side == "BIDS"), dropped, partial
-
-
-def _counted_twice(levels: Levels, dropped: Levels, depth: int, side: str) -> float:
-    """The shares of the copies left out that sit inside the composite's best `depth` levels: what
-    summing the two books would count twice there."""
-    if len(levels) < depth:
-        return sum(s for _p, s in dropped)
-    edge = levels[depth - 1][0]
-    return sum(s for p, s in dropped if (p >= edge if side == "BIDS" else p <= edge))
+            quotes += [
+                (price, size)
+                for code, size, _q in rows
+                if code.upper() != NSDQ or venue == nsdq_from
+            ]
+    quotes.sort(key=lambda q: q[0], reverse=side == "BIDS")
+    levels = [
+        (p, sum(s for _p, s in at)) for p, at in itertools.groupby(quotes, key=lambda q: q[0])
+    ]
+    return levels, partial
 
 
 def _weighted_total(levels: Levels) -> float | None:
-    """Σ OF_LEVEL_WEIGHTS[k] × shares over the best five levels; None for an empty side."""
+    """Σ weight × shares over the best five levels, OF_LEVEL_WEIGHTS renormalized to sum 1 over the
+    levels the side has; None for an empty side."""
     if not levels:
         return None
-    return sum(w * v for w, (_p, v) in zip(OF_LEVEL_WEIGHTS, levels, strict=False))
+    weights = OF_LEVEL_WEIGHTS[: len(levels)]
+    return sum(w * v for w, (_p, v) in zip(weights, levels, strict=False)) / sum(weights)
+
+
+def _span(levels: Levels, depth: int) -> float | None:
+    """From the touch price to the `depth`-th level's, or the last level's when the side has
+    fewer; None for an empty side."""
+    if not levels:
+        return None
+    return abs(levels[min(depth, len(levels)) - 1][0] - levels[0][0])
 
 
 def _pct(imbalance: float | None) -> float | None:
@@ -653,6 +681,8 @@ def _readout(bids: Levels, asks: Levels, book_time_ms: float | None) -> dict:
             "ask_total": at,
             "difference": abs(bt - at) if both else None,
             "total_depth": bt + at if both else None,
+            "span_bid": _span(bids, depth),
+            "span_ask": _span(asks, depth),
         }
     touch = None
     if bids and asks:
@@ -665,39 +695,51 @@ def _readout(bids: Levels, asks: Levels, book_time_ms: float | None) -> dict:
         "book_time_ms": book_time_ms,
         "touch_state": touch,
         "one_sided_text": _ONE_SIDED["BIDS" if bids else "ASKS"] if status == "one_sided" else None,
+        "levels": {"bid": len(bids), "ask": len(asks)},
         "views": views,
     }
 
 
 def book_readout(books: dict[str, dict | None]) -> dict[str, dict]:
-    """The imbalance readout of each Schwab book and of their deduped composite, from each
-    venue's newest book (`state.newest_book`, every venue of BOOK_VENUES; None: no book). The
-    composite's time is its older book's. No book: status no_book."""
+    """The imbalance readout of each Schwab book and of their composite, from each venue's newest
+    book (`state.newest_book`, every venue of BOOK_VENUES; None: no book). The composite needs
+    both books (status one_book: `books` names the one held) and no code but NSDQ in both
+    (status shared_code: `shared` names them); its time is its older book's, and each view
+    carries the percentage with NSDQ taken from the other book instead (nsdq_other_pct)."""
     out: dict[str, dict] = {}
+    held: dict[str, dict] = {}
     for v in BOOK_VENUES:
         item = books[v]
         if item is None:
             out[v] = {"status": "no_book", "book_time_ms": None}
             continue
+        held[v] = item
         bids = _sorted_valid_levels(book_side(item, "BIDS"), descending=True)
         asks = _sorted_valid_levels(book_side(item, "ASKS"), descending=False)
         out[v] = _readout(bids, asks, schwab_number(item.get("BOOK_TIME")))
-    held = [(schwab_number(i.get("BOOK_TIME")), i) for i in books.values() if i is not None]
-    if not held:
-        out[COMPOSITE] = {"status": "no_book", "book_time_ms": None}
-        return out
-    bids, bid_dropped, bid_partial = _composite_side(held, "BIDS")
-    asks, ask_dropped, ask_partial = _composite_side(held, "ASKS")
-    times = [t for t, _i in held]
-    out[COMPOSITE] = _readout(bids, asks, None if None in times else min(times))
-    for view, v in out[COMPOSITE]["views"].items():
-        depth = OF_BOOK_DEPTH_DEEP if view == "weighted" else int(view)
-        v["counted_twice"] = {
-            "bid": _counted_twice(bids, bid_dropped, depth, "BIDS"),
-            "ask": _counted_twice(asks, ask_dropped, depth, "ASKS"),
+    shared = sorted(set.intersection(*map(_codes, held.values())) - {NSDQ}) if held else []
+    if len(held) < len(BOOK_VENUES):
+        out[COMPOSITE] = {
+            "status": "one_book" if held else "no_book",
+            "book_time_ms": None,
+            "books": list(held),
         }
-    out[COMPOSITE]["books"] = [v for v, i in books.items() if i is not None]
-    out[COMPOSITE]["dedup_partial"] = bid_partial or ask_partial
+    elif shared:
+        out[COMPOSITE] = {"status": "shared_code", "book_time_ms": None, "shared": shared}
+    else:
+        times = [schwab_number(i.get("BOOK_TIME")) for i in held.values()]
+        time = None if None in times else min(times)
+        (bids, bid_partial), (asks, ask_partial) = (
+            _composite_side(held, s, NSDQ_FROM) for s in ("BIDS", "ASKS")
+        )
+        other = next(v for v in BOOK_VENUES if v != NSDQ_FROM)
+        alt = _readout(*(_composite_side(held, s, other)[0] for s in ("BIDS", "ASKS")), time)[
+            "views"
+        ]
+        out[COMPOSITE] = _readout(bids, asks, time)
+        for view, vals in out[COMPOSITE]["views"].items():
+            vals["nsdq_other_pct"] = alt[view]["pct"]
+        out[COMPOSITE]["dedup_partial"] = bid_partial or ask_partial
     return out
 
 
@@ -741,11 +783,12 @@ def _zone(pct: float | None) -> str | None:
     return "VERY_BID" if pct > 0 else "VERY_OFFER"
 
 
-def _dwelled(smoothed: list, first: int) -> tuple[str | None, int | None]:
-    """The zone shown: once the smoothed values have stood outside the shown zone
+def _dwelled(smoothed: list, first: int) -> list[tuple[str | None, int | None]]:
+    """Each second's zone shown: once the smoothed values have stood outside the shown zone
     OF_ZONE_DWELL_SEC seconds in a row, whichever zones they crossed, the zone they stand in
-    then, dated from the second they entered it. Returns it and that second; (None, None) while
-    the value is unknown."""
+    then, dated from the second they entered it. Each second's zone and that second; (None, None)
+    while the value is unknown."""
+    shown = []
     zone = since = left = entered = prev = None
     for k, s in enumerate(smoothed):
         z = _zone(s)
@@ -763,13 +806,28 @@ def _dwelled(smoothed: list, first: int) -> tuple[str | None, int | None]:
                 left = first + k
             if first + k - left + 1 >= OF_ZONE_DWELL_SEC:
                 zone, since, left = z, entered, None
-    return zone, since
+        shown.append((zone, since))
+    return shown
 
 
-def _flips(smoothed: list) -> int:
-    """How many times the smoothed value changed sign (a zero or unknown value is skipped)."""
-    signs = [s > 0 for s in smoothed if s is not None and s != 0]
-    return sum(1 for a, b in itertools.pairwise(signs) if a != b)
+def _flips(shown: list[tuple[str | None, int | None]], first: int, last: int) -> int:
+    """The flips arriving in the two minutes to second `last`: the zone shown (`_dwelled`, from
+    second `first`) reaching the side opposite the one it last held, bid to offer or back.
+    BALANCED is no side, so bid, BALANCED, offer is one flip, on arrival; the first lean is none;
+    after an unknown value the count of sides starts over."""
+    flips, held = 0, None
+    for k, (zone, _since) in enumerate(shown):
+        if zone is None:
+            held = None
+        elif zone in _SIDE:
+            if (
+                held is not None
+                and _SIDE[zone] != held
+                and first + k > last - OF_TAPE_WINDOW_2M_SEC
+            ):
+                flips += 1
+            held = _SIDE[zone]
+    return flips
 
 
 def _lean(values: list) -> str | None:
@@ -802,14 +860,25 @@ def _opposite(a: float | None, b: float | None) -> bool:
     return a is not None and b is not None and a * b < 0
 
 
+def _nsdq_text(pct: float | None, other: float | None) -> str | None:
+    """Both NSDQ percentages of the composite, for the detail panel."""
+    if pct is None or other is None:
+        return None
+    return (
+        f"NSDQ from {NSDQ_FROM}: {percent_text(pct)} · NSDQ from"
+        f" {next(v for v in BOOK_VENUES if v != NSDQ_FROM)}: {percent_text(other)}"
+    )
+
+
 def readout_card(readout: dict[str, dict], points: list[tuple[float, dict]], ends: dict) -> dict:
     """The Liquidity card's values, every venue and view: the headline (the smoothed percentage at
     the venue's end second: now while its book is live, else its last value's), its live value,
     zone and side word held OF_ZONE_DWELL_SEC, the seconds the zone has held (held_open: at
     least that long, the zone standing since the first value known), the flat totals, the
-    sentence, the touch, the flips in two minutes, and the 2m and 5m lean series. `readout`: the
-    newest; `points`: the readouts kept, (receive time, readout) oldest first; `ends`: venue ->
-    its end time, None with no value."""
+    sentence (withheld while the book is crossed), the spans, the touch and its flag, the flips
+    in two minutes, the 2m and 5m lean series, and for the composite both NSDQ percentages and
+    whether their zones differ. `readout`: the newest; `points`: the readouts kept, (receive time,
+    readout) oldest first; `ends`: venue -> its end time, None with no value."""
     venues: dict[str, dict] = {}
     for v, r in readout.items():
         end = ends.get(v)
@@ -822,10 +891,13 @@ def readout_card(readout: dict[str, dict], points: list[tuple[float, dict]], end
             last = int(end)
             first = last - OF_LEAN_KEPT_SEC
             sm = _smoothed(_standing(points, v, view, first, last))
-            zone, since = _dwelled(sm, first)
+            shown = _dwelled(sm, first)
+            zone, since = shown[-1]
             known_from = next((first + k for k, s in enumerate(sm) if s is not None), None)
-            flips = _flips(sm[-(int(OF_TAPE_WINDOW_2M_SEC) + 1) :])
+            flips = _flips(shown, first, last)
             bid, ask = snap.get("bid_total"), snap.get("ask_total")
+            live, other = snap.get("pct"), snap.get("nsdq_other_pct")
+            held = None if since is None else last - since
             views[view] = {
                 **{
                     k: snap.get(k)
@@ -833,15 +905,20 @@ def readout_card(readout: dict[str, dict], points: list[tuple[float, dict]], end
                 },
                 "pct": sm[-1],
                 "pct_text": percent_text(sm[-1]),
-                "live_pct": snap.get("pct"),
-                "live_text": percent_text(snap.get("pct")),
+                "live_pct": live,
+                "live_text": percent_text(live),
                 "zone": zone,
                 "side_word": ZONE_WORDS.get(zone) if zone else None,
-                "held_sec": None if since is None else last - since,
+                "held_sec": held,
                 "held_open": since is not None and since == known_from,
-                "sentence": _sentence(zone, bid, ask),
+                "held_text": None
+                if held is None
+                else f"HELD {'≥' if since == known_from else ''}{held}s",
+                "sentence": _CROSSED_SENTENCE
+                if r.get("touch_state") == "CROSSED"
+                else _sentence(zone, bid, ask),
                 "divergence": _DIVERGENCE
-                if view == "weighted" and _opposite(snap.get("pct"), snap.get("flat_pct"))
+                if view == "weighted" and _opposite(live, snap.get("flat_pct"))
                 else None,
                 "flips_2m": flips,
                 "flips_word": "CHOPPY" if flips >= OF_CHOPPY_FLIPS else "STEADY",
@@ -849,6 +926,13 @@ def readout_card(readout: dict[str, dict], points: list[tuple[float, dict]], end
                 "ask_text": shares_text(ask),
                 "difference_text": shares_text(snap.get("difference")),
                 "total_text": shares_text(snap.get("total_depth")),
+                "span_bid_text": price_text(snap.get("span_bid")),
+                "span_ask_text": price_text(snap.get("span_ask")),
+                "nsdq_other_pct": other,
+                "nsdq_text": _nsdq_text(live, other),
+                "nsdq_disagree": live is not None
+                and other is not None
+                and _zone(live) != _zone(other),
                 "lean": {
                     name: {
                         "seconds": window,
@@ -859,14 +943,8 @@ def readout_card(readout: dict[str, dict], points: list[tuple[float, dict]], end
                     for name, window, step in OF_LEAN_WINDOWS
                 },
             }
-            if "counted_twice" in snap:
-                twice = snap["counted_twice"]
-                views[view]["counted_twice"] = twice
-                views[view]["counted_twice_text"] = (
-                    f"Counted twice by summing both books: {shares_text(twice['bid'])} bid,"
-                    f" {shares_text(twice['ask'])} ask shares"
-                )
         touch = r["views"]["1"]["pct"] if "views" in r else None
+        levels = r.get("levels")
         venues[v] = {
             **{
                 k: r.get(k)
@@ -876,11 +954,16 @@ def readout_card(readout: dict[str, dict], points: list[tuple[float, dict]], end
                     "touch_state",
                     "one_sided_text",
                     "books",
+                    "shared",
                     "dedup_partial",
                 )
             },
             "touch_pct": touch,
             "touch_text": percent_text(touch),
+            "touch_flag": _TOUCH_FLAG.get(r.get("touch_state")),
+            "levels_text": f"Levels available: bids {levels['bid']} · asks {levels['ask']}"
+            if levels and min(levels.values()) < OF_BOOK_DEPTH_DEEP
+            else None,
             "views": views,
         }
     return {
@@ -893,7 +976,7 @@ def readout_card(readout: dict[str, dict], points: list[tuple[float, dict]], end
             for view in READOUT_VIEWS
         },
         "weights": list(OF_LEVEL_WEIGHTS),
-        "guide": READOUT_GUIDE,
+        "detail": READOUT_DETAIL,
     }
 
 

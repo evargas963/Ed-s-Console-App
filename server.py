@@ -3211,44 +3211,60 @@ def order_flow_microstructure(ticker: str, venue: str, now: float) -> dict:
     return payload
 
 
-#: the auction card's words, by window (time_et.auction)
+#: the amber line inside an exchange auction window, by window (time_et.auction): the continuous
+#: book's number stays
 _AUCTION_TEXT = {
-    OPEN_AUCTION: "Auction — the continuous book number is replaced during the opening auction;"
-    " auction imbalance is a different number",
-    CLOSE_AUCTION: "Auction — the continuous book number is replaced during the closing auction;"
-    " auction imbalance is a different number",
+    OPEN_AUCTION: "Opening auction window — auction imbalance is a different number, not shown"
+    " here.",
+    CLOSE_AUCTION: "Closing auction window — auction imbalance is a different number, not shown"
+    " here.",
 }
 
 
 #: the readout before any book has arrived: every venue no_book
 _NO_BOOKS = book_readout(dict.fromkeys(BOOK_VENUES))
-#: the card's source line: whose book, and what it is while live
+#: the card's source line: whose book, and the words of a live single book
 _SOURCE = {
-    "NYSE_BOOK": ("Schwab NYSE_BOOK", "live book"),
-    "NASDAQ_BOOK": ("Schwab NASDAQ_BOOK", "live book"),
-    COMPOSITE: ("Schwab NYSE_BOOK + NASDAQ_BOOK", "deduped composite"),
+    "NYSE_BOOK": "Schwab NYSE_BOOK",
+    "NASDAQ_BOOK": "Schwab NASDAQ_BOOK",
+    COMPOSITE: "Schwab NYSE_BOOK + NASDAQ_BOOK · deduped composite · NSDQ from NYSE_BOOK",
 }
-#: why a venue has no number, as the source line says it
-_NO_NUMBER = {
-    "no_book": "no book for this symbol right now",
-    "empty": "the book Schwab sent has no levels",
-}
-#: the card's NO BOOK line
-_NO_NUMBER_CARD = {
-    "no_book": "No book for this symbol right now",
-    "empty": "The book Schwab sent has no levels",
-}
+_LIVE_BOOK = "live book"
+
+
+def _no_number(r: dict) -> tuple[str, str] | None:
+    """Why a venue has no number, as the source line and the card say it; None when it has one."""
+    status = r["status"]
+    if status == "no_book":
+        return "no book for this symbol right now", "No book for this symbol right now"
+    if status == "empty":
+        return "the book Schwab sent has no levels", "The book Schwab sent has no levels"
+    if status == "one_book":
+        return (
+            f"only {r['books'][0]} is captured",
+            "Composite needs both books — only"
+            f" {r['books'][0]} is captured for this symbol right now",
+        )
+    if status == "shared_code":
+        codes = ", ".join(r["shared"])
+        return (
+            f"{codes} quote in both books",
+            f"{codes} quote in both books: which copy counts is not decided, so the composite"
+            " has no number",
+        )
+    return None
 
 
 def _source_text(venue: str, r: dict, window: str | None) -> str:
     """The card's source line for `venue`: Schwab's book, then why it has no number, or live, or
     its time and not live; and, when today's auction windows are not known, that."""
-    who, live_kind = _SOURCE[venue]
-    parts = [who]
-    if r["status"] in _NO_NUMBER:
-        parts.append(_NO_NUMBER[r["status"]])
+    parts = [_SOURCE[venue]]
+    why = _no_number(r)
+    if why is not None:
+        parts.append(why[0])
     elif r["live"]:
-        parts.append(live_kind)
+        if venue != COMPOSITE:
+            parts.append(_LIVE_BOOK)
     elif r["book_time_ct"] is not None:
         parts.append(f"book {r['book_time_ct']} · not live")
     else:
@@ -3261,7 +3277,7 @@ def _source_text(venue: str, r: dict, window: str | None) -> str:
 def _not_live_text(r: dict) -> str | None:
     """A venue that is not live, with numbers, says they are its last: from its book's time, or
     that Schwab sent none. None while live, and with no number."""
-    if r["live"] or r["status"] in _NO_NUMBER:
+    if r["live"] or _no_number(r) is not None:
         return None
     parts = []
     if r["book_time_ct"] is not None:
@@ -3295,7 +3311,13 @@ def liquidity_readout(t: str, now: float) -> dict:
         r["book_time_ct"] = None if book_ms is None else ct_label(book_ms / 1000.0)
         r["not_live_text"] = _not_live_text(r)
         r["source_text"] = _source_text(v, r, window)
-        r["no_number_text"] = _NO_NUMBER_CARD.get(r["status"])
+        why = _no_number(r)
+        r["no_number_text"] = None if why is None else why[1]
+        r["dedup_partial_text"] = (
+            "Dedup partial: a level came without per-exchange sizes, its total taken whole"
+            if r["dedup_partial"]
+            else None
+        )
     card["auction"] = window
     card["auction_text"] = _AUCTION_TEXT.get(window)
     return card
