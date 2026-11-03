@@ -192,8 +192,8 @@ word while the market is open. Operator 2026-10-23, later: "you do not have to a
 have full authority to get everything into production": the one-producer PRs merge once CI is green
 and both reviews pass, and deploy, without a separate yes. Operator 2026-10-23, later still: "you do
 not have to wait till after hours to deploy ... we get things done right away we don't wait": a
-merged PR deploys at once, in any session (a restart in regular hours still goes through the yes
-guard's Allow/Deny, CLAUDE.md item 5); "no reason to ever wait": the work is done and deployed
+merged PR deploys at once, in any session, with no yes (operator 2026-11-03: restarts in regular
+hours need no yes; the guard no longer asks); "no reason to ever wait": the work is done and deployed
 now, and only what needs a live market is tested in regular hours. Operator 2026-10-23, on ONE-22: every
 relation of the price to the levels is at the live price with one side rule, the pin candidate's
 gates included; each value computed from the live price is marked not live, with the price's time

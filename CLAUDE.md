@@ -20,9 +20,8 @@ so a wrong number that looks right is worse than a '-'.
 5. Local, reversible steps are fine. Anything that changes production or is hard to
    undo (request rates, limits, settings) needs my yes to that specific action, because
    the app runs on my live Schwab account. A daemon or console start, stop or restart
-   outside regular hours (the session tools/operator_yes_guard.py reads from Schwab's
-   /markets answer) needs no yes: post a notice in chat, stop cleanly, and after a start
-   confirm both are back. During regular hours or an unknown session, it asks.
+   needs no yes at any hour, regular hours included (2026-11-03): post a notice in chat,
+   stop cleanly with `python launch.py stop`, and after a start confirm both are back.
 6. After two failed attempts at the same thing, go to bedrock: find the cause down to the
    line, with evidence, report what you tried, and take a different approach. Stop only for
    a stop the rules require.

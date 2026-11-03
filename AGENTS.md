@@ -203,7 +203,7 @@ then the rule binds with no machine check.
 - Never kill a commit hook mid-run. Enforced by: no machine check — ENF-12.
 - Settle code, test and design questions with these rules, the banking analogy, Python's guidelines
   and outside research, and say what was decided and why. Bring the operator what is his:
-  production starts and stops in regular hours; changes to request rates, limits and settings;
+  changes to request rates, limits and settings;
   behavior or data changes; money. Enforced by: no machine check — ENF-12.
 
 ## Close the change
@@ -248,8 +248,7 @@ then the rule binds with no machine check.
   verdicts — no machine check, ENF-12.
 - Work continues until SHAPE is finished: a stop is refused while its row is IN PROGRESS, unless
   the rules require the stop (his yes to a plan for work outside SHAPE, CLAUDE.md item 3; his yes
-  to a production start or stop in regular hours, or to a change of request rates, limits or
-  settings, CLAUDE.md item 5; a second review round that leaves a finding open, Review verdicts;
+  to a change of request rates, limits or settings, CLAUDE.md item 5; a second review round that leaves a finding open, Review verdicts;
   the next bullet's stop list: his stop words, an AUDIT ONLY or DO NOT MERGE task, a destructive
   data action,
   a product decision), said in a message that begins `WAITING ON OPERATOR:`. From the third
@@ -267,9 +266,9 @@ then the rule binds with no machine check.
   ENF-12.
 - Stop for the operator's STOP / PAUSE / HANG IT UP / DO NOT CONTINUE / NO, a task marked AUDIT ONLY
   or DO NOT MERGE, a destructive data action, and a product decision code cannot settle. Say in chat
-  what a guarded action is for before running it. Enforced by: `tools/operator_yes_guard.py` asks
-  Allow/Deny for the daemon or console starts and stops (in regular hours or an unknown session),
-  machine restarts, and refuses the kills of production, in the forms its tests cover
+  what a guarded action is for before running it. A daemon or console start or clean stop needs no
+  yes at any hour (operator 2026-11-03). Enforced by: `tools/operator_yes_guard.py` asks Allow/Deny
+  for machine restarts and refuses the kills of production, in the forms its tests cover
   (`tests/test_operator_yes_guard_v1.py`); the rest — ENF-12.
 - The production checkout `EdWebConsole` stays `main == origin/main` and moves only by a
   fast-forward (`git pull --ff-only`, or `launch.bring_to_origin_main` at a start); work happens in a
