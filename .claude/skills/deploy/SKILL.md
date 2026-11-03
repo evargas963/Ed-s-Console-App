@@ -13,9 +13,8 @@ on a file; on `data/` itself, ENF-13). To move one aside, both stopped, Ed runs
 `icacls <file> /remove:d evarg`, moves it with its `-wal` and `-shm`, then `icacls <file> /deny "evarg:(DE)"`
 on the moved file and its replacement and `icacls <new folder> /deny "evarg:(DC)"`.
 
-1. Read the session the yes guard reads (Schwab's /markets answer, as the daemon recorded it):
-   `.venv/Scripts/python.exe -c "import time_et; from tools import operator_yes_guard as g; from db_authority import canonical_stream_db_path; print(g.market_session(time_et.now_et(), canonical_stream_db_path()))"`.
-   Whether a start or stop needs Ed's yes in that session: CLAUDE.md item 5.
+1. Post a notice in chat that production restarts now; no yes is needed at any hour (CLAUDE.md
+   item 5, operator 2026-11-03).
 2. Before: `git -C <production> log --oneline -1` and `git -C <production> fetch -q && git -C <production> log --oneline -1 origin/main` — what will deploy.
 3. Stop both: `.venv/Scripts/python.exe launch.py stop` in the production checkout; show its output.
 4. Start both from outside this session, so an app restart cannot end them:

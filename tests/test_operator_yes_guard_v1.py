@@ -1,12 +1,9 @@
 """tools/operator_yes_guard.py (CLAUDE.md rule 5). A start or a clean stop of the daemon or the
-console is put to the operator (Allow/Deny) during regular market hours and while the session is
-unknown, and passes in Pre-Market, After-Hours and Closed; killing the daemon, the console or
-launch.py is refused, whatever its flags; a stop of any other process passes; a stop of the machine
-asks; a merge, and every other action, a change to a test included, passes. Judged on real payloads
-and through the hook chain the settings run.
+console passes at any hour (operator 2026-11-03: restarts in regular hours need no yes); killing
+the daemon, the console or launch.py is refused, whatever its flags; a stop of any other process
+passes; a stop of the machine asks; a merge, and every other action, a change to a test included,
+passes. Judged on real payloads and through the hook chain the settings run.
 
-Real data: Schwab's /markets answer for 2026-10-07
-(tests/fixtures/real_schwab_markets_2026_10_07.json) recorded as the daemon records it.
 STAND-INS: python processes whose command lines carry the daemon's module, the console's app and
 launch.py (the guard reads command lines, as of production).
 """
@@ -15,32 +12,17 @@ from __future__ import annotations
 
 import json
 import os
-import sqlite3
 import subprocess
 import sys
-from datetime import datetime
 from pathlib import Path
 
 import pytest
 
 import runtime_layout
-import time_et
-from stream_spine import CaptureWriter
 from tools import operator_yes_guard as guard
 
 REPO = Path(__file__).resolve().parent.parent
 EXISTING = "tests/test_check_end_to_end_v1.py"  # a test that is on origin/main
-MARKETS = json.loads(
-    (REPO / "tests" / "fixtures" / "real_schwab_markets_2026_10_07.json").read_text(
-        encoding="utf-8"
-    )
-)
-#: 2026-10-07 in ET: inside Schwab's pre-market, regular and post-market windows, after them, and a
-#: date whose answer is not held
-PRE, RTH, AFTER, CLOSED = (
-    datetime(2026, 10, 7, h, m, tzinfo=time_et.ET) for h, m in ((7, 30), (10, 0), (17, 0), (21, 0))
-)
-NOT_HELD = datetime(2026, 10, 20, 21, 0, tzinfo=time_et.ET)
 
 
 def _edit(path: str) -> dict:
@@ -62,48 +44,6 @@ def _chain(payload: dict) -> subprocess.CompletedProcess:
         capture_output=True,
         text=True,
     )
-
-
-@pytest.fixture(scope="module")
-def markets(tmp_path_factory) -> Path:
-    """A stream database holding Schwab's 2026-10-07 /markets answer, as the daemon records it."""
-    db = tmp_path_factory.mktemp("stream") / "stream_capture.db"
-    CaptureWriter(db)
-    answer = MARKETS["answers"]["2026-10-07"]
-    conn = sqlite3.connect(db)
-    try:
-        with conn:
-            conn.execute(
-                "INSERT INTO stream_markets_raw(ts_recv,date,status,native_json,src) "
-                "VALUES(?,?,?,?,?)",
-                (1791367200.0, "2026-10-07", answer["status"], answer["body"], "schwab_rest"),
-            )
-    finally:
-        conn.close()
-    return db
-
-
-def test_the_session_is_read_on_a_connection_the_guard_closes(markets):
-    """The guard reads Schwab's /markets answer for the session (captured 2026-10-07, RTH at 10:00
-    ET) on a read-only connection it closes: no connection is left for the collector, which
-    Python 3.13 reports ("unclosed database"). It runs in a Python of its own, so no other
-    code's connection is counted."""
-    code = (
-        "import gc, sys\nfrom datetime import datetime\nimport time_et\n"
-        "from tools import operator_yes_guard as guard\n"
-        "print(guard.market_session("
-        "datetime(2026, 10, 7, 10, 0, tzinfo=time_et.ET), sys.argv[1]))\n"
-        "gc.collect()\n"
-    )
-    done = subprocess.run(
-        [sys.executable, "-W", "always::ResourceWarning", "-c", code, str(markets)],
-        cwd=REPO,
-        capture_output=True,
-        text=True,
-        timeout=60,
-    )
-    assert done.stdout.strip() == time_et.session_label(RTH), (done.stdout, done.stderr)
-    assert "unclosed database" not in done.stderr, done.stderr
 
 
 def _stand_in(
@@ -138,8 +78,8 @@ def procs(tmp_path_factory):
         p.wait()
 
 
-def _decide(cmd: str, now: datetime, db: Path, tool: str = "Bash") -> str:
-    return guard.decide(_shell(cmd, tool), now, db)[0]
+def _decide(cmd: str, tool: str = "Bash") -> str:
+    return guard.decide(_shell(cmd, tool))[0]
 
 
 STARTS_AND_CLEAN_STOPS = [
@@ -168,32 +108,9 @@ STARTS_AND_CLEAN_STOPS = [
 
 
 @pytest.mark.parametrize("cmd", STARTS_AND_CLEAN_STOPS)
-def test_a_start_or_clean_stop_asks_only_in_regular_hours_or_an_unknown_session(
-    cmd, markets, tmp_path
-):
-    for now in (PRE, AFTER, CLOSED):
-        assert _decide(cmd, now, markets) == guard.PASS, now
-    for now in (RTH, NOT_HELD):
-        assert _decide(cmd, now, markets) == guard.ASK, now
-    assert _decide(cmd, CLOSED, tmp_path / "no_database.db") == guard.ASK, (
-        "an unreadable session did not ask"
-    )
-
-
-def test_regular_hours_are_schwabs_window_0830_to_1500_central(markets):
-    """Schwab's regular window for 2026-10-07 is 09:30-16:00 ET (08:30-15:00 CT): a restart asks
-    from its first minute to its last and passes the minute before and the minute it ends."""
-    ct = time_et.ZoneInfo("America/Chicago")
-    for (h, m), answer in (
-        ((8, 29), guard.PASS),
-        ((8, 30), guard.ASK),
-        ((14, 59), guard.ASK),
-        ((15, 0), guard.PASS),
-    ):
-        assert (
-            _decide("python launch.py stop", datetime(2026, 10, 7, h, m, tzinfo=ct), markets)
-            == answer
-        ), (h, m)
+def test_a_start_or_clean_stop_passes_at_any_hour(cmd):
+    """Operator 2026-11-03: restarts in regular hours need no yes; the guard reads no clock."""
+    assert guard.decide(_shell(cmd)) == (guard.PASS, []), cmd
 
 
 KILLS = [
@@ -219,18 +136,15 @@ KILLS = [
 
 @pytest.mark.parametrize("target", ["daemon", "console", "launch"])
 @pytest.mark.parametrize("kill", KILLS)
-def test_killing_the_daemon_the_console_or_launch_py_is_refused_at_any_hour(
-    kill, target, procs, markets
-):
-    for now in (RTH, CLOSED):
-        assert _decide(kill.format(pid=procs[target]), now, markets) == guard.DENY
+def test_killing_the_daemon_the_console_or_launch_py_is_refused_at_any_hour(kill, target, procs):
+    assert _decide(kill.format(pid=procs[target])) == guard.DENY
 
 
 @pytest.mark.parametrize("kill", KILLS)
-def test_killing_a_process_of_no_production_passes(kill, procs, markets):
-    assert _decide(kill.format(pid=procs["other"]), RTH, markets) == guard.PASS
-    assert _decide(kill.format(pid=procs["worktree_console"]), RTH, markets) == guard.PASS
-    assert _decide(kill.format(pid=4194300), RTH, markets) == guard.PASS  # no such process
+def test_killing_a_process_of_no_production_passes(kill, procs):
+    assert _decide(kill.format(pid=procs["other"])) == guard.PASS
+    assert _decide(kill.format(pid=procs["worktree_console"])) == guard.PASS
+    assert _decide(kill.format(pid=4194300)) == guard.PASS  # no such process
 
 
 @pytest.mark.parametrize(
@@ -257,8 +171,8 @@ def test_killing_a_process_of_no_production_passes(kill, procs, markets):
         "Stop-Process -Id $p.ProcessId -Force",
     ],
 )
-def test_killing_the_python_image_with_production_in_it_is_refused(cmd, procs, markets):
-    assert _decide(cmd, CLOSED, markets) == guard.DENY
+def test_killing_the_python_image_with_production_in_it_is_refused(cmd, procs):
+    assert _decide(cmd) == guard.DENY
 
 
 @pytest.mark.parametrize(
@@ -269,22 +183,20 @@ def test_killing_the_python_image_with_production_in_it_is_refused(cmd, procs, m
         "ForEach-Object { Stop-Process -Id $_.ProcessId -Force }",
     ],
 )
-def test_a_kill_whose_targets_are_chosen_when_it_runs_asks_while_production_runs(
-    cmd, procs, markets
-):
+def test_a_kill_whose_targets_are_chosen_when_it_runs_asks_while_production_runs(cmd, procs):
     """Its targets cannot be read before it runs: it may reach the daemon or the console."""
-    assert _decide(cmd, CLOSED, markets) == guard.ASK
+    assert _decide(cmd) == guard.ASK
 
 
-def test_a_kill_inside_a_merge_is_judged_as_a_kill_too(procs, markets):
+def test_a_kill_inside_a_merge_is_judged_as_a_kill_too(procs):
     """Every check runs on every statement and the strictest answer wins."""
     hidden = "gh pr merge 5 --subject (Get-Process python).Kill()"
-    assert guard.decide(_shell(hidden, "PowerShell"), CLOSED, markets)[0] == guard.DENY
+    assert guard.decide(_shell(hidden, "PowerShell"))[0] == guard.DENY
     later = "gh pr merge 5 --subject $p.Kill()"
-    answer, reasons = guard.decide(_shell(later, "PowerShell"), CLOSED, markets)
+    answer, reasons = guard.decide(_shell(later, "PowerShell"))
     assert answer == guard.ASK and len(reasons) == 1, reasons
     text = 'gh pr merge 5 --subject="fix p.Kill() call"'  # text, read as a kill: the safe side
-    assert guard.decide(_shell(text), CLOSED, markets) == (
+    assert guard.decide(_shell(text)) == (
         guard.ASK,
         [
             "stops processes chosen only when it runs while the daemon or the console runs "
@@ -298,19 +210,17 @@ def test_a_kill_inside_a_merge_is_judged_as_a_kill_too(procs, markets):
         "echo a\"'$((Get-Process python).Kill())'\"",
         'gh pr merge 5 --subject=$(("$x")+(Get-Process python).Kill()+"y")',
     ):
-        assert guard.decide(_shell(run, "PowerShell"), CLOSED, markets)[0] == guard.DENY, run
+        assert guard.decide(_shell(run, "PowerShell"))[0] == guard.DENY, run
 
 
-def test_a_kill_names_every_ask_reason_that_applies(procs, markets):
+def test_a_kill_names_every_ask_reason_that_applies(procs):
     """A target whose command line cannot be read and one chosen when it runs: both reasons."""
     unreadable = 4 if os.name == "nt" else 1  # the System process; init
-    answer, reasons = guard.decide(
-        _shell(f"Stop-Process -Id {unreadable} -Name $n", "PowerShell"), CLOSED, markets
-    )
+    answer, reasons = guard.decide(_shell(f"Stop-Process -Id {unreadable} -Name $n", "PowerShell"))
     assert answer == guard.ASK and len(reasons) == 2, reasons
 
 
-def test_killing_the_pythonw_image_with_the_daemon_in_it_is_refused(procs, markets):
+def test_killing_the_pythonw_image_with_the_daemon_in_it_is_refused(procs):
     if "daemon_w" not in procs:
         pytest.skip("no pythonw beside this Python (pythonw exists on Windows only)")
     for cmd in (
@@ -318,7 +228,7 @@ def test_killing_the_pythonw_image_with_the_daemon_in_it_is_refused(procs, marke
         "Stop-Process -Name pythonw",
         "Get-Process pythonw | Stop-Process",
     ):
-        assert _decide(cmd, CLOSED, markets) == guard.DENY, cmd
+        assert _decide(cmd) == guard.DENY, cmd
 
 
 @pytest.mark.parametrize(
@@ -332,8 +242,8 @@ def test_killing_the_pythonw_image_with_the_daemon_in_it_is_refused(procs, marke
         ("git push -q -u origin fix/some-branch", guard.PASS),
     ],
 )
-def test_the_machine_a_merge_and_a_push(cmd, answer, markets):
-    assert _decide(cmd, CLOSED, markets) == answer
+def test_the_machine_a_merge_and_a_push(cmd, answer):
+    assert _decide(cmd) == answer
 
 
 @pytest.mark.parametrize(
@@ -402,10 +312,10 @@ def test_the_machine_a_merge_and_a_push(cmd, answer, markets):
         ("(( ($(gh pr merge 5)) > 0 ))", "Bash"),  # inside ( ) in bash arithmetic
     ],
 )
-def test_every_merge_route_goes_ahead_without_a_question(cmd, tool, markets):
+def test_every_merge_route_goes_ahead_without_a_question(cmd, tool):
     """A merge does not wait on the operator (AGENTS.md Authority): branch protection's green CI
     and the two reviewers decide."""
-    assert _decide(cmd, CLOSED, markets, tool) == guard.PASS, cmd
+    assert _decide(cmd, tool) == guard.PASS, cmd
 
 
 @pytest.mark.parametrize(
@@ -419,8 +329,8 @@ def test_every_merge_route_goes_ahead_without_a_question(cmd, tool, markets):
         'git commit -m "asks for eval gh pr merge 5"',
     ],
 )
-def test_reading_a_pull_request_passes(cmd, markets):
-    assert _decide(cmd, CLOSED, markets) == guard.PASS, cmd
+def test_reading_a_pull_request_passes(cmd):
+    assert _decide(cmd) == guard.PASS, cmd
 
 
 def test_the_test_changed_below_is_on_main():
@@ -487,9 +397,8 @@ def test_the_test_changed_below_is_on_main():
         _shell("python - <<'EOF'\nprint('gh pr merge 1')\nEOF"),
     ],
 )
-def test_everything_else_passes_at_any_hour(payload, procs, markets):
-    for now in (RTH, NOT_HELD):
-        assert guard.decide(payload, now, markets) == (guard.PASS, [])
+def test_everything_else_passes_at_any_hour(payload, procs):
+    assert guard.decide(payload) == (guard.PASS, [])
 
 
 def test_the_hook_chain_answers_ask_refuses_and_passes_ordinary_work():

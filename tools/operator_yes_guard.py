@@ -1,11 +1,9 @@
 """OPERATOR YES GUARD: production actions and the operator's yes (CLAUDE.md rule 5). PreToolUse for
 shell commands. Each command gets one answer, the strictest of its statements':
 
-  * A start or a clean stop of the capture daemon or the console (a launcher, launch.py, its
-    `stop`, uvicorn, the daemon's module) is put to the operator (Claude Code's Allow/Deny) during
-    regular market hours (RTH) and while the session is unknown; in Pre-Market, After-Hours and
-    Closed it passes. The session is time_et.session_label on Schwab's /markets answer for
-    the day, as the daemon recorded it (stream_markets_raw); no answer held is unknown.
+  * A start or a clean stop of the capture daemon or the console passes at any hour (operator
+    2026-11-03: restarts in regular hours need no yes): the agent posts a notice, stops cleanly
+    with `python launch.py stop`, and confirms both are back after a start.
   * Killing the daemon, the console or launch.py from outside is refused: on Windows every such
     stop (Stop-Process with or without -Force, taskkill /F, kill, .Kill(), WMI/CIM) ends the
     process without its shutdown, so what the daemon holds in memory is lost. The clean stop is
@@ -27,17 +25,13 @@ from __future__ import annotations
 
 import json
 import re
-import sqlite3
 import sys
-from datetime import UTC, datetime
 from fnmatch import fnmatch
 from pathlib import Path
 
 import psutil
 
 import runtime_layout
-import time_et
-from db_authority import canonical_stream_db_path
 from tools.hook_chain import BASH_TOOLS
 from tools.shell_parse import Statement, program_name, read
 
@@ -48,20 +42,6 @@ PROCESS_NAMES = ("streaming.capture", "uvicorn", "server:app")
 LAUNCHERS = ("start_capture_daemon", "start_ed_console")
 #: a command line that carries one of these is production's (launch.py among them)
 PRODUCTION_MARKS = (*PROCESS_NAMES, *LAUNCHERS, "launch.py")
-#: programs that start or open what they are given (wmic and the CIM/WMI methods with Create), and
-#: shells that run the script file given as their first argument
-STARTERS = (
-    "start",
-    "start-process",
-    "saps",
-    "invoke-item",
-    "ii",
-    "explorer",
-    "wmic",
-    "invoke-cimmethod",
-    "invoke-wmimethod",
-)
-SHELLS = ("powershell", "pwsh", "bash", "sh")
 #: programs that end a process from outside
 STOPPERS = ("stop-process", "spps", "taskkill", "kill", "tskill", "pskill")
 #: programs that stop or restart the machine
@@ -77,36 +57,6 @@ _NAMES = re.compile(
 )
 
 
-def market_session(now: datetime, db: Path) -> str:
-    """time_et.session_label at `now` from Schwab's newest 200 answer to /markets for that ET date
-    in the stream database `db` (stream_markets_raw, as the daemon recorded it); UNKNOWN when
-    none is held or the database cannot be read."""
-    day = now.astimezone(time_et.ET).date().isoformat()
-    try:
-        conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=2)
-        try:
-            row = conn.execute(
-                "SELECT native_json FROM stream_markets_raw WHERE date = ? AND status = 200 "
-                "ORDER BY ts_recv DESC LIMIT 1",
-                (day,),
-            ).fetchone()
-        finally:
-            conn.close()
-    except sqlite3.Error as e:
-        sys.stderr.write(
-            f"operator_yes_guard: the market session is unknown: {type(e).__name__}: {e}\n"
-        )
-        return time_et.UNKNOWN
-    if row is None:
-        return time_et.UNKNOWN
-    time_et.record_markets(json.loads(row[0]))
-    return time_et.session_label(now)
-
-
-def _launcher(word: str) -> str:
-    return program_name(word).removesuffix(".bat").removesuffix(".cmd")
-
-
 def _printed(st: Statement) -> bool:
     """Whether a PowerShell statement's program word is a quoted phrase or a here-string: a string
     PowerShell prints, not a program (bash runs a quoted program path)."""
@@ -119,28 +69,6 @@ def _printed(st: Statement) -> bool:
             and not st.words[0].lower().endswith((".bat", ".cmd", ".exe"))
         )
     )
-
-
-def _starts(st: Statement) -> bool:
-    """Whether the statement `st` runs a launcher, launch.py (a start or its clean `stop`), the
-    console's uvicorn or the capture daemon."""
-    name = _launcher(st.words[0])
-    args = list(st.words[1:])
-    named = any(n in st.text.lower() for n in PRODUCTION_MARKS)
-    if name in LAUNCHERS or name == "uvicorn":
-        return True
-    if name == "py" or name.startswith("python"):
-        return bool(args) and (
-            program_name(args[0]) == "launch.py"
-            or (args[0] == "-m" and len(args) > 1 and any(n in args[1] for n in PROCESS_NAMES))
-        )
-    if name in SHELLS:
-        script = next((a for a in args if not a.startswith(("-", "/"))), "")
-        return _launcher(script) in LAUNCHERS
-    if name == "schtasks":
-        return "/run" in (a.lower() for a in args)
-    # a starter, or .NET's Process.Start, given a launcher, launch.py or a production process
-    return named and (name in STARTERS or "::start(" in st.words[0].lower())
 
 
 def _kills(st: Statement) -> bool:
@@ -219,9 +147,8 @@ def _production(proc: psutil.Process) -> bool | None:
     return any(m in line for m in PRODUCTION_MARKS) and cwd == runtime_layout.RUNTIME_ROOT.resolve()
 
 
-def decide(payload: dict, now: datetime, db: Path) -> tuple[str, list[str]]:
-    """The answer to the action in `payload` at `now` (PASS, ASK or DENY), with its reasons; the
-    market session is read from the stream database `db` (market_session)."""
+def decide(payload: dict) -> tuple[str, list[str]]:
+    """The answer to the action in `payload` (PASS, ASK or DENY), with its reasons."""
     if payload.get("tool_name") not in BASH_TOOLS:
         return PASS, []
     cmd = str((payload.get("tool_input") or {}).get("command") or "")
@@ -280,13 +207,6 @@ def decide(payload: dict, now: datetime, db: Path) -> tuple[str, list[str]]:
                         "while the daemon or the console runs "
                         "(CLAUDE.md rule 5: production)"
                     )
-        if _starts(st):
-            session = market_session(now, db)
-            if session in (time_et.RTH, time_et.UNKNOWN):
-                asks.append(
-                    f"starts or stops the daemon or the console while the market session is "
-                    f"{session} (CLAUDE.md rule 5: production)"
-                )
     return (DENY, denies) if denies else (ASK, asks) if asks else (PASS, [])
 
 
@@ -299,7 +219,7 @@ def main() -> int:
     if not isinstance(payload, dict):
         sys.stderr.write("BLOCKED: the hook payload is not an object.\n")
         return 2
-    answer, why = decide(payload, datetime.now(UTC), canonical_stream_db_path())
+    answer, why = decide(payload)
     if answer == DENY:
         sys.stderr.write("BLOCKED (operator_yes_guard): " + "; ".join(why) + "\n")
         return 2
