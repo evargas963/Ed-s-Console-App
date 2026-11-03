@@ -8,6 +8,8 @@ import sys
 from collections import Counter
 from pathlib import Path
 
+import pytest
+
 from tools import check_locks
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -97,13 +99,32 @@ def test_no_ignore_file_or_excluded_folder_hides_a_finding(tmp_path):
     assert "ruff T201: 0 -> 1" in _refused(repo)
 
 
-def test_a_file_the_import_contracts_would_not_walk_to_is_refused(tmp_path):
+@pytest.mark.parametrize(
+    "name",
+    [
+        "windows.pyw",
+        "stub.pyi",
+        "book.ipynb",
+        "two.dots.py",
+        ".hidden.py",
+        "not-a-name/__init__.py",
+        "orphans/a.py",
+    ],
+)
+def test_a_python_file_import_linter_does_not_read_is_refused(tmp_path, name):
     repo = _repo(tmp_path)
-    _write(repo, "orphans/a.py", "VALUE = 1\n")
-    _write(repo, "not-a-name/__init__.py", "")
+    _write(repo, name, "#!/usr/bin/env python\nVALUE = 1\n")
     refused = _refused(repo)
-    assert "ruff INP001: 0 -> 1" in refused
-    assert "ruff N999: 0 -> 1" in refused
+    assert "Python files import-linter does not read: 0 -> 1" in refused
+
+
+def test_a_module_in_a_package_is_read(tmp_path):
+    repo = _repo(tmp_path)
+    _write(repo, "part/__init__.py", "")
+    _write(repo, "part/inner/__init__.py", "")
+    _write(repo, "part/inner/module.py", "VALUE = 1\n")
+    _write(repo, "root_module.py", "VALUE = 1\n")
+    assert _refused(repo) == ""
 
 
 def test_a_file_named_ruff_in_the_change_does_not_answer_for_ruff(tmp_path):

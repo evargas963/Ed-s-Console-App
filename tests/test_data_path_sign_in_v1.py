@@ -7,8 +7,8 @@ Through the real schwab-py client (schwab_client.client_from_token_file_atomic) 
 stand-in for Schwab's host (tests/schwab_rest_standin.py: its real data and stand-ins are named
 there, Schwab's refusal REFUSED among them), and the daemon's real chain sweep (ChainSweep.work) on
 a fixed clock: 2026-10-07 20:00 ET, after that day's option close, a day Schwab's /markets answer
-was captured for. STAND-INS (named): the token files; the transport the client a test builds is
-given (to the stand-in's host), named in that test.
+was captured for. STAND-INS (named): the token files; the host a test's client delivers to (the
+stand-in's), named in that test.
 """
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ from app.market_data.schwab.streaming import capture
 from app.market_data.schwab.streaming.capture import CaptureWriter
 from calibration import complete_chain_capture as cch
 from stream_spine import HealthRegistry, MessageBus
-from tests.schwab_rest_standin import EXPIRATIONS, TOKEN, LocalSchwab, _ToLocal
+from tests.schwab_rest_standin import EXPIRATIONS, TOKEN, LocalSchwab
 from time_et import ET
 
 _AFTER_THE_CLOSE = datetime(2026, 10, 7, 20, 0, tzinfo=ET).timestamp()
@@ -259,9 +259,7 @@ def test_a_client_built_while_a_sign_in_is_being_saved_holds_that_sign_in(tmp_pa
     try:
         schwab.client(tmp_path)  # the old sign-in, saved before
         saver = _saving(token)
-        client = sc.client_from_token_file_atomic(
-            str(token), "k", "s", transport=_ToLocal(schwab.server.server_address[1])
-        )
+        client = schwab.delivering_here(sc.client_from_token_file_atomic(str(token), "k", "s"))
         held = client.token_metadata.token["access_token"]
         assert saver.wait(30) == 0
         client.get_option_expiration_chain("SPY")
@@ -416,8 +414,8 @@ def test_the_chain_sweep_waits_for_a_client_it_cannot_build_and_goes_on_once_bui
     (schwab_client.build_client_from_token), which the holder raises as ConnectionError and
     builds again on the next ask. The sweep keeps looking, logs it once and asks Schwab for
     nothing; once the token file is saved and the client built, it asks. STAND-IN (named): the
-    built client is the real builder of the client (client_from_token_file_atomic) on the
-    stand-in's transport, which build_client_from_token takes none of."""
+    built client is the real builder of the client (client_from_token_file_atomic), delivering to
+    the stand-in, which build_client_from_token's client does not."""
     schwab = LocalSchwab()
     token = tmp_path / "schwab_token.json"
 
@@ -427,9 +425,7 @@ def test_the_chain_sweep_waits_for_a_client_it_cannot_build_and_goes_on_once_bui
         return sc.SchwabClientState(
             ok=True,
             message="",
-            client=sc.client_from_token_file_atomic(
-                str(token), "k", "s", transport=_ToLocal(schwab.server.server_address[1])
-            ),
+            client=schwab.delivering_here(sc.client_from_token_file_atomic(str(token), "k", "s")),
         )
 
     schwab_client = capture.one_schwab_client(build)

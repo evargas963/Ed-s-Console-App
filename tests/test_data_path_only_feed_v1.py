@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -29,7 +30,7 @@ def head(tmp_path: Path) -> Path:
 def _lint(head: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [
-            shutil.which("lint-imports"),
+            Path(sys.executable).with_name("lint-imports"),
             "--config",
             str(ROOT / "locks.imports.toml"),
             "--no-cache",
@@ -45,6 +46,7 @@ def test_every_module_of_the_repository_keeps_the_contract(head):
     done = _lint(head)
     assert done.returncode == 0, done.stdout
     assert "Only Feed talks to Schwab KEPT" in done.stdout
+    assert "Feed has one HTTP client KEPT" in done.stdout
 
 
 def test_a_schwab_client_outside_feed_is_refused_wherever_it_is_imported(head):
@@ -67,6 +69,14 @@ def test_a_schwab_client_outside_feed_is_refused_wherever_it_is_imported(head):
         "head.server -> httpx",
     ):
         assert importer in done.stdout
+
+
+def test_a_second_http_client_is_refused_in_feed_too(head):
+    client = head / "schwab_client.py"
+    client.write_text("import requests\n" + client.read_text(encoding="utf-8"), encoding="utf-8")
+    done = _lint(head)
+    assert done.returncode != 0
+    assert "head.schwab_client -> requests" in done.stdout
 
 
 def test_feed_may_move_into_its_folder_under_the_contract_it_has_today(head):

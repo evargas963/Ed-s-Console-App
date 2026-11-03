@@ -52,6 +52,17 @@ def _part(name: str) -> str:
     return "tools" if name.lower().startswith("tools/") else "product code"
 
 
+def _unread(tree: Path, name: str) -> bool:
+    """Whether import-linter's walk misses the Python file `name`: grimp reads only a `.py` named
+    as a module, inside folders that are packages."""
+    parts = name.removesuffix(".py").split("/")
+    return not (
+        name.endswith(".py")
+        and all(part.isidentifier() for part in parts)
+        and all((tree / Path(*parts[:i]) / "__init__.py").is_file() for i in range(1, len(parts)))
+    )
+
+
 def _ruff(tree: Path, names: list[str]) -> list[dict]:
     """Ruff's findings on exactly `names`, so no ignore file or exclusion hides one."""
     found: list[dict] = []
@@ -81,12 +92,15 @@ def counts(tree: Path, rules: str) -> Counter:
     """Return every lock's count in `tree` under `rules`.
 
     The counts are the lines and bytes of everything that is not data, the open work items, the
-    patching lines in tests, the format suppressions and each rule's findings. A banned name counts
-    per product file, so removing it from one module buys no use in another.
+    patching lines in tests, the format suppressions, the Python files import-linter does not read
+    and each rule's findings. A banned name counts per product file, so removing it from one module
+    buys no use in another.
     """
     found: Counter = Counter()
     names = [n for n in _names("ls-files", cwd=tree) if (tree / n).is_file()]
     for name in names:
+        if name.endswith(PYTHON) and _unread(tree, name):
+            found["Python files import-linter does not read"] += 1
         if not name.endswith(DATA):
             text = (tree / name).read_text(encoding="utf-8", errors="replace")
             lines = [line for line in text.splitlines() if line.strip()]
