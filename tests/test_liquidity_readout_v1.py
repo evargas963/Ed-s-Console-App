@@ -24,7 +24,17 @@ from pathlib import Path
 
 import pytest
 
+import app.options.order_flow.state as ofls
+import live_market_plane as lmp
+import server
 from app.options.order_flow import engine as e
+from app.options.order_flow import history
+from app.options.order_flow import streaming as ofs
+from stream_spine import book_msg
+from tests.conftest import MARKETS_ANSWERS
+from tests.feed_live_helper import publish_daemon_rows
+from tests.test_order_flow_book_payload_v1 import _same
+from time_et import auction, record_markets
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 _E2E = Path(__file__).resolve().parent / "e2e" / "fixtures"
@@ -56,14 +66,6 @@ def build_readout_payload(now: float = _END, feed_down: bool = False, rows=None)
     """The route's payload for SPY at `now` after Schwab's books `rows` (every captured book when
     None), each through the console's own intake: the daemon holding both books, or its
     connection ended (`feed_down`)."""
-    import app.options.order_flow.state as ofls
-    import live_market_plane as lmp
-    import server
-    from app.options.order_flow import history
-    from app.options.order_flow import streaming as ofs
-    from stream_spine import book_msg
-    from tests.feed_live_helper import publish_daemon_rows
-
     quotes = json.loads((_FX / "real_spy_level_one_2026_10_23.json").read_text(encoding="utf-8"))[
         "messages"
     ]
@@ -369,8 +371,6 @@ def test_a_one_sided_book_shows_the_side_it_has_and_no_percentage():
     ],
 )
 def test_the_auction_windows_come_from_schwabs_regular_window(at, window):
-    from time_et import auction
-
     assert auction(datetime.fromisoformat(at)) == window
 
 
@@ -384,8 +384,6 @@ def test_the_closing_auction_replaces_the_continuous_number():
 
 
 def test_the_intake_keeps_one_value_a_second_for_the_windows_and_no_longer():
-    from app.options.order_flow import history
-
     history.LEAN.forget("SPY")
     try:
         for ts, _svc, _c in _ROWS:
@@ -410,9 +408,6 @@ _E2E_FILES = {
 def write_readout_e2e_fixtures() -> None:
     """Regeneration utility (never called by a test): Schwab's /markets answers held as the tests
     hold them (tests/conftest.py), then each route payload written to its e2e fixture."""
-    from tests.conftest import MARKETS_ANSWERS
-    from time_et import record_markets
-
     for a in json.loads(MARKETS_ANSWERS.read_text(encoding="utf-8"))["answers"].values():
         if a["status"] == 200:
             record_markets(json.loads(a["body"]))
@@ -425,8 +420,6 @@ def write_readout_e2e_fixtures() -> None:
 
 @pytest.mark.parametrize("name", sorted(_E2E_FILES))
 def test_each_browser_fixture_is_the_routes_answer(name):
-    from tests.test_order_flow_book_payload_v1 import _same
-
     fixture = json.loads((_E2E / name).read_text(encoding="utf-8"))
     assert _same(fixture, build_readout_payload(**_E2E_FILES[name])), (
         f"{name} drifted from the route; regenerate with write_readout_e2e_fixtures()"
