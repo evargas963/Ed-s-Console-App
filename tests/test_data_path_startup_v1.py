@@ -342,8 +342,9 @@ def test_a_plane_row_listener_that_fails_ends_the_market_follower():
 
 def test_why_schwab_is_not_connected_reaches_the_log_and_api_health(tmp_path, caplog):
     """The daemon's one client, built by the real builder from a token file that does not exist:
-    the connection fails; the daemon's log has why, and its heartbeat, taken from the daemon's
-    price socket as the console takes it, gives /api/health the same words with since when."""
+    the connection fails; the daemon's log has why, with its traceback, and its heartbeat, taken
+    from the daemon's price socket as the console takes it, gives /api/health the same words with
+    since when."""
     schwab_client = capture.one_schwab_client(
         lambda: build_client_from_token(
             str(tmp_path / "missing_token.json"), "LiveLookingKey", "LiveLookingSecret"
@@ -382,6 +383,8 @@ def test_why_schwab_is_not_connected_reaches_the_log_and_api_health(tmp_path, ca
     assert logged and logged[0].startswith(
         "schwab: connection ended (ConnectionError: no Schwab client (Token file not found"
     ), logged
+    ended = next(r for r in caplog.records if r.getMessage().startswith("schwab: connection ended"))
+    assert ended.exc_info is not None and ended.exc_info[0] is ConnectionError, ended.exc_info
     lmp.record_feed_heartbeat(feed)
     reason = server.health()["capabilities"]["schwab_reason"]
     assert re.fullmatch(
