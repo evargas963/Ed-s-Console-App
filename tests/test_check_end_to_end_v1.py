@@ -272,6 +272,7 @@ def test_a_running_total_is_not_a_missing_value_filled_in(tmp_path, line):
         # adding a literal 0 writes a filled-in 0 for a missing key
         "sizes[price] = sizes.get(price, 0) + 0",
         "sizes[price] = sizes.get(price, 0.0) + 0.0",
+        "sizes[price] = sizes.get(price, 0) + -0",
     ],
 )
 def test_anything_beside_the_running_total_is_still_refused(tmp_path, line):

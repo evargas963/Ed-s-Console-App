@@ -458,6 +458,13 @@ def _call_patch(node: ast.Call) -> str | None:
     return None
 
 
+def _zero_literal(node: ast.expr) -> bool:
+    """A literal zero or empty value, signed or not (`0`, `0.0`, `-0`, `''`, `None`)."""
+    while isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.USub, ast.UAdd)):
+        node = node.operand
+    return isinstance(node, ast.Constant) and not node.value
+
+
 def _running_totals(tree: ast.AST) -> set[int]:
     """The `.get` calls of running totals, `d[k] = d.get(k, 0) + x`: the same mapping and key on
     both sides, the default the number 0 (an int or float, never a bool), and `x` not a literal
@@ -484,7 +491,7 @@ def _running_totals(tree: ast.AST) -> set[int]:
             and call.args[1].value == 0
             and ast.dump(call.func.value) == ast.dump(target.value)
             and ast.dump(call.args[0]) == ast.dump(target.slice)
-            and not (isinstance(n.value.right, ast.Constant) and not n.value.right.value)
+            and not _zero_literal(n.value.right)
         ):
             out.add(id(call))
     return out
