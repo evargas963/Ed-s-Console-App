@@ -209,7 +209,7 @@ def _tick(sym: str) -> None:
         return
     try:
         _on_tick_callback(sym)
-    except Exception as e:  # counted + WARNING; ingest must go on
+    except Exception as e:  # noqa: BLE001 -- counted + WARNING; ingest must go on
         _tick_callback_failures += 1
         if _tick_callback_failures & (_tick_callback_failures - 1) == 0:
             log.warning(
