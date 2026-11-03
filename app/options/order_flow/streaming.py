@@ -340,9 +340,11 @@ async def _rows_loop(ui_url: str, reconnect_sec: float) -> None:
     (live_market_plane.record_feed_heartbeat); this connection carries no chain, so a beat never
     waits behind one. Silence or a lost connection is a feed down. Each row's arrival is the
     equity's tick."""
+    warned = None  # the error last warned of with its traceback, until a connection opens
     while _feed_running:
         try:
             async with connect(ui_url, max_size=None, open_timeout=5) as ws:
+                warned = None
                 sent = None
                 while _feed_running:
                     want = _rows_wanted(time.time())
@@ -372,14 +374,16 @@ async def _rows_loop(ui_url: str, reconnect_sec: float) -> None:
                 e,
                 reconnect_sec,
             )
-        except Exception as e:  # the connection ended otherwise (a daemon restart closes it)
-            log.warning(
+        except Exception as e:  # any other error (the daemon's stop closes it): warned once
+            log.log(
+                logging.DEBUG if repr(e) == warned else logging.WARNING,
                 "price rows ended (%s: %s); retrying in %.1fs",
                 type(e).__name__,
                 e,
                 reconnect_sec,
                 exc_info=True,
             )
+            warned = repr(e)
         _lmp.record_feed_down()  # no daemon: the feed is down, the last price stays
         _feed_changed(time.time())
         if _feed_running:
@@ -417,12 +421,14 @@ async def _feed_loop(push_url: str, ui_url: str, reconnect_sec: float) -> None:
     every `reconnect_sec`; while it is down, the live values age out through their own
     freshness checks and the screen shows them stale. There is no second source."""
     rows = asyncio.create_task(_rows_loop(ui_url, reconnect_sec), name="daemon-price-rows")
+    warned = None  # the error last warned of with its traceback, until a connection opens
     try:
         while _feed_running:
             try:
                 async with connect(
                     push_url, max_size=None, open_timeout=5, ping_interval=20, ping_timeout=20
                 ) as ws:
+                    warned = None
                     _log_stream("PUSH_CONNECTED", url=push_url)
                     await serve_push(ws)
             except asyncio.CancelledError:
@@ -434,14 +440,16 @@ async def _feed_loop(push_url: str, ui_url: str, reconnect_sec: float) -> None:
                     e,
                     reconnect_sec,
                 )
-            except Exception as e:  # any other error: a clean close ends `serve_push` quietly
-                log.warning(
+            except Exception as e:  # any other error, warned once (a clean close ends quietly)
+                log.log(
+                    logging.DEBUG if repr(e) == warned else logging.WARNING,
                     "live push ended (%s: %s); retrying in %.1fs",
                     type(e).__name__,
                     e,
                     reconnect_sec,
                     exc_info=True,
                 )
+                warned = repr(e)
             if _feed_running:
                 await asyncio.sleep(reconnect_sec)
     finally:

@@ -465,6 +465,38 @@ def test_no_daemon_is_one_line_and_a_daemon_that_stops_is_logged_with_its_traceb
     assert ended[0].levelname == "WARNING" and ended[0].exc_info is not None, ended
 
 
+def test_a_port_that_is_not_the_daemon_is_warned_of_once_with_its_traceback(feed, caplog):
+    """The console's real feed loop, its live push on a port held by a server that answers HTTP,
+    not the daemon's websocket, retried each 0.05 s: one warning with its traceback, and every
+    retry after it with the same error at debug, so a retry each second does not fill the log."""
+
+    async def foreign(reader, writer):
+        writer.write(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nno")
+        await writer.drain()
+        writer.close()
+
+    def ended():
+        return [r for r in caplog.records if r.getMessage().startswith("live push ended")]
+
+    async def run():
+        server = await asyncio.start_server(foreign, "127.0.0.1", 0)
+        ofs._feed_running = True
+        client = asyncio.create_task(_console(server.sockets[0].getsockname()[1]))
+        try:
+            assert await _until(lambda: len(ended()) >= 5)
+        finally:
+            ofs._feed_running = False
+            client.cancel()
+            await asyncio.gather(client, return_exceptions=True)
+            server.close()
+
+    with caplog.at_level("DEBUG", logger=ofs.log.name):
+        asyncio.run(run())
+    levels = [r.levelname for r in ended()]
+    assert levels[0] == "WARNING" and ended()[0].exc_info is not None, levels
+    assert set(levels[1:]) == {"DEBUG"}, levels
+
+
 def test_a_late_console_gets_the_current_record_with_each_fields_own_time(feed):
     """Schwab LEVELONE sends only changed fields. A console connecting after a trade and a
     later bid/ask tick gets the current record (docs/DATA_FLOW.md §2 D3): the trade's fields
