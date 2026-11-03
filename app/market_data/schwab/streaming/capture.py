@@ -1000,6 +1000,8 @@ def acquire_owner_lock(db_path: str | Path | None = None) -> tuple[int, Path]:
     for attempt in (1, 2):
         try:
             fd = os.open(str(lock), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.write(fd, str(os.getpid()).encode())
+            return fd, lock
         except FileExistsError:
             try:
                 pid = int(
@@ -1012,9 +1014,6 @@ def acquire_owner_lock(db_path: str | Path | None = None) -> tuple[int, Path]:
                 raise SystemExit(EXIT_OWNER_LOCK_HELD) from None
             if attempt == 1:
                 lock.unlink(missing_ok=True)
-        else:
-            os.write(fd, str(os.getpid()).encode())
-            return fd, lock
     raise SystemExit(f"FATAL: could not acquire {lock}")
 
 
@@ -1130,10 +1129,9 @@ async def record_feed_status(
             log.warning("feed status round failed: %s: %s", type(e).__name__, e, exc_info=True)
         try:
             await asyncio.wait_for(stop.wait(), timeout=every)
+            return
         except TimeoutError:
             pass
-        else:
-            return
 
 
 #: trading sessions stream_capture.db keeps (the operator's setting), and how often keep_sessions

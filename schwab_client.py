@@ -100,6 +100,7 @@ def write_token_file_atomically(token_path: str, payload: dict) -> None:
                     fh.flush()
                     os.fsync(fh.fileno())
                 os.replace(tmp, path)
+                return
             except PermissionError as e:
                 Path(tmp).unlink(missing_ok=True)
                 if attempt == TOKEN_REPLACE_ATTEMPTS:
@@ -111,8 +112,6 @@ def write_token_file_atomically(token_path: str, payload: dict) -> None:
                     e,
                 )
                 time.sleep(0.05 * attempt)
-            else:
-                return
 
 
 def _token_update_func(resolved: str):
@@ -456,10 +455,9 @@ def _wait_for_callback_port(host: str, port: int, timeout: float = 5.0) -> bool:
         try:
             with socket.create_connection((host, port), timeout=0.5):
                 pass
+            return True
         except OSError:
             time.sleep(0.1)
-        else:
-            return True
     return False
 
 
