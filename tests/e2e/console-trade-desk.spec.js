@@ -901,6 +901,8 @@ test.describe('Desk: the Liquidity card draws the served order-imbalance readout
     await expect(card(page).locator('[data-liqview="weighted"]')).toHaveClass(/on/);
     await expect(card(page).locator('.liq-depth')).toContainText('price levels per side, not timeframes');
     await expect(card(page).locator('.tdm-src')).toHaveText('Schwab NYSE_BOOK + NASDAQ_BOOK · deduped composite · NSDQ from NYSE_BOOK');
+    // the whole source line shows, wrapped, never cut off
+    expect(await card(page).locator('.tdm-src').evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
     const text = await card(page).locator('.liq-body').innerText();
     const span = (k, side) => '$' + READOUT_LIVE.readout.venues[k].views.weighted['span_' + side + '_text'];
     const order = ['WEIGHTED TOP-5 HEADLINE', w.pct_text, w.side_word, 'Bids', w.bid_text, 'Asks', w.ask_text,

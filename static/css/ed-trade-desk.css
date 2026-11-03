@@ -164,7 +164,7 @@
 .tdm-card.liq{position:relative;background:#0d1526;border:1px solid #24314d;border-radius:12px;padding:16px 18px 14px;gap:8px;color:#e8edf7}
 .liq .tdm-card-h{flex-wrap:wrap;row-gap:6px}
 .liq .tdm-card-h .t,.liq .tdm-src{color:#e8edf7}
-.liq .tdm-src{color:#8fa1c4}
+.liq .tdm-src{color:#8fa1c4;white-space:normal}
 .liq .scbtn{background:#1a2440;color:#8fa1c4;border:1px solid #2c3d63;border-radius:6px;padding:4px 10px;font-size:12px;font-weight:700;cursor:pointer}
 .liq .scbtn.on{background:#1f6feb;color:#fff;border-color:#1f6feb}
 .liq .liq-comp.on{background:#c9a227;color:#0d1526;border-color:#c9a227}
