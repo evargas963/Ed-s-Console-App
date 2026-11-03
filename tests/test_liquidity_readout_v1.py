@@ -503,7 +503,8 @@ _E2E_FILES = {
     "liquidity_readout_live.json": {},
     "liquidity_readout_offline.json": {"feed_down": True},
     "liquidity_readout_no_book.json": {"rows": []},
-    "liquidity_readout_close_auction.json": {"now": _CLOSE_AUCTION},
+    # the auction card replaces the continuous number whatever the books hold
+    "liquidity_readout_close_auction.json": {"now": _CLOSE_AUCTION, "rows": []},
 }
 
 
