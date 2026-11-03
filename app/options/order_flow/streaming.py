@@ -434,7 +434,7 @@ async def _feed_loop(push_url: str, ui_url: str, reconnect_sec: float) -> None:
                     e,
                     reconnect_sec,
                 )
-            except Exception as e:  # the connection ended otherwise (a daemon restart closes it)
+            except Exception as e:  # any other error: a clean close ends `serve_push` quietly
                 log.warning(
                     "live push ended (%s: %s); retrying in %.1fs",
                     type(e).__name__,
