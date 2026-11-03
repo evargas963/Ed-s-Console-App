@@ -28,7 +28,10 @@ The product lines a PR adds carry no patch shape:
    An except, if or with is judged when its own first line is added, not when a line is added
    inside an old one. None stays allowed: it is a missing value served as missing. One running
    total is allowed, exactly `d[k] = d.get(k, 0) + x` (the same `d` and `k` on both sides, the
-   default the number 0): the sum of nothing is 0, a real value, not a missing one filled in
+   default the number 0, `x` not a literal 0): the sum of nothing is 0, a real value, not a
+   missing one filled in. A base plus a change has the same shape (`price[t] = price.get(t, 0)
+   + move`, whose 0 is an unknown base); no check of shapes can tell it from a sum, so rule 14's
+   review is the layer that refuses it
    (the operator's spec v2 of 2026-11-03, an open amendment for this construct only; any other
    default, key, mapping or use of that `.get` is still refused).
 
@@ -457,7 +460,8 @@ def _call_patch(node: ast.Call) -> str | None:
 
 def _running_totals(tree: ast.AST) -> set[int]:
     """The `.get` calls of running totals, `d[k] = d.get(k, 0) + x`: the same mapping and key on
-    both sides and the default the number 0 (an int or float, never a bool)."""
+    both sides, the default the number 0 (an int or float, never a bool), and `x` not a literal
+    zero or empty value (`d.get(k, 0) + 0` writes a filled-in 0)."""
     out = set()
     for n in ast.walk(tree):
         if not (
@@ -480,6 +484,7 @@ def _running_totals(tree: ast.AST) -> set[int]:
             and call.args[1].value == 0
             and ast.dump(call.func.value) == ast.dump(target.value)
             and ast.dump(call.args[0]) == ast.dump(target.slice)
+            and not (isinstance(n.value.right, ast.Constant) and not n.value.right.value)
         ):
             out.add(id(call))
     return out
