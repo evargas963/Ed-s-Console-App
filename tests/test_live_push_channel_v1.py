@@ -414,6 +414,57 @@ def test_daemon_shutdown_is_not_held_up_by_a_connected_console(feed):
     asyncio.run(run())
 
 
+def test_no_daemon_is_one_line_and_a_daemon_that_stops_is_logged_with_its_traceback(feed, caplog):
+    """The console's real feed loop: its live push on a port this test holds (every connect
+    refused), its price rows on the daemon's real price socket, which then stops. A refused
+    connect, retried each 0.05 s, logs its one line with no traceback; the price rows' connection
+    closed by the daemon logs its warning with the traceback."""
+
+    async def run():
+        stop = asyncio.Event()
+        ui_stats: dict = {}
+        ui = asyncio.create_task(
+            live_ui.serve_live_ui(
+                stop,
+                heartbeat_fn=_daemon_heartbeat(),
+                host="127.0.0.1",
+                port=0,
+                stats=ui_stats,
+                record_heartbeat=lambda _beat: None,
+            )
+        )
+        assert await _until(lambda: ui_stats.get("listening"))
+        ofs._feed_running = True
+        client = asyncio.create_task(
+            ofs._feed_loop(
+                f"ws://127.0.0.1:{_held_port()}", f"ws://127.0.0.1:{_port(ui_stats)}", 0.05
+            )
+        )
+        try:
+            assert await _until(lambda: ui_stats.get("clients") == 1)
+            stop.set()
+            await asyncio.wait_for(ui, timeout=5)
+
+            def logged(words):
+                return any(words in r.getMessage() for r in caplog.records)
+
+            assert await _until(lambda: logged("price rows ended"))
+            # a connect to a port bound and not listening waits out its open timeout (5 s)
+            assert await _until(lambda: logged("live push unavailable"), timeout=15)
+        finally:
+            ofs._feed_running = False
+            client.cancel()
+            stop.set()
+            await asyncio.gather(client, ui, return_exceptions=True)
+
+    with caplog.at_level("INFO", logger=ofs.log.name):
+        asyncio.run(run())
+    refused = [r for r in caplog.records if "live push unavailable" in r.getMessage()]
+    ended = [r for r in caplog.records if "price rows ended" in r.getMessage()]
+    assert refused and all(r.exc_info is None for r in refused), refused
+    assert ended[0].levelname == "WARNING" and ended[0].exc_info is not None, ended
+
+
 def test_a_late_console_gets_the_current_record_with_each_fields_own_time(feed):
     """Schwab LEVELONE sends only changed fields. A console connecting after a trade and a
     later bid/ask tick gets the current record (docs/DATA_FLOW.md §2 D3): the trade's fields

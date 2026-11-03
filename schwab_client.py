@@ -12,7 +12,6 @@ import socket
 import tempfile
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -470,35 +469,55 @@ def run_login_flow(
     Browser-assisted login flow (blocking). Creates token file at token_path on success.
     Waits for callback port to be ready before proceeding; verifies token exists after flow.
     """
-    host, port = _parse_callback_port(callback_url)
-    pool = ThreadPoolExecutor(max_workers=1)
-    flow = pool.submit(
-        auth.client_from_login_flow,
-        api_key=api_key,
-        app_secret=app_secret,
-        callback_url=callback_url,
-        token_path=token_path,
-        token_write_func=_token_update_func(_resolve_token_path(token_path)),  # atomic
-        enforce_enums=False,
-        interactive=False,
-        callback_timeout=float(
-            os.environ.get("SCHWAB_OAUTH_CALLBACK_TIMEOUT_SEC", "900")
-        ),  # caps-ok: OAuth/config timeout only
-    )
-    pool.shutdown(wait=False)  # the flow runs on; the process waits for it at exit
-    if not _wait_for_callback_port(host, port, timeout=5.0):
-        return False, (
-            f"Callback server on {host}:{port} did not become ready within 5 seconds. "
-            "The browser may have opened before the local listener was ready."
-        )
-    flow.result()  # the flow's own error, raised here
-    if not os.path.exists(token_path):
-        raise RuntimeError(
-            f"OAuth flow completed but token file was not written: {token_path}. "
-            "The browser may have redirected before the callback was received, "
-            "or there was a silent write failure. Try: python reauth_schwab.py --manual"
-        )
-    return True, f"Token created: {token_path}"
+    exc_holder: list[BaseException] = []
+
+    def _run():
+        try:
+            auth.client_from_login_flow(
+                api_key=api_key,
+                app_secret=app_secret,
+                callback_url=callback_url,
+                token_path=token_path,
+                token_write_func=_token_update_func(_resolve_token_path(token_path)),  # atomic
+                enforce_enums=False,
+                interactive=False,
+                callback_timeout=float(
+                    os.environ.get("SCHWAB_OAUTH_CALLBACK_TIMEOUT_SEC", "900")
+                ),  # caps-ok: OAuth/config timeout only
+            )
+        except BaseException as e:
+            log.warning("OAuth login flow failed", exc_info=True)
+            exc_holder.append(e)
+
+    try:
+        host, port = _parse_callback_port(callback_url)
+        t = threading.Thread(target=_run, daemon=False)
+        t.start()
+
+        if not _wait_for_callback_port(host, port, timeout=5.0):
+            return False, (
+                f"Callback server on {host}:{port} did not become ready within 5 seconds. "
+                "The browser may have opened before the local listener was ready."
+            )
+
+        t.join()
+
+        if exc_holder:
+            return False, f"OAuth flow failed: {exc_holder[0]}"
+
+        if not os.path.exists(token_path):
+            raise RuntimeError(
+                f"OAuth flow completed but token file was not written: {token_path}. "
+                "The browser may have redirected before the callback was received, "
+                "or there was a silent write failure. Try: python reauth_schwab.py --manual"
+            )
+
+        return True, f"Token created: {token_path}"
+    except RuntimeError:
+        raise
+    except Exception as e:
+        log.warning("OAuth login flow failed", exc_info=True)
+        return False, f"OAuth flow failed: {e}"
 
 
 def run_manual_flow(
@@ -508,17 +527,25 @@ def run_manual_flow(
     Manual copy-paste login flow. No local server — you paste the redirect URL back.
     Use when the browser callback fails (e.g. cert warning blocks the request).
     """
-    auth.client_from_manual_flow(
-        api_key=api_key,
-        app_secret=app_secret,
-        callback_url=callback_url,
-        token_path=token_path,
-        token_write_func=_token_update_func(_resolve_token_path(token_path)),  # atomic
-        enforce_enums=False,
-    )
-    if not os.path.exists(token_path):
-        raise RuntimeError(f"Manual flow completed but token file was not written: {token_path}")
-    return True, f"Token created: {token_path}"
+    try:
+        auth.client_from_manual_flow(
+            api_key=api_key,
+            app_secret=app_secret,
+            callback_url=callback_url,
+            token_path=token_path,
+            token_write_func=_token_update_func(_resolve_token_path(token_path)),  # atomic
+            enforce_enums=False,
+        )
+        if not os.path.exists(token_path):
+            raise RuntimeError(
+                f"Manual flow completed but token file was not written: {token_path}"
+            )
+        return True, f"Token created: {token_path}"
+    except RuntimeError:
+        raise
+    except Exception as e:
+        log.warning("OAuth manual flow failed", exc_info=True)
+        return False, f"OAuth flow failed: {e}"
 
 
 def complete_oauth_from_redirect_url(
@@ -545,15 +572,19 @@ def complete_oauth_from_redirect_url(
     resolved = _resolve_token_path(token_path)
     auth_context = auth.get_auth_context(api_key, callback_url, state=state)
     token_write_func = _token_update_func(resolved)  # atomic, never in place
-    auth.client_from_received_url(
-        api_key,
-        app_secret,
-        auth_context,
-        url,
-        token_write_func,
-        asyncio=False,
-        enforce_enums=False,
-    )
+    try:
+        auth.client_from_received_url(
+            api_key,
+            app_secret,
+            auth_context,
+            url,
+            token_write_func,
+            asyncio=False,
+            enforce_enums=False,
+        )
+    except Exception as e:
+        log.warning("OAuth token exchange failed", exc_info=True)
+        return False, f"OAuth token exchange failed: {e}"
     if not os.path.isfile(resolved):
         return False, f"Token exchange succeeded but file missing: {resolved}"
     return True, f"Token created: {resolved}"
