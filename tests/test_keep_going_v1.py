@@ -36,7 +36,7 @@ def _transcript(tmp_path: Path, *said: str) -> Path:
         (OPEN_ROW, "Step 1b is merged.", False),
         (
             OPEN_ROW,
-            "WAITING ON OPERATOR: a console restart during regular hours needs his yes.",
+            "WAITING ON OPERATOR: a change of a request rate needs his yes.",
             True,
         ),
         (OPEN_ROW, "  WAITING ON OPERATOR: the same, after leading space.", True),
@@ -102,7 +102,7 @@ def test_the_final_message_is_the_last_assistant_entry_and_a_bad_line_never_deci
     """A turn that ends on a tool call has no final text, so an earlier WAITING message does not
     stand in for it; a line that is not a JSON object (damaged, or `null`) is skipped, so one bad
     line never refuses every later stop; the payload's own final message wins when it is sent."""
-    waiting = _said("WAITING ON OPERATOR: his yes to a console restart in regular hours.")
+    waiting = _said("WAITING ON OPERATOR: his yes to a change of a request rate.")
     assert keep_going.last_message(_entries(tmp_path, waiting, TOOL_ONLY)) == ""
     damaged = '{"type": "assistant", "message": {"cont'
     assert keep_going.last_message(_entries(tmp_path, damaged, "null", "[]", waiting)).startswith(
@@ -188,6 +188,6 @@ def test_the_hook_as_wired_counts_its_refusals_and_an_allowed_stop_writes_no_cou
 
 
 def test_a_subagents_message_is_not_the_agents_final_message(tmp_path):
-    waiting = _said("WAITING ON OPERATOR: his yes to a console restart in regular hours.")
+    waiting = _said("WAITING ON OPERATOR: his yes to a change of a request rate.")
     side = {**_said("Verdict: FAIL."), "isSidechain": True}
     assert keep_going.last_message(_entries(tmp_path, waiting, side)).startswith("WAITING")

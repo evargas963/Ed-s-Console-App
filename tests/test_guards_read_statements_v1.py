@@ -5,12 +5,8 @@ quotes is never read as a statement."""
 
 from __future__ import annotations
 
-from datetime import datetime
-from pathlib import Path
-
 import pytest
 
-import time_et
 from tools import operating_process_lock as OPL
 from tools import operator_yes_guard as yes_guard
 from tools import process_lock_guard as PLG
@@ -18,12 +14,10 @@ from tools.operator_law_guard import bash_violations
 
 #: Split so this file's own text is not read as the actions it names.
 D = "d" + "ata"
-CLOSED = datetime(2026, 10, 7, 21, 0, tzinfo=time_et.ET)
-NO_DB = Path("no-such-stream.db")
 
 
 def _yes(cmd: str) -> str:
-    return yes_guard.decide({"tool_name": "Bash", "tool_input": {"command": cmd}}, CLOSED, NO_DB)[0]
+    return yes_guard.decide({"tool_name": "Bash", "tool_input": {"command": cmd}})[0]
 
 
 @pytest.mark.parametrize(
@@ -38,26 +32,6 @@ def _yes(cmd: str) -> str:
 )
 def test_a_machine_restart_behind_a_keyword_a_subshell_a_wrapper_or_a_shell_asks(cmd):
     assert _yes(cmd) == yes_guard.ASK
-
-
-@pytest.mark.parametrize(
-    "tool, cmd",
-    [
-        ("Bash", "cmd //c start_ed_console.bat > boot.log 2>&1"),  # Git Bash's //c
-        (
-            "Bash",
-            'powershell -NoProfile -Command "\\$p = Start-Process cmd.exe -ArgumentList '
-            "'/c','start_capture_daemon.bat' -PassThru\"",
-        ),  # a PowerShell assignment
-    ],
-)
-def test_a_start_through_cmd_or_a_powershell_assignment_asks_while_the_session_is_unknown(
-    tool, cmd
-):
-    assert (
-        yes_guard.decide({"tool_name": tool, "tool_input": {"command": cmd}}, CLOSED, NO_DB)[0]
-        == yes_guard.ASK
-    )
 
 
 @pytest.mark.parametrize(
@@ -132,8 +106,7 @@ def test_a_wipe_after_a_heredoc_message_with_an_apostrophe_is_refused():
 )
 def test_a_kill_named_in_a_message_or_a_here_string_passes(tool, cmd):
     assert (
-        yes_guard.decide({"tool_name": tool, "tool_input": {"command": cmd}}, CLOSED, NO_DB)[0]
-        == yes_guard.PASS
+        yes_guard.decide({"tool_name": tool, "tool_input": {"command": cmd}})[0] == yes_guard.PASS
     )
 
 
@@ -224,8 +197,7 @@ def test_shell_arithmetic_is_not_refused(cmd):
 )
 def test_a_machine_restart_by_a_called_path_an_escaped_word_or_a_command_string_asks(tool, cmd):
     assert (
-        yes_guard.decide({"tool_name": tool, "tool_input": {"command": cmd}}, CLOSED, NO_DB)[0]
-        == yes_guard.ASK
+        yes_guard.decide({"tool_name": tool, "tool_input": {"command": cmd}})[0] == yes_guard.ASK
     ), cmd
 
 
@@ -403,13 +375,11 @@ def test_a_kill_written_as_an_argument_is_refused_and_an_empty_pipe_input_does_n
         "@(Get-Process | Where-Object { $_.Path -like '*launch.py*' }).Kill()",
     ):
         assert (
-            yes_guard.decide(
-                {"tool_name": "PowerShell", "tool_input": {"command": kill}}, CLOSED, NO_DB
-            )[0]
+            yes_guard.decide({"tool_name": "PowerShell", "tool_input": {"command": kill}})[0]
             == yes_guard.DENY
         ), kill
     assert yes_guard.decide(
-        {"tool_name": "Bash", "tool_input": {"command": ">/dev/null | kill 4194300"}}, CLOSED, NO_DB
+        {"tool_name": "Bash", "tool_input": {"command": ">/dev/null | kill 4194300"}}
     )[0] in (yes_guard.PASS, yes_guard.ASK)
 
 

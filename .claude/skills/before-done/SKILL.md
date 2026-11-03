@@ -51,7 +51,7 @@ report what was tried, and take a different approach (CLAUDE.md item 6).
 8. Nothing left running: list each background shell, subagent (`ListAgents`) and process this session
    started (`Get-CimInstance Win32_Process`, newer than the session), and show each one finished or
    stopped. Production is what `tools/operator_yes_guard.py` `_production` says it is; it stops only
-   by `python launch.py stop` (`docs/DATA_FLOW.md` §3.1), with Ed's yes when CLAUDE.md item 5 says.
+   by `python launch.py stop` (`docs/DATA_FLOW.md` §3.1), with a notice in chat (CLAUDE.md item 5).
 9. End the report as CLAUDE.md shows: CONFIRMED (each step's output above), NOT VERIFIED, SEEN, NOT
    FIXED — each open item verified, fixed or brought to Ed as a decision (AGENTS.md First gate 5).
    These steps do not check the live screen, which AGENTS.md's "Done" needs: show it, or list it as
