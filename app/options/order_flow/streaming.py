@@ -40,10 +40,10 @@ import push_changes
 from app.market_data.schwab.streaming.live_push import LIVE_PUSH_HOST, LIVE_PUSH_PORT
 from app.market_data.schwab.streaming.live_ui import LIVE_UI_PORT
 from app.options.order_flow import history as recent
-from app.options.order_flow.engine import BOOK_VENUES, book_readout, lean_point
+from app.options.order_flow.engine import BOOK_VENUES, book_readout
 from app.options.order_flow.state import (
     clear_all_live_state,
-    get_content_for_symbol,
+    newest_book,
     push_book,
     push_level_one,
     push_option_top,
@@ -311,8 +311,7 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
             _option_contract_last_update_ts[sym] = ts
         else:
             recent.BOOKS.record(sym, msg["service"], content, ts)
-            readout = book_readout({v: get_content_for_symbol(sym, v) for v in BOOK_VENUES})
-            recent.LEAN.record(sym, ts, lean_point(readout))
+            recent.LEAN.record(sym, ts, book_readout({v: newest_book(sym, v) for v in BOOK_VENUES}))
             push_changes.changed(sym, push_changes.FLOW)
         return None
     if kind == "optquote":

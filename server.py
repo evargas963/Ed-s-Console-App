@@ -3220,35 +3220,82 @@ _AUCTION_TEXT = {
 }
 
 
+#: the readout before any book has arrived: every venue no_book
+_NO_BOOKS = book_readout(dict.fromkeys(BOOK_VENUES))
+#: the card's source line: whose book, and what it is while live
+_SOURCE = {
+    "NYSE_BOOK": ("Schwab NYSE_BOOK", "live book"),
+    "NASDAQ_BOOK": ("Schwab NASDAQ_BOOK", "live book"),
+    COMPOSITE: ("Schwab NYSE_BOOK + NASDAQ_BOOK", "deduped composite"),
+}
+#: why a venue has no number, as the source line says it
+_NO_NUMBER = {
+    "no_book": "no book for this symbol right now",
+    "empty": "the book Schwab sent has no levels",
+}
+#: the card's NO BOOK line
+_NO_NUMBER_CARD = {
+    "no_book": "No book for this symbol right now",
+    "empty": "The book Schwab sent has no levels",
+}
+
+
+def _source_text(venue: str, r: dict, window: str | None) -> str:
+    """The card's source line for `venue`: Schwab's book, then why it has no number, or live, or
+    its time and not live; and, when today's auction windows are not known, that."""
+    who, live_kind = _SOURCE[venue]
+    parts = [who]
+    if r["status"] in _NO_NUMBER:
+        parts.append(_NO_NUMBER[r["status"]])
+    elif r["live"]:
+        parts.append(live_kind)
+    elif r["book_time_ct"] is not None:
+        parts.append(f"book {r['book_time_ct']} · not live")
+    else:
+        parts.append("not live, no book time sent")
+    if window is None:
+        parts.append("auction windows unknown: no Schwab market hours held for today")
+    return " · ".join(parts)
+
+
+def _not_live_text(r: dict) -> str | None:
+    """A venue that is not live, with numbers, says they are its last: from its book's time, or
+    that Schwab sent none. None while live, and with no number."""
+    if r["live"] or r["status"] in _NO_NUMBER:
+        return None
+    parts = []
+    if r["book_time_ct"] is not None:
+        parts.append(f"Book from {r['book_time_ct']}, not live")
+    else:
+        parts.append("Not live, no book time sent")
+    parts.append("these are the last numbers, not current")
+    return " — ".join(parts)
+
+
 def liquidity_readout(t: str, now: float) -> dict:
-    """The Desk Liquidity card's order-imbalance readout for ticker `t` at `now`: both Schwab
-    books and their deduped composite (engine.book_readout), read over the console's one-second
-    values (history.LEAN, engine.readout_card). Each book is judged by the one live rule on its
-    own service, the composite live only while both are; a book that is not live keeps its last
-    values, read to its last value's time. With the exchange auction window of today's session
-    as Schwab sent it (time_et.auction; None while Schwab's answer for today is not held)."""
-    readout = book_readout({v: get_content_for_symbol(t, v) for v in BOOK_VENUES})
+    """The Desk Liquidity card's order-imbalance readout for ticker `t` at `now`: the newest
+    readout of both Schwab books and their deduped composite the console's intake computed
+    (engine.book_readout, kept in history.LEAN), read over the readouts kept
+    (engine.readout_card). Each book is judged by the one live rule on its own service, the
+    composite live only while both are; a book that is not live keeps its last values, read to
+    its last value's time. With the exchange auction window of today's session as Schwab sent it
+    (time_et.auction; None while Schwab's answer for today is not held), and every word the card
+    shows."""
+    points = LEAN.points(t)
+    readout = points[-1][1] if points else _NO_BOOKS
     labels = {v: price_state(t, now, v)[0] for v in BOOK_VENUES}
     labels[COMPOSITE] = next((labels[v] for v in BOOK_VENUES if labels[v] != lmp.LIVE), lmp.LIVE)
-    points = LEAN.points(t)
-    last = points[-1][0] if points else None
-    card = readout_card(
-        readout,
-        points,
-        {v: (now if labels[v] == lmp.LIVE else last) if points else None for v in readout},
-    )
+    ends = {v: now if labels[v] == lmp.LIVE else points[-1][0] for v in readout} if points else {}
+    card = readout_card(readout, points, ends)
+    window = auction(datetime.fromtimestamp(now, ET))
     for v, r in card["venues"].items():
         book_ms = r["book_time_ms"]
         r["feed_label"] = labels[v]
         r["live"] = labels[v] == lmp.LIVE
         r["book_time_ct"] = None if book_ms is None else ct_label(book_ms / 1000.0)
-        r["not_live_text"] = (
-            None
-            if r["live"] or book_ms is None
-            else f"Book from {r['book_time_ct']}, not live — these are the last numbers,"
-            " not current"
-        )
-    window = auction(datetime.fromtimestamp(now, ET))
+        r["not_live_text"] = _not_live_text(r)
+        r["source_text"] = _source_text(v, r, window)
+        r["no_number_text"] = _NO_NUMBER_CARD.get(r["status"])
     card["auction"] = window
     card["auction_text"] = _AUCTION_TEXT.get(window)
     return card

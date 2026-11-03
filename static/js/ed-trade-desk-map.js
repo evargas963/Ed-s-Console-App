@@ -452,8 +452,8 @@
   // The served order-imbalance readout (/api/order-flow/microstructure `readout`): every number,
   // word, sentence and flag is the server's; the card picks the venue and depth to show and places
   // the dots, bars and lines on its boxes.
+  // the book named while the read is loading or has failed (the served source line names it after)
   var LIQ_SRC = { NYSE_BOOK: 'Schwab NYSE_BOOK', NASDAQ_BOOK: 'Schwab NASDAQ_BOOK', COMPOSITE: 'Schwab NYSE_BOOK + NASDAQ_BOOK' };
-  var LIQ_KIND = { NYSE_BOOK: 'live book', NASDAQ_BOOK: 'live book', COMPOSITE: 'deduped composite' };
   var LIQ_NAME = { NYSE_BOOK: 'NYSE', NASDAQ_BOOK: 'Nasdaq', COMPOSITE: 'Composite' };
   function liqKey() { return S.liqVenue === 'COMPOSITE' ? 'COMPOSITE' : st().bookVenue; }
   // a served side's colour: bids green, offers red, balanced gold
@@ -491,12 +491,9 @@
       body.innerHTML = '<div class="liq-none">' + (m === undefined ? 'Loading…' : 'UNAVAILABLE<p>The book request failed</p>') + '</div>';
       return;
     }
-    var why = r.status === 'no_book' ? 'no book for this symbol right now' : r.status === 'empty' ? 'the book Schwab sent has no levels' : null;
-    // an auction window not known (no Schwab market hours held for today) says so
-    src(c, esc(LIQ_SRC[key]) + ' · ' + (why || (r.live ? LIQ_KIND[key] : 'book ' + esc(r.book_time_ct) + ' · not live')) +
-      (rd.auction == null ? ' · auction windows unknown: no Schwab market hours held for today' : ''));
+    src(c, esc(r.source_text));
     if (rd.auction_text) { body.innerHTML = '<div class="liq-none">AUCTION<p>' + esc(rd.auction_text) + '</p></div>'; return; }
-    if (why) { body.innerHTML = '<div class="liq-none">NO BOOK<p>No book for this symbol right now</p></div>'; return; }
+    if (r.no_number_text) { body.innerHTML = '<div class="liq-none">NO BOOK<p>' + esc(r.no_number_text) + '</p></div>'; return; }
     var v = r.views[view], twice = v.counted_twice;
     var h = '<div class="liq-lbl liq-keep"><span>' + (view === 'weighted' ? 'WEIGHTED TOP-5 HEADLINE' : 'TOP ' + view + ' HEADLINE') + '</span>' +
       (r.live ? '' : '<span class="liq-pill">BOOK ' + esc(r.feed_label) + '</span>') + '</div>';
@@ -506,7 +503,7 @@
       h += '<div class="liq-hl"><span class="liq-pct">-</span><span class="liq-word">ONE-SIDED</span></div>' +
         liqBar('bid', 'Bids', v.bid_text, v.bid_total, only) +
         liqBar('ask', 'Asks', v.ask_text, v.ask_total, only) +
-        '<div class="liq-sent">Only the ' + (v.bid_total != null ? 'bid' : 'offer') + ' side has levels in this book: no percentage.</div>';
+        '<div class="liq-sent">' + esc(r.one_sided_text) + '</div>';
     } else {
       var tone = liqTone(v.zone);
       h += '<div class="liq-hl" title="' + esc(rd.guide) + '"><span class="liq-pct ' + tone + '">' + esc(v.pct_text || '-') + '</span>' +

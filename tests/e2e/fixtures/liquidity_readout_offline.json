@@ -174,7 +174,10 @@
     "dedup_partial": false,
     "feed_label": "OFFLINE",
     "live": false,
+    "no_number_text": null,
     "not_live_text": "Book from Mon 11/02 09:02 AM CT, not live \u2014 these are the last numbers, not current",
+    "one_sided_text": null,
+    "source_text": "Schwab NYSE_BOOK + NASDAQ_BOOK \u00b7 book Mon 11/02 09:02 AM CT \u00b7 not live",
     "status": "ok",
     "touch_pct": -37.93103448275862,
     "touch_state": null,
@@ -197,7 +200,7 @@
       "flips_2m": 16,
       "flips_word": "CHOPPY",
       "held_open": false,
-      "held_sec": 13,
+      "held_sec": 9,
       "lean": {
        "2m": {
         "lean": "MIXED",
@@ -400,11 +403,11 @@
       "live_text": "-38%",
       "pct": -14.285714285714285,
       "pct_text": "-14%",
-      "sentence": "To balance, market makers buy 440 shares.",
-      "side_word": "VERY ONE-SIDED \u00b7 BID HEAVY",
+      "sentence": "Nearly balanced \u2014 440 shares would even the book.",
+      "side_word": "BALANCED",
       "total_depth": 1160.0,
       "total_text": "1,160",
-      "zone": "VERY_BID"
+      "zone": "BALANCED"
      },
      "3": {
       "ask_text": "2,280",
@@ -1093,7 +1096,10 @@
     "dedup_partial": null,
     "feed_label": "OFFLINE",
     "live": false,
+    "no_number_text": null,
     "not_live_text": "Book from Mon 11/02 09:02 AM CT, not live \u2014 these are the last numbers, not current",
+    "one_sided_text": null,
+    "source_text": "Schwab NASDAQ_BOOK \u00b7 book Mon 11/02 09:02 AM CT \u00b7 not live",
     "status": "ok",
     "touch_pct": 46.666666666666664,
     "touch_state": null,
@@ -1332,7 +1338,7 @@
       "flips_2m": 19,
       "flips_word": "CHOPPY",
       "held_open": false,
-      "held_sec": 15,
+      "held_sec": 17,
       "lean": {
        "2m": {
         "lean": "MIXED",
@@ -1774,7 +1780,7 @@
       "flips_2m": 19,
       "flips_word": "CHOPPY",
       "held_open": false,
-      "held_sec": 15,
+      "held_sec": 17,
       "lean": {
        "2m": {
         "lean": "MIXED",
@@ -1992,7 +1998,10 @@
     "dedup_partial": null,
     "feed_label": "OFFLINE",
     "live": false,
+    "no_number_text": null,
     "not_live_text": "Book from Mon 11/02 09:02 AM CT, not live \u2014 these are the last numbers, not current",
+    "one_sided_text": null,
+    "source_text": "Schwab NYSE_BOOK \u00b7 book Mon 11/02 09:02 AM CT \u00b7 not live",
     "status": "ok",
     "touch_pct": -37.93103448275862,
     "touch_state": null,
@@ -2010,7 +2019,7 @@
       "flips_2m": 16,
       "flips_word": "CHOPPY",
       "held_open": false,
-      "held_sec": 13,
+      "held_sec": 9,
       "lean": {
        "2m": {
         "lean": "MIXED",
@@ -2213,11 +2222,11 @@
       "live_text": "-38%",
       "pct": -14.285714285714285,
       "pct_text": "-14%",
-      "sentence": "To balance, market makers buy 440 shares.",
-      "side_word": "VERY ONE-SIDED \u00b7 BID HEAVY",
+      "sentence": "Nearly balanced \u2014 440 shares would even the book.",
+      "side_word": "BALANCED",
       "total_depth": 1160.0,
       "total_text": "1,160",
-      "zone": "VERY_BID"
+      "zone": "BALANCED"
      },
      "3": {
       "ask_text": "2,280",
@@ -2231,7 +2240,7 @@
       "flips_2m": 13,
       "flips_word": "CHOPPY",
       "held_open": false,
-      "held_sec": 33,
+      "held_sec": 3,
       "lean": {
        "2m": {
         "lean": "MIXED",
@@ -2434,11 +2443,11 @@
       "live_text": "-14%",
       "pct": -11.538461538461538,
       "pct_text": "-12%",
-      "sentence": "To balance, market makers buy 560 shares.",
-      "side_word": "BID HEAVY",
+      "sentence": "Nearly balanced \u2014 560 shares would even the book.",
+      "side_word": "BALANCED",
       "total_depth": 4000.0,
       "total_text": "4,000",
-      "zone": "BID_HEAVY"
+      "zone": "BALANCED"
      },
      "5": {
       "ask_text": "2,360",

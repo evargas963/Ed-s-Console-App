@@ -274,6 +274,7 @@ test('Desk: a book whose market is closed reads BOOK NOT LIVE and keeps Schwab\'
   await expect(page.locator('#tdmCardLiq .tdm-src')).toContainText('book ' + CLOSED_BOOK.book_time_ct + ' · not live');
   // Schwab's top-5 totals as served (800 and 2,160 shares), the last numbers kept
   await expect(page.locator('#tdmCardLiq .liq-body')).toContainText('2,160');
+  await expect(page.locator('#tdmCardLiq .liq-bar-h').first()).toHaveText('Bids800');
   await expect(page.locator('#tdmTrust')).toContainText('BOOK ' + CLOSED_BOOK.book_time_ct + ' · NOT LIVE');
   await expect(page.locator('#tdmTrust')).not.toContainText('STALE');
   expect(errs).toEqual([]);

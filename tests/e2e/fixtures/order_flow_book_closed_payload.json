@@ -173,7 +173,10 @@
         "dedup_partial": false,
         "feed_label": "NOT LIVE",
         "live": false,
+        "no_number_text": null,
         "not_live_text": "Book from Fri 09/25 09:30 AM CT, not live \u2014 these are the last numbers, not current",
+        "one_sided_text": null,
+        "source_text": "Schwab NYSE_BOOK + NASDAQ_BOOK \u00b7 book Fri 09/25 09:30 AM CT \u00b7 not live",
         "status": "ok",
         "touch_pct": -11.11111111111111,
         "touch_state": null,
@@ -195,7 +198,7 @@
             "flat_pct": -11.11111111111111,
             "flips_2m": 0,
             "flips_word": "STEADY",
-            "held_open": false,
+            "held_open": true,
             "held_sec": 0,
             "lean": {
               "2m": {
@@ -421,7 +424,7 @@
             "flat_pct": -67.74193548387096,
             "flips_2m": 0,
             "flips_word": "STEADY",
-            "held_open": false,
+            "held_open": true,
             "held_sec": 0,
             "lean": {
               "2m": {
@@ -647,7 +650,7 @@
             "flat_pct": -45.94594594594595,
             "flips_2m": 0,
             "flips_word": "STEADY",
-            "held_open": false,
+            "held_open": true,
             "held_sec": 0,
             "lean": {
               "2m": {
@@ -873,7 +876,7 @@
             "flat_pct": -45.94594594594595,
             "flips_2m": 0,
             "flips_word": "STEADY",
-            "held_open": false,
+            "held_open": true,
             "held_sec": 0,
             "lean": {
               "2m": {
@@ -1092,7 +1095,10 @@
         "dedup_partial": null,
         "feed_label": "NOT LIVE",
         "live": false,
+        "no_number_text": "No book for this symbol right now",
         "not_live_text": null,
+        "one_sided_text": null,
+        "source_text": "Schwab NASDAQ_BOOK \u00b7 no book for this symbol right now",
         "status": "no_book",
         "touch_pct": null,
         "touch_state": null,
@@ -1991,7 +1997,10 @@
         "dedup_partial": null,
         "feed_label": "NOT LIVE",
         "live": false,
+        "no_number_text": null,
         "not_live_text": "Book from Fri 09/25 09:30 AM CT, not live \u2014 these are the last numbers, not current",
+        "one_sided_text": null,
+        "source_text": "Schwab NYSE_BOOK \u00b7 book Fri 09/25 09:30 AM CT \u00b7 not live",
         "status": "ok",
         "touch_pct": -11.11111111111111,
         "touch_state": null,
@@ -2008,7 +2017,7 @@
             "flat_pct": -11.11111111111111,
             "flips_2m": 0,
             "flips_word": "STEADY",
-            "held_open": false,
+            "held_open": true,
             "held_sec": 0,
             "lean": {
               "2m": {
@@ -2229,7 +2238,7 @@
             "flat_pct": -67.74193548387096,
             "flips_2m": 0,
             "flips_word": "STEADY",
-            "held_open": false,
+            "held_open": true,
             "held_sec": 0,
             "lean": {
               "2m": {
@@ -2450,7 +2459,7 @@
             "flat_pct": -45.94594594594595,
             "flips_2m": 0,
             "flips_word": "STEADY",
-            "held_open": false,
+            "held_open": true,
             "held_sec": 0,
             "lean": {
               "2m": {
@@ -2671,7 +2680,7 @@
             "flat_pct": -45.94594594594595,
             "flips_2m": 0,
             "flips_word": "STEADY",
-            "held_open": false,
+            "held_open": true,
             "held_sec": 0,
             "lean": {
               "2m": {

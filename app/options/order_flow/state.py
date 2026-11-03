@@ -212,6 +212,13 @@ class OrderFlowState:
             out.extend(dict(item) for item in self._get_tape(sym))
         return out
 
+    def newest_book(self, symbol: str, venue: str) -> dict | None:
+        """The newest book held for `symbol` from Schwab service `venue`; None: none held."""
+        sym = ticker_storage_key(symbol)
+        with self._lock:
+            held = self._book[sym] if sym in self._book else ()
+            return next((dict(b) for b in reversed(held) if b["SERVICE"] == venue), None)
+
     def clear_all(self) -> None:
         """Drop tape/book/top/prev-print identity for every symbol."""
         with self._lock:
@@ -311,6 +318,11 @@ def push_level_one(
 def get_content_for_symbol(symbol: str, venue: str | None = None) -> list[dict]:
     """Return canonical engine content from the live singleton."""
     return _LIVE_STATE.get_content_for_symbol(symbol, venue)
+
+
+def newest_book(symbol: str, venue: str) -> dict | None:
+    """The live singleton's newest book of `symbol` from `venue`."""
+    return _LIVE_STATE.newest_book(symbol, venue)
 
 
 def clear_all_live_state() -> None:

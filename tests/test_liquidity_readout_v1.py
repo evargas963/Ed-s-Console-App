@@ -48,18 +48,18 @@ _HELD = {"LEVELONE_EQUITIES": ["SPY"], "NYSE_BOOK": ["SPY"], "NASDAQ_BOOK": ["SP
 
 
 def _pair_readout() -> dict:
-    return e.book_readout({v: [b["content"]] for v, b in _PAIR.items()})
+    return e.book_readout({v: b["content"] for v, b in _PAIR.items()})
 
 
 def _replay() -> tuple[dict, list]:
     """Every captured 2026-11-02 book through the readout, as the console's intake records it:
     the readout of the newest book of each venue at each receipt."""
-    newest: dict = {v: [] for v in e.BOOK_VENUES}
+    newest: dict = dict.fromkeys(e.BOOK_VENUES)
     points = []
     for ts, svc, content in _ROWS:
-        newest[svc] = [content]
-        points.append((ts, e.lean_point(e.book_readout(newest))))
-    return e.book_readout(newest), points
+        newest[svc] = content
+        points.append((ts, e.book_readout(newest)))
+    return points[-1][1], points
 
 
 def build_readout_payload(now: float = _END, feed_down: bool = False, rows=None) -> dict:
@@ -129,7 +129,7 @@ def test_the_weighted_headline_is_not_the_flat_top_five():
     assert nq["weighted"]["pct"] > 0 > nq["weighted"]["flat_pct"]
     card = e.readout_card(
         _pair_readout(),
-        [(1.0, e.lean_point(_pair_readout()))],
+        [(1.0, _pair_readout())],
         {v: 2.0 for v in (*e.BOOK_VENUES, e.COMPOSITE)},
     )
     assert card["venues"]["NASDAQ_BOOK"]["views"]["weighted"]["divergence"] == (
@@ -179,7 +179,7 @@ def test_a_level_without_per_exchange_rows_is_taken_whole_and_the_dedup_marked_p
     composite says its dedup is partial."""
     nyse = json.loads(json.dumps(_PAIR["NYSE_BOOK"]["content"]))
     del nyse["BIDS"][1]["BIDS"]  # 767.38: BATX 80 + NYSE 40, TOTAL_VOLUME 120
-    comp = e.book_readout({"NYSE_BOOK": [nyse], "NASDAQ_BOOK": [_PAIR["NASDAQ_BOOK"]["content"]]})
+    comp = e.book_readout({"NYSE_BOOK": nyse, "NASDAQ_BOOK": _PAIR["NASDAQ_BOOK"]["content"]})
     assert comp["COMPOSITE"]["dedup_partial"] is True
     assert comp["COMPOSITE"]["views"]["5"]["bid_total"] == 780
 
@@ -206,8 +206,8 @@ def test_an_exchange_code_matches_without_regard_to_case():
         for lv in as_nyse[side]:
             for x in lv[side]:
                 x["EXCHANGE"] = x["EXCHANGE"].upper()
-    comp = e.book_readout({"NYSE_BOOK": [as_nyse], "NASDAQ_BOOK": [newer]})["COMPOSITE"]
-    one = e.book_readout({"NYSE_BOOK": [], "NASDAQ_BOOK": [newer]})["NASDAQ_BOOK"]
+    comp = e.book_readout({"NYSE_BOOK": as_nyse, "NASDAQ_BOOK": newer})["COMPOSITE"]
+    one = e.book_readout({"NYSE_BOOK": None, "NASDAQ_BOOK": newer})["NASDAQ_BOOK"]
     assert comp["views"]["5"]["bid_total"] == one["views"]["5"]["bid_total"]
     assert comp["views"]["5"]["ask_total"] == one["views"]["5"]["ask_total"]
 
@@ -230,16 +230,36 @@ def test_an_exchange_code_matches_without_regard_to_case():
     ],
 )
 def test_the_zones_turn_at_10_and_70_percent(pct, zone):
+    """INDUCED: percentages at each side of the zone lines, the definition's own boundaries."""
     assert e._zone(pct) == zone
 
 
+def _book_at(row: int) -> dict:
+    ts, svc, content = _ROWS[row]
+    return e.book_readout({v: content if v == svc else None for v in e.BOOK_VENUES})[svc]
+
+
 def test_the_sentence_four_cases_from_the_flat_shares():
-    """Schwab's own totals: NYSE_BOOK's top 1 (160 bid, 200 ask: 40 apart) and the composite's
-    top five (780 bid, 2110 ask)."""
-    assert e._sentence("BALANCED", 160, 160) == "Balanced — no shares needed to balance."
+    """Schwab's own books: NYSE_BOOK's touch at 10:00:08 ET on 2026-11-02 (80 bid, 80 ask),
+    NYSE_BOOK's touch on 2026-09-25 (160 bid, 200 ask), NASDAQ_BOOK's touch then (100 bid, 70 ask)
+    and the composite's top five then (780 bid, 2110 ask)."""
+    even = _book_at(16)["views"]["1"]
+    assert (even["bid_total"], even["ask_total"]) == (80, 80)
+    pair = _pair_readout()
+    nyse, nq = pair["NYSE_BOOK"]["views"]["1"], pair["NASDAQ_BOOK"]["views"]["1"]
+    comp = pair["COMPOSITE"]["views"]["5"]
+    assert e._sentence("BALANCED", 80, 80) == "Balanced — no shares needed to balance."
+    assert (
+        e._sentence(e._zone(nyse["pct"]), nyse["bid_total"], nyse["ask_total"])
+        == "To balance, market makers buy 40 shares."
+    )
     assert e._sentence("BALANCED", 160, 200) == "Nearly balanced — 40 shares would even the book."
-    assert e._sentence("OFFER_HEAVY", 780, 2110) == "To balance, market makers buy 1,330 shares."
-    assert e._sentence("VERY_BID", 2110, 780) == "To balance, market makers sell 1,330 shares."
+    assert e._sentence(e._zone(comp["pct"]), 780, 2110) == (
+        "To balance, market makers buy 1,330 shares."
+    )
+    assert e._sentence(e._zone(nq["pct"]), nq["bid_total"], nq["ask_total"]) == (
+        "To balance, market makers sell 30 shares."
+    )
     assert e._sentence(None, 780, 2110) is None
     assert e._sentence("BID_HEAVY", 780, None) is None
 
@@ -248,31 +268,75 @@ def test_the_sentence_four_cases_from_the_flat_shares():
 
 
 def test_a_zone_changes_only_after_it_has_stood_three_seconds():
-    """One second across the line is not a change; three are, dated from the first of them."""
+    """INDUCED: smoothed values on each side of the lines. One or two seconds out of the shown
+    zone is not a change; three seconds out of it are, whichever zones they cross, dated from the
+    second it was left."""
     assert e._dwelled([5, 5, 15, 5, 5], 100) == ("BALANCED", 100)
     assert e._dwelled([5, 5, 15, 15, 5], 100) == ("BALANCED", 100)
     assert e._dwelled([5, 5, 15, 15, 15, 15], 100) == ("BID_HEAVY", 102)
     assert e._dwelled([5, None, 5], 100) == ("BALANCED", 102)
+    # out of BID_HEAVY across two zones, the value crossing -10% each second
+    assert e._dwelled([15, 15, 15, -12, -8, -12, -8], 0) == ("OFFER_HEAVY", 3)
+    # BALANCED left, the value then crossing the 70% line each second: out three seconds, it
+    # stands in BID_HEAVY then (69), dated from the second it left
+    assert e._dwelled([5, 69, 71, 69, 71], 0) == ("BID_HEAVY", 1)
+    # a steady rise through two lines changes three seconds after it left
+    assert e._dwelled([9, 11, 15, 72, 75], 0) == ("VERY_BID", 1)
 
 
-def test_on_schwabs_books_every_zone_the_card_shows_stood_three_seconds():
-    readout, points = _replay()
+def test_on_schwabs_books_the_zone_changes_three_seconds_after_the_value_leaves_it():
+    """Every venue and view of the captured books: the zone shown never stands while the value
+    has been out of it three seconds or more."""
+    _readout, points = _replay()
     last = int(points[-1][0])
     first = last - e.OF_LEAN_KEPT_SEC
     for v in (*e.BOOK_VENUES, e.COMPOSITE):
         for view in e.READOUT_VIEWS:
-            sm = e._smoothed(e._standing(points, f"{v}|{view}", first, last))
-            zone, since = e._dwelled(sm, first)
-            assert zone is not None, (v, view)
-            if since > first:  # a change inside the values kept: it stood its three seconds
-                run = sm[since - first : since - first + e.OF_ZONE_DWELL_SEC]
-                assert [e._zone(s) for s in run] == [zone] * e.OF_ZONE_DWELL_SEC, (v, view)
+            sm = e._smoothed(e._standing(points, v, view, first, last))
+            for k in range(e.OF_ZONE_DWELL_SEC, len(sm)):
+                zone, _since = e._dwelled(sm[: k + 1], first)
+                out = [e._zone(s) != zone for s in sm[k - e.OF_ZONE_DWELL_SEC + 1 : k + 1]]
+                assert zone is None or not all(out), (v, view, k)
+
+
+def test_held_is_at_least_when_the_zone_stood_from_the_first_value_kept():
+    """Two of Schwab's books 400 s apart, nothing between (a quiet ticker): the first still
+    stands at the window's start, so the zone has held at least the window, and says so."""
+    history.LEAN.forget("SPY")
+    try:
+        for ts, svc, content in (_ROWS[0], [_ROWS[0][0] + 400, _ROWS[0][1], _ROWS[0][2]]):
+            history.LEAN.record(
+                "SPY", ts, e.book_readout({v: content if v == svc else None for v in e.BOOK_VENUES})
+            )
+        points = history.LEAN.points("SPY")
+        assert len(points) == 2
+        card = e.readout_card(points[-1][1], points, {_ROWS[0][1]: points[-1][0]})
+        w = card["venues"][_ROWS[0][1]]["views"]["5"]
+        assert w["held_open"] is True and w["held_sec"] == e.OF_LEAN_KEPT_SEC
+        assert None not in w["lean"]["5m"]["values"]
+    finally:
+        history.LEAN.forget("SPY")
+
+
+def test_held_is_at_least_when_the_values_began_inside_the_window():
+    """The console started inside the window: the zone standing since the first value known has
+    held at least that long, never exactly."""
+    _readout, points = _replay()
+    card = e.readout_card(points[-1][1], points[:20], {v: points[19][0] for v in points[-1][1]})
+    for v in (*e.BOOK_VENUES, e.COMPOSITE):
+        w = card["venues"][v]["views"]["weighted"]
+        sm = e._smoothed(
+            e._standing(points[:20], v, "weighted", int(points[19][0]) - 308, int(points[19][0]))
+        )
+        zone, since = e._dwelled(sm, int(points[19][0]) - 308)
+        known = next(int(points[19][0]) - 308 + k for k, s in enumerate(sm) if s is not None)
+        assert w["held_open"] is (since == known), v
 
 
 def test_the_headline_is_the_median_of_the_last_five_seconds():
     _readout, points = _replay()
     last = int(points[-1][0])
-    vals = e._standing(points, "COMPOSITE|weighted", last - 10, last)
+    vals = e._standing(points, "COMPOSITE", "weighted", last - 10, last)
     sm = e._smoothed(vals)
     assert sm[-1] == pytest.approx(sorted(vals[-5:])[2])
 
@@ -292,7 +356,7 @@ def test_flips_count_the_sign_changes_of_the_smoothed_value_in_two_minutes():
     card = e.readout_card(readout, points, {v: points[-1][0] for v in readout})
     for v in (*e.BOOK_VENUES, e.COMPOSITE):
         w = card["venues"][v]["views"]["weighted"]
-        kept = e._standing(points, f"{v}|weighted", last - e.OF_LEAN_KEPT_SEC, last)
+        kept = e._standing(points, v, "weighted", last - e.OF_LEAN_KEPT_SEC, last)
         sm = e._smoothed(kept)[-121:]
         signs = [s > 0 for s in sm if s is not None and s != 0]
         assert w["flips_2m"] == sum(a != b for a, b in zip(signs, signs[1:], strict=False))
@@ -316,6 +380,13 @@ def test_the_route_serves_the_readout_of_both_books_and_the_composite_live():
         assert got["views"] == expected["venues"][v]["views"], v
     assert rd["disagree"] == expected["disagree"]
     assert (rd["auction"], rd["auction_text"]) == ("NONE", None)
+    assert [rd["venues"][v]["source_text"] for v in (*e.BOOK_VENUES, e.COMPOSITE)] == [
+        "Schwab NYSE_BOOK · live book",
+        "Schwab NASDAQ_BOOK · live book",
+        "Schwab NYSE_BOOK + NASDAQ_BOOK · deduped composite",
+    ]
+    # the readout served is the one the intake computed on the newest book, not a second one
+    assert rd["venues"]["COMPOSITE"]["book_time_ms"] == readout["COMPOSITE"]["book_time_ms"]
     # the payload's own book fields stay the one venue asked for
     assert p["venue"] == "NYSE_BOOK" and p["provenance"]["book_source"] == "NYSE_BOOK"
 
@@ -331,6 +402,19 @@ def test_a_book_that_stops_keeps_its_last_numbers_marked_not_live():
         )
         assert got["views"]["weighted"]["pct"] is not None
         assert got["views"]["weighted"]["bid_total"] is not None
+        assert got["source_text"].endswith(f"book {got['book_time_ct']} · not live")
+
+
+def test_a_book_without_its_time_says_not_live_and_that_no_time_was_sent():
+    """INDUCED: a venue not live whose book came with no BOOK_TIME (the composite's when either
+    book's is unknown). It keeps its words, with "-" never a blank."""
+    r = {"live": False, "status": "ok", "book_time_ct": None}
+    assert server._not_live_text(r) == (
+        "Not live, no book time sent — these are the last numbers, not current"
+    )
+    assert server._source_text("COMPOSITE", r, "NONE") == (
+        "Schwab NYSE_BOOK + NASDAQ_BOOK · not live, no book time sent"
+    )
 
 
 def test_no_book_serves_no_number():
@@ -338,17 +422,20 @@ def test_no_book_serves_no_number():
     for got in p["readout"]["venues"].values():
         assert got["status"] == "no_book" and got["touch_pct"] is None
         assert all(v["pct"] is None for v in got["views"].values())
+        assert got["no_number_text"] == "No book for this symbol right now"
+        assert got["source_text"].endswith("no book for this symbol right now")
 
 
 def test_a_one_sided_book_shows_the_side_it_has_and_no_percentage():
-    """Schwab's NYSE_BOOK with its asks as Schwab sends a side it has no level for (an empty
-    list)."""
+    """INDUCED: Schwab's NYSE_BOOK with its asks as Schwab sends a side it has no level for (an
+    empty list)."""
     nyse = json.loads(json.dumps(_PAIR["NYSE_BOOK"]["content"]))
     nyse["ASKS"] = []
-    r = e.book_readout({"NYSE_BOOK": [nyse], "NASDAQ_BOOK": []})["NYSE_BOOK"]
+    r = e.book_readout({"NYSE_BOOK": nyse, "NASDAQ_BOOK": None})["NYSE_BOOK"]
     assert r["status"] == "one_sided"
     assert all(v["pct"] is None and v["ask_total"] is None for v in r["views"].values())
     assert r["views"]["5"]["bid_total"] == 800
+    assert r["one_sided_text"] == "Only the bid side has levels in this book: no percentage."
 
 
 @pytest.mark.parametrize(
@@ -386,11 +473,13 @@ def test_the_closing_auction_replaces_the_continuous_number():
 def test_the_intake_keeps_one_value_a_second_for_the_windows_and_no_longer():
     history.LEAN.forget("SPY")
     try:
-        for ts, _svc, _c in _ROWS:
-            history.LEAN.record("SPY", ts, {})
+        _readout, points = _replay()
+        for ts, readout in points:
+            history.LEAN.record("SPY", ts, readout)
         kept = history.LEAN.points("SPY")
         assert len({int(t) for t, _v in kept}) == len(kept)
-        assert kept[-1][0] - kept[0][0] <= e.OF_LEAN_KEPT_SEC
+        # the window and the one value before it, which still stands at its start
+        assert kept[-1][0] - kept[1][0] <= e.OF_LEAN_KEPT_SEC
     finally:
         history.LEAN.forget("SPY")
 
