@@ -273,7 +273,8 @@ test('Desk: a book whose market is closed reads BOOK NOT LIVE and keeps Schwab\'
     localStorage.setItem('ed_sub', 'desk'); localStorage.setItem('ed_book_venue', 'NYSE_BOOK'); localStorage.setItem('ed.desk.liqvenue', 'BOOK'); } catch (e) {} });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await expect(page.locator('#tdmCardLiq')).toContainText('BOOK NOT LIVE');
-  await expect(page.locator('#tdmCardLiq .tdm-src')).toContainText('book ' + CLOSED_BOOK.book_time_ct + ' · not live');
+  await expect(page.locator('#tdmCardLiq .tdm-src')).toContainText('book ' + CLOSED_BOOK.book_time_ct + ' · ' +
+    CLOSED_BOOK.readout.venues.NYSE_BOOK.book_age_text + ' old · not live');
   // Schwab's top-5 totals as served (800 and 2,160 shares), the last numbers kept
   await expect(page.locator('#tdmCardLiq .liq-body')).toContainText('2,160');
   await expect(page.locator('#tdmCardLiq .liq-bar-h').first()).toHaveText('Bids800');
@@ -281,7 +282,7 @@ test('Desk: a book whose market is closed reads BOOK NOT LIVE and keeps Schwab\'
   await expect(page.locator('#tdmTrust')).not.toContainText('STALE');
   // the composite needs both books: words, no number
   await page.locator('#tdmCardLiq [data-liqvenue="COMPOSITE"]').click();
-  await expect(page.locator('#tdmCardLiq .liq-body')).toHaveText('NO BOOK' + CLOSED_BOOK.readout.venues.COMPOSITE.no_number_text);
+  await expect(page.locator('#tdmCardLiq .liq-body')).toHaveText('NO COMPOSITE' + CLOSED_BOOK.readout.venues.COMPOSITE.no_number_text);
   await expect(page.locator('#tdmCardLiq .liq-pct')).toHaveCount(0);
   expect(errs).toEqual([]);
 });
@@ -977,7 +978,7 @@ test.describe('Desk: the Liquidity card draws the served order-imbalance readout
     await expect(card(page).locator('.liq-body')).toHaveClass(/stale/);
     await expect(card(page).locator('.liq-body')).toContainText('BOOK OFFLINE');
     await expect(card(page).locator('.liq-body')).toContainText(c.not_live_text);
-    await expect(card(page).locator('.tdm-src')).toHaveText('Schwab NYSE_BOOK + NASDAQ_BOOK · deduped composite · NSDQ from NYSE_BOOK · book ' + c.book_time_ct + ' · not live');
+    await expect(card(page).locator('.tdm-src')).toHaveText('Schwab NYSE_BOOK + NASDAQ_BOOK · deduped composite · NSDQ from NYSE_BOOK · book ' + c.book_time_ct + ' · ' + c.book_age_text + ' old · not live');
     await expect(card(page).locator('.liq-pct')).toHaveText(c.views.weighted.pct_text);
     expect(errs).toEqual([]);
   });

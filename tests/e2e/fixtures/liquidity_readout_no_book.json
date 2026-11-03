@@ -117,6 +117,7 @@
   },
   "venues": {
    "COMPOSITE": {
+    "book_age_text": null,
     "book_time_ct": null,
     "book_time_ms": null,
     "books": [],
@@ -125,10 +126,12 @@
     "feed_label": "LIVE",
     "levels_text": null,
     "live": true,
+    "no_number_head": "NO BOOK",
     "no_number_text": "No book for this symbol right now",
     "not_live_text": null,
     "one_sided_text": null,
     "shared": null,
+    "short": null,
     "source_text": "Schwab NYSE_BOOK + NASDAQ_BOOK \u00b7 deduped composite \u00b7 NSDQ from NYSE_BOOK \u00b7 no book for this symbol right now",
     "status": "no_book",
     "touch_flag": null,
@@ -159,6 +162,7 @@
     }
    },
    "NASDAQ_BOOK": {
+    "book_age_text": null,
     "book_time_ct": null,
     "book_time_ms": null,
     "books": null,
@@ -167,10 +171,12 @@
     "feed_label": "LIVE",
     "levels_text": null,
     "live": true,
+    "no_number_head": "NO BOOK",
     "no_number_text": "No book for this symbol right now",
     "not_live_text": null,
     "one_sided_text": null,
     "shared": null,
+    "short": null,
     "source_text": "Schwab NASDAQ_BOOK \u00b7 no book for this symbol right now",
     "status": "no_book",
     "touch_flag": null,
@@ -201,6 +207,7 @@
     }
    },
    "NYSE_BOOK": {
+    "book_age_text": null,
     "book_time_ct": null,
     "book_time_ms": null,
     "books": null,
@@ -209,10 +216,12 @@
     "feed_label": "LIVE",
     "levels_text": null,
     "live": true,
+    "no_number_head": "NO BOOK",
     "no_number_text": "No book for this symbol right now",
     "not_live_text": null,
     "one_sided_text": null,
     "shared": null,
+    "short": null,
     "source_text": "Schwab NYSE_BOOK \u00b7 no book for this symbol right now",
     "status": "no_book",
     "touch_flag": null,

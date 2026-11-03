@@ -3232,18 +3232,35 @@ _SOURCE = {
 _LIVE_BOOK = "live book"
 
 
-def _no_number(r: dict) -> tuple[str, str] | None:
-    """Why a venue has no number, as the source line and the card say it; None when it has one."""
+#: what a held book that is not whole lacks, as the composite's words say it
+_SHORT = {"empty": "no levels", "one_sided": "one side only"}
+
+
+def _no_number(r: dict) -> tuple[str, str, str] | None:
+    """Why a venue has no number, as the source line, the card's line and the card's heading say
+    it; None when it has one."""
     status = r["status"]
     if status == "no_book":
-        return "no book for this symbol right now", "No book for this symbol right now"
+        return "no book for this symbol right now", "No book for this symbol right now", "NO BOOK"
     if status == "empty":
-        return "the book Schwab sent has no levels", "The book Schwab sent has no levels"
+        return (
+            "the book Schwab sent has no levels",
+            "The book Schwab sent has no levels",
+            "NO LEVELS",
+        )
     if status == "one_book":
         return (
             f"only {r['books'][0]} is captured",
             "Composite needs both books — only"
             f" {r['books'][0]} is captured for this symbol right now",
+            "NO COMPOSITE",
+        )
+    if status == "incomplete":
+        lacks = "; ".join(f"{v}'s book has {_SHORT[s]}" for v, s in r["short"].items())
+        return (
+            lacks,
+            f"Composite needs both books, each with bids and asks — {lacks} right now",
+            "NO COMPOSITE",
         )
     if status == "shared_code":
         codes = ", ".join(r["shared"])
@@ -3251,6 +3268,7 @@ def _no_number(r: dict) -> tuple[str, str] | None:
             f"{codes} quote in both books",
             f"{codes} quote in both books: which copy counts is not decided, so the composite"
             " has no number",
+            "NO COMPOSITE",
         )
     return None
 
@@ -3266,7 +3284,7 @@ def _source_text(venue: str, r: dict, window: str | None) -> str:
         if venue != COMPOSITE:
             parts.append(_LIVE_BOOK)
     elif r["book_time_ct"] is not None:
-        parts.append(f"book {r['book_time_ct']} · not live")
+        parts.append(f"book {r['book_time_ct']} · {r['book_age_text']} old · not live")
     else:
         parts.append("not live, no book time sent")
     if window is None:
@@ -3281,7 +3299,7 @@ def _not_live_text(r: dict) -> str | None:
         return None
     parts = []
     if r["book_time_ct"] is not None:
-        parts.append(f"Book from {r['book_time_ct']}, not live")
+        parts.append(f"Book from {r['book_time_ct']}, {r['book_age_text']} old, not live")
     else:
         parts.append("Not live, no book time sent")
     parts.append("these are the last numbers, not current")
@@ -3294,14 +3312,21 @@ def liquidity_readout(t: str, now: float) -> dict:
     (engine.book_readout, kept in history.LEAN), read over the readouts kept
     (engine.readout_card). Each book is judged by the one live rule on its own service, the
     composite live only while both are; a book that is not live keeps its last values, read to
-    its last value's time. With the exchange auction window of today's session as Schwab sent it
-    (time_et.auction; None while Schwab's answer for today is not held), and every word the card
-    shows."""
+    the time its last value arrived, with that book's time and age. With the exchange auction
+    window of today's session as Schwab sent it (time_et.auction; None while Schwab's answer for
+    today is not held), and every word the card shows."""
     points = LEAN.points(t)
     readout = points[-1][1] if points else _NO_BOOKS
     labels = {v: price_state(t, now, v)[0] for v in BOOK_VENUES}
     labels[COMPOSITE] = next((labels[v] for v in BOOK_VENUES if labels[v] != lmp.LIVE), lmp.LIVE)
-    ends = {v: now if labels[v] == lmp.LIVE else points[-1][0] for v in readout} if points else {}
+    # a venue not live is read to the first reading holding its newest book
+    ends = {
+        v: now
+        if labels[v] == lmp.LIVE
+        else next(ts for ts, r in points if r[v]["book_time_ms"] == readout[v]["book_time_ms"])
+        for v in readout
+        if points
+    }
     card = readout_card(readout, points, ends)
     window = auction(datetime.fromtimestamp(now, ET))
     for v, r in card["venues"].items():
@@ -3309,10 +3334,12 @@ def liquidity_readout(t: str, now: float) -> dict:
         r["feed_label"] = labels[v]
         r["live"] = labels[v] == lmp.LIVE
         r["book_time_ct"] = None if book_ms is None else ct_label(book_ms / 1000.0)
+        r["book_age_text"] = None if book_ms is None else age_text(now - book_ms / 1000.0)
         r["not_live_text"] = _not_live_text(r)
         r["source_text"] = _source_text(v, r, window)
         why = _no_number(r)
         r["no_number_text"] = None if why is None else why[1]
+        r["no_number_head"] = None if why is None else why[2]
         r["dedup_partial_text"] = (
             "Dedup partial: a level came without per-exchange sizes, its total taken whole"
             if r["dedup_partial"]

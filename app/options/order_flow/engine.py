@@ -62,25 +62,23 @@ def _iter_content(data: dict) -> list:
     return []
 
 
-Exchanges = tuple[tuple[str, float, float], ...]
+Exchanges = tuple[tuple[str, float], ...]
 
 
 def _exchange_sizes(rows: object, size_key: str) -> Exchanges | None:
     """A level's own rows, one per exchange or market maker, as sent: (EXCHANGE, BID_VOLUME or
-    ASK_VOLUME, SEQUENCE: Schwab's quote time in milliseconds of that market maker's quote,
-    docs/schwab/schwab_streamer_api.pdf §4 Book Market Makers). None when the level carries none,
-    or a row lacks its code, size or quote time."""
+    ASK_VOLUME; docs/schwab/schwab_streamer_api.pdf §4 Book Market Makers). None when the level
+    carries none, or a row lacks its code or size."""
     if not isinstance(rows, list) or not rows:
         return None
     out = []
     for row in rows:
         if not isinstance(row, dict):
             return None
-        code = row.get("EXCHANGE")
-        size, quoted = schwab_count(row.get(size_key)), schwab_number(row.get("SEQUENCE"))
-        if not isinstance(code, str) or not code or size is None or quoted is None:
+        code, size = row.get("EXCHANGE"), schwab_count(row.get(size_key))
+        if not isinstance(code, str) or not code or size is None:
             return None
-        out.append((code, size, quoted))
+        out.append((code, size))
     return tuple(out)
 
 
@@ -603,7 +601,7 @@ def _codes(item: dict) -> set[str]:
         for side in ("BIDS", "ASKS")
         for _price, _total, rows in _side_levels(item, side)
         if rows is not None
-        for code, _size, _quoted in rows
+        for code, _size in rows
     }
 
 
@@ -621,9 +619,7 @@ def _composite_side(books: dict[str, dict], side: str, nsdq_from: str) -> tuple[
                 quotes.append((price, total))
                 continue
             quotes += [
-                (price, size)
-                for code, size, _q in rows
-                if code.upper() != NSDQ or venue == nsdq_from
+                (price, size) for code, size in rows if code.upper() != NSDQ or venue == nsdq_from
             ]
     quotes.sort(key=lambda q: q[0], reverse=side == "BIDS")
     levels = [
@@ -703,9 +699,10 @@ def _readout(bids: Levels, asks: Levels, book_time_ms: float | None) -> dict:
 def book_readout(books: dict[str, dict | None]) -> dict[str, dict]:
     """The imbalance readout of each Schwab book and of their composite, from each venue's newest
     book (`state.newest_book`, every venue of BOOK_VENUES; None: no book). The composite needs
-    both books (status one_book: `books` names the one held) and no code but NSDQ in both
-    (status shared_code: `shared` names them); its time is its older book's, and each view
-    carries the percentage with NSDQ taken from the other book instead (nsdq_other_pct)."""
+    both books (status one_book: `books` names the one held), each with bids and asks (status
+    incomplete: `short` names each book that has not, by its own status), and no code but NSDQ
+    in both (status shared_code: `shared` names them); its time is its older book's, and each
+    view carries the percentage with NSDQ taken from the other book instead (nsdq_other_pct)."""
     out: dict[str, dict] = {}
     held: dict[str, dict] = {}
     for v in BOOK_VENUES:
@@ -718,12 +715,15 @@ def book_readout(books: dict[str, dict | None]) -> dict[str, dict]:
         asks = _sorted_valid_levels(book_side(item, "ASKS"), descending=False)
         out[v] = _readout(bids, asks, schwab_number(item.get("BOOK_TIME")))
     shared = sorted(set.intersection(*map(_codes, held.values())) - {NSDQ}) if held else []
+    short = {v: out[v]["status"] for v in held if out[v]["status"] != "ok"}
     if len(held) < len(BOOK_VENUES):
         out[COMPOSITE] = {
             "status": "one_book" if held else "no_book",
             "book_time_ms": None,
             "books": list(held),
         }
+    elif short:
+        out[COMPOSITE] = {"status": "incomplete", "book_time_ms": None, "short": short}
     elif shared:
         out[COMPOSITE] = {"status": "shared_code", "book_time_ms": None, "shared": shared}
     else:
@@ -954,6 +954,7 @@ def readout_card(readout: dict[str, dict], points: list[tuple[float, dict]], end
                     "touch_state",
                     "one_sided_text",
                     "books",
+                    "short",
                     "shared",
                     "dedup_partial",
                 )

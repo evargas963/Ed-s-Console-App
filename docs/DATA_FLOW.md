@@ -262,11 +262,13 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
   once from NYSE_BOOK by convention, the two books' sizes for it differing in 82.5% of strict
   pairs on 2026-11-02 with no way in the data to say which is right; the shares summed at each
   distinct price; the same composite with NSDQ from NASDAQ_BOOK served beside it; no number
-  while only one book is held, or while a code other than NSDQ is in both, which SPY's and IWM's
+  while only one book is held, while either lacks bids or asks (Schwab sends empty books after
+  the close), or while a code other than NSDQ is in both, which SPY's and IWM's
   books of 2026-11-02 never had; a level with no per-exchange rows taken whole and the dedup
   marked partial), read over at most one value a second per ticker that the console's intake
   records as each book arrives, the newest in that second (`history.LEAN`, 308 s), and judged
-  live per book by the one live rule, the composite only while both are. The exchange auction
+  live per book by the one live rule, the composite only while both are; a book not live is read
+  to the reading its last book arrived in, with its time and age. The exchange auction
   windows are the 5 minutes before and the 10 minutes before the end of Schwab's regular window
   for the date (`time_et.auction`); inside them the number stands and a line says the auction
   imbalance is a different number, not shown (continuous trading runs through them).

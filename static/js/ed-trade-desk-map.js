@@ -503,7 +503,7 @@
       return;
     }
     src(c, esc(r.source_text));
-    if (r.no_number_text) { body.innerHTML = '<div class="liq-none">NO BOOK<p>' + esc(r.no_number_text) + '</p></div>'; return; }
+    if (r.no_number_text) { body.innerHTML = '<div class="liq-none">' + esc(r.no_number_head) + '<p>' + esc(r.no_number_text) + '</p></div>'; return; }
     var v = r.views[view];
     var h = '<div class="liq-lbl liq-keep"><span>' + (view === 'weighted' ? 'WEIGHTED TOP-5 HEADLINE' : 'TOP ' + view + ' HEADLINE') + '</span><span>' +
       (r.touch_flag ? '<span class="liq-pill">' + esc(r.touch_flag) + '</span> ' : '') +
