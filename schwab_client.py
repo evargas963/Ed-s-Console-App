@@ -435,7 +435,8 @@ def build_client_from_token(token_path: str, api_key: str, app_secret: str) -> S
         )
         return SchwabClientState(ok=True, message="Client loaded from token file.", client=c)
     except Exception as e:
-        log.warning("schwab client not built from %s", resolved, exc_info=True)
+        # the caller warns once (ChainSweep.waits); the cause is kept here, asked again each second
+        log.debug("schwab client not built from %s", resolved, exc_info=True)
         return SchwabClientState(
             ok=False, message=f"Unable to create Schwab client: {e}", client=None
         )
