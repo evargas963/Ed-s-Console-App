@@ -69,6 +69,7 @@ test.describe('Desk: the Liquidity card draws the served order-imbalance readout
   test('a depth switch redraws headline, bars, sentence and dots from that depth; a venue switch from that venue', async ({ page }) => {
     const errs = watchErrors(page);
     await openDesk(page, READOUT_LIVE);
+    await expect(card(page).locator('[data-liqview="3"]')).toBeVisible();
     await card(page).locator('[data-liqview="3"]').click();
     const v3 = LIVE_COMP.views['3'];
     await expect(card(page).locator('.liq-body')).toContainText('TOP 3 HEADLINE');
@@ -150,6 +151,7 @@ test.describe('Desk: the Liquidity card draws the served order-imbalance readout
     await openDesk(page, READOUT_LIVE);
     const d = READOUT_LIVE.readout.detail;
     await expect(card(page).locator('.liq-detail')).toHaveCount(0);
+    await expect(card(page).locator('.liq-hl')).toBeVisible();
     await card(page).locator('.liq-hl').click();
     const panel = card(page).locator('.liq-detail');
     for (const t of [d.weights, d.zones, d.nsdq, LIVE_COMP.views.weighted.nsdq_text, d.construction, d.spans, d.books]) {
