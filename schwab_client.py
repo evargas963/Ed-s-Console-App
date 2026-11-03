@@ -436,7 +436,7 @@ def build_client_from_token(token_path: str, api_key: str, app_secret: str) -> S
             enforce_enums=False,  # critical with your current schwab-py install
         )
         return SchwabClientState(ok=True, message="Client loaded from token file.", client=c)
-    except Exception as e:  # its caller logs it once, the cause carried
+    except Exception as e:
         raise ConnectionError(e) from e
 
 
