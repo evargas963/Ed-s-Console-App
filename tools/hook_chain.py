@@ -82,8 +82,8 @@ def run_chain(raw_payload: str, members: tuple[str, ...]) -> int:
             rc = int(mod.main() or 0)
         except SystemExit as exc:  # a guard that sys.exit()s inside main()
             rc = int(exc.code or 0)
-        except Exception as exc:  # a broken guard must scream, not wave through
-            log.exception("HOOK CHAIN: %s crashed: %s: %s", name, type(exc).__name__, exc)
+        except Exception:  # a broken guard must scream, not wave through
+            log.exception("HOOK CHAIN: %s crashed", name)
             rc = 2
         worst = max(worst, rc)
     if worst:
