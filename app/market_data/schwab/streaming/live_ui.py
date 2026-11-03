@@ -176,8 +176,8 @@ class LiveUiServer:
         while True:
             try:
                 feed = self.beat()
-            except Exception as e:  # noqa: BLE001 -- a failed beat leaves the feed unproven (it ages out)
-                log.warning("live ui heartbeat: %s: %s", type(e).__name__, e)
+            except Exception as e:  # a failed beat leaves the feed unproven (it ages out)
+                log.warning("live ui heartbeat: %s: %s", type(e).__name__, e, exc_info=True)
                 feed = None
             now = self.clock()
             for c in list(self.clients):
@@ -196,9 +196,11 @@ class LiveUiServer:
                     log.warning("live ui: a browser stopped reading; dropping it")
                     self.clients.discard(c)
                     c.ws.transport.abort()
-                except Exception as e:  # noqa: BLE001 -- logged; the other browsers' beats go out
+                except Exception as e:  # logged; the other browsers' beats go out
                     self.stats["beat_send_failures"] += 1
-                    log.warning("live ui beat to one browser: %s: %s", type(e).__name__, e)
+                    log.warning(
+                        "live ui beat to one browser: %s: %s", type(e).__name__, e, exc_info=True
+                    )
             await asyncio.sleep(HEARTBEAT_SEC)
 
 

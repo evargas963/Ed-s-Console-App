@@ -1319,7 +1319,7 @@ class CaptureWriter:
     def _thread(self, q: queue.SimpleQueue) -> None:
         try:
             self._write(q)
-        except Exception as e:  # noqa: BLE001 -- recorded as the writer's death, then raised
+        except Exception as e:  # recorded as the writer's death, then raised
             log.error("stream writer died: %s: %s", type(e).__name__, e)
             with self._lock:
                 self.state, self.error, self.error_ts = (

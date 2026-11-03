@@ -403,7 +403,9 @@ class ChainSweep:
                 "python reauth_schwab.py"
             )
             if why != self.waiting:
-                log.warning("chain sweep waits for the daemon's Schwab client: %s", e)
+                log.warning(
+                    "chain sweep waits for the daemon's Schwab client: %s", e, exc_info=True
+                )
             self.waiting = why
         return self.waiting
 
@@ -448,8 +450,10 @@ class ChainSweep:
                     date=date.fromisoformat(day),
                 )
                 answer = resp.json()
-            except Exception as e:  # noqa: BLE001 -- that date's answer is the failure; it is asked again
-                log.warning("market hours for %s failed: %s: %s", day, type(e).__name__, e)
+            except Exception as e:  # that date's answer is the failure; it is asked again
+                log.warning(
+                    "market hours for %s failed: %s: %s", day, type(e).__name__, e, exc_info=True
+                )
                 continue
             if resp.status_code == 200:
                 record_markets(answer)
@@ -512,9 +516,14 @@ class ChainSweep:
                     whole = False
                     continue
                 answer = resp.json()
-            except Exception as e:  # noqa: BLE001 -- that series' answer is the failure; the next series is asked
+            except Exception as e:  # that series' answer is the failure; the next series is asked
                 log.warning(
-                    "price history %s %s failed: %s: %s", ticker, series, type(e).__name__, e
+                    "price history %s %s failed: %s: %s",
+                    ticker,
+                    series,
+                    type(e).__name__,
+                    e,
+                    exc_info=True,
                 )
                 whole = False
                 continue
@@ -552,8 +561,8 @@ class ChainSweep:
                 self._optioned.add(ticker)
                 chain.spots[expiry.isoformat()] = schwab_number(payload.get("underlyingPrice"))
                 chain.by_expiry[expiry.isoformat()] = flatten_chain_contracts(payload)
-        except Exception as e:  # noqa: BLE001 -- that ticker's answer is the failure; the rotation goes on
-            log.warning("chain %s failed: %s: %s", ticker, type(e).__name__, e)
+        except Exception as e:  # that ticker's answer is the failure; the rotation goes on
+            log.warning("chain %s failed: %s: %s", ticker, type(e).__name__, e, exc_info=True)
             return self.fail([chain], f"{type(e).__name__}: {e}")
         for ct in chain.contracts():
             ct.update(dict.fromkeys(GREEK_FIELDS))
@@ -585,8 +594,14 @@ class ChainSweep:
             errors = answer.pop("errors") if "errors" in answer else {}
             named = set(errors["invalidSymbols"]) if "invalidSymbols" in errors else set()
             quoted = {s: e["quote"] for s, e in answer.items()}
-        except Exception as e:  # noqa: BLE001 -- those tickers' answer is the failure; the rotation goes on
-            log.warning("quotes for %d contracts failed: %s: %s", len(batch), type(e).__name__, e)
+        except Exception as e:  # those tickers' answer is the failure; the rotation goes on
+            log.warning(
+                "quotes for %d contracts failed: %s: %s",
+                len(batch),
+                type(e).__name__,
+                e,
+                exc_info=True,
+            )
             return self.fail(chains, f"{type(e).__name__}: {e}")
         if errors:
             log.warning(
@@ -628,12 +643,13 @@ class ChainSweep:
         contracts = chain.contracts()
         try:
             self._write_history(chain)
-        except Exception as e:  # noqa: BLE001 -- the chain still goes to the console; a failed history write is the writer's to keep and show
+        except Exception as e:  # the chain still goes to the console; the failure is kept and shown
             log.warning(
                 "chain history for %s not written, kept as delivered: %s: %s",
                 chain.ticker,
                 type(e).__name__,
                 e,
+                exc_info=True,
             )
             self.failures.keep_failure(
                 f"chain_history.{chain.ticker}",

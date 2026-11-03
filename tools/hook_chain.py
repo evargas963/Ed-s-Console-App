@@ -26,11 +26,13 @@ from __future__ import annotations
 import importlib
 import io
 import json
+import logging
 import subprocess
 import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
+log = logging.getLogger(__name__)
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
@@ -80,8 +82,8 @@ def run_chain(raw_payload: str, members: tuple[str, ...]) -> int:
             rc = int(mod.main() or 0)
         except SystemExit as exc:  # a guard that sys.exit()s inside main()
             rc = int(exc.code or 0)
-        except Exception as exc:  # noqa: BLE001 — a broken guard must scream, not wave through
-            sys.stderr.write(f"HOOK CHAIN: {name} crashed: {type(exc).__name__}: {exc}\n")
+        except Exception:  # a broken guard must scream, not wave through
+            log.exception("HOOK CHAIN: %s crashed", name)
             rc = 2
         worst = max(worst, rc)
     if worst:

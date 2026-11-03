@@ -414,6 +414,93 @@ def test_daemon_shutdown_is_not_held_up_by_a_connected_console(feed):
     asyncio.run(run())
 
 
+def test_no_daemon_is_one_line_and_a_daemon_that_stops_is_logged_with_its_traceback(feed, caplog):
+    """The console's real feed loop: its live push on a port this test holds (every connect
+    refused), its price rows on the daemon's real price socket, which then stops. A refused
+    connect, retried each 0.05 s, logs its one line with no traceback; the price rows' connection
+    closed by the daemon logs its warning with the traceback."""
+
+    async def run():
+        stop = asyncio.Event()
+        ui_stats: dict = {}
+        ui = asyncio.create_task(
+            live_ui.serve_live_ui(
+                stop,
+                heartbeat_fn=_daemon_heartbeat(),
+                host="127.0.0.1",
+                port=0,
+                stats=ui_stats,
+                record_heartbeat=lambda _beat: None,
+            )
+        )
+        assert await _until(lambda: ui_stats.get("listening"))
+        ofs._feed_running = True
+        client = asyncio.create_task(
+            ofs._feed_loop(
+                f"ws://127.0.0.1:{_held_port()}", f"ws://127.0.0.1:{_port(ui_stats)}", 0.05
+            )
+        )
+        try:
+            assert await _until(lambda: ui_stats.get("clients") == 1)
+            stop.set()
+            await asyncio.wait_for(ui, timeout=5)
+
+            def logged(words):
+                return any(words in r.getMessage() for r in caplog.records)
+
+            assert await _until(lambda: logged("price rows ended"))
+            # a refused connect is answered at once on Linux and in about 2 s on Windows
+            assert await _until(lambda: logged("live push unavailable"), timeout=15)
+        finally:
+            ofs._feed_running = False
+            client.cancel()
+            stop.set()
+            await asyncio.gather(client, ui, return_exceptions=True)
+
+    with caplog.at_level("INFO", logger=ofs.log.name):
+        asyncio.run(run())
+    refused = [r for r in caplog.records if "live push unavailable" in r.getMessage()]
+    ended = [r for r in caplog.records if "price rows ended" in r.getMessage()]
+    assert refused and all(r.exc_info is None for r in refused), refused
+    assert ended[0].levelname == "WARNING" and ended[0].exc_info is not None, ended
+
+
+def test_a_port_that_is_not_the_daemon_is_warned_of_once_with_its_traceback(feed, caplog):
+    """The console's real feed loop, its live push on a port held by a server that answers HTTP,
+    not the daemon's websocket, retried each 0.05 s: one warning with its traceback, and every
+    retry after it with the same error at debug, so a retry each second does not fill the log."""
+
+    answered = []
+
+    async def foreign(reader, writer):
+        answered.append(1)  # a header that differs on every answer, as a server's Date does
+        n = str(len(answered)).encode()
+        writer.write(b"HTTP/1.1 200 OK\r\nX-Answer: " + n + b"\r\nContent-Length: 2\r\n\r\nno")
+        await writer.drain()
+        writer.close()
+
+    def ended():
+        return [r for r in caplog.records if r.getMessage().startswith("live push ended")]
+
+    async def run():
+        server = await asyncio.start_server(foreign, "127.0.0.1", 0)
+        ofs._feed_running = True
+        client = asyncio.create_task(_console(server.sockets[0].getsockname()[1]))
+        try:
+            assert await _until(lambda: len(ended()) >= 5)
+        finally:
+            ofs._feed_running = False
+            client.cancel()
+            await asyncio.gather(client, return_exceptions=True)
+            server.close()
+
+    with caplog.at_level("DEBUG", logger=ofs.log.name):
+        asyncio.run(run())
+    levels = [r.levelname for r in ended()]
+    assert levels[0] == "WARNING" and ended()[0].exc_info is not None, levels
+    assert set(levels[1:]) == {"DEBUG"}, levels
+
+
 def test_a_late_console_gets_the_current_record_with_each_fields_own_time(feed):
     """Schwab LEVELONE sends only changed fields. A console connecting after a trade and a
     later bid/ask tick gets the current record (docs/DATA_FLOW.md §2 D3): the trade's fields

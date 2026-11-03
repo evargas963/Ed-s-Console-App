@@ -16,9 +16,9 @@ Then run: python reauth_schwab.py to get a new token with account scope.
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
-import traceback
 
 from config import build_config, load_dotenv_file
 from schwab_client import (
@@ -29,6 +29,8 @@ from schwab_client import (
     run_manual_flow,
     token_file_lock,
 )
+
+log = logging.getLogger(__name__)
 
 
 def _redirect_url_arg() -> str | None:
@@ -96,7 +98,7 @@ def reauth():
             sys.exit(1)
         except Exception as e:
             print(f"\nFAILURE: {e}")
-            traceback.print_exc()
+            log.exception("reauth failed")
             sys.exit(1)
 
     if manual:
@@ -161,7 +163,7 @@ def reauth():
         sys.exit(1)
     except Exception as e:
         print(f"\nFAILURE: {e}")
-        traceback.print_exc()
+        log.exception("reauth failed")
         if not manual:
             print("\nIf you completed login and got a callback page:")
             print("  The browser must ACCEPT the self-signed cert to reach the local server.")
