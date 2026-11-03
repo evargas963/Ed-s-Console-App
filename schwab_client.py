@@ -410,7 +410,9 @@ def sign_in_problem(inspection: TokenInspectionResult, resolved: str) -> "str | 
 
 
 def build_client_from_token(token_path: str, api_key: str, app_secret: str) -> SchwabClientState:
-    """Build Schwab client from token file. token_path is normalized to absolute."""
+    """Build Schwab client from token file. token_path is normalized to absolute. A file that holds
+    no usable sign-in is a state with its reason; a build that fails on one that does raises
+    ConnectionError, its cause carried."""
     if schwab_live_blocked_for(api_key=api_key, app_secret=app_secret):
         return SchwabClientState(
             ok=False,
@@ -434,10 +436,8 @@ def build_client_from_token(token_path: str, api_key: str, app_secret: str) -> S
             enforce_enums=False,  # critical with your current schwab-py install
         )
         return SchwabClientState(ok=True, message="Client loaded from token file.", client=c)
-    except Exception as e:
-        return SchwabClientState(
-            ok=False, message=f"Unable to create Schwab client: {e}", client=None
-        )
+    except Exception as e:  # its caller logs it once, the cause carried
+        raise ConnectionError(e) from e
 
 
 def _parse_callback_port(callback_url: str) -> tuple[str, int]:

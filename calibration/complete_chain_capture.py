@@ -403,7 +403,9 @@ class ChainSweep:
                 "python reauth_schwab.py"
             )
             if why != self.waiting:
-                log.warning("chain sweep waits for the daemon's Schwab client: %s", e)
+                log.warning(
+                    "chain sweep waits for the daemon's Schwab client: %s", e, exc_info=True
+                )
             self.waiting = why
         return self.waiting
 

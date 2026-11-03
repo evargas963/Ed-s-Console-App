@@ -449,7 +449,7 @@ def test_no_daemon_is_one_line_and_a_daemon_that_stops_is_logged_with_its_traceb
                 return any(words in r.getMessage() for r in caplog.records)
 
             assert await _until(lambda: logged("price rows ended"))
-            # a connect to a port bound and not listening waits out its open timeout (5 s)
+            # a refused connect is answered at once on Linux and in about 2 s on Windows
             assert await _until(lambda: logged("live push unavailable"), timeout=15)
         finally:
             ofs._feed_running = False

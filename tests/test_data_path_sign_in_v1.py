@@ -406,6 +406,48 @@ def test_a_refused_sign_in_is_why_the_screen_says_the_levels_are_not_live(tmp_pa
     assert sweep.waiting is None
 
 
+#: another process holding the token file's lock (as a save would) for 25 s: "held" once it does
+_HOLDER = """
+import sys, time
+sys.path.insert(0, sys.argv[1])
+import schwab_client as sc
+with sc.token_file_lock(sys.argv[2]):
+    print("held", flush=True)
+    time.sleep(25)
+"""
+
+
+def test_a_build_that_fails_is_logged_once_by_the_sweep_with_its_cause(tmp_path, caplog):
+    """A usable sign-in whose file another process holds locked past the builder's wait
+    (schwab_client.TOKEN_LOCK_WAIT_SEC): the real builder, through the daemon's real client holder
+    (capture.one_schwab_client), fails inside the build. The sweep's one warning carries the
+    traceback with the lock's own TimeoutError as its cause, and a second ask adds no warning."""
+    token = tmp_path / "schwab_token.json"
+    _new_sign_in(token, "a")
+    schwab_client = capture.one_schwab_client(
+        lambda: sc.build_client_from_token(str(token), "LiveLookingKey", "LiveLookingSecret")
+    )
+    holder = subprocess.Popen(
+        [sys.executable, "-c", _HOLDER, str(Path(__file__).resolve().parent.parent), str(token)],
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        assert holder.stdout.readline().strip() == "held"
+        sweep = _sweep(tmp_path)
+        with caplog.at_level(logging.WARNING, logger=cch.log.name):
+            sweep.waits(schwab_client)
+            sweep.waits(schwab_client)
+    finally:
+        holder.kill()
+        holder.wait()
+    warned = [r for r in caplog.records if r.getMessage().startswith("chain sweep waits")]
+    assert len(warned) == 1, [r.getMessage() for r in warned]
+    error = warned[0].exc_info[1] if warned[0].exc_info else None
+    assert isinstance(error, ConnectionError), warned[0].exc_info
+    assert isinstance(error.__cause__, TimeoutError), error.__cause__
+
+
 def test_the_chain_sweep_waits_for_a_client_it_cannot_build_and_goes_on_once_built(
     tmp_path, caplog
 ):
