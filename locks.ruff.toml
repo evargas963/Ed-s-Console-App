@@ -14,6 +14,7 @@ select = [
     "D2", "D3", "D4", # PEP 257, where a docstring exists
     "E", "F", "I", "UP", "W", # PEP 8, unused and undefined names, import order, old syntax
     "ERA", # code left in a comment
+    "INP", "N999", # a file locks.imports.toml's walk would not reach
     "PERF", # needless work in a loop
     "PLC0415", # an import outside the module's top
     "RET", # a return that says nothing
@@ -35,11 +36,8 @@ max-complexity = 10
 
 [lint.flake8-tidy-imports.banned-api]
 "aiohttp".msg = "Only Feed talks to Schwab."
-"authlib".msg = "Only Feed talks to Schwab."
 "http.client".msg = "Only Feed talks to Schwab."
-"httpx".msg = "Only Feed talks to Schwab."
 "requests".msg = "Only Feed talks to Schwab."
-"schwab".msg = "Only Feed talks to Schwab."
 "urllib.request".msg = "Only Feed talks to Schwab."
 "websockets".msg = "Only Feed talks to Schwab."
 "sqlite3".msg = "Only the Recorder uses a database."

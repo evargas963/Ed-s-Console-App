@@ -27,9 +27,10 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
         with:
           node-version: "22"
-      - name: the base's ruff, and its Babel for page code
+      - name: the base's ruff and import-linter, and its Babel for page code
         run: |
-          python -m pip install "$(grep '^ruff==' judge/requirements-dev.txt)"
+          python -m pip install "$(grep '^ruff==' judge/requirements-dev.txt)" \
+            "$(grep '^import-linter==' judge/requirements-dev.txt)"
           npm ci --prefix judge
       - name: the change, against the base
         env:
@@ -49,3 +50,5 @@ jobs:
           python ../judge/tools/check_end_to_end.py --base "$base" --body-file ../pr_body.md
           python ../judge/tools/check_integrity.py --base "$base" --body-file ../pr_body.md \
             --head-sha "$HEAD_SHA"
+          cd ..
+          lint-imports --config judge/locks.imports.toml --no-cache

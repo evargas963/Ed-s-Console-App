@@ -97,6 +97,15 @@ def test_no_ignore_file_or_excluded_folder_hides_a_finding(tmp_path):
     assert "ruff T201: 0 -> 1" in _refused(repo)
 
 
+def test_a_file_the_import_contracts_would_not_walk_to_is_refused(tmp_path):
+    repo = _repo(tmp_path)
+    _write(repo, "orphans/a.py", "VALUE = 1\n")
+    _write(repo, "not-a-name/__init__.py", "")
+    refused = _refused(repo)
+    assert "ruff INP001: 0 -> 1" in refused
+    assert "ruff N999: 0 -> 1" in refused
+
+
 def test_a_file_named_ruff_in_the_change_does_not_answer_for_ruff(tmp_path):
     repo = _repo(tmp_path)
     _write(repo, "ruff.py", "print('[]')\n")

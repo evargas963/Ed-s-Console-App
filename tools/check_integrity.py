@@ -36,7 +36,7 @@ MARKERS = re.compile(
     r"|\b(?:test|describe|it)\.(?:skip|fixme|fail)\b|\bx(?:it|describe)\b|\bTODO\b|\bFIXME\b"
 )
 GOVERNING = re.compile(
-    r"^(AGENTS\.md|CLAUDE\.md|docs/DATA_FLOW\.md|ACTIVE_PROGRAM\.md|locks\.ruff\.toml"
+    r"^(AGENTS\.md|CLAUDE\.md|docs/DATA_FLOW\.md|ACTIVE_PROGRAM\.md|locks\.\w+\.toml"
     r"|pyproject\.toml|\.pre-commit-config\.yaml|\.gitattributes"
     r"|requirements-dev\.txt|package-lock\.json"
     r"|\.github/.*|\.claude/.*|\.cursor/.*"
