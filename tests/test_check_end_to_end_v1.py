@@ -181,6 +181,42 @@ def test_a_patch_already_on_main_is_not_counted_against_a_pr_that_does_not_touch
         ),
         (
             "server.py",
+            "def spot(prev):\n    try:\n        return f(prev)\n    except Exception:\n"
+            "        x = np.log(prev)\n        return x\n",
+            "an except that catches everything",
+        ),
+        (
+            "server.py",
+            "def spot(prev):\n    try:\n        return f(prev)\n    except Exception:\n"
+            "        def later():\n            raise RuntimeError('x')\n\n        return None\n",
+            "an except that catches everything",
+        ),
+        (
+            "server.py",
+            "def spot(prev):\n    try:\n        return f(prev)\n    except Exception:\n"
+            "        raise RuntimeError('no cause')\n",
+            "an except that catches everything",
+        ),
+        (
+            "server.py",
+            "def spot(prev):\n    try:\n        return f(prev)\n    except Exception:\n"
+            "        raise ConnectionError('down') from None\n",
+            "an except that catches everything",
+        ),
+        (
+            "server.py",
+            "def spot(prev):\n    try:\n        return f(prev)\n    except Exception:\n"
+            "        def later():\n            log.info('x')\n\n        return None\n",
+            "an except that catches everything",
+        ),
+        (
+            "server.py",
+            "def spot(prev):\n    try:\n        return f(prev)\n    except Exception:\n"
+            "        cb = lambda: log.info('x')\n        return cb\n",
+            "an except that catches everything",
+        ),
+        (
+            "server.py",
             "from contextlib import suppress\n\n\n"
             "def spot(d):\n    with suppress(KeyError):\n        return d['k']\n",
             "an error swallowed (`contextlib.suppress`)",
@@ -224,6 +260,13 @@ def test_each_patch_shape_a_pr_adds_is_refused(tmp_path, path, text, what):
         "            log.info('retrying: %s', e)\n",
         "def reprice(tk):\n    try:\n        publish(tk)\n    except Exception as e:\n"
         "        log.warning('reprice failed for %s: %s', tk, e)\n",
+        # a catch-all that raises the error on with its cause (#716's client builder)
+        "def build(path):\n    try:\n        return load(path)\n    except Exception as e:\n"
+        "        raise ConnectionError(e) from e\n",
+        # a catch-all whose log sits inside an if, against a flood (#716's tick callback)
+        "def tick(sym):\n    global n\n    try:\n        callback(sym)\n"
+        "    except Exception as e:\n        n += 1\n        if n & (n - 1) == 0:\n"
+        "            log.warning('tick failed for %s: %s', sym, e, exc_info=True)\n",
     ],
 )
 def test_what_is_not_a_patch_passes(tmp_path, text):
@@ -236,8 +279,7 @@ def test_a_line_added_inside_an_old_block_does_not_charge_the_block_to_the_pr(tm
         {
             **BASE,
             "server.py": (
-                "def spot():\n    try:\n        go()\n    except Exception as e:\n"
-                "        log(e)\n        raise\n"
+                "def spot():\n    try:\n        go()\n    except Exception as e:\n        keep(e)\n"
             ),
         },
     )
@@ -246,7 +288,7 @@ def test_a_line_added_inside_an_old_block_does_not_charge_the_block_to_the_pr(tm
         {
             "server.py": (
                 "def spot():\n    try:\n        go()\n    except Exception as e:\n"
-                "        log(e)\n        count()\n        raise\n"
+                "        keep(e)\n        count()\n"
             ),
             **REAL_TEST,
         },
