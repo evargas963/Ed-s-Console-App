@@ -12,8 +12,9 @@ The product lines a PR adds carry no patch shape:
    - an except that catches everything (bare, `Exception`, `BaseException`, or a tuple holding
      one), or one whose only statement swallows the error: `pass`, `continue`, a return or an
      assignment of None or a literal, or a call with no re-raise. An except that logs the error
-     and carries on is not a patch (the operator's ruling): one whose body logs (`.debug`,
-     `.info`, `.warning`, `.error`, `.exception`, `.critical`, `.log`) is never refused;
+     and carries on is not a patch (the operator's ruling), nor one that raises: one whose body,
+     at any depth, logs (`.debug`, `.info`, `.warning`, `.error`, `.exception`, `.critical`,
+     `.log`) or raises is never refused;
    - `contextlib.suppress`;
    - a missing value replaced by a literal: `x or <literal>`, a None-check ternary or
      `if x is None:` that returns or assigns a literal, `.get(k, <literal>)` (positional or
@@ -374,14 +375,17 @@ def _none_check(test: ast.AST) -> bool:
     )
 
 
-def _logs(handler: ast.ExceptHandler) -> bool:
-    """The except logs the error and carries on: not a patch."""
+def _reports(handler: ast.ExceptHandler) -> bool:
+    """Anywhere in its body, the except logs the error or raises: not a patch."""
     return any(
-        isinstance(s, ast.Expr)
-        and isinstance(s.value, ast.Call)
-        and isinstance(s.value.func, ast.Attribute)
-        and s.value.func.attr in LOG_METHODS
+        isinstance(n, ast.Raise)
+        or (
+            isinstance(n, ast.Call)
+            and isinstance(n.func, ast.Attribute)
+            and n.func.attr in LOG_METHODS
+        )
         for s in handler.body
+        for n in ast.walk(s)
     )
 
 
@@ -447,7 +451,7 @@ def python_patches(source: str, added: set[int]) -> list[tuple[int, str]]:
             if node.lineno not in added:  # an old block with a line added inside it
                 continue
             if isinstance(node, ast.ExceptHandler):
-                if _logs(node):
+                if _reports(node):
                     continue
                 if _catches_everything(node):
                     found.append((node.lineno, "an except that catches everything"))

@@ -224,6 +224,13 @@ def test_each_patch_shape_a_pr_adds_is_refused(tmp_path, path, text, what):
         "            log.info('retrying: %s', e)\n",
         "def reprice(tk):\n    try:\n        publish(tk)\n    except Exception as e:\n"
         "        log.warning('reprice failed for %s: %s', tk, e)\n",
+        # a catch-all that raises the error on with its cause (#716's client builder)
+        "def build(path):\n    try:\n        return load(path)\n    except Exception as e:\n"
+        "        raise ConnectionError(e) from e\n",
+        # a catch-all whose log sits inside an if, against a flood (#716's tick callback)
+        "def tick(sym):\n    global n\n    try:\n        callback(sym)\n"
+        "    except Exception as e:\n        n += 1\n        if n & (n - 1) == 0:\n"
+        "            log.warning('tick failed for %s: %s', sym, e, exc_info=True)\n",
     ],
 )
 def test_what_is_not_a_patch_passes(tmp_path, text):
