@@ -655,14 +655,11 @@ def _undeletable(path: Path):
     return lambda: os.chmod(path.parent, stat.S_IRWXU)
 
 
-def test_a_written_back_spill_the_disk_will_not_delete_is_deleted_at_the_next_start(
-    tmp_path, caplog
-):
+def test_a_written_back_spill_the_disk_will_not_delete_is_deleted_at_the_next_start(tmp_path):
     """INDUCED CONDITIONS: as in the spill test, and, before the lock is released, the spill file
     undeletable (_undeletable). Every quote is written back once and the writer goes on recording
-    what arrives after; the file stays with its progress row, and the log records the disk's
-    refusal with its traceback. Released, the next writer's start deletes it and its row without
-    writing it again."""
+    what arrives after; the file stays with its progress row. Released, the next writer's start
+    deletes it and its row without writing it again."""
     db = tmp_path / "stream_capture.db"
     writer = CaptureWriter(
         db, batch_rows=1, batch_sec=0.01, timeout_sec=0.2, retry_sec=0.1, hold_cap_bytes=_SMALL_CAP
@@ -699,8 +696,6 @@ def test_a_written_back_spill_the_disk_will_not_delete_is_deleted_at_the_next_st
         "the writer did not go on after the disk refused the delete"
     )
     assert path.exists() and [Path(k["path"]) for k in after["left_on_disk"]] == [path]
-    kept = [r for r in caplog.records if "not deleted, deleted at the next start" in r.getMessage()]
-    assert len(kept) == 1 and isinstance(kept[0].exc_info[1], OSError)
     _run_until_no_spill(CaptureWriter(db, batch_rows=1, batch_sec=0.01))
     with closing(sqlite3.connect(db)) as conn, conn:
         assert conn.execute("SELECT COUNT(*) FROM stream_spill_progress").fetchone()[0] == 0

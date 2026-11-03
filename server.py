@@ -4410,7 +4410,6 @@ def liquidity_snapshot(ticker: str, now: datetime):
                 "auction_interpretation": out.summary.auction_interpretation,
                 "notes": out.summary.notes,
             }
-        return result
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
     except HTTPException as e:
@@ -4419,3 +4418,4 @@ def liquidity_snapshot(ticker: str, now: datetime):
     except Exception as e:
         log.exception("liquidity snapshot for %s failed", ticker)
         return JSONResponse({"error": str(e)}, status_code=500)
+    return result

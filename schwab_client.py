@@ -222,7 +222,7 @@ class OneRefreshSession(OAuth2Client):
                         return super().ensure_active_token(self.token)
                     except AuthlibBaseError as e:
                         self._refused = e
-                        log.exception("%s", self._refusal_text())
+                        log.error("%s", self._refusal_text())
             raise SignInRefused(self._refusal_text()) from self._refused
 
     def refusal(self) -> "str | None":

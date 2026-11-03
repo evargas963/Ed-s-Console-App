@@ -1323,7 +1323,7 @@ class CaptureWriter:
         try:
             self._write(q)
         except Exception as e:  # recorded as the writer's death, then raised
-            log.exception("stream writer died")
+            log.error("stream writer died: %s: %s", type(e).__name__, e)
             with self._lock:
                 self.state, self.error, self.error_ts = (
                     WRITER_DEAD,
@@ -1612,12 +1612,14 @@ class CaptureWriter:
         spill.close()
         try:
             os.remove(spill.path)
-        except OSError:
-            log.exception(
+        except OSError as e:
+            log.error(
                 "stream writer: %s written back (%d messages), not deleted, deleted at the next "
-                "start",
+                "start: %s: %s",
                 spill.path,
                 spill.messages,
+                type(e).__name__,
+                e,
             )
             with self._lock:
                 self.left_on_disk.append(spill.left())

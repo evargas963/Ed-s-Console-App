@@ -545,19 +545,15 @@ def test_a_writer_that_dies_while_spilling_counts_as_not_recorded_only_what_was_
     assert (s["unrecorded"], s["lost"], [k["messages"] for k in s["left_on_disk"]]) == (1, 0, [10])
 
 
-def test_a_writer_that_dies_while_holding_in_memory_counts_all_it_held_as_not_recorded(
-    tmp_path, caplog
-):
+def test_a_writer_that_dies_while_holding_in_memory_counts_all_it_held_as_not_recorded(tmp_path):
     """INDUCED CONDITIONS: a 10 MB memory cap, so the first ten are held in memory, and the eleventh
     an _UnreadableQuote: the writer dies holding it. Not recorded is all eleven; nothing is on
-    disk or lost. The log records the death with its traceback."""
+    disk or lost."""
     s = _dies_holding(
         tmp_path / "stream_capture.db", 10_000_000, _UnreadableQuote(_eleventh()), stop=False
     )
     assert s["error"] == "RuntimeError: a message the writer cannot read"
     assert (s["unrecorded"], s["lost"], s["left_on_disk"]) == (11, 0, [])
-    died = [r for r in caplog.records if r.getMessage() == "stream writer died"]
-    assert len(died) == 1 and str(died[0].exc_info[1]) == "a message the writer cannot read"
 
 
 def test_a_writer_that_dies_leaving_memory_on_disk_at_a_stop_counts_only_what_was_not_yet_written(
