@@ -12,8 +12,11 @@ The product lines a PR adds carry no patch shape:
    - an except that catches everything (bare, `Exception`, `BaseException`, or a tuple holding
      one), or one whose only statement swallows the error: `pass`, `continue`, a return or an
      assignment of None or a literal, or a call with no re-raise. An except that logs the error
-     and carries on is not a patch (the operator's ruling): one whose body logs (`.debug`,
-     `.info`, `.warning`, `.error`, `.exception`, `.critical`, `.log`) is never refused;
+     and carries on is not a patch (the operator's ruling), nor one that raises it on: one whose
+     body, at any depth outside a def or class, has a log call as a statement of its own
+     (`.debug`, `.info`, `.warning`, `.error`, `.exception`, `.critical`, `.log`) or a raise that
+     is bare or carries a cause (`from e`, not `from None`) is never refused, even when that line
+     runs on one branch only;
    - `contextlib.suppress`;
    - a missing value replaced by a literal: `x or <literal>`, a None-check ternary or
      `if x is None:` that returns or assigns a literal, `.get(k, <literal>)` (positional or
@@ -374,15 +377,28 @@ def _none_check(test: ast.AST) -> bool:
     )
 
 
-def _logs(handler: ast.ExceptHandler) -> bool:
-    """The except logs the error and carries on: not a patch."""
-    return any(
-        isinstance(s, ast.Expr)
-        and isinstance(s.value, ast.Call)
-        and isinstance(s.value.func, ast.Attribute)
-        and s.value.func.attr in LOG_METHODS
-        for s in handler.body
-    )
+def _reports(handler: ast.ExceptHandler) -> bool:
+    """At any depth of its own body, the except has a log call as a statement of its own, or a
+    raise that is bare or carries a cause (`from e`, not `from None`): not a patch. A def or
+    class inside it does not run when the error does, so it is not read."""
+    stack: list[ast.AST] = list(handler.body)
+    while stack:
+        n = stack.pop()
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            continue
+        if isinstance(n, ast.Raise) and (
+            n.exc is None or (n.cause is not None and not _is_none(n.cause))
+        ):
+            return True
+        if (
+            isinstance(n, ast.Expr)
+            and isinstance(n.value, ast.Call)
+            and isinstance(n.value.func, ast.Attribute)
+            and n.value.func.attr in LOG_METHODS
+        ):
+            return True
+        stack.extend(ast.iter_child_nodes(n))
+    return False
 
 
 def _swallows(stmt: ast.stmt) -> bool:
@@ -447,7 +463,7 @@ def python_patches(source: str, added: set[int]) -> list[tuple[int, str]]:
             if node.lineno not in added:  # an old block with a line added inside it
                 continue
             if isinstance(node, ast.ExceptHandler):
-                if _logs(node):
+                if _reports(node):
                     continue
                 if _catches_everything(node):
                     found.append((node.lineno, "an except that catches everything"))
