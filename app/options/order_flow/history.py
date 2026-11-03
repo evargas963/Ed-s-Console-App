@@ -1,6 +1,7 @@
-"""The recent option trade prints (the options tape) and the recent books (the book heatmap), in
-the console's memory: fed by the console's intake as the daemon pushes each record
-(app.options.order_flow.streaming), never read from the database (docs/DATA_FLOW.md §2 D6).
+"""The recent option trade prints (the options tape), the recent books (the book heatmap) and the
+imbalance readout's one-second values (the Liquidity card), in the console's memory: fed by the
+console's intake as the daemon pushes each record (app.options.order_flow.streaming), never read
+from the database (docs/DATA_FLOW.md §2 D6).
 The database keeps the whole history."""
 
 from __future__ import annotations
@@ -9,6 +10,7 @@ import threading
 from collections import deque
 from typing import Any
 
+from app.options.order_flow.engine import OF_LEAN_KEPT_SEC
 from instrument_identity import ticker_storage_key
 from l1_trade_observation import extract_vendor_print, is_adjacent_restatement, vendor_triple
 from numeric_contract import schwab_count, schwab_number
@@ -233,9 +235,43 @@ class RecentBooks:
         )
 
 
-#: the recent prints and books, fed by the console's intake
+class RecentLean:
+    """Per ticker: the imbalance readout's headline values of both books and their composite
+    (engine.lean_point), one per second (the newest in that second) for engine.OF_LEAN_KEPT_SEC,
+    as (receive time, values): the Liquidity card's smoothing, zone hold and lean series."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._points: dict[str, deque] = {}
+
+    def record(self, ticker: str, ts_recv: float, values: dict) -> None:
+        sym = ticker_storage_key(ticker)
+        if not sym:
+            return
+        point = (float(ts_recv), values)
+        with self._lock:
+            held = self._points.setdefault(sym, deque())
+            if held and int(held[-1][0]) == int(point[0]):
+                held[-1] = point
+            else:
+                held.append(point)
+            while held[0][0] < point[0] - OF_LEAN_KEPT_SEC:
+                held.popleft()
+
+    def forget(self, ticker: str) -> None:
+        with self._lock:
+            self._points.pop(ticker_storage_key(ticker), None)
+
+    def points(self, ticker: str) -> list[tuple[float, dict]]:
+        """The ticker's kept values, oldest first."""
+        with self._lock:
+            return list(self._points.get(ticker_storage_key(ticker), ()))
+
+
+#: the recent prints, books and imbalance values, fed by the console's intake
 TAPE = RecentTape()
 BOOKS = RecentBooks()
+LEAN = RecentLean()
 
 
 def book_heatmap_for_ticker(

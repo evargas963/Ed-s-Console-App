@@ -234,6 +234,7 @@ class OrderFlowState:
         sym = ticker_storage_key(symbol)
         history.TAPE.forget(sym)
         history.BOOKS.forget(sym)
+        history.LEAN.forget(sym)
         with self._lock:
             if sym in self._book:
                 self._book[sym].clear()

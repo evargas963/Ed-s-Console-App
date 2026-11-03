@@ -40,8 +40,10 @@ import push_changes
 from app.market_data.schwab.streaming.live_push import LIVE_PUSH_HOST, LIVE_PUSH_PORT
 from app.market_data.schwab.streaming.live_ui import LIVE_UI_PORT
 from app.options.order_flow import history as recent
+from app.options.order_flow.engine import BOOK_VENUES, book_readout, lean_point
 from app.options.order_flow.state import (
     clear_all_live_state,
+    get_content_for_symbol,
     push_book,
     push_level_one,
     push_option_top,
@@ -255,7 +257,8 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
 
       quote.SYM    LEVELONE_EQUITIES -> order-flow state (the tape); the live price is the
                    daemon's price row (_rows_loop), never rebuilt here
-      book.SYM     NASDAQ_BOOK / NYSE_BOOK -> order-flow book; OPTIONS_BOOK -> the option
+      book.SYM     NASDAQ_BOOK / NYSE_BOOK -> order-flow book, its recent books and the
+                   imbalance readout's value of both books then held; OPTIONS_BOOK -> the option
                    contract's book
       optquote.SYM LEVELONE_OPTIONS -> order-flow state for the contract
       markets.DATE Schwab's /markets answer -> that date's sessions (time_et), when it is a 200
@@ -308,6 +311,8 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
             _option_contract_last_update_ts[sym] = ts
         else:
             recent.BOOKS.record(sym, msg["service"], content, ts)
+            readout = book_readout({v: get_content_for_symbol(sym, v) for v in BOOK_VENUES})
+            recent.LEAN.record(sym, ts, lean_point(readout))
             push_changes.changed(sym, push_changes.FLOW)
         return None
     if kind == "optquote":
