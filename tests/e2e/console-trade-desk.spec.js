@@ -617,7 +617,9 @@ test.describe('Trade Desk renders served values', () => {
     await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'right-now'); } catch (e) {} });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const body = page.locator('#tdBody');
-    await expect(body).toContainText('bid-heavy (NASDAQ_BOOK, depth 5)');
+    // the book's lean is the Liquidity readout's, served (one producer for the desk)
+    const nq5 = READOUT_LIVE.readout.venues.NASDAQ_BOOK.views['5'];
+    await expect(body).toContainText(nq5.pct_text + nq5.side_word.toLowerCase() + ' (NASDAQ_BOOK, depth 5)');
     await expect(body).toContainText('Max pain 770.00');           // nearest by the served by_distance
     await expect(body).toContainText('1.30 below spot');
     await expect(body).toContainText('Put wall 6.30 below spot, call wall 3.70 above spot');   // /api/levels' own rows
@@ -646,7 +648,7 @@ test.describe('Trade Desk renders served values', () => {
     await expect(body).toContainText('OFFLINE');
     await expect(body).toContainText(BOOK_TIME + ' · 1s');
     await expect(body).toContainText('771.29 × 771.31');
-    await expect(body).toContainText('bid-heavy (NASDAQ_BOOK, depth 5)');
+    await expect(body).toContainText(READOUT_LIVE.readout.venues.NASDAQ_BOOK.views['5'].side_word.toLowerCase() + ' (NASDAQ_BOOK, depth 5)');
     expect(errs).toEqual([]);
   });
 

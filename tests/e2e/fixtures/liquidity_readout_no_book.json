@@ -45,20 +45,17 @@
   "1": {
    "ask_total": null,
    "bid_total": null,
-   "imbalance": null,
-   "side": null
+   "imbalance": null
   },
   "3": {
    "ask_total": null,
    "bid_total": null,
-   "imbalance": null,
-   "side": null
+   "imbalance": null
   },
   "5": {
    "ask_total": null,
    "bid_total": null,
-   "imbalance": null,
-   "side": null
+   "imbalance": null
   }
  },
  "depth_pressure": {

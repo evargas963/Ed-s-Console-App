@@ -258,7 +258,8 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
   but in the Desk Liquidity card's order-imbalance readout (operator 2026-11-03, step 1 of 3):
   `/api/order-flow/microstructure` serves `readout` whatever the venue, both books and their
   deduped composite (`engine.book_readout`: each exchange or market maker counted once, from the
-  book with the newer BOOK_TIME, its code matched without regard to case; a level with no
+  book holding its newer quote by that quote's own time, SEQUENCE, and from the newer BOOK_TIME
+  when the quote times are equal, its code matched without regard to case; a level with no
   per-exchange rows taken whole and the dedup marked partial), read over one value a second per
   ticker that the console's intake records on each book (`history.LEAN`, 308 s), and judged
   live per book by the one live rule, the composite only while both are. The exchange auction

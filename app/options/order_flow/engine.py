@@ -62,21 +62,25 @@ def _iter_content(data: dict) -> list:
     return []
 
 
-Exchanges = tuple[tuple[str, float], ...]
+Exchanges = tuple[tuple[str, float, float], ...]
 
 
 def _exchange_sizes(rows: object, size_key: str) -> Exchanges | None:
-    """A level's own rows, one per exchange or market maker (EXCHANGE, BID_VOLUME or ASK_VOLUME),
-    as sent. None when the level carries none, or a row lacks its code or a size."""
+    """A level's own rows, one per exchange or market maker, as sent: (EXCHANGE, BID_VOLUME or
+    ASK_VOLUME, SEQUENCE: Schwab's quote time in milliseconds of that market maker's quote,
+    docs/schwab/schwab_streamer_api.pdf §4 Book Market Makers). None when the level carries none,
+    or a row lacks its code, size or quote time."""
     if not isinstance(rows, list) or not rows:
         return None
     out = []
     for row in rows:
-        code = row.get("EXCHANGE") if isinstance(row, dict) else None
-        size = schwab_count(row.get(size_key)) if isinstance(row, dict) else None
-        if not isinstance(code, str) or not code or size is None:
+        if not isinstance(row, dict):
             return None
-        out.append((code, size))
+        code = row.get("EXCHANGE")
+        size, quoted = schwab_count(row.get(size_key)), schwab_number(row.get("SEQUENCE"))
+        if not isinstance(code, str) or not code or size is None or quoted is None:
+            return None
+        out.append((code, size, quoted))
     return tuple(out)
 
 
@@ -384,14 +388,10 @@ def _microstructure_structural(cb: dict) -> dict:
     depth: dict[str, dict] = {}
     for n in OF_MICRO_DEPTH_LADDER:
         lv = ladder[str(n)]
-        imb = lv["imbalance"]
-        # the heavier side, by the imbalance's sign (no threshold): what every panel labels
-        side = None if imb is None else "BID" if imb > 0 else "ASK" if imb < 0 else "EVEN"
         depth[str(n)] = {
             "bid_total": lv["bid_total"],
             "ask_total": lv["ask_total"],
-            "imbalance": imb,
-            "side": side,
+            "imbalance": lv["imbalance"],
         }
     deep_bt, deep_at = (
         ladder[str(OF_BOOK_DEPTH_DEEP)]["bid_total"],
@@ -574,30 +574,34 @@ def _composite_side(
     books: list[tuple[float | None, dict]], side: str
 ) -> tuple[Levels, Levels, bool]:
     """The deduped union of one side of both books. Each exchange or market maker counts once,
-    from the book with the newer BOOK_TIME; its code is matched without regard to case
-    (NASDAQ_BOOK sends arcx where NYSE_BOOK sends ARCX). Returns the levels (price, shares) best
-    first, the copies left out (price, shares), and whether a level carried no per-exchange rows,
-    its TOTAL_VOLUME then taken whole (the dedup partial). A book whose BOOK_TIME is unknown comes
-    after one whose time is known."""
+    from the book holding its newer quote by that quote's own time (SEQUENCE), and from the book
+    with the newer BOOK_TIME when both hold the same quote time; its code is matched without
+    regard to case (NASDAQ_BOOK sends arcx where NYSE_BOOK sends ARCX). Returns the levels
+    (price, shares) best first, the copies left out (price, shares), and whether a level carried
+    no per-exchange rows, its TOTAL_VOLUME then taken whole (the dedup partial). A book whose
+    BOOK_TIME is unknown comes after one whose time is known."""
     sizes: collections.defaultdict[float, float] = collections.defaultdict(float)
     dropped: Levels = []
     partial = False
-    taken: set[str] = set()
     timed = sorted((b for b in books if b[0] is not None), key=lambda b: b[0], reverse=True)
-    for _time, item in timed + [b for b in books if b[0] is None]:
-        mine: set[str] = set()
+    # each participant's rows, by its code: (book's rank, newest first; price; size; quote time)
+    rows_of: dict[str, list[tuple[int, float, float, float]]] = collections.defaultdict(list)
+    for rank, (_time, item) in enumerate(timed + [b for b in books if b[0] is None]):
         for price, total, rows in _side_levels(item, side):
             if rows is None:
                 partial = True
                 sizes[price] += total
                 continue
-            for code, size in rows:
-                if code.upper() in taken:
-                    dropped.append((price, size))
-                else:
-                    mine.add(code.upper())
-                    sizes[price] += size
-        taken |= mine
+            for code, size, quoted in rows:
+                rows_of[code.upper()].append((rank, price, size, quoted))
+    for rows in rows_of.values():
+        newest = max(quoted for _rank, _price, _size, quoted in rows)
+        kept = min(rank for rank, _price, _size, quoted in rows if quoted == newest)
+        for rank, price, size, _quoted in rows:
+            if rank == kept:
+                sizes[price] += size
+            else:
+                dropped.append((price, size))
     return sorted(sizes.items(), reverse=side == "BIDS"), dropped, partial
 
 

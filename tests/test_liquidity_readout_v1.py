@@ -174,6 +174,25 @@ def test_the_composite_counts_nasdaqs_quote_once_from_the_newer_book():
     assert comp["views"]["1"]["counted_twice"] == {"bid": 0, "ask": 120}
 
 
+def test_the_composite_keeps_each_quote_by_its_own_time_not_its_books():
+    """Schwab's books at 10:00:08 ET on 2026-11-02: NYSE_BOOK (row 16) is 15 ms newer than
+    NASDAQ_BOOK (row 15), but its NSDQ bid, 760.56 x 80, was quoted at 36,008,160 ms, before
+    NASDAQ_BOOK's own NSDQ bid, 760.58 x 20, quoted at 36,008,175 ms (SEQUENCE, each market
+    maker's quote time). The composite counts the newer quote and leaves the older out."""
+    (_t16, svc16, nyse), (_t15, svc15, nq) = _ROWS[16], _ROWS[15]
+    assert (svc16, svc15) == ("NYSE_BOOK", "NASDAQ_BOOK") and nyse["BOOK_TIME"] > nq["BOOK_TIME"]
+    levels, dropped, partial = e._composite_side(
+        [(nyse["BOOK_TIME"], nyse), (nq["BOOK_TIME"], nq)], "BIDS"
+    )
+    assert (760.56, 80) in dropped and (760.58, 20) not in dropped
+    nsdq_newer = {p: s for p, s in levels}
+    nyse_760_58 = sum(
+        x["BID_VOLUME"] for lv in nyse["BIDS"] if lv["BID_PRICE"] == 760.58 for x in lv["BIDS"]
+    )
+    assert nsdq_newer[760.58] == nyse_760_58 + 20
+    assert partial is False
+
+
 def test_a_level_without_per_exchange_rows_is_taken_whole_and_the_dedup_marked_partial():
     """A level as Schwab sent it, its own rows removed: its TOTAL_VOLUME is counted once, and the
     composite says its dedup is partial."""
