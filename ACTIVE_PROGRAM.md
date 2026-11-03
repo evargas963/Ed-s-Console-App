@@ -291,6 +291,7 @@ and a secret in a quoted-name file after a skip-listed file are refused.
 | TU-08 | Key Levels → Zero Gamma, Volatility Trigger | regime dead-zone around the flip |
 | TU-11 | Options → Multi-Map | skew and term fields |
 | TU-06, 07, 09, 10, 12 | none yet | call−put IV spread and implied 1-day move, ΔOI flow, GEX/ADV normalization, external GEX benchmark, intraday DDOI (meaning confirmed from its source before building) |
+| LIQ-CARD | Order Flow → Book/DOM; Order Flow → Heatmap | the operator's order-imbalance build (2026-11-03): step 1, the Desk Liquidity card's readout, is built (`server.liquidity_readout`); step 2 is Book/DOM with its balance scale, step 3 the Heatmap with TradingView-style controls, each to the operator's spec. Not in any step, each its own item: the daily accumulator, Schwab's auction imbalance, a per-stock depth measurement (thin/normal/thick, percentile) |
 | LP-01 | Liquidity | steps 1–3 are in `liquidity_models.py` / `liquidity_value_engine.py` (`/api/liquidity-snapshot`); left: check the raw levels show on the Trade Desk chart |
 
 ## Operator designing — nothing is built until the operator decides

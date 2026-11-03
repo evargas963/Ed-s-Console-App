@@ -254,7 +254,16 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
 - **Option quote and order book.** Schwab → daemon bus → writer, and → console memory → a
   `flow` push on `/api/changes` → the browser reads the order-flow and heatmap routes. An equity
   has two Schwab books, NYSE_BOOK (exchanges) and NASDAQ_BOOK (market makers); each is stored
-  under its service and served for the `venue` the screen's venue switch names, never combined.
+  under its service and served for the `venue` the screen's venue switch names, never combined,
+  but in the Desk Liquidity card's order-imbalance readout (operator 2026-11-03, step 1 of 3):
+  `/api/order-flow/microstructure` serves `readout` whatever the venue, both books and their
+  deduped composite (`engine.book_readout`: each exchange or market maker counted once, from the
+  book with the newer BOOK_TIME, its code matched without regard to case; a level with no
+  per-exchange rows taken whole and the dedup marked partial), read over one value a second per
+  ticker that the console's intake records on each book (`history.LEAN`, 308 s), and judged
+  live per book by the one live rule, the composite only while both are. The exchange auction
+  windows are the 5 minutes before and the 10 minutes before the end of Schwab's regular window
+  for the date (`time_et.auction`); inside them the card shows no continuous number.
   The books streamed are every watchlist ticker's. For each option contract the daemon holds
   (the option rule, below), each field the stream carries (gamma, delta, open interest, volume,
   IV) is the newest value Schwab sent (`math_exposure_core.overlay_streamed_contract_fields`):
@@ -698,8 +707,9 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
    too, and an offline order-flow card keeps it beside the outage
    (`static/js/ed-trade-desk-map.js`). The liquidity map's live price line carries it too
    (`static/js/ed-liquidity-map.js`). The desk chart's live price line carries it too
-   (`static/js/ed-trade-desk-map.js`). The desk map's liquidity card and its BOOK
-   pill keep the book's time beside that age (`static/js/ed-trade-desk-map.js`). The Right Now
+   (`static/js/ed-trade-desk-map.js`). The desk map's BOOK pill keeps the book's time beside
+   that age, and its liquidity card keeps each book's last numbers, greyed, with the book's time
+   and that it is not live (`server.liquidity_readout`, `static/js/ed-trade-desk-map.js`). The Right Now
    book-age row keeps that same time (`static/js/ed-trade-desk.js`). The desk map's
    options card, volatility card, and GAMMA pill keep the chain's time beside that
    age (`server.get_terrain`, `static/js/ed-trade-desk-map.js`). The key levels
