@@ -227,6 +227,13 @@ then the rule binds with no machine check.
   the architecture reviewer, which starts with the First gate) check every change, because the
   operator has not decided the repo is stable, and flag only correctness problems and breaks of the
   stated requirements. `.claude/skills/before-done/SKILL.md` step 7 runs them.
+- Reviews converge (operator 2026-11-03: "this is unsustainable. audit and fix right away"). The
+  author backs every behaviour the description states with a command run before the first review.
+  A review after a fix judges the last round's findings and the diff since the reviewed commit. A
+  finding on untouched code, or one reversing the last round, goes to the operator. After two
+  rounds with a FAIL or NOT_PROVEN open, every open finding goes to the operator in one message.
+  Enforced by: `.claude/skills/before-done/SKILL.md` step 7; that it was followed — no machine
+  check, ENF-12.
 
 ## Authority
 

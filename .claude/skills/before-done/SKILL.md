@@ -33,8 +33,14 @@ report what was tried, and take a different approach (CLAUDE.md item 6).
    both of them and `tools/check_integrity.py` from the base, with the description.
 7. Four eyes: run the `correctness-reviewer` and `requirements-reviewer` agents on the PR's final
    commit (`git diff origin/main...HEAD`, with the PR description, the operator's task and the output
-   of steps 1–6), naming that commit; any commit made after a review gets a new review of both before
-   the PR is offered. Show each verdict
+   of steps 1–6), naming that commit. Before the first review, every statement the description makes
+   about behaviour is backed by a command run on that commit, its output shown; a statement read
+   from library source or code is marked as read, not run. A commit made after a review gets a
+   review of both that is given the last round's findings and judges only whether each is fixed and
+   the diff since the reviewed commit; a finding on code no commit since has touched, or one that
+   reverses a judgment the last round made, goes to Ed with both rounds' words instead of being
+   fixed. After two rounds with a FAIL or NOT_PROVEN open, stop and bring Ed every open finding in
+   one message (operator 2026-11-03: "this is unsustainable. audit and fix right away"). Show each verdict
    (PASS / FAIL / NOT_PROVEN) and its findings, and put both verdicts in the PR description's
    `## Review`. The rule 14 record comes from a session that did not write the change, given only
    what rule 14 names (the commit series with `git log -p origin/main..HEAD`). A FAIL or
