@@ -25,8 +25,10 @@ EdWebConsole/
 └── start_ed_console.bat (runs launch.py, which starts the one program)
 ```
 
-Imports flow one way, to be enforced by import-linter from SHAPE step 1d: push → state → calc; feed → state; recorder ←
-state; every part may use shared. Outside the repository: the runtime folder (the two databases,
+Imports flow one way, to be enforced by import-linter's layers from SHAPE step 1e, as these folders land: push → state → calc; feed → state; recorder ←
+state; every part may use shared. Until then `locks.imports.toml` holds Feed alone: its contracts
+read the checkout as one package, because grimp takes no top-level module, so an import of a root
+module is an outside name and no layer can be drawn across them. Outside the repository: the runtime folder (the two databases,
 the token, logs) and worktrees.
 
 ## 2. Where each file goes

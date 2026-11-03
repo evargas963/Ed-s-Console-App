@@ -10,12 +10,6 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 
 
-def test_schwab_py_package_importable() -> None:
-    import schwab.auth
-
-    assert schwab.auth.__name__ == "schwab.auth"
-
-
 def test_schwab_client_imports_without_constructing_live_client() -> None:
     import schwab_client
 

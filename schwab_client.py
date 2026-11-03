@@ -283,15 +283,12 @@ def client_from_token_file_atomic(
     app_secret: str,
     *,
     enforce_enums: bool = False,
-    transport: "httpx.BaseTransport | None" = None,
 ):
     """schwab-py's client from the token file, built as auth.client_from_access_functions builds
     it, with four differences: every token refresh is written atomically (schwab-py's writer
     rewrites the file in place), the token is refreshed by one request at a time
     (OneRefreshSession), the session holds one connection, and every request is logged once
-    (request_sent, log_request). `transport` carries every request,
-    the token refresh included: the network when None, a local stand-in for Schwab in a test
-    (schwab-py and the token endpoint name Schwab's host themselves)."""
+    (request_sent, log_request)."""
     resolved = _resolve_token_path(token_path)
     with token_file_lock(resolved):  # a sign-in being saved: read once it is
         metadata = auth.TokenMetadata.from_loaded_token(
@@ -309,7 +306,6 @@ def client_from_token_file_atomic(
         metadata=metadata,
         limits=ONE_CONNECTION,
         event_hooks={"request": [request_sent], "response": [log_request]},
-        transport=transport,
     )
     return Client(api_key, session, token_metadata=metadata, enforce_enums=enforce_enums)
 

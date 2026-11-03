@@ -47,6 +47,7 @@ from __future__ import annotations
 
 import asyncio
 import bisect
+import enum
 import json
 import logging
 import os
@@ -400,6 +401,17 @@ class _RawHandler:
 
     def __call__(self, msg: dict):
         return self.fn(msg)
+
+
+def streaming_fields() -> dict[str, list[str]]:
+    """schwab-py's field names for every streaming service."""
+    return {
+        n.removesuffix("Fields"): [f.name for f in getattr(StreamClient, n)]
+        for n in dir(StreamClient)
+        if n.endswith("Fields")
+        and isinstance(getattr(StreamClient, n), type)
+        and issubclass(getattr(StreamClient, n), enum.Enum)
+    }
 
 
 def _open_stream(client):

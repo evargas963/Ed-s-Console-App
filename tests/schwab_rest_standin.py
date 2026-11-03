@@ -34,8 +34,6 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-import httpx
-
 import schwab_client as sc
 
 FX = Path(__file__).resolve().parent / "fixtures"
@@ -299,12 +297,20 @@ class LocalSchwab:
 
     def client(self, tmp_path, expires_in_sec: float = 3600):
         """The daemon's client, its requests delivered here, from token_file's file."""
-        return sc.client_from_token_file_atomic(
-            self.token_file(tmp_path, expires_in_sec),
-            "k",
-            "s",
-            transport=_ToLocal(self.server.server_address[1]),
+        return self.delivering_here(
+            sc.client_from_token_file_atomic(self.token_file(tmp_path, expires_in_sec), "k", "s")
         )
+
+    def delivering_here(self, client):
+        """`client`, every request it sends delivered here instead of Schwab's host, the token
+        refresh included (schwab-py and the token endpoint name that host themselves)."""
+        port = self.server.server_address[1]
+
+        def deliver(request) -> None:
+            request.url = request.url.copy_with(scheme="http", host="127.0.0.1", port=port)
+
+        client.session.event_hooks["request"].append(deliver)
+        return client
 
     def token_file(self, tmp_path, expires_in_sec: float = 3600) -> str:
         """A token file (tmp_path / schwab_token.json) whose token expires in `expires_in_sec` (far
@@ -328,17 +334,6 @@ class LocalSchwab:
 
     def close(self) -> None:
         self.server.shutdown()
-
-
-class _ToLocal(httpx.BaseTransport):
-    """Every request the client sends, delivered to the local server instead of Schwab's host."""
-
-    def __init__(self, port: int):
-        self.port, self.inner = port, httpx.HTTPTransport(limits=sc.ONE_CONNECTION)
-
-    def handle_request(self, request: httpx.Request) -> httpx.Response:
-        request.url = request.url.copy_with(scheme="http", host="127.0.0.1", port=self.port)
-        return self.inner.handle_request(request)
 
 
 def delivered(published: list, ticker: str) -> dict[str, dict]:

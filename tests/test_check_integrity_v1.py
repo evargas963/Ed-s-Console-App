@@ -201,6 +201,7 @@ def test_a_product_change_needs_no_record(repo):
         "docs/DATA_FLOW.md",
         "ACTIVE_PROGRAM.md",
         "locks.ruff.toml",
+        "locks.imports.toml",
         ".github/workflows/locks.yml",
         ".claude/settings.json",
         ".cursor/hooks.json",

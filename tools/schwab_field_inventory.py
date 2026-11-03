@@ -19,7 +19,6 @@ from __future__ import annotations
 import argparse
 import csv
 import datetime as dt
-import enum
 import json
 import sqlite3
 import sys
@@ -298,18 +297,6 @@ def rest_rows(
     return rows, endpoint_of, status
 
 
-def streaming_fields() -> dict[str, list[str]]:
-    from schwab.streaming import StreamClient
-
-    return {
-        n.removesuffix("Fields"): [f.name for f in getattr(StreamClient, n)]
-        for n in dir(StreamClient)
-        if n.endswith("Fields")
-        and isinstance(getattr(StreamClient, n), type)
-        and issubclass(getattr(StreamClient, n), enum.Enum)
-    }
-
-
 def captured_stream_paths(db: Path) -> dict[tuple[str, str], set[str]]:
     """Every path the daemon received (the newest 20,000 messages of each table), as
     streaming.content.*.<path>, the form the stream's content items take."""
@@ -368,7 +355,7 @@ def main() -> int:
         print(state.message)
         return 1
     today = dt.date.today().isoformat()
-    from app.market_data.schwab.streaming.capture import stored_watchlist
+    from app.market_data.schwab.streaming.capture import stored_watchlist, streaming_fields
 
     roster = [t for t in stored_watchlist(canonical_stream_db_path()) if not t.startswith("$")]
     rest, endpoint_of, status = rest_rows(state.client, roster)

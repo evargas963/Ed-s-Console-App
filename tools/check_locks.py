@@ -26,6 +26,8 @@ REFUSED = 3
 FREE = ("banned in tests: `sqlite3`", "bytes of", "lines of", "open work items", "ruff D")
 DATA = (".json", ".md", ".mdc", ".csv", ".txt", ".png", ".ico", ".pdf", ".webmanifest", ".lock")
 PYTHON = (".py", ".pyi", ".pyw", ".ipynb")
+#: what Python can load, by any case of its suffix on Windows
+LOADABLE = (*PYTHON, ".pyc", ".pyd", ".so")
 ROW = re.compile(r"^\|(?!\s*(?:ID|#)\s*\|)(?!\s*:?-)", re.M)
 ITEM = re.compile(r"^- [A-Z]+-\d+", re.M)
 PATCH = re.compile(
@@ -50,6 +52,18 @@ def _part(name: str) -> str:
     if name.lower().startswith("tests/"):
         return "tests"
     return "tools" if name.lower().startswith("tools/") else "product code"
+
+
+def _outside_the_contracts(tree: Path, name: str) -> bool:
+    """Whether `name`, a file Python can load, is not one import-linter is sure to read: a `.py`
+    named as a module, in folders that are packages. grimp also reads a folder with no
+    `__init__.py` at the top, until a root `__init__.py` stops it, so this is the stricter rule."""
+    parts = name.removesuffix(".py").split("/")
+    return not (
+        name.endswith(".py")
+        and all(part.isidentifier() for part in parts)
+        and all((tree / Path(*parts[:i]) / "__init__.py").is_file() for i in range(1, len(parts)))
+    )
 
 
 def _ruff(tree: Path, names: list[str]) -> list[dict]:
@@ -81,12 +95,15 @@ def counts(tree: Path, rules: str) -> Counter:
     """Return every lock's count in `tree` under `rules`.
 
     The counts are the lines and bytes of everything that is not data, the open work items, the
-    patching lines in tests, the format suppressions and each rule's findings. A banned name counts
-    per product file, so removing it from one module buys no use in another.
+    patching lines in tests, the format suppressions, the files Python can load that the import
+    contracts may not read, and each rule's findings. A banned name counts per product file, so
+    removing it from one module buys no use in another.
     """
     found: Counter = Counter()
     names = [n for n in _names("ls-files", cwd=tree) if (tree / n).is_file()]
     for name in names:
+        if name.lower().endswith(LOADABLE) and _outside_the_contracts(tree, name):
+            found["files outside the import contracts"] += 1
         if not name.endswith(DATA):
             text = (tree / name).read_text(encoding="utf-8", errors="replace")
             lines = [line for line in text.splitlines() if line.strip()]

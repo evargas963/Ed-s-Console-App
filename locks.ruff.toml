@@ -34,12 +34,7 @@ ignore = [
 max-complexity = 10
 
 [lint.flake8-tidy-imports.banned-api]
-"aiohttp".msg = "Only Feed talks to Schwab."
-"authlib".msg = "Only Feed talks to Schwab."
 "http.client".msg = "Only Feed talks to Schwab."
-"httpx".msg = "Only Feed talks to Schwab."
-"requests".msg = "Only Feed talks to Schwab."
-"schwab".msg = "Only Feed talks to Schwab."
 "urllib.request".msg = "Only Feed talks to Schwab."
 "websockets".msg = "Only Feed talks to Schwab."
 "sqlite3".msg = "Only the Recorder uses a database."
@@ -57,6 +52,7 @@ max-complexity = 10
 "time.perf_counter_ns".msg = "Only an entry point reads the clock; pass `now`."
 "time.process_time".msg = "Only an entry point reads the clock; pass `now`."
 "time_et.now_et".msg = "Only an entry point reads the clock; pass `now`."
+"importlib.__import__".msg = "A module is imported by name at the top."
 "importlib.import_module".msg = "A module is imported by name at the top."
 "importlib.machinery".msg = "No code runs from a data file."
 "importlib.util".msg = "No code runs from a data file."

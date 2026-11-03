@@ -1,0 +1,32 @@
+# The import contracts, which `.github/workflows/locks.yml` runs from the base. grimp takes no
+# top-level module as a root, and most of ours are, so the checkout itself is the root: `head`,
+# read from the folder that holds it, every file `head.<its path>` and none of its code importable.
+# `import schwab_client` is then the outside name `schwab_client`, not `head.schwab_client`, so no
+# chain runs through a root module, and layers wait for the folders. `tools/check_locks.py` refuses
+# a file Python can load that grimp may not read. ruff keeps `http.client` and `urllib.request`: grimp stops at
+# `http` and `urllib`, which the rest of each serves.
+[tool.importlinter]
+root_packages = ["head"]
+include_external_packages = true
+
+# A protected name nothing imports stops the run: take it out here before its last import goes.
+# `feed` is the folder Feed's modules move into; `as_packages = false` lets an entry match nothing,
+# so the base's rules can judge the move out of the old name.
+[[tool.importlinter.contracts]]
+name = "Only Feed talks to Schwab"
+type = "protected"
+protected_modules = ["schwab", "authlib", "httpx"]
+as_packages = false
+allowed_importers = [
+    "head.feed.**",
+    "head.schwab_client",
+    "head.app.market_data.schwab.streaming.capture",
+    "head.calibration.complete_chain_capture",
+]
+
+[[tool.importlinter.contracts]]
+name = "Feed has one HTTP client"
+type = "forbidden"
+source_modules = ["head"]
+forbidden_modules = ["aiohttp", "requests"]
+allow_indirect_imports = true
