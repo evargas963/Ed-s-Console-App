@@ -640,7 +640,7 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
 - **Market session.** Schwab's GET /markets?markets=equity,option, asked by the daemon's chain
   sweep (`ChainSweep.fetch_markets`) once per date per ET day -- today, the 7 days before it
   Schwab answers, and each expiry date of the chains inside the year Schwab answers
-  (`MARKETS_DAYS_AHEAD`; a later expiry is not asked until it is inside it, and its date stays
+  (`markets_last_day`, a calendar year; a later expiry is not asked until it is inside it, and its date stays
   unknown), whatever the number of tickers -- each answer
   as sent → daemon bus (`markets.DATE`) → the daemon's writer (`stream_capture.db`
   `stream_markets_raw`, every answer with its status) and → console (8799) → `time_et.record_markets`
