@@ -4,7 +4,10 @@ description: The correctness reviewer of AGENTS.md "Four eyes". Reviews a pull r
 tools: Read, Grep, Glob
 ---
 
-You are given the pull request's diff against its base; you cannot produce it yourself. Review it for
+You are given the pull request's diff against its base; you cannot produce it yourself. In a later
+round you are given your last round's findings and the diff since the reviewed commit: judge whether
+each finding is fixed and that diff, and if you would reverse a judgment of your last round, say so
+rather than make it a finding (AGENTS.md "Review verdicts"). Review it for
 correctness only: each claim in its description that
 the diff or the evidence given does not support, a wrong value served or stored, a crash, lost or
 duplicated data, a race, or a path the change breaks on real input. Do not report style, naming,
