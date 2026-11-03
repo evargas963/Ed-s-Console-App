@@ -528,6 +528,33 @@ def test_the_stop_ends_the_real_daemon_and_says_when_it_could_not_ask(tmp_path):
         _end(daemon)
 
 
+def test_the_stop_reads_no_parent_of_a_process_it_does_not_take(tmp_path):
+    """A stop in a checkout where nothing runs answers though a process's parent is slow to read,
+    as psutil's is on Windows, one snapshot of every process per parent: it reads the parent of no
+    process it does not take. Induced test condition: each parent read held for 1 s."""
+    home, slow = tmp_path / "checkout", tmp_path / "slow"
+    for folder in (home, slow):
+        folder.mkdir()
+    shutil.copy(launch.ROOT / "launch.py", home)
+    (slow / "sitecustomize.py").write_text(
+        "import time\n\nimport psutil\n\nplatform = psutil._psplatform.Process\n"
+        "read = platform.ppid\nplatform.ppid = lambda self: time.sleep(1) or read(self)\n",
+        encoding="utf-8",
+    )
+    stopping = subprocess.run(
+        [sys.executable, "launch.py", "stop"],
+        cwd=home,
+        env={**os.environ, "PYTHONPATH": os.pathsep.join((str(slow), str(launch.ROOT)))},
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert (stopping.returncode, stopping.stdout) == (
+        0,
+        "Capture daemon: not running\nConsole: not running\n",
+    ), stopping.stderr
+
+
 def test_a_daemon_that_ends_without_being_asked_is_not_reported_stopped(tmp_path):
     """The real daemon found while it loads, its socket not up, then ending on its own because its
     live UI's port is held, the code its window restarts on: the stop could not ask it, so it does
