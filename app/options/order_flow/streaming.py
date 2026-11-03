@@ -209,7 +209,7 @@ def _tick(sym: str) -> None:
         return
     try:
         _on_tick_callback(sym)
-    except Exception as e:  # noqa: BLE001 -- counted + WARNING; ingest must go on
+    except Exception as e:  # counted + WARNING; ingest must go on
         _tick_callback_failures += 1
         if _tick_callback_failures & (_tick_callback_failures - 1) == 0:
             log.warning(
@@ -376,14 +376,14 @@ async def _rows_loop(ui_url: str, reconnect_sec: float) -> None:
             )
         except Exception as e:  # any other error (the daemon's stop closes it): warned once
             log.log(
-                logging.DEBUG if repr(e) == warned else logging.WARNING,
+                logging.DEBUG if f"{type(e).__name__}: {e}" == warned else logging.WARNING,
                 "price rows ended (%s: %s); retrying in %.1fs",
                 type(e).__name__,
                 e,
                 reconnect_sec,
                 exc_info=True,
             )
-            warned = repr(e)
+            warned = f"{type(e).__name__}: {e}"
         _lmp.record_feed_down()  # no daemon: the feed is down, the last price stays
         _feed_changed(time.time())
         if _feed_running:
@@ -442,14 +442,14 @@ async def _feed_loop(push_url: str, ui_url: str, reconnect_sec: float) -> None:
                 )
             except Exception as e:  # any other error, warned once (a clean close ends quietly)
                 log.log(
-                    logging.DEBUG if repr(e) == warned else logging.WARNING,
+                    logging.DEBUG if f"{type(e).__name__}: {e}" == warned else logging.WARNING,
                     "live push ended (%s: %s); retrying in %.1fs",
                     type(e).__name__,
                     e,
                     reconnect_sec,
                     exc_info=True,
                 )
-                warned = repr(e)
+                warned = f"{type(e).__name__}: {e}"
             if _feed_running:
                 await asyncio.sleep(reconnect_sec)
     finally:

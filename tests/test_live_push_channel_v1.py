@@ -470,8 +470,12 @@ def test_a_port_that_is_not_the_daemon_is_warned_of_once_with_its_traceback(feed
     not the daemon's websocket, retried each 0.05 s: one warning with its traceback, and every
     retry after it with the same error at debug, so a retry each second does not fill the log."""
 
+    answered = []
+
     async def foreign(reader, writer):
-        writer.write(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nno")
+        answered.append(1)  # a header that differs on every answer, as a server's Date does
+        n = str(len(answered)).encode()
+        writer.write(b"HTTP/1.1 200 OK\r\nX-Answer: " + n + b"\r\nContent-Length: 2\r\n\r\nno")
         await writer.drain()
         writer.close()
 
