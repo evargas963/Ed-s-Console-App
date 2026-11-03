@@ -18,7 +18,7 @@ def _samples() -> list[dict]:
     return json.loads(FIXTURE.read_text(encoding="utf-8"))["contracts"]
 
 
-def test_canonical_book_state_is_bounded_and_contract_isolated():
+def test_each_contract_keeps_its_newest_book_apart():
     samples = _samples()
     first, second = samples[0], samples[1]
     first_book = next(e for e in first["events"] if e["kind"] == "book")["content"]

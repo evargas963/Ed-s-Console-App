@@ -464,14 +464,42 @@ def _steady(readout: dict, venue: str, view: str) -> dict:
         (69, "NASDAQ_BOOK", "1", 69.231, "BID_HEAVY"),
         (123, "NASDAQ_BOOK", "1", -69.231, "OFFER_HEAVY"),
         (82, "NYSE_BOOK", "1", 70.0, "VERY_BID"),
+        (18, "NYSE_BOOK", "1", -76.190, "VERY_OFFER"),
     ],
 )
 def test_the_zones_turn_at_10_and_70_percent(row, venue, view, pct, zone):
-    """Schwab's readouts of 2026-11-02 on each side of the zone lines, held ten seconds: 10% and
-    70% exactly (NYSE_BOOK's 1,760 / 1,440 and 680 / 120 shares) are the next zone. No captured
-    readout sits at -70%."""
+    """Schwab's readouts of 2026-11-02 10:00-10:02:30 ET on each side of the zone lines, held ten
+    seconds: 10% and 70% exactly (NYSE_BOOK's 1,760 / 1,440 and 680 / 120 shares) are the next
+    zone."""
     w = _steady(_replayed()[1][row][1], venue, view)
     assert w["live_pct"] == pytest.approx(pct, abs=5e-4)
+    assert (w["zone"], w["side_word"]) == (zone, e.ZONE_WORDS[zone])
+
+
+_LINES = json.loads((_FX / "real_spy_zone_line_books_2026_11_02.json").read_text(encoding="utf-8"))[
+    "cases"
+]
+
+
+@pytest.mark.parametrize(
+    ("case", "line", "zone"),
+    [
+        ("at -70", -70.0, "VERY_OFFER"),
+        ("under 10", 10.0, "BALANCED"),
+        ("under -10", -10.0, "BALANCED"),
+        ("under 70", 70.0, "BID_HEAVY"),
+        ("under -70", -70.0, "OFFER_HEAVY"),
+    ],
+)
+def test_the_zones_on_the_books_nearest_each_line(case, line, zone):
+    """The two books held, over SPY's whole 2026-11-02 session, when a venue and view read
+    exactly -70% and when one read nearest inside each line (9.996%, -9.989%, 69.999%,
+    -69.999%), held ten seconds: -70% is very one-sided, just inside a line is not past it."""
+    c = _LINES[case]
+    readout = e.book_readout({svc: content for _ts, svc, content in c["books"]})
+    w = _steady(readout, c["venue"], c["view"])
+    assert w["live_pct"] == pytest.approx(line, abs=0.02)
+    assert abs(w["live_pct"]) <= abs(line) and (case.startswith("at") or w["live_pct"] != line)
     assert (w["zone"], w["side_word"]) == (zone, e.ZONE_WORDS[zone])
 
 
@@ -516,6 +544,17 @@ def test_the_sentence_four_cases_from_the_flat_shares():
         # through BALANCED (the median 1012-1014) to offer heavy (1015 on): the zone changes at
         # 1017, dated from the second the value entered it, 1015
         ((("bid", 10), ("bal", 3), ("offer", 10)), "OFFER_HEAVY", 7),
+        # out of bid heavy across two zones within the three seconds (BALANCED at 1012, offer
+        # heavy from 1013): at 1014 the zone it stands in then, dated from 1013, held 5 at 1018
+        ((("bid", 10), ("offer", 2), ("bal", 1), ("offer", 6)), "OFFER_HEAVY", 5),
+        # the median offer heavy 1012-1014, BALANCED 1015-1017, offer heavy 1018-1020, BALANCED
+        # 1021: each stretch of three changes the zone, the last single second does not
+        ((("bid", 10), ("offer", 3), ("bal", 3), ("offer", 3), ("bal", 3)), "OFFER_HEAVY", 3),
+        # crossing the 70% line every three seconds: very one-sided from 1018, BID HEAVY 1021
+        ((("bal", 10), ("very_bid", 3), ("bid", 3), ("very_bid", 3), ("bid", 3)), "VERY_BID", 3),
+        # a steady rise through two lines: bid heavy 1012-1014, very one-sided from 1015; it
+        # changes to bid heavy at 1014 and to very one-sided at 1017, dated 1015
+        ((("bal", 10), ("bid", 3), ("very_bid", 10)), "VERY_BID", 7),
     ],
 )
 def test_a_zone_changes_only_after_it_has_stood_three_seconds(runs, zone, held):
@@ -523,6 +562,13 @@ def test_a_zone_changes_only_after_it_has_stood_three_seconds(runs, zone, held):
     second from second 1000."""
     w = _touch_card(*runs)
     assert (w["zone"], w["held_sec"]) == (zone, held)
+
+
+def test_an_unknown_value_starts_the_zone_over():
+    """INDUCED times: BALANCED books 1000-1004, no book 1005-1014, BALANCED again from 1015: the
+    zone is dated from 1015, not from the first value known, and says so (held 9 at 1024)."""
+    w = _touch_card(("bal", 5), ("none", 10), ("bal", 10))
+    assert (w["zone"], w["held_sec"], w["held_open"]) == ("BALANCED", 9, False)
 
 
 def _zone_of(pct: float | None) -> str | None:
