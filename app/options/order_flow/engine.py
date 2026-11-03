@@ -9,6 +9,7 @@ book as Schwab last sent it) and ``book_live`` (whether the feed delivers the bo
 
 from __future__ import annotations
 
+import collections
 import itertools
 import math
 import statistics
@@ -565,24 +566,26 @@ def _composite_side(
     from the book with the newer BOOK_TIME; its code is matched without regard to case
     (NASDAQ_BOOK sends arcx where NYSE_BOOK sends ARCX). Returns the levels (price, shares) best
     first, the copies left out (price, shares), and whether a level carried no per-exchange rows,
-    its TOTAL_VOLUME then taken whole (the dedup partial)."""
-    sizes: dict[float, float] = {}
+    its TOTAL_VOLUME then taken whole (the dedup partial). A book whose BOOK_TIME is unknown comes
+    after one whose time is known."""
+    sizes: collections.defaultdict[float, float] = collections.defaultdict(float)
     dropped: Levels = []
     partial = False
     taken: set[str] = set()
-    for _time, item in sorted(books, key=lambda b: (b[0] is not None, b[0] or 0.0), reverse=True):
+    timed = sorted((b for b in books if b[0] is not None), key=lambda b: b[0], reverse=True)
+    for _time, item in timed + [b for b in books if b[0] is None]:
         mine: set[str] = set()
         for price, total, rows in _side_levels(item, side):
             if rows is None:
                 partial = True
-                sizes[price] = sizes.get(price, 0.0) + total
+                sizes[price] += total
                 continue
             for code, size in rows:
                 if code.upper() in taken:
                     dropped.append((price, size))
                 else:
                     mine.add(code.upper())
-                    sizes[price] = sizes.get(price, 0.0) + size
+                    sizes[price] += size
         taken |= mine
     return sorted(sizes.items(), reverse=side == "BIDS"), dropped, partial
 
@@ -608,7 +611,7 @@ def _pct(bid: float | None, ask: float | None) -> float | None:
     return None if imb is None else imb * 100.0
 
 
-def _readout(bids: Levels, asks: Levels, book_time_ms: float | None, dropped=None) -> dict:
+def _readout(bids: Levels, asks: Levels, book_time_ms: float | None) -> dict:
     """One book's views: the headline percentage, and the flat totals the bars, the difference and
     the sentence use (the weighted view's are the flat top five)."""
     views = {}
@@ -627,11 +630,6 @@ def _readout(bids: Levels, asks: Levels, book_time_ms: float | None, dropped=Non
             "difference": abs(bt - at) if both else None,
             "total_depth": bt + at if both else None,
         }
-        if dropped is not None:
-            v["counted_twice"] = {
-                "bid": _counted_twice(bids, dropped[0], depth, "BIDS"),
-                "ask": _counted_twice(asks, dropped[1], depth, "ASKS"),
-            }
         views[view] = v
     touch = None
     if bids and asks:
@@ -648,9 +646,9 @@ def _readout(bids: Levels, asks: Levels, book_time_ms: float | None, dropped=Non
 
 def book_readout(contents: dict[str, list]) -> dict[str, dict]:
     """The imbalance readout of each Schwab book and of their deduped composite, from each
-    venue's content (`state.get_content_for_symbol` for that venue). The composite's time is its
-    older book's. No book: status no_book."""
-    books = {v: _latest_book_snapshot(contents.get(v) or []) for v in BOOK_VENUES}
+    venue's content (`state.get_content_for_symbol` for that venue, every venue of BOOK_VENUES).
+    The composite's time is its older book's. No book: status no_book."""
+    books = {v: _latest_book_snapshot(contents[v]) for v in BOOK_VENUES}
     out: dict[str, dict] = {}
     for v, item in books.items():
         if item is None:
@@ -666,12 +664,13 @@ def book_readout(contents: dict[str, list]) -> dict[str, dict]:
     bids, bid_dropped, bid_partial = _composite_side(held, "BIDS")
     asks, ask_dropped, ask_partial = _composite_side(held, "ASKS")
     times = [t for t, _i in held]
-    out[COMPOSITE] = _readout(
-        bids,
-        asks,
-        None if None in times else min(times),
-        (bid_dropped, ask_dropped),
-    )
+    out[COMPOSITE] = _readout(bids, asks, None if None in times else min(times))
+    for view, v in out[COMPOSITE]["views"].items():
+        depth = OF_BOOK_DEPTH_DEEP if view == "weighted" else int(view)
+        v["counted_twice"] = {
+            "bid": _counted_twice(bids, bid_dropped, depth, "BIDS"),
+            "ask": _counted_twice(asks, ask_dropped, depth, "ASKS"),
+        }
     out[COMPOSITE]["books"] = [v for v, i in books.items() if i is not None]
     out[COMPOSITE]["dedup_partial"] = bid_partial or ask_partial
     return out

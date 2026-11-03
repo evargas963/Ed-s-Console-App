@@ -155,7 +155,6 @@
  "quote_time_ct": "Fri 10/23 02:59 PM CT",
  "readout": {
   "auction": "CLOSE",
-  "auction_note": null,
   "auction_text": "Auction \u2014 the continuous book number is replaced during the closing auction; auction imbalance is a different number",
   "disagree": {
    "1": true,

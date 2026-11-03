@@ -155,7 +155,6 @@
   "quote_time_ct": "Fri 10/23 02:59 PM CT",
   "readout": {
     "auction": "NONE",
-    "auction_note": null,
     "auction_text": null,
     "disagree": {
       "1": false,

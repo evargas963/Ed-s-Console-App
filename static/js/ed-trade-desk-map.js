@@ -471,9 +471,11 @@
       (d ? '<path d="' + d + '" fill="none" stroke="' + col + '" stroke-width="1.5" vector-effect="non-scaling-stroke"/>' : '') + '</svg>';
   }
   function liqBar(side, label, text, shares, total, twice) {
-    var w = total ? shares / total * 100 : 0, tw = total && twice ? twice / total * 100 : 0;
-    return '<div class="liq-bar-h"><span>' + label + '</span><span>' + esc(text || '-') + '</span></div>' +
-      '<div class="liq-track"><i class="' + side + '" style="width:' + w + '%"></i>' + (tw ? '<i class="twice" style="width:' + tw + '%"></i>' : '') + '</div>';
+    // shares not sent: no bar; a total of 0 shares: an empty track
+    var fill = shares == null || !total ? '' : '<i class="' + side + '" style="width:' + (shares / total * 100) + '%"></i>';
+    var hatch = !total || !twice ? '' : '<i class="twice" style="width:' + (twice / total * 100) + '%"></i>';
+    return '<div class="liq-bar-h"><span>' + label + '</span><span>' + esc(text == null ? '-' : text) + '</span></div>' +
+      '<div class="liq-track">' + fill + hatch + '</div>';
   }
   function paintLiq() {
     var c = $('tdmCardLiq'); if (!c) return;
@@ -490,17 +492,20 @@
       return;
     }
     var why = r.status === 'no_book' ? 'no book for this symbol right now' : r.status === 'empty' ? 'the book Schwab sent has no levels' : null;
-    src(c, esc(LIQ_SRC[key]) + ' · ' + (why || (r.live ? LIQ_KIND[key] : 'book ' + esc(r.book_time_ct || '') + ' · not live')) +
-      (rd.auction_note ? ' · ' + esc(rd.auction_note) : ''));
+    // an auction window not known (no Schwab market hours held for today) says so
+    src(c, esc(LIQ_SRC[key]) + ' · ' + (why || (r.live ? LIQ_KIND[key] : 'book ' + esc(r.book_time_ct) + ' · not live')) +
+      (rd.auction == null ? ' · auction windows unknown: no Schwab market hours held for today' : ''));
     if (rd.auction_text) { body.innerHTML = '<div class="liq-none">AUCTION<p>' + esc(rd.auction_text) + '</p></div>'; return; }
     if (why) { body.innerHTML = '<div class="liq-none">NO BOOK<p>No book for this symbol right now</p></div>'; return; }
-    var v = r.views[view], twice = v.counted_twice || null;
+    var v = r.views[view], twice = v.counted_twice;
     var h = '<div class="liq-lbl liq-keep"><span>' + (view === 'weighted' ? 'WEIGHTED TOP-5 HEADLINE' : 'TOP ' + view + ' HEADLINE') + '</span>' +
       (r.live ? '' : '<span class="liq-pill">BOOK ' + esc(r.feed_label) + '</span>') + '</div>';
     if (r.status === 'one_sided') {
+      // the side Schwab sent levels for fills its track; the missing side draws no bar and "-"
+      var only = v.bid_total != null ? v.bid_total : v.ask_total;
       h += '<div class="liq-hl"><span class="liq-pct">-</span><span class="liq-word">ONE-SIDED</span></div>' +
-        liqBar('bid', 'Bids', v.bid_text, v.bid_total || 0, (v.bid_total || 0) + (v.ask_total || 0)) +
-        liqBar('ask', 'Asks', v.ask_text, v.ask_total || 0, (v.bid_total || 0) + (v.ask_total || 0)) +
+        liqBar('bid', 'Bids', v.bid_text, v.bid_total, only) +
+        liqBar('ask', 'Asks', v.ask_text, v.ask_total, only) +
         '<div class="liq-sent">Only the ' + (v.bid_total != null ? 'bid' : 'offer') + ' side has levels in this book: no percentage.</div>';
     } else {
       var tone = liqTone(v.zone);

@@ -3226,7 +3226,7 @@ def liquidity_readout(t: str, now: float) -> dict:
     values (history.LEAN, engine.readout_card). Each book is judged by the one live rule on its
     own service, the composite live only while both are; a book that is not live keeps its last
     values, read to its last value's time. With the exchange auction window of today's session
-    as Schwab sent it (time_et.auction)."""
+    as Schwab sent it (time_et.auction; None while Schwab's answer for today is not held)."""
     readout = book_readout({v: get_content_for_symbol(t, v) for v in BOOK_VENUES})
     labels = {v: price_state(t, now, v)[0] for v in BOOK_VENUES}
     labels[COMPOSITE] = next((labels[v] for v in BOOK_VENUES if labels[v] != lmp.LIVE), lmp.LIVE)
@@ -3251,9 +3251,6 @@ def liquidity_readout(t: str, now: float) -> dict:
     window = auction(datetime.fromtimestamp(now, ET))
     card["auction"] = window
     card["auction_text"] = _AUCTION_TEXT.get(window)
-    card["auction_note"] = (
-        "auction windows unknown: no Schwab market hours held for today" if window is None else None
-    )
     return card
 
 

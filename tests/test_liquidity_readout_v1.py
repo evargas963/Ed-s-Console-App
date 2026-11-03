@@ -44,7 +44,7 @@ def _pair_readout() -> dict:
 def _replay() -> tuple[dict, list]:
     """Every captured 2026-11-02 book through the readout, as the console's intake records it:
     the readout of the newest book of each venue at each receipt."""
-    newest: dict = {}
+    newest: dict = {v: [] for v in e.BOOK_VENUES}
     points = []
     for ts, svc, content in _ROWS:
         newest[svc] = [content]
@@ -205,7 +205,7 @@ def test_an_exchange_code_matches_without_regard_to_case():
             for x in lv[side]:
                 x["EXCHANGE"] = x["EXCHANGE"].upper()
     comp = e.book_readout({"NYSE_BOOK": [as_nyse], "NASDAQ_BOOK": [newer]})["COMPOSITE"]
-    one = e.book_readout({"NASDAQ_BOOK": [newer]})["NASDAQ_BOOK"]
+    one = e.book_readout({"NYSE_BOOK": [], "NASDAQ_BOOK": [newer]})["NASDAQ_BOOK"]
     assert comp["views"]["5"]["bid_total"] == one["views"]["5"]["bid_total"]
     assert comp["views"]["5"]["ask_total"] == one["views"]["5"]["ask_total"]
 
@@ -313,7 +313,7 @@ def test_the_route_serves_the_readout_of_both_books_and_the_composite_live():
         assert (got["live"], got["feed_label"], got["not_live_text"]) == (True, "LIVE", None)
         assert got["views"] == expected["venues"][v]["views"], v
     assert rd["disagree"] == expected["disagree"]
-    assert (rd["auction"], rd["auction_text"], rd["auction_note"]) == ("NONE", None, None)
+    assert (rd["auction"], rd["auction_text"]) == ("NONE", None)
     # the payload's own book fields stay the one venue asked for
     assert p["venue"] == "NYSE_BOOK" and p["provenance"]["book_source"] == "NYSE_BOOK"
 
@@ -343,7 +343,7 @@ def test_a_one_sided_book_shows_the_side_it_has_and_no_percentage():
     list)."""
     nyse = json.loads(json.dumps(_PAIR["NYSE_BOOK"]["content"]))
     nyse["ASKS"] = []
-    r = e.book_readout({"NYSE_BOOK": [nyse]})["NYSE_BOOK"]
+    r = e.book_readout({"NYSE_BOOK": [nyse], "NASDAQ_BOOK": []})["NYSE_BOOK"]
     assert r["status"] == "one_sided"
     assert all(v["pct"] is None and v["ask_total"] is None for v in r["views"].values())
     assert r["views"]["5"]["bid_total"] == 800

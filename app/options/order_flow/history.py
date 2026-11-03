@@ -265,7 +265,8 @@ class RecentLean:
     def points(self, ticker: str) -> list[tuple[float, dict]]:
         """The ticker's kept values, oldest first."""
         with self._lock:
-            return list(self._points.get(ticker_storage_key(ticker), ()))
+            key = ticker_storage_key(ticker)
+            return list(self._points[key]) if key in self._points else []
 
 
 #: the recent prints, books and imbalance values, fed by the console's intake
