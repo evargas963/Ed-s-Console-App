@@ -3,7 +3,7 @@
 # read from the folder that holds it, every file `head.<its path>` and none of its code importable.
 # `import schwab_client` is then the outside name `schwab_client`, not `head.schwab_client`, so no
 # chain runs through a root module, and layers wait for the folders. `tools/check_locks.py` refuses
-# a Python file grimp would not read. ruff keeps `http.client` and `urllib.request`: grimp stops at
+# a file Python can load that grimp may not read. ruff keeps `http.client` and `urllib.request`: grimp stops at
 # `http` and `urllib`, which the rest of each serves.
 [tool.importlinter]
 root_packages = ["head"]

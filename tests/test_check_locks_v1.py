@@ -105,20 +105,23 @@ def test_no_ignore_file_or_excluded_folder_hides_a_finding(tmp_path):
         "windows.pyw",
         "stub.pyi",
         "book.ipynb",
+        "upper.PY",
+        "compiled.pyc",
+        "native.pyd",
         "two.dots.py",
         ".hidden.py",
         "not-a-name/__init__.py",
         "orphans/a.py",
     ],
 )
-def test_a_python_file_import_linter_does_not_read_is_refused(tmp_path, name):
+def test_a_file_outside_the_import_contracts_is_refused(tmp_path, name):
     repo = _repo(tmp_path)
     _write(repo, name, "#!/usr/bin/env python\nVALUE = 1\n")
     refused = _refused(repo)
-    assert "Python files import-linter does not read: 0 -> 1" in refused
+    assert "files outside the import contracts: 0 -> 1" in refused
 
 
-def test_a_module_in_a_package_is_read(tmp_path):
+def test_a_module_in_a_package_is_inside_them(tmp_path):
     repo = _repo(tmp_path)
     _write(repo, "part/__init__.py", "")
     _write(repo, "part/inner/__init__.py", "")

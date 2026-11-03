@@ -88,8 +88,9 @@ ENF-12. No number is kept by hand (`tests/test_check_locks_v1.py`). A banned nam
 per product file, so no module that does not hold one may start. The same job runs import-linter on
 `locks.imports.toml`, the base's: no import statement outside the modules it names takes `schwab`,
 `authlib` or `httpx`, and none anywhere takes `aiohttp` or `requests`, with no count
-(`tests/test_data_path_only_feed_v1.py`); a Python file it would not read is a count at 0, so
-absolute (`tools/check_locks.py`). `__import__("schwab")` is seen by neither.
+(`tests/test_data_path_only_feed_v1.py`); a file Python can load that it may not read is a count at
+0, so absolute (`tools/check_locks.py`). The builtin `__import__("schwab")` is seen by no tool: rule
+14's review, no machine check, ENF-12.
 GitHub runs that workflow from the base (`pull_request_target`), and it runs no code of the head, so
 a change cannot edit its judge. `locks` is a required check on `main`: a change it refuses cannot
 merge, and nothing approves past it. No step waits on the operator's click, and none is built again

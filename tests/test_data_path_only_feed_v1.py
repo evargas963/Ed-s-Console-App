@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
-import sys
+import sysconfig
 from pathlib import Path
 
 import pytest
@@ -30,7 +30,7 @@ def head(tmp_path: Path) -> Path:
 def _lint(head: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [
-            Path(sys.executable).with_name("lint-imports"),
+            Path(sysconfig.get_path("scripts")) / "lint-imports",
             "--config",
             str(ROOT / "locks.imports.toml"),
             "--no-cache",
