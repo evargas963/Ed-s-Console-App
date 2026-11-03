@@ -108,6 +108,7 @@ def test_no_ignore_file_or_excluded_folder_hides_a_finding(tmp_path):
         "upper.PY",
         "compiled.pyc",
         "native.pyd",
+        "native.abi3.so",
         "two.dots.py",
         ".hidden.py",
         "not-a-name/__init__.py",
