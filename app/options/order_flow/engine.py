@@ -9,7 +9,6 @@ book as Schwab last sent it) and ``book_live`` (whether the feed delivers the bo
 
 from __future__ import annotations
 
-import itertools
 import math
 import statistics
 
@@ -607,25 +606,21 @@ def _codes(item: dict) -> set[str]:
 
 def _composite_side(books: dict[str, dict], side: str, nsdq_from: str) -> tuple[Levels, bool]:
     """One side of the composite of both books: every quote of both, one per contributor, NSDQ's
-    only from the book `nsdq_from`, sorted by price best first and summed at each distinct price.
-    A level that carries no per-exchange rows counts its TOTAL_VOLUME whole, and the second value
-    says one did (the dedup partial)."""
-    quotes: Levels = []
+    only from the book `nsdq_from`, the shares summed at each distinct price, best first. A level
+    that carries no per-exchange rows counts its TOTAL_VOLUME whole, and the second value says one
+    did (the dedup partial)."""
+    sizes: dict[float, float] = {}
     partial = False
     for venue, item in books.items():
         for price, total, rows in _side_levels(item, side):
             if rows is None:
                 partial = True
-                quotes.append((price, total))
+                sizes[price] = sizes.get(price, 0.0) + total
                 continue
-            quotes += [
-                (price, size) for code, size in rows if code.upper() != NSDQ or venue == nsdq_from
-            ]
-    quotes.sort(key=lambda q: q[0], reverse=side == "BIDS")
-    levels = [
-        (p, sum(s for _p, s in at)) for p, at in itertools.groupby(quotes, key=lambda q: q[0])
-    ]
-    return levels, partial
+            for code, size in rows:
+                if code.upper() != NSDQ or venue == nsdq_from:
+                    sizes[price] = sizes.get(price, 0.0) + size
+    return sorted(sizes.items(), reverse=side == "BIDS"), partial
 
 
 def _weighted_total(levels: Levels) -> float | None:
