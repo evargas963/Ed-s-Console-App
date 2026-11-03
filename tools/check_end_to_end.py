@@ -13,10 +13,10 @@ The product lines a PR adds carry no patch shape:
      one), or one whose only statement swallows the error: `pass`, `continue`, a return or an
      assignment of None or a literal, or a call with no re-raise. An except that logs the error
      and carries on is not a patch (the operator's ruling), nor one that raises it on: one whose
-     body, at any depth outside a def, lambda or class, has a log call as a statement of its own
+     body, at any depth outside a def or class, has a log call as a statement of its own
      (`.debug`, `.info`, `.warning`, `.error`, `.exception`, `.critical`, `.log`) or a raise that
-     is bare or carries a cause (`from`) is never refused, even when that line runs on one branch
-     only;
+     is bare or carries a cause (`from e`, not `from None`) is never refused, even when that line
+     runs on one branch only;
    - `contextlib.suppress`;
    - a missing value replaced by a literal: `x or <literal>`, a None-check ternary or
      `if x is None:` that returns or assigns a literal, `.get(k, <literal>)` (positional or
@@ -379,14 +379,16 @@ def _none_check(test: ast.AST) -> bool:
 
 def _reports(handler: ast.ExceptHandler) -> bool:
     """At any depth of its own body, the except has a log call as a statement of its own, or a
-    raise that is bare or carries a cause (`from`): not a patch. A def, lambda or class inside
-    it does not run when the error does, so it is not read."""
+    raise that is bare or carries a cause (`from e`, not `from None`): not a patch. A def or
+    class inside it does not run when the error does, so it is not read."""
     stack: list[ast.AST] = list(handler.body)
     while stack:
         n = stack.pop()
-        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             continue
-        if isinstance(n, ast.Raise) and (n.exc is None or n.cause is not None):
+        if isinstance(n, ast.Raise) and (
+            n.exc is None or (n.cause is not None and not _is_none(n.cause))
+        ):
             return True
         if (
             isinstance(n, ast.Expr)

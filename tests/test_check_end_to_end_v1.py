@@ -200,6 +200,18 @@ def test_a_patch_already_on_main_is_not_counted_against_a_pr_that_does_not_touch
         (
             "server.py",
             "def spot(prev):\n    try:\n        return f(prev)\n    except Exception:\n"
+            "        raise ConnectionError('down') from None\n",
+            "an except that catches everything",
+        ),
+        (
+            "server.py",
+            "def spot(prev):\n    try:\n        return f(prev)\n    except Exception:\n"
+            "        def later():\n            log.info('x')\n\n        return None\n",
+            "an except that catches everything",
+        ),
+        (
+            "server.py",
+            "def spot(prev):\n    try:\n        return f(prev)\n    except Exception:\n"
             "        cb = lambda: log.info('x')\n        return cb\n",
             "an except that catches everything",
         ),
