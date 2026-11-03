@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -108,22 +109,16 @@ def test_concurrent_materialization_yields_one_object_and_one_generation():
     session = most_recent_trading_day_et()
     bars = _bars(session, 105.0)
 
-    results: list = []
-    errors: list = []
     barrier = threading.Barrier(8)
 
     def go():
-        try:
-            barrier.wait(timeout=10)
-            results.append(_mat(session, bars))
-        except Exception as exc:  # noqa: BLE001
-            errors.append(exc)
+        barrier.wait(timeout=10)
+        return _mat(session, bars)
 
-    threads = [threading.Thread(target=go) for _ in range(8)]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join(timeout=30)
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        futures = [pool.submit(go) for _ in range(8)]
+    errors = [f.exception() for f in futures if f.exception() is not None]
+    results = [f.result() for f in futures if f.exception() is None]
 
     assert not errors, f"materialization raised under concurrency: {errors[:2]}"
     assert len(results) == 8, f"only {len(results)} of 8 threads completed"

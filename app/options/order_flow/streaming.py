@@ -209,11 +209,15 @@ def _tick(sym: str) -> None:
         return
     try:
         _on_tick_callback(sym)
-    except Exception as e:  # noqa: BLE001 -- counted + WARNING; ingest must go on
+    except Exception as e:  # counted + WARNING; ingest must go on
         _tick_callback_failures += 1
         if _tick_callback_failures & (_tick_callback_failures - 1) == 0:
             log.warning(
-                "tick callback failed for %s (%s failures): %s", sym, _tick_callback_failures, e
+                "tick callback failed for %s (%s failures): %s",
+                sym,
+                _tick_callback_failures,
+                e,
+                exc_info=True,
             )
 
 
@@ -361,13 +365,15 @@ async def _rows_loop(ui_url: str, reconnect_sec: float) -> None:
                             _tick(row["ticker"])
         except asyncio.CancelledError:
             raise
-        except Exception as e:  # noqa: BLE001 -- daemon down/restarting: retry, never substitute
+        except OSError as e:  # the daemon is down or restarting: retry, never substitute
             log.info(
                 "price rows unavailable (%s: %s); retrying in %.1fs",
                 type(e).__name__,
                 e,
                 reconnect_sec,
             )
+        except Exception:
+            log.exception("price rows failed; retrying in %.1fs", reconnect_sec)
         _lmp.record_feed_down()  # no daemon: the feed is down, the last price stays
         _feed_changed(time.time())
         if _feed_running:
@@ -415,13 +421,15 @@ async def _feed_loop(push_url: str, ui_url: str, reconnect_sec: float) -> None:
                     await serve_push(ws)
             except asyncio.CancelledError:
                 raise
-            except Exception as e:  # noqa: BLE001 -- daemon down/restarting: retry, never substitute
+            except OSError as e:  # the daemon is down or restarting: retry, never substitute
                 log.info(
                     "live push unavailable (%s: %s); retrying in %.1fs",
                     type(e).__name__,
                     e,
                     reconnect_sec,
                 )
+            except Exception:
+                log.exception("live push failed; retrying in %.1fs", reconnect_sec)
             if _feed_running:
                 await asyncio.sleep(reconnect_sec)
     finally:

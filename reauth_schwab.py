@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import os
 import sys
-import traceback
 
 from config import build_config, load_dotenv_file
 from schwab_client import (
@@ -82,22 +81,22 @@ def reauth():
                 callback_url=cfg.callback_url,
                 token_path=token_path,
             )
-            if ok:
-                print(f"\nSUCCESS: Token written to {token_path}")
-                print(
-                    "No restart: the capture daemon takes it at once if Schwab refused the old "
-                    "sign-in, else when its token next comes due (within about 30 minutes)."
-                )
-                _print_post_reauth_validation(token_path)
-                return
-            print(f"\nFAILURE: {msg}")
+        except Exception:
             print("\nIf the code was already used, run a fresh login:")
             print("  python reauth_schwab.py --manual")
-            sys.exit(1)
-        except Exception as e:
-            print(f"\nFAILURE: {e}")
-            traceback.print_exc()
-            sys.exit(1)
+            raise
+        if ok:
+            print(f"\nSUCCESS: Token written to {token_path}")
+            print(
+                "No restart: the capture daemon takes it at once if Schwab refused the old "
+                "sign-in, else when its token next comes due (within about 30 minutes)."
+            )
+            _print_post_reauth_validation(token_path)
+            return
+        print(f"\nFAILURE: {msg}")
+        print("\nIf the code was already used, run a fresh login:")
+        print("  python reauth_schwab.py --manual")
+        sys.exit(1)
 
     if manual:
         print("Using MANUAL flow — you will copy/paste URLs (no local server, no cert warning).")
@@ -159,14 +158,12 @@ def reauth():
         print("  - Check that your Schwab app's callback URL exactly matches:")
         print(f"    {cfg.callback_url}")
         sys.exit(1)
-    except Exception as e:
-        print(f"\nFAILURE: {e}")
-        traceback.print_exc()
+    except Exception:
         if not manual:
             print("\nIf you completed login and got a callback page:")
             print("  The browser must ACCEPT the self-signed cert to reach the local server.")
             print("  Or run: python reauth_schwab.py --manual  (no local server needed)")
-        sys.exit(1)
+        raise
 
 
 if __name__ == "__main__":

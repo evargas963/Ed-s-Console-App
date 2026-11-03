@@ -20,6 +20,7 @@ import argparse
 import csv
 import datetime as dt
 import json
+import logging
 import sqlite3
 import sys
 import time
@@ -27,6 +28,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
+log = logging.getLogger(__name__)
 
 OUT = REPO / "docs" / "schwab_fields.csv"
 #: schwab_doc: where Schwab's docs define the field, or "not in Schwab's doc"; sample: values Schwab
@@ -271,7 +273,8 @@ def rest_rows(
             if r.status_code != 200:
                 continue
             body = r.json()
-        except Exception as e:  # noqa: BLE001 -- an endpoint that fails is reported with its error
+        except Exception as e:  # an endpoint that fails is reported with its error
+            log.warning("%s failed", name, exc_info=True)
             status[name] = f"error: {type(e).__name__}"
             continue
         found: dict[str, str] = {}

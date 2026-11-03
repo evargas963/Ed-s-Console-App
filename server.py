@@ -511,9 +511,12 @@ def _write_streamed_bars(msgs: list, now: datetime) -> None:
                         written.append(tk)
             elif _write_streamed_bar(msg):
                 written.append(msg["symbol"])
-        except Exception as e:  # noqa: BLE001 -- logged; the next bar is still written
+        except Exception as e:  # logged; the next bar is still written
             log.warning(
-                "streamed bar or price history for %s not written: %s", msg.get("symbol"), e
+                "streamed bar or price history for %s not written: %s",
+                msg.get("symbol"),
+                e,
+                exc_info=True,
             )
     for tk in dict.fromkeys(written):
         _publish_price_levels(tk, now)
@@ -619,8 +622,8 @@ async def _app_lifespan(app):
     # the daemon's feed task; the console holds no Schwab socket of its own
     try:
         stop_order_flow_stream()
-    except Exception as e:
-        log.warning("Order flow streaming shutdown: %s", e)
+    except Exception as e:  # the other loops still stop
+        log.warning("Order flow streaming shutdown: %s", e, exc_info=True)
 
     stop_terrain_loop()
     stop_bar_writer()
@@ -1901,8 +1904,8 @@ def _price_chain(
     if what == REPRICE:  # the held chain: the ticker's reason stays the chain's own
         try:
             _publish_levels(tk)
-        except Exception as e:  # noqa: BLE001 -- logged; the next tick or chain reprices
-            log.warning("levels reprice failed for %s: %s", tk, e)
+        except Exception as e:  # logged; the next tick or chain reprices
+            log.warning("levels reprice failed for %s: %s", tk, e, exc_info=True)
         return
     try:
         if what == STORED:
@@ -1912,7 +1915,7 @@ def _price_chain(
             return
         _publish_levels(tk, contracts, fetched_ts, chain_spot=spot)
         _terrain_refresh_last_error.pop(tk, None)
-    except Exception as e:  # noqa: BLE001 -- kept as the ticker's reason, and logged
+    except Exception as e:  # kept as the ticker's reason, and logged
         _terrain_refresh_last_error[tk] = f"pricing the chain failed: {type(e).__name__}: {e}"
         log.warning("pricing the chain of %s failed: %s", tk, e, exc_info=True)
 
@@ -2049,8 +2052,8 @@ def _terrain_loop() -> None:
                 watchlist = _watchlist(now)
                 if watchlist is not None:
                     _publish_missing_price_levels(watchlist, now_et())
-        except Exception as e:  # noqa: BLE001 -- the status line says it failed, never silence
-            log.warning("levels loop: %s: %s", type(e).__name__, e)
+        except Exception as e:  # the status line says it failed, never silence
+            log.warning("levels loop: %s: %s", type(e).__name__, e, exc_info=True)
     log.info("Terrain loop stopped")
 
 
@@ -2246,7 +2249,7 @@ def terrain_strikes_payload(tk: str, scope: str, centre, shift: int, now: float)
             today = {k: (_ps.get(k) or []) for k in ("all", "near", "far")}
             spot_used = _snap.get("spot")
     except Exception as e:
-        log.debug("terrain strikes live read failed %s: %s", tk, e)
+        log.warning("terrain strikes live read failed %s: %s", tk, e, exc_info=True)
     prior, prior_src = _snap.get("_prior_strikes") or (None, None)
 
     # the per-side GEX and volume sums, against the spot this payload serves (the one aggregator)
@@ -2639,7 +2642,7 @@ def _forces_from_captures(tk: str, captures: list, charm_by_strike: dict | None 
                 charm_below = side_total([v["net_charm"] for k, v in per_ch.items() if k < spot1])
                 charm_above = side_total([v["net_charm"] for k, v in per_ch.items() if k > spot1])
             except Exception as e:
-                log.warning("forces charm for %s failed (%s)", tk, e)
+                log.warning("forces charm for %s failed (%s)", tk, e, exc_info=True)
             payload = {
                 "ticker": tk,
                 "available": True,
@@ -2657,7 +2660,7 @@ def _forces_from_captures(tk: str, captures: list, charm_by_strike: dict | None 
                 ),
             }
     except Exception as e:
-        log.warning("forces for %s failed (%s)", tk, e)
+        log.warning("forces for %s failed (%s)", tk, e, exc_info=True)
         payload = _forces_absent(tk)
     return payload
 
@@ -3159,7 +3162,7 @@ def order_flow_microstructure(ticker: str, venue: str, now: float) -> dict:
         if _content:
             data["content"] = _content
     except Exception as e:  # streaming state optional — fail closed to 'no_book', never fabricate
-        log.debug("microstructure content build failed for %s: %s", t, e)
+        log.warning("microstructure content build failed for %s: %s", t, e, exc_info=True)
     # top of book: the daemon's price row. The last bid and ask stand when it is not live;
     # top_outage says why and top_feed_label is the page's word for it (docs/DATA_FLOW.md §2 D5)
     top_label, top_outage = price_state(t, now)
@@ -3187,7 +3190,7 @@ def order_flow_microstructure(ticker: str, venue: str, now: float) -> dict:
     try:
         payload["flow"] = flow_block(OrderFlowEngine().compute(data, now=now, ticker=t))
     except Exception as e:  # flow is additive -- the book payload stands without it
-        log.debug("microstructure flow failed for %s: %s", t, e)
+        log.warning("microstructure flow failed for %s: %s", t, e, exc_info=True)
         payload["flow"] = None
     payload["ticker"] = t
     payload["venue"] = venue
@@ -3653,8 +3656,8 @@ def _publish_price_levels(ticker: str, now: datetime) -> None:
             bar_source=BAR_SOURCE,
             config=PlaybookConfig(),
         )
-    except Exception as e:  # noqa: BLE001 -- logged; the ticker's next bar builds them
-        log.warning("price levels for %s not built: %s", tk, e)
+    except Exception as e:  # logged; the ticker's next bar builds them
+        log.warning("price levels for %s not built: %s", tk, e, exc_info=True)
         return
     if snap is not before:  # the same object when its bars did not change
         push_changes.changed(tk, push_changes.LEVELS)
@@ -4414,4 +4417,5 @@ def liquidity_snapshot(ticker: str, now: datetime):
         # its own status code (a missing ticker is 400), never re-issued as a bare 500
         return JSONResponse({"error": e.detail}, status_code=e.status_code)
     except Exception as e:
+        log.exception("liquidity snapshot for %s failed", ticker)
         return JSONResponse({"error": str(e)}, status_code=500)

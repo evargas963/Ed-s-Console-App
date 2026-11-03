@@ -719,8 +719,10 @@ class Daemon:
                 quoted, status, answer = await asyncio.to_thread(
                     check_ticker, self.schwab_client(), ticker
                 )
-            except Exception as e:  # noqa: BLE001 -- the check could not be made: not added, and why
-                log.warning("watchlist: %s not checked: %s: %s", ticker, type(e).__name__, e)
+            except Exception as e:  # the check could not be made: not added, and why
+                log.warning(
+                    "watchlist: %s not checked: %s: %s", ticker, type(e).__name__, e, exc_info=True
+                )
                 return self.bus.publish(
                     *watchlist_message(
                         self.watchlist,
@@ -879,8 +881,13 @@ class Daemon:
         if s is not None:
             try:
                 await asyncio.wait_for(s.logout(), timeout=5)
-            except Exception as e:  # noqa: BLE001 -- the session is dropped either way
-                log.info("schwab: logout of the old session failed (%s: %s)", type(e).__name__, e)
+            except Exception as e:  # the session is dropped either way
+                log.info(
+                    "schwab: logout of the old session failed (%s: %s)",
+                    type(e).__name__,
+                    e,
+                    exc_info=True,
+                )
 
     async def read_for(self, seconds: float) -> None:
         """Handle Schwab's frames for `seconds`, or until a request is waiting: each answer to
@@ -908,8 +915,13 @@ class Daemon:
                 self.answered(response)
             try:
                 _dispatch(self.stream, msg)
-            except Exception as e:  # noqa: BLE001 -- that frame is logged; the next one is read
-                log.warning("schwab: skipped a frame (%s: %s)", type(e).__name__, str(e)[:250])
+            except Exception as e:  # that frame is logged; the next one is read
+                log.warning(
+                    "schwab: skipped a frame (%s: %s)",
+                    type(e).__name__,
+                    str(e)[:250],
+                    exc_info=True,
+                )
 
     async def run_connection(self, client, stop: asyncio.Event) -> None:
         """One connection's life: ask for everything once, then send what is queued and read --
@@ -947,9 +959,9 @@ class Daemon:
             started = time.time()
             try:
                 await self.run_connection(schwab_client(), stop)
-            except Exception as e:  # noqa: BLE001 -- every failure is a reconnect; its reason to the log and /api/health
+            except Exception as e:  # every failure is a reconnect; its reason to the log and health
                 why = f"{type(e).__name__}: {str(e)[:350]}"
-                log.warning("schwab: connection ended (%s)", why)
+                log.warning("schwab: connection ended (%s)", why, exc_info=True)
                 if self._down_since is None:
                     self._down_since = time.time()
                 self.schwab_down = f"NOT CONNECTED since {ct_label(self._down_since)}: {why}"
@@ -1112,9 +1124,9 @@ async def record_feed_status(
                         "last_data_ts": daemon.health.last(svc),
                     },
                 )
-        except Exception as e:  # noqa: BLE001 -- this round's rows are missing and the log says
-            # why; the next round still runs (the console's status line reports the record's age)
-            log.warning("feed status round failed: %s: %s", type(e).__name__, e)
+        except Exception as e:  # this round's rows are missing and the log says why; the next
+            # round still runs (the console's status line reports the record's age)
+            log.warning("feed status round failed: %s: %s", type(e).__name__, e, exc_info=True)
         try:
             await asyncio.wait_for(stop.wait(), timeout=every)
             return
