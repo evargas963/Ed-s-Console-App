@@ -229,11 +229,11 @@ then the rule binds with no machine check.
   stated requirements. `.claude/skills/before-done/SKILL.md` step 7 runs them.
 - Reviews converge (operator 2026-11-03: "this is unsustainable. audit and fix right away"). The
   author backs every behaviour the description states with a command run before the first review.
-  A review after a fix judges the last round's findings and the diff since the reviewed commit. A
-  finding on untouched code, or one reversing the last round, goes to the operator. After two
-  rounds with a FAIL or NOT_PROVEN open, every open finding goes to the operator in one message.
-  Enforced by: `.claude/skills/before-done/SKILL.md` step 7; that it was followed — no machine
-  check, ENF-12.
+  A review after a fix, by the same two reviewers, judges the last round's findings and the diff
+  since the reviewed commit. A finding that reverses the last round goes to the operator. When the
+  second round leaves a FAIL or NOT_PROVEN open, every open finding goes to the operator in one
+  message, and stays open until he decides. Enforced by: `.claude/skills/before-done/SKILL.md`
+  step 7; that it was followed — no machine check, ENF-12.
 
 ## Authority
 
@@ -249,8 +249,9 @@ then the rule binds with no machine check.
 - Work continues until SHAPE is finished: a stop is refused while its row is IN PROGRESS, unless
   the rules require the stop (his yes to a plan for work outside SHAPE, CLAUDE.md item 3; his yes
   to a production start or stop in regular hours, or to a change of request rates, limits or
-  settings, CLAUDE.md item 5; the next
-  bullet's stop list: his stop words, an AUDIT ONLY or DO NOT MERGE task, a destructive data action,
+  settings, CLAUDE.md item 5; a second review round that leaves a finding open, Review verdicts;
+  the next bullet's stop list: his stop words, an AUDIT ONLY or DO NOT MERGE task, a destructive
+  data action,
   a product decision), said in a message that begins `WAITING ON OPERATOR:`. From the third
   refused stop in a row since the operator last wrote, what is being done is suspect (operator
   2026-10-30: "at that point in time i would suspect that what you are doing isn't working"): the
