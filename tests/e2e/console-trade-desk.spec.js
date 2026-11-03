@@ -34,12 +34,12 @@ const LEVELS = { ticker: 'SPY', spot: SPOT, tf: '30', generation: 1, vwap_series
   volume_profile: { basis: 'RTH 1-minute bars, each bar\'s volume spread evenly over its range (not trade prints)', tick_size: 0.01,
     bins: [[769.99, 1200, false], [770.0, 5000, true], [770.01, 3000, true]], max_volume: 5000, poc: 770.0, vah: 770.01, val: 770.0 } };
 // the route's answers for SPY's real books (tests/test_liquidity_readout_v1.py): live, the daemon's
-// connection ended, no book, inside the closing auction, and crossed
+// connection ended, no book, and crossed inside the closing auction
 const READOUT_LIVE = require(path.join(__dirname, 'fixtures', 'liquidity_readout_live.json'));
 const READOUT_OFFLINE = require(path.join(__dirname, 'fixtures', 'liquidity_readout_offline.json'));
 const READOUT_NO_BOOK = require(path.join(__dirname, 'fixtures', 'liquidity_readout_no_book.json'));
+// (the books when the composite was first crossed, read inside the closing auction window)
 const READOUT_AUCTION = require(path.join(__dirname, 'fixtures', 'liquidity_readout_close_auction.json'));
-const READOUT_CROSSED = require(path.join(__dirname, 'fixtures', 'liquidity_readout_crossed.json'));
 const LIVE_COMP = READOUT_LIVE.readout.venues.COMPOSITE;
 const MICRO = { ticker: 'SPY', venue: 'NASDAQ_BOOK', status: 'ok', readout: READOUT_LIVE.readout, top_of_book: { bid: 771.29, ask: 771.31, bid_size: 300, ask_size: 200 },
   spread_pts: 0.02, depth: { '1': { imbalance: 0.2 }, '5': { bid_total: 3000, ask_total: 2000, imbalance: 0.2 } },
@@ -996,17 +996,17 @@ test.describe('Desk: the Liquidity card draws the served order-imbalance readout
     const c = READOUT_AUCTION.readout.venues.COMPOSITE;
     await expect(card(page).locator('.liq-body')).toContainText(READOUT_AUCTION.readout.auction_text);
     await expect(card(page).locator('.liq-pct')).toHaveText(c.views.weighted.pct_text);
-    // the line sits after the sentence, before the venues
+    // the line sits after the sentence box, before the venues
     const text = await card(page).locator('.liq-body').innerText();
-    expect(text.indexOf(READOUT_AUCTION.readout.auction_text)).toBeGreaterThan(text.indexOf(c.views.weighted.sentence));
+    expect(text.indexOf(READOUT_AUCTION.readout.auction_text)).toBeGreaterThan(text.indexOf(await card(page).locator('.liq-sent').innerText()));
     expect(text.indexOf(READOUT_AUCTION.readout.auction_text)).toBeLessThan(text.indexOf('VENUES'));
     expect(errs).toEqual([]);
   });
 
   test('a crossed book flags it, keeps its number and totals, and withholds the sentence', async ({ page }) => {
     const errs = watchErrors(page);
-    await openDesk(page, READOUT_CROSSED);
-    const c = READOUT_CROSSED.readout.venues.COMPOSITE;
+    await openDesk(page, READOUT_AUCTION);
+    const c = READOUT_AUCTION.readout.venues.COMPOSITE;
     expect(c.touch_flag).toBe('BOOK CROSSED');
     await expect(card(page).locator('.liq-body')).toContainText('BOOK CROSSED');
     await expect(card(page).locator('.liq-pct')).toHaveText(c.views.weighted.pct_text);

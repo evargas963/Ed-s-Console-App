@@ -695,10 +695,9 @@ _E2E_FILES = {
     "liquidity_readout_live.json": {},
     "liquidity_readout_offline.json": {"feed_down": True},
     "liquidity_readout_no_book.json": {"rows": []},
-    # inside the closing auction window: the number stands, with the auction line
-    "liquidity_readout_close_auction.json": {"now": _CLOSE_AUCTION},
-    # the first books held after 10:00 ET in which the composite is crossed
-    "liquidity_readout_crossed.json": {"now": _CROSSED[-1][0] + 1, "rows": _CROSSED},
+    # the first books held after 10:00 ET in which the composite is crossed, read inside the
+    # closing auction window: the number stands, crossed, with the auction line
+    "liquidity_readout_close_auction.json": {"now": _CLOSE_AUCTION, "rows": _CROSSED},
 }
 
 
