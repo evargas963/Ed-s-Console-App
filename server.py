@@ -3306,27 +3306,32 @@ def _not_live_text(r: dict) -> str | None:
     return " — ".join(parts)
 
 
+def _stood_from(points: list[tuple[float, dict]], venue: str) -> float:
+    """The receive time of the first reading from which `venue`'s readout has stood as it is
+    now: where a venue that is not live is read to (a book that stopped stands from its last
+    arrival; the composite of a stopped book and a running one still changes with the running
+    one)."""
+    newest, k = points[-1][1][venue], len(points) - 1
+    while k > 0 and points[k - 1][1][venue] == newest:
+        k -= 1
+    return points[k][0]
+
+
 def liquidity_readout(t: str, now: float) -> dict:
     """The Desk Liquidity card's order-imbalance readout for ticker `t` at `now`: the newest
     readout of both Schwab books and their deduped composite the console's intake computed
     (engine.book_readout, kept in history.LEAN), read over the readouts kept
     (engine.readout_card). Each book is judged by the one live rule on its own service, the
-    composite live only while both are; a book that is not live keeps its last values, read to
-    the time its last value arrived, with that book's time and age. With the exchange auction
+    composite live only while both are; a venue that is not live keeps its last values, read to
+    the reading its readout has stood from (`_stood_from`), with its book's time and age. With
+    the exchange auction
     window of today's session as Schwab sent it (time_et.auction; None while Schwab's answer for
     today is not held), and every word the card shows."""
     points = LEAN.points(t)
     readout = points[-1][1] if points else _NO_BOOKS
     labels = {v: price_state(t, now, v)[0] for v in BOOK_VENUES}
     labels[COMPOSITE] = next((labels[v] for v in BOOK_VENUES if labels[v] != lmp.LIVE), lmp.LIVE)
-    # a venue not live is read to the first reading holding its newest book
-    ends = {
-        v: now
-        if labels[v] == lmp.LIVE
-        else next(ts for ts, r in points if r[v]["book_time_ms"] == readout[v]["book_time_ms"])
-        for v in readout
-        if points
-    }
+    ends = {v: now if labels[v] == lmp.LIVE else _stood_from(points, v) for v in readout if points}
     card = readout_card(readout, points, ends)
     window = auction(datetime.fromtimestamp(now, ET))
     for v, r in card["venues"].items():

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 import threading
-from collections import deque
+from collections import defaultdict, deque
 
 from app.options.order_flow import history
 from instrument_identity import ticker_storage_key
@@ -20,7 +20,6 @@ from l1_trade_observation import (
 from numeric_contract import schwab_count, schwab_number
 
 # Limits to prevent unbounded growth
-MAX_BOOK_SNAPSHOTS = 20
 MAX_TAPE_PRINTS = 500
 
 log = logging.getLogger(__name__)
@@ -40,20 +39,16 @@ class OrderFlowState:
     """The one state-transition owner for live and isolated historical replay."""
 
     def __init__(self) -> None:
-        # RLock: get_content_for_symbol holds the lock and calls the deque accessors.
+        # RLock: get_content_for_symbol holds the lock and calls the tape's accessor.
         self._lock = threading.RLock()
-        self._book: dict[str, deque] = {}
+        # each symbol's newest book from each Schwab service, the newest arrival last: a book
+        # Schwab has not changed stands, however many the other service sends
+        self._book: defaultdict[str, dict[str, dict]] = defaultdict(dict)
         self._tape: dict[str, deque] = {}
         self._top: dict[str, dict] = {}
         self._prev_trade: dict[str, dict] = {}
         self._receive_seq: dict[str, int] = {}
         self._stream_greeks: dict[str, dict] = {}
-
-    def _get_book(self, symbol: str) -> deque:
-        with self._lock:
-            if symbol not in self._book:
-                self._book[symbol] = deque(maxlen=MAX_BOOK_SNAPSHOTS)
-            return self._book[symbol]
 
     def _get_tape(self, symbol: str) -> deque:
         with self._lock:
@@ -84,7 +79,9 @@ class OrderFlowState:
             "SERVICE": service,
         }
         with self._lock:
-            self._get_book(sym).append(item)
+            books = self._book[sym]
+            books.pop(service, None)
+            books[service] = item
 
     def push_level_one(
         self,
@@ -206,7 +203,7 @@ class OrderFlowState:
         with self._lock:
             out.extend(
                 dict(item)
-                for item in self._get_book(sym)
+                for item in self._book[sym].values()
                 if venue is None or item["SERVICE"] == venue
             )
             out.extend(dict(item) for item in self._get_tape(sym))
@@ -216,8 +213,8 @@ class OrderFlowState:
         """The newest book held for `symbol` from Schwab service `venue`; None: none held."""
         sym = ticker_storage_key(symbol)
         with self._lock:
-            held = self._book[sym] if sym in self._book else ()
-            return next((dict(b) for b in reversed(held) if b["SERVICE"] == venue), None)
+            book = self._book[sym].get(venue)
+            return None if book is None else dict(book)
 
     def clear_all(self) -> None:
         """Drop tape/book/top/prev-print identity for every symbol."""
@@ -243,8 +240,7 @@ class OrderFlowState:
         history.BOOKS.forget(sym)
         history.LEAN.forget(sym)
         with self._lock:
-            if sym in self._book:
-                self._book[sym].clear()
+            self._book.pop(sym, None)
             if sym in self._tape:
                 self._tape[sym].clear()
             self._top.pop(sym, None)

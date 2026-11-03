@@ -61,30 +61,30 @@ def _pair_readout() -> dict:
     return e.book_readout({v: b["content"] for v, b in _PAIR.items()})
 
 
-def _replay() -> tuple[dict, list]:
-    """Every captured 2026-11-02 book through the readout, as the console's intake records it:
-    the readout of the newest book of each venue at each receipt."""
+def _replay(rows: list = _ROWS) -> tuple[dict, list]:
+    """Every captured 2026-11-02 book (or `rows`) through the readout, as the console's intake
+    records it: the readout of the newest book of each venue at each receipt."""
     newest: dict = dict.fromkeys(e.BOOK_VENUES)
     points = []
-    for ts, svc, content in _ROWS:
+    for ts, svc, content in rows:
         newest[svc] = content
         points.append((ts, e.book_readout(newest)))
     return points[-1][1], points
 
 
 def build_readout_payload(
-    now: float = _END, feed_down: bool = False, rows=None, held: dict = _HELD
+    now: float = _END, feed_down: bool = False, rows=None, held_after: dict | None = None
 ) -> dict:
     """The route's payload for SPY at `now` after Schwab's books `rows` (every captured book when
-    None), each through the console's own intake: the daemon holding the services `held` (both
-    books by default), or its connection ended (`feed_down`)."""
+    None), each through the console's own intake: the daemon holding both books, then holding
+    only the services `held_after` when given, or its connection ended (`feed_down`)."""
     quotes = json.loads((_FX / "real_spy_level_one_2026_10_23.json").read_text(encoding="utf-8"))[
         "messages"
     ]
     ofls.clear_all_live_state()
     history.LEAN.forget("SPY")
     try:
-        lmp.record_feed_heartbeat({"ts": now, "schwab_socket_open": True, "held": held})
+        lmp.record_feed_heartbeat({"ts": now, "schwab_socket_open": True, "held": _HELD})
         for m in sorted(quotes, key=lambda m: m["ts_recv"]):
             lmp.record_from_level_one_equity("SPY", m["item"], received_ts=m["ts_recv"])
         publish_daemon_rows("SPY", now=now)
@@ -93,6 +93,8 @@ def build_readout_payload(
                 "book.SPY",
                 book_msg(symbol="SPY", service=svc, content=content, src="schwab_book", ts_recv=ts),
             )
+        if held_after is not None:
+            lmp.record_feed_heartbeat({"ts": now, "schwab_socket_open": True, "held": held_after})
         if feed_down:
             lmp.record_feed_down()
         return json.loads(json.dumps(server.order_flow_microstructure("SPY", "NYSE_BOOK", now)))
@@ -444,102 +446,119 @@ def test_a_thin_side_is_read_over_the_levels_it_has_with_the_weights_renormalize
 # ── words: zones, sentence ───────────────────────────────────────────────────────────────────
 
 
+def _steady(readout: dict, venue: str, view: str) -> dict:
+    """INDUCED times: one of Schwab's readouts standing ten seconds; the card's view of it."""
+    points = [(1000.0 + k, readout) for k in range(10)]
+    card = e.readout_card(readout, points, dict.fromkeys(readout, points[-1][0]))
+    return card["venues"][venue]["views"][view]
+
+
 @pytest.mark.parametrize(
-    ("pct", "zone"),
+    ("row", "venue", "view", "pct", "zone"),
     [
-        (0.0, "BALANCED"),
-        (9.999, "BALANCED"),
-        (-9.999, "BALANCED"),
-        (10.0, "BID_HEAVY"),
-        (-10.0, "OFFER_HEAVY"),
-        (69.999, "BID_HEAVY"),
-        (70.0, "VERY_BID"),
-        (-70.0, "VERY_OFFER"),
-        (None, None),
+        (16, "NYSE_BOOK", "1", 0.0, "BALANCED"),
+        (16, "NYSE_BOOK", "weighted", 9.524, "BALANCED"),
+        (14, "NYSE_BOOK", "5", -9.474, "BALANCED"),
+        (8, "NYSE_BOOK", "5", 10.0, "BID_HEAVY"),
+        (2, "NYSE_BOOK", "5", -10.0, "OFFER_HEAVY"),
+        (69, "NASDAQ_BOOK", "1", 69.231, "BID_HEAVY"),
+        (123, "NASDAQ_BOOK", "1", -69.231, "OFFER_HEAVY"),
+        (82, "NYSE_BOOK", "1", 70.0, "VERY_BID"),
     ],
 )
-def test_the_zones_turn_at_10_and_70_percent(pct, zone):
-    """INDUCED: percentages at each side of the zone lines, the definition's own boundaries."""
-    assert e._zone(pct) == zone
+def test_the_zones_turn_at_10_and_70_percent(row, venue, view, pct, zone):
+    """Schwab's readouts of 2026-11-02 on each side of the zone lines, held ten seconds: 10% and
+    70% exactly (NYSE_BOOK's 1,760 / 1,440 and 680 / 120 shares) are the next zone. No captured
+    readout sits at -70%."""
+    w = _steady(_replayed()[1][row][1], venue, view)
+    assert w["live_pct"] == pytest.approx(pct, abs=5e-4)
+    assert (w["zone"], w["side_word"]) == (zone, e.ZONE_WORDS[zone])
 
 
-def _book_at(row: int) -> dict:
-    ts, svc, content = _ROWS[row]
-    return e.book_readout({v: content if v == svc else None for v in e.BOOK_VENUES})[svc]
+def test_no_value_has_no_zone():
+    w = _steady(_NO_BOOK, "NYSE_BOOK", "weighted")
+    assert (w["pct"], w["zone"]) == (None, None)
 
 
 def test_the_sentence_four_cases_from_the_flat_shares():
-    """Schwab's own books: NYSE_BOOK's touch at 10:00:08 ET on 2026-11-02 (80 bid, 80 ask),
-    NYSE_BOOK's touch on 2026-09-25 (160 bid, 200 ask), NASDAQ_BOOK's touch then (100 bid, 70 ask)
-    and the composite's top five then (780 bid, 2110 ask)."""
-    even = _book_at(16)["views"]["1"]
-    assert (even["bid_total"], even["ask_total"]) == (80, 80)
-    pair = _pair_readout()
-    nyse, nq = pair["NYSE_BOOK"]["views"]["1"], pair["NASDAQ_BOOK"]["views"]["1"]
-    comp = pair["COMPOSITE"]["views"]["5"]
-    assert e._sentence("BALANCED", 80, 80) == "Balanced — no shares needed to balance."
-    assert (
-        e._sentence(e._zone(nyse["pct"]), nyse["bid_total"], nyse["ask_total"])
-        == "To balance, market makers buy 40 shares."
+    """Schwab's own books, each held ten seconds: NYSE_BOOK's touch at 10:00:08 ET on 2026-11-02
+    (80 bid, 80 ask), its weighted view then (+1.5%, 240 shares apart), NYSE_BOOK's touch on
+    2026-09-25 (160 bid, 200 ask), NASDAQ_BOOK's then (100 bid, 70 ask) and the composite's top
+    five then (800 bid, 2,160 ask)."""
+    rows, pair = _replayed()[1], _pair_readout()
+    assert _steady(rows[16][1], "NYSE_BOOK", "1")["sentence"] == (
+        "Balanced — no shares needed to balance."
     )
-    # INDUCED: those 160/200 shares read in the BALANCED zone (their own zone is OFFER_HEAVY)
-    assert e._sentence("BALANCED", 160, 200) == "Nearly balanced — 40 shares would even the book."
-    assert e._sentence(e._zone(comp["pct"]), 780, 2110) == (
-        "To balance, market makers buy 1,330 shares."
+    assert _steady(rows[2][1], "NYSE_BOOK", "weighted")["sentence"] == (
+        "Nearly balanced — 240 shares would even the book."
     )
-    assert e._sentence(e._zone(nq["pct"]), nq["bid_total"], nq["ask_total"]) == (
+    assert _steady(pair, "NYSE_BOOK", "1")["sentence"] == "To balance, market makers buy 40 shares."
+    assert _steady(pair, e.COMPOSITE, "5")["sentence"] == (
+        "To balance, market makers buy 1,360 shares."
+    )
+    assert _steady(pair, "NASDAQ_BOOK", "1")["sentence"] == (
         "To balance, market makers sell 30 shares."
     )
-    assert e._sentence(None, 780, 2110) is None
-    assert e._sentence("BID_HEAVY", 780, None) is None
+    assert _steady(_NO_BOOK, "NYSE_BOOK", "1")["sentence"] is None
 
 
 # ── over time: smoothing, the zone's hold, flips, the lean windows ───────────────────────────
 
 
-def test_a_zone_changes_only_after_it_has_stood_three_seconds():
-    """INDUCED: smoothed values on each side of the lines. One or two seconds out of the shown
-    zone is not a change; three seconds out of it are, whichever zones they cross, the zone it
-    then stands in dated from the second it entered it."""
-    assert e._dwelled([5, 5, 15, 5, 5], 100)[-1] == ("BALANCED", 100)
-    assert e._dwelled([5, 5, 15, 15, 5], 100)[-1] == ("BALANCED", 100)
-    assert e._dwelled([5, 5, 15, 15, 15, 15], 100)[-1] == ("BID_HEAVY", 102)
-    assert e._dwelled([5, None, 5], 100)[-1] == ("BALANCED", 102)
-    # out of BID_HEAVY across two zones, the value crossing -10% each second
-    assert e._dwelled([15, 15, 15, -12, -8, -12, -8], 0)[-1] == ("OFFER_HEAVY", 5)
-    # out of BID_HEAVY through BALANCED: OFFER_HEAVY dated from when the value entered it
-    assert e._dwelled([15, 15, 15, -8, -8, -12], 0)[-1] == ("OFFER_HEAVY", 5)
-    # BALANCED left, the value then crossing the 70% line each second: out three seconds, it
-    # stands in BID_HEAVY then (69), dated from the second it entered it
-    assert e._dwelled([5, 69, 71, 69, 71], 0)[-1] == ("BID_HEAVY", 3)
-    # a steady rise through two lines changes three seconds after it left
-    assert e._dwelled([9, 11, 15, 72, 75], 0)[-1] == ("VERY_BID", 3)
-    # each second's zone shown: a single print out of it changes nothing
-    assert e._dwelled([5, 15, 5, 5], 0) == [("BALANCED", 0)] * 4
+@pytest.mark.parametrize(
+    ("runs", "zone", "held"),
+    [
+        # two seconds of bid heavy books never move the 5-second median: no change
+        ((("bal", 10), ("bid", 2), ("bal", 10)), "BALANCED", 21),
+        # bid heavy from second 1010: the median turns at 1012, the zone 3 seconds later, dated
+        # from 1012; at 1019 it has held 7 seconds
+        ((("bal", 10), ("bid", 10)), "BID_HEAVY", 7),
+        # through BALANCED (the median 1012-1014) to offer heavy (1015 on): the zone changes at
+        # 1017, dated from the second the value entered it, 1015
+        ((("bid", 10), ("bal", 3), ("offer", 10)), "OFFER_HEAVY", 7),
+    ],
+)
+def test_a_zone_changes_only_after_it_has_stood_three_seconds(runs, zone, held):
+    """INDUCED times: Schwab's readouts of 2026-11-02 by the zone of NYSE_BOOK's touch, one a
+    second from second 1000."""
+    w = _touch_card(*runs)
+    assert (w["zone"], w["held_sec"]) == (zone, held)
+
+
+def _zone_of(pct: float | None) -> str | None:
+    """A percentage's zone by its definition (the register's lines, OF_ZONE_*_PCT)."""
+    if pct is None:
+        return None
+    if abs(pct) < e.OF_ZONE_LEANING_PCT:
+        return "BALANCED"
+    side = "BID" if pct > 0 else "OFFER"
+    return f"{side}_HEAVY" if abs(pct) < e.OF_ZONE_ONE_SIDED_PCT else f"VERY_{side}"
 
 
 def test_on_schwabs_books_the_zone_changes_three_seconds_after_the_value_leaves_it():
-    """Every venue and view of the captured books: the zone shown never stands while the value
-    has been out of it three seconds or more, never changes sooner, and is dated from the second
-    the value entered it."""
-    _readout, points = _replay()
-    last = int(points[-1][0])
-    first = last - e.OF_LEAN_KEPT_SEC
+    """Every venue and view of the captured books, read at each second: the zone shown never
+    stands while the headline (the 2-minute series' last value) has been out of it three seconds
+    or more, never changes sooner, and is dated from the second the headline entered it."""
+    readout, points = _replayed()
     dwell = e.OF_ZONE_DWELL_SEC
-    for v in (*e.BOOK_VENUES, e.COMPOSITE):
-        for view in e.READOUT_VIEWS:
-            sm = e._smoothed(e._standing(points, v, view, first, last))
-            before = None
-            for k in range(dwell, len(sm)):
-                zone, since = e._dwelled(sm[: k + 1], first)[-1]
-                out = [e._zone(s) != zone for s in sm[k - dwell + 1 : k + 1]]
-                assert zone is None or not all(out), (v, view, k)
-                if before is not None and zone is not None and zone != before:
-                    # it changed: the value had stood out of the zone before for three seconds
-                    assert all(e._zone(s) != before for s in sm[k - dwell + 1 : k + 1]), (v, k)
-                    assert e._zone(sm[since - first]) == zone, (v, view, k)
-                    assert since == first or e._zone(sm[since - first - 1]) != zone, (v, k)
-                before = zone
+    before: dict = {}
+    for s in range(int(points[0][0]), int(points[-1][0]) + 1):
+        card = e.readout_card(readout, points, dict.fromkeys(readout, float(s)))
+        for v in (*e.BOOK_VENUES, e.COMPOSITE):
+            for view in e.READOUT_VIEWS:
+                w = card["venues"][v]["views"][view]
+                series, zone = w["lean"]["2m"]["values"], w["zone"]
+                assert series[-1] == w["pct"]
+                last = [_zone_of(x) for x in series[-dwell:]]
+                assert zone is None or not all(z != zone for z in last), (v, view, s)
+                was = before.get((v, view))
+                if was is not None and zone is not None and zone != was:
+                    assert all(z != was for z in last), (v, view, s)
+                    since = s - w["held_sec"]
+                    at = len(series) - 1 - (s - since)
+                    assert _zone_of(series[at]) == zone, (v, view, s)
+                    assert at == 0 or _zone_of(series[at - 1]) != zone, (v, view, s)
+                before[(v, view)] = zone
 
 
 def test_held_is_at_least_when_the_zone_stood_from_the_first_value_kept():
@@ -565,24 +584,30 @@ def test_held_is_at_least_when_the_zone_stood_from_the_first_value_kept():
 def test_held_is_at_least_when_the_values_began_inside_the_window():
     """The console started inside the window: the zone standing since the first value known has
     held at least that long, never exactly."""
-    _readout, points = _replay()
+    _readout, points = _replayed()
+    end = int(points[19][0])
     card = e.readout_card(points[-1][1], points[:20], {v: points[19][0] for v in points[-1][1]})
     for v in (*e.BOOK_VENUES, e.COMPOSITE):
         w = card["venues"][v]["views"]["weighted"]
-        sm = e._smoothed(
-            e._standing(points[:20], v, "weighted", int(points[19][0]) - 308, int(points[19][0]))
-        )
-        zone, since = e._dwelled(sm, int(points[19][0]) - 308)[-1]
-        known = next(int(points[19][0]) - 308 + k for k, s in enumerate(sm) if s is not None)
-        assert w["held_open"] is (since == known), v
+        series = w["lean"]["2m"]["values"]
+        known = end - (len(series) - 1) + next(k for k, x in enumerate(series) if x is not None)
+        assert w["held_open"] is (end - w["held_sec"] == known), v
+        assert w["held_text"] == f"HELD {'≥' if w['held_open'] else ''}{w['held_sec']}s"
 
 
 def test_the_headline_is_the_median_of_the_last_five_seconds():
-    _readout, points = _replay()
+    """The composite's weighted headline at the last captured second: the median of the five
+    one-second values standing then, each the newest readout received by that second's end."""
+    readout, points = _replayed()
     last = int(points[-1][0])
-    vals = e._standing(points, "COMPOSITE", "weighted", last - 10, last)
-    sm = e._smoothed(vals)
-    assert sm[-1] == pytest.approx(sorted(vals[-5:])[2])
+    standing = [
+        [r for ts, r in points if ts < sec + 1][-1][e.COMPOSITE]["views"]["weighted"]["pct"]
+        for sec in range(last - 4, last + 1)
+    ]
+    card = e.readout_card(readout, points, dict.fromkeys(readout, points[-1][0]))
+    assert card["venues"][e.COMPOSITE]["views"]["weighted"]["pct"] == pytest.approx(
+        sorted(standing)[2]
+    )
 
 
 def test_the_lean_windows_are_two_and_five_minutes_and_none_is_one():
@@ -726,18 +751,34 @@ def test_a_book_without_its_time_says_not_live_and_that_no_time_was_sent():
 
 
 def test_a_book_that_stopped_is_read_to_its_own_last_book_while_the_other_runs():
-    """Every captured book through the intake, the daemon holding NYSE_BOOK only: NASDAQ_BOOK is
-    not live, and its held time and flips are read to the second its last book arrived, not on
-    with NYSE_BOOK's."""
-    p = build_readout_payload(held={"LEVELONE_EQUITIES": ["SPY"], "NYSE_BOOK": ["SPY"]})
+    """INDUCED: the captured books with NASDAQ_BOOK's after 10:01:30 ET left out (as if it
+    stopped then), through the intake, the daemon then holding NYSE_BOOK only: NASDAQ_BOOK is not
+    live, and its held time and flips are read to the second its last book arrived, not on with
+    NYSE_BOOK's. The composite, not live either, still moves with NYSE_BOOK: its headline is read
+    to its own last change, the same moment as its bars and sentence."""
+    cut = datetime.fromisoformat("2026-11-02T10:01:30-05:00").timestamp()
+    rows = [r for r in _ROWS if r[1] == "NYSE_BOOK" or r[0] < cut]
+    p = build_readout_payload(
+        rows=rows, held_after={"LEVELONE_EQUITIES": ["SPY"], "NYSE_BOOK": ["SPY"]}
+    )
     rd = p["readout"]["venues"]
     assert (rd["NYSE_BOOK"]["live"], rd["NASDAQ_BOOK"]["live"]) == (True, False)
-    readout, points = _replay()
-    last_nq = max(ts for ts, svc, _c in _ROWS if svc == "NASDAQ_BOOK")
+    assert rd[e.COMPOSITE]["live"] is False
+    readout, points = _replay(rows)
+    last_nq = max(ts for ts, svc, _c in rows if svc == "NASDAQ_BOOK")
     own = e.readout_card(readout, points, {"NASDAQ_BOOK": last_nq})["venues"]["NASDAQ_BOOK"]
     on = e.readout_card(readout, points, {"NASDAQ_BOOK": _END})["venues"]["NASDAQ_BOOK"]
     assert rd["NASDAQ_BOOK"]["views"] == own["views"]
     assert own["views"]["weighted"]["held_sec"] < on["views"]["weighted"]["held_sec"]
+    # the composite changed after NASDAQ_BOOK's last book: it is read to its own last change
+    changed = [
+        ts
+        for (ts, r), (_t, q) in zip(points[1:], points, strict=False)
+        if r[e.COMPOSITE] != q[e.COMPOSITE]
+    ]
+    assert int(changed[-1]) > int(last_nq)
+    comp = e.readout_card(readout, points, {e.COMPOSITE: changed[-1]})["venues"][e.COMPOSITE]
+    assert rd[e.COMPOSITE]["views"] == comp["views"]
 
 
 def test_no_book_serves_no_number():
