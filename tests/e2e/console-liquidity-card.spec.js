@@ -180,6 +180,16 @@ test.describe('Desk: the Liquidity card draws the served order-imbalance readout
     expect(errs).toEqual([]);
   });
 
+  test('a failed read says so on the source line, naming no book the server did not name', async ({ page }) => {
+    await intercept(page);
+    await page.route('**/api/order-flow/microstructure**', (route) => route.fulfill({ status: 500, body: '' }));
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
+      localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(card(page).locator('.liq-body')).toContainText('UNAVAILABLE');
+    await expect(card(page).locator('.tdm-src')).toHaveText('microstructure request failed');
+  });
+
   test('inside the closing auction the number stands and the auction line is added', async ({ page }) => {
     const errs = watchErrors(page);
     await openDesk(page, READOUT_AUCTION);
