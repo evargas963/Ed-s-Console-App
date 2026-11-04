@@ -25,6 +25,8 @@ from pathlib import Path
 
 import pytest
 
+from app.options.order_flow import history
+
 _FX = Path(__file__).resolve().parent / "fixtures"
 _E2E_FIXTURE = (
     Path(__file__).resolve().parent / "e2e" / "fixtures" / "order_flow_book_closed_payload.json"
@@ -53,6 +55,8 @@ def build_book_closed_payload(feed_down: bool = False) -> dict:
         "messages"
     ]
     ofls.clear_all_live_state()
+    # the readouts another test's SPY books left in this process are not this book's
+    history.LEAN.forget("SPY")
     try:
         lmp.record_feed_heartbeat(
             {
@@ -85,6 +89,7 @@ def build_book_closed_payload(feed_down: bool = False) -> dict:
             kept.pop("SPY", None)
         lmp.record_feed_down()
         ofls.clear_all_live_state()
+        history.LEAN.forget("SPY")
 
 
 #: 2026-10-23 15:59:05 ET, regular hours, the last of the five captured SPY messages received

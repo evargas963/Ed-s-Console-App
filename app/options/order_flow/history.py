@@ -1,14 +1,16 @@
-"""The recent option trade prints (the options tape) and the recent books (the book heatmap), in
-the console's memory: fed by the console's intake as the daemon pushes each record
-(app.options.order_flow.streaming), never read from the database (docs/DATA_FLOW.md §2 D6).
+"""The recent option trade prints (the options tape), the recent books (the book heatmap) and the
+imbalance readout's one-second values (the Liquidity card), in the console's memory: fed by the
+console's intake as the daemon pushes each record (app.options.order_flow.streaming), never read
+from the database (docs/DATA_FLOW.md §2 D6).
 The database keeps the whole history."""
 
 from __future__ import annotations
 
 import threading
-from collections import deque
+from collections import defaultdict, deque
 from typing import Any
 
+from app.options.order_flow.engine import OF_LEAN_KEPT_SEC, book_side
 from instrument_identity import ticker_storage_key
 from l1_trade_observation import extract_vendor_print, is_adjacent_restatement, vendor_triple
 from numeric_contract import schwab_count, schwab_number
@@ -173,21 +175,6 @@ def _display_window(cells: list[dict]) -> tuple[float, float]:
     return lo, max(hi, lo + 0.01)
 
 
-def _levels(item: dict, leaf: str, price_key: str) -> tuple[tuple[float, int], ...]:
-    """One side of a Schwab book as (price, size) pairs; a single level can arrive as one bare
-    object rather than a list. A level without a number for both is not a level."""
-    levels = item.get(leaf)
-    if not isinstance(levels, list):
-        levels = [levels] if levels else []
-    out = []
-    for lvl in levels:
-        if isinstance(lvl, dict):
-            px, vol = schwab_number(lvl.get(price_key)), schwab_count(lvl.get("TOTAL_VOLUME"))
-            if px is not None and vol is not None:
-                out.append((px, vol))
-    return tuple(out)
-
-
 class RecentBooks:
     """Per (ticker, venue): its books for BOOKS_KEPT_SEC, one per second (the newest in that
     second), each as (receive time, bid levels, ask levels). A book with no level (after the
@@ -201,7 +188,7 @@ class RecentBooks:
         sym = ticker_storage_key(ticker)
         if not sym or not isinstance(item, dict):
             return
-        bids, asks = _levels(item, "BIDS", "BID_PRICE"), _levels(item, "ASKS", "ASK_PRICE")
+        bids, asks = tuple(book_side(item, "BIDS")), tuple(book_side(item, "ASKS"))
         if not bids and not asks:
             return
         book = (float(ts_recv), bids, asks)
@@ -233,9 +220,48 @@ class RecentBooks:
         )
 
 
-#: the recent prints and books, fed by the console's intake
+class RecentLean:
+    """Per ticker: the imbalance readout of both books and their composite (engine.book_readout),
+    computed once as each book arrives, one per second (the newest in that second), as (receive
+    time, readout): the Liquidity card's newest readout, and its smoothing, zone hold and lean
+    series. Kept for engine.OF_LEAN_KEPT_SEC before the newest, and the one before that, which
+    still stands then. Owner: the console's intake (streaming._ingest_pushed); while it receives
+    no book, the last readout stands and the live rule marks it not live. It is per ticker over
+    both venues, where RecentBooks is per venue."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        # every ticker's series, empty until its first readout
+        self._points: defaultdict[str, deque] = defaultdict(deque)
+
+    def record(self, ticker: str, ts_recv: float, readout: dict) -> None:
+        sym = ticker_storage_key(ticker)
+        if not sym:
+            return
+        point = (float(ts_recv), readout)
+        with self._lock:
+            held = self._points[sym]
+            if held and int(held[-1][0]) == int(point[0]):
+                held[-1] = point
+            else:
+                held.append(point)
+            while len(held) > 1 and held[1][0] <= point[0] - OF_LEAN_KEPT_SEC:
+                held.popleft()
+
+    def forget(self, ticker: str) -> None:
+        with self._lock:
+            self._points.pop(ticker_storage_key(ticker), None)
+
+    def points(self, ticker: str) -> list[tuple[float, dict]]:
+        """The ticker's kept values, oldest first."""
+        with self._lock:
+            return list(self._points[ticker_storage_key(ticker)])
+
+
+#: the recent prints, books and imbalance values, fed by the console's intake
 TAPE = RecentTape()
 BOOKS = RecentBooks()
+LEAN = RecentLean()
 
 
 def book_heatmap_for_ticker(

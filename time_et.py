@@ -13,7 +13,7 @@ unknown. Past the year Schwab answers, a contract's expiry runs to its expiratio
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 ET = ZoneInfo("America/New_York")
@@ -174,6 +174,32 @@ def session_label(now: datetime) -> str:
         if any(start <= now < end for start, end in windows):
             return state
     return CLOSED
+
+
+#: the exchange auctions around Schwab's regular window: the opening auction's minutes before it
+#: opens and the closing auction's minutes before it ends (no auction time is in Schwab's answer)
+AUCTION_OPEN = timedelta(minutes=5)
+AUCTION_CLOSE = timedelta(minutes=10)
+#: auction(): inside the opening auction, the closing auction, or neither
+OPEN_AUCTION, CLOSE_AUCTION, NO_AUCTION = "OPEN", "CLOSE", "NONE"
+
+
+def auction(now: datetime) -> str | None:
+    """OPEN_AUCTION in the AUCTION_OPEN before today's regular window as Schwab sent it opens,
+    CLOSE_AUCTION in the AUCTION_CLOSE before it ends (13:00 ET on an early close), NO_AUCTION
+    otherwise and on a day Schwab says is closed; None when Schwab's answer for today is not
+    held."""
+    s = session(now.astimezone(ET).date().isoformat())
+    if s is None:
+        return None
+    if not s.regular:
+        return NO_AUCTION
+    opens, ends = s.regular[0][0], s.regular[-1][1]
+    if opens - AUCTION_OPEN <= now < opens:
+        return OPEN_AUCTION
+    if ends - AUCTION_CLOSE <= now < ends:
+        return CLOSE_AUCTION
+    return NO_AUCTION
 
 
 def options_opened(now: datetime) -> datetime | None:

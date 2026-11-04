@@ -35,8 +35,15 @@ import push_changes
 import runtime_layout
 from app.market_data.schwab.streaming import live_ui
 from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT
-from app.options.order_flow.engine import OrderFlowEngine, compute_book_microstructure
-from app.options.order_flow.history import TAPE, book_heatmap_for_ticker
+from app.options.order_flow.engine import (
+    BOOK_VENUES,
+    COMPOSITE,
+    OrderFlowEngine,
+    book_readout,
+    compute_book_microstructure,
+    readout_card,
+)
+from app.options.order_flow.history import LEAN, TAPE, book_heatmap_for_ticker
 from app.options.order_flow.live_payload import flow_block, options_live_payload
 from app.options.order_flow.state import get_content_for_symbol, get_stream_greeks
 from app.options.order_flow.streaming import (
@@ -99,8 +106,11 @@ from terrain_engine import (
 )
 from terrain_read import LEVEL_ABOVE, LEVEL_BELOW, crossed, from_spot_text, level_side, within
 from time_et import (
+    CLOSE_AUCTION,
     ET,
+    OPEN_AUCTION,
     age_text,
+    auction,
     ct_label,
     et_date_str_from_ts_utc,
     last_open,
@@ -3153,8 +3163,10 @@ def order_flow_microstructure(ticker: str, venue: str, now: float) -> dict:
     app.options.order_flow.engine.compute_book_microstructure keyed by this ticker, which carries
     the engine's already-computed structural state for the current book (memoized per ticker +
     BOOK_TIME) rather than re-walking the raw book. No Schwab REST quote call; the client
-    renders, never recomputes. `venue` is the one Schwab book shown: NYSE_BOOK (exchanges) or
-    NASDAQ_BOOK (market makers); the two are never combined."""
+    renders, never recomputes. `venue` is the one Schwab book the payload's book fields show:
+    NYSE_BOOK (exchanges) or NASDAQ_BOOK (market makers); those fields never combine the two.
+    `readout` is the Desk Liquidity card's, whatever the venue: both books and their deduped
+    composite (liquidity_readout)."""
     t = ticker_storage_key(_required_ticker(ticker))
     data: dict = {}
     try:
@@ -3195,7 +3207,128 @@ def order_flow_microstructure(ticker: str, venue: str, now: float) -> dict:
     payload["ticker"] = t
     payload["venue"] = venue
     _stamp_book_times(payload)
+    payload["readout"] = liquidity_readout(t, now)
     return payload
+
+
+#: the amber line inside an exchange auction window, by window (time_et.auction): the continuous
+#: book's number stays
+_AUCTION_TEXT = {
+    OPEN_AUCTION: "Opening auction window — auction imbalance is a different number, not shown"
+    " here.",
+    CLOSE_AUCTION: "Closing auction window — auction imbalance is a different number, not shown"
+    " here.",
+}
+
+
+#: the readout before any book has arrived: every venue no_book
+_NO_BOOKS = book_readout(dict.fromkeys(BOOK_VENUES))
+_LIVE_BOOK = "live book"
+
+
+def _source(venue: str, r: dict) -> str:
+    """Whose book: Schwab's book of `venue`, or for the composite the books it is built from."""
+    if venue != COMPOSITE:
+        return f"Schwab {venue}"
+    return f"Schwab {' + '.join(r['books'])} · composite, newest quote of each exchange"
+
+
+def _no_number(r: dict) -> tuple[str, str, str] | None:
+    """Why a venue has no number, as the source line, the card's line and the card's heading say
+    it; None when it has one."""
+    status = r["status"]
+    if status == "no_book":
+        return "no book for this symbol right now", "No book for this symbol right now", "NO BOOK"
+    if status == "empty":
+        return (
+            "the book Schwab sent has no levels",
+            "The book Schwab sent has no levels",
+            "NO LEVELS",
+        )
+    return None
+
+
+def _source_text(venue: str, r: dict, window: str | None) -> str:
+    """The card's source line for `venue`: Schwab's book, then why it has no number, or live, or
+    its time and not live; and, when today's auction windows are not known, that."""
+    parts = [_source(venue, r)]
+    why = _no_number(r)
+    if why is not None:
+        parts.append(why[0])
+    elif r["live"]:
+        if venue != COMPOSITE:
+            parts.append(_LIVE_BOOK)
+    elif r["book_time_ct"] is not None:
+        parts.append(f"book {r['book_time_ct']} · {r['book_age_text']} old · not live")
+    else:
+        parts.append("not live, no book time sent")
+    if window is None:
+        parts.append("auction windows unknown: no Schwab market hours held for today")
+    return " · ".join(parts)
+
+
+def _not_live_text(r: dict) -> str | None:
+    """A venue that is not live, with numbers, says they are its last: from its book's time, or
+    that Schwab sent none. None while live, and with no number."""
+    if r["live"] or _no_number(r) is not None:
+        return None
+    parts = []
+    if r["book_time_ct"] is not None:
+        parts.append(f"Book from {r['book_time_ct']}, {r['book_age_text']} old, not live")
+    else:
+        parts.append("Not live, no book time sent")
+    parts.append("these are the last numbers, not current")
+    return " — ".join(parts)
+
+
+def _stood_from(points: list[tuple[float, dict]], venue: str) -> float:
+    """The receive time of the first reading from which `venue`'s readout has stood as it is
+    now: where a venue that is not live is read to (a book that stopped stands from its last
+    arrival; the composite of a stopped book and a running one still changes with the running
+    one)."""
+    newest, k = points[-1][1][venue], len(points) - 1
+    while k > 0 and points[k - 1][1][venue] == newest:
+        k -= 1
+    return points[k][0]
+
+
+def liquidity_readout(t: str, now: float) -> dict:
+    """The Desk Liquidity card's order-imbalance readout for ticker `t` at `now`: the newest
+    readout of both Schwab books and their deduped composite the console's intake computed
+    (engine.book_readout, kept in history.LEAN), read over the readouts kept
+    (engine.readout_card). Each book is judged by the one live rule on its own service, the
+    composite live only while both are; a venue that is not live keeps its
+    last values, read to the reading its readout has stood from (`_stood_from`), with its book's
+    time and age. With the exchange auction
+    window of today's session as Schwab sent it (time_et.auction; None while Schwab's answer for
+    today is not held), and every word the card shows."""
+    points = LEAN.points(t)
+    readout = points[-1][1] if points else _NO_BOOKS
+    labels = {v: price_state(t, now, v)[0] for v in BOOK_VENUES}
+    labels[COMPOSITE] = next((labels[v] for v in BOOK_VENUES if labels[v] != lmp.LIVE), lmp.LIVE)
+    ends = {v: now if labels[v] == lmp.LIVE else _stood_from(points, v) for v in readout if points}
+    card = readout_card(readout, points, ends)
+    window = auction(datetime.fromtimestamp(now, ET))
+    for v, r in card["venues"].items():
+        book_ms = r["book_time_ms"]
+        r["feed_label"] = labels[v]
+        r["live"] = labels[v] == lmp.LIVE
+        r["book_time_ct"] = None if book_ms is None else ct_label(book_ms / 1000.0)
+        r["book_age_text"] = None if book_ms is None else age_text(now - book_ms / 1000.0)
+        r["not_live_text"] = _not_live_text(r)
+        r["source_text"] = _source_text(v, r, window)
+        why = _no_number(r)
+        r["no_number_text"] = None if why is None else why[1]
+        r["no_number_head"] = None if why is None else why[2]
+        r["dedup_partial_text"] = (
+            "Dedup partial: a level came without per-exchange sizes (its total taken whole), or"
+            " a quote in both books without its quote time (a timed copy counts over it)"
+            if r["dedup_partial"]
+            else None
+        )
+    card["auction"] = window
+    card["auction_text"] = _AUCTION_TEXT.get(window)
+    return card
 
 
 @app.get("/api/order-flow/options-microstructure")

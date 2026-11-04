@@ -60,3 +60,20 @@ def price_text(value: float | None) -> str | None:
     if value is None:
         return None
     return f"{float(value):.2f}"
+
+
+def shares_text(value: float | None) -> str | None:
+    """A count of shares as the screen shows it: whole, with thousands separators (5,100). None
+    when there is no count."""
+    if value is None:
+        return None
+    return f"{float(value):,.0f}"
+
+
+def percent_text(value: float | None) -> str | None:
+    """A signed percentage as the screen shows it, whole (+22%, -21%, 0%). None when there is
+    none."""
+    if value is None:
+        return None
+    whole = math.floor(abs(float(value)) + 0.5)
+    return "0%" if whole == 0 else f"{'+' if value > 0 else '-'}{whole}%"

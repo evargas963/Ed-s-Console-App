@@ -10,64 +10,9 @@ const path = require('path');
 const { mockPriceSocket, priceRow } = require('./fixtures/price_socket');
 const { routeWatchlist } = require('./fixtures/watchlist');
 
-const CROSSES = require(path.join(__dirname, '..', 'fixtures', 'real_spy_level_crosses.json')).rows.slice(0, 3);
-const EVENTS = {
-  ticker: 'SPY', tf: '30', window_start_ts_utc: CROSSES[2].ts_utc - 60, window_label: 'this session (served)',
-  // the served shape (server.get_desk_events): each cross as recorded, at its level's price
-  items: CROSSES.map((c, i) => ({ key: 'x' + c.cross_id, n: 3 - i, ts: c.ts_utc, dom: 'LEVELS', dir: c.direction, marker: true,
-    price: c.level_value, title: 'Crossed ' + (c.direction === 'up' ? 'above ' : 'below ') + c.level_name,
-    detail: c.level_value.toFixed(2), src: 'level_crosses' })),
-  cross_counts: { up: CROSSES.filter((c) => c.direction === 'up').length, down: CROSSES.filter((c) => c.direction !== 'up').length },
-};
-const SPOT = 771.3;
-const TERRAIN = { ticker: 'SPY', spot: SPOT, gamma_flip: 768, call_wall: 775, put_wall: 765, max_pain: 770, regime: 'LONG_GAMMA_CHOP',
-  posture: 'PINNED', levels_state: 'LIVE', levels_age_text: '1s', flip_relation: 'ABOVE', pcr_all: 1.1,
-  pcr_by_expiry: { '2026-09-25': 1.1, '2026-10-02': null, '2026-10-09': 0.9 }, atm_iv_pct_by_expiry: { '2026-09-25': 14.2, '2026-10-02': 15.1 } };
-const LEVELS = { ticker: 'SPY', spot: SPOT, tf: '30', generation: 1, vwap_series: [],
-  levels: [
-    { id: 'PDH', price: 773.5, family: 'prior_day', label: 'Prior Day High', short: 'PDH', evidence_tier: 'MEASURED', distance: 2.2, side: 'ABOVE', },
-    { id: 'max_pain', price: 770, family: 'gamma', label: 'Max pain', short: 'Max pain', evidence_tier: 'DERIVED', distance: -1.3, side: 'BELOW', from_spot_text: '1.30 below spot', },
-    { id: 'call_wall', price: 775, family: 'gamma', label: 'Call wall', short: 'Call wall', evidence_tier: 'DERIVED', distance: 3.7, side: 'ABOVE', from_spot_text: '3.70 above spot', },
-    { id: 'put_wall', price: 765, family: 'gamma', label: 'Put wall', short: 'Put wall', evidence_tier: 'DERIVED', distance: -6.3, side: 'BELOW', from_spot_text: '6.30 below spot', },
-  ],
-  by_distance: ['max_pain', 'PDH'], families_absent: [], degraded: [],
-  volume_profile: { basis: 'RTH 1-minute bars, each bar\'s volume spread evenly over its range (not trade prints)', tick_size: 0.01,
-    bins: [[769.99, 1200, false], [770.0, 5000, true], [770.01, 3000, true]], max_volume: 5000, poc: 770.0, vah: 770.01, val: 770.0 } };
-const MICRO = { ticker: 'SPY', venue: 'NASDAQ_BOOK', status: 'ok', top_of_book: { bid: 771.29, ask: 771.31, bid_size: 300, ask_size: 200 },
-  spread_pts: 0.02, depth: { '1': { imbalance: 0.2, side: 'BID' }, '5': { bid_total: 3000, ask_total: 2000, imbalance: 0.2, side: 'BID' } },
-  depth_pressure: { bid: [{ price: 771.29, volume: 300, cum: 300 }, { price: 771.28, volume: 900, cum: 1200 }], ask: [{ price: 771.31, volume: 200, cum: 200 }] },
-  ages: { book_age_sec: 1, book_stale: false }, book_feed_label: 'LIVE', wall_candidates: [], provenance: { book_source: 'NASDAQ_BOOK' },
-  flow: { tape_pressure_5m: 0.3, tape_pressure_30s: 0.1, tape_pressure_2m: 0.2, cum_delta_proxy: 1000 } };
-// the pivot zone below spot was named "support" by type-guessing on the page: each zone's label and
-// side are served (liquidity_models.ZONE_DISPLAY)
-const LIQ = { ticker: 'SPY', zones: [{ zone_low: 772, zone_high: 773, zone_type: 'resistance_liquidity', zone_label: 'Resistance', zone_side: 'resistance', confluence_score: 3 },
-  { zone_low: 768, zone_high: 769, zone_type: 'pivot_value', zone_label: 'Pivot / value', zone_side: 'value', confluence_score: 2 }],
-  spot_location: { inside: null, above: 0, below: 1 }, summary: null };
-const STRIKES = { ticker: 'SPY', spot: SPOT, spot_strike: 771, levels_state: 'LIVE',
-  today: { all: [[770, 500000, 1000], [771, 900000, 5000], [772, -200000, 3000]] }, prior: { all: [[770, 400000, 800], [771, 700000, 2000], [772, -100000, 900]] },
-  migration: { all: { compared: true, drift: 'UP', grew: [771, 770], shrank: [772], busiest: [771, 772], busiest_vs_walls: 'INSIDE_WALLS',
-    volume_total: 9000, rows: [[770, 500000, 400000, 100000], [771, 900000, 700000, 200000], [772, -200000, -100000, -100000]] } },
-  views: { all: { centre: 771, max_abs: 900000, max_abs_with_prior: 900000 } } };
-const BARS = { ticker: 'SPY', tf: '30', bars: [{ t: 1790343000, o: 770, h: 772, l: 769, c: SPOT, v: 1000, chg: SPOT - 770, chg_pct: (SPOT - 770) / 770 * 100 }],
-  last_bar: { t: 1790343660, label: 'Fri 09/25 09:21 AM CT' } };
-
-async function intercept(page) {
-  await page.route('**/api/**', (route) => {
-    const url = route.request().url();
-    let body = { available: false };
-    if (url.includes('/api/desk/events')) body = Object.assign({}, EVENTS, { tf: new URL(url).searchParams.get('tf') });
-    else if (url.includes('/api/terrain/strikes')) body = STRIKES;
-    else if (url.includes('/api/terrain')) body = TERRAIN;
-    else if (url.includes('/api/levels')) body = LEVELS;
-    else if (url.includes('/api/order-flow/microstructure')) body = MICRO;
-    else if (url.includes('/api/liquidity-snapshot')) body = LIQ;
-    else if (url.includes('/api/bars1m')) body = BARS;
-    else if (url.includes('/api/order-flow/book-heatmap')) body = HEAT;
-    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
-  });
-  await routeWatchlist(page, ['SPY']);
-}
-const HEAT = require(path.join(__dirname, 'fixtures', 'book_heatmap_payload.json'));
+const {
+  EVENTS, SPOT, TERRAIN, LEVELS, READOUT_LIVE, LIVE_COMP, MICRO, LIQ, STRIKES, BARS, intercept, watchErrors,
+} = require('./fixtures/trade_desk');
 
 test('every chart is the one TradingView-style chart, with its controls', async ({ page }) => {
   // operator 2026-09-28: "each and every chart in the app needs to use the same TV controls" --
@@ -198,13 +143,6 @@ test('the Gamma chart and the liquidity map carry the Trade Desk toolbar; a time
   expect(errs).toEqual([]);
 });
 
-function watchErrors(page) {
-  const errs = [];
-  page.on('pageerror', (e) => errs.push(e.message));
-  page.on('console', (m) => { if (m.type() === 'error' && !/WebSocket|EventSource|Failed to load resource/.test(m.text())) errs.push(m.text()); });
-  return errs;
-}
-
 test('Desk: an offline price keeps its last trade time on the map', async ({ page }) => {
   await intercept(page);
   await mockPriceSocket(page, [
@@ -260,15 +198,24 @@ test('Desk: a book whose market is closed reads BOOK NOT LIVE and keeps Schwab\'
   await intercept(page);
   await page.route('**/api/order-flow/microstructure**', (route) => route.fulfill({
     status: 200, contentType: 'application/json', body: JSON.stringify(CLOSED_BOOK) }));
+  // the fixture holds NYSE_BOOK only: the card shows that book
   await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
-    localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
+    localStorage.setItem('ed_sub', 'desk'); localStorage.setItem('ed_book_venue', 'NYSE_BOOK'); localStorage.setItem('ed.desk.liqvenue', 'BOOK'); } catch (e) {} });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await expect(page.locator('#tdmCardLiq')).toContainText('BOOK NOT LIVE');
-  await expect(page.locator('#tdmCardLiq .tdm-src')).toContainText('book ' + CLOSED_BOOK.book_time_ct + ' · not live');
-  // Schwab's depth-5 totals as served (800 and 2,160 shares), drawn by the card's volume formatter
-  await expect(page.locator('#tdmCardLiq')).toContainText('800 / 2.2K');
+  await expect(page.locator('#tdmCardLiq .tdm-src')).toContainText('book ' + CLOSED_BOOK.book_time_ct + ' · ' +
+    CLOSED_BOOK.readout.venues.NYSE_BOOK.book_age_text + ' old · not live');
+  // Schwab's top-5 totals as served (800 and 2,160 shares), the last numbers kept
+  await expect(page.locator('#tdmCardLiq .liq-body')).toContainText('2,160');
+  await expect(page.locator('#tdmCardLiq .liq-bar-h').first()).toHaveText('Bids800');
   await expect(page.locator('#tdmTrust')).toContainText('BOOK ' + CLOSED_BOOK.book_time_ct + ' · NOT LIVE');
   await expect(page.locator('#tdmTrust')).not.toContainText('STALE');
+  // with one book held, the composite is that book: its numbers, named on the source line
+  const comp = CLOSED_BOOK.readout.venues.COMPOSITE;
+  await page.locator('#tdmCardLiq [data-liqvenue="COMPOSITE"]').click();
+  await expect(page.locator('#tdmCardLiq .liq-pct')).toHaveText(comp.views.weighted.pct_text);
+  await expect(page.locator('#tdmCardLiq .liq-body')).toContainText('2,160');
+  await expect(page.locator('#tdmCardLiq .tdm-src')).toContainText('Schwab NYSE_BOOK · composite, newest quote of each exchange');
   expect(errs).toEqual([]);
 });
 
@@ -283,9 +230,10 @@ test('Desk: the book age keeps Schwab\'s book time', async ({ page }) => {
   await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
     localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
-  await expect(page.locator('#tdmCardLiq .tdm-src')).toContainText('book ' + BOOK_TIME + ' · 1s old');
-  await expect(page.locator('#tdmCardLiq')).toContainText('BID HEAVY');
-  await expect(page.locator('#tdmCardLiq')).toContainText('3.0K / 2.0K');
+  // the card's footnote keeps the served composite's book time; its side word and totals are served
+  await expect(page.locator('#tdmCardLiq')).toContainText('Book ' + LIVE_COMP.book_time_ct);
+  await expect(page.locator('#tdmCardLiq .liq-word')).toHaveText(LIVE_COMP.views.weighted.side_word);
+  await expect(page.locator('#tdmCardLiq .liq-body')).toContainText(LIVE_COMP.views.weighted.ask_text);
   await expect(page.locator('#tdmTrust')).toContainText('BOOK ' + BOOK_TIME + ' · 1s');
   expect(errs).toEqual([]);
 });
@@ -394,7 +342,7 @@ test.describe('Trade Desk renders served values', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#tdmQueue .tdm-q')).toHaveCount(3);
     await expect(page.locator('#tdmQueueCount')).toHaveText('3');
-    await expect(page.locator('#tdmCardLiq')).toContainText('BID HEAVY');
+    await expect(page.locator('#tdmCardLiq .liq-word')).toHaveText(LIVE_COMP.views.weighted.side_word);
     // Schwab sends no trade side: the Order Flow card claims none (operator 2026-09-29)
     await expect(page.locator('#tdmCardFlow')).not.toContainText(/NET BUYING|NET SELLING|tick rule|PROXY|delta/i);
     await expect(page.locator('#tdmCardFlow')).toContainText(EVENTS.cross_counts.up + ' up · ' + EVENTS.cross_counts.down + ' down');
@@ -404,14 +352,14 @@ test.describe('Trade Desk renders served values', () => {
     await expect(page.locator('#tdmAgree')).toContainText('Above flip');
     // the served session volume profile, every bin drawn at the chart's left edge, with its basis
     await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart.volumeProfileBins)).toBe(LEVELS.volume_profile.bins.length);    await expect(page.locator('#tdmProfNote')).toHaveText(LEVELS.volume_profile.basis);
-    // each card draws its served series in the reference's chart type (2026-09-28): depth areas,
+    // each card draws its served series (2026-09-28): the Liquidity card's 2m and 5m lean lines,
     // volume bars, and lines for put/call OI and ATM IV by expiry (a null expiry breaks the line)
-    await expect(page.locator('#tdmCardLiq .tdm-plot svg path')).toHaveCount(4);
+    await expect(page.locator('#tdmCardLiq .liq-lean svg path')).toHaveCount(2);
     await expect(page.locator('#tdmCardFlow .tdm-plot svg rect')).toHaveCount(BARS.bars.length);
     await expect(page.locator('#tdmCardOpt .tdm-plot svg path')).toHaveCount(2);
     await expect(page.locator('#tdmCardVol .tdm-plot svg path')).toHaveCount(1);
     await expect(page.locator('#tdmCardVol figcaption')).toHaveText('ATM implied vol by expiry, nearest first');
-    await expect(page.locator('#tdmAgree')).toContainText('Bid heavy');
+    await expect(page.locator('#tdmAgree')).toContainText(LIVE_COMP.views.weighted.side_word.toLowerCase());
     expect(errs).toEqual([]);
   });
 
@@ -608,7 +556,9 @@ test.describe('Trade Desk renders served values', () => {
     await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'right-now'); } catch (e) {} });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const body = page.locator('#tdBody');
-    await expect(body).toContainText('bid-heavy (NASDAQ_BOOK, depth 5)');
+    // the book's lean is the Liquidity readout's, served (one producer for the desk)
+    const nq5 = READOUT_LIVE.readout.venues.NASDAQ_BOOK.views['5'];
+    await expect(body).toContainText(nq5.pct_text + nq5.side_word.toLowerCase() + ' (NASDAQ_BOOK, depth 5)');
     await expect(body).toContainText('Max pain 770.00');           // nearest by the served by_distance
     await expect(body).toContainText('1.30 below spot');
     await expect(body).toContainText('Put wall 6.30 below spot, call wall 3.70 above spot');   // /api/levels' own rows
@@ -637,7 +587,7 @@ test.describe('Trade Desk renders served values', () => {
     await expect(body).toContainText('OFFLINE');
     await expect(body).toContainText(BOOK_TIME + ' · 1s');
     await expect(body).toContainText('771.29 × 771.31');
-    await expect(body).toContainText('bid-heavy (NASDAQ_BOOK, depth 5)');
+    await expect(body).toContainText(READOUT_LIVE.readout.venues.NASDAQ_BOOK.views['5'].side_word.toLowerCase() + ' (NASDAQ_BOOK, depth 5)');
     expect(errs).toEqual([]);
   });
 

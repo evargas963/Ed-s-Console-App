@@ -14,6 +14,7 @@ import live_price_rows
 import server
 import time_et
 from app.options.order_flow import streaming as ofs
+from app.options.order_flow.engine import _zone, book_readout
 from calibration.complete_chain_capture import CAPTURE_BASIS
 from instrument_identity import ticker_storage_key
 from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS
@@ -36,9 +37,12 @@ def test_the_book_side_is_served_from_the_real_book():
     bid5 = sum(r["TOTAL_VOLUME"] for r in nat["BIDS"][:5])
     ask5 = sum(r["TOTAL_VOLUME"] for r in nat["ASKS"][:5])
     m = compute_book_microstructure({"content": [nat]}, now_ts=fx["book"]["ts_recv"])
-    want = "BID" if bid5 > ask5 else "ASK" if ask5 > bid5 else "EVEN"
     assert (m["depth"]["5"]["bid_total"], m["depth"]["5"]["ask_total"]) == (bid5, ask5)
-    assert m["depth"]["5"]["side"] == want
+    # the book's lean, a word, is the Liquidity readout's (the one producer): this book's top five
+    # (440 bid, 1,840 ask: -61.4%) is OFFER_HEAVY
+    readout = book_readout({"NYSE_BOOK": nat, "NASDAQ_BOOK": None})["NYSE_BOOK"]
+    assert readout["views"]["5"]["pct"] == pytest.approx((bid5 - ask5) / (bid5 + ask5) * 100)
+    assert _zone(readout["views"]["5"]["pct"]) == "OFFER_HEAVY"
 
 
 def _desk_events(monkeypatch, ticker, crosses, now, tf):

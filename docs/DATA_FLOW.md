@@ -240,7 +240,7 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
 | Place | Owner | What it holds |
 |---|---|---|
 | Daemon memory | daemon | the message bus: each topic's current record (one per symbol and service; an unsubscribed symbol's is forgotten) and each ticker's newest chain; the watchlist; the option rule's inputs and pick, and the Flow panel's contract; the equity quotes the browser's price row is built from |
-| Console memory | console | the daemon's price rows as pushed (the price, bid/ask, MARK — never rebuilt); a second copy of the books, option quotes and the equity tape (fed from 8799, §3.5 item 1); the chains the daemon delivered; the computed levels; each ticker's 1-minute bars (`server._bars`, the newest 24,000: Schwab's price history pushed by the daemon, each streamed bar on top) and daily candles (`server._daily`); the level crosses (`server._crosses`), loaded from `ed_console.db` once at startup and then fed live (§2 D6); each option contract's newest 500 trade prints (`history.TAPE`) and each equity book of the last 240 minutes, one per second (`history.BOOKS`), held in memory from the console's start (no database read) |
+| Console memory | console | the daemon's price rows as pushed (the price, bid/ask, MARK — never rebuilt); a second copy of the books (each symbol's newest book from each Schwab service, so a book Schwab has not changed stands however many the other service sends: `state.OrderFlowState`), option quotes and the equity tape (fed from 8799, §3.5 item 1); the chains the daemon delivered; the computed levels; each ticker's 1-minute bars (`server._bars`, the newest 24,000: Schwab's price history pushed by the daemon, each streamed bar on top) and daily candles (`server._daily`); the level crosses (`server._crosses`), loaded from `ed_console.db` once at startup and then fed live (§2 D6); each option contract's newest 500 trade prints (`history.TAPE`) and each equity book of the last 240 minutes, one per second (`history.BOOKS`), and each ticker's order-imbalance readout of both books and their composite, one per second for 308 s and the one standing before (`history.LEAN`: computed once as each book arrives by its owner, the console's intake; while no book arrives the last stands and the live rule marks it not live), held in memory from the console's start (no database read) |
 | `stream_capture.db` | daemon's writer | the newest five trading sessions (§2 D4): every raw Schwab message but option quotes and option books outside the kept contracts: quotes, books, option quotes, bars, news, price history answers (`stream_pricehistory_raw`), subscription answers; every message a write refused, kept as sent with its error (`stream_write_failures`: the writer's refused rows, and each chain whose history write was refused); how far each spill file's write-back got (`stream_spill_progress`). Quotes, books and option quotes are indexed by receipt time, the order they arrive in (an index by symbol wrote a page per row: `tests/test_data_path_writer_failures_v1.py::test_the_indexes_add_no_more_pages_than_the_rows_they_index`); bars by symbol and bar start. A new database gets those indexes with its tables (`stream_spine.RECEIPT_TIME_INDEXES`); a writer never changes an existing table's index at its start. Production's old database (indexed by symbol) is not reindexed: it is replaced by a new one holding the last five sessions, with these indexes (`ACTIVE_PROGRAM.md` STREAM-DB-SWITCH). The tables the daily keep trims are `stream_spine.KEPT_BY_TIME`, the watchlist, markets, feed-status and subscription tables among them. |
 | `stream_capture.<ms>.<n>.spill` (beside `stream_capture.db`) | daemon's writer | while the database refuses writes, the held messages past the memory cap, in order (n 1), and at a stop what memory held (n 0); deleted once every record is written back (a record that does not decode or frame kept as its bytes in `stream_write_failures`); one a stop, a death or a kill leaves is written back at the next start (§2 D4) |
 | `ed_console.db` | console (level crosses), and the daemon (the chain captures) | level crosses (`level_crosses`) and the chain captures (`complete_chain_captures`, decision 7), kept beyond five sessions — plus tables nothing writes or reads, dropped in P2-DB3: the old bars (`price_bars_1m*`), the former ticker board (`logging_universe*`), the morning chains (`option_chain_morning_full`), the ML pipeline's tables |
@@ -254,7 +254,24 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
 - **Option quote and order book.** Schwab → daemon bus → writer, and → console memory → a
   `flow` push on `/api/changes` → the browser reads the order-flow and heatmap routes. An equity
   has two Schwab books, NYSE_BOOK (exchanges) and NASDAQ_BOOK (market makers); each is stored
-  under its service and served for the `venue` the screen's venue switch names, never combined.
+  under its service and served for the `venue` the screen's venue switch names, never combined,
+  but in the Desk Liquidity card's order-imbalance readout (operator 2026-11-03, step 1 of 3):
+  `/api/order-flow/microstructure` serves `readout` whatever the venue, both books and their
+  composite (`engine.book_readout`, the operator's decision of 2026-11-04, "the most recent
+  balance is the most accurate balance": every quote of the books Schwab sends for the ticker,
+  one per contributor, codes matched without regard to case; a contributor in both books (NSDQ,
+  for SPY and IWM, the only tickers NYSE_BOOK carries) from the copy with the newer quote time,
+  Schwab's market-maker field 2, which schwab-py names SEQUENCE; with one book held, that book;
+  the shares summed at each distinct price; a level with no per-exchange rows taken whole, and a
+  copy sent without its quote time never newer than one sent with it, each marking the dedup
+  partial), read over at most one value a second per ticker that the console's intake
+  records as each book arrives, the newest in that second (`history.LEAN`, 308 s), and judged
+  live per book by the one live rule, the composite only while both are; a venue not live is read
+  to the reading its readout has stood from (a stopped book from its last arrival; a composite
+  with one book still running moves with it), with its book's time and age. The exchange auction
+  windows are the 5 minutes before and the 10 minutes before the end of Schwab's regular window
+  for the date (`time_et.auction`); inside them the number stands and a line says the auction
+  imbalance is a different number, not shown (continuous trading runs through them).
   The books streamed are every watchlist ticker's. For each option contract the daemon holds
   (the option rule, below), each field the stream carries (gamma, delta, open interest, volume,
   IV) is the newest value Schwab sent (`math_exposure_core.overlay_streamed_contract_fields`):
@@ -698,8 +715,9 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
    too, and an offline order-flow card keeps it beside the outage
    (`static/js/ed-trade-desk-map.js`). The liquidity map's live price line carries it too
    (`static/js/ed-liquidity-map.js`). The desk chart's live price line carries it too
-   (`static/js/ed-trade-desk-map.js`). The desk map's liquidity card and its BOOK
-   pill keep the book's time beside that age (`static/js/ed-trade-desk-map.js`). The Right Now
+   (`static/js/ed-trade-desk-map.js`). The desk map's BOOK pill keeps the book's time beside
+   that age, and its liquidity card keeps each book's last numbers, greyed, with the book's time
+   and that it is not live (`server.liquidity_readout`, `static/js/ed-trade-desk-map.js`). The Right Now
    book-age row keeps that same time (`static/js/ed-trade-desk.js`). The desk map's
    options card, volatility card, and GAMMA pill keep the chain's time beside that
    age (`server.get_terrain`, `static/js/ed-trade-desk-map.js`). The key levels

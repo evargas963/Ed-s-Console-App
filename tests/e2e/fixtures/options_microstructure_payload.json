@@ -45,20 +45,17 @@
     "1": {
       "ask_total": 44.0,
       "bid_total": 289.0,
-      "imbalance": 0.7357357357357357,
-      "side": "BID"
+      "imbalance": 0.7357357357357357
     },
     "3": {
       "ask_total": 151.0,
       "bid_total": 301.0,
-      "imbalance": 0.33185840707964603,
-      "side": "BID"
+      "imbalance": 0.33185840707964603
     },
     "5": {
       "ask_total": 151.0,
       "bid_total": 301.0,
-      "imbalance": 0.33185840707964603,
-      "side": "BID"
+      "imbalance": 0.33185840707964603
     }
   },
   "depth_pressure": {
