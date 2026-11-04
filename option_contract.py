@@ -9,12 +9,15 @@ gamma surface and /api/chain take the record; none reads the contract's fields a
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Any
 
 from numeric_contract import SCHWAB_NO_VALUE, schwab_count, schwab_number
+
+log = logging.getLogger("option_contract")
 
 #: the Greeks the chain carries, each Schwab's quote value (complete_chain_capture.GREEK_FIELDS)
 GREEKS = ("gamma", "delta", "theta", "vega", "rho")
@@ -81,10 +84,13 @@ def _greek(raw: Mapping, name: str, void: bool) -> float | None:
     return None if void else schwab_number(raw.get(name))
 
 
-def _expires_at(raw: Any) -> float | None:
+def _expires_at(raw: Any, symbol: Any) -> float | None:
+    """Schwab's expirationDate ("2026-09-18T20:00:00.000+00:00") as a time; None, logged, when it
+    was not sent as one (rule 2)."""
     try:
         return datetime.fromisoformat(raw).timestamp()
-    except (TypeError, ValueError):
+    except (TypeError, ValueError) as e:
+        log.warning("%s has no expirationDate as a date (%s: %s)", symbol, type(e).__name__, e)
         return None
 
 
@@ -97,7 +103,8 @@ def _shown(value: Any) -> Any:
 
 def read_contract(raw: Mapping[str, Any]) -> OptionContract:
     """The record of one contract as the chain sweep delivers it."""
-    side = str(raw.get("putCall") or "").strip().upper()
+    put_call = raw.get("putCall")
+    side = put_call.strip().upper() if isinstance(put_call, str) else None
     expiration = raw.get("expirationDate")
     vol_sent = raw.get("volatility")
     void = vol_sent is not None and vol_sent == SCHWAB_NO_VALUE
@@ -109,7 +116,7 @@ def read_contract(raw: Mapping[str, Any]) -> OptionContract:
         strike=schwab_number(raw.get("strikePrice")),
         expiration=expiration,
         expiry=expiration[:10] if isinstance(expiration, str) and len(expiration) >= 10 else "",
-        expires_at=_expires_at(expiration),
+        expires_at=_expires_at(expiration, raw.get("symbol")),
         days_to_expiry=schwab_number(raw.get("daysToExpiration")),
         settlement=raw.get("settlementType"),
         open_interest=schwab_count(raw.get("openInterest")),
