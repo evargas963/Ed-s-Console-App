@@ -43,8 +43,9 @@ def _ct(strike: float, side: str, oi, *, gamma=0.04, delta=0.5, iv=20.0):
 
 
 def _gamma(gamma, iv):
-    """The gamma the one reader takes from a contract Schwab sent with this gamma and volatility."""
-    return read_contract({**_ct(100.0, "CALL", 500, iv=iv), "gamma": gamma}).gamma
+    """INDUCED: SPY's real same-day contract of 2026-10-07 (tests/real_chains.py) with this gamma
+    and volatility: the gamma the one reader takes from it."""
+    return read_contract({**SPY_0DTE.chain[0], "gamma": gamma, "volatility": iv}).gamma
 
 
 def test_every_value_schwab_sends_is_used_as_sent():

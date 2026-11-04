@@ -68,8 +68,8 @@ class OptionContract:
     theta: float | None
     vega: float | None
     rho: float | None
-    #: Schwab's nonStandard flag: an adjusted deliverable
-    non_standard: bool
+    #: Schwab's nonStandard flag (an adjusted deliverable); None when not sent as true or false
+    non_standard: bool | None
     #: every other field, each number by rule 2, for the screen only
     listing: Mapping[str, Any] = field(repr=False)
     #: the fields Schwab sent: the screen shows a field Schwab did not send only with a value
@@ -119,7 +119,7 @@ def read_contract(raw: Mapping[str, Any]) -> OptionContract:
         multiplier=None if multiplier is None or multiplier < 0 else multiplier,
         volatility=schwab_number(vol_sent),
         **{g: _greek(raw, g, void) for g in GREEKS},
-        non_standard=raw.get("nonStandard") is True,
+        non_standard=flag if isinstance(flag := raw.get("nonStandard"), bool) else None,
         listing={k: _shown(v) for k, v in raw.items() if k not in READ},
         sent=frozenset(raw),
     )
