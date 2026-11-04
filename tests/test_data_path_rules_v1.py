@@ -445,8 +445,9 @@ def _et(s: str) -> float:
 
 
 class _Swept:
-    """The sweep (the watchlist `watchlist`) on its thread at `clock["now"]`; `chains` is each
-    ticker whose chain it delivered, in order, `delivered` the clock at each delivery."""
+    """The sweep (the watchlist `watchlist`) at `clock["now"]`, its passes (ChainSweep.step) run on
+    the test's thread; `chains` is each ticker whose chain it delivered, in order, `delivered` the
+    clock at each delivery."""
 
     def __init__(self, tmp_path, at: str, watchlist: list[str]):
         self.clock = {"now": _et(at)}
@@ -468,39 +469,35 @@ class _Swept:
             streamed=lambda symbol: None,
         )
         self.client = self.schwab.client(tmp_path)
-        self._start()
-
-    def _start(self) -> None:
         self.stop = threading.Event()
-        self.worker = threading.Thread(
-            target=self.sweep.work, args=(lambda: self.client, self.stop), daemon=True
-        )
-        self.worker.start()
 
     def move(self, at: str) -> int:
-        """The clock moved to `at` with the sweep's thread stopped (a request it was making lands
-        first), then the thread started again: the number of requests Schwab's host received
-        before the move. A request is counted by the clock it was made at, never by when it
-        arrived."""
-        self.stop.set()
-        self.worker.join(10)
+        """The clock moved to `at` between passes: the number of requests Schwab's host received
+        before the move."""
         before = len(self.schwab.requests)
         self.clock["now"] = _et(at)
-        self._start()
         return before
 
     def until(self, n: int) -> list[str]:
-        """The chains delivered once `n` are in (or 10 s have passed), and a second more."""
-        deadline = time.monotonic() + 10
-        while len(self.chains) < n and time.monotonic() < deadline:
-            time.sleep(0.02)
-        time.sleep(1.0)
+        """Passes until `n` chains are delivered or a pass asks for nothing (at most PASSES)."""
+        for _ in range(PASSES):
+            if len(self.chains) >= n or not self.sweep.step(lambda: self.client, self.stop):
+                break
         return list(self.chains)
 
+    def idle(self) -> float:
+        """Passes until one asks for nothing (at most PASSES); the monotonic time then."""
+        for _ in range(PASSES):
+            if not self.sweep.step(lambda: self.client, self.stop):
+                break
+        return time.monotonic()
+
     def close(self) -> None:
-        self.stop.set()
-        self.worker.join(10)
         self.schwab.close()
+
+
+#: the most passes a test runs; one that asks forever stops here
+PASSES = 50
 
 
 @pytest.mark.parametrize(
@@ -599,12 +596,6 @@ def _asked_since(swept: _Swept, path: str, mark: float) -> list[dict]:
     return [q for p, q, started, *_ in swept.schwab.requests if p == path and started > mark]
 
 
-def _run_for(seconds: float) -> float:
-    """Let the sweep's thread run; the monotonic time it ended."""
-    time.sleep(seconds)
-    return time.monotonic()
-
-
 def test_d5_the_price_history_once_a_day_and_the_chain_the_options_session(tmp_path):
     """The price history is asked once per ET date (today's candle is rolled up live from the
     streamed bars); option chains follow each ticker's options session. Thursday 2026-10-01 at
@@ -614,13 +605,13 @@ def test_d5_the_price_history_once_a_day_and_the_chain_the_options_session(tmp_p
     chains = "/marketdata/v1/chains"
     swept = _Swept(tmp_path, "2026-10-01 17:00", ["SPY"])
     try:
-        after_hours = _run_for(2.0)
+        after_hours = swept.idle()
         swept.clock["now"] = _et("2026-10-01 20:00:30")
-        _run_for(2.0)
+        swept.idle()
         swept.clock["now"] = _et("2026-10-02 03:30")
-        _run_for(1.5)
+        swept.idle()
         swept.clock["now"] = _et("2026-10-02 03:45")
-        _run_for(1.5)
+        swept.idle()
     finally:
         swept.close()
 
@@ -771,9 +762,9 @@ def test_d5_a_ticker_with_no_listed_option_is_asked_once_a_day_whether_it_has_on
     )
     swept = _Swept(tmp_path, "2026-10-12 10:00", ["TSLA"])
     try:
-        monday = _run_for(2.0)
+        monday = swept.idle()
         swept.clock["now"] = _et("2026-10-13 10:00")
-        _run_for(1.5)
+        swept.idle()
     finally:
         swept.close()
     asked = [
