@@ -588,11 +588,6 @@ _TOUCH_FLAG = {"CROSSED": "BOOK CROSSED", "LOCKED": "BOOK LOCKED"}
 Levels = list[tuple[float, float]]
 
 
-def _newer(quoted: float | None, than: float | None) -> bool:
-    """Whether a quote time is newer than another: a time sent is newer than one not sent."""
-    return quoted is not None and (than is None or quoted > than)
-
-
 def _composite_side(books: dict[str, dict], side: str) -> tuple[Levels, bool]:
     """One side of the composite of the books held: every quote, one per contributor (its code,
     matched without regard to case), from the book whose copy has the newer quote time (on an equal
@@ -609,7 +604,9 @@ def _composite_side(books: dict[str, dict], side: str) -> tuple[Levels, bool]:
     ]
     newest: dict[str, tuple[float | None, str]] = {}
     for key, venue, quoted in rows_held:
-        if key not in newest or _newer(quoted, newest[key][0]):
+        held = newest.get(key)
+        # a time sent is newer than one not sent
+        if held is None or (quoted is not None and (held[0] is None or quoted > held[0])):
             newest[key] = (quoted, venue)
     partial = any(
         quoted is None and len({v for k, v, _q in rows_held if k == key}) > 1
