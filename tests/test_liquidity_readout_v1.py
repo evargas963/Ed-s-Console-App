@@ -836,6 +836,9 @@ def test_a_book_that_stops_keeps_its_last_numbers_marked_not_live():
         assert got["views"]["weighted"]["pct"] is not None
         assert got["views"]["weighted"]["bid_total"] is not None
         assert got["source_text"].endswith(f"book {got['book_time_ct']} · {age} old · not live")
+        # said once, on the source line, as every other card says it
+        words = [t for k, t in got.items() if k.endswith("_text") and isinstance(t, str)]
+        assert sum("not live" in t.lower() for t in words) == 1, words
 
 
 def test_a_book_without_its_time_says_not_live_and_that_no_time_was_sent():
